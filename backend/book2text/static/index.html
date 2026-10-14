@@ -21,13 +21,64 @@
   <div class="notice" id="platform-warning" hidden></div>
 
   <main>
-    <section class="card">
-      <h2>1. 上传 PDF</h2>
+    <section class="card" id="library-card">
+      <h2>项目库</h2>
       <p class="hint">
-        目前只能上传并查看页面图像。本阶段尚<strong>没有识别功能</strong>，
-        上传的文件放在临时目录，不作为正式项目保存。
+        项目存放在<strong>本机项目库目录</strong>里，关了应用再打开还在。
+        每个项目一个文件夹，内含 <code>project.db</code>、原始 PDF 的副本、
+        缓存与导出结果，可整体拷贝到另一台电脑。
+        <span class="muted" id="library-path"></span>
       </p>
 
+      <div class="create-row">
+        <input type="text" id="new-project-name" placeholder="书名（可留空，用文件名）" maxlength="200">
+        <input type="file" id="new-project-file" accept="application/pdf,.pdf" hidden>
+        <button type="button" id="pick-pdf" class="btn btn--primary">选择 PDF 并新建项目</button>
+      </div>
+      <div class="progress" id="create-progress" hidden>
+        <div class="progress__bar"><div class="progress__fill" id="create-progress-fill"></div></div>
+        <div class="progress__text" id="create-progress-text"></div>
+      </div>
+      <div class="alert alert--error" id="library-error" hidden></div>
+      <div class="alert alert--warn" id="library-warning" hidden></div>
+
+      <ul class="project-list" id="project-list"></ul>
+      <p class="muted" id="library-empty" hidden>
+        还没有项目。用上面的按钮导入一本 PDF 开始。
+      </p>
+    </section>
+
+    <section class="card" id="project-card" hidden>
+      <div class="project-head">
+        <h2 id="project-title">项目</h2>
+        <span class="spacer"></span>
+        <button type="button" id="project-close" class="btn">关闭项目</button>
+      </div>
+      <dl class="kv" id="project-meta"></dl>
+
+      <div class="page-toolbar">
+        <span class="muted" id="page-summary"></span>
+        <span class="spacer"></span>
+        <button type="button" id="pages-include-all" class="btn btn--ghost">全部纳入</button>
+        <button type="button" id="pages-exclude-all" class="btn btn--ghost">全部排除</button>
+        <label class="muted check">
+          <input type="checkbox" id="pages-only-included"> 只看纳入
+        </label>
+      </div>
+      <p class="hint">
+        单击缩略图切换<strong>纳入 / 排除</strong>。排除的页不参与识别与导出。
+        批量选择（Shift 范围、页码输入）与页面类型标注待实现。
+      </p>
+      <div class="alert alert--error" id="pages-error" hidden></div>
+      <div class="page-grid" id="page-grid"></div>
+    </section>
+
+    <section class="card legacy" id="scratch-card">
+      <h2>临时上传（Phase 0 遗留）</h2>
+      <p class="hint">
+        这一块是 Phase 0 的临时流程：上传的文件只落在临时目录，<strong>不作为项目保存</strong>，
+        刷新即丢。识别、分段与导出目前接在这里；等它们迁到项目上之后，这一块会被移除。
+      </p>
       <div class="dropzone" id="dropzone" tabindex="0" role="button"
            aria-label="选择或拖入 PDF 文件">
         <p class="dropzone__main">把 PDF 拖到这里，或点击选择文件</p>
@@ -44,7 +95,7 @@
     </section>
 
     <section class="card" id="result-card" hidden>
-      <h2>2. 上传结果</h2>
+      <h2>识别与分段</h2>
       <dl class="kv" id="upload-meta"></dl>
 
       <div class="viewer">
@@ -124,7 +175,7 @@
     </section>
 
     <section class="card">
-      <h2>3. 引擎自检</h2>
+      <h2>引擎自检</h2>
       <p class="hint" id="engine-summary">读取中…</p>
       <table class="table" id="engine-table">
         <thead>
@@ -137,7 +188,7 @@
     </section>
 
     <section class="card">
-      <h2>4. 当前限制</h2>
+      <h2>当前限制</h2>
       <ul class="limits" id="limits-list"></ul>
       <dl class="kv" id="env-meta"></dl>
     </section>

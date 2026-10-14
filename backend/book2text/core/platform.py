@@ -65,6 +65,18 @@ def is_supported_platform() -> tuple[bool, str]:
     return False, f"未支持的操作系统：{_platform_module.system()}"
 
 
+def documents_dir() -> Path:
+    """用户的"文稿 / 文档"目录。
+
+    说明书 12.1 规定默认项目库就在这个目录下。
+
+    **已知限制（Windows）：** 若用户把"文档"目录重定向到 OneDrive，
+    这个按惯例拼接的路径可能不存在。届时需要在设置里手填项目库路径
+    （说明书 4.5 已允许"在设置中输入其他项目文件夹路径"）。
+    """
+    return Path.home() / "Documents"
+
+
 def reveal_in_file_manager(path: Path) -> tuple[bool, str]:
     """在系统文件管理器中定位文件（macOS Finder / Windows 资源管理器）。
 

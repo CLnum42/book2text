@@ -203,6 +203,54 @@ main {
 .export-downloads {
   display: flex; gap: 8px; padding: 0 12px 10px; flex-wrap: wrap;
 }
+
+/* ---------- 项目库 ---------- */
+
+.create-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.create-row input[type="text"] {
+  flex: 1; min-width: 200px; font: inherit; font-size: 14px;
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px;
+}
+.create-row input[type="text"]:focus { outline: none; border-color: var(--accent); }
+
+.project-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.project-item {
+  border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: #fff;
+}
+.project-item--locked { border-color: #f0d9b5; background: #fffdf8; }
+.project-item__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.project-item__name { font-weight: 600; }
+.project-item__stats { margin: 6px 0 8px; }
+.project-item__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.project-head { display: flex; align-items: center; gap: 10px; }
+.project-head h2 { margin: 0; }
+
+.page-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 0 4px; border-top: 1px solid var(--border); margin-top: 4px;
+}
+
+.page-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px; max-height: 60vh; overflow: auto; padding: 4px 2px 2px;
+}
+.page-tile {
+  border: 2px solid var(--border); border-radius: 7px; overflow: hidden;
+  cursor: pointer; background: #fff; text-align: center;
+}
+.page-tile:hover { border-color: #b9c0ca; }
+.page-tile img { display: block; width: 100%; height: auto; background: #fff; }
+.page-tile__label {
+  font-size: 11px; color: var(--muted); padding: 3px 2px; line-height: 1.35;
+  border-top: 1px solid var(--border); background: #fafbfc;
+}
+.page-tile--excluded { opacity: .42; border-style: dashed; }
+.page-tile--excluded .page-tile__label { text-decoration: line-through; }
+.page-tile--textlayer .page-tile__label::after { content: " · 有文本层"; color: #b07a1e; }
+
+.card.legacy { border-style: dashed; background: #fcfcfd; }
+.card.legacy h2 { color: var(--muted); font-size: 15px; }
 .export-preview {
   margin: 0 12px 12px; padding: 10px 12px; max-height: 40vh; overflow: auto;
   background: #f8f9fb; border: 1px solid var(--border); border-radius: 6px;

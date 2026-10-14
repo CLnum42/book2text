@@ -63,10 +63,23 @@ def scratch_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pat
 
 
 @pytest.fixture
-def client(scratch_dir: Path) -> Iterator[TestClient]:
-    app = create_app(session_token=TEST_TOKEN, origins=[TEST_ORIGIN])
+def client(scratch_dir: Path, tmp_path: Path) -> Iterator[TestClient]:
+    # 项目库也重定向到 tmp_path：否则测试会往用户真实的"文稿 / 文档"目录里写项目
+    app = create_app(
+        session_token=TEST_TOKEN,
+        origins=[TEST_ORIGIN],
+        library_dir=tmp_path / "Book2Text",
+    )
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def library_dir(tmp_path: Path) -> Path:
+    """一个空的项目库目录。"""
+    library = tmp_path / "Book2Text"
+    library.mkdir(parents=True, exist_ok=True)
+    return library
 
 
 @pytest.fixture

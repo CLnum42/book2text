@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -15,10 +16,23 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .. import __version__, paths
-from . import errors, routes_app, routes_export, routes_scratch, security
+from ..core.project.library import default_library_dir
+from . import (
+    errors,
+    routes_app,
+    routes_export,
+    routes_projects,
+    routes_scratch,
+    security,
+)
 
 
-def create_app(*, session_token: str, origins: Sequence[str]) -> FastAPI:
+def create_app(
+    *,
+    session_token: str,
+    origins: Sequence[str],
+    library_dir: Path | None = None,
+) -> FastAPI:
     app = FastAPI(
         title="Book2Text",
         version=__version__,
@@ -32,6 +46,8 @@ def create_app(*, session_token: str, origins: Sequence[str]) -> FastAPI:
 
     app.state.session_token = session_token
     app.state.allowed_origins = frozenset(origins)
+    # 项目库目录：缺省为用户「文稿 / 文档」下的 Book2Text（说明书 12.1）
+    app.state.library_dir = Path(library_dir) if library_dir else default_library_dir()
 
     app.add_exception_handler(errors.AppError, errors.app_error_handler)
     app.add_exception_handler(StarletteHTTPException, errors.http_exception_handler)
@@ -46,6 +62,7 @@ def create_app(*, session_token: str, origins: Sequence[str]) -> FastAPI:
     app.include_router(routes_app.router, dependencies=guarded)
     app.include_router(routes_scratch.router, dependencies=guarded)
     app.include_router(routes_export.router, dependencies=guarded)
+    app.include_router(routes_projects.router, dependencies=guarded)
 
     app.mount("/static", StaticFiles(directory=paths.STATIC_DIR), name="static")
 

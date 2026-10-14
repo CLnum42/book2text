@@ -1,0 +1,155 @@
+"""数据库迁移框架测试（说明书 5.1：结构变化必须有迁移）。"""
+
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+from book2text.core.storage import db as db_module
+from book2text.core.storage.migration import (
+    Migration,
+    applied_versions,
+    current_version,
+    ensure_meta_table,
+    migrate,
+)
+from book2text.core.storage.migrations import LATEST_VERSION, MIGRATIONS
+
+
+@pytest.fixture
+def conn(tmp_path: Path) -> sqlite3.Connection:
+    connection = db_module.connect(tmp_path / "test.db")
+    yield connection
+    connection.close()
+
+
+def _table_names(connection: sqlite3.Connection) -> set[str]:
+    rows = connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'"
+    ).fetchall()
+    return {row["name"] for row in rows}
+
+
+# ---------------------------------------------------------------- 基础行为
+
+def test_fresh_database_reports_version_zero(conn: sqlite3.Connection) -> None:
+    assert current_version(conn) == 0
+
+
+def test_migrate_applies_all_migrations(conn: sqlite3.Connection) -> None:
+    version = migrate(conn, MIGRATIONS)
+    assert version == LATEST_VERSION
+    assert version >= 1
+
+
+def test_migrate_creates_the_project_and_page_tables(conn: sqlite3.Connection) -> None:
+    migrate(conn, MIGRATIONS)
+    tables = _table_names(conn)
+    assert "project" in tables
+    assert "page" in tables
+
+
+def test_migrate_is_idempotent(conn: sqlite3.Connection) -> None:
+    first = migrate(conn, MIGRATIONS)
+    second = migrate(conn, MIGRATIONS)
+    assert first == second
+    assert len(applied_versions(conn)) == len(MIGRATIONS)
+
+
+def test_applied_versions_record_description_and_time(conn: sqlite3.Connection) -> None:
+    migrate(conn, MIGRATIONS)
+    rows = applied_versions(conn)
+    assert rows[0][0] == 1
+    assert rows[0][1], "迁移要记说明，便于事后看结构是怎么来的"
+    assert rows[0][2], "迁移要记应用时间"
+
+
+def test_only_pending_migrations_run(conn: sqlite3.Connection) -> None:
+    """已经应用过的不重复执行——重复执行建表语句会报错。"""
+    calls: list[int] = []
+
+    def track(version: int):
+        def apply(connection: sqlite3.Connection) -> None:
+            calls.append(version)
+            connection.execute(f"CREATE TABLE t{version} (id INTEGER)")
+
+        return apply
+
+    migrations = [
+        Migration(1, "第一版", track(1)),
+        Migration(2, "第二版", track(2)),
+    ]
+    migrate(conn, migrations)
+    assert calls == [1, 2]
+
+    migrations.append(Migration(3, "第三版", track(3)))
+    migrate(conn, migrations)
+    assert calls == [1, 2, 3], "1 与 2 不应重复执行"
+
+
+def test_duplicate_versions_are_rejected(conn: sqlite3.Connection) -> None:
+    migrations = [
+        Migration(1, "甲", lambda c: None),
+        Migration(1, "乙", lambda c: None),
+    ]
+    with pytest.raises(ValueError, match="重复"):
+        migrate(conn, migrations)
+
+
+def test_failing_migration_does_not_leave_a_half_applied_version(
+    conn: sqlite3.Connection,
+) -> None:
+    def boom(connection: sqlite3.Connection) -> None:
+        connection.execute("CREATE TABLE half (id INTEGER)")
+        raise RuntimeError("迁移中途失败")
+
+    with pytest.raises(RuntimeError):
+        migrate(conn, [Migration(1, "会失败的迁移", boom)])
+
+    # 失败后版本号不应前进（否则下次启动会跳过这段结构）
+    assert current_version(conn) == 0
+
+
+def test_meta_table_can_be_prepared_twice(conn: sqlite3.Connection) -> None:
+    ensure_meta_table(conn)
+    ensure_meta_table(conn)
+    assert current_version(conn) == 0
+
+
+# ---------------------------------------------------------------- 真实迁移的结构
+
+def test_page_table_has_the_spec_columns(conn: sqlite3.Connection) -> None:
+    """说明书 5.3 里 page 实体的字段应当都在。"""
+    migrate(conn, MIGRATIONS)
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(page)").fetchall()
+    }
+    assert {
+        "page_id", "page_no", "page_label", "width_pt", "height_pt",
+        "rotation", "page_type", "include", "has_text_layer", "active_run_id", "note",
+    } <= columns
+
+
+def test_project_table_has_the_spec_columns(conn: sqlite3.Connection) -> None:
+    migrate(conn, MIGRATIONS)
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(project)").fetchall()
+    }
+    assert {
+        "project_id", "name", "source_file_name", "source_sha256", "page_count",
+        "created_at", "updated_at", "schema_version", "settings_json",
+        "last_view", "last_page_id", "last_block_id",
+    } <= columns
+
+
+def test_page_no_is_unique(conn: sqlite3.Connection) -> None:
+    migrate(conn, MIGRATIONS)
+    conn.execute(
+        "INSERT INTO page (page_id, page_no, width_pt, height_pt) VALUES ('a', 1, 1, 1)"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO page (page_id, page_no, width_pt, height_pt) VALUES ('b', 1, 1, 1)"
+        )

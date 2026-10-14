@@ -12,11 +12,14 @@ import sys
 
 import uvicorn
 
+from pathlib import Path
+
 from . import __version__
 from .api.app import create_app
 from .api.security import allowed_origins
 from .core import platform as b2t_platform
 from .core.ocr import selfcheck
+from .core.project.library import default_library_dir
 from .core.storage import scratch
 
 # 说明书 4.4：只监听 127.0.0.1，不监听 0.0.0.0。
@@ -57,18 +60,25 @@ def _configure_stdio() -> None:
             pass
 
 
-def _print_banner(port: int, url: str, supported: bool, unsupported_reason: str) -> None:
+def _print_banner(
+    port: int,
+    url: str,
+    library: Path,
+    supported: bool,
+    unsupported_reason: str,
+) -> None:
     probes = selfcheck.probe_engines()
     available = sum(1 for probe in probes if probe.available)
 
     print()
-    print(f"Book2Text {__version__} — Phase 0 骨架（尚无 OCR / 审校 / 导出）")
+    print(f"Book2Text {__version__} — 早期版本（项目与 PDF 已持久化；尚未实现识别任务、审校、导出）")
     print(f"平台：{b2t_platform.platform_label()}")
     if not supported:
         print(f"  ✗ 该平台不受支持：{unsupported_reason}")
         print("    （说明书第 10 节只支持 macOS Apple Silicon 与 Windows x64；仍可继续诊断）")
     print(f"界面地址：{url}")
-    print(f"临时数据目录：{scratch.scratch_dir()}")
+    print(f"项目库目录：{library}")
+    print(f"临时上传目录：{scratch.scratch_dir()}")
     print(f"引擎自检：{available}/{len(probes)} 可用（详情见界面「引擎自检」）")
     print("按 Ctrl+C 停止服务")
     print()
@@ -80,7 +90,7 @@ def _print_banner(port: int, url: str, supported: bool, unsupported_reason: str)
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="book2text",
-        description="Book2Text 本地服务（Phase 0 骨架）",
+        description="Book2Text 本地服务",
     )
     parser.add_argument(
         "--port",
@@ -92,6 +102,12 @@ def main(argv: list[str] | None = None) -> int:
         "--no-browser",
         action="store_true",
         help="启动后不自动打开浏览器",
+    )
+    parser.add_argument(
+        "--library",
+        type=Path,
+        default=None,
+        help="项目库目录（缺省为用户「文稿 / 文档」下的 Book2Text）",
     )
     parser.add_argument(
         "--token",
@@ -108,9 +124,12 @@ def main(argv: list[str] | None = None) -> int:
     token = args.token or secrets.token_urlsafe(32)
     url = f"http://{HOST}:{port}/?token={token}"
 
-    app = create_app(session_token=token, origins=allowed_origins(port))
+    library = args.library or default_library_dir()
+    app = create_app(
+        session_token=token, origins=allowed_origins(port), library_dir=library
+    )
 
-    _print_banner(port, url, supported, unsupported_reason)
+    _print_banner(port, url, library, supported, unsupported_reason)
 
     if not args.no_browser:
         opened, reason = b2t_platform.open_in_browser(url)

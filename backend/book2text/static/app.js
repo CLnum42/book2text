@@ -791,6 +791,301 @@ function downloadExportManifest() {
   downloadBlob(exportArtifacts.manifestName, exportArtifacts.manifestContent, "application/json");
 }
 
+// ---------------------------------------------------------------- 项目库
+
+/** 当前打开的项目（含页面列表）。 */
+let currentProject = null;
+
+const PAGE_TYPE_LABELS = {
+  cover: "封面", toc: "目录", front: "前置", body: "正文",
+  appendix: "附录", index: "索引", blank: "空白", other: "其他",
+};
+
+async function loadLibrary() {
+  el("library-warning").hidden = true;
+  try {
+    const data = await apiJson("/api/projects");
+    el("library-path").textContent = `（${data.library_dir}）`;
+    renderProjectList(data.projects);
+  } catch (error) {
+    showError(el("library-error"), error);
+  }
+}
+
+function renderProjectList(projects) {
+  const list = el("project-list");
+  list.innerHTML = "";
+  el("library-empty").hidden = projects.length > 0;
+
+  for (const entry of projects) {
+    const item = document.createElement("li");
+    item.className = "project-item" + (entry.lock_held ? " project-item--locked" : "");
+    item.dataset.projectId = entry.project_id;
+
+    const head = document.createElement("div");
+    head.className = "project-item__head";
+
+    const name = document.createElement("span");
+    name.className = "project-item__name";
+    name.textContent = `《${entry.name}》`;
+
+    const meta = document.createElement("span");
+    meta.className = "muted";
+    meta.textContent =
+      `${entry.source_file_name} · ${entry.page_count} 页 · ` +
+      `纳入 ${entry.included_pages} 页`;
+
+    head.append(name, meta);
+    if (entry.lock_held) {
+      const badge = document.createElement("span");
+      badge.className = "status status--bad";
+      badge.textContent = "使用中";
+      badge.title = entry.lock_reason;
+      head.append(badge);
+    }
+    if (entry.text_layer_hint) {
+      const hint = document.createElement("span");
+      hint.className = "status";
+      hint.style.background = "var(--warn-bg)";
+      hint.style.color = "var(--warn-fg)";
+      hint.textContent = "可能已含文本";
+      hint.title = `${entry.pages_with_text_layer} / ${entry.page_count} 页已有文本层`;
+      head.append(hint);
+    }
+
+    const stats = document.createElement("div");
+    stats.className = "project-item__stats muted";
+    const last = entry.last_view
+      ? `上次位置：${entry.last_view}`
+      : "还没有打开过";
+    stats.textContent =
+      `${entry.project_id} · 创建于 ${entry.created_at.slice(0, 10)} · ${last}`;
+
+    const actions = document.createElement("div");
+    actions.className = "project-item__actions";
+
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "btn btn--primary";
+    openButton.textContent = "打开";
+    openButton.addEventListener("click", () => openProject(entry.project_id));
+
+    actions.append(openButton);
+    if (entry.lock_held) {
+      const readOnlyButton = document.createElement("button");
+      readOnlyButton.type = "button";
+      readOnlyButton.className = "btn";
+      readOnlyButton.textContent = "只读打开";
+      readOnlyButton.addEventListener("click", () =>
+        openProject(entry.project_id, { readOnly: true })
+      );
+      const forceButton = document.createElement("button");
+      forceButton.type = "button";
+      forceButton.className = "btn btn--danger";
+      forceButton.textContent = "强制打开";
+      forceButton.title = "有让两台电脑同时写入同一数据库的风险";
+      forceButton.addEventListener("click", () =>
+        openProject(entry.project_id, { force: true })
+      );
+      actions.append(readOnlyButton, forceButton);
+    }
+
+    item.append(head, stats, actions);
+    list.append(item);
+  }
+}
+
+async function createProjectFromFile(file) {
+  const name = el("new-project-name").value.trim();
+  el("library-error").hidden = true;
+  el("create-progress").hidden = false;
+
+  try {
+    const response = await fetch(
+      `/api/projects?name=${encodeURIComponent(name)}&filename=${encodeURIComponent(file.name)}`,
+      {
+        method: "POST",
+        headers: { "X-B2T-Token": token, "Content-Type": "application/pdf" },
+        body: file,
+      }
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = (payload && payload.error) || {};
+      throw new ApiError(error.message || `新建失败（HTTP ${response.status}）`,
+                         error.code, error.correlation_id, error.detail);
+    }
+
+    el("new-project-name").value = "";
+    if (payload.text_layer_hint) {
+      const warning = el("library-warning");
+      warning.textContent =
+        `这本 PDF 有 ${payload.pages_with_text_layer} 页已经带文本层，` +
+        `可能不需要识别——建议先抽查几页再决定。`;
+      warning.hidden = false;
+    }
+    await loadLibrary();
+    await openProject(payload.project.project_id);
+  } catch (error) {
+    showError(el("library-error"), error);
+  } finally {
+    el("create-progress").hidden = true;
+  }
+}
+
+async function openProject(projectId, { force = false, readOnly = false } = {}) {
+  el("library-error").hidden = true;
+  el("library-warning").hidden = true;
+
+  try {
+    const opened = await apiJson(
+      `/api/projects/${projectId}/open?force=${force}&read_only=${readOnly}`,
+      { method: "POST" }
+    );
+    if (opened.warning) {
+      const warning = el("library-warning");
+      warning.textContent = opened.warning;
+      warning.hidden = false;
+    }
+    await refreshProject(projectId);
+    await loadLibrary();
+  } catch (error) {
+    showError(el("library-error"), error);
+  }
+}
+
+async function refreshProject(projectId) {
+  const data = await apiJson(`/api/projects/${projectId}`);
+  currentProject = { ...data.project, pages: data.pages, read_only: false };
+  renderProject();
+}
+
+function renderProject() {
+  const project = currentProject;
+  if (!project) return;
+
+  el("project-card").hidden = false;
+  el("project-title").textContent = `《${project.name}》`;
+  fillDefinitionList(el("project-meta"), [
+    ["项目 ID", project.project_id],
+    ["源文件", project.source_file_name],
+    ["SHA-256", project.source_sha256],
+    ["页数", `${project.page_count} 页`],
+    ["数据库版本", `schema_version ${project.schema_version}`],
+    ["项目文件夹", project.directory],
+  ]);
+  renderPages();
+}
+
+function renderPages() {
+  const project = currentProject;
+  const onlyIncluded = el("pages-only-included").checked;
+  const pages = project.pages;
+  const included = pages.filter((page) => page.include).length;
+
+  el("page-summary").textContent =
+    `纳入 ${included} / ${pages.length} 页` +
+    (pages.filter((page) => page.has_text_layer).length
+      ? ` · 有文本层 ${pages.filter((page) => page.has_text_layer).length} 页`
+      : "");
+
+  const grid = el("page-grid");
+  grid.innerHTML = "";
+
+  for (const page of pages) {
+    if (onlyIncluded && !page.include) continue;
+
+    const tile = document.createElement("div");
+    tile.className =
+      "page-tile" +
+      (page.include ? "" : " page-tile--excluded") +
+      (page.has_text_layer ? " page-tile--textlayer" : "");
+    tile.dataset.pageId = page.page_id;
+    tile.title =
+      `第 ${page.page_no} 页 · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}` +
+      ` · ${page.width_pt}×${page.height_pt} pt` +
+      (page.rotation ? ` · 旋转 ${page.rotation}°` : "") +
+      "\n单击切换纳入 / 排除";
+
+    const image = document.createElement("img");
+    // 说明书 6.1 要求缩略图由后台 Job 生成并缓存；Job 属于 Phase 2，
+    // 这里按需渲染（不写缓存）。
+    image.loading = "lazy";
+    image.alt = `第 ${page.page_no} 页`;
+    image.src =
+      `/api/projects/${project.project_id}/pages/${page.page_no}/image?size=thumb` +
+      `&token=${encodeURIComponent(token)}`;
+
+    const label = document.createElement("div");
+    label.className = "page-tile__label";
+    const printed = page.page_label ? ` · 印${page.page_label}` : "";
+    label.textContent = `${page.page_no}${printed} · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}`;
+
+    tile.append(image, label);
+    tile.addEventListener("click", () => togglePageInclude(page));
+    grid.append(tile);
+  }
+}
+
+async function togglePageInclude(page) {
+  try {
+    await apiJson(`/api/projects/${currentProject.project_id}/pages/${page.page_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ include: !page.include }),
+    });
+  } catch (error) {
+    showError(el("pages-error"), error);
+    return;
+  }
+  page.include = !page.include;
+  renderPages();
+}
+
+async function setAllPagesInclude(include) {
+  el("pages-error").hidden = true;
+  try {
+    for (const page of currentProject.pages) {
+      if (page.include === include) continue;
+      await apiJson(`/api/projects/${currentProject.project_id}/pages/${page.page_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ include }),
+      });
+      page.include = include;
+    }
+  } catch (error) {
+    showError(el("pages-error"), error);
+  }
+  renderPages();
+}
+
+async function closeProject() {
+  if (!currentProject) return;
+  try {
+    await apiJson(`/api/projects/${currentProject.project_id}/close`, { method: "POST" });
+  } catch (error) {
+    showError(el("library-error"), error);
+    return;
+  }
+  currentProject = null;
+  el("project-card").hidden = true;
+  await loadLibrary();
+}
+
+function setupLibrary() {
+  const picker = el("new-project-file");
+  el("pick-pdf").addEventListener("click", () => picker.click());
+  picker.addEventListener("change", () => {
+    if (picker.files && picker.files[0]) createProjectFromFile(picker.files[0]);
+    picker.value = "";
+  });
+  el("project-close").addEventListener("click", closeProject);
+  el("pages-include-all").addEventListener("click", () => setAllPagesInclude(true));
+  el("pages-exclude-all").addEventListener("click", () => setAllPagesInclude(false));
+  el("pages-only-included").addEventListener("change", renderPages);
+}
+
 // ---------------------------------------------------------------- 启动
 
 function boot() {
@@ -800,9 +1095,11 @@ function boot() {
       "<strong>完整界面地址</strong>（带 <code>?token=…</code>）打开本页。";
     warning.hidden = false;
   }
+  setupLibrary();
   setupDropzone();
   setupViewerControls();
   loadAppInfo();
+  loadLibrary();
 }
 
 boot();

@@ -47,6 +47,13 @@ async def verify_local_request(request: Request) -> None:
         raise AppError(500, "server_not_ready", "服务未正确初始化")
 
     supplied = request.headers.get(TOKEN_HEADER, "")
+    if not supplied:
+        # **查询参数是刻意的例外，只给 <img> 用。**
+        # 浏览器的 <img src> 无法携带自定义请求头，而页面缩略图正是 <img>。
+        # 令牌本来就在页面 URL 里（说明书 4.4：启动时打开的地址携带令牌），
+        # 因此接受查询参数不增加实质暴露面。
+        supplied = request.query_params.get("token", "")
+
     if not hmac.compare_digest(supplied, expected):
         raise AppError(
             401,

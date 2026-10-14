@@ -173,6 +173,64 @@ def render_page_png(path: Path, page_index: int, *, profile: str = DEFAULT_PROFI
         image.close()
 
 
+def page_sizes_pt(path: Path) -> list[tuple[float, float]]:
+    """所有页的**显示尺寸**（pt）。打开一次文档读完，避免逐页开关文件。"""
+    document = _open(path)
+    try:
+        sizes = []
+        for index in range(len(document)):
+            page = document[index]
+            try:
+                sizes.append(page.get_size())
+            finally:
+                page.close()
+        return sizes
+    finally:
+        document.close()
+
+
+def page_rotations(path: Path) -> list[int]:
+    """所有页的 ``/Rotate`` 声明值（度），一次读完。"""
+    document = _open(path)
+    try:
+        return [int(document[index].get_rotation()) % 360 for index in range(len(document))]
+    finally:
+        document.close()
+
+
+def text_layer_char_count(path: Path, page_index: int) -> int:
+    """该页文本层里的字符数。
+
+    说明书 6.1 要求新建项目时"检测文本层"，并在**大部分页面已有文本层**时提示
+    "这本 PDF 可能已包含文本"。扫描版图书的这里应接近 0。
+    """
+    document = _open(path)
+    try:
+        page = _guarded_page(document, page_index)
+        try:
+            return int(page.get_textpage().count_chars())
+        finally:
+            page.close()
+    finally:
+        document.close()
+
+
+def text_layer_char_counts(path: Path) -> list[int]:
+    """逐页文本层字符数。只读文本层、不渲染，因此比渲染快得多。"""
+    document = _open(path)
+    try:
+        counts = []
+        for index in range(len(document)):
+            page = document[index]
+            try:
+                counts.append(int(page.get_textpage().count_chars()))
+            finally:
+                page.close()
+        return counts
+    finally:
+        document.close()
+
+
 def backend_version() -> str:
     """当前 PDF 后端的版本，用于引擎自检接口。"""
     try:
