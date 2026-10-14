@@ -106,18 +106,28 @@ SCOPE_ALL = "all"
 SCOPES = (SCOPE_UNRECOGNIZED, SCOPE_ALL)
 
 
+# 已有**可用识别结果**的状态：说明书 6.3 说批量识别"已有识别结果的页面默认跳过"
+STATUSES_WITH_RESULT = (
+    blocks_module.STATUS_RECOGNIZED,
+    blocks_module.STATUS_HAS_CANDIDATE,
+)
+
+
 def resolve_pages(
     project_id: str,
     *,
     library: Path | None = None,
     pages: Sequence[int] | None = None,
     scope: str | None = None,
+    skip_recognized: bool = True,
 ) -> list[Page]:
     """把"要识别哪些页"解析成页面列表。
 
     - 显式页码：必须存在且已纳入（排除的页不参与识别，界面上也是这么说的）。
     - ``scope="unrecognized"``：全部纳入页里**没有可用识别结果**的（未识别或上次失败）。
     - ``scope="all"``：全部纳入页（重新识别，适用规则 R2）。
+    - ``skip_recognized``：显式页码时是否跳过已识别的页（默认跳过，与说明书 6.3 一致；
+      单页"重新识别"按钮会显式传 False）。
     """
     if (pages is None) == (scope is None):
         raise ProjectError("pages 与 scope 必须给出且只给出一个")
@@ -126,10 +136,13 @@ def resolve_pages(
 
     target_library = library if library is not None else default_library_dir()
     all_pages = list_pages(project_id, library=target_library)
+    states = blocks_module.page_recognition_states(project_id, library=target_library)
+
+    def usable_result(page: Page) -> bool:
+        state = states.get(page.page_id)
+        return state is not None and state.status in STATUSES_WITH_RESULT
 
     if scope is not None:
-        # 状态推导在 blocks.py：未识别 / 失败 都属于"还没有可用结果"
-        states = blocks_module.page_recognition_states(project_id, library=target_library)
         selected = []
         for page in all_pages:
             if not page.include:
@@ -153,6 +166,8 @@ def resolve_pages(
             raise ProjectError(
                 f"第 {page_no} 页已排除，不参与识别。先把它纳入（单击缩略图）再识别"
             )
+        if skip_recognized and usable_result(page):
+            continue
         selected.append(page)
     return selected
 
@@ -163,6 +178,7 @@ def create_ocr_job(
     library: Path | None = None,
     pages: Sequence[int] | None = None,
     scope: str | None = None,
+    skip_recognized: bool = True,
     dpi: int = DEFAULT_DPI,
     language: str = DEFAULT_LANGUAGE,
 ) -> jobs_module.JobRecord:
@@ -185,9 +201,18 @@ def create_ocr_job(
     # 识别要写库，因此这里应用迁移（与读取路径相反，见 blocks.py 的说明）
     load_project(project_id, library=target_library)
 
-    selected = resolve_pages(project_id, library=target_library, pages=pages, scope=scope)
+    selected = resolve_pages(
+        project_id,
+        library=target_library,
+        pages=pages,
+        scope=scope,
+        skip_recognized=skip_recognized,
+    )
     if not selected:
-        raise ProjectError("没有需要识别的页面（已识别的页会跳过，排除的页不参与）")
+        raise ProjectError(
+            "没有需要识别的页面（已识别的页会跳过，排除的页不参与）"
+            + ("——要去掉「跳过已识别的页」的勾选才会重新识别它们" if pages else "")
+        )
 
     running = jobs_module.active_job(directory)
     if running is not None:

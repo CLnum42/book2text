@@ -343,3 +343,40 @@ main {
 .drawer__recent ul { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; }
 .drawer__recent li { display: flex; gap: 8px; padding: 2px 0; color: var(--muted); }
 .drawer__recent li .tag { font-size: 11px; }
+
+/* ---------------------------------------------------------------- 页面选择与筛选 */
+
+.page-toolbar .sep, .page-selection .sep {
+  width: 1px; height: 20px; background: var(--border); display: inline-block;
+}
+.page-toolbar select, .page-selection select {
+  font: inherit; font-size: 12px; padding: 2px 4px; border-radius: 6px;
+  border: 1px solid var(--border); background: #fff; color: var(--text);
+}
+.range-input {
+  font: inherit; font-size: 12px; padding: 4px 8px; width: 190px;
+  border: 1px solid var(--border); border-radius: 6px; background: #fff;
+}
+.page-selection {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 10px; margin: 6px 0 4px;
+  border: 1px solid var(--border); border-radius: 8px; background: #fafbfc;
+}
+.page-selection .spacer { flex: 1; }
+.page-selection .btn { font-size: 12px; padding: 4px 10px; }
+.page-selection #selection-count { font-weight: 600; color: var(--text); }
+.page-tile--selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(47,111,235,.18); }
+.page-tile--selected .page-tile__label { background: #eef2ff; color: #3548a8; }
+.page-tile__check {
+  position: absolute; top: 4px; left: 4px; width: 18px; height: 18px;
+  border-radius: 5px; background: var(--accent); color: #fff;
+  font-size: 12px; line-height: 18px; text-align: center; display: none;
+}
+.page-tile { position: relative; }
+.page-tile--selected .page-tile__check { display: block; }
+
+/* 任务抽屉打开时把内容推开：宽屏下它固定占右下角，
+   不推的话会压住"识别所选"这类正好在同一高度上的按钮。 */
+@media (min-width: 1180px) {
+  body.task-drawer-open main { margin-right: 400px; }
+}

@@ -60,11 +60,18 @@ def create_project(
     return response.json()["project"]["project_id"]
 
 
-def recognize(client: TestClient, headers: dict[str, str], project_id: str, *pages: int):
+def recognize(
+    client: TestClient,
+    headers: dict[str, str],
+    project_id: str,
+    *pages: int,
+    skip_recognized: bool | None = None,
+):
+    body: dict[str, object] = {"pages": list(pages)}
+    if skip_recognized is not None:
+        body["skip_recognized"] = skip_recognized
     return client.post(
-        f"/api/projects/{project_id}/jobs/ocr",
-        json={"pages": list(pages)},
-        headers=headers,
+        f"/api/projects/{project_id}/jobs/ocr", json=body, headers=headers
     )
 
 
@@ -283,6 +290,25 @@ def test_batch_recognition_runs_every_page(
     assert all(page["recognition"]["status"] == "recognized" for page in data["pages"])
 
 
+def test_explicit_pages_skip_recognized_by_default(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
+) -> None:
+    """说明书 6.3：批量识别时"已有识别结果的页面默认跳过"。
+
+    界面上"跳过已识别的页"勾选着时就是这个行为；去掉勾选才会重新识别（走 R2）。
+    """
+    project_id = create_project(client, auth_headers, sample_pdf)
+    recognize(client, auth_headers, project_id, 2)
+
+    data = recognize(client, auth_headers, project_id, 1, 2, 3).json()
+    assert [item["page_no"] for item in data["items"]] == [1, 3], "第 2 页已识别，跳过"
+
+    # 三页都认过了：再来一次就没什么可做，接口如实拒绝并提示原因
+    again = recognize(client, auth_headers, project_id, 1, 3)
+    assert again.status_code == 400
+    assert "跳过" in again.json()["error"]["detail"]
+
+
 def test_scope_unrecognized_skips_pages_that_already_have_results(
     client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
 ) -> None:
@@ -389,7 +415,10 @@ def test_re_recognize_replaces_blocks_when_nothing_was_reviewed(
     first = recognize(client, auth_headers, project_id, 1).json()
     before = blocks_of(client, auth_headers, project_id, 1)
 
-    second = recognize(client, auth_headers, project_id, 1).json()
+    # 单页重新识别：界面上的"识别"按钮会显式关掉"跳过已识别"
+    second = recognize(
+        client, auth_headers, project_id, 1, skip_recognized=False
+    ).json()
     after = blocks_of(client, auth_headers, project_id, 1)
 
     assert second["job"]["status"] == "succeeded"
@@ -426,7 +455,9 @@ def test_re_recognize_never_overwrites_human_work(
     before = blocks_of(client, auth_headers, project_id, 1)
     simulate_human_edit(library_dir, project_id, before["blocks"][0]["block_id"])
 
-    second = recognize(client, auth_headers, project_id, 1).json()
+    second = recognize(
+        client, auth_headers, project_id, 1, skip_recognized=False
+    ).json()
     after = blocks_of(client, auth_headers, project_id, 1)
 
     assert second["job"]["status"] == "succeeded"

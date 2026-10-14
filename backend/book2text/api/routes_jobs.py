@@ -55,6 +55,8 @@ class OcrJobRequest(BaseModel):
 
     pages: list[int] | None = Field(default=None, max_length=5000)
     scope: Literal["unrecognized", "all"] | None = None
+    # 说明书 6.3：批量识别"已有识别结果的页面默认跳过"（界面上有勾选框）
+    skip_recognized: bool = True
     dpi: int = Field(
         default=recognition.DEFAULT_DPI, ge=recognition.MIN_DPI, le=recognition.MAX_DPI
     )
@@ -106,6 +108,7 @@ def start_ocr_job(request: Request, project_id: str, body: OcrJobRequest) -> dic
             library=library,
             pages=body.pages,
             scope=body.scope,
+            skip_recognized=body.skip_recognized,
             dpi=body.dpi,
             language=body.language,
         )

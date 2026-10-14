@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import secrets
 import shutil
-from collections.abc import AsyncIterator, Collection
+from collections.abc import AsyncIterator, Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -583,6 +583,80 @@ def update_page(
         has_text_layer=bool(row["has_text_layer"]),
         note=row["note"],
     )
+
+
+def update_pages(
+    project_id: str,
+    page_ids: Sequence[str],
+    *,
+    library: Path | None = None,
+    page_type: str | None = None,
+    include: bool | None = None,
+) -> list[Page]:
+    """批量更新页面的类型 / 纳入（说明书 6.2 的批量操作、第 11 节的 PATCH /pages）。
+
+    **整批一个事务**：要么都改，要么都不改——批次里有一个页面 id 不存在就整批拒绝，
+    免得界面上出现"改了一半"的中间状态。
+    """
+    if not page_ids:
+        raise ProjectError("没有指定要更新的页面")
+    if page_type is None and include is None:
+        raise ProjectError("没有要更新的字段")
+    if page_type is not None and page_type not in PAGE_TYPES:
+        raise ProjectError(f"未知的页面类型：{page_type!r}")
+
+    assignments = []
+    params: list[object] = []
+    if page_type is not None:
+        assignments.append("page_type = ?")
+        params.append(page_type)
+    if include is not None:
+        assignments.append("include = ?")
+        params.append(1 if include else 0)
+
+    target_library = library or default_library_dir()
+    directory = project_dir(target_library, project_id)
+    condition = ", ".join("?" for _ in page_ids)
+
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        found = {
+            row["page_id"]
+            for row in conn.execute(
+                f"SELECT page_id FROM page WHERE page_id IN ({condition})", page_ids
+            ).fetchall()
+        }
+        missing = [page_id for page_id in page_ids if page_id not in found]
+        if missing:
+            raise ProjectError(f"找不到这些页面：{'、'.join(missing[:5])}")
+
+        conn.execute(
+            f"UPDATE page SET {', '.join(assignments)} WHERE page_id IN ({condition})",
+            (*params, *page_ids),
+        )
+        conn.execute(
+            "UPDATE project SET updated_at = ?",
+            (datetime.now(timezone.utc).isoformat(timespec="seconds"),),
+        )
+        conn.commit()
+        rows = conn.execute(
+            f"SELECT * FROM page WHERE page_id IN ({condition}) ORDER BY page_no", page_ids
+        ).fetchall()
+
+    return [
+        Page(
+            page_id=row["page_id"],
+            page_no=int(row["page_no"]),
+            page_label=row["page_label"] or "",
+            width_pt=float(row["width_pt"]),
+            height_pt=float(row["height_pt"]),
+            rotation=int(row["rotation"]),
+            page_type=row["page_type"],
+            include=bool(row["include"]),
+            has_text_layer=bool(row["has_text_layer"]),
+            note=row["note"],
+        )
+        for row in rows
+    ]
 
 
 def update_last_view(

@@ -167,6 +167,40 @@ def patch_page(request: Request, project_id: str, page_id: str, patch: PagePatch
     return page.to_dict()
 
 
+class PagesPatch(BaseModel):
+    """批量设置页面类型 / 纳入（说明书第 11 节的 `PATCH /projects/{id}/pages`）。"""
+
+    page_ids: list[str] = Field(default_factory=list, max_length=5000)
+    page_type: str | None = None
+    include: bool | None = None
+
+
+@router.patch("/{project_id}/pages")
+def patch_pages(
+    request: Request, project_id: str, patch: PagesPatch
+) -> dict[str, Any]:
+    """批量更新页面的类型 / 纳入（说明书 6.2 的批量操作）。
+
+    整批一个事务：批次里有一个页面 id 不存在就整批拒绝，界面上不会出现"改了一半"。
+    """
+    library = _library(request)
+    try:
+        updated = project_library.update_pages(
+            project_id,
+            patch.page_ids,
+            library=library,
+            page_type=patch.page_type,
+            include=patch.include,
+        )
+        states = blocks_module.page_recognition_states(project_id, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    return {
+        "updated": len(updated),
+        "pages": [page_payload(page, states.get(page.page_id)) for page in updated],
+    }
+
+
 @router.get("/{project_id}/pages/{page_no}/image")
 def page_image(
     request: Request,

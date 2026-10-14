@@ -362,6 +362,90 @@ def test_patch_page_rejects_unknown_type(
     assert "未知的页面类型" in response.json()["error"]["detail"]
 
 
+def test_batch_patch_pages_sets_type_and_include(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path
+) -> None:
+    """说明书 6.2 的批量操作、第 11 节的 PATCH /projects/{id}/pages。"""
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+    pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+
+    response = client.patch(
+        f"/api/projects/{project_id}/pages",
+        json={
+            "page_ids": [pages[0]["page_id"], pages[1]["page_id"]],
+            "page_type": "cover",
+            "include": False,
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["updated"] == 2
+    assert [page["page_type"] for page in data["pages"]] == ["cover", "cover"]
+    assert all(page["include"] is False for page in data["pages"])
+
+    fresh = restart(library_dir)
+    after = fresh.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+    assert [page["page_type"] for page in after] == ["cover", "cover", "body"]
+    assert [page["include"] for page in after] == [False, False, True]
+
+
+def test_batch_patch_pages_is_all_or_nothing(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    """批次里有一个页面 id 不存在就整批拒绝——界面上不该出现"改了一半"。"""
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+    pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+
+    response = client.patch(
+        f"/api/projects/{project_id}/pages",
+        json={"page_ids": [pages[0]["page_id"], "nope"], "include": False},
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+    assert "找不到这些页面" in response.json()["error"]["detail"]
+
+    after = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+    assert all(page["include"] is True for page in after), "整批都没改"
+
+
+def test_batch_patch_pages_rejects_unknown_type(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+    pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+
+    response = client.patch(
+        f"/api/projects/{project_id}/pages",
+        json={"page_ids": [pages[0]["page_id"]], "page_type": "不存在"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+    assert "未知的页面类型" in response.json()["error"]["detail"]
+
+
+def test_batch_patch_pages_requires_something_to_do(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+    pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+
+    empty_ids = client.patch(
+        f"/api/projects/{project_id}/pages",
+        json={"page_ids": [], "include": False},
+        headers=auth_headers,
+    )
+    assert empty_ids.status_code == 404
+
+    no_fields = client.patch(
+        f"/api/projects/{project_id}/pages",
+        json={"page_ids": [pages[0]["page_id"]]},
+        headers=auth_headers,
+    )
+    assert no_fields.status_code == 404
+    assert "没有要更新的字段" in no_fields.json()["error"]["detail"]
+
+
 def test_unknown_page_returns_404(
     client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
 ) -> None:

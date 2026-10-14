@@ -60,19 +60,73 @@
       <div class="page-toolbar">
         <span class="muted" id="page-summary"></span>
         <span class="spacer"></span>
-        <button type="button" id="recognize-pending" class="btn btn--primary">识别全部未识别页</button>
-        <button type="button" id="recognize-all" class="btn">重新识别全部纳入页</button>
-        <button type="button" id="pages-include-all" class="btn btn--ghost">全部纳入</button>
-        <button type="button" id="pages-exclude-all" class="btn btn--ghost">全部排除</button>
+        <label class="muted">类型
+          <select id="filter-type">
+            <option value="">全部</option>
+            <option value="cover">封面</option>
+            <option value="toc">目录</option>
+            <option value="front">前置</option>
+            <option value="body">正文</option>
+            <option value="appendix">附录</option>
+            <option value="index">索引</option>
+            <option value="blank">空白</option>
+            <option value="other">其他</option>
+          </select>
+        </label>
+        <label class="muted">识别
+          <select id="filter-recognition">
+            <option value="">全部</option>
+            <option value="unrecognized">未识别</option>
+            <option value="recognized">已识别</option>
+            <option value="failed">识别失败</option>
+            <option value="has_candidate">有待选新结果</option>
+          </select>
+        </label>
         <label class="muted check">
           <input type="checkbox" id="pages-only-included"> 只看纳入
         </label>
+        <span class="sep"></span>
+        <input type="text" id="page-range" class="range-input"
+               placeholder="页码范围，如 1-12, 300-310" maxlength="200">
+        <button type="button" id="page-range-select" class="btn btn--ghost">选择</button>
       </div>
+
+      <div class="page-selection">
+        <span id="selection-count" class="muted">已选 0 页</span>
+        <span class="spacer"></span>
+        <button type="button" id="selection-all" class="btn btn--ghost">全选（当前筛选）</button>
+        <button type="button" id="selection-clear" class="btn btn--ghost">清空</button>
+        <span class="sep"></span>
+        <label class="muted">类型
+          <select id="selection-type">
+            <option value="body">正文</option>
+            <option value="cover">封面</option>
+            <option value="toc">目录</option>
+            <option value="front">前置</option>
+            <option value="appendix">附录</option>
+            <option value="index">索引</option>
+            <option value="blank">空白</option>
+            <option value="other">其他</option>
+          </select>
+        </label>
+        <button type="button" id="selection-set-type" class="btn">设为该类型</button>
+        <button type="button" id="selection-include" class="btn">纳入</button>
+        <button type="button" id="selection-exclude" class="btn">排除</button>
+        <span class="sep"></span>
+        <label class="muted check">
+          <input type="checkbox" id="selection-skip-recognized" checked> 跳过已识别的页
+        </label>
+        <button type="button" id="selection-recognize" class="btn btn--primary">识别所选</button>
+        <button type="button" id="recognize-pending" class="btn">识别全部未识别页</button>
+      </div>
+      <div class="alert alert--warn" id="selection-hint" hidden></div>
+
       <p class="hint">
-        单击缩略图切换<strong>纳入 / 排除</strong>（排除的页不参与识别与导出）。
-        点缩略图下方的<strong>识别</strong>按钮识别这一页，或用上面的批量按钮识别整本——
+        <strong>单击</strong>选中一页、<strong>Shift + 单击</strong>选一段、
+        <strong>⌘ / Ctrl + 单击</strong>加减一页，也可以直接输入页码范围；
+        <strong>双击</strong>看这一页的识别结果。排除的页不参与识别与导出。
         识别跑在后台任务里，进度在右下角的<strong>任务抽屉</strong>里看，
-        右上角随时可以暂停 / 取消。结果存进项目数据库，关掉应用再打开还在。
+        随时可以暂停 / 取消。结果存进项目数据库，关掉应用再打开还在。
       </p>
       <div class="alert alert--error" id="pages-error" hidden></div>
       <div class="page-grid" id="page-grid"></div>

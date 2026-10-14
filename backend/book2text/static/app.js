@@ -1003,6 +1003,8 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
 async function refreshProject(projectId) {
   const data = await apiJson(`/api/projects/${projectId}`);
   currentProject = { ...data.project, pages: data.pages, read_only: false };
+  selectedPages.clear();
+  selectionAnchor = null;
   closePageDetail();
   renderProject();
   // 任务可能还在跑（比如刷新了页面），把抽屉里的进度接回来
@@ -1038,98 +1040,302 @@ function renderProjectMeta() {
   ]);
 }
 
+// ---------------------------------------------------------------- 页面选择
+//
+// 说明书 6.2 的选择方式：单击（单选）、Shift + 单击（范围）、Mod + 单击（多选）、
+// 输入页码范围（`1-12, 300-310`）。选择状态只存**页码**集合，
+// 因此重新渲染网格、切换筛选都不会丢选择。
+
+const selectedPages = new Set();
+let selectionAnchor = null;
+
+function visiblePages() {
+  const project = currentProject;
+  if (!project) return [];
+  const typeFilter = el("filter-type").value;
+  const recognitionFilter = el("filter-recognition").value;
+  const onlyIncluded = el("pages-only-included").checked;
+
+  return project.pages.filter((page) => {
+    if (onlyIncluded && !page.include) return false;
+    if (typeFilter && page.page_type !== typeFilter) return false;
+    if (recognitionFilter && recognitionOf(page).status !== recognitionFilter) return false;
+    return true;
+  });
+}
+
+function selectOnly(pageNo) {
+  selectedPages.clear();
+  selectedPages.add(pageNo);
+  selectionAnchor = pageNo;
+}
+
+function toggleSelection(pageNo) {
+  if (selectedPages.has(pageNo)) {
+    selectedPages.delete(pageNo);
+  } else {
+    selectedPages.add(pageNo);
+  }
+  selectionAnchor = pageNo;
+}
+
+function selectRangeTo(pageNo) {
+  const pages = visiblePages();
+  const anchorIndex = pages.findIndex((page) => page.page_no === selectionAnchor);
+  const index = pages.findIndex((page) => page.page_no === pageNo);
+  if (anchorIndex < 0 || index < 0) {
+    selectOnly(pageNo);
+    return;
+  }
+  const [from, to] = anchorIndex <= index ? [anchorIndex, index] : [index, anchorIndex];
+  for (let i = from; i <= to; i += 1) selectedPages.add(pages[i].page_no);
+}
+
+function handleTileClick(page, event) {
+  if (event.shiftKey && selectionAnchor !== null) {
+    selectRangeTo(page.page_no);
+  } else if (event.metaKey || event.ctrlKey) {
+    toggleSelection(page.page_no);
+  } else {
+    selectOnly(page.page_no);
+  }
+  renderPages();
+}
+
+/** 解析"1-12, 300-310"这样的页码范围（说明书 6.2）。 */
+function parsePageRange(text) {
+  const numbers = new Set();
+  const invalid = [];
+  for (const part of text.split(/[,，;；\s]+/)) {
+    if (!part) continue;
+    const match = part.match(/^(\d+)\s*[-—~～]\s*(\d+)$/);
+    if (match) {
+      let [from, to] = [Number(match[1]), Number(match[2])];
+      if (from > to) [from, to] = [to, from];
+      for (let n = from; n <= to; n += 1) numbers.add(n);
+      continue;
+    }
+    if (/^\d+$/.test(part)) {
+      numbers.add(Number(part));
+      continue;
+    }
+    invalid.push(part);
+  }
+  return { numbers, invalid };
+}
+
+function applyPageRangeInput() {
+  const project = currentProject;
+  if (!project) return;
+  const { numbers, invalid } = parsePageRange(el("page-range").value);
+  const known = new Set(project.pages.map((page) => page.page_no));
+  const unknown = [...numbers].filter((pageNo) => !known.has(pageNo));
+
+  if (invalid.length || unknown.length) {
+    const error = el("pages-error");
+    error.textContent =
+      (invalid.length ? `看不懂这段：${invalid.join("、")}。` : "") +
+      (unknown.length ? `这些页码不存在：${unknown.slice(0, 8).join("、")}。` : "") +
+      "可以写成 1-12 或 3,5,8。";
+    error.hidden = false;
+    return;
+  }
+  el("pages-error").hidden = true;
+
+  selectedPages.clear();
+  for (const pageNo of numbers) selectedPages.add(pageNo);
+  selectionAnchor = numbers.size ? Math.min(...numbers) : null;
+  renderPages();
+}
+
+function selectionPages() {
+  return currentProject.pages.filter((page) => selectedPages.has(page.page_no));
+}
+
+function updateSelectionPanel() {
+  const count = selectedPages.size;
+  el("selection-count").textContent = `已选 ${count} 页`;
+  const selected = selectionPages();
+  const hasExcluded = selected.some((page) => !page.include);
+
+  el("selection-set-type").disabled = count === 0;
+  el("selection-include").disabled = count === 0 || !hasExcluded;
+  el("selection-exclude").disabled = count === 0 || !selected.some((page) => page.include);
+  el("selection-recognize").disabled = count === 0 || !selected.some((page) => page.include);
+
+  const hint = el("selection-hint");
+  hint.hidden = true;
+  if (count === 0) return;
+  if (selected.every((page) => !page.include)) {
+    hint.textContent = "选中的页都排除了，不参与识别。先点「纳入」。";
+    hint.hidden = false;
+  } else if (count >= 3 && count <= 10) {
+    // 说明书 6.3 的样本试识别：先认几页看看，再决定要不要整本识别
+    hint.textContent =
+      `选了 ${count} 页——可以先当样本试识别：认完点某一页的「结果」看看质量，` +
+      "再决定要不要识别整本。样本结果不代表整本书。";
+    hint.hidden = false;
+  }
+}
+
+// ---------------------------------------------------------------- 页面网格
+
+/** 页面上该显示的门牌（类型 / 印张 / 状态），构建与刷新共用。 */
+function tileTitle(page) {
+  return (
+    `第 ${page.page_no} 页 · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}` +
+    ` · ${page.width_pt}×${page.height_pt} pt` +
+    (page.rotation ? ` · 旋转 ${page.rotation}°` : "") +
+    "\n单击选中（Shift 选一段、⌘/Ctrl 加减一页），双击看识别结果"
+  );
+}
+
+function tileClassName(page) {
+  const recognition = recognitionOf(page);
+  return (
+    "page-tile" +
+    (page.include ? "" : " page-tile--excluded") +
+    (page.has_text_layer ? " page-tile--textlayer" : "") +
+    (busyPages.has(page.page_no) ? " page-tile--busy" : "") +
+    (recognition.status === "failed" ? " page-tile--failed" : "") +
+    (selectedPages.has(page.page_no) ? " page-tile--selected" : "")
+  );
+}
+
+function buildTile(page, project) {
+  const tile = document.createElement("div");
+  tile.dataset.pageId = page.page_id;
+  tile.dataset.pageNo = String(page.page_no);
+
+  const check = document.createElement("div");
+  check.className = "page-tile__check";
+  check.textContent = "✓";
+
+  const image = document.createElement("img");
+  // 说明书 6.1 要求缩略图由后台 Job 生成并缓存；缩略图任务还没做，
+  // 这里按需渲染（不写缓存），浏览器侧靠 Cache-Control 复用。
+  image.loading = "lazy";
+  image.alt = `第 ${page.page_no} 页`;
+  image.src =
+    `/api/projects/${project.project_id}/pages/${page.page_no}/image?size=thumb` +
+    `&token=${encodeURIComponent(token)}`;
+
+  const label = document.createElement("div");
+  label.className = "page-tile__label";
+
+  const status = document.createElement("div");
+  status.className = "page-tile__status";
+
+  const actions = document.createElement("div");
+  actions.className = "page-tile__actions";
+
+  const recognizeButton = document.createElement("button");
+  recognizeButton.type = "button";
+  recognizeButton.className = "btn";
+  recognizeButton.dataset.action = "recognize";
+  recognizeButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    recognizePage(page);
+  });
+
+  const detailButton = document.createElement("button");
+  detailButton.type = "button";
+  detailButton.className = "btn";
+  detailButton.textContent = "结果";
+  detailButton.title = "看这一页已保存的识别结果";
+  detailButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openPageDetail(page.page_no);
+  });
+
+  actions.append(recognizeButton, detailButton);
+  tile.append(check, image, label, status, actions);
+  tile.addEventListener("click", (event) => handleTileClick(page, event));
+  tile.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    openPageDetail(page.page_no);
+  });
+  return tile;
+}
+
+/** 就地刷新一个瓷砖的状态（轮询时用，不重建 DOM）。 */
+function applyTileState(tile, page) {
+  const recognition = recognitionOf(page);
+  tile.className = tileClassName(page);
+  tile.title = tileTitle(page);
+
+  const printed = page.page_label ? ` · 印${page.page_label}` : "";
+  tile.querySelector(".page-tile__label").textContent =
+    `${page.page_no}${printed} · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}`;
+
+  const status = tile.querySelector(".page-tile__status");
+  status.innerHTML = "";
+  status.append(recognitionChip(page));
+
+  const isBusy = busyPages.has(page.page_no);
+  const button = tile.querySelector('button[data-action="recognize"]');
+  button.textContent = isBusy ? "识别中…" : "识别";
+  button.disabled = isBusy || !page.include;
+  if (!page.include) {
+    button.title = "已排除，不参与识别。先选中它再点「纳入」";
+  } else if (recognition.status === "recognized") {
+    button.title = "重新识别这一页（已有人工成果时不会覆盖，只作为待选结果）";
+  } else {
+    button.title = "识别这一页（在后台任务里跑，进度看右下角）";
+  }
+}
+
 function renderPages() {
   const project = currentProject;
-  const onlyIncluded = el("pages-only-included").checked;
-  const pages = project.pages;
-  const included = pages.filter((page) => page.include).length;
-  const recognized = pages.filter(
-    (page) => recognitionOf(page).status === "recognized"
-  ).length;
+  if (!project) return;
+  const pages = visiblePages();
+  const all = project.pages;
 
   el("page-summary").textContent =
-    `纳入 ${included} / ${pages.length} 页` +
-    ` · 已识别 ${recognized} 页` +
-    (pages.filter((page) => page.has_text_layer).length
-      ? ` · 有文本层 ${pages.filter((page) => page.has_text_layer).length} 页`
-      : "");
+    `共 ${all.length} 页 · 纳入 ${all.filter((page) => page.include).length} 页` +
+    ` · 已识别 ${all.filter((page) => recognitionOf(page).status === "recognized").length} 页` +
+    (pages.length !== all.length ? ` · 当前显示 ${pages.length} 页` : "");
 
   const grid = el("page-grid");
   grid.innerHTML = "";
-
   for (const page of pages) {
-    if (onlyIncluded && !page.include) continue;
-
-    const recognition = recognitionOf(page);
-    const tile = document.createElement("div");
-    tile.className =
-      "page-tile" +
-      (page.include ? "" : " page-tile--excluded") +
-      (page.has_text_layer ? " page-tile--textlayer" : "") +
-      (busyPages.has(page.page_no) ? " page-tile--busy" : "") +
-      (recognition.status === "failed" ? " page-tile--failed" : "");
-    tile.dataset.pageId = page.page_id;
-    tile.dataset.pageNo = String(page.page_no);
-    tile.title =
-      `第 ${page.page_no} 页 · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}` +
-      ` · ${page.width_pt}×${page.height_pt} pt` +
-      (page.rotation ? ` · 旋转 ${page.rotation}°` : "") +
-      "\n单击切换纳入 / 排除";
-
-    const image = document.createElement("img");
-    // 说明书 6.1 要求缩略图由后台 Job 生成并缓存；Job 属于 Phase 2，
-    // 这里按需渲染（不写缓存）。
-    image.loading = "lazy";
-    image.alt = `第 ${page.page_no} 页`;
-    image.src =
-      `/api/projects/${project.project_id}/pages/${page.page_no}/image?size=thumb` +
-      `&token=${encodeURIComponent(token)}`;
-
-    const label = document.createElement("div");
-    label.className = "page-tile__label";
-    const printed = page.page_label ? ` · 印${page.page_label}` : "";
-    label.textContent = `${page.page_no}${printed} · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}`;
-
-    const status = document.createElement("div");
-    status.className = "page-tile__status";
-    status.append(recognitionChip(page));
-
-    const actions = document.createElement("div");
-    actions.className = "page-tile__actions";
-
-    const isBusy = busyPages.has(page.page_no);
-    const recognizeButton = document.createElement("button");
-    recognizeButton.type = "button";
-    recognizeButton.className = "btn";
-    recognizeButton.textContent = isBusy ? "识别中…" : "识别";
-    recognizeButton.disabled = isBusy || !page.include;
-    if (!page.include) {
-      recognizeButton.title = "已排除，不参与识别。先单击缩略图把它纳入";
-    } else if (recognition.status === "recognized") {
-      recognizeButton.title = "重新识别这一页（已有人工成果时不会覆盖，只作为待选结果）";
-    } else {
-      recognizeButton.title = "识别这一页（在后台任务里跑，进度看右下角）";
-    }
-    recognizeButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      recognizePage(page);
-    });
-
-    const detailButton = document.createElement("button");
-    detailButton.type = "button";
-    detailButton.className = "btn";
-    detailButton.textContent = "结果";
-    detailButton.title = "看这一页已保存的识别结果";
-    detailButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openPageDetail(page.page_no);
-    });
-
-    actions.append(recognizeButton, detailButton);
-    tile.append(image, label, status, actions);
-    tile.addEventListener("click", () => togglePageInclude(page));
+    const tile = buildTile(page, project);
+    applyTileState(tile, page);
     grid.append(tile);
   }
+  if (!pages.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "当前筛选下没有页面。";
+    grid.append(empty);
+  }
+  updateSelectionPanel();
+}
+
+/**
+ * 任务轮询时用：只更新已有瓷砖的状态，不重建 DOM。
+ *
+ * 一本 400 页的书如果每 1.2 秒重建 400 个瓷砖，浏览器的滚动与图片都会被反复折腾；
+ * 而任务进行时变的基本只有状态徽章。页面集合变了（筛选 / 增删页）才整格重建。
+ */
+function syncPageStates() {
+  const grid = el("page-grid");
+  const pages = visiblePages();
+  const tiles = [...grid.querySelectorAll(".page-tile")];
+
+  if (tiles.length !== pages.length) {
+    renderPages();
+    return;
+  }
+  pages.forEach((page, index) => {
+    const tile = tiles[index];
+    if (tile.dataset.pageNo !== String(page.page_no)) {
+      renderPages();
+      return;
+    }
+    applyTileState(tile, page);
+  });
+  updateSelectionPanel();
 }
 
 // ---------------------------------------------------------------- 识别（项目）
@@ -1175,14 +1381,6 @@ async function recognizePage(page) {
 async function startBatchRecognition(scope) {
   const project = currentProject;
   if (!project) return;
-  if (scope === "all") {
-    const ok = window.confirm(
-      "重新识别全部纳入页：已有的识别结果会被新结果替换。\n" +
-        "已经人工修改或确认过的块不会被覆盖（会自动保存为“待选结果”）。\n\n继续吗？"
-    );
-    if (!ok) return;
-  }
-
   el("pages-error").hidden = true;
   try {
     const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
@@ -1231,10 +1429,12 @@ let taskJobId = null;
 
 function openTaskDrawer() {
   el("task-drawer").hidden = false;
+  document.body.classList.add("task-drawer-open");
 }
 
 function closeTaskDrawer() {
   el("task-drawer").hidden = true;
+  document.body.classList.remove("task-drawer-open");
 }
 
 function taskChipClass(status) {
@@ -1307,14 +1507,15 @@ async function refreshPageStates() {
   } catch {
     return;
   }
-  renderPages();
+  // 就地刷新：任务进行时变的基本只有状态徽章，没必要整格重建（400 页的书会很明显）
+  syncPageStates();
   renderProjectMeta();
 }
 
 function renderTask(data) {
   const job = data.job;
   const label = JOB_STATUS_LABELS[job.status] || job.status;
-  el("task-drawer").hidden = false;
+  openTaskDrawer();
 
   const current = data.current_page_no ? ` · 当前第 ${data.current_page_no} 页` : "";
   const interrupted = data.alive === false && ["queued", "running", "paused"].includes(job.status);
@@ -1612,37 +1813,53 @@ function selectDetailBlock(index) {
   }
 }
 
-async function togglePageInclude(page) {
-  try {
-    await apiJson(`/api/projects/${currentProject.project_id}/pages/${page.page_id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ include: !page.include }),
-    });
-  } catch (error) {
-    showError(el("pages-error"), error);
-    return;
-  }
-  page.include = !page.include;
-  renderPages();
-}
+/** 批量改页面的类型 / 纳入（说明书 6.2 的批量操作，第 11 节的 PATCH /pages）。 */
+async function patchSelectedPages(patch) {
+  const project = currentProject;
+  const pages = selectionPages();
+  if (!project || !pages.length) return;
 
-async function setAllPagesInclude(include) {
   el("pages-error").hidden = true;
   try {
-    for (const page of currentProject.pages) {
-      if (page.include === include) continue;
-      await apiJson(`/api/projects/${currentProject.project_id}/pages/${page.page_id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ include }),
-      });
-      page.include = include;
+    const data = await apiJson(`/api/projects/${project.project_id}/pages`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page_ids: pages.map((page) => page.page_id), ...patch }),
+    });
+    for (const updated of data.pages) {
+      const index = project.pages.findIndex((page) => page.page_id === updated.page_id);
+      if (index >= 0) project.pages[index] = updated;
     }
+    renderPages();
+    renderProjectMeta();
   } catch (error) {
     showError(el("pages-error"), error);
   }
-  renderPages();
+}
+
+async function recognizeSelection() {
+  const project = currentProject;
+  const pages = selectionPages().filter((page) => page.include);
+  if (!project || !pages.length) return;
+
+  el("pages-error").hidden = true;
+  const skip = el("selection-skip-recognized").checked;
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pages: pages.map((page) => page.page_no),
+        skip_recognized: skip,
+      }),
+    });
+    applyRecognizedPages(data.pages);
+    renderPages();
+    openTaskDrawer();
+    startTaskPolling(data.job.job_id);
+  } catch (error) {
+    showError(el("pages-error"), error);
+  }
 }
 
 async function closeProject() {
@@ -1670,13 +1887,33 @@ function setupLibrary() {
     picker.value = "";
   });
   el("project-close").addEventListener("click", closeProject);
-  el("pages-include-all").addEventListener("click", () => setAllPagesInclude(true));
-  el("pages-exclude-all").addEventListener("click", () => setAllPagesInclude(false));
-  el("pages-only-included").addEventListener("change", renderPages);
   el("detail-close").addEventListener("click", closePageDetail);
   el("recognize-pending").addEventListener("click", () => startBatchRecognition("unrecognized"));
-  el("recognize-all").addEventListener("click", () => startBatchRecognition("all"));
   setupTaskDrawer();
+
+  // 筛选与选择（说明书 6.2）
+  el("filter-type").addEventListener("change", renderPages);
+  el("filter-recognition").addEventListener("change", renderPages);
+  el("pages-only-included").addEventListener("change", renderPages);
+  el("page-range-select").addEventListener("click", applyPageRangeInput);
+  el("page-range").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") applyPageRangeInput();
+  });
+  el("selection-all").addEventListener("click", () => {
+    for (const page of visiblePages()) selectedPages.add(page.page_no);
+    renderPages();
+  });
+  el("selection-clear").addEventListener("click", () => {
+    selectedPages.clear();
+    selectionAnchor = null;
+    renderPages();
+  });
+  el("selection-set-type").addEventListener("click", () =>
+    patchSelectedPages({ page_type: el("selection-type").value })
+  );
+  el("selection-include").addEventListener("click", () => patchSelectedPages({ include: true }));
+  el("selection-exclude").addEventListener("click", () => patchSelectedPages({ include: false }));
+  el("selection-recognize").addEventListener("click", recognizeSelection);
   el("detail-recognize").addEventListener("click", () => {
     if (detailPageNo === null) return;
     const page = currentProject.pages.find((item) => item.page_no === detailPageNo);
@@ -1687,6 +1924,14 @@ function setupLibrary() {
 // ---------------------------------------------------------------- 启动
 
 function boot() {
+  // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && currentProject && selectedPages.size) {
+      selectedPages.clear();
+      selectionAnchor = null;
+      renderPages();
+    }
+  });
   if (!token) {
     const warning = el("platform-warning");
     warning.innerHTML = "缺少会话令牌。请使用启动时终端里打印的" +
