@@ -13,6 +13,7 @@
 | 项目 | 状态 |
 |---|---|
 | Git 仓库与目录布局 | ✅ 已建立（2026-10-14） |
+| GitHub 远端（私有） | ✅ 已推送：https://github.com/CLnum42/book2text |
 | 开发说明书 V1.0 | ✅ 已入库：`docs/spec-v1.0.md` |
 | UI 原型（6 个页面） | ✅ 已入库：`docs/ui-mockups/` |
 | Phase 0 技术可行性验证 | ⬜ 未开始 |
@@ -58,6 +59,22 @@ Phase 0 的前置输入（20–40 页测试 PDF 与 5–10 页人工校对金标
 | Python 3.11+ | 后端与核心层 | **Phase 0 开始前安装** |
 | uv | 环境与依赖锁定 | 同上 |
 | Node.js（LTS） | 仅前端开发与构建需要 | 最终用户不需要 |
+
+---
+
+## Git 与 GitHub
+
+远端为 `git@github.com:CLnum42/book2text.git`（**私有**）。认证走 SSH，密钥位于 `~/.ssh/id_ed25519`。
+
+```bash
+git add -A && git commit -m "..." && git push    # push.autoSetupRemote 已开启，新分支无需 -u
+git pull
+```
+
+两点需要注意（详见 [`docs/known-limitations.md`](docs/known-limitations.md)）：
+
+- `gh` CLI 使用的细粒度 PAT 范围是"仅选定仓库"，**不包含本仓库**，因此 `gh repo view`、`gh issue` 等命令会返回 404。改用 `git` 命令不受影响。
+- 许可证未定，**仓库不得转为公开**；公开前须先处理 `docs/decisions.md` 中的 D-005 与 D-006。
 
 ---
 

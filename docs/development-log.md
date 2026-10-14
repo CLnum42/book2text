@@ -7,6 +7,77 @@
 
 ---
 
+## 2026-10-14 — 任务 1：配置 Git 身份、SSH 认证与 GitHub 远端
+
+### 任务目标
+
+让仓库能在 macOS 上与开发者的 GitHub 账号（`CLnum42`）正常协作：配置提交身份、打通认证、建立远端并推送。不写任何功能代码。
+
+### 当前状态
+
+- 任务 0 已完成：本地仓库 `main` 分支有 1 个提交（`21c5a85`），无远端。
+- 本机已安装 `gh` 2.102.0 并登录为 `CLnum42`；全局 Git 身份**未配置**；无 SSH 密钥。
+- 首次提交的作者是系统回退值 `陈林 <chenlin@MacBook-Air-2.local>`。
+
+### 实施计划
+
+1. 查清开发者既有提交身份，避免造出第二套身份。
+2. 配置全局 `user.name` / `user.email`，并用 `--reset-author` 改写首次提交。
+3. 建立 GitHub 远端并推送。
+4. 打通认证（优先复用已有凭据，不行再引入 SSH）。
+5. 更新文档，记录配置方式与新增限制。
+
+### 实现与验证
+
+| 步骤 | 做法 | 真实结果 |
+|---|---|---|
+| 身份调研 | `gh api repos/CLnum42/.../commits` 读取历史作者 | 既有身份为 `CLnum42 <CLnum42@users.noreply.github.com>` |
+| 邮箱可用性验证 | 检查历史提交的关联账号 | 5 条提交全部正确关联到 `CLnum42`，noreply 格式有效 |
+| 写入身份 | `git config --global user.name/user.email` | 生效；`git var GIT_AUTHOR_IDENT` 返回新身份 |
+| 改写首次提交 | `git commit --amend --reset-author` | 作者与提交者均变为 `CLnum42 <CLnum42@users.noreply.github.com>`，哈希由 `7da13d0` 变为 `21c5a85` |
+| 凭据助手 | `gh auth setup-git` | github.com 与 gist 的 helper 指向 `gh auth git-credential` |
+| **HTTPS 路线** | `gh repo create` / `gh api -X POST user/repos` | **失败**：`Resource not accessible by personal access token (createRepository)`。该细粒度 PAT 范围为"仅选定仓库" |
+| 仓库创建 | 浏览器网页端（ego-browser）创建 | **成功**，`CLnum42/book2text`，Private |
+| PAT 对新仓库 | `gh api repos/CLnum42/book2text` | **404** —— 证实 HTTPS 推送对本仓库也不通 |
+| SSH 密钥 | `ssh-keygen -t ed25519` 生成 `~/.ssh/id_ed25519`，写入 `~/.ssh/config` | 成功 |
+| 密钥上链 | 浏览器网页端提交公钥 | 触发 GitHub **sudo 模式**，需要密码；由开发者本人完成验证 |
+| SSH 认证测试 | `ssh -T git@github.com` | `Hi CLnum42! You've successfully authenticated` |
+| 切换远端 | `git remote set-url origin git@github.com:CLnum42/book2text.git` | 成功，fetch/push 均指向 SSH |
+| 推送 | `git push -u origin main` | **成功**，`main -> main`，跟踪关系已建立 |
+| 网页端复核 | 打开仓库页面检查 | 私有 ✓、22 个文件在列 ✓、提交信息正确 ✓、1 个分支 ✓ |
+
+**未验证 / 待处理项：**
+
+1. **未做任何构建或运行验证**，与任务 0 相同，仓库中仍无应用代码。
+2. **推送只在 macOS 上验证过。** Windows 侧从未克隆或推送过本仓库。
+3. **`gh` 命令对本仓库会 404**（L-07）。这是 token 范围问题，本次未解决——解决它需要编辑 PAT 权限，有导致 `gh` 登录失效的风险，且不影响 `git` 命令，故暂缓。
+4. **SSH 密钥无口令**（L-08）。这是为免交互推送做的取舍，已在文档中记录。
+5. **未配置任何 CI。** GitHub Actions 未启用，推送不会触发自动检查。
+
+### 用户操作说明
+
+**日常使用（已可直接工作）：**
+
+```bash
+cd /Users/chenlin/Desktop/软件开发/book2text
+git add -A && git commit -m "..." && git push     # push.autoSetupRemote 已开启，无需 -u
+git pull
+```
+
+**验证 SSH 认证：** `ssh -T git@github.com` 应返回 `Hi CLnum42!`
+
+**仓库地址：** https://github.com/CLnum42/book2text （私有，需登录后访问）
+
+**回退方式：** 解除 SSH 只需在 GitHub 设置中删除标题为 `MacBook-Air-2` 的密钥，并删除本地 `~/.ssh/id_ed25519*` 与 `~/.ssh/config`；撤销身份配置用 `git config --global --unset user.name`（`user.email` 同理）。
+
+### 下一步建议
+
+**安装 Python 3.11+ 与 `uv`，开始 Phase 0 第 4 项「最小骨架」。**
+
+理由同任务 0：Phase 0 第 1–3 项依赖尚未制作的测试样本与人工校对金标准，而第 4 项最小骨架是唯一可以立即动手、且是后续所有实测载体的部分。
+
+---
+
 ## 2026-10-14 — 任务 0：初始化 Git 仓库
 
 ### 任务目标

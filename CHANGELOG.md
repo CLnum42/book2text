@@ -16,7 +16,16 @@
 - 新增 `.gitignore`：忽略应用运行时数据（项目数据目录、`project.db`、缓存、导出、备份、日志）、Python 与 Node 产物、编辑器与系统文件、密钥文件。
 - 新增 `README.md`、`AGENTS.md`（说明书第 1 节同步副本）、`docs/development-log.md`、`docs/decisions.md`、`docs/known-limitations.md`。
 
+### 变更
+
+- 配置全局 Git 提交身份为 `CLnum42 <CLnum42@users.noreply.github.com>`，与开发者既有仓库的历史提交一致；用 `--reset-author` 改写了首次提交（哈希 `7da13d0` → `21c5a85`）。
+- 建立 GitHub 远端 `git@github.com:CLnum42/book2text.git`（私有）并推送 `main`。
+- 认证方式为 SSH（`~/.ssh/id_ed25519`，ed25519），新增 `~/.ssh/config` 中的 `github.com` 条目；同时执行 `gh auth setup-git` 配置 HTTPS 凭据助手。
+- 开启 `push.autoSetupRemote`，新分支推送无需 `-u`。
+
 ### 已知问题
 
-- 提交身份使用 Git 系统默认回退值 `陈林 <chenlin@MacBook-Air-2.local>`（全局配置未设置）。推送到任何远端仓库前需改为真实邮箱，详见 `docs/known-limitations.md`。
-- 仓库已初始化但**尚无任何功能代码**，没有可运行的启动命令。
+- 应用**尚无任何功能代码**，没有可运行的启动命令。
+- `gh` CLI 的细粒度 PAT 范围为"仅选定仓库"，不含本仓库，故 `gh` 命令会返回 404（见 `docs/known-limitations.md` L-07）。`git` 命令不受影响。
+- SSH 密钥未设口令（见 `docs/known-limitations.md` L-08）。
+- 仓库为**私有**，许可证未定，暂时不得公开（见 `docs/decisions.md` D-006、D-008）。
