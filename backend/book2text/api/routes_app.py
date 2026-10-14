@@ -17,8 +17,8 @@ router = APIRouter(prefix="/api/app", tags=["app"])
 _CURRENT_LIMITS = [
     "识别：一次只跑一个子进程（并发数设置项未做）；样本试识别还没有独立的对照形态",
     "审校：逐块采用新结果、在图上框选位置新增块、页眉页脚预览的图上高亮还没做",
-    "第二引擎（Apple Vision）：分歧逐行标出（汉字级 / 标点级）并可一键换候选，"
-    "但实测它比第一引擎弱、分歧多数是它的错；现在只能逐页复核，整本批量复核未做",
+    "第二引擎（Apple Vision）：分歧逐行标出（汉字级 / 标点级）、可一键换候选、能批量复核，"
+    "但实测它比第一引擎弱、分歧多数是它的错；分歧率还没有整书汇总",
     "导出：能做整本书，且能点一段跳回来源页与来源块；未识别页在对照里没有占位",
     "上传的原始 PDF 只被读取，不会被修改",
 ]
@@ -31,7 +31,7 @@ def app_info() -> dict[str, Any]:
         "app": {
             "name": "Book2Text",
             "version": __version__,
-            "stage": "Phase 4：导出已接到项目上（MVP 功能齐全，收尾中）",
+            "stage": "Phase 4 已完成（MVP 走通）；现在在做 Phase 8 Step 1（双路 OCR）",
         },
         "platform": {
             "label": b2t_platform.platform_label(),

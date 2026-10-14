@@ -591,6 +591,23 @@ def block_divergence(
     )
 
 
+def pages_with_auxiliary_run(
+    project_id: str, *, library: Path | None = None
+) -> set[str]:
+    """有**成功**的第二引擎复核记录的页 id（说明书 8.5：复核可以随时补跑 / 重跑）。
+
+    只在"跳过已复核的页"这一处用——它回答的是"这一页复核过没有"，
+    不回答"有没有分歧"（那是 `page_divergences` 的事）。
+    """
+    with _open_for_read(project_id, library) as conn:
+        _require_tables(conn, project_id)
+        rows = conn.execute(
+            "SELECT DISTINCT page_id FROM ocr_run WHERE run_type = ? AND status = ?",
+            (RUN_TYPE_AUXILIARY, RUN_STATUS_SUCCEEDED),
+        ).fetchall()
+    return {row["page_id"] for row in rows}
+
+
 def _latest_auxiliary_run(runs: Sequence[RunRecord]) -> RunRecord | None:
     """最近一次**成功**的第二引擎复核（说明书 8.5：复核可以随时补跑 / 重跑）。"""
     succeeded = [

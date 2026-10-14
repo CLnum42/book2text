@@ -24,6 +24,23 @@ def make_job(directory: Path, *page_ids: str, **params) -> jobs.JobRecord:
 
 # ---------------------------------------------------------------- 建与读
 
+def test_create_job_records_the_job_type(minimal_project: Path) -> None:
+    """说明书 5.3 的 `job_type`：识别与第二引擎复核共用一张表，靠它区分。"""
+    ocr = jobs.create_job(minimal_project, pages=[("page1", 1)], params={"dpi": 200})
+    assert ocr.job_type == jobs.JOB_TYPE_OCR
+    assert jobs.get_job(minimal_project, ocr.job_id).job_type == "ocr"
+
+    auxiliary = jobs.create_job(
+        minimal_project,
+        pages=[("page2", 2)],
+        params={"engine_id": "apple_vision"},
+        job_type=jobs.JOB_TYPE_AUXILIARY,
+    )
+    assert auxiliary.job_type == jobs.JOB_TYPE_AUXILIARY
+    assert jobs.get_job(minimal_project, auxiliary.job_id).job_type == "auxiliary"
+    assert jobs.JOB_TYPE_LABELS[jobs.JOB_TYPE_AUXILIARY] == "第二引擎复核"
+
+
 def test_create_job_makes_one_item_per_page(minimal_project: Path) -> None:
     job = make_job(minimal_project, "page1", "page2", "page3")
 

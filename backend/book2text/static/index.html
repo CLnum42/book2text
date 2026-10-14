@@ -129,6 +129,14 @@
         </label>
         <button type="button" id="selection-recognize" class="btn btn--primary">识别所选</button>
         <button type="button" id="recognize-pending" class="btn">识别全部未识别页</button>
+        <span class="sep"></span>
+        <label class="muted check">
+          <input type="checkbox" id="selection-skip-checked" checked> 跳过已复核的页
+        </label>
+        <button type="button" id="selection-check" class="btn"
+                title="用第二引擎（macOS 上是系统自带的 Apple Vision）逐行复核所选页：复核跑在后台任务里，进度在右下角的任务抽屉里看">第二引擎复核所选</button>
+        <button type="button" id="check-pending" class="btn"
+                title="复核全部已识别但还没复核过的页（说明书 8.5：第二引擎可以随时补跑）">复核全部未复核页</button>
       </div>
       <div class="alert alert--warn" id="selection-hint" hidden></div>
 
@@ -392,7 +400,7 @@
 
   <aside class="drawer" id="task-drawer" hidden aria-label="任务抽屉">
     <div class="drawer__head">
-      <strong>识别任务</strong>
+      <strong id="drawer-title">识别任务</strong>
       <span class="muted" id="drawer-status">—</span>
       <span class="spacer"></span>
       <button type="button" id="drawer-close" class="btn btn--ghost">收起</button>

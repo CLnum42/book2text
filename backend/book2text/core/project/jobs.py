@@ -28,6 +28,18 @@ from ..storage.ulid import new_ulid
 
 JOB_TYPE_OCR = "ocr"
 
+# 第二引擎复核（说明书 8.5 / R1b）：任务形状与识别完全一样（按页一个单元、
+# 可暂停 / 取消 / 重试失败页），只是每页做的是"逐行复核"而不是"识别并生成块"。
+JOB_TYPE_AUXILIARY = "auxiliary"
+
+JOB_TYPES = (JOB_TYPE_OCR, JOB_TYPE_AUXILIARY)
+
+# 任务类型的人话名字（界面与日志共用）
+JOB_TYPE_LABELS = {
+    JOB_TYPE_OCR: "识别",
+    JOB_TYPE_AUXILIARY: "第二引擎复核",
+}
+
 STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
 STATUS_PAUSED = "paused"

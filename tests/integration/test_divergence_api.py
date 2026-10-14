@@ -20,46 +20,7 @@ from fastapi.testclient import TestClient
 
 from book2text.core.project import blocks as blocks_module
 from book2text.core.project import recognition
-from tests.fakes import FakeOcrEngine
-
-
-class FakeSecondEngine:
-    """假第二引擎：按调用次数依次返回预设文本（和 test_auxiliary_api 里的一样）。"""
-
-    engine_id = "fake-second"
-
-    def __init__(self, texts: list[str]) -> None:
-        self._texts = list(texts)
-        self.calls = 0
-
-    def version(self) -> str:
-        return "fake-second-0.1"
-
-    def available(self) -> tuple[bool, str]:
-        return True, ""
-
-    def supported_languages(self) -> list[str]:
-        return ["zh-Hans", "en-US"]
-
-    def recognize(self, image, params):
-        from book2text.core.ocr.base import BBox, OcrLine, OcrResult
-
-        self.calls += 1
-        text = self._texts[(self.calls - 1) % len(self._texts)]
-        lines = (
-            (OcrLine(text=text, bbox=BBox(0.0, 0.0, 1.0, 1.0), confidence=0.9),)
-            if text
-            else ()
-        )
-        return OcrResult(
-            engine_id=self.engine_id,
-            engine_version=self.version(),
-            lines=lines,
-            image_width=image.size[0],
-            image_height=image.size[1],
-            elapsed_seconds=0.001,
-            raw={},
-        )
+from tests.fakes import FakeOcrEngine, FakeSecondEngine
 
 
 def create_project(client: TestClient, headers: dict[str, str], pdf: Path) -> str:

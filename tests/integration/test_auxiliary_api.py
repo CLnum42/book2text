@@ -15,50 +15,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from book2text.core.ocr.base import BBox, OcrEngineError, OcrLine, OcrParams, OcrResult
 from book2text.core.project import blocks as blocks_module
 from book2text.core.project import recognition
 from book2text.core.storage import db as db_module
-from tests.fakes import FakeOcrEngine
-
-
-class FakeSecondEngine:
-    """假第二引擎：按调用次数依次返回预设文本（用来造出"一致 / 格式差异 / 分歧"）。"""
-
-    engine_id = "fake-second"
-
-    def __init__(self, texts: list[str] | None = None) -> None:
-        self._texts = list(texts or [])
-        self.calls = 0
-        self.crops: list[tuple[int, int]] = []
-
-    def version(self) -> str:
-        return "fake-second-0.1"
-
-    def available(self) -> tuple[bool, str]:
-        return True, ""
-
-    def supported_languages(self) -> list[str]:
-        return ["zh-Hans", "en-US"]
-
-    def recognize(self, image, params: OcrParams) -> OcrResult:
-        self.calls += 1
-        self.crops.append(image.size)
-        text = self._texts[(self.calls - 1) % len(self._texts)] if self._texts else ""
-        lines = (
-            (OcrLine(text=text, bbox=BBox(0.0, 0.0, 1.0, 1.0), confidence=0.9),)
-            if text
-            else ()
-        )
-        return OcrResult(
-            engine_id=self.engine_id,
-            engine_version=self.version(),
-            lines=lines,
-            image_width=image.size[0],
-            image_height=image.size[1],
-            elapsed_seconds=0.001,
-            raw={},
-        )
+from tests.fakes import FakeOcrEngine, FakeSecondEngine
 
 
 def create_project(client: TestClient, headers: dict[str, str], pdf: Path) -> str:

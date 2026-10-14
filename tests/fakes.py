@@ -73,3 +73,62 @@ class FailingEngine(FakeOcrEngine):
 
     def __init__(self, message: str = "模拟引擎崩了") -> None:
         super().__init__(fail_message=message)
+
+
+class FakeSecondEngine:
+    """假第二引擎（说明书 8.5）：按调用次数依次返回预设文本。
+
+    调用顺序就是行图的顺序（按块序、行序），因此给一组文本就能精确造出
+    "哪一行一致 / 哪一行只有格式差异 / 哪一行真分歧"。
+    文本用完后循环取用——只想让某一行为特定值时，其余照抄第一引擎的文本即可。
+    """
+
+    engine_id = "fake-second"
+    version_string = "fake-second-0.1"
+
+    def __init__(
+        self,
+        texts: list[str] | None = None,
+        *,
+        fail_message: str | None = None,
+        available: bool = True,
+        reason: str = "",
+    ) -> None:
+        self._texts = list(texts or [])
+        self._fail_message = fail_message
+        self._available = available
+        self._reason = reason
+        self.calls = 0
+        self.crops: list[tuple[int, int]] = []
+
+    def version(self) -> str:
+        return self.version_string
+
+    def available(self) -> tuple[bool, str]:
+        return (True, "") if self._available else (False, self._reason)
+
+    def supported_languages(self) -> list[str]:
+        return ["zh-Hans", "en-US"]
+
+    def recognize(self, image, params: OcrParams) -> OcrResult:
+        from book2text.core.ocr.base import BBox, OcrEngineError, OcrLine
+
+        self.calls += 1
+        self.crops.append(image.size)
+        if self._fail_message:
+            raise OcrEngineError(self._fail_message)
+        text = self._texts[(self.calls - 1) % len(self._texts)] if self._texts else ""
+        lines = (
+            (OcrLine(text=text, bbox=BBox(0.0, 0.0, 1.0, 1.0), confidence=0.9),)
+            if text
+            else ()
+        )
+        return OcrResult(
+            engine_id=self.engine_id,
+            engine_version=self.version(),
+            lines=lines,
+            image_width=image.size[0],
+            image_height=image.size[1],
+            elapsed_seconds=0.001,
+            raw={},
+        )

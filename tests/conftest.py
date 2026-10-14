@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from book2text.api.app import create_app
 from book2text.core.project import executor as executor_module
 from book2text.core.project import recognition
-from tests.fakes import FakeOcrEngine
+from tests.fakes import FakeOcrEngine, FakeSecondEngine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_PDF = REPO_ROOT / "fixtures" / "pdf" / "synthetic-smoke-3pages.pdf"
@@ -121,6 +121,26 @@ def inprocess_jobs(monkeypatch: pytest.MonkeyPatch) -> FakeOcrEngine:
     """
     engine = FakeOcrEngine()
     monkeypatch.setattr(recognition, "RapidOcrAdapter", lambda: engine)
+
+    def fake_start(self, directory, job_id):  # noqa: ANN001 - 与 Supervisor.start 同形
+        recognition.run_job(directory, job_id, engine=engine)
+        return 0
+
+    monkeypatch.setattr(executor_module.Supervisor, "start", fake_start)
+    return engine
+
+
+@pytest.fixture
+def inprocess_aux_jobs(monkeypatch: pytest.MonkeyPatch) -> FakeSecondEngine:
+    """与 `inprocess_jobs` 同理，但跑的是**第二引擎复核任务**（说明书 8.5）。
+
+    复核任务在同一个 `run_job` 里按 `job_type` 分派，因此这里同样只需换掉
+    `Supervisor.start` 并给一个假第二引擎。
+    """
+    engine = FakeSecondEngine()
+    # 建任务时（`create_auxiliary_job`）要问一句"第二引擎可用吗"——统一换成假引擎，
+    # 否则这一条会打到真平台（macOS 上真起 Apple Vision，别的平台直接 503）
+    monkeypatch.setattr(recognition, "default_secondary_engine", lambda: engine)
 
     def fake_start(self, directory, job_id):  # noqa: ANN001 - 与 Supervisor.start 同形
         recognition.run_job(directory, job_id, engine=engine)

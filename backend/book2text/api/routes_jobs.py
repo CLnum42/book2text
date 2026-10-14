@@ -63,6 +63,18 @@ class OcrJobRequest(BaseModel):
     language: str = Field(default=recognition.DEFAULT_LANGUAGE, max_length=16)
 
 
+class AuxiliaryJobRequest(BaseModel):
+    """批量复核的范围：`pages` 与 `scope` 二选一（说明书 8.5）。
+
+    范围里**只有已识别的页**：第二引擎读的是第一引擎切出的行图。
+    """
+
+    pages: list[int] | None = Field(default=None, max_length=5000)
+    scope: Literal["unchecked", "all"] | None = None
+    # 说明书 8.5："可以随时对已识别的页面单独补跑或重跑"——默认跳过已复核的
+    skip_checked: bool = True
+
+
 def _job_payload(request: Request, project_id: str, job: jobs_module.JobRecord) -> dict[str, Any]:
     supervisor = _supervisor(request)
     directory = _directory(request, project_id)
@@ -105,6 +117,35 @@ def _page_payloads(
     ]
 
 
+def _start_job(
+    request: Request,
+    project_id: str,
+    job: jobs_module.JobRecord,
+) -> dict[str, Any]:
+    """建好的任务：起子进程，然后返回任务、单元与该任务涉及的页面。
+
+    起不来就**别留一个永远排队的任务**——标失败、修好没结算的记录，再如实报错。
+    """
+    directory = _directory(request, project_id)
+    supervisor = _supervisor(request)
+    try:
+        supervisor.start(directory, job.job_id)
+    except jobs_module.JobError as exc:
+        jobs_module.set_status(directory, job.job_id, jobs_module.STATUS_FAILED)
+        jobs_module.repair_unfinished(directory, message=str(exc), job_id=job.job_id)
+        raise _job_error(exc, status=500) from exc
+
+    payload = _job_payload(request, project_id, jobs_module.get_job(directory, job.job_id))
+    return {
+        "job": payload["job"],
+        "items": payload["items"],
+        "failed_items": payload["failed_items"],
+        "pages": _page_payloads(
+            request, project_id, {item["page_id"] for item in payload["items"]}
+        ),
+    }
+
+
 @router.post("/{project_id}/jobs/ocr")
 def start_ocr_job(request: Request, project_id: str, body: OcrJobRequest) -> dict[str, Any]:
     """建一个识别任务并立刻开始跑（说明书 6.3 的批量识别）。"""
@@ -125,25 +166,36 @@ def start_ocr_job(request: Request, project_id: str, body: OcrJobRequest) -> dic
         status = 404 if not project_library.project_exists(project_id, library=library) else 400
         raise _project_error(exc, status=status) from exc
 
-    directory = _directory(request, project_id)
-    supervisor = _supervisor(request)
-    try:
-        supervisor.start(directory, job.job_id)
-    except jobs_module.JobError as exc:
-        # 起不来就别留一个永远排队的任务
-        jobs_module.set_status(directory, job.job_id, jobs_module.STATUS_FAILED)
-        jobs_module.repair_unfinished(directory, message=str(exc), job_id=job.job_id)
-        raise _job_error(exc, status=500) from exc
+    return _start_job(request, project_id, job)
 
-    payload = _job_payload(request, project_id, jobs_module.get_job(directory, job.job_id))
-    return {
-        "job": payload["job"],
-        "items": payload["items"],
-        "failed_items": payload["failed_items"],
-        "pages": _page_payloads(
-            request, project_id, {item["page_id"] for item in payload["items"]}
-        ),
-    }
+
+@router.post("/{project_id}/jobs/auxiliary")
+def start_auxiliary_job(
+    request: Request, project_id: str, body: AuxiliaryJobRequest
+) -> dict[str, Any]:
+    """建一个第二引擎复核任务并立刻开始跑（说明书 8.5 / R1b）。
+
+    与识别任务共用一整套任务机制：进度、暂停 / 继续 / 取消、重试失败页、中断恢复。
+    """
+    library = _library(request)
+    try:
+        job = recognition.create_auxiliary_job(
+            project_id,
+            library=library,
+            pages=body.pages,
+            scope=body.scope,
+            skip_checked=body.skip_checked,
+        )
+    except recognition.EngineUnavailable as exc:
+        # 说明书 8.6：第二引擎不可用时要明确说出来，不显示分歧标记、也不假装还在比对
+        raise AppError(
+            503, "secondary_engine_unavailable", "第二引擎不可用", detail=str(exc)
+        ) from exc
+    except project_library.ProjectError as exc:
+        status = 404 if not project_library.project_exists(project_id, library=library) else 400
+        raise _project_error(exc, status=status) from exc
+
+    return _start_job(request, project_id, job)
 
 
 @router.get("/{project_id}/jobs")

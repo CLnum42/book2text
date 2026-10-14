@@ -1467,12 +1467,18 @@ const busyPages = new Set();
 
 const JOB_STATUS_LABELS = {
   queued: "排队中",
-  running: "识别中",
+  running: "进行中",
   paused: "已暂停",
   succeeded: "已完成",
   failed: "有失败页",
   cancelled: "已取消",
   interrupted: "已中断",
+};
+
+/** 任务类型（说明书 5.3 的 job_type）：识别与第二引擎复核共用一套任务机制。 */
+const JOB_TYPE_LABELS = {
+  ocr: "识别",
+  auxiliary: "第二引擎复核",
 };
 
 async function recognizePage(page) {
@@ -1529,6 +1535,44 @@ function applyRecognizedPages(pages) {
       (page) => page.page_id === updated.page_id
     );
     if (index >= 0) currentProject.pages[index] = updated;
+  }
+}
+
+/**
+ * 第二引擎复核（说明书 8.5）：批量跑成后台任务，与识别共用任务抽屉。
+ *
+ * 与识别不同的两处都在提示里说清：**只有已识别的页**能复核（第二引擎读的是
+ * 第一引擎切出的行图），且默认跳过已复核的页。
+ */
+async function checkSelection(scope) {
+  const project = currentProject;
+  if (!project) return;
+  el("pages-error").hidden = true;
+
+  let body;
+  if (scope) {
+    // 全部已识别但还没复核过的页（说明书 8.5：可以随时补跑）
+    body = { scope };
+  } else {
+    const pages = selectionPages().filter((page) => page.include);
+    if (!pages.length) return;
+    body = {
+      pages: pages.map((page) => page.page_no),
+      skip_checked: el("selection-skip-checked").checked,
+    };
+  }
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/jobs/auxiliary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    applyRecognizedPages(data.pages);
+    renderPages();
+    openTaskDrawer();
+    startTaskPolling(data.job.job_id);
+  } catch (error) {
+    showError(el("pages-error"), error);
   }
 }
 
@@ -1640,11 +1684,13 @@ async function refreshPageStates() {
 function renderTask(data) {
   const job = data.job;
   const label = JOB_STATUS_LABELS[job.status] || job.status;
+  const typeLabel = JOB_TYPE_LABELS[job.job_type] || job.job_type;
   openTaskDrawer();
+  el("drawer-title").textContent = `${typeLabel}任务`;
 
   const current = data.current_page_no ? ` · 当前第 ${data.current_page_no} 页` : "";
   const interrupted = data.alive === false && ["queued", "running", "paused"].includes(job.status);
-  const aliveNote = interrupted ? "（识别进程已不在——点取消或继续收拾它）" : "";
+  const aliveNote = interrupted ? `（${typeLabel}进程已不在——点取消或继续收拾它）` : "";
   el("drawer-status").textContent = `${label}${current}${aliveNote}`;
 
   el("drawer-fill").style.width = `${job.percent}%`;
@@ -1704,6 +1750,7 @@ function renderTask(data) {
   chip.hidden = false;
   chip.className = taskChipClass(job.status);
   chip.textContent = `任务：${label} ${job.done + job.failed}/${job.total}`;
+  chip.title = `${typeLabel}任务`;
 }
 
 function renderRecentTasks(jobs) {
@@ -1722,7 +1769,8 @@ function renderRecentTasks(jobs) {
     const when = (job.finished_at || job.created_at || "").slice(5, 16).replace("T", " ");
     const text = document.createElement("span");
     text.textContent =
-      `${when} · ${JOB_STATUS_LABELS[job.status] || job.status} · ` +
+      `${when} · ${JOB_TYPE_LABELS[job.job_type] || job.job_type} · ` +
+      `${JOB_STATUS_LABELS[job.status] || job.status} · ` +
       `${job.done + job.failed}/${job.total} 页` +
       (job.failed ? `（失败 ${job.failed}）` : "");
     li.append(text);
@@ -2708,6 +2756,8 @@ function setupLibrary() {
   setupReviewControls();
   setupAuxControls();
   el("recognize-pending").addEventListener("click", () => startBatchRecognition("unrecognized"));
+  el("selection-check").addEventListener("click", () => checkSelection(null));
+  el("check-pending").addEventListener("click", () => checkSelection("unchecked"));
   setupTaskDrawer();
 
   // 筛选与选择（说明书 6.2）

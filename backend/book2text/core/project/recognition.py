@@ -320,6 +320,137 @@ def default_secondary_engine() -> OcrEngine:
     return AppleVisionAdapter()
 
 
+# 批量复核的两种范围（说明书 8.5："可以随时对已识别的页面单独补跑或重跑"）
+SCOPE_UNCHECKED = "unchecked"
+AUX_SCOPES = (SCOPE_UNCHECKED, SCOPE_ALL)
+
+
+def resolve_aux_pages(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    pages: Sequence[int] | None = None,
+    scope: str | None = None,
+    skip_checked: bool = True,
+) -> list[Page]:
+    """把"要复核哪些页"解析成页面列表（说明书 8.5）。
+
+    **只有已有第一引擎结果的页才能复核**——第二引擎读的是第一引擎切出的行图，
+    没识别过就没有行可读，界面上要如实说清而不是建一个注定失败的任务。
+
+    - 显式页码：必须存在、已纳入、且已有识别结果。
+    - ``scope="unchecked"``：全部纳入页里**已识别但还没复核过**的。
+    - ``scope="all"``：全部纳入页里已识别的（重新复核）。
+    - ``skip_checked``：显式页码时是否跳过已复核的页（默认跳过；
+      界面上的「重新复核这一页」会显式传 False）。
+    """
+    if (pages is None) == (scope is None):
+        raise ProjectError("pages 与 scope 必须给出且只给出一个")
+    if scope is not None and scope not in AUX_SCOPES:
+        raise ProjectError(f"未知的范围：{scope!r}（可选：{'、'.join(AUX_SCOPES)}）")
+
+    target_library = library if library is not None else default_library_dir()
+    all_pages = list_pages(project_id, library=target_library)
+    states = blocks_module.page_recognition_states(project_id, library=target_library)
+    checked = blocks_module.pages_with_auxiliary_run(project_id, library=target_library)
+
+    def has_result(page: Page) -> bool:
+        state = states.get(page.page_id)
+        return state is not None and state.status in STATUSES_WITH_RESULT
+
+    if scope is not None:
+        selected = []
+        for page in all_pages:
+            if not page.include or not has_result(page):
+                continue
+            if scope == SCOPE_UNCHECKED and page.page_id in checked:
+                continue
+            selected.append(page)
+        return selected
+
+    by_no = {page.page_no: page for page in all_pages}
+    selected = []
+    for page_no in pages or ():
+        page = by_no.get(page_no)
+        if page is None:
+            raise ProjectError(f"没有第 {page_no} 页")
+        if not page.include:
+            raise ProjectError(
+                f"第 {page_no} 页已排除，不参与复核。先把它纳入（单击缩略图）再复核"
+            )
+        if not has_result(page):
+            raise ProjectError(
+                f"第 {page_no} 页还没有第一引擎的识别结果——"
+                "第二引擎读的是第一引擎切出的行图，先识别再复核"
+            )
+        if skip_checked and page.page_id in checked:
+            continue
+        selected.append(page)
+    return selected
+
+
+def create_auxiliary_job(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    pages: Sequence[int] | None = None,
+    scope: str | None = None,
+    skip_checked: bool = True,
+    engine: OcrEngine | None = None,
+) -> jobs_module.JobRecord:
+    """建一个第二引擎复核任务（不执行；说明书 8.5 / R1b）。
+
+    与识别任务（`create_ocr_job`）形状完全一样：按页一个单元，因此**暂停 / 继续 /
+    取消 / 重试失败页 / 中断恢复全都能用**（说明书 6.3 的那一套）。
+    """
+    target_library = library if library is not None else default_library_dir()
+    directory = project_dir(target_library, project_id)
+
+    lock_status = lock_module.status(directory)
+    if lock_status.held and not lock_status.mine:
+        raise ProjectError(
+            f"{lock_status.describe()}。复核会写入项目数据库，"
+            "请先在那边关闭项目，或在本窗口用「强制打开」"
+        )
+
+    load_project(project_id, library=target_library)
+
+    selected = resolve_aux_pages(
+        project_id,
+        library=target_library,
+        pages=pages,
+        scope=scope,
+        skip_checked=skip_checked,
+    )
+    if not selected:
+        raise ProjectError(
+            "没有需要复核的页面（已复核的页会跳过，未识别的页不参与）"
+            + ("——要去掉「跳过已复核的页」的勾选才会重新复核它们" if pages else "")
+        )
+
+    running = jobs_module.active_job(directory)
+    if running is not None:
+        raise ProjectError(
+            f"已经有一个任务在进行中（{running.status}，"
+            f"{running.done + running.failed}/{running.total}）。"
+            "说明书 6.3 规定默认只跑 1 个 OCR 子进程：先暂停或取消它，再建新任务"
+        )
+
+    secondary = engine or default_secondary_engine()
+    available, reason = secondary.available()
+    if not available:
+        # 第二引擎不可用是环境问题（说明书 8.6：要明确显示"第二意见不可用"，
+        # 也不能假装还在比对），不该建出一个注定失败的任务
+        raise EngineUnavailable(f"第二引擎（{secondary.engine_id}）不可用：{reason}")
+
+    return jobs_module.create_job(
+        directory,
+        pages=[(page.page_id, page.page_no) for page in selected],
+        params={"engine_id": secondary.engine_id, "scope": scope or "pages"},
+        job_type=jobs_module.JOB_TYPE_AUXILIARY,
+    )
+
+
 def run_auxiliary(
     directory: Path,
     page_no: int,
@@ -562,9 +693,14 @@ def run_job(
     should_continue: Callable[[], str] | None = None,
     log: Callable[[str], None] | None = None,
 ) -> JobOutcome:
-    """把这个任务里**还没成功**的页面逐页识别并落库。
+    """把这个任务里**还没成功**的页面逐页做完并落库。
 
-    ``engine`` / ``should_continue`` / ``log`` 都是注入点：生产代码用 RapidOCR、
+    **按任务类型分派**（说明书 5.3 的 `job_type`）：识别任务用第一引擎逐页识别、
+    生成块（R1 / R2）；复核任务用第二引擎逐页复核、只写行级候选（8.5 / R1b）。
+    两种任务的执行方式、控制信号与结算规则完全一样，因此子进程入口
+    （`book2text.worker`）不需要知道自己是哪一种——它只管调这个函数。
+
+    ``engine`` / ``should_continue`` / ``log`` 都是注入点：生产代码用真引擎、
     读数据库判断该不该继续、把进度打到 stdout（由父进程收进项目日志）；
     测试用假引擎与脚本化的决定，走的是同一套落库路径。
     """
@@ -575,6 +711,26 @@ def run_job(
 
     jobs_module.set_status(directory, job_id, jobs_module.STATUS_RUNNING)
 
+    # 任务类型决定这一趟做什么：识别（第一引擎，生成块）还是复核（第二引擎，只写行级候选）
+    if job.job_type == jobs_module.JOB_TYPE_AUXILIARY:
+        return _run_auxiliary_job(
+            directory, job, engine=engine, should_continue=should_continue, log=log
+        )
+    return _run_ocr_job(
+        directory, job, engine=engine, should_continue=should_continue, log=log
+    )
+
+
+def _run_ocr_job(
+    directory: Path,
+    job: jobs_module.JobRecord,
+    *,
+    engine: OcrEngine | None,
+    should_continue: Callable[[], str] | None,
+    log: Callable[[str], None] | None,
+) -> JobOutcome:
+    """识别任务：第一引擎逐页识别、生成块（说明书 5.4 的 R1 / R2）。"""
+    job_id = job.job_id
     adapter: OcrEngine = engine if engine is not None else RapidOcrAdapter()
     available, reason = adapter.available()
     if not available:
@@ -589,10 +745,89 @@ def run_job(
     )
     engine_version = adapter.version()
     source = directory / SOURCE_DIR_NAME / SOURCE_FILE_NAME
-    decide = should_continue if should_continue is not None else _status_decider(directory, job_id)
     say = log if log is not None else (lambda message: None)
 
     say(f"job {job_id} start total={job.total} dpi={params.dpi} engine={adapter.engine_id}")
+
+    def run_one(item: jobs_module.JobItemRecord) -> None:
+        _run_item(
+            directory=directory,
+            source=source,
+            page_no=item.page_no,
+            page_id=item.page_id,
+            item_id=item.item_id,
+            adapter=adapter,
+            params=params,
+            engine_version=engine_version,
+            log=say,
+        )
+
+    return _run_job_loop(
+        directory=directory,
+        job_id=job_id,
+        run_one=run_one,
+        should_continue=should_continue,
+        say=say,
+    )
+
+
+def _run_auxiliary_job(
+    directory: Path,
+    job: jobs_module.JobRecord,
+    *,
+    engine: OcrEngine | None,
+    should_continue: Callable[[], str] | None,
+    log: Callable[[str], None] | None,
+) -> JobOutcome:
+    """复核任务：第二引擎逐页复核，只写行级候选（说明书 8.5 / R1b）。
+
+    每页的活儿与单页复核（`run_auxiliary`）**完全是同一个函数**——这里只负责
+    把任务单元的状态接上，这样"暂停 / 取消 / 重试失败页"在两种任务上是同一套。
+    """
+    job_id = job.job_id
+    secondary: OcrEngine = engine if engine is not None else default_secondary_engine()
+    available, reason = secondary.available()
+    if not available:
+        _fail_job(directory, job_id, EngineUnavailable(f"第二引擎不可用：{reason}"))
+        return JobOutcome(job=jobs_module.get_job(directory, job_id), items=tuple(
+            jobs_module.list_job_items(directory, job_id)
+        ))
+
+    say = log if log is not None else (lambda message: None)
+    say(f"job {job_id} start total={job.total} engine={secondary.engine_id} type=auxiliary")
+
+    def run_one(item: jobs_module.JobItemRecord) -> None:
+        _run_auxiliary_item(
+            directory=directory,
+            job_id=job_id,
+            item=item,
+            engine=secondary,
+            log=say,
+        )
+
+    return _run_job_loop(
+        directory=directory,
+        job_id=job_id,
+        run_one=run_one,
+        should_continue=should_continue,
+        say=say,
+    )
+
+
+def _run_job_loop(
+    *,
+    directory: Path,
+    job_id: str,
+    run_one: Callable[[jobs_module.JobItemRecord], None],
+    should_continue: Callable[[], str] | None,
+    say: Callable[[str], None],
+) -> JobOutcome:
+    """两种任务共用的执行循环：逐单元问一次"该不该继续"，然后做那一页。
+
+    循环本身不认识"识别"还是"复核"——那是 `run_one` 的事。
+    结算规则：没被停就按结果定成败（有任何一页失败即 failed，done / failed 说明细节）。
+    """
+    decide = should_continue if should_continue is not None else _status_decider(directory, job_id)
 
     stopped = False
     for item in jobs_module.pending_items(directory, job_id):
@@ -609,22 +844,11 @@ def run_job(
             jobs_module.update_progress(directory, job_id)
             say(f"item {item.item_id} failed page_missing")
             continue
-        _run_item(
-            directory=directory,
-            source=source,
-            page_no=item.page_no,
-            page_id=item.page_id,
-            item_id=item.item_id,
-            adapter=adapter,
-            params=params,
-            engine_version=engine_version,
-            log=say,
-        )
+        run_one(item)
         jobs_module.update_progress(directory, job_id)
 
     job = jobs_module.get_job(directory, job_id)
     if not stopped:
-        # 没被停：按结果结算。有任何一页失败就算 failed（done / failed 说明细节）
         jobs_module.set_status(
             directory,
             job_id,
@@ -634,6 +858,46 @@ def run_job(
     say(f"job {job_id} end status={job.status} done={job.done} failed={job.failed}")
 
     return JobOutcome(job=job, items=tuple(jobs_module.list_job_items(directory, job_id)))
+
+
+def _run_auxiliary_item(
+    *,
+    directory: Path,
+    job_id: str,
+    item: jobs_module.JobItemRecord,
+    engine: OcrEngine,
+    log: Callable[[str], None],
+) -> None:
+    """复核任务里的一页：先记单元"正在做"，做完记成功与运行 id，失败记原因。
+
+    "失败原因可见"（说明书 Phase 2 的验收）对复核任务同样成立：
+    原因写进 `job_item.error_message`，界面在失败列表里显示。
+    """
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        conn.execute(
+            "UPDATE job_item SET status = 'running', attempts = attempts + 1 WHERE item_id = ?",
+            (item.item_id,),
+        )
+        conn.commit()
+
+    try:
+        result = run_auxiliary(directory, item.page_no, engine=engine)
+    except (ProjectError, EngineUnavailable) as exc:
+        jobs_module.mark_item_failed(directory, item.item_id, str(exc))
+        log(f"page {item.page_no} failed auxiliary")
+        return
+
+    # 辅助运行记录已经由 run_auxiliary 结算成 succeeded，这里只把单元接上
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        conn.execute(
+            "UPDATE job_item SET status = 'succeeded', run_id = ? WHERE item_id = ?",
+            (result["run_id"], item.item_id),
+        )
+        conn.commit()
+    log(
+        f"page {item.page_no} checked lines={result['line_count']}"
+        f" differs={result['differs']} {result['elapsed_seconds']}s"
+    )
 
 
 def _status_decider(directory: Path, job_id: str) -> Callable[[], str]:
