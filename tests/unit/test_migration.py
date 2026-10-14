@@ -153,3 +153,78 @@ def test_page_no_is_unique(conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT INTO page (page_id, page_no, width_pt, height_pt) VALUES ('b', 1, 1, 1)"
         )
+
+
+# ---------------------------------------------------------------- 迁移 0002
+
+def test_recognition_tables_are_created(conn: sqlite3.Connection) -> None:
+    migrate(conn, MIGRATIONS)
+    tables = _table_names(conn)
+    assert {"ocr_run", "block", "block_line", "job", "job_item"} <= tables
+
+
+@pytest.mark.parametrize(
+    ("table", "columns"),
+    [
+        (
+            "ocr_run",
+            {
+                "run_id", "page_id", "run_type", "engine_id", "engine_version",
+                "params_json", "status", "error_code", "error_message",
+                "raw_result_path", "created_at", "finished_at",
+            },
+        ),
+        (
+            "block",
+            {
+                "block_id", "page_id", "origin_run_id", "origin", "order_index", "bbox",
+                "block_type", "ocr_text", "text", "review_status", "include",
+                "continues_to_next", "confidence", "revision", "reviewed_by", "comment",
+                "created_at", "updated_at", "deleted_at",
+            },
+        ),
+        (
+            "block_line",
+            {"line_id", "block_id", "line_index", "bbox", "text", "aux_text", "diff_status"},
+        ),
+        (
+            "job",
+            {
+                "job_id", "job_type", "status", "total", "done", "failed",
+                "params_json", "created_at", "started_at", "finished_at",
+            },
+        ),
+        (
+            "job_item",
+            {"item_id", "job_id", "page_id", "status", "run_id", "error_message", "attempts"},
+        ),
+    ],
+)
+def test_recognition_tables_have_the_spec_columns(
+    conn: sqlite3.Connection, table: str, columns: set[str]
+) -> None:
+    """说明书 5.3 与 R7：双路 OCR 与协作所需字段从 Phase 2 起就建好。"""
+    migrate(conn, MIGRATIONS)
+    actual = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    assert columns <= actual
+
+
+def test_ocr_run_status_is_constrained(conn: sqlite3.Connection) -> None:
+    """状态取值用 CHECK 钉住，免得写进拼错的状态（说明书 5.3 的枚举）。"""
+    migrate(conn, MIGRATIONS)
+    conn.execute(
+        "INSERT INTO page (page_id, page_no, width_pt, height_pt) VALUES ('p', 1, 1, 1)"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            """
+            INSERT INTO ocr_run (run_id, page_id, engine_id, engine_version, status, created_at)
+            VALUES ('r1', 'p', 'fake', '1', 'succeed', 'now')
+            """
+        )
+    conn.execute(
+        """
+        INSERT INTO ocr_run (run_id, page_id, engine_id, engine_version, status, created_at)
+        VALUES ('r2', 'p', 'fake', '1', 'succeeded', 'now')
+        """
+    )

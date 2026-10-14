@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from ..migration import Migration
-from . import migration_0001_project_page
+from . import migration_0001_project_page, migration_0002_recognition
 
 MIGRATIONS: list[Migration] = [
     migration_0001_project_page.MIGRATION,
+    migration_0002_recognition.MIGRATION,
 ]
 
 LATEST_VERSION = max(migration.version for migration in MIGRATIONS)

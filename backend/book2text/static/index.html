@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Book2Text — Phase 0 骨架</title>
+  <title>Book2Text</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
   <header class="topbar">
     <div class="topbar__title">
       <h1>Book2Text</h1>
-      <span class="tag" id="stage-tag">Phase 0 骨架</span>
+      <span class="tag" id="stage-tag">Phase 2 · 识别已接到项目上</span>
     </div>
     <div class="topbar__meta">
       <span id="version-label" class="muted">版本读取中…</span>
@@ -66,18 +66,48 @@
         </label>
       </div>
       <p class="hint">
-        单击缩略图切换<strong>纳入 / 排除</strong>。排除的页不参与识别与导出。
-        批量选择（Shift 范围、页码输入）与页面类型标注待实现。
+        单击缩略图切换<strong>纳入 / 排除</strong>（排除的页不参与识别与导出）。
+        点缩略图下方的<strong>识别</strong>按钮识别这一页——结果会存进项目数据库，
+        关掉应用再打开还在。批量识别与 Shift 范围选择尚未实现。
       </p>
       <div class="alert alert--error" id="pages-error" hidden></div>
       <div class="page-grid" id="page-grid"></div>
+
+      <div class="page-detail" id="page-detail" hidden>
+        <div class="page-detail__head">
+          <strong id="page-detail-title">识别结果</strong>
+          <span class="muted" id="page-detail-meta"></span>
+          <span class="spacer"></span>
+          <button type="button" id="detail-recognize" class="btn btn--primary">识别本页</button>
+          <button type="button" id="detail-close" class="btn btn--ghost">收起</button>
+        </div>
+        <p class="hint" id="page-detail-hint">
+          这里是这一页<strong>已保存的</strong>识别结果：左图上的蓝框是块的位置，
+          右列是该页的块。块现在是只读的——编辑、确认、合并、拆分属于 Phase 3 的审校视图。
+        </p>
+        <div class="alert alert--error" id="page-detail-error" hidden></div>
+        <div class="alert alert--warn" id="page-detail-warning" hidden></div>
+        <div class="page-detail__body">
+          <div class="viewer__stage">
+            <div class="page-canvas" id="detail-canvas" hidden>
+              <img id="detail-image" alt="页面图像">
+              <div class="page-overlay" id="detail-overlay"></div>
+            </div>
+            <p class="muted" id="detail-image-status">正在渲染…</p>
+          </div>
+          <ol class="ocr-blocks" id="detail-blocks"></ol>
+        </div>
+      </div>
     </section>
 
     <section class="card legacy" id="scratch-card">
       <h2>临时上传（Phase 0 遗留）</h2>
       <p class="hint">
-        这一块是 Phase 0 的临时流程：上传的文件只落在临时目录，<strong>不作为项目保存</strong>，
-        刷新即丢。识别、分段与导出目前接在这里；等它们迁到项目上之后，这一块会被移除。
+        识别已经搬到项目上（上面那张卡片）——项目里的结果会落库、重启还在。
+        这一块现在只剩<strong>导出</strong>：导出接口是 Phase 0 的无状态形态，
+        它要客户端把识别结果提交上来，所以还得连着这里的临时识别。
+        <strong>把导出也接到项目上之后，这一块会整块删掉</strong>（连同
+        <code>core/storage/scratch.py</code>）。文件落在临时目录、刷新即丢。
       </p>
       <div class="dropzone" id="dropzone" tabindex="0" role="button"
            aria-label="选择或拖入 PDF 文件">
@@ -161,8 +191,8 @@
           的块与下一块合并，标题单独成段）→ <strong>9.3</strong> 清理（默认排除页眉页脚页码）
           → <strong>9.4</strong> TXT 或 <strong>9.5</strong> JSONL，并附
           <strong>manifest.json</strong>（含断词还原位置，供抽查）。
-          导出范围是<strong>本次会话中已识别的页面</strong>——识别结果尚未持久化，
-          所以没识别过的页不会出现在导出里。
+          导出范围是<strong>本次会话中已识别的页面</strong>——项目里已识别的页
+          暂时还不能导出（导出接口还没接到项目上）。
         </p>
         <div class="alert alert--error" id="export-error" hidden></div>
         <dl class="kv" id="export-preflight"></dl>
@@ -195,7 +225,7 @@
   </main>
 
   <footer class="footer muted">
-    开发说明书 V1.0 · Phase 0 第 4 项「最小骨架」· 全部数据只在本机处理
+    开发说明书 V1.0 · 识别已落库（说明书 Phase 2 的第一部分）· 全部数据只在本机处理
   </footer>
 
   <script src="/static/app.js"></script>

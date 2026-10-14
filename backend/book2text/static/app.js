@@ -801,6 +801,52 @@ const PAGE_TYPE_LABELS = {
   appendix: "附录", index: "索引", blank: "空白", other: "其他",
 };
 
+/**
+ * 识别状态（说明书 5.3：状态不单独存储，由 OCRRun 与 Block 推导）。
+ * 服务端给状态机标识，中文标签在这里——与 page_type 的处理方式一致。
+ */
+const RECOGNITION_LABELS = {
+  unrecognized: "未识别",
+  queued: "排队中",
+  running: "识别中",
+  recognized: "已识别",
+  failed: "识别失败",
+  has_candidate: "有待选新结果",
+};
+
+const RECOGNITION_CLASSES = {
+  unrecognized: "",
+  queued: "status--warn",
+  running: "status--warn",
+  recognized: "status--ok",
+  failed: "status--bad",
+  has_candidate: "status--warn",
+};
+
+function recognitionOf(page) {
+  return page.recognition || {
+    status: "unrecognized", block_count: 0, active_run_id: null,
+    pending_run_id: null, run_count: 0, last_run_at: null, last_error: null,
+  };
+}
+
+function recognitionText(page) {
+  const recognition = recognitionOf(page);
+  const label = RECOGNITION_LABELS[recognition.status] || recognition.status;
+  return recognition.status === "recognized"
+    ? `${label} · ${recognition.block_count} 块`
+    : label;
+}
+
+function recognitionChip(page) {
+  const recognition = recognitionOf(page);
+  const chip = document.createElement("span");
+  chip.className = "status " + (RECOGNITION_CLASSES[recognition.status] || "");
+  chip.textContent = recognitionText(page);
+  if (recognition.last_error) chip.title = `上次失败：${recognition.last_error}`;
+  return chip;
+}
+
 async function loadLibrary() {
   el("library-warning").hidden = true;
   try {
@@ -833,7 +879,7 @@ function renderProjectList(projects) {
     meta.className = "muted";
     meta.textContent =
       `${entry.source_file_name} · ${entry.page_count} 页 · ` +
-      `纳入 ${entry.included_pages} 页`;
+      `纳入 ${entry.included_pages} 页 · 已识别 ${entry.recognized_pages} 页`;
 
     head.append(name, meta);
     if (entry.lock_held) {
@@ -957,6 +1003,7 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
 async function refreshProject(projectId) {
   const data = await apiJson(`/api/projects/${projectId}`);
   currentProject = { ...data.project, pages: data.pages, read_only: false };
+  closePageDetail();
   renderProject();
 }
 
@@ -966,15 +1013,27 @@ function renderProject() {
 
   el("project-card").hidden = false;
   el("project-title").textContent = `《${project.name}》`;
+  renderProjectMeta();
+  renderPages();
+}
+
+function renderProjectMeta() {
+  const project = currentProject;
+  if (!project) return;
+  const pages = project.pages;
+  const recognized = pages.filter(
+    (page) => recognitionOf(page).status === "recognized"
+  ).length;
+
   fillDefinitionList(el("project-meta"), [
     ["项目 ID", project.project_id],
     ["源文件", project.source_file_name],
     ["SHA-256", project.source_sha256],
     ["页数", `${project.page_count} 页`],
+    ["识别进度", `已识别 ${recognized} / 纳入 ${pages.filter((page) => page.include).length} 页`],
     ["数据库版本", `schema_version ${project.schema_version}`],
     ["项目文件夹", project.directory],
   ]);
-  renderPages();
 }
 
 function renderPages() {
@@ -982,9 +1041,13 @@ function renderPages() {
   const onlyIncluded = el("pages-only-included").checked;
   const pages = project.pages;
   const included = pages.filter((page) => page.include).length;
+  const recognized = pages.filter(
+    (page) => recognitionOf(page).status === "recognized"
+  ).length;
 
   el("page-summary").textContent =
     `纳入 ${included} / ${pages.length} 页` +
+    ` · 已识别 ${recognized} 页` +
     (pages.filter((page) => page.has_text_layer).length
       ? ` · 有文本层 ${pages.filter((page) => page.has_text_layer).length} 页`
       : "");
@@ -999,8 +1062,10 @@ function renderPages() {
     tile.className =
       "page-tile" +
       (page.include ? "" : " page-tile--excluded") +
-      (page.has_text_layer ? " page-tile--textlayer" : "");
+      (page.has_text_layer ? " page-tile--textlayer" : "") +
+      (busyPages.has(page.page_no) ? " page-tile--busy" : "");
     tile.dataset.pageId = page.page_id;
+    tile.dataset.pageNo = String(page.page_no);
     tile.title =
       `第 ${page.page_no} 页 · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}` +
       ` · ${page.width_pt}×${page.height_pt} pt` +
@@ -1021,9 +1086,247 @@ function renderPages() {
     const printed = page.page_label ? ` · 印${page.page_label}` : "";
     label.textContent = `${page.page_no}${printed} · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}`;
 
-    tile.append(image, label);
+    const status = document.createElement("div");
+    status.className = "page-tile__status";
+    status.append(recognitionChip(page));
+
+    const actions = document.createElement("div");
+    actions.className = "page-tile__actions";
+
+    const isBusy = busyPages.has(page.page_no);
+    const recognizeButton = document.createElement("button");
+    recognizeButton.type = "button";
+    recognizeButton.className = "btn";
+    recognizeButton.textContent = isBusy ? "识别中…" : "识别";
+    recognizeButton.disabled = isBusy || !page.include;
+    if (!page.include) {
+      recognizeButton.title = "已排除，不参与识别。先单击缩略图把它纳入";
+    } else if (recognitionOf(page).status === "recognized") {
+      recognizeButton.title = "重新识别这一页（已有人工成果时不会覆盖，只作为待选结果）";
+    }
+    recognizeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      recognizePage(page);
+    });
+
+    const detailButton = document.createElement("button");
+    detailButton.type = "button";
+    detailButton.className = "btn";
+    detailButton.textContent = "结果";
+    detailButton.title = "看这一页已保存的识别结果";
+    detailButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openPageDetail(page.page_no);
+    });
+
+    actions.append(recognizeButton, detailButton);
+    tile.append(image, label, status, actions);
     tile.addEventListener("click", () => togglePageInclude(page));
     grid.append(tile);
+  }
+}
+
+// ---------------------------------------------------------------- 识别（项目）
+
+/** 正在识别的页码。识别是同步的、一页可能几秒，期间要让人看得出在跑。 */
+const busyPages = new Set();
+
+async function recognizePage(page) {
+  const project = currentProject;
+  if (!project || busyPages.has(page.page_no)) return;
+
+  el("pages-error").hidden = true;
+  busyPages.add(page.page_no);
+  renderPages();
+
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pages: [page.page_no] }),
+    });
+    applyRecognizedPages(data.pages);
+
+    const item = (data.items || [])[0];
+    if (item && item.status !== "succeeded") {
+      const error = el("pages-error");
+      error.textContent =
+        `第 ${page.page_no} 页识别失败：${item.error_message || "原因未记录"}`;
+      error.hidden = false;
+    }
+  } catch (error) {
+    showError(el("pages-error"), error);
+  } finally {
+    busyPages.delete(page.page_no);
+    renderPages();
+    renderProjectMeta();
+    if (detailPageNo === page.page_no) await loadPageDetail(page.page_no);
+  }
+}
+
+/** 用接口返回的页面（含最新识别状态）更新本地列表，不重拉整个项目。 */
+function applyRecognizedPages(pages) {
+  for (const updated of pages || []) {
+    const index = currentProject.pages.findIndex(
+      (page) => page.page_id === updated.page_id
+    );
+    if (index >= 0) currentProject.pages[index] = updated;
+  }
+}
+
+// ---------------------------------------------------------------- 本页识别结果
+
+let detailPageNo = null;
+let detailImagePageNo = null;
+
+async function openPageDetail(pageNo) {
+  detailPageNo = pageNo;
+  el("page-detail").hidden = false;
+  el("page-detail-error").hidden = true;
+  await loadPageDetail(pageNo);
+  el("page-detail").scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function closePageDetail() {
+  detailPageNo = null;
+  el("page-detail").hidden = true;
+}
+
+async function loadPageDetail(pageNo) {
+  const project = currentProject;
+  if (!project) return;
+  try {
+    const data = await apiJson(
+      `/api/projects/${project.project_id}/pages/${pageNo}/blocks`
+    );
+    renderPageDetail(data);
+  } catch (error) {
+    showError(el("page-detail-error"), error);
+  }
+}
+
+function renderPageDetail(data) {
+  const pageNo = data.page.page_no;
+  el("page-detail-title").textContent = `第 ${pageNo} 页 · 已保存的识别结果`;
+
+  const recognition = recognitionOf(data.page);
+  const activeRun = data.active_run;
+  const parts = [`${data.block_count} 块`];
+  if (activeRun) {
+    parts.push(`${activeRun.engine_id} ${activeRun.engine_version}`);
+    if (activeRun.elapsed_seconds) parts.push(`${activeRun.elapsed_seconds} 秒`);
+    if (activeRun.finished_at) parts.push(activeRun.finished_at.slice(0, 19).replace("T", " "));
+  }
+  if (data.runs.length > 1) parts.push(`${data.runs.length} 次识别记录`);
+  el("page-detail-meta").textContent = parts.join(" · ");
+
+  const warning = el("page-detail-warning");
+  const messages = [];
+  if (recognition.status === "has_candidate") {
+    messages.push(
+      "这一页有更新的识别结果，但因为它已有人工成果，系统没有覆盖——" +
+        "采用 / 保留的对比属于 Phase 3 的审校视图。"
+    );
+  }
+  if (recognition.status === "failed" && recognition.last_error) {
+    messages.push(`上次识别失败：${recognition.last_error}`);
+  }
+  if (recognition.status === "unrecognized") {
+    messages.push("这一页还没识别过。点右上角的「识别本页」。");
+  }
+  warning.textContent = messages.join(" ");
+  warning.hidden = messages.length === 0;
+
+  // 图像按 view 档渲染；同一页重复打开时不重新拉图
+  if (detailImagePageNo !== pageNo) {
+    detailImagePageNo = pageNo;
+    el("detail-image-status").textContent = "正在渲染…";
+    el("detail-image-status").hidden = false;
+    el("detail-canvas").hidden = true;
+    const image = el("detail-image");
+    image.onload = () => {
+      el("detail-image-status").hidden = true;
+      el("detail-canvas").hidden = false;
+    };
+    image.onerror = () => {
+      el("detail-image-status").textContent = "这一页渲染失败。";
+    };
+    image.src =
+      `/api/projects/${currentProject.project_id}/pages/${pageNo}/image?size=view` +
+      `&token=${encodeURIComponent(token)}`;
+  }
+
+  drawDetailOverlay(data.blocks);
+  renderDetailBlocks(data.blocks);
+}
+
+/** 块框：归一化坐标 → 百分比定位，因此与显示尺寸、渲染 DPI 都无关。 */
+function drawDetailOverlay(blocks) {
+  const overlay = el("detail-overlay");
+  overlay.innerHTML = "";
+  blocks.forEach((block, index) => {
+    if (!block.bbox) return;
+    const [x0, y0, x1, y1] = block.bbox;
+    const box = document.createElement("div");
+    box.className = "box";
+    box.dataset.index = String(index);
+    box.style.left = `${x0 * 100}%`;
+    box.style.top = `${y0 * 100}%`;
+    box.style.width = `${(x1 - x0) * 100}%`;
+    box.style.height = `${(y1 - y0) * 100}%`;
+    overlay.append(box);
+  });
+}
+
+function renderDetailBlocks(blocks) {
+  const list = el("detail-blocks");
+  list.innerHTML = "";
+  if (!blocks.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent = "这一页没有块。";
+    list.append(empty);
+    return;
+  }
+
+  blocks.forEach((block, index) => {
+    const item = document.createElement("li");
+    item.className = "ocr-block";
+    item.dataset.index = String(index);
+
+    const head = document.createElement("div");
+    head.className = "ocr-block__head";
+
+    const order = document.createElement("span");
+    order.textContent = `#${block.order_index + 1}`;
+
+    const meta = document.createElement("span");
+    const bits = [block.block_type, `${block.lines.length} 行`];
+    if (block.modified) bits.push("已修改");
+    if (block.review_status !== "unreviewed") bits.push(block.review_status);
+    if (!block.include) bits.push("不导出");
+    meta.textContent = bits.join(" · ");
+
+    head.append(order, meta);
+
+    const text = document.createElement("div");
+    text.className = "ocr-block__text";
+    text.textContent = block.text;
+
+    item.append(head, text);
+    item.addEventListener("click", () => selectDetailBlock(index));
+    list.append(item);
+  });
+}
+
+function selectDetailBlock(index) {
+  for (const item of el("detail-blocks").children) {
+    item.classList.toggle("active", Number(item.dataset.index) === index);
+  }
+  for (const box of el("detail-overlay").children) {
+    const isActive = Number(box.dataset.index) === index;
+    box.classList.toggle("box--active", isActive);
+    if (isActive) box.scrollIntoView({ block: "center", behavior: "smooth" });
   }
 }
 
@@ -1070,6 +1373,7 @@ async function closeProject() {
   }
   currentProject = null;
   el("project-card").hidden = true;
+  closePageDetail();
   await loadLibrary();
 }
 
@@ -1084,6 +1388,12 @@ function setupLibrary() {
   el("pages-include-all").addEventListener("click", () => setAllPagesInclude(true));
   el("pages-exclude-all").addEventListener("click", () => setAllPagesInclude(false));
   el("pages-only-included").addEventListener("change", renderPages);
+  el("detail-close").addEventListener("click", closePageDetail);
+  el("detail-recognize").addEventListener("click", () => {
+    if (detailPageNo === null) return;
+    const page = currentProject.pages.find((item) => item.page_no === detailPageNo);
+    if (page) recognizePage(page);
+  });
 }
 
 // ---------------------------------------------------------------- 启动

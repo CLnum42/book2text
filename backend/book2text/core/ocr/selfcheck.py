@@ -4,8 +4,8 @@
 版本、以及不可用的原因。接口形状对齐说明书 8.1 的
 ``available() -> (bool, str)``（是否可用 + 不可用的原因）。
 
-重要：Phase 0 尚未选定引擎与部署形态，本模块**不安装**任何 OCR 依赖。
-在装好之前，这里如实报告「未安装」，这正是自检的意义。
+本模块**不安装**任何 OCR 依赖，只如实报告当前环境：没装就说没装，
+装了就说装了——"当前用哪个引擎"由识别代码决定（见 `core/project/recognition.py`）。
 """
 
 from __future__ import annotations
@@ -393,8 +393,13 @@ def report() -> dict[str, object]:
         "available_count": len(available),
         "total_count": len(probes),
         "python_executable": sys.executable,
+        # 如实说明这份报告的性质：它测的是**当前这台机器**的环境，不是选型结论
         "note": (
-            "Phase 0 尚未选定 OCR 引擎，未安装任何 OCR 依赖；"
-            "此处报告的是当前环境状态，不是选型结论。"
+            "此处报告的是当前环境里各引擎的可用状态，不是选型结论。"
+            + (
+                f"识别当前用 {available[0].engine_id}。"
+                if available and available[0].role == ROLE_PRIMARY
+                else "未安装第一引擎依赖，识别会返回 503（uv sync --group ocr-eval）。"
+            )
         ),
     }

@@ -21,6 +21,7 @@ from . import (
     errors,
     routes_app,
     routes_export,
+    routes_jobs,
     routes_projects,
     routes_scratch,
     security,
@@ -63,6 +64,7 @@ def create_app(
     app.include_router(routes_scratch.router, dependencies=guarded)
     app.include_router(routes_export.router, dependencies=guarded)
     app.include_router(routes_projects.router, dependencies=guarded)
+    app.include_router(routes_jobs.router, dependencies=guarded)
 
     app.mount("/static", StaticFiles(directory=paths.STATIC_DIR), name="static")
 

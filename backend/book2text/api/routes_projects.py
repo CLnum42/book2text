@@ -16,21 +16,19 @@ from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from ..core.pdf import render
+from ..core.project import blocks as blocks_module
 from ..core.project import library as project_library
+from .deps import library_dir as _library
+from .deps import page_payload, project_error as _project_error
 from .errors import AppError
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
-def _library(request: Request) -> Path:
-    library = getattr(request.app.state, "library_dir", None)
-    if library is None:  # pragma: no cover - 装配错误
-        raise AppError(500, "server_not_ready", "服务未正确初始化（缺少项目库目录）")
-    return Path(library)
-
-
-def _project_error(exc: project_library.ProjectError, *, status: int = 400) -> AppError:
-    return AppError(status, "project_error", "项目操作失败", detail=str(exc))
+def _page_payloads(request: Request, project_id: str, pages) -> list[dict[str, object]]:
+    """给页面附上识别状态（一次查询取回所有页的状态，不做 N+1）。"""
+    states = blocks_module.page_recognition_states(project_id, library=_library(request))
+    return [page_payload(page, states.get(page.page_id)) for page in pages]
 
 
 # ---------------------------------------------------------------- 项目库
@@ -83,12 +81,13 @@ def get_project(request: Request, project_id: str) -> dict[str, Any]:
     try:
         project = project_library.load_project(project_id, library=library)
         pages = project_library.list_pages(project_id, library=library)
+        payloads = _page_payloads(request, project_id, pages)
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
 
     return {
         "project": project.to_dict(),
-        "pages": [page.to_dict() for page in pages],
+        "pages": payloads,
     }
 
 
@@ -127,9 +126,10 @@ def list_pages(request: Request, project_id: str) -> dict[str, Any]:
     library = _library(request)
     try:
         pages = project_library.list_pages(project_id, library=library)
+        payloads = _page_payloads(request, project_id, pages)
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
-    return {"count": len(pages), "pages": [page.to_dict() for page in pages]}
+    return {"count": len(payloads), "pages": payloads}
 
 
 class PagePatch(BaseModel):
@@ -208,3 +208,58 @@ def save_position(request: Request, project_id: str, patch: LastViewPatch) -> di
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- 块与识别记录
+
+def _block_dict(
+    block: blocks_module.BlockRecord,
+    lines: list[blocks_module.BlockLineRecord],
+) -> dict[str, object]:
+    return {
+        **block.to_dict(),
+        "lines": [line.to_dict() for line in lines],
+    }
+
+
+@router.get("/{project_id}/pages/{page_no}/blocks")
+def list_page_blocks(request: Request, project_id: str, page_no: int) -> dict[str, Any]:
+    """某一页当前有效的块与块内行（说明书第 11 节的 `GET .../pages/{pid}/blocks`）。
+
+    同时返回该页的运行记录与推导出的识别状态：界面要显示"这是哪个引擎认的、
+    什么时候认的、有没有待选的新结果"，这些都不该由客户端自己拼。
+    """
+    library = _library(request)
+    try:
+        page, runs, blocks, lines = blocks_module.load_page_content(
+            project_id, page_no, library=library
+        )
+        states = blocks_module.page_recognition_states(project_id, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+    by_block: dict[str, list[blocks_module.BlockLineRecord]] = {}
+    for line in lines:
+        by_block.setdefault(line.block_id, []).append(line)
+
+    state = states.get(page.page_id)
+    active_run_id = state.active_run_id if state else None
+    active = next((run for run in runs if run.run_id == active_run_id), None)
+    return {
+        "page": page_payload(page, state),
+        "runs": [run.to_dict() for run in runs],
+        "active_run": active.to_dict() if active else None,
+        "block_count": len(blocks),
+        "blocks": [_block_dict(block, by_block.get(block.block_id, [])) for block in blocks],
+    }
+
+
+@router.get("/{project_id}/pages/{page_no}/runs")
+def list_page_runs(request: Request, project_id: str, page_no: int) -> dict[str, Any]:
+    """某一页的识别运行记录（说明书第 11 节的 `GET .../pages/{pid}/runs`）。"""
+    library = _library(request)
+    try:
+        runs = blocks_module.list_runs(project_id, library=library, page_no=page_no)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    return {"count": len(runs), "runs": [run.to_dict() for run in runs]}

@@ -248,6 +248,32 @@ main {
 .page-tile--excluded { opacity: .42; border-style: dashed; }
 .page-tile--excluded .page-tile__label { text-decoration: line-through; }
 .page-tile--textlayer .page-tile__label::after { content: " · 有文本层"; color: #b07a1e; }
+.page-tile__status { display: block; padding: 3px 2px 0; }
+.page-tile__actions {
+  display: flex; gap: 4px; justify-content: center;
+  padding: 3px 2px 5px; border-top: 1px solid var(--border); background: #fafbfc;
+}
+.page-tile__actions .btn { font-size: 11px; padding: 2px 7px; border-radius: 5px; }
+.page-tile--busy { border-color: var(--accent); }
+.page-tile--busy img { opacity: .5; }
+
+/* 本页识别结果面板（项目视图） */
+.page-detail {
+  margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; background: #fff;
+}
+.page-detail__head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; background: #fafbfc; border-bottom: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+}
+.page-detail .hint { margin: 0; padding: 8px 12px 0; }
+.page-detail__body {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 1fr);
+  gap: 12px; padding: 12px;
+}
+@media (max-width: 760px) { .page-detail__body { grid-template-columns: 1fr; } }
+.page-detail__body .ocr-blocks { max-height: 52vh; padding: 0; margin: 0; }
+.page-detail__body .viewer__stage { padding: 8px; }
 
 .card.legacy { border-style: dashed; background: #fcfcfd; }
 .card.legacy h2 { color: var(--muted); font-size: 15px; }
@@ -277,6 +303,7 @@ main {
 .status { font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
 .status--ok { background: var(--ok-bg); color: var(--ok-fg); }
 .status--bad { background: var(--bad-bg); color: var(--bad-fg); }
+.status--warn { background: var(--warn-bg); color: var(--warn-fg); }
 .role { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
 .limits { margin: 0 0 16px; padding-left: 20px; }
