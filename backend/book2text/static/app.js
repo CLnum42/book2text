@@ -216,7 +216,7 @@ function renderAuxiliary(data) {
     `${data.elapsed_seconds} 秒`;
   el("aux-hint").textContent =
     "第二引擎按第一引擎切出的行图逐行复核。实测它比第一引擎弱" +
-    "（中文正文 CER 2.16% vs 1.08%，主要是标点习惯不同），所以这里的候选只作参考——" +
+    "（中文正文 CER 2.16% vs 1.08%），候选只作参考——" +
     "块里已按等级逐行标出（汉字级 / 标点级），点「换成这一路」把那一行换过去（可撤销）。";
 
   const list = el("aux-lines");
@@ -888,7 +888,9 @@ function divergenceChip(page) {
   chip.textContent = divergence.chars ? `≠ ${divergence.chars}` : "≈ 标点级";
   chip.title =
     `两路复核：${divergenceSummary(divergence)}\n` +
-    "汉字级是两路在汉字 / 数字上不一致（值得看）；标点级多半是第二引擎自己的标点习惯";
+    "汉字级 = 两路在汉字 / 数字上不一致，标点级 = 只差标点 / 符号。\n" +
+    "两类都值得看一眼：实测（40 页真书）标出的分歧里约八成是第二引擎自己的错（以汉字为主），" +
+    "但标记能圈进第一引擎约 2/3 的错行——见 docs/ocr-evaluation.md 第 9 节";
   return chip;
 }
 
@@ -1283,8 +1285,8 @@ function matchesTriage(page, recognition, kind) {
   if (kind === "uncertain") return (review.uncertain || 0) > 0;
   if (kind === "failed") return recognition.status === "failed";
   if (kind === "candidate") return recognition.status === "has_candidate";
-  // 分歧（说明书 8.5）：默认只看**汉字级**——实测量过，第二引擎标出的分歧里
-  // 七成是它自己的标点习惯（见 docs/known-limitations.md L-30），全算上就成了噪声
+  // 分歧（说明书 8.5）：两条都留着——40 页真书实测（ocr-evaluation 第 9 节）里
+  // **标点级的信噪比反而比汉字级高**（23.7% vs 13.3%），所以哪一条都不该被当成"噪声"
   if (kind === "divergence_chars") return (divergenceOf(page).chars || 0) > 0;
   if (kind === "divergence") return (divergenceOf(page).lines || 0) > 0;
   return true;
@@ -2417,8 +2419,9 @@ function blockDivergenceSection(block, textarea) {
     const hint = document.createElement("p");
     hint.className = "divergence__note";
     hint.textContent =
-      "实测量过：第二引擎比第一引擎弱（两路分歧里七成是它自己的标点习惯），" +
-      "候选只作参考，换不换由你判断。";
+      "实测量过：第二引擎比第一引擎弱——被标出的分歧里约八成是它自己的错" +
+      "（以汉字错误为主），但标记能圈进第一引擎约 2/3 的错行。" +
+      "所以标记只回答「看哪里」，候选只作参考（改对率约 1/4），换不换由你判断。";
     box.append(hint);
   }
   return box;

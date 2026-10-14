@@ -1,0 +1,84 @@
+{
+  "schema": "book2text.divergence-measure.v1",
+  "measured_at": "2026-10-14T14:10:15+00:00",
+  "pdf_file": "红楼梦第一卷_正文前40页_图像版.pdf",
+  "dpi": 200,
+  "engine_first": "rapidocr 3.10.0",
+  "engine_second": "apple_vision macOS 27.0.1",
+  "pages": 40,
+  "lines": 1064,
+  "elapsed_seconds": 142.1,
+  "divergence": {
+    "identical": 743,
+    "format_only_differs": 13,
+    "differs_chars": 135,
+    "differs_punct": 126,
+    "no_candidate": 47,
+    "compared": 1017,
+    "diverging": 261,
+    "diverging_rate": 0.2566,
+    "chars_rate": 0.1327,
+    "punct_rate": 0.1239,
+    "empty_rate": 0.0442
+  },
+  "gold": {
+    "page_markers": 39,
+    "located_lines": 915,
+    "unlocated_lines": 127,
+    "attribution": {
+      "both_ok": 667,
+      "first_wrong_second_ok": 16,
+      "first_ok_second_wrong": 183,
+      "both_wrong": 49,
+      "both_wrong_agree": 23,
+      "both_wrong_disagree": 26,
+      "located": 915,
+      "unlocated": 127
+    },
+    "attribution_rate": {
+      "both_ok": 0.729,
+      "first_wrong_second_ok": 0.0175,
+      "first_ok_second_wrong": 0.2,
+      "both_wrong": 0.0536,
+      "both_wrong_agree": 0.0251,
+      "both_wrong_disagree": 0.0284
+    },
+    "by_grade": {
+      "flagged": {
+        "differs_chars": 135,
+        "differs_punct": 126
+      },
+      "rescue": {
+        "differs_chars": 3,
+        "differs_punct": 13
+      },
+      "both_wrong_agree": {
+        "differs_chars": 9,
+        "differs_punct": 14
+      },
+      "both_wrong_disagree": {
+        "differs_chars": 14,
+        "differs_punct": 12
+      }
+    },
+    "capture_rate": {
+      "overall": 0.6462,
+      "chars": 0.6538,
+      "punct": 0.641,
+      "first_errors": {
+        "total": 65,
+        "chars": 26,
+        "punct": 39
+      },
+      "second_errors": {
+        "total": 232,
+        "chars": 127,
+        "punct": 105
+      }
+    },
+    "rescue_rate": {
+      "chars": 0.1154,
+      "punct": 0.3333
+    }
+  }
+}
