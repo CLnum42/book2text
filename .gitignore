@@ -27,6 +27,16 @@ project.db-shm
 # 不过滤测试样本与人工校对的金标准数据（fixtures/ 是测试输入，需要入库）
 !fixtures/gold/**
 
+# ---------- 测试用真实书籍（不提交）----------
+# test_books/ 由开发者放入的整本真实书籍（含受版权保护的内容，≥13MB）。
+# 不入库的理由：
+#   1) 版权——与 D-005 同理，公开前必须移除，而一旦进了 git 历史就很难彻底清掉；
+#   2) 体积——整本书放进仓库会让克隆与 diff 变得很重；
+#   3) 用途——它们是"输入材料"，不是需要版本管理的产物。
+# 这些书在 docs/technical-feasibility.md 中按文件名引用了测量结果，可追溯。
+# 如果确实需要入库，请先与开发者确认并同时更新 D-005。
+test_books/
+
 # ---------- 密钥与本地配置 ----------
 .env
 .env.*
@@ -70,7 +80,10 @@ pnpm-debug.log*
 
 # 前端构建产物不入库（决策见 docs/decisions.md D-004）
 frontend/dist/
-backend/book2text/static/
+
+# 注意：backend/book2text/static/ 目前是 Phase 0 手写的静态页，**要入库**。
+# 等 Vue 3 构建流水线落地、那里变成纯构建产物时，再加忽略规则
+# （见 docs/decisions.md D-004 的后续修订）。
 
 # ---------- 打包产物（Phase 6）----------
 *.app/

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Book2Text — Phase 0 骨架</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__title">
+      <h1>Book2Text</h1>
+      <span class="tag" id="stage-tag">Phase 0 骨架</span>
+    </div>
+    <div class="topbar__meta">
+      <span id="version-label" class="muted">版本读取中…</span>
+      <span id="platform-badge" class="badge">平台读取中…</span>
+    </div>
+  </header>
+
+  <div class="notice" id="platform-warning" hidden></div>
+
+  <main>
+    <section class="card">
+      <h2>1. 上传 PDF</h2>
+      <p class="hint">
+        目前只能上传并查看页面图像。本阶段尚<strong>没有识别功能</strong>，
+        上传的文件放在临时目录，不作为正式项目保存。
+      </p>
+
+      <div class="dropzone" id="dropzone" tabindex="0" role="button"
+           aria-label="选择或拖入 PDF 文件">
+        <p class="dropzone__main">把 PDF 拖到这里，或点击选择文件</p>
+        <p class="dropzone__sub muted">只接受 PDF；原始文件不会被修改</p>
+        <input type="file" id="file-input" accept="application/pdf,.pdf" hidden>
+      </div>
+
+      <div class="progress" id="progress-wrap" hidden>
+        <div class="progress__bar"><div class="progress__fill" id="progress-fill"></div></div>
+        <div class="progress__text" id="progress-text"></div>
+      </div>
+
+      <div class="alert alert--error" id="upload-error" hidden></div>
+    </section>
+
+    <section class="card" id="result-card" hidden>
+      <h2>2. 上传结果</h2>
+      <dl class="kv" id="upload-meta"></dl>
+
+      <div class="viewer">
+        <div class="viewer__toolbar">
+          <button type="button" id="prev-page" class="btn">上一页</button>
+          <span id="page-indicator" class="muted"></span>
+          <button type="button" id="next-page" class="btn">下一页</button>
+          <span class="spacer"></span>
+          <button type="button" id="reveal-btn" class="btn btn--ghost">在文件夹中显示</button>
+          <button type="button" id="delete-btn" class="btn btn--danger">删除这次上传</button>
+        </div>
+        <div class="viewer__stage">
+          <img id="page-image" alt="页面图像" hidden>
+          <p class="muted" id="image-status">正在渲染…</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3. 引擎自检</h2>
+      <p class="hint" id="engine-summary">读取中…</p>
+      <table class="table" id="engine-table">
+        <thead>
+          <tr>
+            <th>用途</th><th>引擎</th><th>状态</th><th>版本</th><th>说明</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>4. 当前限制</h2>
+      <ul class="limits" id="limits-list"></ul>
+      <dl class="kv" id="env-meta"></dl>
+    </section>
+  </main>
+
+  <footer class="footer muted">
+    开发说明书 V1.0 · Phase 0 第 4 项「最小骨架」· 全部数据只在本机处理
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

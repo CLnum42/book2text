@@ -1,0 +1,36 @@
+[project]
+name = "book2text"
+dynamic = ["version"]
+description = "将没有文本层的扫描版 PDF 图书转换为可追溯、经人工审校的结构化文本的本地网页应用"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "pypdfium2>=4.30",
+    "platformdirs>=4.2",
+    "pillow>=10.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+book2text = "book2text.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "backend/book2text/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/book2text"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

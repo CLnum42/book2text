@@ -3,29 +3,51 @@
 本文件记录 Book2Text 的对外可见变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-到目前为止**没有任何已发布版本**，应用还不能运行。以下条目按阶段累积在「未发布」中，MVP 完成后发布 0.1.0。
+到目前为止**没有任何已发布版本**。以下条目按阶段累积在「未发布」中，MVP 完成后发布 0.1.0。
 
 ## [未发布]
 
-### 新增
+### 新增 — Phase 0 第 4 项「最小骨架」（2026-10-14）
+
+应用现在**可以运行**了，但还不能识别文字。
+
+- 建立 uv 项目（`pyproject.toml`、`uv.lock`），依赖：FastAPI、uvicorn、pypdfium2、platformdirs、Pillow。
+- 本地服务：只监听 `127.0.0.1`；起始端口可配置，被占用时自动向后尝试；每次启动生成随机会话令牌，界面地址携带令牌，前端在 `X-B2T-Token` 请求头回传；同时校验 `Origin`（说明书 4.4）。
+- 启动入口 `book2text`（等价于 `backend/book2text/main.py`）：选端口、生成令牌、打印启动横幅、自动打开浏览器。
+- 上传 PDF：**流式**写入（边收边算 SHA-256，不把整个文件读进内存），校验 PDF magic bytes；原始文件不被修改（说明书 4.5）。
+- 页面渲染：按 `thumb` / `view` / `zoom` 三档 DPI 渲染为 PNG（**DPI 为待验证的初值**）。
+- **引擎自检**接口 `GET /api/app/info`：列出第一引擎（RapidOCR / PaddleOCR）、版面组件（RapidLayout / PP-DocLayout）、第二引擎（Apple Vision / Windows OCR / Tesseract）是否可用、版本与**不可用的原因**。
+- 静态页面（手写 HTML + 原生 JS，无框架）：上传 PDF、显示页面图像、翻页、显示引擎自检表与当前限制。
+- 双平台启动脚本：`scripts/start.command`（macOS，已实测）、`scripts/start.bat`（Windows，**未在 Windows 验证**）。
+- 测试：`tests/unit/` 与 `tests/integration/` 共 **57 项，全部通过**，覆盖平台模块、PDF 渲染、引擎自检、上传存储（含路径穿越防护）与完整 HTTP 链路。
+- 新增 `docs/technical-feasibility.md`（说明书 Phase 0 第 5 项的输出文件，**部分完成**）。
+- 新增测试样本 `fixtures/pdf/synthetic-smoke-3pages.pdf`——合成文件，**仅用于验证链路，不能用于评估识别质量**。
+
+### 新增 — 仓库初始化（2026-10-14）
 
 - 初始化 Git 仓库，主分支 `main`。
-- 按说明书 12.2 建立目录布局：`docs/` 入库，`backend/`、`frontend/`、`tests/`、`fixtures/`、`scripts/` 按阶段逐步创建，不预建空模块。
-- 入库开发说明书 V1.0（`docs/spec-v1.0.md`）与 6 个页面的 UI 原型（`docs/ui-mockups/`）。
-- 新增 `.gitattributes`：源码与文档统一 LF，Windows 启动脚本 `*.bat` 保留 CRLF，二进制文件标记为 binary。
-- 新增 `.gitignore`：忽略应用运行时数据（项目数据目录、`project.db`、缓存、导出、备份、日志）、Python 与 Node 产物、编辑器与系统文件、密钥文件。
-- 新增 `README.md`、`AGENTS.md`（说明书第 1 节同步副本）、`docs/development-log.md`、`docs/decisions.md`、`docs/known-limitations.md`。
+- 按说明书 12.2 建立目录布局；说明书入库为 `docs/spec-v1.0.md`，UI 原型入库为 `docs/ui-mockups/`。
+- 新增 `.gitattributes`：源码与文档统一 LF，`*.bat` 为 CRLF，二进制文件标记。
+- 新增 `.gitignore`：兜底防护运行时数据、Python/Node 产物、编辑器与系统文件、密钥。
+- 新增 `README.md`、`AGENTS.md`（说明书第 1 节同步副本）、`CHANGELOG.md`、`docs/development-log.md`、`docs/decisions.md`、`docs/known-limitations.md`。
 
-### 变更
+### 变更 — Git 与 GitHub（2026-10-14）
 
-- 配置全局 Git 提交身份为 `CLnum42 <CLnum42@users.noreply.github.com>`，与开发者既有仓库的历史提交一致；用 `--reset-author` 改写了首次提交（哈希 `7da13d0` → `21c5a85`）。
-- 建立 GitHub 远端 `git@github.com:CLnum42/book2text.git`（私有）并推送 `main`。
-- 认证方式为 SSH（`~/.ssh/id_ed25519`，ed25519），新增 `~/.ssh/config` 中的 `github.com` 条目；同时执行 `gh auth setup-git` 配置 HTTPS 凭据助手。
+- 配置全局 Git 提交身份为 `CLnum42 <CLnum42@users.noreply.github.com>`，与既有仓库的历史提交一致；用 `--reset-author` 改写了首次提交（`7da13d0` → `21c5a85`）。
+- 建立 GitHub 远端 `git@github.com:CLnum42/book2text.git`（私有）。
+- 认证方式为 SSH（`~/.ssh/id_ed25519`，ed25519），新增 `~/.ssh/config` 中的 `github.com` 条目；同时执行 `gh auth setup-git`。
 - 开启 `push.autoSetupRemote`，新分支推送无需 `-u`。
 
 ### 已知问题
 
-- 应用**尚无任何功能代码**，没有可运行的启动命令。
-- `gh` CLI 的细粒度 PAT 范围为"仅选定仓库"，不含本仓库，故 `gh` 命令会返回 404（见 `docs/known-limitations.md` L-07）。`git` 命令不受影响。
-- SSH 密钥未设口令（见 `docs/known-limitations.md` L-08）。
-- 仓库为**私有**，许可证未定，暂时不得公开（见 `docs/decisions.md` D-006、D-008）。
+- **应用不能识别文字**：没有 OCR。产品名称里的 "2Text" 尚不成立。
+- **没有项目与数据库**：上传的 PDF 只落在应用数据目录的临时 `scratch/` 下，不是正式项目。
+- **没有审校、结构与导出功能**。
+- **测试样本与人工校对金标准尚未制作**，Phase 0 第 1–3 项因此无法开始。现有测试 PDF 是合成文件，不能用于评估识别质量。
+- **Windows 上没有任何内容被验证过**：`scripts/start.bat`、Windows OCR 分支、控制台 UTF-8 处理均未执行。
+- 渲染 DPI 档位是待验证的初值，不是 Phase 0 样本测试得出的结论。
+- PDF 库暂用 pypdfium2，`PyMuPDF` 一侧未实测，选型未定。
+- `gh` CLI 的细粒度 PAT 范围为"仅选定仓库"，不含本仓库，`gh` 命令会返回 404（`docs/known-limitations.md` L-07）。`git` 命令不受影响。
+- SSH 密钥未设口令（L-08）。
+- 没有 CI，测试靠手动运行。
+- 仓库为**私有**，许可证未定，暂时不得公开（`docs/decisions.md` D-006、D-008）。
