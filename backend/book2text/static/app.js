@@ -435,15 +435,16 @@ function renderOcr(data) {
 
     const meta = document.createElement("span");
     const columnNote = data.column_count > 1 ? ` · 第 ${block.column + 1} 栏` : "";
-    meta.textContent = `${block.block_type} · ${block.line_count} 行${columnNote}`;
+    const hyphenNote = (block.hyphenations || []).length
+      ? ` · 断词还原 ${block.hyphenations.length} 处`
+      : "";
+    meta.textContent = `${block.block_type} · ${block.line_count} 行${columnNote}${hyphenNote}`;
 
     head.append(order, meta);
     order.style.marginRight = "6px";
 
     const text = document.createElement("div");
     text.className = "ocr-block__text";
-    // 行内换行保留（说明书 5.3：Block.text 保留行内换行），
-    // 用 pre-wrap 显示，用户能看出这还不是最终段落文本
     text.textContent = block.text;
 
     item.append(head, text);
@@ -453,7 +454,23 @@ function renderOcr(data) {
 
   activeBlockIndex = -1;
   panel.hidden = false;
+  applyTextMode();
   drawOverlay(data);
+}
+
+/** 在"保留行内换行"与"拼成段落"（说明书 9.2）之间切换块的显示文本。 */
+function applyTextMode() {
+  if (!lastOcrData) return;
+  const mode =
+    (document.querySelector('input[name="ocr-text-mode"]:checked') || {}).value ||
+    "lines";
+  const cards = el("ocr-blocks").children;
+  lastOcrData.blocks.forEach((block, index) => {
+    const card = cards[index];
+    if (!card) return;
+    const target = card.querySelector(".ocr-block__text");
+    if (target) target.textContent = mode === "joined" ? block.text_joined : block.text;
+  });
 }
 
 function drawOverlay(data) {
@@ -498,6 +515,9 @@ function setupViewerControls() {
   el("ocr-show-boxes").addEventListener("change", () => {
     if (lastOcrData) drawOverlay(lastOcrData);
   });
+  for (const radio of document.querySelectorAll('input[name="ocr-text-mode"]')) {
+    radio.addEventListener("change", applyTextMode);
+  }
 
   el("reveal-btn").addEventListener("click", async () => {
     if (!currentUpload) return;

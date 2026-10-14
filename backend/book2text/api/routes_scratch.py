@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Query, Request, Response
 
 from ..core import platform as b2t_platform
+from ..core.export import joining
 from ..core.ocr.adapters import RapidOcrAdapter
 from ..core.ocr.base import OcrEngineError, OcrParams
 from ..core.pdf import render
@@ -174,6 +175,29 @@ def recognize_page(
 
     layout = grouping.group_lines(result.lines)
 
+    # 每块按说明书 9.2 的行合并规则拼一份连续段落文本（导出时用的形态）
+    block_payloads = []
+    for block in layout.blocks:
+        joined = joining.join_lines([line.text for line in block.lines])
+        block_payloads.append(
+            {
+                "order_index": block.order_index,
+                "column": block.column,
+                "block_type": block.block_type,
+                "bbox": None if block.bbox is None else block.bbox.as_list(),
+                "line_count": block.line_count,
+                # text 保留行内换行（说明书 5.3：Block.text 的规定）
+                "text": block.text,
+                # text_joined 是拼成段落的形态，供界面预览与将来的导出使用
+                "text_joined": joined.text,
+                "hyphenations": [item.to_dict() for item in joined.hyphenations],
+                "lines": [
+                    {"text": line.text, "bbox": line.bbox.as_list()}
+                    for line in block.lines
+                ],
+            }
+        )
+
     return {
         "upload_id": upload_id,
         "page_index": page_index,
@@ -196,21 +220,7 @@ def recognize_page(
         "column_count": layout.column_count,
         "reading_order_uncertain": layout.reading_order_uncertain,
         "layout_notes": list(layout.notes),
-        "blocks": [
-            {
-                "order_index": block.order_index,
-                "column": block.column,
-                "block_type": block.block_type,
-                "bbox": None if block.bbox is None else block.bbox.as_list(),
-                "line_count": block.line_count,
-                "text": block.text,
-                "lines": [
-                    {"text": line.text, "bbox": line.bbox.as_list()}
-                    for line in block.lines
-                ],
-            }
-            for block in layout.blocks
-        ],
+        "blocks": block_payloads,
     }
 
 

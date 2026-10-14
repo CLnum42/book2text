@@ -71,11 +71,18 @@
           <strong>识别与分段结果</strong>
           <span class="muted" id="ocr-meta"></span>
           <span class="spacer"></span>
-          <label class="muted check"><input type="checkbox" id="ocr-show-boxes" checked> 在图上标出块框</label>
+          <label class="muted check">
+            <input type="radio" name="ocr-text-mode" value="lines" checked> 保留换行
+          </label>
+          <label class="muted check">
+            <input type="radio" name="ocr-text-mode" value="joined"> 拼成段落
+          </label>
+          <label class="muted check"><input type="checkbox" id="ocr-show-boxes" checked> 块框</label>
         </div>
         <p class="hint" id="ocr-hint">
           块由行距、缩进、对齐自动组合而成（<code>core/structure/grouping.py</code>），
-          是后续审校的操作单位。文本保留行内换行；拼成连续段落是导出时的规则。
+          是后续审校的操作单位。默认显示<strong>保留行内换行</strong>的原始形态；
+          切到<strong>拼成段落</strong>可预览按说明书 9.2 规则拼接后的导出形态。
           点击一个块可定位到图上的位置。
         </p>
         <div class="alert alert--warn" id="ocr-layout-warning" hidden></div>
