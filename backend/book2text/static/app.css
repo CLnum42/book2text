@@ -130,7 +130,46 @@ main {
   display: flex; align-items: flex-start; justify-content: center;
   padding: 16px; background: #f1f3f5;
 }
-.viewer__stage img { max-width: 100%; box-shadow: 0 1px 6px rgba(0,0,0,.14); background: #fff; }
+
+/* 图像与行框覆盖层必须共享同一个盒子，否则框会错位。
+   归一化坐标直接换成百分比，所以与显示尺寸无关。 */
+.page-canvas { position: relative; line-height: 0; box-shadow: 0 1px 6px rgba(0,0,0,.14); }
+.page-canvas img { display: block; max-width: 100%; height: auto; background: #fff; }
+.page-overlay { position: absolute; inset: 0; pointer-events: none; }
+.page-overlay .box {
+  position: absolute;
+  border: 1px solid rgba(47, 111, 235, .55);
+  background: rgba(47, 111, 235, .07);
+  border-radius: 2px;
+}
+.page-overlay .box--active {
+  border-color: #d9480f;
+  background: rgba(217, 72, 15, .18);
+  box-shadow: 0 0 0 2px rgba(217, 72, 15, .25);
+}
+
+.btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn--primary:hover:not(:disabled) { background: #2560d2; border-color: #2560d2; }
+
+.check { display: inline-flex; align-items: center; gap: 5px; }
+
+.ocr-panel { margin-top: 16px; border: 1px solid var(--border); border-radius: 8px; }
+.ocr-panel__head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; background: #fafbfc; border-bottom: 1px solid var(--border);
+}
+.ocr-panel .hint { margin: 0; padding: 8px 12px 0; }
+.ocr-lines {
+  margin: 8px 0 0; padding: 8px 12px 12px 34px;
+  max-height: 46vh; overflow: auto;
+}
+.ocr-lines li {
+  padding: 3px 6px; border-radius: 5px; cursor: pointer;
+  font-size: 14px; line-height: 1.5;
+}
+.ocr-lines li:hover { background: #f1f4f9; }
+.ocr-lines li.active { background: #fdece2; }
+.ocr-lines .idx { color: var(--muted); font-size: 12px; margin-right: 6px; }
 
 .btn {
   font: inherit; font-size: 13px;

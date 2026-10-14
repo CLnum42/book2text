@@ -156,6 +156,24 @@ Windows 侧的语言包检测逻辑（`OcrEngine.get_available_recognizer_langua
 - [ ] 两者在**真实扫描件**上的渲染质量对比：未做
 - [ ] 许可证最终结论：未定（牵连 D-006）
 
+**已获得的一条对比数据（2026-10-14）：`/Rotate` 的处理。**
+
+带 `/Rotate` 的页（扫描时把横放的书页存成竖向页面 + 旋转标记）在真实书籍里很常见。
+实测：
+
+| 渲染器 | `/Rotate=90` 的输出 |
+|---|---|
+| pypdfium2（PDFium） | 横向 842×595 pt，内容方向正确 |
+| macOS PDFKit | 横向 842×595 pt，同一方向 |
+
+**两者一致**，说明 pypdfium2 在这项上不需要额外补偿——PDFium 已按 `/Rotate`
+返回显示尺寸并渲染出显示方向。这条对 PDF 库选型是加分项。
+
+**顺带记录一个陷阱：** 用 `reportlab` 的 `setPageRotation()` 生成的 PDF，
+在 PDFium 与 PDFKit 里**都渲染不出内容**。做测试夹具时不要用它，
+正确做法见 `scripts/make_test_fixtures.py`。这个陷阱一度让我误判了 pypdfium2 的行为
+（见 `docs/decisions.md` D-014）。
+
 ### 2.3 第二引擎的分歧率与捕获率
 
 未测，且说明书要求**macOS 与 Windows 的数字必须分别记录**。

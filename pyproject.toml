@@ -41,3 +41,6 @@ packages = ["backend/book2text"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "ocr: 需要 OCR 引擎的测试（uv sync --group ocr-eval）",
+]

@@ -7,6 +7,27 @@
 
 ## [未发布]
 
+### 新增 — 应用内识别：上传 → 渲染 → 带坐标的文本行（2026-10-14）
+
+界面现在能对当前页做识别，并把**行框叠加在原图上**，点击文本行可定位到图上位置。
+
+- 新增 `core/ocr/base.py`：适配器协议（说明书 8.1）、归一化 bbox 与 `OcrLine`、
+  归一化原语 `normalize_quad()`。坐标规范按说明书 5.2（0–1、相对页面显示方向、与 DPI 无关）。
+- 新增 `core/ocr/adapters/rapidocr.py`：RapidOCR 适配器，负责**把引擎的像素坐标
+  转成归一化坐标**（说明书 5.2 明确要求由适配器负责）。延迟导入，未装 OCR 依赖时不加载。
+- 新增识别接口 `POST /api/scratch/{id}/page/{n}/recognize`，返回逐行文本与归一化 bbox。
+- 前端：行框覆盖层 + 文本行列表双向联动；归一化坐标直接换算成百分比定位，
+  因此与显示尺寸、渲染 DPI 都无关。
+- 新增 `scripts/make_test_fixtures.py` 与旋转页夹具 `fixtures/pdf/rotated-page-90.pdf`；
+  新增 `fixtures/README.md` 说明夹具分类、版权与制作陷阱。
+- 新增 `ocr-eval` 依赖组（`uv sync --group ocr-eval`），OCR 运行时仍不进核心依赖。
+
+**关于 `/Rotate` 的一处纠正：** 我最初误判 PDFium 不应用 `/Rotate`、需要手工补旋转，
+并据此改过代码。该结论基于一个**坏夹具**（reportlab 的 `setPageRotation()` 生成的
+PDF 在 PDFium 与 macOS PDFKit 里都渲染不出内容）。实测澄清后结论相反：
+**PDFium 已正确处理 `/Rotate`**，手工补旋转会让真实书籍里所有带 `/Rotate` 的页
+被重复旋转。已撤销该改动并加回归测试。详见 `docs/decisions.md` D-014。
+
 ### 新增 — Phase 0 第 1 项：两个门槛项已达标（2026-10-14）
 
 评估了第一引擎 **RapidOCR 3.10.0（ONNX 部署形态）**在 20 页样本上的表现。

@@ -19,21 +19,25 @@
 | **Phase 0 第 4 项：最小骨架** | ✅ 可运行：服务、上传 PDF、显示页面图像、引擎自检 |
 | **Phase 0 扫描样本（20 页，无文本层）** | ✅ 已生成：`fixtures/pdf/sample-20p-300dpi.pdf`，见 [`docs/scan-sample-set.md`](docs/scan-sample-set.md) |
 | **Phase 0 第 1 项：两个门槛项** | ✅ **已达标**：行级坐标 20/20 页、中位 2.04 秒/页，见 [`docs/ocr-evaluation.md`](docs/ocr-evaluation.md) |
+| **应用内识别（单页，行级坐标）** | ✅ 可用：上传 → 识别本页 → 文本行叠加在原图上 |
+| 行 → 块的组合（grouping） | ⬜ 未开始，**挡着审校与导出** |
 | Phase 0 第 1 项：PaddleOCR 对比与版面组件 | ⬜ 未开始 |
 | Phase 0 第 1–2 项：准确率（CER / 分歧率） | ⬜ **被人工校对金标准卡住** |
 | Phase 0 第 5 项：可行性文档 | 🔶 部分完成：`docs/technical-feasibility.md` |
 | Phase 1–8 业务功能 | ⬜ 未开始 |
 
-**现在能做什么：** 上传一个 PDF，逐页查看渲染出来的图像，看到引擎自检与环境状态。
+**现在能做什么：** 上传 PDF、逐页查看图像、**对当前页做识别并看到带坐标的文本行**
+（框会叠在原图上）、查看引擎自检与环境状态。
 
-**现在还不能做什么：** 把图像变成文字（没有 OCR），以及审校、结构编辑、导出。
-产品名称里的 "2Text" 目前还不成立。
+**现在还不能做什么：** 把行组合成段落（块）、批量识别、编辑与审校、导出。
+识别结果不会保存，刷新后即丢。
 
 ---
 
 ## 快速开始
 
 ```bash
+uv sync --group ocr-eval  # 需要识别功能时；只看看界面可以跳过（约 300 MB）
 uv run book2text          # 或双击 scripts/start.command（macOS）
 ```
 
@@ -43,7 +47,7 @@ uv run book2text          # 或双击 scripts/start.command（macOS）
 ```bash
 uv run book2text --port 9000     # 换起始端口（被占用时自动向后尝试）
 uv run book2text --no-browser    # 不自动打开浏览器
-uv run pytest -q                 # 运行测试（57 项）
+uv run pytest -q                 # 运行测试（83 项；未装 OCR 依赖时自动跳过其中 26 项）
 ```
 
 上传的文件放在系统应用数据目录下的 `scratch/`（macOS 上是
@@ -130,13 +134,18 @@ book2text/
     core/
       platform.py             # 平台分支集中于此（说明书第 10 节）
       pdf/render.py           # PDF 打开与页面渲染（暂用 pypdfium2）
-      ocr/selfcheck.py        # 引擎可用性自检
+      ocr/
+        base.py               # 适配器协议、归一化 bbox、OcrLine（说明书 8.1 / 5.2）
+        adapters/rapidocr.py  # RapidOCR 实现
+        selfcheck.py          # 引擎可用性自检
       storage/scratch.py      # Phase 0 临时上传目录（Phase 1 会被取代）
     static/                   # Phase 0 手写页面（Vue 落地后改为构建产物）
   scripts/                    # start.command（Mac）/ start.bat（Windows）
                               # make_scan_samples.py：从源书生成扫描样本
+                              # make_test_fixtures.py：生成旋转页等测试夹具
+                              # evaluate_ocr.py：门槛项测量
   tests/                      # conftest.py + unit/ + integration/
-  fixtures/pdf/               # 测试用 PDF：合成冒烟样本 + 20 页扫描样本（含 .manifest.json）
+  fixtures/                   # 测试用 PDF（分类与版权说明见 fixtures/README.md）
 ```
 
 尚未创建的目录按阶段逐步建立，**不预建空模块**（说明书 12.2）：`frontend/`（Vue 3），

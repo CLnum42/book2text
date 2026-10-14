@@ -52,14 +52,32 @@
           <button type="button" id="prev-page" class="btn">上一页</button>
           <span id="page-indicator" class="muted"></span>
           <button type="button" id="next-page" class="btn">下一页</button>
+          <button type="button" id="recognize-btn" class="btn btn--primary">识别本页</button>
           <span class="spacer"></span>
           <button type="button" id="reveal-btn" class="btn btn--ghost">在文件夹中显示</button>
           <button type="button" id="delete-btn" class="btn btn--danger">删除这次上传</button>
         </div>
         <div class="viewer__stage">
-          <img id="page-image" alt="页面图像" hidden>
+          <div class="page-canvas" id="page-canvas" hidden>
+            <img id="page-image" alt="页面图像">
+            <div class="page-overlay" id="page-overlay"></div>
+          </div>
           <p class="muted" id="image-status">正在渲染…</p>
         </div>
+      </div>
+
+      <div class="ocr-panel" id="ocr-panel" hidden>
+        <div class="ocr-panel__head">
+          <strong>识别结果</strong>
+          <span class="muted" id="ocr-meta"></span>
+          <span class="spacer"></span>
+          <label class="muted check"><input type="checkbox" id="ocr-show-boxes" checked> 在图上标出行框</label>
+        </div>
+        <p class="hint" id="ocr-hint">
+          坐标为归一化值（0–1，相对页面显示方向），与渲染分辨率无关。
+          点击一行可定位到图上的对应位置。
+        </p>
+        <ol class="ocr-lines" id="ocr-lines"></ol>
       </div>
     </section>
 

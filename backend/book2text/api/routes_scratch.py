@@ -14,6 +14,8 @@ from typing import Any
 from fastapi import APIRouter, Query, Request, Response
 
 from ..core import platform as b2t_platform
+from ..core.ocr.adapters import RapidOcrAdapter
+from ..core.ocr.base import OcrEngineError, OcrParams
 from ..core.pdf import render
 from ..core.storage import scratch as scratch_store
 from .errors import AppError
@@ -124,6 +126,66 @@ def get_page_image(
         media_type="image/png",
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.post("/{upload_id}/page/{page_index}/recognize")
+def recognize_page(
+    upload_id: str,
+    page_index: int,
+    dpi: int = Query(default=300, ge=72, le=600),
+) -> dict[str, Any]:
+    """识别一页，返回**带归一化 bbox 的行**。
+
+    坐标为 0–1 的归一化值（说明书 5.2），与渲染 DPI 无关：
+    界面把 bbox 乘以当前显示图像的宽高即可对齐。
+
+    **这不是说明书第 11 节的正式接口。** 正式接口以 `/projects/{id}/...` 为中心，
+    并且识别要走 Job / JobItem 执行器（Phase 2）；这里同步识别单页，
+    只是为了让「上传 → 渲染 → 识别」这条链路先跑通。
+    """
+    pdf_path = _require_pdf_path(upload_id)
+
+    adapter = RapidOcrAdapter()
+    ok, reason = adapter.available()
+    if not ok:
+        raise AppError(
+            503,
+            "ocr_engine_unavailable",
+            "OCR 引擎不可用",
+            detail=f"{reason}；安装后重试：uv sync --group ocr-eval",
+        )
+
+    try:
+        image = render.render_page_image(pdf_path, page_index, dpi=dpi)
+    except render.PdfError as exc:
+        raise AppError(400, "render_failed", "无法渲染该页", str(exc)) from exc
+
+    try:
+        result = adapter.recognize(image, OcrParams(dpi=dpi))
+    except OcrEngineError as exc:
+        raise AppError(500, "ocr_failed", "识别失败", str(exc)) from exc
+    finally:
+        image.close()
+
+    return {
+        "upload_id": upload_id,
+        "page_index": page_index,
+        "dpi": dpi,
+        "engine_id": result.engine_id,
+        "engine_version": result.engine_version,
+        "image_width": result.image_width,
+        "image_height": result.image_height,
+        "elapsed_seconds": round(result.elapsed_seconds, 3),
+        "line_count": len(result.lines),
+        "lines": [
+            {
+                "text": line.text,
+                "bbox": line.bbox.as_list(),
+                "confidence": line.confidence,
+            }
+            for line in result.lines
+        ],
+    }
 
 
 @router.post("/{upload_id}/reveal")

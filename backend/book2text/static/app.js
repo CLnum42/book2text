@@ -30,6 +30,12 @@ let currentUpload = null; // { upload_id, page_count, ... }
 let currentPage = 0;
 let currentImageUrl = null;
 let lastFile = null;
+let activeLineIndex = -1;
+let lastOcrData = null;
+
+/** 每页的识别结果缓存。重新识别很慢，翻页来回看时不该重跑。 */
+const ocrCache = new Map();
+const ocrKey = (uploadId, pageIndex) => `${uploadId}:${pageIndex}`;
 
 // ---------------------------------------------------------------- 通信
 
@@ -319,11 +325,12 @@ async function showPage(index) {
   el("prev-page").disabled = index === 0;
   el("next-page").disabled = index >= total - 1;
 
+  const canvas = el("page-canvas");
   const image = el("page-image");
   const status = el("image-status");
   status.hidden = false;
   status.textContent = `正在渲染第 ${index + 1} 页…`;
-  image.hidden = true;
+  canvas.hidden = true;
 
   try {
     const response = await apiFetch(
@@ -340,18 +347,135 @@ async function showPage(index) {
     if (currentImageUrl) URL.revokeObjectURL(currentImageUrl);
     currentImageUrl = URL.createObjectURL(blob);
     image.src = currentImageUrl;
-    image.hidden = false;
+
+    // 图像必须加载完成才能算准覆盖层的尺寸
+    await new Promise((resolve) => {
+      if (image.complete && image.naturalWidth > 0) resolve();
+      else image.onload = () => resolve();
+    });
+
+    canvas.hidden = false;
     status.hidden = true;
   } catch (error) {
     status.textContent = "";
     showError(status, error);
     status.hidden = false;
+    return;
   }
+
+  const cached = ocrCache.get(ocrKey(currentUpload.upload_id, index));
+  if (cached) renderOcr(cached);
+  else clearOcr();
+}
+
+function clearOcr() {
+  activeLineIndex = -1;
+  el("ocr-panel").hidden = true;
+  el("ocr-lines").innerHTML = "";
+  el("page-overlay").innerHTML = "";
+}
+
+// ---------------------------------------------------------------- 识别
+
+async function recognizeCurrentPage() {
+  if (!currentUpload) return;
+  const button = el("recognize-btn");
+  const status = el("image-status");
+
+  button.disabled = true;
+  button.textContent = "识别中…";
+  el("upload-error").hidden = true;
+
+  try {
+    const data = await apiJson(
+      `/api/scratch/${currentUpload.upload_id}/page/${currentPage}/recognize`,
+      { method: "POST" }
+    );
+    ocrCache.set(ocrKey(currentUpload.upload_id, currentPage), data);
+    renderOcr(data);
+  } catch (error) {
+    showError(el("upload-error"), error);
+    if (status) status.hidden = true;
+  } finally {
+    button.disabled = false;
+    button.textContent = "识别本页";
+  }
+}
+
+function renderOcr(data) {
+  const panel = el("ocr-panel");
+  const list = el("ocr-lines");
+
+  lastOcrData = data;
+  el("ocr-meta").textContent =
+    `${data.engine_id} ${data.engine_version} · ${data.line_count} 行 · ` +
+    `${data.elapsed_seconds} 秒 · 识别用图 ${data.image_width}×${data.image_height}`;
+
+  list.innerHTML = "";
+  data.lines.forEach((line, index) => {
+    const item = document.createElement("li");
+    item.dataset.index = String(index);
+
+    const idx = document.createElement("span");
+    idx.className = "idx";
+    idx.textContent = String(index + 1);
+
+    const text = document.createElement("span");
+    text.textContent = line.text || "（空行）";
+
+    item.append(idx, text);
+    item.addEventListener("click", () => selectLine(index));
+    list.append(item);
+  });
+
+  activeLineIndex = -1;
+  panel.hidden = false;
+  drawOverlay(data);
+}
+
+function drawOverlay(data) {
+  const overlay = el("page-overlay");
+  const showBoxes = el("ocr-show-boxes").checked;
+  overlay.innerHTML = "";
+  if (!showBoxes) return;
+
+  // 归一化坐标 → 百分比定位，因此与显示尺寸、渲染 DPI 都无关
+  data.lines.forEach((line, index) => {
+    const [x0, y0, x1, y1] = line.bbox;
+    const box = document.createElement("div");
+    box.className = "box";
+    box.dataset.index = String(index);
+    box.style.left = `${x0 * 100}%`;
+    box.style.top = `${y0 * 100}%`;
+    box.style.width = `${(x1 - x0) * 100}%`;
+    box.style.height = `${(y1 - y0) * 100}%`;
+    overlay.append(box);
+  });
+}
+
+function selectLine(index) {
+  activeLineIndex = index;
+
+  for (const item of el("ocr-lines").children) {
+    item.classList.toggle("active", Number(item.dataset.index) === index);
+  }
+  const boxes = el("page-overlay").children;
+  for (const box of boxes) {
+    const isActive = Number(box.dataset.index) === index;
+    box.classList.toggle("box--active", isActive);
+    if (isActive) box.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  const item = el("ocr-lines").querySelector(`li[data-index="${index}"]`);
+  if (item) item.scrollIntoView({ block: "nearest" });
 }
 
 function setupViewerControls() {
   el("prev-page").addEventListener("click", () => showPage(currentPage - 1));
   el("next-page").addEventListener("click", () => showPage(currentPage + 1));
+  el("recognize-btn").addEventListener("click", () => recognizeCurrentPage());
+  el("ocr-show-boxes").addEventListener("change", () => {
+    if (lastOcrData) drawOverlay(lastOcrData);
+  });
 
   el("reveal-btn").addEventListener("click", async () => {
     if (!currentUpload) return;
@@ -372,11 +496,16 @@ function setupViewerControls() {
       showError(el("upload-error"), error);
       return;
     }
+    // 该上传的识别缓存一并清掉，避免翻回旧编号时读到过期结果
+    for (const key of [...ocrCache.keys()]) {
+      if (key.startsWith(`${currentUpload.upload_id}:`)) ocrCache.delete(key);
+    }
     if (currentImageUrl) {
       URL.revokeObjectURL(currentImageUrl);
       currentImageUrl = null;
     }
     currentUpload = null;
+    clearOcr();
     el("result-card").hidden = true;
     el("progress-wrap").hidden = true;
   });
