@@ -17,7 +17,8 @@
 | 开发说明书 V1.0 | ✅ 已入库：`docs/spec-v1.0.md` |
 | UI 原型（6 个页面） | ✅ 已入库：`docs/ui-mockups/` |
 | **Phase 0 第 4 项：最小骨架** | ✅ 可运行：服务、上传 PDF、显示页面图像、引擎自检 |
-| Phase 0 第 1–3 项：引擎与 PDF 库实测 | ⬜ **被测试样本缺失卡住** |
+| **Phase 0 扫描样本（20 页，无文本层）** | ✅ 已生成：`fixtures/pdf/sample-20p-300dpi.pdf`，见 [`docs/scan-sample-set.md`](docs/scan-sample-set.md) |
+| Phase 0 第 1–3 项：引擎与 PDF 库实测 | ⬜ **被人工校对金标准卡住** |
 | Phase 0 第 5 项：可行性文档 | 🔶 部分完成：`docs/technical-feasibility.md` |
 | Phase 1–8 业务功能 | ⬜ 未开始 |
 
@@ -116,6 +117,7 @@ book2text/
     spec-v1.0.md              # 开发说明书 V1.0（唯一权威依据）
     ui-mockups/               # 6 个页面的 HTML 原型与截图
     technical-feasibility.md  # Phase 0 第 5 项输出：已验证 / 未验证 / 平台差异 / 风险
+    scan-sample-set.md        # 20 页扫描样本集：选页依据、覆盖度、局限
     development-log.md        # 开发日志（每次任务一条，按说明书 1.2 模板）
     decisions.md              # 决策记录
     known-limitations.md      # 已知限制与未验证事项
@@ -130,8 +132,9 @@ book2text/
       storage/scratch.py      # Phase 0 临时上传目录（Phase 1 会被取代）
     static/                   # Phase 0 手写页面（Vue 落地后改为构建产物）
   scripts/                    # start.command（Mac）/ start.bat（Windows）
+                              # make_scan_samples.py：从源书生成扫描样本
   tests/                      # conftest.py + unit/ + integration/
-  fixtures/pdf/               # 测试用 PDF
+  fixtures/pdf/               # 测试用 PDF：合成冒烟样本 + 20 页扫描样本（含 .manifest.json）
 ```
 
 尚未创建的目录按阶段逐步建立，**不预建空模块**（说明书 12.2）：`frontend/`（Vue 3），
@@ -147,6 +150,7 @@ book2text/
 |---|---|
 | [`docs/spec-v1.0.md`](docs/spec-v1.0.md) | 开发说明书 V1.0：架构、数据模型、功能、UX、OCR 策略、分阶段路线 |
 | [`docs/technical-feasibility.md`](docs/technical-feasibility.md) | Phase 0 实测数据：已验证的能力、未验证事项、平台差异、风险 |
+| [`docs/scan-sample-set.md`](docs/scan-sample-set.md) | 20 页扫描样本：逐页来源、覆盖度对照、重要局限 |
 | [`AGENTS.md`](AGENTS.md) | 开发 Agent 的固定工作规则（说明书第 1 节同步副本） |
 | [`docs/decisions.md`](docs/decisions.md) | 决策记录（架构与实现取舍的理由） |
 | [`docs/development-log.md`](docs/development-log.md) | 每次开发任务的记录（含未验证项） |

@@ -1,0 +1,323 @@
+{
+  "generated_at": "2026-10-14T07:54:51+00:00",
+  "generator": "scripts/make_scan_samples.py",
+  "dpi": 300,
+  "jpeg_quality": 85,
+  "color_mode": "L（灰度）",
+  "page_count": 20,
+  "output_file": "sample-20p-300dpi.pdf",
+  "output_bytes": 11135475,
+  "source_dir": "test_books",
+  "source_books": {
+    "《红楼梦》双语对照 2_正文_中文部分.pdf": "《红楼梦》双语对照（正文·中文部分）",
+    "安乐哲 译本处理.PDF": "Roger T. Ames, The Art of Rulership: A Study of Ancient Chinese Political Thought"
+  },
+  "caveats": [
+    "源书是原生数字排版 PDF，不是扫描件；本样本是它的干净栅格化结果。",
+    "因此不含真实扫描的倾斜、噪点、透印、低对比度等退化，OCR 结果会偏乐观。",
+    "两本源书都不含中英混排页面，故本样本无法覆盖该类别。",
+    "源 PDF 的文本层不可靠（存在错字，如「蘅芜」被写成「祷芜」），不能用作金标准。"
+  ],
+  "pages": [
+    {
+      "sample_page": 1,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 1,
+      "category": "章节标题 + 复杂版面",
+      "note": "第二十七回回目；左栏标题与插图、右栏正文",
+      "pixel_size": [
+        1864,
+        2810
+      ],
+      "page_size_pt": [
+        447.31,
+        674.32
+      ]
+    },
+    {
+      "sample_page": 2,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 31,
+      "category": "普通单栏正文",
+      "note": "纯正文页，页脚有页码",
+      "pixel_size": [
+        1864,
+        2810
+      ],
+      "page_size_pt": [
+        447.31,
+        674.32
+      ]
+    },
+    {
+      "sample_page": 3,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 60,
+      "category": "章节标题",
+      "note": "第三十一回回目，正文从其下方开始（跨页段落前半）",
+      "pixel_size": [
+        1864,
+        2810
+      ],
+      "page_size_pt": [
+        447.31,
+        674.32
+      ]
+    },
+    {
+      "sample_page": 4,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 61,
+      "category": "跨页段落",
+      "note": "与上一页构成同一段落（跨页段落后半）",
+      "pixel_size": [
+        1864,
+        2810
+      ],
+      "page_size_pt": [
+        447.31,
+        674.32
+      ]
+    },
+    {
+      "sample_page": 5,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 121,
+      "category": "普通单栏正文",
+      "note": "纯正文页",
+      "pixel_size": [
+        1864,
+        2810
+      ],
+      "page_size_pt": [
+        447.31,
+        674.32
+      ]
+    },
+    {
+      "sample_page": 6,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 147,
+      "category": "章节标题 + 复杂版面",
+      "note": "第三十八回回目 + 整幅插图 + 正文",
+      "pixel_size": [
+        1864,
+        2810
+      ],
+      "page_size_pt": [
+        447.31,
+        674.32
+      ]
+    },
+    {
+      "sample_page": 7,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 151,
+      "category": "普通单栏正文",
+      "note": "纯正文页",
+      "pixel_size": [
+        1864,
+        2810
+      ],
+      "page_size_pt": [
+        447.31,
+        674.32
+      ]
+    },
+    {
+      "sample_page": 8,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 211,
+      "category": "复杂版面",
+      "note": "正文右下角有插图",
+      "pixel_size": [
+        1864,
+        2810
+      ],
+      "page_size_pt": [
+        447.31,
+        674.32
+      ]
+    },
+    {
+      "sample_page": 9,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 301,
+      "category": "普通单栏正文",
+      "note": "纯正文页",
+      "pixel_size": [
+        1864,
+        2810
+      ],
+      "page_size_pt": [
+        447.31,
+        674.32
+      ]
+    },
+    {
+      "sample_page": 10,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 361,
+      "category": "特殊排版",
+      "note": "正文含对联等缩进变化，右下有小插图",
+      "pixel_size": [
+        1864,
+        2810
+      ],
+      "page_size_pt": [
+        447.31,
+        674.32
+      ]
+    },
+    {
+      "sample_page": 11,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 9,
+      "category": "普通单栏正文（英文）",
+      "note": "英文正文（跨页段落前半）",
+      "pixel_size": [
+        2550,
+        3301
+      ],
+      "page_size_pt": [
+        612.0,
+        792.0
+      ]
+    },
+    {
+      "sample_page": 12,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 10,
+      "category": "跨页段落（英文）",
+      "note": "与上一页构成同一段落（跨页段落后半）",
+      "pixel_size": [
+        2550,
+        3301
+      ],
+      "page_size_pt": [
+        612.0,
+        792.0
+      ]
+    },
+    {
+      "sample_page": 13,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 56,
+      "category": "页眉页码 + 正文",
+      "note": "右上红色页眉 Page N，正文含斜体罗马字与上标脚注号",
+      "pixel_size": [
+        2550,
+        3301
+      ],
+      "page_size_pt": [
+        612.0,
+        792.0
+      ]
+    },
+    {
+      "sample_page": 14,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 166,
+      "category": "普通单栏正文（英文）",
+      "note": "密集正文页",
+      "pixel_size": [
+        2550,
+        3301
+      ],
+      "page_size_pt": [
+        612.0,
+        792.0
+      ]
+    },
+    {
+      "sample_page": 15,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 221,
+      "category": "正文 + 脚注",
+      "note": "正文下方开始出现编号脚注",
+      "pixel_size": [
+        2550,
+        3301
+      ],
+      "page_size_pt": [
+        612.0,
+        792.0
+      ]
+    },
+    {
+      "sample_page": 16,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 469,
+      "category": "脚注密集",
+      "note": "大半页为编号脚注",
+      "pixel_size": [
+        2550,
+        3301
+      ],
+      "page_size_pt": [
+        612.0,
+        792.0
+      ]
+    },
+    {
+      "sample_page": 17,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 511,
+      "category": "脚注密集",
+      "note": "大半页为编号脚注",
+      "pixel_size": [
+        2550,
+        3301
+      ],
+      "page_size_pt": [
+        612.0,
+        792.0
+      ]
+    },
+    {
+      "sample_page": 18,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 551,
+      "category": "脚注密集 + 页眉",
+      "note": "脚注行数最多的一页（13 行）",
+      "pixel_size": [
+        2550,
+        3301
+      ],
+      "page_size_pt": [
+        612.0,
+        792.0
+      ]
+    },
+    {
+      "sample_page": 19,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 606,
+      "category": "参考文献",
+      "note": "书目条目，悬挂缩进",
+      "pixel_size": [
+        2550,
+        3301
+      ],
+      "page_size_pt": [
+        612.0,
+        792.0
+      ]
+    },
+    {
+      "sample_page": 20,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 661,
+      "category": "索引",
+      "note": "索引页，短行多、缩进层级多",
+      "pixel_size": [
+        2550,
+        3301
+      ],
+      "page_size_pt": [
+        612.0,
+        792.0
+      ]
+    }
+  ]
+}
