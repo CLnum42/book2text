@@ -304,6 +304,7 @@ main {
 .status--ok { background: var(--ok-bg); color: var(--ok-fg); }
 .status--bad { background: var(--bad-bg); color: var(--bad-fg); }
 .status--warn { background: var(--warn-bg); color: var(--warn-fg); }
+.status--muted { background: #f1f2f4; color: var(--muted); }
 .role { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
 .limits { margin: 0 0 16px; padding-left: 20px; }
@@ -406,6 +407,31 @@ main {
 .review-block__text:focus { outline: 2px solid rgba(47,111,235,.35); border-color: var(--accent); }
 .review-block__actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .review-block__actions .btn { font-size: 11px; padding: 2px 8px; }
+/* 有汉字级分歧的块：左侧一道琥珀色，扫一眼就知道哪里要细看 */
+.review-block--divergence { border-left: 3px solid #d9a441; }
+
+/* 分歧标记（说明书 8.5）：逐行给出另一路候选 */
+.divergence {
+  border: 1px solid #ecdfc4; background: #fffcf5; border-radius: 6px;
+  padding: 6px 8px; display: flex; flex-direction: column; gap: 5px;
+}
+.divergence__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.divergence__badge { background: var(--warn-bg); color: var(--warn-fg); padding: 1px 7px; border-radius: 999px; }
+.divergence__lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.divergence__line {
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+  font-size: 12px; line-height: 1.6;
+}
+.divergence__goto {
+  font: inherit; padding: 0 4px; border: none; background: none; color: var(--accent);
+  cursor: pointer; text-decoration: underline;
+}
+.divergence__level { font-size: 11px; padding: 0 6px; border-radius: 999px; background: #f1f2f4; color: var(--muted); }
+.divergence__level--differs_chars { background: var(--bad-bg); color: var(--bad-fg); }
+.divergence__level--differs_punct { background: var(--warn-bg); color: var(--warn-fg); }
+.divergence__candidate { color: #7a4bb5; word-break: break-word; }
+.divergence__line .btn { font-size: 11px; padding: 1px 7px; }
+.divergence__note { margin: 0; font-size: 11px; color: var(--muted); }
 .review-block__original {
   margin: 0; padding: 6px 8px; background: #f8f9fb; border-radius: 6px;
   font-size: 12px; color: var(--muted); white-space: pre-wrap; word-break: break-word;

@@ -141,7 +141,19 @@ def test_auxiliary_writes_line_candidates_without_touching_blocks(
     assert [b["review_status"] for b in after["blocks"]] == [
         b["review_status"] for b in before["blocks"]
     ]
-    assert after["blocks"][0]["diff_line_count"] >= 1, "块载荷要带分歧行数"
+    # 块载荷带**分级后**的分歧（说明书 8.5）：只有那一行实质分歧算"分歧行"，
+    # 全角/半角那一行是格式差异（不计入分歧，但要能显示出来）
+    graded = [b for b in after["blocks"] if b["divergence"]["lines"]]
+    assert len(graded) == 1, "只有一行实质分歧"
+    assert graded[0]["divergence"]["chars"] == 1
+    assert graded[0]["divergence"]["punct"] == 0
+    assert graded[0]["diff_line_count"] == 1
+    mark = graded[0]["divergence"]["marks"][0]
+    assert mark["candidate"] == "完全不一样的一行"
+    assert mark["level"] == "differs_chars"
+    assert mark["line_index"] == 0, "标记的是块内行号，不是全页行号"
+    formatted = [b for b in after["blocks"] if b["divergence"]["format_only"]]
+    assert len(formatted) == 1, "格式差异单独计数，不算分歧"
 
 
 def test_auxiliary_run_is_recorded_as_a_run_not_blocks(

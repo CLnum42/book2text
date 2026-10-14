@@ -215,9 +215,9 @@ function renderAuxiliary(data) {
     `一致 ${data.identical} / 仅格式 ${data.format_only_differs} / 有分歧 ${data.differs} · ` +
     `${data.elapsed_seconds} 秒`;
   el("aux-hint").textContent =
-    "第二引擎按第一引擎切出的行图逐行复核。**实测它比第一引擎弱**" +
-    "（中文正文 CER 2.16% vs 1.08%，主要是标点习惯不同），" +
-    "所以这里的候选只作参考：觉得它对的，点「采用这一路」把这一行换成它的文本（可撤销）。";
+    "第二引擎按第一引擎切出的行图逐行复核。实测它比第一引擎弱" +
+    "（中文正文 CER 2.16% vs 1.08%，主要是标点习惯不同），所以这里的候选只作参考——" +
+    "块里已按等级逐行标出（汉字级 / 标点级），点「换成这一路」把那一行换过去（可撤销）。";
 
   const list = el("aux-lines");
   list.innerHTML = "";
@@ -252,21 +252,12 @@ function renderAuxiliary(data) {
     adopt.textContent = "采用这一路";
     adopt.title = "把这一行换成第二引擎的文本（一次普通编辑，可撤销）";
     const block = (data.blocks || []).find((item2) => item2.block_id === item.block_id);
-    adopt.addEventListener("click", () => adoptAuxLine(block, item));
+    adopt.addEventListener("click", () => adoptLine(block, item.line_index, item.aux_text));
     actions.append(adopt);
 
     li.append(pair, actions);
     list.append(li);
   }
-}
-
-/** 采用第二引擎的这一行：把块文本里对应那一行换掉（走普通改块接口，可撤销）。 */
-async function adoptAuxLine(block, item) {
-  if (!block) return;
-  const lines = block.text.split("\n");
-  if (item.line_index >= lines.length) return;
-  lines[item.line_index] = item.aux_text;
-  await patchBlock(block, { text: lines.join("\n") });
 }
 
 function setupAuxControls() {
@@ -860,6 +851,47 @@ function recognitionOf(page) {
   };
 }
 
+// ---------------------------------------------------------------- 分歧（说明书 8.5）
+
+/** 页面载荷与块载荷都带 `divergence`（后端按"块里现在的文本"现算，见 blocks.py）。 */
+function divergenceOf(thing) {
+  return thing.divergence || {
+    lines: 0, chars: 0, punct: 0, empty: 0, format_only: 0,
+    stale_blocks: 0, checked: false, engine_id: null, checked_at: null,
+    stale: false, marks: [],
+  };
+}
+
+const DIVERGENCE_LEVEL_LABELS = {
+  differs_chars: "汉字级",
+  differs_punct: "标点级",
+  no_candidate: "第二引擎没读出来",
+  format_only_differs: "仅格式差异",
+};
+
+/** 把分歧概况说成一句人话；没有分歧时返回空串。 */
+function divergenceSummary(divergence) {
+  const parts = [];
+  if (divergence.chars) parts.push(`汉字级 ${divergence.chars}`);
+  if (divergence.punct) parts.push(`标点级 ${divergence.punct}`);
+  if (divergence.empty) parts.push(`第二引擎没读出 ${divergence.empty}`);
+  if (divergence.format_only) parts.push(`仅格式差异 ${divergence.format_only}`);
+  return parts.join(" · ");
+}
+
+/** 缩略图上的分歧标记：只标**汉字级**（标点级太吵，看标题里的完整数字）。 */
+function divergenceChip(page) {
+  const divergence = divergenceOf(page);
+  if (!divergence.lines) return null;
+  const chip = document.createElement("span");
+  chip.className = "status " + (divergence.chars ? "status--warn" : "status--muted");
+  chip.textContent = divergence.chars ? `≠ ${divergence.chars}` : "≈ 标点级";
+  chip.title =
+    `两路复核：${divergenceSummary(divergence)}\n` +
+    "汉字级是两路在汉字 / 数字上不一致（值得看）；标点级多半是第二引擎自己的标点习惯";
+  return chip;
+}
+
 function recognitionText(page) {
   const recognition = recognitionOf(page);
   const label = RECOGNITION_LABELS[recognition.status] || recognition.status;
@@ -1143,6 +1175,10 @@ function matchesTriage(page, recognition, kind) {
   if (kind === "uncertain") return (review.uncertain || 0) > 0;
   if (kind === "failed") return recognition.status === "failed";
   if (kind === "candidate") return recognition.status === "has_candidate";
+  // 分歧（说明书 8.5）：默认只看**汉字级**——实测量过，第二引擎标出的分歧里
+  // 七成是它自己的标点习惯（见 docs/known-limitations.md L-30），全算上就成了噪声
+  if (kind === "divergence_chars") return (divergenceOf(page).chars || 0) > 0;
+  if (kind === "divergence") return (divergenceOf(page).lines || 0) > 0;
   return true;
 }
 
@@ -1355,6 +1391,8 @@ function applyTileState(tile, page) {
   status.append(recognitionChip(page));
   const reviewChip = reviewBadge(page);
   if (reviewChip) status.append(reviewChip);
+  const divergence = divergenceChip(page);
+  if (divergence) status.append(divergence);
 
   const isBusy = busyPages.has(page.page_no);
   const button = tile.querySelector('button[data-action="recognize"]');
@@ -1750,6 +1788,7 @@ let detailPageNo = null;
 let detailImagePageNo = null;
 let reviewBlocks = [];
 let reviewSaveTimer = null;
+let reviewPendingSave = null; // {block, text}：还没发出去的自动保存
 /** 每个块编辑框最后的光标位置：拆分要用它（点菜单会让编辑框失焦）。 */
 const cursorByBlock = new Map();
 
@@ -1839,6 +1878,7 @@ function project_id() {
 
 function reviewMetaText(data) {
   const review = data.review || {};
+  const divergence = divergenceOf(data);
   const parts = [
     PAGE_TYPE_LABELS[data.page.page_type] || data.page.page_type,
     `${review.block_count || 0} 块`,
@@ -1846,6 +1886,7 @@ function reviewMetaText(data) {
   ];
   if (review.uncertain) parts.push(`不确定 ${review.uncertain}`);
   if (review.modified) parts.push(`已修改 ${review.modified}`);
+  if (divergence.lines) parts.push(`两路分歧 ${divergence.lines} 行`);
   if (data.active_run) parts.push(`${data.active_run.engine_id} ${data.active_run.engine_version}`);
   return parts.join(" · ");
 }
@@ -1868,6 +1909,18 @@ function renderReviewBanner(data, recognition) {
   }
   if (review.uncertain) {
     messages.push(`本页有 ${review.uncertain} 个不确定块——确认整页时它们不会被自动确认。`);
+  }
+  // 第二引擎的分歧（说明书 8.5）：只在有实质分歧或还没复核过时提醒
+  const divergence = divergenceOf(data);
+  if (divergence.lines) {
+    messages.push(
+      `两路复核有 ${divergence.lines} 行不一致（${divergenceSummary(divergence)}）：` +
+        "块里已逐行标出，另一路候选就写在旁边，点「换成这一路」即可换过去。"
+    );
+  } else if (divergence.stale_blocks) {
+    messages.push(
+      `有 ${divergence.stale_blocks} 个块的行结构改过，逐行分歧标记对这些块不再可靠。`
+    );
   }
   banner.textContent = messages.join(" ");
   banner.hidden = messages.length === 0;
@@ -1922,6 +1975,8 @@ function blockCard(block, index, blocksCount) {
   if (["header", "footer", "page_number"].includes(block.block_type)) {
     item.classList.add("review-block--chrome");
   }
+  const blockDivergence = divergenceOf(block);
+  if (blockDivergence.chars) item.classList.add("review-block--divergence");
 
   const head = document.createElement("div");
   head.className = "review-block__head";
@@ -1956,6 +2011,7 @@ function blockCard(block, index, blocksCount) {
   if (block.modified) bits.push("● 已修改");
   if (!block.include) bits.push("已排除");
   if (block.continues_to_next) bits.push("↪ 延续下页");
+  if (blockDivergence.lines) bits.push(`≠ 两路不一致 ${blockDivergence.lines} 行`);
   badges.textContent = bits.join(" · ");
 
   head.append(typeSelect, status, badges);
@@ -2104,8 +2160,128 @@ function blockCard(block, index, blocksCount) {
   original.hidden = true;
   original.textContent = block.ocr_text;
 
-  item.append(head, textarea, actions, original);
+  item.append(head, textarea);
+  const divergenceSection = blockDivergenceSection(block, textarea);
+  if (divergenceSection) item.append(divergenceSection);
+  item.append(actions, original);
   return item;
+}
+
+// ---------------------------------------------------------------- 分歧标记（说明书 8.5）
+
+/** 一块里最多逐条列出几行分歧；再多就交给「第二引擎复核」面板。 */
+const MAX_DIVERGENCE_ROWS = 8;
+
+/**
+ * 块里的分歧：逐行给出另一路的候选，点一下换过去（说明书 8.5 的 MVP 落点）。
+ *
+ * 标记是**块里现在的文本**与第二引擎候选的比较（后端算的），所以采纳之后
+ * 这一行会自动从列表里消失——标记始终反映当下的状态。
+ */
+function blockDivergenceSection(block, textarea) {
+  const divergence = divergenceOf(block);
+  const marks = divergence.marks || [];
+  if (!marks.length && !divergence.stale) return null;
+
+  const box = document.createElement("div");
+  box.className = "divergence";
+
+  if (divergence.stale) {
+    const note = document.createElement("p");
+    note.className = "divergence__note";
+    note.textContent =
+      "这一块的行结构改过（增删过换行），逐行分歧标记会指错地方，已暂时收起——" +
+      "重新识别这一页就能重新得到标记。";
+    box.append(note);
+    return box;
+  }
+
+  const head = document.createElement("div");
+  head.className = "divergence__head";
+  const badge = document.createElement("span");
+  badge.className = "divergence__badge";
+  badge.textContent = divergence.lines
+    ? `≠ ${divergence.lines} 行两路不一致`
+    : "两路没有实质分歧";
+  const detail = document.createElement("span");
+  detail.className = "muted";
+  detail.textContent = divergenceSummary(divergence);
+  head.append(badge, detail);
+  box.append(head);
+
+  const list = document.createElement("ol");
+  list.className = "divergence__lines";
+  for (const mark of marks.slice(0, MAX_DIVERGENCE_ROWS)) {
+    const row = document.createElement("li");
+    row.className = "divergence__line";
+
+    const where = document.createElement("button");
+    where.type = "button";
+    where.className = "divergence__goto";
+    where.textContent = `第 ${mark.line_index + 1} 行`;
+    where.title = "在编辑框里选中这一行，和原图对照着看";
+    where.addEventListener("click", () => selectLineInTextarea(textarea, mark.line_index));
+
+    const level = document.createElement("span");
+    level.className = `divergence__level divergence__level--${mark.level}`;
+    level.textContent = DIVERGENCE_LEVEL_LABELS[mark.level] || mark.level;
+
+    const candidate = document.createElement("span");
+    candidate.className = "divergence__candidate";
+    candidate.textContent = mark.candidate
+      ? `第二引擎：${truncate(mark.candidate, 60)}`
+      : "第二引擎没读出这一行（没有候选）";
+    candidate.title = mark.candidate;
+
+    row.append(where, level, candidate);
+    if (mark.candidate) {
+      const adopt = document.createElement("button");
+      adopt.type = "button";
+      adopt.className = "btn btn--ghost";
+      adopt.textContent = "换成这一路";
+      adopt.title = "把这一行换成第二引擎的文本（一次普通编辑，可撤销）";
+      adopt.addEventListener("click", () =>
+        adoptLine(block, mark.line_index, mark.candidate)
+      );
+      row.append(adopt);
+    }
+    list.append(row);
+  }
+  box.append(list);
+
+  if (marks.length > MAX_DIVERGENCE_ROWS) {
+    const rest = document.createElement("p");
+    rest.className = "muted";
+    rest.textContent =
+      `还有 ${marks.length - MAX_DIVERGENCE_ROWS} 行，按「第二引擎复核」看全部。`;
+    box.append(rest);
+  }
+  if (divergence.chars) {
+    const hint = document.createElement("p");
+    hint.className = "divergence__note";
+    hint.textContent =
+      "实测量过：第二引擎比第一引擎弱（两路分歧里七成是它自己的标点习惯），" +
+      "候选只作参考，换不换由你判断。";
+    box.append(hint);
+  }
+  return box;
+}
+
+/** 在编辑框里选中某一行——用浏览器原生的选中当"高亮"，不另做一套。 */
+function selectLineInTextarea(textarea, lineIndex) {
+  const lines = textarea.value.split("\n");
+  if (lineIndex < 0 || lineIndex >= lines.length) return;
+  let start = 0;
+  for (let i = 0; i < lineIndex; i += 1) start += lines[i].length + 1;
+  textarea.focus();
+  textarea.setSelectionRange(start, start + lines[lineIndex].length);
+  textarea.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+/** 长文本截断（只在界面上截，标题里带全文）。 */
+function truncate(text, limit) {
+  const value = String(text);
+  return value.length > limit ? `${value.slice(0, limit)}…` : value;
 }
 
 function textRows(text) {
@@ -2151,10 +2327,46 @@ function focusSiblingBlock(index, delta) {
 function scheduleBlockSave(block, text) {
   setSaveState("正在输入…");
   if (reviewSaveTimer) clearTimeout(reviewSaveTimer);
+  reviewPendingSave = { block, text };
   reviewSaveTimer = setTimeout(() => {
-    reviewSaveTimer = null;
-    patchBlock(block, { text });
+    flushPendingSave();
   }, 700);
+}
+
+/**
+ * 立刻把还没发的自动保存落库。
+ *
+ * 需要它是因为"替换某一行"这类操作会用**服务端的最新文本**重写整个块：
+ * 不等输入落库就替换，会把刚打的字盖掉。
+ */
+async function flushPendingSave() {
+  if (reviewSaveTimer) {
+    clearTimeout(reviewSaveTimer);
+    reviewSaveTimer = null;
+  }
+  const pending = reviewPendingSave;
+  reviewPendingSave = null;
+  if (pending) await patchBlock(pending.block, { text: pending.text });
+}
+
+/** 把某一行换成另一路的文本（说明书 8.5：作为对 text 的编辑，可撤销）。 */
+async function adoptLine(block, lineIndex, candidate) {
+  if (!block) return;
+  if (!candidate) {
+    setSaveState("第二引擎没读出这一行，没有可采用的候选", true);
+    return;
+  }
+  await flushPendingSave();
+  // 上面可能刚保存过并重载了页面，用重载后的块（revision 才是最新的）
+  const fresh =
+    (reviewBlocks || []).find((item) => item.block_id === block.block_id) || block;
+  const lines = String(fresh.text).split("\n");
+  if (lineIndex < 0 || lineIndex >= lines.length) {
+    setSaveState("这一块的行号对不上了，先重新载入", true);
+    return;
+  }
+  lines[lineIndex] = candidate;
+  await patchBlock(fresh, { text: lines.join("\n") });
 }
 
 async function patchBlock(block, patch) {

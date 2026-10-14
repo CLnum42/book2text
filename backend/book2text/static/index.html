@@ -89,6 +89,8 @@
             <option value="uncertain">有不确定块</option>
             <option value="failed">识别失败</option>
             <option value="candidate">有待选新结果</option>
+            <option value="divergence_chars">有分歧（汉字级）</option>
+            <option value="divergence">有分歧（含标点级）</option>
           </select>
         </label>
         <label class="muted check">
@@ -301,7 +303,8 @@
           <button type="button" id="review-redo" class="btn btn--ghost" title="重做（⇧⌘/Ctrl + Z）">重做</button>
           <button type="button" id="review-confirm" class="btn btn--primary"
                   title="确认本页（⌘/Ctrl + Enter）">确认本页并下一页</button>
-          <button type="button" id="aux-run" class="btn">第二引擎复核</button>
+          <button type="button" id="aux-run" class="btn"
+                  title="用第二引擎逐行复核这一页（说明书 8.5）：复核过的分歧行会在块里标出另一路候选，可逐行换过去">第二引擎复核</button>
           <button type="button" id="detail-recognize" class="btn">重新识别</button>
           <button type="button" id="detail-close" class="btn btn--ghost">收起</button>
         </div>

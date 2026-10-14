@@ -92,8 +92,14 @@ def _page_payloads(
     library = _library(request)
     states = blocks_module.page_recognition_states(project_id, library=library)
     reviews = blocks_module.page_review_states(project_id, library=library)
+    divergences = blocks_module.page_divergences(project_id, library=library)
     return [
-        page_payload(page, states.get(page.page_id), reviews.get(page.page_id))
+        page_payload(
+            page,
+            states.get(page.page_id),
+            reviews.get(page.page_id),
+            divergences.get(page.page_id),
+        )
         for page in project_library.list_pages(project_id, library=library)
         if page.page_id in page_ids
     ]

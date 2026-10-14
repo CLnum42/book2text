@@ -31,11 +31,17 @@ def page_payload(
     page: project_library.Page,
     recognition: blocks_module.PageRecognition | None,
     review: blocks_module.PageReview | None = None,
+    divergence: blocks_module.PageDivergence | None = None,
 ) -> dict[str, object]:
-    """页面载荷 = 页记录 + **推导出的识别状态与审校进度**（说明书 5.3 不单独存储状态）。"""
+    """页面载荷 = 页记录 + **推导出的识别状态与审校进度**（说明书 5.3 不单独存储状态）。
+
+    ``divergence`` 是第二引擎的分歧概况（说明书 8.5）：界面据此在缩略图上打标记，
+    并支持"有分歧"这条疑难筛选。没传时是"没复核过"的空值，不是"两路一致"。
+    """
     state = recognition or blocks_module.empty_recognition(page.page_id)
     return {
         **page.to_dict(),
         "recognition": state.to_dict(),
         "review": (review or blocks_module.empty_review()).to_dict(),
+        "divergence": (divergence or blocks_module.EMPTY_PAGE_DIVERGENCE).to_dict(),
     }

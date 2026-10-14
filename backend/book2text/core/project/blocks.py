@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from ..ocr import compare as compare_module
 from ..ocr.base import BBox
+from ..ocr.compare import GRADES
 from ..storage import db as db_module
 from .jobs import JOB_TYPE_OCR
 from .library import Page, ProjectError, default_library_dir, list_pages, project_dir
@@ -35,6 +38,8 @@ STATUS_HAS_CANDIDATE = "has_candidate"
 
 RUN_TYPE_PRIMARY = "primary"
 RUN_TYPE_AUXILIARY = "auxiliary"
+
+RUN_STATUS_SUCCEEDED = "succeeded"
 
 
 # ---------------------------------------------------------------- 坐标 JSON
@@ -443,6 +448,229 @@ def load_page_content(
     blocks = list_blocks(project_id, library=library, page_no=page_no)
     lines = list_block_lines(project_id, library=library, page_no=page_no)
     return page, runs, blocks, lines
+
+
+# ---------------------------------------------------------------- 分歧（说明书 8.5 的落点）
+
+
+@dataclass(frozen=True)
+class LineDivergence:
+    """一行的分歧标记：**块里现在的这一行** vs 第二引擎读到的那一行。"""
+
+    line_index: int
+    level: str
+    current: str
+    candidate: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "line_index": self.line_index,
+            "level": self.level,
+            "current": self.current,
+            "candidate": self.candidate,
+        }
+
+
+@dataclass(frozen=True)
+class BlockDivergence:
+    """一个块的分歧概况（说明书 8.5）。
+
+    标记按**块里现在的文本**逐行现算，而不是照抄识别时写下的 ``diff_status``：
+    说明书 8.5 要求"点一下即可替换为另一路文本（作为对 ``text`` 的编辑）"，
+    换过之后那一行的标记就该消失。因此 ``diff_status`` 只用来判断这一行复核过没有。
+    """
+
+    chars: int = 0
+    punct: int = 0
+    empty: int = 0
+    format_only: int = 0
+    stale: bool = False
+    marks: tuple[LineDivergence, ...] = ()
+
+    @property
+    def lines(self) -> int:
+        """有实质分歧的行数（汉字级 + 标点级），即说明书 8.5 的"分歧行"。"""
+        return self.chars + self.punct
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "lines": self.lines,
+            "chars": self.chars,
+            "punct": self.punct,
+            "empty": self.empty,
+            "format_only": self.format_only,
+            "stale": self.stale,
+            "marks": [mark.to_dict() for mark in self.marks],
+        }
+
+
+@dataclass(frozen=True)
+class PageDivergence:
+    """一页的分歧概况：逐块相加，外加"这一页跑没跑过第二引擎复核"。
+
+    ``checked`` 为假时不能把"0 分歧"读成"两路一致"——那一页根本没复核过。
+    """
+
+    chars: int = 0
+    punct: int = 0
+    empty: int = 0
+    format_only: int = 0
+    stale_blocks: int = 0
+    checked: bool = False
+    engine_id: str | None = None
+    checked_at: str | None = None
+
+    @property
+    def lines(self) -> int:
+        return self.chars + self.punct
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "lines": self.lines,
+            "chars": self.chars,
+            "punct": self.punct,
+            "empty": self.empty,
+            "format_only": self.format_only,
+            "stale_blocks": self.stale_blocks,
+            "checked": self.checked,
+            "engine_id": self.engine_id,
+            "checked_at": self.checked_at,
+        }
+
+
+EMPTY_BLOCK_DIVERGENCE = BlockDivergence()
+EMPTY_PAGE_DIVERGENCE = PageDivergence()
+
+
+def block_divergence(
+    block: BlockRecord, lines: Sequence[BlockLineRecord]
+) -> BlockDivergence:
+    """按块里现在的文本，逐行标出与第二引擎的分歧（说明书 8.5）。"""
+    graded = [line for line in lines if line.aux_text is not None]
+    if not graded:
+        return EMPTY_BLOCK_DIVERGENCE
+
+    current_lines = block.text.split("\n")
+    # 行记录与文本行必须一一对应。人工在块里增删过换行之后就对不上了，
+    # 这时按序号标出来的是错的——宁可不标，也不指错地方。
+    aligned = len(current_lines) == len(lines) and [
+        line.line_index for line in lines
+    ] == list(range(len(lines)))
+    if not aligned:
+        return BlockDivergence(stale=True)
+
+    counts = dict.fromkeys(GRADES, 0)
+    marks: list[LineDivergence] = []
+    for line in lines:
+        if line.aux_text is None:
+            continue
+        current = current_lines[line.line_index]
+        # 第二引擎什么也没读出来：它没提供任何关于原文的信息，不算分歧
+        level = (
+            compare_module.NO_CANDIDATE
+            if not line.aux_text.strip()
+            else compare_module.grade_line(current, line.aux_text)
+        )
+        if level == compare_module.IDENTICAL:
+            continue
+        counts[level] = counts.get(level, 0) + 1
+        marks.append(
+            LineDivergence(
+                line_index=line.line_index,
+                level=level,
+                current=current,
+                candidate=line.aux_text,
+            )
+        )
+    return BlockDivergence(
+        chars=counts[compare_module.DIFFERS_CHARS],
+        punct=counts[compare_module.DIFFERS_PUNCT],
+        empty=counts[compare_module.NO_CANDIDATE],
+        format_only=counts[compare_module.FORMAT_ONLY_DIFFERS],
+        marks=tuple(marks),
+    )
+
+
+def _latest_auxiliary_run(runs: Sequence[RunRecord]) -> RunRecord | None:
+    """最近一次**成功**的第二引擎复核（说明书 8.5：复核可以随时补跑 / 重跑）。"""
+    succeeded = [
+        run
+        for run in runs
+        if run.run_type == RUN_TYPE_AUXILIARY and run.status == RUN_STATUS_SUCCEEDED
+    ]
+    if not succeeded:
+        return None
+    return max(succeeded, key=lambda run: (run.finished_at or run.created_at, run.run_id))
+
+
+def page_divergence_summary(
+    blocks: Sequence[BlockRecord],
+    lines: Sequence[BlockLineRecord],
+    runs: Sequence[RunRecord],
+) -> PageDivergence:
+    """一页的分歧概况：各块相加 + 复核记录（审校视图与疑难筛选共用这一份）。"""
+    by_block: dict[str, list[BlockLineRecord]] = {}
+    for line in lines:
+        by_block.setdefault(line.block_id, []).append(line)
+
+    chars = punct = empty = format_only = stale_blocks = 0
+    for block in blocks:
+        divergence = block_divergence(block, by_block.get(block.block_id, []))
+        chars += divergence.chars
+        punct += divergence.punct
+        empty += divergence.empty
+        format_only += divergence.format_only
+        stale_blocks += 1 if divergence.stale else 0
+
+    run = _latest_auxiliary_run(runs)
+    return PageDivergence(
+        chars=chars,
+        punct=punct,
+        empty=empty,
+        format_only=format_only,
+        stale_blocks=stale_blocks,
+        checked=run is not None,
+        engine_id=run.engine_id if run else None,
+        checked_at=(run.finished_at or run.created_at) if run else None,
+    )
+
+
+def page_divergences(
+    project_id: str, *, library: Path | None = None
+) -> dict[str, PageDivergence]:
+    """整个项目每页的分歧概况（读全部块 / 行 / 复核记录，不给每页单独查询）。
+
+    页面列表用它给"有分歧"筛选与缩略图上的标记供数。
+    """
+    blocks = list_blocks(project_id, library=library)
+    lines = list_block_lines(project_id, library=library)
+    runs = list_runs(project_id, library=library, run_type=RUN_TYPE_AUXILIARY)
+
+    lines_by_block: dict[str, list[BlockLineRecord]] = {}
+    for line in lines:
+        lines_by_block.setdefault(line.block_id, []).append(line)
+    blocks_by_page: dict[str, list[BlockRecord]] = {}
+    for block in blocks:
+        blocks_by_page.setdefault(block.page_id, []).append(block)
+    runs_by_page: dict[str, list[RunRecord]] = {}
+    for run in runs:
+        runs_by_page.setdefault(run.page_id, []).append(run)
+
+    result: dict[str, PageDivergence] = {}
+    for page_id, page_blocks in blocks_by_page.items():
+        page_lines = [
+            line
+            for block in page_blocks
+            for line in lines_by_block.get(block.block_id, [])
+        ]
+        result[page_id] = page_divergence_summary(
+            page_blocks, page_lines, runs_by_page.get(page_id, [])
+        )
+    # 没有块却有复核记录的页（复核过又删光了块）也要出现在结果里
+    for page_id, page_runs in runs_by_page.items():
+        if page_id not in result:
+            result[page_id] = page_divergence_summary((), (), page_runs)
+    return result
 
 
 # ---------------------------------------------------------------- 派生状态

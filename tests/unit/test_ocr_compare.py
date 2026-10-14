@@ -143,6 +143,46 @@ def test_ellipsis_forms_are_not_treated_as_equivalent() -> None:
     assert compare.compare_line("等等…", "等等...") == compare.DIFFERS
 
 
+# ---------------------------------------------------------------- 分歧分级（grade_line）
+
+def test_grade_passes_through_identical_and_format_only() -> None:
+    assert compare.grade_line("中文测试", "中文测试") == compare.IDENTICAL
+    assert compare.grade_line("中文，测试。", "中文,测试.") == compare.FORMAT_ONLY_DIFFERS
+
+
+def test_grade_marks_character_level_difference() -> None:
+    """汉字不同 → 汉字级：这是"第一引擎可能真的认错了"的那一类。"""
+    assert compare.grade_line("贾宝玉初试云雨情", "贾宝王初试云雨情") == compare.DIFFERS_CHARS
+
+
+def test_grade_marks_digit_difference_as_character_level() -> None:
+    """数字也是内容：38 回读成 33 回不是标点问题。"""
+    assert compare.grade_line("第 38 回", "第 33 回") == compare.DIFFERS_CHARS
+
+
+def test_grade_marks_punctuation_level_difference() -> None:
+    """只差标点 → 标点级。实测这类多半是第二引擎自己的标点习惯（L-30）。"""
+    assert compare.grade_line("春天。", "春天、") == compare.DIFFERS_PUNCT
+
+
+def test_grade_treats_collation_marks_as_punctuation() -> None:
+    """实测里最常见的一处：校勘符号 〈〉 被读成 < >（docs/ocr-evaluation.md 第 8 节）。"""
+    assert compare.grade_line("〈好了歌〉", "<好了歌>") == compare.DIFFERS_PUNCT
+
+
+def test_grade_treats_whitespace_and_symbols_as_punctuation() -> None:
+    assert compare.grade_line("第 3 章 正文", "第3章 正文!") == compare.DIFFERS_PUNCT
+
+
+def test_grade_is_identical_when_both_sides_agree() -> None:
+    """两路都错但错得一样时是 identical——"一致但都错"由金标准另行判定（说明书 8.7）。"""
+    assert compare.grade_line("〈好了歌〉", "〈好了歌〉") == compare.IDENTICAL
+
+
+def test_grade_does_not_normalize_case() -> None:
+    assert compare.grade_line("English", "english") == compare.DIFFERS_CHARS
+
+
 # ---------------------------------------------------------------- 编辑距离与错误率
 
 def test_levenshtein_basics() -> None:

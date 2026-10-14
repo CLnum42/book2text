@@ -755,21 +755,33 @@ def split_block(
         )
         events.extend(new_events)
 
-        # 行分配：光标前的归前块，光标后的归后块，被切开的行清空坐标
+        # 行分配：光标前的归前块，光标后的归后块，被切开的行清空坐标与分歧信息
         lines = _lines_of(conn, block_id)
         for line in lines:
             index_in_block = int(line["line_index"])
             if index_in_block < head_line_count:
                 if index_in_block == head_line_count - 1 and cut_in_middle and line["bbox"]:
-                    _apply_values(conn, "block_line", line["line_id"], {"bbox": None}, now)
+                    # R4：被切开的行清空 bbox 与**分歧信息**——它不再精确对应任何一整行，
+                    # 第二引擎读的是原来那一整行，留着标记会指错地方
+                    _apply_values(
+                        conn,
+                        "block_line",
+                        line["line_id"],
+                        {"bbox": None, "aux_text": None, "diff_status": None},
+                        now,
+                    )
                     events.append(
                         _record(
                             conn,
                             entity_type="block_line",
                             entity_id=line["line_id"],
                             action=ACTION_SPLIT,
-                            before={"bbox": line["bbox"]},
-                            after={"bbox": None},
+                            before={
+                                "bbox": line["bbox"],
+                                "aux_text": line["aux_text"],
+                                "diff_status": line["diff_status"],
+                            },
+                            after={"bbox": None, "aux_text": None, "diff_status": None},
                             batch_id=batch_id,
                             actor_name=actor_name,
                         )

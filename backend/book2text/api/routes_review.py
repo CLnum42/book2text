@@ -98,15 +98,15 @@ def _history(request: Request) -> ReviewHistory:
 
 
 def _block_payload(block: blocks_module.BlockRecord, lines) -> dict[str, Any]:
-    payload = {
+    divergence = blocks_module.block_divergence(block, lines)
+    return {
         **block.to_dict(),
         "lines": [line.to_dict() for line in lines],
+        # 第二引擎的分歧（说明书 8.5）：界面据此在块里逐行标出另一路候选，
+        # 并显示"这一块有 N 行两路不一致"。标记按**块里现在的文本**现算（见 blocks.py）。
+        "divergence": divergence.to_dict(),
+        "diff_line_count": divergence.lines,
     }
-    # 第二引擎的分歧行（说明书 8.5）：界面据此提示"这一块有 N 行两路不一致"
-    payload["diff_line_count"] = sum(
-        1 for line in lines if line.diff_status and line.diff_status != "identical"
-    )
-    return payload
 
 
 def _page_blocks_payload(request: Request, project_id: str, page_no: int) -> dict[str, Any]:
@@ -130,6 +130,7 @@ def _page_blocks_payload(request: Request, project_id: str, page_no: int) -> dic
         "block_count": len(blocks),
         "blocks": [_block_payload(block, by_block.get(block.block_id, [])) for block in blocks],
         "review": _review_summary(blocks),
+        "divergence": blocks_module.page_divergence_summary(blocks, lines, runs).to_dict(),
         "history": {"undo": undo, "redo": redo},
     }
 

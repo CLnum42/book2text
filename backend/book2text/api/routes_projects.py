@@ -25,12 +25,18 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
 def _page_payloads(request: Request, project_id: str, pages) -> list[dict[str, object]]:
-    """给页面附上识别状态与审校进度（各一次聚合查询，不做 N+1）。"""
+    """给页面附上识别状态、审校进度与分歧概况（各一次聚合查询，不做 N+1）。"""
     library = _library(request)
     states = blocks_module.page_recognition_states(project_id, library=library)
     reviews = blocks_module.page_review_states(project_id, library=library)
+    divergences = blocks_module.page_divergences(project_id, library=library)
     return [
-        page_payload(page, states.get(page.page_id), reviews.get(page.page_id))
+        page_payload(
+            page,
+            states.get(page.page_id),
+            reviews.get(page.page_id),
+            divergences.get(page.page_id),
+        )
         for page in pages
     ]
 
@@ -200,10 +206,16 @@ def patch_pages(
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
     reviews = blocks_module.page_review_states(project_id, library=library)
+    divergences = blocks_module.page_divergences(project_id, library=library)
     return {
         "updated": len(updated),
         "pages": [
-            page_payload(page, states.get(page.page_id), reviews.get(page.page_id))
+            page_payload(
+                page,
+                states.get(page.page_id),
+                reviews.get(page.page_id),
+                divergences.get(page.page_id),
+            )
             for page in updated
         ],
     }

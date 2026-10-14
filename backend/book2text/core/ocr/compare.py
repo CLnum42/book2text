@@ -39,6 +39,16 @@ IDENTICAL = "identical"
 FORMAT_ONLY_DIFFERS = "format_only_differs"
 DIFFERS = "differs"
 
+# `grade_line` 在三态之上再分出来的两级（见该函数）。**不写进数据库**：
+# `block_line.diff_status` 存的是说明书 8.7 规定的三态；分级是读取时按
+# "块里现在的文本"现算的——人工把那一行换成另一路之后，标记要跟着消失。
+DIFFERS_CHARS = "differs_chars"
+DIFFERS_PUNCT = "differs_punct"
+NO_CANDIDATE = "no_candidate"
+
+# 界面按这个顺序数（说明书 8.5 的"实质差异"再分粗细）
+GRADES = (DIFFERS_CHARS, DIFFERS_PUNCT, NO_CANDIDATE, FORMAT_ONLY_DIFFERS)
+
 # 全角标点 → 半角（说明书第 2 步）。只收标点，不含字母数字。
 _FULLWIDTH_PUNCTUATION = {
     "，": ",", "。": ".", "！": "!", "？": "?", "；": ";", "：": ":",
@@ -174,6 +184,46 @@ def compare_line(reference: str, candidate: str) -> str:
     if normalize_for_comparison(reference) == normalize_for_comparison(candidate):
         return FORMAT_ONLY_DIFFERS
     return DIFFERS
+
+
+def _is_significant(char: str) -> bool:
+    """是不是"实质字符"：汉字、字母、数字算，空白与标点 / 符号只算排版。"""
+    if char.isspace():
+        return False
+    return unicodedata.category(char)[0] not in ("P", "S")
+
+
+def _significant_only(text: str) -> str:
+    return "".join(char for char in text if _is_significant(char))
+
+
+def grade_line(reference: str, candidate: str) -> str:
+    """给两路结果再分一级，回答"这一处分歧值不值得看"（说明书 8.5 的延伸）。
+
+    说明书 8.5 把差异分成"实质差异"与"格式差异"，落在 ``differs`` 里的仍然混着
+    两类东西：**汉字 / 数字层面的不同**（可能是第一引擎真的认错了）与
+    **标点层面的不同**（多半只是第二引擎的标点习惯，见 `docs/known-limitations.md` L-30
+    的实测：两路分歧里七成是第二引擎自己的错，且集中在标点）。分级让审校能只按
+    "汉字级"筛选，否则筛出来的多是噪声。
+
+    返回四态之一：
+
+    ====================  =========================================================
+    ``identical``         归一化前就相同
+    ``format_only_differs`` 仅格式差异（说明书 8.5 不计入分歧）
+    ``differs_punct``     归一化后只剩标点 / 符号不同（"标点级"）
+    ``differs_chars``     归一化后汉字、字母或数字不同（"汉字级"，值得看）
+    ====================  =========================================================
+
+    **空候选**（第二引擎什么也没读出来）不属于分歧：它没提供任何关于原文的信息，
+    标它只会制造噪声。调用方应先判空，用 ``no_candidate`` 单独计数。
+    """
+    base = compare_line(reference, candidate)
+    if base != DIFFERS:
+        return base
+    left = _significant_only(normalize_for_comparison(reference))
+    right = _significant_only(normalize_for_comparison(candidate))
+    return DIFFERS_PUNCT if left == right else DIFFERS_CHARS
 
 
 # ---------------------------------------------------------------- 编辑距离与错误率
