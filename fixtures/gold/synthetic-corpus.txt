@@ -1,0 +1,82 @@
+Book2Text 合成金标准语料
+【中文散文与标点】
+第一天清晨，山谷里还浮着薄薄的雾，远处的松林像浸在水里一样模糊。
+他把窗推开一条缝，冷空气涌进来，桌上的纸页被吹得哗哗作响。
+“你看，”她指着远处说，“那才是真正的春天。”
+他沉默了很久，最后只回了一句：“也许吧。”
+院子里那棵老槐树已经有三十年没人修剪过，枝叶压得很低。
+雨停之后，屋檐上还在滴水，一滴，两滴，打在青石板上。
+那年冬天格外冷，河面结了厚厚的冰，孩子们在上面跑来跑去。
+《论语》里有一句话，他抄在笔记本的扉页上，用了整整十年。
+所谓“知之为知之，不知为不知”，说起来容易，做起来很难。
+厨房里飘出饭香，母亲在灶台前忙碌，锅铲碰着铁锅，叮当作响。
+他忽然想起小时候的事，那时候还没有这条马路，也没有这些楼。
+傍晚的云被夕照染成橘色，一片一片，慢慢沉到山后面去。
+书房的门半掩着，灯光从门缝里漏出来，在地上画出一道细长的亮线。
+她说这话的时候并没有看他，只是低头把杯子里的茶叶拨到一边。
+整条街的店铺都关了门，只有拐角那家面馆还亮着，冒着白汽。
+他把信读了三遍，然后折好，放回信封，什么也没有说。
+码头上的缆绳被水汽浸得发黑，几只海鸟停在木桩上，一动不动。
+春天来得比往年迟，桃花开了又谢，谢了又开，好像总也不甘心。
+会议开了整整一个下午，最后决定把这件事往后推，推到明年再说。
+旧唱片机还能转，只是针头有些钝了，放出来的声音带着沙沙的杂音。
+走廊尽头的窗户正对着操场，下课铃一响，人影就涌了出来。
+他习惯在每一本书的最后一页写下日期和地点，像是在给时间做记号。
+【生僻字与繁简混排（OCR 错误通常集中在这里）】
+鸂鶒、鸬鹚、鹈鹕都是水鸟的名称，笔画繁复，容易识错。
+他写了一个“龘”字，说是从旧碑上拓下来的，笔画多达四十八画。
+— 1 —
+Book2Text 合成金标准语料
+饕餮纹是商周青铜器上常见的装饰，纹样对称而繁密。
+瓠、匏、瓢三个字都指葫芦一类的器物，古书里常混用。
+靰鞡、靛蓝、黢黑这些词在方言文献里出现频率并不低。
+《康熙字典》收录四万七千余字，其中大量是异体与僻字。
+纂、篡、攥三个字音近形似，校对时最容易张冠李戴。
+疆、缰、僵、礓，同一部首的字在低分辨率下几乎无法区分。
+【数字、日期与度量】
+据统计，2024 年全国共有 12847 家相关企业，同比增长 6.3%。
+这项实验持续了 37 天，采集样本 2156 份，有效率约为 92.8%。
+1949 年 10 月 1 日，是一个被反复书写的日期。
+书稿共 428 页，正文约 31.6 万字，附图 74 幅。
+温度从 -12.5℃ 升到 3.4℃，用了不到 9 个小时。
+第三次修订版把第 12 章到第 18 章整体前移，页码因此全部重排。
+误差控制在 ±0.02 毫米以内，这个精度已经接近设备极限。
+三项指标分别为 0.87、0.92 与 0.79，权重依次是 0.5、0.3、0.2。
+列车时刻表上写着 07:42 发车，实际晚点 23 分钟。
+该地区海拔 3120 米，年均降水量 486 毫米。
+【英文段落】
+The quick brown fox jumps over the lazy dog, again and again.
+A careful reader will notice that the second edition omits three footnotes.
+In 1971, the committee published its findings in a slim volume of 84 pages.
+She said, "I don't think that's quite right," and turned to page 42.
+The argument is elegant but rests on an assumption nobody has tested.
+Chapter Three examines the relationship between text and commentary.
+Whether the hypothesis holds under different conditions remains unclear.
+Typography matters: an em dash—like this one—reads differently from a hyphen.
+— 2 —
+Book2Text 合成金标准语料
+The catalogue lists 1,248 titles, of which roughly 12% are out of print.
+He preferred the older spelling, though the modern form had long prevailed.
+Marginalia in a seventeenth-century hand crowd the outer edges of the page.
+No single manuscript preserves the text in its entirety.
+【中英混排】
+深度学习的英文是 deep learning，与之相关的还有 machine translation。
+他把 Random Forest 和 Gradient Boosting 都试了一遍，效果差别不大。
+这份文档的格式是 PDF，编码是 UTF-8，换行符统一为 LF。
+论文引用了 Kuhn (1962) 与 Baker (1993) 两部经典文献。
+在 macOS 与 Windows 上，路径分隔符分别是 / 与 \。
+接口返回的字段名为 bbox，取值是归一化坐标 [x0, y0, x1, y1]。
+校对时要注意 b 与 6、l 与 1、O 与 0 这三组形近字符。
+该函数返回 True 或 False，失败时抛出 ValueError 异常。
+他给变量起名叫 temp_list，虽然 PEP 8 建议用更具描述性的名字。
+【半角标点的中文行（用于检验全角/半角归一化）】
+这一段故意使用半角标点, 逗号和句点都是 ASCII 的.
+括号也用半角 (像这样), 冒号写成 half-width: 就是这样.
+引号用直引号 "像这样", 而不是中文的弯引号.
+【引号、破折号与省略号变体】
+他说——“这件事我来办”——然后就走了。
+书名号《红楼梦》、篇名〈葬花吟〉、引号“双”与‘单’。
+破折号有时写成 — 一个, 有时写成 —— 两个, 排版并不统一。
+省略号有两种写法：… 和 ……，原书里两种都出现过。
+英文的撇号在 don't、it's、1900's 里都要保留。
+— 3 —

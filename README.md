@@ -20,9 +20,10 @@
 | **Phase 0 扫描样本（20 页，无文本层）** | ✅ 已生成：`fixtures/pdf/sample-20p-300dpi.pdf`，见 [`docs/scan-sample-set.md`](docs/scan-sample-set.md) |
 | **Phase 0 第 1 项：两个门槛项** | ✅ **已达标**：行级坐标 20/20 页、中位 2.04 秒/页，见 [`docs/ocr-evaluation.md`](docs/ocr-evaluation.md) |
 | **应用内识别（单页，行级坐标）** | ✅ 可用：上传 → 识别本页 → 文本行叠加在原图上 |
+| **准确率测量工具链 + 合成金标准** | ✅ 已建立：内容 CER 1.63%、英文 0%，见 [`docs/accuracy-report.md`](docs/accuracy-report.md) |
 | 行 → 块的组合（grouping） | ⬜ 未开始，**挡着审校与导出** |
 | Phase 0 第 1 项：PaddleOCR 对比与版面组件 | ⬜ 未开始 |
-| Phase 0 第 1–2 项：准确率（CER / 分歧率） | ⬜ **被人工校对金标准卡住** |
+| Phase 0 第 1–2 项：**真实扫描件**的准确率 | ⬜ **被人工校对金标准卡住** |
 | Phase 0 第 5 项：可行性文档 | 🔶 部分完成：`docs/technical-feasibility.md` |
 | Phase 1–8 业务功能 | ⬜ 未开始 |
 
@@ -163,6 +164,7 @@ book2text/
 | [`docs/technical-feasibility.md`](docs/technical-feasibility.md) | Phase 0 实测数据：已验证的能力、未验证事项、平台差异、风险 |
 | [`docs/scan-sample-set.md`](docs/scan-sample-set.md) | 20 页扫描样本：逐页来源、覆盖度对照、重要局限 |
 | [`docs/ocr-evaluation.md`](docs/ocr-evaluation.md) | OCR 引擎评估：门槛（实测前写定）与实测结果 |
+| [`docs/accuracy-report.md`](docs/accuracy-report.md) | 合成金标准上的准确率：CER/WER、失败模式、说明书规则的一处空白 |
 | [`AGENTS.md`](AGENTS.md) | 开发 Agent 的固定工作规则（说明书第 1 节同步副本） |
 | [`docs/decisions.md`](docs/decisions.md) | 决策记录（架构与实现取舍的理由） |
 | [`docs/development-log.md`](docs/development-log.md) | 每次开发任务的记录（含未验证项） |

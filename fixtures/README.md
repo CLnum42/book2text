@@ -26,7 +26,23 @@ uv run --with reportlab --with pypdf python scripts/make_test_fixtures.py
 正确做法（脚本里就是这么做的）：把横向内容旋转 90° 后放进竖向页面，
 再写 `/Rotate`——这正是真实扫描书的存储方式。
 
-## 2. 真实书籍样本（受版权保护）
+## 2. 合成金标准语料（内容自造，无版权问题）
+
+| 文件 | 内容 |
+|---|---|
+| `../pdf/synthetic-corpus.pdf` | 3 页，无文本层，由下表的金标准文本渲染而成 |
+| `gold/synthetic-corpus.json` | **金标准**：逐页逐行的确切文本（机器可读） |
+| `gold/synthetic-corpus.txt` | 同一内容的纯文本版，便于人眼核对 |
+
+**生成：** `uv run --with reportlab python scripts/make_gold_corpus.py`
+
+**用途：** 校准比对工具链、给出准确率上限基线。结果见
+[`docs/accuracy-report.md`](../docs/accuracy-report.md)。
+
+**⚠ 它不能替代真实扫描件的金标准。** 语料是完美字体、无扫描退化，
+在其上测得的准确率会明显偏乐观；Phase 0 的引擎选型仍需要人工校对的真实扫描页。
+
+## 3. 真实书籍样本（受版权保护）
 
 | 文件 | 内容 |
 |---|---|
