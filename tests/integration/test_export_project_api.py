@@ -214,16 +214,32 @@ def test_preflight_warns_about_untyped_edge_content(
 
 
 def test_second_export_in_the_same_minute_gets_its_own_directory(
-    client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """说明书 12.1 的目录名精确到分钟：同一分钟内连做两次不能互相覆盖。"""
+    """说明书 12.1 的目录名精确到分钟：同一分钟内连做两次不能互相覆盖。
+
+    **把时间钉住**再跑：靠真实时钟的话，两次导出跨过分钟边界就测不到这条路径了
+    （先前就是这么偶发失败的）。
+    """
+    from datetime import datetime, timezone
+
+    from book2text.core.export import project as project_export
+
+    frozen = datetime(2026, 5, 1, 14, 32, 10, tzinfo=timezone.utc)
+    monkeypatch.setattr(project_export, "_now", lambda: frozen)
+
     first = export(client, auth_headers, project_ready).json()["record"]
     second = export(client, auth_headers, project_ready).json()["record"]
 
-    assert first["export_id"] != second["export_id"]
+    assert first["export_id"] == "20260501-1432_txt"
+    assert second["export_id"] != first["export_id"], "同一分钟内的第二次要换目录名"
     assert second["export_id"].startswith(first["export_id"])
     exports_dir = library_dir / project_ready / "exports"
     assert len([item for item in exports_dir.iterdir() if item.is_dir()]) == 2
+    for record in (first, second):
+        for name in record["file_paths"]:
+            assert (exports_dir / record["export_id"] / name).is_file(), "两次导出各自的文件都在"
 
 
 def test_export_jsonl_and_both_formats(
