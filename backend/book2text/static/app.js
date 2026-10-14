@@ -1183,6 +1183,8 @@ async function refreshProject(projectId) {
   await loadExports();
   // 质量统计（说明书 8.5 / 13.4）：数字多、算起来比页面列表重，单独一个请求拿
   await loadSummary();
+  // 审校包项目（助手端）：横幅、隐藏不该有的功能、显示"导出审校结果"
+  await applyPackageMode();
 }
 
 // ---------------------------------------------------------------- 质量统计（说明书 8.5 / 13.4）
@@ -1580,6 +1582,23 @@ function applyTileState(tile, page) {
   if (reviewChip) status.append(reviewChip);
   const divergence = divergenceChip(page);
   if (divergence) status.append(divergence);
+  if (page.is_context) {
+    // 审校包里的只读上下文页（说明书 6.7.2）：助手的项目里也要一眼看出来
+    const chip = document.createElement("span");
+    chip.className = "status status--muted";
+    chip.textContent = "只读上下文";
+    chip.title = "任务包附带的只读上下文页，用来判断跨页段落，不能编辑";
+    status.append(chip);
+  } else if (page.assignment) {
+    // 主项目里"已分派给谁"（说明书 6.7.6）
+    const chip = document.createElement("span");
+    chip.className = "status status--muted";
+    chip.textContent = `${page.assignment.reviewer_name} · 审校中`;
+    chip.title =
+      `已分派给 ${page.assignment.reviewer_name}（${page.assignment.status_label}）：` +
+      "现在改这一页会在合并时产生冲突";
+    status.append(chip);
+  }
 
   const isBusy = busyPages.has(page.page_no);
   const button = tile.querySelector('button[data-action="recognize"]');
@@ -2394,6 +2413,38 @@ function blockCard(block, index, blocksCount) {
   actions.append(more);
   item.append(menu);
 
+  // 块备注（说明书 7.9.2）：有备注显示 💬 与内容，没有就给一个"添加备注"
+  const commentBox = document.createElement("div");
+  commentBox.className = "review-block__comment";
+  const renderComment = () => {
+    commentBox.innerHTML = "";
+    if (block.comment) {
+      const text = document.createElement("span");
+      text.textContent = `💬 ${block.comment}`;
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "btn btn--ghost";
+      edit.textContent = "改备注";
+      edit.addEventListener("click", () => askComment(block, block.comment));
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "btn btn--ghost";
+      clear.textContent = "删除";
+      clear.addEventListener("click", () => patchBlock(block, { comment: "" }));
+      commentBox.append(text, edit, clear);
+    } else {
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "btn btn--ghost";
+      add.textContent = "💬 加备注";
+      add.title = "给这一块写一句说明或提问（会随结果包一起回传给负责人）";
+      add.addEventListener("click", () => askComment(block, ""));
+      commentBox.append(add);
+    }
+  };
+  renderComment();   // 有备注显示内容 + 改 / 删；没有就显示「💬 加备注」
+  if (!block.comment) commentBox.classList.add("review-block__comment--empty");
+
   const original = document.createElement("pre");
   original.className = "review-block__original";
   original.hidden = true;
@@ -2402,8 +2453,15 @@ function blockCard(block, index, blocksCount) {
   item.append(head, textarea);
   const divergenceSection = blockDivergenceSection(block, textarea);
   if (divergenceSection) item.append(divergenceSection);
+  item.append(commentBox);
   item.append(actions, original);
   return item;
+
+  function askComment(target, current) {
+    const value = window.prompt("给这一块写一句备注（留空并确定就是删除）：", current);
+    if (value === null) return;
+    patchBlock(target, { comment: value });
+  }
 }
 
 // ---------------------------------------------------------------- 分歧标记（说明书 8.5）
@@ -3165,6 +3223,7 @@ function setupLibrary() {
     picker.value = "";
   });
   el("project-close").addEventListener("click", closeProject);
+  setupCollabControls();
   el("settings-save").addEventListener("click", saveSettingsName);
   el("first-run-save").addEventListener("click", async () => {
     el("settings-name").value = el("first-run-name").value;
@@ -3216,6 +3275,895 @@ function setupLibrary() {
     const page = currentProject.pages.find((item) => item.page_no === detailPageNo);
     if (page) recognizePage(page);
   });
+}
+
+
+// ---------------------------------------------------------------- 协作：分派任务包（负责人）
+
+let assignPreviewData = null;
+let currentAssignments = [];
+let mergeState = null;
+
+function assignRequestBody() {
+  return {
+    pages: [...selectedPages].sort((left, right) => left - right),
+    reviewer_name: el("assign-reviewer").value.trim(),
+    with_context: el("assign-context").checked,
+  };
+}
+
+async function openAssignPanel() {
+  if (!currentProject) return;
+  el("assign-panel").hidden = false;
+  el("assign-error").hidden = true;
+  const pages = assignRequestBody().pages;
+  el("assign-meta").textContent = pages.length
+    ? `选中的第 ${pages[0]}–${pages[pages.length - 1]} 页（${pages.length} 页）`
+    : "先在页面网格里选中要分派的页面";
+  await previewAssign();
+  await loadAssignments();
+}
+
+async function previewAssign() {
+  if (!currentProject) return;
+  const body = assignRequestBody();
+  if (!body.pages.length) {
+    el("assign-preview").textContent = "还没有选中页面。";
+    return;
+  }
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/assignments/preview`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    assignPreviewData = data;
+    renderAssignPreview(data);
+  } catch (error) {
+    showError(el("assign-error"), error);
+  }
+}
+
+function renderAssignPreview(data) {
+  const list = el("assign-reviewer-names");
+  list.innerHTML = "";
+  for (const name of data.known_reviewers || []) {
+    const option = document.createElement("option");
+    option.value = name;
+    list.append(option);
+  }
+
+  const box = el("assign-preview");
+  box.innerHTML = "";
+  const summary = document.createElement("div");
+  summary.textContent =
+    `可派 ${data.page_count} 页` +
+    (data.context_pages.length ? ` ＋ 只读上下文 ${data.context_pages.length} 页` : "") +
+    `；任务包约 ${(data.estimated_bytes / (1024 * 1024)).toFixed(1)} MB`;
+  box.append(summary);
+  if (data.skipped && data.skipped.length) {
+    const skipped = document.createElement("div");
+    skipped.className = "assign-preview__skipped";
+    skipped.textContent =
+      "会跳过：" +
+      data.skipped.map((item) => `第 ${item.page_no} 页（${item.reason}）`).join("、");
+    box.append(skipped);
+  }
+  el("assign-create").disabled = !data.page_count || !el("assign-reviewer").value.trim();
+}
+
+async function createAssignment() {
+  if (!currentProject) return;
+  el("assign-error").hidden = true;
+  const body = {
+    ...assignRequestBody(),
+    note: el("assign-note").value,
+    due_date: el("assign-due").value || null,
+  };
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/assignments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    setSaveState(`任务包已生成：${data.package_name}`);
+    el("assign-download").hidden = false;
+    el("assign-reveal").hidden = false;
+    el("assign-download").dataset.assignmentId = data.assignment.assignment_id;
+    el("assign-reveal").dataset.assignmentId = data.assignment.assignment_id;
+    await loadAssignments();
+    await refreshPageStates();
+  } catch (error) {
+    showError(el("assign-error"), error);
+  }
+}
+
+async function loadAssignments() {
+  if (!currentProject) return;
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/assignments`);
+    currentAssignments = data.assignments || [];
+    renderAssignments(data.known_reviewers || []);
+  } catch (error) {
+    showError(el("assign-error"), error);
+  }
+}
+
+function renderAssignments(knownReviewers) {
+  const list = el("assign-list");
+  list.innerHTML = "";
+  el("assign-list-empty").hidden = currentAssignments.length > 0;
+  const names = el("assign-reviewer-names");
+  if (names.options.length === 0) {
+    for (const name of knownReviewers) {
+      const option = document.createElement("option");
+      option.value = name;
+      names.append(option);
+    }
+  }
+
+  for (const assignment of currentAssignments) {
+    const item = document.createElement("li");
+    const head = document.createElement("span");
+    head.textContent =
+      `${assignment.reviewer_name} · 第 ${assignment.page_nos.join("、")} 页` +
+      ` · ${assignment.status_label}` +
+      (assignment.imported_seq ? ` · 已导入第 ${assignment.imported_seq} 次结果` : "");
+    if (assignment.due_date) head.textContent += ` · 截止 ${assignment.due_date}`;
+    if (assignment.note) head.title = assignment.note;
+    const spacer = document.createElement("span");
+    spacer.className = "spacer";
+
+    const actions = document.createElement("span");
+    const button = (label, title, onClick, disabled = false) => {
+      const node = document.createElement("button");
+      node.type = "button";
+      node.className = "btn btn--ghost";
+      node.textContent = label;
+      node.title = title;
+      node.disabled = disabled;
+      node.addEventListener("click", onClick);
+      actions.append(node);
+    };
+    const id = assignment.assignment_id;
+    button("下载任务包", "保存 .b2tpkg，发给助手", () => downloadPackage(id));
+    if (assignment.status !== "cancelled") {
+      button("重新导出", "用分派时的快照重新生成一份", () => rebuildPackage(id));
+      // 可以多次导入（助手分几次发进度）；序号与作废的校验在后端
+      button(
+        "导入结果",
+        "选助手回传的 .b2tres 结果包，进入合并审阅",
+        () => pickResultFile(id)
+      );
+      button("作废", "页面恢复为未分派；之后收到的结果需要明确确认才能导入", () =>
+        cancelAssignment(id)
+      );
+      if (assignment.imported_seq > 0) {
+        button("查看差异", "打开合并审阅视图", () => openMergeView(id));
+      }
+    } else {
+      button(
+        "导入结果",
+        "任务包已作废：确认要导入的话，导入时会再问一次",
+        () => pickResultFile(id, { allowCancelled: true })
+      );
+    }
+    item.append(head, spacer, actions);
+    list.append(item);
+  }
+}
+
+async function downloadPackage(assignmentId) {
+  const response = await fetch(
+    `/api/projects/${project_id()}/assignments/${assignmentId}/package?token=${encodeURIComponent(token)}`,
+    { headers: { "X-B2T-Token": token } }
+  );
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    showError(el("assign-error"), new ApiError(
+      (payload && payload.error && payload.error.message) || `下载失败（HTTP ${response.status}）`
+    ));
+    return;
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename\*?=(?:utf-8'')?"?([^";]+)"?/i);
+  saveBlob(blob, match ? decodeURIComponent(match[1]) : "任务包.b2tpkg");
+  setSaveState("任务包已下载");
+}
+
+async function rebuildPackage(assignmentId) {
+  el("assign-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${project_id()}/assignments/${assignmentId}/rebuild`,
+      { method: "POST" }
+    );
+    setSaveState(`已重新导出：${data.package_name}`);
+  } catch (error) {
+    showError(el("assign-error"), error);
+  }
+}
+
+async function revealPackage(assignmentId) {
+  try {
+    const data = await apiJson(
+      `/api/projects/${project_id()}/assignments/${assignmentId}/reveal`,
+      { method: "POST" }
+    );
+    if (!data.revealed) setSaveState(data.reason || "打不开文件夹", true);
+  } catch (error) {
+    showError(el("assign-error"), error);
+  }
+}
+
+async function cancelAssignment(assignmentId) {
+  if (!window.confirm("作废这个任务包？页面会恢复为未分派；之后收到的结果需要明确确认才能导入。")) {
+    return;
+  }
+  el("assign-error").hidden = true;
+  try {
+    await apiJson(`/api/projects/${project_id()}/assignments/${assignmentId}/cancel`, {
+      method: "POST",
+    });
+    setSaveState("任务包已作废");
+    await loadAssignments();
+    await refreshPageStates();
+  } catch (error) {
+    showError(el("assign-error"), error);
+  }
+}
+
+function saveBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------- 协作：助手端
+
+let packagePending = null; // 等待上传的结果包给哪个任务包（导入时用）
+
+function setupPackageControls() {
+  const picker = el("open-package-file");
+  el("open-package").addEventListener("click", () => picker.click());
+  picker.addEventListener("change", () => {
+    if (picker.files && picker.files[0]) openPackageFile(picker.files[0]);
+    picker.value = "";
+  });
+  el("package-export-btn").addEventListener("click", exportResultPackage);
+  el("result-file-input").addEventListener("change", onResultFileChosen);
+}
+
+async function openPackageFile(file) {
+  el("library-error").hidden = true;
+  setSaveState("正在打开任务包…");
+  try {
+    const response = await fetch(
+      `/api/packages/open?filename=${encodeURIComponent(file.name)}`,
+      {
+        method: "POST",
+        headers: { "X-B2T-Token": token, "Content-Type": "application/zip" },
+        body: file,
+      }
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = (payload && payload.error) || {};
+      throw new ApiError(error.message || `打开失败（HTTP ${response.status}）`, error.code, error.correlation_id, error.detail);
+    }
+    setSaveState("");
+    await loadLibrary();
+    await openProject(payload.project.project_id);
+  } catch (error) {
+    showError(el("library-error"), error);
+  }
+}
+
+/** 审校包项目：显示任务横幅、藏掉不该有的功能、显示"导出审校结果"。 */
+async function applyPackageMode() {
+  const project = currentProject;
+  if (!project) return;
+  if (project.kind !== "package") {
+    el("package-banner").hidden = true;
+    el("package-result").hidden = true;
+    el("export-panel").hidden = false;
+    el("structure-panel").hidden = false;
+    el("selection-recognize").hidden = false;
+    el("recognize-pending").hidden = false;
+    el("selection-check").hidden = false;
+    el("check-pending").hidden = false;
+    el("selection-skip-checked").parentElement.hidden = false;
+    el("selection-set-type").hidden = false;
+    el("selection-type").parentElement.hidden = false;
+    return;
+  }
+
+  el("package-result").hidden = false;
+  el("export-panel").hidden = true;          // 助手不能导出 TXT / JSONL
+  el("structure-panel").hidden = true;       // 也没有页眉页脚工具
+  el("selection-recognize").hidden = true;
+  el("recognize-pending").hidden = true;
+  el("selection-check").hidden = true;
+  el("check-pending").hidden = true;
+  el("selection-skip-checked").parentElement.hidden = true;
+  el("selection-set-type").hidden = true;
+  el("selection-type").parentElement.hidden = true;
+  el("detail-recognize").hidden = true;
+  el("aux-run").hidden = true;
+
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/package`);
+    const info = data.package;
+    const banner = el("package-banner");
+    banner.hidden = false;
+    banner.textContent =
+      `审校任务：第 ${info.page_nos.join("、")} 页` +
+      (info.context_page_nos.length
+        ? `（另附只读上下文第 ${info.context_page_nos.join("、")} 页）`
+        : "") +
+      ` · 来自 ${info.owner_name || "负责人"}` +
+      (info.due_date ? ` · 截止 ${info.due_date}` : "") +
+      (info.note ? ` · 说明：${info.note}` : "");
+    el("package-result-meta").textContent = `${info.book_name} · 审校人 ${info.reviewer_name}`;
+    await loadPackageResults(project.project_id);
+  } catch (error) {
+    showError(el("library-error"), error);
+  }
+}
+
+async function loadPackageResults(projectId) {
+  try {
+    const data = await apiJson(`/api/projects/${projectId}/package/results`);
+    const list = el("package-result-files");
+    list.innerHTML = "";
+    for (const item of data.results || []) {
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = `${item.name}（${(item.size / 1024).toFixed(0)} KB）`;
+      const spacer = document.createElement("span");
+      spacer.className = "spacer";
+      const download = document.createElement("button");
+      download.type = "button";
+      download.className = "btn btn--ghost";
+      download.textContent = "下载";
+      download.addEventListener("click", () => downloadResultPackage(projectId, item.name));
+      li.append(name, spacer, download);
+      list.append(li);
+    }
+  } catch (error) {
+    showError(el("package-result-files") || el("library-error"), error);
+  }
+}
+
+async function exportResultPackage() {
+  if (!currentProject) return;
+  el("package-result-meta").textContent = "导出中…";
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/package/result`, {
+      method: "POST",
+    });
+    const summary = data.summary;
+    const lines = [
+      `已完成 ${summary.page_count - summary.unfinished_pages.length} 页` +
+        `，未完成 ${summary.unfinished_pages.length} 页`,
+      `不确定 ${summary.uncertain} 块`,
+      `备注 ${summary.commented} 条`,
+      `改过的块 ${summary.modified}`,
+    ];
+    window.alert(
+      `结果包已生成：${data.file_name}\n\n${lines.join("\n")}\n\n` +
+        "用下面的「下载」把它发给负责人。"
+    );
+    await loadPackageResults(currentProject.project_id);
+  } catch (error) {
+    showError(el("package-result-meta"), error);
+  }
+}
+
+async function downloadResultPackage(projectId, fileName) {
+  const response = await fetch(
+    `/api/projects/${projectId}/package/results/${encodeURIComponent(fileName)}?token=${encodeURIComponent(token)}`,
+    { headers: { "X-B2T-Token": token } }
+  );
+  if (!response.ok) {
+    setSaveState("下载失败", true);
+    return;
+  }
+  saveBlob(await response.blob(), fileName);
+}
+
+// ---------------------------------------------------------------- 协作：导入结果与合并审阅
+
+function pickResultFile(assignmentId, { allowCancelled = false } = {}) {
+  packagePending = { assignmentId, allowCancelled };
+  el("result-file-input").click();
+}
+
+async function onResultFileChosen() {
+  const input = el("result-file-input");
+  const file = input.files && input.files[0];
+  input.value = "";
+  if (!file || !packagePending) return;
+  const { allowCancelled } = packagePending;
+  el("assign-error").hidden = true;
+  setSaveState("正在导入结果包…");
+  try {
+    const response = await fetch(
+      `/api/projects/${project_id()}/results?filename=${encodeURIComponent(file.name)}` +
+        (allowCancelled ? "&allow_cancelled=true" : ""),
+      {
+        method: "POST",
+        headers: { "X-B2T-Token": token, "Content-Type": "application/zip" },
+        body: file,
+      }
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = (payload && payload.error) || {};
+      throw new ApiError(error.message || `导入失败（HTTP ${response.status}）`, error.code, error.correlation_id, error.detail);
+    }
+    setSaveState(`已导入第 ${payload.seq} 次结果`);
+    mergeState = payload;
+    renderMergeView(payload);
+    await loadAssignments();
+  } catch (error) {
+    showError(el("assign-error"), error);
+  } finally {
+    packagePending = null;
+  }
+}
+
+async function openMergeView(assignmentId) {
+  if (!currentProject) return;
+  el("merge-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${project_id()}/assignments/${assignmentId}/merge`
+    );
+    mergeState = data;
+    renderMergeView(data);
+  } catch (error) {
+    showError(el("assign-error"), error);
+  }
+}
+
+/** 字符级差异：把 before/after 渲染成"删除线 + 高亮"的片段（说明书 7.9.3）。 */
+function charDiff(before, after) {
+  const left = String(before || "");
+  const right = String(after || "");
+  // 先剥掉共同的前后段，中间用 LCS 逐字比（行内文本通常只有几十字，够快也够准）
+  let start = 0;
+  while (start < left.length && start < right.length && left[start] === right[start]) start += 1;
+  let endLeft = left.length;
+  let endRight = right.length;
+  while (endLeft > start && endRight > start && left[endLeft - 1] === right[endRight - 1]) {
+    endLeft -= 1;
+    endRight -= 1;
+  }
+  const prefix = left.slice(0, start);
+  const suffix = left.slice(endLeft);
+  const leftMid = left.slice(start, endLeft);
+  const rightMid = right.slice(start, endRight);
+
+  const fragment = document.createDocumentFragment();
+  if (prefix) fragment.append(document.createTextNode(prefix));
+  for (const [kind, text] of diffMiddle(leftMid, rightMid)) {
+    if (!text) continue;
+    if (kind === "same") {
+      fragment.append(document.createTextNode(text));
+    } else if (kind === "del") {
+      const node = document.createElement("del");
+      node.textContent = text;
+      fragment.append(node);
+    } else {
+      const node = document.createElement("ins");
+      node.textContent = text;
+      fragment.append(node);
+    }
+  }
+  if (suffix) fragment.append(document.createTextNode(suffix));
+  return fragment;
+}
+
+/** 中间段的逐字比较：返回 [["same"|"del"|"ins", 文本], …]。 */
+function diffMiddle(left, right) {
+  const rows = left.length;
+  const cols = right.length;
+  if (rows * cols > 40000) {
+    // 太长的行不做逐字比（避免卡界面），整段显示为替换
+    return [["del", left], ["ins", right]];
+  }
+  const table = Array.from({ length: rows + 1 }, () => new Array(cols + 1).fill(0));
+  for (let i = rows - 1; i >= 0; i -= 1) {
+    for (let j = cols - 1; j >= 0; j -= 1) {
+      table[i][j] =
+        left[i] === right[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+  const out = [];
+  const push = (kind, char) => {
+    const last = out[out.length - 1];
+    if (last && last[0] === kind) last[1] += char;
+    else out.push([kind, char]);
+  };
+  let i = 0;
+  let j = 0;
+  while (i < rows && j < cols) {
+    if (left[i] === right[j]) {
+      push("same", left[i]);
+      i += 1;
+      j += 1;
+    } else if (table[i + 1][j] >= table[i][j + 1]) {
+      push("del", left[i]);
+      i += 1;
+    } else {
+      push("ins", right[j]);
+      j += 1;
+    }
+  }
+  while (i < rows) push("del", left[i++]);
+  while (j < cols) push("ins", right[j++]);
+  return out;
+}
+
+const MERGE_KIND_CLASS = {
+  conflict: "is-conflict",
+  structural: "is-structural",
+};
+
+function mergeVisiblePages() {
+  if (!mergeState) return [];
+  const filter = el("merge-filter").value;
+  const handled = mergeHandled;
+  return mergeState.changed_pages.filter((page) => {
+    if (handled.has(page.page_id) && filter !== "all") return filter === "pending" ? false : true;
+    if (filter === "conflict") return page.kind === "conflict";
+    if (filter === "structural") return page.kind === "structural";
+    if (filter === "block_level") return page.kind === "block_level";
+    if (filter === "comments") return page.comment_count > 0;
+    if (filter === "pending") return !handled.has(page.page_id);
+    return true;
+  });
+}
+
+let mergeHandled = new Set();
+let mergeDecisions = new Map();
+
+function renderMergeView(state) {
+  const panel = el("merge-panel");
+  panel.hidden = false;
+  const counts = state.counts;
+  el("merge-title").textContent = `合并审校结果：${state.reviewer_name}`;
+  el("merge-meta").textContent =
+    `第 ${(state.page_nos || []).join("、")} 页 · 结果 ${state.seq}` +
+    ` · 变化 ${counts.changed_pages} 页 · 块级修改 ${counts.block_level}` +
+    ` · 结构变化 ${counts.structural} · 冲突 ${counts.conflict} · 备注 ${counts.comments}`;
+  el("merge-error").hidden = true;
+
+  const list = el("merge-pages");
+  list.innerHTML = "";
+  for (const page of mergeVisiblePages()) {
+    const item = document.createElement("li");
+    item.dataset.pageId = page.page_id;
+    item.className = MERGE_KIND_CLASS[page.kind] || "";
+    if (mergeHandled.has(page.page_id)) item.classList.add("is-done");
+    const mark = page.kind === "conflict" ? "⚠ " : page.kind === "structural" ? "◧ " : "● ";
+    item.textContent =
+      `${mark}第 ${page.page_no} 页 · ${page.kind_label}` +
+      (page.changed_blocks ? ` ${page.changed_blocks} 处` : "") +
+      (page.comment_count ? ` 💬${page.comment_count}` : "");
+    item.addEventListener("click", () => showMergePage(page));
+    list.append(item);
+  }
+  if (!list.children.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent = "没有符合条件的页面。";
+    list.append(empty);
+  }
+  const counts2 = [...mergeDecisions.values()];
+  el("merge-accept-all").disabled = !state.changed_pages.some(
+    (page) => !mergeHandled.has(page.page_id) && page.kind !== "conflict"
+  );
+  if (counts2.length) {
+    el("merge-meta").textContent += ` · 已决定 ${counts2.length} 页`;
+  }
+}
+
+function showMergePage(page) {
+  const detail = el("merge-detail");
+  detail.innerHTML = "";
+  const title = document.createElement("div");
+  title.className = "muted";
+  title.textContent = `第 ${page.page_no} 页 · ${page.kind_label}`;
+  detail.append(title);
+
+  if (page.kind === "conflict") {
+    const hint = document.createElement("p");
+    hint.className = "hint";
+    hint.textContent =
+      "这一页在你分派之后也改过——冲突项要单独决定（保留我的 / 采用助手的），或者先拒绝、之后手工改。";
+    detail.append(hint);
+  }
+  if (page.kind === "structural") {
+    const hint = document.createElement("p");
+    hint.className = "hint";
+    hint.textContent = "这一页有块的增删 / 合并 / 拆分 / 重排，只能整页接受或拒绝。";
+    detail.append(hint);
+  }
+
+  for (const change of page.block_changes) {
+    detail.append(mergeBlockItem(page, change));
+  }
+  if (page.added_blocks.length) {
+    const item = document.createElement("div");
+    item.className = "merge-item";
+    const head = document.createElement("div");
+    head.className = "merge-item__head";
+    head.textContent = `助手新增了 ${page.added_blocks.length} 块（接受这一页时会一起写入）`;
+    item.append(head);
+    for (const block of page.added_blocks) {
+      const body = document.createElement("div");
+      body.className = "merge-diff";
+      const node = document.createElement("ins");
+      node.textContent = block.text || "（空）";
+      body.append(node);
+      item.append(body);
+    }
+    detail.append(item);
+  }
+  if (page.removed_blocks.length) {
+    const item = document.createElement("div");
+    item.className = "merge-item";
+    const head = document.createElement("div");
+    head.className = "merge-item__head";
+    head.textContent = `助手删除了 ${page.removed_blocks.length} 块（接受这一页时会一起删除，可撤销）`;
+    item.append(head);
+    detail.append(item);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "merge-page-actions";
+  const accept = document.createElement("button");
+  accept.type = "button";
+  accept.className = "btn btn--primary";
+  accept.textContent = page.kind === "block_level" ? "接受本页" : "接受本页";
+  accept.title = page.kind === "block_level" ? "接受这一页里助手的全部改动" : "结构变化 / 冲突按整页接受";
+  accept.addEventListener("click", () => decideMergePage(page, "accept"));
+  const reject = document.createElement("button");
+  reject.type = "button";
+  reject.className = "btn";
+  reject.textContent = page.kind === "conflict" ? "保留我的" : "拒绝本页";
+  reject.addEventListener("click", () =>
+    decideMergePage(page, page.kind === "conflict" ? "keep_mine" : "reject")
+  );
+  actions.append(accept, reject);
+  detail.append(actions);
+}
+
+function mergeBlockItem(page, change) {
+  const item = document.createElement("div");
+  item.className = "merge-item";
+  const head = document.createElement("div");
+  head.className = "merge-item__head";
+  const label = document.createElement("span");
+  label.textContent = change.conflict ? "⚠ 冲突" : "块级修改";
+  label.className = "status " + (change.conflict ? "status--bad" : "status--warn");
+  const fields = document.createElement("span");
+  fields.className = "muted";
+  fields.textContent = Object.values(change.field_labels).join(" / ");
+  head.append(label, fields);
+  item.append(head);
+
+  const textChange = change.fields.text;
+  if (textChange) {
+    if (change.conflict) {
+      const three = document.createElement("div");
+      three.className = "merge-three";
+      const cell = (caption, value) => {
+        const box = document.createElement("div");
+        const small = document.createElement("span");
+        small.className = "label";
+        small.textContent = caption;
+        const body = document.createElement("div");
+        body.textContent = value || "（空）";
+        box.append(small, body);
+        return box;
+      };
+      three.append(
+        cell("分派时的原文", textChange.snapshot),
+        cell("你现在的内容", textChange.mine),
+        cell("助手的版本", textChange.theirs)
+      );
+      item.append(three);
+    } else {
+      const diff = document.createElement("div");
+      diff.className = "merge-diff";
+      diff.append(charDiff(textChange.snapshot, textChange.theirs));
+      item.append(diff);
+    }
+  }
+
+  for (const [field, values] of Object.entries(change.fields)) {
+    if (field === "text") continue;
+    const line = document.createElement("div");
+    line.className = "merge-diff";
+    line.textContent =
+      `${change.field_labels[field] || field}：` +
+      `${values.snapshot || "（空）"} → ${values.theirs || "（空）"}`;
+    item.append(line);
+  }
+  if (change.fields.comment) {
+    const note = document.createElement("p");
+    note.className = "merge-note";
+    note.textContent = `💬 ${page ? "" : ""}${change.fields.comment.theirs}`;
+    item.append(note);
+  }
+  return item;
+}
+
+function decideMergePage(page, action) {
+  mergeDecisions.set(page.page_id, { page_id: page.page_id, action });
+  mergeHandled.add(page.page_id);
+  el("merge-detail").innerHTML = '<p class="muted">点左边的一页看差异。</p>';
+  renderMergeListView();
+}
+
+function renderMergeListView() {
+  if (!mergeState) return;
+  const list = el("merge-pages");
+  const active = null;
+  list.innerHTML = "";
+  for (const page of mergeVisiblePages()) {
+    const item = document.createElement("li");
+    item.dataset.pageId = page.page_id;
+    item.className = MERGE_KIND_CLASS[page.kind] || "";
+    const decision = mergeDecisions.get(page.page_id);
+    if (decision) item.classList.add("is-done");
+    const mark =
+      page.kind === "conflict" ? "⚠ " : page.kind === "structural" ? "◧ " : "● ";
+    const decided = decision
+      ? decision.action === "accept"
+        ? " ✓ 接受"
+        : " ✗ 保留"
+      : "";
+    item.textContent =
+      `${mark}第 ${page.page_no} 页 · ${page.kind_label}` +
+      (page.changed_blocks ? ` ${page.changed_blocks} 处` : "") +
+      (page.comment_count ? ` 💬${page.comment_count}` : "") +
+      decided;
+    item.addEventListener("click", () => showMergePage(page));
+    list.append(item);
+  }
+  if (!list.children.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent = "没有符合条件的页面。";
+    list.append(empty);
+  }
+  const pending = mergeState.changed_pages.filter(
+    (page) => !mergeHandled.has(page.page_id) && page.kind !== "conflict"
+  );
+  el("merge-accept-all").disabled = !pending.length;
+  el("merge-meta").textContent =
+    el("merge-meta").textContent.replace(/ · 已决定 \d+ 页$/, "") +
+    (mergeDecisions.size ? ` · 已决定 ${mergeDecisions.size} 页` : "");
+  renderMergeFooter();
+}
+
+/** 合并视图底部的"提交"按钮：把决定一起写进主项目（一次一个 batch）。 */
+function renderMergeFooter() {
+  let footer = el("merge-footer");
+  if (!footer) {
+    footer = document.createElement("div");
+    footer.id = "merge-footer";
+    footer.className = "collab-actions";
+    el("merge-panel").append(footer);
+  }
+  footer.innerHTML = "";
+  if (!mergeDecisions.size) return;
+  const submit = document.createElement("button");
+  submit.type = "button";
+  submit.className = "btn btn--primary";
+  submit.textContent = `提交 ${mergeDecisions.size} 页的决定（可撤销）`;
+  submit.addEventListener("click", submitMergeDecisions);
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "btn btn--ghost";
+  reset.textContent = "清空决定";
+  reset.addEventListener("click", () => {
+    mergeDecisions = new Map();
+    mergeHandled = new Set();
+    renderMergeListView();
+  });
+  footer.append(submit, reset);
+}
+
+async function submitMergeDecisions() {
+  if (!currentProject || !mergeState || !mergeDecisions.size) return;
+  const assignmentId = mergeState.assignment.assignment_id;
+  el("merge-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${project_id()}/assignments/${assignmentId}/merge`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decisions: [...mergeDecisions.values()],
+          reviewer_name: mergeState.reviewer_name,
+        }),
+      }
+    );
+    setSaveState(
+      `已合并 ${data.accepted_pages} 页` +
+        (data.rejected_pages ? `，保留现有 ${data.rejected_pages} 页` : "") +
+        "（⌘/Ctrl + Z 可撤销）"
+    );
+    mergeDecisions = new Map();
+    mergeHandled = new Set();
+    el("merge-panel").hidden = true;
+    await loadAssignments();
+    await refreshProject(project_id());
+  } catch (error) {
+    showError(el("merge-error"), error);
+  }
+}
+
+function setupCollabControls() {
+  el("assign-open").addEventListener("click", openAssignPanel);
+  el("assign-list-toggle").addEventListener("click", async () => {
+    const panel = el("assign-panel");
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) await loadAssignments();
+  });
+  el("assign-close").addEventListener("click", () => {
+    el("assign-panel").hidden = true;
+  });
+  el("assign-reviewer").addEventListener("input", previewAssign);
+  el("assign-context").addEventListener("change", previewAssign);
+  el("assign-create").addEventListener("click", createAssignment);
+  el("assign-download").addEventListener("click", (event) =>
+    downloadPackage(event.target.dataset.assignmentId)
+  );
+  el("assign-reveal").addEventListener("click", (event) =>
+    revealPackage(event.target.dataset.assignmentId)
+  );
+  el("merge-close").addEventListener("click", () => {
+    el("merge-panel").hidden = true;
+  });
+  el("merge-filter").addEventListener("change", renderMergeListView);
+  el("merge-accept-all").addEventListener("click", acceptAllClean);
+  setupPackageControls();
+}
+
+async function acceptAllClean() {
+  if (!mergeState) return;
+  const pending = mergeState.changed_pages.filter(
+    (page) => !mergeHandled.has(page.page_id) && page.kind !== "conflict"
+  );
+  if (!pending.length) return;
+  if (
+    !window.confirm(
+      `接受 ${pending.length} 页里没有冲突的变化？\n（块级修改与结构变化都会被写入，冲突项留给你单独处理；整批可撤销）`
+    )
+  ) {
+    return;
+  }
+  for (const page of pending) {
+    mergeDecisions.set(page.page_id, { page_id: page.page_id, action: "accept" });
+    mergeHandled.add(page.page_id);
+  }
+  renderMergeListView();
 }
 
 // ---------------------------------------------------------------- 启动

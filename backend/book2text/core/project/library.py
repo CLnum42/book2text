@@ -69,6 +69,8 @@ class Project:
     created_at: str
     updated_at: str
     schema_version: int
+    kind: str = "main"
+    """主项目（main）还是审校包项目（package，说明书 6.7.3）。"""
     last_view: str | None = None
     last_page_id: str | None = None
     directory: Path | None = None
@@ -83,6 +85,7 @@ class Project:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "schema_version": self.schema_version,
+            "kind": self.kind,
             "last_view": self.last_view,
             "last_page_id": self.last_page_id,
             "directory": str(self.directory) if self.directory else "",
@@ -100,6 +103,11 @@ class Page:
     page_type: str
     include: bool
     has_text_layer: bool
+    is_context: bool = False
+    """任务包里的只读上下文页（说明书 6.7.2）；主项目里恒为 False。"""
+    pdf_page_index: int | None = None
+    """这一页在**本项目 PDF** 里的下标（0 起）。主项目里是 None，等于 page_no - 1；
+    任务包项目的 PDF 是子集，必须单独记——否则会渲染出别的页。"""
     note: str | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -113,6 +121,8 @@ class Page:
             "page_type": self.page_type,
             "include": self.include,
             "has_text_layer": self.has_text_layer,
+            "is_context": self.is_context,
+            "pdf_page_index": self.pdf_page_index,
             "note": self.note,
         }
 
@@ -196,6 +206,52 @@ class CreateResult:
     project: Project
     text_layer_hint: bool
     pages_with_text_layer: int
+
+
+def create_blank_project(
+    *,
+    name: str,
+    source_file_name: str,
+    source_sha256: str,
+    page_count: int,
+    library: Path | None = None,
+    kind: str = "main",
+) -> tuple[Project, Path]:
+    """建一个**空**项目的骨架：目录 + `project` 一行。页面与块由调用方写入。
+
+    与 `create_project`（上传 PDF 建项目）的区别在于"页从哪来"：
+    审校包项目的页来自任务包里的快照（页 id 都要沿用负责人的），
+    所以这里只给骨架，内容由 `core/collab/packages.py` 落库。
+    """
+    target_library = ensure_library(library or default_library_dir())
+    project_id = _new_project_id(target_library)
+    directory = target_library / project_id
+    create_project_dirs(directory)
+
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with db_module.open_database(directory) as conn:
+        conn.execute(
+            """
+            INSERT INTO project (
+                project_id, name, source_file_name, source_sha256, page_count,
+                created_at, updated_at, schema_version, settings_json, kind
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                name.strip() or project_id,
+                source_file_name,
+                source_sha256,
+                page_count,
+                now,
+                now,
+                db_module.LATEST_VERSION,
+                json.dumps({}, ensure_ascii=False),
+                kind,
+            ),
+        )
+        conn.commit()
+    return load_project(project_id, library=target_library), directory
 
 
 async def create_project(
@@ -294,6 +350,19 @@ async def create_project(
 
 # ---------------------------------------------------------------- 读取
 
+def _column(row, name: str):
+    """读一列；这一列不存在时返回 None。
+
+    迁移是**开库时**做的（`db.open_database`），但读取路径上有几处刻意
+    `apply_migrations=False`（见 blocks.py 的说明）——那几处拿到的是老结构，
+    这里对"迁移之后才有的列"统一按缺省值处理。
+    """
+    try:
+        return row[name]
+    except (IndexError, KeyError):
+        return None
+
+
 def _row_to_project(row, directory: Path) -> Project:
     return Project(
         project_id=row["project_id"],
@@ -304,6 +373,7 @@ def _row_to_project(row, directory: Path) -> Project:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         schema_version=int(row["schema_version"]),
+        kind=_column(row, "kind") or "main",
         last_view=row["last_view"],
         last_page_id=row["last_page_id"],
         directory=directory,
@@ -358,6 +428,10 @@ def list_pages(project_id: str, *, library: Path | None = None) -> list[Page]:
             page_type=row["page_type"],
             include=bool(row["include"]),
             has_text_layer=bool(row["has_text_layer"]),
+            is_context=bool(_column(row, "is_context") or 0),
+            pdf_page_index=(
+                int(row["pdf_page_index"]) if _column(row, "pdf_page_index") is not None else None
+            ),
             note=row["note"],
         )
         for row in rows

@@ -24,6 +24,7 @@ from ..core.project import editing
 from ..core.project import library as project_library
 from ..core.project import recognition
 from .deps import actor_name as _actor_name
+from .deps import require_editable_page
 from .deps import library_dir as _library
 from .deps import project_error as _project_error
 from .errors import AppError
@@ -110,6 +111,20 @@ def _block_payload(block: blocks_module.BlockRecord, lines) -> dict[str, Any]:
     }
 
 
+def _require_page_editable(request: Request, project_id: str, block_id: str, *, library) -> None:
+    """只读上下文页（说明书 6.7.2）不能改：块在那种页上就拒绝。
+
+    `deps.require_editable_page` 是按**页码**判的，块编辑路径手里只有块 id，这里先查它在哪一页。
+    审校包里上下文页的存在本身就是"给你看跨页段落用的"，改它会让结果包与主项目对不上。
+    """
+    for page in project_library.list_pages(project_id, library=library):
+        blocks = blocks_module.list_blocks(project_id, library=library, page_no=page.page_no)
+        if any(block.block_id == block_id for block in blocks):
+            require_editable_page(project_id, page.page_no, library=library)
+            return
+    # 查不到就交给编辑层报"找不到块"（保持原来的 404 语义）
+
+
 def _page_blocks_payload(request: Request, project_id: str, page_no: int) -> dict[str, Any]:
     library = _library(request)
     page, runs, blocks, lines = blocks_module.load_page_content(
@@ -171,6 +186,7 @@ def patch_block(
 ) -> dict[str, Any]:
     """改一个块。每次成功写入都会加 revision 并记一条 Event（说明书 5.1 / 5.3）。"""
     library = _library(request)
+    _require_page_editable(request, project_id, block_id, library=library)
     try:
         block, events = editing.update_block(
             project_id,
@@ -346,6 +362,7 @@ def decline_run(request: Request, project_id: str, page_no: int, run_id: str) ->
 @router.post("/{project_id}/blocks/{block_id}/merge-prev")
 def merge_prev(request: Request, project_id: str, block_id: str) -> dict[str, Any]:
     """把这一块合并到上一块（说明书 R4：文本与 ocr_text 以 \n 连接、bbox 取并集）。"""
+    _require_page_editable(request, project_id, block_id, library=_library(request))
     library = _library(request)
     try:
         merged, events = editing.merge_with_previous(
@@ -375,6 +392,7 @@ def split_block(
     request: Request, project_id: str, block_id: str, body: SplitRequest
 ) -> dict[str, Any]:
     """在光标处拆成两块（说明书 R4：两块暂沿用原 bbox，行按位置分配）。"""
+    _require_page_editable(request, project_id, block_id, library=_library(request))
     library = _library(request)
     try:
         parts, events = editing.split_block(
@@ -403,6 +421,7 @@ def move_block(
     request: Request, project_id: str, block_id: str, body: MoveRequest
 ) -> dict[str, Any]:
     """与相邻的块交换位置（说明书 6.4 的上移 / 下移）。"""
+    _require_page_editable(request, project_id, block_id, library=_library(request))
     library = _library(request)
     try:
         moved, events = editing.move_block(
@@ -446,6 +465,7 @@ def create_block(
 ) -> dict[str, Any]:
     """新增一个块（说明书 6.4；不框选位置就按"无位置信息"处理）。"""
     library = _library(request)
+    require_editable_page(project_id, page_no, library=library)
     bbox = tuple(body.bbox) if body.bbox else None
     if bbox is not None and not all(0.0 <= value <= 1.0 for value in bbox):
         raise AppError(400, "bad_bbox", "框选坐标必须是 0–1 的归一化坐标")
@@ -476,6 +496,7 @@ def create_block(
 @router.delete("/{project_id}/blocks/{block_id}")
 def delete_block(request: Request, project_id: str, block_id: str) -> dict[str, Any]:
     """软删除一个块（说明书 5.1：删除一律软删除）。"""
+    _require_page_editable(request, project_id, block_id, library=_library(request))
     library = _library(request)
     try:
         events, page_no = editing.delete_block(project_id, block_id, library=library)

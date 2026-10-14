@@ -22,6 +22,7 @@ from ..core.project import editing
 from ..core.project import library as project_library
 from ..core.project import structure
 from .deps import library_dir as _library
+from .deps import require_main_project as _require_main
 from .deps import project_error as _project_error
 from .errors import AppError
 
@@ -54,6 +55,7 @@ def header_footer_preview(
     request: Request, project_id: str, body: HeaderFooterRulesModel | None = None
 ) -> dict[str, Any]:
     """预览：会被标注哪些块、标成什么、哪些被跳过（说明书 6.5 第 3 条）。"""
+    _require_main(request, project_id)
     library = _library(request)
     rules = (body or HeaderFooterRulesModel()).rules()
     try:
@@ -78,6 +80,7 @@ def header_footer_apply(
     request: Request, project_id: str, body: ApplyRequest
 ) -> dict[str, Any]:
     """应用：把确认保留的块一次批量改类型（整批可撤销）。"""
+    _require_main(request, project_id)
     library = _library(request)
     if not body.items:
         raise AppError(

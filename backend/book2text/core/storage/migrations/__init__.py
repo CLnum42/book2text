@@ -8,6 +8,7 @@ from . import (
     migration_0002_recognition,
     migration_0003_event,
     migration_0004_export_record,
+    migration_0005_collaboration,
 )
 
 MIGRATIONS: list[Migration] = [
@@ -15,6 +16,7 @@ MIGRATIONS: list[Migration] = [
     migration_0002_recognition.MIGRATION,
     migration_0003_event.MIGRATION,
     migration_0004_export_record.MIGRATION,
+    migration_0005_collaboration.MIGRATION,
 ]
 
 LATEST_VERSION = max(migration.version for migration in MIGRATIONS)

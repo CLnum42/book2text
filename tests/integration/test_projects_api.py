@@ -495,10 +495,14 @@ def test_page_image_endpoint(
     )
     assert bad.status_code == 400
 
+    # 项目里根本没有第 99 页 → 404（"找不到"而不是"渲染失败"）。
+    # 2026-10-14 起：图片接口先按**页记录**解析 PDF 下标（任务包的 PDF 是子集，
+    # 页码与下标不相等），页不存在时在这里就拦住了。
     out_of_range = client.get(
         f"/api/projects/{project_id}/pages/99/image", headers=auth_headers
     )
-    assert out_of_range.status_code == 400
+    assert out_of_range.status_code == 404
+    assert out_of_range.json()["error"]["code"] == "page_not_found"
 
 
 # ---------------------------------------------------------------- 文本层提示

@@ -51,6 +51,9 @@
         <input type="text" id="new-project-name" placeholder="书名（可留空，用文件名）" maxlength="200">
         <input type="file" id="new-project-file" accept="application/pdf,.pdf" hidden>
         <button type="button" id="pick-pdf" class="btn btn--primary">选择 PDF 并新建项目</button>
+        <input type="file" id="open-package-file" accept=".b2tpkg,application/zip" hidden>
+        <button type="button" id="open-package" class="btn"
+                title="助手用：打开负责人发来的任务包（.b2tpkg），审校完之后导出审校结果包">打开任务包（助手）</button>
       </div>
       <div class="progress" id="create-progress" hidden>
         <div class="progress__bar"><div class="progress__fill" id="create-progress-fill"></div></div>
@@ -71,6 +74,7 @@
         <span class="spacer"></span>
         <button type="button" id="project-close" class="btn">关闭项目</button>
       </div>
+      <div class="alert alert--info" id="package-banner" hidden></div>
       <dl class="kv" id="project-meta"></dl>
 
       <div class="stats" id="stats-card">
@@ -164,6 +168,10 @@
                 title="用第二引擎（macOS 上是系统自带的 Apple Vision）逐行复核所选页：复核跑在后台任务里，进度在右下角的任务抽屉里看">第二引擎复核所选</button>
         <button type="button" id="check-pending" class="btn"
                 title="复核全部已识别但还没复核过的页（说明书 8.5：第二引擎可以随时补跑）">复核全部未复核页</button>
+        <span class="sep"></span>
+        <button type="button" id="assign-open" class="btn"
+                title="把选中的页面分派给助手（生成任务包 .b2tpkg，说明书 6.7）">分派审校…</button>
+        <button type="button" id="assign-list-toggle" class="btn btn--ghost">任务包</button>
       </div>
       <div class="alert alert--warn" id="selection-hint" hidden></div>
 
@@ -176,6 +184,72 @@
       </p>
       <div class="alert alert--error" id="pages-error" hidden></div>
       <div class="page-grid" id="page-grid"></div>
+
+      <div class="collab-panel" id="assign-panel" hidden>
+        <div class="collab-panel__head">
+          <strong>分派审校任务</strong>
+          <span class="muted" id="assign-meta"></span>
+          <span class="spacer"></span>
+          <button type="button" id="assign-close" class="btn btn--ghost">收起</button>
+        </div>
+        <div class="assign-form">
+          <label class="muted">审校人
+            <input type="text" id="assign-reviewer" list="assign-reviewer-names"
+                   placeholder="助手的名字" maxlength="100">
+            <datalist id="assign-reviewer-names"></datalist>
+          </label>
+          <label class="muted">截止日期
+            <input type="date" id="assign-due">
+          </label>
+          <label class="muted check">
+            <input type="checkbox" id="assign-context" checked> 附带前后各 1 页作为只读上下文
+          </label>
+        </div>
+        <label class="muted">说明
+          <textarea id="assign-note" rows="2" maxlength="2000"
+                    placeholder="给助手的说明，例如：注意人名统一用「维特根斯坦」"></textarea>
+        </label>
+        <div class="assign-preview" id="assign-preview"></div>
+        <div class="collab-actions">
+          <button type="button" id="assign-create" class="btn btn--primary">生成任务包</button>
+          <button type="button" id="assign-download" class="btn" hidden>下载任务包</button>
+          <button type="button" id="assign-reveal" class="btn" hidden>在文件夹中显示</button>
+        </div>
+        <div class="alert alert--error" id="assign-error" hidden></div>
+
+        <input type="file" id="result-file-input" accept=".b2tres,application/zip" hidden>
+
+        <div class="collab-list">
+          <div class="muted">任务包</div>
+          <ul id="assign-list"></ul>
+          <p class="muted" id="assign-list-empty">还没有分派过。</p>
+        </div>
+      </div>
+
+      <div class="collab-panel" id="merge-panel" hidden>
+        <div class="collab-panel__head">
+          <strong id="merge-title">合并审校结果</strong>
+          <span class="muted" id="merge-meta"></span>
+          <span class="spacer"></span>
+          <select id="merge-filter">
+            <option value="all">全部</option>
+            <option value="conflict">冲突</option>
+            <option value="structural">结构变化</option>
+            <option value="block_level">块级修改</option>
+            <option value="comments">有备注</option>
+            <option value="pending">未处理</option>
+          </select>
+          <button type="button" id="merge-accept-all" class="btn">接受所有无冲突的变化</button>
+          <button type="button" id="merge-close" class="btn btn--ghost">收起</button>
+        </div>
+        <div class="merge-body">
+          <ol class="merge-pages" id="merge-pages"></ol>
+          <div class="merge-detail" id="merge-detail">
+            <p class="muted">点左边的一页看差异。</p>
+          </div>
+        </div>
+        <div class="alert alert--error" id="merge-error" hidden></div>
+      </div>
 
       <div class="structure-panel" id="structure-panel">
         <div class="structure-panel__head">
@@ -227,6 +301,20 @@
             <ol class="structure-candidates" id="structure-candidates"></ol>
           </div>
         </div>
+      </div>
+
+      <div class="collab-panel" id="package-result" hidden>
+        <div class="collab-panel__head">
+          <strong>导出审校结果</strong>
+          <span class="muted" id="package-result-meta"></span>
+          <span class="spacer"></span>
+          <button type="button" id="package-export-btn" class="btn btn--primary">导出结果包</button>
+        </div>
+        <p class="hint">
+          结果包（<code>.b2tres</code>）通常只有几十 KB，可以直接用聊天工具发给负责人。
+          允许分多次导出（每天发一次进度也行）；导出前会显示摘要。
+        </p>
+        <ul class="export-files" id="package-result-files"></ul>
       </div>
 
       <div class="export-panel" id="export-panel">

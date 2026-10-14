@@ -27,6 +27,8 @@ from . import (
     routes_jobs,
     routes_projects,
     routes_review,
+    routes_collab,
+    routes_packages,
     routes_structure,
     security,
 )
@@ -83,6 +85,8 @@ def create_app(
     app.include_router(routes_review.router, dependencies=guarded)
     app.include_router(routes_exports.router, dependencies=guarded)
     app.include_router(routes_structure.router, dependencies=guarded)
+    app.include_router(routes_collab.router, dependencies=guarded)
+    app.include_router(routes_packages.router, dependencies=guarded)
 
     app.mount("/static", StaticFiles(directory=paths.STATIC_DIR), name="static")
 

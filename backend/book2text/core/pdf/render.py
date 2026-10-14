@@ -25,8 +25,30 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
+import functools
+import threading
+
 import pypdfium2 as pdfium
 from PIL import Image
+
+# **pdfium 不是线程安全的**（2026-10-14 在真机上撞到：接口层用线程池渲染缩略图，
+# 并发时 `document[i]` 抛 "Failed to load page."、`import_pages` 抛
+# "Failed to import pages."，任务包生成也就跟着失败）。碰 pdfium 的公开函数
+# 统统串行化在这一把锁上：渲染本来就是 CPU 密集，加锁的代价可以忽略。
+#
+# 锁是**进程内**的；识别子进程是单线程，不受影响。
+_PDFIUM_LOCK = threading.RLock()
+
+
+def _serialized(func):
+    """把整个函数体放进 pdfium 互斥区（见 `_PDFIUM_LOCK` 的说明）。"""
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with _PDFIUM_LOCK:
+            return func(*args, **kwargs)
+
+    return wrapper
 
 # 渲染档位 → 目标 DPI。说明书 8.2 注明默认值由 Phase 0 样本测试决定，
 # 当前数值是待验证的初值，不是最终结论。
@@ -69,6 +91,7 @@ def _guarded_page(document: pdfium.PdfDocument, page_index: int):
     return document[page_index]
 
 
+@_serialized
 def info(path: Path) -> PdfInfo:
     """页数与首页的**显示尺寸**（pt）。
 
@@ -90,6 +113,7 @@ def info(path: Path) -> PdfInfo:
         document.close()
 
 
+@_serialized
 def page_rotation(path: Path, page_index: int) -> int:
     """页面的 ``/Rotate`` 声明值（度）。
 
@@ -107,6 +131,7 @@ def page_rotation(path: Path, page_index: int) -> int:
         document.close()
 
 
+@_serialized
 def page_labels(path: Path) -> list[str]:
     """读取每页的页码标签。
 
@@ -120,6 +145,7 @@ def page_labels(path: Path) -> list[str]:
         document.close()
 
 
+@_serialized
 def render_page_image(
     path: Path,
     page_index: int,
@@ -158,6 +184,7 @@ def render_page_image(
         document.close()
 
 
+@_serialized
 def render_page_png(path: Path, page_index: int, *, profile: str = DEFAULT_PROFILE) -> bytes:
     """把某一页渲染成 PNG 字节。``page_index`` 从 0 开始。"""
     if profile not in RENDER_PROFILES:
@@ -173,6 +200,7 @@ def render_page_png(path: Path, page_index: int, *, profile: str = DEFAULT_PROFI
         image.close()
 
 
+@_serialized
 def page_sizes_pt(path: Path) -> list[tuple[float, float]]:
     """所有页的**显示尺寸**（pt）。打开一次文档读完，避免逐页开关文件。"""
     document = _open(path)
@@ -189,6 +217,7 @@ def page_sizes_pt(path: Path) -> list[tuple[float, float]]:
         document.close()
 
 
+@_serialized
 def page_rotations(path: Path) -> list[int]:
     """所有页的 ``/Rotate`` 声明值（度），一次读完。"""
     document = _open(path)
@@ -198,6 +227,7 @@ def page_rotations(path: Path) -> list[int]:
         document.close()
 
 
+@_serialized
 def text_layer_char_count(path: Path, page_index: int) -> int:
     """该页文本层里的字符数。
 
@@ -215,6 +245,7 @@ def text_layer_char_count(path: Path, page_index: int) -> int:
         document.close()
 
 
+@_serialized
 def text_layer_char_counts(path: Path) -> list[int]:
     """逐页文本层字符数。只读文本层、不渲染，因此比渲染快得多。"""
     document = _open(path)
@@ -228,6 +259,34 @@ def text_layer_char_counts(path: Path) -> list[int]:
                 page.close()
         return counts
     finally:
+        document.close()
+
+
+@_serialized
+def extract_subset(source: Path, page_indexes: list[int], destination: Path) -> int:
+    """把若干页抽成一个新的 PDF（说明书 6.7.2 的任务包子集）。
+
+    返回实际抽出的页数。**顺序按传入的 `page_indexes` 来**——任务包里
+    "上下文页夹在前后"的顺序由调用方决定，这里不做重排。
+    """
+    if not page_indexes:
+        raise PdfError("要抽取的页面是空的")
+    document = _open(source)
+    subset = pdfium.PdfDocument.new()
+    try:
+        valid = [index for index in page_indexes if 0 <= index < len(document)]
+        if not valid:
+            raise PdfError("要抽取的页面都不在这份 PDF 里")
+        subset.import_pages(document, valid)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        subset.save(str(destination))
+        return len(valid)
+    except PdfError:
+        raise
+    except Exception as exc:  # pragma: no cover - 底层库异常统一成 PdfError
+        raise PdfError(f"抽取页面失败：{exc}") from exc
+    finally:
+        subset.close()
         document.close()
 
 

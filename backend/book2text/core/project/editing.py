@@ -28,6 +28,7 @@ from .library import ProjectError, project_dir
 
 ACTOR_USER = "user"
 ACTOR_SYSTEM = "system"
+ACTOR_REVIEWER = "reviewer"
 
 # 说明书 5.3 的 action 取值里，本次用到的这些
 ACTION_EDIT_TEXT = "edit_text"
@@ -87,6 +88,7 @@ class Event:
     actor: str
     actor_name: str | None
     created_at: str
+    package_id: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -99,6 +101,7 @@ class Event:
             "after": self.after,
             "actor": self.actor,
             "actor_name": self.actor_name,
+            "package_id": self.package_id,
             "created_at": self.created_at,
         }
 
@@ -124,6 +127,7 @@ def _record(
     batch_id: str,
     actor: str = ACTOR_USER,
     actor_name: str | None = None,
+    package_id: str | None = None,
 ) -> Event:
     now = _now()
     event = Event(
@@ -136,13 +140,14 @@ def _record(
         after=after,
         actor=actor,
         actor_name=actor_name,
+        package_id=package_id,
         created_at=now,
     )
     conn.execute(
         """
         INSERT INTO event (event_id, batch_id, entity_type, entity_id, action,
-                           before_json, after_json, actor, actor_name, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           before_json, after_json, actor, actor_name, package_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             event.event_id,
@@ -154,6 +159,7 @@ def _record(
             json.dumps(after, ensure_ascii=False),
             actor,
             actor_name,
+            package_id,
             now,
         ),
     )
@@ -446,13 +452,14 @@ def _insert_block(
     batch_id: str,
     actor_name: str | None,
     now: str,
+    block_id: str | None = None,
 ) -> tuple[str, list[Event]]:
     """新增一个块。
 
     **先以软删除状态插入，再把"恢复可见"记成一条普通事件**：这样撤销一次新增
     仍然只是"把 `deleted_at` 写回去"，撤销机制里不需要为"新块"开特例。
     """
-    block_id = new_ulid()
+    block_id = block_id or new_ulid()
     conn.execute(
         """
         INSERT INTO block (
@@ -1042,6 +1049,125 @@ def delete_block(
         page_no = int(row["page_no"])
 
     return events, page_no
+
+
+# ---------------------------------------------------------------- 合并助手的审校结果（Phase 5）
+
+ACTION_MERGE_REVIEW = "merge_review"
+
+
+def apply_reviewer_changes(
+    project_id: str,
+    *,
+    page_no: int,
+    changes: list[tuple[str, dict]],
+    reviewer_name: str,
+    package_id: str | None = None,
+    library: Path | None = None,
+) -> list[Event]:
+    """把一位助手的审校结果写进主项目（说明书 6.7.5 的"接受后的写入"）。
+
+    `changes` 每项是 ``("update", {"block_id": …, 字段…})`` / ``("create", {块字段…})`` /
+    ``("delete", {"block_id": …})``，由 `core/collab/merge.py` 算好（它负责"谁的什么变了"）。
+
+    **每一处都是普通事件**：`actor='reviewer'`、`actor_name=助手名字`、`package_id` 已填，
+    整批共享一个 `batch_id`（因此可以整体撤销）。助手确认过的块，合并后
+    `review_status='confirmed'` 且 `reviewed_by=助手名字`——负责人可以按审校人抽查。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        page = _page_row(conn, page_no)
+        if page is None:
+            raise ProjectError(f"没有第 {page_no} 页")
+        if page["is_context"]:
+            raise ProjectError("只读上下文页不能合并（它本来就不该被修改）")
+
+        events: list[Event] = []
+        for operation, payload in changes:
+            if operation == "update":
+                block_id = str(payload["block_id"])
+                values = {key: value for key, value in payload.items() if key != "block_id"}
+                if values.get("review_status") == "confirmed":
+                    values["reviewed_by"] = reviewer_name
+                row = conn.execute(
+                    "SELECT * FROM block WHERE block_id = ?", (block_id,)
+                ).fetchone()
+                if row is None or row["deleted_at"]:
+                    # 负责人删掉了这一块：跳过（合并审阅视图里会把它标成冲突）
+                    continue
+                block_events, _before = _set_block_fields(
+                    conn,
+                    block_id,
+                    values,
+                    batch_id=batch_id,
+                    action=ACTION_MERGE_REVIEW,
+                    actor_name=reviewer_name,
+                    now=now,
+                )
+                events.extend(block_events)
+            elif operation == "create":
+                block_id, created_events = _insert_block(
+                    conn,
+                    page_id=page["page_id"],
+                    # origin 的取值受 block 表的 CHECK 限制（ocr/manual/split/merge），
+                    # 助手新增的块在数据层就是"人工新增"；谁建的由事件的
+                    # actor='reviewer' 与 package_id 记着（说明书 5.3 的协作字段）
+                    origin="manual",
+                    order_index=int(payload.get("order_index") or 0),
+                    bbox=None,
+                    text=payload.get("text") or "",
+                    ocr_text=payload.get("ocr_text") or "",
+                    block_type=payload.get("block_type") or "paragraph",
+                    include=1 if payload.get("include", True) else 0,
+                    continues_to_next=1 if payload.get("continues_to_next") else 0,
+                    action=ACTION_MERGE_REVIEW,
+                    batch_id=batch_id,
+                    actor_name=reviewer_name,
+                    now=now,
+                    block_id=str(payload["block_id"]),
+                )
+                events.extend(created_events)
+            elif operation == "delete":
+                block_events, _before = _set_block_fields(
+                    conn,
+                    str(payload["block_id"]),
+                    {"deleted_at": now},
+                    batch_id=batch_id,
+                    action=ACTION_MERGE_REVIEW,
+                    actor_name=reviewer_name,
+                    now=now,
+                )
+                events.extend(block_events)
+            else:  # pragma: no cover - merge.py 只会给这三种
+                raise ProjectError(f"不认识的合并操作：{operation!r}")
+
+        # 来源标注（actor 与 package_id 是协作用的两列）
+        for event in events:
+            conn.execute(
+                "UPDATE event SET actor = ?, package_id = ? WHERE event_id = ?",
+                (ACTOR_REVIEWER, package_id, event.event_id),
+            )
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+
+    # 返回的事件带上协作信息，撤销栈与界面据此显示"来自 张三 的审校结果"
+    return [
+        replace_event(event, actor=ACTOR_REVIEWER, package_id=package_id) for event in events
+    ]
+
+
+def replace_event(event: Event, **changes) -> Event:
+    """事件是不可变的 dataclass，改几个字段时用它（别处也用它做"补写来源"）。"""
+    from dataclasses import replace
+
+    return replace(event, **changes)
 
 
 # ---------------------------------------------------------------- 采用 / 保留新识别结果（R2）

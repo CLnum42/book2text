@@ -20,6 +20,7 @@ from ..core import platform as b2t_platform
 from ..core.export import project as project_export
 from ..core.project import library as project_library
 from .deps import library_dir as _library
+from .deps import require_main_project as _require_main
 from .deps import project_error as _project_error
 from .errors import AppError
 
@@ -85,6 +86,7 @@ def export_preflight(
     request: Request, project_id: str, body: ExportRequest
 ) -> dict[str, Any]:
     """预检摘要（说明书 6.6 第 5 条）：不动文件，只算这次导出会是什么样。"""
+    _require_main(request, project_id)
     library, _project = _project_or_404(request, project_id)
     try:
         result = project_export.preflight(project_id, library=library, options=body.options())
@@ -103,6 +105,7 @@ def export_preview(
     limit: int = Query(default=20000, ge=0, le=200_000),
 ) -> dict[str, Any]:
     """预览（说明书 6.6 第 7 条）：算一遍但不写文件。"""
+    _require_main(request, project_id)
     library, _project = _project_or_404(request, project_id)
     try:
         result = project_export.preview(
@@ -118,6 +121,7 @@ def export_preview(
 @router.post("/{project_id}/export")
 def export_now(request: Request, project_id: str, body: ExportRequest) -> dict[str, Any]:
     """生成导出文件（说明书 6.6 / 12.1），并记一条导出记录。"""
+    _require_main(request, project_id)
     library, _project = _project_or_404(request, project_id)
     try:
         return project_export.run_export(project_id, library=library, options=body.options())

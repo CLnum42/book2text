@@ -28,6 +28,7 @@ from ..core.project import library as project_library
 from ..core.project import recognition
 from .deps import library_dir as _library
 from .deps import page_payload, project_error as _project_error
+from .deps import require_main_project as _require_main
 from .errors import AppError
 
 router = APIRouter(prefix="/api/projects", tags=["jobs"])
@@ -149,6 +150,7 @@ def _start_job(
 @router.post("/{project_id}/jobs/ocr")
 def start_ocr_job(request: Request, project_id: str, body: OcrJobRequest) -> dict[str, Any]:
     """建一个识别任务并立刻开始跑（说明书 6.3 的批量识别）。"""
+    _require_main(request, project_id)
     library = _library(request)
     try:
         job = recognition.create_ocr_job(
@@ -177,6 +179,7 @@ def start_auxiliary_job(
 
     与识别任务共用一整套任务机制：进度、暂停 / 继续 / 取消、重试失败页、中断恢复。
     """
+    _require_main(request, project_id)
     library = _library(request)
     try:
         job = recognition.create_auxiliary_job(

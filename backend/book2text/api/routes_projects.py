@@ -15,11 +15,13 @@ from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from ..core.pdf import render
+from ..core.collab import assignments as assignments_module
 from ..core.project import blocks as blocks_module
 from ..core.project import library as project_library
 from ..core.project import stats as stats_module
 from .deps import library_dir as _library
 from .deps import page_payload, project_error as _project_error
+from .deps import require_main_project as _require_main
 from .errors import AppError
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -31,15 +33,32 @@ def _page_payloads(request: Request, project_id: str, pages) -> list[dict[str, o
     states = blocks_module.page_recognition_states(project_id, library=library)
     reviews = blocks_module.page_review_states(project_id, library=library)
     divergences = blocks_module.page_divergences(project_id, library=library)
+    occupied = assignments_module.page_assignment_map(project_id, library=library)
     return [
         page_payload(
             page,
             states.get(page.page_id),
             reviews.get(page.page_id),
             divergences.get(page.page_id),
+            _assignment_brief(occupied.get(page.page_id), page.page_id),
         )
         for page in pages
     ]
+
+
+def _assignment_brief(assignment, page_id: str) -> dict[str, object] | None:
+    """页面载荷里的分派摘要（谁在审、是不是上下文页）。"""
+    if assignment is None:
+        return None
+    return {
+        "assignment_id": assignment.assignment_id,
+        "reviewer_name": assignment.reviewer_name,
+        "status": assignment.status,
+        "status_label": assignments_module.STATUS_LABELS.get(
+            assignment.status, assignment.status
+        ),
+        "is_context": page_id in assignment.context_page_ids,
+    }
 
 
 # ---------------------------------------------------------------- 项目库
@@ -209,6 +228,7 @@ def patch_pages(
 
     整批一个事务：批次里有一个页面 id 不存在就整批拒绝，界面上不会出现"改了一半"。
     """
+    _require_main(request, project_id)
     library = _library(request)
     try:
         updated = project_library.update_pages(
@@ -265,8 +285,19 @@ def page_image(
         raise AppError(500, "project_error", "项目缺少目录信息")
 
     source = project.directory / project_library.SOURCE_DIR_NAME / project_library.SOURCE_FILE_NAME
+    # **PDF 下标不一定等于 page_no - 1**：审校包项目的 PDF 是任务包里的子集
+    # （说明书 6.7.2），每页记着自己的 `pdf_page_index`。主项目里它是空的，
+    # 就退回 `page_no - 1`。
     try:
-        png = render.render_page_png(source, page_no - 1, profile=size)
+        page = next(
+            item for item in project_library.list_pages(project_id, library=library)
+            if item.page_no == page_no
+        )
+    except StopIteration:
+        raise AppError(404, "page_not_found", f"没有第 {page_no} 页") from None
+    index = page.pdf_page_index if page.pdf_page_index is not None else page_no - 1
+    try:
+        png = render.render_page_png(source, index, profile=size)
     except render.PdfError as exc:
         raise AppError(400, "render_failed", "无法渲染该页", str(exc)) from exc
 

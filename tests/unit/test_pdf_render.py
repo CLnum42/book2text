@@ -64,3 +64,33 @@ def test_opening_non_pdf_raises(tmp_path: Path) -> None:
 
 def test_backend_version_is_reported() -> None:
     assert render.backend_version() != ""
+
+
+def test_concurrent_rendering_is_serialized(scan_sample_pdf: Path) -> None:
+    """并发渲染不能随机失败。
+
+    **真机上撞到过**（2026-10-14）：pdfium 不是线程安全的，接口层用线程池渲染缩略图时，
+    `document[i]` 会抛 "Failed to load page."，任务包生成里的 `import_pages` 也跟着失败。
+    修法是 `render.py` 里所有碰 pdfium 的函数都串行化在同一把锁上（`_serialized`）。
+    """
+    import threading
+
+    errors: list[str] = []
+
+    def worker(index: int) -> None:
+        try:
+            image = render.render_page_image(scan_sample_pdf, index, dpi=72)
+            image.close()
+        except Exception as exc:  # noqa: BLE001 - 记录任何失败
+            errors.append(f"第 {index} 页：{exc}")
+
+    threads = [
+        threading.Thread(target=worker, args=(index,))
+        for index in range(min(12, render.info(scan_sample_pdf).page_count))
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not errors, f"并发渲染失败：{errors}"
