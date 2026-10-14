@@ -244,6 +244,33 @@ def test_preview_respects_page_types(
     assert with_front["pages_scanned"] == 1
 
 
+def test_confidence_separates_repeating_chrome_from_a_lone_short_line(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, page_with_chrome
+) -> None:
+    """把握程度：页码形态或跨页重复 → 有把握；只出现一次的短行 → 需要确认。
+
+    这条规则是 40 页真书打出来的：段落末行很短、又落在页面底部区域，
+    位置规则会命中它——但它不是页脚。默认不勾选它，正文就不会被误排除。
+    """
+    from tests.integration.test_structure_tools_api import add_block
+
+    project_id, ids = page_with_chrome
+    # 第 2、3 页各放一条同样的书眉（重复性家具）
+    for page_no in (2, 3):
+        add_block(library_dir, project_id, page_no=page_no, text="红楼梦／第三十一回",
+                  bbox=[0.0, 0.05, 0.08, 0.9])
+    # 再放一条**只出现一次**的短句在底部（正文末行的典型样子）
+    lone = add_block(library_dir, project_id, page_no=2, text="宝玉笑道：“虽没见过，却看着面善，心",
+                     bbox=[0.3, 0.93, 0.9, 0.95])
+
+    data = preview(client, auth_headers, project_id).json()
+    by_block = {item["block_id"]: item for item in data["candidates"]}
+    assert by_block[ids["number"]]["confidence"] == "high", "页码形态"
+    assert data["high_confidence_count"] < data["candidate_count"]
+    assert by_block[lone]["confidence"] == "review", "孤例短行不该被默认勾选"
+    assert data["review_count"] >= 1
+
+
 def test_preview_never_overrides_manually_typed_blocks(
     client: TestClient, auth_headers: dict[str, str], page_with_chrome
 ) -> None:

@@ -219,7 +219,12 @@ const STRUCTURE_TYPE_LABELS = {
 };
 
 function renderStructurePreview(data) {
-  structureCandidates = (data.candidates || []).map((item) => ({ ...item, keep: true }));
+  // 默认只勾"有把握"的（页码形态或跨页重复）；只出现一两次的留给人工判断——
+  // 标错一个页脚，正文就会从导出里消失
+  structureCandidates = (data.candidates || []).map((item) => ({
+    ...item,
+    keep: item.confidence === "high",
+  }));
 
   el("structure-result").hidden = false;
   el("structure-meta").textContent = `${data.pages_scanned} 页在作用范围内`;
@@ -227,7 +232,7 @@ function renderStructurePreview(data) {
     .map(([type, count]) => `${STRUCTURE_TYPE_LABELS[type] || type} ${count}`)
     .join(" · ");
   el("structure-summary").textContent = data.candidate_count
-    ? `会标注 ${data.candidate_count} 个块：${byType}`
+    ? `找到 ${data.candidate_count} 个（默认勾选 ${data.high_confidence_count} 个有把握的）：${byType}`
     : "按当前规则没有需要标注的块";
 
   const list = el("structure-candidates");
@@ -235,11 +240,15 @@ function renderStructurePreview(data) {
   structureCandidates.forEach((item, index) => {
     const li = document.createElement("li");
     li.dataset.index = String(index);
+    if (!item.keep) li.classList.add("is-off");
 
     const check = document.createElement("input");
     check.type = "checkbox";
-    check.checked = true;
-    check.title = "取消勾选 = 这次不标它";
+    check.checked = item.keep;
+    check.title =
+      item.confidence === "high"
+        ? "取消勾选 = 这次不标它"
+        : "只在这一页出现，可能是正文的最后一行——确认它确实是页眉 / 页脚再勾";
     check.addEventListener("change", () => {
       structureCandidates[index].keep = check.checked;
       li.classList.toggle("is-off", !check.checked);
@@ -250,7 +259,8 @@ function renderStructurePreview(data) {
     meta.className = "meta";
     meta.textContent =
       `第 ${item.page_no} 页 · ${STRUCTURE_TYPE_LABELS[item.current_type] || item.current_type}` +
-      ` → ${STRUCTURE_TYPE_LABELS[item.proposed_type] || item.proposed_type}`;
+      ` → ${STRUCTURE_TYPE_LABELS[item.proposed_type] || item.proposed_type}` +
+      (item.confidence === "high" ? " · 有把握" : " · 需确认");
 
     const text = document.createElement("span");
     text.className = "text";

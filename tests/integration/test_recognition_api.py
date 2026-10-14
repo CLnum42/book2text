@@ -189,7 +189,7 @@ def test_recognize_writes_the_raw_engine_output(
     assert payload["run_id"] == run_id
     assert payload["page_no"] == 1
     assert payload["engine_id"] == "fake"
-    assert payload["params"] == {"dpi": 300, "language": "ch"}
+    assert payload["params"] == {"dpi": 200, "language": "ch"}
     assert payload["line_count"] == 3
     assert [line["text"] for line in payload["lines"]] == [text for text, _, _ in FAKE_LINES]
     assert payload["lines"][0]["bbox"] == [FAKE_LEFT, 0.10, FAKE_RIGHT, 0.13]

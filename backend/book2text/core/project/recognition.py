@@ -68,7 +68,11 @@ from .library import (
 
 RAW_SCHEMA_ID = "book2text.ocr-run.v1"
 
-DEFAULT_DPI = 300
+# 识别用的渲染 DPI。说明书 8.2 要求"DPI 默认值由样本测试决定"——
+# 40 页真书实测：200 DPI 的正文 CER 0.71%，300 DPI 是 0.94%（漏识 62 vs 94 字）。
+# 机理是检测模型对输入尺寸敏感：同一行在 150/200/400 DPI 检出、在 250/300/500 漏掉。
+# **这是单本书的结论**，换书 / 换扫描质量需要复核（见 docs/ocr-evaluation.md 6.6）。
+DEFAULT_DPI = 200
 DEFAULT_LANGUAGE = "ch"
 MIN_DPI = 72
 MAX_DPI = 600

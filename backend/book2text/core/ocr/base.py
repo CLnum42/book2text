@@ -72,7 +72,8 @@ class OcrParams:
     """识别参数（对应说明书 5.3 的 ``OCRRun.params_json``）。"""
 
     language: str = "ch"
-    dpi: int = 300
+    # 与 `core/project/recognition.DEFAULT_DPI` 保持一致：由样本实测决定
+    dpi: int = 200
     extra: dict[str, Any] = field(default_factory=dict)
 
 

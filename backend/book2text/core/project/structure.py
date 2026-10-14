@@ -43,6 +43,14 @@ BLOCK_TYPE_FOOTER = "footer"
 BLOCK_TYPE_PAGE_NUMBER = "page_number"
 BLOCK_TYPE_PARAGRAPH = "paragraph"
 
+# 候选的把握程度（见 Candidate 的说明）
+CONFIDENCE_HIGH = "high"
+CONFIDENCE_REVIEW = "review"
+# 同一区域里重复出现多少次才算"书眉 / 页脚"这种重复性文字
+REPEAT_THRESHOLD = 3
+# "像同一句"的相似度门槛（容忍 OCR 的个别错字）
+REPEAT_SIMILARITY = 0.6
+
 # 纯数字 / 罗马数字（允许常见的装饰字符包着，如 "· 62 ·"、"- iv -"）
 _NUMBER_PATTERN = re.compile(
     r"^[\s.·•\-–—_=~*()\[\]{}【】〔〕「」『』<>]*"
@@ -83,7 +91,13 @@ class HeaderFooterRules:
 
 @dataclass(frozen=True)
 class Candidate:
-    """一个"将会被标注"的块。"""
+    """一个"将会被标注"的块。
+
+    ``confidence`` 是给界面用的：``high`` 表示"几乎可以肯定"（页码形态、
+    或者在同一个区域里跨页重复出现），``review`` 表示"很可能是，但请看一眼"。
+    界面默认只勾选 high 的候选——**宁可少标，不要标错**（D-034）：
+    标错一个页脚，正文就会从导出里消失。
+    """
 
     block_id: str
     page_no: int
@@ -93,6 +107,7 @@ class Candidate:
     proposed_type: str
     region: str
     reason: str
+    confidence: str = CONFIDENCE_REVIEW
 
     def to_dict(self) -> dict:
         return {
@@ -104,6 +119,7 @@ class Candidate:
             "proposed_type": self.proposed_type,
             "region": self.region,
             "reason": self.reason,
+            "confidence": self.confidence,
         }
 
 
@@ -136,9 +152,12 @@ class Plan:
         by_type: dict[str, int] = {}
         for item in self.candidates:
             by_type[item.proposed_type] = by_type.get(item.proposed_type, 0) + 1
+        high = sum(1 for item in self.candidates if item.confidence == CONFIDENCE_HIGH)
         return {
             "rules": self.rules.to_dict(),
             "candidate_count": len(self.candidates),
+            "high_confidence_count": high,
+            "review_count": len(self.candidates) - high,
             "by_type": by_type,
             "pages_scanned": self.pages_scanned,
             "sample_pages": sorted({item.page_no for item in self.candidates}),
@@ -149,8 +168,11 @@ class Plan:
 
 
 def looks_like_a_number(text: str) -> bool:
-    """纯数字或罗马数字（允许被装饰字符包着）。"""
-    return bool(_NUMBER_PATTERN.match(text.strip()))
+    """纯数字或罗马数字（允许被装饰字符包着、允许 OCR 把数字拆行）。
+
+    ``"14\n1"`` 这种是 OCR 把一行的数字读成两截，实质仍是数字——先去掉空白再判断。
+    """
+    return bool(_NUMBER_PATTERN.match(re.sub(r"\s+", "", text)))
 
 
 def _region_of(bbox: tuple[float, float, float, float], rules: HeaderFooterRules) -> str | None:
@@ -272,10 +294,76 @@ def plan_header_footer(
 
     return Plan(
         rules=active,
-        candidates=tuple(candidates),
+        candidates=tuple(_with_confidence(candidates)),
         skipped=tuple(skipped),
         pages_scanned=len(pages),
     )
+
+
+def _with_confidence(candidates: list[Candidate]) -> list[Candidate]:
+    """给候选标上把握程度。
+
+    判据只有两条，都指向"这东西是不是页面的重复性家具"：
+
+    - **页码形态**（纯数字 / 罗马数字）→ high：正文里极少整段只有一个数字；
+    - **同一区域里跨页重复出现**（≥ REPEAT_THRESHOLD 次）→ high：书眉、页脚是重复的。
+
+    只出现一两次的（比如某页最后一行正文本就短）→ review：**默认不勾选**。
+    这条规则是被真书打出来的：40 页实测里，第 37 页段落末行（19 字）落在底部区域，
+    被当成页脚标掉，正文因此从导出里丢了一句话——"位置对"不等于"它就是页脚"。
+    """
+    # 同一区域里"长得像"的算一类：OCR 把书眉读成「红楼梦／第X回」「红楼梦0回」「CS」…
+    # 它们显然是同一件家具，逐字相等会把它们判成孤例、白白推给人工
+    normalized = [_normalize_for_repeat(item.text) for item in candidates]
+    counts: dict[int, int] = {}
+    for index, item in enumerate(candidates):
+        counts[index] = sum(
+            1
+            for other, other_item in enumerate(candidates)
+            if other_item.region == item.region
+            and _similar(normalized[index], normalized[other])
+        )
+
+    marked: list[Candidate] = []
+    for index, item in enumerate(candidates):
+        repeated = counts[index]
+        if looks_like_a_number(item.text) or repeated >= REPEAT_THRESHOLD:
+            marked.append(replace_candidate(item, CONFIDENCE_HIGH))
+        else:
+            marked.append(replace_candidate(item, CONFIDENCE_REVIEW))
+    return marked
+
+
+def _similar(left: str, right: str) -> bool:
+    """两段文字是否"像同一句"（容忍 OCR 的个别错字）。
+
+    短句用相似度而不是逐字相等：书眉这种重复性文字被 OCR 读错一两个字很常见，
+    逐字比较会让它们全部掉进"孤例"。
+    """
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    if min(len(left), len(right)) < 3:
+        return False
+    from difflib import SequenceMatcher
+
+    return SequenceMatcher(None, left, right).ratio() >= REPEAT_SIMILARITY
+
+
+def _normalize_for_repeat(text: str) -> str:
+    """比较"是不是同一句重复文字"时，先把空白与数字拉平。
+
+    书眉里的页码每页都不同（红楼梦／第 3 回、第 4 回…），
+    但它们显然是同一件家具——因此数字不参与比较。
+    """
+    return re.sub(r"[\s\d]+", "", text)
+
+
+def replace_candidate(item: Candidate, confidence: str) -> Candidate:
+    from dataclasses import replace
+
+    return replace(item, confidence=confidence)
 
 
 @dataclass(frozen=True)
