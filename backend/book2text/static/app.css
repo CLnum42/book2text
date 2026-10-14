@@ -200,6 +200,9 @@ main {
 }
 .export-panel .hint { margin: 0; padding: 8px 12px 0; }
 .export-panel .kv { padding: 10px 12px 0; margin-bottom: 10px; }
+.export-downloads {
+  display: flex; gap: 8px; padding: 0 12px 10px; flex-wrap: wrap;
+}
 .export-preview {
   margin: 0 12px 12px; padding: 10px 12px; max-height: 40vh; overflow: auto;
   background: #f8f9fb; border: 1px solid var(--border); border-radius: 6px;

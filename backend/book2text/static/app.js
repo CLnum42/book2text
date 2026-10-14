@@ -580,8 +580,12 @@ function setupViewerControls() {
     radio.addEventListener("change", applyTextMode);
   }
   el("export-btn").addEventListener("click", runExport);
-  el("export-download").addEventListener("click", downloadExport);
+  el("export-download").addEventListener("click", downloadExportData);
+  el("export-download-manifest").addEventListener("click", downloadExportManifest);
   el("export-page-markers").addEventListener("change", invalidateExport);
+  for (const radio of document.querySelectorAll('input[name="export-format"]')) {
+    radio.addEventListener("change", invalidateExport);
+  }
 
   el("reveal-btn").addEventListener("click", async () => {
     if (!currentUpload) return;
@@ -619,16 +623,22 @@ function setupViewerControls() {
 
 // ---------------------------------------------------------------- 导出
 
-let lastExportText = null;
+/** 上一次生成的产物：数据文件与 manifest.json 的内容。 */
+let exportArtifacts = null;
 
-/** 任何会影响输出的改动（块标记、页码标记选项）都要让上一次的结果失效。 */
+/** 任何会影响输出的改动（块标记、格式、页码标记选项）都要让上一次的结果失效。 */
 function invalidateExport() {
-  lastExportText = null;
-  el("export-download").disabled = true;
+  exportArtifacts = null;
+  el("export-downloads").hidden = true;
   el("export-preview").hidden = true;
   el("export-preflight").innerHTML = "";
   el("export-error").hidden = true;
   updateExportScope();
+}
+
+function currentExportFormat() {
+  const checked = document.querySelector('input[name="export-format"]:checked');
+  return checked ? checked.value : "txt";
 }
 
 function recognizedPages() {
@@ -674,6 +684,23 @@ function collectExportBlocks() {
   );
 }
 
+/** 从已识别的页面里取引擎信息与页标签，写进 manifest 与 JSONL 的 source。 */
+function exportSourceInfo() {
+  const info = { project_name: null, file_name: null, sha256: null };
+  if (currentUpload) {
+    info.file_name = currentUpload.original_name;
+    info.sha256 = currentUpload.sha256;
+  }
+  for (const [key, data] of ocrCache) {
+    if (currentUpload && key.startsWith(`${currentUpload.upload_id}:`)) {
+      info.engine_id = data.engine_id;
+      info.engine_version = data.engine_version;
+      break;
+    }
+  }
+  return info;
+}
+
 async function runExport() {
   if (!currentUpload) return;
   const blocks = collectExportBlocks();
@@ -682,37 +709,49 @@ async function runExport() {
     return;
   }
 
+  const format = currentExportFormat();
   const button = el("export-btn");
   button.disabled = true;
   button.textContent = "生成中…";
   el("export-error").hidden = true;
 
+  let data;
   try {
-    const data = await apiJson("/api/export/txt", {
+    data = await apiJson(`/api/export/${format}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         blocks,
         options: { page_markers: el("export-page-markers").checked },
+        source: exportSourceInfo(),
         preview_chars: 20000,
       }),
     });
-    renderExport(data, blocks.length);
   } catch (error) {
     showError(el("export-error"), error);
-    lastExportText = null;
-    el("export-download").disabled = true;
+    exportArtifacts = null;
+    el("export-downloads").hidden = true;
+    return;
   } finally {
     button.disabled = false;
     button.textContent = "生成";
   }
+
+  const content = format === "jsonl" ? data.jsonl : data.text;
+  exportArtifacts = {
+    dataName: data.filename,
+    dataContent: content,
+    manifestName: "manifest.json",
+    manifestContent: JSON.stringify(data.manifest, null, 2) + "\n",
+  };
+  renderExport(data, blocks.length, format);
 }
 
-function renderExport(data, inputBlocks) {
+function renderExport(data, inputBlocks, format) {
   const pf = data.preflight;
-  lastExportText = data.text;
 
   fillDefinitionList(el("export-preflight"), [
+    ["格式", format === "jsonl" ? "JSONL（每行一个段）" : "TXT"],
     ["输入块", `${inputBlocks} 个`],
     ["段数", `${pf.segment_count} 段`],
     ["字数", `${pf.char_count} 字`],
@@ -721,22 +760,35 @@ function renderExport(data, inputBlocks) {
     ["断词还原", `${pf.hyphenations_restored} 处`],
   ]);
 
+  el("export-download").textContent = `下载 ${data.filename}`;
+  el("export-downloads").hidden = false;
   el("export-preview").textContent = data.preview;
   el("export-preview").hidden = false;
-  el("export-download").dataset.filename = data.filename;
-  el("export-download").disabled = false;
 }
 
-function downloadExport() {
-  if (!lastExportText) return;
-  const filename = el("export-download").dataset.filename || "book2text-export.txt";
-  const blob = new Blob([lastExportText], { type: "text/plain;charset=utf-8" });
+function downloadBlob(name, content, mime) {
+  const blob = new Blob([content], { type: `${mime};charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename;
+  link.download = name;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadExportData() {
+  if (!exportArtifacts) return;
+  const isJsonl = exportArtifacts.dataName.endsWith(".jsonl");
+  downloadBlob(
+    exportArtifacts.dataName,
+    exportArtifacts.dataContent,
+    isJsonl ? "application/x-ndjson" : "text/plain"
+  );
+}
+
+function downloadExportManifest() {
+  if (!exportArtifacts) return;
+  downloadBlob(exportArtifacts.manifestName, exportArtifacts.manifestContent, "application/json");
 }
 
 // ---------------------------------------------------------------- 启动

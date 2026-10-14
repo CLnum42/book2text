@@ -96,13 +96,17 @@ def test_hyphen_inside_cjk_is_not_a_latin_run() -> None:
 
 
 def test_hyphenation_position_and_fragments_are_recorded() -> None:
-    """说明书 9.2 要求记录断词还原位置，供 manifest.json 抽查。"""
+    """说明书 9.2 要求记录断词还原位置，供 manifest.json 抽查。
+
+    片段记的是**末尾/开头的词**而不是整行——manifest 是给人抽查用的，
+    ``self-`` + ``evident`` 比两整行文字有用。
+    """
     result = joining.join_lines(["a long self-", "evident truth"])
     assert len(result.hyphenations) == 1
 
     record = result.hyphenations[0]
-    assert record.left_fragment == "a long self-"
-    assert record.right_fragment == "evident truth"
+    assert record.left_fragment == "self-"
+    assert record.right_fragment == "evident"
     assert record.hyphen == "-"
     # 位置指向还原后该词的首字符
     assert result.text[record.position : record.position + 7] == "evident"

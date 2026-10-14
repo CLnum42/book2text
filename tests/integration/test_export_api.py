@@ -256,12 +256,14 @@ def test_preflight_numbers_are_consistent(
 
     assert preflight["input_blocks"] == 3
     assert preflight["segment_count"] == len(data["segments"])
-    assert preflight["char_count"] == len(data["text"])
+    # char_count 是**内容字数**（各段文本之和），不含段间空行等格式字符
+    assert preflight["char_count"] == sum(len(s["text"]) for s in data["segments"])
     assert preflight["page_count"] == 2
     assert preflight["pages"] == [1, 2]
     assert preflight["merged_segments"] == 1
     assert preflight["unreviewed_segments"] == preflight["segment_count"]
-    assert "rules" in preflight
+    # 启用的规则记在 manifest 里（说明书 9.5 的规定），不在预检里
+    assert "rules" in data["manifest"]
 
 
 def test_preview_is_a_prefix_of_the_text(
@@ -299,3 +301,188 @@ def test_blocks_are_sorted_by_page_and_order(
         ],
     ).json()
     assert data["text"] == "第一\n\n第二\n\n第三\n"
+
+
+# ---------------------------------------------------------------- 9.5 JSONL 与 manifest
+
+def jsonl_export(client: TestClient, headers: dict[str, str], body: dict):
+    return client.post("/api/export/jsonl", json=body, headers=headers)
+
+
+def test_jsonl_requires_token(client: TestClient) -> None:
+    assert client.post("/api/export/jsonl", json={"blocks": []}).status_code == 401
+
+
+def test_jsonl_every_line_is_valid_json(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """说明书 13.2：校验 JSONL 每行都是有效 JSON。"""
+    import json
+
+    data = jsonl_export(
+        client,
+        auth_headers,
+        {
+            "blocks": [
+                block("a", ["第一段", "接着写"]),
+                block("b", ["第二段"], order_index=1),
+                block("c", ["第三段"], page_no=2, order_index=0),
+            ]
+        },
+    ).json()
+
+    lines = data["jsonl"].splitlines()
+    assert len(lines) == 3
+    for line in lines:
+        assert json.loads(line)["schema"] == "book2text.segment.v1"
+
+
+def test_jsonl_fields_match_the_spec(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    import json
+
+    data = jsonl_export(
+        client,
+        auth_headers,
+        {
+            "blocks": [
+                block("upper", ["跨页前半"], page_no=3, continues_to_next=True),
+                block("lower", ["跨页后半"], page_no=4, order_index=0),
+            ],
+            "page_labels": {"3": "17", "4": "18"},
+            "source": {"engine_id": "rapidocr", "engine_version": "3.10.0"},
+        },
+    ).json()
+
+    record = json.loads(data["jsonl"])
+    assert record["seq"] == 1
+    assert record["type"] == "paragraph"
+    assert record["text"] == "跨页前半跨页后半"
+    assert record["block_ids"] == ["upper", "lower"]
+    assert record["pages"] == [
+        {"page_no": 3, "page_label": "17"},
+        {"page_no": 4, "page_label": "18"},
+    ]
+    assert record["source"] == {"engine": "rapidocr", "engine_version": "3.10.0"}
+    assert set(record["review"]) == {"all_confirmed", "unreviewed", "uncertain", "modified"}
+
+
+def test_jsonl_output_is_utf8_with_lf_and_a_trailing_newline(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    data = jsonl_export(
+        client, auth_headers, {"blocks": [block("a", ["中文内容"])]}
+    ).json()
+    assert "\r" not in data["jsonl"]
+    assert data["jsonl"].endswith("\n")
+    assert not data["jsonl"].startswith("\ufeff")
+    assert "中文内容" in data["jsonl"]
+
+
+def test_manifest_is_returned_for_both_formats(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    body = {
+        "blocks": [block("a", ["正文"])],
+        "source": {
+            "project_name": "示例项目",
+            "file_name": "sample.pdf",
+            "sha256": "abc123",
+        },
+    }
+    for path in ("/api/export/txt", "/api/export/jsonl"):
+        data = client.post(path, json=body, headers=auth_headers).json()
+        manifest = data["manifest"]
+        assert manifest["project"] == {
+            "name": "示例项目",
+            "source_file_name": "sample.pdf",
+            "source_sha256": "abc123",
+        }
+        assert manifest["app_version"]
+        assert manifest["scope"]["format"] == data["format"]
+        assert "rules" in manifest
+        assert "hyphenations_restored" in manifest
+        assert manifest["stats"]["segment_count"] == data["preflight"]["segment_count"]
+
+
+def test_manifest_records_hyphenation_restorations(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """说明书成功标准：英文断词处理位置写入 manifest。"""
+    data = client.post(
+        "/api/export/txt",
+        json={"blocks": [block("b1", ["a long self-", "evident truth"])]},
+        headers=auth_headers,
+    ).json()
+
+    entries = data["manifest"]["hyphenations_restored"]
+    assert len(entries) == 1
+    assert entries[0]["left_fragment"] == "self-"
+    assert entries[0]["right_fragment"] == "evident"
+    assert entries[0]["block_id"] == "b1"
+    assert data["preflight"]["hyphenations_restored"] == 1
+
+
+def test_manifest_stats_match_the_actual_output(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """说明书 13.3 的通过标准：数量与预检一致。"""
+    data = export(
+        client,
+        auth_headers,
+        [
+            block("a", ["第一段内容。"], page_no=1, continues_to_next=True),
+            block("b", ["接着上段。"], page_no=1, order_index=1),
+            block("c", ["第二页内容。"], page_no=2, order_index=0),
+        ],
+    ).json()
+
+    stats = data["manifest"]["stats"]
+    preflight = data["preflight"]
+    assert stats["segment_count"] == preflight["segment_count"] == len(data["segments"])
+    # 两处的 char_count 必须是同一个口径（内容字数）
+    assert stats["char_count"] == preflight["char_count"]
+    assert stats["char_count"] == sum(len(s["text"]) for s in data["segments"])
+    assert stats["merged_segments"] == preflight["merged_segments"] == 1
+    assert stats["pages"] == preflight["pages"] == [1, 2]
+
+
+def test_manifest_records_the_enabled_rules(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    data = client.post(
+        "/api/export/jsonl",
+        json={
+            "blocks": [block("a", ["正文"])],
+            "options": {"page_markers": True, "restore_hyphenation": False},
+        },
+        headers=auth_headers,
+    ).json()
+    rules = data["manifest"]["rules"]
+    assert rules["page_markers"] is True
+    assert rules["restore_hyphenation"] is False
+    # 五项清理规则都要出现，便于事后追溯这次导出用了什么规则
+    assert rules["exclude_header_footer"] is True
+    assert rules["confirmed_only"] is False
+
+
+def test_exported_content_never_includes_excluded_blocks(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """说明书 13.2：排除内容不出现在导出中。"""
+    data = client.post(
+        "/api/export/jsonl",
+        json={
+            "blocks": [
+                block("h", ["书名不该出现"], block_type="header"),
+                block("p", ["正文该出现"], order_index=1),
+                block("x", ["被排除的段落"], order_index=2, include=False),
+            ]
+        },
+        headers=auth_headers,
+    ).json()
+
+    assert "书名不该出现" not in data["jsonl"]
+    assert "被排除的段落" not in data["jsonl"]
+    assert "正文该出现" in data["jsonl"]

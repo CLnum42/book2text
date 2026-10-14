@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, field
 
-from .joining import join_pair
+from .joining import HyphenationRestore, head_fragment, join_pair
 
 # ---------------------------------------------------------------- 块类型常量
 #
@@ -55,6 +55,34 @@ REVIEW_UNCERTAIN = "uncertain"
 
 
 @dataclass(frozen=True)
+class SegmentHyphenation:
+    """段内的一次断词还原，供 manifest 抽查（说明书 9.2 / 9.5）。
+
+    断词还原有两个来源，``scope`` 区分它们；``position`` 相对于各自那份文本：
+
+    - ``"block"``：块内换行处，``position`` 相对**该块的拼接文本**。
+    - ``"segment"``：跨块拼接处，``position`` 相对**该段的拼接文本**。
+    """
+
+    block_id: str
+    scope: str
+    position: int
+    left_fragment: str
+    right_fragment: str
+    hyphen: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "block_id": self.block_id,
+            "scope": self.scope,
+            "position": self.position,
+            "left_fragment": self.left_fragment,
+            "right_fragment": self.right_fragment,
+            "hyphen": self.hyphen,
+        }
+
+
+@dataclass(frozen=True)
 class SegmentSource:
     """段生成的输入：一个块的必要字段。
 
@@ -71,6 +99,8 @@ class SegmentSource:
     review_status: str = REVIEW_UNREVIEWED
     continues_to_next: bool = False
     ocr_text: str | None = None      # 用于推导"已修改"，缺省表示未知
+    # 该块内部（块内换行处）的断词还原记录，位置相对本块的拼接文本
+    hyphenations: tuple[HyphenationRestore, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -100,6 +130,8 @@ class Segment:
     pages: tuple[int, ...]
     block_ids: tuple[str, ...]
     review: ReviewSummary
+    # 段内所有断词还原：块内的（scope="block"）与跨块拼接处的（scope="segment"）
+    hyphenations: tuple[SegmentHyphenation, ...] = ()
 
     @property
     def char_count(self) -> int:
@@ -114,6 +146,7 @@ class Segment:
             "pages": list(self.pages),
             "block_ids": list(self.block_ids),
             "review": self.review.to_dict(),
+            "hyphenations": [item.to_dict() for item in self.hyphenations],
         }
 
 
@@ -228,11 +261,39 @@ def _finish_segment(blocks: Iterable[SegmentSource], seq: int) -> Segment:
         )
 
     text = ""
+    hyphenations: list[SegmentHyphenation] = []
     for block in block_list:
+        # 块内换行处的断词还原（由 9.2 的 join_lines 产出，位置相对本块文本）
+        for record in block.hyphenations:
+            hyphenations.append(
+                SegmentHyphenation(
+                    block_id=block.block_id,
+                    scope="block",
+                    position=record.position,
+                    left_fragment=record.left_fragment,
+                    right_fragment=record.right_fragment,
+                    hyphen=record.hyphen,
+                )
+            )
+
         if not text:
             text = block.text
-        else:
-            text, _, _ = join_pair(text, block.text)
+            continue
+
+        # 说明书 9.2：跨块拼接与块内换行使用同一规则，因此这里也可能触发断词还原
+        merged, left_fragment, hyphen = join_pair(text, block.text)
+        if hyphen is not None:
+            hyphenations.append(
+                SegmentHyphenation(
+                    block_id=block.block_id,
+                    scope="segment",
+                    position=len(merged) - len(block.text),
+                    left_fragment=left_fragment,
+                    right_fragment=head_fragment(block.text),
+                    hyphen=hyphen,
+                )
+            )
+        text = merged
 
     return Segment(
         seq=seq,
@@ -247,4 +308,5 @@ def _finish_segment(blocks: Iterable[SegmentSource], seq: int) -> Segment:
             uncertain=uncertain,
             modified=modified,
         ),
+        hyphenations=tuple(hyphenations),
     )

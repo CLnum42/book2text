@@ -127,6 +127,27 @@ def _trailing_hyphen(text: str) -> tuple[str, str] | None:
     return previous, text[-1]
 
 
+def tail_fragment(text: str, limit: int = 40) -> str:
+    """取末尾一个"词"（以空白分隔），供断词还原记录使用。
+
+    manifest 的用途是**人工抽查**（说明书 9.2），所以记录 ``self-`` 比记录整段文字有用。
+    """
+    stripped = text.rstrip()
+    index = len(stripped)
+    while index > 0 and not stripped[index - 1].isspace():
+        index -= 1
+    return stripped[index:][-limit:]
+
+
+def head_fragment(text: str, limit: int = 40) -> str:
+    """取开头一个"词"，与 `tail_fragment` 对称。"""
+    stripped = text.lstrip()
+    index = 0
+    while index < len(stripped) and not stripped[index].isspace():
+        index += 1
+    return stripped[:index][:limit]
+
+
 # ---------------------------------------------------------------- 核心规则
 
 def join_pair(left: str, right: str, *, restore_hyphenation: bool = True) -> tuple[str, str, str | None]:
@@ -151,10 +172,10 @@ def join_pair(left: str, right: str, *, restore_hyphenation: bool = True) -> tup
         _previous, hyphen = hyphen_info
         if restore_hyphenation and right_first.islower():
             # 删掉连字符，直接连
-            return left[:-1] + right, left, hyphen
+            return left[:-1] + right, tail_fragment(left), hyphen
         # 关闭断词还原：保留连字符直接连；
         # 右侧是大写字母或数字时也走这里（模块说明第 4 条）
-        return left + right, left, None
+        return left + right, "", None
 
     # 规则 1 / 4：左侧是中日韩字符或全角标点 → 不加空格
     if is_cjk(left_last):
@@ -204,7 +225,7 @@ def join_lines(
                 HyphenationRestore(
                     position=len(merged) - len(piece),
                     left_fragment=left_fragment,
-                    right_fragment=piece,
+                    right_fragment=head_fragment(piece),
                     hyphen=hyphen,
                 )
             )

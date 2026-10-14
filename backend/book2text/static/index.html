@@ -91,23 +91,34 @@
 
       <div class="export-panel" id="export-panel" hidden>
         <div class="export-panel__head">
-          <strong>导出 TXT</strong>
+          <strong>导出</strong>
           <span class="muted" id="export-scope"></span>
           <span class="spacer"></span>
+          <label class="muted check">
+            <input type="radio" name="export-format" value="txt" checked> TXT
+          </label>
+          <label class="muted check">
+            <input type="radio" name="export-format" value="jsonl"> JSONL
+          </label>
           <label class="muted check">
             <input type="checkbox" id="export-page-markers"> 插页码标记
           </label>
           <button type="button" id="export-btn" class="btn btn--primary">生成</button>
-          <button type="button" id="export-download" class="btn" disabled>下载</button>
         </div>
         <p class="hint">
           按说明书第 9 节生成：<strong>9.1</strong> 段生成（<code>continues_to_next</code>
           的块与下一块合并，标题单独成段）→ <strong>9.3</strong> 清理（默认排除页眉页脚页码）
-          → <strong>9.4</strong> TXT 格式。导出范围是<strong>本次会话中已识别的页面</strong>——
-          识别结果尚未持久化，所以没识别过的页不会出现在导出里。
+          → <strong>9.4</strong> TXT 或 <strong>9.5</strong> JSONL，并附
+          <strong>manifest.json</strong>（含断词还原位置，供抽查）。
+          导出范围是<strong>本次会话中已识别的页面</strong>——识别结果尚未持久化，
+          所以没识别过的页不会出现在导出里。
         </p>
         <div class="alert alert--error" id="export-error" hidden></div>
         <dl class="kv" id="export-preflight"></dl>
+        <div class="export-downloads" id="export-downloads" hidden>
+          <button type="button" id="export-download" class="btn">下载数据文件</button>
+          <button type="button" id="export-download-manifest" class="btn">下载 manifest.json</button>
+        </div>
         <pre class="export-preview" id="export-preview" hidden></pre>
       </div>
     </section>
