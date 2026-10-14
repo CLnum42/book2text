@@ -27,6 +27,7 @@ from . import recognition
 from .library import ProjectError, project_dir
 
 ACTOR_USER = "user"
+ACTOR_SYSTEM = "system"
 
 # 说明书 5.3 的 action 取值里，本次用到的这些
 ACTION_EDIT_TEXT = "edit_text"
@@ -175,6 +176,7 @@ def update_block(
     expected_revision: int | None = None,
     expected_updated_at: str | None = None,
     actor_name: str | None = None,
+    actor: str = ACTOR_USER,
     batch_id: str | None = None,
 ) -> tuple[blocks_module.BlockRecord, list[Event]]:
     """改一个块，返回改后的块与这次写入的事件。
@@ -242,6 +244,7 @@ def update_block(
                 before={name: before[name]},
                 after={name: after[name]},
                 batch_id=batch_id or new_ulid(),
+                actor=actor,
                 actor_name=actor_name,
             )
             for name in changed
@@ -1195,6 +1198,8 @@ def revert_events(
                     before=before,
                     after=dict(values),
                     batch_id=event.batch_id,
+                    # 撤销沿用原来那批的 actor：撤销一次"批量标注"，它仍然是系统的改动
+                    actor=event.actor,
                     actor_name=actor_name,
                 )
             )

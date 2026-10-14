@@ -140,6 +140,52 @@
       <div class="alert alert--error" id="pages-error" hidden></div>
       <div class="page-grid" id="page-grid"></div>
 
+      <div class="structure-panel" id="structure-panel">
+        <div class="structure-panel__head">
+          <strong>结构工具 · 页眉 / 页脚 / 页码批量标注</strong>
+          <span class="muted" id="structure-meta"></span>
+          <span class="spacer"></span>
+          <button type="button" id="structure-preview-btn" class="btn">预览</button>
+          <button type="button" id="structure-apply-btn" class="btn btn--primary" disabled>应用标注</button>
+        </div>
+        <p class="hint">
+          扫描书的页眉页脚每页都有，逐页改类型不现实。这里的做法是**位置规则 + 预览 + 批量应用**
+          （说明书 6.5）：先算出哪些块在页面顶部 / 底部区域里、哪些是页码形态，
+          <strong>你看过预览再决定应用</strong>；应用是一次批量操作，可以整体撤销。
+          已经被人工改过类型的块不会被覆盖。
+        </p>
+        <div class="structure-rules">
+          <label class="muted">顶部区域高度
+            <input type="number" id="structure-top" value="8" min="0" max="50" step="1"> %
+          </label>
+          <label class="muted">底部区域高度
+            <input type="number" id="structure-bottom" value="8" min="0" max="50" step="1"> %
+          </label>
+          <label class="muted">字数上限
+            <input type="number" id="structure-max-chars" value="20" min="0" max="500" step="1">
+          </label>
+          <label class="muted check"><input type="checkbox" id="structure-numbers" checked>
+            纯数字 / 罗马数字 → 页码</label>
+          <label class="muted check"><input type="checkbox" id="structure-body-only" checked>
+            只作用于正文页</label>
+        </div>
+        <div class="alert alert--error" id="structure-error" hidden></div>
+        <div class="alert alert--warn" id="structure-note" hidden></div>
+
+        <div class="structure-result" id="structure-result" hidden>
+          <div class="structure-result__head">
+            <span class="muted" id="structure-summary"></span>
+            <span class="spacer"></span>
+            <span class="muted">取消勾选 = 这次不标它</span>
+            <button type="button" id="structure-all" class="btn btn--ghost">全选</button>
+            <button type="button" id="structure-none" class="btn btn--ghost">全不选</button>
+          </div>
+          <div class="structure-result__body">
+            <ol class="structure-candidates" id="structure-candidates"></ol>
+          </div>
+        </div>
+      </div>
+
       <div class="export-panel" id="export-panel">
         <div class="export-panel__head">
           <strong>导出</strong>

@@ -485,3 +485,22 @@ main {
 .compare__segments .compare__seg-head { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
 .page-overlay .box--source { border-color: #d9480f; background: rgba(217,72,15,.18); }
 .page-overlay .box--dim { opacity: .35; }
+
+/* ---------------------------------------------------------------- 结构工具 */
+
+.structure-panel { margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.structure-panel__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; background: #fafbfc; border-bottom: 1px solid var(--border); border-radius: 8px 8px 0 0; }
+.structure-panel__head .spacer { flex: 1; }
+.structure-panel .hint { margin: 0; padding: 8px 12px 0; }
+.structure-rules { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 10px 12px 0; font-size: 13px; }
+.structure-rules input[type="number"] { width: 62px; font: inherit; font-size: 13px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px; }
+.structure-panel .alert { margin: 8px 12px 0; }
+.structure-result { margin: 10px 12px 0; border: 1px solid #c7d2fe; border-radius: 8px; background: #fbfcff; }
+.structure-result__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.structure-result__head .spacer { flex: 1; }
+.structure-result__body { padding: 8px 10px; }
+.structure-candidates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; max-height: 42vh; overflow: auto; }
+.structure-candidates li { display: flex; gap: 9px; align-items: flex-start; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: #fff; font-size: 13px; }
+.structure-candidates li.is-off { opacity: .45; }
+.structure-candidates .meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.structure-candidates .text { white-space: pre-wrap; word-break: break-word; }

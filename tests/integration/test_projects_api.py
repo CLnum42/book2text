@@ -546,6 +546,34 @@ def test_unknown_project_returns_404(
     assert response.status_code == 404
 
 
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("get", "/api/projects/b2t_ZZZZZZ/pages", None),
+        ("get", "/api/projects/b2t_ZZZZZZ/pages/1/blocks", None),
+        ("get", "/api/projects/b2t_ZZZZZZ/jobs", None),
+        ("patch", "/api/projects/b2t_ZZZZZZ/pages", {"page_ids": ["x"], "include": False}),
+        ("put", "/api/projects/b2t_ZZZZZZ/position", {"view": "pages"}),
+        ("post", "/api/projects/b2t_ZZZZZZ/structure/header-footer/preview", {}),
+        ("post", "/api/projects/b2t_ZZZZZZ/export/preflight", {}),
+    ],
+)
+def test_unknown_project_is_404_everywhere(
+    client: TestClient, auth_headers: dict[str, str], method: str, path: str, body
+) -> None:
+    """项目不存在时，各个接口都该回 404——而不是让 sqlite 抛出 500。
+
+    这一条是补的：`list_pages` 之类直接开库的函数原先没有检查目录存在，
+    对不存在的项目会抛 `OperationalError`（500）。
+    """
+    call = getattr(client, method)
+    response = call(path, json=body, headers=auth_headers) if body is not None else call(
+        path, headers=auth_headers
+    )
+    assert response.status_code == 404, f"{method} {path} → {response.status_code}"
+    assert response.json()["error"]["code"] in ("project_error", "job_error", "export_failed")
+
+
 def test_empty_library_lists_nothing(
     client: TestClient, auth_headers: dict[str, str], library_dir: Path
 ) -> None:

@@ -179,6 +179,164 @@ function renderLimits(info) {
   ]);
 }
 
+// ---------------------------------------------------------------- 结构工具（页眉 / 页脚 / 页码）
+
+let structureCandidates = [];      // 预览结果（含用户逐个取消的状态）
+
+function structureRules() {
+  return {
+    top_ratio: Number(el("structure-top").value || 0) / 100,
+    bottom_ratio: Number(el("structure-bottom").value || 0) / 100,
+    max_chars: el("structure-max-chars").value === "" ? null : Number(el("structure-max-chars").value),
+    page_types: el("structure-body-only").checked ? ["body"] : ["body", "front", "toc", "appendix", "index"],
+    detect_page_numbers: el("structure-numbers").checked,
+  };
+}
+
+async function previewHeaderFooter() {
+  if (!currentProject) return;
+  el("structure-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/structure/header-footer/preview`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(structureRules()),
+      }
+    );
+    renderStructurePreview(data);
+  } catch (error) {
+    showError(el("structure-error"), error);
+  }
+}
+
+const STRUCTURE_TYPE_LABELS = {
+  header: "页眉", footer: "页脚", page_number: "页码",
+  caption: "图注", footnote: "脚注", heading: "标题", other: "其他", paragraph: "段落",
+};
+
+function renderStructurePreview(data) {
+  structureCandidates = (data.candidates || []).map((item) => ({ ...item, keep: true }));
+
+  el("structure-result").hidden = false;
+  el("structure-meta").textContent = `${data.pages_scanned} 页在作用范围内`;
+  const byType = Object.entries(data.by_type || {})
+    .map(([type, count]) => `${STRUCTURE_TYPE_LABELS[type] || type} ${count}`)
+    .join(" · ");
+  el("structure-summary").textContent = data.candidate_count
+    ? `会标注 ${data.candidate_count} 个块：${byType}`
+    : "按当前规则没有需要标注的块";
+
+  const list = el("structure-candidates");
+  list.innerHTML = "";
+  structureCandidates.forEach((item, index) => {
+    const li = document.createElement("li");
+    li.dataset.index = String(index);
+
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.checked = true;
+    check.title = "取消勾选 = 这次不标它";
+    check.addEventListener("change", () => {
+      structureCandidates[index].keep = check.checked;
+      li.classList.toggle("is-off", !check.checked);
+      updateStructureApplyState();
+    });
+
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent =
+      `第 ${item.page_no} 页 · ${STRUCTURE_TYPE_LABELS[item.current_type] || item.current_type}` +
+      ` → ${STRUCTURE_TYPE_LABELS[item.proposed_type] || item.proposed_type}`;
+
+    const text = document.createElement("span");
+    text.className = "text";
+    text.textContent = item.text.slice(0, 60);
+
+    li.append(check, meta, text);
+    list.append(li);
+  });
+
+  // 被跳过的块（含原因）也如实列出来，免得用户以为漏了
+  const note = el("structure-note");
+  const notes = [];
+  if (data.skipped_count) {
+    const sample = (data.skipped || [])
+      .slice(0, 3)
+      .map((item) => `第 ${item.page_no} 页「${item.text.slice(0, 12)}」${item.reason}`)
+      .join("；");
+    notes.push(`有 ${data.skipped_count} 个块在区域内但没有动它：${sample}${data.skipped_count > 3 ? " 等" : ""}`);
+  }
+  if (!data.candidate_count) {
+    notes.push("如果没有找到，试着把区域高度调大一点，或把「只作用于正文页」去掉。");
+  }
+  note.textContent = notes.join(" ");
+  note.hidden = notes.length === 0;
+
+  updateStructureApplyState();
+}
+
+function updateStructureApplyState() {
+  const kept = structureCandidates.filter((item) => item.keep);
+  const button = el("structure-apply-btn");
+  button.disabled = kept.length === 0;
+  button.textContent = kept.length ? `应用标注（${kept.length} 个块）` : "应用标注";
+}
+
+async function applyHeaderFooter() {
+  if (!currentProject) return;
+  const kept = structureCandidates.filter((item) => item.keep);
+  if (!kept.length) return;
+  el("structure-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/structure/header-footer/apply`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: kept.map((item) => ({
+            block_id: item.block_id,
+            block_type: item.proposed_type,
+          })),
+        }),
+      }
+    );
+    const byType = Object.entries(data.by_type || {})
+      .map(([type, count]) => `${STRUCTURE_TYPE_LABELS[type] || type} ${count}`)
+      .join(" · ");
+    el("structure-note").textContent =
+      `已标注 ${data.changed} 个块（${byType}），涉及 ${data.pages.length} 页。` +
+      "这是一次批量操作，可以用「撤销」整体退回去。";
+    el("structure-note").hidden = false;
+    structureCandidates = [];
+    el("structure-result").hidden = true;
+    el("structure-apply-btn").disabled = true;
+    await reloadProjectPages();
+    await refreshExportPreflight();
+  } catch (error) {
+    showError(el("structure-error"), error);
+  }
+}
+
+function setupStructurePanel() {
+  el("structure-preview-btn").addEventListener("click", previewHeaderFooter);
+  el("structure-apply-btn").addEventListener("click", applyHeaderFooter);
+  el("structure-all").addEventListener("click", () => setAllStructureKeeps(true));
+  el("structure-none").addEventListener("click", () => setAllStructureKeeps(false));
+}
+
+function setAllStructureKeeps(keep) {
+  structureCandidates = structureCandidates.map((item) => ({ ...item, keep }));
+  for (const li of el("structure-candidates").children) {
+    const index = Number(li.dataset.index);
+    li.querySelector("input").checked = structureCandidates[index].keep;
+    li.classList.toggle("is-off", !structureCandidates[index].keep);
+  }
+  updateStructureApplyState();
+}
+
 // ---------------------------------------------------------------- 导出（项目）
 
 let lastExport = null;      // 最近一次生成的导出（含记录与 manifest）
@@ -784,6 +942,8 @@ async function refreshProject(projectId) {
   selectedPages.clear();
   selectionAnchor = null;
   closePageDetail();
+  structureCandidates = [];
+  el("structure-result").hidden = true;
   renderProject();
   // 任务可能还在跑（比如刷新了页面），把抽屉里的进度接回来
   await loadTasks();
@@ -2265,6 +2425,7 @@ function boot() {
   }
   setupLibrary();
   setupExportPanel();
+  setupStructurePanel();
   loadAppInfo();
   loadLibrary();
 }

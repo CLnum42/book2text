@@ -310,6 +310,19 @@ def _row_to_project(row, directory: Path) -> Project:
     )
 
 
+def require_project_dir(project_id: str, *, library: Path | None = None) -> Path:
+    """解析项目目录并确认它存在。
+
+    所有开库的函数都要先过这一关：`sqlite3.connect` 对不存在的路径会抛
+    `OperationalError`，那是 500 而不是"找不到项目"（404）。
+    """
+    target_library = library or default_library_dir()
+    directory = project_dir(target_library, project_id)
+    if not db_module.database_path(directory).is_file():
+        raise ProjectError(f"找不到项目：{project_id}")
+    return directory
+
+
 def project_exists(project_id: str, *, library: Path | None = None) -> bool:
     """项目是否存在于项目库中（不看数据库内容，只看文件夹与 project.db）。"""
     if not is_valid_project_id(project_id):
@@ -331,8 +344,7 @@ def load_project(project_id: str, *, library: Path | None = None) -> Project:
 
 
 def list_pages(project_id: str, *, library: Path | None = None) -> list[Page]:
-    target_library = library or default_library_dir()
-    directory = project_dir(target_library, project_id)
+    directory = require_project_dir(project_id, library=library)
     with db_module.open_database(directory, apply_migrations=False) as conn:
         rows = conn.execute("SELECT * FROM page ORDER BY page_no").fetchall()
     return [
@@ -537,8 +549,7 @@ def update_page(
     note: str | None = None,
 ) -> Page:
     """更新单页的类型 / 纳入 / 备注（说明书 6.2 的批量操作的单项形式）。"""
-    target_library = library or default_library_dir()
-    directory = project_dir(target_library, project_id)
+    directory = require_project_dir(project_id, library=library)
 
     assignments = []
     params: list[object] = []
@@ -614,8 +625,7 @@ def update_pages(
         assignments.append("include = ?")
         params.append(1 if include else 0)
 
-    target_library = library or default_library_dir()
-    directory = project_dir(target_library, project_id)
+    directory = require_project_dir(project_id, library=library)
     condition = ", ".join("?" for _ in page_ids)
 
     with db_module.open_database(directory, apply_migrations=False) as conn:
@@ -667,8 +677,7 @@ def update_last_view(
     page_id: str | None = None,
 ) -> None:
     """记录上次位置（说明书 7.2：项目库里显示"上次位置"，"继续"回到那里）。"""
-    target_library = library or default_library_dir()
-    directory = project_dir(target_library, project_id)
+    directory = require_project_dir(project_id, library=library)
 
     assignments = []
     params: list[object] = []
@@ -689,8 +698,7 @@ def update_last_view(
 
 def touch_project(project_id: str, *, library: Path | None = None) -> None:
     """更新项目的 updated_at——项目库里用来显示"上次：N 小时前"。"""
-    target_library = library or default_library_dir()
-    directory = project_dir(target_library, project_id)
+    directory = require_project_dir(project_id, library=library)
     with db_module.open_database(directory, apply_migrations=False) as conn:
         conn.execute(
             "UPDATE project SET updated_at = ?",
