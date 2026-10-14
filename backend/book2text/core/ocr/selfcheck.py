@@ -91,18 +91,65 @@ def _probe_package(
 # 第一引擎：PP-OCR 系列（说明书 8.4）
 # --------------------------------------------------------------------------
 
+def _probe_any_package(
+    *,
+    role: str,
+    engine_id: str,
+    label: str,
+    candidates: list[tuple[str, str]],
+    note: str = "",
+) -> EngineProbe:
+    """探测一个引擎的多个候选发行版，取第一个已安装的。
+
+    RapidOCR 有两个互不兼容的发行版：``rapidocr``（3.x，导入名就是 ``rapidocr``）
+    与 ``rapidocr_onnxruntime``（1.x）。只探其中一个会把另一种误报成"未安装"。
+    """
+    missing: list[str] = []
+    for module_name, distribution_name in candidates:
+        if _module_installed(module_name):
+            return EngineProbe(
+                role=role,
+                engine_id=engine_id,
+                label=label,
+                available=True,
+                version=_distribution_version(distribution_name),
+                reason="",
+                note=note,
+            )
+        missing.append(module_name)
+    return EngineProbe(
+        role=role,
+        engine_id=engine_id,
+        label=label,
+        available=False,
+        version=None,
+        reason="未安装（候选 Python 包：" + "、".join(missing) + "）",
+        note=note,
+    )
+
+
 def probe_primary_engines() -> list[EngineProbe]:
     """第一引擎的两种部署形态：RapidOCR（ONNX）与 PaddleOCR。
 
     说明书 Phase 0 第 1 项要求在两者间实测选定；这里只报告是否已安装。
+    macOS arm64 上的实测结论见 docs/ocr-evaluation.md。
     """
+    has_backend = _module_installed("onnxruntime")
+    rapidocr_note = (
+        "推理后端 onnxruntime 已安装"
+        if has_backend
+        else "注意：推理后端（onnxruntime）未安装，装好才能实际推理"
+    )
     return [
-        _probe_package(
+        _probe_any_package(
             role=ROLE_PRIMARY,
             engine_id="rapidocr",
             label="RapidOCR（ONNX 部署形态）",
-            module_name="rapidocr_onnxruntime",
-            distribution_name="rapidocr_onnxruntime",
+            candidates=[
+                ("rapidocr", "rapidocr"),
+                ("rapidocr_onnxruntime", "rapidocr_onnxruntime"),
+            ],
+            note=rapidocr_note,
         ),
         _probe_package(
             role=ROLE_PRIMARY,

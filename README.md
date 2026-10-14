@@ -18,7 +18,9 @@
 | UI 原型（6 个页面） | ✅ 已入库：`docs/ui-mockups/` |
 | **Phase 0 第 4 项：最小骨架** | ✅ 可运行：服务、上传 PDF、显示页面图像、引擎自检 |
 | **Phase 0 扫描样本（20 页，无文本层）** | ✅ 已生成：`fixtures/pdf/sample-20p-300dpi.pdf`，见 [`docs/scan-sample-set.md`](docs/scan-sample-set.md) |
-| Phase 0 第 1–3 项：引擎与 PDF 库实测 | ⬜ **被人工校对金标准卡住** |
+| **Phase 0 第 1 项：两个门槛项** | ✅ **已达标**：行级坐标 20/20 页、中位 2.04 秒/页，见 [`docs/ocr-evaluation.md`](docs/ocr-evaluation.md) |
+| Phase 0 第 1 项：PaddleOCR 对比与版面组件 | ⬜ 未开始 |
+| Phase 0 第 1–2 项：准确率（CER / 分歧率） | ⬜ **被人工校对金标准卡住** |
 | Phase 0 第 5 项：可行性文档 | 🔶 部分完成：`docs/technical-feasibility.md` |
 | Phase 1–8 业务功能 | ⬜ 未开始 |
 
@@ -151,6 +153,7 @@ book2text/
 | [`docs/spec-v1.0.md`](docs/spec-v1.0.md) | 开发说明书 V1.0：架构、数据模型、功能、UX、OCR 策略、分阶段路线 |
 | [`docs/technical-feasibility.md`](docs/technical-feasibility.md) | Phase 0 实测数据：已验证的能力、未验证事项、平台差异、风险 |
 | [`docs/scan-sample-set.md`](docs/scan-sample-set.md) | 20 页扫描样本：逐页来源、覆盖度对照、重要局限 |
+| [`docs/ocr-evaluation.md`](docs/ocr-evaluation.md) | OCR 引擎评估：门槛（实测前写定）与实测结果 |
 | [`AGENTS.md`](AGENTS.md) | 开发 Agent 的固定工作规则（说明书第 1 节同步副本） |
 | [`docs/decisions.md`](docs/decisions.md) | 决策记录（架构与实现取舍的理由） |
 | [`docs/development-log.md`](docs/development-log.md) | 每次开发任务的记录（含未验证项） |

@@ -18,6 +18,13 @@ dev = [
     "pytest>=8.0",
     "httpx>=0.27",
 ]
+# OCR 引擎评估用（说明书 Phase 0 第 1–2 项）。**选型未定**，因此不放进核心依赖：
+# 最终用户不应被强制安装上百 MB 的 OCR 运行时。
+# 用法：uv sync --group ocr-eval
+ocr-eval = [
+    "rapidocr>=3.10",
+    "onnxruntime>=1.20",
+]
 
 [project.scripts]
 book2text = "book2text.main:main"

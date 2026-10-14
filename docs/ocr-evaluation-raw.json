@@ -1,0 +1,505 @@
+{
+  "generated_at": "2026-10-14T08:06:32+00:00",
+  "generator": "scripts/evaluate_ocr.py",
+  "engine": "rapidocr",
+  "engine_init_seconds": 0.007,
+  "dpi": 300,
+  "sample": "fixtures/pdf/sample-20p-300dpi.pdf",
+  "platform": {
+    "system": "macOS-27.0.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "python": "3.12.13"
+  },
+  "gates": {
+    "G1_line_level_coordinates": {
+      "criterion": "每个文本行都有自己的坐标",
+      "passed": true,
+      "detail": "20/20 页返回行级四点框"
+    },
+    "G2_seconds_per_page": {
+      "criterion": "≤ 18.0 秒/页",
+      "passed": true,
+      "detail": "最大 3.67 秒，中位 2.038 秒"
+    }
+  },
+  "peak_memory_mb": 2686.6,
+  "model_files_bundled": "rapidocr 的 ONNX 模型随 wheel 内置，运行时无需联网下载",
+  "not_measured": [
+    "CER / 准确率（缺人工校对金标准）",
+    "分歧率 / 捕获率（需第二引擎）",
+    "Windows 平台（未在 Windows 上运行过）",
+    "真实扫描件（样本是干净栅格化结果）"
+  ],
+  "totals": {
+    "pages": 20,
+    "ocr_seconds_total": 42.87,
+    "ocr_seconds_median": 2.038,
+    "ocr_seconds_max": 3.67,
+    "ocr_seconds_min": 0.84,
+    "render_seconds_total": 1.01,
+    "lines_total": 456,
+    "pages_without_line_boxes": []
+  },
+  "pages": [
+    {
+      "sample_page": 1,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 1,
+      "category": "章节标题 + 复杂版面",
+      "render_seconds": 0.041,
+      "ocr_seconds": 1.866,
+      "line_count": 26,
+      "has_line_boxes": true,
+      "box_shape": [
+        26,
+        4,
+        2
+      ],
+      "score_mean": 0.9966,
+      "score_min": 0.9638,
+      "line_height_median": 55.3,
+      "first_lines": [
+        "话说黛玉正自悲泣，忽听院门响处，",
+        "只见宝钗出来了，宝玉、袭人一群人都送",
+        "第二十七回"
+      ]
+    },
+    {
+      "sample_page": 2,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 31,
+      "category": "普通单栏正文",
+      "render_seconds": 0.04,
+      "ocr_seconds": 0.84,
+      "line_count": 8,
+      "has_line_boxes": true,
+      "box_shape": [
+        8,
+        4,
+        2
+      ],
+      "score_mean": 0.9947,
+      "score_min": 0.9748,
+      "line_height_median": 60.9,
+      "first_lines": [
+        "“呆雁在那里呢？我也瞧瞧。”黛",
+        "玉道：“我才出来，他就‘忒儿’",
+        "的一声飞了。”口里说着，将手里"
+      ]
+    },
+    {
+      "sample_page": 3,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 60,
+      "category": "章节标题",
+      "render_seconds": 0.042,
+      "ocr_seconds": 1.946,
+      "line_count": 35,
+      "has_line_boxes": true,
+      "box_shape": [
+        35,
+        4,
+        2
+      ],
+      "score_mean": 0.9835,
+      "score_min": 0.6506,
+      "line_height_median": 55.3,
+      "first_lines": [
+        "话说袭人见了自己吐的鲜血在地，也",
+        "就冷了半截，想着往日常听人说：“少年",
+        "第三十一回"
+      ]
+    },
+    {
+      "sample_page": 4,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 61,
+      "category": "跨页段落",
+      "render_seconds": 0.036,
+      "ocr_seconds": 2.885,
+      "line_count": 28,
+      "has_line_boxes": true,
+      "box_shape": [
+        28,
+        4,
+        2
+      ],
+      "score_mean": 0.9897,
+      "score_min": 0.8147,
+      "line_height_median": 52.4,
+      "first_lines": [
+        "没好意思的，越发不理他。黛玉见宝玉懒懒的，只当是他因为得罪",
+        "了宝钗的原故，心中不受用，形容也就懒懒的。凤姐昨日晚上王夫",
+        "人就告诉了他宝玉金钏儿的事，知道王夫人不喜欢，自己如何敢说"
+      ]
+    },
+    {
+      "sample_page": 5,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 121,
+      "category": "普通单栏正文",
+      "render_seconds": 0.036,
+      "ocr_seconds": 2.524,
+      "line_count": 26,
+      "has_line_boxes": true,
+      "box_shape": [
+        26,
+        4,
+        2
+      ],
+      "score_mean": 0.9827,
+      "score_min": 0.6735,
+      "line_height_median": 46.8,
+      "first_lines": [
+        "倒凉快，吹一吹再走。”又告诉众人道：“你们说我回了",
+        "这半日的话！太太把二百年的事都想起来问我，难道我",
+        "不说罢？”又冷笑道：“我从今以后，倒要干几件刻薄"
+      ]
+    },
+    {
+      "sample_page": 6,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 147,
+      "category": "章节标题 + 复杂版面",
+      "render_seconds": 0.046,
+      "ocr_seconds": 1.713,
+      "line_count": 28,
+      "has_line_boxes": true,
+      "box_shape": [
+        28,
+        4,
+        2
+      ],
+      "score_mean": 0.9956,
+      "score_min": 0.9122,
+      "line_height_median": 56.7,
+      "first_lines": [
+        "话说宝钗湘云计议已定，一宿无",
+        "话。次日湘云便请贾母等赏桂花。贾",
+        "第三十八回"
+      ]
+    },
+    {
+      "sample_page": 7,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 151,
+      "category": "普通单栏正文",
+      "render_seconds": 0.042,
+      "ocr_seconds": 2.289,
+      "line_count": 28,
+      "has_line_boxes": true,
+      "box_shape": [
+        28,
+        4,
+        2
+      ],
+      "score_mean": 0.9835,
+      "score_min": 0.6467,
+      "line_height_median": 55.3,
+      "first_lines": [
+        "太太还是回屋里去歇歇罢。若高兴，明日再来逛逛。”",
+        "贾母听了，笑道：“正是呢。我怕你们高兴，我走了，",
+        "又怕扫了你们的兴；既这么说，咱们就都去罢。”回"
+      ]
+    },
+    {
+      "sample_page": 8,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 211,
+      "category": "复杂版面",
+      "render_seconds": 0.04,
+      "ocr_seconds": 1.589,
+      "line_count": 27,
+      "has_line_boxes": true,
+      "box_shape": [
+        27,
+        4,
+        2
+      ],
+      "score_mean": 0.9821,
+      "score_min": 0.7185,
+      "line_height_median": 59.5,
+      "first_lines": [
+        "我且替你收着，等你用着这个的",
+        "时候我送你些。———也只可留着",
+        "画扇子：若画这大幅的，也就可"
+      ]
+    },
+    {
+      "sample_page": 9,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 301,
+      "category": "普通单栏正文",
+      "render_seconds": 0.037,
+      "ocr_seconds": 2.252,
+      "line_count": 27,
+      "has_line_boxes": true,
+      "box_shape": [
+        27,
+        4,
+        2
+      ],
+      "score_mean": 0.9866,
+      "score_min": 0.6651,
+      "line_height_median": 51.0,
+      "first_lines": [
+        "早已定了。等到了明日临期，横竖知道。”说毕，大",
+        "家又说了一回闲话，方往贾母处来，当日无话。",
+        "到了次日清早，宝玉因心里惦记着，这一夜没"
+      ]
+    },
+    {
+      "sample_page": 10,
+      "source_file": "《红楼梦》双语对照 2_正文_中文部分.pdf",
+      "source_page": 361,
+      "category": "特殊排版",
+      "render_seconds": 0.037,
+      "ocr_seconds": 1.628,
+      "line_count": 27,
+      "has_line_boxes": true,
+      "box_shape": [
+        27,
+        4,
+        2
+      ],
+      "score_mean": 0.9875,
+      "score_min": 0.7576,
+      "line_height_median": 55.3,
+      "first_lines": [
+        "傍边一副对联，写道是：",
+        "已后儿孙承福得；",
+        "至今黎庶念宁荣。"
+      ]
+    },
+    {
+      "sample_page": 11,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 9,
+      "category": "普通单栏正文（英文）",
+      "render_seconds": 0.058,
+      "ocr_seconds": 2.708,
+      "line_count": 29,
+      "has_line_boxes": true,
+      "box_shape": [
+        29,
+        4,
+        2
+      ],
+      "score_mean": 0.9935,
+      "score_min": 0.9845,
+      "line_height_median": 76.5,
+      "first_lines": [
+        "It is surprising yet instructive to recall that when Roger Ames",
+        "published his groundbreaking translation and philosophical",
+        "analysis of the ninth essay of the Huai-nan Tzu, Chu-shu (The Art"
+      ]
+    },
+    {
+      "sample_page": 12,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 10,
+      "category": "跨页段落（英文）",
+      "render_seconds": 0.047,
+      "ocr_seconds": 1.273,
+      "line_count": 10,
+      "has_line_boxes": true,
+      "box_shape": [
+        10,
+        4,
+        2
+      ],
+      "score_mean": 0.9584,
+      "score_min": 0.6382,
+      "line_height_median": 81.5,
+      "first_lines": [
+        "Let us for a moment consider the example of how one of the",
+        "concepts, penal law (fa), is transformed in The Art of Rulership. To",
+        "the Legalist authors Shang Yang and Han Fei, laws and"
+      ]
+    },
+    {
+      "sample_page": 13,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 56,
+      "category": "页眉页码 + 正文",
+      "render_seconds": 0.057,
+      "ocr_seconds": 2.705,
+      "line_count": 27,
+      "has_line_boxes": true,
+      "box_shape": [
+        27,
+        4,
+        2
+      ],
+      "score_mean": 0.9958,
+      "score_min": 0.9844,
+      "line_height_median": 76.5,
+      "first_lines": [
+        "Page 9",
+        "By contrast, the disdain which the Lao Tzu directs at this same",
+        "culture leads to its insistence that one must unlearn conventional"
+      ]
+    },
+    {
+      "sample_page": 14,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 166,
+      "category": "普通单栏正文（英文）",
+      "render_seconds": 0.056,
+      "ocr_seconds": 1.949,
+      "line_count": 18,
+      "has_line_boxes": true,
+      "box_shape": [
+        18,
+        4,
+        2
+      ],
+      "score_mean": 0.9946,
+      "score_min": 0.9834,
+      "line_height_median": 74.9,
+      "first_lines": [
+        "Since the ruler dwells deep in seclusion to avoid the heat and damp,",
+        "and remains behind layer upon layer of doors in order to protect",
+        "himself against villainy and insurgency, within he knows nothing"
+      ]
+    },
+    {
+      "sample_page": 15,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 221,
+      "category": "正文 + 脚注",
+      "render_seconds": 0.051,
+      "ocr_seconds": 1.432,
+      "line_count": 11,
+      "has_line_boxes": true,
+      "box_shape": [
+        11,
+        4,
+        2
+      ],
+      "score_mean": 0.9934,
+      "score_min": 0.9799,
+      "line_height_median": 76.5,
+      "first_lines": [
+        "The position of the ruler is defined by the retention of the shih",
+        "available to his office (363:2): \"The reason why a ruler of a ten-",
+        "thousand-chariot state and the lord of a thousand-chariot state are"
+      ]
+    },
+    {
+      "sample_page": 16,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 469,
+      "category": "脚注密集",
+      "render_seconds": 0.056,
+      "ocr_seconds": 2.454,
+      "line_count": 24,
+      "has_line_boxes": true,
+      "box_shape": [
+        24,
+        4,
+        2
+      ],
+      "score_mean": 0.9923,
+      "score_min": 0.9673,
+      "line_height_median": 79.0,
+      "first_lines": [
+        "3. I use the word \"culture\" in its broadest sense to indicate the sum",
+        "total of social institutions, customs, and values created by people to",
+        "regulate and refine their relationships. It is their formal"
+      ]
+    },
+    {
+      "sample_page": 17,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 511,
+      "category": "脚注密集",
+      "render_seconds": 0.081,
+      "ocr_seconds": 3.349,
+      "line_count": 20,
+      "has_line_boxes": true,
+      "box_shape": [
+        20,
+        4,
+        2
+      ],
+      "score_mean": 0.9922,
+      "score_min": 0.972,
+      "line_height_median": 77.4,
+      "first_lines": [
+        "Page 226",
+        "56. See 235:15.",
+        "57. See 80:2."
+      ]
+    },
+    {
+      "sample_page": 18,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 551,
+      "category": "脚注密集 + 页眉",
+      "render_seconds": 0.083,
+      "ocr_seconds": 3.67,
+      "line_count": 25,
+      "has_line_boxes": true,
+      "box_shape": [
+        25,
+        4,
+        2
+      ],
+      "score_mean": 0.9948,
+      "score_min": 0.9638,
+      "line_height_median": 73.2,
+      "first_lines": [
+        "6. Cf. Huai Nan Tzu 10/5b; Han Fei Tzu 17:16 and 30:14; Huang-ti",
+        "ssu-ching, p. 31; and Shih Tzu A/6a.",
+        "7. Cf. Ta Tai li-chi 8/4a and Yen Tzu ch'un-ch'iu 7/11b."
+      ]
+    },
+    {
+      "sample_page": 19,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 606,
+      "category": "参考文献",
+      "render_seconds": 0.061,
+      "ocr_seconds": 1.672,
+      "line_count": 10,
+      "has_line_boxes": true,
+      "box_shape": [
+        10,
+        4,
+        2
+      ],
+      "score_mean": 0.99,
+      "score_min": 0.957,
+      "line_height_median": 79.9,
+      "first_lines": [
+        ". Mencius. Middlesex: Penguin, 1970.",
+        ". The Analects. Middlesex: Penguin, 1979.",
+        ". Review of H. G. Creel's What Is Taoism and Other Studies in"
+      ]
+    },
+    {
+      "sample_page": 20,
+      "source_file": "安乐哲 译本处理.PDF",
+      "source_page": 661,
+      "category": "索引",
+      "render_seconds": 0.058,
+      "ocr_seconds": 2.127,
+      "line_count": 22,
+      "has_line_boxes": true,
+      "box_shape": [
+        22,
+        4,
+        2
+      ],
+      "score_mean": 0.9954,
+      "score_min": 0.9845,
+      "line_height_median": 76.5,
+      "first_lines": [
+        "V",
+        "Virtue (te), 2, 31-32, 42, 57, 216n47",
+        "W"
+      ]
+    }
+  ]
+}
