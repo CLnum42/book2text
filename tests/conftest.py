@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 from book2text.api.app import create_app
 from book2text.core.project import executor as executor_module
 from book2text.core.project import recognition
-from book2text.core.storage import scratch
 from tests.fakes import FakeOcrEngine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -56,18 +55,8 @@ def rotated_pdf() -> Path:
 
 
 @pytest.fixture
-def scratch_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    """把临时上传目录重定向到 pytest 的 tmp_path。
-
-    否则测试会往真实的用户应用数据目录里写东西。
-    """
-    monkeypatch.setattr(scratch, "app_data_dir", lambda: tmp_path)
-    yield tmp_path / "scratch"
-
-
-@pytest.fixture
-def client(scratch_dir: Path, tmp_path: Path) -> Iterator[TestClient]:
-    # 项目库也重定向到 tmp_path：否则测试会往用户真实的"文稿 / 文档"目录里写项目
+def client(tmp_path: Path) -> Iterator[TestClient]:
+    # 项目库重定向到 tmp_path：否则测试会往用户真实的"文稿 / 文档"目录里写项目
     app = create_app(
         session_token=TEST_TOKEN,
         origins=[TEST_ORIGIN],

@@ -23,11 +23,10 @@ from ..core.project.library import default_library_dir
 from . import (
     errors,
     routes_app,
-    routes_export,
+    routes_exports,
     routes_jobs,
     routes_projects,
     routes_review,
-    routes_scratch,
     security,
 )
 
@@ -78,11 +77,10 @@ def create_app(
     # 会破坏上传接口的流式读取。
     guarded = [Depends(security.verify_local_request)]
     app.include_router(routes_app.router, dependencies=guarded)
-    app.include_router(routes_scratch.router, dependencies=guarded)
-    app.include_router(routes_export.router, dependencies=guarded)
     app.include_router(routes_projects.router, dependencies=guarded)
     app.include_router(routes_jobs.router, dependencies=guarded)
     app.include_router(routes_review.router, dependencies=guarded)
+    app.include_router(routes_exports.router, dependencies=guarded)
 
     app.mount("/static", StaticFiles(directory=paths.STATIC_DIR), name="static")
 

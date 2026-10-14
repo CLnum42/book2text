@@ -26,35 +26,6 @@ class ApiError extends Error {
 
 const el = (id) => document.getElementById(id);
 
-let currentUpload = null; // { upload_id, page_count, ... }
-let currentPage = 0;
-let currentImageUrl = null;
-let lastFile = null;
-let activeBlockIndex = -1;
-let lastOcrData = null;
-
-/** 每页的识别结果缓存。重新识别很慢，翻页来回看时不该重跑。 */
-const ocrCache = new Map();
-const ocrKey = (uploadId, pageIndex) => `${uploadId}:${pageIndex}`;
-
-/** 块级标记：纳入导出 / 延续到下一页（说明书 5.3 的 include 与 continues_to_next）。 */
-const blockFlags = new Map();
-const flagKey = (pageIndex, blockIndex) => `${pageIndex}:${blockIndex}`;
-
-function flagsOf(pageIndex, blockIndex) {
-  return blockFlags.get(flagKey(pageIndex, blockIndex)) || {
-    include: true,
-    continues: false,
-  };
-}
-
-function setFlag(pageIndex, blockIndex, patch) {
-  blockFlags.set(flagKey(pageIndex, blockIndex), {
-    ...flagsOf(pageIndex, blockIndex),
-    ...patch,
-  });
-}
-
 // ---------------------------------------------------------------- 通信
 
 async function apiFetch(path, options = {}) {
@@ -129,7 +100,7 @@ async function loadAppInfo() {
   try {
     info = await apiJson("/api/app/info");
   } catch (error) {
-    showError(el("upload-error"), error);
+    showError(el("platform-warning"), error);
     return;
   }
 
@@ -205,590 +176,245 @@ function renderLimits(info) {
     ["PDF 后端", `${info.pdf_backend.name} ${info.pdf_backend.version}${info.pdf_backend.selected ? "" : "（暂用，选型未定）"}`],
     ["Python", info.platform.python_version],
     ["操作系统", info.platform.os_version],
-    ["临时数据目录", info.data_dir],
   ]);
 }
 
-// ---------------------------------------------------------------- 上传
+// ---------------------------------------------------------------- 导出（项目）
 
-function setupDropzone() {
-  const zone = el("dropzone");
-  const input = el("file-input");
+let lastExport = null;      // 最近一次生成的导出（含记录与 manifest）
+let exportPreviewTimer = null;
 
-  zone.addEventListener("click", () => input.click());
-  zone.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      input.click();
-    }
-  });
+/** 收集导出面板上的选项（说明书 6.6 的每一项都在这里）。 */
+function exportOptions() {
+  const formats = [...document.querySelectorAll('input[name="export-format"]:checked')]
+    .map((input) => input.value);
+  let format = "txt";
+  if (formats.length === 2) format = "both";
+  else if (formats.length === 1) format = formats[0];
 
-  input.addEventListener("change", () => {
-    if (input.files && input.files[0]) startUpload(input.files[0]);
-    input.value = "";
-  });
+  const pageTypes = [...document.querySelectorAll('input[name="export-page-type"]:checked')]
+    .map((input) => input.value);
 
-  for (const type of ["dragenter", "dragover"]) {
-    zone.addEventListener(type, (event) => {
-      event.preventDefault();
-      zone.classList.add("dropzone--over");
-    });
+  const rangeText = el("export-range").value.trim();
+  let pageNumbers = null;
+  if (rangeText) {
+    const { numbers, invalid } = parsePageRange(rangeText);
+    if (invalid.length) throw new ApiError(`看不懂这段页码范围：${invalid.join("、")}`);
+    pageNumbers = [...numbers];
   }
-  for (const type of ["dragleave", "drop"]) {
-    zone.addEventListener(type, (event) => {
-      event.preventDefault();
-      zone.classList.remove("dropzone--over");
-    });
-  }
-  zone.addEventListener("drop", (event) => {
-    const file = event.dataTransfer && event.dataTransfer.files[0];
-    if (file) startUpload(file);
-  });
+
+  return {
+    format,
+    confirmed_only: el("export-confirmed-only").checked,
+    page_types: pageTypes,
+    page_numbers: pageNumbers,
+    include_footnotes: el("export-footnotes").checked,
+    include_captions: el("export-captions").checked,
+    include_other: el("export-other").checked,
+    page_markers: el("export-page-markers").checked,
+    exclude_header_footer: el("export-rule-header").checked,
+    merge_lines_in_block: el("export-rule-merge").checked,
+    restore_hyphenation: el("export-rule-hyphen").checked,
+    normalize_newlines: el("export-rule-newlines").checked,
+    strip_line_whitespace: el("export-rule-strip").checked,
+  };
 }
 
-function setProgress(loaded, total) {
-  const wrap = el("progress-wrap");
-  const fill = el("progress-fill");
-  wrap.hidden = false;
-  if (total > 0) {
-    fill.style.width = `${Math.round((loaded / total) * 100)}%`;
-    el("progress-text").textContent = `已上传 ${humanBytes(loaded)} / ${humanBytes(total)}`;
-  } else {
-    el("progress-text").textContent = `已上传 ${humanBytes(loaded)}`;
+function renderPreflight(data) {
+  const rows = [
+    ["导出页数", `${data.exported_pages.length} 页`],
+    ["段数", `${data.segment_count} 段`],
+    ["字数", `${data.char_count} 字`],
+    ["跨块合并的段", `${data.merged_segments} 段`],
+    ["断词还原", `${data.hyphenations_restored} 处`],
+    ["未审校的段", `${data.unreviewed_segments} 段`],
+    ["不确定的段", `${data.uncertain_segments} 段`],
+    ["排除的块类型", data.excluded_block_types.length ? data.excluded_block_types.join("、") : "（无）"],
+  ];
+  fillDefinitionList(el("export-preflight"), rows);
+
+  const notes = [];
+  if (!data.segment_count) {
+    notes.push("按当前设置没有内容可以导出——检查页面类型、范围与「仅已确认」。");
   }
+  if (data.unfinished_pages && data.unfinished_pages.length) {
+    const shown = data.unfinished_pages.slice(0, 12).join("、");
+    const more = data.unfinished_pages.length > 12 ? " 等" : "";
+    notes.push(
+      `有 ${data.unfinished_pages.length} 个纳入页还没识别或识别失败（${shown}${more}），` +
+        "导出的内容会缺这些页。"
+    );
+  }
+  if (data.dropped_pages && data.dropped_pages.length) {
+    notes.push(`按当前范围排除了 ${data.dropped_pages.length} 页。`);
+  }
+  if (data.unreviewed_segments) {
+    notes.push(
+      `有 ${data.unreviewed_segments} 段还没审校——导出的是当前文本，` +
+        "未审校的内容也在里面（要只导已确认的，勾上「仅已确认」）。"
+    );
+  }
+  const warning = el("export-note");
+  warning.textContent = notes.join(" ");
+  warning.hidden = notes.length === 0;
 }
 
-function uploadWithProgress(file) {
-  // 用 XMLHttpRequest 而不是 fetch：只有它能拿到上传进度（说明书 4.5 要求显示进度）。
-  return new Promise((resolve, reject) => {
-    const url = `/api/scratch/upload?filename=${encodeURIComponent(file.name)}`;
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
-    xhr.setRequestHeader(TOKEN_HEADER, token);
-    xhr.setRequestHeader("Content-Type", "application/pdf");
-
-    xhr.upload.addEventListener("progress", (event) => {
-      if (event.lengthComputable) setProgress(event.loaded, event.total);
-    });
-
-    xhr.addEventListener("load", () => {
-      let payload = null;
-      try {
-        payload = JSON.parse(xhr.responseText);
-      } catch {
-        payload = null;
-      }
-      if (xhr.status >= 200 && xhr.status < 300 && payload) {
-        resolve(payload);
-        return;
-      }
-      const error = (payload && payload.error) || {};
-      reject(new ApiError(
-        error.message || `上传失败（HTTP ${xhr.status}）`,
-        error.code, error.correlation_id, error.detail
-      ));
-    });
-
-    xhr.addEventListener("error", () => reject(new ApiError("网络错误：无法连接到本地服务")));
-    xhr.addEventListener("abort", () => reject(new ApiError("上传已取消")));
-
-    xhr.send(file);
-  });
-}
-
-async function startUpload(file) {
-  lastFile = file;
-  el("upload-error").hidden = true;
-  el("result-card").hidden = true;
-  // 换文件就清掉上一次的识别缓存与块标记，避免串到新上传上
-  ocrCache.clear();
-  blockFlags.clear();
-  lastOcrData = null;
-  el("export-panel").hidden = true;
-  setProgress(0, file.size);
-
+async function refreshExportPreflight({ withPreview = false } = {}) {
+  if (!currentProject) return;
+  let options;
   try {
-    currentUpload = await uploadWithProgress(file);
+    options = exportOptions();
   } catch (error) {
-    el("progress-wrap").hidden = true;
-    showError(el("upload-error"), error);
+    showError(el("export-error"), error);
     return;
   }
-
-  setProgress(file.size, file.size);
-  el("progress-text").textContent = `上传完成，共 ${humanBytes(file.size)}`;
-
-  currentPage = 0;
-  renderUploadMeta();
-  el("result-card").hidden = false;
-  await showPage(0);
-}
-
-function renderUploadMeta() {
-  const data = currentUpload;
-  fillDefinitionList(el("upload-meta"), [
-    ["文件名", data.original_name],
-    ["大小", humanBytes(data.size_bytes)],
-    ["页数", String(data.page_count)],
-    ["首页尺寸", `${data.page_width_pt.toFixed(1)} × ${data.page_height_pt.toFixed(1)} pt`],
-    ["SHA-256", data.sha256],
-    ["上传编号", data.upload_id],
-  ]);
-}
-
-// ---------------------------------------------------------------- 页面图像
-
-async function showPage(index) {
-  if (!currentUpload) return;
-  const total = currentUpload.page_count;
-  if (index < 0 || index >= total) return;
-
-  currentPage = index;
-  el("page-indicator").textContent = `第 ${index + 1} / ${total} 页`;
-  el("prev-page").disabled = index === 0;
-  el("next-page").disabled = index >= total - 1;
-
-  const canvas = el("page-canvas");
-  const image = el("page-image");
-  const status = el("image-status");
-  status.hidden = false;
-  status.textContent = `正在渲染第 ${index + 1} 页…`;
-  canvas.hidden = true;
-
-  try {
-    const response = await apiFetch(
-      `/api/scratch/${currentUpload.upload_id}/page/${index}/image?size=view`
-    );
-    if (!response.ok) {
-      const payload = await response.json().catch(() => null);
-      const error = (payload && payload.error) || {};
-      throw new ApiError(error.message || `渲染失败（HTTP ${response.status}）`,
-                         error.code, error.correlation_id, error.detail);
-    }
-    const blob = await response.blob();
-
-    if (currentImageUrl) URL.revokeObjectURL(currentImageUrl);
-    currentImageUrl = URL.createObjectURL(blob);
-    image.src = currentImageUrl;
-
-    // 图像必须加载完成才能算准覆盖层的尺寸
-    await new Promise((resolve) => {
-      if (image.complete && image.naturalWidth > 0) resolve();
-      else image.onload = () => resolve();
-    });
-
-    canvas.hidden = false;
-    status.hidden = true;
-  } catch (error) {
-    status.textContent = "";
-    showError(status, error);
-    status.hidden = false;
-    return;
-  }
-
-  const cached = ocrCache.get(ocrKey(currentUpload.upload_id, index));
-  if (cached) renderOcr(cached);
-  else clearOcr();
-}
-
-function clearOcr() {
-  activeBlockIndex = -1;
-  lastOcrData = null;
-  el("ocr-panel").hidden = true;
-  el("ocr-layout-warning").hidden = true;
-  el("ocr-blocks").innerHTML = "";
-  el("page-overlay").innerHTML = "";
-}
-
-// ---------------------------------------------------------------- 识别
-
-async function recognizeCurrentPage() {
-  if (!currentUpload) return;
-  const button = el("recognize-btn");
-  const status = el("image-status");
-
-  button.disabled = true;
-  button.textContent = "识别中…";
-  el("upload-error").hidden = true;
-
-  try {
-    const data = await apiJson(
-      `/api/scratch/${currentUpload.upload_id}/page/${currentPage}/recognize`,
-      { method: "POST" }
-    );
-    ocrCache.set(ocrKey(currentUpload.upload_id, currentPage), data);
-    renderOcr(data);
-  } catch (error) {
-    showError(el("upload-error"), error);
-    if (status) status.hidden = true;
-  } finally {
-    button.disabled = false;
-    button.textContent = "识别本页";
-  }
-}
-
-function renderOcr(data) {
-  const panel = el("ocr-panel");
-  const list = el("ocr-blocks");
-
-  lastOcrData = data;
-  el("ocr-meta").textContent =
-    `${data.engine_id} ${data.engine_version} · ${data.block_count} 块 / ${data.line_count} 行 · ` +
-    `${data.elapsed_seconds} 秒 · 识别用图 ${data.image_width}×${data.image_height}`;
-
-  const warning = el("ocr-layout-warning");
-  if (data.reading_order_uncertain) {
-    warning.textContent =
-      (data.layout_notes || []).join("；") || "检测到疑似多栏，阅读顺序需要人工确认。";
-    warning.hidden = false;
-  } else {
-    warning.hidden = true;
-  }
-
-  list.innerHTML = "";
-  data.blocks.forEach((block, index) => {
-    const item = document.createElement("li");
-    item.className = "ocr-block";
-    item.dataset.index = String(index);
-
-    const head = document.createElement("div");
-    head.className = "ocr-block__head";
-
-    const order = document.createElement("span");
-    order.textContent = `#${block.order_index + 1}`;
-
-    const meta = document.createElement("span");
-    const columnNote = data.column_count > 1 ? ` · 第 ${block.column + 1} 栏` : "";
-    const hyphenNote = (block.hyphenations || []).length
-      ? ` · 断词还原 ${block.hyphenations.length} 处`
-      : "";
-    meta.textContent = `${block.block_type} · ${block.line_count} 行${columnNote}${hyphenNote}`;
-
-    head.append(order, meta);
-
-    // 块级标记（说明书 5.3 的 include / continues_to_next；6.4 的"排除"与"标记延续"）
-    const flags = document.createElement("div");
-    flags.className = "ocr-block__flags";
-
-    const includeLabel = document.createElement("label");
-    includeLabel.title = "取消勾选则该块不进入导出";
-    const includeBox = document.createElement("input");
-    includeBox.type = "checkbox";
-    includeBox.checked = flagsOf(currentPage, index).include;
-    includeLabel.append(includeBox, document.createTextNode("纳入"));
-
-    const continuesLabel = document.createElement("label");
-    continuesLabel.title = "标记本段延续到下一页，导出时会与下一块拼成同一段";
-    const continuesBox = document.createElement("input");
-    continuesBox.type = "checkbox";
-    continuesBox.checked = flagsOf(currentPage, index).continues;
-    continuesLabel.append(continuesBox, document.createTextNode("延续下页"));
-
-    for (const box of [includeBox, continuesBox]) {
-      box.addEventListener("click", (event) => event.stopPropagation());
-    }
-    includeBox.addEventListener("change", () => {
-      setFlag(currentPage, index, { include: includeBox.checked });
-      item.classList.toggle("ocr-block--excluded", !includeBox.checked);
-      invalidateExport();
-    });
-    continuesBox.addEventListener("change", () => {
-      setFlag(currentPage, index, { continues: continuesBox.checked });
-      item.classList.toggle("ocr-block--continues", continuesBox.checked);
-      invalidateExport();
-    });
-
-    flags.append(includeLabel, continuesLabel);
-    head.append(flags);
-    item.classList.toggle("ocr-block--excluded", !includeBox.checked);
-
-    const text = document.createElement("div");
-    text.className = "ocr-block__text";
-    text.textContent = block.text;
-
-    item.append(head, text);
-    item.addEventListener("click", () => selectBlock(index));
-    list.append(item);
-  });
-
-  activeBlockIndex = -1;
-  panel.hidden = false;
-  el("export-panel").hidden = false;
-  invalidateExport();
-  applyTextMode();
-  drawOverlay(data);
-}
-
-/** 在"保留行内换行"与"拼成段落"（说明书 9.2）之间切换块的显示文本。 */
-function applyTextMode() {
-  if (!lastOcrData) return;
-  const mode =
-    (document.querySelector('input[name="ocr-text-mode"]:checked') || {}).value ||
-    "lines";
-  const cards = el("ocr-blocks").children;
-  lastOcrData.blocks.forEach((block, index) => {
-    const card = cards[index];
-    if (!card) return;
-    const target = card.querySelector(".ocr-block__text");
-    if (target) target.textContent = mode === "joined" ? block.text_joined : block.text;
-  });
-}
-
-function drawOverlay(data) {
-  const overlay = el("page-overlay");
-  overlay.innerHTML = "";
-  if (!el("ocr-show-boxes").checked) return;
-
-  // 归一化坐标 → 百分比定位，因此与显示尺寸、渲染 DPI 都无关
-  (data.blocks || []).forEach((block, index) => {
-    if (!block.bbox) return;
-    const [x0, y0, x1, y1] = block.bbox;
-    const box = document.createElement("div");
-    box.className = "box";
-    box.dataset.index = String(index);
-    box.style.left = `${x0 * 100}%`;
-    box.style.top = `${y0 * 100}%`;
-    box.style.width = `${(x1 - x0) * 100}%`;
-    box.style.height = `${(y1 - y0) * 100}%`;
-    overlay.append(box);
-  });
-}
-
-function selectBlock(index) {
-  activeBlockIndex = index;
-
-  for (const item of el("ocr-blocks").children) {
-    item.classList.toggle("active", Number(item.dataset.index) === index);
-  }
-  for (const box of el("page-overlay").children) {
-    const isActive = Number(box.dataset.index) === index;
-    box.classList.toggle("box--active", isActive);
-    if (isActive) box.scrollIntoView({ block: "center", behavior: "smooth" });
-  }
-  const item = el("ocr-blocks").querySelector(`li[data-index="${index}"]`);
-  if (item) item.scrollIntoView({ block: "nearest" });
-}
-
-function setupViewerControls() {
-  el("prev-page").addEventListener("click", () => showPage(currentPage - 1));
-  el("next-page").addEventListener("click", () => showPage(currentPage + 1));
-  el("recognize-btn").addEventListener("click", () => recognizeCurrentPage());
-  el("ocr-show-boxes").addEventListener("change", () => {
-    if (lastOcrData) drawOverlay(lastOcrData);
-  });
-  for (const radio of document.querySelectorAll('input[name="ocr-text-mode"]')) {
-    radio.addEventListener("change", applyTextMode);
-  }
-  el("export-btn").addEventListener("click", runExport);
-  el("export-download").addEventListener("click", downloadExportData);
-  el("export-download-manifest").addEventListener("click", downloadExportManifest);
-  el("export-page-markers").addEventListener("change", invalidateExport);
-  for (const radio of document.querySelectorAll('input[name="export-format"]')) {
-    radio.addEventListener("change", invalidateExport);
-  }
-
-  el("reveal-btn").addEventListener("click", async () => {
-    if (!currentUpload) return;
-    try {
-      await apiJson(`/api/scratch/${currentUpload.upload_id}/reveal`, { method: "POST" });
-    } catch (error) {
-      showError(el("upload-error"), error);
-    }
-  });
-
-  el("delete-btn").addEventListener("click", async () => {
-    if (!currentUpload) return;
-    const name = currentUpload.original_name;
-    if (!confirm(`删除这次上传（${name}）？原始文件不在本机其他位置的话将无法恢复。`)) return;
-    try {
-      await apiJson(`/api/scratch/${currentUpload.upload_id}`, { method: "DELETE" });
-    } catch (error) {
-      showError(el("upload-error"), error);
-      return;
-    }
-    // 该上传的识别缓存一并清掉，避免翻回旧编号时读到过期结果
-    for (const key of [...ocrCache.keys()]) {
-      if (key.startsWith(`${currentUpload.upload_id}:`)) ocrCache.delete(key);
-    }
-    if (currentImageUrl) {
-      URL.revokeObjectURL(currentImageUrl);
-      currentImageUrl = null;
-    }
-    currentUpload = null;
-    clearOcr();
-    el("result-card").hidden = true;
-    el("progress-wrap").hidden = true;
-  });
-}
-
-// ---------------------------------------------------------------- 导出
-
-/** 上一次生成的产物：数据文件与 manifest.json 的内容。 */
-let exportArtifacts = null;
-
-/** 任何会影响输出的改动（块标记、格式、页码标记选项）都要让上一次的结果失效。 */
-function invalidateExport() {
-  exportArtifacts = null;
-  el("export-downloads").hidden = true;
-  el("export-preview").hidden = true;
-  el("export-preflight").innerHTML = "";
   el("export-error").hidden = true;
-  updateExportScope();
-}
-
-function currentExportFormat() {
-  const checked = document.querySelector('input[name="export-format"]:checked');
-  return checked ? checked.value : "txt";
-}
-
-function recognizedPages() {
-  if (!currentUpload) return [];
-  const pages = [];
-  for (const key of ocrCache.keys()) {
-    const [uploadId, pageIndex] = key.split(":");
-    if (uploadId === currentUpload.upload_id) pages.push(Number(pageIndex) + 1);
-  }
-  return pages.sort((a, b) => a - b);
-}
-
-function updateExportScope() {
-  const pages = recognizedPages();
-  el("export-scope").textContent = pages.length
-    ? `本次会话已识别 ${pages.length} 页（第 ${pages.join("、")} 页）`
-    : "还没有识别任何页面";
-}
-
-/** 把已识别页面的块整理成导出请求体。 */
-function collectExportBlocks() {
-  const blocks = [];
-  for (const [key, data] of ocrCache) {
-    const [uploadId, pageIndexRaw] = key.split(":");
-    if (uploadId !== currentUpload.upload_id) continue;
-    const pageIndex = Number(pageIndexRaw);
-    data.blocks.forEach((block, blockIndex) => {
-      const flags = flagsOf(pageIndex, blockIndex);
-      blocks.push({
-        block_id: `p${pageIndex + 1}-b${block.order_index}`,
-        page_no: pageIndex + 1,
-        order_index: block.order_index,
-        block_type: block.block_type,
-        lines: block.lines.map((line) => line.text),
-        include: flags.include,
-        continues_to_next: flags.continues,
-        review_status: "unreviewed",
-      });
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/export/preflight`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
     });
+    renderPreflight(data);
+    if (withPreview) await loadExportPreview(options);
+  } catch (error) {
+    showError(el("export-error"), error);
   }
-  return blocks.sort(
-    (a, b) => a.page_no - b.page_no || a.order_index - b.order_index
-  );
 }
 
-/** 从已识别的页面里取引擎信息与页标签，写进 manifest 与 JSONL 的 source。 */
-function exportSourceInfo() {
-  const info = { project_name: null, file_name: null, sha256: null };
-  if (currentUpload) {
-    info.file_name = currentUpload.original_name;
-    info.sha256 = currentUpload.sha256;
+async function loadExportPreview(options) {
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/export/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+    });
+    const pre = el("export-preview");
+    const isJsonl = options.format !== "txt";
+    pre.textContent = (isJsonl ? data.jsonl : data.text) || "（没有内容）";
+    pre.hidden = false;
+  } catch (error) {
+    showError(el("export-error"), error);
   }
-  for (const [key, data] of ocrCache) {
-    if (currentUpload && key.startsWith(`${currentUpload.upload_id}:`)) {
-      info.engine_id = data.engine_id;
-      info.engine_version = data.engine_version;
-      break;
-    }
-  }
-  return info;
+}
+
+function schedulePreflight() {
+  if (exportPreviewTimer) clearTimeout(exportPreviewTimer);
+  exportPreviewTimer = setTimeout(() => refreshExportPreflight(), 350);
 }
 
 async function runExport() {
-  if (!currentUpload) return;
-  const blocks = collectExportBlocks();
-  if (!blocks.length) {
-    showError(el("export-error"), new ApiError("还没有识别任何页面，无法导出"));
-    return;
-  }
-
-  const format = currentExportFormat();
-  const button = el("export-btn");
-  button.disabled = true;
-  button.textContent = "生成中…";
+  if (!currentProject) return;
   el("export-error").hidden = true;
-
-  let data;
+  let options;
   try {
-    data = await apiJson(`/api/export/${format}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        blocks,
-        options: { page_markers: el("export-page-markers").checked },
-        source: exportSourceInfo(),
-        preview_chars: 20000,
-      }),
-    });
+    options = exportOptions();
   } catch (error) {
     showError(el("export-error"), error);
-    exportArtifacts = null;
-    el("export-downloads").hidden = true;
     return;
-  } finally {
-    button.disabled = false;
-    button.textContent = "生成";
   }
-
-  const content = format === "jsonl" ? data.jsonl : data.text;
-  exportArtifacts = {
-    dataName: data.filename,
-    dataContent: content,
-    manifestName: "manifest.json",
-    manifestContent: JSON.stringify(data.manifest, null, 2) + "\n",
-  };
-  renderExport(data, blocks.length, format);
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+    });
+    lastExport = data;
+    renderExportRecord(data.record, data.files);
+    await loadExports();
+  } catch (error) {
+    showError(el("export-error"), error);
+  }
 }
 
-function renderExport(data, inputBlocks, format) {
-  const pf = data.preflight;
+function renderExportRecord(record, files = []) {
+  el("export-result").hidden = false;
+  el("export-result-meta").textContent =
+    `${record.export_id} · ${record.segment_count} 段 · ${record.char_count} 字 · ` +
+    `未审 ${record.unreviewed_count} 段 · ${record.created_at.slice(0, 16).replace("T", " ")}`;
 
-  fillDefinitionList(el("export-preflight"), [
-    ["格式", format === "jsonl" ? "JSONL（每行一个段）" : "TXT"],
-    ["输入块", `${inputBlocks} 个`],
-    ["段数", `${pf.segment_count} 段`],
-    ["字数", `${pf.char_count} 字`],
-    ["页面", `${pf.page_count} 页（第 ${pf.pages.join("、")} 页）`],
-    ["跨块合并", `${pf.merged_segments} 段`],
-    ["断词还原", `${pf.hyphenations_restored} 处`],
-  ]);
-
-  el("export-download").textContent = `下载 ${data.filename}`;
-  el("export-downloads").hidden = false;
-  el("export-preview").textContent = data.preview;
-  el("export-preview").hidden = false;
+  const list = el("export-files");
+  list.innerHTML = "";
+  for (const name of files.length ? files : record.file_paths) {
+    const item = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = name;
+    const download = document.createElement("a");
+    download.href =
+      `/api/projects/${currentProject.project_id}/exports/${record.export_id}/download` +
+      `?file=${encodeURIComponent(name)}&token=${encodeURIComponent(token)}`;
+    download.textContent = "下载";
+    download.className = "btn btn--ghost";
+    item.append(label, download);
+    list.append(item);
+  }
 }
 
-function downloadBlob(name, content, mime) {
-  const blob = new Blob([content], { type: `${mime};charset=utf-8` });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
-  URL.revokeObjectURL(url);
+async function loadExports() {
+  if (!currentProject) return;
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/exports`);
+    renderExportHistory(data.exports);
+  } catch (error) {
+    showError(el("export-error"), error);
+  }
 }
 
-function downloadExportData() {
-  if (!exportArtifacts) return;
-  const isJsonl = exportArtifacts.dataName.endsWith(".jsonl");
-  downloadBlob(
-    exportArtifacts.dataName,
-    exportArtifacts.dataContent,
-    isJsonl ? "application/x-ndjson" : "text/plain"
-  );
+function renderExportHistory(records) {
+  const list = el("export-history");
+  list.innerHTML = "";
+  el("export-history-empty").hidden = records.length > 0;
+  for (const record of records) {
+    const item = document.createElement("li");
+    if (lastExport && lastExport.record.export_id === record.export_id) {
+      item.classList.add("is-latest");
+    }
+    const text = document.createElement("span");
+    text.textContent =
+      `${record.created_at.slice(0, 16).replace("T", " ")} · ${record.format} · ` +
+      `${record.segment_count} 段 · ${record.char_count} 字 · 未审 ${record.unreviewed_count} 段`;
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "btn btn--ghost";
+    open.textContent = "查看";
+    open.addEventListener("click", () => renderExportRecord(record));
+    item.append(text, open);
+    list.append(item);
+  }
 }
 
-function downloadExportManifest() {
-  if (!exportArtifacts) return;
-  downloadBlob(exportArtifacts.manifestName, exportArtifacts.manifestContent, "application/json");
+async function revealExport(exportId) {
+  try {
+    await apiJson(
+      `/api/projects/${currentProject.project_id}/exports/${exportId}/reveal`,
+      { method: "POST" }
+    );
+  } catch (error) {
+    showError(el("export-error"), error);
+  }
+}
+
+function setupExportPanel() {
+  for (const input of document.querySelectorAll(
+    'input[name="export-format"], input[name="export-page-type"], #export-confirmed-only,' +
+      " #export-footnotes, #export-captions, #export-other, #export-page-markers," +
+      " #export-rule-header, #export-rule-merge, #export-rule-hyphen," +
+      " #export-rule-newlines, #export-rule-strip"
+  )) {
+    input.addEventListener("change", schedulePreflight);
+  }
+  el("export-range").addEventListener("input", schedulePreflight);
+  el("export-btn").addEventListener("click", runExport);
+  el("export-preview-btn").addEventListener("click", async () => {
+    try {
+      await loadExportPreview(exportOptions());
+    } catch (error) {
+      showError(el("export-error"), error);
+    }
+  });
+  el("export-reveal-btn").addEventListener("click", () => {
+    if (lastExport) revealExport(lastExport.record.export_id);
+  });
 }
 
 // ---------------------------------------------------------------- 项目库
@@ -1035,6 +661,9 @@ async function refreshProject(projectId) {
   renderProject();
   // 任务可能还在跑（比如刷新了页面），把抽屉里的进度接回来
   await loadTasks();
+  // 导出面板：预检 + 历史（说明书 6.6 要求预检摘要实时算）
+  await refreshExportPreflight();
+  await loadExports();
 }
 
 function renderProject() {
@@ -2509,8 +2138,7 @@ function boot() {
     warning.hidden = false;
   }
   setupLibrary();
-  setupDropzone();
-  setupViewerControls();
+  setupExportPanel();
   loadAppInfo();
   loadLibrary();
 }

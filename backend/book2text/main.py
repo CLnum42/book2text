@@ -20,7 +20,6 @@ from .api.security import allowed_origins
 from .core import platform as b2t_platform
 from .core.ocr import selfcheck
 from .core.project.library import default_library_dir
-from .core.storage import scratch
 
 # 说明书 4.4：只监听 127.0.0.1，不监听 0.0.0.0。
 HOST = "127.0.0.1"
@@ -78,7 +77,6 @@ def _print_banner(
         print("    （说明书第 10 节只支持 macOS Apple Silicon 与 Windows x64；仍可继续诊断）")
     print(f"界面地址：{url}")
     print(f"项目库目录：{library}")
-    print(f"临时上传目录：{scratch.scratch_dir()}")
     print(f"引擎自检：{available}/{len(probes)} 可用（详情见界面「引擎自检」）")
     print("按 Ctrl+C 停止服务")
     print()

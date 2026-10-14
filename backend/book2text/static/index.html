@@ -140,6 +140,85 @@
       <div class="alert alert--error" id="pages-error" hidden></div>
       <div class="page-grid" id="page-grid"></div>
 
+      <div class="export-panel" id="export-panel">
+        <div class="export-panel__head">
+          <strong>导出</strong>
+          <span class="muted" id="export-scope"></span>
+          <span class="spacer"></span>
+          <button type="button" id="export-preview-btn" class="btn">预览</button>
+          <button type="button" id="export-btn" class="btn btn--primary">生成导出文件</button>
+        </div>
+        <p class="hint">
+          导出整本书（或选定的页面范围）：按说明书第 9 节做
+          <strong>9.1</strong> 段生成（<code>continues_to_next</code> 的块与下一块合并、
+          标题单独成段）→ <strong>9.3</strong> 清理（默认排除页眉页脚页码）→
+          <strong>9.4</strong> TXT / <strong>9.5</strong> JSONL + <strong>manifest.json</strong>。
+          文件写进项目的 <code>exports/</code> 目录，可以下载，也可以在访达 / 资源管理器里打开。
+        </p>
+
+        <div class="export-options">
+          <fieldset>
+            <legend>格式</legend>
+            <label class="check"><input type="checkbox" name="export-format" value="txt" checked> TXT</label>
+            <label class="check"><input type="checkbox" name="export-format" value="jsonl"> JSONL</label>
+          </fieldset>
+          <fieldset>
+            <legend>范围</legend>
+            <label class="check"><input type="checkbox" id="export-confirmed-only"> 仅已确认内容</label>
+            <label class="muted">页码范围（留空=全书）
+              <input type="text" id="export-range" class="range-input" placeholder="如 1-12, 300-310">
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>页面类型</legend>
+            <label class="check"><input type="checkbox" name="export-page-type" value="body" checked> 正文</label>
+            <label class="check"><input type="checkbox" name="export-page-type" value="front"> 前置</label>
+            <label class="check"><input type="checkbox" name="export-page-type" value="toc"> 目录</label>
+            <label class="check"><input type="checkbox" name="export-page-type" value="appendix"> 附录</label>
+            <label class="check"><input type="checkbox" name="export-page-type" value="index"> 索引</label>
+            <label class="check"><input type="checkbox" name="export-page-type" value="other"> 其他</label>
+            <span class="muted">（封面 / 空白页默认不导出）</span>
+          </fieldset>
+          <fieldset>
+            <legend>内容类型</legend>
+            <label class="check"><input type="checkbox" id="export-captions" checked> 图注</label>
+            <label class="check"><input type="checkbox" id="export-footnotes"> 脚注</label>
+            <label class="check"><input type="checkbox" id="export-other"> 其他类型块</label>
+          </fieldset>
+          <fieldset>
+            <legend>清理规则（说明书 9.3）</legend>
+            <label class="check"><input type="checkbox" id="export-rule-header" checked> 排除页眉 / 页脚 / 页码块</label>
+            <label class="check"><input type="checkbox" id="export-rule-merge" checked> 合并段内换行</label>
+            <label class="check"><input type="checkbox" id="export-rule-hyphen" checked> 还原行末断词</label>
+            <label class="check"><input type="checkbox" id="export-rule-newlines" checked> 统一换行符</label>
+            <label class="check"><input type="checkbox" id="export-rule-strip" checked> 去掉行首尾空白</label>
+            <label class="check"><input type="checkbox" id="export-page-markers"> 在 TXT 里插页码标记</label>
+          </fieldset>
+        </div>
+
+        <div class="alert alert--warn" id="export-note" hidden></div>
+        <div class="alert alert--error" id="export-error" hidden></div>
+        <dl class="kv" id="export-preflight"></dl>
+
+        <div class="export-result" id="export-result" hidden>
+          <div class="export-result__head">
+            <strong>本次导出</strong>
+            <span class="muted" id="export-result-meta"></span>
+            <span class="spacer"></span>
+            <button type="button" id="export-reveal-btn" class="btn btn--ghost">在文件夹中显示</button>
+          </div>
+          <ul class="export-files" id="export-files"></ul>
+        </div>
+
+        <div class="export-history">
+          <div class="muted">导出记录</div>
+          <ul id="export-history"></ul>
+          <p class="muted" id="export-history-empty">还没有导出过。</p>
+        </div>
+
+        <pre class="export-preview" id="export-preview" hidden></pre>
+      </div>
+
       <div class="page-detail" id="page-detail" hidden>
         <div class="page-detail__head">
           <strong id="page-detail-title">审校</strong>
@@ -201,110 +280,6 @@
           </div>
           <ol class="ocr-blocks" id="detail-blocks"></ol>
         </div>
-      </div>
-    </section>
-
-    <section class="card legacy" id="scratch-card">
-      <h2>临时上传（Phase 0 遗留）</h2>
-      <p class="hint">
-        识别已经搬到项目上（上面那张卡片）——项目里的结果会落库、重启还在。
-        这一块现在只剩<strong>导出</strong>：导出接口是 Phase 0 的无状态形态，
-        它要客户端把识别结果提交上来，所以还得连着这里的临时识别。
-        <strong>把导出也接到项目上之后，这一块会整块删掉</strong>（连同
-        <code>core/storage/scratch.py</code>）。文件落在临时目录、刷新即丢。
-      </p>
-      <div class="dropzone" id="dropzone" tabindex="0" role="button"
-           aria-label="选择或拖入 PDF 文件">
-        <p class="dropzone__main">把 PDF 拖到这里，或点击选择文件</p>
-        <p class="dropzone__sub muted">只接受 PDF；原始文件不会被修改</p>
-        <input type="file" id="file-input" accept="application/pdf,.pdf" hidden>
-      </div>
-
-      <div class="progress" id="progress-wrap" hidden>
-        <div class="progress__bar"><div class="progress__fill" id="progress-fill"></div></div>
-        <div class="progress__text" id="progress-text"></div>
-      </div>
-
-      <div class="alert alert--error" id="upload-error" hidden></div>
-    </section>
-
-    <section class="card" id="result-card" hidden>
-      <h2>识别与分段</h2>
-      <dl class="kv" id="upload-meta"></dl>
-
-      <div class="viewer">
-        <div class="viewer__toolbar">
-          <button type="button" id="prev-page" class="btn">上一页</button>
-          <span id="page-indicator" class="muted"></span>
-          <button type="button" id="next-page" class="btn">下一页</button>
-          <button type="button" id="recognize-btn" class="btn btn--primary">识别本页</button>
-          <span class="spacer"></span>
-          <button type="button" id="reveal-btn" class="btn btn--ghost">在文件夹中显示</button>
-          <button type="button" id="delete-btn" class="btn btn--danger">删除这次上传</button>
-        </div>
-        <div class="viewer__stage">
-          <div class="page-canvas" id="page-canvas" hidden>
-            <img id="page-image" alt="页面图像">
-            <div class="page-overlay" id="page-overlay"></div>
-          </div>
-          <p class="muted" id="image-status">正在渲染…</p>
-        </div>
-      </div>
-
-      <div class="ocr-panel" id="ocr-panel" hidden>
-        <div class="ocr-panel__head">
-          <strong>识别与分段结果</strong>
-          <span class="muted" id="ocr-meta"></span>
-          <span class="spacer"></span>
-          <label class="muted check">
-            <input type="radio" name="ocr-text-mode" value="lines" checked> 保留换行
-          </label>
-          <label class="muted check">
-            <input type="radio" name="ocr-text-mode" value="joined"> 拼成段落
-          </label>
-          <label class="muted check"><input type="checkbox" id="ocr-show-boxes" checked> 块框</label>
-        </div>
-        <p class="hint" id="ocr-hint">
-          块由行距、缩进、对齐自动组合而成（<code>core/structure/grouping.py</code>），
-          是后续审校的操作单位。默认显示<strong>保留行内换行</strong>的原始形态；
-          切到<strong>拼成段落</strong>可预览按说明书 9.2 规则拼接后的导出形态。
-          点击一个块可定位到图上的位置。
-        </p>
-        <div class="alert alert--warn" id="ocr-layout-warning" hidden></div>
-        <ol class="ocr-blocks" id="ocr-blocks"></ol>
-      </div>
-
-      <div class="export-panel" id="export-panel" hidden>
-        <div class="export-panel__head">
-          <strong>导出</strong>
-          <span class="muted" id="export-scope"></span>
-          <span class="spacer"></span>
-          <label class="muted check">
-            <input type="radio" name="export-format" value="txt" checked> TXT
-          </label>
-          <label class="muted check">
-            <input type="radio" name="export-format" value="jsonl"> JSONL
-          </label>
-          <label class="muted check">
-            <input type="checkbox" id="export-page-markers"> 插页码标记
-          </label>
-          <button type="button" id="export-btn" class="btn btn--primary">生成</button>
-        </div>
-        <p class="hint">
-          按说明书第 9 节生成：<strong>9.1</strong> 段生成（<code>continues_to_next</code>
-          的块与下一块合并，标题单独成段）→ <strong>9.3</strong> 清理（默认排除页眉页脚页码）
-          → <strong>9.4</strong> TXT 或 <strong>9.5</strong> JSONL，并附
-          <strong>manifest.json</strong>（含断词还原位置，供抽查）。
-          导出范围是<strong>本次会话中已识别的页面</strong>——项目里已识别的页
-          暂时还不能导出（导出接口还没接到项目上）。
-        </p>
-        <div class="alert alert--error" id="export-error" hidden></div>
-        <dl class="kv" id="export-preflight"></dl>
-        <div class="export-downloads" id="export-downloads" hidden>
-          <button type="button" id="export-download" class="btn">下载数据文件</button>
-          <button type="button" id="export-download-manifest" class="btn">下载 manifest.json</button>
-        </div>
-        <pre class="export-preview" id="export-preview" hidden></pre>
       </div>
     </section>
 
