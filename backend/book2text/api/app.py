@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .. import __version__, paths
-from . import errors, routes_app, routes_scratch, security
+from . import errors, routes_app, routes_export, routes_scratch, security
 
 
 def create_app(*, session_token: str, origins: Sequence[str]) -> FastAPI:
@@ -45,6 +45,7 @@ def create_app(*, session_token: str, origins: Sequence[str]) -> FastAPI:
     guarded = [Depends(security.verify_local_request)]
     app.include_router(routes_app.router, dependencies=guarded)
     app.include_router(routes_scratch.router, dependencies=guarded)
+    app.include_router(routes_export.router, dependencies=guarded)
 
     app.mount("/static", StaticFiles(directory=paths.STATIC_DIR), name="static")
 

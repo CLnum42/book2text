@@ -88,6 +88,28 @@
         <div class="alert alert--warn" id="ocr-layout-warning" hidden></div>
         <ol class="ocr-blocks" id="ocr-blocks"></ol>
       </div>
+
+      <div class="export-panel" id="export-panel" hidden>
+        <div class="export-panel__head">
+          <strong>导出 TXT</strong>
+          <span class="muted" id="export-scope"></span>
+          <span class="spacer"></span>
+          <label class="muted check">
+            <input type="checkbox" id="export-page-markers"> 插页码标记
+          </label>
+          <button type="button" id="export-btn" class="btn btn--primary">生成</button>
+          <button type="button" id="export-download" class="btn" disabled>下载</button>
+        </div>
+        <p class="hint">
+          按说明书第 9 节生成：<strong>9.1</strong> 段生成（<code>continues_to_next</code>
+          的块与下一块合并，标题单独成段）→ <strong>9.3</strong> 清理（默认排除页眉页脚页码）
+          → <strong>9.4</strong> TXT 格式。导出范围是<strong>本次会话中已识别的页面</strong>——
+          识别结果尚未持久化，所以没识别过的页不会出现在导出里。
+        </p>
+        <div class="alert alert--error" id="export-error" hidden></div>
+        <dl class="kv" id="export-preflight"></dl>
+        <pre class="export-preview" id="export-preview" hidden></pre>
+      </div>
     </section>
 
     <section class="card">

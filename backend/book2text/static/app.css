@@ -184,6 +184,29 @@ main {
 
 .alert--warn { background: var(--warn-bg); color: var(--warn-fg); margin: 8px 12px 0; }
 
+/* 块头里的两个标记 */
+.ocr-block__flags { display: flex; gap: 10px; margin-left: auto; }
+.ocr-block__flags label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+.ocr-block--excluded { opacity: .55; }
+.ocr-block--excluded .ocr-block__text { text-decoration: line-through; }
+
+.export-panel {
+  margin-top: 16px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card);
+}
+.export-panel__head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; background: #fafbfc; border-bottom: 1px solid var(--border);
+}
+.export-panel .hint { margin: 0; padding: 8px 12px 0; }
+.export-panel .kv { padding: 10px 12px 0; margin-bottom: 10px; }
+.export-preview {
+  margin: 0 12px 12px; padding: 10px 12px; max-height: 40vh; overflow: auto;
+  background: #f8f9fb; border: 1px solid var(--border); border-radius: 6px;
+  font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", monospace;
+}
+
 .btn {
   font: inherit; font-size: 13px;
   padding: 5px 12px; border-radius: 7px;

@@ -37,6 +37,24 @@ let lastOcrData = null;
 const ocrCache = new Map();
 const ocrKey = (uploadId, pageIndex) => `${uploadId}:${pageIndex}`;
 
+/** 块级标记：纳入导出 / 延续到下一页（说明书 5.3 的 include 与 continues_to_next）。 */
+const blockFlags = new Map();
+const flagKey = (pageIndex, blockIndex) => `${pageIndex}:${blockIndex}`;
+
+function flagsOf(pageIndex, blockIndex) {
+  return blockFlags.get(flagKey(pageIndex, blockIndex)) || {
+    include: true,
+    continues: false,
+  };
+}
+
+function setFlag(pageIndex, blockIndex, patch) {
+  blockFlags.set(flagKey(pageIndex, blockIndex), {
+    ...flagsOf(pageIndex, blockIndex),
+    ...patch,
+  });
+}
+
 // ---------------------------------------------------------------- 通信
 
 async function apiFetch(path, options = {}) {
@@ -282,6 +300,11 @@ async function startUpload(file) {
   lastFile = file;
   el("upload-error").hidden = true;
   el("result-card").hidden = true;
+  // 换文件就清掉上一次的识别缓存与块标记，避免串到新上传上
+  ocrCache.clear();
+  blockFlags.clear();
+  lastOcrData = null;
+  el("export-panel").hidden = true;
   setProgress(0, file.size);
 
   try {
@@ -370,6 +393,7 @@ async function showPage(index) {
 
 function clearOcr() {
   activeBlockIndex = -1;
+  lastOcrData = null;
   el("ocr-panel").hidden = true;
   el("ocr-layout-warning").hidden = true;
   el("ocr-blocks").innerHTML = "";
@@ -441,7 +465,42 @@ function renderOcr(data) {
     meta.textContent = `${block.block_type} · ${block.line_count} 行${columnNote}${hyphenNote}`;
 
     head.append(order, meta);
-    order.style.marginRight = "6px";
+
+    // 块级标记（说明书 5.3 的 include / continues_to_next；6.4 的"排除"与"标记延续"）
+    const flags = document.createElement("div");
+    flags.className = "ocr-block__flags";
+
+    const includeLabel = document.createElement("label");
+    includeLabel.title = "取消勾选则该块不进入导出";
+    const includeBox = document.createElement("input");
+    includeBox.type = "checkbox";
+    includeBox.checked = flagsOf(currentPage, index).include;
+    includeLabel.append(includeBox, document.createTextNode("纳入"));
+
+    const continuesLabel = document.createElement("label");
+    continuesLabel.title = "标记本段延续到下一页，导出时会与下一块拼成同一段";
+    const continuesBox = document.createElement("input");
+    continuesBox.type = "checkbox";
+    continuesBox.checked = flagsOf(currentPage, index).continues;
+    continuesLabel.append(continuesBox, document.createTextNode("延续下页"));
+
+    for (const box of [includeBox, continuesBox]) {
+      box.addEventListener("click", (event) => event.stopPropagation());
+    }
+    includeBox.addEventListener("change", () => {
+      setFlag(currentPage, index, { include: includeBox.checked });
+      item.classList.toggle("ocr-block--excluded", !includeBox.checked);
+      invalidateExport();
+    });
+    continuesBox.addEventListener("change", () => {
+      setFlag(currentPage, index, { continues: continuesBox.checked });
+      item.classList.toggle("ocr-block--continues", continuesBox.checked);
+      invalidateExport();
+    });
+
+    flags.append(includeLabel, continuesLabel);
+    head.append(flags);
+    item.classList.toggle("ocr-block--excluded", !includeBox.checked);
 
     const text = document.createElement("div");
     text.className = "ocr-block__text";
@@ -454,6 +513,8 @@ function renderOcr(data) {
 
   activeBlockIndex = -1;
   panel.hidden = false;
+  el("export-panel").hidden = false;
+  invalidateExport();
   applyTextMode();
   drawOverlay(data);
 }
@@ -518,6 +579,9 @@ function setupViewerControls() {
   for (const radio of document.querySelectorAll('input[name="ocr-text-mode"]')) {
     radio.addEventListener("change", applyTextMode);
   }
+  el("export-btn").addEventListener("click", runExport);
+  el("export-download").addEventListener("click", downloadExport);
+  el("export-page-markers").addEventListener("change", invalidateExport);
 
   el("reveal-btn").addEventListener("click", async () => {
     if (!currentUpload) return;
@@ -551,6 +615,128 @@ function setupViewerControls() {
     el("result-card").hidden = true;
     el("progress-wrap").hidden = true;
   });
+}
+
+// ---------------------------------------------------------------- 导出
+
+let lastExportText = null;
+
+/** 任何会影响输出的改动（块标记、页码标记选项）都要让上一次的结果失效。 */
+function invalidateExport() {
+  lastExportText = null;
+  el("export-download").disabled = true;
+  el("export-preview").hidden = true;
+  el("export-preflight").innerHTML = "";
+  el("export-error").hidden = true;
+  updateExportScope();
+}
+
+function recognizedPages() {
+  if (!currentUpload) return [];
+  const pages = [];
+  for (const key of ocrCache.keys()) {
+    const [uploadId, pageIndex] = key.split(":");
+    if (uploadId === currentUpload.upload_id) pages.push(Number(pageIndex) + 1);
+  }
+  return pages.sort((a, b) => a - b);
+}
+
+function updateExportScope() {
+  const pages = recognizedPages();
+  el("export-scope").textContent = pages.length
+    ? `本次会话已识别 ${pages.length} 页（第 ${pages.join("、")} 页）`
+    : "还没有识别任何页面";
+}
+
+/** 把已识别页面的块整理成导出请求体。 */
+function collectExportBlocks() {
+  const blocks = [];
+  for (const [key, data] of ocrCache) {
+    const [uploadId, pageIndexRaw] = key.split(":");
+    if (uploadId !== currentUpload.upload_id) continue;
+    const pageIndex = Number(pageIndexRaw);
+    data.blocks.forEach((block, blockIndex) => {
+      const flags = flagsOf(pageIndex, blockIndex);
+      blocks.push({
+        block_id: `p${pageIndex + 1}-b${block.order_index}`,
+        page_no: pageIndex + 1,
+        order_index: block.order_index,
+        block_type: block.block_type,
+        lines: block.lines.map((line) => line.text),
+        include: flags.include,
+        continues_to_next: flags.continues,
+        review_status: "unreviewed",
+      });
+    });
+  }
+  return blocks.sort(
+    (a, b) => a.page_no - b.page_no || a.order_index - b.order_index
+  );
+}
+
+async function runExport() {
+  if (!currentUpload) return;
+  const blocks = collectExportBlocks();
+  if (!blocks.length) {
+    showError(el("export-error"), new ApiError("还没有识别任何页面，无法导出"));
+    return;
+  }
+
+  const button = el("export-btn");
+  button.disabled = true;
+  button.textContent = "生成中…";
+  el("export-error").hidden = true;
+
+  try {
+    const data = await apiJson("/api/export/txt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        blocks,
+        options: { page_markers: el("export-page-markers").checked },
+        preview_chars: 20000,
+      }),
+    });
+    renderExport(data, blocks.length);
+  } catch (error) {
+    showError(el("export-error"), error);
+    lastExportText = null;
+    el("export-download").disabled = true;
+  } finally {
+    button.disabled = false;
+    button.textContent = "生成";
+  }
+}
+
+function renderExport(data, inputBlocks) {
+  const pf = data.preflight;
+  lastExportText = data.text;
+
+  fillDefinitionList(el("export-preflight"), [
+    ["输入块", `${inputBlocks} 个`],
+    ["段数", `${pf.segment_count} 段`],
+    ["字数", `${pf.char_count} 字`],
+    ["页面", `${pf.page_count} 页（第 ${pf.pages.join("、")} 页）`],
+    ["跨块合并", `${pf.merged_segments} 段`],
+    ["断词还原", `${pf.hyphenations_restored} 处`],
+  ]);
+
+  el("export-preview").textContent = data.preview;
+  el("export-preview").hidden = false;
+  el("export-download").dataset.filename = data.filename;
+  el("export-download").disabled = false;
+}
+
+function downloadExport() {
+  if (!lastExportText) return;
+  const filename = el("export-download").dataset.filename || "book2text-export.txt";
+  const blob = new Blob([lastExportText], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 // ---------------------------------------------------------------- 启动
