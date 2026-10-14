@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from ..core.project import blocks as blocks_module
 from ..core.project import editing
 from ..core.project import library as project_library
+from ..core.project import recognition
 from .deps import library_dir as _library
 from .deps import project_error as _project_error
 from .errors import AppError
@@ -187,6 +188,103 @@ def patch_block(
     if events:
         _history(request).push(project_id, _Batch(events=tuple(events), page_nos=(block.page_no,)))
     return {"block": block.to_dict(), "events": [event.to_dict() for event in events]}
+
+
+# ---------------------------------------------------------------- 新识别结果（R2）
+#
+# 说明书 R2：重新识别时若页面已有人工成果，新运行只保存为"待选结果"，
+# 用户在审校视图中**左右对比**后选择 [采用新结果] 或 [保留现有]。
+
+
+def _candidate_run(request: Request, project_id: str, page_no: int):
+    """这一页的"待选新结果"（没有就抛错）。"""
+    library = _library(request)
+    page, runs, _blocks, _lines = blocks_module.load_page_content(
+        project_id, page_no, library=library
+    )
+    states = blocks_module.page_recognition_states(project_id, library=library)
+    state = states.get(page.page_id)
+    if state is None or state.status != blocks_module.STATUS_HAS_CANDIDATE or not state.pending_run_id:
+        raise AppError(
+            400, "no_candidate", "这一页没有待选的新识别结果", detail=f"第 {page_no} 页"
+        )
+    run = next((item for item in runs if item.run_id == state.pending_run_id), None)
+    if run is None:  # pragma: no cover - 状态与运行记录同源
+        raise AppError(400, "no_candidate", "找不到那次运行")
+    return page, run
+
+
+@router.get("/{project_id}/pages/{page_no}/candidate")
+def get_candidate(request: Request, project_id: str, page_no: int) -> dict[str, Any]:
+    """候选结果的块与行（对比界面左边是现有的、右边是这份）。"""
+    try:
+        page, run = _candidate_run(request, project_id, page_no)
+        project = project_library.load_project(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    if project.directory is None:  # pragma: no cover
+        raise AppError(500, "project_error", "项目缺少目录信息")
+
+    try:
+        payload = recognition.read_run_result(project.directory, run)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+
+    current = _page_blocks_payload(request, project_id, page_no)
+    return {
+        "run": run.to_dict(),
+        "candidate": payload,
+        "current": {
+            "blocks": current["blocks"],
+            "review": current["review"],
+        },
+    }
+
+
+@router.post("/{project_id}/pages/{page_no}/runs/{run_id}/apply")
+def apply_run(request: Request, project_id: str, page_no: int, run_id: str) -> dict[str, Any]:
+    """采用新结果（说明书第 11 节的 `.../runs/{rid}/apply`，R2）：旧块软删除、可撤销。"""
+    library = _library(request)
+    try:
+        _blocks, events = editing.adopt_run(
+            project_id, page_no, run_id, library=library
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+
+    _history(request).push(project_id, _Batch(events=tuple(events), page_nos=(page_no,)))
+    payload = _page_blocks_payload(request, project_id, page_no)
+    return {
+        "applied_run_id": run_id,
+        "page": payload["page"],
+        "blocks": payload["blocks"],
+        "review": payload["review"],
+        "history": payload["history"],
+    }
+
+
+@router.post("/{project_id}/pages/{page_no}/runs/{run_id}/decline")
+def decline_run(request: Request, project_id: str, page_no: int, run_id: str) -> dict[str, Any]:
+    """保留现有（说明书 R2）：不动块，只记一条决定，之后不再提示这一份候选。
+
+    说明书第 11 节的接口表里只有 `apply`——这个 `decline` 是 R2 的"保留现有"
+    需要的一条落库记录（否则提示关不掉），属本次新增。
+    """
+    library = _library(request)
+    try:
+        editing.decline_run(project_id, page_no, run_id, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+
+    # 决定不进撤销栈：它没有改动任何数据
+    payload = _page_blocks_payload(request, project_id, page_no)
+    return {
+        "declined_run_id": run_id,
+        "page": payload["page"],
+        "blocks": payload["blocks"],
+        "review": payload["review"],
+        "history": payload["history"],
+    }
 
 
 # ---------------------------------------------------------------- 结构编辑

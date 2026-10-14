@@ -1080,14 +1080,35 @@ function visiblePages() {
   if (!project) return [];
   const typeFilter = el("filter-type").value;
   const recognitionFilter = el("filter-recognition").value;
+  const triageFilter = el("filter-triage").value;
   const onlyIncluded = el("pages-only-included").checked;
 
   return project.pages.filter((page) => {
     if (onlyIncluded && !page.include) return false;
     if (typeFilter && page.page_type !== typeFilter) return false;
-    if (recognitionFilter && recognitionOf(page).status !== recognitionFilter) return false;
+    const recognition = recognitionOf(page);
+    if (recognitionFilter && recognition.status !== recognitionFilter) return false;
+    if (triageFilter && !matchesTriage(page, recognition, triageFilter)) return false;
     return true;
   });
+}
+
+/** 疑难筛选（说明书 6.4）：在"需要处理"的页面之间跳转，厚书审校时最省时间。 */
+function matchesTriage(page, recognition, kind) {
+  const review = page.review || {};
+  if (kind === "todo") {
+    // 还没审完：有未审或不确定的块，或者根本没识别
+    return (
+      (review.unreviewed || 0) > 0 ||
+      (review.uncertain || 0) > 0 ||
+      recognition.status === "unrecognized" ||
+      recognition.status === "failed"
+    );
+  }
+  if (kind === "uncertain") return (review.uncertain || 0) > 0;
+  if (kind === "failed") return recognition.status === "failed";
+  if (kind === "candidate") return recognition.status === "has_candidate";
+  return true;
 }
 
 function selectOnly(pageNo) {
@@ -1393,13 +1414,16 @@ async function recognizePage(page) {
     const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pages: [page.page_no] }),
+      // 单页"识别"是明确要求认这一页：**不跳过**已识别的页（会走 R2）
+      body: JSON.stringify({ pages: [page.page_no], skip_recognized: false }),
     });
     applyRecognizedPages(data.pages);
     openTaskDrawer();
     startTaskPolling(data.job.job_id);
   } catch (error) {
-    showError(el("pages-error"), error);
+    // 审校视图开着时，错误显示在手边的那一块上（页面视图的错误条在网格上方，看不见）
+    if (detailPageNo !== null) showError(el("page-detail-error"), error);
+    else showError(el("pages-error"), error);
   } finally {
     busyPages.delete(page.page_no);
     renderPages();
@@ -1712,6 +1736,8 @@ async function openPageDetail(pageNo) {
 
 function closePageDetail() {
   detailPageNo = null;
+  candidateRunId = null;
+  el("candidate-panel").hidden = true;
   el("page-detail").hidden = true;
 }
 
@@ -1739,6 +1765,13 @@ function renderPageDetail(data) {
 
   renderReviewBanner(data, recognition);
   renderHistoryButtons(data.history);
+  const hasCandidate = recognition.status === "has_candidate";
+  el("candidate-entry").hidden = !hasCandidate;
+  el("candidate-open").hidden = !hasCandidate;
+  if (!hasCandidate) {
+    el("candidate-panel").hidden = true;
+    candidateRunId = null;
+  }
 
   // 图像按 view 档渲染；同一页重复打开时不重新拉图
   if (detailImagePageNo !== pageNo) {
@@ -1785,9 +1818,7 @@ function renderReviewBanner(data, recognition) {
   const messages = [];
   const review = data.review || {};
   if (recognition.status === "has_candidate") {
-    messages.push(
-      "这一页有更新的识别结果，但它已有人工成果，系统没有覆盖——采用 / 保留的对比还没做（下一步）。"
-    );
+    messages.push("这一页有更新的识别结果，但它已有人工成果，系统没有覆盖——点下面的「对比新结果」决定采用还是保留。");
   }
   if (recognition.status === "failed" && recognition.last_error) {
     messages.push(`上次识别失败：${recognition.last_error}`);
@@ -2173,6 +2204,92 @@ async function structureAction(block, operation, payload = {}) {
   }
 }
 
+// ---------------------------------------------------------------- 新识别结果对比（R2）
+
+let candidateRunId = null;
+
+async function openCandidateCompare() {
+  if (!currentProject || detailPageNo === null) return;
+  const projectId = currentProject.project_id;
+  el("page-detail-error").hidden = true;
+  try {
+    const data = await apiJson(`/api/projects/${projectId}/pages/${detailPageNo}/candidate`);
+    candidateRunId = data.run.run_id;
+    renderCandidate(data);
+  } catch (error) {
+    showError(el("page-detail-error"), error);
+  }
+}
+
+function renderCandidate(data) {
+  const panel = el("candidate-panel");
+  panel.hidden = false;
+  const notes = [
+    `${data.run.engine_id} ${data.run.engine_version}`,
+    data.run.finished_at ? data.run.finished_at.slice(0, 19).replace("T", " ") : "",
+    `${data.candidate.blocks.length} 块`,
+    data.candidate.regrouped ? "（这次运行的原始输出里没有分段，按当前规则重新分了一次）" : "",
+  ].filter(Boolean);
+  el("candidate-meta").textContent = notes.join(" · ");
+
+  fillCandidateColumn(el("candidate-current"), data.current.blocks, null);
+  fillCandidateColumn(el("candidate-new"), data.candidate.blocks, data.current.blocks);
+}
+
+/** 右列（新结果）逐块标出"与现有不同"；左列是基准，不标。 */
+function fillCandidateColumn(list, blocks, currentBlocks) {
+  list.innerHTML = "";
+  const currentTexts = currentBlocks
+    ? new Set(currentBlocks.map((block) => block.text))
+    : null;
+  blocks.forEach((block, index) => {
+    const item = document.createElement("li");
+    const same = currentTexts ? currentTexts.has(block.text) : true;
+    if (currentTexts && !same) item.classList.add("is-changed");
+    const head = document.createElement("span");
+    head.className = "muted";
+    const note = currentTexts ? (same ? " · 与现有相同" : " · 不同") : "";
+    head.textContent = `#${index + 1}${note}`;
+    const body = document.createElement("div");
+    body.textContent = block.text || "（空）";
+    item.append(head, body);
+    list.append(item);
+  });
+  if (!blocks.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent = "（没有块）";
+    list.append(empty);
+  }
+}
+
+async function decideCandidate(decision) {
+  if (!currentProject || detailPageNo === null || !candidateRunId) return;
+  const projectId = currentProject.project_id;
+  el("page-detail-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${projectId}/pages/${detailPageNo}/runs/${candidateRunId}/${decision}`,
+      { method: "POST" }
+    );
+    el("candidate-panel").hidden = true;
+    candidateRunId = null;
+    setSaveState(decision === "apply" ? "已采用新结果（可撤销）" : "已保留现有结果");
+    reviewBlocks = data.blocks || [];
+    renderPageDetail({
+      page: data.page,
+      blocks: data.blocks,
+      review: data.review,
+      history: data.history,
+      runs: [],
+      active_run: null,
+    });
+    await refreshPageStates();
+  } catch (error) {
+    showError(el("page-detail-error"), error);
+  }
+}
+
 async function reviewAction(path) {
   if (!currentProject) return null;
   el("page-detail-error").hidden = true;
@@ -2232,6 +2349,12 @@ function setupReviewControls() {
     }
   });
   el("review-confirm").addEventListener("click", confirmCurrentPage);
+  el("candidate-open").addEventListener("click", openCandidateCompare);
+  el("candidate-apply").addEventListener("click", () => decideCandidate("apply"));
+  el("candidate-decline").addEventListener("click", () => decideCandidate("decline"));
+  el("candidate-close").addEventListener("click", () => {
+    el("candidate-panel").hidden = true;
+  });
   el("review-undo").addEventListener("click", () => reviewAction("undo"));
   el("review-redo").addEventListener("click", () => reviewAction("redo"));
 
@@ -2340,6 +2463,7 @@ function setupLibrary() {
   // 筛选与选择（说明书 6.2）
   el("filter-type").addEventListener("change", renderPages);
   el("filter-recognition").addEventListener("change", renderPages);
+  el("filter-triage").addEventListener("change", renderPages);
   el("pages-only-included").addEventListener("change", renderPages);
   el("page-range-select").addEventListener("click", applyPageRangeInput);
   el("page-range").addEventListener("keydown", (event) => {

@@ -240,7 +240,7 @@ def _open_for_read(project_id: str, library: Path | None):
 
 # ---------------------------------------------------------------- 运行记录
 
-def _row_to_run(row) -> RunRecord:
+def row_to_run(row) -> RunRecord:
     try:
         params = json.loads(row["params_json"] or "{}")
     except json.JSONDecodeError:
@@ -292,7 +292,37 @@ def list_runs(
         rows = conn.execute(
             f"{_RUN_SELECT} {where} ORDER BY r.created_at DESC, r.run_id DESC", params
         ).fetchall()
-    return [_row_to_run(row) for row in rows]
+    return [row_to_run(row) for row in rows]
+
+
+def run_of_page(conn, run_id: str, page_id: str) -> RunRecord | None:
+    """给编辑层用：在一份已打开的连接上取"这一页的这次运行"。"""
+    row = conn.execute(
+        """
+        SELECT r.*, p.page_no FROM ocr_run r JOIN page p ON p.page_id = r.page_id
+        WHERE r.run_id = ? AND r.page_id = ?
+        """,
+        (run_id, page_id),
+    ).fetchone()
+    return row_to_run(row) if row else None
+
+
+def latest_decline(conn, page_id: str) -> str | None:
+    """这一页最近一次"保留现有"的时间（说明书 R2）。
+
+    候选 = 比这个时间更新的成功运行。"采用"**不**参与这个判断——
+    采用之后 active run 就是它，`run_id != active_run_id` 自然把它排除掉了；
+    而如果把它也算进来，"采用之后又撤销"会把候选一起压掉。
+    """
+    row = conn.execute(
+        """
+        SELECT created_at FROM event
+        WHERE entity_type = 'page' AND entity_id = ? AND action = 'decline_run'
+        ORDER BY created_at DESC, event_id DESC LIMIT 1
+        """,
+        (page_id,),
+    ).fetchone()
+    return str(row["created_at"]) if row else None
 
 
 def get_run(project_id: str, run_id: str, *, library: Path | None = None) -> RunRecord:
@@ -301,7 +331,7 @@ def get_run(project_id: str, run_id: str, *, library: Path | None = None) -> Run
         row = conn.execute(f"{_RUN_SELECT} WHERE r.run_id = ?", (run_id,)).fetchone()
     if row is None:
         raise ProjectError(f"找不到识别记录：{run_id}")
-    return _row_to_run(row)
+    return row_to_run(row)
 
 
 # ---------------------------------------------------------------- 块与行
@@ -440,6 +470,14 @@ def page_recognition_states(
             (RUN_TYPE_PRIMARY,),
         ).fetchall()
         page_rows = conn.execute("SELECT page_id, active_run_id FROM page").fetchall()
+        # 最近一次"采用 / 保留"决定（说明书 R2）：决定之后的运行才算新候选，
+        # 否则用户点了"保留现有"之后提示会一直挂着
+        decision_rows = conn.execute(
+            """
+            SELECT entity_id, MAX(created_at) AS declined_at FROM event
+            WHERE entity_type = 'page' AND action = 'decline_run' GROUP BY entity_id
+            """
+        ).fetchall()
         block_rows = conn.execute(
             "SELECT page_id, COUNT(*) AS n FROM block WHERE deleted_at IS NULL GROUP BY page_id"
         ).fetchall()
@@ -458,6 +496,7 @@ def page_recognition_states(
 
     block_counts = {row["page_id"]: int(row["n"]) for row in block_rows}
     active_by_page = {row["page_id"]: row["active_run_id"] for row in page_rows}
+    declined_at = {row["entity_id"]: str(row["declined_at"]) for row in decision_rows}
     queued_pages = {row["page_id"] for row in item_rows if row["status"] == "queued"}
     running_pages = {row["page_id"] for row in item_rows if row["status"] == "running"}
 
@@ -467,7 +506,7 @@ def page_recognition_states(
     latest_error: dict[str, str] = {}
     counts: dict[str, int] = {}
     for row in run_rows:
-        run = _row_to_run(row)
+        run = row_to_run(row)
         counts[run.page_id] = counts.get(run.page_id, 0) + 1
         latest.setdefault(run.page_id, run)
         if run.status == "succeeded":
@@ -490,7 +529,11 @@ def page_recognition_states(
         elif active_run_id is None:
             status = STATUS_FAILED if newest is not None else STATUS_UNRECOGNIZED
             pending = None
-        elif candidate is not None and candidate.run_id != active_run_id:
+        elif (
+            candidate is not None
+            and candidate.run_id != active_run_id
+            and _is_newer_than_decision(candidate, declined_at.get(page_id))
+        ):
             status = STATUS_HAS_CANDIDATE
             pending = candidate.run_id
         else:
@@ -578,6 +621,14 @@ def page_review_states(project_id: str, *, library: Path | None = None) -> dict[
 
 def empty_review() -> PageReview:
     return PageReview()
+
+
+def _is_newer_than_decision(run: RunRecord, declined_at: str | None) -> bool:
+    """这次运行是不是在最近一次"保留现有"之后产生的（说明书 R2）。"""
+    if declined_at is None:
+        return True
+    stamp = run.finished_at or run.created_at
+    return stamp > declined_at
 
 
 def empty_recognition(page_id: str) -> PageRecognition:

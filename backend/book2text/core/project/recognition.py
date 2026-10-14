@@ -46,7 +46,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..ocr.adapters import RapidOcrAdapter
-from ..ocr.base import OcrEngine, OcrEngineError, OcrParams, OcrResult
+from ..ocr.base import BBox, OcrEngine, OcrEngineError, OcrLine, OcrParams, OcrResult
 from ..pdf import render
 from ..storage import db as db_module
 from ..storage.ulid import new_ulid
@@ -96,6 +96,69 @@ class EngineUnavailable(ProjectError):
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def read_run_result(directory: Path, run: blocks_module.RunRecord) -> dict:
+    """读一次运行的原始输出（`ocr_runs/<run_id>.json`），给出它的块与行。
+
+    R2 的"待选结果"不生成块，但用户对比之后要能**原样采用**他看过的那一份分组，
+    因此文件里存了分段结果；早期没有这个字段（`blocks`）的运行退化为在这里重新分段。
+    """
+    if not run.raw_result_path:
+        raise ProjectError(f"这次运行没有原始输出：{run.run_id}")
+    path = directory / run.raw_result_path
+    if not path.is_file():
+        raise ProjectError(f"找不到原始输出文件：{run.raw_result_path}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ProjectError(f"原始输出文件读不出来：{exc}") from exc
+
+    lines = payload.get("lines") or []
+    stored = payload.get("blocks")
+    if stored:
+        blocks = [
+            {
+                "order_index": int(item["order_index"]),
+                "bbox": item.get("bbox"),
+                "block_type": item.get("block_type") or "paragraph",
+                "text": item.get("text") or "",
+                "line_indexes": list(item.get("line_indexes") or []),
+            }
+            for item in stored
+        ]
+    else:
+        # 早期文件没有分段结果：按当前规则重新分一次（可能与用户当时看到的略有出入）
+        ocr_lines = [
+            OcrLine(
+                text=str(item.get("text", "")),
+                bbox=BBox(*[float(value) for value in item["bbox"]]),
+                confidence=item.get("confidence"),
+            )
+            for item in lines
+            if item.get("bbox")
+        ]
+        layout = grouping.group_lines(ocr_lines)
+        blocks = [
+            {
+                "order_index": block.order_index,
+                "bbox": block.bbox.as_list() if block.bbox else None,
+                "block_type": block.block_type,
+                "text": block.text,
+                "line_indexes": [index for index, line in enumerate(ocr_lines) if line in block.lines],
+            }
+            for block in layout.blocks
+        ]
+    return {
+        "run_id": run.run_id,
+        "engine_id": payload.get("engine_id") or run.engine_id,
+        "engine_version": payload.get("engine_version") or run.engine_version,
+        "page_no": payload.get("page_no"),
+        "line_count": len(lines),
+        "lines": lines,
+        "blocks": blocks,
+        "regrouped": not bool(stored),
+    }
 
 
 # ---------------------------------------------------------------- 建任务（服务进程）
@@ -626,6 +689,7 @@ def _write_raw_result(
     layout: grouping.PageLayout,
 ) -> None:
     """写 ``ocr_runs/<run_id>.json``（说明书 5.3 的 ``raw_result_path``）。"""
+    line_index = {id(line): index for index, line in enumerate(result.lines)}
     payload = {
         "schema": RAW_SCHEMA_ID,
         "run_id": run_id,
@@ -657,6 +721,18 @@ def _write_raw_result(
             "reading_order_uncertain": layout.reading_order_uncertain,
             "notes": list(layout.notes),
         },
+        # **分段结果本身**也留下：R2 的"待选结果"不生成块，但用户对比之后要能
+        # 原样采用他看过的这一份分组（重新跑一次 grouping 未必得到同样的结果）。
+        "blocks": [
+            {
+                "order_index": block.order_index,
+                "bbox": block.bbox.as_list() if block.bbox else None,
+                "block_type": block.block_type,
+                "text": block.text,
+                "line_indexes": [line_index[id(line)] for line in block.lines],
+            }
+            for block in layout.blocks
+        ],
         "engine_raw": result.raw,
     }
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -82,6 +82,15 @@
             <option value="has_candidate">有待选新结果</option>
           </select>
         </label>
+        <label class="muted">疑难
+          <select id="filter-triage">
+            <option value="">全部</option>
+            <option value="todo">还没审完</option>
+            <option value="uncertain">有不确定块</option>
+            <option value="failed">识别失败</option>
+            <option value="candidate">有待选新结果</option>
+          </select>
+        </label>
         <label class="muted check">
           <input type="checkbox" id="pages-only-included"> 只看纳入
         </label>
@@ -145,6 +154,35 @@
           <button type="button" id="detail-close" class="btn btn--ghost">收起</button>
         </div>
         <div class="alert alert--info" id="review-banner" hidden></div>
+        <div class="review-inline" id="candidate-entry" hidden>
+          <button type="button" id="candidate-open" class="btn">对比新结果</button>
+        </div>
+
+        <div class="candidate" id="candidate-panel" hidden>
+          <div class="candidate__head">
+            <strong>对比新识别结果</strong>
+            <span class="muted" id="candidate-meta"></span>
+            <span class="spacer"></span>
+            <button type="button" id="candidate-apply" class="btn btn--primary">采用新结果</button>
+            <button type="button" id="candidate-decline" class="btn">保留现有</button>
+            <button type="button" id="candidate-close" class="btn btn--ghost">关闭对比</button>
+          </div>
+          <p class="hint">
+            左边是你现在保存的块（含人工改动），右边是这次新识别的结果。
+            <strong>采用新结果</strong>会把现有块换成新结果（可撤销）；
+            <strong>保留现有</strong>只记下这个决定，不动任何内容。
+          </p>
+          <div class="candidate__body">
+            <div class="candidate__column">
+              <div class="candidate__title">现在的块</div>
+              <ol class="candidate__blocks" id="candidate-current"></ol>
+            </div>
+            <div class="candidate__column">
+              <div class="candidate__title">新识别结果</div>
+              <ol class="candidate__blocks" id="candidate-new"></ol>
+            </div>
+          </div>
+        </div>
         <p class="hint" id="page-detail-hint">
           左图上的蓝框是块的位置（点块会高亮对应区域）。右列的块<strong>可以直接编辑</strong>，
           改完自动保存；每次修改都记进事件表，可以撤销。

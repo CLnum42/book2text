@@ -23,6 +23,7 @@ from pathlib import Path
 from ..storage import db as db_module
 from ..storage.ulid import new_ulid
 from . import blocks as blocks_module
+from . import recognition
 from .library import ProjectError, project_dir
 
 ACTOR_USER = "user"
@@ -257,6 +258,8 @@ def update_block(
 _TABLES = {
     "block": ("block", "block_id"),
     "block_line": ("block_line", "line_id"),
+    # page 也在里面：采用新结果要换 active_run_id，那一步同样得能撤销
+    "page": ("page", "page_id"),
 }
 
 
@@ -283,6 +286,8 @@ def _entity_row(conn, entity_type: str, entity_id: str):
             """,
             (entity_id,),
         ).fetchone()
+    if entity_type == "page":
+        return conn.execute("SELECT * FROM page WHERE page_id = ?", (entity_id,)).fetchone()
     return conn.execute(
         """
         SELECT l.*, b.page_id, p.page_no
@@ -950,6 +955,185 @@ def delete_block(
         page_no = int(row["page_no"])
 
     return events, page_no
+
+
+# ---------------------------------------------------------------- 采用 / 保留新识别结果（R2）
+
+ACTION_APPLY_RUN = "apply_run"
+ACTION_DECLINE_RUN = "decline_run"
+
+
+def _page_row(conn, page_no: int):
+    return conn.execute("SELECT * FROM page WHERE page_no = ?", (page_no,)).fetchone()
+
+
+def _set_entity_fields(
+    conn,
+    entity_type: str,
+    entity_id: str,
+    values: dict,
+    *,
+    batch_id: str,
+    action: str,
+    actor_name: str | None,
+    now: str,
+    extra_after: dict | None = None,
+) -> tuple[list[Event], dict]:
+    """改任意实体的若干字段并记事件（块以外的实体也能进事件表）。"""
+    row = _entity_row(conn, entity_type, entity_id)
+    before = {name: _column_value(row, name) for name in values}
+    _apply_values(conn, entity_type, entity_id, values, now)
+    after = {**values, **(extra_after or {})}
+    return [
+        _record(
+            conn,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action=action,
+            before=before,
+            after=after,
+            batch_id=batch_id,
+            actor_name=actor_name,
+        )
+    ], before
+
+
+def adopt_run(
+    project_id: str,
+    page_no: int,
+    run_id: str,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+) -> tuple[list[blocks_module.BlockRecord], list[Event]]:
+    """采用某一次运行的结果（说明书 R2）。
+
+    R2 的原话："选择'采用新结果'（旧块软删除，可撤销）"——因此这里做三件事，
+    **每一件都是普通事件**，连"换 active run"都能撤销：
+
+    1. 旧块软删除；
+    2. 按那份结果的**分段**重建块（`ocr_runs/<run_id>.json` 里存着用户对比过的那一份）；
+    3. `page.active_run_id` 指向这次运行。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        page = _page_row(conn, page_no)
+        if page is None:
+            raise ProjectError(f"没有第 {page_no} 页")
+        run = blocks_module.run_of_page(conn, run_id, page["page_id"])
+        if run is None:
+            raise ProjectError(f"这一页没有这次运行：{run_id}")
+        if run.status != "succeeded":
+            raise ProjectError("只有成功的运行才能采用")
+
+        payload = recognition.read_run_result(directory, run)
+
+        events: list[Event] = []
+        for row in _page_blocks(conn, page["page_id"]):
+            block_events, _ = _set_block_fields(
+                conn,
+                row["block_id"],
+                {"deleted_at": now},
+                batch_id=batch_id,
+                action=ACTION_DELETE,
+                actor_name=actor_name,
+                now=now,
+            )
+            events.extend(block_events)
+
+        for item in payload["blocks"]:
+            bbox = item.get("bbox")
+            _, created_events = _insert_block(
+                conn,
+                page_id=page["page_id"],
+                origin="ocr",
+                order_index=int(item["order_index"]),
+                bbox=blocks_module.bbox_to_json(blocks_module.BBox(*bbox)) if bbox else None,
+                text=item["text"],
+                ocr_text=item["text"],
+                block_type=item.get("block_type") or "paragraph",
+                origin_run_id=run_id,
+                action=ACTION_APPLY_RUN,
+                batch_id=batch_id,
+                actor_name=actor_name,
+                now=now,
+            )
+            events.extend(created_events)
+
+        page_events, _ = _set_entity_fields(
+            conn,
+            "page",
+            page["page_id"],
+            {"active_run_id": run_id},
+            batch_id=batch_id,
+            action=ACTION_APPLY_RUN,
+            actor_name=actor_name,
+            now=now,
+        )
+        events.extend(page_events)
+
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        blocks = [
+            blocks_module.row_to_block(row) for row in _page_blocks(conn, page["page_id"])
+        ]
+    return blocks, events
+
+
+def decline_run(
+    project_id: str,
+    page_no: int,
+    run_id: str,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+) -> list[Event]:
+    """保留现有（说明书 R2 的"保留现有"）：**不动块**，只记一条决定。
+
+    这条决定不是摆设：`blocks.page_recognition_states` 把"候选"定义为
+    **比最近一次决定更新的**成功运行，否则"保留现有"之后提示会一直挂着、关不掉。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+
+    with _open(directory) as conn:
+        page = _page_row(conn, page_no)
+        if page is None:
+            raise ProjectError(f"没有第 {page_no} 页")
+        run = blocks_module.run_of_page(conn, run_id, page["page_id"])
+        if run is None:
+            raise ProjectError(f"这一页没有这次运行：{run_id}")
+
+        events = [
+            _record(
+                conn,
+                entity_type="page",
+                entity_id=page["page_id"],
+                action=ACTION_DECLINE_RUN,
+                before={"active_run_id": page["active_run_id"]},
+                after={
+                    "active_run_id": page["active_run_id"],
+                    "decision": "declined",
+                    "run_id": run_id,
+                },
+                batch_id=new_ulid(),
+                actor_name=actor_name,
+            )
+        ]
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+    return events
 
 
 # ---------------------------------------------------------------- 撤销 / 重做
