@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from ..core.pdf import render
 from ..core.project import blocks as blocks_module
 from ..core.project import library as project_library
+from ..core.project import stats as stats_module
 from .deps import library_dir as _library
 from .deps import page_payload, project_error as _project_error
 from .errors import AppError
@@ -99,6 +100,21 @@ def get_project(request: Request, project_id: str) -> dict[str, Any]:
         "project": project.to_dict(),
         "pages": payloads,
     }
+
+
+@router.get("/{project_id}/summary")
+def get_summary(request: Request, project_id: str) -> dict[str, Any]:
+    """项目摘要与质量统计（说明书第 11 节的「摘要」+ 8.5 / 13.4 的质量指标）。
+
+    **不写任何东西**，所有数字都是实时聚合。产品里算不出来的指标
+    （CER/WER、捕获率、一致但都错……）在 `not_measured` 里如实列出并写明原因，
+    不假装算过。
+    """
+    try:
+        summary = stats_module.project_summary(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    return summary.to_dict()
 
 
 @router.post("/{project_id}/open")

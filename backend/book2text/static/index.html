@@ -57,6 +57,17 @@
       </div>
       <dl class="kv" id="project-meta"></dl>
 
+      <div class="stats" id="stats-card">
+        <div class="stats__head">
+          <strong>质量统计</strong>
+          <span class="muted">所有数字来自项目数据库的实时统计（说明书 8.5 / 13.4）</span>
+          <span class="spacer"></span>
+          <button type="button" id="stats-refresh" class="btn btn--ghost">刷新</button>
+        </div>
+        <dl class="kv stats__list" id="stats-list"></dl>
+        <p class="hint" id="stats-note" hidden></p>
+      </div>
+
       <div class="page-toolbar">
         <span class="muted" id="page-summary"></span>
         <span class="spacer"></span>

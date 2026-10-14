@@ -480,6 +480,7 @@ class BlockDivergence:
     换过之后那一行的标记就该消失。因此 ``diff_status`` 只用来判断这一行复核过没有。
     """
 
+    identical: int = 0
     chars: int = 0
     punct: int = 0
     empty: int = 0
@@ -495,6 +496,7 @@ class BlockDivergence:
     def to_dict(self) -> dict[str, object]:
         return {
             "lines": self.lines,
+            "identical": self.identical,
             "chars": self.chars,
             "punct": self.punct,
             "empty": self.empty,
@@ -511,6 +513,7 @@ class PageDivergence:
     ``checked`` 为假时不能把"0 分歧"读成"两路一致"——那一页根本没复核过。
     """
 
+    identical: int = 0
     chars: int = 0
     punct: int = 0
     empty: int = 0
@@ -524,9 +527,15 @@ class PageDivergence:
     def lines(self) -> int:
         return self.chars + self.punct
 
+    @property
+    def compared_lines(self) -> int:
+        """两边都有文本、能比的行数（分歧率的分母）。"""
+        return self.identical + self.format_only + self.chars + self.punct
+
     def to_dict(self) -> dict[str, object]:
         return {
             "lines": self.lines,
+            "identical": self.identical,
             "chars": self.chars,
             "punct": self.punct,
             "empty": self.empty,
@@ -560,6 +569,7 @@ def block_divergence(
         return BlockDivergence(stale=True)
 
     counts = dict.fromkeys(GRADES, 0)
+    identical = 0
     marks: list[LineDivergence] = []
     for line in lines:
         if line.aux_text is None:
@@ -572,6 +582,7 @@ def block_divergence(
             else compare_module.grade_line(current, line.aux_text)
         )
         if level == compare_module.IDENTICAL:
+            identical += 1
             continue
         counts[level] = counts.get(level, 0) + 1
         marks.append(
@@ -583,6 +594,7 @@ def block_divergence(
             )
         )
     return BlockDivergence(
+        identical=identical,
         chars=counts[compare_module.DIFFERS_CHARS],
         punct=counts[compare_module.DIFFERS_PUNCT],
         empty=counts[compare_module.NO_CANDIDATE],
@@ -630,9 +642,10 @@ def page_divergence_summary(
     for line in lines:
         by_block.setdefault(line.block_id, []).append(line)
 
-    chars = punct = empty = format_only = stale_blocks = 0
+    identical = chars = punct = empty = format_only = stale_blocks = 0
     for block in blocks:
         divergence = block_divergence(block, by_block.get(block.block_id, []))
+        identical += divergence.identical
         chars += divergence.chars
         punct += divergence.punct
         empty += divergence.empty
@@ -641,6 +654,7 @@ def page_divergence_summary(
 
     run = _latest_auxiliary_run(runs)
     return PageDivergence(
+        identical=identical,
         chars=chars,
         punct=punct,
         empty=empty,

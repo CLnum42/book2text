@@ -1102,6 +1102,114 @@ async function refreshProject(projectId) {
   // 导出面板：预检 + 历史（说明书 6.6 要求预检摘要实时算）
   await refreshExportPreflight();
   await loadExports();
+  // 质量统计（说明书 8.5 / 13.4）：数字多、算起来比页面列表重，单独一个请求拿
+  await loadSummary();
+}
+
+// ---------------------------------------------------------------- 质量统计（说明书 8.5 / 13.4）
+
+/** 一行的写法：左边条目、右边数字（`value` 为空则整行不显示）。 */
+function statsRow(term, value, title = "") {
+  const dt = document.createElement("dt");
+  dt.textContent = term;
+  const dd = document.createElement("dd");
+  dd.textContent = value;
+  if (title) dd.title = title;
+  return [dt, dd];
+}
+
+function percentText(value) {
+  return `${(Number(value || 0) * 100).toFixed(1)}%`;
+}
+
+async function loadSummary() {
+  if (!currentProject) return;
+  let data;
+  try {
+    data = await apiJson(`/api/projects/${currentProject.project_id}/summary`);
+  } catch {
+    return; // 摘要读不到不该影响主流程
+  }
+  renderSummary(data);
+}
+
+function renderSummary(data) {
+  const pages = data.pages || {};
+  const review = data.review || {};
+  const divergence = data.divergence || {};
+  const jobs = data.jobs || {};
+  const list = el("stats-list");
+  list.innerHTML = "";
+
+  const recognitionBits = [`已识别 ${pages.recognized || 0} / 纳入 ${pages.included || 0} 页`];
+  if (pages.unrecognized) recognitionBits.push(`未识别 ${pages.unrecognized}`);
+  if (pages.failed) recognitionBits.push(`识别失败 ${pages.failed}`);
+  if (pages.has_candidate) recognitionBits.push(`待选新结果 ${pages.has_candidate}`);
+  list.append(...statsRow("识别", recognitionBits.join(" · ")));
+
+  const reviewBits = [
+    `块 ${review.blocks || 0}（纳入 ${review.included || 0}）`,
+    `已确认 ${review.confirmed || 0}`,
+    `未审 ${review.unreviewed || 0}`,
+  ];
+  if (review.uncertain) reviewBits.push(`不确定 ${review.uncertain}`);
+  reviewBits.push(
+    `人工修改 ${review.modified || 0}（${percentText(review.modified_rate)}）`
+  );
+  list.append(
+    ...statsRow("审校", reviewBits.join(" · "), "人工修改率 = 改过的块 / 纳入块（说明书 13.4）")
+  );
+
+  // 两路复核：没有复核过就如实说"还没复核"，不显示一堆 0
+  if (!divergence.checked_pages) {
+    list.append(
+      ...statsRow("两路复核", "还没复核过（选中页面后点「第二引擎复核所选」）")
+    );
+  } else {
+    const rateTitle =
+      "分歧率 = 实质分歧行 / 能比的行（汉字级 + 标点级 ÷ 一致 + 仅格式 + 汉字级 + 标点级）；" +
+      "第二引擎没读出来的行不进分母";
+    const bits = [
+      `已复核 ${divergence.checked_pages} / ${divergence.total_pages} 页`,
+      `比过 ${divergence.compared_lines} 行`,
+      `一致 ${divergence.identical}`,
+      `仅格式 ${divergence.format_only}`,
+      `汉字级 ${divergence.chars}`,
+      `标点级 ${divergence.punct}`,
+    ];
+    if (divergence.empty) bits.push(`没读出 ${divergence.empty}`);
+    bits.push(`分歧率 ${percentText(divergence.diverging_rate)}`);
+    list.append(...statsRow("两路复核", bits.join(" · "), rateTitle));
+    if (divergence.stale_blocks) {
+      list.append(
+        ...statsRow(
+          "　",
+          `有 ${divergence.stale_blocks} 个块的行结构改过，不参与上面的行统计`
+        )
+      );
+    }
+  }
+
+  const jobBits = [
+    `共 ${jobs.total || 0} 个`,
+    `成功 ${jobs.succeeded || 0}`,
+    `失败 ${jobs.failed || 0}（失败率 ${percentText(jobs.failure_rate)}）`,
+  ];
+  if (jobs.interrupted) jobBits.push(`中断 ${jobs.interrupted}`);
+  if (jobs.cancelled) jobBits.push(`取消 ${jobs.cancelled}`);
+  if (jobs.active) jobBits.push(`进行中 ${jobs.active}`);
+  list.append(
+    ...statsRow("任务", jobBits.join(" · "), "失败率 = 失败 / （成功 + 失败）；取消与中断不算成败")
+  );
+
+  // 算不出来的指标如实列出，不假装算过（说明书 1.7）
+  const notMeasured = data.not_measured || [];
+  const note = el("stats-note");
+  note.hidden = notMeasured.length === 0;
+  note.textContent = notMeasured.length
+    ? "产品里算不出来的指标：" +
+      notMeasured.map((item) => `${item.name}（${item.reason}）`).join("；")
+    : "";
 }
 
 function renderProject() {
@@ -1661,6 +1769,7 @@ async function pollTask() {
     stopTaskPolling();
     await reloadProjectPages();
     await loadTasks();
+    await loadSummary(); // 任务结束后统计会变（复核行数、任务失败率）
   } else {
     // 进度在变，页面状态也在变：不重拉图，只刷状态
     await refreshPageStates();
@@ -2758,6 +2867,7 @@ function setupLibrary() {
   el("recognize-pending").addEventListener("click", () => startBatchRecognition("unrecognized"));
   el("selection-check").addEventListener("click", () => checkSelection(null));
   el("check-pending").addEventListener("click", () => checkSelection("unchecked"));
+  el("stats-refresh").addEventListener("click", loadSummary);
   setupTaskDrawer();
 
   // 筛选与选择（说明书 6.2）

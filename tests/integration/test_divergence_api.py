@@ -147,6 +147,7 @@ def test_marks_are_graded_and_attached_to_the_right_lines(
     # 页面级汇总是各块之和 + 复核记录
     assert detail["divergence"] == {
         "lines": 2,
+        "identical": 0,
         "chars": 1,
         "punct": 1,
         "empty": 1,

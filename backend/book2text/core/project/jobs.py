@@ -205,6 +205,14 @@ def list_jobs(directory: Path, *, limit: int = 20) -> list[JobRecord]:
     return [_row_to_job(row) for row in rows]
 
 
+def count_by_status(directory: Path) -> dict[str, int]:
+    """按状态数任务（质量统计：任务失败率用）。没出现过的状态不返回，调用方按 0 处理。"""
+    with _open(directory) as conn:
+        _require_tables(conn)
+        rows = conn.execute("SELECT status, COUNT(*) AS n FROM job GROUP BY status").fetchall()
+    return {row["status"]: int(row["n"]) for row in rows}
+
+
 def list_job_items(directory: Path, job_id: str) -> list[JobItemRecord]:
     """任务的全部单元，按页码排序。"""
     with _open(directory) as conn:
