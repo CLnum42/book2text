@@ -282,6 +282,13 @@ async function refreshExportPreflight({ withPreview = false } = {}) {
   }
 }
 
+// ---------------------------------------------------------------- 导出对照（段 → 块 → 页）
+
+let compareSegments = [];
+let compareIndex = -1;
+/** 来源页的块缓存：翻来翻去对照时不必反复拉同一页。 */
+const comparePageBlocks = new Map();
+
 async function loadExportPreview(options) {
   try {
     const data = await apiJson(`/api/projects/${currentProject.project_id}/export/preview`, {
@@ -289,16 +296,132 @@ async function loadExportPreview(options) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(options),
     });
-    const pre = el("export-preview");
-    const isJsonl = options.format !== "txt";
-    pre.textContent = (isJsonl ? data.jsonl : data.text) || "（没有内容）";
-    pre.hidden = false;
+    renderCompare(data);
   } catch (error) {
     showError(el("export-error"), error);
   }
 }
 
+function renderCompare(data) {
+  compareSegments = data.segments || [];
+  comparePageBlocks.clear();
+  el("export-compare").hidden = false;
+  el("compare-meta").textContent =
+    `${compareSegments.length} 段 · ${data.preflight.char_count} 字 · ` +
+    `${data.preflight.page_count} 页（按当前导出设置）`;
+
+  const list = el("compare-segments");
+  list.innerHTML = "";
+  compareSegments.forEach((segment, index) => {
+    const item = document.createElement("li");
+    item.dataset.index = String(index);
+    item.dataset.segmentId = segment.segment_id;
+
+    const head = document.createElement("div");
+    head.className = "compare__seg-head";
+    const pages = (segment.pages || []).map((page) => `p.${page.page_no}`).join(",");
+    const state = segment.all_confirmed
+      ? "已确认"
+      : segment.uncertain
+      ? "不确定"
+      : segment.unreviewed
+      ? "未审"
+      : "已确认";
+    const extra = [
+      `#${segment.seq}`,
+      pages,
+      segment.type === "heading" ? "标题" : "",
+      state,
+      segment.text !== (segment.ocr_text ?? segment.text) && segment.modified ? "已修改" : "",
+      (segment.block_ids || []).length > 1 ? `${segment.block_ids.length} 块合并` : "",
+    ].filter(Boolean);
+    head.textContent = extra.join(" · ");
+
+    const body = document.createElement("div");
+    body.textContent = segment.text || "（空段）";
+
+    item.append(head, body);
+    item.addEventListener("click", () => selectSegment(index));
+    list.append(item);
+  });
+
+  if (!compareSegments.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent = "按当前导出设置没有内容可以导出。";
+    list.append(empty);
+    return;
+  }
+  selectSegment(0);
+}
+
+async function selectSegment(index) {
+  if (index < 0 || index >= compareSegments.length) return;
+  compareIndex = index;
+  for (const item of el("compare-segments").children) {
+    const isCurrent = Number(item.dataset.index) === index;
+    item.classList.toggle("is-current", isCurrent);
+    if (isCurrent) item.scrollIntoView({ block: "nearest" });
+  }
+
+  const segment = compareSegments[index];
+  const pageNo = (segment.pages && segment.pages[0] && segment.pages[0].page_no) || null;
+  if (!pageNo) return;
+
+  const blocks = await loadComparePage(pageNo);
+  const sourceIds = new Set(segment.block_ids || []);
+  drawCompareOverlay(blocks, sourceIds);
+  el("compare-image-status").hidden = true;
+}
+
+/** 取某一页的块（带缓存），并把它渲染成对照用的底图。 */
+async function loadComparePage(pageNo) {
+  const projectId = currentProject.project_id;
+  if (!comparePageBlocks.has(pageNo)) {
+    const data = await apiJson(`/api/projects/${projectId}/pages/${pageNo}/blocks`);
+    comparePageBlocks.set(pageNo, data.blocks || []);
+  }
+  const image = el("compare-image");
+  const wanted = `/api/projects/${projectId}/pages/${pageNo}/image?size=view&token=${encodeURIComponent(token)}`;
+  if (image.dataset.pageNo !== String(pageNo)) {
+    image.dataset.pageNo = String(pageNo);
+    el("compare-image-status").textContent = "正在渲染来源页…";
+    el("compare-image-status").hidden = false;
+    el("compare-canvas").hidden = true;
+    image.onload = () => {
+      el("compare-image-status").hidden = true;
+      el("compare-canvas").hidden = false;
+    };
+    image.onerror = () => {
+      el("compare-image-status").textContent = "来源页渲染失败。";
+    };
+    image.src = wanted;
+  }
+  return comparePageBlocks.get(pageNo);
+}
+
+function drawCompareOverlay(blocks, sourceIds) {
+  const overlay = el("compare-overlay");
+  overlay.innerHTML = "";
+  blocks.forEach((block) => {
+    if (!block.bbox) return;
+    const isSource = sourceIds.has(block.block_id);
+    const [x0, y0, x1, y1] = block.bbox;
+    const box = document.createElement("div");
+    box.className = "box" + (isSource ? " box--source" : " box--dim");
+    box.dataset.blockId = block.block_id;
+    box.style.left = `${x0 * 100}%`;
+    box.style.top = `${y0 * 100}%`;
+    box.style.width = `${(x1 - x0) * 100}%`;
+    box.style.height = `${(y1 - y0) * 100}%`;
+    box.title = isSource ? "这一段来自这个块" : "本页的其它块";
+    overlay.append(box);
+  });
+}
+
 function schedulePreflight() {
+  // 选项一变，对照面板里已有的分段就不再对应当前设置，先收起来避免误读
+  el("export-compare").hidden = true;
   if (exportPreviewTimer) clearTimeout(exportPreviewTimer);
   exportPreviewTimer = setTimeout(() => refreshExportPreflight(), 350);
 }
@@ -411,6 +534,9 @@ function setupExportPanel() {
     } catch (error) {
       showError(el("export-error"), error);
     }
+  });
+  el("compare-close").addEventListener("click", () => {
+    el("export-compare").hidden = true;
   });
   el("export-reveal-btn").addEventListener("click", () => {
     if (lastExport) revealExport(lastExport.record.export_id);

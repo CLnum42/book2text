@@ -145,7 +145,7 @@
           <strong>导出</strong>
           <span class="muted" id="export-scope"></span>
           <span class="spacer"></span>
-          <button type="button" id="export-preview-btn" class="btn">预览</button>
+          <button type="button" id="export-preview-btn" class="btn">对照预览</button>
           <button type="button" id="export-btn" class="btn btn--primary">生成导出文件</button>
         </div>
         <p class="hint">
@@ -216,7 +216,27 @@
           <p class="muted" id="export-history-empty">还没有导出过。</p>
         </div>
 
-        <pre class="export-preview" id="export-preview" hidden></pre>
+        <div class="compare" id="export-compare" hidden>
+          <div class="compare__head">
+            <strong>导出对照</strong>
+            <span class="muted" id="compare-meta"></span>
+            <span class="spacer"></span>
+            <span class="muted">点右边任意一段 → 左边跳到来源页并高亮来源块</span>
+            <button type="button" id="compare-close" class="btn btn--ghost">收起</button>
+          </div>
+          <div class="compare__body">
+            <div class="compare__source">
+              <div class="page-canvas" id="compare-canvas" hidden>
+                <img id="compare-image" alt="来源页图像">
+                <div class="page-overlay" id="compare-overlay"></div>
+              </div>
+              <p class="muted" id="compare-image-status">点右边任意一段开始对照</p>
+            </div>
+            <div class="compare__text">
+              <ol class="compare__segments" id="compare-segments"></ol>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="page-detail" id="page-detail" hidden>

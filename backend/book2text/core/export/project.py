@@ -292,15 +292,31 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
 
 def preview(project_id: str, *, library: Path | None = None, options: ExportOptions,
             limit: int = 20000) -> dict:
-    """预览（说明书 6.6 第 7 条）：算一遍但不写文件。"""
+    """预览（说明书 6.6 第 7 条）：算一遍但不写文件。
+
+    返回里带上**逐段记录**（与 JSONL 里的形状一致）：导出对照模式要用它做
+    "段 → 块 → 页"的溯源——点一段就知道它来自哪一页、哪些块（说明书 9.1 的段 ID 与来源）。
+    """
     prepared = _prepare(project_id, library=library, options=options)
     text = _render_text(prepared)
     content = _render_jsonl(prepared, library=library)
+    labels = {page.page_no: page.page_label for page in prepared.pages if page.page_label}
+    records = [
+        jsonl_module.segment_to_record(
+            segment,
+            page_labels=labels,
+            engine_id=_engine_id(),
+            engine_version=_engine_version(),
+        )
+        for segment in prepared.segments
+    ]
     return {
         "preflight": preflight(project_id, library=library, options=options),
         "text": text[:limit],
         "jsonl": content[:limit],
         "truncated": len(text) > limit,
+        "segments": records,
+        "segment_count": len(records),
     }
 
 
