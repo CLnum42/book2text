@@ -18,6 +18,7 @@ from ..core.ocr.adapters import RapidOcrAdapter
 from ..core.ocr.base import OcrEngineError, OcrParams
 from ..core.pdf import render
 from ..core.storage import scratch as scratch_store
+from ..core.structure import grouping
 from .errors import AppError
 
 router = APIRouter(prefix="/api/scratch", tags=["scratch"])
@@ -134,14 +135,18 @@ def recognize_page(
     page_index: int,
     dpi: int = Query(default=300, ge=72, le=600),
 ) -> dict[str, Any]:
-    """识别一页，返回**带归一化 bbox 的行**。
+    """识别一页，返回**块**与**行**，坐标均为归一化值。
 
-    坐标为 0–1 的归一化值（说明书 5.2），与渲染 DPI 无关：
+    坐标是 0–1 的归一化值（说明书 5.2），与渲染 DPI 无关：
     界面把 bbox 乘以当前显示图像的宽高即可对齐。
+
+    **块**由 `core/structure/grouping.py` 按行距、缩进、对齐把行组合而成
+    （说明书 8.1），是产品的操作单位；**行**一并返回，供后续按行比对
+    （说明书 8.5）与审校视图定位使用。
 
     **这不是说明书第 11 节的正式接口。** 正式接口以 `/projects/{id}/...` 为中心，
     并且识别要走 Job / JobItem 执行器（Phase 2）；这里同步识别单页，
-    只是为了让「上传 → 渲染 → 识别」这条链路先跑通。
+    只是为了让「上传 → 渲染 → 识别 → 分段」这条链路先跑通。
     """
     pdf_path = _require_pdf_path(upload_id)
 
@@ -167,6 +172,8 @@ def recognize_page(
     finally:
         image.close()
 
+    layout = grouping.group_lines(result.lines)
+
     return {
         "upload_id": upload_id,
         "page_index": page_index,
@@ -184,6 +191,25 @@ def recognize_page(
                 "confidence": line.confidence,
             }
             for line in result.lines
+        ],
+        "block_count": len(layout.blocks),
+        "column_count": layout.column_count,
+        "reading_order_uncertain": layout.reading_order_uncertain,
+        "layout_notes": list(layout.notes),
+        "blocks": [
+            {
+                "order_index": block.order_index,
+                "column": block.column,
+                "block_type": block.block_type,
+                "bbox": None if block.bbox is None else block.bbox.as_list(),
+                "line_count": block.line_count,
+                "text": block.text,
+                "lines": [
+                    {"text": line.text, "bbox": line.bbox.as_list()}
+                    for line in block.lines
+                ],
+            }
+            for block in layout.blocks
         ],
     }
 

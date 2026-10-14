@@ -52,6 +52,51 @@ def test_recognize_returns_normalized_lines(
         assert bbox[2] > bbox[0] and bbox[3] > bbox[1]
 
 
+def test_recognize_returns_blocks(
+    client: TestClient, auth_headers: dict[str, str], rotated_pdf: Path
+) -> None:
+    """识别接口要同时返回**块**（说明书 8.1 的分段结果）与行。"""
+    upload_id = _upload(client, auth_headers, rotated_pdf)
+
+    data = client.post(
+        f"/api/scratch/{upload_id}/page/0/recognize", headers=auth_headers
+    ).json()
+
+    assert data["block_count"] == len(data["blocks"])
+    assert data["block_count"] >= 1
+    assert data["column_count"] >= 1
+    assert isinstance(data["reading_order_uncertain"], bool)
+    assert isinstance(data["layout_notes"], list)
+
+    for block in data["blocks"]:
+        assert block["block_type"] == "paragraph", "现阶段只会产出 paragraph"
+        assert block["line_count"] == len(block["lines"])
+        assert block["text"] == "\n".join(line["text"] for line in block["lines"])
+        bbox = block["bbox"]
+        assert len(bbox) == 4
+        assert all(0.0 <= value <= 1.0 for value in bbox)
+        assert bbox[2] > bbox[0] and bbox[3] > bbox[1]
+
+    # 每块的行必须被完整包含，且块与行的总数对得上
+    assert sum(block["line_count"] for block in data["blocks"]) == data["line_count"]
+
+
+def test_blocks_cover_lines_in_reading_order(
+    client: TestClient, auth_headers: dict[str, str], rotated_pdf: Path
+) -> None:
+    upload_id = _upload(client, auth_headers, rotated_pdf)
+    data = client.post(
+        f"/api/scratch/{upload_id}/page/0/recognize", headers=auth_headers
+    ).json()
+
+    assert [block["order_index"] for block in data["blocks"]] == list(
+        range(data["block_count"])
+    )
+    # 单栏英文页自上而下：每块的顶边不应高于前一块
+    tops = [block["bbox"][1] for block in data["blocks"]]
+    assert tops == sorted(tops)
+
+
 def test_recognize_requires_token(
     client: TestClient, auth_headers: dict[str, str], rotated_pdf: Path
 ) -> None:

@@ -20,18 +20,20 @@
 | **Phase 0 扫描样本（20 页，无文本层）** | ✅ 已生成：`fixtures/pdf/sample-20p-300dpi.pdf`，见 [`docs/scan-sample-set.md`](docs/scan-sample-set.md) |
 | **Phase 0 第 1 项：两个门槛项** | ✅ **已达标**：行级坐标 20/20 页、中位 2.04 秒/页，见 [`docs/ocr-evaluation.md`](docs/ocr-evaluation.md) |
 | **应用内识别（单页，行级坐标）** | ✅ 可用：上传 → 识别本页 → 文本行叠加在原图上 |
+| **行 → 块（分段）** | ✅ 可用：按行距、缩进、对齐自动分段，块框叠加在原图上 |
 | **准确率测量工具链 + 合成金标准** | ✅ 已建立：内容 CER 1.63%、英文 0%，见 [`docs/accuracy-report.md`](docs/accuracy-report.md) |
-| 行 → 块的组合（grouping） | ⬜ 未开始，**挡着审校与导出** |
+| 行合并成段落文本（9.2） | ⬜ 未开始：块文本目前保留行内换行 |
+| 人工合并 / 拆分块、块类型标注 | ⬜ 未开始（Phase 3） |
 | Phase 0 第 1 项：PaddleOCR 对比与版面组件 | ⬜ 未开始 |
 | Phase 0 第 1–2 项：**真实扫描件**的准确率 | ⬜ **被人工校对金标准卡住** |
 | Phase 0 第 5 项：可行性文档 | 🔶 部分完成：`docs/technical-feasibility.md` |
 | Phase 1–8 业务功能 | ⬜ 未开始 |
 
-**现在能做什么：** 上传 PDF、逐页查看图像、**对当前页做识别并看到带坐标的文本行**
-（框会叠在原图上）、查看引擎自检与环境状态。
+**现在能做什么：** 上传 PDF、逐页查看图像、**识别当前页并看到分段结果**
+（块与行都带坐标，框叠在原图上）、查看引擎自检与环境状态。
 
-**现在还不能做什么：** 把行组合成段落（块）、批量识别、编辑与审校、导出。
-识别结果不会保存，刷新后即丢。
+**现在还不能做什么：** 把块内换行拼成段落文本、编辑与审校、合并/拆分块、
+批量识别、导出。识别结果不会保存，刷新后即丢。
 
 ---
 
@@ -138,7 +140,10 @@ book2text/
       ocr/
         base.py               # 适配器协议、归一化 bbox、OcrLine（说明书 8.1 / 5.2）
         adapters/rapidocr.py  # RapidOCR 实现
+        compare.py            # 归一化与比对、CER/WER（说明书 8.7）
         selfcheck.py          # 引擎可用性自检
+      structure/
+        grouping.py           # 行 → 块：行距 / 缩进 / 对齐（说明书 8.1）
       storage/scratch.py      # Phase 0 临时上传目录（Phase 1 会被取代）
     static/                   # Phase 0 手写页面（Vue 落地后改为构建产物）
   scripts/                    # start.command（Mac）/ start.bat（Windows）

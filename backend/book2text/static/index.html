@@ -68,16 +68,18 @@
 
       <div class="ocr-panel" id="ocr-panel" hidden>
         <div class="ocr-panel__head">
-          <strong>识别结果</strong>
+          <strong>识别与分段结果</strong>
           <span class="muted" id="ocr-meta"></span>
           <span class="spacer"></span>
-          <label class="muted check"><input type="checkbox" id="ocr-show-boxes" checked> 在图上标出行框</label>
+          <label class="muted check"><input type="checkbox" id="ocr-show-boxes" checked> 在图上标出块框</label>
         </div>
         <p class="hint" id="ocr-hint">
-          坐标为归一化值（0–1，相对页面显示方向），与渲染分辨率无关。
-          点击一行可定位到图上的对应位置。
+          块由行距、缩进、对齐自动组合而成（<code>core/structure/grouping.py</code>），
+          是后续审校的操作单位。文本保留行内换行；拼成连续段落是导出时的规则。
+          点击一个块可定位到图上的位置。
         </p>
-        <ol class="ocr-lines" id="ocr-lines"></ol>
+        <div class="alert alert--warn" id="ocr-layout-warning" hidden></div>
+        <ol class="ocr-blocks" id="ocr-blocks"></ol>
       </div>
     </section>
 

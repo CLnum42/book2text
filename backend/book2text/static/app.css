@@ -159,17 +159,30 @@ main {
   padding: 10px 12px; background: #fafbfc; border-bottom: 1px solid var(--border);
 }
 .ocr-panel .hint { margin: 0; padding: 8px 12px 0; }
-.ocr-lines {
-  margin: 8px 0 0; padding: 8px 12px 12px 34px;
+.ocr-blocks {
+  margin: 8px 0 0; padding: 0 12px 12px; list-style: none;
   max-height: 46vh; overflow: auto;
+  display: flex; flex-direction: column; gap: 6px;
 }
-.ocr-lines li {
-  padding: 3px 6px; border-radius: 5px; cursor: pointer;
-  font-size: 14px; line-height: 1.5;
+.ocr-block {
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 7px 9px; cursor: pointer; background: #fff;
 }
-.ocr-lines li:hover { background: #f1f4f9; }
-.ocr-lines li.active { background: #fdece2; }
-.ocr-lines .idx { color: var(--muted); font-size: 12px; margin-right: 6px; }
+.ocr-block:hover { border-color: #c3cbd6; background: #fafbfc; }
+.ocr-block.active { border-color: #d9480f; background: #fdece2; }
+.ocr-block__head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--muted); margin-bottom: 4px;
+}
+.ocr-block__head .tag { font-size: 11px; padding: 1px 6px; }
+.ocr-block__text {
+  font-size: 14px; line-height: 1.55; white-space: pre-wrap;
+  word-break: break-word;
+}
+/* 文字块里保留的行内换行用浅色竖线标出，提醒"这还不是最终段落" */
+.ocr-block__text .br { color: #c0c6cf; }
+
+.alert--warn { background: var(--warn-bg); color: var(--warn-fg); margin: 8px 12px 0; }
 
 .btn {
   font: inherit; font-size: 13px;

@@ -30,7 +30,7 @@ let currentUpload = null; // { upload_id, page_count, ... }
 let currentPage = 0;
 let currentImageUrl = null;
 let lastFile = null;
-let activeLineIndex = -1;
+let activeBlockIndex = -1;
 let lastOcrData = null;
 
 /** 每页的识别结果缓存。重新识别很慢，翻页来回看时不该重跑。 */
@@ -369,9 +369,10 @@ async function showPage(index) {
 }
 
 function clearOcr() {
-  activeLineIndex = -1;
+  activeBlockIndex = -1;
   el("ocr-panel").hidden = true;
-  el("ocr-lines").innerHTML = "";
+  el("ocr-layout-warning").hidden = true;
+  el("ocr-blocks").innerHTML = "";
   el("page-overlay").innerHTML = "";
 }
 
@@ -404,44 +405,66 @@ async function recognizeCurrentPage() {
 
 function renderOcr(data) {
   const panel = el("ocr-panel");
-  const list = el("ocr-lines");
+  const list = el("ocr-blocks");
 
   lastOcrData = data;
   el("ocr-meta").textContent =
-    `${data.engine_id} ${data.engine_version} · ${data.line_count} 行 · ` +
+    `${data.engine_id} ${data.engine_version} · ${data.block_count} 块 / ${data.line_count} 行 · ` +
     `${data.elapsed_seconds} 秒 · 识别用图 ${data.image_width}×${data.image_height}`;
 
+  const warning = el("ocr-layout-warning");
+  if (data.reading_order_uncertain) {
+    warning.textContent =
+      (data.layout_notes || []).join("；") || "检测到疑似多栏，阅读顺序需要人工确认。";
+    warning.hidden = false;
+  } else {
+    warning.hidden = true;
+  }
+
   list.innerHTML = "";
-  data.lines.forEach((line, index) => {
+  data.blocks.forEach((block, index) => {
     const item = document.createElement("li");
+    item.className = "ocr-block";
     item.dataset.index = String(index);
 
-    const idx = document.createElement("span");
-    idx.className = "idx";
-    idx.textContent = String(index + 1);
+    const head = document.createElement("div");
+    head.className = "ocr-block__head";
 
-    const text = document.createElement("span");
-    text.textContent = line.text || "（空行）";
+    const order = document.createElement("span");
+    order.textContent = `#${block.order_index + 1}`;
 
-    item.append(idx, text);
-    item.addEventListener("click", () => selectLine(index));
+    const meta = document.createElement("span");
+    const columnNote = data.column_count > 1 ? ` · 第 ${block.column + 1} 栏` : "";
+    meta.textContent = `${block.block_type} · ${block.line_count} 行${columnNote}`;
+
+    head.append(order, meta);
+    order.style.marginRight = "6px";
+
+    const text = document.createElement("div");
+    text.className = "ocr-block__text";
+    // 行内换行保留（说明书 5.3：Block.text 保留行内换行），
+    // 用 pre-wrap 显示，用户能看出这还不是最终段落文本
+    text.textContent = block.text;
+
+    item.append(head, text);
+    item.addEventListener("click", () => selectBlock(index));
     list.append(item);
   });
 
-  activeLineIndex = -1;
+  activeBlockIndex = -1;
   panel.hidden = false;
   drawOverlay(data);
 }
 
 function drawOverlay(data) {
   const overlay = el("page-overlay");
-  const showBoxes = el("ocr-show-boxes").checked;
   overlay.innerHTML = "";
-  if (!showBoxes) return;
+  if (!el("ocr-show-boxes").checked) return;
 
   // 归一化坐标 → 百分比定位，因此与显示尺寸、渲染 DPI 都无关
-  data.lines.forEach((line, index) => {
-    const [x0, y0, x1, y1] = line.bbox;
+  (data.blocks || []).forEach((block, index) => {
+    if (!block.bbox) return;
+    const [x0, y0, x1, y1] = block.bbox;
     const box = document.createElement("div");
     box.className = "box";
     box.dataset.index = String(index);
@@ -453,19 +476,18 @@ function drawOverlay(data) {
   });
 }
 
-function selectLine(index) {
-  activeLineIndex = index;
+function selectBlock(index) {
+  activeBlockIndex = index;
 
-  for (const item of el("ocr-lines").children) {
+  for (const item of el("ocr-blocks").children) {
     item.classList.toggle("active", Number(item.dataset.index) === index);
   }
-  const boxes = el("page-overlay").children;
-  for (const box of boxes) {
+  for (const box of el("page-overlay").children) {
     const isActive = Number(box.dataset.index) === index;
     box.classList.toggle("box--active", isActive);
     if (isActive) box.scrollIntoView({ block: "center", behavior: "smooth" });
   }
-  const item = el("ocr-lines").querySelector(`li[data-index="${index}"]`);
+  const item = el("ocr-blocks").querySelector(`li[data-index="${index}"]`);
   if (item) item.scrollIntoView({ block: "nearest" });
 }
 
