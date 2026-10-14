@@ -187,6 +187,8 @@ function structureRules() {
   return {
     top_ratio: Number(el("structure-top").value || 0) / 100,
     bottom_ratio: Number(el("structure-bottom").value || 0) / 100,
+    left_ratio: Number(el("structure-left").value || 0) / 100,
+    right_ratio: Number(el("structure-right").value || 0) / 100,
     max_chars: el("structure-max-chars").value === "" ? null : Number(el("structure-max-chars").value),
     page_types: el("structure-body-only").checked ? ["body"] : ["body", "front", "toc", "appendix", "index"],
     detect_page_numbers: el("structure-numbers").checked,
@@ -405,6 +407,17 @@ function renderPreflight(data) {
   }
   if (data.dropped_pages && data.dropped_pages.length) {
     notes.push(`按当前范围排除了 ${data.dropped_pages.length} 页。`);
+  }
+  if (data.chrome_suspect_count) {
+    const sample = (data.chrome_suspects || [])
+      .slice(0, 3)
+      .map((item) => `第 ${item.page_no} 页「${item.text.slice(0, 10)}」`)
+      .join("、");
+    notes.push(
+      `有 ${data.chrome_suspect_count} 个块整块落在页面边缘（${sample} 等），` +
+        "像是页眉 / 页码，但它们的类型还是「段落」，**会被导出**。" +
+        "用上面的「结构工具」按位置规则预览并标注，就能把它们从导出里去掉。"
+    );
   }
   if (data.unreviewed_segments) {
     notes.push(

@@ -27,12 +27,16 @@ from .library import ProjectError, default_library_dir, list_pages, project_dir
 
 # 说明书 6.5 的默认区域高度
 DEFAULT_REGION_RATIO = 0.08
+# 左右边缘的默认宽度：正文一般不会整块贴在这一条里，而竖排书眉 / 边栏会
+DEFAULT_MARGIN_RATIO = 0.10
 # "字数少于 N" 的默认值：页眉页脚通常很短（"第三章 · 45"），正文段落不会这么短
 DEFAULT_MAX_CHARS = 20
 
 # 位置的归属：落在顶部区域算页眉、底部区域算页脚；数字形态的算页码
 REGION_TOP = "top"
 REGION_BOTTOM = "bottom"
+REGION_LEFT = "left"
+REGION_RIGHT = "right"
 
 BLOCK_TYPE_HEADER = "header"
 BLOCK_TYPE_FOOTER = "footer"
@@ -49,10 +53,16 @@ _NUMBER_PATTERN = re.compile(
 
 @dataclass(frozen=True)
 class HeaderFooterRules:
-    """说明书 6.5 的规则参数。全部以**比例**表示，与渲染尺寸无关。"""
+    """说明书 6.5 的规则参数。全部以**比例**表示，与渲染尺寸无关。
+
+    区域除了上 / 下，还有左 / 右：**竖排书眉**（如本书左栏的「红楼梦／第X回」）
+    既不在顶部也不在底部，它整块贴在页面一侧——靠左右区域才捞得到。
+    """
 
     top_ratio: float = DEFAULT_REGION_RATIO
     bottom_ratio: float = DEFAULT_REGION_RATIO
+    left_ratio: float = DEFAULT_MARGIN_RATIO
+    right_ratio: float = DEFAULT_MARGIN_RATIO
     max_chars: int | None = DEFAULT_MAX_CHARS
     # 作用范围：默认全部纳入的正文页
     page_types: tuple[str, ...] = ("body",)
@@ -63,6 +73,8 @@ class HeaderFooterRules:
         return {
             "top_ratio": self.top_ratio,
             "bottom_ratio": self.bottom_ratio,
+            "left_ratio": self.left_ratio,
+            "right_ratio": self.right_ratio,
             "max_chars": self.max_chars,
             "page_types": list(self.page_types),
             "detect_page_numbers": self.detect_page_numbers,
@@ -142,13 +154,20 @@ def looks_like_a_number(text: str) -> bool:
 
 
 def _region_of(bbox: tuple[float, float, float, float], rules: HeaderFooterRules) -> str | None:
-    """块落在顶部 / 底部区域吗？都不是就返回 None。"""
+    """块落在哪条边缘区域里？都不在就返回 None。
+
+    **整块**都在区域里才算：跨界的大段落不该被当成页眉。
+    上下优先于左右：一页左上角的小块报"顶部"比报"左侧"更贴近人的说法。
+    """
     x0, y0, x1, y1 = bbox
-    # 整块都在区域里才算：跨界的大段落不该被当成页眉
     if y1 <= rules.top_ratio:
         return REGION_TOP
     if y0 >= 1 - rules.bottom_ratio:
         return REGION_BOTTOM
+    if x1 <= rules.left_ratio:
+        return REGION_LEFT
+    if x0 >= 1 - rules.right_ratio:
+        return REGION_RIGHT
     return None
 
 
@@ -158,7 +177,11 @@ def _propose(text: str, region: str, rules: HeaderFooterRules) -> tuple[str, str
         return BLOCK_TYPE_PAGE_NUMBER, "在区域内，且是纯数字 / 罗马数字"
     if region == REGION_TOP:
         return BLOCK_TYPE_HEADER, "整块落在页面顶部区域"
-    return BLOCK_TYPE_FOOTER, "整块落在页面底部区域"
+    if region == REGION_BOTTOM:
+        return BLOCK_TYPE_FOOTER, "整块落在页面底部区域"
+    if region == REGION_LEFT:
+        return BLOCK_TYPE_HEADER, "整块贴在页面左侧（疑似竖排书眉 / 边栏）"
+    return BLOCK_TYPE_HEADER, "整块贴在页面右侧（疑似竖排书眉 / 边栏）"
 
 
 def _manually_typed_blocks(conn) -> set[str]:

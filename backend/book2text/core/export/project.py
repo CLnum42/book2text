@@ -24,6 +24,7 @@ from ... import __version__
 from ..ocr.adapters import RapidOcrAdapter
 from ..project import blocks as blocks_module
 from ..project import library as library_module
+from ..project import structure as structure_module
 from ..project.library import Page
 from ..storage import db as db_module
 from . import cleanup, jsonl as jsonl_module, manifest as manifest_module
@@ -258,10 +259,9 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
     """预检摘要（说明书 6.6 第 5 条）：不动文件，只算“这次导出会是什么样”。"""
     prepared = _prepare(project_id, library=library, options=options)
     segments = prepared.segments
-    states = blocks_module.page_recognition_states(
-        project_id,
-        library=library if library is not None else library_module.default_library_dir(),
-    )
+    target_library = library if library is not None else library_module.default_library_dir()
+    states = blocks_module.page_recognition_states(project_id, library=target_library)
+    chrome = _chrome_suspects(project_id, library=target_library, options=options)
 
     # 未识别或识别失败的纳入页：导出的内容会缺这些页，必须让用户看见
     unfinished = [
@@ -287,7 +287,37 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
         "unfinished_pages": sorted(unfinished),
         "excluded_block_types": sorted(prepared.options.excluded_block_types()),
         "rules": prepared.options.to_dict(),
+        # 整块落在页面边缘、却还没标类型的块：它们**现在会被导出**，
+        # 而这正是页眉 / 页码混进正文的来源。界面据此提醒去用结构工具。
+        "chrome_suspect_count": len(chrome),
+        "chrome_suspects": chrome[:20],
     }
+
+
+def _chrome_suspects(project_id: str, *, library: Path, options: ExportOptions) -> list[dict]:
+    """还会被导出、但像是页眉 / 页码的块。
+
+    这里直接用**结构工具的预览结果**，而不是自己再写一套位置判断：
+    预检里说的"有多少嫌疑"必须正好等于"结构工具能一键标掉多少"，
+    否则会出现"提示说有 3 个，打开工具却一个都不给标"这种自相矛盾
+    （本项目的真书上就撞到过：页面最后一行的正文落在底部区域里，
+    位置规则命中、但被"字数上限"保护住——那种不该算嫌疑）。
+    """
+    excluded = options.excluded_block_types()
+    plan = structure_module.plan_header_footer(project_id, library=library)
+    return [
+        {
+            "block_id": item.block_id,
+            "page_no": item.page_no,
+            "region": item.region,
+            "proposed_type": item.proposed_type,
+            "text": item.text[:60],
+        }
+        for item in plan.candidates
+        # 判据是"它**现在**算不算被排除"：proposed_type 本身就是页眉 / 页码，
+        # 拿它去过滤会把要提醒的块全滤掉（写反过一次）
+        if item.current_type not in excluded
+    ]
 
 
 def preview(project_id: str, *, library: Path | None = None, options: ExportOptions,

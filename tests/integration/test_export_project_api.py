@@ -173,6 +173,46 @@ def test_export_writes_files_and_records_it(
     assert manifest["schema"] == data["manifest"]["schema"]
 
 
+def test_preflight_warns_about_untyped_edge_content(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
+) -> None:
+    """页眉 / 页码还没标类型时，预检要提醒"它们会被导出"——并指向结构工具。
+
+    这一条是为"只想要正文"的用法服务的：不提醒的话，导出里会混进每页的书眉与页码。
+    """
+    from book2text.core.storage.ulid import new_ulid
+    from tests.integration.test_structure_tools_api import add_block
+
+    add_block(library_dir, project_ready, page_no=1, text="红楼梦／第三十一回", bbox=[0.0, 0.05, 0.08, 0.9])
+    add_block(library_dir, project_ready, page_no=1, text="· 63 ·", bbox=[0.45, 0.96, 0.55, 0.98])
+
+    data = client.post(
+        f"/api/projects/{project_ready}/export/preflight", json={}, headers=auth_headers
+    ).json()
+    assert data["chrome_suspect_count"] == 2
+    assert {item["region"] for item in data["chrome_suspects"]} == {"left", "bottom"}
+
+    # 用结构工具标过之后，嫌疑清零（它们会被 9.3 的规则排除）
+    plan = client.post(
+        f"/api/projects/{project_ready}/structure/header-footer/preview", json={}, headers=auth_headers
+    ).json()
+    client.post(
+        f"/api/projects/{project_ready}/structure/header-footer/apply",
+        json={
+            "items": [
+                {"block_id": item["block_id"], "block_type": item["proposed_type"]}
+                for item in plan["candidates"]
+            ]
+        },
+        headers=auth_headers,
+    )
+    after = client.post(
+        f"/api/projects/{project_ready}/export/preflight", json={}, headers=auth_headers
+    ).json()
+    assert after["chrome_suspect_count"] == 0
+    assert after["segment_count"] == data["segment_count"] - 2, "它们不再进导出"
+
+
 def test_second_export_in_the_same_minute_gets_its_own_directory(
     client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
 ) -> None:

@@ -192,6 +192,37 @@ def test_preview_does_not_touch_anything(
     assert events == 0
 
 
+def test_left_and_right_margin_regions(
+    client: TestClient, auth_headers: dict[str, str], page_with_chrome, library_dir: Path
+) -> None:
+    """竖排书眉贴在页面一侧（既不在顶部也不在底部），只有左右区域捞得到它。
+
+    本项目的样本书就是这样：左栏印「红楼梦／第X回」，靠上下区域永远找不到。
+    """
+    project_id, ids = page_with_chrome
+    # 一块竖排书眉：整块贴在左侧
+    sidebar = add_block(
+        library_dir, project_id, page_no=1, text="红楼梦／第三十一回", bbox=[0.0, 0.05, 0.08, 0.9]
+    )
+    # 一块贴在右侧的边注
+    right_note = add_block(
+        library_dir, project_id, page_no=1, text="见下页注", bbox=[0.93, 0.3, 1.0, 0.4]
+    )
+
+    data = preview(client, auth_headers, project_id).json()
+    by_block = {item["block_id"]: item for item in data["candidates"]}
+    assert by_block[sidebar]["region"] == "left"
+    assert by_block[sidebar]["proposed_type"] == "header"
+    assert "左侧" in by_block[sidebar]["reason"]
+    assert by_block[right_note]["region"] == "right"
+
+    # 把左右区域关掉（设为 0）就找不到它们了
+    narrow = preview(client, auth_headers, project_id, left_ratio=0, right_ratio=0).json()
+    found = {item["block_id"] for item in narrow["candidates"]}
+    assert sidebar not in found
+    assert right_note not in found
+
+
 def test_preview_respects_page_types(
     client: TestClient, auth_headers: dict[str, str], page_with_chrome
 ) -> None:

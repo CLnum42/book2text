@@ -31,6 +31,8 @@ router = APIRouter(prefix="/api/projects", tags=["structure"])
 class HeaderFooterRulesModel(BaseModel):
     top_ratio: float = Field(default=structure.DEFAULT_REGION_RATIO, ge=0, le=0.5)
     bottom_ratio: float = Field(default=structure.DEFAULT_REGION_RATIO, ge=0, le=0.5)
+    left_ratio: float = Field(default=structure.DEFAULT_MARGIN_RATIO, ge=0, le=0.5)
+    right_ratio: float = Field(default=structure.DEFAULT_MARGIN_RATIO, ge=0, le=0.5)
     max_chars: int | None = Field(default=structure.DEFAULT_MAX_CHARS, ge=0, le=500)
     page_types: list[str] = Field(default_factory=lambda: ["body"])
     detect_page_numbers: bool = True
@@ -39,6 +41,8 @@ class HeaderFooterRulesModel(BaseModel):
         return structure.HeaderFooterRules(
             top_ratio=self.top_ratio,
             bottom_ratio=self.bottom_ratio,
+            left_ratio=self.left_ratio,
+            right_ratio=self.right_ratio,
             max_chars=self.max_chars,
             page_types=tuple(self.page_types),
             detect_page_numbers=self.detect_page_numbers,
