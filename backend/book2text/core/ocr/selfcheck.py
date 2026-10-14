@@ -233,8 +233,8 @@ def _probe_apple_vision() -> EngineProbe:
         available=True,
         version=_distribution_version("pyobjc-framework-Vision"),
         reason="",
-        note="实测它弱于第一引擎（40 页真书：整页 CER 2.16% vs 1.08%，分歧捕获率 17%），"
-        "候选只作参考——见 docs/ocr-evaluation.md 第 8 节",
+        note="实测它弱于第一引擎（40 页真书：整页 CER 2.16% vs 1.08%；"
+        "被标出的分歧里约八成是它自己的错），候选只作参考——见 docs/ocr-evaluation.md 第 9 节",
     )
 
 

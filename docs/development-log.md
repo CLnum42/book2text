@@ -7,6 +7,78 @@
 
 ---
 
+## 2026-10-14 — 任务 27：Phase 6 分发与稳定（macOS 打包实测；Windows 备好配置）
+
+### 任务目标
+
+按说明书 Phase 6 做四件事：**PyInstaller 打包**（双击启动、自动开浏览器）、
+**首次运行环境检查（含填写"我的名字"）**、**"导出诊断日志"入口**、
+**两份简短用户手册**（负责人 / 助手）。
+
+**范围内但做不到的：** Windows x64 的打包与运行验证——本机是 macOS，
+没有 Windows 机器。按说明书 1.7 处理：**配置与脚本备好，如实标注"未验证"**，
+不写成"Windows 版可用"。
+
+### 实施计划
+
+1. 打包：`packaging/book2text.spec` + `packaging/entry.py` + 两个平台的构建脚本；
+   让打包后的可执行文件**兼作识别子进程**（`--b2t-worker`）。
+2. 设置：`core/settings.py`（`<项目库>/.settings.json` 里的"我的名字"）+
+   `GET/PUT /api/app/settings`；名字作为审校事件的 `actor_name`。
+3. 诊断日志：`api/diagnostics.py` + `GET /api/app/diagnostics`（纯文本下载）。
+4. 手册：`docs/manual-owner.md`、`docs/manual-assistant.md`。
+5. 测试 → 打包 → 在**打包版**里真机走一遍 → 文档。
+
+### 实现与验证
+
+**离线测试：** `uv run pytest -q` → **540 passed**（原 531 + 9）。
+
+| 新增覆盖 | 说明 |
+|---|---|
+| 首次运行与名字 | 没有设置文件 → `first_run`；存名字 → 落 `<项目库>/.settings.json`；长度与空白都处理 |
+| 设置读坏了 | 不报错，当作"没设置"（不能因为一个坏文件挡住用应用） |
+| 名字进事件 | 界面不传 `actor_name` 时用设置里的名字；显式传了就用传来的（协作包要用） |
+| 诊断日志：不含识别文本 | 先断言确实认出了字，再断言报告里**一个字都没有** |
+| 诊断日志：不含家目录 | 报告里不出现 `str(Path.home())`；项目库路径整个略去 |
+| 诊断日志：该有的都在 | 版本、平台、引擎自检、项目统计、任务日志末尾、项目 id |
+
+**打包与真机验证（macOS arm64，`dist/Book2Text.app`，290 MB）：**
+
+| 验证项 | 结果 |
+|---|---|
+| 双击启动 | `.app` 启动，自动打开浏览器（命令行验证用的是包内可执行文件 + `--no-browser`） |
+| 首次运行检查 | 卡片列出"平台：macOS (arm64) —— 受支持 / PDF 后端：pypdfium2 5.14.0 —— 可用 / OCR 引擎：2 / 7 项可用 —— 可以开始识别" |
+| 填写我的名字 | 保存后卡片消失，设置区显示"现在以「…」的名义记录改动" |
+| 建项目 + 识别 | 20 页样本 PDF → 第 1 页识别成功（6 块，"第二十七回"）——**打包环境里 rapidocr + 模型 + 子进程都跑通了** |
+| 子进程控制 | 两页识别任务：暂停（"已暂停 · 当前第 3 页"）→ 继续 → 完成 2/2 |
+| 第二引擎复核 | 打包版里 Apple Vision（pyobjc）可用：26 行 / 1.7 秒 / 4 处分歧 |
+| 导出诊断日志 | 浏览器下载 `book2text-diagnostics-20261014-2240.txt`；报告写着"运行方式：打包运行（PyInstaller）"；**不含识别文本**（grep 为 0） |
+
+**打包过程里修掉的两个真问题（都只有真跑才会暴露）：**
+
+1. **子进程的 `--b2t-worker` 分派放在 argparse 之后** → 子进程以
+   "unrecognized arguments: --project-dir / --job" 退出，任务永远停在排队中
+   （`logs/ocr-*.log` 里留着证据）。改到 argparse **之前**分派。
+2. **PyInstaller 6 的 TOC 是三元组**：事后 `a.datas += collect_all(...)` 的两元组
+   会报 "not enough values to unpack"。改成在 `Analysis` **之前**收集。
+   （另有一处 `LibraryPageSummary` 没有 `.project_id` 属性——它在真机上被诊断日志撞出来了。）
+
+### 用户操作说明
+
+- **双击 `dist/Book2Text.app`**（首次要右键 →「打开」，未签名）。
+- 首次运行会做环境检查并请你填名字；之后在「设置」区可以改。
+- 出问题点「导出诊断日志」，把那个 txt 发给开发者——它不含识别文本与你的个人目录路径。
+- 两份手册：[`docs/manual-owner.md`](manual-owner.md)（负责人）、
+  [`docs/manual-assistant.md`](manual-assistant.md)（助手）。
+
+### 下一步建议
+
+**在 Windows 上把打包跑一遍**（说明书 Phase 6 的另一半）：装 Python 与 uv →
+`scripts\build_windows.bat` → 双击 exe 走一遍同样的清单（首次检查、填名字、建项目、
+识别、诊断日志）。跑完把结果记进开发日志，并解除 L-31 的前两行。
+这是 Phase 5（审校任务包）能开始的前提——负责人在 Mac、助手在 Windows 是
+说明书里点名的两种组合之一。
+
 ## 2026-10-14 — 任务 26：Phase 3 余项——逐块采用新结果、框选新增块
 
 ### 任务目标

@@ -23,6 +23,7 @@ from ..core.project import blocks as blocks_module
 from ..core.project import editing
 from ..core.project import library as project_library
 from ..core.project import recognition
+from .deps import actor_name as _actor_name
 from .deps import library_dir as _library
 from .deps import project_error as _project_error
 from .errors import AppError
@@ -183,7 +184,7 @@ def patch_block(
             comment=patch.comment,
             expected_revision=patch.expected_revision,
             expected_updated_at=patch.expected_updated_at,
-            actor_name=patch.actor_name,
+            actor_name=_actor_name(request, patch.actor_name),
         )
     except editing.BlockConflict as exc:
         # 409：客户端该提示"这一页在别处被改过"，而不是把它当参数错误
@@ -456,7 +457,7 @@ def create_block(
             text=body.text,
             bbox=bbox,
             after_block_id=body.after_block_id,
-            actor_name=body.actor_name,
+            actor_name=_actor_name(request, body.actor_name),
         )
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import Request
 
+from ..core import settings as settings_module
 from ..core.project import blocks as blocks_module
 from ..core.project import library as project_library
 from .errors import AppError
@@ -45,3 +46,15 @@ def page_payload(
         "review": (review or blocks_module.empty_review()).to_dict(),
         "divergence": (divergence or blocks_module.EMPTY_PAGE_DIVERGENCE).to_dict(),
     }
+
+
+def actor_name(request: Request, provided: str | None = None) -> str | None:
+    """审校事件里的 `actor_name`（说明书 5.3 的协作字段）。
+
+    界面显式给了就用它；没给就用设置里的**我的名字**（说明书 Phase 6 的首次运行填写项）。
+    两处都没有就是 None——不编造名字。
+    """
+    if provided:
+        return provided
+    name = settings_module.load_settings(Path(request.app.state.library_dir)).user_name
+    return name or None

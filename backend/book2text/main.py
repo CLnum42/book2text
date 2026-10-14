@@ -44,6 +44,20 @@ def find_free_port(start: int, attempts: int = PORT_ATTEMPTS) -> int:
     raise RuntimeError(f"从 {start} 起的连续 {attempts} 个端口都被占用")
 
 
+WORKER_FLAG = "--b2t-worker"
+"""打包运行时用同一个可执行文件兼作识别子进程的入口。
+
+源码运行时子进程的命令是 ``python -m book2text.worker``（见 `core/project/executor.py`）；
+打包之后没有"用源码跑模块"这条路，于是改成 ``<应用可执行文件> --b2t-worker ...``。
+两条路都调用同一个 `worker.main`，行为一致。
+"""
+
+
+def _worker_arguments(argv: list[str]) -> list[str]:
+    """把 `--b2t-worker` 摘掉，剩下的（`--project-dir` / `--job`）原样交给 worker。"""
+    return [item for item in argv if item != WORKER_FLAG]
+
+
 def _configure_stdio() -> None:
     """让控制台按 UTF-8 输出（说明书第 10 节）。
 
@@ -86,6 +100,16 @@ def _print_banner(
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw = list(argv if argv is not None else sys.argv[1:])
+
+    # 打包运行时的识别子进程走同一个可执行文件：**在 argparse 之前**分派，
+    # 因为 `--project-dir` / `--job` 是 worker 的参数，主解析器不认识它们
+    # （第一版放在解析之后，子进程直接以 "unrecognized arguments" 退出）。
+    if WORKER_FLAG in raw:
+        from . import worker
+
+        return worker.main(_worker_arguments(raw))
+
     parser = argparse.ArgumentParser(
         prog="book2text",
         description="Book2Text 本地服务",
@@ -108,11 +132,16 @@ def main(argv: list[str] | None = None) -> int:
         help="项目库目录（缺省为用户「文稿 / 文档」下的 Book2Text）",
     )
     parser.add_argument(
+        WORKER_FLAG,
+        action="store_true",
+        help="内部使用：以识别子进程的身份启动（打包运行时由主程序调用）",
+    )
+    parser.add_argument(
         "--token",
         default=None,
         help="固定会话令牌（仅供测试与调试；默认每次启动随机生成）",
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw)
 
     _configure_stdio()
 

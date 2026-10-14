@@ -121,6 +121,54 @@ async function loadAppInfo() {
 
   renderEngines(info.engines);
   renderLimits(info);
+  renderSettings(info);
+  renderFirstRun(info);
+}
+
+/** 设置（说明书 Phase 6）：我的名字 + 导出诊断日志。 */
+function renderSettings(info) {
+  const settings = info.settings || {};
+  el("settings-name").value = settings.user_name || "";
+  el("settings-note").textContent = settings.user_name
+    ? `现在以「${settings.user_name}」的名义记录改动。诊断日志用于求助时贴给别人看（不含识别文本与个人目录路径）。`
+    : "还没填名字：改动会记成「未署名」。名字保存在项目库目录下的 .settings.json。";
+}
+
+async function saveSettingsName() {
+  try {
+    const data = await apiJson("/api/app/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_name: el("settings-name").value }),
+    });
+    el("first-run-card").hidden = true;
+    await loadAppInfo();
+    setSaveState(data.user_name ? `已记下名字：${data.user_name}` : "已清空名字");
+  } catch (error) {
+    showError(el("platform-warning"), error);
+  }
+}
+
+/** 首次运行的环境检查（说明书 Phase 6）：平台、PDF 后端、引擎，然后请用户填名字。 */
+function renderFirstRun(info) {
+  const settings = info.settings || {};
+  el("first-run-card").hidden = !settings.first_run;
+  if (!settings.first_run) return;
+
+  const checks = [
+    [`平台：${info.platform.label}`, info.platform.supported ? "受支持" : `不受支持——${info.platform.unsupported_reason}`],
+    [`PDF 后端：pypdfium2 ${info.pdf_backend.version}`, "可用"],
+    [`OCR 引擎：${info.engines.available_count} / ${info.engines.total_count} 项可用`,
+      info.engines.available_count ? "可以开始识别" : "都不可用：装好依赖再识别（uv sync --group ocr-eval）"],
+  ];
+  const list = el("first-run-checks");
+  list.innerHTML = "";
+  for (const [what, state] of checks) {
+    const item = document.createElement("li");
+    item.textContent = `${what} —— ${state}`;
+    list.append(item);
+  }
+  el("first-run-name").value = settings.user_name || "";
 }
 
 function renderEngines(report) {
@@ -177,6 +225,35 @@ function renderLimits(info) {
     ["Python", info.platform.python_version],
     ["操作系统", info.platform.os_version],
   ]);
+}
+
+/** 导出诊断日志（说明书 Phase 6）：下载一份脱敏的纯文本报告。 */
+async function exportDiagnostics() {
+  const button = el("diagnostics-export");
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/app/diagnostics?token=${encodeURIComponent(token)}`, {
+      headers: { "X-B2T-Token": token },
+    });
+    if (!response.ok) throw new Error(`导出失败（HTTP ${response.status}）`);
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="([^"]+)"/);
+    const name = match ? match[1] : "book2text-diagnostics.txt";
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    el("settings-note").textContent = `已导出 ${name}（只下载到本机，不会上传）。`;
+  } catch (error) {
+    showError(el("platform-warning"), error);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------- 第二引擎复核（说明书 8.5）
@@ -3088,6 +3165,18 @@ function setupLibrary() {
     picker.value = "";
   });
   el("project-close").addEventListener("click", closeProject);
+  el("settings-save").addEventListener("click", saveSettingsName);
+  el("first-run-save").addEventListener("click", async () => {
+    el("settings-name").value = el("first-run-name").value;
+    await saveSettingsName();
+  });
+  el("first-run-name").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      el("settings-name").value = el("first-run-name").value;
+      saveSettingsName();
+    }
+  });
+  el("diagnostics-export").addEventListener("click", exportDiagnostics);
   el("detail-close").addEventListener("click", closePageDetail);
   setupReviewControls();
   setupBoxCreate();

@@ -49,7 +49,9 @@
 | Phase 0 第 1 项：PaddleOCR 对比与版面组件 | ⬜ 未开始 |
 | Phase 0 第 1–2 项：**真实扫描件**的准确率 | 🔶 有真实书数字（导出正文 CER 0.71%），但材料是干净栅格化，仍缺带扫描退化的样本；页边界与书眉页码的口径待确认 |
 | Phase 0 第 5 项：可行性文档 | 🔶 部分完成：`docs/technical-feasibility.md` |
-| Phase 5（审校任务包）、Phase 6（打包分发） | ⬜ 未开始（Phase 0–4 与 Phase 8 Step 1 的主体在路上，见下） |
+| **Phase 6 打包分发（macOS）** | ✅ 可用：`bash scripts/build_macos.sh` → `dist/Book2Text.app`（约 290 MB，含识别模型），双击启动、自动开浏览器；首次运行做环境检查并填名字；「导出诊断日志」可用。见 [`docs/manual-owner.md`](docs/manual-owner.md) |
+| **Phase 6 打包分发（Windows）** | ⬜ **未验证**：脚本与配置已备好（`scripts\build_windows.bat`），但没有在 Windows 机器上跑过，见 L-31 |
+| Phase 5（审校任务包） | ⬜ 未开始（要以打包分发作前提） |
 
 **现在能做什么：**
 - 在**项目库**里新建项目（上传 PDF），项目**持久保存**，关掉应用再打开还在。
@@ -212,10 +214,13 @@ book2text/
         grouping.py           # 行 → 块：行距 / 缩进 / 对齐（说明书 8.1）
       storage/scratch.py      # Phase 0 临时上传目录（Phase 1 会被取代）
     static/                   # Phase 0 手写页面（Vue 落地后改为构建产物）
+  packaging/                  # PyInstaller 打包配置（book2text.spec / entry.py）
   scripts/                    # start.command（Mac）/ start.bat（Windows）
+                              # build_macos.sh / build_windows.bat：打包（Phase 6）
                               # make_scan_samples.py：从源书生成扫描样本
                               # make_test_fixtures.py：生成旋转页等测试夹具
                               # evaluate_ocr.py：门槛项测量
+                              # measure_accuracy.py / measure_divergence.py：准确率与分歧测量
   tests/                      # conftest.py + unit/ + integration/
   fixtures/                   # 测试用 PDF（分类与版权说明见 fixtures/README.md）
 ```
@@ -240,6 +245,8 @@ book2text/
 | [`docs/decisions.md`](docs/decisions.md) | 决策记录（架构与实现取舍的理由） |
 | [`docs/development-log.md`](docs/development-log.md) | 每次开发任务的记录（含未验证项） |
 | [`docs/known-limitations.md`](docs/known-limitations.md) | 已知限制与未验证事项（含已解除条目） |
+| [`docs/manual-owner.md`](docs/manual-owner.md) | 负责人手册（建项目、识别、审校、导出、出问题怎么办） |
+| [`docs/manual-assistant.md`](docs/manual-assistant.md) | 助手手册（审校页面、交回、注意事项） |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本变更日志 |
 
 ---

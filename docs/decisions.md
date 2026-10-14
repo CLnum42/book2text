@@ -1027,3 +1027,45 @@ preflight 算的是文件长度，两者相差段间空行的数量（实测 17 
 "OCR 漏检区域的补救"，所以按位置插才是它要的效果。）
 
 **状态：** 生效。
+
+## D-044 | 2026-10-14 | 打包分发的四处取舍：onedir + 同一可执行文件兼作子进程、设置放项目库、诊断日志脱敏
+
+**背景：** 说明书 Phase 6 要求"用 PyInstaller 分别打包 macOS arm64 与 Windows x64
+（双击启动并自动打开浏览器）+ 首次运行环境检查（含填写我的名字）+ 导出诊断日志入口 +
+两份用户手册"。本次完成 macOS 侧并**实测**；Windows 侧只备好配置（见下）。
+
+**一、onedir，不用 onefile。** 识别跑在**子进程**里，子进程的命令是
+`<同一个可执行文件> --b2t-worker …`（见 `main.py` 的 WORKER_FLAG）。
+onefile 每次启动都会解包到临时目录，父子进程解包路径不同，既慢又容易踩坑；
+onedir 是稳定的一条路。macOS 上再包一层 `.app`（`BUNDLE`）以便双击；
+Windows 上是 `dist\Book2Text\Book2Text.exe`。
+
+**二、子进程走同一个可执行文件。** 源码运行时子进程是
+`python -m book2text.worker`（`executor.worker_command()`）；
+打包后没有"用源码跑模块"这条路，于是改调
+`sys.executable --b2t-worker --project-dir … --job …`。
+**分派必须在 argparse 之前**——第一版放在解析之后，子进程直接以
+"unrecognized arguments: --project-dir" 退出（任务显示排队中却永远不动）。
+这条只有**真的把包跑起来**才会发现，所以它写进这里。
+
+**三、OCR 依赖打进包（约 290 MB）。** 说明书 8.4 要求"模型文件随安装包内置、
+安装后完全离线"。装了 `ocr-eval` 依赖组才收集 `rapidocr` / `onnxruntime`
+（`collect_all`，在 `Analysis` **之前**收集——PyInstaller 6 的 TOC 是三元组，
+事后往 `a.datas` 追加两元组会报 "not enough values to unpack"）。
+没装也能打包，只是包里的引擎自检会如实报"不可用"（说明书 1.6）。
+
+**四、设置放项目库、诊断日志脱敏。**
+
+- **"我的名字"存在 `<项目库>/.settings.json`**：打包后应用目录只读（macOS 还有签名校验），
+  写不进去；放在项目库里随项目库搬走、用户看得见、可备份。
+  它的用途是审校事件的 `actor_name`（说明书 5.3），所以协作阶段能看出"这处是谁改的"。
+- **诊断日志（`GET /app/diagnostics`）只有数字与状态**：不写识别文本（说明书 Phase 6 的
+  日志规则），路径一律脱敏（家目录 → `~`，项目库路径整个略去），项目目录只留项目 id。
+  它是纯文本下载，**应用不会自动上传任何东西**。有测试锁定这两条规则。
+
+**未验证的部分（必须写明）：** Windows x64 的打包与运行**完全没有验证过**
+（只有 `scripts\build_windows.bat` 与同一份 `.spec`）。Windows 侧实际跑一遍之前，
+不能对外说"Windows 版可用"。也没有做代码签名：macOS 首次要右键「打开」，
+Windows 有 SmartScreen 提示——两份用户手册里都写了。
+
+**状态：** 生效（macOS 已实测；Windows 待验证）。

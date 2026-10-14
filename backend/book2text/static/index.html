@@ -22,6 +22,22 @@
   <div class="notice" id="platform-warning" hidden></div>
 
   <main>
+    <section class="card" id="first-run-card" hidden>
+      <h2>第一次运行：环境检查</h2>
+      <p class="hint">
+        应用已经在本机跑起来了。下面这几行是环境检查的结果；
+        填一个名字，之后所有审校改动都会记在你名下（说明书 5.3 的协作字段，改错了好追溯）。
+      </p>
+      <ul class="limits" id="first-run-checks"></ul>
+      <div class="create-row">
+        <input type="text" id="first-run-name" placeholder="我的名字（例如：小林）" maxlength="50">
+        <button type="button" id="first-run-save" class="btn btn--primary">保存并开始</button>
+      </div>
+      <p class="hint muted">
+        名字保存在项目库目录下的 <code>.settings.json</code> 里，不会上传到任何地方。
+      </p>
+    </section>
+
     <section class="card" id="library-card">
       <h2>项目库</h2>
       <p class="hint">
@@ -418,6 +434,18 @@
     <section class="card">
       <h2>当前限制</h2>
       <ul class="limits" id="limits-list"></ul>
+
+      <h3 class="h3">设置</h3>
+      <div class="create-row">
+        <input type="text" id="settings-name" placeholder="我的名字" maxlength="50">
+        <button type="button" id="settings-save" class="btn">保存名字</button>
+        <button type="button" id="diagnostics-export" class="btn"
+                title="生成一份纯文本诊断报告（环境、引擎自检、各项目统计与任务日志末尾）；不含识别文本、不含个人目录路径，只下载到本机">导出诊断日志</button>
+      </div>
+      <p class="hint muted" id="settings-note">
+        名字会记进每次审校改动（说明书 5.3 的协作字段）。诊断日志用于求助时贴给别人看。
+      </p>
+
       <dl class="kv" id="env-meta"></dl>
     </section>
   </main>

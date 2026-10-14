@@ -50,6 +50,16 @@ def worker_command(directory: Path, job_id: str) -> list[str]:
     并在入口里识别这个标记（配合 ``sys.frozen``）。现在先用源码运行的方式，
     到打包那一步只改这一个函数。
     """
+    if getattr(sys, "frozen", False):
+        # 打包运行（PyInstaller）：改用同一个可执行文件的 `--b2t-worker` 入口
+        return [
+            sys.executable,
+            "--b2t-worker",
+            "--project-dir",
+            str(directory),
+            "--job",
+            job_id,
+        ]
     return [
         sys.executable,
         "-m",
