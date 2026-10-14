@@ -24,6 +24,10 @@ dev = [
 ocr-eval = [
     "rapidocr>=3.10",
     "onnxruntime>=1.20",
+    # 第二引擎（说明书 8.5）：macOS 用系统自带的 Apple Vision。
+    # pyobjc 是平台专属依赖，因此带环境标记——在 Windows / Linux 上不该被要求安装。
+    "pyobjc-framework-Vision>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
 ]
 
 [project.scripts]

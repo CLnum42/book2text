@@ -504,3 +504,18 @@ main {
 .structure-candidates li.is-off { opacity: .45; }
 .structure-candidates .meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .structure-candidates .text { white-space: pre-wrap; word-break: break-word; }
+
+/* ---------------------------------------------------------------- 第二引擎复核 */
+
+.aux-panel { margin: 8px 12px 0; border: 1px solid #e3d5f0; border-radius: 8px; background: #fdfbff; }
+.aux-panel__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 11px; border-bottom: 1px solid var(--border); }
+.aux-panel__head .spacer { flex: 1; }
+.aux-panel .hint { margin: 0; padding: 8px 11px 0; }
+.aux-lines { list-style: none; margin: 8px 0 0; padding: 0 11px 11px; display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow: auto; }
+.aux-lines li { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: #fff; font-size: 13px; line-height: 1.6; }
+.aux-lines .aux-pair { display: flex; flex-direction: column; gap: 2px; }
+.aux-lines .aux-a { color: var(--text); }
+.aux-lines .aux-b { color: #7a4bb5; }
+.aux-lines .aux-actions { margin-top: 4px; display: flex; gap: 6px; }
+.aux-lines .aux-actions .btn { font-size: 11px; padding: 2px 8px; }
+.aux-lines .muted { font-size: 11px; }

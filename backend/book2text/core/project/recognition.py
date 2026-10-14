@@ -46,6 +46,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..ocr.adapters import RapidOcrAdapter
+from ..ocr.adapters.apple_vision import AppleVisionAdapter
+from ..ocr import compare as compare_module
 from ..ocr.base import BBox, OcrEngine, OcrEngineError, OcrLine, OcrParams, OcrResult
 from ..pdf import render
 from ..storage import db as db_module
@@ -76,6 +78,9 @@ DEFAULT_DPI = 200
 DEFAULT_LANGUAGE = "ch"
 MIN_DPI = 72
 MAX_DPI = 600
+
+# 行图外扩比例（说明书 8.5：外扩约 2% 以保留笔画）
+AUX_LINE_PADDING = 0.02
 
 ORIGIN_OCR = "ocr"
 REVIEW_UNREVIEWED = "unreviewed"
@@ -300,6 +305,230 @@ def create_ocr_job(
         pages=[(page.page_id, page.page_no) for page in selected],
         params={"dpi": dpi, "language": language, "engine_id": adapter.engine_id},
     )
+
+
+# ---------------------------------------------------------------- 辅助识别（说明书 8.5 / R1b）
+
+AUX_ENGINE_ID = "apple_vision"
+
+
+def default_secondary_engine() -> OcrEngine:
+    """按平台挑第二引擎（说明书 8.5 要求"独立血统"）。
+
+    macOS 上是系统自带的 Apple Vision；Windows 的系统 OCR 还没实现（L-13）。
+    """
+    return AppleVisionAdapter()
+
+
+def run_auxiliary(
+    directory: Path,
+    page_no: int,
+    *,
+    engine: OcrEngine | None = None,
+) -> dict:
+    """用第二引擎逐行复核一页（说明书 8.5 / R1b）。
+
+    **按第一引擎切出的行图识别**（说明书 8.5 原话）：把每个 `BlockLine` 的 bbox
+    外扩约 2% 裁成小图，交给第二引擎认这一行，然后与第一引擎的文本比对，
+    结果写进 `BlockLine.aux_text` 与 `diff_status`。
+
+    **不生成块**（说明书 8.5：第二引擎只作为行级候选）。辅助识别可以随时重跑，
+    不影响 `Block.text`、审校状态与导出。
+    """
+    secondary = engine or default_secondary_engine()
+    available, reason = secondary.available()
+    if not available:
+        raise EngineUnavailable(f"第二引擎（{secondary.engine_id}）不可用：{reason}")
+
+    source = directory / SOURCE_DIR_NAME / SOURCE_FILE_NAME
+    run_id = new_ulid()
+    now = _now()
+
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        page = conn.execute("SELECT * FROM page WHERE page_no = ?", (page_no,)).fetchone()
+        if page is None:
+            raise ProjectError(f"没有第 {page_no} 页")
+        active = conn.execute(
+            "SELECT * FROM ocr_run WHERE run_id = ?", (page["active_run_id"],)
+        ).fetchone()
+        if active is None:
+            raise ProjectError("这一页还没有第一引擎的结果，先识别再复核")
+        lines = conn.execute(
+            """
+            SELECT l.line_id, l.block_id, l.line_index, l.bbox, l.text
+            FROM block_line l JOIN block b ON b.block_id = l.block_id
+            WHERE b.page_id = ? AND b.deleted_at IS NULL
+            ORDER BY b.order_index, l.line_index
+            """,
+            (page["page_id"],),
+        ).fetchall()
+        if not lines:
+            raise ProjectError("这一页没有可复核的行（块里没有行记录）")
+
+        # 用第一引擎那次的 DPI 渲染：行框是那一次量出来的，换 DPI 就对不上了
+        primary_params = json.loads(active["params_json"] or "{}")
+        dpi = int(primary_params.get("dpi") or DEFAULT_DPI)
+
+        conn.execute(
+            """
+            INSERT INTO ocr_run (
+                run_id, page_id, run_type, engine_id, engine_version, params_json,
+                status, created_at
+            ) VALUES (?, ?, 'auxiliary', ?, ?, ?, 'running', ?)
+            """,
+            (
+                run_id,
+                page["page_id"],
+                secondary.engine_id,
+                secondary.version(),
+                json.dumps({"dpi": dpi, "scope": "block_lines"}, ensure_ascii=False),
+                now,
+            ),
+        )
+        conn.commit()
+
+    try:
+        image = render.render_page_image(source, page_no - 1, dpi=dpi)
+    except render.PdfError as exc:
+        _fail_auxiliary(directory, run_id, ERROR_RENDER_FAILED, str(exc))
+        raise ProjectError(f"这一页渲染失败：{exc}") from exc
+
+    width, height = image.size
+    results: list[dict] = []
+    counts = {compare_module.IDENTICAL: 0, compare_module.FORMAT_ONLY_DIFFERS: 0, compare_module.DIFFERS: 0}
+    started_clock = datetime.now(timezone.utc)
+    try:
+        for row in lines:
+            bbox = blocks_module.bbox_from_json(row["bbox"])
+            aux_text = ""
+            if bbox is not None:
+                crop = _crop_line(image, blocks_module.BBox(*bbox))
+                try:
+                    aux_text = _read_one_line(secondary, crop)
+                finally:
+                    crop.close()
+            status = (
+                compare_module.compare_line(row["text"] or "", aux_text)
+                if aux_text
+                else compare_module.DIFFERS
+            )
+            counts[status] = counts.get(status, 0) + 1
+            results.append(
+                {
+                    "line_id": row["line_id"],
+                    "block_id": row["block_id"],
+                    "line_index": int(row["line_index"]),
+                    "text": row["text"] or "",
+                    "aux_text": aux_text,
+                    "diff_status": status,
+                }
+            )
+    finally:
+        image.close()
+
+    elapsed = (datetime.now(timezone.utc) - started_clock).total_seconds()
+    raw_path = directory / OCR_RUNS_DIR_NAME / f"{run_id}.json"
+    try:
+        raw_path.write_text(
+            json.dumps(
+                {
+                    "schema": RAW_SCHEMA_ID,
+                    "run_id": run_id,
+                    "run_type": "auxiliary",
+                    "page_no": page_no,
+                    "engine_id": secondary.engine_id,
+                    "engine_version": secondary.version(),
+                    "dpi": dpi,
+                    "line_count": len(results),
+                    "line_results": [
+                        {
+                            "block_id": item["block_id"],
+                            "line_index": item["line_index"],
+                            "text": item["text"],
+                            "aux_text": item["aux_text"],
+                            "diff_status": item["diff_status"],
+                        }
+                        for item in results
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        _fail_auxiliary(directory, run_id, ERROR_PERSIST_FAILED, f"写辅助识别输出失败：{exc}")
+        raise ProjectError(f"写辅助识别输出失败：{exc}") from exc
+
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        for item in results:
+            conn.execute(
+                "UPDATE block_line SET aux_text = ?, diff_status = ? WHERE line_id = ?",
+                (item["aux_text"], item["diff_status"], item["line_id"]),
+            )
+        conn.execute(
+            """
+            UPDATE ocr_run SET status = 'succeeded', finished_at = ?, elapsed_seconds = ?,
+                               raw_result_path = ?
+            WHERE run_id = ?
+            """,
+            (_now(), round(elapsed, 3), f"{OCR_RUNS_DIR_NAME}/{run_id}.json", run_id),
+        )
+        conn.execute("UPDATE project SET updated_at = ?", (_now(),))
+        conn.commit()
+
+    return {
+        "run_id": run_id,
+        "engine_id": secondary.engine_id,
+        "engine_version": secondary.version(),
+        "page_no": page_no,
+        "dpi": dpi,
+        "line_count": len(results),
+        "identical": counts.get(compare_module.IDENTICAL, 0),
+        "format_only_differs": counts.get(compare_module.FORMAT_ONLY_DIFFERS, 0),
+        "differs": counts.get(compare_module.DIFFERS, 0),
+        "elapsed_seconds": round(elapsed, 3),
+        "raw_result_path": f"{OCR_RUNS_DIR_NAME}/{run_id}.json",
+        "differences": [item for item in results if item["diff_status"] != compare_module.IDENTICAL],
+    }
+
+
+def _crop_line(image, bbox: blocks_module.BBox):
+    """按行框裁一张小图（说明书 8.5：外扩约 2% 以保留笔画）。"""
+    width, height = image.size
+    expanded = bbox.expanded(AUX_LINE_PADDING)
+    left = max(0, int(expanded.x0 * width) - 2)
+    top = max(0, int(expanded.y0 * height) - 2)
+    right = min(width, int(expanded.x1 * width) + 2)
+    bottom = min(height, int(expanded.y1 * height) + 2)
+    if right <= left or bottom <= top:  # pragma: no cover - 退化框
+        raise ProjectError("行框太小，裁不出图")
+    return image.crop((left, top, right, bottom))
+
+
+def _read_one_line(engine: OcrEngine, crop) -> str:
+    """一张行图 → 一行文本。引擎可能返回多段（把一行拆开），取最长的那段。"""
+    try:
+        result = engine.recognize(crop, OcrParams(dpi=0))
+    except OcrEngineError:
+        return ""
+    texts = [line.text.strip() for line in result.lines if line.text.strip()]
+    if not texts:
+        return ""
+    return max(texts, key=len)
+
+
+def _fail_auxiliary(directory: Path, run_id: str, error_code: str, message: str) -> None:
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        conn.execute(
+            """
+            UPDATE ocr_run SET status = 'failed', error_code = ?, error_message = ?, finished_at = ?
+            WHERE run_id = ?
+            """,
+            (error_code, message, _now(), run_id),
+        )
+        conn.commit()
 
 
 # ---------------------------------------------------------------- 跑任务（子进程）

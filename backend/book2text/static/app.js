@@ -179,6 +179,103 @@ function renderLimits(info) {
   ]);
 }
 
+// ---------------------------------------------------------------- 第二引擎复核（说明书 8.5）
+
+let auxData = null;
+
+async function runAuxiliary() {
+  if (!currentProject || detailPageNo === null) return;
+  const pageNo = detailPageNo;
+  el("page-detail-error").hidden = true;
+  setSaveState("第二引擎复核中…");
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${pageNo}/auxiliary`,
+      { method: "POST" }
+    );
+    auxData = data;
+    setSaveState("复核完成");
+    renderAuxiliary(data);
+    await loadPageDetail(pageNo);
+  } catch (error) {
+    if (error.code === "secondary_engine_unavailable") {
+      showError(el("page-detail-error"), error);
+      setSaveState("第二引擎不可用", true);
+      return;
+    }
+    showError(el("page-detail-error"), error);
+    setSaveState("复核失败", true);
+  }
+}
+
+function renderAuxiliary(data) {
+  el("aux-panel").hidden = false;
+  el("aux-summary").textContent =
+    `${data.engine_id} ${data.engine_version} · ${data.line_count} 行 · ` +
+    `一致 ${data.identical} / 仅格式 ${data.format_only_differs} / 有分歧 ${data.differs} · ` +
+    `${data.elapsed_seconds} 秒`;
+  el("aux-hint").textContent =
+    "第二引擎按第一引擎切出的行图逐行复核。**实测它比第一引擎弱**" +
+    "（中文正文 CER 2.16% vs 1.08%，主要是标点习惯不同），" +
+    "所以这里的候选只作参考：觉得它对的，点「采用这一路」把这一行换成它的文本（可撤销）。";
+
+  const list = el("aux-lines");
+  list.innerHTML = "";
+  const differing = (data.differences || []).filter((item) => item.diff_status === "differs");
+  if (!differing.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent =
+      data.differences && data.differences.length
+        ? "没有实质分歧（只有格式差异）。"
+        : "这一页两路完全一致。";
+    list.append(empty);
+    return;
+  }
+  for (const item of differing) {
+    const li = document.createElement("li");
+    const pair = document.createElement("div");
+    pair.className = "aux-pair";
+    const a = document.createElement("div");
+    a.className = "aux-a";
+    a.textContent = `第一引擎：${item.text || "（空）"}`;
+    const b = document.createElement("div");
+    b.className = "aux-b";
+    b.textContent = `第二引擎：${item.aux_text || "（没读出来）"}`;
+    pair.append(a, b);
+
+    const actions = document.createElement("div");
+    actions.className = "aux-actions";
+    const adopt = document.createElement("button");
+    adopt.type = "button";
+    adopt.className = "btn btn--ghost";
+    adopt.textContent = "采用这一路";
+    adopt.title = "把这一行换成第二引擎的文本（一次普通编辑，可撤销）";
+    const block = (data.blocks || []).find((item2) => item2.block_id === item.block_id);
+    adopt.addEventListener("click", () => adoptAuxLine(block, item));
+    actions.append(adopt);
+
+    li.append(pair, actions);
+    list.append(li);
+  }
+}
+
+/** 采用第二引擎的这一行：把块文本里对应那一行换掉（走普通改块接口，可撤销）。 */
+async function adoptAuxLine(block, item) {
+  if (!block) return;
+  const lines = block.text.split("\n");
+  if (item.line_index >= lines.length) return;
+  lines[item.line_index] = item.aux_text;
+  await patchBlock(block, { text: lines.join("\n") });
+}
+
+function setupAuxControls() {
+  el("aux-run").addEventListener("click", runAuxiliary);
+  el("aux-close").addEventListener("click", () => {
+    el("aux-panel").hidden = true;
+  });
+}
+
 // ---------------------------------------------------------------- 结构工具（页眉 / 页脚 / 页码）
 
 let structureCandidates = [];      // 预览结果（含用户逐个取消的状态）
@@ -1675,6 +1772,8 @@ async function openPageDetail(pageNo) {
 function closePageDetail() {
   detailPageNo = null;
   candidateRunId = null;
+  auxData = null;
+  el("aux-panel").hidden = true;
   el("candidate-panel").hidden = true;
   el("page-detail").hidden = true;
 }
@@ -2395,6 +2494,7 @@ function setupLibrary() {
   el("project-close").addEventListener("click", closeProject);
   el("detail-close").addEventListener("click", closePageDetail);
   setupReviewControls();
+  setupAuxControls();
   el("recognize-pending").addEventListener("click", () => startBatchRecognition("unrecognized"));
   setupTaskDrawer();
 

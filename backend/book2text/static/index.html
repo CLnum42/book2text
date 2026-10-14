@@ -301,10 +301,22 @@
           <button type="button" id="review-redo" class="btn btn--ghost" title="重做（⇧⌘/Ctrl + Z）">重做</button>
           <button type="button" id="review-confirm" class="btn btn--primary"
                   title="确认本页（⌘/Ctrl + Enter）">确认本页并下一页</button>
+          <button type="button" id="aux-run" class="btn">第二引擎复核</button>
           <button type="button" id="detail-recognize" class="btn">重新识别</button>
           <button type="button" id="detail-close" class="btn btn--ghost">收起</button>
         </div>
         <div class="alert alert--info" id="review-banner" hidden></div>
+        <div class="aux-panel" id="aux-panel" hidden>
+          <div class="aux-panel__head">
+            <strong>第二引擎（Apple Vision）逐行复核</strong>
+            <span class="muted" id="aux-summary"></span>
+            <span class="spacer"></span>
+            <button type="button" id="aux-close" class="btn btn--ghost">收起</button>
+          </div>
+          <p class="hint" id="aux-hint"></p>
+          <ol class="aux-lines" id="aux-lines"></ol>
+        </div>
+
         <div class="review-inline" id="candidate-entry" hidden>
           <button type="button" id="candidate-open" class="btn">对比新结果</button>
         </div>

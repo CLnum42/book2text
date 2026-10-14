@@ -98,10 +98,15 @@ def _history(request: Request) -> ReviewHistory:
 
 
 def _block_payload(block: blocks_module.BlockRecord, lines) -> dict[str, Any]:
-    return {
+    payload = {
         **block.to_dict(),
         "lines": [line.to_dict() for line in lines],
     }
+    # 第二引擎的分歧行（说明书 8.5）：界面据此提示"这一块有 N 行两路不一致"
+    payload["diff_line_count"] = sum(
+        1 for line in lines if line.diff_status and line.diff_status != "identical"
+    )
+    return payload
 
 
 def _page_blocks_payload(request: Request, project_id: str, page_no: int) -> dict[str, Any]:
@@ -430,6 +435,30 @@ def delete_block(request: Request, project_id: str, block_id: str) -> dict[str, 
         "review": payload["review"],
         "history": payload["history"],
     }
+
+
+# ---------------------------------------------------------------- 第二引擎（说明书 8.5 / R1b）
+
+
+@router.post("/{project_id}/pages/{page_no}/auxiliary")
+def run_auxiliary(request: Request, project_id: str, page_no: int) -> dict[str, Any]:
+    """用第二引擎逐行复核这一页（按第一引擎切出的行图）。
+
+    返回两份文本的比对结果：逐行相同的、只有格式差异的、真正有分歧的。
+    **不改任何块**——第二引擎只作为行级候选（说明书 8.5）。
+    """
+    library = _library(request)
+    directory = project_library.project_dir(library, project_id)
+    try:
+        result = recognition.run_auxiliary(directory, page_no)
+    except recognition.EngineUnavailable as exc:
+        raise AppError(503, "secondary_engine_unavailable", "第二引擎不可用", detail=str(exc)) from exc
+    except project_library.ProjectError as exc:
+        status = 404 if not project_library.project_exists(project_id, library=library) else 400
+        raise _project_error(exc, status=status) from exc
+
+    payload = _page_blocks_payload(request, project_id, page_no)
+    return {**result, "blocks": payload["blocks"]}
 
 
 # ---------------------------------------------------------------- 确认整页

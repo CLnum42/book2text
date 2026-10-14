@@ -13,3 +13,5 @@ from .rapidocr import RapidOcrAdapter
 ADAPTERS = (RapidOcrAdapter,)
 
 __all__ = ["RapidOcrAdapter", "ADAPTERS"]
+
+from .apple_vision import AppleVisionAdapter  # noqa: E402
