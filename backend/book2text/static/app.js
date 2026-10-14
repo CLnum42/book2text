@@ -1691,6 +1691,8 @@ let detailPageNo = null;
 let detailImagePageNo = null;
 let reviewBlocks = [];
 let reviewSaveTimer = null;
+/** 每个块编辑框最后的光标位置：拆分要用它（点菜单会让编辑框失焦）。 */
+const cursorByBlock = new Map();
 
 const BLOCK_TYPE_LABELS = {
   heading: "标题", paragraph: "段落", header: "页眉", footer: "页脚",
@@ -1843,7 +1845,7 @@ function drawDetailOverlay(blocks) {
   });
 }
 
-function blockCard(block, index) {
+function blockCard(block, index, blocksCount) {
   const item = document.createElement("li");
   item.className = "review-block";
   item.dataset.blockId = block.block_id;
@@ -1895,6 +1897,14 @@ function blockCard(block, index) {
   textarea.value = block.text;
   textarea.rows = textRows(block.text);
   textarea.spellcheck = false;
+  // 拆分要用"光标在哪"，而点菜单会让编辑框失焦，因此先把位置记下来
+  const rememberCursor = () => {
+    cursorByBlock.set(block.block_id, textarea.selectionStart || 0);
+  };
+  textarea.addEventListener("select", rememberCursor);
+  textarea.addEventListener("keyup", rememberCursor);
+  textarea.addEventListener("click", rememberCursor);
+  textarea.addEventListener("blur", rememberCursor);
   textarea.addEventListener("input", () => {
     textarea.rows = textRows(textarea.value);
     scheduleBlockSave(block, textarea.value);
@@ -1954,6 +1964,73 @@ function blockCard(block, index) {
     });
   }
 
+  // "⋯ 更多"：结构操作（说明书 6.4 的合并 / 拆分 / 上移下移 / 新增 / 删除）
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "btn btn--ghost review-block__more";
+  more.textContent = "⋯ 更多";
+  more.title = "结构操作：合并 / 拆分 / 上移下移 / 新增 / 删除";
+  const menu = document.createElement("div");
+  menu.className = "review-menu";
+  menu.hidden = true;
+  more.addEventListener("click", (event) => {
+    event.stopPropagation();
+    // 同时只开一个菜单（先记下要不要开，再统一设状态——反着写会把刚打开的又关掉）
+    const willOpen = menu.hidden;
+    for (const other of document.querySelectorAll("#detail-blocks .review-menu")) {
+      other.hidden = true;
+    }
+    menu.hidden = !willOpen;
+  });
+
+  const menuItem = (label, title, onClick, disabled = false) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "review-menu__item";
+    button.textContent = label;
+    button.title = title;
+    button.disabled = disabled;
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      menu.hidden = true;
+      onClick();
+    });
+    menu.append(button);
+    return button;
+  };
+  menuItem(
+    "与上一块合并",
+    "合并到上一块：文本以换行连接、坐标取并集（说明书 R4）",
+    () => structureAction(block, "merge-prev"),
+    index === 0
+  );
+  menuItem(
+    "在光标处拆分",
+    "在编辑框里的光标位置切开这一块（先把光标放到要拆开的地方）",
+    () => structureAction(block, "split", { offset: cursorByBlock.get(block.block_id) })
+  );
+  menuItem("上移", "与上一块交换位置", () => structureAction(block, "move", { direction: "up" }), index === 0);
+  menuItem(
+    "下移",
+    "与下一块交换位置",
+    () => structureAction(block, "move", { direction: "down" }),
+    index === blocksCount - 1
+  );
+  menuItem("在此块后新增一块", "新增一个空块（没有位置信息，可在图上框选位置待做）", () =>
+    structureAction(block, "create")
+  );
+  menuItem(
+    "删除这一块",
+    "软删除：块不会真的消失，撤销可以恢复（说明书 5.1）",
+    () => {
+      if (window.confirm("删除这一块？删除是软删除，可以用「撤销」恢复。")) {
+        structureAction(block, "delete");
+      }
+    }
+  );
+  actions.append(more);
+  item.append(menu);
+
   const original = document.createElement("pre");
   original.className = "review-block__original";
   original.hidden = true;
@@ -1977,7 +2054,7 @@ function renderReviewBlocks(blocks) {
     list.append(empty);
     return;
   }
-  blocks.forEach((block, index) => list.append(blockCard(block, index)));
+  blocks.forEach((block, index) => list.append(blockCard(block, index, blocks.length)));
 }
 
 function selectReviewBlock(blockId) {
@@ -2041,6 +2118,61 @@ async function patchBlock(block, patch) {
   }
 }
 
+/** 结构操作：合并 / 拆分 / 上移下移 / 新增 / 删除（都改结构，都能撤销）。 */
+async function structureAction(block, operation, payload = {}) {
+  if (!currentProject) return;
+  const projectId = currentProject.project_id;
+  setSaveState("处理中…");
+  try {
+    let data;
+    if (operation === "merge-prev") {
+      data = await apiJson(`/api/projects/${projectId}/blocks/${block.block_id}/merge-prev`, {
+        method: "POST",
+      });
+    } else if (operation === "split") {
+      if (!payload.offset) {
+        setSaveState("先把光标放到要拆开的位置", true);
+        return;
+      }
+      data = await apiJson(`/api/projects/${projectId}/blocks/${block.block_id}/split`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offset: payload.offset }),
+      });
+    } else if (operation === "move") {
+      data = await apiJson(`/api/projects/${projectId}/blocks/${block.block_id}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction: payload.direction }),
+      });
+    } else if (operation === "create") {
+      data = await apiJson(`/api/projects/${projectId}/pages/${detailPageNo}/blocks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_no: detailPageNo, after_block_id: block.block_id }),
+      });
+    } else if (operation === "delete") {
+      data = await apiJson(`/api/projects/${projectId}/blocks/${block.block_id}`, {
+        method: "DELETE",
+      });
+    }
+    cursorByBlock.clear();
+    setSaveState("已保存 ✓");
+    await loadPageDetail(detailPageNo);
+    await refreshPageStates();
+    // 新增的块直接聚焦，省一次点击
+    if (operation === "create" && data && data.created) {
+      const item = el("detail-blocks").querySelector(
+        `li[data-block-id="${data.created.block_id}"]`
+      );
+      if (item) item.querySelector("textarea").focus();
+    }
+  } catch (error) {
+    setSaveState(error.message || "操作失败", true);
+    showError(el("page-detail-error"), error);
+  }
+}
+
 async function reviewAction(path) {
   if (!currentProject) return null;
   el("page-detail-error").hidden = true;
@@ -2093,6 +2225,12 @@ function nextUnfinishedPage(afterPageNo) {
 }
 
 function setupReviewControls() {
+  // 点别处关掉所有"⋯ 更多"菜单（只挂一次，别每次渲染都加一个监听）
+  document.addEventListener("click", () => {
+    for (const menu of document.querySelectorAll("#detail-blocks .review-menu")) {
+      menu.hidden = true;
+    }
+  });
   el("review-confirm").addEventListener("click", confirmCurrentPage);
   el("review-undo").addEventListener("click", () => reviewAction("undo"));
   el("review-redo").addEventListener("click", () => reviewAction("redo"));

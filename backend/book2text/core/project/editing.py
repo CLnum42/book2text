@@ -33,6 +33,12 @@ ACTION_SET_STATUS = "set_status"
 ACTION_SET_TYPE = "set_type"
 ACTION_SET_INCLUDE = "set_include"
 ACTION_SET_CONTINUES = "set_continues"
+ACTION_MERGE = "merge"
+ACTION_SPLIT = "split"
+ACTION_REORDER = "reorder"
+ACTION_CREATE = "create"
+ACTION_DELETE = "delete"
+ACTION_MOVE_LINE = "move_line"
 
 REVIEW_STATUSES = ("unreviewed", "confirmed", "uncertain")
 
@@ -246,6 +252,14 @@ def update_block(
     return block, events
 
 
+# 事件里的 entity_type → (表名, 主键列, 取行用的 SQL)
+# 撤销时按这个表把 `before` 写回去，因此**事件里的每个键都必须是真实列名**。
+_TABLES = {
+    "block": ("block", "block_id"),
+    "block_line": ("block_line", "line_id"),
+}
+
+
 def _column_value(row, name: str):
     value = row[name]
     if name in ("include", "continues_to_next"):
@@ -255,6 +269,44 @@ def _column_value(row, name: str):
 
 def _store(value):
     return int(value) if isinstance(value, bool) else value
+
+
+def _entity_row(conn, entity_type: str, entity_id: str):
+    """取一行（块要带上 page_no 与 page_id，撤销后要告诉界面哪些页变了）。"""
+    if entity_type not in _TABLES:
+        raise ProjectError(f"事件里出现未知的实体类型：{entity_type!r}")
+    if entity_type == "block":
+        return conn.execute(
+            """
+            SELECT b.*, p.page_no FROM block b JOIN page p ON p.page_id = b.page_id
+            WHERE b.block_id = ?
+            """,
+            (entity_id,),
+        ).fetchone()
+    return conn.execute(
+        """
+        SELECT l.*, b.page_id, p.page_no
+        FROM block_line l
+        JOIN block b ON b.block_id = l.block_id
+        JOIN page p ON p.page_id = b.page_id
+        WHERE l.line_id = ?
+        """,
+        (entity_id,),
+    ).fetchone()
+
+
+def _apply_values(conn, entity_type: str, entity_id: str, values: dict, now: str) -> bool:
+    """把一组字段写到某个实体上（撤销 / 重做都走这里）。返回是否找到了那一行。"""
+    table, key = _TABLES[entity_type]
+    assignments = ", ".join(f"{name} = ?" for name in values)
+    sql = f"UPDATE {table} SET {assignments}"
+    if entity_type == "block":
+        sql += ", revision = revision + 1, updated_at = ?"
+    cursor = conn.execute(
+        f"{sql} WHERE {key} = ?",
+        (*[_store(value) for value in values.values()], *((now, entity_id) if entity_type == "block" else (entity_id,))),
+    )
+    return cursor.rowcount > 0
 
 
 def _read_block(conn, block_id: str) -> blocks_module.BlockRecord:
@@ -359,6 +411,547 @@ def confirm_page(
     )
 
 
+# ---------------------------------------------------------------- 结构编辑（说明书 6.4 / R4）
+#
+# 五个操作：与上一块合并、在光标处拆分、上移 / 下移、新增、删除（软删除）。
+# 全部落在同一套机制上：改行 → 记事件 → 可撤销。
+#
+# **位置近似的标记：** 说明书写"拆分后两块暂沿用原 bbox，并标记为'位置近似'"、
+# 合并后 bbox 取并集。这里用 `origin`（ocr / manual / split / merge）承担这个标记——
+# 它不是引擎在那一块上量出来的坐标，界面对 split / merge 的块显示"位置近似"。
+
+
+def _insert_block(
+    conn,
+    *,
+    page_id: str,
+    origin: str,
+    order_index: int,
+    bbox: str | None,
+    text: str,
+    ocr_text: str = "",
+    origin_run_id: str | None = None,
+    include: int = 1,
+    continues_to_next: int = 0,
+    block_type: str = "paragraph",
+    action: str,
+    batch_id: str,
+    actor_name: str | None,
+    now: str,
+) -> tuple[str, list[Event]]:
+    """新增一个块。
+
+    **先以软删除状态插入，再把"恢复可见"记成一条普通事件**：这样撤销一次新增
+    仍然只是"把 `deleted_at` 写回去"，撤销机制里不需要为"新块"开特例。
+    """
+    block_id = new_ulid()
+    conn.execute(
+        """
+        INSERT INTO block (
+            block_id, page_id, origin_run_id, origin, order_index, bbox, block_type,
+            ocr_text, text, review_status, include, continues_to_next, confidence,
+            revision, created_at, updated_at, deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unreviewed', ?, ?, NULL, 0, ?, ?, ?)
+        """,
+        (
+            block_id,
+            page_id,
+            origin_run_id,
+            origin,
+            order_index,
+            bbox,
+            block_type,
+            ocr_text,
+            text,
+            include,
+            continues_to_next,
+            now,
+            now,
+            now,
+        ),
+    )
+    events, _ = _set_block_fields(
+        conn,
+        block_id,
+        {"deleted_at": None},
+        batch_id=batch_id,
+        action=action,
+        actor_name=actor_name,
+        now=now,
+    )
+    return block_id, events
+
+
+def _page_blocks(conn, page_id: str) -> list:
+    """这一页当前有效的块，按阅读顺序。"""
+    return conn.execute(
+        """
+        SELECT b.*, p.page_no FROM block b JOIN page p ON p.page_id = b.page_id
+        WHERE b.page_id = ? AND b.deleted_at IS NULL
+        ORDER BY b.order_index, b.block_id
+        """,
+        (page_id,),
+    ).fetchall()
+
+
+def _block_of(conn, block_id: str):
+    return _entity_row(conn, "block", block_id)
+
+
+def _lines_of(conn, block_id: str) -> list:
+    return conn.execute(
+        "SELECT * FROM block_line WHERE block_id = ? ORDER BY line_index", (block_id,)
+    ).fetchall()
+
+
+def _union_bbox(left: str | None, right: str | None) -> str | None:
+    """两个 JSON bbox 取并集；任一为空则取另一个。"""
+    if not left:
+        return right
+    if not right:
+        return left
+    a = blocks_module.bbox_from_json(left)
+    b = blocks_module.bbox_from_json(right)
+    if a is None:
+        return right
+    if b is None:
+        return left
+    return json.dumps(
+        [
+            round(min(a[0], b[0]), 6),
+            round(min(a[1], b[1]), 6),
+            round(max(a[2], b[2]), 6),
+            round(max(a[3], b[3]), 6),
+        ]
+    )
+
+
+def _set_block_fields(
+    conn, block_id: str, values: dict, *, batch_id: str, action: str, actor_name: str | None, now: str
+) -> tuple[list[Event], dict]:
+    """改一个块的若干字段并记事件（结构编辑内部用；返回事件与改动前的值）。"""
+    row = _block_of(conn, block_id)
+    before = {name: _column_value(row, name) for name in values}
+    if before == values:
+        return [], before
+    _apply_values(conn, "block", block_id, values, now)
+    # 一次改多个字段时记多条同类事件（与 update_block 一致）：撤销时逐字段写回去
+    events = [
+        _record(
+            conn,
+            entity_type="block",
+            entity_id=block_id,
+            action=action,
+            before={name: before[name]},
+            after={name: values[name]},
+            batch_id=batch_id,
+            actor_name=actor_name,
+        )
+        for name in values
+    ]
+    return events, before
+
+
+def merge_with_previous(
+    project_id: str,
+    block_id: str,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+) -> tuple[blocks_module.BlockRecord, list[Event]]:
+    """把这一块合并到**上一块**里（说明书 R4）。
+
+    R4 的规定：文本以 `\\n` 连接、bbox 取并集、`ocr_text` 同样合并、来源块记在事件里。
+    行记录也一起搬过去（说明书 5.3：合并时"行记录随文本拼接保留原 bbox"），
+    否则合并后的块会缺一半行级坐标。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        lower = _block_of(conn, block_id)
+        if lower is None or lower["deleted_at"]:
+            raise ProjectError(f"找不到块：{block_id}")
+
+        siblings = _page_blocks(conn, lower["page_id"])
+        index = next(i for i, row in enumerate(siblings) if row["block_id"] == block_id)
+        if index == 0:
+            raise ProjectError("这一块已经是本页第一块，前面没有可合并的块")
+        upper = siblings[index - 1]
+
+        events: list[Event] = []
+        # 文本 / 原文 / 坐标 / 来源（R4）
+        merged_text = f"{upper['text']}\n{lower['text']}"
+        merged_ocr = f"{upper['ocr_text'] or ''}\n{lower['ocr_text'] or ''}".lstrip("\n")
+        # 审校状态：两边都已确认才算已确认，否则回到未审（合并改变了内容）
+        merged_status = (
+            "confirmed"
+            if upper["review_status"] == lower["review_status"] == "confirmed"
+            else "unreviewed"
+        )
+        merged_values = {
+            "text": merged_text,
+            "ocr_text": merged_ocr,
+            "bbox": _union_bbox(upper["bbox"], lower["bbox"]),
+            "origin": "merge",
+            "review_status": merged_status,
+            "include": int(bool(upper["include"]) or bool(lower["include"])),
+            "continues_to_next": int(
+                bool(upper["continues_to_next"]) or bool(lower["continues_to_next"])
+            ),
+        }
+        block_events, _ = _set_block_fields(
+            conn,
+            upper["block_id"],
+            merged_values,
+            batch_id=batch_id,
+            action=ACTION_MERGE,
+            actor_name=actor_name,
+            now=now,
+        )
+        events.extend(block_events)
+
+        # 行记录搬过去：line_index 接在上一块后面
+        upper_lines = _lines_of(conn, upper["block_id"])
+        offset = len(upper_lines)
+        for line in _lines_of(conn, lower["block_id"]):
+            _apply_values(
+                conn,
+                "block_line",
+                line["line_id"],
+                {"block_id": upper["block_id"], "line_index": line["line_index"] + offset},
+                now,
+            )
+            events.append(
+                _record(
+                    conn,
+                    entity_type="block_line",
+                    entity_id=line["line_id"],
+                    action=ACTION_MOVE_LINE,
+                    before={"block_id": lower["block_id"], "line_index": line["line_index"]},
+                    after={
+                        "block_id": upper["block_id"],
+                        "line_index": line["line_index"] + offset,
+                    },
+                    batch_id=batch_id,
+                    actor_name=actor_name,
+                )
+            )
+
+        # 被合并掉的那一块软删除（说明书 5.1：删除一律软删除）
+        delete_events, _ = _set_block_fields(
+            conn,
+            lower["block_id"],
+            {"deleted_at": now},
+            batch_id=batch_id,
+            action=ACTION_DELETE,
+            actor_name=actor_name,
+            now=now,
+        )
+        events.extend(delete_events)
+
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        merged = _read_block(conn, upper["block_id"])
+
+    return merged, events
+
+
+def split_block(
+    project_id: str,
+    block_id: str,
+    *,
+    library: Path | None = None,
+    offset: int,
+    actor_name: str | None = None,
+) -> tuple[list[blocks_module.BlockRecord], list[Event]]:
+    """在**文本的第 offset 个字符处**切开这一块（说明书 R4 / 6.4）。
+
+    R4 的规定：两块暂沿用原 bbox；被从中间切开的**行**清空 bbox 与分歧信息。
+    行按位置分配：光标前的行归前块、光标后的行归后块。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        row = _block_of(conn, block_id)
+        if row is None or row["deleted_at"]:
+            raise ProjectError(f"找不到块：{block_id}")
+        text = row["text"] or ""
+        if not 0 < offset < len(text):
+            raise ProjectError(f"拆分位置必须在 0 与 {len(text)} 之间，收到 {offset}")
+
+        head_text, tail_text = text[:offset], text[offset:]
+        ocr = row["ocr_text"] or ""
+        head_ocr, tail_ocr = ocr[:offset], ocr[offset:]
+
+        # 光标落在哪一行：用它决定行的归属，并找出"被从中间切开"的那一行
+        cut_in_middle = not head_text.endswith("\n")
+        # 前块保留的行数：正好切在行边界时是 newline 数；切在行中间时那一行归前块，
+        # 因此再多一行（它的坐标会被清掉——它不再精确对应任何半边）
+        head_line_count = head_text.count("\n") + (1 if cut_in_middle else 0)
+
+        events: list[Event] = []
+        head_events, _ = _set_block_fields(
+            conn,
+            block_id,
+            {"text": head_text, "ocr_text": head_ocr, "continues_to_next": 0},
+            batch_id=batch_id,
+            action=ACTION_SPLIT,
+            actor_name=actor_name,
+            now=now,
+        )
+        events.extend(head_events)
+
+        # 后面的块整体后移一位，给新块腾出位置
+        siblings = _page_blocks(conn, row["page_id"])
+        index = next(i for i, item in enumerate(siblings) if item["block_id"] == block_id)
+        for shifted in siblings[index + 1 :]:
+            shift_events, _ = _set_block_fields(
+                conn,
+                shifted["block_id"],
+                {"order_index": int(shifted["order_index"]) + 1},
+                batch_id=batch_id,
+                action=ACTION_REORDER,
+                actor_name=actor_name,
+                now=now,
+            )
+            events.extend(shift_events)
+
+        new_block_id, new_events = _insert_block(
+            conn,
+            page_id=row["page_id"],
+            origin="split",
+            order_index=int(row["order_index"]) + 1,
+            bbox=row["bbox"],  # R4：两块暂沿用原 bbox
+            text=tail_text,
+            ocr_text=tail_ocr,
+            origin_run_id=row["origin_run_id"],
+            include=int(row["include"]),
+            continues_to_next=int(row["continues_to_next"]),
+            block_type=row["block_type"],
+            action=ACTION_SPLIT,
+            batch_id=batch_id,
+            actor_name=actor_name,
+            now=now,
+        )
+        events.extend(new_events)
+
+        # 行分配：光标前的归前块，光标后的归后块，被切开的行清空坐标
+        lines = _lines_of(conn, block_id)
+        for line in lines:
+            index_in_block = int(line["line_index"])
+            if index_in_block < head_line_count:
+                if index_in_block == head_line_count - 1 and cut_in_middle and line["bbox"]:
+                    _apply_values(conn, "block_line", line["line_id"], {"bbox": None}, now)
+                    events.append(
+                        _record(
+                            conn,
+                            entity_type="block_line",
+                            entity_id=line["line_id"],
+                            action=ACTION_SPLIT,
+                            before={"bbox": line["bbox"]},
+                            after={"bbox": None},
+                            batch_id=batch_id,
+                            actor_name=actor_name,
+                        )
+                    )
+                continue
+            new_index = index_in_block - head_line_count
+            _apply_values(
+                conn,
+                "block_line",
+                line["line_id"],
+                {"block_id": new_block_id, "line_index": new_index},
+                now,
+            )
+            events.append(
+                _record(
+                    conn,
+                    entity_type="block_line",
+                    entity_id=line["line_id"],
+                    action=ACTION_MOVE_LINE,
+                    before={"block_id": block_id, "line_index": index_in_block},
+                    after={"block_id": new_block_id, "line_index": new_index},
+                    batch_id=batch_id,
+                    actor_name=actor_name,
+                )
+            )
+
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        head = _read_block(conn, block_id)
+        tail = _read_block(conn, new_block_id)
+
+    return [head, tail], events
+
+
+def move_block(
+    project_id: str,
+    block_id: str,
+    *,
+    library: Path | None = None,
+    direction: str,
+    actor_name: str | None = None,
+) -> tuple[blocks_module.BlockRecord, list[Event]]:
+    """与相邻的一块交换位置（说明书 6.4 的上移 / 下移）。"""
+    if direction not in ("up", "down"):
+        raise ProjectError(f"未知的方向：{direction!r}")
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        row = _block_of(conn, block_id)
+        if row is None or row["deleted_at"]:
+            raise ProjectError(f"找不到块：{block_id}")
+        siblings = _page_blocks(conn, row["page_id"])
+        index = next(i for i, item in enumerate(siblings) if item["block_id"] == block_id)
+        target_index = index - 1 if direction == "up" else index + 1
+        if not 0 <= target_index < len(siblings):
+            raise ProjectError("已经到头了，不能再移")
+
+        other = siblings[target_index]
+        events: list[Event] = []
+        for source, target in ((row, other), (other, row)):
+            source_events, _ = _set_block_fields(
+                conn,
+                source["block_id"],
+                {"order_index": int(target["order_index"])},
+                batch_id=batch_id,
+                action=ACTION_REORDER,
+                actor_name=actor_name,
+                now=now,
+            )
+            events.extend(source_events)
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        moved = _read_block(conn, block_id)
+
+    return moved, events
+
+
+def create_block(
+    project_id: str,
+    page_no: int,
+    *,
+    library: Path | None = None,
+    text: str = "",
+    bbox: tuple[float, float, float, float] | None = None,
+    after_block_id: str | None = None,
+    actor_name: str | None = None,
+) -> tuple[blocks_module.BlockRecord, list[Event]]:
+    """新增一个块（说明书 6.4：可框选位置补全 bbox；不框选则"无位置信息"）。
+
+    人工新增的块 `ocr_text` 为空——它没有 OCR 原文，因此界面上的"已修改"标记恒真，
+    这是如实的：它不是识别出来的东西。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        page = conn.execute("SELECT * FROM page WHERE page_no = ?", (page_no,)).fetchone()
+        if page is None:
+            raise ProjectError(f"没有第 {page_no} 页")
+        siblings = _page_blocks(conn, page["page_id"])
+
+        events: list[Event] = []
+        if after_block_id:
+            index = next(
+                (i for i, item in enumerate(siblings) if item["block_id"] == after_block_id), None
+            )
+            if index is None:
+                raise ProjectError(f"找不到块：{after_block_id}")
+            order_index = int(siblings[index]["order_index"]) + 1
+            for shifted in siblings[index + 1 :]:
+                shift_events, _ = _set_block_fields(
+                    conn,
+                    shifted["block_id"],
+                    {"order_index": int(shifted["order_index"]) + 1},
+                    batch_id=batch_id,
+                    action=ACTION_REORDER,
+                    actor_name=actor_name,
+                    now=now,
+                )
+                events.extend(shift_events)
+        else:
+            order_index = (int(siblings[-1]["order_index"]) + 1) if siblings else 0
+
+        block_id, create_events = _insert_block(
+            conn,
+            page_id=page["page_id"],
+            origin="manual",
+            order_index=order_index,
+            bbox=blocks_module.bbox_to_json(blocks_module.BBox(*bbox)) if bbox else None,
+            text=text,
+            action=ACTION_CREATE,
+            batch_id=batch_id,
+            actor_name=actor_name,
+            now=now,
+        )
+        events.extend(create_events)
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        created = _read_block(conn, block_id)
+
+    return created, events
+
+
+def delete_block(
+    project_id: str,
+    block_id: str,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+) -> tuple[list[Event], int]:
+    """软删除一个块（说明书 5.1：删除一律软删除）。返回 (事件, 页码)。"""
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        row = _block_of(conn, block_id)
+        if row is None or row["deleted_at"]:
+            raise ProjectError(f"找不到块：{block_id}")
+        events, _ = _set_block_fields(
+            conn,
+            block_id,
+            {"deleted_at": now},
+            batch_id=batch_id,
+            action=ACTION_DELETE,
+            actor_name=actor_name,
+            now=now,
+        )
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        page_no = int(row["page_no"])
+
+    return events, page_no
+
+
 # ---------------------------------------------------------------- 撤销 / 重做
 
 def revert_events(
@@ -373,6 +966,9 @@ def revert_events(
 
     撤销 = 写回 `before`，重做 = 再写 `after`；两者都**记新事件**（历史保持线性、
     可追溯），并复用原来那批事件的 `batch_id`，这样"撤销掉的这一批"仍然是一批。
+
+    事件可以作用在**块**或**块内行**上（`entity_type` 决定写哪张表）——
+    合并 / 拆分要搬行、要清掉被切开的行的坐标，那些改动同样得能撤销。
 
     返回 (新事件, 涉及的页码集合)。
     """
@@ -395,28 +991,24 @@ def revert_events(
             values = event.before if direction == "undo" else event.after
             if not values:
                 continue
-            row = conn.execute(
-                "SELECT b.*, p.page_no FROM block b JOIN page p ON p.page_id = b.page_id"
-                " WHERE b.block_id = ?",
-                (event.entity_id,),
-            ).fetchone()
-            if row is None:  # pragma: no cover - 块被硬删只可能来自人工改库
+            row = _entity_row(conn, event.entity_type, event.entity_id)
+            if row is None:
+                # 行已经不在了（例如块被硬删、或行随块一起清理过）：
+                # 跳过而不是整批失败——撤销一份被改动的成果，不该因为边上少了一行就全停
                 continue
-            pages.add(int(row["page_no"]))
+            if row["page_no"] is not None:
+                pages.add(int(row["page_no"]))
 
-            assignments = ", ".join(f"{name} = ?" for name in values)
-            conn.execute(
-                f"UPDATE block SET {assignments}, revision = revision + 1, updated_at = ?"
-                f" WHERE block_id = ?",
-                (*[_store(value) for value in values.values()], now, event.entity_id),
-            )
+            before = {name: _column_value(row, name) for name in values}
+            if not _apply_values(conn, event.entity_type, event.entity_id, values, now):
+                continue
             new_events.append(
                 _record(
                     conn,
-                    entity_type="block",
+                    entity_type=event.entity_type,
                     entity_id=event.entity_id,
                     action=event.action,
-                    before={name: _column_value(row, name) for name in values},
+                    before=before,
                     after=dict(values),
                     batch_id=event.batch_id,
                     actor_name=actor_name,
@@ -426,4 +1018,3 @@ def revert_events(
         conn.commit()
 
     return new_events, pages
-

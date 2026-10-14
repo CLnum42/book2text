@@ -14,7 +14,7 @@ from __future__ import annotations
 import threading
 from collections import deque
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
@@ -187,6 +187,151 @@ def patch_block(
     if events:
         _history(request).push(project_id, _Batch(events=tuple(events), page_nos=(block.page_no,)))
     return {"block": block.to_dict(), "events": [event.to_dict() for event in events]}
+
+
+# ---------------------------------------------------------------- 结构编辑
+#
+# 说明书 6.4 的块操作：与上一块合并、在光标处拆分、上移 / 下移、新增、删除。
+# 它们都改结构，因此都记事件、都能撤销（与改文本走同一套机制）。
+
+
+@router.post("/{project_id}/blocks/{block_id}/merge-prev")
+def merge_prev(request: Request, project_id: str, block_id: str) -> dict[str, Any]:
+    """把这一块合并到上一块（说明书 R4：文本与 ocr_text 以 \n 连接、bbox 取并集）。"""
+    library = _library(request)
+    try:
+        merged, events = editing.merge_with_previous(
+            project_id, block_id, library=library
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    _history(request).push(
+        project_id, _Batch(events=tuple(events), page_nos=(merged.page_no,))
+    )
+    payload = _page_blocks_payload(request, project_id, merged.page_no)
+    return {
+        "merged_into": merged.block_id,
+        "blocks": payload["blocks"],
+        "review": payload["review"],
+        "history": payload["history"],
+    }
+
+
+class SplitRequest(BaseModel):
+    # 在文本的第几个字符处切开（界面用编辑框的光标位置）
+    offset: int = Field(ge=1, le=20000)
+
+
+@router.post("/{project_id}/blocks/{block_id}/split")
+def split_block(
+    request: Request, project_id: str, block_id: str, body: SplitRequest
+) -> dict[str, Any]:
+    """在光标处拆成两块（说明书 R4：两块暂沿用原 bbox，行按位置分配）。"""
+    library = _library(request)
+    try:
+        parts, events = editing.split_block(
+            project_id, block_id, library=library, offset=body.offset
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    _history(request).push(
+        project_id, _Batch(events=tuple(events), page_nos=(parts[0].page_no,))
+    )
+    payload = _page_blocks_payload(request, project_id, parts[0].page_no)
+    return {
+        "parts": [part.block_id for part in parts],
+        "blocks": payload["blocks"],
+        "review": payload["review"],
+        "history": payload["history"],
+    }
+
+
+class MoveRequest(BaseModel):
+    direction: Literal["up", "down"]
+
+
+@router.post("/{project_id}/blocks/{block_id}/move")
+def move_block(
+    request: Request, project_id: str, block_id: str, body: MoveRequest
+) -> dict[str, Any]:
+    """与相邻的块交换位置（说明书 6.4 的上移 / 下移）。"""
+    library = _library(request)
+    try:
+        moved, events = editing.move_block(
+            project_id, block_id, library=library, direction=body.direction
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    _history(request).push(
+        project_id, _Batch(events=tuple(events), page_nos=(moved.page_no,))
+    )
+    payload = _page_blocks_payload(request, project_id, moved.page_no)
+    return {
+        "moved": moved.block_id,
+        "blocks": payload["blocks"],
+        "review": payload["review"],
+        "history": payload["history"],
+    }
+
+
+class CreateBlockRequest(BaseModel):
+    page_no: int = Field(ge=1)
+    text: str = Field(default="", max_length=20000)
+    # 框选位置（归一化坐标，说明书 5.2）；不给就按"无位置信息"处理
+    bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    after_block_id: str | None = None
+    actor_name: str | None = Field(default=None, max_length=100)
+
+
+@router.post("/{project_id}/pages/{page_no}/blocks")
+def create_block(
+    request: Request, project_id: str, page_no: int, body: CreateBlockRequest
+) -> dict[str, Any]:
+    """新增一个块（说明书 6.4；不框选位置就按"无位置信息"处理）。"""
+    library = _library(request)
+    bbox = tuple(body.bbox) if body.bbox else None
+    if bbox is not None and not all(0.0 <= value <= 1.0 for value in bbox):
+        raise AppError(400, "bad_bbox", "框选坐标必须是 0–1 的归一化坐标")
+    try:
+        created, events = editing.create_block(
+            project_id,
+            page_no,
+            library=library,
+            text=body.text,
+            bbox=bbox,
+            after_block_id=body.after_block_id,
+            actor_name=body.actor_name,
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    _history(request).push(
+        project_id, _Batch(events=tuple(events), page_nos=(page_no,))
+    )
+    payload = _page_blocks_payload(request, project_id, page_no)
+    return {
+        "created": created.to_dict(),
+        "blocks": payload["blocks"],
+        "review": payload["review"],
+        "history": payload["history"],
+    }
+
+
+@router.delete("/{project_id}/blocks/{block_id}")
+def delete_block(request: Request, project_id: str, block_id: str) -> dict[str, Any]:
+    """软删除一个块（说明书 5.1：删除一律软删除）。"""
+    library = _library(request)
+    try:
+        events, page_no = editing.delete_block(project_id, block_id, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    _history(request).push(project_id, _Batch(events=tuple(events), page_nos=(page_no,)))
+    payload = _page_blocks_payload(request, project_id, page_no)
+    return {
+        "deleted": block_id,
+        "blocks": payload["blocks"],
+        "review": payload["review"],
+        "history": payload["history"],
+    }
 
 
 # ---------------------------------------------------------------- 确认整页

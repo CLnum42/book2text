@@ -412,3 +412,19 @@ main {
 }
 .page-overlay .box--excluded { border-style: dashed; opacity: .5; }
 .page-detail__body .ocr-blocks { gap: 8px; }
+
+/* "⋯ 更多"菜单（结构操作） */
+.review-block__actions { position: relative; }
+.review-menu {
+  position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 30;
+  background: #fff; border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(20,30,50,.16); padding: 4px; min-width: 190px;
+  display: flex; flex-direction: column;
+}
+.review-menu__item {
+  font: inherit; font-size: 12px; text-align: left; padding: 5px 9px;
+  border: 0; background: transparent; border-radius: 6px; cursor: pointer; color: var(--text);
+}
+.review-menu__item:hover:not(:disabled) { background: #f2f5f9; }
+.review-menu__item:disabled { color: var(--muted); opacity: .55; cursor: not-allowed; }
+.review-block { position: relative; }
