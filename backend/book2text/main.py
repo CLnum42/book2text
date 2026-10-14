@@ -71,7 +71,7 @@ def _print_banner(
     available = sum(1 for probe in probes if probe.available)
 
     print()
-    print(f"Book2Text {__version__} — 早期版本（识别结果已落库；批量识别、审校、导出未完成）")
+    print(f"Book2Text {__version__} — 早期版本（识别跑在后台任务里；审校、导出未完成）")
     print(f"平台：{b2t_platform.platform_label()}")
     if not supported:
         print(f"  ✗ 该平台不受支持：{unsupported_reason}")

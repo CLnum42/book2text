@@ -13,6 +13,7 @@
       <span class="tag" id="stage-tag">Phase 2 · 识别已接到项目上</span>
     </div>
     <div class="topbar__meta">
+      <button type="button" id="task-chip" class="badge badge--task" hidden>任务</button>
       <span id="version-label" class="muted">版本读取中…</span>
       <span id="platform-badge" class="badge">平台读取中…</span>
     </div>
@@ -59,6 +60,8 @@
       <div class="page-toolbar">
         <span class="muted" id="page-summary"></span>
         <span class="spacer"></span>
+        <button type="button" id="recognize-pending" class="btn btn--primary">识别全部未识别页</button>
+        <button type="button" id="recognize-all" class="btn">重新识别全部纳入页</button>
         <button type="button" id="pages-include-all" class="btn btn--ghost">全部纳入</button>
         <button type="button" id="pages-exclude-all" class="btn btn--ghost">全部排除</button>
         <label class="muted check">
@@ -67,8 +70,9 @@
       </div>
       <p class="hint">
         单击缩略图切换<strong>纳入 / 排除</strong>（排除的页不参与识别与导出）。
-        点缩略图下方的<strong>识别</strong>按钮识别这一页——结果会存进项目数据库，
-        关掉应用再打开还在。批量识别与 Shift 范围选择尚未实现。
+        点缩略图下方的<strong>识别</strong>按钮识别这一页，或用上面的批量按钮识别整本——
+        识别跑在后台任务里，进度在右下角的<strong>任务抽屉</strong>里看，
+        右上角随时可以暂停 / 取消。结果存进项目数据库，关掉应用再打开还在。
       </p>
       <div class="alert alert--error" id="pages-error" hidden></div>
       <div class="page-grid" id="page-grid"></div>
@@ -224,8 +228,34 @@
     </section>
   </main>
 
+  <aside class="drawer" id="task-drawer" hidden aria-label="任务抽屉">
+    <div class="drawer__head">
+      <strong>识别任务</strong>
+      <span class="muted" id="drawer-status">—</span>
+      <span class="spacer"></span>
+      <button type="button" id="drawer-close" class="btn btn--ghost">收起</button>
+    </div>
+    <div class="progress" id="drawer-progress">
+      <div class="progress__bar"><div class="progress__fill" id="drawer-fill"></div></div>
+      <div class="progress__text" id="drawer-counts"></div>
+    </div>
+    <div class="drawer__actions">
+      <button type="button" id="job-pause" class="btn">暂停</button>
+      <button type="button" id="job-resume" class="btn btn--primary">继续</button>
+      <button type="button" id="job-retry" class="btn">重试失败页</button>
+      <button type="button" id="job-cancel" class="btn btn--danger">取消</button>
+    </div>
+    <p class="hint" id="drawer-hint"></p>
+    <div class="alert alert--error" id="drawer-error" hidden></div>
+    <ol class="drawer__failures" id="drawer-failures"></ol>
+    <div class="drawer__recent">
+      <div class="muted" id="drawer-recent-title">最近任务</div>
+      <ul id="drawer-recent"></ul>
+    </div>
+  </aside>
+
   <footer class="footer muted">
-    开发说明书 V1.0 · 识别已落库（说明书 Phase 2 的第一部分）· 全部数据只在本机处理
+    开发说明书 V1.0 · 识别任务跑在子进程里（说明书 Phase 2）· 全部数据只在本机处理
   </footer>
 
   <script src="/static/app.js"></script>

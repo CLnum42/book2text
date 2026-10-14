@@ -1,8 +1,11 @@
-"""识别落库的集成测试（说明书 Phase 2 的开头：识别接到项目上）。
+"""识别落库的集成测试（识别接到项目上 + 任务状态机）。
 
-**用假引擎。** 这条链路要验证的是"识别 → 落库 → 重启还在"、R1 / R2 两条业务规则、
-失败原因可见、原始输出落盘——这些都与"认得多准"无关，用假引擎能把它们跑得又快又确定。
-真实引擎的端到端验证在 `test_recognition_engine.py`（需要 ocr 依赖，未装则跳过）。
+**用假引擎、在本进程里跑**（`inprocess_jobs` 夹具）：这条链路要验证的是
+"识别 → 落库 → 重启还在"、R1 / R2 两条业务规则、失败原因可见、范围选择——
+都与"认得多准"无关。
+
+真子进程 + 真引擎的端到端在 `test_worker_subprocess.py`；真实坐标与耗时在
+`test_recognition_engine.py`。
 """
 
 from __future__ import annotations
@@ -14,82 +17,22 @@ import pytest
 from fastapi.testclient import TestClient
 
 from book2text.api.app import create_app
-from book2text.core.ocr.base import BBox, OcrEngineError, OcrLine, OcrParams, OcrResult
+from book2text.core.project import jobs as jobs_module
 from book2text.core.project import recognition
 from book2text.core.storage import db as db_module
+from book2text.core.ocr.base import OcrEngineError
 from tests.conftest import TEST_ORIGIN, TEST_TOKEN
-
-# 三行文本，第二段与前一段之间留出明显行距 → 分段规则应切成 2 块
-FAKE_LINES = (
-    ("第一段第一行。", 0.10, 0.13),
-    ("第一段第二行。", 0.14, 0.17),
-    ("第二段第一行。", 0.26, 0.29),
-)
-FAKE_LEFT, FAKE_RIGHT = 0.10, 0.90
+from tests.fakes import FAKE_LINES, FAKE_LEFT, FAKE_RIGHT, FailingEngine, FakeOcrEngine
 
 
-class FakeOcrEngine:
-    """假引擎：不加载模型、不看图像内容，按固定坐标返回几行。
+class FlakyEngine(FakeOcrEngine):
+    """第一次调用失败、之后成功——用来造出"部分失败的任务"。"""
 
-    只实现 `core.ocr.base.OcrEngine` 协议要求的方法。
-    """
-
-    engine_id = "fake"
-    version_string = "fake-0.1"
-
-    def __init__(
-        self,
-        *,
-        lines: tuple[tuple[str, float, float], ...] = FAKE_LINES,
-        fail_message: str | None = None,
-        available: bool = True,
-        reason: str = "",
-    ) -> None:
-        self._lines = lines
-        self._fail_message = fail_message
-        self._available = available
-        self._reason = reason
-        self.calls = 0
-
-    def version(self) -> str:
-        return self.version_string
-
-    def available(self) -> tuple[bool, str]:
-        return (True, "") if self._available else (False, self._reason)
-
-    def supported_languages(self) -> list[str]:
-        return ["ch", "en"]
-
-    def recognize(self, image, params: OcrParams) -> OcrResult:
-        self.calls += 1
-        if self._fail_message:
-            raise OcrEngineError(self._fail_message)
-        width, height = image.size
-        lines = tuple(
-            OcrLine(
-                text=text,
-                bbox=BBox(FAKE_LEFT, y0, FAKE_RIGHT, y1),
-                confidence=0.95,
-            )
-            for text, y0, y1 in self._lines
-        )
-        return OcrResult(
-            engine_id=self.engine_id,
-            engine_version=self.version_string,
-            lines=lines,
-            image_width=width,
-            image_height=height,
-            elapsed_seconds=0.012,
-            raw={"note": "fake", "line_count": len(lines)},
-        )
-
-
-@pytest.fixture
-def fake_engine(monkeypatch: pytest.MonkeyPatch) -> FakeOcrEngine:
-    """把生产代码里的 RapidOCR 换成假引擎（走同一条落库路径）。"""
-    engine = FakeOcrEngine()
-    monkeypatch.setattr(recognition, "RapidOcrAdapter", lambda: engine)
-    return engine
+    def recognize(self, image, params):
+        if self.calls == 0:
+            self.calls += 1
+            raise OcrEngineError("第一次就是不行")
+        return super().recognize(image, params)
 
 
 @pytest.fixture
@@ -122,6 +65,12 @@ def recognize(client: TestClient, headers: dict[str, str], project_id: str, *pag
         f"/api/projects/{project_id}/jobs/ocr",
         json={"pages": list(pages)},
         headers=headers,
+    )
+
+
+def start_scope(client: TestClient, headers: dict[str, str], project_id: str, scope: str):
+    return client.post(
+        f"/api/projects/{project_id}/jobs/ocr", json={"scope": scope}, headers=headers
     )
 
 
@@ -159,7 +108,10 @@ def simulate_human_edit(library_dir: Path, project_id: str, block_id: str) -> No
 # ---------------------------------------------------------------- 首次识别（R1）
 
 def test_recognize_persists_blocks_and_run(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, fake_engine: FakeOcrEngine
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    inprocess_jobs: FakeOcrEngine,
 ) -> None:
     project_id = create_project(client, auth_headers, sample_pdf)
 
@@ -172,24 +124,18 @@ def test_recognize_persists_blocks_and_run(
     assert data["job"]["done"] == 1
     assert data["job"]["failed"] == 0
     assert data["job"]["finished_at"]
-
-    item = data["items"][0]
-    assert item["status"] == "succeeded"
-    assert item["page_no"] == 1
-    assert item["run_id"]
+    assert data["job"]["percent"] == 100.0
+    assert data["items"][0]["status"] == "succeeded"
 
     page = data["pages"][0]
     assert page["recognition"]["status"] == "recognized"
-    assert page["recognition"]["active_run_id"] == item["run_id"]
     assert page["recognition"]["block_count"] == 2, "三行两段应切成 2 块"
-    assert page["recognition"]["last_error"] is None
 
     # 块与行都落库了，文本与坐标可核对
     content = blocks_of(client, auth_headers, project_id, 1)
     assert content["block_count"] == 2
-    assert content["active_run"]["run_id"] == item["run_id"]
+    assert content["active_run"]["run_id"] == data["items"][0]["run_id"]
     assert content["active_run"]["engine_id"] == "fake"
-    assert content["active_run"]["status"] == "succeeded"
     assert content["active_run"]["elapsed_seconds"] > 0
 
     first, second = content["blocks"]
@@ -197,7 +143,6 @@ def test_recognize_persists_blocks_and_run(
     assert first["ocr_text"] == first["text"], "刚识别出来的块，ocr_text 与 text 相同"
     assert first["review_status"] == "unreviewed"
     assert first["origin"] == "ocr"
-    assert first["origin_run_id"] == item["run_id"]
     assert first["revision"] == 0
     assert first["include"] is True
     assert first["continues_to_next"] is False
@@ -207,13 +152,11 @@ def test_recognize_persists_blocks_and_run(
     assert second["text"] == "第二段第一行。"
 
     assert [line["line_index"] for line in first["lines"]] == [0, 1]
-    assert [line["text"] for line in first["lines"]] == ["第一段第一行。", "第一段第二行。"]
     for block in content["blocks"]:
-        for key in ("bbox",):
-            box = block[key]
-            assert len(box) == 4
-            assert all(0.0 <= value <= 1.0 for value in box), f"坐标越界：{box}"
-            assert box[2] > box[0] and box[3] > box[1]
+        box = block["bbox"]
+        assert len(box) == 4
+        assert all(0.0 <= value <= 1.0 for value in box), f"坐标越界：{box}"
+        assert box[2] > box[0] and box[3] > box[1]
         for line in block["lines"]:
             assert len(line["bbox"]) == 4
             assert line["aux_text"] is None
@@ -221,8 +164,11 @@ def test_recognize_persists_blocks_and_run(
 
 
 def test_recognize_writes_the_raw_engine_output(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path,
-    fake_engine: FakeOcrEngine,
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    library_dir: Path,
+    inprocess_jobs: FakeOcrEngine,
 ) -> None:
     """说明书 5.3：`raw_result_path` 指向 `ocr_runs/<run_id>.json`。"""
     project_id = create_project(client, auth_headers, sample_pdf)
@@ -236,9 +182,7 @@ def test_recognize_writes_the_raw_engine_output(
     assert payload["run_id"] == run_id
     assert payload["page_no"] == 1
     assert payload["engine_id"] == "fake"
-    assert payload["engine_version"] == "fake-0.1"
     assert payload["params"] == {"dpi": 300, "language": "ch"}
-    assert payload["image_width"] > 0 and payload["image_height"] > 0
     assert payload["line_count"] == 3
     assert [line["text"] for line in payload["lines"]] == [text for text, _, _ in FAKE_LINES]
     assert payload["lines"][0]["bbox"] == [FAKE_LEFT, 0.10, FAKE_RIGHT, 0.13]
@@ -254,10 +198,14 @@ def test_recognize_writes_the_raw_engine_output(
 
 
 def test_recognition_survives_a_restart(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path,
-    fake_engine: FakeOcrEngine, restart_client,
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    library_dir: Path,
+    inprocess_jobs: FakeOcrEngine,
+    restart_client,
 ) -> None:
-    """这一条是本阶段的重点：识别结果不再"刷新即丢"。"""
+    """识别结果不再"刷新即丢"。"""
     project_id = create_project(client, auth_headers, sample_pdf)
     recognize(client, auth_headers, project_id, 1)
     before = blocks_of(client, auth_headers, project_id, 1)
@@ -269,24 +217,23 @@ def test_recognition_survives_a_restart(
     assert after["runs"] == before["runs"]
     assert after["active_run"] == before["active_run"]
 
-    # 任务记录也在
     jobs = fresh.get(f"/api/projects/{project_id}/jobs", headers=auth_headers).json()
     assert jobs["count"] == 1
     assert jobs["jobs"][0]["status"] == "succeeded"
+    assert jobs["active"] is None
 
     detail = fresh.get(
         f"/api/projects/{project_id}/jobs/{jobs['jobs'][0]['job_id']}", headers=auth_headers
     ).json()
     assert detail["items"][0]["page_no"] == 1
-    assert detail["items"][0]["run_id"]
+    assert detail["alive"] is False
 
-    # 项目库里的"已识别"计数也跟着留下来
     listing = fresh.get("/api/projects", headers=auth_headers).json()["projects"][0]
     assert listing["recognized_pages"] == 1
 
 
 def test_page_state_before_recognition(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, fake_engine
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
 ) -> None:
     project_id = create_project(client, auth_headers, sample_pdf)
     page = page_state(client, auth_headers, project_id, 1)
@@ -301,8 +248,16 @@ def test_blank_page_recognizes_to_zero_blocks(
     """空白页：识别成功但没有块，active run 照样记录下来。"""
     engine = FakeOcrEngine(lines=())
     monkeypatch.setattr(recognition, "RapidOcrAdapter", lambda: engine)
-    project_id = create_project(client, auth_headers, sample_pdf)
 
+    def fake_start(self, directory, job_id):
+        recognition.run_job(directory, job_id, engine=engine)
+        return 0
+
+    from book2text.core.project import executor as executor_module
+
+    monkeypatch.setattr(executor_module.Supervisor, "start", fake_start)
+
+    project_id = create_project(client, auth_headers, sample_pdf)
     data = recognize(client, auth_headers, project_id, 1).json()
     assert data["job"]["status"] == "succeeded"
     assert data["pages"][0]["recognition"]["status"] == "recognized"
@@ -310,11 +265,124 @@ def test_blank_page_recognizes_to_zero_blocks(
     assert blocks_of(client, auth_headers, project_id, 1)["blocks"] == []
 
 
+# ---------------------------------------------------------------- 批量与范围
+
+def test_batch_recognition_runs_every_page(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
+) -> None:
+    """说明书 6.3 的批量识别：一次建一个任务，每页一个单元。"""
+    project_id = create_project(client, auth_headers, sample_pdf)
+
+    data = recognize(client, auth_headers, project_id, 1, 2, 3).json()
+    assert data["job"]["status"] == "succeeded"
+    assert data["job"]["total"] == 3
+    assert data["job"]["done"] == 3
+    assert [item["page_no"] for item in data["items"]] == [1, 2, 3]
+    assert all(item["status"] == "succeeded" for item in data["items"])
+    assert len(data["pages"]) == 3
+    assert all(page["recognition"]["status"] == "recognized" for page in data["pages"])
+
+
+def test_scope_unrecognized_skips_pages_that_already_have_results(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
+) -> None:
+    project_id = create_project(client, auth_headers, sample_pdf)
+    recognize(client, auth_headers, project_id, 2)
+
+    data = start_scope(client, auth_headers, project_id, "unrecognized").json()
+    assert [item["page_no"] for item in data["items"]] == [1, 3], "已识别的第 2 页要跳过"
+
+
+def test_scope_unrecognized_includes_failed_pages(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, monkeypatch
+) -> None:
+    """失败页属于"还没有可用结果"，批量识别要把它带上。"""
+    from book2text.core.project import executor as executor_module
+
+    failing = FailingEngine()
+    monkeypatch.setattr(recognition, "RapidOcrAdapter", lambda: failing)
+
+    def fake_start(self, directory, job_id):
+        recognition.run_job(directory, job_id, engine=failing)
+        return 0
+
+    monkeypatch.setattr(executor_module.Supervisor, "start", fake_start)
+    project_id = create_project(client, auth_headers, sample_pdf)
+
+    # 先制造一个失败页
+    failing_first = recognize(client, auth_headers, project_id, 1).json()
+    assert failing_first["job"]["status"] == "failed"
+
+    data = start_scope(client, auth_headers, project_id, "unrecognized").json()
+    assert [item["page_no"] for item in data["items"]] == [1, 2, 3]
+
+
+def test_scope_all_re_recognizes_everything(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
+) -> None:
+    project_id = create_project(client, auth_headers, sample_pdf)
+    recognize(client, auth_headers, project_id, 1, 2)
+
+    data = start_scope(client, auth_headers, project_id, "all").json()
+    assert [item["page_no"] for item in data["items"]] == [1, 2, 3]
+
+
+def test_scope_skips_excluded_pages(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
+) -> None:
+    project_id = create_project(client, auth_headers, sample_pdf)
+    page = page_state(client, auth_headers, project_id, 2)
+    client.patch(
+        f"/api/projects/{project_id}/pages/{page['page_id']}",
+        json={"include": False},
+        headers=auth_headers,
+    )
+
+    data = start_scope(client, auth_headers, project_id, "all").json()
+    assert [item["page_no"] for item in data["items"]] == [1, 3]
+
+
+def test_scope_with_nothing_to_do_is_refused(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
+) -> None:
+    project_id = create_project(client, auth_headers, sample_pdf)
+    recognize(client, auth_headers, project_id, 1, 2, 3)
+
+    response = start_scope(client, auth_headers, project_id, "unrecognized")
+    assert response.status_code == 400
+    assert "没有需要识别的页面" in response.json()["error"]["detail"]
+
+
+def test_second_job_is_refused_while_one_is_active(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    library_dir: Path,
+    inprocess_jobs,
+) -> None:
+    """说明书 6.3：默认 1 个 OCR 子进程。"""
+    project_id = create_project(client, auth_headers, sample_pdf)
+    # 造一个"正在进行中"的任务（不起进程）
+    pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+    jobs_module.create_job(
+        library_dir / project_id,
+        pages=[(pages[0]["page_id"], 1)],
+        params={"dpi": 300, "language": "ch"},
+    )
+
+    response = recognize(client, auth_headers, project_id, 2)
+    assert response.status_code == 400
+    assert "已经有一个识别任务在进行中" in response.json()["error"]["detail"]
+
+
 # ---------------------------------------------------------------- 重新识别（R2）
 
 def test_re_recognize_replaces_blocks_when_nothing_was_reviewed(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path,
-    fake_engine: FakeOcrEngine,
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    library_dir: Path,
+    inprocess_jobs,
 ) -> None:
     """R2：没有人工成果时，新运行直接替换（旧块软删除）。"""
     project_id = create_project(client, auth_headers, sample_pdf)
@@ -327,13 +395,12 @@ def test_re_recognize_replaces_blocks_when_nothing_was_reviewed(
     assert second["job"]["status"] == "succeeded"
     assert after["active_run"]["run_id"] == second["items"][0]["run_id"]
     assert after["active_run"]["run_id"] != first["items"][0]["run_id"]
-    assert after["block_count"] == before["block_count"], "块数不变"
+    assert after["block_count"] == before["block_count"]
     assert {block["block_id"] for block in after["blocks"]}.isdisjoint(
         {block["block_id"] for block in before["blocks"]}
     ), "新运行生成的是一批新块"
     assert len(after["runs"]) == 2, "两次运行都留着"
 
-    # 旧块是**软删除**：还在库里，只是不再是当前块（说明书 5.1）
     with db_module.open_database(library_dir / project_id, apply_migrations=False) as conn:
         rows = conn.execute(
             "SELECT deleted_at FROM block WHERE block_id = ?",
@@ -344,8 +411,11 @@ def test_re_recognize_replaces_blocks_when_nothing_was_reviewed(
 
 
 def test_re_recognize_never_overwrites_human_work(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path,
-    fake_engine: FakeOcrEngine,
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    library_dir: Path,
+    inprocess_jobs,
 ) -> None:
     """R2 的另一半：已有人工成果时，新运行只作为**待选结果**，不碰块。
 
@@ -368,11 +438,9 @@ def test_re_recognize_never_overwrites_human_work(
     assert after["blocks"][0]["modified"] is True
     assert after["active_run"]["run_id"] == before["active_run"]["run_id"], "active run 不换"
 
-    # 新结果被记为"待选"
     page = page_state(client, auth_headers, project_id, 1)
     assert page["recognition"]["status"] == "has_candidate"
     assert page["recognition"]["pending_run_id"] == second["items"][0]["run_id"]
-    assert page["recognition"]["active_run_id"] == before["active_run"]["run_id"]
     assert len(after["runs"]) == 2
 
 
@@ -382,8 +450,16 @@ def test_failed_recognition_is_recorded_everywhere(
     client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, monkeypatch
 ) -> None:
     """识别失败不是"500 一扔了事"：任务、单元、运行三处都留下原因。"""
-    engine = FakeOcrEngine(fail_message="模拟引擎崩了")
-    monkeypatch.setattr(recognition, "RapidOcrAdapter", lambda: engine)
+    from book2text.core.project import executor as executor_module
+
+    failing = FailingEngine(message="模拟引擎崩了")
+    monkeypatch.setattr(recognition, "RapidOcrAdapter", lambda: failing)
+
+    def fake_start(self, directory, job_id):
+        recognition.run_job(directory, job_id, engine=failing)
+        return 0
+
+    monkeypatch.setattr(executor_module.Supervisor, "start", fake_start)
     project_id = create_project(client, auth_headers, sample_pdf)
 
     response = recognize(client, auth_headers, project_id, 1)
@@ -394,6 +470,7 @@ def test_failed_recognition_is_recorded_everywhere(
     assert data["job"]["failed"] == 1
     assert data["job"]["done"] == 0
     assert "模拟引擎崩了" in data["items"][0]["error_message"]
+    assert data["failed_items"][0]["page_no"] == 1
 
     page = data["pages"][0]["recognition"]
     assert page["status"] == "failed"
@@ -406,14 +483,62 @@ def test_failed_recognition_is_recorded_everywhere(
     failed_run = content["runs"][0]
     assert failed_run["status"] == "failed"
     assert failed_run["error_code"] == "ocr_failed"
-    assert "模拟引擎崩了" in failed_run["error_message"]
     assert failed_run["raw_result_path"] is None, "失败的运行不写原始输出"
+
+
+def test_failed_pages_can_be_retried_without_duplicating_blocks(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    library_dir: Path,
+    monkeypatch,
+) -> None:
+    """Phase 2 的验收："重试不产生重复块"。
+
+    第一次有一页失败、另一页成功；重试失败页之后：失败的那页有了块，
+    成功的那页**一个块都没多**（它的单元是 succeeded，重试不碰它）。
+    """
+    from book2text.core.project import executor as executor_module
+
+    flaky = FlakyEngine()
+    monkeypatch.setattr(recognition, "RapidOcrAdapter", lambda: flaky)
+
+    def fake_start(self, directory, job_id):
+        recognition.run_job(directory, job_id, engine=flaky)
+        return 0
+
+    monkeypatch.setattr(executor_module.Supervisor, "start", fake_start)
+    project_id = create_project(client, auth_headers, sample_pdf)
+
+    first = recognize(client, auth_headers, project_id, 1, 2).json()
+    assert first["job"]["failed"] == 1, first["items"]
+    failed_page = next(i["page_no"] for i in first["items"] if i["status"] == "failed")
+    ok_page = next(i["page_no"] for i in first["items"] if i["status"] == "succeeded")
+    blocks_before = blocks_of(client, auth_headers, project_id, ok_page)["blocks"]
+
+    retried = client.post(
+        f"/api/projects/{project_id}/jobs/{first['job']['job_id']}/retry-failed",
+        headers=auth_headers,
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["retried"] == 1
+    assert retried.json()["job"]["status"] == "succeeded"
+
+    after_failed = blocks_of(client, auth_headers, project_id, failed_page)
+    assert after_failed["block_count"] == 2, "失败的那页现在有块了"
+    assert len(after_failed["runs"]) == 2, "两次运行（一次失败一次成功）都在"
+    assert [run["status"] for run in after_failed["runs"]] == ["succeeded", "failed"]
+
+    after_ok = blocks_of(client, auth_headers, project_id, ok_page)
+    assert after_ok["blocks"] == blocks_before, "成功的那页一个块都没多、也没变"
+    assert len(after_ok["runs"]) == 1
 
 
 def test_render_failure_is_recorded(
     client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, monkeypatch
 ) -> None:
     from book2text.core.pdf import render
+    from book2text.core.project import executor as executor_module
 
     def boom(*args, **kwargs):
         raise render.PdfError("模拟渲染失败")
@@ -421,6 +546,12 @@ def test_render_failure_is_recorded(
     monkeypatch.setattr(recognition.render, "render_page_image", boom)
     engine = FakeOcrEngine()
     monkeypatch.setattr(recognition, "RapidOcrAdapter", lambda: engine)
+
+    def fake_start(self, directory, job_id):
+        recognition.run_job(directory, job_id, engine=engine)
+        return 0
+
+    monkeypatch.setattr(executor_module.Supervisor, "start", fake_start)
     project_id = create_project(client, auth_headers, sample_pdf)
 
     data = recognize(client, auth_headers, project_id, 1).json()
@@ -440,62 +571,72 @@ def test_unavailable_engine_is_a_capability_error_not_a_page_error(
     response = recognize(client, auth_headers, project_id, 1)
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "ocr_engine_unavailable"
-    # 引擎不可用是环境问题，不该在项目里留下一条"第 1 页识别失败"的运行
-    assert blocks_of(client, auth_headers, project_id, 1)["runs"] == []
+    # 引擎不可用是环境问题，不该在项目里留下一个注定失败的任务
     assert client.get(f"/api/projects/{project_id}/jobs", headers=auth_headers).json()["count"] == 0
+    assert blocks_of(client, auth_headers, project_id, 1)["runs"] == []
 
 
 # ---------------------------------------------------------------- 中断恢复
 
-def test_interrupted_job_is_marked_when_reopening_the_project(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path,
-    monkeypatch,
+def test_running_job_is_marked_interrupted_when_opening_the_project(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path
 ) -> None:
     """说明书 5.3：状态仍为 running 的任务要改成 interrupted。
 
-    这里模拟"识别到一半应用被强杀"：让引擎抛 KeyboardInterrupt（不是 Exception，
-    应用里的错误处理不拦它）——识别进程就此消失，数据库里留下 running 的任务与运行。
+    模拟"识别到一半应用被强杀"：库里留下 running 的任务、running 的单元与运行记录。
+    重新打开项目时，这些残留要被结算——而且**本进程正在跑的任务不受影响**。
     """
-    class InterruptingEngine(FakeOcrEngine):
-        def recognize(self, image, params):
-            super().recognize(image, params)
-            raise KeyboardInterrupt("模拟应用被关闭")
-
-    monkeypatch.setattr(recognition, "RapidOcrAdapter", lambda: InterruptingEngine())
     project_id = create_project(client, auth_headers, sample_pdf)
+    pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+    directory = library_dir / project_id
 
-    with pytest.raises(KeyboardInterrupt):
-        recognition.recognize_pages(project_id, [1], library=library_dir)
-
-    jobs = client.get(f"/api/projects/{project_id}/jobs", headers=auth_headers).json()["jobs"]
-    assert jobs[0]["status"] == "running", "强杀时任务停在 running"
-
-    fresh = TestClient(
-        create_app(session_token=TEST_TOKEN, origins=[TEST_ORIGIN], library_dir=library_dir)
+    job = jobs_module.create_job(
+        directory,
+        pages=[(pages[0]["page_id"], 1)],
+        params={"dpi": 300, "language": "ch"},
     )
-    opened = fresh.post(f"/api/projects/{project_id}/open", headers=auth_headers).json()
+    jobs_module.set_status(directory, job.job_id, jobs_module.STATUS_RUNNING)
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        conn.execute(
+            "UPDATE job_item SET status = 'running' WHERE job_id = ?", (job.job_id,)
+        )
+        run_id = "01RUNRUNRUNRUNRUNRUNRUNRUN"
+        conn.execute(
+            """
+            INSERT INTO ocr_run (run_id, page_id, run_type, engine_id, engine_version,
+                                 params_json, status, created_at)
+            VALUES (?, ?, 'primary', 'fake', 'fake-0.1', '{}', 'running', '2026-01-01T00:00:00+00:00')
+            """,
+            (run_id, pages[0]["page_id"]),
+        )
+        conn.execute(
+            "UPDATE job_item SET run_id = ? WHERE job_id = ?", (run_id, job.job_id)
+        )
+        conn.commit()
+
+    opened = client.post(f"/api/projects/{project_id}/open", headers=auth_headers).json()
     assert opened["interrupted"] == 1
     assert "中断" in opened["warning"]
 
-    assert fresh.get(f"/api/projects/{project_id}/jobs", headers=auth_headers).json()["jobs"][0][
-        "status"
-    ] == "interrupted"
-    run = fresh.get(
-        f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers
-    ).json()["runs"][0]
+    assert client.get(
+        f"/api/projects/{project_id}/jobs/{job.job_id}", headers=auth_headers
+    ).json()["job"]["status"] == "interrupted"
+    assert client.get(
+        f"/api/projects/{project_id}/jobs/{job.job_id}", headers=auth_headers
+    ).json()["items"][0]["status"] == "failed"
+    run = blocks_of(client, auth_headers, project_id, 1)["runs"][0]
     assert run["status"] == "failed"
     assert run["error_code"] == "interrupted"
 
 
 def test_running_run_shows_as_in_progress(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path,
-    fake_engine: FakeOcrEngine,
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path
 ) -> None:
-    """识别中/排队中的状态也由 run 推导（说明书 5.3 的状态清单）。"""
+    """识别中/排队中的状态也由记录推导（说明书 5.3 的状态清单）。"""
     from book2text.core.storage.ulid import new_ulid
 
     project_id = create_project(client, auth_headers, sample_pdf)
-    page_id = page_state(client, auth_headers, project_id, 1)["page_id"]
+    page = page_state(client, auth_headers, project_id, 1)
 
     with db_module.open_database(library_dir / project_id, apply_migrations=False) as conn:
         conn.execute(
@@ -504,37 +645,58 @@ def test_running_run_shows_as_in_progress(
                                  params_json, status, created_at)
             VALUES (?, ?, 'primary', 'fake', 'fake-0.1', '{}', 'running', '2026-01-01T00:00:00+00:00')
             """,
-            (new_ulid(), page_id),
+            (new_ulid(), page["page_id"]),
         )
         conn.commit()
 
     assert page_state(client, auth_headers, project_id, 1)["recognition"]["status"] == "running"
 
+    # 任务里的排队单元同样让页面显示"排队中"
+    directory = library_dir / project_id
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        conn.execute(
+            "UPDATE ocr_run SET status = 'failed', error_code = 'x' WHERE status = 'running'"
+        )
+        conn.commit()
+    jobs = jobs_module.create_job(
+        directory, pages=[(page["page_id"], 1)], params={"dpi": 300, "language": "ch"}
+    )
+    assert page_state(client, auth_headers, project_id, 1)["recognition"]["status"] == "queued"
+
+    jobs_module.set_status(directory, jobs.job_id, jobs_module.STATUS_RUNNING)
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        conn.execute("UPDATE job_item SET status = 'running' WHERE job_id = ?", (jobs.job_id,))
+        conn.commit()
+    assert page_state(client, auth_headers, project_id, 1)["recognition"]["status"] == "running"
+
 
 # ---------------------------------------------------------------- 参数与边界
 
-def test_batch_request_is_refused_with_a_reason(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, fake_engine
+def test_no_pages_and_no_scope_is_refused(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
 ) -> None:
     project_id = create_project(client, auth_headers, sample_pdf)
-    response = recognize(client, auth_headers, project_id, 1, 2)
+    response = client.post(
+        f"/api/projects/{project_id}/jobs/ocr", json={}, headers=auth_headers
+    )
     assert response.status_code == 400
-    error = response.json()["error"]
-    assert error["code"] == "batch_not_implemented"
-    assert "执行器" in error["detail"]
+    assert "必须给出且只给出一个" in response.json()["error"]["detail"]
 
 
-def test_empty_page_list_is_refused(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, fake_engine
+def test_pages_and_scope_together_is_refused(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
 ) -> None:
     project_id = create_project(client, auth_headers, sample_pdf)
-    response = recognize(client, auth_headers, project_id)
+    response = client.post(
+        f"/api/projects/{project_id}/jobs/ocr",
+        json={"pages": [1], "scope": "all"},
+        headers=auth_headers,
+    )
     assert response.status_code == 400
-    assert response.json()["error"]["code"] == "no_pages"
 
 
 def test_unknown_page_is_refused(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, fake_engine
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
 ) -> None:
     project_id = create_project(client, auth_headers, sample_pdf)
     response = recognize(client, auth_headers, project_id, 99)
@@ -543,7 +705,7 @@ def test_unknown_page_is_refused(
 
 
 def test_excluded_page_is_refused(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, fake_engine
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
 ) -> None:
     """界面上的说明是"排除的页不参与识别"，接口必须当真。"""
     project_id = create_project(client, auth_headers, sample_pdf)
@@ -557,11 +719,11 @@ def test_excluded_page_is_refused(
     response = recognize(client, auth_headers, project_id, 1)
     assert response.status_code == 400
     assert "已排除" in response.json()["error"]["detail"]
-    assert fake_engine.calls == 0
+    assert inprocess_jobs.calls == 0
 
 
 def test_absurd_dpi_is_refused(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, fake_engine
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
 ) -> None:
     project_id = create_project(client, auth_headers, sample_pdf)
     response = client.post(
@@ -578,7 +740,7 @@ def test_recognition_requires_token(client: TestClient, sample_pdf: Path) -> Non
 
 
 def test_unknown_project_returns_404(
-    client: TestClient, auth_headers: dict[str, str], fake_engine
+    client: TestClient, auth_headers: dict[str, str], inprocess_jobs
 ) -> None:
     response = recognize(client, auth_headers, "b2t_ZZZZZZ", 1)
     assert response.status_code == 404

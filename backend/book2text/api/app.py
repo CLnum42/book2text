@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
@@ -16,6 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .. import __version__, paths
+from ..core.project import executor as executor_module
+from ..core.project import jobs as jobs_module
 from ..core.project.library import default_library_dir
 from . import (
     errors,
@@ -34,9 +37,18 @@ def create_app(
     origins: Sequence[str],
     library_dir: Path | None = None,
 ) -> FastAPI:
+    supervisor = executor_module.Supervisor()
+    library = Path(library_dir) if library_dir else default_library_dir()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        yield
+        _shutdown_running_jobs(supervisor)
+
     app = FastAPI(
         title="Book2Text",
         version=__version__,
+        lifespan=lifespan,
         # 所有 /api 路由都要求令牌，浏览器的交互式文档页无法带自定义请求头，
         # 因此不挂 /docs；只保留 OpenAPI 描述，可用 curl 带令牌取得。
         # 该描述不含任何项目数据，且跨站读取会被浏览器 CORS 拦下。
@@ -48,7 +60,9 @@ def create_app(
     app.state.session_token = session_token
     app.state.allowed_origins = frozenset(origins)
     # 项目库目录：缺省为用户「文稿 / 文档」下的 Book2Text（说明书 12.1）
-    app.state.library_dir = Path(library_dir) if library_dir else default_library_dir()
+    app.state.library_dir = library
+    # 识别子进程的执行器：本实例起过的任务进程都登记在它这里
+    app.state.job_supervisor = supervisor
 
     app.add_exception_handler(errors.AppError, errors.app_error_handler)
     app.add_exception_handler(StarletteHTTPException, errors.http_exception_handler)
@@ -77,3 +91,23 @@ def create_app(
         )
 
     return app
+
+
+def _shutdown_running_jobs(supervisor: executor_module.Supervisor) -> None:
+    """服务退出时收掉识别子进程，并把它们的任务结算成"中断"。
+
+    顺序：**先写状态、再杀进程、最后修理**。反过来的话，被杀的进程会留下一堆
+    `running` 的记录没人收拾；先写状态则子进程（如果还活着）也会读到中断信号自己收工。
+
+    不这么做的话，应用关了还有进程在写项目数据库——那是明确禁止的
+    （说明书 4.2 的单机单用户假设）。
+    """
+    for job_id, directory in supervisor.live_entries():
+        try:
+            jobs_module.set_status(directory, job_id, jobs_module.STATUS_INTERRUPTED)
+            supervisor.stop(job_id)
+            jobs_module.repair_unfinished(
+                directory, message=jobs_module.INTERRUPTED_MESSAGE, job_id=job_id
+            )
+        except jobs_module.JobError:  # pragma: no cover - 项目文件夹被移走等异常
+            continue

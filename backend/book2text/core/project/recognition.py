@@ -20,10 +20,15 @@
   （"系统绝不自动覆盖人工成果"）。页面的"有待选新结果"状态由 `blocks.py` 推导，
   采用 / 保留的对比界面属于 Phase 3（说明书 6.4）。
 
-**执行方式是同步的**（本阶段）：接口收到请求后当场把这一页认完再返回，
-因此任务一创建就已经结束。说明书 Phase 2 要求的是子进程执行器 + 任务抽屉 +
-暂停 / 继续 / 取消 / 重试失败页，那是下一步；数据模型（job / job_item）先按说明书建好，
-换成执行器时接口形状不变（见 `docs/decisions.md` D-022）。
+**两条入口，职责分开：**
+
+- `create_ocr_job()`：在**服务进程**里建任务（校验页面、锁、引擎可用性），不做识别。
+- `run_job()`：**在子进程里**逐页识别并落库（`book2text.worker` 调它），
+  也可以在同进程里跑（测试用假引擎走的就是这条）。为什么要子进程见
+  `core/jobs/executor.py`：峰值内存约 2.7 GB、要能取消、引擎崩了不该带走应用。
+
+父子之间**只通过数据库交换状态**（任务状态就是控制信号：暂停就写 paused，
+取消就写 cancelled），因此哪一边重启都不会丢进度。
 
 **原始输出**写在 ``ocr_runs/<run_id>.json``：引擎给出的行（文本 + 归一化坐标 +
 置信度）与引擎自己的元数据。它记录的是**适配器取到的输出**，不是引擎内部对象。
@@ -34,7 +39,8 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,6 +52,7 @@ from ..storage import db as db_module
 from ..storage.ulid import new_ulid
 from ..structure import grouping
 from . import blocks as blocks_module
+from . import jobs as jobs_module
 from . import lock as lock_module
 from .library import (
     OCR_RUNS_DIR_NAME,
@@ -87,39 +94,79 @@ class EngineUnavailable(ProjectError):
         self.reason = reason
 
 
-@dataclass(frozen=True)
-class JobOutcome:
-    """一次识别任务的结果。"""
-
-    job: blocks_module.JobRecord
-    items: tuple[blocks_module.JobItemRecord, ...]
-
-    @property
-    def failed_items(self) -> tuple[blocks_module.JobItemRecord, ...]:
-        return tuple(item for item in self.items if item.status == "failed")
-
-
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-# ---------------------------------------------------------------- 对外入口
+# ---------------------------------------------------------------- 建任务（服务进程）
 
-def recognize_pages(
+# 批量识别的两种范围（说明书 6.3："选中页或全部纳入页；已有识别结果的页面默认跳过"）
+SCOPE_UNRECOGNIZED = "unrecognized"
+SCOPE_ALL = "all"
+SCOPES = (SCOPE_UNRECOGNIZED, SCOPE_ALL)
+
+
+def resolve_pages(
     project_id: str,
-    page_nos: Sequence[int],
     *,
     library: Path | None = None,
+    pages: Sequence[int] | None = None,
+    scope: str | None = None,
+) -> list[Page]:
+    """把"要识别哪些页"解析成页面列表。
+
+    - 显式页码：必须存在且已纳入（排除的页不参与识别，界面上也是这么说的）。
+    - ``scope="unrecognized"``：全部纳入页里**没有可用识别结果**的（未识别或上次失败）。
+    - ``scope="all"``：全部纳入页（重新识别，适用规则 R2）。
+    """
+    if (pages is None) == (scope is None):
+        raise ProjectError("pages 与 scope 必须给出且只给出一个")
+    if scope is not None and scope not in SCOPES:
+        raise ProjectError(f"未知的范围：{scope!r}（可选：{'、'.join(SCOPES)}）")
+
+    target_library = library if library is not None else default_library_dir()
+    all_pages = list_pages(project_id, library=target_library)
+
+    if scope is not None:
+        # 状态推导在 blocks.py：未识别 / 失败 都属于"还没有可用结果"
+        states = blocks_module.page_recognition_states(project_id, library=target_library)
+        selected = []
+        for page in all_pages:
+            if not page.include:
+                continue
+            if scope == SCOPE_ALL:
+                selected.append(page)
+                continue
+            state = states.get(page.page_id)
+            status = state.status if state else blocks_module.STATUS_UNRECOGNIZED
+            if status in (blocks_module.STATUS_UNRECOGNIZED, blocks_module.STATUS_FAILED):
+                selected.append(page)
+        return selected
+
+    by_no = {page.page_no: page for page in all_pages}
+    selected = []
+    for page_no in pages or ():
+        page = by_no.get(page_no)
+        if page is None:
+            raise ProjectError(f"没有第 {page_no} 页")
+        if not page.include:
+            raise ProjectError(
+                f"第 {page_no} 页已排除，不参与识别。先把它纳入（单击缩略图）再识别"
+            )
+        selected.append(page)
+    return selected
+
+
+def create_ocr_job(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    pages: Sequence[int] | None = None,
+    scope: str | None = None,
     dpi: int = DEFAULT_DPI,
     language: str = DEFAULT_LANGUAGE,
-    engine: OcrEngine | None = None,
-) -> JobOutcome:
-    """识别若干页并落库，返回这次任务的结果。
-
-    ``engine`` 留作注入点：生产代码用 RapidOCR，测试用假引擎走同一条落库路径。
-    """
-    if not page_nos:
-        raise ProjectError("没有指定要识别的页面")
+) -> jobs_module.JobRecord:
+    """建一个识别任务（不执行）。执行由 `core/jobs/executor.py` 起子进程完成。"""
     if not MIN_DPI <= dpi <= MAX_DPI:
         raise ProjectError(f"DPI 必须在 {MIN_DPI}–{MAX_DPI} 之间，收到 {dpi}")
 
@@ -129,7 +176,7 @@ def recognize_pages(
     # 识别要写数据库。若项目正被**另一个应用实例**打开（项目锁，说明书 7.6），
     # 这里拒绝，避免两个进程同时写同一个库。
     lock_status = lock_module.status(directory)
-    if lock_status.held and lock_status.info is not None and lock_status.info.pid != os.getpid():
+    if lock_status.held and not lock_status.mine:
         raise ProjectError(
             f"{lock_status.describe()}。识别会写入项目数据库，"
             "请先在那边关闭项目，或在本窗口用「强制打开」"
@@ -138,139 +185,193 @@ def recognize_pages(
     # 识别要写库，因此这里应用迁移（与读取路径相反，见 blocks.py 的说明）
     load_project(project_id, library=target_library)
 
-    pages_by_no = {page.page_no: page for page in list_pages(project_id, library=target_library)}
-    selected: list[Page] = []
-    for page_no in page_nos:
-        page = pages_by_no.get(page_no)
-        if page is None:
-            raise ProjectError(f"没有第 {page_no} 页")
-        if not page.include:
-            raise ProjectError(
-                f"第 {page_no} 页已排除，不参与识别。先把它纳入（单击缩略图）再识别"
-            )
-        selected.append(page)
+    selected = resolve_pages(project_id, library=target_library, pages=pages, scope=scope)
+    if not selected:
+        raise ProjectError("没有需要识别的页面（已识别的页会跳过，排除的页不参与）")
+
+    running = jobs_module.active_job(directory)
+    if running is not None:
+        raise ProjectError(
+            f"已经有一个识别任务在进行中（{running.status}，"
+            f"{running.done + running.failed}/{running.total}）。"
+            "说明书 6.3 规定默认只跑 1 个 OCR 子进程：先暂停或取消它，再建新任务"
+        )
+
+    adapter: OcrEngine = RapidOcrAdapter()
+    available, reason = adapter.available()
+    if not available:
+        # 引擎不可用是环境问题，不该建出一个注定失败的任务
+        raise EngineUnavailable(reason)
+
+    return jobs_module.create_job(
+        directory,
+        pages=[(page.page_id, page.page_no) for page in selected],
+        params={"dpi": dpi, "language": language, "engine_id": adapter.engine_id},
+    )
+
+
+# ---------------------------------------------------------------- 跑任务（子进程）
+
+# 执行循环的三种决定（由 should_continue() 返回）
+DECISION_RUN = "run"          # 继续做下一页
+DECISION_PAUSE = "pause"      # 任务被暂停：原地等着
+DECISION_STOP = "stop"        # 任务被取消 / 已由别人结算 / 父进程已死：收工
+
+# 暂停时轮询任务状态的间隔（秒）
+PAUSE_POLL_SECONDS = 0.5
+
+
+@dataclass(frozen=True)
+class JobOutcome:
+    """一次执行的结果。"""
+
+    job: jobs_module.JobRecord
+    items: tuple[jobs_module.JobItemRecord, ...]
+
+    @property
+    def failed_items(self) -> tuple[jobs_module.JobItemRecord, ...]:
+        return tuple(item for item in self.items if item.status == jobs_module.ITEM_STATUS_FAILED)
+
+
+def run_job(
+    directory: Path,
+    job_id: str,
+    *,
+    engine: OcrEngine | None = None,
+    should_continue: Callable[[], str] | None = None,
+    log: Callable[[str], None] | None = None,
+) -> JobOutcome:
+    """把这个任务里**还没成功**的页面逐页识别并落库。
+
+    ``engine`` / ``should_continue`` / ``log`` 都是注入点：生产代码用 RapidOCR、
+    读数据库判断该不该继续、把进度打到 stdout（由父进程收进项目日志）；
+    测试用假引擎与脚本化的决定，走的是同一套落库路径。
+    """
+    job = jobs_module.get_job(directory, job_id)
+    if job.status in jobs_module.TERMINAL_STATUSES:
+        # 已经被别人结算（通常是父进程取消了它）——不该再动手
+        return JobOutcome(job=job, items=tuple(jobs_module.list_job_items(directory, job_id)))
+
+    jobs_module.set_status(directory, job_id, jobs_module.STATUS_RUNNING)
 
     adapter: OcrEngine = engine if engine is not None else RapidOcrAdapter()
     available, reason = adapter.available()
     if not available:
-        raise EngineUnavailable(reason)
+        _fail_job(directory, job_id, EngineUnavailable(reason))
+        return JobOutcome(job=jobs_module.get_job(directory, job_id), items=tuple(
+            jobs_module.list_job_items(directory, job_id)
+        ))
 
-    params = OcrParams(language=language, dpi=dpi)
+    params = OcrParams(
+        language=str(job.params.get("language", DEFAULT_LANGUAGE)),
+        dpi=int(job.params.get("dpi", DEFAULT_DPI)),
+    )
     engine_version = adapter.version()
     source = directory / SOURCE_DIR_NAME / SOURCE_FILE_NAME
+    decide = should_continue if should_continue is not None else _status_decider(directory, job_id)
+    say = log if log is not None else (lambda message: None)
 
-    job_id, item_ids = _create_job(project_id, selected, target_library, dpi=dpi, language=language)
-    _update_job(project_id, job_id, target_library, status="running", started_at=_now())
+    say(f"job {job_id} start total={job.total} dpi={params.dpi} engine={adapter.engine_id}")
 
-    for page, item_id in zip(selected, item_ids):
+    stopped = False
+    for item in jobs_module.pending_items(directory, job_id):
+        decision = _wait_for_go(decide)
+        if decision == DECISION_STOP:
+            stopped = True
+            break
+        if item.page_no is None:
+            # 单元指向的页面已经不在了（页面记录被删）：如实记失败，
+            # 不要静默跳过——否则任务会显示"成功"却一页都没做。
+            jobs_module.mark_item_failed(
+                directory, item.item_id, "单元指向的页面不存在（页面记录可能已被删除）"
+            )
+            jobs_module.update_progress(directory, job_id)
+            say(f"item {item.item_id} failed page_missing")
+            continue
         _run_item(
-            project_id=project_id,
-            library=target_library,
             directory=directory,
             source=source,
-            page=page,
-            item_id=item_id,
+            page_no=item.page_no,
+            page_id=item.page_id,
+            item_id=item.item_id,
             adapter=adapter,
             params=params,
             engine_version=engine_version,
+            log=say,
         )
+        jobs_module.update_progress(directory, job_id)
 
-    job = _finish_job(project_id, job_id, target_library)
-    items = tuple(blocks_module.list_job_items(project_id, job_id, library=target_library))
-    return JobOutcome(job=job, items=items)
-
-
-# ---------------------------------------------------------------- 任务记录
-
-def _create_job(
-    project_id: str,
-    pages: Sequence[Page],
-    library: Path,
-    *,
-    dpi: int,
-    language: str,
-) -> tuple[str, list[str]]:
-    job_id = new_ulid()
-    now = _now()
-    item_ids = [new_ulid() for _ in pages]
-
-    directory = project_dir(library, project_id)
-    with db_module.open_database(directory) as conn:
-        conn.execute(
-            """
-            INSERT INTO job (job_id, job_type, status, total, done, failed, params_json, created_at)
-            VALUES (?, 'ocr', 'queued', ?, 0, 0, ?, ?)
-            """,
-            (job_id, len(pages), json.dumps({"dpi": dpi, "language": language}), now),
+    job = jobs_module.get_job(directory, job_id)
+    if not stopped:
+        # 没被停：按结果结算。有任何一页失败就算 failed（done / failed 说明细节）
+        jobs_module.set_status(
+            directory,
+            job_id,
+            jobs_module.STATUS_FAILED if job.failed else jobs_module.STATUS_SUCCEEDED,
         )
-        conn.executemany(
-            """
-            INSERT INTO job_item (item_id, job_id, page_id, status, attempts)
-            VALUES (?, ?, ?, 'queued', 0)
-            """,
-            [(item_id, job_id, page.page_id) for item_id, page in zip(item_ids, pages)],
-        )
-        conn.commit()
-    return job_id, item_ids
+        job = jobs_module.get_job(directory, job_id)
+    say(f"job {job_id} end status={job.status} done={job.done} failed={job.failed}")
+
+    return JobOutcome(job=job, items=tuple(jobs_module.list_job_items(directory, job_id)))
 
 
-def _update_job(
-    project_id: str, job_id: str, library: Path, **fields: object
-) -> None:
-    assignments = ", ".join(f"{name} = ?" for name in fields)
-    directory = project_dir(library, project_id)
-    with db_module.open_database(directory, apply_migrations=False) as conn:
-        conn.execute(
-            f"UPDATE job SET {assignments} WHERE job_id = ?",
-            (*fields.values(), job_id),
-        )
-        conn.commit()
+def _status_decider(directory: Path, job_id: str) -> Callable[[], str]:
+    """默认的"该不该继续"判断：读数据库里这个任务的状态。
 
-
-def _finish_job(project_id: str, job_id: str, library: Path) -> blocks_module.JobRecord:
-    """结算任务：done / failed 计数与最终状态。
-
-    **有任何一页失败就算 failed**（部分失败也是失败）——done 与 failed 两个数字
-    说明细节，界面上据此提示"3 页失败，可重试"。说明书的重试失败页在下一步。
+    任务状态本身就是控制信号——暂停写 paused、取消写 cancelled，
+    子进程每次做下一页之前看一眼。这样父子之间不需要额外的管道协议。
     """
-    directory = project_dir(library, project_id)
+
+    def decide() -> str:
+        status = jobs_module.get_job(directory, job_id).status
+        if status == jobs_module.STATUS_PAUSED:
+            return DECISION_PAUSE
+        if status == jobs_module.STATUS_RUNNING:
+            return DECISION_RUN
+        return DECISION_STOP
+
+    return decide
+
+
+def _wait_for_go(decide: Callable[[], str]) -> str:
+    """暂停时就地等，直到重新变成 run 或收到 stop。"""
+    while True:
+        decision = decide()
+        if decision != DECISION_PAUSE:
+            return decision
+        time.sleep(PAUSE_POLL_SECONDS)
+
+
+def _fail_job(directory: Path, job_id: str, error: Exception) -> None:
+    """整个任务起不来（例如引擎不可用）：把所有还没做的单元标记失败并写明原因。"""
     with db_module.open_database(directory, apply_migrations=False) as conn:
-        row = conn.execute(
-            """
-            SELECT SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS done,
-                   SUM(CASE WHEN status = 'failed'    THEN 1 ELSE 0 END) AS failed
-            FROM job_item WHERE job_id = ?
-            """,
-            (job_id,),
-        ).fetchone()
-        done = int(row["done"] or 0)
-        failed = int(row["failed"] or 0)
         conn.execute(
-            "UPDATE job SET status = ?, done = ?, failed = ?, finished_at = ? WHERE job_id = ?",
-            ("failed" if failed else "succeeded", done, failed, _now(), job_id),
+            "UPDATE job_item SET status = 'failed', error_message = ?"
+            " WHERE job_id = ? AND status IN ('queued', 'running')",
+            (str(error), job_id),
         )
         conn.commit()
-    return blocks_module.get_job(project_id, job_id, library=library)
+    jobs_module.update_progress(directory, job_id)
+    jobs_module.set_status(directory, job_id, jobs_module.STATUS_FAILED)
 
-
-# ---------------------------------------------------------------- 单页识别
 
 def _run_item(
     *,
-    project_id: str,
-    library: Path,
     directory: Path,
     source: Path,
-    page: Page,
+    page_no: int,
+    page_id: str,
     item_id: str,
     adapter: OcrEngine,
     params: OcrParams,
     engine_version: str,
+    log: Callable[[str], None] = lambda message: None,
 ) -> str:
     """识别一页：先落一条 running 的运行记录，成功或失败都会把它结算掉。
 
     这样"失败原因可见"（说明书 Phase 2 的验收）不依赖界面：
     数据库里就躺着 error_code 与 error_message。
+    日志只写页码、结果与耗时——**不写识别文本，也不写路径**（说明书 Phase 6 的日志规则）。
     """
     run_id = new_ulid()
     started = _now()
@@ -286,7 +387,7 @@ def _run_item(
             """,
             (
                 run_id,
-                page.page_id,
+                page_id,
                 adapter.engine_id,
                 engine_version,
                 json.dumps({"dpi": params.dpi, "language": params.language}, ensure_ascii=False),
@@ -304,14 +405,16 @@ def _run_item(
 
     # 渲染：与界面显示、与 Phase 0 的门槛实测走同一个函数（含 /Rotate）
     try:
-        image = render.render_page_image(source, page.page_no - 1, dpi=params.dpi)
+        image = render.render_page_image(source, page_no - 1, dpi=params.dpi)
     except render.PdfError as exc:
+        log(f"page {page_no} failed render_failed")
         _fail_run(directory, run_id, item_id, ERROR_RENDER_FAILED, str(exc))
         return run_id
 
     try:
         result = adapter.recognize(image, params)
     except OcrEngineError as exc:
+        log(f"page {page_no} failed ocr_failed")
         _fail_run(directory, run_id, item_id, ERROR_OCR_FAILED, str(exc))
         return run_id
     finally:
@@ -325,7 +428,8 @@ def _run_item(
         _write_raw_result(
             raw_path,
             run_id=run_id,
-            page=page,
+            page_id=page_id,
+            page_no=page_no,
             result=result,
             params=params,
             engine_version=engine_version,
@@ -333,12 +437,19 @@ def _run_item(
             layout=layout,
         )
     except OSError as exc:
+        log(f"page {page_no} failed persist_failed")
         _fail_run(directory, run_id, item_id, ERROR_PERSIST_FAILED, f"写原始输出失败：{exc}")
         return run_id
 
-    applied = _persist_blocks(
-        directory, page, run_id=run_id, item_id=item_id, layout=layout, elapsed=elapsed
+    _persist_blocks(
+        directory,
+        page_id,
+        run_id=run_id,
+        item_id=item_id,
+        layout=layout,
+        elapsed=elapsed,
     )
+    log(f"page {page_no} succeeded {elapsed:.1f}s blocks={len(layout.blocks)}")
     return run_id
 
 
@@ -381,7 +492,7 @@ def _has_human_results(conn, page_id: str) -> bool:
 
 def _persist_blocks(
     directory: Path,
-    page: Page,
+    page_id: str,
     *,
     run_id: str,
     item_id: str,
@@ -397,17 +508,17 @@ def _persist_blocks(
     now = _now()
     with db_module.open_database(directory, apply_migrations=False) as conn:
         active = conn.execute(
-            "SELECT active_run_id FROM page WHERE page_id = ?", (page.page_id,)
+            "SELECT active_run_id FROM page WHERE page_id = ?", (page_id,)
         ).fetchone()
         has_active = active is not None and active["active_run_id"] is not None
-        applied = not has_active or not _has_human_results(conn, page.page_id)
+        applied = not has_active or not _has_human_results(conn, page_id)
 
         if applied:
             # R1 / R2 的替换：旧块软删除（说明书 5.1：删除一律软删除）
             conn.execute(
                 "UPDATE block SET deleted_at = ?, updated_at = ?"
                 " WHERE page_id = ? AND deleted_at IS NULL",
-                (now, now, page.page_id),
+                (now, now, page_id),
             )
             for block in layout.blocks:
                 block_id = new_ulid()
@@ -425,7 +536,7 @@ def _persist_blocks(
                     """,
                     (
                         block_id,
-                        page.page_id,
+                        page_id,
                         run_id,
                         ORIGIN_OCR,
                         block.order_index,
@@ -467,7 +578,7 @@ def _persist_blocks(
         if applied:
             # R1 / R2：只有"采用"了这次运行才换 active_run_id
             conn.execute(
-                "UPDATE page SET active_run_id = ? WHERE page_id = ?", (run_id, page.page_id)
+                "UPDATE page SET active_run_id = ? WHERE page_id = ?", (run_id, page_id)
             )
         conn.execute("UPDATE job_item SET status = 'succeeded' WHERE item_id = ?", (item_id,))
         conn.execute("UPDATE project SET updated_at = ?", (now,))
@@ -481,7 +592,8 @@ def _write_raw_result(
     path: Path,
     *,
     run_id: str,
-    page: Page,
+    page_id: str,
+    page_no: int,
     result: OcrResult,
     params: OcrParams,
     engine_version: str,
@@ -492,8 +604,8 @@ def _write_raw_result(
     payload = {
         "schema": RAW_SCHEMA_ID,
         "run_id": run_id,
-        "page_id": page.page_id,
-        "page_no": page.page_no,
+        "page_id": page_id,
+        "page_no": page_no,
         "engine_id": result.engine_id,
         "engine_version": engine_version,
         "params": {"dpi": params.dpi, "language": params.language},

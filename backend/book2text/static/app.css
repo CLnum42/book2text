@@ -310,3 +310,36 @@ main {
 .limits li { margin-bottom: 4px; }
 
 .footer { max-width: 980px; margin: 0 auto; padding: 0 24px 40px; }
+
+/* ---------------------------------------------------------------- 任务抽屉 */
+
+.badge--task {
+  font: inherit; font-size: 13px; cursor: pointer;
+  background: #eef2ff; border-color: #c7d2fe; color: #3548a8;
+}
+.badge--task.is-active { background: var(--warn-bg); border-color: #f0d9b5; color: var(--warn-fg); }
+.badge--task.is-failed { background: var(--bad-bg); border-color: #f0cfd1; color: var(--bad-fg); }
+.page-tile--failed { border-color: #f0cfd1; }
+
+.drawer {
+  position: fixed; right: 18px; bottom: 18px; width: min(380px, calc(100vw - 36px));
+  max-height: 72vh; overflow: auto; z-index: 20;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(20, 30, 50, .18); padding: 12px 14px;
+}
+.drawer__head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.drawer__head .spacer { flex: 1; }
+.drawer__actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+.drawer__actions .btn { font-size: 12px; padding: 4px 10px; }
+.drawer .hint { margin: 6px 0 0; padding: 0; }
+.drawer__failures { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.drawer__failures li {
+  border: 1px solid #f0cfd1; background: #fffafa; border-radius: 6px;
+  padding: 6px 8px; font-size: 12px; line-height: 1.5; cursor: pointer;
+}
+.drawer__failures li:hover { background: var(--bad-bg); }
+.drawer__failures .page-no { font-weight: 600; }
+.drawer__recent { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
+.drawer__recent ul { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; }
+.drawer__recent li { display: flex; gap: 8px; padding: 2px 0; color: var(--muted); }
+.drawer__recent li .tag { font-size: 11px; }

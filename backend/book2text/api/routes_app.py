@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/app", tags=["app"])
 
 # 当前骨架做不到的事，如实列出（说明书 1.6：不用模拟状态）。
 _CURRENT_LIMITS = [
-    "识别：一次只能识别一页，不能批量、暂停、继续、重试失败页（任务执行器尚未实现）",
+    "识别：还不能挑选页面（Shift 范围选择、页码输入未做）；一次只跑一个识别子进程",
     "审校：块还不能编辑、确认、合并、拆分，也没有撤销",
     "分歧检测：第二引擎与按行比对尚未实现",
     "导出：目前仍走临时上传流程，还没接到项目上；项目里已识别的页暂时不能导出",
@@ -31,7 +31,7 @@ def app_info() -> dict[str, Any]:
         "app": {
             "name": "Book2Text",
             "version": __version__,
-            "stage": "Phase 2 进行中（识别已落库；批量任务、审校、导出未完成）",
+            "stage": "Phase 2 进行中（批量识别与任务控制可用；审校、导出未完成）",
         },
         "platform": {
             "label": b2t_platform.platform_label(),

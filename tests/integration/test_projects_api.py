@@ -200,15 +200,39 @@ def test_open_creates_a_backup_and_a_lock(
     assert (directory / ".lock").is_file()
 
 
-def test_second_open_is_refused(
+def test_reopening_in_the_same_process_is_allowed(
     client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
 ) -> None:
+    """同一个应用进程里再开一次不算冲突（另一个标签页看到的还是"我开着它"）。"""
     project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
     client.post(f"/api/projects/{project_id}/open", headers=auth_headers)
 
     again = client.post(f"/api/projects/{project_id}/open", headers=auth_headers)
-    assert again.status_code == 400
-    assert "另一个" in again.json()["error"]["detail"]
+    assert again.status_code == 200, again.text
+
+
+def test_open_is_refused_when_another_instance_holds_the_lock(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path
+) -> None:
+    """锁在**别人**手里（另一台电脑或另一个应用实例）时要拒绝并说明原因。"""
+    import json
+
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+    (library_dir / project_id / ".lock").write_text(
+        json.dumps(
+            {
+                "hostname": "another-mac",
+                "pid": 12345,
+                "acquired_at": "2026-01-01T00:00:00+00:00",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    refused = client.post(f"/api/projects/{project_id}/open", headers=auth_headers)
+    assert refused.status_code == 400
+    assert "另一台电脑" in refused.json()["error"]["detail"]
 
 
 def test_read_only_open_works_while_locked(
@@ -253,16 +277,36 @@ def test_close_releases_the_lock(
     assert client.post(f"/api/projects/{project_id}/open", headers=auth_headers).status_code == 200
 
 
-def test_listing_shows_when_a_project_is_locked(
+def test_listing_shows_when_a_project_is_locked_by_another_instance(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path
+) -> None:
+    """说明书 7.2：项目库里要能看出项目是否正被**别人**占用。"""
+    import json
+
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+    (library_dir / project_id / ".lock").write_text(
+        json.dumps(
+            {"hostname": "another-mac", "pid": 12345, "acquired_at": "2026-01-01T00:00:00+00:00"},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    entry = client.get("/api/projects", headers=auth_headers).json()["projects"][0]
+    assert entry["lock_held"] is True
+    assert "另一台电脑" in entry["lock_reason"]
+
+
+def test_own_lock_does_not_mark_the_project_as_busy(
     client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
 ) -> None:
-    """说明书 7.2：项目库里要能看出项目是否正被占用。"""
+    """自己开着的项目在项目卡上不该显示成"使用中"。"""
     project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
     client.post(f"/api/projects/{project_id}/open", headers=auth_headers)
 
     entry = client.get("/api/projects", headers=auth_headers).json()["projects"][0]
-    assert entry["lock_held"] is True
-    assert "另一个" in entry["lock_reason"]
+    assert entry["lock_held"] is False
+    assert entry["lock_reason"] == ""
 
 
 # ---------------------------------------------------------------- 页面操作

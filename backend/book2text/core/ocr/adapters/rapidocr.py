@@ -22,8 +22,13 @@ from ..base import BBox, OcrEngineError, OcrLine, OcrParams, OcrResult, normaliz
 ENGINE_ID = "rapidocr"
 _ENGINE_VERSION_FALLBACK = "unknown"
 
-# rapidocr 在导入和首次推理时会往根 logger 打 INFO（"Using engine_name: ..." 之类），
-# 会把应用的启动日志淹掉。这里提到 WARNING，真正的错误仍然可见。
+# 引擎默认往 stdout 打 INFO 级启动日志（"Using engine_name: ..."、**模型文件的绝对路径**），
+# 而这些 stdout 在识别子进程里会被收进项目的任务日志——既吵，也违反说明书第 10 节
+# "日志里不留个人绝对路径"的取向。构造时用引擎自己的参数把级别压到 WARNING
+# （`RapidOCR.__init__` 会用 config 里的 Global.log_level 覆盖 logger 级别，
+# 所以只在外面 setLevel 是没用的）。真正的错误仍然可见。
+ENGINE_LOG_LEVEL = "warning"
+
 logging.getLogger("RapidOCR").setLevel(logging.WARNING)
 logging.getLogger("rapidocr").setLevel(logging.WARNING)
 
@@ -86,7 +91,7 @@ class RapidOcrAdapter:
             raise OcrEngineError(f"导入 rapidocr 失败：{exc}") from exc
 
         try:
-            self._engine = RapidOCR()
+            self._engine = RapidOCR(params={"Global.log_level": ENGINE_LOG_LEVEL})
         except Exception as exc:
             raise OcrEngineError(f"初始化 RapidOCR 失败：{exc}") from exc
         return self._engine

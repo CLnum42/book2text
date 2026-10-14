@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ..ocr.base import BBox
 from ..storage import db as db_module
+from .jobs import JOB_TYPE_OCR
 from .library import Page, ProjectError, default_library_dir, list_pages, project_dir
 
 # ---------------------------------------------------------------- 派生状态
@@ -165,58 +166,6 @@ class BlockRecord:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "modified": self.modified,
-        }
-
-
-@dataclass(frozen=True)
-class JobRecord:
-    job_id: str
-    job_type: str
-    status: str
-    total: int
-    done: int
-    failed: int
-    params: dict
-    created_at: str
-    started_at: str | None
-    finished_at: str | None
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "job_id": self.job_id,
-            "job_type": self.job_type,
-            "status": self.status,
-            "total": self.total,
-            "done": self.done,
-            "failed": self.failed,
-            "params": self.params,
-            "created_at": self.created_at,
-            "started_at": self.started_at,
-            "finished_at": self.finished_at,
-        }
-
-
-@dataclass(frozen=True)
-class JobItemRecord:
-    item_id: str
-    job_id: str
-    page_id: str
-    page_no: int | None
-    status: str
-    run_id: str | None
-    error_message: str | None
-    attempts: int
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "item_id": self.item_id,
-            "job_id": self.job_id,
-            "page_id": self.page_id,
-            "page_no": self.page_no,
-            "status": self.status,
-            "run_id": self.run_id,
-            "error_message": self.error_message,
-            "attempts": self.attempts,
         }
 
 
@@ -475,9 +424,11 @@ def page_recognition_states(
 
     推导顺序（先到先得）：
 
-    1. 最新一次运行还在排队 / 识别中 → 排队中 / 识别中。
-    2. 页面**没有** active run：最新运行失败 → 失败；否则 → 未识别。
-    3. 有 active run：若存在比它更新的**成功**运行 → 有待选新结果（说明书 R2
+    1. 这一页在**正在进行的任务**里排着队 / 正在认 → 排队中 / 识别中
+       （任务还没写运行记录，所以要看 job_item）。
+    2. 最新一次运行还在排队 / 识别中 → 排队中 / 识别中。
+    3. 页面**没有** active run：最新运行失败 → 失败；否则 → 未识别。
+    4. 有 active run：若存在比它更新的**成功**运行 → 有待选新结果（说明书 R2
        所说的"新识别结果"）；否则 → 已识别。
 
     审校状态不在本函数里：它由块的 `review_status` 推导，属于 Phase 3 的审校视图。
@@ -492,9 +443,23 @@ def page_recognition_states(
         block_rows = conn.execute(
             "SELECT page_id, COUNT(*) AS n FROM block WHERE deleted_at IS NULL GROUP BY page_id"
         ).fetchall()
+        # 正在进行的任务里的单元：任务开始后、运行记录写出之前，
+        # "这一页在排队 / 正在认"只能从 job_item 看出来
+        item_rows = conn.execute(
+            """
+            SELECT i.page_id, i.status
+            FROM job_item i JOIN job j ON j.job_id = i.job_id
+            WHERE j.status IN ('queued', 'running', 'paused')
+              AND j.job_type = ? AND i.status IN ('queued', 'running')
+            ORDER BY i.item_id
+            """,
+            (JOB_TYPE_OCR,),
+        ).fetchall()
 
     block_counts = {row["page_id"]: int(row["n"]) for row in block_rows}
     active_by_page = {row["page_id"]: row["active_run_id"] for row in page_rows}
+    queued_pages = {row["page_id"] for row in item_rows if row["status"] == "queued"}
+    running_pages = {row["page_id"] for row in item_rows if row["status"] == "running"}
 
     # 每页的最新运行、最新成功运行、最新失败原因
     latest: dict[str, RunRecord] = {}
@@ -515,7 +480,11 @@ def page_recognition_states(
         newest = latest.get(page_id)
         candidate = latest_succeeded.get(page_id)
 
-        if newest is not None and newest.status in ("queued", "running"):
+        if page_id in running_pages:
+            status, pending = STATUS_RUNNING, active_run_id
+        elif page_id in queued_pages:
+            status, pending = STATUS_QUEUED, active_run_id
+        elif newest is not None and newest.status in ("queued", "running"):
             status = STATUS_QUEUED if newest.status == "queued" else STATUS_RUNNING
             pending = active_run_id
         elif active_run_id is None:
@@ -544,74 +513,3 @@ def page_recognition_states(
 def empty_recognition(page_id: str) -> PageRecognition:
     """给还没有任何运行记录的页面用的初始状态。"""
     return replace(EMPTY_RECOGNITION, page_id=page_id)
-
-
-# ---------------------------------------------------------------- 任务记录
-
-def _row_to_job(row) -> JobRecord:
-    try:
-        params = json.loads(row["params_json"] or "{}")
-    except json.JSONDecodeError:
-        params = {}
-    return JobRecord(
-        job_id=row["job_id"],
-        job_type=row["job_type"],
-        status=row["status"],
-        total=int(row["total"]),
-        done=int(row["done"]),
-        failed=int(row["failed"]),
-        params=params,
-        created_at=row["created_at"],
-        started_at=row["started_at"],
-        finished_at=row["finished_at"],
-    )
-
-
-def list_jobs(
-    project_id: str, *, library: Path | None = None, limit: int = 20
-) -> list[JobRecord]:
-    """最近的任务，最新的在前。"""
-    with _open_for_read(project_id, library) as conn:
-        _require_tables(conn, project_id)
-        rows = conn.execute(
-            "SELECT * FROM job ORDER BY created_at DESC, job_id DESC LIMIT ?", (limit,)
-        ).fetchall()
-    return [_row_to_job(row) for row in rows]
-
-
-def get_job(project_id: str, job_id: str, *, library: Path | None = None) -> JobRecord:
-    with _open_for_read(project_id, library) as conn:
-        _require_tables(conn, project_id)
-        row = conn.execute("SELECT * FROM job WHERE job_id = ?", (job_id,)).fetchone()
-    if row is None:
-        raise ProjectError(f"找不到任务：{job_id}")
-    return _row_to_job(row)
-
-
-def list_job_items(
-    project_id: str, job_id: str, *, library: Path | None = None
-) -> list[JobItemRecord]:
-    with _open_for_read(project_id, library) as conn:
-        _require_tables(conn, project_id)
-        rows = conn.execute(
-            """
-            SELECT i.*, p.page_no
-            FROM job_item i LEFT JOIN page p ON p.page_id = i.page_id
-            WHERE i.job_id = ?
-            ORDER BY p.page_no
-            """,
-            (job_id,),
-        ).fetchall()
-    return [
-        JobItemRecord(
-            item_id=row["item_id"],
-            job_id=row["job_id"],
-            page_id=row["page_id"],
-            page_no=int(row["page_no"]) if row["page_no"] is not None else None,
-            status=row["status"],
-            run_id=row["run_id"],
-            error_message=row["error_message"],
-            attempts=int(row["attempts"]),
-        )
-        for row in rows
-    ]

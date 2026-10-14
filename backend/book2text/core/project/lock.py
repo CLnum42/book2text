@@ -43,6 +43,7 @@ class LockStatus:
     stale: bool                   # 是否为本机遗留的失效锁
     info: LockInfo | None
     reason: str = ""              # 被占用时的说明
+    mine: bool = False            # 是不是**本进程**自己上的锁
 
     def describe(self, *, current_host: str | None = None) -> str:
         if not self.held or self.info is None:
@@ -115,7 +116,9 @@ def status(project_dir: Path) -> LockStatus:
         return LockStatus(held=True, stale=False, info=info)
 
     if _process_alive(info.pid):
-        return LockStatus(held=True, stale=False, info=info)
+        # 本进程自己上的锁不算"被别人占用"：应用是一个进程，
+        # 同一个项目的多个标签页看到的应该是同一个"我开着它"
+        return LockStatus(held=True, stale=False, info=info, mine=info.pid == os.getpid())
 
     return LockStatus(held=False, stale=True, info=info)
 

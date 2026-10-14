@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import secrets
 import shutil
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Collection
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +30,7 @@ from ..pdf import render
 from ..storage import db as db_module
 from ..storage.streaming import StreamError, stream_to_file
 from ..storage.ulid import new_ulid
+from . import jobs as jobs_module
 from . import lock as lock_module
 
 PROJECT_PREFIX = "b2t_"
@@ -407,6 +408,8 @@ def list_projects(*, library: Path | None = None) -> list[LibraryPageSummary]:
             continue
 
         lock_status = lock_module.status(entry)
+        # "使用中"只对**别人**显示：本进程自己开着的项目在项目卡上不该看起来被占用
+        held_by_other = lock_status.held and not lock_status.mine
         summaries.append(
             LibraryPageSummary(
                 project=project,
@@ -417,51 +420,14 @@ def list_projects(*, library: Path | None = None) -> list[LibraryPageSummary]:
                     counts.total > 0
                     and counts.with_text_layer / counts.total >= TEXT_LAYER_HINT_RATIO
                 ),
-                lock_held=lock_status.held,
-                lock_reason=lock_status.describe(),
+                lock_held=held_by_other,
+                lock_reason=lock_status.describe() if held_by_other else "",
             )
         )
     return summaries
 
 
 # ---------------------------------------------------------------- 打开与关闭
-
-INTERRUPTED_MESSAGE = "识别过程中断（应用被关闭）"
-
-
-def mark_interrupted(project_dir_path: Path) -> dict[str, int]:
-    """把"还在跑"的任务、运行与单元标记为中断（说明书 5.3）。
-
-    说明书要求这件事发生在**服务启动时**。本项目里任务只属于某个项目，而每个项目
-    同时只允许一个写入者（项目锁），因此等价且更准确的位置是**打开项目时**：
-    此刻刚拿到锁，能确定没有别的进程在写这个库。
-
-    会产生这种记录的情形只有一种：识别过程中应用被强杀——识别本身是同步的，
-    一旦返回就已经结算清楚。
-    """
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    with db_module.open_database(project_dir_path, apply_migrations=False) as conn:
-        jobs = conn.execute(
-            "UPDATE job SET status = 'interrupted', finished_at = ?"
-            " WHERE status IN ('queued', 'running')",
-            (now,),
-        ).rowcount
-        runs = conn.execute(
-            """
-            UPDATE ocr_run
-            SET status = 'failed', error_code = 'interrupted', error_message = ?, finished_at = ?
-            WHERE status IN ('queued', 'running')
-            """,
-            (INTERRUPTED_MESSAGE, now),
-        ).rowcount
-        items = conn.execute(
-            "UPDATE job_item SET status = 'failed', error_message = ?"
-            " WHERE status IN ('queued', 'running')",
-            (INTERRUPTED_MESSAGE,),
-        ).rowcount
-        conn.commit()
-    return {"jobs": jobs, "runs": runs, "items": items}
-
 
 @dataclass(frozen=True)
 class OpenResult:
@@ -491,6 +457,7 @@ def open_project(
     library: Path | None = None,
     force: bool = False,
     read_only: bool = False,
+    keep_job_ids: Collection[str] = (),
 ) -> OpenResult:
     """打开项目：检查锁 → 自动备份 → 上锁 → 清理中断的任务（说明书 6.1 / 7.6 / 5.3）。
 
@@ -498,6 +465,8 @@ def open_project(
       调用方可以让用户选择"只读打开"或"强制打开"（``force=True``）。
     - 只读打开不上锁、不备份、不改动任何数据——包括不做中断清理。
     - 每次打开都会备份 `project.db`，用 SQLite 在线备份 API。
+    - 中断清理会把"还在跑"的任务标为中断。**本进程正在跑的任务不受影响**——
+      调用方从执行器拿到它们的 id 传进来（``keep_job_ids``）。
     """
     target_library = library or default_library_dir()
     directory = project_dir(target_library, project_id)
@@ -518,7 +487,9 @@ def open_project(
             ),
         )
 
-    if lock_status.held and not force:
+    # 自己（同一个服务进程）已经开着的项目不拦：应用只有一个进程，
+    # 另一个标签页再打开它看到的还是同一个"我开着它"。
+    if lock_status.held and not lock_status.mine and not force:
         raise ProjectError(
             f"{lock_status.describe()}。可以选择只读打开，或强制打开"
             "（强制打开有让两台电脑同时写入同一数据库的风险）"
@@ -532,13 +503,13 @@ def open_project(
 
     backup_path = db_module.backup_database(directory)
     lock_info = lock_module.acquire(directory)
-    interrupted = mark_interrupted(directory)
+    interrupted = jobs_module.mark_interrupted(
+        directory, keep_job_ids=frozenset(keep_job_ids)
+    )
     project = load_project(project_id, library=target_library)
 
-    if interrupted["jobs"] and not warning:
-        warning = (
-            f"上次有 {interrupted['jobs']} 个识别任务被中断（应用被关闭），已标记为中断"
-        )
+    if interrupted and not warning:
+        warning = f"上次有 {interrupted} 个识别任务被中断（应用被关闭），已标记为中断"
 
     return OpenResult(
         project=project,
@@ -546,7 +517,7 @@ def open_project(
         lock=lock_info,
         read_only=False,
         warning=warning,
-        interrupted=interrupted["jobs"],
+        interrupted=interrupted,
     )
 
 

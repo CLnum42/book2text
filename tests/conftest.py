@@ -9,7 +9,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from book2text.api.app import create_app
+from book2text.core.project import executor as executor_module
+from book2text.core.project import recognition
 from book2text.core.storage import scratch
+from tests.fakes import FakeOcrEngine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_PDF = REPO_ROOT / "fixtures" / "pdf" / "synthetic-smoke-3pages.pdf"
@@ -85,3 +88,54 @@ def library_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def auth_headers() -> dict[str, str]:
     return {"X-B2T-Token": TEST_TOKEN}
+
+
+@pytest.fixture
+def minimal_project(tmp_path: Path) -> Path:
+    """一个最小的可用项目目录：建库、跑迁移、写一行 project 与三行 page。
+
+    给只关心**记录**（任务、块、运行）的单元测试用——不需要真的 PDF 与识别。
+    """
+    from book2text.core.storage import db as db_module
+
+    directory = tmp_path / "b2t_TESTS1"
+    directory.mkdir()
+    with db_module.open_database(directory) as conn:
+        conn.execute(
+            """
+            INSERT INTO project (project_id, name, source_file_name, source_sha256,
+                                 page_count, created_at, updated_at, schema_version)
+            VALUES ('b2t_TESTS1', '测试项目', 'sample.pdf', 'x' * 64, 3,
+                    '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 2)
+            """
+        )
+        conn.executemany(
+            """
+            INSERT INTO page (page_id, page_no, page_label, width_pt, height_pt, rotation,
+                              page_type, include, has_text_layer)
+            VALUES (?, ?, '', 595.0, 842.0, 0, 'body', 1, 0)
+            """,
+            [(f"page{index}", index) for index in (1, 2, 3)],
+        )
+        conn.commit()
+    return directory
+
+
+@pytest.fixture
+def inprocess_jobs(monkeypatch: pytest.MonkeyPatch) -> FakeOcrEngine:
+    """把"起子进程跑识别"换成本进程同步跑，并注入假引擎。
+
+    测试要验证的是**任务的状态机与落库**，不是进程管理——真子进程那条路由
+    `tests/integration/test_worker_subprocess.py` 用真引擎覆盖（需要 ocr 依赖）。
+    换掉 `Supervisor.start` 之后，接口层看到的仍然是一份真实的任务记录，
+    只是它已经跑完了。
+    """
+    engine = FakeOcrEngine()
+    monkeypatch.setattr(recognition, "RapidOcrAdapter", lambda: engine)
+
+    def fake_start(self, directory, job_id):  # noqa: ANN001 - 与 Supervisor.start 同形
+        recognition.run_job(directory, job_id, engine=engine)
+        return 0
+
+    monkeypatch.setattr(executor_module.Supervisor, "start", fake_start)
+    return engine

@@ -98,11 +98,22 @@ def open_project(
     force: bool = Query(default=False),
     read_only: bool = Query(default=False),
 ) -> dict[str, Any]:
-    """打开项目：上锁 + 自动备份（说明书 6.1 / 7.6）。"""
+    """打开项目：上锁 + 自动备份 + 清理中断的任务（说明书 6.1 / 7.6 / 5.3）。
+
+    清理时要避开**本进程正在跑的任务**：它们不是中断，而是真的在跑
+    （用户可以关掉项目再打开，任务照跑）。
+    """
     library = _library(request)
+    supervisor = getattr(request.app.state, "job_supervisor", None)
     try:
+        directory = project_library.project_dir(library, project_id)
+        keep = supervisor.running_job_ids_for(directory) if supervisor else set()
         result = project_library.open_project(
-            project_id, library=library, force=force, read_only=read_only
+            project_id,
+            library=library,
+            force=force,
+            read_only=read_only,
+            keep_job_ids=keep,
         )
     except project_library.ProjectError as exc:
         raise _project_error(exc) from exc

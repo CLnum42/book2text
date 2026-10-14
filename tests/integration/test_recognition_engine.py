@@ -1,14 +1,17 @@
-"""真实引擎的识别落库测试（说明书 Phase 2 的端到端那一条）。
+"""真实引擎的**输出质量**（说明书 5.2 的坐标基准）。
 
 需要 OCR 依赖（`uv sync --group ocr-eval`），未安装时整体跳过。
-**慢**：这里只留最小的一组——真实引擎的坐标正确性与落库后重启仍在。
+**慢**：任务跑在真子进程里，这里只留最小的一组——旋转页的坐标方向、
+原始输出文件的内容、重启后仍在。
 
-假引擎覆盖的那一大片（R1 / R2 / 失败原因 / 中断）在 `test_recognition_api.py`。
+任务控制、中断、重试在 `test_worker_subprocess.py`；
+假引擎覆盖的一大片（R1 / R2 / 失败原因）在 `test_recognition_api.py`。
 """
 
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -20,6 +23,28 @@ pytestmark = pytest.mark.ocr
 
 if not RapidOcrAdapter().available()[0]:
     pytest.skip("未安装 OCR 引擎（uv sync --group ocr-eval）", allow_module_level=True)
+
+
+def run_job_and_wait(
+    client: TestClient, headers: dict[str, str], project_id: str, pages: list[int], *,
+    timeout: float = 300.0
+) -> dict:
+    """建任务并等它跑完（真子进程，因此要轮询）。"""
+    response = client.post(
+        f"/api/projects/{project_id}/jobs/ocr", json={"pages": pages}, headers=headers
+    )
+    assert response.status_code == 200, response.text
+    job_id = response.json()["job"]["job_id"]
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        data = client.get(
+            f"/api/projects/{project_id}/jobs/{job_id}", headers=headers
+        ).json()
+        if data["job"]["status"] in ("succeeded", "failed", "cancelled", "interrupted"):
+            return data
+        time.sleep(1.0)
+    raise AssertionError("任务没有在预期时间内结束")
 
 
 def test_real_engine_persists_blocks_into_the_project(
@@ -41,16 +66,13 @@ def test_real_engine_persists_blocks_into_the_project(
     )
     project_id = created.json()["project"]["project_id"]
 
-    response = client.post(
-        f"/api/projects/{project_id}/jobs/ocr", json={"pages": [1]}, headers=auth_headers
-    )
-    assert response.status_code == 200, response.text
-    data = response.json()
+    data = run_job_and_wait(client, auth_headers, project_id, [1])
 
     assert data["job"]["status"] == "succeeded", data["items"]
     item = data["items"][0]
     assert item["status"] == "succeeded"
-    assert data["pages"][0]["recognition"]["status"] == "recognized"
+    pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+    assert pages[0]["recognition"]["status"] == "recognized"
 
     content = client.get(
         f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers
@@ -99,9 +121,7 @@ def test_real_engine_results_survive_a_restart(
         headers={**auth_headers, "Content-Type": "application/pdf"},
     )
     project_id = created.json()["project"]["project_id"]
-    client.post(
-        f"/api/projects/{project_id}/jobs/ocr", json={"pages": [1]}, headers=auth_headers
-    )
+    run_job_and_wait(client, auth_headers, project_id, [1])
     before = client.get(
         f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers
     ).json()

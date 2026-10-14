@@ -1005,6 +1005,8 @@ async function refreshProject(projectId) {
   currentProject = { ...data.project, pages: data.pages, read_only: false };
   closePageDetail();
   renderProject();
+  // 任务可能还在跑（比如刷新了页面），把抽屉里的进度接回来
+  await loadTasks();
 }
 
 function renderProject() {
@@ -1058,12 +1060,14 @@ function renderPages() {
   for (const page of pages) {
     if (onlyIncluded && !page.include) continue;
 
+    const recognition = recognitionOf(page);
     const tile = document.createElement("div");
     tile.className =
       "page-tile" +
       (page.include ? "" : " page-tile--excluded") +
       (page.has_text_layer ? " page-tile--textlayer" : "") +
-      (busyPages.has(page.page_no) ? " page-tile--busy" : "");
+      (busyPages.has(page.page_no) ? " page-tile--busy" : "") +
+      (recognition.status === "failed" ? " page-tile--failed" : "");
     tile.dataset.pageId = page.page_id;
     tile.dataset.pageNo = String(page.page_no);
     tile.title =
@@ -1101,8 +1105,10 @@ function renderPages() {
     recognizeButton.disabled = isBusy || !page.include;
     if (!page.include) {
       recognizeButton.title = "已排除，不参与识别。先单击缩略图把它纳入";
-    } else if (recognitionOf(page).status === "recognized") {
+    } else if (recognition.status === "recognized") {
       recognizeButton.title = "重新识别这一页（已有人工成果时不会覆盖，只作为待选结果）";
+    } else {
+      recognizeButton.title = "识别这一页（在后台任务里跑，进度看右下角）";
     }
     recognizeButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -1128,8 +1134,18 @@ function renderPages() {
 
 // ---------------------------------------------------------------- 识别（项目）
 
-/** 正在识别的页码。识别是同步的、一页可能几秒，期间要让人看得出在跑。 */
+/** 正在识别的页码。识别跑在后台任务里，这里只是"刚点了、还没轮到"的即时反馈。 */
 const busyPages = new Set();
+
+const JOB_STATUS_LABELS = {
+  queued: "排队中",
+  running: "识别中",
+  paused: "已暂停",
+  succeeded: "已完成",
+  failed: "有失败页",
+  cancelled: "已取消",
+  interrupted: "已中断",
+};
 
 async function recognizePage(page) {
   const project = currentProject;
@@ -1146,21 +1162,40 @@ async function recognizePage(page) {
       body: JSON.stringify({ pages: [page.page_no] }),
     });
     applyRecognizedPages(data.pages);
-
-    const item = (data.items || [])[0];
-    if (item && item.status !== "succeeded") {
-      const error = el("pages-error");
-      error.textContent =
-        `第 ${page.page_no} 页识别失败：${item.error_message || "原因未记录"}`;
-      error.hidden = false;
-    }
+    openTaskDrawer();
+    startTaskPolling(data.job.job_id);
   } catch (error) {
     showError(el("pages-error"), error);
   } finally {
     busyPages.delete(page.page_no);
     renderPages();
-    renderProjectMeta();
-    if (detailPageNo === page.page_no) await loadPageDetail(page.page_no);
+  }
+}
+
+async function startBatchRecognition(scope) {
+  const project = currentProject;
+  if (!project) return;
+  if (scope === "all") {
+    const ok = window.confirm(
+      "重新识别全部纳入页：已有的识别结果会被新结果替换。\n" +
+        "已经人工修改或确认过的块不会被覆盖（会自动保存为“待选结果”）。\n\n继续吗？"
+    );
+    if (!ok) return;
+  }
+
+  el("pages-error").hidden = true;
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope }),
+    });
+    applyRecognizedPages(data.pages);
+    renderPages();
+    openTaskDrawer();
+    startTaskPolling(data.job.job_id);
+  } catch (error) {
+    showError(el("pages-error"), error);
   }
 }
 
@@ -1172,6 +1207,253 @@ function applyRecognizedPages(pages) {
     );
     if (index >= 0) currentProject.pages[index] = updated;
   }
+}
+
+/** 重新拉一次页面列表（任务跑完、页面状态大面积变化时用）。 */
+async function reloadProjectPages() {
+  if (!currentProject) return;
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/pages`);
+    currentProject.pages = data.pages;
+  } catch (error) {
+    showError(el("pages-error"), error);
+    return;
+  }
+  renderPages();
+  renderProjectMeta();
+  if (detailPageNo !== null) await loadPageDetail(detailPageNo);
+}
+
+// ---------------------------------------------------------------- 任务抽屉
+
+let taskTimer = null;
+let taskJobId = null;
+
+function openTaskDrawer() {
+  el("task-drawer").hidden = false;
+}
+
+function closeTaskDrawer() {
+  el("task-drawer").hidden = true;
+}
+
+function taskChipClass(status) {
+  if (status === "failed" || status === "interrupted") return "badge badge--task is-failed";
+  if (status && status !== "succeeded") return "badge badge--task is-active";
+  return "badge badge--task";
+}
+
+/** 拉任务列表：有正在跑的就盯住它，否则只显示最近任务。 */
+async function loadTasks({ openDrawer = false } = {}) {
+  if (!currentProject) return;
+  let data;
+  try {
+    data = await apiJson(`/api/projects/${currentProject.project_id}/jobs?limit=8`);
+  } catch (error) {
+    return; // 任务列表读不到不该影响主流程
+  }
+  if (openDrawer) openTaskDrawer();
+
+  if (data.active) {
+    renderTask(data.active);
+    startTaskPolling(data.active.job.job_id);
+  } else {
+    taskJobId = null;
+    stopTaskPolling();
+    renderRecentTasks(data.jobs);
+  }
+}
+
+function startTaskPolling(jobId) {
+  taskJobId = jobId;
+  stopTaskPolling();
+  taskTimer = setInterval(pollTask, 1200);
+  pollTask();
+}
+
+function stopTaskPolling() {
+  if (taskTimer) clearInterval(taskTimer);
+  taskTimer = null;
+}
+
+async function pollTask() {
+  const project = currentProject;
+  if (!project || !taskJobId) return;
+  let data;
+  try {
+    data = await apiJson(`/api/projects/${project.project_id}/jobs/${taskJobId}`);
+  } catch (error) {
+    stopTaskPolling();
+    return;
+  }
+  renderTask(data);
+
+  if (!["queued", "running", "paused"].includes(data.job.status)) {
+    stopTaskPolling();
+    await reloadProjectPages();
+    await loadTasks();
+  } else {
+    // 进度在变，页面状态也在变：不重拉图，只刷状态
+    await refreshPageStates();
+  }
+}
+
+async function refreshPageStates() {
+  const project = currentProject;
+  if (!project) return;
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/pages`);
+    currentProject.pages = data.pages;
+  } catch {
+    return;
+  }
+  renderPages();
+  renderProjectMeta();
+}
+
+function renderTask(data) {
+  const job = data.job;
+  const label = JOB_STATUS_LABELS[job.status] || job.status;
+  el("task-drawer").hidden = false;
+
+  const current = data.current_page_no ? ` · 当前第 ${data.current_page_no} 页` : "";
+  const interrupted = data.alive === false && ["queued", "running", "paused"].includes(job.status);
+  const aliveNote = interrupted ? "（识别进程已不在——点取消或继续收拾它）" : "";
+  el("drawer-status").textContent = `${label}${current}${aliveNote}`;
+
+  el("drawer-fill").style.width = `${job.percent}%`;
+  el("drawer-fill").style.background =
+    job.status === "failed" || job.status === "interrupted" ? "var(--bad-fg)" : "var(--accent)";
+  el("drawer-counts").textContent =
+    `${job.done + job.failed} / ${job.total} 页 · 成功 ${job.done}` +
+    (job.failed ? ` · 失败 ${job.failed}` : "");
+
+  // 只显示技术上真实支持的操作（说明书 6.3）
+  const running = job.status === "running" || job.status === "queued";
+  el("job-pause").disabled = !running;
+  el("job-resume").disabled = !["paused", "interrupted", "failed", "cancelled"].includes(
+    job.status
+  );
+  el("job-retry").disabled = job.failed === 0 || (job.is_active && data.alive);
+  el("job-cancel").disabled = !["queued", "running", "paused"].includes(job.status);
+
+  const hints = [];
+  if (job.status === "paused") {
+    hints.push("已暂停：当前页做完后停下，点“继续”接着做。");
+  }
+  if (job.status === "failed" && job.failed) {
+    hints.push("有页失败——点“重试失败页”只重做这些页，成功的页不会重做。");
+  }
+  if (job.status === "cancelled") {
+    hints.push("已取消：已认完的页保留，点“继续”接着做没做完的。");
+  }
+  if (job.status === "interrupted") {
+    hints.push("任务中断（应用被关闭或识别进程异常退出），点“继续”接着做没做完的。");
+  }
+  el("drawer-hint").textContent = hints.join(" ");
+  el("drawer-hint").hidden = hints.length === 0;
+
+  const failures = el("drawer-failures");
+  failures.innerHTML = "";
+  for (const item of data.failed_items) {
+    const li = document.createElement("li");
+    const head = document.createElement("div");
+    const pageNo = document.createElement("span");
+    pageNo.className = "page-no";
+    pageNo.textContent = `第 ${item.page_no} 页`;
+    head.append(pageNo);
+    const reason = document.createElement("div");
+    reason.className = "muted";
+    reason.textContent = item.error_message || "原因未记录";
+    li.append(head, reason);
+    li.title = "点一下：跳到这一页";
+    li.addEventListener("click", () => {
+      const page = currentProject.pages.find((p) => p.page_no === item.page_no);
+      if (page) openPageDetail(page.page_no);
+    });
+    failures.append(li);
+  }
+
+  const chip = el("task-chip");
+  chip.hidden = false;
+  chip.className = taskChipClass(job.status);
+  chip.textContent = `任务：${label} ${job.done + job.failed}/${job.total}`;
+}
+
+function renderRecentTasks(jobs) {
+  el("task-chip").hidden = false;
+  const latest = jobs[0];
+  el("task-chip").className = latest ? taskChipClass(latest.status) : "badge badge--task";
+  el("task-chip").textContent = latest
+    ? `任务：${JOB_STATUS_LABELS[latest.status] || latest.status}`
+    : "任务：无";
+
+  const list = el("drawer-recent");
+  list.innerHTML = "";
+  el("drawer-recent-title").hidden = jobs.length === 0;
+  for (const job of jobs) {
+    const li = document.createElement("li");
+    const when = (job.finished_at || job.created_at || "").slice(5, 16).replace("T", " ");
+    const text = document.createElement("span");
+    text.textContent =
+      `${when} · ${JOB_STATUS_LABELS[job.status] || job.status} · ` +
+      `${job.done + job.failed}/${job.total} 页` +
+      (job.failed ? `（失败 ${job.failed}）` : "");
+    li.append(text);
+    if (["failed", "interrupted", "cancelled", "paused"].includes(job.status)) {
+      const view = document.createElement("button");
+      view.type = "button";
+      view.className = "btn btn--ghost";
+      view.style.cssText = "font-size:11px;padding:1px 7px";
+      view.textContent = "查看";
+      view.addEventListener("click", async () => {
+        const data = await apiJson(
+          `/api/projects/${currentProject.project_id}/jobs/${job.job_id}`
+        );
+        renderTask(data);
+      });
+      li.append(view);
+    }
+    list.append(li);
+  }
+}
+
+async function controlJob(action) {
+  if (!taskJobId || !currentProject) return;
+  el("drawer-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/jobs/${taskJobId}/${action}`,
+      { method: "POST" }
+    );
+    renderTask(data);
+    const stillActive = ["queued", "running", "paused"].includes(data.job.status);
+    if (stillActive) {
+      startTaskPolling(data.job.job_id);
+    } else {
+      stopTaskPolling();
+      await reloadProjectPages();
+      await loadTasks();
+    }
+  } catch (error) {
+    showError(el("drawer-error"), error);
+  }
+}
+
+function setupTaskDrawer() {
+  el("task-chip").addEventListener("click", async () => {
+    const drawer = el("task-drawer");
+    if (!drawer.hidden) {
+      closeTaskDrawer();
+      return;
+    }
+    await loadTasks({ openDrawer: true });
+  });
+  el("drawer-close").addEventListener("click", closeTaskDrawer);
+  el("job-pause").addEventListener("click", () => controlJob("pause"));
+  el("job-resume").addEventListener("click", () => controlJob("resume"));
+  el("job-cancel").addEventListener("click", () => controlJob("cancel"));
+  el("job-retry").addEventListener("click", () => controlJob("retry-failed"));
 }
 
 // ---------------------------------------------------------------- 本页识别结果
@@ -1374,6 +1656,9 @@ async function closeProject() {
   currentProject = null;
   el("project-card").hidden = true;
   closePageDetail();
+  closeTaskDrawer();
+  stopTaskPolling();
+  el("task-chip").hidden = true;
   await loadLibrary();
 }
 
@@ -1389,6 +1674,9 @@ function setupLibrary() {
   el("pages-exclude-all").addEventListener("click", () => setAllPagesInclude(false));
   el("pages-only-included").addEventListener("change", renderPages);
   el("detail-close").addEventListener("click", closePageDetail);
+  el("recognize-pending").addEventListener("click", () => startBatchRecognition("unrecognized"));
+  el("recognize-all").addEventListener("click", () => startBatchRecognition("all"));
+  setupTaskDrawer();
   el("detail-recognize").addEventListener("click", () => {
     if (detailPageNo === null) return;
     const page = currentProject.pages.find((item) => item.page_no === detailPageNo);
