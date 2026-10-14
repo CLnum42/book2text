@@ -877,6 +877,13 @@ def create_block(
 ) -> tuple[blocks_module.BlockRecord, list[Event]]:
     """新增一个块（说明书 6.4：可框选位置补全 bbox；不框选则"无位置信息"）。
 
+    插入位置三种给法，按优先级：
+
+    1. `after_block_id`：插在这一块后面（界面上的"在此块后新增"）；
+    2. `bbox`：**按框选的竖直位置**插进阅读顺序（第六.4 的框选补 bbox——
+       补救漏检区域，漏检的页眉就该插到最前面）；
+    3. 都没有：追加到最后。
+
     人工新增的块 `ocr_text` 为空——它没有 OCR 原文，因此界面上的"已修改"标记恒真，
     这是如实的：它不是识别出来的东西。
     """
@@ -902,17 +909,28 @@ def create_block(
             if index is None:
                 raise ProjectError(f"找不到块：{after_block_id}")
             order_index = int(siblings[index]["order_index"]) + 1
-            for shifted in siblings[index + 1 :]:
-                shift_events, _ = _set_block_fields(
+            events.extend(
+                _shift_from(
                     conn,
-                    shifted["block_id"],
-                    {"order_index": int(shifted["order_index"]) + 1},
+                    page["page_id"],
+                    order_index,
                     batch_id=batch_id,
-                    action=ACTION_REORDER,
                     actor_name=actor_name,
                     now=now,
                 )
-                events.extend(shift_events)
+            )
+        elif bbox is not None:
+            order_index = _order_index_for_bbox(conn, page["page_id"], bbox)
+            events.extend(
+                _shift_from(
+                    conn,
+                    page["page_id"],
+                    order_index,
+                    batch_id=batch_id,
+                    actor_name=actor_name,
+                    now=now,
+                )
+            )
         else:
             order_index = (int(siblings[-1]["order_index"]) + 1) if siblings else 0
 
@@ -934,6 +952,60 @@ def create_block(
         created = _read_block(conn, block_id)
 
     return created, events
+
+
+def _shift_from(
+    conn, page_id: str, from_index: int, *, batch_id: str, actor_name: str | None, now: str
+) -> list[Event]:
+    """把 `order_index >= from_index` 的块整体后移一位，给新块腾出位置。"""
+    events: list[Event] = []
+    rows = conn.execute(
+        """
+        SELECT block_id, order_index FROM block
+        WHERE page_id = ? AND deleted_at IS NULL AND order_index >= ?
+        ORDER BY order_index DESC
+        """,
+        (page_id, from_index),
+    ).fetchall()
+    for row in rows:
+        shift_events, _ = _set_block_fields(
+            conn,
+            row["block_id"],
+            {"order_index": int(row["order_index"]) + 1},
+            batch_id=batch_id,
+            action=ACTION_REORDER,
+            actor_name=actor_name,
+            now=now,
+        )
+        events.extend(shift_events)
+    return events
+
+
+def _order_index_for_bbox(conn, page_id: str, bbox: tuple[float, float, float, float]) -> int:
+    """框选出来的位置该插在阅读顺序的哪里。
+
+    判据是**竖直位置**：比新框的顶边还靠上的块都排在前面（说明书 6.4 的框选补 bbox，
+    多半是为了补救 OCR 漏检的区域——漏检的页眉就该插在最前面，漏掉的段落插在
+    它该在的位置）。没有任何块比它靠上时插在 0；全都靠上时插在最后。
+    """
+    rows = conn.execute(
+        """
+        SELECT bbox, order_index FROM block
+        WHERE page_id = ? AND deleted_at IS NULL
+        ORDER BY order_index, block_id
+        """,
+        (page_id,),
+    ).fetchall()
+    new_top = bbox[1]
+    index = 0
+    for row in rows:
+        index = int(row["order_index"]) + 1
+        box = blocks_module.bbox_from_json(row["bbox"])
+        if box is None or box[1] > new_top:
+            # 无位置信息的块或已经比新框靠下的块：就插在它前面
+            index = int(row["order_index"])
+            break
+    return index
 
 
 def delete_block(
@@ -1013,6 +1085,188 @@ def _set_entity_fields(
     ], before
 
 
+def _insert_run_lines(
+    conn, block_id: str, line_indexes: list[int], lines: list[dict], now: str
+) -> int:
+    """把一次运行的**行记录**补进新块（说明书 5.3 的 BlockLine）。
+
+    **为什么必须有这一步**（2026-10-14 发现）：采用新结果原先只重建了块、没有行，
+    于是那一页从此没有行级坐标——第二引擎复核会直接拒绝它（"这一页没有可复核的行"），
+    按行比对、分歧标记也就此断掉。行框来自那次运行的原始输出，与块是同一份结果。
+
+    行号在块内重新从 0 编号（`line_index` 是块内阅读顺序）。
+    """
+    inserted = 0
+    for order, source_index in enumerate(line_indexes):
+        if not 0 <= source_index < len(lines):
+            continue
+        line = lines[source_index]
+        bbox = line.get("bbox")
+        conn.execute(
+            """
+            INSERT INTO block_line (line_id, block_id, line_index, bbox, text)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                new_ulid(),
+                block_id,
+                order,
+                blocks_module.bbox_to_json(blocks_module.BBox(*bbox)) if bbox else None,
+                str(line.get("text") or ""),
+            ),
+        )
+        inserted += 1
+    return inserted
+
+
+def _insert_run_block(
+    conn,
+    *,
+    page_id: str,
+    run_id: str,
+    item: dict,
+    lines: list[dict],
+    order_index: int,
+    action: str,
+    batch_id: str,
+    actor_name: str | None,
+    now: str,
+) -> tuple[str, list[Event]]:
+    """按一次运行的输出新增块（含它的行记录）。采用整页与逐块采用共用这一处。"""
+    bbox = item.get("bbox")
+    block_id, events = _insert_block(
+        conn,
+        page_id=page_id,
+        origin="ocr",
+        order_index=order_index,
+        bbox=blocks_module.bbox_to_json(blocks_module.BBox(*bbox)) if bbox else None,
+        text=item.get("text") or "",
+        ocr_text=item.get("text") or "",
+        block_type=item.get("block_type") or "paragraph",
+        origin_run_id=run_id,
+        action=action,
+        batch_id=batch_id,
+        actor_name=actor_name,
+        now=now,
+    )
+    _insert_run_lines(conn, block_id, list(item.get("line_indexes") or []), lines, now)
+    return block_id, events
+
+
+def adopt_run_block(
+    project_id: str,
+    page_no: int,
+    run_id: str,
+    *,
+    candidate_index: int,
+    target_block_id: str | None = None,
+    library: Path | None = None,
+    actor_name: str | None = None,
+) -> tuple[blocks_module.BlockRecord, list[Event]]:
+    """**逐块**采用某一次运行的结果（说明书 6.4 的两版对比，R2 的整页采用之外的补充）。
+
+    整页采用（`adopt_run`）是"要么全换、要么全不换"；但真实情况常常是**取长补短**：
+    这一版这三块更好、那两块反而更差。这个函数只换**一块**——
+
+    1. 目标块（没有显式给就按 bbox 重叠配，配不上按序号）软删除；
+    2. 把那一次运行里对应的块按原样插回来（含行记录），**沿用目标块的位置**，
+       因此阅读顺序不变、其余块一个不动；
+    3. 整件事一个 batch，可以撤销；撤销之后目标块回来、新块消失。
+
+    配不上任何现有块的候选块（那次运行多出来的块）会**插进阅读顺序**里合适的位置。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        page = _page_row(conn, page_no)
+        if page is None:
+            raise ProjectError(f"没有第 {page_no} 页")
+        run = blocks_module.run_of_page(conn, run_id, page["page_id"])
+        if run is None:
+            raise ProjectError(f"这一页没有这次运行：{run_id}")
+        if run.status != "succeeded":
+            raise ProjectError("只有成功的运行才能采用")
+
+        payload = recognition.read_run_result(directory, run)
+        candidates = payload["blocks"]
+        if not 0 <= candidate_index < len(candidates):
+            raise ProjectError(f"这份结果里没有第 {candidate_index + 1} 块")
+        item = candidates[candidate_index]
+
+        siblings = _page_blocks(conn, page["page_id"])
+        target = None
+        if target_block_id:
+            target = next(
+                (row for row in siblings if row["block_id"] == target_block_id), None
+            )
+            if target is None:
+                raise ProjectError(f"这一页没有这个块：{target_block_id}")
+        else:
+            match = blocks_module.match_candidate_blocks(
+                [blocks_module.row_to_block(row) for row in siblings], [item]
+            )[0]
+            if match["target_block_id"]:
+                target = next(
+                    row for row in siblings if row["block_id"] == match["target_block_id"]
+                )
+
+        events: list[Event] = []
+        if target is not None:
+            # 沿用目标块的位置：它让出来的 order_index 正好给新块
+            order_index = int(target["order_index"])
+            delete_events, _ = _set_block_fields(
+                conn,
+                target["block_id"],
+                {"deleted_at": now},
+                batch_id=batch_id,
+                action=ACTION_DELETE,
+                actor_name=actor_name,
+                now=now,
+            )
+            events.extend(delete_events)
+        else:
+            box = item.get("bbox")
+            order_index = (
+                _order_index_for_bbox(conn, page["page_id"], tuple(box)) if box else len(siblings)
+            )
+            events.extend(
+                _shift_from(
+                    conn,
+                    page["page_id"],
+                    order_index,
+                    batch_id=batch_id,
+                    actor_name=actor_name,
+                    now=now,
+                )
+            )
+
+        block_id, created_events = _insert_run_block(
+            conn,
+            page_id=page["page_id"],
+            run_id=run_id,
+            item=item,
+            lines=payload["lines"],
+            order_index=order_index,
+            action=ACTION_APPLY_RUN,
+            batch_id=batch_id,
+            actor_name=actor_name,
+            now=now,
+        )
+        events.extend(created_events)
+
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        created = _read_block(conn, block_id)
+
+    return created, events
+
+
 def adopt_run(
     project_id: str,
     page_no: int,
@@ -1029,6 +1283,9 @@ def adopt_run(
     1. 旧块软删除；
     2. 按那份结果的**分段**重建块（`ocr_runs/<run_id>.json` 里存着用户对比过的那一份）；
     3. `page.active_run_id` 指向这次运行。
+
+    **行记录也一起重建**（2026-10-14 补）：原先只重建块，导致采用之后那一页没有行级坐标，
+    第二引擎复核会拒绝它（"这一页没有可复核的行"）。行框来自这次运行的原始输出。
     """
     if library is None:
         from .library import default_library_dir
@@ -1064,17 +1321,13 @@ def adopt_run(
             events.extend(block_events)
 
         for item in payload["blocks"]:
-            bbox = item.get("bbox")
-            _, created_events = _insert_block(
+            _, created_events = _insert_run_block(
                 conn,
                 page_id=page["page_id"],
-                origin="ocr",
+                run_id=run_id,
+                item=item,
+                lines=payload["lines"],
                 order_index=int(item["order_index"]),
-                bbox=blocks_module.bbox_to_json(blocks_module.BBox(*bbox)) if bbox else None,
-                text=item["text"],
-                ocr_text=item["text"],
-                block_type=item.get("block_type") or "paragraph",
-                origin_run_id=run_id,
                 action=ACTION_APPLY_RUN,
                 batch_id=batch_id,
                 actor_name=actor_name,

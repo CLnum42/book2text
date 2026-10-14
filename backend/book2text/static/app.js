@@ -1969,6 +1969,7 @@ async function openPageDetail(pageNo) {
 
 function closePageDetail() {
   detailPageNo = null;
+  if (boxCreateMode) setBoxCreateMode(false);
   candidateRunId = null;
   auxData = null;
   el("aux-panel").hidden = true;
@@ -2171,6 +2172,8 @@ function blockCard(block, index, blocksCount) {
   if (!block.include) bits.push("已排除");
   if (block.continues_to_next) bits.push("↪ 延续下页");
   if (blockDivergence.lines) bits.push(`≠ 两路不一致 ${blockDivergence.lines} 行`);
+  // 说明书 6.4：无 bbox 的块要明确显示"无位置信息"，不绘制虚假高亮
+  if (!block.bbox) bits.push("无位置信息");
   badges.textContent = bits.join(" · ");
 
   head.append(typeSelect, status, badges);
@@ -2655,6 +2658,9 @@ function fillCandidateColumn(list, blocks, currentBlocks) {
     const item = document.createElement("li");
     const same = currentTexts ? currentTexts.has(block.text) : true;
     if (currentTexts && !same) item.classList.add("is-changed");
+    if (currentBlocks && block.match && block.match.target_block_id) {
+      item.dataset.targetBlockId = block.match.target_block_id;
+    }
     const head = document.createElement("span");
     head.className = "muted";
     const note = currentTexts ? (same ? " · 与现有相同" : " · 不同") : "";
@@ -2662,6 +2668,9 @@ function fillCandidateColumn(list, blocks, currentBlocks) {
     const body = document.createElement("div");
     body.textContent = block.text || "（空）";
     item.append(head, body);
+
+    // 逐块采用（说明书 6.4）：只在这一列给按钮——左边是基准，没什么可"采用"的
+    if (currentBlocks) item.append(candidateBlockActions(block, index));
     list.append(item);
   });
   if (!blocks.length) {
@@ -2670,6 +2679,221 @@ function fillCandidateColumn(list, blocks, currentBlocks) {
     empty.textContent = "（没有块）";
     list.append(empty);
   }
+}
+
+/** 新结果里这一块的"换这一块 / 加进这一页"，以及它对应现有哪一块。 */
+function candidateBlockActions(block, index) {
+  const match = block.match || {};
+  const footer = document.createElement("div");
+  footer.className = "candidate__actions";
+  const label = document.createElement("span");
+  label.className = "muted";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn btn--ghost";
+
+  if (match.target_block_id) {
+    const targetNo = (match.target_index ?? 0) + 1;
+    label.textContent = `对应现有 #${targetNo}` +
+      (match.iou ? `（位置重合 ${(match.iou * 100).toFixed(0)}%）` : "（按顺序配对）");
+    label.title = match.iou
+      ? "按块框的位置配对：两版里这一块在页面上的位置重合度"
+      : "块框信息不足，按块的先后顺序配对";
+    button.textContent = match.same_text ? "换成这一块（文本相同）" : "换这一块";
+    button.title = `把现有 #${targetNo} 换成新结果的这一块（可撤销，其余块不动）`;
+    button.addEventListener("click", () =>
+      applyCandidateBlock(index, match.target_block_id, button)
+    );
+  } else {
+    label.textContent = "这次多出来的块";
+    button.textContent = "加进这一页";
+    button.title = "现有块里没有对应的：按位置插进阅读顺序（可撤销）";
+    button.addEventListener("click", () => applyCandidateBlock(index, null, button));
+  }
+  footer.append(label, button);
+  return footer;
+}
+
+/** 逐块采用：换掉对应的那一块（或把多出来的块加进来）。 */
+async function applyCandidateBlock(candidateIndex, targetBlockId, button) {
+  if (!currentProject || detailPageNo === null || !candidateRunId) return;
+  const projectId = currentProject.project_id;
+  el("page-detail-error").hidden = true;
+  button.disabled = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${projectId}/pages/${detailPageNo}/runs/${candidateRunId}/apply-block`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidate_index: candidateIndex,
+          target_block_id: targetBlockId,
+        }),
+      }
+    );
+    setSaveState(`已换成新结果的第 ${candidateIndex + 1} 块（可撤销）`);
+    reviewBlocks = data.blocks || [];
+    renderPageDetail({
+      page: data.page,
+      blocks: data.blocks,
+      review: data.review,
+      history: data.history,
+      runs: [],
+      active_run: null,
+    });
+    // 换完之后对应关系可能变了（那一块已经与现有一致），重新拉一次对比
+    await openCandidateCompare();
+    await refreshPageStates();
+  } catch (error) {
+    button.disabled = false;
+    showError(el("page-detail-error"), error);
+  }
+}
+
+// ---------------------------------------------------------------- 框选新增块（说明书 6.4）
+
+/** 框选模式：在页面上拖一个框 → 给漏检的区域补一个块（不框选就是"无位置信息"）。 */
+let boxCreateMode = false;
+let boxDraft = null; // 归一化坐标 {x0, y0, x1, y1}，拖拽中不断更新
+
+/** 框选出来的区域至少要有这么大，免得误点一下就冒出一个块。 */
+const BOX_MIN_WIDTH = 0.02;
+const BOX_MIN_HEIGHT = 0.01;
+
+function setBoxCreateMode(on) {
+  boxCreateMode = on;
+  el("detail-box-create").classList.toggle("btn--primary", on);
+  el("detail-canvas").classList.toggle("page-canvas--selecting", on);
+  if (!on) {
+    boxDraft = null;
+    el("box-select-rect").hidden = true;
+    el("box-select-panel").hidden = true;
+  } else {
+    setSaveState("在页面上拖出要新增的区域（Esc 取消）");
+  }
+}
+
+/** 鼠标位置 → 相对图像的归一化坐标（说明书 5.2：相对显示方向、0–1）。 */
+function normalizedPoint(event) {
+  const image = el("detail-image");
+  const rect = image.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1),
+    y: Math.min(Math.max((event.clientY - rect.top) / rect.height, 0), 1),
+  };
+}
+
+function onBoxMouseDown(event) {
+  if (!boxCreateMode || event.button !== 0) return;
+  const point = normalizedPoint(event);
+  if (!point) return;
+  event.preventDefault();
+  boxDraft = { x0: point.x, y0: point.y, x1: point.x, y1: point.y };
+  el("box-select-panel").hidden = true;
+  drawBoxDraft();
+}
+
+function onBoxMouseMove(event) {
+  if (!boxDraft) return;
+  const point = normalizedPoint(event);
+  if (!point) return;
+  boxDraft.x1 = point.x;
+  boxDraft.y1 = point.y;
+  drawBoxDraft();
+}
+
+function onBoxMouseUp(event) {
+  if (!boxDraft) return;
+  const point = normalizedPoint(event);
+  if (point) {
+    boxDraft.x1 = point.x;
+    boxDraft.y1 = point.y;
+  }
+  const box = boxDraftRect();
+  if (!box || box[2] - box[0] < BOX_MIN_WIDTH || box[3] - box[1] < BOX_MIN_HEIGHT) {
+    // 太小（多半是误点）：撤掉，不弹面板
+    boxDraft = null;
+    el("box-select-rect").hidden = true;
+    return;
+  }
+  drawBoxDraft(); // 定住最后的样子，等用户填文字
+  el("box-select-info").textContent =
+    `已框选：横向 ${(box[0] * 100).toFixed(0)}–${(box[2] * 100).toFixed(0)}%、` +
+    `纵向 ${(box[1] * 100).toFixed(0)}–${(box[3] * 100).toFixed(0)}%（相对这一页）`;
+  el("box-select-panel").hidden = false;
+  el("box-select-text").focus();
+}
+
+/** 拖拽方向任意，统一成 (x0,y0,x1,y1)。 */
+function boxDraftRect() {
+  if (!boxDraft) return null;
+  return [
+    Math.min(boxDraft.x0, boxDraft.x1),
+    Math.min(boxDraft.y0, boxDraft.y1),
+    Math.max(boxDraft.x0, boxDraft.x1),
+    Math.max(boxDraft.y0, boxDraft.y1),
+  ];
+}
+
+function drawBoxDraft() {
+  const box = boxDraftRect();
+  const rect = el("box-select-rect");
+  if (!box) {
+    rect.hidden = true;
+    return;
+  }
+  rect.hidden = false;
+  rect.style.left = `${box[0] * 100}%`;
+  rect.style.top = `${box[1] * 100}%`;
+  rect.style.width = `${(box[2] - box[0]) * 100}%`;
+  rect.style.height = `${(box[3] - box[1]) * 100}%`;
+}
+
+async function createBlockFromBox() {
+  const box = boxDraftRect();
+  if (!currentProject || detailPageNo === null || !box) return;
+  el("page-detail-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${detailPageNo}/blocks`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: el("box-select-text").value, bbox: box }),
+      }
+    );
+    setSaveState("已新增块（可撤销）");
+    const created = data.created;
+    el("box-select-text").value = "";
+    setBoxCreateMode(false);
+    // 与"在此块后新增"走同一条刷新路径（新建接口的响应里没有整页载荷）
+    await loadPageDetail(detailPageNo);
+    await refreshPageStates();
+    if (created) {
+      const item = el("detail-blocks").querySelector(`li[data-block-id="${created.block_id}"]`);
+      if (item) {
+        item.querySelector("textarea").focus();
+        item.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    }
+  } catch (error) {
+    showError(el("page-detail-error"), error);
+  }
+}
+
+function setupBoxCreate() {
+  el("detail-box-create").addEventListener("click", () => setBoxCreateMode(!boxCreateMode));
+  const canvas = el("detail-canvas");
+  canvas.addEventListener("mousedown", onBoxMouseDown);
+  window.addEventListener("mousemove", onBoxMouseMove);
+  window.addEventListener("mouseup", onBoxMouseUp);
+  el("box-select-confirm").addEventListener("click", createBlockFromBox);
+  el("box-select-cancel").addEventListener("click", () => setBoxCreateMode(false));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && boxCreateMode) setBoxCreateMode(false);
+  });
 }
 
 async function decideCandidate(decision) {
@@ -2866,6 +3090,7 @@ function setupLibrary() {
   el("project-close").addEventListener("click", closeProject);
   el("detail-close").addEventListener("click", closePageDetail);
   setupReviewControls();
+  setupBoxCreate();
   setupAuxControls();
   el("recognize-pending").addEventListener("click", () => startBatchRecognition("unrecognized"));
   el("selection-check").addEventListener("click", () => checkSelection(null));

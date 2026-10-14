@@ -237,13 +237,56 @@ def get_candidate(request: Request, project_id: str, page_no: int) -> dict[str, 
         raise _project_error(exc) from exc
 
     current = _page_blocks_payload(request, project_id, page_no)
+    # 逐块采用（说明书 6.4）：先算好"候选的每一块对应现有的哪一块"，
+    # 界面据此显示对应关系与「换这一块」，采用时把 target_block_id 原样传回来
+    matches = blocks_module.match_candidate_blocks(
+        blocks_module.list_blocks(project_id, library=_library(request), page_no=page_no),
+        payload["blocks"],
+    )
+    candidate_blocks = [
+        {**item, "match": matches[index]} for index, item in enumerate(payload["blocks"])
+    ]
     return {
         "run": run.to_dict(),
-        "candidate": payload,
+        "candidate": {**payload, "blocks": candidate_blocks},
         "current": {
             "blocks": current["blocks"],
             "review": current["review"],
         },
+    }
+
+
+@router.post("/{project_id}/pages/{page_no}/runs/{run_id}/apply-block")
+def apply_run_block(
+    request: Request, project_id: str, page_no: int, run_id: str, body: ApplyBlockRequest
+) -> dict[str, Any]:
+    """**逐块**采用新结果（说明书 6.4 的两版对比；R2 只要求整页二选一）。
+
+    只换这一块：目标块软删除、候选块按原样插回来（含行记录）、沿用目标块的位置，
+    其余块一个不动。整件事一个 batch，可以撤销。
+    """
+    library = _library(request)
+    try:
+        _block, events = editing.adopt_run_block(
+            project_id,
+            page_no,
+            run_id,
+            candidate_index=body.candidate_index,
+            target_block_id=body.target_block_id,
+            library=library,
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+
+    _history(request).push(project_id, _Batch(events=tuple(events), page_nos=(page_no,)))
+    payload = _page_blocks_payload(request, project_id, page_no)
+    return {
+        "applied_run_id": run_id,
+        "candidate_index": body.candidate_index,
+        "page": payload["page"],
+        "blocks": payload["blocks"],
+        "review": payload["review"],
+        "history": payload["history"],
     }
 
 
@@ -379,12 +422,21 @@ def move_block(
 
 
 class CreateBlockRequest(BaseModel):
-    page_no: int = Field(ge=1)
+    # 页码在路径里已经有了，这里保留一个可选字段只是为了兼容老界面（传了就按路径为准）
+    page_no: int | None = Field(default=None, ge=1)
     text: str = Field(default="", max_length=20000)
     # 框选位置（归一化坐标，说明书 5.2）；不给就按"无位置信息"处理
     bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
     after_block_id: str | None = None
     actor_name: str | None = Field(default=None, max_length=100)
+
+
+class ApplyBlockRequest(BaseModel):
+    """逐块采用（说明书 6.4）：候选里的第几块 + 用它换掉现有的哪一块。"""
+
+    candidate_index: int = Field(ge=0)
+    # 不给就由后端按 bbox 重叠配（配不上按序号）
+    target_block_id: str | None = None
 
 
 @router.post("/{project_id}/pages/{page_no}/blocks")

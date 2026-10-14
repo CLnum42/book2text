@@ -324,6 +324,8 @@
                   title="确认本页（⌘/Ctrl + Enter）">确认本页并下一页</button>
           <button type="button" id="aux-run" class="btn"
                   title="用第二引擎逐行复核这一页（说明书 8.5）：复核过的分歧行会在块里标出另一路候选，可逐行换过去">第二引擎复核</button>
+          <button type="button" id="detail-box-create" class="btn"
+                  title="在左边的页面上拖出一个框，为漏检的区域补一个块（说明书 6.4）">✚ 框选新增块</button>
           <button type="button" id="detail-recognize" class="btn">重新识别</button>
           <button type="button" id="detail-close" class="btn btn--ghost">收起</button>
         </div>
@@ -355,6 +357,7 @@
           <p class="hint">
             左边是你现在保存的块（含人工改动），右边是这次新识别的结果。
             <strong>采用新结果</strong>会把现有块换成新结果（可撤销）；
+            只想换其中几块时用右边的<strong>换这一块</strong>（同样可撤销）；
             <strong>保留现有</strong>只记下这个决定，不动任何内容。
           </p>
           <div class="candidate__body">
@@ -381,8 +384,18 @@
             <div class="page-canvas" id="detail-canvas" hidden>
               <img id="detail-image" alt="页面图像">
               <div class="page-overlay" id="detail-overlay"></div>
+              <div class="box-select__rect" id="box-select-rect" hidden></div>
             </div>
             <p class="muted" id="detail-image-status">正在渲染…</p>
+            <div class="box-select" id="box-select-panel" hidden>
+              <div class="muted" id="box-select-info"></div>
+              <textarea id="box-select-text" rows="3"
+                        placeholder="这一块的文字（可留空，之后再填）"></textarea>
+              <div class="box-select__actions">
+                <button type="button" id="box-select-confirm" class="btn btn--primary">创建这一块</button>
+                <button type="button" id="box-select-cancel" class="btn btn--ghost">取消</button>
+              </div>
+            </div>
           </div>
           <ol class="ocr-blocks" id="detail-blocks"></ol>
         </div>

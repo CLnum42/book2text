@@ -450,6 +450,91 @@ def load_page_content(
     return page, runs, blocks, lines
 
 
+# ---------------------------------------------------------------- 候选块与现有块的配对
+
+# bbox 重叠到什么程度才算"同一个块"（说明书 6.4 的逐块采用要用它）
+MATCH_MIN_IOU = 0.3
+
+
+def bbox_overlap(left, right) -> float:
+    """两个框的 IoU（交并比）。任一为空或面积为 0 时返回 0。"""
+    if not left or not right:
+        return 0.0
+    x0 = max(left[0], right[0])
+    y0 = max(left[1], right[1])
+    x1 = min(left[2], right[2])
+    y1 = min(left[3], right[3])
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    intersection = (x1 - x0) * (y1 - y0)
+    left_area = max(left[2] - left[0], 0.0) * max(left[3] - left[1], 0.0)
+    right_area = max(right[2] - right[0], 0.0) * max(right[3] - right[1], 0.0)
+    union = left_area + right_area - intersection
+    return intersection / union if union > 0 else 0.0
+
+
+def match_candidate_blocks(
+    current: Sequence[BlockRecord],
+    candidate: Sequence[dict],
+    *,
+    min_iou: float = MATCH_MIN_IOU,
+) -> list[dict[str, object]]:
+    """把一份候选结果的块与**现有**的块配对（说明书 6.4 的"逐块采用"）。
+
+    同一页的两次识别，块的排布大体不变，所以先按 **bbox 重叠（IoU）**贪心配对
+    （重叠大的先配，一个现有块最多配一次）；配不上的按**序号**退化配对；
+    还配不上的就是"这次多出来的块"，`target_block_id` 为 None——
+    界面据此显示"新增块"，采用时插到阅读顺序里合适的位置。
+
+    返回与 `candidate` 等长的列表，每项：
+    ``{"target_block_id", "target_index", "iou", "same_text"}``。
+    """
+    matched: list[dict[str, object]] = [
+        {"target_block_id": None, "target_index": None, "iou": 0.0, "same_text": False}
+        for _ in candidate
+    ]
+    used: set[int] = set()
+
+    scored: list[tuple[float, int, int]] = []
+    for candidate_index, item in enumerate(candidate):
+        box = item.get("bbox")
+        if not box:
+            continue
+        for block_index, block in enumerate(current):
+            if block.bbox is None:
+                continue
+            iou = bbox_overlap(tuple(box), block.bbox)
+            if iou >= min_iou:
+                scored.append((iou, candidate_index, block_index))
+
+    for iou, candidate_index, block_index in sorted(scored, reverse=True):
+        if matched[candidate_index]["target_block_id"] is not None or block_index in used:
+            continue
+        block = current[block_index]
+        matched[candidate_index] = {
+            "target_block_id": block.block_id,
+            "target_index": block_index,
+            "iou": round(iou, 4),
+            "same_text": (candidate[candidate_index].get("text") or "") == block.text,
+        }
+        used.add(block_index)
+
+    # 退化：按序号配（识别顺序与阅读顺序一致时，这是最常见的情形）
+    for candidate_index, item in enumerate(candidate):
+        if matched[candidate_index]["target_block_id"] is not None:
+            continue
+        if candidate_index < len(current) and candidate_index not in used:
+            block = current[candidate_index]
+            matched[candidate_index] = {
+                "target_block_id": block.block_id,
+                "target_index": candidate_index,
+                "iou": 0.0,
+                "same_text": (item.get("text") or "") == block.text,
+            }
+            used.add(candidate_index)
+    return matched
+
+
 # ---------------------------------------------------------------- 分歧（说明书 8.5 的落点）
 
 

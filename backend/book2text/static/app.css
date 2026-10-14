@@ -447,6 +447,24 @@ main {
   font-size: 12px; color: var(--muted); white-space: pre-wrap; word-break: break-word;
 }
 .page-overlay .box--excluded { border-style: dashed; opacity: .5; }
+
+/* 框选新增块（说明书 6.4）：拖出来的框与它的小面板 */
+.page-canvas--selecting { cursor: crosshair; }
+.page-canvas--selecting img { user-select: none; -webkit-user-select: none; }
+.box-select__rect {
+  position: absolute; border: 1px dashed #d9480f; background: rgba(217, 72, 15, .12);
+  border-radius: 2px; pointer-events: none;
+}
+.box-select {
+  border: 1px solid var(--border); border-radius: 8px; background: #fffaf5;
+  padding: 8px 10px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px;
+}
+.box-select textarea {
+  font: inherit; font-size: 13px; line-height: 1.55; width: 100%; resize: vertical;
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+}
+.box-select__actions { display: flex; gap: 6px; }
+.box-select__actions .btn { font-size: 12px; padding: 3px 10px; }
 .page-detail__body .ocr-blocks { gap: 8px; }
 
 /* "⋯ 更多"菜单（结构操作） */
@@ -478,6 +496,12 @@ main {
 .candidate__blocks li { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: #fff; font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .candidate__blocks li.is-changed { border-color: #f0c9a8; background: #fffaf5; }
 .candidate__blocks .muted { font-size: 11px; display: block; margin-bottom: 2px; }
+/* 逐块采用：一块一行小操作（对应现有 #N + 换这一块） */
+.candidate__actions {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px;
+  border-top: 1px dashed var(--border); padding-top: 5px;
+}
+.candidate__actions .btn { font-size: 11px; padding: 2px 8px; }
 
 .review-inline { padding: 8px 12px 0; }
 .review-inline .btn { font-size: 12px; padding: 4px 10px; }
