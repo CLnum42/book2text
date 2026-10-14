@@ -1,0 +1,161 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><link rel="stylesheet" href="styles.css">
+<style>
+/* 筛选栏 */
+.filterbar{height:46px;background:#fff;border-bottom:1px solid #e2e4e8;display:flex;align-items:center;gap:8px;padding:0 16px;font-size:12.5px;color:#646a73}
+.filterbar .flab{color:#9aa0a8;margin-right:2px}
+
+/* 主区 */
+.main{display:flex;height:772px;position:relative}
+.grid-zone{flex:1;padding:16px 16px 0;overflow:hidden}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:15px}
+
+/* 缩略图卡片 */
+.tcard{position:relative;border-radius:8px}
+.thumb{position:relative;height:224px;border:1px solid #dfe2e6;border-radius:7px;background:#f8f6f0;overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+.thumb .in{position:absolute;inset:12px 14px}
+.tl{background:repeating-linear-gradient(to bottom,#e4e0d3 0 3px,transparent 3px 11px)}
+.tl.short{margin-right:26px}
+.tl.gap{margin-top:10px}
+.coverpage{position:absolute;inset:0;background:linear-gradient(150deg,#2f3a52,#1d2436);display:flex;align-items:center;justify-content:center;
+  color:#e8e4d8;font-family:Georgia,serif;font-size:11px;letter-spacing:2px;text-align:center;line-height:2}
+.cramp{position:absolute;left:26px;right:26px;top:60px;height:110px;background:repeating-linear-gradient(to bottom,#ddd8c9 0 2px,transparent 2px 8px)}
+.toc .in .tl{margin-bottom:9px}
+.tcard .ckb{position:absolute;top:7px;left:7px;z-index:3;display:none}
+.tcard.sel .ckb{display:inline-flex}
+.tcard.sel .thumb{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.28)}
+.tcard.dim{opacity:.42}
+.tcard.fail .thumb{border-color:#e8a3a3;box-shadow:0 0 0 1.5px rgba(220,38,38,.22)}
+.tmeta{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+.tmeta .pn{font-size:11.5px;color:#33383f;font-weight:500}
+.tmeta .pn span{color:#9aa0a8;font-weight:400}
+.tstat{font-size:10.5px;display:inline-flex;align-items:center;gap:3px}
+.tstat.gray{color:#8f959e}.tstat.blue{color:#1d4ed8}.tstat.green{color:#15803d}.tstat.red{color:#b91c1c}.tstat.amber{color:#b45309}
+
+/* 右侧面板 */
+.panel{width:292px;background:#fff;border-left:1px solid #e2e4e8;padding:16px;display:flex;flex-direction:column;gap:9px}
+.panel h3{font-size:14px;font-weight:600;display:flex;align-items:baseline;gap:8px}
+.panel h3 .sub{font-size:11.5px;color:#9aa0a8;font-weight:400}
+.panel .sec{font-size:11px;color:#9aa0a8;margin:6px 0 -2px}
+.panel .row2{display:flex;gap:8px}
+.panel .row2 .btn{flex:1}
+.panel .hint{font-size:11px;color:#9aa0a8;line-height:1.5;margin-top:-4px}
+.panel .tipbox{margin-top:auto;background:#fdf6e8;border:1px solid #f3e3bd;border-radius:8px;padding:10px 12px;font-size:11.5px;line-height:1.6;color:#92600a}
+
+/* 任务抽屉 */
+.drawer{position:absolute;top:10px;right:308px;width:348px;background:#fff;border:1px solid #e2e4e8;border-radius:12px;
+  box-shadow:0 14px 44px rgba(15,18,24,.18);z-index:10;overflow:hidden}
+.drawer .dh{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid #eef0f2;font-weight:600;font-size:13.5px}
+.drawer .dsec{padding:12px 16px;border-bottom:1px solid #f2f3f5}
+.drawer .dsec .t1{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600}
+.drawer .dsec .t2{font-size:11.5px;color:#646a73;margin-top:7px}
+.drawer .dsec .ops{display:flex;gap:8px;margin-top:9px}
+.drawer .dlabel{padding:8px 16px 0;font-size:11px;color:#9aa0a8}
+.link{color:#2563eb;font-size:12px}
+</style></head><body>
+<div class="chrome">
+  <div class="dots"><i></i><i></i><i></i></div>
+  <div class="addr"><span class="lock">🔒</span>127.0.0.1:8734<span style="color:#9aa0a8"> · 本地运行，数据不上传</span></div>
+  <div class="side"></div>
+</div>
+<div class="topbar">
+  <div class="back">‹</div>
+  <div class="proj">《逻辑哲学论》</div>
+  <div class="vdiv"></div>
+  <div class="tabs"><div class="tab on">页面</div><div class="tab">审校</div></div>
+  <div class="btn">导出</div>
+  <div class="spacer"></div>
+  <span class="save">已保存 ✓ 14:32</span>
+  <div class="tpill"><span class="dot"></span>识别中 45/300<span class="mini"><i style="width:15%"></i></span><span class="caret">▾</span></div>
+</div>
+<div class="filterbar">
+  <span class="flab">筛选</span>
+  <span style="color:#33383f">类型</span><div class="select" style="height:26px">全部 <span class="caret">▾</span></div>
+  <span style="color:#33383f">识别</span><div class="select" style="height:26px">全部 <span class="caret">▾</span></div>
+  <span style="color:#33383f">审校</span><div class="select" style="height:26px">全部 <span class="caret">▾</span></div>
+  <div class="vdiv"></div>
+  <span style="color:#33383f">跳转</span><div class="input" style="width:64px;height:26px"><span class="ph">页码…</span></div>
+  <span style="color:#33383f">选择范围</span><div class="input" style="width:128px;height:26px">7-10</div>
+  <div class="spacer"></div>
+  <div class="btn sm">任务包</div>
+  <span style="color:#9aa0a8;font-size:12px">共 312 页 · 纳入 300 页</span>
+</div>
+
+<div class="main">
+  <div class="grid-zone">
+    <div class="grid">
+      <!-- p1 封面·排除 -->
+      <div class="tcard dim"><div class="thumb"><div class="coverpage">TRACTATUS<br>LOGICO-<br>PHILOSOPHICUS</div></div>
+        <div class="tmeta"><span class="pn">p.1 <span>· 封面</span></span><span class="tstat gray">已排除</span></div></div>
+      <!-- p2 版权·排除 -->
+      <div class="tcard dim"><div class="thumb"><div class="cramp"></div></div>
+        <div class="tmeta"><span class="pn">p.2 <span>· 版权页</span></span><span class="tstat gray">已排除</span></div></div>
+      <!-- p3 目录·未识别 -->
+      <div class="tcard toc"><div class="thumb"><div class="in"><div class="tl short" style="height:11px"></div><div class="tl short" style="height:11px"></div><div class="tl short" style="height:11px"></div><div class="tl short" style="height:11px"></div><div class="tl short" style="height:11px"></div><div class="tl short" style="height:11px"></div><div class="tl short" style="height:11px"></div><div class="tl short" style="height:11px"></div></div></div>
+        <div class="tmeta"><span class="pn">p.3 <span>· 目录</span></span><span class="tstat gray">未识别</span></div></div>
+      <!-- p4 识别中 -->
+      <div class="tcard"><div class="thumb"><div class="in"><div class="tl" style="height:200px"></div></div></div>
+        <div class="tmeta"><span class="pn">p.4 <span>· 正文</span></span><span class="tstat blue">◌ 识别中…</span></div></div>
+      <!-- p5 已识别 -->
+      <div class="tcard"><div class="thumb"><div class="in"><div class="tl" style="height:200px"></div></div></div>
+        <div class="tmeta"><span class="pn">p.5 <span>· 正文</span></span><span class="tstat blue">已识别</span></div></div>
+      <!-- p6 已审 -->
+      <div class="tcard"><div class="thumb"><div class="in"><div class="tl" style="height:200px"></div></div></div>
+        <div class="tmeta"><span class="pn">p.6 <span>· 正文</span></span><span class="tstat green">已审 ✓</span></div></div>
+      <!-- p7 识别失败·选中 -->
+      <div class="tcard sel fail"><span class="ck on ckb">✓</span><div class="thumb"><div class="in"><div class="tl" style="height:130px"></div></div></div>
+        <div class="tmeta"><span class="pn">p.7 <span>· 正文</span></span><span class="tstat red">⚠ 识别失败</span></div></div>
+      <!-- p8 已识别·选中 -->
+      <div class="tcard sel"><span class="ck on ckb">✓</span><div class="thumb"><div class="in"><div class="tl" style="height:200px"></div></div></div>
+        <div class="tmeta"><span class="pn">p.8 <span>· 正文</span></span><span class="tstat blue">已识别</span></div></div>
+      <!-- p9 已识别·不确定·选中 -->
+      <div class="tcard sel"><span class="ck on ckb">✓</span><div class="thumb"><div class="in"><div class="tl" style="height:200px"></div></div></div>
+        <div class="tmeta"><span class="pn">p.9 <span>· 正文</span></span><span class="tstat amber">？不确定 2</span></div></div>
+      <!-- p10 未识别·选中 -->
+      <div class="tcard sel"><span class="ck on ckb">✓</span><div class="thumb"><div class="in"><div class="tl" style="height:200px"></div></div></div>
+        <div class="tmeta"><span class="pn">p.10 <span>· 正文</span></span><span class="tstat gray">未识别</span></div></div>
+      <!-- p11 已识别 -->
+      <div class="tcard"><div class="thumb"><div class="in"><div class="tl" style="height:200px"></div></div></div>
+        <div class="tmeta"><span class="pn">p.11 <span>· 正文</span></span><span class="tstat blue">已识别</span></div></div>
+      <!-- p12 未识别 -->
+      <div class="tcard"><div class="thumb"><div class="in"><div class="tl" style="height:200px"></div></div></div>
+        <div class="tmeta"><span class="pn">p.12 <span>· 正文</span></span><span class="tstat gray">未识别</span></div></div>
+    </div>
+  </div>
+
+  <!-- 任务抽屉 -->
+  <div class="drawer">
+    <div class="dh">任务<div class="spacer"></div><div class="x">✕</div></div>
+    <div class="dsec">
+      <div class="t1"><span class="dot" style="width:7px;height:7px;border-radius:50%;background:#2563eb;display:inline-block"></span>识别 · 进行中</div>
+      <div class="t2">已完成 45 / 300 页 · 当前：第 51 页</div>
+      <div class="pbar" style="margin-top:8px"><i style="width:15%"></i></div>
+      <div class="ops"><div class="btn sm">暂停</div><div class="btn sm danger">取消</div></div>
+    </div>
+    <div class="dlabel">最近</div>
+    <div class="dsec" style="padding-top:8px">
+      <div class="t1" style="font-weight:500;color:#33383f">识别（10 月 13 日）· 完成 280 / 282 页</div>
+      <div class="t2" style="margin-top:4px;color:#b91c1c">失败 2 页&nbsp;&nbsp;<span class="link">重试失败页</span></div>
+    </div>
+    <div class="dsec" style="border-bottom:none">
+      <div class="t1" style="font-weight:500;color:#33383f">生成缩略图 · 已完成 312 / 312 ✓</div>
+    </div>
+  </div>
+
+  <!-- 右侧面板 -->
+  <div class="panel">
+    <h3>已选 4 页<span class="sub">第 7–10 页</span><div class="spacer"></div><div class="x">✕</div></h3>
+    <div class="sec">页面类型</div>
+    <div class="select" style="width:100%;justify-content:space-between">正文 <span class="caret">▾</span></div>
+    <div class="row2"><div class="btn">纳入</div><div class="btn">排除</div></div>
+    <div class="sec">识别</div>
+    <div class="btn block">识别样本</div>
+    <div class="btn pri block">识别所选</div>
+    <div class="btn block">识别全部未识别页</div>
+    <div class="hint">已有识别结果的页面默认跳过</div>
+    <div class="sec">其他</div>
+    <div class="btn block">结构工具…</div>
+    <div class="btn block">在审校中打开</div>
+    <div class="tipbox">建议：识别前先排除封面、版权页与空白页，可节省识别时间。</div>
+  </div>
+</div>
+</body></html>

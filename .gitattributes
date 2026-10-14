@@ -1,0 +1,72 @@
+# ============================================================
+# Book2Text .gitattributes
+# 依据说明书第 10 节「跨平台规范」：仓库统一源码换行，
+# 保证 macOS 与 Windows 检出结果一致。
+# ============================================================
+
+# 默认：自动识别文本文件，检出时统一使用 LF
+* text=auto eol=lf
+
+# ---------- 源码与文档：一律 LF ----------
+*.py    text eol=lf
+*.pyi   text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+*.jsonl text eol=lf
+*.toml  text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.vue   text eol=lf
+*.html  text eol=lf
+*.css   text eol=lf
+*.scss  text eol=lf
+*.sql   text eol=lf
+*.sh    text eol=lf
+
+# ---------- 平台启动脚本 ----------
+# Windows 批处理要求 CRLF；macOS 启动脚本要求 LF（换行错误会导致无法执行）
+*.bat      text eol=crlf
+*.cmd      text eol=crlf
+*.command  text eol=lf
+
+# ---------- 二进制文件：不做换行转换，且不参与文本 diff ----------
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.icns      binary
+*.pdf       binary
+*.ttf       binary
+*.otf       binary
+*.woff      binary
+*.woff2     binary
+*.zip       binary
+*.xlsx      binary
+*.docx      binary
+*.db        binary
+*.sqlite    binary
+*.sqlite3   binary
+*.onnx      binary
+*.pkl       binary
+*.pt        binary
+*.npy       binary
+*.npz       binary
+
+# ---------- Git 行为 ----------
+# 避免在 diff 中把中文文档当成二进制
+*.md diff
+# 导出样本（TXT/JSONL）在 diff 中保持可见，便于人工核对
+*.txt diff
+*.jsonl diff
+
+# ---------- 语言统计 ----------
+docs/ui-mockups/* linguist-documentation

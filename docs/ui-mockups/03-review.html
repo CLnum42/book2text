@@ -1,0 +1,138 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><link rel="stylesheet" href="styles.css">
+<style>
+/* 待选新识别结果提示条 */
+.notice{height:38px;background:#eef4ff;border-bottom:1px solid #d7e4fd;display:flex;align-items:center;gap:10px;padding:0 18px;font-size:12.5px;color:#1d4ed8}
+.notice .ic{font-size:13px}
+
+.main{display:flex;height:778px}
+/* ── 左侧：原图 ── */
+.viewer{width:52%;background:#e7e9ec;position:relative;display:flex;justify-content:center;padding:22px 0}
+.paper{position:relative;width:560px;height:742px;background:linear-gradient(#faf7f0,#f4f0e5);
+  box-shadow:0 3px 18px rgba(0,0,0,.22),inset 0 0 60px rgba(120,110,90,.15);
+  padding:50px 58px;font-family:Georgia,"Times New Roman",serif;color:#5a5244}
+.paper p{font-size:9.5px;line-height:1.9;text-align:justify}
+.pz{position:relative;outline:1.5px solid rgba(120,150,200,.5);border-radius:2px}
+.pz .bdg{position:absolute;top:-15px;left:-2px;font:600 9px -apple-system,"PingFang SC",sans-serif;color:#4361a8;
+  background:rgba(255,255,255,.92);border:1px solid rgba(120,150,200,.7);padding:0 5px;border-radius:3px;letter-spacing:.5px;height:13px;line-height:12px}
+.pz.cur{outline:2px solid #2563eb;background:rgba(37,99,235,.09)}
+.pz.cur .bdg{color:#fff;background:#2563eb;border-color:#2563eb}
+.pz.unc{outline:1.5px dashed #d97706}
+.pz.unc .bdg{color:#b45309;background:#fff;border-color:#d97706}
+.pz.cont .bdg{color:#1d4ed8}
+.hd{font-size:8.5px;text-align:center;letter-spacing:2.5px;color:#6b6252;font-variant:small-caps}
+.chap{text-align:center;margin:24px 0 16px}
+.chap b{font-size:16px;letter-spacing:3px;color:#4a4234}
+.chap i{display:block;font-size:10px;margin-top:4px;letter-spacing:1px}
+.pn{position:absolute;bottom:24px;left:0;right:0;text-align:center;font-size:9.5px}
+.vtool{position:absolute;left:18px;bottom:16px;background:#fff;border:1px solid #d1d5db;border-radius:8px;display:flex;gap:2px;padding:4px;font-size:12.5px;color:#4b5563;box-shadow:0 2px 8px rgba(0,0,0,.08);z-index:4}
+.vtool span{padding:4px 10px;border-radius:6px}
+.vtool span.ckd{background:#eef4ff;color:#1d4ed8}
+.vhint{position:absolute;right:18px;bottom:16px;font-size:11px;color:#8f959e;background:rgba(255,255,255,.85);padding:4px 9px;border-radius:6px;border:1px solid #e2e4e8}
+
+/* ── 右侧：块编辑列表 ── */
+.editor{flex:1;background:#fff;border-left:1px solid #e5e7eb;display:flex;flex-direction:column;min-width:0}
+.phead{padding:10px 18px;border-bottom:1px solid #eef0f2;font-size:12.5px;color:#646a73;display:flex;align-items:center;gap:6px}
+.blks{flex:1;overflow:hidden}
+.blk{border-bottom:1px solid #eef0f2;padding:10px 18px 11px}
+.blk .row1{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.blk .txt{font-size:13px;line-height:1.65;color:#1f2329}
+.blk.faded{opacity:.48}
+.blk.faded .txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blk.cur{border-left:3px solid #2563eb;background:#f8fafc;padding-left:15px}
+.blk .ops{display:flex;gap:8px;margin-top:9px}
+.blk .ops .b{font-size:12px;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;color:#4b5563;background:#fff}
+.editbox{border:1px solid #c9d6f8;border-radius:7px;background:#fff;padding:7px 10px;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.dvw{background:#fdf3e0;border-radius:4px;padding:0 3px;font-weight:600;color:#92400e}
+.dvp{display:inline-flex;align-items:center;gap:6px;margin-left:6px;background:#fff;border:1px solid #e8cd93;border-radius:6px;padding:1px 7px;font-size:11px;color:#92600a;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.dvp .link{color:#2563eb;font-weight:600}
+.efoot{border-top:1px solid #eef0f2;padding:11px 18px;display:flex;align-items:center;gap:8px}
+.efoot .pgnum{font-size:11.5px;color:#9aa0a8}
+</style></head><body>
+<div class="chrome">
+  <div class="dots"><i></i><i></i><i></i></div>
+  <div class="addr"><span class="lock">🔒</span>127.0.0.1:8734<span style="color:#9aa0a8"> · 本地运行，数据不上传</span></div>
+  <div class="side"></div>
+</div>
+<div class="topbar">
+  <div class="back">‹</div>
+  <div class="proj">《逻辑哲学论》</div>
+  <div class="vdiv"></div>
+  <div class="tabs"><div class="tab">页面</div><div class="tab on">审校</div></div>
+  <div class="btn">导出</div>
+  <div class="vdiv"></div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:13px">
+    <div class="btn sm">◀</div>
+    <span style="font-weight:600;white-space:nowrap">第 87 页<span style="color:#9aa0a8;font-weight:400">（印 71）</span></span>
+    <div class="btn sm">▶</div>
+  </div>
+  <div class="btn sm">跳转</div>
+  <div class="select" style="height:26px">筛选：全部 <span class="caret">▾</span></div>
+  <div class="spacer"></div>
+  <span class="save">已保存 ✓ 14:32</span>
+</div>
+
+<div class="notice">
+  <span class="ic">ⓘ</span>本页有一份待选的新识别结果（今天 15:02 · RapidOCR），与现有块文本存在差异
+  <div class="btn sm" style="margin-left:4px">对比</div>
+  <div class="spacer"></div>
+  <div class="x">✕</div>
+</div>
+
+<div class="main">
+  <!-- 左：原始页面 -->
+  <div class="viewer">
+    <div class="paper">
+      <div class="pz" style="margin-bottom:16px"><span class="bdg">页眉</span><div class="hd">THE HISTORY OF LOGIC</div></div>
+      <div class="pz chap"><span class="bdg">标题</span><b>CHAPTER 4</b><i>THE EARLY YEARS</i></div>
+      <div class="pz cur" style="margin-bottom:16px"><span class="bdg">段落 · 当前块</span><p>In the early years of the century, logicians turned their attention to the relation between language and the world. The question was no longer whether our thoughts mirror reality, but whether the very structure of our sentences could be said to picture the facts they describe. This shift, subtle as it may seem, changed the whole direction of philosophical inquiry.</p></div>
+      <div class="pz unc" style="margin-bottom:16px"><span class="bdg">段落 · ？</span><p>Another paragraph begins here, noting that the Vienna Circle held a stricter view: a statement which cannot be verified by experience was said to be without sense. Critics objected that the principle itself seemed to fail its own test, and the debate continued through the following decades without any final settlement.</p></div>
+      <div class="pz cont" style="margin-bottom:16px"><span class="bdg">段落 · ↪</span><p>It is worth remarking, finally, that the older tradition did not disappear at once. In many universities the classical syllabus was taught side by side with the new logic, and students were left to reconcile the two as best they could, a state of affairs which continued well beyond the period treated in</p></div>
+      <div class="pz" style="margin-bottom:16px"><span class="bdg">段落</span><p>The manuscripts from which this chapter draws are preserved in three collections, two of them incomplete; where they differ, the reading of the oldest copy has been preferred, and every departure from it has been recorded in the critical notes at the end of the volume.</p></div>
+      <div class="pz"><span class="bdg">段落</span><p>A fuller account of these matters, together with the documentary evidence on which it rests, will be found in the appendix, where the relevant letters are printed in chronological order.</p></div>
+      <div class="pz pn" style="width:30px;margin:0 auto"><span class="bdg">页码</span>71</div>
+    </div>
+    <div class="vtool"><span>－</span><span>＋</span><span>适合宽度</span><span class="ckd">显示块框 ☑</span></div>
+    <div class="vhint">点击原图区域 → 选中对应块</div>
+  </div>
+
+  <!-- 右：块列表 -->
+  <div class="editor">
+    <div class="phead">
+      <b style="color:#1f2329">第 87 页</b> · 正文 · 12 块 · <span style="color:#b45309">未审 9</span> · <span style="color:#b45309">不确定 1</span> · <span style="color:#b45309">分歧 2 行</span>
+    </div>
+    <div class="blks">
+      <div class="blk faded">
+        <div class="row1"><span class="tag">页眉</span><span class="chip gray">导出时排除</span></div>
+        <div class="txt">THE HISTORY OF LOGIC</div>
+      </div>
+      <div class="blk">
+        <div class="row1"><span class="tag">标题</span><div class="spacer"></div><span class="chip green">✓ 已确认</span></div>
+        <div class="txt" style="font-weight:600">Chapter 4 — The Early Years</div>
+      </div>
+      <div class="blk cur">
+        <div class="row1"><span class="tag" style="border-color:#2563eb;color:#1d4ed8">段落</span><div class="spacer"></div><span class="chip amber">● 已修改</span></div>
+        <div class="editbox"><div class="txt">In the early years of the century, logicians <span class="dvw">recognised<span class="dvp">另一路候选：recognized<span class="link">替换</span></span></span> turned their attention to the relation between language and the world. The question was no longer whether our thoughts mirror reality, but whether the very structure of our sentences could be said to picture the facts they describe. This shift, subtle as it may seem, changed the whole direction of philosophical inquiry.</div></div>
+        <div class="ops"><span class="b">？不确定</span><span class="b">排除</span><span class="b">类型 ▾</span><span class="b">⋯ 更多</span></div>
+      </div>
+      <div class="blk">
+        <div class="row1"><span class="tag">段落</span><div class="spacer"></div><span class="chip amber">？不确定</span></div>
+        <div class="txt">Another paragraph begins here, noting that the Vienna Circle held a stricter view: a statement which cannot be verified by experience was said to be without sense. …</div>
+      </div>
+      <div class="blk">
+        <div class="row1"><span class="tag">段落</span><div class="spacer"></div><span class="chip blue">↪ 延续到下页</span></div>
+        <div class="txt">It is worth remarking, finally, that the older tradition did not disappear at once. In many universities the classical syllabus was taught side by side with the new logic, and students were left to reconcile the two as best they could, …</div>
+      </div>
+      <div class="blk faded">
+        <div class="row1"><span class="tag">页码</span><span class="chip gray">导出时排除</span></div>
+        <div class="txt">71</div>
+      </div>
+    </div>
+    <div class="efoot">
+      <div class="btn sm">撤销</div><div class="btn sm">重做</div>
+      <span class="pgnum">块 3 / 12</span>
+      <div class="spacer"></div>
+      <div class="btn pri lg">确认本页并下一页 <span class="kbd">⌘⏎</span></div>
+    </div>
+  </div>
+</div>
+</body></html>

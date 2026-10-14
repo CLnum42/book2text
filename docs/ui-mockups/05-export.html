@@ -1,0 +1,107 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><link rel="stylesheet" href="styles.css">
+<style>
+/* 背景：审校视图（模糊弱化） */
+.bg{position:absolute;inset:36px 0 0;display:flex;filter:blur(1.5px)}
+.bg .bleft{width:52%;background:#e7e9ec;display:flex;justify-content:center;padding-top:70px}
+.bg .bpaper{width:520px;height:700px;background:#f6f2e9;box-shadow:0 3px 16px rgba(0,0,0,.2)}
+.bg .bright{flex:1;background:#fff;border-left:1px solid #e5e7eb}
+.bg .bline{height:64px;border-bottom:1px solid #eef0f2}
+
+/* 对话框 */
+.modal{width:884px;height:664px}
+.mbody{flex:1;display:flex;min-height:0}
+.mleft{width:372px;border-right:1px solid #eef0f2;padding:16px 22px;overflow:hidden}
+.mright{flex:1;padding:16px 22px;overflow:hidden;background:#fafbfc}
+.flabel{font-size:12px;color:#9aa0a8;margin:15px 0 8px}
+.flabel:first-child{margin-top:0}
+.chkpills{display:flex;flex-wrap:wrap;gap:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid #d0d3d9;border-radius:7px;font-size:12.5px;background:#fff;color:#33383f}
+.pill.on{border-color:#2563eb;background:#eef4ff;color:#1d4ed8;font-weight:500}
+.typeline{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12.5px}
+.ruleline{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f2f3f5;font-size:12.5px}
+.ruleline:last-child{border-bottom:none}
+.ruleline .rdesc{font-size:11px;color:#9aa0a8}
+.sumcard{background:#fff;border:1px solid #e2e4e8;border-radius:9px;padding:13px 15px;font-size:12.5px;line-height:1.9}
+.sumcard b{font-weight:600}
+.warnline{display:flex;gap:7px;background:#fdf6e8;border:1px solid #f3e3bd;border-radius:8px;padding:9px 12px;font-size:12px;color:#92600a;line-height:1.55;margin-top:10px}
+.prevhead{display:flex;align-items:center;gap:8px;margin:14px 0 8px}
+.prevbox{background:#fff;border:1px solid #e2e4e8;border-radius:9px;padding:14px 18px;font-size:11.5px;line-height:1.75;color:#33383f;height:212px;overflow:hidden}
+.prevbox .pt{font-weight:700;text-align:center;margin-bottom:8px;font-size:12px}
+</style></head><body>
+<div class="chrome">
+  <div class="dots"><i></i><i></i><i></i></div>
+  <div class="addr"><span class="lock">🔒</span>127.0.0.1:8734<span style="color:#9aa0a8"> · 本地运行，数据不上传</span></div>
+  <div class="side"></div>
+</div>
+<div class="topbar">
+  <div class="back">‹</div><div class="proj">《逻辑哲学论》</div><div class="vdiv"></div>
+  <div class="tabs"><div class="tab">页面</div><div class="tab on">审校</div></div>
+  <div class="btn" style="border-color:#2563eb;color:#1d4ed8">导出</div><div class="spacer"></div>
+  <span class="save">已保存 ✓ 14:32</span>
+</div>
+
+<div class="bg">
+  <div class="bleft"><div class="bpaper"></div></div>
+  <div class="bright"><div class="bline"></div><div class="bline"></div><div class="bline"></div><div class="bline"></div><div class="bline"></div></div>
+</div>
+
+<div class="mask">
+  <div class="modal">
+    <div class="mhead">导出<div class="spacer"></div><div class="x">✕</div></div>
+    <div class="mbody">
+      <!-- 左：选项 -->
+      <div class="mleft">
+        <div class="flabel">格式</div>
+        <div class="chkpills"><span class="pill on">TXT ☑</span><span class="pill on">JSONL ☑</span></div>
+
+        <div class="flabel">范围</div>
+        <div class="chkpills"><span class="pill on">全部纳入内容</span><span class="pill">仅已确认内容</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px">
+          <span style="color:#646a73">页面范围</span><div class="select" style="flex:1;justify-content:space-between">全书（1–312）<span class="caret">▾</span></div>
+        </div>
+
+        <div class="flabel">内容类型</div>
+        <div class="chkpills">
+          <span class="pill on">正文 ☑</span><span class="pill on">标题 ☑</span><span class="pill">脚注</span><span class="pill">图注</span>
+          <span class="pill">附录页</span><span class="pill">索引页</span><span class="pill">其他（other）</span>
+        </div>
+
+        <div class="flabel">清理规则</div>
+        <div class="ruleline"><span class="sw on"></span><div style="flex:1">排除页眉 / 页脚 / 页码块<div class="rdesc">按块类型排除</div></div></div>
+        <div class="ruleline"><span class="sw on"></span><div style="flex:1">段内行合并<div class="rdesc">关闭时保留原始换行</div></div></div>
+        <div class="ruleline"><span class="sw on"></span><div style="flex:1">英文断词还原<div class="rdesc">位置记入 manifest.json</div></div></div>
+        <div class="ruleline"><span class="sw on"></span><div style="flex:1">规范化换行符<div class="rdesc">统一为 LF</div></div></div>
+        <div class="ruleline"><span class="sw on"></span><div style="flex:1">去除行首尾多余空白</div></div>
+        <div class="ruleline"><span class="sw"></span><div style="flex:1;color:#646a73">页面边界插入页码标记<div class="rdesc">〔p.87 / 印71〕</div></div></div>
+      </div>
+
+      <!-- 右：预检摘要 + 预览 -->
+      <div class="mright">
+        <div class="flabel" style="margin-top:0">预检摘要</div>
+        <div class="sumcard">
+          预计 <b>1,286</b> 段 · 约 <b>41.2 万</b> 字<br>
+          已确认 <b style="color:#15803d">2,412</b> 块 · 未审 <b style="color:#b45309">318</b> · 不确定 <b style="color:#b45309">14</b><br>
+          已排除 12 页 / 96 块 · <span style="color:#b91c1c">未识别或失败 3 页</span>
+        </div>
+        <div class="warnline">⚠ 存在未审与不确定内容。可以继续导出，未审内容不会因此被标记为已审。</div>
+
+        <div class="prevhead">
+          <span class="flabel" style="margin:0">预览</span>
+          <div class="select" style="height:24px;font-size:12px">第 87 页附近 <span class="caret">▾</span></div>
+        </div>
+        <div class="prevbox serif">
+          <div class="pt">Chapter 4 — The Early Years</div>
+          In the early years of the century, logicians turned their attention to the relation between language and the world. The question was no longer whether our thoughts mirror reality, but whether the very structure of our sentences could be said to picture the facts they describe. This shift, subtle as it may seem, changed the whole direction of philosophical inquiry.<br><br>
+          It is worth remarking, finally, that the older tradition did not disappear at once. In many universities the classical syllabus was taught side by side with the new logic.
+        </div>
+      </div>
+    </div>
+    <div class="mfoot">
+      <span style="font-size:11.5px;color:#9aa0a8">导出前自动备份数据库 · 写入 exports/ 目录，含 manifest.json</span>
+      <div class="spacer"></div>
+      <div class="btn">取消</div>
+      <div class="btn pri">导出 TXT + JSONL</div>
+    </div>
+  </div>
+</div>
+</body></html>

@@ -1,0 +1,121 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><link rel="stylesheet" href="styles.css">
+<style>
+.stat{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:6px;background:#f0f1f3;font-size:12px;color:#33383f;white-space:nowrap}
+.stat b{font-weight:600}
+.stat.red{background:#fdecec;color:#b91c1c}
+
+.mbody{display:flex;height:816px}
+/* 左：页面列表 */
+.plist{width:236px;border-right:1px solid #e2e4e8;background:#fff;display:flex;flex-direction:column}
+.plist .ph{padding:11px 14px;border-bottom:1px solid #eef0f2;display:flex;align-items:center;gap:8px}
+.pitem{display:flex;align-items:center;gap:9px;padding:9px 14px;font-size:12.5px;border-bottom:1px solid #f4f5f7;color:#33383f}
+.pitem .ic{width:16px;text-align:center;flex:none}
+.pitem .pg{font-weight:500}
+.pitem .ds{margin-left:auto;font-size:11px;color:#8f959e}
+.pitem.sel{background:#eef4ff;box-shadow:inset 2px 0 0 #2563eb}
+.pitem.done{color:#9aa0a8}
+.pitem.done .ds{color:#b9bec5}
+
+/* 中：原图 */
+.mview{flex:1;background:#e7e9ec;display:flex;align-items:flex-start;justify-content:center;padding:26px 0;position:relative}
+.mpaper{position:relative;width:430px;height:700px;background:linear-gradient(#faf7f0,#f4f0e5);box-shadow:0 3px 16px rgba(0,0,0,.2);
+  padding:44px 50px;font-family:Georgia,serif;color:#5a5244}
+.mpaper p{font-size:8.5px;line-height:1.9;text-align:justify}
+.mhl{position:absolute;outline:2px solid #2563eb;background:rgba(37,99,235,.09);border-radius:2px}
+.mbdg{position:absolute;font:600 8.5px -apple-system,"PingFang SC",sans-serif;color:#fff;background:#2563eb;padding:0 5px;border-radius:3px;height:13px;line-height:12px}
+.mcap{position:absolute;bottom:16px;left:0;right:0;text-align:center;font-size:11.5px;color:#8f959e}
+
+/* 右：变化列表 */
+.clist{width:496px;border-left:1px solid #e2e4e8;background:#fff;display:flex;flex-direction:column}
+.chead{padding:11px 18px;border-bottom:1px solid #eef0f2;font-size:12.5px;color:#646a73}
+.cbody{flex:1;overflow:hidden}
+.ccard{border-bottom:1px solid #eef0f2;padding:12px 18px}
+.ccard .crow{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ccard .txt{font-size:13px;line-height:1.7}
+.ccard .ops{display:flex;gap:8px;margin-top:9px}
+del{color:#b91c1c;background:#fdecec;border-radius:3px;padding:0 2px;text-decoration:line-through}
+ins{color:#15803d;background:#e9f7ee;border-radius:3px;padding:0 2px;text-decoration:none;font-weight:600}
+.arrow{color:#8f959e;margin:0 3px}
+.notecard{background:#fdfaf2;border:1px solid #f3e9cd;border-radius:8px;padding:10px 13px;font-size:12.5px;line-height:1.65;color:#5d5540}
+.cfoot{border-top:1px solid #eef0f2;padding:11px 18px;display:flex;align-items:center;gap:8px}
+.cfoot .hint{font-size:11px;color:#9aa0a8}
+</style></head><body>
+<div class="chrome">
+  <div class="dots"><i></i><i></i><i></i></div>
+  <div class="addr"><span class="lock">🔒</span>127.0.0.1:8734<span style="color:#9aa0a8"> · 本地运行，数据不上传</span></div>
+  <div class="side"></div>
+</div>
+<div class="topbar">
+  <div class="back">‹</div>
+  <div class="proj">合并审校结果</div>
+  <span style="font-size:12.5px;color:#646a73;white-space:nowrap">张三 · 第 87–136 页 · 结果 2</span>
+  <div class="vdiv"></div>
+  <span class="stat">变化 <b>34</b> 页</span>
+  <span class="stat">块级修改 <b>112</b></span>
+  <span class="stat">结构变化 <b>6</b> 页</span>
+  <span class="stat red">冲突 <b>2</b></span>
+  <span class="stat">💬 备注 <b>5</b></span>
+  <div class="spacer"></div>
+  <div class="btn pri">接受所有无冲突的变化</div>
+</div>
+
+<div class="mbody">
+  <!-- 左：页面列表 -->
+  <div class="plist">
+    <div class="ph"><span style="font-size:12px;color:#9aa0a8">筛选</span><div class="select" style="height:26px;flex:1;justify-content:space-between">全部 <span class="caret">▾</span></div></div>
+    <div class="pitem"><span class="ic" style="color:#b91c1c">⚠</span><span class="pg">p.90</span><span class="ds" style="color:#b91c1c">冲突 2</span></div>
+    <div class="pitem sel"><span class="ic" style="color:#1d4ed8">●</span><span class="pg">p.92</span><span class="ds">修改 4</span></div>
+    <div class="pitem"><span class="ic" style="color:#1d4ed8">●</span><span class="pg">p.95</span><span class="ds">结构变化</span></div>
+    <div class="pitem"><span class="ic">💬</span><span class="pg">p.101</span><span class="ds">备注 1</span></div>
+    <div class="pitem"><span class="ic" style="color:#1d4ed8">●</span><span class="pg">p.104</span><span class="ds">修改 1</span></div>
+    <div class="pitem"><span class="ic" style="color:#1d4ed8">●</span><span class="pg">p.117</span><span class="ds">修改 3</span></div>
+    <div class="pitem done"><span class="ic" style="color:#15803d">✓</span><span class="pg">p.88</span><span class="ds">已处理</span></div>
+    <div class="pitem done"><span class="ic" style="color:#15803d">✓</span><span class="pg">p.89</span><span class="ds">已处理</span></div>
+    <div class="pitem done"><span class="ic" style="color:#15803d">✓</span><span class="pg">p.91</span><span class="ds">已处理</span></div>
+  </div>
+
+  <!-- 中：原图 -->
+  <div class="mview">
+    <div class="mpaper">
+      <p style="text-align:center;font-variant:small-caps;letter-spacing:2px;color:#6b6252;margin-bottom:14px">THE HISTORY OF LOGIC</p>
+      <p style="margin-bottom:9px">The turn of the century brought with it a renewed confidence in formal method. Where the older textbooks had treated logic as a branch of psychology, the new manuals treated it as a discipline in its own right, with its own standards of rigour and its own characteristic problems.</p>
+      <p style="margin-bottom:9px">In the early yeers of the century, logicians turned their attention to the relation between language and the world, and the Vienna Circle held that a statement which cannot be verified by experience is without sense.</p>
+      <p>It is worth remarking that the older tradition did not disappear at once. In many universities the classical syllabus was taught side by side with the new logic, and students were left to reconcile the two as best they could.</p>
+      <div class="mhl" style="top:196px;left:46px;right:46px;height:88px"><span class="mbdg" style="top:-15px;left:-2px">段落 · 修改</span></div>
+      <div class="mcap">第 92 页 · 助手的修改对应区域高亮</div>
+    </div>
+  </div>
+
+  <!-- 右：变化列表 -->
+  <div class="clist">
+    <div class="chead"><b style="color:#1f2329">第 92 页</b> · 块级修改 4 · 逐条接受或拒绝</div>
+    <div class="cbody">
+      <div class="ccard" style="background:#f8fafc;border-left:3px solid #2563eb">
+        <div class="crow"><span class="tag">段落</span><span class="chip blue">文本修改</span><div class="spacer"></div><span style="font-size:11px;color:#9aa0a8">1 / 4</span></div>
+        <div class="txt">In the early <del>yeers</del><ins>years</ins> of the century, logicians turned their attention to the relation between language and the world.</div>
+        <div class="ops"><span class="btn sm pri">接受 <span class="kbd">⌘⏎</span></span><span class="btn sm">拒绝</span></div>
+      </div>
+      <div class="ccard">
+        <div class="crow"><span class="tag">段落</span><span class="chip blue">文本修改</span></div>
+        <div class="txt">…the <del>Viennna</del><ins>Vienna</ins> Circle held that a statement which cannot be verified by experience is without sense.</div>
+        <div class="ops"><span class="btn sm">接受</span><span class="btn sm">拒绝</span></div>
+      </div>
+      <div class="ccard">
+        <div class="crow"><span class="tag">段落</span><span class="chip gray">状态变化</span></div>
+        <div class="txt" style="color:#646a73">未审 <span class="arrow">→</span> <span class="chip green" style="height:19px">✓ 已确认（张三）</span></div>
+        <div class="ops"><span class="btn sm">接受</span><span class="btn sm">拒绝</span></div>
+      </div>
+      <div class="ccard">
+        <div class="crow"><span class="tag">备注</span><span class="chip amber">💬 不涉及文本变更</span></div>
+        <div class="notecard">张三：“此处原书似有印刷错误，建议核对 1984 年版的对应段落。”</div>
+      </div>
+    </div>
+    <div class="cfoot">
+      <div class="btn danger">拒绝本页</div>
+      <div class="spacer"></div>
+      <span class="hint">接受当前项 ⌘⏎ · 拒绝 ⌘⌫ · 上一项 / 下一项 ⌥↑↓</span>
+      <div class="btn pri">接受本页 ⏎</div>
+    </div>
+  </div>
+</div>
+</body></html>

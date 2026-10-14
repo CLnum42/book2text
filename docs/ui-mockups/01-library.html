@@ -1,0 +1,84 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><link rel="stylesheet" href="styles.css">
+<style>
+.wrap{max-width:1000px;margin:0 auto;padding:26px 0 0}
+.lib-head{display:flex;align-items:baseline;gap:12px;margin:0 4px 16px}
+.lib-head h1{font-size:19px;font-weight:700}
+.lib-head .sub{font-size:12.5px;color:#9aa0a8}
+.pcard{background:#fff;border:1px solid #e2e4e8;border-radius:12px;padding:18px 20px;display:flex;gap:16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.cover{width:46px;height:62px;border-radius:5px;flex:none;display:flex;align-items:center;justify-content:center;text-align:center;
+  color:#fff;font-family:Georgia,serif;font-size:8.5px;line-height:1.5;padding:5px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15),0 1px 3px rgba(0,0,0,.18)}
+.c1{background:linear-gradient(150deg,#2f3a52,#1d2436)}
+.c2{background:linear-gradient(150deg,#6b4a2f,#47311c)}
+.c3{background:linear-gradient(150deg,#3d5a45,#29412f)}
+.pbody{flex:1;min-width:0}
+.ptitle{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:600}
+.pmeta{font-size:12px;color:#9aa0a8;margin-top:2px}
+.prow{display:flex;align-items:center;gap:12px;margin-top:11px}
+.prow .lab{width:30px;font-size:12px;color:#646a73;flex:none}
+.prow .pbar{flex:1}
+.prow .num{width:86px;font-size:12px;color:#33383f;text-align:right;flex:none}
+.prow .extra{width:96px;font-size:12px;text-align:right;flex:none}
+.ploc{margin-top:12px;font-size:12.5px;color:#646a73;display:flex;align-items:center;gap:6px}
+.ploc .ic{color:#9aa0a8}
+.pact{display:flex;flex-direction:column;gap:8px;justify-content:center;width:86px;flex:none}
+.pact .btn{width:86px}
+.note{margin-top:10px;font-size:12px;color:#8f959e;background:#f7f8fa;border-radius:7px;padding:8px 11px;line-height:1.55}
+.newcard{border:1.5px dashed #d0d3d9;border-radius:12px;height:64px;display:flex;align-items:center;justify-content:center;gap:8px;color:#9aa0a8;font-size:13.5px;background:transparent}
+</style></head><body>
+<div class="chrome">
+  <div class="dots"><i></i><i></i><i></i></div>
+  <div class="addr"><span class="lock">🔒</span>127.0.0.1:8734<span style="color:#9aa0a8"> · 本地运行，数据不上传</span></div>
+  <div class="side"></div>
+</div>
+<div class="topbar">
+  <div class="logo"><span class="mk">书</span>Book2Text</div>
+  <div class="spacer"></div>
+  <div class="btn">打开任务包</div>
+  <div class="btn">设置</div>
+  <div class="btn pri">＋ 新建项目</div>
+</div>
+
+<div class="wrap">
+  <div class="lib-head"><h1>项目库</h1><span class="sub">项目保存在你的电脑上，可随时备份整个项目文件夹</span></div>
+
+  <!-- 主项目 1 -->
+  <div class="pcard">
+    <div class="cover c1">THE<br>HISTORY<br>OF LOGIC</div>
+    <div class="pbody">
+      <div class="ptitle">《逻辑哲学论》</div>
+      <div class="pmeta">original.pdf · 312 页 · 纳入 300 页 · 上次编辑：2 小时前</div>
+      <div class="prow"><span class="lab">识别</span><div class="pbar"><i style="width:93%"></i></div><span class="num">280 / 300 页</span><span class="extra" style="color:#b91c1c">⚠ 失败 2</span></div>
+      <div class="prow"><span class="lab">审校</span><div class="pbar g"><i style="width:29%"></i></div><span class="num">86 / 300 页</span><span class="extra" style="color:#b45309">不确定 14 块</span></div>
+      <div class="ploc"><span class="ic">⌖</span>上次位置：审校 · 第 87 页（印 71）</div>
+    </div>
+    <div class="pact"><div class="btn pri">继续</div><div class="btn">打开</div></div>
+  </div>
+
+  <!-- 主项目 2 -->
+  <div class="pcard">
+    <div class="cover c2">史<br>记<br>选</div>
+    <div class="pbody">
+      <div class="ptitle">《史记选》</div>
+      <div class="pmeta">scan_v2.pdf · 588 页 · 纳入 560 页 · 上次编辑：3 天前</div>
+      <div class="prow"><span class="lab">识别</span><div class="pbar"><i style="width:12%"></i></div><span class="num">68 / 560 页</span><span class="extra"></span></div>
+      <div class="prow"><span class="lab">审校</span><div class="pbar g"><i style="width:0%"></i></div><span class="num">0 / 560 页</span><span class="extra"></span></div>
+      <div class="ploc"><span class="ic">⌖</span>上次位置：页面视图</div>
+    </div>
+    <div class="pact"><div class="btn pri">继续</div><div class="btn">打开</div></div>
+  </div>
+
+  <!-- 审校任务包（助手端） -->
+  <div class="pcard">
+    <div class="cover c3">理<br>想<br>国</div>
+    <div class="pbody">
+      <div class="ptitle">《理想国（节选）》<span class="chip amber">审校任务</span></div>
+      <div class="pmeta">第 60–120 页（61 页）· 来自：李老师 · 截止：10 月 20 日</div>
+      <div class="prow"><span class="lab">审校</span><div class="pbar g"><i style="width:56%"></i></div><span class="num">34 / 61 页</span><span class="extra" style="color:#1d4ed8">💬 备注 3</span></div>
+      <div class="note">说明：人名统一用“维特根斯坦”译法；上下文页为只读，仅供核对。</div>
+    </div>
+    <div class="pact"><div class="btn pri">继续审校</div><div class="btn">导出结果包</div></div>
+  </div>
+
+  <div class="newcard">＋ 新建项目</div>
+</div>
+</body></html>

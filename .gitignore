@@ -1,0 +1,103 @@
+# ============================================================
+# Book2Text .gitignore
+# 规则依据：《Book2Text 开发说明书》第 1.3 节（不提交密钥、个人绝对路径）
+#           与第 12.1 节（项目数据目录，绝不入库）
+# ============================================================
+
+# ---------- 应用运行时数据（说明书 12.1）----------
+# 正常情况下项目数据目录位于仓库之外（用户"文稿"下的 Book2Text/），
+# 以下规则为兜底防护，避免误操作把用户数据提交进仓库。
+b2t_*/
+project.db
+project.db-wal
+project.db-shm
+*.db
+*.db-wal
+*.db-shm
+/*/source/
+/*/cache/
+/*/exports/
+/*/backups/
+/*/ocr_runs/
+/*/assignments/
+/*/outbox/
+/*/logs/
+.lock
+
+# 不过滤测试样本与人工校对的金标准数据（fixtures/ 是测试输入，需要入库）
+!fixtures/gold/**
+
+# ---------- 密钥与本地配置 ----------
+.env
+.env.*
+secrets.*
+*.local
+config.local.json
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+
+# ---------- Node / 前端 ----------
+node_modules/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 前端构建产物不入库（决策见 docs/decisions.md D-004）
+frontend/dist/
+backend/book2text/static/
+
+# ---------- 打包产物（Phase 6）----------
+*.app/
+*.exe
+*.dmg
+*.spec
+
+# ---------- 编辑器与 IDE ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---------- 操作系统 ----------
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---------- 其他 ----------
+*.log
+!docs/**/*.log
+tmp/
+temp/
+scratch/
