@@ -133,15 +133,23 @@
 
       <div class="page-detail" id="page-detail" hidden>
         <div class="page-detail__head">
-          <strong id="page-detail-title">识别结果</strong>
+          <strong id="page-detail-title">审校</strong>
           <span class="muted" id="page-detail-meta"></span>
           <span class="spacer"></span>
-          <button type="button" id="detail-recognize" class="btn btn--primary">识别本页</button>
+          <span class="muted" id="review-save-state"></span>
+          <button type="button" id="review-undo" class="btn btn--ghost" title="撤销（⌘/Ctrl + Z）">撤销</button>
+          <button type="button" id="review-redo" class="btn btn--ghost" title="重做（⇧⌘/Ctrl + Z）">重做</button>
+          <button type="button" id="review-confirm" class="btn btn--primary"
+                  title="确认本页（⌘/Ctrl + Enter）">确认本页并下一页</button>
+          <button type="button" id="detail-recognize" class="btn">重新识别</button>
           <button type="button" id="detail-close" class="btn btn--ghost">收起</button>
         </div>
+        <div class="alert alert--info" id="review-banner" hidden></div>
         <p class="hint" id="page-detail-hint">
-          这里是这一页<strong>已保存的</strong>识别结果：左图上的蓝框是块的位置，
-          右列是该页的块。块现在是只读的——编辑、确认、合并、拆分属于 Phase 3 的审校视图。
+          左图上的蓝框是块的位置（点块会高亮对应区域）。右列的块<strong>可以直接编辑</strong>，
+          改完自动保存；每次修改都记进事件表，可以撤销。
+          <strong>⌘/Ctrl + Enter</strong> 确认本页并跳到下一处未完成，
+          <strong>Alt + ↑ / ↓</strong> 在块之间移动。块文本改动<strong>不会</strong>动到识别原文。
         </p>
         <div class="alert alert--error" id="page-detail-error" hidden></div>
         <div class="alert alert--warn" id="page-detail-warning" hidden></div>

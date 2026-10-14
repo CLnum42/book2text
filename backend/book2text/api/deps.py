@@ -28,8 +28,14 @@ def project_error(exc: project_library.ProjectError, *, status: int = 400) -> Ap
 
 
 def page_payload(
-    page: project_library.Page, recognition: blocks_module.PageRecognition | None
+    page: project_library.Page,
+    recognition: blocks_module.PageRecognition | None,
+    review: blocks_module.PageReview | None = None,
 ) -> dict[str, object]:
-    """页面载荷 = 页记录 + **推导出的识别状态**（说明书 5.3 不单独存储状态）。"""
+    """页面载荷 = 页记录 + **推导出的识别状态与审校进度**（说明书 5.3 不单独存储状态）。"""
     state = recognition or blocks_module.empty_recognition(page.page_id)
-    return {**page.to_dict(), "recognition": state.to_dict()}
+    return {
+        **page.to_dict(),
+        "recognition": state.to_dict(),
+        "review": (review or blocks_module.empty_review()).to_dict(),
+    }

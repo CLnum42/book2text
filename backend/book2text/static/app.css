@@ -380,3 +380,35 @@ main {
 @media (min-width: 1180px) {
   body.task-drawer-open main { margin-right: 400px; }
 }
+
+/* ---------------------------------------------------------------- 审校视图 */
+
+.alert--info { background: #eef2ff; border-color: #c7d2fe; color: #3548a8; }
+.review-block {
+  border: 1px solid var(--border); border-radius: 8px; background: #fff;
+  padding: 8px 9px; display: flex; flex-direction: column; gap: 6px;
+}
+.review-block.active { border-color: #d9480f; box-shadow: 0 0 0 2px rgba(217,72,15,.18); }
+.review-block--excluded { opacity: .55; border-style: dashed; }
+.review-block--chrome { background: #fbfbfc; }
+.review-block--chrome .review-block__text { color: var(--muted); }
+.review-block__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.review-block__type {
+  font: inherit; font-size: 12px; padding: 2px 4px; border-radius: 6px;
+  border: 1px solid var(--border); background: #fff;
+}
+.review-block__badges { font-size: 12px; }
+.review-block__text {
+  font: inherit; font-size: 14px; line-height: 1.6; width: 100%; resize: vertical;
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: #fff; color: var(--text); white-space: pre-wrap;
+}
+.review-block__text:focus { outline: 2px solid rgba(47,111,235,.35); border-color: var(--accent); }
+.review-block__actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.review-block__actions .btn { font-size: 11px; padding: 2px 8px; }
+.review-block__original {
+  margin: 0; padding: 6px 8px; background: #f8f9fb; border-radius: 6px;
+  font-size: 12px; color: var(--muted); white-space: pre-wrap; word-break: break-word;
+}
+.page-overlay .box--excluded { border-style: dashed; opacity: .5; }
+.page-detail__body .ocr-blocks { gap: 8px; }

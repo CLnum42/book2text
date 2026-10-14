@@ -838,6 +838,32 @@ function recognitionText(page) {
     : label;
 }
 
+const PAGE_REVIEW_LABELS = {
+  not_started: "未审",
+  in_progress: "审校中",
+  done: "已审完",
+  questioned: "有疑问",
+};
+
+/** 审校徽章：只在有块之后才有意义（没识别的页没什么可审）。 */
+function reviewBadge(page) {
+  const review = page.review;
+  if (!review || !review.block_count) return null;
+  const label = PAGE_REVIEW_LABELS[review.status];
+  if (!label) return null;
+  const chip = document.createElement("span");
+  chip.className =
+    "status " +
+    (review.status === "done"
+      ? "status--ok"
+      : review.status === "questioned"
+      ? "status--bad"
+      : "");
+  chip.textContent =
+    review.status === "questioned" ? `${label} ${review.uncertain}` : label;
+  return chip;
+}
+
 function recognitionChip(page) {
   const recognition = recognitionOf(page);
   const chip = document.createElement("span");
@@ -1271,6 +1297,8 @@ function applyTileState(tile, page) {
   const status = tile.querySelector(".page-tile__status");
   status.innerHTML = "";
   status.append(recognitionChip(page));
+  const reviewChip = reviewBadge(page);
+  if (reviewChip) status.append(reviewChip);
 
   const isBusy = busyPages.has(page.page_no);
   const button = tile.querySelector('button[data-action="recognize"]');
@@ -1657,10 +1685,20 @@ function setupTaskDrawer() {
   el("job-retry").addEventListener("click", () => controlJob("retry-failed"));
 }
 
-// ---------------------------------------------------------------- 本页识别结果
+// ---------------------------------------------------------------- 审校视图（本页）
 
 let detailPageNo = null;
 let detailImagePageNo = null;
+let reviewBlocks = [];
+let reviewSaveTimer = null;
+
+const BLOCK_TYPE_LABELS = {
+  heading: "标题", paragraph: "段落", header: "页眉", footer: "页脚",
+  page_number: "页码", footnote: "脚注", caption: "图注", other: "其他",
+};
+const REVIEW_STATUS_LABELS = {
+  unreviewed: "未审", confirmed: "已确认", uncertain: "不确定",
+};
 
 async function openPageDetail(pageNo) {
   detailPageNo = pageNo;
@@ -1690,35 +1728,15 @@ async function loadPageDetail(pageNo) {
 
 function renderPageDetail(data) {
   const pageNo = data.page.page_no;
-  el("page-detail-title").textContent = `第 ${pageNo} 页 · 已保存的识别结果`;
+  reviewBlocks = data.blocks;
 
+  const review = data.review || {};
   const recognition = recognitionOf(data.page);
-  const activeRun = data.active_run;
-  const parts = [`${data.block_count} 块`];
-  if (activeRun) {
-    parts.push(`${activeRun.engine_id} ${activeRun.engine_version}`);
-    if (activeRun.elapsed_seconds) parts.push(`${activeRun.elapsed_seconds} 秒`);
-    if (activeRun.finished_at) parts.push(activeRun.finished_at.slice(0, 19).replace("T", " "));
-  }
-  if (data.runs.length > 1) parts.push(`${data.runs.length} 次识别记录`);
-  el("page-detail-meta").textContent = parts.join(" · ");
+  el("page-detail-title").textContent = `第 ${pageNo} 页 · 审校`;
+  el("page-detail-meta").textContent = reviewMetaText(data);
 
-  const warning = el("page-detail-warning");
-  const messages = [];
-  if (recognition.status === "has_candidate") {
-    messages.push(
-      "这一页有更新的识别结果，但因为它已有人工成果，系统没有覆盖——" +
-        "采用 / 保留的对比属于 Phase 3 的审校视图。"
-    );
-  }
-  if (recognition.status === "failed" && recognition.last_error) {
-    messages.push(`上次识别失败：${recognition.last_error}`);
-  }
-  if (recognition.status === "unrecognized") {
-    messages.push("这一页还没识别过。点右上角的「识别本页」。");
-  }
-  warning.textContent = messages.join(" ");
-  warning.hidden = messages.length === 0;
+  renderReviewBanner(data, recognition);
+  renderHistoryButtons(data.history);
 
   // 图像按 view 档渲染；同一页重复打开时不重新拉图
   if (detailImagePageNo !== pageNo) {
@@ -1735,33 +1753,221 @@ function renderPageDetail(data) {
       el("detail-image-status").textContent = "这一页渲染失败。";
     };
     image.src =
-      `/api/projects/${currentProject.project_id}/pages/${pageNo}/image?size=view` +
+      `/api/projects/${project_id()}/pages/${pageNo}/image?size=view` +
       `&token=${encodeURIComponent(token)}`;
   }
 
   drawDetailOverlay(data.blocks);
-  renderDetailBlocks(data.blocks);
+  renderReviewBlocks(data.blocks);
+}
+
+function project_id() {
+  return currentProject ? currentProject.project_id : "";
+}
+
+function reviewMetaText(data) {
+  const review = data.review || {};
+  const parts = [
+    PAGE_TYPE_LABELS[data.page.page_type] || data.page.page_type,
+    `${review.block_count || 0} 块`,
+    `未审 ${review.unreviewed || 0}`,
+  ];
+  if (review.uncertain) parts.push(`不确定 ${review.uncertain}`);
+  if (review.modified) parts.push(`已修改 ${review.modified}`);
+  if (data.active_run) parts.push(`${data.active_run.engine_id} ${data.active_run.engine_version}`);
+  return parts.join(" · ");
+}
+
+function renderReviewBanner(data, recognition) {
+  const banner = el("review-banner");
+  const messages = [];
+  const review = data.review || {};
+  if (recognition.status === "has_candidate") {
+    messages.push(
+      "这一页有更新的识别结果，但它已有人工成果，系统没有覆盖——采用 / 保留的对比还没做（下一步）。"
+    );
+  }
+  if (recognition.status === "failed" && recognition.last_error) {
+    messages.push(`上次识别失败：${recognition.last_error}`);
+  }
+  if (recognition.status === "unrecognized") {
+    messages.push("这一页还没识别过。点右上角的「重新识别」。");
+  }
+  if (recognition.status === "running" || recognition.status === "queued") {
+    messages.push("这一页正在识别或排队中，完成后块会自动出现。");
+  }
+  if (review.uncertain) {
+    messages.push(`本页有 ${review.uncertain} 个不确定块——确认整页时它们不会被自动确认。`);
+  }
+  banner.textContent = messages.join(" ");
+  banner.hidden = messages.length === 0;
+}
+
+function renderHistoryButtons(history) {
+  const state = history || { undo: 0, redo: 0 };
+  el("review-undo").disabled = !state.undo;
+  el("review-redo").disabled = !state.redo;
+  el("review-undo").textContent = state.undo ? `撤销 (${state.undo})` : "撤销";
+  el("review-redo").textContent = state.redo ? `重做 (${state.redo})` : "重做";
+}
+
+function setSaveState(text, isError = false) {
+  const node = el("review-save-state");
+  node.textContent = text;
+  node.style.color = isError ? "var(--bad-fg)" : "";
 }
 
 /** 块框：归一化坐标 → 百分比定位，因此与显示尺寸、渲染 DPI 都无关。 */
 function drawDetailOverlay(blocks) {
   const overlay = el("detail-overlay");
   overlay.innerHTML = "";
-  blocks.forEach((block, index) => {
+  blocks.forEach((block) => {
     if (!block.bbox) return;
     const [x0, y0, x1, y1] = block.bbox;
     const box = document.createElement("div");
-    box.className = "box";
-    box.dataset.index = String(index);
+    box.className = "box" + (block.include ? "" : " box--excluded");
+    box.dataset.blockId = block.block_id;
     box.style.left = `${x0 * 100}%`;
     box.style.top = `${y0 * 100}%`;
     box.style.width = `${(x1 - x0) * 100}%`;
     box.style.height = `${(y1 - y0) * 100}%`;
+    box.title = BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
+    box.addEventListener("click", () => {
+      const item = el("detail-blocks").querySelector(`li[data-block-id="${block.block_id}"]`);
+      if (item) {
+        item.querySelector("textarea").focus();
+        item.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    });
     overlay.append(box);
   });
 }
 
-function renderDetailBlocks(blocks) {
+function blockCard(block, index) {
+  const item = document.createElement("li");
+  item.className = "review-block";
+  item.dataset.blockId = block.block_id;
+  item.dataset.index = String(index);
+  if (!block.include) item.classList.add("review-block--excluded");
+  if (["header", "footer", "page_number"].includes(block.block_type)) {
+    item.classList.add("review-block--chrome");
+  }
+
+  const head = document.createElement("div");
+  head.className = "review-block__head";
+
+  const typeSelect = document.createElement("select");
+  typeSelect.className = "review-block__type";
+  typeSelect.title = "块类型（页眉 / 页脚 / 页码在导出时默认排除）";
+  for (const [value, label] of Object.entries(BLOCK_TYPE_LABELS)) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    typeSelect.append(option);
+  }
+  typeSelect.value = block.block_type;
+  typeSelect.addEventListener("change", () =>
+    patchBlock(block, { block_type: typeSelect.value })
+  );
+
+  const status = document.createElement("span");
+  status.className =
+    "status " +
+    (block.review_status === "confirmed"
+      ? "status--ok"
+      : block.review_status === "uncertain"
+      ? "status--warn"
+      : "");
+  status.textContent = REVIEW_STATUS_LABELS[block.review_status] || block.review_status;
+
+  const badges = document.createElement("span");
+  badges.className = "muted review-block__badges";
+  const bits = [];
+  if (block.modified) bits.push("● 已修改");
+  if (!block.include) bits.push("已排除");
+  if (block.continues_to_next) bits.push("↪ 延续下页");
+  badges.textContent = bits.join(" · ");
+
+  head.append(typeSelect, status, badges);
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "review-block__text";
+  textarea.value = block.text;
+  textarea.rows = textRows(block.text);
+  textarea.spellcheck = false;
+  textarea.addEventListener("input", () => {
+    textarea.rows = textRows(textarea.value);
+    scheduleBlockSave(block, textarea.value);
+  });
+  textarea.addEventListener("focus", () => selectReviewBlock(block.block_id));
+  textarea.addEventListener("keydown", (event) => {
+    // 编辑框内保留浏览器原生的文字撤销（说明书 7.5）；Alt+↑/↓ 在块之间跳
+    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      focusSiblingBlock(index, event.key === "ArrowDown" ? 1 : -1);
+    }
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "review-block__actions";
+  const addButton = (label, title, onClick) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn btn--ghost";
+    button.textContent = label;
+    button.title = title;
+    button.addEventListener("click", onClick);
+    actions.append(button);
+  };
+
+  if (block.review_status !== "confirmed") {
+    addButton("✓ 确认", "把这个块标为已确认", () =>
+      patchBlock(block, { review_status: "confirmed" })
+    );
+  }
+  addButton(
+    block.review_status === "uncertain" ? "取消不确定" : "? 不确定",
+    "标记 / 取消不确定（⌘/Ctrl + Shift + U）",
+    () =>
+      patchBlock(block, {
+        review_status: block.review_status === "uncertain" ? "unreviewed" : "uncertain",
+      })
+  );
+  addButton(
+    block.include ? "排除" : "纳入",
+    "排除 / 纳入导出（⌘/Ctrl + Shift + E）",
+    () => patchBlock(block, { include: !block.include })
+  );
+  addButton(
+    block.continues_to_next ? "取消延续" : "↪ 延续",
+    "标记为延续到下一页（跨页段落）",
+    () => patchBlock(block, { continues_to_next: !block.continues_to_next })
+  );
+  if (block.modified) {
+    addButton("恢复原文", "把文本恢复成 OCR 原文（原文一直保留着）", () =>
+      patchBlock(block, { text: block.ocr_text })
+    );
+    addButton("看原文", "展开 / 收起 OCR 原文", (event) => {
+      const original = item.querySelector(".review-block__original");
+      original.hidden = !original.hidden;
+      event.target.textContent = original.hidden ? "看原文" : "收起原文";
+    });
+  }
+
+  const original = document.createElement("pre");
+  original.className = "review-block__original";
+  original.hidden = true;
+  original.textContent = block.ocr_text;
+
+  item.append(head, textarea, actions, original);
+  return item;
+}
+
+function textRows(text) {
+  return Math.min(Math.max(String(text).split("\n").length, 2), 14);
+}
+
+function renderReviewBlocks(blocks) {
   const list = el("detail-blocks");
   list.innerHTML = "";
   if (!blocks.length) {
@@ -1771,46 +1977,147 @@ function renderDetailBlocks(blocks) {
     list.append(empty);
     return;
   }
-
-  blocks.forEach((block, index) => {
-    const item = document.createElement("li");
-    item.className = "ocr-block";
-    item.dataset.index = String(index);
-
-    const head = document.createElement("div");
-    head.className = "ocr-block__head";
-
-    const order = document.createElement("span");
-    order.textContent = `#${block.order_index + 1}`;
-
-    const meta = document.createElement("span");
-    const bits = [block.block_type, `${block.lines.length} 行`];
-    if (block.modified) bits.push("已修改");
-    if (block.review_status !== "unreviewed") bits.push(block.review_status);
-    if (!block.include) bits.push("不导出");
-    meta.textContent = bits.join(" · ");
-
-    head.append(order, meta);
-
-    const text = document.createElement("div");
-    text.className = "ocr-block__text";
-    text.textContent = block.text;
-
-    item.append(head, text);
-    item.addEventListener("click", () => selectDetailBlock(index));
-    list.append(item);
-  });
+  blocks.forEach((block, index) => list.append(blockCard(block, index)));
 }
 
-function selectDetailBlock(index) {
+function selectReviewBlock(blockId) {
   for (const item of el("detail-blocks").children) {
-    item.classList.toggle("active", Number(item.dataset.index) === index);
+    item.classList.toggle("active", item.dataset.blockId === blockId);
   }
   for (const box of el("detail-overlay").children) {
-    const isActive = Number(box.dataset.index) === index;
+    const isActive = box.dataset.blockId === blockId;
     box.classList.toggle("box--active", isActive);
     if (isActive) box.scrollIntoView({ block: "center", behavior: "smooth" });
   }
+}
+
+function focusSiblingBlock(index, delta) {
+  const items = [...el("detail-blocks").querySelectorAll(".review-block")];
+  const target = items[index + delta];
+  if (target) {
+    target.querySelector("textarea").focus();
+    target.scrollIntoView({ block: "nearest" });
+  }
+}
+
+// ---------------------------------------------------------------- 自动保存与撤销
+
+/** 输入停下来再存：打字过程中不发请求（说明书 6.4 的"自动保存"）。 */
+function scheduleBlockSave(block, text) {
+  setSaveState("正在输入…");
+  if (reviewSaveTimer) clearTimeout(reviewSaveTimer);
+  reviewSaveTimer = setTimeout(() => {
+    reviewSaveTimer = null;
+    patchBlock(block, { text });
+  }, 700);
+}
+
+async function patchBlock(block, patch) {
+  if (!currentProject) return;
+  setSaveState("保存中…");
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/blocks/${block.block_id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...patch,
+          // 乐观并发检查（说明书第 11 节）：拿手上的版本去对，冲突就报错而不是覆盖
+          expected_revision: block.revision,
+        }),
+      }
+    );
+    setSaveState("已保存 ✓");
+    await loadPageDetail(detailPageNo);
+    await refreshPageStates();
+  } catch (error) {
+    if (error.code === "block_conflict") {
+      setSaveState("这一页在别处被改过，已重新载入", true);
+      await loadPageDetail(detailPageNo);
+      return;
+    }
+    setSaveState(error.message || "保存失败", true);
+  }
+}
+
+async function reviewAction(path) {
+  if (!currentProject) return null;
+  el("page-detail-error").hidden = true;
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/${path}`, {
+      method: "POST",
+    });
+    setSaveState(data.direction === "undo" ? "已撤销" : "已重做");
+    await loadPageDetail(detailPageNo);
+    await refreshPageStates();
+    return data;
+  } catch (error) {
+    showError(el("page-detail-error"), error);
+    return null;
+  }
+}
+
+async function confirmCurrentPage() {
+  if (detailPageNo === null) return;
+  const pageNo = detailPageNo;
+  el("page-detail-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${pageNo}/confirm`,
+      { method: "POST" }
+    );
+    setSaveState(
+      data.uncertain
+        ? `已确认 ${data.confirmed} 块；本页仍有 ${data.uncertain} 个不确定项`
+        : `已确认 ${data.confirmed} 块`
+    );
+    await refreshPageStates();
+    // 说明书 7.4："确认本页后默认跳到下一个未完成的纳入页"
+    const next = nextUnfinishedPage(pageNo);
+    if (next) await openPageDetail(next);
+    else setSaveState("整本书都审完了 🎉");
+  } catch (error) {
+    showError(el("page-detail-error"), error);
+  }
+}
+
+/** 下一个还没审完的纳入页（有未审或不确定的块）。 */
+function nextUnfinishedPage(afterPageNo) {
+  const next = currentProject.pages.find((page) => {
+    if (!page.include || page.page_no <= afterPageNo) return false;
+    const review = page.review || {};
+    return (review.unreviewed || 0) > 0 || (review.uncertain || 0) > 0;
+  });
+  return next ? next.page_no : null;
+}
+
+function setupReviewControls() {
+  el("review-confirm").addEventListener("click", confirmCurrentPage);
+  el("review-undo").addEventListener("click", () => reviewAction("undo"));
+  el("review-redo").addEventListener("click", () => reviewAction("redo"));
+
+  document.addEventListener("keydown", (event) => {
+    if (!currentProject || detailPageNo === null) return;
+    const active = document.activeElement || {};
+    const inEditor = ["TEXTAREA", "INPUT", "SELECT"].includes(active.tagName);
+    const mod = event.metaKey || event.ctrlKey;
+
+    if (mod && event.key === "Enter") {
+      event.preventDefault();
+      confirmCurrentPage();
+      return;
+    }
+    // 编辑框内保留浏览器原生的文字撤销（说明书 7.5）
+    if (inEditor) return;
+    if (mod && event.shiftKey && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      reviewAction("redo");
+    } else if (mod && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      reviewAction("undo");
+    }
+  });
 }
 
 /** 批量改页面的类型 / 纳入（说明书 6.2 的批量操作，第 11 节的 PATCH /pages）。 */
@@ -1888,6 +2195,7 @@ function setupLibrary() {
   });
   el("project-close").addEventListener("click", closeProject);
   el("detail-close").addEventListener("click", closePageDetail);
+  setupReviewControls();
   el("recognize-pending").addEventListener("click", () => startBatchRecognition("unrecognized"));
   setupTaskDrawer();
 

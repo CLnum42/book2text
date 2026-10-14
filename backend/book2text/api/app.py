@@ -26,6 +26,7 @@ from . import (
     routes_export,
     routes_jobs,
     routes_projects,
+    routes_review,
     routes_scratch,
     security,
 )
@@ -63,6 +64,8 @@ def create_app(
     app.state.library_dir = library
     # 识别子进程的执行器：本实例起过的任务进程都登记在它这里
     app.state.job_supervisor = supervisor
+    # 审校的撤销 / 重做栈：只活在本次运行里（说明书 5.3）
+    app.state.review_history = routes_review.ReviewHistory()
 
     app.add_exception_handler(errors.AppError, errors.app_error_handler)
     app.add_exception_handler(StarletteHTTPException, errors.http_exception_handler)
@@ -79,6 +82,7 @@ def create_app(
     app.include_router(routes_export.router, dependencies=guarded)
     app.include_router(routes_projects.router, dependencies=guarded)
     app.include_router(routes_jobs.router, dependencies=guarded)
+    app.include_router(routes_review.router, dependencies=guarded)
 
     app.mount("/static", StaticFiles(directory=paths.STATIC_DIR), name="static")
 

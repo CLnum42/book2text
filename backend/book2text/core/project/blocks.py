@@ -306,7 +306,7 @@ def get_run(project_id: str, run_id: str, *, library: Path | None = None) -> Run
 
 # ---------------------------------------------------------------- 块与行
 
-def _row_to_block(row) -> BlockRecord:
+def row_to_block(row) -> BlockRecord:
     return BlockRecord(
         block_id=row["block_id"],
         page_id=row["page_id"],
@@ -356,7 +356,7 @@ def list_blocks(
         rows = conn.execute(
             f"{_BLOCK_SELECT} {where} ORDER BY p.page_no, b.order_index, b.block_id", params
         ).fetchall()
-    return [_row_to_block(row) for row in rows]
+    return [row_to_block(row) for row in rows]
 
 
 def list_block_lines(
@@ -508,6 +508,76 @@ def page_recognition_states(
             last_error=latest_error.get(page_id),
         )
     return states
+
+
+@dataclass(frozen=True)
+class PageReview:
+    """一页的**审校进度**（说明书 5.3 的推导规则，与识别状态同源）：
+
+    未开始 / 进行中 / 已完成（所有纳入的块均已确认）/ 有疑问（存在不确定块）。
+    只统计**纳入**的块——排除的块不参与导出，确认与否没有意义。
+    """
+
+    block_count: int = 0
+    included: int = 0
+    unreviewed: int = 0
+    confirmed: int = 0
+    uncertain: int = 0
+    modified: int = 0
+
+    @property
+    def status(self) -> str:
+        if self.included == 0:
+            return "not_started" if self.block_count == 0 else "excluded"
+        if self.uncertain:
+            return "questioned"
+        if self.unreviewed:
+            return "in_progress" if self.confirmed or self.modified else "not_started"
+        return "done"
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "block_count": self.block_count,
+            "included": self.included,
+            "unreviewed": self.unreviewed,
+            "confirmed": self.confirmed,
+            "uncertain": self.uncertain,
+            "modified": self.modified,
+        }
+
+
+def page_review_states(project_id: str, *, library: Path | None = None) -> dict[str, PageReview]:
+    """每页的审校进度（一次聚合查询，不给每页单独查一次）。"""
+    with _open_for_read(project_id, library) as conn:
+        _require_tables(conn, project_id)
+        rows = conn.execute(
+            """
+            SELECT page_id,
+                   COUNT(*) AS block_count,
+                   SUM(CASE WHEN include THEN 1 ELSE 0 END) AS included,
+                   SUM(CASE WHEN include AND review_status = 'unreviewed' THEN 1 ELSE 0 END) AS unreviewed,
+                   SUM(CASE WHEN include AND review_status = 'confirmed'  THEN 1 ELSE 0 END) AS confirmed,
+                   SUM(CASE WHEN include AND review_status = 'uncertain'  THEN 1 ELSE 0 END) AS uncertain,
+                   SUM(CASE WHEN include AND text <> ocr_text THEN 1 ELSE 0 END) AS modified
+            FROM block WHERE deleted_at IS NULL GROUP BY page_id
+            """
+        ).fetchall()
+    return {
+        row["page_id"]: PageReview(
+            block_count=int(row["block_count"] or 0),
+            included=int(row["included"] or 0),
+            unreviewed=int(row["unreviewed"] or 0),
+            confirmed=int(row["confirmed"] or 0),
+            uncertain=int(row["uncertain"] or 0),
+            modified=int(row["modified"] or 0),
+        )
+        for row in rows
+    }
+
+
+def empty_review() -> PageReview:
+    return PageReview()
 
 
 def empty_recognition(page_id: str) -> PageRecognition:
