@@ -732,6 +732,7 @@ async function refreshExportPreflight({ withPreview = false } = {}) {
     return;
   }
   el("export-error").hidden = true;
+  el("export-scope").textContent = exportScopeText(options);
   try {
     const data = await apiJson(`/api/projects/${currentProject.project_id}/export/preflight`, {
       method: "POST",
@@ -743,6 +744,19 @@ async function refreshExportPreflight({ withPreview = false } = {}) {
   } catch (error) {
     showError(el("export-error"), error);
   }
+}
+
+/** 一句话说清"按现在这些勾选，到底要导出什么"。 */
+function exportScopeText(options) {
+  const format = { txt: "TXT", jsonl: "JSONL", both: "TXT + JSONL" }[options.format] || options.format;
+  const parts = [format];
+  if (options.page_numbers && options.page_numbers.length) {
+    parts.push(`第 ${options.page_numbers[0]}–${options.page_numbers[options.page_numbers.length - 1]} 页（${options.page_numbers.length} 页）`);
+  } else {
+    parts.push("全书");
+  }
+  if (options.confirmed_only) parts.push("仅已确认");
+  return parts.join(" · ");
 }
 
 // ---------------------------------------------------------------- 导出对照（段 → 块 → 页）
@@ -1088,7 +1102,31 @@ function divergenceChip(page) {
   return chip;
 }
 
+/** 当前打开的是不是审校任务包项目（助手端，说明书 6.7.3）。 */
+function isPackageProject() {
+  return Boolean(currentProject && currentProject.kind === "package");
+}
+
+/**
+ * 任务包里的页面：块是随包带进来的快照，**没有识别运行记录**。
+ *
+ * 后端按 `active_run_id` 推导识别状态，任务包里它为空，于是这些页会被算成
+ * "未识别"——但助手明明有块可审。界面按"已带入 N 块"显示，免得助手以为
+ * 要自己重新识别（任务包里也没有"重新识别"这个功能）。
+ */
+function packageBlocksOnly(page) {
+  const recognition = recognitionOf(page);
+  return (
+    isPackageProject() &&
+    recognition.status === "unrecognized" &&
+    recognition.block_count > 0
+  );
+}
+
 function recognitionText(page) {
+  if (packageBlocksOnly(page)) {
+    return `已带入 ${recognitionOf(page).block_count} 块`;
+  }
   const recognition = recognitionOf(page);
   const label = RECOGNITION_LABELS[recognition.status] || recognition.status;
   return recognition.status === "recognized"
@@ -1125,9 +1163,17 @@ function reviewBadge(page) {
 function recognitionChip(page) {
   const recognition = recognitionOf(page);
   const chip = document.createElement("span");
-  chip.className = "chip " + (RECOGNITION_CLASSES[recognition.status] || "chip--gray");
+  chip.className =
+    "chip " +
+    (packageBlocksOnly(page)
+      ? "chip--gray"
+      : RECOGNITION_CLASSES[recognition.status] || "chip--gray");
   chip.textContent = recognitionText(page);
-  if (recognition.last_error) chip.title = `上次失败：${recognition.last_error}`;
+  if (packageBlocksOnly(page)) {
+    chip.title = "任务包里带进来的块（快照）。任务包不重新识别，直接审校。";
+  } else if (recognition.last_error) {
+    chip.title = `上次失败：${recognition.last_error}`;
+  }
   return chip;
 }
 
@@ -1225,7 +1271,7 @@ function renderProjectList(projects) {
 
     const loc = document.createElement("div");
     loc.className = "pcard__loc";
-    loc.textContent = `⌖ 上次位置：${entry.last_view || "还没有打开过"}`;
+    loc.textContent = `⌖ 上次位置：${lastPositionText(entry)}`;
     body.append(loc);
 
     const actions = document.createElement("div");
@@ -1254,6 +1300,23 @@ function renderProjectList(projects) {
     card.append(cover, body, actions);
     list.append(card);
   });
+}
+
+/** "上次位置"的人话：审校 · 第 87 页（印 71）（说明书 7.2）。 */
+const LAST_VIEW_LABELS = {
+  library: "项目库",
+  pages: "页面视图",
+  review: "审校",
+  structure: "结构工具",
+  export: "导出",
+};
+
+function lastPositionText(entry) {
+  if (!entry.last_view) return "还没有打开过";
+  const view = LAST_VIEW_LABELS[entry.last_view] || entry.last_view;
+  if (!entry.last_page_no) return view;
+  const printed = entry.last_page_label ? `（印 ${entry.last_page_label}）` : "";
+  return `${view} · 第 ${entry.last_page_no} 页${printed}`;
 }
 
 /** 识别进度右边那格：失败页数与文本层提示（都来自真实数据）。 */
@@ -2609,7 +2672,11 @@ function renderReviewBanner(data, recognition) {
     messages.push(`上次识别失败：${recognition.last_error}`);
   }
   if (recognition.status === "unrecognized") {
-    messages.push("这一页还没识别过。点右上角的「重新识别」。");
+    messages.push(
+      isPackageProject()
+        ? "这一页的块是任务包里带进来的快照；任务包不做识别，直接审校即可。"
+        : "这一页还没识别过。点右上角的「重新识别」。"
+    );
   }
   if (recognition.status === "running" || recognition.status === "queued") {
     messages.push("这一页正在识别或排队中，完成后块会自动出现。");
@@ -4104,12 +4171,16 @@ async function applyPackageMode() {
     el("selection-skip-checked").parentElement.hidden = false;
     el("selection-set-type").hidden = false;
     el("selection-type").parentElement.hidden = false;
+    el("assign-list-toggle").hidden = false;
+    el("assign-open").hidden = false;
     return;
   }
 
   el("export-open").hidden = true;          // 助手不能导出 TXT / JSONL
   el("package-open").hidden = false;        // 但能导出审校结果包
   el("structure-open").hidden = true;       // 也没有页眉页脚工具
+  el("assign-list-toggle").hidden = true;   // 助手不派活给别人
+  el("assign-open").hidden = true;
   el("selection-recognize").hidden = true;
   el("recognize-pending").hidden = true;
   el("selection-check").hidden = true;
@@ -4245,6 +4316,7 @@ async function onResultFileChosen() {
 async function openMergeView(assignmentId) {
   if (!currentProject) return;
   el("merge-error").hidden = true;
+  closeModal("assign-panel");   // 合并是整屏的视图，别让任务包对话框压在上面
   try {
     const data = await apiJson(
       `/api/projects/${project_id()}/assignments/${assignmentId}/merge`
@@ -4359,15 +4431,23 @@ let mergeHandled = new Set();
 let mergeDecisions = new Map();
 
 function renderMergeView(state) {
-  const panel = el("merge-panel");
-  panel.hidden = false;
+  mergeHandled = new Set();
+  mergeDecisions = new Map();
   const counts = state.counts;
   el("merge-title").textContent = `合并审校结果：${state.reviewer_name}`;
   el("merge-meta").textContent =
-    `第 ${(state.page_nos || []).join("、")} 页 · 结果 ${state.seq}` +
-    ` · 变化 ${counts.changed_pages} 页 · 块级修改 ${counts.block_level}` +
-    ` · 结构变化 ${counts.structural} · 冲突 ${counts.conflict} · 备注 ${counts.comments}`;
+    `第 ${(state.page_nos || []).join("、")} 页 · 结果 ${state.seq}`;
   el("merge-error").hidden = true;
+  // 概要数字放在顶栏的四个小格子里（效果图 06）
+  el("merge-stat-changed").innerHTML = `变化 <b>${counts.changed_pages}</b> 页`;
+  el("merge-stat-blocks").innerHTML = `块级修改 <b>${counts.block_level}</b>`;
+  el("merge-stat-conflict").innerHTML = `冲突 <b>${counts.conflict}</b>`;
+  el("merge-stat-comments").innerHTML = `💬 备注 <b>${counts.comments}</b>`;
+  el("merge-stat-conflict").hidden = false;
+  el("merge-image-status").textContent = "点左边的一页，这里显示原图与助手的改动区域";
+  el("merge-canvas").hidden = true;
+  el("merge-caption").textContent = "";
+  showView("merge");
 
   const list = el("merge-pages");
   list.innerHTML = "";
@@ -4376,11 +4456,25 @@ function renderMergeView(state) {
     item.dataset.pageId = page.page_id;
     item.className = MERGE_KIND_CLASS[page.kind] || "";
     if (mergeHandled.has(page.page_id)) item.classList.add("is-done");
-    const mark = page.kind === "conflict" ? "⚠ " : page.kind === "structural" ? "◧ " : "● ";
-    item.textContent =
-      `${mark}第 ${page.page_no} 页 · ${page.kind_label}` +
-      (page.changed_blocks ? ` ${page.changed_blocks} 处` : "") +
-      (page.comment_count ? ` 💬${page.comment_count}` : "");
+
+    const mark = document.createElement("span");
+    mark.className = "ic";
+    mark.textContent = page.kind === "conflict" ? "⚠" : page.kind === "structural" ? "◧" : "●";
+    if (page.kind === "conflict") mark.style.color = "var(--bad-text)";
+    else if (page.kind === "block_level") mark.style.color = "var(--accent-text)";
+
+    const no = document.createElement("span");
+    no.className = "pg";
+    no.textContent = `p.${page.page_no}`;
+    const desc = document.createElement("span");
+    desc.className = "ds";
+    desc.textContent =
+      page.kind === "conflict"
+        ? `冲突 ${page.changed_blocks}`
+        : page.kind_label + (page.changed_blocks ? ` ${page.changed_blocks}` : "") +
+          (page.comment_count ? ` 💬${page.comment_count}` : "");
+
+    item.append(mark, no, desc);
     item.addEventListener("click", () => showMergePage(page));
     list.append(item);
   }
@@ -4390,39 +4484,51 @@ function renderMergeView(state) {
     empty.textContent = "没有符合条件的页面。";
     list.append(empty);
   }
-  const counts2 = [...mergeDecisions.values()];
   el("merge-accept-all").disabled = !state.changed_pages.some(
     (page) => !mergeHandled.has(page.page_id) && page.kind !== "conflict"
   );
-  if (counts2.length) {
-    el("merge-meta").textContent += ` · 已决定 ${counts2.length} 页`;
-  }
+  const first = mergeVisiblePages()[0];
+  if (first) showMergePage(first);
 }
 
 function showMergePage(page) {
   const detail = el("merge-detail");
+  mergeActivePageId = page.page_id;
   detail.innerHTML = "";
+  for (const item of el("merge-pages").children) {
+    item.classList.toggle("is-active", item.dataset.pageId === page.page_id);
+  }
+
   const title = document.createElement("div");
-  title.className = "muted";
-  title.textContent = `第 ${page.page_no} 页 · ${page.kind_label}`;
+  title.className = "merge-detail__head";
+  title.innerHTML = "";
+  const strong = document.createElement("b");
+  strong.textContent = `第 ${page.page_no} 页`;
+  title.append(strong, ` · ${page.kind_label}` + " · 逐条接受或拒绝");
   detail.append(title);
+
+  const cards = document.createElement("div");
+  cards.className = "merge-detail__cards";
+  detail.append(cards);
 
   if (page.kind === "conflict") {
     const hint = document.createElement("p");
     hint.className = "hint";
+    hint.style.padding = "12px 18px 0";
     hint.textContent =
       "这一页在你分派之后也改过——冲突项要单独决定（保留我的 / 采用助手的），或者先拒绝、之后手工改。";
-    detail.append(hint);
+    cards.append(hint);
   }
   if (page.kind === "structural") {
     const hint = document.createElement("p");
     hint.className = "hint";
+    hint.style.padding = "12px 18px 0";
     hint.textContent = "这一页有块的增删 / 合并 / 拆分 / 重排，只能整页接受或拒绝。";
-    detail.append(hint);
+    cards.append(hint);
   }
 
   for (const change of page.block_changes) {
-    detail.append(mergeBlockItem(page, change));
+    cards.append(mergeBlockItem(page, change));
   }
   if (page.added_blocks.length) {
     const item = document.createElement("div");
@@ -4439,7 +4545,7 @@ function showMergePage(page) {
       body.append(node);
       item.append(body);
     }
-    detail.append(item);
+    cards.append(item);
   }
   if (page.removed_blocks.length) {
     const item = document.createElement("div");
@@ -4448,26 +4554,140 @@ function showMergePage(page) {
     head.className = "merge-item__head";
     head.textContent = `助手删除了 ${page.removed_blocks.length} 块（接受这一页时会一起删除，可撤销）`;
     item.append(head);
-    detail.append(item);
+    cards.append(item);
   }
 
+  // 底部操作条（效果图 06：右上角"接受所有无冲突的变化"，这里是逐页的接受 / 拒绝）
   const actions = document.createElement("div");
-  actions.className = "merge-page-actions";
-  const accept = document.createElement("button");
-  accept.type = "button";
-  accept.className = "btn btn--primary";
-  accept.textContent = page.kind === "block_level" ? "接受本页" : "接受本页";
-  accept.title = page.kind === "block_level" ? "接受这一页里助手的全部改动" : "结构变化 / 冲突按整页接受";
-  accept.addEventListener("click", () => decideMergePage(page, "accept"));
-  const reject = document.createElement("button");
-  reject.type = "button";
-  reject.className = "btn";
-  reject.textContent = page.kind === "conflict" ? "保留我的" : "拒绝本页";
-  reject.addEventListener("click", () =>
-    decideMergePage(page, page.kind === "conflict" ? "keep_mine" : "reject")
-  );
-  actions.append(accept, reject);
+  actions.className = "merge-detail__foot";
+  if (mergeHandled.has(page.page_id)) {
+    const state = mergeDecisions.get(page.page_id);
+    const done = document.createElement("span");
+    done.className = "chip chip--ok";
+    done.textContent =
+      state && state.action === "reject" ? "已决定：拒绝本页" : "已决定：接受本页";
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "btn btn--sm btn--ghost";
+    undo.textContent = "改回来";
+    undo.addEventListener("click", () => {
+      mergeDecisions.delete(page.page_id);
+      mergeHandled.delete(page.page_id);
+      showMergePage(page);
+      renderMergeListView();
+    });
+    actions.append(done, undo);
+  } else {
+    const reject = document.createElement("button");
+    reject.type = "button";
+    reject.className = "btn";
+    reject.textContent = page.kind === "conflict" ? "保留我的" : "拒绝本页";
+    reject.addEventListener("click", () =>
+      decideMergePage(page, page.kind === "conflict" ? "keep_mine" : "reject")
+    );
+    const hint = document.createElement("span");
+    hint.className = "hint";
+    hint.textContent = "接受后的写入可整体撤销";
+    const accept = document.createElement("button");
+    accept.type = "button";
+    accept.className = "btn btn--pri";
+    accept.textContent = "接受本页";
+    accept.title = page.kind === "block_level" ? "接受这一页里助手的全部改动" : "结构变化 / 冲突按整页接受";
+    accept.addEventListener("click", () => decideMergePage(page, "accept"));
+    actions.append(reject, hint, accept);
+  }
   detail.append(actions);
+  renderMergeFooter();
+
+  loadMergePageImage(page);
+}
+
+/** 中间那列：原图 + 助手改过的块高亮（效果图 06 的"修改对应区域高亮"）。 */
+async function loadMergePageImage(page) {
+  if (!currentProject) return;
+  const status = el("merge-image-status");
+  const canvas = el("merge-canvas");
+  const image = el("merge-image");
+  const caption = el("merge-caption");
+
+  const changed = new Set((page.block_changes || []).map((change) => change.block_id));
+  const added = new Set((page.added_blocks || []).map((block) => block.block_id));
+  const removed = (page.removed_blocks || []).map((block) => block.block_id);
+
+  let blocks = [];
+  try {
+    const data = await apiJson(
+      `/api/projects/${project_id()}/pages/${page.page_no}/blocks`
+    );
+    blocks = data.blocks || [];
+  } catch (error) {
+    status.textContent = "这一页的块读不出来，下面照样能逐条决定。";
+    status.hidden = false;
+    return;
+  }
+
+  const wanted = `/api/projects/${project_id()}/pages/${page.page_no}/image?size=view` +
+    `&token=${encodeURIComponent(token)}`;
+  if (image.dataset.pageNo !== String(page.page_no)) {
+    image.dataset.pageNo = String(page.page_no);
+    canvas.hidden = true;
+    status.textContent = "正在渲染…";
+    status.hidden = false;
+    image.onload = () => {
+      status.hidden = true;
+      canvas.hidden = false;
+      drawMergeOverlay(blocks, changed, added, removed);
+    };
+    image.onerror = () => {
+      status.textContent = "这一页渲染失败。";
+    };
+    image.src = wanted;
+  } else {
+    status.hidden = true;
+    canvas.hidden = false;
+    drawMergeOverlay(blocks, changed, added, removed);
+  }
+
+  const parts = [];
+  if (changed.size) parts.push(`改动 ${changed.size} 块`);
+  if (added.size) parts.push(`新增 ${added.size} 块`);
+  if (removed.length) parts.push(`删除 ${removed.length} 块`);
+  caption.textContent = parts.length
+    ? `第 ${page.page_no} 页 · ${parts.join(" · ")}（蓝框＝改动，绿框＝新增）`
+    : `第 ${page.page_no} 页 · 没有可高亮的位置信息`;
+}
+
+function drawMergeOverlay(blocks, changed, added, removed) {
+  const overlay = el("merge-overlay");
+  overlay.innerHTML = "";
+  let drawn = 0;
+  for (const block of blocks) {
+    if (!block.bbox) continue;
+    const isAdded = added.has(block.block_id);
+    const isRemoved = removed.includes(block.block_id);
+    const isChanged = changed.has(block.block_id);
+    if (!isAdded && !isChanged) continue;   // 只画助手动过的地方，其余不干扰阅读
+    drawn += 1;
+    const [x0, y0, x1, y1] = block.bbox;
+    const box = document.createElement("div");
+    box.className = "box " + (isAdded ? "box--added" : "box--changed");
+    if (isRemoved) box.className = "box box--removed";
+    box.style.left = `${x0 * 100}%`;
+    box.style.top = `${y0 * 100}%`;
+    box.style.width = `${(x1 - x0) * 100}%`;
+    box.style.height = `${(y1 - y0) * 100}%`;
+    box.title = isAdded ? "助手新增的块" : "助手改过的块";
+    overlay.append(box);
+  }
+  if (!drawn) {
+    const note = document.createElement("div");
+    note.className = "merge-caption";
+    note.style.position = "absolute";
+    note.style.bottom = "8px";
+    note.style.left = "8px";
+    note.textContent = "这些改动的块没有位置信息，无法在图上圈出来";
+    overlay.append(note);
+  }
 }
 
 function mergeBlockItem(page, change) {
@@ -4534,36 +4754,53 @@ function mergeBlockItem(page, change) {
 function decideMergePage(page, action) {
   mergeDecisions.set(page.page_id, { page_id: page.page_id, action });
   mergeHandled.add(page.page_id);
-  el("merge-detail").innerHTML = '<p class="muted">点左边的一页看差异。</p>';
+  // 决定完不跳走：留在这一页上再核对一遍，底部变成"已决定 + 改回来"
+  showMergePage(page);
   renderMergeListView();
+}
+
+/** 页列表里当前展开的那一页（重建列表时用它把高亮找回来）。 */
+let mergeActivePageId = null;
+
+/** 一行页面的门牌：标记 + 页码 + 变化摘要（列表与重建共用）。 */
+function mergePageRow(page) {
+  const item = document.createElement("li");
+  item.dataset.pageId = page.page_id;
+  item.className = MERGE_KIND_CLASS[page.kind] || "";
+  const decision = mergeDecisions.get(page.page_id);
+  if (decision) item.classList.add("is-done");
+  if (page.page_id === mergeActivePageId) item.classList.add("is-active");
+
+  const mark = document.createElement("span");
+  mark.className = "ic";
+  mark.textContent = page.kind === "conflict" ? "⚠" : page.kind === "structural" ? "◧" : "●";
+  if (page.kind === "conflict") mark.style.color = "var(--bad-text)";
+  else if (page.kind === "block_level") mark.style.color = "var(--accent-text)";
+  if (decision) mark.textContent = "✓";
+
+  const no = document.createElement("span");
+  no.className = "pg";
+  no.textContent = `p.${page.page_no}`;
+
+  const desc = document.createElement("span");
+  desc.className = "ds";
+  desc.textContent = decision
+    ? decision.action === "accept"
+      ? "已接受"
+      : "已拒绝"
+    : page.kind_label + (page.changed_blocks ? ` ${page.changed_blocks}` : "") +
+      (page.comment_count ? ` 💬${page.comment_count}` : "");
+
+  item.append(mark, no, desc);
+  item.addEventListener("click", () => showMergePage(page));
+  return item;
 }
 
 function renderMergeListView() {
   if (!mergeState) return;
   const list = el("merge-pages");
-  const active = null;
   list.innerHTML = "";
-  for (const page of mergeVisiblePages()) {
-    const item = document.createElement("li");
-    item.dataset.pageId = page.page_id;
-    item.className = MERGE_KIND_CLASS[page.kind] || "";
-    const decision = mergeDecisions.get(page.page_id);
-    if (decision) item.classList.add("is-done");
-    const mark =
-      page.kind === "conflict" ? "⚠ " : page.kind === "structural" ? "◧ " : "● ";
-    const decided = decision
-      ? decision.action === "accept"
-        ? " ✓ 接受"
-        : " ✗ 保留"
-      : "";
-    item.textContent =
-      `${mark}第 ${page.page_no} 页 · ${page.kind_label}` +
-      (page.changed_blocks ? ` ${page.changed_blocks} 处` : "") +
-      (page.comment_count ? ` 💬${page.comment_count}` : "") +
-      decided;
-    item.addEventListener("click", () => showMergePage(page));
-    list.append(item);
-  }
+  for (const page of mergeVisiblePages()) list.append(mergePageRow(page));
   if (!list.children.length) {
     const empty = document.createElement("li");
     empty.className = "muted";
@@ -4575,7 +4812,7 @@ function renderMergeListView() {
   );
   el("merge-accept-all").disabled = !pending.length;
   el("merge-meta").textContent =
-    el("merge-meta").textContent.replace(/ · 已决定 \d+ 页$/, "") +
+    `第 ${(mergeState.page_nos || []).join("、")} 页 · 结果 ${mergeState.seq}` +
     (mergeDecisions.size ? ` · 已决定 ${mergeDecisions.size} 页` : "");
   renderMergeFooter();
 }
@@ -4631,9 +4868,11 @@ async function submitMergeDecisions() {
     );
     mergeDecisions = new Map();
     mergeHandled = new Set();
-    el("merge-panel").hidden = true;
+    mergeActivePageId = null;
+    mergeState = null;
     await loadAssignments();
     await refreshProject(project_id());
+    showView("pages");
   } catch (error) {
     showError(el("merge-error"), error);
   }
@@ -4646,9 +4885,7 @@ function setupCollabControls() {
     panel.hidden = !panel.hidden;
     if (!panel.hidden) await loadAssignments();
   });
-  el("assign-close").addEventListener("click", () => {
-    el("assign-panel").hidden = true;
-  });
+  el("assign-close").addEventListener("click", () => closeModal("assign-panel"));
   el("assign-reviewer").addEventListener("input", previewAssign);
   el("assign-context").addEventListener("change", previewAssign);
   el("assign-create").addEventListener("click", createAssignment);
@@ -4658,9 +4895,7 @@ function setupCollabControls() {
   el("assign-reveal").addEventListener("click", (event) =>
     revealPackage(event.target.dataset.assignmentId)
   );
-  el("merge-close").addEventListener("click", () => {
-    el("merge-panel").hidden = true;
-  });
+  el("merge-close").addEventListener("click", () => showView("pages"));
   el("merge-filter").addEventListener("change", renderMergeListView);
   el("merge-accept-all").addEventListener("click", acceptAllClean);
   setupPackageControls();

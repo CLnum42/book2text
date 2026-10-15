@@ -621,6 +621,8 @@ textarea {
   padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line);
 }
 .mergebar strong { font-size: 14px; }
+.mergebar #merge-footer { margin: 0; gap: 8px; }
+.mergebar #merge-footer .btn { height: 30px; }
 .view--merge > .alert { margin: 10px 16px 0; }
 .merge-body { flex: 1; min-height: 0; display: flex; }
 
@@ -641,11 +643,27 @@ textarea {
 .merge-pages li.is-done .ds { color: #b9bec5; }
 .merge-pages li.is-conflict .ds { color: var(--bad-text); }
 
-.merge-detail { flex: 1; min-width: 0; overflow: auto; background: var(--surface); }
+.merge-detail { width: 496px; flex: none; overflow: auto; background: var(--surface); border-left: 1px solid var(--line); display: flex; flex-direction: column; }
 .merge-detail > .muted { padding: 16px; }
 .merge-detail__head {
   padding: 11px 18px; border-bottom: 1px solid var(--line-soft); font-size: 12.5px; color: var(--muted);
   position: sticky; top: 0; background: var(--surface); z-index: 2;
+}
+.merge-detail__cards { flex: 1; min-height: 0; overflow: auto; }
+.merge-source {
+  flex: 1; min-width: 0; background: #e7e9ec; overflow: auto; text-align: center;
+  padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.merge-source .page-canvas { box-shadow: 0 3px 18px rgba(0, 0, 0, .22); }
+.merge-source > .muted { margin: auto; }
+.merge-caption { font-size: 11.5px; color: var(--muted); background: rgba(255, 255, 255, .85); border-radius: 6px; padding: 4px 10px; }
+.merge-source .box--changed { border: 2px solid var(--accent); background: rgba(37, 99, 235, .12); }
+.merge-source .box--added { border: 2px solid var(--ok); background: rgba(22, 163, 74, .12); }
+.merge-source .box--removed { border: 2px dashed var(--bad); background: rgba(220, 38, 38, .1); }
+.merge-source .box--current { border-color: #d9480f; background: rgba(217, 72, 15, .16); }
+
+@media (max-width: 1400px) {
+  .merge-detail { width: 420px; }
 }
 .merge-item { border-bottom: 1px solid var(--line-soft); padding: 12px 18px; }
 .merge-item.is-current { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
