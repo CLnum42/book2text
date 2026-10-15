@@ -165,6 +165,8 @@ function setupShell() {
       showView(button.dataset.viewBtn);
       // 上次位置（说明书 7.2）：切到页面视图就记下"在页面视图"
       savePosition(button.dataset.viewBtn, detailPageNo);
+      // 进审校视图总要有页可看：上次那一页 → 第一个没审完的页 → 第一页
+      if (button.dataset.viewBtn === "review") ensureReviewPage();
     });
   }
   el("settings-open").addEventListener("click", () => openModal("settings-panel"));
@@ -1377,7 +1379,6 @@ async function resumeLastPosition() {
     showView("pages");
   }
 }
-
 async function refreshProject(projectId) {
   const data = await apiJson(`/api/projects/${projectId}`);
   currentProject = { ...data.project, pages: data.pages, read_only: false };
@@ -2246,6 +2247,27 @@ function renderRecentTasks(jobs) {
     paintTaskChip({ text: "任务：无", status: null, title: "这个项目还没有跑过任务" });
   }
 
+  // 没有正在跑的任务：抽屉不摆半截进度条，改成说清"最近跑过什么"
+  el("drawer-title").textContent = "任务";
+  el("drawer-status").textContent = latest
+    ? `最近一次：${JOB_STATUS_LABELS[latest.status] || latest.status}`
+    : "还没有跑过任务";
+  el("drawer-progress").hidden = !latest;
+  el("drawer-fill").style.width = latest ? `${latest.percent}%` : "0%";
+  el("drawer-counts").textContent = latest
+    ? `${latest.done + latest.failed} / ${latest.total} 页 · 成功 ${latest.done}` +
+      (latest.failed ? ` · 失败 ${latest.failed}` : "")
+    : "";
+  el("drawer-hint").textContent = latest
+    ? "选中页面后点「识别所选」开始新任务，进度会显示在这里。"
+    : "在页面视图里选中页面，再点「识别所选」开始。";
+  el("drawer-hint").hidden = false;
+  el("drawer-failures").innerHTML = "";
+  for (const button of [el("job-pause"), el("job-resume"), el("job-retry"), el("job-cancel")]) {
+    button.disabled = true;
+  }
+  el("drawer-error").hidden = true;
+
   const list = el("drawer-recent");
   list.innerHTML = "";
   el("drawer-recent-title").hidden = jobs.length === 0;
@@ -2341,6 +2363,27 @@ async function openPageDetail(pageNo) {
   savePosition("review", pageNo);
 }
 
+/**
+ * 进审校视图时先挑一页：上次那一页 → 第一个还没审完的页 → 第一页。
+ *
+ * 挑选顺序与"继续"一致（说明书 7.2 / 7.4）：用户从项目库点进来，
+ * 落在最可能还要干活的那一页上。
+ */
+function ensureReviewPage() {
+  if (!currentProject || detailPageNo !== null) return;
+  const pages = currentProject.pages.filter((page) => page.include);
+  if (!pages.length) return;
+  const last = currentProject.last_page_no;
+  const target =
+    (last && pages.find((page) => page.page_no === last)) ||
+    pages.find((page) => {
+      const review = page.review || {};
+      return (review.unreviewed || 0) > 0 || (review.uncertain || 0) > 0;
+    }) ||
+    pages[0];
+  openPageDetail(target.page_no);
+}
+
 function closePageDetail() {
   detailPageNo = null;
   if (boxCreateMode) setBoxCreateMode(false);
@@ -2423,6 +2466,53 @@ function stepPage(delta) {
   if (target) openPageDetail(target.page_no);
 }
 
+// ---------------------------------------------------------------- 原图缩放与块框
+
+/** null = 适合宽度；数字 = 相对"适合宽度"的倍数（说明书画面上只做这几档）。 */
+let zoomLevel = null;
+const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+
+function fitWidth() {
+  const scroll = el("viewer-scroll");
+  return Math.max(280, scroll.clientWidth - 44);
+}
+
+function applyZoom() {
+  const canvas = el("detail-canvas");
+  const image = el("detail-image");
+  if (!image || !image.naturalWidth) return;
+  const base = fitWidth();
+  const width = zoomLevel === null ? base : Math.round(base * zoomLevel);
+  canvas.style.width = `${width}px`;
+  el("zoom-fit").classList.toggle("is-on", zoomLevel === null);
+}
+
+function zoomBy(delta) {
+  const current = zoomLevel ?? 1;
+  const at = ZOOM_STEPS.findIndex((value) => value >= current - 0.001);
+  const index = Math.min(ZOOM_STEPS.length - 1, Math.max(0, (at < 0 ? 2 : at) + delta));
+  zoomLevel = ZOOM_STEPS[index] === 1 ? null : ZOOM_STEPS[index];
+  applyZoom();
+}
+
+function setupViewerTools() {
+  el("zoom-in").addEventListener("click", () => zoomBy(1));
+  el("zoom-out").addEventListener("click", () => zoomBy(-1));
+  el("zoom-fit").addEventListener("click", () => {
+    zoomLevel = null;
+    applyZoom();
+  });
+  el("toggle-overlay").addEventListener("click", () => {
+    const on = !el("toggle-overlay").classList.contains("is-on");
+    el("toggle-overlay").classList.toggle("is-on", on);
+    el("detail-overlay").hidden = !on;
+    el("toggle-overlay").textContent = on ? "显示块框" : "块框已隐藏";
+  });
+  window.addEventListener("resize", () => {
+    if (zoomLevel === null) applyZoom();
+  });
+}
+
 function setupReviewPager() {
   el("review-prev").addEventListener("click", () => stepPage(-1));
   el("review-next").addEventListener("click", () => stepPage(1));
@@ -2443,20 +2533,21 @@ function renderPageDetail(data) {
   const pageNo = data.page.page_no;
   reviewBlocks = data.blocks;
 
-  const review = data.review || {};
   const recognition = recognitionOf(data.page);
-  el("page-detail-title").textContent = `第 ${pageNo} 页 · 审校`;
+  el("page-detail-title").textContent = `第 ${pageNo} 页`;
   el("page-detail-meta").textContent = reviewMetaText(data);
 
   renderReviewBanner(data, recognition);
   renderHistoryButtons(data.history);
   const hasCandidate = recognition.status === "has_candidate";
-  el("candidate-entry").hidden = !hasCandidate;
   el("candidate-open").hidden = !hasCandidate;
   if (!hasCandidate) {
     el("candidate-panel").hidden = true;
     candidateRunId = null;
   }
+  el("detail-recognize").hidden = currentProject.kind === "package";
+  el("aux-run").hidden = currentProject.kind === "package";
+  renderReviewPager();
 
   // 图像按 view 档渲染；同一页重复打开时不重新拉图
   if (detailImagePageNo !== pageNo) {
@@ -2468,6 +2559,7 @@ function renderPageDetail(data) {
     image.onload = () => {
       el("detail-image-status").hidden = true;
       el("detail-canvas").hidden = false;
+      applyZoom();
     };
     image.onerror = () => {
       el("detail-image-status").textContent = "这一页渲染失败。";
@@ -2475,6 +2567,8 @@ function renderPageDetail(data) {
     image.src =
       `/api/projects/${project_id()}/pages/${pageNo}/image?size=view` +
       `&token=${encodeURIComponent(token)}`;
+  } else {
+    applyZoom();
   }
 
   drawDetailOverlay(data.blocks);
@@ -2496,7 +2590,11 @@ function reviewMetaText(data) {
   if (review.uncertain) parts.push(`不确定 ${review.uncertain}`);
   if (review.modified) parts.push(`已修改 ${review.modified}`);
   if (divergence.lines) parts.push(`两路分歧 ${divergence.lines} 行`);
-  if (data.active_run) parts.push(`${data.active_run.engine_id} ${data.active_run.engine_version}`);
+  // 用的是哪个引擎（识别来源）放 tooltip，不占标题这一行
+  if (data.active_run) {
+    el("page-detail-meta").title =
+      `本页识别来自 ${data.active_run.engine_id} ${data.active_run.engine_version}`;
+  }
   return parts.join(" · ");
 }
 
@@ -2558,15 +2656,28 @@ function drawDetailOverlay(blocks) {
     const [x0, y0, x1, y1] = block.bbox;
     const box = document.createElement("div");
     box.className = "box" + (block.include ? "" : " box--excluded");
+    if (["header", "footer", "page_number"].includes(block.block_type)) {
+      box.classList.add("box--chrome");
+    }
     box.dataset.blockId = block.block_id;
     box.style.left = `${x0 * 100}%`;
     box.style.top = `${y0 * 100}%`;
     box.style.width = `${(x1 - x0) * 100}%`;
     box.style.height = `${(y1 - y0) * 100}%`;
-    box.title = BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
+    const typeLabel = BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
+    box.title = `${typeLabel} · 点一下跳到右边对应的块`;
+    // 页眉 / 页脚 / 页码与"不确定"的块在图上挂一个小牌子（效果图 03）：
+    // 一眼能看出哪几块是每页都有的边角料、哪几块要细看
+    if (block.review_status === "uncertain") box.classList.add("box--uncertain");
+    const badge = document.createElement("span");
+    badge.className = "box__badge";
+    badge.textContent =
+      block.review_status === "uncertain" ? `？${typeLabel}` : typeLabel;
+    box.append(badge);
     box.addEventListener("click", () => {
       const item = el("detail-blocks").querySelector(`li[data-block-id="${block.block_id}"]`);
       if (item) {
+        selectReviewBlock(block.block_id);
         item.querySelector("textarea").focus();
         item.scrollIntoView({ block: "center", behavior: "smooth" });
       }
@@ -2606,26 +2717,47 @@ function blockCard(block, index, blocksCount) {
 
   const status = document.createElement("span");
   status.className =
-    "status " +
+    "chip " +
     (block.review_status === "confirmed"
-      ? "status--ok"
+      ? "chip--ok"
       : block.review_status === "uncertain"
-      ? "status--warn"
-      : "");
-  status.textContent = REVIEW_STATUS_LABELS[block.review_status] || block.review_status;
+      ? "chip--warn"
+      : "chip--gray");
+  status.textContent =
+    block.review_status === "confirmed"
+      ? "✓ 已确认"
+      : REVIEW_STATUS_LABELS[block.review_status] || block.review_status;
 
-  const badges = document.createElement("span");
-  badges.className = "muted review-block__badges";
+  // 头一行：类型标签 + （靠右）状态与几个"要人看一眼"的标记（效果图 03）
   const bits = [];
-  if (block.modified) bits.push("● 已修改");
-  if (!block.include) bits.push("已排除");
-  if (block.continues_to_next) bits.push("↪ 延续下页");
-  if (blockDivergence.lines) bits.push(`≠ 两路不一致 ${blockDivergence.lines} 行`);
+  if (block.modified) bits.push(["● 已修改", "chip--warn"]);
+  if (block.continues_to_next) bits.push(["↪ 延续到下页", "chip--blue"]);
+  if (blockDivergence.lines) bits.push([`≠ 两路不一致 ${blockDivergence.lines} 行`, "chip--warn"]);
   // 说明书 6.4：无 bbox 的块要明确显示"无位置信息"，不绘制虚假高亮
-  if (!block.bbox) bits.push("无位置信息");
-  badges.textContent = bits.join(" · ");
+  if (!block.bbox) bits.push(["无位置信息", "chip--gray"]);
+  if (!block.include) bits.push(["已排除", "chip--gray"]);
+  else if (["header", "footer", "page_number"].includes(block.block_type)) {
+    bits.push(["导出时排除", "chip--gray"]);
+  }
 
-  head.append(typeSelect, status, badges);
+  const spacer = document.createElement("span");
+  spacer.className = "spacer";
+  head.append(typeSelect);
+  if (blockDivergence.chars) {
+    const warn = document.createElement("span");
+    warn.className = "chip chip--warn";
+    warn.textContent = `≠ ${blockDivergence.lines} 行`;
+    warn.title = "这一块有汉字级分歧，尽量核对";
+    head.append(warn);
+  }
+  head.append(spacer);
+  for (const [text, cls] of bits) {
+    const chip = document.createElement("span");
+    chip.className = `chip ${cls}`;
+    chip.textContent = text;
+    head.append(chip);
+  }
+  head.append(status);
 
   const textarea = document.createElement("textarea");
   textarea.className = "review-block__text";
@@ -2658,7 +2790,7 @@ function blockCard(block, index, blocksCount) {
   const addButton = (label, title, onClick) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "btn btn--ghost";
+    button.className = "btn btn--sm";
     button.textContent = label;
     button.title = title;
     button.addEventListener("click", onClick);
@@ -2702,7 +2834,7 @@ function blockCard(block, index, blocksCount) {
   // "⋯ 更多"：结构操作（说明书 6.4 的合并 / 拆分 / 上移下移 / 新增 / 删除）
   const more = document.createElement("button");
   more.type = "button";
-  more.className = "btn btn--ghost review-block__more";
+  more.className = "btn btn--sm review-block__more";
   more.textContent = "⋯ 更多";
   more.title = "结构操作：合并 / 拆分 / 上移下移 / 新增 / 删除";
   const menu = document.createElement("div");
@@ -2776,19 +2908,19 @@ function blockCard(block, index, blocksCount) {
       text.textContent = `💬 ${block.comment}`;
       const edit = document.createElement("button");
       edit.type = "button";
-      edit.className = "btn btn--ghost";
+      edit.className = "btn btn--sm btn--ghost";
       edit.textContent = "改备注";
       edit.addEventListener("click", () => askComment(block, block.comment));
       const clear = document.createElement("button");
       clear.type = "button";
-      clear.className = "btn btn--ghost";
+      clear.className = "btn btn--sm btn--ghost";
       clear.textContent = "删除";
       clear.addEventListener("click", () => patchBlock(block, { comment: "" }));
       commentBox.append(text, edit, clear);
     } else {
       const add = document.createElement("button");
       add.type = "button";
-      add.className = "btn btn--ghost";
+      add.className = "btn btn--sm btn--ghost";
       add.textContent = "💬 加备注";
       add.title = "给这一块写一句说明或提问（会随结果包一起回传给负责人）";
       add.addEventListener("click", () => askComment(block, ""));
@@ -3023,6 +3155,9 @@ async function adoptLine(block, lineIndex, candidate) {
 async function patchBlock(block, patch) {
   if (!currentProject) return;
   setSaveState("保存中…");
+  // 保存完会整页重渲染：先把"正在改哪一块、光标在哪"记下来，回来再接上。
+  // 不这么做的话，打字打到一半自动保存就会把光标顶掉。
+  const focusBefore = captureEditorFocus();
   try {
     const data = await apiJson(
       `/api/projects/${currentProject.project_id}/blocks/${block.block_id}`,
@@ -3038,6 +3173,7 @@ async function patchBlock(block, patch) {
     );
     setSaveState("已保存 ✓");
     await loadPageDetail(detailPageNo);
+    restoreEditorFocus(focusBefore);
     await refreshPageStates();
   } catch (error) {
     if (error.code === "block_conflict") {
@@ -3046,6 +3182,36 @@ async function patchBlock(block, patch) {
       return;
     }
     setSaveState(error.message || "保存失败", true);
+  }
+}
+
+/** 记下当前正在编辑的块与光标位置（重渲染前调用）。 */
+function captureEditorFocus() {
+  const active = document.activeElement;
+  if (!active || active.tagName !== "TEXTAREA" || !active.classList.contains("review-block__text")) {
+    return null;
+  }
+  const item = active.closest(".review-block");
+  if (!item) return null;
+  return {
+    blockId: item.dataset.blockId,
+    start: active.selectionStart,
+    end: active.selectionEnd,
+  };
+}
+
+/** 重渲染之后把光标放回原来那一块（块没了就什么都不做）。 */
+function restoreEditorFocus(snapshot) {
+  if (!snapshot) return;
+  const item = el("detail-blocks").querySelector(`li[data-block-id="${snapshot.blockId}"]`);
+  const textarea = item && item.querySelector("textarea");
+  if (!textarea) return;
+  textarea.focus();
+  try {
+    textarea.setSelectionRange(snapshot.start, snapshot.end);
+  } catch {
+    /* 文本变短了之类的边界情况：光标放到末尾就好 */
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   }
 }
 
@@ -4540,6 +4706,7 @@ function boot() {
   setupShell();
   setupLibrary();
   setupReviewPager();
+  setupViewerTools();
   setupExportPanel();
   setupStructurePanel();
   showView("library");

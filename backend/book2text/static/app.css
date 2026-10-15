@@ -434,8 +434,12 @@ textarea {
 .viewer {
   width: 52%; flex: none; background: #e7e9ec; position: relative; display: flex; flex-direction: column;
 }
-.viewer__scroll { flex: 1; min-height: 0; overflow: auto; display: flex; justify-content: center; padding: 22px 0; }
-.viewer__scroll .muted { align-self: center; }
+.viewer__scroll {
+  flex: 1; min-height: 0; overflow: auto; padding: 22px;
+  /* 用 text-align 居中：缩放后比容器宽时，flex 居中会把左边裁掉 */
+  text-align: center;
+}
+.viewer__scroll .muted { margin: 0; }
 .viewer .vtool {
   position: absolute; left: 16px; bottom: 14px; z-index: 4;
   background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px;
@@ -470,8 +474,11 @@ textarea {
   .editor { border-left: none; border-top: 1px solid var(--line); }
 }
 
-.page-canvas { position: relative; line-height: 0; box-shadow: 0 3px 18px rgba(0, 0, 0, .22); align-self: flex-start; }
-.page-canvas img { display: block; height: auto; background: var(--surface); }
+.page-canvas {
+  position: relative; line-height: 0; display: inline-block; text-align: left;
+  box-shadow: 0 3px 18px rgba(0, 0, 0, .22); vertical-align: top;
+}
+.page-canvas img { display: block; height: auto; max-width: 100%; background: var(--surface); }
 .page-overlay { position: absolute; inset: 0; }
 /* 块框默认不吃鼠标事件，否则点不到「页面上拖动框选」；点块框跳转由 .box 自己的 click 处理 */
 .page-overlay .box {
@@ -483,6 +490,23 @@ textarea {
 .page-overlay .box--excluded { border-style: dashed; opacity: .5; }
 .page-overlay .box--source { border-color: #d9480f; background: rgba(217, 72, 15, .18); }
 .page-overlay .box--dim { opacity: .3; }
+
+/* 块框上的小牌子：默认只在"当前块 / 不确定 / 页眉页脚这类边角料"上出现，
+   否则一页十几块会看不清原图 */
+.page-overlay .box__badge {
+  display: none;
+  position: absolute; top: -16px; left: -2px; height: 15px; line-height: 14px;
+  padding: 0 5px; border-radius: 3px; font-size: 10px; font-weight: 600;
+  color: #4361a8; background: rgba(255, 255, 255, .92); border: 1px solid rgba(120, 150, 200, .7);
+  white-space: nowrap; pointer-events: none;
+}
+.page-overlay .box--active .box__badge,
+.page-overlay .box--uncertain .box__badge,
+.page-overlay .box--chrome .box__badge { display: block; }
+.page-overlay .box--active .box__badge { color: #fff; background: var(--accent); border-color: var(--accent); }
+.page-overlay .box--uncertain { border: 1.5px dashed var(--warn); background: rgba(217, 119, 6, .1); }
+.page-overlay .box--uncertain .box__badge { color: var(--warn-text); border-color: var(--warn); }
+.page-overlay .box--chrome { border-color: rgba(150, 150, 150, .5); background: rgba(150, 150, 150, .08); }
 
 /* 块列表（右栏） */
 .review-block { position: relative; border-bottom: 1px solid var(--line-soft); padding: 10px 16px 11px; }
@@ -754,7 +778,7 @@ textarea {
 /* ─────────────────────────────── 任务抽屉 ─────────────────────────────── */
 
 .drawer {
-  position: fixed; top: calc(var(--topbar-h) + 12px); right: 16px; width: 348px; z-index: 40;
+  position: fixed; top: calc(var(--topbar-h) + 58px); right: 16px; width: 348px; z-index: 40;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-3); overflow: hidden;
 }
