@@ -1180,3 +1180,31 @@ Windows 有 SmartScreen 提示——两份用户手册里都写了。
 识别状态的推导规则继续只认它。
 
 **状态：** 生效（两条都在实测中确认）。
+
+---
+
+## D-049 | 2026-10-15 | 界面资源一律 `Cache-Control: no-cache`（不用 `no-store`）
+
+**决策：** `/` 与 `/static/*` 的响应都带 `Cache-Control: no-cache`；
+`/static` 由 `_RevalidatingStaticFiles` 统一补头（Starlette 的 `StaticFiles` 不给这个头）。
+
+**理由：**
+
+- 这是本地应用，**升级方式就是替换 `static/` 下的文件**（源码运行或打包都一样）。
+  界面由 `index.html` / `app.css` / `app.js` 三份文件组成，**只要其中一份来自缓存、
+  另一份是新拉取的，页面就会半新半旧**。2026-10-15 真的发生了：用户浏览器缓存着旧
+  `app.js`，配上新 `index.html`，项目库照旧渲染、点"新建项目"报
+  `Cannot set properties of null (setting 'hidden')`（旧脚本引用的节点在新页面里没了），
+  而且这个报错**与当下代码毫无关系**，排查成本极高。
+- **不用 `no-store`**：那样每次刷新都要重传三份文件。`no-cache` 的语义是"用之前回源确认"，
+  文件没变时服务端回 304（Starlette 的 `FileResponse` 自带 ETag / Last-Modified 判断），
+  一致性和开销都照顾到了。
+- 顺带把这条约定**钉进测试**（`tests/integration/test_ui_assets.py`）：三份资源都带头、
+  没变时走 304，另外还有一条"`app.js` 用到的 id 必须都在页面里"——少一处引用就会在运行时
+  报 `Cannot set properties of null`，而那通常只在某个具体操作路径上才暴露。
+
+**影响：** 浏览器会多一次条件请求（304，无正文）。旧的、缓存里既有的 `app.js` 不会自动失效，
+**用户需要强制刷新一次**；之后不会再出现半新半旧。项目渲染图（`/pages/{n}/image`）不受影响，
+它们仍是 `private, max-age=300`（那是图片，内容随页固定，缓存有益）。
+
+**状态：** 生效（macOS + Chrome 实测：响应头正确、二次请求 304）。

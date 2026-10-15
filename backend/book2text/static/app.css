@@ -336,14 +336,6 @@ textarea {
 .pcard__actions { display: flex; flex-direction: column; gap: 8px; justify-content: center; width: 92px; flex: none; }
 .pcard__actions .btn { width: 100%; }
 
-.newcard {
-  border: 1.5px dashed var(--line-strong); border-radius: var(--radius-lg);
-  min-height: 64px; width: 100%; margin-top: 0;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  color: var(--faint); font: inherit; font-size: 13.5px; background: transparent; cursor: pointer;
-}
-.newcard:hover { border-color: var(--accent); color: var(--accent-text); background: #fbfcff; }
-
 /* ─────────────────────────────── 页面视图 ─────────────────────────────── */
 
 .filterbar {

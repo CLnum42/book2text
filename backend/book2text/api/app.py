@@ -12,7 +12,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -34,6 +34,27 @@ from . import (
 )
 
 
+REVALIDATE = "no-cache"
+"""界面资源一律"每次回源确认"。
+
+本地应用是**就地更新**的（换掉 `static/` 下的文件就是升级），而"界面"由三份文件组成：
+`index.html` / `app.css` / `app.js`。只要其中一份来自缓存、另一份是新拉取的，页面就会
+半新半旧——2026-10-15 实际发生过一次：浏览器缓存着旧 `app.js`，配上新 `index.html` 后
+项目库照旧渲染，点"新建项目"报 `Cannot set properties of null (setting 'hidden')`，
+用户只能强制刷新才好（因为旧脚本里引用的节点在新页面里已经没有了）。
+
+`no-cache` 不是"不缓存"，而是"用之前回源确认"：文件没变时服务端回 304（有 ETag /
+Last-Modified 兜底），代价可以忽略；文件变了就一定会拿到新的。
+"""
+
+
+class _RevalidatingStaticFiles(StaticFiles):
+    """给 `/static` 下的每个响应加 `Cache-Control: no-cache`（见 `REVALIDATE`）。"""
+
+    def file_response(self, *args: object, **kwargs: object) -> Response:
+        response = super().file_response(*args, **kwargs)  # type: ignore[arg-type]
+        response.headers.setdefault("Cache-Control", REVALIDATE)
+        return response
 def create_app(
     *,
     session_token: str,
@@ -88,7 +109,7 @@ def create_app(
     app.include_router(routes_collab.router, dependencies=guarded)
     app.include_router(routes_packages.router, dependencies=guarded)
 
-    app.mount("/static", StaticFiles(directory=paths.STATIC_DIR), name="static")
+    app.mount("/static", _RevalidatingStaticFiles(directory=paths.STATIC_DIR), name="static")
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
@@ -96,9 +117,12 @@ def create_app(
         return FileResponse(
             paths.STATIC_DIR / "index.html",
             media_type="text/html; charset=utf-8",
+            # 与静态资源同理：每次回源确认，别让浏览器拿旧页面配新脚本
+            headers={"Cache-Control": REVALIDATE},
         )
 
     return app
+
 
 
 def _shutdown_running_jobs(supervisor: executor_module.Supervisor) -> None:

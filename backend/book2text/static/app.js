@@ -149,7 +149,6 @@ function setupNewProjectModal() {
     openModal("new-project-mask");
     el("new-project-name").focus();
   });
-  el("pick-pdf-2").addEventListener("click", () => el("pick-pdf").click());
   el("new-project-cancel").addEventListener("click", () => closeModal("new-project-mask"));
   el("new-project-cancel-x").addEventListener("click", () => closeModal("new-project-mask"));
   el("new-project-pick").addEventListener("click", openPicker);
@@ -1221,7 +1220,6 @@ function renderProjectList(projects) {
   const list = el("project-list");
   list.innerHTML = "";
   el("library-empty").hidden = projects.length > 0;
-  el("pick-pdf-2").hidden = projects.length === 0;
 
   projects.forEach((entry, index) => {
     const card = document.createElement("li");
