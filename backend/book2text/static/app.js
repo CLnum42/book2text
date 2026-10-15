@@ -1189,14 +1189,16 @@ async function loadLibrary() {
 }
 
 /** 进度条的百分比：分母为 0 时返回 0（还没纳入任何页）。 */
-function ratioText(done, total) {
-  if (!total) return `${done} / ${total}`;
-  return `${done} / ${total} 页`;
+function progressPercent(done, total) {
+  const top = Number(done || 0);
+  const bottom = Number(total || 0);
+  if (!bottom) return 0;
+  return Math.min(100, Math.round((top / bottom) * 100));
 }
 
-function progressPercent(done, total) {
-  if (!total) return 0;
-  return Math.min(100, Math.round((done / total) * 100));
+/** "12 / 300 页"这行数字：字段缺失时按 0 算，不显示 undefined。 */
+function ratioText(done, total) {
+  return `${Number(done || 0)} / ${Number(total || 0)} 页`;
 }
 
 /** 上次编辑时间的口语写法：刚刚 / N 分钟前 / N 小时前 / N 天前 / 日期。 */
@@ -1322,7 +1324,7 @@ function lastPositionText(entry) {
 /** 识别进度右边那格：失败页数与文本层提示（都来自真实数据）。 */
 function recognitionExtra(entry) {
   const parts = [];
-  const failed = entry.failed_pages || 0;
+  const failed = Number(entry.failed_pages || 0);
   if (failed) parts.push({ text: `⚠ 失败 ${failed}`, tone: "bad" });
   if (entry.included_pages && entry.recognized_pages >= entry.included_pages) {
     parts.push({ text: "已认完", tone: "ok" });
@@ -1332,7 +1334,8 @@ function recognitionExtra(entry) {
 
 function reviewExtra(entry) {
   const parts = [];
-  if (entry.uncertain_blocks) parts.push({ text: `不确定 ${entry.uncertain_blocks} 块`, tone: "warn" });
+  const uncertain = Number(entry.uncertain_blocks || 0);
+  if (uncertain) parts.push({ text: `不确定 ${uncertain} 块`, tone: "warn" });
   else if (entry.reviewed_pages && entry.reviewed_pages >= entry.included_pages) {
     parts.push({ text: "已审完", tone: "ok" });
   }
