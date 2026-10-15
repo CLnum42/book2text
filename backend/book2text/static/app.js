@@ -1434,10 +1434,13 @@ async function resumeLastPosition() {
   const project = currentProject;
   if (!project) return;
   const view = project.last_view;
-  const pageNo = project.last_page_no;
-  if ((view === "review" || view === "structure") && pageNo) {
+  // 项目载荷给的是 last_page_id（项目库列表给的是页码，两个接口字段不同）
+  const page = project.last_page_id
+    ? project.pages.find((item) => item.page_id === project.last_page_id)
+    : null;
+  if ((view === "review" || view === "structure") && page) {
     showView("review");
-    await openPageDetail(pageNo);
+    await openPageDetail(page.page_no);
   } else {
     showView("pages");
   }
@@ -2796,20 +2799,28 @@ function blockCard(block, index, blocksCount) {
       : REVIEW_STATUS_LABELS[block.review_status] || block.review_status;
 
   // 头一行：类型标签 + （靠右）状态与几个"要人看一眼"的标记（效果图 03）
+  // 与类型本身有关的标记（导出时排除 / 已排除）贴着类型标签放左边，状态放右边
+  const typeBits = [];
+  if (!block.include) typeBits.push(["已排除", "chip--gray"]);
+  else if (["header", "footer", "page_number"].includes(block.block_type)) {
+    typeBits.push(["导出时排除", "chip--gray"]);
+  }
   const bits = [];
   if (block.modified) bits.push(["● 已修改", "chip--warn"]);
   if (block.continues_to_next) bits.push(["↪ 延续到下页", "chip--blue"]);
   if (blockDivergence.lines) bits.push([`≠ 两路不一致 ${blockDivergence.lines} 行`, "chip--warn"]);
   // 说明书 6.4：无 bbox 的块要明确显示"无位置信息"，不绘制虚假高亮
   if (!block.bbox) bits.push(["无位置信息", "chip--gray"]);
-  if (!block.include) bits.push(["已排除", "chip--gray"]);
-  else if (["header", "footer", "page_number"].includes(block.block_type)) {
-    bits.push(["导出时排除", "chip--gray"]);
-  }
 
   const spacer = document.createElement("span");
   spacer.className = "spacer";
   head.append(typeSelect);
+  for (const [text, cls] of typeBits) {
+    const chip = document.createElement("span");
+    chip.className = `chip ${cls}`;
+    chip.textContent = text;
+    head.append(chip);
+  }
   if (blockDivergence.chars) {
     const warn = document.createElement("span");
     warn.className = "chip chip--warn";
@@ -3160,6 +3171,10 @@ function selectReviewBlock(blockId) {
     box.classList.toggle("box--active", isActive);
     if (isActive) box.scrollIntoView({ block: "center", behavior: "smooth" });
   }
+  // 右下角的"块 3 / 12"（效果图 03）：知道自己改到哪儿了
+  const items = [...el("detail-blocks").querySelectorAll(".review-block")];
+  const index = items.findIndex((item) => item.dataset.blockId === blockId);
+  el("block-position").textContent = index < 0 ? "" : `块 ${index + 1} / ${items.length}`;
 }
 
 function focusSiblingBlock(index, delta) {

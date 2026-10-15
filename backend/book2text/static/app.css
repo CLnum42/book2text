@@ -526,11 +526,17 @@ textarea {
 .review-block.active { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
 .review-block.active .review-block__type { border-color: var(--accent); color: var(--accent-text); }
 .review-block--excluded { opacity: .55; }
-.review-block--chrome { background: var(--surface-2); }
+.review-block--chrome { background: var(--surface-2); opacity: .72; }
+.review-block--chrome:hover, .review-block--chrome.active, .review-block--chrome:focus-within { opacity: 1; }
 .review-block--chrome .review-block__text { color: var(--muted); }
 .review-block--divergence { box-shadow: inset 3px 0 0 #d9a441; }
 .review-block.active.review-block--divergence { box-shadow: inset 3px 0 0 var(--accent); }
-.review-block__actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+/* 操作行只在"正在改的那一块"或鼠标停上去时出现（效果图 03）。
+   一页十几块，每块都摆一排按钮会把正文挤没，也看不清哪里还没审。 */
+.review-block__actions { display: none; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.review-block:hover .review-block__actions,
+.review-block.active .review-block__actions,
+.review-block:focus-within .review-block__actions { display: flex; }
 .review-block__actions .btn { height: 24px; padding: 0 9px; font-size: 11.5px; border-radius: 6px; color: var(--muted); }
 .review-block__original {
   margin: 8px 0 0; padding: 8px 10px; background: var(--surface-3); border-radius: 7px;
