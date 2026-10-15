@@ -134,6 +134,13 @@ class LibraryPageSummary:
     project: Project
     included_pages: int
     recognized_pages: int
+    reviewed_pages: int
+    uncertain_blocks: int
+    failed_pages: int
+    last_page_no: int | None
+    """上次停留的页码（说明书 7.2 的"继续"要用它显示"上次位置：第 N 页"）。"""
+    last_page_label: str
+    """那一页的印张页码（可能是空的）。"""
     pages_with_text_layer: int
     text_layer_hint: bool
     lock_held: bool
@@ -144,6 +151,11 @@ class LibraryPageSummary:
             **self.project.to_dict(),
             "included_pages": self.included_pages,
             "recognized_pages": self.recognized_pages,
+            "reviewed_pages": self.reviewed_pages,
+            "uncertain_blocks": self.uncertain_blocks,
+            "failed_pages": self.failed_pages,
+            "last_page_no": self.last_page_no,
+            "last_page_label": self.last_page_label,
             "pages_with_text_layer": self.pages_with_text_layer,
             "text_layer_hint": self.text_layer_hint,
             "lock_held": self.lock_held,
@@ -446,6 +458,17 @@ class _PageCounts:
     included: int
     with_text_layer: int
     recognized: int
+    reviewed: int
+    """已审完的纳入页数（说明书 5.3 的 `done`：纳入块已全部确认）。
+
+    与 `blocks.PageReview.status` 同一口径，只是这里用 SQL 现算总数——
+    项目库列一屏几十个项目卡，不能为每项把整页的块读进内存。
+    """
+    uncertain_blocks: int
+    failed: int
+    """试过识别但没成功、现在也没有可用结果的页数（与 `blocks.STATUS_FAILED` 同口径）。"""
+    last_page_no: int | None
+    last_page_label: str
 
 
 def _page_counts(directory: Path) -> _PageCounts:
@@ -453,10 +476,37 @@ def _page_counts(directory: Path) -> _PageCounts:
         row = conn.execute(
             """
             SELECT COUNT(*)                                        AS total,
-                   SUM(CASE WHEN include         THEN 1 ELSE 0 END) AS included,
-                   SUM(CASE WHEN has_text_layer  THEN 1 ELSE 0 END) AS with_text,
-                   SUM(CASE WHEN active_run_id IS NOT NULL THEN 1 ELSE 0 END) AS recognized
-            FROM page
+                   SUM(CASE WHEN p.include         THEN 1 ELSE 0 END) AS included,
+                   SUM(CASE WHEN p.has_text_layer  THEN 1 ELSE 0 END) AS with_text,
+                   SUM(CASE WHEN p.active_run_id IS NOT NULL THEN 1 ELSE 0 END) AS recognized,
+                   SUM(CASE
+                         WHEN NOT p.include THEN 0
+                         WHEN EXISTS (
+                             SELECT 1 FROM block b
+                             WHERE b.page_id = p.page_id AND b.deleted_at IS NULL
+                               AND b.include AND b.review_status <> 'confirmed'
+                         ) THEN 0
+                         WHEN EXISTS (
+                             SELECT 1 FROM block b
+                             WHERE b.page_id = p.page_id AND b.deleted_at IS NULL AND b.include
+                         ) THEN 1
+                         ELSE 0
+                       END)                                     AS reviewed,
+                   (SELECT COUNT(*) FROM block b
+                    WHERE b.deleted_at IS NULL AND b.include
+                      AND b.review_status = 'uncertain')        AS uncertain_blocks,
+                   SUM(CASE
+                         WHEN p.include AND p.active_run_id IS NULL
+                              AND EXISTS (SELECT 1 FROM ocr_run r WHERE r.page_id = p.page_id)
+                         THEN 1 ELSE 0
+                       END)                                     AS failed
+            FROM page p
+            """
+        ).fetchone()
+        last = conn.execute(
+            """
+            SELECT p.page_no, p.page_label FROM page p
+            WHERE p.page_id = (SELECT last_page_id FROM project LIMIT 1)
             """
         ).fetchone()
     return _PageCounts(
@@ -467,6 +517,13 @@ def _page_counts(directory: Path) -> _PageCounts:
         # （未识别 / 排队中 / 识别中 / 已识别 / 失败 / 有待选新结果），
         # 项目卡只需要这个总数。
         recognized=int(row["recognized"] or 0),
+        reviewed=int(row["reviewed"] or 0),
+        uncertain_blocks=int(row["uncertain_blocks"] or 0),
+        # "失败"= 试过但没成功、现在也没有 active run 的页（与 blocks.py 的
+        # STATUS_FAILED 同一口径：有运行记录、但没有可用的结果）
+        failed=int(row["failed"] or 0),
+        last_page_no=int(last["page_no"]) if last else None,
+        last_page_label=str(last["page_label"] or "") if last else "",
     )
 
 
@@ -501,6 +558,11 @@ def list_projects(*, library: Path | None = None) -> list[LibraryPageSummary]:
                 project=project,
                 included_pages=counts.included,
                 recognized_pages=counts.recognized,
+                reviewed_pages=counts.reviewed,
+                uncertain_blocks=counts.uncertain_blocks,
+                failed_pages=counts.failed,
+                last_page_no=counts.last_page_no,
+                last_page_label=counts.last_page_label,
                 pages_with_text_layer=counts.with_text_layer,
                 text_layer_hint=(
                     counts.total > 0

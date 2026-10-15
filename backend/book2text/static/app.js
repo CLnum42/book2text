@@ -93,6 +93,121 @@ function fillDefinitionList(node, pairs) {
   }
 }
 
+// ---------------------------------------------------------------- 外壳：视图与对话框
+//
+// 界面是"单窗口应用"（说明书第 7 节的效果图）：顶栏 + 四个视图（项目库 / 页面 /
+// 审校 / 合并审阅）+ 若干对话框。视图之间只切换 hidden，各视图内部状态各自保留。
+
+const VIEWS = ["library", "pages", "review", "merge"];
+
+let currentView = "library";
+
+function showView(name) {
+  if (!VIEWS.includes(name)) return;
+  // 没有打开项目时，只有项目库是可达的
+  const target = currentProject || name === "library" ? name : "library";
+  currentView = target;
+  document.body.dataset.view = target;
+  for (const view of VIEWS) el(`view-${view}`).hidden = view !== target;
+  el("topbar-library").hidden = target !== "library";
+  el("topbar-project").hidden = target === "library";
+  el("review-pager").hidden = target !== "review";
+  for (const button of el("view-tabs").querySelectorAll("[data-view-btn]")) {
+    button.classList.toggle("is-on", button.dataset.viewBtn === target);
+  }
+  if (target !== "review") closeTaskDrawer();
+}
+
+/** 打开一个对话框（.mask）。同一时刻允许多层，但退出键只关最上面一个。 */
+function openModal(id) {
+  const node = el(id);
+  if (!node) return;
+  node.hidden = false;
+}
+
+function closeModal(id) {
+  const node = el(id);
+  if (!node) return;
+  node.hidden = true;
+  // 结构工具的候选勾选、导出对照这类"临时状态"随手收起来，下次打开是干净的
+  if (id === "structure-panel") {
+    structureCandidates = [];
+    el("structure-result").hidden = true;
+  }
+  if (id === "export-panel") el("export-compare").hidden = true;
+}
+
+const openMasks = () => [...document.querySelectorAll(".mask")].filter((node) => !node.hidden);
+
+/** 顶栏上的"新建项目"：先要个书名（可留空），再选 PDF。 */
+function setupNewProjectModal() {
+  const picker = el("new-project-file");
+  const openPicker = () => picker.click();
+  el("pick-pdf").addEventListener("click", () => {
+    el("new-project-name").value = "";
+    el("new-project-modal-error").hidden = true;
+    openModal("new-project-mask");
+    el("new-project-name").focus();
+  });
+  el("pick-pdf-2").addEventListener("click", () => el("pick-pdf").click());
+  el("new-project-cancel").addEventListener("click", () => closeModal("new-project-mask"));
+  el("new-project-cancel-x").addEventListener("click", () => closeModal("new-project-mask"));
+  el("new-project-pick").addEventListener("click", openPicker);
+  el("new-project-name").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") openPicker();
+  });
+}
+
+function setupShell() {
+  setupNewProjectModal();
+  for (const button of el("view-tabs").querySelectorAll("[data-view-btn]")) {
+    button.addEventListener("click", () => {
+      showView(button.dataset.viewBtn);
+      // 上次位置（说明书 7.2）：切到页面视图就记下"在页面视图"
+      savePosition(button.dataset.viewBtn, detailPageNo);
+    });
+  }
+  el("settings-open").addEventListener("click", () => openModal("settings-panel"));
+  el("settings-close").addEventListener("click", () => closeModal("settings-panel"));
+  el("stats-open").addEventListener("click", () => {
+    openModal("stats-panel");
+    loadSummary();
+  });
+  el("stats-close").addEventListener("click", () => closeModal("stats-panel"));
+  el("structure-open").addEventListener("click", () => openModal("structure-panel"));
+  el("structure-close").addEventListener("click", () => closeModal("structure-panel"));
+  el("structure-cancel").addEventListener("click", () => closeModal("structure-panel"));
+  el("export-open").addEventListener("click", async () => {
+    openModal("export-panel");
+    await refreshExportPreflight();
+    await loadExports();
+  });
+  el("export-close").addEventListener("click", () => closeModal("export-panel"));
+  el("export-cancel").addEventListener("click", () => closeModal("export-panel"));
+  el("package-result-close").addEventListener("click", () => closeModal("package-result"));
+  el("package-open").addEventListener("click", () => openModal("package-result"));
+  el("selection-review-open").addEventListener("click", () => {
+    const first = selectionPages()[0] || visiblePages()[0];
+    showView("review");
+    if (first) openPageDetail(first.page_no);
+  });
+  el("detail-close").addEventListener("click", () => showView("pages"));
+
+  // 点遮罩空白处 = 关闭（点对话框内部不关）
+  for (const mask of document.querySelectorAll(".mask")) {
+    mask.addEventListener("mousedown", (event) => {
+      if (event.target === mask && mask.id !== "first-run-card") closeModal(mask.id);
+    });
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const masks = openMasks();
+    if (masks.length && masks[0].id !== "first-run-card") {
+      closeModal(masks[masks.length - 1].id);
+    }
+  });
+}
+
 // ---------------------------------------------------------------- 应用信息
 
 async function loadAppInfo() {
@@ -111,7 +226,7 @@ async function loadAppInfo() {
   badge.textContent = info.platform.supported
     ? `${info.platform.label} · 受支持`
     : `${info.platform.label} · 不受支持`;
-  badge.className = `badge ${info.platform.supported ? "badge--ok" : "badge--bad"}`;
+  badge.className = `chip ${info.platform.supported ? "chip--gray" : "chip--bad"}`;
 
   if (!info.platform.supported) {
     const warning = el("platform-warning");
@@ -913,12 +1028,12 @@ const RECOGNITION_LABELS = {
 };
 
 const RECOGNITION_CLASSES = {
-  unrecognized: "",
-  queued: "status--warn",
-  running: "status--warn",
-  recognized: "status--ok",
-  failed: "status--bad",
-  has_candidate: "status--warn",
+  unrecognized: "chip--gray",
+  queued: "chip--warn",
+  running: "chip--warn",
+  recognized: "chip--ok",
+  failed: "chip--bad",
+  has_candidate: "chip--warn",
 };
 
 function recognitionOf(page) {
@@ -961,7 +1076,7 @@ function divergenceChip(page) {
   const divergence = divergenceOf(page);
   if (!divergence.lines) return null;
   const chip = document.createElement("span");
-  chip.className = "status " + (divergence.chars ? "status--warn" : "status--muted");
+  chip.className = "chip " + (divergence.chars ? "chip--warn" : "chip--gray");
   chip.textContent = divergence.chars ? `≠ ${divergence.chars}` : "≈ 标点级";
   chip.title =
     `两路复核：${divergenceSummary(divergence)}\n` +
@@ -994,12 +1109,12 @@ function reviewBadge(page) {
   if (!label) return null;
   const chip = document.createElement("span");
   chip.className =
-    "status " +
+    "chip " +
     (review.status === "done"
-      ? "status--ok"
+      ? "chip--ok"
       : review.status === "questioned"
-      ? "status--bad"
-      : "");
+      ? "chip--bad"
+      : "chip--gray");
   chip.textContent =
     review.status === "questioned" ? `${label} ${review.uncertain}` : label;
   return chip;
@@ -1008,7 +1123,7 @@ function reviewBadge(page) {
 function recognitionChip(page) {
   const recognition = recognitionOf(page);
   const chip = document.createElement("span");
-  chip.className = "status " + (RECOGNITION_CLASSES[recognition.status] || "");
+  chip.className = "chip " + (RECOGNITION_CLASSES[recognition.status] || "chip--gray");
   chip.textContent = recognitionText(page);
   if (recognition.last_error) chip.title = `上次失败：${recognition.last_error}`;
   return chip;
@@ -1018,99 +1133,176 @@ async function loadLibrary() {
   el("library-warning").hidden = true;
   try {
     const data = await apiJson("/api/projects");
-    el("library-path").textContent = `（${data.library_dir}）`;
+    el("library-path").textContent = data.library_dir;
     renderProjectList(data.projects);
   } catch (error) {
     showError(el("library-error"), error);
   }
 }
 
+/** 进度条的百分比：分母为 0 时返回 0（还没纳入任何页）。 */
+function ratioText(done, total) {
+  if (!total) return `${done} / ${total}`;
+  return `${done} / ${total} 页`;
+}
+
+function progressPercent(done, total) {
+  if (!total) return 0;
+  return Math.min(100, Math.round((done / total) * 100));
+}
+
+/** 上次编辑时间的口语写法：刚刚 / N 分钟前 / N 小时前 / N 天前 / 日期。 */
+function timeAgo(stamp) {
+  if (!stamp) return "还没打开过";
+  const then = new Date(stamp);
+  if (Number.isNaN(then.getTime())) return stamp.slice(0, 10);
+  const minutes = Math.floor((Date.now() - then.getTime()) / 60000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} 天前`;
+  return stamp.slice(0, 10);
+}
+
+/** 项目库卡片（效果图 01）：封面、元信息、识别 / 审校两条进度、上次位置、继续 / 打开。 */
 function renderProjectList(projects) {
   const list = el("project-list");
   list.innerHTML = "";
   el("library-empty").hidden = projects.length > 0;
+  el("pick-pdf-2").hidden = projects.length === 0;
 
-  for (const entry of projects) {
-    const item = document.createElement("li");
-    item.className = "project-item" + (entry.lock_held ? " project-item--locked" : "");
-    item.dataset.projectId = entry.project_id;
+  projects.forEach((entry, index) => {
+    const card = document.createElement("li");
+    card.className = "pcard" + (entry.lock_held ? " pcard--locked" : "");
+    card.dataset.projectId = entry.project_id;
 
-    const head = document.createElement("div");
-    head.className = "project-item__head";
+    const cover = document.createElement("div");
+    cover.className = `pcard__cover v${index % 4}`;
+    cover.textContent = entry.name.slice(0, 12);
 
+    const body = document.createElement("div");
+    body.className = "pcard__body";
+
+    const title = document.createElement("div");
+    title.className = "pcard__title";
     const name = document.createElement("span");
-    name.className = "project-item__name";
     name.textContent = `《${entry.name}》`;
-
-    const meta = document.createElement("span");
-    meta.className = "muted";
-    meta.textContent =
-      `${entry.source_file_name} · ${entry.page_count} 页 · ` +
-      `纳入 ${entry.included_pages} 页 · 已识别 ${entry.recognized_pages} 页`;
-
-    head.append(name, meta);
+    title.append(name);
+    if (entry.kind === "package") {
+      const chip = document.createElement("span");
+      chip.className = "chip chip--blue";
+      chip.textContent = "审校任务";
+      chip.title = "助手端项目：别人分派给你的审校任务包";
+      title.append(chip);
+    }
     if (entry.lock_held) {
-      const badge = document.createElement("span");
-      badge.className = "status status--bad";
-      badge.textContent = "使用中";
-      badge.title = entry.lock_reason;
-      head.append(badge);
+      const chip = document.createElement("span");
+      chip.className = "chip chip--warn";
+      chip.textContent = "使用中";
+      chip.title = `${entry.lock_reason}：另一个窗口正在写这个项目`;
+      title.append(chip);
     }
     if (entry.text_layer_hint) {
-      const hint = document.createElement("span");
-      hint.className = "status";
-      hint.style.background = "var(--warn-bg)";
-      hint.style.color = "var(--warn-fg)";
-      hint.textContent = "可能已含文本";
-      hint.title = `${entry.pages_with_text_layer} / ${entry.page_count} 页已有文本层`;
-      head.append(hint);
+      const chip = document.createElement("span");
+      chip.className = "chip chip--gray";
+      chip.textContent = "可能已含文本";
+      chip.title = `${entry.pages_with_text_layer} / ${entry.page_count} 页已有文本层，可能不需要识别`;
+      title.append(chip);
     }
 
-    const stats = document.createElement("div");
-    stats.className = "project-item__stats muted";
-    const last = entry.last_view
-      ? `上次位置：${entry.last_view}`
-      : "还没有打开过";
-    stats.textContent =
-      `${entry.project_id} · 创建于 ${entry.created_at.slice(0, 10)} · ${last}`;
+    const meta = document.createElement("div");
+    meta.className = "pcard__meta";
+    meta.textContent =
+      `${entry.source_file_name} · 共 ${entry.page_count} 页 · 纳入 ${entry.included_pages} 页` +
+      ` · 上次编辑：${timeAgo(entry.updated_at)}`;
+
+    body.append(title, meta, progressRow("识别", entry.recognized_pages, entry.included_pages, recognitionExtra(entry)));
+    body.append(progressRow("审校", entry.reviewed_pages, entry.included_pages, reviewExtra(entry)));
+
+    const loc = document.createElement("div");
+    loc.className = "pcard__loc";
+    loc.textContent = `⌖ 上次位置：${entry.last_view || "还没有打开过"}`;
+    body.append(loc);
 
     const actions = document.createElement("div");
-    actions.className = "project-item__actions";
-
-    const openButton = document.createElement("button");
-    openButton.type = "button";
-    openButton.className = "btn btn--primary";
-    openButton.textContent = "打开";
-    openButton.addEventListener("click", () => openProject(entry.project_id));
-
-    actions.append(openButton);
+    actions.className = "pcard__actions";
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "btn btn--pri";
+    open.textContent = "打开";
+    open.addEventListener("click", () => openProject(entry.project_id));
+    actions.append(open);
     if (entry.lock_held) {
-      const readOnlyButton = document.createElement("button");
-      readOnlyButton.type = "button";
-      readOnlyButton.className = "btn";
-      readOnlyButton.textContent = "只读打开";
-      readOnlyButton.addEventListener("click", () =>
-        openProject(entry.project_id, { readOnly: true })
-      );
-      const forceButton = document.createElement("button");
-      forceButton.type = "button";
-      forceButton.className = "btn btn--danger";
-      forceButton.textContent = "强制打开";
-      forceButton.title = "有让两台电脑同时写入同一数据库的风险";
-      forceButton.addEventListener("click", () =>
-        openProject(entry.project_id, { force: true })
-      );
-      actions.append(readOnlyButton, forceButton);
+      const readOnly = document.createElement("button");
+      readOnly.type = "button";
+      readOnly.className = "btn";
+      readOnly.textContent = "只读打开";
+      readOnly.addEventListener("click", () => openProject(entry.project_id, { readOnly: true }));
+      const force = document.createElement("button");
+      force.type = "button";
+      force.className = "btn btn--danger";
+      force.textContent = "强制打开";
+      force.title = "有让两台电脑同时写入同一数据库的风险";
+      force.addEventListener("click", () => openProject(entry.project_id, { force: true }));
+      actions.append(readOnly, force);
     }
 
-    item.append(head, stats, actions);
-    list.append(item);
+    card.append(cover, body, actions);
+    list.append(card);
+  });
+}
+
+/** 识别进度右边那格：失败页数与文本层提示（都来自真实数据）。 */
+function recognitionExtra(entry) {
+  const parts = [];
+  const failed = entry.failed_pages || 0;
+  if (failed) parts.push({ text: `⚠ 失败 ${failed}`, tone: "bad" });
+  if (entry.included_pages && entry.recognized_pages >= entry.included_pages) {
+    parts.push({ text: "已认完", tone: "ok" });
   }
+  return parts;
+}
+
+function reviewExtra(entry) {
+  const parts = [];
+  if (entry.uncertain_blocks) parts.push({ text: `不确定 ${entry.uncertain_blocks} 块`, tone: "warn" });
+  else if (entry.reviewed_pages && entry.reviewed_pages >= entry.included_pages) {
+    parts.push({ text: "已审完", tone: "ok" });
+  }
+  return parts;
+}
+
+function progressRow(label, done, total, extras) {
+  const row = document.createElement("div");
+  row.className = "pcard__row";
+  const lab = document.createElement("span");
+  lab.className = "lab";
+  lab.textContent = label;
+  const bar = document.createElement("div");
+  bar.className = "pbar" + (label === "审校" ? " pbar--ok" : "");
+  const fill = document.createElement("i");
+  fill.style.width = `${progressPercent(done, total)}%`;
+  bar.append(fill);
+  const num = document.createElement("span");
+  num.className = "num";
+  num.textContent = ratioText(done, total);
+  const extra = document.createElement("span");
+  extra.className = "extra";
+  const [first] = extras;
+  if (first) {
+    extra.textContent = first.text;
+    extra.style.color = { bad: "var(--bad-text)", ok: "var(--ok-text)", warn: "var(--warn-text)" }[first.tone];
+  }
+  row.append(lab, bar, num, extra);
+  return row;
 }
 
 async function createProjectFromFile(file) {
   const name = el("new-project-name").value.trim();
   el("library-error").hidden = true;
+  el("new-project-modal-error").hidden = true;
   el("create-progress").hidden = false;
 
   try {
@@ -1130,6 +1322,7 @@ async function createProjectFromFile(file) {
     }
 
     el("new-project-name").value = "";
+    closeModal("new-project-mask");
     if (payload.text_layer_hint) {
       const warning = el("library-warning");
       warning.textContent =
@@ -1140,7 +1333,9 @@ async function createProjectFromFile(file) {
     await loadLibrary();
     await openProject(payload.project.project_id);
   } catch (error) {
-    showError(el("library-error"), error);
+    // 新建对话框开着就报在它里面，否则报在项目库上
+    if (!el("new-project-mask").hidden) showError(el("new-project-modal-error"), error);
+    else showError(el("library-error"), error);
   } finally {
     el("create-progress").hidden = true;
   }
@@ -1162,8 +1357,24 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     }
     await refreshProject(projectId);
     await loadLibrary();
+    // 说明书 7.2：打开项目默认回到上次的位置（上次在审校就回审校那一页）
+    await resumeLastPosition();
   } catch (error) {
     showError(el("library-error"), error);
+  }
+}
+
+/** "继续"回到上次的视图与页面（说明书 7.2）。没有记录时落在页面视图。 */
+async function resumeLastPosition() {
+  const project = currentProject;
+  if (!project) return;
+  const view = project.last_view;
+  const pageNo = project.last_page_no;
+  if ((view === "review" || view === "structure") && pageNo) {
+    showView("review");
+    await openPageDetail(pageNo);
+  } else {
+    showView("pages");
   }
 }
 
@@ -1297,21 +1508,33 @@ function renderProject() {
   const project = currentProject;
   if (!project) return;
 
-  el("project-card").hidden = false;
   el("project-title").textContent = `《${project.name}》`;
+  el("package-chip").hidden = project.kind !== "package";
   renderProjectMeta();
   renderPages();
+  if (currentView === "library") showView("pages");
 }
 
+/**
+ * 项目信息（项目 ID / 源文件 / SHA-256 / 文件夹路径）。
+ *
+ * 效果图里这些细节不占正屏，收在设置对话框的「当前项目」一节——要核来源时来这里看。
+ */
 function renderProjectMeta() {
   const project = currentProject;
-  if (!project) return;
+  const list = el("project-meta");
+  const section = el("project-meta-section");
+  if (!project) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
   const pages = project.pages;
   const recognized = pages.filter(
     (page) => recognitionOf(page).status === "recognized"
   ).length;
 
-  fillDefinitionList(el("project-meta"), [
+  fillDefinitionList(list, [
     ["项目 ID", project.project_id],
     ["源文件", project.source_file_name],
     ["SHA-256", project.source_sha256],
@@ -1461,14 +1684,30 @@ function selectionPages() {
 
 function updateSelectionPanel() {
   const count = selectedPages.size;
-  el("selection-count").textContent = `已选 ${count} 页`;
+  el("selection-count").textContent = `${count} 页`;
   const selected = selectionPages();
   const hasExcluded = selected.some((page) => !page.include);
+
+  const numbers = [...selectedPages].sort((left, right) => left - right);
+  const range = el("selection-range");
+  if (!numbers.length) {
+    range.textContent = "在网格里点一页开始选择";
+  } else if (numbers.length === 1) {
+    range.textContent = `第 ${numbers[0]} 页`;
+  } else {
+    const contiguous = numbers.length === numbers[numbers.length - 1] - numbers[0] + 1;
+    range.textContent = contiguous
+      ? `第 ${numbers[0]}–${numbers[numbers.length - 1]} 页`
+      : `第 ${numbers.slice(0, 6).join("、")}${numbers.length > 6 ? " 等" : ""}（${numbers.length} 页）`;
+  }
 
   el("selection-set-type").disabled = count === 0;
   el("selection-include").disabled = count === 0 || !hasExcluded;
   el("selection-exclude").disabled = count === 0 || !selected.some((page) => page.include);
   el("selection-recognize").disabled = count === 0 || !selected.some((page) => page.include);
+  el("selection-review-open").disabled = count === 0;
+  el("assign-open").disabled = count === 0;
+  el("selection-clear").hidden = count === 0;
 
   const hint = el("selection-hint");
   hint.hidden = true;
@@ -1514,6 +1753,9 @@ function buildTile(page, project) {
   tile.dataset.pageId = page.page_id;
   tile.dataset.pageNo = String(page.page_no);
 
+  const thumb = document.createElement("div");
+  thumb.className = "page-tile__thumb";
+
   const check = document.createElement("div");
   check.className = "page-tile__check";
   check.textContent = "✓";
@@ -1526,12 +1768,6 @@ function buildTile(page, project) {
   image.src =
     `/api/projects/${project.project_id}/pages/${page.page_no}/image?size=thumb` +
     `&token=${encodeURIComponent(token)}`;
-
-  const label = document.createElement("div");
-  label.className = "page-tile__label";
-
-  const status = document.createElement("div");
-  status.className = "page-tile__status";
 
   const actions = document.createElement("div");
   actions.className = "page-tile__actions";
@@ -1548,15 +1784,25 @@ function buildTile(page, project) {
   const detailButton = document.createElement("button");
   detailButton.type = "button";
   detailButton.className = "btn";
-  detailButton.textContent = "结果";
-  detailButton.title = "看这一页已保存的识别结果";
+  detailButton.textContent = "审校";
+  detailButton.title = "看这一页的识别结果并开始审校";
   detailButton.addEventListener("click", (event) => {
     event.stopPropagation();
     openPageDetail(page.page_no);
   });
 
   actions.append(recognizeButton, detailButton);
-  tile.append(check, image, label, status, actions);
+  thumb.append(image, check, actions);
+
+  const meta = document.createElement("div");
+  meta.className = "page-tile__meta";
+  const label = document.createElement("div");
+  label.className = "page-tile__label";
+  const status = document.createElement("div");
+  status.className = "page-tile__status";
+  meta.append(label, status);
+
+  tile.append(thumb, meta);
   tile.addEventListener("click", (event) => handleTileClick(page, event));
   tile.addEventListener("dblclick", (event) => {
     event.preventDefault();
@@ -1571,9 +1817,12 @@ function applyTileState(tile, page) {
   tile.className = tileClassName(page);
   tile.title = tileTitle(page);
 
-  const printed = page.page_label ? ` · 印${page.page_label}` : "";
-  tile.querySelector(".page-tile__label").textContent =
-    `${page.page_no}${printed} · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}`;
+  // 门牌：`p.87 · 正文`，印张页码进 tooltip（列宽只有一百多像素）
+  const label = tile.querySelector(".page-tile__label");
+  label.textContent = `p.${page.page_no}`;
+  const kind = document.createElement("span");
+  kind.textContent = ` · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}`;
+  label.append(kind);
 
   const status = tile.querySelector(".page-tile__status");
   status.innerHTML = "";
@@ -1801,21 +2050,43 @@ async function reloadProjectPages() {
 
 let taskTimer = null;
 let taskJobId = null;
+/** 最近一次任务载荷：抽屉关着时也要靠它把顶栏那个 pill 刷新（进度条在 pill 里）。 */
+let lastTaskData = null;
 
 function openTaskDrawer() {
   el("task-drawer").hidden = false;
-  document.body.classList.add("task-drawer-open");
 }
 
 function closeTaskDrawer() {
   el("task-drawer").hidden = true;
-  document.body.classList.remove("task-drawer-open");
 }
 
 function taskChipClass(status) {
-  if (status === "failed" || status === "interrupted") return "badge badge--task is-failed";
-  if (status && status !== "succeeded") return "badge badge--task is-active";
-  return "badge badge--task";
+  if (status === "failed" || status === "interrupted") return "tpill is-failed";
+  if (status && status !== "succeeded") return "tpill is-active";
+  return "tpill";
+}
+
+/** 顶栏的任务 pill：一个圆点 + 文字 + 迷你进度条（效果图 02 的右上角）。 */
+function paintTaskChip({ text, status, percent = null, title = "" }) {
+  const chip = el("task-chip");
+  chip.hidden = false;
+  chip.className = taskChipClass(status);
+  chip.title = title || text;
+  chip.innerHTML = "";
+  const dot = document.createElement("span");
+  dot.className = "tpill__dot";
+  const label = document.createElement("span");
+  label.textContent = text;
+  chip.append(dot, label);
+  if (percent !== null) {
+    const mini = document.createElement("span");
+    mini.className = "tpill__mini";
+    const fill = document.createElement("i");
+    fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    mini.append(fill);
+    chip.append(mini);
+  }
 }
 
 /** 拉任务列表：有正在跑的就盯住它，否则只显示最近任务。 */
@@ -1890,6 +2161,7 @@ async function refreshPageStates() {
 
 function renderTask(data) {
   const job = data.job;
+  lastTaskData = data;
   const label = JOB_STATUS_LABELS[job.status] || job.status;
   const typeLabel = JOB_TYPE_LABELS[job.job_type] || job.job_type;
   openTaskDrawer();
@@ -1953,20 +2225,26 @@ function renderTask(data) {
     failures.append(li);
   }
 
-  const chip = el("task-chip");
-  chip.hidden = false;
-  chip.className = taskChipClass(job.status);
-  chip.textContent = `任务：${label} ${job.done + job.failed}/${job.total}`;
-  chip.title = `${typeLabel}任务`;
+  paintTaskChip({
+    text: `${typeLabel} ${label} ${job.done + job.failed}/${job.total}`,
+    status: job.status,
+    percent: job.percent,
+    title: `${typeLabel}任务 · ${label}`,
+  });
 }
 
 function renderRecentTasks(jobs) {
-  el("task-chip").hidden = false;
   const latest = jobs[0];
-  el("task-chip").className = latest ? taskChipClass(latest.status) : "badge badge--task";
-  el("task-chip").textContent = latest
-    ? `任务：${JOB_STATUS_LABELS[latest.status] || latest.status}`
-    : "任务：无";
+  lastTaskData = null;
+  if (latest) {
+    paintTaskChip({
+      text: `任务：${JOB_STATUS_LABELS[latest.status] || latest.status}`,
+      status: latest.status,
+      title: `${JOB_TYPE_LABELS[latest.job_type] || latest.job_type} · 点开看详情`,
+    });
+  } else {
+    paintTaskChip({ text: "任务：无", status: null, title: "这个项目还没有跑过任务" });
+  }
 
   const list = el("drawer-recent");
   list.innerHTML = "";
@@ -1984,8 +2262,7 @@ function renderRecentTasks(jobs) {
     if (["failed", "interrupted", "cancelled", "paused"].includes(job.status)) {
       const view = document.createElement("button");
       view.type = "button";
-      view.className = "btn btn--ghost";
-      view.style.cssText = "font-size:11px;padding:1px 7px";
+      view.className = "btn btn--sm btn--ghost";
       view.textContent = "查看";
       view.addEventListener("click", async () => {
         const data = await apiJson(
@@ -2057,10 +2334,11 @@ const REVIEW_STATUS_LABELS = {
 
 async function openPageDetail(pageNo) {
   detailPageNo = pageNo;
-  el("page-detail").hidden = false;
+  showView("review");
   el("page-detail-error").hidden = true;
+  renderReviewPager();
   await loadPageDetail(pageNo);
-  el("page-detail").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  savePosition("review", pageNo);
 }
 
 function closePageDetail() {
@@ -2070,7 +2348,19 @@ function closePageDetail() {
   auxData = null;
   el("aux-panel").hidden = true;
   el("candidate-panel").hidden = true;
-  el("page-detail").hidden = true;
+}
+
+/** 把"上次位置"写回项目（说明书 7.2 的"继续"）。写不进去也不影响当前操作。 */
+function savePosition(view, pageNo) {
+  if (!currentProject) return;
+  const page = currentProject.pages.find((item) => item.page_no === pageNo);
+  apiJson(`/api/projects/${currentProject.project_id}/position`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ view, page_id: page ? page.page_id : null }),
+  }).catch(() => {
+    /* 位置只是"下次继续"的便利信息，记不上不该打断审校 */
+  });
 }
 
 async function loadPageDetail(pageNo) {
@@ -2084,6 +2374,69 @@ async function loadPageDetail(pageNo) {
   } catch (error) {
     showError(el("page-detail-error"), error);
   }
+}
+
+// ---------------------------------------------------------------- 翻页（审校视图顶栏）
+
+/** 翻页时在哪一类页面之间走：默认全部纳入页，也可以只看"还没审完"这类。 */
+function pagerPages() {
+  if (!currentProject) return [];
+  const kind = el("review-jump-filter").value;
+  return currentProject.pages.filter((page) => {
+    if (!page.include) return false;
+    if (!kind) return true;
+    return matchesTriage(page, recognitionOf(page), kind);
+  });
+}
+
+/** 顶栏的翻页控件：第 N 页（印 M）+ 上一页 / 下一页（说明书 7.4）。 */
+function renderReviewPager() {
+  const node = el("review-page-no");
+  node.textContent = "";
+  const page =
+    currentProject && detailPageNo !== null
+      ? currentProject.pages.find((item) => item.page_no === detailPageNo)
+      : null;
+  if (!page) {
+    node.textContent = "—";
+    el("review-prev").disabled = true;
+    el("review-next").disabled = true;
+    return;
+  }
+  node.append(`第 ${page.page_no} 页`);
+  if (page.page_label) {
+    const printed = document.createElement("span");
+    printed.textContent = `（印 ${page.page_label}）`;
+    node.append(printed);
+  }
+  const pages = pagerPages();
+  const index = pages.findIndex((item) => item.page_no === page.page_no);
+  el("review-prev").disabled = index <= 0;
+  el("review-next").disabled = index < 0 || index >= pages.length - 1;
+}
+
+function stepPage(delta) {
+  const pages = pagerPages();
+  if (!pages.length || detailPageNo === null) return;
+  const index = pages.findIndex((item) => item.page_no === detailPageNo);
+  const target = index < 0 ? pages[0] : pages[index + delta];
+  if (target) openPageDetail(target.page_no);
+}
+
+function setupReviewPager() {
+  el("review-prev").addEventListener("click", () => stepPage(-1));
+  el("review-next").addEventListener("click", () => stepPage(1));
+  el("review-jump-filter").addEventListener("change", renderReviewPager);
+  el("review-jump").addEventListener("click", () => {
+    const answer = window.prompt("跳到第几页？", detailPageNo ? String(detailPageNo) : "");
+    if (!answer) return;
+    const pageNo = Number(answer.trim());
+    if (!Number.isInteger(pageNo) || !currentProject.pages.some((p) => p.page_no === pageNo)) {
+      setSaveState(`没有第 ${answer.trim()} 页`, true);
+      return;
+    }
+    openPageDetail(pageNo);
+  });
 }
 
 function renderPageDetail(data) {
@@ -3207,17 +3560,17 @@ async function closeProject() {
     return;
   }
   currentProject = null;
-  el("project-card").hidden = true;
   closePageDetail();
   closeTaskDrawer();
   stopTaskPolling();
   el("task-chip").hidden = true;
+  el("project-meta-section").hidden = true;
+  showView("library");
   await loadLibrary();
 }
 
 function setupLibrary() {
   const picker = el("new-project-file");
-  el("pick-pdf").addEventListener("click", () => picker.click());
   picker.addEventListener("change", () => {
     if (picker.files && picker.files[0]) createProjectFromFile(picker.files[0]);
     picker.value = "";
@@ -3574,9 +3927,10 @@ async function applyPackageMode() {
   if (!project) return;
   if (project.kind !== "package") {
     el("package-banner").hidden = true;
-    el("package-result").hidden = true;
-    el("export-panel").hidden = false;
-    el("structure-panel").hidden = false;
+    el("package-open").hidden = true;
+    closeModal("package-result");
+    el("export-open").hidden = false;
+    el("structure-open").hidden = false;
     el("selection-recognize").hidden = false;
     el("recognize-pending").hidden = false;
     el("selection-check").hidden = false;
@@ -3587,9 +3941,9 @@ async function applyPackageMode() {
     return;
   }
 
-  el("package-result").hidden = false;
-  el("export-panel").hidden = true;          // 助手不能导出 TXT / JSONL
-  el("structure-panel").hidden = true;       // 也没有页眉页脚工具
+  el("export-open").hidden = true;          // 助手不能导出 TXT / JSONL
+  el("package-open").hidden = false;        // 但能导出审校结果包
+  el("structure-open").hidden = true;       // 也没有页眉页脚工具
   el("selection-recognize").hidden = true;
   el("recognize-pending").hidden = true;
   el("selection-check").hidden = true;
@@ -4169,9 +4523,9 @@ async function acceptAllClean() {
 // ---------------------------------------------------------------- 启动
 
 function boot() {
-  // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）
+  // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && currentProject && selectedPages.size) {
+    if (event.key === "Escape" && !openMasks().length && currentProject && selectedPages.size) {
       selectedPages.clear();
       selectionAnchor = null;
       renderPages();
@@ -4183,9 +4537,12 @@ function boot() {
       "<strong>完整界面地址</strong>（带 <code>?token=…</code>）打开本页。";
     warning.hidden = false;
   }
+  setupShell();
   setupLibrary();
+  setupReviewPager();
   setupExportPanel();
   setupStructurePanel();
+  showView("library");
   loadAppInfo();
   loadLibrary();
 }

@@ -585,3 +585,74 @@ def test_empty_library_lists_nothing(
     assert data["count"] == 0
     assert data["projects"] == []
     assert data["library_dir"] == str(library_dir)
+
+
+def test_listing_shows_review_progress(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    inprocess_jobs,  # noqa: ANN001 - conftest 的夹具，把识别换成本进程同步跑
+) -> None:
+    """项目卡上的识别 / 审校进度（UI 效果图 01 的两条进度条）。
+
+    数字必须来自真实库：识别前是 0；认完但没确认还是 0；确认一整页才算 1 页；
+    标了不确定就不算审完。UI 只负责显示，不自己推算。
+    """
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+    first = client.get("/api/projects", headers=auth_headers).json()["projects"][0]
+    assert first["reviewed_pages"] == 0
+    assert first["uncertain_blocks"] == 0
+
+    response = client.post(
+        f"/api/projects/{project_id}/jobs/ocr",
+        json={"pages": [1], "skip_recognized": False},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    blocks = client.get(
+        f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers
+    ).json()["blocks"]
+    assert blocks, "假引擎应当在这一页切出块"
+
+    recognized = client.get("/api/projects", headers=auth_headers).json()["projects"][0]
+    assert recognized["recognized_pages"] == 1
+    assert recognized["reviewed_pages"] == 0, "认完还没审，审校进度不该动"
+
+    client.post(f"/api/projects/{project_id}/pages/1/confirm", headers=auth_headers)
+    reviewed = client.get("/api/projects", headers=auth_headers).json()["projects"][0]
+    assert reviewed["reviewed_pages"] == 1
+    assert reviewed["uncertain_blocks"] == 0
+
+    # 把一块重新标成不确定：这一页就不算审完了
+    client.patch(
+        f"/api/projects/{project_id}/blocks/{blocks[0]['block_id']}",
+        json={"review_status": "uncertain"},
+        headers=auth_headers,
+    )
+    questioned = client.get("/api/projects", headers=auth_headers).json()["projects"][0]
+    assert questioned["uncertain_blocks"] == 1
+    assert questioned["reviewed_pages"] == 0
+
+
+def test_listing_shows_last_position(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    """项目卡上的"上次位置：审校 · 第 N 页"（说明书 7.2 的"继续"）。
+
+    页码要现查（卡片上要显示"第几页"，不是内部 page_id），所以这一条单独测。
+    """
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+    pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+    second = pages[1]
+
+    saved = client.put(
+        f"/api/projects/{project_id}/position",
+        json={"view": "review", "page_id": second["page_id"]},
+        headers=auth_headers,
+    )
+    assert saved.status_code == 200, saved.text
+
+    entry = client.get("/api/projects", headers=auth_headers).json()["projects"][0]
+    assert entry["last_view"] == "review"
+    assert entry["last_page_no"] == second["page_no"]
+    assert entry["failed_pages"] == 0
