@@ -1,0 +1,67 @@
+# Book2Text 的持续集成：在 macOS 上跑全套测试（含真实 OCR 引擎）。
+#
+# 为什么是 macOS：第二引擎是 Apple Vision，darwin-only（说明书 8.5）；
+#   Ubuntu runner 上那片测试会整组跳过，CI 就失去了一半价值。
+# 为什么装 ocr-eval 组：不装的话 `@pytest.mark.ocr` 的测试全部跳过，
+#   真正验证识别质量的那些用例等于没跑（见 docs/known-limitations.md L-14）。
+# 成本：私有仓库的 macOS runner 按 10 倍分钟计费，因此只保留必要步骤；
+#   纯文档改动用 paths-ignore 跳过（用"忽略"而不是"白名单"，避免将来新增目录漏跑）。
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+# 同一分支连着推两次时，取消上一次还在跑的 job，不重复烧配额。
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: 全量测试（macOS 14 + OCR）
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 uv（含缓存）
+        uses: astral-sh/setup-uv@v6
+        with:
+          # 与开发机一致（本机 3.12.13），避免换 Python 小版本带来的差异。
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 安装依赖（dev + OCR 评估引擎）
+        run: uv sync --frozen --group dev --group ocr-eval
+
+      # RapidOCR 首次识别时会把模型（约 31 MB）从 modelscope.cn 下载到包目录。
+      # 不缓存的话每次都要跨境下载一次，对按 10 倍计费的 macOS runner 不划算。
+      - name: 缓存 RapidOCR 模型
+        uses: actions/cache@v4
+        with:
+          path: .venv/lib/python3.12/site-packages/rapidocr/models
+          key: rapidocr-models-${{ hashFiles('uv.lock') }}
+
+      - name: 跑测试
+        run: |
+          set -o pipefail
+          uv run pytest -q -rs 2>&1 | tee pytest.log
+          # 跳过 ≠ 通过：样本缺失、依赖没装、平台不支持都会让结果"绿"，但那是假绿。
+          if grep -qE '[0-9]+ skipped' pytest.log; then
+            echo "::error::有测试被跳过——CI 只认实际跑过的用例，见上方 -rs 摘要"
+            exit 1
+          fi
