@@ -52,7 +52,7 @@
 | 1 | `backend/book2text/__init__.py` | "当前处于 Phase 0 骨架，尚无项目、数据库、OCR、审校与导出" | 0.1.0 已具备的能力清单 + 未完成项指向 `known-limitations.md` |
 | 2 | 同上 | `__version__ = "0.0.0"` | `"0.1.0"` |
 | 3 | `main.py:87` 启动横幅 | "早期版本（识别跑在后台任务里；审校、导出未完成）" | "识别、审校、导出、协作任务包与 macOS 打包已跑通（Windows 打包未验证…）" |
-| 4 | `api/routes_app.py:40` `stage` | "Phase 4 已完成；现在在做 Phase 8 Step 1（双路 OCR）" | "Phase 1–6 已跑通；Phase 3 余项与 Phase 0 对比未完成，Windows 未验证" |
+| 4 | `api/routes_app.py:40` `stage` | "Phase 4 已完成；现在在做 Phase 8 Step 1（双路 OCR）" | "Phase 1–6 主流程已跑通；Phase 1 / 3 余项与 Phase 0 对比未完成，Windows 未验证" |
 | 5 | `static/app.js:4` 文件头 | "Book2Text Phase 0 骨架的前端……正式前端属于 Phase 1 及以后" | "原生 JS + 一份 CSS，无构建步骤；Vue 3 + TS + Vite 是后续形态（D-046）" |
 | 6a | `core/ocr/base.py:12` | "`grouping.py` 尚未实现，所以只提供 lines" | 保留"本层只给 lines"的结论，理由改成 D-012 的分层：块由 `grouping.py` 在识别出口装配 |
 | 6b | `core/pdf/render.py:3` | "选型未定" | **不改**：与 D-009 / L（Phase 0 第 3 项未完成）一致，见上 |
@@ -81,7 +81,7 @@
 - `tests/unit/test_export_jsonl_manifest.py` 里的 `"0.0.0"` 是测试显式传入的样例值，
   不依赖包版本，未改（测试归 QA）。
 
-**本地测试：** `.venv/bin/python -m pytest -q` → **572 passed**，48.08 秒
+**本地测试：** `.venv/bin/python -m pytest -q` → **572 passed**，47.83 秒
 （全部改完后的最终一次；macOS arm64，Python 3.12.13）。
 
 **手动启动与接口核对（真实输出）：**
@@ -96,7 +96,7 @@ Book2Text 0.1.0 — 识别、审校、导出、协作任务包与 macOS 打包�
 `curl -H "X-B2T-Token: …" http://127.0.0.1:8919/api/app/info` →
 
 ```
-app: {'name': 'Book2Text', 'version': '0.1.0', 'stage': 'Phase 1–6 已跑通；Phase 3 余项与 Phase 0 对比未完成，Windows 未验证'}
+app: {'name': 'Book2Text', 'version': '0.1.0', 'stage': 'Phase 1–6 主流程已跑通；Phase 1 / 3 余项与 Phase 0 对比未完成，Windows 未验证'}
 pdf_backend: {'name': 'pypdfium2', 'version': '5.14.0', 'selected': False}
 ```
 

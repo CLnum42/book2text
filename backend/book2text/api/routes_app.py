@@ -37,7 +37,10 @@ def app_info(request: Request) -> dict[str, Any]:
         "app": {
             "name": "Book2Text",
             "version": __version__,
-            "stage": "Phase 1–6 已跑通；Phase 3 余项与 Phase 0 对比未完成，Windows 未验证",
+            "stage": (
+                "Phase 1–6 主流程已跑通；Phase 1 / 3 余项与 Phase 0 对比未完成，"
+                "Windows 未验证"
+            ),
         },
         "platform": {
             "label": b2t_platform.platform_label(),
