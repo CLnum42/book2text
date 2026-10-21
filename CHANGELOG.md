@@ -7,6 +7,18 @@
 
 ## [0.1.0] — 2026-10-21
 
+### 新增 — CI 加 Windows 非 OCR job，修两处跨平台测试假设（2026-10-21）
+
+- `.github/workflows/tests.yml` 新增 `pytest-windows`（`windows-latest`，只装 `dev`）：
+  `-m "not ocr"` 跑非 OCR 用例，实测 **553 passed, 1 deselected, 0 skipped**
+  （测试 107.60 s，job 2m14s）。OCR 组是 **deselect** 不是 skip；
+  两个 job 的“出现 N skipped 即失败”守卫都没有放宽。
+- 首次 Windows 实跑（run #5）暴露 11 个失败，**全部是测试侧的平台假设，产品代码未改**：
+  `test_collab_round_trip` 写死 `Path("/tmp")`（10 个用例）、
+  `test_auxiliary_needs_a_primary_run_first` 隐含依赖第二引擎可用（1 个）。
+  分别改为 `tempfile.gettempdir()` 与显式注入假第二引擎；复跑 run #6 全绿。
+- Windows 上仍未验证的是**应用层**：启动脚本、GUI、打包、Windows 系统 OCR。
+
 ### 变更 — 版本号提到 0.1.0，清掉六处"还没做"的过期描述（2026-10-21）
 
 - **版本号 `0.0.0` → `0.1.0`**（第一个可用完整版）。单一来源仍是

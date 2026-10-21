@@ -88,6 +88,7 @@
 | 项 | 状态 | 说明 |
 |---|---|---|
 | Windows x64 打包与运行 | ⬜ **完全没有验证** | 只有 `scripts\build_windows.bat` 与同一份 `.spec`；Windows 侧实际跑一遍之前不能对外说「Windows 版可用」（L-13 同样未验证） |
+| Windows x64 测试套件 | 🔶 **部分验证（2026-10-21 起）** | CI 在 `windows-latest` 上跑非 OCR 用例：**553 passed, 1 deselected, 0 skipped**。这不等于「Windows 版可用」——打包、GUI 实测、OCR 引擎（含 Windows 系统 OCR）仍**从未**在 Windows 上运行过，见第 5 节 |
 | 代码签名 | ⬜ 未做 | macOS 首次打开要右键 →「打开」；Windows 会有 SmartScreen 提示。两份用户手册里都写了处理方法 |
 | 安装包（.dmg / .msi） | ⬜ 未做 | 现在是「拷一个文件夹 / 拖一个 .app」，说明书也只要求「双击启动」 |
 | 打包版的其它路径 | 🔶 部分验证 | 框选新增、逐块采用、导出对照这些**没有**在打包版里逐个点过（源码版验过；打包版验的是主链路） |
@@ -345,17 +346,19 @@ install httpx2 instead`（来自 starlette 1.8，经 FastAPI 的 TestClient 转�
 
 ---
 
-## 5. 平台验证状态（2026-10-14）
+## 5. 平台验证状态（2026-10-14，2026-10-21 补 Windows 测试套件）
 
 | 平台 | 验证程度 | 说明 |
 |---|---|---|
 | macOS arm64 | **部分验证** | Phase 0 骨架已实际运行：启动、选端口、令牌与 Origin 校验、上传、渲染、自检、启动脚本、57 项测试全部真机跑过 |
 | macOS Intel | **不支持** | 说明书第 10 节明确排除；代码在启动时会如实报告"不支持 Intel Mac" |
-| Windows x64 | **完全未验证** | `scripts/start.bat` 与 `core/ocr/selfcheck.py` 里的 Windows OCR 分支都**从未在 Windows 上运行过**，代码中已就地标注 |
+| Windows x64 | **部分验证（仅测试套件）** | 2026-10-21 起，CI 的 `windows-latest` job 跑非 OCR 用例：**553 passed, 1 deselected, 0 skipped**（107.60 s）。`scripts/start.bat`、GUI、打包、`core/ocr/selfcheck.py` 的 Windows OCR 分支仍**从未在 Windows 上运行过** |
 | Windows 32 位 | **不支持** | 同上 |
 
 跨平台约定（换行策略、路径处理、`multiprocessing` 的 `spawn`、控制台 UTF-8、
-项目文件夹拷贝）目前**只有配置与代码，没有在 Windows 上验证过**。
+项目文件夹拷贝）：**测试层已部分覆盖**（Windows CI 的非 OCR 套件跑了路径、编码、
+临时目录相关用例；真子进程那组是 `ocr` marker，不在 Windows job 里），
+**应用层仍未验证**——没有在 Windows 上启动过应用、点过界面或跑过识别。
 
 ---
 
@@ -415,14 +418,18 @@ install httpx2 instead`（来自 starlette 1.8，经 FastAPI 的 TestClient 转�
 后跑 `uv run pytest -q -rs`。**装了 ocr-eval**，所以 `@pytest.mark.ocr` 的识别测试
 （含 Apple Vision 第二引擎）是真跑，不是跳过。
 
-**覆盖范围（2026-10-21 实跑，两次）：**
+**覆盖范围（2026-10-21 实跑）：**
 
-- **跑：** 全套 572 项，**0 skipped**。测试 111–129 秒，job 2 分 17 秒–2 分 30 秒。
-- **按 marker 排除：** 无。没有为了"绿"而排除任何用例，也没有弱化断言。
-- **不在范围内：** Windows / Linux runner。选 macOS 是因为 Apple Vision 只在 darwin 可用；
-  Windows 平台本身仍未在 CI 覆盖（见第 5 节 L-31）。
-- **防假绿：** workflow 检查 pytest 摘要里有没有 `N skipped`，有就让 job 失败——
-  样本缺失或 ocr-eval 没装时不会静悄悄变绿。
+- **macOS job（全量）：** 572 项，**0 skipped**；测试 88–129 秒，job 1 分 43 秒–2 分 30 秒。
+  没有为了"绿"而排除任何用例，也没有弱化断言。
+- **Windows job（2026-10-21 补）：** `-m "not ocr"`，**553 passed, 1 deselected, 0 skipped**
+  （107.60 秒，job 2 分 14 秒）。OCR 用例是 **deselect**，不是 skip；另有 4 个
+  OCR 测试模块在导入期就 `pytest.skip`，marker 过滤来不及生效，因此用 `--ignore`
+  显式排除（写在 workflow 里，不是静默跳过）。守卫同样严格：出现 `N skipped` 即失败。
+- **不在范围内：** Linux runner（Apple Vision 不存在，暂没有加它的理由）；
+  Windows 上的**应用层**（启动、GUI、打包、OCR 引擎）仍从未运行过，见第 5 节与 L-31。
+- **防假绿：** 两个 job 都检查 pytest 摘要里有没有 `N skipped`，有就让 job 失败——
+  样本缺失、ocr-eval 没装、平台不支持都不会静悄悄变绿。
 - **成本控制：** uv 与 RapidOCR 模型（约 31 MB，来自 modelscope.cn）走缓存；
   纯文档改动（`docs/**`、`**/*.md`）不触发；同一分支连推两次会取消上一次 run。
 

@@ -7,6 +7,82 @@
 
 ---
 
+## 2026-10-21 — 任务 33：加 Windows 非 OCR job，补上 Windows 平台验证的洞
+
+### 任务目标
+
+在 CI 里加一个 `windows-latest` job，跑非 OCR 测试，结束"Windows 平台完全没验证过"。
+**不**改产品代码，**不**弱化任何断言，**不**把跳过的测试算成通过。
+
+### 当前状态
+
+- macOS job 已绿（572 项全量，含 OCR）。
+- 测试分默认 + `ocr` marker：19 项标记 `ocr`；其中 4 个模块在**导入期**就
+  `pytest.skip`（拿不到引擎时），其余 15 项靠 marker 过滤。
+- 成本口径更正：Windows runner 私有仓库是 **2 倍**分钟（Linux 1 倍、macOS 10 倍）。
+
+### 实施计划
+
+1. 在 `tests.yml` 加 `pytest-windows` job（只装 `dev`，`-m "not ocr"`）。
+2. push 后看真实结果；按失败项区分"测试不跨平台"与"产品 Windows bug"。
+3. 测试侧问题修测试；产品问题停下上报。
+4. 按 1.2 模板更新文档。
+
+### 实现与验证
+
+**job 配置：**
+
+- `windows-latest`，`timeout-minutes: 20`；只 `uv sync --frozen --group dev`
+  （不装 `ocr-eval`，避免 pyobjc 这类平台专属依赖）。
+- 跑 `uv run pytest -q -rs -m "not ocr"`，`shell: bash` 以复用同一套守卫。
+- **OCR 是 deselect，不是 skip**：macOS job 的"出现 `N skipped` 就失败"守卫原样保留；
+  Windows job 另加一条"摘要里必须有 `N deselected`"，证明 marker 过滤确实生效。
+- **额外处理：** 4 个 OCR 模块在导入期就 `pytest.skip`，marker 过滤发生在导入之后，
+  所以对它们用 `--ignore` 显式排除（写在 workflow 里）。若不排除，摘要会多出
+  "4 skipped" 并触发守卫——这是显式排除，不是静默跳过。
+- `PYTHONIOENCODING=utf-8` 只改标准输出编码，**不改** `open()` 的默认编码，
+  免得掩盖"按本地代码页读写文件"这类真实平台问题。
+
+**CI 实跑（真实结果，两次）：**
+
+| run | 提交 | macOS job | Windows job | 结论 |
+|---|---|---|---|---|
+| #5 | `ff16e6c` | 572 passed（1m46s） | **11 failed**, 542 passed, 1 deselected（2m41s） | 红 |
+| #6 | `f0882b5` | 572 passed, 0 skipped（88.45s / job 1m43s） | **553 passed, 1 deselected, 0 skipped**（107.60s / job 2m14s） | 绿 |
+
+run #5 的 11 个失败，根因只有两类，**都在测试侧，没有产品 bug**：
+
+1. **10 个 `test_collab_round_trip` 用例**：3 处写死 `Path("/tmp")`，Windows 上解析成
+   当前盘的 `\tmp`（不存在）→ `FileNotFoundError: '\tmp\....b2tpkg'`。
+   判定：测试写得不够跨平台。改为 `tempfile.gettempdir()`。
+2. **1 个 `test_auxiliary_needs_a_primary_run_first`**：断言"没识别过的页 → 400"，
+   Windows 上拿到 503。查 `run_auxiliary`：第二引擎可用性检查在页状态检查**之前**，
+   而 Windows 没有第二引擎 → 先回 503 是**符合设计**的（环境问题优先，不假装能复核）。
+   判定：用例隐含依赖"第二引擎可用"，不是产品问题。改为显式注入可用的假第二引擎，
+   让"先识别"这道检查在每个平台都能验，而不是把用例从 Windows 上拿掉。
+
+**本地：** `.venv/bin/python -m pytest -q` → **572 passed**，59.28 秒（修完测试后复跑）。
+
+**未验证：** Windows 上的应用层——`scripts/start.bat`、GUI、打包、Windows 系统 OCR
+（L-13 / L-31 仍未变）；Linux runner 没加（Apple Vision 不存在，暂没有理由）。
+
+**成本：** run #6 的 run 总时长 8m32s，其中 macOS job 1m43s、Windows job 2m14s，
+其余是 Windows runner 排队（不计入执行）。
+
+### 用户操作说明
+
+- 看结果：仓库 **Actions** → `tests`，现在每次 push / PR 有两个 job。
+- 本地复现 Windows 那一步：
+  `uv sync --group dev && uv run pytest -q -m "not ocr"`（macOS / Linux 上同样可跑）。
+- 回退：删掉 `tests.yml` 里的 `pytest-windows` job 即停止 Windows CI。
+
+### 下一步建议
+
+在 Windows 上做一次**应用启动冒烟**（`scripts\start.bat` → 打开界面 → 建项目 →
+上传一页），把"测试套件在 Windows 上通过"推进到"应用在 Windows 上能启动"。
+
+---
+
 ## 2026-10-21 — 任务 32：清掉"还没做"的过期状态描述，版本号提到 0.1.0
 
 ### 任务目标

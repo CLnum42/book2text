@@ -130,12 +130,19 @@ uv run pytest -q                 # 运行测试（572 项；未装 OCR 依赖时
 
 项目的原始 PDF 只被读取，导出的成果写在项目的 `exports/` 下。**原始文件不会被修改。**
 
-**持续集成：** 每次 push 到 `main`、每个 PR，GitHub Actions 都会在 macOS 14 runner 上
-装好 `dev` + `ocr-eval` 两组依赖后跑**全套 572 项**（`.github/workflows/tests.yml`）。
-装了 OCR 依赖，所以识别测试与 Apple Vision 第二引擎是真跑，不是跳过；
-pytest 摘要里只要出现 “N skipped”，这次 CI 就判失败（防假绿）。
-纯文档改动（`docs/**`、`*.md`）不触发，以控制私有仓库 macOS runner 的分钟成本。
-结果见仓库的 **Actions** 页。
+**持续集成：** 每次 push 到 `main`、每个 PR，GitHub Actions 跑两个 job
+（`.github/workflows/tests.yml`）：
+
+| job | 平台 | 跑什么 | 实测 |
+|---|---|---|---|
+| 全量测试 | macOS 14 | 装 `dev` + `ocr-eval`，**全套 572 项**（含真实 OCR 与 Apple Vision） | 572 passed, 0 skipped |
+| Windows 测试 | windows-latest | 只装 `dev`，`-m "not ocr"`（**deselect**，不是 skip） | 553 passed, 1 deselected, 0 skipped |
+
+两个 job 都有一条硬规则：pytest 摘要里出现 “N skipped” 就判失败（防假绿）——
+样本缺失、依赖没装、平台不支持都不会静悄悄变绿。Windows 上真正没验证的是
+**应用层**（启动、GUI、打包、OCR 引擎），不是测试套件。
+纯文档改动（`docs/**`、`*.md`）不触发，以控制私有仓库 runner 的分钟成本
+（macOS 10 倍、Windows 2 倍）。结果见仓库的 **Actions** 页。
 
 ---
 
