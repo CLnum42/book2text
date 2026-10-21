@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,7 @@ from pathlib import Path
 from ..storage import db as db_module
 from ..storage.ulid import new_ulid
 from . import blocks as blocks_module
+from . import layout as layout_module
 from . import recognition
 from .library import ProjectError, project_dir
 
@@ -42,6 +44,9 @@ ACTION_REORDER = "reorder"
 ACTION_CREATE = "create"
 ACTION_DELETE = "delete"
 ACTION_MOVE_LINE = "move_line"
+ACTION_SET_BBOX = "set_bbox"
+ACTION_SET_LAYOUT_CONFIRMED = "set_layout_confirmed"
+ACTION_REASSIGN_LINE = "reassign_line"
 
 REVIEW_STATUSES = ("unreviewed", "confirmed", "uncertain")
 
@@ -54,6 +59,8 @@ BLOCK_TYPES = (
     "page_number",
     "footnote",
     "caption",
+    "figure",
+    "decoration",
     "other",
 )
 
@@ -65,6 +72,8 @@ FIELD_ACTIONS = {
     "include": ACTION_SET_INCLUDE,
     "continues_to_next": ACTION_SET_CONTINUES,
     "comment": ACTION_SET_STATUS,
+    "bbox": ACTION_SET_BBOX,
+    "layout_confirmed": ACTION_SET_LAYOUT_CONFIRMED,
 }
 
 
@@ -179,6 +188,8 @@ def update_block(
     include: bool | None = None,
     continues_to_next: bool | None = None,
     comment: str | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
+    layout_confirmed: bool | None = None,
     expected_revision: int | None = None,
     expected_updated_at: str | None = None,
     actor_name: str | None = None,
@@ -201,6 +212,12 @@ def update_block(
         raise ProjectError(f"未知的审校状态：{review_status!r}")
     if block_type is not None and block_type not in BLOCK_TYPES:
         raise ProjectError(f"未知的块类型：{block_type!r}")
+    if layout_confirmed is not None and not isinstance(layout_confirmed, bool):
+        raise ProjectError("layout_confirmed 必须是布尔值")
+    bbox_json = None
+    if bbox is not None:
+        bbox = _validate_bbox(bbox)
+        bbox_json = blocks_module.bbox_to_json(blocks_module.BBox(*bbox))
 
     provided = {
         "text": text,
@@ -209,6 +226,8 @@ def update_block(
         "include": include,
         "continues_to_next": continues_to_next,
         "comment": comment,
+        "bbox": bbox_json,
+        "layout_confirmed": layout_confirmed,
     }
     changed = {name: value for name, value in provided.items() if value is not None}
     if not changed:
@@ -241,6 +260,7 @@ def update_block(
             (*params, now, block_id),
         )
         # 有实质修改才记事件（一次写入可能同时改多个字段，就记多条同类事件）
+        batch = batch_id or new_ulid()
         events = [
             _record(
                 conn,
@@ -249,17 +269,162 @@ def update_block(
                 action=FIELD_ACTIONS[name],
                 before={name: before[name]},
                 after={name: after[name]},
-                batch_id=batch_id or new_ulid(),
+                batch_id=batch,
                 actor=actor,
                 actor_name=actor_name,
             )
             for name in changed
         ]
+        # 改框之后重新算「行 → 块」归属：不重跑 OCR，只搬 block_line 记录。
+        # 这一步与改框的记录在同一个 batch 里，撤销一次就整体回去。
+        if "bbox" in changed:
+            events.extend(
+                _reassign_page_lines(
+                    conn,
+                    row["page_id"],
+                    batch_id=batch,
+                    actor=actor,
+                    actor_name=actor_name,
+                    now=now,
+                )
+            )
         conn.execute("UPDATE project SET updated_at = ?", (now,))
         conn.commit()
         block = _read_block(conn, block_id)
 
     return block, events
+
+
+# ---------------------------------------------------------------- 框与行归属
+
+# 手动框不允许小到点不中；也避免退化成一条线（那样一行都落不进去）
+MIN_BBOX_SIDE = 0.005
+
+
+def _validate_bbox(bbox: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    """校验归一化框：0–1、左上小于右下、不要太小。"""
+    if len(bbox) != 4:
+        raise ProjectError("框必须是 4 个数：x0, y0, x1, y1")
+    try:
+        values = tuple(float(value) for value in bbox)
+    except (TypeError, ValueError) as exc:
+        raise ProjectError("框的坐标必须是数字") from exc
+    if not all(math.isfinite(value) for value in values):
+        raise ProjectError("框的坐标必须是有限数字")
+    x0, y0, x1, y1 = values
+    if min(values) < 0.0 or max(values) > 1.0:
+        raise ProjectError("框的坐标必须落在 0–1（相对页面显示方向的归一化坐标）")
+    if x1 - x0 < MIN_BBOX_SIDE or y1 - y0 < MIN_BBOX_SIDE:
+        raise ProjectError("框太小了：宽和高都至少要有半个百分点")
+    return (x0, y0, x1, y1)
+
+
+def _reassign_page_lines(
+    conn,
+    page_id: str,
+    *,
+    batch_id: str,
+    actor: str,
+    actor_name: str | None,
+    now: str,
+) -> list[Event]:
+    """按块框重新分配这一页的行（不重跑 OCR，不改行文本）。
+
+    只搬 ``block_line`` 的三样东西：``block_id``（归给谁）、``line_index``
+    （在这个块里的顺序）、``layout_status``（assigned / conflict / unassigned）。
+    每一处变化都记一条事件，撤销时逐行写回去。
+    """
+    block_rows = conn.execute(
+        """
+        SELECT block_id, bbox, order_index FROM block
+        WHERE page_id = ? AND deleted_at IS NULL
+        ORDER BY order_index, block_id
+        """,
+        (page_id,),
+    ).fetchall()
+    line_rows = conn.execute(
+        """
+        SELECT l.line_id, l.block_id, l.line_index, l.bbox, l.layout_status
+        FROM block_line l
+        JOIN block b ON b.block_id = l.block_id
+        WHERE b.page_id = ? AND b.deleted_at IS NULL
+        """,
+        (page_id,),
+    ).fetchall()
+    if not line_rows:
+        return []
+
+    blocks = [
+        layout_module.BlockBox(
+            block_id=row["block_id"],
+            bbox=blocks_module.bbox_from_json(row["bbox"]),
+            order_index=int(row["order_index"]),
+        )
+        for row in block_rows
+    ]
+    lines = [
+        layout_module.LineBox(
+            line_id=row["line_id"],
+            block_id=row["block_id"],
+            bbox=blocks_module.bbox_from_json(row["bbox"]),
+        )
+        for row in line_rows
+    ]
+    assignments = {item.line_id: item for item in layout_module.assign_lines(lines, blocks)}
+
+    target: dict[str, tuple[str, str]] = {}
+    for row in line_rows:
+        assignment = assignments.get(row["line_id"])
+        if assignment is None:
+            # 没有 bbox 的行（例如拆分后被清掉坐标的那一行）：不动它的归属与状态
+            target[row["line_id"]] = (row["block_id"], row["layout_status"])
+        else:
+            target[row["line_id"]] = (assignment.block_id, assignment.status)
+
+    # 块内顺序：有坐标的按从上到下、从左到右；没坐标的排在该块最后，保持原有相对顺序
+    def order_key(row) -> tuple[int, float, float, int]:
+        box = blocks_module.bbox_from_json(row["bbox"])
+        if box is None:
+            return (1, 0.0, 0.0, int(row["line_index"]))
+        return (0, box[1], box[0], int(row["line_index"]))
+
+    grouped: dict[str, list] = {}
+    for row in line_rows:
+        grouped.setdefault(target[row["line_id"]][0], []).append(row)
+    desired_index: dict[str, int] = {}
+    for rows in grouped.values():
+        for index, row in enumerate(sorted(rows, key=order_key)):
+            desired_index[row["line_id"]] = index
+
+    events: list[Event] = []
+    for row in line_rows:
+        line_id = row["line_id"]
+        new_block, new_status = target[line_id]
+        updates: dict[str, object] = {}
+        if row["block_id"] != new_block:
+            updates["block_id"] = new_block
+        if row["layout_status"] != new_status:
+            updates["layout_status"] = new_status
+        if int(row["line_index"]) != desired_index[line_id]:
+            updates["line_index"] = desired_index[line_id]
+        if not updates:
+            continue
+        before = {name: _column_value(row, name) for name in updates}
+        _apply_values(conn, "block_line", line_id, updates, now)
+        events.append(
+            _record(
+                conn,
+                entity_type="block_line",
+                entity_id=line_id,
+                action=ACTION_REASSIGN_LINE,
+                before=before,
+                after=dict(updates),
+                batch_id=batch_id,
+                actor=actor,
+                actor_name=actor_name,
+            )
+        )
+    return events
 
 
 # 事件里的 entity_type → (表名, 主键列, 取行用的 SQL)
@@ -274,7 +439,7 @@ _TABLES = {
 
 def _column_value(row, name: str):
     value = row[name]
-    if name in ("include", "continues_to_next"):
+    if name in ("include", "continues_to_next", "layout_confirmed"):
         return bool(value)
     return value
 
@@ -670,6 +835,18 @@ def merge_with_previous(
         )
         events.extend(delete_events)
 
+        # 合并后的框是并集，可能把旁边的行圈进来：重算一次归属
+        events.extend(
+            _reassign_page_lines(
+                conn,
+                lower["page_id"],
+                batch_id=batch_id,
+                actor=ACTOR_USER,
+                actor_name=actor_name,
+                now=now,
+            )
+        )
+
         conn.execute("UPDATE project SET updated_at = ?", (now,))
         conn.commit()
         merged = _read_block(conn, upper["block_id"])
@@ -898,6 +1075,8 @@ def create_block(
         from .library import default_library_dir
 
         library = default_library_dir()
+    if bbox is not None:
+        bbox = _validate_bbox(bbox)
     directory = project_dir(library, project_id)
     now = _now()
     batch_id = new_ulid()
@@ -954,6 +1133,18 @@ def create_block(
             now=now,
         )
         events.extend(create_events)
+        # 新框可能盖住了别人已有的行：按同一套规则重算归属（冲突 / 未归属照样记状态）
+        if bbox is not None:
+            events.extend(
+                _reassign_page_lines(
+                    conn,
+                    page["page_id"],
+                    batch_id=batch_id,
+                    actor=ACTOR_USER,
+                    actor_name=actor_name,
+                    now=now,
+                )
+            )
         conn.execute("UPDATE project SET updated_at = ?", (now,))
         conn.commit()
         created = _read_block(conn, block_id)

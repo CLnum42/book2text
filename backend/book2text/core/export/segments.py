@@ -35,12 +35,19 @@ BLOCK_TYPE_FOOTER = "footer"
 BLOCK_TYPE_PAGE_NUMBER = "page_number"
 BLOCK_TYPE_FOOTNOTE = "footnote"
 BLOCK_TYPE_CAPTION = "caption"
+BLOCK_TYPE_FIGURE = "figure"
+BLOCK_TYPE_DECORATION = "decoration"
 BLOCK_TYPE_OTHER = "other"
 
 ALL_BLOCK_TYPES = frozenset({
     BLOCK_TYPE_HEADING, BLOCK_TYPE_PARAGRAPH, BLOCK_TYPE_HEADER, BLOCK_TYPE_FOOTER,
-    BLOCK_TYPE_PAGE_NUMBER, BLOCK_TYPE_FOOTNOTE, BLOCK_TYPE_CAPTION, BLOCK_TYPE_OTHER,
+    BLOCK_TYPE_PAGE_NUMBER, BLOCK_TYPE_FOOTNOTE, BLOCK_TYPE_CAPTION,
+    BLOCK_TYPE_FIGURE, BLOCK_TYPE_DECORATION, BLOCK_TYPE_OTHER,
 })
+
+# 插图与侧边装饰**永远不输出文本**（第 35 号任务的口径）：它们可以没有文本，
+# 也可能带着 OCR 读出来的零星字符，但那些字符不属于正文。导出开关不覆盖这一条。
+TEXT_FREE_TYPES = frozenset({BLOCK_TYPE_FIGURE, BLOCK_TYPE_DECORATION})
 
 # 说明书 9.3：「排除页眉 / 页脚 / 页码块」默认开启，按块类型排除。
 DEFAULT_EXCLUDED_TYPES = frozenset({
@@ -194,6 +201,8 @@ def build_segments(
         if block.deleted:
             continue
         if not block.include:
+            continue
+        if block.block_type in TEXT_FREE_TYPES:
             continue
         if block.block_type in excluded_types:
             continue

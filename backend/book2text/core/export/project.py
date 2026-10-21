@@ -85,7 +85,8 @@ class ExportOptions:
 
     def excluded_block_types(self) -> frozenset[str]:
         """按 9.3 的规则与 6.6 的内容类型选项算出要排除的块类型。"""
-        excluded = set(self.rules().excluded_block_types)
+        # 插图 / 装饰永远不进正文；它们不参与"内容类型"开关
+        excluded = set(self.rules().excluded_block_types) | set(segments_module.TEXT_FREE_TYPES)
         if not self.include_footnotes:
             excluded.add(segments_module.BLOCK_TYPE_FOOTNOTE)
         if not self.include_captions:
@@ -262,6 +263,9 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
     target_library = library if library is not None else library_module.default_library_dir()
     states = blocks_module.page_recognition_states(project_id, library=target_library)
     chrome = _chrome_suspects(project_id, library=target_library, options=options)
+    # 版面确认是块级状态；预检只报"整本有没有人确认过"，不阻止导出（说明书 1.6 / D-051）
+    all_blocks = blocks_module.list_blocks(project_id, library=target_library)
+    layout_confirmed = sum(1 for block in all_blocks if block.layout_confirmed)
 
     # 未识别或识别失败的纳入页：导出的内容会缺这些页，必须让用户看见
     unfinished = [
@@ -291,6 +295,9 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
         # 而这正是页眉 / 页码混进正文的来源。界面据此提醒去用结构工具。
         "chrome_suspect_count": len(chrome),
         "chrome_suspects": chrome[:20],
+        # 整本一个版面块都没确认过时，界面给一条警告——只是提醒，导出照常进行
+        "layout_blocks": len(all_blocks),
+        "layout_confirmed_blocks": layout_confirmed,
     }
 
 

@@ -474,31 +474,64 @@ textarea {
 .page-overlay { position: absolute; inset: 0; }
 /* 块框默认不吃鼠标事件，否则点不到「页面上拖动框选」；点块框跳转由 .box 自己的 click 处理 */
 .page-overlay .box {
-  position: absolute; border: 1px solid rgba(120, 150, 200, .55);
-  background: rgba(120, 150, 200, .1); border-radius: 2px; cursor: pointer;
+  position: absolute; border: 2px solid var(--box-color, rgba(120, 150, 200, .7));
+  background: var(--box-bg, rgba(120, 150, 200, .1)); border-radius: 2px;
+  cursor: move; touch-action: none; z-index: 2;
 }
-.page-overlay .box:hover { border-color: var(--accent); background: rgba(37, 99, 235, .12); }
-.page-overlay .box--active { border: 2px solid var(--accent); background: rgba(37, 99, 235, .14); }
+/* 类型颜色（色盲与黑白截图靠 badge 里的文字读，不只靠颜色） */
+.page-overlay .box--type-heading     { --box-color: #4338ca; --box-bg: rgba(67, 56, 202, .12); }
+.page-overlay .box--type-paragraph   { --box-color: #2563eb; --box-bg: rgba(37, 99, 235, .10); }
+.page-overlay .box--type-header      { --box-color: #6b7280; --box-bg: rgba(107, 114, 128, .10); }
+.page-overlay .box--type-footer      { --box-color: #6b7280; --box-bg: rgba(107, 114, 128, .10); }
+.page-overlay .box--type-page_number { --box-color: #0f766e; --box-bg: rgba(15, 118, 110, .12); }
+.page-overlay .box--type-footnote    { --box-color: #c2410c; --box-bg: rgba(194, 65, 12, .10); }
+.page-overlay .box--type-caption     { --box-color: #7e22ce; --box-bg: rgba(126, 34, 206, .10); }
+.page-overlay .box--type-figure      { --box-color: #15803d; --box-bg: rgba(21, 128, 61, .12); }
+.page-overlay .box--type-decoration  { --box-color: #be123c; --box-bg: rgba(190, 18, 60, .10); }
+.page-overlay .box--type-other       { --box-color: #475569; --box-bg: rgba(71, 85, 105, .10); }
+
+.page-overlay .box:hover { border-color: var(--accent); }
+.page-overlay .box--active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37, 99, 235, .25); }
 .page-overlay .box--excluded { border-style: dashed; opacity: .5; }
 .page-overlay .box--source { border-color: #d9480f; background: rgba(217, 72, 15, .18); }
 .page-overlay .box--dim { opacity: .3; }
+.page-overlay .box--textfree { background-image: repeating-linear-gradient(45deg, transparent 0 5px, rgba(255, 255, 255, .35) 5px 10px); }
+.page-overlay .box--dragging { opacity: .82; }
+body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select: none; }
 
-/* 块框上的小牌子：默认只在"当前块 / 不确定 / 页眉页脚这类边角料"上出现，
-   否则一页十几块会看不清原图 */
+/* 拖角缩放手柄：悬停 / 当前块时出现 */
+.page-overlay .box__handle {
+  position: absolute; width: 9px; height: 9px; border-radius: 2px;
+  background: #fff; border: 2px solid var(--box-color, #2563eb);
+  opacity: 0; transition: opacity .1s; z-index: 3;
+}
+.page-overlay .box:hover .box__handle,
+.page-overlay .box--active .box__handle { opacity: 1; }
+.page-overlay .box__handle--nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.page-overlay .box__handle--ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.page-overlay .box__handle--sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.page-overlay .box__handle--se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+
+/* 块框上的小牌子：**一直显示**顺序号 + 类型文字，不能只靠颜色区分 */
 .page-overlay .box__badge {
-  display: none;
   position: absolute; top: -16px; left: -2px; height: 15px; line-height: 14px;
   padding: 0 5px; border-radius: 3px; font-size: 10px; font-weight: 600;
-  color: #4361a8; background: rgba(255, 255, 255, .92); border: 1px solid rgba(120, 150, 200, .7);
-  white-space: nowrap; pointer-events: none;
+  color: var(--box-color, #4361a8); background: rgba(255, 255, 255, .95);
+  border: 1px solid var(--box-color, rgba(120, 150, 200, .7));
+  white-space: nowrap; pointer-events: none; z-index: 3;
 }
-.page-overlay .box--active .box__badge,
-.page-overlay .box--uncertain .box__badge,
-.page-overlay .box--chrome .box__badge { display: block; }
 .page-overlay .box--active .box__badge { color: #fff; background: var(--accent); border-color: var(--accent); }
-.page-overlay .box--uncertain { border: 1.5px dashed var(--warn); background: rgba(217, 119, 6, .1); }
+.page-overlay .box--uncertain { border-style: dashed; }
 .page-overlay .box--uncertain .box__badge { color: var(--warn-text); border-color: var(--warn); }
-.page-overlay .box--chrome { border-color: rgba(150, 150, 150, .5); background: rgba(150, 150, 150, .08); }
+.page-overlay .box--chrome { border-style: dashed; }
+
+/* 行归属的提示层：未归属 = 灰色虚线，冲突 = 黄色虚线（都在原图上，点不到） */
+.page-lines { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.line-box {
+  position: absolute; border: 1.5px dashed #9ca3af; border-radius: 2px;
+  background: rgba(156, 163, 175, .10);
+}
+.line-box--conflict { border-color: #d97706; background: rgba(217, 119, 6, .14); }
 
 /* 块列表（右栏） */
 .review-block { position: relative; border-bottom: 1px solid var(--line-soft); padding: 10px 16px 11px; }

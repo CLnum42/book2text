@@ -245,6 +245,7 @@
             <div class="viewer__scroll" id="viewer-scroll">
               <div class="page-canvas" id="detail-canvas" hidden>
                 <img id="detail-image" alt="页面图像">
+                <div class="page-lines" id="detail-lines"></div>
                 <div class="page-overlay" id="detail-overlay"></div>
                 <div class="box-select__rect" id="box-select-rect" hidden></div>
               </div>
@@ -256,7 +257,7 @@
               <button type="button" id="zoom-fit">适合宽度</button>
               <button type="button" id="toggle-overlay" class="is-on">显示块框</button>
             </div>
-            <div class="vhint">点原图上的块框 → 跳到右边对应的块</div>
+            <div class="vhint">拖动块框调整位置、拖角缩放；点块框跳到右边对应的块</div>
             <div class="box-select" id="box-select-panel" hidden>
               <div class="muted" id="box-select-info"></div>
               <textarea id="box-select-text" rows="3"

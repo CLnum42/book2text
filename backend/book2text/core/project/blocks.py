@@ -109,6 +109,9 @@ class BlockLineRecord:
     text: str
     aux_text: str | None
     diff_status: str | None
+    # 改框之后「行 → 块」归属的结果（说明书 5.3 的扩展，见迁移 0006）：
+    # assigned / conflict / unassigned。行本身永远不会被丢弃。
+    layout_status: str = "assigned"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -119,6 +122,7 @@ class BlockLineRecord:
             "text": self.text,
             "aux_text": self.aux_text,
             "diff_status": self.diff_status,
+            "layout_status": self.layout_status,
         }
 
 
@@ -143,6 +147,8 @@ class BlockRecord:
     comment: str | None
     created_at: str
     updated_at: str
+    # 版面（框 / 类型 / 顺序）是否被人工确认过；默认未确认（老项目升级后同样是未确认）。
+    layout_confirmed: bool = False
 
     @property
     def modified(self) -> bool:
@@ -170,6 +176,7 @@ class BlockRecord:
             "comment": self.comment,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "layout_confirmed": self.layout_confirmed,
             "modified": self.modified,
         }
 
@@ -362,6 +369,8 @@ def row_to_block(row) -> BlockRecord:
         comment=row["comment"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        # 迁移 0006 之前的库在 SELECT 里也会带上这一列（默认 0）；用 len(row) 兼容旧行对象
+        layout_confirmed=bool(row["layout_confirmed"]) if "layout_confirmed" in row.keys() else False,
     )
 
 
@@ -427,6 +436,7 @@ def list_block_lines(
             text=row["text"] or "",
             aux_text=row["aux_text"],
             diff_status=row["diff_status"],
+            layout_status=row["layout_status"] if "layout_status" in row.keys() else "assigned",
         )
         for row in rows
     ]

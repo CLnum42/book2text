@@ -132,6 +132,9 @@ def _page_blocks_payload(request: Request, project_id: str, page_no: int) -> dic
     )
     states = blocks_module.page_recognition_states(project_id, library=library)
     by_block: dict[str, list[blocks_module.BlockLineRecord]] = {}
+    # 只统计当前有效块的行：软删除块的行还在库里（撤销要能找回来），但不属于这一页的版面
+    active_blocks = {block.block_id for block in blocks}
+    lines = [line for line in lines if line.block_id in active_blocks]
     for line in lines:
         by_block.setdefault(line.block_id, []).append(line)
 
@@ -146,6 +149,8 @@ def _page_blocks_payload(request: Request, project_id: str, page_no: int) -> dic
         "block_count": len(blocks),
         "blocks": [_block_payload(block, by_block.get(block.block_id, [])) for block in blocks],
         "review": _review_summary(blocks),
+        # 行归属统计（改框之后看得见）：冲突 / 未归属的行一条都不会丢
+        "layout_lines": _line_layout_summary(lines),
         "divergence": blocks_module.page_divergence_summary(blocks, lines, runs).to_dict(),
         "history": {"undo": undo, "redo": redo},
     }
@@ -162,7 +167,17 @@ def _review_summary(blocks) -> dict[str, int]:
         "uncertain": sum(1 for b in included if b.review_status == "uncertain"),
         "modified": sum(1 for b in included if b.modified),
         "excluded": len(blocks) - len(included),
+        # 版面确认：块级状态；页面自身的确认步骤在下一包，这里只做汇总
+        "layout_confirmed": sum(1 for b in included if b.layout_confirmed),
     }
+
+
+def _line_layout_summary(lines) -> dict[str, int]:
+    """这一页的行归属统计（说明书 5.3 的扩展）：assigned / conflict / unassigned。"""
+    counts = {"assigned": 0, "conflict": 0, "unassigned": 0}
+    for line in lines:
+        counts[line.layout_status] = counts.get(line.layout_status, 0) + 1
+    return counts
 
 
 # ---------------------------------------------------------------- 改块
@@ -174,6 +189,10 @@ class BlockPatch(BaseModel):
     include: bool | None = None
     continues_to_next: bool | None = None
     comment: str | None = Field(default=None, max_length=500)
+    # 手动拖拽 / 缩放后的块框（归一化坐标，说明书 5.2）；改它会让服务端重算行归属
+    bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    # 版面（框 / 类型 / 顺序）的人工确认：状态标记，不是导出硬闸门
+    layout_confirmed: bool | None = None
     # 乐观并发检查（说明书第 11 节）：
     expected_revision: int | None = None
     expected_updated_at: str | None = None
@@ -198,6 +217,8 @@ def patch_block(
             include=patch.include,
             continues_to_next=patch.continues_to_next,
             comment=patch.comment,
+            bbox=tuple(patch.bbox) if patch.bbox is not None else None,
+            layout_confirmed=patch.layout_confirmed,
             expected_revision=patch.expected_revision,
             expected_updated_at=patch.expected_updated_at,
             actor_name=_actor_name(request, patch.actor_name),

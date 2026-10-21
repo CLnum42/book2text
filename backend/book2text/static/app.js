@@ -681,6 +681,7 @@ function renderPreflight(data) {
     ["未审校的段", `${data.unreviewed_segments} 段`],
     ["不确定的段", `${data.uncertain_segments} 段`],
     ["排除的块类型", data.excluded_block_types.length ? data.excluded_block_types.join("、") : "（无）"],
+    ["版面已确认", `${data.layout_confirmed_blocks || 0} / ${data.layout_blocks || 0} 块`],
   ];
   fillDefinitionList(el("export-preflight"), rows);
 
@@ -708,6 +709,12 @@ function renderPreflight(data) {
       `有 ${data.chrome_suspect_count} 个块整块落在页面边缘（${sample} 等），` +
         "像是页眉 / 页码，但它们的类型还是「段落」，**会被导出**。" +
         "用上面的「结构工具」按位置规则预览并标注，就能把它们从导出里去掉。"
+    );
+  }
+  if (!data.layout_confirmed_blocks) {
+    notes.push(
+      "整本还没有确认过任何版面块。自动分块在这本书上实测是准的，" +
+        "**导出不受影响**；有疑问的页可以在审校视图里拖动块框、改类型、调顺序，再点「确认版面」。"
     );
   }
   if (data.unreviewed_segments) {
@@ -2408,6 +2415,8 @@ function setupTaskDrawer() {
 let detailPageNo = null;
 let detailImagePageNo = null;
 let reviewBlocks = [];
+/** 这一页所有识别行（含未归属 / 冲突的）。拖框吸附与虚线绘制都用它。 */
+let detailLines = [];
 let reviewSaveTimer = null;
 let reviewPendingSave = null; // {block, text}：还没发出去的自动保存
 /** 每个块编辑框最后的光标位置：拆分要用它（点菜单会让编辑框失焦）。 */
@@ -2415,8 +2424,12 @@ const cursorByBlock = new Map();
 
 const BLOCK_TYPE_LABELS = {
   heading: "标题", paragraph: "段落", header: "页眉", footer: "页脚",
-  page_number: "页码", footnote: "脚注", caption: "图注", other: "其他",
+  page_number: "页码", footnote: "脚注", caption: "图注",
+  figure: "插图", decoration: "装饰", other: "其他",
 };
+/** 这些类型的块在导出时不输出文本（figure / decoration 是版面块，不是正文）。 */
+const TEXT_FREE_BLOCK_TYPES = new Set(["figure", "decoration"]);
+const CHROME_BLOCK_TYPES = new Set(["header", "footer", "page_number"]);
 const REVIEW_STATUS_LABELS = {
   unreviewed: "未审", confirmed: "已确认", uncertain: "不确定",
 };
@@ -2599,6 +2612,7 @@ function setupReviewPager() {
 function renderPageDetail(data) {
   const pageNo = data.page.page_no;
   reviewBlocks = data.blocks;
+  detailLines = (data.blocks || []).flatMap((block) => block.lines || []);
 
   const recognition = recognitionOf(data.page);
   el("page-detail-title").textContent = `第 ${pageNo} 页`;
@@ -2638,6 +2652,7 @@ function renderPageDetail(data) {
     applyZoom();
   }
 
+  drawDetailLines();
   drawDetailOverlay(data.blocks);
   renderReviewBlocks(data.blocks);
 }
@@ -2649,11 +2664,17 @@ function project_id() {
 function reviewMetaText(data) {
   const review = data.review || {};
   const divergence = divergenceOf(data);
+  const layoutLines = data.layout_lines || {};
   const parts = [
     PAGE_TYPE_LABELS[data.page.page_type] || data.page.page_type,
     `${review.block_count || 0} 块`,
     `未审 ${review.unreviewed || 0}`,
   ];
+  if (review.layout_confirmed) {
+    parts.push(`版面已确认 ${review.layout_confirmed}/${review.included || review.block_count || 0}`);
+  }
+  if (layoutLines.conflict) parts.push(`冲突 ${layoutLines.conflict} 行`);
+  if (layoutLines.unassigned) parts.push(`未归属 ${layoutLines.unassigned} 行`);
   if (review.uncertain) parts.push(`不确定 ${review.uncertain}`);
   if (review.modified) parts.push(`已修改 ${review.modified}`);
   if (divergence.lines) parts.push(`两路分歧 ${divergence.lines} 行`);
@@ -2688,6 +2709,17 @@ function renderReviewBanner(data, recognition) {
   if (review.uncertain) {
     messages.push(`本页有 ${review.uncertain} 个不确定块——确认整页时它们不会被自动确认。`);
   }
+  const layoutLines = data.layout_lines || {};
+  if (layoutLines.conflict) {
+    messages.push(
+      `有 ${layoutLines.conflict} 行同时落在两个块框里（黄色虚线）：已按重叠面积归给较大的那边，请核对。`
+    );
+  }
+  if (layoutLines.unassigned) {
+    messages.push(
+      `有 ${layoutLines.unassigned} 行不在任何块框里（灰色虚线）：它们没有被删除，重新拖框就能收进来。`
+    );
+  }
   // 第二引擎的分歧（说明书 8.5）：只在有实质分歧或还没复核过时提醒
   const divergence = divergenceOf(data);
   if (divergence.lines) {
@@ -2719,33 +2751,221 @@ function setSaveState(text, isError = false) {
 }
 
 /** 块框：归一化坐标 → 百分比定位，因此与显示尺寸、渲染 DPI 都无关。 */
+const HANDLE_CORNERS = ["nw", "ne", "sw", "se"];
+/** 拖框时离文字行边界多近就吸附（像素）。 */
+const DRAG_SNAP_PX = 8;
+/** 小于这个像素位移就算点击（不是拖动）。 */
+const BOX_DRAG_MIN_PX = 3;
+const MIN_BOX_SIDE = 0.005;
+
+let boxDrag = null;
+let suppressBoxClick = false;
+
+function lineEdges() {
+  const xs = [];
+  const ys = [];
+  for (const line of detailLines) {
+    if (!line.bbox) continue;
+    xs.push(line.bbox[0], line.bbox[2]);
+    ys.push(line.bbox[1], line.bbox[3]);
+  }
+  return { xs, ys };
+}
+
+/** 最近的候选边；超出容忍距离就保持原值。 */
+function nearestEdge(value, candidates, tolerance) {
+  let best = value;
+  let bestDistance = tolerance;
+  for (const candidate of candidates) {
+    const distance = Math.abs(candidate - value);
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+/** 整体平移时，找一条能让两条边之一对齐的位移（保持框的大小不变）。 */
+function bestShift(edges, candidates, tolerance) {
+  let shift = 0;
+  let bestDistance = tolerance;
+  for (const edge of edges) {
+    for (const candidate of candidates) {
+      const delta = candidate - edge;
+      if (Math.abs(delta) < bestDistance) {
+        bestDistance = Math.abs(delta);
+        shift = delta;
+      }
+    }
+  }
+  return shift;
+}
+
+/**
+ * 吸附：拖角时每条被拖的边单独吸附；整体拖动时找一个平移量，让框的一边贴住文字行边界。
+ * **先吸附再夹到页面内**——否则贴边的行会把框顶出页面。
+ */
+function snapBox(raw, mode) {
+  const image = el("detail-image");
+  const rect = image.getBoundingClientRect();
+  if (!rect.width || !rect.height) return raw;
+  const { xs, ys } = lineEdges();
+  const toleranceX = DRAG_SNAP_PX / rect.width;
+  const toleranceY = DRAG_SNAP_PX / rect.height;
+  let [x0, y0, x1, y1] = raw;
+
+  if (mode === "move") {
+    const shiftX = bestShift([x0, x1], xs, toleranceX);
+    const shiftY = bestShift([y0, y1], ys, toleranceY);
+    const width = x1 - x0;
+    const height = y1 - y0;
+    x0 = Math.min(Math.max(x0 + shiftX, 0), 1 - width);
+    y0 = Math.min(Math.max(y0 + shiftY, 0), 1 - height);
+    return [x0, y0, x0 + width, y0 + height];
+  }
+
+  if (mode.includes("w")) x0 = nearestEdge(x0, xs, toleranceX);
+  if (mode.includes("e")) x1 = nearestEdge(x1, xs, toleranceX);
+  if (mode.includes("n")) y0 = nearestEdge(y0, ys, toleranceY);
+  if (mode.includes("s")) y1 = nearestEdge(y1, ys, toleranceY);
+
+  x0 = Math.min(Math.max(x0, 0), 1 - MIN_BOX_SIDE);
+  y0 = Math.min(Math.max(y0, 0), 1 - MIN_BOX_SIDE);
+  x1 = Math.max(Math.min(x1, 1), x0 + MIN_BOX_SIDE);
+  y1 = Math.max(Math.min(y1, 1), y0 + MIN_BOX_SIDE);
+  return [x0, y0, x1, y1];
+}
+
+/** 开始拖框：mode 是 "move" 或四个角之一（nw / ne / sw / se）。 */
+function startBoxDrag(event, block, boxElement, mode) {
+  if (boxCreateMode || !el("toggle-overlay").classList.contains("is-on")) return;
+  if (event.button !== undefined && event.button !== 0) return;
+  const image = el("detail-image");
+  const rect = image.getBoundingClientRect();
+  if (!rect.width || !rect.height || !block.bbox) return;
+  event.preventDefault();
+  event.stopPropagation();
+  boxDrag = {
+    block,
+    boxElement,
+    mode,
+    startX: event.clientX,
+    startY: event.clientY,
+    startBbox: [...block.bbox],
+    bbox: [...block.bbox],
+    rect,
+    moved: false,
+  };
+  boxElement.classList.add("box--dragging");
+  document.body.classList.add("box-dragging");
+}
+
+function onBoxPointerMove(event) {
+  if (!boxDrag) return;
+  const dx = (event.clientX - boxDrag.startX) / boxDrag.rect.width;
+  const dy = (event.clientY - boxDrag.startY) / boxDrag.rect.height;
+  if (Math.hypot(event.clientX - boxDrag.startX, event.clientY - boxDrag.startY) > BOX_DRAG_MIN_PX) {
+    boxDrag.moved = true;
+  }
+  const [sx0, sy0, sx1, sy1] = boxDrag.startBbox;
+  const mode = boxDrag.mode;
+  let raw;
+  if (mode === "move") {
+    const width = sx1 - sx0;
+    const height = sy1 - sy0;
+    const nx0 = Math.min(Math.max(sx0 + dx, 0), 1 - width);
+    const ny0 = Math.min(Math.max(sy0 + dy, 0), 1 - height);
+    raw = [nx0, ny0, nx0 + width, ny0 + height];
+  } else {
+    raw = [
+      mode.includes("w") ? sx0 + dx : sx0,
+      mode.includes("n") ? sy0 + dy : sy0,
+      mode.includes("e") ? sx1 + dx : sx1,
+      mode.includes("s") ? sy1 + dy : sy1,
+    ];
+  }
+  const bbox = snapBox(raw, mode);
+  boxDrag.bbox = bbox;
+  applyBoxElementRect(boxDrag.boxElement, bbox);
+}
+
+function applyBoxElementRect(box, bbox) {
+  const [x0, y0, x1, y1] = bbox;
+  box.style.left = `${x0 * 100}%`;
+  box.style.top = `${y0 * 100}%`;
+  box.style.width = `${(x1 - x0) * 100}%`;
+  box.style.height = `${(y1 - y0) * 100}%`;
+}
+
+function onBoxPointerUp() {
+  if (!boxDrag) return;
+  const drag = boxDrag;
+  boxDrag = null;
+  drag.boxElement.classList.remove("box--dragging");
+  document.body.classList.remove("box-dragging");
+  if (!drag.moved) return; // 只是一次点击：交给 box 的 click 处理
+  suppressBoxClick = true;
+  const bbox = drag.bbox.map((value) => Math.round(value * 1e6) / 1e6);
+  patchBlock(drag.block, { bbox });
+}
+
+function setupBoxDrag() {
+  window.addEventListener("pointermove", onBoxPointerMove);
+  window.addEventListener("pointerup", onBoxPointerUp);
+  window.addEventListener("pointercancel", onBoxPointerUp);
+}
+
+/** 块框上的小牌子：顺序号 + 类型文字（不能只靠颜色：黑白截图与色盲都要能读）。 */
+function blockBadgeText(block, index) {
+  const typeLabel = BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
+  const prefix = block.review_status === "uncertain" ? "？" : "";
+  return `${prefix}${index + 1} ${typeLabel}`;
+}
+
 function drawDetailOverlay(blocks) {
   const overlay = el("detail-overlay");
   overlay.innerHTML = "";
-  blocks.forEach((block) => {
+  blocks.forEach((block, index) => {
     if (!block.bbox) return;
-    const [x0, y0, x1, y1] = block.bbox;
     const box = document.createElement("div");
-    box.className = "box" + (block.include ? "" : " box--excluded");
-    if (["header", "footer", "page_number"].includes(block.block_type)) {
-      box.classList.add("box--chrome");
-    }
-    box.dataset.blockId = block.block_id;
-    box.style.left = `${x0 * 100}%`;
-    box.style.top = `${y0 * 100}%`;
-    box.style.width = `${(x1 - x0) * 100}%`;
-    box.style.height = `${(y1 - y0) * 100}%`;
-    const typeLabel = BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
-    box.title = `${typeLabel} · 点一下跳到右边对应的块`;
-    // 页眉 / 页脚 / 页码与"不确定"的块在图上挂一个小牌子（效果图 03）：
-    // 一眼能看出哪几块是每页都有的边角料、哪几块要细看
+    box.className = "box";
+    box.classList.add(`box--type-${block.block_type}`);
+    if (!block.include) box.classList.add("box--excluded");
+    if (CHROME_BLOCK_TYPES.has(block.block_type)) box.classList.add("box--chrome");
+    if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) box.classList.add("box--textfree");
     if (block.review_status === "uncertain") box.classList.add("box--uncertain");
+    box.dataset.blockId = block.block_id;
+    box.dataset.type = block.block_type;
+    applyBoxElementRect(box, block.bbox);
+    const typeLabel = BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
+    box.title =
+      `${typeLabel} · 第 ${index + 1} 块 · 拖动移位、拖角缩放` +
+      (block.layout_confirmed ? " · 版面已确认" : "");
+
     const badge = document.createElement("span");
     badge.className = "box__badge";
-    badge.textContent =
-      block.review_status === "uncertain" ? `？${typeLabel}` : typeLabel;
+    badge.textContent = blockBadgeText(block, index);
     box.append(badge);
-    box.addEventListener("click", () => {
+
+    // 四个角是缩放手柄；手柄吃掉 pointerdown，免得同时触发整框拖动
+    for (const corner of HANDLE_CORNERS) {
+      const handle = document.createElement("span");
+      handle.className = `box__handle box__handle--${corner}`;
+      handle.title = "拖这个角缩放（会吸附到文字行边界）";
+      handle.addEventListener("pointerdown", (event) =>
+        startBoxDrag(event, block, box, corner)
+      );
+      box.append(handle);
+    }
+
+    box.addEventListener("pointerdown", (event) => startBoxDrag(event, block, box, "move"));
+    box.addEventListener("click", (event) => {
+      if (suppressBoxClick) {
+        suppressBoxClick = false;
+        return;
+      }
+      event.stopPropagation();
       const item = el("detail-blocks").querySelector(`li[data-block-id="${block.block_id}"]`);
       if (item) {
         selectReviewBlock(block.block_id);
@@ -2757,14 +2977,38 @@ function drawDetailOverlay(blocks) {
   });
 }
 
+/** 未归属 / 冲突的行：灰色 / 黄色虚线画在原图上，一条都不丢。 */
+function drawDetailLines() {
+  const layer = el("detail-lines");
+  layer.innerHTML = "";
+  for (const line of detailLines) {
+    if (!line.bbox) continue;
+    if (line.layout_status !== "unassigned" && line.layout_status !== "conflict") continue;
+    const [x0, y0, x1, y1] = line.bbox;
+    const mark = document.createElement("div");
+    mark.className = `line-box line-box--${line.layout_status}`;
+    mark.style.left = `${x0 * 100}%`;
+    mark.style.top = `${y0 * 100}%`;
+    mark.style.width = `${(x1 - x0) * 100}%`;
+    mark.style.height = `${(y1 - y0) * 100}%`;
+    mark.title =
+      (line.layout_status === "conflict" ? "冲突行" : "未归属行") +
+      `：${line.text || "（这一行没有文本）"}`;
+    layer.append(mark);
+  }
+}
+
 function blockCard(block, index, blocksCount) {
   const item = document.createElement("li");
   item.className = "review-block";
   item.dataset.blockId = block.block_id;
   item.dataset.index = String(index);
   if (!block.include) item.classList.add("review-block--excluded");
-  if (["header", "footer", "page_number"].includes(block.block_type)) {
+  if (CHROME_BLOCK_TYPES.has(block.block_type)) {
     item.classList.add("review-block--chrome");
+  }
+  if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) {
+    item.classList.add("review-block--textfree");
   }
   const blockDivergence = divergenceOf(block);
   if (blockDivergence.chars) item.classList.add("review-block--divergence");
@@ -2774,7 +3018,8 @@ function blockCard(block, index, blocksCount) {
 
   const typeSelect = document.createElement("select");
   typeSelect.className = "review-block__type";
-  typeSelect.title = "块类型（页眉 / 页脚 / 页码在导出时默认排除）";
+  typeSelect.title =
+    "块类型（页眉 / 页脚 / 页码在导出时默认排除；插图 / 装饰不输出文本）";
   for (const [value, label] of Object.entries(BLOCK_TYPE_LABELS)) {
     const option = document.createElement("option");
     option.value = value;
@@ -2803,13 +3048,22 @@ function blockCard(block, index, blocksCount) {
   // 与类型本身有关的标记（导出时排除 / 已排除）贴着类型标签放左边，状态放右边
   const typeBits = [];
   if (!block.include) typeBits.push(["已排除", "chip--gray"]);
-  else if (["header", "footer", "page_number"].includes(block.block_type)) {
+  else if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) {
+    typeBits.push(["不输出文本", "chip--gray"]);
+  } else if (CHROME_BLOCK_TYPES.has(block.block_type)) {
     typeBits.push(["导出时排除", "chip--gray"]);
   }
   const bits = [];
+  if (block.layout_confirmed) bits.push(["✓ 版面已确认", "chip--ok"]);
   if (block.modified) bits.push(["● 已修改", "chip--warn"]);
   if (block.continues_to_next) bits.push(["↪ 延续到下页", "chip--blue"]);
   if (blockDivergence.lines) bits.push([`≠ 两路不一致 ${blockDivergence.lines} 行`, "chip--warn"]);
+  // 行归属：改框之后每一行都有交代（assigned / conflict / unassigned）
+  const blockLines = block.lines || [];
+  const conflictLines = blockLines.filter((line) => line.layout_status === "conflict").length;
+  const unassignedLines = blockLines.filter((line) => line.layout_status === "unassigned").length;
+  if (conflictLines) bits.push([`冲突行 ${conflictLines}`, "chip--warn"]);
+  if (unassignedLines) bits.push([`未归属行 ${unassignedLines}`, "chip--gray"]);
   // 说明书 6.4：无 bbox 的块要明确显示"无位置信息"，不绘制虚假高亮
   if (!block.bbox) bits.push(["无位置信息", "chip--gray"]);
 
@@ -2843,6 +3097,11 @@ function blockCard(block, index, blocksCount) {
   textarea.value = block.text;
   textarea.rows = textRows(block.text);
   textarea.spellcheck = false;
+  if (!block.text) {
+    textarea.placeholder = TEXT_FREE_BLOCK_TYPES.has(block.block_type)
+      ? "（这是版面块：插图 / 装饰，不输出文本）"
+      : "（这一块没有文本）";
+  }
   // 拆分要用"光标在哪"，而点菜单会让编辑框失焦，因此先把位置记下来
   const rememberCursor = () => {
     cursorByBlock.set(block.block_id, textarea.selectionStart || 0);
@@ -2876,6 +3135,11 @@ function blockCard(block, index, blocksCount) {
     actions.append(button);
   };
 
+  addButton(
+    block.layout_confirmed ? "取消版面确认" : "✓ 确认版面",
+    "确认这一块的框、类型与页内顺序（状态标记；不确认也能导出）",
+    () => patchBlock(block, { layout_confirmed: !block.layout_confirmed })
+  );
   if (block.review_status !== "confirmed") {
     addButton("✓ 确认", "把这个块标为已确认", () =>
       patchBlock(block, { review_status: "confirmed" })
@@ -3712,6 +3976,7 @@ function nextUnfinishedPage(afterPageNo) {
 }
 
 function setupReviewControls() {
+  setupBoxDrag();
   // 点别处关掉所有"⋯ 更多"菜单（只挂一次，别每次渲染都加一个监听）
   document.addEventListener("click", () => {
     for (const menu of document.querySelectorAll("#detail-blocks .review-menu")) {

@@ -228,3 +228,65 @@ def test_ocr_run_status_is_constrained(conn: sqlite3.Connection) -> None:
         VALUES ('r2', 'p', 'fake', '1', 'succeeded', 'now')
         """
     )
+
+
+# ---------------------------------------------------------------- 迁移 0006：版面
+
+def _columns(connection: sqlite3.Connection, table: str) -> dict[str, sqlite3.Row]:
+    rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
+    return {row["name"]: row for row in rows}
+
+
+def test_layout_migration_adds_columns(conn: sqlite3.Connection) -> None:
+    migrate(conn, MIGRATIONS)
+    block_columns = _columns(conn, "block")
+    line_columns = _columns(conn, "block_line")
+    assert block_columns["layout_confirmed"]["dflt_value"] == "0"
+    assert line_columns["layout_status"]["dflt_value"] == "'assigned'"
+
+
+def test_layout_migration_upgrades_an_old_database_with_safe_defaults(
+    conn: sqlite3.Connection,
+) -> None:
+    """0006 之前的库：老块默认「未确认」，老行默认 assigned，已有数据原样保留。"""
+    migrate(conn, MIGRATIONS[:5])
+    conn.execute(
+        """
+        INSERT INTO project (project_id, name, source_file_name, source_sha256,
+                             page_count, created_at, updated_at, schema_version)
+        VALUES ('p1', '老项目', 'old.pdf', 'x' * 64, 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 5)
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO page (page_id, page_no, width_pt, height_pt)
+        VALUES ('page1', 1, 595.0, 842.0)
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO block (block_id, page_id, origin, order_index, bbox, block_type,
+                           ocr_text, text, created_at, updated_at)
+        VALUES ('b1', 'page1', 'ocr', 0, '[0.1,0.1,0.9,0.2]', 'paragraph',
+                '旧文本', '旧文本', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO block_line (line_id, block_id, line_index, bbox, text)
+        VALUES ('l1', 'b1', 0, '[0.1,0.1,0.9,0.2]', '旧文本')
+        """
+    )
+    conn.commit()
+
+    migrate(conn, MIGRATIONS)
+
+    block = conn.execute("SELECT * FROM block WHERE block_id = 'b1'").fetchone()
+    line = conn.execute("SELECT * FROM block_line WHERE line_id = 'l1'").fetchone()
+    assert block["text"] == "旧文本"
+    assert int(block["layout_confirmed"]) == 0
+    assert line["layout_status"] == "assigned"
+    assert line["text"] == "旧文本"
+    # 结构版本前进了，但老数据一条没少
+    assert current_version(conn) == LATEST_VERSION
