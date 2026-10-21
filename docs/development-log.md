@@ -103,7 +103,11 @@ pdf_backend: {'name': 'pypdfium2', 'version': '5.14.0', 'selected': False}
 接口的 version / stage 与代码一致；`selected: false` 是 D-009 的真实状态，不是漏改。
 看完横幅后已关闭服务。
 
-**CI 实跑：** 见下方补记（push 后确认）。
+**CI 实跑（GitHub Actions，真实结果）：** [run #3](https://github.com/CLnum42/book2text/actions/runs/39613191107)
+—— **绿**。`全量测试（macOS 14 + OCR）` 耗时 1m 53s，run 总耗时 1m 57s；
+测试结果 **572 passed, 1 warning in 97.68s，0 skipped**。`0 skipped` 正是 workflow
+的防假绿校验（出现跳过即失败），通过说明识别与 Apple Vision 测试都真跑了。
+唯一 annotation 是 runner 容量提示（macOS arm64 可能排队），与代码无关。
 
 **未验证：** Windows 打包与 Windows 平台行为（L-31，本任务不涉及）；
 macOS 应用包没有重新打包，`CFBundleShortVersionString` 的新值只做了代码同步。
