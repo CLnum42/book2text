@@ -1,0 +1,928 @@
+{
+  "schema": "book2text.region-labels.v1",
+  "pdf_file": "红楼梦第一卷_正文前40页_图像版.pdf",
+  "dpi": 200,
+  "engine": "rapidocr 3.10.0",
+  "reviewed_on": "2026-10-21",
+  "reviewed_lines": 131,
+  "note": "人工逐条分类：匹配不上分页金标准的行。只含页码 / 行号 / 类别 / 文本指纹，不含原文。行号是 200 DPI、RapidOCR 3.10.0 识别结果按 (y,x) 排序后的序号；text_hash 用于校验行序是否漂移（对不上脚本会报错，必须重新核对）。",
+  "labels": [
+    {
+      "page": 1,
+      "line": 0,
+      "category": "heading",
+      "note": "章题/回目",
+      "text_hash": "f202e4c8"
+    },
+    {
+      "page": 1,
+      "line": 1,
+      "category": "heading",
+      "note": "章题/回目",
+      "text_hash": "65e9c509"
+    },
+    {
+      "page": 1,
+      "line": 2,
+      "category": "heading",
+      "note": "章题/回目",
+      "text_hash": "1e0eb510"
+    },
+    {
+      "page": 1,
+      "line": 12,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "95db94cf"
+    },
+    {
+      "page": 2,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "bd432e98"
+    },
+    {
+      "page": 2,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "4b227777"
+    },
+    {
+      "page": 3,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "73bb266d"
+    },
+    {
+      "page": 3,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "e7f6c011"
+    },
+    {
+      "page": 4,
+      "line": 3,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "c7a109de"
+    },
+    {
+      "page": 4,
+      "line": 12,
+      "category": "other",
+      "note": "插图里的文字/线条",
+      "text_hash": "3a22ef4d"
+    },
+    {
+      "page": 4,
+      "line": 15,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "29898e5c"
+    },
+    {
+      "page": 4,
+      "line": 27,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "2c624232"
+    },
+    {
+      "page": 5,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "bd432e98"
+    },
+    {
+      "page": 5,
+      "line": 25,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "4a44dc15"
+    },
+    {
+      "page": 6,
+      "line": 6,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "d83442ef"
+    },
+    {
+      "page": 6,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "b566762f"
+    },
+    {
+      "page": 6,
+      "line": 25,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "6b51d431"
+    },
+    {
+      "page": 7,
+      "line": 11,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "d1185106"
+    },
+    {
+      "page": 7,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "b69ee533"
+    },
+    {
+      "page": 7,
+      "line": 24,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "09d22802"
+    },
+    {
+      "page": 7,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "8527a891"
+    },
+    {
+      "page": 8,
+      "line": 14,
+      "category": "body_unaligned",
+      "note": "正文行（短段末，对齐失败）",
+      "text_hash": "4a3a0e98"
+    },
+    {
+      "page": 8,
+      "line": 15,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "73bb266d"
+    },
+    {
+      "page": 8,
+      "line": 17,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "1747d13a"
+    },
+    {
+      "page": 8,
+      "line": 27,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "b17ef6d1"
+    },
+    {
+      "page": 8,
+      "line": 28,
+      "category": "other",
+      "note": "页码下的装饰短线",
+      "text_hash": "6b86b273"
+    },
+    {
+      "page": 9,
+      "line": 6,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "9e8a8b1d"
+    },
+    {
+      "page": 9,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "b69ee533"
+    },
+    {
+      "page": 9,
+      "line": 15,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "4328e446"
+    },
+    {
+      "page": 9,
+      "line": 25,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "4ec9599f"
+    },
+    {
+      "page": 10,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "b566762f"
+    },
+    {
+      "page": 10,
+      "line": 25,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "f5ca38f7"
+    },
+    {
+      "page": 11,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "4184f4b7"
+    },
+    {
+      "page": 11,
+      "line": 25,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "785f3ec7"
+    },
+    {
+      "page": 12,
+      "line": 11,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "2c34c96c"
+    },
+    {
+      "page": 12,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "73bb266d"
+    },
+    {
+      "page": 12,
+      "line": 15,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "4e0ce058"
+    },
+    {
+      "page": 12,
+      "line": 25,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "c2356069"
+    },
+    {
+      "page": 13,
+      "line": 2,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "9e03b372"
+    },
+    {
+      "page": 13,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "f9be83ee"
+    },
+    {
+      "page": 13,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "5f9c4ab0"
+    },
+    {
+      "page": 13,
+      "line": 27,
+      "category": "other",
+      "note": "页码下的装饰短线",
+      "text_hash": "6b86b273"
+    },
+    {
+      "page": 14,
+      "line": 3,
+      "category": "heading",
+      "note": "章题/回目",
+      "text_hash": "3d5245c8"
+    },
+    {
+      "page": 14,
+      "line": 5,
+      "category": "heading",
+      "note": "章题/回目",
+      "text_hash": "4d25833f"
+    },
+    {
+      "page": 14,
+      "line": 7,
+      "category": "heading",
+      "note": "章题/回目",
+      "text_hash": "10ac33ee"
+    },
+    {
+      "page": 14,
+      "line": 12,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "f595f728"
+    },
+    {
+      "page": 14,
+      "line": 21,
+      "category": "other",
+      "note": "插图里的文字/线条",
+      "text_hash": "53546785"
+    },
+    {
+      "page": 14,
+      "line": 22,
+      "category": "other",
+      "note": "插图里的文字/线条",
+      "text_hash": "e994b535"
+    },
+    {
+      "page": 14,
+      "line": 24,
+      "category": "other",
+      "note": "插图里的文字/线条",
+      "text_hash": "3098c64c"
+    },
+    {
+      "page": 15,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "1ab0d909"
+    },
+    {
+      "page": 15,
+      "line": 25,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "624b60c5"
+    },
+    {
+      "page": 16,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "1ab0d909"
+    },
+    {
+      "page": 16,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "e29c9c18"
+    },
+    {
+      "page": 17,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "b566762f"
+    },
+    {
+      "page": 17,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "86e50149"
+    },
+    {
+      "page": 18,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "b8f0712a"
+    },
+    {
+      "page": 18,
+      "line": 16,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "61e73442"
+    },
+    {
+      "page": 18,
+      "line": 20,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "2783d71d"
+    },
+    {
+      "page": 18,
+      "line": 23,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "9a40ad91"
+    },
+    {
+      "page": 18,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "76a50887"
+    },
+    {
+      "page": 19,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "6f251f70"
+    },
+    {
+      "page": 19,
+      "line": 18,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "cc473024"
+    },
+    {
+      "page": 19,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "aea92132"
+    },
+    {
+      "page": 20,
+      "line": 1,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "5fd88b43"
+    },
+    {
+      "page": 20,
+      "line": 3,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "96669db6"
+    },
+    {
+      "page": 20,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "4bdc9e26"
+    },
+    {
+      "page": 20,
+      "line": 25,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "d59eced1"
+    },
+    {
+      "page": 21,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "f9be83ee"
+    },
+    {
+      "page": 21,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "73475cb4"
+    },
+    {
+      "page": 22,
+      "line": 0,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "ab920aa1"
+    },
+    {
+      "page": 22,
+      "line": 12,
+      "category": "other",
+      "note": "插图里的文字/线条",
+      "text_hash": "6b23c0d5"
+    },
+    {
+      "page": 22,
+      "line": 15,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "b8f0712a"
+    },
+    {
+      "page": 22,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "71ee45a3"
+    },
+    {
+      "page": 23,
+      "line": 7,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "55943030"
+    },
+    {
+      "page": 23,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "b69ee533"
+    },
+    {
+      "page": 23,
+      "line": 25,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "fe5aae69"
+    },
+    {
+      "page": 23,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "25fc0e70"
+    },
+    {
+      "page": 24,
+      "line": 6,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "addd9344"
+    },
+    {
+      "page": 24,
+      "line": 7,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "98010bd9"
+    },
+    {
+      "page": 25,
+      "line": 2,
+      "category": "heading",
+      "note": "章题/回目",
+      "text_hash": "d9a00705"
+    },
+    {
+      "page": 25,
+      "line": 4,
+      "category": "heading",
+      "note": "章题/回目",
+      "text_hash": "ca78b3a4"
+    },
+    {
+      "page": 25,
+      "line": 6,
+      "category": "heading",
+      "note": "章题/回目",
+      "text_hash": "01f17900"
+    },
+    {
+      "page": 26,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "1ab0d909"
+    },
+    {
+      "page": 26,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "41cfc0d1"
+    },
+    {
+      "page": 26,
+      "line": 27,
+      "category": "other",
+      "note": "页码下的装饰短线",
+      "text_hash": "6b86b273"
+    },
+    {
+      "page": 27,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "b69ee533"
+    },
+    {
+      "page": 27,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "2fca346d"
+    },
+    {
+      "page": 28,
+      "line": 10,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "5dafd51c"
+    },
+    {
+      "page": 28,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "6c9d240a"
+    },
+    {
+      "page": 28,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "7688b6ef"
+    },
+    {
+      "page": 28,
+      "line": 27,
+      "category": "other",
+      "note": "页码下的装饰短线",
+      "text_hash": "6b86b273"
+    },
+    {
+      "page": 29,
+      "line": 1,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "8c1f1046"
+    },
+    {
+      "page": 29,
+      "line": 15,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "f9be83ee"
+    },
+    {
+      "page": 29,
+      "line": 27,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "6208ef0f"
+    },
+    {
+      "page": 29,
+      "line": 28,
+      "category": "other",
+      "note": "页码下的装饰短线",
+      "text_hash": "6b86b273"
+    },
+    {
+      "page": 30,
+      "line": 13,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "73726ce7"
+    },
+    {
+      "page": 30,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "addd9344"
+    },
+    {
+      "page": 30,
+      "line": 24,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "6718b0ef"
+    },
+    {
+      "page": 30,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "39fa9ec1"
+    },
+    {
+      "page": 30,
+      "line": 27,
+      "category": "other",
+      "note": "页码下的装饰短线",
+      "text_hash": "6b86b273"
+    },
+    {
+      "page": 31,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "4184f4b7"
+    },
+    {
+      "page": 31,
+      "line": 15,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "0a27477d"
+    },
+    {
+      "page": 31,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "81b8a03f"
+    },
+    {
+      "page": 32,
+      "line": 4,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "e40012a8"
+    },
+    {
+      "page": 32,
+      "line": 12,
+      "category": "body_unaligned",
+      "note": "正文行（短段末，对齐失败）",
+      "text_hash": "61a6833d"
+    },
+    {
+      "page": 32,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "73bb266d"
+    },
+    {
+      "page": 32,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "a68b412c"
+    },
+    {
+      "page": 32,
+      "line": 27,
+      "category": "other",
+      "note": "页码下的装饰短线",
+      "text_hash": "6b86b273"
+    },
+    {
+      "page": 33,
+      "line": 3,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "ca2bc8b4"
+    },
+    {
+      "page": 33,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "e3af95bc"
+    },
+    {
+      "page": 33,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "3ada92f2"
+    },
+    {
+      "page": 34,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "4184f4b7"
+    },
+    {
+      "page": 34,
+      "line": 25,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "a21855da"
+    },
+    {
+      "page": 35,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "4184f4b7"
+    },
+    {
+      "page": 35,
+      "line": 18,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "8e9c61f4"
+    },
+    {
+      "page": 35,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "ff5a1ae0"
+    },
+    {
+      "page": 36,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "73bb266d"
+    },
+    {
+      "page": 36,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "87226162"
+    },
+    {
+      "page": 36,
+      "line": 27,
+      "category": "other",
+      "note": "页码下的装饰短线",
+      "text_hash": "6b86b273"
+    },
+    {
+      "page": 37,
+      "line": 7,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "5e8443eb"
+    },
+    {
+      "page": 37,
+      "line": 11,
+      "category": "body_unaligned",
+      "note": "正文行（对齐失败）",
+      "text_hash": "341c756f"
+    },
+    {
+      "page": 37,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "73bb266d"
+    },
+    {
+      "page": 37,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "eb624dbe"
+    },
+    {
+      "page": 37,
+      "line": 27,
+      "category": "other",
+      "note": "页码下的装饰短线",
+      "text_hash": "6b86b273"
+    },
+    {
+      "page": 38,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "b69ee533"
+    },
+    {
+      "page": 38,
+      "line": 26,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "f74efabe"
+    },
+    {
+      "page": 39,
+      "line": 14,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "6f251f70"
+    },
+    {
+      "page": 39,
+      "line": 25,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "349c4120"
+    },
+    {
+      "page": 39,
+      "line": 26,
+      "category": "other",
+      "note": "页码下的装饰短线",
+      "text_hash": "6b86b273"
+    },
+    {
+      "page": 40,
+      "line": 13,
+      "category": "header",
+      "note": "左栏竖排书眉",
+      "text_hash": "addd9344"
+    },
+    {
+      "page": 40,
+      "line": 21,
+      "category": "page_number",
+      "note": "左下角页码",
+      "text_hash": "48449a14"
+    }
+  ]
+}

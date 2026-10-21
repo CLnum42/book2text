@@ -1,0 +1,241 @@
+{
+  "schema": "book2text.region-classification.v1",
+  "measured_at": "2026-10-21T15:22:21+00:00",
+  "pdf_file": "红楼梦第一卷_正文前40页_图像版.pdf",
+  "dpi": 200,
+  "engine": "rapidocr 3.10.0",
+  "pages": 40,
+  "lines": 1064,
+  "located_lines": 933,
+  "manual_labels": 131,
+  "ocr_seconds": 45.5,
+  "classify_seconds": 0.008,
+  "rules": {
+    "band_lines": 0.25,
+    "band_chars": 0.25,
+    "max_chars": 20,
+    "repeat_threshold": 3,
+    "repeat_similarity": 0.6,
+    "repeat_position": 0.05
+  },
+  "gold": {
+    "paged_chars": 20060,
+    "full_text_chars": 20108,
+    "heading_gap_chars": 48
+  },
+  "counts": {
+    "body": 933,
+    "body_unaligned": 32,
+    "body_missing": 0,
+    "header": 38,
+    "footer": 0,
+    "page_number": 37,
+    "heading": 9,
+    "other": 15
+  },
+  "confusion": {
+    "body": {
+      "body": 933,
+      "header": 0,
+      "footer": 0,
+      "page_number": 0
+    },
+    "body_unaligned": {
+      "body": 32,
+      "header": 0,
+      "footer": 0,
+      "page_number": 0
+    },
+    "body_missing": {
+      "body": 0,
+      "header": 0,
+      "footer": 0,
+      "page_number": 0
+    },
+    "header": {
+      "body": 0,
+      "header": 37,
+      "footer": 1,
+      "page_number": 0
+    },
+    "footer": {
+      "body": 0,
+      "header": 0,
+      "footer": 0,
+      "page_number": 0
+    },
+    "page_number": {
+      "body": 0,
+      "header": 0,
+      "footer": 0,
+      "page_number": 37
+    },
+    "heading": {
+      "body": 0,
+      "header": 9,
+      "footer": 0,
+      "page_number": 0
+    },
+    "other": {
+      "body": 0,
+      "header": 4,
+      "footer": 0,
+      "page_number": 11
+    }
+  },
+  "detection": {
+    "body": {
+      "total": 933,
+      "high": 0,
+      "any_confidence": 0,
+      "high_rate": 0.0,
+      "any_rate": 0.0
+    },
+    "body_unaligned": {
+      "total": 32,
+      "high": 0,
+      "any_confidence": 0,
+      "high_rate": 0.0,
+      "any_rate": 0.0
+    },
+    "body_missing": {
+      "total": 0,
+      "high": 0,
+      "any_confidence": 0,
+      "high_rate": 0.0,
+      "any_rate": 0.0
+    },
+    "header": {
+      "total": 38,
+      "high": 37,
+      "any_confidence": 38,
+      "high_rate": 0.9737,
+      "any_rate": 1.0
+    },
+    "footer": {
+      "total": 0,
+      "high": 0,
+      "any_confidence": 0,
+      "high_rate": 0.0,
+      "any_rate": 0.0
+    },
+    "page_number": {
+      "total": 37,
+      "high": 37,
+      "any_confidence": 37,
+      "high_rate": 1.0,
+      "any_rate": 1.0
+    },
+    "heading": {
+      "total": 9,
+      "high": 0,
+      "any_confidence": 9,
+      "high_rate": 0.0,
+      "any_rate": 1.0
+    },
+    "other": {
+      "total": 15,
+      "high": 11,
+      "any_confidence": 15,
+      "high_rate": 0.7333,
+      "any_rate": 1.0
+    }
+  },
+  "mislabel": {
+    "body_total": 965,
+    "high": 0,
+    "high_rate": 0.0,
+    "all_confidence": 0,
+    "all_confidence_rate": 0.0
+  },
+  "leak": {
+    "furniture_total": 75,
+    "high": 1,
+    "high_rate": 0.0133,
+    "all_confidence": 0,
+    "all_confidence_rate": 0.0
+  },
+  "heading": {
+    "total": 9,
+    "flagged_high": 0,
+    "flagged_any": 9
+  },
+  "failures": {
+    "mislabeled_body": [],
+    "leaked_furniture": [
+      {
+        "page": 8,
+        "line": 17,
+        "gold": "header",
+        "predicted": "header",
+        "confidence": "review",
+        "region": "left",
+        "signals": [
+          "left",
+          "repeat:<3"
+        ],
+        "quote": "CO三"
+      }
+    ],
+    "wrong_type": [
+      {
+        "page": 24,
+        "line": 6,
+        "gold": "header",
+        "predicted": "footer",
+        "confidence": "high",
+        "region": "bottom",
+        "signals": [
+          "bottom",
+          "left",
+          "repeat:16"
+        ],
+        "quote": "红楼梦/0"
+      }
+    ],
+    "heading_removed": []
+  },
+  "cer": {
+    "before": {
+      "cer": 0.0231,
+      "distance": 465,
+      "reference_chars": 20108,
+      "hypothesis_chars": 20334
+    },
+    "after_high": {
+      "cer": 0.0107,
+      "distance": 215,
+      "reference_chars": 20108,
+      "hypothesis_chars": 20073
+    },
+    "after_all": {
+      "cer": 0.0091,
+      "distance": 182,
+      "reference_chars": 20108,
+      "hypothesis_chars": 20003
+    }
+  },
+  "cer_export": {
+    "export_before": {
+      "cer": 0.0201,
+      "distance": 404,
+      "reference_chars": 20108,
+      "hypothesis_chars": 20334
+    },
+    "export_blocks": {
+      "cer": 0.0068,
+      "distance": 137,
+      "reference_chars": 20108,
+      "hypothesis_chars": 20066
+    },
+    "export_lines": {
+      "cer": 0.0071,
+      "distance": 143,
+      "reference_chars": 20108,
+      "hypothesis_chars": 20073
+    },
+    "block_candidates": 42,
+    "block_high": 41,
+    "blocks_total": 188
+  }
+}
