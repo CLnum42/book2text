@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 import json
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -81,7 +82,7 @@ def make_package(
         f"/api/projects/{project_id}/assignments/{assignment_id}/package", headers=headers
     )
     assert download.status_code == 200
-    path = Path("/tmp") / f"{assignment_id}.b2tpkg"
+    path = Path(tempfile.gettempdir()) / f"{assignment_id}.b2tpkg"
     path.write_bytes(download.content)
     return path
 
@@ -103,7 +104,7 @@ def export_result(client: TestClient, headers: dict[str, str], project_id: str) 
     )
     assert response.status_code == 200, response.text
     payload = response.json()
-    path = Path("/tmp") / payload["file_name"]
+    path = Path(tempfile.gettempdir()) / payload["file_name"]
     path.write_bytes(
         client.get(
             f"/api/projects/{project_id}/package/results/{payload['file_name']}",
@@ -443,7 +444,7 @@ def test_context_pages_are_read_only(
         f"{package.json()['assignment']['assignment_id']}/package",
         headers=auth_headers,
     )
-    path = Path("/tmp") / "context-check.b2tpkg"
+    path = Path(tempfile.gettempdir()) / "context-check.b2tpkg"
     path.write_bytes(download.content)
     assistant_id = open_package_in(client, auth_headers, path)["project"]["project_id"]
 

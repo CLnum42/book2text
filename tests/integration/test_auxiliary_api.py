@@ -171,9 +171,21 @@ def test_auxiliary_uses_the_primary_run_dpi(
 
 
 def test_auxiliary_needs_a_primary_run_first(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    library_dir: Path,
+    monkeypatch,
 ) -> None:
-    """还没识别过的页没有可复核的行。"""
+    """还没识别过的页没有可复核的行。
+
+    显式给一个**可用**的假第二引擎：本用例要验的是"先识别"这道前置检查，
+    不是引擎可用性。否则在没有第二引擎的平台（Windows、没装 pyobjc 的 macOS）上，
+    接口会先回 503，这条断言永远走不到。
+    """
+    monkeypatch.setattr(
+        recognition, "default_secondary_engine", lambda: FakeSecondEngine()
+    )
     project_id = create_project(client, auth_headers, sample_pdf)
     response = client.post(
         f"/api/projects/{project_id}/pages/1/auxiliary", headers=auth_headers
