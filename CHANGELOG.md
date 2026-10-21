@@ -7,6 +7,19 @@
 
 ## [未发布]
 
+### 新增 — 持续集成：每次 push / PR 在 macOS 上跑全套测试（2026-10-21）
+
+- 新增 `.github/workflows/tests.yml`：push 到 `main` 与 PR 时，在 `macos-14` 上
+  `uv sync --group dev --group ocr-eval` 后跑 `uv run pytest -q -rs`。
+- 装了 OCR 依赖组，**识别测试与 Apple Vision 第二引擎是真跑**，不是跳过：
+  实测两次均 **572 passed, 0 skipped**（测试 111–129 秒，job 2 分 17 秒–2 分 30 秒）。
+- **防假绿**：pytest 摘要里出现 `N skipped` 即判 job 失败——样本缺失或依赖没装
+  不会静悄悄变绿。
+- **成本控制**（私有仓库 macOS runner 按 10 倍分钟计费）：uv 与 RapidOCR 模型
+  （约 31 MB，缓存传输约 26 MB）走缓存；纯文档改动（`docs/**`、`**/*.md`）不触发；
+  同分支连推两次会取消上一次 run。
+- 已知限制 L-14「没有 CI」解除；Windows / Linux 仍不在 CI 覆盖范围。
+
 ### 修复 — 界面资源缓存策略：不再出现"新页面配旧脚本"（2026-10-15）
 
 - `/` 与 `/static/*` 现在都带 `Cache-Control: no-cache`（回源确认，没变就 304）。

@@ -125,10 +125,17 @@ uv run book2text          # 或双击 scripts/start.command（macOS）
 ```bash
 uv run book2text --port 9000     # 换起始端口（被占用时自动向后尝试）
 uv run book2text --no-browser    # 不自动打开浏览器
-uv run pytest -q                 # 运行测试（531 项；未装 OCR 依赖时自动跳过需要引擎的那些）
+uv run pytest -q                 # 运行测试（572 项；未装 OCR 依赖时自动跳过需要引擎的那些）
 ```
 
 项目的原始 PDF 只被读取，导出的成果写在项目的 `exports/` 下。**原始文件不会被修改。**
+
+**持续集成：** 每次 push 到 `main`、每个 PR，GitHub Actions 都会在 macOS 14 runner 上
+装好 `dev` + `ocr-eval` 两组依赖后跑**全套 572 项**（`.github/workflows/tests.yml`）。
+装了 OCR 依赖，所以识别测试与 Apple Vision 第二引擎是真跑，不是跳过；
+pytest 摘要里只要出现 “N skipped”，这次 CI 就判失败（防假绿）。
+纯文档改动（`docs/**`、`*.md`）不触发，以控制私有仓库 macOS runner 的分钟成本。
+结果见仓库的 **Actions** 页。
 
 ---
 

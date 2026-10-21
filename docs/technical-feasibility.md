@@ -129,6 +129,9 @@ Windows 侧的语言包检测逻辑（`OcrEngine.get_available_recognizer_langua
 
 无 CI；全部为手动运行。
 
+> **2026-10-21 更新：** 本节是 Phase 0 当时的状态。测试已增至 572 项，
+> 并接入 GitHub Actions（push / PR 自动在 macOS 上跑全套，见 L-14 已解除）。
+
 ---
 
 ## 2. 未验证（被前置输入卡住的第 1–3 项）

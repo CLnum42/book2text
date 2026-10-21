@@ -337,11 +337,6 @@ Phase 0 必须逐项产出实测数据：
 **理由：** 版权（同 D-005）与体积；一旦进入 git 历史很难彻底清除。
 **如需入库**，请先确认版权与必要性，并同步更新 `docs/decisions.md` D-005。
 
-### L-14 没有 CI
-
-`tests/` 已有 57 个测试（单元 + 集成），但全部靠本机手动运行 `uv run pytest`。
-没有 GitHub Actions，推送不会触发任何自动检查。
-
 ### L-15 Starlette TestClient 的弃用警告
 
 运行测试时会打印一条第三方警告：`Using httpx with starlette.testclient is deprecated;
@@ -410,6 +405,26 @@ install httpx2 instead`（来自 starlette 1.8，经 FastAPI 的 TestClient 转�
 ---
 
 ## 已解除
+
+### ~~L-14 没有 CI~~ — 2026-10-21 解除
+
+原问题：`tests/` 只能本机手动跑 `uv run pytest`，push 不触发任何自动检查。
+
+解除方式：新增 `.github/workflows/tests.yml`——push 到 `main` 与 PR 时，
+在 `macos-14`（Apple Silicon）上 `uv sync --frozen --group dev --group ocr-eval`
+后跑 `uv run pytest -q -rs`。**装了 ocr-eval**，所以 `@pytest.mark.ocr` 的识别测试
+（含 Apple Vision 第二引擎）是真跑，不是跳过。
+
+**覆盖范围（2026-10-21 实跑，两次）：**
+
+- **跑：** 全套 572 项，**0 skipped**。测试 111–129 秒，job 2 分 17 秒–2 分 30 秒。
+- **按 marker 排除：** 无。没有为了"绿"而排除任何用例，也没有弱化断言。
+- **不在范围内：** Windows / Linux runner。选 macOS 是因为 Apple Vision 只在 darwin 可用；
+  Windows 平台本身仍未在 CI 覆盖（见第 5 节 L-31）。
+- **防假绿：** workflow 检查 pytest 摘要里有没有 `N skipped`，有就让 job 失败——
+  样本缺失或 ocr-eval 没装时不会静悄悄变绿。
+- **成本控制：** uv 与 RapidOCR 模型（约 31 MB，来自 modelscope.cn）走缓存；
+  纯文档改动（`docs/**`、`**/*.md`）不触发；同一分支连推两次会取消上一次 run。
 
 ### ~~L-26 识别与导出是两套流程~~ — 2026-10-14 解除
 
@@ -520,4 +535,4 @@ Homebrew 7.0.9 全部**早已安装**。因此 Phase 0 不需要安装环境这�
 共 57 项测试，覆盖平台模块、PDF 渲染、引擎自检、临时上传存储（含路径穿越防护）
 与完整的 HTTP 链路（令牌、Origin、上传、渲染、删除）。
 
-遗留：没有 CI，见 L-14。
+遗留：没有 CI，见 L-14。（2026-10-21 已补上，L-14 一并解除。）

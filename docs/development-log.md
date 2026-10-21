@@ -7,6 +7,80 @@
 
 ---
 
+## 2026-10-21 — 任务 31：GitHub Actions CI（解除 L-14）
+
+### 任务目标
+
+push 到 `main` 或开 PR 时自动跑全套测试，解除 L-14「没有 CI」。
+**不**改应用代码，**不**改测试，**不**碰远端配置。
+
+### 当前状态
+
+- 仓库里没有 `.github/`，从未配过 CI；572 项测试只靠本机 `pytest` 手动跑（48 秒）。
+- 测试分两拨：默认 + `ocr` marker。`ocr` 组需要 `uv sync --group ocr-eval`，
+  没装时**整组跳过**——CI 若不装这组，识别相关的核心断言等于没跑。
+- 第二引擎测试（Apple Vision）darwin-only，模块导入时就判断可用性。
+
+### 实施计划
+
+1. 新建 `.github/workflows/tests.yml`（macOS + dev + ocr-eval）。
+2. push 后打开 Actions 看真实结果；红了查原因、修、再推。
+3. 按 1.2 模板更新开发日志、README、已知限制、CHANGELOG。
+   **不在范围内：** Windows / Ubuntu runner、打包、发布、应用代码。
+
+### 实现与验证
+
+**workflow 要点（[`.github/workflows/tests.yml`](../.github/workflows/tests.yml)）：**
+
+- **触发：** push 到 `main` + `pull_request`；`paths-ignore: docs/**, **/*.md`。
+  用"忽略"而不是路径白名单——将来新增目录（`scripts/`、新包）不会漏跑。
+- **runner：** `macos-14`，`timeout-minutes: 25`；`concurrency` 同分支新 push 取消旧 run。
+- **依赖：** `astral-sh/setup-uv@v10.3.0`，锁 `uv 0.12.3`（生成 `uv.lock` 的版本）
+  与 Python 3.12；`uv sync --frozen --group dev --group ocr-eval`。
+  `--frozen` 保证 CI 不会偷偷改锁文件。
+- **跑什么：** `uv run pytest -q -rs`，不按 marker 排除任何用例。
+- **防假绿：** 摘要里出现 `N skipped` 就让 job 失败。跳过 ≠ 通过：
+  样本缺失、ocr-eval 没装、平台不支持都会让结果"绿"，但那是假绿。
+- **缓存：** uv 缓存（setup-uv 自带）+ RapidOCR 模型
+  （`.venv/lib/python3.12/site-packages/rapidocr/models`，约 31 MB，缓存传输约 26 MB，首次识别从 modelscope.cn 下）。
+  模型缓存 key 用 `uv.lock` 哈希。**依据：** 私有仓库 macOS runner 按 10 倍分钟计费，
+  不能让每次 run 都等一次跨境下载。
+- **action 版本：** 首跑用 checkout@v4 / cache@v4 / setup-uv@v6，GitHub 提示这三个
+  仍指向 Node 20、被强制跑在 Node 24 上；已升到 checkout@v7 / cache@v6 /
+  setup-uv@v10.3.0（输入参数不变），警告消失。
+
+**本地验证：** `.venv/bin/python -m pytest -q` → **572 passed**，48.45 秒
+（本机沙箱里 `uv run` 拿不到 uv 缓存，故直接用 venv 里的解释器；CI 上仍用 `uv run`）。
+
+**CI 实跑（GitHub Actions，真实结果）：**
+
+| run | 提交 | 结论 | 测试耗时 | job 耗时 |
+|---|---|---|---|---|
+| #1 | `373c8cc` | 绿：**572 passed, 0 skipped** | 129.20 s | 2 m 30 s |
+| #2 | `106c3ce` | 绿：**572 passed, 0 skipped** | 111.51 s | 2 m 17 s |
+
+- #1：RapidOCR 模型缓存未命中（首次），测试里现下模型；`安装依赖` 步骤 2 s（uv 下载 47 个包）。
+- #2：模型缓存**命中**（`Cache restored from key: rapidocr-models-…`，约 26 MB），
+  总时长缩短约 14 s；Actions 页只剩一条"macOS arm64 排队"提示，无 Node 20 警告。
+- 两次都确认了 `0 skipped`：Apple Vision 第二引擎测试在无图形会话的 runner 上**可用**，
+  因此**没有**需要排除的用例，也没有弱化断言。
+
+**未验证：** Windows 与 Linux runner 上的测试（本 workflow 只跑 macOS）；
+Windows 平台能力本身仍见 L-31。
+
+### 用户操作说明
+
+- 看结果：仓库 **Actions** → `tests`；每次 push / PR 自动出现。
+- 本地复现：`uv sync --group dev --group ocr-eval && uv run pytest -q`。
+- 回退：删除 `.github/workflows/tests.yml` 即停止 CI，仓库其他部分不受影响。
+
+### 下一步建议
+
+加一个 Windows runner 的**非 OCR** 测试 job（`-m "not ocr"`），把跨平台问题提前暴露——
+Windows 是目前唯一"完全未验证"的平台，而它跑 1 倍分钟，比 macOS 便宜得多。
+
+---
+
 ## 2026-10-15 — 任务 30：修"新建项目报错"（界面资源缓存策略）与去掉多余入口
 
 ### 任务目标
