@@ -1,11 +1,10 @@
-# Book2Text 的持续集成：在 macOS 上跑全套测试（含真实 OCR 引擎）。
+# Book2Text 的持续集成：两个平台各跑一遍测试。
 #
-# 为什么是 macOS：第二引擎是 Apple Vision，darwin-only（说明书 8.5）；
-#   Ubuntu runner 上那片测试会整组跳过，CI 就失去了一半价值。
-# 为什么装 ocr-eval 组：不装的话 `@pytest.mark.ocr` 的测试全部跳过，
-#   真正验证识别质量的那些用例等于没跑（见 docs/known-limitations.md L-14）。
-# 成本：私有仓库的 macOS runner 按 10 倍分钟计费，因此只保留必要步骤；
-#   纯文档改动用 paths-ignore 跳过（用"忽略"而不是"白名单"，避免将来新增目录漏跑）。
+# macOS（10 倍分钟）：全量 572 项，装 dev + ocr-eval，含真实 OCR 引擎与 Apple Vision。
+#   为什么必须是 macOS：第二引擎是 Apple Vision，darwin-only（说明书 8.5）。
+# Windows（2 倍分钟）：只跑非 OCR 用例，装 dev；补上"Windows 平台完全没验证过"这个洞。
+#   Linux 是 1 倍分钟，但 Apple Vision 在 Linux 上不存在，暂时没有加它的理由。
+# 纯文档改动用 paths-ignore 跳过（用"忽略"而不是"白名单"，避免将来新增目录漏跑）。
 
 name: tests
 
@@ -65,5 +64,59 @@ jobs:
           # 跳过 ≠ 通过：样本缺失、依赖没装、平台不支持都会让结果"绿"，但那是假绿。
           if grep -qE '[0-9]+ skipped' pytest.log; then
             echo "::error::有测试被跳过——CI 只认实际跑过的用例，见上方 -rs 摘要"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------- Windows
+  # 只跑非 OCR 用例：这台 runner 上没有 Apple Vision；RapidOCR 依赖组也不装
+  # （省时间，也避免 pyobjc 这类平台专属依赖混进来）。
+  #
+  # 两条纪律，和 macOS job 一样严：
+  # 1) OCR 用例用 marker **deselect**（`-m "not ocr"`），不是让它们 skip；
+  #    "摘要里出现 N skipped 就失败"的守卫原样保留，没有为 Windows 放宽。
+  # 2) 另有 4 个 OCR 测试模块在**导入期**就调用 `pytest.skip`（拿不到引擎时），
+  #    而 marker 过滤发生在导入之后，所以必须用 `--ignore` 显式排除这 4 个文件，
+  #    否则摘要里会留下 "4 skipped" 并触发守卫。这是写明的排除，不是静默跳过。
+  #
+  # 成本：私有仓库 Windows runner 按 2 倍分钟计费（Linux 1 倍，macOS 10 倍）。
+  pytest-windows:
+    name: Windows 测试（非 OCR）
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 uv（含缓存）
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.12.3"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 安装依赖（只装 dev，不装 OCR）
+        run: uv sync --frozen --group dev
+
+      - name: 跑测试（OCR 组 deselect，不 skip）
+        shell: bash
+        env:
+          # 只改标准输出/错误的编码，不改 open() 的默认编码——
+          # 免得把"文件按本地代码页读写"这类真实平台问题掩盖掉。
+          PYTHONIOENCODING: utf-8
+        run: |
+          set -o pipefail
+          uv run pytest -q -rs -m "not ocr" \
+            --ignore=tests/unit/test_rapidocr_adapter.py \
+            --ignore=tests/integration/test_secondary_engine_vision.py \
+            --ignore=tests/integration/test_worker_subprocess.py \
+            --ignore=tests/integration/test_recognition_engine.py \
+            2>&1 | tee pytest-windows.log
+          if grep -qE '[0-9]+ skipped' pytest-windows.log; then
+            echo "::error::有测试被跳过——Windows job 同样不接受 skip，见上方 -rs 摘要"
+            exit 1
+          fi
+          if ! grep -qE '[0-9]+ deselected' pytest-windows.log; then
+            echo "::error::-m 过滤没有生效：OCR 组必须被 deselect"
             exit 1
           fi
