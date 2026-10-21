@@ -7,6 +7,121 @@
 
 ---
 
+## 2026-10-21 — 任务 32：清掉"还没做"的过期状态描述，版本号提到 0.1.0
+
+### 任务目标
+
+把代码、接口与界面里六处与实现不符的"未完成"说法改成事实，版本号从 `0.0.0`
+提到 **`0.1.0`**（第一个可用完整版），并让所有版本落点一致。
+**不改行为逻辑、不改测试、不碰 `.github/`。**
+
+### 当前状态
+
+- 项目已做到 Phase 6：识别（子进程任务）、审校、导出、协作任务包、macOS 打包都已真实跑通；
+  代码里却仍有"Phase 0 骨架""审校、导出未完成""现在在做 Phase 8 Step 1（双路 OCR）"等说法。
+- 基线：`.venv/bin/python -m pytest -q` → **572 passed**（49.46 秒）。
+- 版本号的唯一真源是 `backend/book2text/__init__.py`：`pyproject.toml` 用 hatch `dynamic`
+  取它，FastAPI 的 `version`、诊断日志、导出 manifest、协作任务包都读它；
+  `packaging/book2text.spec` 的 `CFBundleShortVersionString` 是唯一写死的副本。
+- **一条线索与代码不符（按代码纠正）：** `core/pdf/render.py` 的"选型未定"与
+  `/api/app/info` 的 `pdf_backend.selected = false` **不是过期描述**。D-009 的状态仍是
+  "暂定（Phase 0 第 3 项完成后重新评估）"，`docs/known-limitations.md` 与
+  `docs/technical-feasibility.md` 都记着 PyMuPDF 一侧从未安装实测。按 1.6 / 1.7 保留原样。
+- **自发现的过期说法（线索没有列出）：** `core/ocr/__init__.py` 说"只有自检、适配器属于
+  Phase 2"；`api/routes_projects.py` 说"Job 属于 Phase 2，尚未实现"（任务执行器早已可用，
+  只是**缩略图缓存 Job** 还没做）；`core/export/segments.py` 说"存储层尚未实现"；
+  `core/storage/streaming.py` 还在提已删除的"Phase 0 临时上传"。
+- **自发现的仓库问题：** `packaging/book2text.spec` 被 `.gitignore` 的 `*.spec` 连带忽略，
+  从未入库；而 `scripts/build_macos.sh` / `build_windows.bat` 都直接引用它——新克隆无法打包。
+
+### 实施计划
+
+1. 逐条读对应代码与文档，分清"当前状态"与"历史说明"，只改前者。
+2. 改六处指定文案 + 自发现的三处；版本号 `0.1.0`，同步打包 spec。
+3. `.venv/bin/python -m pytest -q` 全量；手动启动看横幅、curl `/api/app/info` 核对。
+4. 更新本日志、CHANGELOG、README、决策记录（D-050）；给 Phase 0 可行性文档加"这是快照"补注。
+5. push 后看 Actions 本次 run 是否绿。
+   **不在范围内：** `.github/`、任何行为逻辑、测试用例、Windows 打包实测。
+
+### 实现与验证
+
+**逐条对应（以代码为准）：**
+
+| # | 位置 | 原文大意 | 改成 |
+|---|---|---|---|
+| 1 | `backend/book2text/__init__.py` | "当前处于 Phase 0 骨架，尚无项目、数据库、OCR、审校与导出" | 0.1.0 已具备的能力清单 + 未完成项指向 `known-limitations.md` |
+| 2 | 同上 | `__version__ = "0.0.0"` | `"0.1.0"` |
+| 3 | `main.py:87` 启动横幅 | "早期版本（识别跑在后台任务里；审校、导出未完成）" | "识别、审校、导出、协作任务包与 macOS 打包已跑通（Windows 打包未验证…）" |
+| 4 | `api/routes_app.py:40` `stage` | "Phase 4 已完成；现在在做 Phase 8 Step 1（双路 OCR）" | "Phase 1–6 已跑通；Phase 3 余项与 Phase 0 对比未完成，Windows 未验证" |
+| 5 | `static/app.js:4` 文件头 | "Book2Text Phase 0 骨架的前端……正式前端属于 Phase 1 及以后" | "原生 JS + 一份 CSS，无构建步骤；Vue 3 + TS + Vite 是后续形态（D-046）" |
+| 6a | `core/ocr/base.py:12` | "`grouping.py` 尚未实现，所以只提供 lines" | 保留"本层只给 lines"的结论，理由改成 D-012 的分层：块由 `grouping.py` 在识别出口装配 |
+| 6b | `core/pdf/render.py:3` | "选型未定" | **不改**：与 D-009 / L（Phase 0 第 3 项未完成）一致，见上 |
+| 6c | `core/storage/__init__.py` | "Phase 0 只有骨架用的临时目录" | 列出现状：`project.db`（WAL）、5 个迁移、流式写入、ULID |
+
+**未列出的同类修正：**
+
+- `core/ocr/__init__.py`：改成 base / adapters / selfcheck 三个模块的现状说明。
+- `api/routes_projects.py:270`：改成"**缩略图缓存 Job** 还没做（Phase 1 余项）"——
+  任务执行器本身是 Phase 2 的成果，不能说成"Job 尚未实现"。
+- `core/export/segments.py:15`：`Block` 早已在 `core/project/` 落地，
+  改成分层说明（`export/project.py` 从库里读块、装成 `SegmentSource`）。
+- `core/storage/streaming.py:3`：临时上传已删除，改成"新建项目导入 PDF 时用"。
+- `.gitignore` + `packaging/book2text.spec`：加 `!packaging/book2text.spec` 例外，
+  spec 入库并把 `CFBundleShortVersionString` 同步成 `0.1.0`。
+- `docs/technical-feasibility.md`：文件头原本写"Phase 0 进行中、只完成第 4 项"，
+  而正文第 2 节已有 20/20 页行级坐标等后续实测；改成"Phase 0 实测快照（2026-10-21 补注）"，
+  并把"0/7 引擎可用"标注成 2026-10-14 的干净环境结果。
+
+**版本号落点检查：**
+
+- `pyproject.toml`：`dynamic = ["version"]` + `[tool.hatch.version] path = .../__init__.py`，
+  **没有**手写版本，未改（`uv.lock` 里 editable 包也不记版本）。
+- `api/app.py`（FastAPI `version=`）、`api/diagnostics.py`、`export/project.py`、
+  `collab/assignments.py`、`collab/packages.py`：全部读 `__version__`，自动跟随。
+- `tests/unit/test_export_jsonl_manifest.py` 里的 `"0.0.0"` 是测试显式传入的样例值，
+  不依赖包版本，未改（测试归 QA）。
+
+**本地测试：** `.venv/bin/python -m pytest -q` → **572 passed**，48.08 秒
+（全部改完后的最终一次；macOS arm64，Python 3.12.13）。
+
+**手动启动与接口核对（真实输出）：**
+
+```
+Book2Text 0.1.0 — 识别、审校、导出、协作任务包与 macOS 打包已跑通（Windows 打包未验证；其余限制见界面「当前限制」）
+平台：macOS (arm64)
+界面地址：http://127.0.0.1:8919/?token=…（端口 8919，实测可用）
+引擎自检：2/7 可用
+```
+
+`curl -H "X-B2T-Token: …" http://127.0.0.1:8919/api/app/info` →
+
+```
+app: {'name': 'Book2Text', 'version': '0.1.0', 'stage': 'Phase 1–6 已跑通；Phase 3 余项与 Phase 0 对比未完成，Windows 未验证'}
+pdf_backend: {'name': 'pypdfium2', 'version': '5.14.0', 'selected': False}
+```
+
+接口的 version / stage 与代码一致；`selected: false` 是 D-009 的真实状态，不是漏改。
+看完横幅后已关闭服务。
+
+**CI 实跑：** 见下方补记（push 后确认）。
+
+**未验证：** Windows 打包与 Windows 平台行为（L-31，本任务不涉及）；
+macOS 应用包没有重新打包，`CFBundleShortVersionString` 的新值只做了代码同步。
+
+### 用户操作说明
+
+- 看版本：启动横幅的第一行，或界面「设置 → 环境 → 版本」；接口是 `/api/app/info`。
+- 本地复现测试：`cd <仓库> && .venv/bin/python -m pytest -q`。
+- 回退：`git revert <本次提交>`。本次只改文字、版本常量与一条 `.gitignore` 例外，
+  不涉及数据与接口行为，回退不影响已有项目。
+
+### 下一步建议
+
+补 Phase 0 遗留的**第一引擎对比**（同一批页面上跑 PaddleOCR，补版面组件评估），
+把 `render.py` / `pdf_backend` 里"暂用 / 未选定"这类说法一次性变成有结论的状态。
+
+---
+
 ## 2026-10-21 — 任务 31：GitHub Actions CI（解除 L-14）
 
 ### 任务目标

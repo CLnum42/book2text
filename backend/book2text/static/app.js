@@ -1,10 +1,10 @@
 "use strict";
 
 /**
- * Book2Text Phase 0 骨架的前端。
+ * Book2Text 的前端（原生 JS + 一份 CSS，无构建步骤）。
  *
- * 没有任何框架与构建步骤：说明书 Phase 0 第 4 项只要求「一个静态页面」，
- * 正式前端（Vue 3 + TS + Vite）属于 Phase 1 及以后。
+ * 界面版式按 docs/ui-mockups/ 的效果图落地；说明书里的 Vue 3 + TS + Vite
+ * 属于后续阶段的正式前端形态，当前有意不引入（见 docs/decisions.md D-046）。
  *
  * 令牌从 URL 查询参数取得，之后放进请求头（说明书 4.4）。
  * 图像接口也走 fetch 而不是 <img src>，因为 <img> 无法携带自定义请求头。

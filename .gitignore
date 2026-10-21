@@ -86,7 +86,7 @@ pnpm-debug.log*
 # 前端构建产物不入库（决策见 docs/decisions.md D-004）
 frontend/dist/
 
-# 注意：backend/book2text/static/ 目前是 Phase 0 手写的静态页，**要入库**。
+# 注意：backend/book2text/static/ 是手写的原生 JS 界面（D-046），**要入库**。
 # 等 Vue 3 构建流水线落地、那里变成纯构建产物时，再加忽略规则
 # （见 docs/decisions.md D-004 的后续修订）。
 
@@ -95,6 +95,9 @@ frontend/dist/
 *.exe
 *.dmg
 *.spec
+# 例外：打包配置不是产物。scripts/build_macos.sh / build_windows.bat 直接引用它，
+# 缺了新克隆就打包不了（2026-10-21 任务 32 发现，此前被 *.spec 连带忽略）。
+!packaging/book2text.spec
 
 # ---------- 编辑器与 IDE ----------
 .vscode/

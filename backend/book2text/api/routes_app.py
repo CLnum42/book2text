@@ -18,7 +18,7 @@ from .deps import library_dir as _library
 
 router = APIRouter(prefix="/api/app", tags=["app"])
 
-# 当前骨架做不到的事，如实列出（说明书 1.6：不用模拟状态）。
+# 当前仍做不到的事，如实列出（说明书 1.6：不用模拟状态）。
 _CURRENT_LIMITS = [
     "识别：一次只跑一个子进程（并发数设置项未做）；样本试识别还没有独立的对照形态",
     "审校：页眉页脚预览的图上高亮、说明书 7.5 余下的快捷键还没做",
@@ -37,7 +37,7 @@ def app_info(request: Request) -> dict[str, Any]:
         "app": {
             "name": "Book2Text",
             "version": __version__,
-            "stage": "Phase 4 已完成（MVP 走通）；现在在做 Phase 8 Step 1（双路 OCR）",
+            "stage": "Phase 1–6 已跑通；Phase 3 余项与 Phase 0 对比未完成，Windows 未验证",
         },
         "platform": {
             "label": b2t_platform.platform_label(),

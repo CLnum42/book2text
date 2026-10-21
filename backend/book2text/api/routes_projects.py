@@ -267,7 +267,7 @@ def page_image(
     """渲染项目里某一页的图像。
 
     说明书 6.1 要求缩略图由后台 Job 生成并缓存到 `cache/thumbs/`；
-    **Job 属于 Phase 2，尚未实现**，因此这里按需渲染（不写缓存）。
+    **缩略图缓存 Job 还没做（Phase 1 余项）**，因此这里按需渲染（不写缓存）。
     """
     library = _library(request)
     if size not in render.RENDER_PROFILES:

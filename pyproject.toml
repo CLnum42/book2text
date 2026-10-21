@@ -18,8 +18,9 @@ dev = [
     "pytest>=8.0",
     "httpx>=0.27",
 ]
-# OCR 引擎评估用（说明书 Phase 0 第 1–2 项）。**选型未定**，因此不放进核心依赖：
-# 最终用户不应被强制安装上百 MB 的 OCR 运行时。
+# OCR 运行时（说明书 Phase 0 第 1–2 项的引擎评估就在这组依赖上做，见 docs/ocr-evaluation.md）。
+# 装完约 300 MB（模型随安装包内置，D-013），因此不放进核心依赖：
+# 只想看界面 / 跑核心测试的人不该被迫安装。
 # 用法：uv sync --group ocr-eval
 ocr-eval = [
     "rapidocr>=3.10",

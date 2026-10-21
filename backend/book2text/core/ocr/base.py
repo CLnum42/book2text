@@ -9,8 +9,9 @@
 
 **与说明书的偏差（已记录在 docs/decisions.md D-012）：** 说明书 8.1 里
 ``OcrResult`` 的字段是 ``blocks``。但说明书 8.4 同时说明"PP-OCR 核心流程只返回行、
-不返回块"，块要由 ``core/structure/grouping.py`` 组合。``grouping.py`` 尚未实现，
-因此本层如实只提供 ``lines``，**不伪造块**。
+不返回块"，块要由 ``core/structure/grouping.py`` 按行距、缩进与对齐组合而来。
+因此**本层如实只提供 ``lines``，不伪造块**；块在识别流程的出口
+（``core/project/recognition.py``）由分组模块装配后才落库。
 """
 
 from __future__ import annotations

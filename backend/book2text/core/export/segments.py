@@ -11,9 +11,10 @@
 因此本模块只按标记行事，不猜测"这两段看起来该连"。
 
 **与持久化的关系：** `SegmentSource` 是说明书 5.3 的 `Block` 实体中与段生成相关的
-字段子集。真正的 `Block`（含 `block_id`、`review_status`、`revision` 等）属于
-Phase 1/2 的存储层，尚未实现；本模块接收一个轻量输入，便于独立测试与
-在持久化落地后直接对接。
+字段子集。真正的 `Block`（含 `block_id`、`review_status`、`revision` 等）已在
+`core/project/` 的存储层实现，由 `core/export/project.py` 从项目数据库读出后
+装成 `SegmentSource` 喂进来。本模块仍只依赖这个轻量输入，便于独立测试，
+也不把存储细节带进文本规则。
 """
 
 from __future__ import annotations

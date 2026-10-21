@@ -3,9 +3,25 @@
 本文件记录 Book2Text 的对外可见变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-到目前为止**没有任何已发布版本**。以下条目按阶段累积在「未发布」中，MVP 完成后发布 0.1.0。
+**0.1.0 是第一个可用完整版**（2026-10-21）。此前没有发布过任何版本，以下条目按阶段累积在 0.1.0 里；0.1.0 还没有 GitHub Release 与分发包，分发仍按 macOS 打包与启动脚本两种方式。
 
-## [未发布]
+## [0.1.0] — 2026-10-21
+
+### 变更 — 版本号提到 0.1.0，清掉六处"还没做"的过期描述（2026-10-21）
+
+- **版本号 `0.0.0` → `0.1.0`**（第一个可用完整版）。单一来源仍是
+  `backend/book2text/__init__.py`；macOS 打包 spec 的 `CFBundleShortVersionString`
+  同步，FastAPI、诊断日志、导出 manifest 与任务包自动跟随。决策见 D-050。
+- 修正六处与实现不符的状态文案：模块说明与启动横幅（不再是"Phase 0 骨架""审校、导出未完成"）、
+  `/api/app/info` 的 `stage`（不再是"Phase 4 已完成 / 正在做 Phase 8 Step 1"）、
+  前端文件头（不再自称 Phase 0 骨架）、OCR 适配器说明（`grouping.py` 早已实现）、
+  存储层说明（早已有 `project.db` 与 5 个迁移）。
+- 顺带修掉自发现的三处：`core/ocr/__init__.py`、`routes_projects.py` 的"Job 属于 Phase 2"、
+  `export/segments.py` 的"存储层尚未实现"；以及 `streaming.py` 里已删除的"临时上传"。
+- **打包 spec 入库**：`packaging/book2text.spec` 此前被 `.gitignore` 的 `*.spec` 连带忽略，
+  而两个打包脚本都引用它——新克隆无法打包；现已用 `!packaging/book2text.spec` 放行。
+- **保留**"PDF 库暂用 pypdfium2 / 选型未定"：D-009 状态仍是暂定，PyMuPDF 一侧从未实测（1.6 / 1.7）。
+- 只改文字与版本常量，**没有任何行为逻辑变化**；全套测试 572 passed。
 
 ### 新增 — 持续集成：每次 push / PR 在 macOS 上跑全套测试（2026-10-21）
 
