@@ -144,8 +144,8 @@ uv run pytest -q                 # 运行测试（604 项；未装 OCR 依赖时
 
 | job | 平台 | 跑什么 | 实测 |
 |---|---|---|---|
-| 全量测试 | macOS 14 | 装 `dev` + `ocr-eval`，**全套 572 项**（含真实 OCR 与 Apple Vision） | 572 passed, 0 skipped |
-| Windows 测试 | windows-latest | 只装 `dev`，`-m "not ocr"`（**deselect**，不是 skip） | 553 passed, 1 deselected, 0 skipped |
+| 全量测试 | macOS 14 | 装 `dev` + `ocr-eval`，**全套 604 项**（含真实 OCR 与 Apple Vision） | ✅ 绿（run #10，2m 21s） |
+| Windows 测试 | windows-latest | 只装 `dev`，`-m "not ocr"`（**deselect**，不是 skip） | ✅ 绿（run #10，3m 19s） |
 
 两个 job 都有一条硬规则：pytest 摘要里出现 “N skipped” 就判失败（防假绿）——
 样本缺失、依赖没装、平台不支持都不会静悄悄变绿。Windows 上真正没验证的是

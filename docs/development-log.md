@@ -97,6 +97,12 @@
   顺序影响导出、figure / decoration 排除、空文本块、页面统计。
 - 本地：`.venv/bin/python -m pytest -q` → **604 passed, 1 warning**（80.20 秒，macOS arm64 / Python 3.12.13）。
 
+**CI 实跑（GitHub Actions，真实结果）：** [run #10](https://github.com/CLnum42/book2text/actions/runs/39628786564)
+—— **Status: Success**（提交 `f2f2ee4`）。两个 job 都绿：
+`全量测试（macOS 14 + OCR）` 2m 21s、`Windows 测试（非 OCR）` 3m 19s；
+run 总时长 13m 59s（含 macOS runner 排队）。Actions 页面只有一条
+"macOS arm64 可能排队"的容量提示，与代码无关。
+
 **手动验收（真实项目副本，macOS + Chrome）：**
 
 - 打开第 9 页：5 个块框都有"1 段落…5 段落"标签，颜色按类型；
