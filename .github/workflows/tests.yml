@@ -35,11 +35,13 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安装 uv（含缓存）
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10.3.0
         with:
+          # 锁定开发机上的 uv 版本（0.12.3，生成 uv.lock 的那个），避免 CI 悄悄换版本。
+          version: "0.12.3"
           # 与开发机一致（本机 3.12.13），避免换 Python 小版本带来的差异。
           python-version: "3.12"
           enable-cache: true
@@ -51,7 +53,7 @@ jobs:
       # RapidOCR 首次识别时会把模型（约 31 MB）从 modelscope.cn 下载到包目录。
       # 不缓存的话每次都要跨境下载一次，对按 10 倍计费的 macOS runner 不划算。
       - name: 缓存 RapidOCR 模型
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .venv/lib/python3.12/site-packages/rapidocr/models
           key: rapidocr-models-${{ hashFiles('uv.lock') }}
