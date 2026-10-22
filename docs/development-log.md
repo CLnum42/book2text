@@ -115,6 +115,10 @@
 在途旧响应作废、预取上限 / 只为已识别页、当帧就画、60ms 防抖）。
 界面没有 JS 测试运行器，这些是静态约定，真实行为以真浏览器验收为准。
 
+**CI：** [run #24](https://github.com/CLnum42/book2text/actions/runs/39797664999) **Success**
+（总时长 6m57s）：`全量测试（macOS 14 + OCR）` 与 `Windows 测试（非 OCR）` 两个 job 的
+每一步都是 `completed successfully`。逐 job 时长这次页面没展开，没记数字。
+
 **未验证：** Windows / Safari 的滚动、`ResizeObserver` 与 localStorage；
 267 页**全部**识别后的滚动（本次只有 49 页已识别）；预取的单独收益（A/B 落在噪声里，L-39）；
 滚动中每页空白持续多久（只有"同帧最多 11 页暂时没框"这一条）。
