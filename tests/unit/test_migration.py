@@ -290,3 +290,33 @@ def test_layout_migration_upgrades_an_old_database_with_safe_defaults(
     assert line["text"] == "旧文本"
     # 结构版本前进了，但老数据一条没少
     assert current_version(conn) == LATEST_VERSION
+
+
+# ---------------------------------------------------------------- 迁移 0007：页面确认
+
+def test_page_confirmation_migration_defaults_to_unconfirmed(conn: sqlite3.Connection) -> None:
+    migrate(conn, MIGRATIONS)
+    columns = _columns(conn, "page")
+    assert columns["page_confirmed"]["dflt_value"] == "0"
+
+
+def test_page_confirmation_migration_upgrades_an_old_database(conn: sqlite3.Connection) -> None:
+    migrate(conn, MIGRATIONS[:6])
+    conn.execute(
+        """
+        INSERT INTO project (project_id, name, source_file_name, source_sha256,
+                             page_count, created_at, updated_at, schema_version)
+        VALUES ('p1', '老项目', 'old.pdf', 'x' * 64, 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 6)
+        """
+    )
+    conn.execute(
+        "INSERT INTO page (page_id, page_no, width_pt, height_pt) VALUES ('page1', 1, 595.0, 842.0)"
+    )
+    conn.commit()
+
+    migrate(conn, MIGRATIONS)
+    row = conn.execute("SELECT page_confirmed, page_type, include FROM page WHERE page_id = 'page1'").fetchone()
+    assert int(row["page_confirmed"]) == 0
+    assert row["page_type"] == "body"
+    assert int(row["include"]) == 1

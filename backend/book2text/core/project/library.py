@@ -103,6 +103,9 @@ class Page:
     page_type: str
     include: bool
     has_text_layer: bool
+    page_confirmed: bool = False
+    """类型与纳入状态是否经过人工确认（说明书 6.2 的「页面准备」）。
+    改类型 / 改纳入会把这一列重置为 False。"""
     is_context: bool = False
     """任务包里的只读上下文页（说明书 6.7.2）；主项目里恒为 False。"""
     pdf_page_index: int | None = None
@@ -121,6 +124,7 @@ class Page:
             "page_type": self.page_type,
             "include": self.include,
             "has_text_layer": self.has_text_layer,
+            "page_confirmed": self.page_confirmed,
             "is_context": self.is_context,
             "pdf_page_index": self.pdf_page_index,
             "note": self.note,
@@ -440,6 +444,7 @@ def list_pages(project_id: str, *, library: Path | None = None) -> list[Page]:
             page_type=row["page_type"],
             include=bool(row["include"]),
             has_text_layer=bool(row["has_text_layer"]),
+            page_confirmed=bool(_column(row, "page_confirmed") or 0),
             is_context=bool(_column(row, "is_context") or 0),
             pdf_page_index=(
                 int(row["pdf_page_index"]) if _column(row, "pdf_page_index") is not None else None
@@ -706,11 +711,22 @@ def update_page(
 
     params.append(page_id)
     with db_module.open_database(directory, apply_migrations=False) as conn:
-        cursor = conn.execute(
+        before = conn.execute(
+            "SELECT page_type, include, page_confirmed FROM page WHERE page_id = ?",
+            (page_id,),
+        ).fetchone()
+        if before is None:
+            raise ProjectError(f"找不到页面：{page_id}")
+        # 类型或纳入真的变了 → 这一页回到"未确认"（状态必须真实，D-052）
+        changed = (
+            (page_type is not None and page_type != before["page_type"])
+            or (include is not None and (1 if include else 0) != int(before["include"]))
+        )
+        if changed and int(before["page_confirmed"]):
+            assignments.append("page_confirmed = 0")
+        conn.execute(
             f"UPDATE page SET {', '.join(assignments)} WHERE page_id = ?", params
         )
-        if cursor.rowcount == 0:
-            raise ProjectError(f"找不到页面：{page_id}")
         conn.execute(
             "UPDATE project SET updated_at = ?",
             (datetime.now(timezone.utc).isoformat(timespec="seconds"),),
@@ -728,6 +744,7 @@ def update_page(
         page_type=row["page_type"],
         include=bool(row["include"]),
         has_text_layer=bool(row["has_text_layer"]),
+        page_confirmed=bool(_column(row, "page_confirmed") or 0),
         note=row["note"],
     )
 
@@ -765,6 +782,76 @@ def update_pages(
     condition = ", ".join("?" for _ in page_ids)
 
     with db_module.open_database(directory, apply_migrations=False) as conn:
+        before_rows = conn.execute(
+            f"SELECT page_id, page_type, include, page_confirmed FROM page"
+            f" WHERE page_id IN ({condition})",
+            page_ids,
+        ).fetchall()
+        found = {row["page_id"] for row in before_rows}
+        missing = [page_id for page_id in page_ids if page_id not in found]
+        if missing:
+            raise ProjectError(f"找不到这些页面：{'、'.join(missing[:5])}")
+
+        changed_ids = [
+            row["page_id"]
+            for row in before_rows
+            if (page_type is not None and page_type != row["page_type"])
+            or (include is not None and (1 if include else 0) != int(row["include"]))
+        ]
+        conn.execute(
+            f"UPDATE page SET {', '.join(assignments)} WHERE page_id IN ({condition})",
+            (*params, *page_ids),
+        )
+        if changed_ids:
+            reset_condition = ", ".join("?" for _ in changed_ids)
+            conn.execute(
+                f"UPDATE page SET page_confirmed = 0 WHERE page_id IN ({reset_condition})",
+                changed_ids,
+            )
+        conn.execute(
+            "UPDATE project SET updated_at = ?",
+            (datetime.now(timezone.utc).isoformat(timespec="seconds"),),
+        )
+        conn.commit()
+        rows = conn.execute(
+            f"SELECT * FROM page WHERE page_id IN ({condition}) ORDER BY page_no", page_ids
+        ).fetchall()
+
+    return [
+        Page(
+            page_id=row["page_id"],
+            page_no=int(row["page_no"]),
+            page_label=row["page_label"] or "",
+            width_pt=float(row["width_pt"]),
+            height_pt=float(row["height_pt"]),
+            rotation=int(row["rotation"]),
+            page_type=row["page_type"],
+            include=bool(row["include"]),
+            has_text_layer=bool(row["has_text_layer"]),
+            page_confirmed=bool(_column(row, "page_confirmed") or 0),
+            note=row["note"],
+        )
+        for row in rows
+    ]
+
+
+def confirm_pages(
+    project_id: str,
+    page_ids: Sequence[str],
+    *,
+    library: Path | None = None,
+) -> list[Page]:
+    """把若干页标成「已确认」（类型与纳入状态都是用户认可的）。
+
+    这只是状态标记，不是识别的硬闸门——未确认页照样可以识别，界面只提示一次。
+    重复确认是幂等的；改类型 / 改纳入会把状态重置为未确认（见 `update_page(s)`）。
+    """
+    if not page_ids:
+        raise ProjectError("没有指定要确认的页面")
+
+    directory = require_project_dir(project_id, library=library)
+    condition = ", ".join("?" for _ in page_ids)
+    with db_module.open_database(directory, apply_migrations=False) as conn:
         found = {
             row["page_id"]
             for row in conn.execute(
@@ -776,8 +863,8 @@ def update_pages(
             raise ProjectError(f"找不到这些页面：{'、'.join(missing[:5])}")
 
         conn.execute(
-            f"UPDATE page SET {', '.join(assignments)} WHERE page_id IN ({condition})",
-            (*params, *page_ids),
+            f"UPDATE page SET page_confirmed = 1 WHERE page_id IN ({condition})",
+            page_ids,
         )
         conn.execute(
             "UPDATE project SET updated_at = ?",
@@ -799,6 +886,7 @@ def update_pages(
             page_type=row["page_type"],
             include=bool(row["include"]),
             has_text_layer=bool(row["has_text_layer"]),
+            page_confirmed=bool(_column(row, "page_confirmed") or 0),
             note=row["note"],
         )
         for row in rows

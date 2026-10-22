@@ -18,6 +18,7 @@ from ..core.pdf import render
 from ..core.collab import assignments as assignments_module
 from ..core.project import blocks as blocks_module
 from ..core.project import library as project_library
+from ..core.project import page_setup as page_setup_module
 from ..core.project import stats as stats_module
 from .deps import library_dir as _library
 from .deps import page_payload, project_error as _project_error
@@ -255,6 +256,63 @@ def patch_pages(
             for page in updated
         ],
     }
+
+
+class ConfirmPagesRequest(BaseModel):
+    page_ids: list[str] = Field(default_factory=list, max_length=5000)
+
+
+def _setup_summary(pages) -> dict[str, int]:
+    """页面确认的汇总（界面与接口共用同一口径）。"""
+    included = [page for page in pages if page.include]
+    return {
+        "total": len(pages),
+        "body": sum(1 for page in included if page.page_type == "body"),
+        "other_types": sum(1 for page in included if page.page_type != "body"),
+        "included": len(included),
+        "excluded": len(pages) - len(included),
+        "confirmed": sum(1 for page in pages if page.page_confirmed),
+        "unconfirmed": sum(1 for page in pages if not page.page_confirmed),
+    }
+
+
+@router.post("/{project_id}/pages/confirm")
+def confirm_pages(
+    request: Request, project_id: str, body: ConfirmPagesRequest
+) -> dict[str, Any]:
+    """把若干页标成「已确认」（类型 + 纳入状态都是用户认可的）。
+
+    只记状态，不拦识别：未确认页照样能识别，界面在识别前提示一次就走。
+    """
+    _require_main(request, project_id)
+    library = _library(request)
+    if not body.page_ids:
+        raise AppError(400, "no_pages", "没有指定要确认的页面")
+    try:
+        updated = project_library.confirm_pages(
+            project_id, body.page_ids, library=library
+        )
+        all_pages = project_library.list_pages(project_id, library=library)
+        payloads = _page_payloads(request, project_id, updated)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    return {
+        "confirmed": len(updated),
+        "pages": payloads,
+        "summary": _setup_summary(all_pages),
+    }
+
+
+@router.get("/{project_id}/pages/suggestions")
+def page_suggestions(request: Request, project_id: str) -> dict[str, Any]:
+    """页面类型的自动建议（只读）。规则见 `core/project/page_setup.py`：只给建议，不落库。"""
+    _require_main(request, project_id)
+    library = _library(request)
+    try:
+        result = page_setup_module.suggest_pages_for_project(project_id, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    return result
 
 
 @router.get("/{project_id}/pages/{page_no}/image")

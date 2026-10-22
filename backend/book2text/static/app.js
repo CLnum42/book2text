@@ -116,6 +116,11 @@ function showView(name) {
     button.classList.toggle("is-on", button.dataset.viewBtn === target);
   }
   if (target !== "review") closeTaskDrawer();
+  if (target === "pages" && currentProject) {
+    // 回到页面视图时以数据库为准重拉一次：确认进度与类型不在前端缓存里说了算
+    renderPageSetup();
+    refreshPageStates();
+  }
 }
 
 /** 打开一个对话框（.mask）。同一时刻允许多层，但退出键只关最上面一个。 */
@@ -1405,6 +1410,8 @@ async function createProjectFromFile(file) {
     }
     await loadLibrary();
     await openProject(payload.project.project_id);
+    // 新建项目：先让用户确认页面类型，再谈识别（说明书 6.2）
+    await openPageSetup({ auto: true });
   } catch (error) {
     // 新建对话框开着就报在它里面，否则报在项目库上
     if (!el("new-project-mask").hidden) showError(el("new-project-modal-error"), error);
@@ -1628,6 +1635,9 @@ function renderProjectMeta() {
 
 const selectedPages = new Set();
 let selectionAnchor = null;
+/** 页面确认模式：汇总、建议与「确认所选」都在这个模式里出现。 */
+let pageSetupOpen = false;
+let setupSuggestions = [];
 
 function visiblePages() {
   const project = currentProject;
@@ -1780,6 +1790,7 @@ function updateSelectionPanel() {
   el("selection-include").disabled = count === 0 || !hasExcluded;
   el("selection-exclude").disabled = count === 0 || !selected.some((page) => page.include);
   el("selection-recognize").disabled = count === 0 || !selected.some((page) => page.include);
+  el("setup-confirm-selected").disabled = count === 0;
   el("selection-review-open").disabled = count === 0;
   el("assign-open").disabled = count === 0;
   el("selection-clear").hidden = count === 0;
@@ -1819,6 +1830,7 @@ function tileClassName(page) {
     (page.has_text_layer ? " page-tile--textlayer" : "") +
     (busyPages.has(page.page_no) ? " page-tile--busy" : "") +
     (recognition.status === "failed" ? " page-tile--failed" : "") +
+    (!page.page_confirmed && pageSetupOpen ? " page-tile--unconfirmed" : "") +
     (selectedPages.has(page.page_no) ? " page-tile--selected" : "")
   );
 }
@@ -1923,6 +1935,18 @@ function applyTileState(tile, page) {
       "现在改这一页会在合并时产生冲突";
     status.append(chip);
   }
+  if (page.page_confirmed) {
+    const chip = document.createElement("span");
+    chip.className = "status status--ok";
+    chip.textContent = "✓ 已确认";
+    chip.title = "这一页的类型与纳入状态已人工确认";
+    status.append(chip);
+  } else if (pageSetupOpen) {
+    const chip = document.createElement("span");
+    chip.className = "status status--muted";
+    chip.textContent = "待确认";
+    status.append(chip);
+  }
 
   const isBusy = busyPages.has(page.page_no);
   const button = tile.querySelector('button[data-action="recognize"]');
@@ -1937,6 +1961,209 @@ function applyTileState(tile, page) {
   }
 }
 
+// ---------------------------------------------------------------- 页面确认（说明书 6.2）
+
+function pageSetupStats() {
+  const pages = currentProject ? currentProject.pages : [];
+  const included = pages.filter((page) => page.include);
+  return {
+    total: pages.length,
+    body: included.filter((page) => page.page_type === "body").length,
+    other: included.filter((page) => page.page_type !== "body").length,
+    excluded: pages.length - included.length,
+    confirmed: pages.filter((page) => page.page_confirmed).length,
+    unconfirmed: pages.filter((page) => !page.page_confirmed).length,
+  };
+}
+
+function renderPageSetup() {
+  const bar = el("page-setup-bar");
+  if (!currentProject || currentProject.kind === "package") {
+    bar.hidden = true;
+    pageSetupOpen = false;
+    el("setup-panel").hidden = true;
+    return;
+  }
+  const stats = pageSetupStats();
+  bar.hidden = false;
+  bar.classList.toggle("setupbar--open", pageSetupOpen);
+  el("setup-summary").textContent =
+    `正文 ${stats.body} 页 · 其他类型 ${stats.other} 页 · 已排除 ${stats.excluded} 页` +
+    ` · 未确认 ${stats.unconfirmed} 页`;
+  el("setup-open").hidden = pageSetupOpen;
+  el("setup-close").hidden = !pageSetupOpen;
+  el("setup-panel").hidden = !pageSetupOpen;
+  if (!pageSetupOpen) return;
+
+  el("setup-summary-detail").textContent =
+    `共 ${stats.total} 页：已确认 ${stats.confirmed} 页，未确认 ${stats.unconfirmed} 页。` +
+    "确认只是状态标记，未确认也能识别。";
+  el("setup-confirm-selected").disabled = selectedPages.size === 0;
+  el("setup-confirm-all").disabled = stats.unconfirmed === 0;
+}
+
+/** 打开确认界面：先回数据库拉一次页面，保证看到的进度不是前端缓存。 */
+async function openPageSetup({ auto = false } = {}) {
+  if (!currentProject || currentProject.kind === "package") return;
+  showView("pages");
+  pageSetupOpen = true;
+  await refreshPageStates();
+  renderPages();
+  await loadSetupSuggestions();
+  if (auto) {
+    el("page-setup-bar").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
+
+function closePageSetup() {
+  pageSetupOpen = false;
+  el("setup-panel").hidden = true;
+  renderPages();
+}
+
+async function loadSetupSuggestions() {
+  if (!currentProject || !pageSetupOpen) return;
+  const note = el("setup-suggestion-note");
+  const list = el("setup-suggestions");
+  note.hidden = false;
+  note.textContent = "正在根据已有数据给建议（只读，不会自动改任何页）…";
+  list.innerHTML = "";
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/suggestions`
+    );
+    setupSuggestions = data.suggestions || [];
+    renderSetupSuggestions(data);
+  } catch (error) {
+    note.textContent = `建议读取失败：${error.message || "未知错误"}`;
+  }
+}
+
+function renderSetupSuggestions(data) {
+  const note = el("setup-suggestion-note");
+  const list = el("setup-suggestions");
+  list.innerHTML = "";
+  if (!data.count) {
+    note.textContent =
+      `自动建议：没有命中规则（分析了 ${data.analyzed_pages} 页）。` +
+      "规则保守——不确定的页不猜，直接按类型手动标即可。";
+    return;
+  }
+  note.textContent =
+    `自动建议（只给建议，点了才会改）：分析了 ${data.analyzed_pages} 页` +
+    (data.truncated ? "（只分析了前 60 个未确认页）" : "") +
+    "。把握程度来自规则，不是模型。";
+  for (const item of setupSuggestions) {
+    const row = document.createElement("li");
+    row.className = "setup-suggestion";
+    const head = document.createElement("div");
+    head.className = "setup-suggestion__head";
+    const where = document.createElement("strong");
+    where.textContent = `第 ${item.page_no} 页`;
+    const target = document.createElement("span");
+    target.className = "setup-suggestion__target";
+    target.textContent = `建议：${PAGE_TYPE_LABELS[item.suggested_type] || item.suggested_type}`;
+    const confidence = document.createElement("span");
+    confidence.className = `chip setup-confidence setup-confidence--${item.confidence}`;
+    confidence.textContent = `把握 ${item.confidence_label}`;
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "btn btn--sm";
+    apply.textContent = "采用建议";
+    apply.title = "只改这一页的类型；不会自动确认，也不会改别的页";
+    apply.addEventListener("click", () => applySetupSuggestion(item, apply));
+    head.append(where, target, confidence, apply);
+    const reason = document.createElement("div");
+    reason.className = "setup-suggestion__reason";
+    reason.textContent = item.reason;
+    row.append(head, reason);
+    list.append(row);
+  }
+}
+
+async function applySetupSuggestion(item, button) {
+  if (!currentProject) return;
+  button.disabled = true;
+  el("pages-error").hidden = true;
+  try {
+    await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${item.page_id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_type: item.suggested_type }),
+      }
+    );
+    await refreshPageStates();
+    renderPages();
+    await loadSetupSuggestions();
+  } catch (error) {
+    button.disabled = false;
+    showError(el("pages-error"), error);
+  }
+}
+
+async function confirmPageIds(pageIds) {
+  if (!currentProject || !pageIds.length) return;
+  el("pages-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_ids: pageIds }),
+      }
+    );
+    for (const updated of data.pages) {
+      const index = currentProject.pages.findIndex(
+        (page) => page.page_id === updated.page_id
+      );
+      if (index >= 0) currentProject.pages[index] = updated;
+    }
+    renderPages();
+    renderProjectMeta();
+    el("setup-summary-detail").textContent = `已确认 ${data.confirmed} 页。`;
+    await loadSetupSuggestions();
+  } catch (error) {
+    showError(el("pages-error"), error);
+  }
+}
+
+function confirmSelectedPages() {
+  const ids = selectionPages().map((page) => page.page_id);
+  if (!ids.length) {
+    el("setup-summary-detail").textContent = "先在左边网格里选几页，或点「确认全部未确认页」。";
+    return;
+  }
+  return confirmPageIds(ids);
+}
+
+function confirmAllUnconfirmed() {
+  if (!currentProject) return;
+  const ids = currentProject.pages
+    .filter((page) => !page.page_confirmed)
+    .map((page) => page.page_id);
+  if (!ids.length) {
+    el("setup-summary-detail").textContent = "所有页面都已确认。";
+    return;
+  }
+  return confirmPageIds(ids);
+}
+
+/**
+ * 识别前的提醒：未确认不拦人，只问一次。
+ * 返回 false 表示用户点了取消。
+ */
+function warnUnconfirmed(pages, action) {
+  const unconfirmed = pages.filter((page) => !page.page_confirmed);
+  if (!unconfirmed.length) return true;
+  return window.confirm(
+    `还有 ${unconfirmed.length} 页没有确认页面类型（正文 / 目录 / 排除等）。` +
+      `${action}仍会按现在的设置继续——未确认不拦人。要现在继续吗？`
+  );
+}
+
 function renderPages() {
   const project = currentProject;
   if (!project) return;
@@ -1946,6 +2173,7 @@ function renderPages() {
   el("page-summary").textContent =
     `共 ${all.length} 页 · 纳入 ${all.filter((page) => page.include).length} 页` +
     ` · 已识别 ${all.filter((page) => recognitionOf(page).status === "recognized").length} 页` +
+    ` · 已确认 ${all.filter((page) => page.page_confirmed).length} 页` +
     (pages.length !== all.length ? ` · 当前显示 ${pages.length} 页` : "");
 
   const grid = el("page-grid");
@@ -1961,6 +2189,7 @@ function renderPages() {
     empty.textContent = "当前筛选下没有页面。";
     grid.append(empty);
   }
+  renderPageSetup();
   updateSelectionPanel();
 }
 
@@ -1987,6 +2216,7 @@ function syncPageStates() {
     }
     applyTileState(tile, page);
   });
+  renderPageSetup();
   updateSelectionPanel();
 }
 
@@ -2014,6 +2244,7 @@ const JOB_TYPE_LABELS = {
 async function recognizePage(page) {
   const project = currentProject;
   if (!project || busyPages.has(page.page_no)) return;
+  if (!warnUnconfirmed([page], `识别第 ${page.page_no} 页`)) return;
 
   el("pages-error").hidden = true;
   busyPages.add(page.page_no);
@@ -2042,6 +2273,10 @@ async function recognizePage(page) {
 async function startBatchRecognition(scope) {
   const project = currentProject;
   if (!project) return;
+  const pending = project.pages.filter(
+    (page) => page.include && recognitionOf(page).status !== "recognized"
+  );
+  if (!warnUnconfirmed(pending, "识别全部未识别页")) return;
   el("pages-error").hidden = true;
   try {
     const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
@@ -4035,6 +4270,7 @@ async function patchSelectedPages(patch) {
     }
     renderPages();
     renderProjectMeta();
+    if (pageSetupOpen) await loadSetupSuggestions();
   } catch (error) {
     showError(el("pages-error"), error);
   }
@@ -4044,6 +4280,7 @@ async function recognizeSelection() {
   const project = currentProject;
   const pages = selectionPages().filter((page) => page.include);
   if (!project || !pages.length) return;
+  if (!warnUnconfirmed(pages, "识别所选页")) return;
 
   el("pages-error").hidden = true;
   const skip = el("selection-skip-recognized").checked;
@@ -4137,6 +4374,10 @@ function setupLibrary() {
   el("selection-include").addEventListener("click", () => patchSelectedPages({ include: true }));
   el("selection-exclude").addEventListener("click", () => patchSelectedPages({ include: false }));
   el("selection-recognize").addEventListener("click", recognizeSelection);
+  el("setup-open").addEventListener("click", () => openPageSetup());
+  el("setup-close").addEventListener("click", closePageSetup);
+  el("setup-confirm-selected").addEventListener("click", confirmSelectedPages);
+  el("setup-confirm-all").addEventListener("click", confirmAllUnconfirmed);
   el("detail-recognize").addEventListener("click", () => {
     if (detailPageNo === null) return;
     const page = currentProject.pages.find((item) => item.page_no === detailPageNo);

@@ -134,6 +134,14 @@
           <span class="muted" id="page-summary"></span>
         </div>
 
+        <div class="setupbar" id="page-setup-bar" hidden>
+          <span class="setupbar__title">页面确认</span>
+          <span class="muted" id="setup-summary"></span>
+          <span class="spacer"></span>
+          <button type="button" id="setup-open" class="btn btn--sm">确认页面…</button>
+          <button type="button" id="setup-close" class="btn btn--sm btn--ghost" hidden>收起</button>
+        </div>
+
         <div class="split">
           <div class="split__main">
             <div class="alert alert--error" id="pages-error" hidden></div>
@@ -147,6 +155,18 @@
               <button type="button" id="selection-clear" class="icon-btn" title="清空选择">✕</button>
             </h3>
             <div class="panel__sub" id="selection-range"></div>
+
+            <div class="panel__sec" id="setup-panel" hidden>
+              <div class="setup-summary" id="setup-summary-detail"></div>
+              <button type="button" id="setup-confirm-selected" class="btn btn--pri btn--block">
+                确认所选页面
+              </button>
+              <button type="button" id="setup-confirm-all" class="btn btn--block">
+                确认全部未确认页
+              </button>
+              <p class="hint" id="setup-suggestion-note" hidden></p>
+              <ol class="setup-suggestions" id="setup-suggestions"></ol>
+            </div>
 
             <div class="panel__sec">页面类型</div>
             <select id="selection-type" class="select select--block">
