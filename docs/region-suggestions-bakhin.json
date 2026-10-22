@@ -1,0 +1,386 @@
+{
+  "schema": "book2text.block-suggestion-eval.v1",
+  "project_id": "b2t_8AFV96",
+  "pdf_file": "bakhtin.pdf",
+  "dpi": 200,
+  "pages": 14,
+  "blocks": 119,
+  "counts": {
+    "header": 9,
+    "footer": 0,
+    "page_number": 5,
+    "heading": 7,
+    "body": 98
+  },
+  "suggestions": 16,
+  "detection": {
+    "header": {
+      "total": 9,
+      "suggested": 9,
+      "high": 8,
+      "recall": 1.0,
+      "high_rate": 0.8889
+    },
+    "footer": {
+      "total": 0,
+      "suggested": 0,
+      "high": 0,
+      "recall": 0.0,
+      "high_rate": 0.0
+    },
+    "page_number": {
+      "total": 5,
+      "suggested": 5,
+      "high": 5,
+      "recall": 1.0,
+      "high_rate": 1.0
+    },
+    "heading": {
+      "total": 7,
+      "suggested": 1,
+      "high": 0,
+      "recall": 0.1429,
+      "high_rate": 0.0
+    }
+  },
+  "mislabel": {
+    "body_total": 98,
+    "to_furniture": 0,
+    "to_furniture_rate": 0.0,
+    "to_heading": 1,
+    "to_heading_rate": 0.0102
+  },
+  "missed_furniture": [],
+  "wrong_type": [],
+  "hints": [
+    {
+      "page": 9,
+      "order": 0,
+      "suggested_type": "header",
+      "expected": "vii",
+      "hint": "vii",
+      "ok": true,
+      "candidates": [
+        "vii"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 16,
+      "order": 0,
+      "suggested_type": "header",
+      "expected": "xvi",
+      "hint": "xvi",
+      "ok": true,
+      "candidates": [
+        "xvi"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 17,
+      "order": 0,
+      "suggested_type": "header",
+      "expected": "xvii",
+      "hint": "xvii",
+      "ok": true,
+      "candidates": [
+        "xvii"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 22,
+      "order": 0,
+      "suggested_type": "header",
+      "expected": "3",
+      "hint": "3",
+      "ok": true,
+      "candidates": [
+        "1",
+        "3"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 24,
+      "order": 0,
+      "suggested_type": "header",
+      "expected": "5",
+      "hint": "5",
+      "ok": true,
+      "candidates": [
+        "1",
+        "5"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 25,
+      "order": 0,
+      "suggested_type": "header",
+      "expected": "6",
+      "hint": "6",
+      "ok": true,
+      "candidates": [
+        "6"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 29,
+      "order": 1,
+      "suggested_type": "header",
+      "expected": "10",
+      "hint": "10",
+      "ok": true,
+      "candidates": [
+        "10"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 30,
+      "order": 0,
+      "suggested_type": "header",
+      "expected": "11",
+      "hint": "11",
+      "ok": true,
+      "candidates": [
+        "2",
+        "11"
+      ],
+      "candidates_ok": true
+    },
+    {
+      "page": 31,
+      "order": 1,
+      "suggested_type": "header",
+      "expected": "12",
+      "hint": "12",
+      "ok": true,
+      "candidates": [
+        "12"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 20,
+      "order": 4,
+      "suggested_type": "page_number",
+      "expected": "1",
+      "hint": "1",
+      "ok": true,
+      "candidates": [
+        "1"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 22,
+      "order": 4,
+      "suggested_type": "page_number",
+      "expected": "3",
+      "hint": "3",
+      "ok": true,
+      "candidates": [
+        "3"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 26,
+      "order": 3,
+      "suggested_type": "page_number",
+      "expected": "7",
+      "hint": "7",
+      "ok": true,
+      "candidates": [
+        "7"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 29,
+      "order": 0,
+      "suggested_type": "page_number",
+      "expected": "10",
+      "hint": "10",
+      "ok": true,
+      "candidates": [
+        "10"
+      ],
+      "candidates_ok": null
+    },
+    {
+      "page": 31,
+      "order": 0,
+      "suggested_type": "page_number",
+      "expected": "11",
+      "hint": "11",
+      "ok": true,
+      "candidates": [
+        "11"
+      ],
+      "candidates_ok": null
+    }
+  ],
+  "hint_ok": 14,
+  "hint_total": 14,
+  "per_page": [
+    {
+      "page_no": 3,
+      "blocks": 24,
+      "suggestions": 0,
+      "by_type": {
+        "header": 0,
+        "footer": 0,
+        "page_number": 0,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 9,
+      "blocks": 5,
+      "suggestions": 1,
+      "by_type": {
+        "header": 1,
+        "footer": 0,
+        "page_number": 0,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 16,
+      "blocks": 19,
+      "suggestions": 1,
+      "by_type": {
+        "header": 1,
+        "footer": 0,
+        "page_number": 0,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 17,
+      "blocks": 9,
+      "suggestions": 1,
+      "by_type": {
+        "header": 1,
+        "footer": 0,
+        "page_number": 0,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 18,
+      "blocks": 18,
+      "suggestions": 1,
+      "by_type": {
+        "header": 0,
+        "footer": 0,
+        "page_number": 0,
+        "heading": 1
+      }
+    },
+    {
+      "page_no": 19,
+      "blocks": 5,
+      "suggestions": 1,
+      "by_type": {
+        "header": 0,
+        "footer": 0,
+        "page_number": 0,
+        "heading": 1
+      }
+    },
+    {
+      "page_no": 20,
+      "blocks": 5,
+      "suggestions": 1,
+      "by_type": {
+        "header": 0,
+        "footer": 0,
+        "page_number": 1,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 22,
+      "blocks": 5,
+      "suggestions": 2,
+      "by_type": {
+        "header": 1,
+        "footer": 0,
+        "page_number": 1,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 24,
+      "blocks": 4,
+      "suggestions": 1,
+      "by_type": {
+        "header": 1,
+        "footer": 0,
+        "page_number": 0,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 25,
+      "blocks": 5,
+      "suggestions": 1,
+      "by_type": {
+        "header": 1,
+        "footer": 0,
+        "page_number": 0,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 26,
+      "blocks": 4,
+      "suggestions": 1,
+      "by_type": {
+        "header": 0,
+        "footer": 0,
+        "page_number": 1,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 29,
+      "blocks": 4,
+      "suggestions": 2,
+      "by_type": {
+        "header": 1,
+        "footer": 0,
+        "page_number": 1,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 30,
+      "blocks": 6,
+      "suggestions": 1,
+      "by_type": {
+        "header": 1,
+        "footer": 0,
+        "page_number": 0,
+        "heading": 0
+      }
+    },
+    {
+      "page_no": 31,
+      "blocks": 6,
+      "suggestions": 2,
+      "by_type": {
+        "header": 1,
+        "footer": 0,
+        "page_number": 1,
+        "heading": 0
+      }
+    }
+  ]
+}
