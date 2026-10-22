@@ -527,12 +527,16 @@ def load_project(project_id: str, *, library: Path | None = None) -> Project:
 
 
 # 项目级设置的键（写在 `project.settings_json` 里）。新增键要同时改这里与界面。
-PROJECT_SETTING_KEYS = ("auto_apply_high_suggestions",)
-"""`auto_apply_high_suggestions`：识别完成后由**服务端**自动应用高把握的块类型建议。
+PROJECT_SETTING_KEYS = ("auto_apply_high_suggestions", "margin_box_judgement")
+"""项目级开关（写在 `project.settings_json` 里）：
 
-这是**用户预先授权**的开关（默认关），不是"静默应用"：每次自动应用都记一条
-`auto_apply_run`，界面有提示，并且可以一键撤销整批（见 `core/project/auto_apply.py`）。
+- `auto_apply_high_suggestions`：识别完成后由**服务端**自动应用高把握的块类型建议。
+  这是**用户预先授权**的开关（默认关），不是"静默应用"：每次自动应用都记一条
+  `auto_apply_run`，界面有提示，并且可以一键撤销整批（见 `core/project/auto_apply.py`）。
+- `margin_box_judgement`：导出时**按版心判定正文**（任务 51）。默认关；关着时完全按块类型，
+  行为与以前一致。打开后正文只收版心内的段落 / 标题，版心外一律不进正文。
 """
+MARGIN_JUDGEMENT_SETTING = "margin_box_judgement"
 
 
 def get_settings(project_id: str, *, library: Path | None = None) -> dict[str, object]:

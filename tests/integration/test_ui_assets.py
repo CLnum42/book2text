@@ -519,3 +519,21 @@ def test_margin_view_is_wired_to_the_page_view() -> None:
     assert "margin-box/suggestion" in script
     assert "margin-box/pages" in script
     assert "page-margin__box" in styles
+
+
+def test_export_margin_judgement_and_optional_notes_are_wired() -> None:
+    """导出面板：按版心判定（项目设置）与「同时导出注释」必须真的接上。"""
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="export-margin-judgement"' in page_html
+    assert 'id="export-include-notes"' in page_html
+    assert "按版心判定正文" in page_html
+    assert "同时导出注释" in page_html
+
+    # 设置项与导出选项都要进请求；预检要显示版心两层的数字
+    assert "margin_box_judgement" in script
+    assert "include_notes" in script
+    assert "margin_judgement" in script
+    assert "margin_blocks" in script
+    assert "margin_notes" in script

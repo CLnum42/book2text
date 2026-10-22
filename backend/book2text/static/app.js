@@ -673,6 +673,7 @@ function exportOptions() {
     page_types: pageTypes,
     page_numbers: pageNumbers,
     page_markers: el("export-page-markers").checked,
+    include_notes: el("export-include-notes").checked,
     exclude_header_footer: el("export-rule-header").checked,
     merge_lines_in_block: el("export-rule-merge").checked,
     restore_hyphenation: el("export-rule-hyphen").checked,
@@ -691,11 +692,12 @@ function renderPreflight(data) {
     total: meta.pages || 0,
     missing_pages: meta.printed_page_missing || [],
   };
+  const includeNotes = Boolean((data.rules || {}).include_notes);
   const rows = [
     ["导出页数", `${data.exported_pages.length} 页`],
     ["正文段数", `${body.segments || 0} 段`],
     ["正文字数", `${body.chars || 0} 字`],
-    ["注释条数", `${noteStream.notes || 0} 条`],
+    ["注释条数", `${noteStream.notes || 0} 条${includeNotes ? "" : "（未导出）"}`],
     ["注释字数", `${noteStream.chars || 0} 字`],
     ["元数据页数", `${meta.pages || 0} 页`],
     ["页码映射", `${mapping.found || 0} / ${mapping.total || 0} 页`],
@@ -706,6 +708,18 @@ function renderPreflight(data) {
     ["正文不收的块类型", data.excluded_block_types.length ? data.excluded_block_types.join("、") : "（无）"],
     ["整页版面确认", `${data.layout_confirmed_pages || 0} / ${data.layout_pages || 0} 页`],
   ];
+  if (data.margin_judgement) {
+    const marginBlocks = data.margin_blocks || {};
+    const marginNotes = data.margin_notes || {};
+    const marginPages = data.margin_pages || {};
+    const marginNumbers = data.margin_page_numbers || {};
+    rows.push([
+      "版心判定",
+      `内 ${marginBlocks.inside || 0} 块 · 外 ${marginBlocks.outside || 0} 块` +
+        ` · 脚注/旁批 ${marginNotes.total || 0} 块（其中 ${marginNotes.inside || 0} 块在版心内）` +
+        ` · 页码 ${marginNumbers.pages || 0} 页 · 未确认版心 ${(marginPages.unset || []).length} 页`,
+    ]);
+  }
   fillDefinitionList(el("export-preflight"), rows);
 
   const notes = [];
@@ -720,8 +734,26 @@ function renderPreflight(data) {
         "meta.json 里这些页的 printed_page 是 null，不拿 PDF 页号冒充。"
     );
   }
-  if (!(noteStream.notes || 0)) {
+  if (!includeNotes) {
+    notes.push("注释流默认不导出；勾选「同时导出注释」才会生成 notes.txt / notes.jsonl。");
+  } else if (!(noteStream.notes || 0)) {
     notes.push("注释流为空（没有脚注 / 旁批块）——这是正常情况。");
+  }
+  if (data.margin_judgement) {
+    const marginPages = data.margin_pages || {};
+    const unsetPages = marginPages.unset || [];
+    notes.push(
+      `按版心判定已开启：版心外 ${data.margin_blocks?.outside || 0} 块不进正文，` +
+        "书眉不写进 meta.json。"
+    );
+    if (unsetPages.length) {
+      const shown = unsetPages.slice(0, 12).join("、");
+      const more = unsetPages.length > 12 ? " 等" : "";
+      notes.push(
+        `有 ${unsetPages.length} 页没有生效版心（${shown}${more}），已退回块类型判定；` +
+          "这些页的书眉 / 页码仍可能进正文。"
+      );
+    }
   }
   if (data.unfinished_pages && data.unfinished_pages.length) {
     const shown = data.unfinished_pages.slice(0, 12).join("、");
@@ -734,7 +766,7 @@ function renderPreflight(data) {
   if (data.dropped_pages && data.dropped_pages.length) {
     notes.push(`按当前类型 / 范围过滤掉 ${data.dropped_pages.length} 页。`);
   }
-  if (data.chrome_suspect_count) {
+  if (data.chrome_suspect_count && !data.margin_judgement) {
     const sample = (data.chrome_suspects || [])
       .slice(0, 3)
       .map((item) => `第 ${item.page_no} 页「${item.text.slice(0, 10)}」`)
@@ -799,6 +831,10 @@ function exportScopeText(options) {
     parts.push("全书");
   }
   if (options.confirmed_only) parts.push("仅已确认");
+  if (options.include_notes) parts.push("含注释");
+  if (currentProject && currentProject.settings && currentProject.settings.margin_box_judgement) {
+    parts.push("按版心判定正文");
+  }
   return parts.join(" · ");
 }
 
@@ -1040,13 +1076,16 @@ async function revealExport(exportId) {
 function setupExportPanel() {
   for (const input of document.querySelectorAll(
     'input[name="export-format"], input[name="export-page-type"], #export-confirmed-only,' +
-      " #export-page-markers," +
+      " #export-page-markers, #export-include-notes," +
       " #export-rule-header, #export-rule-merge, #export-rule-hyphen," +
       " #export-rule-newlines, #export-rule-strip"
   )) {
     input.addEventListener("change", schedulePreflight);
   }
   el("export-range").addEventListener("input", schedulePreflight);
+  el("export-margin-judgement").addEventListener("change", (event) =>
+    setMarginJudgementSetting(event.target.checked)
+  );
   el("export-btn").addEventListener("click", runExport);
   el("export-preview-btn").addEventListener("click", async () => {
     try {
@@ -1474,6 +1513,8 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     }
     await refreshProject(projectId);
     applyProjectSettings();
+    // 注释流是这次导出的选项，不是项目设置：每次打开项目回到"不导出"的默认
+    el("export-include-notes").checked = false;
     await loadAutoApplyStatus();
     pagesOverlayOn = loadPageOverlayPreference();
     pagesMarginOn = loadPageMarginPreference();
@@ -6884,6 +6925,8 @@ let autoApplyAnnouncedId = null;
 function applyProjectSettings() {
   const settings = (currentProject && currentProject.settings) || {};
   el("auto-apply-suggestions").checked = Boolean(settings.auto_apply_high_suggestions);
+  // 导出面板里的项目级开关（任务 51）：默认关，关着时按块类型判定，行为与以前一致
+  el("export-margin-judgement").checked = Boolean(settings.margin_box_judgement);
 }
 
 function autoApplyTypeText(byType) {
@@ -7043,6 +7086,28 @@ async function setAutoApplySetting(on) {
   } catch (error) {
     checkbox.checked = !on;
     showError(el("selection-hint"), error);
+  }
+}
+
+/**
+ * 项目级「按版心判定正文」（任务 51）。默认关；关着时按块类型判定，行为与以前一致。
+ * 这是一个设置项，切换后立刻重跑导出预检；正文 / 元数据的形状由服务端按同一设置算。
+ */
+async function setMarginJudgementSetting(enabled) {
+  if (!currentProject) return;
+  const checkbox = el("export-margin-judgement");
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ margin_box_judgement: Boolean(enabled) }),
+    });
+    currentProject.settings = data.settings;
+    applyProjectSettings();
+    await refreshExportPreflight();
+  } catch (error) {
+    checkbox.checked = !enabled;
+    showError(el("export-error"), error);
   }
 }
 

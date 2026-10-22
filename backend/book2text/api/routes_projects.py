@@ -392,9 +392,10 @@ class LastViewPatch(BaseModel):
 
 
 class ProjectSettingsPatch(BaseModel):
-    """项目级设置（目前只有"识别完成后自动应用高把握建议"）。"""
+    """项目级设置：自动应用高把握建议 / 按版心判定正文（任务 51）。"""
 
     auto_apply_high_suggestions: bool | None = None
+    margin_box_judgement: bool | None = None
 
 
 @router.patch("/{project_id}/settings")

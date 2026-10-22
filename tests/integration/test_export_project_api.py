@@ -170,7 +170,7 @@ def test_body_excluded_is_filtered_by_type_not_by_include(
 def test_export_writes_files_and_records_it(
     client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
 ) -> None:
-    response = export(client, auth_headers, project_ready)
+    response = export(client, auth_headers, project_ready, include_notes=True)
     assert response.status_code == 200, response.text
     data = response.json()
 
@@ -270,7 +270,7 @@ def test_second_export_in_the_same_minute_gets_its_own_directory(
 def test_export_jsonl_and_both_formats(
     client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
 ) -> None:
-    both = export(client, auth_headers, project_ready, format="both").json()["record"]
+    both = export(client, auth_headers, project_ready, format="both", include_notes=True).json()["record"]
     directory = library_dir / project_ready / "exports" / both["export_id"]
     assert set(both["file_paths"]) == {
         "body.txt", "notes.txt", "body.jsonl", "notes.jsonl", "meta.json", "manifest.json"
@@ -474,7 +474,7 @@ def test_preview_does_not_write_files(
 def test_export_record_rows_are_written_to_the_database(
     client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
 ) -> None:
-    record = export(client, auth_headers, project_ready).json()["record"]
+    record = export(client, auth_headers, project_ready, include_notes=True).json()["record"]
     with db_module.open_database(library_dir / project_ready, apply_migrations=False) as conn:
         row = conn.execute(
             "SELECT * FROM export_record WHERE export_id = ?", (record["export_id"],)
@@ -501,7 +501,9 @@ def test_footnotes_go_to_notes_stream_and_body_stays_clean(
         headers=auth_headers,
     )
 
-    record = export(client, auth_headers, project_ready, format="both").json()["record"]
+    record = export(
+        client, auth_headers, project_ready, format="both", include_notes=True
+    ).json()["record"]
     directory = library_dir / project_ready / "exports" / record["export_id"]
     body = (directory / "body.txt").read_text(encoding="utf-8")
     notes = (directory / "notes.txt").read_text(encoding="utf-8")
@@ -579,7 +581,7 @@ def test_split_header_fragment_is_preserved_in_body_or_metadata(
 def test_manifest_lists_three_streams(
     client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
 ) -> None:
-    record = export(client, auth_headers, project_ready).json()["record"]
+    record = export(client, auth_headers, project_ready, include_notes=True).json()["record"]
     directory = library_dir / project_ready / "exports" / record["export_id"]
     manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["files"] == ["body.txt", "notes.txt", "meta.json", "manifest.json"]
@@ -679,7 +681,9 @@ def test_margin_note_goes_to_notes_and_figure_to_metadata(
         )
         assert response.status_code == 200, response.text
 
-    record = export(client, auth_headers, project_ready, format="both").json()["record"]
+    record = export(
+        client, auth_headers, project_ready, format="both", include_notes=True
+    ).json()["record"]
     directory = library_dir / project_ready / "exports" / record["export_id"]
     body = (directory / "body.txt").read_text(encoding="utf-8")
     notes = (directory / "notes.txt").read_text(encoding="utf-8")

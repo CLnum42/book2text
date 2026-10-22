@@ -7,6 +7,111 @@
 
 ---
 
+## 2026-10-23 — 任务 51：按版心判定正文，接进组装与导出；注释流改成可选
+
+### 任务目标
+
+用户拍板：**正文 = 版心内**，版心外一律不进正文；页码进元数据、书眉直接丢、注释流改成可选。
+补一条口径：**脚注印在版心内**，所以判定必须两层——先版心、再块类型（`footnote` / `margin_note`
+即使中心在版心内也不进正文）。加项目级开关（默认关），关掉时行为与以前完全一致。
+**不做：** 自动识别脚注、裁图、改识别流程。
+
+### 当前状态
+
+main `3964751`，754 测试全绿（任务 50 后）。导出链路：`core/export/project.py` 取块 →
+`segments.py` 按块类型生成正文 → `streams.py` 注释 / 元数据 → `txt.py` / `jsonl.py`。
+正文一直只收 `paragraph` + `heading`，但**不读版心**；注释流每次导出都写 `notes.*`。
+
+### 实施计划
+
+1. `core/export/margin_rules.py`：纯函数两层判定 + 页码候选（版心外 + 上下边带，
+   混合书眉用 `page_label` 交叉验证）。
+2. `project.py`：项目设置 `margin_box_judgement`（默认关）；开关打开时过滤 `SegmentSource.include`。
+3. `streams.py`：margin 模式的 `meta.json`（页码 / 版心四边 / 块数统计；不写 `headers` / `edge_texts`）；
+   开关关掉时保持原字段与顺序。
+4. `ExportOptions.include_notes`（默认关）+ API / 界面复选框；只在勾选时写 `notes.*`。
+5. 导出预检显示两层计数；界面加项目开关与注释复选框。
+6. 测试 + 真书（第 30 / 28 页、整本预检、关掉开关逐字节对比）+ 文档 + CI。
+
+### 实现与验证
+
+**1. 两层判定（中心点 vs 完全包含）**
+
+- **版心层**：块**中心点**在版心外 → 非正文。用中心点而不是"完全包含"：跨边界块用完全包含
+  会把正文块也排掉；中心点与版心视图里看到的框一致，也符合"这一块主要在哪边"。
+  没有 bbox 的块按"版心内"处理（不静默丢数据）。
+- **类型层**：中心在版心内，类型是 `footnote` / `margin_note` / `figure` / `decoration` /
+  `caption` / `header` / `footer` / `page_number` / `other` → 也不进正文；
+  正文流仍只收 `paragraph` + `heading`。脚注 / 旁批进注释流（勾选时）。
+- 页级 `none`：整页按正文处理（不做版心排除，仍按块类型）；项目没设版心 / 页面沿用却没有全局版心
+  → 退回块类型判定，预检报"未确认版心的页"。
+- 预检两层分开报数，真书：`内 290 块 · 外 80 块 · 脚注/旁批 3 块（其中 3 块在版心内）·
+  页码 42 页 · 未确认版心 0 页`。打开开关后正文段 363 → 286、字数 34756 → 34302。
+
+**2. 页码抽取与新口径下的误判风险**
+
+- 版心生效时只认**版心外 + 页面上下 8% 边带**里的数字；纯数字 / 罗马数字直接取值。
+- 混合书眉 `2 谁是巴赫金? 11`：只认与 PDF 印刷页码 `page_label` 一致的数字（第 30 页
+  `page_label=11` → 取 11，不取 2）；没有 `page_label` 时不从混合文本取数。**不猜**：
+  多个不同候选 → `printed_page=null`，候选全列出来。
+- 真书第 65 页有一个正文引用"39"被人工标成 `page_number`，位于页中左侧。第一版把显式
+  `page_number` 块也当候选，造成"39 vs 书眉 46"冲突、`printed_page=null`；收紧为
+  "版心生效时只看版心外 + 上下边带"后，第 65 页恢复 46，全书 **42 个候选页 42 个找到、零冲突**。
+  风险仍在：边带里的插图编号 / 表格行号等单个纯数字可能误命中；中文数字不识别；
+  没有 `page_label` 的混合书眉不取数（L-57）。
+
+**3. 元数据与注释流**
+
+- margin 模式的 `meta.json` 每页带 `margin_box` / `margin_box_mode` / `margin_applied` /
+  `margin_unset` / `block_counts`（inside + outside = 总块数；page_number 是标记数，可重叠）；
+  **不写 `headers` 与 `edge_texts`**（书眉直接丢，也不从边角文本漏回来）；`footers` / `captions` /
+  `figures` / `decorations` 保留。
+- `ExportOptions.include_notes` 默认 `False`；勾选才写 `notes.txt` / `notes.jsonl`。
+  `manifest.stats.notes_count` 只统计本次实际导出的注释。预检仍显示可用注释条数并标"未导出"。
+- 开关关掉时 `page_metadata` 走原字段与**字段顺序**；真书第 3–9 页与任务 50 旧导出的
+  `body.txt` / `meta.json` / `notes.txt` / `notes.jsonl` **逐字节相同**
+  （`body.txt` SHA-256 `49ef6fa19d7156eb…`，`meta.json` `64a39c5a6c9229bd…`）。
+
+**4. 真书验收（第 30 页 / 第 28 页）**
+
+- 第 30 页（书眉 `2谁是巴赫金?11`，页级定制版心）：`body.txt` 不含书眉、不含 11；
+  `meta.json` `printed_page=11`、`source=page_number`、**没有 `headers` 字段**、
+  `block_counts={inside:5,outside:1,page_number:1}`、`margin_box` 为这一页的定制四边。
+  不勾注释 → 只有 `body.txt` / `meta.json`；勾选 → `notes.*` 出现。
+- 第 28 页（脚注在版心内，y 0.872–0.911）：OCR 出来是两条 `paragraph`；按用户口径把它们标成
+  `footnote` 后，`body.txt` 不含注文（"曾任教育人民委员会委员" / "——译注" 都不在），
+  `notes.txt` 出现"［注 1］第 28 页 · 块 … · 脚注"，`notes.jsonl` `source_type=footnote`；
+  `printed_page=9`，`block_counts={inside:5,outside:1,page_number:1}`。
+  **注意：这是"类型层"生效，不是自动识别脚注**（L-56）。
+- 预检界面实拍：`版心判定 内 290 块 · 外 80 块 · 脚注/旁批 3 块（其中 3 块在版心内）·
+  页码 42 页 · 未确认版心 0 页`；页码映射从 1/267 变为 42/267，chrome 嫌疑从 77 降为 0。
+- 截图：[按版心判定预检](docs/screenshots/export-margin-preflight.png)、
+  [第 30 页导出](docs/screenshots/export-page30-margin.png)、
+  [第 28 页含注释](docs/screenshots/export-page28-notes.png)。
+
+**5. 测试与 CI**
+
+- `.venv/bin/python -m pytest -q` → **754 passed, 1 warning，84.54 秒**
+  （新增 12 项：margin_rules 8、导出集成 3、界面约定 1；原有注释文件断言改为显式
+  `include_notes=True`，没有弱化）。
+- 既有 `chrome_suspect_count` / 预览 / 老导出记录 / 协作包测试全部照旧。
+- CI 见下（push 后补）。
+
+### 用户操作说明
+
+1. 打开项目 → 顶栏「导出」→ 勾选「按版心判定正文」（项目设置，默认关）。
+   打开后预检会多一行"版心判定"，显示内 / 外 / 脚注旁批 / 页码 / 未确认版心。
+2. 需要注释时勾「同时导出注释」；不勾就只有 `body.txt` / `body.jsonl` / `meta.json` / `manifest.json`。
+3. 关掉开关即回到旧口径；正文 / 元数据与旧导出逐字节一致（注释是否生成由复选框决定）。
+4. 回退 `git revert`；本轮没有数据库迁移（开关写在 `project.settings_json`）。
+
+### 下一步建议
+
+把"未确认版心"接进页面视图的批量提示 / 导出预检的可点击跳转：现在预检只报 J 页，
+用户还得自己翻；可以在预检里列出前几页并直接打开审校 / 页面视图定位。
+
+---
+
 ## 2026-10-23 — 任务 50：版心（type area）的推算、数据模型与版心视图
 
 ### 任务目标

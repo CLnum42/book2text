@@ -17,8 +17,8 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from ..project import structure as structure_module
 from .segments import BLOCK_TYPE_HEADING, BLOCK_TYPE_PARAGRAPH, Segment
@@ -158,7 +158,7 @@ def render_notes_jsonl(notes: Sequence[NoteEntry]) -> str:
 
 # ---------------------------------------------------------------- 印刷页码
 
-def _page_value(text: str) -> str | None:
+def page_value(text: str) -> str | None:
     """从"纯数字 / 罗马数字"文本里取出值；不是这种形态就返回 None。"""
     compact = unicodedata.normalize("NFKC", re.sub(r"\s+", "", text or ""))
     if not compact or not structure_module.looks_like_a_number(compact):
@@ -168,6 +168,16 @@ def _page_value(text: str) -> str | None:
         return None
     value = match.group(0)
     return value.upper() if value.isalpha() else value
+
+
+def _resolve_page_number(candidates: Sequence[dict[str, object]]):
+    """候选值唯一才返回；多个不同值就是 null（不猜）。"""
+    values = {item["value"] for item in candidates}
+    if not candidates:
+        return None, None, []
+    if len(values) > 1:
+        return None, None, list(candidates)
+    return candidates[0]["value"], candidates[0]["block_type"], list(candidates)
 
 
 def extract_printed_page(blocks: Sequence):
@@ -182,20 +192,28 @@ def extract_printed_page(blocks: Sequence):
         block
         for block in blocks
         if block.block_type in (HEADER_BLOCK_TYPE, FOOTER_BLOCK_TYPE)
-        and _page_value(block.text) is not None
+        and page_value(block.text) is not None
     ]
     primary = page_numbers or edge_numbers
     candidates = [
         {"value": value, "block_type": block.block_type, "block_id": block.block_id}
         for block in primary
-        if (value := _page_value(block.text)) is not None
+        if (value := page_value(block.text)) is not None
     ]
-    values = {item["value"] for item in candidates}
-    if not candidates:
-        return None, None, []
-    if len(values) > 1:
-        return None, None, candidates
-    return candidates[0]["value"], candidates[0]["block_type"], candidates
+    return _resolve_page_number(candidates)
+
+
+def extract_printed_page_from_values(values: Mapping[str, str]):
+    """按版心判定得到的页码值（块 id → 值）→ 与旧实现同一形状。
+
+    版心外的混合书眉（如 ``2 谁是巴赫金? 11``）只采信与 `page_label` 一致的那个数字，
+    所以这里的值本身已经是确定的；多个不同值仍然返回 null。
+    """
+    candidates = [
+        {"value": value, "block_type": PAGE_NUMBER_BLOCK_TYPE, "block_id": block_id}
+        for block_id, value in values.items()
+    ]
+    return _resolve_page_number(candidates)
 
 
 # ---------------------------------------------------------------- 每页元数据
@@ -242,15 +260,32 @@ def page_metadata(
     pages: Sequence,
     blocks_by_page: dict[int, list],
     line_stats: dict[int, dict[str, int]],
+    *,
+    margin_layouts: Mapping[int, object] | None = None,
+    margin_enabled: bool = False,
 ) -> dict[str, object]:
-    """生成 `meta.json`（一页一条）。"""
+    """生成 `meta.json`（一页一条）。
+
+    ``margin_enabled`` 为真时用**按版心判定**的形状：
+    每页带版心四边 / 三态 / 块数统计（版心内 / 外 / 页码标记），
+    **不写 `headers` 与 `edge_texts`**（书眉直接丢，不许从边角文本漏回来）；
+    版心外的页码写进 `printed_page`，仍沿用"多候选打架就是 null"。
+    开关关掉时走原来的形状，逐字节不变。
+    """
     page_records: list[dict[str, object]] = []
     missing: list[int] = []
     found = 0
+    margin_summary = {"applied": 0, "unset": [], "none": []}
 
     for page in pages:
         blocks = blocks_by_page.get(page.page_no, [])
-        printed_page, source, candidates = extract_printed_page(blocks)
+        layout = (margin_layouts or {}).get(page.page_no)
+        if margin_enabled and layout is not None and getattr(layout, "applied", False):
+            printed_page, source, candidates = extract_printed_page_from_values(
+                layout.page_number_values
+            )
+        else:
+            printed_page, source, candidates = extract_printed_page(blocks)
         if printed_page is None:
             missing.append(page.page_no)
         else:
@@ -267,36 +302,87 @@ def page_metadata(
         for block in blocks:
             type_counts[block.block_type] = type_counts.get(block.block_type, 0) + 1
 
-        page_records.append(
-            {
-                "pdf_page": page.page_no,
-                "page_label": page.page_label,
-                "printed_page": printed_page,
-                "printed_page_source": source,
-                "printed_page_candidates": candidates,
-                "page_type": page.page_type,
-                "include": page.include,
-                "block_count": len(blocks),
-                "block_types": type_counts,
-                "lines": line_stats.get(
-                    page.page_no, {"assigned": 0, "conflict": 0, "unassigned": 0}
-                ),
-                "headers": texts(HEADER_BLOCK_TYPE),
-                "footers": texts(FOOTER_BLOCK_TYPE),
-                "page_numbers": texts(PAGE_NUMBER_BLOCK_TYPE),
-                "captions": texts(CAPTION_BLOCK_TYPE),
-                "figures": texts("figure"),
-                "decorations": texts("decoration"),
-                "edge_texts": _edge_texts(blocks),
-            }
-        )
+        record: dict[str, object] = {
+            "pdf_page": page.page_no,
+            "page_label": page.page_label,
+            "printed_page": printed_page,
+            "printed_page_source": source,
+            "printed_page_candidates": candidates,
+            "page_type": page.page_type,
+            "include": page.include,
+            "block_count": len(blocks),
+            "block_types": type_counts,
+            "lines": line_stats.get(
+                page.page_no, {"assigned": 0, "conflict": 0, "unassigned": 0}
+            ),
+        }
+        if margin_enabled:
+            record["footers"] = texts(FOOTER_BLOCK_TYPE)
+            record["page_numbers"] = texts(PAGE_NUMBER_BLOCK_TYPE)
+            record["captions"] = texts(CAPTION_BLOCK_TYPE)
+            record["figures"] = texts("figure")
+            record["decorations"] = texts("decoration")
+            # 书眉与边角文本**整个字段不写**：用户明确要求书眉直接丢。
+            record.update(
+                {
+                    "margin_box": (
+                        list(layout.margin_box)
+                        if layout is not None and getattr(layout, "applied", False)
+                        else None
+                    ),
+                    "margin_box_mode": (
+                        layout.margin_box_mode
+                        if layout is not None
+                        else page.margin_box_mode
+                    ),
+                    "margin_applied": bool(
+                        layout is not None and getattr(layout, "applied", False)
+                    ),
+                    "margin_unset": bool(
+                        layout is not None and getattr(layout, "unset", False)
+                    ),
+                    "block_counts": (
+                        layout.counts
+                        if layout is not None
+                        else {
+                            "inside": len(blocks),
+                            "outside": 0,
+                            "page_number": 0,
+                        }
+                    ),
+                }
+            )
+            if layout is not None:
+                if getattr(layout, "applied", False):
+                    margin_summary["applied"] += 1
+                elif getattr(layout, "unset", False):
+                    margin_summary["unset"].append(page.page_no)
+                elif getattr(layout, "margin_box_mode", "") == "none":
+                    margin_summary["none"].append(page.page_no)
+        else:
+            # 开关关掉：保持原来的字段与**顺序**（逐字节一致，不只是内容一致）
+            record["headers"] = texts(HEADER_BLOCK_TYPE)
+            record["footers"] = texts(FOOTER_BLOCK_TYPE)
+            record["page_numbers"] = texts(PAGE_NUMBER_BLOCK_TYPE)
+            record["captions"] = texts(CAPTION_BLOCK_TYPE)
+            record["figures"] = texts("figure")
+            record["decorations"] = texts("decoration")
+            record["edge_texts"] = _edge_texts(blocks)
+        page_records.append(record)
 
+    summary: dict[str, object] = {
+        "page_count": len(page_records),
+        "printed_page_found": found,
+        "printed_page_missing": missing,
+    }
+    if margin_enabled:
+        summary["margin_pages"] = {
+            "applied": margin_summary["applied"],
+            "unset": margin_summary["unset"],
+            "none": margin_summary["none"],
+        }
     return {
         "schema": META_SCHEMA_ID,
         "pages": page_records,
-        "summary": {
-            "page_count": len(page_records),
-            "printed_page_found": found,
-            "printed_page_missing": missing,
-        },
+        "summary": summary,
     }

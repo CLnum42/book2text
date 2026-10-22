@@ -40,6 +40,8 @@ class ExportRequest(BaseModel):
     include_captions: bool = True
     include_other: bool = False
     page_markers: bool = False
+    # 注释流默认不生成文件；勾选「同时导出注释」才写 notes.txt / notes.jsonl
+    include_notes: bool = False
     exclude_header_footer: bool = True
     merge_lines_in_block: bool = True
     restore_hyphenation: bool = True
@@ -61,6 +63,7 @@ class ExportRequest(BaseModel):
             include_captions=self.include_captions,
             include_other=self.include_other,
             page_markers=self.page_markers,
+            include_notes=self.include_notes,
             exclude_header_footer=self.exclude_header_footer,
             merge_lines_in_block=self.merge_lines_in_block,
             restore_hyphenation=self.restore_hyphenation,

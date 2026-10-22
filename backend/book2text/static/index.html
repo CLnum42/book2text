@@ -552,12 +552,19 @@
             </div>
             <p class="hint">默认只导出「正文」。勾选其他类型会把那些页也按同一套三流规则导出。</p>
 
-            <div class="flabel">三条流（固定）</div>
+            <div class="flabel">三条流</div>
             <p class="hint">
-              正文 = 段落 + 标题；注释 = 脚注（每条带所属页 / 块与最近前文位置）；
-              元数据 = 页眉 / 页脚 / 页码 / 图注（<code>meta.json</code>，一页一条）。
-              页眉页码不会混进正文，也不会被丢掉。
+              正文 = 段落 + 标题；注释 = 脚注 / 旁批（每条带所属页 / 块与最近前文位置，默认不导出）；
+              元数据 = 页码映射 / 图注 / 每页版心与块数（<code>meta.json</code>，一页一条）。
             </p>
+            <label class="chkline"><input type="checkbox" id="export-include-notes">
+              <span>同时导出注释（脚注 / 旁批）</span></label>
+            <div class="ruleline"><input type="checkbox" id="export-margin-judgement">
+              <div><span>按版心判定正文</span>
+                <span class="rdesc">项目设置 · 关闭时按块类型（与以前一致）</span></div></div>
+            <p class="hint">打开后正文只收<strong>版心内的段落 / 标题</strong>：版心外一律不进正文，
+              页码进元数据，书眉直接丢；脚注 / 旁批即使落在版心内也不进正文
+              （勾选「同时导出注释」才进注释流）。</p>
 
             <div class="flabel">清理规则（说明书 9.3）</div>
             <div class="ruleline"><input type="checkbox" id="export-rule-header" checked disabled>

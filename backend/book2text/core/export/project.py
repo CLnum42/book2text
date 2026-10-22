@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -28,6 +28,7 @@ from ..project import structure as structure_module
 from ..project.library import Page
 from ..storage import db as db_module
 from . import cleanup, jsonl as jsonl_module, manifest as manifest_module
+from . import margin_rules as margin_rules_module
 from . import segments as segments_module, streams as streams_module, txt
 from .joining import join_lines
 
@@ -74,6 +75,10 @@ class ExportOptions:
     include_captions: bool = True
     include_other: bool = False
     page_markers: bool = False
+    # 注释流（footnote + margin_note）默认不生成文件；勾选「同时导出注释」才写 notes.*
+    include_notes: bool = False
+    # 按版心判定正文（项目设置，默认关）。由 `_prepare` 从项目设置解析，不直接由 API 传。
+    margin_judgement: bool = False
     # 9.3 的清理规则开关
     exclude_header_footer: bool = True
     merge_lines_in_block: bool = True
@@ -112,6 +117,8 @@ class ExportOptions:
             "include_captions": self.include_captions,
             "include_other": self.include_other,
             "page_markers": self.page_markers,
+            "include_notes": self.include_notes,
+            "margin_judgement": self.margin_judgement,
             "exclude_header_footer": self.exclude_header_footer,
             "merge_lines_in_block": self.merge_lines_in_block,
             "restore_hyphenation": self.restore_hyphenation,
@@ -191,6 +198,9 @@ class Prepared:
     blocks: tuple[Any, ...]                                 # 导出范围内页面的全部块
     pages: tuple[Page, ...]                      # 参与导出的页面记录
     dropped_pages: tuple[Page, ...]              # 被排除的页面（用于预检说明）
+    # 按版心判定（任务 51）：开关关掉时为空、不参与任何行为
+    margin_enabled: bool = False
+    margin_layouts: dict[int, Any] | None = None
 
 
 def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -> Prepared:
@@ -198,9 +208,16 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
         raise ExportError(f"未知的格式：{options.format!r}（可选：{'、'.join(FORMATS)}）")
 
     target_library = library if library is not None else library_module.default_library_dir()
+    project = library_module.load_project(project_id, library=target_library)
     pages = library_module.list_pages(project_id, library=target_library)
     wanted_pages = set(options.page_numbers) if options.page_numbers else None
     rules = options.rules()
+    # 项目级开关：默认关。关着时下面的版心判定完全不参与，行为与以前一致。
+    margin_enabled = bool(
+        project.settings.get(library_module.MARGIN_JUDGEMENT_SETTING)
+    )
+    if margin_enabled:
+        options = replace(options, margin_judgement=True)
 
     selected: list[Page] = []
     dropped: list[Page] = []
@@ -226,8 +243,22 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
     for block in page_blocks:
         blocks_by_page.setdefault(block.page_no, []).append(block)
 
+    margin_layouts = (
+        margin_rules_module.classify_pages(
+            selected, blocks_by_page, project, enabled=True
+        )
+        if margin_enabled
+        else {}
+    )
+
     sources: list[segments_module.SegmentSource] = []
     for block in page_blocks:
+        include = block.include
+        if margin_enabled:
+            layout = margin_layouts.get(block.page_no)
+            # 版心外不进正文；没有生效版心的页（unset / none）退回块类型判定。
+            if layout is not None and layout.applied:
+                include = include and block.block_id in layout.inside_ids
         # 导出的是 Block.text（说明书 5.3：保留行内换行），按 `\n` 拆回行再做 9.2 的合并。
         # 不要用 block_line 的文本：那是识别原文，人工改过的字会丢。
         text, hyphenations = _join_block(block.text.split("\n"), rules)
@@ -238,7 +269,7 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
                 order_index=block.order_index,
                 block_type=block.block_type,
                 text=text,
-                include=block.include,
+                include=include,
                 deleted=False,
                 review_status=block.review_status,
                 continues_to_next=block.continues_to_next,
@@ -276,7 +307,13 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
             line_stats[page_no].get(line.layout_status, 0) + 1
         )
 
-    meta = streams_module.page_metadata(selected, blocks_by_page, line_stats)
+    meta = streams_module.page_metadata(
+        selected,
+        blocks_by_page,
+        line_stats,
+        margin_layouts=margin_layouts,
+        margin_enabled=margin_enabled,
+    )
 
     return Prepared(
         options=options,
@@ -287,6 +324,8 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
         blocks=tuple(page_blocks),
         pages=tuple(selected),
         dropped_pages=tuple(dropped),
+        margin_enabled=margin_enabled,
+        margin_layouts=margin_layouts,
     )
 
 
@@ -307,7 +346,13 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
     segments = prepared.segments
     target_library = library if library is not None else library_module.default_library_dir()
     states = blocks_module.page_recognition_states(project_id, library=target_library)
-    chrome = _chrome_suspects(project_id, library=target_library, options=options)
+    # 按版心判定打开时，"页眉 / 页码还没标类型"的嫌疑提示不再适用：
+    # 版心外本来就不进正文，再提示会自相矛盾。
+    chrome = (
+        []
+        if prepared.margin_enabled
+        else _chrome_suspects(project_id, library=target_library, options=options)
+    )
     # 版面确认是块级状态；预检只报"整本有没有人确认过"，不阻止导出（说明书 1.6 / D-051）
     all_blocks = blocks_module.list_blocks(project_id, library=target_library)
     layout_confirmed = sum(1 for block in all_blocks if block.layout_confirmed)
@@ -329,6 +374,28 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
     meta_summary = prepared.meta.get("summary", {})
     body_char_count = sum(len(segment.text) for segment in segments)
     note_char_count = sum(len(note.text) for note in notes)
+
+    layouts = prepared.margin_layouts or {}
+    margin_blocks = {
+        "inside": sum(len(layout.inside_ids) for layout in layouts.values()),
+        "outside": sum(len(layout.outside_ids) for layout in layouts.values()),
+        "page_number": sum(len(layout.page_number_values) for layout in layouts.values()),
+    }
+    margin_notes_total = sum(len(layout.note_ids) for layout in layouts.values())
+    margin_notes_inside = sum(len(layout.note_inside_ids) for layout in layouts.values())
+    margin_unset_pages = sorted(
+        layout.page_no for layout in layouts.values() if layout.unset
+    )
+    margin_none_pages = sorted(
+        layout.page_no
+        for layout in layouts.values()
+        if layout.margin_box_mode == "none" and not layout.applied
+    )
+    page_number_pages = [
+        int(record.get("pdf_page") or 0)
+        for record in prepared.meta.get("pages", [])
+        if record.get("printed_page_candidates")
+    ]
 
     return {
         "input_blocks": len(prepared.sources),
@@ -380,6 +447,23 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
         "layout_pages": len(prepared.pages),
         "layout_confirmed_pages": len(prepared.pages) - len(layout_unconfirmed_pages),
         "layout_unconfirmed_pages": layout_unconfirmed_pages,
+        # 按版心判定（任务 51）的两层计数：版心层 / 类型层分开报，用户能判断是哪层在起作用
+        "margin_judgement": prepared.margin_enabled,
+        "margin_blocks": margin_blocks,
+        "margin_notes": {
+            "total": margin_notes_total,
+            "inside": margin_notes_inside,
+            "outside": margin_notes_total - margin_notes_inside,
+        },
+        "margin_page_numbers": {
+            "pages": len(page_number_pages),
+            "page_nos": page_number_pages,
+        },
+        "margin_pages": {
+            "applied": sum(1 for layout in layouts.values() if layout.applied),
+            "unset": margin_unset_pages,
+            "none": margin_none_pages,
+        },
     }
 
 
@@ -522,22 +606,24 @@ def run_export(
         (directory / BODY_TXT_FILE_NAME).write_text(_render_text(prepared), encoding="utf-8", newline="\n")
         written.append(BODY_TXT_FILE_NAME)
         data_files.append(BODY_TXT_FILE_NAME)
-        (directory / NOTES_TXT_FILE_NAME).write_text(
-            streams_module.render_notes_txt(prepared.notes), encoding="utf-8", newline="\n"
-        )
-        written.append(NOTES_TXT_FILE_NAME)
-        data_files.append(NOTES_TXT_FILE_NAME)
+        if options.include_notes:
+            (directory / NOTES_TXT_FILE_NAME).write_text(
+                streams_module.render_notes_txt(prepared.notes), encoding="utf-8", newline="\n"
+            )
+            written.append(NOTES_TXT_FILE_NAME)
+            data_files.append(NOTES_TXT_FILE_NAME)
     if options.format in (FORMAT_JSONL, FORMAT_BOTH):
         (directory / BODY_JSONL_FILE_NAME).write_text(
             _render_jsonl(prepared, library=target_library), encoding="utf-8", newline="\n"
         )
         written.append(BODY_JSONL_FILE_NAME)
         data_files.append(BODY_JSONL_FILE_NAME)
-        (directory / NOTES_JSONL_FILE_NAME).write_text(
-            streams_module.render_notes_jsonl(prepared.notes), encoding="utf-8", newline="\n"
-        )
-        written.append(NOTES_JSONL_FILE_NAME)
-        data_files.append(NOTES_JSONL_FILE_NAME)
+        if options.include_notes:
+            (directory / NOTES_JSONL_FILE_NAME).write_text(
+                streams_module.render_notes_jsonl(prepared.notes), encoding="utf-8", newline="\n"
+            )
+            written.append(NOTES_JSONL_FILE_NAME)
+            data_files.append(NOTES_JSONL_FILE_NAME)
 
     (directory / META_FILE_NAME).write_text(
         json.dumps(prepared.meta, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n"
@@ -561,7 +647,8 @@ def run_export(
         ),
         exported_at=moment,
         extra_files=[name for name in written if name != body_file],
-        notes=prepared.notes,
+        # manifest 描述的是"这次导出了什么"：没勾注释时 notes 统计为 0，files 里也没有它们
+        notes=prepared.notes if options.include_notes else (),
         meta=prepared.meta,
     )
     (directory / MANIFEST_FILE_NAME).write_text(
