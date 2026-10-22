@@ -54,6 +54,8 @@
 - 一条 `UPDATE page SET page_type = CASE ...` 完成映射，再一条
   `UPDATE page SET include = CASE WHEN page_type='body' THEN 1 ELSE 0 END`。
   不删列、不删页。
+- 顺手修了 `project.schema_version` 迁移后不更新的问题：老项目的界面"数据库版本"
+  一直停在建库时的数字；现在迁移结束（以及每次打开）会同步成实际版本。
 - 单测 `test_page_type_migration_maps_every_old_row` 建 12 行覆盖用户给的表：
   include=1 的 body/toc、被排除的 body、cover/front/foreword/copyright、toc、
   appendix/index/blank/other——每一行都断言新类型与 `include`，并断言页数不变。

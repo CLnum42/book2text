@@ -365,3 +365,4 @@ def test_page_type_migration_maps_every_old_row(conn: sqlite3.Connection) -> Non
     for no, _old_type, _old_include, expected_type, expected_include in cases:
         assert rows[no] == (expected_type, expected_include), no
     assert len(rows) == len(cases), "迁移不丢页"
+    assert conn.execute("SELECT schema_version FROM project").fetchone()[0] == LATEST_VERSION

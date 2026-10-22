@@ -67,20 +67,28 @@ def migrate(conn: Connection, migrations: list[Migration]) -> int:
         key=lambda item: item.version,
     )
 
-    if not pending:
-        return have
+    if pending:
+        # 版本号必须连续且唯一，否则迁移顺序会出现歧义
+        versions = [migration.version for migration in pending]
+        if len(set(versions)) != len(versions):
+            raise ValueError(f"迁移版本号重复：{versions}")
 
-    # 版本号必须连续且唯一，否则迁移顺序会出现歧义
-    versions = [migration.version for migration in pending]
-    if len(set(versions)) != len(versions):
-        raise ValueError(f"迁移版本号重复：{versions}")
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        for migration in pending:
+            migration.apply(conn)
+            conn.execute(
+                f"INSERT INTO {META_TABLE} (version, description, applied_at) VALUES (?, ?, ?)",
+                (migration.version, migration.description, now),
+            )
+        conn.commit()
 
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    for migration in pending:
-        migration.apply(conn)
-        conn.execute(
-            f"INSERT INTO {META_TABLE} (version, description, applied_at) VALUES (?, ?, ?)",
-            (migration.version, migration.description, now),
-        )
-    conn.commit()
-    return current_version(conn)
+    # 老库的 `project.schema_version` 只在创建时写过一次，迁移后要同步成当前版本，
+    # 否则界面的"数据库版本"会一直停在建库时的数字。
+    has_project = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'project'"
+    ).fetchone()
+    current = current_version(conn)
+    if has_project and current:
+        conn.execute("UPDATE project SET schema_version = ?", (current,))
+        conn.commit()
+    return current
