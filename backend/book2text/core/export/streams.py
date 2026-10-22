@@ -1,8 +1,9 @@
 """三条导出流里的「注释」与「元数据」（说明书 6.6 / 9.4 / 9.5 的扩展）。
 
 - **正文流**仍由 `segments.py` 生成（页面类型 / 块类型过滤在 `project.py` 里）。
-- **注释流**：`footnote` 块单独成条；每条带页码、块 id、以及"最近的前一个正文块/段"
-  作为引用位置。找不到可靠前文就如实写"未定位"，不猜。
+- **注释流**：`footnote`（脚注）与 `margin_note`（旁批 / 侧栏 / 边注）单独成条；
+  每条带页码、块 id、来源类型、以及"最近的前一个正文块/段"作为引用位置。
+  找不到可靠前文就如实写"未定位"，不猜。
 - **元数据**：一页一条，保留 `pdf_page ↔ printed_page` 映射、页眉 / 页脚 / 页码原文、
   图注原文、类型分布与行归属统计。印刷页码只从 `page_number` 块与页眉页脚里的
   纯数字 / 罗马数字块抽取，抽不到就是 null，并给出候选。
@@ -25,6 +26,9 @@ from .segments import BLOCK_TYPE_HEADING, BLOCK_TYPE_PARAGRAPH, Segment
 BODY_BLOCK_TYPES = frozenset({BLOCK_TYPE_PARAGRAPH, BLOCK_TYPE_HEADING})
 
 NOTE_BLOCK_TYPE = "footnote"
+MARGIN_NOTE_BLOCK_TYPE = "margin_note"
+NOTE_BLOCK_TYPES = frozenset({NOTE_BLOCK_TYPE, MARGIN_NOTE_BLOCK_TYPE})
+NOTE_TYPE_LABELS = {NOTE_BLOCK_TYPE: "脚注", MARGIN_NOTE_BLOCK_TYPE: "旁批"}
 HEADER_BLOCK_TYPE = "header"
 FOOTER_BLOCK_TYPE = "footer"
 PAGE_NUMBER_BLOCK_TYPE = "page_number"
@@ -53,6 +57,7 @@ class NoteEntry:
     reference_block_id: str | None
     reference_segment_id: str | None
     located: bool
+    source_type: str = NOTE_BLOCK_TYPE
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -60,6 +65,7 @@ class NoteEntry:
             "seq": self.seq,
             "page": self.page_no,
             "block_id": self.block_id,
+            "source_type": self.source_type,
             "text": self.text,
             "reference": {
                 "status": "located" if self.located else "unlocated",
@@ -96,7 +102,7 @@ def build_notes(
 
     notes: list[NoteEntry] = []
     for block in ordered:
-        if block.block_type != NOTE_BLOCK_TYPE or not block.include:
+        if block.block_type not in NOTE_BLOCK_TYPES or not block.include:
             continue
         if confirmed_only and block.review_status != "confirmed":
             continue
@@ -120,6 +126,7 @@ def build_notes(
                 reference_block_id=previous.block_id if previous else None,
                 reference_segment_id=segment_of.get(previous.block_id) if previous else None,
                 located=previous is not None,
+                source_type=block.block_type,
             )
         )
     return notes
@@ -129,7 +136,8 @@ def render_notes_txt(notes: Sequence[NoteEntry]) -> str:
     """注释流 TXT：一条一段，头两行写定位信息；未定位就直说。"""
     chunks: list[str] = []
     for note in notes:
-        head = f"［注 {note.seq}］第 {note.page_no} 页 · 块 {note.block_id}"
+        kind = NOTE_TYPE_LABELS.get(note.source_type, note.source_type)
+        head = f"［注 {note.seq}］第 {note.page_no} 页 · 块 {note.block_id} · {kind}"
         if note.located:
             where = f"引用：第 {note.reference_page} 页 · 块 {note.reference_block_id}"
             if note.reference_segment_id:
@@ -277,6 +285,8 @@ def page_metadata(
                 "footers": texts(FOOTER_BLOCK_TYPE),
                 "page_numbers": texts(PAGE_NUMBER_BLOCK_TYPE),
                 "captions": texts(CAPTION_BLOCK_TYPE),
+                "figures": texts("figure"),
+                "decorations": texts("decoration"),
                 "edge_texts": _edge_texts(blocks),
             }
         )

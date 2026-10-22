@@ -366,3 +366,79 @@ def test_page_type_migration_maps_every_old_row(conn: sqlite3.Connection) -> Non
         assert rows[no] == (expected_type, expected_include), no
     assert len(rows) == len(cases), "迁移不丢页"
     assert conn.execute("SELECT schema_version FROM project").fetchone()[0] == LATEST_VERSION
+
+
+# ---------------------------------------------------------------- 迁移 0009：整页版面确认
+
+def test_page_layout_migration_adds_column_and_reset_triggers(
+    conn: sqlite3.Connection,
+) -> None:
+    migrate(conn, MIGRATIONS)
+    columns = _columns(conn, "page")
+    assert columns["layout_confirmed"]["dflt_value"] == "0"
+
+    conn.execute(
+        """
+        INSERT INTO project (project_id, name, source_file_name, source_sha256,
+                             page_count, created_at, updated_at, schema_version)
+        VALUES ('p1', '项目', 'p.pdf', 'x' * 64, 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 9)
+        """
+    )
+    conn.execute(
+        "INSERT INTO page (page_id, page_no, width_pt, height_pt) VALUES ('page1', 1, 595, 842)"
+    )
+    insert_block = (
+        "INSERT INTO block (block_id, page_id, origin, order_index, bbox, block_type,"
+        " ocr_text, text, created_at, updated_at)"
+        " VALUES (?, 'page1', 'ocr', ?, '[0.1,0.1,0.9,0.2]', 'paragraph',"
+        " '文本', '文本', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
+    )
+    conn.execute(insert_block, ("b1", 0))
+    conn.execute(insert_block, ("b2", 1))
+    conn.commit()
+
+    def confirmed() -> int:
+        return int(
+            conn.execute("SELECT layout_confirmed FROM page WHERE page_id='page1'").fetchone()[0]
+        )
+
+    def set_confirmed() -> None:
+        conn.execute("UPDATE page SET layout_confirmed = 1 WHERE page_id='page1'")
+        conn.commit()
+        assert confirmed() == 1
+
+    # 改文本 / 改块级 include 不算版面变化
+    set_confirmed()
+    conn.execute("UPDATE block SET text = '改过' WHERE block_id = 'b1'")
+    conn.commit()
+    assert confirmed() == 1, "改文本不该重置整页版面确认"
+    conn.execute("UPDATE block SET include = 0 WHERE block_id = 'b1'")
+    conn.commit()
+    assert confirmed() == 1, "块级 include 不是版面"
+
+    # 类型 / 框 / 顺序 / 软删除 / 新增块都要重置
+    set_confirmed()
+    conn.execute("UPDATE block SET block_type = 'header' WHERE block_id = 'b1'")
+    conn.commit()
+    assert confirmed() == 0, "改类型要重置"
+
+    set_confirmed()
+    conn.execute("UPDATE block SET bbox = '[0.2,0.2,0.8,0.3]' WHERE block_id = 'b1'")
+    conn.commit()
+    assert confirmed() == 0, "改框要重置"
+
+    set_confirmed()
+    conn.execute("UPDATE block SET order_index = 5 WHERE block_id = 'b2'")
+    conn.commit()
+    assert confirmed() == 0, "改顺序要重置"
+
+    set_confirmed()
+    conn.execute("UPDATE block SET deleted_at = '2026-01-02T00:00:00+00:00' WHERE block_id = 'b2'")
+    conn.commit()
+    assert confirmed() == 0, "软删除要重置"
+
+    set_confirmed()
+    conn.execute(insert_block, ("b3", 2))
+    conn.commit()
+    assert confirmed() == 0, "新增块要重置"

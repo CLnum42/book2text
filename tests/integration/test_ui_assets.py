@@ -218,6 +218,25 @@ def test_page_confirmation_type_picker_has_exactly_five_types_and_no_include_swi
     assert ".ptype__suggest" in css
 
 
+def test_page_layout_panel_and_filter_are_present() -> None:
+    """第 45 号任务：整页版面确认面板 + “版面未确认”筛选 + 旁批类型。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    for element_id in ("layout-panel", "layout-panel-status", "layout-confirm"):
+        assert f'id="{element_id}"' in page, element_id
+    assert page.count('value="layout_unconfirmed"') == 2, "页面视图与审校视图都要有筛选"
+    assert 'id="suggestion-apply-all"' in page
+
+    script = _script()
+    assert "function renderLayoutPanel(" in script
+    assert "function confirmPageLayout(" in script
+    assert "layout_unconfirmed" in script
+    assert 'margin_note: "旁批"' in script
+
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    assert ".box--type-margin_note" in css
+    assert ".layout-panel" in css
+
+
 # ---------------------------------------------------------------- 任务 41：建议徽章 / 抽屉
 
 def _script() -> str:

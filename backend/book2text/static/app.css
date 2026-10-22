@@ -548,6 +548,15 @@ textarea {
   flex: none; padding: 10px 16px; border-bottom: 1px solid var(--line-soft);
   display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap;
 }
+.layout-panel {
+  flex: none; padding: 9px 16px 10px; border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-2);
+}
+.layout-panel__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.layout-panel__status { font-size: 12px; color: var(--muted); }
+.layout-panel__status.is-ok { color: var(--ok-text); font-weight: 600; }
+.layout-panel .hint { margin: 5px 0 0; font-size: 11px; line-height: 1.55; color: var(--faint); }
+.layout-panel .hint strong { color: var(--text-2); }
 .blks { flex: 1; min-height: 0; overflow: auto; list-style: none; margin: 0; padding: 0; }
 .efoot {
   flex: none; border-top: 1px solid var(--line); padding: 10px 16px;
@@ -583,6 +592,7 @@ textarea {
 .page-overlay .box--type-caption     { --box-color: #7e22ce; --box-bg: rgba(126, 34, 206, .10); }
 .page-overlay .box--type-figure      { --box-color: #15803d; --box-bg: rgba(21, 128, 61, .12); }
 .page-overlay .box--type-decoration  { --box-color: #be123c; --box-bg: rgba(190, 18, 60, .10); }
+.page-overlay .box--type-margin_note { --box-color: #a21caf; --box-bg: rgba(162, 28, 175, .10); }
 .page-overlay .box--type-other       { --box-color: #475569; --box-bg: rgba(71, 85, 105, .10); }
 
 .page-overlay .box:hover { border-color: var(--accent); }

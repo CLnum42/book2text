@@ -144,6 +144,9 @@ class Page:
     page_confirmed: bool = False
     """页面类型是否经过人工确认（说明书 6.2 的「页面准备」）。
     改类型会把这一列重置为 False；`include` 是派生值，见 `page_type_includes`。"""
+    layout_confirmed: bool = False
+    """整页的**版面**（哪些块算正文）是否经过人工确认。
+    与 page_confirmed 是两个概念；任何块的类型 / 框 / 顺序改动都会由触发器重置。"""
     is_context: bool = False
     """任务包里的只读上下文页（说明书 6.7.2）；主项目里恒为 False。"""
     pdf_page_index: int | None = None
@@ -163,6 +166,7 @@ class Page:
             "include": self.include,
             "has_text_layer": self.has_text_layer,
             "page_confirmed": self.page_confirmed,
+            "layout_confirmed": self.layout_confirmed,
             "is_context": self.is_context,
             "pdf_page_index": self.pdf_page_index,
             "note": self.note,
@@ -483,6 +487,7 @@ def list_pages(project_id: str, *, library: Path | None = None) -> list[Page]:
             include=bool(row["include"]),
             has_text_layer=bool(row["has_text_layer"]),
             page_confirmed=bool(_column(row, "page_confirmed") or 0),
+            layout_confirmed=bool(_column(row, "layout_confirmed") or 0),
             is_context=bool(_column(row, "is_context") or 0),
             pdf_page_index=(
                 int(row["pdf_page_index"]) if _column(row, "pdf_page_index") is not None else None
@@ -780,6 +785,7 @@ def update_page(
         include=bool(row["include"]),
         has_text_layer=bool(row["has_text_layer"]),
         page_confirmed=bool(_column(row, "page_confirmed") or 0),
+        layout_confirmed=bool(_column(row, "layout_confirmed") or 0),
         note=row["note"],
     )
 
@@ -855,6 +861,7 @@ def update_pages(
             include=bool(row["include"]),
             has_text_layer=bool(row["has_text_layer"]),
             page_confirmed=bool(_column(row, "page_confirmed") or 0),
+            layout_confirmed=bool(_column(row, "layout_confirmed") or 0),
             note=row["note"],
         )
         for row in rows
@@ -913,6 +920,7 @@ def confirm_pages(
             include=bool(row["include"]),
             has_text_layer=bool(row["has_text_layer"]),
             page_confirmed=bool(_column(row, "page_confirmed") or 0),
+            layout_confirmed=bool(_column(row, "layout_confirmed") or 0),
             note=row["note"],
         )
         for row in rows

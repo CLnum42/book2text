@@ -12,6 +12,7 @@ from . import (
     migration_0006_layout,
     migration_0007_page_setup,
     migration_0008_page_types,
+    migration_0009_page_layout,
 )
 
 MIGRATIONS: list[Migration] = [
@@ -23,6 +24,7 @@ MIGRATIONS: list[Migration] = [
     migration_0006_layout.MIGRATION,
     migration_0007_page_setup.MIGRATION,
     migration_0008_page_types.MIGRATION,
+    migration_0009_page_layout.MIGRATION,
 ]
 
 LATEST_VERSION = max(migration.version for migration in MIGRATIONS)

@@ -93,3 +93,38 @@ def test_notes_jsonl_is_one_record_per_line() -> None:
     lines = streams.render_notes_jsonl(notes).strip().splitlines()
     assert len(lines) == 2
     assert '"schema":"book2text.note.v1"' in lines[0]
+
+
+def test_margin_note_goes_to_notes_with_source_type() -> None:
+    notes = streams.build_notes(
+        [
+            block("b1", 1, 0, "paragraph", "正文"),
+            block("n1", 1, 1, "margin_note", "旁批：这里要核对"),
+        ],
+        [],
+        text_for_block=lambda item: item.text,
+    )
+    assert len(notes) == 1
+    assert notes[0].source_type == "margin_note"
+    payload = notes[0].to_dict()
+    assert payload["source_type"] == "margin_note"
+    assert payload["reference"]["block_id"] == "b1"
+    text = streams.render_notes_txt(notes)
+    assert "旁批" in text
+    assert "旁批：这里要核对" in text
+
+
+def test_page_metadata_keeps_figure_and_decoration_text() -> None:
+    page = SimpleNamespace(
+        page_no=1, page_label="", page_type="body", include=True
+    )
+    blocks = [
+        block("f1", 1, 0, "figure", "图 1 手势"),
+        block("d1", 1, 1, "decoration", "装饰线旁的题字"),
+        block("c1", 1, 2, "caption", "图注"),
+    ]
+    meta = streams.page_metadata([page], {1: blocks}, {})
+    record = meta["pages"][0]
+    assert record["figures"] == [{"block_id": "f1", "text": "图 1 手势"}]
+    assert record["decorations"] == [{"block_id": "d1", "text": "装饰线旁的题字"}]
+    assert record["captions"] == [{"block_id": "c1", "text": "图注"}]

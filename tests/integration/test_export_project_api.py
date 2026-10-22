@@ -651,3 +651,69 @@ def test_body_stream_is_paragraph_and_heading_only(
     assert "图注：这一页的插图说明。" not in body, "caption 不进正文"
     page1 = next(item for item in meta["pages"] if item["pdf_page"] == 1)
     assert page1["captions"][0]["text"] == "图注：这一页的插图说明。"
+
+
+def test_margin_note_goes_to_notes_and_figure_to_metadata(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    library_dir: Path,
+    project_ready: str,
+) -> None:
+    """旁批进注释流（带来源类型），插图 / 装饰的原文进元数据；正文保持干净。"""
+    page = client.get(
+        f"/api/projects/{project_ready}/pages/1/blocks", headers=auth_headers
+    ).json()
+    margin, figure = page["blocks"][0], page["blocks"][1]
+    for block, block_type, text in (
+        (margin, "margin_note", "旁批：这一行要核对"),
+        (figure, "figure", "图 1 手势"),
+    ):
+        response = client.patch(
+            f"/api/projects/{project_ready}/blocks/{block['block_id']}",
+            json={
+                "block_type": block_type,
+                "text": text,
+                "expected_revision": block["revision"],
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+
+    record = export(client, auth_headers, project_ready, format="both").json()["record"]
+    directory = library_dir / project_ready / "exports" / record["export_id"]
+    body = (directory / "body.txt").read_text(encoding="utf-8")
+    notes = (directory / "notes.txt").read_text(encoding="utf-8")
+    notes_jsonl = (directory / "notes.jsonl").read_text(encoding="utf-8")
+    meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
+
+    assert "旁批：这一行要核对" not in body
+    assert "图 1 手势" not in body
+    assert "旁批：这一行要核对" in notes
+    assert "旁批" in notes
+    assert '"source_type":"margin_note"' in notes_jsonl
+    page_meta = next(item for item in meta["pages"] if item["pdf_page"] == 1)
+    assert page_meta["figures"] == [{"block_id": figure["block_id"], "text": "图 1 手势"}]
+    assert page_meta["decorations"] == []
+
+
+def test_preflight_reports_page_layout_confirmation(
+    client: TestClient, auth_headers: dict[str, str], project_ready: str
+) -> None:
+    before = client.post(
+        f"/api/projects/{project_ready}/export/preflight", json={}, headers=auth_headers
+    ).json()
+    assert before["layout_pages"] == 3
+    assert before["layout_confirmed_pages"] == 0
+    assert before["layout_unconfirmed_pages"] == [1, 2, 3]
+
+    response = client.post(
+        f"/api/projects/{project_ready}/pages/1/layout/confirm",
+        json={},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    after = client.post(
+        f"/api/projects/{project_ready}/export/preflight", json={}, headers=auth_headers
+    ).json()
+    assert after["layout_confirmed_pages"] == 1
+    assert after["layout_unconfirmed_pages"] == [2, 3]

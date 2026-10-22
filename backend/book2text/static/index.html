@@ -44,6 +44,7 @@
             <option value="uncertain">有不确定块</option>
             <option value="failed">识别失败</option>
             <option value="candidate">有待选新结果</option>
+            <option value="layout_unconfirmed">版面未确认</option>
             <option value="divergence_chars">有分歧（汉字级）</option>
             <option value="divergence">有分歧（含标点级）</option>
           </select>
@@ -111,6 +112,7 @@
               <option value="uncertain">有不确定块</option>
               <option value="failed">识别失败</option>
               <option value="candidate">有待选新结果</option>
+              <option value="layout_unconfirmed">版面未确认</option>
               <option value="divergence_chars">有分歧（汉字级）</option>
               <option value="divergence">有分歧（含标点级）</option>
             </select>
@@ -296,8 +298,6 @@
               <strong id="page-detail-title">审校</strong>
               <span id="page-detail-meta" class="muted"></span>
               <span class="spacer"></span>
-              <button type="button" id="suggestion-apply-all" class="btn btn--sm" hidden
-                      title="只把把握较大的建议一次改成对应类型：不改审校状态、不删文字，每一块都能单独撤销">采用全部建议</button>
               <button type="button" id="candidate-open" class="btn btn--sm" hidden>对比新结果</button>
               <button type="button" id="aux-run" class="btn btn--sm"
                       title="用第二引擎逐行复核这一页（说明书 8.5）：复核过的分歧行会在块里标出另一路候选，可逐行换过去">第二引擎复核</button>
@@ -305,6 +305,23 @@
                       title="在左边的页面上拖出一个框，为漏检的区域补一个块（说明书 6.4）">✚ 框选新增块</button>
               <button type="button" id="detail-recognize" class="btn btn--sm">重新识别</button>
             </div>
+
+            <div class="layout-panel" id="layout-panel" hidden>
+              <div class="layout-panel__head">
+                <strong>本页版面</strong>
+                <span id="layout-panel-status" class="layout-panel__status"></span>
+                <span class="spacer"></span>
+                <button type="button" id="suggestion-apply-all" class="btn btn--sm" hidden
+                        title="只把把握较大的建议一次改成对应类型：不改审校状态、不删文字，每一块都能单独撤销">采用全部高把握建议</button>
+                <button type="button" id="layout-confirm" class="btn btn--sm btn--pri">确认本页版面</button>
+              </div>
+              <p class="hint">
+                <strong>页面确认</strong> = 这页算不算正文（在「页面」视图按五类确认）；
+                <strong>版面确认</strong> = 这页里面哪些块是正文（页眉 / 页脚 / 页码 / 旁批 / 插图 / 装饰先排除）。
+                确认是状态标记，不拦导出；改了任何块的类型、框或顺序都会回到未确认。
+              </p>
+            </div>
+
             <ol class="blks" id="detail-blocks"></ol>
             <div class="efoot">
               <button type="button" id="review-undo" class="btn btn--sm" title="撤销（⌘/Ctrl + Z）">撤销</button>

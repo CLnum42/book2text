@@ -1661,3 +1661,44 @@ v1（`b2t.pagesOverlay.<project_id>`）的默认值是"关"，老用户存着 `"
   理论上与已识别页数无关，但没有实测。
 
 **状态：** 生效（macOS + Chrome 实测；Windows / Safari 未验证）。
+
+---
+
+## D-061 | 2026-10-22 | 整页「版面确认」：与页面确认分开，块改动自动重置
+
+**决策一：两个确认是两件事，界面文案必须分开。**
+- **页面确认**（`page.page_confirmed`）：这页**算不算正文**，由五类页面类型
+  （正文 / 正文排除 / 目录 / 前置 / 后置）决定；在「页面」视图确认。
+- **版面确认**（`page.layout_confirmed`，迁移 0009）：这页**里面哪些块是正文**；
+  在审校视图右栏顶部「本页版面」面板确认。
+  面板常驻一句解释（"页面确认 = 这页算不算正文；版面确认 = 这页里面哪些块是正文"），
+  不再用同一个"确认"词指两件事。块级 `block.layout_confirmed`（0006）保留在数据层，
+  但界面上不再提供单块"确认版面"按钮，避免出现第三种"版面确认"。
+
+**决策二：确认人 / 时间写事件表，不加新列。**
+`POST /pages/{no}/layout/confirm`（可带 `page_numbers` 批量）写
+`event(entity_type=page, action=confirm_layout, before/after={"layout_confirmed":0/1})`，
+`actor_name` 沿用审校事件的来源；重复确认幂等（已确认的页不再写事件）。
+确认不进撤销栈——它是状态标记，不是内容修改。
+
+**决策三：重置用数据库触发器，而不是在每条编辑路径里补代码。**
+块的写入路径很多（PATCH、结构编辑、合并审阅、任务包导入、撤销重做）；触发器保证
+"类型 / 框 / 顺序（含新增 / 软删除）真的变了 → `page.layout_confirmed = 0`"，
+改文本 / 审校状态 / 块级 `include` **不重置**（不是版面变化）。
+`AFTER UPDATE OF block_type, bbox, order_index, deleted_at ... WHEN OLD.x IS NOT NEW.x`
++ `AFTER INSERT`。这样以后新增编辑入口也不会漏；代价是"页级状态由数据层维护"，
+业务层不能偷偷保留已确认——这正是想要的。
+
+**决策四：`margin_note` 进注释流，不进元数据。**
+侧栏 / 旁批和脚注一样是"不属于正文、但文字不能丢"的内容，而且同样可能需要
+"它在正文哪一段旁边"的定位；所以进 `notes.txt` / `notes.jsonl`，带
+`source_type="margin_note"` 与「旁批」标记，引用位置沿用"最近前一个正文块"。
+图注 / 书眉 / 页码 / 插图 / 装饰仍然进 `meta.json`：它们没有"注释引用"语义，
+按页保留原文即可。正文流只收 `paragraph` + `heading`；`other` 也不进正文。
+
+**决策五：预检只警告、不阻断。**
+预检返回 `layout_pages / layout_confirmed_pages / layout_unconfirmed_pages`
+（只统计这次导出范围）；未确认时界面给一条警告"正文可能夹带页眉 / 页码 / 旁批"，
+导出照常进行——沿用"确认是状态标记不是硬闸门"的既有口径。
+
+**状态：** 生效（macOS + Chrome 实测；Windows / Safari 未验证）。

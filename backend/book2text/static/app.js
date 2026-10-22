@@ -703,7 +703,7 @@ function renderPreflight(data) {
     ["未审校的段", `${data.unreviewed_segments} 段`],
     ["不确定的段", `${data.uncertain_segments} 段`],
     ["正文不收的块类型", data.excluded_block_types.length ? data.excluded_block_types.join("、") : "（无）"],
-    ["版面已确认", `${data.layout_confirmed_blocks || 0} / ${data.layout_blocks || 0} 块`],
+    ["整页版面确认", `${data.layout_confirmed_pages || 0} / ${data.layout_pages || 0} 页`],
   ];
   fillDefinitionList(el("export-preflight"), rows);
 
@@ -720,7 +720,7 @@ function renderPreflight(data) {
     );
   }
   if (!(noteStream.notes || 0)) {
-    notes.push("注释流为空（没有脚注块）——这是正常情况。");
+    notes.push("注释流为空（没有脚注 / 旁批块）——这是正常情况。");
   }
   if (data.unfinished_pages && data.unfinished_pages.length) {
     const shown = data.unfinished_pages.slice(0, 12).join("、");
@@ -744,10 +744,13 @@ function renderPreflight(data) {
         "用上面的「结构工具」按位置规则预览并标注，就能把它们从导出里去掉。"
     );
   }
-  if (!data.layout_confirmed_blocks) {
+  if (data.layout_unconfirmed_pages && data.layout_unconfirmed_pages.length) {
+    const shown = data.layout_unconfirmed_pages.slice(0, 12).join("、");
+    const more = data.layout_unconfirmed_pages.length > 12 ? " 等" : "";
     notes.push(
-      "整本还没有确认过任何版面块。自动分块在这本书上实测是准的，" +
-        "**导出不受影响**；有疑问的页可以在审校视图里拖动块框、改类型、调顺序，再点「确认版面」。"
+      `还有 ${data.layout_unconfirmed_pages.length} 页版面未确认（${shown}${more}），` +
+        "正文可能夹带页眉 / 页码 / 旁批；**导出不受影响**。" +
+        "在审校视图点「确认本页版面」即可，改了块类型 / 框 / 顺序会自动回到未确认。"
     );
   }
   if (data.unreviewed_segments) {
@@ -1949,6 +1952,7 @@ function matchesTriage(page, recognition, kind) {
   if (kind === "candidate") return recognition.status === "has_candidate";
   // 分歧（说明书 8.5）：两条都留着——40 页真书实测（ocr-evaluation 第 9 节）里
   // **标点级的信噪比反而比汉字级高**（23.7% vs 13.3%），所以哪一条都不该被当成"噪声"
+  if (kind === "layout_unconfirmed") return !page.layout_confirmed;
   if (kind === "divergence_chars") return (divergenceOf(page).chars || 0) > 0;
   if (kind === "divergence") return (divergenceOf(page).lines || 0) > 0;
   return true;
@@ -3413,15 +3417,19 @@ const cursorByBlock = new Map();
  */
 let detailSuggestions = [];
 let detailSuggestionByBlock = new Map();
+/** 最近一次渲染的整页版面确认状态（候选对比等局部刷新时不要拿旧的页面列表覆盖）。 */
+let detailLayoutConfirmed = false;
 
 const BLOCK_TYPE_LABELS = {
   heading: "标题", paragraph: "段落", header: "页眉", footer: "页脚",
   page_number: "页码", footnote: "脚注", caption: "图注",
-  figure: "插图", decoration: "装饰", other: "其他",
+  figure: "插图", decoration: "装饰", margin_note: "旁批", other: "其他",
 };
 /** 这些类型的块在导出时不输出文本（figure / decoration 是版面块，不是正文）。 */
 const TEXT_FREE_BLOCK_TYPES = new Set(["figure", "decoration"]);
 const CHROME_BLOCK_TYPES = new Set(["header", "footer", "page_number"]);
+/** 这些块进注释流（不属正文，但不丢文字）。 */
+const NOTE_BLOCK_TYPES = new Set(["footnote", "margin_note"]);
 const REVIEW_STATUS_LABELS = {
   unreviewed: "未审", confirmed: "已确认", uncertain: "不确定",
 };
@@ -3533,6 +3541,7 @@ async function refreshDetailSuggestions() {
   applyDetailSuggestions(payload);
   renderSuggestionTools();
   renderReviewBlocks(reviewBlocks);
+  renderLayoutPanel();
 }
 
 // ---------------------------------------------------------------- 翻页（审校视图顶栏）
@@ -3691,10 +3700,12 @@ function renderPageDetail(data) {
     applyZoom();
   }
 
+  detailLayoutConfirmed = Boolean(data.page && data.page.layout_confirmed);
   drawDetailLines();
   drawDetailOverlay(data.blocks);
   renderReviewBlocks(data.blocks);
   renderSuggestionTools();
+  renderLayoutPanel(data);
 }
 
 function project_id() {
@@ -3710,9 +3721,6 @@ function reviewMetaText(data) {
     `${review.block_count || 0} 块`,
     `未审 ${review.unreviewed || 0}`,
   ];
-  if (review.layout_confirmed) {
-    parts.push(`版面已确认 ${review.layout_confirmed}/${review.included || review.block_count || 0}`);
-  }
   if (layoutLines.conflict) parts.push(`冲突 ${layoutLines.conflict} 行`);
   if (layoutLines.unassigned) parts.push(`未归属 ${layoutLines.unassigned} 行`);
   if (review.uncertain) parts.push(`不确定 ${review.uncertain}`);
@@ -4051,9 +4059,9 @@ function buildBoxLabel(block, index, suggestion) {
 
   const notes = [];
   if (!block.include) notes.push("已排除");
-  else if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) notes.push("不输出文本");
-  else if (CHROME_BLOCK_TYPES.has(block.block_type)) notes.push("导出时排除");
-  if (block.layout_confirmed) notes.push("版面已确认");
+  else if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) notes.push("不输出正文");
+  else if (CHROME_BLOCK_TYPES.has(block.block_type)) notes.push("只进元数据");
+  else if (NOTE_BLOCK_TYPES.has(block.block_type)) notes.push("进注释流");
   if (block.review_status === "uncertain") notes.push("不确定");
   if (notes.length) {
     const note = document.createElement("span");
@@ -4262,8 +4270,7 @@ function drawDetailOverlay(blocks) {
     box._bbox = block.bbox;
     applyBoxElementRect(box, block.bbox);
     box.title =
-      `${boxTypeLabel(block)} · 第 ${index + 1} 块 · 拖动移位、拖角缩放` +
-      (block.layout_confirmed ? " · 版面已确认" : "");
+      `${boxTypeLabel(block)} · 第 ${index + 1} 块 · 拖动移位、拖角缩放`;
 
     // 默认只给顺序号；类型 / 把握 / 采用 / 页码在悬停（或选中）卡片里
     const suggestion = detailSuggestionByBlock.get(block.block_id);
@@ -4349,10 +4356,59 @@ function renderSuggestionTools() {
     ),
   ];
   button.hidden = false;
-  button.textContent = `采用全部建议（${high.length}）`;
+  button.textContent = `采用全部高把握建议（${high.length}）`;
   button.title =
     `本页有 ${high.length} 条把握较大的建议（${labels.join(" / ")}）：` +
     "一次改成对应类型，只改类型、不改审校状态；每一块都能单独撤销。";
+}
+
+/** 版面面板：页面确认（这页算不算正文）与版面确认（这页里哪些块算正文）分开说。 */
+function renderLayoutPanel(data = null) {
+  const panel = el("layout-panel");
+  if (!panel) return;
+  if (!currentProject || currentProject.kind === "package") {
+    panel.hidden = true;
+    return;
+  }
+  const blockCount =
+    (data && data.review && data.review.block_count) ||
+    (data && data.blocks ? data.blocks.length : reviewBlocks.length);
+  const high = suggestionHighList().length;
+  const confirmed = data && data.page
+    ? Boolean(data.page.layout_confirmed)
+    : detailLayoutConfirmed;
+  panel.hidden = false;
+  const status = el("layout-panel-status");
+  status.textContent =
+    `本页版面：${blockCount} 块 · 高把握建议 ${high} · ${confirmed ? "✓ 已确认" : "未确认"}`;
+  status.classList.toggle("is-ok", confirmed);
+  const button = el("layout-confirm");
+  button.textContent = confirmed ? "✓ 版面已确认" : "确认本页版面";
+  button.disabled = confirmed;
+}
+
+async function confirmPageLayout() {
+  if (!currentProject || detailPageNo === null) return;
+  const pageNo = detailPageNo;
+  const button = el("layout-confirm");
+  button.disabled = true;
+  setSaveState("正在确认版面…");
+  try {
+    await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${pageNo}/layout/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_numbers: [pageNo] }),
+      }
+    );
+    setSaveState("版面已确认 ✓");
+    await loadPageDetail(pageNo);
+    await refreshPageStates();
+  } catch (error) {
+    setSaveState(error.message || "版面确认失败", true);
+    showError(el("page-detail-error"), error);
+  }
 }
 
 /**
@@ -4540,12 +4596,13 @@ function blockCard(block, index, blocksCount) {
   const typeBits = [];
   if (!block.include) typeBits.push(["已排除", "chip--gray"]);
   else if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) {
-    typeBits.push(["不输出文本", "chip--gray"]);
+    typeBits.push(["不输出正文", "chip--gray"]);
   } else if (CHROME_BLOCK_TYPES.has(block.block_type)) {
-    typeBits.push(["导出时排除", "chip--gray"]);
+    typeBits.push(["只进元数据", "chip--gray"]);
+  } else if (NOTE_BLOCK_TYPES.has(block.block_type)) {
+    typeBits.push(["进注释流", "chip--blue"]);
   }
   const bits = [];
-  if (block.layout_confirmed) bits.push(["✓ 版面已确认", "chip--ok"]);
   if (block.modified) bits.push(["● 已修改", "chip--warn"]);
   if (block.continues_to_next) bits.push(["↪ 延续到下页", "chip--blue"]);
   if (blockDivergence.lines) bits.push([`≠ 两路不一致 ${blockDivergence.lines} 行`, "chip--warn"]);
@@ -4629,11 +4686,6 @@ function blockCard(block, index, blocksCount) {
     actions.append(button);
   };
 
-  addButton(
-    block.layout_confirmed ? "取消版面确认" : "✓ 确认版面",
-    "确认这一块的框、类型与页内顺序（状态标记；不确认也能导出）",
-    () => patchBlock(block, { layout_confirmed: !block.layout_confirmed })
-  );
   if (block.review_status !== "confirmed") {
     addButton("✓ 确认", "把这个块标为已确认", () =>
       patchBlock(block, { review_status: "confirmed" })
@@ -5493,6 +5545,7 @@ function setupReviewControls() {
   });
   el("review-confirm").addEventListener("click", confirmCurrentPage);
   el("suggestion-apply-all").addEventListener("click", adoptAllHighSuggestions);
+  el("layout-confirm").addEventListener("click", confirmPageLayout);
   el("candidate-open").addEventListener("click", openCandidateCompare);
   el("candidate-apply").addEventListener("click", () => decideCandidate("apply"));
   el("candidate-decline").addEventListener("click", () => decideCandidate("decline"));

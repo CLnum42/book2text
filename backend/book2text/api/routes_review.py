@@ -585,6 +585,51 @@ def confirm_page(request: Request, project_id: str, page_no: int) -> dict[str, A
     }
 
 
+# ---------------------------------------------------------------- 确认整页版面
+
+class LayoutConfirmRequest(BaseModel):
+    """确认整页版面；`page_numbers` 为空时只确认路径里的那一页。
+
+    批量页码是给"一次确认所选 / 一段页"用的；不传页码范围也能正常调用。
+    """
+
+    page_numbers: list[int] = Field(default_factory=list, max_length=1000)
+    actor_name: str | None = Field(default=None, max_length=100)
+
+
+@router.post("/{project_id}/pages/{page_no}/layout/confirm")
+def confirm_page_layout(
+    request: Request, project_id: str, page_no: int, body: LayoutConfirmRequest | None = None
+) -> dict[str, Any]:
+    """确认整页的**版面**（哪些块算正文），可批量；与页面确认（page_confirmed）分开。
+
+    确认人 / 时间写进事件表（action=confirm_layout）；不进撤销栈——它是状态标记，
+    不是内容修改。任何块的类型 / 框 / 顺序改动都会由迁移 0009 的触发器自动重置。
+    """
+    payload = body or LayoutConfirmRequest()
+    page_nos = sorted(set(payload.page_numbers or [page_no]))
+    library = _library(request)
+    for no in page_nos:
+        require_editable_page(project_id, no, library=library)
+    try:
+        events = editing.confirm_page_layout(
+            project_id,
+            page_nos,
+            library=library,
+            actor_name=_actor_name(request, payload.actor_name),
+        )
+        pages = project_library.list_pages(project_id, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    confirmed = [page.page_no for page in pages if page.page_no in set(page_nos)]
+    return {
+        "confirmed_pages": confirmed,
+        "confirmed": len(page_nos),
+        "new_events": len(events),
+        "events": [event.to_dict() for event in events],
+    }
+
+
 # ---------------------------------------------------------------- 撤销 / 重做
 
 def _apply_history(

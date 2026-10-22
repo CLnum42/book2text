@@ -311,6 +311,10 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
     # 版面确认是块级状态；预检只报"整本有没有人确认过"，不阻止导出（说明书 1.6 / D-051）
     all_blocks = blocks_module.list_blocks(project_id, library=target_library)
     layout_confirmed = sum(1 for block in all_blocks if block.layout_confirmed)
+    # 整页版面确认（0009）：只统计这次导出范围内的页；未确认只警告、不阻断
+    layout_unconfirmed_pages = [
+        page.page_no for page in prepared.pages if not page.layout_confirmed
+    ]
 
     # 未识别或识别失败的纳入页：导出的内容会缺这些页，必须让用户看见
     unfinished = [
@@ -372,6 +376,10 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
         # 整本一个版面块都没确认过时，界面给一条警告——只是提醒，导出照常进行
         "layout_blocks": len(all_blocks),
         "layout_confirmed_blocks": layout_confirmed,
+        # 整页版面确认（与上面块级的两个兼容字段分开命名）
+        "layout_pages": len(prepared.pages),
+        "layout_confirmed_pages": len(prepared.pages) - len(layout_unconfirmed_pages),
+        "layout_unconfirmed_pages": layout_unconfirmed_pages,
     }
 
 

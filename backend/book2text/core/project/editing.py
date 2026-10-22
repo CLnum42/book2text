@@ -47,6 +47,7 @@ ACTION_MOVE_LINE = "move_line"
 ACTION_SET_BBOX = "set_bbox"
 ACTION_SET_LAYOUT_CONFIRMED = "set_layout_confirmed"
 ACTION_REASSIGN_LINE = "reassign_line"
+ACTION_CONFIRM_LAYOUT = "confirm_layout"
 
 REVIEW_STATUSES = ("unreviewed", "confirmed", "uncertain")
 
@@ -61,6 +62,7 @@ BLOCK_TYPES = (
     "caption",
     "figure",
     "decoration",
+    "margin_note",
     "other",
 )
 
@@ -588,6 +590,70 @@ def confirm_page(
         uncertain=int(uncertain),
         events=tuple(events),
     )
+
+
+def confirm_page_layout(
+    project_id: str,
+    page_nos: list[int],
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+) -> list[Event]:
+    """确认整页的**版面**（哪些块算正文），可批量。
+
+    与页面确认（page_confirmed = 这页算不算正文）是两件事。确认人 / 时间写进
+    `event` 表（entity_type=page，action=confirm_layout），不新增列。
+    重复确认是幂等的：已经确认过的页不再写事件。
+
+    任何块的类型、框、顺序（含新增 / 软删除）改动都会由迁移 0009 的触发器把
+    `page.layout_confirmed` 重置为 0——这里不用在每条编辑路径重复实现。
+    """
+    if not page_nos:
+        raise ProjectError("没有指定要确认版面的页面")
+    unique_nos = sorted({int(no) for no in page_nos})
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        condition = ", ".join("?" for _ in unique_nos)
+        rows = conn.execute(
+            f"SELECT page_id, page_no, layout_confirmed FROM page WHERE page_no IN ({condition})"
+            f" ORDER BY page_no",
+            unique_nos,
+        ).fetchall()
+        found = {int(row["page_no"]) for row in rows}
+        missing = [no for no in unique_nos if no not in found]
+        if missing:
+            raise ProjectError(f"找不到这些页面：{'、'.join(str(no) for no in missing[:5])}")
+
+        events: list[Event] = []
+        for row in rows:
+            if int(row["layout_confirmed"] or 0):
+                continue
+            conn.execute(
+                "UPDATE page SET layout_confirmed = 1 WHERE page_id = ?",
+                (row["page_id"],),
+            )
+            events.append(
+                _record(
+                    conn,
+                    entity_type="page",
+                    entity_id=row["page_id"],
+                    action=ACTION_CONFIRM_LAYOUT,
+                    before={"layout_confirmed": 0},
+                    after={"layout_confirmed": 1, "page_no": int(row["page_no"])},
+                    batch_id=batch_id,
+                    actor_name=actor_name,
+                )
+            )
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+    return events
 
 
 # ---------------------------------------------------------------- 结构编辑（说明书 6.4 / R4）
