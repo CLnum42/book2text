@@ -76,6 +76,8 @@
 - `.venv/bin/python -m pytest -q` → **667 passed, 1 warning**（+1 项界面静态约定：
   v2 键与默认开、四档无门控、网格分支不建顺序号、每帧/请求上限、11px/.72）。
 - 真实滚动与截图以真浏览器验收为准。
+- CI：[run #22](https://github.com/CLnum42/book2text/actions/runs/39785775937) **Success**，
+  macOS 全量 2m52s、Windows 非 OCR 4m29s，双平台绿。
 
 **未验证**
 

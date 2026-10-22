@@ -21,6 +21,8 @@
   同屏最多 12 页 / 131 个块框，开/关块框帧率无可测差异。
 - 截图：`docs/screenshots/block-frames-grid.png`、`block-frames-page.png`。
 - 测试 **667 passed**（新增 1 项界面静态约定）。
+  CI [run #22](https://github.com/CLnum42/book2text/actions/runs/39785775937) 双平台绿
+  （macOS 2m52s、Windows 4m29s）。
 
 
 ### 变更 — 页面类型收成五类，去掉"纳入 / 排除"开关（2026-10-22）
