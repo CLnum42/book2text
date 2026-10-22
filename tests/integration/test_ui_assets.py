@@ -457,3 +457,32 @@ def test_full_library_suggestion_apply_and_auto_apply_switch_are_wired() -> None
 
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
     assert ".suggestion-type" in css
+
+
+# ---------------------------------------------------------------- 任务 49：漏行 + 框选识别
+
+def test_ink_gap_hint_and_region_recognition_are_wired() -> None:
+    """漏行提示条 + 图上的候选框 → 框选面板「识别这块」。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    for element_id in (
+        "ink-gap-bar",
+        "ink-gap-text",
+        "ink-gap-toggle",
+        "detail-ink-gaps",
+        "box-select-recognize",
+        "box-select-status",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    script = _script()
+    assert "loadInkGaps" in script and "/ink-gaps" in script
+    assert "startRegionRecognition" in script
+    assert "recognizeBoxRegion" in script and "/recognize-region" in script
+    # 识别结果进"框选新增块"的输入框：不直接落库，用户确认后才创建
+    assert 'el("box-select-text").value = data.text' in script
+    # 进审校页就会查一次漏行
+    assert "loadInkGaps(pageNo)" in script
+
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    assert ".ink-gap-bar" in css
+    assert ".ink-gap " in css or ".ink-gap {" in css

@@ -3775,6 +3775,7 @@ async function loadPageDetail(pageNo, { forceSuggestions = false } = {}) {
     if (detailPageNo !== null && detailPageNo !== pageNo) return;
     applyDetailSuggestions(suggestions);
     renderPageDetail(data);
+    loadInkGaps(pageNo); // 不 await：漏行提示是辅助信息，晚一点出来不影响审校
   } catch (error) {
     showError(el("page-detail-error"), error);
   }
@@ -5641,6 +5642,7 @@ function setBoxCreateMode(on) {
     boxDraft = null;
     el("box-select-rect").hidden = true;
     el("box-select-panel").hidden = true;
+    el("box-select-status").textContent = "";
   } else {
     setSaveState("在页面上拖出要新增的区域（Esc 取消）");
   }
@@ -5664,6 +5666,7 @@ function onBoxMouseDown(event) {
   event.preventDefault();
   boxDraft = { x0: point.x, y0: point.y, x1: point.x, y1: point.y };
   el("box-select-panel").hidden = true;
+  el("box-select-status").textContent = "";
   drawBoxDraft();
 }
 
@@ -5755,6 +5758,128 @@ async function createBlockFromBox() {
   }
 }
 
+// ---------------------------------------------------------------- 漏行检测与框选识别
+//
+// 检测阶段偶尔会漏一行（那行字在页面上、但没有 block_line）。补救有两步：
+// 1) 只读接口 `GET /pages/{no}/ink-gaps` 找"有墨迹、没有任何行框覆盖"的横条；
+// 2) 点候选 → 框选面板预填这块区域 → 「识别这块」调局部重识别（**不落库**），
+//    文字填进输入框，用户可改，最后仍走现有的「创建这一块」。
+
+let detailInkGaps = [];
+let inkGapsShown = false;
+
+function inkGapBarVisible(count) {
+  return count > 0;
+}
+
+async function loadInkGaps(pageNo) {
+  detailInkGaps = [];
+  inkGapsShown = false;
+  renderInkGapBar();
+  if (!currentProject || currentProject.kind === "package") return;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${pageNo}/ink-gaps`
+    );
+    if (detailPageNo !== pageNo) return;
+    detailInkGaps = (data.candidates || []).filter(
+      (item) => Array.isArray(item.bbox) && item.bbox.length === 4
+    );
+    renderInkGapBar();
+  } catch {
+    // 辅助信息：读不到不打断审校
+  }
+}
+
+function renderInkGapBar() {
+  const bar = el("ink-gap-bar");
+  if (!inkGapBarVisible(detailInkGaps.length)) {
+    bar.hidden = true;
+    inkGapsShown = false;
+    drawInkGapMarks();
+    return;
+  }
+  bar.hidden = false;
+  el("ink-gap-text").textContent =
+    `可能漏了 ${detailInkGaps.length} 处：这几行有字，但没有任何块框住`;
+  el("ink-gap-toggle").textContent = inkGapsShown ? "收起标记" : "在图上标出";
+  drawInkGapMarks();
+}
+
+function drawInkGapMarks() {
+  const layer = el("detail-ink-gaps");
+  layer.innerHTML = "";
+  layer.hidden = !inkGapsShown || !detailInkGaps.length;
+  if (layer.hidden) return;
+  detailInkGaps.forEach((item, index) => {
+    const [x0, y0, x1, y1] = item.bbox;
+    const rect = document.createElement("button");
+    rect.type = "button";
+    rect.className = "ink-gap";
+    rect.style.left = `${x0 * 100}%`;
+    rect.style.top = `${y0 * 100}%`;
+    rect.style.width = `${(x1 - x0) * 100}%`;
+    rect.style.height = `${(y1 - y0) * 100}%`;
+    rect.title =
+      `可能漏了这一行（墨迹占页宽 ${(item.ink_ratio * 100).toFixed(1)}%）：` +
+      "点一下把它框起来，用「识别这块」认字";
+    rect.addEventListener("click", (event) => {
+      event.stopPropagation();
+      startRegionRecognition(item.bbox);
+    });
+    layer.append(rect);
+  });
+}
+
+/** 从漏行候选 / 手动框选进入"识别这块"：先把框画出来，再自动认一次。 */
+function startRegionRecognition(bbox) {
+  if (!boxCreateMode) setBoxCreateMode(true);
+  boxDraft = { x0: bbox[0], y0: bbox[1], x1: bbox[2], y1: bbox[3] };
+  drawBoxDraft();
+  el("box-select-panel").hidden = false;
+  el("box-select-info").textContent =
+    `已框选：横向 ${(bbox[0] * 100).toFixed(0)}–${(bbox[2] * 100).toFixed(0)}%、` +
+    `纵向 ${(bbox[1] * 100).toFixed(0)}–${(bbox[3] * 100).toFixed(0)}%（来自漏行标记）`;
+  el("box-select-text").value = "";
+  el("box-select-text").focus();
+  recognizeBoxRegion();
+}
+
+/** 只识别框里的这一块：不落库，结果写进输入框等用户确认。 */
+async function recognizeBoxRegion() {
+  const box = boxDraftRect();
+  if (!currentProject || detailPageNo === null || !box) return;
+  const button = el("box-select-recognize");
+  const status = el("box-select-status");
+  const pageNo = detailPageNo;
+  button.disabled = true;
+  status.textContent = "识别中…";
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${pageNo}/recognize-region`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bbox: box }),
+      }
+    );
+    if (detailPageNo !== pageNo) return;
+    if (data.text) {
+      el("box-select-text").value = data.text;
+      el("box-select-text").focus();
+      status.textContent =
+        `认出 ${data.lines.length} 行（${data.elapsed_seconds}s）· 可以改，再点「创建这一块」`;
+    } else {
+      status.textContent = "这块里没认出文字；可以直接打字，或换个框";
+    }
+  } catch (error) {
+    status.textContent = error.message || "识别失败";
+    showError(el("page-detail-error"), error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function setupBoxCreate() {
   el("detail-box-create").addEventListener("click", () => setBoxCreateMode(!boxCreateMode));
   const canvas = el("detail-canvas");
@@ -5762,6 +5887,11 @@ function setupBoxCreate() {
   window.addEventListener("mousemove", onBoxMouseMove);
   window.addEventListener("mouseup", onBoxMouseUp);
   el("box-select-confirm").addEventListener("click", createBlockFromBox);
+  el("box-select-recognize").addEventListener("click", recognizeBoxRegion);
+  el("ink-gap-toggle").addEventListener("click", () => {
+    inkGapsShown = !inkGapsShown;
+    renderInkGapBar();
+  });
   el("box-select-cancel").addEventListener("click", () => setBoxCreateMode(false));
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && boxCreateMode) setBoxCreateMode(false);

@@ -38,6 +38,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from collections.abc import Callable, Sequence
@@ -622,6 +623,120 @@ def run_auxiliary(
         "elapsed_seconds": round(elapsed, 3),
         "raw_result_path": f"{OCR_RUNS_DIR_NAME}/{run_id}.json",
         "differences": [item for item in results if item["diff_status"] != compare_module.IDENTICAL],
+    }
+
+
+# ---------------------------------------------------------------- 框选区域局部识别
+
+# 框选识别用 zoom 档渲染：与用户放大看到的画面同源（说明书 5.2 的归一化坐标）
+REGION_DPI = 300
+# 裁切时外扩约 2%（与第二引擎的行图同一口径，保留笔画）
+REGION_PADDING = 0.02
+
+
+def recognize_region(
+    source: Path,
+    page_index: int,
+    bbox,
+    *,
+    engine: OcrEngine | None = None,
+) -> dict:
+    """框选一块区域**只识别这一块**（说明书 6.4 漏检补救的第一步）。
+
+    **不落库：** 这个函数拿不到项目目录，也从不打开数据库——它只做
+    "渲染 → 裁切 → 识别 → 坐标映射"。结果交给界面填进「框选新增块」的输入框，
+    用户确认后才走现有的新增块接口。这样"局部重识别"不会产生第二份块、不会改
+    任何行记录，也不会出现在任务历史里。
+
+    坐标映射：裁图是整页 300 DPI 渲染图上的一个像素矩形 `(left, top, right, bottom)`；
+    引擎返回的行框是**相对裁图**的 0–1 坐标。映射回整页：
+
+        page_x0 = (left + line.x0 * (right - left)) / page_width
+        page_y0 = (top + line.y0 * (bottom - top)) / page_height
+
+    外扩的 2% 也会一起映射，所以返回的行框可能比自己框选的区域略大——这是对的，
+    它对应的是"这一片纸面"，不是"用户拖的矩形"。
+    """
+    if len(bbox) != 4:
+        raise ProjectError("框必须是 4 个数：x0, y0, x1, y1")
+    try:
+        x0, y0, x1, y1 = (float(value) for value in bbox)
+    except (TypeError, ValueError) as exc:
+        raise ProjectError("框的坐标必须是数字") from exc
+    if not all(math.isfinite(value) for value in (x0, y0, x1, y1)):
+        raise ProjectError("框的坐标必须是有限数字")
+    if min(x0, y0, x1, y1) < 0 or max(x0, y0, x1, y1) > 1:
+        raise ProjectError("框的坐标必须落在 0–1（相对页面显示方向）")
+    if x1 - x0 <= 0 or y1 - y0 <= 0:
+        raise ProjectError("框的宽和高都要大于 0")
+    if x1 - x0 < 0.002 or y1 - y0 < 0.002:
+        raise ProjectError("框太小了：横竖都至少要有千分之二")
+
+    adapter: OcrEngine = engine if engine is not None else RapidOcrAdapter()
+    available, reason = adapter.available()
+    if not available:
+        raise EngineUnavailable(reason)
+
+    try:
+        image = render.render_page_image(source, page_index, dpi=REGION_DPI)
+    except render.PdfError as exc:
+        raise ProjectError(f"这一页渲染失败：{exc}") from exc
+
+    try:
+        page_width, page_height = image.size
+        expanded = blocks_module.BBox(x0, y0, x1, y1).expanded(REGION_PADDING)
+        left = max(0, math.floor(expanded.x0 * page_width) - 2)
+        top = max(0, math.floor(expanded.y0 * page_height) - 2)
+        right = min(page_width, math.ceil(expanded.x1 * page_width) + 2)
+        bottom = min(page_height, math.ceil(expanded.y1 * page_height) + 2)
+        if right <= left or bottom <= top:  # pragma: no cover - 上面已经挡掉退化框
+            raise ProjectError("框太小了，裁不出图")
+        crop = image.crop((left, top, right, bottom))
+        crop_width, crop_height = right - left, bottom - top
+        try:
+            started = time.perf_counter()
+            try:
+                result = adapter.recognize(crop, OcrParams(dpi=REGION_DPI))
+            except OcrEngineError as exc:
+                raise ProjectError(f"识别失败：{exc}") from exc
+            elapsed = time.perf_counter() - started
+        finally:
+            crop.close()
+    finally:
+        image.close()
+
+    lines: list[dict] = []
+    for line in result.lines:
+        text = line.text or ""
+        if not text.strip():
+            continue
+        lines.append(
+            {
+                "text": text,
+                "bbox": [
+                    round(min(max((left + line.bbox.x0 * crop_width) / page_width, 0.0), 1.0), 6),
+                    round(min(max((top + line.bbox.y0 * crop_height) / page_height, 0.0), 1.0), 6),
+                    round(min(max((left + line.bbox.x1 * crop_width) / page_width, 0.0), 1.0), 6),
+                    round(min(max((top + line.bbox.y1 * crop_height) / page_height, 0.0), 1.0), 6),
+                ],
+                "confidence": line.confidence,
+            }
+        )
+    # 阅读顺序：从上到下、从左到右
+    lines.sort(key=lambda item: (round(item["bbox"][1], 3), item["bbox"][0]))
+    return {
+        "text": "\n".join(item["text"] for item in lines),
+        "lines": lines,
+        "engine_id": result.engine_id,
+        "engine_version": result.engine_version,
+        "dpi": REGION_DPI,
+        "elapsed_seconds": round(elapsed, 3),
+        "crop_bbox": [
+            round(left / page_width, 6),
+            round(top / page_height, 6),
+            round(right / page_width, 6),
+            round(bottom / page_height, 6),
+        ],
     }
 
 

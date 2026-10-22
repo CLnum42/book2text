@@ -252,7 +252,11 @@ def test_line_structure_change_hides_marking_instead_of_pointing_at_the_wrong_li
 def test_split_clears_the_divergence_info_of_the_cut_line(
     client: TestClient, auth_headers: dict[str, str], library_dir: Path, recognized_page: str
 ) -> None:
-    """说明书 R4：被从中间切开的那一行清空 bbox 与**分歧信息**。"""
+    """被从中间切开的那一行清空**分歧信息**；坐标按切点一分为二（任务 49）。
+
+    第二引擎读的是原来那一整行，两个半边都不再对应它——所以两边的候选都要清掉，
+    但坐标保留（否则多出一条"没有坐标的行"）。
+    """
     project_id = recognized_page
     before = blocks_module.list_block_lines(project_id, library=library_dir)
     run_aux(library_dir, project_id, [before[0].text.replace("段", "叚")] + [b.text for b in before[1:]])
@@ -270,13 +274,22 @@ def test_split_clears_the_divergence_info_of_the_cut_line(
 
     lines = blocks_module.list_block_lines(project_id, library=library_dir)
     cut = lines[0]
-    assert cut.bbox is None
+    assert cut.bbox is not None, "切开的行留着左半边的坐标"
+    assert cut.text == "第一段"
     assert cut.aux_text is None, "切开的那一行不再对应任何一整行，候选也要清掉"
     assert cut.diff_status is None
+    # 后半条是新的行记录（属于新块），同样没有候选
+    split_tail = lines[1]
+    assert split_tail.bbox is not None
+    assert split_tail.block_id != cut.block_id
+    assert split_tail.text == "第一行。"
+    assert split_tail.aux_text is None
+    assert split_tail.line_index == 0
     # 后面的行跟着搬到新块，候选与行号都还在（它们还是完整的行）
-    assert lines[1].aux_text is not None
-    assert lines[1].block_id != cut.block_id
-    assert lines[1].line_index == 0, "搬过去的行在新块里重新编号"
+    moved = lines[2]
+    assert moved.aux_text is not None
+    assert moved.block_id == split_tail.block_id
+    assert moved.line_index == 1, "搬过去的行在新块里重新编号"
 
 
 def test_divergence_counts_are_added_up_across_pages(

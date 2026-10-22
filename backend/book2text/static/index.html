@@ -290,12 +290,18 @@
 
         <div class="review-split">
           <div class="viewer">
+            <div class="ink-gap-bar" id="ink-gap-bar" hidden>
+              <span id="ink-gap-text"></span>
+              <span class="spacer"></span>
+              <button type="button" id="ink-gap-toggle" class="btn btn--sm">在图上标出</button>
+            </div>
             <div class="viewer__scroll" id="viewer-scroll">
               <div class="page-canvas" id="detail-canvas" hidden>
                 <img id="detail-image" alt="页面图像">
                 <div class="page-lines" id="detail-lines"></div>
                 <div class="page-overlay" id="detail-overlay"></div>
                 <div class="box-select__rect" id="box-select-rect" hidden></div>
+                <div class="ink-gaps" id="detail-ink-gaps" hidden></div>
               </div>
               <p class="muted" id="detail-image-status">正在渲染…</p>
             </div>
@@ -311,8 +317,11 @@
               <textarea id="box-select-text" rows="3"
                         placeholder="这一块的文字（可留空，之后再填）"></textarea>
               <div class="box-select__actions">
+                <button type="button" id="box-select-recognize" class="btn"
+                        title="只识别框里的这一块（不落库）；结果填进上面的输入框，可以改">识别这块</button>
                 <button type="button" id="box-select-confirm" class="btn btn--pri">创建这一块</button>
                 <button type="button" id="box-select-cancel" class="btn btn--ghost">取消</button>
+                <span class="muted" id="box-select-status"></span>
               </div>
             </div>
           </div>

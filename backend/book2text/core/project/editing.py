@@ -46,6 +46,9 @@ ACTION_REORDER = "reorder"
 ACTION_CREATE = "create"
 ACTION_DELETE = "delete"
 ACTION_MOVE_LINE = "move_line"
+# 拆分时"被切开那一行"要变成两条 line 记录：不是搬，是新建 / 删除一行
+ACTION_CREATE_LINE = "create_line"
+ACTION_DELETE_LINE = "delete_line"
 ACTION_SET_BBOX = "set_bbox"
 ACTION_SET_LAYOUT_CONFIRMED = "set_layout_confirmed"
 ACTION_REASSIGN_LINE = "reassign_line"
@@ -1206,13 +1209,26 @@ def _split_block_with_conn(
     cut_in_middle = not head_text.endswith("\n")
     whole_head_lines = head_text.count("\n")
     split_line = whole_head_lines if cut_in_middle else None
+    lines = _lines_of(conn, row["block_id"])
+    cut_line = None
+    cut_line_text = ""
     ratio = None
     if split_line is not None:
-        line_text = text_lines[split_line] if split_line < len(text_lines) else ""
         head_part = head_text.split("\n")[-1]
+        cut_line = next(
+            (line for line in lines if int(line["line_index"]) == split_line), None
+        )
+        # 优先用**行记录**自己的文字算比例：块文本可能被人工改过，
+        # 只有"行记录确实以这一小段开头"时才按行切（否则退回 R4 的保守做法）
+        if cut_line is not None:
+            stored = cut_line["text"] or ""
+            if stored.startswith(head_part):
+                cut_line_text = stored
+        if not cut_line_text:
+            cut_line = None
+        line_text = cut_line_text or (text_lines[split_line] if split_line < len(text_lines) else "")
         ratio = (len(head_part) / len(line_text)) if line_text else 0.5
 
-    lines = _lines_of(conn, row["block_id"])
     line_rects = [blocks_module.bbox_from_json(line["bbox"]) for line in lines]
     head_bbox, tail_bbox = _estimate_split_rects(
         blocks_module.bbox_from_json(row["bbox"]),
@@ -1284,38 +1300,29 @@ def _split_block_with_conn(
     )
     events.extend(new_events)
 
-    # 行分配：光标前的归前块，光标后的归后块；被切开的行清空坐标与分歧信息
-    # （它不再精确对应任何一整行，第二引擎读的是原来那一整行）
+    # 行分配：光标前的归前块、光标后的归后块；切在一行中间时，把那一行也切成两条
+    # line 记录（前块拿左半、后块拿右半），两边用**同一个 cut 值**。
+    # 旧行为（R4）是把被切开的行的坐标清空——批量拆 29 页就会多出 29 条"没有坐标"的行，
+    # 行归属统计与导出的行级信息都会缺一块。
     head_line_count = whole_head_lines + (1 if cut_in_middle else 0)
+    tail_offset = 0
     for line in lines:
         index_in_block = int(line["line_index"])
         if index_in_block < head_line_count:
-            if index_in_block == head_line_count - 1 and cut_in_middle and line["bbox"]:
-                _apply_values(
+            if index_in_block == head_line_count - 1 and cut_in_middle:
+                tail_offset = 1 if _split_cut_line(
                     conn,
-                    "block_line",
-                    line["line_id"],
-                    {"bbox": None, "aux_text": None, "diff_status": None},
-                    now,
-                )
-                events.append(
-                    _record(
-                        conn,
-                        entity_type="block_line",
-                        entity_id=line["line_id"],
-                        action=ACTION_SPLIT,
-                        before={
-                            "bbox": line["bbox"],
-                            "aux_text": line["aux_text"],
-                            "diff_status": line["diff_status"],
-                        },
-                        after={"bbox": None, "aux_text": None, "diff_status": None},
-                        batch_id=batch_id,
-                        actor_name=actor_name,
-                    )
-                )
+                    line,
+                    new_block_id=new_block_id,
+                    head_part=head_text.split("\n")[-1],
+                    ratio=ratio,
+                    now=now,
+                    batch_id=batch_id,
+                    actor_name=actor_name,
+                    events=events,
+                ) else 0
             continue
-        new_index = index_in_block - head_line_count
+        new_index = index_in_block - head_line_count + tail_offset
         _apply_values(
             conn,
             "block_line",
@@ -1336,6 +1343,122 @@ def _split_block_with_conn(
             )
         )
     return row["block_id"], new_block_id, events
+
+
+def _split_cut_line(
+    conn,
+    line,
+    *,
+    new_block_id: str,
+    head_part: str,
+    ratio: float | None,
+    now: str,
+    batch_id: str,
+    actor_name: str | None,
+    events: list[Event],
+) -> bool:
+    """把"被切开的那一行"变成两条 line 记录；返回是否新建了后半条。
+
+    - 前块那半：改这一行的文字与坐标（左半），分歧信息清空（它不再对应原来那一整行）；
+    - 后块那半：新建一行（右半），**用同一个 cut 值**，所以两条记录在 x 上正好相接；
+    - 行记录的文字与块文本对不上（块文本被人工改过）时**不切文字**，退回旧做法：
+      只清坐标与分歧信息，免得把行记录改坏。
+    """
+    stored = line["text"] or ""
+    bbox = blocks_module.bbox_from_json(line["bbox"])
+    if not stored.startswith(head_part):
+        values = {"bbox": None, "aux_text": None, "diff_status": None}
+        before = {name: _column_value(line, name) for name in values}
+        if before != values:
+            _apply_values(conn, "block_line", line["line_id"], values, now)
+            events.append(
+                _record(
+                    conn,
+                    entity_type="block_line",
+                    entity_id=line["line_id"],
+                    action=ACTION_SPLIT,
+                    before=before,
+                    after=values,
+                    batch_id=batch_id,
+                    actor_name=actor_name,
+                )
+            )
+        return False
+
+    tail_part = stored[len(head_part) :]
+    cut = _cut_x(bbox, ratio) if bbox is not None else None
+    head_bbox = (bbox[0], bbox[1], cut, bbox[3]) if bbox is not None else None
+    tail_bbox = (cut, bbox[1], bbox[2], bbox[3]) if bbox is not None else None
+    head_values: dict[str, object] = {"text": head_part}
+    if head_bbox is not None:
+        head_values["bbox"] = blocks_module.bbox_to_json(blocks_module.BBox(*head_bbox))
+    if line["aux_text"] is not None:
+        head_values["aux_text"] = None
+    if line["diff_status"] is not None:
+        head_values["diff_status"] = None
+    before = {name: _column_value(line, name) for name in head_values}
+    if before != head_values:
+        _apply_values(conn, "block_line", line["line_id"], head_values, now)
+        events.append(
+            _record(
+                conn,
+                entity_type="block_line",
+                entity_id=line["line_id"],
+                action=ACTION_SPLIT,
+                before=before,
+                after=head_values,
+                batch_id=batch_id,
+                actor_name=actor_name,
+            )
+        )
+    if not tail_part:
+        return False
+
+    tail_line_id = new_ulid()
+    tail_values: dict[str, object] = {
+        "block_id": new_block_id,
+        "line_index": 0,
+        "text": tail_part,
+        "bbox": (
+            blocks_module.bbox_to_json(blocks_module.BBox(*tail_bbox))
+            if tail_bbox is not None
+            else None
+        ),
+        "aux_text": None,
+        "diff_status": None,
+        "layout_status": "assigned",
+    }
+    _insert_line(conn, tail_line_id, tail_values)
+    events.append(
+        _record(
+            conn,
+            entity_type="block_line",
+            entity_id=tail_line_id,
+            action=ACTION_CREATE_LINE,
+            before={},
+            after=tail_values,
+            batch_id=batch_id,
+            actor_name=actor_name,
+        )
+    )
+    return True
+
+
+def _insert_line(conn, line_id: str, values: dict) -> None:
+    conn.execute(
+        "INSERT INTO block_line (line_id, block_id, line_index, bbox, text, aux_text,"
+        " diff_status, layout_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            line_id,
+            values["block_id"],
+            int(values["line_index"]),
+            values.get("bbox"),
+            values.get("text", ""),
+            values.get("aux_text"),
+            values.get("diff_status"),
+            values.get("layout_status", "assigned"),
+        ),
+    )
 
 
 def _ocr_slice(ocr: str | None, offset: int, *, head: bool) -> str:
@@ -2439,6 +2562,79 @@ def revert_events(
 
     with _open(directory) as conn:
         for event in events:
+            if event.action in (ACTION_CREATE_LINE, ACTION_DELETE_LINE):
+                # 拆分时新建的那条行记录：撤销 = 删掉、重做 = 插回去。
+                # 它不像块的软删除那样有 `deleted_at` 可以来回写，所以单独处理；
+                # 行记录不存在时插入、存在时删除，两个方向都是幂等的。
+                present = (
+                    conn.execute(
+                        "SELECT 1 FROM block_line WHERE line_id = ?", (event.entity_id,)
+                    ).fetchone()
+                    is not None
+                )
+                want_present = (event.action == ACTION_CREATE_LINE) == (direction == "redo")
+                if want_present and not present:
+                    values = event.after if event.action == ACTION_CREATE_LINE else event.before
+                    _insert_line(conn, event.entity_id, values)
+                    block_row = conn.execute(
+                        "SELECT p.page_no FROM block b JOIN page p ON p.page_id = b.page_id"
+                        " WHERE b.block_id = ?",
+                        (values["block_id"],),
+                    ).fetchone()
+                    if block_row is not None and block_row["page_no"] is not None:
+                        pages.add(int(block_row["page_no"]))
+                    new_events.append(
+                        _record(
+                            conn,
+                            entity_type="block_line",
+                            entity_id=event.entity_id,
+                            action=ACTION_CREATE_LINE,
+                            before={},
+                            after=dict(values),
+                            batch_id=event.batch_id,
+                            actor=event.actor,
+                            actor_name=actor_name,
+                        )
+                    )
+                elif not want_present and present:
+                    row = conn.execute(
+                        "SELECT * FROM block_line WHERE line_id = ?", (event.entity_id,)
+                    ).fetchone()
+                    block_row = conn.execute(
+                        "SELECT p.page_no FROM block b JOIN page p ON p.page_id = b.page_id"
+                        " WHERE b.block_id = ?",
+                        (row["block_id"],),
+                    ).fetchone()
+                    if block_row is not None and block_row["page_no"] is not None:
+                        pages.add(int(block_row["page_no"]))
+                    values = {
+                        name: row[name]
+                        for name in (
+                            "block_id",
+                            "line_index",
+                            "bbox",
+                            "text",
+                            "aux_text",
+                            "diff_status",
+                            "layout_status",
+                        )
+                        if name in row.keys()
+                    }
+                    conn.execute("DELETE FROM block_line WHERE line_id = ?", (event.entity_id,))
+                    new_events.append(
+                        _record(
+                            conn,
+                            entity_type="block_line",
+                            entity_id=event.entity_id,
+                            action=ACTION_DELETE_LINE,
+                            before=values,
+                            after={},
+                            batch_id=event.batch_id,
+                            actor=event.actor,
+                            actor_name=actor_name,
+                        )
+                    )
+                continue
             values = event.before if direction == "undo" else event.after
             if not values:
                 continue

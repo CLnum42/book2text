@@ -176,10 +176,14 @@ def test_split_block_at_cursor(
     assert [line["line_index"] for line in tail["lines"]] == [0]
 
 
-def test_split_in_the_middle_of_a_line_clears_that_line_bbox(
+def test_split_in_the_middle_of_a_line_splits_that_line_in_two(
     client: TestClient, auth_headers: dict[str, str], page_ready: str
 ) -> None:
-    """说明书 5.3：被从中间切开的行清空 bbox（它不再精确对应任何半边）。"""
+    """切在一行中间：那一行变成**两条** line 记录，坐标按同一个切点分开。
+
+    旧行为（R4）是清空坐标，代价是批量拆分后多出一堆"没有坐标的行"，
+    行归属统计与导出的行级信息都会缺一块（任务 49 改掉）。
+    """
     project_id = page_ready
     block = blocks_of(client, auth_headers, project_id)["blocks"][0]
     offset = 4  # 第一行中间
@@ -192,8 +196,13 @@ def test_split_in_the_middle_of_a_line_clears_that_line_bbox(
     head = next(b for b in data["blocks"] if b["block_id"] == block["block_id"])
     tail = next(b for b in data["blocks"] if b["block_id"] == data["parts"][1])
     assert len(head["lines"]) == 1, "被切开的行归前块"
-    assert head["lines"][0]["bbox"] is None, "它的坐标被清掉了——不再精确对应任何半边"
-    assert tail["lines"][0]["bbox"], "后面的行坐标不受影响"
+    assert head["lines"][0]["text"] == block["text"][:offset]
+    assert tail["lines"][0]["text"] == block["text"].split("\n")[0][offset:]
+    assert head["lines"][0]["bbox"] is not None, "两条行记录都要有坐标"
+    assert tail["lines"][0]["bbox"] is not None
+    assert head["lines"][0]["bbox"][2] == tail["lines"][0]["bbox"][0], "同一个切点"
+    # 全页没有"没有坐标"的行了
+    assert all(line["bbox"] for item in data["blocks"] for line in item["lines"])
 
 
 def test_split_out_of_range_is_refused(
@@ -418,3 +427,47 @@ def test_structure_edits_are_recorded_as_events(
     assert {row["entity_type"] for row in rows} == {"block", "block_line"}
     assert len({row["batch_id"] for row in rows}) == 1, "一次合并就是一批"
     assert len(rows) >= 2 + 1  # 合并 + 软删除 + 行搬迁
+
+
+def test_mid_line_split_undo_removes_the_new_line_record(
+    client: TestClient, auth_headers: dict[str, str], page_ready: str, library_dir: Path
+) -> None:
+    """切出来的后半条行记录由拆分创建：撤销要把它删掉（不是留一条孤儿行）。"""
+    project_id = page_ready
+    block = blocks_of(client, auth_headers, project_id)["blocks"][0]
+    before = _line_rows(library_dir, project_id)
+    offset = 4  # 第一行中间
+
+    split = client.post(
+        f"/api/projects/{project_id}/blocks/{block['block_id']}/split",
+        json={"offset": offset},
+        headers=auth_headers,
+    )
+    assert split.status_code == 200, split.text
+    parts = split.json()["parts"]
+    after = _line_rows(library_dir, project_id)
+    assert len(after) == len(before) + 1, "多出一条：被切开那一行的后半段"
+    head_line = next(row for row in after if row["block_id"] == block["block_id"])
+    tail_line = next(row for row in after if row["block_id"] == parts[1] and row["line_index"] == 0)
+    assert head_line["text"] + tail_line["text"] == block["text"].split("\n")[0]
+
+    undone = client.post(f"/api/projects/{project_id}/undo", headers=auth_headers)
+    assert undone.status_code == 200, undone.text
+    restored = _line_rows(library_dir, project_id)
+    assert len(restored) == len(before)
+    assert [row["text"] for row in restored] == [row["text"] for row in before]
+    assert all(row["bbox"] for row in restored if row["block_id"] == block["block_id"])
+
+    redone = client.post(f"/api/projects/{project_id}/redo", headers=auth_headers)
+    assert redone.status_code == 200, redone.text
+    again = _line_rows(library_dir, project_id)
+    assert len(again) == len(before) + 1
+    assert all(row["bbox"] for row in again), "坐标都还在"
+
+
+def _line_rows(library_dir: Path, project_id: str) -> list[dict]:
+    with db_module.open_database(library_dir / project_id, apply_migrations=False) as conn:
+        rows = conn.execute(
+            "SELECT * FROM block_line ORDER BY line_id"
+        ).fetchall()
+    return [dict(row) for row in rows]

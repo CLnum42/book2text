@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from ..core.project import auto_apply as auto_apply_module
 from ..core.project import blocks as blocks_module
+from ..core.project import ink_gaps as ink_gaps_module
 from ..core.project import editing
 from ..core.project import library as project_library
 from ..core.project import recognition
@@ -833,6 +834,56 @@ def undo(request: Request, project_id: str) -> dict[str, Any]:
 @router.post("/{project_id}/redo")
 def redo(request: Request, project_id: str) -> dict[str, Any]:
     return _apply_history(request, project_id, direction="redo")
+
+
+class RecognizeRegionRequest(BaseModel):
+    # 框选区域（归一化、相对页面显示方向）
+    bbox: list[float] = Field(min_length=4, max_length=4)
+
+
+@router.post("/{project_id}/pages/{page_no}/recognize-region")
+def recognize_region(
+    request: Request, project_id: str, page_no: int, body: RecognizeRegionRequest
+) -> dict[str, Any]:
+    """框选一块区域**只识别这一块**（局部重识别）。
+
+    **不落库**：结果只返回给界面填进「框选新增块」的输入框，用户确认后才走新增块接口。
+    这个接口不建 Run、不建块、不建行，不写事件。
+    """
+    _require_main(request, project_id)
+    library = _library(request)
+    try:
+        project = project_library.load_project(project_id, library=library)
+        pages = project_library.list_pages(project_id, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    page = next((item for item in pages if item.page_no == page_no), None)
+    if page is None:
+        raise AppError(404, "page_not_found", f"没有第 {page_no} 页")
+    if project.directory is None:  # pragma: no cover - 装配错误
+        raise AppError(500, "project_error", "项目缺少目录信息")
+    source = project.directory / project_library.SOURCE_DIR_NAME / project_library.SOURCE_FILE_NAME
+    index = page.pdf_page_index if page.pdf_page_index is not None else page_no - 1
+    try:
+        result = recognition.recognize_region(source, index, body.bbox)
+    except recognition.EngineUnavailable as exc:
+        raise AppError(503, "ocr_engine_unavailable", "OCR 引擎不可用", detail=str(exc)) from exc
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    return {**result, "page_no": page_no}
+
+
+@router.get("/{project_id}/pages/{page_no}/ink-gaps")
+def ink_gaps(request: Request, project_id: str, page_no: int) -> dict[str, Any]:
+    """可疑漏行：有墨迹、但没有被任何行框覆盖的横条（**只读**）。
+
+    误报就是噪声，所以阈值取得保守（见 `core/project/ink_gaps.py` 的常量）。
+    """
+    library = _library(request)
+    try:
+        return ink_gaps_module.find_ink_gaps(project_id, page_no, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
 
 
 @router.get("/{project_id}/pages/{page_no}/blocks")
