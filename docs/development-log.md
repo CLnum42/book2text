@@ -78,6 +78,13 @@
   注释 JSONL 一行一条。
 - 本地：`.venv/bin/python -m pytest -q` → **635 passed, 1 warning**（待填，macOS arm64）。
 
+**CI 实跑（GitHub Actions，真实结果）：** 第一次 [run #12](https://github.com/CLnum42/book2text/actions/runs/39718237491)
+macOS 绿、**Windows 红**——失败点是新加的老记录下载测试：Windows 文本模式把夹具写成了
+`\r\n`，断言按 `\n` 比。顺带发现导出文件本身也没显式指定 LF，因此在 Windows 上会变成 CRLF
+（违反说明书第 10 节）。修复：所有导出的 `write_text(..., newline="\n")`，测试夹具也用
+`newline="\n"`。第二次 [run #13](https://github.com/CLnum42/book2text/actions/runs/39718646578)
+**Status: Success**：macOS 2m 22s、Windows 5m 14s（Windows 在排队）。
+
 **真实导出（已有项目副本 `b2t_KE720H`，第 5 页手工补了书眉 / 脚注 / 页码 / 图注）：**
 
 - `body.txt`：3 段 / 566 字；**不含** `红楼梦/000`、`· 63 ·`、脚注、图注（逐串 grep 确认）。
