@@ -76,6 +76,10 @@
 **本地测试：** `.venv/bin/python -m pytest -q` → **622 passed, 1 warning**（49.22 秒，macOS arm64 / Python 3.12.13）。
 新增 18 项：建议规则 9、确认 / 重置 / 幂等 4、建议只读 1、排除页不进识别 1、未确认不拦识别 1、迁移 2。
 
+**CI 实跑（GitHub Actions，真实结果）：** [run #11](https://github.com/CLnum42/book2text/actions/runs/39717049597)
+—— **Status: Success**（提交 `99a54d7`）。两个 job 都绿：
+`全量测试（macOS 14 + OCR）` 2m 37s、`Windows 测试（非 OCR）` 2m 19s，run 总时长 2m 41s。
+
 **真浏览器（macOS + Chrome，临时项目库）：**
 
 1. 新建项目（20 页样本）→ 自动进入页面确认：汇总 **正文 20 · 其他 0 · 已排除 0 · 未确认 20**；
