@@ -32,7 +32,7 @@ OUTER_MARGIN = 0.03
 # 一行里"未被行框覆盖的墨迹"至少占页宽的这个比例，才算可疑
 ROW_INK_RATIO = 0.01
 # 条带高度：一行正文大约占页高的 2%–4%；太薄是笔画边缘，太高多半是图
-MIN_BAND_HEIGHT = 0.012
+MIN_BAND_HEIGHT = 0.008
 MAX_BAND_HEIGHT = 0.06
 # 条带与已有行框的竖直重叠超过这个比例，就认为"这行其实有框"（行框画得比字紧）
 LINE_OVERLAP_LIMIT = 0.4

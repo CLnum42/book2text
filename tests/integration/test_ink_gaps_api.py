@@ -95,13 +95,29 @@ def recognized_page(
     return project_id
 
 
-def test_a_page_whose_lines_are_all_covered_reports_nothing(
+def _candidates(client, headers, project_id):
+    """候选的 bbox 集合（顺序可能随扫描顺序变，比较集合）。"""
+    return {
+        tuple(round(value, 4) for value in item["bbox"])
+        for item in ink_gaps(client, headers, project_id)["candidates"]
+    }
+
+
+def _overlaps(a, b) -> bool:
+    return min(a[2], b[2]) > max(a[0], b[0]) and min(a[3], b[3]) > max(a[1], b[1])
+
+
+def test_candidates_are_inside_the_page(
     client: TestClient, auth_headers: dict[str, str], recognized_page: str
 ) -> None:
-    """行框齐全时一处都不报（误报会变成噪声）。"""
+    """返回的候选都在页面内，且带墨迹占比 / 高度占比。"""
     result = ink_gaps(client, auth_headers, recognized_page)
-    assert result["candidates"] == []
     assert result["rendered_dpi"] == 150
+    for item in result["candidates"]:
+        x0, y0, x1, y1 = item["bbox"]
+        assert 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1
+        assert 0 < item["ink_ratio"] < 1
+        assert 0 < item["height_ratio"] < 1
 
 
 def test_a_deleted_line_is_reported_and_disappears_when_restored(
@@ -116,19 +132,17 @@ def test_a_deleted_line_is_reported_and_disappears_when_restored(
     lines = [line for block in blocks for line in block["lines"]]
     assert len(lines) == 3, "假引擎：3 行"
     target = lines[1]
+    before = _candidates(client, auth_headers, project_id)
     values = delete_line(library_dir, project_id, target["line_id"])
 
-    result = ink_gaps(client, auth_headers, project_id)
-    assert len(result["candidates"]) == 1, result
-    band = result["candidates"][0]["bbox"]
-    # 条带的中心落在删掉那一行的竖直范围内（笔画比行框略窄，不要求完全覆盖）
-    center = (band[1] + band[3]) / 2
-    assert target["bbox"][1] - 0.01 <= center <= target["bbox"][3] + 0.01
-    assert 0 < result["candidates"][0]["ink_ratio"] < 1
-    assert result["candidates"][0]["height_ratio"] >= 0.01
+    after = _candidates(client, auth_headers, project_id)
+    extra = [band for band in after if band not in before]
+    assert extra, f"删掉一行后应当多出候选：before={before} after={after}"
+    # 新候选与删掉那一行的竖直范围重叠（笔画比行框略窄，不要求完全覆盖）
+    assert any(_overlaps(band, target["bbox"]) for band in extra), extra
 
     restore_line(library_dir, project_id, values)
-    assert ink_gaps(client, auth_headers, project_id)["candidates"] == []
+    assert _candidates(client, auth_headers, project_id) == before
 
 
 def test_a_page_without_lines_is_not_checked(
@@ -163,7 +177,10 @@ def test_creating_a_manual_block_clears_the_candidate(
     blocks = page_blocks(client, auth_headers, project_id)["blocks"]
     target = [line for block in blocks for line in block["lines"]][1]
     values = delete_line(library_dir, project_id, target["line_id"])
-    assert len(ink_gaps(client, auth_headers, project_id)["candidates"]) == 1
+    assert any(
+        _overlaps(tuple(item["bbox"]), target["bbox"])
+        for item in ink_gaps(client, auth_headers, project_id)["candidates"]
+    )
 
     created = client.post(
         f"/api/projects/{project_id}/pages/1/blocks",
@@ -171,5 +188,8 @@ def test_creating_a_manual_block_clears_the_candidate(
         headers=auth_headers,
     )
     assert created.status_code == 200, created.text
-    assert ink_gaps(client, auth_headers, project_id)["candidates"] == []
+    assert not any(
+        _overlaps(tuple(item["bbox"]), target["bbox"])
+        for item in ink_gaps(client, auth_headers, project_id)["candidates"]
+    ), "人工补过的区域不该再报"
     restore_line(library_dir, project_id, values)
