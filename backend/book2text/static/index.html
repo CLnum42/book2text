@@ -57,6 +57,12 @@
 
     <div class="noticebar noticebar--warn" id="platform-warning" hidden></div>
     <div class="noticebar noticebar--info" id="package-banner" hidden></div>
+    <div class="noticebar noticebar--info" id="auto-apply-notice" hidden>
+      <span id="auto-apply-notice-text"></span>
+      <span class="spacer"></span>
+      <button type="button" id="auto-apply-undo" class="btn btn--sm">撤销这次自动应用</button>
+      <button type="button" id="auto-apply-dismiss" class="icon-btn" title="收起提示">✕</button>
+    </div>
 
     <div class="workspace">
       <!-- ─────────────────────────── 视图：项目库 ─────────────────────────── -->
@@ -192,6 +198,17 @@
               <button type="button" id="split-page-numbers" class="btn btn--block">批量拆分书眉页码…</button>
             </div>
 
+            <div class="panel__sec panel__sec--secondary" id="suggestion-panel">
+              <div class="panel__headrow"><strong>页眉 / 页脚 / 页码</strong><span class="muted">建议</span></div>
+              <p class="hint">识别不会自己改块类型。这里把"把握较大"的建议一次用上：先扫描（只读）看影响多少页、多少块，再点应用。</p>
+              <button type="button" id="apply-high-suggestions" class="btn btn--block">全库采用高把握建议…</button>
+              <label class="check check--line">
+                <input type="checkbox" id="auto-apply-suggestions">
+                识别完成后自动应用高把握建议
+              </label>
+              <div class="hint" id="auto-apply-status" hidden></div>
+            </div>
+
             <div class="panel__sec panel__sec--secondary">
               <div class="panel__headrow"><strong>识别</strong><span class="muted">可选</span></div>
               <label class="check check--line">
@@ -306,6 +323,8 @@
               <span id="page-detail-meta" class="muted"></span>
               <span class="spacer"></span>
               <button type="button" id="candidate-open" class="btn btn--sm" hidden>对比新结果</button>
+              <button type="button" id="review-apply-all" class="btn btn--sm"
+                      title="全库扫描"把握较大"的页眉 / 页脚 / 页码建议，预览确认后一次应用（可整体撤销）">全库采用建议…</button>
               <button type="button" id="aux-run" class="btn btn--sm"
                       title="用第二引擎逐行复核这一页（说明书 8.5）：复核过的分歧行会在块里标出另一路候选，可逐行换过去">第二引擎复核</button>
               <button type="button" id="detail-box-create" class="btn btn--sm"
@@ -566,6 +585,30 @@
     </div>
 
     <!-- ─────────────────────────── 对话框：任务包（分派 / 结果） ─────────────────────────── -->
+    <div class="mask" id="suggestion-apply-panel" hidden>
+      <div class="modal modal--small">
+        <div class="mhead">
+          全库采用高把握建议
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="suggestion-apply-close">✕</button>
+        </div>
+        <div class="mbody mbody--single">
+          <div class="alert alert--info" id="suggestion-apply-summary">正在扫描…</div>
+          <div class="alert alert--error" id="suggestion-apply-error" hidden></div>
+          <div class="suggestion-types" id="suggestion-apply-types"></div>
+          <p class="hint">只应用"把握较大"的：页码形态、跨页重复 ≥ 3 次的书眉 / 页脚。
+            标题与"需确认"不进批量。下面是前几条样例。</p>
+          <ol class="split-batch-list" id="suggestion-apply-samples"></ol>
+        </div>
+        <div class="mfoot">
+          <span class="muted">整批算一个操作，应用后可在审校视图「撤销」一次回退</span>
+          <span class="spacer"></span>
+          <button type="button" id="suggestion-apply-cancel" class="btn">取消</button>
+          <button type="button" id="suggestion-apply-run" class="btn btn--pri" disabled>应用</button>
+        </div>
+      </div>
+    </div>
+
     <div class="mask" id="split-batch-panel" hidden>
       <div class="modal modal--small">
         <div class="mhead">

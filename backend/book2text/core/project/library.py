@@ -21,7 +21,7 @@ import json
 import secrets
 import shutil
 from collections.abc import AsyncIterator, Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -112,6 +112,8 @@ class Project:
     last_view: str | None = None
     last_page_id: str | None = None
     directory: Path | None = None
+    # 项目级设置（`project.settings_json`）：目前只有"识别完成后自动应用高把握建议"
+    settings: dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -127,6 +129,7 @@ class Project:
             "last_view": self.last_view,
             "last_page_id": self.last_page_id,
             "directory": str(self.directory) if self.directory else "",
+            "settings": dict(self.settings),
         }
 
 
@@ -435,7 +438,19 @@ def _row_to_project(row, directory: Path) -> Project:
         last_view=row["last_view"],
         last_page_id=row["last_page_id"],
         directory=directory,
+        settings=_parse_settings(_column(row, "settings_json")),
     )
+
+
+def _parse_settings(raw) -> dict[str, object]:
+    """`settings_json` 解析失败就当成空设置：坏掉的设置不该让项目打不开。"""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def require_project_dir(project_id: str, *, library: Path | None = None) -> Path:
@@ -469,6 +484,44 @@ def load_project(project_id: str, *, library: Path | None = None) -> Project:
     if row is None:
         raise ProjectError(f"项目数据库里没有 project 记录：{project_id}")
     return _row_to_project(row, directory)
+
+
+# 项目级设置的键（写在 `project.settings_json` 里）。新增键要同时改这里与界面。
+PROJECT_SETTING_KEYS = ("auto_apply_high_suggestions",)
+"""`auto_apply_high_suggestions`：识别完成后由**服务端**自动应用高把握的块类型建议。
+
+这是**用户预先授权**的开关（默认关），不是"静默应用"：每次自动应用都记一条
+`auto_apply_run`，界面有提示，并且可以一键撤销整批（见 `core/project/auto_apply.py`）。
+"""
+
+
+def get_settings(project_id: str, *, library: Path | None = None) -> dict[str, object]:
+    """项目的设置（没有存过就是空字典）。"""
+    return dict(load_project(project_id, library=library).settings)
+
+
+def update_settings(
+    project_id: str, patch: dict[str, object], *, library: Path | None = None
+) -> dict[str, object]:
+    """改项目设置（合并写回 `settings_json`）；返回合并后的完整设置。
+
+    只接受 `PROJECT_SETTING_KEYS` 里的键——不认识的键直接拒绝，
+    免得以后有人在设置里塞一个没人读的字段还以为生效了。
+    """
+    unknown = [name for name in patch if name not in PROJECT_SETTING_KEYS]
+    if unknown:
+        raise ProjectError(f"未知的项目设置：{'、'.join(unknown)}")
+    if not patch:
+        raise ProjectError("没有要更新的设置")
+    directory = require_project_dir(project_id, library=library)
+    merged = {**get_settings(project_id, library=library), **patch}
+    with db_module.open_database(directory) as conn:
+        conn.execute(
+            "UPDATE project SET settings_json = ?",
+            (json.dumps(merged, ensure_ascii=False),),
+        )
+        conn.commit()
+    return merged
 
 
 def list_pages(project_id: str, *, library: Path | None = None) -> list[Page]:

@@ -1473,6 +1473,8 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
       warning.hidden = false;
     }
     await refreshProject(projectId);
+    applyProjectSettings();
+    await loadAutoApplyStatus();
     pagesOverlayOn = loadPageOverlayPreference();
     setupSuggestionsLoaded = false;
     setupSuggestions = [];
@@ -2623,6 +2625,14 @@ function rememberPageBlocks(key, blocks) {
  * 又把旧块写回缓存，用户就得等下一次刷新才能看到新的框。
  * 这一页的块类型建议也一起丢掉——块都变了，建议得重算。
  */
+function forgetAllPageBlocks() {
+  pageBlockCache.clear();
+  pageBlockCacheOrder.length = 0;
+  for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
+    clearPageBlocks(tile);
+  }
+}
+
 function forgetPageBlocks(pageNo) {
   const key = pageBlockKey(pageNo);
   pageBlockVersions.set(key, (pageBlockVersions.get(key) || 0) + 1);
@@ -3365,6 +3375,8 @@ async function pollTask() {
       openTaskDrawer();
     }
     await loadSummary(); // 任务结束后统计会变（复核行数、任务失败率）
+    // 自动应用由识别子进程在结算后写入：这里等一轮再查，新出现的那一条会弹提示
+    await loadAutoApplyStatus({ announce: true, jobId: data.job.job_id });
   } else {
     // 进度在变，页面状态也在变：不重拉图，只刷状态。
     // 两件事互不依赖（页面状态 vs 块数据），并行发，别让块框多等一个往返。
@@ -5961,6 +5973,18 @@ function setupLibrary() {
   });
   el("project-close").addEventListener("click", closeProject);
   setupCollabControls();
+  el("apply-high-suggestions").addEventListener("click", openSuggestionApplyPanel);
+  el("review-apply-all").addEventListener("click", openSuggestionApplyPanel);
+  el("suggestion-apply-close").addEventListener("click", () => closeModal("suggestion-apply-panel"));
+  el("suggestion-apply-cancel").addEventListener("click", () => closeModal("suggestion-apply-panel"));
+  el("suggestion-apply-run").addEventListener("click", runSuggestionApply);
+  el("auto-apply-suggestions").addEventListener("change", (event) =>
+    setAutoApplySetting(event.target.checked)
+  );
+  el("auto-apply-undo").addEventListener("click", () =>
+    undoAutoApply(el("auto-apply-notice").dataset.autoApplyId)
+  );
+  el("auto-apply-dismiss").addEventListener("click", hideAutoApplyNotice);
   el("split-batch-close").addEventListener("click", () => closeModal("split-batch-panel"));
   el("split-batch-cancel").addEventListener("click", () => closeModal("split-batch-panel"));
   el("split-batch-apply").addEventListener("click", applySplitBatch);
@@ -6018,6 +6042,269 @@ function setupLibrary() {
   });
 }
 
+
+// ---------------------------------------------------------------- 全库采用高把握建议
+//
+// 用户的原话是"有没有办法自动识别页眉页脚？而不是我每一页手动改？"
+// 建议其实已经算出来了（只读），这里给它一个"一次全用上"的入口：
+// 先扫描（dry_run，不写库）看影响多少页 / 块，确认后整批应用（一个 batch，可整体撤销）。
+// 另有项目级开关"识别完成后自动应用"：由**识别子进程**在任务收尾时执行，
+// 每次记一条 auto_apply_run，界面顶部有提示条 + 一键撤销（见 D-064）。
+
+let suggestionApplyPlan = null;
+/** 最近一次自动应用（GET /auto-apply 的结果）。 */
+let latestAutoApply = null;
+/** 已经提示过的自动应用 id：同一个不重复弹。 */
+let autoApplyAnnouncedId = null;
+
+function applyProjectSettings() {
+  const settings = (currentProject && currentProject.settings) || {};
+  el("auto-apply-suggestions").checked = Boolean(settings.auto_apply_high_suggestions);
+}
+
+function autoApplyTypeText(byType) {
+  const labels = { header: "页眉", footer: "页脚", page_number: "页码", margin_note: "旁批" };
+  return Object.entries(byType || {})
+    .map(([type, count]) => `${labels[type] || type} ${count}`)
+    .join(" / ");
+}
+
+/** 右栏那行"上次自动应用：N 页 M 块（可撤销）"。 */
+function renderAutoApplyStatus(run) {
+  latestAutoApply = run;
+  const node = el("auto-apply-status");
+  if (!run) {
+    node.hidden = true;
+    node.innerHTML = "";
+    return;
+  }
+  node.hidden = false;
+  node.innerHTML = "";
+  const when = (run.created_at || "").slice(5, 16).replace("T", " ");
+  const text = document.createElement("span");
+  text.textContent =
+    `上次自动应用：${run.pages} 页 ${run.blocks} 块（${autoApplyTypeText(run.by_type)}）` +
+    ` · ${when} · ${run.status === "undone" ? "已撤销" : "可撤销"}`;
+  node.append(text);
+  if (run.status === "applied") {
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "btn btn--sm btn--ghost";
+    undo.textContent = "撤销这次自动应用";
+    undo.addEventListener("click", () => undoAutoApply(run.auto_apply_id));
+    node.append(undo);
+  }
+}
+
+async function loadAutoApplyStatus({ announce = false, jobId = null } = {}) {
+  if (!currentProject || currentProject.kind === "package") return;
+  let data;
+  try {
+    data = await apiJson(`/api/projects/${currentProject.project_id}/auto-apply`);
+  } catch {
+    return;
+  }
+  const run = data.latest || null;
+  renderAutoApplyStatus(run);
+  if (!announce || !jobId) {
+    if (run) autoApplyAnnouncedId = run.auto_apply_id;
+    return;
+  }
+  if (run && run.job_id === jobId && run.status === "applied") {
+    if (autoApplyAnnouncedId !== run.auto_apply_id) {
+      autoApplyAnnouncedId = run.auto_apply_id;
+      showAutoApplyNotice(run);
+      // 块类型变了：页面视图的框与建议角标不能再用旧的
+      refreshAfterTypeChanges([]);
+    }
+    return;
+  }
+  // 子进程是在任务结算**之后**才写自动应用记录的：再等一轮
+  const key = `announced:${jobId}`;
+  const attempts = Number(sessionStorage.getItem(key) || "0");
+  if (attempts < 3) {
+    sessionStorage.setItem(key, String(attempts + 1));
+    setTimeout(() => loadAutoApplyStatus({ announce, jobId }), 900);
+  }
+}
+
+/**
+ * 顶部提示条。`undoId` 有值时显示「撤销这次自动应用」按钮
+ * （手工整批应用的撤销在审校视图的撤销栈里，所以不显示这个按钮）。
+ */
+function showNoticeBar(text, { undoId = null } = {}) {
+  el("auto-apply-notice-text").textContent = text;
+  el("auto-apply-notice").hidden = false;
+  el("auto-apply-notice").dataset.autoApplyId = undoId || "";
+  el("auto-apply-undo").hidden = !undoId;
+}
+
+function showAutoApplyNotice(run) {
+  showNoticeBar(
+    `识别完成后自动应用了 ${run.pages} 页 ${run.blocks} 块（${autoApplyTypeText(run.by_type)}）。` +
+      "不满意可以整批撤销。",
+    { undoId: run.auto_apply_id }
+  );
+}
+
+function hideAutoApplyNotice() {
+  el("auto-apply-notice").hidden = true;
+}
+
+/** 类型变了之后统一收尾：丢块框缓存 / 建议缓存，就地刷新状态。 */
+function refreshAfterTypeChanges(pageNos) {
+  if (pageNos && pageNos.length) {
+    for (const pageNo of pageNos) forgetPageBlocks(pageNo);
+  } else {
+    forgetAllPageBlocks();
+  }
+  forgetAllPageSuggestions();
+  refreshPageStates();
+  schedulePageVisibility();
+}
+
+async function undoAutoApply(autoApplyId) {
+  if (!currentProject || !autoApplyId) return;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/auto-apply/${autoApplyId}/undo`,
+      { method: "POST" }
+    );
+    hideAutoApplyNotice();
+    refreshAfterTypeChanges(data.pages_affected || []);
+    if (detailPageNo !== null) await loadPageDetail(detailPageNo, { forceSuggestions: true });
+    await loadAutoApplyStatus();
+    notifyApplied(
+      `已撤销这次自动应用（${data.pages} 页 ${data.blocks} 块），块类型回到自动应用之前。`
+    );
+  } catch (error) {
+    showError(el("page-detail-error"), error);
+  }
+}
+
+/** 结果提示：页面视图用右栏的提示条，审校视图用顶栏的保存状态。 */
+function notifyApplied(text) {
+  // 顶部提示条比右栏的临时提示更持久（右栏那行会被 updateSelectionPanel 重画）
+  showNoticeBar(text);
+  setSaveState(text);
+}
+
+async function setAutoApplySetting(on) {
+  if (!currentProject) return;
+  const checkbox = el("auto-apply-suggestions");
+  if (on) {
+    const ok = window.confirm(
+      "打开后，「之后完成」的识别任务会自动把「把握较大」的页眉 / 页脚 / 页码建议用上" +
+        "（只动 high：页码形态、跨页重复 ≥ 3 次的书眉页脚；标题与「需确认」不动）。\n\n" +
+        "每次自动应用都会在顶部提示，可一键整批撤销。现在打开吗？"
+    );
+    if (!ok) {
+      checkbox.checked = false;
+      return;
+    }
+  }
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auto_apply_high_suggestions: Boolean(on) }),
+    });
+    currentProject.settings = data.settings;
+    applyProjectSettings();
+    notifyApplied(
+      on
+        ? "已打开：之后完成的识别任务会自动应用高把握建议（顶部有提示，可撤销）。"
+        : "已关闭：识别完成后只给建议，不改块类型。"
+    );
+  } catch (error) {
+    checkbox.checked = !on;
+    showError(el("selection-hint"), error);
+  }
+}
+
+async function openSuggestionApplyPanel() {
+  if (!currentProject) return;
+  el("suggestion-apply-error").hidden = true;
+  el("suggestion-apply-summary").textContent = "正在扫描全部正文页…";
+  el("suggestion-apply-types").innerHTML = "";
+  el("suggestion-apply-samples").innerHTML = "";
+  el("suggestion-apply-run").disabled = true;
+  el("suggestion-apply-run").textContent = "应用";
+  openModal("suggestion-apply-panel");
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/suggestions/apply`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dry_run: true }),
+      }
+    );
+    renderSuggestionApplyPreview(data);
+  } catch (error) {
+    el("suggestion-apply-summary").textContent = "扫描失败";
+    showError(el("suggestion-apply-error"), error);
+  }
+}
+
+function renderSuggestionApplyPreview(data) {
+  suggestionApplyPlan = data;
+  const blocks = data.blocks || 0;
+  const pages = data.pages || 0;
+  el("suggestion-apply-summary").textContent = blocks
+    ? `扫描了 ${data.pages_scanned} 页 / ${data.blocks_scanned} 块：会改 ${pages} 页 · ${blocks} 块`
+    : `扫描了 ${data.pages_scanned} 页 / ${data.blocks_scanned} 块：没有需要改的块（已经都是对的，或者都还"需确认"）`;
+  const types = el("suggestion-apply-types");
+  types.innerHTML = "";
+  for (const [type, count] of Object.entries(data.by_type || {})) {
+    const pill = document.createElement("span");
+    pill.className = `suggestion-type suggestion-type--${type}`;
+    pill.textContent = `${BLOCK_TYPE_LABELS[type] || type} ${count}`;
+    types.append(pill);
+  }
+  const list = el("suggestion-apply-samples");
+  list.innerHTML = "";
+  for (const item of data.samples || []) {
+    const li = document.createElement("li");
+    li.textContent =
+      `第 ${item.page_no} 页 · ${BLOCK_TYPE_LABELS[item.current_type] || item.current_type}` +
+      ` → ${BLOCK_TYPE_LABELS[item.suggested_type] || item.suggested_type}：${item.text}`;
+    list.append(li);
+  }
+  const run = el("suggestion-apply-run");
+  run.disabled = blocks === 0;
+  run.textContent = blocks ? `应用（${blocks} 块）` : "没有可应用的";
+}
+
+async function runSuggestionApply() {
+  if (!currentProject) return;
+  const button = el("suggestion-apply-run");
+  button.disabled = true;
+  button.textContent = "正在应用…";
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/suggestions/apply`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dry_run: false }),
+      }
+    );
+    closeModal("suggestion-apply-panel");
+    refreshAfterTypeChanges(data.pages_affected || []);
+    if (detailPageNo !== null && (data.pages_affected || []).includes(detailPageNo)) {
+      await loadPageDetail(detailPageNo, { forceSuggestions: true });
+    }
+    notifyApplied(
+      `已采用 ${data.blocks} 块高把握建议（${data.pages} 页，第 ${data.history.undo} 个可撤销操作）。` +
+        "整批可撤销：审校视图点「撤销」。"
+    );
+  } catch (error) {
+    showError(el("suggestion-apply-error"), error);
+    button.disabled = false;
+    button.textContent = "重试应用";
+  }
+}
 
 // ---------------------------------------------------------------- 批量拆分书眉页码
 //

@@ -19,6 +19,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from ..core.project import auto_apply as auto_apply_module
 from ..core.project import blocks as blocks_module
 from ..core.project import editing
 from ..core.project import library as project_library
@@ -699,6 +700,83 @@ def confirm_page_layout(
         "new_events": len(events),
         "events": [event.to_dict() for event in events],
     }
+
+
+# ---------------------------------------------------------------- 全库采用高把握建议
+
+class ApplySuggestionsRequest(BaseModel):
+    # 预览（只读，不写库）；界面先预览再让用户确认
+    dry_run: bool = True
+    # 只处理这些页（空 = 全部正文页）
+    page_numbers: list[int] | None = Field(default=None, max_length=5000)
+
+
+@router.post("/{project_id}/suggestions/apply")
+def apply_high_suggestions(
+    request: Request, project_id: str, body: ApplySuggestionsRequest
+) -> dict[str, Any]:
+    """全库扫一遍高把握建议：`dry_run` 只预览，否则一次应用（可整体撤销）。
+
+    与审校视图的单页「采用全部建议」用的是同一套规则；区别是这里**一次算完所有页**
+    （逐页调会对整本书的块重复扫描），并且**只应用 high**：标题与"需确认"永远不动。
+    """
+    _require_main(request, project_id)
+    library = _library(request)
+    try:
+        plan = structure_module.scan_high_suggestions(
+            project_id, library=library, page_numbers=body.page_numbers
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+    result: dict[str, Any] = plan.to_dict()
+    result["dry_run"] = bool(body.dry_run)
+    if body.dry_run or not plan.items:
+        undo, redo = _history(request).depth(project_id)
+        result["history"] = {"undo": undo, "redo": redo}
+        return result
+
+    try:
+        events, by_type, pages = editing.apply_block_types(
+            project_id,
+            [(block_id, block_type) for block_id, block_type, _ in plan.items],
+            library=library,
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    _history(request).push(project_id, _Batch(events=tuple(events), page_nos=pages))
+    undo, redo = _history(request).depth(project_id)
+    result["dry_run"] = False
+    result["events"] = len(events)
+    result["by_type"] = by_type
+    result["pages_affected"] = list(pages)
+    result["history"] = {"undo": undo, "redo": redo}
+    return result
+
+
+# ---------------------------------------------------------------- 自动应用（识别完成后）
+
+@router.get("/{project_id}/auto-apply")
+def get_auto_apply(request: Request, project_id: str) -> dict[str, Any]:
+    """最近一次"识别完成后自动应用"的记录（没有就是 null）。"""
+    directory = project_library.project_dir(_library(request), project_id)
+    return {"latest": auto_apply_module.latest_run(directory)}
+
+
+@router.post("/{project_id}/auto-apply/{auto_apply_id}/undo")
+def undo_auto_apply(request: Request, project_id: str, auto_apply_id: str) -> dict[str, Any]:
+    """撤销**最近一次**自动应用（整批）。
+
+    自动应用发生在识别子进程里，不在 API 的撤销栈里，所以这里按 batch_id 从事件表
+    把那一批读回来再反过来应用；这一批之后如果还有别的修改就拒绝（先撤后面的）。
+    """
+    _require_main(request, project_id)
+    directory = project_library.project_dir(_library(request), project_id)
+    try:
+        result = auto_apply_module.undo_run(directory, auto_apply_id)
+    except auto_apply_module.AutoApplyError as exc:
+        raise AppError(400, "auto_apply_undo_refused", str(exc)) from exc
+    return result
 
 
 # ---------------------------------------------------------------- 撤销 / 重做

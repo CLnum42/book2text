@@ -442,3 +442,34 @@ def test_page_layout_migration_adds_column_and_reset_triggers(
     conn.execute(insert_block, ("b3", 2))
     conn.commit()
     assert confirmed() == 0, "新增块要重置"
+
+
+def test_migration_0010_adds_the_auto_apply_table(conn: sqlite3.Connection) -> None:
+    """自动应用发生在识别子进程里，撤销栈在 API 进程：靠这张表把整批找回来。"""
+    migrate(conn, MIGRATIONS)
+    assert "auto_apply_run" in _table_names(conn)
+    columns = {
+        row["name"]: row["type"]
+        for row in conn.execute("PRAGMA table_info(auto_apply_run)").fetchall()
+    }
+    for name in (
+        "auto_apply_id",
+        "job_id",
+        "status",
+        "pages",
+        "blocks",
+        "by_type_json",
+        "created_at",
+        "undone_at",
+    ):
+        assert name in columns, name
+    # 状态只允许 applied / undone：撤销之后不许再撤一次
+    conn.execute(
+        "INSERT INTO auto_apply_run (auto_apply_id, job_id, status, created_at)"
+        " VALUES ('x', 'j', 'applied', '2026-10-22T00:00:00+00:00')"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO auto_apply_run (auto_apply_id, job_id, status, created_at)"
+            " VALUES ('y', 'j', 'whatever', '2026-10-22T00:00:00+00:00')"
+        )

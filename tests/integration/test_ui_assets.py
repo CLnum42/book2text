@@ -421,3 +421,39 @@ def test_split_page_number_and_batch_split_are_wired() -> None:
 
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
     assert ".split-batch-list" in css
+
+
+# ---------------------------------------------------------------- 任务 48：全库采用建议
+
+def test_full_library_suggestion_apply_and_auto_apply_switch_are_wired() -> None:
+    """「全库采用高把握建议」与「识别完成后自动应用」两个入口。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    for element_id in (
+        "apply-high-suggestions",
+        "auto-apply-suggestions",
+        "auto-apply-status",
+        "suggestion-apply-panel",
+        "suggestion-apply-summary",
+        "suggestion-apply-run",
+        "review-apply-all",
+        "auto-apply-notice",
+        "auto-apply-undo",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    script = _script()
+    # 先扫描（dry_run）再应用；两个视图都能打开同一个对话框
+    assert "/suggestions/apply" in script
+    assert "dry_run: true" in script and "dry_run: false" in script
+    assert 'el("review-apply-all").addEventListener' in script
+    # 项目级设置与自动应用记录
+    assert "/settings" in script
+    assert "auto_apply_high_suggestions" in script
+    assert "/auto-apply" in script
+    assert "undoAutoApply" in script
+    # 任务收尾时查"这一趟有没有新的自动应用"
+    poll = _function_body("pollTask")
+    assert "loadAutoApplyStatus({ announce: true, jobId: data.job.job_id })" in poll
+
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    assert ".suggestion-type" in css

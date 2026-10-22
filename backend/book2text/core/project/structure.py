@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -662,3 +663,129 @@ def _page_number_hints(page_no, page_blocks, scored, suggestions) -> list[PageNu
             )
         )
     return hints
+
+
+# ---------------------------------------------------------------- 全库扫描高把握建议
+
+@dataclass(frozen=True)
+class HighSuggestionPlan:
+    """一次"全库采用高把握建议"的预览：只描述，不写库。"""
+
+    pages_scanned: int
+    blocks_scanned: int
+    items: tuple[tuple[str, str, int], ...]
+    """(block_id, suggested_type, page_no)，按页码 / 阅读顺序排列。"""
+
+    by_type: dict[str, int]
+    samples: tuple[dict[str, object], ...]
+
+    @property
+    def pages_affected(self) -> int:
+        return len({page_no for _, _, page_no in self.items})
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "pages_scanned": self.pages_scanned,
+            "blocks_scanned": self.blocks_scanned,
+            "pages": self.pages_affected,
+            "blocks": len(self.items),
+            "by_type": dict(self.by_type),
+            "samples": [dict(item) for item in self.samples],
+        }
+
+
+def scan_high_suggestions(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    rules: HeaderFooterRules | None = None,
+    page_numbers: Collection[int] | None = None,
+    limit_samples: int = 8,
+) -> HighSuggestionPlan:
+    """全库扫一遍：哪些块会被"采用高把握建议"改类型（**只读**）。
+
+    规则与 `suggest_block_types` 完全是同一套（`_region_of` + `_propose` +
+    `_with_confidence`，跨页重复统计也一样），区别只在**一次算完所有页**：
+    逐页调那个函数会对整本书的块重复扫描（267 页 × 全书块数），在真项目上要几分钟。
+
+    `page_numbers` 只过滤**结果**（例如自动应用只处理本任务认完的页），
+    跨页重复统计仍然用全书——否则书眉只出现一两次，会被误判成"需确认"。
+    """
+    active = rules or HeaderFooterRules()
+    target_library = library if library is not None else default_library_dir()
+    pages = list_pages(project_id, library=target_library)
+    eligible = {page.page_no for page in pages if page.page_type in active.page_types}
+    if not eligible:
+        return HighSuggestionPlan(0, 0, (), {}, ())
+
+    blocks = [
+        block
+        for block in blocks_module.list_blocks(project_id, library=target_library)
+        if block.page_no in eligible
+    ]
+    candidates: list[Candidate] = []
+    for block in blocks:
+        text = block.text.strip()
+        if not text or block.bbox is None:
+            continue
+        region = _region_of(block.bbox, active)
+        if region is None:
+            continue
+        if active.max_chars is not None and len(text) > active.max_chars:
+            continue
+        proposed, reason = _propose(text, region, active)
+        candidates.append(
+            Candidate(
+                block_id=block.block_id,
+                page_no=block.page_no,
+                text=text,
+                bbox=block.bbox,
+                current_type=block.block_type,
+                proposed_type=proposed,
+                region=region,
+                reason=reason,
+            )
+        )
+    scored = {candidate.block_id: candidate for candidate in _with_confidence(candidates)}
+
+    wanted = set(page_numbers) if page_numbers else None
+    items: list[tuple[str, str, int]] = []
+    by_type: dict[str, int] = {}
+    samples: list[dict[str, object]] = []
+    for block in blocks:
+        if wanted is not None and block.page_no not in wanted:
+            continue
+        candidate = scored.get(block.block_id)
+        if candidate is None:
+            continue
+        if candidate.proposed_type == block.block_type:
+            continue
+        if candidate.confidence != CONFIDENCE_HIGH:
+            continue
+        # 标题永远不进批量：`looks_like_heading` 只给 review，这里再挡一道
+        if candidate.proposed_type == BLOCK_TYPE_HEADING:
+            continue
+        items.append((block.block_id, candidate.proposed_type, block.page_no))
+        by_type[candidate.proposed_type] = by_type.get(candidate.proposed_type, 0) + 1
+        if len(samples) < limit_samples:
+            samples.append(
+                {
+                    "page_no": block.page_no,
+                    "order_index": block.order_index,
+                    "block_id": block.block_id,
+                    "text": block.text[:60],
+                    "current_type": block.block_type,
+                    "suggested_type": candidate.proposed_type,
+                    "confidence_label": CONFIDENCE_LABELS.get(
+                        candidate.confidence, candidate.confidence
+                    ),
+                }
+            )
+
+    return HighSuggestionPlan(
+        pages_scanned=len(eligible),
+        blocks_scanned=len(blocks),
+        items=tuple(items),
+        by_type=by_type,
+        samples=tuple(samples),
+    )

@@ -299,6 +299,72 @@ def update_block(
     return block, events
 
 
+def apply_block_types(
+    project_id: str,
+    items: list[tuple[str, str]],
+    *,
+    library: Path | None = None,
+    batch_id: str | None = None,
+    actor_name: str | None = None,
+    actor: str = ACTOR_SYSTEM,
+) -> tuple[list[Event], dict[str, int], tuple[int, ...]]:
+    """把一批块**一次**改成指定类型（「全库采用高把握建议」与自动应用共用）。
+
+    与逐个调 `update_block` 的区别只在性能与事件来源：这里一个连接、一个事务、
+    一个 `batch_id`，并显式记 `actor`（自动应用 / 批量建议是 `system`，
+    不会被结构工具的"人工改过就不覆盖"当成手工类型）。返回
+    （事件, 各类型计数, 涉及的页码）。
+
+    已经是指定类型的块跳过（不写无用事件）；找不到或已删除的块跳过
+    （任务进行中页面被重新识别时会发生）。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    batch = batch_id or new_ulid()
+    now = _now()
+    events: list[Event] = []
+    by_type: dict[str, int] = {}
+    pages: set[int] = set()
+
+    with _open(directory) as conn:
+        page_nos = {
+            row["page_id"]: int(row["page_no"])
+            for row in conn.execute("SELECT page_id, page_no FROM page").fetchall()
+        }
+        for block_id, block_type in items:
+            if block_type not in BLOCK_TYPES:
+                raise ProjectError(f"未知的块类型：{block_type!r}")
+            row = _block_of(conn, block_id)
+            if row is None or row["deleted_at"]:
+                continue
+            if row["block_type"] == block_type:
+                continue
+            block_events, _ = _set_block_fields(
+                conn,
+                block_id,
+                {"block_type": block_type},
+                batch_id=batch,
+                action=ACTION_SET_TYPE,
+                actor_name=actor_name,
+                now=now,
+                actor=actor,
+            )
+            events.extend(block_events)
+            if block_events:
+                by_type[block_type] = by_type.get(block_type, 0) + 1
+                page_no = page_nos.get(row["page_id"])
+                if page_no is not None:
+                    pages.add(page_no)
+        if events:
+            conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+
+    return events, by_type, tuple(sorted(pages))
+
+
 # ---------------------------------------------------------------- 框与行归属
 
 # 手动框不允许小到点不中；也避免退化成一条线（那样一行都落不进去）
@@ -775,7 +841,15 @@ def _union_bbox(left: str | None, right: str | None) -> str | None:
 
 
 def _set_block_fields(
-    conn, block_id: str, values: dict, *, batch_id: str, action: str, actor_name: str | None, now: str
+    conn,
+    block_id: str,
+    values: dict,
+    *,
+    batch_id: str,
+    action: str,
+    actor_name: str | None,
+    now: str,
+    actor: str = ACTOR_USER,
 ) -> tuple[list[Event], dict]:
     """改一个块的若干字段并记事件（结构编辑内部用；返回事件与改动前的值）。"""
     row = _block_of(conn, block_id)
@@ -793,6 +867,7 @@ def _set_block_fields(
             before={name: before[name]},
             after={name: values[name]},
             batch_id=batch_id,
+            actor=actor,
             actor_name=actor_name,
         )
         for name in values

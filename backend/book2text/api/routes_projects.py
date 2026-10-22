@@ -391,6 +391,31 @@ class LastViewPatch(BaseModel):
     page_id: str | None = None
 
 
+class ProjectSettingsPatch(BaseModel):
+    """项目级设置（目前只有"识别完成后自动应用高把握建议"）。"""
+
+    auto_apply_high_suggestions: bool | None = None
+
+
+@router.patch("/{project_id}/settings")
+def patch_settings(
+    request: Request, project_id: str, patch: ProjectSettingsPatch
+) -> dict[str, Any]:
+    """改项目设置；返回合并后的完整设置。
+
+    这不是"静默应用"的开关：打开后每次自动应用都记一条 `auto_apply_run`，
+    界面有提示、可一键撤销（见 `core/project/auto_apply.py`）。
+    """
+    library = _library(request)
+    values = patch.model_dump(exclude_none=True)
+    try:
+        settings = project_library.update_settings(project_id, values, library=library)
+    except project_library.ProjectError as exc:
+        status = 404 if not project_library.project_exists(project_id, library=library) else 400
+        raise _project_error(exc, status=status) from exc
+    return {"settings": settings}
+
+
 @router.put("/{project_id}/position")
 def save_position(request: Request, project_id: str, patch: LastViewPatch) -> dict[str, Any]:
     """记录上次位置（说明书 7.2："继续"回到上次的视图与页面）。"""

@@ -922,6 +922,13 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 }
 .split-batch-list li { margin-bottom: 5px; }
 .split-batch-list li::marker { color: var(--faint); }
+.suggestion-types { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.suggestion-type {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 9px;
+  border-radius: 6px; font-size: 12px; border: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--text-2);
+}
+#auto-apply-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .mhead {
   flex: none; display: flex; align-items: center; gap: 10px;
   padding: 14px 20px; border-bottom: 1px solid var(--line-soft); font-size: 15px; font-weight: 600;

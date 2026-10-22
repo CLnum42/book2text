@@ -762,13 +762,44 @@ def _run_ocr_job(
             log=say,
         )
 
-    return _run_job_loop(
+    outcome = _run_job_loop(
         directory=directory,
         job_id=job_id,
         run_one=run_one,
         should_continue=should_continue,
         say=say,
     )
+    _auto_apply_after_job(directory, job_id, outcome, say)
+    return outcome
+
+
+def _auto_apply_after_job(directory: Path, job_id: str, outcome: JobOutcome, say) -> None:
+    """识别任务收尾：项目开了"识别完成后自动应用高把握建议"就一次应用本任务认完的页。
+
+    **为什么在这里：** 只有子进程真正知道"这一页做完了"；放在 API 轮询里做，
+    用户关掉页面就不会应用，那就不算"服务端自动应用"了。
+    失败只写一行日志（不写路径、不写文本），不影响任务本身的结算。
+    """
+    from . import auto_apply as auto_apply_module
+
+    try:
+        if not auto_apply_module.enabled(directory.name, library=directory.parent):
+            return
+    except Exception:  # noqa: BLE001 - 设置读不出来就当关闭
+        return
+
+    pages = [
+        int(item.page_no)
+        for item in outcome.items
+        if item.page_no is not None and item.status == jobs_module.ITEM_STATUS_SUCCEEDED
+    ]
+    try:
+        result = auto_apply_module.apply_for_job(directory, job_id, pages)
+    except Exception as exc:  # noqa: BLE001 - 自动应用失败不该让任务变成失败
+        say(f"auto_apply failed {type(exc).__name__}")
+        return
+    if result:
+        say(f"auto_apply applied pages={result['pages']} blocks={result['blocks']}")
 
 
 def _run_auxiliary_job(
