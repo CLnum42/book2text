@@ -512,28 +512,28 @@ def run_export(
     data_files: list[str] = []
     body_file = BODY_TXT_FILE_NAME if options.format in (FORMAT_TXT, FORMAT_BOTH) else BODY_JSONL_FILE_NAME
     if options.format in (FORMAT_TXT, FORMAT_BOTH):
-        (directory / BODY_TXT_FILE_NAME).write_text(_render_text(prepared), encoding="utf-8")
+        (directory / BODY_TXT_FILE_NAME).write_text(_render_text(prepared), encoding="utf-8", newline="\n")
         written.append(BODY_TXT_FILE_NAME)
         data_files.append(BODY_TXT_FILE_NAME)
         (directory / NOTES_TXT_FILE_NAME).write_text(
-            streams_module.render_notes_txt(prepared.notes), encoding="utf-8"
+            streams_module.render_notes_txt(prepared.notes), encoding="utf-8", newline="\n"
         )
         written.append(NOTES_TXT_FILE_NAME)
         data_files.append(NOTES_TXT_FILE_NAME)
     if options.format in (FORMAT_JSONL, FORMAT_BOTH):
         (directory / BODY_JSONL_FILE_NAME).write_text(
-            _render_jsonl(prepared, library=target_library), encoding="utf-8"
+            _render_jsonl(prepared, library=target_library), encoding="utf-8", newline="\n"
         )
         written.append(BODY_JSONL_FILE_NAME)
         data_files.append(BODY_JSONL_FILE_NAME)
         (directory / NOTES_JSONL_FILE_NAME).write_text(
-            streams_module.render_notes_jsonl(prepared.notes), encoding="utf-8"
+            streams_module.render_notes_jsonl(prepared.notes), encoding="utf-8", newline="\n"
         )
         written.append(NOTES_JSONL_FILE_NAME)
         data_files.append(NOTES_JSONL_FILE_NAME)
 
     (directory / META_FILE_NAME).write_text(
-        json.dumps(prepared.meta, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(prepared.meta, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n"
     )
     written.append(META_FILE_NAME)
 
@@ -558,7 +558,7 @@ def run_export(
         meta=prepared.meta,
     )
     (directory / MANIFEST_FILE_NAME).write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n"
     )
     written.append(MANIFEST_FILE_NAME)
 

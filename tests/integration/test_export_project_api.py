@@ -571,7 +571,7 @@ def test_old_export_records_still_download(
     export_id = "20260101-1200_txt"
     directory = library_dir / project_ready / "exports" / export_id
     directory.mkdir(parents=True)
-    (directory / "clean.txt").write_text("旧导出正文\n", encoding="utf-8")
+    (directory / "clean.txt").write_text("旧导出正文\n", encoding="utf-8", newline="\n")
     (directory / "manifest.json").write_text("{}", encoding="utf-8")
     with db_module.open_database(library_dir / project_ready, apply_migrations=False) as conn:
         conn.execute(
