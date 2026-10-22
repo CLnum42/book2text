@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import math
 import secrets
 import shutil
 from collections.abc import AsyncIterator, Collection, Sequence
@@ -114,6 +115,8 @@ class Project:
     directory: Path | None = None
     # 项目级设置（`project.settings_json`）：目前只有"识别完成后自动应用高把握建议"
     settings: dict[str, object] = field(default_factory=dict)
+    # 项目级默认版心（归一化四边）；没设置过是 None（版心视图里显示"未设置"）。
+    margin_box: tuple[float, float, float, float] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -130,6 +133,7 @@ class Project:
             "last_page_id": self.last_page_id,
             "directory": str(self.directory) if self.directory else "",
             "settings": dict(self.settings),
+            "margin_box": list(self.margin_box) if self.margin_box else None,
         }
 
 
@@ -156,6 +160,11 @@ class Page:
     """这一页在**本项目 PDF** 里的下标（0 起）。主项目里是 None，等于 page_no - 1；
     任务包项目的 PDF 是子集，必须单独记——否则会渲染出别的页。"""
     note: str | None = None
+    margin_box: tuple[float, float, float, float] | None = None
+    """这一页的**自定义版心**（归一化四边）；只在 ``margin_box_mode == "custom"`` 时有意义。"""
+    margin_box_mode: str = "inherit"
+    """版心三态：``inherit`` 跟随项目 / ``custom`` 本页 / ``none`` 不适用。
+    见 `core/project/margin_box.py`；这一刀只存储与展示，不影响导出。"""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -173,6 +182,8 @@ class Page:
             "is_context": self.is_context,
             "pdf_page_index": self.pdf_page_index,
             "note": self.note,
+            "margin_box": list(self.margin_box) if self.margin_box else None,
+            "margin_box_mode": self.margin_box_mode,
         }
 
 
@@ -439,7 +450,36 @@ def _row_to_project(row, directory: Path) -> Project:
         last_page_id=row["last_page_id"],
         directory=directory,
         settings=_parse_settings(_column(row, "settings_json")),
+        margin_box=_parse_margin_box(_column(row, "margin_box")),
     )
+
+
+def _parse_margin_box(raw) -> tuple[float, float, float, float] | None:
+    """解析版心的 JSON 文本；坏掉的版心当成"没设置"，不让项目打不开。
+
+    读取路径上有几处刻意不跑迁移（见 `_column`），老库里没有这一列时 raw 是 None。
+    这里只做"取出来"，几何合法性由 `core/project/margin_box.py` 在写入前校验。
+    """
+    if not raw:
+        return None
+    try:
+        values = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(values, list) or len(values) != 4:
+        return None
+    try:
+        box = (float(values[0]), float(values[1]), float(values[2]), float(values[3]))
+    except (TypeError, ValueError):
+        return None
+    # 坏数据（NaN / 越界 / 反向）当成"没设置"，别让界面画出一个飞出去的框
+    if not (
+        all(math.isfinite(value) for value in box)
+        and 0 <= box[0] < box[2] <= 1
+        and 0 <= box[1] < box[3] <= 1
+    ):
+        return None
+    return box
 
 
 def _parse_settings(raw) -> dict[str, object]:
@@ -524,31 +564,38 @@ def update_settings(
     return merged
 
 
+def _row_to_page(row) -> Page:
+    """`page` 表一行 → `Page`（四个更新函数与列表共用，避免漏掉新列）。
+
+    旧库（还没跑迁移 0011）里没有版心列：`_column` 返回 None，按默认值处理。
+    """
+    return Page(
+        page_id=row["page_id"],
+        page_no=int(row["page_no"]),
+        page_label=row["page_label"] or "",
+        width_pt=float(row["width_pt"]),
+        height_pt=float(row["height_pt"]),
+        rotation=int(row["rotation"]),
+        page_type=row["page_type"],
+        include=bool(row["include"]),
+        has_text_layer=bool(row["has_text_layer"]),
+        page_confirmed=bool(_column(row, "page_confirmed") or 0),
+        layout_confirmed=bool(_column(row, "layout_confirmed") or 0),
+        is_context=bool(_column(row, "is_context") or 0),
+        pdf_page_index=(
+            int(row["pdf_page_index"]) if _column(row, "pdf_page_index") is not None else None
+        ),
+        note=row["note"],
+        margin_box=_parse_margin_box(_column(row, "margin_box")),
+        margin_box_mode=_column(row, "margin_box_mode") or "inherit",
+    )
+
+
 def list_pages(project_id: str, *, library: Path | None = None) -> list[Page]:
     directory = require_project_dir(project_id, library=library)
     with db_module.open_database(directory, apply_migrations=False) as conn:
         rows = conn.execute("SELECT * FROM page ORDER BY page_no").fetchall()
-    return [
-        Page(
-            page_id=row["page_id"],
-            page_no=int(row["page_no"]),
-            page_label=row["page_label"] or "",
-            width_pt=float(row["width_pt"]),
-            height_pt=float(row["height_pt"]),
-            rotation=int(row["rotation"]),
-            page_type=row["page_type"],
-            include=bool(row["include"]),
-            has_text_layer=bool(row["has_text_layer"]),
-            page_confirmed=bool(_column(row, "page_confirmed") or 0),
-            layout_confirmed=bool(_column(row, "layout_confirmed") or 0),
-            is_context=bool(_column(row, "is_context") or 0),
-            pdf_page_index=(
-                int(row["pdf_page_index"]) if _column(row, "pdf_page_index") is not None else None
-            ),
-            note=row["note"],
-        )
-        for row in rows
-    ]
+    return [_row_to_page(row) for row in rows]
 
 
 @dataclass(frozen=True)
@@ -827,20 +874,7 @@ def update_page(
         conn.commit()
         row = conn.execute("SELECT * FROM page WHERE page_id = ?", (page_id,)).fetchone()
 
-    return Page(
-        page_id=row["page_id"],
-        page_no=int(row["page_no"]),
-        page_label=row["page_label"] or "",
-        width_pt=float(row["width_pt"]),
-        height_pt=float(row["height_pt"]),
-        rotation=int(row["rotation"]),
-        page_type=row["page_type"],
-        include=bool(row["include"]),
-        has_text_layer=bool(row["has_text_layer"]),
-        page_confirmed=bool(_column(row, "page_confirmed") or 0),
-        layout_confirmed=bool(_column(row, "layout_confirmed") or 0),
-        note=row["note"],
-    )
+    return _row_to_page(row)
 
 
 def update_pages(
@@ -902,23 +936,7 @@ def update_pages(
             f"SELECT * FROM page WHERE page_id IN ({condition}) ORDER BY page_no", page_ids
         ).fetchall()
 
-    return [
-        Page(
-            page_id=row["page_id"],
-            page_no=int(row["page_no"]),
-            page_label=row["page_label"] or "",
-            width_pt=float(row["width_pt"]),
-            height_pt=float(row["height_pt"]),
-            rotation=int(row["rotation"]),
-            page_type=row["page_type"],
-            include=bool(row["include"]),
-            has_text_layer=bool(row["has_text_layer"]),
-            page_confirmed=bool(_column(row, "page_confirmed") or 0),
-            layout_confirmed=bool(_column(row, "layout_confirmed") or 0),
-            note=row["note"],
-        )
-        for row in rows
-    ]
+    return [_row_to_page(row) for row in rows]
 
 
 def confirm_pages(
@@ -961,23 +979,7 @@ def confirm_pages(
             f"SELECT * FROM page WHERE page_id IN ({condition}) ORDER BY page_no", page_ids
         ).fetchall()
 
-    return [
-        Page(
-            page_id=row["page_id"],
-            page_no=int(row["page_no"]),
-            page_label=row["page_label"] or "",
-            width_pt=float(row["width_pt"]),
-            height_pt=float(row["height_pt"]),
-            rotation=int(row["rotation"]),
-            page_type=row["page_type"],
-            include=bool(row["include"]),
-            has_text_layer=bool(row["has_text_layer"]),
-            page_confirmed=bool(_column(row, "page_confirmed") or 0),
-            layout_confirmed=bool(_column(row, "layout_confirmed") or 0),
-            note=row["note"],
-        )
-        for row in rows
-    ]
+    return [_row_to_page(row) for row in rows]
 
 
 def update_last_view(

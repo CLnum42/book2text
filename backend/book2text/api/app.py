@@ -25,6 +25,7 @@ from . import (
     routes_app,
     routes_exports,
     routes_jobs,
+    routes_margin,
     routes_projects,
     routes_review,
     routes_collab,
@@ -102,6 +103,7 @@ def create_app(
     guarded = [Depends(security.verify_local_request)]
     app.include_router(routes_app.router, dependencies=guarded)
     app.include_router(routes_projects.router, dependencies=guarded)
+    app.include_router(routes_margin.router, dependencies=guarded)
     app.include_router(routes_jobs.router, dependencies=guarded)
     app.include_router(routes_review.router, dependencies=guarded)
     app.include_router(routes_exports.router, dependencies=guarded)

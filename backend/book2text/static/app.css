@@ -504,6 +504,55 @@ textarea {
 .page-tile:hover .page-tile__actions, .page-tile--selected .page-tile__actions { display: flex; }
 .page-tile__actions .btn { height: 24px; padding: 0 8px; font-size: 11px; border-radius: 5px; }
 
+/* ─────────────────────────────── 版心视图（任务 50） ───────────────────────────────
+   非版心区域压暗 = 版心框自己的 box-shadow 向外铺满缩略图；框内不受影响。
+   版心框本身不吃鼠标（否则点不到缩略图），只有 8 个拖拽把手吃事件。 */
+.page-margin { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.page-margin[hidden] { display: none; }
+.page-margin__box {
+  position: absolute; box-sizing: border-box; pointer-events: none;
+  border: 2px solid #0f766e; border-radius: 2px;
+  box-shadow: 0 0 0 9999px rgba(15, 18, 24, .22);
+}
+.page-margin--custom .page-margin__box { border-color: #7c3aed; }
+.page-margin--inherit .page-margin__box { border-style: dashed; }
+.page-margin__handle {
+  position: absolute; pointer-events: auto; touch-action: none;
+  background: rgba(15, 118, 110, .9); border: 1px solid #fff; border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(15, 18, 24, .25);
+}
+.page-margin--custom .page-margin__handle { background: rgba(124, 58, 237, .9); }
+.page-margin__handle--n, .page-margin__handle--s { left: 10px; right: 10px; height: 8px; cursor: ns-resize; }
+.page-margin__handle--n { top: -5px; }
+.page-margin__handle--s { bottom: -5px; }
+.page-margin__handle--w, .page-margin__handle--e { top: 10px; bottom: 10px; width: 8px; cursor: ew-resize; }
+.page-margin__handle--w { left: -5px; }
+.page-margin__handle--e { right: -5px; }
+.page-margin__handle--nw, .page-margin__handle--ne,
+.page-margin__handle--sw, .page-margin__handle--se {
+  width: 13px; height: 13px; border-radius: 4px;
+}
+.page-margin__handle--nw { top: -7px; left: -7px; cursor: nwse-resize; }
+.page-margin__handle--ne { top: -7px; right: -7px; cursor: nesw-resize; }
+.page-margin__handle--sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
+.page-margin__handle--se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+.page-margin__handle:hover { background: #0b4f4a; }
+.page-margin__box.is-dragging { border-width: 3px; }
+body.margin-dragging, body.margin-dragging * { user-select: none; -webkit-user-select: none; }
+
+/* 右栏版心面板 */
+.margin-current { font-size: 11.5px; line-height: 1.7; color: var(--text-2); margin-bottom: 6px; }
+.margin-current strong { color: var(--text); }
+.margin-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 4px 0 8px; }
+.margin-modes .btn { padding: 0 4px; font-size: 11px; height: 28px; }
+.margin-modes .btn.is-on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.margin-edges { font-size: 11.5px; color: var(--text-2); line-height: 1.7; margin: 2px 0 8px; }
+.margin-suggestion__title { font-size: 11.5px; font-weight: 600; color: var(--text-2); margin: 8px 0 4px; }
+.margin-suggestion__edges { font-size: 11.5px; line-height: 1.7; color: var(--text); }
+.margin-suggestion__spread { font-size: 11px; line-height: 1.6; color: var(--faint); margin-bottom: 4px; }
+.margin-suggestion__edges .is-diff { color: var(--warn-text); }
+.margin-warn { color: var(--warn-text); }
+
 /* 在窄屏上把右侧面板收成横条（14 寸以下的分辨率） */
 @media (max-width: 1120px) {
   .split { flex-direction: column; }
@@ -575,7 +624,7 @@ textarea {
   box-shadow: 0 3px 18px rgba(0, 0, 0, .22); vertical-align: top;
 }
 .page-canvas img { display: block; height: auto; max-width: 100%; background: var(--surface); }
-.page-overlay { position: absolute; inset: 0; }
+.page-overlay { position: absolute; inset: 0; z-index: 2; }
 /* 块框默认不吃鼠标事件，否则点不到「页面上拖动框选」；点块框跳转由 .box 自己的 click 处理 */
 .page-overlay .box {
   position: absolute; border: 2px solid var(--box-color, rgba(120, 150, 200, .7));
@@ -691,6 +740,8 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 .page-overlay--readonly { pointer-events: none; z-index: 1; }
 .page-overlay--readonly .box { pointer-events: none; cursor: default; border-width: 1.5px; }
 .page-overlay--readonly.page-overlay--labeled .box { pointer-events: auto; }
+/* 版心视图打开时：块框只作参考，不吃鼠标，免得盖住 8 个拖拽把手 */
+.page-overlay.page-overlay--margin, .page-overlay.page-overlay--margin .box { pointer-events: none; }
 .page-overlay--readonly .box__handle { display: none; }
 
 .page-overlay .box--uncertain { border-style: dashed; }

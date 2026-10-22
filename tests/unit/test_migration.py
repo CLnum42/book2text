@@ -473,3 +473,30 @@ def test_migration_0010_adds_the_auto_apply_table(conn: sqlite3.Connection) -> N
             "INSERT INTO auto_apply_run (auto_apply_id, job_id, status, created_at)"
             " VALUES ('y', 'j', 'whatever', '2026-10-22T00:00:00+00:00')"
         )
+
+
+def test_migration_0011_adds_margin_box_columns(conn: sqlite3.Connection) -> None:
+    """版心：项目级默认 + 页级三态；老行默认 inherit、不设置版心。"""
+    migrate(conn, MIGRATIONS)
+    project_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(project)").fetchall()
+    }
+    page_columns = {
+        row["name"]: row["dflt_value"]
+        for row in conn.execute("PRAGMA table_info(page)").fetchall()
+    }
+    assert "margin_box" in project_columns
+    assert "margin_box" in page_columns
+    assert "margin_box_mode" in page_columns
+    assert page_columns["margin_box_mode"] == "'inherit'"
+
+    # 现有行不需要回填：默认就是"沿用全局"
+    conn.execute(
+        "INSERT INTO page (page_id, page_no, width_pt, height_pt)"
+        " VALUES ('p1', 1, 595.0, 842.0)"
+    )
+    row = conn.execute(
+        "SELECT margin_box, margin_box_mode FROM page WHERE page_id = 'p1'"
+    ).fetchone()
+    assert row["margin_box"] is None
+    assert row["margin_box_mode"] == "inherit"

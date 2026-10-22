@@ -486,3 +486,36 @@ def test_ink_gap_hint_and_region_recognition_are_wired() -> None:
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
     assert ".ink-gap-bar" in css
     assert ".ink-gap " in css or ".ink-gap {" in css
+
+
+def test_margin_view_is_wired_to_the_page_view() -> None:
+    """版心视图（任务 50）：开关、面板、拖拽把手都必须真的接上。
+
+    静态约定测试，防止"页面里加了按钮、脚本里忘了监听"这种半截改动。
+    """
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "pages-margin-toggle",
+        "margin-panel",
+        "margin-global",
+        "margin-modes",
+        "margin-batch-modes",
+        "margin-suggest",
+        "margin-suggestion",
+        "margin-apply-suggestion",
+    ):
+        assert f'id="{element_id}"' in page_html, element_id
+
+    # 四边 + 四角共 8 个把手；拖动要吸附到行边界（复用 nearestEdge）
+    assert "page-margin__handle--${edge}" in script
+    assert '"nw", "ne", "sw", "se"' in script
+    assert "nearestEdge(" in script
+    # 按项目记住开关；不写项目数据库
+    assert "b2t.pagesMargin.v1." in script
+    # 推算接口与三态接口都从界面调用
+    assert "margin-box/suggestion" in script
+    assert "margin-box/pages" in script
+    assert "page-margin__box" in styles

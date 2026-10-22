@@ -143,6 +143,8 @@
             <button type="button" id="pages-zoom-in" class="btn btn--sm" title="放大">＋</button>
             <button type="button" id="pages-overlay-toggle" class="btn btn--sm"
                     title="在大网格 / 单列 / 单页下显示块框（扫错用；默认关）" disabled>块框</button>
+            <button type="button" id="pages-margin-toggle" class="btn btn--sm"
+                    title="版心视图：压暗版心外的区域，四边 / 四角可拖动（吸附到正文行边界）">版心</button>
           </div>
           <span class="muted" id="page-summary"></span>
         </div>
@@ -189,6 +191,39 @@
                 <p class="hint" id="setup-suggestion-note" hidden></p>
                 <ol class="setup-suggestions" id="setup-suggestions"></ol>
               </div>
+            </div>
+
+            <div class="panel__sec panel__sec--primary" id="margin-panel">
+              <div class="panel__headrow">
+                <strong>版心</strong>
+                <span class="muted" id="margin-confidence"></span>
+              </div>
+              <p class="hint">版心是正文所在的区域；页眉 / 页脚 / 页码在版心外。
+                打开页面视图的「版心」会压暗外面、画出版心框，四边 / 四角可拖动（吸附到正文行边界）。
+                这一项只用于查看与调整，<strong>不影响导出</strong>。</p>
+              <div class="margin-current" id="margin-global"></div>
+              <div id="margin-selection" hidden>
+                <div class="flabel">所选页的版心 <span class="muted" id="margin-page-state"></span></div>
+                <div class="margin-modes" id="margin-modes"></div>
+                <div class="margin-edges" id="margin-edges"></div>
+                <div class="row2" id="margin-page-actions"></div>
+              </div>
+              <div id="margin-batch" hidden>
+                <div class="flabel">批量设置 <span class="muted" id="margin-batch-count"></span></div>
+                <div class="margin-modes" id="margin-batch-modes"></div>
+              </div>
+              <button type="button" id="margin-suggest" class="btn btn--block">推算版心（全书）</button>
+              <div id="margin-suggestion" hidden>
+                <div class="margin-suggestion__title" id="margin-suggestion-title"></div>
+                <div class="margin-suggestion__edges" id="margin-suggestion-edges"></div>
+                <div class="margin-suggestion__spread" id="margin-suggestion-spread"></div>
+                <p class="hint" id="margin-suggestion-note" hidden></p>
+                <div class="row2">
+                  <button type="button" id="margin-apply-suggestion" class="btn btn--pri">采用为全局版心</button>
+                  <button type="button" id="margin-dismiss-suggestion" class="btn">收起</button>
+                </div>
+              </div>
+              <div class="hint" id="margin-status" hidden></div>
             </div>
 
             <div class="panel__sec panel__sec--secondary" id="split-panel">

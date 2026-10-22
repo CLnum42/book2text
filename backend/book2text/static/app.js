@@ -1476,9 +1476,13 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     applyProjectSettings();
     await loadAutoApplyStatus();
     pagesOverlayOn = loadPageOverlayPreference();
+    pagesMarginOn = loadPageMarginPreference();
     setupSuggestionsLoaded = false;
     setupSuggestions = [];
+    marginSuggestion = null;
     el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
+    el("pages-margin-toggle").classList.toggle("is-on", pagesMarginOn);
+    el("margin-suggestion").hidden = true;
     // refreshProject 可能已经渲染过页面视图；默认"开"是在那之后才读出来的，
     // 这里补一次可见性计算，让块框立刻出现。
     schedulePageVisibility();
@@ -1692,6 +1696,8 @@ const PAGE_ZOOM_LEVELS = [
 ];
 let pageZoomIndex = 0;
 let pagesOverlayOn = false;
+/** 版心视图开关（默认关，按项目记住）。打开后压暗版心外、画出版心框。 */
+let pagesMarginOn = false;
 
 /**
  * 块框开关按项目记住；存在 localStorage，不写项目数据库。
@@ -1718,6 +1724,40 @@ function savePageOverlayPreference() {
   } catch {
     /* 隐私模式等写不进去：不影响本次会话 */
   }
+}
+
+/**
+ * 版心视图开关也按项目记住（与块框开关分开存：它们看的是两件事）。
+ * 默认**关**：它是"检查版心"的视图，不需要每次打开项目都压暗页面。
+ */
+function pageMarginStorageKey() {
+  return currentProject ? `b2t.pagesMargin.v1.${currentProject.project_id}` : "";
+}
+
+function loadPageMarginPreference() {
+  try {
+    return localStorage.getItem(pageMarginStorageKey()) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function savePageMarginPreference() {
+  try {
+    localStorage.setItem(pageMarginStorageKey(), pagesMarginOn ? "1" : "0");
+  } catch {
+    /* 隐私模式等写不进去：不影响本次会话 */
+  }
+}
+
+/**
+ * 一页实际生效的版心（与后端 `effective_margin_box` 同一口径）：
+ * `none` → 无；`custom` → 本页；`inherit` → 项目默认。
+ */
+function marginBoxOfPage(page) {
+  if (!page || page.margin_box_mode === "none") return null;
+  if (page.margin_box_mode === "custom") return page.margin_box || null;
+  return (currentProject && currentProject.margin_box) || null;
 }
 /** 当前在视口内的页（块框只给这些页渲染）。 */
 const visiblePageNos = new Set();
@@ -2116,6 +2156,7 @@ function updateSelectionPanel() {
 
   renderTypePicker();
   renderSuggestionPanel();
+  renderMarginPanel();
   el("selection-recognize").disabled = count === 0 || !selected.some((page) => page.include);
   el("setup-confirm-selected").disabled = count === 0;
   el("selection-review-open").disabled = count === 0;
@@ -2195,6 +2236,25 @@ function buildTile(page, project) {
     `&token=${encodeURIComponent(token)}`;
   if (pageZoomIndex < 2) image.src = image.dataset.thumbSrc;
 
+  // 版心框（默认隐藏）：框外压暗、8 个把手可拖。放在块框 overlay 之前，
+  // 这样打开块框时色框画在压暗层上面，两者可以同时看。
+  const margin = document.createElement("div");
+  margin.className = "page-margin";
+  margin.hidden = true;
+  const marginBox = document.createElement("div");
+  marginBox.className = "page-margin__box";
+  for (const edge of ["n", "s", "w", "e", "nw", "ne", "sw", "se"]) {
+    const handle = document.createElement("span");
+    handle.className = `page-margin__handle page-margin__handle--${edge}`;
+    handle.dataset.edge = edge;
+    handle.title = "拖动调整版心（会吸附到正文行边界）";
+    handle.addEventListener("pointerdown", (event) =>
+      startTileMarginDrag(event, page.page_no, marginBox, edge)
+    );
+    marginBox.append(handle);
+  }
+  margin.append(marginBox);
+
   const actions = document.createElement("div");
   actions.className = "page-tile__actions";
 
@@ -2224,7 +2284,7 @@ function buildTile(page, project) {
   });
 
   actions.append(recognizeButton, detailButton);
-  thumb.append(image, overlay, check, suggestMark, actions);
+  thumb.append(image, margin, overlay, check, suggestMark, actions);
 
   const meta = document.createElement("div");
   meta.className = "page-tile__meta";
@@ -2734,6 +2794,7 @@ function updatePageVisibility() {
   const prefetchBand = Math.max(400, Math.min(1800, Math.round(viewport * 1.5)));
   const prefetchCandidates = [];
   let drawnSynchronously = 0;
+  const byPage = new Map(currentProject.pages.map((page) => [page.page_no, page]));
 
   for (const item of pageTileMetrics) {
     const top = item.top;
@@ -2744,6 +2805,18 @@ function updatePageVisibility() {
       visiblePageNos.add(pageNo);
       // 建议角标只为可见页算；大图档在可见性循环里算，网格档走 debounce 的 scan
       if (large) ensurePageSuggestion(pageNo);
+      if (pagesMarginOn) {
+        const page = byPage.get(pageNo);
+        paintTileMargin(item.tile, page);
+        // 单列 / 单页里拖版心要吸附到行边界：只给眼前这几页补块数据。
+        // 网格档一屏十几页，不为"可能拖一下"给整屏发请求；有块缓存时照样吸附。
+        if (large && page && recognitionOf(page).status === "recognized") {
+          const key = pageBlockKey(pageNo);
+          if (!pageBlockCache.has(key) && !pageBlockPending.has(key)) {
+            fetchPageBlocks(pageNo, key);
+          }
+        }
+      }
       if (pagesOverlayOn) {
         // 先画后补：数据已经在缓存里就这一帧直接画，不等下一个 rAF。
         // 仍然限量（每帧最多 PAGE_OVERLAY_FRAME_LIMIT 页），密集网格不会爆。
@@ -2765,6 +2838,7 @@ function updatePageVisibility() {
     } else {
       visiblePageNos.delete(pageNo);
       clearPageBlocks(item.tile);
+      clearTileMargin(item.tile);
     }
 
     if (!large) {
@@ -2797,6 +2871,7 @@ function updatePageVisibility() {
     const image = item.tile.querySelector("img");
     if (image) image.removeAttribute("src");
     clearPageBlocks(item.tile);
+    clearTileMargin(item.tile);
   }
 }
 
@@ -2841,6 +2916,9 @@ function applyPageZoom() {
   // 块框四档都可用：网格档只画色框（不画顺序号），单列 / 单页才带顺序号
   el("pages-overlay-toggle").disabled = false;
   el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
+  // 版心视图四档都能看；单列 / 单页拖动更顺手
+  el("pages-margin-toggle").disabled = false;
+  el("pages-margin-toggle").classList.toggle("is-on", pagesMarginOn);
 
   const tiles = [...grid.querySelectorAll(".page-tile")];
   const byPage = new Map(currentProject.pages.map((page) => [page.page_no, page]));
@@ -3036,6 +3114,615 @@ function clearPageBlocks(tile) {
   overlay.innerHTML = "";
   overlay.hidden = true;
   overlay._renderedBlocks = null;
+}
+
+// ---------------------------------------------------------------- 版心视图
+//
+// 用户的设计（2026-10-23）：大多数书的正文都在版心里，页眉 / 页脚 / 页码在版心外。
+// 所以先确认"正文在哪一块"，比每页改二三十个块省力。
+// 这一刀只做**看得见、调得动**：版心不影响组装 / 导出 / 识别 / 块类型。
+
+/** 拖动版心边时离文字行边界多近就吸附（像素，与块框同一口径）。 */
+const MARGIN_SNAP_PX = 8;
+/** 版心最短边（归一化）：再小就没有"正文区"的意义了。 */
+const MIN_MARGIN_SIDE = 0.02;
+const MARGIN_MODE_LABELS = { inherit: "沿用全局", custom: "本页自定义", none: "不适用" };
+
+let tileMarginDrag = null;
+let marginSuggestion = null;
+let marginSuggestionLoading = false;
+
+function applyMarginRect(boxEl, box) {
+  if (!boxEl) return;
+  const [x0, y0, x1, y1] = box;
+  boxEl.style.left = `${x0 * 100}%`;
+  boxEl.style.top = `${y0 * 100}%`;
+  boxEl.style.width = `${(x1 - x0) * 100}%`;
+  boxEl.style.height = `${(y1 - y0) * 100}%`;
+}
+
+/** 画一页的版心框；没有生效版心（不适用 / 未设置）就收起来。 */
+function paintTileMargin(tile, page) {
+  const margin = tile ? tile.querySelector(".page-margin") : null;
+  if (!margin) return;
+  if (!pagesMarginOn || !page) {
+    clearTileMargin(tile);
+    return;
+  }
+  const box = marginBoxOfPage(page);
+  margin.classList.toggle("page-margin--custom", page.margin_box_mode === "custom");
+  margin.classList.toggle("page-margin--inherit", page.margin_box_mode !== "custom");
+  // 版心开着时块框只作参考（悬停卡片让位给拖拽把手）
+  const overlay = tile.querySelector(".page-overlay");
+  if (overlay) overlay.classList.add("page-overlay--margin");
+  if (!box) {
+    margin.hidden = true;
+    margin._box = null;
+    return;
+  }
+  // 滚动时每帧都会走到这里：框没变就别再写样式（267 页滚动时不值得为同样的值刷 DOM）
+  const same =
+    margin._box &&
+    box.length === margin._box.length &&
+    box.every((value, index) => Math.abs(value - margin._box[index]) < 1e-6);
+  margin._box = box;
+  margin._pageNo = page.page_no;
+  if (same && !margin.hidden) return;
+  applyMarginRect(margin.querySelector(".page-margin__box"), box);
+  margin.hidden = false;
+}
+
+function clearTileMargin(tile) {
+  const margin = tile ? tile.querySelector(".page-margin") : null;
+  if (!margin) return;
+  const overlay = tile.querySelector(".page-overlay");
+  if (overlay) overlay.classList.remove("page-overlay--margin");
+  if (margin.hidden && !margin._box) return;
+  margin.hidden = true;
+  margin._box = null;
+}
+
+function toggleMarginView() {
+  pagesMarginOn = !pagesMarginOn;
+  savePageMarginPreference();
+  const button = el("pages-margin-toggle");
+  if (button) button.classList.toggle("is-on", pagesMarginOn);
+  if (!currentProject) return;
+  if (pagesMarginOn) {
+    schedulePageVisibility();
+  } else {
+    for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
+      clearTileMargin(tile);
+    }
+  }
+  renderMarginPanel();
+}
+
+/** 这一页所有识别行的边界（吸附用）。块缓存里就带着 `lines`。 */
+function pageLineEdges(pageNo) {
+  const blocks = pageBlockCache.get(pageBlockKey(pageNo)) || [];
+  const xs = [];
+  const ys = [];
+  for (const block of blocks) {
+    for (const line of block.lines || []) {
+      if (!line.bbox) continue;
+      xs.push(line.bbox[0], line.bbox[2]);
+      ys.push(line.bbox[1], line.bbox[3]);
+    }
+  }
+  return { xs, ys };
+}
+
+function clampMarginBox(raw) {
+  let [x0, y0, x1, y1] = raw;
+  x0 = Math.min(Math.max(x0, 0), 1 - MIN_MARGIN_SIDE);
+  y0 = Math.min(Math.max(y0, 0), 1 - MIN_MARGIN_SIDE);
+  x1 = Math.min(1, Math.max(x1, x0 + MIN_MARGIN_SIDE));
+  y1 = Math.min(1, Math.max(y1, y0 + MIN_MARGIN_SIDE));
+  return [x0, y0, x1, y1];
+}
+
+/**
+ * 拖版心时吸附到正文行边界。每条被拖的边单独吸（与块框的 `snapBox` 同一规则），
+ * 先把边吸到行边界、再夹回页面内、最后保证最短边。
+ */
+function snapMarginBox(raw, mode) {
+  const edges = tileMarginDrag ? pageLineEdges(tileMarginDrag.pageNo) : { xs: [], ys: [] };
+  const rect = tileMarginDrag ? tileMarginDrag.rect : null;
+  let [x0, y0, x1, y1] = raw;
+  if (rect && rect.width && rect.height && (edges.xs.length || edges.ys.length)) {
+    const toleranceX = MARGIN_SNAP_PX / rect.width;
+    const toleranceY = MARGIN_SNAP_PX / rect.height;
+    if (mode.includes("w")) x0 = nearestEdge(x0, edges.xs, toleranceX);
+    if (mode.includes("e")) x1 = nearestEdge(x1, edges.xs, toleranceX);
+    if (mode.includes("n")) y0 = nearestEdge(y0, edges.ys, toleranceY);
+    if (mode.includes("s")) y1 = nearestEdge(y1, edges.ys, toleranceY);
+  }
+  return clampMarginBox([x0, y0, x1, y1]);
+}
+
+function startTileMarginDrag(event, pageNo, boxEl, mode) {
+  if (!pagesMarginOn || !currentProject) return;
+  if (event.button !== undefined && event.button !== 0) return;
+  const page = currentProject.pages.find((item) => item.page_no === pageNo);
+  const box = page ? marginBoxOfPage(page) : null;
+  const thumb = boxEl ? boxEl.closest(".page-tile__thumb") : null;
+  if (!page || !box || !thumb) return;
+  const rect = thumb.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  event.preventDefault();
+  event.stopPropagation();
+  tileMarginDrag = {
+    pageNo,
+    boxEl,
+    mode,
+    startX: event.clientX,
+    startY: event.clientY,
+    startBox: [...box],
+    box: [...box],
+    rect,
+    moved: false,
+  };
+  boxEl.classList.add("is-dragging");
+  document.body.classList.add("margin-dragging");
+}
+
+function onMarginPointerMove(event) {
+  if (!tileMarginDrag) return;
+  const drag = tileMarginDrag;
+  const dx = (event.clientX - drag.startX) / drag.rect.width;
+  const dy = (event.clientY - drag.startY) / drag.rect.height;
+  if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 3) {
+    drag.moved = true;
+  }
+  const [sx0, sy0, sx1, sy1] = drag.startBox;
+  const raw = [
+    drag.mode.includes("w") ? sx0 + dx : sx0,
+    drag.mode.includes("n") ? sy0 + dy : sy0,
+    drag.mode.includes("e") ? sx1 + dx : sx1,
+    drag.mode.includes("s") ? sy1 + dy : sy1,
+  ];
+  const box = snapMarginBox(raw, drag.mode);
+  drag.box = box;
+  applyMarginRect(drag.boxEl, box);
+}
+
+function onMarginPointerUp() {
+  if (!tileMarginDrag) return;
+  const drag = tileMarginDrag;
+  tileMarginDrag = null;
+  drag.boxEl.classList.remove("is-dragging");
+  document.body.classList.remove("margin-dragging");
+  if (!drag.moved) return;
+  const box = drag.box.map((value) => Math.round(value * 1e6) / 1e6);
+  savePageMargin(drag.pageNo, box);
+}
+
+function setupMarginDrag() {
+  window.addEventListener("pointermove", onMarginPointerMove);
+  window.addEventListener("pointerup", onMarginPointerUp);
+  window.addEventListener("pointercancel", onMarginPointerUp);
+}
+
+/** 把接口返回的一页合并进本地列表（保留识别状态 / 审校进度等派生字段）。 */
+function mergePageRecord(updated) {
+  if (!currentProject || !updated) return;
+  const index = currentProject.pages.findIndex((page) => page.page_id === updated.page_id);
+  if (index >= 0) {
+    currentProject.pages[index] = { ...currentProject.pages[index], ...updated };
+  }
+}
+
+function repaintTileMargin(page) {
+  if (!page || !currentProject) return;
+  const tile = document.querySelector(
+    `#page-grid .page-tile[data-page-no="${page.page_no}"]`
+  );
+  if (tile) paintTileMargin(tile, page);
+}
+
+/** 全局版心变了：只重画可见页（267 页全扫一遍没必要，可见性循环会兜底）。 */
+function refreshMarginTiles() {
+  if (!currentProject) return;
+  const byPage = new Map(currentProject.pages.map((page) => [page.page_no, page]));
+  for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
+    const pageNo = Number(tile.dataset.pageNo);
+    if (pagesMarginOn && visiblePageNos.has(pageNo)) {
+      paintTileMargin(tile, byPage.get(pageNo));
+    } else {
+      clearTileMargin(tile);
+    }
+  }
+}
+
+let marginStatusTimer = null;
+
+function setMarginStatus(text, isError = false) {
+  const node = el("margin-status");
+  if (!node) return;
+  node.textContent = text || "";
+  node.hidden = !text;
+  node.style.color = isError ? "var(--bad-fg)" : "";
+  if (marginStatusTimer) clearTimeout(marginStatusTimer);
+  if (text) {
+    marginStatusTimer = setTimeout(() => {
+      node.hidden = true;
+    }, 9000);
+  }
+}
+
+/**
+ * 拖动保存：这一页原来是"沿用全局"时，拖动会把它变成"本页自定义"——
+ * 只影响这一页，不动全局；想统一全书用右栏「把本页设为全局版心」。
+ */
+async function savePageMargin(pageNo, box) {
+  const page = currentProject
+    ? currentProject.pages.find((item) => item.page_no === pageNo)
+    : null;
+  if (!page) return;
+  const previousMode = page.margin_box_mode;
+  const mode = previousMode === "inherit" ? "custom" : previousMode;
+  if (mode === "none") return;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${pageNo}/margin-box`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ margin_box_mode: mode, margin_box: box }),
+      }
+    );
+    mergePageRecord(data.page);
+    repaintTileMargin(data.page);
+    setMarginStatus(
+      previousMode === "inherit"
+        ? `第 ${pageNo} 页的版心已保存，并改为「本页自定义」（只影响这一页）。`
+        : `第 ${pageNo} 页的版心已保存。`
+    );
+    renderMarginPanel();
+  } catch (error) {
+    // 存不上就把框画回原值，别让界面上留着一个没保存的框
+    repaintTileMargin(page);
+    showError(el("pages-error"), error);
+  }
+}
+
+// ---------------------------------------------------------------- 版心右栏
+
+function percentOf(value) {
+  return `${(Number(value) * 100).toFixed(1)}%`;
+}
+
+function formatMarginBox(box) {
+  if (!box) return "未设置";
+  return `左 ${percentOf(box[0])} · 上 ${percentOf(box[1])} · 右 ${percentOf(box[2])} · 下 ${percentOf(box[3])}`;
+}
+
+function marginModeLabel(mode) {
+  return MARGIN_MODE_LABELS[mode] || mode;
+}
+
+function renderMarginModeButtons(container, currentMode, onPick) {
+  container.innerHTML = "";
+  for (const mode of ["inherit", "custom", "none"]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `btn btn--sm ${currentMode === mode ? "is-on" : ""}`;
+    button.textContent = marginModeLabel(mode);
+    button.title =
+      mode === "inherit"
+        ? "跟随项目的全局版心；项目没设置时这一页就没有版心"
+        : mode === "custom"
+          ? "这一页用自己的四边（拖动边框会自动切到这里）"
+          : "这一页不适用版心（整页插图 / 插页等），不压暗、也不参与推算";
+    button.addEventListener("click", () => onPick(mode));
+    container.append(button);
+  }
+}
+
+function renderMarginPanel() {
+  if (!currentProject) return;
+  const globalBox = currentProject.margin_box || null;
+  const pages = currentProject.pages;
+  const counts = { inherit: 0, custom: 0, none: 0 };
+  for (const page of pages) {
+    counts[page.margin_box_mode] = (counts[page.margin_box_mode] || 0) + 1;
+  }
+
+  const global = el("margin-global");
+  global.innerHTML = "";
+  const strong = document.createElement("strong");
+  strong.textContent = "全局版心：";
+  global.append(strong, globalBox ? formatMarginBox(globalBox) : "未设置");
+  if (globalBox || counts.custom || counts.none) {
+    const detail = document.createElement("div");
+    detail.className = "muted";
+    detail.textContent =
+      `${counts.inherit} 页沿用全局 · ${counts.custom} 页自定义 · ${counts.none} 页不适用`;
+    global.append(detail);
+  }
+  el("margin-confidence").textContent = "";
+
+  const selected = selectionPages();
+  const selection = el("margin-selection");
+  const batch = el("margin-batch");
+  if (!selected.length) {
+    selection.hidden = true;
+    batch.hidden = true;
+  } else if (selected.length === 1) {
+    selection.hidden = false;
+    batch.hidden = true;
+    const page = selected[0];
+    el("margin-page-state").textContent =
+      `· 第 ${page.page_no} 页 · ${marginModeLabel(page.margin_box_mode)}`;
+    renderMarginModeButtons(el("margin-modes"), page.margin_box_mode, (mode) =>
+      setSinglePageMarginMode(page, mode)
+    );
+    const box = marginBoxOfPage(page);
+    el("margin-edges").textContent = box
+      ? `${formatMarginBox(box)}`
+      : page.margin_box_mode === "none"
+        ? "这一页标了「不适用」：不压暗、不参与推算。"
+        : "这一页暂时没有版心：全局版心还没设置。先点「推算版心（全书）」。";
+    const actions = el("margin-page-actions");
+    actions.innerHTML = "";
+    if (page.margin_box_mode === "custom" && page.margin_box) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn--pri";
+      button.textContent = "把本页设为全局版心";
+      button.title = "把这一页的四边写进项目默认版心，并把这一页改回「沿用全局」";
+      button.addEventListener("click", () => setPageAsGlobal(page));
+      actions.append(button);
+    } else if (globalBox && page.margin_box_mode !== "inherit") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn";
+      button.textContent = "回到全局版心";
+      button.addEventListener("click", () =>
+        setSinglePageMarginMode(page, "inherit")
+      );
+      actions.append(button);
+    }
+  } else {
+    selection.hidden = true;
+    batch.hidden = false;
+    el("margin-batch-count").textContent = `${selected.length} 页`;
+    const customSource = globalBox || (marginSuggestion && marginSuggestion.margin_box);
+    renderMarginModeButtons(el("margin-batch-modes"), null, (mode) => {
+      if (mode === "custom" && !customSource) {
+        setMarginStatus(
+          "还没有可复制的版心：先点「推算版心（全书）」或先给某一页设好版心。",
+          true
+        );
+        return;
+      }
+      setBatchMarginMode(mode, customSource);
+    });
+    // custom 按钮没有来源时禁用，避免点了才报错
+    const customButton = el("margin-batch-modes").querySelectorAll("button")[1];
+    if (customButton && !customSource) {
+      customButton.disabled = true;
+      customButton.title = "先推算或设置一个版心，才能批量「设为自定义」";
+    }
+  }
+  renderMarginSuggestion();
+}
+
+function renderMarginSuggestion() {
+  const block = el("margin-suggestion");
+  if (!block) return;
+  if (!marginSuggestion || !marginSuggestion.margin_box) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  const suggestion = marginSuggestion;
+  const reliable = suggestion.reliable;
+  el("margin-suggestion-title").textContent =
+    `建议：${suggestion.pages} 页参与 · 把握${suggestion.confidence_label}` +
+    (reliable ? "" : "（不可靠，建议手动调）");
+  el("margin-suggestion-title").classList.toggle("margin-warn", !reliable);
+  el("margin-suggestion-edges").textContent = formatMarginBox(suggestion.margin_box);
+
+  const labels = { left: "左", top: "上", right: "右", bottom: "下" };
+  const spread = ["left", "top", "right", "bottom"]
+    .map((name) => {
+      const edge = suggestion.edges[name];
+      return edge ? `${labels[name]} ±${(edge.spread * 100).toFixed(1)}%` : "";
+    })
+    .filter(Boolean)
+    .join(" · ");
+  const coverage = ["left", "right"]
+    .map((name) => {
+      const edge = suggestion.edges[name];
+      return edge && edge.coverage < 0.2 ? `覆盖只有 ${Math.round(edge.coverage * 100)}%` : "";
+    })
+    .filter(Boolean);
+  el("margin-suggestion-spread").textContent =
+    `离散：${spread}` + (coverage.length ? ` · ${coverage.join(" / ")}` : "");
+
+  const diff = el("margin-suggestion-edges");
+  const existing = currentProject ? currentProject.margin_box : null;
+  if (existing) {
+    const parts = ["left", "top", "right", "bottom"].map((name, index) => {
+      const delta = (suggestion.margin_box[index] - existing[index]) * 100;
+      const sign = delta >= 0 ? "+" : "";
+      return `${labels[name]} ${sign}${delta.toFixed(1)}`;
+    });
+    diff.textContent += `　与当前全局：${parts.join(" · ")}（百分点）`;
+  } else {
+    diff.textContent += "　当前还没有全局版心";
+  }
+
+  const note = el("margin-suggestion-note");
+  note.hidden = suggestion.notes.length === 0;
+  note.textContent = suggestion.notes.join(" ");
+  el("margin-apply-suggestion").disabled = !suggestion.margin_box;
+  el("margin-apply-suggestion").textContent = reliable
+    ? "采用为全局版心"
+    : "仍然采用（建议不可靠）";
+}
+
+async function loadMarginSuggestion() {
+  if (!currentProject || marginSuggestionLoading) return;
+  marginSuggestionLoading = true;
+  const button = el("margin-suggest");
+  button.disabled = true;
+  button.textContent = "正在推算…";
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/margin-box/suggestion`
+    );
+    marginSuggestion = data.suggestion;
+    renderMarginSuggestion();
+  } catch (error) {
+    showError(el("pages-error"), error);
+  } finally {
+    marginSuggestionLoading = false;
+    button.disabled = false;
+    button.textContent = "重新推算版心（全书）";
+    renderMarginPanel();
+  }
+}
+
+async function applyMarginSuggestion() {
+  if (!currentProject || !marginSuggestion || !marginSuggestion.margin_box) return;
+  const box = marginSuggestion.margin_box;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/margin-box`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ margin_box: box }),
+      }
+    );
+    currentProject.margin_box = data.project.margin_box;
+    refreshMarginTiles();
+    renderMarginPanel();
+    const inheriting = currentProject.pages.filter(
+      (page) => page.margin_box_mode === "inherit"
+    ).length;
+    setMarginStatus(
+      `已采用为全局版心：${formatMarginBox(box)}。${inheriting} 页「沿用全局」的页会跟着变。`
+    );
+  } catch (error) {
+    showError(el("pages-error"), error);
+  }
+}
+
+async function setSinglePageMarginMode(page, mode) {
+  if (!currentProject) return;
+  let box = null;
+  if (mode === "custom") {
+    box =
+      page.margin_box ||
+      currentProject.margin_box ||
+      (marginSuggestion && marginSuggestion.margin_box) ||
+      null;
+    if (!box) {
+      setMarginStatus(
+        "还没有可复制的版心：先点「推算版心（全书）」，或直接拖这一页的边框。",
+        true
+      );
+      return;
+    }
+  }
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${page.page_no}/margin-box`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ margin_box_mode: mode, margin_box: box }),
+      }
+    );
+    mergePageRecord(data.page);
+    repaintTileMargin(data.page);
+    renderMarginPanel();
+    setMarginStatus(
+      `第 ${page.page_no} 页已设为「${marginModeLabel(mode)}」。` +
+        (mode === "inherit" && !currentProject.margin_box
+          ? "全局版心还没设置，所以这一页暂时没有版心。"
+          : "")
+    );
+  } catch (error) {
+    showError(el("pages-error"), error);
+  }
+}
+
+async function setBatchMarginMode(mode, sourceBox) {
+  if (!currentProject) return;
+  const pages = selectionPages();
+  if (!pages.length) return;
+  const box = mode === "custom" ? sourceBox : null;
+  if (mode === "custom" && !box) {
+    setMarginStatus("还没有可复制的版心。先推算或设置一个。", true);
+    return;
+  }
+  const label = marginModeLabel(mode);
+  if (
+    !window.confirm(
+      `把选中的 ${pages.length} 页设为「${label}」？` +
+        (mode === "custom" ? `
+四边会统一复制成当前版心：${formatMarginBox(box)}` : "")
+    )
+  ) {
+    return;
+  }
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/margin-box/pages`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page_nos: pages.map((page) => page.page_no),
+          margin_box_mode: mode,
+          margin_box: box,
+        }),
+      }
+    );
+    for (const page of data.pages || []) mergePageRecord(page);
+    refreshMarginTiles();
+    renderMarginPanel();
+    setMarginStatus(`已把 ${data.updated} 页设为「${label}」。`);
+  } catch (error) {
+    showError(el("pages-error"), error);
+  }
+}
+
+/** 把一页的自定义版心写进项目默认，并把这一页改回「沿用全局」。 */
+async function setPageAsGlobal(page) {
+  if (!currentProject) return;
+  const box = page.margin_box || marginBoxOfPage(page);
+  if (!box) return;
+  try {
+    const put = await apiJson(
+      `/api/projects/${currentProject.project_id}/margin-box`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ margin_box: box }),
+      }
+    );
+    currentProject.margin_box = put.project.margin_box;
+    const patched = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${page.page_no}/margin-box`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ margin_box_mode: "inherit" }),
+      }
+    );
+    mergePageRecord(patched.page);
+    refreshMarginTiles();
+    renderMarginPanel();
+    setMarginStatus(`已把第 ${page.page_no} 页的版心设为全局版心。`);
+  } catch (error) {
+    showError(el("pages-error"), error);
+  }
 }
 
 /**
@@ -6162,6 +6849,13 @@ function setupLibrary() {
   el("pages-zoom-out").addEventListener("click", () => setPageZoom(-1));
   el("pages-zoom-in").addEventListener("click", () => setPageZoom(1));
   el("pages-overlay-toggle").addEventListener("click", togglePageBlocksOverlay);
+  el("pages-margin-toggle").addEventListener("click", toggleMarginView);
+  el("margin-suggest").addEventListener("click", loadMarginSuggestion);
+  el("margin-apply-suggestion").addEventListener("click", applyMarginSuggestion);
+  el("margin-dismiss-suggestion").addEventListener("click", () => {
+    el("margin-suggestion").hidden = true;
+  });
+  setupMarginDrag();
   el("setup-confirm-selected").addEventListener("click", confirmSelectedPages);
   el("split-page-numbers").addEventListener("click", openSplitBatchPanel);
   el("setup-confirm-all").addEventListener("click", confirmAllUnconfirmed);
