@@ -96,6 +96,8 @@ body `{"page_numbers": [1,2,3]}`（空 = 只确认路径页）。
   新增 / 删除重置、旁批注释流与来源类型、插图 / 装饰元数据、预检计数、界面约定）。
 - 老项目打开：0009 在项目打开时自动升级，页面默认未确认；老任务包导入仍走
   `normalize_page_type`（上一刀测试仍绿）。
+- CI：[run #23](https://github.com/CLnum42/book2text/actions/runs/39788650024) **Success**，
+  macOS 全量 2m29s、Windows 非 OCR 2m27s，双平台绿。
 
 **未验证**
 

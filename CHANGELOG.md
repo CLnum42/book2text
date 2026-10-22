@@ -26,6 +26,8 @@
   `header` / `footer` / `page_number` / `figure` / `decoration` 原文进元数据。
   预检显示整页版面确认进度，未确认时给警告但**不阻断导出**。
 - 测试 **680 passed**（新增迁移触发器、确认 / 批量 / 重置、旁批导出、预检、界面约定）。
+  CI [run #23](https://github.com/CLnum42/book2text/actions/runs/39788650024) 双平台绿
+  （macOS 2m29s、Windows 2m27s）。
 
 ### 新增 — 页面视图块框四档可用、默认打开；顺序号加大（2026-10-22）
 
