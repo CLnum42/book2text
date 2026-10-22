@@ -1829,7 +1829,7 @@ function updateTileSuggestionMark(pageNo) {
 
 async function fetchPageSuggestions(pageNo, { force = false } = {}) {
   if (!currentProject || currentProject.kind === "package") {
-    return { suggestions: [], note: null };
+    return { suggestions: [], page_numbers: [], note: null };
   }
   if (!force && pageSuggestionCache.has(pageNo)) {
     return pageSuggestionCache.get(pageNo);
@@ -1839,6 +1839,8 @@ async function fetchPageSuggestions(pageNo, { force = false } = {}) {
   );
   const payload = {
     suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+    // 页码提示与类型建议分开：块类型已经是 header 时也要能拆出页码
+    page_numbers: Array.isArray(data.page_numbers) ? data.page_numbers : [],
     note: data.note || null,
   };
   rememberPageSuggestions(pageNo, payload);
@@ -3662,6 +3664,8 @@ const cursorByBlock = new Map();
  */
 let detailSuggestions = [];
 let detailSuggestionByBlock = new Map();
+/** 块 id → 页码候选提示（`page_numbers`）：只读，供「把页码拆出去」按钮用。 */
+let detailNumberHints = new Map();
 /** 最近一次渲染的整页版面确认状态（候选对比等局部刷新时不要拿旧的页面列表覆盖）。 */
 let detailLayoutConfirmed = false;
 
@@ -3748,6 +3752,7 @@ async function loadPageDetail(pageNo, { forceSuggestions = false } = {}) {
       ? Promise.resolve({ suggestions: [], note: null })
       : fetchPageSuggestions(pageNo, { force: forceSuggestions }).catch(() => ({
           suggestions: [],
+          page_numbers: [],
           note: null,
         }));
   try {
@@ -3768,6 +3773,13 @@ function applyDetailSuggestions(payload) {
     payload && Array.isArray(payload.suggestions) ? payload.suggestions : [];
   detailSuggestionByBlock = new Map(
     detailSuggestions.map((item) => [item.block_id, item])
+  );
+  // 页码提示单独一份：块类型**已经是** header / footer / page_number 时也要有
+  // （类型建议只返回"与当前类型不同"的块，光靠它，采用之后拆分按钮就消失了）
+  detailNumberHints = new Map(
+    (payload && Array.isArray(payload.page_numbers) ? payload.page_numbers : []).map(
+      (item) => [item.block_id, item]
+    )
   );
 }
 
@@ -5010,6 +5022,17 @@ function blockCard(block, index, blocksCount) {
     "在编辑框里的光标位置切开这一块（先把光标放到要拆开的地方）",
     () => structureAction(block, "split", { offset: cursorByBlock.get(block.block_id) })
   );
+  // 书眉里粘着的页码（`2谁是巴赫金?11`）：只在这一块真的有"贴着块首 / 块尾"的
+  // 页码候选时才出现，点了才拆——和"采用建议"一样，建议不等于自动执行。
+  const numberHint = pageNumberSplitHint(block);
+  if (numberHint) {
+    menuItem(
+      `把页码 ${numberHint.text} 拆出去`,
+      `把${numberHint.position === "start" ? "块首" : "块尾"}的 ${numberHint.text} 拆成独立的「页码」块，` +
+        "剩下的部分保持原类型；两块各有自己的框，可撤销。",
+      () => structureAction(block, "split-page-number", { candidate_text: numberHint.text })
+    );
+  }
   menuItem("上移", "与上一块交换位置", () => structureAction(block, "move", { direction: "up" }), index === 0);
   menuItem(
     "下移",
@@ -5357,6 +5380,32 @@ function restoreEditorFocus(snapshot) {
 }
 
 /** 结构操作：合并 / 拆分 / 上移下移 / 新增 / 删除（都改结构，都能撤销）。 */
+/**
+ * 这一块里"能拆出来"的页码候选：必须贴着块首或块尾（两边都有字 = 夹在中间，不拆）。
+ * 只用于菜单文案与传参；服务端会自己再判一次。
+ */
+function pageNumberSplitHint(block) {
+  const entry =
+    detailNumberHints.get(block.block_id) || detailSuggestionByBlock.get(block.block_id);
+  if (!entry) return null;
+  const text = block.text || "";
+  const usable = (entry.page_number_candidates || []).filter((item) => {
+    if (!Number.isInteger(item.start) || !Number.isInteger(item.end)) return false;
+    const before = text.slice(0, item.start).trim();
+    const after = text.slice(item.end).trim();
+    return Boolean(before) !== Boolean(after);
+  });
+  if (!usable.length) return null;
+  const hint = entry.page_number_hint;
+  const match =
+    hint && usable.find((item) => item.text === hint.text && item.start === hint.start);
+  const chosen = match || usable[usable.length - 1];
+  return {
+    text: chosen.text,
+    position: text.slice(0, chosen.start).trim() ? "end" : "start",
+  };
+}
+
 async function structureAction(block, operation, payload = {}) {
   if (!currentProject) return;
   const projectId = currentProject.project_id;
@@ -5377,6 +5426,15 @@ async function structureAction(block, operation, payload = {}) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ offset: payload.offset }),
       });
+    } else if (operation === "split-page-number") {
+      data = await apiJson(
+        `/api/projects/${projectId}/blocks/${block.block_id}/split-page-number`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidate_text: payload.candidate_text || null }),
+        }
+      );
     } else if (operation === "move") {
       data = await apiJson(`/api/projects/${projectId}/blocks/${block.block_id}/move`, {
         method: "POST",
@@ -5395,9 +5453,10 @@ async function structureAction(block, operation, payload = {}) {
       });
     }
     cursorByBlock.clear();
-    setSaveState("已保存 ✓");
-    // 块的结构 / 顺序变了：本页建议重算（标题建议看块首文字，可能已经不同）
-    forgetPageSuggestions(detailPageNo);
+    setSaveState(operation === "split-page-number" ? "页码已拆出，可撤销" : "已保存 ✓");
+    // 块的结构 / 顺序变了：本页的块框缓存与本页建议都作废
+    // （页面视图那边不能继续显示拆分前的旧框）
+    forgetPageBlocks(detailPageNo);
     await loadPageDetail(detailPageNo);
     await refreshPageStates();
     // 新增的块直接聚焦，省一次点击
@@ -5735,8 +5794,8 @@ async function reviewAction(path) {
       method: "POST",
     });
     setSaveState(data.direction === "undo" ? "已撤销" : "已重做");
-    // 撤销 / 重做可能改回块类型：建议不能拿旧缓存
-    forgetPageSuggestions(detailPageNo);
+    // 撤销 / 重做可能改回块类型与结构：本页块框缓存与建议都不能拿旧的
+    forgetPageBlocks(detailPageNo);
     await loadPageDetail(detailPageNo);
     await refreshPageStates();
     return data;
@@ -5902,6 +5961,9 @@ function setupLibrary() {
   });
   el("project-close").addEventListener("click", closeProject);
   setupCollabControls();
+  el("split-batch-close").addEventListener("click", () => closeModal("split-batch-panel"));
+  el("split-batch-cancel").addEventListener("click", () => closeModal("split-batch-panel"));
+  el("split-batch-apply").addEventListener("click", applySplitBatch);
   el("settings-save").addEventListener("click", saveSettingsName);
   el("first-run-save").addEventListener("click", async () => {
     el("settings-name").value = el("first-run-name").value;
@@ -5947,6 +6009,7 @@ function setupLibrary() {
   el("pages-zoom-in").addEventListener("click", () => setPageZoom(1));
   el("pages-overlay-toggle").addEventListener("click", togglePageBlocksOverlay);
   el("setup-confirm-selected").addEventListener("click", confirmSelectedPages);
+  el("split-page-numbers").addEventListener("click", openSplitBatchPanel);
   el("setup-confirm-all").addEventListener("click", confirmAllUnconfirmed);
   el("detail-recognize").addEventListener("click", () => {
     if (detailPageNo === null) return;
@@ -5955,6 +6018,116 @@ function setupLibrary() {
   });
 }
 
+
+// ---------------------------------------------------------------- 批量拆分书眉页码
+//
+// 书眉 / 页脚和页码被 OCR 成一个块（`2谁是巴赫金?11`）时，逐块拆太慢。
+// 这里三步：算预览（dry_run，只读）→ 人看影响多少页 / 块 → 确认后才写。
+// 整批共用一条 batch（服务端），所以在审校视图点一次「撤销」就整批回退。
+
+/** 批量范围：选了页就只做这些页，没选就是全部正文页。 */
+function splitBatchScope() {
+  const selected = [...selectedPages].sort((left, right) => left - right);
+  if (selected.length) {
+    return { pages: selected, label: `选中的 ${selected.length} 页` };
+  }
+  const body = currentProject.pages.filter((page) => page.include).map((page) => page.page_no);
+  return { pages: body, label: `全部正文页（${body.length} 页）` };
+}
+
+async function openSplitBatchPanel() {
+  if (!currentProject) return;
+  const scope = splitBatchScope();
+  if (!scope.pages.length) return;
+  el("split-batch-error").hidden = true;
+  el("split-batch-note").hidden = true;
+  el("split-batch-list").innerHTML = "";
+  el("split-batch-summary").textContent = "正在计算…";
+  el("split-batch-scope").textContent = `范围：${scope.label}`;
+  el("split-batch-apply").disabled = true;
+  el("split-batch-apply").textContent = "执行拆分";
+  openModal("split-batch-panel");
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/split-page-numbers`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_numbers: scope.pages, dry_run: true }),
+      }
+    );
+    renderSplitBatchPreview(data);
+  } catch (error) {
+    el("split-batch-summary").textContent = "算不出来";
+    showError(el("split-batch-error"), error);
+  }
+}
+
+/** 预览：影响多少页 / 块 + 前几条（用户点执行之前必须看到范围）。 */
+function renderSplitBatchPreview(data) {
+  const blocks = data.blocks || 0;
+  const pages = data.pages || 0;
+  el("split-batch-summary").textContent = blocks
+    ? `会影响 ${pages} 页 · ${blocks} 块（下面按页序列出前 ${Math.min(8, blocks)} 条）`
+    : `没有找到需要拆的块（扫了 ${data.pages_considered || 0} 页）`;
+  const list = el("split-batch-list");
+  list.innerHTML = "";
+  for (const item of data.items || []) {
+    const li = document.createElement("li");
+    const typeLabel = BLOCK_TYPE_LABELS[item.block_type] || item.block_type;
+    const where = item.position === "start" ? "块首" : "块尾";
+    li.textContent =
+      `第 ${item.page_no} 页 · ${typeLabel}：${item.text} → 拆出页码 ${item.number}（${where}）`;
+    li.title =
+      `拆分后：${BLOCK_TYPE_LABELS[item.head_type] || item.head_type} + ` +
+      `${BLOCK_TYPE_LABELS[item.tail_type] || item.tail_type}`;
+    list.append(li);
+  }
+  const apply = el("split-batch-apply");
+  apply.disabled = blocks === 0;
+  apply.textContent = blocks ? `执行拆分（${blocks} 块）` : "没有可拆的块";
+  const skipped = data.skipped_context_pages || [];
+  if (skipped.length) {
+    el("split-batch-note").textContent = `跳过了 ${skipped.length} 页只读上下文页`;
+    el("split-batch-note").hidden = false;
+  }
+}
+
+async function applySplitBatch() {
+  if (!currentProject) return;
+  const scope = splitBatchScope();
+  const button = el("split-batch-apply");
+  button.disabled = true;
+  button.textContent = "正在拆分…";
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/split-page-numbers`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_numbers: scope.pages, dry_run: false }),
+      }
+    );
+    closeModal("split-batch-panel");
+    // 块变了：这些页的块框缓存与建议角标都不能再用旧的
+    for (const pageNo of data.pages_affected || []) forgetPageBlocks(pageNo);
+    forgetAllPageSuggestions();
+    await refreshPageStates();
+    schedulePageVisibility();
+    const hint = el("selection-hint");
+    hint.hidden = false;
+    hint.textContent =
+      `已拆分 ${data.blocks} 块（${(data.pages_affected || []).length} 页）。` +
+      "整批算一个操作：到「审校」视图点「撤销」可以一次回退。";
+    if (detailPageNo !== null && (data.pages_affected || []).includes(detailPageNo)) {
+      await loadPageDetail(detailPageNo, { forceSuggestions: true });
+    }
+  } catch (error) {
+    showError(el("split-batch-error"), error);
+    button.disabled = false;
+    button.textContent = "重试执行";
+  }
+}
 
 // ---------------------------------------------------------------- 协作：分派任务包（负责人）
 

@@ -138,7 +138,11 @@ def test_merge_is_undone_completely(
 def test_split_block_at_cursor(
     client: TestClient, auth_headers: dict[str, str], page_ready: str
 ) -> None:
-    """说明书 R4：在光标处切开，两块暂沿用原 bbox，行按位置分配。"""
+    """在光标处切开：行按位置分配，**两块各有自己的框**（任务 47 改掉"暂沿用原 bbox"）。
+
+    R4 原文是"两块暂沿用原 bbox"；真书上是两个完全重叠的框，用户还得手动拖一次，
+    所以现在按行框估算：切在行边界时前块 = 前几行的并集、后块 = 其余行。
+    """
     project_id = page_ready
     block = blocks_of(client, auth_headers, project_id)["blocks"][0]
     offset = block["text"].index("\n") + 1  # 在第一行之后切开
@@ -156,7 +160,12 @@ def test_split_block_at_cursor(
     assert head["text"] == block["text"][:offset]
     assert tail["text"] == block["text"][offset:]
     assert tail["origin"] == "split"
-    assert tail["bbox"] == head["bbox"] == block["bbox"], "两块暂沿用原 bbox"
+    assert head["bbox"] != tail["bbox"], "拆开后两块不能还共用同一个框"
+    original = block["bbox"]
+    for rect in (head["bbox"], tail["bbox"]):
+        assert rect[0] >= original[0] and rect[1] >= original[1]
+        assert rect[2] <= original[2] and rect[3] <= original[3]
+    assert head["bbox"][3] <= tail["bbox"][1], "前块的框只盖第一行，不和后块重叠"
     assert head["continues_to_next"] is False
     assert tail["continues_to_next"] is False
     assert data["blocks"][0]["block_id"] == head["block_id"], "新块插在原来那块后面"

@@ -388,3 +388,36 @@ def test_block_frames_refresh_as_pages_finish_and_prefetch_while_scrolling() -> 
     scan = _function_body("scanVisiblePageSuggestions")
     assert "pageTileMetrics" in scan
     assert "byTile" in scan
+
+
+# ---------------------------------------------------------------- 任务 47：拆分 / 批量拆页码
+
+def test_split_page_number_and_batch_split_are_wired() -> None:
+    """单块「把页码拆出去」+ 批量预览/执行，都沿用现有编辑与撤销机制。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    for element_id in (
+        "split-page-numbers",
+        "split-batch-panel",
+        "split-batch-apply",
+        "split-batch-summary",
+        "split-batch-list",
+        "split-batch-scope",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    script = _script()
+    # 单块：菜单项只在"这块真的贴着块首 / 块尾有页码候选"时出现，点了才拆
+    assert "function pageNumberSplitHint(" in script
+    assert '`把页码 ${numberHint.text} 拆出去`' in script
+    assert "/split-page-number" in script
+    # 批量：先 dry_run 预览、再 dry_run: false 执行；范围是选中页 / 全部正文页
+    assert "function openSplitBatchPanel(" in script
+    assert "function renderSplitBatchPreview(" in script
+    assert "dry_run: true" in script and "dry_run: false" in script
+    assert "/split-page-numbers" in script
+    assert "pages_affected" in script
+    # 拆完 / 撤销后页面视图的块框缓存与建议都要作废（否则还显示拆分前的框）
+    assert "forgetPageBlocks(detailPageNo)" in script
+
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    assert ".split-batch-list" in css

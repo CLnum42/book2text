@@ -185,6 +185,13 @@
               </div>
             </div>
 
+            <div class="panel__sec panel__sec--secondary" id="split-panel">
+              <div class="panel__headrow"><strong>拆分书眉页码</strong><span class="muted">可选</span></div>
+              <p class="hint">书眉和页码被识别成一个块时（如 <code>2谁是巴赫金?11</code>），把页码拆成独立的「页码」块：
+                两块各自有自己的框。只在你点了之后执行，预览确认，整批可一次撤销。</p>
+              <button type="button" id="split-page-numbers" class="btn btn--block">批量拆分书眉页码…</button>
+            </div>
+
             <div class="panel__sec panel__sec--secondary">
               <div class="panel__headrow"><strong>识别</strong><span class="muted">可选</span></div>
               <label class="check check--line">
@@ -559,6 +566,29 @@
     </div>
 
     <!-- ─────────────────────────── 对话框：任务包（分派 / 结果） ─────────────────────────── -->
+    <div class="mask" id="split-batch-panel" hidden>
+      <div class="modal modal--small">
+        <div class="mhead">
+          批量拆分书眉页码
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="split-batch-close">✕</button>
+        </div>
+        <div class="mbody mbody--single">
+          <div class="alert alert--info" id="split-batch-summary">正在计算…</div>
+          <div class="alert alert--error" id="split-batch-error" hidden></div>
+          <p class="hint" id="split-batch-scope"></p>
+          <ol class="split-batch-list" id="split-batch-list"></ol>
+          <p class="hint" id="split-batch-note" hidden></p>
+        </div>
+        <div class="mfoot">
+          <span class="muted">整批作为一个操作记录，在审校视图点「撤销」可一次回退</span>
+          <span class="spacer"></span>
+          <button type="button" id="split-batch-cancel" class="btn">取消</button>
+          <button type="button" id="split-batch-apply" class="btn btn--pri" disabled>执行拆分</button>
+        </div>
+      </div>
+    </div>
+
     <div class="mask" id="assign-panel" hidden>
       <div class="modal modal--collab">
         <div class="mhead">

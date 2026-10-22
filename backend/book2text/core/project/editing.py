@@ -23,8 +23,10 @@ from pathlib import Path
 
 from ..storage import db as db_module
 from ..storage.ulid import new_ulid
+from ..structure import regions as regions_module
 from . import blocks as blocks_module
 from . import layout as layout_module
+from . import library as project_library
 from . import recognition
 from .library import ProjectError, project_dir
 
@@ -920,6 +922,354 @@ def merge_with_previous(
     return merged, events
 
 
+# ---------------------------------------------------------------- 拆分
+#
+# 拆出来的两半各自要有一个**自己的**框。R4 的"两块暂沿用原 bbox"在真书上是两个
+# 完全重叠的框，用户还得手动拖一次，所以这里按行框分配：
+#
+# - 切在行边界：前块拿前面整行的并集，后块拿其余整行的并集（两组行框不相交，
+#   两个框也就不重叠）；
+# - 切在一行中间：这一行按**字符比例**估一个横向切线（同一个 cut 值同时给前块的
+#   右边界和后块的左边界，两块只在边界上相接），前面 / 后面的整行仍按行分配。
+#
+# 两个框都裁剪到原块范围内（行框可能因为拖动而略超出块框）。
+
+# 拆出来的半边可以比手动框更窄（一行里切半个字），但绝不允许退化成 0 宽
+SPLIT_MIN_SIDE = 1e-5
+# 批量拆页码时，"不像书眉页脚"的块只有落在页面上下的这个比例带里才考虑
+PAGE_NUMBER_BAND = 0.12
+
+
+def _clip_rect(rect, base):
+    x0 = max(float(rect[0]), base[0])
+    y0 = max(float(rect[1]), base[1])
+    x1 = min(float(rect[2]), base[2])
+    y1 = min(float(rect[3]), base[3])
+    if x1 - x0 < SPLIT_MIN_SIDE or y1 - y0 < SPLIT_MIN_SIDE:
+        return None
+    return (x0, y0, x1, y1)
+
+
+def _union_rects(rects, base):
+    clipped = [item for item in (_clip_rect(rect, base) for rect in rects if rect) if item]
+    if not clipped:
+        return None
+    return (
+        min(item[0] for item in clipped),
+        min(item[1] for item in clipped),
+        max(item[2] for item in clipped),
+        max(item[3] for item in clipped),
+    )
+
+
+def _round_rect(rect):
+    return tuple(round(float(value), 6) for value in rect)
+
+
+def _rects_overlap(a, b, eps: float = 1e-9) -> bool:
+    return (
+        min(a[2], b[2]) - max(a[0], b[0]) > eps
+        and min(a[3], b[3]) - max(a[1], b[1]) > eps
+    )
+
+
+def _rect_contains(outer, inner, eps: float = 1e-9) -> bool:
+    return (
+        outer[0] <= inner[0] + eps
+        and outer[1] <= inner[1] + eps
+        and outer[2] >= inner[2] - eps
+        and outer[3] >= inner[3] - eps
+    )
+
+
+def _cut_x(rect, ratio: float | None) -> float:
+    """一行里按字符比例算横向切线；夹在行框内部，保证两边都不为 0 宽。"""
+    value = 0.5 if ratio is None else min(max(float(ratio), 0.0), 1.0)
+    cut = round(rect[0] + (rect[2] - rect[0]) * value, 6)
+    return min(max(cut, rect[0] + SPLIT_MIN_SIDE), rect[2] - SPLIT_MIN_SIDE)
+
+
+def _split_base_estimate(
+    base, *, whole_head_lines: int, split_line: int | None, ratio: float | None, line_count: int
+):
+    """没有行框时的退路。
+
+    - 只有一行（或没有行信息）：按字符比例横切；
+    - 多行、切在行内：按行数估出那一行的竖带，整条带子归文字多的那一边
+      （横切一个矩形表达不了"上行归前、下行归后"，那样两个框一定会重叠）。
+    """
+    x0, y0, x1, y1 = base
+    total = max(int(line_count), 1)
+    if split_line is not None:
+        value = 0.5 if ratio is None else min(max(float(ratio), 0.0), 1.0)
+        if total <= 1:
+            cut = _cut_x(base, value)
+            return _round_rect((x0, y0, cut, y1)), _round_rect((cut, y0, x1, y1))
+        line_top = round(y0 + (y1 - y0) * (split_line / total), 6)
+        line_bottom = round(y0 + (y1 - y0) * ((split_line + 1) / total), 6)
+        if value > 0.5:
+            return _round_rect((x0, y0, x1, line_bottom)), _round_rect((x0, line_bottom, x1, y1))
+        return _round_rect((x0, y0, x1, line_top)), _round_rect((x0, line_top, x1, y1))
+    head_lines = min(max(int(whole_head_lines), 0), total)
+    cut = round(y0 + (y1 - y0) * (head_lines / total), 6)
+    cut = min(max(cut, y0 + SPLIT_MIN_SIDE), y1 - SPLIT_MIN_SIDE)
+    return _round_rect((x0, y0, x1, cut)), _round_rect((x0, cut, x1, y1))
+
+
+def _estimate_split_rects(
+    base, line_rects, *, whole_head_lines: int, split_line: int | None, ratio: float | None
+):
+    """按行框估算拆开后 （前块 bbox, 后块 bbox）；没有坐标就返回 (None, None)。"""
+    if base is None:
+        return None, None
+    base = tuple(float(value) for value in base)
+    if not any(line_rects):
+        return _split_base_estimate(
+            base,
+            whole_head_lines=whole_head_lines,
+            split_line=split_line,
+            ratio=ratio,
+            line_count=len(line_rects),
+        )
+
+    cut = None
+    if split_line is not None:
+        source = base
+        if 0 <= split_line < len(line_rects) and line_rects[split_line]:
+            source = line_rects[split_line]
+        cut = _cut_x(source, ratio)
+
+    value = 0.5 if ratio is None else min(max(float(ratio), 0.0), 1.0)
+    # 只有被切开的那一行：横切一个矩形就够了（书眉 + 页码就是这种，两块只在边界相接）。
+    single_line = split_line is not None and sum(1 for rect in line_rects if rect) <= 1
+
+    head_rects = []
+    tail_rects = []
+    for index, rect in enumerate(line_rects):
+        if rect is None:
+            continue
+        if split_line is not None:
+            if index < split_line:
+                head_rects.append(rect)
+            elif index > split_line:
+                tail_rects.append(rect)
+            elif single_line:
+                head_rects.append((rect[0], rect[1], cut, rect[3]))
+                tail_rects.append((cut, rect[1], rect[2], rect[3]))
+            elif value > 0.5:
+                # 多行块在行中间拆开：这一行整行算给文字多的那一边，
+                # 另一边的框从相邻行边界开始——宁可少包一行，也不要两个框压在一起
+                head_rects.append(rect)
+            else:
+                tail_rects.append(rect)
+        elif index < whole_head_lines:
+            head_rects.append(rect)
+        else:
+            tail_rects.append(rect)
+
+    head = _union_rects(head_rects, base)
+    tail = _union_rects(tail_rects, base)
+    if head is None or tail is None:
+        # 有一边一行都落不进原块（例如行框整体偏移到框外）：退回按比例估，两边都要有框
+        return _split_base_estimate(
+            base,
+            whole_head_lines=whole_head_lines,
+            split_line=split_line,
+            ratio=ratio,
+            line_count=len(line_rects),
+        )
+
+    head = _round_rect(head)
+    tail = _round_rect(tail)
+
+    # 行框本身可能上下轻微交叠（行距估计有误差）。真出现面积重叠时：
+    # 行边界切按重叠区中线竖切；行内切只在极端包含关系下按切线收一下。
+    if _rects_overlap(head, tail):
+        if split_line is None:
+            cut_y = round((max(head[1], tail[1]) + min(head[3], tail[3])) / 2, 6)
+            head = (head[0], head[1], head[2], min(head[3], cut_y))
+            tail = (tail[0], max(tail[1], cut_y), tail[2], tail[3])
+        elif cut is not None:
+            if _rect_contains(head, tail):
+                head = (head[0], head[1], cut, head[3])
+            elif _rect_contains(tail, head):
+                tail = (cut, tail[1], tail[2], tail[3])
+    return head, tail
+
+
+def _block_text_lines(text: str) -> list[str]:
+    return text.split("\n")
+
+
+def _split_block_with_conn(
+    conn,
+    row,
+    *,
+    offset: int,
+    now: str,
+    batch_id: str,
+    actor_name: str | None,
+    head_block_type: str | None = None,
+    tail_block_type: str | None = None,
+    head_text: str | None = None,
+    tail_text: str | None = None,
+) -> tuple[str, str, list[Event]]:
+    """在已打开的连接里把一块拆成两块，返回 （前块 id, 后块 id, 事件）。
+
+    `head_text` / `tail_text` 只在"拆页码"时显式给出：那样可以把接缝处的空白
+    去掉，而不必改动 `offset`（`offset` 仍然只用于切 `ocr_text`）。
+    """
+    text = row["text"] or ""
+    if head_text is None or tail_text is None:
+        if not 0 < offset < len(text):
+            raise ProjectError(f"拆分位置必须在 0 与 {len(text)} 之间，收到 {offset}")
+        head_text, tail_text = text[:offset], text[offset:]
+    if not head_text or not tail_text:
+        raise ProjectError("拆出来的两半都不能是空的")
+
+    text_lines = _block_text_lines(text)
+    cut_in_middle = not head_text.endswith("\n")
+    whole_head_lines = head_text.count("\n")
+    split_line = whole_head_lines if cut_in_middle else None
+    ratio = None
+    if split_line is not None:
+        line_text = text_lines[split_line] if split_line < len(text_lines) else ""
+        head_part = head_text.split("\n")[-1]
+        ratio = (len(head_part) / len(line_text)) if line_text else 0.5
+
+    lines = _lines_of(conn, row["block_id"])
+    line_rects = [blocks_module.bbox_from_json(line["bbox"]) for line in lines]
+    head_bbox, tail_bbox = _estimate_split_rects(
+        blocks_module.bbox_from_json(row["bbox"]),
+        line_rects,
+        whole_head_lines=whole_head_lines,
+        split_line=split_line,
+        ratio=ratio,
+    )
+
+    head_fields: dict[str, object] = {
+        "text": head_text,
+        "ocr_text": _ocr_slice(row["ocr_text"], offset, head=True),
+        "continues_to_next": 0,
+    }
+    head_bbox_json = (
+        blocks_module.bbox_to_json(blocks_module.BBox(*head_bbox)) if head_bbox else None
+    )
+    if head_bbox_json != row["bbox"]:
+        head_fields["bbox"] = head_bbox_json
+    if head_block_type and head_block_type != row["block_type"]:
+        head_fields["block_type"] = head_block_type
+
+    events: list[Event] = []
+    head_events, _ = _set_block_fields(
+        conn,
+        row["block_id"],
+        head_fields,
+        batch_id=batch_id,
+        action=ACTION_SPLIT,
+        actor_name=actor_name,
+        now=now,
+    )
+    events.extend(head_events)
+
+    # 后面的块整体后移一位，给新块腾出位置
+    siblings = _page_blocks(conn, row["page_id"])
+    index = next(i for i, item in enumerate(siblings) if item["block_id"] == row["block_id"])
+    for shifted in siblings[index + 1 :]:
+        shift_events, _ = _set_block_fields(
+            conn,
+            shifted["block_id"],
+            {"order_index": int(shifted["order_index"]) + 1},
+            batch_id=batch_id,
+            action=ACTION_REORDER,
+            actor_name=actor_name,
+            now=now,
+        )
+        events.extend(shift_events)
+
+    tail_bbox_json = (
+        blocks_module.bbox_to_json(blocks_module.BBox(*tail_bbox)) if tail_bbox else None
+    )
+    new_block_id, new_events = _insert_block(
+        conn,
+        page_id=row["page_id"],
+        origin="split",
+        order_index=int(row["order_index"]) + 1,
+        bbox=tail_bbox_json,
+        text=tail_text,
+        ocr_text=_ocr_slice(row["ocr_text"], offset, head=False),
+        origin_run_id=row["origin_run_id"],
+        include=int(row["include"]),
+        continues_to_next=int(row["continues_to_next"]),
+        block_type=tail_block_type or row["block_type"],
+        action=ACTION_SPLIT,
+        batch_id=batch_id,
+        actor_name=actor_name,
+        now=now,
+    )
+    events.extend(new_events)
+
+    # 行分配：光标前的归前块，光标后的归后块；被切开的行清空坐标与分歧信息
+    # （它不再精确对应任何一整行，第二引擎读的是原来那一整行）
+    head_line_count = whole_head_lines + (1 if cut_in_middle else 0)
+    for line in lines:
+        index_in_block = int(line["line_index"])
+        if index_in_block < head_line_count:
+            if index_in_block == head_line_count - 1 and cut_in_middle and line["bbox"]:
+                _apply_values(
+                    conn,
+                    "block_line",
+                    line["line_id"],
+                    {"bbox": None, "aux_text": None, "diff_status": None},
+                    now,
+                )
+                events.append(
+                    _record(
+                        conn,
+                        entity_type="block_line",
+                        entity_id=line["line_id"],
+                        action=ACTION_SPLIT,
+                        before={
+                            "bbox": line["bbox"],
+                            "aux_text": line["aux_text"],
+                            "diff_status": line["diff_status"],
+                        },
+                        after={"bbox": None, "aux_text": None, "diff_status": None},
+                        batch_id=batch_id,
+                        actor_name=actor_name,
+                    )
+                )
+            continue
+        new_index = index_in_block - head_line_count
+        _apply_values(
+            conn,
+            "block_line",
+            line["line_id"],
+            {"block_id": new_block_id, "line_index": new_index},
+            now,
+        )
+        events.append(
+            _record(
+                conn,
+                entity_type="block_line",
+                entity_id=line["line_id"],
+                action=ACTION_MOVE_LINE,
+                before={"block_id": row["block_id"], "line_index": index_in_block},
+                after={"block_id": new_block_id, "line_index": new_index},
+                batch_id=batch_id,
+                actor_name=actor_name,
+            )
+        )
+    return row["block_id"], new_block_id, events
+
+
+def _ocr_slice(ocr: str | None, offset: int, *, head: bool) -> str:
+    """按同一个 offset 切识别原文；长度对不上时按边界退让，不抛错。"""
+    text = ocr or ""
+    cut = max(0, min(int(offset), len(text)))
+    return text[:cut] if head else text[cut:]
+
+
 def split_block(
     project_id: str,
     block_id: str,
@@ -930,8 +1280,8 @@ def split_block(
 ) -> tuple[list[blocks_module.BlockRecord], list[Event]]:
     """在**文本的第 offset 个字符处**切开这一块（说明书 R4 / 6.4）。
 
-    R4 的规定：两块暂沿用原 bbox；被从中间切开的**行**清空 bbox 与分歧信息。
-    行按位置分配：光标前的行归前块、光标后的行归后块。
+    两块各自拿到自己的框（见本段开头的说明）：行按位置分配，切在一行中间时
+    按字符比例估横向切线；被切开的**行**清空 bbox 与分歧信息（R4）。
     """
     if library is None:
         from .library import default_library_dir
@@ -945,125 +1295,316 @@ def split_block(
         row = _block_of(conn, block_id)
         if row is None or row["deleted_at"]:
             raise ProjectError(f"找不到块：{block_id}")
-        text = row["text"] or ""
-        if not 0 < offset < len(text):
-            raise ProjectError(f"拆分位置必须在 0 与 {len(text)} 之间，收到 {offset}")
-
-        head_text, tail_text = text[:offset], text[offset:]
-        ocr = row["ocr_text"] or ""
-        head_ocr, tail_ocr = ocr[:offset], ocr[offset:]
-
-        # 光标落在哪一行：用它决定行的归属，并找出"被从中间切开"的那一行
-        cut_in_middle = not head_text.endswith("\n")
-        # 前块保留的行数：正好切在行边界时是 newline 数；切在行中间时那一行归前块，
-        # 因此再多一行（它的坐标会被清掉——它不再精确对应任何半边）
-        head_line_count = head_text.count("\n") + (1 if cut_in_middle else 0)
-
-        events: list[Event] = []
-        head_events, _ = _set_block_fields(
+        head_id, tail_id, events = _split_block_with_conn(
             conn,
-            block_id,
-            {"text": head_text, "ocr_text": head_ocr, "continues_to_next": 0},
-            batch_id=batch_id,
-            action=ACTION_SPLIT,
-            actor_name=actor_name,
+            row,
+            offset=offset,
             now=now,
-        )
-        events.extend(head_events)
-
-        # 后面的块整体后移一位，给新块腾出位置
-        siblings = _page_blocks(conn, row["page_id"])
-        index = next(i for i, item in enumerate(siblings) if item["block_id"] == block_id)
-        for shifted in siblings[index + 1 :]:
-            shift_events, _ = _set_block_fields(
-                conn,
-                shifted["block_id"],
-                {"order_index": int(shifted["order_index"]) + 1},
-                batch_id=batch_id,
-                action=ACTION_REORDER,
-                actor_name=actor_name,
-                now=now,
-            )
-            events.extend(shift_events)
-
-        new_block_id, new_events = _insert_block(
-            conn,
-            page_id=row["page_id"],
-            origin="split",
-            order_index=int(row["order_index"]) + 1,
-            bbox=row["bbox"],  # R4：两块暂沿用原 bbox
-            text=tail_text,
-            ocr_text=tail_ocr,
-            origin_run_id=row["origin_run_id"],
-            include=int(row["include"]),
-            continues_to_next=int(row["continues_to_next"]),
-            block_type=row["block_type"],
-            action=ACTION_SPLIT,
             batch_id=batch_id,
             actor_name=actor_name,
-            now=now,
         )
-        events.extend(new_events)
-
-        # 行分配：光标前的归前块，光标后的归后块，被切开的行清空坐标与分歧信息
-        lines = _lines_of(conn, block_id)
-        for line in lines:
-            index_in_block = int(line["line_index"])
-            if index_in_block < head_line_count:
-                if index_in_block == head_line_count - 1 and cut_in_middle and line["bbox"]:
-                    # R4：被切开的行清空 bbox 与**分歧信息**——它不再精确对应任何一整行，
-                    # 第二引擎读的是原来那一整行，留着标记会指错地方
-                    _apply_values(
-                        conn,
-                        "block_line",
-                        line["line_id"],
-                        {"bbox": None, "aux_text": None, "diff_status": None},
-                        now,
-                    )
-                    events.append(
-                        _record(
-                            conn,
-                            entity_type="block_line",
-                            entity_id=line["line_id"],
-                            action=ACTION_SPLIT,
-                            before={
-                                "bbox": line["bbox"],
-                                "aux_text": line["aux_text"],
-                                "diff_status": line["diff_status"],
-                            },
-                            after={"bbox": None, "aux_text": None, "diff_status": None},
-                            batch_id=batch_id,
-                            actor_name=actor_name,
-                        )
-                    )
-                continue
-            new_index = index_in_block - head_line_count
-            _apply_values(
-                conn,
-                "block_line",
-                line["line_id"],
-                {"block_id": new_block_id, "line_index": new_index},
-                now,
-            )
-            events.append(
-                _record(
-                    conn,
-                    entity_type="block_line",
-                    entity_id=line["line_id"],
-                    action=ACTION_MOVE_LINE,
-                    before={"block_id": block_id, "line_index": index_in_block},
-                    after={"block_id": new_block_id, "line_index": new_index},
-                    batch_id=batch_id,
-                    actor_name=actor_name,
-                )
-            )
-
         conn.execute("UPDATE project SET updated_at = ?", (now,))
         conn.commit()
-        head = _read_block(conn, block_id)
-        tail = _read_block(conn, new_block_id)
+        head = _read_block(conn, head_id)
+        tail = _read_block(conn, tail_id)
 
     return [head, tail], events
+
+
+@dataclass
+class PageNumberSplitPlan:
+    """一次"把页码拆出去"的计划（只描述，不写库）。"""
+
+    offset: int
+    head_text: str
+    tail_text: str
+    head_type: str
+    tail_type: str
+    number: str
+    position: str  # "start"（页码在块首）/ "end"（页码在块尾）
+
+
+def _page_number_split_plan(
+    text: str,
+    block_type: str,
+    bbox,
+    *,
+    candidate_text: str | None = None,
+) -> PageNumberSplitPlan | None:
+    """算"把页码拆出去"要切在哪、两半各是什么类型；拆不了就返回 None。
+
+    只收**紧贴块首或块尾**的候选（书眉的两种排法：`11 导读巴赫金` / `2谁是巴赫金?11`）。
+    候选夹在中间（`第 11 章`、脚注 `1 这里采用的是…`）一律不动——切了会把正文拆坏。
+    接缝处的空白会去掉；非空白字符一个都不动。
+    """
+    cleaned = text or ""
+    if not cleaned.strip():
+        return None
+    candidates = regions_module.page_number_candidates(cleaned)
+    if not candidates:
+        return None
+
+    # 只有"一边是空的、另一边有正文"的候选才是页码：两边都有字 = 夹在中间
+    usable = []
+    for item in candidates:
+        before = cleaned[: item.start]
+        after = cleaned[item.end :]
+        if bool(before.strip()) == bool(after.strip()):
+            continue
+        usable.append((item, bool(before.strip())))
+    if not usable:
+        return None
+
+    hint = regions_module.page_number_hint(candidates, bbox) if bbox else candidates[-1]
+    chosen = next((entry for entry in usable if entry[0] is hint), None)
+    if candidate_text:
+        matched = [entry for entry in usable if entry[0].text == candidate_text]
+        if matched:
+            chosen = next((entry for entry in matched if entry[0] is hint), matched[-1])
+    if chosen is None:
+        chosen = usable[-1]
+    number, at_end = chosen
+
+    rest_type = block_type if block_type != "page_number" else "other"
+    if at_end:
+        head_text = cleaned[: number.start].rstrip()
+        tail_text = cleaned[number.start : number.end].strip()
+        if not head_text or not tail_text:
+            return None
+        return PageNumberSplitPlan(
+            offset=number.start,
+            head_text=head_text,
+            tail_text=tail_text,
+            head_type=block_type,
+            tail_type="page_number",
+            number=number.text,
+            position="end",
+        )
+    head_text = cleaned[: number.end].strip()
+    tail_text = cleaned[number.end :].lstrip()
+    if not head_text or not tail_text:
+        return None
+    return PageNumberSplitPlan(
+        offset=number.end,
+        head_text=head_text,
+        tail_text=tail_text,
+        head_type="page_number",
+        tail_type=rest_type,
+        number=number.text,
+        position="start",
+    )
+
+
+def split_off_page_number(
+    project_id: str,
+    block_id: str,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+    candidate_text: str | None = None,
+) -> tuple[list[blocks_module.BlockRecord], list[Event], dict]:
+    """把这一块里（块首 / 块尾）的页码拆成独立的 `page_number` 块。
+
+    只在用户点了按钮时执行（建议接口里的 `page_number_hint` 只是提示）。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        row = _block_of(conn, block_id)
+        if row is None or row["deleted_at"]:
+            raise ProjectError(f"找不到块：{block_id}")
+        plan = _page_number_split_plan(
+            row["text"] or "",
+            row["block_type"],
+            blocks_module.bbox_from_json(row["bbox"]),
+            candidate_text=candidate_text,
+        )
+        if plan is None:
+            raise ProjectError("这一块里没有可以拆出来的页码（或拆完会剩下空块）")
+        head_id, tail_id, events = _split_block_with_conn(
+            conn,
+            row,
+            offset=plan.offset,
+            now=now,
+            batch_id=batch_id,
+            actor_name=actor_name,
+            head_block_type=plan.head_type,
+            tail_block_type=plan.tail_type,
+            head_text=plan.head_text,
+            tail_text=plan.tail_text,
+        )
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        head = _read_block(conn, head_id)
+        tail = _read_block(conn, tail_id)
+
+    info = {
+        "number": plan.number,
+        "position": plan.position,
+        "offset": plan.offset,
+        "head_type": plan.head_type,
+        "tail_type": plan.tail_type,
+    }
+    return [head, tail], events, info
+
+
+# 拆页码时，"看起来不像书眉"的块要更严格：这些字符一出现，几乎肯定不是书眉
+_SENTENCE_PUNCTUATION = "，。；：、,;:！？!?（）()“”\""
+# 书眉 / 页脚通常很短；超过这个字数就不是一行书眉了
+PAGE_NUMBER_MAX_CHARS = 40
+# 去掉页码以后剩下的部分（书名 / 章名）也很短
+PAGE_NUMBER_MAX_REST_CHARS = 30
+
+
+def _batch_page_number_plans(blocks, *, page_count: int) -> list[dict]:
+    """这一页里哪些块可以拆出页码（批量预览与执行共用同一套判断）。
+
+    块类型已经是 header / footer / page_number 的，只要页码贴着块首 / 块尾就收；
+    其余类型要同时满足：落在页面上下的 12% 带里、整块很短、去掉页码后剩下的部分
+    没有句子标点、页码数值不超过全书页数。这样正文段落里的数字
+    （"11 岁""2007 年出版"）不会被整本拆坏。
+    """
+    plans: list[dict] = []
+    for block in blocks:
+        if getattr(block, "deleted_at", None):
+            continue
+        bbox = block.bbox
+        if bbox is None:
+            continue
+        typed = block.block_type in ("header", "footer", "page_number")
+        if not typed:
+            center = (bbox[1] + bbox[3]) / 2
+            if not (center <= PAGE_NUMBER_BAND or center >= 1 - PAGE_NUMBER_BAND):
+                continue
+            text = (block.text or "").strip()
+            if len(text) > PAGE_NUMBER_MAX_CHARS:
+                continue
+        plan = _page_number_split_plan(block.text or "", block.block_type, bbox)
+        if plan is None:
+            continue
+        rest = plan.head_text if plan.position == "end" else plan.tail_text
+        if not typed:
+            if not any(char.isalnum() for char in rest):
+                # 剩下只有一个 "/" 之类的标点：拆出来只是多一个空块
+                continue
+            if len(rest) > PAGE_NUMBER_MAX_REST_CHARS:
+                continue
+            if any(char in rest for char in _SENTENCE_PUNCTUATION):
+                continue
+            try:
+                number_value = int(plan.number)
+            except ValueError:
+                number_value = None
+            if number_value is not None and number_value > page_count:
+                # "2007 年出版" 这种：页码不可能比全书页数还大
+                continue
+        plans.append({"block": block, "plan": plan, "bbox": bbox})
+    return plans
+
+
+def split_page_numbers_batch(
+    project_id: str,
+    page_numbers: list[int] | None = None,
+    *,
+    library: Path | None = None,
+    dry_run: bool = True,
+    actor_name: str | None = None,
+) -> tuple[dict, list[Event]]:
+    """批量把书眉 / 页脚里粘着的页码拆成 `page_number` 块（整批一个 batch）。
+
+    `page_numbers` 为空 = 全部正文页。`dry_run=True` 只算不写，供预览。
+    条件：块类型是 header / footer / page_number，**或**块落在页面上下的 12% 带里；
+    并且页码候选紧贴块首 / 块尾。正文段落里的数字不动。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    all_pages = project_library.list_pages(project_id, library=library)
+    total_pages = len(all_pages)
+    wanted = set(page_numbers or [])
+    plans: list[dict] = []
+    considered = 0
+    skipped_context: list[int] = []
+
+    for page in all_pages:
+        if wanted:
+            if page.page_no not in wanted:
+                continue
+        elif not page.include:
+            # 没指定页码：只跑正文页（目录 / 前置 / 后置里的数字多半不是页码）
+            continue
+        if page.is_context:
+            skipped_context.append(page.page_no)
+            continue
+        considered += 1
+        blocks = blocks_module.list_blocks(project_id, library=library, page_no=page.page_no)
+        for item in _batch_page_number_plans(blocks, page_count=total_pages):
+            plans.append({"page_no": page.page_no, **item})
+
+    result: dict[str, object] = {
+        "dry_run": bool(dry_run),
+        "pages": len({item["page_no"] for item in plans}),
+        "blocks": len(plans),
+        "pages_considered": considered,
+        "skipped_context_pages": skipped_context,
+        "items": [
+            {
+                "page_no": item["page_no"],
+                "block_id": item["block"].block_id,
+                "text": (item["block"].text or "")[:80],
+                "number": item["plan"].number,
+                "position": item["plan"].position,
+                "block_type": item["block"].block_type,
+                "head_type": item["plan"].head_type,
+                "tail_type": item["plan"].tail_type,
+            }
+            for item in plans[:8]
+        ],
+    }
+    if dry_run or not plans:
+        return result, []
+
+    now = _now()
+    batch_id = new_ulid()
+    events: list[Event] = []
+    with _open(directory) as conn:
+        # 从后往前做：新块插在后面，不会把还没处理的前面的块挤出顺序
+        ordered = sorted(
+            plans, key=lambda item: (item["page_no"], -int(item["block"].order_index))
+        )
+        for item in ordered:
+            row = _block_of(conn, item["block"].block_id)
+            if row is None or row["deleted_at"]:
+                continue
+            plan = item["plan"]
+            _head, _tail, item_events = _split_block_with_conn(
+                conn,
+                row,
+                offset=plan.offset,
+                now=now,
+                batch_id=batch_id,
+                actor_name=actor_name,
+                head_block_type=plan.head_type,
+                tail_block_type=plan.tail_type,
+                head_text=plan.head_text,
+                tail_text=plan.tail_text,
+            )
+            events.extend(item_events)
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+
+    result["dry_run"] = False
+    result["events"] = len(events)
+    result["pages_affected"] = sorted({item["page_no"] for item in plans})
+    return result, events
 
 
 def move_block(

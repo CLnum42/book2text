@@ -435,6 +435,77 @@ def split_block(
     }
 
 
+class SplitPageNumberRequest(BaseModel):
+    """页码候选的文本（可空：空就按页面左右侧给出的提示挑一个）。"""
+
+    candidate_text: str | None = Field(default=None, max_length=32)
+
+
+@router.post("/{project_id}/blocks/{block_id}/split-page-number")
+def split_page_number(
+    request: Request, project_id: str, block_id: str, body: SplitPageNumberRequest | None = None
+) -> dict[str, Any]:
+    """把这一块里（块首 / 块尾）的页码拆成独立的 `page_number` 块。
+
+    只在用户点按钮时执行：建议接口里的 `page_number_hint` 只是提示，不自动拆。
+    """
+    _require_page_editable(request, project_id, block_id, library=_library(request))
+    library = _library(request)
+    try:
+        parts, events, info = editing.split_off_page_number(
+            project_id,
+            block_id,
+            library=library,
+            candidate_text=body.candidate_text if body else None,
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    _history(request).push(
+        project_id, _Batch(events=tuple(events), page_nos=(parts[0].page_no,))
+    )
+    payload = _page_blocks_payload(request, project_id, parts[0].page_no)
+    return {
+        "parts": [part.block_id for part in parts],
+        "number": info,
+        "blocks": payload["blocks"],
+        "review": payload["review"],
+        "history": payload["history"],
+    }
+
+
+class BatchSplitPageNumbersRequest(BaseModel):
+    # 哪些页；空 = 全部正文页
+    page_numbers: list[int] | None = Field(default=None, max_length=5000)
+    # 预览（只算不写）。界面先 dry_run 再让用户确认执行。
+    dry_run: bool = True
+
+
+@router.post("/{project_id}/split-page-numbers")
+def split_page_numbers(
+    request: Request, project_id: str, body: BatchSplitPageNumbersRequest
+) -> dict[str, Any]:
+    """批量把书眉 / 页脚里粘着的页码拆成 `page_number` 块（整批一个撤销单元）。"""
+    _require_main(request, project_id)
+    library = _library(request)
+    try:
+        result, events = editing.split_page_numbers_batch(
+            project_id,
+            body.page_numbers,
+            library=library,
+            dry_run=body.dry_run,
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    if not body.dry_run and events:
+        _history(request).push(
+            project_id,
+            _Batch(events=tuple(events), page_nos=tuple(result["pages_affected"])),
+        )
+    undo, redo = _history(request).depth(project_id)
+    result["history"] = {"undo": undo, "redo": redo}
+    return result
+
+
 class MoveRequest(BaseModel):
     direction: Literal["up", "down"]
 

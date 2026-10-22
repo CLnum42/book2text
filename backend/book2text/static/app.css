@@ -917,6 +917,11 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 .modal--collab { width: 880px; height: 600px; max-width: 100%; }
 .modal--settings { width: 820px; max-width: 100%; height: 660px; }
 .modal--small { width: 560px; max-width: 100%; }
+.split-batch-list {
+  margin: 4px 0 12px; padding-left: 20px; font-size: 12.5px; line-height: 1.65; color: var(--text-2);
+}
+.split-batch-list li { margin-bottom: 5px; }
+.split-batch-list li::marker { color: var(--faint); }
 .mhead {
   flex: none; display: flex; align-items: center; gap: 10px;
   padding: 14px 20px; border-bottom: 1px solid var(--line-soft); font-size: 15px; font-weight: 600;

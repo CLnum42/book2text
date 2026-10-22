@@ -447,12 +447,41 @@ class BlockSuggestion:
 
 
 @dataclass(frozen=True)
+class PageNumberHint:
+    """书眉 / 页脚里"贴着块首或块尾"的页码候选（只读，供界面上的拆分按钮用）。
+
+    与 `BlockSuggestion` 分开，是因为它**不看"建议类型 ≠ 当前类型"**：
+    块已经是 header 的时候，用户仍然要能把粘着的页码拆出去。
+    """
+
+    block_id: str
+    page_no: int
+    order_index: int
+    block_type: str
+    text: str
+    candidates: tuple[NumberCandidate, ...]
+    hint: NumberCandidate | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "block_id": self.block_id,
+            "page_no": self.page_no,
+            "order_index": self.order_index,
+            "block_type": self.block_type,
+            "text": self.text,
+            "page_number_candidates": [item.to_dict() for item in self.candidates],
+            "page_number_hint": self.hint.to_dict() if self.hint else None,
+        }
+
+
+@dataclass(frozen=True)
 class BlockSuggestionPlan:
     page_no: int
     suggestions: tuple[BlockSuggestion, ...]
     blocks_scanned: int
     pages_compared: int
     note: str | None = None
+    page_numbers: tuple[PageNumberHint, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -462,6 +491,7 @@ class BlockSuggestionPlan:
             "pages_compared": self.pages_compared,
             "note": self.note,
             "suggestions": [item.to_dict() for item in self.suggestions],
+            "page_numbers": [item.to_dict() for item in self.page_numbers],
         }
 
 
@@ -589,4 +619,46 @@ def suggest_block_types(
         suggestions=tuple(suggestions),
         blocks_scanned=len(page_blocks),
         pages_compared=len(eligible),
+        page_numbers=tuple(_page_number_hints(page_no, page_blocks, scored, suggestions)),
     )
+
+
+def _page_number_hints(page_no, page_blocks, scored, suggestions) -> list[PageNumberHint]:
+    """这一页里"可能要把页码拆出去"的块（只读提示，不写库、不自动拆）。
+
+    - 已经是 header / footer / page_number 的块：不看类型建议（类型已经对了）；
+    - 被建议成这三类之一的块：也算（用户可能先拆页码、后采用类型）。
+    只收**贴着块首 / 块尾**的候选：夹在正文中间的"第 11 章"不提示。
+    """
+    edge_types = {BLOCK_TYPE_HEADER, BLOCK_TYPE_FOOTER, BLOCK_TYPE_PAGE_NUMBER}
+    suggested_edge = {
+        item.block_id
+        for item in suggestions
+        if item.suggested_type in edge_types
+    }
+    hints: list[PageNumberHint] = []
+    for block in page_blocks:
+        if block.block_type not in edge_types and block.block_id not in suggested_edge:
+            continue
+        text = (block.text or "").strip()
+        if not text:
+            continue
+        usable = tuple(
+            item
+            for item in page_number_candidates(text)
+            if bool(text[: item.start].strip()) != bool(text[item.end :].strip())
+        )
+        if not usable:
+            continue
+        hints.append(
+            PageNumberHint(
+                block_id=block.block_id,
+                page_no=page_no,
+                order_index=block.order_index,
+                block_type=block.block_type,
+                text=text,
+                candidates=usable,
+                hint=page_number_hint(usable, block.bbox) if block.bbox else usable[-1],
+            )
+        )
+    return hints
