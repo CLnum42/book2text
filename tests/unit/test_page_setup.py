@@ -55,6 +55,36 @@ def test_after_ocr_a_nearly_empty_page_is_blank_with_low_confidence() -> None:
     assert suggestion.confidence == page_setup.CONFIDENCE_LOW
 
 
+def test_cip_text_suggests_copyright() -> None:
+    suggestion = page_setup.suggest_page(
+        signals(page_no=3, block_count=5, text="图书在版编目（CIP）数据\nISBN 978-7-…"),
+        ink=None,
+        project_has_blocks=True,
+    )
+    assert suggestion is not None
+    assert suggestion.suggested_type == "copyright"
+
+
+def test_foreword_keyword_wins_over_first_page_cover() -> None:
+    suggestion = page_setup.suggest_page(
+        signals(page_no=1, block_count=3, text="前言\n本书是……"),
+        ink=None,
+        project_has_blocks=True,
+    )
+    assert suggestion is not None
+    assert suggestion.suggested_type == "foreword"
+
+
+def test_latin_cip_substring_does_not_trigger_copyright() -> None:
+    # "recipe" 里有 cip，但不是 CIP 缩写；整词匹配不应命中
+    suggestion = page_setup.suggest_page(
+        signals(page_no=8, block_count=2, text="a recipe for bread"),
+        ink=None,
+        project_has_blocks=True,
+    )
+    assert suggestion is None
+
+
 def test_toc_keyword_suggests_toc() -> None:
     suggestion = page_setup.suggest_page(
         signals(page_no=3, block_count=4, text="目录\n第一回 甄士隐梦幻识通灵"),

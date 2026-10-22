@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -50,6 +51,8 @@ CONFIDENCE_LABELS = {
 
 # 页首文字里的关键词 → 页面类型
 _TEXT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("copyright", ("图书在版编目", "cip", "isbn")),
+    ("foreword", ("前言", "序言", "导言", "译者的话", "凡例")),
     ("toc", ("目录", "目 录", "contents")),
     ("index", ("索引", "index")),
     ("appendix", ("附录", "appendix")),
@@ -133,18 +136,19 @@ def suggest_page(
     if ink is not None and ink < BLANK_INK_HIGH:
         return make("blank", CONFIDENCE_HIGH, f"几乎空白：墨迹占比 {ink:.2%}")
 
-    if signals.page_no == 1:
-        return make("cover", CONFIDENCE_MEDIUM, "第 1 页（通常为封面），且不是空白页")
-
     if signals.block_count > 0:
-        head = signals.text[:160].casefold()
+        head = signals.text[:200].casefold()
         for page_type, keywords in _TEXT_KEYWORDS:
-            if any(keyword in head for keyword in keywords):
+            if any(_keyword_hit(head, keyword) for keyword in keywords):
                 return make(
                     page_type,
                     CONFIDENCE_MEDIUM,
                     f"页首文字里出现「{keywords[0]}」，但没有识别出该类型",
                 )
+
+    if signals.page_no == 1:
+        return make("cover", CONFIDENCE_MEDIUM, "第 1 页（通常为封面），且不是空白页")
+    if signals.block_count > 0:
         return None
 
     if not project_has_blocks:
@@ -164,6 +168,13 @@ def suggest_page(
             f"没有识别行、墨迹很少（{ink:.1%}），可能是一张空白页",
         )
     return None
+
+
+def _keyword_hit(text: str, keyword: str) -> bool:
+    """中文按子串；纯拉丁词按整词（避免 "cip" 命中 "recipe"）。"""
+    if keyword.isascii() and keyword.isalpha():
+        return re.search(rf"\b{re.escape(keyword)}\b", text) is not None
+    return keyword in text
 
 
 def _page_signals(page, block_count: int, text: str) -> PageSignals:

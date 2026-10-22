@@ -120,6 +120,9 @@ function showView(name) {
     // 回到页面视图时以数据库为准重拉一次：确认进度与类型不在前端缓存里说了算
     renderPageSetup();
     refreshPageStates();
+    if (!setupSuggestionsLoaded && currentProject.kind !== "package") {
+      loadSetupSuggestions();
+    }
   }
 }
 
@@ -1058,9 +1061,15 @@ function setupExportPanel() {
 let currentProject = null;
 
 const PAGE_TYPE_LABELS = {
-  cover: "封面", toc: "目录", front: "前置", body: "正文",
-  appendix: "附录", index: "索引", blank: "空白", other: "其他",
+  cover: "封面", toc: "目录", front: "前置（其他）", foreword: "前言",
+  copyright: "版权", body: "正文", appendix: "附录", index: "索引",
+  blank: "空白", other: "其他",
 };
+/** 右栏类型列表的顺序：正文/前言/版权最常用，放前面。 */
+const PAGE_TYPE_ORDER = [
+  "body", "foreword", "copyright", "cover", "toc",
+  "front", "appendix", "index", "blank", "other",
+];
 
 /**
  * 识别状态（说明书 5.3：状态不单独存储，由 OCRRun 与 Block 推导）。
@@ -1457,6 +1466,11 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
       warning.hidden = false;
     }
     await refreshProject(projectId);
+    pagesOverlayOn =
+      currentProject.kind !== "package" && loadPageOverlayPreference();
+    setupSuggestionsLoaded = false;
+    setupSuggestions = [];
+    el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
     await loadLibrary();
     // 说明书 7.2：打开项目默认回到上次的位置（上次在审校就回审校那一页）
     await resumeLastPosition();
@@ -1667,6 +1681,27 @@ const PAGE_ZOOM_LEVELS = [
 ];
 let pageZoomIndex = 0;
 let pagesOverlayOn = false;
+
+/** 块框开关按项目记住；存在 localStorage，不写项目数据库。 */
+function pageOverlayStorageKey() {
+  return currentProject ? `b2t.pagesOverlay.${currentProject.project_id}` : "";
+}
+
+function loadPageOverlayPreference() {
+  try {
+    return localStorage.getItem(pageOverlayStorageKey()) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function savePageOverlayPreference() {
+  try {
+    localStorage.setItem(pageOverlayStorageKey(), pagesOverlayOn ? "1" : "0");
+  } catch {
+    /* 隐私模式等写不进去：不影响本次会话 */
+  }
+}
 /** 当前在大图档下、与视口相交的页（块框只给这些页渲染）。 */
 const visiblePageNos = new Set();
 /** 块数据缓存：页号 → blocks；最多留 40 页，避免 267 页全塞内存。 */
@@ -1676,8 +1711,9 @@ const pageBlockPending = new Set();
 const PAGE_BLOCK_CACHE_LIMIT = 40;
 
 /** 页面确认模式：汇总、建议与「确认所选」都在这个模式里出现。 */
-let pageSetupOpen = false;
 let setupSuggestions = [];
+let setupSuggestionsLoading = false;
+let setupSuggestionsLoaded = false;
 
 function visiblePages() {
   const project = currentProject;
@@ -1826,7 +1862,8 @@ function updateSelectionPanel() {
       : `第 ${numbers.slice(0, 6).join("、")}${numbers.length > 6 ? " 等" : ""}（${numbers.length} 页）`;
   }
 
-  el("selection-set-type").disabled = count === 0;
+  renderTypePicker();
+  renderSuggestionPanel();
   el("selection-include").disabled = count === 0 || !hasExcluded;
   el("selection-exclude").disabled = count === 0 || !selected.some((page) => page.include);
   el("selection-recognize").disabled = count === 0 || !selected.some((page) => page.include);
@@ -1866,11 +1903,12 @@ function tileClassName(page) {
   const recognition = recognitionOf(page);
   return (
     "page-tile" +
+    ` page-tile--ptype-${page.page_type}` +
     (page.include ? "" : " page-tile--excluded") +
     (page.has_text_layer ? " page-tile--textlayer" : "") +
     (busyPages.has(page.page_no) ? " page-tile--busy" : "") +
     (recognition.status === "failed" ? " page-tile--failed" : "") +
-    (!page.page_confirmed && pageSetupOpen ? " page-tile--unconfirmed" : "") +
+    (!page.page_confirmed && currentProject.kind !== "package" ? " page-tile--unconfirmed" : "") +
     (selectedPages.has(page.page_no) ? " page-tile--selected" : "")
   );
 }
@@ -1990,11 +2028,6 @@ function applyTileState(tile, page) {
     chip.textContent = "✓ 已确认";
     chip.title = "这一页的类型与纳入状态已人工确认";
     status.append(chip);
-  } else if (pageSetupOpen) {
-    const chip = document.createElement("span");
-    chip.className = "status status--muted";
-    chip.textContent = "待确认";
-    status.append(chip);
   }
 
   const isBusy = busyPages.has(page.page_no);
@@ -2029,80 +2062,148 @@ function renderPageSetup() {
   const bar = el("page-setup-bar");
   if (!currentProject || currentProject.kind === "package") {
     bar.hidden = true;
-    pageSetupOpen = false;
     el("setup-panel").hidden = true;
     return;
   }
   const stats = pageSetupStats();
   bar.hidden = false;
-  bar.classList.toggle("setupbar--open", pageSetupOpen);
   el("setup-summary").textContent =
     `正文 ${stats.body} 页 · 其他类型 ${stats.other} 页 · 已排除 ${stats.excluded} 页` +
     ` · 未确认 ${stats.unconfirmed} 页`;
-  el("setup-open").hidden = pageSetupOpen;
-  el("setup-close").hidden = !pageSetupOpen;
-  el("setup-panel").hidden = !pageSetupOpen;
-  if (!pageSetupOpen) return;
-
+  el("setup-panel").hidden = false;
+  el("setup-progress").textContent = `${stats.confirmed} / ${stats.total} 已确认`;
   el("setup-summary-detail").textContent =
-    `共 ${stats.total} 页：已确认 ${stats.confirmed} 页，未确认 ${stats.unconfirmed} 页。` +
-    "确认只是状态标记，未确认也能识别。";
+    `共 ${stats.total} 页；已确认 ${stats.confirmed} 页，未确认 ${stats.unconfirmed} 页。` +
+    "点下面的类型直接改所选页；确认只是状态标记，未确认也能识别。";
   el("setup-confirm-selected").disabled = selectedPages.size === 0;
   el("setup-confirm-all").disabled = stats.unconfirmed === 0;
+  renderTypePicker();
+  renderSuggestionPanel();
 }
 
 /** 打开确认界面：先回数据库拉一次页面，保证看到的进度不是前端缓存。 */
 async function openPageSetup({ auto = false } = {}) {
   if (!currentProject || currentProject.kind === "package") return;
   showView("pages");
-  pageSetupOpen = true;
   await refreshPageStates();
   renderPages();
   await loadSetupSuggestions();
   if (auto) {
-    el("page-setup-bar").scrollIntoView({ block: "nearest", behavior: "smooth" });
+    el("setup-panel").scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 }
 
-function closePageSetup() {
-  pageSetupOpen = false;
-  el("setup-panel").hidden = true;
-  renderPages();
-}
-
 async function loadSetupSuggestions() {
-  if (!currentProject || !pageSetupOpen) return;
-  const note = el("setup-suggestion-note");
-  const list = el("setup-suggestions");
-  note.hidden = false;
-  note.textContent = "正在根据已有数据给建议（只读，不会自动改任何页）…";
-  list.innerHTML = "";
+  if (!currentProject || currentProject.kind === "package") return;
+  setupSuggestionsLoading = true;
+  setupSuggestionsLoaded = true;
+  setupSuggestions = [];
+  renderSuggestionPanel();
   try {
     const data = await apiJson(
       `/api/projects/${currentProject.project_id}/pages/suggestions`
     );
     setupSuggestions = data.suggestions || [];
-    renderSetupSuggestions(data);
-  } catch (error) {
-    note.textContent = `建议读取失败：${error.message || "未知错误"}`;
+  } catch {
+    setupSuggestions = [];
+  } finally {
+    setupSuggestionsLoading = false;
+    renderSuggestionPanel();
+    renderTypePicker();
   }
 }
 
-function renderSetupSuggestions(data) {
+/** 只看"选中的页"上的建议：建议区要贴着当前页，不常挂在最上面。 */
+function selectedSuggestions() {
+  if (!selectedPages.size) return [];
+  return setupSuggestions.filter((item) => selectedPages.has(item.page_no));
+}
+
+function suggestionPagesByType() {
+  const byType = new Map();
+  for (const item of selectedSuggestions()) {
+    if (!byType.has(item.suggested_type)) byType.set(item.suggested_type, []);
+    byType.get(item.suggested_type).push(item.page_no);
+  }
+  return byType;
+}
+
+/**
+ * 页面类型常驻列表：当前类型高亮 + "当前"文字，建议类型加淡色圆点。
+ * 颜色只是辅助，文字标签始终在。
+ */
+function renderTypePicker() {
+  const wrap = el("selection-types");
+  if (!wrap) return;
+  const selected = selectionPages();
+  const types = new Set(selected.map((page) => page.page_type));
+  const mixed = types.size > 1;
+  const current = types.size === 1 ? [...types][0] : null;
+  el("selection-type-state").textContent = !selected.length
+    ? "先选页"
+    : mixed
+    ? `混合（${types.size} 种）`
+    : `当前：${PAGE_TYPE_LABELS[current] || current}`;
+
+  const suggested = suggestionPagesByType();
+  wrap.innerHTML = "";
+  for (const type of PAGE_TYPE_ORDER) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `ptype ptype--${type}`;
+    button.disabled = selected.length === 0;
+    button.title = selected.length
+      ? `把所选 ${selected.length} 页设为「${PAGE_TYPE_LABELS[type] || type}」`
+      : "先在左边选页";
+    if (current === type) button.classList.add("is-current");
+    const dot = document.createElement("span");
+    dot.className = "ptype__dot";
+    const label = document.createElement("span");
+    label.className = "ptype__label";
+    label.textContent = PAGE_TYPE_LABELS[type] || type;
+    button.append(dot, label);
+    if (current === type) {
+      const flag = document.createElement("span");
+      flag.className = "ptype__flag";
+      flag.textContent = "当前";
+      button.append(flag);
+    }
+    if (suggested.has(type)) {
+      button.classList.add("has-suggestion");
+      const mark = document.createElement("span");
+      mark.className = "ptype__suggest";
+      mark.title = `建议第 ${suggested.get(type).join("、")} 页用这个类型`;
+      button.append(mark);
+    }
+    button.addEventListener("click", () => patchSelectedPages({ page_type: type }));
+    wrap.append(button);
+  }
+}
+
+/** 建议区：只在选中页有建议时出现，条目就是"建议 vs 当前"的具体差别。 */
+function renderSuggestionPanel() {
+  const block = el("setup-suggestion-block");
   const note = el("setup-suggestion-note");
   const list = el("setup-suggestions");
-  list.innerHTML = "";
-  if (!data.count) {
-    note.textContent =
-      `自动建议：没有命中规则（分析了 ${data.analyzed_pages} 页）。` +
-      "规则保守——不确定的页不猜，直接按类型手动标即可。";
+  if (!block) return;
+  const items = selectedSuggestions();
+  if (setupSuggestionsLoading && selectedPages.size) {
+    block.hidden = false;
+    note.hidden = false;
+    note.textContent = "正在根据已有数据给建议（只读，不会自动改任何页）…";
+    list.innerHTML = "";
     return;
   }
-  note.textContent =
-    `自动建议（只给建议，点了才会改）：分析了 ${data.analyzed_pages} 页` +
-    (data.truncated ? "（只分析了前 60 个未确认页）" : "") +
-    "。把握程度来自规则，不是模型。";
-  for (const item of setupSuggestions) {
+  if (!items.length) {
+    block.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+  block.hidden = false;
+  note.hidden = false;
+  note.textContent = "只给建议，点「采用」才改；圆点是建议类型，粗框是当前类型。";
+  list.innerHTML = "";
+  for (const item of items) {
     const row = document.createElement("li");
     row.className = "setup-suggestion";
     const head = document.createElement("div");
@@ -2115,13 +2216,21 @@ function renderSetupSuggestions(data) {
     const confidence = document.createElement("span");
     confidence.className = `chip setup-confidence setup-confidence--${item.confidence}`;
     confidence.textContent = `把握 ${item.confidence_label}`;
-    const apply = document.createElement("button");
-    apply.type = "button";
-    apply.className = "btn btn--sm";
-    apply.textContent = "采用建议";
-    apply.title = "只改这一页的类型；不会自动确认，也不会改别的页";
-    apply.addEventListener("click", () => applySetupSuggestion(item, apply));
-    head.append(where, target, confidence, apply);
+    head.append(where, target, confidence);
+    const page = currentProject.pages.find((entry) => entry.page_no === item.page_no);
+    if (page && page.page_type !== item.suggested_type) {
+      const apply = document.createElement("button");
+      apply.type = "button";
+      apply.className = "btn btn--sm";
+      apply.textContent = "采用";
+      apply.addEventListener("click", () => applySetupSuggestion(item, apply));
+      head.append(apply);
+    } else {
+      const ok = document.createElement("span");
+      ok.className = "muted";
+      ok.textContent = "已是该类型";
+      head.append(ok);
+    }
     const reason = document.createElement("div");
     reason.className = "setup-suggestion__reason";
     reason.textContent = item.reason;
@@ -2315,10 +2424,7 @@ function applyPageZoom() {
   el("pages-zoom-in").disabled = pageZoomIndex === PAGE_ZOOM_LEVELS.length - 1;
   const large = pageZoomIndex >= 2;
   el("pages-overlay-toggle").disabled = !large;
-  if (!large) {
-    pagesOverlayOn = false;
-    el("pages-overlay-toggle").classList.remove("is-on");
-  }
+  el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
 
   const tiles = [...grid.querySelectorAll(".page-tile")];
   const byPage = new Map(currentProject.pages.map((page) => [page.page_no, page]));
@@ -2364,6 +2470,7 @@ function setPageZoom(delta) {
 function togglePageBlocksOverlay() {
   if (pageZoomIndex < 2) return;
   pagesOverlayOn = !pagesOverlayOn;
+  savePageOverlayPreference();
   el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
   if (pagesOverlayOn) {
     for (const pageNo of visiblePageNos) ensurePageBlocks(pageNo);
@@ -4536,7 +4643,7 @@ async function patchSelectedPages(patch) {
     }
     renderPages();
     renderProjectMeta();
-    if (pageSetupOpen) await loadSetupSuggestions();
+    await loadSetupSuggestions();
   } catch (error) {
     showError(el("pages-error"), error);
   }
@@ -4634,17 +4741,12 @@ function setupLibrary() {
     selectionAnchor = null;
     renderPages();
   });
-  el("selection-set-type").addEventListener("click", () =>
-    patchSelectedPages({ page_type: el("selection-type").value })
-  );
   el("selection-include").addEventListener("click", () => patchSelectedPages({ include: true }));
   el("selection-exclude").addEventListener("click", () => patchSelectedPages({ include: false }));
   el("selection-recognize").addEventListener("click", recognizeSelection);
   el("pages-zoom-out").addEventListener("click", () => setPageZoom(-1));
   el("pages-zoom-in").addEventListener("click", () => setPageZoom(1));
   el("pages-overlay-toggle").addEventListener("click", togglePageBlocksOverlay);
-  el("setup-open").addEventListener("click", () => openPageSetup());
-  el("setup-close").addEventListener("click", closePageSetup);
   el("setup-confirm-selected").addEventListener("click", confirmSelectedPages);
   el("setup-confirm-all").addEventListener("click", confirmAllUnconfirmed);
   el("detail-recognize").addEventListener("click", () => {
@@ -4960,8 +5062,8 @@ async function applyPackageMode() {
     el("selection-check").hidden = false;
     el("check-pending").hidden = false;
     el("selection-skip-checked").parentElement.hidden = false;
-    el("selection-set-type").hidden = false;
-    el("selection-type").parentElement.hidden = false;
+    el("setup-panel").hidden = false;
+    el("page-setup-bar").hidden = false;
     el("assign-list-toggle").hidden = false;
     el("assign-open").hidden = false;
     return;
@@ -4977,8 +5079,8 @@ async function applyPackageMode() {
   el("selection-check").hidden = true;
   el("check-pending").hidden = true;
   el("selection-skip-checked").parentElement.hidden = true;
-  el("selection-set-type").hidden = true;
-  el("selection-type").parentElement.hidden = true;
+  el("setup-panel").hidden = true;
+  el("page-setup-bar").hidden = true;
   el("detail-recognize").hidden = true;
   el("aux-run").hidden = true;
 

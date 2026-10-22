@@ -47,7 +47,10 @@ CACHE_DIR_NAMES = ("thumbs", "view", "ocr", "lines")
 EXPORTS_DIR_NAME = "exports"
 LOGS_DIR_NAME = "logs"
 
-PAGE_TYPES = ("cover", "toc", "front", "body", "appendix", "index", "blank", "other")
+PAGE_TYPES = (
+    "cover", "toc", "front", "foreword", "copyright", "body",
+    "appendix", "index", "blank", "other",
+)
 DEFAULT_PAGE_TYPE = "body"
 
 # 说明书 6.1：大部分页面已有文本层时提示"这本 PDF 可能已包含文本"

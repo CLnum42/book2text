@@ -362,6 +362,61 @@ textarea {
 .panel .btn--block { margin-bottom: 6px; }
 .panel .alert { margin-top: 10px; }
 
+/* 页面确认右栏：第一层主操作 / 第二层次要 / 第三层高级（第 39 号任务） */
+.panel__headrow {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  margin: 2px 0 6px; color: var(--text-2);
+}
+.panel__headrow strong { font-size: 12.5px; }
+.panel__sec--primary {
+  color: inherit; margin: 4px 0 12px; padding: 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2);
+}
+.panel__sec--primary .flabel { margin-top: 10px; }
+.panel__sec--secondary {
+  color: inherit; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line-soft);
+}
+.panel__adv { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.panel__adv summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 500; }
+.panel__adv .panel__sec { color: inherit; margin: 10px 0 6px; }
+
+/* 页面类型常驻列表：文字 + 颜色点 + 当前 / 建议两种标记 */
+.type-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ptype {
+  position: relative; display: flex; align-items: center; gap: 6px; min-height: 30px;
+  padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 7px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 12px;
+  cursor: pointer; text-align: left;
+}
+.ptype:hover:not(:disabled) { border-color: var(--accent); }
+.ptype:disabled { opacity: .5; cursor: not-allowed; }
+.ptype__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ptype-color); flex: none; }
+.ptype__label { flex: 1; }
+.ptype.is-current { border: 2px solid var(--ptype-color); background: var(--surface); }
+.ptype__flag { font-size: 9.5px; color: var(--ptype-color); white-space: nowrap; }
+.ptype__suggest {
+  position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ptype-color); opacity: .65; box-shadow: 0 0 0 1px #fff;
+}
+
+/* 页面类型的固定颜色：只作辅助，按钮上永远有文字 */
+.ptype--body, .page-tile--ptype-body { --ptype-color: #2563eb; }
+.ptype--cover, .page-tile--ptype-cover { --ptype-color: #7c3aed; }
+.ptype--toc, .page-tile--ptype-toc { --ptype-color: #0f766e; }
+.ptype--front, .page-tile--ptype-front { --ptype-color: #b45309; }
+.ptype--foreword, .page-tile--ptype-foreword { --ptype-color: #15803d; }
+.ptype--copyright, .page-tile--ptype-copyright { --ptype-color: #be123c; }
+.ptype--appendix, .page-tile--ptype-appendix { --ptype-color: #c2410c; }
+.ptype--index, .page-tile--ptype-index { --ptype-color: #4338ca; }
+.ptype--blank, .page-tile--ptype-blank { --ptype-color: #9ca3af; }
+.ptype--other, .page-tile--ptype-other { --ptype-color: #475569; }
+
+/* 缩略图左缘一条 4px 色条表类型；未确认仍是橙色虚线，两者同时存在 */
+.page-tile__thumb::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--ptype-color, transparent); z-index: 2; pointer-events: none;
+}
+
 /* 页面确认：顶部汇总条 + 右栏确认面板（说明书 6.2） */
 .setupbar {
   display: flex; align-items: center; gap: 10px; padding: 8px 16px;

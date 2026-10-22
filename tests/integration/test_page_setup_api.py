@@ -99,6 +99,27 @@ def test_changing_type_or_include_resets_confirmation(project, client, auth_head
     assert response.json()["pages"][0]["include"] is False
 
 
+def test_new_page_types_are_accepted(project, client, auth_headers) -> None:
+    project_id, items = project
+    for page_type in ("copyright", "foreword"):
+        response = client.patch(
+            f"/api/projects/{project_id}/pages/{items[0]['page_id']}",
+            json={"page_type": page_type},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["page_type"] == page_type
+
+    # front 仍然可读、可写（老数据不迁移）
+    response = client.patch(
+        f"/api/projects/{project_id}/pages/{items[0]['page_id']}",
+        json={"page_type": "front"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["page_type"] == "front"
+
+
 def test_same_value_does_not_reset_confirmation(project, client, auth_headers) -> None:
     project_id, items = project
     confirm(client, auth_headers, project_id, [items[0]["page_id"]])

@@ -111,3 +111,24 @@ def test_page_view_has_zoom_controls_and_readonly_block_overlay() -> None:
     assert ".page-overlay--readonly" in css
     # 标签贴框内（不是负 top 浮在框外）
     assert "top: 2px; left: 2px" in css
+
+
+def test_page_confirmation_type_picker_is_a_flat_list_with_new_types() -> None:
+    """类型是常驻列表（不是下拉），新类型与新颜色类都在页面里。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    assert 'id="selection-types"' in page
+    assert 'id="selection-type"' not in page
+    assert "版权" in page and "前言" in page
+    assert "前置（其他）" in page
+
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    assert "PAGE_TYPE_ORDER" in script
+    assert 'copyright: "版权"' in script
+    assert 'foreword: "前言"' in script
+    assert "混合" in script
+
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    assert ".ptype--copyright" in css
+    assert ".ptype--foreword" in css
+    assert ".ptype__suggest" in css
+    assert ".page-tile--ptype-copyright" in css

@@ -90,7 +90,9 @@
               <option value="">全部</option>
               <option value="cover">封面</option>
               <option value="toc">目录</option>
-              <option value="front">前置</option>
+              <option value="front">前置（其他）</option>
+              <option value="foreword">前言</option>
+              <option value="copyright">版权</option>
               <option value="body">正文</option>
               <option value="appendix">附录</option>
               <option value="index">索引</option>
@@ -146,8 +148,6 @@
           <span class="setupbar__title">页面确认</span>
           <span class="muted" id="setup-summary"></span>
           <span class="spacer"></span>
-          <button type="button" id="setup-open" class="btn btn--sm">确认页面…</button>
-          <button type="button" id="setup-close" class="btn btn--sm btn--ghost" hidden>收起</button>
         </div>
 
         <div class="split">
@@ -164,58 +164,60 @@
             </h3>
             <div class="panel__sub" id="selection-range"></div>
 
-            <div class="panel__sec" id="setup-panel" hidden>
+            <div class="panel__sec panel__sec--primary" id="setup-panel">
+              <div class="panel__headrow">
+                <strong>页面确认</strong>
+                <span class="muted" id="setup-progress"></span>
+              </div>
               <div class="setup-summary" id="setup-summary-detail"></div>
-              <button type="button" id="setup-confirm-selected" class="btn btn--pri btn--block">
-                确认所选页面
-              </button>
-              <button type="button" id="setup-confirm-all" class="btn btn--block">
-                确认全部未确认页
-              </button>
-              <p class="hint" id="setup-suggestion-note" hidden></p>
-              <ol class="setup-suggestions" id="setup-suggestions"></ol>
+
+              <div class="flabel">页面类型
+                <span class="muted" id="selection-type-state"></span>
+              </div>
+              <div class="type-picker" id="selection-types"></div>
+              <div class="row2">
+                <button type="button" id="selection-include" class="btn">纳入</button>
+                <button type="button" id="selection-exclude" class="btn">排除</button>
+              </div>
+              <div class="row2">
+                <button type="button" id="setup-confirm-selected" class="btn btn--pri">确认所选页面</button>
+              </div>
+              <button type="button" id="setup-confirm-all" class="btn btn--block">确认全部未确认页</button>
+
+              <div id="setup-suggestion-block" hidden>
+                <div class="flabel">选中页的建议（只作参考）</div>
+                <p class="hint" id="setup-suggestion-note" hidden></p>
+                <ol class="setup-suggestions" id="setup-suggestions"></ol>
+              </div>
             </div>
 
-            <div class="panel__sec">页面类型</div>
-            <select id="selection-type" class="select select--block">
-              <option value="body">正文</option>
-              <option value="cover">封面</option>
-              <option value="toc">目录</option>
-              <option value="front">前置</option>
-              <option value="appendix">附录</option>
-              <option value="index">索引</option>
-              <option value="blank">空白</option>
-              <option value="other">其他</option>
-            </select>
-            <div class="row2">
-              <button type="button" id="selection-set-type" class="btn">设为该类型</button>
-            </div>
-            <div class="row2">
-              <button type="button" id="selection-include" class="btn">纳入</button>
-              <button type="button" id="selection-exclude" class="btn">排除</button>
+            <div class="panel__sec panel__sec--secondary">
+              <div class="panel__headrow"><strong>识别</strong><span class="muted">可选</span></div>
+              <label class="check check--line">
+                <input type="checkbox" id="selection-skip-recognized" checked> 跳过已识别的页
+              </label>
+              <button type="button" id="selection-recognize" class="btn btn--pri btn--block">识别所选</button>
+              <button type="button" id="recognize-pending" class="btn btn--block">识别全部未识别页</button>
             </div>
 
-            <div class="panel__sec">识别</div>
-            <label class="check check--line">
-              <input type="checkbox" id="selection-skip-recognized" checked> 跳过已识别的页
-            </label>
-            <button type="button" id="selection-recognize" class="btn btn--pri btn--block">识别所选</button>
-            <button type="button" id="recognize-pending" class="btn btn--block">识别全部未识别页</button>
-
-            <div class="panel__sec">第二引擎复核</div>
-            <label class="check check--line">
-              <input type="checkbox" id="selection-skip-checked" checked> 跳过已复核的页
-            </label>
-            <button type="button" id="selection-check" class="btn btn--block"
-                    title="用第二引擎（macOS 上是系统自带的 Apple Vision）逐行复核所选页：复核跑在后台任务里，进度在右下角的任务抽屉里看">复核所选</button>
-            <button type="button" id="check-pending" class="btn btn--block"
-                    title="复核全部已识别但还没复核过的页（说明书 8.5：第二引擎可以随时补跑）">复核全部未复核页</button>
-
-            <div class="panel__sec">其他</div>
-            <button type="button" id="selection-all" class="btn btn--block">全选（当前筛选）</button>
-            <button type="button" id="selection-review-open" class="btn btn--block">在审校中打开</button>
-            <button type="button" id="assign-open" class="btn btn--block"
-                    title="把选中的页面分派给助手（生成任务包 .b2tpkg，说明书 6.7）">分派审校…</button>
+            <details class="panel__adv">
+              <summary>高级操作（第二引擎复核 / 其他）</summary>
+              <div class="panel__sec">
+                <label class="check check--line">
+                  <input type="checkbox" id="selection-skip-checked" checked> 跳过已复核的页
+                </label>
+                <button type="button" id="selection-check" class="btn btn--block"
+                        title="用第二引擎（macOS 上是系统自带的 Apple Vision）逐行复核所选页：复核跑在后台任务里，进度在右下角的任务抽屉里看">复核所选</button>
+                <button type="button" id="check-pending" class="btn btn--block"
+                        title="复核全部已识别但还没复核过的页（说明书 8.5：第二引擎可以随时补跑）">复核全部未复核页</button>
+              </div>
+              <div class="panel__sec">
+                <button type="button" id="selection-all" class="btn btn--block">全选（当前筛选）</button>
+                <button type="button" id="selection-review-open" class="btn btn--block">在审校中打开</button>
+                <button type="button" id="assign-open" class="btn btn--block"
+                        title="把选中的页面分派给助手（生成任务包 .b2tpkg，说明书 6.7）">分派审校…</button>
+              </div>
+            </details>
 
             <div class="alert alert--warn" id="selection-hint" hidden></div>
             <div class="tipbox">单击选中一页、Shift + 单击选一段、⌘/Ctrl + 单击加减一页；
@@ -462,7 +464,9 @@
             <div class="flabel">页面类型</div>
             <div class="chkpills">
               <label class="pill"><input type="checkbox" name="export-page-type" value="body" checked><span>正文</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="front"><span>前置</span></label>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="front"><span>前置（其他）</span></label>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="foreword"><span>前言</span></label>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="copyright"><span>版权</span></label>
               <label class="pill"><input type="checkbox" name="export-page-type" value="toc"><span>目录</span></label>
               <label class="pill"><input type="checkbox" name="export-page-type" value="appendix"><span>附录</span></label>
               <label class="pill"><input type="checkbox" name="export-page-type" value="index"><span>索引</span></label>
