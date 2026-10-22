@@ -124,6 +124,12 @@ Windows 红：`test_ink_gaps_api` 的两个用例在 Windows 上拿到 0 个候�
 ② 测试改成**相对断言**（删行前后比集合，不看绝对条数），并新增 8 个**合成图单元测试**
 （自己画白底黑条，跨平台完全一致）把规则本身钉住。
 
+**第二次 Windows 又红了**：`test_region_api.py` 的 `project_ready` 夹具没要 `inprocess_jobs`，
+于是它用**真引擎**跑识别——Windows job 不装 OCR 依赖，OCR 任务直接 503。补上
+`inprocess_jobs`（假引擎 + 本进程跑任务）后，本地按 Windows 的筛选条件（`-m "not ocr"`
++ 4 个 ignore）跑一遍 **704 passed, 1 deselected**。教训：新加的集成测试只要会跑识别任务，
+就必须显式依赖 `inprocess_jobs`，不能指望"开发机上装了引擎"。
+
 **未验证：** Windows / Safari 的提示条与对话框；表格 / 竖排 / 双栏版式的误报率（L-47）；
 整页识别失败时检测不到（L-48）；框选识别每次重渲染整页（L-49）。
 

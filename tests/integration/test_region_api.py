@@ -39,7 +39,10 @@ def table_counts(library_dir: Path, project_id: str) -> dict[str, int]:
 
 @pytest.fixture
 def project_ready(
-    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    inprocess_jobs: FakeOcrEngine,
 ) -> str:
     project_id = create_project(client, auth_headers, sample_pdf)
     response = client.post(
