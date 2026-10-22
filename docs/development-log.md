@@ -95,7 +95,8 @@ main `3964751`，754 测试全绿（任务 50 后）。导出链路：`core/expo
   （新增 12 项：margin_rules 8、导出集成 3、界面约定 1；原有注释文件断言改为显式
   `include_notes=True`，没有弱化）。
 - 既有 `chrome_suspect_count` / 预览 / 老导出记录 / 协作包测试全部照旧。
-- CI 见下（push 后补）。
+- push `31060db` 触发 [run #32](https://github.com/CLnum42/book2text/actions/runs/39820494882)，
+  **Success**（总时长 3m57s；macOS 全量 1m52s、Windows 非 OCR 2m58s，两个 job 全绿）。
 
 ### 用户操作说明
 
