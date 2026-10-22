@@ -130,6 +130,13 @@ Windows 红：`test_ink_gaps_api` 的两个用例在 Windows 上拿到 0 个候�
 + 4 个 ignore）跑一遍 **704 passed, 1 deselected**。教训：新加的集成测试只要会跑识别任务，
 就必须显式依赖 `inprocess_jobs`，不能指望"开发机上装了引擎"。
 
+**CI：** 一共跑了三次才绿——
+[#27](https://github.com/CLnum42/book2text/actions/runs/39807862624) 与
+[#28](https://github.com/CLnum42/book2text/actions/runs/39809821810) 都是 macOS 绿、**Windows 红**
+（上面两段写了原因与修法），[#29](https://github.com/CLnum42/book2text/actions/runs/39811435849)
+**Success**（总时长 4m18s，macOS 2m36s、Windows 4m14s）。
+macOS 那两条只是 runner 排队的提示，不是失败。
+
 **未验证：** Windows / Safari 的提示条与对话框；表格 / 竖排 / 双栏版式的误报率（L-47）；
 整页识别失败时检测不到（L-48）；框选识别每次重渲染整页（L-49）。
 
