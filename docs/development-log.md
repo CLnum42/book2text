@@ -99,6 +99,10 @@ O(页数 × 全书块数)。`scan_high_suggestions` 只加载一次、算一次�
 （新增 8 项：扫描只读 + 整批一次撤销、无建议时的预览、设置默认关 / 往返 / 未知键、
 自动应用 + 撤销 + 重复撤销被拒、之后有修改时拒绝、关掉开关行为不变、迁移 0010、界面约定）。
 
+**CI：** [run #26](https://github.com/CLnum42/book2text/actions/runs/39805009818) **Success**
+（总时长 7m55s）：`全量测试（macOS 14 + OCR）` 2m41s、`Windows 测试（非 OCR）` 3m32s，
+两个 job 都成功（GitHub 另给了两条 macOS arm64 runner 排队偏慢的提示，与本项目无关）。
+
 **未验证：** Windows / Safari 的提示条与对话框；267 页全部真实识别后的扫描耗时（L-44）；
 自动应用跨任务补页的行为（只覆盖本任务，见 L-45）。
 
