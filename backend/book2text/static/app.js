@@ -123,6 +123,8 @@ function showView(name) {
     if (!setupSuggestionsLoaded && currentProject.kind !== "package") {
       loadSetupSuggestions();
     }
+    // 回到页面视图：重新算哪些页在视口里，块框按需补画
+    schedulePageVisibility();
   }
 }
 
@@ -1467,11 +1469,13 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
       warning.hidden = false;
     }
     await refreshProject(projectId);
-    pagesOverlayOn =
-      currentProject.kind !== "package" && loadPageOverlayPreference();
+    pagesOverlayOn = loadPageOverlayPreference();
     setupSuggestionsLoaded = false;
     setupSuggestions = [];
     el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
+    // refreshProject 可能已经渲染过页面视图；默认"开"是在那之后才读出来的，
+    // 这里补一次可见性计算，让块框立刻出现。
+    schedulePageVisibility();
     await loadLibrary();
     // 说明书 7.2：打开项目默认回到上次的位置（上次在审校就回审校那一页）
     await resumeLastPosition();
@@ -1683,16 +1687,22 @@ const PAGE_ZOOM_LEVELS = [
 let pageZoomIndex = 0;
 let pagesOverlayOn = false;
 
-/** 块框开关按项目记住；存在 localStorage，不写项目数据库。 */
+/**
+ * 块框开关按项目记住；存在 localStorage，不写项目数据库。
+ *
+ * 键从 v1 升到 v2：v1 的默认值是"关"，老用户存着 "0"；直接改默认值对他们无效。
+ * 换新键后所有人重新体验一次"默认开"，关掉后仍按项目记住。
+ */
 function pageOverlayStorageKey() {
-  return currentProject ? `b2t.pagesOverlay.${currentProject.project_id}` : "";
+  return currentProject ? `b2t.pagesOverlay.v2.${currentProject.project_id}` : "";
 }
 
 function loadPageOverlayPreference() {
   try {
-    return localStorage.getItem(pageOverlayStorageKey()) === "1";
+    const stored = localStorage.getItem(pageOverlayStorageKey());
+    return stored === null ? true : stored === "1"; // 没存过 = 默认开
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -1710,6 +1720,12 @@ const pageBlockCache = new Map();
 const pageBlockCacheOrder = [];
 const pageBlockPending = new Set();
 const PAGE_BLOCK_CACHE_LIMIT = 40;
+// 网格档可见页多：每帧最多真正画 3 页、同时最多 3 个块请求在途；离屏立刻清。
+const PAGE_OVERLAY_FRAME_LIMIT = 3;
+const PAGE_BLOCK_FETCH_LIMIT = 3;
+const overlayRenderQueue = [];
+const overlayRenderQueued = new Set();
+let overlayPumpScheduled = false;
 
 // ---------------------------------------------------------------- 块类型建议（只读）
 //
@@ -2550,12 +2566,41 @@ function rememberPageBlocks(key, blocks) {
 
 let pageScrollListening = false;
 let pageScrollScheduled = false;
+// 瓷砖在滚动内容里的位置：渲染 / 缩放时缓存一次，滚动时不再每帧量 267 个矩形。
+let pageTileMetrics = null;
+
+function pageScroller() {
+  return el("page-grid")?.closest(".split__main") || null;
+}
+
+function capturePageTileMetrics() {
+  const scroller = pageScroller();
+  const grid = el("page-grid");
+  if (!scroller || !grid) {
+    pageTileMetrics = null;
+    return;
+  }
+  const scrollerRect = scroller.getBoundingClientRect();
+  const scrollTop = scroller.scrollTop;
+  pageTileMetrics = [...grid.querySelectorAll(".page-tile")].map((tile) => {
+    const rect = tile.getBoundingClientRect();
+    return {
+      tile,
+      pageNo: Number(tile.dataset.pageNo),
+      top: rect.top - scrollerRect.top + scrollTop,
+      height: rect.height,
+    };
+  });
+}
 
 function ensurePageScrollListener() {
   if (pageScrollListening) return;
-  const scroller = el("page-grid")?.closest(".split__main");
+  const scroller = pageScroller();
   (scroller || window).addEventListener("scroll", schedulePageVisibility, { passive: true });
-  window.addEventListener("resize", schedulePageVisibility);
+  window.addEventListener("resize", () => {
+    pageTileMetrics = null;
+    schedulePageVisibility();
+  });
   pageScrollListening = true;
 }
 
@@ -2577,39 +2622,56 @@ function schedulePageVisibility() {
  * 换来确定的行为——滚动到哪一页就加载哪一页，离屏就释放。
  */
 function updatePageVisibility() {
-  if (!currentProject || pageZoomIndex < 2) return;
-  const tiles = [...el("page-grid").querySelectorAll(".page-tile")];
+  if (!currentProject) return;
+  const scroller = pageScroller();
+  if (!scroller) return;
+  const grid = el("page-grid");
+  const tiles = grid.querySelectorAll(".page-tile");
+  if (!pageTileMetrics || pageTileMetrics.length !== tiles.length) {
+    capturePageTileMetrics();
+  }
+  if (!pageTileMetrics) return;
+
+  const large = pageZoomIndex >= 2;
+  const scrollTop = scroller.scrollTop;
+  const viewport = scroller.clientHeight;
   const nearLimit = 1400;
   const near = new Set();
-  for (const tile of tiles) {
-    const rect = tile.getBoundingClientRect();
-    const pageNo = Number(tile.dataset.pageNo);
-    if (rect.bottom <= -nearLimit || rect.top >= window.innerHeight + nearLimit) {
+
+  for (const item of pageTileMetrics) {
+    const top = item.top;
+    const bottom = top + item.height;
+    const pageNo = item.pageNo;
+    const isVisible = bottom > scrollTop - 60 && top < scrollTop + viewport + 60;
+    if (isVisible) {
+      visiblePageNos.add(pageNo);
+      // 建议角标只为可见页算；大图档在可见性循环里算，网格档走 debounce 的 scan
+      if (large) ensurePageSuggestion(pageNo);
+      if (pagesOverlayOn) queueOverlayRender(pageNo);
+    } else {
+      visiblePageNos.delete(pageNo);
+      clearPageBlocks(item.tile);
+    }
+
+    if (!large) continue;
+    if (bottom <= scrollTop - nearLimit || top >= scrollTop + viewport + nearLimit) {
       continue;
     }
     near.add(pageNo);
-    const image = tile.querySelector("img");
+    const image = item.tile.querySelector("img");
     if (image && image.dataset.largeSrc && image.getAttribute("src") !== image.dataset.largeSrc) {
       image.src = image.dataset.largeSrc;
     }
-    const isVisible = rect.bottom > -60 && rect.top < window.innerHeight + 60;
-    if (isVisible) {
-      visiblePageNos.add(pageNo);
-      // 建议角标只为可见页算；离屏的不拉，免得滚一本 267 页的书打满请求
-      ensurePageSuggestion(pageNo);
-    } else {
-      visiblePageNos.delete(pageNo);
-    }
-    if (isVisible && pagesOverlayOn) ensurePageBlocks(pageNo);
-    else clearPageBlocks(tile);
   }
-  for (const tile of tiles) {
-    const pageNo = Number(tile.dataset.pageNo);
-    if (near.has(pageNo)) continue;
-    visiblePageNos.delete(pageNo);
-    const image = tile.querySelector("img");
+
+  if (!large) return;
+  // 大图档：离视口很远的页释放大图，也清掉块框
+  for (const item of pageTileMetrics) {
+    if (near.has(item.pageNo)) continue;
+    visiblePageNos.delete(item.pageNo);
+    const image = item.tile.querySelector("img");
     if (image) image.removeAttribute("src");
-    clearPageBlocks(tile);
+    clearPageBlocks(item.tile);
   }
 }
 
@@ -2625,17 +2687,18 @@ function applyPageZoom() {
   el("pages-zoom-label").textContent = `${pageZoomIndex + 1}/${PAGE_ZOOM_LEVELS.length} · ${level.label}`;
   el("pages-zoom-out").disabled = pageZoomIndex === 0;
   el("pages-zoom-in").disabled = pageZoomIndex === PAGE_ZOOM_LEVELS.length - 1;
-  const large = pageZoomIndex >= 2;
-  el("pages-overlay-toggle").disabled = !large;
+  // 块框四档都可用：网格档只画色框（不画顺序号），单列 / 单页才带顺序号
+  el("pages-overlay-toggle").disabled = false;
   el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
 
   const tiles = [...grid.querySelectorAll(".page-tile")];
   const byPage = new Map(currentProject.pages.map((page) => [page.page_no, page]));
   visiblePageNos.clear();
+  resetOverlayQueue();
 
-  if (large) {
-    ensurePageScrollListener();
+  if (pageZoomIndex >= 2) {
     for (const tile of tiles) {
+      clearPageBlocks(tile);
       const pageNo = Number(tile.dataset.pageNo);
       const image = tile.querySelector("img");
       if (!image) continue;
@@ -2643,7 +2706,6 @@ function applyPageZoom() {
       image.dataset.largeSrc = pageImageUrl(pageNo, level.image);
       image.removeAttribute("src");
     }
-    updatePageVisibility();
   } else {
     for (const tile of tiles) {
       clearPageBlocks(tile);
@@ -2657,10 +2719,15 @@ function applyPageZoom() {
       const gridSrc = pageImageUrl(pageNo, level.image);
       if (image.getAttribute("src") !== gridSrc) image.src = gridSrc;
     }
-    // 网格 / 大网格档：滚动停下来再算可见页的建议角标（不每帧量 267 个矩形）
+    // 网格 / 大网格档的建议角标仍按"滚动停下再扫"的节奏
     ensureSuggestionScrollListener();
     scheduleSuggestionScan();
   }
+
+  ensurePageScrollListener();
+  pageTileMetrics = null;
+  capturePageTileMetrics();
+  updatePageVisibility();
 }
 
 function setPageZoom(delta) {
@@ -2674,47 +2741,98 @@ function setPageZoom(delta) {
 }
 
 function togglePageBlocksOverlay() {
-  if (pageZoomIndex < 2) return;
   pagesOverlayOn = !pagesOverlayOn;
   savePageOverlayPreference();
   el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
   if (pagesOverlayOn) {
-    for (const pageNo of visiblePageNos) ensurePageBlocks(pageNo);
+    for (const pageNo of visiblePageNos) queueOverlayRender(pageNo);
+    schedulePageVisibility();
   } else {
+    resetOverlayQueue();
     for (const tile of el("page-grid").querySelectorAll(".page-tile")) {
       clearPageBlocks(tile);
     }
   }
 }
 
-function ensurePageBlocks(pageNo) {
-  if (!currentProject || !pagesOverlayOn || pageZoomIndex < 2) return;
-  const key = pageBlockKey(pageNo);
-  if (pageBlockCache.has(key)) {
+function resetOverlayQueue() {
+  overlayRenderQueue.length = 0;
+  overlayRenderQueued.clear();
+}
+
+/** 排队画一页的块框：已画过且缓存没变就跳过。 */
+function queueOverlayRender(pageNo) {
+  if (!currentProject || !pagesOverlayOn || !visiblePageNos.has(pageNo)) return;
+  const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
+  const overlay = tile ? tile.querySelector(".page-overlay") : null;
+  const blocks = pageBlockCache.get(pageBlockKey(pageNo));
+  if (blocks && overlay && overlay._renderedBlocks === blocks) return;
+  if (overlayRenderQueued.has(pageNo)) return;
+  overlayRenderQueued.add(pageNo);
+  overlayRenderQueue.push(pageNo);
+  scheduleOverlayPump();
+}
+
+function scheduleOverlayPump() {
+  if (overlayPumpScheduled) return;
+  overlayPumpScheduled = true;
+  requestAnimationFrame(pumpOverlayRender);
+}
+
+/**
+ * 每帧最多真正画 3 页：网格档一屏可能有十几页、每页几十个块，
+ * 一次全画会卡；按页缓存 + 在途请求上限 3，滚过去的页立刻清。
+ */
+function pumpOverlayRender() {
+  overlayPumpScheduled = false;
+  if (!currentProject || !pagesOverlayOn) return;
+  let drawn = 0;
+  let waiting = false;
+  while (drawn < PAGE_OVERLAY_FRAME_LIMIT && overlayRenderQueue.length) {
+    const pageNo = overlayRenderQueue.shift();
+    overlayRenderQueued.delete(pageNo);
+    if (!visiblePageNos.has(pageNo)) continue;
     const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
     const overlay = tile ? tile.querySelector(".page-overlay") : null;
+    if (!tile || !overlay) continue;
+    const key = pageBlockKey(pageNo);
     const blocks = pageBlockCache.get(key);
-    // 可见性每帧都会调这里：同一批块已经画好就不要再重建 DOM / 重排标注
-    if (tile && overlay && visiblePageNos.has(pageNo) && overlay._renderedBlocks !== blocks) {
-      renderPageBlocks(tile, blocks);
+    if (blocks) {
+      if (overlay._renderedBlocks !== blocks) {
+        renderPageBlocks(tile, blocks);
+        drawn += 1;
+      }
+      continue;
     }
-    return;
+    if (pageBlockPending.has(key)) continue;
+    if (pageBlockPending.size >= PAGE_BLOCK_FETCH_LIMIT) {
+      // 在途请求满了：放回队尾，等某个请求完成后再继续（不空转）
+      overlayRenderQueue.push(pageNo);
+      overlayRenderQueued.add(pageNo);
+      waiting = true;
+      break;
+    }
+    fetchPageBlocks(pageNo, key);
   }
-  if (pageBlockPending.has(key)) return;
+  if (overlayRenderQueue.length && !waiting) scheduleOverlayPump();
+}
+
+function fetchPageBlocks(pageNo, key) {
   pageBlockPending.add(key);
   apiJson(`/api/projects/${currentProject.project_id}/pages/${pageNo}/blocks`)
     .then((data) => {
       rememberPageBlocks(key, data.blocks || []);
-      const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
-      if (tile && pagesOverlayOn && visiblePageNos.has(pageNo)) {
-        renderPageBlocks(tile, pageBlockCache.get(key));
-      }
+      if (pagesOverlayOn && visiblePageNos.has(pageNo)) queueOverlayRender(pageNo);
     })
     .catch(() => {
       // 块框是辅助信息，读不到不该打断翻页
     })
-    .finally(() => pageBlockPending.delete(key));
+    .finally(() => {
+      pageBlockPending.delete(key);
+      if (pagesOverlayOn) scheduleOverlayPump();
+    });
 }
+
 
 function renderPageBlocks(tile, blocks) {
   const overlay = tile.querySelector(".page-overlay");
@@ -2722,6 +2840,8 @@ function renderPageBlocks(tile, blocks) {
   overlay.innerHTML = "";
   overlay._renderedBlocks = blocks;
   overlay._lineBboxes = [];
+  // 网格 / 大网格：只画色框。缩略图上 11px 的顺序号看不清，画了只是噪声。
+  const showDetails = pageZoomIndex >= 2;
   let count = 0;
   for (const block of blocks) {
     if (!block.bbox) continue;
@@ -2733,13 +2853,16 @@ function renderPageBlocks(tile, blocks) {
     applyBoxElementRect(box, block.bbox);
     const index = block.order_index;
     box.title = `${boxTypeLabel(block)} · 第 ${index + 1} 块`;
-    // 与审校视图同一套规则：默认只留颜色 + 小顺序号，悬停才出类型卡片
-    box.append(buildBoxOrder(index));
-    box.append(buildBoxLabel(block, index, null));
+    if (showDetails) {
+      // 与审校视图同一套规则：颜色 + 顺序号，悬停才出类型卡片
+      box.append(buildBoxOrder(index));
+      box.append(buildBoxLabel(block, index, null));
+    }
     overlay.append(box);
     count += 1;
   }
   overlay.hidden = count === 0;
+  if (!showDetails || !count) return;
   observeOverlaySize(overlay);
   // 同步摆一次，别等 rAF：块框刚画出来时可能正赶上滚动 / 缩放，晚一帧就会看到没摆好的号
   layoutOverlayAnnotations(overlay);
@@ -2749,6 +2872,8 @@ function renderPageBlocks(tile, blocks) {
 function clearPageBlocks(tile) {
   const overlay = tile.querySelector(".page-overlay");
   if (!overlay) return;
+  // 离屏清理每帧都会调用：本来就空就别再写 DOM
+  if (!overlay._renderedBlocks && overlay.hidden) return;
   overlay.innerHTML = "";
   overlay.hidden = true;
   overlay._renderedBlocks = null;
@@ -3842,8 +3967,8 @@ function setupBoxDrag() {
 //   · 同一时刻只显示一张卡片（CSS :hover + 选中块互斥）。
 // 位置按像素算、随缩放重算；用相对块框的 px 偏移，不写百分比。
 
-const BOX_ORDER_WIDTH = 20;
-const BOX_ORDER_HEIGHT = 13;
+const BOX_ORDER_WIDTH = 22;
+const BOX_ORDER_HEIGHT = 16;
 const BOX_ORDER_GAP = 3;
 const BOX_LABEL_GAP = 6;
 

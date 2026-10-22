@@ -115,6 +115,34 @@ def test_page_view_has_zoom_controls_and_readonly_block_overlay() -> None:
     assert "box__badge" not in css
 
 
+def test_block_frames_work_in_all_zoom_levels_and_default_to_on() -> None:
+    """第 44 号任务：四档都能画块框、默认开、网格只画色框、每帧限量。"""
+    script = _script()
+    # 新存储键 + 没存过就是开（老用户 v1 存着 "0" 也不受影响）
+    assert "b2t.pagesOverlay.v2." in script
+    assert 'return stored === null ? true : stored === "1"' in script
+    # 四档都可用：不再用 zoom >= 2 挡住开关
+    assert 'el("pages-overlay-toggle").disabled = false' in script
+    toggle = _function_body("togglePageBlocksOverlay")
+    assert "pageZoomIndex" not in toggle
+    # 网格 / 大网格只画色框；单列 / 单页才建顺序号
+    render = _function_body("renderPageBlocks")
+    assert "const showDetails = pageZoomIndex >= 2" in render
+    assert "if (showDetails)" in render
+    # 每帧 3 页 + 3 个在途请求；滚动位置缓存，不再每帧量 267 个矩形
+    assert "PAGE_OVERLAY_FRAME_LIMIT = 3" in script
+    assert "PAGE_BLOCK_FETCH_LIMIT = 3" in script
+    assert "pageTileMetrics" in script
+    assert "function pumpOverlayRender(" in script
+
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    order_rule = css[css.index(".page-overlay .box__order {"):]
+    order_rule = order_rule[: order_rule.index("}")]
+    assert "font-size: 11px" in order_rule
+    assert "opacity: .72" in order_rule
+    assert "rgba(255, 255, 255, .82)" in order_rule
+
+
 def test_block_frame_default_has_no_type_text_and_hover_card_is_placed_outside() -> None:
     """块框默认不遮字：只有颜色 + 顺序号；类型 / 把握 / 采用 / 页码进悬停卡片。
 
