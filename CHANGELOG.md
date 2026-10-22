@@ -25,8 +25,8 @@
   页面汇总按五类各报各的，总数仍是五类之和。
 - 测试 **666 passed**（新增迁移逐行映射、include 派生 / 拒绝、协作包旧值映射、
   导出类型过滤、五类建议规则与界面约定）。
-  CI [run #20](https://github.com/CLnum42/book2text/actions/runs/39737039462) 双平台绿
-  （macOS 2m32s、Windows 2m30s）。
+  CI [run #21](https://github.com/CLnum42/book2text/actions/runs/39737603831) 双平台绿
+  （macOS 1m55s、Windows 3m18s）。
 
 ### 变更 — 块框标注不再遮字：默认只留颜色 + 顺序号，悬停才出类型卡片（2026-10-22）
 

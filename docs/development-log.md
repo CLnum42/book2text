@@ -94,8 +94,8 @@
 - `.venv/bin/python -m pytest -q` → **666 passed, 1 warning，78.34 秒**
   （654 → 666：迁移逐行映射、include 派生 / 拒绝、协作包旧值、导出类型过滤、
   五类建议、界面五类与无 include 开关）。
-- CI：[run #20](https://github.com/CLnum42/book2text/actions/runs/39737039462) **Success**，
-  macOS 全量 2m32s、Windows 非 OCR 2m30s，双平台绿。
+- CI：[run #21](https://github.com/CLnum42/book2text/actions/runs/39737603831) **Success**，
+  macOS 全量 1m55s、Windows 非 OCR 3m18s，双平台绿。
 - 未验证：Windows / Safari 的界面；全量 267 页在迁移后的识别结果只抽了 1 页对照；
   协作包只验证了旧类型映射，没有跑完整往返（原有往返测试仍绿）。
 
