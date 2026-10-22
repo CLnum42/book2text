@@ -99,7 +99,8 @@ main `88f66fb`，764 测试全绿。已有页眉 / 页脚 / 页码 / 标题建�
 - `.venv/bin/python -m pytest -q` → **764 passed, 1 warning，86.01 秒**
   （新增 10 项：note 单元 6、接口 3、界面角标 1；既有页眉 / 页码 / 导出测试全部照旧）。
 - 单页建议耗时：导读 26–33ms/页；`scan_high_suggestions` 29ms（导读 370 块）/ 18ms（红楼梦 188 块）。
-- CI 见下（push 后补）。
+- push `191e4ca` 触发 [run #33](https://github.com/CLnum42/book2text/actions/runs/39824454351)，
+  **Success**（总时长 3m18s；macOS 全量 1m54s、Windows 非 OCR 3m14s）。
 
 ### 用户操作说明
 
