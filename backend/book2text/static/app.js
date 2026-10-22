@@ -664,9 +664,6 @@ function exportOptions() {
     confirmed_only: el("export-confirmed-only").checked,
     page_types: pageTypes,
     page_numbers: pageNumbers,
-    include_footnotes: el("export-footnotes").checked,
-    include_captions: el("export-captions").checked,
-    include_other: el("export-other").checked,
     page_markers: el("export-page-markers").checked,
     exclude_header_footer: el("export-rule-header").checked,
     merge_lines_in_block: el("export-rule-merge").checked,
@@ -677,22 +674,46 @@ function exportOptions() {
 }
 
 function renderPreflight(data) {
+  const streams = data.streams || {};
+  const body = streams.body || { segments: data.segment_count || 0, chars: data.char_count || 0 };
+  const noteStream = streams.notes || { notes: data.notes_count || 0, chars: data.notes_char_count || 0 };
+  const meta = streams.meta || { pages: 0, printed_page_found: 0, printed_page_missing: [] };
+  const mapping = data.page_number_mapping || {
+    found: meta.printed_page_found || 0,
+    total: meta.pages || 0,
+    missing_pages: meta.printed_page_missing || [],
+  };
   const rows = [
     ["导出页数", `${data.exported_pages.length} 页`],
-    ["段数", `${data.segment_count} 段`],
-    ["字数", `${data.char_count} 字`],
+    ["正文段数", `${body.segments || 0} 段`],
+    ["正文字数", `${body.chars || 0} 字`],
+    ["注释条数", `${noteStream.notes || 0} 条`],
+    ["注释字数", `${noteStream.chars || 0} 字`],
+    ["元数据页数", `${meta.pages || 0} 页`],
+    ["页码映射", `${mapping.found || 0} / ${mapping.total || 0} 页`],
     ["跨块合并的段", `${data.merged_segments} 段`],
     ["断词还原", `${data.hyphenations_restored} 处`],
     ["未审校的段", `${data.unreviewed_segments} 段`],
     ["不确定的段", `${data.uncertain_segments} 段`],
-    ["排除的块类型", data.excluded_block_types.length ? data.excluded_block_types.join("、") : "（无）"],
+    ["正文不收的块类型", data.excluded_block_types.length ? data.excluded_block_types.join("、") : "（无）"],
     ["版面已确认", `${data.layout_confirmed_blocks || 0} / ${data.layout_blocks || 0} 块`],
   ];
   fillDefinitionList(el("export-preflight"), rows);
 
   const notes = [];
-  if (!data.segment_count) {
+  if (!data.segment_count && !(noteStream.notes || 0)) {
     notes.push("按当前设置没有内容可以导出——检查页面类型、范围与「仅已确认」。");
+  }
+  if (mapping.total && (mapping.missing_pages || []).length) {
+    const missing = mapping.missing_pages.slice(0, 12).join("、");
+    const more = mapping.missing_pages.length > 12 ? " 等" : "";
+    notes.push(
+      `有 ${mapping.missing_pages.length} 页抽不到印刷页码（${missing}${more}）——` +
+        "meta.json 里这些页的 printed_page 是 null，不拿 PDF 页号冒充。"
+    );
+  }
+  if (!(noteStream.notes || 0)) {
+    notes.push("注释流为空（没有脚注块）——这是正常情况。");
   }
   if (data.unfinished_pages && data.unfinished_pages.length) {
     const shown = data.unfinished_pages.slice(0, 12).join("、");
@@ -1008,7 +1029,7 @@ async function revealExport(exportId) {
 function setupExportPanel() {
   for (const input of document.querySelectorAll(
     'input[name="export-format"], input[name="export-page-type"], #export-confirmed-only,' +
-      " #export-footnotes, #export-captions, #export-other, #export-page-markers," +
+      " #export-page-markers," +
       " #export-rule-header, #export-rule-merge, #export-rule-hyphen," +
       " #export-rule-newlines, #export-rule-strip"
   )) {

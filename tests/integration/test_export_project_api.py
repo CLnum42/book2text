@@ -154,14 +154,14 @@ def test_export_writes_files_and_records_it(
     assert record["format"] == "txt"
     assert record["segment_count"] == 6
     assert record["unreviewed_count"] == 6
-    assert record["file_paths"] == ["clean.txt", "manifest.json"]
+    assert record["file_paths"] == ["body.txt", "notes.txt", "meta.json", "manifest.json"]
 
     directory = library_dir / project_ready / "exports" / record["export_id"]
     assert directory.is_dir(), "导出目录按说明书 12.1 落在项目的 exports/ 下"
-    assert (directory / "clean.txt").is_file()
+    assert (directory / "body.txt").is_file()
     assert (directory / "manifest.json").is_file()
 
-    text = (directory / "clean.txt").read_text(encoding="utf-8")
+    text = (directory / "body.txt").read_text(encoding="utf-8")
     assert "第一段第一行。第一段第二行。" in text, "9.2 行合并生效"
     assert text.count("第二段第一行。") == 3, "三页各一段"
 
@@ -247,11 +247,13 @@ def test_export_jsonl_and_both_formats(
 ) -> None:
     both = export(client, auth_headers, project_ready, format="both").json()["record"]
     directory = library_dir / project_ready / "exports" / both["export_id"]
-    assert set(both["file_paths"]) == {"clean.txt", "segments.jsonl", "manifest.json"}
+    assert set(both["file_paths"]) == {
+        "body.txt", "notes.txt", "body.jsonl", "notes.jsonl", "meta.json", "manifest.json"
+    }
 
     lines = [
         json.loads(line)
-        for line in (directory / "segments.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (directory / "body.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     assert len(lines) == 6
@@ -276,7 +278,7 @@ def test_confirmed_only_exports_only_confirmed_text(
 
     record = export(client, auth_headers, project_ready, confirmed_only=True).json()["record"]
     text = (
-        library_dir / project_ready / "exports" / record["export_id"] / "clean.txt"
+        library_dir / project_ready / "exports" / record["export_id"] / "body.txt"
     ).read_text(encoding="utf-8")
     assert "第一段第一行。" in text
     assert "第二段第一行。" not in text, "没确认的块不进「仅已确认」的导出"
@@ -286,23 +288,27 @@ def test_confirmed_only_exports_only_confirmed_text(
 def test_header_footer_rule_excludes_those_blocks(
     client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
 ) -> None:
-    """说明书 9.3：排除页眉 / 页脚 / 页码块（默认开）。"""
+    """页码 / 页眉 / 页脚**永远不进正文流**——它们去 meta.json（第 37 号任务）。"""
     set_blocks(library_dir, project_ready, 1, block_type="page_number")
 
     with_rule = export(client, auth_headers, project_ready).json()["record"]
-    text = (
-        library_dir / project_ready / "exports" / with_rule["export_id"] / "clean.txt"
-    ).read_text(encoding="utf-8")
-    assert text.count("第一段第一行。") == 2, "第 1 页那个页码块被排除了（还有两页）"
+    directory = library_dir / project_ready / "exports" / with_rule["export_id"]
+    text = (directory / "body.txt").read_text(encoding="utf-8")
+    assert text.count("第一段第一行。") == 2, "第 1 页那个页码块不进正文（还有两页）"
     assert with_rule["segment_count"] == 5
 
+    meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
+    page1 = next(item for item in meta["pages"] if item["pdf_page"] == 1)
+    assert "第一段第一行。" in page1["page_numbers"][0]["text"], "原文留在元数据里"
+
+    # 旧开关不再改变正文边界：正文流固定 body + heading
     without_rule = export(
         client, auth_headers, project_ready, exclude_header_footer=False
     ).json()["record"]
     text2 = (
-        library_dir / project_ready / "exports" / without_rule["export_id"] / "clean.txt"
+        library_dir / project_ready / "exports" / without_rule["export_id"] / "body.txt"
     ).read_text(encoding="utf-8")
-    assert text2.count("第一段第一行。") == 3, "关掉规则就照原样导出"
+    assert text2.count("第一段第一行。") == 2
 
 
 def test_excluded_blocks_never_leave_the_project(
@@ -320,7 +326,7 @@ def test_excluded_blocks_never_leave_the_project(
 
     record = export(client, auth_headers, project_ready).json()["record"]
     text = (
-        library_dir / project_ready / "exports" / record["export_id"] / "clean.txt"
+        library_dir / project_ready / "exports" / record["export_id"] / "body.txt"
     ).read_text(encoding="utf-8")
     assert text.count("第一段第一行。") == 2, "第 2 页那块被排除了"
     assert record["segment_count"] == 5
@@ -341,7 +347,7 @@ def test_edited_text_is_what_gets_exported(
 
     record = export(client, auth_headers, project_ready).json()["record"]
     text = (
-        library_dir / project_ready / "exports" / record["export_id"] / "clean.txt"
+        library_dir / project_ready / "exports" / record["export_id"] / "body.txt"
     ).read_text(encoding="utf-8")
     assert "人工改过的第三页开头。" in text
 
@@ -451,5 +457,172 @@ def test_export_record_rows_are_written_to_the_database(
     assert row is not None
     assert row["status"] == "succeeded"
     assert json.loads(row["rules_json"])["exclude_header_footer"] is True
-    assert json.loads(row["file_paths"]) == ["clean.txt", "manifest.json"]
+    assert json.loads(row["file_paths"]) == ["body.txt", "notes.txt", "meta.json", "manifest.json"]
     assert project_export.EXPORTS_DIR_NAME in str(row["export_id"]) or True
+
+
+# ---------------------------------------------------------------- 三条流（第 37 号任务）
+
+def test_footnotes_go_to_notes_stream_and_body_stays_clean(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
+) -> None:
+    blocks = client.get(
+        f"/api/projects/{project_ready}/pages/1/blocks", headers=auth_headers
+    ).json()["blocks"]
+    body_block, footnote_block = blocks
+    client.patch(
+        f"/api/projects/{project_ready}/blocks/{footnote_block['block_id']}",
+        json={"block_type": "footnote"},
+        headers=auth_headers,
+    )
+
+    record = export(client, auth_headers, project_ready, format="both").json()["record"]
+    directory = library_dir / project_ready / "exports" / record["export_id"]
+    body = (directory / "body.txt").read_text(encoding="utf-8")
+    notes = (directory / "notes.txt").read_text(encoding="utf-8")
+
+    assert "第二段第一行。" in body, "第 2/3 页的正文还在"
+    assert "第一段第一行。\n第一段第二行。" not in body, "第 1 页脚注块不进正文"
+    assert "［注 1］" in notes
+    assert f"块 {footnote_block['block_id']}" in notes
+    assert f"引用：第 1 页 · 块 {body_block['block_id']}" in notes
+    assert "第二段第一行。" in notes
+
+    note_records = [
+        json.loads(line)
+        for line in (directory / "notes.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(note_records) == 1
+    assert note_records[0]["schema"] == "book2text.note.v1"
+    assert note_records[0]["reference"]["status"] == "located"
+    assert note_records[0]["reference"]["block_id"] == body_block["block_id"]
+    assert note_records[0]["reference"]["segment_id"] == body_block["block_id"]
+
+
+def test_printed_page_mapping_is_null_when_it_cannot_be_read(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
+) -> None:
+    from tests.integration.test_structure_tools_api import add_block
+
+    add_block(library_dir, project_ready, page_no=2, text="· 63 ·", bbox=[0.45, 0.96, 0.55, 0.98],
+              block_type="page_number")
+
+    record = export(client, auth_headers, project_ready).json()["record"]
+    directory = library_dir / project_ready / "exports" / record["export_id"]
+    meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
+    by_page = {item["pdf_page"]: item for item in meta["pages"]}
+    assert by_page[2]["printed_page"] == "63"
+    assert by_page[2]["printed_page_source"] == "page_number"
+    assert by_page[1]["printed_page"] is None, "没有页码块就 null，不拿 PDF 页号冒充"
+    assert by_page[3]["printed_page"] is None
+
+    preflight = client.post(
+        f"/api/projects/{project_ready}/export/preflight", json={}, headers=auth_headers
+    ).json()
+    assert preflight["page_number_mapping"]["found"] == 1
+    assert preflight["page_number_mapping"]["total"] == 3
+    assert preflight["page_number_mapping"]["missing_pages"] == [1, 3]
+    assert preflight["streams"]["body"]["segments"] >= 1
+    assert preflight["streams"]["meta"]["printed_page_found"] == 1
+
+
+def test_split_header_fragment_is_preserved_in_body_or_metadata(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
+) -> None:
+    """实测报告第 8 页：书眉被 OCR 拆成两行，其中一行可能还是 paragraph。"""
+    from tests.integration.test_structure_tools_api import add_block
+
+    add_block(library_dir, project_ready, page_no=1, text="红楼梦", bbox=[0.0, 0.05, 0.08, 0.5],
+              block_type="header")
+    fragment_id = add_block(
+        library_dir, project_ready, page_no=1, text="CO三", bbox=[0.0, 0.55, 0.08, 0.6],
+        block_type="paragraph",
+    )
+
+    record = export(client, auth_headers, project_ready).json()["record"]
+    directory = library_dir / project_ready / "exports" / record["export_id"]
+    meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
+    page1 = next(item for item in meta["pages"] if item["pdf_page"] == 1)
+    assert any(item["text"] == "红楼梦" for item in page1["headers"])
+    assert any(item["block_id"] == fragment_id for item in page1["edge_texts"]), (
+        "未被标成书眉的碎片也要在元数据里留痕"
+    )
+    body = (directory / "body.txt").read_text(encoding="utf-8")
+    assert "CO三" in body, "它还是 paragraph，所以也在正文里——没有被静默丢掉"
+
+
+def test_manifest_lists_three_streams(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
+) -> None:
+    record = export(client, auth_headers, project_ready).json()["record"]
+    directory = library_dir / project_ready / "exports" / record["export_id"]
+    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["files"] == ["body.txt", "notes.txt", "meta.json", "manifest.json"]
+    assert manifest["streams"]["body"]["segments"] == 6
+    assert manifest["streams"]["notes"]["notes"] == 0
+    assert manifest["streams"]["meta"]["pages"] == 3
+    assert (directory / "meta.json").is_file()
+
+
+def test_old_export_records_still_download(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
+) -> None:
+    """老导出记录的 file_paths 是 clean.txt —— 不能因为换了文件名就打不开。"""
+    export_id = "20260101-1200_txt"
+    directory = library_dir / project_ready / "exports" / export_id
+    directory.mkdir(parents=True)
+    (directory / "clean.txt").write_text("旧导出正文\n", encoding="utf-8")
+    (directory / "manifest.json").write_text("{}", encoding="utf-8")
+    with db_module.open_database(library_dir / project_ready, apply_migrations=False) as conn:
+        conn.execute(
+            """
+            INSERT INTO export_record (export_id, format, scope_json, rules_json, file_paths,
+                                       segment_count, char_count, unreviewed_count,
+                                       uncertain_count, created_at, status)
+            VALUES (?, 'txt', '{}', '{}', ?, 1, 5, 0, 0, '2026-01-01T12:00:00+00:00', 'succeeded')
+            """,
+            (export_id, json.dumps(["clean.txt", "manifest.json"])),
+        )
+        conn.commit()
+
+    listed = client.get(
+        f"/api/projects/{project_ready}/exports", headers=auth_headers
+    ).json()
+    record = next(item for item in listed["exports"] if item["export_id"] == export_id)
+    assert record["file_paths"] == ["clean.txt", "manifest.json"]
+
+    downloaded = client.get(
+        f"/api/projects/{project_ready}/exports/{export_id}/download", headers=auth_headers
+    )
+    assert downloaded.status_code == 200
+    assert downloaded.text == "旧导出正文\n"
+
+
+def test_body_stream_is_paragraph_and_heading_only(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
+) -> None:
+    """边界：body = paragraph + heading；图注进元数据，脚注进注释流。"""
+    blocks = client.get(
+        f"/api/projects/{project_ready}/pages/1/blocks", headers=auth_headers
+    ).json()["blocks"]
+    heading, caption = blocks
+    client.patch(
+        f"/api/projects/{project_ready}/blocks/{heading['block_id']}",
+        json={"block_type": "heading"},
+        headers=auth_headers,
+    )
+    client.patch(
+        f"/api/projects/{project_ready}/blocks/{caption['block_id']}",
+        json={"block_type": "caption", "text": "图注：这一页的插图说明。"},
+        headers=auth_headers,
+    )
+
+    record = export(client, auth_headers, project_ready).json()["record"]
+    directory = library_dir / project_ready / "exports" / record["export_id"]
+    body = (directory / "body.txt").read_text(encoding="utf-8")
+    meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
+
+    assert "第一段第一行。" in body, "heading 必须在正文流里"
+    assert "图注：这一页的插图说明。" not in body, "caption 不进正文"
+    page1 = next(item for item in meta["pages"] if item["pdf_page"] == 1)
+    assert page1["captions"][0]["text"] == "图注：这一页的插图说明。"

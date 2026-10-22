@@ -7,7 +7,111 @@
 
 ---
 
-## 2026-10-22 — 任务 36：页面确认做成流程里的一步（类型 / 纳入 / 建议 / 不拦识别）
+## 2026-10-22 — 任务 37：导出拆三条流（正文 / 注释 / 元数据）
+
+### 任务目标
+
+把导出从"一条混着页眉页码的正文"改成三条明确的流：正文干净、注释单独、页码与书眉
+作为元数据保留，服务双语语料库的页面锚点。**不**改页面确认、识别流程、版面模型、
+分组算法与协作任务包。
+
+### 当前状态
+
+- 现有导出只有一条流：`clean.txt` / `segments.jsonl`，页眉 / 页脚 / 页码被"排除"后
+  信息直接丢掉；脚注默认不导出；manifest 记录正文统计。
+- `block_type` 已有 paragraph / heading / footnote / caption / header / footer /
+  page_number / figure / decoration / other；`page.page_label` 只是 PDF 属性，不一定是印刷页码。
+- 基线：**622 passed**，导出 19 项集成测试。
+- 实测报告第 8 页的失败形态：书眉被 OCR 拆成两行，其中一行可能被分组成 paragraph。
+
+### 实施计划
+
+1. 新模块 `core/export/streams.py`：注释流（footnote → 引用定位）、印刷页码抽取、
+   每页元数据；正文流复用 `segments.py`，只允许 body + heading。
+2. `project.py`：`Prepared` 增加 blocks / notes / meta；导出写 `body.*`、`notes.*`、
+   `meta.json`、`manifest.json`；预检与 manifest 分别统计三条流。
+3. 预检界面：三条流的段 / 字 / 条数、页码映射 found/total 与缺失页列表。
+4. 文件名固定、下载 / 记录 / 在文件夹中显示沿用 `file_paths`；老记录 `clean.txt` 仍可下载。
+5. 测试：三条流边界、注释定位与未定位、印刷页码缺失/冲突、拆行书眉、老记录、manifest。
+
+### 实现与验证
+
+**三条流的边界：**
+
+| 流 | 块类型 | 文件 |
+|---|---|---|
+| 正文 | `paragraph` + `heading` | `body.txt` / `body.jsonl` |
+| 注释 | `footnote` | `notes.txt` / `notes.jsonl` |
+| 元数据 | `caption` / `header` / `footer` / `page_number` 原文 + 统计 | `meta.json` |
+
+- 图注进元数据（不是注释流，也不是正文）：它没有"引用到哪段"的语义，但原文不能丢。
+- `other` 不进正文；`figure` / `decoration` 本来就不输出文本。
+- 正文沿用现有段生成、跨页拼接、断词还原；`segment_count` / `char_count` 接口字段仍指正文。
+
+**注释流：** 每条带 `seq / page / block_id / text / reference`；引用位置取
+`(page_no, order_index)` 向前最近的正文块，若能落到某个正文段再写 `segment_id`；
+找不到写 `reference.status = "unlocated"`，TXT 写"未定位（前面没有正文块）"，不编造。
+**已知边界：** 尾注会全部指向最后一个正文块；脚注符号不在 OCR 文本里时无法精确匹配。
+
+**印刷页码：**
+
+- 优先 `page_number` 块；否则页眉 / 页脚里纯数字或罗马数字的块（`looks_like_a_number`）。
+- 多个不同候选且没有明确 page_number 块 → `printed_page = null`，保留
+  `printed_page_candidates`；**不拿 PDF 页号 / `page_label` / 上一页 +1 猜**。
+- 每页带 `printed_page_source`、`page_label`、`headers` / `footers` / `page_numbers` /
+  `captions`、`block_types`、`lines`（assigned / conflict / unassigned）、`edge_texts`。
+- `edge_texts` 收页面边缘 ≤20 字的短文本（不论类型），兜住"书眉被拆行、碎片还是 paragraph"。
+
+**文件与兼容：**
+
+- 新目录：`body.txt` / `body.jsonl`、`notes.txt` / `notes.jsonl`、`meta.json`、`manifest.json`；
+  选 TXT 时不生成 JSONL，反之亦然；`meta.json` 与 `manifest.json` 总是生成。
+- `export_record.file_paths` 存实际列表；下载 / 查看 / 在文件夹中显示沿用现有代码。
+- 老记录 `clean.txt` / `segments.jsonl` 仍能打开与下载（新增测试，见下）。
+- 旧"内容类型"复选框从界面移除；API 字段保留但不再影响三条流边界。
+
+**测试：** 新增 13 项（total 622 → **635**）：
+
+- 导出集成：脚注只进 notes、引用定位、printed_page 缺失/命中、拆行书眉留痕、
+  manifest 三流、正文只含 body+heading、老记录下载、文件集合。
+- 单元：页码抽取（page_number / 罗马数字 / 冲突 null）、无前文注释未定位、
+  注释 JSONL 一行一条。
+- 本地：`.venv/bin/python -m pytest -q` → **635 passed, 1 warning**（待填，macOS arm64）。
+
+**真实导出（已有项目副本 `b2t_KE720H`，第 5 页手工补了书眉 / 脚注 / 页码 / 图注）：**
+
+- `body.txt`：3 段 / 566 字；**不含** `红楼梦/000`、`· 63 ·`、脚注、图注（逐串 grep 确认）。
+- `notes.txt`：1 条，`引用：第 5 页 · 块 …223F · 段 …223F`；
+- `meta.json`：`printed_page = "63"`、`source = page_number`、headers / captions 原文都在，
+  `lines: assigned 26 / conflict 0 / unassigned 0`；
+- `manifest.json`：`files = [body.txt, notes.txt, meta.json, manifest.json]`，三流统计齐全。
+- 界面预检（导出第 5 页）：正文 3 段 / 566 字、注释 1 条 / 10 字、元数据 1 页、
+  页码映射 **1 / 1**；生成后文件列表逐个可下载（HTTP 200）。
+
+**未验证 / 已知边界：** Windows 只跑后端测试；尾注、脚注符号缺失、多栏阅读顺序、
+多个页码候选时只能 null——这些都写在 D-053 与下文"哪类书会失效"。
+
+### 用户操作说明
+
+- 导出对话框格式仍是 TXT / JSONL / 两者；`exports/<export_id>/` 下文件名固定。
+- 预检里先看"页码映射 K / N 页"；缺的页会在提示里列出，`meta.json` 里是 null。
+- 老导出记录照常「查看 / 下载」，不会因为新文件名打不开。
+
+### 哪类书这套会失效（判断）
+
+- **尾注**：注释集中在书末，引用位置会全部落到最后一个正文块——不可信，需要人工；
+- **脚注符号不在 OCR 文本里**：只能定位到"最近前文"，不能精确到句；
+- **多栏 / 竖排**：`order_index` 是分组时的阅读顺序，跨栏注释的"最近前文"可能是同栏上一段，
+  不一定是真正被注的段落；
+- **页码不是独立块**（和正文 / 书眉拼在一起）或一页有多个不同页码候选：`printed_page` 为 null；
+  此时 `edge_texts` 仍保留原文，但语料对齐要靠人工补；
+- **纯图片页 / 没有文本层的页**：book 的 body 流没有内容，元数据仍在（如果页在导出范围内）。
+
+### 下一步建议
+
+先把"页码映射缺失"做成可人工补录的字段（例如在页面视图里直接填 printed_page），
+再谈多流导出的其他扩展；否则对齐失败只能靠改 PDF 重识别。
+
 
 ### 任务目标
 

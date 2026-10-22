@@ -28,7 +28,7 @@ from ..project import structure as structure_module
 from ..project.library import Page
 from ..storage import db as db_module
 from . import cleanup, jsonl as jsonl_module, manifest as manifest_module
-from . import segments as segments_module, txt
+from . import segments as segments_module, streams as streams_module, txt
 from .joining import join_lines
 
 EXPORTS_DIR_NAME = library_module.EXPORTS_DIR_NAME
@@ -38,10 +38,17 @@ FORMAT_JSONL = "jsonl"
 FORMAT_BOTH = "both"
 FORMATS = (FORMAT_TXT, FORMAT_JSONL, FORMAT_BOTH)
 
-# 数据文件名（说明书 12.1 的例子是 clean.txt）
-TXT_FILE_NAME = "clean.txt"
-JSONL_FILE_NAME = "segments.jsonl"
+# 三条流的文件名（第 37 号任务）：不让人猜哪个是哪个
+BODY_TXT_FILE_NAME = "body.txt"
+BODY_JSONL_FILE_NAME = "body.jsonl"
+NOTES_TXT_FILE_NAME = "notes.txt"
+NOTES_JSONL_FILE_NAME = "notes.jsonl"
+META_FILE_NAME = "meta.json"
 MANIFEST_FILE_NAME = "manifest.json"
+
+# 兼容旧代码里对正文文件名的引用（新导出不再写 clean.txt）
+TXT_FILE_NAME = BODY_TXT_FILE_NAME
+JSONL_FILE_NAME = BODY_JSONL_FILE_NAME
 
 # 默认导出的页面类型（说明书 6.6："正文与标题（默认）……'其他'类型默认不导出，可勾选"）
 DEFAULT_PAGE_TYPES = ("body",)
@@ -174,11 +181,14 @@ def _row_to_record(row) -> ExportRecord:
 
 @dataclass(frozen=True)
 class Prepared:
-    """跑完 9.2 行合并与 9.1 段生成之后的中间结果。"""
+    """跑完 9.2 行合并与 9.1 段生成之后的中间结果（正文 + 注释 + 元数据）。"""
 
     options: ExportOptions
     sources: tuple[segments_module.SegmentSource, ...]
-    segments: tuple[segments_module.Segment, ...]
+    segments: tuple[segments_module.Segment, ...]          # 正文流
+    notes: tuple[streams_module.NoteEntry, ...]            # 注释流
+    meta: dict[str, Any]                                    # 元数据（一页一条）
+    blocks: tuple[Any, ...]                                 # 导出范围内页面的全部块
     pages: tuple[Page, ...]                      # 参与导出的页面记录
     dropped_pages: tuple[Page, ...]              # 被排除的页面（用于预检说明）
 
@@ -208,10 +218,17 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
         selected.append(page)
 
     exporting = {page.page_no for page in selected}
+    page_blocks = [
+        block
+        for block in blocks_module.list_blocks(project_id, library=target_library)
+        if block.page_no in exporting
+    ]
+    blocks_by_page: dict[int, list] = {}
+    for block in page_blocks:
+        blocks_by_page.setdefault(block.page_no, []).append(block)
+
     sources: list[segments_module.SegmentSource] = []
-    for block in blocks_module.list_blocks(project_id, library=target_library):
-        if block.page_no not in exporting:
-            continue
+    for block in page_blocks:
         # 导出的是 Block.text（说明书 5.3：保留行内换行），按 `\n` 拆回行再做 9.2 的合并。
         # 不要用 block_line 的文本：那是识别原文，人工改过的字会丢。
         text, hyphenations = _join_block(block.text.split("\n"), rules)
@@ -231,15 +248,44 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
             )
         )
 
+    # 正文流只收 body + heading：图注 / 脚注 / 页眉 / 页码 / 其他都不进正文
     built = segments_module.build_segments(
         sources,
-        excluded_types=options.excluded_block_types(),
+        allowed_types=streams_module.BODY_BLOCK_TYPES,
         confirmed_only=options.confirmed_only,
     )
+
+    # 注释流：footnote 单独成条，引用位置取"最近的前一个正文块/段"
+    notes = streams_module.build_notes(
+        page_blocks,
+        built,
+        text_for_block=lambda block: _join_block(block.text.split("\n"), rules)[0],
+        confirmed_only=options.confirmed_only,
+    )
+
+    # 行归属统计（版面确认那一刀加的 layout_status），按页汇总
+    page_of_block = {block.block_id: block.page_no for block in page_blocks}
+    line_stats: dict[int, dict[str, int]] = {
+        page.page_no: {"assigned": 0, "conflict": 0, "unassigned": 0}
+        for page in selected
+    }
+    for line in blocks_module.list_block_lines(project_id, library=target_library):
+        page_no = page_of_block.get(line.block_id)
+        if page_no is None:
+            continue
+        line_stats[page_no][line.layout_status] = (
+            line_stats[page_no].get(line.layout_status, 0) + 1
+        )
+
+    meta = streams_module.page_metadata(selected, blocks_by_page, line_stats)
+
     return Prepared(
         options=options,
         sources=tuple(sources),
         segments=tuple(built),
+        notes=tuple(notes),
+        meta=meta,
+        blocks=tuple(page_blocks),
         pages=tuple(selected),
         dropped_pages=tuple(dropped),
     )
@@ -276,10 +322,37 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
         in (blocks_module.STATUS_UNRECOGNIZED, blocks_module.STATUS_FAILED)
     ]
 
+    notes = prepared.notes
+    meta_summary = prepared.meta.get("summary", {})
+    body_char_count = sum(len(segment.text) for segment in segments)
+    note_char_count = sum(len(note.text) for note in notes)
+
     return {
         "input_blocks": len(prepared.sources),
+        # 兼容字段：segment_count / char_count 仍指**正文流**
         "segment_count": len(segments),
-        "char_count": sum(len(segment.text) for segment in segments),
+        "char_count": body_char_count,
+        # 三条流的分开统计（第 37 号任务）
+        "streams": {
+            "body": {
+                "segments": len(segments),
+                "chars": body_char_count,
+                "blocks": sum(len(segment.block_ids) for segment in segments),
+            },
+            "notes": {"notes": len(notes), "chars": note_char_count},
+            "meta": {
+                "pages": int(meta_summary.get("page_count") or 0),
+                "printed_page_found": int(meta_summary.get("printed_page_found") or 0),
+                "printed_page_missing": list(meta_summary.get("printed_page_missing") or []),
+            },
+        },
+        "notes_count": len(notes),
+        "notes_char_count": note_char_count,
+        "page_number_mapping": {
+            "found": int(meta_summary.get("printed_page_found") or 0),
+            "total": int(meta_summary.get("page_count") or 0),
+            "missing_pages": list(meta_summary.get("printed_page_missing") or []),
+        },
         "page_count": len({page for segment in segments for page in segment.pages}),
         "pages": sorted({page for segment in segments for page in segment.pages}),
         "exported_pages": [page.page_no for page in prepared.pages],
@@ -289,7 +362,9 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
         "merged_segments": sum(1 for s in segments if len(s.block_ids) > 1),
         "hyphenations_restored": sum(len(s.hyphenations) for s in segments),
         "unfinished_pages": sorted(unfinished),
-        "excluded_block_types": sorted(prepared.options.excluded_block_types()),
+        "excluded_block_types": sorted(
+            set(segments_module.ALL_BLOCK_TYPES) - set(streams_module.BODY_BLOCK_TYPES)
+        ),
         "rules": prepared.options.to_dict(),
         # 整块落在页面边缘、却还没标类型的块：它们**现在会被导出**，
         # 而这正是页眉 / 页码混进正文的来源。界面据此提醒去用结构工具。
@@ -417,7 +492,7 @@ def run_export(
         raise ExportError("项目缺少目录信息")
 
     prepared = _prepare(project_id, library=target_library, options=options)
-    if not prepared.segments:
+    if not prepared.segments and not prepared.notes:
         raise ExportError(
             "按照当前设置没有任何内容可以导出：块可能全被排除、页面类型不在导出范围内，"
             "或「仅已确认」下没有已确认的块"
@@ -435,34 +510,52 @@ def run_export(
 
     written: list[str] = []
     data_files: list[str] = []
+    body_file = BODY_TXT_FILE_NAME if options.format in (FORMAT_TXT, FORMAT_BOTH) else BODY_JSONL_FILE_NAME
     if options.format in (FORMAT_TXT, FORMAT_BOTH):
-        (directory / TXT_FILE_NAME).write_text(_render_text(prepared), encoding="utf-8")
-        written.append(TXT_FILE_NAME)
-        data_files.append(TXT_FILE_NAME)
+        (directory / BODY_TXT_FILE_NAME).write_text(_render_text(prepared), encoding="utf-8")
+        written.append(BODY_TXT_FILE_NAME)
+        data_files.append(BODY_TXT_FILE_NAME)
+        (directory / NOTES_TXT_FILE_NAME).write_text(
+            streams_module.render_notes_txt(prepared.notes), encoding="utf-8"
+        )
+        written.append(NOTES_TXT_FILE_NAME)
+        data_files.append(NOTES_TXT_FILE_NAME)
     if options.format in (FORMAT_JSONL, FORMAT_BOTH):
-        (directory / JSONL_FILE_NAME).write_text(
+        (directory / BODY_JSONL_FILE_NAME).write_text(
             _render_jsonl(prepared, library=target_library), encoding="utf-8"
         )
-        written.append(JSONL_FILE_NAME)
-        data_files.append(JSONL_FILE_NAME)
+        written.append(BODY_JSONL_FILE_NAME)
+        data_files.append(BODY_JSONL_FILE_NAME)
+        (directory / NOTES_JSONL_FILE_NAME).write_text(
+            streams_module.render_notes_jsonl(prepared.notes), encoding="utf-8"
+        )
+        written.append(NOTES_JSONL_FILE_NAME)
+        data_files.append(NOTES_JSONL_FILE_NAME)
+
+    (directory / META_FILE_NAME).write_text(
+        json.dumps(prepared.meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    written.append(META_FILE_NAME)
 
     manifest = manifest_module.build_manifest(
         app_version=__version__,
         scope=manifest_module.ExportScope(
-            page_numbers=tuple(sorted({page for s in prepared.segments for page in s.pages})),
+            page_numbers=tuple(sorted(page.page_no for page in prepared.pages)),
             format=options.format,
             confirmed_only=options.confirmed_only,
         ),
         rules=prepared.options.to_dict(),
         segments=prepared.segments,
-        data_file=data_files[0],
+        data_file=body_file,
         source=manifest_module.SourceInfo(
             project_name=project.name,
             file_name=project.source_file_name,
             sha256=project.source_sha256,
         ),
         exported_at=moment,
-        extra_files=data_files[1:],
+        extra_files=[name for name in written if name != body_file],
+        notes=prepared.notes,
+        meta=prepared.meta,
     )
     (directory / MANIFEST_FILE_NAME).write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"

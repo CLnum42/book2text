@@ -65,6 +65,8 @@ def build_manifest(
     source: SourceInfo | None = None,
     exported_at: datetime | None = None,
     extra_files: Sequence[str] = (),
+    notes: Sequence[object] = (),
+    meta: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """生成 manifest 内容。
 
@@ -86,6 +88,9 @@ def build_manifest(
 
     char_count = sum(len(segment.text) for segment in segments)
     page_numbers = sorted({page for segment in segments for page in segment.pages})
+    note_list = list(notes)
+    note_char_count = sum(len(getattr(note, "text", "")) for note in note_list)
+    meta_summary = (meta or {}).get("summary") or {}
 
     return {
         "schema": MANIFEST_SCHEMA_ID,
@@ -111,6 +116,21 @@ def build_manifest(
             "unreviewed_segments": sum(1 for s in segments if s.review.unreviewed),
             "uncertain_segments": sum(1 for s in segments if s.review.uncertain),
             "hyphenations_restored": len(hyphenations),
+            "notes_count": len(note_list),
+            "notes_char_count": note_char_count,
+        },
+        "streams": {
+            "body": {
+                "segments": len(segments),
+                "chars": char_count,
+                "blocks": sum(len(segment.block_ids) for segment in segments),
+            },
+            "notes": {"notes": len(note_list), "chars": note_char_count},
+            "meta": {
+                "pages": int(meta_summary.get("page_count") or 0),
+                "printed_page_found": int(meta_summary.get("printed_page_found") or 0),
+                "printed_page_missing": list(meta_summary.get("printed_page_missing") or []),
+            },
         },
         "notes": [
             "项目名与源文件 SHA-256 在无项目模型时为空字符串（见 docs/known-limitations.md L-09）",

@@ -462,16 +462,16 @@
             </div>
             <p class="hint">封面 / 空白页默认不导出。</p>
 
-            <div class="flabel">内容类型</div>
-            <div class="chkpills">
-              <label class="pill"><input type="checkbox" id="export-captions" checked><span>图注</span></label>
-              <label class="pill"><input type="checkbox" id="export-footnotes"><span>脚注</span></label>
-              <label class="pill"><input type="checkbox" id="export-other"><span>其他类型块</span></label>
-            </div>
+            <div class="flabel">三条流（固定）</div>
+            <p class="hint">
+              正文 = 段落 + 标题；注释 = 脚注（每条带所属页 / 块与最近前文位置）；
+              元数据 = 页眉 / 页脚 / 页码 / 图注（<code>meta.json</code>，一页一条）。
+              页眉页码不会混进正文，也不会被丢掉。
+            </p>
 
             <div class="flabel">清理规则（说明书 9.3）</div>
-            <div class="ruleline"><input type="checkbox" id="export-rule-header" checked>
-              <div><span>排除页眉 / 页脚 / 页码块</span><span class="rdesc">按块类型排除</span></div></div>
+            <div class="ruleline"><input type="checkbox" id="export-rule-header" checked disabled>
+              <div><span>页眉 / 页脚 / 页码一律进元数据</span><span class="rdesc">固定行为</span></div></div>
             <div class="ruleline"><input type="checkbox" id="export-rule-merge" checked>
               <div><span>合并段内换行</span><span class="rdesc">关闭时保留识别出的原始换行</span></div></div>
             <div class="ruleline"><input type="checkbox" id="export-rule-hyphen" checked>
