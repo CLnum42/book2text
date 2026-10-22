@@ -513,3 +513,53 @@ def test_assistant_sees_owner_edits_through_a_second_result(
     changed = imported2["changed_pages"][0]
     assert len(changed["block_changes"]) == 1
     assert "（二）" in changed["block_changes"][0]["fields"]["text"]["theirs"]
+
+
+# ---------------------------------------------------------------- 老任务包：旧页面类型值
+
+def _rewrite_package_page_types(package: Path, values: list[str]) -> Path:
+    """把任务包 data.json 里的页面类型换成指定值（模拟旧版本生成的任务包）。"""
+    with zipfile.ZipFile(package) as archive:
+        entries = {name: archive.read(name) for name in archive.namelist()}
+    data = json.loads(entries["data.json"])
+    for page, value in zip(data["pages"], values):
+        page["page_type"] = value
+    entries["data.json"] = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    target = package.with_name(f"legacy-{package.name}")
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, content in entries.items():
+            archive.writestr(name, content)
+    return target
+
+
+def test_old_page_types_in_a_package_are_mapped_on_open(
+    client: TestClient, auth_headers: dict[str, str], owner: str
+) -> None:
+    """旧包里的 cover / appendix / foreword 按五类映射，include 跟着派生。"""
+    recognize(client, auth_headers, owner, 1, 2, 3)
+    package = make_package(client, auth_headers, owner, [1, 2, 3], "张三")
+    legacy = _rewrite_package_page_types(package, ["cover", "appendix", "foreword"])
+
+    assistant = open_package_in(client, auth_headers, legacy)
+    assistant_id = assistant["project"]["project_id"]
+    items = client.get(
+        f"/api/projects/{assistant_id}/pages", headers=auth_headers
+    ).json()["pages"]
+    assert [page["page_type"] for page in items] == ["front", "back", "front"]
+    assert all(page["include"] is False for page in items)
+
+
+def test_unknown_page_type_in_a_package_is_refused(
+    client: TestClient, auth_headers: dict[str, str], owner: str
+) -> None:
+    recognize(client, auth_headers, owner, 1, 2, 3)
+    package = make_package(client, auth_headers, owner, [1, 2, 3], "张三")
+    legacy = _rewrite_package_page_types(package, ["body", "不认识的类型", "body"])
+
+    response = client.post(
+        "/api/packages/open?filename=legacy.b2tpkg",
+        content=legacy.read_bytes(),
+        headers={**auth_headers, "Content-Type": "application/zip"},
+    )
+    assert response.status_code == 400
+    assert "页面类型不认识" in response.json()["error"]["detail"]

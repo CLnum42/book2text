@@ -188,12 +188,23 @@ def open_package(path: Path, *, library: Path | None = None) -> Project:
     with db_module.open_database(directory) as conn:
         for index, page in enumerate(pages):
             has_text = index < len(text_layer) and text_layer[index] > 0
+            # 老任务包里可能还是 cover / appendix / blank 等旧值：按同一张映射表
+            # 收成五类（body → body，封面 / 前言类 → front，目录 → toc，
+            # 附录 / 索引 / 空白 / 其他 → back），未知值直接报错，不写进库。
+            try:
+                page_type = library_module.normalize_page_type(
+                    str(page.get("page_type") or "body")
+                )
+            except ProjectError as exc:
+                raise ProjectError(
+                    f"任务包第 {page.get('page_no')} 页的页面类型不认识：{exc}"
+                ) from exc
             conn.execute(
                 """
                 INSERT INTO page (
                     page_id, page_no, page_label, width_pt, height_pt, rotation,
                     page_type, include, has_text_layer, is_context, pdf_page_index, note
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NULL)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 """,
                 (
                     page["page_id"],
@@ -202,7 +213,8 @@ def open_package(path: Path, *, library: Path | None = None) -> Project:
                     float(page.get("width_pt") or 0),
                     float(page.get("height_pt") or 0),
                     int(page.get("rotation") or 0),
-                    page.get("page_type") or "body",
+                    page_type,
+                    1 if library_module.page_type_includes(page_type) else 0,
                     1 if has_text else 0,
                     1 if page.get("is_context") else 0,
                     int(page.get("pdf_index", index)),

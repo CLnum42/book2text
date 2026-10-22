@@ -4,17 +4,20 @@
 `docs/region-classification-eval.md` 也说明自动规则已经够准，但"够准"不等于可以替用户
 做决定：页类型会影响识别范围与导出，标错一页的代价比多点一下大。
 
-**建议规则（保守，宁可少给）：**
+**建议规则（保守，宁可少给；五类页面，只读）：**
 
-- 空白：整页墨迹占比 < 1%（几乎没有内容）→ `blank`，把握高。
-- 首页：第 1 页（且不是空白）→ `cover`，把握中。
+- 空白：整页墨迹占比 < 1%（几乎没有内容）→ `body_excluded`，把握高。
+- 首页：第 1 页（且不是空白）→ `front`，把握中。
 - 图像页：已经跑过识别（项目里有块），但这一页 0 块、墨迹占比 ≥ 45%
-  （整页图像 / 插图）→ `front`，把握中。
-- 疑似空白：已经跑过识别，这一页 0 块且墨迹占比 < 5% → `blank`，把握低。
-- 文字形态：页首文字里出现「目录 / Contents」「索引 / Index」「附录 / Appendix」
-  → 对应类型，把握中。
+  （整页图像 / 插图）→ `body_excluded`，把握中。
+- 疑似空白：已经跑过识别，这一页 0 块且墨迹占比 < 5% → `body_excluded`，把握低。
+- 文字形态：页首文字里出现「图书在版编目 / CIP / ISBN / 版权」或
+  「前言 / 序言 / 导言 / 译者的话 / 凡例」→ `front`；
+  「目录 / Contents」或点线 + 连续页码特征 → `toc`；
+  「索引 / 附录 / 参考文献 / 后记 / 跋」→ `back`。把握中。
 - 没有识别行、也没有文本层**本身不算证据**：新项目还没识别时每一页都如此，
   按它给建议会把整本书都建议成空白 / 前置。
+- **绝不自动应用**：页类型影响识别范围与导出，只给候选，用户点「采用」才写库。
 
 **墨迹占比**用缩略图（50 DPI）算：灰度值 < 240 的像素占全页比例。只对"没有块"
 或"首页"的候选页渲染，最多分析 60 页，避免一本 400 页的书打开时卡住。
@@ -31,7 +34,7 @@ from ..pdf import render
 from . import blocks as blocks_module
 from . import library as library_module
 
-# 建议最多分析多少页（按页序取前 N 个未确认的纳入页）
+# 建议最多分析多少页（按页序取前 N 个未确认页）
 MAX_ANALYZED_PAGES = 60
 
 # 墨迹判定：灰度 < 240 算"有内容"；比例阈值按样本书实测取的保守值
@@ -49,14 +52,38 @@ CONFIDENCE_LABELS = {
     CONFIDENCE_LOW: "低",
 }
 
-# 页首文字里的关键词 → 页面类型
+# 页首文字里的关键词 → 页面类型（五类：front / toc / body_excluded / back / body）
 _TEXT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("copyright", ("图书在版编目", "cip", "isbn")),
-    ("foreword", ("前言", "序言", "导言", "译者的话", "凡例")),
+    ("front", ("图书在版编目", "cip", "isbn", "版权")),
+    ("front", ("前言", "序言", "自序", "译者序", "序文", "导言", "译者的话", "凡例")),
     ("toc", ("目录", "目 录", "contents")),
-    ("index", ("索引", "index")),
-    ("appendix", ("附录", "appendix")),
+    ("back", ("索引", "附录", "参考文献", "后记", "跋", "index", "appendix", "references")),
 )
+
+# 目录页的点线：`第一章 …… 12` / `第一章 ........ 12`
+_TOC_LEADER = re.compile(r"[.．·…]{2,}\s*[0-9ivxlcdm]+\s*$", re.IGNORECASE)
+
+
+def looks_like_toc(text: str) -> bool:
+    """点线目录 / 连续页码特征（保守：至少 2 行点线，或 5 行以上连续页码）。"""
+    lines = [line.strip() for line in text.splitlines() if line.strip()][:12]
+    if sum(1 for line in lines if _TOC_LEADER.search(line)) >= 2:
+        return True
+    numbers: list[int] = []
+    numbered_lines: list[str] = []
+    for line in lines:
+        match = re.search(r"(\d{1,4})\s*$", line)
+        if match:
+            numbers.append(int(match.group(1)))
+            numbered_lines.append(line)
+    if len(numbers) < 5:
+        return False
+    # 目录条目通常是一行短标题；长正文段落即使以数字结尾也不当成目录
+    if max(len(line) for line in numbered_lines) > 40:
+        return False
+    # "连续页码"：至少 5 行以数字结尾，且大多数相邻数字递增（目录条目）
+    increasing = sum(1 for left, right in zip(numbers, numbers[1:]) if right > left)
+    return increasing >= len(numbers) - 2
 
 
 @dataclass(frozen=True)
@@ -111,7 +138,7 @@ def suggest_page(
     project_has_blocks: bool,
 ) -> PageSuggestion | None:
     """给一页算一条建议；没有把握或不必要就返回 None。"""
-    if not signals.include or signals.page_confirmed:
+    if signals.page_confirmed:
         return None
 
     base = {
@@ -132,9 +159,9 @@ def suggest_page(
             signals=base,
         )
 
-    # 空白优先于"首页"：一张全空的第一页更像是空白页，而不是封面
+    # 空白优先于"首页"：一张全空的第一页更像是空白页，而不是前置页
     if ink is not None and ink < BLANK_INK_HIGH:
-        return make("blank", CONFIDENCE_HIGH, f"几乎空白：墨迹占比 {ink:.2%}")
+        return make("body_excluded", CONFIDENCE_HIGH, f"几乎空白：墨迹占比 {ink:.2%}")
 
     if signals.block_count > 0:
         head = signals.text[:200].casefold()
@@ -145,9 +172,15 @@ def suggest_page(
                     CONFIDENCE_MEDIUM,
                     f"页首文字里出现「{keywords[0]}」，但没有识别出该类型",
                 )
+        if looks_like_toc(signals.text):
+            return make(
+                "toc",
+                CONFIDENCE_MEDIUM,
+                "多行目录特征：点线引导或连续页码",
+            )
 
     if signals.page_no == 1:
-        return make("cover", CONFIDENCE_MEDIUM, "第 1 页（通常为封面），且不是空白页")
+        return make("front", CONFIDENCE_MEDIUM, "第 1 页（通常为封面 / 前置），且不是空白页")
     if signals.block_count > 0:
         return None
 
@@ -157,13 +190,13 @@ def suggest_page(
 
     if ink is not None and ink >= IMAGE_HEAVY_INK:
         return make(
-            "front",
+            "body_excluded",
             CONFIDENCE_MEDIUM,
             f"整页图像、没有识别行：墨迹占比 {ink:.0%}",
         )
     if ink is not None and ink < BLANK_INK_LOW:
         return make(
-            "blank",
+            "body_excluded",
             CONFIDENCE_LOW,
             f"没有识别行、墨迹很少（{ink:.1%}），可能是一张空白页",
         )
@@ -204,7 +237,8 @@ def suggest_pages_for_project(
         by_page.setdefault(block.page_no, []).append(block)
     project_has_blocks = bool(blocks)
 
-    candidates = [page for page in pages if page.include and not page.page_confirmed]
+    # 五类都要能给建议（比如把误判成"前置"的页改回正文），所以不再按 include 过滤
+    candidates = [page for page in pages if not page.page_confirmed]
     analyzed = candidates[:MAX_ANALYZED_PAGES]
     truncated = len(candidates) > len(analyzed)
 

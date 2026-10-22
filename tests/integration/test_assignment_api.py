@@ -94,7 +94,7 @@ def test_preview_excludes_excluded_pages(
     ).json()["pages"]
     client.patch(
         f"/api/projects/{recognized_project}/pages",
-        json={"page_ids": [pages[0]["page_id"]], "include": False},
+        json={"page_ids": [pages[0]["page_id"]], "page_type": "body_excluded"},
         headers=auth_headers,
     )
     data = preview(client, auth_headers, recognized_project, pages=[1, 2])

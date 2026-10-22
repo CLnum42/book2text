@@ -59,7 +59,10 @@ def test_confirm_pages_sets_state_and_summary(project, client, auth_headers) -> 
     assert data["summary"] == {
         "total": 3,
         "body": 3,
-        "other_types": 0,
+        "body_excluded": 0,
+        "front": 0,
+        "toc": 0,
+        "back": 0,
         "included": 3,
         "excluded": 0,
         "confirmed": 1,
@@ -73,7 +76,7 @@ def test_confirm_pages_sets_state_and_summary(project, client, auth_headers) -> 
     assert again["summary"]["confirmed"] == 1
 
 
-def test_changing_type_or_include_resets_confirmation(project, client, auth_headers) -> None:
+def test_changing_type_resets_confirmation(project, client, auth_headers) -> None:
     project_id, items = project
     confirm(client, auth_headers, project_id, [page["page_id"] for page in items])
     assert all(page["page_confirmed"] for page in pages(client, auth_headers, project_id))
@@ -88,36 +91,30 @@ def test_changing_type_or_include_resets_confirmation(project, client, auth_head
     assert response.json()["page_confirmed"] is False
     assert response.json()["page_type"] == "toc"
 
-    # 改纳入 → 回到未确认
+    # 改类型（正文 → 正文排除）→ 回到未确认，include 自动变 0
     response = client.patch(
         f"/api/projects/{project_id}/pages",
-        json={"page_ids": [items[1]["page_id"]], "include": False},
+        json={"page_ids": [items[1]["page_id"]], "page_type": "body_excluded"},
         headers=auth_headers,
     )
     assert response.status_code == 200
     assert response.json()["pages"][0]["page_confirmed"] is False
+    assert response.json()["pages"][0]["page_type"] == "body_excluded"
     assert response.json()["pages"][0]["include"] is False
 
 
 def test_new_page_types_are_accepted(project, client, auth_headers) -> None:
     project_id, items = project
-    for page_type in ("copyright", "foreword"):
+    for page_type in ("front", "toc", "body_excluded", "back", "body"):
         response = client.patch(
             f"/api/projects/{project_id}/pages/{items[0]['page_id']}",
             json={"page_type": page_type},
             headers=auth_headers,
         )
         assert response.status_code == 200, response.text
-        assert response.json()["page_type"] == page_type
-
-    # front 仍然可读、可写（老数据不迁移）
-    response = client.patch(
-        f"/api/projects/{project_id}/pages/{items[0]['page_id']}",
-        json={"page_type": "front"},
-        headers=auth_headers,
-    )
-    assert response.status_code == 200
-    assert response.json()["page_type"] == "front"
+        body = response.json()
+        assert body["page_type"] == page_type
+        assert body["include"] is (page_type == "body")
 
 
 def test_same_value_does_not_reset_confirmation(project, client, auth_headers) -> None:
@@ -141,7 +138,7 @@ def test_suggestions_are_read_only(project, client, auth_headers) -> None:
     data = response.json()
     assert data["suggestions"], "至少首页应有建议"
     assert data["suggestions"][0]["page_no"] == 1
-    assert data["suggestions"][0]["suggested_type"] == "cover"
+    assert data["suggestions"][0]["suggested_type"] == "front"
     assert data["suggestions"][0]["confidence"] in ("high", "medium", "low")
     # **没有自动应用**：页面还是默认类型、未确认
     refreshed = pages(client, auth_headers, project_id)
@@ -160,7 +157,7 @@ def test_excluded_pages_never_enter_recognition(
     excluded = items[1]
     response = client.patch(
         f"/api/projects/{project_id}/pages",
-        json={"page_ids": [excluded["page_id"]], "include": False},
+        json={"page_ids": [excluded["page_id"]], "page_type": "body_excluded"},
         headers=auth_headers,
     )
     assert response.status_code == 200

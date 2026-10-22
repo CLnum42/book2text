@@ -236,7 +236,7 @@ def resolve_pages(
             raise ProjectError(f"没有第 {page_no} 页")
         if not page.include:
             raise ProjectError(
-                f"第 {page_no} 页已排除，不参与识别。先把它纳入（单击缩略图）再识别"
+                f"第 {page_no} 页不是「正文」类型，不参与识别。把类型改成「正文」再识别"
             )
         if skip_recognized and usable_result(page):
             continue
@@ -376,7 +376,7 @@ def resolve_aux_pages(
             raise ProjectError(f"没有第 {page_no} 页")
         if not page.include:
             raise ProjectError(
-                f"第 {page_no} 页已排除，不参与复核。先把它纳入（单击缩略图）再复核"
+                f"第 {page_no} 页不是「正文」类型，不参与复核。把类型改成「正文」再复核"
             )
         if not has_result(page):
             raise ProjectError(

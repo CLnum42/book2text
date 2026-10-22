@@ -319,14 +319,14 @@ def test_patch_page(
 
     updated = client.patch(
         f"/api/projects/{project_id}/pages/{pages[0]['page_id']}",
-        json={"page_type": "cover", "include": False, "note": "封面不参与识别"},
+        json={"page_type": "front", "note": "封面归入前置"},
         headers=auth_headers,
     )
     assert updated.status_code == 200
     body = updated.json()
-    assert body["page_type"] == "cover"
+    assert body["page_type"] == "front"
     assert body["include"] is False
-    assert body["note"] == "封面不参与识别"
+    assert body["note"] == "封面归入前置"
 
 
 def test_patch_page_persists(
@@ -336,16 +336,68 @@ def test_patch_page_persists(
     pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
     client.patch(
         f"/api/projects/{project_id}/pages/{pages[0]['page_id']}",
-        json={"include": False},
+        json={"page_type": "body_excluded"},
         headers=auth_headers,
     )
 
     fresh = restart(library_dir)
     after = fresh.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
+    assert after[0]["page_type"] == "body_excluded"
     assert after[0]["include"] is False
 
     listing = fresh.get("/api/projects", headers=auth_headers).json()["projects"][0]
     assert listing["included_pages"] == 2
+
+
+def test_include_cannot_be_set_directly(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    """include 是派生列：单页与批量接口都必须明确拒绝，而不是静默接受。"""
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+    page_id = client.get(
+        f"/api/projects/{project_id}/pages", headers=auth_headers
+    ).json()["pages"][0]["page_id"]
+
+    single = client.patch(
+        f"/api/projects/{project_id}/pages/{page_id}",
+        json={"include": False},
+        headers=auth_headers,
+    )
+    assert single.status_code == 400
+    assert single.json()["error"]["code"] == "include_is_derived"
+
+    batch = client.patch(
+        f"/api/projects/{project_id}/pages",
+        json={"page_ids": [page_id], "include": True},
+        headers=auth_headers,
+    )
+    assert batch.status_code == 400
+    assert batch.json()["error"]["code"] == "include_is_derived"
+
+
+def test_body_type_derives_include(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+    page = client.get(
+        f"/api/projects/{project_id}/pages", headers=auth_headers
+    ).json()["pages"][0]
+
+    excluded = client.patch(
+        f"/api/projects/{project_id}/pages/{page['page_id']}",
+        json={"page_type": "body_excluded"},
+        headers=auth_headers,
+    ).json()
+    assert excluded["page_type"] == "body_excluded"
+    assert excluded["include"] is False
+
+    back = client.patch(
+        f"/api/projects/{project_id}/pages/{page['page_id']}",
+        json={"page_type": "body"},
+        headers=auth_headers,
+    ).json()
+    assert back["page_type"] == "body"
+    assert back["include"] is True
 
 
 def test_patch_page_rejects_unknown_type(
@@ -362,7 +414,7 @@ def test_patch_page_rejects_unknown_type(
     assert "未知的页面类型" in response.json()["error"]["detail"]
 
 
-def test_batch_patch_pages_sets_type_and_include(
+def test_batch_patch_pages_sets_type_and_derives_include(
     client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, library_dir: Path
 ) -> None:
     """说明书 6.2 的批量操作、第 11 节的 PATCH /projects/{id}/pages。"""
@@ -373,20 +425,19 @@ def test_batch_patch_pages_sets_type_and_include(
         f"/api/projects/{project_id}/pages",
         json={
             "page_ids": [pages[0]["page_id"], pages[1]["page_id"]],
-            "page_type": "cover",
-            "include": False,
+            "page_type": "front",
         },
         headers=auth_headers,
     )
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["updated"] == 2
-    assert [page["page_type"] for page in data["pages"]] == ["cover", "cover"]
+    assert [page["page_type"] for page in data["pages"]] == ["front", "front"]
     assert all(page["include"] is False for page in data["pages"])
 
     fresh = restart(library_dir)
     after = fresh.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
-    assert [page["page_type"] for page in after] == ["cover", "cover", "body"]
+    assert [page["page_type"] for page in after] == ["front", "front", "body"]
     assert [page["include"] for page in after] == [False, False, True]
 
 
@@ -399,7 +450,7 @@ def test_batch_patch_pages_is_all_or_nothing(
 
     response = client.patch(
         f"/api/projects/{project_id}/pages",
-        json={"page_ids": [pages[0]["page_id"], "nope"], "include": False},
+        json={"page_ids": [pages[0]["page_id"], "nope"], "page_type": "body_excluded"},
         headers=auth_headers,
     )
     assert response.status_code == 404
@@ -432,7 +483,7 @@ def test_batch_patch_pages_requires_something_to_do(
 
     empty_ids = client.patch(
         f"/api/projects/{project_id}/pages",
-        json={"page_ids": [], "include": False},
+        json={"page_ids": [], "page_type": "body_excluded"},
         headers=auth_headers,
     )
     assert empty_ids.status_code == 404
@@ -452,7 +503,7 @@ def test_unknown_page_returns_404(
     project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
     response = client.patch(
         f"/api/projects/{project_id}/pages/nope",
-        json={"include": False},
+        json={"page_type": "body_excluded"},
         headers=auth_headers,
     )
     assert response.status_code == 404
@@ -574,7 +625,7 @@ def test_unknown_project_returns_404(
         ("get", "/api/projects/b2t_ZZZZZZ/pages", None),
         ("get", "/api/projects/b2t_ZZZZZZ/pages/1/blocks", None),
         ("get", "/api/projects/b2t_ZZZZZZ/jobs", None),
-        ("patch", "/api/projects/b2t_ZZZZZZ/pages", {"page_ids": ["x"], "include": False}),
+        ("patch", "/api/projects/b2t_ZZZZZZ/pages", {"page_ids": ["x"], "page_type": "body_excluded"}),
         ("put", "/api/projects/b2t_ZZZZZZ/position", {"view": "pages"}),
         ("post", "/api/projects/b2t_ZZZZZZ/structure/header-footer/preview", {}),
         ("post", "/api/projects/b2t_ZZZZZZ/export/preflight", {}),

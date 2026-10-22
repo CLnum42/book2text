@@ -25,14 +25,14 @@ def signals(**changes):
 def test_blank_page_is_high_confidence() -> None:
     suggestion = page_setup.suggest_page(signals(page_no=2), ink=0.002, project_has_blocks=True)
     assert suggestion is not None
-    assert suggestion.suggested_type == "blank"
+    assert suggestion.suggested_type == "body_excluded"
     assert suggestion.confidence == page_setup.CONFIDENCE_HIGH
 
 
 def test_first_page_is_cover_when_not_blank() -> None:
     suggestion = page_setup.suggest_page(signals(page_no=1), ink=0.10, project_has_blocks=False)
     assert suggestion is not None
-    assert suggestion.suggested_type == "cover"
+    assert suggestion.suggested_type == "front"
     assert suggestion.confidence == page_setup.CONFIDENCE_MEDIUM
 
 
@@ -41,17 +41,17 @@ def test_new_project_does_not_suggest_front_for_every_page() -> None:
     assert page_setup.suggest_page(signals(page_no=2), ink=0.50, project_has_blocks=False) is None
 
 
-def test_after_ocr_an_image_only_page_is_front() -> None:
+def test_after_ocr_an_image_only_page_is_body_excluded() -> None:
     suggestion = page_setup.suggest_page(signals(page_no=5), ink=0.60, project_has_blocks=True)
     assert suggestion is not None
-    assert suggestion.suggested_type == "front"
+    assert suggestion.suggested_type == "body_excluded"
     assert suggestion.confidence == page_setup.CONFIDENCE_MEDIUM
 
 
 def test_after_ocr_a_nearly_empty_page_is_blank_with_low_confidence() -> None:
     suggestion = page_setup.suggest_page(signals(page_no=7), ink=0.03, project_has_blocks=True)
     assert suggestion is not None
-    assert suggestion.suggested_type == "blank"
+    assert suggestion.suggested_type == "body_excluded"
     assert suggestion.confidence == page_setup.CONFIDENCE_LOW
 
 
@@ -62,7 +62,7 @@ def test_cip_text_suggests_copyright() -> None:
         project_has_blocks=True,
     )
     assert suggestion is not None
-    assert suggestion.suggested_type == "copyright"
+    assert suggestion.suggested_type == "front"
 
 
 def test_foreword_keyword_wins_over_first_page_cover() -> None:
@@ -72,7 +72,7 @@ def test_foreword_keyword_wins_over_first_page_cover() -> None:
         project_has_blocks=True,
     )
     assert suggestion is not None
-    assert suggestion.suggested_type == "foreword"
+    assert suggestion.suggested_type == "front"
 
 
 def test_latin_cip_substring_does_not_trigger_copyright() -> None:
@@ -95,19 +95,65 @@ def test_toc_keyword_suggests_toc() -> None:
     assert suggestion.suggested_type == "toc"
 
 
-def test_confirmed_and_excluded_pages_get_no_suggestion() -> None:
+def test_confirmed_pages_get_no_suggestion() -> None:
     assert page_setup.suggest_page(
         signals(page_no=2, page_confirmed=True), ink=0.001, project_has_blocks=True
     ) is None
-    assert page_setup.suggest_page(
-        signals(page_no=2, include=False), ink=0.001, project_has_blocks=True
-    ) is None
+
+
+def test_type_alone_no_longer_suppresses_suggestions() -> None:
+    """include 是派生值；给不给建议只看确认状态，不按"纳入"过滤（五类都要能改）。"""
+    suggestion = page_setup.suggest_page(
+        signals(page_no=2, page_type="front", include=True), ink=0.001, project_has_blocks=True
+    )
+    assert suggestion is not None
+    assert suggestion.suggested_type == "body_excluded"
 
 
 def test_same_type_is_not_suggested_twice() -> None:
     assert page_setup.suggest_page(
-        signals(page_no=2, page_type="blank"), ink=0.001, project_has_blocks=True
+        signals(page_no=2, page_type="body_excluded"), ink=0.001, project_has_blocks=True
     ) is None
+
+
+def test_back_keywords_suggest_back() -> None:
+    for text in ("参考文献", "后记", "索引", "附录"):
+        suggestion = page_setup.suggest_page(
+            signals(page_no=9, block_count=3, text=f"{text}\n正文……"),
+            ink=None,
+            project_has_blocks=True,
+        )
+        assert suggestion is not None, text
+        assert suggestion.suggested_type == "back", text
+
+
+def test_dotted_toc_suggests_toc() -> None:
+    text = "目录\n第一章 绪论 …… 1\n第二章 方法 …… 15\n第三章 结论 …… 42"
+    suggestion = page_setup.suggest_page(
+        signals(page_no=4, block_count=2, text=text), ink=None, project_has_blocks=True
+    )
+    assert suggestion is not None
+    assert suggestion.suggested_type == "toc"
+
+
+def test_sequential_page_numbers_suggest_toc() -> None:
+    text = "\n".join(f"第{i}节 标题 {i * 7}" for i in range(1, 7))
+    suggestion = page_setup.suggest_page(
+        signals(page_no=4, block_count=2, text=text), ink=None, project_has_blocks=True
+    )
+    assert suggestion is not None
+    assert suggestion.suggested_type == "toc"
+
+
+def test_body_paragraph_ending_in_numbers_is_not_toc() -> None:
+    text = "\n".join(
+        f"这是一段很长的正文，长度超过普通条目的常见范围，而且并不以末尾的数字作为结构特征，仍然是连续的正文段落 {i}"
+        for i in range(1, 7)
+    )
+    suggestion = page_setup.suggest_page(
+        signals(page_no=4, block_count=2, text=text), ink=None, project_has_blocks=True
+    )
+    assert suggestion is None
 
 
 def test_ink_ratio_measures_dark_pixels() -> None:

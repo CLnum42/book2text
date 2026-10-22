@@ -205,9 +205,8 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
     selected: list[Page] = []
     dropped: list[Page] = []
     for page in pages:
-        if not page.include:
-            dropped.append(page)
-            continue
+        # 页面去留由 page_type 决定；这里只按类型（或用户明确点名的页码）过滤，
+        # 不再看派生列 include——否则显式选「正文排除」也导不出来。
         if wanted_pages is not None and page.page_no not in wanted_pages:
             dropped.append(page)
             continue

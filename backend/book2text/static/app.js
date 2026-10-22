@@ -479,7 +479,9 @@ function structureRules() {
     left_ratio: Number(el("structure-left").value || 0) / 100,
     right_ratio: Number(el("structure-right").value || 0) / 100,
     max_chars: el("structure-max-chars").value === "" ? null : Number(el("structure-max-chars").value),
-    page_types: el("structure-body-only").checked ? ["body"] : ["body", "front", "toc", "appendix", "index"],
+    page_types: el("structure-body-only").checked
+      ? ["body"]
+      : ["body", "body_excluded", "toc", "front", "back"],
     detect_page_numbers: el("structure-numbers").checked,
   };
 }
@@ -722,12 +724,12 @@ function renderPreflight(data) {
     const shown = data.unfinished_pages.slice(0, 12).join("、");
     const more = data.unfinished_pages.length > 12 ? " 等" : "";
     notes.push(
-      `有 ${data.unfinished_pages.length} 个纳入页还没识别或识别失败（${shown}${more}），` +
+      `有 ${data.unfinished_pages.length} 个导出页还没识别或识别失败（${shown}${more}），` +
         "导出的内容会缺这些页。"
     );
   }
   if (data.dropped_pages && data.dropped_pages.length) {
-    notes.push(`按当前范围排除了 ${data.dropped_pages.length} 页。`);
+    notes.push(`按当前类型 / 范围过滤掉 ${data.dropped_pages.length} 页。`);
   }
   if (data.chrome_suspect_count) {
     const sample = (data.chrome_suspects || [])
@@ -1060,16 +1062,15 @@ function setupExportPanel() {
 /** 当前打开的项目（含页面列表）。 */
 let currentProject = null;
 
+/**
+ * 页面类型（五类，2026-10-22 用户拍板）：**去留由类型决定**，没有单独的纳入 / 排除开关。
+ * 只有「正文」进识别与语料；其余四类都不进。
+ */
 const PAGE_TYPE_LABELS = {
-  cover: "封面", toc: "目录", front: "前置（其他）", foreword: "前言",
-  copyright: "版权", body: "正文", appendix: "附录", index: "索引",
-  blank: "空白", other: "其他",
+  body: "正文", body_excluded: "正文排除", toc: "目录", front: "前置", back: "后置",
 };
-/** 右栏类型列表的顺序：正文/前言/版权最常用，放前面。 */
-const PAGE_TYPE_ORDER = [
-  "body", "foreword", "copyright", "cover", "toc",
-  "front", "appendix", "index", "blank", "other",
-];
+/** 右栏类型列表的顺序：正文 / 正文排除最常用，放前面。 */
+const PAGE_TYPE_ORDER = ["body", "body_excluded", "toc", "front", "back"];
 
 /**
  * 识别状态（说明书 5.3：状态不单独存储，由 OCRRun 与 Block 推导）。
@@ -1305,7 +1306,7 @@ function renderProjectList(projects) {
     const meta = document.createElement("div");
     meta.className = "pcard__meta";
     meta.textContent =
-      `${entry.source_file_name} · 共 ${entry.page_count} 页 · 纳入 ${entry.included_pages} 页` +
+      `${entry.source_file_name} · 共 ${entry.page_count} 页 · 正文 ${entry.included_pages} 页` +
       ` · 上次编辑：${timeAgo(entry.updated_at)}`;
 
     body.append(title, meta, progressRow("识别", entry.recognized_pages, entry.included_pages, recognitionExtra(entry)));
@@ -1550,14 +1551,14 @@ function renderSummary(data) {
   const list = el("stats-list");
   list.innerHTML = "";
 
-  const recognitionBits = [`已识别 ${pages.recognized || 0} / 纳入 ${pages.included || 0} 页`];
+  const recognitionBits = [`已识别 ${pages.recognized || 0} / 正文 ${pages.included || 0} 页`];
   if (pages.unrecognized) recognitionBits.push(`未识别 ${pages.unrecognized}`);
   if (pages.failed) recognitionBits.push(`识别失败 ${pages.failed}`);
   if (pages.has_candidate) recognitionBits.push(`待选新结果 ${pages.has_candidate}`);
   list.append(...statsRow("识别", recognitionBits.join(" · ")));
 
   const reviewBits = [
-    `块 ${review.blocks || 0}（纳入 ${review.included || 0}）`,
+    `块 ${review.blocks || 0}（纳入块 ${review.included || 0}）`,
     `已确认 ${review.confirmed || 0}`,
     `未审 ${review.unreviewed || 0}`,
   ];
@@ -1656,7 +1657,7 @@ function renderProjectMeta() {
     ["源文件", project.source_file_name],
     ["SHA-256", project.source_sha256],
     ["页数", `${project.page_count} 页`],
-    ["识别进度", `已识别 ${recognized} / 纳入 ${pages.filter((page) => page.include).length} 页`],
+    ["识别进度", `已识别 ${recognized} / 正文 ${pages.filter((page) => page.include).length} 页`],
     ["数据库版本", `schema_version ${project.schema_version}`],
     ["项目文件夹", project.directory],
   ]);
@@ -2029,7 +2030,6 @@ function updateSelectionPanel() {
   const count = selectedPages.size;
   el("selection-count").textContent = `${count} 页`;
   const selected = selectionPages();
-  const hasExcluded = selected.some((page) => !page.include);
 
   const numbers = [...selectedPages].sort((left, right) => left - right);
   const range = el("selection-range");
@@ -2046,8 +2046,6 @@ function updateSelectionPanel() {
 
   renderTypePicker();
   renderSuggestionPanel();
-  el("selection-include").disabled = count === 0 || !hasExcluded;
-  el("selection-exclude").disabled = count === 0 || !selected.some((page) => page.include);
   el("selection-recognize").disabled = count === 0 || !selected.some((page) => page.include);
   el("setup-confirm-selected").disabled = count === 0;
   el("selection-review-open").disabled = count === 0;
@@ -2058,7 +2056,8 @@ function updateSelectionPanel() {
   hint.hidden = true;
   if (count === 0) return;
   if (selected.every((page) => !page.include)) {
-    hint.textContent = "选中的页都排除了，不参与识别。先点「纳入」。";
+    hint.textContent =
+      "选中的页都不是「正文」，不参与识别。要把它们纳入识别，把类型改成「正文」。";
     hint.hidden = false;
   } else if (count >= 3 && count <= 10) {
     // 说明书 6.3 的样本试识别：先认几页看看，再决定要不要整本识别
@@ -2216,7 +2215,7 @@ function applyTileState(tile, page) {
     const chip = document.createElement("span");
     chip.className = "status status--ok";
     chip.textContent = "✓ 已确认";
-    chip.title = "这一页的类型与纳入状态已人工确认";
+    chip.title = "这一页的类型已人工确认";
     status.append(chip);
   }
 
@@ -2225,7 +2224,7 @@ function applyTileState(tile, page) {
   button.textContent = isBusy ? "识别中…" : "识别";
   button.disabled = isBusy || !page.include;
   if (!page.include) {
-    button.title = "已排除，不参与识别。先选中它再点「纳入」";
+    button.title = "不是「正文」类型，不参与识别。要把这一页纳入识别，把类型改成「正文」。";
   } else if (recognition.status === "recognized") {
     button.title = "重新识别这一页（已有人工成果时不会覆盖，只作为待选结果）";
   } else {
@@ -2237,12 +2236,17 @@ function applyTileState(tile, page) {
 
 function pageSetupStats() {
   const pages = currentProject ? currentProject.pages : [];
-  const included = pages.filter((page) => page.include);
+  const counts = { body: 0, body_excluded: 0, toc: 0, front: 0, back: 0 };
+  for (const page of pages) {
+    if (page.page_type in counts) counts[page.page_type] += 1;
+  }
   return {
     total: pages.length,
-    body: included.filter((page) => page.page_type === "body").length,
-    other: included.filter((page) => page.page_type !== "body").length,
-    excluded: pages.length - included.length,
+    body: counts.body,
+    bodyExcluded: counts.body_excluded,
+    toc: counts.toc,
+    front: counts.front,
+    back: counts.back,
     confirmed: pages.filter((page) => page.page_confirmed).length,
     unconfirmed: pages.filter((page) => !page.page_confirmed).length,
   };
@@ -2257,14 +2261,16 @@ function renderPageSetup() {
   }
   const stats = pageSetupStats();
   bar.hidden = false;
+  // 五类各报各的：总数 = 五类之和，别让人以为页数丢了
   el("setup-summary").textContent =
-    `正文 ${stats.body} 页 · 其他类型 ${stats.other} 页 · 已排除 ${stats.excluded} 页` +
+    `正文 ${stats.body} 页 · 正文排除 ${stats.bodyExcluded} 页` +
+    ` · 前置 ${stats.front} 页 · 目录 ${stats.toc} 页 · 后置 ${stats.back} 页` +
     ` · 未确认 ${stats.unconfirmed} 页`;
   el("setup-panel").hidden = false;
   el("setup-progress").textContent = `${stats.confirmed} / ${stats.total} 已确认`;
   el("setup-summary-detail").textContent =
     `共 ${stats.total} 页；已确认 ${stats.confirmed} 页，未确认 ${stats.unconfirmed} 页。` +
-    "点下面的类型直接改所选页；确认只是状态标记，未确认也能识别。";
+    "点下面的类型直接改所选页；只有「正文」进识别与语料，确认只是状态标记，未确认也能识别。";
   el("setup-confirm-selected").disabled = selectedPages.size === 0;
   el("setup-confirm-all").disabled = stats.unconfirmed === 0;
   renderTypePicker();
@@ -2509,8 +2515,8 @@ function warnUnconfirmed(pages, action) {
   const unconfirmed = pages.filter((page) => !page.page_confirmed);
   if (!unconfirmed.length) return true;
   return window.confirm(
-    `还有 ${unconfirmed.length} 页没有确认页面类型（正文 / 目录 / 排除等）。` +
-      `${action}仍会按现在的设置继续——未确认不拦人。要现在继续吗？`
+    `还有 ${unconfirmed.length} 页没有确认页面类型（正文 / 正文排除 / 目录 / 前置 / 后置）。` +
+      `${action}仍会按现在的设置继续（只有「正文」进识别）——未确认不拦人。要现在继续吗？`
   );
 }
 
@@ -2755,7 +2761,7 @@ function renderPages() {
   const all = project.pages;
 
   el("page-summary").textContent =
-    `共 ${all.length} 页 · 纳入 ${all.filter((page) => page.include).length} 页` +
+    `共 ${all.length} 页 · 正文 ${all.filter((page) => page.include).length} 页` +
     ` · 已识别 ${all.filter((page) => recognitionOf(page).status === "recognized").length} 页` +
     ` · 已确认 ${all.filter((page) => page.page_confirmed).length} 页` +
     (pages.length !== all.length ? ` · 当前显示 ${pages.length} 页` : "");
@@ -3406,7 +3412,7 @@ async function refreshDetailSuggestions() {
 
 // ---------------------------------------------------------------- 翻页（审校视图顶栏）
 
-/** 翻页时在哪一类页面之间走：默认全部纳入页，也可以只看"还没审完"这类。 */
+/** 翻页时在哪一类页面之间走：默认全部正文页，也可以只看"还没审完"这类。 */
 function pagerPages() {
   if (!currentProject) return [];
   const kind = el("review-jump-filter").value;
@@ -5333,7 +5339,7 @@ async function confirmCurrentPage() {
         : `已确认 ${data.confirmed} 块`
     );
     await refreshPageStates();
-    // 说明书 7.4："确认本页后默认跳到下一个未完成的纳入页"
+    // 说明书 7.4："确认本页后默认跳到下一个未完成的正文页"
     const next = nextUnfinishedPage(pageNo);
     if (next) await openPageDetail(next);
     else setSaveState("整本书都审完了 🎉");
@@ -5342,7 +5348,7 @@ async function confirmCurrentPage() {
   }
 }
 
-/** 下一个还没审完的纳入页（有未审或不确定的块）。 */
+/** 下一个还没审完的正文页（有未审或不确定的块）。 */
 function nextUnfinishedPage(afterPageNo) {
   const next = currentProject.pages.find((page) => {
     if (!page.include || page.page_no <= afterPageNo) return false;
@@ -5394,11 +5400,11 @@ function setupReviewControls() {
   });
 }
 
-/** 批量改页面的类型 / 纳入（说明书 6.2 的批量操作，第 11 节的 PATCH /pages）。 */
+/** 批量改页面的类型（说明书 6.2 的批量操作，第 11 节的 PATCH /pages）。 */
 async function patchSelectedPages(patch) {
   const project = currentProject;
   const pages = selectionPages();
-  if (!project || !pages.length) return;
+  if (!project || !pages.length || !("page_type" in patch)) return;
 
   el("pages-error").hidden = true;
   try {
@@ -5411,10 +5417,8 @@ async function patchSelectedPages(patch) {
       const index = project.pages.findIndex((page) => page.page_id === updated.page_id);
       if (index >= 0) project.pages[index] = updated;
     }
-    // 类型 / 纳入变了，建议范围跟着变：这些页的旧建议与角标作废
-    if ("page_type" in patch || "include" in patch) {
-      for (const updated of data.pages) forgetPageSuggestions(updated.page_no);
-    }
+    // 类型变了，建议范围跟着变：这些页的旧建议与角标作废
+    for (const updated of data.pages) forgetPageSuggestions(updated.page_no);
     renderPages();
     renderProjectMeta();
     await loadSetupSuggestions();
@@ -5515,8 +5519,6 @@ function setupLibrary() {
     selectionAnchor = null;
     renderPages();
   });
-  el("selection-include").addEventListener("click", () => patchSelectedPages({ include: true }));
-  el("selection-exclude").addEventListener("click", () => patchSelectedPages({ include: false }));
   el("selection-recognize").addEventListener("click", recognizeSelection);
   el("pages-zoom-out").addEventListener("click", () => setPageZoom(-1));
   el("pages-zoom-in").addEventListener("click", () => setPageZoom(1));

@@ -169,12 +169,12 @@ def test_excluded_page_is_rejected(
     pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()["pages"]
     client.patch(
         f"/api/projects/{project_id}/pages",
-        json={"page_ids": [pages[0]["page_id"]], "include": False},
+        json={"page_ids": [pages[0]["page_id"]], "page_type": "body_excluded"},
         headers=auth_headers,
     )
     refused = check_pages(client, auth_headers, project_id, {"pages": [1]})
     assert refused["status"] == 400
-    assert "已排除" in refused["data"]["error"]["detail"]
+    assert "不是「正文」类型" in refused["data"]["error"]["detail"]
 
 
 def test_second_engine_unavailable_is_reported_as_503(

@@ -153,25 +153,41 @@ def test_block_frame_default_has_no_type_text_and_hover_card_is_placed_outside()
     assert ".page-overlay--readonly.page-overlay--labeled .box { pointer-events: auto; }" in css
 
 
-def test_page_confirmation_type_picker_is_a_flat_list_with_new_types() -> None:
-    """类型是常驻列表（不是下拉），新类型与新颜色类都在页面里。"""
+def test_page_confirmation_type_picker_has_exactly_five_types_and_no_include_switch() -> None:
+    """页面类型收成五类（2026-10-22 用户拍板）；界面上不再有纳入 / 排除按钮。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     assert 'id="selection-types"' in page
     assert 'id="selection-type"' not in page
-    assert "版权" in page and "前言" in page
-    assert "前置（其他）" in page
+    for label in ("正文", "正文排除", "目录", "前置", "后置"):
+        assert label in page, label
+    assert 'id="selection-include"' not in page
+    assert 'id="selection-exclude"' not in page
+    # 导出与筛选的选择器也只有五类
+    assert 'name="export-page-type"' in page
+    for value in ("body", "body_excluded", "toc", "front", "back"):
+        assert f'name="export-page-type" value="{value}"' in page, value
 
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
     assert "PAGE_TYPE_ORDER" in script
-    assert 'copyright: "版权"' in script
-    assert 'foreword: "前言"' in script
+    for key, label in (
+        ("body", "正文"),
+        ("body_excluded", "正文排除"),
+        ("toc", "目录"),
+        ("front", "前置"),
+        ("back", "后置"),
+    ):
+        assert f'{key}: "{label}"' in script, key
+    # 旧的十类不该再出现在前端类型表 / 排序里
+    assert "PAGE_TYPE_ORDER = [\"body\", \"body_excluded\", \"toc\", \"front\", \"back\"]" in script
     assert "混合" in script
+    # 没有"直接设 include"的界面入口
+    assert "patchSelectedPages({ include:" not in script
 
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
-    assert ".ptype--copyright" in css
-    assert ".ptype--foreword" in css
+    assert ".ptype--body_excluded" in css
+    assert ".ptype--back" in css
+    assert ".ptype--copyright" not in css
     assert ".ptype__suggest" in css
-    assert ".page-tile--ptype-copyright" in css
 
 
 # ---------------------------------------------------------------- 任务 41：建议徽章 / 抽屉

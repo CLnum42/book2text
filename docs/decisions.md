@@ -1479,6 +1479,11 @@ D-009 的状态仍是"暂定（Phase 0 第 3 项完成后重新评估）"，`kno
 
 **状态：** 生效（macOS + Chrome，两本书实测；Windows 未验证）。
 
+> **类型集合已被 D-059 取代（2026-10-22 任务 43）：** 页面类型收成五类
+> （正文 / 正文排除 / 目录 / 前置 / 后置），`copyright` / `foreword` / `cover` 等旧值
+> 迁移到五类；"纳入 / 排除"开关取消，`include` 由类型派生。D-055 里的三层右栏与
+> 颜色表达仍然有效，只是类型按钮从 10 个变成 5 个。
+
 ---
 
 ## D-056 | 2026-10-22 | 块类型建议进界面：只读、逐块采用；high 才能批量；建议不算待办
@@ -1572,3 +1577,50 @@ review 每条都要人看一眼再点，避免把弱建议成批套上。批量�
 705 / 881 / 1058 / 1410 / 2115 五档逐档复测，0 个号压块、0 个号贴框内。
 
 **状态：** 生效（macOS + Chrome 实测：第 3 页 24 块、第 30 页 6 块；Windows / Safari 未验证）。
+
+---
+
+## D-059 | 2026-10-22 | 页面类型收成五类，`include` 变成派生值
+
+**决策一：只保留五类：`front / toc / body / body_excluded / back`。**
+用户拍板："保留这五类，去掉纳入和排除选项"。以前是"类型 + 纳入"两个概念，
+现在**一个概念**：`body` 进 OCR 与语料，其余四类都不进。界面、筛选器、导出页类型
+选择器、`PAGE_TYPES` 全部同步；未知值仍然拒绝（400 / ProjectError），不静默接受。
+
+**决策二：`page.include` 保留列，但它是派生值，唯一来源是 `page_type`。**
+删列风险大（协作包、导出、识别范围都在用），因此：
+- `update_page` / `update_pages` **不再接受 include 参数**；写类型时同一条 SQL 写
+  `include = (page_type == 'body')`。
+- `PATCH /pages/{id}` 与 `PATCH /pages` 保留 `include` 字段**只为明确拒绝**
+  （`400 include_is_derived`），不会被 pydantic 静默忽略。
+- 其余写 `include` 的路径只剩三处，且都由类型派生：新建项目（默认 body/1）、
+  协作任务包导入（类型映射后派生）、迁移 0008（按类型重算）。
+  代码里没有"只改 include、不改类型"的入口。
+
+**决策三：迁移 0008 按"行为不变"映射，用户确认过。**
+
+| 旧状态 | 新类型 |
+|---|---|
+| include = 1（不论旧类型） | body |
+| include = 0 且旧类型 body | body_excluded |
+| include = 0 且 cover / front / foreword / copyright | front |
+| include = 0 且 toc | toc |
+| include = 0 且 appendix / index / blank / other | back |
+
+迁移后 `include` 再按新类型重算一次（body → 1，其余 → 0）。不删列、不丢页；
+迁移测试逐行覆盖上表 12 个组合。**统计口径变化**写进 CHANGELOG：以前说
+"正文 20 页、其中排除 3 页"，现在是"正文 17 页、正文排除 3 页"——总数仍是五类之和。
+
+**决策四：老协作包里的旧值也要映射，不许写进库。**
+任务包只记 `page_type`、不记 `include`，所以按类型映射：body → body、toc → toc、
+cover/front/foreword/copyright → front、appendix/index/blank/other → back；
+未知值抛 `ProjectError`，包打不开（400），而不是把脏值写进去。迁移用"include 优先"
+的表，包导入用"类型优先"的表，两边都复用 `library.normalize_page_type`。
+
+**决策五：自动建议只给五类，且仍不自动应用。**
+空白 / 整页图像 → `body_excluded`；首页 → `front`；CIP / ISBN / 版权 / 前言 / 序 /
+导言 / 译者的话 / 凡例 → `front`；目录关键词 / 点线目录 / 连续页码特征 → `toc`；
+索引 / 附录 / 参考文献 / 后记 / 跋 → `back`；其余不给建议（保持正文）。
+`include` 不再作为"给不给建议"的过滤条件——五类都允许被建议，才能把误判的页改回来。
+
+**状态：** 生效（macOS + Chrome 实测；Windows 未验证）。

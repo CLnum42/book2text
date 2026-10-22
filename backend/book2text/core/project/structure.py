@@ -234,7 +234,7 @@ def plan_header_footer(
     pages = {
         page.page_no: page
         for page in list_pages(project_id, library=target_library)
-        if page.include and page.page_type in active.page_types
+        if page.page_type in active.page_types
     }
     if not pages:
         return Plan(rules=active, candidates=(), skipped=(), pages_scanned=0)
@@ -500,16 +500,16 @@ def suggest_block_types(
     if target is None:
         raise ProjectError(f"没有第 {page_no} 页")
 
-    if not target.include or target.page_type not in active.page_types:
+    if target.page_type not in active.page_types:
         return BlockSuggestionPlan(
             page_no=page_no, suggestions=(), blocks_scanned=0, pages_compared=0,
-            note=f"第 {page_no} 页不在建议范围内（只对纳入的正文页给建议）",
+            note=f"第 {page_no} 页不在建议范围内（只对正文页给建议；用结构工具可扩大类型范围）",
         )
 
     eligible = {
         page.page_no
         for page in pages
-        if page.include and page.page_type in active.page_types
+        if page.page_type in active.page_types
     }
     blocks = [
         block

@@ -191,13 +191,27 @@ def list_pages(request: Request, project_id: str) -> dict[str, Any]:
 
 class PagePatch(BaseModel):
     page_type: str | None = None
+    # 只为**明确拒绝**保留：include 是 page_type 的派生值（body → 1，其余 → 0），
+    # 不能再从界面 / API 单独设置。字段留着是为了给旧客户端一个清楚的 400，
+    # 而不是被 pydantic 静默忽略。
     include: bool | None = None
     note: str | None = Field(default=None, max_length=500)
 
 
+def _reject_include(include: bool | None) -> None:
+    if include is not None:
+        raise AppError(
+            400,
+            "include_is_derived",
+            "include 是派生字段，不能单独设置",
+            detail="page.include 由页面类型决定：body → 1，其余 → 0。改 page_type 即可。",
+        )
+
+
 @router.patch("/{project_id}/pages/{page_id}")
 def patch_page(request: Request, project_id: str, page_id: str, patch: PagePatch) -> dict:
-    """更新单页的类型 / 纳入 / 备注（说明书 6.2）。"""
+    """更新单页的类型 / 备注（说明书 6.2）；`include` 由类型派生，不接受。"""
+    _reject_include(patch.include)
     library = _library(request)
     try:
         page = project_library.update_page(
@@ -205,7 +219,6 @@ def patch_page(request: Request, project_id: str, page_id: str, patch: PagePatch
             page_id,
             library=library,
             page_type=patch.page_type,
-            include=patch.include,
             note=patch.note,
         )
     except project_library.ProjectError as exc:
@@ -214,7 +227,7 @@ def patch_page(request: Request, project_id: str, page_id: str, patch: PagePatch
 
 
 class PagesPatch(BaseModel):
-    """批量设置页面类型 / 纳入（说明书第 11 节的 `PATCH /projects/{id}/pages`）。"""
+    """批量设置页面类型（说明书第 11 节的 `PATCH /projects/{id}/pages`）。"""
 
     page_ids: list[str] = Field(default_factory=list, max_length=5000)
     page_type: str | None = None
@@ -225,10 +238,11 @@ class PagesPatch(BaseModel):
 def patch_pages(
     request: Request, project_id: str, patch: PagesPatch
 ) -> dict[str, Any]:
-    """批量更新页面的类型 / 纳入（说明书 6.2 的批量操作）。
+    """批量更新页面的类型（说明书 6.2 的批量操作）；`include` 由类型派生，不接受。
 
     整批一个事务：批次里有一个页面 id 不存在就整批拒绝，界面上不会出现"改了一半"。
     """
+    _reject_include(patch.include)
     _require_main(request, project_id)
     library = _library(request)
     try:
@@ -237,7 +251,6 @@ def patch_pages(
             patch.page_ids,
             library=library,
             page_type=patch.page_type,
-            include=patch.include,
         )
         states = blocks_module.page_recognition_states(project_id, library=library)
     except project_library.ProjectError as exc:
@@ -263,14 +276,25 @@ class ConfirmPagesRequest(BaseModel):
 
 
 def _setup_summary(pages) -> dict[str, int]:
-    """页面确认的汇总（界面与接口共用同一口径）。"""
-    included = [page for page in pages if page.include]
+    """页面确认的汇总（界面与接口共用同一口径）。
+
+    五类各报各的，不把"正文排除"混进"已排除"：总数 = 五类之和，
+    用户不会觉得页数丢了。
+    """
+    counts = {page_type: 0 for page_type in project_library.PAGE_TYPES}
+    for page in pages:
+        counts[page.page_type] = counts.get(page.page_type, 0) + 1
+    body = counts["body"]
     return {
         "total": len(pages),
-        "body": sum(1 for page in included if page.page_type == "body"),
-        "other_types": sum(1 for page in included if page.page_type != "body"),
-        "included": len(included),
-        "excluded": len(pages) - len(included),
+        "body": body,
+        "body_excluded": counts["body_excluded"],
+        "front": counts["front"],
+        "toc": counts["toc"],
+        "back": counts["back"],
+        # 兼容旧字段：included 现在就是正文页数
+        "included": body,
+        "excluded": len(pages) - body,
         "confirmed": sum(1 for page in pages if page.page_confirmed),
         "unconfirmed": sum(1 for page in pages if not page.page_confirmed),
     }
@@ -280,7 +304,7 @@ def _setup_summary(pages) -> dict[str, int]:
 def confirm_pages(
     request: Request, project_id: str, body: ConfirmPagesRequest
 ) -> dict[str, Any]:
-    """把若干页标成「已确认」（类型 + 纳入状态都是用户认可的）。
+    """把若干页标成「已确认」（类型是用户认可的）。
 
     只记状态，不拦识别：未确认页照样能识别，界面在识别前提示一次就走。
     """

@@ -47,11 +47,46 @@ CACHE_DIR_NAMES = ("thumbs", "view", "ocr", "lines")
 EXPORTS_DIR_NAME = "exports"
 LOGS_DIR_NAME = "logs"
 
-PAGE_TYPES = (
+# 说明书 6.2 的页面类型收成五类（2026-10-22 用户拍板）：一个概念，不是"类型 + 纳入"两个开关。
+# **去留由类型决定**：body 进识别与语料，其余四类不进；`page.include` 是派生列
+# （body → 1，其余 → 0），唯一来源是 page_type，界面与 API 都不再单独设置它。
+PAGE_TYPES = ("front", "toc", "body", "body_excluded", "back")
+DEFAULT_PAGE_TYPE = "body"
+INCLUDED_PAGE_TYPE = "body"
+
+# 迁移 0008 与任务包导入用的旧值映射（旧项目 / 老任务包里可能还有这些值）。
+LEGACY_PAGE_TYPES = (
     "cover", "toc", "front", "foreword", "copyright", "body",
     "appendix", "index", "blank", "other",
 )
-DEFAULT_PAGE_TYPE = "body"
+# 任务包只记 page_type、不记 include，所以按类型映射；body 视为正文。
+LEGACY_PAGE_TYPE_MAP = {
+    "body": "body",
+    "toc": "toc",
+    "cover": "front",
+    "front": "front",
+    "foreword": "front",
+    "copyright": "front",
+    "appendix": "back",
+    "index": "back",
+    "blank": "back",
+    "other": "back",
+}
+
+
+def page_type_includes(page_type: str) -> bool:
+    """页面是否进 OCR / 语料：**唯一规则**——只有 body。"""
+    return page_type == INCLUDED_PAGE_TYPE
+
+
+def normalize_page_type(value: str) -> str:
+    """把旧值映射成五类；新值原样返回；未知值抛错（不静默接受）。"""
+    if value in PAGE_TYPES:
+        return value
+    if value in LEGACY_PAGE_TYPE_MAP:
+        return LEGACY_PAGE_TYPE_MAP[value]
+    raise ProjectError(f"未知的页面类型：{value!r}")
+
 
 # 说明书 6.1：大部分页面已有文本层时提示"这本 PDF 可能已包含文本"
 TEXT_LAYER_HINT_RATIO = 0.5
@@ -107,8 +142,8 @@ class Page:
     include: bool
     has_text_layer: bool
     page_confirmed: bool = False
-    """类型与纳入状态是否经过人工确认（说明书 6.2 的「页面准备」）。
-    改类型 / 改纳入会把这一列重置为 False。"""
+    """页面类型是否经过人工确认（说明书 6.2 的「页面准备」）。
+    改类型会把这一列重置为 False；`include` 是派生值，见 `page_type_includes`。"""
     is_context: bool = False
     """任务包里的只读上下文页（说明书 6.7.2）；主项目里恒为 False。"""
     pdf_page_index: int | None = None
@@ -467,7 +502,7 @@ class _PageCounts:
     with_text_layer: int
     recognized: int
     reviewed: int
-    """已审完的纳入页数（说明书 5.3 的 `done`：纳入块已全部确认）。
+    """已审完的正文页数（说明书 5.3 的 `done`：纳入块已全部确认）。
 
     与 `blocks.PageReview.status` 同一口径，只是这里用 SQL 现算总数——
     项目库列一屏几十个项目卡，不能为每项把整页的块读进内存。
@@ -689,10 +724,13 @@ def update_page(
     *,
     library: Path | None = None,
     page_type: str | None = None,
-    include: bool | None = None,
     note: str | None = None,
 ) -> Page:
-    """更新单页的类型 / 纳入 / 备注（说明书 6.2 的批量操作的单项形式）。"""
+    """更新单页的类型 / 备注（说明书 6.2 的批量操作的单项形式）。
+
+    **不再接受 include 参数**：`page.include` 是派生列，唯一来源是 `page_type`
+    （body → 1，其余 → 0）。想改去留就改类型。
+    """
     directory = require_project_dir(project_id, library=library)
 
     assignments = []
@@ -700,11 +738,8 @@ def update_page(
     if page_type is not None:
         if page_type not in PAGE_TYPES:
             raise ProjectError(f"未知的页面类型：{page_type!r}")
-        assignments.append("page_type = ?")
-        params.append(page_type)
-    if include is not None:
-        assignments.append("include = ?")
-        params.append(1 if include else 0)
+        assignments.extend(["page_type = ?", "include = ?"])
+        params.extend([page_type, 1 if page_type_includes(page_type) else 0])
     if note is not None:
         assignments.append("note = ?")
         params.append(note)
@@ -720,11 +755,8 @@ def update_page(
         ).fetchone()
         if before is None:
             raise ProjectError(f"找不到页面：{page_id}")
-        # 类型或纳入真的变了 → 这一页回到"未确认"（状态必须真实，D-052）
-        changed = (
-            (page_type is not None and page_type != before["page_type"])
-            or (include is not None and (1 if include else 0) != int(before["include"]))
-        )
+        # 类型真的变了 → 这一页回到"未确认"（状态必须真实，D-052）
+        changed = page_type is not None and page_type != before["page_type"]
         if changed and int(before["page_confirmed"]):
             assignments.append("page_confirmed = 0")
         conn.execute(
@@ -758,28 +790,22 @@ def update_pages(
     *,
     library: Path | None = None,
     page_type: str | None = None,
-    include: bool | None = None,
 ) -> list[Page]:
-    """批量更新页面的类型 / 纳入（说明书 6.2 的批量操作、第 11 节的 PATCH /pages）。
+    """批量更新页面的类型（说明书 6.2 的批量操作、第 11 节的 PATCH /pages）。
 
+    **不再接受 include 参数**：`include` 跟着 `page_type` 派生（body → 1，其余 → 0）。
     **整批一个事务**：要么都改，要么都不改——批次里有一个页面 id 不存在就整批拒绝，
     免得界面上出现"改了一半"的中间状态。
     """
     if not page_ids:
         raise ProjectError("没有指定要更新的页面")
-    if page_type is None and include is None:
+    if page_type is None:
         raise ProjectError("没有要更新的字段")
-    if page_type is not None and page_type not in PAGE_TYPES:
+    if page_type not in PAGE_TYPES:
         raise ProjectError(f"未知的页面类型：{page_type!r}")
 
-    assignments = []
-    params: list[object] = []
-    if page_type is not None:
-        assignments.append("page_type = ?")
-        params.append(page_type)
-    if include is not None:
-        assignments.append("include = ?")
-        params.append(1 if include else 0)
+    assignments = ["page_type = ?", "include = ?"]
+    params: list[object] = [page_type, 1 if page_type_includes(page_type) else 0]
 
     directory = require_project_dir(project_id, library=library)
     condition = ", ".join("?" for _ in page_ids)
@@ -796,10 +822,7 @@ def update_pages(
             raise ProjectError(f"找不到这些页面：{'、'.join(missing[:5])}")
 
         changed_ids = [
-            row["page_id"]
-            for row in before_rows
-            if (page_type is not None and page_type != row["page_type"])
-            or (include is not None and (1 if include else 0) != int(row["include"]))
+            row["page_id"] for row in before_rows if page_type != row["page_type"]
         ]
         conn.execute(
             f"UPDATE page SET {', '.join(assignments)} WHERE page_id IN ({condition})",
@@ -844,10 +867,10 @@ def confirm_pages(
     *,
     library: Path | None = None,
 ) -> list[Page]:
-    """把若干页标成「已确认」（类型与纳入状态都是用户认可的）。
+    """把若干页标成「已确认」（页面类型是用户认可的）。
 
     这只是状态标记，不是识别的硬闸门——未确认页照样可以识别，界面只提示一次。
-    重复确认是幂等的；改类型 / 改纳入会把状态重置为未确认（见 `update_page(s)`）。
+    重复确认是幂等的；改类型会把状态重置为未确认（见 `update_page(s)`）。
     """
     if not page_ids:
         raise ProjectError("没有指定要确认的页面")

@@ -399,17 +399,12 @@ textarea {
   background: var(--ptype-color); opacity: .65; box-shadow: 0 0 0 1px #fff;
 }
 
-/* 页面类型的固定颜色：只作辅助，按钮上永远有文字 */
+/* 页面类型的固定颜色（五类）：只作辅助，按钮上永远有文字 */
 .ptype--body, .page-tile--ptype-body { --ptype-color: #2563eb; }
-.ptype--cover, .page-tile--ptype-cover { --ptype-color: #7c3aed; }
+.ptype--body_excluded, .page-tile--ptype-body_excluded { --ptype-color: #6b7280; }
 .ptype--toc, .page-tile--ptype-toc { --ptype-color: #0f766e; }
 .ptype--front, .page-tile--ptype-front { --ptype-color: #b45309; }
-.ptype--foreword, .page-tile--ptype-foreword { --ptype-color: #15803d; }
-.ptype--copyright, .page-tile--ptype-copyright { --ptype-color: #be123c; }
-.ptype--appendix, .page-tile--ptype-appendix { --ptype-color: #c2410c; }
-.ptype--index, .page-tile--ptype-index { --ptype-color: #4338ca; }
-.ptype--blank, .page-tile--ptype-blank { --ptype-color: #9ca3af; }
-.ptype--other, .page-tile--ptype-other { --ptype-color: #475569; }
+.ptype--back, .page-tile--ptype-back { --ptype-color: #4338ca; }
 
 /* 缩略图左缘一条 4px 色条表类型；未确认仍是橙色虚线，两者同时存在 */
 .page-tile__thumb::before {

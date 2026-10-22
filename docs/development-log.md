@@ -7,6 +7,110 @@
 
 ---
 
+## 2026-10-22 — 任务 43：页面类型收成五类，`include` 变成派生值
+
+### 任务目标
+
+按用户拍板，把页面类型收成 **正文 / 正文排除 / 目录 / 前置 / 后置** 五类，去掉界面上
+"纳入 / 排除"两个开关；`page.include` 保留但只由 `page_type` 写穿（body → 1，其余 → 0）。
+老库、老协作包按"行为不变"映射。**不在范围：** 识别流程、版面建议规则本身（只改目标
+类型集合）、导出三流结构、协作协议版本号。
+
+### 当前状态
+
+- 类型是十类（cover / toc / front / foreword / copyright / body / appendix / index /
+  blank / other），`include` 是独立开关，界面与 API 都能直接设置。
+- 建议规则的目标类型是旧十类；协作包导入把 `page_type` 原样写入，`include` 固定写 1。
+- 导出按 `page_types` 过滤，但先看 `page.include`，所以"显式选正文排除"也导不出来。
+
+### 实施计划
+
+1. `PAGE_TYPES` 收成五类；`page_type_includes()` 成为唯一规则；旧值映射函数。
+2. `update_page` / `update_pages` 去掉 include 参数，写类型时同时写派生列；
+   API 的 `include` 字段只用于明确拒绝（400）。
+3. 迁移 0008：按用户确认的表更新 `page_type`，再按类型重算 `include`；逐行测试。
+4. 协作包导入：旧类型映射成五类、include 派生；未知值拒绝导入。
+5. 建议规则改五类（空白 / 首页 / 图像 / CIP / 前言 / 目录点线 / 连续页码 / 索引附录…）。
+6. 前端：五个按钮、去掉纳入 / 排除、筛选与导出选择器、五类统计口径。
+7. 真浏览器 + 老库 A/B 识别对照 + 导出过滤 + 文档 + CI。
+
+### 实现与验证
+
+**`include` 怎么保证唯一来源**
+
+- `library.update_page` / `update_pages` 不再有 `include` 参数；一次 `UPDATE` 同时写
+  `page_type` 与 `include = 1 if page_type == "body" else 0`。
+- API `PagePatch` / `PagesPatch` 保留 `include` 字段，但非空时直接
+  `400 include_is_derived`（不是被 pydantic 静默忽略）。
+- 盘点后全库只剩三处写 `page.include`，都由类型派生：
+  1. 新建项目（默认 body → 1）；
+  2. 协作任务包导入（类型映射后 `page_type_includes()`）；
+  3. 迁移 0008（按新类型重算）。
+- 识别、导出、统计继续读 `page.include`（body 的唯一代理），但没有任何入口能
+  "只改 include、不改类型"。块级的 `block.include` 是另一套（导出排除块），未受影响。
+
+**迁移 0008**
+
+- 一条 `UPDATE page SET page_type = CASE ...` 完成映射，再一条
+  `UPDATE page SET include = CASE WHEN page_type='body' THEN 1 ELSE 0 END`。
+  不删列、不删页。
+- 单测 `test_page_type_migration_maps_every_old_row` 建 12 行覆盖用户给的表：
+  include=1 的 body/toc、被排除的 body、cover/front/foreword/copyright、toc、
+  appendix/index/blank/other——每一行都断言新类型与 `include`，并断言页数不变。
+
+**老库 A/B 识别对照（真跑 OCR）**
+
+- 用同一个 20 页项目做两份拷贝：旧代码（提交 `a96d25e` 的 worktree）跑一份，
+  新代码跑另一份；两边都识别第 5 页。
+- 旧库：schema_meta 4，`page_type=body / include=1`；识别结果 4 块、26 行。
+- 新库：打开后迁移到 schema_meta 8；20 页全部 `body/include=1`；同一页识别结果
+  **4 块、26 行，逐块文本完全相同**（digest 都是 `38bc3dfc6fcf70c1`）。
+- 说明"原先能识别的页仍然能识别"，且迁移没有改识别输入。
+
+**协作包旧值**
+
+- `open_package` 里每个 page 先 `normalize_page_type()` 再 INSERT，`include` 按派生写；
+  未知值抛 `ProjectError` → 接口 400，不会把脏值写进库。
+- 集成测试用真实任务包改 data.json：`cover / appendix / foreword` 打开后变成
+  `front / back / front`，include 全 0；`不认识的类型` 则 400 且提示
+  "页面类型不认识"。
+
+**真浏览器（《导读巴赫金》267 页，macOS + Chrome）**
+
+- 页面确认右栏：五个类型按钮（正文 / 正文排除 / 目录 / 前置 / 后置），
+  **没有纳入 / 排除按钮**；汇总显示"正文 267 · 正文排除 0 · 前置 0 · 目录 0 ·
+  后置 0 · 未确认 267"；筛选器与导出选择器也是五类。
+  截图 [`page-types-five.png`](screenshots/page-types-five.png)。
+- 选中第 5 页 → 点「正文排除」：类型变 `body_excluded`、`include=false`、缩略图写
+  "p.5 · 正文排除"、汇总变"正文 266 · 正文排除 1"；"识别所选"立即禁用。
+- 接口核验：POST 识别第 5 页 → 400「第 5 页不是「正文」类型，不参与识别」。
+- 导出预检（不带页码范围）：默认 266 页（不含第 5 页）；勾选「正文排除」后 267 页。
+- 测完把第 5 页改回「正文」，项目恢复 267 页正文。
+
+**测试与 CI**
+
+- `.venv/bin/python -m pytest -q` → **666 passed, 1 warning，78.34 秒**
+  （654 → 666：迁移逐行映射、include 派生 / 拒绝、协作包旧值、导出类型过滤、
+  五类建议、界面五类与无 include 开关）。
+- 未验证：Windows / Safari 的界面；全量 267 页在迁移后的识别结果只抽了 1 页对照；
+  协作包只验证了旧类型映射，没有跑完整往返（原有往返测试仍绿）。
+
+### 用户操作说明
+
+- 页面确认右栏只剩五个类型按钮：**只有「正文」进识别与语料**；
+  想让某一页不参与识别，把它设成「正文排除」（或目录 / 前置 / 后置）。
+- 老项目打开时会自动迁移一次；页面总数和各页去留不变。
+- 统计口径：现在看"正文 17 页 · 正文排除 3 页"，不再有"已排除 3 页"的说法。
+- 回退：迁移会改数据，`git revert` 代码不会自动回滚已迁移的库；
+  需要回退时从项目 `backups/` 里取迁移前备份（打开项目时应用会自动备份）。
+
+### 下一步建议
+
+按 Chief 的安排收口；若要继续，优先把"页面类型变更"写进事件表（现在页面类型修改
+只有 `updated_at` 与确认状态重置，没有逐页变更历史），但这超出本刀。
+
+---
+
 ## 2026-10-22 — 任务 42：块框标注不遮字（默认只留颜色 + 顺序号，悬停出类型卡片）
 
 ### 任务目标

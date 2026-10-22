@@ -88,16 +88,11 @@
           <label class="fitem">类型
             <select id="filter-type" class="select">
               <option value="">全部</option>
-              <option value="cover">封面</option>
-              <option value="toc">目录</option>
-              <option value="front">前置（其他）</option>
-              <option value="foreword">前言</option>
-              <option value="copyright">版权</option>
               <option value="body">正文</option>
-              <option value="appendix">附录</option>
-              <option value="index">索引</option>
-              <option value="blank">空白</option>
-              <option value="other">其他</option>
+              <option value="body_excluded">正文排除</option>
+              <option value="toc">目录</option>
+              <option value="front">前置</option>
+              <option value="back">后置</option>
             </select>
           </label>
           <label class="fitem">识别
@@ -121,7 +116,7 @@
             </select>
           </label>
           <label class="fitem check">
-            <input type="checkbox" id="pages-only-included"> 只看纳入
+            <input type="checkbox" id="pages-only-included"> 只看正文
           </label>
           <div class="vdiv"></div>
           <label class="fitem">选择范围
@@ -175,10 +170,7 @@
                 <span class="muted" id="selection-type-state"></span>
               </div>
               <div class="type-picker" id="selection-types"></div>
-              <div class="row2">
-                <button type="button" id="selection-include" class="btn">纳入</button>
-                <button type="button" id="selection-exclude" class="btn">排除</button>
-              </div>
+              <p class="hint">去留由类型决定：只有「正文」进识别与语料，其余四类都不进。</p>
               <div class="row2">
                 <button type="button" id="setup-confirm-selected" class="btn btn--pri">确认所选页面</button>
               </div>
@@ -466,15 +458,12 @@
             <div class="flabel">页面类型</div>
             <div class="chkpills">
               <label class="pill"><input type="checkbox" name="export-page-type" value="body" checked><span>正文</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="front"><span>前置（其他）</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="foreword"><span>前言</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="copyright"><span>版权</span></label>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="body_excluded"><span>正文排除</span></label>
               <label class="pill"><input type="checkbox" name="export-page-type" value="toc"><span>目录</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="appendix"><span>附录</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="index"><span>索引</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="other"><span>其他</span></label>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="front"><span>前置</span></label>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="back"><span>后置</span></label>
             </div>
-            <p class="hint">封面 / 空白页默认不导出。</p>
+            <p class="hint">默认只导出「正文」。勾选其他类型会把那些页也按同一套三流规则导出。</p>
 
             <div class="flabel">三条流（固定）</div>
             <p class="hint">

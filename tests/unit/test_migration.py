@@ -320,3 +320,48 @@ def test_page_confirmation_migration_upgrades_an_old_database(conn: sqlite3.Conn
     assert int(row["page_confirmed"]) == 0
     assert row["page_type"] == "body"
     assert int(row["include"]) == 1
+
+
+def test_page_type_migration_maps_every_old_row(conn: sqlite3.Connection) -> None:
+    """迁移 0008：老库按"行为不变"映射成五类，include 与类型一致。"""
+    migrate(conn, MIGRATIONS[:7])
+    conn.execute(
+        """
+        INSERT INTO project (project_id, name, source_file_name, source_sha256,
+                             page_count, created_at, updated_at, schema_version)
+        VALUES ('p1', '老项目', 'old.pdf', 'x' * 64, 12,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 7)
+        """
+    )
+    cases = [
+        (1, "body", 1, "body", 1),
+        (2, "cover", 0, "front", 0),
+        (3, "front", 0, "front", 0),
+        (4, "foreword", 0, "front", 0),
+        (5, "copyright", 0, "front", 0),
+        (6, "body", 0, "body_excluded", 0),
+        (7, "toc", 0, "toc", 0),
+        (8, "appendix", 0, "back", 0),
+        (9, "index", 0, "back", 0),
+        (10, "blank", 0, "back", 0),
+        (11, "other", 0, "back", 0),
+        # include=1 优先：旧类型是什么都归正文（行为不变）
+        (12, "toc", 1, "body", 1),
+    ]
+    conn.executemany(
+        """
+        INSERT INTO page (page_id, page_no, width_pt, height_pt, page_type, include)
+        VALUES (?, ?, 595.0, 842.0, ?, ?)
+        """,
+        [(f"page{no}", no, old_type, include) for no, old_type, include, *_ in cases],
+    )
+    conn.commit()
+
+    migrate(conn, MIGRATIONS)
+    rows = {
+        row["page_no"]: (row["page_type"], int(row["include"]))
+        for row in conn.execute("SELECT page_no, page_type, include FROM page")
+    }
+    for no, _old_type, _old_include, expected_type, expected_include in cases:
+        assert rows[no] == (expected_type, expected_include), no
+    assert len(rows) == len(cases), "迁移不丢页"

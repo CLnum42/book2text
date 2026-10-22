@@ -115,19 +115,19 @@ def test_preflight_respects_page_types_and_range(
     pages = client.get(f"/api/projects/{project_ready}/pages", headers=auth_headers).json()["pages"]
     client.patch(
         f"/api/projects/{project_ready}/pages",
-        json={"page_ids": [pages[2]["page_id"]], "page_type": "appendix"},
+        json={"page_ids": [pages[2]["page_id"]], "page_type": "back"},
         headers=auth_headers,
     )
 
     default = client.post(
         f"/api/projects/{project_ready}/export/preflight", json={}, headers=auth_headers
     ).json()
-    assert default["exported_pages"] == [1, 2], "附录页默认不在导出范围里"
+    assert default["exported_pages"] == [1, 2], "后置页默认不在导出范围里"
     assert default["dropped_pages"] == [3]
 
     with_appendix = client.post(
         f"/api/projects/{project_ready}/export/preflight",
-        json={"page_types": ["body", "appendix"]},
+        json={"page_types": ["body", "back"]},
         headers=auth_headers,
     ).json()
     assert with_appendix["exported_pages"] == [1, 2, 3]
@@ -141,6 +141,31 @@ def test_preflight_respects_page_types_and_range(
 
 
 # ---------------------------------------------------------------- 生成与落盘
+
+def test_body_excluded_is_filtered_by_type_not_by_include(
+    client: TestClient, auth_headers: dict[str, str], project_ready: str
+) -> None:
+    """页面类型是唯一开关：默认只导正文；显式选「正文排除」时能导出来。"""
+    pages = client.get(f"/api/projects/{project_ready}/pages", headers=auth_headers).json()["pages"]
+    client.patch(
+        f"/api/projects/{project_ready}/pages",
+        json={"page_ids": [pages[1]["page_id"]], "page_type": "body_excluded"},
+        headers=auth_headers,
+    )
+
+    default = client.post(
+        f"/api/projects/{project_ready}/export/preflight", json={}, headers=auth_headers
+    ).json()
+    assert default["exported_pages"] == [1, 3]
+    assert default["dropped_pages"] == [2]
+
+    explicit = client.post(
+        f"/api/projects/{project_ready}/export/preflight",
+        json={"page_types": ["body", "body_excluded"]},
+        headers=auth_headers,
+    ).json()
+    assert explicit["exported_pages"] == [1, 2, 3]
+
 
 def test_export_writes_files_and_records_it(
     client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str

@@ -360,7 +360,7 @@ def test_scope_skips_excluded_pages(
     page = page_state(client, auth_headers, project_id, 2)
     client.patch(
         f"/api/projects/{project_id}/pages/{page['page_id']}",
-        json={"include": False},
+        json={"page_type": "body_excluded"},
         headers=auth_headers,
     )
 
@@ -743,13 +743,13 @@ def test_excluded_page_is_refused(
     page = page_state(client, auth_headers, project_id, 1)
     client.patch(
         f"/api/projects/{project_id}/pages/{page['page_id']}",
-        json={"include": False},
+        json={"page_type": "body_excluded"},
         headers=auth_headers,
     )
 
     response = recognize(client, auth_headers, project_id, 1)
     assert response.status_code == 400
-    assert "已排除" in response.json()["error"]["detail"]
+    assert "不是「正文」类型" in response.json()["error"]["detail"]
     assert inprocess_jobs.calls == 0
 
 

@@ -26,10 +26,7 @@ from .errors import AppError
 
 router = APIRouter(prefix="/api/projects", tags=["export"])
 
-PAGE_TYPES = (
-    "cover", "toc", "front", "foreword", "copyright", "body",
-    "appendix", "index", "blank", "other",
-)
+PAGE_TYPES = project_library.PAGE_TYPES
 
 
 class ExportRequest(BaseModel):
