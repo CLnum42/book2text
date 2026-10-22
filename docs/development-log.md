@@ -119,6 +119,8 @@ async function pollTask() {  // 每 1.2 秒
 - 新增：建议徽章接到现有 PATCH、只对 high 批量；页面角标只数 high 且只为可见页算；
   `renderTask` 不出现 `openTaskDrawer`、`pollTask` 只在失败分支打开、失败提示同一任务只一次。
   界面没有 JS 测试运行器，这 3 条是**静态约定**，真实行为以真浏览器验收为准。
+- CI：[run #18](https://github.com/CLnum42/book2text/actions/runs/39731900937) **Success**，
+  macOS 全量 2m29s、Windows 非 OCR 2m36s，双平台绿。
 
 **未验证**
 
