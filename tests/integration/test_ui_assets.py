@@ -132,3 +132,96 @@ def test_page_confirmation_type_picker_is_a_flat_list_with_new_types() -> None:
     assert ".ptype--foreword" in css
     assert ".ptype__suggest" in css
     assert ".page-tile--ptype-copyright" in css
+
+
+# ---------------------------------------------------------------- 任务 41：建议徽章 / 抽屉
+
+def _script() -> str:
+    return (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+
+def _function_body(name: str) -> str:
+    """截取 `function name(...) { ... }` 的源码，直到下一个顶层函数或分隔线。
+
+    只用于"这个函数里有没有调用某个入口"这类静态约定：界面没有 JS 测试运行器，
+    真正的行为验收在真浏览器里做（见开发日志任务 41）。
+    """
+    source = _script()
+    match = re.search(rf"\n(?:async )?function {name}\(", source)
+    assert match, f"app.js 里没有 function {name}("
+    start = match.start()
+    rest = source[match.end():]
+    end = re.search(r"\n(?:async )?function [A-Za-z0-9_]+\(|\n// -{10,}", rest)
+    return source[start: match.end() + (end.start() if end else len(rest))]
+
+
+def _strip_js_comments(text: str) -> str:
+    """去掉 `//` 行注释：注释里说明"以前这里会 openTaskDrawer()"不算调用。"""
+    return "\n".join(line.split("//")[0] for line in text.splitlines())
+
+
+def test_block_type_suggestions_are_wired_to_the_existing_patch() -> None:
+    """建议进审校视图：块头徽章 + 采用（走 PATCH block_type）+ 只对 high 批量。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    assert 'id="suggestion-apply-all"' in page
+
+    script = _script()
+    assert "/block-suggestions" in script
+    assert "detailSuggestionByBlock" in script
+    assert "blockSuggestionBadge" in script
+    assert "adoptBlockSuggestion" in script
+    assert "adoptAllHighSuggestions" in script
+    # 批量采用只拿 high；review 必须逐条点
+    assert 'suggestionHighList()' in script
+    assert 'item.confidence === "high"' in script
+    # 书眉里的页码只展示，不自动拆块 / 改文本
+    assert "含页码" in script
+    assert "review-suggest__pagenum" in script
+
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    assert ".review-suggest" in css
+    assert ".review-suggest__pagenum" in css
+    assert ".review-suggest--heading" in css
+
+
+def test_page_view_suggestion_mark_only_counts_high_and_only_seen_pages() -> None:
+    """页面视图角标：只在算过的可见页出现、只数 high，且不为 267 页一次性拉取。"""
+    script = _script()
+    assert "page-tile__suggest" in script
+    assert "ensurePageSuggestion" in script
+    assert "PAGE_SUGGESTION_CONCURRENCY" in script
+    assert "PAGE_SUGGESTION_CACHE_LIMIT" in script
+    assert "建议 ${high.length}" in script
+    # 网格档滚动停下来才扫；大图档在可见性循环里扫
+    assert "scheduleSuggestionScan" in script
+    assert "scanVisiblePageSuggestions" in script
+
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    assert ".page-tile__suggest" in css
+
+
+def test_task_drawer_does_not_reopen_itself_while_a_task_runs() -> None:
+    """抽屉只由用户操作打开；轮询 renderTask 不许开抽屉；失败只主动提示一次。
+
+    这是一条静态约定：界面没有 JS 测试运行器，真实行为在真浏览器里复现过
+    （关掉抽屉后任务跑到 2/3 都没再弹；见开发日志任务 41）。
+    """
+    render_task = _strip_js_comments(_function_body("renderTask"))
+    assert "openTaskDrawer" not in render_task
+    assert "drawer-status" in render_task  # 确认截到的是 renderTask 的本体
+
+    poll_task = _function_body("pollTask")
+    assert "announceTaskFailure(data.job)" in poll_task
+    assert "openTaskDrawer()" in poll_task  # 只在失败提示的分支里
+
+    announce = _function_body("announceTaskFailure")
+    assert "taskFailureAnnouncedFor" in announce
+    assert "openTaskDrawer" not in announce
+    assert 'job.status === "failed"' in announce
+    assert 'job.status === "interrupted"' in announce
+
+    script = _script()
+    # 显式打开只剩这几处：启动任务（3 处）、点 pill、最近任务里的「查看」
+    assert script.count("openTaskDrawer();") >= 3
+    assert 'el("task-chip").addEventListener("click"' in script
+

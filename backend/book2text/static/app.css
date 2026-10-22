@@ -470,6 +470,15 @@ textarea {
   width: 18px; height: 18px; border-radius: 5px; background: var(--accent); color: #fff;
   font-size: 12px; line-height: 18px; text-align: center;
 }
+/* 块类型建议角标：只在"算过的可见页"出现、只数把握较大的建议；
+   "!N" 有文字，不靠颜色也能读；深靛蓝与未确认的橙色虚线、选中的蓝框都不撞 */
+.page-tile__suggest {
+  position: absolute; top: 7px; right: 7px; z-index: 3;
+  min-width: 18px; height: 16px; padding: 0 4px; border-radius: 8px;
+  background: #4338ca; color: #fff; font-size: 10px; font-weight: 700;
+  line-height: 16px; text-align: center; pointer-events: none;
+  box-shadow: 0 1px 3px rgba(15, 18, 24, .28);
+}
 .page-tile:hover .page-tile__thumb { border-color: #b9c0ca; }
 .page-tile--selected .page-tile__thumb { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37, 99, 235, .28); }
 .page-tile--selected .page-tile__check { display: block; }
@@ -638,6 +647,25 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 .review-block__type {
   font: inherit; font-size: 11px; height: 20px; padding: 0 4px; border-radius: 5px;
   border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); cursor: pointer;
+}
+/* 块类型建议：虚线徽章 = "建议"，不是"状态"；颜色按建议类型，但文字始终在。
+   它不占待办：块仍是"未审"，点「采用」才走 PATCH block_type。 */
+.review-suggest {
+  display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  padding: 0 6px; min-height: 20px; border-radius: 6px; font-size: 11px;
+  border: 1px dashed var(--suggest-color, #6b7280);
+  background: var(--suggest-soft, rgba(107, 114, 128, .08));
+  color: var(--suggest-color, #4b5563);
+}
+.review-suggest--header,
+.review-suggest--footer { --suggest-color: #4b5563; --suggest-soft: rgba(107, 114, 128, .10); }
+.review-suggest--page_number { --suggest-color: #0f766e; --suggest-soft: rgba(15, 118, 110, .10); }
+.review-suggest--heading { --suggest-color: #4338ca; --suggest-soft: rgba(67, 56, 202, .10); }
+.review-suggest__label { font-weight: 600; white-space: nowrap; }
+.review-suggest__apply { height: 20px; padding: 0 7px; font-size: 11px; border-radius: 5px; }
+.review-suggest__pagenum {
+  padding: 0 5px; border-radius: 4px; background: rgba(255, 255, 255, .72);
+  border: 1px solid var(--line); color: var(--text-2); white-space: nowrap;
 }
 .review-block__text {
   font: inherit; font-size: 13px; line-height: 1.65; width: 100%; resize: vertical;

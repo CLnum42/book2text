@@ -1710,6 +1710,188 @@ const pageBlockCacheOrder = [];
 const pageBlockPending = new Set();
 const PAGE_BLOCK_CACHE_LIMIT = 40;
 
+// ---------------------------------------------------------------- 块类型建议（只读）
+//
+// 接口只返回"建议类型 ≠ 当前类型"的块（`GET .../pages/{no}/block-suggestions`），
+// 不写库、不改块类型。审校视图的块头徽章与页面视图的角标共用这份按页缓存：
+// 只给**算过的页**显示，采用 / 改类型 / 识别完成后丢掉缓存重算。
+// 它和"未审"是两回事：建议不进待办计数，只有点了「采用」才会改块类型。
+
+const pageSuggestionCache = new Map(); // page_no → {suggestions, note}
+const pageSuggestionOrder = [];
+const pageSuggestionQueue = [];
+const pageSuggestionPending = new Set();
+const pageSuggestionFailed = new Set();
+let pageSuggestionActive = 0;
+const PAGE_SUGGESTION_CACHE_LIMIT = 200;
+const PAGE_SUGGESTION_CONCURRENCY = 2;
+
+function rememberPageSuggestions(pageNo, payload) {
+  const existing = pageSuggestionOrder.indexOf(pageNo);
+  if (existing >= 0) pageSuggestionOrder.splice(existing, 1);
+  pageSuggestionCache.set(pageNo, payload);
+  pageSuggestionOrder.push(pageNo);
+  while (pageSuggestionOrder.length > PAGE_SUGGESTION_CACHE_LIMIT) {
+    pageSuggestionCache.delete(pageSuggestionOrder.shift());
+  }
+  updateTileSuggestionMark(pageNo);
+}
+
+/** 丢掉一页的建议缓存（块类型 / 结构变了之后用）；页面视图的角标跟着变。 */
+function forgetPageSuggestions(pageNo) {
+  pageSuggestionCache.delete(pageNo);
+  pageSuggestionFailed.delete(pageNo);
+  const index = pageSuggestionOrder.indexOf(pageNo);
+  if (index >= 0) pageSuggestionOrder.splice(index, 1);
+  updateTileSuggestionMark(pageNo);
+}
+
+function forgetAllPageSuggestions() {
+  pageSuggestionCache.clear();
+  pageSuggestionOrder.length = 0;
+  pageSuggestionFailed.clear();
+  for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
+    paintTileSuggestionMark(tile, Number(tile.dataset.pageNo));
+  }
+}
+
+/** 页面视图角标：只数 `high`（把握较大）；review 不标，免得整本书都是噪声。 */
+function paintTileSuggestionMark(tile, pageNo) {
+  const mark = tile ? tile.querySelector(".page-tile__suggest") : null;
+  if (!mark) return;
+  const entry = pageSuggestionCache.get(pageNo);
+  const high = entry
+    ? entry.suggestions.filter((item) => item.confidence === "high")
+    : [];
+  if (!high.length) {
+    mark.hidden = true;
+    mark.textContent = "";
+    mark.removeAttribute("title");
+    return;
+  }
+  const labels = [
+    ...new Set(
+      high.map((item) => BLOCK_TYPE_LABELS[item.suggested_type] || item.suggested_type)
+    ),
+  ];
+  mark.hidden = false;
+  // 用"建议 N"而不是只有数字 / 颜色：黑白截图与色盲都能读懂，也不会和页码混淆
+  mark.textContent = `建议 ${high.length}`;
+  mark.title =
+    `这一页有 ${high.length} 条把握较大的块类型建议（${labels.join(" / ")}）：` +
+    "进审校看块头徽章，点「采用」才会改类型；建议不会自动应用，也不算待办。";
+}
+
+function updateTileSuggestionMark(pageNo) {
+  const tile = document.querySelector(
+    `#page-grid .page-tile[data-page-no="${pageNo}"]`
+  );
+  if (tile) paintTileSuggestionMark(tile, pageNo);
+}
+
+async function fetchPageSuggestions(pageNo, { force = false } = {}) {
+  if (!currentProject || currentProject.kind === "package") {
+    return { suggestions: [], note: null };
+  }
+  if (!force && pageSuggestionCache.has(pageNo)) {
+    return pageSuggestionCache.get(pageNo);
+  }
+  const data = await apiJson(
+    `/api/projects/${currentProject.project_id}/pages/${pageNo}/block-suggestions`
+  );
+  const payload = {
+    suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+    note: data.note || null,
+  };
+  rememberPageSuggestions(pageNo, payload);
+  return payload;
+}
+
+/** 排队算一页的建议；返回 true 表示这次真的排了新活（用于限量与续扫）。 */
+function ensurePageSuggestion(pageNo) {
+  const project = currentProject;
+  if (!project || project.kind === "package") return false;
+  if (
+    pageSuggestionCache.has(pageNo) ||
+    pageSuggestionPending.has(pageNo) ||
+    pageSuggestionFailed.has(pageNo)
+  ) {
+    return false;
+  }
+  const page = project.pages.find((item) => item.page_no === pageNo);
+  if (!page || !page.include || page.page_type !== "body") return false;
+  if (recognitionOf(page).status !== "recognized") return false;
+  pageSuggestionPending.add(pageNo);
+  pageSuggestionQueue.push(pageNo);
+  pumpPageSuggestionQueue();
+  return true;
+}
+
+let suggestionScanQueued = 0;
+
+function pumpPageSuggestionQueue() {
+  while (
+    pageSuggestionActive < PAGE_SUGGESTION_CONCURRENCY &&
+    pageSuggestionQueue.length
+  ) {
+    const pageNo = pageSuggestionQueue.shift();
+    pageSuggestionActive += 1;
+    fetchPageSuggestions(pageNo)
+      .catch(() => {
+        // 建议是辅助信息：读不到就不标，不打断翻页；本次会话不再反复重试这一页
+        pageSuggestionFailed.add(pageNo);
+      })
+      .finally(() => {
+        pageSuggestionActive -= 1;
+        pageSuggestionPending.delete(pageNo);
+        if (pageSuggestionActive === 0 && !pageSuggestionQueue.length) {
+          // 这一轮排过队、可能还有可见页没轮到（一次最多 12 页）：再扫一轮
+          if (suggestionScanQueued > 0) {
+            suggestionScanQueued = 0;
+            scheduleSuggestionScan();
+          }
+        }
+        pumpPageSuggestionQueue();
+      });
+  }
+}
+
+let suggestionScrollListening = false;
+let suggestionScanTimer = null;
+
+function ensureSuggestionScrollListener() {
+  if (suggestionScrollListening) return;
+  const scroller = el("page-grid")?.closest(".split__main");
+  (scroller || window).addEventListener("scroll", scheduleSuggestionScan, {
+    passive: true,
+  });
+  window.addEventListener("resize", scheduleSuggestionScan);
+  suggestionScrollListening = true;
+}
+
+/** 网格档滚动时不必每帧算 267 个矩形：停下来再扫一次可见页。 */
+function scheduleSuggestionScan() {
+  if (suggestionScanTimer) clearTimeout(suggestionScanTimer);
+  suggestionScanTimer = setTimeout(scanVisiblePageSuggestions, 140);
+}
+
+function scanVisiblePageSuggestions() {
+  suggestionScanTimer = null;
+  if (!currentProject || currentView !== "pages" || pageZoomIndex >= 2) return;
+  const height = window.innerHeight;
+  let budget = 12; // 一次最多算 12 页；还有没轮到的，队列空后会自动再扫一轮
+  for (const tile of el("page-grid").querySelectorAll(".page-tile")) {
+    if (budget <= 0) break;
+    const rect = tile.getBoundingClientRect();
+    if (rect.bottom < -120 || rect.top > height + 120) continue;
+    // 算过 / 排队中的页不占名额，否则上面几屏的缓存会把下面的可见页永远饿死
+    if (ensurePageSuggestion(Number(tile.dataset.pageNo))) {
+      budget -= 1;
+      suggestionScanQueued += 1;
+    }
+  }
+}
+
 /** 页面确认模式：汇总、建议与「确认所选」都在这个模式里出现。 */
 let setupSuggestions = [];
 let setupSuggestionsLoading = false;
@@ -1934,7 +2116,8 @@ function buildTile(page, project) {
   const image = document.createElement("img");
   // 说明书 6.1 要求缩略图由后台 Job 生成并缓存；缩略图任务还没做，
   // 这里按需渲染（不写缓存），浏览器侧靠 Cache-Control 复用。
-  // 大图档由 IntersectionObserver 决定何时设置 src，离屏会清掉以释放解码内存。
+  // 大图档由滚动 + requestAnimationFrame（updatePageVisibility）决定何时设置 src，
+  // 离屏会清掉以释放解码内存。
   image.loading = "lazy";
   image.decoding = "async";
   image.alt = `第 ${page.page_no} 页`;
@@ -1945,6 +2128,12 @@ function buildTile(page, project) {
 
   const actions = document.createElement("div");
   actions.className = "page-tile__actions";
+
+  // 块类型建议角标（只在算过的可见页出现，只数 high）：右上角，和左上角的
+  // 选中勾、左缘的类型色条、橙色未确认虚线都不冲突；"建议 N"不靠颜色也能读。
+  const suggestMark = document.createElement("span");
+  suggestMark.className = "page-tile__suggest";
+  suggestMark.hidden = true;
 
   const recognizeButton = document.createElement("button");
   recognizeButton.type = "button";
@@ -1966,7 +2155,7 @@ function buildTile(page, project) {
   });
 
   actions.append(recognizeButton, detailButton);
-  thumb.append(image, overlay, check, actions);
+  thumb.append(image, overlay, check, suggestMark, actions);
 
   const meta = document.createElement("div");
   meta.className = "page-tile__meta";
@@ -1990,6 +2179,7 @@ function applyTileState(tile, page) {
   const recognition = recognitionOf(page);
   tile.className = tileClassName(page);
   tile.title = tileTitle(page);
+  paintTileSuggestionMark(tile, page.page_no);
 
   // 门牌：`p.87 · 正文`，印张页码进 tooltip（列宽只有一百多像素）
   const label = tile.querySelector(".page-tile__label");
@@ -2252,6 +2442,8 @@ async function applySetupSuggestion(item, button) {
         body: JSON.stringify({ page_type: item.suggested_type }),
       }
     );
+    // 页类型变了：这一页不再/开始属于"正文页建议范围"，旧建议与角标都要作废
+    forgetPageSuggestions(item.page_no);
     await refreshPageStates();
     renderPages();
     await loadSetupSuggestions();
@@ -2395,8 +2587,13 @@ function updatePageVisibility() {
       image.src = image.dataset.largeSrc;
     }
     const isVisible = rect.bottom > -60 && rect.top < window.innerHeight + 60;
-    if (isVisible) visiblePageNos.add(pageNo);
-    else visiblePageNos.delete(pageNo);
+    if (isVisible) {
+      visiblePageNos.add(pageNo);
+      // 建议角标只为可见页算；离屏的不拉，免得滚一本 267 页的书打满请求
+      ensurePageSuggestion(pageNo);
+    } else {
+      visiblePageNos.delete(pageNo);
+    }
     if (isVisible && pagesOverlayOn) ensurePageBlocks(pageNo);
     else clearPageBlocks(tile);
   }
@@ -2454,6 +2651,9 @@ function applyPageZoom() {
       const gridSrc = pageImageUrl(pageNo, level.image);
       if (image.getAttribute("src") !== gridSrc) image.src = gridSrc;
     }
+    // 网格 / 大网格档：滚动停下来再算可见页的建议角标（不每帧量 267 个矩形）
+    ensureSuggestionScrollListener();
+    scheduleSuggestionScan();
   }
 }
 
@@ -2735,6 +2935,14 @@ let taskTimer = null;
 let taskJobId = null;
 /** 最近一次任务载荷：抽屉关着时也要靠它把顶栏那个 pill 刷新（进度条在 pill 里）。 */
 let lastTaskData = null;
+/**
+ * 已经为哪个任务主动弹过"失败"提示。
+ *
+ * 抽屉的开关**只由用户操作决定**（启动任务 / 点顶栏 pill / 点最近任务里的「查看」）；
+ * 轮询只刷新内容，不打开抽屉。唯一的例外是任务失败：主动提示一次，
+ * 同一个任务不会因为轮询或重进项目反复弹。
+ */
+let taskFailureAnnouncedFor = null;
 
 function openTaskDrawer() {
   el("task-drawer").hidden = false;
@@ -2815,12 +3023,21 @@ async function pollTask() {
     stopTaskPolling();
     return;
   }
+  // 轮询只刷新抽屉 / 顶栏 pill 的内容：用户关掉抽屉之后，任务还在跑也不许自己弹回来。
   renderTask(data);
 
   if (!["queued", "running", "paused"].includes(data.job.status)) {
     stopTaskPolling();
+    // 识别完块变了：页面视图的建议角标不能拿旧数据
+    forgetAllPageSuggestions();
     await reloadProjectPages();
     await loadTasks();
+    // loadTasks 在没有活动任务时会把抽屉内容换成"最近任务"。失败时把这次任务的
+    // 失败页重新摆出来，**只主动开一次**；成功 / 取消只更新顶栏 pill。
+    if (announceTaskFailure(data.job)) {
+      renderTask(data);
+      openTaskDrawer();
+    }
     await loadSummary(); // 任务结束后统计会变（复核行数、任务失败率）
   } else {
     // 进度在变，页面状态也在变：不重拉图，只刷状态
@@ -2842,12 +3059,28 @@ async function refreshPageStates() {
   renderProjectMeta();
 }
 
+/**
+ * 任务结束后是否要主动提示：**只有失败 / 中断**才提示，同一个任务只提示一次。
+ *
+ * 返回 true 表示这一次应该把抽屉打开；调用方负责摆好这次的失败页再开，
+ * 免得抽屉里显示的是"最近任务"而不是刚失败的那一批。
+ */
+function announceTaskFailure(job) {
+  const failed = job.status === "failed" || job.status === "interrupted";
+  if (!failed) return false;
+  if (taskFailureAnnouncedFor === job.job_id) return false;
+  taskFailureAnnouncedFor = job.job_id;
+  return true;
+}
+
 function renderTask(data) {
   const job = data.job;
   lastTaskData = data;
   const label = JOB_STATUS_LABELS[job.status] || job.status;
   const typeLabel = JOB_TYPE_LABELS[job.job_type] || job.job_type;
-  openTaskDrawer();
+  // 注意：这里**不**打开抽屉。renderTask 被轮询（每 1.2 秒）、刷新项目、
+  // 任务结束后的 loadTasks 反复调用；之前它无条件 openTaskDrawer()，于是用户
+  // 手动关掉抽屉后，下一轮轮询又把它弹回来——这就是"关掉后自动重开"的真实原因。
   el("drawer-title").textContent = `${typeLabel}任务`;
 
   const current = data.current_page_no ? ` · 当前第 ${data.current_page_no} 页` : "";
@@ -3029,6 +3262,14 @@ let reviewSaveTimer = null;
 let reviewPendingSave = null; // {block, text}：还没发出去的自动保存
 /** 每个块编辑框最后的光标位置：拆分要用它（点菜单会让编辑框失焦）。 */
 const cursorByBlock = new Map();
+/**
+ * 本页的块类型建议（只读）与按块索引。
+ *
+ * 与"未审"完全独立：有建议不会让块显示成待办，也不改 `review_status`；
+ * 只有点「采用」才走 `PATCH block_type`（进事件表、可撤销）。
+ */
+let detailSuggestions = [];
+let detailSuggestionByBlock = new Map();
 
 const BLOCK_TYPE_LABELS = {
   heading: "标题", paragraph: "段落", header: "页眉", footer: "页脚",
@@ -3047,7 +3288,8 @@ async function openPageDetail(pageNo) {
   showView("review");
   el("page-detail-error").hidden = true;
   renderReviewPager();
-  await loadPageDetail(pageNo);
+  // 进页面就拉一次建议（不以缓存为准：别的页面改过类型后可能影响重复统计）
+  await loadPageDetail(pageNo, { forceSuggestions: true });
   savePosition("review", pageNo);
 }
 
@@ -3094,17 +3336,60 @@ function savePosition(view, pageNo) {
   });
 }
 
-async function loadPageDetail(pageNo) {
+/**
+ * 载入一页：块 + 这一页的块类型建议（只读）。
+ *
+ * 建议与块一起取回、一次渲染：徽章不会晚一步才冒出来，也不会因为异步到达
+ * 把正在编辑的块重渲染一遍（那会顶掉光标）。
+ * `forceSuggestions` 用于"刚进页面 / 改过类型或结构 / 撤销重做"——
+ * 接口只返回差异，采用后重拉一次徽章就自然消失。
+ */
+async function loadPageDetail(pageNo, { forceSuggestions = false } = {}) {
   const project = currentProject;
   if (!project) return;
+  const suggestionsPromise =
+    project.kind === "package"
+      ? Promise.resolve({ suggestions: [], note: null })
+      : fetchPageSuggestions(pageNo, { force: forceSuggestions }).catch(() => ({
+          suggestions: [],
+          note: null,
+        }));
   try {
     const data = await apiJson(
       `/api/projects/${project.project_id}/pages/${pageNo}/blocks`
     );
+    const suggestions = await suggestionsPromise;
+    if (detailPageNo !== null && detailPageNo !== pageNo) return;
+    applyDetailSuggestions(suggestions);
     renderPageDetail(data);
   } catch (error) {
     showError(el("page-detail-error"), error);
   }
+}
+
+function applyDetailSuggestions(payload) {
+  detailSuggestions =
+    payload && Array.isArray(payload.suggestions) ? payload.suggestions : [];
+  detailSuggestionByBlock = new Map(
+    detailSuggestions.map((item) => [item.block_id, item])
+  );
+}
+
+/** 只重拉建议、刷新块头徽章；不动块文本（结构 / 候选结果变了之后用）。 */
+async function refreshDetailSuggestions() {
+  if (detailPageNo === null || !currentProject) return;
+  const pageNo = detailPageNo;
+  forgetPageSuggestions(pageNo);
+  let payload = null;
+  try {
+    payload = await fetchPageSuggestions(pageNo);
+  } catch {
+    return;
+  }
+  if (detailPageNo !== pageNo || !currentProject) return;
+  applyDetailSuggestions(payload);
+  renderSuggestionTools();
+  renderReviewBlocks(reviewBlocks);
 }
 
 // ---------------------------------------------------------------- 翻页（审校视图顶栏）
@@ -3263,6 +3548,7 @@ function renderPageDetail(data) {
   drawDetailLines();
   drawDetailOverlay(data.blocks);
   renderReviewBlocks(data.blocks);
+  renderSuggestionTools();
 }
 
 function project_id() {
@@ -3606,6 +3892,171 @@ function drawDetailLines() {
   }
 }
 
+// ---------------------------------------------------------------- 块类型建议（审校视图）
+//
+// 徽章只说"建议 + 把握"，不是待办：有建议的块仍然是"未审"，要人点「采用」
+// 才走 PATCH block_type（进事件表、可撤销）；review 只能一条一条点。
+
+function suggestionHighList() {
+  return detailSuggestions.filter((item) => item.confidence === "high");
+}
+
+function renderSuggestionTools() {
+  const button = el("suggestion-apply-all");
+  if (!button) return;
+  const high = suggestionHighList();
+  if (!high.length) {
+    button.hidden = true;
+    button.textContent = "";
+    button.removeAttribute("title");
+    return;
+  }
+  const labels = [
+    ...new Set(
+      high.map((item) => BLOCK_TYPE_LABELS[item.suggested_type] || item.suggested_type)
+    ),
+  ];
+  button.hidden = false;
+  button.textContent = `采用全部建议（${high.length}）`;
+  button.title =
+    `本页有 ${high.length} 条把握较大的建议（${labels.join(" / ")}）：` +
+    "一次改成对应类型，只改类型、不改审校状态；每一块都能单独撤销。";
+}
+
+/**
+ * 书眉 / 页脚里夹着的页码：**只展示**。
+ * 不自动拆块、不改文本；导出时 meta.json 会再按同一套规则抽一次。
+ */
+function pageNumberHintChip(suggestion) {
+  const candidates = suggestion.page_number_candidates || [];
+  if (!candidates.length) return null;
+  const hint = suggestion.page_number_hint;
+  const texts = candidates.map((item) => item.text).join(" / ");
+  const chip = document.createElement("span");
+  chip.className = "review-suggest__pagenum";
+  chip.textContent = hint
+    ? `含页码 ${hint.text}（候选 ${texts}）`
+    : `页码候选 ${texts}`;
+  chip.title =
+    "页码提示只作参考：不会自动拆块或改文本。" +
+    (hint ? `按页面外侧估计是 ${hint.text}，` : "") +
+    "导出 meta.json 时会再按页码块 / 页眉页脚里的数字抽一次。";
+  return chip;
+}
+
+function blockSuggestionBadge(suggestion) {
+  const typeLabel =
+    BLOCK_TYPE_LABELS[suggestion.suggested_type] || suggestion.suggested_type;
+  const wrap = document.createElement("span");
+  wrap.className = `review-suggest review-suggest--${suggestion.suggested_type}`;
+  wrap.title =
+    `建议：${typeLabel}（${suggestion.confidence_label}）\n` +
+    (suggestion.reason || "") +
+    "\n只改块类型：不改审校状态、不删文字；采用后可撤销。";
+
+  const label = document.createElement("span");
+  label.className = "review-suggest__label";
+  label.textContent = `${typeLabel} · ${suggestion.confidence_label}`;
+  wrap.append(label);
+
+  const apply = document.createElement("button");
+  apply.type = "button";
+  apply.className = "btn btn--sm review-suggest__apply";
+  apply.textContent = "采用";
+  apply.title = `把这一块改成「${typeLabel}」（可撤销）`;
+  apply.addEventListener("click", (event) => {
+    event.stopPropagation();
+    adoptBlockSuggestion(suggestion);
+  });
+  wrap.append(apply);
+
+  const pageNumber = pageNumberHintChip(suggestion);
+  if (pageNumber) wrap.append(pageNumber);
+  return wrap;
+}
+
+/** 采用一条建议：走现有 PATCH block_type，重拉本页建议后徽章自然消失。 */
+async function adoptBlockSuggestion(suggestion) {
+  if (!currentProject || detailPageNo === null) return;
+  // 先把还没发出去的自动保存落库，免得随后的整页重渲染把刚打的字盖掉
+  await flushPendingSave();
+  const block = (reviewBlocks || []).find(
+    (item) => item.block_id === suggestion.block_id
+  );
+  if (!block) {
+    setSaveState("这一块已经不在本页了，先重新载入", true);
+    return;
+  }
+  forgetPageSuggestions(detailPageNo);
+  await patchBlock(block, { block_type: suggestion.suggested_type });
+}
+
+/**
+ * 本页全部采用：**只对 high**（review 必须逐条点，避免把弱建议批量套上）。
+ * 逐块 PATCH 同一个接口；中途失败不会静默，最后如实说改了几条。
+ */
+async function adoptAllHighSuggestions() {
+  if (!currentProject || detailPageNo === null) return;
+  const high = suggestionHighList();
+  if (!high.length) return;
+  await flushPendingSave();
+  const targets = [];
+  for (const item of high) {
+    const block = (reviewBlocks || []).find(
+      (entry) => entry.block_id === item.block_id
+    );
+    if (block) targets.push({ item, block });
+  }
+  if (!targets.length) return;
+  const labels = [
+    ...new Set(
+      targets.map(
+        (target) => BLOCK_TYPE_LABELS[target.item.suggested_type] || target.item.suggested_type
+      )
+    ),
+  ];
+  const ok = window.confirm(
+    `本页有 ${targets.length} 条把握较大的建议（${labels.join(" / ")}）。\n\n` +
+      "全部采用会把对应块改成建议类型——只改类型，不改审校状态，也不删文字；" +
+      "每一块都能单独撤销。继续吗？"
+  );
+  if (!ok) return;
+
+  const pageNo = detailPageNo;
+  const projectId = currentProject.project_id;
+  setSaveState("正在采用建议…");
+  let changed = 0;
+  let failed = 0;
+  for (const { item } of targets) {
+    const fresh = (reviewBlocks || []).find(
+      (entry) => entry.block_id === item.block_id
+    );
+    if (!fresh) continue;
+    try {
+      await apiJson(`/api/projects/${projectId}/blocks/${item.block_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          block_type: item.suggested_type,
+          expected_revision: fresh.revision,
+        }),
+      });
+      changed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  forgetPageSuggestions(pageNo);
+  setSaveState(
+    failed
+      ? `已采用 ${changed} 条，${failed} 条没改成（可能被别处改过）`
+      : `已采用 ${changed} 条建议 ✓`,
+    failed > 0
+  );
+  await loadPageDetail(pageNo);
+  await refreshPageStates();
+}
+
 function blockCard(block, index, blocksCount) {
   const item = document.createElement("li");
   item.className = "review-block";
@@ -3678,6 +4129,9 @@ function blockCard(block, index, blocksCount) {
   const spacer = document.createElement("span");
   spacer.className = "spacer";
   head.append(typeSelect);
+  // 块类型建议：紧贴类型下拉，轻量虚线徽章 + 逐条「采用」；没有建议的块什么都不显示
+  const suggestion = detailSuggestionByBlock.get(block.block_id);
+  if (suggestion) head.append(blockSuggestionBadge(suggestion));
   for (const [text, cls] of typeBits) {
     const chip = document.createElement("span");
     chip.className = `chip ${cls}`;
@@ -4127,12 +4581,15 @@ async function patchBlock(block, patch) {
       }
     );
     setSaveState("已保存 ✓");
+    // 类型变了：这一页的建议要重算（接口只返回差异，采用后徽章自然消失）
+    if ("block_type" in patch) forgetPageSuggestions(detailPageNo);
     await loadPageDetail(detailPageNo);
     restoreEditorFocus(focusBefore);
     await refreshPageStates();
   } catch (error) {
     if (error.code === "block_conflict") {
       setSaveState("这一页在别处被改过，已重新载入", true);
+      forgetPageSuggestions(detailPageNo);
       await loadPageDetail(detailPageNo);
       return;
     }
@@ -4210,6 +4667,8 @@ async function structureAction(block, operation, payload = {}) {
     }
     cursorByBlock.clear();
     setSaveState("已保存 ✓");
+    // 块的结构 / 顺序变了：本页建议重算（标题建议看块首文字，可能已经不同）
+    forgetPageSuggestions(detailPageNo);
     await loadPageDetail(detailPageNo);
     await refreshPageStates();
     // 新增的块直接聚焦，省一次点击
@@ -4343,6 +4802,9 @@ async function applyCandidateBlock(candidateIndex, targetBlockId, button) {
     );
     setSaveState(`已换成新结果的第 ${candidateIndex + 1} 块（可撤销）`);
     reviewBlocks = data.blocks || [];
+    // 换块可能改掉类型：先清掉旧建议，重渲染后再按新块重拉（不拿旧徽章糊弄）
+    forgetPageSuggestions(detailPageNo);
+    applyDetailSuggestions(null);
     renderPageDetail({
       page: data.page,
       blocks: data.blocks,
@@ -4353,6 +4815,7 @@ async function applyCandidateBlock(candidateIndex, targetBlockId, button) {
     });
     // 换完之后对应关系可能变了（那一块已经与现有一致），重新拉一次对比
     await openCandidateCompare();
+    await refreshDetailSuggestions();
     await refreshPageStates();
   } catch (error) {
     button.disabled = false;
@@ -4518,6 +4981,8 @@ async function decideCandidate(decision) {
     candidateRunId = null;
     setSaveState(decision === "apply" ? "已采用新结果（可撤销）" : "已保留现有结果");
     reviewBlocks = data.blocks || [];
+    forgetPageSuggestions(detailPageNo);
+    applyDetailSuggestions(null);
     renderPageDetail({
       page: data.page,
       blocks: data.blocks,
@@ -4526,6 +4991,7 @@ async function decideCandidate(decision) {
       runs: [],
       active_run: null,
     });
+    await refreshDetailSuggestions();
     await refreshPageStates();
   } catch (error) {
     showError(el("page-detail-error"), error);
@@ -4540,6 +5006,8 @@ async function reviewAction(path) {
       method: "POST",
     });
     setSaveState(data.direction === "undo" ? "已撤销" : "已重做");
+    // 撤销 / 重做可能改回块类型：建议不能拿旧缓存
+    forgetPageSuggestions(detailPageNo);
     await loadPageDetail(detailPageNo);
     await refreshPageStates();
     return data;
@@ -4592,6 +5060,7 @@ function setupReviewControls() {
     }
   });
   el("review-confirm").addEventListener("click", confirmCurrentPage);
+  el("suggestion-apply-all").addEventListener("click", adoptAllHighSuggestions);
   el("candidate-open").addEventListener("click", openCandidateCompare);
   el("candidate-apply").addEventListener("click", () => decideCandidate("apply"));
   el("candidate-decline").addEventListener("click", () => decideCandidate("decline"));
@@ -4640,6 +5109,10 @@ async function patchSelectedPages(patch) {
     for (const updated of data.pages) {
       const index = project.pages.findIndex((page) => page.page_id === updated.page_id);
       if (index >= 0) project.pages[index] = updated;
+    }
+    // 类型 / 纳入变了，建议范围跟着变：这些页的旧建议与角标作废
+    if ("page_type" in patch || "include" in patch) {
+      for (const updated of data.pages) forgetPageSuggestions(updated.page_no);
     }
     renderPages();
     renderProjectMeta();
