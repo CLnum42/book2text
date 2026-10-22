@@ -106,6 +106,8 @@
   （654 + 新增 1 项界面静态约定：默认顺序号只有数字、类型 / 页码只在卡片里、
   卡片定位函数与指针事件规则）。
 - 真实行为以真浏览器验收为准（界面没有 JS 测试运行器）。
+- CI：[run #19](https://github.com/CLnum42/book2text/actions/runs/39734767812) **Success**，
+  macOS 全量 2m19s、Windows 非 OCR 2m24s，双平台绿。
 
 **未验证**
 

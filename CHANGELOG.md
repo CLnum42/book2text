@@ -24,6 +24,8 @@
   0 压块。截图 `docs/screenshots/block-frame-default-page3.png`、
   `block-frame-hover-page30.png`。
 - 测试 **655 passed**（新增 1 项界面静态约定）。
+  CI [run #19](https://github.com/CLnum42/book2text/actions/runs/39734767812) 双平台绿
+  （macOS 2m19s、Windows 2m24s）。
 
 ### 新增 — 块类型建议接进界面；任务抽屉不再自动重开（2026-10-22）
 
