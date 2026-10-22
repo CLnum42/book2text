@@ -129,9 +129,9 @@ def test_block_frames_work_in_all_zoom_levels_and_default_to_on() -> None:
     render = _function_body("renderPageBlocks")
     assert "const showDetails = pageZoomIndex >= 2" in render
     assert "if (showDetails)" in render
-    # 每帧 3 页 + 3 个在途请求；滚动位置缓存，不再每帧量 267 个矩形
+    # 每帧 3 页 + 在途请求上限（第 46 号任务从 3 提到 6）；滚动位置缓存，不再每帧量 267 个矩形
     assert "PAGE_OVERLAY_FRAME_LIMIT = 3" in script
-    assert "PAGE_BLOCK_FETCH_LIMIT = 3" in script
+    assert "PAGE_BLOCK_FETCH_LIMIT = 6" in script
     assert "pageTileMetrics" in script
     assert "function pumpOverlayRender(" in script
 
@@ -328,3 +328,63 @@ def test_task_drawer_does_not_reopen_itself_while_a_task_runs() -> None:
     assert script.count("openTaskDrawer();") >= 3
     assert 'el("task-chip").addEventListener("click"' in script
 
+
+
+# ---------------------------------------------------------------- 任务 46：块框实时性
+
+
+def test_block_frames_refresh_as_pages_finish_and_prefetch_while_scrolling() -> None:
+    """第 46 号任务：识别到哪框出现在哪；滚动停下不再等一轮网络。
+
+    界面没有 JS 测试运行器，这里是静态约定；真实行为在今天真浏览器里量过
+    （见开发日志任务 46 的前后数字）。
+    """
+    script = _script()
+
+    # 1) 先查清"块框不出现"的真因：瓷砖位置在隐藏视图里被量成 0，
+    #    267 页全被判成可见。现在宁可量不出来就不记，等视图可见再量。
+    capture = _function_body("capturePageTileMetrics")
+    assert "getBoundingClientRect().height <= 0" in capture
+    assert "pageTileMetrics = null" in capture
+    # 切回页面视图时强制重量
+    show_view = _function_body("showView")
+    assert "pageTileMetrics = null" in show_view
+
+    # 2) 识别完成 → 当场作废旧块并重画（页面视图）/ 重载（审校视图）
+    poll = _function_body("pollTask")
+    assert "collectNewlySucceededPages(data)" in poll
+    assert "refreshRecognizedPages(donePages)" in poll
+    collect = _function_body("collectNewlySucceededPages")
+    assert 'item.status !== "succeeded"' in collect
+    assert "taskRefreshedPages" in collect  # 每页只处理一次，轮询不重复重拉
+    refresh = _function_body("refreshRecognizedPages")
+    assert "forgetPageBlocks(pageNo)" in refresh
+    assert "queueOverlayRender(pageNo)" in refresh
+    # 审校视图：正在看的那一页重新载入（先落库再重绘，别盖掉没存完的输入）
+    reload_detail = _function_body("reloadDetailAfterRecognition")
+    assert "flushPendingSave()" in reload_detail
+    assert "loadPageDetail(pageNo, { forceSuggestions: true })" in reload_detail
+    # 在途请求晚到也不能把旧块写回缓存
+    assert "pageBlockVersions" in script
+    fetch = _function_body("fetchPageBlocks")
+    assert "pageBlockVersions.get(key) || 0) !== version" in fetch
+
+    # 3) 提前预取 + 并发 / 缓存上限
+    assert "PAGE_BLOCK_CACHE_LIMIT = 80" in script
+    assert "PAGE_BLOCK_PREFETCH_LIMIT = 4" in script
+    assert "PAGE_BLOCK_PREFETCH_BURST = 8" in script
+    assert "function pumpPageBlockPrefetch(" in script
+    visibility = _function_body("updatePageVisibility")
+    assert "prefetchBand" in visibility
+    assert "pumpPageBlockPrefetch(prefetchCandidates)" in visibility
+    # 只为已识别的页预取，不为整本未识别页发空请求
+    prefetch = _function_body("pumpPageBlockPrefetch")
+    assert 'recognitionOf(page).status !== "recognized"' in prefetch
+    # 有缓存就这一帧画，不等下一个 rAF
+    assert "drawnSynchronously" in visibility
+
+    # 4) 网格档滚动停下的扫描更快，且不再为 267 个瓷砖各量一次矩形
+    assert "setTimeout(scanVisiblePageSuggestions, 60)" in script
+    scan = _function_body("scanVisiblePageSuggestions")
+    assert "pageTileMetrics" in scan
+    assert "byTile" in scan

@@ -123,7 +123,8 @@ function showView(name) {
     if (!setupSuggestionsLoaded && currentProject.kind !== "package") {
       loadSetupSuggestions();
     }
-    // 回到页面视图：重新算哪些页在视口里，块框按需补画
+    // 回到页面视图：瓷砖位置要重新量（在审校视图里它们全是 0），块框按需补画
+    pageTileMetrics = null;
     schedulePageVisibility();
   }
 }
@@ -1716,16 +1717,33 @@ function savePageOverlayPreference() {
     /* 隐私模式等写不进去：不影响本次会话 */
   }
 }
-/** 当前在大图档下、与视口相交的页（块框只给这些页渲染）。 */
+/** 当前在视口内的页（块框只给这些页渲染）。 */
 const visiblePageNos = new Set();
-/** 块数据缓存：页号 → blocks；最多留 40 页，避免 267 页全塞内存。 */
+/**
+ * 块数据缓存：`项目:页号` → blocks。
+ *
+ * 块数据很小（几十个块的类型与 bbox），80 页约几百 KB；缓存大一点，
+ * 来回滚动时才不用重新请求。上限仍然要有，避免整本 400 页都留在内存里。
+ */
 const pageBlockCache = new Map();
 const pageBlockCacheOrder = [];
+/**
+ * 每页块数据的"作废代次"。
+ *
+ * 增量刷新 / 识别完成时把它 +1：**在此之后返回的旧请求结果一律丢掉**。
+ * 没有这一层，识别刚完成时一个早发的空结果会盖掉新的块，用户就得等下一次刷新。
+ */
+const pageBlockVersions = new Map();
 const pageBlockPending = new Set();
-const PAGE_BLOCK_CACHE_LIMIT = 40;
-// 网格档可见页多：每帧最多真正画 3 页、同时最多 3 个块请求在途；离屏立刻清。
+const PAGE_BLOCK_CACHE_LIMIT = 80;
+// 网格档可见页多：每帧最多真正画 3 页；离屏立刻清。
 const PAGE_OVERLAY_FRAME_LIMIT = 3;
-const PAGE_BLOCK_FETCH_LIMIT = 3;
+// 同时在途的块请求上限（只读、按页独立）。预取只能占其中一部分，
+// 否则滚过去的页会把视口里真正要看的页的请求挤在后面。
+const PAGE_BLOCK_FETCH_LIMIT = 6;
+const PAGE_BLOCK_PREFETCH_LIMIT = 4;
+const PAGE_BLOCK_PREFETCH_BURST = 8;
+let pageBlockPrefetchInFlight = 0;
 const overlayRenderQueue = [];
 const overlayRenderQueued = new Set();
 let overlayPumpScheduled = false;
@@ -1889,21 +1907,49 @@ function ensureSuggestionScrollListener() {
   suggestionScrollListening = true;
 }
 
-/** 网格档滚动时不必每帧算 267 个矩形：停下来再扫一次可见页。 */
+/**
+ * 网格档滚动时不必每帧算 267 个矩形：停下来 60ms 后扫一次可见页。
+ *
+ * 原来是 140ms：滚动停下到角标出现之间有肉眼可见的空档；改成 60ms，
+ * 仍只扫一次（不是每帧），267 个瓷砖的位置也走 pageTileMetrics 缓存。
+ */
 function scheduleSuggestionScan() {
   if (suggestionScanTimer) clearTimeout(suggestionScanTimer);
-  suggestionScanTimer = setTimeout(scanVisiblePageSuggestions, 140);
+  suggestionScanTimer = setTimeout(scanVisiblePageSuggestions, 60);
 }
 
 function scanVisiblePageSuggestions() {
   suggestionScanTimer = null;
   if (!currentProject || currentView !== "pages" || pageZoomIndex >= 2) return;
-  const height = window.innerHeight;
+  const grid = el("page-grid");
+  if (!grid) return;
+  const scroller = pageScroller();
+  const metrics =
+    scroller && pageTileMetrics && pageTileMetrics.length === grid.querySelectorAll(".page-tile").length
+      ? pageTileMetrics
+      : null;
+  const scrollTop = scroller ? scroller.scrollTop : 0;
+  const viewport = scroller ? scroller.clientHeight : window.innerHeight;
+  /**
+   * 一页的竖直范围（相对视口）。有缓存的位置就用缓存：
+   * 滚动停止时不必为 267 个瓷砖各做一次 getBoundingClientRect。
+   */
+  const byTile = metrics ? new Map(metrics.map((entry) => [entry.tile, entry])) : null;
+  const boundsOf = (tile) => {
+    const item = byTile ? byTile.get(tile) : null;
+    if (!item) {
+      if (byTile) return null;
+      const rect = tile.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    }
+    return { top: item.top - scrollTop, bottom: item.top - scrollTop + item.height };
+  };
   let budget = 12; // 一次最多算 12 页；还有没轮到的，队列空后会自动再扫一轮
-  for (const tile of el("page-grid").querySelectorAll(".page-tile")) {
+  for (const tile of grid.querySelectorAll(".page-tile")) {
     if (budget <= 0) break;
-    const rect = tile.getBoundingClientRect();
-    if (rect.bottom < -120 || rect.top > height + 120) continue;
+    const bounds = boundsOf(tile);
+    if (!bounds) continue;
+    if (bounds.bottom < -120 || bounds.top > viewport + 120) continue;
     // 算过 / 排队中的页不占名额，否则上面几屏的缓存会把下面的可见页永远饿死
     if (ensurePageSuggestion(Number(tile.dataset.pageNo))) {
       budget -= 1;
@@ -2568,6 +2614,22 @@ function rememberPageBlocks(key, blocks) {
   }
 }
 
+/**
+ * 丢掉一页的块缓存（识别刚完成、重新识别、块被换掉之后用）。
+ *
+ * 同时把这一页的"作废代次" +1：没有它，一个早发晚到的旧响应会在作废之后
+ * 又把旧块写回缓存，用户就得等下一次刷新才能看到新的框。
+ * 这一页的块类型建议也一起丢掉——块都变了，建议得重算。
+ */
+function forgetPageBlocks(pageNo) {
+  const key = pageBlockKey(pageNo);
+  pageBlockVersions.set(key, (pageBlockVersions.get(key) || 0) + 1);
+  pageBlockCache.delete(key);
+  const index = pageBlockCacheOrder.indexOf(key);
+  if (index >= 0) pageBlockCacheOrder.splice(index, 1);
+  forgetPageSuggestions(pageNo);
+}
+
 let pageScrollListening = false;
 let pageScrollScheduled = false;
 // 瓷砖在滚动内容里的位置：渲染 / 缩放时缓存一次，滚动时不再每帧量 267 个矩形。
@@ -2584,9 +2646,22 @@ function capturePageTileMetrics() {
     pageTileMetrics = null;
     return;
   }
+  const tiles = [...grid.querySelectorAll(".page-tile")];
+  if (!tiles.length) {
+    pageTileMetrics = null;
+    return;
+  }
+  // 页面视图还没显示时（打开项目、从审校切过来之前）所有矩形都是 0：
+  // 那样量出来的"每一页都在视口里"会让 267 页同时排队请求块数据，
+  // 框画出来又被下一帧当成离屏清掉——用户看到的就是"块框迟迟不出来"。
+  // 宁可不记，等视图可见后的下一次可见性计算再量（见 updatePageVisibility）。
+  if (tiles[0].getBoundingClientRect().height <= 0) {
+    pageTileMetrics = null;
+    return;
+  }
   const scrollerRect = scroller.getBoundingClientRect();
   const scrollTop = scroller.scrollTop;
-  pageTileMetrics = [...grid.querySelectorAll(".page-tile")].map((tile) => {
+  pageTileMetrics = tiles.map((tile) => {
     const rect = tile.getBoundingClientRect();
     return {
       tile,
@@ -2634,6 +2709,7 @@ function updatePageVisibility() {
   if (!pageTileMetrics || pageTileMetrics.length !== tiles.length) {
     capturePageTileMetrics();
   }
+  // 视图还没显示（openProject 里先渲染、再切视图）时量不出位置：等下一次。
   if (!pageTileMetrics) return;
 
   const large = pageZoomIndex >= 2;
@@ -2641,6 +2717,11 @@ function updatePageVisibility() {
   const viewport = scroller.clientHeight;
   const nearLimit = 1400;
   const near = new Set();
+  // 预取带：视口上下各约 1.5 屏。滚动的过程中就先把这一带的块数据拉回来，
+  // 停下来时框已经在缓存里，不用等一轮网络。最多只排 PAGE_BLOCK_PREFETCH_BURST 页。
+  const prefetchBand = Math.max(400, Math.min(1800, Math.round(viewport * 1.5)));
+  const prefetchCandidates = [];
+  let drawnSynchronously = 0;
 
   for (const item of pageTileMetrics) {
     const top = item.top;
@@ -2651,13 +2732,39 @@ function updatePageVisibility() {
       visiblePageNos.add(pageNo);
       // 建议角标只为可见页算；大图档在可见性循环里算，网格档走 debounce 的 scan
       if (large) ensurePageSuggestion(pageNo);
-      if (pagesOverlayOn) queueOverlayRender(pageNo);
+      if (pagesOverlayOn) {
+        // 先画后补：数据已经在缓存里就这一帧直接画，不等下一个 rAF。
+        // 仍然限量（每帧最多 PAGE_OVERLAY_FRAME_LIMIT 页），密集网格不会爆。
+        const key = pageBlockKey(pageNo);
+        const cached = pageBlockCache.get(key);
+        const overlay = item.tile.querySelector(".page-overlay");
+        if (
+          cached &&
+          overlay &&
+          overlay._renderedBlocks !== cached &&
+          drawnSynchronously < PAGE_OVERLAY_FRAME_LIMIT
+        ) {
+          renderPageBlocks(item.tile, cached);
+          drawnSynchronously += 1;
+        } else {
+          queueOverlayRender(pageNo);
+        }
+      }
     } else {
       visiblePageNos.delete(pageNo);
       clearPageBlocks(item.tile);
     }
 
-    if (!large) continue;
+    if (!large) {
+      // 网格档离视口很远的页不预取（一屏十几页，±1.5 屏已经够）
+      if (bottom > scrollTop - prefetchBand && top < scrollTop + viewport + prefetchBand) {
+        const distance = top >= scrollTop && bottom <= scrollTop + viewport
+          ? 0
+          : Math.min(Math.abs(top - scrollTop), Math.abs(top - (scrollTop + viewport)));
+        prefetchCandidates.push({ pageNo, distance });
+      }
+      continue;
+    }
     if (bottom <= scrollTop - nearLimit || top >= scrollTop + viewport + nearLimit) {
       continue;
     }
@@ -2668,6 +2775,8 @@ function updatePageVisibility() {
     }
   }
 
+  pumpPageBlockPrefetch(prefetchCandidates);
+
   if (!large) return;
   // 大图档：离视口很远的页释放大图，也清掉块框
   for (const item of pageTileMetrics) {
@@ -2676,6 +2785,32 @@ function updatePageVisibility() {
     const image = item.tile.querySelector("img");
     if (image) image.removeAttribute("src");
     clearPageBlocks(item.tile);
+  }
+}
+
+/**
+ * 滚动中提前拉块数据：只挑**已识别**的页，按离视口由近到远，
+ * 一次最多排 PAGE_BLOCK_PREFETCH_BURST 页；视口内的页优先（distance = 0）。
+ */
+function pumpPageBlockPrefetch(candidates) {
+  if (!currentProject || !pagesOverlayOn || !candidates.length) return;
+  if (pageBlockPending.size >= PAGE_BLOCK_FETCH_LIMIT) return;
+  if (pageBlockPrefetchInFlight >= PAGE_BLOCK_PREFETCH_LIMIT) return;
+  candidates.sort((a, b) => a.distance - b.distance);
+  let byPage = null;
+  let started = 0;
+  for (const candidate of candidates) {
+    if (started >= PAGE_BLOCK_PREFETCH_BURST) break;
+    if (pageBlockPrefetchInFlight >= PAGE_BLOCK_PREFETCH_LIMIT) break;
+    if (pageBlockPending.size >= PAGE_BLOCK_FETCH_LIMIT) break;
+    const key = pageBlockKey(candidate.pageNo);
+    if (pageBlockCache.has(key) || pageBlockPending.has(key)) continue;
+    if (!byPage) byPage = new Map(currentProject.pages.map((page) => [page.page_no, page]));
+    const page = byPage.get(candidate.pageNo);
+    // 没识别过的页没有块：不为它们发请求，否则掠过整本书就是一串空响应
+    if (!page || recognitionOf(page).status !== "recognized") continue;
+    started += 1;
+    fetchPageBlocks(candidate.pageNo, key, { prefetch: true });
   }
 }
 
@@ -2821,10 +2956,17 @@ function pumpOverlayRender() {
   if (overlayRenderQueue.length && !waiting) scheduleOverlayPump();
 }
 
-function fetchPageBlocks(pageNo, key) {
+function fetchPageBlocks(pageNo, key, { prefetch = false } = {}) {
   pageBlockPending.add(key);
+  if (prefetch) pageBlockPrefetchInFlight += 1;
+  const version = pageBlockVersions.get(key) || 0;
   apiJson(`/api/projects/${currentProject.project_id}/pages/${pageNo}/blocks`)
     .then((data) => {
+      // 请求在途期间这一页被作废了（识别刚完成、重新识别）：结果是旧的，丢掉重拉
+      if ((pageBlockVersions.get(key) || 0) !== version) {
+        if (pagesOverlayOn && visiblePageNos.has(pageNo)) queueOverlayRender(pageNo);
+        return;
+      }
       rememberPageBlocks(key, data.blocks || []);
       if (pagesOverlayOn && visiblePageNos.has(pageNo)) queueOverlayRender(pageNo);
     })
@@ -2833,6 +2975,7 @@ function fetchPageBlocks(pageNo, key) {
     })
     .finally(() => {
       pageBlockPending.delete(key);
+      if (prefetch) pageBlockPrefetchInFlight = Math.max(0, pageBlockPrefetchInFlight - 1);
       if (pagesOverlayOn) scheduleOverlayPump();
     });
 }
@@ -2883,17 +3026,28 @@ function clearPageBlocks(tile) {
   overlay._renderedBlocks = null;
 }
 
-function renderPages() {
+/**
+ * 顶部那行统计：任务进行中它每分钟都要变，所以单独成一个函数，
+ * 轮询的就地刷新（syncPageStates）也能更新，不必为了一个数字重建整格。
+ */
+function renderPageSummary() {
   const project = currentProject;
   if (!project) return;
-  const pages = visiblePages();
   const all = project.pages;
-
+  const shown = visiblePages().length;
   el("page-summary").textContent =
     `共 ${all.length} 页 · 正文 ${all.filter((page) => page.include).length} 页` +
     ` · 已识别 ${all.filter((page) => recognitionOf(page).status === "recognized").length} 页` +
     ` · 已确认 ${all.filter((page) => page.page_confirmed).length} 页` +
-    (pages.length !== all.length ? ` · 当前显示 ${pages.length} 页` : "");
+    (shown !== all.length ? ` · 当前显示 ${shown} 页` : "");
+}
+
+function renderPages() {
+  const project = currentProject;
+  if (!project) return;
+  const pages = visiblePages();
+
+  renderPageSummary();
 
   const grid = el("page-grid");
   grid.innerHTML = "";
@@ -2916,7 +3070,7 @@ function renderPages() {
 /**
  * 任务轮询时用：只更新已有瓷砖的状态，不重建 DOM。
  *
- * 一本 400 页的书如果每 1.2 秒重建 400 个瓷砖，浏览器的滚动与图片都会被反复折腾；
+ * 一本 400 页的书如果每 0.9 秒重建 400 个瓷砖，浏览器的滚动与图片都会被反复折腾；
  * 而任务进行时变的基本只有状态徽章。页面集合变了（筛选 / 增删页）才整格重建。
  */
 function syncPageStates() {
@@ -2936,6 +3090,7 @@ function syncPageStates() {
     }
     applyTileState(tile, page);
   });
+  renderPageSummary();
   renderPageSetup();
   updateSelectionPanel();
 }
@@ -3080,6 +3235,13 @@ async function reloadProjectPages() {
 
 let taskTimer = null;
 let taskJobId = null;
+/**
+ * 增量刷新用：这个任务里已经处理过"识别完成"的页。
+ *
+ * 每页只处理一次——轮询每 0.9 秒一次，不记的话同一页会被反复丢缓存、反复重画。
+ */
+let taskRefreshedJobId = null;
+let taskRefreshedPages = null;
 /** 最近一次任务载荷：抽屉关着时也要靠它把顶栏那个 pill 刷新（进度条在 pill 里）。 */
 let lastTaskData = null;
 /**
@@ -3149,9 +3311,16 @@ async function loadTasks({ openDrawer = false } = {}) {
 }
 
 function startTaskPolling(jobId) {
+  if (taskJobId !== jobId) {
+    // 换了任务：增量刷新的"已经处理过"从头算
+    taskRefreshedJobId = null;
+    taskRefreshedPages = null;
+  }
   taskJobId = jobId;
   stopTaskPolling();
-  taskTimer = setInterval(pollTask, 1200);
+  // 900ms：单页识别完成后，界面最多等一轮轮询就能知道（加上块请求约 1 秒内出框）。
+  // 任务载荷只是一次很小的数据库读，900ms 对本地单机服务没有压力。
+  taskTimer = setInterval(pollTask, 900);
   pollTask();
 }
 
@@ -3175,9 +3344,17 @@ async function pollTask() {
 
   if (!["queued", "running", "paused"].includes(data.job.status)) {
     stopTaskPolling();
+    // 收尾：最后一个框也是"刚认完的页"。整格重建 267 个瓷砖要一秒多，
+    // 而这里真正变的只有页面状态与刚认完那几页的块：就地刷新 + 按增量补框。
+    // refreshRecognizedPages 会先把这几页的旧块作废
+    const donePages = collectNewlySucceededPages(data);
     // 识别完块变了：页面视图的建议角标不能拿旧数据
     forgetAllPageSuggestions();
-    await reloadProjectPages();
+    await refreshPageStates();
+    await refreshRecognizedPages(donePages, { reloadDetail: false });
+    if (detailPageNo !== null && !donePages.includes(detailPageNo)) {
+      await loadPageDetail(detailPageNo, { forceSuggestions: true });
+    }
     await loadTasks();
     // loadTasks 在没有活动任务时会把抽屉内容换成"最近任务"。失败时把这次任务的
     // 失败页重新摆出来，**只主动开一次**；成功 / 取消只更新顶栏 pill。
@@ -3187,9 +3364,77 @@ async function pollTask() {
     }
     await loadSummary(); // 任务结束后统计会变（复核行数、任务失败率）
   } else {
-    // 进度在变，页面状态也在变：不重拉图，只刷状态
-    await refreshPageStates();
+    // 进度在变，页面状态也在变：不重拉图，只刷状态。
+    // 两件事互不依赖（页面状态 vs 块数据），并行发，别让块框多等一个往返。
+    const donePages = collectNewlySucceededPages(data);
+    await Promise.all([refreshPageStates(), refreshRecognizedPages(donePages)]);
   }
+}
+
+/**
+ * 这一轮轮询里"刚识别成功"的页（同一个任务里每页只返回一次）。
+ *
+ * 判据是任务单元的状态（`items[].status === "succeeded"`），不是进度数字：
+ * 进度只告诉我们做了几页，告诉不了**是哪几页**。逐页单元状态是真实数据，
+ * 页识别完成的那一刻它就从 running 变成 succeeded。
+ */
+function collectNewlySucceededPages(data) {
+  const jobId = data.job?.job_id || null;
+  if (taskRefreshedJobId !== jobId) {
+    taskRefreshedJobId = jobId;
+    taskRefreshedPages = new Set();
+  }
+  if (!taskRefreshedPages) taskRefreshedPages = new Set();
+  const done = [];
+  for (const item of data.items || []) {
+    if (item.status !== "succeeded") continue;
+    const pageNo = Number(item.page_no);
+    if (!Number.isFinite(pageNo) || taskRefreshedPages.has(pageNo)) continue;
+    taskRefreshedPages.add(pageNo);
+    done.push(pageNo);
+  }
+  return done;
+}
+
+/**
+ * 识别到哪，框就出现在哪：刚认完的页当场换掉旧块。
+ *
+ * 页面视图里：可见的页立刻重画（缓存丢了就会重新拉），不打断翻页。
+ * 审校视图里：正在看的那一页重新载入块列表——先把没落库的输入存掉，
+ * 免得刷新把用户刚打的字盖掉。
+ */
+async function refreshRecognizedPages(pageNos, { reloadDetail = true } = {}) {
+  if (!pageNos.length) return;
+  for (const pageNo of pageNos) forgetPageBlocks(pageNo);
+  if (currentView === "pages") {
+    for (const pageNo of pageNos) {
+      const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
+      if (tile) clearPageBlocks(tile);
+      if (visiblePageNos.has(pageNo)) {
+        queueOverlayRender(pageNo);
+        // 新页有块了，页面视图的「建议 N」角标要跟上（仍然只为可见页算）
+        ensurePageSuggestion(pageNo);
+      }
+    }
+    scheduleOverlayPump();
+    return;
+  }
+  if (
+    reloadDetail &&
+    currentView === "review" &&
+    detailPageNo !== null &&
+    pageNos.includes(detailPageNo)
+  ) {
+    await reloadDetailAfterRecognition(detailPageNo);
+  }
+}
+
+async function reloadDetailAfterRecognition(pageNo) {
+  if (detailPageNo !== pageNo) return;
+  // 正在输入：先把这一块存掉，再用识别结果重绘（顺序反过来会丢掉刚打的字）
+  await flushPendingSave();
+  if (detailPageNo !== pageNo) return;
+  await loadPageDetail(pageNo, { forceSuggestions: true });
 }
 
 async function refreshPageStates() {
@@ -3225,7 +3470,7 @@ function renderTask(data) {
   lastTaskData = data;
   const label = JOB_STATUS_LABELS[job.status] || job.status;
   const typeLabel = JOB_TYPE_LABELS[job.job_type] || job.job_type;
-  // 注意：这里**不**打开抽屉。renderTask 被轮询（每 1.2 秒）、刷新项目、
+  // 注意：这里**不**打开抽屉。renderTask 被轮询（每 0.9 秒）、刷新项目、
   // 任务结束后的 loadTasks 反复调用；之前它无条件 openTaskDrawer()，于是用户
   // 手动关掉抽屉后，下一轮轮询又把它弹回来——这就是"关掉后自动重开"的真实原因。
   el("drawer-title").textContent = `${typeLabel}任务`;
