@@ -61,9 +61,9 @@
 - 大图档（单列 / 单页）才启用开关；档位退回网格时自动关并清理。
 - 复用审校的 `.page-overlay / .box / .box--type-*`；加 `.page-overlay--readonly`
   让整个层 `pointer-events:none`，块框不吃选页点击。
-- 第 30 页（正文 6 块）截图见 [`docs/screenshots/page-view-block-frames.png`](../docs/screenshots/page-view-block-frames.png)：
+- 第 30 页（正文 6 块）截图见 [`screenshots/page-view-block-frames.png`](screenshots/page-view-block-frames.png)：
   6 个框逐块对照原图，含书眉 "2 谁是巴赫金? 11"；第 3 页（版权页 24 块）见
-  [`docs/screenshots/page-view-dense-page.png`](../docs/screenshots/page-view-dense-page.png)。
+  [`screenshots/page-view-dense-page.png`](screenshots/page-view-dense-page.png)。
 - badge 改成框内左上角、`rgba(255,255,255,.78)`、9.5px；密集页仍会压住行首一两个字，
   但不再浮到框外压上一行。
 
@@ -73,6 +73,10 @@
 **测试：** 新增 1 项（total 635 → **636**；另扩展现有页面图片接口测试）：
 缩放入口 / 只读 overlay / badge 贴框内的静态约定；图片接口 `thumb < view < zoom` 的宽度关系。本地 `.venv/bin/python -m pytest -q`
 → **636 passed, 1 warning，48.09 秒**。
+
+**CI 实跑（GitHub Actions，真实结果）：** [run #14](https://github.com/CLnum42/book2text/actions/runs/39725941104)
+—— **Status: Success**。`全量测试（macOS 14 + OCR）` 2m 30s、`Windows 测试（非 OCR）` 3m 58s，
+run 总时长 4m 1s。
 
 **未验证：** Windows 与 Safari 的滚动 / 图片解码差异；性能数字是 macOS + Chrome、
 程序化滚动（非真实滚轮手势）；JS heap 不含图片解码内存，只作趋势参考。
