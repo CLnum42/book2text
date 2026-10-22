@@ -81,6 +81,10 @@
 **测试：** 新增 5 项（total 636 → **641**）：版权 / 前言 / 拉丁词不误命中、新类型 API、
 类型列表与颜色静态约定。本地 `.venv/bin/python -m pytest -q` → **641 passed, 1 warning，48.78 秒**。
 
+**CI 实跑（GitHub Actions，真实结果）：** [run #15](https://github.com/CLnum42/book2text/actions/runs/39727043260)
+—— **Status: Success**。`全量测试（macOS 14 + OCR）` 2m 37s、`Windows 测试（非 OCR）` 2m 44s，
+run 总时长 2m 48s。
+
 **未验证：** Windows / Safari 的详情折叠与 localStorage；292px 面板在更窄窗口下的换行。
 
 ### 用户操作说明
