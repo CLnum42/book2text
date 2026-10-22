@@ -537,3 +537,10 @@ def test_export_margin_judgement_and_optional_notes_are_wired() -> None:
     assert "margin_judgement" in script
     assert "margin_blocks" in script
     assert "margin_notes" in script
+
+
+def test_page_suggestion_badge_counts_only_high_confidence() -> None:
+    """页面视图「建议 N」只数 high——脚注 / 旁批永远 review，不会污染它。"""
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    assert 'item.confidence === "high"' in script
+    assert "paintTileSuggestionMark" in script

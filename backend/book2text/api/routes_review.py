@@ -906,6 +906,8 @@ def block_suggestions(request: Request, project_id: str, page_no: int) -> dict[s
     数字形态；只返回"与当前类型不同"的建议。书眉里夹着的页码（如
     `2谁是巴赫金?11`）以 `page_number_candidates` 返回，`page_number_hint`
     只是按页面左右侧给的提示，**不是结论**；标题（章 / 回 / 节标记）只给 review。
+    脚注 / 旁批也只给 review：命中位置 / 字号 / 注释符号 / 间距信号，**永不 high**
+    ——误标会让注文离开正文，「全库采用高把握」与自动应用都不会碰它们。
     """
     _require_main(request, project_id)
     library = _library(request)

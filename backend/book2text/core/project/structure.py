@@ -18,6 +18,9 @@
 
 from __future__ import annotations
 
+import re
+import statistics
+from collections import defaultdict
 from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +38,8 @@ from ..structure.regions import (
 )
 from . import blocks as blocks_module
 from . import editing
+from . import library as library_module
+from . import margin_box as margin_box_module
 from .library import ProjectError, default_library_dir, list_pages, project_dir
 
 # 说明书 6.5 的默认区域高度
@@ -56,6 +61,9 @@ BLOCK_TYPE_PAGE_NUMBER = "page_number"
 BLOCK_TYPE_PARAGRAPH = "paragraph"
 # 章题 / 回目：建议只到 review（见 suggest_block_types），任何规则都不该自动删标题
 BLOCK_TYPE_HEADING = "heading"
+BLOCK_TYPE_FOOTNOTE = "footnote"
+BLOCK_TYPE_MARGIN_NOTE = "margin_note"
+BLOCK_TYPE_OTHER = "other"
 
 # 候选的把握程度（见 Candidate 的说明）
 CONFIDENCE_HIGH = "high"
@@ -402,13 +410,36 @@ CONFIDENCE_LABELS = {
     CONFIDENCE_REVIEW: "需确认",
 }
 
+# ---------------------------------------------------------------- 脚注 / 旁批建议
+#
+# **安全约束（不要放开）：** 脚注 / 旁批被误标的后果是这段文字从正文流里消失
+# （进注释流或干脆不导出）——这是数据丢失。因此这两类建议**永远只给 review**：
+# 「全库采用高把握建议」与"识别完成自动应用"都只动 high，不会碰它们；
+# 必须由用户逐条看、逐条采用。`_note_suggestion()` 返回的 confidence 固定为 review，
+# 现有入口再按 high 过滤一次（`scan_high_suggestions`）。
+FOOTNOTE_BOTTOM_RATIO = 0.25
+FOOTNOTE_SIZE_RATIO = 0.85
+FOOTNOTE_GAP_RATIO = 1.5
+# 保守上限：超过这个字数的块更像正文段落，不给脚注建议（宁可漏报，不要制造噪声）
+FOOTNOTE_MAX_CHARS = 120
+MARGIN_NOTE_MAX_CHARS = 40
+
+# 注释符号：圈号 / * / "注：" / "［注" / "译者注"；"——译注" 可以出现在末尾
+_NOTE_START_PATTERNS = (
+    (re.compile(r"^[①-⑳]"), "圈号"),
+    (re.compile(r"^[*＊]"), "*"),
+    (re.compile(r"^(?:注[:：]|［注|\[注|译者注|译注)"), "注记"),
+    (re.compile(r"^\d{1,2}\s"), "数字标记"),
+)
+_NOTE_SIGNATURE = re.compile(r"——译(?:者)?注")
+
 
 @dataclass(frozen=True)
 class BlockSuggestion:
     """一条**只读**的块类型建议。
 
     它与结构工具的候选是同一套规则算出来的，但**不写库、不改块类型**：
-    界面上只是"这一块可能是页眉"的提示，用户点「采用」才会走正常的块编辑接口。
+    界面上只是"这一块可能是页眉 / 脚注 / 旁批"的提示，用户点「采用」才会走正常的块编辑接口。
     """
 
     block_id: str
@@ -423,6 +454,8 @@ class BlockSuggestion:
     repeat_matches: int
     page_number_candidates: tuple[NumberCandidate, ...] = ()
     page_number_hint: NumberCandidate | None = None
+    # 脚注 / 旁批命中了哪几条信号（界面 tooltip / 报告用）；其他建议为空
+    note_signals: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -444,6 +477,7 @@ class BlockSuggestion:
             "page_number_hint": (
                 self.page_number_hint.to_dict() if self.page_number_hint else None
             ),
+            "note_signals": list(self.note_signals),
         }
 
 
@@ -505,6 +539,236 @@ def _suggestion_reason(candidate: Candidate, repeat: int) -> str:
     return f"{candidate.reason}；只出现 {repeat} 处，需人工确认"
 
 
+@dataclass(frozen=True)
+class _LineProfile:
+    """全书行框统计：正文行高中位数 / 行距中位数 / 每块的行高。"""
+
+    median_height: float | None
+    median_gap: float | None
+    heights_by_block: dict[str, list[float]]
+
+
+def _median(values: list[float]) -> float | None:
+    return statistics.median(values) if values else None
+
+
+def _line_profile(project_id: str, blocks, library: Path) -> _LineProfile:
+    """读全书 `block_line`，算"字号代理"与"行距"。
+
+    **为什么行框高度可以当字号代理：** `block_line.bbox` 是检测器给出的**行框**，
+    高度覆盖了字形的主体（含扫描模糊），同一本书里正文与脚注的字号差会直接反映成
+    行框高度差。阈值用**相对比值**（脚注 < 0.85 × 正文中位），不写死像素 / 毫米。
+    反例见 `docs/known-limitations.md` L-61：只有标点 / 上标的行、竖排、旋转页、
+    刻意用大字的脚注会失准；没有行框的块直接放弃字号信号。
+    """
+    by_id = {block.block_id: block for block in blocks}
+    heights: dict[str, list[float]] = defaultdict(list)
+    lines_by_block: dict[str, list[tuple[int, tuple[float, float, float, float]]]] = defaultdict(list)
+    body_heights: list[float] = []
+    for line in blocks_module.list_block_lines(project_id, library=library):
+        block = by_id.get(line.block_id)
+        if block is None or line.bbox is None:
+            continue
+        height = float(line.bbox[3]) - float(line.bbox[1])
+        if height <= 0:
+            continue
+        heights[line.block_id].append(height)
+        lines_by_block[line.block_id].append((line.line_index, line.bbox))
+        if block.block_type in (BLOCK_TYPE_PARAGRAPH, BLOCK_TYPE_HEADING):
+            body_heights.append(height)
+
+    body_gaps: list[float] = []
+    for block_id, lines in lines_by_block.items():
+        block = by_id.get(block_id)
+        if block is None or block.block_type not in (BLOCK_TYPE_PARAGRAPH, BLOCK_TYPE_HEADING):
+            continue
+        ordered = sorted(lines, key=lambda item: item[0])
+        for (_, left), (_, right) in zip(ordered, ordered[1:]):
+            gap = float(right[1]) - float(left[3])
+            if gap > 0:
+                body_gaps.append(gap)
+
+    return _LineProfile(
+        median_height=_median(body_heights),
+        median_gap=_median(body_gaps),
+        heights_by_block=dict(heights),
+    )
+
+
+def _note_marker(text: str) -> str | None:
+    """块首的注释符号 / 块内的"——译注"签名；没有就 None。"""
+    stripped = (text or "").strip()
+    for pattern, label in _NOTE_START_PATTERNS:
+        if pattern.match(stripped):
+            return label
+    if _NOTE_SIGNATURE.search(stripped):
+        return "——译注"
+    return None
+
+
+def _footnote_signal_labels(
+    block,
+    page,
+    page_blocks: list,
+    index: int,
+    profile: _LineProfile,
+    project,
+) -> list[str]:
+    """命中几条脚注信号；**位置信号是前提**（脚注在版心下沿）。"""
+    if block.bbox is None:
+        return []
+    box = margin_box_module.effective_margin_box(project, page)
+    center_x = (block.bbox[0] + block.bbox[2]) / 2
+    center_y = (block.bbox[1] + block.bbox[3]) / 2
+    if box is not None and page.margin_box_mode != margin_box_module.MODE_NONE:
+        inside = box[0] <= center_x <= box[2] and box[1] <= center_y <= box[3]
+        bottom_start = box[3] - FOOTNOTE_BOTTOM_RATIO * (box[3] - box[1])
+        position_label = "位于版心下沿"
+    else:
+        inside = True
+        bottom_start = 1 - FOOTNOTE_BOTTOM_RATIO
+        position_label = "位于页面底部（版心未设置）"
+    if not inside or center_y < bottom_start:
+        return []
+
+    labels = [position_label]
+    heights = profile.heights_by_block.get(block.block_id) or []
+    if heights and profile.median_height:
+        ratio = (sum(heights) / len(heights)) / profile.median_height
+        if ratio < FOOTNOTE_SIZE_RATIO:
+            labels.append(f"行高较小（{ratio:.2f}× 正文中位）")
+
+    marker = _note_marker(block.text)
+    if marker:
+        labels.append(f"注释符号（{marker}）")
+
+    if index > 0:
+        previous = page_blocks[index - 1]
+        if (
+            previous.bbox is not None
+            and previous.block_type in (BLOCK_TYPE_PARAGRAPH, BLOCK_TYPE_HEADING)
+            and profile.median_gap
+        ):
+            gap = float(block.bbox[1]) - float(previous.bbox[3])
+            if gap > 0 and gap / profile.median_gap > FOOTNOTE_GAP_RATIO:
+                labels.append(f"与上一块间距较大（{gap / profile.median_gap:.1f}× 行距）")
+    return labels
+
+
+def _margin_note_signal(block, page, project) -> tuple[str, str] | None:
+    """版心外左右两侧、短行、不是页码 → 旁批候选（只给 review）。"""
+    text = (block.text or "").strip()
+    if not text or len(text) > MARGIN_NOTE_MAX_CHARS:
+        return None
+    if looks_like_a_number(text):
+        return None
+    if block.bbox is None:
+        return None
+    center_x = (block.bbox[0] + block.bbox[2]) / 2
+    center_y = (block.bbox[1] + block.bbox[3]) / 2
+    box = margin_box_module.effective_margin_box(project, page)
+    if box is not None and page.margin_box_mode != margin_box_module.MODE_NONE:
+        if not (box[1] <= center_y <= box[3]):
+            return None
+        if center_x < box[0]:
+            side, region = "左", REGION_LEFT
+        elif center_x > box[2]:
+            side, region = "右", REGION_RIGHT
+        else:
+            return None
+        where = f"位于版心外{side}侧"
+    else:
+        if not (0.10 <= center_y <= 0.90):
+            return None
+        if center_x <= 0.10:
+            side, region = "左", REGION_LEFT
+        elif center_x >= 0.90:
+            side, region = "右", REGION_RIGHT
+        else:
+            return None
+        where = f"位于页面{side}侧（版心未设置）"
+    return (
+        f"{where}；短行（{len(text)} 字）；不是页码 / 罗马数字",
+        region,
+    )
+
+
+def _note_suggestion(
+    block,
+    page,
+    page_blocks: list,
+    index: int,
+    profile: _LineProfile,
+    project,
+    *,
+    allow_margin_note: bool = True,
+) -> BlockSuggestion | None:
+    """脚注 / 旁批的**只读 review** 建议。
+
+    **永远不返回 high**：误标会让这段文字离开正文。这里固定写 review，
+    不经过 `_with_confidence`；`scan_high_suggestions` 也不会看到它们。
+    """
+    if block.block_type not in (BLOCK_TYPE_PARAGRAPH, BLOCK_TYPE_OTHER):
+        return None
+    text = (block.text or "").strip()
+    if not text:
+        return None
+    # 纯数字 / 罗马数字是页码（或页码碎片），交给边缘条带的 page_number 建议
+    if looks_like_a_number(text):
+        return None
+
+    if len(text) <= FOOTNOTE_MAX_CHARS:
+        signals = _footnote_signal_labels(
+            block, page, page_blocks, index, profile, project
+        )
+        # 位置 + 间距两条**还不够**：真书第 5/6 页的「豆瓣id:坏卡超」这类署名
+        # 正好在版心下沿、与上一块间距很大，会被误报。必须再有"注释符号"或
+        # "行高较小"其中一条才给建议——宁可漏报，也不制造噪声（只给 review 也一样）。
+        anchored = any(
+            label.startswith("注释符号") or label.startswith("行高较小")
+            for label in signals
+        )
+        if len(signals) >= 2 and anchored:
+            return BlockSuggestion(
+                block_id=block.block_id,
+                page_no=block.page_no,
+                order_index=block.order_index,
+                current_type=block.block_type,
+                suggested_type=BLOCK_TYPE_FOOTNOTE,
+                confidence=CONFIDENCE_REVIEW,
+                region=REGION_BOTTOM,
+                reason=(
+                    f"命中 {len(signals)} 条脚注信号：" + "；".join(signals)
+                    + "。脚注建议只给「需确认」——误标会让这段文字离开正文。"
+                ),
+                chars=len(text),
+                repeat_matches=0,
+                note_signals=tuple(signals),
+            )
+
+    if not allow_margin_note:
+        return None
+    margin = _margin_note_signal(block, page, project)
+    if margin is not None:
+        detail, region = margin
+        return BlockSuggestion(
+            block_id=block.block_id,
+            page_no=block.page_no,
+            order_index=block.order_index,
+            current_type=block.block_type,
+            suggested_type=BLOCK_TYPE_MARGIN_NOTE,
+            confidence=CONFIDENCE_REVIEW,
+            region=region,
+            reason=(
+                f"命中旁批信号：{detail}。旁批建议只给「需确认」——误标会让这段文字离开正文。"
+            ),
+            chars=len(text),
+            repeat_matches=0,
+            note_signals=(detail,),
+        )
+    return None
+
+
 def suggest_block_types(
     project_id: str,
     page_no: int,
@@ -520,9 +784,13 @@ def suggest_block_types(
     - 不跳过"已经是页眉 / 页码"的块，而是算出内容上**应该**是什么类型，
       然后只返回"与当前类型不同"的那些——否则界面上全是"已经是段落"的噪声；
     - 额外提取书眉里夹着的**页码候选**（第二本书第 30 页的 `2谁是巴赫金?11`），
-      以及只给 review 的**标题**建议（`第X回 / 第X章` 这类标记）。
+      以及只给 review 的**标题**建议（`第X回 / 第X章` 这类标记）；
+    - **脚注 / 旁批**：位置 + 字号（行框高度代理）+ 注释符号 + 与上块间距；
+      命中至少 2 条且有一条"注释符号 / 行高较小"才给建议，**永远只给 review**。
+      误标会让这段文字离开正文，所以「全库采用高把握」与自动应用都不会碰它们
+      （`scan_high_suggestions` 里还有一道同样的安全阀）。
 
-    **任何规则都不自动改块类型**；本函数只读两个表：`page`、`block`。
+    **任何规则都不自动改块类型**；本函数只读 `page` / `block` / `block_line`。
     """
     active = rules or HeaderFooterRules()
     target_library = library if library is not None else default_library_dir()
@@ -547,7 +815,12 @@ def suggest_block_types(
         for block in blocks_module.list_blocks(project_id, library=target_library)
         if block.page_no in eligible
     ]
-    page_blocks = [block for block in blocks if block.page_no == page_no]
+    page_blocks = sorted(
+        (block for block in blocks if block.page_no == page_no),
+        key=lambda block: (block.order_index, block.block_id),
+    )
+    project = library_module.load_project(project_id, library=target_library)
+    line_profile = _line_profile(project_id, blocks, target_library)
 
     # 1) 边缘条带里的块：与结构工具**同一条规则**（_region_of + _propose + _with_confidence）
     candidates: list[Candidate] = []
@@ -574,8 +847,33 @@ def suggest_block_types(
     scored = {candidate.block_id: candidate for candidate in _with_confidence(candidates)}
 
     suggestions: list[BlockSuggestion] = []
-    for block in page_blocks:
+    for block_index, block in enumerate(page_blocks):
+        # 已经是脚注 / 旁批的块不再给建议（避免"脚注 → 页脚"这类改错的建议）
+        if block.block_type in (BLOCK_TYPE_FOOTNOTE, BLOCK_TYPE_MARGIN_NOTE):
+            continue
+        # 脚注优先于边缘条带：脚注只给 review，比把脚注标成页脚（可能 high）安全。
+        # 旁批不覆盖"跨页重复"的 high 页眉：竖排书的左侧短行通常是书眉，不是旁批。
         candidate = scored.get(block.block_id)
+        # 高把握的**页眉**不覆盖（竖排书左侧短行是书眉）；高把握的页脚 / 页码才让旁批
+        # 以 review 的形式优先——误标一个页脚也会让文字离开正文。
+        allow_margin_note = not (
+            candidate is not None
+            and candidate.confidence == CONFIDENCE_HIGH
+            and candidate.proposed_type == BLOCK_TYPE_HEADER
+        )
+        note = _note_suggestion(
+            block,
+            target,
+            page_blocks,
+            block_index,
+            line_profile,
+            project,
+            allow_margin_note=allow_margin_note,
+        )
+        if note is not None:
+            suggestions.append(note)
+            continue
+
         if candidate is not None:
             if candidate.proposed_type == block.block_type:
                 continue  # 已经是这个类型：不报，避免界面噪声
@@ -717,6 +1015,7 @@ def scan_high_suggestions(
     eligible = {page.page_no for page in pages if page.page_type in active.page_types}
     if not eligible:
         return HighSuggestionPlan(0, 0, (), {}, ())
+    pages_by_no = {page.page_no: page for page in pages if page.page_no in eligible}
 
     blocks = [
         block
@@ -748,12 +1047,31 @@ def scan_high_suggestions(
         )
     scored = {candidate.block_id: candidate for candidate in _with_confidence(candidates)}
 
+    # 安全阀：脚注 / 旁批只给 review，但边缘条带可能把同一块算成 high 页脚 / 书眉。
+    # 全库扫描（「采用高把握」与自动应用都走这里）必须在 high 之前再挡一次：
+    # 只要这一块命中脚注 / 旁批信号，就不进批量——否则自动应用会把注文改出正文。
+    project = library_module.load_project(project_id, library=target_library)
+    line_profile = _line_profile(project_id, blocks, target_library)
+    blocks_by_page: dict[int, list] = {}
+    for block in blocks:
+        blocks_by_page.setdefault(block.page_no, []).append(block)
+    for items in blocks_by_page.values():
+        items.sort(key=lambda block: (block.order_index, block.block_id))
+    page_index = {
+        (block.page_no, block.block_id): index
+        for page_no, page_blocks in blocks_by_page.items()
+        for index, block in enumerate(page_blocks)
+    }
+
     wanted = set(page_numbers) if page_numbers else None
     items: list[tuple[str, str, int]] = []
     by_type: dict[str, int] = {}
     samples: list[dict[str, object]] = []
     for block in blocks:
         if wanted is not None and block.page_no not in wanted:
+            continue
+        # 已经是注文类型：不许被批量改成页脚 / 书眉
+        if block.block_type in (BLOCK_TYPE_FOOTNOTE, BLOCK_TYPE_MARGIN_NOTE):
             continue
         candidate = scored.get(block.block_id)
         if candidate is None:
@@ -764,6 +1082,18 @@ def scan_high_suggestions(
             continue
         # 标题永远不进批量：`looks_like_heading` 只给 review，这里再挡一道
         if candidate.proposed_type == BLOCK_TYPE_HEADING:
+            continue
+        note = _note_suggestion(
+            block,
+            pages_by_no[block.page_no],
+            blocks_by_page.get(block.page_no, []),
+            page_index.get((block.page_no, block.block_id), 0),
+            line_profile,
+            project,
+            # 高把握页眉保留（竖排书眉）；高把握页脚才让旁批 review 优先
+            allow_margin_note=candidate.proposed_type != BLOCK_TYPE_HEADER,
+        )
+        if note is not None:
             continue
         items.append((block.block_id, candidate.proposed_type, block.page_no))
         by_type[candidate.proposed_type] = by_type.get(candidate.proposed_type, 0) + 1
