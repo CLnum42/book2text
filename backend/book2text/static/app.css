@@ -612,24 +612,82 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 .page-overlay .box__handle--sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
 .page-overlay .box__handle--se { bottom: -5px; right: -5px; cursor: nwse-resize; }
 
-/* 块框上的小牌子：**一直显示**顺序号 + 类型文字，不能只靠颜色区分 */
-.page-overlay .box__badge {
-  position: absolute; top: 2px; left: 2px; height: 14px; line-height: 13px;
-  padding: 0 4px; border-radius: 3px; font-size: 9.5px; font-weight: 600;
-  color: var(--box-color, #4361a8); background: rgba(255, 255, 255, .78);
-  border: 1px solid var(--box-color, rgba(120, 150, 200, .55));
-  white-space: nowrap; pointer-events: none; z-index: 3;
-  backdrop-filter: blur(2px);
+/* 默认态：只留类型颜色 + 极小顺序号；类型文字 / 把握 / 采用放进悬停卡片。
+   横幅式标签放在框里任何位置都会吃掉正文，这个方向已经放弃。 */
+.page-overlay .box::before {
+  content: ""; position: absolute; left: -6px; top: -1px; bottom: -1px; width: 3px;
+  border-radius: 2px; background: var(--box-color, #6b7280); opacity: .85;
+  pointer-events: none;
 }
-.page-overlay .box--active .box__badge { color: #fff; background: var(--accent); border-color: var(--accent); }
-/* 页面视图的只读块框：overlay 与 box 都不吃点击，选页 / 多选照旧 */
+.page-overlay .box--excluded::before { opacity: .35; }
+.page-overlay .box__order {
+  position: absolute; z-index: 4; padding: 0 2px; border-radius: 2px;
+  font-size: 8.5px; line-height: 13px; font-weight: 600; letter-spacing: -.2px;
+  color: var(--box-color, #4b5563); background: rgba(255, 255, 255, .55);
+  opacity: .5; pointer-events: none; white-space: nowrap;
+}
+.page-overlay .box--active .box__order {
+  opacity: 1; background: var(--accent); color: #fff;
+}
+/* 真的找不到页内空位时的兜底：贴着框内右上角，仍然只有一两个字符 */
+.page-overlay .box__order--inside {
+  background: rgba(255, 255, 255, .78); opacity: .55;
+  border: 1px solid var(--box-color, #6b7280);
+}
+
+/* 悬停 / 选中卡片：放在框外（上方 → 右 → 左 → 下方找空位），不压本行文字。
+   同时只显示一张：鼠标停在别的块上时，选中块的卡片让位。 */
+.page-overlay .box__label {
+  position: absolute; z-index: 20;
+  width: max-content; max-width: 240px;
+  padding: 5px 8px 6px; border-radius: 7px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--box-color, #6b7280);
+  box-shadow: 0 5px 16px rgba(15, 18, 24, .22);
+  font-size: 11.5px; line-height: 1.5; text-align: left;
+  white-space: normal; word-break: keep-all;
+  visibility: hidden; opacity: 0; pointer-events: none;
+  transition: opacity .08s ease;
+}
+.page-overlay .box:hover .box__label,
+.page-overlay .box--active .box__label {
+  visibility: visible; opacity: 1; pointer-events: auto;
+}
+.page-overlay:hover .box--active:not(:hover) .box__label {
+  visibility: hidden; opacity: 0; pointer-events: none;
+}
+.page-overlay .box__label-head {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+}
+.page-overlay .box__label-no { color: var(--faint); font-size: 10.5px; }
+.page-overlay .box__label-type { color: var(--box-color, #4b5563); }
+.page-overlay .box__label-arrow { color: var(--faint); font-size: 10.5px; }
+.page-overlay .box__label-type--header,
+.page-overlay .box__label-type--footer { color: #4b5563; }
+.page-overlay .box__label-type--page_number { color: #0f766e; }
+.page-overlay .box__label-type--heading { color: #4338ca; }
+.page-overlay .box__label-conf {
+  padding: 0 5px; border-radius: 4px; font-size: 10.5px; font-weight: 600;
+}
+.page-overlay .box__label-conf--high { background: var(--bad-soft); color: var(--bad-text); }
+.page-overlay .box__label-conf--review { background: var(--warn-soft); color: var(--warn-text); }
+.page-overlay .box__label-note { color: var(--muted); font-size: 10.5px; }
+.page-overlay .box__label-apply {
+  height: 19px; padding: 0 6px; font-size: 10.5px; border-radius: 4px;
+  margin-left: auto;
+}
+.page-overlay .box__label-hint {
+  display: inline-block; margin-top: 4px; font-size: 10.5px;
+}
+.page-overlay .box--uncertain .box__order { color: var(--warn-text); }
+/* 页面视图的只读块框：容器与块都不吃点击时选页照旧。开了块框之后只给块框本身
+   开 pointer-events（点击仍冒泡到 tile），这样悬停能看类型，单击 / Shift / ⌘ 选页不变。 */
 .page-overlay--readonly { pointer-events: none; z-index: 1; }
 .page-overlay--readonly .box { pointer-events: none; cursor: default; border-width: 1.5px; }
+.page-overlay--readonly.page-overlay--labeled .box { pointer-events: auto; }
 .page-overlay--readonly .box__handle { display: none; }
-.page-overlay--labeled .box__badge { display: block; }
 
 .page-overlay .box--uncertain { border-style: dashed; }
-.page-overlay .box--uncertain .box__badge { color: var(--warn-text); border-color: var(--warn); }
 .page-overlay .box--chrome { border-style: dashed; }
 
 /* 行归属的提示层：未归属 = 灰色虚线，冲突 = 黄色虚线（都在原图上，点不到） */

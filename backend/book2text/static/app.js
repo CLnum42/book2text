@@ -2686,7 +2686,12 @@ function ensurePageBlocks(pageNo) {
   const key = pageBlockKey(pageNo);
   if (pageBlockCache.has(key)) {
     const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
-    if (tile && visiblePageNos.has(pageNo)) renderPageBlocks(tile, pageBlockCache.get(key));
+    const overlay = tile ? tile.querySelector(".page-overlay") : null;
+    const blocks = pageBlockCache.get(key);
+    // 可见性每帧都会调这里：同一批块已经画好就不要再重建 DOM / 重排标注
+    if (tile && overlay && visiblePageNos.has(pageNo) && overlay._renderedBlocks !== blocks) {
+      renderPageBlocks(tile, blocks);
+    }
     return;
   }
   if (pageBlockPending.has(key)) return;
@@ -2709,6 +2714,8 @@ function renderPageBlocks(tile, blocks) {
   const overlay = tile.querySelector(".page-overlay");
   if (!overlay) return;
   overlay.innerHTML = "";
+  overlay._renderedBlocks = blocks;
+  overlay._lineBboxes = [];
   let count = 0;
   for (const block of blocks) {
     if (!block.bbox) continue;
@@ -2716,17 +2723,21 @@ function renderPageBlocks(tile, blocks) {
     box.className = `box box--type-${block.block_type}`;
     if (!block.include) box.classList.add("box--excluded");
     if (block.review_status === "uncertain") box.classList.add("box--uncertain");
+    box._bbox = block.bbox;
     applyBoxElementRect(box, block.bbox);
-    const typeLabel = BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
-    const badge = document.createElement("span");
-    badge.className = "box__badge";
-    badge.textContent = typeLabel;
-    box.title = `${typeLabel} · 第 ${block.order_index + 1} 块`;
-    box.append(badge);
+    const index = block.order_index;
+    box.title = `${boxTypeLabel(block)} · 第 ${index + 1} 块`;
+    // 与审校视图同一套规则：默认只留颜色 + 小顺序号，悬停才出类型卡片
+    box.append(buildBoxOrder(index));
+    box.append(buildBoxLabel(block, index, null));
     overlay.append(box);
     count += 1;
   }
   overlay.hidden = count === 0;
+  observeOverlaySize(overlay);
+  // 同步摆一次，别等 rAF：块框刚画出来时可能正赶上滚动 / 缩放，晚一帧就会看到没摆好的号
+  layoutOverlayAnnotations(overlay);
+  scheduleOverlayLayout(overlay);
 }
 
 function clearPageBlocks(tile) {
@@ -2734,6 +2745,7 @@ function clearPageBlocks(tile) {
   if (!overlay) return;
   overlay.innerHTML = "";
   overlay.hidden = true;
+  overlay._renderedBlocks = null;
 }
 
 function renderPages() {
@@ -3458,6 +3470,8 @@ function applyZoom() {
   const width = zoomLevel === null ? base : Math.round(base * zoomLevel);
   canvas.style.width = `${width}px`;
   el("zoom-fit").classList.toggle("is-on", zoomLevel === null);
+  // 顺序号 / 悬停卡片是像素定位的：宽度变了要重新找空位
+  scheduleOverlayLayout(el("detail-overlay"));
 }
 
 function zoomBy(delta) {
@@ -3480,6 +3494,7 @@ function setupViewerTools() {
     el("toggle-overlay").classList.toggle("is-on", on);
     el("detail-overlay").hidden = !on;
     el("toggle-overlay").textContent = on ? "显示块框" : "块框已隐藏";
+    if (on) scheduleOverlayLayout(el("detail-overlay"));
   });
   window.addEventListener("resize", () => {
     if (zoomLevel === null) applyZoom();
@@ -3810,16 +3825,298 @@ function setupBoxDrag() {
   window.addEventListener("pointercancel", onBoxPointerUp);
 }
 
-/** 块框上的小牌子：顺序号 + 类型文字（不能只靠颜色：黑白截图与色盲都要能读）。 */
-function blockBadgeText(block, index) {
-  const typeLabel = BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
-  const prefix = block.review_status === "uncertain" ? "？" : "";
-  return `${prefix}${index + 1} ${typeLabel}`;
+// ---------------------------------------------------------------- 块框标注（默认不遮字）
+//
+// 横幅式标签放在框里任何位置都会吃掉正文（第 30 页"彼得格勒…"被盖住"彼得"）。
+// 现在：
+//   · 默认只留类型颜色（边框 + 框外侧左缘色条）与一个小顺序号；
+//   · 顺序号自动找一个**不压任何块 / 行**的空位（框外上方、左右、下方）；
+//   · 类型名 + 把握 + 「采用」+ 页码提示放进悬停 / 选中才出现的卡片，
+//     卡片同样先找空位（上方 → 右 → 左 → 下方），找不到才退回框下方；
+//   · 同一时刻只显示一张卡片（CSS :hover + 选中块互斥）。
+// 位置按像素算、随缩放重算；用相对块框的 px 偏移，不写百分比。
+
+const BOX_ORDER_WIDTH = 20;
+const BOX_ORDER_HEIGHT = 13;
+const BOX_ORDER_GAP = 3;
+const BOX_LABEL_GAP = 6;
+
+function boxTypeLabel(block) {
+  return BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
+}
+
+function pxRect(bbox, width, height) {
+  return {
+    x0: bbox[0] * width,
+    y0: bbox[1] * height,
+    x1: bbox[2] * width,
+    y1: bbox[3] * height,
+  };
+}
+
+function rectsOverlap(a, b, pad = 0) {
+  return (
+    a.x0 < b.x1 + pad &&
+    a.x1 > b.x0 - pad &&
+    a.y0 < b.y1 + pad &&
+    a.y1 > b.y0 - pad
+  );
+}
+
+/** 默认态的小顺序号；类型文字不在图上常驻（右侧块列表里有）。 */
+function buildBoxOrder(index) {
+  const order = document.createElement("span");
+  order.className = "box__order";
+  order.textContent = String(index + 1);
+  return order;
+}
+
+/**
+ * 悬停 / 选中卡片：类型 + 把握 + 「采用」+ 页码提示。
+ * 只在鼠标停在该块、或该块被选中（`.box--active`）时出现，位置在框外。
+ */
+function buildBoxLabel(block, index, suggestion) {
+  const label = document.createElement("div");
+  label.className = "box__label";
+
+  const head = document.createElement("div");
+  head.className = "box__label-head";
+  const no = document.createElement("span");
+  no.className = "box__label-no";
+  no.textContent = `#${index + 1}`;
+  const type = document.createElement("strong");
+  type.className = "box__label-type";
+  type.textContent = boxTypeLabel(block);
+  head.append(no, type);
+
+  if (suggestion) {
+    // 建议存在时写成"现在的类型 → 建议的类型"，否则"段落 · 把握较大"看不出在建议什么
+    const arrow = document.createElement("span");
+    arrow.className = "box__label-arrow";
+    arrow.textContent = "→";
+    const target = document.createElement("strong");
+    target.className = `box__label-type box__label-type--${suggestion.suggested_type}`;
+    target.textContent =
+      BLOCK_TYPE_LABELS[suggestion.suggested_type] || suggestion.suggested_type;
+    head.append(arrow, target);
+
+    const confidence = document.createElement("span");
+    confidence.className = `box__label-conf box__label-conf--${suggestion.confidence}`;
+    confidence.textContent = suggestion.confidence_label;
+    head.append(confidence);
+
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "btn btn--sm box__label-apply";
+    apply.textContent = "采用";
+    apply.title = `把这一块改成「${BLOCK_TYPE_LABELS[suggestion.suggested_type] || suggestion.suggested_type}」（可撤销）`;
+    apply.addEventListener("pointerdown", (event) => event.stopPropagation());
+    apply.addEventListener("click", (event) => {
+      event.stopPropagation();
+      adoptBlockSuggestion(suggestion);
+    });
+    head.append(apply);
+  }
+
+  const notes = [];
+  if (!block.include) notes.push("已排除");
+  else if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) notes.push("不输出文本");
+  else if (CHROME_BLOCK_TYPES.has(block.block_type)) notes.push("导出时排除");
+  if (block.layout_confirmed) notes.push("版面已确认");
+  if (block.review_status === "uncertain") notes.push("不确定");
+  if (notes.length) {
+    const note = document.createElement("span");
+    note.className = "box__label-note";
+    note.textContent = notes.join(" · ");
+    head.append(note);
+  }
+  label.append(head);
+
+  // 书眉里的页码只在悬停卡片里出现，不常驻压字
+  if (suggestion) {
+    const pageNumber = pageNumberHintChip(suggestion);
+    if (pageNumber) {
+      pageNumber.classList.add("box__label-hint");
+      label.append(pageNumber);
+    }
+  }
+
+  // 卡片自己不吃拖动；「采用」按钮另有处理
+  label.addEventListener("pointerdown", (event) => event.stopPropagation());
+  label.addEventListener("click", (event) => event.stopPropagation());
+  return label;
+}
+
+/** 顺序号的位置：先找框边空位；密集页没有缝隙时退到页边留白（像行号）。 */
+function findOrderSpot(own, obstacles, width, height) {
+  const w = BOX_ORDER_WIDTH;
+  const h = BOX_ORDER_HEIGHT;
+  const gap = BOX_ORDER_GAP;
+  const preferLeft = (own.x0 + own.x1) / 2 <= width / 2;
+  const marginCandidates = preferLeft
+    ? [[2, own.y0], [width - w - 2, own.y0]]
+    : [[width - w - 2, own.y0], [2, own.y0]];
+  const candidates = [
+    [own.x1 - w, own.y0 - gap - h], // 右上（框外）
+    [own.x0 - gap - w, own.y0], // 左上（框外）
+    [own.x1 + gap, own.y0], // 右侧
+    [own.x1 - w, own.y1 + gap], // 右下
+    [own.x0 - gap - w, own.y1 + gap], // 左下
+    ...marginCandidates, // 页边留白：密集页里唯一保证不压字的位置
+  ];
+  for (const [x, y] of candidates) {
+    const rect = { x0: x, y0: y, x1: x + w, y1: y + h };
+    if (x < 0 || y < 0 || rect.x1 > width || rect.y1 > height) continue;
+    if (obstacles.some((obstacle) => rectsOverlap(rect, obstacle, 1))) continue;
+    return rect;
+  }
+  return null;
+}
+
+/**
+ * 悬停卡片的位置：优先贴着框的上 / 右 / 左 / 下；密集页这些位置都会压到
+ * 相邻行，于是退到"本行旁边最宽的那条留白"（左右页边），再不行才去整页留白。
+ * **任何候选都要避开所有行框**，所以卡片不会遮正文。
+ */
+function findLabelSpot(own, size, obstacles, width, height) {
+  const gap = BOX_LABEL_GAP;
+  const fitX = (x) => Math.min(Math.max(x, 0), Math.max(0, width - size.width));
+  const fitY = (y) => Math.min(Math.max(y, 0), Math.max(0, height - size.height));
+
+  // 本行留白：卡片纵向居中于本块，横向放到"与它同一横带的所有行"之外
+  const bandY = Math.min(
+    Math.max(own.y0 + (own.y1 - own.y0) / 2 - size.height / 2, 0),
+    Math.max(0, height - size.height)
+  );
+  const band = obstacles.filter(
+    (obstacle) => obstacle.y0 < bandY + size.height && obstacle.y1 > bandY
+  );
+  const bandRight = band.length ? Math.max(...band.map((item) => item.x1)) : own.x1;
+  const bandLeft = band.length ? Math.min(...band.map((item) => item.x0)) : own.x0;
+
+  const candidates = [
+    { x0: fitX(own.x0), y0: own.y0 - gap - size.height },
+    { x0: own.x1 + gap, y0: fitY(own.y0) },
+    { x0: own.x0 - gap - size.width, y0: fitY(own.y0) },
+    { x0: fitX(own.x0), y0: own.y1 + gap },
+    // 本行旁边的页边（密集页：右边通常比左边宽）
+    { x0: bandRight + gap, y0: bandY },
+    { x0: bandLeft - gap - size.width, y0: bandY },
+    // 整页留白（避开所有块框 / 行框）：顶部 → 底部 → 两侧
+    { x0: 4, y0: 4 },
+    { x0: width - size.width - 4, y0: 4 },
+    { x0: (width - size.width) / 2, y0: 4 },
+    { x0: 4, y0: height - size.height - 4 },
+    { x0: width - size.width - 4, y0: height - size.height - 4 },
+    { x0: 4, y0: fitY((height - size.height) / 2) },
+    { x0: width - size.width - 4, y0: fitY((height - size.height) / 2) },
+  ];
+  for (const candidate of candidates) {
+    const rect = {
+      x0: candidate.x0,
+      y0: candidate.y0,
+      x1: candidate.x0 + size.width,
+      y1: candidate.y0 + size.height,
+    };
+    if (rect.x0 < 0 || rect.y0 < 0 || rect.x1 > width || rect.y1 > height) continue;
+    if (obstacles.some((obstacle) => rectsOverlap(rect, obstacle, 2))) continue;
+    return rect;
+  }
+  // 实在没有空白：退到框下方（可能压到下一块，但至少不挡正在看的这一行）
+  const x = fitX(own.x1 - size.width);
+  const y = Math.min(Math.max(own.y1 + gap, 0), Math.max(0, height - size.height));
+  return { x0: x, y0: y, x1: x + size.width, y1: y + size.height };
+}
+
+/**
+ * 给一个 overlay 里的所有块框摆好顺序号与悬停卡片。
+ * 图还没布局好（宽高为 0）时返回 false，调用方会在下一帧重试。
+ */
+function layoutOverlayAnnotations(overlay) {
+  if (!overlay || !overlay.isConnected || overlay.hidden) return false;
+  const rect = overlay.getBoundingClientRect();
+  const width = rect.width;
+  const height = rect.height;
+  if (width < 60 || height < 60) return false;
+
+  const obstacles = [];
+  for (const box of overlay.querySelectorAll(".box")) {
+    if (box._bbox) obstacles.push(pxRect(box._bbox, width, height));
+  }
+  for (const bbox of overlay._lineBboxes || []) {
+    if (bbox) obstacles.push(pxRect(bbox, width, height));
+  }
+
+  for (const box of overlay.querySelectorAll(".box")) {
+    if (!box._bbox) continue;
+    const own = pxRect(box._bbox, width, height);
+    const offsetX = box.clientLeft || 0;
+    const offsetY = box.clientTop || 0;
+
+    const order = box.querySelector(".box__order");
+    if (order) {
+      const spot = findOrderSpot(own, obstacles, width, height);
+      order.classList.toggle("box__order--inside", !spot);
+      const at = spot || { x0: own.x1 - BOX_ORDER_WIDTH - 2, y0: own.y0 + 2 };
+      order.style.left = `${at.x0 - own.x0 - offsetX}px`;
+      order.style.top = `${at.y0 - own.y0 - offsetY}px`;
+      // 后面的顺序号也不许压到前面已经摆好的号
+      obstacles.push({ x0: at.x0, y0: at.y0, x1: at.x0 + BOX_ORDER_WIDTH, y1: at.y0 + BOX_ORDER_HEIGHT });
+    }
+
+    const label = box.querySelector(".box__label");
+    if (label) {
+      const size = { width: label.offsetWidth, height: label.offsetHeight };
+      if (!size.width || !size.height) continue;
+      const spot = findLabelSpot(own, size, obstacles, width, height);
+      label.style.left = `${spot.x0 - own.x0 - offsetX}px`;
+      label.style.top = `${spot.y0 - own.y0 - offsetY}px`;
+    }
+  }
+  return true;
+}
+
+/** 图还没出来时等它：每帧重试，直到 overlay 有尺寸（最多约 1.5 秒）。 */
+function scheduleOverlayLayout(overlay, attempt = 0) {
+  if (!overlay || overlay.hidden) return;
+  const token = (overlay._layoutToken = (overlay._layoutToken || 0) + 1);
+  requestAnimationFrame(() => {
+    if (overlay._layoutToken !== token || !overlay.isConnected) return;
+    if (layoutOverlayAnnotations(overlay)) return;
+    if (attempt < 90) scheduleOverlayLayout(overlay, attempt + 1);
+  });
+}
+
+/**
+ * 尺寸变了就重新找空位（缩放、窗口变化）。
+ *
+ * 只靠 applyZoom 里排一帧不够：样式刚改完的那一帧，overlay 的矩形偶尔还是旧宽度，
+ * 顺序号会按旧尺寸摆一次就不再重算（实测 4/4 档第一次放大有 3 个号压块）。
+ */
+let overlayResizeObserver = null;
+
+function observeOverlaySize(overlay) {
+  if (!overlay || typeof ResizeObserver === "undefined") return;
+  if (!overlayResizeObserver) {
+    overlayResizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target.isConnected) scheduleOverlayLayout(entry.target);
+      }
+    });
+  }
+  if (!overlay._resizeObserved) {
+    overlayResizeObserver.observe(overlay);
+    overlay._resizeObserved = true;
+  }
 }
 
 function drawDetailOverlay(blocks) {
   const overlay = el("detail-overlay");
   overlay.innerHTML = "";
+  // 行框也当作障碍：顺序号 / 卡片不许压到任何一行（含未归属 / 冲突行）
+  overlay._lineBboxes = (detailLines || [])
+    .map((line) => line.bbox)
+    .filter(Boolean);
   blocks.forEach((block, index) => {
     if (!block.bbox) return;
     const box = document.createElement("div");
@@ -3831,16 +4128,16 @@ function drawDetailOverlay(blocks) {
     if (block.review_status === "uncertain") box.classList.add("box--uncertain");
     box.dataset.blockId = block.block_id;
     box.dataset.type = block.block_type;
+    box._bbox = block.bbox;
     applyBoxElementRect(box, block.bbox);
-    const typeLabel = BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
     box.title =
-      `${typeLabel} · 第 ${index + 1} 块 · 拖动移位、拖角缩放` +
+      `${boxTypeLabel(block)} · 第 ${index + 1} 块 · 拖动移位、拖角缩放` +
       (block.layout_confirmed ? " · 版面已确认" : "");
 
-    const badge = document.createElement("span");
-    badge.className = "box__badge";
-    badge.textContent = blockBadgeText(block, index);
-    box.append(badge);
+    // 默认只给顺序号；类型 / 把握 / 采用 / 页码在悬停（或选中）卡片里
+    const suggestion = detailSuggestionByBlock.get(block.block_id);
+    box.append(buildBoxOrder(index));
+    box.append(buildBoxLabel(block, index, suggestion));
 
     // 四个角是缩放手柄；手柄吃掉 pointerdown，免得同时触发整框拖动
     for (const corner of HANDLE_CORNERS) {
@@ -3869,6 +4166,10 @@ function drawDetailOverlay(blocks) {
     });
     overlay.append(box);
   });
+  observeOverlaySize(overlay);
+  // 先同步摆一次（getBoundingClientRect 会强制布局），再等下一帧处理"图还没出来"的情况
+  layoutOverlayAnnotations(overlay);
+  scheduleOverlayLayout(overlay);
 }
 
 /** 未归属 / 冲突的行：灰色 / 黄色虚线画在原图上，一条都不丢。 */

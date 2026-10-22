@@ -109,8 +109,48 @@ def test_page_view_has_zoom_controls_and_readonly_block_overlay() -> None:
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
     assert ".page-grid--page" in css
     assert ".page-overlay--readonly" in css
-    # 标签贴框内（不是负 top 浮在框外）
-    assert "top: 2px; left: 2px" in css
+    # 第 42 号任务：横幅式标签已撤掉，默认只有颜色 + 极小顺序号，文字进悬停卡片
+    assert ".page-overlay .box__label" in css
+    assert ".box__label-hint" in css
+    assert "box__badge" not in css
+
+
+def test_block_frame_default_has_no_type_text_and_hover_card_is_placed_outside() -> None:
+    """块框默认不遮字：只有颜色 + 顺序号；类型 / 把握 / 采用 / 页码进悬停卡片。
+
+    静态约定 + 真浏览器验收（见开发日志任务 42）：顺序号与卡片的位置由
+    `findOrderSpot` / `findLabelSpot` 按块框与行框找空位，不是写死 top/left。
+    """
+    script = _script()
+    for name in (
+        "buildBoxOrder",
+        "buildBoxLabel",
+        "findOrderSpot",
+        "findLabelSpot",
+        "layoutOverlayAnnotations",
+        "scheduleOverlayLayout",
+    ):
+        assert f"function {name}(" in script, name
+
+    # 默认顺序号只有数字；类型文字只进悬停卡片
+    assert "order.textContent = String(index + 1)" in script
+    assert "box.append(buildBoxOrder(index));" in script
+    assert "box.append(buildBoxLabel(block, index, suggestion));" in script
+    # 审校视图与页面视图共用同一套
+    assert "box.append(buildBoxLabel(block, index, null));" in script
+    # 页码提示只在卡片里
+    assert "pageNumber.classList.add(\"box__label-hint\")" in script
+    # 「采用」按钮阻止拖动 / 冒泡，避免点按钮时挪框
+    assert "adoptBlockSuggestion(suggestion);" in script
+
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    assert ".page-overlay .box__order" in css
+    assert ".box__label-head" in css
+    # 悬停 / 选中才显示；同一时刻只显示一张
+    assert ".page-overlay .box:hover .box__label" in css
+    assert ".page-overlay:hover .box--active:not(:hover) .box__label" in css
+    # 页面视图只给块框本身开 pointer-events，点击冒泡到 tile，选页不变
+    assert ".page-overlay--readonly.page-overlay--labeled .box { pointer-events: auto; }" in css
 
 
 def test_page_confirmation_type_picker_is_a_flat_list_with_new_types() -> None:
