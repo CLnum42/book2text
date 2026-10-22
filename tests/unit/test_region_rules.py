@@ -15,25 +15,7 @@
 
 from __future__ import annotations
 
-import importlib.util
-import sys
-from pathlib import Path
-
-SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
-
-
-def _load_region_rules():
-    spec = importlib.util.spec_from_file_location(
-        "region_rules_under_test", SCRIPTS / "region_rules.py")
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    # dataclasses 在 exec 时要能按模块名找到模块（否则 @dataclass 会炸）
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-rr = _load_region_rules()
+from book2text.core.structure import regions as rr
 
 BODY_TEXT = "他说这石头上面叙着堕落之乡投胎之处"  # 18 字，够长，不会被字数上限保护
 HEADER_TEXT = "红楼梦／第{回}回"
@@ -194,3 +176,45 @@ def test_max_chars_none_disables_the_length_guard():
     verdict = rr.classify_pages(pages, rules)[-1]
     assert verdict.kind == rr.KIND_FOOTER
     assert verdict.confidence == rr.CONFIDENCE_REVIEW
+
+
+# ---------------------------------------------------------------- 页码候选与标题
+
+
+def test_page_number_candidates_keep_all_numbers_in_a_running_head():
+    """第二本书第 30 页的书眉：节号 2 + 页号 11，两个都必须是候选。"""
+    candidates = rr.page_number_candidates("2谁是巴赫金?11")
+    assert [item.text for item in candidates] == ["2", "11"]
+    assert [item.kind for item in candidates] == ["arabic", "arabic"]
+
+
+def test_page_number_candidates_accept_roman_front_matter_numbers():
+    candidates = rr.page_number_candidates("书(篇)名缩写xvii")
+    assert [item.text for item in candidates] == ["xvii"]
+    assert candidates[0].value == 17
+    assert candidates[0].kind == "roman"
+
+
+def test_page_number_candidates_reject_english_words_that_look_roman():
+    # "mix" 是合法的罗马数字写法（1009），但页码不会这么大——必须挡住
+    assert rr.page_number_candidates("mix") == ()
+    assert rr.page_number_candidates("civ") == ()
+
+
+def test_page_number_hint_follows_the_outer_edge_of_the_page():
+    left = rr.page_number_candidates("10导读巴赫金")
+    right = rr.page_number_candidates("2谁是巴赫金?11")
+    assert rr.page_number_hint(left, (0.12, 0.03, 0.30, 0.06)).text == "10"
+    assert rr.page_number_hint(right, (0.64, 0.03, 0.88, 0.06)).text == "11"
+
+
+def test_heading_markers_are_narrow_on_purpose():
+    assert rr.looks_like_heading("第一回\n甄士隐梦幻识通灵\n贾雨村风尘怀闺秀")
+    assert rr.looks_like_heading("目录")
+    assert rr.looks_like_heading("丛书编者前言")
+    # 正文行首提到"第二章"不是标题（整行不等于章题）
+    assert not rr.looks_like_heading("第二章讨论了巴赫金的对话理论。")
+    # "秩序"不能被单字"序"误中
+    assert not rr.looks_like_heading("秩序")
+    # 没有编号的小节标题认不出（这是规则的天花板，交给版面模型或人工）
+    assert not rr.looks_like_heading("彼得格勒、涅韦尔和维捷布斯克")

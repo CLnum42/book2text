@@ -14,8 +14,9 @@
 2. **行级金标准**：OCR 行与按页标注的金标准文本对齐（前缀 + 后缀锚点，与
    `scripts/measure_divergence.py` 同一套 `locate_in_gold`），匹配上的判正文；
    匹配不上的**逐条人工分类**（`--labels` 指定的文件，页码 + 行号 + 类别，不含原文）。
-3. **判定器**：`scripts/region_rules.py` 的纯函数（几何 / 跨页重复 / 文字形态，
-   输出 high / review 两档）。
+3. **判定器**：`core/structure/regions.py` 的纯函数（几何 / 跨页重复 / 文字形态，
+   输出 high / review 两档）。规则的唯一实现在产品代码里；`scripts/region_rules.py`
+   只是 re-export 的兼容层（`scripts/` 不进打包，产品不能反过来 import 它）。
 4. **度量**：各类检出率、正文误标率、非正文漏标率、剔除后正文 CER，
    以及失败案例清单。
 

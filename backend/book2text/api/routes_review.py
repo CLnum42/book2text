@@ -23,8 +23,10 @@ from ..core.project import blocks as blocks_module
 from ..core.project import editing
 from ..core.project import library as project_library
 from ..core.project import recognition
+from ..core.project import structure as structure_module
 from .deps import actor_name as _actor_name
 from .deps import require_editable_page
+from .deps import require_main_project as _require_main
 from .deps import library_dir as _library
 from .deps import project_error as _project_error
 from .errors import AppError
@@ -646,3 +648,24 @@ def page_blocks(request: Request, project_id: str, page_no: int) -> dict[str, An
         return _page_blocks_payload(request, project_id, page_no)
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
+
+
+# ---------------------------------------------------------------- 块类型建议（只读）
+
+
+@router.get("/{project_id}/pages/{page_no}/block-suggestions")
+def block_suggestions(request: Request, project_id: str, page_no: int) -> dict[str, Any]:
+    """一页的块类型建议（**只读**，不写库、不改 `block_type`）。
+
+    规则与「结构工具」的页眉页脚预览是同一套：位置条带 + 字数上限 + 跨页重复 +
+    数字形态；只返回"与当前类型不同"的建议。书眉里夹着的页码（如
+    `2谁是巴赫金?11`）以 `page_number_candidates` 返回，`page_number_hint`
+    只是按页面左右侧给的提示，**不是结论**；标题（章 / 回 / 节标记）只给 review。
+    """
+    _require_main(request, project_id)
+    library = _library(request)
+    try:
+        plan = structure_module.suggest_block_types(project_id, page_no, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    return plan.to_dict()

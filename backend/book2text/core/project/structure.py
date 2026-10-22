@@ -11,16 +11,27 @@
 
 模型建议（版面组件）与位置规则都必须经过预览与人工确认才生效，**建议绝不静默应用**；
 版面组件本身还没接入（说明书 8.4 的路线未选定），因此当前只有位置规则这一种来源。
+
+**同一套规则也以只读建议的形式给审校视图**（`GET .../pages/{no}/block-suggestions`，
+`suggest_block_types()`）：只算"建议类型 + 把握 + 理由 + 页码候选"，**不写库、不改块类型**。
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..storage import db as db_module
 from ..storage.ulid import new_ulid
+from ..structure.regions import (
+    NumberCandidate,
+    looks_like_a_number,
+    looks_like_heading,
+    normalize_for_repeat,
+    page_number_candidates,
+    page_number_hint,
+    similar_text,
+)
 from . import blocks as blocks_module
 from . import editing
 from .library import ProjectError, default_library_dir, list_pages, project_dir
@@ -42,6 +53,8 @@ BLOCK_TYPE_HEADER = "header"
 BLOCK_TYPE_FOOTER = "footer"
 BLOCK_TYPE_PAGE_NUMBER = "page_number"
 BLOCK_TYPE_PARAGRAPH = "paragraph"
+# 章题 / 回目：建议只到 review（见 suggest_block_types），任何规则都不该自动删标题
+BLOCK_TYPE_HEADING = "heading"
 
 # 候选的把握程度（见 Candidate 的说明）
 CONFIDENCE_HIGH = "high"
@@ -50,14 +63,6 @@ CONFIDENCE_REVIEW = "review"
 REPEAT_THRESHOLD = 3
 # "像同一句"的相似度门槛（容忍 OCR 的个别错字）
 REPEAT_SIMILARITY = 0.6
-
-# 纯数字 / 罗马数字（允许常见的装饰字符包着，如 "· 62 ·"、"- iv -"）
-_NUMBER_PATTERN = re.compile(
-    r"^[\s.·•\-–—_=~*()\[\]{}【】〔〕「」『』<>]*"
-    r"(\d{1,4}|[ivxlcdmIVXLCDM]{1,12})"
-    r"[\s.·•\-–—_=~*()\[\]{}【】〔〕「」『』<>]*$"
-)
-
 
 @dataclass(frozen=True)
 class HeaderFooterRules:
@@ -165,14 +170,6 @@ class Plan:
             "skipped": [item.to_dict() for item in self.skipped][:50],
             "skipped_count": len(self.skipped),
         }
-
-
-def looks_like_a_number(text: str) -> bool:
-    """纯数字或罗马数字（允许被装饰字符包着、允许 OCR 把数字拆行）。
-
-    ``"14\n1"`` 这种是 OCR 把一行的数字读成两截，实质仍是数字——先去掉空白再判断。
-    """
-    return bool(_NUMBER_PATTERN.match(re.sub(r"\s+", "", text)))
 
 
 def _region_of(bbox: tuple[float, float, float, float], rules: HeaderFooterRules) -> str | None:
@@ -300,6 +297,21 @@ def plan_header_footer(
     )
 
 
+def _repeat_count(item: Candidate, candidates: list[Candidate]) -> int:
+    """同一区域里"长得像"的候选有多少个（含它自己）。
+
+    相似度与数字归一化走 `core.structure.regions` 的那一份实现；书眉每页的页码不同
+    （`红楼梦／第 3 回`、`第 4 回`），数字不参与比较，否则每一页都会变成孤例。
+    """
+    normalized = normalize_for_repeat(item.text)
+    return sum(
+        1
+        for other in candidates
+        if other.region == item.region
+        and similar_text(normalized, normalize_for_repeat(other.text), REPEAT_SIMILARITY)
+    )
+
+
 def _with_confidence(candidates: list[Candidate]) -> list[Candidate]:
     """给候选标上把握程度。
 
@@ -314,50 +326,14 @@ def _with_confidence(candidates: list[Candidate]) -> list[Candidate]:
     """
     # 同一区域里"长得像"的算一类：OCR 把书眉读成「红楼梦／第X回」「红楼梦0回」「CS」…
     # 它们显然是同一件家具，逐字相等会把它们判成孤例、白白推给人工
-    normalized = [_normalize_for_repeat(item.text) for item in candidates]
-    counts: dict[int, int] = {}
-    for index, item in enumerate(candidates):
-        counts[index] = sum(
-            1
-            for other, other_item in enumerate(candidates)
-            if other_item.region == item.region
-            and _similar(normalized[index], normalized[other])
-        )
-
     marked: list[Candidate] = []
-    for index, item in enumerate(candidates):
-        repeated = counts[index]
+    for item in candidates:
+        repeated = _repeat_count(item, candidates)
         if looks_like_a_number(item.text) or repeated >= REPEAT_THRESHOLD:
             marked.append(replace_candidate(item, CONFIDENCE_HIGH))
         else:
             marked.append(replace_candidate(item, CONFIDENCE_REVIEW))
     return marked
-
-
-def _similar(left: str, right: str) -> bool:
-    """两段文字是否"像同一句"（容忍 OCR 的个别错字）。
-
-    短句用相似度而不是逐字相等：书眉这种重复性文字被 OCR 读错一两个字很常见，
-    逐字比较会让它们全部掉进"孤例"。
-    """
-    if not left or not right:
-        return False
-    if left == right:
-        return True
-    if min(len(left), len(right)) < 3:
-        return False
-    from difflib import SequenceMatcher
-
-    return SequenceMatcher(None, left, right).ratio() >= REPEAT_SIMILARITY
-
-
-def _normalize_for_repeat(text: str) -> str:
-    """比较"是不是同一句重复文字"时，先把空白与数字拉平。
-
-    书眉里的页码每页都不同（红楼梦／第 3 回、第 4 回…），
-    但它们显然是同一件家具——因此数字不参与比较。
-    """
-    return re.sub(r"[\s\d]+", "", text)
 
 
 def replace_candidate(item: Candidate, confidence: str) -> Candidate:
@@ -415,4 +391,202 @@ def apply_header_footer(
         by_type=by_type,
         pages=tuple(sorted(pages)),
         events=tuple(events),
+    )
+
+
+# ---------------------------------------------------------------- 块类型建议（只读）
+
+CONFIDENCE_LABELS = {
+    CONFIDENCE_HIGH: "把握较大",
+    CONFIDENCE_REVIEW: "需确认",
+}
+
+
+@dataclass(frozen=True)
+class BlockSuggestion:
+    """一条**只读**的块类型建议。
+
+    它与结构工具的候选是同一套规则算出来的，但**不写库、不改块类型**：
+    界面上只是"这一块可能是页眉"的提示，用户点「采用」才会走正常的块编辑接口。
+    """
+
+    block_id: str
+    page_no: int
+    order_index: int
+    current_type: str
+    suggested_type: str
+    confidence: str
+    region: str | None
+    reason: str
+    chars: int
+    repeat_matches: int
+    page_number_candidates: tuple[NumberCandidate, ...] = ()
+    page_number_hint: NumberCandidate | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "block_id": self.block_id,
+            "page_no": self.page_no,
+            "order_index": self.order_index,
+            "current_type": self.current_type,
+            "suggested_type": self.suggested_type,
+            "confidence": self.confidence,
+            "confidence_label": CONFIDENCE_LABELS.get(self.confidence, self.confidence),
+            "region": self.region,
+            "reason": self.reason,
+            "signals": {
+                "region": self.region,
+                "chars": self.chars,
+                "repeat_matches": self.repeat_matches,
+            },
+            "page_number_candidates": [item.to_dict() for item in self.page_number_candidates],
+            "page_number_hint": (
+                self.page_number_hint.to_dict() if self.page_number_hint else None
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class BlockSuggestionPlan:
+    page_no: int
+    suggestions: tuple[BlockSuggestion, ...]
+    blocks_scanned: int
+    pages_compared: int
+    note: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "page_no": self.page_no,
+            "suggestion_count": len(self.suggestions),
+            "blocks_scanned": self.blocks_scanned,
+            "pages_compared": self.pages_compared,
+            "note": self.note,
+            "suggestions": [item.to_dict() for item in self.suggestions],
+        }
+
+
+def _suggestion_reason(candidate: Candidate, repeat: int) -> str:
+    """给候选补上"为什么 high / review"的人话。"""
+    if candidate.proposed_type == BLOCK_TYPE_PAGE_NUMBER:
+        return candidate.reason
+    if repeat >= REPEAT_THRESHOLD:
+        return f"{candidate.reason}；同一区域有 {repeat} 处相似文字"
+    return f"{candidate.reason}；只出现 {repeat} 处，需人工确认"
+
+
+def suggest_block_types(
+    project_id: str,
+    page_no: int,
+    *,
+    library: Path | None = None,
+    rules: HeaderFooterRules | None = None,
+) -> BlockSuggestionPlan:
+    """算一页的块类型建议（**只读**）。
+
+    与 `plan_header_footer()` 的区别：
+
+    - 只看一页，但跨页重复的统计仍用全书（同一区域里 ≥ 3 处相似文字才是 high）；
+    - 不跳过"已经是页眉 / 页码"的块，而是算出内容上**应该**是什么类型，
+      然后只返回"与当前类型不同"的那些——否则界面上全是"已经是段落"的噪声；
+    - 额外提取书眉里夹着的**页码候选**（第二本书第 30 页的 `2谁是巴赫金?11`），
+      以及只给 review 的**标题**建议（`第X回 / 第X章` 这类标记）。
+
+    **任何规则都不自动改块类型**；本函数只读两个表：`page`、`block`。
+    """
+    active = rules or HeaderFooterRules()
+    target_library = library if library is not None else default_library_dir()
+    pages = list_pages(project_id, library=target_library)
+    target = next((page for page in pages if page.page_no == page_no), None)
+    if target is None:
+        raise ProjectError(f"没有第 {page_no} 页")
+
+    if not target.include or target.page_type not in active.page_types:
+        return BlockSuggestionPlan(
+            page_no=page_no, suggestions=(), blocks_scanned=0, pages_compared=0,
+            note=f"第 {page_no} 页不在建议范围内（只对纳入的正文页给建议）",
+        )
+
+    eligible = {
+        page.page_no
+        for page in pages
+        if page.include and page.page_type in active.page_types
+    }
+    blocks = [
+        block
+        for block in blocks_module.list_blocks(project_id, library=target_library)
+        if block.page_no in eligible
+    ]
+    page_blocks = [block for block in blocks if block.page_no == page_no]
+
+    # 1) 边缘条带里的块：与结构工具**同一条规则**（_region_of + _propose + _with_confidence）
+    candidates: list[Candidate] = []
+    for block in blocks:
+        text = block.text.strip()
+        if not text or block.bbox is None:
+            continue
+        region = _region_of(block.bbox, active)
+        if region is None:
+            continue
+        if active.max_chars is not None and len(text) > active.max_chars:
+            continue
+        proposed, reason = _propose(text, region, active)
+        candidates.append(Candidate(
+            block_id=block.block_id,
+            page_no=block.page_no,
+            text=text,
+            bbox=block.bbox,
+            current_type=block.block_type,
+            proposed_type=proposed,
+            region=region,
+            reason=reason,
+        ))
+    scored = {candidate.block_id: candidate for candidate in _with_confidence(candidates)}
+
+    suggestions: list[BlockSuggestion] = []
+    for block in page_blocks:
+        candidate = scored.get(block.block_id)
+        if candidate is not None:
+            if candidate.proposed_type == block.block_type:
+                continue  # 已经是这个类型：不报，避免界面噪声
+            repeat = _repeat_count(candidate, candidates)
+            numbers = page_number_candidates(block.text)
+            suggestions.append(BlockSuggestion(
+                block_id=block.block_id,
+                page_no=block.page_no,
+                order_index=block.order_index,
+                current_type=block.block_type,
+                suggested_type=candidate.proposed_type,
+                confidence=candidate.confidence,
+                region=candidate.region,
+                reason=_suggestion_reason(candidate, repeat),
+                chars=len(candidate.text),
+                repeat_matches=repeat,
+                page_number_candidates=numbers,
+                page_number_hint=page_number_hint(numbers, block.bbox) if numbers else None,
+            ))
+            continue
+
+        # 2) 正文区域里的标题：只给 review，永不 high（标题不能自动删）
+        text = block.text.strip()
+        if block.block_type == BLOCK_TYPE_HEADING or not looks_like_heading(text):
+            continue
+        suggestions.append(BlockSuggestion(
+            block_id=block.block_id,
+            page_no=block.page_no,
+            order_index=block.order_index,
+            current_type=block.block_type,
+            suggested_type=BLOCK_TYPE_HEADING,
+            confidence=CONFIDENCE_REVIEW,
+            region=None,
+            reason="块首是章 / 节标记或常见标题词，可能是标题；标题只给建议，不自动剔除",
+            chars=len(text),
+            repeat_matches=0,
+        ))
+
+    suggestions.sort(key=lambda item: item.order_index)
+    return BlockSuggestionPlan(
+        page_no=page_no,
+        suggestions=tuple(suggestions),
+        blocks_scanned=len(page_blocks),
+        pages_compared=len(eligible),
     )

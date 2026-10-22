@@ -7,6 +7,95 @@
 
 ---
 
+## 2026-10-22 — 任务 40：块类型建议（只读）接进产品，第二本书复核
+
+### 任务目标
+
+用户抱怨"所有块都被识别成段落"。判定规则其实早就有（页眉页脚批量工具），只是识别流程
+从不调用。这一刀**不引入模型**，把规则接成产品里的**只读块类型建议**：
+`GET .../pages/{no}/block-suggestions`，只给建议、不写库、不改 `block_type`；
+再用第二本横排书眉的书复核规则是否成立。
+
+### 当前状态
+
+- 块级规则在 `core/project/structure.py`（说明书 6.5，位置条带 + 字数 + high/review）；
+- 行级规则在 `scripts/region_rules.py`（任务 34 的实验，脚本目录不进打包，产品不能 import）；
+- 第一本书《红楼梦》实测：只剔 high 正文误标 0/965、页码 37/37、书眉 37/38，
+  块级导出 CER 0.68% 优于行级 0.71%（`docs/region-classification-eval.md`）；
+- 第二本书项目 `b2t_8AFV96`（《导读巴赫金》）已有 5 页识别结果。
+
+### 实施计划
+
+1. 把行级规则移到 `core/structure/regions.py`，`scripts/region_rules.py` 改成 re-export；
+   产品与脚本**只有一份实现**。
+2. `structure.suggest_block_types()`：复用 `_region_of / _propose / _with_confidence`，
+   只返回与当前类型不同的建议；书眉里的数字作为页码候选返回；标题只给 review。
+3. 新接口 `GET /projects/{id}/pages/{page_no}/block-suggestions`（只读）。
+4. 集成测试：建议内容 + 接口前后 `block_type` / revision / updated_at / 事件数不变。
+5. 第二本书补识别 9 页，人工分类 119 块，量检出率 / 误标率 / 页码提示。
+6. 文档与 CHANGELOG。
+
+**不在范围**：前端界面（下一刀）、自动应用类型、识别流程、版面模型。
+
+### 实现与验证
+
+**规则落位（一份实现）**
+
+- `core/structure/regions.py`：行级判定 + `looks_like_a_number()` +
+  `page_number_candidates()` / `page_number_hint()` + `looks_like_heading()` +
+  `normalize_for_repeat()` / `similar_text()`；
+- `structure.py` 从它 import，`looks_like_a_number` 仍是 `structure` 的公开名字
+  （`export/streams.py` 与测试不受影响）；结构工具的重复判定也改用同一份 `similar_text`；
+- `scripts/region_rules.py` 只剩 re-export；40 页实验复跑（`--skip-cer`）：
+  检出 / 误标数字与第 4 节**一字未变**（书眉 37/38、页码 37/37、正文误标 0/965）。
+
+**只读接口**
+
+- `GET /api/projects/{id}/pages/{page_no}/block-suggestions`；
+- 每条：`block_id / current_type / suggested_type / confidence / confidence_label /
+  reason / region / signals / page_number_candidates / page_number_hint`；
+- 只返回差异；非正文页返回空建议 + note；
+- 真实项目 `b2t_8AFV96`：调用 6 个页面前后，119 个块的
+  `(block_type, revision, updated_at)` 与事件数（0）**逐项相同**；
+- 第 30 页：1 条建议 = `header` high，页码候选 `2` / `11`，提示 `11`，正文块 0 建议。
+
+**第二本书（横排书眉）实测**
+
+- 补识别到 14 页（3 / 9 / 16–20 / 22 / 24–26 / 29–31），119 个块**逐条人工分类**：
+  header 9、page_number 5、heading 7、body 98（无页脚）；
+- 结果：页眉 **9/9（high 8）**、页码 **5/5**、边缘家具漏标 **0/14**、
+  **正文误标到页眉/页脚/页码 0/98（0.00%）**；
+  标题 1/7（全部 review），另有 1/98 正文（目录条目）被建议成 heading（噪声，不删文字）；
+- 书眉里的页码提示 **9/9 命中**（vii、xvi、xvii、3、5、6、10、11、12），
+  连同 5 个独立页码块共 14/14；
+- 版权页 24 个密集短行 0 条建议；目录页无家具误标；章号 `1` / `2` 在正文区未被当页码；
+- 失败与边界见 `docs/region-classification-eval.md` 第 8.6 节（标题缺编号认不出等）。
+
+**测试：** `.venv/bin/python -m pytest -q` → **651 passed**（641 + 10）：
+新增 5 个接口集成测试（建议内容、标题只 review、已同类型不重复报、非正文页空建议 +
+只读快照），行级规则单测从 10 项扩到 15 项（页码候选 / 罗马数字 / 英文单词 / 提示 / 标题标记）。
+
+### 用户操作说明
+
+```bash
+.venv/bin/book2text --token <自定> --no-browser --port 8768
+curl -X POST http://127.0.0.1:<端口>/api/projects/b2t_8AFV96/jobs/ocr \
+  -H "X-B2T-Token: <自定>" -H "Content-Type: application/json" \
+  -d '{"pages":[16,17,18,19,20,22,24,25,26],"skip_recognized":true}'
+curl http://127.0.0.1:<端口>/api/projects/b2t_8AFV96/pages/30/block-suggestions \
+  -H "X-B2T-Token: <自定>"
+.venv/bin/python scripts/measure_block_suggestions.py --out docs/region-suggestions-bakhin.json
+```
+
+回退：revert 本提交即可；没有迁移、没有改既有表结构，也没有改任何产品的写入路径。
+
+### 下一步建议
+
+Builder 接前端：按第 8.8 节的建议做"块头轻量徽章 + 只对 high 提供本页全部采用"，
+采纳走现有 `PATCH block_type`；不要把标题建议计进待办数字。
+
+---
+
 ## 2026-10-22 — 任务 39：页面确认右栏重排 + 类型常驻列表
 
 ### 任务目标

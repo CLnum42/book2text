@@ -1,0 +1,35 @@
+{
+  "schema": "book2text.block-suggestion-labels.v1",
+  "project_id": "b2t_8AFV96",
+  "pdf_file": "bakhtin.pdf",
+  "book": "导读巴赫金",
+  "dpi": 200,
+  "reviewed_on": "2026-10-22",
+  "pages": [3, 9, 16, 17, 18, 19, 20, 22, 24, 25, 26, 29, 30, 31],
+  "note": "人工逐条分类 14 个已识别页的 119 个块；未列出的块 = body。只含页码 / 块序 / 块 id / 类别，不含原文。page_number 是那一块里印的页码（用于核对 page_number_hint）。",
+  "labels": [
+    {"page": 9, "order": 0, "block_id": "01M5GZB4P7PE1499QEDC8N486H", "category": "header", "page_number": "vii", "note": "书眉（横排：页码 + 书名）"},
+    {"page": 16, "order": 0, "block_id": "01M5H1143A1C53GYVZ0MG1BNY8", "category": "header", "page_number": "xvi", "note": "书眉（罗马页码）"},
+    {"page": 17, "order": 0, "block_id": "01M5H115HA777JTKJSKF9N7Y3P", "category": "header", "page_number": "xvii", "note": "书眉（本页 running head 与相邻页不同）"},
+    {"page": 22, "order": 0, "block_id": "01M5H11BM99ZJ87X6H1AREFKBH", "category": "header", "page_number": "3", "note": "书眉（节号 + 节名 + 页码同行）"},
+    {"page": 24, "order": 0, "block_id": "01M5H11EFWCW5NQME4VXJHBQV6", "category": "header", "page_number": "5", "note": "书眉（节号 + 节名 + 页码同行）"},
+    {"page": 25, "order": 0, "block_id": "01M5H11H701ZXYPM44562HKPJT", "category": "header", "page_number": "6", "note": "书眉（页码 + 书名）"},
+    {"page": 29, "order": 1, "block_id": "01M5GZB5YDEEF857P672G6ERKA", "category": "header", "page_number": "10", "note": "书眉（页码 + 书名）"},
+    {"page": 30, "order": 0, "block_id": "01M5GZB70HGZF41YFM231Y2WX8", "category": "header", "page_number": "11", "note": "书眉 + 页码挤在同一行（节号 + 节名 + 页码）", "candidates": ["2", "11"]},
+    {"page": 31, "order": 1, "block_id": "01M5GZB81C8QH4SSMWXXM93Q7A", "category": "header", "page_number": "12", "note": "书眉（页码 + 书名）"},
+
+    {"page": 20, "order": 4, "block_id": "01M5H1190RSCD727SSCC8YR0GF", "category": "page_number", "page_number": "1", "note": "右外边距的页码"},
+    {"page": 22, "order": 4, "block_id": "01M5H11BMA6BR0P0SE9BCPPFN4", "category": "page_number", "page_number": "3", "note": "右外边距的页码"},
+    {"page": 26, "order": 3, "block_id": "01M5H11K2VZ597TJ8VV83FVW9W", "category": "page_number", "page_number": "7", "note": "右外边距的页码"},
+    {"page": 29, "order": 0, "block_id": "01M5GZB5YDEEF857P672G6ERK8", "category": "page_number", "page_number": "10", "note": "左外边距（垂直居中）的页码"},
+    {"page": 31, "order": 0, "block_id": "01M5GZB81B3NBDWKBT71J6SXJV", "category": "page_number", "page_number": "11", "note": "左外边距（垂直居中）的页码"},
+
+    {"page": 18, "order": 17, "block_id": "01M5H116PDF9EC87WJTDTX0QHZ", "category": "heading", "note": "目录页标题"},
+    {"page": 20, "order": 0, "block_id": "01M5H1190RSCD727SSCC8YR0FV", "category": "heading", "note": "章号（大字号）"},
+    {"page": 20, "order": 1, "block_id": "01M5H1190RSCD727SSCC8YR0FX", "category": "heading", "note": "章题"},
+    {"page": 26, "order": 0, "block_id": "01M5H11K2VZ597TJ8VV83FVW98", "category": "heading", "note": "章号（大字号）"},
+    {"page": 26, "order": 1, "block_id": "01M5H11K2VZ597TJ8VV83FVW9A", "category": "heading", "note": "章题"},
+    {"page": 30, "order": 2, "block_id": "01M5GZB70J5539EV47B8J32HK6", "category": "heading", "note": "节标题（加粗，无编号）"},
+    {"page": 30, "order": 4, "block_id": "01M5GZB70J5539EV47B8J32HKJ", "category": "heading", "note": "节标题（加粗，无编号）"}
+  ]
+}
