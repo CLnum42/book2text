@@ -97,6 +97,9 @@ main `ec8edbd`，723 测试全绿。`block_line.bbox` 已归一化，块框拖�
 `.venv/bin/python -m pytest -q` → **742 passed, 1 warning**（新增 19 项：推算纯函数 8、接口 9、
 迁移 1、界面静态约定 1）。既有测试没有弱化；不涉及 OCR 依赖，Windows job 不需要额外夹具。
 
+**CI：** push `6de5b53` 触发 [run #30](https://github.com/CLnum42/book2text/actions/runs/39816508043)，
+**Success**（总时长 4m36s；macOS 全量 2m59s，Windows 非 OCR 4m33s，两个 job 都是 completed successfully）。
+
 **6. 已知失效 / 未验证**
 
 - 双栏 / 竖排 / 居中版权页 / 大量旁批 / 旋转页没有校准（L-51）；真书第 3 页有两条 x0=6.8% 的行
