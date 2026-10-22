@@ -107,6 +107,10 @@
 批量条件 / 页码超过全书页数；接口 7 项——行边界、行内比例、拆页码 + 拖动 + 撤销、
 中间数字拒绝、批量预览与一次撤销、默认只跑正文页、导出三流；界面约定 1 项）。
 
+**CI：** [run #25](https://github.com/CLnum42/book2text/actions/runs/39801075705) **Success**
+（总时长 7m30s）：`全量测试（macOS 14 + OCR）` 与 `Windows 测试（非 OCR，3m10s）`
+两个 job 每一步都是 `completed successfully`，没有失败断言。
+
 **未验证：** Windows / Safari 的菜单与对话框；双栏版面上"整行归一边"的观感；
 `page_numbers` 在 267 页全识别后的建议接口耗时（只多了一次每页块遍历）。
 
