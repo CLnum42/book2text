@@ -86,3 +86,28 @@ def test_page_skeleton_has_all_views_and_entry_points() -> None:
         "task-drawer",
     ):
         assert f'id="{element_id}"' in page, element_id
+
+
+def test_page_view_has_zoom_controls_and_readonly_block_overlay() -> None:
+    """页面视图缩放 + 只读块框是第 38 号任务加的三个入口。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    for element_id in (
+        "pages-zoom-out",
+        "pages-zoom-in",
+        "pages-zoom-label",
+        "pages-overlay-toggle",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    assert "PAGE_ZOOM_LEVELS" in script
+    assert 'image: "thumb"' in script
+    assert 'image: "view"' in script
+    assert 'image: "zoom"' in script
+    assert "page-overlay--readonly" in script
+
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    assert ".page-grid--page" in css
+    assert ".page-overlay--readonly" in css
+    # 标签贴框内（不是负 top 浮在框外）
+    assert "top: 2px; left: 2px" in css

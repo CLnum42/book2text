@@ -490,6 +490,24 @@ def test_page_image_endpoint(
     assert thumb.headers["content-type"] == "image/png"
     assert thumb.content.startswith(b"\x89PNG\r\n\x1a\n")
 
+    # 页面视图放大时必须切渲染档位（40 → 150 → 300 DPI），不能把 thumb 拉大
+    import io
+
+    from PIL import Image
+
+    def image_width(response) -> int:
+        assert response.status_code == 200
+        return Image.open(io.BytesIO(response.content)).width
+
+    view = client.get(
+        f"/api/projects/{project_id}/pages/1/image", params={"size": "view"}, headers=auth_headers
+    )
+    zoom = client.get(
+        f"/api/projects/{project_id}/pages/1/image", params={"size": "zoom"}, headers=auth_headers
+    )
+    assert image_width(view) > image_width(thumb)
+    assert image_width(zoom) > image_width(view)
+
     bad = client.get(
         f"/api/projects/{project_id}/pages/1/image", params={"size": "huge"}, headers=auth_headers
     )

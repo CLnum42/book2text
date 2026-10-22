@@ -394,6 +394,14 @@ textarea {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: 15px; margin: 0; padding: 0;
 }
+.page-grid--cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.page-grid--single { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+.page-grid--single .page-tile { width: min(680px, 100%); }
+.page-grid--page { grid-template-columns: minmax(0, 1fr); justify-items: stretch; gap: 26px; }
+.page-grid--page .page-tile { width: 100%; }
+.zoombar { display: flex; align-items: center; gap: 4px; }
+.zoombar .btn { min-width: 26px; padding: 0 6px; }
+.zoombar #pages-zoom-label { min-width: 64px; text-align: center; font-size: 11.5px; }
 .page-grid > .muted { grid-column: 1 / -1; }
 
 .page-tile { position: relative; cursor: pointer; }
@@ -542,13 +550,20 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 
 /* 块框上的小牌子：**一直显示**顺序号 + 类型文字，不能只靠颜色区分 */
 .page-overlay .box__badge {
-  position: absolute; top: -16px; left: -2px; height: 15px; line-height: 14px;
-  padding: 0 5px; border-radius: 3px; font-size: 10px; font-weight: 600;
-  color: var(--box-color, #4361a8); background: rgba(255, 255, 255, .95);
-  border: 1px solid var(--box-color, rgba(120, 150, 200, .7));
+  position: absolute; top: 2px; left: 2px; height: 14px; line-height: 13px;
+  padding: 0 4px; border-radius: 3px; font-size: 9.5px; font-weight: 600;
+  color: var(--box-color, #4361a8); background: rgba(255, 255, 255, .78);
+  border: 1px solid var(--box-color, rgba(120, 150, 200, .55));
   white-space: nowrap; pointer-events: none; z-index: 3;
+  backdrop-filter: blur(2px);
 }
 .page-overlay .box--active .box__badge { color: #fff; background: var(--accent); border-color: var(--accent); }
+/* 页面视图的只读块框：overlay 与 box 都不吃点击，选页 / 多选照旧 */
+.page-overlay--readonly { pointer-events: none; z-index: 1; }
+.page-overlay--readonly .box { pointer-events: none; cursor: default; border-width: 1.5px; }
+.page-overlay--readonly .box__handle { display: none; }
+.page-overlay--labeled .box__badge { display: block; }
+
 .page-overlay .box--uncertain { border-style: dashed; }
 .page-overlay .box--uncertain .box__badge { color: var(--warn-text); border-color: var(--warn); }
 .page-overlay .box--chrome { border-style: dashed; }

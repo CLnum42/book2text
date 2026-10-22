@@ -1656,6 +1656,25 @@ function renderProjectMeta() {
 
 const selectedPages = new Set();
 let selectionAnchor = null;
+
+// 页面视图的缩放档位（第 38 号任务）：
+// 网格 / 大网格 用 thumb 或 view，单列用 view，单页用 zoom；大图档才允许开块框。
+const PAGE_ZOOM_LEVELS = [
+  { label: "网格", cols: "auto", image: "thumb" },
+  { label: "大网格", cols: 3, image: "view" },
+  { label: "单列", cols: 1, image: "view" },
+  { label: "单页", cols: 1, image: "zoom" },
+];
+let pageZoomIndex = 0;
+let pagesOverlayOn = false;
+/** 当前在大图档下、与视口相交的页（块框只给这些页渲染）。 */
+const visiblePageNos = new Set();
+/** 块数据缓存：页号 → blocks；最多留 40 页，避免 267 页全塞内存。 */
+const pageBlockCache = new Map();
+const pageBlockCacheOrder = [];
+const pageBlockPending = new Set();
+const PAGE_BLOCK_CACHE_LIMIT = 40;
+
 /** 页面确认模式：汇总、建议与「确认所选」都在这个模式里出现。 */
 let pageSetupOpen = false;
 let setupSuggestions = [];
@@ -1863,6 +1882,12 @@ function buildTile(page, project) {
 
   const thumb = document.createElement("div");
   thumb.className = "page-tile__thumb";
+  // 与页面真实显示比例一致：overlay 用百分比定位，固定 1:1.414 会让非 A4 页错位
+  thumb.style.aspectRatio = `${page.width_pt} / ${page.height_pt}`;
+
+  const overlay = document.createElement("div");
+  overlay.className = "page-overlay page-overlay--readonly page-overlay--labeled";
+  overlay.hidden = true;
 
   const check = document.createElement("div");
   check.className = "page-tile__check";
@@ -1871,11 +1896,14 @@ function buildTile(page, project) {
   const image = document.createElement("img");
   // 说明书 6.1 要求缩略图由后台 Job 生成并缓存；缩略图任务还没做，
   // 这里按需渲染（不写缓存），浏览器侧靠 Cache-Control 复用。
+  // 大图档由 IntersectionObserver 决定何时设置 src，离屏会清掉以释放解码内存。
   image.loading = "lazy";
+  image.decoding = "async";
   image.alt = `第 ${page.page_no} 页`;
-  image.src =
+  image.dataset.thumbSrc =
     `/api/projects/${project.project_id}/pages/${page.page_no}/image?size=thumb` +
     `&token=${encodeURIComponent(token)}`;
+  if (pageZoomIndex < 2) image.src = image.dataset.thumbSrc;
 
   const actions = document.createElement("div");
   actions.className = "page-tile__actions";
@@ -1900,7 +1928,7 @@ function buildTile(page, project) {
   });
 
   actions.append(recognizeButton, detailButton);
-  thumb.append(image, check, actions);
+  thumb.append(image, overlay, check, actions);
 
   const meta = document.createElement("div");
   meta.className = "page-tile__meta";
@@ -2185,6 +2213,222 @@ function warnUnconfirmed(pages, action) {
   );
 }
 
+// ---------------------------------------------------------------- 页面视图缩放与块框
+
+function pageZoomLevel() {
+  return PAGE_ZOOM_LEVELS[pageZoomIndex];
+}
+
+function pageImageUrl(pageNo, size) {
+  return (
+    `/api/projects/${currentProject.project_id}/pages/${pageNo}/image?size=${size}` +
+    `&token=${encodeURIComponent(token)}`
+  );
+}
+
+function pageBlockKey(pageNo) {
+  return `${currentProject.project_id}:${pageNo}`;
+}
+
+function rememberPageBlocks(key, blocks) {
+  const existing = pageBlockCacheOrder.indexOf(key);
+  if (existing >= 0) pageBlockCacheOrder.splice(existing, 1);
+  pageBlockCache.set(key, blocks);
+  pageBlockCacheOrder.push(key);
+  while (pageBlockCacheOrder.length > PAGE_BLOCK_CACHE_LIMIT) {
+    const oldest = pageBlockCacheOrder.shift();
+    pageBlockCache.delete(oldest);
+  }
+}
+
+let pageScrollListening = false;
+let pageScrollScheduled = false;
+
+function ensurePageScrollListener() {
+  if (pageScrollListening) return;
+  const scroller = el("page-grid")?.closest(".split__main");
+  (scroller || window).addEventListener("scroll", schedulePageVisibility, { passive: true });
+  window.addEventListener("resize", schedulePageVisibility);
+  pageScrollListening = true;
+}
+
+function schedulePageVisibility() {
+  if (pageScrollScheduled) return;
+  pageScrollScheduled = true;
+  requestAnimationFrame(() => {
+    pageScrollScheduled = false;
+    updatePageVisibility();
+  });
+}
+
+/**
+ * 只给"离视口不远"的页设置大图 src；离屏的页清掉 src 与块框。
+ *
+ * 为什么不用 IntersectionObserver：真机 267 页用 scrollIntoView 跳页时，
+ * observer 在部分滚动路径上不回调（同一页反复进出后只剩第一页的图）。
+ * 这里用滚动事件 + requestAnimationFrame 兜底：每帧只做 267 次 getBoundingClientRect，
+ * 换来确定的行为——滚动到哪一页就加载哪一页，离屏就释放。
+ */
+function updatePageVisibility() {
+  if (!currentProject || pageZoomIndex < 2) return;
+  const tiles = [...el("page-grid").querySelectorAll(".page-tile")];
+  const nearLimit = 1400;
+  const near = new Set();
+  for (const tile of tiles) {
+    const rect = tile.getBoundingClientRect();
+    const pageNo = Number(tile.dataset.pageNo);
+    if (rect.bottom <= -nearLimit || rect.top >= window.innerHeight + nearLimit) {
+      continue;
+    }
+    near.add(pageNo);
+    const image = tile.querySelector("img");
+    if (image && image.dataset.largeSrc && image.getAttribute("src") !== image.dataset.largeSrc) {
+      image.src = image.dataset.largeSrc;
+    }
+    const isVisible = rect.bottom > -60 && rect.top < window.innerHeight + 60;
+    if (isVisible) visiblePageNos.add(pageNo);
+    else visiblePageNos.delete(pageNo);
+    if (isVisible && pagesOverlayOn) ensurePageBlocks(pageNo);
+    else clearPageBlocks(tile);
+  }
+  for (const tile of tiles) {
+    const pageNo = Number(tile.dataset.pageNo);
+    if (near.has(pageNo)) continue;
+    visiblePageNos.delete(pageNo);
+    const image = tile.querySelector("img");
+    if (image) image.removeAttribute("src");
+    clearPageBlocks(tile);
+  }
+}
+
+function applyPageZoom() {
+  const grid = el("page-grid");
+  if (!grid) return;
+  const level = pageZoomLevel();
+  grid.classList.remove("page-grid--cols-3", "page-grid--single", "page-grid--page");
+  if (pageZoomIndex === 1) grid.classList.add("page-grid--cols-3");
+  if (pageZoomIndex === 2) grid.classList.add("page-grid--single");
+  if (pageZoomIndex === 3) grid.classList.add("page-grid--page");
+
+  el("pages-zoom-label").textContent = `${pageZoomIndex + 1}/${PAGE_ZOOM_LEVELS.length} · ${level.label}`;
+  el("pages-zoom-out").disabled = pageZoomIndex === 0;
+  el("pages-zoom-in").disabled = pageZoomIndex === PAGE_ZOOM_LEVELS.length - 1;
+  const large = pageZoomIndex >= 2;
+  el("pages-overlay-toggle").disabled = !large;
+  if (!large) {
+    pagesOverlayOn = false;
+    el("pages-overlay-toggle").classList.remove("is-on");
+  }
+
+  const tiles = [...grid.querySelectorAll(".page-tile")];
+  const byPage = new Map(currentProject.pages.map((page) => [page.page_no, page]));
+  visiblePageNos.clear();
+
+  if (large) {
+    ensurePageScrollListener();
+    for (const tile of tiles) {
+      const pageNo = Number(tile.dataset.pageNo);
+      const image = tile.querySelector("img");
+      if (!image) continue;
+      image.loading = "eager";
+      image.dataset.largeSrc = pageImageUrl(pageNo, level.image);
+      image.removeAttribute("src");
+    }
+    updatePageVisibility();
+  } else {
+    for (const tile of tiles) {
+      clearPageBlocks(tile);
+      const pageNo = Number(tile.dataset.pageNo);
+      const page = byPage.get(pageNo);
+      const image = tile.querySelector("img");
+      if (!image || !page) continue;
+      image.loading = "lazy";
+      delete image.dataset.largeSrc;
+      // 大网格用 view（150 DPI），网格用 thumb（40 DPI）：别把 40 DPI 的图拉大
+      const gridSrc = pageImageUrl(pageNo, level.image);
+      if (image.getAttribute("src") !== gridSrc) image.src = gridSrc;
+    }
+  }
+}
+
+function setPageZoom(delta) {
+  const next = Math.min(
+    PAGE_ZOOM_LEVELS.length - 1,
+    Math.max(0, pageZoomIndex + delta)
+  );
+  if (next === pageZoomIndex) return;
+  pageZoomIndex = next;
+  applyPageZoom();
+}
+
+function togglePageBlocksOverlay() {
+  if (pageZoomIndex < 2) return;
+  pagesOverlayOn = !pagesOverlayOn;
+  el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
+  if (pagesOverlayOn) {
+    for (const pageNo of visiblePageNos) ensurePageBlocks(pageNo);
+  } else {
+    for (const tile of el("page-grid").querySelectorAll(".page-tile")) {
+      clearPageBlocks(tile);
+    }
+  }
+}
+
+function ensurePageBlocks(pageNo) {
+  if (!currentProject || !pagesOverlayOn || pageZoomIndex < 2) return;
+  const key = pageBlockKey(pageNo);
+  if (pageBlockCache.has(key)) {
+    const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
+    if (tile && visiblePageNos.has(pageNo)) renderPageBlocks(tile, pageBlockCache.get(key));
+    return;
+  }
+  if (pageBlockPending.has(key)) return;
+  pageBlockPending.add(key);
+  apiJson(`/api/projects/${currentProject.project_id}/pages/${pageNo}/blocks`)
+    .then((data) => {
+      rememberPageBlocks(key, data.blocks || []);
+      const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
+      if (tile && pagesOverlayOn && visiblePageNos.has(pageNo)) {
+        renderPageBlocks(tile, pageBlockCache.get(key));
+      }
+    })
+    .catch(() => {
+      // 块框是辅助信息，读不到不该打断翻页
+    })
+    .finally(() => pageBlockPending.delete(key));
+}
+
+function renderPageBlocks(tile, blocks) {
+  const overlay = tile.querySelector(".page-overlay");
+  if (!overlay) return;
+  overlay.innerHTML = "";
+  let count = 0;
+  for (const block of blocks) {
+    if (!block.bbox) continue;
+    const box = document.createElement("div");
+    box.className = `box box--type-${block.block_type}`;
+    if (!block.include) box.classList.add("box--excluded");
+    if (block.review_status === "uncertain") box.classList.add("box--uncertain");
+    applyBoxElementRect(box, block.bbox);
+    const typeLabel = BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
+    const badge = document.createElement("span");
+    badge.className = "box__badge";
+    badge.textContent = typeLabel;
+    box.title = `${typeLabel} · 第 ${block.order_index + 1} 块`;
+    box.append(badge);
+    overlay.append(box);
+    count += 1;
+  }
+  overlay.hidden = count === 0;
+}
+
+function clearPageBlocks(tile) {
+  const overlay = tile.querySelector(".page-overlay");
+  if (!overlay) return;
+  overlay.innerHTML = "";
+  overlay.hidden = true;
+}
+
 function renderPages() {
   const project = currentProject;
   if (!project) return;
@@ -2210,6 +2454,7 @@ function renderPages() {
     empty.textContent = "当前筛选下没有页面。";
     grid.append(empty);
   }
+  applyPageZoom();
   renderPageSetup();
   updateSelectionPanel();
 }
@@ -4395,6 +4640,9 @@ function setupLibrary() {
   el("selection-include").addEventListener("click", () => patchSelectedPages({ include: true }));
   el("selection-exclude").addEventListener("click", () => patchSelectedPages({ include: false }));
   el("selection-recognize").addEventListener("click", recognizeSelection);
+  el("pages-zoom-out").addEventListener("click", () => setPageZoom(-1));
+  el("pages-zoom-in").addEventListener("click", () => setPageZoom(1));
+  el("pages-overlay-toggle").addEventListener("click", togglePageBlocksOverlay);
   el("setup-open").addEventListener("click", () => openPageSetup());
   el("setup-close").addEventListener("click", closePageSetup);
   el("setup-confirm-selected").addEventListener("click", confirmSelectedPages);

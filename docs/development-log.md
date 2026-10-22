@@ -7,7 +7,88 @@
 
 ---
 
-## 2026-10-22 — 任务 37：导出拆三条流（正文 / 注释 / 元数据）
+## 2026-10-22 — 任务 38：页面视图缩放浏览 + 页面视图里的块框
+
+### 任务目标
+
+让页面视图像常规 PDF 阅读器一样从网格一路放大到单页，分辨率跟着档位走；
+在大图档给一个默认关闭的块框开关，只在可见页渲染，滚动离屏清理。
+**不**做缩略图后台 Job、虚拟滚动，也不改识别 / 版面确认。
+
+### 当前状态
+
+- 页面视图固定网格，缩略图一律 `size=thumb`（40 DPI），放大必然糊。
+- 块框只在审校视图；页面视图没有 overlay。审校的 `.page-canvas + .page-overlay` 与
+  百分比定位（`applyBoxElementRect`）可直接复用。
+- `.box__badge` 浮在框外上方，会压住上一行文字（用户报"错位"的观感来源之一）。
+- 基线：**635 passed**；真书项目 `b2t_8AFV96`（267 页，已识别 3/9/29/30/31 页）。
+
+### 实施计划
+
+1. 页面视图四档缩放：网格 / 大网格 / 单列 / 单页；CSS 列数 + 页宽切换。
+2. 图像按档位切 `thumb / view / zoom`；大图档只给离视口近的页设置 `src`，离屏清掉。
+3. 大图档 + 开关打开时，给可见页拉块数据并画只读 overlay；块数据 LRU 40 页。
+4. tile 宽高比改成页面真实比例；overlay 与 `<img>` 矩形必须完全一致。
+5. 块类型 badge 移到框内左上角、半透明（审校 / 页面视图共用）。
+6. 验证多选；真书 267 页测滚动与内存；截图存档；文档。
+
+### 实现与验证
+
+**缩放与渲染档位（D-054）：**
+
+| 档位 | 版式 | 渲染 |
+|---|---|---|
+| 1 / 4 网格 | 自动填充 | thumb 40 DPI |
+| 2 / 4 大网格 | 3 列 | view 150 DPI |
+| 3 / 4 单列 | 1 列，页宽 ≤680px | view 150 DPI |
+| 4 / 4 单页 | 页宽 = 容器宽度 | zoom 300 DPI |
+
+- 实测单页档：显示宽 1129px，渲染图 1480×2457，仍是缩小显示，不糊。
+- 页面 tile 的 `aspect-ratio` 改用 `page.width_pt / page.height_pt`（原固定 1:1.414），
+  overlay 与 img 的 `getBoundingClientRect()` 完全一致（第 30 页均为 1129×1874.95）。
+
+**缓存与性能：**
+
+- 不做新缓存层：HTTP 响应仍带 `Cache-Control: private, max-age=300`；DOM 侧只在
+  离视口 1400px 内设置大图 `src`，更远的 tile 清掉 `src`，让浏览器释放解码位图。
+- 267 页实测：单页档稳定只保留 **2–3 张大图**；JS heap 约 **27–29 MB**；
+  激进地用 3 秒从第 1 页扫到第 267 页，rAF 计数 92 帧（约 **30fps**），无卡死；
+  正常滚动更轻。**没有虚拟滚动**：267 个 tile 都在 DOM 里。
+- 块数据缓存：`pageBlockCache` LRU 40 页；只给当前可见页渲染 overlay，离屏清空。
+
+**块框：**
+
+- 大图档（单列 / 单页）才启用开关；档位退回网格时自动关并清理。
+- 复用审校的 `.page-overlay / .box / .box--type-*`；加 `.page-overlay--readonly`
+  让整个层 `pointer-events:none`，块框不吃选页点击。
+- 第 30 页（正文 6 块）截图见 [`docs/screenshots/page-view-block-frames.png`](../docs/screenshots/page-view-block-frames.png)：
+  6 个框逐块对照原图，含书眉 "2 谁是巴赫金? 11"；第 3 页（版权页 24 块）见
+  [`docs/screenshots/page-view-dense-page.png`](../docs/screenshots/page-view-dense-page.png)。
+- badge 改成框内左上角、`rgba(255,255,255,.78)`、9.5px；密集页仍会压住行首一两个字，
+  但不再浮到框外压上一行。
+
+**多选：** overlay 开着时，点第 30 页图区 → 选中 1 页；Shift 点第 31 页 → 选中 2 页，
+「设为该类型」可用。单击 / Shift / ⌘ 逻辑未改。
+
+**测试：** 新增 1 项（total 635 → **636**；另扩展现有页面图片接口测试）：
+缩放入口 / 只读 overlay / badge 贴框内的静态约定；图片接口 `thumb < view < zoom` 的宽度关系。本地 `.venv/bin/python -m pytest -q`
+→ **636 passed, 1 warning，48.09 秒**。
+
+**未验证：** Windows 与 Safari 的滚动 / 图片解码差异；性能数字是 macOS + Chrome、
+程序化滚动（非真实滚轮手势）；JS heap 不含图片解码内存，只作趋势参考。
+
+### 用户操作说明
+
+- 页面视图右上角「－ / ＋」切换四档；标签显示 `1/4 · 网格`……`4/4 · 单页`。
+- 到单列或单页后，「块框」按钮可用；点开后才显示块框，再点关闭。
+- 单击选页、Shift 段选、⌘/Ctrl 加减选照旧；块框不会挡住点击。
+- 回退：`git revert` 本次提交；纯界面改动，不涉及数据库。
+
+### 下一步建议
+
+把页面视图右栏（页面确认）的重排与类型颜色放到下一刀；块框开关的状态可以顺手记住
+（按项目存），避免每次进页面视图都要再点一次。
+
 
 ### 任务目标
 
@@ -76,7 +157,7 @@
   manifest 三流、正文只含 body+heading、老记录下载、文件集合。
 - 单元：页码抽取（page_number / 罗马数字 / 冲突 null）、无前文注释未定位、
   注释 JSONL 一行一条。
-- 本地：`.venv/bin/python -m pytest -q` → **635 passed, 1 warning**（待填，macOS arm64）。
+- 本地：`.venv/bin/python -m pytest -q` → **635 passed, 1 warning**（50.00 秒，macOS arm64）。
 
 **CI 实跑（GitHub Actions，真实结果）：** 第一次 [run #12](https://github.com/CLnum42/book2text/actions/runs/39718237491)
 macOS 绿、**Windows 红**——失败点是新加的老记录下载测试：Windows 文本模式把夹具写成了
