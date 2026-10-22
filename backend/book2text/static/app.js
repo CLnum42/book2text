@@ -1511,10 +1511,11 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
       warning.textContent = opened.warning;
       warning.hidden = false;
     }
+    // 注释流是这次导出的选项，不是项目设置：每次打开项目回到"不导出"的默认。
+    // 必须在 refreshProject 之前复位——它会立刻发一次导出预检，用的是这个复选框的值。
+    el("export-include-notes").checked = false;
     await refreshProject(projectId);
     applyProjectSettings();
-    // 注释流是这次导出的选项，不是项目设置：每次打开项目回到"不导出"的默认
-    el("export-include-notes").checked = false;
     await loadAutoApplyStatus();
     pagesOverlayOn = loadPageOverlayPreference();
     pagesMarginOn = loadPageMarginPreference();
