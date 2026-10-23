@@ -1549,6 +1549,7 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     marginSuggestion = currentProject.margin_box_suggestion || null;
     applyPanelGroupPreferences();
     renderRecognitionSettings();
+    loadPageNumberSummary();
     reviewMarginOn = loadReviewMarginPreference();
     reviewBlockFilter = "inside";
     el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
@@ -4174,6 +4175,287 @@ async function setPageAsGlobal(page) {
   } catch (error) {
     showError(el("pages-error"), error);
   }
+}
+
+// ---------------------------------------------------------------- 页码设置（任务 55）
+//
+// 用户 2026-10-23：大多数页码坐标稳定，不该逐页确认——聚出位置模板 → 确认一次 →
+// 全书自动填充 → 只把异常页推给人。这一刀不做逐页手动改映射，也不接导出。
+
+let pageNumberAnalysis = null;
+let pageNumberStatusTimer = null;
+
+function setPageNumberStatus(text, isError = false) {
+  const node = el("page-number-status");
+  if (!node) return;
+  node.textContent = text || "";
+  node.hidden = !text;
+  node.style.color = isError ? "var(--bad-fg)" : "";
+  if (pageNumberStatusTimer) clearTimeout(pageNumberStatusTimer);
+  if (text) {
+    pageNumberStatusTimer = setTimeout(() => {
+      node.hidden = true;
+    }, 9000);
+  }
+}
+
+/** 右栏摘要：已采用的模板与已填页数（小接口，不跑聚类）。 */
+async function loadPageNumberSummary() {
+  if (!currentProject) return;
+  const node = el("page-number-summary");
+  if (!node) return;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/page-numbers/summary`
+    );
+    if (data.template) {
+      const label = data.template.label || "已采用模板";
+      node.textContent = `${label} · 已填 ${data.filled} 页`;
+    } else {
+      node.textContent = data.filled ? `已填 ${data.filled} 页` : "还没有模板";
+    }
+  } catch {
+    node.textContent = "还没有模板";
+  }
+}
+
+async function openPageNumberPanel() {
+  if (!currentProject) return;
+  openModal("page-number-panel");
+  const body = document.querySelector("#page-number-panel .mbody");
+  if (body) body.scrollTop = 0;
+  el("page-number-error").hidden = true;
+  el("page-number-template-count").textContent = "";
+  el("page-number-templates").innerHTML = "";
+  const loading = document.createElement("li");
+  loading.className = "muted";
+  loading.textContent = "正在从已识别页里收集页码候选…";
+  el("page-number-templates").append(loading);
+  el("page-number-empty").hidden = true;
+  el("page-number-result").hidden = true;
+  await refreshPageNumberAnalysis();
+}
+
+async function refreshPageNumberAnalysis() {
+  if (!currentProject) return;
+  try {
+    pageNumberAnalysis = await apiJson(
+      `/api/projects/${currentProject.project_id}/page-numbers`
+    );
+  } catch (error) {
+    showError(el("page-number-error"), error);
+    return;
+  }
+  renderPageNumberAnalysis(pageNumberAnalysis);
+}
+
+function pageNumberReliableChip(template) {
+  const chip = document.createElement("span");
+  chip.className = "chip " + (template.reliable ? "chip--ok" : "chip--warn");
+  chip.textContent = template.reliable ? "数值连续" : "数值存疑";
+  chip.title = template.reliable
+    ? "相邻页的页码差与 PDF 页差一致，偏移稳定"
+    : "模板位置成立，但页码数值不连续 / 偏移不恒定，采用前请核对";
+  return chip;
+}
+
+function renderPageNumberTemplates(data) {
+  const list = el("page-number-templates");
+  list.innerHTML = "";
+  const templates = data.templates || [];
+  el("page-number-template-count").textContent = templates.length
+    ? `${templates.length} 个 · 按覆盖页数排序`
+    : "";
+  if (!templates.length) {
+    el("page-number-empty").hidden = false;
+    return;
+  }
+  el("page-number-empty").hidden = true;
+  for (const template of templates) {
+    const item = document.createElement("li");
+    item.className = "pn-template";
+
+    const head = document.createElement("div");
+    head.className = "pn-template__head";
+    const label = document.createElement("span");
+    label.className = "pn-template__label";
+    label.textContent = template.label;
+    const meta = document.createElement("span");
+    meta.className = "pn-template__meta";
+    const samples = (template.sample_pages || []).slice(0, 4).join("、");
+    meta.textContent =
+      `覆盖 ${template.coverage} 页` + (samples ? ` · 示例：第 ${samples} 页` : "");
+    head.append(label, pageNumberReliableChip(template), meta);
+
+    const adopt = document.createElement("button");
+    adopt.type = "button";
+    adopt.className = "btn btn--sm btn--pri";
+    adopt.textContent = template.reliable ? "采用这个模板" : "仍然采用（不建议）";
+    adopt.addEventListener("click", () => adoptPageNumberTemplate(template));
+    head.append(adopt);
+    item.append(head);
+
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = `查看示例页与页码序列（${template.values.length} 页）`;
+    const values = document.createElement("ol");
+    values.className = "pn-values";
+    for (const row of template.values) {
+      const entry = document.createElement("li");
+      entry.textContent = `第 ${row.page_no} 页 → ${row.value}`;
+      values.append(entry);
+    }
+    details.append(summary, values);
+    item.append(details);
+
+    if (template.notes && template.notes.length) {
+      const notes = document.createElement("p");
+      notes.className = "pn-template__notes";
+      notes.textContent = template.notes.join(" ");
+      item.append(notes);
+    }
+    list.append(item);
+  }
+}
+
+function renderPageNumberAnomalies(current) {
+  const box = el("page-number-anomalies");
+  box.innerHTML = "";
+  const groups = [
+    ["no_candidate", "没有页码候选"],
+    ["ambiguous", "候选打架（不猜，留空）"],
+    ["jump", "页码不连续"],
+    ["offset_break", "偏移突变"],
+  ];
+  for (const [key, label] of groups) {
+    const items = (current.anomalies && current.anomalies[key]) || [];
+    if (!items.length) continue;
+    const group = document.createElement("div");
+    group.className = "pn-anomaly-group";
+    const title = document.createElement("h4");
+    title.textContent = `${label} · ${items.length} 页`;
+    const list = document.createElement("ul");
+    for (const entry of items.slice(0, 30)) {
+      const row = document.createElement("li");
+      row.textContent = `第 ${entry.page_no} 页：${entry.reason}`;
+      list.append(row);
+    }
+    if (items.length > 30) {
+      const more = document.createElement("li");
+      more.textContent = `还有 ${items.length - 30} 页…`;
+      list.append(more);
+    }
+    group.append(title, list);
+    box.append(group);
+  }
+  const notRecognized = current.not_recognized || { count: 0, pages: [] };
+  if (notRecognized.count) {
+    const group = document.createElement("div");
+    group.className = "pn-anomaly-group";
+    const title = document.createElement("h4");
+    title.textContent = `未识别的页 · ${notRecognized.count} 页（单列，不算异常）`;
+    const list = document.createElement("ul");
+    const shown = (notRecognized.pages || []).slice(0, 40);
+    const row = document.createElement("li");
+    row.textContent =
+      shown.map((no) => `第 ${no} 页`).join("、") +
+      (notRecognized.count > shown.length
+        ? ` 等（共 ${notRecognized.count} 页）`
+        : "");
+    list.append(row);
+    group.append(title, list);
+    box.append(group);
+  }
+  if (!box.children.length) {
+    const ok = document.createElement("p");
+    ok.className = "muted";
+    ok.textContent = "没有异常页。";
+    box.append(ok);
+  }
+}
+
+function renderPageNumberAnalysis(data) {
+  renderPageNumberTemplates(data);
+  const current = data.current || {};
+  const counts = current.counts || {};
+  el("page-number-meta").textContent =
+    `已填 ${counts.filled || 0} / ${counts.total || 0} 页`;
+
+  const result = el("page-number-result");
+  // 没采用模板时，每个已识别页都会算"没有候选"，那不是异常，别铺一屏；
+  // 只有"已采用模板 / 已填过页码 / 数值真的不连续"才展示当前映射与异常。
+  const hasResult =
+    Boolean(current.template) ||
+    (counts.filled || 0) > 0 ||
+    (counts.jump || 0) > 0 ||
+    (counts.offset_break || 0) > 0;
+  result.hidden = !hasResult;
+  if (!hasResult) return;
+
+  el("page-number-current-summary").textContent = current.template
+    ? `${current.template.label || "已采用模板"} · ${counts.filled || 0} 页`
+    : `已填 ${counts.filled || 0} 页`;
+  const mapping = el("page-number-mapping");
+  mapping.innerHTML = "";
+  const rows = (current.mapping || []).slice(0, 40);
+  for (const row of rows) {
+    const item = document.createElement("li");
+    item.textContent = `第 ${row.page_no} 页 → ${row.printed_page}`;
+    mapping.append(item);
+  }
+  if ((current.mapping || []).length > rows.length) {
+    const more = document.createElement("li");
+    more.className = "muted";
+    more.textContent = `…共 ${current.mapping.length} 页`;
+    mapping.append(more);
+  }
+  if (!rows.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent = "还没有填充任何页。";
+    mapping.append(empty);
+  }
+  renderPageNumberAnomalies(current);
+}
+
+async function adoptPageNumberTemplate(template) {
+  if (!currentProject) return;
+  if (
+    !window.confirm(
+      `采用「${template.label}」（覆盖 ${template.coverage} 页）？\n` +
+        "会按位置重新抽取每页的印刷页码；数值不连续 / 偏移突变的页会列在异常里。" +
+        (template.reliable ? "" : "\n\n注意：" + (template.notes || []).join(" "))
+    )
+  ) {
+    return;
+  }
+  el("page-number-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/page-numbers/apply`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ template }),
+      }
+    );
+    pageNumberAnalysis = data;
+    renderPageNumberAnalysis(data);
+    await loadPageNumberSummary();
+    setPageNumberStatus(`已按模板填充 ${data.applied?.filled ?? 0} 页`);
+  } catch (error) {
+    showError(el("page-number-error"), error);
+  }
+}
+
+function setupPageNumberPanel() {
+  el("page-number-open").addEventListener("click", openPageNumberPanel);
+  el("page-number-close").addEventListener("click", () =>
+    closeModal("page-number-panel")
+  );
+  el("page-number-done").addEventListener("click", () =>
+    closeModal("page-number-panel")
+  );
 }
 
 /**
@@ -8199,6 +8481,7 @@ async function applyPackageMode() {
     el("selection-skip-checked").parentElement.hidden = false;
     el("setup-panel").hidden = false;
     el("panel-recognition-settings").hidden = false;
+    el("panel-pagenum-settings").hidden = false;
     el("page-setup-bar").hidden = false;
     el("assign-list-toggle").hidden = false;
     el("assign-open").hidden = false;
@@ -8217,6 +8500,7 @@ async function applyPackageMode() {
   el("selection-skip-checked").parentElement.hidden = true;
   el("setup-panel").hidden = true;
   el("panel-recognition-settings").hidden = true;  // 任务包不做识别
+  el("panel-pagenum-settings").hidden = true;      // 任务包也不改页码映射
   el("page-setup-bar").hidden = true;
   el("detail-recognize").hidden = true;
   el("aux-run").hidden = true;
@@ -8974,6 +9258,7 @@ function boot() {
   setupViewerTools();
   setupPanelGroups();
   setupRecognitionSettings();
+  setupPageNumberPanel();
   setupExportPanel();
   setupStructurePanel();
   showView("library");

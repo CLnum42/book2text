@@ -615,10 +615,10 @@ def test_right_panel_has_four_ordered_collapsible_sections() -> None:
         assert f'id="{name}" open' not in page, name
     assert "b2t.panels.v1." in script
     assert "PANEL_GROUP_DEFAULT_OPEN" in script
-    # 页码设置这一刀只有说明、没有按钮（说明书 1.6：不显示未实现的功能）
+    # 页码设置（任务 55）现在有真实入口；不再只是占位说明
     pagenum = page[positions[2]:positions[3]]
-    assert "下一刀" in pagenum
-    assert "<button" not in pagenum
+    assert 'id="page-number-open"' in pagenum
+    assert "这一版只做" in pagenum
 
     # 五类按自然顺序排列
     assert 'PAGE_TYPE_ORDER = ["front", "toc", "body", "body_excluded", "back"]' in script
@@ -654,3 +654,37 @@ def test_recognition_settings_are_wired_to_project_settings() -> None:
     assert "不会自动采用" in page
     assert "function divergenceCandidatesOn(" in script
     assert 'dual_engine_strategy === "candidates"' in script
+
+
+def test_page_number_panel_is_wired() -> None:
+    """任务 55：页码模板入口、候选列表、采用、异常分组都必须真的接上。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "page-number-summary",
+        "page-number-open",
+        "page-number-panel",
+        "page-number-close",
+        "page-number-templates",
+        "page-number-template-count",
+        "page-number-apply",
+        "page-number-result",
+        "page-number-mapping",
+        "page-number-anomalies",
+        "page-number-done",
+    ):
+        if element_id == "page-number-apply":
+            # 采用按钮在每张模板卡里动态创建，不是页面固定节点
+            continue
+        assert f'id="{element_id}"' in page, element_id
+
+    assert "/page-numbers" in script
+    assert "/page-numbers/apply" in script
+    assert "function renderPageNumberAnomalies(" in script
+    assert "function adoptPageNumberTemplate(" in script
+    assert "offset_break" in script and "no_candidate" in script
+    assert "not_recognized" in script
+    assert "还没有模板" in page
+    assert ".pn-template" in styles and ".pn-mapping" in styles

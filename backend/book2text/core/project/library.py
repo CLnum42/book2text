@@ -124,6 +124,8 @@ class Project:
     margin_box_set_at: str | None = None
     # 最近一次自动推算的完整结果（JSON 解析后的 dict，见 margin_box.SUGGESTION_SCHEMA）。
     margin_box_suggestion: dict[str, object] | None = None
+    # 用户确认采用的页码位置模板（任务 55）；没确认过是 None。
+    page_number_template: dict[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -145,6 +147,9 @@ class Project:
             "margin_box_set_at": self.margin_box_set_at,
             "margin_box_suggestion": (
                 dict(self.margin_box_suggestion) if self.margin_box_suggestion else None
+            ),
+            "page_number_template": (
+                dict(self.page_number_template) if self.page_number_template else None
             ),
         }
 
@@ -177,6 +182,11 @@ class Page:
     margin_box_mode: str = "inherit"
     """版心三态：``inherit`` 跟随项目 / ``custom`` 本页 / ``none`` 不适用。
     见 `core/project/margin_box.py`；这一刀只存储与展示，不影响导出。"""
+    printed_page: str | None = None
+    """这一页的**印刷页码**（任务 55）。TEXT，允许罗马数字；NULL = 还没确定。
+    与 `page_label`（PDF 自己的页标签）分开；导出当前不读这一列。"""
+    printed_page_source: str | None = None
+    """印刷页码的来源：``template``（按页码模板自动填充）/ ``manual``（人工）/ NULL。"""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -196,6 +206,8 @@ class Page:
             "note": self.note,
             "margin_box": list(self.margin_box) if self.margin_box else None,
             "margin_box_mode": self.margin_box_mode,
+            "printed_page": self.printed_page,
+            "printed_page_source": self.printed_page_source,
         }
 
 
@@ -465,7 +477,8 @@ def _row_to_project(row, directory: Path) -> Project:
         margin_box=_parse_margin_box(_column(row, "margin_box")),
         margin_box_source=_column(row, "margin_box_source"),
         margin_box_set_at=_column(row, "margin_box_set_at"),
-        margin_box_suggestion=_parse_suggestion(_column(row, "margin_box_suggestion")),
+        margin_box_suggestion=_parse_json_object(_column(row, "margin_box_suggestion")),
+        page_number_template=_parse_json_object(_column(row, "page_number_template")),
     )
 
 
@@ -497,11 +510,10 @@ def _parse_margin_box(raw) -> tuple[float, float, float, float] | None:
     return box
 
 
-def _parse_suggestion(raw) -> dict[str, object] | None:
-    """解析最近一次自动推算的结果；坏数据当成"没有建议"，不让项目打不开。
+def _parse_json_object(raw) -> dict[str, object] | None:
+    """解析一个 JSON 对象列（版心建议 / 页码模板）；坏数据当成"没有"，不让项目打不开。
 
-    只要求它是个 JSON 对象：具体字段由 `margin_box` 模块写，界面按 schema 读。
-    这里刻意不校验四边——建议是只读展示，真正生效的版心另有 `margin_box` 列。
+    只要求它是个 JSON 对象：具体字段由写它的模块负责，界面按各自 schema 读。
     """
     if not raw:
         return None
@@ -655,6 +667,8 @@ def _row_to_page(row) -> Page:
         note=row["note"],
         margin_box=_parse_margin_box(_column(row, "margin_box")),
         margin_box_mode=_column(row, "margin_box_mode") or "inherit",
+        printed_page=_column(row, "printed_page"),
+        printed_page_source=_column(row, "printed_page_source"),
     )
 
 

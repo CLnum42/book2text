@@ -1186,3 +1186,25 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 /* 两个旧 id（setup-panel / margin-panel）现在是 <details> 的包裹层：
    :first-of-type 在每个包裹层里都成立，所以给版心分区补回分隔线 */
 #margin-panel > .panel__group { border-top: 1px solid var(--line); margin-top: 10px; }
+
+/* ─────────────────────────────── 页码设置（任务 55） ─────────────────────────────── */
+.modal--page-number { width: 780px; max-width: 100%; height: 680px; }
+.modal--page-number .mbody { display: block; overflow: auto; padding: 16px 20px; }
+.pn-templates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.pn-template { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+.pn-template__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pn-template__label { font-weight: 600; font-size: 13px; }
+.pn-template__meta { font-size: 11.5px; color: var(--muted); }
+.pn-template__notes { font-size: 11.5px; line-height: 1.6; color: #92600a; margin: 6px 0 0; }
+.pn-template details { margin-top: 6px; }
+.pn-template summary { cursor: pointer; font-size: 11.5px; color: var(--muted); }
+.pn-values { margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; line-height: 1.65;
+  columns: 2; column-gap: 20px; max-height: 190px; overflow: auto; }
+.pn-mapping { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.7;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 14px;
+  max-height: 170px; overflow: auto; }
+.pn-mapping li::marker { color: var(--faint); }
+.pn-anomaly-group { margin: 0 0 10px; }
+.pn-anomaly-group h4 { margin: 0 0 3px; font-size: 12px; color: var(--text-2); }
+.pn-anomaly-group ul { margin: 0; padding-left: 18px; font-size: 11.5px; line-height: 1.65; color: var(--text-2); }
+.pn-anomaly-group li::marker { color: var(--faint); }

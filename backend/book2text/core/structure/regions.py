@@ -36,6 +36,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Iterable, Sequence
@@ -455,6 +456,30 @@ def _is_canonical_roman(token: str) -> bool:
     if value <= 0 or value > _MAX_ROMAN_PAGE:
         return False
     return _to_roman(value) == token.upper()
+
+
+_DECORATION_CHARS = re.compile(r"[\s.·•\-–—_=~*()\[\]{}【】〔〕「」『』<>]")
+
+
+def canonical_page_value(text: str) -> str | None:
+    """整段文字去掉装饰后**就是**一个规范页码 → 返回值；否则 None（任务 55）。
+
+    与 `page_number_candidates` 的区别：这里要求整段只由一个页码组成，
+    不做"从书眉里挑一个数字"的猜测。阿拉伯 1–4 位、罗马数字必须规范且 ≤ 100
+    （与页码候选同一口径）。混合书眉（"2 谁是巴赫金? 11"）返回 None——
+    那种情况必须靠 `page_label` 对上号才采信，见 `page_numbers.collect_candidates`。
+    """
+    compact = unicodedata.normalize("NFKC", re.sub(r"\s+", "", text or ""))
+    stripped = _DECORATION_CHARS.sub("", compact)
+    if not stripped:
+        return None
+    candidates = page_number_candidates(stripped)
+    if len(candidates) != 1:
+        return None
+    candidate = candidates[0]
+    if candidate.start != 0 or candidate.end != len(stripped) or candidate.value <= 0:
+        return None
+    return candidate.text.upper() if candidate.kind == "roman" else candidate.text
 
 
 def page_number_candidates(text: str) -> tuple[NumberCandidate, ...]:

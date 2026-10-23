@@ -523,3 +523,26 @@ def test_migration_0012_adds_margin_suggestion_columns(conn: sqlite3.Connection)
     assert row["margin_box_source"] is None
     assert row["margin_box_set_at"] is None
     assert row["margin_box_suggestion"] is None
+
+
+def test_migration_0013_adds_printed_page_columns(conn: sqlite3.Connection) -> None:
+    """页码设置：两列页面字段 + 项目级模板；老行为 NULL（没确认过模板）。"""
+    migrate(conn, MIGRATIONS)
+    page_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(page)").fetchall()
+    }
+    project_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(project)").fetchall()
+    }
+    assert {"printed_page", "printed_page_source"} <= page_columns
+    assert "page_number_template" in project_columns
+
+    conn.execute(
+        "INSERT INTO page (page_id, page_no, width_pt, height_pt)"
+        " VALUES ('p1', 1, 595.0, 842.0)"
+    )
+    row = conn.execute(
+        "SELECT printed_page, printed_page_source FROM page WHERE page_id = 'p1'"
+    ).fetchone()
+    assert row["printed_page"] is None
+    assert row["printed_page_source"] is None

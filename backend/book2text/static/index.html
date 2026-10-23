@@ -250,12 +250,14 @@
             </div>
 
             <details class="panel__group" id="panel-pagenum-settings">
-              <summary><strong>页码设置</strong><span class="muted">下一刀</span></summary>
+              <summary><strong>页码设置</strong><span class="muted" id="page-number-summary">还没有模板</span></summary>
               <div class="panel__body">
-                <p class="hint">下一刀：定位页码坐标、建立 PDF 页 ↔ 印刷页映射。
-                  这一版只放说明，不放按钮——现在还没有可用的页码设置。</p>
-                <p class="hint">当前的页码来自识别结果的版心外边带（<code>meta.json</code> 的
-                  <code>printed_page</code>）；需要改页码时，先把书眉 / 页码拆成独立块，再在审校里改类型。</p>
+                <p class="hint">大多数书的页码位置是稳定的（奇偶页可能各一个位置）。
+                  定位一次 → 全书自动填充 → 只核对异常页。</p>
+                <button type="button" id="page-number-open" class="btn btn--block">定位页码…</button>
+                <div class="hint" id="page-number-status" hidden></div>
+                <p class="hint">这一版只做"确认模板 → 自动填充 + 异常列表"；
+                  逐页手动改映射、第二套页码范围在下一刀。</p>
               </div>
             </details>
 
@@ -590,6 +592,47 @@
           <span class="spacer"></span>
           <button type="button" id="structure-cancel" class="btn">关闭</button>
           <button type="button" id="structure-apply-btn" class="btn btn--pri" disabled>应用标注</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────── 对话框：页码设置 ─────────────────────────── -->
+    <div class="mask" id="page-number-panel" hidden>
+      <div class="modal modal--page-number">
+        <div class="mhead">
+          页码设置
+          <span class="muted" id="page-number-meta"></span>
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="page-number-close">✕</button>
+        </div>
+        <div class="mbody">
+          <div class="alert alert--info" id="page-number-intro">
+            从已识别页里收集页码候选，按页边位置聚成模板。确认一个模板后，全书按位置自动填充；
+            数值对不上的页会列在下面的异常里。<strong>不会自动采用</strong>，也不会改识别结果。
+          </div>
+          <div class="alert alert--error" id="page-number-error" hidden></div>
+
+          <div class="flabel">候选模板 <span class="muted" id="page-number-template-count"></span></div>
+          <ol class="pn-templates" id="page-number-templates"></ol>
+          <div class="alert alert--warn" id="page-number-empty" hidden>
+            还没有可用的页码模板。原因可能是：还没有识别页、页码不在版心外 / 页边，
+            或者页码和章名粘在同一行而 PDF 页标签对不上。先把正文识别出来再试。
+          </div>
+
+          <div id="page-number-result" hidden>
+            <div class="flabel">当前映射 <span class="muted" id="page-number-current-summary"></span></div>
+            <ol class="pn-mapping" id="page-number-mapping"></ol>
+            <div class="flabel">异常</div>
+            <div id="page-number-anomalies"></div>
+            <p class="hint" id="page-number-next">
+              下一步（未实现）：逐页手动改映射、第二套页码范围；这一刀只做模板自动填充与异常列表。
+            </p>
+          </div>
+        </div>
+        <div class="mfoot">
+          <span class="muted">页码写入只用于这次模板 / 校验与界面显示，导出仍走原来的页码抽取</span>
+          <span class="spacer"></span>
+          <button type="button" id="page-number-done" class="btn">完成</button>
         </div>
       </div>
     </div>
