@@ -21,7 +21,7 @@
   子进程按它选适配器与渲染参数。真书实测 300 DPI → 任务参数 300；Apple Vision → `active_run`
   就是 apple_vision；双引擎 → 每页有 primary + auxiliary 两个 run、分歧标记可用。
 - **双引擎不自动采用任何一方**：只写行级候选与分歧标记；实测第二引擎更弱（CER 2.16% vs 1.08%）。
-- 测试 **787 passed, 1 skipped**。
+- 测试 **789 passed, 0 skipped**。
 
 ### 新增 — 版心随识别自动推算，并接进审校视图（2026-10-23）
 

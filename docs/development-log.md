@@ -110,10 +110,14 @@ DPI / 语言只能通过接口传，界面没有入口；第一引擎写死 Rapi
 
 **6. 测试**
 
-- `.venv/bin/python -m pytest -q` → **787 passed, 1 skipped，92.68 秒**。
-  跳过的是"Apple Vision 不可用分支"（本机 macOS 上可用，Windows CI 会走这条）。
-- 新增：识别设置接口 / 参数传递 7、双引擎按页比对 1、Apple Vision 语言映射 3、
-  四分区与识别设置静态约定 2；原有页面类型顺序断言按新需求更新（没有弱化其它断言）。
+- `.venv/bin/python -m pytest -q -rs` → **789 passed，87.37 秒，0 skipped**。
+  CI 的守卫禁止 skip（"跳过 ≠ 通过"）。第一次推送（#35）就是被这条挡下的：新加的
+  "Apple Vision 不可用"用例在 macOS 上 skip、Apple Vision 用例在 Windows 上 skip。
+  改成**注入假适配器**验证选择逻辑（不可用分支用 `FakeOcrEngine(available=False)`），
+  另加一条纯单元测试确认 `adapter_for_engine` 真的映射到三个真实适配器，不再依赖本机引擎。
+- 新增：识别设置接口 / 参数传递与选择逻辑 9、双引擎按页比对 1、Apple Vision 语言映射
+  与适配器映射 4、四分区与识别设置静态约定 2；原有页面类型顺序断言按新需求更新
+  （没有弱化其它断言）。
 - 无数据库迁移；设置写在 `project.settings_json`。
 
 ### 用户操作说明

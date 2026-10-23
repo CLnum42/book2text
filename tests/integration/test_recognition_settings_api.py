@@ -12,9 +12,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from book2text.core.ocr.adapters.apple_vision import AppleVisionAdapter
 from book2text.core.project import recognition
-from tests.fakes import FakeOcrEngine
+from tests.fakes import FakeOcrEngine, FakeSecondEngine
 
 
 def create_project(client: TestClient, headers: dict[str, str], pdf: Path) -> str:
@@ -127,15 +126,23 @@ def test_explicit_dpi_argument_still_wins(
     assert response.json()["job"]["params"]["dpi"] == 150
 
 
-def test_apple_vision_can_be_the_primary_engine(
-    client: TestClient, auth_headers: dict[str, str], project_id: str
+def test_engine_setting_selects_the_adapter(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_id: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    available, reason = AppleVisionAdapter().available()
-    if not available:
-        pytest.skip(f"Apple Vision 在当前环境不可用：{reason}")
+    """设置选 Apple Vision → 任务参数里就是 apple_vision（适配器由 engine_setting 决定）。
+
+    不依赖本机是否装了 pyobjc：把适配器工厂换成"自称 apple_vision"的假引擎，
+    验证的是**选择逻辑**；真机上的实际识别在任务报告的真实浏览器验收里。
+    """
+    vision = FakeOcrEngine()
+    vision.engine_id = "apple_vision"   # 实例属性覆盖类属性
+    monkeypatch.setattr(recognition, "adapter_for_engine", lambda engine_id: vision)
+
     response = patch_settings(client, auth_headers, project_id, recognition_engine="apple_vision")
     assert response.status_code == 200, response.text
-
     started = start_ocr(client, auth_headers, project_id, [1])
     assert started.status_code == 200, started.text
     params = started.json()["job"]["params"]
@@ -144,28 +151,37 @@ def test_apple_vision_can_be_the_primary_engine(
 
 
 def test_dual_engine_records_both_engines(
-    client: TestClient, auth_headers: dict[str, str], project_id: str
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_id: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    available, reason = AppleVisionAdapter().available()
-    if not available:
-        pytest.skip(f"双引擎需要 Apple Vision：{reason}")
+    """双引擎任务参数同时记下第一路（RapidOCR）与第二路（Apple Vision）。"""
+    fake = FakeOcrEngine()
+    fake.engine_id = "rapidocr"
+    monkeypatch.setattr(recognition, "adapter_for_engine", lambda engine_id: fake)
+    monkeypatch.setattr(recognition, "default_secondary_engine", lambda: FakeSecondEngine())
+
     response = patch_settings(client, auth_headers, project_id, recognition_engine="dual")
     assert response.status_code == 200, response.text
-
     started = start_ocr(client, auth_headers, project_id, [1])
     assert started.status_code == 200, started.text
     params = started.json()["job"]["params"]
     assert params["engine_setting"] == "dual"
-    assert params["secondary_engine_id"] == "apple_vision"
+    assert params["secondary_engine_id"] == "fake-second"
 
 
 def test_unavailable_engine_is_rejected_at_job_creation(
-    client: TestClient, auth_headers: dict[str, str], project_id: str
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_id: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """设置里存了不可用的引擎（比如 Mac 上做好、在 Windows 打开）：建任务时明确 503。"""
-    available, _ = AppleVisionAdapter().available()
-    if available:
-        pytest.skip("当前环境 Apple Vision 可用，无法验证不可用分支")
+    """设置里存的引擎不可用（比如 Mac 上做好、在 Windows 打开）：建任务时明确 503。"""
+    unavailable = FakeOcrEngine(available=False, reason="仅 macOS 可用（模拟）")
+    unavailable.engine_id = "apple_vision"
+    monkeypatch.setattr(recognition, "adapter_for_engine", lambda engine_id: unavailable)
+
     patch_settings(client, auth_headers, project_id, recognition_engine="apple_vision")
     response = start_ocr(client, auth_headers, project_id, [1])
     assert response.status_code == 503

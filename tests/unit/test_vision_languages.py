@@ -21,3 +21,14 @@ def test_chinese_and_mixed_keep_both_languages() -> None:
 
 def test_unknown_language_falls_back_to_default() -> None:
     assert apple_vision.vision_languages("xx") == apple_vision.DEFAULT_LANGUAGES
+
+
+def test_adapter_for_engine_maps_to_real_adapters() -> None:
+    """引擎设置真的映射到对应适配器（Apple Vision 在别的平台上不能构造时也不会跑）。"""
+    from book2text.core.ocr.adapters.apple_vision import AppleVisionAdapter
+    from book2text.core.ocr.adapters.rapidocr import RapidOcrAdapter
+    from book2text.core.project import recognition
+
+    assert isinstance(recognition.adapter_for_engine("rapidocr"), RapidOcrAdapter)
+    assert isinstance(recognition.adapter_for_engine("apple_vision"), AppleVisionAdapter)
+    assert isinstance(recognition.adapter_for_engine("dual"), RapidOcrAdapter)
