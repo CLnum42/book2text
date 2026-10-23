@@ -409,10 +409,17 @@ class LastViewPatch(BaseModel):
 
 
 class ProjectSettingsPatch(BaseModel):
-    """项目级设置：自动应用高把握建议 / 按版心判定正文（任务 51）。"""
+    """项目级设置：自动应用建议 / 按版心判定正文 / 识别设置（任务 51 / 54）。"""
 
     auto_apply_high_suggestions: bool | None = None
     margin_box_judgement: bool | None = None
+    # 识别设置：建识别任务时读取（不是只存不用，见 recognition.create_ocr_job）。
+    # 取值白名单放在 core/project/library.update_settings，接口统一转 400（而不是 422），
+    # 这样错误信息是中文、带可选值，和前两个开关一致。
+    recognition_engine: str | None = None
+    recognition_dpi: int | None = None
+    recognition_language: str | None = None
+    dual_engine_strategy: str | None = None
 
 
 @router.patch("/{project_id}/settings")

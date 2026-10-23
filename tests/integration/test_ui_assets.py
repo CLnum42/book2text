@@ -206,7 +206,7 @@ def test_page_confirmation_type_picker_has_exactly_five_types_and_no_include_swi
     ):
         assert f'{key}: "{label}"' in script, key
     # 旧的十类不该再出现在前端类型表 / 排序里
-    assert "PAGE_TYPE_ORDER = [\"body\", \"body_excluded\", \"toc\", \"front\", \"back\"]" in script
+    assert "PAGE_TYPE_ORDER = [\"front\", \"toc\", \"body\", \"body_excluded\", \"back\"]" in script
     assert "混合" in script
     # 没有"直接设 include"的界面入口
     assert "patchSelectedPages({ include:" not in script
@@ -591,3 +591,66 @@ def test_review_view_shows_margin_and_filters_blocks() -> None:
     assert "page-margin--review" in styles
     assert ".box--outside-margin" in styles
     assert ".review-filter {" in styles
+
+
+def test_right_panel_has_four_ordered_collapsible_sections() -> None:
+    """任务 54：右栏固定四分区，顺序不再变；页码设置只放说明，不放按钮。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+    order = [
+        "panel-page-settings",
+        "panel-margin-settings",
+        "panel-pagenum-settings",
+        "panel-recognition-settings",
+    ]
+    positions = [page.index(f'id="{name}"') for name in order]
+    assert positions == sorted(positions), "四分区顺序必须是 页面 → 版心 → 页码 → 识别"
+    for title in ("页面设置", "版心设置", "页码设置", "识别设置"):
+        assert title in page, title
+    # 默认展开前两块；折叠状态按项目记住
+    for name in order[:2]:
+        assert f'id="{name}" open' in page, name
+    for name in order[2:]:
+        assert f'id="{name}" open' not in page, name
+    assert "b2t.panels.v1." in script
+    assert "PANEL_GROUP_DEFAULT_OPEN" in script
+    # 页码设置这一刀只有说明、没有按钮（说明书 1.6：不显示未实现的功能）
+    pagenum = page[positions[2]:positions[3]]
+    assert "下一刀" in pagenum
+    assert "<button" not in pagenum
+
+    # 五类按自然顺序排列
+    assert 'PAGE_TYPE_ORDER = ["front", "toc", "body", "body_excluded", "back"]' in script
+
+
+def test_recognition_settings_are_wired_to_project_settings() -> None:
+    """识别设置必须真接上：控件 id、PATCH settings、以及不可用引擎的置灰逻辑。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+    for element_id in (
+        "rec-engine",
+        "rec-dpi",
+        "rec-language",
+        "rec-dual-strategy",
+        "rec-engine-note",
+        "rec-summary",
+        "rec-status",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+    for value in ("rapidocr", "apple_vision", "dual"):
+        assert f'value="{value}"' in page, value
+    for dpi in ("150", "200", "300"):
+        assert f'name="rec-dpi" value="{dpi}"' in page, dpi
+
+    # 设置写服务端；不可用引擎置灰（Windows 上 Apple Vision / 双引擎）
+    assert "function patchRecognitionSetting(" in script
+    assert '"/settings"' in script or "}/settings`" in script
+    assert "function renderRecognitionSettings(" in script
+    assert "option.disabled = needsVision && !visionOk" in script
+    assert "function setupRecognitionSettings(" in script
+    # 双引擎不自动采用、策略只影响显示
+    assert "不会自动采用" in page
+    assert "function divergenceCandidatesOn(" in script
+    assert 'dual_engine_strategy === "candidates"' in script

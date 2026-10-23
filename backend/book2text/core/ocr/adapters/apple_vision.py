@@ -35,6 +35,21 @@ ENGINE_ID = "apple_vision"
 # 第一引擎是 PP-OCR 的中英混排模型，第二引擎的中文能力也要覆盖同样的范围
 DEFAULT_LANGUAGES = ("zh-Hans", "en-US")
 
+# 项目级"识别语言"（任务 54）→ Vision 的识别语言列表。
+#   ch（中文，默认）/ mixed（中英混合）→ 中英都开；这是 Vision 的默认行为，也是原来的行为
+#   en（英文）→ 只开英文，避免把英文单词按中文候选去猜
+# 识别结果仍然是原文，不做语言纠正（`usesLanguageCorrection=False`）。
+_LANGUAGE_SETS = {
+    "ch": DEFAULT_LANGUAGES,
+    "mixed": DEFAULT_LANGUAGES,
+    "en": ("en-US",),
+}
+
+
+def vision_languages(language: str) -> tuple[str, ...]:
+    """项目级语言代码 → Vision 的 BCP-47 列表；未知值用默认。"""
+    return _LANGUAGE_SETS.get(language, DEFAULT_LANGUAGES)
+
 _MODULE_NAMES = ("Vision", "Quartz")
 
 
@@ -95,7 +110,8 @@ class AppleVisionAdapter:
         cg_image = self._to_cg_image(Quartz, pil_image)
         request = Vision.VNRecognizeTextRequest.alloc().init()
         request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
-        request.setRecognitionLanguages_(list(DEFAULT_LANGUAGES))
+        languages = vision_languages(params.language)
+        request.setRecognitionLanguages_(list(languages))
         # 不做语言纠正：那等于替用户"润色"，说明书 1.5 明令禁止
         request.setUsesLanguageCorrection_(False)
 
@@ -132,7 +148,7 @@ class AppleVisionAdapter:
             "engine_name": "system",
             "line_count": len(lines),
             "recognition_level": "accurate",
-            "languages": list(DEFAULT_LANGUAGES),
+            "languages": list(languages),
             "uses_language_correction": False,
         }
         return OcrResult(

@@ -1156,3 +1156,33 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 .stats__list { margin: 0; }
 .stats__list dt { font-size: 12.5px; }
 .stats__list dd { font-weight: 500; }
+
+/* ─────────────────────────────── 右栏四分区（任务 54） ───────────────────────────────
+   页面设置 → 版心设置 → 页码设置 → 识别设置。每块是一个原生 <details>，
+   折叠状态由 app.js 按项目记在 localStorage，默认展开前两块。 */
+.panel__group { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 2px; }
+.panel__group:first-of-type { border-top: none; margin-top: 6px; }
+.panel__group > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 6px;
+  padding: 8px 0 6px; color: var(--text-2); user-select: none;
+}
+.panel__group > summary::-webkit-details-marker { display: none; }
+.panel__group > summary::before {
+  content: "▸"; flex: none; color: var(--faint); font-size: 10px; transform: translateY(-1px);
+}
+.panel__group[open] > summary::before { content: "▾"; }
+.panel__group > summary strong { font-size: 12.5px; }
+.panel__group > summary > .muted { margin-left: auto; font-size: 11px; text-align: right; }
+.panel__group > .panel__body { padding-bottom: 8px; }
+.panel__group > .panel__body > .panel__sec--secondary:first-child { margin-top: 4px; }
+
+/* 识别设置：控件与提示 */
+#rec-engine, #rec-language, #rec-dual-strategy { margin-bottom: 4px; }
+.rec-dpi { display: flex; flex-direction: column; }
+.rec-dpi .check--line { margin: 1px 0; }
+.rec-dpi .muted { margin-left: 6px; }
+#rec-status { color: var(--ok-fg, #0f766e); }
+
+/* 两个旧 id（setup-panel / margin-panel）现在是 <details> 的包裹层：
+   :first-of-type 在每个包裹层里都成立，所以给版心分区补回分隔线 */
+#margin-panel > .panel__group { border-top: 1px solid var(--line); margin-top: 10px; }

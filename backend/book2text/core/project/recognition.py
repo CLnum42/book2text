@@ -64,6 +64,7 @@ from .library import (
     Page,
     ProjectError,
     default_library_dir,
+    get_settings,
     list_pages,
     load_project,
     project_dir,
@@ -79,6 +80,52 @@ DEFAULT_DPI = 200
 DEFAULT_LANGUAGE = "ch"
 MIN_DPI = 72
 MAX_DPI = 600
+
+# 识别设置（任务 54）：项目级默认值，建任务时读取并写进 job.params_json。
+# 这里只放"用什么引擎 / 什么参数"，不放 UI 文案。
+ENGINE_RAPIDOCR = "rapidocr"
+ENGINE_APPLE_VISION = "apple_vision"
+ENGINE_DUAL = "dual"
+DEFAULT_ENGINE = ENGINE_RAPIDOCR
+RECOGNITION_ENGINES = (ENGINE_RAPIDOCR, ENGINE_APPLE_VISION, ENGINE_DUAL)
+# 界面上给的三个 DPI 档（接口仍接受 72–600 的任意值，与旧客户端兼容）
+RECOGNITION_LANGUAGES = ("ch", "en", "mixed")
+DUAL_STRATEGIES = ("mark", "candidates")
+DEFAULT_DUAL_STRATEGY = "mark"
+
+
+def adapter_for_engine(engine_id: str) -> OcrEngine:
+    """引擎标识 → 适配器。``dual`` 的第一路固定是 RapidOCR，第二路见复核模块。"""
+    if engine_id in (ENGINE_RAPIDOCR, ENGINE_DUAL):
+        return RapidOcrAdapter()
+    if engine_id == ENGINE_APPLE_VISION:
+        return AppleVisionAdapter()
+    raise ProjectError(
+        f"未知的识别引擎：{engine_id!r}（可选：{'、'.join(RECOGNITION_ENGINES)}）"
+    )
+
+
+def recognition_settings(project_id: str, *, library: Path | None = None) -> dict[str, object]:
+    """项目级识别设置 + 默认值（坏值退回默认，不让一个脏设置挡住识别）。"""
+    settings = get_settings(project_id, library=library)
+    engine = settings.get("recognition_engine")
+    if engine not in RECOGNITION_ENGINES:
+        engine = DEFAULT_ENGINE
+    dpi = settings.get("recognition_dpi")
+    if not isinstance(dpi, int) or isinstance(dpi, bool) or not MIN_DPI <= dpi <= MAX_DPI:
+        dpi = DEFAULT_DPI
+    language = settings.get("recognition_language")
+    if language not in RECOGNITION_LANGUAGES:
+        language = DEFAULT_LANGUAGE
+    strategy = settings.get("dual_engine_strategy")
+    if strategy not in DUAL_STRATEGIES:
+        strategy = DEFAULT_DUAL_STRATEGY
+    return {
+        "recognition_engine": engine,
+        "recognition_dpi": dpi,
+        "recognition_language": language,
+        "dual_engine_strategy": strategy,
+    }
 
 # 行图外扩比例（说明书 8.5：外扩约 2% 以保留笔画）
 AUX_LINE_PADDING = 0.02
@@ -252,13 +299,16 @@ def create_ocr_job(
     pages: Sequence[int] | None = None,
     scope: str | None = None,
     skip_recognized: bool = True,
-    dpi: int = DEFAULT_DPI,
-    language: str = DEFAULT_LANGUAGE,
+    dpi: int | None = None,
+    language: str | None = None,
+    engine: str | None = None,
 ) -> jobs_module.JobRecord:
-    """建一个识别任务（不执行）。执行由 `core/jobs/executor.py` 起子进程完成。"""
-    if not MIN_DPI <= dpi <= MAX_DPI:
-        raise ProjectError(f"DPI 必须在 {MIN_DPI}–{MAX_DPI} 之间，收到 {dpi}")
+    """建一个识别任务（不执行）。执行由 `core/jobs/executor.py` 起子进程完成。
 
+    **识别设置在这里真正生效**（任务 54）：``dpi`` / ``language`` / ``engine`` 没显式给时，
+    读项目设置里用户选的默认值；三者都写进 `job.params_json`，子进程按它挑适配器与参数。
+    显式参数仍然优先（接口 / 测试 / 旧客户端可以覆盖）。
+    """
     target_library = library if library is not None else default_library_dir()
     directory = project_dir(target_library, project_id)
 
@@ -273,6 +323,18 @@ def create_ocr_job(
 
     # 识别要写库，因此这里应用迁移（与读取路径相反，见 blocks.py 的说明）
     load_project(project_id, library=target_library)
+
+    # 项目设置里的识别默认值：在锁检查之后读（不在别人正开着的库上跑迁移）
+    settings = recognition_settings(project_id, library=target_library)
+    engine_setting = engine or str(settings["recognition_engine"])
+    if engine_setting not in RECOGNITION_ENGINES:
+        raise ProjectError(
+            f"未知的识别引擎：{engine_setting!r}（可选：{'、'.join(RECOGNITION_ENGINES)}）"
+        )
+    dpi = int(dpi if dpi is not None else settings["recognition_dpi"])
+    language = str(language if language is not None else settings["recognition_language"])
+    if not MIN_DPI <= dpi <= MAX_DPI:
+        raise ProjectError(f"DPI 必须在 {MIN_DPI}–{MAX_DPI} 之间，收到 {dpi}")
 
     selected = resolve_pages(
         project_id,
@@ -295,16 +357,32 @@ def create_ocr_job(
             "说明书 6.3 规定默认只跑 1 个 OCR 子进程：先暂停或取消它，再建新任务"
         )
 
-    adapter: OcrEngine = RapidOcrAdapter()
+    adapter = adapter_for_engine(engine_setting)
     available, reason = adapter.available()
     if not available:
         # 引擎不可用是环境问题，不该建出一个注定失败的任务
-        raise EngineUnavailable(reason)
+        raise EngineUnavailable(f"{engine_setting} 不可用：{reason}")
+
+    params: dict[str, object] = {
+        "dpi": dpi,
+        "language": language,
+        "engine_id": adapter.engine_id,
+        # 项目设置的原值也记下来：任务载荷里能看出"这次是不是双引擎 / 选的哪个引擎"
+        "engine_setting": engine_setting,
+    }
+    if engine_setting == ENGINE_DUAL:
+        secondary = default_secondary_engine()
+        second_ok, second_reason = secondary.available()
+        if not second_ok:
+            raise EngineUnavailable(
+                f"双引擎比对需要第二引擎（{secondary.engine_id}）：{second_reason}"
+            )
+        params["secondary_engine_id"] = secondary.engine_id
 
     return jobs_module.create_job(
         directory,
         pages=[(page.page_id, page.page_no) for page in selected],
-        params={"dpi": dpi, "language": language, "engine_id": adapter.engine_id},
+        params=params,
     )
 
 
@@ -844,9 +922,15 @@ def _run_ocr_job(
     should_continue: Callable[[], str] | None,
     log: Callable[[str], None] | None,
 ) -> JobOutcome:
-    """识别任务：第一引擎逐页识别、生成块（说明书 5.4 的 R1 / R2）。"""
+    """识别任务：第一引擎逐页识别、生成块（说明书 5.4 的 R1 / R2）。
+
+    用哪个第一引擎来自 **job.params**（建任务时从项目设置写进来的 ``engine_setting``）。
+    任务建好之后参数就固定了：识别中途改项目设置不会影响已经在跑的这次任务。
+    ``engine`` 只给测试 / 局部重识别注入假引擎用；注入时忽略任务参数。
+    """
     job_id = job.job_id
-    adapter: OcrEngine = engine if engine is not None else RapidOcrAdapter()
+    engine_setting = str(job.params.get("engine_setting") or job.params.get("engine_id") or DEFAULT_ENGINE)
+    adapter: OcrEngine = engine if engine is not None else adapter_for_engine(engine_setting)
     available, reason = adapter.available()
     if not available:
         _fail_job(directory, job_id, EngineUnavailable(reason))
@@ -864,7 +948,24 @@ def _run_ocr_job(
 
     say(f"job {job_id} start total={job.total} dpi={params.dpi} engine={adapter.engine_id}")
 
+    # 双引擎比对（任务 54）：第一路每做完一页，紧接着用第二引擎对**这一页**做行级复核。
+    # 为什么按页做：任务状态在循环结束时就会结算成"已完成"，如果比对放在循环之后，
+    # 界面会先显示完成、第二引擎却还在跑（用户关掉应用就会丢第二路的结果）。
+    # 只在生产路径（没有注入假引擎）且设置是 dual 时做；第二引擎不可用只记日志，
+    # 不让第一路的成果失败。
+    secondary: OcrEngine | None = None
+    if engine is None and engine_setting == ENGINE_DUAL:
+        candidate = default_secondary_engine()
+        ok, reason = candidate.available()
+        if ok:
+            secondary = candidate
+        else:
+            say(f"dual compare skipped reason={reason[:60]}")
+    dual_done = 0
+    dual_failed = 0
+
     def run_one(item: jobs_module.JobItemRecord) -> None:
+        nonlocal dual_done, dual_failed
         _run_item(
             directory=directory,
             source=source,
@@ -876,6 +977,15 @@ def _run_ocr_job(
             engine_version=engine_version,
             log=say,
         )
+        if secondary is None or not _item_succeeded(directory, item.item_id):
+            return
+        try:
+            run_auxiliary(directory, item.page_no, engine=secondary)
+        except Exception as exc:  # noqa: BLE001 - 第二路失败不该让第一路失败
+            dual_failed += 1
+            say(f"dual compare failed page={item.page_no} err={type(exc).__name__}")
+        else:
+            dual_done += 1
 
     outcome = _run_job_loop(
         directory=directory,
@@ -884,9 +994,20 @@ def _run_ocr_job(
         should_continue=should_continue,
         say=say,
     )
+    if secondary is not None:
+        say(f"dual compare pages={dual_done} failed={dual_failed} job={job_id}")
     _auto_apply_after_job(directory, job_id, outcome, say)
     _auto_margin_after_job(directory, job_id, outcome, say)
     return outcome
+
+
+def _item_succeeded(directory: Path, item_id: str) -> bool:
+    """这一页的第一路是否真的成功（失败页不跑第二引擎）。"""
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        row = conn.execute(
+            "SELECT status FROM job_item WHERE item_id = ?", (item_id,)
+        ).fetchone()
+    return bool(row and row["status"] == jobs_module.ITEM_STATUS_SUCCEEDED)
 
 
 def _auto_margin_after_job(directory: Path, job_id: str, outcome: JobOutcome, say) -> None:

@@ -58,10 +58,11 @@ class OcrJobRequest(BaseModel):
     scope: Literal["unrecognized", "all"] | None = None
     # 说明书 6.3：批量识别"已有识别结果的页面默认跳过"（界面上有勾选框）
     skip_recognized: bool = True
-    dpi: int = Field(
-        default=recognition.DEFAULT_DPI, ge=recognition.MIN_DPI, le=recognition.MAX_DPI
+    # 任务 54：不传就用项目设置里的默认值（界面不再逐次传 DPI / 语言）
+    dpi: int | None = Field(
+        default=None, ge=recognition.MIN_DPI, le=recognition.MAX_DPI
     )
-    language: str = Field(default=recognition.DEFAULT_LANGUAGE, max_length=16)
+    language: str | None = Field(default=None, max_length=16)
 
 
 class AuxiliaryJobRequest(BaseModel):

@@ -557,7 +557,15 @@ def load_project(project_id: str, *, library: Path | None = None) -> Project:
 
 
 # 项目级设置的键（写在 `project.settings_json` 里）。新增键要同时改这里与界面。
-PROJECT_SETTING_KEYS = ("auto_apply_high_suggestions", "margin_box_judgement")
+PROJECT_SETTING_KEYS = (
+    "auto_apply_high_suggestions",
+    "margin_box_judgement",
+    # 识别设置（任务 54）：项目级默认，建识别任务时读取
+    "recognition_engine",
+    "recognition_dpi",
+    "recognition_language",
+    "dual_engine_strategy",
+)
 """项目级开关（写在 `project.settings_json` 里）：
 
 - `auto_apply_high_suggestions`：识别完成后由**服务端**自动应用高把握的块类型建议。
@@ -565,8 +573,26 @@ PROJECT_SETTING_KEYS = ("auto_apply_high_suggestions", "margin_box_judgement")
   `auto_apply_run`，界面有提示，并且可以一键撤销整批（见 `core/project/auto_apply.py`）。
 - `margin_box_judgement`：导出时**按版心判定正文**（任务 51）。默认关；关着时完全按块类型，
   行为与以前一致。打开后正文只收版心内的段落 / 标题，版心外一律不进正文。
+- `recognition_engine` / `recognition_dpi` / `recognition_language`：识别设置（任务 54）。
+  建识别任务时由 `create_ocr_job` 读取并写进 `job.params_json`，**不是只存不用**。
+- `dual_engine_strategy`：双引擎的**显示**策略（`mark` 只标分歧 / `candidates` 分歧行给候选）。
+  两种都只影响审校界面；数据里的逐行候选始终保留，不改变识别结果。
 """
 MARGIN_JUDGEMENT_SETTING = "margin_box_judgement"
+
+# 设置取值白名单：值不合法直接 400，不让一个错字在识别时才炸
+SETTING_CHOICES: dict[str, tuple[object, ...]] = {
+    "recognition_engine": ("rapidocr", "apple_vision", "dual"),
+    "recognition_dpi": (150, 200, 300),
+    "recognition_language": ("ch", "en", "mixed"),
+    "dual_engine_strategy": ("mark", "candidates"),
+}
+SETTING_LABELS = {
+    "recognition_engine": "识别引擎",
+    "recognition_dpi": "识别 DPI",
+    "recognition_language": "识别语言",
+    "dual_engine_strategy": "双引擎策略",
+}
 
 
 def get_settings(project_id: str, *, library: Path | None = None) -> dict[str, object]:
@@ -581,12 +607,19 @@ def update_settings(
 
     只接受 `PROJECT_SETTING_KEYS` 里的键——不认识的键直接拒绝，
     免得以后有人在设置里塞一个没人读的字段还以为生效了。
+    识别设置的取值再按 `SETTING_CHOICES` 校验一次。
     """
     unknown = [name for name in patch if name not in PROJECT_SETTING_KEYS]
     if unknown:
         raise ProjectError(f"未知的项目设置：{'、'.join(unknown)}")
     if not patch:
         raise ProjectError("没有要更新的设置")
+    for name, value in patch.items():
+        allowed = SETTING_CHOICES.get(name)
+        if allowed is not None and value not in allowed:
+            label = SETTING_LABELS.get(name, name)
+            options = " / ".join(str(item) for item in allowed)
+            raise ProjectError(f"{label}只能是 {options}，收到 {value!r}")
     directory = require_project_dir(project_id, library=library)
     merged = {**get_settings(project_id, library=library), **patch}
     with db_module.open_database(directory) as conn:

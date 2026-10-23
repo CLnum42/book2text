@@ -7,6 +7,132 @@
 
 ---
 
+## 2026-10-23 — 任务 54：页面视图右栏四分区 + 识别设置
+
+### 任务目标
+
+按用户第 3 条要求重排页面视图右栏：**页面设置 → 版心设置 → 页码设置 → 识别设置**，
+四块可折叠、默认展开前两块；页码设置这一刀只放说明、不放按钮。把识别设置做出来并
+**真正传进识别任务**（引擎 / DPI / 语言 / 双引擎策略）。不做页码设置的实现、不改导出、
+不改块建议规则。
+
+### 当前状态
+
+main `efb0357`（任务 53 文档补记），774 测试全绿。右栏只有"已选 + 页面确认 + 版心 +
+拆分 + 建议 + 识别 + 高级"几块，没有折叠；页面类型顺序是 正文 / 正文排除 / 目录 / 前置 / 后置；
+DPI / 语言只能通过接口传，界面没有入口；第一引擎写死 RapidOCR。
+
+### 实施计划
+
+1. 右栏四分区（原生 `<details>`），顺序固定、折叠状态按项目存 localStorage、默认前两块展开。
+2. 页面设置的五个类型按钮改成 前置 → 目录 → 正文 → 正文排除 → 后置；当前 / 建议 / 混合不变。
+3. 版心控件整体移进「版心设置」，行为不变；页码设置只放说明。
+4. 识别设置：引擎 / DPI / 语言 / 双引擎策略写项目 `settings_json`，建任务时读取并写进
+   `job.params_json`；引擎选择真正切换适配器；双引擎按页补第二路比对。
+5. 双引擎策略只影响审校显示（默认「只标分歧」）。
+6. 测试 + 真书真浏览器验收 + 文档 + CI。
+
+### 实现与验证
+
+**1. 四分区与折叠状态**
+
+- 每个分区是原生 `<details class="panel__group" id="panel-…">`；顺序在 HTML 里固定。
+- 默认展开 `panel-page-settings` / `panel-margin-settings`；折叠状态按项目存
+  `b2t.panels.v1.<project_id>`（JSON），打开项目时套用。
+- 真浏览器：顺序 `页面设置 → 版心设置 → 页码设置 → 识别设置`；默认前两块 `open=true`；
+  手动折叠页面 + 版心、展开识别，刷新页面重新打开项目后状态仍是
+  `{page:false, margin:false, recognition:true}`。
+- 14 寸屏实测（窗口 1470×758）：右栏可视 628px、内容 1630px，**需要滚动**；
+  默认展开前两块时首屏能看到页面设置与版心设置的主要操作（见 L-67）。
+- 截图：[四分区标题顺序](screenshots/panel-four-headings.png)、
+  [页面设置](screenshots/panel-four-sections.png)、
+  [识别设置](screenshots/recognition-settings.png)。
+
+**2. 页面设置**
+
+- `PAGE_TYPE_ORDER` 改为 `["front", "toc", "body", "body_excluded", "back"]`；
+  真浏览器读到的按钮顺序是 前置 / 目录 / 正文 / 正文排除 / 后置。
+- 单页：`当前：正文`，正文按钮 `is-current`，建议类型（前置）有 `has-suggestion` 圆点。
+- 多选混合：把第 1 页设为前置、与第 2 页一起选中 → `混合（2 种）`，没有任何类型高亮为"当前"。
+  检查完已把第 1 页恢复为正文。截图：[混合类型](screenshots/panel-mixed-types.png)。
+- "拆分书眉页码""页眉 / 页脚 / 页码建议"移进页面设置（它们改的是页面 / 块类型），
+  布局与事件不变。
+
+**3. 版心设置**
+
+- 现有控件整体移进 `#panel-margin-settings`，id 全部保留（`margin-global` / `margin-modes` /
+  `margin-edges` / `margin-suggest` / `margin-suggestion` / 批量三态…）。
+- 真浏览器第 30 页（页级自定义）仍显示 `沿用全局 / 本页自定义 / 不适用` 三个按钮、
+  四边 `左 7.6% · 上 6.7% · 右 92.2% · 下 91.9%`、`推算版心（全书）` 按钮；
+  与任务 50 的行为一致。
+
+**4. 识别设置（真正生效，不是只写设置）**
+
+四个键写 `project.settings_json`（`library.SETTING_CHOICES` 白名单，非法值 400）：
+
+| 设置 | 默认 | 怎么生效 |
+|---|---|---|
+| `recognition_engine` | RapidOCR | `create_ocr_job` 用 `adapter_for_engine` 选适配器，写 `job.params.engine_setting` |
+| `recognition_dpi` | 200 | 写 `job.params.dpi` 与 `OcrParams`；子进程按它渲染 |
+| `recognition_language` | `ch` | 写 `language`；Apple Vision 按它切识别语言 |
+| `dual_engine_strategy` | `mark` | 只影响审校显示（候选是否出现），不改数据 |
+
+- 建任务时读取，显式 `dpi` / `language` 参数仍优先；任务参数在创建时固定。
+- 真浏览器 / 真 API 实测：
+  - DPI 改 300 → 识别第 75 页 → 任务参数
+    `{dpi:300, language:ch, engine_id:rapidocr, engine_setting:rapidocr}`，`ocr_run` 参数也是 300。
+  - 引擎改 Apple Vision → 识别第 76 页 → 任务参数 `engine_id=apple_vision`；
+    该页 `active_run.engine_id == "apple_vision"`（macOS 27.0.1）、5 块——确实走了 Vision，
+    不是只写参数。
+  - 引擎改双引擎 → 识别第 77 / 79 页 → 任务参数 `engine_setting=dual`、
+    `secondary_engine_id=apple_vision`；每页都有 `primary` + `auxiliary` 两个 run，
+    `divergence.checked=true`（第 79 页 14 行分歧）——第二路真的跑了。
+- **双引擎的最小实现与限制**：第一路按设置跑（`dual` 时是 RapidOCR），**每做完一页**
+  紧接着用 Apple Vision 对这一页做行级复核。按页而不是收尾做，是因为任务循环结束就会结算成
+  "已完成"；收尾做会让界面先显示完成、第二路还在跑。
+  代价是耗时约为单引擎两倍；第二引擎更弱（整页 CER 2.16% vs 1.08%），
+  **不自动采用任何一方**，只写行级候选与分歧标记。
+- **Windows 置灰**：Apple Vision 与双引擎两个选项按 `/api/app/info` 的自检结果置灰，
+  并带原因 tooltip；真浏览器里模拟 `apple_vision.available=false` 后两个选项都 `disabled`、
+  说明文字变成"仅 macOS 可用（当前平台：Windows (x64)）"。**没有真 Windows 机器可跑**，
+  这是前端逻辑模拟 + 静态测试，不是 Windows 实测（L-66）。
+- **语言**：Apple Vision 按 `ch` / `mixed` → 中英两档、`en` → 只开英文；
+  RapidOCR 只有中英混排模型，三档当前结果相同——界面与 L-66 都写明，不假装生效。
+
+**5. 双引擎策略只影响显示，默认「只标分歧」**
+
+- 第 77 页在 `mark` 下：逐行标出 `第 2 行 · 汉字级` 等 13 行，**没有候选文本、没有
+  「换成这一路」**，并提示"要候选请改为「分歧行给候选」"。
+- 改成 `candidates` 后同一页出现 13 条第二引擎候选与 13 个「换成这一路」按钮。
+- 数据层不变：两种策略下 `aux_text` / `diff_status` 都照写，也不会自动改块文本。
+  截图：[只标分歧](screenshots/divergence-mark-only.png)、
+  [分歧行给候选](screenshots/divergence-candidates.png)。
+
+**6. 测试**
+
+- `.venv/bin/python -m pytest -q` → **787 passed, 1 skipped，92.68 秒**。
+  跳过的是"Apple Vision 不可用分支"（本机 macOS 上可用，Windows CI 会走这条）。
+- 新增：识别设置接口 / 参数传递 7、双引擎按页比对 1、Apple Vision 语言映射 3、
+  四分区与识别设置静态约定 2；原有页面类型顺序断言按新需求更新（没有弱化其它断言）。
+- 无数据库迁移；设置写在 `project.settings_json`。
+
+### 用户操作说明
+
+- 页面视图右栏从上到下：页面设置 → 版心设置 → 页码设置 → 识别设置；点标题折叠 / 展开，
+  状态按项目记住（默认前两块展开）。页码设置这一刀只有说明。
+- 识别设置里改引擎 / DPI / 语言 / 双引擎策略，改完提示"下一次识别按新设置执行"。
+  - 选 Apple Vision（macOS）会用 Vision 做**第一引擎**；选双引擎比对则 RapidOCR + Vision，
+    耗时约两倍。
+  - 双引擎策略「只标分歧」只标行号与等级；要看候选改成「分歧行给候选」。
+- 回退：`git revert` 本任务提交；识别设置不写新列，回退后旧版本忽略这些键。
+
+### 下一步建议
+
+做页码设置的下一刀：在页面上定位页码坐标、建立 PDF 页 ↔ 印刷页映射，并把已有的
+`meta.json` 页码字段接进来——现在这一块还只是说明。
+
+---
+
 ## 2026-10-23 — 任务 53：版心随识别自动推算，接进审校视图
 
 ### 任务目标

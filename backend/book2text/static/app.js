@@ -246,6 +246,9 @@ async function loadAppInfo() {
     warning.hidden = false;
   }
 
+  // 识别设置要按当前平台的引擎可用性置灰（Windows 上 Apple Vision 不可用）
+  appInfo = info;
+  renderRecognitionSettings();
   renderEngines(info.engines);
   renderLimits(info);
   renderSettings(info);
@@ -1120,8 +1123,11 @@ let currentProject = null;
 const PAGE_TYPE_LABELS = {
   body: "正文", body_excluded: "正文排除", toc: "目录", front: "前置", back: "后置",
 };
-/** 右栏类型列表的顺序：正文 / 正文排除最常用，放前面。 */
-const PAGE_TYPE_ORDER = ["body", "body_excluded", "toc", "front", "back"];
+/**
+ * 右栏类型列表的顺序（任务 54）：按书的自然顺序 前置 → 目录 → 正文 → 正文排除 → 后置。
+ * 用户明确要求这个顺序，不再把最常用的放前面。
+ */
+const PAGE_TYPE_ORDER = ["front", "toc", "body", "body_excluded", "back"];
 
 /**
  * 识别状态（说明书 5.3：状态不单独存储，由 OCRRun 与 Block 推导）。
@@ -1169,6 +1175,17 @@ const DIVERGENCE_LEVEL_LABELS = {
   no_candidate: "第二引擎没读出来",
   format_only_differs: "仅格式差异",
 };
+
+/**
+ * 双引擎策略（任务 54）：`mark` 只标分歧（默认）/ `candidates` 分歧行给候选（原行为）。
+ *
+ * 这只影响**审校界面怎么显示**：数据里的 `aux_text` / `diff_status` 始终照写，
+ * 换成候选的接口也一直在。两种策略都不会自动采用任何一方（实测第二引擎更弱）。
+ */
+function divergenceCandidatesOn() {
+  const settings = (currentProject && currentProject.settings) || {};
+  return settings.dual_engine_strategy === "candidates";
+}
 
 /** 把分歧概况说成一句人话；没有分歧时返回空串。 */
 function divergenceSummary(divergence) {
@@ -1530,6 +1547,8 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     // 识别收尾 / 打开项目时服务端会算一次版心；项目载荷里直接带着最近一次建议，
     // 不需要用户再点「推算版心」才知道建议是什么。
     marginSuggestion = currentProject.margin_box_suggestion || null;
+    applyPanelGroupPreferences();
+    renderRecognitionSettings();
     reviewMarginOn = loadReviewMarginPreference();
     reviewBlockFilter = "inside";
     el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
@@ -1910,6 +1929,210 @@ function effectiveReviewFilter(page) {
   }
   return reviewBlockFilter;
 }
+
+// ---------------------------------------------------------------- 右栏四分区（任务 54）
+//
+// 页面设置 → 版心设置 → 页码设置 → 识别设置。每个分区是一个 <details>，
+// 折叠状态按项目记在 localStorage（不写项目数据库：这是界面偏好，不是项目内容）。
+
+const PANEL_GROUP_IDS = [
+  "panel-page-settings",
+  "panel-margin-settings",
+  "panel-pagenum-settings",
+  "panel-recognition-settings",
+];
+const PANEL_GROUP_DEFAULT_OPEN = new Set(["panel-page-settings", "panel-margin-settings"]);
+
+function panelGroupStorageKey() {
+  return currentProject ? `b2t.panels.v1.${currentProject.project_id}` : "";
+}
+
+function loadPanelGroupPreferences() {
+  try {
+    const raw = localStorage.getItem(panelGroupStorageKey());
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePanelGroupPreference(id, open) {
+  if (!currentProject) return;
+  try {
+    const saved = loadPanelGroupPreferences();
+    saved[id] = Boolean(open);
+    localStorage.setItem(panelGroupStorageKey(), JSON.stringify(saved));
+  } catch {
+    /* 隐私模式等写不进去：不影响本次会话 */
+  }
+}
+
+/** 打开项目时套用折叠状态：没存过的分区按"默认展开前两块"。 */
+function applyPanelGroupPreferences() {
+  const saved = loadPanelGroupPreferences();
+  for (const id of PANEL_GROUP_IDS) {
+    const node = el(id);
+    if (!node) continue;
+    node.open = Object.prototype.hasOwnProperty.call(saved, id)
+      ? Boolean(saved[id])
+      : PANEL_GROUP_DEFAULT_OPEN.has(id);
+  }
+}
+
+function setupPanelGroups() {
+  for (const id of PANEL_GROUP_IDS) {
+    const node = el(id);
+    if (!node) continue;
+    node.addEventListener("toggle", () => savePanelGroupPreference(id, node.open));
+  }
+}
+
+// ---------------------------------------------------------------- 识别设置（任务 54）
+//
+// 项目级设置：引擎 / DPI / 语言 / 双引擎策略。服务端在**建识别任务时**读取它们
+// （`recognition.create_ocr_job`），并写进任务参数；不是只存不用。
+
+const RECOGNITION_DEFAULTS = {
+  recognition_engine: "rapidocr",
+  recognition_dpi: 200,
+  recognition_language: "ch",
+  dual_engine_strategy: "mark",
+};
+const RECOGNITION_ENGINE_LABELS = {
+  rapidocr: "RapidOCR",
+  apple_vision: "Apple Vision",
+  dual: "双引擎比对",
+};
+
+/** 应用信息（`/api/app/info`）：用来判断 Apple Vision 在当前平台可不可用。 */
+let appInfo = null;
+
+function recognitionSetting(key) {
+  const settings = (currentProject && currentProject.settings) || {};
+  const value = settings[key];
+  return value === undefined || value === null ? RECOGNITION_DEFAULTS[key] : value;
+}
+
+function engineProbe(engineId) {
+  const probes = (appInfo && appInfo.engines && appInfo.engines.probes) || [];
+  return probes.find((probe) => probe.engine_id === engineId) || null;
+}
+
+let recStatusTimer = null;
+
+function setRecognitionStatus(text, isError = false) {
+  const node = el("rec-status");
+  if (!node) return;
+  node.textContent = text || "";
+  node.hidden = !text;
+  node.style.color = isError ? "var(--bad-fg)" : "";
+  if (recStatusTimer) clearTimeout(recStatusTimer);
+  if (text) {
+    recStatusTimer = setTimeout(() => {
+      node.hidden = true;
+    }, 6000);
+  }
+}
+
+/** 把当前项目设置画进识别设置控件；不可用的引擎置灰并说明原因。 */
+function renderRecognitionSettings() {
+  if (!el("rec-engine")) return;
+  const engine = String(recognitionSetting("recognition_engine"));
+  const dpi = Number(recognitionSetting("recognition_dpi"));
+  const language = String(recognitionSetting("recognition_language"));
+  const strategy = String(recognitionSetting("dual_engine_strategy"));
+
+  const vision = engineProbe("apple_vision");
+  const visionOk = Boolean(vision && vision.available);
+  const visionReason = vision ? vision.reason || "当前平台不可用" : "还没拿到引擎自检结果";
+
+  // 引擎：Apple Vision / 双引擎比对都需要第二引擎可用（Windows 上置灰）
+  const engineSelect = el("rec-engine");
+  engineSelect.value = engine;
+  for (const option of engineSelect.options) {
+    const needsVision = option.value === "apple_vision" || option.value === "dual";
+    option.disabled = needsVision && !visionOk;
+    option.title =
+      needsVision && !visionOk
+        ? `不可用：${visionReason}`
+        : option.value === "dual"
+          ? "第一路 RapidOCR，完成后自动用 Apple Vision 比对；耗时约为单引擎两倍"
+          : "";
+  }
+
+  for (const radio of document.querySelectorAll('#rec-dpi input[type="radio"]')) {
+    radio.checked = Number(radio.value) === dpi;
+  }
+  el("rec-language").value = language;
+  el("rec-dual-strategy").value = strategy;
+  el("rec-dual-strategy").disabled = engine !== "dual";
+  el("rec-strategy-label").classList.toggle("muted", engine !== "dual");
+
+  let note = "";
+  if (engine === "apple_vision" && !visionOk) {
+    note = `这一项在当前平台不可用（${visionReason}）；识别会返回"引擎不可用"，请换一个引擎。`;
+  } else if (engine === "dual" && !visionOk) {
+    note = `双引擎比对需要 Apple Vision（${visionReason}）；识别会返回"引擎不可用"，请换一个引擎。`;
+  } else if (engine === "apple_vision") {
+    note = "Apple Vision 作为第一引擎直接识别（不是第二引擎复核）。";
+  } else if (engine === "dual") {
+    note = "第一路 RapidOCR，识别完成后自动用 Apple Vision 逐页比对标分歧；耗时约为单引擎的两倍。";
+  } else if (!visionOk) {
+    note = `RapidOCR 是默认第一引擎（离线内置）。第二引擎在当前平台不可用：${visionReason}。`;
+  } else {
+    note = "RapidOCR 是默认第一引擎（离线内置）；Apple Vision 也可作为第一引擎或双引擎的第二路。";
+  }
+  el("rec-engine-note").textContent = note;
+  el("rec-summary").textContent =
+    `${RECOGNITION_ENGINE_LABELS[engine] || engine} · ${dpi} DPI` +
+    (engine === "dual" ? ` · ${strategy === "candidates" ? "给候选" : "只标分歧"}` : "");
+}
+
+/** 改一项识别设置：先写服务端，成功再更新本地；失败回显原值。 */
+async function patchRecognitionSetting(key, value) {
+  if (!currentProject) return;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/settings`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      }
+    );
+    currentProject.settings = data.settings || {
+      ...(currentProject.settings || {}),
+      [key]: value,
+    };
+    renderRecognitionSettings();
+    setRecognitionStatus("已保存，下一次识别按新设置执行");
+  } catch (error) {
+    renderRecognitionSettings(); // 回显服务端的真实值
+    setRecognitionStatus(error.message || "设置没保存成功", true);
+    showError(el("pages-error"), error);
+  }
+}
+
+function setupRecognitionSettings() {
+  el("rec-engine").addEventListener("change", (event) =>
+    patchRecognitionSetting("recognition_engine", event.target.value)
+  );
+  for (const radio of document.querySelectorAll('#rec-dpi input[type="radio"]')) {
+    radio.addEventListener("change", () => {
+      if (radio.checked) {
+        patchRecognitionSetting("recognition_dpi", Number(radio.value));
+      }
+    });
+  }
+  el("rec-language").addEventListener("change", (event) =>
+    patchRecognitionSetting("recognition_language", event.target.value)
+  );
+  el("rec-dual-strategy").addEventListener("change", (event) =>
+    patchRecognitionSetting("dual_engine_strategy", event.target.value)
+  );
+}
+
 
 /** 当前在视口内的页（块框只给这些页渲染）。 */
 const visiblePageNos = new Set();
@@ -5087,7 +5310,9 @@ function renderReviewBanner(data, recognition) {
   if (divergence.lines) {
     messages.push(
       `两路复核有 ${divergence.lines} 行不一致（${divergenceSummary(divergence)}）：` +
-        "块里已逐行标出，另一路候选就写在旁边，点「换成这一路」即可换过去。"
+        (divergenceCandidatesOn()
+          ? "块里已逐行标出，另一路候选就写在旁边，点「换成这一路」即可换过去。"
+          : "块里已逐行标出（当前是「只标分歧」，不显示候选；可在识别设置里改为「分歧行给候选」）。")
     );
   } else if (divergence.stale_blocks) {
     messages.push(
@@ -6214,6 +6439,16 @@ function blockDivergenceSection(block, textarea) {
   head.append(badge, detail);
   box.append(head);
 
+  const showCandidates = divergenceCandidatesOn();
+  if (!showCandidates) {
+    const note = document.createElement("p");
+    note.className = "divergence__note";
+    note.textContent =
+      "当前为「只标分歧」：只标出哪几行不一致，不显示第二引擎的文本。" +
+      "要看候选，把识别设置改为「分歧行给候选」，或点「第二引擎复核」看整页。";
+    box.append(note);
+  }
+
   const list = document.createElement("ol");
   list.className = "divergence__lines";
   for (const mark of marks.slice(0, MAX_DIVERGENCE_ROWS)) {
@@ -6231,24 +6466,26 @@ function blockDivergenceSection(block, textarea) {
     level.className = `divergence__level divergence__level--${mark.level}`;
     level.textContent = DIVERGENCE_LEVEL_LABELS[mark.level] || mark.level;
 
-    const candidate = document.createElement("span");
-    candidate.className = "divergence__candidate";
-    candidate.textContent = mark.candidate
-      ? `第二引擎：${truncate(mark.candidate, 60)}`
-      : "第二引擎没读出这一行（没有候选）";
-    candidate.title = mark.candidate;
-
-    row.append(where, level, candidate);
-    if (mark.candidate) {
-      const adopt = document.createElement("button");
-      adopt.type = "button";
-      adopt.className = "btn btn--ghost";
-      adopt.textContent = "换成这一路";
-      adopt.title = "把这一行换成第二引擎的文本（一次普通编辑，可撤销）";
-      adopt.addEventListener("click", () =>
-        adoptLine(block, mark.line_index, mark.candidate)
-      );
-      row.append(adopt);
+    row.append(where, level);
+    if (showCandidates) {
+      const candidate = document.createElement("span");
+      candidate.className = "divergence__candidate";
+      candidate.textContent = mark.candidate
+        ? `第二引擎：${truncate(mark.candidate, 60)}`
+        : "第二引擎没读出这一行（没有候选）";
+      candidate.title = mark.candidate;
+      row.append(candidate);
+      if (mark.candidate) {
+        const adopt = document.createElement("button");
+        adopt.type = "button";
+        adopt.className = "btn btn--ghost";
+        adopt.textContent = "换成这一路";
+        adopt.title = "把这一行换成第二引擎的文本（一次普通编辑，可撤销）";
+        adopt.addEventListener("click", () =>
+          adoptLine(block, mark.line_index, mark.candidate)
+        );
+        row.append(adopt);
+      }
     }
     list.append(row);
   }
@@ -7275,6 +7512,8 @@ function applyProjectSettings() {
   el("auto-apply-suggestions").checked = Boolean(settings.auto_apply_high_suggestions);
   // 导出面板里的项目级开关（任务 51）：默认关，关着时按块类型判定，行为与以前一致
   el("export-margin-judgement").checked = Boolean(settings.margin_box_judgement);
+  // 识别设置（任务 54）：引擎 / DPI / 语言 / 双引擎策略
+  renderRecognitionSettings();
 }
 
 function autoApplyTypeText(byType) {
@@ -7959,6 +8198,7 @@ async function applyPackageMode() {
     el("check-pending").hidden = false;
     el("selection-skip-checked").parentElement.hidden = false;
     el("setup-panel").hidden = false;
+    el("panel-recognition-settings").hidden = false;
     el("page-setup-bar").hidden = false;
     el("assign-list-toggle").hidden = false;
     el("assign-open").hidden = false;
@@ -7976,6 +8216,7 @@ async function applyPackageMode() {
   el("check-pending").hidden = true;
   el("selection-skip-checked").parentElement.hidden = true;
   el("setup-panel").hidden = true;
+  el("panel-recognition-settings").hidden = true;  // 任务包不做识别
   el("page-setup-bar").hidden = true;
   el("detail-recognize").hidden = true;
   el("aux-run").hidden = true;
@@ -8731,6 +8972,8 @@ function boot() {
   setupLibrary();
   setupReviewPager();
   setupViewerTools();
+  setupPanelGroups();
+  setupRecognitionSettings();
   setupExportPanel();
   setupStructurePanel();
   showView("library");
