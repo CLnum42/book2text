@@ -215,3 +215,172 @@ def test_bad_template_is_rejected(
     )
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "bad_page_number_template"
+
+
+def _template(client: TestClient, headers: dict[str, str], project_id: str) -> dict:
+    return analysis(client, headers, project_id)["templates"][0]
+
+
+def test_range_template_boundaries_and_no_overlap(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    book_project: str,
+    library_dir: Path,
+) -> None:
+    """默认模板 + 第 3–5 页第二套模板：边界页归属清晰，重叠范围被拒绝。"""
+    seed_header_numbers(library_dir, book_project, [1, 2, 3, 4, 5, 6, 7])
+    base = _template(client, auth_headers, book_project)
+    apply_template(client, auth_headers, book_project, base)
+
+    # 第 3–5 页在底部另有一组数字，作为第二套模板的候选
+    for page_no, value in ((3, "103"), (4, "104"), (5, "105")):
+        add_number_line(library_dir, book_project, page_no=page_no, text=value, x=0.5, y=0.98)
+    templates = analysis(client, auth_headers, book_project)["templates"]
+    bottom = next(item for item in templates if item["band"] == "bottom")
+
+    response = client.post(
+        f"/api/projects/{book_project}/page-numbers/apply",
+        json={"template": bottom, "range": {"from_page": 3, "to_page": 5}},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["current"]["ranges"][0]["from_page"] == 3
+    segments = data["current"]["assignments"]
+    assert {(item["from_page"], item["to_page"]) for item in segments} == {
+        (1, 2), (3, 5), (6, 20)
+    }
+    mapping = {item["page_no"]: item["printed_page"] for item in data["current"]["mapping"]}
+    assert mapping[1] == "1" and mapping[2] == "2"
+    assert mapping[3] == "103" and mapping[4] == "104" and mapping[5] == "105"
+    assert mapping[6] == "6" and mapping[7] == "7"
+
+    # 与已有范围重叠 → 400，不允许一页命中两套
+    overlap = client.post(
+        f"/api/projects/{book_project}/page-numbers/apply",
+        json={"template": bottom, "range": {"from_page": 4, "to_page": 6}},
+        headers=auth_headers,
+    )
+    assert overlap.status_code == 400
+    assert overlap.json()["error"]["code"] == "bad_page_number_template"
+
+    # 移除范围 → 第 3–5 页回到默认模板
+    removed = client.post(
+        f"/api/projects/{book_project}/page-numbers/ranges/remove",
+        json={"from_page": 3, "to_page": 5},
+        headers=auth_headers,
+    )
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["current"]["ranges"] == []
+    mapping = {
+        item["page_no"]: item["printed_page"]
+        for item in removed.json()["current"]["mapping"]
+    }
+    assert mapping[3] == "3" and mapping[5] == "5"
+
+
+def test_manual_value_survives_recalculation(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    book_project: str,
+    library_dir: Path,
+) -> None:
+    seed_header_numbers(library_dir, book_project, [1, 2, 3, 4])
+    template = _template(client, auth_headers, book_project)
+    apply_template(client, auth_headers, book_project, template)
+
+    manual = client.post(
+        f"/api/projects/{book_project}/page-numbers/manual",
+        json={"page_no": 3, "printed_page": "99"},
+        headers=auth_headers,
+    )
+    assert manual.status_code == 200, manual.text
+    assert manual.json()["current"]["filled"] == 4
+    rows = {item["page_no"]: item for item in manual.json()["current"]["mapping"]}
+    assert rows[3]["printed_page"] == "99"
+    assert rows[3]["source"] == "manual"
+
+    # 再应用一次默认模板：手动页不被覆盖
+    again = apply_template(client, auth_headers, book_project, template)
+    rows = {item["page_no"]: item for item in again["current"]["mapping"]}
+    assert rows[3]["printed_page"] == "99"
+    assert rows[3]["source"] == "manual"
+
+    # 清空手动值 → 模板重算能重新填
+    cleared = client.post(
+        f"/api/projects/{book_project}/page-numbers/manual",
+        json={"page_no": 3, "printed_page": None},
+        headers=auth_headers,
+    )
+    assert cleared.status_code == 200, cleared.text
+    rows = {item["page_no"]: item for item in cleared.json()["current"]["mapping"]}
+    assert rows[3]["printed_page"] == "3"
+    assert rows[3]["source"] == "template"
+
+
+def test_duplicate_printed_pages_are_reported(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    book_project: str,
+    library_dir: Path,
+) -> None:
+    seed_header_numbers(library_dir, book_project, [1, 2, 3, 4])
+    template = _template(client, auth_headers, book_project)
+    apply_template(client, auth_headers, book_project, template)
+    # 手动把第 4 页改成与第 3 页相同的值
+    response = client.post(
+        f"/api/projects/{book_project}/page-numbers/manual",
+        json={"page_no": 4, "printed_page": "3"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    duplicates = response.json()["current"]["anomalies"]["duplicate"]
+    assert {item["page_no"] for item in duplicates} == {3, 4}
+    assert response.json()["current"]["counts"]["duplicate"] == 2
+
+
+def test_export_prefers_new_mapping_and_marks_legacy_fallback(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    book_project: str,
+    library_dir: Path,
+) -> None:
+    """导出：新映射优先；没有映射的页退回块类型抽取并标 legacy。"""
+    seed_header_numbers(library_dir, book_project, [1, 2, 3])  # 只给 1–3 页模板
+    template = _template(client, auth_headers, book_project)
+    apply_template(client, auth_headers, book_project, template)
+    # 第 1 页块类型里还有一个"77"（与模板值 1 冲突）——新映射必须赢
+    add_number_line(library_dir, book_project, page_no=1, text="77", x=0.2, y=0.05)
+    # 第 7 页没有模板，但有一个显式 page_number 块 → legacy 77
+    add_number_line(library_dir, book_project, page_no=7, text="77", x=0.9, y=0.95)
+    with db_module.open_database(library_dir / book_project, apply_migrations=False) as conn:
+        conn.execute(
+            "UPDATE block SET block_type = 'page_number' WHERE page_id ="
+            " (SELECT page_id FROM page WHERE page_no = 7) AND text = '77'"
+        )
+        conn.commit()
+    manual = client.post(
+        f"/api/projects/{book_project}/page-numbers/manual",
+        json={"page_no": 2, "printed_page": "99"},
+        headers=auth_headers,
+    )
+    assert manual.status_code == 200, manual.text
+
+    response = client.post(
+        f"/api/projects/{book_project}/export",
+        json={"format": "txt", "page_numbers": [1, 2, 7]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    record = response.json()["record"]
+    directory = library_dir / book_project / "exports" / record["export_id"]
+    import json as _json
+
+    meta = _json.loads((directory / "meta.json").read_text(encoding="utf-8"))
+    by_page = {item["pdf_page"]: item for item in meta["pages"]}
+    assert by_page[1]["printed_page"] == "1", "新映射优先于块类型抽取"
+    assert by_page[1]["printed_page_source"] == "template"
+    assert by_page[2]["printed_page"] == "99"
+    assert by_page[2]["printed_page_source"] == "manual"
+    assert by_page[7]["printed_page"] == "77"
+    assert by_page[7]["printed_page_source"] == "legacy"

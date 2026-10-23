@@ -126,6 +126,8 @@ class Project:
     margin_box_suggestion: dict[str, object] | None = None
     # 用户确认采用的页码位置模板（任务 55）；没确认过是 None。
     page_number_template: dict[str, object] | None = None
+    # 页码范围 → 第二套模板（任务 56）；互不重叠，空列表 = 没有第二套模板。
+    page_number_ranges: list[dict[str, object]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -151,6 +153,7 @@ class Project:
             "page_number_template": (
                 dict(self.page_number_template) if self.page_number_template else None
             ),
+            "page_number_ranges": [dict(item) for item in self.page_number_ranges],
         }
 
 
@@ -479,6 +482,7 @@ def _row_to_project(row, directory: Path) -> Project:
         margin_box_set_at=_column(row, "margin_box_set_at"),
         margin_box_suggestion=_parse_json_object(_column(row, "margin_box_suggestion")),
         page_number_template=_parse_json_object(_column(row, "page_number_template")),
+        page_number_ranges=_parse_json_array(_column(row, "page_number_ranges")),
     )
 
 
@@ -522,6 +526,19 @@ def _parse_json_object(raw) -> dict[str, object] | None:
     except (TypeError, ValueError):
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+def _parse_json_array(raw) -> list[dict[str, object]]:
+    """解析一个 JSON 数组列（页码模板范围）；坏数据当成空数组，不让项目打不开。"""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [item for item in parsed if isinstance(item, dict)]
 
 
 def _parse_settings(raw) -> dict[str, object]:

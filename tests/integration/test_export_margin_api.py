@@ -205,7 +205,7 @@ def test_two_layer_margin_judgement_and_page_numbers(
     assert "headers" not in page1, "书眉不进元数据，连字段都不写"
     assert "edge_texts" not in page1
     assert page1["printed_page"] == "11"
-    assert page1["printed_page_source"] == "page_number"
+    assert page1["printed_page_source"] == "legacy"
     assert page1["margin_box"] == [0.05, 0.1, 0.95, 0.9]
     assert page1["block_counts"]["outside"] >= 2
     assert page1["block_counts"]["page_number"] == 1

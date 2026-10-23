@@ -1,7 +1,7 @@
-"""页码设置接口（任务 55）：位置模板聚类、确认填充、异常列表。
+"""页码设置接口（任务 55 / 56）：模板聚类、确认填充、页码范围、手动映射、异常列表。
 
-这一组**不改变导出**：写入的 `page.printed_page` 只用于页码模板 / 数值校验与界面显示；
-`meta.json` 仍走原来的页码抽取。写接口只允许主项目。
+这一组**不改变识别**；导出从任务 56 起会优先读 `page.printed_page`（见 `export/streams.py`）。
+写接口只允许主项目。
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..core.project import library as project_library
 from ..core.project import page_numbers as page_numbers_module
@@ -25,15 +25,33 @@ def _bad_template(exc: page_numbers_module.PageNumberError) -> AppError:
     return AppError(400, "bad_page_number_template", "页码模板不合法", detail=str(exc))
 
 
+class TemplateRange(BaseModel):
+    from_page: int
+    to_page: int
+
+
 class ApplyTemplateRequest(BaseModel):
-    """用户确认采用的模板（就是分析接口返回的那一条，原样回传即可）。"""
+    """用户确认采用的模板；`range` 为空 = 设为整本默认，否则 = 这段页码的第二套模板。"""
 
     template: dict[str, Any]
+    range: TemplateRange | None = None
+
+
+class RemoveRangeRequest(BaseModel):
+    from_page: int
+    to_page: int
+
+
+class ManualPageRequest(BaseModel):
+    """逐页手动映射；`printed_page` 留空 = 取消这一页的手动值。"""
+
+    page_no: int
+    printed_page: str | None = Field(default=None, max_length=16)
 
 
 @router.get("/{project_id}/page-numbers")
 def get_page_numbers(request: Request, project_id: str) -> dict[str, Any]:
-    """候选模板 + 当前映射 + 异常分组（只读）。"""
+    """候选模板 + 当前映射 + 页码范围 + 异常分组（只读）。"""
     try:
         return page_numbers_module.analyze(project_id, library=_library(request))
     except project_library.ProjectError as exc:
@@ -42,7 +60,7 @@ def get_page_numbers(request: Request, project_id: str) -> dict[str, Any]:
 
 @router.get("/{project_id}/page-numbers/summary")
 def get_page_number_summary(request: Request, project_id: str) -> dict[str, Any]:
-    """右栏摘要：已采用的模板与已填页数（不跑聚类）。"""
+    """右栏摘要：默认模板 / 页码范围 / 已填 / 手动页数（不跑聚类）。"""
     try:
         return page_numbers_module.page_number_state(project_id, library=_library(request))
     except project_library.ProjectError as exc:
@@ -53,11 +71,49 @@ def get_page_number_summary(request: Request, project_id: str) -> dict[str, Any]
 def apply_page_number_template(
     request: Request, project_id: str, body: ApplyTemplateRequest
 ) -> dict[str, Any]:
-    """按确认的模板填充 `page.printed_page`，返回填充结果与最新异常列表。"""
+    """采用模板（整本或一段页码范围），重算模板页并返回最新异常列表。"""
     _require_main(request, project_id)
     try:
         return page_numbers_module.apply_template(
-            project_id, body.template, library=_library(request)
+            project_id,
+            body.template,
+            range_payload=body.range.model_dump() if body.range else None,
+            library=_library(request),
+        )
+    except page_numbers_module.PageNumberError as exc:
+        raise _bad_template(exc) from exc
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+@router.post("/{project_id}/page-numbers/ranges/remove")
+def remove_page_number_range(
+    request: Request, project_id: str, body: RemoveRangeRequest
+) -> dict[str, Any]:
+    """移除一段页码范围模板，并按默认模板重算（手动页不动）。"""
+    _require_main(request, project_id)
+    try:
+        return page_numbers_module.remove_range(
+            project_id,
+            from_page=body.from_page,
+            to_page=body.to_page,
+            library=_library(request),
+        )
+    except page_numbers_module.PageNumberError as exc:
+        raise _bad_template(exc) from exc
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+@router.post("/{project_id}/page-numbers/manual")
+def set_manual_page_number(
+    request: Request, project_id: str, body: ManualPageRequest
+) -> dict[str, Any]:
+    """逐页手动改印刷页码；手动值不参与后续模板重算。"""
+    _require_main(request, project_id)
+    try:
+        return page_numbers_module.set_manual_page(
+            project_id, body.page_no, body.printed_page, library=_library(request)
         )
     except page_numbers_module.PageNumberError as exc:
         raise _bad_template(exc) from exc

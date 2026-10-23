@@ -1208,3 +1208,35 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 .pn-anomaly-group h4 { margin: 0 0 3px; font-size: 12px; color: var(--text-2); }
 .pn-anomaly-group ul { margin: 0; padding-left: 18px; font-size: 11.5px; line-height: 1.65; color: var(--text-2); }
 .pn-anomaly-group li::marker { color: var(--faint); }
+
+/* 页码审校（任务 56）：左异常列表 + 右可编辑映射表 */
+.modal--pn-review { width: 1040px; height: 720px; max-width: 100%; }
+.pn-review-body { display: flex; min-height: 0; }
+.pn-review-side { width: 300px; flex: none; border-right: 1px solid var(--line-soft);
+  padding: 12px 14px; overflow: auto; }
+.pn-review-main { flex: 1; min-width: 0; padding: 12px 16px; overflow: auto;
+  display: flex; flex-direction: column; }
+.pn-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.pn-filter .btn { height: 24px; padding: 0 7px; font-size: 11px; }
+.pn-issue-list { list-style: none; margin: 0; padding: 0; }
+.pn-issue-list li { padding: 5px 6px; border-bottom: 1px solid var(--line-soft);
+  font-size: 11.5px; line-height: 1.5; cursor: pointer; }
+.pn-issue-list li:hover { background: var(--surface-2); }
+.pn-issue-list .pn-issue-type { font-size: 10px; color: var(--faint); margin-left: 4px; }
+.pn-table-head, .pn-table li {
+  display: grid; grid-template-columns: 70px 110px 76px 1fr; gap: 10px; align-items: center;
+}
+.pn-table-head { font-size: 11px; color: var(--faint); padding: 4px 6px;
+  border-bottom: 1px solid var(--line); }
+.pn-table { list-style: none; margin: 0; padding: 0; overflow: auto; }
+.pn-table li { padding: 3px 6px; border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+.pn-table li.is-issue { background: #fff8ec; }
+.pn-table li.is-unrecognized { color: var(--faint); }
+.pn-table input { width: 90px; height: 26px; }
+.pn-table .pn-status { font-size: 10.5px; color: var(--faint); }
+.pn-table .pn-status--bad { color: #92600a; }
+.pn-assignments { border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; margin: 4px 0 10px; font-size: 11.5px; line-height: 1.6; }
+.pn-assign-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+.pn-range-form { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11.5px; }
+.pn-range-form input { width: 64px; height: 26px; }

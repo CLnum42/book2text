@@ -539,7 +539,7 @@ def test_printed_page_mapping_is_null_when_it_cannot_be_read(
     meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
     by_page = {item["pdf_page"]: item for item in meta["pages"]}
     assert by_page[2]["printed_page"] == "63"
-    assert by_page[2]["printed_page_source"] == "page_number"
+    assert by_page[2]["printed_page_source"] == "legacy"
     assert by_page[1]["printed_page"] is None, "没有页码块就 null，不拿 PDF 页号冒充"
     assert by_page[3]["printed_page"] is None
 

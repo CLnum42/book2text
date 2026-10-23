@@ -331,6 +331,6 @@ def test_split_page_number_is_exported_as_metadata_not_body(
     meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
     page = meta["pages"][0]
     assert page["printed_page"] == "11"
-    assert page["printed_page_source"] == "page_number"
+    assert page["printed_page_source"] == "legacy"
     assert [item["text"] for item in page["page_numbers"]] == ["11"]
     assert [item["text"] for item in page["headers"]] == ["2谁是巴赫金?"]

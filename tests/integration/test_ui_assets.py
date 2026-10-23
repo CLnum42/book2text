@@ -688,3 +688,32 @@ def test_page_number_panel_is_wired() -> None:
     assert "not_recognized" in script
     assert "还没有模板" in page
     assert ".pn-template" in styles and ".pn-mapping" in styles
+
+
+def test_page_number_review_and_range_templates_are_wired() -> None:
+    """任务 56：页码审校对话框、逐页手动映射、第二套页码范围都要真的接上。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "page-number-review-open",
+        "page-number-review-panel",
+        "page-number-review-close",
+        "page-number-review-meta",
+        "page-number-review-filters",
+        "page-number-review-issues",
+        "page-number-review-table",
+        "page-number-review-assignments",
+        "page-number-review-done",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    # 手动映射、移除范围、按范围采用模板
+    assert "/page-numbers/manual" in script
+    assert "/page-numbers/ranges/remove" in script
+    assert 'body: JSON.stringify({ template, range })' in script
+    assert "function renderPageNumberReview(" in script
+    assert "PN_ANOMALY_LABELS" in script and "duplicate" in script
+    assert "page-number-review-table li[data-page-no=" in script
+    assert ".pn-table" in styles and ".pn-issue-list" in styles

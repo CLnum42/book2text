@@ -255,6 +255,7 @@
                 <p class="hint">大多数书的页码位置是稳定的（奇偶页可能各一个位置）。
                   定位一次 → 全书自动填充 → 只核对异常页。</p>
                 <button type="button" id="page-number-open" class="btn btn--block">定位页码…</button>
+                <button type="button" id="page-number-review-open" class="btn btn--block">核对映射…</button>
                 <div class="hint" id="page-number-status" hidden></div>
                 <p class="hint">这一版只做"确认模板 → 自动填充 + 异常列表"；
                   逐页手动改映射、第二套页码范围在下一刀。</p>
@@ -612,6 +613,8 @@
           </div>
           <div class="alert alert--error" id="page-number-error" hidden></div>
 
+          <div class="pn-assignments" id="page-number-assignments" hidden></div>
+
           <div class="flabel">候选模板 <span class="muted" id="page-number-template-count"></span></div>
           <ol class="pn-templates" id="page-number-templates"></ol>
           <div class="alert alert--warn" id="page-number-empty" hidden>
@@ -633,6 +636,41 @@
           <span class="muted">页码写入只用于这次模板 / 校验与界面显示，导出仍走原来的页码抽取</span>
           <span class="spacer"></span>
           <button type="button" id="page-number-done" class="btn">完成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────── 对话框：页码审校 ─────────────────────────── -->
+    <div class="mask" id="page-number-review-panel" hidden>
+      <div class="modal modal--pn-review">
+        <div class="mhead">
+          页码审校
+          <span class="muted" id="page-number-review-meta"></span>
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="page-number-review-close">✕</button>
+        </div>
+        <div class="mbody pn-review-body">
+          <aside class="pn-review-side">
+            <div class="pn-filter" id="page-number-review-filters"></div>
+            <ol class="pn-issue-list" id="page-number-review-issues"></ol>
+          </aside>
+          <div class="pn-review-main">
+            <div class="alert alert--error" id="page-number-review-error" hidden></div>
+            <div class="pn-assignments" id="page-number-review-assignments" hidden></div>
+            <div class="pn-table-head">
+              <span>PDF 页</span><span>印刷页</span><span>来源</span><span>状态</span>
+            </div>
+            <ol class="pn-table" id="page-number-review-table"></ol>
+            <p class="hint">改完按 Enter 或离开输入框保存；手动值不会被后续模板重算覆盖。
+              清空输入框 = 取消这一页的手动值。</p>
+          </div>
+        </div>
+        <div class="mfoot">
+          <span class="muted" id="page-number-review-footnote">
+            左边只列异常页 / 未识别页；正常的页不用一页页点。
+          </span>
+          <span class="spacer"></span>
+          <button type="button" id="page-number-review-done" class="btn">完成</button>
         </div>
       </div>
     </div>

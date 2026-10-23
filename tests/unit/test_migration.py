@@ -546,3 +546,21 @@ def test_migration_0013_adds_printed_page_columns(conn: sqlite3.Connection) -> N
     ).fetchone()
     assert row["printed_page"] is None
     assert row["printed_page_source"] is None
+
+
+def test_migration_0014_adds_page_number_ranges(conn: sqlite3.Connection) -> None:
+    """页码范围：可空 JSON 列；老项目没有第二套模板（空）。"""
+    migrate(conn, MIGRATIONS)
+    project_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(project)").fetchall()
+    }
+    assert "page_number_ranges" in project_columns
+    conn.execute(
+        "INSERT INTO project (project_id, name, source_file_name, source_sha256,"
+        " page_count, created_at, updated_at, schema_version)"
+        " VALUES ('p1', '测试', 'a.pdf', 'x', 1, '2026-01-01', '2026-01-01', 14)"
+    )
+    row = conn.execute(
+        "SELECT page_number_ranges FROM project WHERE project_id = 'p1'"
+    ).fetchone()
+    assert row["page_number_ranges"] is None

@@ -266,11 +266,16 @@ def page_metadata(
 ) -> dict[str, object]:
     """生成 `meta.json`（一页一条）。
 
-    ``margin_enabled`` 为真时用**按版心判定**的形状：
+    ``printed_page`` 的来源优先级（任务 56）：
+
+    1. `page.printed_page`（页码模板 / 手动映射）→ source 为 `template` / `manual`；
+    2. 没有新映射的页 → 原来的块类型 / 版心边带抽取，source 记为 `legacy`；
+    3. 都没有 → null。
+
+    两者不一致时**以新映射为准**。``margin_enabled`` 为真时用**按版心判定**的形状：
     每页带版心四边 / 三态 / 块数统计（版心内 / 外 / 页码标记），
-    **不写 `headers` 与 `edge_texts`**（书眉直接丢，不许从边角文本漏回来）；
-    版心外的页码写进 `printed_page`，仍沿用"多候选打架就是 null"。
-    开关关掉时走原来的形状，逐字节不变。
+    **不写 `headers` 与 `edge_texts`**（书眉直接丢，不许从边角文本漏回来）。
+    开关关掉时其余字段形状与以前一致。
     """
     page_records: list[dict[str, object]] = []
     missing: list[int] = []
@@ -281,11 +286,23 @@ def page_metadata(
         blocks = blocks_by_page.get(page.page_no, [])
         layout = (margin_layouts or {}).get(page.page_no)
         if margin_enabled and layout is not None and getattr(layout, "applied", False):
-            printed_page, source, candidates = extract_printed_page_from_values(
+            legacy_page, _legacy_source, candidates = extract_printed_page_from_values(
                 layout.page_number_values
             )
         else:
-            printed_page, source, candidates = extract_printed_page(blocks)
+            legacy_page, _legacy_source, candidates = extract_printed_page(blocks)
+        # 任务 56：页码模板 / 手动映射优先；没有新映射的页退回原来的块类型抽取。
+        # 两者不一致时**以新映射为准**（新映射来自用户确认的模板或人工修改）。
+        mapped_page = getattr(page, "printed_page", None)
+        if mapped_page:
+            printed_page = mapped_page
+            source = getattr(page, "printed_page_source", None) or "template"
+        elif legacy_page is not None:
+            printed_page = legacy_page
+            source = "legacy"
+        else:
+            printed_page = None
+            source = None
         if printed_page is None:
             missing.append(page.page_no)
         else:

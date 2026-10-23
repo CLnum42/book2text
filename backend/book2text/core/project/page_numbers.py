@@ -78,6 +78,8 @@ MAX_TEMPLATES = 4
 
 SOURCE_TEMPLATE = "template"
 SOURCE_MANUAL = "manual"
+# 导出时"没有新映射、退回块类型抽取"的来源标记（只在 meta.json 里出现）
+SOURCE_LEGACY = "legacy"
 
 
 class PageNumberError(library_module.ProjectError):
@@ -522,24 +524,6 @@ def build_templates(
     return templates[:MAX_TEMPLATES]
 
 
-def _select_templates(templates: list[Template]) -> list[Template]:
-    """接口只展示 1–2 个模板：覆盖最多的，加上覆盖不低于它一半的第二个。
-
-    真书里那些覆盖 3–4 页的簇多半是边栏原书页码 / OCR 噪声；全列出来会让人以为
-    有四个可选模板。只有当第二个模板也覆盖到第一名的一半（且 ≥5 页）才展示。
-    """
-    if not templates:
-        return []
-    chosen = [templates[0]]
-    threshold = max(5, int(templates[0].coverage * 0.5))
-    for template in templates[1:]:
-        if len(chosen) >= 2:
-            break
-        if template.coverage >= threshold:
-            chosen.append(template)
-    return chosen
-
-
 # ---------------------------------------------------------------- 模板匹配
 
 def _template_centers(template: dict[str, object]) -> dict[str, tuple[float, float]]:
@@ -652,6 +636,7 @@ def validate_mapping(
         "ambiguous": [],
         "jump": [],
         "offset_break": [],
+        "duplicate": [],
     }
     for page_no, details in sorted(no_candidate.items()):
         anomalies["no_candidate"].append(
@@ -708,6 +693,27 @@ def validate_mapping(
             )
         )
 
+    # 一致性：两页映射到同一个印刷页码 → 警告（不自动改值，只推给人）
+    by_value: dict[tuple[str, object], list[tuple[int, str]]] = {}
+    for page_no, (value, _source) in sorted(printed.items()):
+        number = page_number_number(value)
+        key = ("number", number) if number is not None else ("text", value.upper())
+        by_value.setdefault(key, []).append((page_no, value))
+    for items in by_value.values():
+        if len(items) < 2:
+            continue
+        page_nos = [page_no for page_no, _ in items]
+        for page_no, value in items:
+            others = [other for other in page_nos if other != page_no]
+            anomalies["duplicate"].append(
+                _anomaly(
+                    page_no,
+                    value,
+                    f"与第 {'、'.join(str(other) for other in others)} 页映射到同一个印刷页码 {value}",
+                    others=others,
+                )
+            )
+
     not_recognized = [
         {"page_no": page.page_no}
         for page in sorted(pages, key=lambda item: item.page_no)
@@ -726,6 +732,7 @@ def validate_mapping(
             "ambiguous": len(anomalies["ambiguous"]),
             "jump": len(anomalies["jump"]),
             "offset_break": len(anomalies["offset_break"]),
+            "duplicate": len(anomalies["duplicate"]),
             "not_recognized": len(not_recognized),
         },
     }
@@ -737,12 +744,156 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def template_label(template: dict[str, object] | None) -> str:
+    if not template:
+        return "未采用模板"
+    return str(template.get("label") or "未命名模板")
+
+
+def _range_for(page_no: int, ranges: list[dict[str, object]]) -> dict[str, object] | None:
+    for item in ranges:
+        if int(item["from_page"]) <= page_no <= int(item["to_page"]):
+            return item
+    return None
+
+
+def effective_template(
+    page_no: int,
+    default: dict[str, object] | None,
+    ranges: list[dict[str, object]],
+) -> dict[str, object] | None:
+    """这一页实际用哪套模板：手动值优先（调用方跳过），其次范围模板，最后默认模板。"""
+    item = _range_for(page_no, ranges)
+    if item is not None:
+        template = item.get("template")
+        return template if isinstance(template, dict) else None
+    return default
+
+
+def normalize_range(
+    raw: dict[str, object],
+    template: dict[str, object],
+    total_pages: int,
+) -> dict[str, object]:
+    """校验一段页码范围（含边界），返回可存库的范围记录。"""
+    if not isinstance(raw, dict):
+        raise PageNumberError("页码范围必须是一个对象")
+    try:
+        start = int(raw.get("from_page"))
+        end = int(raw.get("to_page"))
+    except (TypeError, ValueError) as exc:
+        raise PageNumberError("页码范围的起止必须是整数") from exc
+    if not 1 <= start <= end <= total_pages:
+        raise PageNumberError(
+            f"页码范围必须在 1–{total_pages} 之间，且起始 ≤ 结束（收到 {start}–{end}）"
+        )
+    return {
+        "from_page": start,
+        "to_page": end,
+        "template": dict(template),
+        "created_at": _now(),
+    }
+
+
+def _overlaps(a: dict[str, object], b: dict[str, object]) -> bool:
+    return int(a["from_page"]) <= int(b["to_page"]) and int(b["from_page"]) <= int(a["to_page"])
+
+
+def _assignment_segments(
+    default: dict[str, object] | None,
+    ranges: list[dict[str, object]],
+    total_pages: int,
+) -> list[dict[str, object]]:
+    """把"哪几页用哪个模板"展开成互不重叠的段，供界面直接显示。"""
+    segments: list[dict[str, object]] = []
+    cursor = 1
+    for item in sorted(ranges, key=lambda entry: int(entry["from_page"])):
+        start = int(item["from_page"])
+        if default is not None and cursor < start:
+            segments.append(
+                {
+                    "from_page": cursor,
+                    "to_page": start - 1,
+                    "kind": "default",
+                    "label": template_label(default),
+                }
+            )
+        segments.append(
+            {
+                "from_page": start,
+                "to_page": int(item["to_page"]),
+                "kind": "range",
+                "label": template_label(item.get("template")),
+            }
+        )
+        cursor = int(item["to_page"]) + 1
+    if default is not None and cursor <= total_pages:
+        segments.append(
+            {
+                "from_page": cursor,
+                "to_page": total_pages,
+                "kind": "default",
+                "label": template_label(default),
+            }
+        )
+    return segments
+
+
+def _recompute_pages(
+    conn,
+    pages: list[library_module.Page],
+    candidates: dict[int, list[Candidate]],
+    *,
+    default: dict[str, object] | None,
+    ranges: list[dict[str, object]],
+    recognized_pages: set[int],
+) -> int:
+    """按"手动 > 范围 > 默认"重算所有模板页；手动值一个都不动。"""
+    filled = 0
+    for page in pages:
+        if page.printed_page_source == SOURCE_MANUAL:
+            continue
+        if page.page_no not in recognized_pages:
+            if page.printed_page_source == SOURCE_TEMPLATE:
+                conn.execute(
+                    "UPDATE page SET printed_page = NULL, printed_page_source = NULL"
+                    " WHERE page_no = ?",
+                    (page.page_no,),
+                )
+            continue
+        template = effective_template(page.page_no, default, ranges)
+        if template is None:
+            if page.printed_page_source == SOURCE_TEMPLATE:
+                conn.execute(
+                    "UPDATE page SET printed_page = NULL, printed_page_source = NULL"
+                    " WHERE page_no = ?",
+                    (page.page_no,),
+                )
+            continue
+        value, status, _details = _match_page(
+            page, candidates.get(page.page_no, []), template
+        )
+        if value is not None and status == "ok":
+            conn.execute(
+                "UPDATE page SET printed_page = ?, printed_page_source = ? WHERE page_no = ?",
+                (value, SOURCE_TEMPLATE, page.page_no),
+            )
+            filled += 1
+        else:
+            conn.execute(
+                "UPDATE page SET printed_page = NULL, printed_page_source = NULL"
+                " WHERE page_no = ?",
+                (page.page_no,),
+            )
+    return filled
+
+
 def analyze(project_id: str, *, library: Path | None = None) -> dict[str, object]:
-    """只读分析：候选模板 + 当前映射 + 异常分组。"""
+    """只读分析：候选模板 + 当前映射 + 页码范围 + 异常分组。"""
     target_library = library if library is not None else library_module.default_library_dir()
     project = library_module.load_project(project_id, library=target_library)
     candidates, pages, meta = collect_candidates(project_id, library=target_library)
-    templates = _select_templates(build_templates(candidates, pages))
+    templates = build_templates(candidates, pages)
     states = meta["states"]
     recognized_pages = {
         page.page_no
@@ -751,7 +902,8 @@ def analyze(project_id: str, *, library: Path | None = None) -> dict[str, object
         and state.status in (blocks_module.STATUS_RECOGNIZED, blocks_module.STATUS_HAS_CANDIDATE)
     }
 
-    template = project.page_number_template
+    default = project.page_number_template
+    ranges = [dict(item) for item in project.page_number_ranges]
     printed: dict[int, tuple[str, str | None]] = {
         page.page_no: (page.printed_page, page.printed_page_source)
         for page in pages
@@ -763,8 +915,11 @@ def analyze(project_id: str, *, library: Path | None = None) -> dict[str, object
     for page in pages:
         if page.page_no not in recognized_pages or page.page_no in printed:
             continue
+        template = effective_template(page.page_no, default, ranges)
         if template:
-            value, status, details = _match_page(page, candidates.get(page.page_no, []), template)
+            value, status, details = _match_page(
+                page, candidates.get(page.page_no, []), template
+            )
             if status == "ambiguous":
                 ambiguous[page.page_no] = details
             elif value is None:
@@ -781,10 +936,17 @@ def analyze(project_id: str, *, library: Path | None = None) -> dict[str, object
         ambiguous=ambiguous,
         no_candidate=no_candidate,
     )
+    validation["counts"]["manual"] = sum(
+        1 for page in pages if page.printed_page_source == SOURCE_MANUAL
+    )
     return {
         "templates": [template.to_dict() for template in templates],
         "current": {
-            "template": template,
+            # 兼容字段：默认模板
+            "template": default,
+            "default_template": default,
+            "ranges": ranges,
+            "assignments": _assignment_segments(default, ranges, len(pages)),
             "filled": validation["counts"]["filled"],
             "total": validation["counts"]["total"],
             "mapping": [
@@ -805,11 +967,43 @@ def apply_template(
     project_id: str,
     template_payload: dict[str, object],
     *,
+    range_payload: dict[str, object] | None = None,
     library: Path | None = None,
 ) -> dict[str, object]:
-    """按用户确认的模板填充印刷页码，写库后返回最新的分析。"""
+    """采用一个模板：整本作为默认，或给一段页码范围作为第二套。
+
+    **重算规则**：手动页永远跳过；页码范围内的页用范围模板，其余页用默认模板；
+    范围之间、范围与默认之间互不重叠（范围由这里校验）。
+    """
     target_library = library if library is not None else library_module.default_library_dir()
     template = normalize_template(template_payload)
+    project = library_module.load_project(project_id, library=target_library)
+    pages = library_module.list_pages(project_id, library=target_library)
+    default = project.page_number_template
+    ranges = [dict(item) for item in project.page_number_ranges]
+
+    if range_payload is not None:
+        new_range = normalize_range(range_payload, template, len(pages))
+        for index, existing in enumerate(ranges):
+            if _overlaps(new_range, existing):
+                if (
+                    int(existing["from_page"]) == int(new_range["from_page"])
+                    and int(existing["to_page"]) == int(new_range["to_page"])
+                ):
+                    ranges[index] = new_range  # 同一段重设：替换
+                    break
+                raise PageNumberError(
+                    "页码范围与已有范围重叠："
+                    f"已有 {existing['from_page']}–{existing['to_page']}，"
+                    f"新的 {new_range['from_page']}–{new_range['to_page']}。"
+                    "一页只能命中一套模板。"
+                )
+        else:
+            ranges.append(new_range)
+        ranges.sort(key=lambda item: int(item["from_page"]))
+    else:
+        default = template
+
     candidates, pages, meta = collect_candidates(project_id, library=target_library)
     recognized_pages = {
         page.page_no
@@ -817,49 +1011,142 @@ def apply_template(
         if (state := meta["states"].get(page.page_id)) is not None
         and state.status in (blocks_module.STATUS_RECOGNIZED, blocks_module.STATUS_HAS_CANDIDATE)
     }
-
-    filled = 0
-    directory = library_module.require_project_dir(project_id, library=target_library)
     now = _now()
+    directory = library_module.require_project_dir(project_id, library=target_library)
     with db_module.open_database(directory) as conn:
-        for page in pages:
-            if page.printed_page_source == SOURCE_MANUAL:
-                continue
-            if page.page_no not in recognized_pages:
-                if page.printed_page_source == SOURCE_TEMPLATE:
-                    conn.execute(
-                        "UPDATE page SET printed_page = NULL, printed_page_source = NULL"
-                        " WHERE page_no = ?",
-                        (page.page_no,),
-                    )
-                continue
-            value, status, _details = _match_page(
-                page, candidates.get(page.page_no, []), template
-            )
-            if value is not None and status == "ok":
-                conn.execute(
-                    "UPDATE page SET printed_page = ?, printed_page_source = ? WHERE page_no = ?",
-                    (value, SOURCE_TEMPLATE, page.page_no),
-                )
-                filled += 1
-            else:
-                conn.execute(
-                    "UPDATE page SET printed_page = NULL, printed_page_source = NULL"
-                    " WHERE page_no = ?",
-                    (page.page_no,),
-                )
-        stored = dict(template)
-        stored["applied_at"] = now
-        stored["filled"] = filled
+        filled = _recompute_pages(
+            conn,
+            pages,
+            candidates,
+            default=default,
+            ranges=ranges,
+            recognized_pages=recognized_pages,
+        )
+        if default is not None:
+            stored = dict(default)
+            stored["applied_at"] = now
+            default = stored
         conn.execute(
-            "UPDATE project SET page_number_template = ?, updated_at = ?",
-            (json.dumps(stored, ensure_ascii=False), now),
+            "UPDATE project SET page_number_template = ?, page_number_ranges = ?, updated_at = ?",
+            (
+                json.dumps(default, ensure_ascii=False) if default is not None else None,
+                json.dumps(ranges, ensure_ascii=False) if ranges else None,
+                now,
+            ),
         )
         conn.commit()
 
     result = analyze(project_id, library=target_library)
-    result["applied"] = {"filled": filled, "applied_at": now, "template": stored}
+    result["applied"] = {
+        "filled": filled,
+        "applied_at": now,
+        "template": template,
+        "range": range_payload,
+    }
     return result
+
+
+def remove_range(
+    project_id: str,
+    *,
+    from_page: int,
+    to_page: int,
+    library: Path | None = None,
+) -> dict[str, object]:
+    """移除一段页码范围模板，并按默认模板重算那些页（手动页不动）。"""
+    target_library = library if library is not None else library_module.default_library_dir()
+    project = library_module.load_project(project_id, library=target_library)
+    pages = library_module.list_pages(project_id, library=target_library)
+    default = project.page_number_template
+    ranges = [
+        dict(item)
+        for item in project.page_number_ranges
+        if not (
+            int(item["from_page"]) == int(from_page)
+            and int(item["to_page"]) == int(to_page)
+        )
+    ]
+    if len(ranges) == len(project.page_number_ranges):
+        raise PageNumberError(f"没有 {from_page}–{to_page} 这一段页码范围")
+
+    candidates, pages, meta = collect_candidates(project_id, library=target_library)
+    recognized_pages = {
+        page.page_no
+        for page in pages
+        if (state := meta["states"].get(page.page_id)) is not None
+        and state.status in (blocks_module.STATUS_RECOGNIZED, blocks_module.STATUS_HAS_CANDIDATE)
+    }
+    directory = library_module.require_project_dir(project_id, library=target_library)
+    now = _now()
+    with db_module.open_database(directory) as conn:
+        _recompute_pages(
+            conn,
+            pages,
+            candidates,
+            default=default,
+            ranges=ranges,
+            recognized_pages=recognized_pages,
+        )
+        conn.execute(
+            "UPDATE project SET page_number_ranges = ?, updated_at = ?",
+            (json.dumps(ranges, ensure_ascii=False) if ranges else None, now),
+        )
+        conn.commit()
+    return analyze(project_id, library=target_library)
+
+
+def set_manual_page(
+    project_id: str,
+    page_no: int,
+    printed_page: str | None,
+    *,
+    library: Path | None = None,
+) -> dict[str, object]:
+    """逐页手动改映射：写 `printed_page_source = manual`，后续模板重算不覆盖。"""
+    target_library = library if library is not None else library_module.default_library_dir()
+    directory = library_module.require_project_dir(project_id, library=target_library)
+    pages = {page.page_no: page for page in library_module.list_pages(project_id, library=target_library)}
+    if page_no not in pages:
+        raise PageNumberError(f"没有第 {page_no} 页")
+    text = (printed_page or "").strip()
+    if not text:
+        value = None
+    else:
+        value = regions.canonical_page_value(text)
+        if value is None:
+            raise PageNumberError(
+                "印刷页码只能是规范阿拉伯数字（≤4 位）或罗马数字（≤100），"
+                "清空则取消这一页的手动映射。"
+            )
+    with db_module.open_database(directory) as conn:
+        conn.execute(
+            "UPDATE page SET printed_page = ?, printed_page_source = ? WHERE page_no = ?",
+            (value, SOURCE_MANUAL if value is not None else None, page_no),
+        )
+        conn.execute("UPDATE project SET updated_at = ?", (_now(),))
+        conn.commit()
+    if value is None:
+        # 取消手动值后，这一页应该能被模板重新填上（手动页在上面的重算里会跳过）。
+        project = library_module.load_project(project_id, library=target_library)
+        candidates, pages, meta = collect_candidates(project_id, library=target_library)
+        recognized_pages = {
+            page.page_no
+            for page in pages
+            if (state := meta["states"].get(page.page_id)) is not None
+            and state.status
+            in (blocks_module.STATUS_RECOGNIZED, blocks_module.STATUS_HAS_CANDIDATE)
+        }
+        with db_module.open_database(directory) as conn:
+            _recompute_pages(
+                conn,
+                pages,
+                candidates,
+                default=project.page_number_template,
+                ranges=[dict(item) for item in project.page_number_ranges],
+                recognized_pages=recognized_pages,
+            )
+            conn.commit()
+    return analyze(project_id, library=target_library)
 
 
 def page_number_state(project_id: str, *, library: Path | None = None) -> dict[str, object]:
@@ -867,8 +1154,11 @@ def page_number_state(project_id: str, *, library: Path | None = None) -> dict[s
     project = library_module.load_project(project_id, library=library)
     pages = library_module.list_pages(project_id, library=library)
     filled = sum(1 for page in pages if page.printed_page)
+    manual = sum(1 for page in pages if page.printed_page_source == SOURCE_MANUAL)
     return {
         "template": project.page_number_template,
+        "ranges": project.page_number_ranges,
         "filled": filled,
+        "manual": manual,
         "total": len(pages),
     }
