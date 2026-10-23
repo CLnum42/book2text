@@ -102,7 +102,8 @@ main `8299507`（任务 55 文档补记），803 测试全绿。已有模板聚�
 - `.venv/bin/python -m pytest -q -rs` → **809 passed, 0 skipped，56.97 秒**。
 - 新增：迁移 0014（1）、范围边界 / 重叠拒绝 / 移除（1）、手动值优先与清空重算（1）、
   重复页码（1）、导出优先级 + legacy 回退（1）、审校界面静态约定（1）。
-- CI 待补记。
+- CI [run #38](https://github.com/CLnum42/book2text/actions/runs/39905534933) **Success**，
+  总时长 6m46s（macOS 2m34s、Windows 6m42s；Windows 这次排队较久）。
 
 ### 用户操作说明
 
