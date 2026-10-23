@@ -119,6 +119,9 @@ DPI / 语言只能通过接口传，界面没有入口；第一引擎写死 Rapi
   与适配器映射 4、四分区与识别设置静态约定 2；原有页面类型顺序断言按新需求更新
   （没有弱化其它断言）。
 - 无数据库迁移；设置写在 `project.settings_json`。
+- CI [run #36](https://github.com/CLnum42/book2text/actions/runs/39880305062) **Success**，
+  总时长 3m39s（macOS 2m23s、Windows 3m35s）；[#35](https://github.com/CLnum42/book2text/actions/runs/39879650066)
+  因新用例 skip 被守卫拦下（失败记录保留在 Actions 里）。
 
 ### 用户操作说明
 
