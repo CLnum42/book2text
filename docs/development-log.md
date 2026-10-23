@@ -106,6 +106,8 @@ main `d8bd1da`（任务 54 文档补记），789 测试全绿。页码只能从�
   原有测试没有弱化。
 - 新增接口测试覆盖：模板分析 / 采用填充、人为断点、同位置多候选（ambiguous 留空）、
   非法模板 400、未识别页单列。
+- CI [run #37](https://github.com/CLnum42/book2text/actions/runs/39904037020) **Success**，
+  总时长 3m44s（macOS 2m35s、Windows 3m41s）。
 
 ### 用户操作说明
 
