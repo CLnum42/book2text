@@ -561,6 +561,35 @@ body.margin-dragging, body.margin-dragging * { user-select: none; -webkit-user-s
 
 /* ─────────────────────────────── 审校视图 ─────────────────────────────── */
 
+/* 审校原图上的版心（任务 53）：与页面视图同一套视觉，但**只读**
+   （没有把手；pointer-events: none 让块框 / 框选 / 缩放照常可用）。
+   自动推算的框用点线，和页面视图的"沿用全局 / 本页自定义"能区分开。 */
+.page-margin--review { z-index: 1; }
+.page-margin--review .page-margin__box { border-style: solid; }
+.page-margin--review.page-margin--auto .page-margin__box {
+  border-color: #b45309;
+  border-style: dashed;
+  box-shadow: 0 0 0 9999px rgba(15, 18, 24, .16);
+}
+/* 版心外（按块中心点判定）：框与卡片都变淡 + 虚线。
+   只在版心显示时变淡；关掉版心就恢复原样，避免用户以为块被禁用。 */
+.page-canvas.has-margin .box--outside-margin {
+  opacity: .42; border-style: dashed;
+}
+.review-block--outside-margin { border-left-style: dashed; }
+.review-block__where {
+  font-size: 10px; padding: 0 5px; border-radius: 4px;
+  background: var(--surface-2, rgba(15, 18, 24, .06)); color: var(--faint);
+}
+/* 版心内 / 版心外 / 全部 过滤条（只影响列表，不隐藏数据） */
+.review-filter {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 10px; border-bottom: 1px solid var(--line);
+  background: var(--surface-2, rgba(15, 18, 24, .02));
+}
+.review-filter .btn { height: 26px; }
+.review-filter__note { font-size: 11px; }
+
 .view--review { overflow: hidden; }
 .view--review > .alert, .view--review > .noticebar { margin: 10px 16px 0; }
 .view--review > .noticebar { border-radius: 8px; border: 1px solid #d7e4fd; }

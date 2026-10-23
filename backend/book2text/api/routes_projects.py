@@ -18,6 +18,7 @@ from ..core.pdf import render
 from ..core.collab import assignments as assignments_module
 from ..core.project import blocks as blocks_module
 from ..core.project import library as project_library
+from ..core.project import margin_box as margin_box_module
 from ..core.project import page_setup as page_setup_module
 from ..core.project import stats as stats_module
 from .deps import library_dir as _library
@@ -163,7 +164,23 @@ def open_project(
         )
     except project_library.ProjectError as exc:
         raise _project_error(exc) from exc
-    return result.to_dict()
+
+    payload = result.to_dict()
+    # 任务 53：升级前就识别过的项目没有"识别收尾时自动推算"那次机会。
+    # 打开主项目时补一次（只补没存过建议的；手动版心不会被覆盖）。
+    # 推算失败只当没补：打开项目不能因为一个显示用的框而失败。
+    if not result.read_only and result.project.kind == "main":
+        try:
+            updated = margin_box_module.ensure_margin_suggestion(
+                project_id, library=library
+            )
+        except Exception:  # noqa: BLE001 - 见上
+            updated = None
+        if updated:
+            payload["project"] = project_library.load_project(
+                project_id, library=library
+            ).to_dict()
+    return payload
 
 
 @router.post("/{project_id}/close")

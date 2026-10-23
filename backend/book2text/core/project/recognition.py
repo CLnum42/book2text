@@ -885,7 +885,50 @@ def _run_ocr_job(
         say=say,
     )
     _auto_apply_after_job(directory, job_id, outcome, say)
+    _auto_margin_after_job(directory, job_id, outcome, say)
     return outcome
+
+
+def _auto_margin_after_job(directory: Path, job_id: str, outcome: JobOutcome, say) -> None:
+    """识别任务收尾：自动推算一次版心（任务 53）。
+
+    **为什么在收尾、而且是"一次任务一次"：** 版心是一本书的页面几何，不是某一页的属性；
+    每识别一页就重算会让框在识别过程中来回跳（用户看到的是闪烁，还可能误拖）。
+    收尾时整本已有的 `block_line` 一起算，成本约 30ms（69 页实测），不值得增量维护。
+
+    写入规则在 `margin_box.write_margin_suggestion`：没有手动版心才自动写入并标 ``auto``；
+    已经手动设过就只更新"建议"，绝不覆盖当前值。
+
+    自动应用高把握块类型**之前**还是之后？放在之后：块类型会影响推算
+    （显式页眉 / 页脚 / 页码块整块跳过），先应用完再算更准。
+    失败只写一行日志（不写路径、不写文本），不影响任务本身的结算。
+    """
+    from . import margin_box as margin_box_module
+
+    succeeded = [
+        item
+        for item in outcome.items
+        if item.page_no is not None and item.status == jobs_module.ITEM_STATUS_SUCCEEDED
+    ]
+    if not succeeded:
+        return
+
+    try:
+        result = margin_box_module.write_margin_suggestion(
+            directory.name,
+            trigger="ocr_job",
+            job_id=job_id,
+            library=directory.parent,
+        )
+    except Exception as exc:  # noqa: BLE001 - 自动推算失败不该让任务变成失败
+        say(f"margin_suggestion failed {type(exc).__name__}")
+        return
+    if result.get("suggestion"):
+        say(
+            "margin_suggestion "
+            f"applied={1 if result['applied'] else 0} "
+            f"pages={result['suggestion'].get('pages')}"
+        )
 
 
 def _auto_apply_after_job(directory: Path, job_id: str, outcome: JobOutcome, say) -> None:

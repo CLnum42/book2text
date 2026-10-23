@@ -746,6 +746,12 @@ function renderPreflight(data) {
       `按版心判定已开启：版心外 ${data.margin_blocks?.outside || 0} 块不进正文，` +
         "书眉不写进 meta.json。"
     );
+    if (marginPages.auto) {
+      notes.push(
+        "当前全局版心是自动推算、还没确认：按版心判定导出**不会**使用它（已退回块类型）。" +
+          "在页面视图点「采用为全局版心」之后，导出才会按它判定。"
+      );
+    }
     if (unsetPages.length) {
       const shown = unsetPages.slice(0, 12).join("、");
       const more = unsetPages.length > 12 ? " 等" : "";
@@ -1521,10 +1527,15 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     pagesMarginOn = loadPageMarginPreference();
     setupSuggestionsLoaded = false;
     setupSuggestions = [];
-    marginSuggestion = null;
+    // 识别收尾 / 打开项目时服务端会算一次版心；项目载荷里直接带着最近一次建议，
+    // 不需要用户再点「推算版心」才知道建议是什么。
+    marginSuggestion = currentProject.margin_box_suggestion || null;
+    reviewMarginOn = loadReviewMarginPreference();
+    reviewBlockFilter = "inside";
     el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
     el("pages-margin-toggle").classList.toggle("is-on", pagesMarginOn);
-    el("margin-suggestion").hidden = true;
+    el("review-margin-toggle").classList.toggle("is-on", reviewMarginOn);
+    renderMarginSuggestion();
     // refreshProject 可能已经渲染过页面视图；默认"开"是在那之后才读出来的，
     // 这里补一次可见性计算，让块框立刻出现。
     schedulePageVisibility();
@@ -1770,7 +1781,9 @@ function savePageOverlayPreference() {
 
 /**
  * 版心视图开关也按项目记住（与块框开关分开存：它们看的是两件事）。
- * 默认**关**：它是"检查版心"的视图，不需要每次打开项目都压暗页面。
+ *
+ * 任务 53 起默认**开**：版心会随识别自动算出来，用户要求"页面视图与审校视图都应该显示"，
+ * 再让每次打开都先点一下开关就本末倒置了。用户关过一次就记住"关"（显式存 "0"）。
  */
 function pageMarginStorageKey() {
   return currentProject ? `b2t.pagesMargin.v1.${currentProject.project_id}` : "";
@@ -1778,9 +1791,9 @@ function pageMarginStorageKey() {
 
 function loadPageMarginPreference() {
   try {
-    return localStorage.getItem(pageMarginStorageKey()) === "1";
+    return localStorage.getItem(pageMarginStorageKey()) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -1801,6 +1814,103 @@ function marginBoxOfPage(page) {
   if (page.margin_box_mode === "custom") return page.margin_box || null;
   return (currentProject && currentProject.margin_box) || null;
 }
+
+/** 审校视图的版心开关也按项目记住；默认开（任务 53：自动算出来就该直接显示）。 */
+function reviewMarginStorageKey() {
+  return currentProject ? `b2t.reviewMargin.v1.${currentProject.project_id}` : "";
+}
+
+function loadReviewMarginPreference() {
+  try {
+    return localStorage.getItem(reviewMarginStorageKey()) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function saveReviewMarginPreference() {
+  try {
+    localStorage.setItem(reviewMarginStorageKey(), reviewMarginOn ? "1" : "0");
+  } catch {
+    /* 隐私模式等写不进去：不影响本次会话 */
+  }
+}
+
+/** 块的几何中心（与导出 `block_center` 同口径）；没有框返回 null。 */
+function blockCenter(block) {
+  const bbox = block && block.bbox;
+  if (!bbox || bbox.length !== 4) return null;
+  return [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2];
+}
+
+/**
+ * 块的中心点是否在版心内（任务 53 的审校过滤）。
+ *
+ * 与导出第一层**同一规则**：看中心点，不看"框完全包含"；没有 bbox 的块按版心内处理
+ * （宁可多审一块，也不把文字藏起来）；没有生效版心时全部算"版心内"（不隐藏任何块）。
+ */
+function blockInsideMargin(block, page) {
+  const box = marginBoxOfPage(page);
+  if (!box) return true;
+  const center = blockCenter(block);
+  if (!center) return true;
+  return (
+    center[0] >= box[0] && center[0] <= box[2] &&
+    center[1] >= box[1] && center[1] <= box[3]
+  );
+}
+
+/** 一页的块按版心内外分组（保持原有顺序；没有版心时全是"内"）。 */
+function reviewMarginSplit(page, blocks) {
+  const box = marginBoxOfPage(page);
+  const inside = [];
+  const outside = [];
+  if (!box) return { box: null, inside: [...blocks], outside };
+  for (const block of blocks) {
+    (blockInsideMargin(block, page) ? inside : outside).push(block);
+  }
+  return { box, inside, outside };
+}
+
+/** 当前审校页的项目记录（版心三态在 `currentProject.pages` 上）。 */
+function detailPageRecord() {
+  if (!currentProject || detailPageNo === null) return null;
+  return currentProject.pages.find((item) => item.page_no === detailPageNo) || null;
+}
+
+/** 全局版心是不是自动推算的（决定审校里画虚线框、面板里提示"未确认"）。 */
+function globalMarginIsAuto() {
+  return Boolean(currentProject && currentProject.margin_box_source === "auto");
+}
+
+/**
+ * 自动版心是不是**暂时不准**（页太少 / 不可靠）。
+ *
+ * 刚识别 2–3 页时（尤其前几页是扉页 / 版权页），自动框可能只框住半页。
+ * 这时审校**默认不按它隐藏块**：宁可多列几块，也不能让正文被一个还没站稳的框藏起来。
+ * 用户点过「版心内」就按用户的来；识别页数攒够后自动框不再"暂时"，默认回到版心内。
+ */
+function autoMarginProvisional(page) {
+  if (!globalMarginIsAuto()) return false;
+  if (page && page.margin_box_mode === "custom") return false;
+  const suggestion = currentProject ? currentProject.margin_box_suggestion : null;
+  if (!suggestion) return true;
+  const pages = Number(suggestion.pages || 0);
+  return pages < 10 || !suggestion.reliable;
+}
+
+/** 实际生效的过滤档位（"暂时不准"的自动框 + 用户没点过 → 显示全部）。 */
+function effectiveReviewFilter(page) {
+  if (
+    reviewBlockFilter === "inside" &&
+    !reviewFilterExplicit &&
+    autoMarginProvisional(page)
+  ) {
+    return "all";
+  }
+  return reviewBlockFilter;
+}
+
 /** 当前在视口内的页（块框只给这些页渲染）。 */
 const visiblePageNos = new Set();
 /**
@@ -3444,6 +3554,32 @@ function marginModeLabel(mode) {
   return MARGIN_MODE_LABELS[mode] || mode;
 }
 
+/** 时间戳 → "10-23 08:04"（本地时区）；解析不了就原样显示。 */
+function formatMarginTime(raw) {
+  if (!raw) return "";
+  const when = new Date(raw);
+  if (Number.isNaN(when.getTime())) return raw;
+  return when.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** 全局版心的来源说明（自动推算 / 手动设置），显示在右栏。 */
+function marginSourceText() {
+  if (!currentProject || !currentProject.margin_box) return "";
+  if (globalMarginIsAuto()) {
+    const when = formatMarginTime(currentProject.margin_box_set_at);
+    return (
+      `自动推算${when ? ` · ${when}` : ""} · 未确认。` +
+      "它只用于显示和审校过滤；点「采用为全局版心」之后导出才按它判定。"
+    );
+  }
+  return "手动设置";
+}
+
 function renderMarginModeButtons(container, currentMode, onPick) {
   container.innerHTML = "";
   for (const mode of ["inherit", "custom", "none"]) {
@@ -3476,6 +3612,12 @@ function renderMarginPanel() {
   const strong = document.createElement("strong");
   strong.textContent = "全局版心：";
   global.append(strong, globalBox ? formatMarginBox(globalBox) : "未设置");
+  if (globalBox) {
+    const source = document.createElement("div");
+    source.className = "muted";
+    source.textContent = marginSourceText();
+    global.append(source);
+  }
   if (globalBox || counts.custom || counts.none) {
     const detail = document.createElement("div");
     detail.className = "muted";
@@ -3561,8 +3703,14 @@ function renderMarginSuggestion() {
   block.hidden = false;
   const suggestion = marginSuggestion;
   const reliable = suggestion.reliable;
+  // 任务 53：建议由识别收尾 / 打开项目自动算，标题里写清"什么时候、由什么触发"，
+  // 用户才知道自己没点按钮时这个框是哪来的。
+  const origin = suggestion.suggested_at
+    ? ` · ${formatMarginTime(suggestion.suggested_at)} 自动推算`
+    : "";
   el("margin-suggestion-title").textContent =
     `建议：${suggestion.pages} 页参与 · 把握${suggestion.confidence_label}` +
+    origin +
     (reliable ? "" : "（不可靠，建议手动调）");
   el("margin-suggestion-title").classList.toggle("margin-warn", !reliable);
   el("margin-suggestion-edges").textContent = formatMarginBox(suggestion.margin_box);
@@ -3641,8 +3789,16 @@ async function applyMarginSuggestion() {
       }
     );
     currentProject.margin_box = data.project.margin_box;
+    currentProject.margin_box_source = data.project.margin_box_source;
+    currentProject.margin_box_set_at = data.project.margin_box_set_at;
+    if (data.margin_box && data.margin_box.suggestion) {
+      // 采用之后建议还在（与当前值相同）：面板继续显示，来源改成手动
+      marginSuggestion = data.margin_box.suggestion;
+      currentProject.margin_box_suggestion = data.margin_box.suggestion;
+    }
     refreshMarginTiles();
     renderMarginPanel();
+    paintReviewMargin(detailPageRecord());
     const inheriting = currentProject.pages.filter(
       (page) => page.margin_box_mode === "inherit"
     ).length;
@@ -3652,6 +3808,33 @@ async function applyMarginSuggestion() {
   } catch (error) {
     showError(el("pages-error"), error);
   }
+}
+
+/**
+ * 任务收尾 / 页面重新打开时从服务端重读版心状态（自动推算写在识别子进程里）。
+ *
+ * 只在任务**结束后**调用一次：轮询中途不重读，免得把用户正在拖的框改回去。
+ * 返回是否有变化这件事不重要——界面统一重画一遍，成本很低。
+ */
+async function refreshMarginState() {
+  if (!currentProject) return;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/margin-box`
+    );
+    currentProject.margin_box = data.margin_box || null;
+    currentProject.margin_box_source = data.source || null;
+    currentProject.margin_box_set_at = data.set_at || null;
+    currentProject.margin_box_suggestion = data.suggestion || null;
+    marginSuggestion = data.suggestion || null;
+  } catch {
+    return;
+  }
+  refreshMarginTiles();
+  renderMarginPanel();
+  paintReviewMargin(detailPageRecord());
+  // 版心外块的淡色样式要按新框重算（只改 class，不重建输入框之外的东西）
+  if (detailPageNo !== null) drawDetailOverlay(reviewBlocks);
 }
 
 async function setSinglePageMarginMode(page, mode) {
@@ -3750,6 +3933,8 @@ async function setPageAsGlobal(page) {
       }
     );
     currentProject.margin_box = put.project.margin_box;
+    currentProject.margin_box_source = put.project.margin_box_source;
+    currentProject.margin_box_set_at = put.project.margin_box_set_at;
     const patched = await apiJson(
       `/api/projects/${currentProject.project_id}/pages/${page.page_no}/margin-box`,
       {
@@ -3761,6 +3946,7 @@ async function setPageAsGlobal(page) {
     mergePageRecord(patched.page);
     refreshMarginTiles();
     renderMarginPanel();
+    paintReviewMargin(detailPageRecord());
     setMarginStatus(`已把第 ${page.page_no} 页的版心设为全局版心。`);
   } catch (error) {
     showError(el("pages-error"), error);
@@ -4092,6 +4278,9 @@ async function pollTask() {
     // 识别完块变了：页面视图的建议角标不能拿旧数据
     forgetAllPageSuggestions();
     await refreshPageStates();
+    // 任务 53：识别子进程在收尾时自动算了一次版心（写在数据库里）。
+    // 这里把新版心 / 建议读回来，页面视图与审校视图都会跟着重画。
+    await refreshMarginState();
     await refreshRecognizedPages(donePages, { reloadDetail: false });
     if (detailPageNo !== null && !donePages.includes(detailPageNo)) {
       await loadPageDetail(detailPageNo, { forceSuggestions: true });
@@ -4409,6 +4598,15 @@ let detailSuggestionByBlock = new Map();
 let detailNumberHints = new Map();
 /** 最近一次渲染的整页版面确认状态（候选对比等局部刷新时不要拿旧的页面列表覆盖）。 */
 let detailLayoutConfirmed = false;
+/**
+ * 审校视图的版心显示开关（任务 53）：默认开，按项目记住。
+ * 只是**显示**——版心不参与导出（见 `export_margin_box` 的说明）。
+ */
+let reviewMarginOn = true;
+/** 块列表的过滤档位：`inside`（默认）/ `outside` / `all`。只影响列表，不删数据。 */
+let reviewBlockFilter = "inside";
+/** 用户是否亲手点过过滤条：分"默认档位"与"用户明确要看版心内"。 */
+let reviewFilterExplicit = false;
 
 const BLOCK_TYPE_LABELS = {
   heading: "标题", paragraph: "段落", header: "页眉", footer: "页脚",
@@ -4426,6 +4624,9 @@ const REVIEW_STATUS_LABELS = {
 
 async function openPageDetail(pageNo) {
   detailPageNo = pageNo;
+  // 换页回到默认档位「版心内」：上一页切到「全部」不该带到下一页
+  reviewBlockFilter = "inside";
+  reviewFilterExplicit = false;
   showView("review");
   el("page-detail-error").hidden = true;
   renderReviewPager();
@@ -4635,6 +4836,11 @@ function setupViewerTools() {
     el("toggle-overlay").textContent = on ? "显示块框" : "块框已隐藏";
     if (on) scheduleOverlayLayout(el("detail-overlay"));
   });
+  // 任务 53：审校视图也显示版心，默认开；关掉只影响显示。
+  el("review-margin-toggle").addEventListener("click", toggleReviewMargin);
+  for (const button of el("review-filter").querySelectorAll("[data-margin-filter]")) {
+    button.addEventListener("click", () => setReviewBlockFilter(button.dataset.marginFilter));
+  }
   window.addEventListener("resize", () => {
     if (zoomLevel === null) applyZoom();
   });
@@ -4654,6 +4860,106 @@ function setupReviewPager() {
     }
     openPageDetail(pageNo);
   });
+}
+
+// ---------------------------------------------------------------- 审校视图的版心（任务 53）
+//
+// 用户 2026-10-23：「版心计算的结果，应同步到审校页面，审校内容，默认只审校版心内部的内容」。
+// 这里画框 + 过滤列表；**不写库、不影响导出**（自动框只做显示，导出见 `export_margin_box`）。
+
+/** 画 / 收起审校原图上的版心。只读：没有任何把手。 */
+function paintReviewMargin(page) {
+  const layer = el("detail-margin");
+  const canvas = el("detail-canvas");
+  if (!layer || !canvas) return;
+  const box = reviewMarginOn && page ? marginBoxOfPage(page) : null;
+  const show = Boolean(box);
+  layer.hidden = !show;
+  canvas.classList.toggle("has-margin", show);
+  if (!show) {
+    layer._box = null;
+    return;
+  }
+  const mode = page.margin_box_mode;
+  layer.classList.toggle("page-margin--custom", mode === "custom");
+  layer.classList.toggle(
+    "page-margin--auto",
+    mode !== "custom" && globalMarginIsAuto()
+  );
+  applyMarginRect(layer.querySelector(".page-margin__box"), box);
+}
+
+function toggleReviewMargin() {
+  reviewMarginOn = !reviewMarginOn;
+  saveReviewMarginPreference();
+  const button = el("review-margin-toggle");
+  if (button) {
+    button.classList.toggle("is-on", reviewMarginOn);
+    button.textContent = reviewMarginOn ? "显示版心" : "版心已隐藏";
+  }
+  paintReviewMargin(detailPageRecord());
+}
+
+/** 切换块列表的过滤档位（只重画列表，不动原图 / 编辑状态之外的东西）。 */
+function setReviewBlockFilter(mode) {
+  if (!["inside", "outside", "all"].includes(mode)) return;
+  reviewBlockFilter = mode;
+  reviewFilterExplicit = true;
+  renderReviewBlocks(reviewBlocks);
+}
+
+/** 过滤条：三个带数量的按钮 + 一行说明（没有版心时整条收起，列表显示全部）。 */
+function renderReviewFilter(split, mode) {
+  const bar = el("review-filter");
+  if (!bar) return;
+  if (!split.box) {
+    bar.hidden = true;
+    return;
+  }
+  const counts = {
+    inside: split.inside.length,
+    outside: split.outside.length,
+    all: split.inside.length + split.outside.length,
+  };
+  const labels = { inside: "版心内", outside: "版心外", all: "全部" };
+  for (const button of bar.querySelectorAll("[data-margin-filter]")) {
+    const buttonMode = button.dataset.marginFilter;
+    button.textContent = `${labels[buttonMode]} ${counts[buttonMode]}`;
+    button.classList.toggle("is-on", mode === buttonMode);
+    button.disabled = buttonMode === "outside" && counts.outside === 0;
+  }
+  const page = detailPageRecord();
+  const notes = [];
+  if (page && page.margin_box_mode !== "custom" && globalMarginIsAuto()) {
+    const suggestion = currentProject.margin_box_suggestion || {};
+    notes.push("版心为自动推算，未确认（导出仍按块类型）");
+    if (autoMarginProvisional(page)) {
+      notes.push(
+        `只用了 ${suggestion.pages || "?"} 页，可能还不准（多识别几页会更稳）；` +
+          (mode === "all" && !reviewFilterExplicit
+            ? "先显示全部块，点「版心内」可以只看框内的块"
+            : "切到「全部」可以看到所有块")
+      );
+    }
+  }
+  el("review-filter-note").textContent = notes.join("；");
+  bar.hidden = false;
+}
+
+/**
+ * 按块 id 找到列表项；如果它被"版心内"过滤挡住了，自动切到"全部"再找。
+ *
+ * 这是"隐藏不等于不可操作"的兜底：框选新增 / 撤销回到某个块时，即使这个块
+ * 在版心外，也要能立刻看到并编辑，而不是悄悄什么也没发生。
+ */
+function ensureBlockListed(blockId) {
+  let item = el("detail-blocks").querySelector(`li[data-block-id="${blockId}"]`);
+  if (item) return item;
+  if (reviewBlockFilter === "all") return null;
+  reviewBlockFilter = "all";
+  reviewFilterExplicit = true;
+  renderReviewBlocks(reviewBlocks);
+  return el("detail-blocks").querySelector(`li[data-block-id="${blockId}"]`);
 }
 
 function renderPageDetail(data) {
@@ -4700,6 +5006,10 @@ function renderPageDetail(data) {
   }
 
   detailLayoutConfirmed = Boolean(data.page && data.page.layout_confirmed);
+  // 版心要在块框之前画：块框的"版心外"淡色样式取决于画布上的 has-margin 类
+  paintReviewMargin(detailPageRecord() || data.page);
+  el("review-margin-toggle").classList.toggle("is-on", reviewMarginOn);
+  el("review-margin-toggle").textContent = reviewMarginOn ? "显示版心" : "版心已隐藏";
   drawDetailLines();
   drawDetailOverlay(data.blocks);
   renderReviewBlocks(data.blocks);
@@ -4720,6 +5030,11 @@ function reviewMetaText(data) {
     `${review.block_count || 0} 块`,
     `未审 ${review.unreviewed || 0}`,
   ];
+  // 任务 53：标题行直接给"版心内 / 版心外"两个数，与下面的过滤条一致
+  const split = reviewMarginSplit(data.page, data.blocks || []);
+  if (split.box) {
+    parts.push(`版心内 ${split.inside.length} · 版心外 ${split.outside.length}`);
+  }
   if (layoutLines.conflict) parts.push(`冲突 ${layoutLines.conflict} 行`);
   if (layoutLines.unassigned) parts.push(`未归属 ${layoutLines.unassigned} 行`);
   if (review.uncertain) parts.push(`不确定 ${review.uncertain}`);
@@ -5255,11 +5570,14 @@ function drawDetailOverlay(blocks) {
   overlay._lineBboxes = (detailLines || [])
     .map((line) => line.bbox)
     .filter(Boolean);
+  const page = detailPageRecord();
   blocks.forEach((block, index) => {
     if (!block.bbox) return;
     const box = document.createElement("div");
     box.className = "box";
     box.classList.add(`box--type-${block.block_type}`);
+    // 任务 53：按块中心点标出"版心外"；样式只在版心显示时生效（见 app.css）
+    if (!blockInsideMargin(block, page)) box.classList.add("box--outside-margin");
     if (!block.include) box.classList.add("box--excluded");
     if (CHROME_BLOCK_TYPES.has(block.block_type)) box.classList.add("box--chrome");
     if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) box.classList.add("box--textfree");
@@ -5294,7 +5612,8 @@ function drawDetailOverlay(blocks) {
         return;
       }
       event.stopPropagation();
-      const item = el("detail-blocks").querySelector(`li[data-block-id="${block.block_id}"]`);
+      // 点到一个被"版心内"过滤挡住的块：先切到「全部」，让它出现在列表里
+      const item = ensureBlockListed(block.block_id);
       if (item) {
         selectReviewBlock(block.block_id);
         item.querySelector("textarea").focus();
@@ -5558,6 +5877,10 @@ function blockCard(block, index, blocksCount) {
   }
   const blockDivergence = divergenceOf(block);
   if (blockDivergence.chars) item.classList.add("review-block--divergence");
+  // 任务 53：中心点在版心外的块（页眉 / 页脚 / 页码 / 版心外的注文）
+  const cardPage = detailPageRecord();
+  const cardOutside = !blockInsideMargin(block, cardPage);
+  if (cardOutside) item.classList.add("review-block--outside-margin");
 
   const head = document.createElement("div");
   head.className = "review-block__head";
@@ -5593,6 +5916,7 @@ function blockCard(block, index, blocksCount) {
   // 头一行：类型标签 + （靠右）状态与几个"要人看一眼"的标记（效果图 03）
   // 与类型本身有关的标记（导出时排除 / 已排除）贴着类型标签放左边，状态放右边
   const typeBits = [];
+  if (cardOutside) typeBits.push(["版心外", "chip--gray"]);
   if (!block.include) typeBits.push(["已排除", "chip--gray"]);
   else if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) {
     typeBits.push(["不输出正文", "chip--gray"]);
@@ -5973,14 +6297,37 @@ function textRows(text) {
 function renderReviewBlocks(blocks) {
   const list = el("detail-blocks");
   list.innerHTML = "";
-  if (!blocks.length) {
+  const page = detailPageRecord();
+  // 任务 53：默认只列版心内的块；版心外 / 全部可切换。过滤只影响"显示哪些卡片"，
+  // 所有块仍在 `reviewBlocks` 里、原图上的框也照画——切过去就能编辑 / 采用 / 框选。
+  const split = reviewMarginSplit(page, blocks);
+  const mode = effectiveReviewFilter(page);
+  let visible = blocks;
+  if (split.box && mode === "inside") visible = split.inside;
+  else if (split.box && mode === "outside") visible = split.outside;
+  renderReviewFilter(split, mode);
+
+  if (!visible.length) {
     const empty = document.createElement("li");
     empty.className = "muted";
-    empty.textContent = "这一页没有块。";
+    if (!blocks.length) {
+      empty.textContent = "这一页没有块。";
+    } else if (!split.box) {
+      empty.textContent = "这一页没有块。";
+    } else {
+      const label = mode === "outside" ? "版心外" : "版心内";
+      empty.textContent =
+        `这一页没有${label}的块。` +
+        (mode === "inside" && split.outside.length
+          ? `切到「版心外 ${split.outside.length}」或「全部 ${blocks.length}」可以查看。`
+          : "切到「全部」可以查看所有块。");
+    }
     list.append(empty);
     return;
   }
-  blocks.forEach((block, index) => list.append(blockCard(block, index, blocks.length)));
+  visible.forEach((block, index) =>
+    list.append(blockCard(block, index, visible.length))
+  );
 }
 
 function selectReviewBlock(blockId) {
@@ -6109,7 +6456,7 @@ function captureEditorFocus() {
 /** 重渲染之后把光标放回原来那一块（块没了就什么都不做）。 */
 function restoreEditorFocus(snapshot) {
   if (!snapshot) return;
-  const item = el("detail-blocks").querySelector(`li[data-block-id="${snapshot.blockId}"]`);
+  const item = ensureBlockListed(snapshot.blockId);
   const textarea = item && item.querySelector("textarea");
   if (!textarea) return;
   textarea.focus();
@@ -6201,11 +6548,9 @@ async function structureAction(block, operation, payload = {}) {
     forgetPageBlocks(detailPageNo);
     await loadPageDetail(detailPageNo);
     await refreshPageStates();
-    // 新增的块直接聚焦，省一次点击
+    // 新增的块直接聚焦，省一次点击（落在版心外就自动切到「全部」）
     if (operation === "create" && data && data.created) {
-      const item = el("detail-blocks").querySelector(
-        `li[data-block-id="${data.created.block_id}"]`
-      );
+      const item = ensureBlockListed(data.created.block_id);
       if (item) item.querySelector("textarea").focus();
     }
   } catch (error) {
@@ -6476,7 +6821,9 @@ async function createBlockFromBox() {
     await loadPageDetail(detailPageNo);
     await refreshPageStates();
     if (created) {
-      const item = el("detail-blocks").querySelector(`li[data-block-id="${created.block_id}"]`);
+      // 框选出来的块可能落在版心外（比如补一个书眉）：自动切到「全部」，
+      // 别让用户以为"创建成功但列表里什么都没有"。
+      const item = ensureBlockListed(created.block_id);
       if (item) {
         item.querySelector("textarea").focus();
         item.scrollIntoView({ block: "center", behavior: "smooth" });

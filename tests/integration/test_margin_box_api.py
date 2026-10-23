@@ -94,8 +94,14 @@ def test_suggestion_is_read_only_and_reports_dispersion(
     library_dir: Path,
     recognized_project: str,
 ) -> None:
-    """三页假识别：给出四边，但页数少于 5，如实标"不可靠"；并且不写库。"""
+    """三页假识别：给出四边，但页数少于 5，如实标"不可靠"。
+
+    任务 53 起识别收尾会自动写一次版心（source=auto），所以这里比的是"调用推算接口前
+    后"，证明 GET suggestion 本身仍然只读；自动那一次由下面的用例单独验证。
+    """
     before = margin_state(client, auth_headers, recognized_project)
+    assert before["source"] == "auto", "识别收尾应自动写入版心"
+    assert before["suggestion"] is not None
     response = client.get(
         f"/api/projects/{recognized_project}/margin-box/suggestion", headers=auth_headers
     )
@@ -116,12 +122,15 @@ def test_suggestion_is_read_only_and_reports_dispersion(
         assert edge["samples"] > 0
 
     after = margin_state(client, auth_headers, recognized_project)
-    assert after == before, "推算必须只读"
+    assert after == before, "GET 推算接口必须只读"
 
     with db_module.open_database(library_dir / recognized_project, apply_migrations=False) as conn:
-        project_row = conn.execute("SELECT margin_box FROM project").fetchone()
+        project_row = conn.execute(
+            "SELECT margin_box, margin_box_source FROM project"
+        ).fetchone()
         page_rows = conn.execute("SELECT margin_box_mode FROM page").fetchall()
-    assert project_row["margin_box"] is None
+    assert json.loads(project_row["margin_box"]) == suggestion["margin_box"]
+    assert project_row["margin_box_source"] == "auto"
     assert {row["margin_box_mode"] for row in page_rows} == {"inherit"}
 
 

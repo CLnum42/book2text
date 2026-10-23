@@ -117,6 +117,13 @@ class Project:
     settings: dict[str, object] = field(default_factory=dict)
     # 项目级默认版心（归一化四边）；没设置过是 None（版心视图里显示"未设置"）。
     margin_box: tuple[float, float, float, float] | None = None
+    # 当前全局版心是谁写的：`auto` / `manual` / None（没设置过）。
+    # 老项目（迁移 0012 之前手动设过）是 None + `margin_box` 非空，按手动对待。
+    margin_box_source: str | None = None
+    # 当前全局版心最后一次写入的时间（ISO 8601），与 `updated_at` 分开。
+    margin_box_set_at: str | None = None
+    # 最近一次自动推算的完整结果（JSON 解析后的 dict，见 margin_box.SUGGESTION_SCHEMA）。
+    margin_box_suggestion: dict[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -134,6 +141,11 @@ class Project:
             "directory": str(self.directory) if self.directory else "",
             "settings": dict(self.settings),
             "margin_box": list(self.margin_box) if self.margin_box else None,
+            "margin_box_source": self.margin_box_source,
+            "margin_box_set_at": self.margin_box_set_at,
+            "margin_box_suggestion": (
+                dict(self.margin_box_suggestion) if self.margin_box_suggestion else None
+            ),
         }
 
 
@@ -451,6 +463,9 @@ def _row_to_project(row, directory: Path) -> Project:
         directory=directory,
         settings=_parse_settings(_column(row, "settings_json")),
         margin_box=_parse_margin_box(_column(row, "margin_box")),
+        margin_box_source=_column(row, "margin_box_source"),
+        margin_box_set_at=_column(row, "margin_box_set_at"),
+        margin_box_suggestion=_parse_suggestion(_column(row, "margin_box_suggestion")),
     )
 
 
@@ -480,6 +495,21 @@ def _parse_margin_box(raw) -> tuple[float, float, float, float] | None:
     ):
         return None
     return box
+
+
+def _parse_suggestion(raw) -> dict[str, object] | None:
+    """解析最近一次自动推算的结果；坏数据当成"没有建议"，不让项目打不开。
+
+    只要求它是个 JSON 对象：具体字段由 `margin_box` 模块写，界面按 schema 读。
+    这里刻意不校验四边——建议是只读展示，真正生效的版心另有 `margin_box` 列。
+    """
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _parse_settings(raw) -> dict[str, object]:

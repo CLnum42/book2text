@@ -500,3 +500,26 @@ def test_migration_0011_adds_margin_box_columns(conn: sqlite3.Connection) -> Non
     ).fetchone()
     assert row["margin_box"] is None
     assert row["margin_box_mode"] == "inherit"
+
+
+def test_migration_0012_adds_margin_suggestion_columns(conn: sqlite3.Connection) -> None:
+    """自动推算：来源 / 时间 / 最近建议三列；老行全部为 NULL（不假装是手动或自动）。"""
+    migrate(conn, MIGRATIONS)
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(project)").fetchall()
+    }
+    for name in ("margin_box_source", "margin_box_set_at", "margin_box_suggestion"):
+        assert name in columns, name
+
+    conn.execute(
+        "INSERT INTO project (project_id, name, source_file_name, source_sha256,"
+        " page_count, created_at, updated_at, schema_version)"
+        " VALUES ('p1', '测试', 'a.pdf', 'x', 1, '2026-01-01', '2026-01-01', 12)"
+    )
+    row = conn.execute(
+        "SELECT margin_box_source, margin_box_set_at, margin_box_suggestion"
+        " FROM project WHERE project_id = 'p1'"
+    ).fetchone()
+    assert row["margin_box_source"] is None
+    assert row["margin_box_set_at"] is None
+    assert row["margin_box_suggestion"] is None

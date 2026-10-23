@@ -26,7 +26,7 @@ def _page(no=1, *, mode="inherit", box=None, label="") -> Page:
     )
 
 
-def _project(box=None) -> Project:
+def _project(box=None, source=None) -> Project:
     return Project(
         project_id="b2t_TEST01",
         name="测试",
@@ -35,8 +35,9 @@ def _project(box=None) -> Project:
         page_count=1,
         created_at="2026-01-01T00:00:00+00:00",
         updated_at="2026-01-01T00:00:00+00:00",
-        schema_version=11,
+        schema_version=12,
         margin_box=box,
+        margin_box_source=source,
     )
 
 
@@ -120,6 +121,41 @@ def test_missing_margin_falls_back_to_block_types() -> None:
     assert layout.unset is True
     assert layout.inside_ids == {"b1", "b2", "b3"}
     assert layout.page_number_values == {"b3": "11"}
+
+
+def test_auto_margin_is_display_only_for_export() -> None:
+    """任务 53：自动推算的全局版心（source=auto）不参与导出。
+
+    页眉在版心外、正文在版心内——如果自动框生效，页眉会被排除；
+    但自动框没人确认过，导出必须退回块类型判定（页眉仍是 paragraph → 留在正文）。
+    手动采用之后（source=manual）才按版心判定。
+    """
+    box = (0.1, 0.1, 0.9, 0.9)
+    blocks = [
+        _block("header", "paragraph", [0.2, 0.02, 0.8, 0.05], "书眉"),
+        _block("body", "paragraph", [0.2, 0.3, 0.8, 0.35], "正文"),
+    ]
+
+    auto = margin_rules.classify_page(
+        _page(), blocks, _project(box, source="auto"), enabled=True
+    )
+    assert auto.applied is False
+    assert auto.unset is True
+    assert auto.inside_ids == {"header", "body"}
+
+    manual = margin_rules.classify_page(
+        _page(), blocks, _project(box, source="manual"), enabled=True
+    )
+    assert manual.applied is True
+    assert manual.outside_ids == {"header"}
+    assert manual.inside_ids == {"body"}
+
+    # 迁移 0012 之前手动设过的项目：source 是 None + 版心非空，按手动对待
+    legacy = margin_rules.classify_page(
+        _page(), blocks, _project(box, source=None), enabled=True
+    )
+    assert legacy.applied is True
+    assert legacy.outside_ids == {"header"}
 
 
 def test_page_number_requires_outside_and_edge_band() -> None:

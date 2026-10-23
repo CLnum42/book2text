@@ -544,3 +544,50 @@ def test_page_suggestion_badge_counts_only_high_confidence() -> None:
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
     assert 'item.confidence === "high"' in script
     assert "paintTileSuggestionMark" in script
+
+
+def test_review_view_shows_margin_and_filters_blocks() -> None:
+    """任务 53：审校视图显示版心、默认只列版心内的块，且"隐藏"不等于"不可操作"。
+
+    静态约定测试：脚本里必须真的调用了这些路径，页面里必须有对应节点。
+    真实几何 / 过滤在真浏览器验收里；这里防止"加了个按钮但没接上"。
+    """
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "detail-margin",
+        "review-margin-toggle",
+        "review-filter",
+        "review-filter-note",
+    ):
+        assert f'id="{element_id}"' in page_html, element_id
+    assert 'data-margin-filter="inside"' in page_html
+    assert 'data-margin-filter="outside"' in page_html
+    assert 'data-margin-filter="all"' in page_html
+
+    # 默认档位；开关按项目记住且默认开
+    assert 'let reviewBlockFilter = "inside";' in script
+    assert "b2t.reviewMargin.v1." in script
+    assert '!== "0"' in script
+
+    # 判定与过滤用中心点（与导出的第一层同口径）；没有版心时不隐藏任何块
+    assert "function blockInsideMargin(" in script
+    assert "function reviewMarginSplit(" in script
+    assert "if (!box) return true;" in script
+
+    # 被过滤挡住的块要能通过"全部"重新出现（框选新增 / 撤销聚焦的兜底）
+    assert "function ensureBlockListed(" in script
+    assert "ensureBlockListed(" in script
+
+    # 自动推算版心的来源 / 时间 / 建议直接显示
+    assert "margin_box_source" in script
+    assert "margin_box_suggestion" in script
+    assert "function marginSourceText(" in script
+    assert "版心为自动推算，未确认" in script
+
+    # 审校原图上的版心只读（没有把手）；版心外的框变淡 / 虚线
+    assert "page-margin--review" in styles
+    assert ".box--outside-margin" in styles
+    assert ".review-filter {" in styles

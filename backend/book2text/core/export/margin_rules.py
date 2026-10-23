@@ -138,8 +138,14 @@ def classify_page(
     *,
     enabled: bool,
 ) -> PageMarginLayout:
-    """判一页：版心层 + 类型层。**不写库**，只返回集合与计数。"""
-    box = margin_box_module.effective_margin_box(project, page)
+    """判一页：版心层 + 类型层。**不写库**，只返回集合与计数。
+
+    版心取 `export_margin_box` 而不是 `effective_margin_box`：任务 53 起识别后会自动
+    推算一个全局版心（source=auto），那个框**只用于显示与审校过滤**，不参与导出——
+    否则"本刀不改导出"不成立，而且一个没人确认的框不该决定哪些字进正文。
+    用户点「采用为全局版心」后 source 变成 manual，导出照旧按它判定。
+    """
+    box = margin_box_module.export_margin_box(project, page)
     mode = page.margin_box_mode
     applied = bool(enabled and mode != MODE_NONE and box is not None)
     unset = bool(enabled and mode != MODE_NONE and box is None)

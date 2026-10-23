@@ -56,6 +56,13 @@ MODE_CUSTOM = "custom"
 MODE_NONE = "none"
 MARGIN_BOX_MODES = (MODE_INHERIT, MODE_CUSTOM, MODE_NONE)
 
+# 当前全局版心是谁写的（`project.margin_box_source`，迁移 0012）
+SOURCE_AUTO = "auto"
+SOURCE_MANUAL = "manual"
+
+# 自动推算结果（`project.margin_box_suggestion`）的 schema 标记
+SUGGESTION_SCHEMA = "book2text.margin-suggestion.v1"
+
 # 推算参数（全部用"页宽 / 页高"的归一化比例，与 DPI 无关）
 MIN_PAGES = 5
 MIN_LINES_PER_PAGE = 3
@@ -147,6 +154,28 @@ def effective_margin_box(
         return None
     if page.margin_box_mode == MODE_CUSTOM:
         return page.margin_box
+    return project.margin_box
+
+
+def export_margin_box(
+    project: library_module.Project, page: library_module.Page
+) -> BBox | None:
+    """**导出**用的版心（任务 53 的安全阀）。
+
+    与 `effective_margin_box` 的区别只有一处：全局版心是**自动推算**
+    （``margin_box_source == "auto"``）且这一页「沿用全局」时，导出**不认**它，退回块类型判定。
+
+    为什么：自动推算随识别页增加会小幅移动（见 docs/development-log.md 任务 53 的实测），
+    而版心在导出里是"正文 = 版心内"的硬判据——一个还没人确认过的框不该决定哪些字进正文。
+    自动框只用于**显示与审校过滤**；用户在页面视图点「采用为全局版心」之后
+    （source 变成 manual）导出才按它判定。这样"这一刀不改导出"对所有既有项目成立。
+    """
+    if page.margin_box_mode == MODE_NONE:
+        return None
+    if page.margin_box_mode == MODE_CUSTOM:
+        return page.margin_box
+    if project.margin_box_source == SOURCE_AUTO:
+        return None
     return project.margin_box
 
 
@@ -430,6 +459,126 @@ def suggest_margin_box(
     return suggest_from_page_boxes(page_boxes)
 
 
+# ---------------------------------------------------------------- 自动推算（任务 53）
+
+def can_auto_write(project: library_module.Project) -> bool:
+    """自动推算能不能覆盖当前全局版心。
+
+    **只有两种情形可以写**：
+
+    1. 项目还没有全局版心（``margin_box is None``）；
+    2. 当前全局版心本来就是自动写的（``source == "auto"``）。
+
+    手动设置过（``source == "manual"``）绝不覆盖。**老项目**（迁移 0012 之前
+    在任务 50 里手动设过版心）是 ``source is None`` + 版心非空——同样按手动对待，
+    否则升级后第一次识别就会悄悄改掉用户定好的版心。
+    """
+    if project.margin_box is None:
+        return True
+    return project.margin_box_source == SOURCE_AUTO
+
+
+def suggestion_record(
+    suggestion: MarginSuggestion,
+    *,
+    trigger: str,
+    job_id: str | None,
+    applied: bool,
+) -> dict[str, object]:
+    """一条可存库 / 可回给界面的建议记录（schema + 时间 + 触发来源 + 是否已写入生效）。"""
+    payload = suggestion.to_dict()
+    payload.update(
+        {
+            "schema": SUGGESTION_SCHEMA,
+            "suggested_at": _now(),
+            "trigger": trigger,
+            "job_id": job_id,
+            "applied": applied,
+        }
+    )
+    return payload
+
+
+def write_margin_suggestion(
+    project_id: str,
+    *,
+    trigger: str,
+    job_id: str | None = None,
+    library: Path | None = None,
+) -> dict[str, object]:
+    """算一次版心并把结果写进项目（识别收尾 / 打开老项目时调用）。
+
+    - **总是**更新 `margin_box_suggestion`（"建议"是只读参考，任何人都可以看）；
+    - 只在 `can_auto_write` 为真时把建议写进 `margin_box`，并把来源标成 ``auto``；
+    - 已经有手动版心时**只更新建议、不动当前值**。
+
+    一次识别任务只在收尾调用一次（不是每页一次），避免识别过程中框来回跳。
+    """
+    project = library_module.load_project(project_id, library=library)
+    suggestion = suggest_margin_box(project_id, library=library)
+    if suggestion.margin_box is None:
+        # 还没有可用的行数据：不写一个空建议，免得界面显示"建议 0 页"
+        return {
+            "suggestion": None,
+            "applied": False,
+            "source": project.margin_box_source,
+            "margin_box": list(project.margin_box) if project.margin_box else None,
+        }
+
+    applied = can_auto_write(project)
+    record = suggestion_record(
+        suggestion, trigger=trigger, job_id=job_id, applied=applied
+    )
+    now = _now()
+    directory = library_module.require_project_dir(project_id, library=library)
+    with db_module.open_database(directory) as conn:
+        if applied:
+            conn.execute(
+                "UPDATE project SET margin_box = ?, margin_box_source = ?,"
+                " margin_box_set_at = ?, margin_box_suggestion = ?, updated_at = ?",
+                (
+                    serialize_margin_box(suggestion.margin_box),
+                    SOURCE_AUTO,
+                    now,
+                    json.dumps(record, ensure_ascii=False),
+                    now,
+                ),
+            )
+        else:
+            # 手动值不动、也不动 updated_at：项目卡片的排序不该因为一次自动推算而变
+            conn.execute(
+                "UPDATE project SET margin_box_suggestion = ?",
+                (json.dumps(record, ensure_ascii=False),),
+            )
+        conn.commit()
+
+    return {
+        "suggestion": record,
+        "applied": applied,
+        "source": SOURCE_AUTO if applied else project.margin_box_source,
+        "margin_box": list(suggestion.margin_box) if applied else (
+            list(project.margin_box) if project.margin_box else None
+        ),
+    }
+
+
+def ensure_margin_suggestion(
+    project_id: str, *, library: Path | None = None
+) -> dict[str, object] | None:
+    """打开项目时给**老项目**补一次：没有存过建议就现在算一次。
+
+    识别任务收尾会自动算（`recognition._auto_margin_after_job`）；但升级前就识别过的项目
+    没有那次收尾，打开时不该还让用户先点「推算版心」。已经存过建议的项目直接跳过
+    （不反复重算、不动框）。
+    """
+    project = library_module.load_project(project_id, library=library)
+    if project.kind != "main":
+        return None
+    if project.margin_box_suggestion is not None:
+        return None
+    return write_margin_suggestion(project_id, trigger="open", library=library)
+
+
 # ---------------------------------------------------------------- 写入
 
 def _now() -> str:
@@ -442,13 +591,24 @@ def set_project_margin_box(
     *,
     library: Path | None = None,
 ) -> library_module.Project:
-    """设置 / 清空项目级默认版心。只影响 `inherit` 的页，不改任何导出的内容。"""
+    """设置 / 清空项目级默认版心。只影响 `inherit` 的页，不改任何导出的内容。
+
+    这是**用户手动**写入：来源记成 ``manual``（任务 53 的"自动推算不覆盖手动值"就靠它）。
+    清空（``None``）把来源也清掉：之后识别收尾可以重新自动推算。
+    """
     bbox = normalize_margin_box(margin_box)
+    now = _now()
     directory = library_module.require_project_dir(project_id, library=library)
     with db_module.open_database(directory) as conn:
         conn.execute(
-            "UPDATE project SET margin_box = ?, updated_at = ?",
-            (serialize_margin_box(bbox), _now()),
+            "UPDATE project SET margin_box = ?, margin_box_source = ?,"
+            " margin_box_set_at = ?, updated_at = ?",
+            (
+                serialize_margin_box(bbox),
+                SOURCE_MANUAL if bbox is not None else None,
+                now if bbox is not None else None,
+                now,
+            ),
         )
         conn.commit()
     return library_module.load_project(project_id, library=library)
@@ -549,11 +709,18 @@ def set_pages_margin_box(
 def margin_box_state(
     project_id: str, *, library: Path | None = None
 ) -> dict[str, object]:
-    """项目版心概览：默认版心 + 三态计数 + 非默认页（界面刷新用）。"""
+    """项目版心概览：默认版心 + 来源 / 时间 + 最近一次建议 + 三态计数 + 非默认页。"""
     project = library_module.load_project(project_id, library=library)
     pages = library_module.list_pages(project_id, library=library)
     return {
         "margin_box": list(project.margin_box) if project.margin_box else None,
+        "source": project.margin_box_source,
+        "set_at": project.margin_box_set_at,
+        "suggestion": (
+            dict(project.margin_box_suggestion)
+            if project.margin_box_suggestion
+            else None
+        ),
         "modes": modes_summary(pages),
         "exceptions": [
             {

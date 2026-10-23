@@ -463,6 +463,13 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
             "applied": sum(1 for layout in layouts.values() if layout.applied),
             "unset": margin_unset_pages,
             "none": margin_none_pages,
+            # 任务 53：全局版心是自动推算、还没人确认 —— 导出**不认**它（见 export_margin_box），
+            # 界面据此说明"为什么版心视图里看得到框、预检却说没生效"。
+            "auto": (
+                prepared.margin_enabled
+                and library_module.load_project(project_id, library=target_library).margin_box_source
+                == "auto"
+            ),
         },
     }
 

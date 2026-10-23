@@ -333,6 +333,11 @@
             <div class="viewer__scroll" id="viewer-scroll">
               <div class="page-canvas" id="detail-canvas" hidden>
                 <img id="detail-image" alt="页面图像">
+                <!-- 版心：与页面视图同一套视觉（框外压暗 + 边框）。
+                     pointer-events: none —— 审校视图里版心只读，块框 / 框选照常可用。 -->
+                <div class="page-margin page-margin--review" id="detail-margin" hidden>
+                  <div class="page-margin__box"></div>
+                </div>
                 <div class="page-lines" id="detail-lines"></div>
                 <div class="page-overlay" id="detail-overlay"></div>
                 <div class="box-select__rect" id="box-select-rect" hidden></div>
@@ -345,6 +350,8 @@
               <button type="button" id="zoom-in" title="放大">＋</button>
               <button type="button" id="zoom-fit">适合宽度</button>
               <button type="button" id="toggle-overlay" class="is-on">显示块框</button>
+              <button type="button" id="review-margin-toggle" class="is-on"
+                      title="在页面上画出版心边框、压暗版心外区域（只影响显示，不影响导出）">显示版心</button>
             </div>
             <div class="vhint">拖动块框调整位置、拖角缩放；点块框跳到右边对应的块</div>
             <div class="box-select" id="box-select-panel" hidden>
@@ -390,6 +397,16 @@
                 <strong>版面确认</strong> = 这页里面哪些块是正文（页眉 / 页脚 / 页码 / 旁批 / 插图 / 装饰先排除）。
                 确认是状态标记，不拦导出；改了任何块的类型、框或顺序都会回到未确认。
               </p>
+            </div>
+
+            <!-- 审校默认只列版心内的块：版心外的（页眉 / 页脚 / 页码 / 注文）切过去才显示。
+                 过滤只影响列表，不隐藏数据：任何块切到「全部」都能照常编辑 / 采用建议 / 框选新增。 -->
+            <div class="review-filter" id="review-filter" hidden>
+              <span class="muted">本页块</span>
+              <button type="button" class="btn btn--sm is-on" data-margin-filter="inside">版心内 0</button>
+              <button type="button" class="btn btn--sm" data-margin-filter="outside">版心外 0</button>
+              <button type="button" class="btn btn--sm" data-margin-filter="all">全部 0</button>
+              <span class="muted review-filter__note" id="review-filter-note"></span>
             </div>
 
             <ol class="blks" id="detail-blocks"></ol>

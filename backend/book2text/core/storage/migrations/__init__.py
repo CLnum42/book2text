@@ -15,6 +15,7 @@ from . import (
     migration_0009_page_layout,
     migration_0010_auto_apply,
     migration_0011_margin_box,
+    migration_0012_margin_suggestion,
 )
 
 MIGRATIONS: list[Migration] = [
@@ -29,6 +30,7 @@ MIGRATIONS: list[Migration] = [
     migration_0009_page_layout.MIGRATION,
     migration_0010_auto_apply.MIGRATION,
     migration_0011_margin_box.MIGRATION,
+    migration_0012_margin_suggestion.MIGRATION,
 ]
 
 LATEST_VERSION = max(migration.version for migration in MIGRATIONS)
