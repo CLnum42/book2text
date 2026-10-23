@@ -120,6 +120,8 @@ schema 11、58 页已识别、全局版心是任务 50 手动设置的值）。
   预检自动标记（1）、导出层 auto 不生效（1）、界面静态约定（1）。
 - 原有测试只改一处断言：`test_suggestion_is_read_only_and_reports_dispersion` 现在先承认
   "识别收尾已自动写入"，再验证 GET suggestion 前后状态不变——没有弱化原意。
+- CI [run #34](https://github.com/CLnum42/book2text/actions/runs/39877813443) **Success**，
+  总时长 3m47s（macOS 2m17s、Windows 3m43s，两个 job 全部 completed successfully）。
 
 ### 用户操作说明
 
