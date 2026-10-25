@@ -91,7 +91,7 @@ main `79baddc`（任务 58 文档补记），827 测试全绿。`margin_box.sugg
 - 新增：检测行优先 / OCR 回退 2 项（`tests/unit/test_margin_detection_source.py`）、
   检测任务收尾自动写版心 1 项（`tests/integration/test_margin_auto_api.py`）。
 - `.venv/bin/python -m pytest -q` → **830 passed, 1 warning，233.55 秒**。
-- **CI 结果在本条写入时尚未返回，推送后补记。**
+- **CI [#40](https://github.com/CLnum42/book2text/actions/runs/40204584093) Success**：总 4m42s，macOS 3m17s、Windows 4m39s；两个 job 都是 `completed successfully`，摘要无 `skipped`。
 
 ### 用户操作说明
 
