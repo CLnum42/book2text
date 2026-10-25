@@ -113,7 +113,7 @@ main `bc2191c`（任务 57 文档），809 测试全绿。没有独立检测层�
 - 原有测试没有弱化；`jobs.repair_unfinished` 的返回形状保持 `{"runs","items"}`。
 - Windows CI 新增 `--ignore=tests/unit/test_layout_rapidocr_det.py`（与其它 OCR 模块同理，
   marker 过滤发生在导入之后，必须显式排除才能不出现 skipped）。
-- **CI 结果在本条写入时尚未返回，推送后补记。**
+- **CI [#39](https://github.com/CLnum42/book2text/actions/runs/40202482509) Success**：总 4m48s，macOS 3m32s、Windows 4m45s；两个 job 都是 `completed successfully`，摘要无 `skipped`。
 
 ### 用户操作说明
 
