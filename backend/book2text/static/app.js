@@ -1117,6 +1117,17 @@ function setupExportPanel() {
 let currentProject = null;
 
 /**
+ * 页面工作流状态（任务 58）。键是 page_id；没有这个项目的状态时为空。
+ * 只用于**显示与筛选**：检测 / 识别 / 导出仍各走各的，状态不驱动流程。
+ */
+let workflowByPageId = new Map();
+let workflowSummary = null;
+
+function workflowOf(page) {
+  return page ? workflowByPageId.get(page.page_id) || null : null;
+}
+
+/**
  * 页面类型（五类，2026-10-22 用户拍板）：**去留由类型决定**，没有单独的纳入 / 排除开关。
  * 只有「正文」进识别与语料；其余四类都不进。
  */
@@ -1156,6 +1167,32 @@ function recognitionOf(page) {
     status: "unrecognized", block_count: 0, active_run_id: null,
     pending_run_id: null, run_count: 0, last_run_at: null, last_error: null,
   };
+}
+
+/**
+ * 版面检测角标（任务 58）：只在"卡住了"的页上出现，避免和识别徽章重复。
+ * 已检测但没识别 → 灰；检测失败 → 红并带原因。
+ */
+function workflowChip(page) {
+  const workflow = workflowOf(page);
+  if (!workflow) return null;
+  if (workflow.failed_stage) {
+    const chip = document.createElement("span");
+    chip.className = "chip chip--bad";
+    chip.textContent = `${workflow.failed_stage_label || "检测"}失败`;
+    chip.title = workflow.failure_reason || "这一页的版面检测失败";
+    return chip;
+  }
+  if (workflow.stage === "detected") {
+    const chip = document.createElement("span");
+    chip.className = "chip chip--gray";
+    chip.textContent = "已检测 · 未识别";
+    chip.title =
+      `工作流：${workflow.stage_label}（${workflow.layout ? workflow.layout.line_count + " 行" : "无行"}）\n` +
+      "只检测了行框，还没有识别文字。";
+    return chip;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- 分歧（说明书 8.5）
@@ -1591,6 +1628,8 @@ async function refreshProject(projectId) {
   closePageDetail();
   structureCandidates = [];
   el("structure-result").hidden = true;
+  // 任务 58：页面工作流角标 / 筛选项（只读索引，不驱动流程）
+  await loadWorkflow();
   renderProject();
   // 任务可能还在跑（比如刷新了页面），把抽屉里的进度接回来
   await loadTasks();
@@ -2388,6 +2427,7 @@ function visiblePages() {
   if (!project) return [];
   const typeFilter = el("filter-type").value;
   const recognitionFilter = el("filter-recognition").value;
+  const workflowFilter = el("filter-workflow").value;
   const triageFilter = el("filter-triage").value;
   const onlyIncluded = el("pages-only-included").checked;
 
@@ -2396,9 +2436,21 @@ function visiblePages() {
     if (typeFilter && page.page_type !== typeFilter) return false;
     const recognition = recognitionOf(page);
     if (recognitionFilter && recognition.status !== recognitionFilter) return false;
+    if (workflowFilter && !matchesWorkflow(page, workflowFilter)) return false;
     if (triageFilter && !matchesTriage(page, recognition, triageFilter)) return false;
     return true;
   });
+}
+
+/** 工作流筛选（任务 58）：状态只用于显示 / 筛选，不改变识别与导出。 */
+function matchesWorkflow(page, kind) {
+  const workflow = workflowOf(page);
+  if (kind === "failed") return Boolean(workflow && workflow.failed_stage);
+  if (!workflow) return false;
+  if (kind === "unfinished") {
+    return ["page_unconfirmed", "confirmed", "detected"].includes(workflow.stage);
+  }
+  return workflow.stage === kind;
 }
 
 /** 疑难筛选（说明书 6.4）：在"需要处理"的页面之间跳转，厚书审校时最省时间。 */
@@ -2534,6 +2586,8 @@ function updateSelectionPanel() {
   renderSuggestionPanel();
   renderMarginPanel();
   el("selection-recognize").disabled = count === 0 || !selected.some((page) => page.include);
+  el("layout-detect-selected").disabled = count === 0 || !selected.some((page) => page.include);
+  el("layout-detect-body").disabled = !currentProject || !currentProject.pages.some((page) => page.include);
   el("setup-confirm-selected").disabled = count === 0;
   el("selection-review-open").disabled = count === 0;
   el("assign-open").disabled = count === 0;
@@ -2559,10 +2613,15 @@ function updateSelectionPanel() {
 
 /** 页面上该显示的门牌（类型 / 印张 / 状态），构建与刷新共用。 */
 function tileTitle(page) {
+  const workflow = workflowOf(page);
+  const workflowNote = workflow
+    ? `\n工作流：${workflow.stage_label}${workflow.layout ? ` · ${workflow.layout.line_count} 行` : ""}`
+    : "";
   return (
     `第 ${page.page_no} 页 · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}` +
     ` · ${page.width_pt}×${page.height_pt} pt` +
     (page.rotation ? ` · 旋转 ${page.rotation}°` : "") +
+    workflowNote +
     "\n单击选中（Shift 选一段、⌘/Ctrl 加减一页），双击看识别结果"
   );
 }
@@ -2696,6 +2755,8 @@ function applyTileState(tile, page) {
   const status = tile.querySelector(".page-tile__status");
   status.innerHTML = "";
   status.append(recognitionChip(page));
+  const workflow = workflowChip(page);
+  if (workflow) status.append(workflow);
   const reviewChip = reviewBadge(page);
   if (reviewChip) status.append(reviewChip);
   const divergence = divergenceChip(page);
@@ -4908,6 +4969,7 @@ const JOB_STATUS_LABELS = {
 const JOB_TYPE_LABELS = {
   ocr: "识别",
   auxiliary: "第二引擎复核",
+  layout: "版面检测",
 };
 
 async function recognizePage(page) {
@@ -5138,6 +5200,18 @@ async function pollTask() {
 
   if (!["queued", "running", "paused"].includes(data.job.status)) {
     stopTaskPolling();
+    // 版面检测不产生块：只刷新页面状态与工作流角标，不走识别那套"重载块"。
+    if (data.job.job_type === "layout") {
+      await refreshPageStates();
+      await loadWorkflow();
+      if (currentView === "pages") syncPageStates();
+      await loadTasks();
+      if (announceTaskFailure(data.job)) {
+        renderTask(data);
+        openTaskDrawer();
+      }
+      return;
+    }
     // 收尾：最后一个框也是"刚认完的页"。整格重建 267 个瓷砖要一秒多，
     // 而这里真正变的只有页面状态与刚认完那几页的块：就地刷新 + 按增量补框。
     // refreshRecognizedPages 会先把这几页的旧块作废
@@ -5145,6 +5219,8 @@ async function pollTask() {
     // 识别完块变了：页面视图的建议角标不能拿旧数据
     forgetAllPageSuggestions();
     await refreshPageStates();
+    // 任务 58：识别完成后工作流会记「已识别①」，把角标读回来
+    await loadWorkflow();
     // 任务 53：识别子进程在收尾时自动算了一次版心（写在数据库里）。
     // 这里把新版心 / 建议读回来，页面视图与审校视图都会跟着重画。
     await refreshMarginState();
@@ -5248,6 +5324,159 @@ async function refreshPageStates() {
   // 就地刷新：任务进行时变的基本只有状态徽章，没必要整格重建（400 页的书会很明显）
   syncPageStates();
   renderProjectMeta();
+}
+
+// ---------------------------------------------------------------- 工作流状态（任务 58）
+
+/**
+ * 页面视图的"工作流"筛选。顺序按主链，数字来自 `/workflow` 的实时统计。
+ * 这一组只影响显示；即使不选，检测 / 识别也照常各走各的。
+ */
+const WORKFLOW_FILTERS = [
+  { value: "", label: "全部", count: "total" },
+  { value: "unfinished", label: "未走完", count: "unfinished" },
+  { value: "page_unconfirmed", label: "待确认页面", count: "page_unconfirmed" },
+  { value: "confirmed", label: "已确认（待检测）", count: "confirmed" },
+  { value: "detected", label: "已检测（未识别）", count: "detected" },
+  { value: "ocr1_done", label: "已识别①", count: "ocr1_done" },
+  { value: "failed", label: "有失败", count: "failed" },
+  { value: "excluded", label: "不参与", count: "excluded" },
+];
+
+async function loadWorkflow() {
+  const project = currentProject;
+  if (!project) return;
+  if (project.kind === "package") {
+    workflowByPageId = new Map();
+    workflowSummary = null;
+    renderWorkflowFilter({}, {});
+    renderLayoutStatus();
+    return;
+  }
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/workflow`);
+    workflowByPageId = new Map((data.pages || []).map((item) => [item.page_id, item]));
+    workflowSummary = data.summary || null;
+    renderWorkflowFilter(data.counts || {}, data.summary || {});
+  } catch {
+    // 状态索引读不到时按"没有角标"处理，不影响识别 / 审校 / 导出
+    workflowByPageId = new Map();
+    workflowSummary = null;
+    renderWorkflowFilter({}, {});
+  }
+  renderLayoutStatus();
+}
+
+function renderWorkflowFilter(counts, summary) {
+  const select = el("filter-workflow");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = "";
+  for (const item of WORKFLOW_FILTERS) {
+    const option = document.createElement("option");
+    option.value = item.value;
+    const number =
+      item.value === "failed"
+        ? summary.failed
+        : item.value === "unfinished"
+        ? summary.unfinished
+        : item.value === ""
+        ? summary.total
+        : counts[item.value];
+    option.textContent =
+      number === undefined || number === null
+        ? item.label
+        : `${item.label} ${number}`;
+    select.append(option);
+  }
+  select.value = current;
+  if (select.value !== current) select.value = "";
+}
+
+function renderLayoutStatus() {
+  const status = el("layout-status");
+  if (!status) return;
+  if (!workflowSummary) {
+    status.textContent = "还没检测";
+    el("layout-detect-body").disabled = true;
+    return;
+  }
+  const summary = workflowSummary;
+  status.textContent =
+    `已检测 ${summary.detected || 0} / ${summary.body || 0} 页` +
+    (summary.failed ? ` · 失败 ${summary.failed}` : "");
+  el("layout-detect-body").disabled = !(summary.body > 0);
+}
+
+/** 版面检测入口：建任务 → 抽屉 + 轮询（任务 58）。 */
+async function startLayoutDetection({ pages = null, scope = null }) {
+  if (!currentProject) return;
+  el("pages-error").hidden = true;
+  const body = pages ? { pages, skip_detected: false } : { scope: scope || "body" };
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/jobs/layout`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    renderTask(data);
+    openTaskDrawer();
+    startTaskPolling(data.job.job_id);
+    return data;
+  } catch (error) {
+    showError(el("pages-error"), error);
+    return null;
+  }
+}
+
+function setupLayoutPanel() {
+  el("layout-detect-selected").addEventListener("click", async () => {
+    const pages = selectionPages()
+      .filter((page) => page.include)
+      .map((page) => page.page_no);
+    if (!pages.length) {
+      showError(
+        el("pages-error"),
+        new Error("选中的页里没有「正文」。版面检测只处理正文页。")
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        `对所选 ${pages.length} 个正文页做版面检测？\n` +
+          "只检测文字行框，不识别文字；已检测过的页会重新检测。"
+      )
+    ) {
+      return;
+    }
+    await startLayoutDetection({ pages });
+  });
+
+  el("layout-detect-body").addEventListener("click", async () => {
+    if (!currentProject) return;
+    const pending = currentProject.pages.filter(
+      (page) => page.include && !(workflowOf(page) && workflowOf(page).layout)
+    );
+    if (!pending.length) {
+      showError(
+        el("pages-error"),
+        new Error("所有正文页都已经检测过。要重新检测，选中它们再点「检测所选页」。")
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        `对 ${pending.length} 个还没检测的正文页做版面检测？\n` +
+          "已检测的页会跳过；只检测行框，不识别文字。"
+      )
+    ) {
+      return;
+    }
+    await startLayoutDetection({ scope: "body" });
+  });
 }
 
 /**
@@ -8043,6 +8272,8 @@ async function closeProject() {
     return;
   }
   currentProject = null;
+  workflowByPageId = new Map();
+  workflowSummary = null;
   closePageDetail();
   closeTaskDrawer();
   stopTaskPolling();
@@ -8100,6 +8331,7 @@ function setupLibrary() {
   // 筛选与选择（说明书 6.2）
   el("filter-type").addEventListener("change", renderPages);
   el("filter-recognition").addEventListener("change", renderPages);
+  el("filter-workflow").addEventListener("change", renderPages);
   el("filter-triage").addEventListener("change", renderPages);
   el("pages-only-included").addEventListener("change", renderPages);
   el("page-range-select").addEventListener("click", applyPageRangeInput);
@@ -9621,6 +9853,7 @@ function boot() {
   setupPanelGroups();
   setupRecognitionSettings();
   setupPageNumberPanel();
+  setupLayoutPanel();
   setupExportPanel();
   setupStructurePanel();
   showView("library");

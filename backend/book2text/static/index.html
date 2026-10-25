@@ -111,6 +111,18 @@
               <option value="has_candidate">有待选新结果</option>
             </select>
           </label>
+          <label class="fitem">工作流
+            <select id="filter-workflow" class="select">
+              <option value="">全部</option>
+              <option value="unfinished">未走完</option>
+              <option value="page_unconfirmed">待确认页面</option>
+              <option value="confirmed">已确认（待检测）</option>
+              <option value="detected">已检测（未识别）</option>
+              <option value="ocr1_done">已识别①</option>
+              <option value="failed">有失败</option>
+              <option value="excluded">不参与</option>
+            </select>
+          </label>
           <label class="fitem">审校
             <select id="filter-triage" class="select">
               <option value="">全部</option>
@@ -187,6 +199,18 @@
                   <button type="button" id="setup-confirm-selected" class="btn btn--pri">确认所选页面</button>
                 </div>
                 <button type="button" id="setup-confirm-all" class="btn btn--block">确认全部未确认页</button>
+
+                <div class="panel__sec panel__sec--secondary" id="layout-panel">
+                  <div class="panel__headrow"><strong>版面检测</strong><span class="muted" id="layout-status">还没检测</span></div>
+                  <p class="hint">只检测文字行框、<strong>不识别文字</strong>；不改现有识别、版心、页码与导出。
+                    行框落库后，页面视图可按工作流状态筛选（如「已检测（未识别）」）。</p>
+                  <div class="row2">
+                    <button type="button" id="layout-detect-selected" class="btn">检测所选页</button>
+                    <button type="button" id="layout-detect-body" class="btn">检测全部正文页</button>
+                  </div>
+                  <div class="hint" id="layout-hint">「检测全部正文页」会自动跳过已检测的页；
+                    要重测某几页，选中它们再点「检测所选页」。</div>
+                </div>
 
                 <div id="setup-suggestion-block" hidden>
                   <div class="flabel">选中页的建议（只作参考）</div>

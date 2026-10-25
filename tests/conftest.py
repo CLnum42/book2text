@@ -9,9 +9,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from book2text.api.app import create_app
+from book2text.core.layout import detection as layout_detection
 from book2text.core.project import executor as executor_module
 from book2text.core.project import recognition
-from tests.fakes import FakeOcrEngine, FakeSecondEngine
+from tests.fakes import FakeLayoutEngine, FakeOcrEngine, FakeSecondEngine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_PDF = REPO_ROOT / "fixtures" / "pdf" / "synthetic-smoke-3pages.pdf"
@@ -141,6 +142,24 @@ def inprocess_aux_jobs(monkeypatch: pytest.MonkeyPatch) -> FakeSecondEngine:
     # 建任务时（`create_auxiliary_job`）要问一句"第二引擎可用吗"——统一换成假引擎，
     # 否则这一条会打到真平台（macOS 上真起 Apple Vision，别的平台直接 503）
     monkeypatch.setattr(recognition, "default_secondary_engine", lambda: engine)
+
+    def fake_start(self, directory, job_id):  # noqa: ANN001 - 与 Supervisor.start 同形
+        recognition.run_job(directory, job_id, engine=engine)
+        return 0
+
+    monkeypatch.setattr(executor_module.Supervisor, "start", fake_start)
+    return engine
+
+
+@pytest.fixture
+def inprocess_layout_jobs(monkeypatch: pytest.MonkeyPatch) -> FakeLayoutEngine:
+    """与 `inprocess_jobs` 同理，但跑的是**版面检测任务**（任务 58）。
+
+    建任务时 `create_layout_job` 要问检测引擎可不可用——换成假引擎，
+    否则 macOS 上会真加载 RapidOCR，Windows 上直接 503。
+    """
+    engine = FakeLayoutEngine()
+    monkeypatch.setattr(layout_detection, "default_layout_engine", lambda: engine)
 
     def fake_start(self, directory, job_id):  # noqa: ANN001 - 与 Supervisor.start 同形
         recognition.run_job(directory, job_id, engine=engine)

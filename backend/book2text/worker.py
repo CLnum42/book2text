@@ -1,8 +1,8 @@
-"""识别子进程的入口：``python -m book2text.worker --project-dir <项目目录> --job <任务 id>``。
+"""识别 / 复核 / 版面检测子进程的入口：``python -m book2text.worker --project-dir <项目目录> --job <任务 id>``。
 
-它只做一件事：把这个任务里**还没成功**的页面逐页识别并落库，然后把任务结算掉。
-进度、失败原因、状态全写在项目数据库里，因此父进程（服务）重启也不会丢进度，
-父子之间不需要额外的通信协议。
+它只做一件事：把这个任务里**还没成功**的页面逐页处理并落库，然后把任务结算掉。
+具体做什么由 `job_type` 决定（识别 / 第二引擎复核 / 版面检测）；进度、失败原因、
+状态全写在项目数据库里，因此父进程（服务）重启也不会丢进度，父子之间不需要额外的通信协议。
 
 **三条"该不该继续"的信号**（按优先级）：
 
@@ -67,7 +67,7 @@ def _orphan_watchdog() -> threading.Event | None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="book2text.worker",
-        description="识别子进程：把某个任务里还没成功的页面逐页识别并落库",
+        description="子进程：把某个任务里还没成功的页面逐页处理并落库",
     )
     parser.add_argument("--project-dir", required=True, help="项目文件夹（含 project.db）")
     parser.add_argument("--job", required=True, help="任务 id")

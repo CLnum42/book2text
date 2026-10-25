@@ -32,12 +32,17 @@ JOB_TYPE_OCR = "ocr"
 # 可暂停 / 取消 / 重试失败页），只是每页做的是"逐行复核"而不是"识别并生成块"。
 JOB_TYPE_AUXILIARY = "auxiliary"
 
-JOB_TYPES = (JOB_TYPE_OCR, JOB_TYPE_AUXILIARY)
+# 版面检测（任务 58 / 工作流阶段 2）：只检测不识别，落 layout_run + page_layout_line。
+# 任务形状与识别完全一样（按页一个单元），共用暂停 / 继续 / 取消 / 重试。
+JOB_TYPE_LAYOUT = "layout"
+
+JOB_TYPES = (JOB_TYPE_OCR, JOB_TYPE_AUXILIARY, JOB_TYPE_LAYOUT)
 
 # 任务类型的人话名字（界面与日志共用）
 JOB_TYPE_LABELS = {
     JOB_TYPE_OCR: "识别",
     JOB_TYPE_AUXILIARY: "第二引擎复核",
+    JOB_TYPE_LAYOUT: "版面检测",
 }
 
 STATUS_QUEUED = "queued"
@@ -466,6 +471,22 @@ def repair_unfinished(
             """,
             (message, *scope_params),
         ).rowcount
+        # 版面检测运行（任务 58）也要结算，否则取消 / 中断会在 layout_run 里
+        # 留下永远 running 的记录。老库没有这张表时忽略。
+        try:
+            conn.execute(
+                f"""
+                UPDATE layout_run
+                SET status = 'failed', error_code = 'interrupted',
+                    error_message = ?, finished_at = ?
+                WHERE status IN ('queued', 'running')
+                  AND page_id IN (SELECT page_id FROM job_item WHERE 1 = 1 {scope})
+                """,
+                (message, now, *scope_params),
+            ).rowcount
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc):
+                raise
         conn.commit()
     if job_id:
         update_progress(directory, job_id)

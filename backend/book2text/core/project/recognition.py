@@ -57,6 +57,7 @@ from ..structure import grouping
 from . import blocks as blocks_module
 from . import jobs as jobs_module
 from . import lock as lock_module
+from . import workflow as workflow_module
 from .library import (
     OCR_RUNS_DIR_NAME,
     SOURCE_DIR_NAME,
@@ -909,6 +910,13 @@ def run_job(
         return _run_auxiliary_job(
             directory, job, engine=engine, should_continue=should_continue, log=log
         )
+    if job.job_type == jobs_module.JOB_TYPE_LAYOUT:
+        # 版面检测在独立模块里，复用同一套任务表 / 控制信号（任务 58）。
+        from ..layout import detection as layout_detection
+
+        return layout_detection.run_layout_job(
+            directory, job.job_id, engine=engine, should_continue=should_continue, log=log
+        )
     return _run_ocr_job(
         directory, job, engine=engine, should_continue=should_continue, log=log
     )
@@ -996,9 +1004,28 @@ def _run_ocr_job(
     )
     if secondary is not None:
         say(f"dual compare pages={dual_done} failed={dual_failed} job={job_id}")
+    _record_ocr_stage(directory, outcome, say)
     _auto_apply_after_job(directory, job_id, outcome, say)
     _auto_margin_after_job(directory, job_id, outcome, say)
     return outcome
+
+
+def _record_ocr_stage(directory: Path, outcome: JobOutcome, say) -> None:
+    """识别成功后把页面工作流记成 `已识别①`（任务 58，只记录不驱动流程）。
+
+    失败页不记；状态索引写不进去只留一行日志，不影响任务结算。
+    """
+    page_ids = [
+        item.page_id
+        for item in outcome.items
+        if item.status == jobs_module.ITEM_STATUS_SUCCEEDED
+    ]
+    if not page_ids:
+        return
+    try:
+        workflow_module.record_stages(directory, page_ids, workflow_module.STAGE_OCR1_DONE)
+    except Exception as exc:  # noqa: BLE001 - 索引失败不该让识别任务变成失败
+        say(f"workflow_stage_failed {type(exc).__name__}")
 
 
 def _item_succeeded(directory: Path, item_id: str) -> bool:

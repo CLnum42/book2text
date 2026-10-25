@@ -8,6 +8,12 @@
 
 from __future__ import annotations
 
+from book2text.core.layout.base import (
+    LayoutEngineError,
+    LayoutLine,
+    LayoutParams,
+    LayoutResult,
+)
 from book2text.core.ocr.base import BBox, OcrEngineError, OcrLine, OcrParams, OcrResult
 
 # 三行文本，第二段与前一段之间留出明显行距 → 分段规则应切成 2 块
@@ -73,6 +79,59 @@ class FailingEngine(FakeOcrEngine):
 
     def __init__(self, message: str = "模拟引擎崩了") -> None:
         super().__init__(fail_message=message)
+
+
+class FakeLayoutEngine:
+    """假版面检测引擎：只返回行框，**不返回文字**（任务 58）。
+
+    行框坐标与 `FAKE_LINES` 一致，方便把"检测行"与"OCR 行"放在同一个测试里。
+    """
+
+    engine_id = "fake-layout"
+    version_string = "fake-layout-0.1"
+
+    def __init__(
+        self,
+        *,
+        lines: tuple[tuple[float, float], ...] | None = None,
+        fail_message: str | None = None,
+        available: bool = True,
+        reason: str = "",
+    ) -> None:
+        # 默认三行，与 FAKE_LINES 的 y0/y1 一致
+        self._lines = lines or tuple((y0, y1) for _, y0, y1 in FAKE_LINES)
+        self._fail_message = fail_message
+        self._available = available
+        self._reason = reason
+        self.calls = 0
+
+    def version(self) -> str:
+        return self.version_string
+
+    def available(self) -> tuple[bool, str]:
+        return (True, "") if self._available else (False, self._reason)
+
+    def detect(self, image, params: LayoutParams) -> LayoutResult:
+        self.calls += 1
+        if self._fail_message:
+            raise LayoutEngineError(self._fail_message)
+        ordered = tuple(
+            LayoutLine(
+                bbox=BBox(FAKE_LEFT, y0, FAKE_RIGHT, y1),
+                confidence=0.9,
+                reading_order=index,
+            )
+            for index, (y0, y1) in enumerate(self._lines)
+        )
+        return LayoutResult(
+            engine_id=self.engine_id,
+            engine_version=self.version_string,
+            lines=ordered,
+            image_width=image.size[0],
+            image_height=image.size[1],
+            elapsed_seconds=0.02,
+            raw={"note": "fake-layout", "text_produced": False},
+        )
 
 
 class FakeSecondEngine:

@@ -21,6 +21,7 @@ from ..core.project import library as project_library
 from ..core.project import margin_box as margin_box_module
 from ..core.project import page_setup as page_setup_module
 from ..core.project import stats as stats_module
+from ..core.project import workflow as workflow_module
 from .deps import library_dir as _library
 from .deps import page_payload, project_error as _project_error
 from .deps import require_main_project as _require_main
@@ -180,6 +181,12 @@ def open_project(
             payload["project"] = project_library.load_project(
                 project_id, library=library
             ).to_dict()
+        # 任务 58：给没有工作流状态行的页面补初始状态（只插不改）。
+        # 回填失败只当没补：打开项目不能因为一个索引表而失败。
+        try:
+            workflow_module.backfill_project(project_id, library=library)
+        except Exception:  # noqa: BLE001 - 见上
+            pass
     return payload
 
 

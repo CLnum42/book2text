@@ -108,6 +108,7 @@ jobs:
           set -o pipefail
           uv run pytest -q -rs -m "not ocr" \
             --ignore=tests/unit/test_rapidocr_adapter.py \
+            --ignore=tests/unit/test_layout_rapidocr_det.py \
             --ignore=tests/integration/test_secondary_engine_vision.py \
             --ignore=tests/integration/test_worker_subprocess.py \
             --ignore=tests/integration/test_recognition_engine.py \

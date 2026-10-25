@@ -717,3 +717,32 @@ def test_page_number_review_and_range_templates_are_wired() -> None:
     assert "PN_ANOMALY_LABELS" in script and "duplicate" in script
     assert "page-number-review-table li[data-page-no=" in script
     assert ".pn-table" in styles and ".pn-issue-list" in styles
+
+
+def test_layout_detection_and_workflow_filter_are_wired() -> None:
+    """任务 58：版面检测入口、工作流筛选与角标都要真的接上（静态约定）。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+    for element_id in (
+        "filter-workflow",
+        "layout-panel",
+        "layout-status",
+        "layout-detect-selected",
+        "layout-detect-body",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    assert "/jobs/layout" in script
+    assert "/workflow" in script
+    assert "function loadWorkflow(" in script
+    assert "function workflowChip(" in script
+    assert "function setupLayoutPanel(" in script
+    assert "startLayoutDetection" in script
+    assert 'layout: "版面检测"' in script
+    # 工作流筛选有"已检测（未识别）"这一档
+    assert 'value="detected"' in page
+    assert '"已检测 · 未识别"' in script
+    # 任务完成后要刷新工作流状态（识别 → 已识别①；检测 → 已检测）
+    poll = _function_body("pollTask")
+    assert "loadWorkflow" in poll
