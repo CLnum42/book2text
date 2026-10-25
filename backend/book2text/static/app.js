@@ -5204,6 +5204,8 @@ async function pollTask() {
     if (data.job.job_type === "layout") {
       await refreshPageStates();
       await loadWorkflow();
+      // 任务 59：检测收尾会自动用检测行推算一次版心，读回来让框 / 建议立刻出现
+      await refreshMarginState();
       if (currentView === "pages") syncPageStates();
       await loadTasks();
       if (announceTaskFailure(data.job)) {

@@ -264,7 +264,48 @@ def run_layout_job(
         )
         job = jobs_module.get_job(directory, job_id)
     say(f"job {job_id} end status={job.status} done={job.done} failed={job.failed}")
-    return LayoutOutcome(job=job, items=tuple(jobs_module.list_job_items(directory, job_id)))
+    outcome = LayoutOutcome(
+        job=job, items=tuple(jobs_module.list_job_items(directory, job_id))
+    )
+    _auto_margin_after_job(directory, job_id, outcome, say)
+    return outcome
+
+
+def _auto_margin_after_job(
+    directory: Path, job_id: str, outcome: LayoutOutcome, say: Callable[[str], None]
+) -> None:
+    """检测任务收尾：用检测行自动推算一次版心（任务 59）。
+
+    **为什么在检测收尾：** 新工作流是「检测 → 版心 → 识别」，版心不能等识别。
+    一次任务只算一次（不是每页一次），避免框在处理过程中来回跳。
+    写入规则不变：没有手动版心才自动写并标 ``auto``；手动值只更新建议、绝不覆盖。
+    失败只写一行日志，不影响任务结算。
+    """
+    succeeded = [
+        item
+        for item in outcome.items
+        if item.page_no is not None and item.status == jobs_module.ITEM_STATUS_SUCCEEDED
+    ]
+    if not succeeded:
+        return
+    from ..project import margin_box as margin_box_module
+
+    try:
+        result = margin_box_module.write_margin_suggestion(
+            directory.name,
+            trigger="layout_job",
+            job_id=job_id,
+            library=directory.parent,
+        )
+    except Exception as exc:  # noqa: BLE001 - 自动推算失败不该让检测任务变成失败
+        say(f"margin_suggestion failed {type(exc).__name__}")
+        return
+    if result.get("suggestion"):
+        say(
+            "margin_suggestion "
+            f"applied={1 if result['applied'] else 0} "
+            f"pages={result['suggestion'].get('pages')}"
+        )
 
 
 def _status_decider(directory: Path, job_id: str) -> Callable[[], str]:

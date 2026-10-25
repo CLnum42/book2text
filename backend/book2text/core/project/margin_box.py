@@ -18,9 +18,11 @@
 
 **推算算法（只读，不写库）：**
 
-1. 只看正文页（``include = 1``）里**有行坐标**的块；显式标注为
-   ``header / footer / page_number / figure / decoration`` 的块整块跳过。
-   其余块按**几何**判断（OCR 出来的块类型常常全是 ``paragraph``，不能只靠类型）。
+1. **优先读检测行**（``page_layout_line``，任务 58）：检测在识别之前完成，
+   因此"检测完就能定版心"。没有检测行的页回退到 OCR 行（``block_line``，老项目兼容）；
+   一个页只要有一版成功的检测运行，就用它，不与 OCR 行混合。
+   回退 OCR 行时，显式标注为 ``header / footer / page_number / figure / decoration``
+   的块整块跳过；其余行按**几何**判断（OCR 出来的块类型常常全是 ``paragraph``）。
 2. 每页剔掉短行：宽度 < max(页宽的 25%, 该页行宽中位数的一半)，以及落在
    页面上下 4% 带里的行（书眉 / 页码 / 扫描噪声）。剩下不足 3 行的页不参与。
 3. 左右：把全书的行 ``x0`` / ``x1`` 排序，找**宽度 1% 页宽**的最密一簇，
@@ -326,7 +328,7 @@ def suggest_from_page_boxes(
         edges={},
         confidence=CONFIDENCE_LOW,
         reliable=False,
-        notes=("还没有可用的识别行：先识别几页正文再推算。",),
+        notes=("还没有可用的行数据：先做版面检测或识别几页正文再推算。",),
     )
     if not tops:
         return empty
@@ -424,10 +426,72 @@ def suggest_from_page_boxes(
 
 # ---------------------------------------------------------------- 从项目推算
 
+def _latest_layout_runs(conn) -> dict[str, str]:
+    """每页最近一次成功检测运行的 ``page_id → run_id``（没有则不在字典里）。"""
+    rows = conn.execute(
+        """
+        SELECT l.page_id, l.run_id
+        FROM layout_run l
+        WHERE l.status = 'succeeded'
+          AND NOT EXISTS (
+              SELECT 1 FROM layout_run newer
+              WHERE newer.page_id = l.page_id AND newer.status = 'succeeded'
+                AND (newer.created_at > l.created_at
+                     OR (newer.created_at = l.created_at AND newer.rowid > l.rowid))
+          )
+        """
+    ).fetchall()
+    return {row["page_id"]: row["run_id"] for row in rows}
+
+
+def _detected_page_boxes(
+    project_id: str,
+    *,
+    library: Path,
+    page_by_id: Mapping[str, library_module.Page],
+    candidates: set[str],
+) -> dict[int, list[BBox]]:
+    """读**检测行**（`page_layout_line`），按页号分组。只读，不写库。
+
+    老项目 / 还没跑迁移 0015 的库没有这张表：返回空，让调用方回退 OCR 行。
+    """
+    directory = library_module.require_project_dir(project_id, library=library)
+    try:
+        with db_module.open_database(directory, apply_migrations=False) as conn:
+            run_ids = _latest_layout_runs(conn)
+            wanted = [run_id for page_id, run_id in run_ids.items() if page_id in candidates]
+            if not wanted:
+                return {}
+            placeholders = ", ".join("?" for _ in wanted)
+            rows = conn.execute(
+                f"SELECT page_id, bbox FROM page_layout_line WHERE run_id IN ({placeholders})",
+                wanted,
+            ).fetchall()
+    except Exception as exc:  # noqa: BLE001 - 老库没有检测表时回退 OCR
+        if "no such table" in str(exc):
+            return {}
+        raise
+
+    page_boxes: dict[int, list[BBox]] = {}
+    for row in rows:
+        page = page_by_id.get(row["page_id"])
+        if page is None:
+            continue
+        try:
+            values = json.loads(row["bbox"])
+            box = tuple(float(value) for value in values)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if len(box) != 4:
+            continue
+        page_boxes.setdefault(page.page_no, []).append(box)
+    return page_boxes
+
+
 def suggest_margin_box(
     project_id: str, *, library: Path | None = None
 ) -> MarginSuggestion:
-    """读项目里已有的 `block_line`，跨页推算版心。**只读，不写库。**"""
+    """读项目里的**检测行**（没有则 OCR 行），跨页推算版心。**只读，不写库。**"""
     target_library = library if library is not None else library_module.default_library_dir()
     pages = library_module.list_pages(project_id, library=target_library)
     page_by_id = {page.page_id: page for page in pages}
@@ -438,6 +502,15 @@ def suggest_margin_box(
         if page.include and page.margin_box_mode != MODE_NONE
     }
 
+    # 检测行优先：阶段 2（检测）在阶段 3（版心）之前，不必等识别
+    page_boxes = _detected_page_boxes(
+        project_id,
+        library=target_library,
+        page_by_id=page_by_id,
+        candidates=candidates,
+    )
+
+    # 没有检测行的页回退 OCR 行（老项目 / 只识别没检测过的页）
     blocks = blocks_module.list_blocks(project_id, library=target_library)
     active_block = {
         block.block_id: block
@@ -446,7 +519,7 @@ def suggest_margin_box(
     }
     lines = blocks_module.list_block_lines(project_id, library=target_library)
 
-    page_boxes: dict[int, list[BBox]] = {}
+    ocr_page_boxes: dict[int, list[BBox]] = {}
     for line in lines:
         block = active_block.get(line.block_id)
         if block is None or line.bbox is None:
@@ -454,7 +527,9 @@ def suggest_margin_box(
         page = page_by_id.get(block.page_id)
         if page is None:
             continue
-        page_boxes.setdefault(page.page_no, []).append(line.bbox)
+        ocr_page_boxes.setdefault(page.page_no, []).append(line.bbox)
+    for page_no, boxes in ocr_page_boxes.items():
+        page_boxes.setdefault(page_no, boxes)
 
     return suggest_from_page_boxes(page_boxes)
 
@@ -506,13 +581,13 @@ def write_margin_suggestion(
     job_id: str | None = None,
     library: Path | None = None,
 ) -> dict[str, object]:
-    """算一次版心并把结果写进项目（识别收尾 / 打开老项目时调用）。
+    """算一次版心并把结果写进项目（检测 / 识别收尾、打开老项目时调用）。
 
     - **总是**更新 `margin_box_suggestion`（"建议"是只读参考，任何人都可以看）；
     - 只在 `can_auto_write` 为真时把建议写进 `margin_box`，并把来源标成 ``auto``；
     - 已经有手动版心时**只更新建议、不动当前值**。
 
-    一次识别任务只在收尾调用一次（不是每页一次），避免识别过程中框来回跳。
+    一次检测 / 识别任务只在收尾调用一次（不是每页一次），避免处理过程中框来回跳。
     """
     project = library_module.load_project(project_id, library=library)
     suggestion = suggest_margin_box(project_id, library=library)

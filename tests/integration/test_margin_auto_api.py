@@ -282,3 +282,35 @@ def test_preflight_explains_that_auto_margin_is_not_used_by_export(
     manual = preflight()
     assert manual["margin_pages"]["auto"] is False
     assert manual["margin_pages"]["applied"] > 0
+
+
+def test_layout_job_writes_auto_margin_before_recognition(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    inprocess_layout_jobs,
+) -> None:
+    """任务 59：检测收尾就能算出并写入版心，不需要先识别。"""
+    project_id = create_project(client, auth_headers, sample_pdf)
+    response = client.post(
+        f"/api/projects/{project_id}/jobs/layout",
+        json={"pages": [1, 2, 3]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["job"]["status"] == "succeeded"
+
+    project = project_data(client, auth_headers, project_id)["project"]
+    assert project["margin_box"] is not None
+    assert project["margin_box_source"] == "auto"
+    suggestion = project["margin_box_suggestion"]
+    assert suggestion["trigger"] == "layout_job"
+    assert suggestion["job_id"] == response.json()["job"]["job_id"]
+    assert suggestion["applied"] is True
+    assert suggestion["pages"] == 3
+
+    # 这三页还没有任何识别结果：版心确实是在识别之前算出来的
+    pages = client.get(
+        f"/api/projects/{project_id}/pages", headers=auth_headers
+    ).json()["pages"]
+    assert all(page["recognition"]["status"] == "unrecognized" for page in pages)
