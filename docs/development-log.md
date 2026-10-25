@@ -88,7 +88,7 @@ main `733e4d8`（任务 60 文档），830 测试全绿。审校默认列全部�
 - 新增：迁移 0016 列 1、批量建议与单页规则一致 1、待处理 / 自动通过 / 单引擎 /
   人工区分 / 导出快照 4、界面静态约定补充。
 - `.venv/bin/python -m pytest -q` → **835 passed, 1 warning，104.31 秒**。
-- **CI 结果在本条写入时尚未返回，推送后补记。**
+- **CI [#41](https://github.com/CLnum42/book2text/actions/runs/40208262727) Success**：总 5m04s，macOS 3m08s、Windows 5m01s；两个 job 都是 `completed successfully`，摘要无 `skipped`。
 
 ### 用户操作说明
 
