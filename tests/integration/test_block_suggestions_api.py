@@ -248,3 +248,27 @@ def test_unknown_page_is_404(
         headers=auth_headers,
     )
     assert response.status_code == 404
+
+
+def test_batch_suggestions_match_single_page_rule(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    library_dir: Path,
+    inprocess_jobs: FakeOcrEngine,
+) -> None:
+    """任务 61：待处理 / 自动通过用的批量建议必须与单页徽章同一套规则。"""
+    from book2text.core.project import structure
+
+    project_id = create_project(client, auth_headers, sample_pdf)
+    recognize(client, auth_headers, project_id, 1, 2, 3)
+    batch = structure.suggestions_by_page(
+        project_id, library=library_dir, page_numbers=[1, 2, 3]
+    )
+    for page_no in (1, 2, 3):
+        single = structure.suggest_block_types(
+            project_id, page_no, library=library_dir
+        )
+        assert [item.block_id for item in batch[page_no]] == [
+            item.block_id for item in single.suggestions
+        ]

@@ -35,7 +35,7 @@
 | 6 第二引擎 | **现成（Apple Vision）**；GLM-OCR 已调研、**暂不采用**，不规划区域级适配器 |
 | 7 差异分析 | 归一化/分级现成；**字符级对齐与按行存储要新写** |
 | 8 第三引擎仲裁 | **新写**（在线、可选、只选 A/B/都不对） |
-| 9 人工审核 | 审校视图现成；**默认视图与自动通过规则要改** |
+| 9 人工审核 | **已实现（任务 61）**：待处理默认视图 + 自动通过；差异表 / 仲裁仍待后续 |
 | 10 组装 | 现成（版心/类型过滤、段拼接、三流） |
 | 11 预览与导出 | 现成；**预检要增加「还有 N 页没走完」** |
 
@@ -205,18 +205,30 @@
 - **GLM 不接入后的影响：** 跨引擎第三方意见只剩在线仲裁这一条路，它的价值上升；
   但仍然**默认关**，隐私 / 成本 / Key 规则见 3.3 与 5.3。
 
-### 1.10 阶段 9：人工审核
+### 1.10 阶段 9：人工审核（待处理默认 + 自动通过）
 
-- **输入：** 差异行 + 仲裁建议、漏行候选（有墨迹但没有行框）、版面 / 版心待确认项。
-- **输出：** 人工决定（采用 A / 采用 B / 都不采用并自己改 / 标记不确定）；页面确认；编辑事件（可撤销）。
-- **判定标准：** 页面无未处理的差异行、无未处理的漏行候选、版面已确认；或满足自动通过条件（见 2.3）。
-  **自动通过条件（2026-10-25 拍板）：** `两路都有结果` + `逐行 identical / format_only` +
-  `无漏行候选` + `版面已确认` + `版心已定`。
-  **第二引擎没跑过的页不许自动通过**，标成 `single_engine`（可导出，但预检要报数）。
-  **不引入"置信度"判据**——OCR 引擎普遍不给可靠置信度，拿它当自动通过门槛只会制造假安全感。
-- **失败处理：** 无失败；未完成就是「待人工」。用户可离开、稍后继续。
-- **幂等：** 是。人工修改走事件表，可撤销；重看不会重置已确认的页（除非上游变了）。
-- **能否跳过：** **无差异且无问题的页自动通过**，不要求逐页点；有差异必须有人处理（或明确"忽略"）。
+- **输入：** 类型建议、两路差异行 + 仲裁建议、漏行候选、版面 / 版心待确认项、识别状态。
+- **默认视图：待处理。** 审校块列表只列**需要处理**的块：有类型建议的块、有分歧的行 / 块；
+  页面级还有漏行候选、版面未确认、识别失败。顶部四档
+  `待处理（默认） / 版心内 / 版心外 / 全部` 各带数量；`版心内 + 版心外 = 全部`，
+  `待处理` 是其中需要处理的部分，页面级问题在过滤条下方单独说明。
+  **数据源不另算一套**：建议复用块类型建议接口，分歧复用 `block_line.diff_status` /
+  `page_divergence_summary`，漏行复用 `ink-gaps`，与已有徽章 / 标记 / 提示同源。
+- **自动通过（谨慎版）：** 以下**全部**成立才标记：
+  `无类型建议` + `无分歧` + `无漏行候选` + `版面已确认` + `版心已定` + `识别成功` +
+  **第二引擎已复核**。第二引擎没跑过 → 标 `single_engine`，**不自动通过**。
+  版心"已定"指页级 `custom` / `none`，或全局版心是**人工设置**；自动推算未确认不算。
+- **状态必须诚实：** `page_workflow.stage=human_confirmed` + `confirm_mode=auto`，
+  界面文案固定为 **「自动通过（未经人工）」**；人工点「确认本页」写
+  `confirm_mode=human`，文案「人工已确认」。两者在数据与界面都能区分。
+- **自动通过不改任何文本、块类型、框或审校状态**，只写确认状态与时间。
+- **可撤销：** 审校顶栏「撤销自动通过」把这一页退回待处理，并记
+  `auto_pass_excluded=1`（之后不再自动标记）；人工确认不受影响。
+- **清单：** 页面视图工作流筛选有「自动通过（未经人工）」一档，可逐页抽查。
+- **判定标准：** 页面无未处理的差异行、无未处理的漏行候选、版面已确认；或满足自动通过条件。
+- **失败处理：** 无失败；不满足就是「待人工」；点自动通过时返回具体卡点，不静默。
+- **幂等：** 是。人工修改走事件表，可撤销；自动通过只写状态。
+- **能否跳过：** 无问题页可自动通过，不要求逐页点；有差异必须有人处理（或明确"忽略"）。
 
 ### 1.11 阶段 10：组装
 
@@ -263,7 +275,7 @@
 | `ocr2_done` | 已识别② | 第二引擎区域 + 对齐完成 | 每行有第二路或 unmatched 记录；或项目关闭第二引擎 |
 | `diff_done` | 差异已算 | 逐行差异记录完成 | 每行有 diff（含无候选） |
 | `arbitrated` | 已仲裁 | 每个差异行有选择或 skipped | 仲裁完成 / 关闭 / 无差异自动跳过 |
-| `human_confirmed` | 人工已确认 | 这一页审校完成 | 人工确认或自动通过 |
+| `human_confirmed` | 人工已确认 / 自动通过（未经人工） | 这一页审校完成 | 人工确认，或满足自动通过条件 |
 | `export_ready` | 可导出 | 这一页没有未完成的必经步骤 | `human_confirmed` + 必填旁路已确认 |
 | `excluded` | 不参与 | 非正文页，终态 | `page_type != body` |
 
@@ -288,7 +300,7 @@
 
 **原则：产物是事实，`page_workflow` 是索引 / 缓存。** 状态可以从产物重建；索引坏了不影响数据。
 
-新增表（**迁移 0015，任务 58 已建**；本文档只描述，不替代迁移）：
+新增表（**迁移 0015 建表；迁移 0016 加确认三列**；本文档只描述，不替代迁移）：
 
 ```sql
 CREATE TABLE page_workflow (
@@ -298,6 +310,9 @@ CREATE TABLE page_workflow (
   failure_reason  TEXT,
   stage_times_json TEXT NOT NULL DEFAULT '{}',   -- {"detected": "...", ...}
   page_number_state TEXT NOT NULL DEFAULT 'missing', -- missing / ready / skipped
+  confirm_mode    TEXT,                          -- human / auto / NULL（迁移 0016）
+  confirmed_at    TEXT,
+  auto_pass_excluded INTEGER NOT NULL DEFAULT 0, -- 撤销自动通过后不再自动标记
   revision        INTEGER NOT NULL DEFAULT 0,
   updated_at      TEXT NOT NULL
 );
@@ -318,7 +333,7 @@ CREATE TABLE page_workflow (
 | `ocr2_done` | `ocr_run(secondary)` + `block_line.aux_text` / `diff_status` | **现成（Apple Vision）** |
 | `diff_done` | `line_diff` | **新增** |
 | `arbitrated` | `line_arbitration` | **新增** |
-| `human_confirmed` | 编辑事件 + 页面确认字段 + 差异处理记录 | 现有事件 + 新增确认字段 |
+| `human_confirmed` | 编辑事件 + 页面确认字段 + `page_workflow.confirm_mode`（human / auto） | 现有事件 + 迁移 0016 |
 | `export_ready` | 由以上状态派生；不单独存“已导出” | — |
 | 页码旁路 | `page.printed_page(_source)` + `project.page_number_template/ranges` + `page_workflow.page_number_state` | 现有 + 新增 |
 
@@ -351,13 +366,16 @@ CREATE TABLE page_workflow (
 
 **自动通过条件（阶段 9，2026-10-25 拍板）：** 以下全部成立才自动确认：
 
-- **两路都有结果**；第二引擎没跑过 → 标 `single_engine`，**不自动通过**；
-- 差异行 = 0（`line_diff` 全部 identical / format_only）；
+- **无类型建议**（与审校块头建议同一套规则）；
+- **无分歧**；**第二引擎已复核**——没跑过 → 标 `single_engine`，**不自动通过**；
 - 漏行候选 = 0（有墨迹但没有行框的横条）；
-- 版面已确认、版心已定；
+- **版面已确认、版心已定**（自动推算未确认不算）；
+- **识别成功**（`recognized`，不是失败 / 未识别 / 有待选新结果）；
 - 没有 `failed_stage`。
 
-**不引入置信度判据。** 否则必须人工确认。自动通过会在事件表留一条系统事件，可撤销。
+**不引入置信度判据。** 自动通过**只写** `page_workflow.stage=human_confirmed` +
+`confirm_mode=auto`，**不改任何文本 / 类型 / 框 / 审校状态**；界面必须显示
+「自动通过（未经人工）」，并提供单页撤销（撤销后 `auto_pass_excluded=1`，不再自动标记）。
 
 ### 2.4 失败与回退
 
@@ -413,7 +431,13 @@ CREATE TABLE page_workflow (
 - 项目级「继续未完成页」：按阶段批量建任务；按钮只在该阶段可运行时出现，不显示假按钮。
 - 导出预检显示「还有 N 页没走完」+ 按状态分类；**已拍板：不拦导出**，只分级警告
   （未人工确认 / 单引擎未复核 / 版面未确认 / 页码缺口），并在 manifest 里记状态快照。
-- 审校视图默认只显示：差异行 + 仲裁建议、漏行候选、版面待确认；无差异页自动通过。
+- 审校视图默认只显示「待处理」：有建议 / 分歧的块 + 页面级漏行 / 版面 / 识别问题；
+  顶部四档 `待处理 / 版心内 / 版心外 / 全部` 各带数量。`待处理` 是子集，
+  `版心内 + 版心外 = 全部`。
+- 页面视图工作流筛选有「待处理」「自动通过（未经人工）」「人工已确认」；
+  自动通过的页有明确角标，可单页撤销。
+- 导出预检显示五项计数：人工已确认 / 自动通过 / 单引擎未复核 / 版面未确认 / 识别失败；
+  manifest 记录同一组状态快照。
 
 ### 2.7 与现有识别状态的映射
 
@@ -476,6 +500,34 @@ CREATE TABLE page_workflow (
     与改前的差异来自新加入的 7 个只检测页，左 +0.10、上 -0.14、右 0.00、下 +0.22 百分点。
   - 5 页只检测（10 页样书，0 页识别）：`0.064093 / 0.069024 / 0.908045 / 0.932576`，
     5 页 / 119 行，把握「中」、可靠；打开页面视图就直接显示，不用点「推算版心」。
+
+### 2.10 任务 61 已实现：待处理默认视图 + 自动通过（2026-10-25）
+
+- **迁移 0016**：`page_workflow` 加 `confirm_mode`（human / auto / NULL）、`confirmed_at`、
+  `auto_pass_excluded`。自动通过与人工确认共用 `stage=human_confirmed`，靠 `confirm_mode` 区分。
+- **审校默认待处理**：块列表四档 `待处理 / 版心内 / 版心外 / 全部`。
+  `待处理` 的块来自**类型建议**（`suggest_block_types`）与**两路分歧**
+  （`block_line.diff_status`）；页面级漏行来自 `ink-gaps`，版面 / 识别失败来自页面状态。
+  没有另算一套规则。
+- **自动通过**：`core/project/review_status.py` 统一评估；条件同时检查
+  建议 / 分歧 / 漏行 / 版面 / 版心 / 识别 / 第二引擎。只写 `page_workflow`，
+  不改文本、类型、框；`confirm_mode=auto`，标签「自动通过（未经人工）」。
+  `auto_pass_excluded=1` 的页不再显示自动通过入口，可人工确认。
+- **接口**：`GET /review/pending`、`GET /review/auto-passed`、
+  `GET/POST /pages/{n}/auto-pass`、`POST /pages/{n}/auto-pass/revoke`。
+- **导出**：预检加 `workflow_status` 五项计数；`manifest.json` 加 `workflow` 快照，
+  与预检同一组数（真书 1 页干净样张：`auto_passed=1`，manifest 与预检完全一致）。
+- **真实验收（macOS + Chromium）：**
+  - 第 30 页默认待处理：`待处理 1 · 版心内 5 · 版心外 1 · 全部 6`，只列 1 个有建议的页眉块；
+    页面级另标「版面未确认 / 漏行候选 1」。
+  - 一页全大写干净样张（无页码、无建议、无漏行、版面已确认、版心人工、Apple Vision 两路一致）
+    自动通过成功；**块文本哈希前后完全相同**（`b7d1a877…`），状态显示
+    「自动通过（未经人工）」；撤销后回到待处理，且不再自动标记。
+  - 真书第 30 页 / 第 3 / 19 / 20 / 25 页即使其余条件做齐，Apple Vision 仍有 1–14 行分歧，
+    自动通过被拒绝——这正是"谨慎版"的预期，不把第二引擎的错当自动通过依据。
+  - 新识别第 40 页、第二引擎没跑 → `single_engine`，不自动通过。
+- **未做**：自动通过不随之后的块编辑自动失效（撤销需手动；见 L-75）；
+  在线仲裁、边带识别、按行裁图、GLM 均未做。
 
 ---
 
@@ -574,7 +626,7 @@ class ArbitrationEngine(Protocol):
 | 6 第二引擎 | `core/ocr/adapters/`（现有 Apple Vision）、`recognition.run_auxiliary`、`selfcheck.py` | **现成（Apple Vision）** | 第二路逐行复核已可用；GLM-OCR 暂不采用，不规划区域级适配器 |
 | 7 差异 | `core/ocr/compare.py`（归一化、`grade_line`、Levenshtein、CER） | **部分现成 + 新写** | 复用归一化/分级；新增逐行配对、字符级 ops、missing/extra 分类；`line_diff` 表 |
 | 8 仲裁 | 无 | **新写** | 新适配器、密钥与隐私策略、`line_arbitration` 表、预算/超时 |
-| 9 人工审核 | `static/app.js` 审校视图、`api/routes_review.py`、`core/project/editing.py`（事件/撤销）、`core/project/ink_gaps.py`（漏行候选，任务 49）、`blocks.PageReview` / `page.layout_confirmed` | **要改** | 编辑/撤销/建议/漏行候选现成；默认视图改为差异 + 漏行 + 版面待确认；自动通过规则 |
+| 9 人工审核 | `static/app.js` 审校视图、`api/routes_review.py`、`core/project/review_status.py`、`core/project/workflow.py`、`core/project/ink_gaps.py`、`blocks.PageReview` / `page.layout_confirmed` | **已实现（任务 61）** | 待处理默认视图 + 自动通过（confirm_mode 区分人工/自动）；差异表 / 仲裁待后续 |
 | 10 组装 | `core/export/segments.py`、`margin_rules.py`、`streams.py`、`joining.py`、`project.py` | **现成** | 版心/类型过滤、段拼接、三流、页码锚点已有；句级切分是可选新增 |
 | 11 导出 | `core/export/project.py` 预检、`api/routes_exports.py`、`manifest.py`、`static/app.js` 导出面板 | **现成 + 要改** | 三流与 `unfinished_pages` / `layout_unconfirmed_pages` 已有；增加工作流阶段计数与缺口提示 |
 
@@ -652,9 +704,11 @@ class ArbitrationEngine(Protocol):
 1. **状态表与筛选**（已实现，任务 58）：`page_workflow` + 页面视图筛「卡在哪」。
 2. **版面检测**（已实现，任务 58）：`LayoutEngine` + 检测表。
 3. **版心改读检测行**（已实现，任务 59）：检测完就能定版心。
-4. **差异表 + 默认审校视图**：只显示差异 / 漏行 / 版面待确认；自动通过规则。
-5. **在线仲裁**：默认关，先做接口与审计，再做 UI。
-6. **导出缺口提示**：预检显示「还有 N 页没走完」；是否阻断由用户拍板。
+4. **待处理默认视图 + 自动通过**（已实现，任务 61）：审校四档过滤、自动通过、
+   导出预检 / manifest 状态快照。
+5. **差异表（字符级逐行）**：`line_diff` + 仲裁建议显示；按行存储。
+6. **在线仲裁**：默认关，先做接口与审计，再做 UI。
+7. **导出缺口提示**：预检显示「还有 N 页没走完」；是否阻断由用户拍板。
 
 **已经删掉、不再实施：**
 
@@ -678,7 +732,7 @@ class ArbitrationEngine(Protocol):
 
 ## 8. 已拍板（2026-10-25）与未验证
 
-**以下 6 项已由用户 / Chief 拍板，不再是待定：**
+**以下 7 项已由用户 / Chief 拍板，不再是待定：**
 
 1. **第二引擎默认关；启用时当前只有 Apple Vision。** GLM-OCR 已实测（见 1.7），
    速度、坐标输出与忠实性都不满足要求，**暂不采用**；老项目行为保持不变。
@@ -696,7 +750,11 @@ class ArbitrationEngine(Protocol):
 5. **GLM-OCR：暂不采用**（2026-10-25 用户拍板）。本机是 llama.cpp + GGUF 裸模型、
    没有 PP-DocLayout、输出无坐标、200 DPI 22.7–27.3 秒/页；**不规划区域级适配器**，
    将来重启前先补独立评测。
-6. **迁移编号 0015。** 已建 `layout_run` / `page_layout_line` / `page_workflow`。
+6. **迁移编号 0015。** 已建 `layout_run` / `page_layout_line` / `page_workflow`；
+   迁移 0016 加 `confirm_mode` / `confirmed_at` / `auto_pass_excluded`。
+7. **阶段 9 自动通过（任务 61，2026-10-25）：** 只写状态、不改文本；必须区分
+   「人工已确认」与「自动通过（未经人工）」；单引擎 / 有建议 / 有分歧 / 有漏行 /
+   版面未确认 / 版心未定的页不自动通过；可单页撤销。
 
 **仍未验证（实现时必须补测）：**
 

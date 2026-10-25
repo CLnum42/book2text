@@ -563,12 +563,20 @@ def test_review_view_shows_margin_and_filters_blocks() -> None:
         "review-filter-note",
     ):
         assert f'id="{element_id}"' in page_html, element_id
+    assert 'data-margin-filter="pending"' in page_html
     assert 'data-margin-filter="inside"' in page_html
     assert 'data-margin-filter="outside"' in page_html
     assert 'data-margin-filter="all"' in page_html
 
-    # 默认档位；开关按项目记住且默认开
-    assert 'let reviewBlockFilter = "inside";' in script
+    # 任务 61：默认「待处理」；开关按项目记住且默认开
+    assert 'let reviewBlockFilter = "pending";' in script
+    assert "function blockNeedsReview(" in script
+    assert "function pendingPageReasons(" in script
+    assert "/review/pending" in script
+    assert "review-auto-pass" in page_html
+    assert "review-auto-revoke" in page_html
+    assert "/auto-pass" in script
+    assert "/auto-pass/revoke" in script
     assert "b2t.reviewMargin.v1." in script
     assert '!== "0"' in script
 

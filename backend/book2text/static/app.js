@@ -711,6 +711,17 @@ function renderPreflight(data) {
     ["正文不收的块类型", data.excluded_block_types.length ? data.excluded_block_types.join("、") : "（无）"],
     ["整页版面确认", `${data.layout_confirmed_pages || 0} / ${data.layout_pages || 0} 页`],
   ];
+  const workflowStatus = data.workflow_status || {};
+  if (workflowStatus.total) {
+    rows.push([
+      "工作流状态",
+      `人工已确认 ${workflowStatus.human_confirmed || 0}` +
+        ` · 自动通过 ${workflowStatus.auto_passed || 0}` +
+        ` · 单引擎未复核 ${workflowStatus.single_engine || 0}` +
+        ` · 版面未确认 ${workflowStatus.layout_unconfirmed || 0}` +
+        ` · 识别失败 ${workflowStatus.recognition_failed || 0}`,
+    ]);
+  }
   if (data.margin_judgement) {
     const marginBlocks = data.margin_blocks || {};
     const marginNotes = data.margin_notes || {};
@@ -799,6 +810,17 @@ function renderPreflight(data) {
     notes.push(
       `有 ${data.unreviewed_segments} 段还没审校——导出的是当前文本，` +
         "未审校的内容也在里面（要只导已确认的，勾上「仅已确认」）。"
+    );
+  }
+  if (workflowStatus.auto_passed) {
+    notes.push(
+      `有 ${workflowStatus.auto_passed} 页是「自动通过（未经人工）」——` +
+        "它们满足自动条件但没有人逐页确认；manifest.json 里记了这组状态快照。"
+    );
+  }
+  if (workflowStatus.single_engine) {
+    notes.push(
+      `有 ${workflowStatus.single_engine} 页只有单引擎结果、没跑第二引擎复核。`
     );
   }
   const warning = el("export-note");
@@ -1122,6 +1144,10 @@ let currentProject = null;
  */
 let workflowByPageId = new Map();
 let workflowSummary = null;
+let workflowConfirmationCounts = { human: 0, auto: 0, unknown: 0 };
+/** 页面视图「待处理」的页集合（来自 /review/pending，不在前端另算一套）。 */
+let pendingPageNos = new Set();
+let pendingPageCount = 0;
 
 function workflowOf(page) {
   return page ? workflowByPageId.get(page.page_id) || null : null;
@@ -1181,6 +1207,20 @@ function workflowChip(page) {
     chip.className = "chip chip--bad";
     chip.textContent = `${workflow.failed_stage_label || "检测"}失败`;
     chip.title = workflow.failure_reason || "这一页的版面检测失败";
+    return chip;
+  }
+  if (workflow.stage === "human_confirmed" && workflow.confirm_mode === "auto") {
+    const chip = document.createElement("span");
+    chip.className = "chip chip--warn";
+    chip.textContent = "自动通过（未经人工）";
+    chip.title = "满足自动通过的全部条件，只做了状态标记；点开审校正可以撤销。";
+    return chip;
+  }
+  if (workflow.stage === "human_confirmed" && workflow.confirm_mode === "human") {
+    const chip = document.createElement("span");
+    chip.className = "chip chip--ok";
+    chip.textContent = "人工已确认";
+    chip.title = "有人打开这一页并点了「确认本页」。";
     return chip;
   }
   if (workflow.stage === "detected") {
@@ -2445,6 +2485,9 @@ function visiblePages() {
 /** 工作流筛选（任务 58）：状态只用于显示 / 筛选，不改变识别与导出。 */
 function matchesWorkflow(page, kind) {
   const workflow = workflowOf(page);
+  if (kind === "pending") return pendingPageNos.has(page.page_no);
+  if (kind === "auto_passed") return Boolean(workflow && workflow.confirm_mode === "auto");
+  if (kind === "human_confirmed") return Boolean(workflow && workflow.confirm_mode === "human");
   if (kind === "failed") return Boolean(workflow && workflow.failed_stage);
   if (!workflow) return false;
   if (kind === "unfinished") {
@@ -5336,6 +5379,9 @@ async function refreshPageStates() {
  */
 const WORKFLOW_FILTERS = [
   { value: "", label: "全部", count: "total" },
+  { value: "pending", label: "待处理", count: "pending" },
+  { value: "auto_passed", label: "自动通过（未经人工）", count: "auto" },
+  { value: "human_confirmed", label: "人工已确认", count: "human" },
   { value: "unfinished", label: "未走完", count: "unfinished" },
   { value: "page_unconfirmed", label: "待确认页面", count: "page_unconfirmed" },
   { value: "confirmed", label: "已确认（待检测）", count: "confirmed" },
@@ -5351,19 +5397,34 @@ async function loadWorkflow() {
   if (project.kind === "package") {
     workflowByPageId = new Map();
     workflowSummary = null;
+    workflowConfirmationCounts = { human: 0, auto: 0, unknown: 0 };
+    pendingPageNos = new Set();
+    pendingPageCount = 0;
     renderWorkflowFilter({}, {});
     renderLayoutStatus();
     return;
   }
   try {
-    const data = await apiJson(`/api/projects/${project.project_id}/workflow`);
+    const [data, pending] = await Promise.all([
+      apiJson(`/api/projects/${project.project_id}/workflow`),
+      apiJson(`/api/projects/${project.project_id}/review/pending`).catch(() => ({
+        count: 0,
+        pages: [],
+      })),
+    ]);
     workflowByPageId = new Map((data.pages || []).map((item) => [item.page_id, item]));
     workflowSummary = data.summary || null;
+    workflowConfirmationCounts = data.confirmation_counts || { human: 0, auto: 0, unknown: 0 };
+    pendingPageNos = new Set((pending.pages || []).map((item) => item.page_no));
+    pendingPageCount = pending.count || 0;
     renderWorkflowFilter(data.counts || {}, data.summary || {});
   } catch {
     // 状态索引读不到时按"没有角标"处理，不影响识别 / 审校 / 导出
     workflowByPageId = new Map();
     workflowSummary = null;
+    workflowConfirmationCounts = { human: 0, auto: 0, unknown: 0 };
+    pendingPageNos = new Set();
+    pendingPageCount = 0;
     renderWorkflowFilter({}, {});
   }
   renderLayoutStatus();
@@ -5378,7 +5439,13 @@ function renderWorkflowFilter(counts, summary) {
     const option = document.createElement("option");
     option.value = item.value;
     const number =
-      item.value === "failed"
+      item.value === "pending"
+        ? pendingPageCount
+        : item.value === "auto_passed"
+        ? workflowConfirmationCounts.auto
+        : item.value === "human_confirmed"
+        ? workflowConfirmationCounts.human
+        : item.value === "failed"
         ? summary.failed
         : item.value === "unfinished"
         ? summary.unfinished
@@ -5696,13 +5763,15 @@ let detailSuggestionByBlock = new Map();
 let detailNumberHints = new Map();
 /** 最近一次渲染的整页版面确认状态（候选对比等局部刷新时不要拿旧的页面列表覆盖）。 */
 let detailLayoutConfirmed = false;
+/** 本页工作流确认状态（人工 / 自动 / 未确认），来自块载荷的 `workflow`。 */
+let detailWorkflow = null;
 /**
  * 审校视图的版心显示开关（任务 53）：默认开，按项目记住。
  * 只是**显示**——版心不参与导出（见 `export_margin_box` 的说明）。
  */
 let reviewMarginOn = true;
 /** 块列表的过滤档位：`inside`（默认）/ `outside` / `all`。只影响列表，不删数据。 */
-let reviewBlockFilter = "inside";
+let reviewBlockFilter = "pending";
 /** 用户是否亲手点过过滤条：分"默认档位"与"用户明确要看版心内"。 */
 let reviewFilterExplicit = false;
 
@@ -5722,8 +5791,9 @@ const REVIEW_STATUS_LABELS = {
 
 async function openPageDetail(pageNo) {
   detailPageNo = pageNo;
-  // 换页回到默认档位「版心内」：上一页切到「全部」不该带到下一页
-  reviewBlockFilter = "inside";
+  detailWorkflow = null;
+  // 换页回到默认档位「待处理」：上一页切到「全部」不该带到下一页
+  reviewBlockFilter = "pending";
   reviewFilterExplicit = false;
   showView("review");
   el("page-detail-error").hidden = true;
@@ -5756,6 +5826,7 @@ function ensureReviewPage() {
 
 function closePageDetail() {
   detailPageNo = null;
+  detailWorkflow = null;
   if (boxCreateMode) setBoxCreateMode(false);
   candidateRunId = null;
   auxData = null;
@@ -5944,6 +6015,50 @@ function setupViewerTools() {
   });
 }
 
+function setupReviewAutoPass() {
+  el("review-auto-pass").addEventListener("click", async () => {
+    if (!currentProject || detailPageNo === null) return;
+    const pageNo = detailPageNo;
+    setSaveState("正在检查自动通过条件…");
+    try {
+      const result = await apiJson(
+        `/api/projects/${currentProject.project_id}/pages/${pageNo}/auto-pass`,
+        { method: "POST" }
+      );
+      setSaveState("已自动通过（未经人工）✓");
+      detailWorkflow = {
+        stage: "human_confirmed",
+        confirm_mode: "auto",
+        stage_label: result.stage_label || "自动通过（未经人工）",
+      };
+      await loadPageDetail(pageNo);
+      await refreshPageStates();
+      await loadWorkflow();
+    } catch (error) {
+      const reasons = error?.detail || error?.message || "条件不满足";
+      setSaveState(`不能自动通过：${reasons}`, true);
+    }
+  });
+  el("review-auto-revoke").addEventListener("click", async () => {
+    if (!currentProject || detailPageNo === null) return;
+    const pageNo = detailPageNo;
+    setSaveState("正在撤销自动通过…");
+    try {
+      await apiJson(
+        `/api/projects/${currentProject.project_id}/pages/${pageNo}/auto-pass/revoke`,
+        { method: "POST" }
+      );
+      setSaveState("已撤销自动通过，回到待处理");
+      await loadPageDetail(pageNo, { forceSuggestions: true });
+      await refreshPageStates();
+      await loadWorkflow();
+    } catch (error) {
+      setSaveState(error.message || "撤销失败", true);
+    }
+  });
+}
+
+
 function setupReviewPager() {
   el("review-prev").addEventListener("click", () => stepPage(-1));
   el("review-next").addEventListener("click", () => stepPage(1));
@@ -6000,48 +6115,83 @@ function toggleReviewMargin() {
 
 /** 切换块列表的过滤档位（只重画列表，不动原图 / 编辑状态之外的东西）。 */
 function setReviewBlockFilter(mode) {
-  if (!["inside", "outside", "all"].includes(mode)) return;
+  if (!["pending", "inside", "outside", "all"].includes(mode)) return;
   reviewBlockFilter = mode;
   reviewFilterExplicit = true;
   renderReviewBlocks(reviewBlocks);
 }
 
-/** 过滤条：三个带数量的按钮 + 一行说明（没有版心时整条收起，列表显示全部）。 */
+/** 这一块是否需要人处理：类型建议 / 两路分歧（数据源与块头徽章、分歧标记一致）。 */
+function blockNeedsReview(block) {
+  if (detailSuggestionByBlock.has(block.block_id)) return true;
+  const divergence = divergenceOf(block);
+  return Boolean(divergence && divergence.lines);
+}
+
+/** 本页页面级的待处理原因（块列表之外，来自版面 / 漏行 / 识别状态）。 */
+function pendingPageReasons() {
+  const reasons = [];
+  if (!detailLayoutConfirmed) reasons.push("版面未确认");
+  if (detailInkGaps.length) reasons.push(`漏行候选 ${detailInkGaps.length}`);
+  const page = detailPageRecord();
+  const recognition = page ? recognitionOf(page) : null;
+  if (recognition && recognition.status === "failed") reasons.push("识别失败");
+  return reasons;
+}
+
+function pendingBlockCount(blocks) {
+  return blocks.filter(blockNeedsReview).length;
+}
+
+/**
+ * 过滤条：待处理（默认）/ 版心内 / 版心外 / 全部，各带数量。
+ *
+ * 数量语义：待处理是其中**需要处理**的块；版心内 + 版心外 = 全部。
+ * 页面级问题（版面未确认 / 漏行 / 识别失败）在按钮下方单独说明，不硬算成块。
+ */
 function renderReviewFilter(split, mode) {
   const bar = el("review-filter");
   if (!bar) return;
-  if (!split.box) {
-    bar.hidden = true;
-    return;
-  }
+  const blocks = reviewBlocks || [];
+  const pending = pendingBlockCount(blocks);
   const counts = {
+    pending,
     inside: split.inside.length,
     outside: split.outside.length,
-    all: split.inside.length + split.outside.length,
+    all: blocks.length,
   };
-  const labels = { inside: "版心内", outside: "版心外", all: "全部" };
+  const labels = { pending: "待处理", inside: "版心内", outside: "版心外", all: "全部" };
   for (const button of bar.querySelectorAll("[data-margin-filter]")) {
     const buttonMode = button.dataset.marginFilter;
-    button.textContent = `${labels[buttonMode]} ${counts[buttonMode]}`;
+    button.textContent = `${labels[buttonMode]} ${counts[buttonMode] ?? 0}`;
     button.classList.toggle("is-on", mode === buttonMode);
     button.disabled = buttonMode === "outside" && counts.outside === 0;
   }
   const page = detailPageRecord();
   const notes = [];
+  if (!split.box) notes.push("没有生效版心：版心内按全部计，版心外为 0");
+  const pageReasons = pendingPageReasons();
+  if (pageReasons.length) notes.push(`页面级：${pageReasons.join(" / ")}`);
   if (page && page.margin_box_mode !== "custom" && globalMarginIsAuto()) {
     const suggestion = currentProject.margin_box_suggestion || {};
     notes.push("版心为自动推算，未确认（导出仍按块类型）");
     if (autoMarginProvisional(page)) {
-      notes.push(
-        `只用了 ${suggestion.pages || "?"} 页，可能还不准（多识别几页会更稳）；` +
-          (mode === "all" && !reviewFilterExplicit
-            ? "先显示全部块，点「版心内」可以只看框内的块"
-            : "切到「全部」可以看到所有块")
-      );
+      notes.push(`只用了 ${suggestion.pages || "?"} 页，可能还不准（多识别几页会更稳）`);
     }
+  }
+  if (pending && counts.inside && counts.outside) {
+    notes.push("待处理是其中需要处理的部分；版心内 + 版心外 = 全部");
   }
   el("review-filter-note").textContent = notes.join("；");
   bar.hidden = false;
+}
+
+/** 只刷新过滤条（漏行是异步到达的，不能因此重建正在编辑的块列表）。 */
+function refreshReviewFilterOnly() {
+  if (!reviewBlocks || !reviewBlocks.length) return;
+  const page = detailPageRecord();
+  const split = reviewMarginSplit(page, reviewBlocks);
+  renderReviewFilter(split, effectiveReviewFilter(page));
 }
 
 /**
@@ -6104,6 +6254,7 @@ function renderPageDetail(data) {
   }
 
   detailLayoutConfirmed = Boolean(data.page && data.page.layout_confirmed);
+  detailWorkflow = data.workflow || null;
   // 版心要在块框之前画：块框的"版心外"淡色样式取决于画布上的 has-margin 类
   paintReviewMargin(detailPageRecord() || data.page);
   el("review-margin-toggle").classList.toggle("is-on", reviewMarginOn);
@@ -6113,6 +6264,18 @@ function renderPageDetail(data) {
   renderReviewBlocks(data.blocks);
   renderSuggestionTools();
   renderLayoutPanel(data);
+  renderReviewWorkflowStatus();
+}
+
+/** 审校顶栏的自动通过 / 撤销按钮：只切按钮，不改任何块。 */
+function renderReviewWorkflowStatus() {
+  const workflow = detailWorkflow || {};
+  const auto = workflow.stage === "human_confirmed" && workflow.confirm_mode === "auto";
+  const confirmed = workflow.stage === "human_confirmed";
+  // 已确认（人工 / 自动）或撤销过的页不再显示「自动通过本页」；人工确认按钮仍在底部。
+  el("review-auto-pass").hidden = confirmed || Boolean(workflow.auto_pass_excluded);
+  el("review-auto-revoke").hidden = !auto;
+  el("review-auto-pass").disabled = !reviewBlocks.length;
 }
 
 function project_id() {
@@ -6168,6 +6331,17 @@ function renderReviewBanner(data, recognition) {
   }
   if (review.uncertain) {
     messages.push(`本页有 ${review.uncertain} 个不确定块——确认整页时它们不会被自动确认。`);
+  }
+  const workflow = data.workflow || {};
+  if (workflow.stage === "human_confirmed" && workflow.confirm_mode === "auto") {
+    messages.push(
+      "本页是「自动通过（未经人工）」：系统只做了状态标记，没有改动任何文字。" +
+        "可以点顶栏「撤销自动通过」回到待处理；页面视图的「自动通过（未经人工）」筛选可查看全部清单。"
+    );
+  } else if (workflow.stage === "human_confirmed" && workflow.confirm_mode === "human") {
+    messages.push("本页是人工确认的（点过「确认本页并下一页」）。");
+  } else if (workflow.auto_pass_excluded) {
+    messages.push("这一页撤销过自动通过，之后不再自动标记；请人工确认。");
   }
   const layoutLines = data.layout_lines || {};
   if (layoutLines.conflict) {
@@ -7415,15 +7589,23 @@ function renderReviewBlocks(blocks) {
   const split = reviewMarginSplit(page, blocks);
   const mode = effectiveReviewFilter(page);
   let visible = blocks;
-  if (split.box && mode === "inside") visible = split.inside;
+  if (mode === "pending") visible = blocks.filter(blockNeedsReview);
+  else if (split.box && mode === "inside") visible = split.inside;
   else if (split.box && mode === "outside") visible = split.outside;
   renderReviewFilter(split, mode);
 
   if (!visible.length) {
     const empty = document.createElement("li");
     empty.className = "muted";
+    const pageReasons = pendingPageReasons();
     if (!blocks.length) {
       empty.textContent = "这一页没有块。";
+    } else if (mode === "pending") {
+      empty.textContent =
+        "这一页没有需要处理的块。" +
+        (pageReasons.length
+          ? `页面级还有：${pageReasons.join(" / ")}（右侧可确认版面 / 查看漏行）。`
+          : "切到「全部」仍可查看和编辑所有块。");
     } else if (!split.box) {
       empty.textContent = "这一页没有块。";
     } else {
@@ -7974,6 +8156,8 @@ async function loadInkGaps(pageNo) {
       (item) => Array.isArray(item.bbox) && item.bbox.length === 4
     );
     renderInkGapBar();
+    // 漏行是页面级的待处理理由：过滤条要跟着变，但不重建正在编辑的列表
+    refreshReviewFilterOnly();
   } catch {
     // 辅助信息：读不到不打断审校
   }
@@ -8276,6 +8460,9 @@ async function closeProject() {
   currentProject = null;
   workflowByPageId = new Map();
   workflowSummary = null;
+  workflowConfirmationCounts = { human: 0, auto: 0, unknown: 0 };
+  pendingPageNos = new Set();
+  pendingPageCount = 0;
   closePageDetail();
   closeTaskDrawer();
   stopTaskPolling();
@@ -9851,6 +10038,7 @@ function boot() {
   setupShell();
   setupLibrary();
   setupReviewPager();
+  setupReviewAutoPass();
   setupViewerTools();
   setupPanelGroups();
   setupRecognitionSettings();

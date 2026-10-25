@@ -26,6 +26,7 @@ from ..core.project import editing
 from ..core.project import library as project_library
 from ..core.project import recognition
 from ..core.project import structure as structure_module
+from ..core.project import workflow as workflow_module
 from .deps import actor_name as _actor_name
 from .deps import require_editable_page
 from .deps import require_main_project as _require_main
@@ -157,6 +158,10 @@ def _page_blocks_payload(request: Request, project_id: str, page_no: int) -> dic
         "layout_lines": _line_layout_summary(lines),
         "divergence": blocks_module.page_divergence_summary(blocks, lines, runs).to_dict(),
         "history": {"undo": undo, "redo": redo},
+        # 任务 61：确认方式（人工 / 自动 / 未确认）给审校按钮与状态展示用
+        "workflow": workflow_module.page_workflow(
+            project_library.require_project_dir(project_id, library=library), page.page_id
+        ),
     }
 
 
@@ -647,6 +652,20 @@ def confirm_page(request: Request, project_id: str, page_no: int) -> dict[str, A
         _history(request).push(
             project_id, _Batch(events=result.events, page_nos=(page_no,))
         )
+    # 任务 61：人工确认本页 → 工作流记 human（与自动通过区分）
+    try:
+        page = next(
+            item
+            for item in project_library.list_pages(project_id, library=library)
+            if item.page_no == page_no
+        )
+        workflow_module.set_confirmation(
+            project_library.require_project_dir(project_id, library=library),
+            page.page_id,
+            workflow_module.CONFIRM_HUMAN,
+        )
+    except Exception:  # noqa: BLE001 - 状态索引失败不影响已有的整页确认
+        pass
     payload = _page_blocks_payload(request, project_id, page_no)
     return {
         "page_no": result.page_no,

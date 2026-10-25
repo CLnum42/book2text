@@ -846,6 +846,110 @@ def suggest_block_types(
         ))
     scored = {candidate.block_id: candidate for candidate in _with_confidence(candidates)}
 
+    suggestions = _suggestions_for_page(
+        page=target,
+        page_blocks=page_blocks,
+        candidates=candidates,
+        scored=scored,
+        line_profile=line_profile,
+        project=project,
+        active=active,
+    )
+    suggestions.sort(key=lambda item: item.order_index)
+    return BlockSuggestionPlan(
+        page_no=page_no,
+        suggestions=tuple(suggestions),
+        blocks_scanned=len(page_blocks),
+        pages_compared=len(eligible),
+        page_numbers=tuple(_page_number_hints(page_no, page_blocks, scored, suggestions)),
+    )
+
+
+def suggestions_by_page(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    page_numbers: Collection[int] | None = None,
+    rules: HeaderFooterRules | None = None,
+) -> dict[int, tuple[BlockSuggestion, ...]]:
+    """一次算多页的块类型建议（只读；给「待处理」页筛选 / 自动通过用）。
+
+    与 `suggest_block_types` 同一套规则，但把整本书的 pages / blocks / 行高统计
+    只加载一次；267 页逐页调用那个函数会重复扫全书，慢到不可用。
+    """
+    active = rules or HeaderFooterRules()
+    target_library = library if library is not None else default_library_dir()
+    pages = list_pages(project_id, library=target_library)
+    eligible = {page.page_no for page in pages if page.page_type in active.page_types}
+    wanted = {int(no) for no in page_numbers} if page_numbers is not None else eligible
+    blocks = [
+        block
+        for block in blocks_module.list_blocks(project_id, library=target_library)
+        if block.page_no in eligible
+    ]
+    project = library_module.load_project(project_id, library=target_library)
+    line_profile = _line_profile(project_id, blocks, target_library)
+    candidates: list[Candidate] = []
+    for block in blocks:
+        text = block.text.strip()
+        if not text or block.bbox is None:
+            continue
+        region = _region_of(block.bbox, active)
+        if region is None:
+            continue
+        if active.max_chars is not None and len(text) > active.max_chars:
+            continue
+        proposed, reason = _propose(text, region, active)
+        candidates.append(Candidate(
+            block_id=block.block_id,
+            page_no=block.page_no,
+            text=text,
+            bbox=block.bbox,
+            current_type=block.block_type,
+            proposed_type=proposed,
+            region=region,
+            reason=reason,
+        ))
+    scored = {candidate.block_id: candidate for candidate in _with_confidence(candidates)}
+    by_page: dict[int, list] = {}
+    for block in blocks:
+        if block.page_no in wanted and block.page_no in eligible:
+            by_page.setdefault(block.page_no, []).append(block)
+    result: dict[int, tuple[BlockSuggestion, ...]] = {}
+    for page_no in sorted(wanted):
+        if page_no not in eligible:
+            result[page_no] = ()
+            continue
+        page = next((item for item in pages if item.page_no == page_no), None)
+        if page is None:
+            result[page_no] = ()
+            continue
+        page_blocks = sorted(
+            by_page.get(page_no, ()), key=lambda block: (block.order_index, block.block_id)
+        )
+        result[page_no] = tuple(_suggestions_for_page(
+            page=page,
+            page_blocks=page_blocks,
+            candidates=candidates,
+            scored=scored,
+            line_profile=line_profile,
+            project=project,
+            active=active,
+        ))
+    return result
+
+
+def _suggestions_for_page(
+    *,
+    page,
+    page_blocks,
+    candidates,
+    scored,
+    line_profile,
+    project,
+    active,
+) -> list[BlockSuggestion]:
+    """一页的块类型建议（`suggest_block_types` 与批量扫描共用）。"""
     suggestions: list[BlockSuggestion] = []
     for block_index, block in enumerate(page_blocks):
         # 已经是脚注 / 旁批的块不再给建议（避免"脚注 → 页脚"这类改错的建议）
@@ -863,7 +967,7 @@ def suggest_block_types(
         )
         note = _note_suggestion(
             block,
-            target,
+            page,
             page_blocks,
             block_index,
             line_profile,
@@ -913,13 +1017,7 @@ def suggest_block_types(
         ))
 
     suggestions.sort(key=lambda item: item.order_index)
-    return BlockSuggestionPlan(
-        page_no=page_no,
-        suggestions=tuple(suggestions),
-        blocks_scanned=len(page_blocks),
-        pages_compared=len(eligible),
-        page_numbers=tuple(_page_number_hints(page_no, page_blocks, scored, suggestions)),
-    )
+    return suggestions
 
 
 def _page_number_hints(page_no, page_blocks, scored, suggestions) -> list[PageNumberHint]:

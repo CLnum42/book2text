@@ -67,6 +67,7 @@ def build_manifest(
     extra_files: Sequence[str] = (),
     notes: Sequence[object] = (),
     meta: Mapping[str, object] | None = None,
+    workflow: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """生成 manifest 内容。
 
@@ -119,6 +120,8 @@ def build_manifest(
             "notes_count": len(note_list),
             "notes_char_count": note_char_count,
         },
+        # 任务 61：导出时的工作流状态快照，供以后追溯这份语料是怎么出来的
+        "workflow": dict(workflow or {}),
         "streams": {
             "body": {
                 "segments": len(segments),

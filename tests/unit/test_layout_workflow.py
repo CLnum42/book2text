@@ -51,6 +51,12 @@ def test_migration_0015_creates_layout_and_workflow_tables(tmp_path: Path) -> No
             for row in conn.execute("PRAGMA table_info(layout_run)").fetchall()
         }
         assert {"engine_id", "engine_version", "params_json", "line_count"} <= layout_columns
+        # 任务 61：确认方式与自动通过撤销标记
+        confirmation_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(page_workflow)").fetchall()
+        }
+        assert {"confirm_mode", "confirmed_at", "auto_pass_excluded"} <= confirmation_columns
     finally:
         conn.close()
 

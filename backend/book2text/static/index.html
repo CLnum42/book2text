@@ -114,6 +114,9 @@
           <label class="fitem">工作流
             <select id="filter-workflow" class="select">
               <option value="">全部</option>
+              <option value="pending">待处理</option>
+              <option value="auto_passed">自动通过（未经人工）</option>
+              <option value="human_confirmed">人工已确认</option>
               <option value="unfinished">未走完</option>
               <option value="page_unconfirmed">待确认页面</option>
               <option value="confirmed">已确认（待检测）</option>
@@ -466,6 +469,10 @@
               <button type="button" id="detail-box-create" class="btn btn--sm"
                       title="在左边的页面上拖出一个框，为漏检的区域补一个块（说明书 6.4）">✚ 框选新增块</button>
               <button type="button" id="detail-recognize" class="btn btn--sm">重新识别</button>
+              <button type="button" id="review-auto-pass" class="btn btn--sm"
+                      title="满足全部条件时只标记「自动通过（未经人工）」：无建议、无分歧、无漏行、版面已确认、版心已定、识别成功、第二引擎已复核">自动通过本页</button>
+              <button type="button" id="review-auto-revoke" class="btn btn--sm" hidden
+                      title="撤销这一页的自动通过，回到待处理">撤销自动通过</button>
             </div>
 
             <div class="layout-panel" id="layout-panel" hidden>
@@ -486,9 +493,10 @@
 
             <!-- 审校默认只列版心内的块：版心外的（页眉 / 页脚 / 页码 / 注文）切过去才显示。
                  过滤只影响列表，不隐藏数据：任何块切到「全部」都能照常编辑 / 采用建议 / 框选新增。 -->
-            <div class="review-filter" id="review-filter" hidden>
+            <div class="review-filter" id="review-filter">
               <span class="muted">本页块</span>
-              <button type="button" class="btn btn--sm is-on" data-margin-filter="inside">版心内 0</button>
+              <button type="button" class="btn btn--sm is-on" data-margin-filter="pending">待处理 0</button>
+              <button type="button" class="btn btn--sm" data-margin-filter="inside">版心内 0</button>
               <button type="button" class="btn btn--sm" data-margin-filter="outside">版心外 0</button>
               <button type="button" class="btn btn--sm" data-margin-filter="all">全部 0</button>
               <span class="muted review-filter__note" id="review-filter-note"></span>

@@ -68,6 +68,11 @@ STAGE_LABELS = {
 # 这一刀已经会写的阶段；其余阶段留给后续切片
 IMPLEMENTED_STAGES = (STAGE_PAGE_UNCONFIRMED, STAGE_CONFIRMED, STAGE_DETECTED, STAGE_OCR1_DONE, STAGE_EXCLUDED)
 
+# 确认方式（迁移 0016）：自动通过与人工确认共用 stage=human_confirmed，靠这一列区分
+CONFIRM_HUMAN = "human"
+CONFIRM_AUTO = "auto"
+CONFIRM_MODES = (CONFIRM_HUMAN, CONFIRM_AUTO)
+
 PAGE_NUMBER_MISSING = "missing"
 PAGE_NUMBER_READY = "ready"
 PAGE_NUMBER_SKIPPED = "skipped"
@@ -88,7 +93,14 @@ def _open(directory: Path):
     return db_module.open_database(directory, apply_migrations=False)
 
 
-def stage_label(stage: str) -> str:
+def stage_label(stage: str, confirm_mode: str | None = None) -> str:
+    """阶段文案；`human_confirmed` 要按确认方式区分，不能把自动通过写成人工确认。"""
+    if stage == STAGE_HUMAN_CONFIRMED:
+        if confirm_mode == CONFIRM_AUTO:
+            return "自动通过（未经人工）"
+        if confirm_mode == CONFIRM_HUMAN:
+            return "人工已确认"
+        return "已确认（来源未知）"
     return STAGE_LABELS.get(stage, stage)
 
 
@@ -251,6 +263,76 @@ def clear_failure(directory: Path, page_id: str) -> None:
         conn.commit()
 
 
+def set_confirmation(
+    directory: Path, page_id: str, mode: str, *, actor_name: str | None = None
+) -> str:
+    """把页面记成已确认：``human`` 或 ``auto``。
+
+    **只写状态，不改任何块文本 / 类型 / 框。** 自动通过也用这个函数，
+    但 `confirm_mode` 必须是 ``auto``，界面据此显示"自动通过（未经人工）"。
+    """
+    if mode not in CONFIRM_MODES:
+        raise WorkflowError(f"未知的确认方式：{mode!r}")
+    now = _now()
+    with _open(directory) as conn:
+        _ensure_row(conn, page_id)
+        row = conn.execute(
+            "SELECT stage, stage_times_json FROM page_workflow WHERE page_id = ?",
+            (page_id,),
+        ).fetchone()
+        if row["stage"] == STAGE_EXCLUDED:
+            raise WorkflowError("非正文页不参与确认")
+        try:
+            times = json.loads(row["stage_times_json"] or "{}")
+        except json.JSONDecodeError:
+            times = {}
+        if not isinstance(times, dict):
+            times = {}
+        times["human_confirmed"] = now
+        conn.execute(
+            """
+            UPDATE page_workflow
+            SET stage = ?, confirm_mode = ?, confirmed_at = ?, auto_pass_excluded = 0,
+                failed_stage = NULL, failure_reason = NULL, stage_times_json = ?,
+                revision = revision + 1, updated_at = ?
+            WHERE page_id = ?
+            """,
+            (
+                STAGE_HUMAN_CONFIRMED,
+                mode,
+                now,
+                json.dumps(times, ensure_ascii=False),
+                now,
+                page_id,
+            ),
+        )
+        conn.commit()
+    return STAGE_HUMAN_CONFIRMED
+
+
+def revoke_auto_pass(directory: Path, page_id: str) -> str:
+    """撤销自动通过：回到重算后的阶段，并标记不再自动通过。只写状态。"""
+    with _open(directory) as conn:
+        _ensure_row(conn, page_id)
+        row = conn.execute(
+            "SELECT confirm_mode FROM page_workflow WHERE page_id = ?", (page_id,)
+        ).fetchone()
+        if row["confirm_mode"] != CONFIRM_AUTO:
+            raise WorkflowError("这一页不是自动通过状态，不能撤销自动通过")
+        conn.execute(
+            """
+            UPDATE page_workflow
+            SET stage = ?, confirm_mode = NULL, confirmed_at = NULL,
+                auto_pass_excluded = 1, revision = revision + 1, updated_at = ?
+            WHERE page_id = ?
+            """,
+            (STAGE_OCR1_DONE, _now(), page_id),
+        )
+        conn.commit()
+    # 用产物重算一版更准确的阶段（例如没有检测行时回到 confirmed）
+    return rebuild_page_stage(directory, page_id)
+
+
 def rebuild_page_stage(directory: Path, page_id: str) -> str:
     """按权威产物重算这一页"最近连续完成的状态"。
 
@@ -285,8 +367,12 @@ def rebuild_page_stage(directory: Path, page_id: str) -> str:
                     stage = STAGE_OCR1_DONE
         now = _now()
         row = conn.execute(
-            "SELECT stage_times_json FROM page_workflow WHERE page_id = ?", (page_id,)
+            "SELECT stage_times_json, stage, confirm_mode FROM page_workflow WHERE page_id = ?",
+            (page_id,),
         ).fetchone()
+        # 已经人工确认 / 自动通过的页不因为一次重算被降级；撤销自动通过走 revoke_auto_pass。
+        if row is not None and row["stage"] == STAGE_HUMAN_CONFIRMED and row["confirm_mode"]:
+            stage = STAGE_HUMAN_CONFIRMED
         try:
             times = json.loads(row["stage_times_json"] or "{}") if row else {}
         except json.JSONDecodeError:
@@ -386,6 +472,9 @@ def project_workflow(
                 times = {}
             number_state = row["page_number_state"]
             updated_at = row["updated_at"]
+            confirm_mode = row["confirm_mode"]
+            confirmed_at = row["confirmed_at"]
+            auto_pass_excluded = bool(row["auto_pass_excluded"])
         else:
             page_stage = _initial_stage(page.page_type, page.page_confirmed)
             failed_stage = None
@@ -393,6 +482,9 @@ def project_workflow(
             times = {}
             number_state = PAGE_NUMBER_MISSING
             updated_at = None
+            confirm_mode = None
+            confirmed_at = None
+            auto_pass_excluded = False
         counts[page_stage] = counts.get(page_stage, 0) + 1
         layout = layouts.get(page.page_id)
         item = {
@@ -401,7 +493,10 @@ def project_workflow(
             "page_type": page.page_type,
             "include": page.include,
             "stage": page_stage,
-            "stage_label": stage_label(page_stage),
+            "stage_label": stage_label(page_stage, confirm_mode),
+            "confirm_mode": confirm_mode,
+            "confirmed_at": confirmed_at,
+            "auto_pass_excluded": auto_pass_excluded,
             "failed_stage": failed_stage,
             "failed_stage_label": stage_label(failed_stage) if failed_stage else None,
             "failure_reason": failure_reason,
@@ -433,16 +528,39 @@ def project_workflow(
         if STAGE_RANK.get(item["stage"], -1) >= STAGE_RANK[STAGE_OCR1_DONE]
     ]
     failed_pages = [item for item in items if item["failed_stage"]]
+    auto_passed = [
+        item
+        for item in items
+        if item["stage"] == STAGE_HUMAN_CONFIRMED
+        and item["confirm_mode"] == CONFIRM_AUTO
+    ]
+    human_confirmed = [
+        item
+        for item in items
+        if item["stage"] == STAGE_HUMAN_CONFIRMED
+        and item["confirm_mode"] == CONFIRM_HUMAN
+    ]
     return {
         "count": len(items),
         "pages": items,
         "counts": counts,
+        "confirmation_counts": {
+            "human": len(human_confirmed),
+            "auto": len(auto_passed),
+            "unknown": sum(
+                1
+                for item in items
+                if item["stage"] == STAGE_HUMAN_CONFIRMED and item["confirm_mode"] is None
+            ),
+        },
         "summary": {
             "total": len(items),
             "body": len(body),
             "detected": len(detected),
             "ocr1_done": len(recognized),
             "failed": len(failed_pages),
+            "auto_passed": len(auto_passed),
+            "human_confirmed": len(human_confirmed),
             "unfinished": sum(
                 1
                 for item in items
@@ -465,7 +583,8 @@ def page_workflow(directory: Path, page_id: str) -> dict | None:
         data["stage_times"] = json.loads(data.pop("stage_times_json") or "{}")
     except json.JSONDecodeError:
         data["stage_times"] = {}
-    data["stage_label"] = stage_label(data["stage"])
+    data["stage_label"] = stage_label(data["stage"], data.get("confirm_mode"))
+    data["auto_pass_excluded"] = bool(data.get("auto_pass_excluded"))
     return data
 
 
@@ -497,6 +616,8 @@ __all__ = [
     "project_workflow",
     "rebuild_page_stage",
     "record_failure",
+    "revoke_auto_pass",
+    "set_confirmation",
     "record_stage",
     "record_stages",
     "stage_label",

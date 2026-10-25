@@ -23,6 +23,7 @@ from typing import Any
 from ... import __version__
 from ..ocr.adapters import RapidOcrAdapter
 from ..project import blocks as blocks_module
+from ..project import review_status
 from ..project import library as library_module
 from ..project import structure as structure_module
 from ..project.library import Page
@@ -396,6 +397,11 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
         for record in prepared.meta.get("pages", [])
         if record.get("printed_page_candidates")
     ]
+    workflow_status = review_status.status_counts(
+        project_id,
+        library=target_library,
+        page_numbers=[page.page_no for page in prepared.pages],
+    )
 
     return {
         "input_blocks": len(prepared.sources),
@@ -459,6 +465,8 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
             "pages": len(page_number_pages),
             "page_nos": page_number_pages,
         },
+        # 任务 61：工作流状态快照（导出预检与 manifest 用同一组数）
+        "workflow_status": workflow_status,
         "margin_pages": {
             "applied": sum(1 for layout in layouts.values() if layout.applied),
             "unset": margin_unset_pages,
@@ -637,6 +645,11 @@ def run_export(
     )
     written.append(META_FILE_NAME)
 
+    workflow_status = review_status.status_counts(
+        project_id,
+        library=target_library,
+        page_numbers=[page.page_no for page in prepared.pages],
+    )
     manifest = manifest_module.build_manifest(
         app_version=__version__,
         scope=manifest_module.ExportScope(
@@ -657,6 +670,7 @@ def run_export(
         # manifest 描述的是"这次导出了什么"：没勾注释时 notes 统计为 0，files 里也没有它们
         notes=prepared.notes if options.include_notes else (),
         meta=prepared.meta,
+        workflow=workflow_status,
     )
     (directory / MANIFEST_FILE_NAME).write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n"
