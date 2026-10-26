@@ -37,6 +37,31 @@ def test_fit_ignores_short_lines_and_needs_three() -> None:
     assert margin_box.fit_box_from_lines(two) is None
 
 
+def test_fit_rescues_tail_body_lines_beyond_safety_gap() -> None:
+    # 30 条正文长行，行距 0.02；另有一条正文行在页顶 0.02，离 5% 分位 > 安全扩张 0.034。
+    lines = [
+        [0.10, 0.10 + i * 0.02, 0.90, 0.10 + i * 0.02 + 0.018]
+        for i in range(30)
+    ]
+    lines.append([0.10, 0.02, 0.90, 0.038])
+    result = margin_box.fit_box_from_lines(lines)
+    assert result is not None
+    # 尾部回收把页顶那行按 2% 行框外扩收进来，而不是停在 5% 分位的 0.0996 附近。
+    assert result[1] < 0.02
+
+
+def test_fit_tail_rescue_skips_thick_rule() -> None:
+    # 页底一条 10% 高的横线（装饰 / 跨页线）中心在外，但不是"一行字"，不回收。
+    lines = [
+        [0.10, 0.10 + i * 0.02, 0.90, 0.10 + i * 0.02 + 0.018]
+        for i in range(30)
+    ]
+    lines.append([0.10, 0.92, 0.90, 1.0])
+    result = margin_box.fit_box_from_lines(lines)
+    assert result is not None
+    assert result[3] < 0.90
+
+
 def _insert_layout_lines(directory: Path, page_no: int) -> None:
     with db_module.open_database(directory, apply_migrations=False) as conn:
         page = conn.execute("SELECT page_id FROM page WHERE page_no = ?", (page_no,)).fetchone()
