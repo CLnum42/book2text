@@ -92,6 +92,8 @@ main `469b4ef`（任务 66），847 测试通过。`queueDecisions` 只在内存
 - `.venv/bin/python -m pytest -q` → **850 passed, 1 warning，131.48 秒**。
 - **CI [#49](https://github.com/CLnum42/book2text/actions/runs/40356716304) Success**：
   总 8m31s，macOS 2m29s、Windows 8m28s；两个 job 均成功，无 skipped。
+- **CI [#50](https://github.com/CLnum42/book2text/actions/runs/40358660298) Success**：
+  总 4m01s，macOS 3m14s、Windows 3m57s；最终测试提交的两个 job 均成功。
 - 截图：[第 370 页保留 3 处后](docs/screenshots/review-ack-kept.png)、
   [队列/差异条](docs/screenshots/review-queue.png)。
 - **未验证：** Windows / Safari；触屏；全部 13 处都 ack 后的自动通过（真书该页还有
