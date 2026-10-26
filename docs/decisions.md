@@ -2450,6 +2450,7 @@ v1（`b2t.pagesOverlay.<project_id>`）的默认值是"关"，老用户存着 `"
 - 条件全部成立才标记：无类型建议、无分歧、无漏行、版面已确认、版心已定、
   识别成功、第二引擎已复核。第二引擎没跑 → `single_engine`，不自动通过。
 - 版心"已定"：页级 `custom` / `none`，或全局版心是**人工设置**；自动推算未确认不算。
+  （任务 62 补充：页级 `auto` 有拟合框也算已定，见 D-078。）
 - 数据：迁移 0016 给 `page_workflow` 加 `confirm_mode` / `confirmed_at` /
   `auto_pass_excluded`。自动通过与人工确认共用 `stage=human_confirmed`，靠
   `confirm_mode=auto|human` 区分；界面固定文案「自动通过（未经人工）」/「人工已确认」。

@@ -107,6 +107,8 @@ main `30727cc`（任务 61 文档），835 测试全绿。项目级版心是唯�
 - 新增 `tests/integration/test_margin_auto_api.py`：prepare 任务、fit-all API、`custom` / `none` 不动。
 - 更新 `test_margin_box_api.py`（新项目默认 auto）、`test_ui_assets.py`（页面准备文案）。
 - `.venv/bin/python -m pytest -q` → **842 passed, 1 warning，118.54 秒**。
+- **CI [#42](https://github.com/CLnum42/book2text/actions/runs/40326281780) Success**：
+  总 4m17s，macOS 2m46s、Windows 4m13s；两个 job 都是成功，无 skipped。
 - **未验证：** Windows、Safari；倾斜扫描 / 多栏 / 竖排页的拟合；安全扩张参数在别的书上是否最优。
 
 ### 用户操作说明
