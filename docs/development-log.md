@@ -90,6 +90,8 @@ main `c8b3978`（任务 65），845 测试通过。版面确认接口支持 `pag
 - 新增后端测试：`finish-summary` 六状态字段、候选页、批量自动通过只应用 eligible、
   块文本哈希不变、批量撤销；新增 UI 静态约定（入口 / 六行 / 批量接口 / 停止续跑）。
 - `.venv/bin/python -m pytest -q` → **847 passed, 1 warning，317.29 秒**。
+- **CI [#48](https://github.com/CLnum42/book2text/actions/runs/40351666534) Success**：
+  总 10m32s，macOS 2m41s、Windows 10m28s；两个 job 均成功，无 skipped。
 - **未验证：** Windows / Safari；触屏；停止状态在刷新页面后不保留（只在本会话内续跑）。
 
 ### 用户操作说明
