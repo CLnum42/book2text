@@ -340,6 +340,8 @@ main `30727cc`（任务 61 文档），835 测试全绿。项目级版心是唯�
 - `.venv/bin/python -m pytest -q` → **844 passed, 1 warning**（尾部回收新增 2 条）。
 - **CI [#42](https://github.com/CLnum42/book2text/actions/runs/40326281780) Success**：
   总 4m17s，macOS 2m46s、Windows 4m13s；两个 job 都是成功，无 skipped。
+- **CI [#43](https://github.com/CLnum42/book2text/actions/runs/40329243040) Success**：
+  总 8m29s，尾部回收修复的两个 job 均成功，无 skipped。
 - **未验证：** Windows、Safari；倾斜扫描 / 多栏 / 竖排页的拟合；安全扩张参数在别的书上是否最优。
 
 ### 用户操作说明
