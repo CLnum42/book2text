@@ -23,6 +23,7 @@ from . import blocks as blocks_module
 from . import ink_gaps as ink_gaps_module
 from . import library as library_module
 from . import margin_box as margin_box_module
+from . import page_numbers as page_numbers_module
 from . import structure as structure_module
 from . import workflow as workflow_module
 from ..storage import db as db_module
@@ -382,3 +383,155 @@ def status_counts(
         if confirm_mode is None:
             counts["pending"] += 1
     return counts
+
+
+# ---------------------------------------------------------------- 收尾面板汇总（任务 66）
+
+def _margin_effective(project, page) -> bool:
+    """版心是否有生效框（收尾面板口径，不要求默认版心是人工设置）。
+
+    - `none`：明确不适用，算已定；
+    - `custom` / `auto`：有本页框；
+    - `auto` 行不足或 `inherit`：有项目默认版心；
+    """
+    if page.margin_box_mode == "none":
+        return True
+    if page.margin_box is not None:
+        return True
+    return project.margin_box is not None
+
+
+def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
+    """收尾面板的六个状态：全部从数据库实时聚合，不依赖前端估算。
+
+    「审校」行同时给"可直接通过"与"要人看"的数量：
+    可直接通过 = 正文页里识别成功、无建议 / 无分歧 / 无漏行 / 版面已确认 /
+    版心已定 / 第二引擎已复核、且还没有确认过的页；其余未确认正文页算要人看。
+    """
+    pages = library_module.list_pages(project_id, library=library)
+    project = _project(project_id, library)
+    states = blocks_module.page_recognition_states(project_id, library=library)
+    divergences = blocks_module.page_divergences(project_id, library=library)
+    aux = blocks_module.pages_with_auxiliary_run(project_id, library=library)
+    workflow = workflow_module.project_workflow(project_id, library=library)
+    wf_by_no = {item["page_no"]: item for item in workflow["pages"]}
+    pending = project_pending(project_id, library=library)
+    pending_nos = {item["page_no"] for item in pending["pages"]}
+
+    body_pages = [page for page in pages if page.include]
+    confirmed_pages = sum(1 for page in pages if page.page_confirmed)
+    layout_done = sum(1 for page in body_pages if page.layout_confirmed)
+
+    margin_done = sum(1 for page in pages if _margin_effective(project, page))
+    fallback_pages = [
+        page.page_no
+        for page in pages
+        if page.margin_box_mode == "auto"
+        and page.margin_box is None
+        and project.margin_box is not None
+    ]
+
+    auto_passable = []
+    confirmed_body = 0
+    for page in body_pages:
+        wf = wf_by_no.get(page.page_no) or {}
+        if wf.get("confirm_mode") in (
+            workflow_module.CONFIRM_HUMAN,
+            workflow_module.CONFIRM_AUTO,
+        ):
+            confirmed_body += 1
+            continue
+        state = states.get(page.page_id)
+        if (
+            state is not None
+            and state.status == blocks_module.STATUS_RECOGNIZED
+            and not wf.get("auto_pass_excluded")
+            and page.page_no not in pending_nos
+        ):
+            auto_passable.append(page.page_no)
+    needs_human = [
+        page.page_no
+        for page in body_pages
+        if (wf_by_no.get(page.page_no) or {}).get("confirm_mode")
+        not in (workflow_module.CONFIRM_HUMAN, workflow_module.CONFIRM_AUTO)
+        and page.page_no not in set(auto_passable)
+    ]
+
+    try:
+        pn_state = page_numbers_module.page_number_state(project_id, library=library)
+    except Exception:  # noqa: BLE001 - 页码是旁路，读不到不影响收尾
+        pn_state = {"template": None, "ranges": [], "filled": 0, "total": len(pages)}
+    pn_done = bool(pn_state.get("template") or pn_state.get("ranges"))
+
+    checked_pages = [page.page_no for page in body_pages if page.page_id in aux]
+    compared = identical = format_only = chars = punct = empty = 0
+    for page in body_pages:
+        divergence = divergences.get(page.page_id)
+        if divergence is None:
+            continue
+        identical += divergence.identical
+        format_only += divergence.format_only
+        chars += divergence.chars
+        punct += divergence.punct
+        empty += divergence.empty
+    compared = identical + format_only + chars + punct
+    diverging_rate = round((chars + punct) / compared, 4) if compared else 0.0
+
+    complete = [
+        confirmed_pages == len(pages),
+        margin_done == len(pages),
+        layout_done == len(body_pages),
+        pn_done,
+        len(auto_passable) == 0 and len(needs_human) == 0,
+        len(checked_pages) == len(body_pages),
+    ]
+    return {
+        "project": {"project_id": project_id, "name": project.name},
+        "page_type": {
+            "confirmed": confirmed_pages,
+            "total": len(pages),
+            "complete": complete[0],
+        },
+        "margin": {
+            "set": margin_done,
+            "total": len(pages),
+            "fallback": len(fallback_pages),
+            "fallback_pages": fallback_pages,
+            "complete": complete[1],
+        },
+        "layout": {
+            "confirmed": layout_done,
+            "total": len(body_pages),
+            "remaining": len(body_pages) - layout_done,
+            "pending_pages": [page.page_no for page in body_pages if not page.layout_confirmed],
+            "complete": complete[2],
+        },
+        "page_numbers": {
+            "located": pn_done,
+            "template": pn_state.get("template"),
+            "filled": pn_state.get("filled", 0),
+            "total": pn_state.get("total", len(pages)),
+            "complete": complete[3],
+            "skippable": True,
+        },
+        "review": {
+            "auto_passable": len(auto_passable),
+            "auto_passable_pages": auto_passable,
+            "needs_human": len(needs_human),
+            "needs_human_pages": needs_human,
+            "confirmed": confirmed_body,
+            "total": len(body_pages),
+            "complete": complete[4],
+        },
+        "engine": {
+            "checked": len(checked_pages),
+            "total": len(body_pages),
+            "compared_lines": compared,
+            "diverging_lines": chars + punct,
+            "empty_lines": empty,
+            "diverging_rate": diverging_rate,
+            "complete": complete[5],
+        },
+        "k": sum(1 for item in complete if item),
+        "k_total": 6,
+    }

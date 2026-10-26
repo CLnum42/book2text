@@ -348,6 +348,7 @@
               <div class="selection-actionbar__note" id="selection-primary-note"></div>
               <div class="selection-actionbar__row">
                 <button type="button" id="selection-recognize" class="btn btn--pri">识别</button>
+                <button type="button" id="finish-open" class="finish-chip" title="一屏查看六个收尾状态">收尾 0/6</button>
                 <button type="button" id="selection-more" class="btn" title="更多对所选页的动作">⋯</button>
               </div>
               <div class="selection-more" id="selection-more-menu" hidden>
@@ -462,6 +463,7 @@
               <span id="page-detail-meta" class="review-headline"></span>
               <span class="spacer"></span>
               <button type="button" id="diff-queue-toggle" class="btn btn--sm queue-toggle" hidden>差异 0 ▾</button>
+              <button type="button" id="finish-open-review" class="finish-chip" title="一屏查看六个收尾状态">收尾 0/6</button>
               <button type="button" id="review-more" class="btn btn--sm review-more__button" title="更多页级动作">⋯</button>
               <div class="review-more" id="review-more-menu" hidden>
                 <button type="button" id="review-apply-all" class="review-more__item"
@@ -1092,6 +1094,98 @@
       <div class="drawer__recent">
         <div class="muted" id="drawer-recent-title">最近任务</div>
         <ul id="drawer-recent"></ul>
+      </div>
+    </div>
+  </aside>
+
+
+  <aside class="finish-drawer" id="finish-drawer" hidden aria-label="收尾面板">
+    <div class="finish-drawer__head">
+      <strong>收尾</strong>
+      <span class="muted" id="finish-project-name"></span>
+      <span class="spacer"></span>
+      <button type="button" id="finish-refresh" class="btn btn--sm">刷新</button>
+      <button type="button" id="finish-close" class="icon-btn" title="关闭">✕</button>
+    </div>
+    <div class="finish-drawer__body">
+      <ul class="finish-list">
+        <li class="finish-row" id="finish-row-page-type">
+          <span class="finish-icon" id="finish-icon-page-type">·</span>
+          <div class="finish-main">
+            <div class="finish-title"><strong>页面类型</strong><span class="finish-status" id="finish-page-type-status"></span></div>
+            <div class="finish-sub" id="finish-page-type-sub"></div>
+          </div>
+          <button type="button" id="finish-confirm-pages" class="finish-action">确认全部未确认页</button>
+        </li>
+        <li class="finish-row" id="finish-row-margin">
+          <span class="finish-icon" id="finish-icon-margin">·</span>
+          <div class="finish-main">
+            <div class="finish-title"><strong>版心</strong><span class="finish-status" id="finish-margin-status"></span></div>
+            <div class="finish-sub" id="finish-margin-sub"></div>
+          </div>
+          <button type="button" id="finish-margin-pages" class="finish-action" hidden>查看回退默认页</button>
+        </li>
+        <li class="finish-row" id="finish-row-layout">
+          <span class="finish-icon" id="finish-icon-layout">·</span>
+          <div class="finish-main">
+            <div class="finish-title"><strong>版面确认</strong><span class="finish-status" id="finish-layout-status"></span></div>
+            <div class="finish-sub" id="finish-layout-sub"></div>
+          </div>
+          <button type="button" id="finish-confirm-layout" class="finish-action">确认全部正文页版面</button>
+        </li>
+        <li class="finish-row" id="finish-row-pagenum">
+          <span class="finish-icon" id="finish-icon-pagenum">·</span>
+          <div class="finish-main">
+            <div class="finish-title"><strong>页码</strong><span class="finish-status" id="finish-pagenum-status"></span></div>
+            <div class="finish-sub" id="finish-pagenum-sub"></div>
+          </div>
+          <button type="button" id="finish-open-pagenum" class="finish-action">定位页码…</button>
+        </li>
+        <li class="finish-row" id="finish-row-review">
+          <span class="finish-icon" id="finish-icon-review">·</span>
+          <div class="finish-main">
+            <div class="finish-title"><strong>审校</strong><span class="finish-status" id="finish-review-status"></span></div>
+            <div class="finish-sub" id="finish-review-sub"></div>
+          </div>
+          <button type="button" id="finish-auto-pass" class="finish-action">标记自动通过</button>
+        </li>
+        <li class="finish-row" id="finish-row-engine">
+          <span class="finish-icon" id="finish-icon-engine">·</span>
+          <div class="finish-main">
+            <div class="finish-title"><strong>第二引擎</strong><span class="finish-status" id="finish-engine-status"></span></div>
+            <div class="finish-sub" id="finish-engine-sub"></div>
+          </div>
+          <button type="button" id="finish-check-engine" class="finish-action">复核全部未复核页</button>
+        </li>
+      </ul>
+
+      <div class="finish-progress" id="finish-layout-progress" hidden>
+        <div class="finish-progress__text" id="finish-layout-progress-text"></div>
+        <progress id="finish-layout-bar" value="0" max="1"></progress>
+        <div class="finish-progress__actions">
+          <button type="button" id="finish-layout-stop" class="btn btn--sm">停止</button>
+          <button type="button" id="finish-layout-resume" class="btn btn--sm" hidden>继续剩余页</button>
+        </div>
+        <p class="finish-note">已确认的不会回退；停止后可以从剩余页继续。</p>
+      </div>
+
+      <div class="finish-progress" id="finish-auto-progress" hidden>
+        <div class="finish-progress__text" id="finish-auto-progress-text"></div>
+        <progress id="finish-auto-bar" value="0" max="1"></progress>
+        <div class="finish-progress__actions">
+          <button type="button" id="finish-auto-stop" class="btn btn--sm">停止</button>
+          <button type="button" id="finish-auto-resume" class="btn btn--sm" hidden>继续剩余页</button>
+          <button type="button" id="finish-auto-revoke" class="btn btn--sm" hidden>撤销这一批</button>
+        </div>
+        <p class="finish-note">只标记状态，不改任何块文字；撤销只撤「自动通过（未经人工）」。</p>
+      </div>
+
+      <div class="finish-bottom">
+        <div class="finish-bottom__text" id="finish-bottom-note"></div>
+        <div class="finish-bottom__actions">
+          <button type="button" id="finish-start-review" class="btn btn--pri">从第 1 页开始审校</button>
+          <button type="button" id="finish-export" class="btn">导出…</button>
+        </div>
       </div>
     </div>
   </aside>

@@ -796,3 +796,40 @@ def test_review_diff_queue_is_wired_for_local_adoption() -> None:
     assert 'event.key === "ArrowLeft"' in script
     # 队列打开时块内差异条隐藏
     assert "body.queue-mode .diff-strip" in styles
+
+
+def test_finish_panel_and_batch_actions_are_wired() -> None:
+    """任务 66：收尾面板六状态、两个批量动作、入口与真实进度都接上。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+    for element_id in (
+        "finish-open",
+        "finish-open-review",
+        "finish-drawer",
+        "finish-close",
+        "finish-row-page-type",
+        "finish-row-margin",
+        "finish-row-layout",
+        "finish-row-pagenum",
+        "finish-row-review",
+        "finish-row-engine",
+        "finish-confirm-layout",
+        "finish-auto-pass",
+        "finish-layout-progress",
+        "finish-auto-progress",
+        "finish-bottom-note",
+        "finish-start-review",
+        "finish-export",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    assert "/review/finish-summary" in script
+    assert "/review/auto-pass" in script
+    assert "/review/auto-pass/revoke" in script
+    # 批量版面确认走已有的批量接口，发 page_numbers（不是循环单页请求）
+    assert "page_numbers: chunk" in script
+    assert "layout/confirm" in script
+    # 停止 / 续跑
+    assert "finishLayoutStop" in script and "finishLayoutRemaining" in script
+    assert "finishAutoStop" in script and "finishAutoRemaining" in script

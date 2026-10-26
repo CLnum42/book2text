@@ -2945,6 +2945,9 @@ function renderPageSetup() {
   renderTypePicker();
   renderSuggestionPanel();
   initPanelAccordion();
+  if (finishSummaryProject !== currentProject.project_id) {
+    loadFinishSummary({ silent: true });
+  }
 }
 
 let panelAccordionProject = null;
@@ -6082,6 +6085,22 @@ const queueDecisions = new Map(); // key -> "adopted" | "kept"
 let lastQueueAdoptedKey = null;
 let queuePageNo = null;
 let detailHistoryState = { undo: 0, redo: 0 };
+/** 收尾面板（任务 66）：数字全部来自 /review/finish-summary。 */
+let finishSummary = null;
+let finishSummaryProject = null;
+let finishSummaryLoading = false;
+let finishLayoutRemaining = [];
+let finishLayoutRunning = false;
+let finishLayoutStop = false;
+let finishLayoutBase = 0;
+let finishLayoutTotalAll = 0;
+let finishAutoRemaining = [];
+let finishAutoRunning = false;
+let finishAutoStop = false;
+let finishAutoApplied = [];
+let finishAutoTotalAll = 0;
+let finishAutoDoneAll = 0;
+let finishAutoSkipped = 0;
 let reviewSaveTimer = null;
 let reviewPendingSave = null; // {block, text}：还没发出去的自动保存
 /** 每个块编辑框最后的光标位置：拆分要用它（点菜单会让编辑框失焦）。 */
@@ -9454,6 +9473,392 @@ function nextUnfinishedPage(afterPageNo) {
   return next ? next.page_no : null;
 }
 
+// ---------------------------------------------------------------- 收尾面板（任务 66）
+
+function finishChipText() {
+  return finishSummary ? `收尾 ${finishSummary.k}/6` : "收尾 —/6";
+}
+
+function updateFinishChips() {
+  for (const id of ["finish-open", "finish-open-review"]) {
+    const node = el(id);
+    if (!node) continue;
+    node.textContent = finishChipText();
+    node.classList.toggle("is-incomplete", Boolean(finishSummary) && finishSummary.k < 6);
+    node.classList.toggle("is-done", Boolean(finishSummary) && finishSummary.k === 6);
+  }
+}
+
+function finishIcon(id, state) {
+  const node = el(id);
+  if (!node) return;
+  node.textContent = state === "ok" ? "✓" : state === "warn" ? "!" : "·";
+  node.classList.toggle("is-ok", state === "ok");
+  node.classList.toggle("is-warn", state === "warn");
+}
+
+async function loadFinishSummary({ silent = false } = {}) {
+  if (!currentProject || finishSummaryLoading) return;
+  finishSummaryLoading = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/review/finish-summary`
+    );
+    finishSummary = data;
+    finishSummaryProject = currentProject.project_id;
+    updateFinishChips();
+    renderFinishPanel();
+  } catch (error) {
+    if (!silent) showError(el("pages-error"), error);
+  } finally {
+    finishSummaryLoading = false;
+  }
+}
+
+function renderFinishPanel() {
+  if (!finishSummary) return;
+  const data = finishSummary;
+  el("finish-project-name").textContent = data.project?.name || "";
+
+  const pageType = data.page_type;
+  finishIcon("finish-icon-page-type", pageType.complete ? "ok" : "warn");
+  el("finish-page-type-status").textContent = `${pageType.confirmed} / ${pageType.total} 已确认`;
+  el("finish-page-type-sub").textContent =
+    pageType.confirmed >= pageType.total
+      ? "所有页面类型都已确认"
+      : `还有 ${pageType.total - pageType.confirmed} 页未确认`;
+  const confirmPages = el("finish-confirm-pages");
+  confirmPages.hidden = pageType.complete;
+  confirmPages.textContent = `确认全部未确认页（${pageType.total - pageType.confirmed}）`;
+  confirmPages.disabled = pageType.complete;
+
+  const margin = data.margin;
+  finishIcon("finish-icon-margin", margin.complete ? "ok" : "warn");
+  el("finish-margin-status").textContent = `${margin.set} / ${margin.total} 已定`;
+  el("finish-margin-sub").textContent = margin.fallback
+    ? `其中 ${margin.fallback} 页行不足，回退默认版心`
+    : "每页都有生效版心";
+  const fallback = el("finish-margin-pages");
+  fallback.hidden = !margin.fallback;
+  fallback.textContent = `查看回退默认页（${margin.fallback}）`;
+
+  const layout = data.layout;
+  finishIcon("finish-icon-layout", layout.complete ? "ok" : "warn");
+  el("finish-layout-status").textContent = `${layout.confirmed} / ${layout.total} 已确认`;
+  el("finish-layout-sub").textContent =
+    layout.remaining > 0 ? `还差 ${layout.remaining} 页正文版面` : "所有正文页版面已确认";
+  const layoutButton = el("finish-confirm-layout");
+  layoutButton.hidden = layout.remaining === 0;
+  layoutButton.disabled = finishLayoutRunning || layout.remaining === 0;
+  layoutButton.textContent = layout.remaining ? `确认全部正文页版面` : "版面已全部确认";
+
+  const pn = data.page_numbers;
+  finishIcon("finish-icon-pagenum", pn.located ? "ok" : "warn");
+  el("finish-pagenum-status").textContent = pn.located ? "已定位" : "未定位（可跳过）";
+  el("finish-pagenum-sub").textContent =
+    `已填 ${pn.filled} / ${pn.total} 页 · 可跳过、不挡导出`;
+  el("finish-open-pagenum").textContent = pn.located ? "核对页码…" : "定位页码…";
+
+  const review = data.review;
+  const reviewDone = review.auto_passable === 0 && review.needs_human === 0;
+  finishIcon("finish-icon-review", reviewDone ? "ok" : "warn");
+  el("finish-review-status").textContent =
+    `${review.auto_passable} 页可直接通过 · ${review.needs_human} 页要人看`;
+  el("finish-review-sub").textContent =
+    `已确认 ${review.confirmed} / ${review.total} 页正文`;
+  const auto = el("finish-auto-pass");
+  auto.hidden = review.auto_passable === 0;
+  auto.disabled = finishAutoRunning || review.auto_passable === 0;
+  auto.textContent = `标记 ${review.auto_passable} 页自动通过`;
+  if (data.layout.remaining > 0 && review.auto_passable > 0) {
+    auto.title = "先确认版面，否则这些页会被自动通过条件拒绝";
+  } else {
+    auto.title = "只写「自动通过（未经人工）」状态，不改任何块文字";
+  }
+
+  const engine = data.engine;
+  finishIcon("finish-icon-engine", engine.complete ? "ok" : "warn");
+  el("finish-engine-status").textContent = `${engine.checked} / ${engine.total} 已复核`;
+  el("finish-engine-sub").textContent =
+    `比过 ${engine.compared_lines} 行 · 分歧率 ${(engine.diverging_rate * 100).toFixed(1)}%` +
+    (engine.empty_lines ? ` · 没读出 ${engine.empty_lines} 行` : "");
+  const check = el("finish-check-engine");
+  check.hidden = engine.complete;
+  check.textContent = `复核全部未复核页（${engine.total - engine.checked}）`;
+
+  const bottom = el("finish-bottom-note");
+  if (review.needs_human === 0 && review.auto_passable === 0) {
+    bottom.textContent = "所有正文页都已确认，可以导出；预检会记录实际状态。";
+  } else if (review.needs_human === 0) {
+    bottom.textContent =
+      `还有 ${review.auto_passable} 页可直接通过（未经人工）。` +
+      `先点「标记自动通过」；或现在导出，预检会记录这些页未经人工确认。`;
+  } else {
+    bottom.textContent =
+      `还有 ${review.needs_human} 页需要人看。` +
+      `或者现在导出，预检会记录 ${review.needs_human} 页未经人工确认。`;
+  }
+  el("finish-start-review").textContent = review.needs_human
+    ? `从第 ${review.needs_human_pages[0] || 1} 页开始审校`
+    : "回到第 1 页审校";
+}
+
+function openFinishPanel() {
+  if (!currentProject || currentProject.kind === "package") return;
+  const drawer = el("finish-drawer");
+  drawer.hidden = false;
+  if (!finishSummary || finishSummaryProject !== currentProject.project_id) {
+    el("finish-project-name").textContent = currentProject.name || "";
+  } else {
+    renderFinishPanel();
+  }
+  loadFinishSummary();
+}
+
+function closeFinishPanel() {
+  const drawer = el("finish-drawer");
+  if (drawer) drawer.hidden = true;
+}
+
+async function finishConfirmPages() {
+  await confirmAllUnconfirmed();
+  await loadFinishSummary({ silent: true });
+}
+
+function finishShowFallbackPages() {
+  if (!finishSummary || !finishSummary.margin.fallback_pages.length) return;
+  selectedPages.clear();
+  for (const no of finishSummary.margin.fallback_pages) selectedPages.add(no);
+  selectionAnchor = finishSummary.margin.fallback_pages[0];
+  closeFinishPanel();
+  showView("pages");
+  renderPages();
+}
+
+async function finishRunLayout() {
+  if (!finishSummary || finishLayoutRunning) return;
+  const pages = finishLayoutRemaining.length
+    ? finishLayoutRemaining
+    : (finishSummary.layout.pending_pages || []);
+  if (!pages.length) return;
+  const resumingLayout = finishLayoutRemaining.length > 0;
+  finishLayoutRunning = true;
+  finishLayoutStop = false;
+  if (!resumingLayout) {
+    finishLayoutBase = finishSummary.layout.confirmed;
+    finishLayoutTotalAll = finishSummary.layout.total;
+  }
+  el("finish-layout-progress").hidden = false;
+  el("finish-layout-resume").hidden = true;
+  el("finish-layout-stop").hidden = false;
+  el("finish-confirm-layout").disabled = true;
+  const bar = el("finish-layout-bar");
+  bar.max = pages.length;
+  bar.value = 0;
+  const text = el("finish-layout-progress-text");
+  let done = 0;
+  for (let index = 0; index < pages.length; index += 25) {
+    if (finishLayoutStop) break;
+    const chunk = pages.slice(index, index + 25);
+    text.textContent =
+      `正在确认版面… ${finishLayoutBase + done} / ${finishLayoutTotalAll} 页`;
+    try {
+      await apiJson(
+        `/api/projects/${currentProject.project_id}/pages/${chunk[0]}/layout/confirm`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ page_numbers: chunk }),
+        }
+      );
+    } catch (error) {
+      text.textContent = error.message || "确认版面失败";
+      finishLayoutRunning = false;
+      el("finish-layout-stop").hidden = true;
+      el("finish-layout-resume").hidden = false;
+      return;
+    }
+    done += chunk.length;
+    bar.value = done;
+    text.textContent =
+      `正在确认版面… ${finishLayoutBase + done} / ${finishLayoutTotalAll} 页`;
+    finishLayoutRemaining = pages.slice(done);
+    finishSummary.layout.confirmed = finishLayoutBase + done;
+    finishSummary.layout.remaining = finishLayoutRemaining.length;
+    finishSummary.layout.pending_pages = [...finishLayoutRemaining];
+    el("finish-layout-status").textContent =
+      `${finishSummary.layout.confirmed} / ${finishSummary.layout.total} 已确认`;
+    el("finish-layout-sub").textContent = finishLayoutRemaining.length
+      ? `还差 ${finishLayoutRemaining.length} 页正文版面`
+      : "所有正文页版面已确认";
+  }
+  finishLayoutRunning = false;
+  el("finish-layout-stop").hidden = true;
+  if (finishLayoutRemaining.length) {
+    finishLayoutBase += done;
+    el("finish-layout-resume").hidden = false;
+    text.textContent =
+      `已停止：本次确认 ${done} 页，还剩 ${finishLayoutRemaining.length} 页；已确认的不会回退。`;
+  } else {
+    text.textContent =
+      `已确认剩余 ${done} 页版面；全书 ${finishLayoutTotalAll} / ${finishLayoutTotalAll} 页已完成，已确认的不会回退。`;
+    finishLayoutRemaining = [];
+    await loadFinishSummary({ silent: true });
+  }
+  el("finish-confirm-layout").disabled = false;
+}
+
+async function finishConfirmLayout() {
+  if (!finishSummary) return;
+  finishLayoutRemaining = [];
+  await finishRunLayout();
+}
+
+function finishStopLayout() {
+  finishLayoutStop = true;
+}
+
+async function finishResumeLayout() {
+  if (!finishLayoutRemaining.length) return;
+  await finishRunLayout();
+}
+
+async function finishRunAutoPass() {
+  if (!finishSummary || finishAutoRunning) return;
+  const pages = finishAutoRemaining.length
+    ? finishAutoRemaining
+    : (finishSummary.review.auto_passable_pages || []);
+  if (!pages.length) return;
+  if (!finishAutoRemaining.length) {
+    const ok = window.confirm(
+      `把 ${pages.length} 页标记为「自动通过（未经人工）」？\n` +
+        "只写状态，不改任何块文字；条件不满足的页会被后端跳过。"
+    );
+    if (!ok) return;
+  }
+  const resumingAuto = finishAutoRemaining.length > 0;
+  finishAutoRunning = true;
+  finishAutoStop = false;
+  if (!resumingAuto) {
+    finishAutoTotalAll = pages.length;
+    finishAutoDoneAll = 0;
+    finishAutoSkipped = 0;
+    finishAutoApplied = [];
+  }
+  el("finish-auto-progress").hidden = false;
+  el("finish-auto-resume").hidden = true;
+  el("finish-auto-stop").hidden = false;
+  el("finish-auto-revoke").hidden = true;
+  el("finish-auto-pass").disabled = true;
+  const bar = el("finish-auto-bar");
+  bar.max = pages.length;
+  bar.value = 0;
+  const text = el("finish-auto-progress-text");
+  let done = 0;
+  for (let index = 0; index < pages.length; index += 10) {
+    if (finishAutoStop) break;
+    const chunk = pages.slice(index, index + 10);
+    text.textContent =
+      `正在标记自动通过… ${finishAutoDoneAll + done} / ${finishAutoTotalAll} 页`;
+    try {
+      const data = await apiJson(
+        `/api/projects/${currentProject.project_id}/review/auto-pass`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ page_numbers: chunk }),
+        }
+      );
+      finishAutoApplied.push(...(data.applied || []));
+      finishAutoSkipped += (data.skipped || []).length;
+    } catch (error) {
+      text.textContent = error.message || "标记自动通过失败";
+      finishAutoRunning = false;
+      el("finish-auto-stop").hidden = true;
+      el("finish-auto-resume").hidden = false;
+      return;
+    }
+    done += chunk.length;
+    finishAutoDoneAll += chunk.length;
+    bar.value = finishAutoDoneAll;
+    text.textContent =
+      `正在标记自动通过… ${finishAutoDoneAll} / ${finishAutoTotalAll} 页`;
+    finishAutoRemaining = pages.slice(done);
+  }
+  finishAutoRunning = false;
+  el("finish-auto-stop").hidden = true;
+  el("finish-auto-revoke").hidden = finishAutoApplied.length === 0;
+  if (finishAutoRemaining.length) {
+    el("finish-auto-resume").hidden = false;
+    text.textContent =
+      `已停止：本次标记 ${finishAutoApplied.length} 页，还剩 ${finishAutoRemaining.length} 页。`;
+  } else {
+    finishAutoRemaining = [];
+    text.textContent =
+      `已标记 ${finishAutoApplied.length} 页自动通过` +
+      (finishAutoSkipped ? `；${finishAutoSkipped} 页条件不满足被跳过` : "") +
+      "。只写状态，未改任何块文字。";
+    await loadFinishSummary({ silent: true });
+    el("finish-auto-revoke").hidden = finishAutoApplied.length === 0;
+  }
+  el("finish-auto-pass").disabled = false;
+}
+
+async function finishStartAutoPass() {
+  finishAutoRemaining = [];
+  await finishRunAutoPass();
+}
+
+function finishStopAutoPass() {
+  finishAutoStop = true;
+}
+
+async function finishResumeAutoPass() {
+  if (!finishAutoRemaining.length) return;
+  await finishRunAutoPass();
+}
+
+async function finishRevokeAutoPass() {
+  if (!finishAutoApplied.length) return;
+  const ok = window.confirm(
+    `撤销这一批 ${finishAutoApplied.length} 页的自动通过？（只撤「自动通过」，人工确认不动）`
+  );
+  if (!ok) return;
+  try {
+    await apiJson(
+      `/api/projects/${currentProject.project_id}/review/auto-pass/revoke`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_numbers: finishAutoApplied }),
+      }
+    );
+    finishAutoApplied = [];
+    el("finish-auto-revoke").hidden = true;
+    await loadFinishSummary({ silent: true });
+  } catch (error) {
+    showError(el("pages-error"), error);
+  }
+}
+
+function finishOpenPageNumbers() {
+  closeFinishPanel();
+  openPageNumberPanel();
+}
+
+function finishStartReview() {
+  if (!finishSummary) return;
+  const target = finishSummary.review.needs_human_pages[0] || 1;
+  closeFinishPanel();
+  showView("review");
+  openPageDetail(target);
+}
+
+function finishOpenExport() {
+  closeFinishPanel();
+  openModal("export-panel");
+}
+
 function setupReviewControls() {
   setupBoxDrag();
   // 点别处关掉所有"⋯ 更多"菜单（只挂一次，别每次渲染都加一个监听）
@@ -9473,6 +9878,27 @@ function setupReviewControls() {
   });
   el("review-undo").addEventListener("click", () => reviewAction("undo"));
   el("review-redo").addEventListener("click", () => reviewAction("redo"));
+  for (const id of ["finish-open", "finish-open-review"]) {
+    el(id).addEventListener("click", openFinishPanel);
+  }
+  el("finish-close").addEventListener("click", closeFinishPanel);
+  el("finish-refresh").addEventListener("click", () => loadFinishSummary());
+  el("finish-confirm-pages").addEventListener("click", finishConfirmPages);
+  el("finish-margin-pages").addEventListener("click", finishShowFallbackPages);
+  el("finish-confirm-layout").addEventListener("click", finishConfirmLayout);
+  el("finish-layout-stop").addEventListener("click", finishStopLayout);
+  el("finish-layout-resume").addEventListener("click", finishResumeLayout);
+  el("finish-open-pagenum").addEventListener("click", finishOpenPageNumbers);
+  el("finish-auto-pass").addEventListener("click", finishStartAutoPass);
+  el("finish-auto-stop").addEventListener("click", finishStopAutoPass);
+  el("finish-auto-resume").addEventListener("click", finishResumeAutoPass);
+  el("finish-auto-revoke").addEventListener("click", finishRevokeAutoPass);
+  el("finish-check-engine").addEventListener("click", () => {
+    closeFinishPanel();
+    checkSelection("unchecked");
+  });
+  el("finish-start-review").addEventListener("click", finishStartReview);
+  el("finish-export").addEventListener("click", finishOpenExport);
   el("diff-queue-toggle").addEventListener("click", () => setQueueOpen(!queueOpen));
   el("queue-adopt").addEventListener("click", adoptQueueCurrent);
   el("queue-keep").addEventListener("click", keepQueueCurrent);
@@ -9609,6 +10035,9 @@ async function closeProject() {
     return;
   }
   currentProject = null;
+  finishSummary = null;
+  finishSummaryProject = null;
+  updateFinishChips();
   workflowByPageId = new Map();
   workflowSummary = null;
   workflowConfirmationCounts = { human: 0, auto: 0, unknown: 0 };
@@ -10434,6 +10863,7 @@ async function applyPackageMode() {
     el("structure-open").hidden = false;
     el("selection-recognize").hidden = false;
     el("selection-actionbar").hidden = false;
+    el("finish-open-review").hidden = false;
     el("selection-check").hidden = false;
     el("check-pending").hidden = false;
     el("selection-skip-checked").parentElement.hidden = false;
@@ -10452,6 +10882,8 @@ async function applyPackageMode() {
   el("assign-list-toggle").hidden = true;   // 助手不派活给别人
   el("assign-open").hidden = true;
   el("selection-actionbar").hidden = true;
+  el("finish-open-review").hidden = true;
+  closeFinishPanel();
   el("selection-check").hidden = true;
   el("check-pending").hidden = true;
   el("selection-skip-checked").parentElement.hidden = true;

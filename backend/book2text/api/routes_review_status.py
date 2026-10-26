@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
 
 from ..core.project import library as project_library
 from ..core.project import review_status
@@ -96,3 +97,62 @@ def revoke_auto_pass(request: Request, project_id: str, page_no: int) -> dict[st
 
 
 __all__ = ["router"]
+
+
+class AutoPassBatchRequest(BaseModel):
+    page_numbers: list[int] = Field(min_length=1, max_length=5000)
+
+
+@router.get("/{project_id}/review/finish-summary")
+def get_finish_summary(request: Request, project_id: str) -> dict[str, Any]:
+    """收尾面板的六个状态（实时聚合；不写任何东西）。"""
+    _require_main(request, project_id)
+    try:
+        return review_status.finish_summary(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+@router.post("/{project_id}/review/auto-pass")
+def run_auto_pass_batch(
+    request: Request, project_id: str, body: AutoPassBatchRequest
+) -> dict[str, Any]:
+    """批量自动通过：逐页重算条件，只有满足的才写状态；不改任何块。"""
+    _require_main(request, project_id)
+    applied: list[int] = []
+    skipped: list[dict[str, Any]] = []
+    for page_no in sorted(set(body.page_numbers)):
+        try:
+            result = review_status.auto_pass_page(
+                project_id, page_no, library=_library(request)
+            )
+        except (project_library.ProjectError, workflow_module.WorkflowError) as exc:
+            skipped.append({"page_no": page_no, "reason": str(exc)})
+            continue
+        if result.get("applied"):
+            applied.append(page_no)
+        else:
+            skipped.append(
+                {
+                    "page_no": page_no,
+                    "reasons": [item.get("label") for item in result.get("reasons", [])],
+                }
+            )
+    return {"applied": applied, "applied_count": len(applied), "skipped": skipped}
+
+
+@router.post("/{project_id}/review/auto-pass/revoke")
+def revoke_auto_pass_batch(
+    request: Request, project_id: str, body: AutoPassBatchRequest
+) -> dict[str, Any]:
+    """整批撤销自动通过（只撤 auto，人工确认不动）。"""
+    _require_main(request, project_id)
+    revoked: list[int] = []
+    skipped: list[dict[str, Any]] = []
+    for page_no in sorted(set(body.page_numbers)):
+        try:
+            review_status.revoke_auto_pass(project_id, page_no, library=_library(request))
+            revoked.append(page_no)
+        except (project_library.ProjectError, workflow_module.WorkflowError) as exc:
+            skipped.append({"page_no": page_no, "reason": str(exc)})
+    return {"revoked": revoked, "revoked_count": len(revoked), "skipped": skipped}

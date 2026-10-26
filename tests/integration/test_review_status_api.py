@@ -239,3 +239,70 @@ def test_export_preflight_and_manifest_include_workflow_snapshot(
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["workflow"] == status
+
+
+def test_finish_summary_and_batch_auto_pass_are_real_and_safe(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_with_ocr: str,
+    library_dir: Path,
+    monkeypatch,
+) -> None:
+    """任务 66：收尾汇总六个状态 + 批量自动通过（只标状态、可整批撤销）。"""
+    project_id = project_with_ocr
+    monkeypatch.setattr(
+        review_status.ink_gaps_module,
+        "find_ink_gaps",
+        lambda *args, **kwargs: {"candidates": []},
+    )
+    recognition.run_auxiliary(
+        library_dir / project_id,
+        1,
+        engine=FakeSecondEngine(texts=[text for text, _, _ in FAKE_LINES]),
+    )
+
+    summary = client.get(
+        f"/api/projects/{project_id}/review/finish-summary", headers=auth_headers
+    )
+    assert summary.status_code == 200, summary.text
+    data = summary.json()
+    assert set(data) >= {
+        "page_type",
+        "margin",
+        "layout",
+        "page_numbers",
+        "review",
+        "engine",
+        "k",
+    }
+    assert data["page_type"]["total"] >= 1
+    assert data["layout"]["confirmed"] == 2
+    assert 1 in data["review"]["auto_passable_pages"]
+    assert 2 not in data["review"]["auto_passable_pages"], "单引擎页不能自动通过"
+    assert data["engine"]["checked"] >= 1
+    assert data["k_total"] == 6
+
+    before = blocks_digest(page_blocks(client, auth_headers, project_id, 1))
+    processed = client.post(
+        f"/api/projects/{project_id}/review/auto-pass",
+        json={"page_numbers": [1, 2]},
+        headers=auth_headers,
+    )
+    assert processed.status_code == 200, processed.text
+    payload = processed.json()
+    assert payload["applied"] == [1]
+    assert payload["applied_count"] == 1
+    assert any(item["page_no"] == 2 for item in payload["skipped"])
+    after = blocks_digest(page_blocks(client, auth_headers, project_id, 1))
+    assert after == before, "批量自动通过也不能改块文本"
+
+    revoked = client.post(
+        f"/api/projects/{project_id}/review/auto-pass/revoke",
+        json={"page_numbers": [1]},
+        headers=auth_headers,
+    )
+    assert revoked.status_code == 200, revoked.text
+    assert revoked.json()["revoked"] == [1]
+    page1 = page_blocks(client, auth_headers, project_id, 1)
+    assert page1["workflow"]["confirm_mode"] is None
+    assert page1["workflow"]["auto_pass_excluded"] is True
