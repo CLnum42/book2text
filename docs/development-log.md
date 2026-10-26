@@ -108,6 +108,8 @@ main `42edf9e`（任务 64），844 测试通过。第 370 页 13 处差异时�
 - 新增 `test_review_diff_queue_is_wired`：队列 DOM / 键位 / 采纳路径不含
   `loadPageDetail` / `renderReviewBlocks` / `body.queue-mode .diff-strip`。
 - `.venv/bin/python -m pytest -q` → **845 passed, 1 warning，120.29 秒**。
+- **CI [#46](https://github.com/CLnum42/book2text/actions/runs/40346439220) Success**：
+  总 5m23s，macOS 3m02s、Windows 5m19s；两个 job 均成功，无 skipped。
 - 截图：[队列初始](docs/screenshots/review-queue.png)、
   [走完](docs/screenshots/review-queue-complete.png)、
   [队列关闭 · 差异条恢复](docs/screenshots/review-queue-closed.png)、
