@@ -754,3 +754,45 @@ def test_layout_detection_and_workflow_filter_are_wired() -> None:
     # 任务完成后要刷新工作流状态（识别 → 已识别①；检测 → 已检测）
     poll = _function_body("pollTask")
     assert "loadWorkflow" in poll
+
+
+def test_review_diff_queue_is_wired_for_local_adoption() -> None:
+    """任务 65：页内差异队列、键位、局部更新、页头收敛都真的接上。
+
+    静态约定测试：队列 DOM / 快捷键 / "采纳不整页重载"的实现方式 / 队列模式隐藏差异条。
+    """
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "diff-queue",
+        "diff-queue-toggle",
+        "diff-queue-position",
+        "diff-queue-meta",
+        "diff-queue-text",
+        "diff-queue-dots",
+        "queue-adopt",
+        "queue-keep",
+        "queue-prev",
+        "review-footer-count",
+        "review-more-menu",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    assert "function initDiffQueue(" in script
+    assert "function adoptQueueCurrent(" in script
+    assert "function applyQueueAdoptLocally(" in script
+    assert "function renderReviewHeadline(" in script
+    # 采纳路径不能调用整页重载（否则滚动位置与列表都会丢）
+    start = script.index("async function adoptQueueCurrent(")
+    end = script.index("function keepQueueCurrent(", start)
+    adopt_body = script[start:end]
+    assert "loadPageDetail(" not in adopt_body
+    assert "renderReviewBlocks(" not in adopt_body
+    # 键位：Enter / Space 采纳，⌫ 保留，← 回上一处
+    assert 'event.key === "Enter" || event.key === " "' in script
+    assert 'event.key === "Backspace"' in script
+    assert 'event.key === "ArrowLeft"' in script
+    # 队列打开时块内差异条隐藏
+    assert "body.queue-mode .diff-strip" in styles

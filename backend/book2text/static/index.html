@@ -459,22 +459,46 @@
           <div class="editor">
             <div class="phead">
               <strong id="page-detail-title">审校</strong>
-              <span id="page-detail-meta" class="muted"></span>
+              <span id="page-detail-meta" class="review-headline"></span>
               <span class="spacer"></span>
-              <button type="button" id="candidate-open" class="btn btn--sm" hidden>对比新结果</button>
-              <button type="button" id="review-apply-all" class="btn btn--sm"
-                      title="全库扫描"把握较大"的页眉 / 页脚 / 页码建议，预览确认后一次应用（可整体撤销）">全库采用建议…</button>
-              <button type="button" id="aux-run" class="btn btn--sm"
-                      title="用第二引擎逐行复核这一页：复核过的分歧行会在块里标出另一路候选，可逐行换过去">第二引擎复核</button>
-              <button type="button" id="detail-box-create" class="btn btn--sm"
-                      title="在左边的页面上拖出一个框，为漏检的区域补一个块">✚ 框选新增块</button>
-              <button type="button" id="detail-recognize" class="btn btn--sm">重新识别</button>
-              <button type="button" id="review-auto-pass" class="btn btn--sm"
-                      title="满足全部条件时只标记「自动通过（未经人工）」：无建议、无分歧、无漏行、版面已确认、版心已定、识别成功、第二引擎已复核">自动通过本页</button>
-              <button type="button" id="review-auto-revoke" class="btn btn--sm" hidden
-                      title="撤销这一页的自动通过，回到待处理">撤销自动通过</button>
+              <button type="button" id="diff-queue-toggle" class="btn btn--sm queue-toggle" hidden>差异 0 ▾</button>
+              <button type="button" id="review-more" class="btn btn--sm review-more__button" title="更多页级动作">⋯</button>
+              <div class="review-more" id="review-more-menu" hidden>
+                <button type="button" id="review-apply-all" class="review-more__item"
+                        title="全书扫描「把握较大」的页眉 / 页脚 / 页码建议，预览确认后一次应用（可整体撤销）">全书… 采用高把握建议</button>
+                <button type="button" id="aux-run" class="review-more__item"
+                        title="用第二引擎逐行复核这一页">第二引擎复核</button>
+                <button type="button" id="detail-box-create" class="review-more__item"
+                        title="在左边的页面上拖出一个框，为漏检的区域补一个块">✚ 框选新增块</button>
+                <button type="button" id="detail-recognize" class="review-more__item">重新识别</button>
+                <button type="button" id="review-auto-pass" class="review-more__item"
+                        title="满足全部条件时只标记「自动通过（未经人工）」">自动通过本页</button>
+                <button type="button" id="review-auto-revoke" class="review-more__item" hidden
+                        title="撤销这一页的自动通过，回到待处理">撤销自动通过</button>
+                <button type="button" id="candidate-open" class="review-more__item" hidden>对比新结果</button>
+              </div>
             </div>
 
+            <!-- 页内差异队列：一次只给一处；只在当前页生效。 -->
+            <div class="diff-queue" id="diff-queue" tabindex="-1" hidden>
+              <div class="diff-queue__top">
+                <strong id="diff-queue-position">第 0 / 0 处</strong>
+                <span class="muted" id="diff-queue-meta"></span>
+                <span class="spacer"></span>
+                <span class="muted diff-queue__scope">只在页内</span>
+              </div>
+              <div class="diff-queue__text" id="diff-queue-text"></div>
+              <div class="diff-queue__actions">
+                <button type="button" id="queue-adopt" class="btn btn--pri btn--sm">采纳第二路 <kbd>Enter</kbd></button>
+                <button type="button" id="queue-keep" class="btn btn--sm">保留原文 <kbd>⌫</kbd></button>
+                <button type="button" id="queue-prev" class="btn btn--sm">回上一处 <kbd>←</kbd></button>
+                <span class="spacer"></span>
+                <div class="diff-queue__dots" id="diff-queue-dots"></div>
+              </div>
+              <div class="diff-queue__note" id="diff-queue-note">
+                队列只在本页内生效；「保留原文」不写库，离开本页后重置。
+              </div>
+            </div>
             <div class="layout-panel" id="layout-panel" hidden>
               <div class="layout-panel__head">
                 <strong>本页版面</strong>
@@ -482,7 +506,7 @@
                 <span class="spacer"></span>
                 <button type="button" id="suggestion-apply-all" class="btn btn--sm" hidden
                         title="只把把握较大的建议一次改成对应类型：不改审校状态、不删文字，每一块都能单独撤销">采用全部高把握建议</button>
-                <button type="button" id="layout-confirm" class="btn btn--sm btn--pri">确认本页版面</button>
+                <button type="button" id="layout-confirm" class="btn btn--sm">确认本页版面</button>
                 <button type="button" class="info-dot" id="layout-info" aria-label="版面确认的定义"
                         title="页面确认 = 这页算不算正文（在「页面」视图按五类确认）。&#10;版面确认 = 这页里面哪些块是正文（页眉 / 页脚 / 页码 / 旁批 / 插图 / 装饰先排除）。&#10;确认是状态标记，不拦导出；改了任何块的类型、框或顺序都会回到未确认。">i</button>
               </div>
@@ -504,10 +528,8 @@
               <button type="button" id="review-undo" class="btn btn--sm" title="撤销（⌘/Ctrl + Z）">撤销</button>
               <button type="button" id="review-redo" class="btn btn--sm" title="重做（⇧⌘/Ctrl + Z）">重做</button>
               <span class="pgnum" id="block-position"></span>
-              <span class="pgnum" id="page-detail-hint">
-                块可以直接编辑，改完自动保存；⌘/Ctrl + Enter 确认本页，Alt + ↑ / ↓ 在块之间移动
-              </span>
               <span class="spacer"></span>
+              <span class="review-footer-count" id="review-footer-count"></span>
               <button type="button" id="detail-close" class="btn btn--sm">返回页面</button>
               <button type="button" id="review-confirm" class="btn btn--pri btn--lg"
                       title="确认本页（⌘/Ctrl + Enter）">确认本页并下一页</button>

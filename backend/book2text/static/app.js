@@ -6074,6 +6074,14 @@ let diffMarksMode = "page";          // page | block（默认整页）
 let activeDiff = null;               // {blockId, lineIndex, spanIndex}
 let activeReviewBlockId = null;
 const diffStripOpen = new Set();
+/** 页内差异队列（任务 65）：一次只给一处，状态只在本页有效。 */
+let diffQueue = [];
+let queueIndex = -1;
+let queueOpen = true;
+const queueDecisions = new Map(); // key -> "adopted" | "kept"
+let lastQueueAdoptedKey = null;
+let queuePageNo = null;
+let detailHistoryState = { undo: 0, redo: 0 };
 let reviewSaveTimer = null;
 let reviewPendingSave = null; // {block, text}：还没发出去的自动保存
 /** 每个块编辑框最后的光标位置：拆分要用它（点菜单会让编辑框失焦）。 */
@@ -6571,7 +6579,9 @@ function renderPageDetail(data) {
 
   const recognition = recognitionOf(data.page);
   el("page-detail-title").textContent = `第 ${pageNo} 页`;
-  el("page-detail-meta").textContent = reviewMetaText(data);
+  el("page-detail-meta").title = data.active_run
+    ? `本页识别来自 ${data.active_run.engine_id} ${data.active_run.engine_version}`
+    : "";
 
   renderReviewBanner(data, recognition);
   renderHistoryButtons(data.history);
@@ -6619,6 +6629,8 @@ function renderPageDetail(data) {
   // 默认把第一个有差异的块设为当前块（展开差异条，但不抢滚动位置）。
   const firstDiffBlock = (data.blocks || []).find((block) => blockHasDrawableDiff(block));
   if (firstDiffBlock) selectReviewBlock(firstDiffBlock.block_id, { scroll: false });
+  initDiffQueue();
+  renderReviewHeadline();
   renderSuggestionTools();
   renderLayoutPanel(data);
   renderReviewWorkflowStatus();
@@ -6637,33 +6649,6 @@ function renderReviewWorkflowStatus() {
 
 function project_id() {
   return currentProject ? currentProject.project_id : "";
-}
-
-function reviewMetaText(data) {
-  const review = data.review || {};
-  const divergence = divergenceOf(data);
-  const layoutLines = data.layout_lines || {};
-  const parts = [
-    PAGE_TYPE_LABELS[data.page.page_type] || data.page.page_type,
-    `${review.block_count || 0} 块`,
-    `未审 ${review.unreviewed || 0}`,
-  ];
-  // 任务 53：标题行直接给"版心内 / 版心外"两个数，与下面的过滤条一致
-  const split = reviewMarginSplit(data.page, data.blocks || []);
-  if (split.box) {
-    parts.push(`版心内 ${split.inside.length} · 版心外 ${split.outside.length}`);
-  }
-  if (layoutLines.conflict) parts.push(`冲突 ${layoutLines.conflict} 行`);
-  if (layoutLines.unassigned) parts.push(`未归属 ${layoutLines.unassigned} 行`);
-  if (review.uncertain) parts.push(`不确定 ${review.uncertain}`);
-  if (review.modified) parts.push(`已修改 ${review.modified}`);
-  if (divergence.lines) parts.push(`两路分歧 ${divergence.lines} 行`);
-  // 用的是哪个引擎（识别来源）放 tooltip，不占标题这一行
-  if (data.active_run) {
-    el("page-detail-meta").title =
-      `本页识别来自 ${data.active_run.engine_id} ${data.active_run.engine_version}`;
-  }
-  return parts.join(" · ");
 }
 
 function renderReviewBanner(data, recognition) {
@@ -6711,16 +6696,9 @@ function renderReviewBanner(data, recognition) {
       `有 ${layoutLines.unassigned} 行不在任何块框里（灰色虚线）：它们没有被删除，重新拖框就能收进来。`
     );
   }
-  // 第二引擎的分歧（说明书 8.5）：只在有实质分歧或还没复核过时提醒
+  // 差异计数只在页头一行结论里出现；横幅不再重复。
   const divergence = divergenceOf(data);
-  if (divergence.lines) {
-    messages.push(
-      `两路复核有 ${divergence.lines} 行不一致（${divergenceSummary(divergence)}）：` +
-        (divergenceCandidatesOn()
-          ? "页面上已逐行标出差异字，右侧差异条逐处给 A→B，点「换第二路」即可换过去。"
-          : "页面上已逐行标出差异字（当前是「只标分歧」，右侧只给行位置，不显示候选；可在识别设置里改为「分歧行给候选」）。")
-    );
-  } else if (divergence.stale_blocks) {
+  if (!divergence.lines && divergence.stale_blocks) {
     messages.push(
       `有 ${divergence.stale_blocks} 个块的行结构改过，逐行分歧标记对这些块不再可靠。`
     );
@@ -6731,6 +6709,7 @@ function renderReviewBanner(data, recognition) {
 
 function renderHistoryButtons(history) {
   const state = history || { undo: 0, redo: 0 };
+  detailHistoryState = { undo: state.undo || 0, redo: state.redo || 0 };
   el("review-undo").disabled = !state.undo;
   el("review-redo").disabled = !state.redo;
   el("review-undo").textContent = state.undo ? `撤销 (${state.undo})` : "撤销";
@@ -7529,6 +7508,386 @@ function handleDiffMarkClick(blockId, lineIndex, spanIndex) {
   activateDiff(blockId, lineIndex, spanIndex);
 }
 
+// ---------------------------------------------------------------- 页内差异队列（任务 65）
+
+function queueKey(item) {
+  return `${item.blockId}::${item.lineIndex}`;
+}
+
+function buildDiffQueue() {
+  const items = [];
+  (reviewBlocks || []).forEach((block, blockIndex) => {
+    const divergence = divergenceOf(block);
+    if (divergence.stale) return;
+    for (const mark of divergence.marks || []) {
+      if (!DIFF_LEVELS.has(mark.level)) continue;
+      items.push({
+        blockId: block.block_id,
+        blockIndex,
+        lineIndex: mark.line_index,
+        level: mark.level,
+        current: mark.current,
+        candidate: mark.candidate || "",
+        key: `${block.block_id}::${mark.line_index}`,
+      });
+    }
+  });
+  items.sort(
+    (a, b) => a.blockIndex - b.blockIndex || a.lineIndex - b.lineIndex
+  );
+  return items;
+}
+
+function queueCounts() {
+  let adopted = 0;
+  let kept = 0;
+  for (const item of diffQueue) {
+    const decision = queueDecisions.get(item.key);
+    if (decision === "adopted") adopted += 1;
+    else if (decision === "kept") kept += 1;
+  }
+  return { adopted, kept, remaining: diffQueue.length - adopted - kept };
+}
+
+function nextPendingQueueIndex(from) {
+  for (let i = from + 1; i < diffQueue.length; i += 1) {
+    if (!queueDecisions.has(diffQueue[i].key)) return i;
+  }
+  for (let i = 0; i <= from; i += 1) {
+    if (!queueDecisions.has(diffQueue[i].key)) return i;
+  }
+  return -1;
+}
+
+function aggregateDivergence() {
+  const counts = { lines: 0, chars: 0, punct: 0 };
+  for (const block of reviewBlocks || []) {
+    const divergence = divergenceOf(block);
+    if (divergence.stale) continue;
+    for (const mark of divergence.marks || []) {
+      if (mark.level === "differs_chars") counts.chars += 1;
+      else if (mark.level === "differs_punct") counts.punct += 1;
+    }
+  }
+  counts.lines = counts.chars + counts.punct;
+  return counts;
+}
+
+/** 页头一行结论：类型 + 差异 + 版面 + 漏行；不再重复块数 / 未审数。 */
+function renderReviewHeadline() {
+  const page = detailPageRecord();
+  if (!page) return;
+  const counts = aggregateDivergence();
+  const bits = [PAGE_TYPE_LABELS[page.page_type] || page.page_type];
+  if (counts.lines) {
+    bits.push(
+      `${counts.lines} 处差异（汉字 ${counts.chars} · 标点 ${counts.punct}）`
+    );
+  } else {
+    bits.push("无差异");
+  }
+  if (!detailLayoutConfirmed) bits.push("版面未确认");
+  if (detailInkGaps.length) bits.push(`漏行 ${detailInkGaps.length}`);
+  el("page-detail-meta").textContent = bits.join(" · ");
+}
+
+function queueDotFor(item) {
+  const dot = document.createElement("span");
+  dot.className = "diff-queue__dot";
+  const decision = queueDecisions.get(item.key);
+  if (decision === "adopted") dot.classList.add("is-done");
+  else if (decision === "kept") dot.classList.add("is-kept");
+  if (queueIndex >= 0 && diffQueue[queueIndex] === item) dot.classList.add("is-current");
+  dot.title = `第 ${diffQueue.indexOf(item) + 1} 处`;
+  return dot;
+}
+
+function renderQueueFooter() {
+  const node = el("review-footer-count");
+  if (!node) return;
+  if (!diffQueue.length) {
+    node.textContent = "";
+    return;
+  }
+  const counts = queueCounts();
+  node.textContent = `采纳 ${counts.adopted} · 保留 ${counts.kept} · 还剩 ${counts.remaining} 处`;
+}
+
+/** 队列视觉：一次只显示当前一处；完成时给一句结论。 */
+function renderDiffQueue() {
+  const bar = el("diff-queue");
+  const toggle = el("diff-queue-toggle");
+  if (!bar || !toggle) return;
+  const counts = queueCounts();
+  const hasQueue = diffQueue.length > 0;
+  toggle.hidden = !hasQueue;
+  toggle.textContent = `差异 ${counts.lines || aggregateDivergence().lines} ${queueOpen ? "▴" : "▾"}`;
+  toggle.title = queueOpen ? "收起差异队列，回到按块浏览" : "打开页内差异队列";
+  document.body.classList.toggle("queue-mode", queueOpen && hasQueue);
+  bar.hidden = !hasQueue || !queueOpen;
+  renderQueueFooter();
+  renderReviewHeadline();
+  if (!hasQueue) return;
+
+  const countsNow = queueCounts();
+  if (!queueOpen) return;
+
+  const item = queueIndex >= 0 ? diffQueue[queueIndex] : null;
+  const complete = !item || countsNow.remaining === 0;
+  bar.classList.toggle("is-complete", complete);
+  const position = el("diff-queue-position");
+  const meta = el("diff-queue-meta");
+  const text = el("diff-queue-text");
+  const note = el("diff-queue-note");
+  const dots = el("diff-queue-dots");
+  const adopt = el("queue-adopt");
+  const keep = el("queue-keep");
+  const prev = el("queue-prev");
+  text.innerHTML = "";
+  dots.innerHTML = "";
+  for (const entry of diffQueue) dots.append(queueDotFor(entry));
+
+  if (complete) {
+    position.textContent = "本页已处理完";
+    meta.textContent = `${diffQueue.length} 处`;
+    text.textContent =
+      `本页 ${diffQueue.length} 处已处理完（采纳 ${countsNow.adopted} · 保留 ${countsNow.kept}）· 去下一处`;
+    note.textContent = "点右下角「确认本页并下一页」继续；保留原文不写库。";
+    adopt.hidden = true;
+    keep.hidden = true;
+    prev.hidden = true;
+    return;
+  }
+
+  position.textContent = `第 ${queueIndex + 1} / ${diffQueue.length} 处`;
+  const block = (reviewBlocks || []).find((entry) => entry.block_id === item.blockId);
+  const blockLabel = block
+    ? `第 ${(reviewBlocks || []).indexOf(block) + 1} 块`
+    : "未知块";
+  meta.textContent = `${diffLevelLabel(item.level)} · ${blockLabel} · 第 ${item.lineIndex + 1} 行`;
+  text.append(diffRowFragment(item));
+  note.textContent = "队列只在本页内生效；「保留原文」不写库，离开本页后重置。";
+  adopt.hidden = false;
+  keep.hidden = false;
+  prev.hidden = false;
+  adopt.disabled = !item.candidate;
+  keep.disabled = false;
+  prev.disabled = !queueDecisions.size;
+}
+
+/** 队列选中的那一处：切块、标记 active，但不滚动、不抢 textarea 焦点。 */
+function focusQueueItem(item, options = {}) {
+  if (!item) return;
+  selectReviewBlock(item.blockId, { scroll: false });
+  activeDiff = { blockId: item.blockId, lineIndex: item.lineIndex, spanIndex: 0 };
+  updateDiffActive();
+  drawDiffLayer();
+  if (options.scroll) {
+    const mark = findDiffMark(item.blockId, item.lineIndex, 0);
+    if (mark) scrollViewerTo(mark);
+  }
+}
+
+function initDiffQueue() {
+  diffQueue = buildDiffQueue();
+  queueDecisions.clear();
+  queuePageNo = detailPageNo;
+  lastQueueAdoptedKey = null;
+  queueIndex = diffQueue.length ? 0 : -1;
+  queueOpen = diffQueue.length > 0;
+  if (queueIndex >= 0) focusQueueItem(diffQueue[queueIndex]);
+  renderDiffQueue();
+}
+
+/** 采纳后只更新这一块与队列，不 loadPageDetail、不重建列表。 */
+function applyQueueAdoptLocally(block, item, newText, returnedBlock) {
+  block.text = newText;
+  if (returnedBlock) {
+    block.revision = returnedBlock.revision ?? block.revision;
+    block.modified = returnedBlock.modified ?? block.modified;
+    block.updated_at = returnedBlock.updated_at ?? block.updated_at;
+  }
+  const divergence = divergenceOf(block);
+  divergence.marks = (divergence.marks || []).filter(
+    (mark) => mark.line_index !== item.lineIndex
+  );
+  divergence.chars = divergence.marks.filter((mark) => mark.level === "differs_chars").length;
+  divergence.punct = divergence.marks.filter((mark) => mark.level === "differs_punct").length;
+  divergence.empty = divergence.marks.filter((mark) => mark.level === "no_candidate").length;
+  divergence.format_only = divergence.marks.filter(
+    (mark) => mark.level === "format_only_differs"
+  ).length;
+  divergence.lines = divergence.chars + divergence.punct;
+  block.divergence = divergence;
+
+  const card = el("detail-blocks").querySelector(`li[data-block-id="${block.block_id}"]`);
+  if (card) {
+    const textarea = card.querySelector("textarea");
+    if (textarea) {
+      textarea.value = newText;
+      autoSizeTextarea(textarea);
+    }
+    const strip = card.querySelector(".diff-strip");
+    if (strip) {
+      const row = strip.querySelector(
+        `.diff-row[data-line-index="${item.lineIndex}"]`
+      );
+      if (row) row.remove();
+      const count = strip.querySelector(".diff-strip__count");
+      if (count) {
+        count.textContent = divergence.lines
+          ? `两路差异 ${divergence.lines} 行`
+          : "两路没有实质分歧";
+      }
+      if (!divergence.marks.length) strip.remove();
+    }
+  }
+  refreshReviewFilterOnly();
+}
+
+async function adoptQueueCurrent() {
+  const item = queueIndex >= 0 ? diffQueue[queueIndex] : null;
+  if (!item) return;
+  const key = item.key;
+  if (reviewPendingSave) {
+    await flushPendingSave();
+    const index = diffQueue.findIndex((entry) => entry.key === key);
+    if (index < 0) return;
+    queueIndex = index;
+  }
+  const current = diffQueue[queueIndex];
+  const block = (reviewBlocks || []).find((entry) => entry.block_id === current.blockId);
+  if (!block) return;
+  if (!current.candidate) {
+    setSaveState("第二引擎没读出这一行，没有可采用的候选", true);
+    return;
+  }
+  const lines = String(block.text).split("\n");
+  if (current.lineIndex < 0 || current.lineIndex >= lines.length) {
+    setSaveState("这一块的行号对不上了，先重新载入", true);
+    return;
+  }
+  lines[current.lineIndex] = current.candidate;
+  const newText = lines.join("\n");
+  setSaveState("正在采纳…");
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/blocks/${block.block_id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: newText, expected_revision: block.revision }),
+      }
+    );
+    applyQueueAdoptLocally(block, current, newText, data.block);
+    queueDecisions.set(key, "adopted");
+    lastQueueAdoptedKey = key;
+    detailHistoryState = {
+      undo: (detailHistoryState.undo || 0) + 1,
+      redo: 0,
+    };
+    renderHistoryButtons(detailHistoryState);
+    queueIndex = nextPendingQueueIndex(queueIndex);
+    if (queueIndex >= 0) {
+      focusQueueItem(diffQueue[queueIndex]);
+    } else {
+      activeDiff = null;
+      updateDiffActive();
+      drawDiffLayer();
+    }
+    renderDiffQueue();
+    focusQueueBar();
+    setSaveState("已采纳第二路 ✓");
+  } catch (error) {
+    setSaveState(error.message || "采纳失败", true);
+  }
+}
+
+function keepQueueCurrent() {
+  const item = queueIndex >= 0 ? diffQueue[queueIndex] : null;
+  if (!item) return;
+  queueDecisions.set(item.key, "kept");
+  queueIndex = nextPendingQueueIndex(queueIndex);
+  if (queueIndex >= 0) {
+    focusQueueItem(diffQueue[queueIndex]);
+  } else {
+    activeDiff = null;
+    updateDiffActive();
+    drawDiffLayer();
+  }
+  renderDiffQueue();
+  focusQueueBar();
+  setSaveState("已保留原文（未写库）");
+}
+
+function previousQueueItem() {
+  for (let i = queueIndex - 1; i >= 0; i -= 1) {
+    const decision = queueDecisions.get(diffQueue[i].key);
+    if (decision === "adopted") continue;
+    if (decision === "kept" || !decision) {
+      queueDecisions.delete(diffQueue[i].key);
+      queueIndex = i;
+      focusQueueItem(diffQueue[i]);
+      renderDiffQueue();
+      focusQueueBar();
+      setSaveState("已回到上一处");
+      return;
+    }
+  }
+  setSaveState("已经是第一处；已采纳的请用 ⌘/Ctrl+Z 撤销", true);
+}
+
+function setQueueOpen(open) {
+  queueOpen = Boolean(open) && diffQueue.length > 0;
+  renderDiffQueue();
+}
+
+function focusQueueBar() {
+  const bar = el("diff-queue");
+  if (bar && !bar.hidden) bar.focus({ preventScroll: true });
+}
+
+function captureQueueSnapshot() {
+  if (!diffQueue.length || queuePageNo !== detailPageNo) return null;
+  return {
+    pageNo: queuePageNo,
+    items: diffQueue.map((item) => ({ ...item })),
+    decisions: new Map(queueDecisions),
+    index: queueIndex,
+    adoptedKey: lastQueueAdoptedKey,
+    listScroll: el("detail-blocks").scrollTop,
+    viewerScroll: el("viewer-scroll").scrollTop,
+  };
+}
+
+/** 撤销一处采纳后：队列仍保留原来 13 处，把那处退回待处理并恢复标记。 */
+function restoreQueueAfterUndo(snapshot) {
+  if (!snapshot || snapshot.pageNo !== detailPageNo) return;
+  diffQueue = snapshot.items.map((item) => {
+    const block = (reviewBlocks || []).find((entry) => entry.block_id === item.blockId);
+    if (!block) return item;
+    const mark = (divergenceOf(block).marks || []).find(
+      (entry) => entry.line_index === item.lineIndex
+    );
+    return mark
+      ? { ...item, current: mark.current, candidate: mark.candidate || "", level: mark.level }
+      : item;
+  });
+  queueDecisions.clear();
+  for (const [key, value] of snapshot.decisions.entries()) {
+    if (key !== snapshot.adoptedKey) queueDecisions.set(key, value);
+  }
+  queueOpen = true;
+  const restored = snapshot.adoptedKey
+    ? diffQueue.findIndex((item) => item.key === snapshot.adoptedKey)
+    : -1;
+  queueIndex = restored >= 0 ? restored : Math.max(0, Math.min(snapshot.index, diffQueue.length - 1));
+  focusQueueItem(diffQueue[queueIndex]);
+  renderDiffQueue();
+  el("detail-blocks").scrollTop = snapshot.listScroll || 0;
+  el("viewer-scroll").scrollTop = snapshot.viewerScroll || 0;
+}
+
 function drawDetailOverlay(blocks) {
   const overlay = el("detail-overlay");
   overlay.innerHTML = "";
@@ -7901,13 +8260,6 @@ function blockCard(block, index, blocksCount) {
   head.append(typeSelect);
   const suggestion = detailSuggestionByBlock.get(block.block_id);
   if (suggestion) head.append(blockSuggestionBadge(suggestion));
-  if (blockDivergence.lines) {
-    const diffCount = document.createElement("span");
-    diffCount.className = "review-block__diffcount";
-    diffCount.textContent = `≠ ${blockDivergence.lines} 处`;
-    diffCount.title = "这一块两路复核不一致的行数；差异条里逐处给 A→B";
-    head.append(diffCount);
-  }
   head.append(spacer);
   if (metaBits.length) {
     const meta = document.createElement("span");
@@ -8902,8 +9254,9 @@ async function loadInkGaps(pageNo) {
       (item) => Array.isArray(item.bbox) && item.bbox.length === 4
     );
     renderInkGapBar();
-    // 漏行是页面级的待处理理由：过滤条要跟着变，但不重建正在编辑的列表
+    // 漏行是页面级的待处理理由：过滤条与页头结论要跟着变，但不重建正在编辑的列表
     refreshReviewFilterOnly();
+    renderReviewHeadline();
   } catch {
     // 辅助信息：读不到不打断审校
   }
@@ -9049,6 +9402,7 @@ async function decideCandidate(decision) {
 async function reviewAction(path) {
   if (!currentProject) return null;
   el("page-detail-error").hidden = true;
+  const queueSnapshot = path === "undo" ? captureQueueSnapshot() : null;
   try {
     const data = await apiJson(`/api/projects/${currentProject.project_id}/${path}`, {
       method: "POST",
@@ -9057,6 +9411,7 @@ async function reviewAction(path) {
     // 撤销 / 重做可能改回块类型与结构：本页块框缓存与建议都不能拿旧的
     forgetPageBlocks(detailPageNo);
     await loadPageDetail(detailPageNo);
+    if (queueSnapshot) restoreQueueAfterUndo(queueSnapshot);
     await refreshPageStates();
     return data;
   } catch (error) {
@@ -9118,17 +9473,58 @@ function setupReviewControls() {
   });
   el("review-undo").addEventListener("click", () => reviewAction("undo"));
   el("review-redo").addEventListener("click", () => reviewAction("redo"));
+  el("diff-queue-toggle").addEventListener("click", () => setQueueOpen(!queueOpen));
+  el("queue-adopt").addEventListener("click", adoptQueueCurrent);
+  el("queue-keep").addEventListener("click", keepQueueCurrent);
+  el("queue-prev").addEventListener("click", previousQueueItem);
+
+  const moreMenu = el("review-more-menu");
+  el("review-more").addEventListener("click", (event) => {
+    event.stopPropagation();
+    moreMenu.hidden = !moreMenu.hidden;
+  });
+  for (const item of moreMenu.querySelectorAll("button")) {
+    item.addEventListener("click", () => {
+      moreMenu.hidden = true;
+    });
+  }
+  document.addEventListener("click", (event) => {
+    if (moreMenu.hidden) return;
+    if (moreMenu.contains(event.target) || event.target === el("review-more")) return;
+    moreMenu.hidden = true;
+  });
 
   document.addEventListener("keydown", (event) => {
     if (!currentProject || detailPageNo === null) return;
     const active = document.activeElement || {};
     const inEditor = ["TEXTAREA", "INPUT", "SELECT"].includes(active.tagName);
+    const inQueue = Boolean(active.closest && active.closest("#diff-queue"));
+    const inOtherButton = active.tagName === "BUTTON" && !inQueue;
     const mod = event.metaKey || event.ctrlKey;
 
     if (mod && event.key === "Enter") {
       event.preventDefault();
       confirmCurrentPage();
       return;
+    }
+    // 队列键位：Enter / Space 采纳，⌫ 保留，← 回上一处。
+    // 只在队列展开、焦点不在编辑框 / 其它按钮时接管，避免抢按钮的原生 Enter / Space。
+    if (queueOpen && diffQueue.length && !inEditor && !inOtherButton) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        adoptQueueCurrent();
+        return;
+      }
+      if (event.key === "Backspace") {
+        event.preventDefault();
+        keepQueueCurrent();
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        previousQueueItem();
+        return;
+      }
     }
     // 编辑框内保留浏览器原生的文字撤销（说明书 7.5）
     if (inEditor) return;

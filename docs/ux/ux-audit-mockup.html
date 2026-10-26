@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>UX 走查 · P0 重新设计静态稿</title>
+<style>
+:root{
+  --bg:#f3f4f6;--surface:#fff;--surface-2:#fafbfc;--surface-3:#f7f8fa;
+  --line:#e2e4e8;--line-soft:#eef0f2;
+  --text:#1f2329;--text-2:#33383f;--muted:#646a73;--faint:#9aa0a8;
+  --accent:#2563eb;--accent-soft:#eef4ff;--accent-text:#1d4ed8;
+  --ok:#16a34a;--ok-text:#15803d;--ok-soft:#e9f7ee;
+  --warn-text:#b45309;--warn-soft:#fdf3e0;
+  --bad-text:#b91c1c;--bad-soft:#fdecec;
+  --purple:#7a4bb5;
+  --diff-chars:#b42318;--diff-punct:#b45309;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#e9eaee;color:var(--text);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.draftbar{display:flex;align-items:center;gap:14px;padding:7px 16px;background:#1f2329;color:#e6e8eb;font-size:12px}
+.draftbar strong{color:#fff}
+.draftbar .tag{margin-left:auto;background:rgba(255,255,255,.12);padding:1px 7px;border-radius:5px;color:#cfd3d8}
+.stage{display:flex;gap:28px;padding:20px 20px 6px;align-items:flex-start}
+.wrap{width:600px}
+.label{font-size:12px;font-weight:600;color:#4b5563;margin:0 0 7px 2px}
+.label span{font-weight:400;color:#6b7280}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:3px;box-shadow:0 2px 12px rgba(16,24,40,.07);overflow:hidden}
+.caption{padding:6px 20px 16px;font-size:11.5px;color:#5b6169;line-height:1.6}
+.caption b{color:#1f2329}
+
+/* ─────────── 通用 ─────────── */
+.row{display:flex;align-items:center;gap:8px}
+.spacer{flex:1}
+.muted{color:var(--muted)}
+.btn{height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--text-2);font-size:12px}
+.btn--pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500;height:32px;font-size:12.5px}
+.btn--link{border:0;background:none;color:var(--accent-text);padding:0 2px;font-size:12px}
+.kbd{display:inline-block;min-width:16px;padding:0 4px;border:1px solid #d5d9e0;border-bottom-width:2px;border-radius:4px;background:#fbfcfd;font:11px/15px ui-monospace,Menlo,monospace;color:var(--text-2);text-align:center}
+
+/* ─────────── A：收尾抽屉 ─────────── */
+.drawer-head{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.drawer-head strong{font-size:13.5px}
+.drawer-body{padding:6px 0}
+.close{margin-left:auto;width:24px;height:24px;border:0;background:none;color:var(--faint)}
+.step{display:grid;grid-template-columns:18px 82px 1fr auto;gap:8px;align-items:center;
+  padding:9px 16px;border-bottom:1px solid var(--line-soft);min-height:42px}
+.step:last-child{border-bottom:0}
+.step__mark{font-size:12px;text-align:center}
+.step__mark.ok{color:var(--ok-text)}
+.step__mark.warn{color:var(--warn-text)}
+.step__mark.idle{color:var(--faint)}
+.step__name{font-size:12.5px;font-weight:600;color:var(--text-2)}
+.step__state{font-size:11.5px;color:var(--muted);line-height:1.45}
+.step__state b{color:var(--text-2);font-weight:600}
+.step__act{justify-self:end}
+.step--todo{background:#fffdf8}
+.drawer-foot{border-top:1px solid var(--line);padding:12px 16px;background:var(--surface-2)}
+.foot-line{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-2);margin-bottom:8px}
+.foot-line:last-child{margin-bottom:0}
+.foot-line .muted{font-size:11.5px}
+.progress{margin:10px 16px 4px;padding:9px 10px;border:1px solid #d7e4fd;background:var(--accent-soft);border-radius:8px}
+.bar{height:6px;background:#dbe6f9;border-radius:3px;overflow:hidden;margin:7px 0 5px}
+.bar i{display:block;height:100%;width:41%;background:var(--accent)}
+.progress__t{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--accent-text)}
+
+/* ─────────── B：审校队列 ─────────── */
+.phead{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+.phead__t{font-size:13.5px;font-weight:600}
+.phead__c{font-size:12px;color:var(--muted)}
+.phead__c i{font-style:normal;color:var(--warn-text)}
+.phead__c s{text-decoration:none;color:var(--warn-text)}
+.actionrow{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line-soft);background:var(--surface-2)}
+.filter{display:flex;align-items:center;gap:6px;padding:7px 14px;border-bottom:1px solid var(--line-soft)}
+.filter .lbl{font-size:11.5px;color:var(--faint)}
+.chipbtn{height:24px;padding:0 9px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:11.5px}
+.chipbtn.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text)}
+
+.queue{margin:10px 14px;border:1px solid #c9d9f8;border-radius:9px;background:#f7faff;overflow:hidden}
+.queue__top{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #e3ecfc}
+.queue__n{font-size:12px;font-weight:600;color:var(--accent-text)}
+.queue__meta{font-size:11.5px;color:var(--muted)}
+.queue__frag{padding:7px 10px 4px;font-size:13px;line-height:1.75;color:var(--text-2)}
+.queue__acts{display:flex;align-items:center;gap:6px;padding:5px 10px 9px}
+.queue__acts .btn--pri{height:28px;font-size:12px}
+.dots{display:flex;gap:3px;margin-left:auto}
+.dots i{width:6px;height:6px;border-radius:50%;background:#d7dee8}
+.dots i.done{background:#9db7e8}
+.dots i.now{background:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.18)}
+
+.diff-a{color:var(--diff-chars);text-decoration:underline solid 2px;text-underline-offset:2px}
+.diff-b{color:var(--purple);text-decoration:underline dotted 2px;text-underline-offset:2px}
+.arrow{color:var(--faint);padding:0 3px}
+
+.blk{border-bottom:1px solid var(--line-soft);padding:9px 14px 11px}
+.blk--cur{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--accent)}
+.blk__head{display:flex;align-items:center;gap:8px;min-height:22px}
+.type{height:20px;padding:0 5px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--muted);font-size:11px}
+.blk__text{font-size:13px;line-height:1.7;color:var(--text);margin-top:3px;white-space:pre-wrap}
+.strip{margin-top:6px;border-left:3px solid var(--diff-chars);padding:2px 0 2px 8px}
+.strip__head{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);min-height:24px}
+.strip__head b{color:var(--text-2);font-weight:600;font-size:12px}
+.strip__row{display:flex;align-items:baseline;gap:6px;font-size:12px;padding:2px 4px;border-radius:5px}
+.strip__row.on{background:var(--surface-3);box-shadow:inset 2px 0 0 var(--diff-chars)}
+.strip__no{font-size:11px;color:var(--faint);white-space:nowrap}
+.strip__lv{font-size:11px;color:var(--muted);white-space:nowrap}
+.strip__txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.foot{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);background:var(--surface)}
+.foot .stat{font-size:11.5px;color:var(--muted)}
+.foot .stat b{color:var(--text-2)}
+</style>
+</head>
+<body>
+
+<div class="draftbar">
+  <strong>静态设计稿</strong><span>UX 走查 · P0 重新设计</span>
+  <span class="tag">docs/ux/ux-audit-mockup.html</span>
+</div>
+
+<div class="stage">
+
+  <!-- ══════════ A：收尾抽屉 ══════════ -->
+  <div class="wrap" style="width:480px">
+    <p class="label">P0-1 · 收尾面板 <span>（从页面视图/审校页头的「收尾 3/6」打开）</span></p>
+    <div class="card">
+      <div class="drawer-head">
+        <strong>收尾 ·《红楼梦》第三卷</strong>
+        <button class="close">✕</button>
+      </div>
+
+      <div class="drawer-body">
+        <div class="step">
+          <span class="step__mark ok">✓</span>
+          <span class="step__name">页面类型</span>
+          <span class="step__state"><b>394 / 394</b> 已确认</span>
+          <span class="step__act"></span>
+        </div>
+
+        <div class="step">
+          <span class="step__mark ok">✓</span>
+          <span class="step__name">版心</span>
+          <span class="step__state"><b>394 / 394</b> 已定（拟合 355 · 回退默认版心 39）</span>
+          <span class="step__act"><button class="btn--link">查看 39 页</button></span>
+        </div>
+
+        <div class="step step--todo">
+          <span class="step__mark warn">!</span>
+          <span class="step__name">版面确认</span>
+          <span class="step__state"><b>12 / 394</b> · 还差 382 页</span>
+          <span class="step__act"><button class="btn">确认全部正文页版面</button></span>
+        </div>
+
+        <div class="step step--todo">
+          <span class="step__mark warn">!</span>
+          <span class="step__name">页码</span>
+          <span class="step__state">未定位（<b>可跳过</b>，不挡导出）</span>
+          <span class="step__act"><button class="btn">定位页码…</button></span>
+        </div>
+
+        <div class="step step--todo">
+          <span class="step__mark warn">!</span>
+          <span class="step__name">审校</span>
+          <span class="step__state" title="分母是 380 个正文页；另外 14 页是非正文，不参与审校">可直接通过 <b>152 页</b> · <b>228 页</b>要人看</span>
+          <span class="step__act"><button class="btn">标记 152 页自动通过</button></span>
+        </div>
+
+        <div class="step">
+          <span class="step__mark ok">✓</span>
+          <span class="step__name">第二引擎</span>
+          <span class="step__state"><b>394 / 394</b> 已复核 · 分歧率 4.1%</span>
+          <span class="step__act"></span>
+        </div>
+      </div>
+
+      <div class="progress">
+        <div class="progress__t"><b>正在确认版面…</b><span>128 / 382 页</span><span class="spacer"></span><button class="btn--link">停止</button></div>
+        <div class="bar"><i></i></div>
+        <div class="progress__t" style="color:var(--muted)">已确认的不会回退；停止后可以再从 129 页继续。</div>
+      </div>
+
+      <div class="drawer-foot">
+        <div class="foot-line">
+          <span>还有 <b>228 页</b>需要人看</span>
+          <span class="spacer"></span>
+          <button class="btn btn--pri">从第 1 页开始审校 →</button>
+        </div>
+        <div class="foot-line">
+          <span class="muted">或者现在导出，预检会记录 228 页未经人工确认</span>
+          <span class="spacer"></span>
+          <button class="btn">导出…</button>
+        </div>
+      </div>
+    </div>
+    <p class="caption">每行一个已有数字 + 一个已有动作。进度条是批量动作的真实状态（前端逐页调用现有接口，可停、可续）。</p>
+  </div>
+
+  <!-- ══════════ B：审校差异队列 ══════════ -->
+  <div class="wrap">
+    <p class="label">P0-2 + P0-3 · 审校页头收敛 + 差异队列 <span>（右栏）</span></p>
+    <div class="card">
+      <div class="phead">
+        <span class="phead__t">第 370 页</span>
+        <span class="phead__c">正文 · <b>13 处差异</b>（汉字 12 · 标点 1） · <s>版面未确认</s> · <s>漏行 1</s></span>
+        <span class="spacer"></span>
+        <button class="chipbtn on" title="队列开关（默认开）">差异 13 ▾</button>
+        <button class="btn">⋯</button>
+      </div>
+
+      <div class="filter">
+        <span class="lbl">本页块</span>
+        <button class="chipbtn on">待处理 3</button>
+        <button class="chipbtn">版心内 3</button>
+        <button class="chipbtn">版心外 1</button>
+        <button class="chipbtn">全部 4</button>
+        <span class="spacer"></span>
+        <span class="muted" style="font-size:11px">队列只在页内生效</span>
+      </div>
+
+      <div class="queue">
+        <div class="queue__top">
+          <span class="queue__n">第 3 / 13 处</span>
+          <span class="queue__meta">汉字级 · 第 2 块 · 第 7 行</span>
+          <span class="dots">
+            <i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+          </span>
+        </div>
+        <div class="queue__frag">
+          …群花之蕊、冰鲛之<span class="diff-a">殼</span><span class="arrow">→</span><span class="diff-b">縠</span>，沁芳之泉…
+        </div>
+        <div class="queue__acts">
+          <button class="btn btn--pri">采纳第二路 <span class="kbd" style="background:#4a7ff0;border-color:#3b6ee0;color:#fff">⏎</span></button>
+          <button class="btn">保留原文 <span class="kbd">␣</span></button>
+          <button class="btn">回上一处 <span class="kbd">⌫</span></button>
+        </div>
+      </div>
+
+      <div class="blk blk--cur">
+        <div class="blk__head">
+          <span class="type">段落</span>
+          <span class="spacer"></span>
+          <span class="muted" style="font-size:11px">未审</span>
+        </div>
+        <div class="blk__text">维太平不易之元，蓉桂竞芳之月，无可奈何之日，怡红院浊玉，谨以群花之蕊、冰鲛之縠，沁芳之泉，枫露之茗：四者虽微，聊以达诚申信，乃致祭于白帝宫中抚司秋艳芙蓉女儿之前曰：</div>
+      </div>
+
+      <div class="blk">
+        <div class="blk__head">
+          <span class="type">段落</span>
+          <span class="spacer"></span>
+          <span class="muted" style="font-size:11px">未审</span>
+        </div>
+        <div class="blk__text">窃思女儿自临人世，迄今凡十有六载。其先之乡籍姓氏，湮沦而莫能考者久矣。而玉得于衾枕栉沐之间，栖息宴游之夕，亲昵狎亵，相与共处者，仅五年八月有奇。</div>
+      </div>
+
+      <div class="foot">
+        <button class="btn btn--pri">确认本页并下一页 <span class="kbd" style="background:#4a7ff0;border-color:#3b6ee0;color:#fff">⌘⏎</span></button>
+        <span class="spacer"></span>
+        <span class="stat">采纳 <b>2</b> · 保留 <b>0</b> · 还剩 <b>11</b> 处</span>
+      </div>
+    </div>
+    <p class="caption">
+      队列条固定、一次只给一处；<b>采纳/保留各一次按键</b>，左图标记随之消失，滚动不动。
+      队列打开时不显示块内差异条（同一事实只在一处）；关掉「差异 13」就回到按块浏览，差异条恢复。
+      「保留原文」不写库——离开未确认的页，13 处会重新出现（状态诚实）。
+    </p>
+  </div>
+
+</div>
+
+</body>
+</html>
