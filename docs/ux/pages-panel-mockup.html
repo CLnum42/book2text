@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>页面视图右栏 · 层级重排（静态设计稿）</title>
+<style>
+:root {
+  --bg: #f3f4f6; --surface: #fff; --surface-2: #fafbfc; --surface-3: #f7f8fa;
+  --line: #e2e4e8; --line-soft: #eef0f2; --line-strong: #d0d3d9;
+  --text: #1f2329; --text-2: #33383f; --muted: #646a73; --faint: #9aa0a8;
+  --accent: #2563eb; --accent-soft: #eef4ff; --ok-text: #15803d;
+  --warn-text: #b45309; --warn-soft: #fdf3e0; --bad-text: #b91c1c;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: #e9eaee; color: var(--text);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.draftbar {
+  display: flex; align-items: center; gap: 14px; padding: 7px 16px;
+  background: #1f2329; color: #e6e8eb; font-size: 12px;
+}
+.draftbar strong { color: #fff; }
+.draftbar .tag { margin-left: auto; color: #cfd3d8; background: rgba(255,255,255,.12); padding: 1px 7px; border-radius: 5px; }
+
+.stage { display: flex; gap: 34px; padding: 22px 24px 8px; align-items: flex-start; }
+.frame-wrap { width: 292px; }
+.frame-label { font-size: 12px; color: #4b5563; margin: 0 0 7px 2px; font-weight: 600; }
+.frame-label span { font-weight: 400; color: #6b7280; }
+
+/* ─────────── 右栏 ─────────── */
+.panel {
+  width: 292px; height: 628px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 2px; padding: 12px 12px 0; overflow: hidden;
+  box-shadow: 0 2px 10px rgba(16,24,40,.06);
+}
+
+/* 顶部选择摘要 */
+.selhead__row { display: flex; align-items: center; gap: 6px; height: 26px; }
+.selhead__title { font-size: 13.5px; font-weight: 600; }
+.selhead__meta { font-size: 11.5px; color: var(--muted); }
+.selhead__x { margin-left: auto; width: 22px; height: 22px; display: grid; place-items: center;
+  border: 0; background: none; color: var(--faint); font-size: 13px; cursor: pointer; }
+.selhead__row2 {
+  display: flex; align-items: center; gap: 6px; height: 26px;
+  font-size: 11.5px; color: var(--text-2);
+}
+.selhead__row2 .btnlink {
+  margin-left: auto; height: 22px; padding: 0 7px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text-2); font-size: 11px;
+}
+.selhead--plain .selhead__row2 { color: var(--muted); }
+.selhead__next { display: flex; align-items: center; gap: 6px; }
+.selhead__next b { color: var(--text-2); font-weight: 600; }
+
+/* 分区 */
+.groups { margin-top: 6px; border-top: 1px solid var(--line); }
+.group { border-bottom: 1px solid var(--line-soft); }
+.group__head {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  height: 36px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer;
+  color: var(--text-2);
+}
+.group__caret { width: 8px; font-size: 9px; color: var(--faint); display: inline-block; text-align: center; }
+.group__caret.on { transform: rotate(90deg); }
+.group__title { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.group__skip { font-size: 10px; color: var(--faint); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.group__sum { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.group__mark { font-size: 11px; }
+.mark-ok { color: var(--ok-text); }
+.mark-warn { color: var(--warn-text); }
+.mark-idle { color: var(--faint); }
+.adv { height: 30px; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+.group__head .group__sum { max-width: 168px; }
+
+/* 展开体 */
+.body { padding: 2px 0 10px; }
+.slack {
+  flex: 1; min-height: 8px; margin: 6px 0 8px; border: 1px dashed #d6dae0; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10.5px; color: #a2a8b0; letter-spacing: .02em;
+}
+.hintline { font-size: 11px; color: var(--muted); margin: 4px 0 6px; line-height: 1.5; }
+.hintline.strong { color: var(--warn-text); }
+.fullline { font-size: 11.5px; color: var(--muted); margin-top: 8px; display: flex; gap: 8px; align-items: baseline; }
+.fullline a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.fullline .lbl { color: var(--faint); font-size: 11px; }
+
+.btn { height: 28px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--text-2); font-size: 11.5px; width: 100%; }
+.btn--pri { height: 32px; background: var(--accent); border-color: var(--accent); color: #fff; font-size: 12px; font-weight: 500; }
+.btn--pri[disabled] { background: #c7d6f6; border-color: #c7d6f6; }
+.btn + .btn { margin-top: 6px; }
+
+/* 页面类型：2 列 */
+.types { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.ptype {
+  display: flex; align-items: center; gap: 5px; height: 28px; padding: 0 7px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+  font-size: 11.5px; color: var(--text-2); text-align: left;
+}
+.ptype.on { border-color: var(--accent); background: var(--accent-soft); color: #1d4ed8; font-weight: 600; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.dot--body { background: #2563eb; } .dot--front { background: #7a4bb5; }
+.dot--toc { background: #0f766e; } .dot--exclude { background: #9aa0a8; } .dot--back { background: #b45309; }
+.subdetails { display: flex; align-items: center; gap: 6px; height: 24px; font-size: 11.5px; color: var(--muted); }
+.subdetails .caret { font-size: 9px; color: var(--faint); }
+
+/* 版心：2×2 来源卡 */
+.sources { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.source {
+  border: 1px solid var(--line); border-radius: 7px; padding: 6px 7px; background: var(--surface);
+  text-align: left; cursor: pointer; font-size: 11.5px; color: var(--text-2);
+}
+.source b { display: flex; align-items: center; gap: 4px; font-weight: 600; font-size: 11.5px; }
+.source small { display: block; margin-top: 2px; font-size: 10px; color: var(--muted); line-height: 1.4; }
+.source.on { border-color: var(--accent); border-width: 1.5px; background: var(--accent-soft); }
+.radio { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--faint); flex: none; }
+.source.on .radio { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 2px #fff; }
+
+.effective { margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: var(--surface-3); }
+.effective__k { font-size: 10.5px; color: var(--faint); }
+.effective__v { font-size: 11.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.effective__src { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+.textrow { display: flex; gap: 10px; margin-top: 8px; font-size: 11px; }
+.textrow a { color: var(--accent); cursor: pointer; text-decoration: none; }
+
+/* 页码 / 识别（只在 frame A 的折叠摘要里用到） */
+.kv { display: flex; gap: 8px; font-size: 11.5px; margin-top: 3px; }
+.kv .k { color: var(--faint); width: 34px; flex: none; font-size: 11px; }
+.kv .v { color: var(--text-2); }
+
+/* 底部固定条 */
+.actionbar {
+  margin: 0 -12px; padding: 11px 12px; border-top: 1px solid var(--line);
+  background: var(--surface); display: flex; gap: 8px; align-items: center;
+  box-shadow: 0 -6px 14px rgba(16,24,40,.05);
+}
+.actionbar .btn--pri { flex: 1; }
+.actionbar .more {
+  width: 32px; height: 32px; flex: none; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--muted);
+}
+.actionbar__note { position: absolute; }
+
+.caption { padding: 8px 24px 18px; font-size: 11.5px; color: #5b6169; }
+.caption b { color: #1f2329; }
+</style>
+</head>
+<body>
+
+<div class="draftbar">
+  <strong>静态设计稿</strong><span>页面视图右栏 · 层级与顺序</span>
+  <span class="tag">docs/ux/pages-panel-mockup.html</span>
+</div>
+
+<div class="stage">
+
+  <!-- ───────────── A：未选择 ───────────── -->
+  <div class="frame-wrap">
+    <p class="frame-label">A · 未选择 <span>（全书引导）</span></p>
+    <div class="panel">
+      <div class="selhead selhead--plain">
+        <div class="selhead__row">
+          <span class="selhead__title">未选择页面</span>
+          <span class="selhead__meta">在左边网格里点一页</span>
+        </div>
+        <div class="selhead__row2">
+          <span class="selhead__next">下一步：<b>267 页未确认</b> → 先确认页面类型</span>
+        </div>
+      </div>
+
+      <div class="groups">
+        <div class="group">
+          <div class="group__head">
+            <span class="group__caret on">▸</span>
+            <span class="group__mark mark-warn">!</span>
+            <span class="group__title">页面类型</span>
+            <span class="group__sum">全书 0 / 267 已确认</span>
+          </div>
+          <div class="body">
+            <div class="types">
+              <button class="ptype"><span class="dot dot--body"></span>正文</button>
+              <button class="ptype"><span class="dot dot--exclude"></span>正文排除</button>
+              <button class="ptype"><span class="dot dot--toc"></span>目录</button>
+              <button class="ptype"><span class="dot dot--front"></span>前置</button>
+              <button class="ptype"><span class="dot dot--back"></span>后置</button>
+            </div>
+            <p class="hintline">只有「正文」进识别与语料；确认只是状态，不拦识别。</p>
+            <button class="btn btn--pri" disabled>确认所选页面</button>
+            <p class="hintline">先在左边点一页，或直接用下面的全书动作。</p>
+            <div class="subdetails"><span class="caret">▸</span> 页眉 / 页脚 / 页码建议（把握较大 12 条）</div>
+            <div class="fullline"><span class="lbl">全书…</span><a>确认全部未确认页（267）</a></div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group__head">
+            <span class="group__caret">▸</span>
+            <span class="group__mark mark-idle">·</span>
+            <span class="group__title">版心</span>
+            <span class="group__sum">自动 255 · 自定 12</span>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group__head">
+            <span class="group__caret">▸</span>
+            <span class="group__mark mark-warn">!</span>
+            <span class="group__title">页码</span>
+            <span class="group__skip">可跳过</span>
+            <span class="group__sum">右下/左下 · 异常 12</span>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group__head">
+            <span class="group__caret">▸</span>
+            <span class="group__mark mark-idle">·</span>
+            <span class="group__title">识别设置</span>
+            <span class="group__sum">RapidOCR · 200 DPI · 中文</span>
+          </div>
+        </div>
+
+        <div class="adv"><span class="group__caret">▸</span> 高级操作</div>
+      </div>
+
+      <div class="slack">剩余空间（628px 内不需要滚）</div>
+
+      <div class="actionbar">
+        <button class="btn btn--pri">识别全部未识别页（204）</button>
+        <button class="more">⋯</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────── B：已选 12 页 ───────────── -->
+  <div class="frame-wrap">
+    <p class="frame-label">B · 已选 12 页 <span>（版心展开，四种来源）</span></p>
+    <div class="panel">
+      <div class="selhead">
+        <div class="selhead__row">
+          <span class="selhead__title">已选 12 页</span>
+          <span class="selhead__meta">第 87–98 页</span>
+          <button class="selhead__x">✕</button>
+        </div>
+        <div class="selhead__row2">
+          <span>类型 正文 10 · 前置 2</span>
+          <button class="btnlink">统一设为正文</button>
+        </div>
+      </div>
+
+      <div class="groups">
+        <div class="group">
+          <div class="group__head">
+            <span class="group__caret">▸</span>
+            <span class="group__mark mark-warn">!</span>
+            <span class="group__title">页面类型</span>
+            <span class="group__sum">12 页未确认</span>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group__head">
+            <span class="group__caret on">▸</span>
+            <span class="group__mark mark-warn">!</span>
+            <span class="group__title">版心</span>
+            <span class="group__sum">12 页：自动 10 · 自定 1 · 不适用 1</span>
+          </div>
+          <div class="body">
+            <div class="sources">
+              <button class="source on">
+                <b><span class="radio"></span>每页自动拟合</b>
+                <small>用本页检测行拟合</small>
+              </button>
+              <button class="source">
+                <b><span class="radio"></span>沿用全局</b>
+                <small>7.4 / 6.8 / 92.0 / 93.2</small>
+              </button>
+              <button class="source">
+                <b><span class="radio"></span>本页自定义</b>
+                <small>拖动边框或填四边</small>
+              </button>
+              <button class="source">
+                <b><span class="radio"></span>不适用</b>
+                <small>整页插图、插页</small>
+              </button>
+            </div>
+
+            <div class="effective">
+              <div class="effective__k">当前生效（第 90 页）</div>
+              <div class="effective__v">左 7.4% · 上 6.8% — 右 92.0% · 下 93.2%</div>
+              <div class="effective__src">来源：本页拟合 · 把握 中 · 12 行检测</div>
+            </div>
+
+            <p class="hintline strong">! 第 90 页有 3 行正文落在版心外，可能拟合不准。</p>
+            <div class="textrow"><a>在页面上拖动</a><a>把本页设为全局</a><a>回到全局</a></div>
+            <div class="fullline"><span class="lbl">该书…</span><a>全部改为每页自动拟合</a><a>推算默认版心</a></div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group__head">
+            <span class="group__caret">▸</span>
+            <span class="group__mark mark-warn">!</span>
+            <span class="group__title">页码</span>
+            <span class="group__skip">可跳过</span>
+            <span class="group__sum">右下/左下 · 异常 12</span>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group__head">
+            <span class="group__caret">▸</span>
+            <span class="group__mark mark-idle">·</span>
+            <span class="group__title">识别设置</span>
+            <span class="group__sum">双引擎 · 300 DPI · 给候选</span>
+          </div>
+        </div>
+
+        <div class="adv"><span class="group__caret">▸</span> 高级操作</div>
+      </div>
+
+      <div class="slack">剩余空间</div>
+
+      <div class="actionbar">
+        <button class="btn btn--pri">识别所选正文 10 页</button>
+        <button class="more">⋯</button>
+      </div>
+    </div>
+    <p class="caption" style="padding:7px 0 0; font-size:11px; color:#6b7280">
+      按钮下方还会跟一行「另 2 页不是正文，会跳过」（本稿省略以省高度）。
+    </p>
+  </div>
+</div>
+
+<div class="caption">
+  <b>读法：</b>顶部两行是固定摘要（随选择变），中间四个分区一次只展开一个、标题自带状态，底部主操作条常驻。
+  灰框是稿子里标出的剩余空间——两张稿都验证了 <b>628px 内不用滚</b>；真界面里这块由展开的分区吃掉。
+</div>
+
+</body>
+</html>

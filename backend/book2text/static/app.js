@@ -5857,6 +5857,17 @@ let detailImagePageNo = null;
 let reviewBlocks = [];
 /** 这一页所有识别行（含未归属 / 冲突的）。拖框吸附与虚线绘制都用它。 */
 let detailLines = [];
+/**
+ * 差异高亮的渲染状态（任务 63）。
+ *
+ * 前端 LCS **只在渲染层用**：`computeCharSpans()` 的结果不落库、不参与计数与状态判断；
+ * 差异的权威口径永远是后端的分级（将来 `line_diff` 表落地后改为读后端 spans，
+ * 删掉这里的前端 LCS，不允许两套口径长期并存）。
+ */
+let diffMarksMode = "page";          // page | block（默认整页）
+let activeDiff = null;               // {blockId, lineIndex, spanIndex}
+let activeReviewBlockId = null;
+const diffStripOpen = new Set();
 let reviewSaveTimer = null;
 let reviewPendingSave = null; // {block, text}：还没发出去的自动保存
 /** 每个块编辑框最后的光标位置：拆分要用它（点菜单会让编辑框失焦）。 */
@@ -6115,6 +6126,23 @@ function setupViewerTools() {
     el("toggle-overlay").textContent = on ? "显示块框" : "块框已隐藏";
     if (on) scheduleOverlayLayout(el("detail-overlay"));
   });
+  el("toggle-diff-marks").addEventListener("click", () => {
+    diffMarksMode = diffMarksMode === "page" ? "block" : "page";
+    if (diffMarksMode === "block") {
+      // 当前块可能本来就没有差异；切到"当前块"时落到第一个有差异的块，别给一片空白。
+      const active = (reviewBlocks || []).find(
+        (block) => block.block_id === activeReviewBlockId && blockHasDrawableDiff(block)
+      );
+      if (!active) {
+        const first = (reviewBlocks || []).find((block) => blockHasDrawableDiff(block));
+        if (first) {
+          selectReviewBlock(first.block_id, { scroll: false });
+          return;
+        }
+      }
+    }
+    drawDiffLayer();
+  });
   // 任务 53：审校视图也显示版心，默认开；关掉只影响显示。
   el("review-margin-toggle").addEventListener("click", toggleReviewMargin);
   for (const button of el("review-filter").querySelectorAll("[data-margin-filter]")) {
@@ -6331,6 +6359,9 @@ function renderPageDetail(data) {
   const pageNo = data.page.page_no;
   reviewBlocks = data.blocks;
   detailLines = (data.blocks || []).flatMap((block) => block.lines || []);
+  activeReviewBlockId = null;
+  activeDiff = null;
+  diffStripOpen.clear();
 
   const recognition = recognitionOf(data.page);
   el("page-detail-title").textContent = `第 ${pageNo} 页`;
@@ -6379,6 +6410,9 @@ function renderPageDetail(data) {
   drawDetailLines();
   drawDetailOverlay(data.blocks);
   renderReviewBlocks(data.blocks);
+  // 默认把第一个有差异的块设为当前块（展开差异条，但不抢滚动位置）。
+  const firstDiffBlock = (data.blocks || []).find((block) => blockHasDrawableDiff(block));
+  if (firstDiffBlock) selectReviewBlock(firstDiffBlock.block_id, { scroll: false });
   renderSuggestionTools();
   renderLayoutPanel(data);
   renderReviewWorkflowStatus();
@@ -6477,8 +6511,8 @@ function renderReviewBanner(data, recognition) {
     messages.push(
       `两路复核有 ${divergence.lines} 行不一致（${divergenceSummary(divergence)}）：` +
         (divergenceCandidatesOn()
-          ? "块里已逐行标出，另一路候选就写在旁边，点「换成这一路」即可换过去。"
-          : "块里已逐行标出（当前是「只标分歧」，不显示候选；可在识别设置里改为「分歧行给候选」）。")
+          ? "页面上已逐行标出差异字，右侧差异条逐处给 A→B，点「换第二路」即可换过去。"
+          : "页面上已逐行标出差异字（当前是「只标分歧」，右侧只给行位置，不显示候选；可在识别设置里改为「分歧行给候选」）。")
     );
   } else if (divergence.stale_blocks) {
     messages.push(
@@ -6926,7 +6960,11 @@ function scheduleOverlayLayout(overlay, attempt = 0) {
   const token = (overlay._layoutToken = (overlay._layoutToken || 0) + 1);
   requestAnimationFrame(() => {
     if (overlay._layoutToken !== token || !overlay.isConnected) return;
-    if (layoutOverlayAnnotations(overlay)) return;
+    if (layoutOverlayAnnotations(overlay)) {
+      // 差异标记与顺序号在**同一个 rAF** 里重算，滚动 / 缩放时不会各走一帧。
+      drawDiffLayer();
+      return;
+    }
     if (attempt < 90) scheduleOverlayLayout(overlay, attempt + 1);
   });
 }
@@ -6952,6 +6990,337 @@ function observeOverlaySize(overlay) {
     overlayResizeObserver.observe(overlay);
     overlay._resizeObserved = true;
   }
+}
+
+// ---------------------------------------------------------------- 差异联动（任务 63）
+
+const DIFF_LEVELS = new Set(["differs_chars", "differs_punct"]);
+const DIFF_LCS_MAX_CELLS = 40000;
+
+/** 这一块有没有"能画出来"的差异：等级可画，且 A 上确实有字（纯插入暂不画）。 */
+function blockHasDrawableDiff(block) {
+  const marks = divergenceOf(block).marks || [];
+  return marks.some(
+    (mark) =>
+      DIFF_LEVELS.has(mark.level) &&
+      computeCharSpans(mark.current, mark.candidate).some((span) => span.aEnd > span.aStart)
+  );
+}
+
+/** 字符推进宽度（em）：CJK / 全角 1.0，ASCII 字母数字 0.52，ASCII 标点 0.30，空格 0.26。 */
+function charAdvance(ch) {
+  if (!ch) return 0;
+  if (/\s/.test(ch)) return 0.26;
+  const code = ch.codePointAt(0);
+  if (
+    (code >= 0x2e80 && code <= 0x9fff) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xff00 && code <= 0xffef) ||
+    (code >= 0x3000 && code <= 0x303f)
+  ) {
+    return 1.0;
+  }
+  if (/[A-Za-z0-9]/.test(ch)) return 0.52;
+  if (code < 128) return 0.30;
+  return 0.60;
+}
+
+function textAdvance(text, start = 0, end = null) {
+  const value = String(text || "");
+  const stop = end === null || end === undefined ? value.length : Math.min(end, value.length);
+  let total = 0;
+  for (let i = Math.max(0, start); i < stop; i += 1) total += charAdvance(value[i]);
+  return total;
+}
+
+/**
+ * 单行 LCS，返回 A 上需要标记的字符区间。
+ *
+ * **只在渲染层用**：结果不落库、不参与计数；`line_diff` 表落地后改读后端 spans，
+ * 删掉这个函数。行内 ≤160 字，DP 的格子数有上限，超长行整行标记。
+ */
+function computeCharSpans(current, candidate) {
+  const a = String(current || "");
+  const b = String(candidate || "");
+  if (!a || !b || a === b) return [];
+  if (a.length * b.length > DIFF_LCS_MAX_CELLS) {
+    return [{ aStart: 0, aEnd: a.length, bStart: 0, bEnd: b.length, kind: "replace" }];
+  }
+  const n = a.length;
+  const m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i -= 1) {
+    for (let j = m - 1; j >= 0; j -= 1) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const spans = [];
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    const aStart = i;
+    const bStart = j;
+    while (i < n || j < m) {
+      if (i < n && j < m && a[i] === b[j]) break;
+      if (j < m && (i >= n || dp[i][j + 1] >= dp[i + 1][j])) j += 1;
+      else i += 1;
+    }
+    if (i > aStart || j > bStart) {
+      spans.push({
+        aStart,
+        aEnd: i,
+        bStart,
+        bEnd: j,
+        kind: i > aStart && j > bStart ? "replace" : i > aStart ? "delete" : "insert",
+      });
+    }
+  }
+  return spans;
+}
+
+/** 把 A 的字符区间换算成页面像素（按字符推进宽度估算，向外扩 0.15em）。 */
+function markPixelRange(bbox, lineText, span, width, height) {
+  const text = String(lineText || "");
+  const total = textAdvance(text);
+  if (!text || total <= 0) return null;
+  const aStart = Math.max(0, Math.min(span.aStart, text.length));
+  const aEnd = Math.max(aStart, Math.min(span.aEnd, text.length));
+  const before = textAdvance(text, 0, aStart);
+  const inside = textAdvance(text, aStart, aEnd);
+  const textWidth = (bbox[2] - bbox[0]) * width;
+  const lineHeight = (bbox[3] - bbox[1]) * height;
+  const em = Math.max(8, lineHeight);
+  const minLeft = bbox[0] * width - 2;
+  const maxRight = bbox[2] * width + 2;
+  let left = bbox[0] * width + textWidth * (before / total);
+  let markWidth = textWidth * (inside / total);
+  const pad = 0.15 * em;
+  left -= pad;
+  markWidth += 2 * pad;
+  if (markWidth < 0.9 * em) markWidth = 0.9 * em;
+  if (left < minLeft) {
+    markWidth -= minLeft - left;
+    left = minLeft;
+  }
+  if (left + markWidth > maxRight) markWidth = maxRight - left;
+  if (markWidth <= 0) return null;
+  return { left, top: bbox[3] * height + 2, width: markWidth, lineHeight };
+}
+
+function diffLevelLabel(level) {
+  if (level === "differs_chars") return "汉字级";
+  if (level === "differs_punct") return "标点级";
+  if (level === "no_candidate") return "第二路没读出";
+  return "仅格式差异";
+}
+
+function findDiffMark(blockId, lineIndex, spanIndex) {
+  return el("detail-diff-layer").querySelector(
+    `.diff-mark[data-block-id="${blockId}"][data-line-index="${lineIndex}"][data-span="${spanIndex}"]`
+  );
+}
+
+/** 在页面上画所有可画的差异标记；整页 / 当前块两种模式。 */
+function drawDiffLayer(attempt = 0) {
+  const layer = el("detail-diff-layer");
+  if (!layer) return;
+  const canvas = el("detail-canvas");
+  const toggle = el("toggle-diff-marks");
+  if (!canvas || canvas.hidden) {
+    layer.innerHTML = "";
+    document.body.classList.remove("diff-mode");
+    if (toggle) toggle.disabled = true;
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width < 60 || rect.height < 60) {
+    if (attempt < 30) requestAnimationFrame(() => drawDiffLayer(attempt + 1));
+    return;
+  }
+  layer.innerHTML = "";
+  let total = 0;
+  let drawn = 0;
+  for (const block of reviewBlocks) {
+    const divergence = divergenceOf(block);
+    if (divergence.stale || !(divergence.marks || []).length) continue;
+    for (const mark of divergence.marks) {
+      if (!DIFF_LEVELS.has(mark.level)) continue;
+      total += 1;
+      if (diffMarksMode === "block" && activeReviewBlockId && block.block_id !== activeReviewBlockId) {
+        continue;
+      }
+      const line = (block.lines || [])[mark.line_index];
+      if (!line || !line.bbox) continue;
+      if (line.layout_status === "conflict" || line.layout_status === "unassigned") continue;
+      const current = String(mark.current || "");
+      const lineText = String(line.text || current || "");
+      let spans = computeCharSpans(current, mark.candidate).filter((span) => span.aEnd > span.aStart);
+      if (!spans.length) continue;
+      // 人工改过字、行文本与当前文本长度差太大：整行画一条，别猜位置。
+      if (lineText && Math.abs(lineText.length - current.length) / Math.max(1, lineText.length) > 0.2) {
+        spans = [{ aStart: 0, aEnd: lineText.length, bStart: 0, bEnd: 0, kind: "replace" }];
+      }
+      spans.forEach((span, spanIndex) => {
+        const px = markPixelRange(line.bbox, lineText || current, span, rect.width, rect.height);
+        if (!px) return;
+        const node = document.createElement("div");
+        node.className = "diff-mark" + (mark.level === "differs_punct" ? " diff-mark--punct" : "");
+        if (
+          activeDiff &&
+          activeDiff.blockId === block.block_id &&
+          activeDiff.lineIndex === mark.line_index &&
+          (activeDiff.spanIndex === null || activeDiff.spanIndex === spanIndex)
+        ) {
+          node.classList.add("is-active");
+        }
+        if (diffMarksMode === "page" && activeReviewBlockId && block.block_id !== activeReviewBlockId) {
+          node.classList.add("is-dim");
+        }
+        node.dataset.blockId = block.block_id;
+        node.dataset.lineIndex = String(mark.line_index);
+        node.dataset.span = String(spanIndex);
+        node.style.left = `${px.left}px`;
+        node.style.top = `${px.top}px`;
+        node.style.width = `${px.width}px`;
+        node.style.borderBottomWidth = `${px.lineHeight >= 16 ? 2 : px.lineHeight >= 12 ? 1.5 : 1}px`;
+        node.title =
+          `第 ${mark.line_index + 1} 行 · ${diffLevelLabel(mark.level)}\n` +
+          `第一路：${truncate(current, 50)}\n第二路：${truncate(mark.candidate || "（没读出）", 50)}`;
+        node.setAttribute("role", "button");
+        node.setAttribute("aria-hidden", "true");
+        node.addEventListener("click", (event) => {
+          event.stopPropagation();
+          activateDiff(block.block_id, mark.line_index, spanIndex);
+        });
+        layer.append(node);
+        drawn += 1;
+      });
+    }
+  }
+  document.body.classList.toggle("diff-mode", drawn > 0);
+  if (toggle) {
+    toggle.disabled = total === 0;
+    toggle.textContent = `差异：${diffMarksMode === "page" ? "整页" : "当前块"}`;
+    toggle.classList.toggle("is-on", total > 0);
+  }
+}
+
+function flashDiffElement(node) {
+  if (!node || typeof node.animate !== "function") return;
+  node.animate(
+    [{ opacity: 1 }, { opacity: 0.35 }, { opacity: 1 }, { opacity: 0.35 }, { opacity: 1 }],
+    { duration: 480, easing: "ease-in-out" }
+  );
+}
+
+/** 只滚 #viewer-scroll，不动整页（design 4.2：不要用 scrollIntoView）。 */
+function scrollViewerTo(node) {
+  if (!node) return;
+  const scroll = el("viewer-scroll");
+  const sr = scroll.getBoundingClientRect();
+  const nr = node.getBoundingClientRect();
+  const top = scroll.scrollTop + (nr.top - sr.top) - scroll.clientHeight * 0.4;
+  scroll.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
+
+function scrollRowIntoList(row) {
+  if (!row) return;
+  const list = el("detail-blocks");
+  const lr = list.getBoundingClientRect();
+  const rr = row.getBoundingClientRect();
+  if (rr.top < lr.top) list.scrollTop += rr.top - lr.top - 8;
+  else if (rr.bottom > lr.bottom) list.scrollTop += rr.bottom - lr.bottom + 8;
+}
+
+/** 在编辑框里选中某行的某段字符（不滚动页面）。 */
+function selectSpanInTextarea(textarea, lineIndex, start, end) {
+  if (!textarea) return;
+  const lines = textarea.value.split("\n");
+  if (lineIndex < 0 || lineIndex >= lines.length) return;
+  let offset = 0;
+  for (let i = 0; i < lineIndex; i += 1) offset += lines[i].length + 1;
+  const len = lines[lineIndex].length;
+  const from = offset + Math.max(0, Math.min(start ?? 0, len));
+  const to = offset + Math.max(0, Math.min(end ?? len, len));
+  textarea.focus();
+  textarea.setSelectionRange(from, Math.max(from, to));
+}
+
+/** 展开某块的差异条（不重新渲染整页）。 */
+function syncDiffStrip(blockId) {
+  const item = el("detail-blocks").querySelector(`li[data-block-id="${blockId}"]`);
+  const strip = item && item.querySelector(".diff-strip");
+  if (!strip) return;
+  const open = diffStripOpen.has(blockId);
+  const body = strip.querySelector(".diff-strip__body");
+  const toggle = strip.querySelector(".diff-strip__toggle");
+  if (body) body.hidden = !open;
+  if (toggle) toggle.textContent = open ? "收起 ⌃" : "展开 ⌄";
+}
+
+function updateDiffActive() {
+  for (const row of el("detail-blocks").querySelectorAll(".diff-row")) {
+    const active =
+      activeDiff &&
+      row.dataset.blockId === activeDiff.blockId &&
+      Number(row.dataset.lineIndex) === activeDiff.lineIndex;
+    row.classList.toggle("is-active", Boolean(active));
+  }
+  for (const mark of el("detail-diff-layer").querySelectorAll(".diff-mark")) {
+    const active =
+      activeDiff &&
+      mark.dataset.blockId === activeDiff.blockId &&
+      Number(mark.dataset.lineIndex) === activeDiff.lineIndex &&
+      (activeDiff.spanIndex === null || Number(mark.dataset.span) === activeDiff.spanIndex);
+    mark.classList.toggle("is-active", Boolean(active));
+  }
+}
+
+/**
+ * 选中一处差异：左右两侧共用一个状态。
+ * 只滚 #viewer-scroll；右栏滚它自己的列表。
+ */
+function activateDiff(blockId, lineIndex, spanIndex = 0, options = {}) {
+  const block = (reviewBlocks || []).find((item) => item.block_id === blockId);
+  if (!block) return;
+  const divergence = divergenceOf(block);
+  const mark = (divergence.marks || []).find((item) => item.line_index === lineIndex);
+  if (!mark) return;
+  const spans = computeCharSpans(mark.current, mark.candidate).filter((span) => span.aEnd > span.aStart);
+  const span = spans[spanIndex] || spans[0] || null;
+  diffStripOpen.add(blockId);
+  ensureBlockListed(blockId);
+  selectReviewBlock(blockId, { scroll: false });
+  activeDiff = { blockId, lineIndex, spanIndex: spanIndex ?? 0 };
+  syncDiffStrip(blockId);
+  updateDiffActive();
+  drawDiffLayer();
+  requestAnimationFrame(() => {
+    const node = findDiffMark(blockId, lineIndex, activeDiff.spanIndex);
+    if (node) {
+      scrollViewerTo(node);
+      flashDiffElement(node);
+    }
+    const row = el("detail-blocks").querySelector(
+      `.diff-row[data-block-id="${blockId}"][data-line-index="${lineIndex}"]`
+    );
+    scrollRowIntoList(row);
+  });
+  const item = el("detail-blocks").querySelector(`li[data-block-id="${blockId}"]`);
+  const textarea = item && item.querySelector("textarea");
+  if (textarea) {
+    if (span) selectSpanInTextarea(textarea, lineIndex, span.aStart, span.aEnd);
+    else selectSpanInTextarea(textarea, lineIndex, 0, null);
+  }
+}
+
+function handleDiffMarkClick(blockId, lineIndex, spanIndex) {
+  activateDiff(blockId, lineIndex, spanIndex);
 }
 
 function drawDetailOverlay(blocks) {
@@ -7167,8 +7536,9 @@ function blockSuggestionBadge(suggestion) {
   });
   wrap.append(apply);
 
+  // 页码提示只进悬停说明，不占块头宽度（design 3.3：块头只留四样）。
   const pageNumber = pageNumberHintChip(suggestion);
-  if (pageNumber) wrap.append(pageNumber);
+  if (pageNumber) wrap.title += `\n${pageNumber.textContent}\n${pageNumber.title}`;
   return wrap;
 }
 
@@ -7293,74 +7663,57 @@ function blockCard(block, index, blocksCount) {
 
   const status = document.createElement("span");
   status.className =
-    "chip " +
+    "review-block__status" +
     (block.review_status === "confirmed"
-      ? "chip--ok"
+      ? " review-block__status--ok"
       : block.review_status === "uncertain"
-      ? "chip--warn"
-      : "chip--gray");
+      ? " review-block__status--warn"
+      : "");
   status.textContent =
     block.review_status === "confirmed"
       ? "✓ 已确认"
       : REVIEW_STATUS_LABELS[block.review_status] || block.review_status;
 
-  // 头一行：类型标签 + （靠右）状态与几个"要人看一眼"的标记（效果图 03）
-  // 与类型本身有关的标记（导出时排除 / 已排除）贴着类型标签放左边，状态放右边
-  const typeBits = [];
-  if (cardOutside) typeBits.push(["版心外", "chip--gray"]);
-  if (!block.include) typeBits.push(["已排除", "chip--gray"]);
-  else if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) {
-    typeBits.push(["不输出正文", "chip--gray"]);
-  } else if (CHROME_BLOCK_TYPES.has(block.block_type)) {
-    typeBits.push(["只进元数据", "chip--gray"]);
-  } else if (NOTE_BLOCK_TYPES.has(block.block_type)) {
-    typeBits.push(["进注释流", "chip--blue"]);
-  }
-  const bits = [];
-  if (block.modified) bits.push(["● 已修改", "chip--warn"]);
-  if (block.continues_to_next) bits.push(["↪ 延续到下页", "chip--blue"]);
-  if (blockDivergence.lines) bits.push([`≠ 两路不一致 ${blockDivergence.lines} 行`, "chip--warn"]);
-  // 行归属：改框之后每一行都有交代（assigned / conflict / unassigned）
+  // 块头只留四样：类型 / 建议 / 差异数 / 状态；位置与排除原因降为一行灰字。
+  const metaBits = [];
+  if (cardOutside) metaBits.push("版心外");
+  if (!block.include) metaBits.push("已排除");
+  else if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) metaBits.push("不输出正文");
+  else if (CHROME_BLOCK_TYPES.has(block.block_type)) metaBits.push("只进元数据");
+  else if (NOTE_BLOCK_TYPES.has(block.block_type)) metaBits.push("进注释流");
+  if (block.modified) metaBits.push("已修改");
+  if (block.continues_to_next) metaBits.push("延续下页");
   const blockLines = block.lines || [];
   const conflictLines = blockLines.filter((line) => line.layout_status === "conflict").length;
   const unassignedLines = blockLines.filter((line) => line.layout_status === "unassigned").length;
-  if (conflictLines) bits.push([`冲突行 ${conflictLines}`, "chip--warn"]);
-  if (unassignedLines) bits.push([`未归属行 ${unassignedLines}`, "chip--gray"]);
-  // 说明书 6.4：无 bbox 的块要明确显示"无位置信息"，不绘制虚假高亮
-  if (!block.bbox) bits.push(["无位置信息", "chip--gray"]);
+  if (conflictLines) metaBits.push(`冲突行 ${conflictLines}`);
+  if (unassignedLines) metaBits.push(`未归属行 ${unassignedLines}`);
+  if (!block.bbox) metaBits.push("无位置信息");
 
   const spacer = document.createElement("span");
   spacer.className = "spacer";
   head.append(typeSelect);
-  // 块类型建议：紧贴类型下拉，轻量虚线徽章 + 逐条「采用」；没有建议的块什么都不显示
   const suggestion = detailSuggestionByBlock.get(block.block_id);
   if (suggestion) head.append(blockSuggestionBadge(suggestion));
-  for (const [text, cls] of typeBits) {
-    const chip = document.createElement("span");
-    chip.className = `chip ${cls}`;
-    chip.textContent = text;
-    head.append(chip);
-  }
-  if (blockDivergence.chars) {
-    const warn = document.createElement("span");
-    warn.className = "chip chip--warn";
-    warn.textContent = `≠ ${blockDivergence.lines} 行`;
-    warn.title = "这一块有汉字级分歧，尽量核对";
-    head.append(warn);
+  if (blockDivergence.lines) {
+    const diffCount = document.createElement("span");
+    diffCount.className = "review-block__diffcount";
+    diffCount.textContent = `≠ ${blockDivergence.lines} 处`;
+    diffCount.title = "这一块两路复核不一致的行数；差异条里逐处给 A→B";
+    head.append(diffCount);
   }
   head.append(spacer);
-  for (const [text, cls] of bits) {
-    const chip = document.createElement("span");
-    chip.className = `chip ${cls}`;
-    chip.textContent = text;
-    head.append(chip);
+  if (metaBits.length) {
+    const meta = document.createElement("span");
+    meta.className = "review-block__meta";
+    meta.textContent = metaBits.join(" · ");
+    head.append(meta);
   }
   head.append(status);
 
   const textarea = document.createElement("textarea");
   textarea.className = "review-block__text";
   textarea.value = block.text;
-  textarea.rows = textRows(block.text);
   textarea.spellcheck = false;
   if (!block.text) {
     textarea.placeholder = TEXT_FREE_BLOCK_TYPES.has(block.block_type)
@@ -7376,10 +7729,10 @@ function blockCard(block, index, blocksCount) {
   textarea.addEventListener("click", rememberCursor);
   textarea.addEventListener("blur", rememberCursor);
   textarea.addEventListener("input", () => {
-    textarea.rows = textRows(textarea.value);
+    autoSizeTextarea(textarea);
     scheduleBlockSave(block, textarea.value);
   });
-  textarea.addEventListener("focus", () => selectReviewBlock(block.block_id));
+  textarea.addEventListener("focus", () => selectReviewBlock(block.block_id, { scroll: false }));
   textarea.addEventListener("keydown", (event) => {
     // 编辑框内保留浏览器原生的文字撤销（说明书 7.5）；Alt+↑/↓ 在块之间跳
     if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
@@ -7554,6 +7907,7 @@ function blockCard(block, index, blocksCount) {
   if (divergenceSection) item.append(divergenceSection);
   item.append(commentBox);
   item.append(actions, original);
+  requestAnimationFrame(() => autoSizeTextarea(textarea));
   return item;
 
   function askComment(target, current) {
@@ -7576,104 +7930,154 @@ const MAX_DIVERGENCE_ROWS = 8;
  */
 function blockDivergenceSection(block, textarea) {
   const divergence = divergenceOf(block);
-  const marks = divergence.marks || [];
+  const marks = (divergence.marks || []).filter((mark) => mark.level !== "format_only_differs");
   if (!marks.length && !divergence.stale) return null;
 
   const box = document.createElement("div");
-  box.className = "divergence";
+  box.className = "diff-strip" + (divergence.chars ? "" : " diff-strip--punct");
+
+  const head = document.createElement("div");
+  head.className = "diff-strip__head";
+  const count = document.createElement("span");
+  count.className = "diff-strip__count";
+  count.textContent = divergence.stale
+    ? "两路差异已收起"
+    : divergence.lines
+    ? `两路差异 ${divergence.lines} 行`
+    : `待核对 ${marks.length} 行`;
+  const info = document.createElement("button");
+  info.type = "button";
+  info.className = "diff-strip__info";
+  info.textContent = "ⓘ";
+  info.title =
+    "实测量过：第二引擎比第一引擎弱——被标出的分歧里约八成是它自己的错" +
+    "（以汉字错误为主），但标记能圈进第一引擎约 2/3 的错行。" +
+    "所以标记只回答「看哪里」，候选只作参考（改对率约 1/4），换不换由你判断。";
+  info.addEventListener("click", (event) => event.stopPropagation());
+  const spacer = document.createElement("span");
+  spacer.className = "spacer";
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "diff-strip__toggle";
+  toggle.textContent = diffStripOpen.has(block.block_id) ? "收起 ⌃" : "展开 ⌄";
+  head.append(count, info, spacer, toggle);
+  box.append(head);
 
   if (divergence.stale) {
     const note = document.createElement("p");
-    note.className = "divergence__note";
-    note.textContent =
-      "这一块的行结构改过（增删过换行），逐行分歧标记会指错地方，已暂时收起——" +
-      "重新识别这一页就能重新得到标记。";
+    note.className = "diff-strip__note";
+    note.textContent = "这一块的行结构改过（增删过换行），逐行标记会指错地方，已暂时收起——重新识别这一页就能重新得到标记。";
     box.append(note);
     return box;
   }
 
-  const head = document.createElement("div");
-  head.className = "divergence__head";
-  const badge = document.createElement("span");
-  badge.className = "divergence__badge";
-  badge.textContent = divergence.lines
-    ? `≠ ${divergence.lines} 行两路不一致`
-    : "两路没有实质分歧";
-  const detail = document.createElement("span");
-  detail.className = "muted";
-  detail.textContent = divergenceSummary(divergence);
-  head.append(badge, detail);
-  box.append(head);
+  const body = document.createElement("div");
+  body.className = "diff-strip__body";
+  body.hidden = !diffStripOpen.has(block.block_id);
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (diffStripOpen.has(block.block_id)) diffStripOpen.delete(block.block_id);
+    else diffStripOpen.add(block.block_id);
+    syncDiffStrip(block.block_id);
+  });
 
-  const showCandidates = divergenceCandidatesOn();
-  if (!showCandidates) {
-    const note = document.createElement("p");
-    note.className = "divergence__note";
-    note.textContent =
-      "当前为「只标分歧」：只标出哪几行不一致，不显示第二引擎的文本。" +
-      "要看候选，把识别设置改为「分歧行给候选」，或点「第二引擎复核」看整页。";
-    box.append(note);
-  }
+  const order = { differs_chars: 0, differs_punct: 1, no_candidate: 2 };
+  const ordered = [...marks].sort(
+    (a, b) => (order[a.level] ?? 9) - (order[b.level] ?? 9) || a.line_index - b.line_index
+  );
+  for (const mark of ordered.slice(0, MAX_DIVERGENCE_ROWS)) {
+    const row = document.createElement("div");
+    row.className = "diff-row";
+    row.dataset.blockId = block.block_id;
+    row.dataset.lineIndex = String(mark.line_index);
+    row.setAttribute("role", "button");
+    row.tabIndex = 0;
+    row.title =
+      `第 ${mark.line_index + 1} 行\n第一路：${truncate(mark.current || "", 80)}\n` +
+      `第二路：${truncate(mark.candidate || "（没读出）", 80)}`;
 
-  const list = document.createElement("ol");
-  list.className = "divergence__lines";
-  for (const mark of marks.slice(0, MAX_DIVERGENCE_ROWS)) {
-    const row = document.createElement("li");
-    row.className = "divergence__line";
-
-    const where = document.createElement("button");
-    where.type = "button";
-    where.className = "divergence__goto";
+    const where = document.createElement("span");
+    where.className = "diff-row__no";
     where.textContent = `第 ${mark.line_index + 1} 行`;
-    where.title = "在编辑框里选中这一行，和原图对照着看";
-    where.addEventListener("click", () => selectLineInTextarea(textarea, mark.line_index));
-
     const level = document.createElement("span");
-    level.className = `divergence__level divergence__level--${mark.level}`;
-    level.textContent = DIVERGENCE_LEVEL_LABELS[mark.level] || mark.level;
+    level.className = "diff-row__level";
+    level.textContent = diffLevelLabel(mark.level);
 
-    row.append(where, level);
-    if (showCandidates) {
-      const candidate = document.createElement("span");
-      candidate.className = "divergence__candidate";
-      candidate.textContent = mark.candidate
-        ? `第二引擎：${truncate(mark.candidate, 60)}`
-        : "第二引擎没读出这一行（没有候选）";
-      candidate.title = mark.candidate;
-      row.append(candidate);
-      if (mark.candidate) {
-        const adopt = document.createElement("button");
-        adopt.type = "button";
-        adopt.className = "btn btn--ghost";
-        adopt.textContent = "换成这一路";
-        adopt.title = "把这一行换成第二引擎的文本（一次普通编辑，可撤销）";
-        adopt.addEventListener("click", () =>
-          adoptLine(block, mark.line_index, mark.candidate)
-        );
-        row.append(adopt);
-      }
+    const text = document.createElement("span");
+    text.className = "diff-row__text";
+    if (mark.level === "no_candidate") {
+      text.textContent = "第二路没读出这一行";
+    } else {
+      text.append(diffRowFragment(mark));
     }
-    list.append(row);
-  }
-  box.append(list);
+    row.append(where, level, text);
 
+    if (mark.candidate) {
+      const adopt = document.createElement("button");
+      adopt.type = "button";
+      adopt.className = "diff-row__adopt";
+      adopt.textContent = "换第二路";
+      adopt.title = "把这一行换成第二引擎的文本（一次普通编辑，可撤销）";
+      adopt.addEventListener("click", (event) => {
+        event.stopPropagation();
+        adoptLine(block, mark.line_index, mark.candidate);
+      });
+      row.append(adopt);
+    }
+
+    const go = () => activateDiff(block.block_id, mark.line_index, 0);
+    row.addEventListener("click", go);
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        go();
+      }
+    });
+    body.append(row);
+  }
   if (marks.length > MAX_DIVERGENCE_ROWS) {
     const rest = document.createElement("p");
-    rest.className = "muted";
-    rest.textContent =
-      `还有 ${marks.length - MAX_DIVERGENCE_ROWS} 行，按「第二引擎复核」看全部。`;
-    box.append(rest);
+    rest.className = "diff-strip__note";
+    rest.textContent = `还有 ${marks.length - MAX_DIVERGENCE_ROWS} 行，按「第二引擎复核」看全部。`;
+    body.append(rest);
   }
-  if (divergence.chars) {
-    const hint = document.createElement("p");
-    hint.className = "divergence__note";
-    hint.textContent =
-      "实测量过：第二引擎比第一引擎弱——被标出的分歧里约八成是它自己的错" +
-      "（以汉字错误为主），但标记能圈进第一引擎约 2/3 的错行。" +
-      "所以标记只回答「看哪里」，候选只作参考（改对率约 1/4），换不换由你判断。";
-    box.append(hint);
-  }
+  box.append(body);
   return box;
+}
+
+/** 一行差异的内联片段：…前文[和→或]后文…；只渲染 A 上有字的 span。 */
+function diffRowFragment(mark) {
+  const fragment = document.createDocumentFragment();
+  const current = String(mark.current || "");
+  const candidate = String(mark.candidate || "");
+  const spans = computeCharSpans(current, candidate).filter((span) => span.aEnd > span.aStart);
+  if (!spans.length) {
+    const note = document.createElement("span");
+    note.className = "diff-strip__note";
+    note.textContent = "（第二路多字，待 line_diff）";
+    fragment.append(note);
+    return fragment;
+  }
+  spans.slice(0, 2).forEach((span, index) => {
+    if (index) fragment.append(document.createTextNode(" … "));
+    const prefix = current.slice(Math.max(0, span.aStart - 8), span.aStart);
+    const suffix = current.slice(span.aEnd, span.aEnd + 8);
+    if (span.aStart > 8 || index) fragment.append(document.createTextNode("…"));
+    if (prefix) fragment.append(document.createTextNode(prefix));
+    const a = document.createElement("span");
+    a.className = "diff-a";
+    a.textContent = current.slice(span.aStart, span.aEnd);
+    const arrow = document.createElement("span");
+    arrow.className = "diff-arrow";
+    arrow.textContent = "→";
+    const b = document.createElement("span");
+    b.className = "diff-b";
+    b.textContent = candidate.slice(span.bStart, span.bEnd) || "（删）";
+    fragment.append(a, arrow, b);
+    if (suffix) fragment.append(document.createTextNode(suffix));
+    if (span.aEnd < current.length - 2) fragment.append(document.createTextNode("…"));
+  });
+  return fragment;
 }
 
 /** 在编辑框里选中某一行——用浏览器原生的选中当"高亮"，不另做一套。 */
@@ -7695,6 +8099,18 @@ function truncate(text, limit) {
 
 function textRows(text) {
   return Math.min(Math.max(String(text).split("\n").length, 2), 14);
+}
+
+/** 编辑框自适应高度：3–20 行；超过 20 行内部滚动（design 3.3）。 */
+function autoSizeTextarea(textarea) {
+  if (!textarea || !textarea.isConnected) return;
+  textarea.style.height = "auto";
+  const style = window.getComputedStyle(textarea);
+  const lineHeight = parseFloat(style.lineHeight) || 21.45;
+  const min = lineHeight * 3 + 14;
+  const max = lineHeight * 20 + 14;
+  const height = Math.min(Math.max(textarea.scrollHeight, min), max);
+  textarea.style.height = `${height}px`;
 }
 
 function renderReviewBlocks(blocks) {
@@ -7741,15 +8157,22 @@ function renderReviewBlocks(blocks) {
   );
 }
 
-function selectReviewBlock(blockId) {
+function selectReviewBlock(blockId, options = {}) {
+  activeReviewBlockId = blockId;
   for (const item of el("detail-blocks").children) {
     item.classList.toggle("active", item.dataset.blockId === blockId);
   }
   for (const box of el("detail-overlay").children) {
     const isActive = box.dataset.blockId === blockId;
     box.classList.toggle("box--active", isActive);
-    if (isActive) box.scrollIntoView({ block: "center", behavior: "smooth" });
+    // 只滚 #viewer-scroll（design 4.2），不要用 scrollIntoView 连带滚整页。
+    if (isActive && options.scroll !== false) scrollViewerTo(box);
   }
+  // 当前块的差异条默认展开。
+  diffStripOpen.add(blockId);
+  syncDiffStrip(blockId);
+  updateDiffActive();
+  drawDiffLayer();
   // 右下角的"块 3 / 12"（效果图 03）：知道自己改到哪儿了
   const items = [...el("detail-blocks").querySelectorAll(".review-block")];
   const index = items.findIndex((item) => item.dataset.blockId === blockId);

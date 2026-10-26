@@ -44,6 +44,12 @@
   --purple: #7a4bb5;
   --purple-soft: #f7f2ff;
 
+  /* 差异标记（审校视图）：形状承担语义，颜色只做辅助 */
+  --diff-chars: #b42318;   /* 汉字级：红 */
+  --diff-punct: #b45309;   /* 标点级：琥珀 */
+  --diff-insert: #0f766e;  /* 预留：第二路多字（插入符） */
+  --diff-halo: rgba(255, 255, 255, .75);
+
   /* 兼容旧名（app.js 里有几处内联样式引用了它们） */
   --card: var(--surface);
   --border: var(--line);
@@ -786,7 +792,13 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 
 /* 块列表（右栏） */
 .review-block { position: relative; border-bottom: 1px solid var(--line-soft); padding: 10px 16px 11px; }
-.review-block__head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.review-block__head { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; flex-wrap: wrap; }
+.review-block__status { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.review-block__status--ok { color: var(--ok-text); }
+.review-block__status--warn { color: var(--warn-text); }
+.review-block__meta { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.review-block__diffcount { font-size: 11px; color: var(--diff-chars); white-space: nowrap; }
+.review-block__where { font-size: 11px; color: var(--muted); }
 .review-block__badges { font-size: 11.5px; color: var(--muted); }
 .review-block__type {
   font: inherit; font-size: 11px; height: 20px; padding: 0 4px; border-radius: 5px;
@@ -812,9 +824,11 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
   border: 1px solid var(--line); color: var(--text-2); white-space: nowrap;
 }
 .review-block__text {
-  font: inherit; font-size: 13px; line-height: 1.65; width: 100%; resize: vertical;
+  font: inherit; font-size: 13px; line-height: 1.65; width: 100%; resize: none;
   padding: 7px 10px; border: 1px solid transparent; border-radius: 7px;
   background: transparent; color: var(--text); white-space: pre-wrap;
+  min-height: calc(3 * 1.65em + 14px); max-height: calc(20 * 1.65em + 14px);
+  overflow-y: auto;
 }
 .review-block__text:hover { background: var(--surface-3); }
 .review-block__text:focus { outline: none; border-color: #c9d6f8; background: var(--surface); box-shadow: 0 0 0 3px rgba(37, 99, 235, .1); }
@@ -824,8 +838,10 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 .review-block--chrome { background: var(--surface-2); opacity: .72; }
 .review-block--chrome:hover, .review-block--chrome.active, .review-block--chrome:focus-within { opacity: 1; }
 .review-block--chrome .review-block__text { color: var(--muted); }
-.review-block--divergence { box-shadow: inset 3px 0 0 #d9a441; }
-.review-block.active.review-block--divergence { box-shadow: inset 3px 0 0 var(--accent); }
+.review-block--divergence { box-shadow: inset 3px 0 0 var(--diff-chars); }
+.review-block--divergence-punct { box-shadow: inset 3px 0 0 var(--diff-punct); }
+.review-block.active.review-block--divergence,
+.review-block.active.review-block--divergence-punct { box-shadow: inset 3px 0 0 var(--accent); }
 /* 操作行只在"正在改的那一块"或鼠标停上去时出现（效果图 03）。
    一页十几块，每块都摆一排按钮会把正文挤没，也看不清哪里还没审。 */
 .review-block__actions { display: none; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
@@ -857,23 +873,78 @@ body.box-dragging, body.box-dragging * { user-select: none; -webkit-user-select:
 .review-menu__item:hover:not(:disabled) { background: #f2f5f9; }
 .review-menu__item:disabled { color: var(--muted); opacity: .55; cursor: not-allowed; }
 
-/* 分歧标记（说明书 8.5） */
-.divergence {
-  margin-top: 8px; border: 1px solid #ecdfc4; background: #fffcf5; border-radius: 7px;
-  padding: 7px 9px; display: flex; flex-direction: column; gap: 6px;
+/* 差异标记（说明书 8.5 / 任务 63 设计稿） */
+.diff-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.diff-mark {
+  position: absolute; height: 0; box-sizing: content-box;
+  color: var(--diff-chars); border-bottom: 2px solid currentColor;
+  box-shadow: 0 1px 0 var(--diff-halo); pointer-events: auto; cursor: pointer;
+  border-radius: 1px;
 }
-.divergence__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
-.divergence__badge { background: var(--warn-soft); color: var(--warn-text); padding: 1px 7px; border-radius: 5px; font-weight: 500; }
-.divergence__lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-.divergence__line { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 12px; line-height: 1.6; }
-.divergence__goto { font: inherit; padding: 0 2px; border: none; background: none; color: var(--accent); cursor: pointer; }
-.divergence__goto:hover { text-decoration: underline; }
-.divergence__level { font-size: 11px; padding: 0 6px; border-radius: 5px; background: #f1f2f4; color: var(--muted); }
-.divergence__level--differs_chars { background: var(--bad-soft); color: var(--bad-text); }
-.divergence__level--differs_punct { background: var(--warn-soft); color: var(--warn-text); }
-.divergence__candidate { color: var(--purple); word-break: break-word; }
-.divergence__line .btn { height: 22px; padding: 0 8px; font-size: 11px; }
-.divergence__note { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.55; }
+.diff-mark--punct { color: var(--diff-punct); border-bottom-style: dotted; }
+.diff-mark--insert {
+  height: 6px; border: 0; box-shadow: none; color: var(--diff-insert);
+  border-left: 2px solid currentColor; border-right: 2px solid currentColor;
+}
+.diff-mark::after {
+  content: ""; position: absolute; left: -3px; right: -3px;
+  top: -9px; height: 14px;
+}
+.diff-mark.is-active { border-bottom-width: 3px; }
+.diff-mark.is-active::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 5px;
+  border-left: 2px solid currentColor; border-right: 2px solid currentColor;
+}
+.diff-mark--punct.is-active::before { border-left-style: dotted; border-right-style: dotted; }
+.diff-mark:hover { filter: brightness(.9); }
+.diff-mark.is-dim { opacity: .6; }
+.diff-mark.is-dim.is-active { opacity: 1; }
+body.diff-mode .page-overlay .box {
+  background: none; border-width: 1px;
+  border-color: rgba(120, 150, 200, .35);
+  border-color: color-mix(in srgb, var(--box-color) 45%, transparent);
+}
+body.diff-mode .page-overlay .box--active {
+  border-width: 2px; border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, .25);
+}
+
+/* 右栏差异条：折叠一行，展开一行一处；整行可点 */
+.diff-strip { margin-top: 6px; border-left: 3px solid var(--diff-chars); padding-left: 8px; }
+.diff-strip--punct { border-left-color: var(--diff-punct); }
+.diff-strip__head { display: flex; align-items: center; gap: 6px; min-height: 26px; font-size: 12px; }
+.diff-strip__count { font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.diff-strip__toggle, .diff-strip__info {
+  font: inherit; font-size: 11px; height: 22px; padding: 0 6px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--muted); border-radius: 5px; cursor: pointer;
+}
+.diff-strip__toggle:hover, .diff-strip__info:hover { background: var(--surface-3); color: var(--text); }
+.diff-strip__body { display: flex; flex-direction: column; gap: 1px; padding: 1px 0 4px; }
+.diff-row {
+  display: flex; align-items: baseline; gap: 6px; min-height: 22px; padding: 2px 4px;
+  border-radius: 5px; cursor: pointer; font-size: 12px; line-height: 1.55;
+}
+.diff-row:hover { background: var(--surface-3); }
+.diff-row.is-active { background: var(--surface-3); box-shadow: inset 2px 0 0 var(--diff-chars); }
+.diff-row__no { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.diff-row__level { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.diff-row__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-a { color: var(--diff-chars); text-decoration: underline solid 2px; text-underline-offset: 2px; }
+.diff-b { color: var(--purple); text-decoration: underline dotted 2px; text-underline-offset: 2px; }
+.diff-arrow { color: var(--faint); padding: 0 2px; }
+.diff-row__adopt {
+  font: inherit; font-size: 11px; height: 20px; padding: 0 7px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  cursor: pointer; visibility: hidden; white-space: nowrap;
+}
+.diff-row.is-active .diff-row__adopt { visibility: visible; }
+.diff-strip__note { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.55; }
+.info-dot {
+  font: inherit; font-size: 11px; width: 18px; height: 18px; padding: 0; line-height: 16px;
+  border: 1px solid var(--line); border-radius: 50%; background: var(--surface);
+  color: var(--faint); cursor: help;
+}
+.info-dot:hover { color: var(--text); border-color: var(--line-strong); }
 
 /* 框选新增块（说明书 6.4） */
 .page-canvas--selecting { cursor: crosshair; }

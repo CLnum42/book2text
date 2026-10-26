@@ -430,6 +430,7 @@
                 </div>
                 <div class="page-lines" id="detail-lines"></div>
                 <div class="page-overlay" id="detail-overlay"></div>
+                <div class="diff-layer" id="detail-diff-layer"></div>
                 <div class="box-select__rect" id="box-select-rect" hidden></div>
                 <div class="ink-gaps" id="detail-ink-gaps" hidden></div>
               </div>
@@ -440,6 +441,8 @@
               <button type="button" id="zoom-in" title="放大">＋</button>
               <button type="button" id="zoom-fit">适合宽度</button>
               <button type="button" id="toggle-overlay" class="is-on">显示块框</button>
+              <button type="button" id="toggle-diff-marks" disabled
+                      title="差异标记：整页显示全部，或只看当前块">差异：整页</button>
               <button type="button" id="review-margin-toggle" class="is-on"
                       title="在页面上画出版心边框、压暗版心外区域（只影响显示，不影响导出）">显示版心</button>
             </div>
@@ -485,12 +488,9 @@
                 <button type="button" id="suggestion-apply-all" class="btn btn--sm" hidden
                         title="只把把握较大的建议一次改成对应类型：不改审校状态、不删文字，每一块都能单独撤销">采用全部高把握建议</button>
                 <button type="button" id="layout-confirm" class="btn btn--sm btn--pri">确认本页版面</button>
+                <button type="button" class="info-dot" id="layout-info" aria-label="版面确认的定义"
+                        title="页面确认 = 这页算不算正文（在「页面」视图按五类确认）。&#10;版面确认 = 这页里面哪些块是正文（页眉 / 页脚 / 页码 / 旁批 / 插图 / 装饰先排除）。&#10;确认是状态标记，不拦导出；改了任何块的类型、框或顺序都会回到未确认。">i</button>
               </div>
-              <p class="hint">
-                <strong>页面确认</strong> = 这页算不算正文（在「页面」视图按五类确认）；
-                <strong>版面确认</strong> = 这页里面哪些块是正文（页眉 / 页脚 / 页码 / 旁批 / 插图 / 装饰先排除）。
-                确认是状态标记，不拦导出；改了任何块的类型、框或顺序都会回到未确认。
-              </p>
             </div>
 
             <!-- 审校默认只列版心内的块：版心外的（页眉 / 页脚 / 页码 / 注文）切过去才显示。

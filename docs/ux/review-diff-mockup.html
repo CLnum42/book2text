@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>审校视图 · 差异呈现（静态设计稿）</title>
+<style>
+/* ───────────────────────── 设计 token（与 app.css 对齐） ───────────────────────── */
+:root {
+  --bg: #f3f4f6;
+  --surface: #fff;
+  --surface-2: #fafbfc;
+  --surface-3: #f7f8fa;
+  --page-paper: #f8f6f0;
+  --line: #e2e4e8;
+  --line-soft: #eef0f2;
+  --text: #1f2329;
+  --text-2: #33383f;
+  --muted: #646a73;
+  --faint: #9aa0a8;
+  --accent: #2563eb;
+  --accent-soft: #eef4ff;
+  --warn-soft: #fdf3e0;
+  --warn-text: #b45309;
+  --purple: #7a4bb5;
+  --diff-chars: #b42318;
+  --diff-punct: #b45309;
+  --diff-insert: #0f766e;
+  --diff-halo: rgba(255,255,255,.75);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  display: flex; flex-direction: column; height: 100vh;
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; }
+.muted { color: var(--muted); }
+.spacer { flex: 1; }
+
+/* ───────────────────────── 设计稿控制条（不属于产品界面） ───────────────────────── */
+.draftbar {
+  display: flex; align-items: center; gap: 14px; padding: 7px 16px;
+  background: #1f2329; color: #e6e8eb; font-size: 12px;
+}
+.draftbar strong { color: #fff; font-weight: 600; }
+.draftbar label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.draftbar input { margin: 0; }
+.draftbar .tag {
+  margin-left: auto; padding: 1px 7px; border-radius: 5px;
+  background: rgba(255,255,255,.12); color: #cfd3d8;
+}
+
+/* ───────────────────────── 外壳 ───────────────────────── */
+.app { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.topbar {
+  flex: none; height: 48px; display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.topbar__title { font-weight: 600; }
+.tabs { display: flex; gap: 2px; padding: 2px; background: var(--surface-3); border-radius: 7px; }
+.tabs span { padding: 3px 12px; border-radius: 5px; font-size: 12.5px; color: var(--muted); }
+.tabs .on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+.pager { display: flex; align-items: center; gap: 4px; font-size: 12.5px; }
+.pager b { font-weight: 600; }
+.iconbtn {
+  width: 26px; height: 26px; display: grid; place-items: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; color: var(--text-2);
+}
+.save { font-size: 12.5px; color: var(--muted); }
+
+.main { flex: 1; display: flex; min-height: 0; }
+
+/* ───────────────────────── 左：原图 ───────────────────────── */
+.viewer { width: 57%; display: flex; flex-direction: column; background: #e9eaee; min-width: 0; }
+.viewer__scroll { flex: 1; overflow: auto; padding: 18px 0 28px; }
+.page-stack { width: fit-content; margin: 0 auto; position: relative; }
+
+/* 假页：模拟扫描页（真界面这里是一张 <img>） */
+.page {
+  position: relative;
+  width: 620px; padding: 52px 48px 64px;
+  background: var(--page-paper);
+  box-shadow: 0 3px 18px rgba(0,0,0,.22);
+  font-family: "Songti SC", "STSong", "Songti TC", "SimSun", serif;
+  font-size: 15px; line-height: 34px; color: #23262b;
+}
+.ln { white-space: pre; }
+.d { position: relative; }        /* 差异字：视觉由叠在上面的 .diff-mark 提供 */
+.folio {
+  position: absolute; top: 22px; right: 48px;
+  font: 12px/1 -apple-system, "PingFang SC", sans-serif; color: #8b8f96;
+}
+.running-head {
+  position: absolute; top: 22px; left: 48px; right: 96px;
+  font: 11.5px/1 -apple-system, "PingFang SC", sans-serif;
+  color: #8b8f96; letter-spacing: .04em;
+  border-bottom: 1px solid rgba(0,0,0,.12); padding-bottom: 6px;
+}
+
+/* 块框：差异模式下只留 1px 细边，去填充 */
+.box {
+  position: absolute; border: 1px solid rgba(37,99,235,.32); border-radius: 2px;
+  pointer-events: none;
+}
+.box.is-current { border: 2px solid var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,.18); }
+body.mode-current .box.has-diff::before {
+  content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 3px;
+  background: var(--diff-chars); border-radius: 1px;
+}
+body.mode-current .box.has-diff.box--punct::before { background: var(--diff-punct); }
+.box__no {
+  position: absolute; left: -1px; top: -16px; font: 10px/1 -apple-system, sans-serif;
+  color: #fff; background: rgba(37,99,235,.75); padding: 1px 4px; border-radius: 3px 3px 3px 0;
+}
+
+/* ── 差异标记（规范 §2.4） ── */
+.diff-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.diff-mark {
+  position: absolute; height: 0; box-sizing: content-box;
+  color: var(--diff-chars);
+  border-bottom: 2px solid currentColor;
+  box-shadow: 0 1px 0 var(--diff-halo);
+  border-radius: 1px; pointer-events: auto; cursor: pointer;
+}
+.diff-mark--punct { color: var(--diff-punct); border-bottom-style: dotted; }
+.diff-mark::after { content: ""; position: absolute; left: -3px; right: -3px; top: -9px; height: 14px; }
+.diff-mark.is-active { border-bottom-width: 3px; }
+.diff-mark.is-active::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 5px;
+  border-left: 2px solid currentColor; border-right: 2px solid currentColor;
+}
+.diff-mark--punct.is-active::before { border-left-style: dotted; border-right-style: dotted; }
+.diff-mark.is-dim { opacity: .6; }
+.diff-mark.is-dim.is-active { opacity: 1; }
+.diff-mark.is-hidden { display: none; }
+.diff-mark.is-hover { filter: brightness(.85); }
+
+/* 左右布局下的工具条 */
+.vtool {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  padding: 7px 12px; background: var(--surface); border-top: 1px solid var(--line);
+}
+.vtool button {
+  height: 26px; padding: 0 9px; font-size: 12px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text-2);
+}
+.vtool button.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.vtool .vhint { margin-left: 4px; font-size: 11.5px; color: var(--faint); }
+
+/* ───────────────────────── 右：块列表 ───────────────────────── */
+.editor { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--line); }
+
+.phead {
+  flex: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 14px 8px; border-bottom: 1px solid var(--line-soft);
+}
+.phead__title { font-size: 13.5px; font-weight: 600; }
+.phead__sub { font-size: 12px; color: var(--muted); }
+.chip-diff {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 9px; border-radius: 6px; font-size: 12px;
+  border: 1px solid #f0d9c0; background: var(--warn-soft); color: #92400e; cursor: pointer;
+}
+.chip-diff b { font-weight: 600; }
+
+.pnote {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; font-size: 12px; color: #92600a;
+  background: var(--warn-soft); border-bottom: 1px solid #f3e3bd;
+}
+
+.filters {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-bottom: 1px solid var(--line-soft);
+}
+.filters .lbl { font-size: 12px; color: var(--muted); }
+.seg { display: flex; gap: 4px; }
+.seg button {
+  height: 24px; padding: 0 9px; font-size: 12px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+}
+.seg button.is-on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.filters .note { margin-left: auto; font-size: 11.5px; color: var(--faint); }
+
+.blocks { flex: 1; overflow: auto; margin: 0; padding: 0; list-style: none; }
+
+/* ── 块卡（规范 §3.3） ── */
+.blk { border-bottom: 1px solid var(--line-soft); padding: 10px 14px 12px; }
+.blk.is-current { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+.blk__head { display: flex; align-items: center; gap: 8px; min-height: 24px; flex-wrap: wrap; }
+.blk__type {
+  height: 20px; padding: 0 5px; font-size: 11px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+}
+.suggest {
+  display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 6px;
+  font-size: 11px; border-radius: 6px; border: 1px dashed #6b7280;
+  background: rgba(107,114,128,.08); color: #4b5563;
+}
+.suggest button { height: 18px; padding: 0 6px; font-size: 10.5px; border-radius: 4px; border: 1px solid var(--line); background: #fff; }
+.blk__count { font-size: 11.5px; color: var(--diff-chars); }
+.blk__pos, .blk__state { font-size: 11px; color: var(--faint); }
+
+.blk__text { margin: 4px 0 0; padding: 4px 2px; font-size: 13px; line-height: 1.65; color: var(--text); }
+
+/* ── 差异条（规范 §3.3 / §3.4） ── */
+.diff-strip {
+  margin-top: 6px; padding: 4px 8px 5px 9px;
+  border-left: 3px solid var(--diff-chars); border-radius: 0 6px 6px 0;
+  background: #fcfaf6;
+}
+.diff-strip--punct { border-left-color: var(--diff-punct); }
+.diff-strip__head { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
+.diff-strip__head b { font-weight: 600; color: var(--text-2); }
+.diff-strip__head .dots { font-size: 11px; color: var(--faint); }
+.diff-strip__toggle {
+  margin-left: auto; height: 20px; padding: 0 6px; font-size: 11px;
+  border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--muted);
+}
+.diff-rows { margin-top: 3px; display: flex; flex-direction: column; }
+.diff-row {
+  display: grid; grid-template-columns: 74px 1fr auto; align-items: baseline; gap: 8px;
+  width: 100%; padding: 3px 4px; border: 0; border-radius: 5px;
+  background: none; text-align: left; cursor: pointer;
+  font-size: 12px; line-height: 1.6; color: inherit;
+}
+.diff-row:hover { background: var(--surface-3); }
+.diff-row.is-active { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.diff-row__no { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.diff-row__body { min-width: 0; color: var(--text-2); }
+.ctx { color: var(--text-2); }
+.a { color: var(--diff-chars); text-decoration: underline 2px; text-underline-offset: 2px; }
+.b { color: var(--purple); text-decoration: underline dotted 2px; text-underline-offset: 2px; }
+.arrow { color: var(--faint); padding: 0 2px; }
+.gap { color: var(--faint); }
+.diff-row__go {
+  height: 22px; padding: 0 8px; font-size: 11px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text-2);
+  visibility: hidden;
+}
+.diff-row:hover .diff-row__go, .diff-row.is-active .diff-row__go { visibility: visible; }
+
+.blk__actions { display: flex; gap: 8px; margin-top: 6px; opacity: .0; }
+.blk:hover .blk__actions, .blk.is-current .blk__actions { opacity: 1; }
+.blk__actions button {
+  height: 22px; padding: 0 8px; font-size: 11px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+}
+
+.efoot {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-top: 1px solid var(--line); background: var(--surface);
+}
+.efoot .hint { font-size: 11.5px; color: var(--faint); }
+.footbtn {
+  height: 26px; padding: 0 10px; font-size: 12px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+}
+.btn-pri {
+  height: 30px; padding: 0 14px; border-radius: 7px; border: 1px solid var(--accent);
+  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 500;
+}
+
+body.mono .app { filter: grayscale(1); }
+body.hide-boxes .box { display: none; }
+
+.caption {
+  padding: 6px 16px; font-size: 11.5px; color: #8a8f96;
+  background: #1f2329; border-top: 1px solid #2c3138;
+}
+</style>
+</head>
+<body>
+
+<div class="draftbar">
+  <strong>静态设计稿</strong><span>审校视图 · 差异呈现</span>
+  <label><input type="checkbox" id="ctl-page" checked> 整页显示差异</label>
+  <label><input type="checkbox" id="ctl-mono"> 灰度预览</label>
+  <label><input type="checkbox" id="ctl-box" checked> 显示块框</label>
+  <span class="tag">docs/ux/review-diff-mockup.html</span>
+</div>
+
+<div class="app">
+  <div class="topbar">
+    <span class="topbar__title">《导读巴赫金》</span>
+    <div class="tabs"><span>页面</span><span class="on">审校</span><span>导出</span></div>
+    <div class="pager"><span class="iconbtn">‹</span><b>第 77 页</b><span class="muted">（印 58）</span><span class="iconbtn">›</span></div>
+    <span class="spacer"></span>
+    <span class="save">已保存 ✓ 14:32</span>
+  </div>
+
+  <div class="main">
+    <!-- ───────── 左：原图 ───────── -->
+    <section class="viewer">
+      <div class="viewer__scroll" id="vscroll">
+        <div class="page-stack">
+          <div class="page" id="page">
+            <div class="running-head">THE DIALOGIC IMAGINATION</div>
+            <div class="folio">58</div>
+
+            <div class="ln" data-block="b1">　　审校的难点不在改字，而在判断哪一处值得改。</div>
+            <div class="ln" data-block="b1">两路识别的结果<span class="d" data-diff="d1" data-level="chars">常常</span>只差一两个字符，人却要来回对照。</div>
+            <div class="ln" data-block="b1">如果界面上看不出<span class="d" data-diff="d2" data-level="chars">差别</span>落在哪个字，审校就退化成逐字重读。</div>
+            <div class="ln" data-block="b1">所以差异必须以<span class="d" data-diff="d3" data-level="chars">最短</span>的路径出现在同一处视线上，而不是藏进列表。</div>
+            <div class="ln" data-block="b1">这也是把标记画在页面图像上、而不只写在右侧的理由。</div>
+            <div class="ln" data-block="b1">　　每一次跳转都应当只移动一个焦点，别让读者重新建立方位。</div>
+
+            <div class="ln" data-block="b2">　　标记要细，要贴着字走，要能在一页十几处差异时安静下来<span class="d" data-diff="d4" data-level="punct">。</span></div>
+            <div class="ln" data-block="b2">它不该压住字形，也不该和块框争抢注意力。</div>
+            <div class="ln" data-block="b2">灰度截图里仍要能分出实线与点线，这是最低要求。</div>
+            <div class="ln" data-block="b2">剩下的，交给右侧那条可以逐处走完的差异队列。</div>
+
+            <div class="ln" data-block="b3">　　至于页眉、页脚与页码，它们不参与正文，差异照画但更淡。</div>
+            <div class="ln" data-block="b3">　　一页里没有差异的块，右侧不该出现任何多余的一行。</div>
+          </div>
+          <div class="diff-layer" id="diffLayer"></div>
+        </div>
+      </div>
+
+      <div class="vtool">
+        <button>－</button><button>＋</button><button>适合宽度</button>
+        <button class="is-on" id="btnBoxes">显示块框</button>
+        <button class="is-on" id="btnDiff" title="整页时所有差异都画（当前那处加重）；切到当前块只看这一块，其他块留一条竖条">差异：整页</button>
+        <span class="vhint">点右边任意一处差异，原图会跳过去</span>
+      </div>
+    </section>
+
+    <!-- ───────── 右：块列表 ───────── -->
+    <section class="editor">
+      <div class="phead">
+        <span class="phead__title">第 77 页</span>
+        <span class="phead__sub">正文 · 4 块</span>
+        <span class="spacer"></span>
+        <button class="chip-diff" id="btnFirst">≠ <b>4</b> 行差异 <span>▸ 从第一处</span></button>
+      </div>
+
+      <div class="pnote">
+        <span>⚠</span><span>版面未确认 · 漏行候选 1</span>
+      </div>
+
+      <div class="filters">
+        <span class="lbl">本页块</span>
+        <div class="seg">
+          <button class="is-on">待处理 2</button>
+          <button>版心内 2</button>
+          <button>版心外 1</button>
+          <button>全部 4</button>
+        </div>
+        <span class="note">待处理是其中需要处理的部分</span>
+      </div>
+
+      <ol class="blocks">
+        <!-- 块 1：当前块，3 处差异，展开 -->
+        <li class="blk is-current" data-block="b1">
+          <div class="blk__head">
+            <select class="blk__type"><option>段落</option></select>
+            <span class="suggest">页眉 · 把握较大 <button>采用</button></span>
+            <span class="spacer"></span>
+            <span class="blk__count">≠ 3 处</span>
+            <span class="blk__state">未审</span>
+          </div>
+
+          <div class="blk__text">　　审校的难点不在改字，而在判断哪一处值得改。两路识别的结果常常只差一两个字符，人却要来回对照。如果界面上看不出差别落在哪个字，审校就退化成逐字重读。所以差异必须以最短的路径出现在同一处视线上，而不是藏进列表。</div>
+
+          <div class="diff-strip">
+            <div class="diff-strip__head">
+              <b>两路差异 3 行</b>
+              <span>汉字级 3</span>
+              <span class="dots">ⓘ 分级依据</span>
+              <button class="diff-strip__toggle">收起 ⌃</button>
+            </div>
+            <div class="diff-rows">
+              <button class="diff-row" data-diff="d1" data-block="b1">
+                <span class="diff-row__no">第 2 行 · 汉字级</span>
+                <span class="diff-row__body"><span class="ctx">…结果</span><span class="a">常常</span><span class="arrow">→</span><span class="b">往往</span><span class="ctx">只差一两…</span></span>
+                <span class="diff-row__go">换第二路</span>
+              </button>
+              <button class="diff-row" data-diff="d2" data-block="b1">
+                <span class="diff-row__no">第 3 行 · 汉字级</span>
+                <span class="diff-row__body"><span class="ctx">…看不出</span><span class="a">差别</span><span class="arrow">→</span><span class="b">差异</span><span class="ctx">落在哪个字…</span></span>
+                <span class="diff-row__go">换第二路</span>
+              </button>
+              <button class="diff-row" data-diff="d3" data-block="b1">
+                <span class="diff-row__no">第 4 行 · 汉字级</span>
+                <span class="diff-row__body"><span class="ctx">…必须以</span><span class="a">最短</span><span class="arrow">→</span><span class="b">最近</span><span class="ctx">的路径出现…</span></span>
+                <span class="diff-row__go">换第二路</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="blk__actions">
+            <button>? 不确定</button><button>⊘ 排除</button><button>类型▾</button><button>⋯ 更多</button>
+          </div>
+        </li>
+
+        <!-- 块 2：1 处标点级，折叠 -->
+        <li class="blk" data-block="b2">
+          <div class="blk__head">
+            <select class="blk__type"><option>段落</option></select>
+            <span class="spacer"></span>
+            <span class="blk__count">≠ 1 处</span>
+            <span class="blk__state">未审</span>
+          </div>
+          <div class="blk__text">　　标记要细，要贴着字走，要能在一页十几处差异时安静下来。它不该压住字形，也不该和块框争抢注意力。灰度截图里仍要能分出实线与点线，这是最低要求。</div>
+          <div class="diff-strip diff-strip--punct">
+            <div class="diff-strip__head">
+              <b>两路差异 1 行</b>
+              <span>标点级 1</span>
+              <span class="dots">ⓘ 分级依据</span>
+              <button class="diff-strip__toggle">展开 ⌄</button>
+            </div>
+            <div class="diff-rows" hidden>
+              <button class="diff-row" data-diff="d4" data-block="b2">
+                <span class="diff-row__no">第 1 行 · 标点级</span>
+                <span class="diff-row__body"><span class="ctx">…安静下来</span><span class="a">。</span><span class="arrow">→</span><span class="b">，</span><span class="ctx">它不该压住…</span></span>
+                <span class="diff-row__go">换第二路</span>
+              </button>
+            </div>
+          </div>
+        </li>
+
+        <!-- 块 3：无差异，不占多余高度 -->
+        <li class="blk" data-block="b3">
+          <div class="blk__head">
+            <select class="blk__type"><option>段落</option></select>
+            <span class="spacer"></span>
+            <span class="blk__state">未审</span>
+          </div>
+          <div class="blk__text">　　至于页眉、页脚与页码，它们不参与正文，差异照画但更淡。一页里没有差异的块，右侧不该出现任何多余的一行。</div>
+        </li>
+      </ol>
+
+      <div class="efoot">
+        <button class="footbtn">撤销</button>
+        <span class="hint">块可以直接编辑，改完自动保存；Alt + ↑ / ↓ 在块之间移动</span>
+        <span class="spacer"></span>
+        <button class="btn-pri">确认本页并下一页</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="caption">
+    说明：左侧文字是排版出来的假页（真界面是扫描图 + 叠层标记）。标记位置由字宽估算，误差见规范 §2.5；点击右侧任意一行或左侧任意标记，可看两侧联动。
+  </div>
+</div>
+
+<script>
+(function () {
+  const page = document.getElementById("page");
+  const layer = document.getElementById("diffLayer");
+  const vscroll = document.getElementById("vscroll");
+  let currentBlock = "b1";
+  let activeDiff = "d1";
+  let showAll = true;
+
+  const blockIds = ["b1", "b2", "b3"];
+  const boxLayer = document.createElement("div");
+  boxLayer.className = "box-layer";
+  boxLayer.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:2;";
+  page.appendChild(boxLayer);
+
+  /** 同一块的若干行 → 一个块框 */
+  function drawBoxes() {
+    boxLayer.innerHTML = "";
+    for (const id of blockIds) {
+      const lines = page.querySelectorAll(`.ln[data-block="${id}"]`);
+      if (!lines.length) continue;
+      const pr = page.getBoundingClientRect();
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const ln of lines) {
+        const r = ln.getBoundingClientRect();
+        x0 = Math.min(x0, r.left - pr.left);
+        y0 = Math.min(y0, r.top - pr.top);
+        x1 = Math.max(x1, r.right - pr.left);
+        y1 = Math.max(y1, r.bottom - pr.top);
+      }
+      const box = document.createElement("div");
+      box.className = "box" + (id === currentBlock ? " is-current" : "");
+      const diffs = page.querySelectorAll(`.ln[data-block="${id}"] .d`);
+      if (diffs.length) box.classList.add("has-diff");
+      if (diffs.length && [...diffs].every((d) => d.dataset.level === "punct")) box.classList.add("box--punct");
+      box.style.left = (x0 - 6) + "px";
+      box.style.top = (y0 - 3) + "px";
+      box.style.width = (x1 - x0 + 12) + "px";
+      box.style.height = (y1 - y0 + 6) + "px";
+      boxLayer.appendChild(box);
+    }
+  }
+
+  /** 差异字 → 叠在原图上的线（规范 §2.4）；位置来自字本身的矩形 */
+  function drawMarks() {
+    layer.innerHTML = "";
+    const pr = page.getBoundingClientRect();
+    const spans = page.querySelectorAll(".d");
+    for (const span of spans) {
+      const r = span.getBoundingClientRect();
+      const mark = document.createElement("div");
+      const level = span.dataset.level;
+      const id = span.dataset.diff;
+      mark.className = "diff-mark" + (level === "punct" ? " diff-mark--punct" : "");
+      if (id === activeDiff) mark.classList.add("is-active");
+      const inCurrent = span.closest(".ln").dataset.block === currentBlock;
+      if (!showAll && !inCurrent) mark.classList.add("is-hidden");
+      mark.style.left = (r.left - pr.left - 1) + "px";
+      mark.style.width = (r.width + 2) + "px";
+      mark.style.top = (r.bottom - pr.top + 1) + "px";
+      mark.dataset.diff = id;
+      mark.dataset.block = span.closest(".ln").dataset.block;
+      mark.addEventListener("click", (event) => {
+        event.stopPropagation();
+        select(id);
+        scrollToRow(id);
+      });
+      layer.appendChild(mark);
+    }
+  }
+
+  function scrollToMark(id) {
+    const mark = layer.querySelector(`.diff-mark[data-diff="${id}"]`);
+    if (!mark) return;
+    const top = mark.offsetTop - vscroll.clientHeight * 0.4;
+    vscroll.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  }
+
+  function scrollToRow(id) {
+    const row = document.querySelector(`.diff-row[data-diff="${id}"]`);
+    if (!row) return;
+    const list = row.closest(".blocks");
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (list) list.scrollTop = list.scrollTop; /* 保持列表自己滚 */
+  }
+
+  function select(id) {
+    activeDiff = id;
+    const mark = layer.querySelector(`.diff-mark[data-diff="${id}"]`);
+    if (mark) currentBlock = mark.dataset.block;
+    document.querySelectorAll(".diff-row").forEach((r) => r.classList.toggle("is-active", r.dataset.diff === id));
+    document.querySelectorAll(".blk").forEach((b) => b.classList.toggle("is-current", b.dataset.block === currentBlock));
+    document.querySelectorAll(".diff-mark").forEach((m) => m.classList.toggle("is-active", m.dataset.diff === id));
+    drawBoxes();
+    applyDim();
+    const flash = layer.querySelector(`.diff-mark[data-diff="${id}"]`);
+    if (flash) {
+      flash.animate(
+        [{ opacity: 1 }, { opacity: 0.35 }, { opacity: 1 }, { opacity: 0.35 }, { opacity: 1 }],
+        { duration: 480, easing: "ease-in-out" }
+      );
+    }
+  }
+
+  function applyDim() {
+    document.body.classList.toggle("mode-current", !showAll);
+    layer.querySelectorAll(".diff-mark").forEach((m) => {
+      const other = m.dataset.block !== currentBlock;
+      m.classList.toggle("is-dim", showAll && other);
+      m.classList.toggle("is-hidden", !showAll && other);
+    });
+  }
+
+  function render() {
+    drawBoxes();
+    drawMarks();
+  }
+
+  // 右侧：行点击 → 左图
+  document.querySelectorAll(".diff-row").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.classList.contains("diff-row__go")) return;
+      const id = row.dataset.diff;
+      const strip = row.closest(".diff-strip");
+      const rows = strip.querySelector(".diff-rows");
+      if (rows && rows.hidden) {
+        rows.hidden = false;
+        strip.querySelector(".diff-strip__toggle").textContent = "收起 ⌃";
+      }
+      select(id);
+      scrollToMark(id);
+    });
+  });
+
+  document.querySelectorAll(".diff-row").forEach((row) => {
+    row.addEventListener("mouseenter", () => {
+      const mark = layer.querySelector(`.diff-mark[data-diff="${row.dataset.diff}"]`);
+      if (mark) mark.classList.add("is-hover");
+    });
+    row.addEventListener("mouseleave", () => {
+      const mark = layer.querySelector(`.diff-mark[data-diff="${row.dataset.diff}"]`);
+      if (mark) mark.classList.remove("is-hover");
+    });
+  });
+
+  // 折叠 / 展开
+  document.querySelectorAll(".diff-strip__toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const rows = btn.closest(".diff-strip").querySelector(".diff-rows");
+      rows.hidden = !rows.hidden;
+      btn.textContent = rows.hidden ? "展开 ⌄" : "收起 ⌃";
+    });
+  });
+
+  document.getElementById("btnFirst").addEventListener("click", () => {
+    select("d1");
+    scrollToMark("d1");
+    scrollToRow("d1");
+  });
+
+  // 设计稿控制
+  document.getElementById("ctl-page").addEventListener("change", (e) => {
+    showAll = e.target.checked;
+    const btn = document.getElementById("btnDiff");
+    btn.textContent = showAll ? "差异：整页" : "差异：当前块";
+    btn.classList.toggle("is-on", showAll);
+    applyDim();
+  });
+  document.getElementById("ctl-mono").addEventListener("change", (e) => {
+    document.body.classList.toggle("mono", e.target.checked);
+  });
+  document.getElementById("ctl-box").addEventListener("change", (e) => {
+    document.body.classList.toggle("hide-boxes", !e.target.checked);
+  });
+  document.getElementById("btnBoxes").addEventListener("click", () => {
+    const on = document.getElementById("btnBoxes").classList.toggle("is-on");
+    document.body.classList.toggle("hide-boxes", !on);
+  });
+  document.getElementById("btnDiff").addEventListener("click", (e) => {
+    showAll = !showAll;
+    document.getElementById("ctl-page").checked = showAll;
+    e.target.textContent = showAll ? "差异：整页" : "差异：当前块";
+    e.target.classList.toggle("is-on", showAll);
+    applyDim();
+  });
+
+  window.addEventListener("resize", render);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+  render();
+  select(activeDiff);
+})();
+</script>
+</body>
+</html>
