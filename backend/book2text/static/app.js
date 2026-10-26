@@ -9769,8 +9769,19 @@ async function finishRunAutoPass() {
           body: JSON.stringify({ page_numbers: chunk }),
         }
       );
-      finishAutoApplied.push(...(data.applied || []));
+      const applied = data.applied || [];
+      finishAutoApplied.push(...applied);
       finishAutoSkipped += (data.skipped || []).length;
+      finishSummary.review.auto_passable = Math.max(
+        0,
+        finishSummary.review.auto_passable - applied.length
+      );
+      finishSummary.review.auto_passable_pages =
+        finishSummary.review.auto_passable_pages.filter(
+          (no) => !applied.includes(no)
+        );
+      finishSummary.review.confirmed += applied.length;
+      renderFinishPanel();
     } catch (error) {
       text.textContent = error.message || "标记自动通过失败";
       finishAutoRunning = false;
