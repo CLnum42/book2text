@@ -112,6 +112,9 @@ class BlockLineRecord:
     # 改框之后「行 → 块」归属的结果（说明书 5.3 的扩展，见迁移 0006）：
     # assigned / conflict / unassigned。行本身永远不会被丢弃。
     layout_status: str = "assigned"
+    # 任务 67：人工裁决。NULL = 未处理；kept = 保留原文；adopted = 采纳第二路。
+    diff_ack: str | None = None
+    diff_ack_text: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -123,6 +126,7 @@ class BlockLineRecord:
             "aux_text": self.aux_text,
             "diff_status": self.diff_status,
             "layout_status": self.layout_status,
+            "diff_ack": self.diff_ack,
         }
 
 
@@ -437,6 +441,8 @@ def list_block_lines(
             aux_text=row["aux_text"],
             diff_status=row["diff_status"],
             layout_status=row["layout_status"] if "layout_status" in row.keys() else "assigned",
+            diff_ack=row["diff_ack"] if "diff_ack" in row.keys() else None,
+            diff_ack_text=row["diff_ack_text"] if "diff_ack_text" in row.keys() else None,
         )
         for row in rows
     ]
@@ -556,6 +562,7 @@ class LineDivergence:
     level: str
     current: str
     candidate: str
+    ack: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -563,6 +570,7 @@ class LineDivergence:
             "level": self.level,
             "current": self.current,
             "candidate": self.candidate,
+            "ack": self.ack,
         }
 
 
@@ -580,6 +588,7 @@ class BlockDivergence:
     punct: int = 0
     empty: int = 0
     format_only: int = 0
+    acked: int = 0
     stale: bool = False
     marks: tuple[LineDivergence, ...] = ()
 
@@ -596,6 +605,7 @@ class BlockDivergence:
             "punct": self.punct,
             "empty": self.empty,
             "format_only": self.format_only,
+            "acked": self.acked,
             "stale": self.stale,
             "marks": [mark.to_dict() for mark in self.marks],
         }
@@ -613,6 +623,7 @@ class PageDivergence:
     punct: int = 0
     empty: int = 0
     format_only: int = 0
+    acked: int = 0
     stale_blocks: int = 0
     checked: bool = False
     engine_id: str | None = None
@@ -635,6 +646,7 @@ class PageDivergence:
             "punct": self.punct,
             "empty": self.empty,
             "format_only": self.format_only,
+            "acked": self.acked,
             "stale_blocks": self.stale_blocks,
             "checked": self.checked,
             "engine_id": self.engine_id,
@@ -665,17 +677,37 @@ def block_divergence(
 
     counts = dict.fromkeys(GRADES, 0)
     identical = 0
+    acked = 0
     marks: list[LineDivergence] = []
     for line in lines:
         if line.aux_text is None:
             continue
         current = current_lines[line.line_index]
+        # 文本被人工改过之后，旧 ack 不再适用：立即恢复成待处理，等下一次复核再清库。
+        ack = line.diff_ack if (line.diff_ack_text or "") == current else None
         # 第二引擎什么也没读出来：它没提供任何关于原文的信息，不算分歧
         level = (
             compare_module.NO_CANDIDATE
             if not line.aux_text.strip()
             else compare_module.grade_line(current, line.aux_text)
         )
+        if ack:
+            acked += 1
+            if level == compare_module.IDENTICAL:
+                identical += 1
+                continue
+            # 已裁决的行仍然出现在 marks 里，界面可以展开查看 / 审计；
+            # 但计数只算未裁决的行。
+            marks.append(
+                LineDivergence(
+                    line_index=line.line_index,
+                    level=level,
+                    current=current,
+                    candidate=line.aux_text,
+                    ack=ack,
+                )
+            )
+            continue
         if level == compare_module.IDENTICAL:
             identical += 1
             continue
@@ -694,6 +726,7 @@ def block_divergence(
         punct=counts[compare_module.DIFFERS_PUNCT],
         empty=counts[compare_module.NO_CANDIDATE],
         format_only=counts[compare_module.FORMAT_ONLY_DIFFERS],
+        acked=acked,
         marks=tuple(marks),
     )
 
@@ -737,7 +770,7 @@ def page_divergence_summary(
     for line in lines:
         by_block.setdefault(line.block_id, []).append(line)
 
-    identical = chars = punct = empty = format_only = stale_blocks = 0
+    identical = chars = punct = empty = format_only = acked = stale_blocks = 0
     for block in blocks:
         divergence = block_divergence(block, by_block.get(block.block_id, []))
         identical += divergence.identical
@@ -745,6 +778,7 @@ def page_divergence_summary(
         punct += divergence.punct
         empty += divergence.empty
         format_only += divergence.format_only
+        acked += divergence.acked
         stale_blocks += 1 if divergence.stale else 0
 
     run = _latest_auxiliary_run(runs)
@@ -754,6 +788,7 @@ def page_divergence_summary(
         punct=punct,
         empty=empty,
         format_only=format_only,
+        acked=acked,
         stale_blocks=stale_blocks,
         checked=run is not None,
         engine_id=run.engine_id if run else None,

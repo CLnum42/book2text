@@ -243,6 +243,48 @@ def patch_block(
     return {"block": block.to_dict(), "events": [event.to_dict() for event in events]}
 
 
+class DiffAckRequest(BaseModel):
+    line_index: int = Field(ge=0)
+    ack: Literal["kept", "adopted"]
+    text: str | None = None
+
+
+@router.post("/{project_id}/blocks/{block_id}/diff-ack")
+def ack_block_line(
+    request: Request, project_id: str, block_id: str, body: DiffAckRequest
+) -> dict[str, Any]:
+    """保存一行差异的裁决（保留原文 / 采纳第二路）。
+
+    采纳会与文本改动在同一个 batch 里写，⌘Z 一次同时退回文本与 ack；
+    事件表记录 actor / 时间。只写状态或文本，不改块类型 / 框。
+    """
+    _require_page_editable(request, project_id, block_id, library=_library(request))
+    try:
+        block, line, events = editing.ack_diff_line(
+            project_id,
+            block_id,
+            body.line_index,
+            body.ack,
+            text=body.text,
+            library=_library(request),
+            actor_name=_actor_name(request, None),
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    if events:
+        _history(request).push(
+            project_id,
+            _Batch(events=tuple(events), page_nos=(block.page_no,)),
+        )
+    undo, redo = _history(request).depth(project_id)
+    return {
+        "block": block.to_dict(),
+        "line": line,
+        "events": [event.to_dict() for event in events],
+        "history": {"undo": undo, "redo": redo},
+    }
+
+
 # ---------------------------------------------------------------- 新识别结果（R2）
 #
 # 说明书 R2：重新识别时若页面已有人工成果，新运行只保存为"待选结果"，

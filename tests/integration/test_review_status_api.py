@@ -224,6 +224,8 @@ def test_export_preflight_and_manifest_include_workflow_snapshot(
         "single_engine",
         "layout_unconfirmed",
         "recognition_failed",
+        "diff_kept",
+        "diff_adopted",
     ):
         assert key in status
 
@@ -306,3 +308,117 @@ def test_finish_summary_and_batch_auto_pass_are_real_and_safe(
     page1 = page_blocks(client, auth_headers, project_id, 1)
     assert page1["workflow"]["confirm_mode"] is None
     assert page1["workflow"]["auto_pass_excluded"] is True
+
+
+def test_diff_ack_kept_persists_survives_aux_and_undoes(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_with_ocr: str,
+    library_dir: Path,
+    monkeypatch,
+) -> None:
+    """任务 67：保留原文持久化；重跑复核不覆盖；撤销回 pending。"""
+    project_id = project_with_ocr
+    monkeypatch.setattr(
+        review_status.ink_gaps_module,
+        "find_ink_gaps",
+        lambda *args, **kwargs: {"candidates": []},
+    )
+    # 让第 1 页每一行都和第二路不同，便于取第一条差异
+    recognition.run_auxiliary(
+        library_dir / project_id,
+        1,
+        engine=FakeSecondEngine(texts=["完全不同的第二路文本"]),
+    )
+    before = page_blocks(client, auth_headers, project_id, 1)
+    block = next(item for item in before["blocks"] if item["divergence"]["marks"])
+    mark = block["divergence"]["marks"][0]
+    before_lines = block["divergence"]["lines"]
+    assert mark["ack"] is None
+
+    acked = client.post(
+        f"/api/projects/{project_id}/blocks/{block['block_id']}/diff-ack",
+        json={"line_index": mark["line_index"], "ack": "kept"},
+        headers=auth_headers,
+    )
+    assert acked.status_code == 200, acked.text
+    after = page_blocks(client, auth_headers, project_id, 1)
+    block_after = next(item for item in after["blocks"] if item["block_id"] == block["block_id"])
+    assert block_after["divergence"]["lines"] == before_lines - 1
+    saved = next(
+        item for item in block_after["divergence"]["marks"]
+        if item["line_index"] == mark["line_index"]
+    )
+    assert saved["ack"] == "kept"
+
+    # 重跑复核：行文本没变，ack 仍然保留
+    recognition.run_auxiliary(
+        library_dir / project_id,
+        1,
+        engine=FakeSecondEngine(texts=["完全不同的第二路文本"]),
+    )
+    rerun = page_blocks(client, auth_headers, project_id, 1)
+    block_rerun = next(item for item in rerun["blocks"] if item["block_id"] == block["block_id"])
+    saved = next(
+        item for item in block_rerun["divergence"]["marks"]
+        if item["line_index"] == mark["line_index"]
+    )
+    assert saved["ack"] == "kept"
+    assert block_rerun["divergence"]["lines"] == before_lines - 1
+    preflight = client.post(
+        f"/api/projects/{project_id}/export/preflight",
+        json={"format": "txt"},
+        headers=auth_headers,
+    )
+    assert preflight.status_code == 200, preflight.text
+    assert preflight.json()["workflow_status"]["diff_kept"] == 1
+
+    undone = client.post(f"/api/projects/{project_id}/undo", headers=auth_headers)
+    assert undone.status_code == 200, undone.text
+    restored = page_blocks(client, auth_headers, project_id, 1)
+    block_restored = next(item for item in restored["blocks"] if item["block_id"] == block["block_id"])
+    assert block_restored["divergence"]["lines"] == before_lines
+    saved = next(
+        item for item in block_restored["divergence"]["marks"]
+        if item["line_index"] == mark["line_index"]
+    )
+    assert saved["ack"] is None
+
+
+def test_adopt_ack_changes_text_and_undoes_in_one_batch(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_with_ocr: str,
+    library_dir: Path,
+) -> None:
+    """任务 67：采纳 = 文本 + ack 同一个 batch，⌘Z 一次全退。"""
+    project_id = project_with_ocr
+    recognition.run_auxiliary(
+        library_dir / project_id,
+        1,
+        engine=FakeSecondEngine(texts=["完全不同的第二路文本"]),
+    )
+    payload = page_blocks(client, auth_headers, project_id, 1)
+    block = next(item for item in payload["blocks"] if item["divergence"]["marks"])
+    mark = block["divergence"]["marks"][0]
+    lines = block["text"].split("\n")
+    lines[mark["line_index"]] = mark["candidate"]
+    new_text = "\n".join(lines)
+
+    adopted = client.post(
+        f"/api/projects/{project_id}/blocks/{block['block_id']}/diff-ack",
+        json={"line_index": mark["line_index"], "ack": "adopted", "text": new_text},
+        headers=auth_headers,
+    )
+    assert adopted.status_code == 200, adopted.text
+    after = page_blocks(client, auth_headers, project_id, 1)
+    changed = next(item for item in after["blocks"] if item["block_id"] == block["block_id"])
+    assert changed["text"] == new_text
+    assert changed["divergence"]["acked"] == 1
+
+    undone = client.post(f"/api/projects/{project_id}/undo", headers=auth_headers)
+    assert undone.status_code == 200, undone.text
+    restored = page_blocks(client, auth_headers, project_id, 1)
+    back = next(item for item in restored["blocks"] if item["block_id"] == block["block_id"])
+    assert back["text"] == block["text"]
+    assert back["divergence"]["acked"] == 0

@@ -152,6 +152,7 @@ def test_marks_are_graded_and_attached_to_the_right_lines(
         "punct": 1,
         "empty": 1,
         "format_only": 0,
+        "acked": 0,
         "stale_blocks": 0,
         "checked": True,
         "engine_id": "fake-second",

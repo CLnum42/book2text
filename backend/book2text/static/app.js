@@ -1240,7 +1240,7 @@ function workflowChip(page) {
 /** 页面载荷与块载荷都带 `divergence`（后端按"块里现在的文本"现算，见 blocks.py）。 */
 function divergenceOf(thing) {
   return thing.divergence || {
-    lines: 0, chars: 0, punct: 0, empty: 0, format_only: 0,
+    lines: 0, chars: 0, punct: 0, empty: 0, format_only: 0, acked: 0,
     stale_blocks: 0, checked: false, engine_id: null, checked_at: null,
     stale: false, marks: [],
   };
@@ -6082,7 +6082,7 @@ let diffQueue = [];
 let queueIndex = -1;
 let queueOpen = true;
 const queueDecisions = new Map(); // key -> "adopted" | "kept"
-let lastQueueAdoptedKey = null;
+let lastQueueDecisionKey = null;
 let queuePageNo = null;
 let detailHistoryState = { undo: 0, redo: 0 };
 /** 收尾面板（任务 66）：数字全部来自 /review/finish-summary。 */
@@ -7206,6 +7206,7 @@ function blockHasDrawableDiff(block) {
   const marks = divergenceOf(block).marks || [];
   return marks.some(
     (mark) =>
+      !mark.ack &&
       DIFF_LEVELS.has(mark.level) &&
       computeCharSpans(mark.current, mark.candidate).some((span) => span.aEnd > span.aStart)
   );
@@ -7353,7 +7354,7 @@ function drawDiffLayer(attempt = 0) {
     const divergence = divergenceOf(block);
     if (divergence.stale || !(divergence.marks || []).length) continue;
     for (const mark of divergence.marks) {
-      if (!DIFF_LEVELS.has(mark.level)) continue;
+      if (!DIFF_LEVELS.has(mark.level) || mark.ack) continue;
       total += 1;
       if (diffMarksMode === "block" && activeReviewBlockId && block.block_id !== activeReviewBlockId) {
         continue;
@@ -7539,7 +7540,7 @@ function buildDiffQueue() {
     const divergence = divergenceOf(block);
     if (divergence.stale) return;
     for (const mark of divergence.marks || []) {
-      if (!DIFF_LEVELS.has(mark.level)) continue;
+      if (!DIFF_LEVELS.has(mark.level) || mark.ack) continue;
       items.push({
         blockId: block.block_id,
         blockIndex,
@@ -7579,11 +7580,13 @@ function nextPendingQueueIndex(from) {
 }
 
 function aggregateDivergence() {
-  const counts = { lines: 0, chars: 0, punct: 0 };
+  const counts = { lines: 0, chars: 0, punct: 0, acked: 0 };
   for (const block of reviewBlocks || []) {
     const divergence = divergenceOf(block);
     if (divergence.stale) continue;
+    counts.acked += Number(divergence.acked || 0);
     for (const mark of divergence.marks || []) {
+      if (mark.ack) continue;
       if (mark.level === "differs_chars") counts.chars += 1;
       else if (mark.level === "differs_punct") counts.punct += 1;
     }
@@ -7600,8 +7603,11 @@ function renderReviewHeadline() {
   const bits = [PAGE_TYPE_LABELS[page.page_type] || page.page_type];
   if (counts.lines) {
     bits.push(
-      `${counts.lines} 处差异（汉字 ${counts.chars} · 标点 ${counts.punct}）`
+      `${counts.lines} 处待处理差异（汉字 ${counts.chars} · 标点 ${counts.punct}）` +
+        (counts.acked ? ` · 已确认 ${counts.acked}` : "")
     );
+  } else if (counts.acked) {
+    bits.push(`无待处理差异 · 已确认 ${counts.acked}`);
   } else {
     bits.push("无差异");
   }
@@ -7671,7 +7677,7 @@ function renderDiffQueue() {
     meta.textContent = `${diffQueue.length} 处`;
     text.textContent =
       `本页 ${diffQueue.length} 处已处理完（采纳 ${countsNow.adopted} · 保留 ${countsNow.kept}）· 去下一处`;
-    note.textContent = "点右下角「确认本页并下一页」继续；保留原文不写库。";
+    note.textContent = "点右下角「确认本页并下一页」继续；保留原文已记入这一行。";
     adopt.hidden = true;
     keep.hidden = true;
     prev.hidden = true;
@@ -7685,7 +7691,7 @@ function renderDiffQueue() {
     : "未知块";
   meta.textContent = `${diffLevelLabel(item.level)} · ${blockLabel} · 第 ${item.lineIndex + 1} 行`;
   text.append(diffRowFragment(item));
-  note.textContent = "队列只在本页内生效；「保留原文」不写库，离开本页后重置。";
+  note.textContent = "队列只在页内推进；「保留原文」会记进这一行，离开本页再回来不会重复出现。";
   adopt.hidden = false;
   keep.hidden = false;
   prev.hidden = false;
@@ -7711,60 +7717,104 @@ function initDiffQueue() {
   diffQueue = buildDiffQueue();
   queueDecisions.clear();
   queuePageNo = detailPageNo;
-  lastQueueAdoptedKey = null;
+  lastQueueDecisionKey = null;
   queueIndex = diffQueue.length ? 0 : -1;
   queueOpen = diffQueue.length > 0;
   if (queueIndex >= 0) focusQueueItem(diffQueue[queueIndex]);
   renderDiffQueue();
 }
 
-/** 采纳后只更新这一块与队列，不 loadPageDetail、不重建列表。 */
-function applyQueueAdoptLocally(block, item, newText, returnedBlock) {
-  block.text = newText;
+/** 保存一行裁决后只更新这一块与队列，不 loadPageDetail、不重建列表。 */
+function applyQueueAckLocally(block, item, ack, newText, returnedBlock) {
+  if (ack === "adopted" && newText !== undefined) {
+    block.text = newText;
+  }
   if (returnedBlock) {
     block.revision = returnedBlock.revision ?? block.revision;
     block.modified = returnedBlock.modified ?? block.modified;
     block.updated_at = returnedBlock.updated_at ?? block.updated_at;
   }
   const divergence = divergenceOf(block);
-  divergence.marks = (divergence.marks || []).filter(
-    (mark) => mark.line_index !== item.lineIndex
+  const mark = (divergence.marks || []).find(
+    (entry) => entry.line_index === item.lineIndex
   );
-  divergence.chars = divergence.marks.filter((mark) => mark.level === "differs_chars").length;
-  divergence.punct = divergence.marks.filter((mark) => mark.level === "differs_punct").length;
-  divergence.empty = divergence.marks.filter((mark) => mark.level === "no_candidate").length;
+  if (ack === "adopted") {
+    divergence.marks = (divergence.marks || []).filter(
+      (entry) => entry.line_index !== item.lineIndex
+    );
+  } else if (mark) {
+    mark.ack = "kept";
+  }
+  divergence.acked = Number(divergence.acked || 0) + 1;
+  divergence.chars = divergence.marks.filter(
+    (entry) => !entry.ack && entry.level === "differs_chars"
+  ).length;
+  divergence.punct = divergence.marks.filter(
+    (entry) => !entry.ack && entry.level === "differs_punct"
+  ).length;
+  divergence.empty = divergence.marks.filter(
+    (entry) => !entry.ack && entry.level === "no_candidate"
+  ).length;
   divergence.format_only = divergence.marks.filter(
-    (mark) => mark.level === "format_only_differs"
+    (entry) => !entry.ack && entry.level === "format_only_differs"
   ).length;
   divergence.lines = divergence.chars + divergence.punct;
   block.divergence = divergence;
 
   const card = el("detail-blocks").querySelector(`li[data-block-id="${block.block_id}"]`);
   if (card) {
-    const textarea = card.querySelector("textarea");
-    if (textarea) {
-      textarea.value = newText;
-      autoSizeTextarea(textarea);
+    if (ack === "adopted") {
+      const textarea = card.querySelector("textarea");
+      if (textarea) {
+        textarea.value = newText;
+        autoSizeTextarea(textarea);
+      }
     }
     const strip = card.querySelector(".diff-strip");
     if (strip) {
       const row = strip.querySelector(
         `.diff-row[data-line-index="${item.lineIndex}"]`
       );
-      if (row) row.remove();
+      if (row) {
+        row.classList.add("is-acked");
+        const level = row.querySelector(".diff-row__level");
+        if (level) {
+          level.textContent =
+            diffLevelLabel(mark ? mark.level : item.level) +
+            (ack === "kept" ? " · 已保留" : " · 已采纳");
+        }
+        const adopt = row.querySelector(".diff-row__adopt");
+        if (adopt) adopt.remove();
+      }
       const count = strip.querySelector(".diff-strip__count");
       if (count) {
         count.textContent = divergence.lines
           ? `两路差异 ${divergence.lines} 行`
-          : "两路没有实质分歧";
+          : divergence.acked
+            ? `没有待处理差异 · 已确认 ${divergence.acked}`
+            : "两路没有实质分歧";
       }
-      if (!divergence.marks.length) strip.remove();
+      if (!strip.querySelector(".diff-row")) strip.remove();
     }
   }
   refreshReviewFilterOnly();
 }
 
+async function ackQueueLine(block, lineIndex, ack, text = null) {
+  return apiJson(
+    `/api/projects/${currentProject.project_id}/blocks/${block.block_id}/diff-ack`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ line_index: lineIndex, ack, text }),
+    }
+  );
+}
+
+let queueActionRunning = false;
+
 async function adoptQueueCurrent() {
+  if (queueActionRunning) return;
   const item = queueIndex >= 0 ? diffQueue[queueIndex] : null;
   if (!item) return;
   const key = item.key;
@@ -7788,24 +7838,22 @@ async function adoptQueueCurrent() {
   }
   lines[current.lineIndex] = current.candidate;
   const newText = lines.join("\n");
+  queueActionRunning = true;
   setSaveState("正在采纳…");
   try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/blocks/${block.block_id}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: newText, expected_revision: block.revision }),
-      }
+    const data = await ackQueueLine(
+      block,
+      current.lineIndex,
+      "adopted",
+      newText
     );
-    applyQueueAdoptLocally(block, current, newText, data.block);
+    applyQueueAckLocally(block, current, "adopted", newText, data.block);
     queueDecisions.set(key, "adopted");
-    lastQueueAdoptedKey = key;
-    detailHistoryState = {
-      undo: (detailHistoryState.undo || 0) + 1,
-      redo: 0,
-    };
-    renderHistoryButtons(detailHistoryState);
+    lastQueueDecisionKey = key;
+    if (data.history) {
+      detailHistoryState = data.history;
+      renderHistoryButtons(detailHistoryState);
+    }
     queueIndex = nextPendingQueueIndex(queueIndex);
     if (queueIndex >= 0) {
       focusQueueItem(diffQueue[queueIndex]);
@@ -7819,24 +7867,44 @@ async function adoptQueueCurrent() {
     setSaveState("已采纳第二路 ✓");
   } catch (error) {
     setSaveState(error.message || "采纳失败", true);
+  } finally {
+    queueActionRunning = false;
   }
 }
 
-function keepQueueCurrent() {
+async function keepQueueCurrent() {
+  if (queueActionRunning) return;
   const item = queueIndex >= 0 ? diffQueue[queueIndex] : null;
   if (!item) return;
-  queueDecisions.set(item.key, "kept");
-  queueIndex = nextPendingQueueIndex(queueIndex);
-  if (queueIndex >= 0) {
-    focusQueueItem(diffQueue[queueIndex]);
-  } else {
-    activeDiff = null;
-    updateDiffActive();
-    drawDiffLayer();
+  const block = (reviewBlocks || []).find((entry) => entry.block_id === item.blockId);
+  if (!block) return;
+  queueActionRunning = true;
+  setSaveState("正在保留原文…");
+  try {
+    const data = await ackQueueLine(block, item.lineIndex, "kept");
+    applyQueueAckLocally(block, item, "kept", null, data.block);
+    queueDecisions.set(item.key, "kept");
+    lastQueueDecisionKey = item.key;
+    if (data.history) {
+      detailHistoryState = data.history;
+      renderHistoryButtons(detailHistoryState);
+    }
+    queueIndex = nextPendingQueueIndex(queueIndex);
+    if (queueIndex >= 0) {
+      focusQueueItem(diffQueue[queueIndex]);
+    } else {
+      activeDiff = null;
+      updateDiffActive();
+      drawDiffLayer();
+    }
+    renderDiffQueue();
+    focusQueueBar();
+    setSaveState("已保留原文 ✓");
+  } catch (error) {
+    setSaveState(error.message || "保留失败", true);
+  } finally {
+    queueActionRunning = false;
   }
-  renderDiffQueue();
-  focusQueueBar();
-  setSaveState("已保留原文（未写库）");
 }
 
 function previousQueueItem() {
@@ -7873,40 +7941,31 @@ function captureQueueSnapshot() {
     items: diffQueue.map((item) => ({ ...item })),
     decisions: new Map(queueDecisions),
     index: queueIndex,
-    adoptedKey: lastQueueAdoptedKey,
+    decisionKey: lastQueueDecisionKey,
     listScroll: el("detail-blocks").scrollTop,
     viewerScroll: el("viewer-scroll").scrollTop,
   };
 }
 
-/** 撤销一处采纳后：队列仍保留原来 13 处，把那处退回待处理并恢复标记。 */
+/** 撤销一处裁决后：用重载后的未处理差异重建队列，把被撤销那处设为当前。 */
 function restoreQueueAfterUndo(snapshot) {
   if (!snapshot || snapshot.pageNo !== detailPageNo) return;
-  diffQueue = snapshot.items.map((item) => {
-    const block = (reviewBlocks || []).find((entry) => entry.block_id === item.blockId);
-    if (!block) return item;
-    const mark = (divergenceOf(block).marks || []).find(
-      (entry) => entry.line_index === item.lineIndex
-    );
-    return mark
-      ? { ...item, current: mark.current, candidate: mark.candidate || "", level: mark.level }
-      : item;
-  });
+  const key = snapshot.decisionKey;
+  // 以撤销后的真实块状态重建队列（不能沿用撤销前那 10 项：被撤销的那处要回来）。
+  diffQueue = buildDiffQueue();
   queueDecisions.clear();
-  for (const [key, value] of snapshot.decisions.entries()) {
-    if (key !== snapshot.adoptedKey) queueDecisions.set(key, value);
-  }
-  queueOpen = true;
-  const restored = snapshot.adoptedKey
-    ? diffQueue.findIndex((item) => item.key === snapshot.adoptedKey)
-    : -1;
-  queueIndex = restored >= 0 ? restored : Math.max(0, Math.min(snapshot.index, diffQueue.length - 1));
-  focusQueueItem(diffQueue[queueIndex]);
+  queueOpen = diffQueue.length > 0;
+  const index = key ? diffQueue.findIndex((item) => item.key === key) : -1;
+  queueIndex =
+    index >= 0
+      ? index
+      : Math.max(0, Math.min(snapshot.index, diffQueue.length - 1));
+  lastQueueDecisionKey = null;
+  if (queueIndex >= 0) focusQueueItem(diffQueue[queueIndex]);
   renderDiffQueue();
   el("detail-blocks").scrollTop = snapshot.listScroll || 0;
   el("viewer-scroll").scrollTop = snapshot.viewerScroll || 0;
 }
-
 function drawDetailOverlay(blocks) {
   const overlay = el("detail-overlay");
   overlay.innerHTML = "";
@@ -8517,11 +8576,14 @@ function blockDivergenceSection(block, textarea) {
   head.className = "diff-strip__head";
   const count = document.createElement("span");
   count.className = "diff-strip__count";
+  const acked = Number(divergence.acked || 0);
   count.textContent = divergence.stale
     ? "两路差异已收起"
     : divergence.lines
-    ? `两路差异 ${divergence.lines} 行`
-    : `待核对 ${marks.length} 行`;
+      ? `两路差异 ${divergence.lines} 行` + (acked ? ` · 已确认 ${acked}` : "")
+      : acked
+        ? `没有待处理差异 · 已确认 ${acked}`
+        : "两路没有实质分歧";
   const info = document.createElement("button");
   info.type = "button";
   info.className = "diff-strip__info";
@@ -8560,11 +8622,14 @@ function blockDivergenceSection(block, textarea) {
 
   const order = { differs_chars: 0, differs_punct: 1, no_candidate: 2 };
   const ordered = [...marks].sort(
-    (a, b) => (order[a.level] ?? 9) - (order[b.level] ?? 9) || a.line_index - b.line_index
+    (a, b) =>
+      Number(Boolean(a.ack)) - Number(Boolean(b.ack)) ||
+      (order[a.level] ?? 9) - (order[b.level] ?? 9) ||
+      a.line_index - b.line_index
   );
   for (const mark of ordered.slice(0, MAX_DIVERGENCE_ROWS)) {
     const row = document.createElement("div");
-    row.className = "diff-row";
+    row.className = "diff-row" + (mark.ack ? " is-acked" : "");
     row.dataset.blockId = block.block_id;
     row.dataset.lineIndex = String(mark.line_index);
     row.setAttribute("role", "button");
@@ -8578,7 +8643,9 @@ function blockDivergenceSection(block, textarea) {
     where.textContent = `第 ${mark.line_index + 1} 行`;
     const level = document.createElement("span");
     level.className = "diff-row__level";
-    level.textContent = diffLevelLabel(mark.level);
+    level.textContent =
+      diffLevelLabel(mark.level) +
+      (mark.ack === "kept" ? " · 已保留" : mark.ack === "adopted" ? " · 已采纳" : "");
 
     const text = document.createElement("span");
     text.className = "diff-row__text";
@@ -8589,7 +8656,7 @@ function blockDivergenceSection(block, textarea) {
     }
     row.append(where, level, text);
 
-    if (mark.candidate) {
+    if (mark.candidate && !mark.ack) {
       const adopt = document.createElement("button");
       adopt.type = "button";
       adopt.className = "diff-row__adopt";
@@ -9432,6 +9499,8 @@ async function reviewAction(path) {
     await loadPageDetail(detailPageNo);
     if (queueSnapshot) restoreQueueAfterUndo(queueSnapshot);
     await refreshPageStates();
+    // 刷新页面状态后再对齐一次：避免异步渲染把刚恢复的队列覆盖成旧快照。
+    if (queueSnapshot) restoreQueueAfterUndo(queueSnapshot);
     return data;
   } catch (error) {
     showError(el("page-detail-error"), error);

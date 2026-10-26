@@ -53,6 +53,8 @@ ACTION_SET_BBOX = "set_bbox"
 ACTION_SET_LAYOUT_CONFIRMED = "set_layout_confirmed"
 ACTION_REASSIGN_LINE = "reassign_line"
 ACTION_CONFIRM_LAYOUT = "confirm_layout"
+ACTION_ACK_KEPT = "diff_ack_kept"
+ACTION_ACK_ADOPTED = "diff_ack_adopted"
 
 REVIEW_STATUSES = ("unreviewed", "confirmed", "uncertain")
 
@@ -572,6 +574,124 @@ def _read_block(conn, block_id: str) -> blocks_module.BlockRecord:
     if row is None:  # pragma: no cover - 刚写过
         raise ProjectError(f"找不到块：{block_id}")
     return blocks_module.row_to_block(row)
+
+
+# ---------------------------------------------------------------- 差异裁决（任务 67）
+
+DIFF_ACK_KEPT = "kept"
+DIFF_ACK_ADOPTED = "adopted"
+DIFF_ACKS = (DIFF_ACK_KEPT, DIFF_ACK_ADOPTED)
+
+
+def ack_diff_line(
+    project_id: str,
+    block_id: str,
+    line_index: int,
+    ack: str,
+    *,
+    text: str | None = None,
+    library: Path | None = None,
+    actor_name: str | None = None,
+    actor: str = ACTOR_USER,
+) -> tuple[blocks_module.BlockRecord, dict, list[Event]]:
+    """持久化一行差异的裁决：保留原文 / 采纳第二路。
+
+    - `kept` 只写 `block_line.diff_ack='kept'`，不改文本；
+    - `adopted` 在**同一个 batch** 里改 `block.text` 并写 `diff_ack='adopted'`，
+      这样一次撤销能把文本与裁决一起退回；
+    - `diff_ack_text` 记录裁决时这一行的文本，重跑复核时用来判断文本是否真的变了。
+    """
+    if ack not in DIFF_ACKS:
+        raise ProjectError(f"未知的差异裁决：{ack!r}")
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    with _open(directory) as conn:
+        block = conn.execute("SELECT * FROM block WHERE block_id = ?", (block_id,)).fetchone()
+        if block is None or block["deleted_at"]:
+            raise ProjectError(f"找不到块：{block_id}")
+        line = conn.execute(
+            "SELECT * FROM block_line WHERE block_id = ? AND line_index = ?",
+            (block_id, line_index),
+        ).fetchone()
+        if line is None:
+            raise ProjectError(f"块 {block_id} 没有第 {line_index + 1} 行")
+        current_lines = (block["text"] or "").split("\n")
+        if line_index < 0 or line_index >= len(current_lines):
+            raise ProjectError("这一块的行号对不上了")
+
+        batch = new_ulid()
+        events: list[Event] = []
+        new_text = text
+        if ack == DIFF_ACK_ADOPTED:
+            if new_text is None:
+                raise ProjectError("采纳第二路需要同时提供新的块文本")
+            new_lines = new_text.split("\n")
+            if len(new_lines) != len(current_lines):
+                raise ProjectError("新的块文本行数与原块不一致")
+            if new_text != block["text"]:
+                events.append(
+                    _record(
+                        conn,
+                        entity_type="block",
+                        entity_id=block_id,
+                        action=ACTION_EDIT_TEXT,
+                        before={"text": block["text"]},
+                        after={"text": new_text},
+                        batch_id=batch,
+                        actor=actor,
+                        actor_name=actor_name,
+                    )
+                )
+                conn.execute(
+                    "UPDATE block SET text = ?, revision = revision + 1, updated_at = ?"
+                    " WHERE block_id = ?",
+                    (new_text, now, block_id),
+                )
+            ack_text = new_lines[line_index]
+        else:
+            ack_text = current_lines[line_index]
+
+        before_ack = line["diff_ack"] if "diff_ack" in line.keys() else None
+        before_ack_text = line["diff_ack_text"] if "diff_ack_text" in line.keys() else None
+        if before_ack != ack or before_ack_text != ack_text:
+            events.append(
+                _record(
+                    conn,
+                    entity_type="block_line",
+                    entity_id=line["line_id"],
+                    action=ACTION_ACK_ADOPTED if ack == DIFF_ACK_ADOPTED else ACTION_ACK_KEPT,
+                    before={"diff_ack": before_ack, "diff_ack_text": before_ack_text},
+                    after={"diff_ack": ack, "diff_ack_text": ack_text},
+                    batch_id=batch,
+                    actor=actor,
+                    actor_name=actor_name,
+                )
+            )
+            conn.execute(
+                "UPDATE block_line SET diff_ack = ?, diff_ack_text = ? WHERE line_id = ?",
+                (ack, ack_text, line["line_id"]),
+            )
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        updated_block = _read_block(conn, block_id)
+        updated_line = conn.execute(
+            "SELECT * FROM block_line WHERE line_id = ?", (line["line_id"],)
+        ).fetchone()
+
+    return (
+        updated_block,
+        {
+            "line_id": updated_line["line_id"],
+            "line_index": int(updated_line["line_index"]),
+            "diff_ack": updated_line["diff_ack"],
+            "diff_ack_text": updated_line["diff_ack_text"],
+        },
+        events,
+    )
 
 
 # ---------------------------------------------------------------- 确认整页（R3）

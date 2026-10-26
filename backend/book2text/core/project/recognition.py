@@ -531,6 +531,14 @@ def create_auxiliary_job(
     )
 
 
+def _current_line_text(block_text: str | None, line_index: int, fallback: str | None) -> str:
+    """块里现在这一行的文本；行号对不上时退回行记录自己的 text。"""
+    lines = (block_text or "").split("\n")
+    if 0 <= line_index < len(lines):
+        return lines[line_index]
+    return fallback or ""
+
+
 def run_auxiliary(
     directory: Path,
     page_no: int,
@@ -566,7 +574,8 @@ def run_auxiliary(
             raise ProjectError("这一页还没有第一引擎的结果，先识别再复核")
         lines = conn.execute(
             """
-            SELECT l.line_id, l.block_id, l.line_index, l.bbox, l.text
+            SELECT l.line_id, l.block_id, l.line_index, l.bbox, l.text,
+                   l.diff_ack, l.diff_ack_text, b.text AS block_text
             FROM block_line l JOIN block b ON b.block_id = l.block_id
             WHERE b.page_id = ? AND b.deleted_at IS NULL
             ORDER BY b.order_index, l.line_index
@@ -632,6 +641,14 @@ def run_auxiliary(
                     "text": row["text"] or "",
                     "aux_text": aux_text,
                     "diff_status": status,
+                    "ack_keep": bool(
+                        row["diff_ack"]
+                        and row["diff_ack_text"] is not None
+                        and _current_line_text(
+                            row["block_text"], int(row["line_index"]), row["text"]
+                        )
+                        == row["diff_ack_text"]
+                    ),
                 }
             )
     finally:
@@ -675,8 +692,20 @@ def run_auxiliary(
     with db_module.open_database(directory, apply_migrations=False) as conn:
         for item in results:
             conn.execute(
-                "UPDATE block_line SET aux_text = ?, diff_status = ? WHERE line_id = ?",
-                (item["aux_text"], item["diff_status"], item["line_id"]),
+                """
+                UPDATE block_line
+                SET aux_text = ?, diff_status = ?,
+                    diff_ack = CASE WHEN ? THEN diff_ack ELSE NULL END,
+                    diff_ack_text = CASE WHEN ? THEN diff_ack_text ELSE NULL END
+                WHERE line_id = ?
+                """,
+                (
+                    item["aux_text"],
+                    item["diff_status"],
+                    1 if item["ack_keep"] else 0,
+                    1 if item["ack_keep"] else 0,
+                    item["line_id"],
+                ),
             )
         conn.execute(
             """

@@ -7,6 +7,108 @@
 
 ---
 
+## 2026-10-27 — 任务 67：差异裁决持久化（保留原文 / 采纳）
+
+### 任务目标
+
+把「保留原文」从会话内 Map 变成**数据库里的行级裁决**：离开本页再回来不重复出现；
+所有差异计数只算未裁决行；保留进撤销栈；重跑第二引擎复核不覆盖已裁决的行
+（除非行文本真的变了）。不做 `line_diff` 大表，不新增批量裁决 UI。
+
+### 当前状态
+
+main `469b4ef`（任务 66），847 测试通过。`queueDecisions` 只在内存：保留 13 处后
+重开页面又全回来，该页永远无法进入"无差异"，自动通过因此永远拒绝。
+
+### 实施计划
+
+1. 迁移 0018：`block_line.diff_ack`（NULL/kept/adopted）+ `diff_ack_text`。
+2. 裁决核心：`editing.ack_diff_line()`；采纳时文本 + ack 同一个 batch，保留只写 ack；
+   事件表记 actor / 时间。
+3. 计数：`block_divergence` / `page_divergence_summary` 的 chars/punct/empty/format_only
+   只算未 ack；新增 `acked`；差异条保留已裁决行（默认折叠）。
+4. API：`POST /blocks/{id}/diff-ack`；前端队列的保留 / 采纳改走它。
+5. 重跑复核：`run_auxiliary` 比较当前行文本与 `diff_ack_text`，文本没变保留 ack，
+   变了清空；`block_divergence` 也把文本不符的旧 ack 视为失效。
+6. 导出 manifest / 预检：`diff_kept` / `diff_adopted` 计数。
+
+### 实现与验证
+
+**1. ack 存在哪**
+
+- 迁移 0018：`block_line.diff_ack`（CHECK 由应用层保证，取值
+  `NULL / kept / adopted`）和 `diff_ack_text`（裁决时这一行的文本）。
+- 谁、什么时候：`event` 表新增 `diff_ack_kept` / `diff_ack_adopted` 事件，
+  `actor_name` / `created_at` 由现有事件机制记录；采纳的文本改动与 ack 在**同一个
+  batch_id**，一次撤销能整体退回。
+- 老数据两列 NULL = 未处理，行为不变；重跑复核不会给 NULL 行补 ack。
+
+**2. 计数只算未 ack**
+
+- `block_divergence`：已 ack 的行不再进 `chars / punct / empty / format_only` 计数；
+  新增 `acked`。已 ack 的差异仍放进 `marks`（带 `ack`），供差异条审计。
+- `page_divergence_summary`、页面缩略图、块头/差异条、待处理筛选、收尾面板
+  "要人看"、自动通过条件、导出状态快照全部复用这份计数，因此自动变成只算未 ack。
+- 页头：`10 处待处理差异（汉字 9 · 标点 1） · 已确认 3`；当只剩已 ack 时写
+  `无待处理差异 · 已确认 3`。
+
+**3. 前端队列**
+
+- 队列 / 左图差异层 / 「第一个差异块」都跳过 `mark.ack`；队列只列未 ack 的 13 处。
+- `keepQueueCurrent()` 调 `POST /blocks/{id}/diff-ack` 写 `kept`；成功后才前进并
+  更新历史计数。离开本页再回来时后端 marks 已带 ack，队列只剩 10 处。
+- `adoptQueueCurrent()` 改为同一接口的 `adopted` + 新块文本；不再直接 PATCH 文本，
+  文本与 ack 同 batch，一次 ⌘Z 同时恢复文本与 ack。
+- 差异条保留已 ack 行：标签 `· 已保留` / `· 已采纳`，透明度降低、无「换第二路」；
+  默认随差异条折叠，队列打开时整条隐藏，关掉队列可查看。
+
+**4. 撤销**
+
+- 保留 / 采纳都进现有撤销栈（事件表 + 会话 batch）。
+- 撤销前快照队列；撤销后按服务端真实块状态重建队列，并把被撤销那处设为当前。
+- 实测：保留 3 处 → 队列 13→10，页头 `已确认 3`；离开再回来仍是 10；
+  ⌘Z 后回到 11 处待处理、页头 `已确认 2`、左图标记 28→26 恢复。
+- 采纳 1 处后重开只剩 10；⌘Z 后后端文本与 ack 同时恢复（测试覆盖）。
+
+**5. 重跑复核**
+
+- `run_auxiliary` 更新 `aux_text / diff_status` 时：
+  - 若 `diff_ack_text` 等于块里**当前这一行**的文本 → 保留 `diff_ack`；
+  - 否则清空两列。比较用块文本而不是 `block_line.text`（人工改字只改块）。
+- `block_divergence` 也会把 `diff_ack_text != current` 的旧 ack 视为失效，
+  人工改字后立即恢复为待处理，不必等下一次复核。
+- 后端测试实测：ack 后重跑复核，ack 仍是 `kept`；撤销后回到 NULL。
+
+**6. 导出**
+
+- `status_counts` 新增 `diff_kept` / `diff_adopted`；预检与
+  `manifest.json.workflow` 同一份快照带上。正文 / 导出行为不变。
+- 后端测试断言保留 1 处后预检 `diff_kept == 1`。
+
+**7. 测试与截图**
+
+- 新增：ack 保留 + 重跑 + 撤销；采纳文本 + ack 同 batch 撤销；导出保留计数。
+- `.venv/bin/python -m pytest -q` → **849 passed, 1 warning，139.75 秒**。
+- 截图：[第 370 页保留 3 处后](docs/screenshots/review-ack-kept.png)、
+  [队列/差异条](docs/screenshots/review-queue.png)。
+- **未验证：** Windows / Safari；触屏；全部 13 处都 ack 后的自动通过（真书该页还有
+  版面 / 建议条件，需另做干净页验证）。
+
+### 用户操作说明
+
+- 队列里 `⌫` 保留原文、`Enter`/`Space` 采纳；两者都会写库，离开本页不再回来。
+- 想查看已保留 / 已采纳的行：关掉队列（`差异 N ▾`），差异条里会以淡化行显示
+  `· 已保留` / `· 已采纳`；默认折叠。
+- `⌘/Ctrl + Z` 撤销最近一次保留或采纳；撤销后该处回到队列。
+- 回退：`git revert`；迁移 0018 只加列，老数据 NULL 兼容。
+
+### 下一步建议
+
+评估是否给"已保留"一个可筛选 / 批量改回的入口；以及 `line_diff` 落地后
+把 ack 从行级文本快照升级为字符级裁决（现在按整行裁决）。
+
+---
+
 ## 2026-10-26 — 任务 66：收尾面板（6 状态 + 批量版面确认 + 批量自动通过）
 
 ### 任务目标

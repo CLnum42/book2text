@@ -782,7 +782,10 @@ def test_review_diff_queue_is_wired_for_local_adoption() -> None:
 
     assert "function initDiffQueue(" in script
     assert "function adoptQueueCurrent(" in script
-    assert "function applyQueueAdoptLocally(" in script
+    assert "function applyQueueAckLocally(" in script
+    assert "/diff-ack" in script
+    assert "function ackQueueLine(" in script
+    assert 'ackQueueLine(block, item.lineIndex, "kept")' in script
     assert "function renderReviewHeadline(" in script
     # 采纳路径不能调用整页重载（否则滚动位置与列表都会丢）
     start = script.index("async function adoptQueueCurrent(")

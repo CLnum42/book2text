@@ -21,6 +21,7 @@ from . import (
     migration_0015_layout_workflow,
     migration_0016_page_confirmation,
     migration_0017_page_auto_margin,
+    migration_0018_diff_ack,
 )
 
 MIGRATIONS: list[Migration] = [
@@ -41,6 +42,7 @@ MIGRATIONS: list[Migration] = [
     migration_0015_layout_workflow.MIGRATION,
     migration_0016_page_confirmation.MIGRATION,
     migration_0017_page_auto_margin.MIGRATION,
+    migration_0018_diff_ack.MIGRATION,
 ]
 
 LATEST_VERSION = max(migration.version for migration in MIGRATIONS)

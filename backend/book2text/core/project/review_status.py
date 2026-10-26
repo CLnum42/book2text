@@ -382,6 +382,29 @@ def status_counts(
             counts["unrecognized"] += 1
         if confirm_mode is None:
             counts["pending"] += 1
+    # 任务 67：人工裁决的差异数（导出 manifest 追溯"保留原状"用了多少处）。
+    counts["diff_kept"] = 0
+    counts["diff_adopted"] = 0
+    page_ids = [page.page_id for page in pages]
+    if page_ids:
+        marks = ",".join("?" for _ in page_ids)
+        try:
+            with db_module.open_database(directory, apply_migrations=False) as conn:
+                for ack, key in (
+                    ("kept", "diff_kept"),
+                    ("adopted", "diff_adopted"),
+                ):
+                    counts[key] = conn.execute(
+                        f"""
+                        SELECT COUNT(*) FROM block_line l
+                        JOIN block b ON b.block_id = l.block_id
+                        WHERE b.page_id IN ({marks}) AND l.diff_ack = ?
+                        """,
+                        (*page_ids, ack),
+                    ).fetchone()[0]
+        except Exception:  # noqa: BLE001 - 老库没有 ack 列时按 0
+            counts["diff_kept"] = 0
+            counts["diff_adopted"] = 0
     return counts
 
 

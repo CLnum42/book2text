@@ -1582,3 +1582,5 @@ body.queue-mode .diff-strip { display: none; }
 .finish-bottom__text { font-size: 12px; color: var(--text-2); line-height: 1.55; margin-bottom: 9px; }
 .finish-bottom__actions { display: flex; gap: 8px; align-items: center; }
 .finish-bottom__actions .btn--pri { flex: 1; }
+.diff-row.is-acked { opacity: .62; }
+.diff-row.is-acked .diff-row__adopt { display: none; }
