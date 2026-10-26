@@ -422,8 +422,8 @@ async def create_project(
             """
             INSERT INTO page (
                 page_id, page_no, page_label, width_pt, height_pt, rotation,
-                page_type, include, has_text_layer
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                page_type, include, has_text_layer, margin_box_mode
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 'auto')
             """,
             [
                 (

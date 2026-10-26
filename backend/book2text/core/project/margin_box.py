@@ -52,11 +52,12 @@ from ..storage import db as db_module
 from . import blocks as blocks_module
 from . import library as library_module
 
-# 页级三态
+# 页级四态（任务 62）：auto 是默认，每页用自己的检测行拟合；inherit 是显式沿用兜底
+MODE_AUTO = "auto"
 MODE_INHERIT = "inherit"
 MODE_CUSTOM = "custom"
 MODE_NONE = "none"
-MARGIN_BOX_MODES = (MODE_INHERIT, MODE_CUSTOM, MODE_NONE)
+MARGIN_BOX_MODES = (MODE_AUTO, MODE_INHERIT, MODE_CUSTOM, MODE_NONE)
 
 # 当前全局版心是谁写的（`project.margin_box_source`，迁移 0012）
 SOURCE_AUTO = "auto"
@@ -151,12 +152,44 @@ def serialize_margin_box(bbox: BBox | None) -> str | None:
 def effective_margin_box(
     project: library_module.Project, page: library_module.Page
 ) -> BBox | None:
-    """这一页实际生效的版心：none → 无；custom → 本页；inherit → 项目默认。"""
+    """这一页实际生效的版心。
+
+    - ``none``：无；
+    - ``custom``：本页四边；
+    - ``auto``：本页拟合四边；还没有拟合结果时回退全局兜底；
+    - ``inherit``：显式沿用全局兜底。
+    """
     if page.margin_box_mode == MODE_NONE:
         return None
     if page.margin_box_mode == MODE_CUSTOM:
         return page.margin_box
+    if page.margin_box_mode == MODE_AUTO:
+        return page.margin_box or project.margin_box
     return project.margin_box
+
+
+def page_margin_source_label(
+    project: library_module.Project, page: library_module.Page
+) -> str:
+    """页级版心来源（界面文案）。"""
+    if page.margin_box_mode == MODE_NONE:
+        return "不适用"
+    if page.margin_box_mode == MODE_CUSTOM:
+        return "本页自定义"
+    if page.margin_box_mode == MODE_AUTO:
+        return "自动拟合" if page.margin_box else "沿用默认版心（行不足）"
+    return "沿用默认版心"
+
+
+def margin_box_for_export(
+    project: library_module.Project, page: library_module.Page
+) -> BBox | None:
+    """导出仍沿用旧口径：auto 页不把拟合框带进导出，避免改变既有导出结果。
+
+    这是任务 62 的明确边界：页面 / 审校用每页拟合；导出开关保持默认关，
+    开关关闭时结果必须与升级前逐字节相同。将来若要导出按页版心，需要单独决策。
+    """
+    return export_margin_box(project, page)
 
 
 def export_margin_box(
@@ -534,6 +567,261 @@ def suggest_margin_box(
     return suggest_from_page_boxes(page_boxes)
 
 
+# ---------------------------------------------------------------- 每页自动拟合（任务 62）
+
+# 只取"正文长行"：宽度 > 45% 页宽；页码 / 书眉 / 短行 / 装饰会被滤掉
+AUTO_LONG_LINE = 0.45
+# 拟合出的四边按**行框相对**外扩 2%（不是页面宽高的 2%）
+AUTO_PADDING = 0.02
+AUTO_MIN_LINES = 3
+AUTO_QUANTILE_LOW = 0.05
+AUTO_QUANTILE_HIGH = 0.95
+# 5/95 会切掉两端的正文行；再用**同一页的相邻行距**把紧邻的正文行收回来。
+# 页眉 / 页脚与正文之间的行距更大，不会被卷进来。上限 3% 页高，避免一路爬到页边。
+AUTO_SAFETY_GAP = 0.034
+AUTO_SAFETY_PASSES = 3
+
+
+def _parse_box(raw) -> BBox | None:
+    if not raw or len(raw) != 4:
+        return None
+    try:
+        x0, y0, x1, y1 = (float(value) for value in raw)
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+        return None
+    return (x0, y0, x1, y1)
+
+
+def _expand_line(box: BBox, fraction: float) -> BBox:
+    """按**行框自己的宽高**外扩 fraction（与 `BBox.expanded` 同口径）。"""
+    x0, y0, x1, y1 = box
+    dx = (x1 - x0) * fraction
+    dy = (y1 - y0) * fraction
+    return (
+        max(0.0, x0 - dx),
+        max(0.0, y0 - dy),
+        min(1.0, x1 + dx),
+        min(1.0, y1 + dy),
+    )
+
+
+def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
+    """用一页的检测行拟合版心（纯函数）。
+
+    - 只保留宽度 > 45% 页宽的正文长行；
+    - 每行先按**行框自身**外扩 2%；
+    - 左 / 右 / 上 / 下分别取 5% / 95% 分位；
+    - 有效行 < 3 或结果不合法 → None（调用方回退全局兜底）。
+    """
+    valid: list[BBox] = []
+    for raw in lines:
+        box = _parse_box(raw)
+        if box is None:
+            continue
+        if box[2] - box[0] <= AUTO_LONG_LINE:
+            continue
+        valid.append(_expand_line(box, AUTO_PADDING))
+    if len(valid) < AUTO_MIN_LINES:
+        return None
+    lefts = [box[0] for box in valid]
+    rights = [box[2] for box in valid]
+    tops = [box[1] for box in valid]
+    bottoms = [box[3] for box in valid]
+    try:
+        box = list(normalize_margin_box(
+            (
+                _quantile(lefts, AUTO_QUANTILE_LOW),
+                _quantile(tops, AUTO_QUANTILE_LOW),
+                _quantile(rights, AUTO_QUANTILE_HIGH),
+                _quantile(bottoms, AUTO_QUANTILE_HIGH),
+            )
+        ))
+    except (ValueError, MarginBoxError):
+        return None
+
+    # 安全扩张：把"紧邻边框、且与上一行/下一行行距不超过中位行距"的正文长行收回来。
+    # 这一步只作用在长行上，短行（页码 / 书眉）不参与；页眉页脚与正文的间距通常更大。
+    ordered = sorted(valid, key=lambda item: (item[1] + item[3]) / 2)
+    gaps = [
+        ((ordered[index + 1][1] + ordered[index + 1][3]) / 2)
+        - ((ordered[index][1] + ordered[index][3]) / 2)
+        for index in range(len(ordered) - 1)
+    ]
+    positive = [gap for gap in gaps if gap > 0.001]
+    median_gap = _quantile(positive, 0.5) if positive else 0.02
+    margin = min(AUTO_SAFETY_GAP, max(0.005, median_gap))
+    for _ in range(AUTO_SAFETY_PASSES):
+        changed = False
+        for line in valid:
+            cx = (line[0] + line[2]) / 2
+            cy = (line[1] + line[3]) / 2
+            dx = max(box[0] - cx, 0.0, cx - box[2])
+            dy = max(box[1] - cy, 0.0, cy - box[3])
+            if max(dx, dy) > margin:
+                continue
+            if cx < box[0]:
+                box[0] = line[0]
+            if cx > box[2]:
+                box[2] = line[2]
+            if cy < box[1]:
+                box[1] = line[1]
+            if cy > box[3]:
+                box[3] = line[3]
+            changed = True
+        if not changed:
+            break
+    try:
+        return normalize_margin_box(box)
+    except MarginBoxError:
+        return None
+
+
+def _latest_layout_boxes(directory: Path, page_id: str) -> list[BBox]:
+    """这一页最近一次成功检测的行框；没有检测表时返回空。"""
+    try:
+        with db_module.open_database(directory, apply_migrations=False) as conn:
+            row = conn.execute(
+                """
+                SELECT run_id FROM layout_run
+                WHERE page_id = ? AND status = 'succeeded'
+                ORDER BY created_at DESC, rowid DESC LIMIT 1
+                """,
+                (page_id,),
+            ).fetchone()
+            if row is None:
+                return []
+            rows = conn.execute(
+                "SELECT bbox FROM page_layout_line WHERE run_id = ? ORDER BY line_index",
+                (row["run_id"],),
+            ).fetchall()
+    except Exception as exc:  # noqa: BLE001 - 老库没有检测表
+        if "no such table" in str(exc):
+            return []
+        raise
+    boxes: list[BBox] = []
+    for item in rows:
+        try:
+            values = json.loads(item["bbox"])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        box = _parse_box(values)
+        if box is not None:
+            boxes.append(box)
+    return boxes
+
+
+def fit_page_margin(
+    project_id: str,
+    page_no: int,
+    *,
+    library: Path | None = None,
+    only_auto: bool = True,
+) -> dict[str, object]:
+    """用这一页的检测行拟合版心，写回 `page.margin_box`（只更新 auto 页）。
+
+    - **不覆盖 custom**；`none` 也不动；
+    - 有效行 < 3 → `margin_box = NULL`，读取时回退全局兜底；
+    - 重检测后再次调用会覆盖上一次的自动拟合结果。
+    """
+    target_library = library if library is not None else library_module.default_library_dir()
+    directory = library_module.require_project_dir(project_id, library=target_library)
+    pages = library_module.list_pages(project_id, library=target_library)
+    page = next((item for item in pages if item.page_no == page_no), None)
+    if page is None:
+        raise library_module.ProjectError(f"没有第 {page_no} 页")
+    if page.margin_box_mode in (MODE_CUSTOM, MODE_NONE):
+        return {"page_no": page_no, "updated": False, "reason": "custom_or_none"}
+    if only_auto and page.margin_box_mode != MODE_AUTO:
+        return {"page_no": page_no, "updated": False, "reason": "not_auto"}
+    boxes = _latest_layout_boxes(directory, page.page_id)
+    fitted = fit_box_from_lines(boxes)
+    with db_module.open_database(directory) as conn:
+        conn.execute(
+            "UPDATE page SET margin_box = ? WHERE page_id = ? AND margin_box_mode IN ('auto','inherit')",
+            (serialize_margin_box(fitted), page.page_id),
+        )
+        conn.execute("UPDATE project SET updated_at = ?", (_now(),))
+        conn.commit()
+    return {
+        "page_no": page_no,
+        "updated": True,
+        "margin_box": list(fitted) if fitted else None,
+        "fallback": fitted is None,
+        "lines": len(boxes),
+    }
+
+
+def fit_all_pages(project_id: str, *, library: Path | None = None) -> dict[str, object]:
+    """把 inherit / auto 的页全部改为每页自动拟合；custom / none 不动。"""
+    target_library = library if library is not None else library_module.default_library_dir()
+    directory = library_module.require_project_dir(project_id, library=target_library)
+    pages = library_module.list_pages(project_id, library=target_library)
+    updated = fitted = fallback = 0
+    skipped_custom = skipped_none = 0
+    for page in pages:
+        if page.margin_box_mode == MODE_CUSTOM:
+            skipped_custom += 1
+            continue
+        if page.margin_box_mode == MODE_NONE:
+            skipped_none += 1
+            continue
+        if page.margin_box_mode == MODE_INHERIT:
+            with db_module.open_database(directory) as conn:
+                conn.execute(
+                    "UPDATE page SET margin_box_mode = 'auto' WHERE page_id = ?",
+                    (page.page_id,),
+                )
+                conn.commit()
+        result = fit_page_margin(project_id, page.page_no, library=target_library)
+        if result.get("updated"):
+            updated += 1
+            if result.get("fallback"):
+                fallback += 1
+            else:
+                fitted += 1
+    return {
+        "updated": updated,
+        "fitted": fitted,
+        "fallback": fallback,
+        "skipped_custom": skipped_custom,
+        "skipped_none": skipped_none,
+    }
+
+
+def page_margin_audit(
+    project_id: str, page_no: int, *, library: Path | None = None
+) -> dict[str, object]:
+    """这一页有多少"正文长行"落在**该页自己的**生效版心之外（可疑提示用）。"""
+    target_library = library if library is not None else library_module.default_library_dir()
+    directory = library_module.require_project_dir(project_id, library=target_library)
+    pages = library_module.list_pages(project_id, library=target_library)
+    page = next((item for item in pages if item.page_no == page_no), None)
+    if page is None:
+        raise library_module.ProjectError(f"没有第 {page_no} 页")
+    project = library_module.load_project(project_id, library=target_library)
+    box = effective_margin_box(project, page)
+    boxes = _latest_layout_boxes(directory, page.page_id)
+    long_lines = [
+        b for b in boxes if b[2] - b[0] > AUTO_LONG_LINE
+    ]
+    if box is None:
+        return {"page_no": page_no, "total_lines": len(long_lines), "outside": 0, "samples": []}
+    outside = []
+    for b in long_lines:
+        cx = (b[0] + b[2]) / 2
+        cy = (b[1] + b[3]) / 2
+        if not (box[0] <= cx <= box[2] and box[1] <= cy <= box[3]):
+            outside.append(list(b))
+    return {
+        "page_no": page_no,
+        "total_lines": len(long_lines),
+        "outside": len(outside),
+        "samples": outside[:5],
+    }
+
+
 # ---------------------------------------------------------------- 自动推算（任务 53）
 
 def can_auto_write(project: library_module.Project) -> bool:
@@ -804,6 +1092,6 @@ def margin_box_state(
                 "margin_box": list(page.margin_box) if page.margin_box else None,
             }
             for page in pages
-            if page.margin_box_mode != MODE_INHERIT
+            if page.margin_box_mode in (MODE_CUSTOM, MODE_NONE)
         ],
     }

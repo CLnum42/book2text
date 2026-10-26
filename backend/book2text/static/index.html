@@ -203,18 +203,6 @@
                 </div>
                 <button type="button" id="setup-confirm-all" class="btn btn--block">确认全部未确认页</button>
 
-                <div class="panel__sec panel__sec--secondary" id="layout-panel">
-                  <div class="panel__headrow"><strong>版面检测</strong><span class="muted" id="layout-status">还没检测</span></div>
-                  <p class="hint">只检测文字行框、<strong>不识别文字</strong>；不改现有识别、版心、页码与导出。
-                    行框落库后，页面视图可按工作流状态筛选（如「已检测（未识别）」）。</p>
-                  <div class="row2">
-                    <button type="button" id="layout-detect-selected" class="btn">检测所选页</button>
-                    <button type="button" id="layout-detect-body" class="btn">检测全部正文页</button>
-                  </div>
-                  <div class="hint" id="layout-hint">「检测全部正文页」会自动跳过已检测的页；
-                    要重测某几页，选中它们再点「检测所选页」。</div>
-                </div>
-
                 <div id="setup-suggestion-block" hidden>
                   <div class="flabel">选中页的建议（只作参考）</div>
                   <p class="hint" id="setup-suggestion-note" hidden></p>
@@ -244,10 +232,22 @@
 
             <div id="margin-panel">
             <details class="panel__group" id="panel-margin-settings" open>
-              <summary><strong>版心设置</strong><span class="muted" id="margin-confidence"></span></summary>
+              <summary><strong>页面准备</strong><span class="muted" id="margin-confidence"></span></summary>
               <div class="panel__body">
-                <p class="hint">版心是正文所在的区域；页眉 / 页脚 / 页码在版心外。
-                  打开页面视图的「版心」会压暗外面、画出版心框，四边 / 四角可拖动（吸附到正文行边界）。
+                <div class="panel__sec panel__sec--secondary" id="prepare-panel">
+                  <div class="panel__headrow"><strong>检测并定版心</strong><span class="muted" id="layout-status">还没检测</span></div>
+                  <p class="hint">一个入口做两件事：先检测缺少行框的页，再按<strong>每页自己的检测行</strong>
+                    拟合版心。已有检测行的页只拟合、不重跑识别；不改识别、页码与导出。</p>
+                  <div class="row2">
+                    <button type="button" id="layout-detect-selected" class="btn">准备所选页</button>
+                    <button type="button" id="layout-detect-body" class="btn btn--pri">检测并定版心（全部正文页）</button>
+                  </div>
+                  <div class="hint" id="layout-hint">已有检测行的页会跳过检测、只拟合版心；
+                    没有检测行的页会真正跑一次检测。进度与失败沿用任务机制。</div>
+                </div>
+                <p class="hint">版心默认<strong>每页自动拟合</strong>（只取正文长行，左右上下取 5%/95% 分位，
+                  再按行框外扩 2%）。页内有效行不足 3 行时沿用下面的「默认版心」。
+                  页面视图的「版心」会压暗外面、画出版心框，四边 / 四角可拖动。
                   这一项只用于查看与调整，<strong>不影响导出</strong>。</p>
                 <div class="margin-current" id="margin-global"></div>
                 <div id="margin-selection" hidden>
@@ -260,14 +260,16 @@
                   <div class="flabel">批量设置 <span class="muted" id="margin-batch-count"></span></div>
                   <div class="margin-modes" id="margin-batch-modes"></div>
                 </div>
-                <button type="button" id="margin-suggest" class="btn btn--block">推算版心（全书）</button>
+                <button type="button" id="margin-fit-all" class="btn btn--block">全部改为每页自动拟合</button>
+                <div class="hint" id="margin-audit" hidden></div>
+                <button type="button" id="margin-suggest" class="btn btn--block">推算默认版心（兜底）</button>
                 <div id="margin-suggestion" hidden>
                   <div class="margin-suggestion__title" id="margin-suggestion-title"></div>
                   <div class="margin-suggestion__edges" id="margin-suggestion-edges"></div>
                   <div class="margin-suggestion__spread" id="margin-suggestion-spread"></div>
                   <p class="hint" id="margin-suggestion-note" hidden></p>
                   <div class="row2">
-                    <button type="button" id="margin-apply-suggestion" class="btn btn--pri">采用为全局版心</button>
+                    <button type="button" id="margin-apply-suggestion" class="btn btn--pri">采用为默认版心</button>
                     <button type="button" id="margin-dismiss-suggestion" class="btn">收起</button>
                   </div>
                 </div>

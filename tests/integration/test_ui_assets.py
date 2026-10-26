@@ -613,8 +613,8 @@ def test_right_panel_has_four_ordered_collapsible_sections() -> None:
         "panel-recognition-settings",
     ]
     positions = [page.index(f'id="{name}"') for name in order]
-    assert positions == sorted(positions), "四分区顺序必须是 页面 → 版心 → 页码 → 识别"
-    for title in ("页面设置", "版心设置", "页码设置", "识别设置"):
+    assert positions == sorted(positions), "四分区顺序必须是 页面 → 页面准备 → 页码 → 识别"
+    for title in ("页面设置", "页面准备", "页码设置", "识别设置"):
         assert title in page, title
     # 默认展开前两块；折叠状态按项目记住
     for name in order[:2]:

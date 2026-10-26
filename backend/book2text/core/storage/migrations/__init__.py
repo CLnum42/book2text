@@ -20,6 +20,7 @@ from . import (
     migration_0014_page_number_ranges,
     migration_0015_layout_workflow,
     migration_0016_page_confirmation,
+    migration_0017_page_auto_margin,
 )
 
 MIGRATIONS: list[Migration] = [
@@ -39,6 +40,7 @@ MIGRATIONS: list[Migration] = [
     migration_0014_page_number_ranges.MIGRATION,
     migration_0015_layout_workflow.MIGRATION,
     migration_0016_page_confirmation.MIGRATION,
+    migration_0017_page_auto_margin.MIGRATION,
 ]
 
 LATEST_VERSION = max(migration.version for migration in MIGRATIONS)

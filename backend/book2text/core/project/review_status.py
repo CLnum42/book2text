@@ -68,6 +68,10 @@ def margin_is_set(project, page) -> bool:
         return page.margin_box is not None
     if page.margin_box_mode == "none":
         return True
+    if page.margin_box_mode == "auto":
+        # 每页自动拟合出来的框算"已定"；行不足、回退默认版心时仍要求默认版心是人工设置。
+        if page.margin_box is not None:
+            return True
     return project.margin_box is not None and project.margin_box_source == margin_box_module.SOURCE_MANUAL
 
 

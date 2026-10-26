@@ -314,3 +314,100 @@ def test_layout_job_writes_auto_margin_before_recognition(
         f"/api/projects/{project_id}/pages", headers=auth_headers
     ).json()["pages"]
     assert all(page["recognition"]["status"] == "unrecognized" for page in pages)
+
+
+def test_prepare_job_fits_existing_detection_and_skips_custom(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    inprocess_layout_jobs,
+) -> None:
+    """任务 62：准备任务已有检测行的页只拟合，没有的页先检测；custom 不动。"""
+    project_id = create_project(client, auth_headers, sample_pdf)
+    first = client.post(
+        f"/api/projects/{project_id}/jobs/layout",
+        json={"pages": [1]},
+        headers=auth_headers,
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["job"]["status"] == "succeeded"
+
+    custom_box = [0.2, 0.2, 0.8, 0.8]
+    custom = client.patch(
+        f"/api/projects/{project_id}/pages/2/margin-box",
+        json={"margin_box_mode": "custom", "margin_box": custom_box},
+        headers=auth_headers,
+    )
+    assert custom.status_code == 200, custom.text
+
+    prepared = client.post(
+        f"/api/projects/{project_id}/jobs/layout",
+        json={"pages": [1, 2], "prepare": True},
+        headers=auth_headers,
+    )
+    assert prepared.status_code == 200, prepared.text
+    job = prepared.json()["job"]
+    assert job["status"] == "succeeded"
+    assert job["params"]["mode"] == "prepare"
+    assert job["done"] == 2
+
+    pages = client.get(
+        f"/api/projects/{project_id}/pages", headers=auth_headers
+    ).json()["pages"]
+    by_no = {page["page_no"]: page for page in pages}
+    assert by_no[1]["margin_box_mode"] == "auto"
+    assert by_no[1]["margin_box"] is not None
+    assert by_no[2]["margin_box_mode"] == "custom"
+    assert by_no[2]["margin_box"] == custom_box
+
+    audit = client.get(
+        f"/api/projects/{project_id}/pages/1/margin-box/audit", headers=auth_headers
+    )
+    assert audit.status_code == 200
+    assert audit.json()["outside"] == 0
+
+
+def test_fit_all_api_keeps_custom_and_none(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    inprocess_layout_jobs,
+) -> None:
+    project_id = create_project(client, auth_headers, sample_pdf)
+    # 先检测 1、2 页，3 页保持没有检测行
+    response = client.post(
+        f"/api/projects/{project_id}/jobs/layout",
+        json={"pages": [1, 2]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    for page_no, mode, box in (
+        (2, "custom", [0.2, 0.2, 0.8, 0.8]),
+        (3, "none", None),
+    ):
+        patched = client.patch(
+            f"/api/projects/{project_id}/pages/{page_no}/margin-box",
+            json={"margin_box_mode": mode, "margin_box": box},
+            headers=auth_headers,
+        )
+        assert patched.status_code == 200, patched.text
+
+    result = client.post(
+        f"/api/projects/{project_id}/margin-box/fit-all", headers=auth_headers
+    )
+    assert result.status_code == 200, result.text
+    data = result.json()
+    assert data["updated"] == 1
+    assert data["fitted"] == 1
+    assert data["skipped_custom"] == 1
+    assert data["skipped_none"] == 1
+
+    pages = client.get(
+        f"/api/projects/{project_id}/pages", headers=auth_headers
+    ).json()["pages"]
+    by_no = {page["page_no"]: page for page in pages}
+    assert by_no[1]["margin_box_mode"] == "auto"
+    assert by_no[1]["margin_box"] is not None
+    assert by_no[2]["margin_box_mode"] == "custom"
+    assert by_no[2]["margin_box"] == [0.2, 0.2, 0.8, 0.8]
+    assert by_no[3]["margin_box_mode"] == "none"

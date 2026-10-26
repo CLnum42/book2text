@@ -85,7 +85,7 @@ def test_project_and_page_payloads_have_margin_fields(
     data = client.get(f"/api/projects/{project_id}", headers=auth_headers).json()
     assert data["project"]["margin_box"] is None
     assert data["pages"][0]["margin_box"] is None
-    assert data["pages"][0]["margin_box_mode"] == "inherit"
+    assert data["pages"][0]["margin_box_mode"] == "auto"
 
 
 def test_suggestion_is_read_only_and_reports_dispersion(
@@ -131,7 +131,7 @@ def test_suggestion_is_read_only_and_reports_dispersion(
         page_rows = conn.execute("SELECT margin_box_mode FROM page").fetchall()
     assert json.loads(project_row["margin_box"]) == suggestion["margin_box"]
     assert project_row["margin_box_source"] == "auto"
-    assert {row["margin_box_mode"] for row in page_rows} == {"inherit"}
+    assert {row["margin_box_mode"] for row in page_rows} == {"auto"}
 
 
 def test_project_margin_box_round_trip(
@@ -143,9 +143,9 @@ def test_project_margin_box_round_trip(
 
     data = client.get(f"/api/projects/{recognized_project}", headers=auth_headers).json()
     assert data["project"]["margin_box"] == [0.1, 0.12, 0.9, 0.92]
-    # 页没有自己的设置：沿用全局
+    # 页没有自己的四边：默认每页自动拟合（行不足才沿用默认）
     assert data["pages"][0]["margin_box"] is None
-    assert data["pages"][0]["margin_box_mode"] == "inherit"
+    assert data["pages"][0]["margin_box_mode"] == "auto"
 
     cleared = put_margin(client, auth_headers, recognized_project, None)
     assert cleared.status_code == 200, cleared.text
@@ -184,7 +184,7 @@ def test_page_margin_box_three_modes(
     assert custom.json()["page"]["margin_box"] == [0.2, 0.2, 0.8, 0.8]
 
     state = margin_state(client, auth_headers, recognized_project)
-    assert state["modes"] == {"inherit": 2, "custom": 1, "none": 0}
+    assert state["modes"] == {"auto": 2, "inherit": 0, "custom": 1, "none": 0}
     assert state["exceptions"] == [
         {"page_no": 2, "margin_box_mode": "custom", "margin_box": [0.2, 0.2, 0.8, 0.8]}
     ]
@@ -247,6 +247,7 @@ def test_batch_sets_modes_atomically(
     )
     assert rejected.status_code == 404
     assert margin_state(client, auth_headers, recognized_project)["modes"] == {
+        "auto": 0,
         "inherit": 0,
         "custom": 3,
         "none": 0,
@@ -257,6 +258,7 @@ def test_batch_sets_modes_atomically(
     )
     assert cleared.status_code == 200, cleared.text
     assert margin_state(client, auth_headers, recognized_project)["modes"] == {
+        "auto": 0,
         "inherit": 3,
         "custom": 0,
         "none": 0,

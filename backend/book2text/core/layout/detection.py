@@ -131,6 +131,7 @@ def create_layout_job(
     scope: str | None = None,
     skip_detected: bool = True,
     dpi: int | None = None,
+    prepare: bool = False,
 ) -> jobs_module.JobRecord:
     """建一个版面检测任务（不执行；由 Supervisor 起子进程跑）。"""
     target_library = library if library is not None else default_library_dir()
@@ -152,13 +153,32 @@ def create_layout_job(
     if not MIN_DPI <= use_dpi <= MAX_DPI:
         raise ProjectError(f"DPI 必须在 {MIN_DPI}–{MAX_DPI} 之间，收到 {use_dpi}")
 
-    selected = resolve_layout_pages(
-        project_id,
-        library=target_library,
-        pages=pages,
-        scope=scope,
-        skip_detected=skip_detected,
-    )
+    if prepare:
+        # 「检测并定版心」：正文页全部进任务；已有检测行的页只拟合版心，
+        # 没有检测行的页才真正检测。这样不会为了定版心把全书重检测一遍。
+        all_pages = list_pages(project_id, library=target_library)
+        if pages is not None:
+            by_no = {page.page_no: page for page in all_pages}
+            selected = []
+            for page_no in pages:
+                page = by_no.get(page_no)
+                if page is None:
+                    raise ProjectError(f"没有第 {page_no} 页")
+                if not page.include:
+                    raise ProjectError(
+                        f"第 {page_no} 页不是「正文」类型，不参与页面准备"
+                    )
+                selected.append(page)
+        else:
+            selected = [page for page in all_pages if page.include]
+    else:
+        selected = resolve_layout_pages(
+            project_id,
+            library=target_library,
+            pages=pages,
+            scope=scope,
+            skip_detected=skip_detected,
+        )
     if not selected:
         raise ProjectError("没有需要检测的页面（已检测的页会跳过，非正文页不参与）")
 
@@ -182,7 +202,8 @@ def create_layout_job(
             "dpi": use_dpi,
             "engine_id": adapter.engine_id,
             "engine_setting": LAYOUT_ENGINE,
-            "mode": "det_only",
+            "mode": "prepare" if prepare else "det_only",
+            "fit_margin": bool(prepare),
         },
         job_type=jobs_module.JOB_TYPE_LAYOUT,
     )
@@ -243,16 +264,25 @@ def run_layout_job(
             jobs_module.update_progress(directory, job_id)
             say(f"item {item.item_id} failed page_missing")
             continue
-        _run_item(
-            directory=directory,
-            source=source,
-            page_no=item.page_no,
-            page_id=item.page_id,
-            item_id=item.item_id,
-            adapter=adapter,
-            params=params,
-            log=say,
-        )
+        if str(job.params.get("mode") or "") == "prepare" and _has_detection(
+            directory, item.page_id
+        ):
+            _fit_existing_item(
+                directory=directory,
+                item=item,
+                log=say,
+            )
+        else:
+            _run_item(
+                directory=directory,
+                source=source,
+                page_no=item.page_no,
+                page_id=item.page_id,
+                item_id=item.item_id,
+                adapter=adapter,
+                params=params,
+                log=say,
+            )
         jobs_module.update_progress(directory, job_id)
 
     job = jobs_module.get_job(directory, job_id)
@@ -305,6 +335,66 @@ def _auto_margin_after_job(
             "margin_suggestion "
             f"applied={1 if result['applied'] else 0} "
             f"pages={result['suggestion'].get('pages')}"
+        )
+
+
+def _has_detection(directory: Path, page_id: str) -> bool:
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM layout_run WHERE page_id = ? AND status = 'succeeded' LIMIT 1",
+            (page_id,),
+        ).fetchone()
+    return row is not None
+
+
+def _fit_existing_item(
+    *,
+    directory: Path,
+    item: jobs_module.JobItemRecord,
+    log: Callable[[str], None],
+) -> None:
+    """页面准备任务：已有检测行的页只拟合版心，不重新检测。"""
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        conn.execute(
+            "UPDATE job_item SET status = 'running', attempts = attempts + 1 WHERE item_id = ?",
+            (item.item_id,),
+        )
+        conn.commit()
+    try:
+        from ..project import margin_box as margin_box_module
+
+        result = margin_box_module.fit_page_margin(
+            directory.name, item.page_no, library=directory.parent
+        )
+    except Exception as exc:  # noqa: BLE001 - 拟合失败如实记在页上，不静默
+        jobs_module.mark_item_failed(directory, item.item_id, f"版心拟合失败：{exc}")
+        log(f"page {item.page_no} margin failed")
+        return
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        conn.execute(
+            "UPDATE job_item SET status = 'succeeded' WHERE item_id = ?", (item.item_id,)
+        )
+        conn.commit()
+    log(
+        f"page {item.page_no} margin fitted={1 if result.get('updated') else 0} "
+        f"fallback={1 if result.get('fallback') else 0}"
+    )
+
+
+def _fit_detected_page(directory: Path, page_no: int, log: Callable[[str], None]) -> None:
+    """检测完成后顺手拟合一次 auto 页版心。"""
+    try:
+        from ..project import margin_box as margin_box_module
+
+        result = margin_box_module.fit_page_margin(
+            directory.name, page_no, library=directory.parent
+        )
+    except Exception as exc:  # noqa: BLE001 - 拟合失败不影响检测产物
+        log(f"page {page_no} margin_fit_failed {type(exc).__name__}")
+        return
+    if result.get("updated"):
+        log(
+            f"page {page_no} margin fitted=1 fallback={1 if result.get('fallback') else 0}"
         )
 
 
@@ -464,6 +554,7 @@ def _run_item(
     except Exception as exc:  # noqa: BLE001 - 状态索引失败不影响检测产物
         log(f"page {page_no} workflow_stage_failed {type(exc).__name__}")
 
+    _fit_detected_page(directory, page_no, log)
     log(f"page {page_no} detected lines={len(result.lines)} {elapsed:.1f}s {run_id}")
     return run_id
 

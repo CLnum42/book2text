@@ -203,8 +203,9 @@ def open_package(path: Path, *, library: Path | None = None) -> Project:
                 """
                 INSERT INTO page (
                     page_id, page_no, page_label, width_pt, height_pt, rotation,
-                    page_type, include, has_text_layer, is_context, pdf_page_index, note
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                    page_type, include, has_text_layer, is_context, pdf_page_index, note,
+                    margin_box_mode
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'auto')
                 """,
                 (
                     page["page_id"],

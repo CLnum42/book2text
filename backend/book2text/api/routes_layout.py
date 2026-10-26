@@ -47,6 +47,8 @@ class LayoutJobRequest(BaseModel):
     # 默认跳过已检测的页；重新检测时显式传 false（界面不做批量重测入口）
     skip_detected: bool = True
     dpi: int | None = Field(default=None, ge=72, le=600)
+    # 任务 62：「检测并定版心」：已有检测行的页只拟合，不再重检测
+    prepare: bool = False
 
 
 def _job_payload(
@@ -83,6 +85,7 @@ def start_layout_job(
             scope=body.scope,
             skip_detected=body.skip_detected,
             dpi=body.dpi,
+            prepare=body.prepare,
         )
     except layout_detection.LayoutUnavailable as exc:
         raise AppError(

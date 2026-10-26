@@ -111,6 +111,43 @@ def patch_page_margin_box(
     return {"page": page.to_dict()}
 
 
+@router.post("/{project_id}/pages/{page_no}/margin-box/fit")
+def fit_page_margin_box(
+    request: Request, project_id: str, page_no: int
+) -> dict[str, Any]:
+    """用这一页的检测行拟合并写入页级版心（只对 auto / inherit 有效）。"""
+    _require_main(request, project_id)
+    try:
+        return margin_box_module.fit_page_margin(
+            project_id, page_no, library=_library(request)
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+@router.post("/{project_id}/margin-box/fit-all")
+def fit_all_margin_boxes(request: Request, project_id: str) -> dict[str, Any]:
+    """把 inherit / auto 的页全部改为每页自动拟合；custom / none 不动。"""
+    _require_main(request, project_id)
+    try:
+        return margin_box_module.fit_all_pages(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+@router.get("/{project_id}/pages/{page_no}/margin-box/audit")
+def audit_page_margin(
+    request: Request, project_id: str, page_no: int
+) -> dict[str, Any]:
+    """这一页有多少正文长行落在自己的版心外（可疑提示用）。"""
+    try:
+        return margin_box_module.page_margin_audit(
+            project_id, page_no, library=_library(request)
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
 @router.patch("/{project_id}/margin-box/pages")
 def patch_pages_margin_box(
     request: Request, project_id: str, body: BatchMarginBoxPatch
