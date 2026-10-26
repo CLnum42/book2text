@@ -613,20 +613,20 @@ def test_right_panel_has_four_ordered_collapsible_sections() -> None:
         "panel-recognition-settings",
     ]
     positions = [page.index(f'id="{name}"') for name in order]
-    assert positions == sorted(positions), "四分区顺序必须是 页面 → 页面准备 → 页码 → 识别"
-    for title in ("页面设置", "页面准备", "页码设置", "识别设置"):
+    assert positions == sorted(positions), "四分区顺序必须是 页面类型 → 版心 → 页码 → 识别"
+    for title in ("页面类型", "版心", "页码（可跳过）", "识别设置"):
         assert title in page, title
-    # 默认展开前两块；折叠状态按项目记住
-    for name in order[:2]:
-        assert f'id="{name}" open' in page, name
-    for name in order[2:]:
+    # 任务 64：手风琴一次只开一个，默认由 JS 选第一个未完成的分区；不写死 open。
+    for name in order:
         assert f'id="{name}" open' not in page, name
-    assert "b2t.panels.v1." in script
-    assert "PANEL_GROUP_DEFAULT_OPEN" in script
-    # 页码设置（任务 55）现在有真实入口；不再只是占位说明
+    assert "b2t.panel.accordion.v1." in script
+    assert "function initPanelAccordion(" in script
+    assert "function firstUnfinishedPanel(" in script
+    # 页码（任务 55/64）有真实入口和"可跳过 / 未定位也能导出"说明
     pagenum = page[positions[2]:positions[3]]
     assert 'id="page-number-open"' in pagenum
-    assert "这一版只做" in pagenum
+    assert "未定位也能导出" in pagenum
+    assert "下一刀" not in pagenum
 
     # 五类按自然顺序排列
     assert 'PAGE_TYPE_ORDER = ["front", "toc", "body", "body_excluded", "back"]' in script
@@ -694,7 +694,7 @@ def test_page_number_panel_is_wired() -> None:
     assert "function adoptPageNumberTemplate(" in script
     assert "offset_break" in script and "no_candidate" in script
     assert "not_recognized" in script
-    assert "还没有模板" in page
+    assert "未定位" in page
     assert ".pn-template" in styles and ".pn-mapping" in styles
 
 

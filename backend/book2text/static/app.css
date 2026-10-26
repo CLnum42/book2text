@@ -1311,3 +1311,161 @@ body.diff-mode .page-overlay .box--active {
 .pn-assign-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
 .pn-range-form { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11.5px; }
 .pn-range-form input { width: 64px; height: 26px; }
+
+/* ───────────────────── 页面右栏：摘要 / 手风琴 / 底条（任务 64） ───────────────────── */
+
+.panel {
+  padding: 0 14px;
+  display: block;
+}
+.panel__summary {
+  position: sticky; top: 0; z-index: 6;
+  background: var(--surface);
+  padding: 10px 0 6px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.panel__sumline { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.panel__sumline strong { font-size: 14px; font-weight: 600; }
+.panel__summary .panel__sub { margin: 1px 0 0; font-size: 11px; }
+.panel__types { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.panel__types:empty { display: none; }
+.panel__next { font-size: 11.5px; color: var(--accent-text); margin-top: 3px; line-height: 1.45; }
+.panel__next:empty { display: none; }
+
+.panel__accordion { padding-bottom: 4px; }
+.panel__group { border-top: 1px solid var(--line-soft); margin-top: 0; padding-top: 0; }
+.panel__group:first-of-type { border-top: none; }
+.panel__group > summary {
+  min-height: 34px; padding: 7px 0 5px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+}
+.panel__group > summary strong { font-size: 12.5px; }
+.panel__group > summary > .muted {
+  margin-left: auto; font-size: 10.5px; text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;
+}
+.panel__group > .panel__body { padding: 2px 0 6px; }
+.panel__subdetails { margin: 8px 0 2px; border-top: 1px dashed var(--line-soft); padding-top: 6px; }
+.panel__subdetails > summary {
+  cursor: pointer; font-size: 11.5px; color: var(--muted); min-height: 24px;
+  display: flex; align-items: center; gap: 6px; list-style: none;
+}
+.panel__subdetails > summary::-webkit-details-marker { display: none; }
+.panel__subdetails > summary::before { content: "▸"; font-size: 9px; color: var(--faint); }
+.panel__subdetails[open] > summary::before { content: "▾"; }
+.panel__subdetails > summary .muted { margin-left: auto; font-size: 10px; }
+.panel__subdetails .hint { margin: 4px 0 6px; }
+.panel__bookrow {
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+  margin-top: 8px; font-size: 11px; color: var(--faint);
+}
+.panel__bookrow > button {
+  font: inherit; font-size: 11px; color: var(--muted); background: none; border: 0;
+  padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.panel__bookrow > button:hover:not(:disabled) { color: var(--accent-text); }
+.panel__bookrow > button:disabled { opacity: .5; cursor: not-allowed; }
+.panel__adv { margin-top: 0; padding-top: 0; border-top: 1px solid var(--line-soft); }
+.panel__adv > summary { min-height: 30px; padding: 7px 0 4px; display: flex; align-items: center; font-size: 12px; }
+.panel__adv .panel__sec { margin: 2px 0 4px; }
+
+/* 底部常驻主操作条：sticky 在 .panel 的滚动容器里 */
+.selection-actionbar {
+  position: sticky; bottom: 0; z-index: 8;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 14px rgba(16, 24, 40, .05);
+  padding: 5px 0 7px;
+  margin-top: 6px;
+}
+.selection-actionbar__note {
+  font-size: 10.5px; color: var(--muted); min-height: 13px; line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.selection-actionbar__note:empty { display: none; }
+.selection-actionbar__row { display: flex; gap: 6px; margin-top: 3px; }
+.selection-actionbar__row #selection-recognize { flex: 1; height: 32px; font-size: 12.5px; }
+.selection-actionbar__row #selection-more { width: 34px; height: 32px; padding: 0; font-size: 16px; line-height: 1; }
+.selection-more {
+  position: absolute; right: 0; bottom: calc(100% + 4px);
+  width: 238px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 9px; box-shadow: var(--shadow-3); padding: 7px; z-index: 12;
+}
+.selection-more__item {
+  display: block; width: 100%; text-align: left; font: inherit; font-size: 12px;
+  padding: 7px 8px; border: 0; background: transparent; border-radius: 6px; cursor: pointer; color: var(--text);
+}
+.selection-more__item:hover { background: var(--surface-3); }
+
+/* 版心四来源 2×2 卡片 */
+.margin-mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 4px 0 6px; }
+.margin-card {
+  text-align: left; font: inherit; border: 1px solid var(--line-strong); border-radius: 8px;
+  background: var(--surface); padding: 7px 8px; cursor: pointer; min-height: 48px;
+}
+.margin-card:hover { border-color: var(--accent); }
+.margin-card.is-current {
+  border: 1.5px solid var(--accent); background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, .12);
+}
+.margin-card__title { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--text); }
+.margin-card__dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--line-strong); flex: none; }
+.margin-card.is-current .margin-card__dot { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 2px #fff; }
+.margin-card__note { display: block; font-size: 10px; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+.margin-card:disabled { opacity: .5; cursor: not-allowed; }
+
+.panel__metrics { display: grid; grid-template-columns: 52px 1fr; gap: 4px 8px; margin: 2px 0 8px; font-size: 11.5px; }
+.panel__metrics dt { color: var(--faint); }
+.panel__metrics dd { margin: 0; color: var(--text-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* 右栏分区压缩：628px 内四个分区逐个展开零滚动（任务 64） */
+#panel-page-settings .hint,
+#panel-margin-settings .hint,
+#panel-pagenum-settings .hint,
+#panel-recognition-settings .hint { margin: 2px 0 5px; font-size: 10.5px; line-height: 1.38; }
+#panel-page-settings .flabel,
+#panel-recognition-settings .flabel { margin: 7px 0 3px; font-size: 11px; }
+#panel-page-settings .type-picker { gap: 5px; }
+#panel-page-settings .ptype { min-height: 28px; font-size: 11.5px; }
+#panel-page-settings .btn--block { margin-bottom: 4px; height: 30px; }
+#panel-page-settings .panel__subdetails { margin: 4px 0 0; padding-top: 4px; }
+#panel-page-settings .panel__subdetails > summary { min-height: 22px; }
+#panel-margin-settings .margin-mode-cards { margin: 2px 0 4px; }
+#panel-margin-settings .margin-card { min-height: 44px; padding: 6px 7px; }
+#panel-pagenum-settings .btn--block { margin-bottom: 4px; height: 30px; }
+#panel-recognition-settings .select--block { height: 30px; font-size: 12px; }
+#panel-recognition-settings .rec-dpi .check--line { margin: 0; font-size: 11.5px; min-height: 21px; }
+#panel-recognition-settings .panel__subdetails { margin-top: 6px; }
+#panel-margin-settings .margin-card { min-height: 39px; padding: 5px 7px; }
+#panel-margin-settings .margin-card__title { font-size: 11px; }
+#panel-margin-settings .margin-card__note { font-size: 9.5px; line-height: 1.3; }
+#panel-margin-settings .margin-current { min-height: 18px; margin: 4px 0 1px; }
+#panel-margin-settings .margin-edges { min-height: 18px; margin: 0; }
+#panel-margin-settings #margin-basis { margin: 0 0 2px; }
+#panel-margin-settings #margin-page-actions { margin-top: 4px; }
+#panel-recognition-settings .panel__body { padding-bottom: 2px; }
+#panel-recognition-settings .flabel { margin: 6px 0 2px; }
+#panel-margin-settings .panel__body { padding-bottom: 2px; }
+#panel-margin-settings .panel__subdetails { margin: 3px 0 0; padding-top: 3px; }
+#panel-margin-settings .panel__subdetails > summary { min-height: 22px; }
+#panel-margin-settings .panel__bookrow { margin-top: 5px; }
+#panel-margin-settings #margin-batch-count { margin: 0 0 4px; font-size: 10.5px; white-space: nowrap; }
+#panel-margin-settings .panel__subdetails > summary { overflow: hidden; }
+#panel-margin-settings .panel__subdetails > summary .muted { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#panel-margin-settings .panel__bookrow { gap: 4px; }
+#panel-margin-settings .panel__bookrow > button { font-size: 10.5px; }
+/* 628px 零滚动：选中态下的摘要 / 底条 / 页面类型分区再压一轮 */
+.panel__summary { padding: 7px 0 4px; }
+.panel__sumline { min-height: 20px; }
+.panel__summary .panel__sub { line-height: 1.25; }
+.panel__next { line-height: 1.25; margin-top: 2px; }
+.selection-actionbar { padding: 4px 0 5px; }
+.selection-actionbar__note { min-height: 12px; line-height: 1.2; }
+.selection-actionbar__row { margin-top: 2px; }
+.selection-actionbar__row #selection-recognize { height: 30px; }
+.selection-actionbar__row #selection-more { height: 30px; }
+#panel-page-settings .ptype { min-height: 26px; }
+#panel-page-settings .type-picker { gap: 4px; }
+#panel-page-settings .panel__body { padding-bottom: 2px; }
+#panel-page-settings .panel__subdetails { margin: 3px 0 0; padding-top: 2px; }
+#panel-page-settings .panel__subdetails > summary { min-height: 20px; }

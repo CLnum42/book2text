@@ -177,194 +177,189 @@
           </div>
 
           <aside class="panel" id="selection-panel">
-            <h3>
-              已选 <span id="selection-count">0 页</span>
-              <span class="spacer"></span>
-              <button type="button" id="selection-clear" class="icon-btn" title="清空选择">✕</button>
-            </h3>
-            <div class="panel__sub" id="selection-range"></div>
-
-            <!-- 任务 54：右栏四个分区，顺序固定（页面 → 版心 → 页码 → 识别）。
-                 每块可折叠，折叠状态按项目记在 localStorage；默认展开前两块。 -->
-            <div id="setup-panel">
-            <details class="panel__group" id="panel-page-settings" open>
-              <summary><strong>页面设置</strong><span class="muted" id="setup-progress"></span></summary>
-              <div class="panel__body">
-                <div class="setup-summary" id="setup-summary-detail"></div>
-
-                <div class="flabel">页面类型
-                  <span class="muted" id="selection-type-state"></span>
-                </div>
-                <div class="type-picker" id="selection-types"></div>
-                <p class="hint">按 前置 → 目录 → 正文 → 正文排除 → 后置 排列。
-                  去留由类型决定：只有「正文」进识别与语料，其余四类都不进。</p>
-                <div class="row2">
-                  <button type="button" id="setup-confirm-selected" class="btn btn--pri">确认所选页面</button>
-                </div>
-                <button type="button" id="setup-confirm-all" class="btn btn--block">确认全部未确认页</button>
-
-                <div id="setup-suggestion-block" hidden>
-                  <div class="flabel">选中页的建议（只作参考）</div>
-                  <p class="hint" id="setup-suggestion-note" hidden></p>
-                  <ol class="setup-suggestions" id="setup-suggestions"></ol>
-                </div>
-
-                <div class="panel__sec panel__sec--secondary" id="split-panel">
-                  <div class="panel__headrow"><strong>拆分书眉页码</strong><span class="muted">可选</span></div>
-                  <p class="hint">书眉和页码被识别成一个块时（如 <code>2谁是巴赫金?11</code>），把页码拆成独立的「页码」块：
-                    两块各自有自己的框。只在你点了之后执行，预览确认，整批可一次撤销。</p>
-                  <button type="button" id="split-page-numbers" class="btn btn--block">批量拆分书眉页码…</button>
-                </div>
-
-                <div class="panel__sec panel__sec--secondary" id="suggestion-panel">
-                  <div class="panel__headrow"><strong>页眉 / 页脚 / 页码</strong><span class="muted">建议</span></div>
-                  <p class="hint">识别不会自己改块类型。这里把"把握较大"的建议一次用上：先扫描（只读）看影响多少页、多少块，再点应用。</p>
-                  <button type="button" id="apply-high-suggestions" class="btn btn--block">全库采用高把握建议…</button>
-                  <label class="check check--line">
-                    <input type="checkbox" id="auto-apply-suggestions">
-                    识别完成后自动应用高把握建议
-                  </label>
-                  <div class="hint" id="auto-apply-status" hidden></div>
-                </div>
+            <!-- 顶部固定摘要：只回答"选了什么 / 下一步做什么"（任务 64） -->
+            <div class="panel__summary" id="selection-summary">
+              <div class="panel__sumline">
+                <strong id="selection-count">未选择页面</strong>
+                <span class="spacer"></span>
+                <button type="button" id="selection-clear" class="icon-btn" title="清空选择">✕</button>
               </div>
-            </details>
+              <div class="panel__sub" id="selection-range"></div>
+              <div class="panel__types" id="selection-types-summary"></div>
+              <div class="panel__next" id="selection-next"></div>
             </div>
 
-            <div id="margin-panel">
-            <details class="panel__group" id="panel-margin-settings" open>
-              <summary><strong>页面准备</strong><span class="muted" id="margin-confidence"></span></summary>
-              <div class="panel__body">
-                <div class="panel__sec panel__sec--secondary" id="prepare-panel">
-                  <div class="panel__headrow"><strong>检测并定版心</strong><span class="muted" id="layout-status">还没检测</span></div>
-                  <p class="hint">一个入口做两件事：先检测缺少行框的页，再按<strong>每页自己的检测行</strong>
-                    拟合版心。已有检测行的页只拟合、不重跑识别；不改识别、页码与导出。</p>
-                  <div class="row2">
-                    <button type="button" id="layout-detect-selected" class="btn">准备所选页</button>
-                    <button type="button" id="layout-detect-body" class="btn btn--pri">检测并定版心（全部正文页）</button>
+            <!-- 四个分区 + 高级操作：一次只展开一个，默认展开第一个未完成的分区。 -->
+            <div id="setup-panel" class="panel__accordion">
+              <details class="panel__group" id="panel-page-settings" data-panel="page-type">
+                <summary><strong>页面类型</strong><span class="muted" id="setup-progress"></span></summary>
+                <div class="panel__body">
+                  <div class="flabel">页面类型
+                    <span class="muted" id="selection-type-state"></span>
                   </div>
-                  <div class="hint" id="layout-hint">已有检测行的页会跳过检测、只拟合版心；
-                    没有检测行的页会真正跑一次检测。进度与失败沿用任务机制。</div>
-                </div>
-                <p class="hint">版心默认<strong>每页自动拟合</strong>（只取正文长行，左右上下取 5%/95% 分位，
-                  再按行框外扩 2%）。页内有效行不足 3 行时沿用下面的「默认版心」。
-                  页面视图的「版心」会压暗外面、画出版心框，四边 / 四角可拖动。
-                  这一项只用于查看与调整，<strong>不影响导出</strong>。</p>
-                <div class="margin-current" id="margin-global"></div>
-                <div id="margin-selection" hidden>
-                  <div class="flabel">所选页的版心 <span class="muted" id="margin-page-state"></span></div>
-                  <div class="margin-modes" id="margin-modes"></div>
-                  <div class="margin-edges" id="margin-edges"></div>
-                  <div class="row2" id="margin-page-actions"></div>
-                </div>
-                <div id="margin-batch" hidden>
-                  <div class="flabel">批量设置 <span class="muted" id="margin-batch-count"></span></div>
-                  <div class="margin-modes" id="margin-batch-modes"></div>
-                </div>
-                <button type="button" id="margin-fit-all" class="btn btn--block">全部改为每页自动拟合</button>
-                <div class="hint" id="margin-audit" hidden></div>
-                <button type="button" id="margin-suggest" class="btn btn--block">推算默认版心（兜底）</button>
-                <div id="margin-suggestion" hidden>
-                  <div class="margin-suggestion__title" id="margin-suggestion-title"></div>
-                  <div class="margin-suggestion__edges" id="margin-suggestion-edges"></div>
-                  <div class="margin-suggestion__spread" id="margin-suggestion-spread"></div>
-                  <p class="hint" id="margin-suggestion-note" hidden></p>
-                  <div class="row2">
-                    <button type="button" id="margin-apply-suggestion" class="btn btn--pri">采用为默认版心</button>
-                    <button type="button" id="margin-dismiss-suggestion" class="btn">收起</button>
+                  <div class="type-picker" id="selection-types"
+                       title="只有「正文」进识别与语料；确认只是状态，不拦识别。"></div>
+                  <button type="button" id="setup-confirm-selected" class="btn btn--pri btn--block">确认所选页面</button>
+                  <button type="button" id="setup-confirm-all" class="panel__bookrow">全书… 确认全部未确认页（0）</button>
+
+                  <div id="setup-suggestion-block" hidden>
+                    <div class="flabel">选中页的建议（只作参考）</div>
+                    <p class="hint" id="setup-suggestion-note" hidden></p>
+                    <ol class="setup-suggestions" id="setup-suggestions"></ol>
                   </div>
+
+                  <details class="panel__subdetails" id="split-panel">
+                    <summary>拆分书眉页码（可选）</summary>
+                    <p class="hint">书眉和页码被识别成一个块时，把页码拆成独立的「页码」块；预览确认，整批可撤销。</p>
+                    <button type="button" id="split-page-numbers" class="btn btn--block">批量拆分书眉页码…</button>
+                  </details>
+
+                  <details class="panel__subdetails" id="suggestion-panel">
+                    <summary>页眉 / 页脚 / 页码建议（可选）</summary>
+                    <p class="hint">识别不会自己改块类型；这里先扫描（只读）再确认应用。</p>
+                    <button type="button" id="apply-high-suggestions" class="btn btn--block">全库采用高把握建议…</button>
+                    <label class="check check--line">
+                      <input type="checkbox" id="auto-apply-suggestions">
+                      识别完成后自动应用高把握建议
+                    </label>
+                    <div class="hint" id="auto-apply-status" hidden></div>
+                  </details>
                 </div>
-                <div class="hint" id="margin-status" hidden></div>
-              </div>
-            </details>
-            </div>
+              </details>
 
-            <details class="panel__group" id="panel-pagenum-settings">
-              <summary><strong>页码设置</strong><span class="muted" id="page-number-summary">还没有模板</span></summary>
-              <div class="panel__body">
-                <p class="hint">大多数书的页码位置是稳定的（奇偶页可能各一个位置）。
-                  定位一次 → 全书自动填充 → 只核对异常页。</p>
-                <button type="button" id="page-number-open" class="btn btn--block">定位页码…</button>
-                <button type="button" id="page-number-review-open" class="btn btn--block">核对映射…</button>
-                <div class="hint" id="page-number-status" hidden></div>
-                <p class="hint">这一版只做"确认模板 → 自动填充 + 异常列表"；
-                  逐页手动改映射、第二套页码范围在下一刀。</p>
-              </div>
-            </details>
+              <div id="margin-panel">
+              <details class="panel__group" id="panel-margin-settings" data-panel="margin">
+                <summary><strong>版心</strong><span class="muted" id="margin-confidence"></span></summary>
+                <div class="panel__body">
+                  <div class="margin-mode-cards" id="margin-modes"></div>
+                  <div id="margin-selection" hidden>
+                    <div class="margin-current" id="margin-page-state"></div>
+                    <div class="margin-edges" id="margin-edges"></div>
+                    <div class="hint" id="margin-basis"></div>
+                    <div class="row2" id="margin-page-actions"></div>
+                  </div>
+                  <div id="margin-batch" hidden>
+                    <div class="flabel">来源分布</div>
+                    <div class="hint" id="margin-batch-count"></div>
+                    <div class="margin-mode-cards" id="margin-batch-modes"></div>
+                  </div>
+                  <div class="hint" id="margin-audit" hidden></div>
 
-            <details class="panel__group" id="panel-recognition-settings">
-              <summary><strong>识别设置</strong><span class="muted" id="rec-summary"></span></summary>
-              <div class="panel__body">
-                <div class="flabel">引擎</div>
-                <select id="rec-engine" class="select select--block">
-                  <option value="rapidocr">RapidOCR（默认）</option>
-                  <option value="apple_vision">Apple Vision（仅 macOS）</option>
-                  <option value="dual">双引擎比对</option>
-                </select>
-                <p class="hint" id="rec-engine-note"></p>
+                  <details class="panel__subdetails" id="prepare-panel">
+                    <summary>检测并定版心（可选）<span class="muted" id="layout-status">还没检测</span></summary>
+                    <p class="hint">已有检测行的页只拟合版心；没有的页先检测。进度与失败沿用任务机制。</p>
+                    <div class="row2">
+                      <button type="button" id="layout-detect-selected" class="btn">准备所选页</button>
+                      <button type="button" id="layout-detect-body" class="btn">检测全部正文页</button>
+                    </div>
+                    <div class="hint" id="layout-hint">版心不依赖识别；检测与拟合都不改文字。</div>
+                  </details>
 
-                <div class="flabel">DPI</div>
-                <div class="rec-dpi" id="rec-dpi">
-                  <label class="check check--line"><input type="radio" name="rec-dpi" value="150">
-                    150 <span class="muted">更快、像素量约 56%</span></label>
-                  <label class="check check--line"><input type="radio" name="rec-dpi" value="200" checked>
-                    200（默认）<span class="muted">单页峰值约 2.7 GB</span></label>
-                  <label class="check check--line"><input type="radio" name="rec-dpi" value="300">
-                    300 <span class="muted">像素量约 2.25 倍、内存更高</span></label>
+                  <div class="panel__bookrow">
+                    <span>全书…</span>
+                    <button type="button" id="margin-fit-all">全部改为每页自动拟合</button>
+                    <button type="button" id="margin-suggest" title="从全书的行框推算一个默认版心，只在页内行不足时兜底">推算默认</button>
+                  </div>
+
+                  <details class="panel__subdetails" id="margin-global-details">
+                    <summary>默认版心（页内行不足时使用）</summary>
+                    <div class="margin-current" id="margin-global"></div>
+                    <div id="margin-suggestion" hidden>
+                      <div class="margin-suggestion__title" id="margin-suggestion-title"></div>
+                      <div class="margin-suggestion__edges" id="margin-suggestion-edges"></div>
+                      <div class="margin-suggestion__spread" id="margin-suggestion-spread"></div>
+                      <p class="hint" id="margin-suggestion-note" hidden></p>
+                      <div class="row2">
+                        <button type="button" id="margin-apply-suggestion" class="btn btn--pri">采用为默认版心</button>
+                        <button type="button" id="margin-dismiss-suggestion" class="btn">收起</button>
+                      </div>
+                    </div>
+                    <div class="hint" id="margin-status" hidden></div>
+                  </details>
                 </div>
-                <p class="hint">200 DPI 是实测选出的默认（40 页真书正文 CER 1.08%，300 DPI 1.31%）；
-                  200 DPI 单页识别子进程峰值内存约 2.7 GB。150 / 300 的耗时依书而异，换书需要复核。</p>
+              </details>
+              </div>
 
-                <div class="flabel">语言</div>
-                <select id="rec-language" class="select select--block">
-                  <option value="ch">中文（默认）</option>
-                  <option value="en">英文</option>
-                  <option value="mixed">中英混合</option>
-                </select>
-                <p class="hint" id="rec-language-note">语言会写进识别任务参数。Apple Vision 按它切换识别语言；
-                  RapidOCR 只有中英混排模型（离线内置），三档当前结果相同。</p>
+              <details class="panel__group" id="panel-pagenum-settings" data-panel="page-number">
+                <summary><strong>页码（可跳过）</strong><span class="muted" id="page-number-summary">未定位 · 可跳过</span></summary>
+                <div class="panel__body">
+                  <div class="panel__metrics" id="page-number-metrics"></div>
+                  <button type="button" id="page-number-open" class="btn btn--block">定位页码…</button>
+                  <button type="button" id="page-number-review-open" class="btn btn--block" hidden>核对异常…</button>
+                  <p class="hint">未定位也能导出；预检会提示，manifest 会记录。</p>
+                  <div class="hint" id="page-number-status" hidden></div>
+                </div>
+              </details>
 
-                <div class="flabel" id="rec-strategy-label">双引擎策略</div>
-                <select id="rec-dual-strategy" class="select select--block">
-                  <option value="mark">只标分歧（默认）</option>
-                  <option value="candidates">分歧行给候选</option>
-                </select>
-                <p class="hint">双引擎<strong>不会自动采用任何一方</strong>的结果：只写行级候选、标出分歧。
-                  实测第二引擎更弱（整页汉字级 CER 2.16% vs 1.08%），标记回答"看哪里"，候选只作参考。</p>
-                <div class="hint" id="rec-status" hidden></div>
+              <details class="panel__group" id="panel-recognition-settings" data-panel="recognition">
+                <summary><strong>识别设置</strong><span class="muted" id="rec-summary"></span></summary>
+                <div class="panel__body">
+                  <div class="flabel">引擎</div>
+                  <select id="rec-engine" class="select select--block">
+                    <option value="rapidocr">RapidOCR（默认）</option>
+                    <option value="apple_vision">Apple Vision（仅 macOS）</option>
+                    <option value="dual">双引擎比对</option>
+                  </select>
+                  <p class="hint" id="rec-engine-note"></p>
 
-                <div class="panel__sec panel__sec--secondary">
-                  <div class="panel__headrow"><strong>开始识别</strong><span class="muted">使用上面的设置</span></div>
+                  <div class="flabel">DPI</div>
+                  <div class="rec-dpi" id="rec-dpi">
+                    <label class="check check--line"><input type="radio" name="rec-dpi" value="150"> 150 <span class="muted">更快</span></label>
+                    <label class="check check--line"><input type="radio" name="rec-dpi" value="200" checked> 200（默认）<span class="muted">单页峰值约 2.7 GB</span></label>
+                    <label class="check check--line"><input type="radio" name="rec-dpi" value="300"> 300 <span class="muted">更清晰、更慢</span></label>
+                  </div>
+                  <p class="hint">200 DPI 默认；真书正文 CER 1.08%（300 DPI 1.31%）。</p>
+
+                  <div class="flabel">语言</div>
+                  <select id="rec-language" class="select select--block">
+                    <option value="ch">中文（默认）</option>
+                    <option value="en">英文</option>
+                    <option value="mixed">中英混合</option>
+                  </select>
+                  <p class="hint" id="rec-language-note">写进识别任务参数；RapidOCR 三档当前结果相同。</p>
+
+                  <div class="flabel" id="rec-strategy-label">双引擎策略</div>
+                  <select id="rec-dual-strategy" class="select select--block">
+                    <option value="mark">只标分歧（默认）</option>
+                    <option value="candidates">分歧行给候选</option>
+                  </select>
+                  <p class="hint" id="rec-strategy-note">双引擎不会自动采用任何一方；第二引擎只作分歧线索。</p>
+                  <div class="hint" id="rec-status" hidden></div>
+                </div>
+              </details>
+
+              <details class="panel__adv" id="panel-advanced" data-panel="advanced">
+                <summary>高级操作（第二引擎复核）</summary>
+                <div class="panel__sec">
                   <label class="check check--line">
-                    <input type="checkbox" id="selection-skip-recognized" checked> 跳过已识别的页
+                    <input type="checkbox" id="selection-skip-checked" checked> 跳过已复核的页
                   </label>
-                  <button type="button" id="selection-recognize" class="btn btn--pri btn--block">识别所选</button>
-                  <button type="button" id="recognize-pending" class="btn btn--block">识别全部未识别页</button>
+                  <button type="button" id="selection-check" class="btn btn--block"
+                          title="用第二引擎逐行复核所选页；进度在右下角任务抽屉里看">复核所选</button>
+                  <button type="button" id="check-pending" class="panel__bookrow">全书… 复核全部未复核页（0）</button>
                 </div>
-              </div>
-            </details>
-
-            <details class="panel__adv">
-              <summary>高级操作（第二引擎复核 / 其他）</summary>
-              <div class="panel__sec">
-                <label class="check check--line">
-                  <input type="checkbox" id="selection-skip-checked" checked> 跳过已复核的页
-                </label>
-                <button type="button" id="selection-check" class="btn btn--block"
-                        title="用第二引擎（macOS 上是系统自带的 Apple Vision）逐行复核所选页：复核跑在后台任务里，进度在右下角的任务抽屉里看">复核所选</button>
-                <button type="button" id="check-pending" class="btn btn--block"
-                        title="复核全部已识别但还没复核过的页（说明书 8.5：第二引擎可以随时补跑）">复核全部未复核页</button>
-              </div>
-              <div class="panel__sec">
-                <button type="button" id="selection-all" class="btn btn--block">全选（当前筛选）</button>
-                <button type="button" id="selection-review-open" class="btn btn--block">在审校中打开</button>
-                <button type="button" id="assign-open" class="btn btn--block"
-                        title="把选中的页面分派给助手（生成任务包 .b2tpkg，说明书 6.7）">分派审校…</button>
-              </div>
-            </details>
+              </details>
+            </div>
 
             <div class="alert alert--warn" id="selection-hint" hidden></div>
-            <div class="tipbox">单击选中一页、Shift + 单击选一段、⌘/Ctrl + 单击加减一页；
-              双击看这一页的识别结果。识别前先排除封面、版权页与空白页可以省时间。</div>
+
+            <!-- 底部常驻主操作条：只做"当前选择最重要的一件事"；其余动作进 ⋯。 -->
+            <div class="selection-actionbar" id="selection-actionbar">
+              <div class="selection-actionbar__note" id="selection-primary-note"></div>
+              <div class="selection-actionbar__row">
+                <button type="button" id="selection-recognize" class="btn btn--pri">识别</button>
+                <button type="button" id="selection-more" class="btn" title="更多对所选页的动作">⋯</button>
+              </div>
+              <div class="selection-more" id="selection-more-menu" hidden>
+                <label class="check check--line">
+                  <input type="checkbox" id="selection-skip-recognized" checked> 跳过已识别的页
+                </label>
+                <button type="button" id="selection-all" class="selection-more__item">全选当前筛选结果</button>
+                <button type="button" id="selection-review-open" class="selection-more__item">在审校中打开所选</button>
+                <button type="button" id="assign-open" class="selection-more__item"
+                        title="把选中的页面分派给助手（生成任务包 .b2tpkg）">分派审校…</button>
+              </div>
+            </div>
           </aside>
         </div>
       </section>
@@ -470,9 +465,9 @@
               <button type="button" id="review-apply-all" class="btn btn--sm"
                       title="全库扫描"把握较大"的页眉 / 页脚 / 页码建议，预览确认后一次应用（可整体撤销）">全库采用建议…</button>
               <button type="button" id="aux-run" class="btn btn--sm"
-                      title="用第二引擎逐行复核这一页（说明书 8.5）：复核过的分歧行会在块里标出另一路候选，可逐行换过去">第二引擎复核</button>
+                      title="用第二引擎逐行复核这一页：复核过的分歧行会在块里标出另一路候选，可逐行换过去">第二引擎复核</button>
               <button type="button" id="detail-box-create" class="btn btn--sm"
-                      title="在左边的页面上拖出一个框，为漏检的区域补一个块（说明书 6.4）">✚ 框选新增块</button>
+                      title="在左边的页面上拖出一个框，为漏检的区域补一个块">✚ 框选新增块</button>
               <button type="button" id="detail-recognize" class="btn btn--sm">重新识别</button>
               <button type="button" id="review-auto-pass" class="btn btn--sm"
                       title="满足全部条件时只标记「自动通过（未经人工）」：无建议、无分歧、无漏行、版面已确认、版心已定、识别成功、第二引擎已复核">自动通过本页</button>
@@ -573,7 +568,7 @@
             <div class="flabel">规则说明</div>
             <p class="hint">
               扫描书的页眉页脚每页都有，逐页改类型不现实。这里的做法是<strong>位置规则 + 预览 + 批量应用</strong>
-              （说明书 6.5）：先算出哪些块在页面顶部 / 底部区域里、哪些是页码形态，
+              ：先算出哪些块在页面顶部 / 底部区域里、哪些是页码形态，
               <strong>你看过预览再决定应用</strong>；应用是一次批量操作，可以整体撤销。
               已经被人工改过类型的块不会被覆盖。
             </p>
@@ -756,7 +751,7 @@
               页码进元数据，书眉直接丢；脚注 / 旁批即使落在版心内也不进正文
               （勾选「同时导出注释」才进注释流）。</p>
 
-            <div class="flabel">清理规则（说明书 9.3）</div>
+            <div class="flabel">清理规则</div>
             <div class="ruleline"><input type="checkbox" id="export-rule-header" checked disabled>
               <div><span>页眉 / 页脚 / 页码一律进元数据</span><span class="rdesc">固定行为</span></div></div>
             <div class="ruleline"><input type="checkbox" id="export-rule-merge" checked>
@@ -948,7 +943,7 @@
           <button type="button" class="icon-btn" id="stats-close">✕</button>
         </div>
         <div class="mbody mbody--single">
-          <p class="hint">所有数字来自项目数据库的实时统计（说明书 8.5 / 13.4）。</p>
+          <p class="hint">所有数字来自项目数据库的实时统计。</p>
           <dl class="kv stats__list" id="stats-list"></dl>
           <p class="hint" id="stats-note" hidden></p>
         </div>
@@ -966,7 +961,7 @@
         <div class="mbody mbody--single">
           <div class="flabel">我的名字</div>
           <p class="hint" id="settings-note">
-            名字会记进每次审校改动（说明书 5.3 的协作字段）。诊断日志用于求助时贴给别人看。
+            名字会记进每次审校改动。诊断日志用于求助时贴给别人看。
           </p>
           <div class="frow">
             <input type="text" id="settings-name" class="input" placeholder="我的名字" maxlength="50">
@@ -1012,7 +1007,7 @@
         </div>
         <div class="mbody mbody--single">
           <p class="hint">
-            选一本 PDF，应用会把它<strong>复制</strong>进项目库（原始文件不会被改动，说明书 4.3），
+            选一本 PDF，应用会把它<strong>复制</strong>进项目库（原始文件不会被改动），
             然后逐页渲染、统计页面信息。书名可以留空——留空就用文件名。
           </p>
           <div class="frow">
@@ -1037,7 +1032,7 @@
         <div class="mbody mbody--single">
           <p class="hint">
             应用已经在本机跑起来了。下面这几行是环境检查的结果；
-            填一个名字，之后所有审校改动都会记在你名下（说明书 5.3 的协作字段，改错了好追溯）。
+            填一个名字，之后所有审校改动都会记在你名下。
           </p>
           <ul class="limits" id="first-run-checks"></ul>
           <div class="frow">
