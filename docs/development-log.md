@@ -105,6 +105,8 @@ main `7b803c5`（任务 63），844 测试通过。右栏有「页面设置 / �
 **7. 测试**
 
 - `.venv/bin/python -m pytest -q` → **844 passed, 1 warning，116.03 秒**。
+- **CI [#45](https://github.com/CLnum42/book2text/actions/runs/40334884093) Success**：
+  总 5m31s，macOS 2m46s、Windows 5m28s；两个 job 均成功，无 skipped。
 - 更新 `test_ui_assets.py` 三条静态约定：新分区名 / 手风琴键 / 页码"未定位"。
 - **未验证：** Windows / Safari；触屏；1180px 以下上下布局；超长书名 / 长状态文案可能把
   分区头撑成两行（当前 394 页真书没有出现）。
@@ -204,6 +206,8 @@ main `c6684d6`（任务 62 收尾），844 测试通过。审校左图只有块�
 **5. 测试**
 
 - `.venv/bin/python -m pytest -q` → **844 passed, 1 warning**（本次只改前端，无新增后端测试）。
+- **CI [#44](https://github.com/CLnum42/book2text/actions/runs/40334724578) Success**：
+  总 6m37s，两个 job 均成功，无 skipped。
 - 267 页连续翻页抽验：**0 个 JS 错误**，67 页有差异标记、共 282 条；每页标题与标记层都在。
 - **未验证：** Windows / Safari；触屏与窄屏；中英混排行（这本书没有 `AH 212` 这类行）。
 
