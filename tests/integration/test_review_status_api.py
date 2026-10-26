@@ -422,3 +422,40 @@ def test_adopt_ack_changes_text_and_undoes_in_one_batch(
     back = next(item for item in restored["blocks"] if item["block_id"] == block["block_id"])
     assert back["text"] == block["text"]
     assert back["divergence"]["acked"] == 0
+
+
+def test_all_diff_ack_makes_page_eligible_for_auto_pass(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_with_ocr: str,
+    library_dir: Path,
+    monkeypatch,
+) -> None:
+    """任务 67 验收：全部差异 ack 后，页面不再因差异被自动通过拒绝。"""
+    project_id = project_with_ocr
+    monkeypatch.setattr(
+        review_status.ink_gaps_module,
+        "find_ink_gaps",
+        lambda *args, **kwargs: {"candidates": []},
+    )
+    recognition.run_auxiliary(
+        library_dir / project_id,
+        1,
+        engine=FakeSecondEngine(texts=["完全不同的第二路文本"]),
+    )
+    payload = page_blocks(client, auth_headers, project_id, 1)
+    for block in payload["blocks"]:
+        for mark in block["divergence"]["marks"]:
+            response = client.post(
+                f"/api/projects/{project_id}/blocks/{block['block_id']}/diff-ack",
+                json={"line_index": mark["line_index"], "ack": "kept"},
+                headers=auth_headers,
+            )
+            assert response.status_code == 200, response.text
+    after = page_blocks(client, auth_headers, project_id, 1)
+    assert after["divergence"]["lines"] == 0
+    check = client.get(
+        f"/api/projects/{project_id}/pages/1/auto-pass", headers=auth_headers
+    )
+    assert check.status_code == 200, check.text
+    assert check.json()["eligible"] is True

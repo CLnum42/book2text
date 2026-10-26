@@ -87,8 +87,9 @@ main `469b4ef`（任务 66），847 测试通过。`queueDecisions` 只在内存
 
 **7. 测试与截图**
 
-- 新增：ack 保留 + 重跑 + 撤销；采纳文本 + ack 同 batch 撤销；导出保留计数。
-- `.venv/bin/python -m pytest -q` → **849 passed, 1 warning，139.75 秒**。
+- 新增：ack 保留 + 重跑 + 撤销；采纳文本 + ack 同 batch 撤销；导出保留计数；
+  全部差异 ack 后 `evaluate_page` 返回 `eligible=True`。
+- `.venv/bin/python -m pytest -q` → **850 passed, 1 warning，131.48 秒**。
 - **CI [#49](https://github.com/CLnum42/book2text/actions/runs/40356716304) Success**：
   总 8m31s，macOS 2m29s、Windows 8m28s；两个 job 均成功，无 skipped。
 - 截图：[第 370 页保留 3 处后](docs/screenshots/review-ack-kept.png)、

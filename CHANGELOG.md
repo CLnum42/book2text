@@ -18,7 +18,7 @@
 - **采纳与 ack 同 batch**：一次撤销同时恢复文本与 ack，不会只退一半。
 - **重跑第二引擎不覆盖 ack**：行文本没变保留；文本真的变了才清空。
 - **导出**：`manifest.json.workflow` 增加 `diff_kept` / `diff_adopted` 计数，正文不变。
-- 测试 **849 passed, 1 warning**。
+- 测试 **850 passed, 1 warning**。
 
 ### 新增 — 收尾面板：六状态 + 批量版面确认 + 批量自动通过（2026-10-26）
 

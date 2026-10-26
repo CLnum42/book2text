@@ -2817,6 +2817,6 @@ v1（`b2t.pagesOverlay.<project_id>`）的默认值是"关"，老用户存着 `"
 - ⌘Z 撤销一次保留：回到 11 处待处理、`已确认 2`、标记 26。
 - 采纳 1 处后重开队列 10；后端文本与 ack 同 batch，撤销一次全部恢复。
 - 重跑复核后 ack 仍为 `kept`；预检 `diff_kept == 1`。
-- 测试 **849 passed, 1 warning**；macOS + Chromium，Windows / Safari 未验证。
+- 测试 **850 passed, 1 warning**；macOS + Chromium，Windows / Safari 未验证。
 
 **状态：** 生效（2026-10-27）。
