@@ -31,6 +31,7 @@ from . import (
     routes_projects,
     routes_review,
     routes_review_status,
+    routes_cleanup,
     routes_collab,
     routes_packages,
     routes_structure,
@@ -116,6 +117,7 @@ def create_app(
     app.include_router(routes_review_status.router, dependencies=guarded)
     app.include_router(routes_exports.router, dependencies=guarded)
     app.include_router(routes_structure.router, dependencies=guarded)
+    app.include_router(routes_cleanup.router, dependencies=guarded)
     app.include_router(routes_collab.router, dependencies=guarded)
     app.include_router(routes_packages.router, dependencies=guarded)
 

@@ -1292,6 +1292,35 @@
         </li>
       </ul>
 
+      <!-- 任务 41：批量数据清理（两件都整批一个 batch，可一次撤销） -->
+      <div class="finish-cleanup" id="finish-cleanup">
+        <div class="finish-cleanup__title">
+          <strong>数据清理</strong><span class="muted">批量写库，不改文字，可撤销</span>
+        </div>
+        <div class="finish-cleanup__row">
+          <div class="finish-main">
+            <strong>跨页延续自动判定</strong>
+            <div class="finish-sub" id="cleanup-continuation-status">
+              页末行走满版心且末字不是句末标点 → 标延续；明显短行 → 标结束；其余留人工。
+            </div>
+          </div>
+          <button type="button" id="cleanup-continuation-run" class="btn btn--sm">运行…</button>
+        </div>
+        <div class="finish-cleanup__row">
+          <div class="finish-main">
+            <strong>家具块类型清理</strong>
+            <div class="finish-sub" id="cleanup-furniture-status">
+              整块都是书眉 / 页码才改类型，绝不按行拆。
+            </div>
+          </div>
+          <button type="button" id="cleanup-furniture-run" class="btn btn--sm">运行…</button>
+        </div>
+        <div class="finish-cleanup__actions">
+          <button type="button" id="cleanup-undo" class="btn btn--sm">撤销上一次批量操作</button>
+          <span class="hint" id="cleanup-undo-note"></span>
+        </div>
+      </div>
+
       <div class="finish-progress" id="finish-layout-progress" hidden>
         <div class="finish-progress__text" id="finish-layout-progress-text"></div>
         <progress id="finish-layout-bar" value="0" max="1"></progress>

@@ -370,6 +370,66 @@ def apply_block_types(
     return events, by_type, tuple(sorted(pages))
 
 
+def apply_continuations(
+    project_id: str,
+    items: list[tuple[str, bool]],
+    *,
+    library: Path | None = None,
+    batch_id: str | None = None,
+    actor_name: str | None = None,
+    actor: str = ACTOR_SYSTEM,
+) -> tuple[list[Event], int, tuple[int, ...]]:
+    """批量设置「延续到下一页」（任务 41 / F1 的自动判定用）。
+
+    与 ``apply_block_types`` 同一套约束：一个连接、一个事务、一个 ``batch_id``，
+    显式记 ``actor=system``（自动判定，不是人工）；已经是要的值就跳过，不写无用事件。
+    返回（事件, 改了几块, 涉及的页码），整批可以一次撤销。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    batch = batch_id or new_ulid()
+    now = _now()
+    events: list[Event] = []
+    pages: set[int] = set()
+    changed = 0
+
+    with _open(directory) as conn:
+        page_nos = {
+            row["page_id"]: int(row["page_no"])
+            for row in conn.execute("SELECT page_id, page_no FROM page").fetchall()
+        }
+        for block_id, value in items:
+            row = _block_of(conn, block_id)
+            if row is None or row["deleted_at"]:
+                continue
+            if bool(row["continues_to_next"]) == bool(value):
+                continue
+            block_events, _ = _set_block_fields(
+                conn,
+                block_id,
+                {"continues_to_next": 1 if value else 0},
+                batch_id=batch,
+                action=ACTION_SET_CONTINUES,
+                actor_name=actor_name,
+                now=now,
+                actor=actor,
+            )
+            events.extend(block_events)
+            if block_events:
+                changed += 1
+                page_no = page_nos.get(row["page_id"])
+                if page_no is not None:
+                    pages.add(page_no)
+        if events:
+            conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+
+    return events, changed, tuple(sorted(pages))
+
+
 # ---------------------------------------------------------------- 框与行归属
 
 # 手动框不允许小到点不中；也避免退化成一条线（那样一行都落不进去）

@@ -11105,6 +11105,145 @@ function renderFinishPanel() {
     : "回到第 1 页审校";
 }
 
+// ---------------------------------------------------------------- 数据清理（任务 41）
+//
+// 收尾面板里的两个批量动作：跨页延续自动判定（F1）与家具块类型清理（F2）。
+// 都是"先看计划 → 确认 → 整批写入一个 batch"，撤销走同一个撤销栈。
+
+function setCleanupStatus(id, text, isError = false) {
+  const node = el(id);
+  if (!node) return;
+  node.textContent = text;
+  node.style.color = isError ? "var(--bad-fg)" : "";
+}
+
+async function runContinuationCleanup() {
+  if (!currentProject || currentProject.kind === "package") return;
+  const base = `/api/projects/${currentProject.project_id}/cleanup/continuations`;
+  setCleanupStatus("cleanup-continuation-status", "正在分析页边界…");
+  let plan;
+  try {
+    plan = await apiJson(base);
+  } catch (error) {
+    setCleanupStatus("cleanup-continuation-status", `分析失败：${error.message}`, true);
+    return;
+  }
+  const stats = plan.stats || {};
+  const ok = window.confirm(
+    `自动判定跨页延续？\n\n` +
+      `全书 ${stats.boundaries || 0} 个页边界：\n` +
+      `· ${stats.continue || 0} 条判定为延续（标「延续」）\n` +
+      `· ${stats.end || 0} 条判定为结束（标「不延续」）\n` +
+      `· ${stats.review || 0} 条留给人工（进审校队列）\n` +
+      `· ${stats.manual || 0} 条你标注过，不覆盖\n\n` +
+      "只改「延续」标记，不改文字；整批可撤销。"
+  );
+  if (!ok) {
+    setCleanupStatus(
+      "cleanup-continuation-status",
+      `计划：${stats.continue || 0} 延续 / ${stats.end || 0} 结束 / ${stats.review || 0} 待人工（未写入）`
+    );
+    return;
+  }
+  setCleanupStatus("cleanup-continuation-status", "正在写入…");
+  try {
+    const result = await apiJson(base, { method: "POST" });
+    const s = result.stats || {};
+    setCleanupStatus(
+      "cleanup-continuation-status",
+      `已标 ${s.continue || 0} 条延续 / ${s.end || 0} 条结束；${s.review || 0} 条待人工；` +
+        `实际改动 ${result.changed || 0} 块。`
+    );
+    await afterCleanupApplied();
+  } catch (error) {
+    setCleanupStatus("cleanup-continuation-status", `写入失败：${error.message}`, true);
+  }
+}
+
+async function runFurnitureCleanup() {
+  if (!currentProject || currentProject.kind === "package") return;
+  const base = `/api/projects/${currentProject.project_id}/cleanup/furniture`;
+  setCleanupStatus("cleanup-furniture-status", "正在扫描家具块…");
+  let plan;
+  try {
+    plan = await apiJson(base);
+  } catch (error) {
+    setCleanupStatus("cleanup-furniture-status", `扫描失败：${error.message}`, true);
+    return;
+  }
+  const stats = plan.stats || {};
+  if (!stats.blocks) {
+    setCleanupStatus("cleanup-furniture-status", "没有发现整块都是家具的块。");
+    return;
+  }
+  const byType = stats.by_type || {};
+  const typeText = Object.entries(byType)
+    .map(([type, count]) => `${BLOCK_TYPE_LABELS[type] || type} ${count}`)
+    .join(" / ");
+  const ok = window.confirm(
+    `把 ${stats.blocks} 个「整块都是书眉 / 页码」的块改类型？\n\n` +
+      `· ${typeText}\n` +
+      `· 涉及 ${stats.pages} 页、${stats.chars} 字（这些字目前会混进正文）\n\n` +
+      "只改块类型，不删文字、不按行拆；整批可撤销。"
+  );
+  if (!ok) {
+    setCleanupStatus(
+      "cleanup-furniture-status",
+      `计划：${stats.blocks} 块（${typeText}），未写入`
+    );
+    return;
+  }
+  setCleanupStatus("cleanup-furniture-status", "正在写入…");
+  try {
+    const result = await apiJson(base, { method: "POST" });
+    const s = result.stats || {};
+    setCleanupStatus(
+      "cleanup-furniture-status",
+      `已改 ${result.changed || 0} 块（${typeText}），涉及 ${s.pages || 0} 页。`
+    );
+    await afterCleanupApplied();
+  } catch (error) {
+    setCleanupStatus("cleanup-furniture-status", `写入失败：${error.message}`, true);
+  }
+}
+
+/** 批量写完：刷新收尾状态 / 页面状态，丢掉预览与建议缓存（数据变了）。 */
+async function afterCleanupApplied() {
+  previewData = null;
+  previewProject = null;
+  forgetAllPageSuggestions();
+  await refreshPageStates();
+  await loadFinishSummary({ silent: true });
+  if (detailPageNo !== null) {
+    await loadPageDetail(detailPageNo, { forceSuggestions: true });
+  }
+  if (currentView === "preview") {
+    await loadPreview(exportOptions(), JSON.stringify(exportOptions()));
+  }
+}
+
+async function undoLastCleanup() {
+  if (!currentProject) return;
+  if (!window.confirm("撤销上一次批量操作？（延续标记或家具块类型会恢复原样）")) return;
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/undo`, {
+      method: "POST",
+    });
+    const note = el("cleanup-undo-note");
+    if (note) {
+      note.textContent = `已撤销：${data.changed_blocks || 0} 块`;
+      note.hidden = false;
+    }
+    await afterCleanupApplied();
+  } catch (error) {
+    const note = el("cleanup-undo-note");
+    if (note) {
+      note.textContent = error.message || "没有可撤销的操作";
+      note.hidden = false;
+    }
+  }
+}
+
 function openFinishPanel() {
   if (!currentProject || currentProject.kind === "package") return;
   const drawer = el("finish-drawer");
@@ -11415,6 +11554,9 @@ function setupReviewControls() {
     closeFinishPanel();
     checkSelection("unchecked");
   });
+  el("cleanup-continuation-run").addEventListener("click", runContinuationCleanup);
+  el("cleanup-furniture-run").addEventListener("click", runFurnitureCleanup);
+  el("cleanup-undo").addEventListener("click", undoLastCleanup);
   el("finish-start-review").addEventListener("click", finishStartReview);
   el("finish-export").addEventListener("click", finishOpenExport);
   el("diff-queue-toggle").addEventListener("click", () => setQueueOpen(!queueOpen));

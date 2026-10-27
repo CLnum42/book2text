@@ -1879,3 +1879,23 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
 }
 .margin-outside .flabel { margin: 0 0 4px; }
 .margin-outside .hint { margin: 0 0 7px; font-size: 10.5px; }
+
+/* 任务 41：收尾面板里的数据清理（两件批量写库） */
+.finish-cleanup {
+  margin-top: 14px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 9px; background: var(--surface-2);
+}
+.finish-cleanup__title { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.finish-cleanup__title strong { font-size: 12.5px; }
+.finish-cleanup__title .muted { font-size: 10.5px; }
+.finish-cleanup__row {
+  display: flex; align-items: center; gap: 10px; padding: 5px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.finish-cleanup__row .finish-main { flex: 1; min-width: 0; }
+.finish-cleanup__row strong { font-size: 12px; }
+.finish-cleanup__row .btn { flex: none; }
+.finish-cleanup__actions {
+  display: flex; align-items: center; gap: 8px; margin-top: 6px;
+  padding-top: 6px; border-top: 1px solid var(--line-soft);
+}
