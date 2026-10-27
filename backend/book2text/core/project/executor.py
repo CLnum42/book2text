@@ -84,6 +84,12 @@ class _Child:
         return self.process.poll() is None
 
 
+# 原生层崩溃的信号：只有这些才按"引擎崩溃 · 已跳过"结算。
+# SIGSEGV(11) / SIGBUS(10) / SIGABRT(6) / SIGILL(4) / SIGFPE(8)。
+# SIGKILL(9) / SIGTERM(15) / SIGINT(2) 属于"被停"，仍按中断处理。
+CRASH_SIGNALS = frozenset({4, 6, 8, 10, 11})
+
+
 class Supervisor:
     """跟踪本进程起过的识别子进程。
 
@@ -234,11 +240,29 @@ class Supervisor:
     # ---------------------------------------------------------------- 内部
 
     def _reap_locked(self) -> None:
-        """清掉已经退出的子进程（关闭日志句柄）。调用方持锁。"""
+        """清掉已经退出的子进程（关闭日志句柄）。调用方持锁。
+
+        **被信号杀掉的子进程**（原生层段错误等）在这里结算：把正在跑的那一页记成
+        "引擎崩溃 · 已跳过"，任务标中断，剩下的页还能"继续"跑完。Python 里捕获不到
+        SIGSEGV，这是唯一能拿到崩溃页号的地方（`returncode` 是负的信号号）。
+        """
         for job_id, child in list(self._children.items()):
-            if not child.alive:
-                del self._children[job_id]
-                self._close(child)
+            if child.alive:
+                continue
+            code = child.process.returncode
+            # 负值 = 被信号终止；0 / 正数都算正常退出（Python 层已自己结算）。
+            # 只有**原生层崩溃**那几种信号才按"引擎崩溃 · 已跳过"处理：
+            # SIGKILL / SIGTERM 是用户或服务自己停的（应用退出时先写 interrupted 再杀），
+            # 把它们记成崩溃会让"我主动停的"变成"这本书崩了"，走向反了。
+            if isinstance(code, int) and abs(code) in CRASH_SIGNALS:
+                try:
+                    jobs_module.mark_crashed(
+                        child.directory, job_id, signal_no=abs(code)
+                    )
+                except Exception:  # noqa: BLE001 - 结算失败也不能卡住收尾
+                    pass
+            del self._children[job_id]
+            self._close(child)
 
     @staticmethod
     def _close(child: _Child) -> None:

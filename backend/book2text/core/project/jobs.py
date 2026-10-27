@@ -72,6 +72,10 @@ UNFINISHED_ITEM_STATUSES = (ITEM_STATUS_QUEUED, ITEM_STATUS_RUNNING, ITEM_STATUS
 
 INTERRUPTED_MESSAGE = "识别过程中断（应用被关闭）"
 
+# 原生层崩溃（SIGSEGV / SIGBUS …）：子进程被信号杀掉，Python 里拦不住。
+# 处理办法是"记下来、跳过、接着跑完"——**不许**让一页把整个任务拖死。
+CRASH_MESSAGE = "引擎崩溃（这一页让原生层崩溃，已跳过）"
+
 
 class JobError(Exception):
     """任务层面的错误（找不到任务、状态不允许这个操作等）。"""
@@ -260,23 +264,37 @@ def _row_to_item(row) -> JobItemRecord:
     )
 
 
-def pending_items(directory: Path, job_id: str) -> list[JobItemRecord]:
+def pending_items(
+    directory: Path, job_id: str, *, skip_crashed: bool = True
+) -> list[JobItemRecord]:
     """这个任务里**还没成功**的单元：排队中 / 识别中 / 失败。
 
     执行器与"继续 / 重试失败页"都用它决定要做哪些页——说明书 5.3
     要求"用户点击继续后，只处理未成功的 Item"。
+
+    ``skip_crashed``：默认**跳过被原生层崩溃杀掉的那一页**。否则"继续"会从同一页
+    再崩一次，任务永远跑不完（真机实测：RapidOCR 在《鹿鼎记》p281 上 3/3 必崩）。
+    这一页留在失败列表里（`error_message` 写明是引擎崩溃 + 页号），界面照实报。
     """
     placeholders = ", ".join("?" for _ in UNFINISHED_ITEM_STATUSES)
+    crash_clause = (
+        " AND (i.error_message IS NULL OR i.error_message NOT LIKE ?)"
+        if skip_crashed
+        else ""
+    )
+    params: list[object] = [job_id, *UNFINISHED_ITEM_STATUSES]
+    if skip_crashed:
+        params.append(f"{CRASH_MESSAGE}%")
     with _open(directory) as conn:
         _require_tables(conn)
         rows = conn.execute(
             f"""
             SELECT i.*, p.page_no
             FROM job_item i LEFT JOIN page p ON p.page_id = i.page_id
-            WHERE i.job_id = ? AND i.status IN ({placeholders})
+            WHERE i.job_id = ? AND i.status IN ({placeholders}){crash_clause}
             ORDER BY p.page_no, i.item_id
             """,
-            (job_id, *UNFINISHED_ITEM_STATUSES),
+            tuple(params),
         ).fetchall()
     return [_row_to_item(row) for row in rows]
 
@@ -446,6 +464,57 @@ def reset_failed_items(directory: Path, job_id: str) -> int:
 
 
 # ---------------------------------------------------------------- 修理
+
+def mark_crashed(directory: Path, job_id: str, *, signal_no: int) -> list[int]:
+    """子进程被信号杀掉（多半是原生层段错误）：记下崩溃页、跳过它、结算成中断。
+
+    返回**受影响的页号**（通常一页：正在跑的那一页）。这一页的 `error_message`
+    以 ``CRASH_MESSAGE`` 开头，`pending_items(skip_crashed=True)` 会一直跳过它，
+    "继续"就不会在同一条死路上反复撞——剩下没做的页照样跑完。
+    """
+    page_nos: list[int] = []
+    now = _now()
+    with _open(directory) as conn:
+        _require_tables(conn)
+        rows = conn.execute(
+            """
+            SELECT i.item_id, p.page_no
+            FROM job_item i LEFT JOIN page p ON p.page_id = i.page_id
+            WHERE i.job_id = ? AND i.status = ?
+            """,
+            (job_id, ITEM_STATUS_RUNNING),
+        ).fetchall()
+        message = f"{CRASH_MESSAGE}（信号 {signal_no}）"
+        for row in rows:
+            if row["page_no"] is not None:
+                page_nos.append(int(row["page_no"]))
+            conn.execute(
+                "UPDATE job_item SET status = ?, error_message = ? WHERE item_id = ?",
+                (ITEM_STATUS_FAILED, message, row["item_id"]),
+            )
+        # 同任务的其它没结算记录（运行记录 / 排队中被标记成 running 的）一起收尾
+        conn.execute(
+            """
+            UPDATE ocr_run SET status = 'failed', error_code = 'engine_crash',
+                   error_message = ?, finished_at = ?
+            WHERE status IN ('queued', 'running')
+              AND run_id IN (SELECT run_id FROM job_item WHERE job_id = ?)
+            """,
+            ("检测 / 识别进程被信号杀掉", now, job_id),
+        )
+        queued = conn.execute(
+            "SELECT COUNT(*) AS n FROM job_item WHERE job_id = ? AND status IN (?, ?)",
+            (job_id, ITEM_STATUS_QUEUED, ITEM_STATUS_RUNNING),
+        ).fetchone()
+        if queued is None or not int(queued["n"]):
+            conn.execute(
+                "UPDATE job SET status = ?, finished_at = ? WHERE job_id = ?",
+                (STATUS_INTERRUPTED, now, job_id),
+            )
+        conn.commit()
+    update_progress(directory, job_id)
+    return page_nos
+
 
 def repair_unfinished(
     directory: Path, *, message: str, job_id: str | None = None

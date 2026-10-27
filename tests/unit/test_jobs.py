@@ -247,3 +247,47 @@ def test_mark_interrupted_is_a_no_op_when_nothing_is_running(minimal_project: Pa
     job = make_job(minimal_project, "page1")
     jobs.set_status(minimal_project, job.job_id, jobs.STATUS_SUCCEEDED)
     assert jobs.mark_interrupted(minimal_project) == 0
+
+
+# ---------------------------------------------------------------- 原生层崩溃（任务 57）
+
+def test_crash_page_is_recorded_and_skipped_on_retry(minimal_project: Path) -> None:
+    """被信号杀掉的页：记成"引擎崩溃 · 已跳过"，继续时跳过它、剩下的页照做。
+
+    真机背景：RapidOCR 在《鹿鼎记》p281 上 3/3 段错误；不跳过的话"继续"会从同一页
+    再崩一次，任务永远跑不完。
+    """
+    job = make_job(minimal_project, "page1", "page2", "page3")
+    with db_module.open_database(minimal_project, apply_migrations=False) as conn:
+        conn.execute("UPDATE job_item SET status = 'succeeded' WHERE page_id = 'page1'")
+        conn.execute("UPDATE job_item SET status = 'running' WHERE page_id = 'page2'")
+        conn.commit()
+
+    crashed = jobs.mark_crashed(minimal_project, job.job_id, signal_no=11)
+
+    assert crashed == [2], "报出来的必须是崩溃的页号"
+    items = {item.page_no: item for item in jobs.list_job_items(minimal_project, job.job_id)}
+    assert items[2].status == "failed"
+    assert items[2].error_message.startswith(jobs.CRASH_MESSAGE)
+    # "继续"不会再撞这一页，但后面的页照样做
+    assert [item.page_no for item in jobs.pending_items(minimal_project, job.job_id)] == [3]
+    # 需要看全量失败页的调用方（界面 / 重试按钮）仍能看到它
+    assert 2 in {
+        item.page_no
+        for item in jobs.pending_items(
+            minimal_project, job.job_id, skip_crashed=False
+        )
+    }
+
+
+def test_crash_on_last_page_settles_the_job_as_interrupted(minimal_project: Path) -> None:
+    job = make_job(minimal_project, "page1")
+    with db_module.open_database(minimal_project, apply_migrations=False) as conn:
+        conn.execute("UPDATE job_item SET status = 'running' WHERE page_id = 'page1'")
+        conn.commit()
+
+    jobs.mark_crashed(minimal_project, job.job_id, signal_no=11)
+
+    settled = jobs.get_job(minimal_project, job.job_id)
+    assert settled.status == "interrupted"
+    assert settled.failed == 1

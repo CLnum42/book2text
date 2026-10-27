@@ -17,7 +17,15 @@ from typing import Any
 
 from PIL import Image
 
-from ..base import BBox, OcrEngineError, OcrLine, OcrParams, OcrResult, normalize_quad
+from ..base import (
+    BBox,
+    OcrEngineError,
+    OcrLine,
+    OcrParams,
+    OcrResult,
+    normalize_quad,
+    pad_to_multiple,
+)
 
 ENGINE_ID = "rapidocr"
 _ENGINE_VERSION_FALLBACK = "unknown"
@@ -111,8 +119,11 @@ class RapidOcrAdapter:
         engine = self._ensure_engine()
 
         started = time.perf_counter()
+        # 宽高不补到 32 的倍数会在原生层 SIGSEGV（真机 1069×1762 稳定复现）。
+        # 补白只在右 / 下边，所以内容像素坐标不变——下面仍按**原图**宽高归一化。
+        padded = pad_to_multiple(pil_image)
         try:
-            output = engine(pil_image)
+            output = engine(padded)
         except Exception as exc:
             raise OcrEngineError(f"RapidOCR 识别失败：{exc}") from exc
         elapsed = time.perf_counter() - started

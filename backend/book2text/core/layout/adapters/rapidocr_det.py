@@ -25,7 +25,7 @@ from typing import Any
 
 from PIL import Image
 
-from ...ocr.base import normalize_quad
+from ...ocr.base import normalize_quad, pad_to_multiple
 from ..base import LayoutEngineError, LayoutLine, LayoutParams, LayoutResult
 
 ENGINE_ID = "rapidocr_det"
@@ -100,8 +100,11 @@ class RapidOcrDetAdapter:
 
         engine = self._ensure_engine()
         started = time.perf_counter()
+        # 宽高不补到 32 的倍数会在原生层 SIGSEGV（真机 1069×1762 稳定复现）。
+        # 补白只在右 / 下边，所以内容像素坐标不变——下面仍按**原图**宽高归一化。
+        padded = pad_to_multiple(pil_image)
         try:
-            output = engine(pil_image, use_det=True, use_cls=False, use_rec=False)
+            output = engine(padded, use_det=True, use_cls=False, use_rec=False)
         except Exception as exc:
             raise LayoutEngineError(f"RapidOCR 检测失败：{exc}") from exc
         elapsed = time.perf_counter() - started

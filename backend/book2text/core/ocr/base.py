@@ -125,6 +125,30 @@ class OcrEngineError(Exception):
     """引擎不可用或识别失败。"""
 
 
+# RapidOCR 的 onnx 预处理要求宽高是 32 的倍数；不是的话在某些尺寸上会**原生层段错误**
+# （真机实测：《鹿鼎记》p281 1069×1762、p299 1066×1762，3/3 稳定 SIGSEGV；
+# 补到 1088×1792 后同一页 43 行、exit 0）。让**所有输入**先补到 32 的倍数，
+# 比"挑出哪些尺寸会崩"可靠得多。
+PAD_MULTIPLE = 32
+
+
+def pad_to_multiple(image: Image.Image, multiple: int = PAD_MULTIPLE) -> Image.Image:
+    """把图补到宽高都是 ``multiple`` 的倍数：**只在右边 / 下边补纸色白**，内容不平移。
+
+    补白在右边 / 下边意味着**像素坐标不变**：引擎返回的框不需要平移，
+    只要按**原图**宽高归一化（见适配器里的注释）。
+    尺寸已经是倍数时原样返回（不复制图像，省一次内存）。
+    """
+    width, height = image.size
+    target_width = ((width + multiple - 1) // multiple) * multiple
+    target_height = ((height + multiple - 1) // multiple) * multiple
+    if target_width == width and target_height == height:
+        return image
+    canvas = Image.new("RGB", (target_width, target_height), (255, 255, 255))
+    canvas.paste(image, (0, 0))
+    return canvas
+
+
 def normalize_quad(quad: Any, width: int, height: int) -> BBox:
     """把引擎返回的像素四边形转成归一化 bbox。
 

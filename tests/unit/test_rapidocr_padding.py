@@ -1,0 +1,112 @@
+"""RapidOCR 原生层段错误的热修回归（2026-10-27，任务 57）。
+
+**问题：**《鹿鼎记》`b2t_XPAT9E` 200 DPI 下，第 281 页（1069×1762）与第 299 页
+（1066×1762）让 RapidOCR **稳定 SIGSEGV**（3/3），检测与整页识别都会崩。
+补到 32 的倍数（1088×1792，右下补白、内容不平移）后同样两页 43 行、exit 0。
+
+**这组测试守两件事：**
+
+1. `pad_to_multiple()` 的尺寸与"内容不平移"约定（不需要 OCR 运行时，永远能跑）；
+2. 用**能复现崩溃的尺寸**（1069×1762）合成一张有文字的图，走两个适配器都不崩、
+   且坐标按**原图**宽高归一化（补白不能把框缩小）。这一条需要 OCR 运行时。
+"""
+
+from __future__ import annotations
+
+from PIL import Image, ImageDraw
+
+import pytest
+
+from book2text.core.ocr.base import PAD_MULTIPLE, pad_to_multiple
+
+# 真机上会崩的两个页面渲染尺寸（200 DPI）
+CRASHING_SIZE = (1069, 1762)
+
+
+# ---------------------------------------------------------------- 纯函数部分
+
+
+def test_pad_multiple_rounds_up_to_32() -> None:
+    image = Image.new("RGB", CRASHING_SIZE, "white")
+
+    padded = pad_to_multiple(image)
+
+    assert PAD_MULTIPLE == 32
+    assert padded.size == (1088, 1792)
+    assert image.size == CRASHING_SIZE, "原图不能被就地改尺寸"
+
+
+def test_pad_keeps_content_at_origin() -> None:
+    """内容留在左上角：这样引擎返回的像素坐标不需要平移。"""
+    image = Image.new("RGB", (65, 61), "white")
+    ImageDraw.Draw(image).rectangle([2, 3, 10, 9], fill="black")
+
+    padded = pad_to_multiple(image)
+
+    assert padded.size == (96, 64)
+    assert padded.getpixel((2, 3)) == (0, 0, 0)
+    # 右下补的是纸色白
+    assert padded.getpixel((95, 63)) == (255, 255, 255)
+
+
+def test_pad_is_a_noop_when_already_aligned() -> None:
+    image = Image.new("RGB", (64, 96), "white")
+
+    assert pad_to_multiple(image) is image
+
+
+# ---------------------------------------------------------------- 真引擎回归
+
+def _text_page(size: tuple[int, int]) -> Image.Image:
+    """造一页"有文字"的图，尺寸用真机上会崩的那个（1069×1762）。"""
+    image = Image.new("RGB", size, "white")
+    draw = ImageDraw.Draw(image)
+    for row in range(8):
+        y = 120 + row * 90
+        draw.rectangle([140, y, size[0] - 140, y + 42], fill=(30, 30, 30))
+    return image
+
+
+@pytest.mark.ocr
+@pytest.mark.macos_only
+def test_detection_survives_crashing_size() -> None:
+    """1069×1762 以前 3/3 段错误；padding 之后必须正常返回行框。"""
+    from book2text.core.layout.adapters import RapidOcrDetAdapter
+    from book2text.core.layout.base import LayoutParams
+
+    adapter = RapidOcrDetAdapter()
+    available, reason = adapter.available()
+    if not available:
+        pytest.skip(f"未安装 OCR 引擎（uv sync --group ocr-eval）：{reason}")
+
+    image = _text_page(CRASHING_SIZE)
+    result = adapter.detect(image, LayoutParams(dpi=200))
+
+    assert len(result.lines) >= 3
+    assert result.image_width == CRASHING_SIZE[0]
+    assert result.image_height == CRASHING_SIZE[1]
+    for line in result.lines:
+        # 按**原图**宽高归一化：补白不该把框压缩到 1069/1088
+        assert 0.0 <= line.bbox.x0 < line.bbox.x1 <= 1.0
+        assert 0.0 <= line.bbox.y0 < line.bbox.y1 <= 1.0
+
+
+@pytest.mark.ocr
+@pytest.mark.macos_only
+def test_recognition_survives_crashing_size() -> None:
+    """整页识别走的是另一个适配器，同样在 1069×1762 上崩过。"""
+    from book2text.core.ocr.adapters.rapidocr import RapidOcrAdapter
+    from book2text.core.ocr.base import OcrParams
+
+    adapter = RapidOcrAdapter()
+    available, reason = adapter.available()
+    if not available:
+        pytest.skip(f"未安装 OCR 引擎（uv sync --group ocr-eval）：{reason}")
+
+    image = _text_page(CRASHING_SIZE)
+    result = adapter.recognize(image, OcrParams())
+
+    assert result.lines, "合成图上有 8 条黑条，识别结果不应为空"
+    for line in result.lines:
+        assert 0.0 <= line.bbox.x0 < line.bbox.x1 <= 1.0
+        assert 0.0 <= line.bbox.y0 < line.bbox.y1 <= 1.0
