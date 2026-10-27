@@ -37,7 +37,7 @@ INDEX_SCHEMA = "book2text.page-index.v1"
 # 页码候选只认页面下边带：上边带多半是书眉里的章节号，中部是插图里的数字。
 BOTTOM_BAND = 0.85
 # 章首匹配：第X回 / 第X回　（回目后面可能跟标题）
-CHAPTER_RE = re.compile(r"^第[一二三四五六七八九十百零〇两]+回")
+CHAPTER_RE = re.compile(r"^第[一二三四五六七八九十百零〇两]+回(?=\s|$)")
 # 判断章首时看每页前几个文字块（书眉可能排在章题前面）
 CHAPTER_LOOKAHEAD = 3
 
