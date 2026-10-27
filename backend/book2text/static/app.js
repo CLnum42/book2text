@@ -423,6 +423,8 @@ function renderStepPanels() {
   const pageStep = onPages && step === "pages";
   const marginStep = onPages && step === "margin";
   const recognitionStep = onPages && step === "recognition";
+  // 目录确认也带版心开关（任务 46）：这一步要沿袭页面视图的版心/块框
+  const indexStep = Boolean(currentProject) && currentView === "index";
   document.body.dataset.workflowStep = step;
 
   const group = (id, visible) => {
@@ -464,7 +466,7 @@ function renderStepPanels() {
     }
   }
 
-  syncStepToggles(marginStep);
+  syncStepToggles(marginStep || indexStep);
   if (marginStep) {
     renderMarginPanel();
     ensureMarginFitted();
@@ -492,6 +494,7 @@ function syncStepToggles(marginStep) {
       if (button) button.classList.add("is-on");
       refreshMarginTiles();
     }
+    if (currentView === "index") paintIndexDecorations();
     return;
   }
   if (!pagesMarginOn) return;
@@ -500,6 +503,7 @@ function syncStepToggles(marginStep) {
   for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
     clearTileMargin(tile);
   }
+  if (currentView === "index") paintIndexDecorations();
 }
 
 /** auto 页里还没有拟合框的那些页（= 版心未定）。 */
@@ -4291,6 +4295,8 @@ function togglePageBlocksOverlay() {
       clearPageBlocks(tile);
     }
   }
+  syncIndexToggles();
+  if (currentView === "index") paintIndexDecorations();
 }
 
 function resetOverlayQueue() {
@@ -4380,14 +4386,14 @@ function fetchPageBlocks(pageNo, key, { prefetch = false } = {}) {
 }
 
 
-function renderPageBlocks(tile, blocks) {
+function renderPageBlocks(tile, blocks, { details = pageZoomIndex >= 2 } = {}) {
   const overlay = tile.querySelector(".page-overlay");
   if (!overlay) return;
   overlay.innerHTML = "";
   overlay._renderedBlocks = blocks;
   overlay._lineBboxes = [];
   // 网格 / 大网格：只画色框。缩略图上 11px 的顺序号看不清，画了只是噪声。
-  const showDetails = pageZoomIndex >= 2;
+  const showDetails = details;
   let count = 0;
   for (const block of blocks) {
     if (!block.bbox) continue;
@@ -4507,6 +4513,8 @@ function toggleMarginView() {
       clearTileMargin(tile);
     }
   }
+  syncIndexToggles();
+  if (currentView === "index") paintIndexDecorations();
   renderMarginPanel();
 }
 
@@ -6892,6 +6900,8 @@ let pageIndexProject = null;
 let pageIndexLoading = false;
 let indexCurrentPage = null;
 let indexImageToken = 0;
+let indexBlocksToken = 0;
+let indexBlocks = [];
 let indexJumpTimer = null;
 const INDEX_ZOOM_SCALES = [0.55, 0.7, 0.85, 1];
 
@@ -6921,6 +6931,19 @@ async function loadPageIndex() {
 /** 进入目录确认步：有缓存就用缓存；没有就生成一次，然后停在"当前页"。 */
 async function openPageIndex() {
   if (!currentProject) return;
+  // 目录确认默认开版心 + 块框：用户来这里就是要看"这一页的版心和块长什么样"。
+  // 这两个开关和页面视图是同一份状态，在这里改，回去也生效。
+  if (!pagesMarginOn) {
+    pagesMarginOn = true;
+    savePageMarginPreference();
+    el("pages-margin-toggle")?.classList.add("is-on");
+  }
+  if (!pagesOverlayOn) {
+    pagesOverlayOn = true;
+    savePageOverlayPreference();
+    el("pages-overlay-toggle")?.classList.add("is-on");
+  }
+  syncIndexToggles();
   if (!pageIndexData || pageIndexProject !== currentProject.project_id) {
     await loadPageIndex();
   } else {
@@ -7010,7 +7033,9 @@ function openIndexPage(pageNo, { scrollList = true } = {}) {
   setIndexJumpStatus("");
   const image = el("index-image");
   const status = el("index-image-status");
+  const pageEl = el("index-page");
   const token = ++indexImageToken;
+  if (pageEl) pageEl.hidden = false;
   status.hidden = false;
   status.textContent = "正在渲染…";
   image.classList.remove("is-ready");
@@ -7019,6 +7044,7 @@ function openIndexPage(pageNo, { scrollList = true } = {}) {
     status.hidden = true;
     image.classList.add("is-ready");
     applyIndexZoom();
+    paintIndexDecorations();
   };
   image.onerror = () => {
     if (token !== indexImageToken) return;
@@ -7027,6 +7053,16 @@ function openIndexPage(pageNo, { scrollList = true } = {}) {
   };
   image.src = pageImageUrl(pageNo, "view");
   image.alt = `第 ${pageNo} 页`;
+  // 块数据按当前页懒加载（目录确认只显示一页，不预取全书）
+  indexBlocks = [];
+  const blocksToken = ++indexBlocksToken;
+  const blocksStarted = performance.now();
+  loadIndexBlocks(pageNo).then((blocks) => {
+    if (blocksToken !== indexBlocksToken || indexCurrentPage !== pageNo) return;
+    indexBlocks = blocks || [];
+    paintIndexDecorations();
+    window.__b2tIndexBlocksMs = Math.round(performance.now() - blocksStarted);
+  });
 
   el("index-page-no").textContent = `第 ${pageNo} 页`;
   const entry =
@@ -7042,6 +7078,8 @@ function openIndexPage(pageNo, { scrollList = true } = {}) {
   el("index-prev").disabled = index <= 0;
   el("index-next").disabled = index < 0 || index >= pages.length - 1;
   highlightIndexRow(scrollList);
+  syncIndexToggles();
+  paintIndexDecorations();
 }
 
 function highlightIndexRow(scroll) {
@@ -7067,10 +7105,10 @@ function stepIndexPage(delta) {
 
 /** 缩放与页面视图共用 pageZoomIndex；这里只改预览宽度，不动网格。 */
 function applyIndexZoom() {
-  const image = el("index-image");
-  if (!image) return;
+  const pageEl = el("index-page");
+  if (!pageEl) return;
   const scale = INDEX_ZOOM_SCALES[pageZoomIndex] || 1;
-  image.style.width = `${Math.round(scale * 100)}%`;
+  pageEl.style.width = `${Math.round(scale * 100)}%`;
   const label = el("index-zoom-label");
   if (label) {
     label.textContent = pageZoomIndex >= INDEX_ZOOM_SCALES.length - 1
@@ -7090,6 +7128,85 @@ function changeIndexZoom(delta) {
   pageZoomTouched = true;
   pageZoomIndex = next;
   applyIndexZoom();
+  paintIndexDecorations();
+}
+
+/** 目录确认只加载当前页的块（不预取全书）。 */
+async function loadIndexBlocks(pageNo) {
+  const key = pageBlockKey(pageNo);
+  if (pageBlockCache.has(key)) return pageBlockCache.get(key);
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${pageNo}/blocks`
+    );
+    const blocks = data.blocks || [];
+    rememberPageBlocks(key, blocks);
+    return blocks;
+  } catch {
+    return [];
+  }
+}
+
+/** 版心 + 块框 + 首行标记：和页面视图调用同一套渲染函数。 */
+function paintIndexDecorations() {
+  if (!currentProject || indexCurrentPage === null) return;
+  const page = currentProject.pages.find((item) => item.page_no === indexCurrentPage);
+  const wrapper = el("index-page");
+  if (!page || !wrapper) return;
+  paintTileMargin(wrapper, page);
+  if (pagesOverlayOn && indexBlocks.length) {
+    renderPageBlocks(wrapper, indexBlocks, { details: true });
+  } else {
+    clearPageBlocks(wrapper);
+  }
+  drawIndexFirstLine(indexBlocks);
+  syncIndexToggles();
+}
+
+/** 选中页的首行：淡蓝框，用来核对"这个印刷页码是不是这一页"。 */
+function drawIndexFirstLine(blocks) {
+  const node = el("index-firstline");
+  if (!node) return;
+  let first = null;
+  const page = currentProject
+    ? currentProject.pages.find((item) => item.page_no === indexCurrentPage)
+    : null;
+  for (const block of blocks) {
+    if (!block.include) continue;
+    if (!blockCountedInMargin(block, page)) continue;
+    const line = (block.lines || []).find((item) => item && item.bbox);
+    if (line) {
+      first = line;
+      break;
+    }
+  }
+  if (!first) {
+    node.hidden = true;
+    return;
+  }
+  const [x0, y0, x1, y1] = first.bbox;
+  node.style.left = `${x0 * 100}%`;
+  node.style.top = `${y0 * 100}%`;
+  node.style.width = `${(x1 - x0) * 100}%`;
+  node.style.height = `${(y1 - y0) * 100}%`;
+  node.hidden = false;
+}
+
+function syncIndexToggles() {
+  const overlay = el("index-overlay-toggle");
+  if (overlay) overlay.classList.toggle("is-on", pagesOverlayOn);
+  const margin = el("index-margin-toggle");
+  if (margin) margin.classList.toggle("is-on", pagesMarginOn);
+}
+
+function toggleIndexOverlay() {
+  togglePageBlocksOverlay();
+  paintIndexDecorations();
+}
+
+function toggleIndexMargin() {
+  toggleMarginView();
+  paintIndexDecorations();
 }
 
 function setIndexJumpStatus(text, isError = false) {
@@ -7151,6 +7268,8 @@ function setupPageIndex() {
   el("index-next").addEventListener("click", () => stepIndexPage(1));
   el("index-zoom-out").addEventListener("click", () => changeIndexZoom(-1));
   el("index-zoom-in").addEventListener("click", () => changeIndexZoom(1));
+  el("index-overlay-toggle").addEventListener("click", toggleIndexOverlay);
+  el("index-margin-toggle").addEventListener("click", toggleIndexMargin);
   el("index-jump-go").addEventListener("click", jumpToPrintedPage);
   el("index-jump-input").addEventListener("keydown", (event) => {
     if (event.key === "Enter") {

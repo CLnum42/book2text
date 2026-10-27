@@ -2162,3 +2162,24 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
   .efoot .review-footer-count { display: none; }
   .efoot .btn--lg { height: 34px; padding-top: 0; padding-bottom: 0; }
 }
+
+/* 任务 46（I 刀）：目录确认右侧改用页面视图同一套渲染 */
+.index-page {
+  position: relative; display: inline-block; width: 100%;
+  vertical-align: top; text-align: left; background: var(--page-paper);
+  box-shadow: var(--shadow-1); overflow: hidden;
+}
+.index-page[hidden] { display: none; }
+.index-page img { display: none; width: 100%; height: auto; }
+.index-page img.is-ready { display: block; }
+.index-canvas { text-align: center; }
+.index-canvas .index-page { margin: 0 auto; }
+.index-canvas img.is-ready { display: block; }
+.index-firstline {
+  position: absolute; z-index: 5; pointer-events: none;
+  border: 2px solid #7fb0ff; border-radius: 3px;
+  background: rgba(127, 176, 255, .14);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .5) inset;
+}
+.index-toolbar .btn.is-on { background: var(--accent-soft); color: var(--accent-text); }
+.index-toolbar .spacer { flex: 1; }

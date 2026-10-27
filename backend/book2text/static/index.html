@@ -412,14 +412,28 @@
               <button type="button" id="index-next" class="btn btn--sm" title="下一页">▶</button>
               <span class="muted" id="index-printed"></span>
               <span class="spacer"></span>
+              <button type="button" id="index-margin-toggle" class="btn btn--sm"
+                      title="与页面视图同一个开关：版心边框 + 版心外压暗">版心</button>
+              <button type="button" id="index-overlay-toggle" class="btn btn--sm"
+                      title="与页面视图同一个开关：块框（类型配色 + 序号）">块框</button>
+              <span class="spacer"></span>
               <div class="zoombar" title="与页面视图共用缩放状态">
                 <button type="button" id="index-zoom-out" class="btn btn--sm">－</button>
                 <span class="muted" id="index-zoom-label">100%</span>
                 <button type="button" id="index-zoom-in" class="btn btn--sm">＋</button>
               </div>
             </div>
+            <!-- 目录确认的预览和页面视图同一套渲染：版心 + 块框 + 首行标记，不是裸图 -->
             <div class="index-canvas" id="index-canvas">
-              <img id="index-image" alt="页面预览">
+              <div class="index-page" id="index-page" hidden>
+                <img id="index-image" alt="页面预览">
+                <div class="page-margin" id="index-margin" hidden>
+                  <div class="page-margin__box"></div>
+                </div>
+                <div class="page-overlay page-overlay--readonly page-overlay--labeled"
+                     id="index-overlay" hidden></div>
+                <div class="index-firstline" id="index-firstline" hidden></div>
+              </div>
               <p class="muted" id="index-image-status">正在渲染…</p>
             </div>
           </div>

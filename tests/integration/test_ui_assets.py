@@ -127,7 +127,7 @@ def test_block_frames_work_in_all_zoom_levels_and_default_to_on() -> None:
     assert "pageZoomIndex" not in toggle
     # 网格 / 大网格只画色框；单列 / 单页才建顺序号
     render = _function_body("renderPageBlocks")
-    assert "const showDetails = pageZoomIndex >= 2" in render
+    assert "details = pageZoomIndex >= 2" in render, "目录确认可以强制显示序号"
     assert "if (showDetails)" in render
     # 每帧 3 页 + 在途请求上限（第 46 号任务从 3 提到 6）；滚动位置缓存，不再每帧量 267 个矩形
     assert "PAGE_OVERLAY_FRAME_LIMIT = 3" in script
@@ -1349,3 +1349,43 @@ def test_review_workspace_v2_is_wired() -> None:
         "@media (max-height: 700px)",
     ):
         assert token in css, token
+
+
+def test_index_view_reuses_page_rendering() -> None:
+    """任务 46（I 刀）：目录确认右侧和页面视图同一套渲染，不是裸图。
+
+    - 版心 + 块框（同一套 paintTileMargin / renderPageBlocks）；
+    - 两个开关与页面视图共用 pagesMarginOn / pagesOverlayOn；
+    - 缩放共用 pageZoomIndex；
+    - 选中页首行加淡蓝框；
+    - 块数据按当前页懒加载。
+    """
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "index-page",
+        "index-margin",
+        "index-overlay",
+        "index-firstline",
+        "index-margin-toggle",
+        "index-overlay-toggle",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    assert "function paintIndexDecorations(" in script
+    assert "paintTileMargin(wrapper, page)" in script
+    assert "renderPageBlocks(wrapper, indexBlocks" in script
+    assert "function loadIndexBlocks(" in script
+    assert "function drawIndexFirstLine(" in script
+    assert "function toggleIndexOverlay(" in script
+    assert "function toggleIndexMargin(" in script
+    assert "syncIndexToggles()" in script
+    assert "pageZoomTouched = true;" in script
+    # 默认开：进入目录确认时打开版心与块框
+    assert "pagesMarginOn = true;" in script
+    assert "pagesOverlayOn = true;" in script
+    # 版心 / 块框两栏同一个状态变量
+    assert "pagesMarginOn" in script and "pagesOverlayOn" in script
+    assert ".index-page" in css and ".index-firstline" in css
