@@ -73,11 +73,15 @@ class HyphenationRestore:
 class JoinResult:
     text: str
     hyphenations: tuple[HyphenationRestore, ...] = ()
+    # 每一行在 `text` 里的字符区间（跳过空行）：阅读审校要把差异标在行内，
+    # 靠这个映射回 block_line，不用前端复刻 join_pair。
+    line_spans: tuple[dict[str, object], ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
             "text": self.text,
             "hyphenations": [item.to_dict() for item in self.hyphenations],
+            "line_spans": [dict(span) for span in self.line_spans],
         }
 
 
@@ -206,24 +210,27 @@ def join_lines(
     """
     pieces: list[str] = []
     hyphenations: list[HyphenationRestore] = []
+    line_spans: list[dict[str, object]] = []
     text = ""
 
-    for raw in lines:
+    for index, raw in enumerate(lines):
         piece = raw.strip()
         if not piece:
             continue
         if not pieces:
             pieces.append(piece)
             text = piece
+            line_spans.append({"line_index": index, "start": 0, "end": len(piece)})
             continue
 
         merged, left_fragment, hyphen = join_pair(
             text, piece, restore_hyphenation=restore_hyphenation
         )
+        start = len(merged) - len(piece)
         if hyphen is not None:
             hyphenations.append(
                 HyphenationRestore(
-                    position=len(merged) - len(piece),
+                    position=start,
                     left_fragment=left_fragment,
                     right_fragment=head_fragment(piece),
                     hyphen=hyphen,
@@ -231,5 +238,10 @@ def join_lines(
             )
         pieces.append(piece)
         text = merged
+        line_spans.append(
+            {"line_index": index, "start": start, "end": start + len(piece)}
+        )
 
-    return JoinResult(text=text, hyphenations=tuple(hyphenations))
+    return JoinResult(
+        text=text, hyphenations=tuple(hyphenations), line_spans=tuple(line_spans)
+    )

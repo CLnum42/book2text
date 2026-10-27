@@ -52,6 +52,7 @@ def segment_to_record(
             for page_no in segment.pages
         ],
         "block_ids": list(segment.block_ids),
+        "line_spans": [dict(span) for span in segment.line_spans],
         "review": {
             "all_confirmed": segment.review.all_confirmed,
             "unreviewed": segment.review.unreviewed,

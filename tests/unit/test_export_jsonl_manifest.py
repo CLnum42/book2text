@@ -301,5 +301,5 @@ def test_jsonl_hyphenation_records_are_not_duplicated_into_segment_fields() -> N
     assert "hyphen" not in json.loads(content)
     assert set(json.loads(content)) == {
         "schema", "segment_id", "seq", "type", "text",
-        "pages", "block_ids", "review", "source",
+        "pages", "block_ids", "line_spans", "review", "source",
     }

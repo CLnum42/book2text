@@ -283,3 +283,28 @@ def test_mixed_paragraph_keeps_latin_spaces_but_not_cjk_ones() -> None:
     ]
     text = joining.join_lines(lines).text
     assert text == "他把 Random Forest 和 Gradient Boosting 都试了一遍，效果差别不大。"
+
+
+def test_join_lines_reports_line_spans_for_reading_review() -> None:
+    """阅读审校的 `line_spans`：每行（跳过空行）在拼接文本里的区间必须对得上。
+
+    没有它，前端就要复刻 join_pair 的规则（去空白 / CJK 不空格 / 连字符还原），
+    一旦两边不一致就是"审的字不是导出的字"。
+    """
+    result = joining.join_lines(["中文第一行", "", "中文第二行", "ABC def", "next line"])
+    spans = result.line_spans
+    assert [span["line_index"] for span in spans] == [0, 2, 3, 4]
+    assert spans[0]["start"] == 0
+    for span in spans:
+        piece = result.text[span["start"]:span["end"]]
+        assert piece and not piece.startswith(" ") and not piece.endswith(" ")
+    # 区间按顺序、不重叠，且落在文本内
+    last = 0
+    for span in spans:
+        assert span["start"] >= last
+        assert span["end"] >= span["start"]
+        assert span["end"] <= len(result.text)
+        last = span["end"]
+    # 拉丁行之间会插一个空格，那一个字符属于行间、不属于任何一行
+    latin = next(span for span in spans if span["line_index"] == 4)
+    assert result.text[latin["start"] - 1] == " "

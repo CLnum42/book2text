@@ -110,6 +110,8 @@ class SegmentSource:
     ocr_text: str | None = None      # 用于推导"已修改"，缺省表示未知
     # 该块内部（块内换行处）的断词还原记录，位置相对本块的拼接文本
     hyphenations: tuple[HyphenationRestore, ...] = ()
+    # 每一行在 `text` 里的区间（line_index / start / end），由 join_lines 产出
+    line_spans: tuple[dict[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -141,6 +143,9 @@ class Segment:
     review: ReviewSummary
     # 段内所有断词还原：块内的（scope="block"）与跨块拼接处的（scope="segment"）
     hyphenations: tuple[SegmentHyphenation, ...] = ()
+    # 每一行在 `text` 里的字符区间（阅读审校 / 合并审校用）：
+    # 前端据此把段文本切成行元素、把差异标在行内，不需要复刻 join_pair 的规则。
+    line_spans: tuple[dict[str, object], ...] = ()
 
     @property
     def char_count(self) -> int:
@@ -156,6 +161,7 @@ class Segment:
             "block_ids": list(self.block_ids),
             "review": self.review.to_dict(),
             "hyphenations": [item.to_dict() for item in self.hyphenations],
+            "line_spans": [dict(span) for span in self.line_spans],
         }
 
 
@@ -273,6 +279,21 @@ def _finish_segment(blocks: Iterable[SegmentSource], seq: int) -> Segment:
 
     text = ""
     hyphenations: list[SegmentHyphenation] = []
+    line_spans: list[dict[str, object]] = []
+
+    def record_spans(block, offset: int, spans) -> None:
+        """把这一块的行区间平移到段文本里（区间由块内 join_lines 算出）。"""
+        for span in spans:
+            line_spans.append(
+                {
+                    "page_no": block.page_no,
+                    "block_id": block.block_id,
+                    "line_index": span["line_index"],
+                    "start": offset + int(span["start"]),
+                    "end": offset + int(span["end"]),
+                }
+            )
+
     for block in block_list:
         # 块内换行处的断词还原（由 9.2 的 join_lines 产出，位置相对本块文本）
         for record in block.hyphenations:
@@ -289,10 +310,12 @@ def _finish_segment(blocks: Iterable[SegmentSource], seq: int) -> Segment:
 
         if not text:
             text = block.text
+            record_spans(block, 0, block.line_spans)
             continue
 
         # 说明书 9.2：跨块拼接与块内换行使用同一规则，因此这里也可能触发断词还原
         merged, left_fragment, hyphen = join_pair(text, block.text)
+        record_spans(block, max(0, len(merged) - len(block.text.lstrip())), block.line_spans)
         if hyphen is not None:
             hyphenations.append(
                 SegmentHyphenation(
@@ -320,4 +343,5 @@ def _finish_segment(blocks: Iterable[SegmentSource], seq: int) -> Segment:
             modified=modified,
         ),
         hyphenations=tuple(hyphenations),
+        line_spans=tuple(line_spans),
     )

@@ -261,7 +261,7 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
                 include = include and block.block_id in layout.inside_ids
         # 导出的是 Block.text（说明书 5.3：保留行内换行），按 `\n` 拆回行再做 9.2 的合并。
         # 不要用 block_line 的文本：那是识别原文，人工改过的字会丢。
-        text, hyphenations = _join_block(block.text.split("\n"), rules)
+        text, hyphenations, line_spans = _join_block(block.text.split("\n"), rules)
         sources.append(
             segments_module.SegmentSource(
                 block_id=block.block_id,
@@ -275,6 +275,7 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
                 continues_to_next=block.continues_to_next,
                 ocr_text=block.ocr_text,
                 hyphenations=hyphenations,
+                line_spans=line_spans,
             )
         )
 
@@ -330,12 +331,23 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
 
 
 def _join_block(lines: list[str], rules: cleanup.CleanupRules):
-    """把一个块的行拼成段落文本（说明书 9.2 / 9.3），返回 (文本, 断词还原记录)。"""
+    """把一个块的行拼成段落文本（说明书 9.2 / 9.3）。
+
+    返回 (文本, 断词还原记录, 行区间)。行区间供阅读审校把差异标到行内。
+    """
     cleaned = cleanup.clean_lines(lines, rules)
     if not rules.merge_lines_in_block:
-        return "\n".join(line for line in cleaned if line), ()
+        text = "\n".join(line for line in cleaned if line)
+        spans = []
+        offset = 0
+        for index, line in enumerate(cleaned):
+            if not line:
+                continue
+            spans.append({"line_index": index, "start": offset, "end": offset + len(line)})
+            offset += len(line) + 1
+        return text, (), tuple(spans)
     result = join_lines(cleaned, restore_hyphenation=rules.restore_hyphenation)
-    return result.text, result.hyphenations
+    return result.text, result.hyphenations, result.line_spans
 
 
 # ---------------------------------------------------------------- 预检
