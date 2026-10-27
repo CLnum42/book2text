@@ -2885,3 +2885,72 @@ native 层的偶发崩溃，Python 捕不到。产品侧在送引擎前加底线
 裁图最小 8×8 像素、非 RGB 转 RGB；第二引擎的退化行框返回 None 按"没读出"处理。
 
 **状态：** 生效（2026-10-27）。
+
+## D-085 | 2026-10-27 | 版心成为审校与导出的唯一口径：审校只看版心内，导出默认按版心判定
+
+**背景：** 用户拍板"既然计算了版心，后续审校和导出都应默认排除版心之外的内容"。
+真书 1733 条实质分歧里正文区 1686 条、靠页边（竖排书眉「红楼梦」/ 页码）47 条，
+只占 2.7%；但行级审校口径 1.00% 与导出正文 CER 0.71% 不一致，用户不知道
+自己审的是不是最终交付的东西。
+
+**决策一：审校默认只统计版心内的块，且和导出用同一个函数。**
+
+- 新增 `margin_box.block_center` / `center_inside` / `block_inside_margin`：
+  后者 = `export_margin_box(project, page)` + `center_inside(块中心)`。
+  导出第一层 `margin_rules.classify_page` 也从 `margin_box` 取这两个函数，
+  不再各存一份实现。
+- 页面详情给每个块返回 `margin_inside`，页级给 `margin`（box / applied /
+  undetermined / none / outside_blocks / outside_lines）。
+- `page_divergence_summary` 增加 `inside_block_ids`；`page_divergences` 按
+  `block_inside_margin` 过滤后计算。因此页头、待处理、自动通过、收尾面板、
+  导出状态、页面缩略图全部自动只算版心内，不需要各写一套。
+- 类型建议与漏行候选也按同一函数过滤（建议按 block_id 查块框，漏行按候选 bbox）。
+- 页级 `none` / 版心未定（`export_margin_box` 为 None）：整页都算，不排除；
+  页头如实写「整页计入（不适用版心 / 版心未定）」。
+- 版心外的块**默认折叠但可展开**：过滤条「版心外 N」保留全部块，可编辑；
+  页头 / 过滤条写「版心外 N 处未计入」，队列只走版心内。
+- 为什么不用 `effective_margin_box` 代替：导出对自己的 `inherit` 页保留
+  「全局框未确认不认」的安全阀；审校必须和**导出实际用的框**一致，
+  所以两边都走 `export_margin_box`。
+
+**决策二：「按版心判定正文」默认开。**
+
+- `library.margin_judgement_enabled(project)`：`settings_json` 没有这个键 → True；
+  显式存 False 才关。新项目与老项目升级后都默认开。
+- 老项目第一次打开给一句说明（`margin_judgement_notice` 设置，看过即置 true）；
+  导出面板与识别设置里都能关。
+- 关掉时 `_prepare` 完全不跑版心判定，`manifest.json` 不写 `margin` 段；
+  实测 `body.txt` / `meta.json` / `body.jsonl` / `notes.*` / `manifest.json`
+  与升级前逐字节相同（同一分钟内导出，manifest 连时间戳都一致）。
+
+**决策三：预检与 manifest 报"排掉了什么"。**
+
+- 预检 `margin_blocks` 增加 `judged_inside` / `judged_outside` / `excluded` /
+  `excluded_by_type`；只统计**这一页真的有生效版心**的块（没有版心的页不参与判定）。
+- `manifest.json` 增加 `margin` 段（`inside_blocks` / `outside_blocks` /
+  `excluded_blocks` / `excluded_by_type`），开关关掉时不写这个键。
+- 类型分布按**当前 block_type** 统计：真书这些书眉 / 页码还没标类型，所以显示
+  `paragraph 441`；标成页眉 / 页码后会自动分开。不按"猜的类型"美化数字。
+
+**质量口径（写进 `docs/workflow.md` 5.7）：**
+
+- **正文 CER = 只量版心内、且走导出路径的正文**；
+- 行级 CER（连页眉页码都算）只作引擎调试，不再对外当质量指标。
+
+**真实验收（`b2t_YV1P2Y` 原库，394 页，已跑「全部自动拟合」）：**
+
+- 392 个 auto 页 `margin_box` 全非 NULL（355 fit / 37 bbox / 0 未定）。
+- 1733 条实质分歧：**版心内 1686（97.3%）/ 版心外 47（2.7%，45 页）**；
+  版心外全是未标类型的 `paragraph`（文本是「红楼梦」/ 页码），不是正文。
+- 第 370 页：版心内 13 处、版心外 0。
+- 预检：版心内 1485 块 / 版心外 441 块（全部被判为排除，类型 `paragraph` 441），
+  版心未定 0 页；manifest `margin` 段与预检同数。
+- 默认开导出正文 217044 字 / 1485 段；显式关掉 220310 字 / 1926 段
+  （版心排掉 441 块 / 3266 字，1.5%）。
+- 关掉开关：所有导出文件与升级前逐字节相同（sha256 比对）。
+- 真浏览器（headless Chrome + CDP）：第 370 页 13 处队列；第 3 页页头
+  「版心外 1 处未计入」、切到版心外能看到竖排书眉；版心未定页整页计入；
+  预检显示「版心外被排除 441 块（段落 441）」。
+- 测试 **863 passed, 1 warning**；Windows / Safari 未验证。
+
+**状态：** 生效（2026-10-27）。

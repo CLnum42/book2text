@@ -7,6 +7,133 @@
 
 ---
 
+## 2026-10-27 — 任务 34：版心成为审校与导出的唯一口径
+
+### 任务目标
+
+用户拍板："既然计算了版心，后续审校和导出都应默认排除版心之外的内容"。
+① 审校队列 / 页头计数 / 待处理默认只统计块中心在版心内的块，版心外折叠可展开；
+② 导出「按版心判定正文」默认打开；关掉时与升级前逐字节一致；
+③ 预检与 manifest 报"版心外被排除的块数 + 类型分布"；
+④ 把「正文 CER」定义写进文档：只量版心内、且走导出路径。
+
+### 当前状态
+
+main `cc3817f`（任务 33 之后），859 测试通过。真书 1733 条实质分歧里正文区 1686、
+靠页边 47；行级审校口径与导出正文 CER 不一致。
+
+### 实施计划
+
+1. `margin_box` 增加 `block_center` / `center_inside` / `block_inside_margin`；
+   导出第一层改用它，审校也用它，不另写一套。
+2. `page_divergence_summary` / `page_divergences` 按 `inside_block_ids` 过滤；
+   页面详情的块带 `margin_inside`，页级带 `margin` 上下文。
+3. 类型建议 / 漏行候选按同一函数过滤；`none` / 未定页整页计入。
+4. 前端队列 / 页头 / 待处理只算版心内；页头写「版心外 N 处未计入」。
+5. 导出默认开：`library.margin_judgement_enabled`（缺省 True，显式 False 才关）；
+   老项目一次性说明（`margin_judgement_notice`）。
+6. 预检 / manifest 增加 `judged_inside` / `judged_outside` / `excluded` /
+   `excluded_by_type`（manifest 只在开关开时写 `margin` 段）。
+7. 文档写质量口径；补测试。
+
+**不在范围内：** 识别、第二引擎、裁图 / 掩膜（已定不做）。
+
+### 实现与验证
+
+**1. 审校与导出是否真的用同一个判定函数**
+
+- `margin_box.block_inside_margin(project, page, bbox)`：
+  `export_margin_box(project, page)` → 块中心 → `center_inside`。
+- 导出第一层 `margin_rules.classify_page` 里的 `block_center` / `center_inside`
+  改为从 `margin_box` 导入（同名保留，测试仍按原名用）。
+- `page_divergences()` 对每页用 `block_inside_margin` 生成 `inside_ids`，
+  传给 `page_divergence_summary(..., inside_block_ids=...)`；页头、待处理、
+  自动通过、收尾面板、导出状态、页面缩略图都读这一份。
+- 类型建议按 block_id 查块框后用同一函数过滤；漏行候选按候选 bbox 过滤。
+- 页级 `none` / `export_margin_box` 返回 None：`block_inside_margin` 直接 True，
+  整页都算；页头写「整页计入（不适用版心 / 版心未定）」。
+- 前端过滤条「版心外 N」仍列全部块，可展开编辑；队列只走版心内。
+
+**2. 导出默认打开 & 老项目提示**
+
+- `library.margin_judgement_enabled(project)`：`settings_json` 没有
+  `margin_box_judgement` → True；显式 False 才关。新项目与老项目升级后都默认开。
+- 一次说明：项目设置 `margin_judgement_notice`；前端在项目打开时显示一条
+  noticebar「导出已默认按版心判定正文…可以在导出面板或识别设置里关闭」，
+  点「知道了」写 true。显式关掉开关时提示不出现。
+- 识别设置里加了同一个开关（与导出面板同步）；导出面板文案改为默认开。
+
+**3. 预检 / manifest**
+
+- `_margin_exclusion(prepared)`：只统计 applied 页的块，
+  返回 `inside_blocks` / `outside_blocks` / `excluded_blocks` / `excluded_by_type`。
+- 预检 `margin_blocks` 增加 `judged_inside` / `judged_outside` / `excluded` /
+  `excluded_by_type`；manifest 增加 `margin` 段（开关关掉时不写这个键）。
+- 类型分布按**当前 block_type**；真书书眉 / 页码还没标类型，所以显示
+  `paragraph 441`，标类型后会自动分开。不按"猜的类型"美化数字。
+
+**4. 真书数字（`b2t_YV1P2Y`，394 页；原库已跑「全部自动拟合」）**
+
+- 原库 `fit_all_pages`：`updated=392 / fitted=355 / fallback=37 / undetermined=0`；
+  392 个 auto 页 `margin_box` 全非 NULL（`fit 355 / bbox 37 / NULL 0`）。
+  这是任务里明确要求的"验收前先跑一次"；只写 `page.margin_box` + `method`，没动正文。
+- 1733 条实质分歧：**版心内 1686（97.3%）/ 版心外 47（2.7%，45 页）**；
+  版心外全是未标类型的 `paragraph`（「红楼梦」/ 页码），不是正文。
+- 第 370 页：版心内 13 处、版心外 0。
+- 预检：版心内 1485 块 / 版心外 441 块 / 未定 0 页；
+  `excluded_by_type = {"paragraph": 441}`；manifest `margin` 与预检同数。
+- 默认开导出正文 217044 字 / 1485 段；显式关 220310 字 / 1926 段
+  （版心排掉 441 块 / 3266 字，1.5%）。
+- 关掉开关（同一份库、同一分钟）：`body.txt` / `meta.json` / `body.jsonl` /
+  `notes.txt` / `notes.jsonl` / `manifest.json` 与**升级前代码**逐字节相同
+  （sha256 全部一致；manifest 时间戳也一致）。
+
+**5. 测试**
+
+- 新增：共享判定默认开 / 显式关、`block_inside_margin` 的 auto / 未定 / none、
+  页详情 `margin_inside` 与页头计数、预检 & manifest 版心统计。
+- 更新：默认开影响到的旧口径用例显式关掉开关（导出 meta 的 headers 形状、
+  chrome 嫌疑提示、版心不改导出的旧断言）。
+- `.venv/bin/python -m pytest -q` → **863 passed, 1 warning，63.67 秒**。
+
+**6. 真浏览器验收（Chrome headless + CDP，真书原库）**
+
+- 第 370 页：页头 `正文 · 13 处待处理差异（汉字 12 · 标点 1） · 版面未确认`；
+  队列长度 13；过滤条 `待处理 2 · 版心内 3 · 版心外 1 · 全部 4`；
+  导出开关与识别设置开关都是 **checked**；默认说明条可见。
+- 第 3 页（有竖排书眉「红楼梦 / 6」）：页头
+  `正文 · 2 处待处理差异（汉字 1 · 标点 1） · 版心外 1 处未计入 · 版面未确认`；
+  过滤条写 `版心外 1 处差异未计入（切到「版心外」查看）`；队列只有版心内 2 处；
+  切到「版心外」显示 1 张卡片，内容就是那段竖排书眉，可查看 / 编辑。
+- 版心未定的页（副本里清掉第 4 页的框）：页头
+  `正文 · 1 处待处理差异 · 整页计入（版心未定） · 版面未确认`；
+  过滤条 `本页版心未定：整页都计入`；版心外 0，队列照常。
+- 默认说明条点「知道了」后隐藏，项目设置写 `margin_judgement_notice: true`。
+- 导出预检 UI：`版心判定 内 1485 块 · 外 441 块 ... · 未确认版心 0 页` +
+  `版心外被排除 441 块（段落 441）`。
+- **Windows / Safari 未验证。**
+
+**7. 未验证 / 边界**
+
+- 类型分布按当前 block_type；真书书眉 / 页码未标类型，所以显示 `paragraph 441`。
+- 改版心后审校页要重新打开才按新框重算（见 L-83）。
+- 真浏览器是 headless Chrome 155（macOS），没有测触屏 / 缩放。
+
+### 用户操作说明
+
+- 打开 `b2t_YV1P2Y` → 页面视图右栏「页面准备」→「全部自动拟合」（约 2 秒）。
+- 审校页默认「待处理」只列版心内；切「版心外 N」可看书眉 / 页码；页头有「版心外 N 处未计入」。
+- 导出默认开「按版心判定」；预检会多一行「版心外被排除：N 块（类型分布）」；
+  可在导出面板或识别设置里关掉，关掉后与升级前一致。
+- 回退：`git revert` 本刀提交；导出默认值可用开关关掉，不需要改库。
+
+### 下一步建议
+
+让 Extractor 用同一份「正文 CER」口径复测 40 页金标准（只量版心内、走导出路径），
+把审校口径与交付口径钉在同一个数上。
+
+---
+
 ## 2026-10-27 — 任务 33：版心拟合与兜底修复（迭代纳入 + 本页包围盒 + 真正落库）
 
 ### 任务目标
