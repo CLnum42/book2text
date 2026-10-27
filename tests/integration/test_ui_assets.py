@@ -79,7 +79,7 @@ def test_page_skeleton_has_all_views_and_entry_points() -> None:
         "view-merge",
         "topbar-library",
         "topbar-project",
-        "view-tabs",
+        "workflow-steps",
         "page-grid",
         "detail-blocks",
         "merge-pages",
@@ -881,3 +881,53 @@ def test_trash_select_all_and_margin_visual_are_wired() -> None:
     assert "rgba(15, 18, 24, .30)" in styles
     # 把手还在（改细不能把拖动弄丢）
     assert ".page-margin__handle" in styles
+
+
+def test_workflow_step_shell_is_wired() -> None:
+    """任务 36A：五步步骤条 + 分页器搬家 + 旧三标签删除。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "workflow-steps",
+        "workflow-current",
+        "review-toolbar",
+        "review-pager",
+        "review-prev",
+        "review-next",
+        "review-jump",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    # 旧导航删除，没有残留
+    assert 'id="view-tabs"' not in page
+    assert 'id="export-open"' not in page
+    assert ".tabs {" not in styles
+
+    # 五步与判定来源
+    for label in ("页面确认", "版心确认", "文字识别", "正文审校", "文件导出"):
+        assert label in script, label
+    for name in (
+        "function stepProgress(",
+        "function syncWorkflowSteps(",
+        "function goToWorkflowStep(",
+        "function openExportPanel(",
+    ):
+        assert name in script, name
+    # 完成判定只读收尾面板 / 质量统计 / 导出记录
+    assert "finishSummary" in script
+    assert "projectSummary" in script
+    assert "projectExports" in script
+    assert "page_type" in script
+    assert "undetermined" in script
+    assert "engine.complete" in script
+    assert "needs_human" in script
+
+    # 三档响应式
+    assert "@media (max-width: 1319px)" in styles
+    assert "@media (max-width: 1119px)" in styles
+    assert "workflow-step__short" in styles
+    assert "workflow-current" in styles
+    # 分页器在工作区工具条里
+    assert ".workspace-toolbar" in styles
