@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>正文审校 × 结果预览合并 · 连续正文流（静态设计稿）</title>
+<style>
+:root{
+  --bg:#f3f4f6;--surface:#fff;--surface-2:#fafbfc;--surface-3:#f7f8fa;
+  --line:#e2e4e8;--line-soft:#eef0f2;--line-strong:#d0d3d9;
+  --text:#1f2329;--text-2:#33383f;--muted:#646a73;--faint:#9aa0a8;
+  --accent:#2563eb;--accent-soft:#eef4ff;--accent-text:#1d4ed8;
+  --ok:#16a34a;--ok-text:#15803d;--ok-soft:#e9f7ee;
+  --warn:#d97706;--warn-text:#b45309;--warn-soft:#fdf3e0;
+  --bad:#dc2626;--bad-text:#b91c1c;--bad-soft:#fdecec;
+  --purple:#7a4bb5;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#e9eaee;color:var(--text);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.draftbar{display:flex;align-items:center;gap:14px;padding:7px 16px;background:#1f2329;color:#e6e8eb;font-size:12px}
+.draftbar strong{color:#fff}
+.draftbar .tag{margin-left:auto;background:rgba(255,255,255,.12);padding:1px 7px;border-radius:5px;color:#cfd3d8}
+.stage{padding:18px 20px 0}
+.frame{margin-bottom:26px}
+.label{font-size:12px;font-weight:600;color:#4b5563;margin:0 0 6px 2px}
+.label span{font-weight:400;color:#6b7280}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:3px;box-shadow:0 2px 12px rgba(16,24,40,.07);overflow:hidden}
+.caption{padding:6px 20px 16px;font-size:11.5px;color:#5b6169;line-height:1.65}
+.caption b{color:#1f2329}
+.spacer{flex:1}
+.muted{color:var(--muted)}
+.btn{height:26px;padding:0 9px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--text-2);font-size:11.5px}
+.btn--pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+.btn--warn{background:var(--warn);border-color:var(--warn);color:#fff;font-weight:500}
+.kbd{display:inline-block;min-width:15px;padding:0 3px;border:1px solid #d5d9e0;border-bottom-width:2px;border-radius:4px;background:#fbfcfd;font:10px/14px ui-monospace,Menlo,monospace;color:var(--text-2);text-align:center}
+
+/* 顶栏六步 */
+.topbar{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;background:var(--surface);border-bottom:1px solid var(--line)}
+.proj{font-size:12.5px;font-weight:600;max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.steps{display:flex;align-items:center;height:44px}
+.step{position:relative;display:flex;align-items:center;gap:5px;height:30px;padding:0 9px;border:0;background:none;font-size:12px;color:var(--muted);white-space:nowrap}
+.step__no{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-size:10px;background:var(--surface-3);color:var(--faint);border:1px solid var(--line);flex:none}
+.step--done{color:var(--ok-text)}
+.step--done .step__no{background:var(--ok);border-color:var(--ok);color:#fff}
+.step--cur{color:var(--accent-text);font-weight:600;background:var(--accent-soft);border-radius:6px}
+.step--cur .step__no{background:var(--accent);border-color:var(--accent);color:#fff}
+.topright{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+
+/* 阅读工具条 */
+.rtool{height:44px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--surface);border-bottom:1px solid var(--line-soft)}
+.mode{display:flex;padding:2px;background:var(--surface-3);border-radius:6px}
+.mode button{height:24px;padding:0 10px;border:0;background:none;border-radius:4px;font-size:11.5px;color:var(--muted)}
+.mode button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(16,24,40,.08);font-weight:600}
+.sel{height:26px;padding:0 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-size:11.5px;color:var(--text-2)}
+.prog{display:flex;align-items:center;gap:8px;margin:0 auto}
+.prog__t{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.prog__t b{color:var(--text);font-size:12.5px}
+.prog__bar{width:150px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.prog__bar i{display:block;height:100%;width:17%;background:var(--accent);border-radius:3px}
+.nav{display:flex;gap:4px}
+.chip-un{height:22px;padding:0 7px;border-radius:11px;background:var(--warn-soft);color:var(--warn-text);font-size:10.5px;display:inline-flex;align-items:center;gap:4px;border:1px solid #f0d9c0}
+
+/* 三栏 */
+.work{display:flex;height:492px;min-height:0}
+.foot{height:48px;display:flex;align-items:center;gap:8px;padding:0 12px;border-top:1px solid var(--line);background:var(--surface)}
+
+/* 左树 */
+.tree{width:232px;flex:none;display:flex;flex-direction:column;background:var(--surface-2);border-right:1px solid var(--line)}
+.tree__h{flex:none;padding:8px 10px;border-bottom:1px solid var(--line-soft);font-size:12px;display:flex;align-items:center;gap:6px}
+.tree__b{flex:1;overflow:auto;padding:4px 0;font-size:11.5px}
+.trow{display:flex;align-items:center;gap:5px;min-height:24px;padding:0 8px;color:var(--muted)}
+.trow--ch{min-height:28px;font-size:12px;color:var(--text-2);font-weight:600;padding-left:9px}
+.trow--pg{padding-left:20px}
+.trow.on{background:var(--accent-soft);color:var(--accent-text);box-shadow:inset 2px 0 0 var(--accent)}
+.trow.done{color:var(--faint)}
+.trow .cnt{margin-left:auto;font-size:10.5px;color:var(--bad-text);font-variant-numeric:tabular-nums}
+.trow .cnt.ok{color:var(--faint)}
+.caret{width:8px;font-size:9px;color:var(--faint);flex:none}
+
+/* PDF 栏 */
+.pdf{width:420px;flex:none;background:#e4e6ea;border-right:1px solid var(--line);overflow:auto;padding:12px 0 18px}
+.pdfpage{position:relative;width:372px;margin:0 auto 14px;background:#f8f6f0;padding:26px 26px 34px;
+  box-shadow:0 2px 10px rgba(0,0,0,.18);font-family:"Songti SC","STSong",serif;font-size:9px;line-height:18px;color:#2b2e33}
+.pdfpage .rh{position:absolute;top:9px;left:26px;right:26px;font:7px/1 -apple-system,sans-serif;color:#9aa0a8;
+  display:flex;justify-content:space-between;padding-bottom:3px;border-bottom:1px solid rgba(0,0,0,.1)}
+.pdfpage .pl{white-space:pre}
+.syncline{position:absolute;left:20px;right:20px;height:14px;border-top:2px solid var(--accent);border-bottom:1px solid rgba(37,99,235,.35);
+  background:rgba(37,99,235,.08);border-radius:2px;pointer-events:none}
+.syncline span{position:absolute;right:-2px;top:-14px;font:8px/12px -apple-system;background:var(--accent);color:#fff;padding:0 4px;border-radius:3px}
+
+/* 正文流 */
+.reader{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface)}
+.reader__scroll{flex:1;overflow:auto;padding:14px 26px 40px}
+.seg{margin-bottom:14px}
+.seg__h{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--faint);margin-bottom:3px}
+.seg__h b{color:var(--text-2);font-size:10.5px;font-weight:600}
+.seg__h .pgm{margin-left:auto;background:var(--surface-3);border-radius:3px;padding:0 5px}
+.para{font-family:"Songti SC","STSong",serif;font-size:15px;line-height:28px;color:#23262b;text-align:justify;margin:0}
+.ln{white-space:normal}
+/* 行内标记 */
+.mk{padding:0 1px;border-radius:2px}
+.mk--todo{background:rgba(220,38,38,.12);border-bottom:2px solid var(--bad);cursor:pointer}
+.mk--punct{background:rgba(220,38,38,.10);border-bottom:2px dotted var(--bad);cursor:pointer}
+.mk--done{background:rgba(22,163,74,.12);border-bottom:2px dotted var(--ok)}
+.mk--draft{background:rgba(217,119,6,.14);border-bottom:2px solid var(--warn)}
+/* 展开的候选面板 */
+.cand{display:block;margin:2px 0 6px 24px;padding:8px 10px;border-left:2px solid var(--bad);border-radius:0 6px 6px 0;
+  background:#fcfaf7;font-family:-apple-system,"PingFang SC",sans-serif;font-size:11.5px;line-height:1.6}
+.cand__h{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:10.5px;margin-bottom:3px}
+.cand__h .lv{color:var(--bad-text);font-weight:600}
+.cand__t{color:var(--text-2);font-family:"Songti SC",serif;font-size:13px;line-height:1.7}
+.cand__t .b{color:var(--purple);border-bottom:2px dotted var(--purple);padding:0 1px}
+.cand__acts{display:flex;gap:5px;margin-top:6px}
+.cand__acts .btn{height:23px;font-size:11px}
+/* 行内编辑 */
+.edit{display:block;margin:2px 0 4px;padding:4px 8px;background:#fff;border:1px solid var(--warn);border-left:3px solid var(--warn);
+  border-radius:5px;font-family:"Songti SC",serif;font-size:14px;line-height:26px;color:var(--text)}
+.edit__h{display:flex;align-items:center;gap:6px;font:10px/1.5 -apple-system,sans-serif;color:var(--warn-text);margin-bottom:2px}
+.edit__h .spacer{flex:1}
+.edit__h span{align-self:center}
+.draftchip{display:inline-block;align-self:center;flex:none;font:9px/14px -apple-system,sans-serif;background:var(--warn);color:#fff;border-radius:3px;padding:0 4px;vertical-align:2px;margin-left:3px}
+
+/* 状态帧 */
+.strip{display:flex;gap:12px;padding:14px;flex-wrap:wrap}
+.state{flex:1;min-width:270px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}
+.state h6{margin:0 0 8px;font-size:11px;color:var(--faint);font-weight:600;display:flex;align-items:center;gap:6px}
+.state .demo{font-family:"Songti SC",serif;font-size:14px;line-height:26px;color:#23262b}
+.state .note{margin-top:8px;font-size:10.5px;color:var(--muted);line-height:1.55}
+
+/* 窄档 */
+.narrow{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+.narrow .card{width:1180px}
+.narrow .card.small{width:980px}
+</style>
+</head>
+<body>
+
+<div class="draftbar">
+  <strong>静态设计稿</strong><span>正文审校 × 结果预览合并 · 连续正文流</span>
+  <span class="tag">docs/ux/reading-review-merge-mockup.html</span>
+</div>
+
+<div class="stage">
+
+  <!-- ═══════════ A · ≥1320 主帧 ═══════════ -->
+  <div class="frame">
+    <p class="label">A · ≥1320px · 审校模式 <span>（左树 232 / PDF 420 / 正文 668–788；628 高：44+44+492+48）</span></p>
+    <div class="card">
+      <div class="topbar">
+        <span class="proj">《红楼梦》双语对照 3_正文</span>
+        <div class="steps">
+          <button class="step step--done"><span class="step__no">✓</span>页面确认</button>
+          <button class="step step--done"><span class="step__no">✓</span>版心确认</button>
+          <button class="step step--done"><span class="step__no">✓</span>文字识别</button>
+          <button class="step step--done"><span class="step__no">✓</span>目录确认</button>
+          <button class="step step--cur" aria-current="step"><span class="step__no">5</span>正文审校</button>
+          <button class="step"><span class="step__no">6</span>文件导出</button>
+        </div>
+        <div class="topright"><span>已保存 ✓ 16:12</span></div>
+      </div>
+
+      <div class="rtool">
+        <div class="mode"><button class="on">审校</button><button>成稿</button></div>
+        <select class="sel"><option>全部差异</option><option>只看汉字级</option><option>只看未审</option></select>
+        <div class="prog">
+          <span class="prog__t">已处理 <b>300</b> / 1733</span>
+          <span class="prog__bar"><i></i></span>
+        </div>
+        <div class="nav">
+          <button class="btn">↑ 上一处</button>
+          <button class="btn btn--pri">↓ 下一处未审 <span class="kbd">⏎</span></button>
+        </div>
+        <span class="chip-un">未提交 3</span>
+      </div>
+
+      <div class="work">
+        <!-- 左树 -->
+        <aside class="tree">
+          <div class="tree__h"><b>目录 · 审校清单</b><span class="spacer"></span><span class="muted" style="font-size:10.5px">还剩 173</span></div>
+          <div class="tree__b">
+            <div class="trow trow--ch done"><span class="caret">▸</span><span>第一回</span><span class="cnt ok">12</span><span class="cnt ok">✓</span></div>
+            <div class="trow trow--ch"><span class="caret">▾</span><span>第二回</span><span class="cnt ok">48</span><span class="cnt">132 处</span></div>
+            <div class="trow trow--pg"><span>第 85 页</span><span class="cnt">8 处</span></div>
+            <div class="trow trow--pg"><span>第 86 页</span><span class="cnt">4 处</span></div>
+            <div class="trow trow--pg on"><span>第 87 页</span><span class="cnt">4 处</span></div>
+            <div class="trow"><span style="padding-left:20px;color:var(--faint)">（当前段落：第 87–88 页）</span></div>
+            <div class="trow trow--pg done"><span>第 88 页</span><span class="cnt ok">✓</span></div>
+            <div class="trow trow--pg"><span>第 89 页</span><span class="cnt">6 处</span></div>
+            <div class="trow trow--pg done"><span>第 90 页</span><span class="cnt ok">✓</span></div>
+            <div class="trow trow--ch"><span class="caret">▸</span><span>第三回</span><span class="cnt ok">96</span><span class="cnt">41 处</span></div>
+          </div>
+        </aside>
+
+        <!-- PDF 多页滚动 -->
+        <aside class="pdf">
+          <div class="pdfpage">
+            <div class="rh"><span>红楼梦 87</span><span>87</span></div>
+            <div class="pl">维太平不易之元，蓉桂竞芳之月，</div>
+            <div class="pl">无可奈何之日，怡红院浊玉，谨以</div>
+            <div class="pl">群花之蕊、冰鲛之殼，沁芳之泉、枫</div>
+            <div class="pl">露之茗：四者虽微，聊以达诚申信，</div>
+            <div class="pl">乃致祭于白帝宫中抚司秋艳芙蓉</div>
+            <div class="pl">女儿之前曰：窃思女儿自临人世，</div>
+            <div class="pl">迄今凡十有六载。其为质则金玉不</div>
+            <div class="pl">足喻其贵；其为体则冰雪不足喻</div>
+            <div class="pl">其洁。</div>
+            <div class="syncline" style="top:56px"><span>同步行</span></div>
+          </div>
+          <div class="pdfpage">
+            <div class="rh"><span>红楼梦 88</span><span>88</span></div>
+            <div class="pl">而玉得于衾枕栉沐之间，栖息宴游</div>
+            <div class="pl">之夕，亲昵狎亵，相与共处者，仅五</div>
+            <div class="pl">年八月有奇。忆女儿曩生之昔，其</div>
+            <div class="pl">为质则金玉不足喻其贵。</div>
+            <div class="pl">　　今犯此大错，悔之无及，聊以浊</div>
+            <div class="pl">玉之泪，洒于灵前而已。</div>
+          </div>
+        </aside>
+
+        <!-- 正文连续流 -->
+        <div class="reader">
+          <div class="reader__scroll">
+            <div class="seg">
+              <div class="seg__h"><b>§128</b><span>第 87–88 页 · 跨页 2 页 · 3 块</span><span class="pgm">87</span></div>
+              <div class="para"><span class="ln">维太平不易之元，蓉桂竞芳之月，无可奈何之日，怡红院浊玉，谨以群花之蕊、冰鲛之</span><mark class="mk mk--todo" title="汉字级差异：壳/縠">殼</mark><span class="ln">，沁芳之泉、枫露之茗：四者虽微，聊以达诚申信，乃致祭于白帝宫中抚司秋艳芙蓉女儿之前曰：</span><span class="ln">窃思女儿自临人世，迄今凡十有六载。忆女儿</span><mark class="mk mk--done" title="已保留原文">曩</mark><span class="ln">生之昔，其为质则金玉不足喻其贵；其为体则冰雪不足喻其</span><mark class="mk mk--punct" title="标点级差异">，</mark><span class="ln">而玉得于衾枕栉沐之间，栖息宴游之夕，亲昵狎亵，相与共处者，仅五年八月有奇。</span></div>
+              <div class="cand">
+                <div class="cand__h"><span class="lv">汉字级</span><span>第 87 页 · 第 1 块 · 第 2 行</span><span class="spacer"></span><span>第一路：殼　第二路：縠</span></div>
+                <div class="cand__t">…群花之蕊、冰鲛之<span class="b">縠</span>，沁芳之泉、枫露之茗：四者虽微，聊以达诚申信…</div>
+                <div class="cand__acts">
+                  <button class="btn btn--pri">采用第二路 <span class="kbd">⏎</span></button>
+                  <button class="btn">保留原文 <span class="kbd">␣</span></button>
+                  <button class="btn">自己改…</button>
+                  <span class="spacer"></span>
+                  <span style="font-size:10px;color:var(--faint);align-self:center">第二引擎把「殼」读成「縠」——整本书里它读错的概率约八成</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="seg">
+              <div class="seg__h"><b>§129</b><span>第 88 页 · 2 块</span><span class="pgm">88</span></div>
+              <div class="para"><span class="ln">而玉得于衾枕栉沐之间，栖息宴游之夕，亲昵狎亵，相与共处者，仅五年八月有奇。</span></div>
+            </div>
+
+            <div class="seg">
+              <div class="seg__h"><b>§130</b><span>第 88 页 · 1 块</span><span class="pgm">88</span></div>
+              <div class="para"><span class="ln">　　今犯此大错，悔之无及，聊以浊玉之泪，洒于灵前而已。</span></div>
+            </div>
+
+            <div class="seg">
+              <div class="seg__h"><b>§131</b><span>第 89 页 · 2 块</span><span class="pgm">89</span></div>
+              <div class="para"><span class="ln">　　尔乃西风古寺，淹滞青磷；落日荒丘，零星白骨</span><mark class="mk mk--punct" title="标点级差异：句号/逗号">。</mark><span class="ln">楸榆飒飒，蓬艾萧萧。</span></div>
+            </div>
+
+            <div class="seg">
+              <div class="seg__h"><b>§132</b><span>第 89 页 · 1 块</span><span class="pgm">89</span></div>
+              <div class="para"><span class="ln">　　隔雾圹以啼猿，绕烟塍而泣鬼。自为红绡帐里，公子情深；始信黄土垄中，女儿命薄。</span></div>
+            </div>
+
+            <div class="seg">
+              <div class="seg__h"><b>§133</b><span>第 90 页 · 2 块</span><span class="pgm">90</span></div>
+              <div class="para"><span class="ln">　　汝南泪血，斑斑洒向西风；梓泽余衷，默默诉凭冷月。</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="foot">
+        <span style="font-size:11.5px;color:var(--warn-text)">草稿 3 处 · 采用 2 · 保留 1</span>
+        <span class="spacer"></span>
+        <button class="btn">撤销草稿</button>
+        <button class="btn btn--warn">提交 3 处改动</button>
+      </div>
+    </div>
+    <p class="caption">
+      三栏：左树导航与进度，中间 PDF 多页滚动（蓝线标出与正文同步的那一行），右侧连续正文。<b>红字只包差异字符</b>：汉字级实线、标点级虚线、已保留淡绿虚线、草稿琥珀。
+      点红字在该行下方就地展开候选（左缩进 24px、2px 彩条），同屏只开一处。
+    </p>
+  </div>
+
+  <!-- ═══════════ B · 五个状态 ═══════════ -->
+  <div class="frame">
+    <p class="label">B · 五个状态 <span>（未审 / 已审 / 展开替补 / 编辑草稿 / 全部处理完）</span></p>
+    <div class="card">
+      <div class="strip">
+        <div class="state">
+          <h6>① 未审</h6>
+          <div class="demo">…群花之蕊、冰鲛之<mark class="mk mk--todo">殼</mark>，沁芳之泉…</div>
+          <div class="demo" style="margin-top:6px">…其为体则冰雪不足喻其<mark class="mk mk--punct">，</mark></div>
+          <div class="note">汉字级=实线，标点级=虚线；都是红色。点它展开候选。</div>
+        </div>
+
+        <div class="state">
+          <h6>② 已审（保留原文）</h6>
+          <div class="demo">…忆女儿<mark class="mk mk--done">曩</mark>生之昔，其为质则金玉…</div>
+          <div class="note">淡绿 + 虚线。改成"采用"后这处红字会直接消失（文本已与候选一致），不长期留绿。</div>
+        </div>
+
+        <div class="state">
+          <h6>③ 展开替补</h6>
+          <div class="demo">…冰鲛之<mark class="mk mk--todo">殼</mark>，沁芳之泉…</div>
+          <div class="cand" style="margin-left:0;margin-top:6px">
+            <div class="cand__h"><span class="lv">汉字级</span><span>第一路 殼 / 第二路 縠</span></div>
+            <div class="cand__t">…冰鲛之<span class="b">縠</span>，沁芳之泉…</div>
+            <div class="cand__acts"><button class="btn btn--pri">采用 <span class="kbd">⏎</span></button><button class="btn">保留 <span class="kbd">␣</span></button><button class="btn">自己改…</button></div>
+          </div>
+        </div>
+
+        <div class="state">
+          <h6>④ 编辑草稿</h6>
+          <div class="edit">
+            <div class="edit__h">第 87 页 · 第 1 块 · 第 2 行　<span class="draftchip">草稿</span><span class="spacer"></span><span style="color:var(--faint)">⌘↵ 收进草稿 · Esc 取消</span></div>
+            维太平不易之元…冰鲛之縠，沁芳之泉…
+          </div>
+          <div class="note">只有这一行变成编辑框，上下行不动；失焦或 ⌘↵ 收进草稿（不写库）。</div>
+        </div>
+
+        <div class="state">
+          <h6>⑤ 全部处理完</h6>
+          <div style="display:flex;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap">
+            <span style="font-size:11px;color:var(--ok-text);font-weight:600;white-space:nowrap">1733 / 1733 全部处理完</span>
+            <span class="prog__bar" style="width:96px;flex:none"><i style="width:100%;background:var(--ok)"></i></span>
+          </div>
+          <div style="display:flex;gap:6px"><button class="btn btn--pri">提交并前往导出</button><button class="btn">留在本页重读</button></div>
+          <div class="note">左树全部转 ✓；顶部进度条转绿；「下一处未审」禁用并写"没有未审的差异"。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ C · 三档宽度 ═══════════ -->
+  <div class="frame">
+    <p class="label">C · 1120–1319 与 &lt;1120 <span>（左树 216 / PDF 360；窄档 PDF 收成浮层）</span></p>
+    <div class="narrow">
+      <div class="card">
+        <div class="rtool" style="border-top:0">
+          <div class="mode"><button class="on">审校</button><button>成稿</button></div>
+          <select class="sel"><option>全部差异</option></select>
+          <div class="prog"><span class="prog__t">已处理 <b>300</b> / 1733</span><span class="prog__bar" style="width:110px"><i style="width:17%"></i></span></div>
+          <button class="btn btn--pri">↓ 下一处 <span class="kbd">⏎</span></button>
+        </div>
+        <div class="work" style="height:300px">
+          <aside class="tree" style="width:216px">
+            <div class="tree__h"><b>目录 · 清单</b></div>
+            <div class="tree__b">
+              <div class="trow trow--ch"><span class="caret">▾</span><span>第二回</span><span class="cnt">132 处</span></div>
+              <div class="trow trow--pg"><span>第 85 页</span><span class="cnt">8 处</span></div>
+              <div class="trow trow--pg on"><span>第 87 页</span><span class="cnt">4 处</span></div>
+              <div class="trow trow--pg done"><span>第 88 页</span><span class="cnt ok">✓</span></div>
+            </div>
+          </aside>
+          <aside class="pdf" style="width:360px">
+            <div class="pdfpage" style="width:318px;font-size:8px;line-height:16px;padding:22px 22px 28px">
+              <div class="rh"><span>红楼梦 87</span><span>87</span></div>
+              <div class="pl">维太平不易之元，蓉桂竞芳之月，</div>
+              <div class="pl">无可奈何之日，怡红院浊玉，谨以群</div>
+              <div class="pl">花之蕊、冰鲛之殼，沁芳之泉、枫露</div>
+              <div class="pl">之茗：四者虽微，聊以达诚申信。</div>
+              <div class="syncline" style="top:48px"></div>
+            </div>
+          </aside>
+          <div class="reader">
+            <div class="reader__scroll" style="padding:12px 18px">
+              <div class="seg">
+                <div class="seg__h"><b>§128</b><span>第 87–88 页 · 跨页</span></div>
+                <div class="para" style="font-size:13px;line-height:24px"><span class="ln">维太平不易之元，蓉桂竞芳之月，无可奈何之日，怡红院浊玉，谨以群花之蕊、冰鲛之</span><mark class="mk mk--todo">殼</mark><span class="ln">，沁芳之泉、枫露之茗：四者虽微，聊以达诚申信…</span></div>
+              </div>
+              <div class="seg">
+                <div class="seg__h"><b>§129</b><span>第 88 页 · 2 块</span></div>
+                <div class="para" style="font-size:13px;line-height:24px"><span class="ln">而玉得于衾枕栉沐之间，栖息宴游之夕，亲昵狎亵，相与共处者，仅五年八月有奇。</span></div>
+              </div>
+            </div>
+            <div class="foot" style="height:40px"><span style="font-size:11px;color:var(--warn-text)">草稿 3</span><span class="spacer"></span><button class="btn btn--warn" style="height:24px">提交 3 处</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card small">
+        <div class="rtool" style="border-top:0">
+          <div class="mode"><button class="on">审校</button><button>成稿</button></div>
+          <button class="btn">☰ 目录</button>
+          <button class="btn">看图</button>
+          <div class="prog"><span class="prog__t"><b>300</b>/1733</span></div>
+          <button class="btn btn--pri">↓ 下一处</button>
+        </div>
+        <div class="work" style="height:300px">
+          <aside class="rail" style="width:44px;flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0;background:var(--surface-2);border-right:1px solid var(--line)">
+            <button class="btn" style="width:30px;height:30px;padding:0">☰</button>
+            <button class="btn" style="width:30px;height:30px;padding:0">≠</button>
+          </aside>
+          <div class="reader">
+            <div class="reader__scroll" style="padding:14px 22px">
+              <div class="seg">
+                <div class="seg__h"><b>§128</b><span>第 87–88 页 · 跨页</span></div>
+                <div class="para" style="font-size:14px;line-height:26px"><span class="ln">维太平不易之元，蓉桂竞芳之月，无可奈何之日，怡红院浊玉，谨以群花之蕊、冰鲛之</span><mark class="mk mk--todo">殼</mark><span class="ln">，沁芳之泉、枫露之茗：四者虽微，聊以达诚申信，乃致祭于白帝宫中抚司秋艳芙蓉女儿之前曰：</span></div>
+              </div>
+            </div>
+            <div class="foot" style="height:40px"><span style="font-size:11px;color:var(--warn-text)">草稿 3</span><span class="spacer"></span><button class="btn btn--warn" style="height:24px">提交 3 处</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption">1200：正文 ≈540（36 字/行）；1000：左树收 44 轨道、PDF 收进「看图」浮层，正文全宽。窄档下进度压成 <b>300/1733</b> 两个数，仍带「下一处」主按钮。</p>
+  </div>
+
+</div>
+
+</body>
+</html>
