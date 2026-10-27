@@ -248,6 +248,142 @@ def test_furniture_only_marks_all_furniture_blocks_and_undoes(
     assert types[cleanup_project["number_block"]] == "paragraph"
 
 
+def _page_blocks(client: TestClient, headers, project_id: str, page_no: int) -> dict:
+    response = client.get(
+        f"/api/projects/{project_id}/pages/{page_no}/blocks", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _find_block(client: TestClient, headers, project_id: str, page_no: int, block_id: str) -> dict:
+    payload = _page_blocks(client, headers, project_id, page_no)
+    return next(block for block in payload["blocks"] if block["block_id"] == block_id)
+
+
+def test_continuation_pending_lists_review_bucket_with_context(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    cleanup_project: dict,
+) -> None:
+    """任务 42：F1 第三桶必须有人能看到——每条都带两页原文，不用回上下文猜。"""
+    project_id = cleanup_project["project"]
+    response = client.get(
+        f"/api/projects/{project_id}/cleanup/continuations/pending", headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["count"] == 1
+    assert data["total"] == 4  # 四个页边界
+    entry = data["entries"][0]
+    assert entry["page_no"] == 4
+    assert entry["next_page_no"] == 5
+    assert entry["bucket"] == "review"
+    assert entry["reviewed"] is False
+    assert entry["continues_to_next"] is False
+    assert "走满但句末。" in entry["last_text"]
+    assert entry["next_text"], "下页首行原文要带上，人才判断得了这一段是否跨页"
+    assert entry["gap"] is not None
+
+
+def test_continuation_resolve_end_is_recorded_and_can_reopen(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    cleanup_project: dict,
+) -> None:
+    """「标结束」时块的值本来就是 0——必须靠 continues_reviewed 记住"人看过"。"""
+    project_id = cleanup_project["project"]
+    base = f"/api/projects/{project_id}/cleanup/continuations"
+    block_id = client.get(f"{base}/pending", headers=auth_headers).json()["entries"][0][
+        "block_id"
+    ]
+
+    resolved = client.post(
+        f"{base}/resolve",
+        json={"block_id": block_id, "continues": False},
+        headers=auth_headers,
+    )
+    assert resolved.status_code == 200, resolved.text
+    payload = resolved.json()
+    assert payload["reviewed"] is True
+    assert payload["continues_to_next"] is False
+    assert payload["remaining"] == 0
+    assert client.get(f"{base}/pending", headers=auth_headers).json()["count"] == 0
+
+    block = _find_block(client, auth_headers, project_id, 4, block_id)
+    assert block["continues_reviewed"] is True
+    assert block["continues_to_next"] is False
+
+    # 确认过的不能重复确认（避免把别处的裁决当成这一处）
+    again = client.post(
+        f"{base}/resolve",
+        json={"block_id": block_id, "continues": True},
+        headers=auth_headers,
+    )
+    assert again.status_code == 400, again.text
+
+    # 改判：放回待确认，值不变
+    reopened = client.post(
+        f"{base}/reopen", json={"block_id": block_id}, headers=auth_headers
+    )
+    assert reopened.status_code == 200, reopened.text
+    assert reopened.json()["bucket"] == "review"
+    assert reopened.json()["remaining"] == 1
+    block = _find_block(client, auth_headers, project_id, 4, block_id)
+    assert block["continues_reviewed"] is False
+    assert block["continues_to_next"] is False
+
+
+def test_continuation_resolve_only_accepts_review_bucket(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    cleanup_project: dict,
+) -> None:
+    """自动判定能定的页边界不走人工接口：防止面板/接口把机器判定当人工裁决写坏。"""
+    project_id = cleanup_project["project"]
+    base = f"/api/projects/{project_id}/cleanup/continuations"
+    # 第 1 页末块属于 continue 桶（自动判定能定），不是待人工
+    blocks = _page_blocks(client, auth_headers, project_id, 1)["blocks"]
+    auto_block = blocks[-1]["block_id"]
+    response = client.post(
+        f"{base}/resolve",
+        json={"block_id": auto_block, "continues": True},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400, response.text
+    assert "待人工" in response.json()["error"]["detail"]
+
+
+def test_continuation_resolve_is_undoable(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    cleanup_project: dict,
+) -> None:
+    """每条确认都是一个可撤销批次：撤销后这一处回到待确认，值也回去。"""
+    project_id = cleanup_project["project"]
+    base = f"/api/projects/{project_id}/cleanup/continuations"
+    block_id = client.get(f"{base}/pending", headers=auth_headers).json()["entries"][0][
+        "block_id"
+    ]
+    resolved = client.post(
+        f"{base}/resolve",
+        json={"block_id": block_id, "continues": True},
+        headers=auth_headers,
+    )
+    assert resolved.status_code == 200, resolved.text
+    assert resolved.json()["history"]["undo"] >= 1
+    assert _find_block(client, auth_headers, project_id, 4, block_id)[
+        "continues_to_next"
+    ] is True
+
+    undo = client.post(f"/api/projects/{project_id}/undo", headers=auth_headers)
+    assert undo.status_code == 200, undo.text
+    assert client.get(f"{base}/pending", headers=auth_headers).json()["count"] == 1
+    block = _find_block(client, auth_headers, project_id, 4, block_id)
+    assert block["continues_reviewed"] is False
+    assert block["continues_to_next"] is False
+
+
 def test_furniture_line_rules_are_conservative() -> None:
     # 书眉 / 页码 / OCR 噪声 → 家具
     for text in ("红楼梦", "红楼梦238", "红楼梦SO", "红楼梦/", "860S8", "x", "州红楼梦", "99"):
@@ -267,3 +403,32 @@ def _block_types(client: TestClient, headers, project_id: str) -> dict[str, str]
         for block in payload["blocks"]:
             result[block["block_id"]] = block["block_type"]
     return result
+
+
+def test_human_continuation_decision_is_not_overwritten_by_auto_apply(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    cleanup_project: dict,
+) -> None:
+    """人工裁决过的边界，重跑自动判定不许覆盖（包括"标结束"这种值没变的情况）。"""
+    project_id = cleanup_project["project"]
+    base = f"/api/projects/{project_id}/cleanup/continuations"
+    block_id = client.get(f"{base}/pending", headers=auth_headers).json()["entries"][0][
+        "block_id"
+    ]
+    resolved = client.post(
+        f"{base}/resolve",
+        json={"block_id": block_id, "continues": False},
+        headers=auth_headers,
+    )
+    assert resolved.status_code == 200, resolved.text
+
+    applied = client.post(base, headers=auth_headers)
+    assert applied.status_code == 200, applied.text
+    stats = applied.json()["stats"]
+    assert stats["review"] == 0
+    assert stats["manual"] == 2  # 第 3 页人工 + 第 4 页这次裁决
+    assert applied.json()["changed"] == 1  # 只有第 1 页的延续是真正新写的
+    block = _find_block(client, auth_headers, project_id, 4, block_id)
+    assert block["continues_to_next"] is False, "人工判为结束，自动判定不许改成延续"
+    assert block["continues_reviewed"] is True

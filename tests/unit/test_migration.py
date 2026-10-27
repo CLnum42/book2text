@@ -564,3 +564,49 @@ def test_migration_0014_adds_page_number_ranges(conn: sqlite3.Connection) -> Non
         "SELECT page_number_ranges FROM project WHERE project_id = 'p1'"
     ).fetchone()
     assert row["page_number_ranges"] is None
+
+
+# ---------------------------------------------------------------- 迁移 0020：跨页边界人工确认
+
+def test_continuation_review_migration_adds_flag(conn: sqlite3.Connection) -> None:
+    migrate(conn, MIGRATIONS)
+    block_columns = _columns(conn, "block")
+    assert block_columns["continues_reviewed"]["dflt_value"] == "0"
+
+
+def test_continuation_review_migration_upgrades_old_database(conn: sqlite3.Connection) -> None:
+    """0019 之前的库：老块一律"没人看过"，已有的延续标记原样保留。"""
+    migrate(conn, MIGRATIONS[:19])
+    conn.execute(
+        """
+        INSERT INTO project (project_id, name, source_file_name, source_sha256,
+                             page_count, created_at, updated_at, schema_version)
+        VALUES ('p1', '老项目', 'old.pdf', 'x' * 64, 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 19)
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO page (page_id, page_no, width_pt, height_pt)
+        VALUES ('page1', 1, 595.0, 842.0)
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO block (block_id, page_id, origin, order_index, bbox, block_type,
+                           ocr_text, text, include, continues_to_next,
+                           created_at, updated_at)
+        VALUES ('b1', 'page1', 'ocr', 0, '[0.1,0.1,0.9,0.2]', 'paragraph',
+                '旧文本', '旧文本', 1, 1,
+                '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')
+        """
+    )
+    conn.commit()
+
+    migrate(conn, MIGRATIONS)
+
+    block = conn.execute("SELECT * FROM block WHERE block_id = 'b1'").fetchone()
+    assert block["text"] == "旧文本"
+    assert int(block["continues_to_next"]) == 1, "老的延续标记不能丢"
+    assert int(block["continues_reviewed"]) == 0, "老项目默认没人看过，要回到待确认"
+    assert current_version(conn) == LATEST_VERSION

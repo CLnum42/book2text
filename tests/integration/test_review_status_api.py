@@ -534,3 +534,65 @@ def test_page_payload_marks_margin_inside_and_counts_outside(
     assert none_page["margin"]["none"] is True
     assert none_page["margin"]["applied"] is False
     assert all(block["margin_inside"] for block in none_page["blocks"])
+
+
+def test_finish_summary_keeps_review_open_until_continuations_confirmed(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_with_ocr: str,
+    library_dir: Path,
+    monkeypatch,
+) -> None:
+    """任务 42：F1 第三桶（跨页延续待人工）没确认完，正文审校不算完成。"""
+    project_id = project_with_ocr
+    # 合成样书 3 页；夹具只识别了前两页，这里把第 3 页也补齐，好让"审校"只剩跨页延续
+    ocr(client, auth_headers, project_id, [3])
+    prepare_page(client, auth_headers, project_id, [1, 2, 3])
+    monkeypatch.setattr(
+        review_status.ink_gaps_module,
+        "find_ink_gaps",
+        lambda *args, **kwargs: {"candidates": []},
+    )
+    for page_no in (1, 2, 3):
+        recognition.run_auxiliary(
+            library_dir / project_id,
+            page_no,
+            engine=FakeSecondEngine(texts=[text for text, _, _ in FAKE_LINES]),
+        )
+    passed = client.post(
+        f"/api/projects/{project_id}/review/auto-pass",
+        json={"page_numbers": [1, 2, 3]},
+        headers=auth_headers,
+    )
+    assert passed.status_code == 200, passed.text
+    assert sorted(passed.json()["applied"]) == [1, 2, 3]
+
+    summary = client.get(
+        f"/api/projects/{project_id}/review/finish-summary", headers=auth_headers
+    ).json()
+    review = summary["review"]
+    assert review["needs_human"] == 0
+    assert review["auto_passable"] == 0
+    assert review["continuation_pending"] == 2
+    assert review["continuation_total"] == 2
+    assert review["complete"] is False, "跨页延续还有人没看，审校不能算完成"
+
+    pending = client.get(
+        f"/api/projects/{project_id}/cleanup/continuations/pending",
+        headers=auth_headers,
+    ).json()
+    assert pending["count"] == 2
+    assert [entry["page_no"] for entry in pending["entries"]] == [1, 2]
+    for entry in pending["entries"]:
+        resolved = client.post(
+            f"/api/projects/{project_id}/cleanup/continuations/resolve",
+            json={"block_id": entry["block_id"], "continues": True},
+            headers=auth_headers,
+        )
+        assert resolved.status_code == 200, resolved.text
+
+    summary = client.get(
+        f"/api/projects/{project_id}/review/finish-summary", headers=auth_headers
+    ).json()
+    assert summary["review"]["continuation_pending"] == 0
+    assert summary["review"]["complete"] is True

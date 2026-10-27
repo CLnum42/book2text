@@ -1165,3 +1165,48 @@ def test_cleanup_actions_are_wired_into_the_finish_panel() -> None:
     assert "window.confirm(" in script
     assert "/undo" in script
     assert "整批可撤销" in script or "可撤销" in script
+
+
+def test_continuation_review_entry_and_panel_are_wired() -> None:
+    """任务 42：F1 第三桶（16 处待人工）有入口、一键两个方向、确认完审校才变绿。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "review-continuations",
+        "cleanup-continuation-review-open",
+        "cleanup-continuation-review-status",
+        "continuation-panel",
+        "continuation-list",
+        "continuation-meta",
+        "continuation-empty",
+        "continuation-error",
+        "continuation-close",
+        "continuation-done",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    # 入口与逐条面板
+    assert "function openContinuationReview(" in script
+    assert "function renderContinuationReview(" in script
+    assert "function continuationRow(" in script
+    assert "/cleanup/continuations/pending" in script
+    assert "/cleanup/continuations/resolve" in script
+    assert "/cleanup/continuations/reopen" in script
+    # 每条都有一键两个方向，不用人去上下文里猜
+    assert "标延续（合成一段）" in script
+    assert "标结束（分成两段）" in script
+    # 依据：本页末行 + 下页首行
+    assert "本页末行" in script
+    assert "下页首行" in script
+
+    # 审校这一步读后端的 complete（已含跨页延续第三桶），不另算
+    assert "Boolean(r.complete)" in script
+    assert "continuation_pending" in script
+    # 收尾面板的审校行与数据清理行都显示第三桶
+    assert "跨页延续待确认" in script
+    assert "跨页延续待人工" in page
+
+    assert ".continuation-row" in styles
+    assert ".continuation-row__quote" in styles
