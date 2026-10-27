@@ -36,6 +36,7 @@ from . import (
     routes_packages,
     routes_structure,
     routes_trash,
+    routes_word_boxes,
     security,
 )
 
@@ -111,6 +112,7 @@ def create_app(
     app.include_router(routes_trash.router, dependencies=guarded)
     app.include_router(routes_margin.router, dependencies=guarded)
     app.include_router(routes_page_numbers.router, dependencies=guarded)
+    app.include_router(routes_word_boxes.router, dependencies=guarded)
     app.include_router(routes_jobs.router, dependencies=guarded)
     app.include_router(routes_layout.router, dependencies=guarded)
     app.include_router(routes_review.router, dependencies=guarded)

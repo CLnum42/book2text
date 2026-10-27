@@ -56,16 +56,33 @@ class BBox:
 
 
 @dataclass(frozen=True)
-class OcrLine:
-    """一个文本行——对应说明书 5.3 的 BlockLine（不含块归属与分歧字段）。
+class OcrWord:
+    """行内一个字 / 一个词（任务 59）。
 
-    ``text`` 是引擎给出的**原文**。说明书 1.5 规定不得润色、补全、纠正原文，
-    因此这里不做任何"修正"。
+    中文引擎返回的是**逐字**四点框；英文是**词级**（``Ladyship's`` 一个框）。
+    坐标同样是归一化的，与 ``OcrLine.bbox`` 同口径。
     """
 
     text: str
     bbox: BBox
     confidence: float | None = None
+
+
+@dataclass(frozen=True)
+class OcrLine:
+    """一个文本行——对应说明书 5.3 的 BlockLine（不含块归属与分歧字段）。
+
+    ``text`` 是引擎给出的**原文**。说明书 1.5 规定不得润色、补全、纠正原文，
+    因此这里不做任何"修正"。
+
+    ``words``：行内字 / 词框（可空）。有它才能把"行级差异"落到具体的字上；
+    老数据 / 引擎没给时是空元组，界面对这类行退化成整行标记。
+    """
+
+    text: str
+    bbox: BBox
+    confidence: float | None = None
+    words: tuple[OcrWord, ...] = ()
 
 
 @dataclass(frozen=True)

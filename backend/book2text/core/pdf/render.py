@@ -228,6 +228,82 @@ def page_rotations(path: Path) -> list[int]:
 
 
 @_serialized
+def page_text_chars(
+    path: Path, page_index: int
+) -> list[tuple[str, tuple[float, float, float, float], list[tuple[str, tuple[float, float, float, float]]]]] | None:
+    """文字层的行 + **行内逐字框**（任务 59 的字框来源）。
+
+    返回 ``[(行文本, 行框, [(字, 字框), ...]), ...]``；没有文字层 / 页面旋转不是 0 时
+    返回 None。字框与行框同口径（归一化、原点左上）。
+    """
+    document = _open(path)
+    try:
+        page = _guarded_page(document, page_index)
+        try:
+            if int(page.get_rotation()) % 360 != 0:
+                return None
+            width, height = (float(value) for value in page.get_size())
+            if width <= 0 or height <= 0:
+                return None
+            textpage = page.get_textpage()
+            try:
+                count = int(textpage.count_chars())
+                if count <= 0:
+                    return None
+                lines = []
+                chars: list[str] = []
+                boxes: list[tuple[float, float, float, float]] = []
+                left = bottom = right = top = None
+
+                def flush() -> None:
+                    nonlocal chars, boxes, left, bottom, right, top
+                    if "".join(chars).strip() and left is not None:
+                        line_box = (
+                            left / width,
+                            1 - top / height,
+                            right / width,
+                            1 - bottom / height,
+                        )
+                        lines.append(
+                            ("".join(chars), line_box, list(zip(chars, boxes)))
+                        )
+                    chars = []
+                    boxes = []
+                    left = bottom = right = top = None
+
+                for index in range(count):
+                    char = textpage.get_text_range(index, 1)
+                    if char in ("\r", "\n"):
+                        flush()
+                        continue
+                    try:
+                        c_left, c_bottom, c_right, c_top = textpage.get_charbox(index)
+                    except Exception:  # noqa: BLE001
+                        continue
+                    chars.append(char)
+                    boxes.append(
+                        (
+                            c_left / width,
+                            1 - c_top / height,
+                            c_right / width,
+                            1 - c_bottom / height,
+                        )
+                    )
+                    left = c_left if left is None else min(left, c_left)
+                    right = c_right if right is None else max(right, c_right)
+                    bottom = c_bottom if bottom is None else min(bottom, c_bottom)
+                    top = c_top if top is None else max(top, c_top)
+                flush()
+                return lines or None
+            finally:
+                textpage.close()
+        finally:
+            page.close()
+    finally:
+        document.close()
+
+
+@_serialized
 def page_text_lines(
     path: Path, page_index: int
 ) -> list[tuple[str, tuple[float, float, float, float]]] | None:

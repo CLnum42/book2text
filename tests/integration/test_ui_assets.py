@@ -1626,6 +1626,11 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert "setReadingHover(" in script
     assert ".reading-page" in css
     assert "is-linked" in css
+    # 字框回填入口与对话框
+    for element_id in ("word-boxes-open", "word-boxes-mask", "word-boxes-start"):
+        assert f'id="{element_id}"' in page, element_id
+    assert "/word-boxes/backfill" in script
+    assert "function startWordBoxesBackfill(" in script
     assert "下一处未审" in page
     assert "window.confirm(" in script
     assert ".reading-mark" in css and ".reading-panel" in css

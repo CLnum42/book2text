@@ -146,6 +146,7 @@
             <div class="page-more" id="page-more-menu" hidden>
               <div class="page-more__group">版面</div>
               <button type="button" id="layout-detect-open" class="page-more__item">检测版面…</button>
+              <button type="button" id="word-boxes-open" class="page-more__item">字框回填…</button>
               <div class="page-more__group">诊断</div>
               <button type="button" id="stats-open" class="page-more__item">质量统计</button>
               <div class="page-more__group">协作</div>
@@ -1384,6 +1385,35 @@
           <span class="spacer"></span>
           <button type="button" id="new-project-cancel" class="btn">取消</button>
           <button type="button" id="new-project-pick" class="btn btn--pri">选择 PDF…</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────── 对话框：字框回填（任务 59） ─────────────────────────── -->
+    <div class="mask" id="word-boxes-mask" hidden>
+      <div class="modal modal--small">
+        <div class="mhead">字框回填
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="word-boxes-cancel-x">✕</button>
+        </div>
+        <div class="mbody mbody--single">
+          <p class="hint">
+            给每一行补上<strong>逐字 / 逐词框</strong>，审校时就能只标出有差异的那几个字。
+            <strong>只写字框</strong>：文本、第二引擎结果、分歧裁决、跨页延续、版心一个都不动。
+          </p>
+          <div class="layout-plan" id="word-boxes-plan">正在读取回填计划…</div>
+          <div class="margin-fit" id="word-boxes-progress" hidden>
+            <div class="progress__bar"><div class="progress__fill" id="word-boxes-fill"></div></div>
+            <div class="progress__text" id="word-boxes-text"></div>
+          </div>
+          <div class="hint" id="word-boxes-note" hidden></div>
+          <div class="alert alert--error" id="word-boxes-error" hidden></div>
+        </div>
+        <div class="mfoot">
+          <button type="button" id="word-boxes-clear" class="btn">撤销字框</button>
+          <span class="spacer"></span>
+          <button type="button" id="word-boxes-cancel" class="btn">关闭</button>
+          <button type="button" id="word-boxes-start" class="btn btn--pri">开始回填</button>
         </div>
       </div>
     </div>

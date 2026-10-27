@@ -1593,8 +1593,9 @@ def _persist_blocks(
                 )
                 conn.executemany(
                     """
-                    INSERT INTO block_line (line_id, block_id, line_index, bbox, text)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO block_line (
+                        line_id, block_id, line_index, bbox, text, word_boxes
+                    ) VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -1603,6 +1604,7 @@ def _persist_blocks(
                             index,
                             blocks_module.bbox_to_json(line.bbox),
                             line.text,
+                            _word_boxes_json(line),
                         )
                         for index, line in enumerate(block.lines)
                     ],
@@ -1628,6 +1630,34 @@ def _persist_blocks(
 
 
 # ---------------------------------------------------------------- 原始输出
+
+def _word_boxes_json(line: OcrLine) -> str | None:
+    """行内字 / 词框的 JSON（任务 59）；引擎没给就 NULL。
+
+    结构与迁移 0021 的约定一致：``[{"text","bbox":[x0,y0,x1,y1],"confidence"}]``。
+    """
+    words = getattr(line, "words", ()) or ()
+    if not words:
+        return None
+    return json.dumps(
+        [
+            {
+                "text": word.text,
+                "bbox": [
+                    round(word.bbox.x0, 5),
+                    round(word.bbox.y0, 5),
+                    round(word.bbox.x1, 5),
+                    round(word.bbox.y1, 5),
+                ],
+                "confidence": (
+                    None if word.confidence is None else round(float(word.confidence), 4)
+                ),
+            }
+            for word in words
+        ],
+        ensure_ascii=False,
+    )
+
 
 def _write_raw_result(
     path: Path,

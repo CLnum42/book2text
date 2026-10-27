@@ -23,6 +23,7 @@ from ..base import (
     OcrLine,
     OcrParams,
     OcrResult,
+    OcrWord,
     normalize_quad,
     pad_to_multiple,
 )
@@ -57,6 +58,29 @@ def _module_present(name: str) -> bool:
         return find_spec(name) is not None
     except (ImportError, ValueError):
         return False
+
+
+def _parse_words(units, width: int, height: int) -> tuple[OcrWord, ...]:
+    """把引擎的 `word_results[i]` 转成 OcrWord：`(词/字, 置信度, 四点框)`。
+
+    坐标按**原图**宽高归一化（padding 只在右下补白，内容坐标不变）。
+    任何一项解析失败就跳过那一项——字框是增强信息，不能让它把整页识别带崩。
+    """
+    parsed: list[OcrWord] = []
+    for unit in units or ():
+        try:
+            text, confidence, quad = unit[0], unit[1], unit[2]
+            bbox = normalize_quad(quad, width, height)
+        except (IndexError, TypeError, ValueError):
+            continue
+        parsed.append(
+            OcrWord(
+                text=str(text),
+                bbox=bbox,
+                confidence=float(confidence) if confidence is not None else None,
+            )
+        )
+    return tuple(parsed)
 
 
 class RapidOcrAdapter:
@@ -123,7 +147,9 @@ class RapidOcrAdapter:
         # 补白只在右 / 下边，所以内容像素坐标不变——下面仍按**原图**宽高归一化。
         padded = pad_to_multiple(pil_image)
         try:
-            output = engine(padded)
+            # return_word_box：中文给逐字四点框、英文给词级框（任务 59）。
+            # 实测耗时 2.82s → 2.77s，可以忽略。
+            output = engine(padded, return_word_box=True)
         except Exception as exc:
             raise OcrEngineError(f"RapidOCR 识别失败：{exc}") from exc
         elapsed = time.perf_counter() - started
@@ -131,6 +157,7 @@ class RapidOcrAdapter:
         boxes = getattr(output, "boxes", None)
         texts = list(getattr(output, "txts", None) or [])
         scores = list(getattr(output, "scores", None) or [])
+        word_results = list(getattr(output, "word_results", None) or [])
 
         width, height = pil_image.size
         lines: list[OcrLine] = []
@@ -146,7 +173,17 @@ class RapidOcrAdapter:
                     )
                     continue
                 confidence = float(scores[index]) if index < len(scores) else None
-                lines.append(OcrLine(text=str(texts[index]), bbox=bbox, confidence=confidence))
+                words: tuple[OcrWord, ...] = ()
+                if index < len(word_results):
+                    words = _parse_words(word_results[index], width, height)
+                lines.append(
+                    OcrLine(
+                        text=str(texts[index]),
+                        bbox=bbox,
+                        confidence=confidence,
+                        words=words,
+                    )
+                )
         elif texts:
             # 引擎返回了文本但没有坐标：说明书 8.4 明确这种情形必须报告，
             # 不能静默降级。这里抛错而不是伪造坐标。

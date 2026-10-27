@@ -965,6 +965,138 @@ async function waitForAuxThenReview() {
   enterReviewStep();
 }
 
+// ---------------------------------------------------------------- 字框回填（任务 59）
+//
+// 只补 block_line.word_boxes：文本 / 第二引擎 / 分歧裁决 / 跨页延续 / 版心都不动。
+// 分批同步调用（每批 2 页，约 9 秒）；关掉对话框 = 停在当前批，再点就从没字框的行继续。
+
+let wordBoxesPlan = null;
+let wordBoxesRunning = false;
+
+async function openWordBoxesDialog() {
+  if (!currentProject) return;
+  wordBoxesPlan = null;
+  el("word-boxes-error").hidden = true;
+  el("word-boxes-note").hidden = true;
+  el("word-boxes-progress").hidden = true;
+  el("word-boxes-plan").textContent = "正在读取回填计划…";
+  el("word-boxes-start").disabled = true;
+  openModal("word-boxes-mask");
+  await refreshWordBoxesPlan();
+}
+
+async function refreshWordBoxesPlan() {
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/word-boxes`
+    );
+    wordBoxesPlan = data;
+    renderWordBoxesPlan(data);
+  } catch (error) {
+    el("word-boxes-plan").textContent = `回填计划读取失败：${error.message || "未知错误"}`;
+    el("word-boxes-start").disabled = true;
+  }
+}
+
+function renderWordBoxesPlan(plan) {
+  const cov = plan.coverage || {};
+  const pages = Number(plan.pages || 0);
+  const rows = [];
+  rows.push(
+    `<div class="layout-plan__row"><span>字框覆盖率</span><strong>${((cov.coverage || 0) * 100).toFixed(1)}%</strong></div>`
+  );
+  rows.push(
+    `<div class="layout-plan__row"><span>还没有字框</span><strong>${pages} 页 · ${plan.lines || 0} 行</strong></div>`
+  );
+  if (pages) {
+    rows.push(
+      `<div class="layout-plan__row"><span>文字层取 / 要识别</span><strong>${plan.text_layer_pages || 0} / ${plan.ocr_pages || 0} 页</strong></div>`
+    );
+    rows.push(
+      `<div class="layout-plan__row"><span>预计耗时</span><strong>${formatDuration(plan.estimated_seconds)}</strong></div>`
+    );
+  }
+  el("word-boxes-plan").innerHTML = rows.join("");
+  const note = el("word-boxes-note");
+  note.textContent = pages
+    ? "回填只写字框，不改任何文字与判定；中途关掉没关系，再点会从没字框的行继续。" +
+      (plan.ocr_pages ? "需要识别的页会真的跑一遍识别（只取字框，不落库）。" : "")
+    : "全书都有字框了。";
+  note.hidden = false;
+  const button = el("word-boxes-start");
+  button.disabled = pages === 0 || wordBoxesRunning;
+  button.textContent = pages ? `开始回填（${pages} 页）` : "没有要回填的行";
+}
+
+async function startWordBoxesBackfill() {
+  if (!currentProject || wordBoxesRunning) return;
+  wordBoxesRunning = true;
+  el("word-boxes-error").hidden = true;
+  el("word-boxes-progress").hidden = false;
+  el("word-boxes-start").disabled = true;
+  const button = el("word-boxes-start");
+  button.textContent = "正在回填…";
+  let donePages = 0;
+  let matched = 0;
+  let unmatched = 0;
+  const totalPages = Number(wordBoxesPlan?.pages || 0);
+  const startedAt = performance.now();
+  try {
+    while (true) {
+      const data = await apiJson(
+        `/api/projects/${currentProject.project_id}/word-boxes/backfill`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ limit: 2 }),
+        }
+      );
+      donePages += Number(data.updated_pages || 0);
+      matched += Number(data.lines_matched || 0);
+      unmatched += Number(data.lines_unmatched || 0);
+      const percent = totalPages ? Math.round((donePages / totalPages) * 100) : 0;
+      el("word-boxes-fill").style.width = `${percent}%`;
+      el("word-boxes-text").textContent =
+        `已回填 ${donePages} / ${totalPages} 页 · 已配对 ${matched} 行 · 未配对 ${unmatched} 行`;
+      if (!data.updated_pages) break;
+      if (Number(data.remaining_pages || 0) === 0) break;
+    }
+    const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
+    el("word-boxes-text").textContent =
+      `回填完成：${donePages} 页 · 配对 ${matched} 行 · 未配对 ${unmatched} 行 · ${seconds} 秒`;
+    await refreshWordBoxesPlan();
+    // 字框变了：让审校流下次打开时重新取块
+    if (typeof pageBlockCache !== "undefined") pageBlockCache.clear();
+  } catch (error) {
+    el("word-boxes-error").textContent = `回填中断：${error.message || "未知错误"}`;
+    el("word-boxes-error").hidden = false;
+  } finally {
+    wordBoxesRunning = false;
+    button.textContent = "继续回填";
+  }
+}
+
+async function clearWordBoxes() {
+  if (!currentProject) return;
+  const button = el("word-boxes-clear");
+  button.disabled = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/word-boxes/clear`,
+      { method: "POST" }
+    );
+    el("word-boxes-note").textContent = `已撤销：清掉 ${data.cleared_lines || 0} 行的字框（其它字段没动过）。`;
+    el("word-boxes-note").hidden = false;
+    await refreshWordBoxesPlan();
+    if (typeof pageBlockCache !== "undefined") pageBlockCache.clear();
+  } catch (error) {
+    el("word-boxes-error").textContent = `撤销失败：${error.message || "未知错误"}`;
+    el("word-boxes-error").hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function goToWorkflowStep(id) {
   if (!currentProject) return;
   if (currentProject.kind === "package" && id === "export") return;
@@ -15201,6 +15333,14 @@ function setupLibrary() {
   });
   el("aux-warning-cancel").addEventListener("click", () => closeModal("aux-warning-mask"));
   el("aux-warning-wait").addEventListener("click", waitForAuxThenReview);
+  el("word-boxes-open").addEventListener("click", () => {
+    el("page-more-menu").hidden = true;
+    openWordBoxesDialog();
+  });
+  el("word-boxes-cancel").addEventListener("click", () => closeModal("word-boxes-mask"));
+  el("word-boxes-cancel-x").addEventListener("click", () => closeModal("word-boxes-mask"));
+  el("word-boxes-start").addEventListener("click", startWordBoxesBackfill);
+  el("word-boxes-clear").addEventListener("click", clearWordBoxes);
   el("layout-detect-open").addEventListener("click", () => {
     // 点 ⋯ 里的条目：先收起菜单，再开对话框（模板遮罩不能挂在菜单里）
     el("page-more-menu").hidden = true;
@@ -16991,6 +17131,7 @@ function removeReadingSentinel() {
   for (const node of stream.querySelectorAll(".reading-sentinel")) node.remove();
 }
 
+
 function buildReadingSegment(segment) {
   const node = document.createElement("div");
   node.className = "reading-seg";
@@ -17550,15 +17691,6 @@ function readingHoveredBlockIds() {
   return new Set((segment.line_spans || []).map((span) => span.block_id));
 }
 
-/** 给某一页的块框套上"联动"样式。 */
-function applyReadingLinked(pageNo) {
-  const ids = readingHoveredBlockIds();
-  const tile = readingTiles.get(pageNo);
-  if (!tile) return;
-  for (const box of tile.querySelectorAll(".box[data-block-id]")) {
-    box.classList.toggle("is-linked", Boolean(ids && ids.has(box.dataset.blockId)));
-  }
-}
 
 /** 悬停右栏某段：右边绿底、左边这一段的所有块绿框——**只高亮，不滚**。 */
 function setReadingHover(seq) {
@@ -17574,7 +17706,12 @@ function setReadingHover(seq) {
     box.classList.remove("is-linked");
   }
   readingHoveredSeq = target;
-  if (target === null) return;
+  if (target === null) {
+    for (const node of document.querySelectorAll("#reading-diff-layer .reading-diff-box")) {
+      node.remove();
+    }
+    return;
+  }
   const node = document.querySelector(`#reading-stream .reading-seg[data-seq="${target}"]`);
   if (node) node.classList.add("is-hover");
   const segment = (readingVisibleSegments() || []).find((item) => item.seq === target);

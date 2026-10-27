@@ -115,6 +115,8 @@ class BlockLineRecord:
     # 任务 67：人工裁决。NULL = 未处理；kept = 保留原文；adopted = 采纳第二路。
     diff_ack: str | None = None
     diff_ack_text: str | None = None
+    # 任务 59：行内字 / 词框（JSON，迁移 0021）。NULL = 没有字框，界面退化成整行标记。
+    word_boxes: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -127,6 +129,7 @@ class BlockLineRecord:
             "diff_status": self.diff_status,
             "layout_status": self.layout_status,
             "diff_ack": self.diff_ack,
+            "word_boxes": self.word_boxes,
         }
 
 
@@ -468,6 +471,7 @@ def list_block_lines(
             layout_status=row["layout_status"] if "layout_status" in row.keys() else "assigned",
             diff_ack=row["diff_ack"] if "diff_ack" in row.keys() else None,
             diff_ack_text=row["diff_ack_text"] if "diff_ack_text" in row.keys() else None,
+            word_boxes=row["word_boxes"] if "word_boxes" in row.keys() else None,
         )
         for row in rows
     ]
