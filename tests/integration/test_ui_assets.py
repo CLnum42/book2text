@@ -952,7 +952,10 @@ def test_workflow_step_shell_is_wired() -> None:
     assert "projectExports" in script
     assert "page_type" in script
     assert "undetermined" in script
-    assert "engine.complete" in script
+    # 任务 58：完成判定只看主引擎；第二引擎是可选（aux_complete 单独显示）
+    assert "engine.aux_complete" in script
+    # 识别步的完成判定不再依赖第二引擎：主引擎页数够了就算完成
+    assert "primary >= included && failed === 0" in script
     assert "needs_human" in script
 
     # 三档响应式

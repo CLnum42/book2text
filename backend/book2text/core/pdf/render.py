@@ -228,6 +228,86 @@ def page_rotations(path: Path) -> list[int]:
 
 
 @_serialized
+def page_text_lines(
+    path: Path, page_index: int
+) -> list[tuple[str, tuple[float, float, float, float]]] | None:
+    """这一页文字层的**行**（文本 + 归一化 bbox），没有可用文字层时返回 None。
+
+    为什么用它：可搜索 PDF 的文字层本身就是某一版 OCR 的产物（这本书的文字层就是
+    Apple Vision 做的）。用它当第二引擎，不用再花几十分钟跑一遍同样的模型。
+
+    行怎么来：pypdfium2 的文字层按字符给框，文本里带换行；这里**按换行切行**，
+    行框取这一行所有字符框的外接矩形。页面 ``/Rotate`` 不是 0 时返回 None——
+    文字层坐标与"渲染后图像"的坐标不一致，宁可不猜。
+
+    归一化口径与应用其它地方一致：原点左上，取 (x0, y0, x1, y1)，0–1。
+    """
+    document = _open(path)
+    try:
+        page = _guarded_page(document, page_index)
+        try:
+            if int(page.get_rotation()) % 360 != 0:
+                return None
+            width, height = (float(value) for value in page.get_size())
+            if width <= 0 or height <= 0:
+                return None
+            textpage = page.get_textpage()
+            try:
+                count = int(textpage.count_chars())
+                if count <= 0:
+                    return None
+                lines: list[tuple[str, tuple[float, float, float, float]]] = []
+                chars: list[str] = []
+                left = bottom = right = top = None
+                for index in range(count):
+                    char = textpage.get_text_range(index, 1)
+                    if char in ("\r", "\n"):
+                        if "".join(chars).strip() and left is not None:
+                            lines.append(
+                                (
+                                    "".join(chars),
+                                    (
+                                        left / width,
+                                        1 - top / height,
+                                        right / width,
+                                        1 - bottom / height,
+                                    ),
+                                )
+                            )
+                        chars = []
+                        left = bottom = right = top = None
+                        continue
+                    try:
+                        c_left, c_bottom, c_right, c_top = textpage.get_charbox(index)
+                    except Exception:  # noqa: BLE001 - 个别字符没有框，跳过它不影响整行
+                        continue
+                    chars.append(char)
+                    left = c_left if left is None else min(left, c_left)
+                    right = c_right if right is None else max(right, c_right)
+                    bottom = c_bottom if bottom is None else min(bottom, c_bottom)
+                    top = c_top if top is None else max(top, c_top)
+                if "".join(chars).strip() and left is not None:
+                    lines.append(
+                        (
+                            "".join(chars),
+                            (
+                                left / width,
+                                1 - top / height,
+                                right / width,
+                                1 - bottom / height,
+                            ),
+                        )
+                    )
+                return lines or None
+            finally:
+                textpage.close()
+        finally:
+            page.close()
+    finally:
+        document.close()
+
+
+@_serialized
 def text_layer_char_count(path: Path, page_index: int) -> int:
     """该页文本层里的字符数。
 

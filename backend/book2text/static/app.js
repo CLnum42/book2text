@@ -252,11 +252,14 @@ function stepProgress(id) {
           ? `${failedJobs} 个任务失败`
           : "";
       if (!failed && failedJobs) failed = failedJobs;
-      const auxDone = Boolean(engine.complete);
-      done = included > 0 && primary >= included && failed === 0 && auxDone;
+      // 任务 58：完成判定只看主引擎。第二引擎是给审校的定位信号（可选），
+      // 41 分钟的后台任务不该把这一步卡成灰。
+      done = included > 0 && primary >= included && failed === 0;
       count = `${primary}/${included}`;
       detail =
-        `主引擎 ${primary}/${included} · 第二引擎 ${engine.checked || 0}/${engine.total || 0}` +
+        `主引擎 ${primary}/${included}` +
+        ` · 第二引擎 ${engine.checked || 0}/${engine.total || 0}` +
+        (engine.aux_complete ? "（已跑完）" : "（可选，没跑完）") +
         (failedText ? ` · ${failedText}` : "");
     }
   } else if (id === "index") {
@@ -841,6 +844,127 @@ function refreshLayoutDetectEntry() {
 }
 
 
+// ---------------------------------------------------------------- 第二引擎：可选，不挡流程
+//
+// 任务 58：完成判定只看主引擎；第二引擎是给审校的定位信号。进审校前如果它还没跑完，
+// 要说清楚"队列还会变"，并给一个"等它跑完再进"的入口。
+
+/** 这一轮已经选了"先开始审校"就不再拦（第二引擎跑完 / 切项目时重置）。 */
+let auxWarningSkipped = false;
+let auxWarningWaitToken = 0;
+
+function engineState() {
+  return (finishSummary && finishSummary.engine) || {};
+}
+
+function auxNeedsWarning() {
+  const engine = engineState();
+  if (!engine.total) return false;
+  if (engine.aux_complete) {
+    auxWarningSkipped = false;
+    return false;
+  }
+  return !auxWarningSkipped;
+}
+
+function enterReviewStep() {
+  showView("reading");
+  savePosition("review", readingPageNo);
+}
+
+async function activeAuxJob() {
+  if (!currentProject) return null;
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/jobs`);
+    const active = data.active || null;
+    if (active && active.job_type === "auxiliary") return active;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function openAuxWarning() {
+  const engine = engineState();
+  const done = Number(engine.checked || 0);
+  const total = Number(engine.total || 0);
+  const job = await activeAuxJob();
+  const running = Boolean(job);
+  el("aux-warning-title").textContent = running ? "还在跑" : "还没跑完";
+  el("aux-warning-text").textContent = running
+    ? `第二引擎复核还在跑（${done} / ${total} 页）。它跑完之前，审校队列的差异条数还会变，` +
+      "建议等它跑完再开始审。"
+    : `第二引擎复核还没跑完（${done} / ${total} 页）。现在开始审校，差异队列之后还会变` +
+      "（它只会标出两路对不上的行，不改字）。";
+  const wait = el("aux-warning-wait");
+  wait.disabled = false;
+  wait.textContent = running ? "等它跑完再进" : "跑第二引擎，跑完再进";
+  el("aux-warning-error").hidden = true;
+  openModal("aux-warning-mask");
+}
+
+/** 等第二引擎跑完（没在跑就先起一个），然后进审校。 */
+async function waitForAuxThenReview() {
+  const token = ++auxWarningWaitToken;
+  const button = el("aux-warning-wait");
+  const error = el("aux-warning-error");
+  error.hidden = true;
+  button.disabled = true;
+  button.textContent = "正在准备…";
+  let job = await activeAuxJob();
+  try {
+    if (!job) {
+      const data = await apiJson(
+        `/api/projects/${currentProject.project_id}/jobs/auxiliary`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scope: "unchecked", skip_checked: true }),
+        }
+      );
+      job = data.job;
+      openTaskDrawer();
+      startTaskPolling(job.job_id);
+    }
+  } catch (exc) {
+    error.textContent = `第二引擎没能开始：${exc.message || "未知错误"}`;
+    error.hidden = false;
+    button.disabled = false;
+    button.textContent = "重试";
+    return;
+  }
+  button.textContent = "等待第二引擎…";
+  // 自己轮询这个任务（不依赖抽屉），跑完再进审校
+  for (let i = 0; i < 720; i += 1) {
+    if (token !== auxWarningWaitToken) return;
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    let data;
+    try {
+      data = await apiJson(
+        `/api/projects/${currentProject.project_id}/jobs/${job.job_id}`
+      );
+    } catch {
+      continue;
+    }
+    const j = data.job || {};
+    button.textContent = `等待第二引擎… ${j.done || 0}/${j.total || 0}`;
+    if (["succeeded", "failed", "cancelled", "interrupted"].includes(j.status)) {
+      if (j.status !== "succeeded" && j.failed) {
+        error.textContent =
+          `第二引擎结束了（${j.done} 页成功、${j.failed} 页失败）。` +
+          "可以先开始审校，失败的页之后在「文字识别」里重试。";
+        error.hidden = false;
+      }
+      break;
+    }
+  }
+  if (token !== auxWarningWaitToken) return;
+  await loadFinishSummary({ silent: true });
+  renderRecognitionStatus();
+  closeModal("aux-warning-mask");
+  enterReviewStep();
+}
+
 function goToWorkflowStep(id) {
   if (!currentProject) return;
   if (currentProject.kind === "package" && id === "export") return;
@@ -850,8 +974,12 @@ function goToWorkflowStep(id) {
   }
   const wasPages = currentView === "pages";
   if (id === "review") {
-    showView("reading");
-    savePosition("review", readingPageNo);
+    // 第二引擎没跑完时先警告（它只影响队列稳定，不阻塞流程，但要让人知情）
+    if (auxNeedsWarning()) {
+      openAuxWarning();
+      return;
+    }
+    enterReviewStep();
   } else if (id === "index") {
     // 目录确认是单页预览：没手动改过缩放时给 100%（与页面视图的"单页"同一档）。
     if (!pageZoomTouched && pageZoomIndex < 3) pageZoomIndex = 3;
@@ -5482,7 +5610,8 @@ function renderRecognitionStatus() {
     [
       "第二引擎",
       included
-        ? `已复核 ${checked} / ${included} 页` + (engine.complete ? " · 已跑完" : " · 还没跑完")
+        ? `已复核 ${checked} / ${included} 页` +
+          (engine.aux_complete ? " · 已跑完" : " · 可选，还没跑完")
         : "—",
     ],
     [
@@ -5583,10 +5712,18 @@ function renderRecognitionVerdict() {
     }
   }
   if (auxNote) {
-    auxNote.textContent = auxPending
-      ? "两路都跑完这一步才算完成：主引擎出文字，第二引擎独立复核一遍、只标分歧不改字；" +
-        `按本机实测约 ${AUX_SECONDS_PER_PAGE} 秒/页。`
-      : "两路都跑完了：主引擎出文字，第二引擎的分歧在「正文审校」里逐条看。";
+    const textPages = textLayerPages();
+    if (auxPending && textPages) {
+      auxNote.textContent =
+        `这本书有 ${textPages} 页带文字层：第二引擎直接读文字层（不跑 Vision），几十秒就能跑完；` +
+        "它只标分歧、不改字，跑不跑都不影响后面的步骤。";
+    } else if (auxPending) {
+      auxNote.textContent =
+        "第二引擎独立复核一遍、只标分歧不改字；" +
+        `按本机实测约 ${AUX_SECONDS_PER_PAGE} 秒/页。它不挡后面的步骤，可以先做别的。`;
+    } else {
+      auxNote.textContent = "两路都跑完了：主引擎出文字，第二引擎的分歧在「正文审校」里逐条看。";
+    }
   }
 
   if (ocrRunning) {
@@ -5607,7 +5744,8 @@ function renderRecognitionVerdict() {
   } else if (!pending) {
     state.textContent = auxPending ? "主引擎已完成" : "已识别";
     line.textContent = auxPending
-      ? `正文 ${body.length} 页都识别过了；还差第二引擎复核 ${auxPending} 页，这一步才算完成。`
+      ? `正文 ${body.length} 页都识别过了，这一步算完成；第二引擎还有 ${auxPending} 页没复核` +
+        "（可选，只影响审校时看不看得到两路分歧）。"
       : `正文 ${body.length} 页都识别过了，第二引擎也复核完了；差异在「正文审校」里逐条看。`;
     button.textContent = "全部已识别";
     button.disabled = true;
@@ -5621,12 +5759,24 @@ function renderRecognitionVerdict() {
   }
 }
 
-// 第二引擎单页耗时（本机实测：Apple Vision × 4.3–6.2 秒，取 5.7 秒/页）
+// 第二引擎单页耗时（本机实测：Apple Vision × 4.3–6.2 秒，取 5.7 秒/页；
+// 读文字层那条路在 490 页的书上实测 436 页 / 43 秒 = 0.10 秒/页，含写库与比对）
 const AUX_SECONDS_PER_PAGE = 5.7;
+const AUX_TEXT_LAYER_SECONDS_PER_PAGE = 0.1;
 
-/** 估时文字：约 41 分钟 / 约 40 秒。 */
+/** 这一本里有多少页可以直接读文字层（任务 58）。 */
+function textLayerPages() {
+  const pages = (projectSummary && projectSummary.pages) || {};
+  return Number(pages.text_layer_pages || 0);
+}
+
+/** 估时文字：文字层的页按几十毫秒算，其余按 Vision 的实测值算。 */
 function auxEstimateText(pages) {
-  return formatDuration(pages * AUX_SECONDS_PER_PAGE);
+  const textPages = Math.min(pages, textLayerPages());
+  const enginePages = Math.max(pages - textPages, 0);
+  const seconds =
+    textPages * AUX_TEXT_LAYER_SECONDS_PER_PAGE + enginePages * AUX_SECONDS_PER_PAGE;
+  return formatDuration(seconds);
 }
 
 /** 第二引擎复核全书：只跑还没复核过的已识别正文页。 */
@@ -13204,13 +13354,14 @@ function renderFinishPanel() {
   }
 
   const engine = data.engine;
-  finishIcon("finish-icon-engine", engine.complete ? "ok" : "warn");
-  el("finish-engine-status").textContent = `${engine.checked} / ${engine.total} 已复核`;
+  finishIcon("finish-icon-engine", engine.aux_complete ? "ok" : "warn");
+  el("finish-engine-status").textContent =
+    `${engine.checked} / ${engine.total} 已复核` + (engine.aux_complete ? "" : " · 可选");
   el("finish-engine-sub").textContent =
     `比过 ${engine.compared_lines} 行 · 分歧率 ${(engine.diverging_rate * 100).toFixed(1)}%` +
     (engine.empty_lines ? ` · 没读出 ${engine.empty_lines} 行` : "");
   const check = el("finish-check-engine");
-  check.hidden = engine.complete;
+  check.hidden = engine.aux_complete;
   check.textContent = `复核全部未复核页（${engine.total - engine.checked}）`;
 
   const bottom = el("finish-bottom-note");
@@ -15043,6 +15194,13 @@ function setupLibrary() {
   el("margin-confirm-all").addEventListener("click", confirmAllMargins);
   el("rec-start-all").addEventListener("click", () => startBatchRecognition("unrecognized"));
   el("rec-aux-all").addEventListener("click", startAuxiliaryAll);
+  el("aux-warning-skip").addEventListener("click", () => {
+    auxWarningSkipped = true;
+    closeModal("aux-warning-mask");
+    enterReviewStep();
+  });
+  el("aux-warning-cancel").addEventListener("click", () => closeModal("aux-warning-mask"));
+  el("aux-warning-wait").addEventListener("click", waitForAuxThenReview);
   el("layout-detect-open").addEventListener("click", () => {
     // 点 ⋯ 里的条目：先收起菜单，再开对话框（模板遮罩不能挂在菜单里）
     el("page-more-menu").hidden = true;

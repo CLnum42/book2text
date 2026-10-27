@@ -181,11 +181,21 @@ def test_second_engine_unavailable_is_reported_as_503(
     client: TestClient,
     auth_headers: dict[str, str],
     recognized_project: str,
+    library_dir: Path,
     inprocess_aux_jobs: FakeSecondEngine,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """说明书 8.6：第二引擎不可用要**明确说出来**，不建注定失败的任务。"""
+    """说明书 8.6：第二引擎不可用要**明确说出来**，不建注定失败的任务。
+
+    任务 58 起，带文字层的页直接读文字层、不需要引擎；这条用例验的是**引擎**路径，
+    所以先把这一页的文字层摘掉。
+    """
     from book2text.core.project import recognition
+    from book2text.core.storage import db as db_module
+
+    with db_module.open_database(library_dir / recognized_project) as conn:
+        conn.execute("UPDATE page SET has_text_layer = 0")
+        conn.commit()
 
     unavailable = FakeSecondEngine(
         available=False, reason="这台机器上没有可用的系统 OCR"
@@ -247,10 +257,12 @@ def test_a_failing_page_is_recorded_and_the_rest_still_run(
     # 第 2 页复核时炸掉：第 1 页应当照样完成
     real_run_auxiliary = recognition.run_auxiliary
 
-    def flaky(directory, page_no, *, engine=None):  # noqa: ANN001
+    def flaky(directory, page_no, *, engine=None, prefer_text_layer=False):  # noqa: ANN001
         if page_no == 2:
             raise recognition.ProjectError("模拟：这一页的行图读不出来")
-        return real_run_auxiliary(directory, page_no, engine=engine)
+        return real_run_auxiliary(
+            directory, page_no, engine=engine, prefer_text_layer=prefer_text_layer
+        )
 
     monkeypatch.setattr(recognition, "run_auxiliary", flaky)
     monkeypatch.setattr(recognition, "default_secondary_engine", lambda: fake)
@@ -284,10 +296,12 @@ def test_failed_pages_can_be_retried(
     state = {"fail": True}
     real_run_auxiliary = recognition.run_auxiliary
 
-    def flaky(directory, page_no, *, engine=None):  # noqa: ANN001
+    def flaky(directory, page_no, *, engine=None, prefer_text_layer=False):  # noqa: ANN001
         if state["fail"]:
             raise recognition.ProjectError("模拟：第一次复核失败")
-        return real_run_auxiliary(directory, page_no, engine=engine)
+        return real_run_auxiliary(
+            directory, page_no, engine=engine, prefer_text_layer=prefer_text_layer
+        )
 
     monkeypatch.setattr(recognition, "run_auxiliary", flaky)
     project_id = recognized_project

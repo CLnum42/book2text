@@ -58,6 +58,8 @@ class PagesSummary:
     unrecognized: int = 0
     failed: int = 0
     has_candidate: int = 0
+    # 带文字层的页数：有文字层的页做第二引擎复核时直接读文字层，不跑 OCR（任务 58）
+    text_layer_pages: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -67,6 +69,7 @@ class PagesSummary:
             "unrecognized": self.unrecognized,
             "failed": self.failed,
             "has_candidate": self.has_candidate,
+            "text_layer_pages": self.text_layer_pages,
         }
 
 
@@ -254,6 +257,7 @@ def project_summary(project_id: str, *, library: Path | None = None) -> ProjectS
             unrecognized=page_counts[blocks_module.STATUS_UNRECOGNIZED],
             failed=page_counts[blocks_module.STATUS_FAILED],
             has_candidate=page_counts[blocks_module.STATUS_HAS_CANDIDATE],
+            text_layer_pages=sum(1 for page in pages if page.has_text_layer),
         ),
         review=ReviewSummary(
             blocks=sum(item.block_count for item in reviews.values()),

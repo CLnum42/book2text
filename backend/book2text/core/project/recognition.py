@@ -49,6 +49,7 @@ from pathlib import Path
 from ..ocr.adapters import RapidOcrAdapter
 from ..ocr.adapters.apple_vision import AppleVisionAdapter
 from ..ocr import compare as compare_module
+from ..ocr import text_layer as text_layer_module
 from ..ocr.base import BBox, OcrEngine, OcrEngineError, OcrLine, OcrParams, OcrResult
 from ..pdf import render
 from ..storage import db as db_module
@@ -523,16 +524,23 @@ def create_auxiliary_job(
         )
 
     secondary = engine or default_secondary_engine()
-    available, reason = secondary.available()
-    if not available:
-        # 第二引擎不可用是环境问题（说明书 8.6：要明确显示"第二意见不可用"，
-        # 也不能假装还在比对），不该建出一个注定失败的任务
-        raise EngineUnavailable(f"第二引擎（{secondary.engine_id}）不可用：{reason}")
+    # 任务 58：这些页都带文字层时不需要第二引擎——文字层本身就是某一版 OCR 的结果。
+    # 只有真要去跑 Vision 的页才检查引擎可用性。
+    needs_engine = any(not page.has_text_layer for page in selected)
+    if needs_engine:
+        available, reason = secondary.available()
+        if not available:
+            # 第二引擎不可用是环境问题（说明书 8.6：要明确显示"第二意见不可用"，
+            # 也不能假装还在比对），不该建出一个注定失败的任务
+            raise EngineUnavailable(f"第二引擎（{secondary.engine_id}）不可用：{reason}")
 
     return jobs_module.create_job(
         directory,
         pages=[(page.page_id, page.page_no) for page in selected],
-        params={"engine_id": secondary.engine_id, "scope": scope or "pages"},
+        params={
+            "engine_id": secondary.engine_id if needs_engine else TEXT_LAYER_ENGINE_ID,
+            "scope": scope or "pages",
+        },
         job_type=jobs_module.JOB_TYPE_AUXILIARY,
     )
 
@@ -545,11 +553,45 @@ def _current_line_text(block_text: str | None, line_index: int, fallback: str | 
     return fallback or ""
 
 
+# 文字层当第二引擎时写进 ocr_run.engine_id 的标记（与真正的引擎区分开）
+TEXT_LAYER_ENGINE_ID = "pdf_text_layer"
+TEXT_LAYER_ENGINE_VERSION = "pdf-text-layer"
+
+
+def _append_aux_result(results: list[dict], counts: dict, row, aux_text: str) -> None:
+    """一条行级复核结果：比对状态 + 是否"已确认保留"（与原来的写法逐字一致）。"""
+    status = (
+        compare_module.compare_line(row["text"] or "", aux_text)
+        if aux_text
+        else compare_module.DIFFERS
+    )
+    counts[status] = counts.get(status, 0) + 1
+    results.append(
+        {
+            "line_id": row["line_id"],
+            "block_id": row["block_id"],
+            "line_index": int(row["line_index"]),
+            "text": row["text"] or "",
+            "aux_text": aux_text,
+            "diff_status": status,
+            "ack_keep": bool(
+                row["diff_ack"]
+                and row["diff_ack_text"] is not None
+                and _current_line_text(
+                    row["block_text"], int(row["line_index"]), row["text"]
+                )
+                == row["diff_ack_text"]
+            ),
+        }
+    )
+
+
 def run_auxiliary(
     directory: Path,
     page_no: int,
     *,
     engine: OcrEngine | None = None,
+    prefer_text_layer: bool = False,
 ) -> dict:
     """用第二引擎逐行复核一页（说明书 8.5 / R1b）。
 
@@ -560,11 +602,6 @@ def run_auxiliary(
     **不生成块**（说明书 8.5：第二引擎只作为行级候选）。辅助识别可以随时重跑，
     不影响 `Block.text`、审校状态与导出。
     """
-    secondary = engine or default_secondary_engine()
-    available, reason = secondary.available()
-    if not available:
-        raise EngineUnavailable(f"第二引擎（{secondary.engine_id}）不可用：{reason}")
-
     source = directory / SOURCE_DIR_NAME / SOURCE_FILE_NAME
     run_id = new_ulid()
     now = _now()
@@ -595,6 +632,32 @@ def run_auxiliary(
         primary_params = json.loads(active["params_json"] or "{}")
         dpi = int(primary_params.get("dpi") or DEFAULT_DPI)
 
+    # ---- 文字层优先（任务 58）--------------------------------------------
+    # 可搜索 PDF 的文字层就是某一版 OCR 的结果（这本书是用户自己用 Apple Vision
+    # 做的），拿它当第二意见，比再跑一遍同样的模型快几十分钟。
+    text_lines: list[text_layer_module.TextLayerLine] = []
+    # `prefer_text_layer`：生产任务（批量复核 / 单页复核）打开，有文字层就读文字层；
+    # 显式注入引擎的调用（测试 / 诊断要指定"这一遍用谁"）默认不打开。
+    if prefer_text_layer and page["has_text_layer"]:
+        try:
+            raw_lines = render.page_text_lines(source, page_no - 1) or []
+        except render.PdfError:
+            raw_lines = []
+        text_lines = [text_layer_module.TextLayerLine(text, tuple(bbox)) for text, bbox in raw_lines]
+
+    secondary = None
+    if text_lines:
+        engine_id = TEXT_LAYER_ENGINE_ID
+        engine_version = TEXT_LAYER_ENGINE_VERSION
+    else:
+        secondary = engine or default_secondary_engine()
+        available, reason = secondary.available()
+        if not available:
+            raise EngineUnavailable(f"第二引擎（{secondary.engine_id}）不可用：{reason}")
+        engine_id = secondary.engine_id
+        engine_version = secondary.version()
+
+    with db_module.open_database(directory, apply_migrations=False) as conn:
         conn.execute(
             """
             INSERT INTO ocr_run (
@@ -605,61 +668,61 @@ def run_auxiliary(
             (
                 run_id,
                 page["page_id"],
-                secondary.engine_id,
-                secondary.version(),
-                json.dumps({"dpi": dpi, "scope": "block_lines"}, ensure_ascii=False),
+                engine_id,
+                engine_version,
+                json.dumps(
+                    {
+                        "dpi": dpi,
+                        "scope": "block_lines",
+                        "source": "text_layer" if text_lines else "engine",
+                    },
+                    ensure_ascii=False,
+                ),
                 now,
             ),
         )
         conn.commit()
 
-    try:
-        image = render.render_page_image(source, page_no - 1, dpi=dpi)
-    except render.PdfError as exc:
-        _fail_auxiliary(directory, run_id, ERROR_RENDER_FAILED, str(exc))
-        raise ProjectError(f"这一页渲染失败：{exc}") from exc
-
-    width, height = image.size
     results: list[dict] = []
-    counts = {compare_module.IDENTICAL: 0, compare_module.FORMAT_ONLY_DIFFERS: 0, compare_module.DIFFERS: 0}
+    counts = {
+        compare_module.IDENTICAL: 0,
+        compare_module.FORMAT_ONLY_DIFFERS: 0,
+        compare_module.DIFFERS: 0,
+    }
     started_clock = datetime.now(timezone.utc)
-    try:
-        for row in lines:
-            bbox = blocks_module.bbox_from_json(row["bbox"])
-            aux_text = ""
-            if bbox is not None:
-                crop = _crop_line(image, blocks_module.BBox(*bbox))
-                if crop is not None:  # 退化 / 过小的行框不送引擎（native 崩溃风险）
-                    try:
-                        aux_text = _read_one_line(secondary, crop)
-                    finally:
-                        crop.close()
-            status = (
-                compare_module.compare_line(row["text"] or "", aux_text)
-                if aux_text
-                else compare_module.DIFFERS
-            )
-            counts[status] = counts.get(status, 0) + 1
-            results.append(
-                {
-                    "line_id": row["line_id"],
-                    "block_id": row["block_id"],
-                    "line_index": int(row["line_index"]),
-                    "text": row["text"] or "",
-                    "aux_text": aux_text,
-                    "diff_status": status,
-                    "ack_keep": bool(
-                        row["diff_ack"]
-                        and row["diff_ack_text"] is not None
-                        and _current_line_text(
-                            row["block_text"], int(row["line_index"]), row["text"]
-                        )
-                        == row["diff_ack_text"]
-                    ),
-                }
-            )
-    finally:
-        image.close()
+
+    if text_lines:
+        # 文字层当第二引擎：按阅读顺序 + 文本相似度配对，坐标只验证（见 ocr/text_layer.py）
+        row_dicts = [
+            {
+                "text": row["text"] or "",
+                "bbox": blocks_module.bbox_from_json(row["bbox"]),
+            }
+            for row in lines
+        ]
+        aux_texts = text_layer_module.align_rows(row_dicts, text_lines)
+        for row, aux_text in zip(lines, aux_texts):
+            _append_aux_result(results, counts, row, aux_text)
+    else:
+        try:
+            image = render.render_page_image(source, page_no - 1, dpi=dpi)
+        except render.PdfError as exc:
+            _fail_auxiliary(directory, run_id, ERROR_RENDER_FAILED, str(exc))
+            raise ProjectError(f"这一页渲染失败：{exc}") from exc
+        try:
+            for row in lines:
+                bbox = blocks_module.bbox_from_json(row["bbox"])
+                aux_text = ""
+                if bbox is not None:
+                    crop = _crop_line(image, blocks_module.BBox(*bbox))
+                    if crop is not None:  # 退化 / 过小的行框不送引擎（native 崩溃风险）
+                        try:
+                            aux_text = _read_one_line(secondary, crop)
+                        finally:
+                            crop.close()
+                _append_aux_result(results, counts, row, aux_text)
+        finally:
+            image.close()
 
     elapsed = (datetime.now(timezone.utc) - started_clock).total_seconds()
     raw_path = directory / OCR_RUNS_DIR_NAME / f"{run_id}.json"
@@ -671,8 +734,9 @@ def run_auxiliary(
                     "run_id": run_id,
                     "run_type": "auxiliary",
                     "page_no": page_no,
-                    "engine_id": secondary.engine_id,
-                    "engine_version": secondary.version(),
+                    "engine_id": engine_id,
+                    "engine_version": engine_version,
+                    "source": "text_layer" if text_lines else "engine",
                     "dpi": dpi,
                     "line_count": len(results),
                     "line_results": [
@@ -727,8 +791,9 @@ def run_auxiliary(
 
     return {
         "run_id": run_id,
-        "engine_id": secondary.engine_id,
-        "engine_version": secondary.version(),
+        "engine_id": engine_id,
+        "engine_version": engine_version,
+        "source": "text_layer" if text_lines else "engine",
         "page_no": page_no,
         "dpi": dpi,
         "line_count": len(results),
@@ -1038,6 +1103,8 @@ def _run_ocr_job(
         if secondary is None or not _item_succeeded(directory, item.item_id):
             return
         try:
+            # 「双引擎比对」是用户在设置里显式选的第二条路：这里就用那个引擎，
+            # 不拿文字层替代（文字层是批量复核那条路的省力办法）。
             run_auxiliary(directory, item.page_no, engine=secondary)
         except Exception as exc:  # noqa: BLE001 - 第二路失败不该让第一路失败
             dual_failed += 1
@@ -1268,7 +1335,9 @@ def _run_auxiliary_item(
         conn.commit()
 
     try:
-        result = run_auxiliary(directory, item.page_no, engine=engine)
+        result = run_auxiliary(
+            directory, item.page_no, engine=engine, prefer_text_layer=True
+        )
     except (ProjectError, EngineUnavailable) as exc:
         jobs_module.mark_item_failed(directory, item.item_id, str(exc))
         log(f"page {item.page_no} failed auxiliary")

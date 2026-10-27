@@ -1388,6 +1388,33 @@
       </div>
     </div>
 
+    <!-- ─────────────────────────── 对话框：第二引擎还没跑完 ─────────────────────────── -->
+    <div class="mask" id="aux-warning-mask" hidden>
+      <div class="modal modal--small">
+        <div class="mhead">第二引擎复核还没跑完
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="aux-warning-cancel">✕</button>
+        </div>
+        <div class="mbody mbody--single">
+          <div class="step-verdict" id="aux-warning-body">
+            <strong id="aux-warning-title">还在跑</strong>
+            <p class="hint" id="aux-warning-text"></p>
+          </div>
+          <p class="hint">
+            第二引擎只给审校提供定位信号（两路对不上的行会标出来），不改任何文字。
+            它没跑完时队列还会变，所以建议等它跑完再开始审；这本书如果带文字层，
+            几秒就能跑完。
+          </p>
+          <div class="alert alert--error" id="aux-warning-error" hidden></div>
+        </div>
+        <div class="mfoot">
+          <span class="spacer"></span>
+          <button type="button" id="aux-warning-skip" class="btn">先开始审校</button>
+          <button type="button" id="aux-warning-wait" class="btn btn--pri">等它跑完再进</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ─────────────────────────── 对话框：检测版面 ─────────────────────────── -->
     <div class="mask" id="layout-detect-mask" hidden>
       <div class="modal modal--small">

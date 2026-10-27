@@ -51,6 +51,16 @@ def recognized_page(
     return project_id
 
 
+def _drop_text_layer(library_dir: Path, project_id: str, page_no: int = 1) -> None:
+    """把这一页标成"没有文字层"：让测试走真正的第二引擎那条路。
+
+    任务 58 起，带文字层的页直接读文字层（不跑引擎）；这几条用例验的是**引擎**
+    路径（不可用要 503、结果要来自引擎），所以先把文字层摘掉。
+    """
+    with db_module.open_database(library_dir / project_id) as conn:
+        conn.execute("UPDATE page SET has_text_layer = 0 WHERE page_no = ?", (page_no,))
+        conn.commit()
+
 def lines_of(project_id: str, library_dir: Path, page_no: int = 1):
     return blocks_module.list_block_lines(project_id, library=library_dir, page_no=page_no)
 
@@ -212,7 +222,11 @@ def test_auxiliary_can_be_rerun(
 
 
 def test_auxiliary_endpoint_reports_the_engine_is_unavailable(
-    client: TestClient, auth_headers: dict[str, str], recognized_page: str, monkeypatch
+    client: TestClient,
+    auth_headers: dict[str, str],
+    recognized_page: str,
+    library_dir: Path,
+    monkeypatch,
 ) -> None:
     """第二引擎不可用时回 503 并说明原因（说明书 1.6）。"""
 
@@ -220,6 +234,7 @@ def test_auxiliary_endpoint_reports_the_engine_is_unavailable(
         def available(self) -> tuple[bool, str]:
             return False, "未安装 pyobjc 桥接包"
 
+    _drop_text_layer(library_dir, recognized_page)
     monkeypatch.setattr(recognition, "default_secondary_engine", lambda: Unavailable())
     response = client.post(
         f"/api/projects/{recognized_page}/pages/1/auxiliary", headers=auth_headers
@@ -234,8 +249,13 @@ def test_auxiliary_requires_token(client: TestClient) -> None:
 
 
 def test_auxiliary_endpoint_returns_differences(
-    client: TestClient, auth_headers: dict[str, str], recognized_page: str, monkeypatch
+    client: TestClient,
+    auth_headers: dict[str, str],
+    recognized_page: str,
+    library_dir: Path,
+    monkeypatch,
 ) -> None:
+    _drop_text_layer(library_dir, recognized_page)
     engine = FakeSecondEngine(["一模一样", "也一模一样", "不一样"])
     monkeypatch.setattr(recognition, "default_secondary_engine", lambda: engine)
     response = client.post(

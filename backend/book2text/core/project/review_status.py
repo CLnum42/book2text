@@ -728,6 +728,15 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
         }
 
     checked_pages = [page.page_no for page in body_pages if page.page_id in aux]
+    # 完成判定只看**主引擎**（任务 58）：第二引擎是给审校的定位信号，
+    # 不能让 41 分钟的可选任务把版心 / 目录 / 审校全卡成灰。
+    main_done = sum(
+        1
+        for page in body_pages
+        if (states.get(page.page_id) is not None)
+        and states[page.page_id].status
+        in (blocks_module.STATUS_RECOGNIZED, blocks_module.STATUS_HAS_CANDIDATE)
+    )
     compared = identical = format_only = chars = punct = empty = 0
     for page in body_pages:
         divergence = divergences.get(page.page_id)
@@ -750,7 +759,7 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
         len(auto_passable) == 0
         and len(needs_human) == 0
         and continuation["count"] == 0,
-        len(checked_pages) == len(body_pages),
+        main_done == len(body_pages),
     ]
     return {
         "project": {"project_id": project_id, "name": project.name},
@@ -806,6 +815,10 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
         "engine": {
             "checked": len(checked_pages),
             "total": len(body_pages),
+            # 主引擎完整度：识别步的完成判定用它；第二引擎只报进度（可选）
+            "main_recognized": main_done,
+            "main_complete": main_done == len(body_pages),
+            "aux_complete": len(checked_pages) == len(body_pages),
             "compared_lines": compared,
             "diverging_lines": chars + punct,
             "empty_lines": empty,
