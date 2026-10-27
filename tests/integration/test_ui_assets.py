@@ -1009,3 +1009,52 @@ def test_workflow_steps_scope_the_right_panel() -> None:
     # 文字识别步只读：状态数字来自 finish-summary / summary，不在右栏做裁决
     assert "function renderRecognitionStatus(" in script
     assert "finishSummary.engine" in script or "finishSummary && finishSummary.engine" in script
+
+
+def test_page_index_step_is_wired() -> None:
+    """任务 37（C 刀）：第 4 步「目录确认」= 页码跳转索引，自动绿、零人工。
+
+    静态约定：步骤条里有第 4 步、视图与索引列表的节点真实存在、
+    跳转 / 翻页 / 缺页码标注的接线都在，没有"加了按钮忘了监听"。
+    """
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "view-index",
+        "index-list",
+        "index-meta",
+        "index-empty",
+        "index-jump-input",
+        "index-jump-go",
+        "index-jump-status",
+        "index-page-no",
+        "index-printed",
+        "index-prev",
+        "index-next",
+        "index-zoom-label",
+        "index-image",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    # 六步：目录确认排在文字识别与正文审校之间
+    assert '{ id: "index", label: "目录确认", short: "目录" }' in script
+    assert 'PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition", "index"]' in script
+
+    # 生成 / 跳转 / 翻页 / 高亮 / 缺页码
+    assert "function openPageIndex(" in script
+    assert "function jumpToPrintedPage(" in script
+    assert "function stepIndexPage(" in script
+    assert "function highlightIndexRow(" in script
+    assert "INDEX_ZOOM_SCALES" in script
+    assert "/page-index" in script
+    # 完成判定读收尾面板的 index 字段，不在前端另算
+    assert 'const ix = fs.index || {};' in script
+    assert 'Boolean(ix.complete)' in script
+    assert "未识别页码" in script
+    # 版心步的"下一步"不再写审校
+    assert "版心已自动拟合；拖动四边调整，不改也算已定" in script
+
+    assert ".index-row.is-current" in css
+    assert ".index-split" in css
