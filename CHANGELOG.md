@@ -7,6 +7,18 @@
 
 ## [0.1.0] — 2026-10-21
 
+### 变更 — 阅读审校：连续正文流 + 行内红字 + 草稿提交（L1+L2，2026-10-27）
+
+- 步骤条 **7 → 6**：正文审校吸收结果预览；第 5 步变成「左树 + PDF + 连续正文流」，
+  段按导出组装排开、差异只在行内标红（汉字级实线 / 标点级虚线），点红字在该行下就地展开候选。
+- **草稿层**：采用 / 保留 / 手改都先落 localStorage（琥珀 + `草稿` chip），
+  「提交 N 处改动」才写库；提交前库里的文本与 ack 一个字节不变。
+- 新增 `GET /review/marks`、`POST /review/submit-drafts`（一个 batch，撤销一次全退）；
+  修了同块多次修改时撤销顺序的错误（改为倒序写回 before）。
+- 性能：首屏只铺 8 段并按需追加；20 次「下一处未审」中位 33 ms、最大 36 ms、0/20 超 300 ms；
+  全本滚动 12.2–13.1 s、p95 49 ms（1 帧 1 s 长帧）。
+- 截图：`docs/screenshots/reading-open.png`、`reading-panel.png`、`reading-drafts.png`。
+
 ### 变更 — 阅读审校的 `line_spans`（L 刀前置，2026-10-27）
 
 - `/export/preview` 的 `segments[]` 新增 `line_spans`：每行（`page_no` / `block_id` /
