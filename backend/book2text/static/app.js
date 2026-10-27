@@ -179,6 +179,7 @@ function showView(name) {
     pumpPageSuggestionQueue();
   }
   if (target === "reading" && currentProject) {
+    setReviewOverlaysForReading();
     openReading();
   }
   if (target === "review" && currentProject) {
@@ -496,6 +497,12 @@ function syncStepToggles(marginStep) {
   // 结果预览有自己的版心开关（任务 47）：这里只同步底栏按钮状态，
   // 不按"非版心步就关掉"的规则把用户刚关掉的版心又打开。
   if (currentView === "preview") {
+    if (button) button.classList.toggle("is-on", pagesMarginOn);
+    return;
+  }
+  // 正文审校是读稿主界面：版心 + 块框默认开着（任务 57），**不按步骤把它们压暗**。
+  // 用户自己关掉也尊重——这里只同步底栏按钮状态。
+  if (currentView === "reading") {
     if (button) button.classList.toggle("is-on", pagesMarginOn);
     return;
   }
@@ -4661,6 +4668,8 @@ function renderPageBlocks(tile, blocks, { details = pageZoomIndex >= 2 } = {}) {
     if (!block.include) box.classList.add("box--excluded");
     if (block.review_status === "uncertain") box.classList.add("box--uncertain");
     box._bbox = block.bbox;
+    // 任务 57：悬停联动靠它把"这一段的行"映射到"左边的块框"
+    if (block.block_id) box.dataset.blockId = block.block_id;
     applyBoxElementRect(box, block.bbox);
     const index = block.order_index;
     box.title = `${boxTypeLabel(block)} · 第 ${index + 1} 块`;
@@ -5512,31 +5521,94 @@ function renderRecognitionVerdict() {
     ["recognized", "has_candidate"].includes(recognitionOf(page).status)
   ).length;
   const pending = Math.max(body.length - recognized, 0);
+  // 第二引擎：分母与主引擎相同，只算**已识别**的正文页（第二引擎读第一引擎切的行图）
+  const engine = (finishSummary && finishSummary.engine) || {};
+  const auxChecked = Number(engine.checked || 0);
+  const auxTotal = Number(engine.total || recognized || 0);
+  const auxPending = Math.max(auxTotal - auxChecked, 0);
   const state = el("rec-verdict-state");
   const line = el("rec-verdict-line");
   const button = el("rec-start-all");
+  const auxButton = el("rec-aux-all");
+  const auxNote = el("rec-aux-note");
   el("rec-status-summary").textContent = `${recognized}/${body.length} 已识别`;
   if (!state || !line || !button) return;
+
+  // 两路进度：主引擎 / 第二引擎各一行，写真实数字
+  const primaryNum = el("rec-primary-num");
+  const auxNum = el("rec-aux-num");
+  const primaryState = el("rec-primary-state");
+  const auxState = el("rec-aux-state");
+  if (primaryNum) primaryNum.textContent = `${recognized}/${body.length}`;
+  if (auxNum) auxNum.textContent = auxTotal ? `${auxChecked}/${auxTotal}` : "—";
+  const activeJob = taskJobId && lastTaskData && lastTaskData.job
+    ? lastTaskData.job
+    : null;
+  const active = Boolean(
+    activeJob && ["queued", "running", "paused"].includes(activeJob.status)
+  );
+  const ocrRunning = active && activeJob.job_type === "ocr";
+  const auxRunning = active && activeJob.job_type === "auxiliary";
+  if (primaryState) primaryState.textContent = ocrRunning ? "进行中…" : pending ? "还差 " + pending + " 页" : "✓";
+  if (auxState) {
+    auxState.textContent = auxRunning
+      ? "进行中…"
+      : auxPending
+        ? "还差 " + auxPending + " 页"
+        : auxTotal
+          ? "✓"
+          : "—";
+  }
+
   const wrap = state.parentElement;
-  const running =
-    taskJobId && lastTaskData && lastTaskData.job &&
-    ["queued", "running", "paused"].includes(lastTaskData.job.status) &&
-    lastTaskData.job.job_type === "ocr";
-  wrap.classList.toggle("is-ok", pending === 0);
-  wrap.classList.toggle("is-warn", pending > 0 && !running);
-  if (running) {
+  const bothDone = pending === 0 && auxPending === 0 && auxTotal > 0;
+  wrap.classList.toggle("is-ok", bothDone);
+  wrap.classList.toggle("is-warn", !bothDone && !active);
+
+  if (auxButton) {
+    auxButton.hidden = false;
+    if (auxRunning) {
+      auxButton.textContent = "第二引擎复核中…";
+      auxButton.disabled = true;
+    } else if (!pending && auxPending) {
+      auxButton.textContent =
+        `第二引擎复核全书（${auxPending} 页 · ${auxEstimateText(auxPending)}）`;
+      auxButton.disabled = false;
+    } else if (!auxPending && auxTotal) {
+      auxButton.textContent = "第二引擎已跑完";
+      auxButton.disabled = true;
+    } else {
+      auxButton.textContent = "第二引擎复核全书";
+      auxButton.disabled = true;
+    }
+  }
+  if (auxNote) {
+    auxNote.textContent = auxPending
+      ? "两路都跑完这一步才算完成：主引擎出文字，第二引擎独立复核一遍、只标分歧不改字；" +
+        `按本机实测约 ${AUX_SECONDS_PER_PAGE} 秒/页。`
+      : "两路都跑完了：主引擎出文字，第二引擎的分歧在「正文审校」里逐条看。";
+  }
+
+  if (ocrRunning) {
     state.textContent = "正在识别…";
-    line.textContent = "识别在后台逐页跑，进度在右侧任务抽屉里；可以先去做别的。";
+    line.textContent = "主引擎在后台逐页跑，进度在右侧任务抽屉里；可以先去做别的。";
     button.textContent = "正在识别…";
     button.disabled = true;
+  } else if (auxRunning) {
+    state.textContent = "正在复核…";
+    line.textContent = "第二引擎在后台逐页复核（只标分歧、不改字），进度在右侧任务抽屉里。";
+    button.textContent = pending ? `开始识别（${pending} 页）` : "全部已识别";
+    button.disabled = !pending;
   } else if (!body.length) {
     state.textContent = "未准备";
     line.textContent = "还没有确认过正文页：先在第 1 步把页面类型确认好。";
     button.textContent = "开始识别";
     button.disabled = true;
   } else if (!pending) {
-    state.textContent = "已识别";
-    line.textContent = `正文 ${body.length} 页都识别过了；差异在「正文审校」里逐条看。`;
+    state.textContent = auxPending ? "主引擎已完成" : "已识别";
+    line.textContent = auxPending
+      ? `正文 ${body.length} 页都识别过了；还差第二引擎复核 ${auxPending} 页，这一步才算完成。`
+      : `正文 ${body.length} 页都识别过了，第二引擎也复核完了；差异在「正文审校」里逐条看。`;
     button.textContent = "全部已识别";
     button.disabled = true;
   } else {
@@ -5546,6 +5618,61 @@ function renderRecognitionVerdict() {
       "识别不读版心，版心要等识别出行框之后才生成得了。";
     button.textContent = `开始识别（${pending} 页）`;
     button.disabled = false;
+  }
+}
+
+// 第二引擎单页耗时（本机实测：Apple Vision × 4.3–6.2 秒，取 5.7 秒/页）
+const AUX_SECONDS_PER_PAGE = 5.7;
+
+/** 估时文字：约 41 分钟 / 约 40 秒。 */
+function auxEstimateText(pages) {
+  return formatDuration(pages * AUX_SECONDS_PER_PAGE);
+}
+
+/** 第二引擎复核全书：只跑还没复核过的已识别正文页。 */
+async function startAuxiliaryAll() {
+  if (!currentProject) return;
+  const status = el("rec-status");
+  if (status) status.hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/jobs/auxiliary`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: "unchecked", skip_checked: true }),
+      }
+    );
+    openTaskDrawer();
+    startTaskPolling(data.job.job_id);
+  } catch (error) {
+    // 第二引擎不可用时必须当面说清（说明书 8.6：不假装还在比对）
+    if (status) {
+      status.textContent = `第二引擎没能开始：${error.message || "未知错误"}`;
+      status.style.color = "var(--bad-fg)";
+      status.hidden = false;
+    }
+  }
+}
+
+/** 复核任务在跑：在识别步里显示"做到哪、还要多久"。 */
+function updateRecognitionAuxProgress(data) {
+  const job = data && data.job;
+  if (!job || job.job_type !== "auxiliary") return;
+  if (!["queued", "running", "paused"].includes(job.status)) return;
+  const done = job.done + job.failed;
+  const auxNum = el("rec-aux-num");
+  if (auxNum) auxNum.textContent = `${done}/${job.total}`;
+  const line = el("rec-verdict-line");
+  const err = el("rec-status");
+  // 有错误提示时不要用进度把它盖掉
+  if (line && err && !err.hidden) return;
+  if (line) {
+    const eta = estimateRemainingSeconds(data);
+    line.textContent =
+      `第二引擎复核中：${done} / ${job.total} 页` +
+      (job.status === "paused" ? "（已暂停）" : eta > 0 ? ` · 还需${formatDuration(eta)}` : "") +
+      "。进度也在右侧任务抽屉里。";
   }
 }
 
@@ -6758,6 +6885,7 @@ async function pollTask() {
   renderTask(data);
   // 检测任务在版心分区里也留一行进度（"做了多少 / 还要多久"），别让人只盯着抽屉
   if (data.job.job_type === "layout") updateMarginDetectProgress(data);
+  if (data.job.job_type === "auxiliary") updateRecognitionAuxProgress(data);
 
   if (!["queued", "running", "paused"].includes(data.job.status)) {
     stopTaskPolling();
@@ -7574,7 +7702,12 @@ function renderPageIndex() {
     : [`${stats.total || 0} 页`, `${stats.numbered || 0} 页有印刷页码`];
   if (stats.chapters) bits.push(`${stats.chapters} 章`);
   if (pageIndexData.numbering_step === 2) bits.push("页码隔 2 递增");
-  if (!pageOrderOnly && stats.missing) bits.push(`${stats.missing} 页未识别页码`);
+  if (!pageOrderOnly && stats.missing) {
+    // 缺页码分三类：前置/后置、回目页（都不印）、真没识别出来。前两类不是失败。
+    if (stats.missing_front_back) bits.push(`${stats.missing_front_back} 页前置/后置`);
+    if (stats.missing_chapter) bits.push(`${stats.missing_chapter} 页回目页`);
+    if (stats.missing_unknown) bits.push(`${stats.missing_unknown} 页未识别页码`);
+  }
   meta.textContent = bits.join(" · ");
   meta.title = (pageIndexData.notes || []).join("\n");
 
@@ -7612,19 +7745,34 @@ function renderPageIndex() {
       fragment.append(row);
       continue;
     }
-    row.className = "index-row" + (entry.missing ? " is-missing" : "");
+    const reason = entry.missing ? entry.missing_reason || "unknown" : null;
+    // 前两类别叫"未识别"——它们本来就不印页码，写成失败会让人以为识别坏了
+    row.className =
+      "index-row" +
+      (entry.missing ? " is-missing" : "") +
+      (reason === "front_back" || reason === "chapter" ? " is-explain" : "");
     row.dataset.pageNo = String(entry.page_no);
     row.tabIndex = 0;
     const extraJump = (entry.jump || []).filter(
       (value) => !entry.printed.includes(value)
     );
     row.title = entry.missing
-      ? `第 ${entry.page_no} 页没有识别到印刷页码，照样可以点进去`
+      ? reason === "front_back"
+        ? `第 ${entry.page_no} 页是前置 / 后置页，本来就不印阿拉伯页码；照样可以点进去`
+        : reason === "chapter"
+          ? `第 ${entry.page_no} 页是回目页（${entry.chapter || "回目首页"}），排版惯例不印页码；照样可以点进去`
+          : `第 ${entry.page_no} 页没有识别到印刷页码，照样可以点进去`
       : `印刷页 ${entry.printed[0] || ""}` +
         (extraJump.length ? `（输入 ${extraJump.join(" / ")} 也会跳到这一页）` : "");
     const printed = document.createElement("span");
     printed.className = "index-row__printed";
-    printed.textContent = entry.missing ? "未识别页码" : entry.printed[0] || "";
+    printed.textContent = entry.missing
+      ? reason === "front_back"
+        ? "前置/后置"
+        : reason === "chapter"
+          ? "回目页"
+          : "未识别页码"
+      : entry.printed[0] || "";
     const pdf = document.createElement("span");
     pdf.className = "index-row__pdf";
     pdf.textContent = `PDF ${entry.page_no}`;
@@ -8092,6 +8240,17 @@ function scrollIndexToPage(pageNo) {
   scroller.scrollTop = target;
 }
 
+/** 页头那一行：印刷页 / 前置后置 / 回目页 / 真没识别出来，四种说法分开。 */
+function indexPrintedLabel(entry) {
+  if (!entry) return "";
+  if (!entry.missing) return `印刷页 ${entry.printed[0] || ""}`;
+  if (entry.missing_reason === "front_back") return "前置/后置页 · 不印页码";
+  if (entry.missing_reason === "chapter") {
+    return `回目页 · 不印页码${entry.chapter ? "（" + entry.chapter + "）" : ""}`;
+  }
+  return "未识别页码（照样可以审校 / 导出）";
+}
+
 function updateIndexPageHeader(pageNo) {
   const pageOrderOnly = Boolean(pageIndexData) && indexIsPageOrderOnly();
   el("index-page-no").textContent = pageOrderOnly
@@ -8102,11 +8261,7 @@ function updateIndexPageHeader(pageNo) {
   // 页头只写实际检测到的印刷页；"同一叶另一面"的跳转便利只放在列表行的 title 里。
   el("index-printed").textContent = pageOrderOnly
     ? "无印刷页码（只有 PDF 页序）"
-    : entry
-      ? entry.missing
-        ? "未识别页码（照样可以审校 / 导出）"
-        : `印刷页 ${entry.printed[0] || ""}`
-      : "";
+    : indexPrintedLabel(entry);
   const pages = pageIndexData ? pageIndexData.pages : [];
   const index = pages.findIndex((item) => item.page_no === pageNo);
   el("index-prev").disabled = index <= 0;
@@ -14887,6 +15042,7 @@ function setupLibrary() {
   el("layout-block-confirm").addEventListener("click", confirmLayoutFromPanel);
   el("margin-confirm-all").addEventListener("click", confirmAllMargins);
   el("rec-start-all").addEventListener("click", () => startBatchRecognition("unrecognized"));
+  el("rec-aux-all").addEventListener("click", startAuxiliaryAll);
   el("layout-detect-open").addEventListener("click", () => {
     // 点 ⋯ 里的条目：先收起菜单，再开对话框（模板遮罩不能挂在菜单里）
     el("page-more-menu").hidden = true;
@@ -16482,6 +16638,27 @@ function readingOptions() {
   return { ...options, confirmed_only: false, page_numbers: null };
 }
 
+/**
+ * 进「正文审校」默认开版心 + 块框（任务 57）。
+ *
+ * 这里是读稿主界面：用户要看到"这一段的字在左边哪一块上"。块框用页面视图同一份状态；
+ * 两个开关都只改显示，不写库。
+ */
+function setReviewOverlaysForReading() {
+  if (!pagesMarginOn) {
+    pagesMarginOn = true;
+    savePageMarginPreference();
+    el("pages-margin-toggle")?.classList.add("is-on");
+  }
+  if (!pagesOverlayOn) {
+    pagesOverlayOn = true;
+    savePageOverlayPreference();
+    el("pages-overlay-toggle")?.classList.add("is-on");
+  }
+  // 已经画过的页要按新开关重画一遍（否则要等下一次滚动才出框）
+  for (const pageNo of readingVisibleSet) paintReadingTile(pageNo);
+}
+
 async function openReading() {
   if (!currentProject) return;
   // 三栏宽度在打开时套一次：视图刚显示出来才量得到真实宽度
@@ -16490,6 +16667,9 @@ async function openReading() {
   if (readingProject === projectId && readingData) {
     renderReading({ reset: true });
     renderReadingProgress();
+    ensureReadingPages();
+    measureReadingTops();
+    if (readingPageNo) updateReadingPage(readingPageNo, { scrollLeft: true });
     return;
   }
   const started = performance.now();
@@ -16555,6 +16735,8 @@ async function openReading() {
   renderReadingTree();
   renderReading({ reset: true });
   renderReadingProgress();
+  ensureReadingPages();
+  measureReadingTops();
   metrics.openMs = Math.round(performance.now() - started);
   metrics.entries = readingEntries.length;
   metrics.treeUnacked = tree.stats ? tree.stats.unacked : null;
@@ -16966,7 +17148,347 @@ function jumpReadingTo(segmentIndex) {
   renderReading({ reset: true, startAt: Math.max(0, segmentIndex - 2) });
 }
 
-function updateReadingPage(pageNo) {
+// ---------------------------------------------------------------- 阅读审校左栏：连续页列
+//
+// 任务 57。用户原话："左边目前是裸 PDF，应该显示版心和文本识别框。而且应该可以上下
+// 滚动，而不是只有右边文字可以上下滚动，左边不能滚动。"
+//
+// 做法与目录确认 / 结果预览同一套：页块是空壳（先占住真实比例），图和块只给视口
+// 附近 ±3 页挂上；版心 + 块框复用 `paintTileMargin` / `renderPageBlocks`。
+// 跟随开着时右栏滚到哪一页、左边滚到哪一页；关掉后左边自己滚，互不打扰。
+
+let readingTiles = new Map();
+let readingPageBlocks = new Map();
+let readingBlockPromises = new Map();
+let readingLoadedImages = new Set();
+let readingImageQueue = [];
+let readingImagePumping = false;
+let readingNearObserver = null;
+let readingVisibleObserver = null;
+let readingNearSet = new Set();
+let readingVisibleSet = new Set();
+let readingStackProject = null;
+let readingTops = [];
+let readingHoveredSeq = null;
+let readingPdfScrollRaf = 0;
+
+const READING_NEAR_MARGIN = 900;
+
+function ensureReadingPages() {
+  if (!currentProject) return;
+  if (readingStackProject === currentProject.project_id && readingTiles.size) return;
+  buildReadingPages();
+}
+
+/** 重建页列（换项目时）：490 个空壳，图和块都还空着。 */
+function buildReadingPages() {
+  const wrap = el("reading-pages");
+  if (!wrap || !currentProject) return;
+  disconnectReadingObservers();
+  wrap.innerHTML = "";
+  const box = el("reading-pdf-box");
+  readingTiles.clear();
+  readingPageBlocks.clear();
+  readingBlockPromises.clear();
+  readingLoadedImages.clear();
+  readingImageQueue = [];
+  readingNearSet.clear();
+  readingVisibleSet.clear();
+  readingTops = [];
+  const fragment = document.createDocumentFragment();
+  for (const page of currentProject.pages) {
+    const tile = document.createElement("div");
+    tile.className = "reading-page";
+    tile.dataset.pageNo = String(page.page_no);
+    tile.style.aspectRatio = `${page.width_pt} / ${page.height_pt}`;
+    const image = document.createElement("img");
+    image.alt = `第 ${page.page_no} 页`;
+    image.decoding = "async";
+    const margin = document.createElement("div");
+    margin.className = "page-margin";
+    margin.hidden = true;
+    const marginBox = document.createElement("div");
+    marginBox.className = "page-margin__box";
+    margin.append(marginBox);
+    const overlay = document.createElement("div");
+    overlay.className = "page-overlay page-overlay--readonly";
+    overlay.hidden = true;
+    tile.append(image, margin, overlay);
+    readingTiles.set(page.page_no, tile);
+    fragment.append(tile);
+  }
+  wrap.append(fragment);
+  if (box) wrap.append(box);
+  readingStackProject = currentProject.project_id;
+  observeReadingTiles();
+}
+
+function disconnectReadingObservers() {
+  if (readingNearObserver) readingNearObserver.disconnect();
+  if (readingVisibleObserver) readingVisibleObserver.disconnect();
+  readingNearObserver = null;
+  readingVisibleObserver = null;
+}
+
+function observeReadingTiles() {
+  const scroller = el("reading-pdf-scroll");
+  if (!scroller || typeof IntersectionObserver !== "function") return;
+  const firstTile = readingTiles.values().next().value;
+  const tileHeight = firstTile ? firstTile.getBoundingClientRect().height : 0;
+  const margin = tileHeight
+    ? Math.max(600, Math.round(tileHeight * 2.5))
+    : READING_NEAR_MARGIN;
+  readingNearObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const tile = entry.target;
+        const pageNo = Number(tile.dataset.pageNo);
+        if (entry.isIntersecting) {
+          readingNearSet.add(pageNo);
+          ensureReadingTile(pageNo);
+        } else if (readingNearSet.delete(pageNo)) {
+          if (Math.abs(pageNo - (readingPageNo || 1)) > 6) releaseReadingImage(pageNo);
+        }
+      }
+    },
+    { root: scroller, rootMargin: `${margin}px 0px`, threshold: 0 }
+  );
+  readingVisibleObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const tile = entry.target;
+        const pageNo = Number(tile.dataset.pageNo);
+        if (entry.isIntersecting) {
+          readingVisibleSet.add(pageNo);
+          ensureReadingTile(pageNo);
+          paintReadingTile(pageNo);
+        } else if (readingVisibleSet.delete(pageNo)) {
+          clearReadingDecorations(pageNo);
+        }
+      }
+      if (!readingFollow) updateReadingPageFromLeftScroll();
+    },
+    { root: scroller, rootMargin: "0px", threshold: 0 }
+  );
+  for (const tile of readingTiles.values()) {
+    readingNearObserver.observe(tile);
+    readingVisibleObserver.observe(tile);
+  }
+}
+
+/** 一页要的东西：图 + 块数据；两个都到齐才画框。 */
+function ensureReadingTile(pageNo) {
+  ensureReadingImage(pageNo);
+  ensureReadingBlocks(pageNo).then(() => paintReadingTile(pageNo));
+}
+
+function ensureReadingImage(pageNo) {
+  const tile = readingTiles.get(pageNo);
+  if (!tile) return;
+  const image = tile.querySelector("img");
+  if (!image || readingLoadedImages.has(pageNo) || image.dataset.pending) return;
+  image.dataset.pending = "1";
+  readingImageQueue.push(pageNo);
+  pumpReadingImages();
+}
+
+/** 图一张一张解：一次跳 300 页时同时解 7 张大图会出一帧近 1 秒的长帧。 */
+function pumpReadingImages() {
+  if (readingImagePumping) return;
+  readingImagePumping = true;
+  const step = () => {
+    const pageNo = readingImageQueue.shift();
+    if (!pageNo) {
+      readingImagePumping = false;
+      return;
+    }
+    const tile = readingTiles.get(pageNo);
+    if (!tile) {
+      step();
+      return;
+    }
+    const image = tile.querySelector("img");
+    if (!image) {
+      step();
+      return;
+    }
+    readingLoadedImages.add(pageNo);
+    image.onload = () => {
+      image.classList.add("is-ready");
+      delete image.dataset.pending;
+      const status = el("reading-image-status");
+      if (status) status.hidden = true;
+      paintReadingTile(pageNo);
+      step();
+    };
+    image.onerror = () => {
+      delete image.dataset.pending;
+      step();
+    };
+    image.src = pageImageUrl(pageNo, "view");
+  };
+  step();
+}
+
+function releaseReadingImage(pageNo) {
+  const tile = readingTiles.get(pageNo);
+  const image = tile ? tile.querySelector("img") : null;
+  if (!image) return;
+  image.removeAttribute("src");
+  image.classList.remove("is-ready");
+  delete image.dataset.pending;
+  readingLoadedImages.delete(pageNo);
+}
+
+function ensureReadingBlocks(pageNo) {
+  if (readingPageBlocks.has(pageNo)) return Promise.resolve(readingPageBlocks.get(pageNo));
+  const pending = readingBlockPromises.get(pageNo);
+  if (pending) return pending;
+  const promise = loadIndexBlocks(pageNo)
+    .then((blocks) => {
+      readingPageBlocks.set(pageNo, blocks || []);
+      return blocks || [];
+    })
+    .finally(() => readingBlockPromises.delete(pageNo));
+  readingBlockPromises.set(pageNo, promise);
+  return promise;
+}
+
+/** 画一页的版心 + 块框（复用页面视图那套渲染，不另写）。 */
+function paintReadingTile(pageNo) {
+  const tile = readingTiles.get(pageNo);
+  const page = readingPageRecord(pageNo);
+  if (!tile || !page) return;
+  paintTileMargin(tile, page);
+  const blocks = readingPageBlocks.get(pageNo) || [];
+  const overlay = tile.querySelector(".page-overlay");
+  if (!overlay) return;
+  if (pagesOverlayOn && blocks.length) {
+    if (overlay._renderedBlocks !== blocks) renderPageBlocks(tile, blocks, { details: false });
+    applyReadingLinked(pageNo);
+  } else {
+    clearPageBlocks(tile);
+  }
+}
+
+function readingPageRecord(pageNo) {
+  if (!currentProject) return null;
+  return currentProject.pages.find((item) => item.page_no === pageNo) || null;
+}
+
+function clearReadingDecorations(pageNo) {
+  const tile = readingTiles.get(pageNo);
+  if (!tile) return;
+  clearPageBlocks(tile);
+  clearTileMargin(tile);
+}
+
+/** 当前悬停段涉及的所有块 id（跨页段两页都算）。 */
+function readingHoveredBlockIds() {
+  const segment = readingHoveredSeq !== null
+    ? (readingVisibleSegments() || []).find((item) => item.seq === readingHoveredSeq)
+    : null;
+  if (!segment) return null;
+  return new Set((segment.line_spans || []).map((span) => span.block_id));
+}
+
+/** 给某一页的块框套上"联动"样式。 */
+function applyReadingLinked(pageNo) {
+  const ids = readingHoveredBlockIds();
+  const tile = readingTiles.get(pageNo);
+  if (!tile) return;
+  for (const box of tile.querySelectorAll(".box[data-block-id]")) {
+    box.classList.toggle("is-linked", Boolean(ids && ids.has(box.dataset.blockId)));
+  }
+}
+
+/** 悬停右栏某段：右边绿底、左边这一段的所有块绿框——**只高亮，不滚**。 */
+function setReadingHover(seq) {
+  // `seq` 可能来自 dataset（字符串）：先统一成数字，否则异步回来时比对永远不相等
+  const target = seq === null || seq === undefined || seq === ""
+    ? null
+    : Number(seq);
+  if (target === readingHoveredSeq) return;
+  for (const node of document.querySelectorAll("#reading-stream .reading-seg.is-hover")) {
+    node.classList.remove("is-hover");
+  }
+  for (const box of document.querySelectorAll("#reading-pages .box.is-linked")) {
+    box.classList.remove("is-linked");
+  }
+  readingHoveredSeq = target;
+  if (target === null) return;
+  const node = document.querySelector(`#reading-stream .reading-seg[data-seq="${target}"]`);
+  if (node) node.classList.add("is-hover");
+  const segment = (readingVisibleSegments() || []).find((item) => item.seq === target);
+  if (!segment) return;
+  const pageNos = new Set((segment.line_spans || []).map((span) => span.page_no));
+  for (const pageNo of pageNos) {
+    ensureReadingBlocks(pageNo).then(() => {
+      if (readingHoveredSeq !== target) return;
+      paintReadingTile(pageNo);
+    });
+  }
+}
+
+function markReadingCurrentTile(pageNo) {
+  for (const tile of document.querySelectorAll("#reading-pages .reading-page.is-current")) {
+    tile.classList.remove("is-current");
+  }
+  const tile = readingTiles.get(pageNo);
+  if (tile) tile.classList.add("is-current");
+}
+
+function scrollReadingToPage(pageNo) {
+  const scroller = el("reading-pdf-scroll");
+  const tile = readingTiles.get(pageNo);
+  if (!scroller || !tile) return;
+  const top = tile.offsetTop - scroller.clientHeight * 0.06;
+  const target = Math.max(0, top);
+  if (Math.abs(scroller.scrollTop - target) > 8) scroller.scrollTop = target;
+}
+
+/** 跟随关掉时，左栏自己滚：只更新页码 / 高亮，不动右栏文字。 */
+function updateReadingPageFromLeftScroll() {
+  if (!readingTops.length) return;
+  const scroller = el("reading-pdf-scroll");
+  if (!scroller) return;
+  const anchor = scroller.scrollTop + scroller.clientHeight * 0.25;
+  let best = readingTops[0];
+  for (const entry of readingTops) {
+    if (entry.top <= anchor) best = entry;
+    else break;
+  }
+  if (!best || best.pageNo === readingPageNo) return;
+  readingPageNo = best.pageNo;
+  el("reading-page-no").textContent = `第 ${best.pageNo} 页`;
+  markReadingCurrentTile(best.pageNo);
+  markReadingTreeCurrent(best.pageNo);
+}
+
+/** 量页列的滚动偏移（建列 / 缩放 / 窗口变化后）。 */
+function measureReadingTops() {
+  const scroller = el("reading-pdf-scroll");
+  if (!scroller) return;
+  const base = scroller.getBoundingClientRect().top - scroller.scrollTop;
+  readingTops = [];
+  for (const [pageNo, tile] of readingTiles) {
+    const rect = tile.getBoundingClientRect();
+    readingTops.push({ pageNo, top: rect.top - base });
+  }
+  readingTops.sort((a, b) => a.pageNo - b.pageNo);
+}
+
+function onReadingPdfScroll() {
+  if (readingPdfScrollRaf) return;
+  readingPdfScrollRaf = requestAnimationFrame(() => {
+    readingPdfScrollRaf = 0;
+    if (currentView !== "reading") return;
+    if (readingFollow) return;
+    updateReadingPageFromLeftScroll();
+  });
+}
+
+function updateReadingPage(pageNo, { scrollLeft = true } = {}) {
   if (!currentProject) return;
   const total = currentProject.pages.length;
   if (!pageNo || pageNo < 1 || pageNo > total) return;
@@ -16975,27 +17497,14 @@ function updateReadingPage(pageNo) {
   el("reading-page-no").textContent = `第 ${pageNo} 页`;
   el("reading-prev").disabled = pageNo <= 1;
   el("reading-next").disabled = pageNo >= total;
-  const image = el("reading-image");
-  const status = el("reading-image-status");
-  const token = ++readingImageToken;
-  status.hidden = false;
-  status.textContent = "正在渲染…";
-  image.classList.remove("is-ready");
-  image.onload = () => {
-    if (token !== readingImageToken) return;
-    status.hidden = true;
-    image.classList.add("is-ready");
-    if (readingPendingBox) {
-      drawReadingPdfBox(readingPendingBox, pageNo);
-      readingPendingBox = null;
-    }
-  };
-  image.onerror = () => {
-    if (token !== readingImageToken) return;
-    status.textContent = "这一页的图像读不出来。";
-  };
-  image.src = pageImageUrl(pageNo, "view");
-  image.alt = `第 ${pageNo} 页`;
+  ensureReadingPages();
+  ensureReadingTile(pageNo);
+  markReadingCurrentTile(pageNo);
+  if (scrollLeft) scrollReadingToPage(pageNo);
+  if (readingPendingBox) {
+    drawReadingPdfBox(readingPendingBox, pageNo);
+    readingPendingBox = null;
+  }
   markReadingTreeCurrent(pageNo);
 }
 
@@ -17064,22 +17573,19 @@ function hideReadingPdfBox() {
   readingPendingBox = null;
 }
 
+/** 跟随时的"当前行框"：画在页列里对应那一页上（页列是 position: relative）。 */
 function drawReadingPdfBox(bbox, pageNo) {
   const box = el("reading-pdf-box");
-  if (!box || !Array.isArray(bbox) || bbox.length !== 4) return;
+  const tile = readingTiles.get(pageNo);
+  if (!box || !tile || !Array.isArray(bbox) || bbox.length !== 4) return;
   const [x0, y0, x1, y1] = bbox;
-  box.style.left = `${x0 * 100}%`;
-  box.style.top = `${y0 * 100}%`;
-  box.style.width = `${(x1 - x0) * 100}%`;
-  box.style.height = `${(y1 - y0) * 100}%`;
+  const width = tile.clientWidth || tile.getBoundingClientRect().width;
+  const height = tile.clientHeight || tile.getBoundingClientRect().height;
+  box.style.left = `${Math.round(x0 * width)}px`;
+  box.style.top = `${Math.round(tile.offsetTop + y0 * height)}px`;
+  box.style.width = `${Math.round((x1 - x0) * width)}px`;
+  box.style.height = `${Math.round((y1 - y0) * height)}px`;
   box.hidden = false;
-  const scroll = el("reading-pdf-scroll") || document.querySelector(".reading-pdf__scroll");
-  const canvas = el("reading-pdf-canvas");
-  if (scroll && canvas) {
-    const top = box.offsetTop;
-    const target = Math.max(0, top - scroll.clientHeight * 0.35);
-    if (Math.abs(scroll.scrollTop - target) > 24) scroll.scrollTop = target;
-  }
 }
 
 function onReadingScroll() {
@@ -17360,7 +17866,13 @@ function setupReadingSplit() {
     // 双击回默认：拖歪了不用去清 localStorage
     node.addEventListener("dblclick", resetReadingSplit);
   }
-  window.addEventListener("resize", applyReadingSplit);
+  window.addEventListener("resize", () => {
+    applyReadingSplit();
+    if (currentView === "reading") {
+      measureReadingTops();
+      if (readingPageNo) updateReadingPage(readingPageNo, { scrollLeft: true });
+    }
+  });
 }
 
 function setupReading() {
@@ -17380,6 +17892,13 @@ function setupReading() {
     openPageDetail(readingPageNo);
   });
   el("reading-stream").addEventListener("scroll", onReadingScroll, { passive: true });
+  el("reading-pdf-scroll").addEventListener("scroll", onReadingPdfScroll, { passive: true });
+  // 悬停段落：右栏绿底 + 左边对应块绿框（只高亮，不滚）
+  el("reading-stream").addEventListener("mouseover", (event) => {
+    const seg = event.target.closest && event.target.closest(".reading-seg");
+    setReadingHover(seg ? seg.dataset.seq : null);
+  });
+  el("reading-stream").addEventListener("mouseleave", () => setReadingHover(null));
   el("reading-stream").addEventListener("click", (event) => {
     const markEl = event.target.closest && event.target.closest(".reading-mark");
     if (!markEl) return;

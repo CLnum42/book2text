@@ -1739,6 +1739,17 @@ body[data-workflow-step="recognition"] #pages-margin-toggle { display: none; }
 .panel__sub[open] > summary::before { content: "▾"; }
 .panel__sub > summary .muted { margin-left: auto; font-size: 11px; }
 #margin-confirm-all { margin: 0 0 4px; }
+/* 识别步：两路进度（主引擎 / 第二引擎）各一行，一眼看出在等哪一路 */
+.rec-engine { margin: 0 0 8px; border-top: 1px solid var(--line-soft); }
+.rec-engine__row {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 5px 0; border-bottom: 1px solid var(--line-soft); font-size: 12px;
+}
+.rec-engine__name { color: var(--text-2); flex: none; min-width: 56px; }
+.rec-engine__row strong { font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.rec-engine__row .muted { margin-left: auto; font-size: 11px; }
+#rec-aux-all { margin: 6px 0 4px; }
+#rec-aux-note { margin: 0 0 2px; }
 .margin-step__head {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   margin: 2px 0 6px;
@@ -1808,6 +1819,10 @@ body[data-workflow-step="recognition"] #page-setup-bar { display: none; }
 }
 .index-row.is-missing .index-row__printed {
   font-weight: 500; font-size: 11.5px; color: var(--warn-text);
+}
+/* 「前置/后置」「回目页」是排版惯例，不印页码——不是失败，别用告警色 */
+.index-row.is-explain .index-row__printed {
+  color: var(--text-2); font-weight: 500; font-size: 11.5px;
 }
 .index-row__pdf { margin-left: auto; font-size: 10.5px; color: var(--faint); }
 .index-row.is-current .index-row__pdf { color: var(--accent-text); }
@@ -2385,6 +2400,27 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   background: #e7e9ec; border-right: 1px solid var(--line);
 }
 .reading-pdf__scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px; text-align: center; }
+/* 任务 57：左边是连续页列（和目录确认同一套页块写法），可独立上下滚 */
+.reading-pages { position: relative; }
+.reading-page {
+  position: relative; display: block; width: 100%; margin: 0 auto 12px;
+  background: var(--page-paper); box-shadow: var(--shadow-1); overflow: hidden;
+  cursor: default;
+}
+.reading-page img { display: none; width: 100%; height: auto; }
+.reading-page img.is-ready { display: block; }
+.reading-page .page-overlay { z-index: 2; }
+.reading-page.is-current { box-shadow: 0 0 0 2px var(--accent), var(--shadow-1); }
+/* 悬停联动：右栏这一段 + 左边这一段对应的所有块都亮绿，只高亮、不滚 */
+#reading-pages .box.is-linked {
+  outline: 2px solid #16a34a; outline-offset: 1px;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, .22);
+  z-index: 3;
+}
+.reading-seg.is-hover {
+  background: rgba(22, 163, 74, .12); border-radius: 6px;
+}
+.reading-seg.is-hover .reading-mark { background: rgba(22, 163, 74, .18); }
 .reading-pdf__scroll img {
   display: none; width: 100%; height: auto; background: var(--page-paper);
   box-shadow: var(--shadow-1);
@@ -2436,13 +2472,16 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   .reading-stream { padding: 16px 22px 80px; }
 }
 @media (max-width: 1119px) {
-  .reading-split { --reading-tree-w: 44px; --reading-pdf-w: 340px; }
+  /* 任务 57：窄屏也要留着左边的页图——悬停联动要靠它；只把它压窄 */
+  .reading-split { --reading-tree-w: 44px; --reading-pdf-w: 260px; }
   .reading-tree { width: 44px; overflow: hidden; }
   .reading-tree__row { padding: 6px 6px; }
   .reading-tree__row .reading-tree__no { display: none; }
-  .reading-pdf { display: none; }
-  /* 窄屏不显示拖拽条：PDF 都收起了，拖它没有意义 */
   .reading-grip { display: none; }
+}
+@media (max-width: 819px) {
+  /* 再窄就真的放不下了：收掉页图，只留正文（版心/块框跟着一起收起） */
+  .reading-pdf { display: none; }
 }
 @media (max-height: 700px) {
   .reading-toolbar { height: 40px; padding: 0 8px; gap: 6px; }

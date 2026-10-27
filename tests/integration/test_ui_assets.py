@@ -1589,7 +1589,7 @@ def test_reading_view_is_wired_for_merge() -> None:
         "reading-filter",
         "reading-submit",
         "reading-undo",
-        "reading-image",
+        "reading-pages",
         "reading-follow",
         "reading-proof",
         "reading-blindspot",
@@ -1613,6 +1613,16 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert "function toggleReadingProof(" in script
     assert "is-proof" in css
     assert "reading-proof__pages" in css
+    # 任务 57：左栏是连续页列（可独立滚）+ 版心/块框 + 悬停联动
+    assert "function buildReadingPages(" in script
+    assert "function paintReadingTile(" in script
+    assert "function setReadingHover(" in script
+    assert "function setReviewOverlaysForReading(" in script
+    assert "box.dataset.blockId" in script
+    assert 'el("reading-pdf-scroll").addEventListener("scroll"' in script
+    assert "setReadingHover(" in script
+    assert ".reading-page" in css
+    assert "is-linked" in css
     assert "下一处未审" in page
     assert "window.confirm(" in script
     assert ".reading-mark" in css and ".reading-panel" in css

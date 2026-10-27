@@ -304,7 +304,24 @@
                     <strong id="rec-verdict-state">未开始</strong>
                     <p class="hint" id="rec-verdict-line">还没有识别结果。</p>
                   </div>
+                  <!-- 两路进度分开写：完成判定要两路都跑完，用户必须看得见在等哪一路 -->
+                  <div class="rec-engine">
+                    <div class="rec-engine__row">
+                      <span class="rec-engine__name">主引擎</span>
+                      <strong id="rec-primary-num">—</strong>
+                      <span class="muted" id="rec-primary-state"></span>
+                    </div>
+                    <div class="rec-engine__row">
+                      <span class="rec-engine__name">第二引擎</span>
+                      <strong id="rec-aux-num">—</strong>
+                      <span class="muted" id="rec-aux-state"></span>
+                    </div>
+                  </div>
                   <button type="button" id="rec-start-all" class="btn btn--pri btn--block">开始识别</button>
+                  <button type="button" id="rec-aux-all" class="btn btn--block">第二引擎复核全书</button>
+                  <p class="hint" id="rec-aux-note">
+                    两路都跑完这一步才算完成：主引擎出文字，第二引擎独立复核一遍、只标分歧不改字。
+                  </p>
                   <div class="hint" id="rec-status" hidden></div>
                 </div>
               </details>
@@ -690,9 +707,10 @@
           <div class="reading-grip" id="reading-grip-tree" role="separator" aria-orientation="vertical"
                aria-label="拖动调整左树宽度，双击恢复默认" title="拖动调整宽度；双击恢复默认"></div>
           <div class="reading-pdf">
+            <!-- 任务 57：左边是**可独立滚动**的连续页列（不是一张裸图）。
+                 每页都画版心 + 块框；悬停右栏某段时，这一段对应的块在本页上画绿框。 -->
             <div class="reading-pdf__scroll" id="reading-pdf-scroll">
-              <div class="reading-pdf__canvas" id="reading-pdf-canvas">
-                <img id="reading-image" alt="页面">
+              <div class="reading-pages" id="reading-pages">
                 <div class="reading-pdf__box" id="reading-pdf-box" hidden></div>
               </div>
               <p class="muted" id="reading-image-status">正在渲染…</p>

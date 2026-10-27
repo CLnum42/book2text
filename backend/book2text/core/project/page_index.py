@@ -98,15 +98,27 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
                     [str(value + 1)] if numbering_step == 2 else []
                 )
                 source = "candidate"
+        # 缺页码要分三类叫法（任务 57）：前置 / 后置页本来就不印阿拉伯页码；
+        # 回目首页不印页码是排版惯例；两者都不是识别失败，只有第三类才是。
+        missing_reason = None
+        if not printed:
+            if page.page_type in ("front", "back"):
+                missing_reason = "front_back"
+            elif title:
+                missing_reason = "chapter"
+            else:
+                missing_reason = "unknown"
         entries.append(
             {
                 "page_no": page.page_no,
+                "page_type": page.page_type,
                 "printed": printed,
                 "detected": detected,
                 "jump": jump,
                 "source": source,
                 "chapter": title,
                 "missing": not printed,
+                "missing_reason": missing_reason,
             }
         )
 
@@ -120,6 +132,15 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
         if entry["chapter"]
     ]
     numbered = sum(1 for entry in entries if not entry["missing"])
+    missing_front_back = sum(
+        1 for entry in entries if entry["missing_reason"] == "front_back"
+    )
+    missing_chapter = sum(
+        1 for entry in entries if entry["missing_reason"] == "chapter"
+    )
+    missing_unknown = sum(
+        1 for entry in entries if entry["missing_reason"] == "unknown"
+    )
     # 有页 ≠ 有索引：一页印刷页码都没读到的时候，这份列表只是 PDF 页序，
     # 不能当作"目录确认已完成"（否则步骤条会亮绿灯，用户却什么页码都没有）。
     page_order_only = numbered == 0
@@ -133,6 +154,10 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
             "total": len(entries),
             "numbered": numbered,
             "missing": len(entries) - numbered,
+            # 缺页码的三类：前置 / 后置（不印）、回目页（惯例不印）、真没识别出来
+            "missing_front_back": missing_front_back,
+            "missing_chapter": missing_chapter,
+            "missing_unknown": missing_unknown,
             "chapters": len(chapters),
             # `page_order_only`：整本还没有印刷页码，下面只是 PDF 页序。
             # 界面据此显示"尚未识别"空态，步骤条不许变绿。
@@ -140,7 +165,12 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
             "complete": not page_order_only,
         },
         "notes": _notes(
-            numbering_step=numbering_step, numbered=numbered, entries=len(entries)
+            numbering_step=numbering_step,
+            numbered=numbered,
+            entries=len(entries),
+            front_back=missing_front_back,
+            chapter=missing_chapter,
+            unknown=missing_unknown,
         ),
     }
     _CACHE[project_id] = (now, signature, payload)
@@ -313,7 +343,15 @@ def _chapter_of(text: str | None) -> str | None:
     return None
 
 
-def _notes(*, numbering_step: int, numbered: int, entries: int) -> list[str]:
+def _notes(
+    *,
+    numbering_step: int,
+    numbered: int,
+    entries: int,
+    front_back: int = 0,
+    chapter: int = 0,
+    unknown: int = 0,
+) -> list[str]:
     notes = []
     if numbering_step == 2:
         notes.append(
@@ -323,5 +361,13 @@ def _notes(*, numbering_step: int, numbered: int, entries: int) -> list[str]:
     if numbered == 0:
         notes.append("这本书还没有可用的印刷页码，列表只能按 PDF 页序跳。")
     elif numbered < entries:
-        notes.append(f"{entries - numbered} 页没有识别到印刷页码，已标「未识别页码」，照样可以点进去。")
+        bits = []
+        if front_back:
+            bits.append(f"{front_back} 页前置 / 后置（本来不印阿拉伯页码）")
+        if chapter:
+            bits.append(f"{chapter} 页回目页（排版惯例，回目首页不印页码）")
+        if unknown:
+            bits.append(f"{unknown} 页是真的没识别出页码")
+        detail = "、".join(bits) if bits else f"{entries - numbered} 页没有印刷页码"
+        notes.append(f"{detail}；这些页照样可以点进去。")
     return notes
