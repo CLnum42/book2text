@@ -265,13 +265,13 @@ def test_batch_sets_modes_atomically(
     }
 
 
-def test_margin_box_does_not_change_exports(
+def test_margin_box_only_changes_exports_when_judgement_on(
     client: TestClient,
     auth_headers: dict[str, str],
     library_dir: Path,
     recognized_project: str,
 ) -> None:
-    """本刀不改导出的硬证据：同一范围导出两次，body.txt / meta.json 逐字节相同。"""
+    """任务 34：默认按版心判定；显式关掉时版心变化不影响导出（逐字节）。"""
 
     def run_export() -> tuple[bytes, bytes]:
         response = client.post(
@@ -287,6 +287,16 @@ def test_margin_box_does_not_change_exports(
             (directory / "meta.json").read_bytes(),
         )
 
+    def set_judgement(enabled: bool) -> None:
+        response = client.patch(
+            f"/api/projects/{recognized_project}/settings",
+            json={"margin_box_judgement": enabled},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+
+    # 关掉开关：设版心前后逐字节相同（这就是"回退旧口径"的保证）
+    set_judgement(False)
     before = run_export()
 
     # 设置全局版心 + 一页自定义 + 一页"不适用"
@@ -306,8 +316,22 @@ def test_margin_box_does_not_change_exports(
     ).status_code == 200
 
     after = run_export()
-    assert after[0] == before[0], "body.txt 不能因为版心变化"
-    assert after[1] == before[1], "meta.json 不能因为版心变化"
-
+    assert after[0] == before[0], "开关关掉时 body.txt 不能因为版心变化"
+    assert after[1] == before[1], "开关关掉时 meta.json 不能因为版心变化"
     meta = json.loads(after[1])
-    assert "margin_box" not in json.dumps(meta), "版心不进导出元数据"
+    assert "margin_box" not in json.dumps(meta), "开关关掉时版心不进导出元数据"
+
+    # 默认（打开）：每页版心进入元数据，预检能报出版心内 / 外
+    set_judgement(True)
+    enabled = run_export()
+    enabled_meta = json.loads(enabled[1])
+    page2 = next(item for item in enabled_meta["pages"] if item["pdf_page"] == 2)
+    assert "margin_box" in page2, "打开后每页元数据记录生效版心"
+    preflight = client.post(
+        f"/api/projects/{recognized_project}/export/preflight",
+        json={"format": "both", "page_numbers": [1, 2, 3]},
+        headers=auth_headers,
+    ).json()
+    assert preflight["margin_judgement"] is True
+    assert "excluded" in preflight["margin_blocks"]
+    assert "excluded_by_type" in preflight["margin_blocks"]

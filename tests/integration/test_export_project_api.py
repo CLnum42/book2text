@@ -48,6 +48,17 @@ def project_ready(
     return project_id
 
 
+def set_margin_judgement(
+    client: TestClient, headers: dict[str, str], project_id: str, enabled: bool
+) -> None:
+    response = client.patch(
+        f"/api/projects/{project_id}/settings",
+        json={"margin_box_judgement": enabled},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+
+
 def export(client: TestClient, headers: dict[str, str], project_id: str, **options):
     return client.post(
         f"/api/projects/{project_id}/export",
@@ -211,6 +222,8 @@ def test_preflight_warns_about_untyped_edge_content(
     add_block(library_dir, project_ready, page_no=1, text="红楼梦／第三十一回", bbox=[0.0, 0.05, 0.08, 0.9])
     add_block(library_dir, project_ready, page_no=1, text="· 63 ·", bbox=[0.45, 0.96, 0.55, 0.98])
 
+    # 任务 34 起默认按版心判定（预检不再提示块类型嫌疑）；这里显式关掉，验证旧口径。
+    set_margin_judgement(client, auth_headers, project_ready, False)
     data = client.post(
         f"/api/projects/{project_ready}/export/preflight", json={}, headers=auth_headers
     ).json()
@@ -565,6 +578,8 @@ def test_split_header_fragment_is_preserved_in_body_or_metadata(
         library_dir, project_ready, page_no=1, text="CO三", bbox=[0.0, 0.55, 0.08, 0.6],
         block_type="paragraph",
     )
+    # 任务 34 起默认按版心判定；这里显式关掉，验证旧的 headers / edge_texts 口径。
+    set_margin_judgement(client, auth_headers, project_ready, False)
 
     record = export(client, auth_headers, project_ready).json()["record"]
     directory = library_dir / project_ready / "exports" / record["export_id"]

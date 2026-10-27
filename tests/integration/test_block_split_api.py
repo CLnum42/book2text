@@ -318,6 +318,13 @@ def test_split_page_number_is_exported_as_metadata_not_body(
     )
     assert response.status_code == 200, response.text
 
+    # 任务 34 起默认按版心判定；这条用例验证旧的 meta 形状，显式关掉。
+    settings = client.patch(
+        f"/api/projects/{project_id}/settings",
+        json={"margin_box_judgement": False},
+        headers=auth_headers,
+    )
+    assert settings.status_code == 200, settings.text
     exported = client.post(
         f"/api/projects/{project_id}/export",
         json={"page_numbers": [1], "format": "both"},

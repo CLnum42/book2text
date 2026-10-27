@@ -177,4 +177,35 @@ def test_auto_source_label_reports_method() -> None:
     page = replace(page, margin_box_method="bbox")
     assert margin_box.page_margin_source_label(project, page) == "本页包围盒（兜底）"
     page = replace(page, margin_box=None)
-    assert margin_box.page_margin_source_label(project, page) == "未定（没有检测行）"
+    assert margin_box.page_margin_source_label(project, page) == "未定（还没有拟合框）"
+
+
+def test_margin_judgement_defaults_on_and_explicit_off_wins() -> None:
+    """任务 34：没有存过设置 = 开；只有显式存 false 才关。"""
+    from book2text.core.project import library as library_module
+
+    project = _project(box=(0.1, 0.1, 0.9, 0.9))
+    assert library_module.margin_judgement_enabled(project) is True
+    with_off = replace(project, settings={"margin_box_judgement": False})
+    assert library_module.margin_judgement_enabled(with_off) is False
+    with_on = replace(project, settings={"margin_box_judgement": True})
+    assert library_module.margin_judgement_enabled(with_on) is True
+
+
+def test_block_inside_margin_uses_page_box_and_never_global() -> None:
+    """任务 34：审校与导出同一个判断；auto 页没有框时整页都算（不拿全局框）。"""
+    from book2text.core.project import library as library_module
+
+    project = _project(box=(0.1, 0.1, 0.9, 0.9))
+    page = _page(1, mode="auto", box=(0.2, 0.2, 0.8, 0.8))
+    assert margin_box.block_inside_margin(project, page, [0.3, 0.3, 0.5, 0.5]) is True
+    assert margin_box.block_inside_margin(project, page, [0.0, 0.0, 0.05, 0.05]) is False
+    # 没有 bbox 的块：宁可多审，不藏
+    assert margin_box.block_inside_margin(project, page, None) is True
+    # auto 页没有本页框 = 未定：整页都算，绝不拿全局框顶替
+    undetermined = _page(2, mode="auto", box=None)
+    assert margin_box.block_inside_margin(project, undetermined, [0.0, 0.0, 0.05, 0.05]) is True
+    # none 页也整页都算
+    none_page = _page(3, mode="none")
+    assert margin_box.block_inside_margin(project, none_page, [0.0, 0.0, 0.05, 0.05]) is True
+    assert library_module.margin_judgement_enabled(project) is True

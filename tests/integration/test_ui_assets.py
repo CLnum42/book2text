@@ -593,7 +593,10 @@ def test_review_view_shows_margin_and_filters_blocks() -> None:
     assert "margin_box_source" in script
     assert "margin_box_suggestion" in script
     assert "function marginSourceText(" in script
-    assert "版心为自动推算，未确认" in script
+    # 任务 34：审校默认只算版心内；版心外的差异在页头 / 过滤条写"未计入"
+    assert "function blockCountedInMargin(" in script
+    assert "处差异未计入" in script
+    assert "整页都计入" in script
 
     # 审校原图上的版心只读（没有把手）；版心外的框变淡 / 虚线
     assert "page-margin--review" in styles

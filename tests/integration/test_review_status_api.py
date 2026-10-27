@@ -468,3 +468,69 @@ def test_all_diff_ack_makes_page_eligible_for_auto_pass(
     )
     assert check.status_code == 200, check.text
     assert check.json()["eligible"] is True
+
+
+def test_page_payload_marks_margin_inside_and_counts_outside(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_with_ocr: str,
+    library_dir: Path,
+) -> None:
+    """任务 34：页详情逐块标 margin_inside；页头差异只算版心内，版心外单独计数。"""
+    project_id = project_with_ocr
+    recognition.run_auxiliary(
+        library_dir / project_id,
+        1,
+        engine=FakeSecondEngine(texts=[text for text, _, _ in FAKE_LINES]),
+    )
+    # 把第 1 页版心压到第一个块那一小块：其余块都算版心外
+    original = page_blocks(client, auth_headers, project_id, 1)
+    first_box = original["blocks"][0]["bbox"]
+    narrow = [
+        max(0.0, first_box[0] - 0.02),
+        max(0.0, first_box[1] - 0.02),
+        min(1.0, first_box[2] + 0.02),
+        min(1.0, first_box[3] + 0.02),
+    ]
+    response = client.patch(
+        f"/api/projects/{project_id}/pages/1/margin-box",
+        json={"margin_box_mode": "custom", "margin_box": narrow},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+
+    data = page_blocks(client, auth_headers, project_id, 1)
+    assert data["margin"]["applied"] is True
+    outside = [block for block in data["blocks"] if not block["margin_inside"]]
+    inside = [block for block in data["blocks"] if block["margin_inside"]]
+    assert outside, "压窄版心后应该有块落在版心外"
+    assert inside, "上半页至少还有块在版心内"
+    assert data["margin"]["outside_blocks"] == len(outside)
+
+    expected_chars = sum(
+        block["divergence"]["chars"] for block in inside if not block["divergence"]["stale"]
+    )
+    expected_punct = sum(
+        block["divergence"]["punct"] for block in inside if not block["divergence"]["stale"]
+    )
+    assert data["divergence"]["chars"] == expected_chars
+    assert data["divergence"]["punct"] == expected_punct
+
+    outside_lines = sum(
+        block["divergence"]["chars"] + block["divergence"]["punct"]
+        for block in outside
+        if not block["divergence"]["stale"]
+    )
+    assert data["margin"]["outside_lines"]["lines"] == outside_lines
+
+    # 页级 none：整页都算，不排除任何块
+    response = client.patch(
+        f"/api/projects/{project_id}/pages/1/margin-box",
+        json={"margin_box_mode": "none"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    none_page = page_blocks(client, auth_headers, project_id, 1)
+    assert none_page["margin"]["none"] is True
+    assert none_page["margin"]["applied"] is False
+    assert all(block["margin_inside"] for block in none_page["blocks"])

@@ -282,3 +282,42 @@ def test_mixed_header_uses_page_label_and_conflicts_become_null(
 
     body = (directory / "body.txt").read_text(encoding="utf-8")
     assert "2 谁是巴赫金? 11" not in body
+
+
+def test_preflight_and_manifest_record_margin_exclusions(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    library_dir: Path,
+    project_ready: str,
+) -> None:
+    """任务 34：预检与 manifest 报"版心外被排除的块数 + 类型分布"；关掉开关则不写。"""
+    # 第 1 页只保留顶部一条版心：其余块都被版心排除
+    set_page_margin(client, auth_headers, project_ready, 1, "custom", [0.0, 0.09, 1.0, 0.18])
+
+    pre = preflight(client, auth_headers, project_ready)
+    assert pre["margin_judgement"] is True
+    excluded = pre["margin_blocks"]["excluded"]
+    assert excluded > 0
+    assert excluded == pre["margin_blocks"]["outside"]
+    assert pre["margin_blocks"]["excluded_by_type"], "要按块类型给出分布"
+
+    record = export(client, auth_headers, project_ready, format="both").json()["record"]
+    directory = library_dir / project_ready / "exports" / record["export_id"]
+    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["margin"]["excluded_blocks"] == excluded, (
+        manifest["margin"], pre["margin_blocks"]
+    )
+    assert manifest["margin"]["excluded_by_type"] == pre["margin_blocks"]["excluded_by_type"]
+    assert manifest["margin"]["inside_blocks"] == pre["margin_blocks"]["judged_inside"]
+
+    # 显式关掉：manifest 不写 margin 段（与升级前一致）
+    response = client.patch(
+        f"/api/projects/{project_ready}/settings",
+        json={"margin_box_judgement": False},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    off = export(client, auth_headers, project_ready, format="both").json()["record"]
+    off_dir = library_dir / project_ready / "exports" / off["export_id"]
+    off_manifest = json.loads((off_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert "margin" not in off_manifest
