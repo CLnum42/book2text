@@ -1072,7 +1072,7 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
 
     for element_id in (
         "view-preview",
-        "preview-image",
+        "preview-pages",
         "preview-page-no",
         "preview-page-printed",
         "preview-prev",
@@ -1082,6 +1082,12 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
         "preview-scroll",
         "preview-only-span",
         "preview-note",
+        # 任务 47（J 刀）：版心 / 块框 / 缩放与页面视图、目录确认共用同一份状态
+        "preview-margin-toggle",
+        "preview-overlay-toggle",
+        "preview-zoom-out",
+        "preview-zoom-in",
+        "preview-zoom-label",
     ):
         assert f'id="{element_id}"' in page, element_id
 
@@ -1102,6 +1108,56 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
     # 没有完成态：预览不在页面步里，也没有 is-done 判定
     assert 'PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition", "index"]' in script
     assert "结果预览不设完成态" in script
+
+
+def test_result_preview_reuses_page_renderers_and_follows_segments() -> None:
+    """任务 47（J 刀）：预览左边复用版心 / 块框渲染，段落与页面双向联动。
+
+    静态约定：
+    - 左边连续页条调用 `paintTileMargin` / `renderPageBlocks`（不另写一套画框）；
+    - 开关与缩放沿用 `pagesMarginOn` / `pagesOverlayOn` / `pageZoomIndex`；
+    - 段落 → 块用 `block_ids` + 后端块框 bbox，跨页段两页都标；
+    - 右栏 1139 段不逐段挂监听（事件代理 + rAF 节流）。
+    """
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    # 左边不是裸图：页块里带版心 / 块框 / 命中层
+    assert 'class="preview-pages" id="preview-pages"' in page
+    assert "preview-margin-toggle" in page and "preview-overlay-toggle" in page
+    assert "preview-page__hits" in script
+
+    # 复用同一套渲染函数与同一份开关 / 缩放状态
+    assert "function paintPreviewTile(" in script
+    assert "paintTileMargin(tile, page)" in script
+    assert "renderPageBlocks(tile, blocks" in script
+    assert "pagesMarginOn = true" in script and "pagesOverlayOn = true" in script
+    assert "INDEX_ZOOM_SCALES" in script
+
+    # 段 → 块：用现成的 block_ids + bbox，不猜字符位置
+    assert "segment.block_ids" in script
+    assert "function highlightPreviewSegment(" in script
+    assert "function drawPreviewHits(" in script
+    assert "function scrollPreviewLeftToSegment(" in script
+    assert "function scrollPreviewLeftToPage(" in script
+
+    # 双向联动：右栏滚动驱动左边、左栏滚动驱动右边，但不同时反推
+    assert "function onPreviewScroll(" in script
+    assert "function onPreviewLeftScroll(" in script
+    assert "previewSyncDriver" in script and "markPreviewDriver" in script
+
+    # 事件代理 + 一帧一次：不给 1139 段逐个挂监听
+    assert 'el("preview-segs").addEventListener("pointerover", onPreviewSegHover)' in script
+    assert 'el("preview-segs").addEventListener("click", onPreviewSegClick)' in script
+    builder = script[script.index("function buildPreviewSegment("):script.index("// ---------------------------------------------------------------- 联动：段 ↔ 页")]
+    assert "addEventListener" not in builder
+
+    # 浅绿用青绿，不是审校那三色
+    assert "--preview-hit-line" in css and "--preview-hit-bg" in css
+    assert ".preview-seg.is-current" in css
+    assert ".preview-page__hit" in css
+    assert ".preview-junction" in css
 
 
 def test_toolbar_filters_and_tools_are_placed_per_step() -> None:
