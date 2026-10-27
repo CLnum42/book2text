@@ -2379,3 +2379,31 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
   .reading-toolbar .pager__no { display: none; }
   .reading-stream { padding-top: 10px; }
 }
+.reading-tree__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
+  padding: 8px 12px; font-size: 11px; color: var(--faint);
+  border-bottom: 1px solid var(--line-soft); position: sticky; top: 0;
+  background: var(--surface); z-index: 1;
+}
+.reading-tree__outside { font-size: 10.5px; }
+.reading-pdf__canvas { position: relative; display: inline-block; width: 100%; }
+.reading-pdf__box {
+  position: absolute; border: 2px solid #dc2626; border-radius: 3px;
+  background: rgba(220, 38, 38, .10); pointer-events: none;
+}
+.reading-pdf__canvas img { position: relative; }
+/* 成稿模式：隐藏所有红字 / 草稿标记 / 面板，只留干净正文与段首页范围 */
+.view--reading.is-proof .reading-mark {
+  background: none !important; border-bottom: 0 !important; color: inherit;
+}
+.view--reading.is-proof .reading-line.is-draft,
+.view--reading.is-proof .reading-line.is-kept {
+  background: none !important; border: 0 !important; padding-left: 0 !important;
+}
+.view--reading.is-proof .reading-chip,
+.view--reading.is-proof .reading-panel,
+.view--reading.is-proof .reading-pdf__box { display: none !important; }
+.reading-proof__pages {
+  font-size: 10.5px; color: var(--faint); margin-right: 8px;
+  user-select: none; white-space: nowrap;
+}

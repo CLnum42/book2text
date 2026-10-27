@@ -661,6 +661,9 @@
           <span class="muted" id="reading-progress-text">已处理 0 / 0</span>
           <span class="reading-progress"><span class="reading-progress__fill" id="reading-progress-fill"></span></span>
           <span class="reading-pill" id="reading-draft-chip" hidden>未提交 0</span>
+          <button type="button" id="reading-follow" class="btn btn--sm is-on" title="正文滚动时左边的 PDF 跟随当前行">跟随</button>
+          <button type="button" id="reading-proof" class="btn btn--sm" title="成稿模式：隐藏所有红字与草稿标记，读一遍">成稿</button>
+          <button type="button" id="reading-blindspot" class="btn btn--sm" title="两路一致但可疑的行，去单页审校里逐行看">定向补审</button>
           <select id="reading-filter" class="select" title="过滤差异">
             <option value="all">全部差异</option>
             <option value="chars">只看汉字级</option>
@@ -672,8 +675,11 @@
         <div class="reading-split">
           <aside class="reading-tree" id="reading-tree"></aside>
           <div class="reading-pdf">
-            <div class="reading-pdf__scroll">
-              <img id="reading-image" alt="页面">
+            <div class="reading-pdf__scroll" id="reading-pdf-scroll">
+              <div class="reading-pdf__canvas" id="reading-pdf-canvas">
+                <img id="reading-image" alt="页面">
+                <div class="reading-pdf__box" id="reading-pdf-box" hidden></div>
+              </div>
               <p class="muted" id="reading-image-status">正在渲染…</p>
             </div>
           </div>

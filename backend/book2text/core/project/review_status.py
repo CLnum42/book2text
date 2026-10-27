@@ -531,16 +531,19 @@ def review_tree(project_id: str, *, library: Path | None = None) -> dict:
                 break
         return current
 
+    # 队列口径与阅读流 / 收尾面板同一个函数：正文块 + 版心内 + 实质差异行
+    queue = queue_items(project_id, library=library)
     rows: list[dict] = []
     for page in pages:
         divergence = divergences.get(page.page_id)
-        unacked = (divergence.chars + divergence.punct) if divergence else 0
+        counts = queue["per_page"].get(page.page_no) or {}
         rows.append(
             {
                 "page_no": page.page_no,
                 "chapter": chapter_of(page.page_no),
-                "unacked": unacked,
-                "acked": divergence.acked if divergence else 0,
+                "unacked": int(counts.get("unacked") or 0),
+                "total": int(counts.get("total") or 0),
+                "acked": int(counts.get("acked") or 0),
                 "checked": bool(divergence.checked) if divergence else False,
                 "included": bool(page.include),
             }
@@ -551,10 +554,72 @@ def review_tree(project_id: str, *, library: Path | None = None) -> dict:
         "stats": {
             "pages": len(rows),
             "chapters": len(chapters),
-            "unacked": sum(row["unacked"] for row in rows),
-            "acked": sum(row["acked"] for row in rows),
+            "unacked": queue["totals"]["unacked"],
+            "total_items": queue["totals"]["total"],
+            "acked": queue["totals"]["acked"],
+            "outside_items": queue["totals"]["outside"],
+            "other_items": queue["totals"]["other_types"],
         },
     }
+
+
+#: 阅读审校队列的块类型：与导出正文同一集合（脚注 / 图注不进连续正文流）
+QUEUE_BLOCK_TYPES = frozenset({"paragraph", "heading"})
+
+
+def queue_items(project_id: str, *, library: Path | None = None) -> dict:
+    """审校队列的**唯一**统计口径（左树 / 顶栏分母 / 收尾面板三处共用）。
+
+    集合 = 正文块（paragraph / heading）+ 版心内 + 有第二引擎文本的实质差异行
+    （汉字级 / 标点级，`format_only` 不算——它没有可看的差别）。
+
+    另外单独给出"版心外"的实质差异行数：它们不进队列，但要让用户看得见。
+    返回 per_page（页面 → 队列内的未裁决数 / 总数）与汇总。
+    """
+    target_library = library if library is not None else library_module.default_library_dir()
+    project = library_module.load_project(project_id, library=target_library)
+    pages = library_module.list_pages(project_id, library=target_library)
+    page_by_no = {page.page_no: page for page in pages}
+    blocks = blocks_module.list_blocks(project_id, library=target_library)
+    lines_by_block: dict[str, list] = {}
+    for line in blocks_module.list_block_lines(project_id, library=target_library):
+        lines_by_block.setdefault(line.block_id, []).append(line)
+    per_page: dict[int, dict] = {}
+    totals = {"total": 0, "unacked": 0, "acked": 0, "outside": 0, "other_types": 0}
+    for block in blocks:
+        if not block.include:
+            continue
+        if block.block_type not in QUEUE_BLOCK_TYPES:
+            divergence = blocks_module.block_divergence(
+                block, lines_by_block.get(block.block_id, [])
+            )
+            other = divergence.chars + divergence.punct
+            if other:
+                totals["other_types"] += other
+            continue
+        page = page_by_no.get(block.page_no)
+        if page is None:
+            continue
+        divergence = blocks_module.block_divergence(
+            block, lines_by_block.get(block.block_id, [])
+        )
+        substantive = divergence.chars + divergence.punct
+        if not substantive:
+            continue
+        inside = margin_box_module.block_inside_margin(project, page, block.bbox)
+        if not inside:
+            totals["outside"] += substantive
+            continue
+        entry = per_page.setdefault(
+            block.page_no, {"page_no": block.page_no, "total": 0, "unacked": 0, "acked": 0}
+        )
+        entry["total"] += substantive
+        entry["acked"] += divergence.acked
+        entry["unacked"] += substantive - divergence.acked
+        totals["total"] += substantive
+        totals["acked"] += divergence.acked
+        totals["unacked"] += substantive - divergence.acked
+    return {"per_page": per_page, "totals": totals, "pages": len(per_page)}
 
 
 def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
@@ -654,6 +719,7 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     compared = identical + format_only + chars + punct
     diverging_rate = round((chars + punct) / compared, 4) if compared else 0.0
 
+    queue = queue_items(project_id, library=library)
     complete = [
         confirmed_pages == len(pages),
         margin_done == len(pages),
@@ -702,6 +768,11 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
             "needs_human_pages": needs_human,
             "confirmed": confirmed_body,
             "total": len(body_pages),
+            # 审校队列的唯一口径（与左树 / 阅读流顶栏同源）：版心内正文差异行
+            "total_items": queue["totals"]["total"],
+            "pending_items": queue["totals"]["unacked"],
+            "outside_items": queue["totals"]["outside"],
+            "other_items": queue["totals"]["other_types"],
             # 任务 42：F1 第三桶（自动判不了的页边界）——没确认完，审校就不算完成
             "continuation_pending": continuation["count"],
             "continuation_total": continuation["total"],

@@ -15795,6 +15795,10 @@ let readingImageToken = 0;
 let readingOpenStartedAt = 0;
 const readingSpanCache = new Map();
 let readingAppendScheduled = false;
+let readingFollow = true;
+let readingProof = false;
+let readingScrollRaf = 0;
+let readingPendingBox = null;
 
 function readingKey(blockId, lineIndex) {
   return `${blockId}:${lineIndex}`;
@@ -15833,6 +15837,13 @@ function saveReadingDrafts() {
   }
 }
 
+function readingOptions() {
+  // 阅读流固定按"全书正文"取段：不受导出面板里的页码范围 / 仅已确认影响，
+  // 否则队列分母和左树、收尾面板会对不上。
+  const options = exportOptions();
+  return { ...options, confirmed_only: false, page_numbers: null };
+}
+
 async function openReading() {
   if (!currentProject) return;
   const projectId = currentProject.project_id;
@@ -15841,23 +15852,21 @@ async function openReading() {
     renderReadingProgress();
     return;
   }
-  readingOpenStartedAt = performance.now();
+  const started = performance.now();
+  readingOpenStartedAt = started;
   const stream = el("reading-stream");
   stream.innerHTML = '<p class="muted reading-empty">正在按导出设置组装正文…</p>';
   el("reading-tree").innerHTML = "";
   let preview;
-  let marks;
-  let tree;
   try {
-    [preview, marks, tree] = await Promise.all([
-      apiJson(`/api/projects/${projectId}/export/preview`, {
+    preview = await apiJson(
+      `/api/projects/${projectId}/export/preview?segments_only=1`,
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(exportOptions()),
-      }),
-      apiJson(`/api/projects/${projectId}/review/marks`),
-      apiJson(`/api/projects/${projectId}/review/tree`),
-    ]);
+        body: JSON.stringify(readingOptions()),
+      }
+    );
   } catch (error) {
     stream.innerHTML = "";
     const p = document.createElement("p");
@@ -15867,9 +15876,26 @@ async function openReading() {
     return;
   }
   readingData = preview;
-  readingTreeData = tree;
   readingProject = projectId;
   readingMarks = new Map();
+  readingEntries = [];
+  // 先出正文（无红字），红字随后补：点击到正文可见不用等 marks / tree
+  renderReading({ reset: true });
+  const metrics = (window.__b2tReadingMetrics = window.__b2tReadingMetrics || {});
+  metrics.firstPaintMs = Math.round(performance.now() - started);
+  metrics.segments = readingVisibleSegments().length;
+  let marks;
+  let tree;
+  try {
+    [marks, tree] = await Promise.all([
+      apiJson(`/api/projects/${projectId}/review/marks`),
+      apiJson(`/api/projects/${projectId}/review/tree`),
+    ]);
+  } catch (error) {
+    metrics.error = String(error.message || error);
+    return;
+  }
+  readingTreeData = tree;
   for (const mark of marks.items || []) {
     readingMarks.set(readingKey(mark.block_id, mark.line_index), mark);
   }
@@ -15889,16 +15915,12 @@ async function openReading() {
   renderReadingTree();
   renderReading({ reset: true });
   renderReadingProgress();
+  metrics.openMs = Math.round(performance.now() - started);
+  metrics.entries = readingEntries.length;
+  metrics.treeUnacked = tree.stats ? tree.stats.unacked : null;
   const first = readingEntries.find((entry) => !readingEntryDone(entry));
   const page = first ? first.page_no : (currentProject.pages[0]?.page_no || 1);
   updateReadingPage(page);
-  const total = Math.round(performance.now() - readingOpenStartedAt);
-  window.__b2tReadingMetrics = {
-    ...(window.__b2tReadingMetrics || {}),
-    openMs: total,
-    segments: readingVisibleSegments().length,
-    entries: readingEntries.length,
-  };
 }
 
 function readingVisibleSegments() {
@@ -15995,9 +16017,16 @@ function buildReadingSegment(segment) {
   node.dataset.seq = String(segment.seq);
   const pages = (segment.pages || []).map((page) => page.page_no);
   if (pages.length) node.dataset.pages = pages.join(" ");
+  if (readingProof && pages.length) {
+    const range = document.createElement("span");
+    range.className = "reading-proof__pages";
+    range.textContent =
+      pages.length > 1 ? `第 ${pages[0]}–${pages[pages.length - 1]} 页` : `第 ${pages[0]} 页`;
+    node.append(range);
+  }
   const spans = segment.line_spans || [];
   if (!spans.length) {
-    node.textContent = segment.text;
+    node.append(document.createTextNode(segment.text));
     return node;
   }
   for (const span of spans) {
@@ -16143,6 +16172,15 @@ function openReadingPanel(entry) {
   panel.append(head, candidate, actions);
   line.after(panel);
   line.scrollIntoView({ block: "center", behavior: "auto" });
+  // 打开候选时把这一行的行框画到左 PDF 上（显式动作，不依赖跟随开关）
+  if (entry.bbox) {
+    if (entry.page_no !== readingPageNo) {
+      updateReadingPage(entry.page_no);
+      readingPendingBox = entry.bbox;
+    } else {
+      drawReadingPdfBox(entry.bbox, entry.page_no);
+    }
+  }
 }
 
 function closeReadingPanel() {
@@ -16215,6 +16253,20 @@ function renderReadingTree() {
   const tree = el("reading-tree");
   if (!tree || !readingTreeData) return;
   tree.innerHTML = "";
+  const stats = readingTreeData.stats || {};
+  const head = document.createElement("div");
+  head.className = "reading-tree__head";
+  const queueTotal = stats.total_items ?? stats.unacked ?? 0;
+  head.textContent = `队列 ${queueTotal} 处`;
+  if (stats.outside_items) head.title = `版心外 ${stats.outside_items} 处不进队列`;
+  const outside = document.createElement("span");
+  outside.className = "reading-tree__outside";
+  outside.textContent =
+    `版心外 ${stats.outside_items || 0}` +
+    (stats.other_items ? ` · 其他 ${stats.other_items}` : "");
+  outside.title = "版心外的差异与脚注 / 图注等非正文块不进阅读流队列";
+  head.append(outside);
+  tree.append(head);
   const pages = readingTreeData.pages || [];
   const rows = pages.filter((page) => page.unacked > 0 || true);
   const fragment = document.createDocumentFragment();
@@ -16279,6 +16331,7 @@ function updateReadingPage(pageNo) {
   const total = currentProject.pages.length;
   if (!pageNo || pageNo < 1 || pageNo > total) return;
   readingPageNo = pageNo;
+  hideReadingPdfBox();
   el("reading-page-no").textContent = `第 ${pageNo} 页`;
   el("reading-prev").disabled = pageNo <= 1;
   el("reading-next").disabled = pageNo >= total;
@@ -16292,6 +16345,10 @@ function updateReadingPage(pageNo) {
     if (token !== readingImageToken) return;
     status.hidden = true;
     image.classList.add("is-ready");
+    if (readingPendingBox) {
+      drawReadingPdfBox(readingPendingBox, pageNo);
+      readingPendingBox = null;
+    }
   };
   image.onerror = () => {
     if (token !== readingImageToken) return;
@@ -16300,6 +16357,84 @@ function updateReadingPage(pageNo) {
   image.src = pageImageUrl(pageNo, "view");
   image.alt = `第 ${pageNo} 页`;
   markReadingTreeCurrent(pageNo);
+}
+
+function setReadingFollow(on) {
+  readingFollow = Boolean(on);
+  const button = el("reading-follow");
+  if (button) {
+    button.classList.toggle("is-on", readingFollow);
+    button.textContent = readingFollow ? "跟随" : "已停止跟随";
+  }
+  if (!readingFollow) hideReadingPdfBox();
+}
+
+function toggleReadingProof() {
+  readingProof = !readingProof;
+  el("reading-proof").classList.toggle("is-on", readingProof);
+  el("view-reading").classList.toggle("is-proof", readingProof);
+  renderReading({ reset: true });
+}
+
+function hideReadingPdfBox() {
+  const box = el("reading-pdf-box");
+  if (box) box.hidden = true;
+  readingPendingBox = null;
+}
+
+function drawReadingPdfBox(bbox, pageNo) {
+  const box = el("reading-pdf-box");
+  if (!box || !Array.isArray(bbox) || bbox.length !== 4) return;
+  const [x0, y0, x1, y1] = bbox;
+  box.style.left = `${x0 * 100}%`;
+  box.style.top = `${y0 * 100}%`;
+  box.style.width = `${(x1 - x0) * 100}%`;
+  box.style.height = `${(y1 - y0) * 100}%`;
+  box.hidden = false;
+  const scroll = el("reading-pdf-scroll") || document.querySelector(".reading-pdf__scroll");
+  const canvas = el("reading-pdf-canvas");
+  if (scroll && canvas) {
+    const top = box.offsetTop;
+    const target = Math.max(0, top - scroll.clientHeight * 0.35);
+    if (Math.abs(scroll.scrollTop - target) > 24) scroll.scrollTop = target;
+  }
+}
+
+function onReadingScroll() {
+  if (!readingFollow || readingScrollRaf) return;
+  readingScrollRaf = requestAnimationFrame(() => {
+    readingScrollRaf = 0;
+    if (!readingFollow || currentView !== "reading") return;
+    const stream = el("reading-stream");
+    if (!stream) return;
+    const rect = stream.getBoundingClientRect();
+    const anchor = rect.top + rect.height * 0.35;
+    // 按行矩形找"视口 35% 处的那一行"：行是 inline span，elementFromPoint 会落在
+    // 段落的行距空白上，拿不到行元素。
+    let line = null;
+    for (const item of stream.querySelectorAll(".reading-line")) {
+      if (item.getBoundingClientRect().bottom >= anchor) {
+        line = item;
+        break;
+      }
+    }
+    if (!line) return;
+    const key = line.dataset.key;
+    const mark = readingMarks.get(key);
+    const pageNo = Number(line.dataset.page);
+    if (mark && mark.page_no && mark.page_no !== readingPageNo) {
+      updateReadingPage(mark.page_no);
+    } else if (!mark && pageNo && pageNo !== readingPageNo) {
+      updateReadingPage(pageNo);
+    }
+    if (mark && mark.bbox) {
+      if (mark.page_no !== readingPageNo) {
+        readingPendingBox = mark.bbox;
+      } else {
+        drawReadingPdfBox(mark.bbox, mark.page_no);
+      }
+    }
+  });
 }
 
 function stepReadingPage(delta) {
@@ -16417,6 +16552,14 @@ function setupReading() {
   el("reading-filter").addEventListener("change", (event) =>
     setReadingFilter(event.target.value)
   );
+  el("reading-follow").addEventListener("click", () => setReadingFollow(!readingFollow));
+  el("reading-proof").addEventListener("click", toggleReadingProof);
+  el("reading-blindspot").addEventListener("click", () => {
+    // C1 盲区出口：两路一致但可疑的行，去单页审校里逐行看
+    showView("review");
+    openPageDetail(readingPageNo);
+  });
+  el("reading-stream").addEventListener("scroll", onReadingScroll, { passive: true });
   el("reading-stream").addEventListener("click", (event) => {
     const markEl = event.target.closest && event.target.closest(".reading-mark");
     if (!markEl) return;

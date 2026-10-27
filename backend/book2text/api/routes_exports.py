@@ -106,13 +106,22 @@ def export_preview(
     project_id: str,
     body: ExportRequest,
     limit: int = Query(default=20000, ge=0, le=200_000),
+    segments_only: bool = Query(default=False),
 ) -> dict[str, Any]:
-    """预览（说明书 6.6 第 7 条）：算一遍但不写文件。"""
+    """预览（说明书 6.6 第 7 条）：算一遍但不写文件。
+
+    ``segments_only=1`` 只回 segments（阅读审校用）：跳过 text / jsonl / preflight，
+    首屏快一倍以上。
+    """
     _require_main(request, project_id)
     library, _project = _project_or_404(request, project_id)
     try:
         result = project_export.preview(
-            project_id, library=library, options=body.options(), limit=limit
+            project_id,
+            library=library,
+            options=body.options(),
+            limit=limit,
+            segments_only=segments_only,
         )
     except project_export.ExportError as exc:
         raise _export_error(exc) from exc

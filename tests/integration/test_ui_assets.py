@@ -1562,6 +1562,10 @@ def test_reading_view_is_wired_for_merge() -> None:
         "reading-submit",
         "reading-undo",
         "reading-image",
+        "reading-follow",
+        "reading-proof",
+        "reading-blindspot",
+        "reading-pdf-box",
     ):
         assert f'id="{element_id}"' in page, element_id
 
@@ -1574,6 +1578,13 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert "/review/submit-drafts" in script
     assert "line_spans" in script
     assert "computeCharSpans(" in script
+    # 三处队列口径统一：树 / 顶栏 / finish-summary 都读同一个统计
+    assert "queue_items(" in (STATIC_DIR / ".." / ".." / ".." / "backend" / "book2text" / "core" / "project" / "review_status.py").read_text(encoding="utf-8")
+    # L3：跟随 / 成稿 / 定向补审入口
+    assert "function setReadingFollow(" in script
+    assert "function toggleReadingProof(" in script
+    assert "is-proof" in css
+    assert "reading-proof__pages" in css
     assert "下一处未审" in page
     assert "window.confirm(" in script
     assert ".reading-mark" in css and ".reading-panel" in css

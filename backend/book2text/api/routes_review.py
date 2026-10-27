@@ -358,9 +358,13 @@ def review_marks(request: Request, project_id: str) -> dict[str, Any]:
         divergence = blocks_module.block_divergence(
             block, lines_by_block.get(block.block_id, [])
         )
+        line_records = {
+            line.line_index: line for line in lines_by_block.get(block.block_id, [])
+        }
         for mark in divergence.marks:
             if mark.level not in (compare_module.DIFFERS_CHARS, compare_module.DIFFERS_PUNCT):
                 continue
+            line = line_records.get(mark.line_index)
             items.append(
                 {
                     "page_no": block.page_no,
@@ -370,6 +374,8 @@ def review_marks(request: Request, project_id: str) -> dict[str, Any]:
                     "current": mark.current,
                     "candidate": mark.candidate,
                     "ack": mark.ack,
+                    # 行框（归一化）：跟随模式下在左 PDF 上框出当前行
+                    "bbox": list(line.bbox) if line is not None and line.bbox else None,
                 }
             )
     counts = {"total": len(items), "chars": 0, "punct": 0, "acked": 0}
