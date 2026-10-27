@@ -1705,3 +1705,69 @@ body[data-workflow-step="recognition"] #pages-margin-toggle { display: none; }
 /* 顶部的「页面确认」计数行只属于第 1 步：版心 / 识别步不再重复一遍。 */
 body[data-workflow-step="margin"] #page-setup-bar,
 body[data-workflow-step="recognition"] #page-setup-bar { display: none; }
+
+
+/* ─────────────────────── 目录确认：页码跳转索引（任务 37） ─────────────────────── */
+.view--index { overflow: hidden; }
+.index-split { flex: 1; min-height: 0; display: flex; }
+.index-side {
+  width: 304px; flex: none; display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface); border-right: 1px solid var(--line);
+}
+.index-tools { padding: 12px 12px 9px; border-bottom: 1px solid var(--line-soft); }
+.index-tools .flabel { margin-bottom: 5px; }
+.index-tools__row { display: flex; gap: 6px; }
+.index-tools__row .input { flex: 1; min-width: 0; }
+.index-meta {
+  padding: 8px 12px; font-size: 11px; line-height: 1.55; color: var(--faint);
+  border-bottom: 1px solid var(--line-soft);
+}
+.index-list {
+  list-style: none; margin: 0; padding: 2px 0 14px;
+  overflow: auto; flex: 1; min-height: 0;
+}
+.index-chapter {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 10px 12px 4px; font-size: 12px; font-weight: 600; color: var(--text-2);
+  border-top: 1px solid var(--line-soft); cursor: pointer;
+}
+.index-chapter:first-child { border-top: 0; padding-top: 6px; }
+.index-chapter:hover { color: var(--accent-text); }
+.index-chapter .muted { margin-left: auto; font-weight: 400; font-size: 10.5px; }
+.index-row {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 5px 12px; cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.index-row:hover { background: var(--surface-2); }
+.index-row.is-current { background: var(--accent-soft); border-left-color: var(--accent); }
+.index-row__printed {
+  font-variant-numeric: tabular-nums; font-weight: 600; font-size: 12.5px;
+  min-width: 62px;
+}
+.index-row.is-missing .index-row__printed {
+  font-weight: 500; font-size: 11.5px; color: var(--warn-text);
+}
+.index-row__pdf { margin-left: auto; font-size: 10.5px; color: var(--faint); }
+.index-row.is-current .index-row__pdf { color: var(--accent-text); }
+.index-empty { padding: 12px; }
+.index-viewer {
+  flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+  background: #e7e9ec;
+}
+.index-toolbar {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  padding: 6px 12px; background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.index-canvas {
+  flex: 1; min-height: 0; overflow: auto; padding: 16px; text-align: center;
+}
+.index-canvas img {
+  display: none; width: 100%; height: auto; max-width: none;
+  background: var(--page-paper); box-shadow: var(--shadow-1);
+}
+.index-canvas img.is-ready { display: inline-block; }
+.index-canvas .muted { margin: 0; }
+@media (max-width: 900px) {
+  .index-side { width: 240px; }
+}

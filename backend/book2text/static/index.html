@@ -370,6 +370,46 @@
         </div>
       </section>
 
+      <!-- ─────────────────────────── 视图：目录确认（页码跳转索引） ─────────────────────────── -->
+      <section class="view view--index" id="view-index" hidden>
+        <div class="index-split">
+          <aside class="index-side">
+            <div class="index-tools">
+              <label class="flabel" for="index-jump-input">按印刷页码跳转</label>
+              <div class="index-tools__row">
+                <input type="text" id="index-jump-input" class="input" maxlength="12"
+                       inputmode="numeric" placeholder="如 80" autocomplete="off">
+                <button type="button" id="index-jump-go" class="btn btn--pri">跳转</button>
+              </div>
+              <div class="hint" id="index-jump-status" hidden></div>
+            </div>
+            <div class="index-meta" id="index-meta"></div>
+            <ol class="index-list" id="index-list"></ol>
+            <p class="muted index-empty" id="index-empty" hidden>
+              这一页还没有页码索引。
+            </p>
+          </aside>
+          <div class="index-viewer">
+            <div class="index-toolbar">
+              <button type="button" id="index-prev" class="btn btn--sm" title="上一页">◀</button>
+              <span class="pager__no" id="index-page-no">—</span>
+              <button type="button" id="index-next" class="btn btn--sm" title="下一页">▶</button>
+              <span class="muted" id="index-printed"></span>
+              <span class="spacer"></span>
+              <div class="zoombar" title="与页面视图共用缩放状态">
+                <button type="button" id="index-zoom-out" class="btn btn--sm">－</button>
+                <span class="muted" id="index-zoom-label">100%</span>
+                <button type="button" id="index-zoom-in" class="btn btn--sm">＋</button>
+              </div>
+            </div>
+            <div class="index-canvas" id="index-canvas">
+              <img id="index-image" alt="页面预览">
+              <p class="muted" id="index-image-status">正在渲染…</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ─────────────────────────── 视图：审校 ─────────────────────────── -->
       <section class="view view--review" id="view-review" hidden>
         <!-- 工作区工具条（任务 36A）：分页器从顶栏搬到这里，顶栏腾给步骤条。 -->

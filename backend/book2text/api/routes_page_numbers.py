@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from ..core.project import library as project_library
+from ..core.project import page_index as page_index_module
 from ..core.project import page_numbers as page_numbers_module
 from .deps import library_dir as _library
 from .deps import project_error as _project_error
@@ -54,6 +55,23 @@ def get_page_numbers(request: Request, project_id: str) -> dict[str, Any]:
     """候选模板 + 当前映射 + 页码范围 + 异常分组（只读）。"""
     try:
         return page_numbers_module.analyze(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+@router.get("/{project_id}/page-index")
+def get_page_index(request: Request, project_id: str) -> dict[str, Any]:
+    """目录确认（任务 37）：印刷页码 → PDF 页的跳转索引（只读、有缓存）。
+
+    - 印刷页码优先读 `page.printed_page`，否则用页码候选（不重新 OCR）；
+    - 对开双页（一张 PDF 页含两个印刷页）一行给两个号码；
+    - 缺页码的页照样列出，`missing=true`；
+    - 生成一次约 0.15 秒，按 `project.updated_at` 缓存 60 秒。
+    """
+    try:
+        return page_index_module.build_page_index(
+            project_id, library=_library(request)
+        )
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
 

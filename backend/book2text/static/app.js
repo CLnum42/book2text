@@ -98,7 +98,7 @@ function fillDefinitionList(node, pairs) {
 // 界面是"单窗口应用"（说明书第 7 节的效果图）：顶栏 + 四个视图（项目库 / 页面 /
 // 审校 / 合并审阅）+ 若干对话框。视图之间只切换 hidden，各视图内部状态各自保留。
 
-const VIEWS = ["library", "pages", "review", "merge"];
+const VIEWS = ["library", "pages", "index", "review", "merge"];
 
 let currentView = "library";
 
@@ -108,10 +108,11 @@ const WORKFLOW_STEPS = [
   { id: "pages", label: "页面确认", short: "页面" },
   { id: "margin", label: "版心确认", short: "版心" },
   { id: "recognition", label: "文字识别", short: "识别" },
+  { id: "index", label: "目录确认", short: "目录" },
   { id: "review", label: "正文审校", short: "审校" },
   { id: "export", label: "文件导出", short: "导出" },
 ];
-const PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition"];
+const PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition", "index"];
 let workflowStep = null;
 let workflowStepPinned = false;
 let projectSummary = null;
@@ -151,6 +152,11 @@ function showView(name) {
     // 回到页面视图：瓷砖位置要重新量（在审校视图里它们全是 0），块框按需补画
     pageTileMetrics = null;
     schedulePageVisibility();
+    // 缩放是三步共用的：可能在目录确认步里改过，回来要按当前档位重排网格。
+    applyPageZoom();
+  }
+  if (target === "index" && currentProject) {
+    openPageIndex();
   }
 }
 
@@ -214,6 +220,18 @@ function stepProgress(id) {
         `主引擎 ${primary}/${included} · 第二引擎 ${engine.checked || 0}/${engine.total || 0}` +
         (failedText ? ` · ${failedText}` : "");
     }
+  } else if (id === "index") {
+    // 任务 37：目录确认 = 页码跳转索引生成成功，人工操作 0 次。
+    if (fs) {
+      const ix = fs.index || {};
+      done = Boolean(ix.complete);
+      count = `${ix.numbered || 0}/${ix.total || 0}`;
+      detail =
+        `索引 ${ix.numbered || 0}/${ix.total || 0} 页有印刷页码` +
+        (ix.chapters ? ` · ${ix.chapters} 章` : "") +
+        (ix.two_up ? " · 对开双页" : "") +
+        (ix.missing ? ` · ${ix.missing} 页缺页码（照样可点）` : "");
+    }
   } else if (id === "review") {
     if (fs) {
       const r = fs.review || {};
@@ -245,6 +263,7 @@ function autoWorkflowStep() {
   const exportOpen = el("export-panel") && !el("export-panel").hidden;
   if (exportOpen) return "export";
   if (currentView === "review") return "review";
+  if (currentView === "index") return "index";
   if (currentView !== "pages") return "review";
   for (const id of PAGE_WORKFLOW_STEPS) {
     if (!stepProgress(id).done) return id;
@@ -525,6 +544,10 @@ function goToWorkflowStep(id) {
     showView("review");
     ensureReviewPage();
     savePosition("review", detailPageNo);
+  } else if (id === "index") {
+    // 目录确认是单页预览：没手动改过缩放时给 100%（与页面视图的"单页"同一档）。
+    if (!pageZoomTouched && pageZoomIndex < 3) pageZoomIndex = 3;
+    showView("index");
   } else {
     showView("pages");
     savePosition("pages", detailPageNo);
@@ -3228,9 +3251,19 @@ function updateSelectionPanel() {
     typeSummary.textContent = "";
   }
 
-  // 顶部"下一步"：只给一条，不重复 setupbar 的计数。
+  // 顶部"下一步"：只给一条，不重复 setupbar 的计数。按当前步骤说下一步，
+  // 版心之后是文字识别，不是审校（任务 37 修正）。
   const next = el("selection-next");
-  if (!count) {
+  if (workflowStep === "margin") {
+    next.textContent =
+      count === 1
+        ? "版心已自动拟合；拖动四边调整，不改也算已定"
+        : "在左边点一页：版心框会画在页面上，四边 / 四角可拖";
+  } else if (workflowStep === "recognition") {
+    next.textContent = count
+      ? "识别完成后，去「正文审校」逐条看差异"
+      : "这一步只看识别状态；差异在「正文审校」里逐条看";
+  } else if (!count) {
     if (stats.unconfirmed > 0) {
       next.textContent = `${stats.unconfirmed} 页未确认 → 先确认页面类型`;
     } else if (pendingAll.length) {
@@ -6776,6 +6809,296 @@ function setupTaskDrawer() {
   el("job-resume").addEventListener("click", () => controlJob("resume"));
   el("job-cancel").addEventListener("click", () => controlJob("cancel"));
   el("job-retry").addEventListener("click", () => controlJob("retry-failed"));
+}
+
+// ---------------------------------------------------------------- 目录确认（页码跳转索引，任务 37）
+//
+// 用户要的不是书籍目录，是"能直接跳页的页码列表"：左边印刷页码 → PDF 页，
+// 右边单页预览；点一条跳过去，翻页时左边自动定位并高亮。
+// 数据来自后端 /page-index（优先 page.printed_page，否则页码候选；有缓存），
+// 界面只读：不改任何东西。
+
+let pageIndexData = null;
+let pageIndexProject = null;
+let pageIndexLoading = false;
+let indexCurrentPage = null;
+let indexImageToken = 0;
+let indexJumpTimer = null;
+const INDEX_ZOOM_SCALES = [0.55, 0.7, 0.85, 1];
+
+async function loadPageIndex() {
+  if (!currentProject || pageIndexLoading) return;
+  pageIndexLoading = true;
+  pageIndexData = null;
+  pageIndexProject = null;
+  el("index-meta").textContent = "正在生成页码索引…";
+  el("index-list").innerHTML = "";
+  el("index-empty").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/page-index`
+    );
+    pageIndexData = data;
+    pageIndexProject = currentProject.project_id;
+  } catch (error) {
+    el("index-meta").textContent = `页码索引读取失败：${error.message || "未知错误"}`;
+    return;
+  } finally {
+    pageIndexLoading = false;
+  }
+  renderPageIndex();
+}
+
+/** 进入目录确认步：有缓存就用缓存；没有就生成一次，然后停在"当前页"。 */
+async function openPageIndex() {
+  if (!currentProject) return;
+  if (!pageIndexData || pageIndexProject !== currentProject.project_id) {
+    await loadPageIndex();
+  } else {
+    renderPageIndex();
+  }
+  const empty = el("index-empty");
+  if (!pageIndexData || !pageIndexData.pages.length) {
+    empty.hidden = false;
+    el("index-image-status").textContent = "这一页还没有页码索引。";
+    return;
+  }
+  empty.hidden = true;
+  const target =
+    (indexCurrentPage && pageIndexData.pages.some((e) => e.page_no === indexCurrentPage)
+      ? indexCurrentPage
+      : null) ||
+    (detailPageNo !== null ? detailPageNo : null) ||
+    pageIndexData.pages[0].page_no;
+  openIndexPage(target, { scrollList: true });
+}
+
+function renderPageIndex() {
+  const list = el("index-list");
+  const meta = el("index-meta");
+  list.innerHTML = "";
+  if (!pageIndexData) {
+    meta.textContent = "";
+    return;
+  }
+  const stats = pageIndexData.stats || {};
+  const bits = [
+    `${stats.total || 0} 页`,
+    `${stats.numbered || 0} 页有印刷页码`,
+  ];
+  if (stats.chapters) bits.push(`${stats.chapters} 章`);
+  if (pageIndexData.two_up) bits.push("对开双页（一行两个印刷页）");
+  if (stats.missing) bits.push(`${stats.missing} 页未识别页码`);
+  meta.textContent = bits.join(" · ");
+  meta.title = (pageIndexData.notes || []).join("\n");
+
+  const fragment = document.createDocumentFragment();
+  for (const entry of pageIndexData.pages) {
+    if (entry.chapter) {
+      const head = document.createElement("li");
+      head.className = "index-chapter";
+      head.dataset.pageNo = String(entry.page_no);
+      head.tabIndex = 0;
+      const title = document.createElement("span");
+      title.textContent = entry.chapter;
+      const where = document.createElement("span");
+      where.className = "muted";
+      where.textContent = `PDF ${entry.page_no} 起`;
+      head.append(title, where);
+      fragment.append(head);
+    }
+    const row = document.createElement("li");
+    row.className = "index-row" + (entry.missing ? " is-missing" : "");
+    row.dataset.pageNo = String(entry.page_no);
+    row.tabIndex = 0;
+    row.title = entry.missing
+      ? `第 ${entry.page_no} 页没有识别到印刷页码，照样可以点进去`
+      : entry.spread
+        ? `这一页含印刷页 ${entry.printed.join(" 与 ")}（对开双页）`
+        : `印刷页 ${entry.printed.join(" · ")}`;
+    const printed = document.createElement("span");
+    printed.className = "index-row__printed";
+    printed.textContent = entry.missing ? "未识别页码" : entry.printed.join(" · ");
+    const pdf = document.createElement("span");
+    pdf.className = "index-row__pdf";
+    pdf.textContent = `PDF ${entry.page_no}`;
+    row.append(printed, pdf);
+    fragment.append(row);
+  }
+  list.append(fragment);
+  highlightIndexRow(false);
+}
+
+/** 打开一页：换图 + 更新页头 + 左边高亮（翻页与点列表都走这里）。 */
+function openIndexPage(pageNo, { scrollList = true } = {}) {
+  if (!currentProject) return;
+  const page = currentProject.pages.find((item) => item.page_no === pageNo);
+  if (!page) return;
+  indexCurrentPage = pageNo;
+  // 换页时先收掉上一条跳转提示（跳转本身会再写一条新的）。
+  setIndexJumpStatus("");
+  const image = el("index-image");
+  const status = el("index-image-status");
+  const token = ++indexImageToken;
+  status.hidden = false;
+  status.textContent = "正在渲染…";
+  image.classList.remove("is-ready");
+  image.onload = () => {
+    if (token !== indexImageToken) return;
+    status.hidden = true;
+    image.classList.add("is-ready");
+    applyIndexZoom();
+  };
+  image.onerror = () => {
+    if (token !== indexImageToken) return;
+    status.hidden = false;
+    status.textContent = "这一页的图像读不出来。";
+  };
+  image.src = pageImageUrl(pageNo, "view");
+  image.alt = `第 ${pageNo} 页`;
+
+  el("index-page-no").textContent = `第 ${pageNo} 页`;
+  const entry =
+    pageIndexData && pageIndexData.pages.find((item) => item.page_no === pageNo);
+  el("index-printed").textContent = entry
+    ? entry.missing
+      ? "未识别页码（照样可以审校 / 导出）"
+      : entry.spread
+        ? `本页含印刷页 ${entry.printed.join(" · ")}`
+        : `印刷页 ${entry.printed.join(" · ")}`
+    : "";
+  const pages = pageIndexData ? pageIndexData.pages : [];
+  const index = pages.findIndex((item) => item.page_no === pageNo);
+  el("index-prev").disabled = index <= 0;
+  el("index-next").disabled = index < 0 || index >= pages.length - 1;
+  highlightIndexRow(scrollList);
+}
+
+function highlightIndexRow(scroll) {
+  const list = el("index-list");
+  for (const node of list.querySelectorAll(".is-current")) {
+    node.classList.remove("is-current");
+  }
+  if (indexCurrentPage === null) return;
+  const row = list.querySelector(
+    `li[data-page-no="${indexCurrentPage}"]`
+  );
+  if (!row) return;
+  row.classList.add("is-current");
+  if (scroll) row.scrollIntoView({ block: "nearest" });
+}
+
+function stepIndexPage(delta) {
+  const pages = pageIndexData ? pageIndexData.pages : [];
+  const index = pages.findIndex((item) => item.page_no === indexCurrentPage);
+  const target = pages[index + delta];
+  if (target) openIndexPage(target.page_no, { scrollList: true });
+}
+
+/** 缩放与页面视图共用 pageZoomIndex；这里只改预览宽度，不动网格。 */
+function applyIndexZoom() {
+  const image = el("index-image");
+  if (!image) return;
+  const scale = INDEX_ZOOM_SCALES[pageZoomIndex] || 1;
+  image.style.width = `${Math.round(scale * 100)}%`;
+  const label = el("index-zoom-label");
+  if (label) {
+    label.textContent = pageZoomIndex >= INDEX_ZOOM_SCALES.length - 1
+      ? "适合宽度"
+      : `${Math.round(scale * 100)}%`;
+  }
+  el("index-zoom-out").disabled = pageZoomIndex <= 0;
+  el("index-zoom-in").disabled = pageZoomIndex >= INDEX_ZOOM_SCALES.length - 1;
+}
+
+function changeIndexZoom(delta) {
+  const next = Math.min(
+    INDEX_ZOOM_SCALES.length - 1,
+    Math.max(0, pageZoomIndex + delta)
+  );
+  if (next === pageZoomIndex) return;
+  pageZoomTouched = true;
+  pageZoomIndex = next;
+  applyIndexZoom();
+}
+
+function setIndexJumpStatus(text, isError = false) {
+  const node = el("index-jump-status");
+  if (!node) return;
+  node.textContent = text || "";
+  node.hidden = !text;
+  node.style.color = isError ? "var(--bad-fg)" : "";
+  if (indexJumpTimer) clearTimeout(indexJumpTimer);
+  if (text) indexJumpTimer = setTimeout(() => { node.hidden = true; }, 9000);
+}
+
+/** 按印刷页码跳转：精确命中就跳；没有就跳到最接近的印刷页并如实说明。 */
+function jumpToPrintedPage() {
+  if (!pageIndexData || !pageIndexData.pages.length) {
+    setIndexJumpStatus("页码索引还没准备好。", true);
+    return;
+  }
+  const raw = el("index-jump-input").value || "";
+  const digits = raw.replace(/[^0-9]/g, "");
+  if (!digits) {
+    setIndexJumpStatus("请输入印刷页码，例如 80。", true);
+    return;
+  }
+  const wanted = Number(digits);
+  const exact = pageIndexData.pages.find((entry) =>
+    entry.printed.some((value) => Number(value) === wanted)
+  );
+  if (exact) {
+    openIndexPage(exact.page_no, { scrollList: true });
+    setIndexJumpStatus(
+      `已跳到印刷页 ${wanted}（PDF ${exact.page_no}）。`
+    );
+    return;
+  }
+  let best = null;
+  for (const entry of pageIndexData.pages) {
+    for (const value of entry.printed) {
+      const distance = Math.abs(Number(value) - wanted);
+      if (!best || distance < best.distance) {
+        best = { distance, pageNo: entry.page_no, value: Number(value) };
+      }
+    }
+  }
+  if (!best) {
+    setIndexJumpStatus("这本书还没有可用的印刷页码。", true);
+    return;
+  }
+  openIndexPage(best.pageNo, { scrollList: true });
+  setIndexJumpStatus(
+    `索引里没有印刷页 ${wanted}；已跳到最接近的 ${best.value}（PDF ${best.pageNo}）。`,
+    true
+  );
+}
+
+function setupPageIndex() {
+  el("index-prev").addEventListener("click", () => stepIndexPage(-1));
+  el("index-next").addEventListener("click", () => stepIndexPage(1));
+  el("index-zoom-out").addEventListener("click", () => changeIndexZoom(-1));
+  el("index-zoom-in").addEventListener("click", () => changeIndexZoom(1));
+  el("index-jump-go").addEventListener("click", jumpToPrintedPage);
+  el("index-jump-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      jumpToPrintedPage();
+    }
+  });
+  el("index-list").addEventListener("click", (event) => {
+    const row = event.target.closest("li[data-page-no]");
+    if (!row) return;
+    openIndexPage(Number(row.dataset.pageNo), { scrollList: true });
+  });
+  el("index-list").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const row = event.target.closest("li[data-page-no]");
+    if (!row) return;
+    event.preventDefault();
+    openIndexPage(Number(row.dataset.pageNo), { scrollList: true });
+  });
 }
 
 // ---------------------------------------------------------------- 审校视图（本页）
@@ -12532,6 +12855,7 @@ function boot() {
   setupViewerTools();
   setupRecognitionSettings();
   setupPageNumberPanel();
+  setupPageIndex();
   setupExportPanel();
   setupStructurePanel();
   showView("library");

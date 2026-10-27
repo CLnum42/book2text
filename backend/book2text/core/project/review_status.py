@@ -23,6 +23,7 @@ from . import blocks as blocks_module
 from . import ink_gaps as ink_gaps_module
 from . import library as library_module
 from . import margin_box as margin_box_module
+from . import page_index as page_index_module
 from . import page_numbers as page_numbers_module
 from . import structure as structure_module
 from . import workflow as workflow_module
@@ -549,6 +550,18 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     except Exception:  # noqa: BLE001 - 页码是旁路，读不到不影响收尾
         pn_state = {"template": None, "ranges": [], "filled": 0, "total": len(pages)}
     pn_done = bool(pn_state.get("template") or pn_state.get("ranges"))
+    # 任务 37（C 刀）：目录确认 = 页码跳转索引生成成功。只给计数，明细走 /page-index。
+    try:
+        index_state = page_index_module.page_index_summary(project_id, library=library)
+    except Exception:  # noqa: BLE001 - 索引坏了不该拖垮收尾面板
+        index_state = {
+            "total": len(pages),
+            "numbered": 0,
+            "missing": len(pages),
+            "chapters": 0,
+            "two_up": False,
+            "complete": False,
+        }
 
     checked_pages = [page.page_no for page in body_pages if page.page_id in aux]
     compared = identical = format_only = chars = punct = empty = 0
@@ -612,6 +625,7 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
             "total": len(body_pages),
             "complete": complete[4],
         },
+        "index": index_state,
         "engine": {
             "checked": len(checked_pages),
             "total": len(body_pages),
