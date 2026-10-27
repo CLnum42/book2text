@@ -15799,6 +15799,7 @@ let readingFollow = true;
 let readingProof = false;
 let readingScrollRaf = 0;
 let readingPendingBox = null;
+let readingPreflightData = null;
 
 function readingKey(blockId, lineIndex) {
   return `${blockId}:${lineIndex}`;
@@ -16374,6 +16375,48 @@ function toggleReadingProof() {
   el("reading-proof").classList.toggle("is-on", readingProof);
   el("view-reading").classList.toggle("is-proof", readingProof);
   renderReading({ reset: true });
+  renderReadingPreflight();
+}
+
+/** 成稿模式的预检条：红字全藏了，这里给"这就是要导出的东西"的证据。 */
+async function renderReadingPreflight() {
+  const bar = el("reading-preflight");
+  if (!bar) return;
+  if (!readingProof) {
+    bar.hidden = true;
+    return;
+  }
+  if (!readingPreflightData) {
+    bar.hidden = false;
+    bar.textContent = "正在核对导出预检…";
+    try {
+      readingPreflightData = await apiJson(
+        `/api/projects/${currentProject.project_id}/export/preflight`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(readingOptions()),
+        }
+      );
+    } catch (error) {
+      bar.textContent = `预检读取失败：${error.message || "未知错误"}`;
+      return;
+    }
+  }
+  const data = readingPreflightData || {};
+  const segments = data.segment_count || 0;
+  const chars = data.char_count || 0;
+  const spans = data.cross_page_segments ?? data.merged_segments ?? 0;
+  const margin = (data.margin_blocks || {}).excluded;
+  const bits = [
+    `成稿：${segments} 段`,
+    `${chars} 字`,
+    spans ? `跨页 ${spans} 段` : "",
+    margin ? `版心外排除 ${margin} 块` : "",
+    data.page_count ? `${data.page_count} 页` : "",
+  ].filter(Boolean);
+  bar.hidden = false;
+  bar.textContent = bits.join(" · ");
 }
 
 function hideReadingPdfBox() {

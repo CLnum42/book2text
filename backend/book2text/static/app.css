@@ -2407,3 +2407,7 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
   font-size: 10.5px; color: var(--faint); margin-right: 8px;
   user-select: none; white-space: nowrap;
 }
+.reading-preflight {
+  flex: none; padding: 6px 14px; font-size: 11.5px; color: var(--muted);
+  background: var(--ok-soft); border-bottom: 1px solid #bfe5cc;
+}
