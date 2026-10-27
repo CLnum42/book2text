@@ -26,6 +26,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..ocr import compare as compare_module
+from ..storage import db as db_module
 from . import blocks as blocks_module
 from . import editing
 from . import library as library_module
@@ -263,6 +265,10 @@ def _scan(project_id: str, *, library: Path) -> tuple[list[_BlockText], dict]:
         return closes, stack
 
     closes, _opens = _scan_quotes()
+    # 转之前哪些 ” 本来就没配平：用来区分"自动修出来的孤儿"和"本来就配不平的"
+    pre_double_closes = {
+        (index, offset) for index, offset, ch in closes if ch == "”"
+    }
     converted: set[tuple[int, int]] = set()
     for index, offset, ch in closes:
         if ch != "’":
@@ -291,8 +297,24 @@ def _scan(project_id: str, *, library: Path) -> tuple[list[_BlockText], dict]:
 
     unmatched: list[dict] = []
     closes, opens = _scan_quotes()
+    position_of = {
+        (index, offset): position
+        for position, (index, offset, _ch) in enumerate(quote_positions)
+    }
     for index, offset, ch in closes:
-        unmatched.append(_unmatched(items[index], offset, ch, "close"))
+        suspect = False
+        if ch == "”":
+            # 两种都能认出"自动修引号改出来的孤儿"：
+            # 1) 在原始文本上扫：转之前配平、转之后没配平；
+            # 2) 在已修好的文本上扫：它前面最近的引号字符是闭单引号 `’`
+            #    （说明那个开双引号已经被改成开单引号了）。
+            position = position_of.get((index, offset))
+            suspect = (index, offset) not in pre_double_closes or (
+                position is not None
+                and position > 0
+                and quote_positions[position - 1][2] == "’"
+            )
+        unmatched.append(_unmatched(items[index], offset, ch, "close", suspect=suspect))
     for index, offset, ch in opens:
         unmatched.append(_unmatched(items[index], offset, ch, "open"))
 
@@ -306,7 +328,9 @@ def _bump_bracket(stats: dict, char: str) -> None:
             return
 
 
-def _unmatched(item: _BlockText, offset: int, char: str, kind: str) -> dict:
+def _unmatched(
+    item: _BlockText, offset: int, char: str, kind: str, *, suspect: bool = False
+) -> dict:
     text = item.text
     start = max(0, offset - 12)
     end = min(len(text), offset + 13)
@@ -318,6 +342,8 @@ def _unmatched(item: _BlockText, offset: int, char: str, kind: str) -> dict:
         "char": char,
         "offset": offset,
         "snippet": ("…" if start else "") + snippet + ("…" if end < len(text) else ""),
+        # 自动修的 117 处里有可能改错的（把原来配好的 ” 变成孤儿）：清单里优先看
+        "suspect": suspect,
     }
 
 
@@ -421,4 +447,220 @@ def unbalanced(project_id: str, *, library: Path | None = None) -> dict:
         "count": len(entries),
         "entries": entries,
         "pages": len({entry["page_no"] for entry in entries}),
+    }
+
+
+# ---------------------------------------------------------------- 行级：文本 + 第二引擎 + diff 重算
+
+def _normalize_local_line(text: str) -> tuple[str, int]:
+    """单行局部规范化（括号 / 半角标点，行内上下文）。返回（新文本, 改动字符数）。
+
+    和 `_scan` 里那套规则一致；行首 / 行尾的空邻居按"允许"处理。
+    引号不在这里改（引号是按全书配平定的，见 `lines_plan` 的映射）。
+    """
+    chars = list(text or "")
+    changed = 0
+    for offset in range(len(chars)):
+        ch = chars[offset]
+        prev = chars[offset - 1] if offset else ""
+        nxt = chars[offset + 1] if offset + 1 < len(chars) else ""
+        if ch in CLOSING_BRACKETS:
+            new = CLOSING_BRACKETS[ch]
+            if (
+                new != ch
+                and _bracket_safe(prev)
+                and _bracket_safe(nxt)
+                and (_is_cjk_context(prev) or _is_cjk_context(nxt))
+            ):
+                chars[offset] = new
+                changed += 1
+            continue
+        if ch in OPENING_BRACKETS:
+            new = OPENING_BRACKETS[ch]
+            if (
+                new != ch
+                and _bracket_safe(prev)
+                and _bracket_safe(nxt)
+                and (_is_cjk_context(prev) or _is_cjk_context(nxt))
+            ):
+                chars[offset] = new
+                changed += 1
+            continue
+        if ch in HALF_TO_FULL:
+            replace = False
+            if ch in "!?":
+                replace = _is_cjk_context(prev) or _is_cjk_context(nxt)
+            elif ch == ".":
+                replace = _is_cjk_context(prev) and (
+                    not nxt
+                    or _is_cjk_context(nxt)
+                    or nxt in " \t\n，。、；：？！》〉」』】〕］”’"
+                )
+            elif ch == "'":
+                replace = _is_cjk_context(prev) or _is_cjk_context(nxt)
+            elif ch == "-":
+                replace = (
+                    _is_cjk_context(prev) and (_is_cjk_context(nxt) or nxt == "-")
+                ) or (_is_cjk_context(nxt) and prev == "-")
+            if replace:
+                chars[offset] = HALF_TO_FULL[ch]
+                changed += 1
+    return "".join(chars), changed
+
+
+def _line_rows(directory: Path) -> list:
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        return conn.execute(
+            "SELECT line_id, block_id, line_index, text, aux_text, diff_status, diff_ack"
+            " FROM block_line ORDER BY block_id, line_index"
+        ).fetchall()
+
+
+def lines_plan(project_id: str, *, library: Path | None = None) -> dict:
+    """只读：行文本 / 第二引擎文本要改哪些、diff 状态会怎么变。
+
+    关键点：审校的差异标记是**实时**拿 `block.text` 的每一行和 `block_line.aux_text`
+    比较出来的。所以只改块文本、不改 aux，会让每个括号行从 identical 变成
+    "标点级分歧"——队列反而变长。这里两路一起规范化，再按同一套 `compare_line`
+    重算状态。
+    """
+    target_library = library if library is not None else library_module.default_library_dir()
+    items, _result = _scan(project_id, library=target_library)
+    by_block = {item.block_id: item for item in items}
+    directory = library_module.project_dir(target_library, project_id)
+    rows = _line_rows(directory)
+
+    grouped: dict[str, list] = {}
+    for row in rows:
+        grouped.setdefault(row["block_id"], []).append(row)
+
+    entries: list[dict] = []
+    before_counts: dict[str, int] = {}
+    after_counts: dict[str, int] = {}
+    stats = {
+        "lines": 0,
+        "text_changed": 0,
+        "aux_changed": 0,
+        "status_changed": 0,
+        "skipped_ack": 0,
+        "unaligned_blocks": 0,
+        "unaligned_lines": 0,
+    }
+    for block_id, block_rows in grouped.items():
+        block_rows.sort(key=lambda row: row["line_index"])
+        item = by_block.get(block_id)
+        parts = item.text.split("\n") if item else None
+        aligned = bool(item) and len(parts) == len(block_rows)
+        if item and not aligned:
+            stats["unaligned_blocks"] += 1
+        starts: list[int] = []
+        position = 0
+        for part in parts or []:
+            starts.append(position)
+            position += len(part) + 1
+        for row in block_rows:
+            stats["lines"] += 1
+            if row["diff_ack"]:
+                stats["skipped_ack"] += 1
+                continue
+            old_text = row["text"] or ""
+            old_aux = row["aux_text"]
+            if aligned:
+                new_text = parts[row["line_index"]]
+            else:
+                stats["unaligned_lines"] += 1
+                new_text, _changed = _normalize_local_line(old_text)
+            new_aux = old_aux
+            if old_aux is not None:
+                normalized_aux, _changed = _normalize_local_line(old_aux)
+                aux_chars = list(normalized_aux)
+                if aligned:
+                    # 引号按"这一行里第几个开双引号"映射到第二引擎：
+                    # 两路字符数可能不同，按偏移映射会错位；按序号映射才稳。
+                    # 转换位置直接从"原始行文本 → 规范化后的块文本"推出来：
+                    # 块文本已经是修好的，不能再指望 _scan 还认得这次改动。
+                    ordinals: set[int] = set()
+                    for position, (before, after) in enumerate(zip(old_text, new_text)):
+                        if before == "“" and after == "‘":
+                            ordinals.add(old_text.count("“", 0, position))
+                    if ordinals:
+                        seen = 0
+                        for position, ch in enumerate(aux_chars):
+                            if ch != "“":
+                                continue
+                            if seen in ordinals:
+                                aux_chars[position] = "‘"
+                            seen += 1
+                new_aux = "".join(aux_chars)
+            before_key = row["diff_status"] or "none"
+            before_counts[before_key] = before_counts.get(before_key, 0) + 1
+            if old_aux is not None:
+                new_status = compare_module.compare_line(new_text, new_aux)
+            else:
+                new_status = row["diff_status"]
+            after_key = new_status or "none"
+            after_counts[after_key] = after_counts.get(after_key, 0) + 1
+            text_changed = new_text != old_text
+            aux_changed = new_aux != old_aux
+            status_changed = new_status != row["diff_status"]
+            if not (text_changed or aux_changed or status_changed):
+                continue
+            if text_changed:
+                stats["text_changed"] += 1
+            if aux_changed:
+                stats["aux_changed"] += 1
+            if status_changed:
+                stats["status_changed"] += 1
+            entries.append(
+                {
+                    "line_id": row["line_id"],
+                    "block_id": block_id,
+                    "line_index": row["line_index"],
+                    "before_text": old_text,
+                    "before_aux": old_aux,
+                    "before_status": row["diff_status"],
+                    "after_text": new_text,
+                    "after_aux": new_aux,
+                    "after_status": new_status,
+                }
+            )
+    stats["before"] = before_counts
+    stats["after"] = after_counts
+    stats["changed"] = len(entries)
+    return {"stats": stats, "entries": entries}
+
+
+def apply_lines(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+) -> dict:
+    """执行：改 `block_line.text` / `aux_text` / `diff_status`（同一事务）。
+
+    返回的 `entries` 由调用方写成回滚文件（行级改动不进块事件撤销栈）。
+    """
+    target_library = library if library is not None else library_module.default_library_dir()
+    plan = lines_plan(project_id, library=target_library)
+    entries = plan["entries"]
+    if not entries:
+        return {"stats": plan["stats"], "changed": 0, "entries": []}
+    directory = library_module.project_dir(target_library, project_id)
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        for entry in entries:
+            conn.execute(
+                "UPDATE block_line SET text = ?, aux_text = ?, diff_status = ?"
+                " WHERE line_id = ?",
+                (
+                    entry["after_text"],
+                    entry["after_aux"],
+                    entry["after_status"],
+                    entry["line_id"],
+                ),
+            )
+        conn.commit()
+    return {
+        "stats": plan["stats"],
+        "changed": len(entries),
+        "entries": entries,
     }

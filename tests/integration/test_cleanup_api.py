@@ -530,3 +530,97 @@ def test_orthography_restores_brackets_and_balances_quotes(
     assert data["count"] >= 1
     assert data["entries"][0]["page_no"] == 1
     assert data["entries"][0]["snippet"]
+
+
+def test_orthography_normalizes_lines_and_recomputes_diff(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    scan_sample_pdf: Path,
+    library_dir: Path,
+) -> None:
+    """任务 50：行文本 / 第二引擎一起规范化，行级 diff 重算。
+
+    只改块文本不改 aux 会让每个括号行变成新的"标点级分歧"——审校看到的字
+    必须和导出的字是同一份。有人工裁决（diff_ack）的行必须跳过。
+    """
+    project_id = create_project(client, auth_headers, scan_sample_pdf)
+    set_margin(client, auth_headers, project_id, 1)
+    text = (
+        "你这话很是，<比我想的周到>；\n"
+        "第二行[笑说：“咱们走罢。”]；\n"
+        "第三行不动，有人工裁决。"
+    )
+    block_id = add_block(
+        library_dir,
+        project_id,
+        page_no=1,
+        lines=[
+            ("你这话很是，<比我想的周到>；", 0.10, 0.10, 0.90, 0.12),
+            ("第二行[笑说：“咱们走罢。”]；", 0.10, 0.12, 0.90, 0.14),
+            ("第三行不动，有人工裁决。", 0.10, 0.14, 0.90, 0.16),
+        ],
+    )
+    # 第二引擎在两行里读成全角括号（于是变成 format_only），第三行有 ack
+    directory = library_dir / project_id
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        lines = conn.execute(
+            "SELECT line_id, line_index FROM block_line WHERE block_id = ? ORDER BY line_index",
+            (block_id,),
+        ).fetchall()
+        conn.execute(
+            "UPDATE block_line SET aux_text = ?, diff_status = 'differs' WHERE line_id = ?",
+            ("你这话很是，<比我想的周到>；", lines[0]["line_id"]),
+        )
+        conn.execute(
+            "UPDATE block_line SET aux_text = ?, diff_status = 'format_only_differs' WHERE line_id = ?",
+            ("第二行［笑说：“咱们走罢。”］；", lines[1]["line_id"]),
+        )
+        conn.execute(
+            "UPDATE block_line SET aux_text = ?, diff_status = 'differs',"
+            " diff_ack = 'kept', diff_ack_text = ? WHERE line_id = ?",
+            ("第三行不动，人工改过。", "第三行不动，有人工裁决。", lines[2]["line_id"]),
+        )
+        conn.commit()
+
+    # 先做块级字符规范化
+    applied = client.post(
+        f"/api/projects/{project_id}/cleanup/orthography", headers=auth_headers
+    )
+    assert applied.status_code == 200, applied.text
+
+    plan = client.get(
+        f"/api/projects/{project_id}/cleanup/orthography/lines", headers=auth_headers
+    )
+    assert plan.status_code == 200, plan.text
+    stats = plan.json()["stats"]
+    assert stats["lines"] == 3
+    assert stats["skipped_ack"] == 1
+    # 第一行：两路都是 ASCII 括号 → 都变 〈〉 后 identical
+    # 第二行：aux 是全角方括号，规范化后 identical
+    assert stats["before"]["differs"] >= 1
+    assert stats["after"]["identical"] >= 2
+
+    written = client.post(
+        f"/api/projects/{project_id}/cleanup/orthography/lines", headers=auth_headers
+    )
+    assert written.status_code == 200, written.text
+    result = written.json()
+    assert result["changed"] >= 2
+    assert result["revert_file"]
+
+    blocks = client.get(
+        f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers
+    ).json()
+    line_rows = {
+        row["line_index"]: row for row in blocks["blocks"][0]["lines"]
+    }
+    assert "<" not in line_rows[0]["text"] and "<" not in line_rows[0]["aux_text"]
+    assert "〈比我想的周到〉" in line_rows[0]["text"]
+    assert line_rows[0]["diff_status"] == "identical"
+    assert "［笑说：“咱们走罢。”］" in line_rows[1]["text"]
+    assert line_rows[1]["diff_status"] == "identical"
+    # 有人工裁决的那一行原样不动
+    assert line_rows[2]["text"] == "第三行不动，有人工裁决。"
+    assert line_rows[2]["aux_text"] == "第三行不动，人工改过。"
+    assert line_rows[2]["diff_status"] == "differs"
+    assert line_rows[2]["diff_ack"] == "kept"

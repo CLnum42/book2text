@@ -12,6 +12,8 @@ F2 家具块：整块全是家具才改类型，绝不按行拆。
 
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -185,6 +187,45 @@ def orthography_apply(
     except editing.BlockConflict as exc:  # pragma: no cover
         raise AppError(409, "block_conflict", "块已经被改过", detail=str(exc)) from exc
     return _with_history(request, project_id, result)
+
+
+@router.get("/{project_id}/cleanup/orthography/lines")
+def orthography_lines_plan(request: Request, project_id: str) -> dict[str, Any]:
+    """只读：行文本 / 第二引擎文本要改多少、diff 状态会怎么变。"""
+    try:
+        return orthography_module.lines_plan(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+@router.post("/{project_id}/cleanup/orthography/lines")
+def orthography_lines_apply(
+    request: Request, project_id: str, body: CleanupRequest | None = None
+) -> dict[str, Any]:
+    """执行行级规范化 + 重算 diff；行级改动不进块撤销栈，另写回滚文件到 backups/。"""
+    _require_main(request, project_id)
+    try:
+        result = orthography_module.apply_lines(
+            project_id,
+            library=_library(request),
+            actor_name=body.actor_name if body else None,
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    entries = result.pop("entries", [])
+    revert = None
+    if entries:
+        directory = project_library.require_project_dir(project_id, library=_library(request))
+        backups = directory / "backups"
+        backups.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = backups / f"orthography-lines-revert-{stamp}.json"
+        path.write_text(
+            json.dumps(entries, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+        revert = str(path)
+    result["revert_file"] = revert
+    return result
 
 
 @router.get("/{project_id}/cleanup/orthography/unbalanced")

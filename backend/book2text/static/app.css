@@ -2261,5 +2261,10 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
   background: var(--warn-soft); color: var(--warn-text);
 }
 .orthography-row__kind--open { background: var(--accent-soft); color: var(--accent-text); }
+.orthography-row__suspect {
+  flex: none; font-size: 10.5px; padding: 1px 6px; border-radius: 999px;
+  background: var(--bad-soft); color: var(--bad-text); font-weight: 600;
+}
+.orthography-row--suspect { background: rgba(220, 38, 38, .04); }
 .orthography-row__text { flex: 1; min-width: 0; line-height: 1.5; color: var(--text); }
 .orthography-row .btn { flex: none; }

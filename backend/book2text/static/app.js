@@ -12615,6 +12615,57 @@ async function runOrthographyCleanup() {
   }
 }
 
+/** 行文本 + 第二引擎 + 行级 diff 重算（必须在字符规范化之后跑）。 */
+async function runLinesCleanup() {
+  if (!currentProject || currentProject.kind === "package") return;
+  const base = `/api/projects/${currentProject.project_id}/cleanup/orthography/lines`;
+  setCleanupStatus("cleanup-lines-status", "正在扫描行文本与第二引擎…");
+  let plan;
+  try {
+    plan = await apiJson(base);
+  } catch (error) {
+    setCleanupStatus("cleanup-lines-status", `扫描失败：${error.message}`, true);
+    return;
+  }
+  const stats = plan.stats || {};
+  if (!stats.changed) {
+    setCleanupStatus(
+      "cleanup-lines-status",
+      `没有要改的行（共 ${stats.lines || 0} 行；format_only ${stats.after?.format_only_differs ?? 0}）。`
+    );
+    return;
+  }
+  const before = stats.before || {};
+  const after = stats.after || {};
+  const ok = window.confirm(
+    `改 ${stats.changed} 行的文本并重算行级 diff？\n\n` +
+      `· 行文本 ${stats.text_changed} 行、第二引擎 ${stats.aux_changed} 行、状态变化 ${stats.status_changed} 行\n` +
+      `· format_only_differs：${before.format_only_differs || 0} → ${after.format_only_differs || 0}\n` +
+      `· differs：${before.differs || 0} → ${after.differs || 0}\n` +
+      (stats.skipped_ack ? `· 跳过 ${stats.skipped_ack} 行有人工裁决（ack）的行\n` : "") +
+      "\n行级改动不进块撤销栈，会写一份回滚文件到项目的 backups/ 目录。"
+  );
+  if (!ok) {
+    setCleanupStatus("cleanup-lines-status", "未写入。");
+    return;
+  }
+  setCleanupStatus("cleanup-lines-status", "正在写入行文本与 diff…");
+  try {
+    const result = await apiJson(base, { method: "POST" });
+    const s = result.stats || {};
+    setCleanupStatus(
+      "cleanup-lines-status",
+      `已改 ${result.changed || 0} 行；format_only ${s.before?.format_only_differs || 0} → ` +
+        `${s.after?.format_only_differs || 0}，differs ${s.before?.differs || 0} → ` +
+        `${s.after?.differs || 0}` +
+        (result.revert_file ? `；回滚文件 backups/${result.revert_file.split("/").pop()}` : "")
+    );
+    await afterCleanupApplied();
+  } catch (error) {
+    setCleanupStatus("cleanup-lines-status", `写入失败：${error.message}`, true);
+  }
+}
+
 /** 引号不配平清单：只读，逐条跳到审校页自己判断。 */
 async function openOrthographyPanel() {
   if (!currentProject) return;
@@ -12636,9 +12687,14 @@ async function openOrthographyPanel() {
     list.append(item);
     return;
   }
-  const entries = data.entries || [];
+  const entries = (data.entries || []).slice().sort(
+    (a, b) => Number(Boolean(b.suspect)) - Number(Boolean(a.suspect))
+  );
+  const suspects = entries.filter((entry) => entry.suspect).length;
   list.innerHTML = "";
-  el("orthography-meta").textContent = `${entries.length} 处 · ${data.pages || 0} 页`;
+  el("orthography-meta").textContent =
+    `${entries.length} 处 · ${data.pages || 0} 页` +
+    (suspects ? ` · 其中 ${suspects} 处是自动修引号可能改错的，优先看` : "");
   el("orthography-footnote").textContent = entries.length
     ? "不硬配：这些位置只提示，改不改由人判断"
     : "没有配不平的引号。";
@@ -12659,6 +12715,13 @@ async function openOrthographyPanel() {
     const kind = document.createElement("span");
     kind.className = `orthography-row__kind orthography-row__kind--${entry.kind}`;
     kind.textContent = entry.kind === "open" ? "缺闭合" : "缺开号";
+    if (entry.suspect) {
+      row.classList.add("orthography-row--suspect");
+      const badge = document.createElement("span");
+      badge.className = "orthography-row__suspect";
+      badge.textContent = "自动修可能改错";
+      kind.after(badge);
+    }
     const snippet = document.createElement("span");
     snippet.className = "orthography-row__text";
     snippet.textContent = entry.snippet;
@@ -13887,6 +13950,7 @@ function setupReviewControls() {
   el("cleanup-furniture-run").addEventListener("click", runFurnitureCleanup);
   el("cleanup-orthography-run").addEventListener("click", runOrthographyCleanup);
   el("cleanup-orthography-review").addEventListener("click", openOrthographyPanel);
+  el("cleanup-lines-run").addEventListener("click", runLinesCleanup);
   el("orthography-close").addEventListener("click", () => closeModal("orthography-panel"));
   el("orthography-done").addEventListener("click", () => closeModal("orthography-panel"));
   el("cleanup-undo").addEventListener("click", undoLastCleanup);

@@ -1523,6 +1523,14 @@ def test_orthography_cleanup_is_wired() -> None:
     assert "function openOrthographyPanel(" in script
     assert "/cleanup/orthography" in script
     assert "/cleanup/orthography/unbalanced" in script
+    # 行文本 + 第二引擎 + diff 重算（先分析、确认后写库，另写回滚文件）
+    assert "function runLinesCleanup(" in script
+    assert "/cleanup/orthography/lines" in script
+    assert "回滚文件" in page or "回滚文件" in script
+    assert "cleanup-lines-run" in page and "cleanup-lines-status" in page
+    # 自动修引号可能改错的孤儿：清单里优先看
+    assert "orthography-row__suspect" in page or "orthography-row__suspect" in script
+    assert "自动修可能改错" in script
     # 先分析再写库：确认框里写清楚改多少块 / 字，且可撤销
     assert "window.confirm(" in script
     assert "整批可撤销" in script
