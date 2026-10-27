@@ -64,11 +64,19 @@ def set_margin(client: TestClient, headers: dict[str, str], project_id: str, box
 
 
 def set_page_margin(
-    client: TestClient, headers: dict[str, str], project_id: str, page_no: int, mode: str
+    client: TestClient,
+    headers: dict[str, str],
+    project_id: str,
+    page_no: int,
+    mode: str,
+    box=None,
 ) -> None:
+    payload = {"margin_box_mode": mode}
+    if box is not None:
+        payload["margin_box"] = box
     response = client.patch(
         f"/api/projects/{project_id}/pages/{page_no}/margin-box",
-        json={"margin_box_mode": mode},
+        json=payload,
         headers=headers,
     )
     assert response.status_code == 200, response.text
@@ -166,6 +174,9 @@ def test_two_layer_margin_judgement_and_page_numbers(
         bbox=[0.1, 0.02, 0.9, 0.05],
     )
     set_page_margin(client, auth_headers, project_ready, 3, "none")
+    # 任务 33：auto 页读本页落库的框，不继承项目默认框；这里给 1、2 页各设一个框。
+    set_page_margin(client, auth_headers, project_ready, 1, "custom", [0.05, 0.1, 0.95, 0.9])
+    set_page_margin(client, auth_headers, project_ready, 2, "custom", [0.05, 0.1, 0.95, 0.9])
     set_margin(client, auth_headers, project_ready, [0.05, 0.1, 0.95, 0.9])
 
     # 基线：开关关掉（默认）——书眉与页码都是 paragraph，会被当作正文
@@ -256,7 +267,8 @@ def test_mixed_header_uses_page_label_and_conflicts_become_null(
     add_block(
         library_dir, project_ready, page_no=2, text="21", bbox=[0.6, 0.02, 0.7, 0.04]
     )
-    set_margin(client, auth_headers, project_ready, [0.05, 0.1, 0.95, 0.9])
+    set_page_margin(client, auth_headers, project_ready, 1, "custom", [0.05, 0.1, 0.95, 0.9])
+    set_page_margin(client, auth_headers, project_ready, 2, "custom", [0.05, 0.1, 0.95, 0.9])
     set_judgement(client, auth_headers, project_ready, True)
 
     record = export(client, auth_headers, project_ready, page_numbers=[1, 2]).json()["record"]

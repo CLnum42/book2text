@@ -65,6 +65,15 @@ def prepare_page(
         headers=headers,
     )
     assert response.status_code == 200, response.text
+    # 任务 33：auto 页读本页落库框，不再继承全局框；这些用例没有检测行，
+    # 所以显式给每页一个本页框（否则版心未定，自动通过按设计拒绝）。
+    for page_no in pages:
+        response = client.patch(
+            f"/api/projects/{project_id}/pages/{page_no}/margin-box",
+            json={"margin_box_mode": "custom", "margin_box": [0.1, 0.1, 0.9, 0.9]},
+            headers=headers,
+        )
+        assert response.status_code == 200, response.text
     response = client.post(
         f"/api/projects/{project_id}/pages/{pages[0]}/layout/confirm",
         json={"page_numbers": pages},

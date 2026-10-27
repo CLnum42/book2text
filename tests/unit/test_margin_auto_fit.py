@@ -62,7 +62,7 @@ def test_fit_tail_rescue_skips_thick_rule() -> None:
     assert result[3] < 0.90
 
 
-def _insert_layout_lines(directory: Path, page_no: int) -> None:
+def _insert_layout_lines(directory: Path, page_no: int, count: int = 3) -> None:
     with db_module.open_database(directory, apply_migrations=False) as conn:
         page = conn.execute("SELECT page_id FROM page WHERE page_no = ?", (page_no,)).fetchone()
         run_id = new_ulid()
@@ -90,7 +90,7 @@ def _insert_layout_lines(directory: Path, page_no: int) -> None:
                     json.dumps([0.10, 0.10 + index * 0.10, 0.90, 0.12 + index * 0.10]),
                     index,
                 )
-                for index in range(3)
+                for index in range(count)
             ],
         )
         conn.commit()
@@ -120,6 +120,7 @@ def test_fit_page_margin_caches_auto_and_never_overwrites_custom(
     )
     assert page1.margin_box_mode == "auto"
     assert page1.margin_box is not None
+    assert page1.margin_box_method == "fit"
 
     skipped = margin_box.fit_page_margin(minimal_project.name, 2, library=minimal_project.parent)
     assert skipped["updated"] is False
@@ -142,6 +143,7 @@ def test_fit_all_only_touches_inherit_and_auto(minimal_project: Path) -> None:
         "updated": 1,
         "fitted": 1,
         "fallback": 0,
+        "undetermined": 0,
         "skipped_custom": 1,
         "skipped_none": 1,
     }
@@ -187,3 +189,124 @@ def test_migration_0017_turns_inherit_into_auto(tmp_path: Path) -> None:
         assert rows == {"p1": "auto", "p2": "custom"}
     finally:
         connection.close()
+
+
+def test_fit_includes_trailing_short_lines() -> None:
+    """长行下面接一段短诗行：迭代纳入要把它们收进版心（任务 33 的裁图前提）。"""
+    lines = [
+        [0.10, 0.10 + i * 0.02, 0.90, 0.118 + i * 0.02]
+        for i in range(20)
+    ]
+    # 诗行：宽 0.12（短行），与正文最后一行只隔一个行距，一直排到 0.62
+    lines += [
+        [0.10, 0.50 + i * 0.02, 0.22, 0.518 + i * 0.02]
+        for i in range(6)
+    ]
+    result = margin_box.fit_box_from_lines(lines)
+    assert result is not None
+    assert result[3] > 0.60  # 最末诗行被收进来，而不是停在长行框底
+
+
+def test_fit_ignores_vertical_marginal_notes() -> None:
+    """页边又高又窄的竖排旁批不能因为与正文框相交就被并进来。"""
+    lines = [
+        [0.23, 0.10 + i * 0.02, 0.85, 0.118 + i * 0.02]
+        for i in range(20)
+    ]
+    # 竖排旁批：x 0.01–0.04，纵向跨过正文框上边
+    lines.append([0.010, 0.20, 0.040, 0.250])
+    result = margin_box.fit_box_from_lines(lines)
+    assert result is not None
+    assert result[0] > 0.20
+
+
+def test_fallback_uses_all_page_lines_never_global() -> None:
+    """拟合行不足 → 退本页所有检测行的包围盒；没有行 → 未定。"""
+    lines = [
+        [0.10, 0.80, 0.88, 0.83],  # 页脚一行
+        [0.12, 0.10, 0.86, 0.13],  # 页眉一行
+    ]
+    fitted = margin_box.fit_page_margin_box(lines)
+    assert fitted.method == "bbox"
+    assert fitted.box is not None
+    assert fitted.box[1] < 0.10 and fitted.box[3] > 0.83
+
+    empty = margin_box.fit_page_margin_box([])
+    assert empty.method == "undetermined"
+    assert empty.box is None
+
+
+def test_fit_page_margin_writes_bbox_and_undetermined(minimal_project: Path) -> None:
+    with db_module.open_database(minimal_project, apply_migrations=False) as conn:
+        conn.execute("UPDATE page SET margin_box_mode = 'auto'")
+        conn.commit()
+    # 第 1 页：3 条长行 → fit；第 2 页：2 条短行 → bbox；第 3 页：没有行 → 未定
+    _insert_layout_lines(minimal_project, 1)
+    _insert_layout_lines(minimal_project, 2, count=2)
+    with db_module.open_database(minimal_project, apply_migrations=False) as conn:
+        conn.execute(
+            "UPDATE page_layout_line SET bbox = ? WHERE page_id = 'page2'",
+            (json.dumps([0.30, 0.40, 0.60, 0.42]),),
+        )
+        conn.commit()
+
+    first = margin_box.fit_page_margin(minimal_project.name, 1, library=minimal_project.parent)
+    second = margin_box.fit_page_margin(minimal_project.name, 2, library=minimal_project.parent)
+    third = margin_box.fit_page_margin(minimal_project.name, 3, library=minimal_project.parent)
+    assert first["method"] == "fit" and first["fallback"] is False
+    assert second["method"] == "bbox" and second["fallback"] is True
+    assert third["method"] == "undetermined" and third["undetermined"] is True
+
+    with db_module.open_database(minimal_project, apply_migrations=False) as conn:
+        rows = {
+            row["page_no"]: (row["margin_box"], row["margin_box_method"])
+            for row in conn.execute("SELECT page_no, margin_box, margin_box_method FROM page")
+        }
+    assert rows[1][0] is not None and rows[1][1] == "fit"
+    assert rows[2][0] is not None and rows[2][1] == "bbox"
+    assert rows[3] == (None, None)
+
+
+def test_batch_auto_keeps_existing_auto_boxes(minimal_project: Path) -> None:
+    """批量切到 auto 不该清掉已经 auto 的页的框；从 custom 过来的页才清空等重拟合。"""
+    with db_module.open_database(minimal_project, apply_migrations=False) as conn:
+        conn.execute("UPDATE page SET margin_box_mode = 'auto' WHERE page_no = 1")
+        conn.commit()
+    _insert_layout_lines(minimal_project, 1)
+    margin_box.fit_page_margin(minimal_project.name, 1, library=minimal_project.parent)
+    margin_box.set_page_margin_box(
+        minimal_project.name,
+        2,
+        "custom",
+        [0.2, 0.2, 0.8, 0.8],
+        library=minimal_project.parent,
+    )
+
+    margin_box.set_pages_margin_box(
+        minimal_project.name, [1, 2], "auto", library=minimal_project.parent
+    )
+    pages = {
+        page.page_no: page
+        for page in margin_box.library_module.list_pages(
+            minimal_project.name, library=minimal_project.parent
+        )
+    }
+    assert pages[1].margin_box_mode == "auto"
+    assert pages[1].margin_box is not None
+    assert pages[1].margin_box_method == "fit"
+    assert pages[2].margin_box_mode == "auto"
+    assert pages[2].margin_box is None
+
+
+def test_fit_reaches_chapter_end_line_across_a_larger_gap() -> None:
+    """章末对句与下半页之间隔约 2 个行距，也要收回；更远、更窄的页码不收回。"""
+    lines = [
+        [0.10, 0.20 + i * 0.02, 0.90, 0.218 + i * 0.02]
+        for i in range(20)
+    ]
+    lines.append([0.20, 0.13, 0.50, 0.15])  # 章末对句：距框约 0.05，宽 37% 框宽
+    lines.append([0.48, 0.06, 0.52, 0.075])  # 页码：更远更窄
+    result = margin_box.fit_box_from_lines(lines)
+    assert result is not None
+    assert result[1] < 0.13  # 章末对句被收回
+    assert result[1] > 0.06  # 页码没被拉进来

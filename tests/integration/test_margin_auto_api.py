@@ -258,10 +258,10 @@ def test_clearing_the_manual_margin_lets_auto_fill_again(
     assert project["margin_box_source"] == "auto"
 
 
-def test_preflight_explains_that_auto_margin_is_not_used_by_export(
+def test_preflight_explains_auto_pages_without_own_box(
     client: TestClient, auth_headers: dict[str, str], auto_project: str
 ) -> None:
-    """预检要说明"看得到框、但导出没用它"——否则用户会以为按版心判定已经生效。"""
+    """任务 33：auto 页没有本页落库框 = 未定；不拿项目默认框顶替，预检要报出来。"""
     set_judgement(client, auth_headers, auto_project, True)
 
     def preflight() -> dict:
@@ -277,11 +277,25 @@ def test_preflight_explains_that_auto_margin_is_not_used_by_export(
     assert auto["margin_judgement"] is True
     assert auto["margin_pages"]["auto"] is True
     assert auto["margin_pages"]["applied"] == 0
+    assert len(auto["margin_pages"]["undetermined"]) == 3
 
+    # 设了人工默认框也不影响 auto 页：它们没有本页框，仍不参与判定
     put_margin(client, auth_headers, auto_project, [0.1, 0.1, 0.9, 0.9])
     manual = preflight()
     assert manual["margin_pages"]["auto"] is False
-    assert manual["margin_pages"]["applied"] > 0
+    assert manual["margin_pages"]["applied"] == 0
+    assert len(manual["margin_pages"]["undetermined"]) == 3
+
+    # 只有给了本页框的页才参与
+    response = client.patch(
+        f"/api/projects/{auto_project}/pages/1/margin-box",
+        json={"margin_box_mode": "custom", "margin_box": [0.1, 0.1, 0.9, 0.9]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    with_page_box = preflight()
+    assert with_page_box["margin_pages"]["applied"] == 1
+    assert len(with_page_box["margin_pages"]["undetermined"]) == 2
 
 
 def test_layout_job_writes_auto_margin_before_recognition(

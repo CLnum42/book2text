@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from book2text.core.project import margin_box
@@ -154,3 +156,25 @@ def test_effective_margin_box_three_modes() -> None:
     assert margin_box.effective_margin_box(project, _page(3, mode="none")) is None
     # custom 页缺四边（历史坏数据）时不要退回全局：那会显示一个不是用户设置的框
     assert margin_box.effective_margin_box(project, _page(4, mode="custom", box=None)) is None
+
+
+def test_auto_page_never_falls_back_to_global_box() -> None:
+    """任务 33：auto 页没有落库框 = 未定；不拿项目默认框顶替，也不进导出。"""
+    project = _project(box=(0.1, 0.1, 0.9, 0.9))
+    page = _page(5, mode="auto", box=None)
+    assert margin_box.effective_margin_box(project, page) is None
+    assert margin_box.export_margin_box(project, page) is None
+    # 有本页框时，界面 / 导出读同一份
+    page_with_box = _page(6, mode="auto", box=(0.2, 0.15, 0.8, 0.85))
+    assert margin_box.effective_margin_box(project, page_with_box) == (0.2, 0.15, 0.8, 0.85)
+    assert margin_box.export_margin_box(project, page_with_box) == (0.2, 0.15, 0.8, 0.85)
+
+
+def test_auto_source_label_reports_method() -> None:
+    project = _project(box=(0.1, 0.1, 0.9, 0.9))
+    page = _page(7, mode="auto", box=(0.2, 0.15, 0.8, 0.85))
+    assert margin_box.page_margin_source_label(project, page) == "自动拟合"
+    page = replace(page, margin_box_method="bbox")
+    assert margin_box.page_margin_source_label(project, page) == "本页包围盒（兜底）"
+    page = replace(page, margin_box=None)
+    assert margin_box.page_margin_source_label(project, page) == "未定（没有检测行）"
