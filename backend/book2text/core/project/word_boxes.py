@@ -38,9 +38,11 @@ MATCH_MIN_IOU = 0.5
 MATCH_TEXT_WEIGHT = 0.7
 MATCH_IOU_WEIGHT = 0.3
 
-# 估时（本机实测，200 DPI）：跑一次识别 ~4.6 秒/页；读文字层 ~0.02 秒/页
+# 估时（本机实测，200 DPI）：
+# - 跑一次识别：~4.6 秒/页（红楼梦 3 实测 2.8 秒/页，取保守值）
+# - 读文字层 + 行配对：~1.4 秒/页（可搜索件 436 页实测 626.6 秒）
 OCR_SECONDS_PER_PAGE = 4.6
-TEXT_LAYER_SECONDS_PER_PAGE = 0.02
+TEXT_LAYER_SECONDS_PER_PAGE = 1.4
 
 
 @dataclass(frozen=True)
