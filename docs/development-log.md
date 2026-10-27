@@ -7,6 +7,99 @@
 
 ---
 
+## 2026-10-27 — 任务 36A：顶部工作流步骤条（纯前端导航壳）
+
+### 任务目标
+
+把 `页面 / 审校 / 导出` 三个类型不一致的标签，换成一条工作流步骤条：
+页面确认 → 版心确认 → 文字识别 → 正文审校 → 文件导出。只动导航外壳，
+不改识别 / 审校 / 导出逻辑；目录确认、结果预览数据未做，不显示。
+
+### 当前状态
+
+main `92be9d8`（任务 35），867 测试通过。顶栏占着 pager + 两个 tab + 导出按钮；
+收尾面板 `finish-summary` 已有页面类型 / 版心 / 版面 / 审校 / 第二引擎的真实状态。
+
+### 实施计划
+
+1. 顶栏加 `#workflow-steps`（五步），删 `#view-tabs` / `#export-open`。
+2. 分页器从顶栏移到审校视图的 `.workspace-toolbar`。
+3. 步骤状态只读 `finish-summary` / `projectSummary` / `projectExports`。
+4. 响应式三档 + 五状态（完成 / 当前 / 未开始 / 失败 / 跳过预留）。
+5. 点步骤切视图：页面 / 版心 / 识别 → 页面视图，审校 → 审校视图，导出 → 原导出面板。
+6. 测试：UI 接线 + 真浏览器三档宽度 + 真书状态核对。
+
+**不做：** 页码索引、结果预览、版心交互简化、审校内嵌、功能归位（后续刀）。
+
+### 实现与验证
+
+**1. 五步的完成判定分别取哪个字段**
+
+| 步 | 判定 | 字段 |
+|---|---|---|
+| 页面确认 | 全部已确认 | `finish-summary.page_type.complete` |
+| 版心确认 | 全部已定且无未定 | `finish-summary.margin.complete && undetermined === 0` |
+| 文字识别 | 主引擎覆盖正文页、无失败页、第二引擎跑完 | `projectSummary.pages.recognized + has_candidate >= included`、`pages.failed === 0`、`finish-summary.engine.complete` |
+| 正文审校 | 无待人工 / 无待自动通过 / 版面全确认 | `review.needs_human === 0 && review.auto_passable === 0 && layout.remaining === 0` |
+| 文件导出 | 至少一次成功导出 | `projectExports.some(status === "succeeded")` |
+
+- **版心 `method=NULL` 但 `mode=custom`**：前端只认 `margin.complete`，不读
+  `margin_box_method`；后端 `_margin_effective` 按 `mode` + 本页框判定，真书那 2 页
+  算已定。实测「版心确认」394/394 绿色，没有误报。
+- **识别**：`engine.checked` 是**页级**第二路复核数（394），不是行级差异；458 条
+  空文本不进判定。差异是否处理完不影响这一步。
+- **失败**：识别步显示红色 `!` + `N 页失败`（没有失败页但有历史失败任务时显示
+  `N 个任务失败`）；失败态优先于完成态。
+- **当前步**：当前视图对应的步；页面视图默认取第一个未完成的页面相关步
+  （都完成则停在「文字识别」），审校视图 = 正文审校，导出面板打开 = 文件导出。
+  当前步即使数据已完成也保持蓝色（绿色只在离开后显示）。
+
+**2. 分页器搬家与旧标签删除**
+
+- `#review-pager` 整块从顶栏移到 `view-review` 顶部的 `.workspace-toolbar`；
+  id / 事件 / 行为不变，`showView` 仍只在审校视图显示。
+- 删除 `#view-tabs`（页面 / 审校）、`#export-open`（导出）与 `.tabs` CSS；
+  文件导出改走 `openExportPanel()`，仍先刷新预检与导出记录。
+- 关掉导出面板后当前步回到所在视图的默认步，不留在"文件导出"。
+
+**3. 响应式三档（实测）**
+
+| 宽度 | 显示 | 实测 |
+|---|---|---|
+| 1470 | 全称 | nav 530px，topbar client=scroll=1470 |
+| 1320 / 1319 | 全称 / 缩写 | nav 530 / 385，边界正确 |
+| 1250 | 缩写 | nav 385px，无溢出 |
+| 1120 / 1119 | 缩写 / 圆点 | nav 385 / 150，当前步全称出现 |
+| 1100 / 900 | 圆点 + 当前步 | nav 150，topbar/body 无横向滚动 |
+
+- 五步状态截图：`docs/screenshots/workflow-steps-full.png`、`-short.png`、
+  `-dots.png`、`-failed.png`；改前 / 改后同一页：`workflow-shell-before.png` /
+  `workflow-shell-after.png`。
+- 真书状态：页面 394/394、版心 394/394（37 页包围盒兜底）、识别 394/394 双路、
+  审校剩 394 页、导出 0 次；与 `finish-summary` 逐项一致。
+- 分页器：审校工具条 `第 30 页 → 第 31 页`，`#review-pager` 位于 y≈99 的工具条内。
+- 旧标签：`#view-tabs` / `#export-open` 均不存在，`.tabs` 数量 0。
+- 628px 高度 + 1470/1100 宽度：`topbar.clientWidth === scrollWidth`，
+  文档无横向滚动。
+
+**4. 测试**
+
+- 更新 UI 接线测试（旧 `view-tabs` → `workflow-steps`），新增
+  「五步 / 判定字段 / 三档媒体查询 / 分页器在工作区工具条」断言。
+- `.venv/bin/python -m pytest -q` → **868 passed, 1 warning，118.86 秒**。
+
+### 用户操作说明
+
+顶栏点任一步即可切换：页面确认 / 版心确认 / 文字识别都进页面视图，正文审校进审校，
+文件导出打开原导出面板。分页器现在在每个审校页顶部的工作区工具条里。
+
+### 下一步建议
+
+按设计稿顺序做 B 刀（① ② ③ 三步化：每步只显示对应右栏分区、默认缩放）；
+之后再做 ⑤ 审校三栏内嵌。
+
+---
+
 ## 2026-10-27 — 任务 35：项目废纸篓 + 页面全选 + 版心视觉
 
 ### 任务目标
