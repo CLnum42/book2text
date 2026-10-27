@@ -1102,3 +1102,40 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
     # 没有完成态：预览不在页面步里，也没有 is-done 判定
     assert 'PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition", "index"]' in script
     assert "结果预览不设完成态" in script
+
+
+def test_toolbar_filters_and_tools_are_placed_per_step() -> None:
+    """任务 39（E 刀）：功能归位——三个按钮搬家，筛选条按步骤只留该步的。
+
+    静态约定：结构工具在版心步的右栏（版心外分组），质量统计 / 任务包在工具条 ⋯；
+    页面确认 / 版心确认 / 文字识别 三个步骤的筛选条由 CSS 按 body 步骤属性收敛。
+    """
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    # ⋯ 菜单：诊断（质量统计）/ 协作（任务包）
+    assert 'id="page-more"' in page
+    assert 'id="page-more-menu"' in page
+    menu_start = page.index('id="page-more-menu"')
+    assert page.index('id="stats-open"') > menu_start
+    assert page.index('id="assign-list-toggle"') > menu_start
+    assert "function setupPageMore(" in script
+    # 筛选条是 overflow-x:auto，菜单用 fixed 定位才不会被裁掉
+    assert "page.style.top" in script or "menu.style.top" in script
+    assert "position: fixed" in css and ".page-more {" in css
+
+    # 结构工具搬到版心步右栏的「版心外」分组
+    margin_start = page.index('id="panel-margin-settings"')
+    assert page.index('id="structure-open"') > margin_start
+    assert "margin-outside" in page and ".margin-outside" in css
+    assert "版心外的书眉 / 页脚 / 页码" in page
+
+    # 筛选条按步骤收敛（页面确认 / 版心确认 / 文字识别）
+    assert 'id="page-filters"' in page
+    for cls in ("fitem--type", "fitem--recognition", "fitem--workflow", "fitem--triage",
+                "fitem--only-included", "fitem--range"):
+        assert cls in page, cls
+    assert 'body[data-workflow-step="margin"] #page-filters' in css
+    assert 'body[data-workflow-step="pages"] .filterbar .fitem--recognition' in css
+    assert 'body[data-workflow-step="recognition"] .filterbar .fitem--type' in css
