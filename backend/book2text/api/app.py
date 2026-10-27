@@ -34,6 +34,7 @@ from . import (
     routes_collab,
     routes_packages,
     routes_structure,
+    routes_trash,
     security,
 )
 
@@ -106,6 +107,7 @@ def create_app(
     guarded = [Depends(security.verify_local_request)]
     app.include_router(routes_app.router, dependencies=guarded)
     app.include_router(routes_projects.router, dependencies=guarded)
+    app.include_router(routes_trash.router, dependencies=guarded)
     app.include_router(routes_margin.router, dependencies=guarded)
     app.include_router(routes_page_numbers.router, dependencies=guarded)
     app.include_router(routes_jobs.router, dependencies=guarded)

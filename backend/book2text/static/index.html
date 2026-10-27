@@ -15,6 +15,7 @@
         <span class="spacer"></span>
         <button type="button" id="open-package" class="btn"
                 title="助手用：打开负责人发来的任务包（.b2tpkg），审校完之后导出审校结果包">打开任务包</button>
+        <button type="button" id="trash-open" class="btn" title="已删除的项目会在这里，可恢复或彻底删除">废纸篓</button>
         <button type="button" id="settings-open" class="btn">设置</button>
         <input type="file" id="new-project-file" accept="application/pdf,.pdf" hidden>
         <button type="button" id="pick-pdf" class="btn btn--pri">＋ 新建项目</button>
@@ -187,7 +188,10 @@
               <div class="panel__sumline">
                 <strong id="selection-count">未选择页面</strong>
                 <span class="spacer"></span>
-                <button type="button" id="selection-clear" class="icon-btn" title="清空选择">✕</button>
+                <button type="button" id="selection-select-all" class="btn btn--sm"
+                        title="全选当前筛选里的页面（⌘A / Ctrl+A）">全选（当前筛选）</button>
+                <button type="button" id="selection-clear" class="btn btn--sm"
+                        title="取消全选（Esc）">取消全选</button>
               </div>
               <div class="panel__sub" id="selection-range"></div>
               <div class="panel__types" id="selection-types-summary"></div>
@@ -985,6 +989,25 @@
     </div>
 
     <!-- ─────────────────────────── 对话框：设置 ─────────────────────────── -->
+    <div class="mask" id="trash-panel" hidden>
+      <div class="modal modal--settings">
+        <div class="mhead">
+          废纸篓
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="trash-close">✕</button>
+        </div>
+        <div class="mbody mbody--single">
+          <p class="hint">
+            删除项目只是<strong>移入废纸篓</strong>，数据仍在磁盘上；恢复后页数、识别与导出都原样。
+            「彻底删除」会真正删掉项目文件夹，无法找回。
+          </p>
+          <div class="alert alert--error" id="trash-error" hidden></div>
+          <ul class="trash-list" id="trash-list"></ul>
+          <p class="muted" id="trash-empty" hidden>废纸篓是空的。</p>
+        </div>
+      </div>
+    </div>
+
     <div class="mask" id="settings-panel" hidden>
       <div class="modal modal--settings">
         <div class="mhead">

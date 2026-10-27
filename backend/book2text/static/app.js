@@ -1518,10 +1518,115 @@ function renderProjectList(projects) {
       force.addEventListener("click", () => openProject(entry.project_id, { force: true }));
       actions.append(readOnly, force);
     }
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn btn--danger";
+    remove.textContent = "删除";
+    remove.title = "移入废纸篓，可在废纸篓恢复";
+    remove.addEventListener("click", () => deleteProject(entry));
+    actions.append(remove);
 
     card.append(cover, body, actions);
     list.append(card);
   });
+}
+
+// ---------------------------------------------------------------- 项目删除 / 废纸篓（任务 35）
+
+async function deleteProject(entry) {
+  if (
+    !window.confirm(
+      `确定删除《${entry.name}》？\n\n` +
+        "项目会移入废纸篓，数据仍在磁盘上，可随时恢复。"
+    )
+  ) {
+    return;
+  }
+  el("library-error").hidden = true;
+  try {
+    await apiJson(`/api/projects/${entry.project_id}?confirm=true`, { method: "DELETE" });
+    await loadLibrary();
+  } catch (error) {
+    showError(el("library-error"), error);
+  }
+}
+
+async function openTrashPanel() {
+  el("trash-error").hidden = true;
+  openModal("trash-panel");
+  await loadTrash();
+}
+
+async function loadTrash() {
+  const list = el("trash-list");
+  list.innerHTML = "";
+  try {
+    const data = await apiJson("/api/trash");
+    el("trash-empty").hidden = data.projects.length > 0;
+    for (const entry of data.projects) {
+      const row = document.createElement("li");
+      row.className = "trash-row";
+      const main = document.createElement("div");
+      main.className = "trash-row__main";
+      const name = document.createElement("div");
+      name.className = "trash-row__name";
+      name.textContent = `《${entry.name}》`;
+      const meta = document.createElement("div");
+      meta.className = "trash-row__meta";
+      meta.textContent =
+        `${entry.page_count} 页` +
+        (entry.source_file_name ? ` · ${entry.source_file_name}` : "") +
+        ` · 删除于 ${formatMarginTime(entry.deleted_at) || "未知时间"}` +
+        (entry.deleted_by ? ` · ${entry.deleted_by}` : "");
+      main.append(name, meta);
+
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "btn";
+      restore.textContent = "恢复";
+      restore.addEventListener("click", () => restoreTrashProject(entry));
+
+      const purge = document.createElement("button");
+      purge.type = "button";
+      purge.className = "btn btn--danger";
+      purge.textContent = "彻底删除";
+      purge.addEventListener("click", () => purgeTrashProject(entry));
+
+      row.append(main, restore, purge);
+      list.append(row);
+    }
+  } catch (error) {
+    showError(el("trash-error"), error);
+  }
+}
+
+async function restoreTrashProject(entry) {
+  el("trash-error").hidden = true;
+  try {
+    await apiJson(`/api/trash/${entry.project_id}/restore`, { method: "POST" });
+    await loadTrash();
+    await loadLibrary();
+  } catch (error) {
+    showError(el("trash-error"), error);
+  }
+}
+
+async function purgeTrashProject(entry) {
+  if (
+    !window.confirm(
+      `彻底删除《${entry.name}》？\n\n` +
+        "项目文件夹会被真正删除，无法恢复。确认继续吗？"
+    )
+  ) {
+    return;
+  }
+  el("trash-error").hidden = true;
+  try {
+    await apiJson(`/api/trash/${entry.project_id}?confirm=true`, { method: "DELETE" });
+    await loadTrash();
+  } catch (error) {
+    showError(el("trash-error"), error);
+  }
 }
 
 /** "上次位置"的人话：审校 · 第 87 页（印 71）（说明书 7.2）。 */
@@ -2561,6 +2666,23 @@ function selectRangeTo(pageNo) {
   for (let i = from; i <= to; i += 1) selectedPages.add(pages[i].page_no);
 }
 
+/** 全选当前筛选（保留筛选外已选的页）。 */
+function selectAllVisiblePages() {
+  const pages = visiblePages();
+  if (!pages.length) return;
+  for (const page of pages) selectedPages.add(page.page_no);
+  if (selectionAnchor === null) selectionAnchor = pages[0].page_no;
+  renderPages();
+}
+
+/** 取消全选（当前筛选内外的选择一起清掉）。 */
+function clearPageSelection() {
+  if (!selectedPages.size) return;
+  selectedPages.clear();
+  selectionAnchor = null;
+  renderPages();
+}
+
 function handleTileClick(page, event) {
   if (event.shiftKey && selectionAnchor !== null) {
     selectRangeTo(page.page_no);
@@ -2652,6 +2774,11 @@ function updateSelectionPanel() {
     range.textContent = contiguous
       ? `第 ${numbers[0]}–${numbers[numbers.length - 1]} 页`
       : `第 ${numbers.slice(0, 6).join("、")}${numbers.length > 6 ? " 等" : ""}`;
+  }
+  if (numbers.length) {
+    const visibleNos = new Set(visiblePages().map((page) => page.page_no));
+    const hidden = numbers.filter((no) => !visibleNos.has(no)).length;
+    if (hidden) range.textContent += ` · 其中 ${hidden} 页不在当前筛选`;
   }
 
   // 类型分布只在"混合"时出现；类型齐就不占一行。
@@ -10255,6 +10382,8 @@ function setupLibrary() {
     picker.value = "";
   });
   el("project-close").addEventListener("click", closeProject);
+  el("trash-open").addEventListener("click", openTrashPanel);
+  el("trash-close").addEventListener("click", () => closeModal("trash-panel"));
   setupCollabControls();
   el("apply-high-suggestions").addEventListener("click", openSuggestionApplyPanel);
   el("review-apply-all").addEventListener("click", openSuggestionApplyPanel);
@@ -10298,19 +10427,21 @@ function setupLibrary() {
   el("filter-workflow").addEventListener("change", renderPages);
   el("filter-triage").addEventListener("change", renderPages);
   el("pages-only-included").addEventListener("change", renderPages);
+  // 点页面网格的空白处取消选择：只认"不在任何页瓷砖里"的点击，
+  // 所以单击页 / 拖版心把手 / 页内按钮都不会误触发。
+  el("page-grid").addEventListener("click", (event) => {
+    if (!currentProject) return;
+    if (event.target.closest(".page-tile")) return;
+    if (event.target.closest(".page-margin__handle")) return;
+    clearPageSelection();
+  });
   el("page-range-select").addEventListener("click", applyPageRangeInput);
   el("page-range").addEventListener("keydown", (event) => {
     if (event.key === "Enter") applyPageRangeInput();
   });
-  el("selection-all").addEventListener("click", () => {
-    for (const page of visiblePages()) selectedPages.add(page.page_no);
-    renderPages();
-  });
-  el("selection-clear").addEventListener("click", () => {
-    selectedPages.clear();
-    selectionAnchor = null;
-    renderPages();
-  });
+  el("selection-all").addEventListener("click", selectAllVisiblePages);
+  el("selection-select-all").addEventListener("click", selectAllVisiblePages);
+  el("selection-clear").addEventListener("click", clearPageSelection);
   el("selection-recognize").addEventListener("click", () => {
     if (!selectedPages.size) {
       startBatchRecognition("unrecognized");
@@ -11861,9 +11992,16 @@ function boot() {
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !openMasks().length && currentProject && selectedPages.size) {
-      selectedPages.clear();
-      selectionAnchor = null;
-      renderPages();
+      clearPageSelection();
+      return;
+    }
+    if (!currentProject || document.body.dataset.view !== "pages" || openMasks().length) return;
+    const active = document.activeElement || {};
+    const inEditor =
+      ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName) || active.isContentEditable;
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a" && !inEditor) {
+      event.preventDefault();
+      selectAllVisiblePages();
     }
   });
   if (!token) {

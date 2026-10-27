@@ -200,6 +200,19 @@ def get_job(directory: Path, job_id: str) -> JobRecord:
     return _row_to_job(row)
 
 
+def active_jobs(directory: Path) -> list[JobRecord]:
+    """还在排队 / 运行 / 暂停的任务（删除项目前的并发检查用）。"""
+    placeholders = ", ".join("?" for _ in ACTIVE_STATUSES)
+    with _open(directory) as conn:
+        _require_tables(conn)
+        rows = conn.execute(
+            f"SELECT * FROM job WHERE status IN ({placeholders})"
+            " ORDER BY created_at DESC, job_id DESC",
+            ACTIVE_STATUSES,
+        ).fetchall()
+    return [_row_to_job(row) for row in rows]
+
+
 def list_jobs(directory: Path, *, limit: int = 20) -> list[JobRecord]:
     """最近的任务，最新的在前。"""
     with _open(directory) as conn:

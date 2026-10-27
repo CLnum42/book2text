@@ -21,6 +21,7 @@ import json
 import math
 import secrets
 import shutil
+import sqlite3
 from collections.abc import AsyncIterator, Collection, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -47,6 +48,9 @@ OCR_RUNS_DIR_NAME = "ocr_runs"
 CACHE_DIR_NAMES = ("thumbs", "view", "ocr", "lines")
 EXPORTS_DIR_NAME = "exports"
 LOGS_DIR_NAME = "logs"
+# 废纸篓：库根目录下的隐藏目录。项目目录整体移进来，数据留在原磁盘、可恢复。
+TRASH_DIR_NAME = ".trash"
+TRASH_MARKER_NAME = ".trash.json"
 
 # 说明书 6.2 的页面类型收成五类（2026-10-22 用户拍板）：一个概念，不是"类型 + 纳入"两个开关。
 # **去留由类型决定**：body 进识别与语料，其余四类不进；`page.include` 是派生列
@@ -96,6 +100,10 @@ TEXT_LAYER_CHAR_THRESHOLD = 20
 
 class ProjectError(Exception):
     """项目库层面的错误（找不到项目、ID 不合法等）。"""
+
+
+class ProjectBusy(ProjectError):
+    """项目正在被打开 / 有任务在跑，不能删除（接口层转 409）。"""
 
 
 @dataclass(frozen=True)
@@ -286,7 +294,7 @@ def _new_project_id(library: Path) -> str:
     for _ in range(PROJECT_ID_ATTEMPTS):
         suffix = "".join(secrets.choice(PROJECT_ID_ALPHABET) for _ in range(PROJECT_ID_LENGTH))
         candidate = f"{PROJECT_PREFIX}{suffix}"
-        if not (library / candidate).exists():
+        if not (library / candidate).exists() and not (trash_dir(library) / candidate).exists():
             return candidate
     raise ProjectError(f"连续 {PROJECT_ID_ATTEMPTS} 次都生成了已存在的项目 ID")
 
@@ -839,6 +847,198 @@ def list_projects(*, library: Path | None = None) -> list[LibraryPageSummary]:
             )
         )
     return summaries
+
+
+# ---------------------------------------------------------------- 废纸篓（任务 35）
+
+@dataclass(frozen=True)
+class TrashedProject:
+    """废纸篓里的一项（删除时的快照；恢复后目录原样搬回）。"""
+
+    project_id: str
+    name: str
+    page_count: int
+    source_file_name: str
+    deleted_at: str
+    deleted_by: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "project_id": self.project_id,
+            "name": self.name,
+            "page_count": self.page_count,
+            "source_file_name": self.source_file_name,
+            "deleted_at": self.deleted_at,
+            "deleted_by": self.deleted_by,
+        }
+
+
+def trash_dir(library: Path) -> Path:
+    return library / TRASH_DIR_NAME
+
+
+def trashed_dir(library: Path, project_id: str) -> Path:
+    project_dir(library, project_id)  # 只做 ID 校验（会抛 ProjectError）
+    return trash_dir(library) / project_id
+
+
+def _project_row_snapshot(directory: Path) -> dict[str, object]:
+    """从项目库里读名称 / 页数（只读 URI，绝不改废纸篓里的库）。"""
+    path = db_module.database_path(directory)
+    try:
+        conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+        try:
+            row = conn.execute(
+                "SELECT name, page_count, source_file_name FROM project LIMIT 1"
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return {}
+    if row is None:
+        return {}
+    return {
+        "name": str(row[0] or ""),
+        "page_count": int(row[1] or 0),
+        "source_file_name": str(row[2] or ""),
+    }
+
+
+def _read_trash_marker(directory: Path, project_id: str) -> TrashedProject:
+    marker = directory / TRASH_MARKER_NAME
+    payload: dict[str, object] = {}
+    if marker.is_file():
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+    snapshot = _project_row_snapshot(directory) if not payload else {}
+    deleted_at = str(payload.get("deleted_at") or "")
+    if not deleted_at:
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            deleted_at = _dt.fromtimestamp(
+                directory.stat().st_mtime, tz=_tz.utc
+            ).isoformat(timespec="seconds")
+        except OSError:
+            deleted_at = ""
+    return TrashedProject(
+        project_id=project_id,
+        name=str(payload.get("name") or snapshot.get("name") or project_id),
+        page_count=int(payload.get("page_count") or snapshot.get("page_count") or 0),
+        source_file_name=str(
+            payload.get("source_file_name") or snapshot.get("source_file_name") or ""
+        ),
+        deleted_at=deleted_at,
+        deleted_by=str(payload.get("deleted_by") or ""),
+    )
+
+
+def project_busy_reason(project_id: str, *, library: Path | None = None) -> str | None:
+    """项目是否正被打开 / 还有任务在跑；返回给用户的原因，未占用返回 None。"""
+    target_library = library or default_library_dir()
+    directory = project_dir(target_library, project_id)
+    if not directory.is_dir():
+        raise ProjectError(f"找不到项目：{project_id}")
+    lock_status = lock_module.status(directory)
+    if lock_status.held:
+        return lock_status.describe() or "项目正在被打开"
+    try:
+        active = jobs_module.active_jobs(directory)
+    except Exception:  # noqa: BLE001 - 老库没有 job 表时按没有任务处理
+        active = []
+    if active:
+        kinds = "、".join(sorted({job.job_type for job in active}))
+        return f"有 {len(active)} 个任务还在排队 / 运行 / 暂停（{kinds}）"
+    return None
+
+
+def trash_project(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    actor: str = "",
+) -> TrashedProject:
+    """把项目移入废纸篓：**只移动目录，不删数据**。"""
+    target_library = library or default_library_dir()
+    directory = project_dir(target_library, project_id)
+    if not directory.is_dir():
+        raise ProjectError(f"找不到项目：{project_id}")
+    reason = project_busy_reason(project_id, library=target_library)
+    if reason:
+        raise ProjectBusy(f"不能删除：{reason}")
+    project = load_project(project_id, library=target_library)
+    destination = trashed_dir(target_library, project_id)
+    if destination.exists():
+        raise ProjectBusy("废纸篓里已经有这个项目，请先彻底删除或恢复它")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    snapshot = TrashedProject(
+        project_id=project_id,
+        name=project.name,
+        page_count=project.page_count,
+        source_file_name=project.source_file_name,
+        deleted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        deleted_by=actor,
+    )
+    shutil.move(str(directory), str(destination))
+    try:
+        (destination / TRASH_MARKER_NAME).write_text(
+            json.dumps(snapshot.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        # 快照写不进去也不影响恢复：列表会从数据库补名称 / 页数。
+        pass
+    return snapshot
+
+
+def list_trash(*, library: Path | None = None) -> list[TrashedProject]:
+    """废纸篓列表（按删除时间从新到旧）。"""
+    target_library = library or default_library_dir()
+    directory = trash_dir(target_library)
+    if not directory.is_dir():
+        return []
+    entries: list[TrashedProject] = []
+    for entry in directory.iterdir():
+        if not entry.is_dir() or not is_valid_project_id(entry.name):
+            continue
+        if not db_module.database_path(entry).is_file():
+            continue
+        entries.append(_read_trash_marker(entry, entry.name))
+    entries.sort(key=lambda item: item.deleted_at, reverse=True)
+    return entries
+
+
+def restore_project(project_id: str, *, library: Path | None = None) -> "Project":
+    """从废纸篓恢复：目录搬回库根，数据原样。"""
+    target_library = library or default_library_dir()
+    source = trashed_dir(target_library, project_id)
+    if not source.is_dir():
+        raise ProjectError(f"废纸篓里没有这个项目：{project_id}")
+    destination = project_dir(target_library, project_id)
+    if destination.exists():
+        raise ProjectError("项目库里已经有同名项目，无法恢复；请先处理同名项目")
+    shutil.move(str(source), str(destination))
+    marker = destination / TRASH_MARKER_NAME
+    try:
+        marker.unlink()
+    except OSError:
+        pass
+    return load_project(project_id, library=target_library)
+
+
+def delete_trashed_project(project_id: str, *, library: Path | None = None) -> None:
+    """彻底删除废纸篓里的项目（真删目录）。调用方必须先做二次确认。"""
+    target_library = library or default_library_dir()
+    directory = trashed_dir(target_library, project_id)
+    if not directory.is_dir():
+        raise ProjectError(f"废纸篓里没有这个项目：{project_id}")
+    # 防御：只允许删废纸篓里的子目录，绝不碰库根或其他路径。
+    trash_root = trash_dir(target_library).resolve()
+    target = directory.resolve()
+    if target.parent != trash_root or not target.name.startswith(PROJECT_PREFIX):
+        raise ProjectError("拒绝删除：路径不在废纸篓里")
+    shutil.rmtree(target)
 
 
 # ---------------------------------------------------------------- 打开与关闭
