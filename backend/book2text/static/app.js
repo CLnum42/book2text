@@ -149,6 +149,7 @@ function showView(name) {
   if (!VIEWS.includes(name)) return;
   // 没有打开项目时，只有项目库是可达的
   const target = currentProject || name === "library" ? name : "library";
+  const wasReview = currentView === "review";
   currentView = target;
   document.body.dataset.view = target;
   for (const view of VIEWS) el(`view-${view}`).hidden = view !== target;
@@ -175,6 +176,14 @@ function showView(name) {
     applyPageZoom();
     // 任务 43：审校期间暂停的建议预取，回到页面视图再接着排。
     pumpPageSuggestionQueue();
+  }
+  if (target === "review" && currentProject) {
+    // 任务 45：审校步默认只留差异层——版心与块框关掉，避免五套彩色打架
+    if (!wasReview) {
+      setReviewOverlay(false);
+      setReviewMargin(false);
+    }
+    ensureReviewTree();
   }
   if (target === "index" && currentProject) {
     openPageIndex();
@@ -7515,7 +7524,7 @@ let detailLines = [];
  * 差异的权威口径永远是后端的分级（将来 `line_diff` 表落地后改为读后端 spans，
  * 删掉这里的前端 LCS，不允许两套口径长期并存）。
  */
-let diffMarksMode = "page";          // page | block（默认整页）
+let diffMarksMode = "all";           // all | todo | off（任务 45：三态）
 let activeDiff = null;               // {blockId, lineIndex, spanIndex}
 let activeReviewBlockId = null;
 const diffStripOpen = new Set();
@@ -7815,6 +7824,25 @@ function zoomBy(delta) {
   applyZoom();
 }
 
+function setReviewOverlay(on) {
+  const button = el("toggle-overlay");
+  if (!button) return;
+  button.classList.toggle("is-on", Boolean(on));
+  el("detail-overlay").hidden = !on;
+  button.textContent = on ? "显示块框" : "块框已隐藏";
+  if (on) scheduleOverlayLayout(el("detail-overlay"));
+}
+
+function setReviewMargin(on) {
+  reviewMarginOn = Boolean(on);
+  const button = el("review-margin-toggle");
+  if (button) {
+    button.classList.toggle("is-on", reviewMarginOn);
+    button.textContent = reviewMarginOn ? "显示版心" : "版心已隐藏";
+  }
+  if (detailPageNo !== null) paintReviewMargin(detailPageRecord() || null);
+}
+
 function setupViewerTools() {
   el("zoom-in").addEventListener("click", () => zoomBy(1));
   el("zoom-out").addEventListener("click", () => zoomBy(-1));
@@ -7830,24 +7858,32 @@ function setupViewerTools() {
     if (on) scheduleOverlayLayout(el("detail-overlay"));
   });
   el("toggle-diff-marks").addEventListener("click", () => {
-    diffMarksMode = diffMarksMode === "page" ? "block" : "page";
-    if (diffMarksMode === "block") {
-      // 当前块可能本来就没有差异；切到"当前块"时落到第一个有差异的块，别给一片空白。
-      const active = (reviewBlocks || []).find(
-        (block) => block.block_id === activeReviewBlockId && blockHasDrawableDiff(block)
-      );
-      if (!active) {
-        const first = (reviewBlocks || []).find((block) => blockHasDrawableDiff(block));
-        if (first) {
-          selectReviewBlock(first.block_id, { scroll: false });
-          return;
-        }
-      }
-    }
+    // 三态：未审+已审 → 仅未审 → 关（任务 45 / H 刀）
+    diffMarksMode =
+      diffMarksMode === "all" ? "todo" : diffMarksMode === "todo" ? "off" : "all";
     drawDiffLayer();
   });
   // 任务 53：审校视图也显示版心，默认开；关掉只影响显示。
   el("review-margin-toggle").addEventListener("click", toggleReviewMargin);
+  // 任务 45：采纳/保留计数挪进右栏队列卡（底栏 400px 放不下五项，计数和队列同源更合适）
+  {
+    const queueTop = document.querySelector("#diff-queue .diff-queue__top");
+    const countNode = el("review-footer-count");
+    if (queueTop && countNode) queueTop.append(countNode);
+  }
+  el("review-tree-filter").addEventListener("click", () =>
+    setReviewTreeOnlyTodo(!reviewTreeOnlyTodo)
+  );
+  el("review-tree-rail").addEventListener("click", () =>
+    el("review-tree").classList.add("is-open")
+  );
+  el("review-drawer-toggle").addEventListener("click", () => {
+    el("review-drawer-toggle").textContent = el("view-review")
+      .querySelector(".editor")
+      .classList.toggle("is-collapsed")
+      ? "▴"
+      : "▾";
+  });
   for (const button of el("review-filter").querySelectorAll("[data-margin-filter]")) {
     button.addEventListener("click", () => setReviewBlockFilter(button.dataset.marginFilter));
   }
@@ -8096,6 +8132,8 @@ function renderPageDetail(data) {
       el("detail-image-status").hidden = true;
       el("detail-canvas").hidden = false;
       applyZoom();
+      // 块框默认关着，没有 scheduleOverlayLayout 来顺手重画差异层：图出来自己画
+      drawDiffLayer();
     };
     image.onerror = () => {
       el("detail-image-status").textContent = "这一页渲染失败。";
@@ -8105,6 +8143,7 @@ function renderPageDetail(data) {
       `&token=${encodeURIComponent(token)}`;
   } else {
     applyZoom();
+    drawDiffLayer();
   }
 
   detailLayoutConfirmed = Boolean(data.page && data.page.layout_confirmed);
@@ -8124,6 +8163,9 @@ function renderPageDetail(data) {
   renderSuggestionTools();
   renderLayoutPanel(data);
   renderReviewWorkflowStatus();
+  // 任务 45：当前页自动展开、当前条目滚到约 40%（条目用刚渲染的块重建，别拿上一页的）
+  reviewTreeItems.set(pageNo, treeItemsFromBlocks(reviewBlocks));
+  syncReviewTreeToPage(pageNo, { scroll: true });
 }
 
 /** 审校顶栏的自动通过 / 撤销按钮：只切按钮，不改任何块。 */
@@ -8760,34 +8802,6 @@ function computeCharSpans(current, candidate) {
 }
 
 /** 把 A 的字符区间换算成页面像素（按字符推进宽度估算，向外扩 0.15em）。 */
-function markPixelRange(bbox, lineText, span, width, height) {
-  const text = String(lineText || "");
-  const total = textAdvance(text);
-  if (!text || total <= 0) return null;
-  const aStart = Math.max(0, Math.min(span.aStart, text.length));
-  const aEnd = Math.max(aStart, Math.min(span.aEnd, text.length));
-  const before = textAdvance(text, 0, aStart);
-  const inside = textAdvance(text, aStart, aEnd);
-  const textWidth = (bbox[2] - bbox[0]) * width;
-  const lineHeight = (bbox[3] - bbox[1]) * height;
-  const em = Math.max(8, lineHeight);
-  const minLeft = bbox[0] * width - 2;
-  const maxRight = bbox[2] * width + 2;
-  let left = bbox[0] * width + textWidth * (before / total);
-  let markWidth = textWidth * (inside / total);
-  const pad = 0.15 * em;
-  left -= pad;
-  markWidth += 2 * pad;
-  if (markWidth < 0.9 * em) markWidth = 0.9 * em;
-  if (left < minLeft) {
-    markWidth -= minLeft - left;
-    left = minLeft;
-  }
-  if (left + markWidth > maxRight) markWidth = maxRight - left;
-  if (markWidth <= 0) return null;
-  return { left, top: bbox[3] * height + 2, width: markWidth, lineHeight };
-}
-
 function diffLevelLabel(level) {
   if (level === "differs_chars") return "汉字级";
   if (level === "differs_punct") return "标点级";
@@ -8802,6 +8816,20 @@ function findDiffMark(blockId, lineIndex, spanIndex) {
 }
 
 /** 在页面上画所有可画的差异标记；整页 / 当前块两种模式。 */
+/** 这一行有几段差异（用于行尾角标；只算文本，不碰坐标）。 */
+function lineDiffSpanCount(mark) {
+  const spans = computeCharSpans(mark.current, mark.candidate).filter(
+    (span) => span.aEnd > span.aStart || span.bEnd > span.bStart
+  );
+  return Math.max(1, spans.length);
+}
+
+/** 在页面上画差异：**整行色块**（block_line.bbox，零盲切），三色状态。
+ *
+ * 全书没有字符级坐标（RapidOCR 只有行框、Apple Vision 连坐标都没有），
+ * 所以不用"行宽/字数"去切字符——那会盖到空白或隔壁字。逐字差异放在
+ * 右栏文本面板（DOM span）里看。行尾加「n 处」角标。
+ */
 function drawDiffLayer(attempt = 0) {
   const layer = el("detail-diff-layer");
   if (!layer) return;
@@ -8819,70 +8847,81 @@ function drawDiffLayer(attempt = 0) {
     return;
   }
   layer.innerHTML = "";
+  layer.classList.toggle("is-narrow", rect.width < 480);
+  const queueLength = diffQueue.length;
+  const queuePos = queueIndex >= 0 ? queueIndex + 1 : 0;
   let total = 0;
   let drawn = 0;
+  const pageRecord = detailPageRecord();
   for (const block of reviewBlocks) {
     const divergence = divergenceOf(block);
     if (divergence.stale || !(divergence.marks || []).length) continue;
+    // 任务 34：版心外的差异不进审校口径（书眉 / 页码），别在页面上画
+    if (!blockCountedInMargin(block, pageRecord)) continue;
     for (const mark of divergence.marks) {
-      if (!DIFF_LEVELS.has(mark.level) || mark.ack) continue;
+      if (!DIFF_LEVELS.has(mark.level)) continue;
+      if (diffMarksMode === "off") continue;
+      if (diffMarksMode === "todo" && mark.ack) continue;
       total += 1;
-      if (diffMarksMode === "block" && activeReviewBlockId && block.block_id !== activeReviewBlockId) {
-        continue;
-      }
       const line = (block.lines || [])[mark.line_index];
       if (!line || !line.bbox) continue;
       if (line.layout_status === "conflict" || line.layout_status === "unassigned") continue;
-      const current = String(mark.current || "");
-      const lineText = String(line.text || current || "");
-      let spans = computeCharSpans(current, mark.candidate).filter((span) => span.aEnd > span.aStart);
-      if (!spans.length) continue;
-      // 人工改过字、行文本与当前文本长度差太大：整行画一条，别猜位置。
-      if (lineText && Math.abs(lineText.length - current.length) / Math.max(1, lineText.length) > 0.2) {
-        spans = [{ aStart: 0, aEnd: lineText.length, bStart: 0, bEnd: 0, kind: "replace" }];
+      const bbox = line.bbox;
+      const left = Math.max(0, bbox[0] * rect.width - 1);
+      const top = bbox[1] * rect.height + 1;
+      const width = Math.max(4, (bbox[2] - bbox[0]) * rect.width + 2);
+      const height = Math.max(6, (bbox[3] - bbox[1]) * rect.height - 2);
+      const node = document.createElement("div");
+      node.className = "diff-mark";
+      if (mark.level === "differs_punct") node.classList.add("diff-mark--punct");
+      if (mark.ack) node.classList.add("diff-mark--done");
+      const isActive =
+        activeDiff &&
+        activeDiff.blockId === block.block_id &&
+        activeDiff.lineIndex === mark.line_index;
+      if (isActive) node.classList.add("is-active");
+      node.dataset.blockId = block.block_id;
+      node.dataset.lineIndex = String(mark.line_index);
+      node.dataset.span = "0";
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+      node.style.width = `${width}px`;
+      node.style.height = `${height}px`;
+      const count = lineDiffSpanCount(mark);
+      const end = document.createElement("span");
+      end.className = "diff-mark__end";
+      if (isActive) {
+        end.classList.add("is-current");
+        end.textContent = queuePos ? `${queuePos}/${queueLength}` : `${count} 处`;
+      } else if (mark.ack) {
+        end.classList.add("is-done");
+        end.textContent = "已保留";
+      } else {
+        end.textContent = `${count} 处`;
       }
-      spans.forEach((span, spanIndex) => {
-        const px = markPixelRange(line.bbox, lineText || current, span, rect.width, rect.height);
-        if (!px) return;
-        const node = document.createElement("div");
-        node.className = "diff-mark" + (mark.level === "differs_punct" ? " diff-mark--punct" : "");
-        if (
-          activeDiff &&
-          activeDiff.blockId === block.block_id &&
-          activeDiff.lineIndex === mark.line_index &&
-          (activeDiff.spanIndex === null || activeDiff.spanIndex === spanIndex)
-        ) {
-          node.classList.add("is-active");
-        }
-        if (diffMarksMode === "page" && activeReviewBlockId && block.block_id !== activeReviewBlockId) {
-          node.classList.add("is-dim");
-        }
-        node.dataset.blockId = block.block_id;
-        node.dataset.lineIndex = String(mark.line_index);
-        node.dataset.span = String(spanIndex);
-        node.style.left = `${px.left}px`;
-        node.style.top = `${px.top}px`;
-        node.style.width = `${px.width}px`;
-        node.style.borderBottomWidth = `${px.lineHeight >= 16 ? 2 : px.lineHeight >= 12 ? 1.5 : 1}px`;
-        node.title =
-          `第 ${mark.line_index + 1} 行 · ${diffLevelLabel(mark.level)}\n` +
-          `第一路：${truncate(current, 50)}\n第二路：${truncate(mark.candidate || "（没读出）", 50)}`;
-        node.setAttribute("role", "button");
-        node.setAttribute("aria-hidden", "true");
-        node.addEventListener("click", (event) => {
-          event.stopPropagation();
-          activateDiff(block.block_id, mark.line_index, spanIndex);
-        });
-        layer.append(node);
-        drawn += 1;
+      node.append(end);
+      node.title =
+        `第 ${mark.line_index + 1} 行 · ${diffLevelLabel(mark.level)} · ` +
+        (mark.ack ? "已保留原文（仍是差异）" : `${count} 处差异`) +
+        `\n第一路：${truncate(mark.current, 60)}` +
+        `\n第二路：${truncate(mark.candidate || "（没读出）", 60)}`;
+      node.setAttribute("role", "button");
+      node.setAttribute("aria-hidden", "true");
+      node.addEventListener("click", (event) => {
+        event.stopPropagation();
+        activateDiff(block.block_id, mark.line_index, 0);
       });
+      layer.append(node);
+      drawn += 1;
     }
   }
   document.body.classList.toggle("diff-mode", drawn > 0);
   if (toggle) {
-    toggle.disabled = total === 0;
-    toggle.textContent = `差异：${diffMarksMode === "page" ? "整页" : "当前块"}`;
-    toggle.classList.toggle("is-on", total > 0);
+    toggle.disabled = total === 0 && diffMarksMode !== "off";
+    toggle.textContent = `差异：${
+      diffMarksMode === "all" ? "未审+已审" : diffMarksMode === "todo" ? "仅未审" : "关"
+    }`;
+    toggle.classList.toggle("is-on", drawn > 0);
   }
 }
 
@@ -9180,7 +9219,7 @@ function renderDiffQueue() {
     ? `第 ${(reviewBlocks || []).indexOf(block) + 1} 块`
     : "未知块";
   meta.textContent = `${diffLevelLabel(item.level)} · ${blockLabel} · 第 ${item.lineIndex + 1} 行`;
-  text.append(diffRowFragment(item));
+  text.append(diffCompareLines(item));
   note.textContent = "队列只在页内推进；「保留原文」会记进这一行，离开本页再回来不会重复出现。";
   adopt.hidden = false;
   keep.hidden = false;
@@ -9250,6 +9289,8 @@ function applyQueueAckLocally(block, item, ack, newText, returnedBlock) {
   ).length;
   divergence.lines = divergence.chars + divergence.punct;
   block.divergence = divergence;
+  // 任务 45：只改这一行与页行计数，不重建树
+  updateReviewTreeAfterAck(block, item, ack);
 
   const card = el("detail-blocks").querySelector(`li[data-block-id="${block.block_id}"]`);
   if (card) {
@@ -10180,6 +10221,50 @@ function blockDivergenceSection(block, textarea) {
 }
 
 /** 一行差异的内联片段：…前文[和→或]后文…；只渲染 A 上有字的 span。 */
+/** 右栏文本面板：原文 / 候选两整行，**逐字**高亮差异（DOM span，不碰图像坐标）。 */
+function diffCompareLines(mark) {
+  const current = String(mark.current || "");
+  const candidate = String(mark.candidate || "");
+  const spans = computeCharSpans(current, candidate);
+  const fragment = document.createDocumentFragment();
+  const row = (text, key, label) => {
+    const line = document.createElement("div");
+    line.className = `diff-line diff-line--${key}`;
+    const tag = document.createElement("span");
+    tag.className = "diff-line__label";
+    tag.textContent = label;
+    const body = document.createElement("span");
+    body.className = "diff-line__text";
+    let pos = 0;
+    for (const span of spans) {
+      const start = key === "a" ? span.aStart : span.bStart;
+      const end = key === "a" ? span.aEnd : span.bEnd;
+      if (start > pos) body.append(document.createTextNode(text.slice(pos, start)));
+      if (end > start) {
+        const markEl = document.createElement("mark");
+        markEl.className = "diff-char";
+        markEl.textContent = text.slice(start, end);
+        body.append(markEl);
+      }
+      pos = Math.max(pos, end);
+    }
+    if (pos < text.length) body.append(document.createTextNode(text.slice(pos)));
+    line.append(tag, body);
+    return line;
+  };
+  if (!spans.length) {
+    const note = document.createElement("div");
+    note.className = "diff-line__note";
+    note.textContent =
+      "这一行两路一致或第二路多字，没有可逐字对比的差异；看整行即可。";
+    fragment.append(note);
+    return fragment;
+  }
+  fragment.append(row(current, "a", mark.ack === "kept" ? "原文·已保留" : "原文"));
+  if (candidate) fragment.append(row(candidate, "b", "候选"));
+  return fragment;
+}
+
 function diffRowFragment(mark) {
   const fragment = document.createDocumentFragment();
   const current = String(mark.current || "");
@@ -11716,6 +11801,490 @@ function onContinuationKeydown(event) {
   }
 }
 
+// ---------------------------------------------------------------- 审校左栏目录树（任务 45 / H 刀）
+//
+// 一棵树：回目 → 页 → 条目。页行只显示"几处"（无差异页只留页码），条目懒加载。
+// 数据来自 GET /review/tree（每页 unacked/acked）；条目明细仍走 pages/{n}/blocks。
+// 每次裁决只改本行与页行计数，不重建整棵树——按键手感不能退。
+
+let reviewTree = null;
+let reviewTreeProjectId = null;
+let reviewTreeLoading = false;
+let reviewTreeOnlyTodo = false;
+let reviewTreeExpandedChapters = new Set();
+let reviewTreeExpandedPage = null;
+let reviewTreeItems = new Map(); // pageNo -> [item]
+let reviewTreePageRows = new Map(); // pageNo -> {row, count, state, page}
+let reviewTreeChapterRows = new Map(); // chapterId -> {count, li}
+let reviewTreeItemRows = new Map(); // `${blockId}:${lineIndex}` -> {row, dot, item}
+const TREE_DIFF_LEVELS = new Set(["differs_chars", "differs_punct", "no_candidate"]);
+
+async function ensureReviewTree() {
+  if (!currentProject) return;
+  if (reviewTree && reviewTreeProjectId === currentProject.project_id) {
+    syncReviewTreeToPage(detailPageNo, { scroll: false });
+    return;
+  }
+  if (reviewTreeLoading) return;
+  reviewTreeLoading = true;
+  const t0 = performance.now();
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/review/tree`
+    );
+    reviewTree = data;
+    reviewTreeProjectId = currentProject.project_id;
+    reviewTreeItems.clear();
+    reviewTreePageRows.clear();
+    reviewTreeChapterRows.clear();
+    reviewTreeItemRows.clear();
+    reviewTreeExpandedChapters.clear();
+    reviewTreeExpandedPage = null;
+    const fetchMs = performance.now() - t0;
+    const b0 = performance.now();
+    renderReviewTree();
+    window.__b2tTreeMetrics = {
+      fetchMs: Math.round(fetchMs),
+      buildMs: Math.round(performance.now() - b0),
+      pages: (data.pages || []).length,
+      chapters: (data.chapters || []).length,
+    };
+  } catch (error) {
+    showError(el("page-detail-error"), error);
+  } finally {
+    reviewTreeLoading = false;
+  }
+}
+
+function treeItemsFromBlocks(blocks) {
+  const items = [];
+  (blocks || []).forEach((block, blockIndex) => {
+    const divergence = divergenceOf(block);
+    if (divergence.stale) return;
+    if (!blockCountedInMargin(block, null)) return;
+    for (const mark of divergence.marks || []) {
+      if (!TREE_DIFF_LEVELS.has(mark.level)) continue;
+      const line = (block.lines || [])[mark.line_index];
+      items.push({
+        blockId: block.block_id,
+        blockIndex,
+        lineIndex: mark.line_index,
+        level: mark.level,
+        ack: mark.ack || null,
+        current: String(mark.current || ""),
+        candidate: String(mark.candidate || ""),
+        lineText: String((line && line.text) || mark.current || ""),
+      });
+    }
+  });
+  return items;
+}
+
+async function loadReviewTreeItems(pageNo) {
+  if (reviewTreeItems.has(pageNo)) return;
+  // 当前页正在打开时 reviewBlocks 可能还是上一页的：只认块自己也属于这一页的数据
+  const blocks = reviewBlocks || [];
+  if (
+    pageNo === detailPageNo &&
+    blocks.length &&
+    blocks.every((block) => block.page_no === pageNo)
+  ) {
+    reviewTreeItems.set(pageNo, treeItemsFromBlocks(blocks));
+    return;
+  }
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${pageNo}/blocks`
+    );
+    reviewTreeItems.set(pageNo, treeItemsFromBlocks(data.blocks));
+  } catch {
+    reviewTreeItems.set(pageNo, []);
+  }
+}
+
+/** 条目摘要：只取差异片段两侧各 3 字（文本层面，不碰坐标）。 */
+function treeItemSummary(item) {
+  const a = String(item.current || "");
+  const b = String(item.candidate || "");
+  const spans = computeCharSpans(a, b).filter(
+    (span) => span.aEnd > span.aStart || span.bEnd > span.bStart
+  );
+  if (!spans.length) return truncate(item.lineText || a, 22);
+  const span = spans[0];
+  const prefix = a.slice(Math.max(0, span.aStart - 3), span.aStart);
+  const suffix = a.slice(span.aEnd, span.aEnd + 3);
+  const left = a.slice(span.aStart, span.aEnd) || "∅";
+  const right = b.slice(span.bStart, span.bEnd) || "∅";
+  return `${span.aStart > 3 ? "…" : ""}${prefix}${left}→${right}${suffix}${
+    span.aEnd < a.length - 3 ? "…" : ""
+  }`;
+}
+
+function treeLevelLabel(level) {
+  if (level === "differs_chars") return "汉";
+  if (level === "differs_punct") return "标";
+  return "?";
+}
+
+function treeChapterOfPage(pageNo) {
+  const page = (reviewTree?.pages || []).find((item) => item.page_no === pageNo);
+  return page ? page.chapter : null;
+}
+
+function renderReviewTree() {
+  const list = el("review-tree-list");
+  if (!list || !reviewTree) return;
+  list.innerHTML = "";
+  reviewTreePageRows.clear();
+  reviewTreeChapterRows.clear();
+  reviewTreeItemRows.clear();
+  const pages = reviewTree.pages || [];
+  const chapters = reviewTree.chapters || [];
+  const byNo = new Map(pages.map((page) => [page.page_no, page]));
+  const currentNo = detailPageNo;
+  const currentChapter = currentNo ? treeChapterOfPage(currentNo) : null;
+  if (currentChapter && !reviewTreeOnlyTodo) {
+    // 默认只展开当前回目；翻页时旧回目自动折叠
+    if (!reviewTreeExpandedChapters.has(currentChapter)) {
+      reviewTreeExpandedChapters.clear();
+      reviewTreeExpandedChapters.add(currentChapter);
+    }
+  }
+  const totalUnacked = pages.reduce((sum, page) => sum + page.unacked, 0);
+  el("review-tree-stats").textContent = `${totalUnacked} 处待审`;
+
+  const appendPage = (page, parent) => {
+    const li = document.createElement("li");
+    li.className = "review-tree__page";
+    const row = document.createElement("div");
+    row.className = "review-tree__row review-tree__row--page";
+    if (page.page_no === currentNo) row.classList.add("is-current");
+    row.title = `第 ${page.page_no} 页 · ${page.unacked} 处待审`;
+    const caret = document.createElement("button");
+    caret.type = "button";
+    caret.className = "review-tree__caret";
+    caret.textContent = reviewTreeExpandedPage === page.page_no ? "▾" : "▸";
+    if (page.unacked + page.acked === 0) caret.classList.add("is-empty");
+    caret.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleReviewTreePage(page.page_no);
+    });
+    const pageNo = document.createElement("span");
+    pageNo.className = "tree-page-no";
+    pageNo.textContent = `第 ${page.page_no} 页`;
+    const state = document.createElement("span");
+    state.className = "tree-state";
+    const count = document.createElement("span");
+    count.className = "tree-count";
+    if (page.unacked > 0) {
+      count.textContent = `${page.unacked} 处`;
+    } else if (page.acked > 0) {
+      count.textContent = "✓";
+      count.classList.add("is-done");
+    }
+    const spacer = document.createElement("span");
+    spacer.className = "spacer";
+    row.append(caret, pageNo, spacer, state, count);
+    row.addEventListener("click", () => {
+      openPageDetail(page.page_no);
+    });
+    li.append(row);
+    reviewTreePageRows.set(page.page_no, { row, count, state, page });
+
+    if (reviewTreeExpandedPage === page.page_no) {
+      const cached = reviewTreeItems.get(page.page_no);
+      if (!cached) {
+        const loading = document.createElement("div");
+        loading.className = "review-tree__empty";
+        loading.textContent = "正在加载条目…";
+        li.append(loading);
+        loadReviewTreeItems(page.page_no).then(() => {
+          if (reviewTreeExpandedPage === page.page_no) renderReviewTree();
+        });
+        return li;
+      }
+      const itemsOl = document.createElement("ol");
+      itemsOl.className = "review-tree__items";
+      for (const item of cached) {
+        const itemLi = document.createElement("li");
+        const itemRow = document.createElement("div");
+        itemRow.className = "review-tree__row review-tree__row--item";
+        if (
+          activeDiff &&
+          activeDiff.blockId === item.blockId &&
+          activeDiff.lineIndex === item.lineIndex
+        ) {
+          itemRow.classList.add("is-current");
+        }
+        if (item.ack) itemRow.classList.add("is-done");
+        const dot = document.createElement("span");
+        dot.className = "tree-dot";
+        if (item.ack) dot.classList.add("is-done");
+        if (
+          activeDiff &&
+          activeDiff.blockId === item.blockId &&
+          activeDiff.lineIndex === item.lineIndex
+        ) {
+          dot.classList.add("is-current");
+        }
+        const lineNo = document.createElement("span");
+        lineNo.className = "tree-line";
+        lineNo.textContent = `L${item.lineIndex + 1}`;
+        const level = document.createElement("span");
+        level.className = "tree-level";
+        level.textContent = treeLevelLabel(item.level);
+        const summary = document.createElement("span");
+        summary.className = "tree-summary";
+        summary.textContent = treeItemSummary(item);
+        if (item.ack === "kept") summary.textContent += " ✓已保留";
+        itemRow.append(dot, lineNo, level, summary);
+        itemRow.title = `${item.lineText}\n原：${item.current}\n候选：${item.candidate}`;
+        itemRow.addEventListener("click", () => openTreeItem(page.page_no, item));
+        itemLi.append(itemRow);
+        itemsOl.append(itemLi);
+        reviewTreeItemRows.set(`${item.blockId}:${item.lineIndex}`, {
+          row: itemRow,
+          dot,
+          item,
+          pageNo: page.page_no,
+        });
+      }
+      if (!cached.length) {
+        const empty = document.createElement("div");
+        empty.className = "review-tree__empty";
+        empty.textContent = "这一页没有可处理的差异";
+        itemsOl.append(empty);
+      }
+      li.append(itemsOl);
+    }
+    return li;
+  };
+
+  if (reviewTreeOnlyTodo) {
+    const todo = pages.filter((page) => page.unacked > 0);
+    if (!todo.length) {
+      const empty = document.createElement("li");
+      empty.className = "review-tree__empty";
+      empty.textContent = "全部页都没有待处理的差异了。";
+      list.append(empty);
+    }
+    for (const page of todo) list.append(appendPage(page, list));
+  } else if (!chapters.length) {
+    for (const page of pages) list.append(appendPage(page, list));
+  } else {
+    for (const chapter of chapters) {
+      const chapterPages = pages.filter((page) => page.chapter === chapter.id);
+      if (!chapterPages.length) continue;
+      const remaining = chapterPages.reduce((sum, page) => sum + page.unacked, 0);
+      const li = document.createElement("li");
+      li.className = "review-tree__chapter";
+      const row = document.createElement("div");
+      row.className = "review-tree__row review-tree__row--chapter";
+      const caret = document.createElement("span");
+      caret.className = "caret";
+      caret.textContent = reviewTreeExpandedChapters.has(chapter.id) ? "▾" : "▸";
+      const title = document.createElement("span");
+      title.className = "tree-title";
+      title.textContent = chapter.title;
+      const spacer = document.createElement("span");
+      spacer.className = "spacer";
+      const count = document.createElement("span");
+      count.className = "tree-count";
+      if (remaining > 0) {
+        count.textContent = `${remaining} 处`;
+      } else {
+        count.textContent = "✓ 完成";
+        count.classList.add("is-done");
+      }
+      row.append(caret, title, spacer, count);
+      row.addEventListener("click", () => toggleReviewTreeChapter(chapter.id));
+      li.append(row);
+      if (reviewTreeExpandedChapters.has(chapter.id)) {
+        for (const page of chapterPages) li.append(appendPage(page, li));
+      }
+      list.append(li);
+      reviewTreeChapterRows.set(chapter.id, { count, li, chapter });
+    }
+  }
+  syncReviewTreeToPage(currentNo, { scroll: true });
+}
+
+function toggleReviewTreeChapter(chapterId) {
+  if (reviewTreeExpandedChapters.has(chapterId)) {
+    reviewTreeExpandedChapters.delete(chapterId);
+  } else {
+    reviewTreeExpandedChapters.clear();
+    reviewTreeExpandedChapters.add(chapterId);
+  }
+  renderReviewTree();
+}
+
+function toggleReviewTreePage(pageNo) {
+  if (reviewTreeExpandedPage === pageNo) {
+    reviewTreeExpandedPage = null;
+  } else {
+    reviewTreeExpandedPage = pageNo;
+  }
+  renderReviewTree();
+}
+
+function setReviewTreeOnlyTodo(only) {
+  reviewTreeOnlyTodo = Boolean(only);
+  el("review-tree-filter").textContent = reviewTreeOnlyTodo
+    ? "显示全部页"
+    : "只看未完成";
+  el("review-tree-filter").classList.toggle("is-on", reviewTreeOnlyTodo);
+  renderReviewTree();
+}
+
+/** 当前页 / 当前条目在树里定位：展开 + 高亮 + 滚到约 40%。 */
+function syncReviewTreeToPage(pageNo, { scroll = false } = {}) {
+  if (!reviewTree || !pageNo) return;
+  const chapter = treeChapterOfPage(pageNo);
+  if (chapter && !reviewTreeExpandedChapters.has(chapter) && !reviewTreeOnlyTodo) {
+    reviewTreeExpandedChapters.clear();
+    reviewTreeExpandedChapters.add(chapter);
+    renderReviewTree();
+    return;
+  }
+  if (reviewTreeExpandedPage !== pageNo && !reviewTreeOnlyTodo) {
+    reviewTreeExpandedPage = pageNo;
+    renderReviewTree();
+    return;
+  }
+  const pageRow = reviewTreePageRows.get(pageNo);
+  for (const [, entry] of reviewTreePageRows) {
+    entry.row.classList.toggle("is-current", entry.page.page_no === pageNo);
+  }
+  const activeKey = activeDiff ? `${activeDiff.blockId}:${activeDiff.lineIndex}` : null;
+  const activeRow = activeKey ? reviewTreeItemRows.get(activeKey) : null;
+  const firstUnacked = [...reviewTreeItemRows.values()].find(
+    (entry) => entry.pageNo === pageNo && !entry.item.ack
+  );
+  const target = activeRow || firstUnacked;
+  for (const [, entry] of reviewTreeItemRows) {
+    const isCurrent =
+      activeDiff &&
+      entry.item.blockId === activeDiff.blockId &&
+      entry.item.lineIndex === activeDiff.lineIndex;
+    entry.row.classList.toggle("is-current", Boolean(isCurrent));
+    entry.dot.classList.toggle("is-current", Boolean(isCurrent));
+  }
+  if (scroll) {
+    const scroller = el("review-tree-scroll");
+    const anchor = target ? target.row : pageRow ? pageRow.row : null;
+    if (scroller && anchor) {
+      const top = anchor.offsetTop - scroller.clientHeight * 0.4;
+      scroller.scrollTop = Math.max(0, top);
+    }
+  }
+}
+
+function updateReviewTreeAfterAck(block, item, ack) {
+  if (!reviewTree) return;
+  const key = `${block.block_id}:${item.lineIndex}`;
+  const pageRow = reviewTreePageRows.get(block.page_no);
+  const pageData = (reviewTree.pages || []).find((page) => page.page_no === block.page_no);
+  if (pageData && pageData.unacked > 0) pageData.unacked -= 1;
+  if (pageData) pageData.acked += 1;
+  if (pageRow && pageData) {
+    if (pageData.unacked > 0) {
+      pageRow.count.textContent = `${pageData.unacked} 处`;
+      pageRow.count.classList.remove("is-done");
+    } else {
+      pageRow.count.textContent = "✓";
+      pageRow.count.classList.add("is-done");
+    }
+    pageRow.row.title = `第 ${pageData.page_no} 页 · ${pageData.unacked} 处待审`;
+  }
+  const chapterEntry = pageData ? reviewTreeChapterRows.get(pageData.chapter) : null;
+  if (chapterEntry) {
+    const remaining = (reviewTree.pages || [])
+      .filter((page) => page.chapter === pageData.chapter)
+      .reduce((sum, page) => sum + page.unacked, 0);
+    if (remaining > 0) {
+      chapterEntry.count.textContent = `${remaining} 处`;
+      chapterEntry.count.classList.remove("is-done");
+    } else {
+      chapterEntry.count.textContent = "✓ 完成";
+      chapterEntry.count.classList.add("is-done");
+    }
+  }
+  const entry = reviewTreeItemRows.get(key);
+  if (entry) {
+    entry.item.ack = ack;
+    if (ack === "adopted") {
+      entry.row.remove();
+      reviewTreeItemRows.delete(key);
+      const cached = reviewTreeItems.get(block.page_no) || [];
+      reviewTreeItems.set(
+        block.page_no,
+        cached.filter(
+          (cachedItem) =>
+            !(cachedItem.blockId === block.block_id && cachedItem.lineIndex === item.lineIndex)
+        )
+      );
+    } else {
+      entry.row.classList.add("is-done");
+      entry.dot.classList.add("is-done");
+      const summary = entry.row.querySelector(".tree-summary");
+      if (summary && !summary.textContent.includes("✓已保留")) {
+        summary.textContent += " ✓已保留";
+      }
+    }
+  }
+  if (reviewTreeOnlyTodo && pageData && pageData.unacked === 0) {
+    renderReviewTree();
+  }
+}
+
+async function openTreeItem(pageNo, item) {
+  if (detailPageNo !== pageNo) {
+    await openPageDetail(pageNo);
+  }
+  const index = diffQueue.findIndex(
+    (entry) => entry.blockId === item.blockId && entry.lineIndex === item.lineIndex
+  );
+  if (index >= 0) {
+    queueIndex = index;
+    if (!queueOpen) {
+      queueOpen = true;
+      renderDiffQueue();
+    }
+    focusQueueItem(diffQueue[index], { scroll: true });
+    renderDiffQueue();
+  } else {
+    activateDiff(item.blockId, item.lineIndex, 0);
+  }
+  syncReviewTreeToPage(pageNo, { scroll: true });
+}
+
+/** `[` / `]`：上一处 / 下一处差异（跨块，不跨页）。 */
+function stepReviewDiff(delta) {
+  if (!diffQueue.length) return;
+  if (!queueOpen) {
+    queueOpen = true;
+    renderDiffQueue();
+  }
+  let index = queueIndex;
+  if (delta > 0) {
+    index = nextPendingQueueIndex(queueIndex);
+    if (index < 0) return;
+  } else {
+    for (let i = queueIndex - 1; i >= 0; i -= 1) {
+      if (!queueDecisions.has(diffQueue[i].key)) {
+        index = i;
+        break;
+      }
+    }
+    if (index === queueIndex) return;
+  }
+  queueIndex = index;
+  focusQueueItem(diffQueue[queueIndex], { scroll: true });
+  renderDiffQueue();
+  syncReviewTreeToPage(detailPageNo, { scroll: true });
+}
+
 function openFinishPanel() {
   if (!currentProject || currentProject.kind === "package") return;
   const drawer = el("finish-drawer");
@@ -12086,6 +12655,12 @@ function setupReviewControls() {
     if (mod && event.key === "Enter") {
       event.preventDefault();
       confirmCurrentPage();
+      return;
+    }
+    // 任务 45：`[` / `]` 上一处 / 下一处（跨块，不跨页）
+    if (!inEditor && !inOtherButton && (event.key === "[" || event.key === "]")) {
+      event.preventDefault();
+      stepReviewDiff(event.key === "]" ? 1 : -1);
       return;
     }
     // 队列键位：Enter / Space 采纳，⌫ 保留，← 回上一处。

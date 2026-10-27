@@ -1284,3 +1284,68 @@ def test_review_pauses_page_grid_prefetch() -> None:
     start = script.index("function renderDiffQueue(")
     block = script[start : script.index("\n}\n", start)]
     assert "pendingPageAux === queuePageNo" in block
+
+
+def test_review_workspace_v2_is_wired() -> None:
+    """任务 45（H 刀）：左树、三色整行差异、逐字文本面板、三档三栏、默认关版心/块框。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "review-split",
+        "review-tree",
+        "review-tree-list",
+        "review-tree-scroll",
+        "review-tree-filter",
+        "review-tree-stats",
+        "review-tree-rail",
+        "review-drawer-toggle",
+        "toggle-diff-marks",
+        "toggle-overlay",
+        "review-margin-toggle",
+        "detail-diff-layer",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    # 树：每页计数、条目懒加载、当前页展开、只看未完成、裁决后只改计数
+    assert "function ensureReviewTree(" in script
+    assert "/review/tree" in script
+    assert "function renderReviewTree(" in script
+    assert "function updateReviewTreeAfterAck(" in script
+    assert "function setReviewTreeOnlyTodo(" in script
+    assert "function syncReviewTreeToPage(" in script
+    assert "function openTreeItem(" in script
+    assert "function stepReviewDiff(" in script
+    assert 'event.key === "["' in script
+
+    # 页面上是整行色块（用 block_line.bbox），不是字符盒；逐字对比在右栏
+    assert "blockCountedInMargin(block, pageRecord)" in script
+    assert "bbox[1] * rect.height" in script
+    assert "markPixelRange(" not in script  # 旧的字符级估算已删
+    assert "function diffCompareLines(" in script
+    assert "diff-char" in script
+    assert "diff-mark--done" in script
+    assert "diff-mark__end" in script
+    assert 'diffMarksMode = "all"' in script
+
+    # 进审校默认关版心 / 块框
+    assert "setReviewOverlay(false)" in script
+    assert "setReviewMargin(false)" in script
+    toggle_overlay = page.split('id="toggle-overlay"')[1][:120]
+    assert "is-on" not in toggle_overlay
+    assert 'id="detail-overlay" hidden' in page
+
+    # 三色变量 + 三栏断点 + 628 预算
+    for token in (
+        "--diff-todo-bg",
+        "--diff-done-bg",
+        "--diff-cur-bg",
+        ".review-tree",
+        ".diff-mark--done",
+        ".diff-mark__end",
+        "@media (max-width: 1319px)",
+        "@media (max-width: 1119px)",
+        "@media (max-height: 700px)",
+    ):
+        assert token in css, token

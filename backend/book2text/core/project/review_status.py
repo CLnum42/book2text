@@ -485,6 +485,78 @@ def _margin_effective(project, page) -> bool:
     return project.margin_box is not None
 
 
+def review_tree(project_id: str, *, library: Path | None = None) -> dict:
+    """审校左栏那棵树的数据（任务 45 / H 刀）：回目 + 全书每一页的差异计数。
+
+    与 `/review/pending` 的区别：pending 只返回"有理由"的页，表达不了
+    「这页 0 处差异」。树要的是**每一页**的未裁决 / 已裁决数，前端才能把
+    无差异页只留一行页码。
+
+    回目来自目录索引（`page_index`，第 C 刀）；没有章首时 `chapters=[]`，
+    前端平铺页列表，不造假分组。
+    """
+    pages = library_module.list_pages(project_id, library=library)
+    divergences = blocks_module.page_divergences(project_id, library=library)
+    try:
+        index = page_index_module.build_page_index(project_id, library=library)
+    except Exception:  # noqa: BLE001 - 索引是旁路，坏了不影响树
+        index = {"chapters": []}
+
+    chapters: list[dict] = []
+    for item in index.get("chapters") or []:
+        printed = item.get("printed") or []
+        chapters.append(
+            {
+                "id": f"c{len(chapters)}",
+                "title": item.get("title") or "",
+                "printed_page": printed[0] if printed else None,
+                "page_from": int(item.get("page_no") or 0),
+                "page_to": None,
+            }
+        )
+    last_page_no = pages[-1].page_no if pages else 0
+    for i, chapter in enumerate(chapters):
+        chapter["page_to"] = (
+            chapters[i + 1]["page_from"] - 1
+            if i + 1 < len(chapters)
+            else last_page_no
+        )
+
+    def chapter_of(page_no: int) -> str | None:
+        current = None
+        for chapter in chapters:
+            if chapter["page_from"] <= page_no:
+                current = chapter["id"]
+            else:
+                break
+        return current
+
+    rows: list[dict] = []
+    for page in pages:
+        divergence = divergences.get(page.page_id)
+        unacked = (divergence.chars + divergence.punct) if divergence else 0
+        rows.append(
+            {
+                "page_no": page.page_no,
+                "chapter": chapter_of(page.page_no),
+                "unacked": unacked,
+                "acked": divergence.acked if divergence else 0,
+                "checked": bool(divergence.checked) if divergence else False,
+                "included": bool(page.include),
+            }
+        )
+    return {
+        "chapters": chapters,
+        "pages": rows,
+        "stats": {
+            "pages": len(rows),
+            "chapters": len(chapters),
+            "unacked": sum(row["unacked"] for row in rows),
+            "acked": sum(row["acked"] for row in rows),
+        },
+    }
+
+
 def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     """收尾面板的六个状态：全部从数据库实时聚合，不依赖前端估算。
 

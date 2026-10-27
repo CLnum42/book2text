@@ -103,6 +103,16 @@ class AutoPassBatchRequest(BaseModel):
     page_numbers: list[int] = Field(min_length=1, max_length=5000)
 
 
+@router.get("/{project_id}/review/tree")
+def get_review_tree(request: Request, project_id: str) -> dict[str, Any]:
+    """审校左栏的树：回目 + 全书每一页的未裁决 / 已裁决数（只读）。"""
+    _require_main(request, project_id)
+    try:
+        return review_status.review_tree(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
 @router.get("/{project_id}/review/finish-summary")
 def get_finish_summary(request: Request, project_id: str) -> dict[str, Any]:
     """收尾面板的六个状态（实时聚合；不写任何东西）。"""

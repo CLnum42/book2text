@@ -494,7 +494,20 @@
           <ol class="aux-lines" id="aux-lines"></ol>
         </div>
 
-        <div class="review-split">
+        <div class="review-split" id="review-split">
+          <!-- 左栏：目录与审校清单合成一棵树（任务 45 / H 刀） -->
+          <aside class="review-tree" id="review-tree">
+            <button type="button" id="review-tree-rail" class="review-tree__rail" title="展开目录">☰</button>
+            <div class="review-tree__head">
+              <strong>目录</strong>
+              <span class="muted" id="review-tree-stats"></span>
+              <span class="spacer"></span>
+              <button type="button" id="review-tree-filter" class="btn btn--sm">只看未完成</button>
+            </div>
+            <div class="review-tree__scroll" id="review-tree-scroll">
+              <ol class="review-tree__list" id="review-tree-list"></ol>
+            </div>
+          </aside>
           <div class="viewer">
             <div class="ink-gap-bar" id="ink-gap-bar" hidden>
               <span id="ink-gap-text"></span>
@@ -510,7 +523,7 @@
                   <div class="page-margin__box"></div>
                 </div>
                 <div class="page-lines" id="detail-lines"></div>
-                <div class="page-overlay" id="detail-overlay"></div>
+                <div class="page-overlay" id="detail-overlay" hidden></div>
                 <div class="diff-layer" id="detail-diff-layer"></div>
                 <div class="box-select__rect" id="box-select-rect" hidden></div>
                 <div class="ink-gaps" id="detail-ink-gaps" hidden></div>
@@ -521,11 +534,11 @@
               <button type="button" id="zoom-out" title="缩小">－</button>
               <button type="button" id="zoom-in" title="放大">＋</button>
               <button type="button" id="zoom-fit">适合宽度</button>
-              <button type="button" id="toggle-overlay" class="is-on">显示块框</button>
+              <button type="button" id="toggle-overlay">块框已隐藏</button>
               <button type="button" id="toggle-diff-marks" disabled
-                      title="差异标记：整页显示全部，或只看当前块">差异：整页</button>
-              <button type="button" id="review-margin-toggle" class="is-on"
-                      title="在页面上画出版心边框、压暗版心外区域（只影响显示，不影响导出）">显示版心</button>
+                      title="差异标记：未审+已审 / 仅未审 / 关">差异：未审+已审</button>
+              <button type="button" id="review-margin-toggle"
+                      title="在页面上画出版心边框、压暗版心外区域（只影响显示，不影响导出）">版心已隐藏</button>
             </div>
             <div class="vhint">拖动块框调整位置、拖角缩放；点块框跳到右边对应的块</div>
             <div class="box-select" id="box-select-panel" hidden>
@@ -549,6 +562,7 @@
               <span class="spacer"></span>
               <button type="button" id="diff-queue-toggle" class="btn btn--sm queue-toggle" hidden>差异 0 ▾</button>
               <button type="button" id="finish-open-review" class="finish-chip" title="一屏查看六个收尾状态">收尾 0/6</button>
+              <button type="button" id="review-drawer-toggle" class="btn btn--sm" title="收起 / 展开右栏">▾</button>
               <button type="button" id="review-more" class="btn btn--sm review-more__button" title="更多页级动作">⋯</button>
               <div class="review-more" id="review-more-menu" hidden>
                 <button type="button" id="review-apply-all" class="review-more__item"

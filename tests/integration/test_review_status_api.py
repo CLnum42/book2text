@@ -631,4 +631,38 @@ def test_block_edit_looks_up_page_in_one_query(
     )
     assert response.status_code == 200, response.text
     assert calls == [], "块编辑不该逐页 list_blocks 找块"
+def test_review_tree_lists_every_page_and_groups_by_chapter(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_with_ocr: str,
+    monkeypatch,
+) -> None:
+    """任务 45：左树要**每一页**（含 0 处差异的页），回目从目录索引来。"""
+    from book2text.core.project import review_status
+
+    project_id = project_with_ocr
+    monkeypatch.setattr(
+        review_status.page_index_module,
+        "build_page_index",
+        lambda *args, **kwargs: {
+            "chapters": [
+                {"title": "第一回", "page_no": 1, "printed": []},
+                {"title": "第二回", "page_no": 3, "printed": ["9"]},
+            ]
+        },
+    )
+    response = client.get(
+        f"/api/projects/{project_id}/review/tree", headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert [page["page_no"] for page in data["pages"]] == [1, 2, 3]
+    assert data["chapters"][0]["page_to"] == 2
+    assert data["chapters"][1]["page_to"] == 3
+    assert data["chapters"][1]["printed_page"] == "9"
+    assert data["pages"][0]["chapter"] == "c0"
+    assert data["pages"][2]["chapter"] == "c1"
+    # 夹具没跑第二引擎文本 → 每页 0 处差异，但页行必须都在
+    assert all(page["unacked"] == 0 for page in data["pages"])
+    assert data["stats"]["pages"] == 3
 
