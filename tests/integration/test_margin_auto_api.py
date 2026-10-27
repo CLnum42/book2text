@@ -425,3 +425,98 @@ def test_fit_all_api_keeps_custom_and_none(
     assert by_no[2]["margin_box_mode"] == "custom"
     assert by_no[2]["margin_box"] == [0.2, 0.2, 0.8, 0.8]
     assert by_no[3]["margin_box_mode"] == "none"
+
+
+def test_fit_all_only_missing_batches_and_keeps_custom(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    library_dir: Path,
+    inprocess_layout_jobs,
+) -> None:
+    """任务 36B：进「版心确认」时只补没拟合的页，绝不覆盖用户拖过的框。
+
+    - `only_missing` 只处理 `mode=auto` 且 `margin_box` 还是 NULL 的页；
+    - `custom` / `none` / `inherit` 一律跳过（`inherit` 是用户显式选择沿用默认框）；
+    - `limit` 一次处理一批，`remaining` 回传还剩多少页，界面据此显示真实进度；
+    - 已经有框的 auto 页不会被重新拟合。
+    """
+    project_id = create_project(client, auth_headers, sample_pdf)
+    pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()[
+        "pages"
+    ]
+    assert len(pages) >= 2
+
+    # 只让第 1、2 页参与：第 3 页及以后标「不适用」，避免"没有检测行"的页混进计数。
+    for page in pages[2:]:
+        patched = client.patch(
+            f"/api/projects/{project_id}/pages/{page['page_no']}/margin-box",
+            json={"margin_box_mode": "none", "margin_box": None},
+            headers=auth_headers,
+        )
+        assert patched.status_code == 200, patched.text
+    detected = client.post(
+        f"/api/projects/{project_id}/jobs/layout",
+        json={"pages": [1, 2]},
+        headers=auth_headers,
+    )
+    assert detected.status_code == 200, detected.text
+    assert detected.json()["job"]["status"] == "succeeded"
+
+    # 制造两页"有检测行、但没有拟合框"：等价于升级前就检测过、还没拟合的项目。
+    with db_module.open_database(library_dir / project_id) as conn:
+        conn.execute(
+            "UPDATE page SET margin_box = NULL, margin_box_method = NULL"
+            " WHERE page_no IN (1, 2)"
+        )
+        conn.commit()
+
+    first = client.post(
+        f"/api/projects/{project_id}/margin-box/fit-all",
+        json={"only_missing": True, "limit": 1},
+        headers=auth_headers,
+    )
+    assert first.status_code == 200, first.text
+    data = first.json()
+    assert data["only_missing"] is True
+    assert data["updated"] == 1
+    assert data["remaining"] == 1
+    assert data["skipped_custom"] == 0
+
+    second = client.post(
+        f"/api/projects/{project_id}/margin-box/fit-all",
+        json={"only_missing": True},
+        headers=auth_headers,
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["updated"] == 1
+    assert second.json()["remaining"] == 0
+
+    # 把第 2 页设成 custom：再补拟合必须跳过它，四边原样保留。
+    custom_box = [0.11, 0.12, 0.89, 0.9]
+    patched = client.patch(
+        f"/api/projects/{project_id}/pages/2/margin-box",
+        json={"margin_box_mode": "custom", "margin_box": custom_box},
+        headers=auth_headers,
+    )
+    assert patched.status_code == 200, patched.text
+
+    third = client.post(
+        f"/api/projects/{project_id}/margin-box/fit-all",
+        json={"only_missing": True},
+        headers=auth_headers,
+    )
+    assert third.status_code == 200, third.text
+    third_data = third.json()
+    assert third_data["updated"] == 0
+    assert third_data["remaining"] == 0
+    assert third_data["skipped_custom"] == 1
+    assert third_data["skipped_fitted"] == 1
+
+    after = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()[
+        "pages"
+    ]
+    by_no = {page["page_no"]: page for page in after}
+    assert by_no[1]["margin_box"] is not None
+    assert by_no[2]["margin_box_mode"] == "custom"
+    assert by_no[2]["margin_box"] == custom_box

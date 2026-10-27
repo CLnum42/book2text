@@ -489,9 +489,11 @@ def test_ink_gap_hint_and_region_recognition_are_wired() -> None:
 
 
 def test_margin_view_is_wired_to_the_page_view() -> None:
-    """版心视图（任务 50）：开关、面板、拖拽把手都必须真的接上。
+    """版心视图（任务 50 / 36B）：开关、面板、拖拽把手都必须真的接上。
 
     静态约定测试，防止"页面里加了按钮、脚本里忘了监听"这种半截改动。
+    任务 36B 起版心分区只有"看四边 / 重置为本页自动 / 撤销"三件事：
+    没有模式选择卡片，也没有折叠的「检测」按钮，进这一步自动拟合未定的页。
     """
     page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
@@ -500,14 +502,21 @@ def test_margin_view_is_wired_to_the_page_view() -> None:
     for element_id in (
         "pages-margin-toggle",
         "margin-panel",
-        "margin-global",
-        "margin-modes",
-        "margin-batch-modes",
-        "margin-suggest",
-        "margin-suggestion",
-        "margin-apply-suggestion",
+        "panel-margin-settings",
+        "margin-page-state",
+        "margin-page-actions",
+        "margin-edges",
+        "margin-basis",
+        "margin-next",
+        "margin-detect-missing",
+        "margin-fit-progress",
     ):
         assert f'id="{element_id}"' in page_html, element_id
+
+    # 模式选择卡片已经拿掉：页面上不许再出现这四个来源按钮
+    assert 'id="margin-modes"' not in page_html
+    assert 'id="margin-batch-modes"' not in page_html
+    assert "renderMarginModeButtons" not in script
 
     # 四边 + 四角共 8 个把手；拖动要吸附到行边界（复用 nearestEdge）
     assert "page-margin__handle--${edge}" in script
@@ -515,10 +524,15 @@ def test_margin_view_is_wired_to_the_page_view() -> None:
     assert "nearestEdge(" in script
     # 按项目记住开关；不写项目数据库
     assert "b2t.pagesMargin.v1." in script
-    # 推算接口与三态接口都从界面调用
-    assert "margin-box/suggestion" in script
+    # 批量重置走三态接口；自动拟合走 fit-all（带 only_missing）
     assert "margin-box/pages" in script
+    assert "/margin-box/fit-all" in script
+    assert "only_missing: true" in script
+    # 拖动松手写一次库，并标 custom（自动拟合不会覆盖它）
+    assert 'margin_box_mode: "custom"' in script
+    assert "function undoMarginEdit(" in script
     assert "page-margin__box" in styles
+    assert ".margin-step__actions" in styles
 
 
 def test_export_margin_judgement_and_optional_notes_are_wired() -> None:
@@ -738,9 +752,10 @@ def test_layout_detection_and_workflow_filter_are_wired() -> None:
     for element_id in (
         "filter-workflow",
         "layout-panel",
-        "layout-status",
-        "layout-detect-selected",
-        "layout-detect-body",
+        "panel-layout-blocks",
+        "layout-block-status",
+        "layout-block-confirm",
+        "margin-detect-missing",
     ):
         assert f'id="{element_id}"' in page, element_id
 
@@ -748,9 +763,15 @@ def test_layout_detection_and_workflow_filter_are_wired() -> None:
     assert "/workflow" in script
     assert "function loadWorkflow(" in script
     assert "function workflowChip(" in script
-    assert "function setupLayoutPanel(" in script
     assert "startLayoutDetection" in script
     assert 'layout: "版面检测"' in script
+    # 任务 36B：检测入口只在"这几个页还没有检测行"时出现，并且顺手拟合版心
+    assert "renderMarginDetectButton" in script
+    assert "prepare: true" in script
+    # 版面块确认搬到「页面确认」步（不再是版心分区里的折叠项）
+    assert "function renderLayoutBlocks(" in script
+    assert "function confirmLayoutFromPanel(" in script
+    assert "/layout/confirm" in script
     # 工作流筛选有"已检测（未识别）"这一档
     assert 'value="detected"' in page
     assert '"已检测 · 未识别"' in script
@@ -931,3 +952,60 @@ def test_workflow_step_shell_is_wired() -> None:
     assert "workflow-current" in styles
     # 分页器在工作区工具条里
     assert ".workspace-toolbar" in styles
+
+
+def test_workflow_steps_scope_the_right_panel() -> None:
+    """任务 36B：右栏按步骤只显示本步分区；版心步没有模式选择，进来自动拟合。
+
+    静态约定测试抓"这一步不该出现的东西"：页面确认看到版面块、版心确认只有版心、
+    文字识别只有状态；这三件事各自由哪段脚本接线，也必须真的存在。
+    """
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    # 分区节点：页面确认步的「版面块」、文字识别步的「识别状态」
+    for element_id in (
+        "panel-layout-blocks",
+        "layout-block-status",
+        "layout-block-suggestions",
+        "layout-block-apply-all",
+        "layout-block-confirm",
+        "panel-recognition-status",
+        "rec-status-metrics",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    # 按步显示分区的接线
+    assert "function renderStepPanels(" in script
+    for panel in (
+        "panel-page-settings",
+        "panel-layout-blocks",
+        "panel-margin-settings",
+        "panel-recognition-status",
+        "panel-recognition-settings",
+    ):
+        assert f'group("{panel}"' in script, panel
+    # body 上带步骤，CSS 据此只放本步的开关（块框 / 版心不同时出现）
+    assert "document.body.dataset.workflowStep" in script
+    assert 'data-workflow-step="margin"' in css
+    assert 'data-workflow-step="pages"' in css
+
+    # 版心步：进来自动拟合未定的页；只碰 auto 且没有框的页
+    assert "function ensureMarginFitted(" in script
+    assert "function marginUndeterminedPages(" in script
+    assert "marginFitTried" in script
+    assert "function renderMarginDetectButton(" in script
+    # 面板只剩三个动作（重置 / 撤销 / 下一页），模式卡片已经删除
+    assert 'el("margin-page-actions")' in script
+    assert "function undoMarginEdit(" in script
+    assert "confirmLayoutFromPanel" in script
+
+    # 切步骤不动缩放：只有用户没手动改过缩放时，才在从别的视图进版心步时给整页档
+    assert "let pageZoomTouched = false;" in script
+    assert 'if (!pageZoomTouched && id === "margin"' in script
+    assert "pageZoomTouched = true;" in script
+
+    # 文字识别步只读：状态数字来自 finish-summary / summary，不在右栏做裁决
+    assert "function renderRecognitionStatus(" in script
+    assert "finishSummary.engine" in script or "finishSummary && finishSummary.engine" in script
