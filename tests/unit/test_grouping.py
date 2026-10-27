@@ -243,6 +243,7 @@ def test_all_lines_are_accounted_for() -> None:
 # ---------------------------------------------------------------- 真实数据（需要 OCR）
 
 @pytest.mark.ocr
+@pytest.mark.macos_only
 def test_real_chinese_two_column_page() -> None:
     """用真实样本页验证：中文双栏页应被识别为多栏，且章节标题自成一块。"""
     from book2text.core.ocr.adapters import RapidOcrAdapter

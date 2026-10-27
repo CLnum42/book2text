@@ -15,11 +15,15 @@ from book2text.core.ocr.adapters.apple_vision import AppleVisionAdapter
 from book2text.core.project import blocks as blocks_module
 from book2text.core.project import recognition
 
-pytestmark = pytest.mark.ocr
+pytestmark = [pytest.mark.ocr, pytest.mark.macos_only]
 
-_available, _reason = AppleVisionAdapter().available()
-if not _available:
-    pytest.skip(f"Apple Vision 不可用：{_reason}", allow_module_level=True)
+
+@pytest.fixture(autouse=True)
+def _require_apple_vision():
+    """同上：跳过放到运行时，模块级 skip 会污染 marker 过滤后的零 skip 守卫。"""
+    available, reason = AppleVisionAdapter().available()
+    if not available:
+        pytest.skip(f"Apple Vision 不可用：{reason}")
 
 
 @pytest.fixture

@@ -15,12 +15,21 @@ from book2text.core.ocr.adapters import RapidOcrAdapter
 from book2text.core.ocr.base import OcrEngine, OcrParams
 from book2text.core.pdf import render
 
-pytestmark = pytest.mark.ocr
+pytestmark = [pytest.mark.ocr, pytest.mark.macos_only]
 
 adapter = RapidOcrAdapter()
 
-if not adapter.available()[0]:
-    pytest.skip("未安装 OCR 引擎（uv sync --group ocr-eval）", allow_module_level=True)
+
+@pytest.fixture(autouse=True)
+def _require_ocr_engine():
+    """没装 OCR 依赖时跳过（只在本模块的用例真正执行时判断）。
+
+    注意：这里**不用模块级 skip**——模块级 skip 发生在 marker 过滤之前，
+    会让 Ubuntu CI 的"零 skip"守卫误报。macOS 全量跑时依赖都在，不会跳过。
+    """
+    available, reason = adapter.available()
+    if not available:
+        pytest.skip(f"未安装 OCR 引擎（uv sync --group ocr-eval）：{reason}")
 
 
 def test_adapter_satisfies_protocol() -> None:

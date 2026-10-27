@@ -1,0 +1,126 @@
+# Book2Text 的**全量** CI：macOS 14（含 OCR / Apple Vision）+ Windows（非 OCR）。
+#
+# 为什么不跟 tests.yml 一起跑：私有仓库按倍数计费，macOS 是 **10×**、Windows **2×**。
+# 日常每刀都跑全量会把额度烧穿（2026-10-27 用户拍板改结构）。
+#
+# 什么时候该手动开这套（workflow_dispatch）：
+#   - 发版本前 / 打 tag 前，需要确认 macOS 与 Windows 都真的绿；
+#   - 改了平台的敏感部分：OCR 适配器、Apple Vision、子进程/任务执行器、
+#     文件路径与编码、打包脚本（scripts/build_macos.sh / build_windows.bat）；
+#   - 依赖升级（uv.lock 变动）或 Python 版本变动；
+#   - 修完只在 macOS 上出现的 bug，需要回归一次。
+# 打 `v*` tag 时会自动跑这一套。
+#
+# 强度不降：macOS job **不加任何 marker 过滤**，全量跑、零 skip（守卫原样保留）。
+# Windows 仍用 `-m "not ocr"` + 显式 --ignore 排除导入期就要引擎的模块，原因见下。
+
+name: tests-full
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: tests-full-${{ github.ref }}
+  # 全量是"需要时手动点"的，不要因为连点两次就互相取消。
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------- macOS 全量
+  pytest-macos:
+    name: 全量（macOS 14 + OCR）
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 uv（含缓存）
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.12.3"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 安装依赖（dev + OCR 评估引擎）
+        run: uv sync --frozen --group dev --group ocr-eval
+
+      # RapidOCR 首次识别时会把模型（约 31 MB）从 modelscope.cn 下载到包目录。
+      # 不缓存的话每次都要跨境下载一次，对按 10 倍计费的 macOS runner 不划算。
+      - name: 缓存 RapidOCR 模型
+        uses: actions/cache@v6
+        with:
+          path: .venv/lib/python3.12/site-packages/rapidocr/models
+          key: rapidocr-models-${{ hashFiles('uv.lock') }}
+
+      - name: 跑全量测试（不筛 marker）
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest -q -rs 2>&1 | tee pytest.log
+          # 跳过 ≠ 通过：全量这一套同样零 skip。
+          if grep -qE '[0-9]+ skipped' pytest.log; then
+            echo "::error::有测试被跳过——全量 CI 只认实际跑过的用例，见上方 -rs 摘要"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------- Windows
+  # 只跑非 OCR 用例：这台 runner 上没有 Apple Vision；RapidOCR 依赖组也不装
+  # （省时间，也避免 pyobjc 这类平台专属依赖混进来）。
+  #
+  # 两条纪律，和 macOS job 一样严：
+  # 1) OCR 用例用 marker **deselect**（`-m "not ocr"`），不是让它们 skip；
+  #    "摘要里出现 N skipped 就失败"的守卫原样保留，没有为 Windows 放宽。
+  # 2) 另有 5 个 OCR 测试模块在**导入期**就构造引擎（模块级），而 marker 过滤
+  #    发生在收集之后，所以必须用 `--ignore` 显式排除这 5 个文件，否则摘要里会
+  #    留下 "skipped" 并触发守卫。这是写明的排除，不是静默跳过。
+  #
+  # 成本：私有仓库 Windows runner 按 2 倍分钟计费（Linux 1 倍，macOS 10 倍）。
+  pytest-windows:
+    name: Windows 测试（非 OCR）
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 uv（含缓存）
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.12.3"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 安装依赖（只装 dev，不装 OCR）
+        run: uv sync --frozen --group dev
+
+      - name: 跑测试（OCR 组 deselect，不 skip）
+        shell: bash
+        env:
+          # 只改标准输出/错误的编码，不改 open() 的默认编码——
+          # 免得把"文件按本地代码页读写"这类真实平台问题掩盖掉。
+          PYTHONIOENCODING: utf-8
+        run: |
+          set -o pipefail
+          uv run pytest -q -rs -m "not ocr" \
+            --ignore=tests/unit/test_rapidocr_adapter.py \
+            --ignore=tests/unit/test_layout_rapidocr_det.py \
+            --ignore=tests/integration/test_secondary_engine_vision.py \
+            --ignore=tests/integration/test_worker_subprocess.py \
+            --ignore=tests/integration/test_recognition_engine.py \
+            2>&1 | tee pytest-windows.log
+          if grep -qE '[0-9]+ skipped' pytest-windows.log; then
+            echo "::error::有测试被跳过——Windows job 同样不接受 skip，见上方 -rs 摘要"
+            exit 1
+          fi
+          if ! grep -qE '[0-9]+ deselected' pytest-windows.log; then
+            echo "::error::-m 过滤没有生效：OCR 组必须被 deselect"
+            exit 1
+          fi

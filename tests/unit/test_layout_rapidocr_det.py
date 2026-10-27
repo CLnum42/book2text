@@ -14,12 +14,17 @@ from book2text.core.layout.adapters import RapidOcrDetAdapter
 from book2text.core.layout.base import LayoutEngine, LayoutParams
 from book2text.core.pdf import render
 
-pytestmark = pytest.mark.ocr
+pytestmark = [pytest.mark.ocr, pytest.mark.macos_only]
 
 adapter = RapidOcrDetAdapter()
 
-if not adapter.available()[0]:
-    pytest.skip("未安装 OCR 引擎（uv sync --group ocr-eval）", allow_module_level=True)
+
+@pytest.fixture(autouse=True)
+def _require_layout_engine():
+    """同上：跳过放到运行时，模块级 skip 会污染 marker 过滤后的零 skip 守卫。"""
+    available, reason = adapter.available()
+    if not available:
+        pytest.skip(f"未安装 OCR 引擎（uv sync --group ocr-eval）：{reason}")
 
 
 def test_adapter_satisfies_protocol() -> None:

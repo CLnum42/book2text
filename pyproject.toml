@@ -48,4 +48,5 @@ packages = ["backend/book2text"]
 testpaths = ["tests"]
 markers = [
     "ocr: 需要 OCR 引擎的测试（uv sync --group ocr-eval）",
+    "macos_only: 需要 macOS 环境（OCR / Apple Vision / 真实引擎）的测试；Ubuntu 守卫只跑 `-m \"not macos_only\"`",
 ]
