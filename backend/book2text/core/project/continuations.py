@@ -89,6 +89,7 @@ def analyze(project_id: str, *, library: Path | None = None) -> dict:
                     lines,
                     reviewed=reviewed,
                     continues_to_next=last_block.continues_to_next,
+                    last_bbox=list(last_line["bbox"]),
                 )
             )
             continue
@@ -118,6 +119,7 @@ def analyze(project_id: str, *, library: Path | None = None) -> dict:
                 lines,
                 reviewed=reviewed,
                 continues_to_next=last_block.continues_to_next,
+                last_bbox=list(last_line["bbox"]),
             )
         )
 
@@ -272,17 +274,20 @@ def _entry(
     *,
     reviewed: bool = False,
     continues_to_next: bool = False,
+    last_bbox: list | None = None,
 ) -> dict:
     first_block = following[0]
     first_lines = lines.get(first_block.block_id) or []
     indent = None
     next_text = ""
+    next_bbox = None
     if first_lines:
         first = first_lines[0]["bbox"]
         lefts = [item["bbox"][0] for item in first_lines]
         if lefts:
             indent = round(first[0] - min(lefts), 4)
         next_text = (first_lines[0]["text"] or "").strip()[:200]
+        next_bbox = list(first)
     return {
         "page_no": page_no,
         "next_page_no": page_no + 1,
@@ -292,6 +297,9 @@ def _entry(
         "last_text": last_text[:200],
         "next_text": next_text,
         "next_indent": indent,
+        # 面板要在这两行上画淡蓝边框：上页最后一行 / 下页第一行（归一化坐标）
+        "last_bbox": last_bbox,
+        "next_bbox": next_bbox,
         "bucket": bucket,
         "reason": reason,
         "reviewed": bool(reviewed),

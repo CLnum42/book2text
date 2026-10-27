@@ -1168,7 +1168,7 @@ def test_cleanup_actions_are_wired_into_the_finish_panel() -> None:
 
 
 def test_continuation_review_entry_and_panel_are_wired() -> None:
-    """任务 42：F1 第三桶（16 处待人工）有入口、一键两个方向、确认完审校才变绿。"""
+    """任务 42 / 43（G 刀）：第三桶有入口；面板左右分栏、键盘优先、判完自动跳。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
     styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
@@ -1178,38 +1178,57 @@ def test_continuation_review_entry_and_panel_are_wired() -> None:
         "cleanup-continuation-review-open",
         "cleanup-continuation-review-status",
         "continuation-panel",
-        "continuation-list",
-        "continuation-meta",
-        "continuation-empty",
+        "continuation-viewer",
+        "continuation-scroll",
+        "continuation-pages",
+        "continuation-progress",
+        "continuation-state",
+        "continuation-evidence",
+        "continuation-continue",
+        "continuation-end",
+        "continuation-revert",
+        "continuation-prev",
+        "continuation-next",
+        "continuation-zoom-in",
+        "continuation-zoom-fit",
+        "continuation-zoom-out",
+        "continuation-complete",
         "continuation-error",
         "continuation-close",
         "continuation-done",
     ):
         assert f'id="{element_id}"' in page, element_id
 
-    # 入口与逐条面板
+    # 两个方向 + 撤销 + 自动跳下一条
     assert "function openContinuationReview(" in script
-    assert "function renderContinuationReview(" in script
-    assert "function continuationRow(" in script
+    assert "function renderContinuationPanel(" in script
+    assert "function markContinuation(" in script
+    assert "function revertContinuation(" in script
+    assert "function advanceContinuation(" in script
+    assert "function centerContinuationJunction(" in script
+    assert "function onContinuationKeydown(" in script
     assert "/cleanup/continuations/pending" in script
     assert "/cleanup/continuations/resolve" in script
     assert "/cleanup/continuations/reopen" in script
-    # 每条都有一键两个方向，不用人去上下文里猜
-    assert "标延续（合成一段）" in script
-    assert "标结束（分成两段）" in script
-    # 依据：本页末行 + 下页首行
-    assert "本页末行" in script
-    assert "下页首行" in script
+    assert "标延续（合成一段）" in page
+    assert "标结束（分成两段）" in page
+    # 键盘：1 / 2 / Z / ↑ / ↓
+    for key in ('key === "1"', 'key === "2"', 'key === "z" || key === "Z"', 'key === "ArrowDown"', 'key === "ArrowUp"'):
+        assert key in script, key
+    # 交界两行的坐标（后端给 last_bbox / next_bbox）
+    assert "last_bbox" in script and "next_bbox" in script
+    assert "continuation-line" in script
+    assert "第 ${entry.page_no} 页 / 第 ${entry.next_page_no} 页" in script
 
-    # 审校这一步读后端的 complete（已含跨页延续第三桶），不另算
+    # 审校完成判定仍读后端 complete（已含第三桶）
     assert "Boolean(r.complete)" in script
     assert "continuation_pending" in script
-    # 收尾面板的审校行与数据清理行都显示第三桶
-    assert "跨页延续待确认" in script
-    assert "跨页延续待人工" in page
 
-    assert ".continuation-row" in styles
-    assert ".continuation-row__quote" in styles
+    # 左栏滚动、右栏按钮固定不滚
+    assert ".continuation-scroll" in styles
+    assert ".continuation-side" in styles
+    assert ".continuation-line" in styles
+    assert "overflow: auto" in styles
 
 
 def test_confirm_page_refreshes_finish_counts() -> None:

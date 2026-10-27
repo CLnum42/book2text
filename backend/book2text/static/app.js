@@ -11356,16 +11356,14 @@ async function undoLastCleanup() {
   }
 }
 
-// ---------------------------------------------------------------- 跨页延续待确认（任务 42）
+// ---------------------------------------------------------------- 跨页延续（任务 43 G 刀）
 //
-// F1 的第三桶：自动判定判不了（页末行走满版心，但末字是句末标点）。以前这 16 处
-// 只出现在计划的数字里，人没有地方看、也没法点——段落错了没人知道。这里逐条给
-// 依据（本页末行 / 下页首行原文）与一键「标延续 / 标结束」，每条一个可撤销批次。
-//
-// 入口两个：收尾面板「数据清理 → 跨页延续待人工」、审校工具条上的计数按钮。
-// 没确认完之前，正文审校不算完成（后端 finish-summary.review.complete 已经带上这条）。
+// 一条页边界 = 一条判断：左边上下两页原图（打开就停在交界处，两行加淡蓝框），
+// 右边只有依据和三个动作。键盘 1 / 2 / Z / ↑ / ↓，判完自动跳下一条。
+// 没确认完之前，正文审校不算完成（后端 finish-summary.review.complete 带这条）。
 
-let continuationPending = null;
+let continuationState = null;
+let continuationZoom = 1;
 
 async function openContinuationReview() {
   if (!currentProject || currentProject.kind === "package") return;
@@ -11385,119 +11383,213 @@ async function loadContinuationReview() {
     showError(error, failure);
     return;
   }
-  continuationPending = data;
-  renderContinuationReview();
+  continuationState = {
+    total: Number(data.count || (data.entries || []).length),
+    all: (data.entries || []).map((entry) => ({ ...entry, decision: null })),
+    index: 0,
+    history: [],
+  };
+  continuationZoom = 1;
+  renderContinuationPanel({ scroll: true });
 }
 
-function continuationMetaText(entry) {
-  const parts = [];
-  if (entry.gap !== null && entry.gap !== undefined) {
-    parts.push(`页末行右端还差 ${entry.gap} 行距到版心边`);
-  } else {
-    parts.push("版心未定，量不出走满程度");
+function continuationCurrent() {
+  const state = continuationState;
+  if (!state || !state.all.length) return null;
+  return state.all[state.index] || state.all[0] || null;
+}
+
+function continuationRemaining() {
+  const state = continuationState;
+  if (!state) return 0;
+  return state.all.filter((entry) => entry.decision === null).length;
+}
+
+/** 左：上页（末行框）→ 分界线 → 下页（首行框）。 */
+function continuationPageBlock(pageNo, bbox, tagText) {
+  const page = currentProject.pages.find((item) => item.page_no === pageNo);
+  const wrap = document.createElement("div");
+  wrap.className = "continuation-page";
+  if (page) wrap.style.aspectRatio = `${page.width_pt} / ${page.height_pt}`;
+  const image = document.createElement("img");
+  image.alt = `第 ${pageNo} 页`;
+  image.src = pageImageUrl(pageNo, "view");
+  wrap.append(image);
+  if (Array.isArray(bbox) && bbox.length === 4) {
+    const mark = document.createElement("div");
+    mark.className = "continuation-line";
+    mark.title = `第 ${pageNo} 页${tagText}`;
+    mark.style.left = `${bbox[0] * 100}%`;
+    mark.style.top = `${bbox[1] * 100}%`;
+    mark.style.width = `${(bbox[2] - bbox[0]) * 100}%`;
+    mark.style.height = `${(bbox[3] - bbox[1]) * 100}%`;
+    const tag = document.createElement("span");
+    tag.className = "continuation-line__tag";
+    tag.textContent = tagText;
+    mark.append(tag);
+    wrap.append(mark);
   }
-  if (entry.next_indent) {
-    parts.push(`下页首行缩进 ${(entry.next_indent * 100).toFixed(1)}%`);
-  } else {
-    parts.push("下页首行没有缩进");
+  return wrap;
+}
+
+function buildContinuationPages(entry) {
+  const pages = el("continuation-pages");
+  pages.innerHTML = "";
+  pages.append(continuationPageBlock(entry.page_no, entry.last_bbox, "末行"));
+  const divider = document.createElement("div");
+  divider.className = "continuation-divider";
+  divider.textContent = `第 ${entry.page_no} 页 / 第 ${entry.next_page_no} 页`;
+  pages.append(divider);
+  pages.append(continuationPageBlock(entry.next_page_no, entry.next_bbox, "首行"));
+  applyContinuationZoom(entry);
+}
+
+function applyContinuationZoom(entry = continuationCurrent()) {
+  const pages = el("continuation-pages");
+  if (!pages) return;
+  pages.style.width = `${Math.round(continuationZoom * 100)}%`;
+  el("continuation-zoom-label").textContent =
+    continuationZoom === 1 ? "" : `${Math.round(continuationZoom * 100)}%`;
+  centerContinuationJunction(true);
+  if (entry) prefetchContinuationPages(entry);
+}
+
+/** 打开 / 翻条 / 缩放后都停在交界处：上页滚到底、下页滚到顶。 */
+function centerContinuationJunction(immediate = false) {
+  const scroll = el("continuation-scroll");
+  if (!scroll) return;
+  const apply = () => {
+    const pages = el("continuation-pages");
+    const marks = pages ? [...pages.querySelectorAll(".continuation-line")] : [];
+    const scrollRect = scroll.getBoundingClientRect();
+    if (marks.length === 2) {
+      // 让"末行底边 → 首行顶边"这段落在视口中央：两行都看得见。
+      const first = marks[0].getBoundingClientRect();
+      const second = marks[1].getBoundingClientRect();
+      const span = second.top - first.bottom;
+      if (span < scrollRect.height - 12) {
+        const middle = (first.bottom + second.top) / 2;
+        scroll.scrollTop += middle - (scrollRect.top + scrollRect.height / 2);
+        scroll.scrollLeft = 0;
+        return;
+      }
+    }
+    const divider = pages
+      ? pages.querySelector(".continuation-divider")
+      : null;
+    if (divider) {
+      scroll.scrollTop = Math.max(
+        0,
+        divider.offsetTop - scroll.clientHeight / 2 + divider.offsetHeight / 2
+      );
+      scroll.scrollLeft = 0;
+    }
+  };
+  apply();
+  if (!immediate) requestAnimationFrame(apply);
+}
+
+function prefetchContinuationPages(entry) {
+  if (!entry) return;
+  // 下一张卡片的两页先拉进缓存，翻条不用等
+  for (const pageNo of [entry.page_no, entry.next_page_no]) {
+    const image = new Image();
+    image.src = pageImageUrl(pageNo, "view");
   }
-  return parts.join(" · ");
 }
 
-function continuationLine(label, text, prefix) {
-  const row = document.createElement("div");
-  row.className = "continuation-row__line";
-  const tag = document.createElement("span");
-  tag.className = "continuation-row__label";
-  tag.textContent = label;
-  const quote = document.createElement("span");
-  quote.className = "continuation-row__quote";
-  quote.textContent = text ? `${prefix}${text}` : "（这一页没有读到文字）";
-  row.append(tag, quote);
-  return row;
-}
-
-function renderContinuationReview() {
-  const data = continuationPending;
-  if (!data) return;
-  const list = el("continuation-list");
-  const empty = el("continuation-empty");
-  list.innerHTML = "";
-  const remaining = Number(data.count || 0);
-  el("continuation-meta").textContent =
-    remaining > 0
-      ? `还剩 ${remaining} 处`
-      : "已全部确认";
-  el("continuation-footnote").textContent =
-    `全书 ${data.total || 0} 个页边界 · 确认 ${(data.total || 0) - remaining} / ${data.total || 0}`;
-  empty.hidden = (data.entries || []).length > 0;
-  for (const entry of data.entries || []) {
-    list.append(continuationRow(entry));
+function continuationEvidenceRow(label, text, sub) {
+  const dt = document.createElement("dt");
+  dt.textContent = label;
+  const dd = document.createElement("dd");
+  const main = document.createElement("span");
+  main.textContent = text || "—";
+  dd.append(main);
+  if (sub) {
+    const small = document.createElement("span");
+    small.className = "muted";
+    small.textContent = sub;
+    dd.append(small);
   }
+  return [dt, dd];
 }
 
-function continuationRow(entry) {
-  const li = document.createElement("li");
-  li.className = "continuation-row";
-  const head = document.createElement("div");
-  head.className = "continuation-row__head";
-  const where = document.createElement("strong");
-  where.textContent = `第 ${entry.page_no} → ${entry.next_page_no} 页`;
-  const meta = document.createElement("span");
-  meta.className = "muted";
-  meta.textContent = continuationMetaText(entry);
-  const spacer = document.createElement("span");
-  spacer.className = "spacer";
-  const jump = document.createElement("button");
-  jump.type = "button";
-  jump.className = "btn btn--sm";
-  jump.textContent = "看原文";
-  jump.title = `在审校里打开第 ${entry.page_no} 页`;
-  jump.addEventListener("click", () => {
-    closeModal("continuation-panel");
-    openPageDetail(entry.page_no);
-  });
-  head.append(where, meta, spacer, jump);
-  li.append(head);
-
-  const lines = document.createElement("div");
-  lines.className = "continuation-row__lines";
-  lines.append(continuationLine("本页末行", entry.last_text, "…"));
-  lines.append(continuationLine("下页首行", entry.next_text, ""));
-  li.append(lines);
-
-  const actions = document.createElement("div");
-  actions.className = "continuation-row__actions";
-  if (entry.reviewed) {
-    li.classList.add("is-settled");
-    const settled = document.createElement("span");
-    settled.className = "continuation-row__settled";
-    settled.textContent = entry.continues_to_next ? "已标延续 ✓" : "已标结束 ✓";
-    const revert = document.createElement("button");
-    revert.type = "button";
-    revert.className = "btn btn--ghost btn--sm";
-    revert.textContent = "撤销这处";
-    revert.title = "放回待确认（不改文字，也不撤销别人做的修改）";
-    revert.addEventListener("click", () => reopenContinuation(entry));
-    actions.append(settled, revert);
-  } else {
-    const keep = document.createElement("button");
-    keep.type = "button";
-    keep.className = "btn btn--pri btn--sm";
-    keep.textContent = "标延续（合成一段）";
-    keep.addEventListener("click", () => resolveContinuation(entry, true));
-    const end = document.createElement("button");
-    end.type = "button";
-    end.className = "btn btn--sm";
-    end.textContent = "标结束（分成两段）";
-    end.addEventListener("click", () => resolveContinuation(entry, false));
-    actions.append(keep, end);
+function renderContinuationPanel({ scroll = false } = {}) {
+  const state = continuationState;
+  if (!state) return;
+  const entry = continuationCurrent();
+  const remaining = continuationRemaining();
+  const complete = remaining === 0;
+  el("continuation-complete").hidden = !complete;
+  if (complete) {
+    el("continuation-complete").querySelector("strong").textContent =
+      `${state.total} 条全部确认`;
   }
-  li.append(actions);
-  return li;
+  el("continuation-meta").textContent = complete
+    ? "已全部确认"
+    : `已确认 ${state.total - remaining} / ${state.total}`;
+  el("continuation-footnote").textContent = complete
+    ? "正文审校的「跨页延续」闸门已放行"
+    : `还剩 ${remaining} 条 · ↑ / ↓ 翻条 · 1 / 2 判`;
+
+  if (!entry) {
+    el("continuation-progress").textContent = "没有待确认的页边界";
+    el("continuation-state").textContent = "";
+    el("continuation-evidence").innerHTML = "";
+    el("continuation-pages").innerHTML = "";
+    return;
+  }
+
+  el("continuation-progress").textContent =
+    `第 ${state.index + 1} / ${state.all.length} 条`;
+  const decided = entry.decision !== null;
+  el("continuation-state").textContent = decided
+    ? entry.decision
+      ? "已标延续"
+      : "已标结束"
+    : `第 ${entry.page_no} → ${entry.next_page_no} 页`;
+  el("continuation-continue").disabled = decided;
+  el("continuation-end").disabled = decided;
+  el("continuation-revert").disabled = state.history.length === 0 && !decided;
+
+  const evidence = el("continuation-evidence");
+  evidence.innerHTML = "";
+  evidence.append(
+    ...continuationEvidenceRow("上页末行", `…${entry.last_text}`, `第 ${entry.page_no} 页最后一行`),
+    ...continuationEvidenceRow(
+      "走满程度",
+      entry.gap === null ? "版心未定，量不出" : `右端还差 ${entry.gap} 行距到版心边`,
+      entry.gap !== null && entry.gap <= 1.4 ? "走满版心（≤1.4 行距）" : "明显的短行"
+    ),
+    ...continuationEvidenceRow("下页首行", entry.next_text, `第 ${entry.next_page_no} 页第一行`),
+    ...continuationEvidenceRow(
+      "首行缩进",
+      entry.next_indent ? `${(entry.next_indent * 100).toFixed(1)}%` : "没有缩进",
+      "只作参考：诗行会骗它，不参与自动判定"
+    )
+  );
+  buildContinuationPages(entry);
+  if (scroll) centerContinuationJunction();
 }
 
-async function resolveContinuation(entry, continues) {
+/** 判完自动跳下一条还没判的；都判完就停在最后一条。 */
+function advanceContinuation() {
+  const state = continuationState;
+  if (!state) return;
+  for (let step = 1; step <= state.all.length; step += 1) {
+    const index = (state.index + step) % state.all.length;
+    if (state.all[index].decision === null) {
+      state.index = index;
+      return;
+    }
+  }
+  state.index = Math.min(state.index, state.all.length - 1);
+}
+
+async function markContinuation(continues) {
+  const state = continuationState;
+  const entry = continuationCurrent();
+  if (!state || !entry || entry.decision !== null) return;
   const error = el("continuation-error");
   error.hidden = true;
   try {
@@ -11509,17 +11601,28 @@ async function resolveContinuation(entry, continues) {
         body: JSON.stringify({ block_id: entry.block_id, continues }),
       }
     );
-    entry.reviewed = true;
-    entry.continues_to_next = Boolean(continues);
-    continuationPending.count = Number(result.remaining || 0);
-    renderContinuationReview();
-    await afterContinuationChange(entry.page_no);
+    entry.decision = Boolean(continues);
+    entry.continues_to_next = Boolean(result.continues_to_next);
+    state.history.push(entry.block_id);
+    advanceContinuation();
+    renderContinuationPanel({ scroll: true });
+    afterContinuationChange(entry.page_no);
   } catch (failure) {
     showError(error, failure);
   }
 }
 
-async function reopenContinuation(entry) {
+async function revertContinuation() {
+  const state = continuationState;
+  if (!state) return;
+  const current = continuationCurrent();
+  const blockId =
+    current && current.decision !== null
+      ? current.block_id
+      : state.history[state.history.length - 1];
+  if (!blockId) return;
+  const entry = state.all.find((item) => item.block_id === blockId);
+  if (!entry) return;
   const error = el("continuation-error");
   error.hidden = true;
   try {
@@ -11528,33 +11631,88 @@ async function reopenContinuation(entry) {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ block_id: entry.block_id }),
+        body: JSON.stringify({ block_id: blockId }),
       }
     );
-    if (result.bucket === "review") {
-      entry.reviewed = false;
-      entry.continues_to_next = Boolean(result.continues_to_next);
+    entry.decision = null;
+    entry.continues_to_next = Boolean(result.continues_to_next);
+    state.history = state.history.filter((id) => id !== blockId);
+    if (result.bucket !== "review") {
+      // 放回后自动判定已经能定了：从这一轮里移走
+      const index = state.all.indexOf(entry);
+      state.all = state.all.filter((item) => item.block_id !== blockId);
+      state.total = Math.max(0, state.total - 1);
+      state.index = Math.min(index, Math.max(0, state.all.length - 1));
     } else {
-      // 放回之后自动判定已经能定了（不再是待人工）——从列表里移走
-      continuationPending.entries = continuationPending.entries.filter(
-        (item) => item.block_id !== entry.block_id
-      );
+      state.index = state.all.indexOf(entry);
     }
-    continuationPending.count = Number(result.remaining || 0);
-    renderContinuationReview();
-    await afterContinuationChange(entry.page_no);
+    renderContinuationPanel({ scroll: true });
+    afterContinuationChange(entry.page_no);
   } catch (failure) {
     showError(error, failure);
   }
 }
 
-/** 改过跨页边界：导出的段落结构变了，刷新收尾状态与预览缓存。 */
-async function afterContinuationChange(pageNo) {
+function stepContinuation(delta) {
+  const state = continuationState;
+  if (!state || !state.all.length) return;
+  state.index = Math.min(
+    Math.max(0, state.index + delta),
+    state.all.length - 1
+  );
+  renderContinuationPanel({ scroll: true });
+}
+
+/** 改过跨页边界：导出的段落结构变了，刷新收尾状态与预览缓存（后台，不挡翻条）。 */
+function afterContinuationChange() {
   previewData = null;
   previewProject = null;
-  await loadFinishSummary({ silent: true });
-  if (detailPageNo !== null && detailPageNo === pageNo) {
-    await loadPageDetail(pageNo, { forceSuggestions: true });
+  loadFinishSummary({ silent: true });
+}
+
+const CONTINUATION_ZOOMS = [1, 1.25, 1.5, 2];
+
+function stepContinuationZoom(delta) {
+  const index = CONTINUATION_ZOOMS.indexOf(continuationZoom);
+  const next =
+    index < 0
+      ? 0
+      : Math.min(Math.max(index + delta, 0), CONTINUATION_ZOOMS.length - 1);
+  continuationZoom = CONTINUATION_ZOOMS[next];
+  applyContinuationZoom();
+}
+
+function resetContinuationZoom() {
+  continuationZoom = 1;
+  applyContinuationZoom();
+}
+
+/** 键盘优先：面板开着时 1 / 2 / Z / ↑ / ↓ 接管。 */
+function onContinuationKeydown(event) {
+  const panel = el("continuation-panel");
+  if (!panel || panel.hidden) return;
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  const key = event.key;
+  if (key === "1") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    markContinuation(true);
+  } else if (key === "2") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    markContinuation(false);
+  } else if (key === "z" || key === "Z") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    revertContinuation();
+  } else if (key === "ArrowDown") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    stepContinuation(1);
+  } else if (key === "ArrowUp") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    stepContinuation(-1);
   }
 }
 
@@ -11880,6 +12038,20 @@ function setupReviewControls() {
   el("review-continuations").addEventListener("click", openContinuationReview);
   el("continuation-close").addEventListener("click", () => closeModal("continuation-panel"));
   el("continuation-done").addEventListener("click", () => closeModal("continuation-panel"));
+  el("continuation-continue").addEventListener("click", () => markContinuation(true));
+  el("continuation-end").addEventListener("click", () => markContinuation(false));
+  el("continuation-revert").addEventListener("click", revertContinuation);
+  el("continuation-prev").addEventListener("click", () => stepContinuation(-1));
+  el("continuation-next").addEventListener("click", () => stepContinuation(1));
+  el("continuation-zoom-out").addEventListener("click", () => stepContinuationZoom(-1));
+  el("continuation-zoom-in").addEventListener("click", () => stepContinuationZoom(1));
+  el("continuation-zoom-fit").addEventListener("click", resetContinuationZoom);
+  document.addEventListener("keydown", onContinuationKeydown);
+  // 窗口高度变了（比如从大窗口拖小）也把交界处重新对到中间
+  window.addEventListener("resize", () => {
+    const panel = el("continuation-panel");
+    if (panel && !panel.hidden && continuationState) centerContinuationJunction(true);
+  });
   el("finish-start-review").addEventListener("click", finishStartReview);
   el("finish-export").addEventListener("click", finishOpenExport);
   el("diff-queue-toggle").addEventListener("click", () => setQueueOpen(!queueOpen));

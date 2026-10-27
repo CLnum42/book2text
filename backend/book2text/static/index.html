@@ -847,6 +847,7 @@
     </div>
 
     <!-- ─────────────────── 对话框：跨页延续待确认（任务 42） ─────────────────── -->
+    <!-- ─────────────────── 对话框：跨页延续（任务 43 G 刀） ─────────────────── -->
     <div class="mask" id="continuation-panel" hidden>
       <div class="modal modal--continuation">
         <div class="mhead">
@@ -856,18 +857,52 @@
           <button type="button" class="icon-btn" id="continuation-close">✕</button>
         </div>
         <div class="mbody continuation-body">
-          <p class="hint">
-            自动判定判不了的页边界：页末行走满了版心，但最后一个字是句末标点。
-            看两页的原文判断这一段是否被页切开——<strong>标延续</strong> = 导出时合成一段，
-            <strong>标结束</strong> = 分成两段。确认完这一处就从列表里移走，点错了可以撤销这处。
-          </p>
-          <div class="alert alert--error" id="continuation-error" hidden></div>
-          <ol class="continuation-list" id="continuation-list"></ol>
-          <p class="muted" id="continuation-empty" hidden>没有待确认的页边界，这一项已经完成。</p>
+          <!-- 左：上下两页原图（打开就定位到交界处，可滚可缩） -->
+          <div class="continuation-viewer" id="continuation-viewer">
+            <div class="continuation-scroll" id="continuation-scroll">
+              <div class="continuation-pages" id="continuation-pages"></div>
+            </div>
+            <div class="continuation-zoom">
+              <button type="button" id="continuation-zoom-out" title="缩小">－</button>
+              <button type="button" id="continuation-zoom-fit">适合宽度</button>
+              <button type="button" id="continuation-zoom-in" title="放大">＋</button>
+              <span class="muted" id="continuation-zoom-label"></span>
+            </div>
+          </div>
+          <!-- 右：判定依据 + 两个主按钮（固定，不跟着图片滚） -->
+          <aside class="continuation-side">
+            <div class="continuation-progress">
+              <strong id="continuation-progress">第 1 / 16 条</strong>
+              <span class="muted" id="continuation-state"></span>
+            </div>
+            <div class="alert alert--error" id="continuation-error" hidden></div>
+            <dl class="continuation-evidence" id="continuation-evidence"></dl>
+            <div class="continuation-actions">
+              <button type="button" id="continuation-continue" class="btn btn--pri">
+                标延续（合成一段）<kbd>1</kbd>
+              </button>
+              <button type="button" id="continuation-end" class="btn">
+                标结束（分成两段）<kbd>2</kbd>
+              </button>
+              <button type="button" id="continuation-revert" class="btn btn--ghost">
+                撤销这处<kbd>Z</kbd>
+              </button>
+            </div>
+            <p class="hint continuation-keys">
+              <kbd>1</kbd> 延续 · <kbd>2</kbd> 结束 · <kbd>Z</kbd> 撤销 · <kbd>↑</kbd><kbd>↓</kbd> 前后一条 ·
+              判完自动跳下一条
+            </p>
+            <div class="continuation-complete" id="continuation-complete" hidden>
+              <strong>16 条全部确认</strong>
+              <p class="muted">正文审校的「跨页延续」闸门已放行。</p>
+            </div>
+          </aside>
         </div>
         <div class="mfoot">
           <span class="muted" id="continuation-footnote"></span>
           <span class="spacer"></span>
+          <button type="button" id="continuation-prev" class="btn btn--sm">上一条 <kbd>↑</kbd></button>
+          <button type="button" id="continuation-next" class="btn btn--sm">下一条 <kbd>↓</kbd></button>
           <button type="button" id="continuation-done" class="btn">完成</button>
         </div>
       </div>

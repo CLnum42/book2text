@@ -284,6 +284,14 @@ def test_continuation_pending_lists_review_bucket_with_context(
     assert "走满但句末。" in entry["last_text"]
     assert entry["next_text"], "下页首行原文要带上，人才判断得了这一段是否跨页"
     assert entry["gap"] is not None
+    # G 刀：面板要在交界两行上画框，坐标必须给到
+    assert len(entry["last_bbox"]) == 4
+    assert len(entry["next_bbox"]) == 4
+    assert all(0.0 <= value <= 1.0 for value in entry["last_bbox"] + entry["next_bbox"])
+    # 框要落在真实行上：夹具里第 4 页末行 y0=0.12，第 5 页首行 y0=0.05
+    assert abs(entry["last_bbox"][1] - 0.12) < 1e-6
+    assert abs(entry["next_bbox"][1] - 0.05) < 1e-6
+    assert entry["last_bbox"] != entry["next_bbox"]
 
 
 def test_continuation_resolve_end_is_recorded_and_can_reopen(
