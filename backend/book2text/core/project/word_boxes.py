@@ -230,7 +230,19 @@ def _ocr_candidates(source: Path, page_index: int, dpi: int = 200) -> list[Candi
 
 
 def _ensure_schema(directory: Path) -> None:
-    """确保迁移跑到最新（老项目第一次回填时补上 word_boxes 列）。"""
+    """确保迁移跑到最新（老项目第一次回填时补上 word_boxes 列）。
+
+    迁移会改表结构，所以**先备份再迁移**：备份在 `backups/`，文件名带时间戳。
+    """
+    from ..storage import migration as migration_module
+
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        try:
+            version = migration_module.current_version(conn)
+        except Exception:  # noqa: BLE001 - 老库读不到版本就保守备份
+            version = 0
+    if version < 21:
+        _backup_once(directory)
     with db_module.open_database(directory) as conn:
         conn.commit()
 
@@ -311,10 +323,15 @@ def analyze(project_id: str, *, library: Path | None = None) -> dict:
 
 
 def _backup_once(directory: Path) -> Path:
-    """第一次写入前备份 project.db（同一次回填只备份一次）。"""
+    """回填前备份 project.db：**一天只留一份**（按 UTC 日期命名）。
+
+    回填是分批调的，如果每次都按时间戳新建，一本 394 页的书会留下几十份
+    十几 MB 的备份（实测 1.1 GB）。同一天的回填共用一份"当天开工前"的快照，
+    第二天再回填会生成新的一份。
+    """
     backups = directory / "backups"
     backups.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     target = backups / f"project-before-word-boxes-{stamp}.db"
     if not target.exists():
         shutil.copy2(directory / "project.db", target)
