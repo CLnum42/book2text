@@ -12557,6 +12557,126 @@ async function runFurnitureCleanup() {
   }
 }
 
+// ---------------------------------------------------------------- 字符规范化（任务 49）
+//
+// 三组括号 + 半角标点 + 引号配平，都是"两路一致"所以进不了差异队列的隐形错。
+// 先只读分析（改多少行 / 多少字、引号能修几处、还剩几处配不平），确认后整批写库；
+// 写的是 `block.text`，和人工编辑同一条事件链，一次撤销就能全退。
+
+async function runOrthographyCleanup() {
+  if (!currentProject || currentProject.kind === "package") return;
+  const base = `/api/projects/${currentProject.project_id}/cleanup/orthography`;
+  setCleanupStatus("cleanup-orthography-status", "正在扫描括号 / 引号…");
+  let plan;
+  try {
+    plan = await apiJson(base);
+  } catch (error) {
+    setCleanupStatus("cleanup-orthography-status", `扫描失败：${error.message}`, true);
+    return;
+  }
+  const stats = plan.stats || {};
+  const brackets = stats.brackets || {};
+  const punct = stats.punct || {};
+  const punctText = Object.entries(punct)
+    .map(([ch, count]) => `${ch}×${count}`)
+    .join("、");
+  const detail =
+    `括号 ${brackets["〈〉"] || 0} 个 → 〈〉、${brackets["［］"] || 0} 个 → ［］、` +
+    `${brackets["〔〕"] || 0} 个 → 〔〕` +
+    (punctText ? `；半角标点 ${punctText}` : "") +
+    `；引号自动修 ${stats.quote_autofix || 0} 处，仍配不平 ${stats.unbalanced || 0} 处（进清单，不硬配）`;
+  setCleanupStatus("cleanup-orthography-status", `计划：${detail}`);
+  if (!stats.blocks_changed) {
+    setCleanupStatus("cleanup-orthography-status", `没有要改的：${detail}`);
+    return;
+  }
+  const ok = window.confirm(
+    `改 ${stats.blocks_changed} 个块的文字？\n\n` +
+      `· ${detail}\n` +
+      `· 涉及 ${stats.pages} 页、${stats.chars_changed} 个字符\n\n` +
+      "只改原文里的括号/标点/引号，不改块的类型、框和审校状态；整批可撤销。"
+  );
+  if (!ok) {
+    setCleanupStatus("cleanup-orthography-status", `未写入：${detail}`);
+    return;
+  }
+  setCleanupStatus("cleanup-orthography-status", "正在写入…");
+  try {
+    const result = await apiJson(base, { method: "POST" });
+    const s = result.stats || {};
+    setCleanupStatus(
+      "cleanup-orthography-status",
+      `已改 ${result.changed || 0} 块、${s.chars_changed || 0} 字（${s.pages || 0} 页）；` +
+        `引号自动修 ${s.quote_autofix || 0} 处，仍配不平 ${s.unbalanced || 0} 处。`
+    );
+    await afterCleanupApplied();
+  } catch (error) {
+    setCleanupStatus("cleanup-orthography-status", `写入失败：${error.message}`, true);
+  }
+}
+
+/** 引号不配平清单：只读，逐条跳到审校页自己判断。 */
+async function openOrthographyPanel() {
+  if (!currentProject) return;
+  const list = el("orthography-list");
+  list.innerHTML = "<li class=\"muted\">正在扫描引号…</li>";
+  openModal("orthography-panel");
+  el("orthography-meta").textContent = "";
+  el("orthography-footnote").textContent = "";
+  let data;
+  try {
+    data = await apiJson(
+      `/api/projects/${currentProject.project_id}/cleanup/orthography/unbalanced`
+    );
+  } catch (error) {
+    list.innerHTML = "";
+    const item = document.createElement("li");
+    item.className = "muted";
+    item.textContent = `扫描失败：${error.message}`;
+    list.append(item);
+    return;
+  }
+  const entries = data.entries || [];
+  list.innerHTML = "";
+  el("orthography-meta").textContent = `${entries.length} 处 · ${data.pages || 0} 页`;
+  el("orthography-footnote").textContent = entries.length
+    ? "不硬配：这些位置只提示，改不改由人判断"
+    : "没有配不平的引号。";
+  if (!entries.length) {
+    const item = document.createElement("li");
+    item.className = "muted";
+    item.textContent = "没有配不平的引号。";
+    list.append(item);
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const entry of entries) {
+    const row = document.createElement("li");
+    row.className = "orthography-row";
+    const where = document.createElement("span");
+    where.className = "orthography-row__page";
+    where.textContent = `第 ${entry.page_no} 页`;
+    const kind = document.createElement("span");
+    kind.className = `orthography-row__kind orthography-row__kind--${entry.kind}`;
+    kind.textContent = entry.kind === "open" ? "缺闭合" : "缺开号";
+    const snippet = document.createElement("span");
+    snippet.className = "orthography-row__text";
+    snippet.textContent = entry.snippet;
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "btn btn--sm";
+    open.textContent = "看原文";
+    open.addEventListener("click", () => {
+      closeModal("orthography-panel");
+      showView("review");
+      openPageDetail(entry.page_no);
+    });
+    row.append(where, kind, snippet, open);
+    fragment.append(row);
+  }
+  list.append(fragment);
+}
+
 /** 批量写完：刷新收尾状态 / 页面状态，丢掉预览与建议缓存（数据变了）。 */
 async function afterCleanupApplied() {
   previewData = null;
@@ -13765,6 +13885,10 @@ function setupReviewControls() {
   });
   el("cleanup-continuation-run").addEventListener("click", runContinuationCleanup);
   el("cleanup-furniture-run").addEventListener("click", runFurnitureCleanup);
+  el("cleanup-orthography-run").addEventListener("click", runOrthographyCleanup);
+  el("cleanup-orthography-review").addEventListener("click", openOrthographyPanel);
+  el("orthography-close").addEventListener("click", () => closeModal("orthography-panel"));
+  el("orthography-done").addEventListener("click", () => closeModal("orthography-panel"));
   el("cleanup-undo").addEventListener("click", undoLastCleanup);
   el("cleanup-continuation-review-open").addEventListener("click", openContinuationReview);
   el("review-continuations").addEventListener("click", openContinuationReview);

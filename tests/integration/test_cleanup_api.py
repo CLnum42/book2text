@@ -440,3 +440,93 @@ def test_human_continuation_decision_is_not_overwritten_by_auto_apply(
     block = _find_block(client, auth_headers, project_id, 4, block_id)
     assert block["continues_to_next"] is False, "人工判为结束，自动判定不许改成延续"
     assert block["continues_reviewed"] is True
+
+
+def test_orthography_restores_brackets_and_balances_quotes(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    scan_sample_pdf: Path,
+    library_dir: Path,
+) -> None:
+    """任务 49（M 刀）：三组括号 / 半角标点 / 引号配平。
+
+    两路一致所以永远进不了差异队列的隐形错：只按形态在**中文语境**里还原；
+    引号只修"两边都确定"的（`“` 自己也没闭合），其余进清单不硬配；整批可撤销。
+    """
+    project_id = create_project(client, auth_headers, scan_sample_pdf)
+    set_margin(client, auth_headers, project_id, 1)
+    text = (
+        "你这话很是，<比我想的周到>；\n"
+        "贾{菌}与单大{娘}家，[笑说：“咱们走罢。”]；\n"
+        "潮磴上还睡出病来呢! 他说：“走吧。’\n"
+        "代码 a < b 与 [1] 不动；再一个 ’ 不配。"
+    )
+    block_id = add_block(
+        library_dir,
+        project_id,
+        page_no=1,
+        lines=[
+            ("你这话很是，<比我想的周到>；", 0.10, 0.10, 0.90, 0.12),
+            ("贾{菌}与单大{娘}家，[笑说：“咱们走罢。”]；", 0.10, 0.12, 0.90, 0.14),
+            ("潮磴上还睡出病来呢! 他说：“走吧。’", 0.10, 0.14, 0.90, 0.16),
+            ("代码 a < b 与 [1] 不动；再一个 ’ 不配。", 0.10, 0.16, 0.90, 0.18),
+        ],
+    )
+
+    plan = client.get(
+        f"/api/projects/{project_id}/cleanup/orthography", headers=auth_headers
+    )
+    assert plan.status_code == 200, plan.text
+    stats = plan.json()["stats"]
+    # 按"字符"计数：一对书名号 = 2 个字符；代码里的 `a < b` / `[1]` 不动
+    assert stats["brackets"] == {"〈〉": 2, "［］": 2, "〔〕": 4}
+    assert stats["punct"].get("!") == 1
+    assert stats["quote_autofix"] == 1
+    assert stats["unbalanced"] >= 1
+    assert stats["blocks_changed"] == 1
+    # 代码/公式里的尖括号与方括号不动
+    change = plan.json()["changes"][0]
+    assert "a < b" in change["after"] and "[1]" in change["after"]
+
+    applied = client.post(
+        f"/api/projects/{project_id}/cleanup/orthography", headers=auth_headers
+    )
+    assert applied.status_code == 200, applied.text
+    result = applied.json()
+    assert result["changed"] == 1
+    assert result["history"]["undo"] >= 1
+    after = client.get(
+        f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers
+    ).json()
+    block = next(item for item in after["blocks"] if item["block_id"] == block_id)
+    assert "<比我想的周到>" not in block["text"]
+    assert "〈比我想的周到〉" in block["text"]
+    assert "［笑说：“咱们走罢。”］" in block["text"]
+    assert "〔菌〕" in block["text"] and "〔娘〕" in block["text"]
+    assert "呢！" in block["text"]
+    assert "他说：‘走吧。’" in block["text"]
+    assert "a < b" in block["text"] and "[1]" in block["text"]
+    # 再跑一次没有可改的（幂等）
+    again = client.get(
+        f"/api/projects/{project_id}/cleanup/orthography", headers=auth_headers
+    ).json()
+    assert again["stats"]["blocks_changed"] == 0
+
+    undone = client.post(f"/api/projects/{project_id}/undo", headers=auth_headers)
+    assert undone.status_code == 200, undone.text
+    restored = client.get(
+        f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers
+    ).json()
+    block = next(item for item in restored["blocks"] if item["block_id"] == block_id)
+    assert block["text"] == text
+
+    # 引号不配平清单是只读的，带页码 / 片段
+    unbalanced = client.get(
+        f"/api/projects/{project_id}/cleanup/orthography/unbalanced",
+        headers=auth_headers,
+    )
+    assert unbalanced.status_code == 200, unbalanced.text
+    data = unbalanced.json()
+    assert data["count"] >= 1
+    assert data["entries"][0]["page_no"] == 1
+    assert data["entries"][0]["snippet"]

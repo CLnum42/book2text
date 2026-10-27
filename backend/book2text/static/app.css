@@ -2233,3 +2233,33 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
 }
 .index-toolbar .btn.is-on { background: var(--accent-soft); color: var(--accent-text); }
 .index-toolbar .spacer { flex: 1; }
+
+/* 任务 49（M 刀）：引号不配平清单 */
+.modal--orthography {
+  width: 880px; height: 640px;
+  max-width: calc(100% - 24px); max-height: calc(100% - 24px);
+}
+.orthography-body {
+  display: flex; flex-direction: column; min-height: 0; gap: 8px;
+}
+.orthography-list {
+  list-style: none; margin: 0; padding: 0;
+  overflow: auto; flex: 1; min-height: 0;
+  border-top: 1px solid var(--line-soft);
+}
+.orthography-row {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 8px 10px; border-bottom: 1px solid var(--line-soft);
+  font-size: 12.5px;
+}
+.orthography-row__page {
+  flex: none; min-width: 64px; font-weight: 600;
+  font-variant-numeric: tabular-nums; color: var(--text-2);
+}
+.orthography-row__kind {
+  flex: none; font-size: 10.5px; padding: 1px 6px; border-radius: 999px;
+  background: var(--warn-soft); color: var(--warn-text);
+}
+.orthography-row__kind--open { background: var(--accent-soft); color: var(--accent-text); }
+.orthography-row__text { flex: 1; min-width: 0; line-height: 1.5; color: var(--text); }
+.orthography-row .btn { flex: none; }

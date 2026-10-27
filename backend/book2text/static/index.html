@@ -883,6 +883,30 @@
 
     <!-- ─────────────────── 对话框：跨页延续待确认（任务 42） ─────────────────── -->
     <!-- ─────────────────── 对话框：跨页延续（任务 43 G 刀） ─────────────────── -->
+    <!-- 任务 49：引号不配平清单（两路一致、审校抓不到；不硬配，逐条看） -->
+    <div class="mask" id="orthography-panel" hidden>
+      <div class="modal modal--orthography">
+        <div class="mhead">
+          引号不配平
+          <span class="muted" id="orthography-meta"></span>
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="orthography-close">✕</button>
+        </div>
+        <div class="mbody orthography-body">
+          <p class="hint">
+            这些引号两路都读错、差异队列里永远不会出现，所以单独列在这里。
+            不整本硬配（配错比不配更糟）：点「看原文」跳到审校页逐条判断。
+          </p>
+          <ol class="orthography-list" id="orthography-list"></ol>
+        </div>
+        <div class="mfoot">
+          <span class="muted" id="orthography-footnote"></span>
+          <span class="spacer"></span>
+          <button type="button" id="orthography-done" class="btn">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <div class="mask" id="continuation-panel" hidden>
       <div class="modal modal--continuation">
         <div class="mhead">
@@ -1423,6 +1447,17 @@
             </div>
           </div>
           <button type="button" id="cleanup-furniture-run" class="btn btn--sm">运行…</button>
+        </div>
+        <div class="finish-cleanup__row">
+          <div class="finish-main">
+            <strong>字符规范化（括号 / 引号）</strong>
+            <div class="finish-sub" id="cleanup-orthography-status">
+              ASCII 尖括号 / 方括号 / 花括号还原成 〈〉［］〔〕，半角标点转全角，
+              引号按配平修；真配不平的进「引号不配平」清单。
+            </div>
+          </div>
+          <button type="button" id="cleanup-orthography-run" class="btn btn--sm">运行…</button>
+          <button type="button" id="cleanup-orthography-review" class="btn btn--sm">引号不配平…</button>
         </div>
         <div class="finish-cleanup__actions">
           <button type="button" id="cleanup-undo" class="btn btn--sm">撤销上一次批量操作</button>

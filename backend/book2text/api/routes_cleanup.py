@@ -21,6 +21,7 @@ from ..core.project import continuations as continuations_module
 from ..core.project import editing
 from ..core.project import furniture as furniture_module
 from ..core.project import library as project_library
+from ..core.project import orthography as orthography_module
 from .deps import actor_name as _actor_name
 from .deps import library_dir as _library
 from .deps import project_error as _project_error
@@ -153,6 +154,46 @@ def furniture_apply(
     except editing.BlockConflict as exc:  # pragma: no cover
         raise AppError(409, "block_conflict", "块已经被改过", detail=str(exc)) from exc
     return _with_history(request, project_id, result)
+
+
+# ---------------------------------------------------------------- 字符规范化（任务 49）
+
+
+@router.get("/{project_id}/cleanup/orthography")
+def orthography_plan(request: Request, project_id: str) -> dict[str, Any]:
+    """只读：三组括号 / 半角标点 / 引号配平会改哪些块，以及真配不平的引号。"""
+    try:
+        return orthography_module.analyze(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+@router.post("/{project_id}/cleanup/orthography")
+def orthography_apply(
+    request: Request, project_id: str, body: CleanupRequest | None = None
+) -> dict[str, Any]:
+    """执行字符规范化：改 `block.text`，整批一个 batch，可一次撤销。"""
+    _require_main(request, project_id)
+    try:
+        result = orthography_module.apply(
+            project_id,
+            library=_library(request),
+            actor_name=_actor_name(request, body.actor_name if body else None),
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    except editing.BlockConflict as exc:  # pragma: no cover
+        raise AppError(409, "block_conflict", "块已经被改过", detail=str(exc)) from exc
+    return _with_history(request, project_id, result)
+
+
+@router.get("/{project_id}/cleanup/orthography/unbalanced")
+def orthography_unbalanced(request: Request, project_id: str) -> dict[str, Any]:
+    """只读：真配不平的引号（不硬配，交给人逐条看）。"""
+    try:
+        return orthography_module.unbalanced(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
 
 
 def _with_history(request: Request, project_id: str, result: dict[str, Any]) -> dict[str, Any]:

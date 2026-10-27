@@ -1495,3 +1495,38 @@ def test_page_index_scrolls_continuously_with_lazy_pages() -> None:
     # 缩放作用在整个页列上
     assert "for (const tile of indexTiles.values()) tile.style.width" in script
     assert ".index-pages" in css and ".index-page" in css
+
+
+def test_orthography_cleanup_is_wired() -> None:
+    """任务 49（M 刀）：括号 / 引号规范化的入口与「引号不配平」清单。
+
+    静态约定：收尾面板有「字符规范化」行（先只读分析、确认后整批写库），
+    另有独立的「引号不配平」清单，不混进普通差异队列。
+    """
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "cleanup-orthography-run",
+        "cleanup-orthography-review",
+        "cleanup-orthography-status",
+        "orthography-panel",
+        "orthography-list",
+        "orthography-meta",
+        "orthography-close",
+        "orthography-done",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    assert "function runOrthographyCleanup(" in script
+    assert "function openOrthographyPanel(" in script
+    assert "/cleanup/orthography" in script
+    assert "/cleanup/orthography/unbalanced" in script
+    # 先分析再写库：确认框里写清楚改多少块 / 字，且可撤销
+    assert "window.confirm(" in script
+    assert "整批可撤销" in script
+    # 不硬配：清单只提示、跳到审校页
+    assert "不整本硬配" in page
+    assert "看原文" in script
+    assert ".orthography-row" in css and ".modal--orthography" in css
