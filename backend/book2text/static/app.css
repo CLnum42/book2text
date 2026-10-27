@@ -1771,3 +1771,64 @@ body[data-workflow-step="recognition"] #page-setup-bar { display: none; }
 @media (max-width: 900px) {
   .index-side { width: 240px; }
 }
+
+
+/* ─────────────────────── 结果预览（任务 38，与导出同一份 segments） ─────────────────────── */
+.workflow-step--plain { color: var(--text-2); }
+.workflow-step--plain .workflow-step__badge {
+  background: transparent; border: 1px dashed var(--faint); color: var(--text-2);
+}
+.workflow-step--plain.is-current { color: var(--accent-text); }
+.workflow-step--plain.is-current .workflow-step__badge {
+  border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text);
+}
+
+.view--preview { overflow: hidden; }
+.preview-split { flex: 1; min-height: 0; display: flex; }
+.preview-pdf {
+  width: 46%; flex: none; display: flex; flex-direction: column; min-height: 0;
+  background: #e7e9ec; border-right: 1px solid var(--line);
+}
+.preview-pdf__bar {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  padding: 6px 12px; background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.preview-pdf__scroll { flex: 1; min-height: 0; overflow: auto; padding: 16px; text-align: center; }
+.preview-pdf__scroll img {
+  display: none; width: 100%; height: auto; background: var(--page-paper);
+  box-shadow: var(--shadow-1);
+}
+.preview-pdf__scroll img.is-ready { display: inline-block; }
+.preview-pdf__scroll .muted { margin: 0; }
+.preview-body { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.preview-toolbar {
+  display: flex; align-items: center; gap: 10px; flex: none;
+  padding: 6px 14px; background: var(--surface); border-bottom: 1px solid var(--line);
+  font-size: 11.5px; color: var(--faint);
+}
+.preview-toolbar .check { font-size: 11.5px; color: var(--text-2); }
+.preview-note { margin: 8px 14px 0; }
+.preview-scroll { flex: 1; min-height: 0; overflow: auto; padding: 6px 18px 40px; }
+.preview-segs { list-style: none; margin: 0; padding: 0; }
+.preview-seg { padding: 9px 10px 11px; border-radius: 8px; cursor: pointer; }
+.preview-seg + .preview-seg { border-top: 1px dashed var(--line-soft); }
+.preview-seg:hover { background: var(--surface-2); }
+.preview-seg.is-current { background: var(--accent-soft); }
+.preview-seg__head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 10.5px; color: var(--faint); margin-bottom: 3px;
+}
+.preview-seg__seq { font-weight: 600; color: var(--text-2); }
+.preview-seg__span {
+  font-size: 10px; color: var(--text-2); background: var(--surface-2);
+  border: 1px solid var(--line-strong); border-radius: 999px; padding: 0 6px;
+}
+.preview-seg__text {
+  margin: 0; font-size: 14px; line-height: 1.9; white-space: pre-wrap;
+  color: var(--text);
+}
+.preview-seg.is-current .preview-seg__text { color: var(--text); }
+@media (max-width: 1120px) {
+  .preview-pdf { width: 40%; }
+  .preview-seg__text { font-size: 13px; }
+}

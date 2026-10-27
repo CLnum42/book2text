@@ -605,6 +605,39 @@
         </div>
       </section>
 
+      <!-- ─────────────────────────── 视图：结果预览（与导出同一份 segments） ─────────────────────────── -->
+      <section class="view view--preview" id="view-preview" hidden>
+        <div class="preview-split">
+          <div class="preview-pdf">
+            <div class="preview-pdf__bar">
+              <button type="button" id="preview-prev" class="btn btn--sm" title="上一页">◀</button>
+              <span class="pager__no" id="preview-page-no">—</span>
+              <button type="button" id="preview-next" class="btn btn--sm" title="下一页">▶</button>
+              <span class="muted" id="preview-page-printed"></span>
+              <span class="spacer"></span>
+              <span class="muted" id="preview-follow"></span>
+            </div>
+            <div class="preview-pdf__scroll" id="preview-pdf-scroll">
+              <img id="preview-image" alt="页面预览">
+              <p class="muted" id="preview-image-status">正在渲染…</p>
+            </div>
+          </div>
+          <div class="preview-body">
+            <div class="preview-toolbar">
+              <span id="preview-meta">正在按导出设置组装正文…</span>
+              <span class="spacer"></span>
+              <label class="check check--line">
+                <input type="checkbox" id="preview-only-span"> 只看跨页段
+              </label>
+            </div>
+            <p class="hint preview-note" id="preview-note" hidden></p>
+            <div class="preview-scroll" id="preview-scroll">
+              <ol class="preview-segs" id="preview-segs"></ol>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ─────────────────────────── 视图：合并审阅 ─────────────────────────── -->
       <section class="view view--merge" id="view-merge" hidden>
         <div class="mergebar" id="merge-panel">

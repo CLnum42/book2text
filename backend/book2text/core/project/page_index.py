@@ -10,9 +10,10 @@
 1. **印刷页码**：优先读 `page.printed_page`（页码设置写进去的值）；没有就用页码候选
    （`page_numbers.collect_candidates`，只取页面下边带的纯数字行）。
    **不重新 OCR**。
-2. **对开双页**：这本书每张 PDF 页拍了两个印刷页（左偶右奇）。用相邻有页码页的
-   ``印刷页码差 / PDF 页差`` 的中位数判断：≈2 就是双页，≈1 是单页。
-   双页时一个 PDF 页有两个印刷页码，列表里两个都显示，不硬压成一个。
+2. **编号步长**：用相邻有页码页的 ``印刷页码差 / PDF 页差`` 中位数判断。
+   这本书是 **2**——每页仍是单页，只是影印时按"叶"编号（一叶两个面，只拍了其中一面），
+   所以页码隔 2 递增。**列表和页头只写实际检测到的那一个号**，不替书补出不存在的那一面；
+   输入框接受"同一叶的另一面"（如 61 → PDF 30）作为跳转便利，不写进标签。
 3. **章首**：页面靠前的文字块第一行匹配 ``^第[一二三四五六七八九十百零〇两]+回``
    就记一个分组标题；没有就不硬造层级。
 4. **缺页码的页**：照样列出，``printed=[]``，界面标「未识别页码」——缺页码不是失败。
@@ -63,8 +64,8 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
     )
     chapter_texts = _chapter_texts(directory)
     one_number = _one_number_per_page(pages, candidates)
-    two_up = _is_two_up(one_number)
-    ratio = 2 if two_up else 1
+    numbering_step = _numbering_step(one_number)
+    ratio = numbering_step
     offset = _offset(one_number, ratio)
     # 兜底：页码候选只收"版心外"的纯数字行；这本书有 14 页的页脚被并进了正文块、
     # 落在版心内，候选收不到。这里补看**下边带的数字行**（不看版心），但只接受
@@ -81,22 +82,29 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
         printed: list[str] = []
         detected: list[str] = []
         source = None
+        # 跳转可接受的值：实际页号；编号隔 2 的书额外接受"同一叶的另一面"。
+        # 这只影响输入框能不能命中，**不会**写进 printed 标签。
+        jump: list[str] = []
         if page.printed_page:
             printed = [str(page.printed_page)]
+            jump = list(printed)
             source = "manual"
         else:
             value = one_number.get(page.page_no)
             if value is not None:
                 detected = [str(value)]
-                printed = _spread_numbers(value) if two_up else [str(value)]
+                printed = [str(value)]
+                jump = [str(value)] + (
+                    [str(value + 1)] if numbering_step == 2 else []
+                )
                 source = "candidate"
         entries.append(
             {
                 "page_no": page.page_no,
                 "printed": printed,
                 "detected": detected,
+                "jump": jump,
                 "source": source,
-                "spread": bool(two_up and len(printed) > 1),
                 "chapter": title,
                 "missing": not printed,
             }
@@ -115,7 +123,7 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
     payload = {
         "schema": INDEX_SCHEMA,
         "generated_at": project.updated_at,
-        "two_up": two_up,
+        "numbering_step": numbering_step,
         "pages": entries,
         "chapters": chapters,
         "stats": {
@@ -125,7 +133,9 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
             "chapters": len(chapters),
             "complete": len(entries) > 0,
         },
-        "notes": _notes(two_up=two_up, numbered=numbered, entries=len(entries)),
+        "notes": _notes(
+            numbering_step=numbering_step, numbered=numbered, entries=len(entries)
+        ),
     }
     _CACHE[project_id] = (now, signature, payload)
     return payload
@@ -137,7 +147,7 @@ def page_index_summary(project_id: str, *, library: Path | None = None) -> dict:
     stats = data["stats"]
     return {
         **stats,
-        "two_up": data["two_up"],
+        "numbering_step": data["numbering_step"],
         "chapter_pages": [chapter["page_no"] for chapter in data["chapters"]],
         "generated_at": data["generated_at"],
     }
@@ -192,8 +202,13 @@ def _one_number_per_page(pages, candidates) -> dict[int, int]:
     return picked
 
 
-def _is_two_up(one_number: dict[int, int]) -> bool:
-    """相邻页的印刷页码差 / PDF 页差：≈2 说明一张 PDF 页含两个印刷页。"""
+def _numbering_step(one_number: dict[int, int]) -> int:
+    """全书的印刷页码步长（1 或 2）：相邻页的页码差 ÷ PDF 页差取中位数。
+
+    注意：步长 2 **不代表**一张 PDF 页含两个印刷页。这本书实测每页就是单页
+    （PDF 页 447.6×674.7 pt，比例 0.663），页码隔 2 是影印时按"叶"编号的规律。
+    步长只用来解释编号规律与输入框的跳转便利，不往标签里补号。
+    """
     ratios: list[float] = []
     ordered = sorted(one_number)
     for left, right in zip(ordered, ordered[1:]):
@@ -203,8 +218,8 @@ def _is_two_up(one_number: dict[int, int]) -> bool:
             continue
         ratios.append(delta / gap)
     if not ratios:
-        return False
-    return statistics.median(ratios) >= 1.5
+        return 1
+    return 2 if statistics.median(ratios) >= 1.5 else 1
 
 
 def _offset(one_number: dict[int, int], ratio: int) -> int:
@@ -254,13 +269,6 @@ def _bottom_line_numbers(directory: Path) -> dict[int, int]:
     return {page_no: value for page_no, (value, _) in found.items()}
 
 
-def _spread_numbers(value: int) -> list[str]:
-    """对开双页：偶数是左页，奇数是右页。"""
-    if value % 2 == 0:
-        return [str(value), str(value + 1)]
-    return [str(value - 1), str(value)]
-
-
 def _chapter_texts(directory: Path) -> dict[int, str]:
     """每页前几个文字块的首行（升序），给章首匹配用。"""
     with db_module.open_database(directory, apply_migrations=False) as conn:
@@ -299,10 +307,13 @@ def _chapter_of(text: str | None) -> str | None:
     return None
 
 
-def _notes(*, two_up: bool, numbered: int, entries: int) -> list[str]:
+def _notes(*, numbering_step: int, numbered: int, entries: int) -> list[str]:
     notes = []
-    if two_up:
-        notes.append("每张 PDF 页拍了两个印刷页（左偶右奇），所以一行显示两个印刷页码。")
+    if numbering_step == 2:
+        notes.append(
+            "这本书的印刷页码隔 2 递增（影印按“叶”编号，一叶两个面只拍了其中一面）；"
+            "列表只写每页实际检测到的那一个号。"
+        )
     if numbered == 0:
         notes.append("这本书还没有可用的印刷页码，列表只能按 PDF 页序跳。")
     elif numbered < entries:

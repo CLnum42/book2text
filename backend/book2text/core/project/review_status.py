@@ -559,7 +559,7 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
             "numbered": 0,
             "missing": len(pages),
             "chapters": 0,
-            "two_up": False,
+            "numbering_step": 1,
             "complete": False,
         }
 

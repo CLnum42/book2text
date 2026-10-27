@@ -98,7 +98,7 @@ function fillDefinitionList(node, pairs) {
 // 界面是"单窗口应用"（说明书第 7 节的效果图）：顶栏 + 四个视图（项目库 / 页面 /
 // 审校 / 合并审阅）+ 若干对话框。视图之间只切换 hidden，各视图内部状态各自保留。
 
-const VIEWS = ["library", "pages", "index", "review", "merge"];
+const VIEWS = ["library", "pages", "index", "review", "preview", "merge"];
 
 let currentView = "library";
 
@@ -110,6 +110,8 @@ const WORKFLOW_STEPS = [
   { id: "recognition", label: "文字识别", short: "识别" },
   { id: "index", label: "目录确认", short: "目录" },
   { id: "review", label: "正文审校", short: "审校" },
+  // 结果预览没有完成态：永远是普通色（plain），不绿也不灰。
+  { id: "preview", label: "结果预览", short: "预览", plain: true },
   { id: "export", label: "文件导出", short: "导出" },
 ];
 const PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition", "index"];
@@ -157,6 +159,9 @@ function showView(name) {
   }
   if (target === "index" && currentProject) {
     openPageIndex();
+  }
+  if (target === "preview" && currentProject) {
+    openPreview();
   }
 }
 
@@ -229,7 +234,7 @@ function stepProgress(id) {
       detail =
         `索引 ${ix.numbered || 0}/${ix.total || 0} 页有印刷页码` +
         (ix.chapters ? ` · ${ix.chapters} 章` : "") +
-        (ix.two_up ? " · 对开双页" : "") +
+        (ix.numbering_step === 2 ? " · 页码隔 2 递增" : "") +
         (ix.missing ? ` · ${ix.missing} 页缺页码（照样可点）` : "");
     }
   } else if (id === "review") {
@@ -244,6 +249,11 @@ function stepProgress(id) {
       detail =
         `待人工 ${needs} 页 · 可直接通过 ${passable} 页 · 版面未确认 ${layoutLeft} 页`;
     }
+  } else if (id === "preview") {
+    // 用户明确要求：结果预览不设完成态——它永远不是"已完成"，也不算失败。
+    done = false;
+    count = "";
+    detail = "导出结果的实时副本；没有完成态，随时可以看";
   } else if (id === "export") {
     const succeeded = (projectExports || []).filter(
       (record) => record.status === "succeeded"
@@ -264,6 +274,7 @@ function autoWorkflowStep() {
   if (exportOpen) return "export";
   if (currentView === "review") return "review";
   if (currentView === "index") return "index";
+  if (currentView === "preview") return "preview";
   if (currentView !== "pages") return "review";
   for (const id of PAGE_WORKFLOW_STEPS) {
     if (!stepProgress(id).done) return id;
@@ -290,7 +301,9 @@ function syncWorkflowSteps() {
   }
   nav.innerHTML = "";
   const isPackage = currentProject.kind === "package";
-  const visible = WORKFLOW_STEPS.filter((step) => !(isPackage && step.id === "export"));
+  const visible = WORKFLOW_STEPS.filter(
+    (step) => !(isPackage && (step.id === "export" || step.id === "preview"))
+  );
   visible.forEach((step) => {
     const index = WORKFLOW_STEPS.findIndex((item) => item.id === step.id);
     const progress = stepProgress(step.id);
@@ -304,12 +317,19 @@ function syncWorkflowSteps() {
       button.classList.add("is-current");
       button.setAttribute("aria-current", "step");
     }
+    if (step.plain) button.classList.add("workflow-step--plain");
     if (failed) button.classList.add("is-failed");
     else if (progress.done) button.classList.add("is-done");
 
     const badge = document.createElement("span");
     badge.className = "workflow-step__badge";
-    badge.textContent = failed ? "!" : progress.done ? "✓" : String(index + 1);
+    badge.textContent = step.plain
+      ? "▸"
+      : failed
+        ? "!"
+        : progress.done
+          ? "✓"
+          : String(index + 1);
 
     const name = document.createElement("span");
     name.className = "workflow-step__name";
@@ -323,15 +343,19 @@ function syncWorkflowSteps() {
 
     const count = document.createElement("span");
     count.className = "workflow-step__count";
-    count.textContent = failed
-      ? progress.failedText || `${progress.failed} 页失败`
-      : isCurrent
-        ? progress.count
-        : "";
+    count.textContent = step.plain
+      ? ""
+      : failed
+        ? progress.failedText || `${progress.failed} 页失败`
+        : isCurrent
+          ? progress.count
+          : "";
 
     button.title =
-      `${step.label} · ${failed ? "有失败" : progress.done ? "已完成" : "未完成"}` +
-      ` · ${progress.detail}`;
+      step.plain
+        ? `${step.label} · ${progress.detail}`
+        : `${step.label} · ${failed ? "有失败" : progress.done ? "已完成" : "未完成"}` +
+          ` · ${progress.detail}`;
     button.append(badge, name, count);
     nav.append(button);
   });
@@ -548,6 +572,8 @@ function goToWorkflowStep(id) {
     // 目录确认是单页预览：没手动改过缩放时给 100%（与页面视图的"单页"同一档）。
     if (!pageZoomTouched && pageZoomIndex < 3) pageZoomIndex = 3;
     showView("index");
+  } else if (id === "preview") {
+    showView("preview");
   } else {
     showView("pages");
     savePosition("pages", detailPageNo);
@@ -6887,7 +6913,7 @@ function renderPageIndex() {
     `${stats.numbered || 0} 页有印刷页码`,
   ];
   if (stats.chapters) bits.push(`${stats.chapters} 章`);
-  if (pageIndexData.two_up) bits.push("对开双页（一行两个印刷页）");
+  if (pageIndexData.numbering_step === 2) bits.push("页码隔 2 递增");
   if (stats.missing) bits.push(`${stats.missing} 页未识别页码`);
   meta.textContent = bits.join(" · ");
   meta.title = (pageIndexData.notes || []).join("\n");
@@ -6911,14 +6937,16 @@ function renderPageIndex() {
     row.className = "index-row" + (entry.missing ? " is-missing" : "");
     row.dataset.pageNo = String(entry.page_no);
     row.tabIndex = 0;
+    const extraJump = (entry.jump || []).filter(
+      (value) => !entry.printed.includes(value)
+    );
     row.title = entry.missing
       ? `第 ${entry.page_no} 页没有识别到印刷页码，照样可以点进去`
-      : entry.spread
-        ? `这一页含印刷页 ${entry.printed.join(" 与 ")}（对开双页）`
-        : `印刷页 ${entry.printed.join(" · ")}`;
+      : `印刷页 ${entry.printed[0] || ""}` +
+        (extraJump.length ? `（输入 ${extraJump.join(" / ")} 也会跳到这一页）` : "");
     const printed = document.createElement("span");
     printed.className = "index-row__printed";
-    printed.textContent = entry.missing ? "未识别页码" : entry.printed.join(" · ");
+    printed.textContent = entry.missing ? "未识别页码" : entry.printed[0] || "";
     const pdf = document.createElement("span");
     pdf.className = "index-row__pdf";
     pdf.textContent = `PDF ${entry.page_no}`;
@@ -6960,12 +6988,11 @@ function openIndexPage(pageNo, { scrollList = true } = {}) {
   el("index-page-no").textContent = `第 ${pageNo} 页`;
   const entry =
     pageIndexData && pageIndexData.pages.find((item) => item.page_no === pageNo);
+  // 页头只写实际检测到的印刷页；"同一叶另一面"的跳转便利只放在列表行的 title 里。
   el("index-printed").textContent = entry
     ? entry.missing
       ? "未识别页码（照样可以审校 / 导出）"
-      : entry.spread
-        ? `本页含印刷页 ${entry.printed.join(" · ")}`
-        : `印刷页 ${entry.printed.join(" · ")}`
+      : `印刷页 ${entry.printed[0] || ""}`
     : "";
   const pages = pageIndexData ? pageIndexData.pages : [];
   const index = pages.findIndex((item) => item.page_no === pageNo);
@@ -7045,8 +7072,9 @@ function jumpToPrintedPage() {
     return;
   }
   const wanted = Number(digits);
+  // 命中实际印刷页，或（编号隔 2 的书）同一叶的另一面；标签里不写后者。
   const exact = pageIndexData.pages.find((entry) =>
-    entry.printed.some((value) => Number(value) === wanted)
+    (entry.jump || entry.printed).some((value) => Number(value) === wanted)
   );
   if (exact) {
     openIndexPage(exact.page_no, { scrollList: true });
@@ -7057,7 +7085,7 @@ function jumpToPrintedPage() {
   }
   let best = null;
   for (const entry of pageIndexData.pages) {
-    for (const value of entry.printed) {
+    for (const value of entry.jump || entry.printed) {
       const distance = Math.abs(Number(value) - wanted);
       if (!best || distance < best.distance) {
         best = { distance, pageNo: entry.page_no, value: Number(value) };
@@ -7098,6 +7126,311 @@ function setupPageIndex() {
     if (!row) return;
     event.preventDefault();
     openIndexPage(Number(row.dataset.pageNo), { scrollList: true });
+  });
+}
+
+// ---------------------------------------------------------------- 结果预览（任务 38）
+//
+// 用户要求：预览就是**导出结果的实时副本**，不能另写一套段落合并逻辑。
+// 所以这里只调 `POST /export/preview`（与导出同一个组装器、同一份 options），
+// 把返回的 segments 直接铺开：段边界、跨页段、版心外排掉了多少，都在这一页上。
+
+let previewData = null;
+let previewProject = null;
+let previewOptions = null;
+let previewOptionsSignature = null;
+let previewLoading = false;
+let previewPageNo = null;
+let previewActiveSeq = null;
+let previewOnlySpan = false;
+let previewImageToken = 0;
+let previewScrollTimer = null;
+const previewSegmentNodes = new Map();
+
+async function openPreview() {
+  if (!currentProject) return;
+  const options = exportOptions();
+  const signature = JSON.stringify(options);
+  if (
+    previewLoading ||
+    (!previewData ||
+      previewProject !== currentProject.project_id ||
+      signature !== previewOptionsSignature)
+  ) {
+    await loadPreview(options, signature);
+    return;
+  }
+  renderPreview();
+  const target = previewTargetPage();
+  jumpPreviewToPage(target, { scrollRight: false });
+}
+
+function previewTargetPage() {
+  const total = currentProject ? currentProject.pages.length : 0;
+  const candidates = [previewPageNo, detailPageNo, 1];
+  for (const value of candidates) {
+    if (value && value >= 1 && value <= total) return value;
+  }
+  return 1;
+}
+
+async function loadPreview(options, signature) {
+  if (!currentProject) return;
+  previewLoading = true;
+  previewData = null;
+  previewProject = null;
+  el("preview-meta").textContent = "正在按导出设置组装正文…";
+  el("preview-segs").innerHTML = "";
+  el("preview-note").hidden = true;
+  previewSegmentNodes.clear();
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/export/preview`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
+      }
+    );
+    previewData = data;
+    previewProject = currentProject.project_id;
+    previewOptions = options;
+    previewOptionsSignature = signature;
+  } catch (error) {
+    el("preview-meta").textContent = `预览失败：${error.message || "未知错误"}`;
+    return;
+  } finally {
+    previewLoading = false;
+  }
+  renderPreview();
+  jumpPreviewToPage(previewTargetPage(), { scrollRight: false });
+}
+
+/** 与 body.txt 同一套过滤：空段不出现；没开注释流时脚注不进正文。 */
+function previewVisibleSegments() {
+  if (!previewData) return [];
+  const includeFootnotes = Boolean(previewOptions && previewOptions.include_footnotes);
+  return (previewData.segments || []).filter((segment) => {
+    if (!segment.text || !segment.text.trim()) return false;
+    if (!includeFootnotes && segment.type === "footnote") return false;
+    if (previewOnlySpan && (segment.pages || []).length < 2) return false;
+    return true;
+  });
+}
+
+function renderPreview() {
+  if (!previewData) return;
+  const segments = previewData.segments || [];
+  const preflight = previewData.preflight || {};
+  const marginBlocks = preflight.margin_blocks || {};
+  const chars = segments.reduce((sum, segment) => sum + (segment.text || "").length, 0);
+  const spans = segments.filter((segment) => (segment.pages || []).length > 1).length;
+  const bits = [
+    `组装 ${segments.length} 段`,
+    `${chars} 字`,
+    `跨页 ${spans} 段`,
+  ];
+  if (marginBlocks.excluded) bits.push(`版心外排除 ${marginBlocks.excluded} 块`);
+  bits.push(preflight.margin_judgement ? "按版心判定" : "按块类型判定");
+  const meta = el("preview-meta");
+  meta.textContent = bits.join(" · ");
+  const excludedByType = marginBlocks.excluded_by_type || {};
+  const excludedText = Object.entries(excludedByType)
+    .map(([type, count]) => `${BLOCK_TYPE_LABELS[type] || type} ${count}`)
+    .join(" / ");
+  meta.title =
+    `与导出共用同一份 segments（${segments.length} 段）。` +
+    (marginBlocks.excluded
+      ? `版心外排除 ${marginBlocks.excluded} 块${excludedText ? `（${excludedText}）` : ""}。`
+      : "") +
+    (spans ? `跨页段 ${spans} 段，标「跨页续」。` : "当前没有跨页段。");
+
+  const list = el("preview-segs");
+  list.innerHTML = "";
+  previewSegmentNodes.clear();
+  const visible = previewVisibleSegments();
+  if (!visible.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent = previewOnlySpan
+      ? "没有跨页段（导出组装里没有段落被页面切开）。"
+      : "这一段导出设置下没有可预览的正文。";
+    list.append(empty);
+  }
+  for (const segment of visible) {
+    list.append(buildPreviewSegment(segment));
+  }
+  const onlySpan = el("preview-only-span");
+  onlySpan.checked = previewOnlySpan;
+}
+
+function buildPreviewSegment(segment) {
+  const pages = (segment.pages || []).map((page) => page.page_no);
+  const li = document.createElement("li");
+  li.className = "preview-seg";
+  li.dataset.seq = String(segment.seq);
+  li.dataset.firstPage = String(pages[0] || "");
+
+  const head = document.createElement("div");
+  head.className = "preview-seg__head";
+  const seq = document.createElement("span");
+  seq.className = "preview-seg__seq";
+  seq.textContent = `§${segment.seq}`;
+  const where = document.createElement("span");
+  where.textContent =
+    pages.length > 1
+      ? `第 ${pages[0]}–${pages[pages.length - 1]} 页`
+      : `第 ${pages[0] || "?"} 页`;
+  head.append(seq, where);
+  if (pages.length > 1) {
+    const span = document.createElement("span");
+    span.className = "preview-seg__span";
+    span.textContent = "跨页续";
+    span.title = `这一段跨了第 ${pages.join(" / ")} 页`;
+    head.append(span);
+  }
+
+  const text = document.createElement("p");
+  text.className = "preview-seg__text";
+  text.textContent = segment.text;
+  li.append(head, text);
+  li.addEventListener("click", () => {
+    setPreviewActive(segment.seq, { scrollRight: false });
+    if (pages[0]) updatePreviewLeftPage(pages[0]);
+  });
+  previewSegmentNodes.set(segment.seq, li);
+  return li;
+}
+
+function setPreviewActive(seq, { scrollRight = false } = {}) {
+  const node = previewSegmentNodes.get(seq);
+  if (!node) return;
+  for (const other of previewSegmentNodes.values()) {
+    other.classList.remove("is-current");
+  }
+  node.classList.add("is-current");
+  previewActiveSeq = seq;
+  if (scrollRight) {
+    node.scrollIntoView({ block: "start", behavior: "auto" });
+  }
+  const segment = (previewData.segments || []).find((item) => item.seq === seq);
+  const firstPage = segment && segment.pages && segment.pages[0];
+  if (firstPage && firstPage.page_no !== previewPageNo) {
+    updatePreviewLeftPage(firstPage.page_no);
+  }
+}
+
+/** 右边滚动 → 左边跟到这一段的第一页（不让它再反向驱动右边）。 */
+function onPreviewScroll() {
+  if (previewScrollTimer) return;
+  previewScrollTimer = window.setTimeout(() => {
+    previewScrollTimer = null;
+    const scroller = el("preview-scroll");
+    if (!scroller) return;
+    const top = scroller.getBoundingClientRect().top + 6;
+    let active = null;
+    for (const node of scroller.querySelectorAll(".preview-seg")) {
+      if (node.getBoundingClientRect().bottom >= top) {
+        active = node;
+        break;
+      }
+    }
+    if (!active) return;
+    const seq = Number(active.dataset.seq);
+    if (seq === previewActiveSeq) return;
+    setPreviewActive(seq, { scrollRight: false });
+  }, 80);
+}
+
+function updatePreviewLeftPage(pageNo) {
+  if (!currentProject) return;
+  const total = currentProject.pages.length;
+  if (!pageNo || pageNo < 1 || pageNo > total) return;
+  previewPageNo = pageNo;
+  const image = el("preview-image");
+  const status = el("preview-image-status");
+  const token = ++previewImageToken;
+  status.hidden = false;
+  status.textContent = "正在渲染…";
+  image.classList.remove("is-ready");
+  image.onload = () => {
+    if (token !== previewImageToken) return;
+    status.hidden = true;
+    image.classList.add("is-ready");
+  };
+  image.onerror = () => {
+    if (token !== previewImageToken) return;
+    status.hidden = false;
+    status.textContent = "这一页的图像读不出来。";
+  };
+  image.src = pageImageUrl(pageNo, "view");
+  image.alt = `第 ${pageNo} 页`;
+  el("preview-page-no").textContent = `第 ${pageNo} 页`;
+  el("preview-prev").disabled = pageNo <= 1;
+  el("preview-next").disabled = pageNo >= total;
+  updatePreviewPrintedLabel(pageNo);
+}
+
+/** 页头印刷页：目录确认的索引已经算过，直接借；没算过就懒加载一次。 */
+function updatePreviewPrintedLabel(pageNo) {
+  const label = el("preview-page-printed");
+  if (!label) return;
+  if (pageIndexData && pageIndexProject === currentProject.project_id) {
+    const entry = pageIndexData.pages.find((item) => item.page_no === pageNo);
+    label.textContent = entry
+      ? entry.missing
+        ? "未识别页码"
+        : `印刷页 ${entry.printed[0] || ""}`
+      : "";
+    return;
+  }
+  label.textContent = "";
+  if (!pageIndexLoading) {
+    loadPageIndex().then(() => updatePreviewPrintedLabel(previewPageNo));
+  }
+}
+
+/** 左边翻页 / 输入页码 → 右边滚到这一页的第一段。 */
+function jumpPreviewToPage(pageNo, { scrollRight = true } = {}) {
+  if (!currentProject) return;
+  updatePreviewLeftPage(pageNo);
+  if (!previewData) return;
+  const segment = previewVisibleSegments().find((item) =>
+    (item.pages || []).some((page) => page.page_no === pageNo)
+  );
+  const note = el("preview-note");
+  if (!segment) {
+    note.hidden = false;
+    note.textContent = previewOnlySpan
+      ? `第 ${pageNo} 页没有跨页段。`
+      : `第 ${pageNo} 页没有进入正文的段落（封面 / 空白 / 整页插图，或按当前导出设置被排除）。`;
+    return;
+  }
+  note.hidden = true;
+  setPreviewActive(segment.seq, { scrollRight });
+}
+
+function stepPreviewPage(delta) {
+  if (!currentProject) return;
+  const total = currentProject.pages.length;
+  const next = Math.min(total, Math.max(1, (previewPageNo || 1) + delta));
+  if (next === previewPageNo) return;
+  jumpPreviewToPage(next, { scrollRight: true });
+}
+
+function setupPreview() {
+  el("preview-prev").addEventListener("click", () => stepPreviewPage(-1));
+  el("preview-next").addEventListener("click", () => stepPreviewPage(1));
+  el("preview-scroll").addEventListener("scroll", onPreviewScroll, { passive: true });
+  el("preview-only-span").addEventListener("change", (event) => {
+    previewOnlySpan = Boolean(event.target.checked);
+    renderPreview();
+    if (previewActiveSeq && previewSegmentNodes.has(previewActiveSeq)) {
+      setPreviewActive(previewActiveSeq, { scrollRight: false });
+    } else {
+      const first = previewVisibleSegments()[0];
+      if (first) setPreviewActive(first.seq, { scrollRight: true });
+    }
   });
 }
 
@@ -12856,6 +13189,7 @@ function boot() {
   setupRecognitionSettings();
   setupPageNumberPanel();
   setupPageIndex();
+  setupPreview();
   setupExportPanel();
   setupStructurePanel();
   showView("library");
