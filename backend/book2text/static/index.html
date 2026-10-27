@@ -258,11 +258,11 @@
                   <div class="panel__bookrow">
                     <span>全书…</span>
                     <button type="button" id="margin-fit-all">全部改为每页自动拟合</button>
-                    <button type="button" id="margin-suggest" title="从全书的行框推算一个默认版心，只在页内行不足时兜底">推算默认</button>
+                    <button type="button" id="margin-suggest" title="从全书的行框推算一个默认版心，只给显式「沿用全局」的页">推算默认</button>
                   </div>
 
                   <details class="panel__subdetails" id="margin-global-details">
-                    <summary>默认版心（页内行不足时使用）</summary>
+                    <summary>默认版心（只给「沿用全局」的页）</summary>
                     <div class="margin-current" id="margin-global"></div>
                     <div id="margin-suggestion" hidden>
                       <div class="margin-suggestion__title" id="margin-suggestion-title"></div>
@@ -1123,7 +1123,7 @@
             <div class="finish-title"><strong>版心</strong><span class="finish-status" id="finish-margin-status"></span></div>
             <div class="finish-sub" id="finish-margin-sub"></div>
           </div>
-          <button type="button" id="finish-margin-pages" class="finish-action" hidden>查看回退默认页</button>
+          <button type="button" id="finish-margin-pages" class="finish-action" hidden>查看兜底 / 未定页</button>
         </li>
         <li class="finish-row" id="finish-row-layout">
           <span class="finish-icon" id="finish-icon-layout">·</span>

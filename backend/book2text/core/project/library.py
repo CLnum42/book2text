@@ -183,8 +183,11 @@ class Page:
     margin_box: tuple[float, float, float, float] | None = None
     """这一页的**自定义版心**（归一化四边）；只在 ``margin_box_mode == "custom"`` 时有意义。"""
     margin_box_mode: str = "inherit"
-    """版心三态：``inherit`` 跟随项目 / ``custom`` 本页 / ``none`` 不适用。
-    见 `core/project/margin_box.py`；这一刀只存储与展示，不影响导出。"""
+    """版心四态：``auto`` 每页自动拟合（默认）/ ``inherit`` 跟随项目 /
+    ``custom`` 本页 / ``none`` 不适用。见 `core/project/margin_box.py`。"""
+    margin_box_method: str | None = None
+    """``auto`` 页的框怎么来的：``fit``（迭代拟合）/ ``bbox``（本页包围盒兜底）/
+    NULL（没有框：``custom`` / ``inherit`` / ``none``，或这一页**未定**）。迁移 0019。"""
     printed_page: str | None = None
     """这一页的**印刷页码**（任务 55）。TEXT，允许罗马数字；NULL = 还没确定。
     与 `page_label`（PDF 自己的页标签）分开；导出当前不读这一列。"""
@@ -209,6 +212,7 @@ class Page:
             "note": self.note,
             "margin_box": list(self.margin_box) if self.margin_box else None,
             "margin_box_mode": self.margin_box_mode,
+            "margin_box_method": self.margin_box_method,
             "printed_page": self.printed_page,
             "printed_page_source": self.printed_page_source,
         }
@@ -684,6 +688,7 @@ def _row_to_page(row) -> Page:
         note=row["note"],
         margin_box=_parse_margin_box(_column(row, "margin_box")),
         margin_box_mode=_column(row, "margin_box_mode") or "inherit",
+        margin_box_method=_column(row, "margin_box_method"),
         printed_page=_column(row, "printed_page"),
         printed_page_source=_column(row, "printed_page_source"),
     )

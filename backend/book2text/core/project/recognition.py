@@ -131,6 +131,12 @@ def recognition_settings(project_id: str, *, library: Path | None = None) -> dic
 # 行图外扩比例（说明书 8.5：外扩约 2% 以保留笔画）
 AUX_LINE_PADDING = 0.02
 
+# 送 OCR 引擎的最小裁图边长（像素）。RapidOCR / ONNX Runtime 在退化的小图上会在
+# native 层直接段错误（exit 139），Python 的 try/except 捕不到——只能在送进去之前挡掉。
+# 真书第 34 页在裁图 A/B 实验里触发过一次；隔离复现时同一张图单独跑又正常，
+# 所以这里按"最小尺寸 + RGB"做底线防护，不假装能修好引擎本身的崩溃。
+CROP_MIN_PX = 8
+
 ORIGIN_OCR = "ocr"
 REVIEW_UNREVIEWED = "unreviewed"
 
@@ -623,10 +629,11 @@ def run_auxiliary(
             aux_text = ""
             if bbox is not None:
                 crop = _crop_line(image, blocks_module.BBox(*bbox))
-                try:
-                    aux_text = _read_one_line(secondary, crop)
-                finally:
-                    crop.close()
+                if crop is not None:  # 退化 / 过小的行框不送引擎（native 崩溃风险）
+                    try:
+                        aux_text = _read_one_line(secondary, crop)
+                    finally:
+                        crop.close()
             status = (
                 compare_module.compare_line(row["text"] or "", aux_text)
                 if aux_text
@@ -799,7 +806,14 @@ def recognize_region(
         bottom = min(page_height, math.ceil(expanded.y1 * page_height) + 2)
         if right <= left or bottom <= top:  # pragma: no cover - 上面已经挡掉退化框
             raise ProjectError("框太小了，裁不出图")
+        if right - left < CROP_MIN_PX or bottom - top < CROP_MIN_PX:
+            raise ProjectError(
+                f"框太小了：裁出来不足 {CROP_MIN_PX}×{CROP_MIN_PX} 像素，"
+                "识别引擎在这种图上可能直接崩溃"
+            )
         crop = image.crop((left, top, right, bottom))
+        if crop.mode not in ("RGB", "L"):  # pragma: no cover - 渲染出来就是 RGB
+            crop = crop.convert("RGB")
         crop_width, crop_height = right - left, bottom - top
         try:
             started = time.perf_counter()
@@ -849,16 +863,23 @@ def recognize_region(
 
 
 def _crop_line(image, bbox: blocks_module.BBox):
-    """按行框裁一张小图（说明书 8.5：外扩约 2% 以保留笔画）。"""
+    """按行框裁一张小图（说明书 8.5：外扩约 2% 以保留笔画）。
+
+    退化 / 过小的行框返回 None（调用方按"这一行没读出"处理），**不送 OCR 引擎**：
+    见 `CROP_MIN_PX` 的说明，native 崩溃无法用异常兜住。
+    """
     width, height = image.size
     expanded = bbox.expanded(AUX_LINE_PADDING)
     left = max(0, int(expanded.x0 * width) - 2)
     top = max(0, int(expanded.y0 * height) - 2)
     right = min(width, int(expanded.x1 * width) + 2)
     bottom = min(height, int(expanded.y1 * height) + 2)
-    if right <= left or bottom <= top:  # pragma: no cover - 退化框
-        raise ProjectError("行框太小，裁不出图")
-    return image.crop((left, top, right, bottom))
+    if right - left < CROP_MIN_PX or bottom - top < CROP_MIN_PX:
+        return None
+    crop = image.crop((left, top, right, bottom))
+    if crop.mode not in ("RGB", "L"):  # pragma: no cover - 渲染出来就是 RGB
+        crop = crop.convert("RGB")
+    return crop
 
 
 def _read_one_line(engine: OcrEngine, crop) -> str:

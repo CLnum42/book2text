@@ -156,15 +156,18 @@ def effective_margin_box(
 
     - ``none``：无；
     - ``custom``：本页四边；
-    - ``auto``：本页拟合四边；还没有拟合结果时回退全局兜底；
+    - ``auto``：**本页落库的拟合框**（任务 33 起不再回退全局）；
     - ``inherit``：显式沿用全局兜底。
+
+    ``auto`` 页的 ``margin_box`` 为 NULL 表示**未定**（没有检测行 / 还没拟合）：
+    返回 None，调用方按"不参与版心判定"处理，绝不拿全局框顶替。
     """
     if page.margin_box_mode == MODE_NONE:
         return None
     if page.margin_box_mode == MODE_CUSTOM:
         return page.margin_box
     if page.margin_box_mode == MODE_AUTO:
-        return page.margin_box or project.margin_box
+        return page.margin_box
     return project.margin_box
 
 
@@ -177,17 +180,21 @@ def page_margin_source_label(
     if page.margin_box_mode == MODE_CUSTOM:
         return "本页自定义"
     if page.margin_box_mode == MODE_AUTO:
-        return "自动拟合" if page.margin_box else "沿用默认版心（行不足）"
+        method = getattr(page, "margin_box_method", None)
+        if page.margin_box is not None:
+            return FIT_METHOD_LABELS.get(method or FIT_METHOD_FIT, "自动拟合")
+        return FIT_METHOD_LABELS[FIT_METHOD_UNDETERMINED]
     return "沿用默认版心"
 
 
 def margin_box_for_export(
     project: library_module.Project, page: library_module.Page
 ) -> BBox | None:
-    """导出仍沿用旧口径：auto 页不把拟合框带进导出，避免改变既有导出结果。
+    """导出用的版心：**读与界面 / 审计同一份落库结果**（任务 33）。
 
-    这是任务 62 的明确边界：页面 / 审校用每页拟合；导出开关保持默认关，
-    开关关闭时结果必须与升级前逐字节相同。将来若要导出按页版心，需要单独决策。
+    任务 62 时导出刻意不认每页拟合框、只在开关打开时按旧口径（全局框）判定；
+    现在每页拟合结果真正落库（``page.margin_box``），界面、导出、审计读同一个框。
+    开关仍然默认关——关着时导出与升级前逐字节相同。
     """
     return export_margin_box(project, page)
 
@@ -195,19 +202,21 @@ def margin_box_for_export(
 def export_margin_box(
     project: library_module.Project, page: library_module.Page
 ) -> BBox | None:
-    """**导出**用的版心（任务 53 的安全阀）。
+    """**导出**用的版心（任务 53 的安全阀 + 任务 33 的落库口径）。
 
-    与 `effective_margin_box` 的区别只有一处：全局版心是**自动推算**
-    （``margin_box_source == "auto"``）且这一页「沿用全局」时，导出**不认**它，退回块类型判定。
+    - ``custom``：本页四边；
+    - ``auto``：本页**落库的**拟合框 / 包围盒；NULL = 未定 → 不判定（不拿全局框顶替）；
+    - ``inherit``：沿用全局框，但全局框是**自动推算、还没人确认**（source=auto）时
+      导出不认它，退回块类型判定——一个还没人确认过的框不该决定哪些字进正文。
 
-    为什么：自动推算随识别页增加会小幅移动（见 docs/development-log.md 任务 53 的实测），
-    而版心在导出里是"正文 = 版心内"的硬判据——一个还没人确认过的框不该决定哪些字进正文。
-    自动框只用于**显示与审校过滤**；用户在页面视图点「采用为全局版心」之后
-    （source 变成 manual）导出才按它判定。这样"这一刀不改导出"对所有既有项目成立。
+    为什么 ``inherit`` 还保留这条安全阀：全局框只作"行不足时的显式兜底"，用户没有
+    确认之前不该影响导出。``auto`` 页现在有本页自己的框，不再受这条影响。
     """
     if page.margin_box_mode == MODE_NONE:
         return None
     if page.margin_box_mode == MODE_CUSTOM:
+        return page.margin_box
+    if page.margin_box_mode == MODE_AUTO:
         return page.margin_box
     if project.margin_box_source == SOURCE_AUTO:
         return None
@@ -585,6 +594,26 @@ AUTO_SAFETY_PASSES = 3
 # 尾部回收的上限：只收"像一行字"的长行，避免把跨页横线 / 装饰框当成正文。
 AUTO_TAIL_MAX_HEIGHT = 0.06
 
+# ---- 迭代纳入（任务 33）：长行框只覆盖正文宽行，诗行 / 段末短行 / 章节末行会漏掉。
+# 从长行框出发，反复把"中心在框内、与框相交、或中心距框边 < 1 个行距"的**像一行字**
+# 的行纳入，重算四边，直到不再变化。行距用本页相邻行中心的**中位间距**（不是单个
+# 行框的高度）：真书上中位行距约 0.034，诗行与上一行常隔着 1–1.5 个字高。
+AUTO_INCLUDE_PASSES = 200
+# 行距的上下限：太小会把抖动当相邻，太大（>6% 页高）会一路爬到页眉 / 页码。
+AUTO_INCLUDE_MIN_GAP = 0.012
+AUTO_INCLUDE_MAX_GAP = 0.06
+# "像一行字"的最低线：再薄就是横线 / 装饰（真书正文行高约 0.017–0.021）。
+AUTO_MIN_LINE_HEIGHT = 0.003
+AUTO_MIN_LINE_WIDTH = 0.005
+# 横排正文行的宽高比下限：真书诗行约 2.5–22，竖排旁批约 0.5。
+# 不加这一条，页边那些"又高又窄"的竖排旁批会因为纵向与正文框相交被误并进来，
+# 把版心左 / 右边界一路拉到页边（第 159 页实测）。
+AUTO_MIN_LINE_ASPECT = 1.5
+# 章节末行 / 段末诗行与下半页正文之间常隔 1.5–2 个行距，1 个行距够不到。
+# 对这些行放宽到 AUTO_INCLUDE_MAX_GAP，但要求它**够宽**（占当前框宽 ≥25%）：
+# 页码（真书约 2–7%）仍然进不来；真书第一卷 p15 的章末对句（58%）能进来。
+AUTO_EDGE_REACH_RATIO = 0.25
+
 
 def _parse_box(raw) -> BBox | None:
     if not raw or len(raw) != 4:
@@ -611,23 +640,101 @@ def _expand_line(box: BBox, fraction: float) -> BBox:
     )
 
 
-def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
-    """用一页的检测行拟合版心（纯函数）。
+def _is_line_like(box: BBox) -> bool:
+    """像一条**检测出来的文字行**：不是横线 / 装饰，也不是退化框。
 
-    - 只保留宽度 > 45% 页宽的正文长行；
+    只用于"兜底包围盒"：竖排书的行框可能很高（> 6% 页高），不能按横排的行高上限
+    过滤，否则整页都会变成"未定"。所以这里只挡极薄、极窄的框。
+    """
+    width = box[2] - box[0]
+    height = box[3] - box[1]
+    return width >= AUTO_MIN_LINE_WIDTH and height >= AUTO_MIN_LINE_HEIGHT
+
+
+def _looks_like_text_line(box: BBox) -> bool:
+    """像**正文的一行横排字**：行高合理、宽度不是一条线。
+
+    竖排旁批 / 跨页横线 / 装饰框会被排除：真书第 12、16、370 页里那些
+    ``h≈0.07–0.13``、``w≈0.02–0.05`` 的竖条就是竖排旁批，不属于正文行。
+    """
+    height = box[3] - box[1]
+    if height <= 0 or height > AUTO_TAIL_MAX_HEIGHT:
+        return False
+    return _is_line_like(box) and (box[2] - box[0]) / height >= AUTO_MIN_LINE_ASPECT
+
+
+def _union_boxes(boxes: Sequence[BBox]) -> BBox:
+    return (
+        min(box[0] for box in boxes),
+        min(box[1] for box in boxes),
+        max(box[2] for box in boxes),
+        max(box[3] for box in boxes),
+    )
+
+
+def _line_pitch(boxes: Sequence[BBox]) -> float:
+    """本页相邻行中心的**中位间距**（"1 行高"的实用口径）。"""
+    centers = sorted((box[1] + box[3]) / 2 for box in boxes)
+    gaps = [
+        later - earlier
+        for earlier, later in zip(centers, centers[1:])
+        if later - earlier > 0.001
+    ]
+    if not gaps:
+        return AUTO_SAFETY_GAP
+    median = _quantile(gaps, 0.5)
+    return min(AUTO_INCLUDE_MAX_GAP, max(AUTO_INCLUDE_MIN_GAP, median))
+
+
+def _within_reach(line: BBox, box: Sequence[float], pitch: float) -> bool:
+    """这一行该不该被纳入版心：中心在框内 / 与框相交 / 中心距框边 < 1 行距。"""
+    cx = (line[0] + line[2]) / 2
+    cy = (line[1] + line[3]) / 2
+    if box[0] <= cx <= box[2] and box[1] <= cy <= box[3]:
+        return True
+    if not (
+        line[2] < box[0]
+        or line[0] > box[2]
+        or line[3] < box[1]
+        or line[1] > box[3]
+    ):
+        return True
+    dx = max(box[0] - cx, 0.0, cx - box[2])
+    dy = max(box[1] - cy, 0.0, cy - box[3])
+    reach = max(dx, dy)
+    if reach <= pitch:
+        return True
+    # 章节间的空白可以到 2 个行距；只对"像正文一行、且够宽"的行放宽。
+    box_width = box[2] - box[0]
+    line_width = line[2] - line[0]
+    return (
+        reach <= AUTO_INCLUDE_MAX_GAP
+        and box_width > 0
+        and line_width / box_width >= AUTO_EDGE_REACH_RATIO
+    )
+
+
+def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
+    """用一页的检测行拟合版心（纯函数；**只管拟合，不做兜底**）。
+
+    - 只保留宽度 > 45% 页宽的正文长行作为起点；
     - 每行先按**行框自身**外扩 2%；
     - 左 / 右 / 上 / 下分别取 5% / 95% 分位；
     - 按行距做安全扩张，再把"中心仍在框外"的首尾正文长行收回来；
-    - 有效行 < 3 或结果不合法 → None（调用方回退全局兜底）。
+    - **迭代纳入**（任务 33）：从长行框出发，把中心在框内 / 与框相交 / 中心距框边
+      小于 1 个本页行距的"像一行字"的行纳入，重算四边，直到不再变化（上限
+      ``AUTO_INCLUDE_PASSES`` 轮）。诗行、段末短行、章节末行会因此被收回；
+      竖排旁批 / 横线 / 装饰框（行高 > 6% 或极薄）不会。
+    - 有效长行 < 3 或结果不合法 → None（调用方改走本页包围盒兜底，**不用全局框**）。
+
+    返回的四边是**纳入行框的并集**（每行先外扩 2%），不再保留 5%/95% 的余量。
     """
-    valid: list[BBox] = []
-    for raw in lines:
-        box = _parse_box(raw)
-        if box is None:
-            continue
-        if box[2] - box[0] <= AUTO_LONG_LINE:
-            continue
-        valid.append(_expand_line(box, AUTO_PADDING))
+    parsed = [box for box in (_parse_box(raw) for raw in lines) if box is not None]
+    valid: list[BBox] = [
+        _expand_line(box, AUTO_PADDING)
+        for box in parsed
+        if box[2] - box[0] > AUTO_LONG_LINE and _looks_like_text_line(box)
+    ]
     if len(valid) < AUTO_MIN_LINES:
         return None
     lefts = [box[0] for box in valid]
@@ -694,10 +801,96 @@ def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
             box[1] = line[1]
         if cy > box[3]:
             box[3] = line[3]
+
+    # 迭代纳入（任务 33）：短行（诗行 / 段末 / 章节末行）不在 valid 里，但它们是正文。
+    # 从上面的长行框出发，把它够得着的"像一行字"的行并进来，重算四边，直到不再变化。
+    bodies = [
+        _expand_line(line, AUTO_PADDING)
+        for line in parsed
+        if _looks_like_text_line(line)
+    ]
+    pitch = _line_pitch(bodies)
+    included = {index for index, line in enumerate(bodies) if _within_reach(line, box, pitch)}
+    # 每轮至少并入一行；顺序扫描时"更靠上"的行可能在同一轮里被过早检查，
+    # 所以轮数上限按本页行数算（+2 轮收尾），再套一个硬上限。
+    passes = min(AUTO_INCLUDE_PASSES, len(bodies) + 2)
+    for _ in range(passes):
+        if included:
+            box = list(_union_boxes([bodies[index] for index in included]))
+        grew = False
+        for index, line in enumerate(bodies):
+            if index in included:
+                continue
+            if not _within_reach(line, box, pitch):
+                continue
+            included.add(index)
+            box = list(_union_boxes([bodies[i] for i in included]))
+            grew = True
+        if not grew:
+            break
     try:
         return normalize_margin_box(box)
     except MarginBoxError:
         return None
+
+
+# 兜底方式：没有全局框可退，退"本页所有检测行的包围盒"；连行都没有才算"未定"。
+FIT_METHOD_FIT = "fit"
+FIT_METHOD_BBOX = "bbox"
+FIT_METHOD_UNDETERMINED = "undetermined"
+FIT_METHOD_LABELS = {
+    FIT_METHOD_FIT: "自动拟合",
+    FIT_METHOD_BBOX: "本页包围盒（兜底）",
+    FIT_METHOD_UNDETERMINED: "未定（没有检测行）",
+}
+
+
+@dataclass(frozen=True)
+class FittedMargin:
+    """一页的拟合结果：四边 + 怎么来的 + 用了多少行。"""
+
+    box: BBox | None
+    method: str
+    lines: int
+    long_lines: int
+
+    @property
+    def undetermined(self) -> bool:
+        return self.method == FIT_METHOD_UNDETERMINED
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "margin_box": list(self.box) if self.box else None,
+            "method": self.method,
+            "label": FIT_METHOD_LABELS.get(self.method, self.method),
+            "lines": self.lines,
+            "long_lines": self.long_lines,
+        }
+
+
+def fit_page_margin_box(lines: Sequence[Sequence[float]]) -> FittedMargin:
+    """一页的版心：先拟合；拟合不出来就退本页所有检测行的包围盒。
+
+    **绝不回退全局版心**（任务 33）：全局框对这本书根本不成立，退过去就等于
+    在"按版心判定"打开时把正文从两头切掉。本页连一条检测行都没有时标"未定"，
+    不参与版心判定（导出预检会报"版心未定 N 页"）。
+    """
+    parsed = [box for box in (_parse_box(raw) for raw in lines) if box is not None]
+    bodies = [box for box in parsed if _looks_like_text_line(box)]
+    long_lines = [box for box in bodies if box[2] - box[0] > AUTO_LONG_LINE]
+    fitted = fit_box_from_lines(lines)
+    if fitted is not None:
+        return FittedMargin(fitted, FIT_METHOD_FIT, len(parsed), len(long_lines))
+    usable = [box for box in parsed if _is_line_like(box)]
+    if not usable:
+        return FittedMargin(None, FIT_METHOD_UNDETERMINED, len(parsed), len(long_lines))
+    try:
+        box = normalize_margin_box(
+            _union_boxes([_expand_line(line, AUTO_PADDING) for line in usable])
+        )
+    except (ValueError, MarginBoxError):
+        return FittedMargin(None, FIT_METHOD_UNDETERMINED, len(parsed), len(long_lines))
+    return FittedMargin(box, FIT_METHOD_BBOX, len(parsed), len(long_lines))
 
 
 def _latest_layout_boxes(directory: Path, page_id: str) -> list[BBox]:
@@ -741,11 +934,13 @@ def fit_page_margin(
     library: Path | None = None,
     only_auto: bool = True,
 ) -> dict[str, object]:
-    """用这一页的检测行拟合版心，写回 `page.margin_box`（只更新 auto 页）。
+    """用这一页的检测行拟合版心，写回 `page.margin_box` + `margin_box_method`。
 
     - **不覆盖 custom**；`none` 也不动；
-    - 有效行 < 3 → `margin_box = NULL`，读取时回退全局兜底；
-    - 重检测后再次调用会覆盖上一次的自动拟合结果。
+    - 拟合不出（有效长行 < 3）→ 退**本页所有检测行的包围盒**（method=`bbox`）；
+    - 本页连检测行都没有 → `margin_box = NULL` + method=NULL（**未定**），
+      读取时**不回退全局框**，也不参与版心判定；
+    - 重检测 / 重新拟合时覆盖上一次的结果（界面、导出、审计读同一份）。
     """
     target_library = library if library is not None else library_module.default_library_dir()
     directory = library_module.require_project_dir(project_id, library=target_library)
@@ -758,20 +953,25 @@ def fit_page_margin(
     if only_auto and page.margin_box_mode != MODE_AUTO:
         return {"page_no": page_no, "updated": False, "reason": "not_auto"}
     boxes = _latest_layout_boxes(directory, page.page_id)
-    fitted = fit_box_from_lines(boxes)
+    fitted = fit_page_margin_box(boxes)
+    method = None if fitted.undetermined else fitted.method
     with db_module.open_database(directory) as conn:
         conn.execute(
-            "UPDATE page SET margin_box = ? WHERE page_id = ? AND margin_box_mode IN ('auto','inherit')",
-            (serialize_margin_box(fitted), page.page_id),
+            "UPDATE page SET margin_box = ?, margin_box_method = ?"
+            " WHERE page_id = ? AND margin_box_mode IN ('auto','inherit')",
+            (serialize_margin_box(fitted.box), method, page.page_id),
         )
         conn.execute("UPDATE project SET updated_at = ?", (_now(),))
         conn.commit()
     return {
         "page_no": page_no,
         "updated": True,
-        "margin_box": list(fitted) if fitted else None,
-        "fallback": fitted is None,
-        "lines": len(boxes),
+        "margin_box": list(fitted.box) if fitted.box else None,
+        "method": fitted.method,
+        "fallback": fitted.method == FIT_METHOD_BBOX,
+        "undetermined": fitted.undetermined,
+        "lines": fitted.lines,
+        "long_lines": fitted.long_lines,
     }
 
 
@@ -780,7 +980,7 @@ def fit_all_pages(project_id: str, *, library: Path | None = None) -> dict[str, 
     target_library = library if library is not None else library_module.default_library_dir()
     directory = library_module.require_project_dir(project_id, library=target_library)
     pages = library_module.list_pages(project_id, library=target_library)
-    updated = fitted = fallback = 0
+    updated = fitted = fallback = undetermined = 0
     skipped_custom = skipped_none = 0
     for page in pages:
         if page.margin_box_mode == MODE_CUSTOM:
@@ -799,7 +999,9 @@ def fit_all_pages(project_id: str, *, library: Path | None = None) -> dict[str, 
         result = fit_page_margin(project_id, page.page_no, library=target_library)
         if result.get("updated"):
             updated += 1
-            if result.get("fallback"):
+            if result.get("undetermined"):
+                undetermined += 1
+            elif result.get("fallback"):
                 fallback += 1
             else:
                 fitted += 1
@@ -807,6 +1009,7 @@ def fit_all_pages(project_id: str, *, library: Path | None = None) -> dict[str, 
         "updated": updated,
         "fitted": fitted,
         "fallback": fallback,
+        "undetermined": undetermined,
         "skipped_custom": skipped_custom,
         "skipped_none": skipped_none,
     }
@@ -815,7 +1018,11 @@ def fit_all_pages(project_id: str, *, library: Path | None = None) -> dict[str, 
 def page_margin_audit(
     project_id: str, page_no: int, *, library: Path | None = None
 ) -> dict[str, object]:
-    """这一页有多少"正文长行"落在**该页自己的**生效版心之外（可疑提示用）。"""
+    """这一页有多少"正文长行"落在**该页自己的**生效版心之外（可疑提示用）。
+
+    任务 33 起口径从"中心点越界"改成"**任一边**越界"：中心在框内、字却被切掉一条，
+    正是用户看到"版心框切过正文"的那种情况，只看中心会把它掩盖过去。
+    """
     target_library = library if library is not None else library_module.default_library_dir()
     directory = library_module.require_project_dir(project_id, library=target_library)
     pages = library_module.list_pages(project_id, library=target_library)
@@ -826,21 +1033,36 @@ def page_margin_audit(
     box = effective_margin_box(project, page)
     boxes = _latest_layout_boxes(directory, page.page_id)
     long_lines = [
-        b for b in boxes if b[2] - b[0] > AUTO_LONG_LINE
+        b for b in boxes if b[2] - b[0] > AUTO_LONG_LINE and _looks_like_text_line(b)
     ]
+    method = None if box is None else getattr(page, "margin_box_method", None)
     if box is None:
-        return {"page_no": page_no, "total_lines": len(long_lines), "outside": 0, "samples": []}
+        return {
+            "page_no": page_no,
+            "total_lines": len(long_lines),
+            "outside": 0,
+            "samples": [],
+            "method": method,
+            "source": page_margin_source_label(project, page),
+            "undetermined": page.margin_box_mode == MODE_AUTO,
+        }
     outside = []
     for b in long_lines:
-        cx = (b[0] + b[2]) / 2
-        cy = (b[1] + b[3]) / 2
-        if not (box[0] <= cx <= box[2] and box[1] <= cy <= box[3]):
+        if (
+            b[0] < box[0] - 1e-9
+            or b[1] < box[1] - 1e-9
+            or b[2] > box[2] + 1e-9
+            or b[3] > box[3] + 1e-9
+        ):
             outside.append(list(b))
     return {
         "page_no": page_no,
         "total_lines": len(long_lines),
         "outside": len(outside),
         "samples": outside[:5],
+        "method": method if page.margin_box_mode == MODE_AUTO else None,
+        "source": page_margin_source_label(project, page),
+        "undetermined": False,
     }
 
 
@@ -1032,7 +1254,8 @@ def set_page_margin_box(
     with db_module.open_database(directory) as conn:
         row = _page_row(conn, page_no)
         conn.execute(
-            "UPDATE page SET margin_box = ?, margin_box_mode = ? WHERE page_id = ?",
+            "UPDATE page SET margin_box = ?, margin_box_mode = ?, margin_box_method = NULL"
+            " WHERE page_id = ?",
             (serialize_margin_box(bbox), mode, row["page_id"]),
         )
         conn.execute("UPDATE project SET updated_at = ?", (_now(),))
@@ -1052,10 +1275,11 @@ def set_pages_margin_box(
     *,
     library: Path | None = None,
 ) -> list[library_module.Page]:
-    """批量设置版心三态（整批一个事务；有一页不存在就整批拒绝）。
+    """批量设置版心四态（整批一个事务；有一页不存在就整批拒绝）。
 
     `custom` 时所有选中页用**同一个**四边（界面上的"设为自定义"就是复制当前版心）；
-    想逐页微调再拖框。
+    想逐页微调再拖框。切到 `auto` 时**已经 auto 的页保留自己的框**（换模式不该
+    把刚拟合好的框清掉）；从 `custom` / `inherit` / `none` 过来的页清空，等重新拟合。
     """
     _validated_mode(mode)
     if not page_nos:
@@ -1079,10 +1303,22 @@ def set_pages_margin_box(
             raise library_module.ProjectError(
                 f"找不到这些页面：{'、'.join(str(value) for value in missing[:5])}"
             )
-        conn.execute(
-            f"UPDATE page SET margin_box = ?, margin_box_mode = ? WHERE page_no IN ({condition})",
-            (serialize_margin_box(bbox), mode, *unique),
-        )
+        if mode == MODE_AUTO:
+            # 已经是 auto 的页保留原框；其它模式过来的页清空框与方法，等重新拟合。
+            conn.execute(
+                f"UPDATE page SET margin_box_mode = 'auto',"
+                f" margin_box = CASE WHEN margin_box_mode = 'auto' THEN margin_box ELSE NULL END,"
+                f" margin_box_method = CASE WHEN margin_box_mode = 'auto'"
+                f" THEN margin_box_method ELSE NULL END"
+                f" WHERE page_no IN ({condition})",
+                unique,
+            )
+        else:
+            conn.execute(
+                f"UPDATE page SET margin_box = ?, margin_box_mode = ?, margin_box_method = NULL"
+                f" WHERE page_no IN ({condition})",
+                (serialize_margin_box(bbox), mode, *unique),
+            )
         conn.execute("UPDATE project SET updated_at = ?", (_now(),))
         conn.commit()
 
@@ -1097,6 +1333,15 @@ def margin_box_state(
     """项目版心概览：默认版心 + 来源 / 时间 + 最近一次建议 + 三态计数 + 非默认页。"""
     project = library_module.load_project(project_id, library=library)
     pages = library_module.list_pages(project_id, library=library)
+    method_counts = {FIT_METHOD_FIT: 0, FIT_METHOD_BBOX: 0, FIT_METHOD_UNDETERMINED: 0}
+    for page in pages:
+        if page.margin_box_mode != MODE_AUTO:
+            continue
+        if page.margin_box is None:
+            method_counts[FIT_METHOD_UNDETERMINED] += 1
+        else:
+            method = getattr(page, "margin_box_method", None) or FIT_METHOD_FIT
+            method_counts[method] = method_counts.get(method, 0) + 1
     return {
         "margin_box": list(project.margin_box) if project.margin_box else None,
         "source": project.margin_box_source,
@@ -1107,6 +1352,8 @@ def margin_box_state(
             else None
         ),
         "modes": modes_summary(pages),
+        # 任务 33：auto 页的框是哪来的（拟合 / 本页包围盒兜底 / 未定），界面据此说清来源
+        "auto_methods": method_counts,
         "exceptions": [
             {
                 "page_no": page.page_no,

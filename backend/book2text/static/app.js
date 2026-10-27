@@ -712,6 +712,14 @@ function renderPreflight(data) {
     ["整页版面确认", `${data.layout_confirmed_pages || 0} / ${data.layout_pages || 0} 页`],
   ];
   const workflowStatus = data.workflow_status || {};
+  const preflightMarginPages = data.margin_pages || {};
+  const undeterminedMargins = preflightMarginPages.undetermined || [];
+  if (undeterminedMargins.length) {
+    rows.push([
+      "版心未定",
+      `${undeterminedMargins.length} 页（没有检测行；不参与「按版心判定」，也不会拿默认版心顶替）`,
+    ]);
+  }
   if (workflowStatus.total) {
     rows.push([
       "工作流状态",
@@ -752,6 +760,14 @@ function renderPreflight(data) {
     notes.push("注释流默认不导出；勾选「同时导出注释」才会生成 notes.txt / notes.jsonl。");
   } else if (!(noteStream.notes || 0)) {
     notes.push("注释流为空（没有脚注 / 旁批块）——这是正常情况。");
+  }
+  if (undeterminedMargins.length) {
+    const shown = undeterminedMargins.slice(0, 12).join("、");
+    const more = undeterminedMargins.length > 12 ? " 等" : "";
+    notes.push(
+      `有 ${undeterminedMargins.length} 页版心未定（${shown}${more}）——这些页没有检测行，` +
+        "按版心判定时会跳过、不拿默认版心顶替。先跑「检测并定版心」再导出更稳妥。"
+    );
   }
   if (data.margin_judgement) {
     const marginPages = data.margin_pages || {};
@@ -1905,15 +1921,21 @@ function savePageMarginPreference() {
 
 /**
  * 一页实际生效的版心（与后端 `effective_margin_box` 同一口径）：
- * `none` → 无；`custom` → 本页；`inherit` → 项目默认。
+ * `none` → 无；`custom` → 本页；`auto` → **本页落库的框**（没有就是未定，
+ * 绝不拿项目默认框顶替，任务 33）；`inherit` → 项目默认。
  */
 function marginBoxOfPage(page) {
   if (!page || page.margin_box_mode === "none") return null;
   if (page.margin_box_mode === "custom") return page.margin_box || null;
-  if (page.margin_box_mode === "auto") {
-    return page.margin_box || (currentProject && currentProject.margin_box) || null;
-  }
+  if (page.margin_box_mode === "auto") return page.margin_box || null;
   return (currentProject && currentProject.margin_box) || null;
+}
+
+/** auto 页的框是哪来的：fit（迭代拟合）/ bbox（本页包围盒兜底）/ 未定。 */
+function pageMarginMethod(page) {
+  if (!page || page.margin_box_mode !== "auto") return null;
+  if (!page.margin_box) return "undetermined";
+  return page.margin_box_method || "fit";
 }
 
 function pageMarginSourceLabel(page) {
@@ -1921,7 +1943,10 @@ function pageMarginSourceLabel(page) {
   if (page.margin_box_mode === "none") return "不适用";
   if (page.margin_box_mode === "custom") return "本页自定义";
   if (page.margin_box_mode === "auto") {
-    return page.margin_box ? "自动拟合" : "沿用默认版心（行不足）";
+    const method = pageMarginMethod(page);
+    if (method === "undetermined") return "未定（没有检测行）";
+    if (method === "bbox") return "本页包围盒（兜底）";
+    return "自动拟合";
   }
   return "沿用默认版心";
 }
@@ -4024,7 +4049,7 @@ function marginSourceText() {
     const when = formatMarginTime(currentProject.margin_box_set_at);
     return (
       `自动推算的默认值${when ? ` · ${when}` : ""} · 未确认。` +
-      "只在页内有效行不足 3 行时兜底；它只用于显示和审校过滤，导出仍按块类型。"
+      "只在页面显式选择「沿用全局」时使用；「按版心判定」关闭时导出仍按块类型。"
     );
   }
   return "手动设置的默认值";
@@ -4055,7 +4080,7 @@ function renderMarginModeButtons(container, currentMode, onPick, modes = ["inher
     button.append(title, sub);
     button.title =
       mode === "auto"
-        ? "用这一页的检测行自动拟合；有效行不足 3 行时沿用默认版心"
+        ? "用这一页的检测行迭代拟合；行不足时退本页所有检测行的包围盒（不用默认版心）"
         : mode === "inherit"
           ? "显式沿用项目的默认版心（页内行不足时的兜底）"
           : mode === "custom"
@@ -4079,16 +4104,24 @@ async function ensureMarginAudit(page) {
     );
     if (marginAuditPage !== page.page_no) return;
     const basis = el("margin-basis");
-    if (basis && page.margin_box_mode === "auto" && page.margin_box) {
+    if (basis && page.margin_box_mode === "auto") {
       const total = Number(data.total_lines || 0);
-      basis.textContent =
-        `来源：本页检测行自动拟合 · 把握：${total >= 10 ? "较稳" : total >= 3 ? "偏少" : "不足"}` +
-        `（${total} 条检测行）`;
+      const method = pageMarginMethod(page);
+      if (method === "undetermined") {
+        basis.textContent = "未定：本页没有检测行，不参与版心判定（先跑「检测并定版心」）";
+      } else if (method === "bbox") {
+        basis.textContent =
+          `来源：本页所有检测行的包围盒（兜底） · ${total} 条正文长行`;
+      } else {
+        basis.textContent =
+          `来源：本页检测行自动拟合 · 把握：${total >= 10 ? "较稳" : total >= 3 ? "偏少" : "不足"}` +
+          `（${total} 条正文长行）`;
+      }
     }
     if (Number(data.outside || 0) > 0) {
       node.textContent =
-        `这页有 ${data.outside} 行正文落在${pageMarginSourceLabel(page)}的版心外，` +
-        "可能拟合不准；拖动版心或切到「本页自定义」核对。";
+        `这页有 ${data.outside} 行正文落在本页版心之外，可能拟合不准；` +
+        "拖动版心或切到「本页自定义」核对。";
       node.hidden = false;
     } else {
       node.hidden = true;
@@ -4120,16 +4153,18 @@ function renderMarginPanel() {
     source.textContent = marginSourceText();
     global.append(source);
   }
-  if (globalBox || counts.custom || counts.none) {
+  if (pages.length) {
     const detail = document.createElement("div");
     detail.className = "muted";
-    const autoWithBox = pages.filter(
-      (page) => page.margin_box_mode === "auto" && page.margin_box
+    const autoFit = pages.filter((page) => pageMarginMethod(page) === "fit").length;
+    const autoBbox = pages.filter((page) => pageMarginMethod(page) === "bbox").length;
+    const autoUndetermined = pages.filter(
+      (page) => pageMarginMethod(page) === "undetermined"
     ).length;
-    const autoFallback = counts.auto - autoWithBox;
     detail.textContent =
-      `${autoWithBox} 页有拟合框` +
-      (autoFallback ? `（${autoFallback} 页行不足沿用默认）` : "") +
+      `${autoFit} 页自动拟合` +
+      (autoBbox ? ` · ${autoBbox} 页本页包围盒兜底` : "") +
+      (autoUndetermined ? ` · ${autoUndetermined} 页未定（没有检测行）` : "") +
       ` · ${counts.inherit} 页显式沿用默认 · ` +
       `${counts.custom} 页自定义 · ${counts.none} 页不适用`;
     global.append(detail);
@@ -4166,7 +4201,9 @@ function renderMarginPanel() {
         `右 ${(box[2] * 100).toFixed(1)}% · 下 ${(box[3] * 100).toFixed(1)}%`
       : page.margin_box_mode === "none"
         ? "这一页标了「不适用」：不压暗、不参与推算。"
-        : "这一页暂时没有版心：默认版心还没设置。先点「推算默认版心（兜底）」。";
+        : page.margin_box_mode === "auto" && !page.margin_box
+          ? "这一页的版心未定：没有检测行，不参与版心判定。先跑「检测并定版心」。"
+          : "这一页暂时没有版心：默认版心还没设置。先点「推算默认版心（兜底）」。";
     const basis = el("margin-basis");
     basis.textContent =
       page.margin_box_mode === "none"
@@ -4174,10 +4211,12 @@ function renderMarginPanel() {
         : page.margin_box_mode === "custom"
           ? "来源：人工设置 · 把握：人工"
           : page.margin_box_mode === "auto" && !page.margin_box
-            ? "兜底：本页有效检测行不足 3 行，沿用默认版心"
-            : page.margin_box_mode === "auto"
-              ? "来源：本页检测行自动拟合 · 把握：待核"
-              : "来源：默认版心 · 把握：默认";
+            ? "未定：本页没有检测行，不参与版心判定"
+            : page.margin_box_mode === "auto" && page.margin_box_method === "bbox"
+              ? "来源：本页所有检测行的包围盒 · 把握：兜底"
+              : page.margin_box_mode === "auto"
+                ? "来源：本页检测行自动拟合 · 把握：待核"
+                : "来源：默认版心 · 把握：默认";
     ensureMarginAudit(page);
     const actions = el("margin-page-actions");
     actions.innerHTML = "";
@@ -4398,15 +4437,21 @@ async function setSinglePageMarginMode(page, mode) {
       }
     );
     if (mode === "auto") {
-      // 切到 auto 后立刻按本页检测行拟合；没有足够行时服务端会回退默认版心。
-      await apiJson(
+      // 切到 auto 后立刻按本页检测行拟合；行不足退本页包围盒，没有检测行标未定。
+      const fitted = await apiJson(
         `/api/projects/${currentProject.project_id}/pages/${page.page_no}/margin-box/fit`,
         { method: "POST" }
       );
       marginAuditPage = null;
       await refreshPageStates();
       renderMarginPanel();
-      setMarginStatus(`第 ${page.page_no} 页已按检测行自动拟合。`);
+      setMarginStatus(
+        fitted.undetermined
+          ? `第 ${page.page_no} 页没有检测行，版心未定；先跑「检测并定版心」。`
+          : fitted.fallback
+            ? `第 ${page.page_no} 页拟合行不足，已退本页所有检测行的包围盒。`
+            : `第 ${page.page_no} 页已按检测行自动拟合。`
+      );
       return;
     }
     mergePageRecord(data.page);
@@ -4465,7 +4510,15 @@ async function setBatchMarginMode(mode, sourceBox) {
     for (const page of data.pages || []) mergePageRecord(page);
     refreshMarginTiles();
     renderMarginPanel();
-    setMarginStatus(`已把 ${data.updated} 页设为「${label}」。`);
+    const needFit = (data.pages || []).filter(
+      (page) => page.margin_box_mode === "auto" && !page.margin_box
+    ).length;
+    setMarginStatus(
+      `已把 ${data.updated} 页设为「${label}」。` +
+        (mode === "auto" && needFit
+          ? `其中 ${needFit} 页还没有本页框，点「全部自动拟合」生成。`
+          : "")
+    );
   } catch (error) {
     showError(el("pages-error"), error);
   }
@@ -4477,7 +4530,8 @@ async function fitAllMargins() {
   if (
     !window.confirm(
       "把「沿用默认」和「自动拟合」的页全部改为每页自动拟合？\n" +
-        "本页自定义 / 不适用的页不会动；已有检测行的页直接拟合，没有检测行的页沿用默认版心。"
+        "本页自定义 / 不适用的页不会动；已有检测行的页直接拟合，" +
+        "行不足时退本页包围盒；没有检测行的页标「未定」（不回退默认版心）。"
     )
   ) {
     return;
@@ -4491,8 +4545,9 @@ async function fitAllMargins() {
     await refreshPageStates();
     renderMarginPanel();
     setMarginStatus(
-      `已更新 ${data.updated} 页：${data.fitted} 页拟合成功，` +
-        `${data.fallback} 页行不足沿用默认；` +
+      `已更新 ${data.updated} 页：${data.fitted} 页自动拟合，` +
+        `${data.fallback || 0} 页退本页包围盒，` +
+        `${data.undetermined || 0} 页没有检测行（未定）；` +
         `跳过 ${data.skipped_custom} 页自定义、${data.skipped_none} 页不适用。`
     );
   } catch (error) {
@@ -9604,12 +9659,17 @@ function renderFinishPanel() {
   const margin = data.margin;
   finishIcon("finish-icon-margin", margin.complete ? "ok" : "warn");
   el("finish-margin-status").textContent = `${margin.set} / ${margin.total} 已定`;
-  el("finish-margin-sub").textContent = margin.fallback
-    ? `其中 ${margin.fallback} 页行不足，回退默认版心`
+  const marginNotes = [];
+  if (margin.fallback) marginNotes.push(`${margin.fallback} 页退本页包围盒`);
+  if (margin.undetermined) marginNotes.push(`${margin.undetermined} 页未定（没有检测行）`);
+  el("finish-margin-sub").textContent = marginNotes.length
+    ? marginNotes.join(" · ")
     : "每页都有生效版心";
+  const fallbackCount =
+    (margin.fallback_pages || []).length + (margin.undetermined_pages || []).length;
   const fallback = el("finish-margin-pages");
-  fallback.hidden = !margin.fallback;
-  fallback.textContent = `查看回退默认页（${margin.fallback}）`;
+  fallback.hidden = fallbackCount === 0;
+  fallback.textContent = `查看兜底 / 未定页（${fallbackCount}）`;
 
   const layout = data.layout;
   finishIcon("finish-icon-layout", layout.complete ? "ok" : "warn");
@@ -9695,10 +9755,15 @@ async function finishConfirmPages() {
 }
 
 function finishShowFallbackPages() {
-  if (!finishSummary || !finishSummary.margin.fallback_pages.length) return;
+  if (!finishSummary) return;
+  const pages = [
+    ...(finishSummary.margin.fallback_pages || []),
+    ...(finishSummary.margin.undetermined_pages || []),
+  ];
+  if (!pages.length) return;
   selectedPages.clear();
-  for (const no of finishSummary.margin.fallback_pages) selectedPages.add(no);
-  selectionAnchor = finishSummary.margin.fallback_pages[0];
+  for (const no of pages) selectedPages.add(no);
+  selectionAnchor = pages[0];
   closeFinishPanel();
   showView("pages");
   renderPages();

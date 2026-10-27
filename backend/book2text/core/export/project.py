@@ -392,6 +392,14 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
         for layout in layouts.values()
         if layout.margin_box_mode == "none" and not layout.applied
     )
+    # 任务 33：auto 页没有落库的框 = **未定**（没有检测行 / 还没拟合）。
+    # 不算进导出（不拿全局框顶替），但预检必须如实报出来——否则用户不会知道
+    # 这些页在"按版心判定"打开时根本没有判据。
+    margin_undetermined_pages = sorted(
+        page.page_no
+        for page in prepared.pages
+        if page.margin_box_mode == "auto" and page.margin_box is None
+    )
     page_number_pages = [
         int(record.get("pdf_page") or 0)
         for record in prepared.meta.get("pages", [])
@@ -471,6 +479,7 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
             "applied": sum(1 for layout in layouts.values() if layout.applied),
             "unset": margin_unset_pages,
             "none": margin_none_pages,
+            "undetermined": margin_undetermined_pages,
             # 任务 53：全局版心是自动推算、还没人确认 —— 导出**不认**它（见 export_margin_box），
             # 界面据此说明"为什么版心视图里看得到框、预检却说没生效"。
             "auto": (

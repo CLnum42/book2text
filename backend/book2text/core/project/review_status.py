@@ -70,9 +70,9 @@ def margin_is_set(project, page) -> bool:
     if page.margin_box_mode == "none":
         return True
     if page.margin_box_mode == "auto":
-        # 每页自动拟合出来的框算"已定"；行不足、回退默认版心时仍要求默认版心是人工设置。
-        if page.margin_box is not None:
-            return True
+        # 每页自动拟合 / 本页包围盒兜底出来的框算"已定"；没有框（未定）**不回退全局**，
+        # 直接算没定——否则自动通过会建立在一个跟这一页无关的框上（任务 33）。
+        return page.margin_box is not None
     return project.margin_box is not None and project.margin_box_source == margin_box_module.SOURCE_MANUAL
 
 
@@ -414,11 +414,14 @@ def _margin_effective(project, page) -> bool:
     """版心是否有生效框（收尾面板口径，不要求默认版心是人工设置）。
 
     - `none`：明确不适用，算已定；
-    - `custom` / `auto`：有本页框；
-    - `auto` 行不足或 `inherit`：有项目默认版心；
+    - `custom` / `auto`：有本页落库框（`fit` 或 `bbox`）才算；
+      `auto` 没有框 = 未定，**不拿项目默认框顶替**（任务 33）；
+    - `inherit`：有项目默认版心。
     """
     if page.margin_box_mode == "none":
         return True
+    if page.margin_box_mode == "auto":
+        return page.margin_box is not None
     if page.margin_box is not None:
         return True
     return project.margin_box is not None
@@ -446,12 +449,17 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     layout_done = sum(1 for page in body_pages if page.layout_confirmed)
 
     margin_done = sum(1 for page in pages if _margin_effective(project, page))
+    # 任务 33：兜底不再是"回退默认版心"，而是"本页包围盒"；没有框的页是"未定"。
     fallback_pages = [
         page.page_no
         for page in pages
-        if page.margin_box_mode == "auto"
-        and page.margin_box is None
-        and project.margin_box is not None
+        if page.margin_box_mode == "auto" and page.margin_box is not None
+        and getattr(page, "margin_box_method", None) == "bbox"
+    ]
+    undetermined_pages = [
+        page.page_no
+        for page in pages
+        if page.margin_box_mode == "auto" and page.margin_box is None
     ]
 
     auto_passable = []
@@ -520,6 +528,8 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
             "total": len(pages),
             "fallback": len(fallback_pages),
             "fallback_pages": fallback_pages,
+            "undetermined": len(undetermined_pages),
+            "undetermined_pages": undetermined_pages,
             "complete": complete[1],
         },
         "layout": {
