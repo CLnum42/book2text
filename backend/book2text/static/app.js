@@ -10962,6 +10962,9 @@ async function confirmCurrentPage() {
         : `已确认 ${data.confirmed} 块`
     );
     await refreshPageStates();
+    // 收尾面板 / 步骤条的计数要跟着动：不 await，翻到下一页不等这次聚合
+    // （394 页的项目 finish-summary 要 1–2 秒；在飞时再触发会被合并成一次补跑）。
+    loadFinishSummary({ silent: true });
     // 说明书 7.4："确认本页后默认跳到下一个未完成的正文页"
     const next = nextUnfinishedPage(pageNo);
     if (next) await openPageDetail(next);

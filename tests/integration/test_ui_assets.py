@@ -1210,3 +1210,16 @@ def test_continuation_review_entry_and_panel_are_wired() -> None:
 
     assert ".continuation-row" in styles
     assert ".continuation-row__quote" in styles
+
+
+def test_confirm_page_refreshes_finish_counts() -> None:
+    """任务 42 走查：确认一页之后，收尾面板 / 步骤条的计数必须跟着动。
+
+    394 页的循环里最显眼的反馈就是这些计数；确认完不刷新，用户会以为没生效。
+    刷新是后台的（不 await），翻页不等 1–2 秒的聚合。
+    """
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    start = script.index("async function confirmCurrentPage(")
+    block = script[start : script.index("\n}\n", start)]
+    assert "loadFinishSummary({ silent: true })" in block
+    assert "await loadFinishSummary" not in block, "刷新不能挡住翻页"
