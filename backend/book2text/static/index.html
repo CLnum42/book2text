@@ -647,6 +647,40 @@
         </div>
       </section>
 
+      <!-- ─────────────────────────── 视图：阅读审校（连续正文流，L 刀） ─────────────────────────── -->
+      <section class="view view--reading" id="view-reading" hidden>
+        <div class="reading-toolbar">
+          <button type="button" id="reading-prev" class="btn btn--sm" title="上一页">◀</button>
+          <span class="pager__no" id="reading-page-no">—</span>
+          <button type="button" id="reading-next" class="btn btn--sm" title="下一页">▶</button>
+          <span class="reading-toolbar__sep"></span>
+          <button type="button" id="reading-next-unreviewed" class="btn btn--pri btn--sm">
+            下一处未审 <kbd>⏎</kbd>
+          </button>
+          <span class="spacer"></span>
+          <span class="muted" id="reading-progress-text">已处理 0 / 0</span>
+          <span class="reading-progress"><span class="reading-progress__fill" id="reading-progress-fill"></span></span>
+          <span class="reading-pill" id="reading-draft-chip" hidden>未提交 0</span>
+          <select id="reading-filter" class="select" title="过滤差异">
+            <option value="all">全部差异</option>
+            <option value="chars">只看汉字级</option>
+            <option value="unacked">只看未审</option>
+          </select>
+          <button type="button" id="reading-undo" class="btn btn--sm" title="撤销上一次提交">撤销</button>
+          <button type="button" id="reading-submit" class="btn btn--pri btn--sm" disabled>提交 0 处改动</button>
+        </div>
+        <div class="reading-split">
+          <aside class="reading-tree" id="reading-tree"></aside>
+          <div class="reading-pdf">
+            <div class="reading-pdf__scroll">
+              <img id="reading-image" alt="页面">
+              <p class="muted" id="reading-image-status">正在渲染…</p>
+            </div>
+          </div>
+          <div class="reading-stream" id="reading-stream"></div>
+        </div>
+      </section>
+
       <!-- ─────────────────────────── 视图：结果预览（与导出同一份 segments） ─────────────────────────── -->
       <section class="view view--preview" id="view-preview" hidden>
         <div class="preview-split">

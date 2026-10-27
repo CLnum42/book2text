@@ -1092,10 +1092,14 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
     ):
         assert f'id="{element_id}"' in page, element_id
 
-    # 第 6 步：在审校与导出之间，普通态（plain）
-    assert '{ id: "preview", label: "结果预览", short: "预览", plain: true }' in script
-    assert '"preview"' in script and "const VIEWS =" in script
-    assert "workflow-step--plain" in script and ".workflow-step--plain" in css
+    # L 刀：正文审校吸收结果预览，步骤 7 → 6（预览不再是一个步骤）
+    assert '{ id: "review", label: "正文审校", short: "审校" }' in script
+    assert '{ id: "preview", label: "结果预览"' not in script
+    assert 'const WORKFLOW_STEPS = [' in script
+    assert 'const VIEWS = ["library", "pages", "index", "review", "reading", "preview", "merge"];' in script
+    # 连续正文流视图（阅读审校）存在
+    assert 'id="view-reading"' in page
+    assert "function openReading(" in script
 
     # 与导出共用同一份组装：只调 /export/preview，不另写合并逻辑
     assert "function openPreview(" in script
@@ -1538,3 +1542,39 @@ def test_orthography_cleanup_is_wired() -> None:
     assert "不整本硬配" in page
     assert "看原文" in script
     assert ".orthography-row" in css and ".modal--orthography" in css
+
+
+def test_reading_view_is_wired_for_merge() -> None:
+    """L 刀：正文审校＝连续正文流（步骤 6），草稿先落 localStorage、提交才写库。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "view-reading",
+        "reading-stream",
+        "reading-tree",
+        "reading-next-unreviewed",
+        "reading-progress-text",
+        "reading-progress-fill",
+        "reading-draft-chip",
+        "reading-filter",
+        "reading-submit",
+        "reading-undo",
+        "reading-image",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    assert "function openReading(" in script
+    assert "function buildReadingSegment(" in script
+    assert "function gotoNextUnreviewed(" in script
+    assert "function submitReadingDrafts(" in script
+    assert "b2t.readingDrafts." in script
+    assert "/review/marks" in script
+    assert "/review/submit-drafts" in script
+    assert "line_spans" in script
+    assert "computeCharSpans(" in script
+    assert "下一处未审" in page
+    assert "window.confirm(" in script
+    assert ".reading-mark" in css and ".reading-panel" in css
+    assert ".reading-line.is-draft" in css

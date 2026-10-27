@@ -624,3 +624,78 @@ def test_orthography_normalizes_lines_and_recomputes_diff(
     assert line_rows[2]["aux_text"] == "第三行不动，人工改过。"
     assert line_rows[2]["diff_status"] == "differs"
     assert line_rows[2]["diff_ack"] == "kept"
+
+
+def test_submit_drafts_is_batched_and_undoable(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    scan_sample_pdf: Path,
+    library_dir: Path,
+) -> None:
+    """L 刀：草稿一次提交（采用 + 保留）写库，撤销一次全退。
+
+    提交前 GET /review/marks 只读；提交后块文本 / diff_ack 都更新；撤销回到原样。
+    """
+    project_id = create_project(client, auth_headers, scan_sample_pdf)
+    set_margin(client, auth_headers, project_id, 1)
+    text = "甲行文字。\n乙行文字。"
+    block_id = add_block(
+        library_dir,
+        project_id,
+        page_no=1,
+        lines=[
+            ("甲行文字。", 0.10, 0.10, 0.90, 0.12),
+            ("乙行文字。", 0.10, 0.12, 0.90, 0.14),
+        ],
+    )
+    with db_module.open_database(library_dir / project_id, apply_migrations=False) as conn:
+        lines = conn.execute(
+            "SELECT line_id, line_index FROM block_line WHERE block_id = ? ORDER BY line_index",
+            (block_id,),
+        ).fetchall()
+        conn.execute(
+            "UPDATE block_line SET aux_text = ?, diff_status = 'differs' WHERE line_id = ?",
+            ("甲行新字。", lines[0]["line_id"]),
+        )
+        conn.execute(
+            "UPDATE block_line SET aux_text = ?, diff_status = 'differs' WHERE line_id = ?",
+            ("乙行异字。", lines[1]["line_id"]),
+        )
+        conn.commit()
+
+    marks = client.get(f"/api/projects/{project_id}/review/marks", headers=auth_headers)
+    assert marks.status_code == 200, marks.text
+    assert len(marks.json()["items"]) >= 1
+    # 只读：GET 不能改库
+    block = client.get(f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers)
+    assert block.json()["blocks"][0]["text"] == text
+
+    submitted = client.post(
+        f"/api/projects/{project_id}/review/submit-drafts",
+        json={
+            "items": [
+                {
+                    "block_id": block_id,
+                    "line_index": 0,
+                    "ack": "adopted",
+                    "new_line_text": "甲行新字。",
+                },
+                {"block_id": block_id, "line_index": 1, "ack": "kept"},
+            ]
+        },
+        headers=auth_headers,
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["committed"] == 2
+    after = client.get(f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers).json()
+    block_after = after["blocks"][0]
+    assert block_after["text"] == "甲行新字。\n乙行文字。"
+    acked = {row["line_index"]: row["diff_ack"] for row in block_after["lines"]}
+    assert acked == {0: "adopted", 1: "kept"}
+
+    undone = client.post(f"/api/projects/{project_id}/undo", headers=auth_headers)
+    assert undone.status_code == 200, undone.text
+    restored = client.get(f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers).json()
+    block_restored = restored["blocks"][0]
+    assert block_restored["text"] == text
+    assert all(row["diff_ack"] is None for row in block_restored["lines"])

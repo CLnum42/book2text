@@ -27,8 +27,10 @@ from ..core.project import library as project_library
 from ..core.project import margin_box as margin_box_module
 from ..core.project import recognition
 from ..core.project import structure as structure_module
+from ..core.ocr import compare as compare_module
 from ..core.project import workflow as workflow_module
 from ..core.storage import db as db_module
+from ..core.storage.ulid import new_ulid
 from .deps import actor_name as _actor_name
 from .deps import require_editable_page
 from .deps import require_main_project as _require_main
@@ -324,6 +326,144 @@ class DiffAckRequest(BaseModel):
     line_index: int = Field(ge=0)
     ack: Literal["kept", "adopted"]
     text: str | None = None
+
+
+@router.get("/{project_id}/review/marks")
+def review_marks(request: Request, project_id: str) -> dict[str, Any]:
+    """全书逐行的差异标记（阅读审校连续流用）。
+
+    一条 = 一行的一处实质差异（汉字级 / 标点级），带 A/B 文本与已有的裁决。
+    阅读流要靠它把红字标到 `line_spans` 切出来的行元素里。
+    """
+    library = _library(request)
+    try:
+        project = project_library.load_project(project_id, library=library)
+        pages = project_library.list_pages(project_id, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    page_by_block: dict[str, int] = {}
+    blocks = blocks_module.list_blocks(project_id, library=library)
+    for block in blocks:
+        page_by_block[block.block_id] = block.page_no
+    lines_by_block: dict[str, list] = {}
+    for line in blocks_module.list_block_lines(project_id, library=library):
+        lines_by_block.setdefault(line.block_id, []).append(line)
+    items: list[dict[str, Any]] = []
+    for block in blocks:
+        page = next((item for item in pages if item.page_no == block.page_no), None)
+        if page is None or not block.include:
+            continue
+        if not margin_box_module.block_inside_margin(project, page, block.bbox):
+            continue
+        divergence = blocks_module.block_divergence(
+            block, lines_by_block.get(block.block_id, [])
+        )
+        for mark in divergence.marks:
+            if mark.level not in (compare_module.DIFFERS_CHARS, compare_module.DIFFERS_PUNCT):
+                continue
+            items.append(
+                {
+                    "page_no": block.page_no,
+                    "block_id": block.block_id,
+                    "line_index": mark.line_index,
+                    "level": mark.level,
+                    "current": mark.current,
+                    "candidate": mark.candidate,
+                    "ack": mark.ack,
+                }
+            )
+    counts = {"total": len(items), "chars": 0, "punct": 0, "acked": 0}
+    for item in items:
+        counts[item["level"].split("_")[-1] if item["level"].startswith("differs_") else "chars"] += 1
+        if item["ack"]:
+            counts["acked"] += 1
+    return {"items": items, "counts": counts}
+
+
+class DraftItem(BaseModel):
+    """一处待提交的草稿：采用 / 保留 / 手改。"""
+
+    block_id: str = Field(min_length=1, max_length=64)
+    line_index: int = Field(ge=0)
+    ack: Literal["kept", "adopted"] | None = None
+    # 这一行提交后的文本：采用=候选、手改=用户输入；保留=None（文本不变）
+    new_line_text: str | None = Field(default=None, max_length=20000)
+
+
+class SubmitDraftsRequest(BaseModel):
+    items: list[DraftItem] = Field(min_length=1, max_length=500)
+
+
+@router.post("/{project_id}/review/submit-drafts")
+def submit_drafts(
+    request: Request, project_id: str, body: SubmitDraftsRequest
+) -> dict[str, Any]:
+    """把草稿层一次提交写库（一个 batch，撤销一次全退）。
+
+    采用 / 手改：替换那一行后写块文本；保留：只写 `diff_ack=kept`。
+    行号对不上的项失败并原样返回，成功的照常提交。
+    """
+    library = _library(request)
+    events: list = []
+    pages: set[int] = set()
+    batch = new_ulid()
+    results = []
+    for item in body.items:
+        try:
+            block = blocks_module.get_block(project_id, item.block_id, library=library)
+            current = (block.text or "").split("\n")
+            if item.line_index >= len(current):
+                raise blocks_module.ProjectError("这一块的行号对不上了")
+            new_text = None
+            if item.new_line_text is not None:
+                lines = list(current)
+                lines[item.line_index] = item.new_line_text
+                new_text = "\n".join(lines)
+            if item.ack:
+                block_after, _line, item_events = editing.ack_diff_line(
+                    project_id,
+                    item.block_id,
+                    item.line_index,
+                    item.ack,
+                    text=new_text,
+                    library=library,
+                    actor_name=_actor_name(request, None),
+                    batch_id=batch,
+                )
+            elif new_text is not None:
+                block_after, item_events = editing.update_block(
+                    project_id,
+                    item.block_id,
+                    library=library,
+                    text=new_text,
+                    actor_name=_actor_name(request, None),
+                    batch_id=batch,
+                )
+            else:
+                raise blocks_module.ProjectError("草稿没有要写的内容")
+            events.extend(item_events)
+            pages.add(block_after.page_no)
+            results.append({"block_id": item.block_id, "line_index": item.line_index, "ok": True})
+        except (blocks_module.ProjectError, editing.BlockConflict) as exc:
+            results.append(
+                {
+                    "block_id": item.block_id,
+                    "line_index": item.line_index,
+                    "ok": False,
+                    "error": str(exc),
+                }
+            )
+    if events:
+        _history(request).push(
+            project_id, _Batch(events=tuple(events), page_nos=tuple(sorted(pages)))
+        )
+    undo, redo = _history(request).depth(project_id)
+    return {
+        "results": results,
+        "committed": sum(1 for item in results if item["ok"]),
+        "failed": sum(1 for item in results if not item["ok"]),
+        "history": {"undo": undo, "redo": redo},
+    }
 
 
 @router.post("/{project_id}/blocks/{block_id}/diff-ack")
@@ -934,9 +1074,12 @@ def _apply_history(
         )
 
     library = _library(request)
+    # 同一块在一批里被改过多次（例如两行草稿落在同一块）：撤销必须**倒序**写回
+    # before，否则后一次的快照会把前一次覆盖掉。重做仍然正序。
+    ordered = list(batch.events) if direction == "redo" else list(reversed(batch.events))
     try:
         events, pages = editing.revert_events(
-            project_id, list(batch.events), library=library, direction=direction
+            project_id, ordered, library=library, direction=direction
         )
     except project_library.ProjectError as exc:
         raise _project_error(exc) from exc

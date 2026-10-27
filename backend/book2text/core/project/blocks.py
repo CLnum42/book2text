@@ -414,6 +414,24 @@ def list_blocks(
     return [row_to_block(row) for row in rows]
 
 
+def get_block(
+    project_id: str,
+    block_id: str,
+    *,
+    library: Path | None = None,
+) -> BlockRecord:
+    """按 id 取一个块（不存在 / 已软删除就报错）。"""
+    with _open_for_read(project_id, library) as conn:
+        _require_tables(conn, project_id)
+        row = conn.execute(
+            f"{_BLOCK_SELECT} WHERE b.block_id = ? AND b.deleted_at IS NULL",
+            (block_id,),
+        ).fetchone()
+    if row is None:
+        raise ProjectError(f"找不到块：{block_id}")
+    return row_to_block(row)
+
+
 def list_block_lines(
     project_id: str,
     *,

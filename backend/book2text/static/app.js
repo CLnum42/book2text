@@ -98,7 +98,7 @@ function fillDefinitionList(node, pairs) {
 // 界面是"单窗口应用"（说明书第 7 节的效果图）：顶栏 + 四个视图（项目库 / 页面 /
 // 审校 / 合并审阅）+ 若干对话框。视图之间只切换 hidden，各视图内部状态各自保留。
 
-const VIEWS = ["library", "pages", "index", "review", "preview", "merge"];
+const VIEWS = ["library", "pages", "index", "review", "reading", "preview", "merge"];
 
 let currentView = "library";
 
@@ -109,9 +109,8 @@ const WORKFLOW_STEPS = [
   { id: "margin", label: "版心确认", short: "版心" },
   { id: "recognition", label: "文字识别", short: "识别" },
   { id: "index", label: "目录确认", short: "目录" },
+  // L 刀：正文审校吸收结果预览（连续正文流），步骤 7 → 6
   { id: "review", label: "正文审校", short: "审校" },
-  // 结果预览没有完成态：永远是普通色（plain），不绿也不灰。
-  { id: "preview", label: "结果预览", short: "预览", plain: true },
   { id: "export", label: "文件导出", short: "导出" },
 ];
 const PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition", "index"];
@@ -176,6 +175,9 @@ function showView(name) {
     applyPageZoom();
     // 任务 43：审校期间暂停的建议预取，回到页面视图再接着排。
     pumpPageSuggestionQueue();
+  }
+  if (target === "reading" && currentProject) {
+    openReading();
   }
   if (target === "review" && currentProject) {
     // 任务 45：审校步默认只留差异层——版心与块框关掉，避免五套彩色打架
@@ -310,7 +312,7 @@ function autoWorkflowStep() {
   if (!currentProject) return null;
   const exportOpen = el("export-panel") && !el("export-panel").hidden;
   if (exportOpen) return "export";
-  if (currentView === "review") return "review";
+  if (currentView === "review" || currentView === "reading") return "review";
   if (currentView === "index") return "index";
   if (currentView === "preview") return "preview";
   if (currentView !== "pages") return "review";
@@ -613,9 +615,8 @@ function goToWorkflowStep(id) {
   }
   const wasPages = currentView === "pages";
   if (id === "review") {
-    showView("review");
-    ensureReviewPage();
-    savePosition("review", detailPageNo);
+    showView("reading");
+    savePosition("review", readingPageNo);
   } else if (id === "index") {
     // 目录确认是单页预览：没手动改过缩放时给 100%（与页面视图的"单页"同一档）。
     if (!pageZoomTouched && pageZoomIndex < 3) pageZoomIndex = 3;
@@ -2319,8 +2320,8 @@ async function resumeLastPosition() {
     ? project.pages.find((item) => item.page_id === project.last_page_id)
     : null;
   if ((view === "review" || view === "structure") && page) {
-    showView("review");
-    await openPageDetail(page.page_no);
+    // L 刀：正文审校已经是阅读流，不再回到旧的单页审校视图
+    showView("reading");
   } else {
     showView("pages");
   }
@@ -9914,6 +9915,21 @@ function computeCharSpans(current, candidate) {
   const a = String(current || "");
   const b = String(candidate || "");
   if (!a || !b || a === b) return [];
+  // 等长（绝大多数行）用逐字比较就够，不必跑 LCS：长行上能把一次渲染从几百毫秒压到几毫秒
+  if (a.length === b.length) {
+    const spans = [];
+    let index = 0;
+    while (index < a.length) {
+      if (a[index] === b[index]) {
+        index += 1;
+        continue;
+      }
+      const start = index;
+      while (index < a.length && a[index] !== b[index]) index += 1;
+      spans.push({ aStart: start, aEnd: index, bStart: start, bEnd: index, kind: "replace" });
+    }
+    return spans;
+  }
   if (a.length * b.length > DIFF_LCS_MAX_CELLS) {
     return [{ aStart: 0, aEnd: a.length, bStart: 0, bEnd: b.length, kind: "replace" }];
   }
@@ -15753,6 +15769,673 @@ async function acceptAllClean() {
 
 // ---------------------------------------------------------------- 启动
 
+// ---------------------------------------------------------------- 阅读审校（L 刀：连续正文流）
+//
+// 与导出同一份 segments（含 line_spans）：段是排版单位、行是审校单位。
+// 差异只在行内用红字标出来（汉字级实线 / 标点级虚线）；点红字在该行下面
+// 展开候选面板。采用 / 保留 / 手改**全部先落草稿**（localStorage），
+// 顶部「提交 N 处改动」才写库（后端一个 batch，撤销一次全退）。
+
+// 窗口一次只铺 8 段：跳转时重建整个窗口也只要几十毫秒（24 段会到 1 秒）
+const READING_CHUNK = 8;
+let readingData = null;
+let readingProject = null;
+let readingTreeData = null;
+let readingMarks = new Map();
+let readingEntries = [];
+let readingDrafts = new Map();
+let readingFilter = "all";
+let readingPageNo = 1;
+let readingRendered = 0;
+let readingSegmentNodes = [];
+let readingPanelKey = null;
+let readingCursor = -1;
+let readingObserver = null;
+let readingImageToken = 0;
+let readingOpenStartedAt = 0;
+const readingSpanCache = new Map();
+let readingAppendScheduled = false;
+
+function readingKey(blockId, lineIndex) {
+  return `${blockId}:${lineIndex}`;
+}
+
+function readingDraftStorageKey() {
+  return currentProject ? `b2t.readingDrafts.${currentProject.project_id}` : "";
+}
+
+function loadReadingDrafts() {
+  readingDrafts = new Map();
+  try {
+    const raw = localStorage.getItem(readingDraftStorageKey());
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    for (const item of data.items || []) {
+      if (!item || !item.block_id) continue;
+      readingDrafts.set(readingKey(item.block_id, item.line_index), item);
+    }
+  } catch {
+    readingDrafts = new Map();
+  }
+}
+
+function saveReadingDrafts() {
+  try {
+    localStorage.setItem(
+      readingDraftStorageKey(),
+      JSON.stringify({
+        at: new Date().toISOString(),
+        items: [...readingDrafts.values()],
+      })
+    );
+  } catch {
+    /* localStorage 满了也不该挡审校 */
+  }
+}
+
+async function openReading() {
+  if (!currentProject) return;
+  const projectId = currentProject.project_id;
+  if (readingProject === projectId && readingData) {
+    renderReading({ reset: true });
+    renderReadingProgress();
+    return;
+  }
+  readingOpenStartedAt = performance.now();
+  const stream = el("reading-stream");
+  stream.innerHTML = '<p class="muted reading-empty">正在按导出设置组装正文…</p>';
+  el("reading-tree").innerHTML = "";
+  let preview;
+  let marks;
+  let tree;
+  try {
+    [preview, marks, tree] = await Promise.all([
+      apiJson(`/api/projects/${projectId}/export/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(exportOptions()),
+      }),
+      apiJson(`/api/projects/${projectId}/review/marks`),
+      apiJson(`/api/projects/${projectId}/review/tree`),
+    ]);
+  } catch (error) {
+    stream.innerHTML = "";
+    const p = document.createElement("p");
+    p.className = "muted reading-empty";
+    p.textContent = `正文流加载失败：${error.message || "未知错误"}`;
+    stream.append(p);
+    return;
+  }
+  readingData = preview;
+  readingTreeData = tree;
+  readingProject = projectId;
+  readingMarks = new Map();
+  for (const mark of marks.items || []) {
+    readingMarks.set(readingKey(mark.block_id, mark.line_index), mark);
+  }
+  readingEntries = [];
+  for (const segment of readingVisibleSegments()) {
+    for (const span of segment.line_spans || []) {
+      const mark = readingMarks.get(readingKey(span.block_id, span.line_index));
+      if (!mark) continue;
+      readingEntries.push({
+        ...mark,
+        seq: segment.seq,
+        page_no: mark.page_no || span.page_no,
+      });
+    }
+  }
+  loadReadingDrafts();
+  renderReadingTree();
+  renderReading({ reset: true });
+  renderReadingProgress();
+  const first = readingEntries.find((entry) => !readingEntryDone(entry));
+  const page = first ? first.page_no : (currentProject.pages[0]?.page_no || 1);
+  updateReadingPage(page);
+  const total = Math.round(performance.now() - readingOpenStartedAt);
+  window.__b2tReadingMetrics = {
+    ...(window.__b2tReadingMetrics || {}),
+    openMs: total,
+    segments: readingVisibleSegments().length,
+    entries: readingEntries.length,
+  };
+}
+
+function readingVisibleSegments() {
+  if (!readingData) return [];
+  let includeFootnotes = false;
+  try {
+    includeFootnotes = Boolean(exportOptions().include_footnotes);
+  } catch {
+    includeFootnotes = false;
+  }
+  return (readingData.segments || []).filter((segment) => {
+    if (!segment.text || !segment.text.trim()) return false;
+    if (!includeFootnotes && segment.type === "footnote") return false;
+    return true;
+  });
+}
+
+function readingEntryDone(entry) {
+  if (entry.ack) return true;
+  return readingDrafts.has(readingKey(entry.block_id, entry.line_index));
+}
+
+function readingEntryVisible(entry) {
+  const draft = readingDrafts.get(readingKey(entry.block_id, entry.line_index));
+  if (readingFilter === "chars" && entry.level !== "differs_chars") return false;
+  if (readingFilter === "unacked") {
+    if (entry.ack) return false;
+    if (draft) return false;
+  }
+  return true;
+}
+
+function renderReading({ reset = false, startAt = null } = {}) {
+  const stream = el("reading-stream");
+  if (!stream || !readingData) return;
+  if (reset) {
+    stream.innerHTML = "";
+    readingRendered = startAt != null ? Math.max(0, startAt) : 0;
+    readingSegmentNodes = [];
+    readingPanelKey = null;
+    if (readingObserver) readingObserver.disconnect();
+    readingObserver = null;
+  }
+  const segments = readingVisibleSegments();
+  if (!segments.length) {
+    stream.innerHTML = '<p class="muted reading-empty">按当前导出设置没有可读的正文。</p>';
+    return;
+  }
+  const end = Math.min(segments.length, readingRendered + READING_CHUNK);
+  const fragment = document.createDocumentFragment();
+  for (let index = readingRendered; index < end; index += 1) {
+    const node = buildReadingSegment(segments[index]);
+    readingSegmentNodes[index] = node;
+    fragment.append(node);
+  }
+  stream.append(fragment);
+  readingRendered = end;
+  removeReadingSentinel();
+  if (end < segments.length) stream.append(buildReadingSentinel());
+}
+
+function buildReadingSentinel() {
+  const node = document.createElement("div");
+  node.className = "reading-sentinel";
+  node.dataset.role = "sentinel";
+  if (!readingObserver) {
+    readingObserver = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        // 哨兵本身就在 rootMargin 里：一帧只补一块，别让回调递归把整本一次铺出来
+        if (readingAppendScheduled) return;
+        readingAppendScheduled = true;
+        requestAnimationFrame(() => {
+          readingAppendScheduled = false;
+          renderReading();
+        });
+      },
+      { root: el("reading-stream"), rootMargin: "800px 0px" }
+    );
+  }
+  readingObserver.observe(node);
+  return node;
+}
+
+function removeReadingSentinel() {
+  const stream = el("reading-stream");
+  if (!stream) return;
+  for (const node of stream.querySelectorAll(".reading-sentinel")) node.remove();
+}
+
+function buildReadingSegment(segment) {
+  const node = document.createElement("div");
+  node.className = "reading-seg";
+  node.dataset.seq = String(segment.seq);
+  const pages = (segment.pages || []).map((page) => page.page_no);
+  if (pages.length) node.dataset.pages = pages.join(" ");
+  const spans = segment.line_spans || [];
+  if (!spans.length) {
+    node.textContent = segment.text;
+    return node;
+  }
+  for (const span of spans) {
+    node.append(buildReadingLine(segment, span));
+  }
+  return node;
+}
+
+function readingLineText(segment, span) {
+  return segment.text.slice(span.start, span.end);
+}
+
+function buildReadingLine(segment, span) {
+  const key = readingKey(span.block_id, span.line_index);
+  const mark = readingMarks.get(key);
+  const draft = readingDrafts.get(key);
+  const line = document.createElement("span");
+  line.className = "reading-line";
+  line.dataset.key = key;
+  line.dataset.block = span.block_id;
+  line.dataset.line = String(span.line_index);
+  line.dataset.page = String(span.page_no);
+  const baseText = readingLineText(segment, span);
+  if (mark) {
+    line.dataset.level = mark.level;
+    line.classList.add("is-diff");
+  }
+  if (draft) {
+    line.classList.add("is-draft");
+    line.textContent = draft.text != null ? draft.text : baseText;
+    const chip = document.createElement("span");
+    chip.className = "reading-chip";
+    chip.textContent = draft.ack === "adopted" ? "草稿 · 已采用" : draft.ack === "kept" ? "草稿 · 保留" : "草稿";
+    line.append(chip);
+    return line;
+  }
+  if (mark && mark.ack === "kept") {
+    line.classList.add("is-kept");
+  }
+  if (!mark || !readingEntryVisible(mark)) {
+    line.textContent = baseText;
+    return line;
+  }
+  // 红字：只包差异字符（汉字级实线 / 标点级虚线）
+  const cacheKey = `${key}\u0000${baseText}\u0000${mark.candidate || ""}`;
+  let charSpans = readingSpanCache.get(cacheKey);
+  if (!charSpans) {
+    charSpans = computeCharSpans(baseText, mark.candidate || "");
+    readingSpanCache.set(cacheKey, charSpans);
+  }
+  if (!charSpans.length) {
+    line.textContent = baseText;
+    return line;
+  }
+  let cursor = 0;
+  for (const charSpan of charSpans) {
+    if (charSpan.aStart > cursor) {
+      line.append(document.createTextNode(baseText.slice(cursor, charSpan.aStart)));
+    }
+    const markEl = document.createElement("mark");
+    markEl.className =
+      "reading-mark " +
+      (mark.level === "differs_punct" ? "reading-mark--punct" : "reading-mark--chars");
+    markEl.textContent = baseText.slice(charSpan.aStart, charSpan.aEnd) || " ";
+    markEl.dataset.key = key;
+    line.append(markEl);
+    cursor = Math.max(cursor, charSpan.aEnd);
+  }
+  if (cursor < baseText.length) {
+    line.append(document.createTextNode(baseText.slice(cursor)));
+  }
+  return line;
+}
+
+function renderReadingProgress() {
+  const total = readingEntries.length;
+  const processed = readingEntries.filter(readingEntryDone).length;
+  const drafts = readingDrafts.size;
+  el("reading-progress-text").textContent = `已处理 ${processed} / ${total}`;
+  const fill = el("reading-progress-fill");
+  fill.style.width = total ? `${Math.round((processed / total) * 100)}%` : "0%";
+  fill.classList.toggle("is-done", total > 0 && processed >= total);
+  const chip = el("reading-draft-chip");
+  chip.hidden = drafts === 0;
+  chip.textContent = `未提交 ${drafts}`;
+  const submit = el("reading-submit");
+  submit.disabled = drafts === 0;
+  submit.textContent = drafts ? `提交 ${drafts} 处改动` : "提交 0 处改动";
+  el("reading-submit").classList.toggle("is-ready", drafts > 0);
+}
+
+function setReadingFilter(value) {
+  readingFilter = value;
+  renderReading({ reset: true });
+}
+
+function readingLineNode(key) {
+  const stream = el("reading-stream");
+  return stream ? stream.querySelector(`.reading-line[data-key="${key}"]`) : null;
+}
+
+function openReadingPanel(entry) {
+  closeReadingPanel();
+  const line = readingLineNode(readingKey(entry.block_id, entry.line_index));
+  if (!line) return;
+  readingPanelKey = readingKey(entry.block_id, entry.line_index);
+  const panel = document.createElement("div");
+  panel.className = "reading-panel";
+  panel.dataset.key = readingPanelKey;
+  const head = document.createElement("div");
+  head.className = "reading-panel__head";
+  const label = document.createElement("strong");
+  label.textContent = `第 ${entry.page_no} 页 · 第 ${entry.line_index + 1} 行第二路：`;
+  head.append(label);
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "icon-btn";
+  close.title = "收起";
+  close.textContent = "✕";
+  close.addEventListener("click", closeReadingPanel);
+  head.append(close);
+  const candidate = document.createElement("p");
+  candidate.className = "reading-panel__candidate";
+  candidate.textContent = entry.candidate || "（第二路没有文字）";
+  const actions = document.createElement("div");
+  actions.className = "reading-panel__actions";
+  const adopt = document.createElement("button");
+  adopt.type = "button";
+  adopt.className = "btn btn--pri btn--sm";
+  adopt.textContent = "采用候选";
+  adopt.addEventListener("click", () => draftReading(entry, "adopted", entry.candidate));
+  const keep = document.createElement("button");
+  keep.type = "button";
+  keep.className = "btn btn--sm";
+  keep.textContent = "保留原文";
+  keep.addEventListener("click", () => draftReading(entry, "kept", null));
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "btn btn--sm";
+  edit.textContent = "自己改";
+  edit.addEventListener("click", () => startReadingEdit(entry, panel));
+  actions.append(adopt, keep, edit);
+  panel.append(head, candidate, actions);
+  line.after(panel);
+  line.scrollIntoView({ block: "center", behavior: "auto" });
+}
+
+function closeReadingPanel() {
+  const stream = el("reading-stream");
+  if (!stream) return;
+  for (const node of stream.querySelectorAll(".reading-panel")) node.remove();
+  readingPanelKey = null;
+}
+
+function startReadingEdit(entry, panel) {
+  const key = readingKey(entry.block_id, entry.line_index);
+  const line = readingLineNode(key);
+  if (!line) return;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "reading-panel__input";
+  input.value = line.textContent.replace(/草稿.*$/, "").trim();
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "btn btn--pri btn--sm";
+  save.textContent = "存草稿";
+  save.addEventListener("click", () => draftReading(entry, null, input.value));
+  const row = document.createElement("div");
+  row.className = "reading-panel__edit";
+  row.append(input, save);
+  panel.append(row);
+  input.focus();
+  input.select();
+}
+
+function draftReading(entry, ack, text) {
+  const key = readingKey(entry.block_id, entry.line_index);
+  readingDrafts.set(key, {
+    block_id: entry.block_id,
+    line_index: entry.line_index,
+    page_no: entry.page_no,
+    ack,
+    text: text == null ? undefined : text,
+    old_text: entry.current || "",
+    at: new Date().toISOString(),
+  });
+  saveReadingDrafts();
+  closeReadingPanel();
+  rerenderReadingLine(entry);
+  renderReadingProgress();
+}
+
+function rerenderReadingLine(entry) {
+  const key = readingKey(entry.block_id, entry.line_index);
+  const line = readingLineNode(key);
+  if (!line) return;
+  const segment = readingVisibleSegments().find((seg) =>
+    (seg.line_spans || []).some(
+      (span) => readingKey(span.block_id, span.line_index) === key
+    )
+  );
+  if (!segment) return;
+  const span = (segment.line_spans || []).find(
+    (item) => readingKey(item.block_id, item.line_index) === key
+  );
+  const fresh = buildReadingLine(segment, span);
+  line.replaceWith(fresh);
+}
+
+function buildReadingTree() {
+  return null;
+}
+
+function renderReadingTree() {
+  const tree = el("reading-tree");
+  if (!tree || !readingTreeData) return;
+  tree.innerHTML = "";
+  const pages = readingTreeData.pages || [];
+  const rows = pages.filter((page) => page.unacked > 0 || true);
+  const fragment = document.createDocumentFragment();
+  for (const page of rows) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "reading-tree__row";
+    row.dataset.page = String(page.page_no);
+    if (page.unacked === 0) row.classList.add("is-done");
+    const no = document.createElement("span");
+    no.className = "reading-tree__no";
+    no.textContent = `第 ${page.page_no} 页`;
+    const count = document.createElement("span");
+    count.className = "reading-tree__count";
+    count.textContent = page.unacked ? `${page.unacked} 处` : "✓";
+    row.append(no, count);
+    row.addEventListener("click", () => scrollReadingToPage(page.page_no));
+    fragment.append(row);
+  }
+  tree.append(fragment);
+}
+
+function scrollReadingToPage(pageNo) {
+  const segments = readingVisibleSegments();
+  let index = segments.findIndex((segment) =>
+    (segment.pages || []).some((page) => page.page_no === pageNo)
+  );
+  if (index < 0) return;
+  jumpReadingTo(index);
+  const node = readingSegmentNodes[index];
+  if (!node) return;
+  node.scrollIntoView({ block: "start", behavior: "auto" });
+  updateReadingPage(pageNo);
+  markReadingTreeCurrent(pageNo);
+}
+
+function markReadingTreeCurrent(pageNo) {
+  const tree = el("reading-tree");
+  if (!tree) return;
+  for (const row of tree.querySelectorAll(".is-current")) row.classList.remove("is-current");
+  const row = tree.querySelector(`.reading-tree__row[data-page="${pageNo}"]`);
+  if (row) {
+    row.classList.add("is-current");
+    row.scrollIntoView({ block: "nearest" });
+  }
+}
+
+/**
+ * 跳到某个段：**不要**从头渲染到它（跨 800 段会卡 1 秒）。
+ * 清掉正文流，从目标段前 2 段开始重新铺窗口——DOM 始终只挂视口附近的几十段。
+ */
+function jumpReadingTo(segmentIndex) {
+  const segments = readingVisibleSegments();
+  if (segmentIndex < 0 || segmentIndex >= segments.length) return;
+  // 目标段已经在 DOM 里就直接用；不在就从它前 2 段重新铺窗口。
+  if (readingSegmentNodes[segmentIndex]) return;
+  renderReading({ reset: true, startAt: Math.max(0, segmentIndex - 2) });
+}
+
+function updateReadingPage(pageNo) {
+  if (!currentProject) return;
+  const total = currentProject.pages.length;
+  if (!pageNo || pageNo < 1 || pageNo > total) return;
+  readingPageNo = pageNo;
+  el("reading-page-no").textContent = `第 ${pageNo} 页`;
+  el("reading-prev").disabled = pageNo <= 1;
+  el("reading-next").disabled = pageNo >= total;
+  const image = el("reading-image");
+  const status = el("reading-image-status");
+  const token = ++readingImageToken;
+  status.hidden = false;
+  status.textContent = "正在渲染…";
+  image.classList.remove("is-ready");
+  image.onload = () => {
+    if (token !== readingImageToken) return;
+    status.hidden = true;
+    image.classList.add("is-ready");
+  };
+  image.onerror = () => {
+    if (token !== readingImageToken) return;
+    status.textContent = "这一页的图像读不出来。";
+  };
+  image.src = pageImageUrl(pageNo, "view");
+  image.alt = `第 ${pageNo} 页`;
+  markReadingTreeCurrent(pageNo);
+}
+
+function stepReadingPage(delta) {
+  const total = currentProject ? currentProject.pages.length : 0;
+  const next = Math.min(total, Math.max(1, readingPageNo + delta));
+  if (next === readingPageNo) return;
+  scrollReadingToPage(next);
+}
+
+function gotoNextUnreviewed() {
+  if (!readingEntries.length) return;
+  const total = readingEntries.length;
+  let start = readingCursor;
+  for (let step = 0; step < total; step += 1) {
+    const index = (start + 1 + step) % total;
+    const entry = readingEntries[index];
+    if (readingEntryDone(entry)) continue;
+    readingCursor = index;
+    gotoReadingEntry(entry);
+    return;
+  }
+  // 到文末仍没有未审：回卷到第一处并提示
+  const first = readingEntries.find((entry) => !readingEntryDone(entry));
+  if (!first) {
+    el("reading-progress-text").textContent = `已处理 ${total} / ${total} · 全部处理完`;
+    return;
+  }
+  readingCursor = -1;
+  gotoReadingEntry(first);
+}
+
+function gotoReadingEntry(entry) {
+  const segments = readingVisibleSegments();
+  const index = segments.findIndex((segment) => segment.seq === entry.seq);
+  if (index < 0) return;
+  jumpReadingTo(index);
+  const key = readingKey(entry.block_id, entry.line_index);
+  const line = readingLineNode(key);
+  if (!line) return;
+  updateReadingPage(entry.page_no);
+  line.scrollIntoView({ block: "center", behavior: "auto" });
+  if (!readingDrafts.has(key)) openReadingPanel(entry);
+}
+
+async function submitReadingDrafts() {
+  if (!currentProject || !readingDrafts.size) return;
+  const items = [...readingDrafts.values()].map((draft) => ({
+    block_id: draft.block_id,
+    line_index: draft.line_index,
+    ack: draft.ack,
+    new_line_text:
+      draft.ack === "kept" ? null : draft.text == null ? null : draft.text,
+  }));
+  const ok = window.confirm(
+    `提交 ${items.length} 处改动？\n\n采用/手改会改写块文本，保留只记「保留原文」；写库后可以一次撤销。`
+  );
+  if (!ok) return;
+  const button = el("reading-submit");
+  button.disabled = true;
+  button.textContent = "提交中…";
+  try {
+    const result = await apiJson(
+      `/api/projects/${currentProject.project_id}/review/submit-drafts`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      }
+    );
+    const failed = (result.results || []).filter((item) => !item.ok);
+    const okKeys = new Set(
+      (result.results || [])
+        .filter((item) => item.ok)
+        .map((item) => readingKey(item.block_id, item.line_index))
+    );
+    for (const key of okKeys) readingDrafts.delete(key);
+    saveReadingDrafts();
+    if (failed.length) {
+      window.alert(`${failed.length} 处提交失败，仍留在草稿里：\n${failed[0].error || ""}`);
+    }
+    readingData = null;
+    readingProject = null;
+    await openReading();
+    await loadFinishSummary({ silent: true });
+    renderReadingProgress();
+  } catch (error) {
+    button.disabled = false;
+    renderReadingProgress();
+    window.alert(`提交失败：${error.message || "未知错误"}`);
+  }
+}
+
+async function undoReadingSubmit() {
+  if (!currentProject) return;
+  if (!window.confirm("撤销上一次批量操作？（提交的草稿改动会退回提交前）")) return;
+  try {
+    await apiJson(`/api/projects/${currentProject.project_id}/undo`, {
+      method: "POST",
+    });
+    readingData = null;
+    readingProject = null;
+    await openReading();
+    await loadFinishSummary({ silent: true });
+  } catch (error) {
+    window.alert(error.message || "没有可撤销的操作");
+  }
+}
+
+function setupReading() {
+  el("reading-next-unreviewed").addEventListener("click", gotoNextUnreviewed);
+  el("reading-submit").addEventListener("click", submitReadingDrafts);
+  el("reading-undo").addEventListener("click", undoReadingSubmit);
+  el("reading-prev").addEventListener("click", () => stepReadingPage(-1));
+  el("reading-next").addEventListener("click", () => stepReadingPage(1));
+  el("reading-filter").addEventListener("change", (event) =>
+    setReadingFilter(event.target.value)
+  );
+  el("reading-stream").addEventListener("click", (event) => {
+    const markEl = event.target.closest && event.target.closest(".reading-mark");
+    if (!markEl) return;
+    const mark = readingMarks.get(markEl.dataset.key);
+    if (mark) openReadingPanel(mark);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (currentView !== "reading") return;
+    if (event.target && /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      gotoNextUnreviewed();
+    } else if (event.key === "Escape") {
+      closeReadingPanel();
+    }
+  });
+}
+
+
 function boot() {
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {
@@ -15784,6 +16467,7 @@ function boot() {
   setupPageNumberPanel();
   setupPageIndex();
   setupPreview();
+  setupReading();
   setupPageMore();
   setupExportPanel();
   setupStructurePanel();

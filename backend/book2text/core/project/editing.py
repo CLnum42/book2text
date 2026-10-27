@@ -742,6 +742,7 @@ def ack_diff_line(
     library: Path | None = None,
     actor_name: str | None = None,
     actor: str = ACTOR_USER,
+    batch_id: str | None = None,
 ) -> tuple[blocks_module.BlockRecord, dict, list[Event]]:
     """持久化一行差异的裁决：保留原文 / 采纳第二路。
 
@@ -772,7 +773,7 @@ def ack_diff_line(
         if line_index < 0 or line_index >= len(current_lines):
             raise ProjectError("这一块的行号对不上了")
 
-        batch = new_ulid()
+        batch = batch_id or new_ulid()
         events: list[Event] = []
         new_text = text
         if ack == DIFF_ACK_ADOPTED:
