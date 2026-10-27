@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>工作流外壳 · 七步步骤条与工作区（静态设计稿）</title>
+<style>
+:root{
+  --bg:#f3f4f6;--surface:#fff;--surface-2:#fafbfc;--surface-3:#f7f8fa;--paper:#f8f6f0;
+  --line:#e2e4e8;--line-soft:#eef0f2;
+  --text:#1f2329;--text-2:#33383f;--muted:#646a73;--faint:#9aa0a8;
+  --accent:#2563eb;--accent-soft:#eef4ff;--accent-text:#1d4ed8;
+  --ok:#16a34a;--ok-text:#15803d;--ok-soft:#e9f7ee;
+  --warn-text:#b45309;--warn-soft:#fdf3e0;
+  --bad-text:#b91c1c;--bad-soft:#fdecec;
+  --purple:#7a4bb5;--diff-chars:#b42318;--diff-punct:#b45309;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#e9eaee;color:var(--text);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.draftbar{display:flex;align-items:center;gap:14px;padding:7px 16px;background:#1f2329;color:#e6e8eb;font-size:12px}
+.draftbar strong{color:#fff}
+.draftbar .tag{margin-left:auto;background:rgba(255,255,255,.12);padding:1px 7px;border-radius:5px;color:#cfd3d8}
+.stage{padding:18px 20px 0}
+.frame{margin-bottom:22px}
+.label{font-size:12px;font-weight:600;color:#4b5563;margin:0 0 6px 2px}
+.label span{font-weight:400;color:#6b7280}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:3px;box-shadow:0 2px 12px rgba(16,24,40,.07);overflow:hidden}
+.caption{padding:6px 20px 18px;font-size:11.5px;color:#5b6169;line-height:1.65}
+.caption b{color:#1f2329}
+.row{display:flex;align-items:center;gap:8px}
+.spacer{flex:1}
+.muted{color:var(--muted)}
+.btn{height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--text-2);font-size:12px}
+.btn--pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+.btn--sm{height:24px;padding:0 8px;font-size:11.5px}
+.kbd{display:inline-block;min-width:15px;padding:0 4px;border:1px solid #d5d9e0;border-bottom-width:2px;border-radius:4px;background:#fbfcfd;font:11px/15px ui-monospace,Menlo,monospace;color:var(--text-2);text-align:center}
+
+/* ───────── 步骤条 ───────── */
+.topbar{display:flex;align-items:center;gap:10px;height:52px;padding:0 14px;background:var(--surface);border-bottom:1px solid var(--line)}
+.proj{font-size:13px;font-weight:600;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.back{width:22px;height:22px;display:grid;place-items:center;border:1px solid var(--line);border-radius:5px;color:var(--faint);font-size:11px}
+.steps{display:flex;align-items:center;gap:0;height:52px}
+.step{position:relative;display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:0;background:none;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.step + .step::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:1px;background:var(--line-soft)}
+.step__no{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:10.5px;background:var(--surface-3);color:var(--faint);border:1px solid var(--line);flex:none}
+.step__cn{font-size:10.5px;color:var(--faint);margin-left:2px}
+.step--done{color:var(--ok-text)}
+.step--done .step__no{background:var(--ok);border-color:var(--ok);color:#fff}
+.step--done::after{content:"";position:absolute;left:10px;right:10px;bottom:2px;height:2px;background:var(--ok);border-radius:1px}
+.step--cur{color:var(--accent-text);font-weight:600;background:var(--accent-soft);border-radius:7px}
+.step--cur::before{display:none}
+.step--cur .step__no{background:var(--accent);border-color:var(--accent);color:#fff}
+.step--fail{color:var(--bad-text)}
+.step--fail .step__no{background:var(--bad-soft);border-color:#f0c6c6;color:var(--bad-text);font-weight:700}
+.step--skip{color:var(--faint)}
+.step--skip .step__no{border-style:dashed}
+.step--skip .step__cn{text-decoration:none}
+.topright{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--muted)}
+.tpill{height:24px;padding:0 9px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-size:11.5px;color:var(--muted)}
+
+/* ───────── 工作区（三栏） ───────── */
+.work{display:flex;height:620px;min-height:0}
+.left{width:220px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--surface-2)}
+.left h4{margin:0;padding:9px 12px 6px;font-size:11.5px;color:var(--faint);font-weight:600;display:flex;align-items:center;gap:6px}
+.toc{list-style:none;margin:0;padding:0 6px 6px;font-size:12px}
+.toc li{display:flex;align-items:baseline;gap:8px;padding:4px 7px;border-radius:5px;color:var(--text-2)}
+.toc li.on{background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.toc .pg{margin-left:auto;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+.toc .pg.on{color:var(--accent-text)}
+.list{list-style:none;margin:0;padding:0 6px;overflow:auto;flex:1;font-size:12px}
+.list li{display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:5px;color:var(--muted)}
+.list li.on{background:var(--surface);box-shadow:inset 2px 0 0 var(--accent);color:var(--text)}
+.list .n{margin-left:auto;font-size:11px;font-variant-numeric:tabular-nums;color:var(--warn-text)}
+.list .n.ok{color:var(--ok-text)}
+.listhead{padding:7px 12px 4px;font-size:11px;color:var(--faint);border-top:1px solid var(--line-soft);margin-top:4px;display:flex}
+.center{flex:1;min-width:0;display:flex;flex-direction:column;background:#e9eaee}
+.toolbar{height:40px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--surface);border-bottom:1px solid var(--line-soft)}
+.toolbar .sep{width:1px;height:16px;background:var(--line);margin:0 3px}
+.zoom{display:flex;align-items:center;gap:4px;margin-left:auto}
+.zoom .lvl{font-size:11.5px;color:var(--muted);min-width:34px;text-align:center}
+.pagewrap{flex:1;overflow:auto;padding:14px 0 20px}
+.page{position:relative;width:600px;margin:0 auto;background:var(--paper);padding:44px 44px 52px;
+  box-shadow:0 3px 16px rgba(0,0,0,.2);font-family:"Songti SC","STSong",serif;font-size:14px;line-height:31px;color:#23262b}
+.page .rh{position:absolute;top:16px;left:44px;right:44px;font:10.5px/1 -apple-system,sans-serif;color:#8b8f96;
+  display:flex;justify-content:space-between;padding-bottom:5px;border-bottom:1px solid rgba(0,0,0,.1)}
+.page .ln{white-space:pre}
+.box{position:absolute;border:1.5px solid rgba(37,99,235,.5);border-radius:2px}
+.box.cur{border:2px solid var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.15)}
+.box.src{border:2px solid #0f766e;background:rgba(15,118,110,.06)}
+.d{color:var(--diff-chars);text-decoration:underline solid 2px;text-underline-offset:2px}
+.dp{color:var(--diff-punct);text-decoration:underline dotted 2px;text-underline-offset:2px}
+.queue{flex:none;margin:10px 12px 0;border:1px solid #c9d9f8;border-radius:9px;background:#f7faff}
+.queue__top{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid #e3ecfc}
+.queue__n{font-size:12px;font-weight:600;color:var(--accent-text)}
+.queue__act{display:flex;gap:6px;padding:6px 10px}
+.dots{display:flex;gap:3px;margin-left:auto}
+.dots i{width:6px;height:6px;border-radius:50%;background:#d7dee8}
+.dots i.done{background:#9db7e8}
+.dots i.now{background:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.18)}
+.right{width:380px;flex:none;border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--surface)}
+.right .rhead{padding:9px 12px;border-bottom:1px solid var(--line-soft);font-size:12px;display:flex;align-items:center;gap:8px}
+.blk{padding:9px 12px 11px;border-bottom:1px solid var(--line-soft)}
+.blk.cur{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--accent)}
+.blk__h{display:flex;align-items:center;gap:7px;min-height:22px}
+.type{height:20px;padding:0 5px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--muted);font-size:11px}
+.blk__t{font-size:12.5px;line-height:1.7;margin-top:3px;white-space:pre-wrap}
+.badge{font-size:10.5px;padding:1px 5px;border-radius:4px;background:var(--surface-3);color:var(--faint)}
+.badge--warn{background:var(--warn-soft);color:var(--warn-text)}
+.foot{flex:none;display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--line);background:var(--surface)}
+
+/* ───────── 结果预览 ───────── */
+.preview{display:flex;height:600px}
+.pv-left{width:44%;flex:none;display:flex;flex-direction:column;background:#e9eaee;border-right:1px solid var(--line)}
+.pv-right{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface)}
+.pv-left .pagewrap{flex:1;overflow:auto;padding:14px}
+.pv-left .page{width:auto;max-width:520px}
+.seg{display:block;padding:9px 14px;border-bottom:1px solid var(--line-soft);cursor:pointer}
+.seg.on{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.seg__h{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--faint);margin-bottom:2px}
+.seg__h b{color:var(--text-2);font-weight:600;font-size:11.5px}
+.seg__h .x{background:var(--purple-soft,#f7f2ff);color:var(--purple);border:1px solid #e3d6f5;border-radius:4px;padding:0 5px;font-size:10.5px}
+.seg__t{font-size:12.5px;line-height:1.75;color:var(--text-2)}
+.seg__t .cross{display:block;height:0;border-top:1px dashed #c9ced6;margin:4px 0;position:relative}
+.seg__t .cross span{position:absolute;right:0;top:-9px;background:var(--surface);padding:0 4px;font-size:9.5px;color:var(--faint)}
+
+/* ───────── 目录确认 ───────── */
+.tocwrap{display:flex;height:560px}
+.toc-cand{width:330px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--surface-2)}
+.cand{display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line-soft);font-size:12px}
+.cand.on{background:var(--accent-soft)}
+.cand input{margin-top:3px}
+.cand__t{display:block;font-weight:600;color:var(--text-2)}
+.cand__m{display:block;font-size:10.5px;color:var(--faint);margin-top:1px;line-height:1.45}
+.toc-main{flex:1;min-width:0;display:flex;flex-direction:column;background:#e9eaee}
+.toc-right{width:300px;flex:none;border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column}
+</style>
+</head>
+<body>
+
+<div class="draftbar">
+  <strong>静态设计稿</strong><span>工作流外壳 · 七步步骤条 + 工作区</span>
+  <span class="tag">docs/ux/workflow-shell-mockup.html</span>
+</div>
+
+<div class="stage">
+
+  <!-- ══════════ A · 步骤条 ══════════ -->
+  <div class="frame">
+    <p class="label">A · 步骤条 <span>（1440px：全称；1120px：两字缩写；&lt;1120px：圆点 + 当前步）</span></p>
+    <div class="card">
+      <div class="topbar">
+        <span class="back">‹</span>
+        <span class="proj">《红楼梦》双语对照 3_正文_中文部分</span>
+        <div class="steps">
+          <button class="step step--done"><span class="step__no">✓</span>页面确认</button>
+          <button class="step step--done"><span class="step__no">✓</span>版心确认</button>
+          <button class="step step--done"><span class="step__no">✓</span>文字识别</button>
+          <button class="step step--fail"><span class="step__no">!</span>目录确认<span class="step__cn">2 章未定</span></button>
+          <button class="step step--cur" aria-current="step"><span class="step__no">5</span>正文审校<span class="step__cn">82</span></button>
+          <button class="step"><span class="step__no">6</span>结果预览</button>
+          <button class="step"><span class="step__no">7</span>文件导出</button>
+        </div>
+        <div class="topright">
+          <span>已保存 ✓ 14:32</span>
+          <span class="tpill">任务 45 / 394 ▸</span>
+        </div>
+      </div>
+
+      <div style="padding:10px 14px;border-top:1px solid var(--line-soft);background:var(--surface-2);display:flex;gap:22px;align-items:center;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--faint)">状态图例</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ok-text)"><span class="step__no" style="background:var(--ok);border-color:var(--ok);color:#fff">✓</span>已完成</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--accent-text);font-weight:600"><span class="step__no" style="background:var(--accent);border-color:var(--accent);color:#fff">5</span>当前</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><span class="step__no">6</span>未开始</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--bad-text)"><span class="step__no" style="background:var(--bad-soft);border-color:#f0c6c6;color:var(--bad-text);font-weight:700">!</span>有失败（带数量）</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--faint)"><span class="step__no" style="border-style:dashed">4</span>已跳过</span>
+      </div>
+
+      <div class="topbar" style="height:46px;border-top:1px solid var(--line-soft)">
+        <span class="back">‹</span>
+        <span class="proj">《红楼梦》…</span>
+        <div class="steps" style="height:46px">
+          <button class="step step--done" style="height:32px;padding:0 9px;font-size:12px"><span class="step__no">✓</span>页面</button>
+          <button class="step step--done" style="height:32px;padding:0 9px;font-size:12px"><span class="step__no">✓</span>版心</button>
+          <button class="step step--done" style="height:32px;padding:0 9px;font-size:12px"><span class="step__no">✓</span>识别</button>
+          <button class="step step--fail" style="height:32px;padding:0 9px;font-size:12px"><span class="step__no">!</span>目录</button>
+          <button class="step step--cur" style="height:32px;padding:0 9px;font-size:12px"><span class="step__no">5</span>审校</button>
+          <button class="step" style="height:32px;padding:0 9px;font-size:12px"><span class="step__no">6</span>预览</button>
+          <button class="step" style="height:32px;padding:0 9px;font-size:12px"><span class="step__no">7</span>导出</button>
+        </div>
+        <div class="topright"><span>已保存 ✓</span><span class="tpill">任务 ▸</span></div>
+      </div>
+
+      <div class="topbar" style="height:46px;border-top:1px solid var(--line-soft)">
+        <span class="proj">《红楼梦》…</span>
+        <div class="steps" style="height:46px;gap:6px;padding-left:8px">
+          <span style="display:flex;gap:5px">
+            <span class="step__no" style="background:var(--ok);border-color:var(--ok);color:#fff">✓</span>
+            <span class="step__no" style="background:var(--ok);border-color:var(--ok);color:#fff">✓</span>
+            <span class="step__no" style="background:var(--ok);border-color:var(--ok);color:#fff">✓</span>
+            <span class="step__no" style="background:var(--bad-soft);border-color:#f0c6c6;color:var(--bad-text);font-weight:700">!</span>
+            <span class="step__no" style="background:var(--accent);border-color:var(--accent);color:#fff">5</span>
+            <span class="step__no">6</span>
+            <span class="step__no">7</span>
+          </span>
+          <span style="font-size:12.5px;font-weight:600;color:var(--accent-text);margin-left:6px">正文审校</span>
+          <button class="btn btn--sm" style="margin-left:8px">下一步 ›</button>
+        </div>
+        <div class="topright"><span class="tpill">步骤 5 / 7</span></div>
+      </div>
+    </div>
+    <p class="caption">步骤之间用细竖线，不用箭头；已完成是绿勾、当前是蓝底加粗、未开始是灰数字、失败是红叹号带数量、跳过是虚线圆。分页器已搬进工作区工具条，顶栏才有位置放七步。</p>
+  </div>
+
+  <!-- ══════════ B · 正文审校 三栏 ══════════ -->
+  <div class="frame">
+    <p class="label">B · ⑤ 正文审校 <span>（左目录+清单 220 / 中页面 / 右块列表 380；队列条固定在页面顶部）</span></p>
+    <div class="card">
+      <div class="topbar" style="height:44px">
+        <span class="proj">《红楼梦》双语对照 3_正文_中文部分</span>
+        <div class="steps" style="height:44px">
+          <button class="step step--done" style="height:30px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>页面确认</button>
+          <button class="step step--done" style="height:30px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>版心确认</button>
+          <button class="step step--done" style="height:30px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>文字识别</button>
+          <button class="step step--done" style="height:30px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>目录确认</button>
+          <button class="step step--cur" style="height:30px;padding:0 8px;font-size:12px" aria-current="step"><span class="step__no">5</span>正文审校</button>
+          <button class="step" style="height:30px;padding:0 8px;font-size:12px"><span class="step__no">6</span>结果预览</button>
+          <button class="step" style="height:30px;padding:0 8px;font-size:12px"><span class="step__no">7</span>文件导出</button>
+        </div>
+        <div class="topright"><span>已保存 ✓</span><span class="tpill">任务 ▸</span></div>
+      </div>
+
+      <div class="work">
+        <!-- 左栏 -->
+        <aside class="left">
+          <h4>目录 <span style="font-weight:400">（已确认 11 章）</span></h4>
+          <ul class="toc">
+            <li><span>第五回</span><span class="pg">210</span></li>
+            <li><span>第六回</span><span class="pg">268</span></li>
+            <li><span>第七回</span><span class="pg">318</span></li>
+            <li class="on"><span>第八回</span><span class="pg on">370</span></li>
+            <li><span>第九回</span><span class="pg">420</span></li>
+          </ul>
+          <div class="listhead"><span>审校清单</span><span class="spacer"></span><span>还剩 1024 处</span></div>
+          <ul class="list">
+            <li><span>第 87 页</span><span class="n">4 处</span></li>
+            <li><span>第 90 页</span><span class="n">1 处</span></li>
+            <li class="on"><span>第 370 页</span><span class="n">13 处</span></li>
+            <li><span>第 371 页</span><span class="n">2 处</span></li>
+            <li><span>第 375 页</span><span class="n ok">✓</span></li>
+          </ul>
+        </aside>
+
+        <!-- 中栏 -->
+        <div class="center">
+          <div class="toolbar">
+            <button class="btn btn--sm">◀</button>
+            <span style="font-size:12px;font-weight:600">第 370 页</span>
+            <button class="btn btn--sm">▶</button>
+            <button class="btn btn--sm">跳转</button>
+            <select class="btn btn--sm" style="width:104px"><option>有差异的页</option></select>
+            <span class="sep"></span>
+            <button class="btn btn--sm">差异：整页</button>
+            <button class="btn btn--sm">显示块框</button>
+            <div class="zoom">
+              <button class="btn btn--sm">－</button>
+              <span class="lvl">单页</span>
+              <button class="btn btn--sm">＋</button>
+            </div>
+          </div>
+
+          <div class="queue">
+            <div class="queue__top">
+              <span class="queue__n">第 3 / 13 处</span>
+              <span style="font-size:11.5px;color:var(--muted)">汉字级 · 第 1 块 · 第 2 行</span>
+              <span class="dots"><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+            </div>
+            <div style="padding:5px 10px 0;font-size:12.5px;color:var(--text-2)">
+              …群花之蕊，冰鲛之<span class="d">殼</span><span style="color:var(--faint);padding:0 3px">→</span><span style="color:var(--purple);text-decoration:underline dotted 2px;text-underline-offset:2px">縠</span>，沁芳之泉…
+            </div>
+            <div class="queue__act">
+              <button class="btn btn--pri" style="height:26px;font-size:11.5px">采纳第二路 <span class="kbd">⏎</span></button>
+              <button class="btn" style="height:26px;font-size:11.5px">保留原文 <span class="kbd">␣</span></button>
+              <button class="btn" style="height:26px;font-size:11.5px">回上一处 <span class="kbd">⌫</span></button>
+            </div>
+          </div>
+
+          <div class="pagewrap">
+            <div class="page">
+              <div class="rh"><span>红楼梦 370</span><span>370</span></div>
+              <div class="ln">　　维太平不易之元，蓉桂竞芳之月，无可奈何之日，</div>
+              <div class="ln">怡红院浊玉，谨以群花之蕊、冰鲛之<span class="d">殼</span>，沁芳之</div>
+              <div class="ln">泉、枫露之茗：四者虽微，聊以达诚申信，乃致祭</div>
+              <div class="ln">于白帝宫中抚司秋艳芙蓉女儿之前曰：</div>
+              <div class="ln">　　窃思女儿自临人世，迄今凡十有六载。其先之</div>
+              <div class="ln">乡籍姓氏，湮沦而莫能考者久矣。而玉得于衾枕栉</div>
+              <div class="ln">沐之间，栖息宴游之夕，亲昵狎亵，相与共处者，</div>
+              <div class="ln">仅五年八月有奇。忆女儿<span class="d">曩</span>生之昔，其为质则金玉</div>
+              <div class="ln">不足喻其贵；其为体则冰雪不足喻其洁。</div>
+              <div class="box cur" style="left:37px;top:49px;width:520px;height:126px"></div>
+              <div class="box" style="left:37px;top:168px;width:520px;height:124px"></div>
+            </div>
+          </div>
+
+          <div class="foot" style="border-top:1px solid var(--line)">
+            <button class="btn btn--sm">撤销</button><button class="btn btn--sm">重做</button>
+            <span style="font-size:11.5px;color:var(--faint)">块 1 / 4</span>
+            <span class="spacer"></span>
+            <span style="font-size:11.5px;color:var(--muted)">采纳 2 · 保留 0 · 还剩 11 处</span>
+            <button class="btn btn--pri" style="height:30px">确认本页并下一页 <span class="kbd" style="background:#4a7ff0;border-color:#3b6ee0;color:#fff">⌘⏎</span></button>
+          </div>
+        </div>
+
+        <!-- 右栏 -->
+        <aside class="right">
+          <div class="rhead"><strong>第 370 页</strong><span class="muted">正文 · 13 处差异 · 版心外 1</span><span class="spacer"></span><button class="btn btn--sm">⋯</button></div>
+          <div class="blk cur">
+            <div class="blk__h"><span class="type">段落</span><span class="spacer"></span><span class="badge">未审</span></div>
+            <div class="blk__t">维太平不易之元，蓉桂竞芳之月，无可奈何之日，怡红院浊玉，谨以群花之蕊、冰鲛之殼，沁芳之泉、枫露之茗：四者虽微，聊以达诚申信。</div>
+          </div>
+          <div class="blk">
+            <div class="blk__h"><span class="type">段落</span><span class="spacer"></span><span class="badge">未审</span></div>
+            <div class="blk__t">窃思女儿自临人世，迄今凡十有六载。其先之乡籍姓氏，湮沦而莫能考者久矣。</div>
+          </div>
+          <div class="blk">
+            <div class="blk__h"><span class="type">标题</span><span class="spacer"></span><span class="badge">未审</span></div>
+            <div class="blk__t">芙蓉女儿诔</div>
+          </div>
+          <div class="foot" style="margin-top:auto">
+            <span style="font-size:11.5px;color:var(--faint)">块列表不再重复差异条——差异只在队列条里出现一次</span>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <p class="caption">三栏：左栏是"我在书里的位置"，中间是页面与队列，右栏是块文本与类型。<b>队列条从中栏顶部走完本页</b>，右栏因此不再显示块内差异条。</p>
+  </div>
+
+  <!-- ══════════ C · 结果预览 ══════════ -->
+  <div class="frame">
+    <p class="label">C · ⑥ 结果预览 <span>（左 PDF 页、右组装正文；点段 → 左图跳到来源页并高亮来源块）</span></p>
+    <div class="card">
+      <div class="topbar" style="height:42px">
+        <span class="proj">《红楼梦》…</span>
+        <div class="steps" style="height:42px">
+          <button class="step step--done" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>页面</button>
+          <button class="step step--done" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>版心</button>
+          <button class="step step--done" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>识别</button>
+          <button class="step step--done" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>目录</button>
+          <button class="step step--done" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>审校</button>
+          <button class="step step--cur" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">6</span>结果预览</button>
+          <button class="step" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">7</span>文件导出</button>
+        </div>
+        <div class="topright"><span>已保存 ✓</span></div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--line-soft);font-size:11.5px;color:var(--muted);flex-wrap:wrap">
+        <span>组装：<b style="color:var(--text-2)">1284 段</b> · 跨页段 <b style="color:var(--text-2)">96</b> · 22.4 万字 · 版心外剔除 41 块</span>
+        <span class="spacer"></span>
+        <button class="btn btn--sm">只看跨页段</button>
+        <button class="btn btn--sm">重新组装</button>
+        <button class="btn btn--sm btn--pri">导出 TXT…（→ ⑦）</button>
+      </div>
+
+      <div class="preview">
+        <div class="pv-left">
+          <div class="pagewrap">
+            <div class="page">
+              <div class="rh"><span>红楼梦 87</span><span>87</span></div>
+              <div class="ln">　　维太平不易之元，蓉桂竞芳之月，无可奈何之日，</div>
+              <div class="ln">怡红院浊玉，谨以群花之蕊、冰鲛之縠，沁芳之</div>
+              <div class="ln">泉、枫露之茗：四者虽微，聊以达诚申信，乃致祭</div>
+              <div class="box src" style="left:36px;top:44px;width:512px;height:96px"></div>
+            </div>
+          </div>
+          <div style="flex:none;padding:6px 14px 10px;font-size:11px;color:var(--muted);background:rgba(255,255,255,.6);border-top:1px solid var(--line)">
+            本段来源：第 87 页 · 2 块　<span style="color:var(--purple)">另有 1 页 →</span>
+          </div>
+        </div>
+
+        <div class="pv-right">
+          <div class="seg">
+            <div class="seg__h"><b>§127</b><span>第 86 页 · 1 块</span></div>
+            <div class="seg__t">却说薛姨妈等这里吃毕西瓜，又说了一回闲话，各自方散去。</div>
+          </div>
+          <div class="seg on">
+            <div class="seg__h"><b>§128</b><span>第 87–88 页 · 3 块</span><span class="x">跨页 2 页</span></div>
+            <div class="seg__t">维太平不易之元，蓉桂竞芳之月，无可奈何之日，怡红院浊玉，谨以群花之蕊、冰鲛之縠，沁芳之泉、枫露之茗：四者虽微，聊以达诚申信，乃致祭于白帝宫中抚司秋艳芙蓉女儿之前曰：
+              <span class="cross"><span>第 87 / 88 页交界</span></span>
+              窃思女儿自临人世，迄今凡十有六载。其先之乡籍姓氏，湮沦而莫能考者久矣。</div>
+          </div>
+          <div class="seg">
+            <div class="seg__h"><b>§129</b><span>第 88 页 · 2 块</span></div>
+            <div class="seg__t">而玉得于衾枕栉沐之间，栖息宴游之夕，亲昵狎亵，相与共处者，仅五年八月有奇。</div>
+          </div>
+          <div style="margin-top:auto;padding:8px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--faint)">
+            段落正文与导出用同一份组装结果（/export/preview），预览只读
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption">段头给 <b>§序号 + 页范围 + 块数</b>；跨页段额外标「跨页 2 页」，正文里用一条虚线标出页交界。点段 → 左图跳到该段第一页并高亮来源块，紫色「另有 1 页」跳到第二页。</p>
+  </div>
+
+  <!-- ══════════ D · 目录确认 ══════════ -->
+  <div class="frame">
+    <p class="label">D · ④ 目录确认 <span>（新功能：章节候选 + 页码，确认后供审校左栏使用；需后端接口）</span></p>
+    <div class="card">
+      <div class="topbar" style="height:42px">
+        <span class="proj">《红楼梦》…</span>
+        <div class="steps" style="height:42px">
+          <button class="step step--done" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>页面</button>
+          <button class="step step--done" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>版心</button>
+          <button class="step step--done" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">✓</span>识别</button>
+          <button class="step step--cur" style="height:28px;padding:0 8px;font-size:12px" aria-current="step"><span class="step__no">4</span>目录确认</button>
+          <button class="step" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">5</span>正文审校</button>
+          <button class="step" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">6</span>结果预览</button>
+          <button class="step" style="height:28px;padding:0 8px;font-size:12px"><span class="step__no">7</span>文件导出</button>
+        </div>
+        <div class="topright"><span>已保存 ✓</span></div>
+      </div>
+
+      <div class="tocwrap">
+        <aside class="toc-cand">
+          <h4 style="margin:0;padding:9px 12px 6px;font-size:11.5px;color:var(--faint);font-weight:600">章节候选 11 · 已勾选 9</h4>
+          <div style="overflow:auto;flex:1">
+            <label class="cand"><input type="checkbox" checked><span><span class="cand__t">第一回</span><span class="cand__m">第 12 页 · 书眉「红楼梦 12」 · 把握较大</span></span></label>
+            <label class="cand"><input type="checkbox" checked><span><span class="cand__t">第二回</span><span class="cand__m">第 48 页 · 书眉「红楼梦 48」 · 把握较大</span></span></label>
+            <label class="cand"><input type="checkbox" checked><span><span class="cand__t">第三回</span><span class="cand__m">第 96 页 · 书眉「红楼梦 96」 · 把握较大</span></span></label>
+            <label class="cand on"><input type="checkbox" checked><span><span class="cand__t">第四回</span><span class="cand__m">第 152 页 · 标题块 · 已核对</span></span></label>
+            <label class="cand"><input type="checkbox"><span><span class="cand__t">第五回</span><span class="cand__m">第 210 页 · 书眉「红楼梦 210」 · 页码不连续</span></span></label>
+            <label class="cand"><input type="checkbox" checked><span><span class="cand__t">第六回</span><span class="cand__m">第 268 页 · 标题块</span></span></label>
+          </div>
+          <div style="padding:8px 12px;border-top:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn--sm">＋ 新增章节</button>
+            <button class="btn btn--sm">这本书没有目录（跳过）</button>
+          </div>
+        </aside>
+
+        <div class="toc-main">
+          <div class="pagewrap">
+            <div class="page">
+              <div class="rh"><span>红楼梦 152</span><span>152</span></div>
+              <div class="ln" style="text-align:center;font-size:16px">第 四 回</div>
+              <div class="ln" style="text-align:center;font-size:13px">薄命女偏逢薄命郎　葫芦僧乱判葫芦案</div>
+              <div class="ln">　　却说封肃只听有人报说：“县太爷来了。”忙出来迎接。</div>
+              <div class="ln">　　……</div>
+              <div class="box" style="left:36px;top:16px;width:512px;height:26px;border-color:#0f766e"></div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="toc-right">
+          <div style="padding:10px 12px;border-bottom:1px solid var(--line-soft);font-size:12px">
+            <div style="font-weight:600;margin-bottom:6px">页码</div>
+            <div class="muted" style="font-size:11.5px;line-height:1.6">模板：右下（奇）/ 左下（偶）<br>已填 394 / 394 页 · 异常 12 页</div>
+            <button class="btn btn--sm" style="margin-top:6px">核对 12 页异常…</button>
+          </div>
+          <div style="padding:10px 12px;font-size:12px">
+            <div style="font-weight:600;margin-bottom:4px">目录预览</div>
+            <ol style="margin:0;padding-left:16px;font-size:11.5px;color:var(--text-2);line-height:1.9">
+              <li>第一回 · 12</li>
+              <li>第二回 · 48</li>
+              <li>第三回 · 96</li>
+              <li>第四回 · 152</li>
+            </ol>
+          </div>
+          <div style="margin-top:auto;padding:10px 12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px">
+            <button class="btn btn--pri">确认目录（9 章）</button>
+            <span style="font-size:10.5px;color:var(--faint)">确认后 ⑤ 正文审校的左栏会用它</span>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <p class="caption">这一步是新的：章节候选只来自两处——版心内标题块、版心外书眉 + 印刷页码。勾选确认后写库；如果这本书没有目录，可以明确跳过（步骤条显示「跳过」）。</p>
+  </div>
+
+</div>
+
+</body>
+</html>
