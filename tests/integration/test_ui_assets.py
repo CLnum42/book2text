@@ -1034,7 +1034,8 @@ def test_page_index_step_is_wired() -> None:
         "index-prev",
         "index-next",
         "index-zoom-label",
-        "index-image",
+        "index-canvas",
+        "index-pages",
     ):
         assert f'id="{element_id}"' in page, element_id
 
@@ -1266,8 +1267,13 @@ def test_continuation_review_entry_and_panel_are_wired() -> None:
     assert "/cleanup/continuations/pending" in script
     assert "/cleanup/continuations/resolve" in script
     assert "/cleanup/continuations/reopen" in script
-    assert "标延续（合成一段）" in page
-    assert "标结束（分成两段）" in page
+    # 任务 48（K1）：按钮文案按用户原话缩短，面板只留两行原文
+    assert "合成一段<kbd>1</kbd>" in page
+    assert "分成两段<kbd>2</kbd>" in page
+    assert "走满程度" not in script
+    assert "首行缩进" not in script
+    # 连按不丢：写库期间的按键进队列
+    assert "pendingDecisions" in script
     # 键盘：1 / 2 / Z / ↑ / ↓
     for key in ('key === "1"', 'key === "2"', 'key === "z" || key === "Z"', 'key === "ArrowDown"', 'key === "ArrowUp"'):
         assert key in script, key
@@ -1421,18 +1427,16 @@ def test_index_view_reuses_page_rendering() -> None:
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
-        "index-page",
-        "index-margin",
-        "index-overlay",
-        "index-firstline",
+        "index-pages",
+        "index-canvas",
         "index-margin-toggle",
         "index-overlay-toggle",
     ):
         assert f'id="{element_id}"' in page, element_id
 
     assert "function paintIndexDecorations(" in script
-    assert "paintTileMargin(wrapper, page)" in script
-    assert "renderPageBlocks(wrapper, indexBlocks" in script
+    assert "paintTileMargin(tile, page)" in script
+    assert "renderPageBlocks(tile, blocks" in script
     assert "function loadIndexBlocks(" in script
     assert "function drawIndexFirstLine(" in script
     assert "function toggleIndexOverlay(" in script
@@ -1445,3 +1449,49 @@ def test_index_view_reuses_page_rendering() -> None:
     # 版心 / 块框两栏同一个状态变量
     assert "pagesMarginOn" in script and "pagesOverlayOn" in script
     assert ".index-page" in css and ".index-firstline" in css
+
+
+def test_page_index_scrolls_continuously_with_lazy_pages() -> None:
+    """任务 48（K1）：目录确认右边改成连续多页，按需加载、右边滚左边跟着亮。
+
+    - 页列容器 `#index-pages` + 页块（不是单页 #index-page）；
+    - 图 / 块只给视口附近 ±3 页：IntersectionObserver + 上限；
+    - 右边滚 → 当前页变化 → 列表高亮并滚进可视区（反向同步）；
+    - 缩放作用在整个页列上。
+    """
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    assert 'id="index-pages"' in page
+    assert "function buildIndexPages(" in script
+    assert "IntersectionObserver" in script
+    assert "rootMargin" in script and "INDEX_NEAR_MARGIN" in script
+    # 只给附近页挂图 / 块，滚出去清掉，图有上限
+    assert "function loadIndexTile(" in script
+    assert "function clearIndexTile(" in script
+    assert "function trimIndexImages(" in script
+    assert "INDEX_IMAGE_LIMIT" in script
+    assert "function ensureIndexImage(" in script
+    assert "function ensureIndexBlocks(" in script
+    # 页列里的每一页都调用同一套渲染
+    assert "function paintIndexTile(" in script
+    # 只有视口里的页画装饰：near 只取数据、visible 才画
+    assert "function observeIndexTiles(" in script
+    assert "indexVisibleObserver" in script
+    assert "function clearIndexDecorations(" in script
+    # 页图按距离排队、一次解一张，并有同时挂载上限
+    assert "function pumpIndexImages(" in script
+    assert "indexImageQueue" in script
+    assert "image.decode()" in script
+    # 右边滚 → 左边同步（当前行居中）
+    assert 'el("index-canvas").addEventListener("scroll", onIndexScroll' in script
+    assert "function updateIndexActiveFromScroll(" in script
+    assert "function ensureIndexRowVisible(" in script
+    assert "highlightIndexRow(true)" in script
+    # 点列表 = 滚过去，不是换一页
+    assert "function scrollIndexToPage(" in script
+    assert "openIndexPage(Number(row.dataset.pageNo)" in script
+    # 缩放作用在整个页列上
+    assert "for (const tile of indexTiles.values()) tile.style.width" in script
+    assert ".index-pages" in css and ".index-page" in css

@@ -6897,22 +6897,50 @@ function setupTaskDrawer() {
   el("job-retry").addEventListener("click", () => controlJob("retry-failed"));
 }
 
-// ---------------------------------------------------------------- 目录确认（页码跳转索引，任务 37）
+// ---------------------------------------------------------------- 目录确认（页码跳转索引，任务 37 / 任务 48）
 //
 // 用户要的不是书籍目录，是"能直接跳页的页码列表"：左边印刷页码 → PDF 页，
-// 右边单页预览；点一条跳过去，翻页时左边自动定位并高亮。
+// 右边**连续多页**，像 PDF 阅读器那样一页接一页往下滚；点一条就滚到那一页。
 // 数据来自后端 /page-index（优先 page.printed_page，否则页码候选；有缓存），
 // 界面只读：不改任何东西。
+//
+// 任务 48（K1）：右边从"单页 + 翻页按钮"换成**连续页列**。
+// - 394 个页块只是占位空壳（固定宽高比，滚动高度与"滚到第 394 页"都靠它）；
+//   **图和块数据只给视口附近 ±3 页**加载，用 IntersectionObserver 判断远近，
+//   滚出去的页立刻清掉版心 / 块框 / 首行框，离得远的页再把 img 的 src 摘掉。
+// - 版心 / 块框 / 首行框还是页面视图同一套（`paintTileMargin` / `renderPageBlocks`）。
+// - 右边滚 → 左边列表**反向同步**：当前页那一行高亮，并滚进列表可视区。
+// - 缩放四档作用在整个页列上，仍然与页面视图 / 结果预览共用 `pageZoomIndex`。
 
 let pageIndexData = null;
 let pageIndexProject = null;
 let pageIndexLoading = false;
 let indexCurrentPage = null;
-let indexImageToken = 0;
-let indexBlocksToken = 0;
-let indexBlocks = [];
 let indexJumpTimer = null;
 const INDEX_ZOOM_SCALES = [0.55, 0.7, 0.85, 1];
+/** 视口上下各预加载多少像素（约 ±3 页；628 高时一页约 700–900 px）。 */
+const INDEX_NEAR_MARGIN = 2600;
+/** 同时挂 `src` 的页图上限：再多就把离当前页最远的摘掉。 */
+const INDEX_IMAGE_LIMIT = 8;
+
+let indexTiles = new Map();
+let indexPagesProject = null;
+let indexNearPages = new Set();
+/** 真正在视口里的页：版心 / 块框 / 首行框只给这些页画（任务 48）。 */
+let indexVisiblePages = new Set();
+let indexLoadedImages = new Set();
+let indexBlocksByPage = new Map();
+const indexBlocksPending = new Map();
+let indexObserver = null;
+let indexVisibleObserver = null;
+let indexObserverMargin = 0;
+/** 页图按"离当前页由近到远"排队，一次只解一张：跳页时不会一帧里解 7 张大图。 */
+const indexImageQueue = [];
+let indexImagePumping = false;
+let indexTops = [];
+let indexTopMap = new Map();
+let indexScrollRaf = 0;
+let indexResizeRaf = 0;
 
 async function loadPageIndex() {
   if (!currentProject || pageIndexLoading) return;
@@ -6965,8 +6993,12 @@ async function openPageIndex() {
     return;
   }
   empty.hidden = true;
+  ensureIndexPages();
+  applyIndexZoom();
+  measureIndexTiles();
   const target =
-    (indexCurrentPage && pageIndexData.pages.some((e) => e.page_no === indexCurrentPage)
+    (indexCurrentPage &&
+      currentProject.pages.some((item) => item.page_no === indexCurrentPage)
       ? indexCurrentPage
       : null) ||
     (detailPageNo !== null ? detailPageNo : null) ||
@@ -7032,154 +7064,338 @@ function renderPageIndex() {
   highlightIndexRow(false);
 }
 
-/** 打开一页：换图 + 更新页头 + 左边高亮（翻页与点列表都走这里）。 */
-function openIndexPage(pageNo, { scrollList = true } = {}) {
+// ---------------------------------------------------------------- 右：连续页列（按需加载）
+
+function indexPageRecord(pageNo) {
+  if (!currentProject) return null;
+  return currentProject.pages.find((item) => item.page_no === pageNo) || null;
+}
+
+/** 页块只在换项目 / 页数变了时重建：394 个空壳，图与块都还是空的。 */
+function ensureIndexPages() {
   if (!currentProject) return;
-  const page = currentProject.pages.find((item) => item.page_no === pageNo);
-  if (!page) return;
-  indexCurrentPage = pageNo;
-  // 换页时先收掉上一条跳转提示（跳转本身会再写一条新的）。
-  setIndexJumpStatus("");
-  const image = el("index-image");
-  const status = el("index-image-status");
-  const pageEl = el("index-page");
-  const token = ++indexImageToken;
-  if (pageEl) pageEl.hidden = false;
-  status.hidden = false;
-  status.textContent = "正在渲染…";
-  image.classList.remove("is-ready");
-  image.onload = () => {
-    if (token !== indexImageToken) return;
-    status.hidden = true;
-    image.classList.add("is-ready");
-    applyIndexZoom();
-    paintIndexDecorations();
-  };
-  image.onerror = () => {
-    if (token !== indexImageToken) return;
-    status.hidden = false;
-    status.textContent = "这一页的图像读不出来。";
-  };
-  image.src = pageImageUrl(pageNo, "view");
-  image.alt = `第 ${pageNo} 页`;
-  // 块数据按当前页懒加载（目录确认只显示一页，不预取全书）
-  indexBlocks = [];
-  const blocksToken = ++indexBlocksToken;
-  const blocksStarted = performance.now();
-  loadIndexBlocks(pageNo).then((blocks) => {
-    if (blocksToken !== indexBlocksToken || indexCurrentPage !== pageNo) return;
-    indexBlocks = blocks || [];
-    paintIndexDecorations();
-    window.__b2tIndexBlocksMs = Math.round(performance.now() - blocksStarted);
-  });
-
-  el("index-page-no").textContent = `第 ${pageNo} 页`;
-  const entry =
-    pageIndexData && pageIndexData.pages.find((item) => item.page_no === pageNo);
-  // 页头只写实际检测到的印刷页；"同一叶另一面"的跳转便利只放在列表行的 title 里。
-  el("index-printed").textContent = entry
-    ? entry.missing
-      ? "未识别页码（照样可以审校 / 导出）"
-      : `印刷页 ${entry.printed[0] || ""}`
-    : "";
-  const pages = pageIndexData ? pageIndexData.pages : [];
-  const index = pages.findIndex((item) => item.page_no === pageNo);
-  el("index-prev").disabled = index <= 0;
-  el("index-next").disabled = index < 0 || index >= pages.length - 1;
-  highlightIndexRow(scrollList);
-  syncIndexToggles();
-  paintIndexDecorations();
+  const total = currentProject.pages.length;
+  const same = indexPagesProject === currentProject.project_id &&
+    indexTiles.size === total &&
+    el("index-pages") &&
+    el("index-pages").querySelector(".index-page");
+  if (same) return;
+  buildIndexPages();
 }
 
-function highlightIndexRow(scroll) {
-  const list = el("index-list");
-  for (const node of list.querySelectorAll(".is-current")) {
-    node.classList.remove("is-current");
+function buildIndexPages() {
+  const wrap = el("index-pages");
+  if (!wrap || !currentProject) return;
+  disconnectIndexObserver();
+  wrap.innerHTML = "";
+  indexTiles.clear();
+  indexNearPages.clear();
+  indexLoadedImages.clear();
+  indexBlocksByPage.clear();
+  indexBlocksPending.clear();
+  indexTops = [];
+  indexTopMap = new Map();
+  const fragment = document.createDocumentFragment();
+  for (const page of currentProject.pages) {
+    const tile = document.createElement("div");
+    tile.className = "index-page";
+    tile.dataset.pageNo = String(page.page_no);
+    // 图没到之前先占住真实比例：滚动条、二分定位和"滚到第 394 页"才稳定
+    tile.style.aspectRatio = `${page.width_pt} / ${page.height_pt}`;
+
+    const image = document.createElement("img");
+    image.alt = `第 ${page.page_no} 页`;
+    image.decoding = "async";
+
+    // 和页面视图 / 目录确认原来那一套完全相同：版心 + 块框 + 首行标记
+    const margin = document.createElement("div");
+    margin.className = "page-margin";
+    margin.hidden = true;
+    const marginBox = document.createElement("div");
+    marginBox.className = "page-margin__box";
+    margin.append(marginBox);
+
+    const overlay = document.createElement("div");
+    overlay.className = "page-overlay page-overlay--readonly page-overlay--labeled";
+    overlay.hidden = true;
+
+    const firstline = document.createElement("div");
+    firstline.className = "index-firstline";
+    firstline.hidden = true;
+
+    tile.append(image, margin, overlay, firstline);
+    indexTiles.set(page.page_no, tile);
+    fragment.append(tile);
   }
-  if (indexCurrentPage === null) return;
-  const row = list.querySelector(
-    `li[data-page-no="${indexCurrentPage}"]`
-  );
-  if (!row) return;
-  row.classList.add("is-current");
-  if (scroll) row.scrollIntoView({ block: "nearest" });
+  wrap.append(fragment);
+  indexPagesProject = currentProject.project_id;
+  observeIndexTiles();
+  window.__b2tIndexMetrics = {
+    ...(window.__b2tIndexMetrics || {}),
+    pages: indexTiles.size,
+  };
 }
 
-function stepIndexPage(delta) {
-  const pages = pageIndexData ? pageIndexData.pages : [];
-  const index = pages.findIndex((item) => item.page_no === indexCurrentPage);
-  const target = pages[index + delta];
-  if (target) openIndexPage(target.page_no, { scrollList: true });
-}
-
-/** 缩放与页面视图共用 pageZoomIndex；这里只改预览宽度，不动网格。 */
-function applyIndexZoom() {
-  const pageEl = el("index-page");
-  if (!pageEl) return;
-  const scale = INDEX_ZOOM_SCALES[pageZoomIndex] || 1;
-  pageEl.style.width = `${Math.round(scale * 100)}%`;
-  const label = el("index-zoom-label");
-  if (label) {
-    label.textContent = pageZoomIndex >= INDEX_ZOOM_SCALES.length - 1
-      ? "适合宽度"
-      : `${Math.round(scale * 100)}%`;
+function disconnectIndexObserver() {
+  if (indexObserver) {
+    indexObserver.disconnect();
+    indexObserver = null;
   }
-  el("index-zoom-out").disabled = pageZoomIndex <= 0;
-  el("index-zoom-in").disabled = pageZoomIndex >= INDEX_ZOOM_SCALES.length - 1;
+  if (indexVisibleObserver) {
+    indexVisibleObserver.disconnect();
+    indexVisibleObserver = null;
+  }
 }
 
-function changeIndexZoom(delta) {
-  const next = Math.min(
-    INDEX_ZOOM_SCALES.length - 1,
-    Math.max(0, pageZoomIndex + delta)
-  );
-  if (next === pageZoomIndex) return;
-  pageZoomTouched = true;
-  pageZoomIndex = next;
-  applyIndexZoom();
-  paintIndexDecorations();
-}
-
-/** 目录确认只加载当前页的块（不预取全书）。 */
-async function loadIndexBlocks(pageNo) {
-  const key = pageBlockKey(pageNo);
-  if (pageBlockCache.has(key)) return pageBlockCache.get(key);
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/pages/${pageNo}/blocks`
+/**
+ * 两个观察者，各管一件事：
+ * - near（上下放宽约 ±3 页）：只负责把图 / 块数据**提前拿到**，不画；
+ * - visible（视口内）：负责画版心 / 块框 / 首行框，滚出去立刻清掉。
+ * 这样滚动时每帧最多画 1–2 页，不会给 ±3 页一起重画。
+ */
+function observeIndexTiles() {
+  const scroller = el("index-canvas");
+  if (!scroller || typeof IntersectionObserver !== "function") return;
+  const firstTile = indexTiles.values().next().value;
+  const tileHeight = firstTile ? firstTile.getBoundingClientRect().height : 0;
+  // "视口附近 ±3 页"按页高算（页高随缩放变），至少留半页防止页面太矮时错过
+  const margin = tileHeight
+    ? Math.max(600, Math.round(tileHeight * 3))
+    : INDEX_NEAR_MARGIN;
+  if (indexObserver && Math.abs(margin - indexObserverMargin) > 80) {
+    indexObserver.disconnect();
+    indexObserver = null;
+  }
+  if (!indexObserver) {
+    indexObserverMargin = margin;
+    indexObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const tile = entry.target;
+          const pageNo = Number(tile.dataset.pageNo);
+          if (entry.isIntersecting) {
+            indexNearPages.add(pageNo);
+            loadIndexTile(pageNo);
+          } else if (indexNearPages.delete(pageNo)) {
+            clearIndexTile(pageNo);
+            // 已经离开几页之外的图不必再占解码内存
+            if (Math.abs(pageNo - (indexCurrentPage || 1)) > 6) releaseIndexImage(pageNo);
+          }
+        }
+        reportIndexMetrics();
+      },
+      { root: scroller, rootMargin: `${margin}px 0px`, threshold: 0 }
     );
-    const blocks = data.blocks || [];
-    rememberPageBlocks(key, blocks);
-    return blocks;
-  } catch {
-    return [];
   }
+  if (!indexVisibleObserver) {
+    indexVisibleObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const tile = entry.target;
+          const pageNo = Number(tile.dataset.pageNo);
+          if (entry.isIntersecting) {
+            indexVisiblePages.add(pageNo);
+            loadIndexTile(pageNo);
+          } else if (indexVisiblePages.delete(pageNo)) {
+            clearIndexDecorations(pageNo);
+          }
+        }
+        reportIndexMetrics();
+        updateIndexActiveFromScroll();
+      },
+      { root: scroller, rootMargin: "0px", threshold: 0 }
+    );
+  }
+  for (const tile of indexTiles.values()) {
+    indexObserver.observe(tile);
+    indexVisibleObserver.observe(tile);
+  }
+}
+
+function reportIndexMetrics() {
+  const metrics = (window.__b2tIndexMetrics = window.__b2tIndexMetrics || {});
+  metrics.nearPages = indexNearPages.size;
+  metrics.visiblePages = indexVisiblePages.size;
+  metrics.loadedImages = indexLoadedImages.size;
+  metrics.blocksCached = indexBlocksByPage.size;
+}
+
+function ensureIndexImage(pageNo) {
+  const tile = indexTiles.get(pageNo);
+  if (!tile) return;
+  const image = tile.querySelector("img");
+  if (!image || image.dataset.src || image.dataset.pending) return;
+  image.dataset.pending = "1";
+  indexImageQueue.push(pageNo);
+  pumpIndexImages();
+}
+
+/**
+ * 一次只拉 / 解一张页图，按离当前页由近到远。
+ * 实测：一次跳 300 页时同时给 7 页挂 src，会出现约 0.9 秒的长帧（7 张 150DPI 图一起解码）；
+ * 排队后第一张（当前页）先出来，其余在后面的帧里补上。
+ */
+async function pumpIndexImages() {
+  if (indexImagePumping) return;
+  indexImagePumping = true;
+  try {
+    while (indexImageQueue.length) {
+      const keepPage = indexCurrentPage || 1;
+      indexImageQueue.sort(
+        (a, b) => Math.abs(a - keepPage) - Math.abs(b - keepPage)
+      );
+      const pageNo = indexImageQueue.shift();
+      const tile = indexTiles.get(pageNo);
+      const image = tile && tile.querySelector("img");
+      if (!image) continue;
+      const url = pageImageUrl(pageNo, "view");
+      image.dataset.src = url;
+      image.loading = "eager";
+      const started = performance.now();
+      const ok = await new Promise((resolve) => {
+        image.onload = () => resolve(true);
+        image.onerror = () => resolve(false);
+        image.src = url;
+      });
+      delete image.dataset.pending;
+      if (!ok) {
+        image.removeAttribute("src");
+        delete image.dataset.src;
+        if (pageNo === indexCurrentPage) {
+          const status = el("index-image-status");
+          if (status) {
+            status.hidden = false;
+            status.textContent = `第 ${pageNo} 页的图像读不出来。`;
+          }
+        }
+        continue;
+      }
+      image.classList.add("is-ready");
+      // 先解码再交给排版：解码不进滚动 / 跳页的那一帧
+      try {
+        await image.decode();
+      } catch {
+        /* decode() 失败不影响显示 */
+      }
+      indexLoadedImages.add(pageNo);
+      const metrics = (window.__b2tIndexMetrics = window.__b2tIndexMetrics || {});
+      (metrics.imageMs = metrics.imageMs || []).push(Math.round(performance.now() - started));
+      if (metrics.imageMs.length > 20) metrics.imageMs.shift();
+      metrics.imageCount = (metrics.imageCount || 0) + 1;
+      reportIndexMetrics();
+      if (pageNo === indexCurrentPage) {
+        const status = el("index-image-status");
+        if (status) status.hidden = true;
+      }
+      trimIndexImages();
+      await new Promise((resolve) => setTimeout(resolve, 24));
+    }
+  } finally {
+    indexImagePumping = false;
+  }
+}
+
+function releaseIndexImage(pageNo) {
+  const queued = indexImageQueue.indexOf(pageNo);
+  if (queued >= 0) indexImageQueue.splice(queued, 1);
+  const tile = indexTiles.get(pageNo);
+  if (!tile) return;
+  const image = tile.querySelector("img");
+  if (!image || !image.dataset.src) return;
+  image.removeAttribute("src");
+  delete image.dataset.src;
+  image.classList.remove("is-ready");
+  indexLoadedImages.delete(pageNo);
+}
+
+/** 图是解码过的大图：同时挂的 src 超过上限就摘离当前页最远的那些。 */
+function trimIndexImages(keepPage = indexCurrentPage || 1) {
+  if (indexLoadedImages.size <= INDEX_IMAGE_LIMIT) return;
+  const ordered = [...indexLoadedImages].sort(
+    (a, b) => Math.abs(b - keepPage) - Math.abs(a - keepPage)
+  );
+  while (indexLoadedImages.size > INDEX_IMAGE_LIMIT && ordered.length) {
+    const pageNo = ordered.shift();
+    if (Math.abs(pageNo - keepPage) <= 3) continue;
+    releaseIndexImage(pageNo);
+  }
+}
+
+function ensureIndexBlocks(pageNo) {
+  if (indexBlocksByPage.has(pageNo)) {
+    return Promise.resolve(indexBlocksByPage.get(pageNo));
+  }
+  const pending = indexBlocksPending.get(pageNo);
+  if (pending) return pending;
+  const promise = loadIndexBlocks(pageNo)
+    .then((blocks) => {
+      indexBlocksByPage.set(pageNo, blocks || []);
+      return blocks || [];
+    })
+    .finally(() => indexBlocksPending.delete(pageNo));
+  indexBlocksPending.set(pageNo, promise);
+  return promise;
+}
+
+/** 一页进入"附近"：先挂图、拿块；**只有它在视口里才画**。 */
+async function loadIndexTile(pageNo) {
+  const tile = indexTiles.get(pageNo);
+  const page = indexPageRecord(pageNo);
+  if (!tile || !page) return;
+  ensureIndexImage(pageNo);
+  if (indexVisiblePages.has(pageNo)) paintIndexTile(pageNo);
+  if (indexBlocksByPage.has(pageNo)) {
+    if (indexVisiblePages.has(pageNo)) paintIndexTile(pageNo);
+    return;
+  }
+  const started = performance.now();
+  const blocks = await ensureIndexBlocks(pageNo);
+  if (!indexTiles.has(pageNo) || currentView !== "index") return;
+  window.__b2tIndexBlocksMs = Math.round(performance.now() - started);
+  reportIndexMetrics();
+  if (indexVisiblePages.has(pageNo)) paintIndexTile(pageNo);
+}
+
+/** 只清装饰（滚动离开视口时用），块缓存留着，滚回来不用重拉。 */
+function clearIndexDecorations(pageNo) {
+  const tile = indexTiles.get(pageNo);
+  if (!tile) return;
+  clearPageBlocks(tile);
+  clearTileMargin(tile);
+  const first = tile.querySelector(".index-firstline");
+  if (first) first.hidden = true;
+}
+
+/** 一页离开"附近"：装饰清掉，块缓存也丢（图按上限 / 距离释放）。 */
+function clearIndexTile(pageNo) {
+  clearIndexDecorations(pageNo);
+  indexBlocksByPage.delete(pageNo);
+  reportIndexMetrics();
 }
 
 /** 版心 + 块框 + 首行标记：和页面视图调用同一套渲染函数。 */
-function paintIndexDecorations() {
-  if (!currentProject || indexCurrentPage === null) return;
-  const page = currentProject.pages.find((item) => item.page_no === indexCurrentPage);
-  const wrapper = el("index-page");
-  if (!page || !wrapper) return;
-  paintTileMargin(wrapper, page);
-  if (pagesOverlayOn && indexBlocks.length) {
-    renderPageBlocks(wrapper, indexBlocks, { details: true });
+function paintIndexTile(pageNo) {
+  const tile = indexTiles.get(pageNo);
+  const page = indexPageRecord(pageNo);
+  if (!tile || !page) return;
+  paintTileMargin(tile, page);
+  const blocks = indexBlocksByPage.get(pageNo) || [];
+  const overlay = tile.querySelector(".page-overlay");
+  if (pagesOverlayOn && blocks.length) {
+    if (!overlay || overlay._renderedBlocks !== blocks) {
+      renderPageBlocks(tile, blocks, { details: true });
+    }
   } else {
-    clearPageBlocks(wrapper);
+    clearPageBlocks(tile);
   }
-  drawIndexFirstLine(indexBlocks);
-  syncIndexToggles();
+  drawIndexFirstLine(tile, blocks, page);
 }
 
-/** 选中页的首行：淡蓝框，用来核对"这个印刷页码是不是这一页"。 */
-function drawIndexFirstLine(blocks) {
-  const node = el("index-firstline");
+/** 这一页的首行：淡蓝框，用来核对"这个印刷页码是不是这一页"（版心内第一行）。 */
+function drawIndexFirstLine(tile, blocks, page) {
+  const node = tile ? tile.querySelector(".index-firstline") : null;
   if (!node) return;
   let first = null;
-  const page = currentProject
-    ? currentProject.pages.find((item) => item.page_no === indexCurrentPage)
-    : null;
   for (const block of blocks) {
     if (!block.include) continue;
     if (!blockCountedInMargin(block, page)) continue;
@@ -7199,6 +7415,206 @@ function drawIndexFirstLine(blocks) {
   node.style.width = `${(x1 - x0) * 100}%`;
   node.style.height = `${(y1 - y0) * 100}%`;
   node.hidden = false;
+}
+
+/** 开关变化时重画视口里的页（其他页保持干净）。 */
+function paintIndexDecorations() {
+  if (!currentProject || currentView !== "index" || !indexTiles.size) return;
+  for (const [pageNo] of indexTiles) {
+    if (indexVisiblePages.has(pageNo)) paintIndexTile(pageNo);
+    else clearIndexDecorations(pageNo);
+  }
+  syncIndexToggles();
+}
+
+/** 量页列的滚动内容偏移（缩放 / 窗口变化后要重量）。 */
+function measureIndexTiles() {
+  const scroller = el("index-canvas");
+  if (!scroller) return;
+  const base = scroller.getBoundingClientRect().top - scroller.scrollTop;
+  indexTops = [];
+  indexTopMap = new Map();
+  for (const [pageNo, tile] of indexTiles) {
+    const rect = tile.getBoundingClientRect();
+    const entry = { pageNo, top: rect.top - base, height: rect.height };
+    indexTops.push(entry);
+    indexTopMap.set(pageNo, entry);
+  }
+  indexTops.sort((a, b) => a.pageNo - b.pageNo);
+  window.__b2tIndexTops = indexTops;
+  // 页高变了：±3 页的观察范围跟着重算
+  observeIndexTiles();
+}
+
+/** 当前在视口里的页：取"视口上方 30%"落在一页里的那一页。 */
+function indexPageAtScroll() {
+  const scroller = el("index-canvas");
+  if (!scroller || !indexTops.length) return indexCurrentPage || 1;
+  const anchor = scroller.scrollTop + scroller.clientHeight * 0.3;
+  let lo = 0;
+  let hi = indexTops.length - 1;
+  let best = indexTops[0].pageNo;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const entry = indexTops[mid];
+    if (entry.top <= anchor) {
+      best = entry.pageNo;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best;
+}
+
+function updateIndexActiveFromScroll() {
+  const pageNo = indexPageAtScroll();
+  if (!pageNo || pageNo === indexCurrentPage) return;
+  indexCurrentPage = pageNo;
+  updateIndexPageHeader(pageNo);
+  highlightIndexRow(true);
+}
+
+/** 右边滚动 → 左边列表反向同步（一帧一次）。 */
+function onIndexScroll() {
+  if (indexScrollRaf) return;
+  indexScrollRaf = requestAnimationFrame(() => {
+    indexScrollRaf = 0;
+    if (currentView !== "index" || !indexTiles.size) return;
+    updateIndexActiveFromScroll();
+  });
+}
+
+function scrollIndexToPage(pageNo) {
+  const scroller = el("index-canvas");
+  const entry = indexTopMap.get(pageNo);
+  if (!scroller || !entry) return;
+  const target = Math.max(0, entry.top - 8);
+  if (Math.abs(scroller.scrollTop - target) < 2) return;
+  scroller.scrollTop = target;
+}
+
+function updateIndexPageHeader(pageNo) {
+  el("index-page-no").textContent = `第 ${pageNo} 页`;
+  const entry =
+    pageIndexData && pageIndexData.pages.find((item) => item.page_no === pageNo);
+  // 页头只写实际检测到的印刷页；"同一叶另一面"的跳转便利只放在列表行的 title 里。
+  el("index-printed").textContent = entry
+    ? entry.missing
+      ? "未识别页码（照样可以审校 / 导出）"
+      : `印刷页 ${entry.printed[0] || ""}`
+    : "";
+  const pages = pageIndexData ? pageIndexData.pages : [];
+  const index = pages.findIndex((item) => item.page_no === pageNo);
+  el("index-prev").disabled = index <= 0;
+  el("index-next").disabled = index < 0 || index >= pages.length - 1;
+}
+
+/** 打开一页 = 滚到那一页（点列表 / 输入印刷页 / 上一下一页都走这里）。 */
+function openIndexPage(pageNo, { scrollList = true } = {}) {
+  if (!currentProject) return;
+  const page = indexPageRecord(pageNo);
+  if (!page) return;
+  indexCurrentPage = pageNo;
+  setIndexJumpStatus("");
+  ensureIndexPages();
+  if (!indexTopMap.size) measureIndexTiles();
+  updateIndexPageHeader(pageNo);
+  const image = indexTiles.get(pageNo)?.querySelector("img");
+  const status = el("index-image-status");
+  if (status) {
+    if (!image || !image.classList.contains("is-ready")) {
+      status.hidden = false;
+      status.textContent = "正在渲染…";
+    } else {
+      status.hidden = true;
+    }
+  }
+  scrollIndexToPage(pageNo);
+  loadIndexTile(pageNo);
+  highlightIndexRow(scrollList);
+  syncIndexToggles();
+}
+
+function highlightIndexRow(scroll) {
+  const list = el("index-list");
+  for (const node of list.querySelectorAll(".is-current")) {
+    node.classList.remove("is-current");
+  }
+  if (indexCurrentPage === null) return;
+  // 回目头（.index-chapter）和页行共用 data-page-no：高亮只认页行
+  const row = list.querySelector(
+    `li.index-row[data-page-no="${indexCurrentPage}"]`
+  );
+  if (!row) return;
+  row.classList.add("is-current");
+  if (scroll) ensureIndexRowVisible(row);
+}
+
+/** 右边滚出来的当前页：列表行没完整露出来就把它滚到列表中间（反向同步）。 */
+function ensureIndexRowVisible(row) {
+  const list = el("index-list");
+  if (!list || !row) return;
+  const listRect = list.getBoundingClientRect();
+  const rowRect = row.getBoundingClientRect();
+  if (rowRect.top >= listRect.top && rowRect.bottom <= listRect.bottom) return;
+  list.scrollTop +=
+    rowRect.top - listRect.top - (listRect.height - rowRect.height) / 2;
+}
+
+function stepIndexPage(delta) {
+  const total = currentProject ? currentProject.pages.length : 0;
+  if (!total) return;
+  const next = Math.min(total, Math.max(1, (indexCurrentPage || 1) + delta));
+  if (next === indexCurrentPage) return;
+  openIndexPage(next, { scrollList: true });
+}
+
+/** 缩放与页面视图共用 pageZoomIndex；这里改的是整个页列的宽度。 */
+function applyIndexZoom() {
+  if (!indexTiles.size) return;
+  const scale = INDEX_ZOOM_SCALES[pageZoomIndex] || 1;
+  const width = `${Math.round(scale * 100)}%`;
+  for (const tile of indexTiles.values()) tile.style.width = width;
+  const label = el("index-zoom-label");
+  if (label) {
+    label.textContent = pageZoomIndex >= INDEX_ZOOM_SCALES.length - 1
+      ? "适合宽度"
+      : `${Math.round(scale * 100)}%`;
+  }
+  el("index-zoom-out").disabled = pageZoomIndex <= 0;
+  el("index-zoom-in").disabled = pageZoomIndex >= INDEX_ZOOM_SCALES.length - 1;
+}
+
+function changeIndexZoom(delta) {
+  const next = Math.min(
+    INDEX_ZOOM_SCALES.length - 1,
+    Math.max(0, pageZoomIndex + delta)
+  );
+  if (next === pageZoomIndex) return;
+  pageZoomTouched = true;
+  pageZoomIndex = next;
+  applyIndexZoom();
+  measureIndexTiles();
+  paintIndexDecorations();
+  // 页高变了：把当前页重新对到视口上方，别让它被缩放挤走
+  scrollIndexToPage(indexCurrentPage || 1);
+}
+
+/** 取一页的块（带页面视图的块缓存；预览也复用这一份）。 */
+async function loadIndexBlocks(pageNo) {
+  const key = pageBlockKey(pageNo);
+  if (pageBlockCache.has(key)) return pageBlockCache.get(key);
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/pages/${pageNo}/blocks`
+    );
+    const blocks = data.blocks || [];
+    rememberPageBlocks(key, blocks);
+    return blocks;
+  } catch {
+    return [];
+  }
 }
 
 function syncIndexToggles() {
@@ -7286,6 +7702,7 @@ function setupPageIndex() {
       jumpToPrintedPage();
     }
   });
+  el("index-canvas").addEventListener("scroll", onIndexScroll, { passive: true });
   el("index-list").addEventListener("click", (event) => {
     const row = event.target.closest("li[data-page-no]");
     if (!row) return;
@@ -7297,6 +7714,17 @@ function setupPageIndex() {
     if (!row) return;
     event.preventDefault();
     openIndexPage(Number(row.dataset.pageNo), { scrollList: true });
+  });
+  window.addEventListener("resize", () => {
+    if (currentView !== "index" || indexResizeRaf) return;
+    indexResizeRaf = requestAnimationFrame(() => {
+      indexResizeRaf = 0;
+      if (currentView !== "index" || !indexTiles.size) return;
+      applyIndexZoom();
+      measureIndexTiles();
+      paintIndexDecorations();
+      scrollIndexToPage(indexCurrentPage || 1);
+    });
   });
 }
 
@@ -12198,6 +12626,8 @@ async function loadContinuationReview() {
     all: (data.entries || []).map((entry) => ({ ...entry, decision: null })),
     index: 0,
     history: [],
+    saving: false,
+    pendingDecisions: [],
   };
   continuationZoom = 1;
   renderContinuationPanel({ scroll: true });
@@ -12358,25 +12788,17 @@ function renderContinuationPanel({ scroll = false } = {}) {
       ? "已标延续"
       : "已标结束"
     : `第 ${entry.page_no} → ${entry.next_page_no} 页`;
-  el("continuation-continue").disabled = decided;
-  el("continuation-end").disabled = decided;
+  el("continuation-continue").disabled = decided || Boolean(state.saving);
+  el("continuation-end").disabled = decided || Boolean(state.saving);
   el("continuation-revert").disabled = state.history.length === 0 && !decided;
 
   const evidence = el("continuation-evidence");
   evidence.innerHTML = "";
+  // 用户 2026-10-27：面板上只留两行原文——上页末行、下页首行。
+  // 机器判定的那两个依据用户不需要看，已删掉。
   evidence.append(
     ...continuationEvidenceRow("上页末行", `…${entry.last_text}`, `第 ${entry.page_no} 页最后一行`),
-    ...continuationEvidenceRow(
-      "走满程度",
-      entry.gap === null ? "版心未定，量不出" : `右端还差 ${entry.gap} 行距到版心边`,
-      entry.gap !== null && entry.gap <= 1.4 ? "走满版心（≤1.4 行距）" : "明显的短行"
-    ),
-    ...continuationEvidenceRow("下页首行", entry.next_text, `第 ${entry.next_page_no} 页第一行`),
-    ...continuationEvidenceRow(
-      "首行缩进",
-      entry.next_indent ? `${(entry.next_indent * 100).toFixed(1)}%` : "没有缩进",
-      "只作参考：诗行会骗它，不参与自动判定"
-    )
+    ...continuationEvidenceRow("下页首行", entry.next_text, `第 ${entry.next_page_no} 页第一行`)
   );
   buildContinuationPages(entry);
   if (scroll) centerContinuationJunction();
@@ -12399,7 +12821,16 @@ function advanceContinuation() {
 async function markContinuation(continues) {
   const state = continuationState;
   const entry = continuationCurrent();
-  if (!state || !entry || entry.decision !== null) return;
+  if (!state || !entry) return;
+  // 键盘连按时上一笔还在写库：记下最后一下，等请求回来再判下一条，
+  // 否则同一处会被重复提交、后面的按键被吞掉。
+  if (state.saving) {
+    // 队列而不是"只记最后一下"：连按 16 下就排 16 个决定，一下都不丢
+    state.pendingDecisions.push(Boolean(continues));
+    return;
+  }
+  if (entry.decision !== null) return;
+  state.saving = true;
   const error = el("continuation-error");
   error.hidden = true;
   try {
@@ -12419,12 +12850,19 @@ async function markContinuation(continues) {
     afterContinuationChange(entry.page_no);
   } catch (failure) {
     showError(error, failure);
+  } finally {
+    state.saving = false;
+    const next = state.pendingDecisions.shift();
+    if (next !== undefined && continuationRemaining() > 0) {
+      markContinuation(next);
+    }
   }
 }
 
 async function revertContinuation() {
   const state = continuationState;
   if (!state) return;
+  state.pendingDecisions.length = 0;
   const current = continuationCurrent();
   const blockId =
     current && current.decision !== null

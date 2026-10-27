@@ -423,17 +423,11 @@
                 <button type="button" id="index-zoom-in" class="btn btn--sm">＋</button>
               </div>
             </div>
-            <!-- 目录确认的预览和页面视图同一套渲染：版心 + 块框 + 首行标记，不是裸图 -->
+            <!-- 目录确认的预览和页面视图同一套渲染：版心 + 块框 + 首行标记，不是裸图。
+                 任务 48（K1）：右边是**连续页列**，像 PDF 阅读器一样往下滚；
+                 页块由脚本建，图和块只给视口附近 ±3 页挂上。 -->
             <div class="index-canvas" id="index-canvas">
-              <div class="index-page" id="index-page" hidden>
-                <img id="index-image" alt="页面预览">
-                <div class="page-margin" id="index-margin" hidden>
-                  <div class="page-margin__box"></div>
-                </div>
-                <div class="page-overlay page-overlay--readonly page-overlay--labeled"
-                     id="index-overlay" hidden></div>
-                <div class="index-firstline" id="index-firstline" hidden></div>
-              </div>
+              <div class="index-pages" id="index-pages"></div>
               <p class="muted" id="index-image-status">正在渲染…</p>
             </div>
           </div>
@@ -920,18 +914,17 @@
             <dl class="continuation-evidence" id="continuation-evidence"></dl>
             <div class="continuation-actions">
               <button type="button" id="continuation-continue" class="btn btn--pri">
-                标延续（合成一段）<kbd>1</kbd>
+                合成一段<kbd>1</kbd>
               </button>
               <button type="button" id="continuation-end" class="btn">
-                标结束（分成两段）<kbd>2</kbd>
+                分成两段<kbd>2</kbd>
               </button>
               <button type="button" id="continuation-revert" class="btn btn--ghost">
                 撤销这处<kbd>Z</kbd>
               </button>
             </div>
             <p class="hint continuation-keys">
-              <kbd>1</kbd> 延续 · <kbd>2</kbd> 结束 · <kbd>Z</kbd> 撤销 · <kbd>↑</kbd><kbd>↓</kbd> 前后一条 ·
-              判完自动跳下一条
+              <kbd>1</kbd> 合成一段 · <kbd>2</kbd> 分成两段 · <kbd>Z</kbd> 撤销 · <kbd>↑</kbd><kbd>↓</kbd> 翻条
             </p>
             <div class="continuation-complete" id="continuation-complete" hidden>
               <strong>16 条全部确认</strong>

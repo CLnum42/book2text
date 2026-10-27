@@ -1790,14 +1790,13 @@ body[data-workflow-step="recognition"] #page-setup-bar { display: none; }
   padding: 6px 12px; background: var(--surface); border-bottom: 1px solid var(--line);
 }
 .index-canvas {
-  flex: 1; min-height: 0; overflow: auto; padding: 16px; text-align: center;
+  flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto;
+  padding: 12px 14px 28px; text-align: center;
 }
-.index-canvas img {
-  display: none; width: 100%; height: auto; max-width: none;
-  background: var(--page-paper); box-shadow: var(--shadow-1);
-}
-.index-canvas img.is-ready { display: inline-block; }
 .index-canvas .muted { margin: 0; }
+/* 任务 48（K1）：右边连续多页（和结果预览同一套页块写法） */
+.index-pages { position: relative; }
+.index-page img.is-ready { display: block; }
 @media (max-width: 900px) {
   .index-side { width: 240px; }
 }
@@ -2039,10 +2038,15 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
   display: block; font-size: 10.5px; margin-top: 2px;
 }
 .continuation-actions {
-  flex: none; display: flex; flex-direction: column; gap: 7px;
+  flex: none; display: flex; flex-direction: column; gap: 8px;
 }
+/* 用户 2026-10-27：两个主按钮要"稍微高一点"，更容易点 */
 .continuation-actions .btn {
   display: flex; align-items: center; justify-content: space-between; width: 100%;
+  min-height: 46px; font-size: 13.5px; padding: 0 14px;
+}
+.continuation-actions .btn--ghost {
+  min-height: 34px; font-size: 12px;
 }
 .continuation-actions kbd {
   margin-left: 8px; font-size: 10.5px; border: 1px solid var(--line-strong);
@@ -2058,8 +2062,11 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
 
 @media (max-height: 680px) {
   .continuation-side { padding: 10px 12px 8px; gap: 8px; }
-  .continuation-actions .btn { min-height: 30px; }
-  .continuation-keys { display: none; }
+  /* 628 高度也要两个高按钮；只把间距压一点，键盘提示留一行小字 */
+  .continuation-actions { gap: 6px; }
+  .continuation-actions .btn { min-height: 44px; }
+  .continuation-actions .btn--ghost { min-height: 30px; }
+  .continuation-keys { font-size: 10px; }
 }
 
 /* 任务 45（H 刀）：左栏目录树 + 页面三色差异 + 窄屏抽屉 */
@@ -2207,18 +2214,17 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
   .efoot .btn--lg { height: 34px; padding-top: 0; padding-bottom: 0; }
 }
 
-/* 任务 46（I 刀）：目录确认右侧改用页面视图同一套渲染 */
+/* 任务 46（I 刀）/ 任务 48（K1）：目录确认右侧复用页面视图同一套渲染，
+   只是从单页换成连续多页的页列 */
 .index-page {
-  position: relative; display: inline-block; width: 100%;
+  position: relative; display: block; width: 100%; margin: 0 auto 14px;
   vertical-align: top; text-align: left; background: var(--page-paper);
   box-shadow: var(--shadow-1); overflow: hidden;
 }
 .index-page[hidden] { display: none; }
 .index-page img { display: none; width: 100%; height: auto; }
 .index-page img.is-ready { display: block; }
-.index-canvas { text-align: center; }
-.index-canvas .index-page { margin: 0 auto; }
-.index-canvas img.is-ready { display: block; }
+.index-page .page-overlay { z-index: 2; }
 .index-firstline {
   position: absolute; z-index: 5; pointer-events: none;
   border: 2px solid #7fb0ff; border-radius: 3px;
