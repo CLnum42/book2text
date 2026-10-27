@@ -7,6 +7,14 @@
 
 ## [0.1.0] — 2026-10-21
 
+### 变更 — 阅读审校的 `line_spans`（L 刀前置，2026-10-27）
+
+- `/export/preview` 的 `segments[]` 新增 `line_spans`：每行（`page_no` / `block_id` /
+  `line_index` / `start` / `end`）在段文本里的字符区间，由 `join_lines` 产出、按块平移合并。
+- 前端据此把段文本切成行元素、把差异标在行内，不需要复刻 `join_pair` 的合并规则。
+- 真书校验：1145 段 / 9705 个区间 / 0 个坏区间；最长段 50 行逐个切片一致。
+- 单元测试覆盖空行跳过、区间有序不重叠；JSONL 字段集同步更新。
+
 ### 变更 — 行级文本规范化与 diff 重算（N 刀，2026-10-27）
 
 - 新增 `GET/POST /cleanup/orthography/lines`：行文本和第二引擎文本一起规范化，
