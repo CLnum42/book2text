@@ -1139,3 +1139,29 @@ def test_toolbar_filters_and_tools_are_placed_per_step() -> None:
     assert 'body[data-workflow-step="margin"] #page-filters' in css
     assert 'body[data-workflow-step="pages"] .filterbar .fitem--recognition' in css
     assert 'body[data-workflow-step="recognition"] .filterbar .fitem--type' in css
+
+
+def test_cleanup_actions_are_wired_into_the_finish_panel() -> None:
+    """任务 41：收尾面板里的两件批量数据清理（F1 延续 / F2 家具块），都能撤销。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+    for element_id in (
+        "finish-cleanup",
+        "cleanup-continuation-run",
+        "cleanup-continuation-status",
+        "cleanup-furniture-run",
+        "cleanup-furniture-status",
+        "cleanup-undo",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    assert "function runContinuationCleanup(" in script
+    assert "function runFurnitureCleanup(" in script
+    assert "function undoLastCleanup(" in script
+    assert "/cleanup/continuations" in script
+    assert "/cleanup/furniture" in script
+    # 先给计划、确认后才写；撤销走同一个撤销栈
+    assert "window.confirm(" in script
+    assert "/undo" in script
+    assert "整批可撤销" in script or "可撤销" in script
