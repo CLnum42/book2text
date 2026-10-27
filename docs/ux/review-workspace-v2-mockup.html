@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>审校主界面 v2 · 左目录树 + 三色高亮 + 三栏（静态设计稿）</title>
+<style>
+:root{
+  --bg:#f3f4f6;--surface:#fff;--surface-2:#fafbfc;--surface-3:#f7f8fa;--paper:#f8f6f0;
+  --line:#e2e4e8;--line-soft:#eef0f2;--line-strong:#d0d3d9;
+  --text:#1f2329;--text-2:#33383f;--muted:#646a73;--faint:#9aa0a8;
+  --accent:#2563eb;--accent-soft:#eef4ff;--accent-text:#1d4ed8;
+  --ok:#16a34a;--ok-text:#15803d;--ok-soft:#e9f7ee;
+  --warn-text:#b45309;--bad-text:#b91c1c;--bad-soft:#fdecec;
+  --purple:#7a4bb5;
+  /* 三态差异 */
+  --diff-todo:#dc2626;--diff-done:#16a34a;--diff-cur:#2563eb;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#e9eaee;color:var(--text);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.draftbar{display:flex;align-items:center;gap:14px;padding:7px 16px;background:#1f2329;color:#e6e8eb;font-size:12px}
+.draftbar strong{color:#fff}
+.draftbar .tag{margin-left:auto;background:rgba(255,255,255,.12);padding:1px 7px;border-radius:5px;color:#cfd3d8}
+.stage{padding:18px 20px 0}
+.frame{margin-bottom:24px}
+.label{font-size:12px;font-weight:600;color:#4b5563;margin:0 0 6px 2px}
+.label span{font-weight:400;color:#6b7280}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:3px;box-shadow:0 2px 12px rgba(16,24,40,.07);overflow:hidden}
+.caption{padding:6px 20px 16px;font-size:11.5px;color:#5b6169;line-height:1.65}
+.caption b{color:#1f2329}
+.spacer{flex:1}
+.muted{color:var(--muted)}
+.btn{height:26px;padding:0 9px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--text-2);font-size:11.5px}
+.btn--pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+.kbd{display:inline-block;min-width:15px;padding:0 3px;border:1px solid #d5d9e0;border-bottom-width:2px;border-radius:4px;background:#fbfcfd;font:10px/14px ui-monospace,Menlo,monospace;color:var(--text-2);text-align:center}
+
+/* 顶栏（压缩版七步） */
+.topbar{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;background:var(--surface);border-bottom:1px solid var(--line)}
+.proj{font-size:12.5px;font-weight:600;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.steps{display:flex;align-items:center;height:44px}
+.step{position:relative;display:flex;align-items:center;gap:5px;height:30px;padding:0 9px;border:0;background:none;font-size:12px;color:var(--muted);white-space:nowrap}
+.step__no{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-size:10px;background:var(--surface-3);color:var(--faint);border:1px solid var(--line);flex:none}
+.step--done{color:var(--ok-text)}
+.step--done .step__no{background:var(--ok);border-color:var(--ok);color:#fff}
+.step--cur{color:var(--accent-text);font-weight:600;background:var(--accent-soft);border-radius:6px}
+.step--cur .step__no{background:var(--accent);border-color:var(--accent);color:#fff}
+.topright{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+
+/* 工作区 */
+.toolbar{height:40px;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--surface);border-bottom:1px solid var(--line-soft)}
+.toolbar .sep{width:1px;height:16px;background:var(--line);margin:0 2px}
+.zoom{display:flex;align-items:center;gap:4px;margin-left:auto}
+.zoom .lvl{font-size:11.5px;color:var(--muted);min-width:32px;text-align:center}
+.work{display:flex;height:628px;min-height:0}
+.foot{height:48px;display:flex;align-items:center;gap:8px;padding:0 12px;border-top:1px solid var(--line);background:var(--surface)}
+
+/* ── 左栏树 ── */
+.tree{width:232px;flex:none;display:flex;flex-direction:column;background:var(--surface-2);border-right:1px solid var(--line)}
+.tree__head{flex:none;padding:8px 10px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:6px}
+.tree__head b{font-size:12.5px}
+.tree__filter{flex:none;display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line-soft)}
+.tree__filter button{height:22px;padding:0 7px;font-size:11px;border-radius:5px;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
+.tree__filter button.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text)}
+.tree__body{flex:1;overflow:auto;padding:4px 0 10px;font-size:11.5px}
+.trow{display:flex;align-items:center;gap:5px;min-height:24px;padding:0 8px;color:var(--muted)}
+.trow--ch{min-height:28px;font-size:12px;color:var(--text-2);font-weight:600;padding-left:9px}
+.trow--pg{padding-left:20px}
+.trow--it{padding-left:34px;font-size:11px}
+.trow--it .lg{font-size:10px;color:var(--faint);width:10px;text-align:center}
+.trow--it .pair{color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow.on{background:var(--accent-soft);color:var(--accent-text);box-shadow:inset 2px 0 0 var(--accent)}
+.trow.done{color:var(--faint)}
+.trow .cnt{margin-left:auto;font-size:10.5px;color:var(--bad-text);font-variant-numeric:tabular-nums}
+.trow .cnt.ok{color:var(--faint)}
+.caret{width:8px;font-size:9px;color:var(--faint);flex:none}
+.dotst{width:6px;height:6px;border-radius:50%;flex:none}
+.dotst--todo{background:var(--diff-todo)}
+.dotst--done{background:var(--diff-done)}
+.dotst--cur{background:var(--diff-cur);box-shadow:0 0 0 2px rgba(37,99,235,.18)}
+.tree__note{flex:none;margin:0 8px 8px;padding:6px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent-text);font-size:10.5px;line-height:1.5}
+
+/* ── 中栏页面 ── */
+.center{flex:1;min-width:0;display:flex;flex-direction:column;background:#e4e6ea}
+.pagewrap{flex:1;overflow:auto;padding:14px 0 20px;position:relative}
+.page{position:relative;width:680px;margin:0 auto;background:var(--paper);padding:46px 46px 56px;
+  box-shadow:0 3px 16px rgba(0,0,0,.2);font-family:"Songti SC","STSong",serif;font-size:14px;line-height:30px;color:#23262b}
+.page .rh{position:absolute;top:16px;left:46px;right:46px;font:10px/1 -apple-system,sans-serif;color:#8b8f96;
+  display:flex;justify-content:space-between;padding-bottom:5px;border-bottom:1px solid rgba(0,0,0,.1)}
+.page .ln{white-space:pre}
+
+/* 三态色块：由 JS 按字符区间摆放（与真实现同一套思路） */
+.diff-layer{position:absolute;inset:0;z-index:3;pointer-events:none}
+.mk{position:absolute;border-radius:3px;pointer-events:auto}
+.mk--todo{background:rgba(220,38,38,.13);border:1.5px solid rgba(220,38,38,.55)}
+.mk--done{background:rgba(22,163,74,.08)}
+.mk--cur{background:rgba(37,99,235,.16);border:2px solid #2563eb}
+.mk--cur::before,.mk--cur::after{content:"";position:absolute;bottom:-4px;height:7px;border-left:3px solid #2563eb}
+.mk--cur::before{left:-4px}
+.mk--cur::after{right:-4px}
+.mk__n{position:absolute;background:#2563eb;color:#fff;font:9px/14px -apple-system,sans-serif;
+  padding:0 3px;border-radius:3px;white-space:nowrap}
+
+/* 当前块悬停框 */
+.hoverbox{position:absolute;border:1px solid rgba(37,99,235,.45);border-radius:2px;z-index:2;pointer-events:none}
+
+/* ── 右栏差异卡 ── */
+.right{width:400px;flex:none;display:flex;flex-direction:column;background:var(--surface);border-left:1px solid var(--line)}
+.qhead{flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line-soft)}
+.qhead b{font-size:12.5px;font-variant-numeric:tabular-nums}
+.qhead .lv{font-size:11px;color:var(--muted)}
+.qbody{flex:none;padding:8px 12px 10px;border-bottom:1px solid var(--line-soft)}
+.qfrag{font-size:13px;line-height:1.8;color:var(--text-2);margin-bottom:6px}
+.qa{color:var(--diff-todo);text-decoration:underline 2px;text-underline-offset:2px}
+.qb{color:var(--purple);text-decoration:underline dotted 2px;text-underline-offset:2px}
+.qline{display:flex;gap:6px;font-size:12px;line-height:1.7;padding:3px 0;color:var(--text-2)}
+.qline .tag{flex:none;font-size:10px;color:var(--faint);width:24px;text-align:right;padding-top:2px}
+.qline.editable{background:var(--surface-3);border-radius:5px;padding:4px 6px}
+.qacts{flex:none;display:flex;gap:5px;padding:0 12px 10px}
+.qacts .btn{height:28px;font-size:12px}
+.rest{flex:1;overflow:auto;border-top:1px solid var(--line-soft);padding:4px 6px 8px}
+.rest__h{padding:5px 6px;font-size:10.5px;color:var(--faint)}
+.rrow{display:flex;align-items:center;gap:6px;min-height:24px;padding:0 6px;border-radius:5px;font-size:11.5px;color:var(--muted)}
+.rrow.on{background:var(--accent-soft);color:var(--accent-text)}
+.rrow .pair{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rrow .st{margin-left:auto;font-size:10px;color:var(--faint)}
+
+/* ── 窄屏：轨道 + 抽屉 ── */
+.rail{width:44px;flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0;background:var(--surface-2);border-right:1px solid var(--line)}
+.rail button{width:30px;height:30px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:13px}
+.rail button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-text)}
+.sheet{flex:none;height:170px;display:flex;flex-direction:column;background:var(--surface);border-top:1px solid var(--line)}
+.sheet__bar{height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line-soft);font-size:12px}
+.sheet__grip{width:34px;height:4px;border-radius:2px;background:var(--line-strong);margin:0 auto}
+
+/* ── 标注帧 ── */
+.spec{display:flex;gap:20px;padding:14px 16px;flex-wrap:wrap}
+.spec__col{flex:1;min-width:320px}
+.spec h5{margin:0 0 8px;font-size:12px;color:var(--text-2)}
+.sw{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:11.5px;color:var(--muted)}
+.sw .chip{width:150px;height:26px;border-radius:4px;display:grid;place-items:center;font-family:"Songti SC",serif;font-size:13px;color:#23262b}
+.sw--todo .chip{background:rgba(220,38,38,.13);border:1.5px solid rgba(220,38,38,.55)}
+.sw--done .chip{background:rgba(22,163,74,.08)}
+.sw--cur .chip{background:rgba(37,99,235,.16);border:2px solid #2563eb}
+.gray{filter:grayscale(1)}
+.layers{font-size:11.5px;color:var(--muted);line-height:1.9}
+.layers div{display:flex;gap:8px}
+.layers .z{width:34px;color:var(--faint);font-variant-numeric:tabular-nums}
+.budget{width:100%;border-collapse:collapse;font-size:11.5px}
+.budget th,.budget td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line-soft)}
+.budget th{color:var(--faint);font-weight:500}
+</style>
+</head>
+<body>
+
+<div class="draftbar">
+  <strong>静态设计稿</strong><span>审校主界面 v2 · 左目录树 + 三色差异高亮 + 三栏</span>
+  <span class="tag">docs/ux/review-workspace-v2-mockup.html</span>
+</div>
+
+<div class="stage">
+
+  <!-- ═══════════ A · ≥1320 ═══════════ -->
+  <div class="frame">
+    <p class="label">A · ≥1320px <span>（左 232 目录树 / 中页面 flex≈800 / 右 400 差异卡；页面三态色块）</span></p>
+    <div class="card">
+      <div class="topbar">
+        <span class="proj">《红楼梦》双语对照 3_正文</span>
+        <div class="steps">
+          <button class="step step--done"><span class="step__no">✓</span>页面确认</button>
+          <button class="step step--done"><span class="step__no">✓</span>版心确认</button>
+          <button class="step step--done"><span class="step__no">✓</span>文字识别</button>
+          <button class="step step--done"><span class="step__no">✓</span>目录确认</button>
+          <button class="step step--cur" aria-current="step"><span class="step__no">5</span>正文审校</button>
+          <button class="step"><span class="step__no">6</span>结果预览</button>
+          <button class="step"><span class="step__no">7</span>文件导出</button>
+        </div>
+        <div class="topright"><span>已保存 ✓ 15:02</span></div>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn">◀</button><span style="font-size:12px;font-weight:600">第 370 页</span><button class="btn">▶</button>
+        <button class="btn">跳转</button><select class="btn" style="width:96px"><option>有差异的页</option></select>
+        <span class="sep"></span>
+        <button class="btn" style="border-color:var(--accent);color:var(--accent-text);background:var(--accent-soft)">差异：未审+已审</button>
+        <button class="btn">版心</button><button class="btn">块框</button>
+        <div class="zoom"><button class="btn">－</button><span class="lvl">单页</span><button class="btn">＋</button></div>
+      </div>
+
+      <div class="work">
+        <!-- 左栏树 -->
+        <aside class="tree">
+          <div class="tree__head"><b>目录 · 审校清单</b><span class="spacer"></span><span class="muted" style="font-size:10.5px">还剩 1024 处</span></div>
+          <div class="tree__filter">
+            <button class="on">只看未完成</button><button>全部页</button>
+          </div>
+          <div class="tree__body">
+            <div class="trow trow--ch done"><span class="caret">▸</span><span>第七回</span><span class="cnt ok">318</span><span class="cnt ok">✓ 完成</span></div>
+            <div class="trow trow--ch"><span class="caret">▾</span><span>第八回</span><span class="cnt ok">370</span><span class="cnt">13 处</span></div>
+
+            <div class="trow trow--pg on"><span class="caret">▾</span><span>第 370 页</span><span class="cnt">13 处</span></div>
+            <div class="trow trow--it on"><span class="dotst dotst--cur"></span><span class="lg">L2</span><span class="lg">汉</span><span class="pair">殼→縠</span></div>
+            <div class="trow trow--it"><span class="dotst dotst--todo"></span><span class="lg">L3</span><span class="lg">汉</span><span class="pair">差别→差异</span></div>
+            <div class="trow trow--it"><span class="dotst dotst--done"></span><span class="lg">L5</span><span class="lg">汉</span><span class="pair">曩→囊 <span style="color:var(--faint)">✓已保留</span></span></div>
+            <div class="trow trow--it"><span class="dotst dotst--todo"></span><span class="lg">L8</span><span class="lg">汉</span><span class="pair">洁→潔</span></div>
+            <div class="trow trow--it"><span class="dotst dotst--todo"></span><span class="lg">L10</span><span class="lg">标</span><span class="pair">，→、</span></div>
+            <div class="trow trow--it"><span class="dotst dotst--todo"></span><span class="lg">L12</span><span class="lg">汉</span><span class="pair">衾枕→衾枕</span></div>
+
+            <div class="trow trow--pg"><span class="caret">▸</span><span>第 371 页</span><span class="cnt">2 处</span></div>
+            <div class="trow trow--pg done"><span class="caret"></span><span>第 372 页</span><span class="cnt ok">✓</span></div>
+            <div class="trow trow--pg done"><span class="caret"></span><span>第 373 页</span><span class="cnt ok">✓</span></div>
+
+            <div class="trow trow--ch"><span class="caret">▸</span><span>第九回</span><span class="cnt ok">420</span><span class="cnt">4 处</span></div>
+          </div>
+          <div class="tree__note">「全部页」会在有差异的页之间插上无差异的页码行；切换回「只看未完成」就是一队列。</div>
+        </aside>
+
+        <!-- 中栏页面 -->
+        <div class="center">
+          <div class="pagewrap" id="pw">
+            <div class="page" id="pg1">
+              <div class="rh"><span>红楼梦 370</span><span>370</span></div>
+              <div class="ln">　　维太平不易之元，蓉桂竞芳之月，无可奈何之日，</div>
+              <div class="ln">怡红院浊玉，谨以群花之蕊、冰鲛之<span class="d" data-st="cur" data-n="3">殼</span>，沁芳之</div>
+              <div class="ln">泉、枫露之茗：四者虽微，聊以达诚申信，乃致祭</div>
+              <div class="ln">于白帝宫中抚司秋艳芙蓉女儿之前曰：</div>
+              <div class="ln">　　窃思女儿自临人世，迄今凡十有六载。忆女儿<span class="d" data-st="done" data-n="">曩</span>生之昔，</div>
+              <div class="ln">其为质则金玉不足喻其贵；其为体则冰雪不足喻其<span class="d" data-st="todo" data-n="">洁</span>。</div>
+              <div class="ln">而玉得于衾枕栉沐之间，栖息宴游之夕，亲昵狎亵，</div>
+              <div class="ln">相与共处者，仅五年八月有奇。今犯此大错，悔之</div>
+              <div class="ln">无及，聊以浊玉之泪，洒于灵前而已。</div>
+            </div>
+            <div class="diff-layer" id="dl1"></div>
+          </div>
+        </div>
+
+        <!-- 右栏差异卡 -->
+        <aside class="right">
+          <div class="qhead"><b>第 3 / 13 处</b><span class="lv">汉字级 · 第 1 块 · 第 2 行</span><span class="spacer"></span><button class="btn" style="height:22px">⋯</button></div>
+          <div class="qbody">
+            <div class="qfrag">…冰鲛之<span class="qa">殼</span><span style="color:var(--faint);padding:0 3px">→</span><span class="qb">縠</span>，沁芳之泉…</div>
+            <div class="qline editable"><span class="tag">原文</span><span>维太平不易之元…冰鲛之<span class="qa">殼</span>，沁芳之泉…（可直接改字）</span></div>
+            <div class="qline"><span class="tag">候选</span><span>维太平不易之元…冰鲛之<span class="qb">縠</span>，沁芳之泉…</span></div>
+            <div class="qline" style="color:var(--faint)"><span class="tag">上下文</span><span>蓉桂竞芳之月 · 泉、枫露之茗</span></div>
+          </div>
+          <div class="qacts">
+            <button class="btn btn--pri" style="height:28px">采纳第二路 <span class="kbd">⏎</span></button>
+            <button class="btn" style="height:28px">保留原文 <span class="kbd">␣</span></button>
+            <button class="btn" style="height:28px">回上一处 <span class="kbd">⌫</span></button>
+          </div>
+          <div class="rest">
+            <div class="rest__h">本页其余 12 处</div>
+            <div class="rrow"><span class="dotst dotst--todo"></span><span>L3 汉</span><span class="pair">差别→差异</span><span class="st">未审</span></div>
+            <div class="rrow"><span class="dotst dotst--done"></span><span>L5 汉</span><span class="pair">曩→囊</span><span class="st">✓已保留</span></div>
+            <div class="rrow"><span class="dotst dotst--todo"></span><span>L8 汉</span><span class="pair">洁→潔</span><span class="st">未审</span></div>
+            <div class="rrow"><span class="dotst dotst--todo"></span><span>L10 标</span><span class="pair">，→、</span><span class="st">未审</span></div>
+            <div class="rrow"><span class="dotst dotst--todo"></span><span>L12 汉</span><span class="pair">衾枕→衾枕</span><span class="st">未审</span></div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="foot">
+        <button class="btn">撤销</button><button class="btn">重做</button>
+        <span class="spacer"></span>
+        <span style="font-size:11.5px;color:var(--muted)">采纳 2 · 保留 1 · 还剩 10 处</span>
+        <button class="btn btn--pri" style="height:30px">确认本页并下一页 <span class="kbd" style="background:#4a7ff0;border-color:#3b6ee0;color:#fff">⌘⏎</span></button>
+      </div>
+    </div>
+    <p class="caption">
+      左树：回目 → 页 → 条目；红=未审、绿=已保留、蓝=当前，与页面色块<b>同一套颜色</b>。无差异页只留页码，已看完页只留 ✓。
+      页面上只有差异字符被色块包住：<b>红有描边、绿无描边、蓝 2px 描边 + 端须 + 3/13 索引片</b>。
+    </p>
+  </div>
+
+  <!-- ═══════════ B · 1120–1319 ═══════════ -->
+  <div class="frame">
+    <p class="label">B · 1120–1319px <span>（左 216 / 中 / 右 360；条目行只留行号+等级+状态灯，摘要进 title）</span></p>
+    <div class="card" style="width:1200px">
+      <div class="toolbar" style="border-top:0">
+        <button class="btn">◀</button><span style="font-size:12px;font-weight:600">第 370 页</span><button class="btn">▶</button>
+        <button class="btn">跳转</button>
+        <span class="sep"></span>
+        <button class="btn" style="border-color:var(--accent);color:var(--accent-text);background:var(--accent-soft)">差异：未审+已审</button>
+        <button class="btn">版心</button>
+        <div class="zoom"><button class="btn">－</button><span class="lvl">单页</span><button class="btn">＋</button></div>
+      </div>
+      <div class="work" style="height:420px">
+        <aside class="tree" style="width:216px">
+          <div class="tree__head"><b>目录 · 清单</b></div>
+          <div class="tree__body">
+            <div class="trow trow--ch"><span class="caret">▾</span><span>第八回</span><span class="cnt">13 处</span></div>
+            <div class="trow trow--pg on"><span class="caret">▾</span><span>第 370 页</span><span class="cnt">13 处</span></div>
+            <div class="trow trow--it on"><span class="dotst dotst--cur"></span><span class="lg">L2</span><span class="lg">汉</span></div>
+            <div class="trow trow--it"><span class="dotst dotst--todo"></span><span class="lg">L3</span><span class="lg">汉</span></div>
+            <div class="trow trow--it"><span class="dotst dotst--done"></span><span class="lg">L5</span><span class="lg">汉</span></div>
+            <div class="trow trow--it"><span class="dotst dotst--todo"></span><span class="lg">L8</span><span class="lg">汉</span></div>
+            <div class="trow trow--pg"><span class="caret">▸</span><span>第 371 页</span><span class="cnt">2 处</span></div>
+            <div class="trow trow--pg done"><span>第 372 页</span><span class="cnt ok">✓</span></div>
+            <div class="trow trow--pg done"><span>第 373 页</span><span class="cnt ok">✓</span></div>
+          </div>
+        </aside>
+        <div class="center">
+          <div class="pagewrap" id="pw2">
+            <div class="page" id="pg2" style="width:440px;font-size:12px;line-height:26px;padding:38px 38px 44px">
+              <div class="rh" style="left:38px;right:38px"><span>红楼梦 370</span><span>370</span></div>
+              <div class="ln">　　维太平不易之元，蓉桂竞芳之月，</div>
+              <div class="ln">无可奈何之日，怡红院浊玉，谨以群花之</div>
+              <div class="ln">蕊、冰鲛之<span class="d" data-st="cur" data-n="3">殼</span>，沁芳之泉、枫露之茗：</div>
+              <div class="ln">四者虽微，聊以达诚申信，乃致祭于白</div>
+              <div class="ln">帝宫中抚司秋艳芙蓉女儿之前曰：</div>
+              <div class="ln">　　窃思女儿自临人世，迄今凡十有六载。</div>
+              <div class="ln">忆女儿<span class="d" data-st="done" data-n="">曩</span>生之昔，其为质则金玉不足喻其贵；</div>
+              <div class="ln">其为体则冰雪不足喻其<span class="d" data-st="todo" data-n="">洁</span>。</div>
+            </div>
+            <div class="diff-layer" id="dl2"></div>
+          </div>
+        </div>
+        <aside class="right" style="width:360px">
+          <div class="qhead"><b>第 3 / 13 处</b><span class="lv">汉字级</span><span class="spacer"></span><button class="btn" style="height:22px">⋯</button></div>
+          <div class="qbody">
+            <div class="qfrag" style="font-size:12.5px">…冰鲛之<span class="qa">殼</span>→<span class="qb">縠</span>，沁芳之泉…</div>
+            <div class="qline editable" style="font-size:11.5px"><span class="tag">原文</span><span>…冰鲛之<span class="qa">殼</span>，沁芳之泉…</span></div>
+            <div class="qline" style="font-size:11.5px"><span class="tag">候选</span><span>…冰鲛之<span class="qb">縠</span>，沁芳之泉…</span></div>
+          </div>
+          <div class="qacts">
+            <button class="btn btn--pri" style="height:28px">采纳 <span class="kbd">⏎</span></button>
+            <button class="btn" style="height:28px">保留 <span class="kbd">␣</span></button>
+            <button class="btn" style="height:28px">上一处</button>
+          </div>
+          <div class="rest">
+            <div class="rest__h">本页其余 12 处</div>
+            <div class="rrow"><span class="dotst dotst--todo"></span><span>L3 汉</span><span class="st">未审</span></div>
+            <div class="rrow"><span class="dotst dotst--done"></span><span>L5 汉</span><span class="st">✓已保留</span></div>
+            <div class="rrow"><span class="dotst dotst--todo"></span><span>L8 汉</span><span class="st">未审</span></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <p class="caption">1200px 下的形态：左栏条目行退化为「行号 + 等级 + 状态灯」，差异摘要进 title；右栏 A/B 只留一行。</p>
+  </div>
+
+  <!-- ═══════════ C · <1120 ═══════════ -->
+  <div class="frame">
+    <p class="label">C · &lt;1120px <span>（左 44 轨道，悬停浮出 232 面板；右栏变底部抽屉，可收起成 48 条）</span></p>
+    <div class="card" style="width:1000px">
+      <div class="work" style="height:520px;flex-direction:column">
+        <div style="display:flex;flex:1;min-height:0">
+          <aside class="rail">
+            <button class="on" title="目录 · 清单">☰</button>
+            <button title="差异筛选">≠</button>
+            <button title="页面缩略图">▦</button>
+          </aside>
+          <div class="center">
+            <div class="pagewrap" id="pw3">
+              <div class="page" id="pg3" style="width:520px">
+                <div class="rh"><span>红楼梦 370</span><span>370</span></div>
+                <div class="ln">　　维太平不易之元，蓉桂竞芳之月，无可</div>
+                <div class="ln">奈何之日，怡红院浊玉，谨以群花之蕊、冰</div>
+                <div class="ln">鲛之<span class="d" data-st="cur" data-n="3">殼</span>，沁芳之泉、枫露之茗：四者虽微，</div>
+                <div class="ln">聊以达诚申信，乃致祭于白帝宫中抚司秋</div>
+                <div class="ln">艳芙蓉女儿之前曰：窃思女儿自临人世，</div>
+                <div class="ln">迄今凡十有六载。忆女儿<span class="d" data-st="done" data-n="">曩</span>生之昔，</div>
+                <div class="ln">其为质则金玉不足喻其贵；其为体则冰雪</div>
+                <div class="ln">不足喻其<span class="d" data-st="todo" data-n="">洁</span>。</div>
+              </div>
+              <div class="diff-layer" id="dl3"></div>
+            </div>
+          </div>
+        </div>
+        <div class="sheet">
+          <div class="sheet__bar"><span class="sheet__grip"></span></div>
+          <div class="sheet__bar" style="height:36px;border-top:1px solid var(--line-soft)">
+            <b style="font-size:12.5px">第 3 / 13 处</b><span class="muted" style="font-size:11px">汉字级 · 冰鲛之殼→縠</span>
+            <span class="spacer"></span>
+            <button class="btn btn--pri" style="height:26px">采纳 <span class="kbd">⏎</span></button>
+            <button class="btn" style="height:26px">保留</button>
+            <button class="btn" style="height:26px">⌫</button>
+          </div>
+          <div style="padding:6px 12px;font-size:12px;color:var(--text-2)">
+            原文（可编辑）：…冰鲛之<span class="qa">殼</span>，沁芳之泉…　候选：…冰鲛之<span class="qb">縠</span>，沁芳之泉…
+          </div>
+          <div style="padding:2px 12px 8px;display:flex;gap:14px;font-size:11px;color:var(--muted)">
+            <span>本页其余 12 处</span><span>● L3 汉 差别→差异</span><span>● L5 汉 曩→囊 ✓</span><span>● L8 汉 洁→潔</span><span>● L10 标 ，→、</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption">窄屏把页面放第一位：左树收成轨道（点 ☰ 浮出 232 面板），差异卡变成底部抽屉，收起时只留 48px 的「3/13 + 三个动作」。</p>
+  </div>
+
+  <!-- ═══════════ D · 标注 ═══════════ -->
+  <div class="frame">
+    <p class="label">D · 标注 <span>（三态色值 / 灰度对照 / 图层顺序 / 628 高度预算）</span></p>
+    <div class="card">
+      <div class="spec">
+        <div class="spec__col">
+          <h5>三种状态（未审 / 已审 / 当前）</h5>
+          <div class="sw sw--todo"><span class="chip">殼</span><span>未审 · 红 13% + 1.5px 描边 · 正文 12.3:1</span></div>
+          <div class="sw sw--done"><span class="chip">曩</span><span>已审 · 绿 8% · 无描边 · 13.6:1</span></div>
+          <div class="sw sw--cur"><span class="chip" style="position:relative">潔<span style="position:absolute;right:-22px;top:-3px;background:#2563eb;color:#fff;font:9px/13px -apple-system;padding:0 3px;border-radius:3px">3/13</span></span><span>当前 · 蓝 16% + 2px 描边 + 端须 + 索引片 · 11.8:1</span></div>
+          <h5 style="margin-top:14px">同一组，转灰度</h5>
+          <div class="gray">
+            <div class="sw sw--todo"><span class="chip">殼</span><span>未审 = 有描边</span></div>
+            <div class="sw sw--done"><span class="chip">曩</span><span>已审 = 无描边</span></div>
+            <div class="sw sw--cur"><span class="chip">潔</span><span>当前 = 粗描边 + 索引片</span></div>
+          </div>
+        </div>
+
+        <div class="spec__col">
+          <h5>图层顺序（自下而上）</h5>
+          <div class="layers">
+            <div><span class="z">z0</span><span>页面图像（扫描页）</span></div>
+            <div><span class="z">z1</span><span>版心压暗 —— 审校步<b>默认关</b>；打开时中性灰虚线，不压暗</span></div>
+            <div><span class="z">z2</span><span>块框（类型色）—— 审校步<b>默认关</b>；悬停单块才显示 1px</span></div>
+            <div><span class="z">z3</span><span>差异层（红/绿/蓝三态矩形）—— <b>页面上唯一的彩色</b></span></div>
+            <div><span class="z">z4</span><span>当前项增强（端须 + 3/13 索引片）</span></div>
+            <div><span class="z">z5</span><span>悬停卡 / 块顺序号</span></div>
+          </div>
+          <h5 style="margin-top:14px">旧编码下线</h5>
+          <div class="layers">
+            <div><span class="z">—</span><span>任务 63 的橙/红下划线被三态矩形取代；汉字级/标点级改由<b>描边线型</b>表示（实线/虚线）</span></div>
+            <div><span class="z">—</span><span>审校页不再同时出现版心 teal + 块框蓝 + 差异橙 + 三态色（今天最多五套彩色）</span></div>
+          </div>
+        </div>
+
+        <div class="spec__col" style="min-width:420px">
+          <h5>628px 高度预算</h5>
+          <table class="budget">
+            <tr><th>区块</th><th>高</th><th>滚动</th></tr>
+            <tr><td>视图工具条（页号 / 差异档 / 版心 / 块框 / 缩放）</td><td>40</td><td>固定</td></tr>
+            <tr><td>三栏内容区</td><td>540</td><td>各自内部滚</td></tr>
+            <tr><td>左树：面板头 40 + 筛选 34 + 树 466</td><td>—</td><td>树内滚（≈19 行）</td></tr>
+            <tr><td>右卡：队列 44 + A/B + 动作 + 其余列表</td><td>—</td><td>其余列表内滚</td></tr>
+            <tr><td>页面列：A4 @760 ≈ 1075</td><td>—</td><td><b>必须纵向滚</b></td></tr>
+            <tr><td>底栏（撤销 / 计数 / 确认本页）</td><td>48</td><td>固定</td></tr>
+            <tr><td><b>合计</b></td><td><b>628</b></td><td>body 无滚动条</td></tr>
+          </table>
+          <p style="font-size:11.5px;color:var(--muted);line-height:1.6;margin:8px 0 0">
+            「628 内零滚动」在这里只对固定区成立：工具条与底栏不动，三个栏各自内部滚动，整页不出现滚动条。
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  /** 依据页面上的 .d（差异字符）生成叠层色块；与真实现同一套思路：只包差异字符。 */
+  function paint(pageId, layerId) {
+    const page = document.getElementById(pageId);
+    let layer = document.getElementById(layerId);
+    if (!page || !layer) return;
+    /* 差异层必须挂在页面容器里，坐标才和 page 的 bbox 同源（挂在外层 pagewrap 会整体偏移） */
+    if (layer.parentElement !== page) page.appendChild(layer);
+    layer.style.position = "absolute";
+    layer.style.inset = "0";
+    layer.innerHTML = "";
+    const pr = page.getBoundingClientRect();
+    for (const span of page.querySelectorAll(".d")) {
+      const r = span.getBoundingClientRect();
+      const ln = span.closest(".ln");
+      const lr = ln.getBoundingClientRect();
+      const fs = parseFloat(getComputedStyle(ln).fontSize) || 14;
+      /* 竖向用**行框**而不是 span 的字号盒：中文字面只占 em 的下半部分，
+         用 span 盒会让色块整体偏上（真实现同样要用后端给的行框 bbox）。 */
+      const inkH = fs * 1.15;
+      const top = lr.top - pr.top + (lr.height - inkH) / 2;
+      const mark = document.createElement("div");
+      const st = span.dataset.st || "todo";
+      mark.className = "mk mk--" + st;
+      mark.style.left = (r.left - pr.left - 2) + "px";
+      mark.style.width = (r.width + 4) + "px";
+      mark.style.top = top + "px";
+      mark.style.height = inkH + "px";
+      /* 当前项的索引片放在**页边**（页面右内边距），与这一行对齐——不压任何文字 */
+      if (st === "cur" && span.dataset.n) {
+        const n = document.createElement("span");
+        n.className = "mk__n";
+        n.textContent = span.dataset.n + "/13";
+        n.style.left = (page.clientWidth - 40) + "px";
+        n.style.top = (top + 3) + "px";
+        layer.appendChild(n);
+      }
+      layer.appendChild(mark);
+    }
+  }
+  function paintAll() {
+    paint("pg1", "dl1");
+    paint("pg2", "dl2");
+    paint("pg3", "dl3");
+  }
+  paintAll();
+  window.addEventListener("resize", paintAll);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(paintAll);
+})();
+</script>
+</body>
+</html>
