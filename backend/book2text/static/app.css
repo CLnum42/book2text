@@ -1832,3 +1832,50 @@ body[data-workflow-step="recognition"] #page-setup-bar { display: none; }
   .preview-pdf { width: 40%; }
   .preview-seg__text { font-size: 13px; }
 }
+
+
+/* ─────────────────── 功能归位：筛选条分步 / ⋯ 菜单 / 结构工具（任务 39） ─────────────────── */
+.filterbar__filters {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+}
+.page-more-wrap { position: relative; flex: none; }
+/* 筛选条是 overflow-x:auto 的容器，绝对定位会被裁掉；用 fixed + JS 定位。 */
+.page-more {
+  position: fixed; left: 0; top: 0; z-index: 60;
+  width: 200px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 9px; box-shadow: var(--shadow-3); padding: 6px;
+}
+.page-more__group {
+  padding: 6px 8px 3px; font-size: 10.5px; color: var(--faint);
+}
+.page-more__item {
+  display: block; width: 100%; text-align: left; font: inherit; font-size: 12px;
+  padding: 7px 8px; border: 0; background: transparent; border-radius: 6px;
+  cursor: pointer; color: var(--text);
+}
+.page-more__item:hover { background: var(--surface-3); }
+.page-more__item:disabled { color: var(--faint); cursor: not-allowed; }
+
+/* 页面确认：类型 / 工作流 / 选择范围 */
+body[data-workflow-step="pages"] .filterbar .fitem--recognition,
+body[data-workflow-step="pages"] .filterbar .fitem--triage,
+body[data-workflow-step="pages"] .filterbar .fitem--only-included { display: none; }
+
+/* 版心确认：不要筛选；缩放 / 版心开关 / ⋯ 还在 */
+body[data-workflow-step="margin"] #page-filters { display: none; }
+
+/* 文字识别：只留识别状态 */
+body[data-workflow-step="recognition"] .filterbar .fitem--type,
+body[data-workflow-step="recognition"] .filterbar .fitem--workflow,
+body[data-workflow-step="recognition"] .filterbar .fitem--triage,
+body[data-workflow-step="recognition"] .filterbar .fitem--only-included,
+body[data-workflow-step="recognition"] .filterbar .fitem--range,
+body[data-workflow-step="recognition"] #page-range-select,
+body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { display: none; }
+
+.margin-outside {
+  margin-top: 12px; padding: 9px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--surface-2);
+}
+.margin-outside .flabel { margin: 0 0 4px; }
+.margin-outside .hint { margin: 0 0 7px; font-size: 10.5px; }

@@ -7418,6 +7418,37 @@ function stepPreviewPage(delta) {
   jumpPreviewToPage(next, { scrollRight: true });
 }
 
+
+/** 任务 39（E 刀）：工具条上的「⋯」——诊断（质量统计）/ 协作（任务包）。 */
+function setupPageMore() {
+  const button = el("page-more");
+  const menu = el("page-more-menu");
+  if (!button || !menu) return;
+  const place = () => {
+    const rect = button.getBoundingClientRect();
+    const width = menu.offsetWidth || 200;
+    menu.style.top = `${Math.round(rect.bottom + 6)}px`;
+    menu.style.left = `${Math.round(
+      Math.min(window.innerWidth - width - 8, Math.max(8, rect.right - width))
+    )}px`;
+  };
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) place();
+  });
+  for (const item of menu.querySelectorAll("button")) {
+    item.addEventListener("click", () => {
+      menu.hidden = true;
+    });
+  }
+  document.addEventListener("click", (event) => {
+    if (menu.hidden) return;
+    if (menu.contains(event.target) || button.contains(event.target)) return;
+    menu.hidden = true;
+  });
+}
+
 function setupPreview() {
   el("preview-prev").addEventListener("click", () => stepPreviewPage(-1));
   el("preview-next").addEventListener("click", () => stepPreviewPage(1));
@@ -13190,6 +13221,7 @@ function boot() {
   setupPageNumberPanel();
   setupPageIndex();
   setupPreview();
+  setupPageMore();
   setupExportPanel();
   setupStructurePanel();
   showView("library");

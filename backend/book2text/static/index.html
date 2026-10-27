@@ -79,8 +79,11 @@
       <!-- ─────────────────────────── 视图：页面 ─────────────────────────── -->
       <section class="view view--pages" id="view-pages" hidden>
         <div class="filterbar">
+          <!-- 任务 39（E 刀）：筛选按步骤显示。页面确认 = 类型 / 工作流 / 范围；
+               文字识别 = 识别状态；版心确认整条收进 ⋯；正文审校在审校视图里另有筛选。 -->
+          <div class="filterbar__filters" id="page-filters">
           <span class="flab">筛选</span>
-          <label class="fitem">类型
+          <label class="fitem fitem--type">类型
             <select id="filter-type" class="select">
               <option value="">全部</option>
               <option value="body">正文</option>
@@ -90,7 +93,7 @@
               <option value="back">后置</option>
             </select>
           </label>
-          <label class="fitem">识别
+          <label class="fitem fitem--recognition">识别
             <select id="filter-recognition" class="select">
               <option value="">全部</option>
               <option value="unrecognized">未识别</option>
@@ -99,7 +102,7 @@
               <option value="has_candidate">有待选新结果</option>
             </select>
           </label>
-          <label class="fitem">工作流
+          <label class="fitem fitem--workflow">工作流
             <select id="filter-workflow" class="select">
               <option value="">全部</option>
               <option value="pending">待处理</option>
@@ -114,7 +117,7 @@
               <option value="excluded">不参与</option>
             </select>
           </label>
-          <label class="fitem">审校
+          <label class="fitem fitem--triage">审校
             <select id="filter-triage" class="select">
               <option value="">全部</option>
               <option value="todo">还没审完</option>
@@ -126,19 +129,27 @@
               <option value="divergence">有分歧（含标点级）</option>
             </select>
           </label>
-          <label class="fitem check">
+          <label class="fitem check fitem--only-included">
             <input type="checkbox" id="pages-only-included"> 只看正文
           </label>
           <div class="vdiv"></div>
-          <label class="fitem">选择范围
+          <label class="fitem fitem--range">选择范围
             <input type="text" id="page-range" class="input input--range"
                    placeholder="如 1-12, 300-310" maxlength="200">
           </label>
           <button type="button" id="page-range-select" class="btn btn--sm">选择</button>
+          </div>
           <span class="spacer"></span>
-          <button type="button" id="assign-list-toggle" class="btn btn--sm">任务包</button>
-          <button type="button" id="structure-open" class="btn btn--sm">结构工具…</button>
-          <button type="button" id="stats-open" class="btn btn--sm">质量统计</button>
+          <div class="page-more-wrap">
+            <button type="button" id="page-more" class="btn btn--sm"
+                    title="更多：诊断（质量统计）/ 协作（任务包）">⋯</button>
+            <div class="page-more" id="page-more-menu" hidden>
+              <div class="page-more__group">诊断</div>
+              <button type="button" id="stats-open" class="page-more__item">质量统计</button>
+              <div class="page-more__group">协作</div>
+              <button type="button" id="assign-list-toggle" class="page-more__item">任务包</button>
+            </div>
+          </div>
           <span class="vdiv"></span>
           <div class="zoombar" title="页面视图缩放：网格 → 大网格 → 单列 → 单页">
             <button type="button" id="pages-zoom-out" class="btn btn--sm" title="缩小">－</button>
@@ -260,6 +271,11 @@
 
                     <div class="hint" id="margin-audit" hidden></div>
                     <div class="hint" id="margin-status" hidden></div>
+                    <div class="margin-outside">
+                      <div class="flabel">版心外的书眉 / 页脚 / 页码</div>
+                      <p class="hint">这些家具落在版心外，导出默认不进正文；要批量改类型用结构工具。</p>
+                      <button type="button" id="structure-open" class="btn btn--block btn--sm">结构工具…</button>
+                    </div>
                     <div class="hint" id="margin-default"></div>
                     <button type="button" id="margin-detect-missing" class="btn btn--block btn--sm" hidden>
                       检测这些页的正文行…
