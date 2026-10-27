@@ -1058,3 +1058,47 @@ def test_page_index_step_is_wired() -> None:
 
     assert ".index-row.is-current" in css
     assert ".index-split" in css
+
+
+def test_result_preview_step_is_wired_to_export_assembly() -> None:
+    """任务 38（D 刀）：结果预览 = 导出结果的实时副本，且没有完成态。
+
+    静态约定：第 6 步在审校与导出之间、用同一份 /export/preview、段/跨页/排除
+    三类信息都有落点；步骤样式是 plain（不绿不灰），完成判定里没有它。
+    """
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "view-preview",
+        "preview-image",
+        "preview-page-no",
+        "preview-page-printed",
+        "preview-prev",
+        "preview-next",
+        "preview-meta",
+        "preview-segs",
+        "preview-scroll",
+        "preview-only-span",
+        "preview-note",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+
+    # 第 6 步：在审校与导出之间，普通态（plain）
+    assert '{ id: "preview", label: "结果预览", short: "预览", plain: true }' in script
+    assert '"preview"' in script and "const VIEWS =" in script
+    assert "workflow-step--plain" in script and ".workflow-step--plain" in css
+
+    # 与导出共用同一份组装：只调 /export/preview，不另写合并逻辑
+    assert "function openPreview(" in script
+    assert "/export/preview" in script
+    assert "exportOptions()" in script
+    # 段边界 / 跨页段 / 排掉了什么
+    assert "function buildPreviewSegment(" in script
+    assert "跨页续" in script
+    assert "版心外排除" in script
+    assert "previewVisibleSegments" in script
+    # 没有完成态：预览不在页面步里，也没有 is-done 判定
+    assert 'PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition", "index"]' in script
+    assert "结果预览不设完成态" in script

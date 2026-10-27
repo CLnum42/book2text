@@ -4,7 +4,8 @@
 
 - 每页都出现在索引里（缺页码也不例外，`missing=true`）；
 - 印刷页码优先 `page.printed_page`，否则用页码候选（不重新 OCR）；
-- 对开双页（一张 PDF 页含两个印刷页）一行给两个号码；
+- 编号步长（1 或 2）只解释编号规律：标签只写实际检测到的那个号，
+  步长 2 时输入框额外接受"同一叶的另一面"（不写进标签）；
 - 章首从页面靠前的文字块首行匹配 `^第X回`；
 - 索引生成成功即"完成"，不需要人工逐条确认。
 """
@@ -97,7 +98,8 @@ def indexed_project(
 ) -> str:
     project_id = create_project(client, auth_headers, scan_sample_pdf)
     recognize(client, auth_headers, project_id, [1, 2, 3, 4, 5, 6, 7])
-    # 1–6 页底部有页码：2×页序（对开双页的左页）；第 7 页故意不塞，验"未识别页码"。
+    # 1–6 页底部有页码：2×页序（这本书影印按叶编号，页码隔 2）；
+    # 第 7 页故意不塞，验"未识别页码"。
     for page_no in range(1, 7):
         add_block(
             library_dir,
@@ -140,11 +142,12 @@ def test_index_lists_every_page_with_printed_numbers_and_chapters(
     assert len(pages) == len(total)  # 每一页都在列表里
 
     by_no = {entry["page_no"]: entry for entry in pages}
-    # 对开双页：2×页序 与 +1，一行两个号码，不硬压成一个
-    assert data["two_up"] is True
-    assert by_no[2]["printed"] == ["4", "5"]
-    assert by_no[2]["spread"] is True
+    # 标签只写实际检测到的那个号（这里 4）；不是"一页两个印刷页"。
+    assert data["numbering_step"] == 2
+    assert by_no[2]["printed"] == ["4"]
     assert by_no[2]["missing"] is False
+    # 跳转便利：同一叶的另一面 5 也能命中这一页，但不写进标签
+    assert by_no[2]["jump"] == ["4", "5"]
     # 章首：第 1 页
     assert by_no[1]["chapter"] == "第五十四回"
     assert data["chapters"][0]["page_no"] == 1
@@ -172,7 +175,7 @@ def test_finish_summary_reports_index_generated_without_manual_work(
     assert state["complete"] is True
     assert state["numbered"] == 6
     assert state["chapters"] == 1
-    assert state["two_up"] is True
+    assert state["numbering_step"] == 2
 
 
 def test_manual_printed_page_wins_over_candidates(
@@ -190,15 +193,15 @@ def test_manual_printed_page_wins_over_candidates(
     data = index(client, auth_headers, indexed_project)
     entry = next(item for item in data["pages"] if item["page_no"] == 3)
     assert entry["printed"] == ["301"]
+    assert entry["jump"] == ["301"]
     assert entry["source"] == "manual"
 
 
-def test_two_up_detection_and_spread_numbers() -> None:
-    # 相邻页印刷页码差 ≈2 → 对开双页；≈1 → 单页
-    assert page_index_module._is_two_up({1: 2, 2: 4, 3: 6}) is True
-    assert page_index_module._is_two_up({1: 1, 2: 2, 3: 3}) is False
-    assert page_index_module._spread_numbers(204) == ["204", "205"]
-    assert page_index_module._spread_numbers(205) == ["204", "205"]
+def test_numbering_step_detection() -> None:
+    # 相邻页印刷页码差 ≈2 → 步长 2（按叶编号）；≈1 → 步长 1
+    assert page_index_module._numbering_step({1: 2, 2: 4, 3: 6}) == 2
+    assert page_index_module._numbering_step({1: 1, 2: 2, 3: 3}) == 1
+    assert page_index_module._numbering_step({}) == 1
 
 
 def test_chapter_regex_only_matches_chapter_openings() -> None:
