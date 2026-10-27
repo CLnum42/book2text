@@ -7,6 +7,18 @@
 
 ## [0.1.0] — 2026-10-21
 
+### 变更 — 行级文本规范化与 diff 重算（N 刀，2026-10-27）
+
+- 新增 `GET/POST /cleanup/orthography/lines`：行文本和第二引擎文本一起规范化，
+  用同一个 `compare_line` 重算 `diff_status`；`diff_ack` 的行跳过；写库时另存逐行回滚文件。
+- 修正一个会**让队列变长**的中间态：只改块文本会让括号行从 identical 变成"标点级分歧"
+  （队列 1686 → 1941）；行级修完后队列 **1629**、format_only **261 → 7**、differs **2191 → 2134**，
+  审校看到的字与导出的字恢复一致。
+- 收尾面板加「行文本与差异重算」行；「引号不配平」清单把自动修引号可能改错的 5 处
+  孤儿闭上双引号标红并排在最前。
+- 真书已执行（624 行），备份 `project-before-lines-20261027-1717.db` + 逐行回滚 JSON。
+- 截图：`docs/screenshots/orthography-lines-row.png`、`orthography-suspects.png`。
+
 ### 变更 — 字符规范化：三组括号 / 半角标点 / 引号配平（M 刀，2026-10-27）
 
 - 新增 `GET/POST /cleanup/orthography` 与 `GET /cleanup/orthography/unbalanced`：
