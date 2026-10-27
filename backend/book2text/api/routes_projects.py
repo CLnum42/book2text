@@ -420,6 +420,7 @@ class ProjectSettingsPatch(BaseModel):
 
     auto_apply_high_suggestions: bool | None = None
     margin_box_judgement: bool | None = None
+    margin_judgement_notice: bool | None = None
     # 识别设置：建识别任务时读取（不是只存不用，见 recognition.create_ocr_job）。
     # 取值白名单放在 core/project/library.update_settings，接口统一转 400（而不是 422），
     # 这样错误信息是中文、带可选值，和前两个开关一致。

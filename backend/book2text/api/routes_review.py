@@ -24,6 +24,7 @@ from ..core.project import blocks as blocks_module
 from ..core.project import ink_gaps as ink_gaps_module
 from ..core.project import editing
 from ..core.project import library as project_library
+from ..core.project import margin_box as margin_box_module
 from ..core.project import recognition
 from ..core.project import structure as structure_module
 from ..core.project import workflow as workflow_module
@@ -104,8 +105,14 @@ def _history(request: Request) -> ReviewHistory:
     return history
 
 
-def _block_payload(block: blocks_module.BlockRecord, lines) -> dict[str, Any]:
-    divergence = blocks_module.block_divergence(block, lines)
+def _block_payload(
+    block: blocks_module.BlockRecord,
+    lines,
+    *,
+    divergence: blocks_module.BlockDivergence | None = None,
+    margin_inside: bool = True,
+) -> dict[str, Any]:
+    divergence = divergence or blocks_module.block_divergence(block, lines)
     return {
         **block.to_dict(),
         "lines": [line.to_dict() for line in lines],
@@ -113,6 +120,9 @@ def _block_payload(block: blocks_module.BlockRecord, lines) -> dict[str, Any]:
         # 并显示"这一块有 N 行两路不一致"。标记按**块里现在的文本**现算（见 blocks.py）。
         "divergence": divergence.to_dict(),
         "diff_line_count": divergence.lines,
+        # 任务 34：块中心是否在版心内。与导出第一层同一函数（margin_box.block_inside_margin），
+        # 审校队列 / 页头计数 / 待处理都按它过滤；版心外的块仍返回，供展开查看与编辑。
+        "margin_inside": bool(margin_inside),
     }
 
 
@@ -147,16 +157,67 @@ def _page_blocks_payload(request: Request, project_id: str, page_no: int) -> dic
     active_run_id = state.active_run_id if state else None
     active = next((run for run in runs if run.run_id == active_run_id), None)
     undo, redo = _history(request).depth(project_id)
+
+    # 任务 34：审校只默认统计版心内。判定与导出第一层同一个函数
+    # （`margin_box.block_inside_margin` → `export_margin_box` + `center_inside`）。
+    project = project_library.load_project(project_id, library=library)
+    divergences = {
+        block.block_id: blocks_module.block_divergence(
+            block, by_block.get(block.block_id, [])
+        )
+        for block in blocks
+    }
+    inside_ids = {
+        block.block_id
+        for block in blocks
+        if margin_box_module.block_inside_margin(project, page, block.bbox)
+    }
+    outside_blocks = [block for block in blocks if block.block_id not in inside_ids]
+    outside_counts = {"chars": 0, "punct": 0, "empty": 0, "format_only": 0, "acked": 0}
+    for block in outside_blocks:
+        divergence = divergences[block.block_id]
+        for key in outside_counts:
+            outside_counts[key] += int(getattr(divergence, key, 0) or 0)
+    margin_box_used = margin_box_module.export_margin_box(project, page)
+    margin_payload = {
+        "box": list(margin_box_used) if margin_box_used else None,
+        "applied": margin_box_module.margin_applies(project, page),
+        "mode": page.margin_box_mode,
+        "source": margin_box_module.page_margin_source_label(project, page),
+        "undetermined": (
+            page.margin_box_mode in ("auto", "inherit")
+            and margin_box_used is None
+        ),
+        "none": page.margin_box_mode == "none",
+        "outside_blocks": len(outside_blocks),
+        "outside_lines": {
+            **outside_counts,
+            "lines": outside_counts["chars"] + outside_counts["punct"],
+        },
+    }
+
     return {
         "page": {**page.to_dict(), "recognition": (state or blocks_module.empty_recognition(page.page_id)).to_dict()},
         "runs": [run.to_dict() for run in runs],
         "active_run": active.to_dict() if active else None,
         "block_count": len(blocks),
-        "blocks": [_block_payload(block, by_block.get(block.block_id, [])) for block in blocks],
+        "blocks": [
+            _block_payload(
+                block,
+                by_block.get(block.block_id, []),
+                divergence=divergences[block.block_id],
+                margin_inside=block.block_id in inside_ids,
+            )
+            for block in blocks
+        ],
         "review": _review_summary(blocks),
         # 行归属统计（改框之后看得见）：冲突 / 未归属的行一条都不会丢
         "layout_lines": _line_layout_summary(lines),
-        "divergence": blocks_module.page_divergence_summary(blocks, lines, runs).to_dict(),
+        # 任务 34：分歧概况只算版心内；版心外的计数单独给，页头写"未计入"
+        "divergence": blocks_module.page_divergence_summary(
+            blocks, lines, runs, inside_block_ids=inside_ids
+        ).to_dict(),
+        "margin": margin_payload,
         "history": {"undo": undo, "redo": redo},
         # 任务 61：确认方式（人工 / 自动 / 未确认）给审校按钮与状态展示用
         "workflow": workflow_module.page_workflow(

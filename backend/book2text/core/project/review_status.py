@@ -76,6 +76,48 @@ def margin_is_set(project, page) -> bool:
     return project.margin_box is not None and project.margin_box_source == margin_box_module.SOURCE_MANUAL
 
 
+def _block_bboxes(
+    project_id: str, *, library: Path | None, page_no: int | None = None
+) -> dict[int, dict[str, object]]:
+    """page_no → {block_id: bbox}（建议 / 漏行按版心过滤时查块框用）。"""
+    result: dict[int, dict[str, object]] = {}
+    for block in blocks_module.list_blocks(
+        project_id, library=library, page_no=page_no
+    ):
+        result.setdefault(block.page_no, {})[block.block_id] = block.bbox
+    return result
+
+
+def _inside_suggestions(
+    project,
+    page,
+    suggestions,
+    bboxes: dict[str, object] | None,
+) -> list:
+    """只保留**块中心在版心内**的类型建议（任务 34：审校与导出同一口径）。"""
+    if not suggestions:
+        return []
+    if bboxes is None:
+        return list(suggestions)
+    return [
+        item
+        for item in suggestions
+        if margin_box_module.block_inside_margin(
+            project, page, bboxes.get(item.block_id)
+        )
+    ]
+
+
+def _inside_ink_count(project, page, ink: dict) -> int:
+    """漏行候选里中心在版心内的条数（版心外的墨迹是书眉 / 装饰，不计）。"""
+    candidates = ink.get("candidates") or []
+    return sum(
+        1
+        for item in candidates
+        if margin_box_module.block_inside_margin(project, page, item.get("bbox"))
+    )
+
+
 def _page_reasons(
     *,
     page,
@@ -148,9 +190,17 @@ def evaluate_page(
     aux_checked = page.page_id in blocks_module.pages_with_auxiliary_run(
         project_id, library=library
     )
-    suggestions = structure_module.suggestions_by_page(
-        project_id, library=library, page_numbers=[page_no]
-    ).get(page_no, ())
+    page_bboxes = _block_bboxes(
+        project_id, library=library, page_no=page_no
+    ).get(page_no, {})
+    suggestions = _inside_suggestions(
+        project,
+        page,
+        structure_module.suggestions_by_page(
+            project_id, library=library, page_numbers=[page_no]
+        ).get(page_no, ()),
+        page_bboxes,
+    )
     ink_count = 0
     # 已经有别的未处理项时，不必再跑图像检测；自动通过只在"其他都干净"时才需要它。
     preliminary = _page_reasons(
@@ -165,7 +215,7 @@ def evaluate_page(
     if check_ink_gaps and not preliminary:
         try:
             ink = ink_gaps_module.find_ink_gaps(project_id, page_no, library=library)
-            ink_count = len(ink.get("candidates") or [])
+            ink_count = _inside_ink_count(project, page, ink)
         except Exception:  # noqa: BLE001 - 漏行检测是辅助信息，读不到不阻断判定
             ink_count = 0
     reasons = _page_reasons(
@@ -265,12 +315,18 @@ def project_pending(project_id: str, *, library: Path | None = None) -> dict:
     suggestion_map = structure_module.suggestions_by_page(
         project_id, library=library, page_numbers=recognized
     )
+    bboxes_by_page = _block_bboxes(project_id, library=library)
     items: list[dict] = []
     counts: dict[str, int] = {}
     for page in pages:
         if not page.include:
             continue
-        suggestions = suggestion_map.get(page.page_no, ())
+        suggestions = _inside_suggestions(
+            project,
+            page,
+            suggestion_map.get(page.page_no, ()),
+            bboxes_by_page.get(page.page_no),
+        )
         wf_row = workflow_rows.get(page.page_id)
         reasons = _page_reasons(
             page=page,
@@ -292,7 +348,7 @@ def project_pending(project_id: str, *, library: Path | None = None) -> dict:
         if not reasons:
             try:
                 ink = ink_gaps_module.find_ink_gaps(project_id, page.page_no, library=library)
-                ink_count = len(ink.get("candidates") or [])
+                ink_count = _inside_ink_count(project, page, ink)
             except Exception:  # noqa: BLE001 - 辅助信息
                 ink_count = 0
             if ink_count:

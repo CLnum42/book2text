@@ -717,7 +717,7 @@ function renderPreflight(data) {
   if (undeterminedMargins.length) {
     rows.push([
       "版心未定",
-      `${undeterminedMargins.length} 页（没有检测行；不参与「按版心判定」，也不会拿默认版心顶替）`,
+      `${undeterminedMargins.length} 页（还没有拟合框；不参与「按版心判定」，也不会拿默认版心顶替）`,
     ]);
   }
   if (workflowStatus.total) {
@@ -735,11 +735,19 @@ function renderPreflight(data) {
     const marginNotes = data.margin_notes || {};
     const marginPages = data.margin_pages || {};
     const marginNumbers = data.margin_page_numbers || {};
+    const excludedByType = marginBlocks.excluded_by_type || {};
+    const excludedText = Object.entries(excludedByType)
+      .map(([type, count]) => `${BLOCK_TYPE_LABELS[type] || type} ${count}`)
+      .join(" / ");
     rows.push([
       "版心判定",
       `内 ${marginBlocks.inside || 0} 块 · 外 ${marginBlocks.outside || 0} 块` +
         ` · 脚注/旁批 ${marginNotes.total || 0} 块（其中 ${marginNotes.inside || 0} 块在版心内）` +
         ` · 页码 ${marginNumbers.pages || 0} 页 · 未确认版心 ${(marginPages.unset || []).length} 页`,
+    ]);
+    rows.push([
+      "版心外被排除",
+      `${marginBlocks.excluded || 0} 块` + (excludedText ? `（${excludedText}）` : ""),
     ]);
   }
   fillDefinitionList(el("export-preflight"), rows);
@@ -765,7 +773,7 @@ function renderPreflight(data) {
     const shown = undeterminedMargins.slice(0, 12).join("、");
     const more = undeterminedMargins.length > 12 ? " 等" : "";
     notes.push(
-      `有 ${undeterminedMargins.length} 页版心未定（${shown}${more}）——这些页没有检测行，` +
+      `有 ${undeterminedMargins.length} 页版心未定（${shown}${more}）——这些页还没有可用的拟合框，` +
         "按版心判定时会跳过、不拿默认版心顶替。先跑「检测并定版心」再导出更稳妥。"
     );
   }
@@ -778,8 +786,8 @@ function renderPreflight(data) {
     );
     if (marginPages.auto) {
       notes.push(
-        "当前默认版心是自动推算、还没确认：按版心判定导出**不会**使用它（已退回块类型）。" +
-          "在页面视图点「采用为默认版心」之后，导出才会按它判定。"
+        "默认版心是自动推算、还没确认：只有显式「沿用全局」的页会用到它；" +
+          "「每页自动拟合」的页读自己的框。想固定全局版心，在页面视图点「采用为默认版心」。"
       );
     }
     if (unsetPages.length) {
@@ -879,7 +887,7 @@ function exportScopeText(options) {
   }
   if (options.confirmed_only) parts.push("仅已确认");
   if (options.include_notes) parts.push("含注释");
-  if (currentProject && currentProject.settings && currentProject.settings.margin_box_judgement) {
+  if (marginJudgementOn()) {
     parts.push("按版心判定正文");
   }
   return parts.join(" · ");
@@ -1133,6 +1141,16 @@ function setupExportPanel() {
   el("export-margin-judgement").addEventListener("change", (event) =>
     setMarginJudgementSetting(event.target.checked)
   );
+  const recMargin = el("rec-margin-judgement");
+  if (recMargin) {
+    recMargin.addEventListener("change", (event) =>
+      setMarginJudgementSetting(event.target.checked)
+    );
+  }
+  const marginNoticeOk = el("margin-judgement-notice-ok");
+  if (marginNoticeOk) {
+    marginNoticeOk.addEventListener("click", dismissMarginJudgementNotice);
+  }
   el("export-btn").addEventListener("click", runExport);
   el("export-preview-btn").addEventListener("click", async () => {
     try {
@@ -1643,7 +1661,7 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     renderRecognitionSettings();
     loadPageNumberSummary();
     reviewMarginOn = loadReviewMarginPreference();
-    reviewBlockFilter = "inside";
+    reviewBlockFilter = "pending";
     el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
     el("pages-margin-toggle").classList.toggle("is-on", pagesMarginOn);
     el("review-margin-toggle").classList.toggle("is-on", reviewMarginOn);
@@ -1944,7 +1962,7 @@ function pageMarginSourceLabel(page) {
   if (page.margin_box_mode === "custom") return "本页自定义";
   if (page.margin_box_mode === "auto") {
     const method = pageMarginMethod(page);
-    if (method === "undetermined") return "未定（没有检测行）";
+    if (method === "undetermined") return "未定（还没有拟合框）";
     if (method === "bbox") return "本页包围盒（兜底）";
     return "自动拟合";
   }
@@ -1996,6 +2014,15 @@ function blockInsideMargin(block, page) {
   );
 }
 
+/**
+ * 任务 34：这一块是否计入审校口径（默认只审版心内）。
+ * 后端页详情已经按同一函数算好 `margin_inside`；老响应没有这个字段时退回本地判断。
+ */
+function blockCountedInMargin(block, page) {
+  if (block && typeof block.margin_inside === "boolean") return block.margin_inside;
+  return blockInsideMargin(block, page || detailPageRecord());
+}
+
 /** 一页的块按版心内外分组（保持原有顺序；没有版心时全是"内"）。 */
 function reviewMarginSplit(page, blocks) {
   const box = marginBoxOfPage(page);
@@ -2003,7 +2030,7 @@ function reviewMarginSplit(page, blocks) {
   const outside = [];
   if (!box) return { box: null, inside: [...blocks], outside };
   for (const block of blocks) {
-    (blockInsideMargin(block, page) ? inside : outside).push(block);
+    (blockCountedInMargin(block, page) ? inside : outside).push(block);
   }
   return { box, inside, outside };
 }
@@ -4108,7 +4135,8 @@ async function ensureMarginAudit(page) {
       const total = Number(data.total_lines || 0);
       const method = pageMarginMethod(page);
       if (method === "undetermined") {
-        basis.textContent = "未定：本页没有检测行，不参与版心判定（先跑「检测并定版心」）";
+        basis.textContent =
+          "未定：本页还没有可用的拟合框，整页计入；先跑「检测并定版心」";
       } else if (method === "bbox") {
         basis.textContent =
           `来源：本页所有检测行的包围盒（兜底） · ${total} 条正文长行`;
@@ -4164,7 +4192,7 @@ function renderMarginPanel() {
     detail.textContent =
       `${autoFit} 页自动拟合` +
       (autoBbox ? ` · ${autoBbox} 页本页包围盒兜底` : "") +
-      (autoUndetermined ? ` · ${autoUndetermined} 页未定（没有检测行）` : "") +
+      (autoUndetermined ? ` · ${autoUndetermined} 页未定（还没有拟合框）` : "") +
       ` · ${counts.inherit} 页显式沿用默认 · ` +
       `${counts.custom} 页自定义 · ${counts.none} 页不适用`;
     global.append(detail);
@@ -4202,7 +4230,7 @@ function renderMarginPanel() {
       : page.margin_box_mode === "none"
         ? "这一页标了「不适用」：不压暗、不参与推算。"
         : page.margin_box_mode === "auto" && !page.margin_box
-          ? "这一页的版心未定：没有检测行，不参与版心判定。先跑「检测并定版心」。"
+          ? "这一页的版心未定：还没有可用的拟合框，整页计入。先跑「检测并定版心」。"
           : "这一页暂时没有版心：默认版心还没设置。先点「推算默认版心（兜底）」。";
     const basis = el("margin-basis");
     basis.textContent =
@@ -4211,7 +4239,7 @@ function renderMarginPanel() {
         : page.margin_box_mode === "custom"
           ? "来源：人工设置 · 把握：人工"
           : page.margin_box_mode === "auto" && !page.margin_box
-            ? "未定：本页没有检测行，不参与版心判定"
+            ? "未定：本页还没有可用的拟合框，整页计入"
             : page.margin_box_mode === "auto" && page.margin_box_method === "bbox"
               ? "来源：本页所有检测行的包围盒 · 把握：兜底"
               : page.margin_box_mode === "auto"
@@ -4447,7 +4475,7 @@ async function setSinglePageMarginMode(page, mode) {
       renderMarginPanel();
       setMarginStatus(
         fitted.undetermined
-          ? `第 ${page.page_no} 页没有检测行，版心未定；先跑「检测并定版心」。`
+          ? `第 ${page.page_no} 页还没有可用的拟合框，版心未定；先跑「检测并定版心」。`
           : fitted.fallback
             ? `第 ${page.page_no} 页拟合行不足，已退本页所有检测行的包围盒。`
             : `第 ${page.page_no} 页已按检测行自动拟合。`
@@ -4547,7 +4575,7 @@ async function fitAllMargins() {
     setMarginStatus(
       `已更新 ${data.updated} 页：${data.fitted} 页自动拟合，` +
         `${data.fallback || 0} 页退本页包围盒，` +
-        `${data.undetermined || 0} 页没有检测行（未定）；` +
+        `${data.undetermined || 0} 页还没有拟合框（未定）；` +
         `跳过 ${data.skipped_custom} 页自定义、${data.skipped_none} 页不适用。`
     );
   } catch (error) {
@@ -6119,6 +6147,8 @@ function setupTaskDrawer() {
 let detailPageNo = null;
 let detailImagePageNo = null;
 let reviewBlocks = [];
+/** 任务 34：这一页的版心上下文（box / applied / 未定 / 版心外差异数），来自页详情。 */
+let detailMargin = null;
 /** 这一页所有识别行（含未归属 / 冲突的）。拖框吸附与虚线绘制都用它。 */
 let detailLines = [];
 /**
@@ -6580,8 +6610,10 @@ function pendingBlockCount(blocks) {
 function renderReviewFilter(split, mode) {
   const bar = el("review-filter");
   if (!bar) return;
+  const page = detailPageRecord();
   const blocks = reviewBlocks || [];
-  const pending = pendingBlockCount(blocks);
+  // 任务 34：待处理只数版心内的块；版心外的差异不进队列，但要在下面写清未计入多少处。
+  const pending = split.inside.filter(blockNeedsReview).length;
   const counts = {
     pending,
     inside: split.inside.length,
@@ -6595,25 +6627,23 @@ function renderReviewFilter(split, mode) {
     button.classList.toggle("is-on", mode === buttonMode);
     button.disabled = buttonMode === "outside" && counts.outside === 0;
   }
-  const page = detailPageRecord();
   const notes = [];
-  if (!split.box) notes.push("没有生效版心：版心内按全部计，版心外为 0");
+  const margin = detailMargin;
+  if (!split.box) {
+    notes.push(
+      margin && margin.none
+        ? "本页不适用版心：整页都计入"
+        : "本页版心未定：整页都计入（先跑页面准备）"
+    );
+  }
+  const outsideLines = (aggregateDivergence().outside || {}).lines || 0;
+  if (outsideLines) {
+    notes.push(`版心外 ${outsideLines} 处差异未计入（切到「版心外」查看）`);
+  }
   const pageReasons = pendingPageReasons();
   if (pageReasons.length) notes.push(`页面级：${pageReasons.join(" / ")}`);
-  if (
-    page &&
-    page.margin_box_mode !== "custom" &&
-    !(page.margin_box_mode === "auto" && page.margin_box) &&
-    globalMarginIsAuto()
-  ) {
-    const suggestion = currentProject.margin_box_suggestion || {};
-    notes.push("版心为自动推算，未确认（导出仍按块类型）");
-    if (autoMarginProvisional(page)) {
-      notes.push(`只用了 ${suggestion.pages || "?"} 页，可能还不准（多识别几页会更稳）`);
-    }
-  }
-  if (pending && counts.inside && counts.outside) {
-    notes.push("待处理是其中需要处理的部分；版心内 + 版心外 = 全部");
+  if (pending && counts.outside) {
+    notes.push("待处理只算版心内；版心外 + 版心内 = 全部块");
   }
   el("review-filter-note").textContent = notes.join("；");
   bar.hidden = false;
@@ -6646,6 +6676,7 @@ function ensureBlockListed(blockId) {
 function renderPageDetail(data) {
   const pageNo = data.page.page_no;
   reviewBlocks = data.blocks;
+  detailMargin = data.margin || null;
   detailLines = (data.blocks || []).flatMap((block) => block.lines || []);
   activeReviewBlockId = null;
   activeDiff = null;
@@ -7591,7 +7622,10 @@ function queueKey(item) {
 
 function buildDiffQueue() {
   const items = [];
+  const page = detailPageRecord();
   (reviewBlocks || []).forEach((block, blockIndex) => {
+    // 任务 34：队列默认只含版心内；版心外的差异仍画在图上、可在「版心外」展开查看。
+    if (!blockCountedInMargin(block, page)) return;
     const divergence = divergenceOf(block);
     if (divergence.stale) return;
     for (const mark of divergence.marks || []) {
@@ -7635,26 +7669,33 @@ function nextPendingQueueIndex(from) {
 }
 
 function aggregateDivergence() {
-  const counts = { lines: 0, chars: 0, punct: 0, acked: 0 };
+  const page = detailPageRecord();
+  const inside = { lines: 0, chars: 0, punct: 0, acked: 0 };
+  const outside = { lines: 0, chars: 0, punct: 0, acked: 0 };
   for (const block of reviewBlocks || []) {
     const divergence = divergenceOf(block);
     if (divergence.stale) continue;
-    counts.acked += Number(divergence.acked || 0);
+    const bucket = blockCountedInMargin(block, page) ? inside : outside;
+    bucket.acked += Number(divergence.acked || 0);
     for (const mark of divergence.marks || []) {
       if (mark.ack) continue;
-      if (mark.level === "differs_chars") counts.chars += 1;
-      else if (mark.level === "differs_punct") counts.punct += 1;
+      if (mark.level === "differs_chars") bucket.chars += 1;
+      else if (mark.level === "differs_punct") bucket.punct += 1;
     }
   }
-  counts.lines = counts.chars + counts.punct;
-  return counts;
+  inside.lines = inside.chars + inside.punct;
+  outside.lines = outside.chars + outside.punct;
+  inside.outside = outside;
+  return inside;
 }
 
-/** 页头一行结论：类型 + 差异 + 版面 + 漏行；不再重复块数 / 未审数。 */
+/** 页头一行结论：类型 + 版心内差异 + 版心外未计入 + 版面 / 漏行。 */
 function renderReviewHeadline() {
   const page = detailPageRecord();
   if (!page) return;
   const counts = aggregateDivergence();
+  const outside = counts.outside || { lines: 0 };
+  const margin = detailMargin;
   const bits = [PAGE_TYPE_LABELS[page.page_type] || page.page_type];
   if (counts.lines) {
     bits.push(
@@ -7663,9 +7704,15 @@ function renderReviewHeadline() {
     );
   } else if (counts.acked) {
     bits.push(`无待处理差异 · 已确认 ${counts.acked}`);
+  } else if (outside.lines) {
+    bits.push("无版心内差异");
   } else {
     bits.push("无差异");
   }
+  // 任务 34：版心外的书眉 / 页码差异不进队列，但要在页头如实写出来。
+  if (outside.lines) bits.push(`版心外 ${outside.lines} 处未计入`);
+  if (margin && margin.none) bits.push("整页计入（不适用版心）");
+  else if (margin && margin.undetermined) bits.push("整页计入（版心未定）");
   if (!detailLayoutConfirmed) bits.push("版面未确认");
   if (detailInkGaps.length) bits.push(`漏行 ${detailInkGaps.length}`);
   el("page-detail-meta").textContent = bits.join(" · ");
@@ -8821,8 +8868,10 @@ function renderReviewBlocks(blocks) {
   const split = reviewMarginSplit(page, blocks);
   const mode = effectiveReviewFilter(page);
   let visible = blocks;
-  if (mode === "pending") visible = blocks.filter(blockNeedsReview);
-  else if (split.box && mode === "inside") visible = split.inside;
+  if (mode === "pending") {
+    // 默认只审版心内：版心外的书眉 / 页码差异不进待处理（任务 34）
+    visible = split.inside.filter(blockNeedsReview);
+  } else if (split.box && mode === "inside") visible = split.inside;
   else if (split.box && mode === "outside") visible = split.outside;
   renderReviewFilter(split, mode);
 
@@ -9661,7 +9710,7 @@ function renderFinishPanel() {
   el("finish-margin-status").textContent = `${margin.set} / ${margin.total} 已定`;
   const marginNotes = [];
   if (margin.fallback) marginNotes.push(`${margin.fallback} 页退本页包围盒`);
-  if (margin.undetermined) marginNotes.push(`${margin.undetermined} 页未定（没有检测行）`);
+  if (margin.undetermined) marginNotes.push(`${margin.undetermined} 页未定（还没有拟合框）`);
   el("finish-margin-sub").textContent = marginNotes.length
     ? marginNotes.join(" · ")
     : "每页都有生效版心";
@@ -10180,6 +10229,8 @@ async function closeProject() {
     return;
   }
   currentProject = null;
+  const marginNotice = el("margin-judgement-notice");
+  if (marginNotice) marginNotice.hidden = true;
   finishSummary = null;
   finishSummaryProject = null;
   updateFinishChips();
@@ -10321,13 +10372,46 @@ let latestAutoApply = null;
 /** 已经提示过的自动应用 id：同一个不重复弹。 */
 let autoApplyAnnouncedId = null;
 
+/** 任务 34：按版心判定正文默认开；只有显式存了 false 才是关。 */
+function marginJudgementOn() {
+  const settings = (currentProject && currentProject.settings) || {};
+  const value = settings.margin_box_judgement;
+  return value === undefined || value === null ? true : Boolean(value);
+}
+
 function applyProjectSettings() {
   const settings = (currentProject && currentProject.settings) || {};
   el("auto-apply-suggestions").checked = Boolean(settings.auto_apply_high_suggestions);
-  // 导出面板里的项目级开关（任务 51）：默认关，关着时按块类型判定，行为与以前一致
-  el("export-margin-judgement").checked = Boolean(settings.margin_box_judgement);
+  // 导出面板 / 识别设置里的同一个项目级开关（任务 51 / 34）：默认开
+  el("export-margin-judgement").checked = marginJudgementOn();
+  const recMargin = el("rec-margin-judgement");
+  if (recMargin) recMargin.checked = marginJudgementOn();
   // 识别设置（任务 54）：引擎 / DPI / 语言 / 双引擎策略
   renderRecognitionSettings();
+  renderMarginJudgementNotice();
+}
+
+/** 任务 34：默认打开「按版心判定」后，老项目第一次打开给一句说明。 */
+function renderMarginJudgementNotice() {
+  const bar = el("margin-judgement-notice");
+  if (!bar) return;
+  const settings = (currentProject && currentProject.settings) || {};
+  bar.hidden = Boolean(settings.margin_judgement_notice) || !marginJudgementOn();
+}
+
+async function dismissMarginJudgementNotice() {
+  el("margin-judgement-notice").hidden = true;
+  if (!currentProject) return;
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ margin_judgement_notice: true }),
+    });
+    currentProject.settings = data.settings;
+  } catch {
+    /* 提示关不掉不该影响使用 */
+  }
 }
 
 function autoApplyTypeText(byType) {
@@ -10491,8 +10575,8 @@ async function setAutoApplySetting(on) {
 }
 
 /**
- * 项目级「按版心判定正文」（任务 51）。默认关；关着时按块类型判定，行为与以前一致。
- * 这是一个设置项，切换后立刻重跑导出预检；正文 / 元数据的形状由服务端按同一设置算。
+ * 项目级「按版心判定正文」（任务 51 / 34）。**默认开**；显式关掉才按块类型判定，
+ * 行为与升级前一致。切换后立刻重跑导出预检；正文 / 元数据的形状由服务端按同一设置算。
  */
 async function setMarginJudgementSetting(enabled) {
   if (!currentProject) return;
@@ -10508,6 +10592,8 @@ async function setMarginJudgementSetting(enabled) {
     await refreshExportPreflight();
   } catch (error) {
     checkbox.checked = !enabled;
+    const rec = el("rec-margin-judgement");
+    if (rec) rec.checked = !enabled;
     showError(el("export-error"), error);
   }
 }

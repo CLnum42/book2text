@@ -68,6 +68,7 @@ def build_manifest(
     notes: Sequence[object] = (),
     meta: Mapping[str, object] | None = None,
     workflow: Mapping[str, object] | None = None,
+    margin: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """生成 manifest 内容。
 
@@ -122,6 +123,9 @@ def build_manifest(
         },
         # 任务 61：导出时的工作流状态快照，供以后追溯这份语料是怎么出来的
         "workflow": dict(workflow or {}),
+        # 任务 34：按版心判定时记录版心内 / 外 / 被排除块数及类型分布。
+        # 开关关掉时**不写这个键**——保证关闭时的 manifest 与升级前一致（除 exported_at）。
+        **({"margin": dict(margin)} if margin is not None else {}),
         "streams": {
             "body": {
                 "segments": len(segments),

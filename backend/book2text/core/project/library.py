@@ -593,6 +593,8 @@ def load_project(project_id: str, *, library: Path | None = None) -> Project:
 PROJECT_SETTING_KEYS = (
     "auto_apply_high_suggestions",
     "margin_box_judgement",
+    # 任务 34：默认打开「按版心判定」后，老项目第一次打开的一句说明只提示一次
+    "margin_judgement_notice",
     # 识别设置（任务 54）：项目级默认，建识别任务时读取
     "recognition_engine",
     "recognition_dpi",
@@ -604,14 +606,27 @@ PROJECT_SETTING_KEYS = (
 - `auto_apply_high_suggestions`：识别完成后由**服务端**自动应用高把握的块类型建议。
   这是**用户预先授权**的开关（默认关），不是"静默应用"：每次自动应用都记一条
   `auto_apply_run`，界面有提示，并且可以一键撤销整批（见 `core/project/auto_apply.py`）。
-- `margin_box_judgement`：导出时**按版心判定正文**（任务 51）。默认关；关着时完全按块类型，
-  行为与以前一致。打开后正文只收版心内的段落 / 标题，版心外一律不进正文。
+- `margin_box_judgement`：导出时**按版心判定正文**（任务 51）。**任务 34 起默认开**
+  （`settings_json` 里没有这个键就是开）；显式关掉才按块类型，行为与升级前完全一致。
+  打开后正文只收版心内的段落 / 标题，版心外一律不进正文。
+- `margin_judgement_notice`：任务 34 的一次性说明是否已经看过（老项目第一次打开提示一次）。
 - `recognition_engine` / `recognition_dpi` / `recognition_language`：识别设置（任务 54）。
   建识别任务时由 `create_ocr_job` 读取并写进 `job.params_json`，**不是只存不用**。
 - `dual_engine_strategy`：双引擎的**显示**策略（`mark` 只标分歧 / `candidates` 分歧行给候选）。
   两种都只影响审校界面；数据里的逐行候选始终保留，不改变识别结果。
 """
 MARGIN_JUDGEMENT_SETTING = "margin_box_judgement"
+MARGIN_JUDGEMENT_NOTICE_SETTING = "margin_judgement_notice"
+
+
+def margin_judgement_enabled(project: "Project") -> bool:
+    """这一项目是否按版心判定正文。
+
+    **默认开**（任务 34 用户拍板）：`settings_json` 里没有这个键时返回 True；
+    只有用户显式关过（存了 False）才返回 False。新项目与老项目升级后都默认开。
+    """
+    value = project.settings.get(MARGIN_JUDGEMENT_SETTING)
+    return True if value is None else bool(value)
 
 # 设置取值白名单：值不合法直接 400，不让一个错字在识别时才炸
 SETTING_CHOICES: dict[str, tuple[object, ...]] = {

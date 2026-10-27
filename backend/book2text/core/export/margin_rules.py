@@ -83,18 +83,10 @@ class PageMarginLayout:
         }
 
 
-def block_center(bbox: Sequence[float] | None) -> tuple[float, float] | None:
-    if not bbox or len(bbox) != 4:
-        return None
-    x0, y0, x1, y1 = (float(value) for value in bbox)
-    return ((x0 + x1) / 2, (y0 + y1) / 2)
-
-
-def center_inside(
-    center: tuple[float, float], box: Sequence[float]
-) -> bool:
-    """中心点是否在版心内（含边界）。"""
-    return box[0] <= center[0] <= box[2] and box[1] <= center[1] <= box[3]
+# 这两个判断搬到了 `core/project/margin_box.py`，审校与导出共用同一份实现；
+# 这里保留同名导入，`classify_page` 与既有测试都继续按原名使用。
+block_center = margin_box_module.block_center
+center_inside = margin_box_module.center_inside
 
 
 def _page_label_value(page: Page) -> str | None:

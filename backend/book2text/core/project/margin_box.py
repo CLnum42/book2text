@@ -171,6 +171,48 @@ def effective_margin_box(
     return project.margin_box
 
 
+def block_center(bbox: Sequence[float] | None) -> tuple[float, float] | None:
+    """块的几何中心（归一化坐标）；没有框返回 None。"""
+    if not bbox or len(bbox) != 4:
+        return None
+    try:
+        x0, y0, x1, y1 = (float(value) for value in bbox)
+    except (TypeError, ValueError):
+        return None
+    return ((x0 + x1) / 2, (y0 + y1) / 2)
+
+
+def center_inside(center: Sequence[float], box: Sequence[float]) -> bool:
+    """中心点是否在版心内（含边界）。审校与导出**共用这一个判断**。"""
+    return box[0] <= center[0] <= box[2] and box[1] <= center[1] <= box[3]
+
+
+def block_inside_margin(
+    project: library_module.Project,
+    page: library_module.Page,
+    bbox: Sequence[float] | None,
+) -> bool:
+    """一个块算不算"版心内"——审校队列、页头计数、待处理、导出第一层共用。
+
+    - 没有生效框（``none`` / 未定 / ``inherit`` 且没有全局框）：整页都算，不排除；
+    - 有框但没有 bbox：算版心内（宁可多审一块，也不把文字藏起来）；
+    - 否则看**块中心**是否在 `export_margin_box` 的框里——与导出 `classify_page`
+      用的是同一个 `export_margin_box` + `center_inside`，不另写一套。
+    """
+    box = export_margin_box(project, page)
+    if box is None:
+        return True
+    center = block_center(bbox)
+    if center is None:
+        return True
+    return center_inside(center, box)
+
+
+def margin_applies(project: library_module.Project, page: library_module.Page) -> bool:
+    """这一页是否有生效版心（有框且不是 ``none``）——导出第一层 `applied` 同口径。"""
+    return page.margin_box_mode != MODE_NONE and export_margin_box(project, page) is not None
+
+
 def page_margin_source_label(
     project: library_module.Project, page: library_module.Page
 ) -> str:
@@ -841,7 +883,7 @@ FIT_METHOD_UNDETERMINED = "undetermined"
 FIT_METHOD_LABELS = {
     FIT_METHOD_FIT: "自动拟合",
     FIT_METHOD_BBOX: "本页包围盒（兜底）",
-    FIT_METHOD_UNDETERMINED: "未定（没有检测行）",
+    FIT_METHOD_UNDETERMINED: "未定（还没有拟合框）",
 }
 
 

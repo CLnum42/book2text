@@ -764,14 +764,22 @@ def page_divergence_summary(
     blocks: Sequence[BlockRecord],
     lines: Sequence[BlockLineRecord],
     runs: Sequence[RunRecord],
+    *,
+    inside_block_ids: set[str] | None = None,
 ) -> PageDivergence:
-    """一页的分歧概况：各块相加 + 复核记录（审校视图与疑难筛选共用这一份）。"""
+    """一页的分歧概况：各块相加 + 复核记录（审校视图与疑难筛选共用这一份）。
+
+    ``inside_block_ids`` 给了就只统计这些块（版心内）。审校 / 待处理 / 自动通过 /
+    导出状态都传这一份；``None`` 表示整页都算（老调用方 / 没有版心的页）。
+    """
     by_block: dict[str, list[BlockLineRecord]] = {}
     for line in lines:
         by_block.setdefault(line.block_id, []).append(line)
 
     identical = chars = punct = empty = format_only = acked = stale_blocks = 0
     for block in blocks:
+        if inside_block_ids is not None and block.block_id not in inside_block_ids:
+            continue
         divergence = block_divergence(block, by_block.get(block.block_id, []))
         identical += divergence.identical
         chars += divergence.chars
@@ -802,10 +810,14 @@ def page_divergences(
     """整个项目每页的分歧概况（读全部块 / 行 / 复核记录，不给每页单独查询）。
 
     页面列表用它给"有分歧"筛选与缩略图上的标记供数。
+
+    任务 34 起只统计**版心内**的块（与导出第一层同一个
+    `margin_box.block_inside_margin`）；版心外的书眉 / 页码差异不进审校口径。
     """
-    blocks = list_blocks(project_id, library=library)
-    lines = list_block_lines(project_id, library=library)
-    runs = list_runs(project_id, library=library, run_type=RUN_TYPE_AUXILIARY)
+    target_library = library if library is not None else default_library_dir()
+    blocks = list_blocks(project_id, library=target_library)
+    lines = list_block_lines(project_id, library=target_library)
+    runs = list_runs(project_id, library=target_library, run_type=RUN_TYPE_AUXILIARY)
 
     lines_by_block: dict[str, list[BlockLineRecord]] = {}
     for line in lines:
@@ -817,6 +829,14 @@ def page_divergences(
     for run in runs:
         runs_by_page.setdefault(run.page_id, []).append(run)
 
+    # 延迟导入：`margin_box` 在模块顶层 import 了本模块（循环），这里运行时两边都已加载。
+    from . import library as library_module
+    from . import margin_box as margin_box_module
+
+    project = library_module.load_project(project_id, library=target_library)
+    pages = library_module.list_pages(project_id, library=target_library)
+    page_by_id = {page.page_id: page for page in pages}
+
     result: dict[str, PageDivergence] = {}
     for page_id, page_blocks in blocks_by_page.items():
         page_lines = [
@@ -824,8 +844,20 @@ def page_divergences(
             for block in page_blocks
             for line in lines_by_block.get(block.block_id, [])
         ]
+        page = page_by_id.get(page_id)
+        # 任务 34：审校 / 待处理 / 导出状态只算**版心内**的块；没有版心的页整页都算。
+        inside_ids = (
+            {
+                block.block_id
+                for block in page_blocks
+                if margin_box_module.block_inside_margin(project, page, block.bbox)
+            }
+            if page is not None
+            else None
+        )
         result[page_id] = page_divergence_summary(
-            page_blocks, page_lines, runs_by_page.get(page_id, [])
+            page_blocks, page_lines, runs_by_page.get(page_id, []),
+            inside_block_ids=inside_ids,
         )
     # 没有块却有复核记录的页（复核过又删光了块）也要出现在结果里
     for page_id, page_runs in runs_by_page.items():

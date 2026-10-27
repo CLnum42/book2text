@@ -63,6 +63,11 @@
       <button type="button" id="auto-apply-undo" class="btn btn--sm">撤销这次自动应用</button>
       <button type="button" id="auto-apply-dismiss" class="icon-btn" title="收起提示">✕</button>
     </div>
+    <div class="noticebar noticebar--info" id="margin-judgement-notice" hidden>
+      <span>导出已默认「按版心判定正文」：只收版心内的段落 / 标题，版心外的书眉 / 页码 / 装饰默认排除。可以在导出面板或识别设置里关闭。</span>
+      <span class="spacer"></span>
+      <button type="button" id="margin-judgement-notice-ok" class="btn btn--sm">知道了</button>
+    </div>
 
     <div class="workspace">
       <!-- ─────────────────────────── 视图：项目库 ─────────────────────────── -->
@@ -324,6 +329,11 @@
                     <option value="candidates">分歧行给候选</option>
                   </select>
                   <p class="hint" id="rec-strategy-note">双引擎不会自动采用任何一方；第二引擎只作分歧线索。</p>
+
+                  <div class="flabel">导出口径</div>
+                  <label class="check check--line"><input type="checkbox" id="rec-margin-judgement">
+                    <span>按版心判定正文（默认开）</span></label>
+                  <p class="hint">打开后正文只收版心内的段落 / 标题；关闭时按块类型判定，与升级前一致。</p>
                   <div class="hint" id="rec-status" hidden></div>
                 </div>
               </details>

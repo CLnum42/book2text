@@ -213,10 +213,9 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
     pages = library_module.list_pages(project_id, library=target_library)
     wanted_pages = set(options.page_numbers) if options.page_numbers else None
     rules = options.rules()
-    # 项目级开关：默认关。关着时下面的版心判定完全不参与，行为与以前一致。
-    margin_enabled = bool(
-        project.settings.get(library_module.MARGIN_JUDGEMENT_SETTING)
-    )
+    # 项目级开关：任务 34 起**默认开**（显式关过才关）。关着时下面的版心判定
+    # 完全不参与，导出结果与升级前逐字节相同。
+    margin_enabled = library_module.margin_judgement_enabled(project)
     if margin_enabled:
         options = replace(options, margin_judgement=True)
 
@@ -377,10 +376,17 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
     note_char_count = sum(len(note.text) for note in notes)
 
     layouts = prepared.margin_layouts or {}
+    margin_exclusion = _margin_exclusion(prepared)
     margin_blocks = {
         "inside": sum(len(layout.inside_ids) for layout in layouts.values()),
         "outside": sum(len(layout.outside_ids) for layout in layouts.values()),
         "page_number": sum(len(layout.page_number_values) for layout in layouts.values()),
+        # 任务 34：被版心排除的块数 + 类型分布（页眉 / 页脚 / 页码 / 装饰等）。
+        # judged_* 只算**这一页真的有生效版心**的块（没有版心的页不参与版心判定）。
+        "judged_inside": margin_exclusion["inside_blocks"],
+        "judged_outside": margin_exclusion["outside_blocks"],
+        "excluded": margin_exclusion["excluded_blocks"],
+        "excluded_by_type": margin_exclusion["excluded_by_type"],
     }
     margin_notes_total = sum(len(layout.note_ids) for layout in layouts.values())
     margin_notes_inside = sum(len(layout.note_inside_ids) for layout in layouts.values())
@@ -488,6 +494,32 @@ def preflight(project_id: str, *, library: Path | None = None, options: ExportOp
                 == "auto"
             ),
         },
+    }
+
+
+def _margin_exclusion(prepared: Prepared) -> dict[str, object]:
+    """版心外被排除的块数 + 类型分布（任务 34：预检与 manifest 共用这一份）。
+
+    只统计**这一页真的有生效版心**（applied）的块：没有版心的页按块类型判定，
+    不能把那里的块算成"被版心排除"。
+    """
+    layouts = prepared.margin_layouts or {}
+    inside = outside = 0
+    by_type: dict[str, int] = {}
+    for block in prepared.blocks:
+        layout = layouts.get(block.page_no)
+        if layout is None or not getattr(layout, "applied", False):
+            continue
+        if block.block_id in layout.inside_ids:
+            inside += 1
+        elif block.block_id in layout.outside_ids:
+            outside += 1
+            by_type[block.block_type] = by_type.get(block.block_type, 0) + 1
+    return {
+        "inside_blocks": inside,
+        "outside_blocks": outside,
+        "excluded_blocks": outside,
+        "excluded_by_type": dict(sorted(by_type.items())),
     }
 
 
@@ -659,6 +691,13 @@ def run_export(
         library=target_library,
         page_numbers=[page.page_no for page in prepared.pages],
     )
+    margin_payload = None
+    if prepared.margin_enabled:
+        exclusion = _margin_exclusion(prepared)
+        margin_payload = {
+            "judgement": True,
+            **exclusion,
+        }
     manifest = manifest_module.build_manifest(
         app_version=__version__,
         scope=manifest_module.ExportScope(
@@ -680,6 +719,7 @@ def run_export(
         notes=prepared.notes if options.include_notes else (),
         meta=prepared.meta,
         workflow=workflow_status,
+        margin=margin_payload,
     )
     (directory / MANIFEST_FILE_NAME).write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n"
