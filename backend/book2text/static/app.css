@@ -2439,69 +2439,9 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   border-bottom: 2px solid #dc2626; padding-bottom: 1px;
 }
 .reading-mark--punct { background: rgba(220, 38, 38, .10); border-bottom-style: dotted; }
+/* 英文词级框：整词标（引擎给的就是一个词框） */
+.reading-mark--word { border-radius: 2px; }
 .reading-legend { font-size: 10.5px; white-space: nowrap; }
-.reading-line.is-kept {
-  background: rgba(22, 163, 74, .10); border-bottom: 2px dotted #16a34a;
-}
-.reading-line.is-draft {
-  background: rgba(217, 119, 6, .14); border-left: 3px solid #d97706; padding-left: 3px;
-}
-.reading-chip {
-  font-size: 10px; margin-left: 3px; padding: 0 5px; border-radius: 999px;
-  background: #fdf3e0; color: #8a5a00; border: 1px solid #ecd3a8; white-space: nowrap;
-}
-.reading-panel {
-  display: block; margin: 6px 0 10px 24px; padding: 8px 12px 10px;
-  border-left: 2px solid var(--accent); background: var(--surface-2);
-  text-indent: 0; font-size: 13px; line-height: 1.8; border-radius: 0 8px 8px 0;
-}
-.reading-panel__head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.reading-panel__head strong { font-size: 11.5px; color: var(--faint); font-weight: 600; }
-.reading-panel__head .icon-btn { margin-left: auto; }
-.reading-panel__candidate { margin: 0 0 6px; color: var(--text); }
-.reading-panel__actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.reading-panel__edit { display: flex; gap: 6px; margin-top: 6px; }
-.reading-panel__input {
-  flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 4px 8px;
-  border: 1px solid var(--line-strong); border-radius: 6px; background: #fff;
-}
-.reading-empty { padding: 18px; }
-.reading-sentinel { height: 1px; }
-@media (max-width: 1319px) {
-  /* 窄一档的默认值；用户拖过就按拖的来（var 在 .reading-split 上） */
-  .reading-split { --reading-tree-w: 200px; --reading-pdf-w: 340px; }
-  .reading-stream { padding: 16px 22px 80px; }
-}
-@media (max-width: 1119px) {
-  /* 任务 57：窄屏也要留着左边的页图——悬停联动要靠它；只把它压窄 */
-  .reading-split { --reading-tree-w: 44px; --reading-pdf-w: 260px; }
-  .reading-tree { width: 44px; overflow: hidden; }
-  .reading-tree__row { padding: 6px 6px; }
-  .reading-tree__row .reading-tree__no { display: none; }
-  .reading-grip { display: none; }
-}
-@media (max-width: 819px) {
-  /* 再窄就真的放不下了：收掉页图，只留正文（版心/块框跟着一起收起） */
-  .reading-pdf { display: none; }
-}
-@media (max-height: 700px) {
-  .reading-toolbar { height: 40px; padding: 0 8px; gap: 6px; }
-  .reading-toolbar .pager__no { display: none; }
-  .reading-stream { padding-top: 10px; }
-}
-.reading-tree__head {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
-  padding: 8px 12px; font-size: 11px; color: var(--faint);
-  border-bottom: 1px solid var(--line-soft); position: sticky; top: 0;
-  background: var(--surface); z-index: 1;
-}
-.reading-tree__outside { font-size: 10.5px; }
-.reading-pdf__canvas { position: relative; display: inline-block; width: 100%; }
-.reading-pdf__box {
-  position: absolute; border: 2px solid #dc2626; border-radius: 3px;
-  background: rgba(220, 38, 38, .10); pointer-events: none;
-}
-
 .reading-line.is-kept {
   background: rgba(22, 163, 74, .10); border-bottom: 2px dotted #16a34a;
 }

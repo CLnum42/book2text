@@ -17131,6 +17131,21 @@ function removeReadingSentinel() {
   for (const node of stream.querySelectorAll(".reading-sentinel")) node.remove();
 }
 
+/**
+ * 把一个差异字符区间扩成"字 / 词"单位（任务 59）。
+ *
+ * - 中文：一个字就是单位，不扩（本来就只标差异字）；
+ * - 英文：引擎给的是**词级**框，扩到整词边界（`Ladyship's` 一框就整词标）；
+ * - 没有字框也不影响这一步：词边界从文本本身算，字框只用于页面上的色块。
+ */
+function expandToWordRange(text, start, end) {
+  if (!/[A-Za-z]/.test(text.slice(start, end))) return { start, end, word: false };
+  let left = start;
+  while (left > 0 && /[A-Za-z'’\-]/.test(text[left - 1])) left -= 1;
+  let right = end;
+  while (right < text.length && /[A-Za-z'’\-]/.test(text[right])) right += 1;
+  return { start: left, end: right, word: true };
+}
 
 function buildReadingSegment(segment) {
   const node = document.createElement("div");
@@ -17204,17 +17219,30 @@ function buildReadingLine(segment, span) {
   }
   let cursor = 0;
   for (const charSpan of charSpans) {
-    if (charSpan.aStart > cursor) {
-      line.append(document.createTextNode(baseText.slice(cursor, charSpan.aStart)));
+    // 英文扩到整词（引擎给的是词级框）；中文保持单字
+    const range = expandToWordRange(baseText, charSpan.aStart, charSpan.aEnd);
+    if (range.start < cursor) {
+      // 与上一个区间重叠（两个差异字在同一个词里）：并进上一个 mark
+      const previous = line.lastElementChild;
+      if (previous && previous.classList && previous.classList.contains("reading-mark")) {
+        previous.textContent += baseText.slice(cursor, range.end);
+        cursor = Math.max(cursor, range.end);
+        continue;
+      }
+    }
+    if (range.start > cursor) {
+      line.append(document.createTextNode(baseText.slice(cursor, range.start)));
     }
     const markEl = document.createElement("mark");
     markEl.className =
       "reading-mark " +
-      (mark.level === "differs_punct" ? "reading-mark--punct" : "reading-mark--chars");
-    markEl.textContent = baseText.slice(charSpan.aStart, charSpan.aEnd) || " ";
+      (mark.level === "differs_punct" ? "reading-mark--punct" : "reading-mark--chars") +
+      (range.word ? " reading-mark--word" : "");
+    markEl.textContent = baseText.slice(range.start, range.end) || " ";
     markEl.dataset.key = key;
+    markEl.title = range.word ? "英文按词标：这个词里有差异" : "";
     line.append(markEl);
-    cursor = Math.max(cursor, charSpan.aEnd);
+    cursor = Math.max(cursor, range.end);
   }
   if (cursor < baseText.length) {
     line.append(document.createTextNode(baseText.slice(cursor)));
@@ -17517,6 +17545,11 @@ function buildReadingPages() {
     fragment.append(tile);
   }
   wrap.append(fragment);
+  // 页列重建会清空容器：字级色块层与跟随行框要重新挂回去
+  const diffLayer = document.createElement("div");
+  diffLayer.className = "reading-diff-layer";
+  diffLayer.id = "reading-diff-layer";
+  wrap.append(diffLayer);
   if (box) wrap.append(box);
   readingStackProject = currentProject.project_id;
   observeReadingTiles();
@@ -17668,6 +17701,8 @@ function paintReadingTile(pageNo) {
   } else {
     clearPageBlocks(tile);
   }
+  // 当前页：顺便把差异字 / 词画成色块（只画差异，相同字不画）
+  if (pageNo === readingPageNo) paintReadingDiffBoxes(pageNo);
 }
 
 function readingPageRecord(pageNo) {
@@ -17691,6 +17726,88 @@ function readingHoveredBlockIds() {
   return new Set((segment.line_spans || []).map((span) => span.block_id));
 }
 
+/** 给某一页的块框套上"联动"样式。 */
+function applyReadingLinked(pageNo) {
+  const ids = readingHoveredBlockIds();
+  const tile = readingTiles.get(pageNo);
+  if (!tile) return;
+  for (const box of tile.querySelectorAll(".box[data-block-id]")) {
+    box.classList.toggle("is-linked", Boolean(ids && ids.has(box.dataset.blockId)));
+  }
+}
+
+/**
+ * 字级色块（任务 59）：把这一段里每行的差异字画到左边页面上。
+ *
+ * - 有字框：按差异字 / 词画小色块（中文单字、英文整词）；
+ * - 没有字框（老数据、回填失败）：退化成整行一个虚线框，不整页不标；
+ * - 只画差异，同行的相同字一个都不画。
+ */
+function readingDiffUnits(lineText, candidate, wordBoxes) {
+  const spans = computeCharSpans(lineText || "", candidate || "");
+  if (!spans.length) return { ranges: [], kind: null };
+  const kind = spans.some((span) => span.kind !== "replace") ? "punct" : "chars";
+  if (!wordBoxes || !wordBoxes.length) return { ranges: null, kind };
+  // 字框的文本拼起来应与行文本一致；按累加长度把差异区间映射到字框下标
+  const starts = [];
+  let offset = 0;
+  for (const unit of wordBoxes) {
+    starts.push(offset);
+    offset += String(unit.text || "").length;
+  }
+  if (offset !== (lineText || "").length) return { ranges: null, kind };
+  const wanted = new Set();
+  for (const span of spans) {
+    for (let index = 0; index < wordBoxes.length; index += 1) {
+      const start = starts[index];
+      const end = start + String(wordBoxes[index].text || "").length;
+      if (end > span.aStart && start < span.aEnd) wanted.add(index);
+    }
+  }
+  return { ranges: [...wanted].sort((a, b) => a - b), kind };
+}
+
+function paintReadingDiffBoxes(pageNo) {
+  const layer = el("reading-diff-layer");
+  const tile = readingTiles.get(pageNo);
+  if (!layer) return;
+  for (const node of layer.querySelectorAll(".reading-diff-box")) node.remove();
+  if (!tile) return;
+  const blocks = readingPageBlocks.get(pageNo) || [];
+  if (!blocks.length) return;
+  const width = tile.clientWidth || tile.getBoundingClientRect().width;
+  const height = tile.clientHeight || tile.getBoundingClientRect().height;
+  if (!width || !height) return;
+  const top = tile.offsetTop;
+  const addBox = (bbox, className) => {
+    const node = document.createElement("div");
+    node.className = "reading-diff-box" + (className ? " " + className : "");
+    node.style.left = `${Math.round(bbox[0] * width)}px`;
+    node.style.top = `${Math.round(top + bbox[1] * height)}px`;
+    node.style.width = `${Math.max(2, Math.round((bbox[2] - bbox[0]) * width))}px`;
+    node.style.height = `${Math.max(2, Math.round((bbox[3] - bbox[1]) * height))}px`;
+    layer.append(node);
+  };
+  // 这一页上**所有可见的差异行**：只画差异字 / 词，相同字一个都不画
+  for (const block of blocks) {
+    if (!block.lines) continue;
+    for (let index = 0; index < block.lines.length; index += 1) {
+      const line = block.lines[index];
+      const mark = readingMarks.get(readingKey(block.block_id, index));
+      if (!mark || !readingEntryVisible(mark)) continue;
+      const words = line.word_boxes ? JSON.parse(line.word_boxes) : [];
+      const { ranges, kind } = readingDiffUnits(line.text || "", mark.candidate || "", words);
+      if (ranges === null) {
+        if (line.bbox) addBox(line.bbox, "reading-diff-box--line");
+        continue;
+      }
+      for (const wordIndex of ranges) {
+        const bbox = words[wordIndex] && words[wordIndex].bbox;
+        if (bbox) addBox(bbox, kind === "punct" ? "reading-diff-box--punct" : "");
+      }
+    }
+  }
+}
 
 /** 悬停右栏某段：右边绿底、左边这一段的所有块绿框——**只高亮，不滚**。 */
 function setReadingHover(seq) {
@@ -17721,6 +17838,7 @@ function setReadingHover(seq) {
     ensureReadingBlocks(pageNo).then(() => {
       if (readingHoveredSeq !== target) return;
       paintReadingTile(pageNo);
+      paintReadingDiffBoxes(pageNo);
     });
   }
 }

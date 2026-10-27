@@ -1626,6 +1626,11 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert "setReadingHover(" in script
     assert ".reading-page" in css
     assert "is-linked" in css
+    # 任务 59 第二刀：字级色块（有字框按字/词画，没有字框整行一个虚线框）
+    assert "function paintReadingDiffBoxes(" in script
+    assert "function readingDiffUnits(" in script
+    assert "reading-diff-box" in css
+    assert "reading-mark--word" in css
     # 字框回填入口与对话框
     for element_id in ("word-boxes-open", "word-boxes-mask", "word-boxes-start"):
         assert f'id="{element_id}"' in page, element_id
