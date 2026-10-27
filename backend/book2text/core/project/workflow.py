@@ -439,6 +439,8 @@ def text_line_counts(
     "这一页有没有行可拟合"必须把两种行都算上；只看检测行会把整本没检测过的书
     误判成"没有行"。
     """
+    from .blocks import FURNITURE_BLOCK_TYPES
+
     directory = require_project_dir(project_id, library=library)
     with _open(directory) as conn:
         rows = conn.execute(
@@ -446,8 +448,10 @@ def text_line_counts(
             SELECT b.page_id, COUNT(l.line_id) AS line_count
             FROM block_line l JOIN block b ON b.block_id = l.block_id
             WHERE b.deleted_at IS NULL
+              AND b.block_type NOT IN (?, ?, ?, ?, ?)
             GROUP BY b.page_id
-            """
+            """,
+            tuple(sorted(FURNITURE_BLOCK_TYPES)),
         ).fetchall()
     return {row["page_id"]: int(row["line_count"]) for row in rows}
 

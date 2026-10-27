@@ -1718,6 +1718,27 @@ body[data-workflow-step="margin"] #pages-overlay-toggle { display: none; }
 body[data-workflow-step="pages"] #pages-margin-toggle,
 body[data-workflow-step="recognition"] #pages-margin-toggle { display: none; }
 
+/* 任务 56（刀 2）：每步"一句话 + 一个主按钮 + 一个数字"——上面这块是那句话 */
+.step-verdict { margin: 2px 0 8px; }
+.step-verdict strong {
+  display: block; font-size: 13px; line-height: 1.4; margin-bottom: 3px; color: var(--text);
+}
+.step-verdict .hint { margin: 0; line-height: 1.5; }
+.step-verdict.is-warn strong { color: var(--warn-text); }
+.step-verdict.is-ok strong { color: var(--ok-text, #15803d); }
+/* 单页四边折叠区：默认收起，主视线只留结论与主按钮 */
+.panel__sub {
+  margin: 8px 0 0; padding: 6px 0 0; border-top: 1px solid var(--line-soft);
+}
+.panel__sub > summary {
+  cursor: pointer; font-size: 11.5px; color: var(--faint);
+  list-style: none; display: flex; align-items: baseline; gap: 6px;
+}
+.panel__sub > summary::-webkit-details-marker { display: none; }
+.panel__sub > summary::before { content: "▸"; font-size: 10px; }
+.panel__sub[open] > summary::before { content: "▾"; }
+.panel__sub > summary .muted { margin-left: auto; font-size: 11px; }
+#margin-confirm-all { margin: 0 0 4px; }
 .margin-step__head {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   margin: 2px 0 6px;

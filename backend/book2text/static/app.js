@@ -106,14 +106,16 @@ let currentView = "library";
 // 数据与功能都还没做，不摆出来（不显示无法执行的步骤）。
 const WORKFLOW_STEPS = [
   { id: "pages", label: "页面确认", short: "页面" },
-  { id: "margin", label: "版心确认", short: "版心" },
+  // 任务 56（刀 2）：识别在前、版心在后。整页识别不读版心（版心过滤在组装 / 导出），
+  // 而版心拟合要读行框——行框就是识别产出的 block_line.bbox。
   { id: "recognition", label: "文字识别", short: "识别" },
+  { id: "margin", label: "版心确认", short: "版心" },
   { id: "index", label: "目录确认", short: "目录" },
   // L 刀：正文审校吸收结果预览（连续正文流），步骤 7 → 6
   { id: "review", label: "正文审校", short: "审校" },
   { id: "export", label: "文件导出", short: "导出" },
 ];
-const PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition", "index"];
+const PAGE_WORKFLOW_STEPS = ["pages", "recognition", "margin", "index"];
 let workflowStep = null;
 let workflowStepPinned = false;
 let projectSummary = null;
@@ -320,7 +322,7 @@ function autoWorkflowStep() {
   for (const id of PAGE_WORKFLOW_STEPS) {
     if (!stepProgress(id).done) return id;
   }
-  return "recognition";
+  return "review";
 }
 
 /** 画步骤条（五步；目录确认 / 结果预览等有数据再加）。 */
@@ -545,7 +547,8 @@ function pageHasFitLines(page) {
  * 两样都没有的页，拟合出来的只能是空——界面必须如实说"未定"，不能报"已拟合"。
  */
 function marginPagesWithoutLines() {
-  return marginUndeterminedPages().filter((page) => !pageHasFitLines(page));
+  // 口径与版心步的四态一致：只为**正文页**算，识别过且确实没字的页算"跳过"不算未定
+  return marginStepVerdict().noLines;
 }
 
 /**
@@ -557,15 +560,31 @@ function marginPagesWithoutLines() {
  * - 一批 20 页一次请求，界面按批更新进度条（分批后不会假死）；
  * - 拟合失败的页记进 `marginFitTried`，本次会话不反复重试；任务结束 / 重新进这一步会清空。
  */
-async function ensureMarginFitted() {
+async function ensureMarginFitted({ manual = false } = {}) {
   refreshMarginDetectHint();
   if (!currentProject || currentProject.kind === "package") return;
   if (marginFitRunning) return;
+  // 主按钮「全部确认」是人工动作：上一轮试过但没成的页也要再试一次
+  if (manual) marginFitTried.clear();
   const pending = marginUndeterminedPages().filter(
-    (page) => !marginFitTried.has(page.page_no)
+    (page) => pageHasFitLines(page) && !marginFitTried.has(page.page_no)
   );
-  if (!pending.length) return;
+  if (!pending.length) {
+    renderMarginStepVerdict();
+    if (manual) {
+      setMarginStatus(
+        marginPagesWithoutLines().length
+          ? `没有可生成的页：还差 ${marginPagesWithoutLines().length} 页没有正文行（要先识别）。`
+          : "全书版心都已定，没有要生成的页。",
+        false,
+        12000
+      );
+    }
+    return;
+  }
+  const startedAt = performance.now();
   marginFitRunning = true;
+  renderMarginStepVerdict();
   for (const page of pending) marginFitTried.add(page.page_no);
   showMarginFitProgress(0, pending.length);
   let attempted = 0;
@@ -574,7 +593,11 @@ async function ensureMarginFitted() {
   let undetermined = 0;
   let noText = 0;
   try {
-    while (attempted < pending.length) {
+    // **按后端返回的 remaining 收尾**，不按前端这份 pending 清单收尾：
+    // 后端一批处理的是"所有缺框页"（含没有行的页），比 pending 多；
+    // 拿 processed >= pending.length 当终点会提前停，留下一批有行却没生成的页
+    // （TTBVW3 实测：267 页第一次点了只生成 219 页，剩 23 页）。
+    while (true) {
       const data = await apiJson(
         `/api/projects/${currentProject.project_id}/margin-box/fit-all`,
         {
@@ -589,8 +612,9 @@ async function ensureMarginFitted() {
       fallback += Number(data.fallback || 0);
       undetermined += Number(data.undetermined || 0);
       noText += Number(data.no_text || 0);
-      showMarginFitProgress(attempted, pending.length);
-      if (!updated || Number(data.remaining || 0) === 0) break;
+      const remaining = Number(data.remaining || 0);
+      showMarginFitProgress(attempted, attempted + remaining);
+      if (!updated || remaining === 0) break;
     }
     await refreshPageStates();
     refreshMarginTiles();
@@ -598,15 +622,16 @@ async function ensureMarginFitted() {
     if (typeof loadFinishSummary === "function") {
       await loadFinishSummary({ silent: true });
     }
-    setMarginStatus(
-      marginFitSummaryText(fitted, fallback, undetermined, noText)
-    );
+    const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
+    const summary = marginFitSummaryText(fitted, fallback, undetermined, noText);
+    setMarginStatus(manual ? `${summary} 耗时 ${elapsed} 秒。` : summary, false, 20000);
   } catch (error) {
     showError(el("pages-error"), error);
   } finally {
     marginFitRunning = false;
     hideMarginFitProgressSoon();
     refreshMarginDetectHint();
+    renderMarginStepVerdict();
   }
 }
 
@@ -626,7 +651,7 @@ function marginFitSummaryText(fitted, fallback, undetermined, noText) {
   if (undetermined > 0) {
     parts.push(
       `${undetermined} 页还没有可用的正文行，版心未定` +
-        (settled > 0 ? "" : "（先完成文字识别，再回来生成版心）")
+        (settled > 0 ? "" : "（这些页要先有行框，才能生成版心）")
     );
   }
   return parts.length ? `${parts.join(" · ")}。` : "";
@@ -651,6 +676,117 @@ function hideMarginFitProgressSoon() {
   }, 1600);
 }
 
+/** 版面检测任务是否在跑（「⋯ → 检测版面」起的那个任务）——版心步的"生成中"状态要用。 */
+let layoutDetectActive = false;
+
+/** 正文页（版心只关心这些；非正文页不进分母，否则步骤条永远绿不了）。 */
+function marginBodyPages() {
+  if (!currentProject) return [];
+  return currentProject.pages.filter((page) => page.include);
+}
+
+/**
+ * 版心这一步的**四态**（任务 56 / 刀 2）：未准备 / 生成中 / 已拟合 / 有未定页。
+ *
+ * 判据只用真实数据：页上的 `margin_box`（已落库的框）、`text_lines` / `layout_lines`
+ * （有没有可拟合的行）、以及正在跑的任务。**没有框就不许说"已定"**。
+ */
+function marginStepVerdict() {
+  const body = marginBodyPages();
+  const undeterminedAll = body.filter(
+    (page) => page.margin_box_mode === "auto" && !page.margin_box
+  );
+  // 「无文字」的页（识别跑过、确实没读出字）不算未定，也不挡完成——与收尾面板
+  // / 步骤条的判定同源（backend review_status 用 pages_with_text + 成功运行）。
+  const noText = undeterminedAll.filter(
+    (page) => !pageHasFitLines(page) && pageRecognized(page)
+  );
+  const noTextIds = new Set(noText.map((page) => page.page_no));
+  const undetermined = undeterminedAll.filter((page) => !noTextIds.has(page.page_no));
+  const needFit = undetermined.filter(pageHasFitLines);
+  const noLines = undetermined.filter((page) => !pageHasFitLines(page));
+  const withLines = body.filter(pageHasFitLines);
+  const settled = body.length - undetermined.length;
+  let key = "partial";
+  if (layoutDetectActive || marginFitRunning) key = "working";
+  else if (!withLines.length) key = "unprepared";
+  else if (!undetermined.length) key = "fitted";
+  return {
+    key, body, undetermined, undeterminedAll, needFit, noLines, noText,
+    settled, withLines,
+  };
+}
+
+/** 这一页有没有成功识别过（recognized / has_candidate 都算）。 */
+function pageRecognized(page) {
+  const status = recognitionOf(page).status;
+  return status === "recognized" || status === "has_candidate";
+}
+
+/** 版心步的"一句话 + 一个数字 + 一个主按钮"。 */
+function renderMarginStepVerdict() {
+  if (!currentProject) return;
+  const v = marginStepVerdict();
+  const state = el("margin-verdict-state");
+  const line = el("margin-verdict-line");
+  const button = el("margin-confirm-all");
+  el("margin-confidence").textContent = `${v.settled}/${v.body.length} 已定`;
+  if (!state || !line || !button) return;
+  const wrap = state.parentElement;
+  wrap.classList.toggle("is-warn", v.key === "partial");
+  wrap.classList.toggle("is-ok", v.key === "fitted");
+  button.hidden = false;
+  switch (v.key) {
+    case "unprepared":
+      state.textContent = "未准备";
+      line.textContent =
+        `还没有识别出正文行（正文 ${v.body.length} 页）。版心按识别出的行框生成：` +
+        "先在「文字识别」这一步跑识别，回来这里就自动出框。";
+      button.textContent = "全部确认（先识别）";
+      button.disabled = true;
+      break;
+    case "working":
+      state.textContent = layoutDetectActive ? "正在检测版面…" : "正在生成版心…";
+      line.textContent = `已定 ${v.settled} / ${v.body.length} 页；跑完会接着把剩下的生成掉。`;
+      button.textContent = "正在处理…";
+      button.disabled = true;
+      break;
+    case "fitted":
+      state.textContent = "已拟合";
+      line.textContent =
+        `正文 ${v.body.length} 页的版心都在了` +
+        (v.noText.length ? `；${v.noText.length} 页没有文字（插图 / 空白），跳过` : "") +
+        "。拖动单页四边可以微调，不改也算已定。";
+      button.textContent = "全书已定";
+      button.disabled = true;
+      break;
+    default:
+      state.textContent = "有未定页";
+      if (!v.needFit.length) {
+        // 只剩"没有行"的页：这里没有可生成的东西，别给一个点了没反应的按钮
+        line.textContent =
+          `还差 ${v.noLines.length} 页版心，这些页都还没有正文行：` +
+          "先跑完「文字识别」，识别出行的页回来会自动出框。";
+        button.textContent = "全部确认（先识别）";
+        button.disabled = true;
+        break;
+      }
+      line.textContent =
+        `还差 ${v.undetermined.length} 页：${v.needFit.length} 页有正文行、可以直接生成` +
+        (v.noLines.length ? `；${v.noLines.length} 页还没有正文行` : "") +
+        "。";
+      button.textContent = `全部确认（生成 ${v.needFit.length} 页）`;
+      button.disabled = false;
+      break;
+  }
+}
+
+/** 主按钮「全部确认」：把有行、还没框的页一次生成完，并报耗时。 */
+async function confirmAllMargins() {
+  if (!currentProject || marginFitRunning) return;
+  await ensureMarginFitted({ manual: true });
+}
+
 /**
  * 版心还差哪些页、为什么差。
  *
@@ -664,16 +800,20 @@ function refreshMarginDetectHint() {
     hint.hidden = true;
     return;
   }
-  const noLines = marginPagesWithoutLines().length;
-  const undetermined = marginUndeterminedPages().length;
+  const verdict = marginStepVerdict();
+  const noLines = verdict.noLines.length;
+  const undetermined = verdict.undetermined.length;
   if (!undetermined) {
     hint.hidden = true;
     return;
   }
   const bits = [`还有 ${undetermined} 页没有版心`];
-  if (noLines) bits.push(`其中 ${noLines} 页没有可用的正文行（检测行 / 识别行框都没有）`);
-  bits.push("版心是从行框推出来的，没有行框的页拟合不出来");
-  bits.push("要先有行：可以在右上角「⋯ → 检测版面…」里跑一次检测");
+  if (noLines) {
+    bits.push(`其中 ${noLines} 页还没有正文行（识别行 / 检测行都没有）`);
+    bits.push("版心是从行框推出来的，这些页要等识别出字，或者去右上角「⋯ → 检测版面…」跑一次检测");
+  } else {
+    bits.push("这些页都有正文行，点「全部确认」就能生成");
+  }
   hint.textContent = bits.join("；") + "。";
   hint.hidden = false;
 }
@@ -3446,10 +3586,9 @@ function updateSelectionPanel() {
       } else if (pageHasFitLines(page)) {
         next.textContent = "这一页有正文行但还没有版心：点「重置为本页自动」重新生成";
       } else {
+        // 两条文案都不许跟步骤顺序绑死（顺序还要调）：只说"没有行、所以生成不了"
         next.textContent =
-          pageTextLines(page) === 0
-            ? "这一页还没有正文行，版心要等文字识别完成才能生成"
-            : "这一页还没有可用的正文行，版心暂时未定";
+          "这一页还没有可用的正文行（识别行 / 检测行都没有），版心暂时生成不了";
       }
     }
   } else if (workflowStep === "recognition") {
@@ -4940,20 +5079,7 @@ async function ensureMarginAudit(page) {
  */
 function renderMarginPanel() {
   if (!currentProject) return;
-  const pages = currentProject.pages;
-  const counts = { auto: 0, inherit: 0, custom: 0, none: 0 };
-  for (const page of pages) {
-    counts[page.margin_box_mode] = (counts[page.margin_box_mode] || 0) + 1;
-  }
-  const undetermined = marginUndeterminedPages().length;
-  const bbox = pages.filter((page) => pageMarginMethod(page) === "bbox").length;
-  const settled = pages.length - undetermined;
-  el("margin-confidence").textContent =
-    `${settled}/${pages.length} 已定` +
-    (bbox ? ` · 兜底 ${bbox}` : "") +
-    (counts.custom ? ` · 自定义 ${counts.custom}` : "") +
-    (counts.none ? ` · 不适用 ${counts.none}` : "") +
-    (undetermined ? ` · 未定 ${undetermined}` : "");
+  renderMarginStepVerdict();
 
   // 默认版心只作一行说明：现在每页用自己的检测行拟合，默认框只在显式「沿用默认」的页上生效。
   const defaultNode = el("margin-default");
@@ -5369,6 +5495,57 @@ function renderRecognitionStatus() {
     const dd = document.createElement("dd");
     dd.textContent = value;
     metrics.append(dt, dd);
+  }
+  renderRecognitionVerdict();
+}
+
+/**
+ * 识别步的"一句话 + 一个数字 + 一个主按钮"（任务 56 / 刀 2）。
+ *
+ * 数字看正文页：已识别 / 正文页数。识别**不读版心**，所以这一步先跑完，
+ * 版心那一步才有行框可用；这句话只说事实，不写"下一步去…"。
+ */
+function renderRecognitionVerdict() {
+  if (!currentProject) return;
+  const body = marginBodyPages();
+  const recognized = body.filter((page) =>
+    ["recognized", "has_candidate"].includes(recognitionOf(page).status)
+  ).length;
+  const pending = Math.max(body.length - recognized, 0);
+  const state = el("rec-verdict-state");
+  const line = el("rec-verdict-line");
+  const button = el("rec-start-all");
+  el("rec-status-summary").textContent = `${recognized}/${body.length} 已识别`;
+  if (!state || !line || !button) return;
+  const wrap = state.parentElement;
+  const running =
+    taskJobId && lastTaskData && lastTaskData.job &&
+    ["queued", "running", "paused"].includes(lastTaskData.job.status) &&
+    lastTaskData.job.job_type === "ocr";
+  wrap.classList.toggle("is-ok", pending === 0);
+  wrap.classList.toggle("is-warn", pending > 0 && !running);
+  if (running) {
+    state.textContent = "正在识别…";
+    line.textContent = "识别在后台逐页跑，进度在右侧任务抽屉里；可以先去做别的。";
+    button.textContent = "正在识别…";
+    button.disabled = true;
+  } else if (!body.length) {
+    state.textContent = "未准备";
+    line.textContent = "还没有确认过正文页：先在第 1 步把页面类型确认好。";
+    button.textContent = "开始识别";
+    button.disabled = true;
+  } else if (!pending) {
+    state.textContent = "已识别";
+    line.textContent = `正文 ${body.length} 页都识别过了；差异在「正文审校」里逐条看。`;
+    button.textContent = "全部已识别";
+    button.disabled = true;
+  } else {
+    state.textContent = recognized ? "部分已识别" : "未开始";
+    line.textContent =
+      `正文 ${body.length} 页里还有 ${pending} 页没有识别。` +
+      "识别不读版心，版心要等识别出行框之后才生成得了。";
+    button.textContent = `开始识别（${pending} 页）`;
+    button.disabled = false;
   }
 }
 
@@ -6951,6 +7128,8 @@ async function startLayoutDetectFromDialog() {
     el("layout-detect-start").textContent = "重试";
     return;
   }
+  layoutDetectActive = true;
+  renderMarginStepVerdict();
   closeModal("layout-detect-mask");
   showMarginDetectProgress(0, data.job.total || pages.length);
   setMarginStatus(
@@ -7004,6 +7183,8 @@ function showMarginDetectProgress(done, total) {
 function reportLayoutDetectOutcome(data) {
   const job = data && data.job;
   if (!job || job.job_type !== "layout") return;
+  layoutDetectActive = false;
+  renderMarginStepVerdict();
   const total = Number(job.total || 0);
   const done = Number(job.done || 0);
   const failed = Number(job.failed || 0);
@@ -14704,6 +14885,8 @@ function setupLibrary() {
   el("pages-margin-toggle").addEventListener("click", toggleMarginView);
   el("layout-block-apply-all").addEventListener("click", adoptAllHighSuggestions);
   el("layout-block-confirm").addEventListener("click", confirmLayoutFromPanel);
+  el("margin-confirm-all").addEventListener("click", confirmAllMargins);
+  el("rec-start-all").addEventListener("click", () => startBatchRecognition("unrecognized"));
   el("layout-detect-open").addEventListener("click", () => {
     // 点 ⋯ 里的条目：先收起菜单，再开对话框（模板遮罩不能挂在菜单里）
     el("page-more-menu").hidden = true;

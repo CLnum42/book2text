@@ -519,7 +519,7 @@ def test_margin_view_is_wired_to_the_page_view() -> None:
     assert 'id="layout-detect-mask"' in page_html
     # 没有检测行时不许说"已自动拟合"：文案按这一页的真实状态出
     assert "版心已自动拟合；拖动四边调整，不改也算已定" not in script
-    assert "这一页还没有可用的正文行，版心暂时未定" in script
+    assert "这一页还没有可用的正文行（识别行 / 检测行都没有），版心暂时生成不了" in script
 
     # 模式选择卡片已经拿掉：页面上不许再出现这四个来源按钮
     assert 'id="margin-modes"' not in page_html
@@ -1060,7 +1060,7 @@ def test_page_index_step_is_wired() -> None:
 
     # 六步：目录确认排在文字识别与正文审校之间
     assert '{ id: "index", label: "目录确认", short: "目录" }' in script
-    assert 'PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition", "index"]' in script
+    assert 'PAGE_WORKFLOW_STEPS = ["pages", "recognition", "margin", "index"]' in script
 
     # 生成 / 跳转 / 翻页 / 高亮 / 缺页码
     assert "function openPageIndex(" in script
@@ -1077,7 +1077,7 @@ def test_page_index_step_is_wired() -> None:
     assert "版心已按本页正文行生成；拖动四边调整，不改也算已定" in script
     # 兜底与"没有行"各有自己的说法，不许混成一句"已拟合"
     assert "版心是本页正文行的包围盒（兜底）" in script
-    assert "这一页还没有正文行，版心要等文字识别完成才能生成" in script
+    assert "这一页还没有可用的正文行（识别行 / 检测行都没有），版心暂时生成不了" in script
     # 只有 PDF 页序时：说明条 + 跳转停用 + 步骤条不绿（complete 由后端给）
     assert "function indexIsPageOrderOnly(" in script
     assert "尚未识别：下面只有 PDF 页序" in script
@@ -1139,7 +1139,7 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
     assert "版心外排除" in script
     assert "previewVisibleSegments" in script
     # 没有完成态：预览不在页面步里，也没有 is-done 判定
-    assert 'PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition", "index"]' in script
+    assert 'PAGE_WORKFLOW_STEPS = ["pages", "recognition", "margin", "index"]' in script
     assert "结果预览不设完成态" in script
 
 

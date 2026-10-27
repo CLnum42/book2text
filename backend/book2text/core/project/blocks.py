@@ -473,6 +473,14 @@ def list_block_lines(
     ]
 
 
+# 书眉 / 页脚 / 页码 / 插图 / 装饰：**不是正文行**。版心拟合、行数统计、
+# "这一页有没有文字"三处必须用同一份口径，否则会出现"界面说有 23 页可生成、
+# 拟合却说没行"（TTBVW3 实测：23 页只有书眉块）。
+FURNITURE_BLOCK_TYPES = frozenset(
+    {"header", "footer", "page_number", "figure", "decoration"}
+)
+
+
 def pages_with_text(
     project_id: str, *, library: Path | None = None
 ) -> set[str]:
@@ -487,7 +495,9 @@ def pages_with_text(
             """
             SELECT DISTINCT b.page_id FROM block b
             WHERE b.deleted_at IS NULL AND TRIM(COALESCE(b.text, '')) <> ''
-            """
+              AND b.block_type NOT IN (?, ?, ?, ?, ?)
+            """,
+            tuple(sorted(FURNITURE_BLOCK_TYPES)),
         ).fetchall()
     return {row["page_id"] for row in rows}
 

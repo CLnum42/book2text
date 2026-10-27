@@ -94,9 +94,8 @@ EDGE_PADDING = 0.02
 MIN_MARGIN_SIDE = 0.02
 
 # 显式版面块：不参与推算（与 export/streams.py 的边缘判断同一类证据）
-SKIP_BLOCK_TYPES = frozenset(
-    {"header", "footer", "page_number", "figure", "decoration"}
-)
+# 与 `blocks.FURNITURE_BLOCK_TYPES` 是同一份口径（只在这里留个别名，别再抄一遍字面量）
+SKIP_BLOCK_TYPES = blocks_module.FURNITURE_BLOCK_TYPES
 
 CONFIDENCE_HIGH = "high"
 CONFIDENCE_MEDIUM = "medium"
@@ -1008,19 +1007,23 @@ def _page_fit_lines(
     *,
     library: Path | None,
 ) -> tuple[list[BBox], str, bool, bool]:
-    """拟合这一页该用哪些行框：检测行优先，没有就回退 OCR 行（刀 1）。
+    """拟合这一页该用哪些行框：**识别行优先**，没有识别行才看检测行（刀 2）。
 
-    返回 ``(行框, 来源, 有没有文字, 有没有识别过)``。检测行本来就是为了版心才跑的
-    那一次；识别行与它同模型同 DPI，所以没有检测行的页（真机上两本 0 检测行的书
-    都是这种情况）直接拿 OCR 行拟合，不再要求用户先等一遍检测。
+    返回 ``(行框, 来源, 有没有文字, 有没有识别过)``。
+
+    顺序在 2026-10-27 调换（任务 56）：新版工作流是「识别 → 版心」，识别行一定先有；
+    识别行的块类型已经分好（书眉 / 页脚 / 页码整块跳过），比裸检测行更适合拟合。
+    检测行降级成兜底：只识别过没检测过的老数据、或只跑过检测的页用它。
     """
-    layout_boxes = _latest_layout_boxes(directory, page.page_id)
-    if layout_boxes:
-        return layout_boxes, "layout", True, True
     boxes, has_text, recognized = _page_ocr_line_boxes(
         project_id, page, library=library
     )
-    return boxes, "ocr", has_text, recognized
+    if boxes:
+        return boxes, "ocr", has_text, recognized
+    layout_boxes = _latest_layout_boxes(directory, page.page_id)
+    if layout_boxes:
+        return layout_boxes, "layout", True, True
+    return [], "none", has_text, recognized
 
 
 def fit_page_margin(

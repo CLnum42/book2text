@@ -255,32 +255,31 @@
               <details class="panel__group" id="panel-margin-settings" data-panel="margin">
                 <summary><strong>版心</strong><span class="muted" id="margin-confidence"></span></summary>
                 <div class="panel__body">
-                  <div class="margin-step">
-                    <div class="margin-step__head">
-                      <strong id="margin-page-state">未选择页面</strong>
-                      <span class="margin-step__badge" id="margin-page-badge" hidden></span>
-                    </div>
+                  <!-- 任务 56（刀 2）：这一步只留一句话 + 一个主按钮 + 一个数字。
+                       四态：未准备 / 生成中 / 已拟合 / 有未定页。单页四边折进下面。 -->
+                  <div class="step-verdict">
+                    <strong id="margin-verdict-state">未准备</strong>
+                    <p class="hint" id="margin-verdict-line"></p>
+                  </div>
+                  <button type="button" id="margin-confirm-all" class="btn btn--pri btn--block">全部确认</button>
+
+                  <div class="margin-fit" id="margin-fit-progress" hidden>
+                    <div class="progress__bar"><div class="progress__fill" id="margin-fit-fill"></div></div>
+                    <div class="progress__text" id="margin-fit-text"></div>
+                  </div>
+                  <div class="hint" id="margin-status" hidden></div>
+                  <div class="hint" id="margin-detect-hint" hidden></div>
+
+                  <details class="panel__sub" id="panel-margin-page">
+                    <summary>单页四边 <span class="muted" id="margin-page-state">未选择页面</span>
+                      <span class="margin-step__badge" id="margin-page-badge" hidden></span></summary>
                     <div class="margin-edges" id="margin-edges"></div>
                     <div class="hint" id="margin-basis"></div>
-
-                    <div class="margin-fit" id="margin-fit-progress" hidden>
-                      <div class="progress__bar"><div class="progress__fill" id="margin-fit-fill"></div></div>
-                      <div class="progress__text" id="margin-fit-text"></div>
-                    </div>
-
                     <div class="margin-step__actions" id="margin-page-actions"></div>
                     <button type="button" id="margin-next" class="btn btn--block btn--sm" hidden>下一页 ›</button>
-
                     <div class="hint" id="margin-audit" hidden></div>
-                    <div class="hint" id="margin-status" hidden></div>
-                    <div class="hint" id="margin-detect-hint" hidden></div>
-                    <div class="margin-outside">
-                      <div class="flabel">版心外的书眉 / 页脚 / 页码</div>
-                      <p class="hint">这些家具落在版心外，导出默认不进正文；要批量改类型用结构工具。</p>
-                      <button type="button" id="structure-open" class="btn btn--block btn--sm">结构工具…</button>
-                    </div>
                     <div class="hint" id="margin-default"></div>
-                  </div>
+                  </details>
                 </div>
               </details>
               </div>
@@ -296,20 +295,28 @@
                 </div>
               </details>
 
-              <!-- 任务 36B：文字识别这一步先给状态与差异数字（只读，不在这里做裁决）。 -->
-              <details class="panel__group" id="panel-recognition-status" data-panel="recognition-status">
-                <summary><strong>识别状态</strong><span class="muted" id="rec-status-summary"></span></summary>
+              <!-- 任务 56（刀 2）：「文字识别」只留一句话 + 一个主按钮 + 一个数字。
+                   差异明细 / 质量统计去「正文审校」看；DPI / 语言 / 双引擎折进设置。 -->
+              <details class="panel__group" id="panel-recognition-status" data-panel="recognition-status" open>
+                <summary><strong>文字识别</strong><span class="muted" id="rec-status-summary">未开始</span></summary>
                 <div class="panel__body">
-                  <div class="panel__metrics" id="rec-status-metrics"></div>
-                  <p class="hint" id="rec-status-note">
-                    差异（汉字级 / 标点级）在这里只作数字；逐条裁决在「正文审校」。
-                  </p>
+                  <div class="step-verdict">
+                    <strong id="rec-verdict-state">未开始</strong>
+                    <p class="hint" id="rec-verdict-line">还没有识别结果。</p>
+                  </div>
+                  <button type="button" id="rec-start-all" class="btn btn--pri btn--block">开始识别</button>
+                  <div class="hint" id="rec-status" hidden></div>
                 </div>
               </details>
 
               <details class="panel__group" id="panel-recognition-settings" data-panel="recognition">
-                <summary><strong>识别设置</strong><span class="muted" id="rec-summary"></span></summary>
+                <summary><strong>识别设置</strong><span class="muted" id="rec-summary">默认就行</span></summary>
                 <div class="panel__body">
+                  <!-- 差异明细从主界面挪到这里：要数字时展开看一眼，不占这一步的主视线 -->
+                  <div class="panel__metrics" id="rec-status-metrics"></div>
+                  <p class="hint" id="rec-status-note">
+                    差异（汉字级 / 标点级）只作数字；逐条裁决在「正文审校」。
+                  </p>
                   <div class="flabel">引擎</div>
                   <select id="rec-engine" class="select select--block">
                     <option value="rapidocr">RapidOCR（默认）</option>
@@ -345,7 +352,6 @@
                   <label class="check check--line"><input type="checkbox" id="rec-margin-judgement">
                     <span>按版心判定正文（默认开）</span></label>
                   <p class="hint">打开后正文只收版心内的段落 / 标题；关闭时按块类型判定，与升级前一致。</p>
-                  <div class="hint" id="rec-status" hidden></div>
                 </div>
               </details>
 
@@ -1063,6 +1069,13 @@
             <p class="hint">打开后正文只收<strong>版心内的段落 / 标题</strong>：版心外一律不进正文，
               页码进元数据，书眉直接丢；脚注 / 旁批即使落在版心内也不进正文
               （勾选「同时导出注释」才进注释流）。</p>
+            <!-- 任务 56：版心外的书眉 / 页脚 / 页码要先改块类型才不影响导出——
+                 这块操作挪到导出前，版心步只留"确认版心"一件事。 -->
+            <div class="margin-outside">
+              <div class="flabel">版心外的书眉 / 页脚 / 页码</div>
+              <p class="hint">这些家具落在版心外，导出默认不进正文；要批量改类型用结构工具。</p>
+              <button type="button" id="structure-open" class="btn btn--block btn--sm">结构工具…</button>
+            </div>
 
             <div class="flabel">清理规则</div>
             <div class="ruleline"><input type="checkbox" id="export-rule-header" checked disabled>
@@ -1450,13 +1463,13 @@
           </div>
           <button type="button" id="finish-confirm-pages" class="finish-action">确认全部未确认页</button>
         </li>
-        <li class="finish-row" id="finish-row-margin">
-          <span class="finish-icon" id="finish-icon-margin">·</span>
+        <li class="finish-row" id="finish-row-engine">
+          <span class="finish-icon" id="finish-icon-engine">·</span>
           <div class="finish-main">
-            <div class="finish-title"><strong>版心</strong><span class="finish-status" id="finish-margin-status"></span></div>
-            <div class="finish-sub" id="finish-margin-sub"></div>
+            <div class="finish-title"><strong>第二引擎</strong><span class="finish-status" id="finish-engine-status"></span></div>
+            <div class="finish-sub" id="finish-engine-sub"></div>
           </div>
-          <button type="button" id="finish-margin-pages" class="finish-action" hidden>查看兜底 / 未定页</button>
+          <button type="button" id="finish-check-engine" class="finish-action">复核全部未复核页</button>
         </li>
         <li class="finish-row" id="finish-row-layout">
           <span class="finish-icon" id="finish-icon-layout">·</span>
@@ -1465,6 +1478,14 @@
             <div class="finish-sub" id="finish-layout-sub"></div>
           </div>
           <button type="button" id="finish-confirm-layout" class="finish-action">确认全部正文页版面</button>
+        </li>
+        <li class="finish-row" id="finish-row-margin">
+          <span class="finish-icon" id="finish-icon-margin">·</span>
+          <div class="finish-main">
+            <div class="finish-title"><strong>版心</strong><span class="finish-status" id="finish-margin-status"></span></div>
+            <div class="finish-sub" id="finish-margin-sub"></div>
+          </div>
+          <button type="button" id="finish-margin-pages" class="finish-action" hidden>查看兜底 / 未定页</button>
         </li>
         <li class="finish-row" id="finish-row-pagenum">
           <span class="finish-icon" id="finish-icon-pagenum">·</span>
@@ -1481,14 +1502,6 @@
             <div class="finish-sub" id="finish-review-sub"></div>
           </div>
           <button type="button" id="finish-auto-pass" class="finish-action">标记自动通过</button>
-        </li>
-        <li class="finish-row" id="finish-row-engine">
-          <span class="finish-icon" id="finish-icon-engine">·</span>
-          <div class="finish-main">
-            <div class="finish-title"><strong>第二引擎</strong><span class="finish-status" id="finish-engine-status"></span></div>
-            <div class="finish-sub" id="finish-engine-sub"></div>
-          </div>
-          <button type="button" id="finish-check-engine" class="finish-action">复核全部未复核页</button>
         </li>
       </ul>
 
