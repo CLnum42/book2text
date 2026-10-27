@@ -90,6 +90,10 @@ def test_trash_restore_and_permanent_delete(
     assert opened["project"]["page_count"] == 3
     pages = client.get(f"/api/projects/{project_id}/pages", headers=auth_headers).json()
     assert len(pages["pages"]) == 3
+    restored_blocks = client.get(
+        f"/api/projects/{project_id}/pages/1/blocks", headers=auth_headers
+    ).json()
+    assert restored_blocks["block_count"] > 0, "恢复后识别结果还在"
     preflight = client.post(
         f"/api/projects/{project_id}/export/preflight",
         json={"format": "txt"},
