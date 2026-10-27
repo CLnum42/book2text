@@ -839,3 +839,45 @@ def test_finish_panel_and_batch_actions_are_wired() -> None:
     # 停止 / 续跑
     assert "finishLayoutStop" in script and "finishLayoutRemaining" in script
     assert "finishAutoStop" in script and "finishAutoRemaining" in script
+
+
+def test_trash_select_all_and_margin_visual_are_wired() -> None:
+    """任务 35：废纸篓、全选 / 取消全选 / 点空白取消、版心视觉都真的接上。"""
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        "trash-open",
+        "trash-panel",
+        "trash-list",
+        "trash-empty",
+        "trash-error",
+        "selection-select-all",
+        "selection-clear",
+    ):
+        assert f'id="{element_id}"' in page_html, element_id
+
+    assert "/api/trash" in script
+    assert "confirm=true" in script
+    assert "function deleteProject(" in script
+    assert "function loadTrash(" in script
+    assert "restoreTrashProject(" in script
+    assert "purgeTrashProject(" in script
+    assert "移入废纸篓" in script
+    assert "无法恢复" in script
+
+    # 全选 / 取消 / ⌘A / Esc / 点空白取消
+    assert "function selectAllVisiblePages(" in script
+    assert "function clearPageSelection(" in script
+    assert 'event.key.toLowerCase() === "a"' in script
+    assert 'event.key === "Escape"' in script
+    assert 'event.target.closest(".page-tile")' in script
+    assert "不在当前筛选" in script
+
+    # 版心视觉：1px 边框 + 更深的版心外灰度
+    assert "border: 1px solid #0b5f58;" in styles
+    assert "rgba(15, 18, 24, .34)" in styles
+    assert "rgba(15, 18, 24, .30)" in styles
+    # 把手还在（改细不能把拖动弄丢）
+    assert ".page-margin__handle" in styles
