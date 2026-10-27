@@ -1017,13 +1017,28 @@ def fit_page_margin(
     }
 
 
-def fit_all_pages(project_id: str, *, library: Path | None = None) -> dict[str, object]:
-    """把 inherit / auto 的页全部改为每页自动拟合；custom / none 不动。"""
+def fit_all_pages(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    only_missing: bool = False,
+    limit: int | None = None,
+) -> dict[str, object]:
+    """把 inherit / auto 的页全部改为每页自动拟合；custom / none 不动。
+
+    任务 36B 追加两个只影响"做多少"的参数，默认值保持旧行为：
+
+    - ``only_missing=True``：只处理 ``mode=auto`` 且 ``margin_box`` 仍是 NULL 的页
+      （界面进「版心确认」时自动补拟合）。``inherit`` 是用户显式选择沿用默认框，
+      这一类也不碰——自动补拟合不该改变它。
+    - ``limit``：这一轮最多处理多少页；``remaining`` 回传还有多少页没轮到，
+      界面据此分批调用并显示真实进度。
+    """
     target_library = library if library is not None else library_module.default_library_dir()
     directory = library_module.require_project_dir(project_id, library=target_library)
     pages = library_module.list_pages(project_id, library=target_library)
-    updated = fitted = fallback = undetermined = 0
-    skipped_custom = skipped_none = 0
+    skipped_custom = skipped_none = skipped_inherit = skipped_fitted = 0
+    targets: list[library_module.Page] = []
     for page in pages:
         if page.margin_box_mode == MODE_CUSTOM:
             skipped_custom += 1
@@ -1031,6 +1046,18 @@ def fit_all_pages(project_id: str, *, library: Path | None = None) -> dict[str, 
         if page.margin_box_mode == MODE_NONE:
             skipped_none += 1
             continue
+        if only_missing:
+            if page.margin_box_mode != MODE_AUTO:
+                skipped_inherit += 1
+                continue
+            if page.margin_box is not None:
+                skipped_fitted += 1
+                continue
+        targets.append(page)
+    batch = targets[:limit] if limit is not None else targets
+    remaining = len(targets) - len(batch)
+    updated = fitted = fallback = undetermined = 0
+    for page in batch:
         if page.margin_box_mode == MODE_INHERIT:
             with db_module.open_database(directory) as conn:
                 conn.execute(
@@ -1054,6 +1081,10 @@ def fit_all_pages(project_id: str, *, library: Path | None = None) -> dict[str, 
         "undetermined": undetermined,
         "skipped_custom": skipped_custom,
         "skipped_none": skipped_none,
+        "skipped_inherit": skipped_inherit,
+        "skipped_fitted": skipped_fitted,
+        "remaining": remaining,
+        "only_missing": only_missing,
     }
 
 

@@ -49,6 +49,19 @@ class BatchMarginBoxPatch(BaseModel):
     margin_box: list[float] | None = None
 
 
+class MarginFitAllRequest(BaseModel):
+    """全部自动拟合（任务 36B 起支持"只补没拟合的页"）。
+
+    - ``only_missing``：只动 ``mode=auto`` 且 ``margin_box`` 还是 NULL 的页；
+      ``custom`` / ``none`` / ``inherit`` 一律不动。界面进「版心确认」时用它，
+      打开就是拟合好的，同时绝不覆盖用户拖过的框。
+    - ``limit``：一次最多处理多少页（界面分批调用，给出真实进度）。``None`` = 全部。
+    """
+
+    only_missing: bool = False
+    limit: int | None = Field(default=None, ge=1, le=500)
+
+
 @router.get("/{project_id}/margin-box")
 def get_margin_box(request: Request, project_id: str) -> dict[str, Any]:
     """项目版心概览：默认四边、三态计数、非默认页。"""
@@ -127,11 +140,24 @@ def fit_page_margin_box(
 
 
 @router.post("/{project_id}/margin-box/fit-all")
-def fit_all_margin_boxes(request: Request, project_id: str) -> dict[str, Any]:
-    """把 inherit / auto 的页全部改为每页自动拟合；custom / none 不动。"""
+def fit_all_margin_boxes(
+    request: Request, project_id: str, body: MarginFitAllRequest | None = None
+) -> dict[str, Any]:
+    """把 inherit / auto 的页全部改为每页自动拟合；custom / none 不动。
+
+    带 body 时支持只补未拟合的页（``only_missing``）与分批（``limit``）；
+    不带 body 与旧行为完全一致。
+    """
     _require_main(request, project_id)
+    only_missing = bool(body and body.only_missing)
+    limit = body.limit if body else None
     try:
-        return margin_box_module.fit_all_pages(project_id, library=_library(request))
+        return margin_box_module.fit_all_pages(
+            project_id,
+            library=_library(request),
+            only_missing=only_missing,
+            limit=limit,
+        )
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
 

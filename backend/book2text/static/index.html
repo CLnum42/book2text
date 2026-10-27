@@ -218,55 +218,53 @@
                 </div>
               </details>
 
+              <!-- 任务 36B：版面块确认属于「页面确认」这一步，不再混在版心分区里。 -->
+              <details class="panel__group" id="panel-layout-blocks" data-panel="layout-blocks">
+                <summary><strong>版面块</strong><span class="muted" id="layout-block-summary">选一页查看</span></summary>
+                <div class="panel__body">
+                  <p class="hint" id="layout-block-hint">
+                    选一页后显示这一页有几块、哪些块建议改类型。确认版面只是状态标记，不改文字、不拦导出。
+                  </p>
+                  <div id="layout-block-body" hidden>
+                    <div class="margin-current" id="layout-block-status"></div>
+                    <div class="hint" id="layout-block-note" hidden></div>
+                    <ol class="setup-suggestions" id="layout-block-suggestions"></ol>
+                    <button type="button" id="layout-block-apply-all" class="btn btn--block" hidden>采用全部高把握建议</button>
+                    <button type="button" id="layout-block-confirm" class="btn btn--block">确认本页版面</button>
+                  </div>
+                </div>
+              </details>
+
               <div id="margin-panel">
+              <!-- 任务 36B：版心确认只留三件事——看四边、重置为本页自动、撤销。
+                   不再有「自拟合 / 自定义」模式选择，也没有折叠的「检测」按钮：
+                   进这一步时，没有拟合框的页会自动拟合。 -->
               <details class="panel__group" id="panel-margin-settings" data-panel="margin">
                 <summary><strong>版心</strong><span class="muted" id="margin-confidence"></span></summary>
                 <div class="panel__body">
-                  <div class="margin-mode-cards" id="margin-modes"></div>
-                  <div id="margin-selection" hidden>
-                    <div class="margin-current" id="margin-page-state"></div>
+                  <div class="margin-step">
+                    <div class="margin-step__head">
+                      <strong id="margin-page-state">未选择页面</strong>
+                      <span class="margin-step__badge" id="margin-page-badge" hidden></span>
+                    </div>
                     <div class="margin-edges" id="margin-edges"></div>
                     <div class="hint" id="margin-basis"></div>
-                    <div class="row2" id="margin-page-actions"></div>
-                  </div>
-                  <div id="margin-batch" hidden>
-                    <div class="flabel">来源分布</div>
-                    <div class="hint" id="margin-batch-count"></div>
-                    <div class="margin-mode-cards" id="margin-batch-modes"></div>
-                  </div>
-                  <div class="hint" id="margin-audit" hidden></div>
 
-                  <details class="panel__subdetails" id="prepare-panel">
-                    <summary>检测并定版心（可选）<span class="muted" id="layout-status">还没检测</span></summary>
-                    <p class="hint">已有检测行的页只拟合版心；没有的页先检测。进度与失败沿用任务机制。</p>
-                    <div class="row2">
-                      <button type="button" id="layout-detect-selected" class="btn">准备所选页</button>
-                      <button type="button" id="layout-detect-body" class="btn">检测全部正文页</button>
+                    <div class="margin-fit" id="margin-fit-progress" hidden>
+                      <div class="progress__bar"><div class="progress__fill" id="margin-fit-fill"></div></div>
+                      <div class="progress__text" id="margin-fit-text"></div>
                     </div>
-                    <div class="hint" id="layout-hint">版心不依赖识别；检测与拟合都不改文字。</div>
-                  </details>
 
-                  <div class="panel__bookrow">
-                    <span>全书…</span>
-                    <button type="button" id="margin-fit-all">全部改为每页自动拟合</button>
-                    <button type="button" id="margin-suggest" title="从全书的行框推算一个默认版心，只给显式「沿用全局」的页">推算默认</button>
-                  </div>
+                    <div class="margin-step__actions" id="margin-page-actions"></div>
+                    <button type="button" id="margin-next" class="btn btn--block btn--sm" hidden>下一页 ›</button>
 
-                  <details class="panel__subdetails" id="margin-global-details">
-                    <summary>默认版心（只给「沿用全局」的页）</summary>
-                    <div class="margin-current" id="margin-global"></div>
-                    <div id="margin-suggestion" hidden>
-                      <div class="margin-suggestion__title" id="margin-suggestion-title"></div>
-                      <div class="margin-suggestion__edges" id="margin-suggestion-edges"></div>
-                      <div class="margin-suggestion__spread" id="margin-suggestion-spread"></div>
-                      <p class="hint" id="margin-suggestion-note" hidden></p>
-                      <div class="row2">
-                        <button type="button" id="margin-apply-suggestion" class="btn btn--pri">采用为默认版心</button>
-                        <button type="button" id="margin-dismiss-suggestion" class="btn">收起</button>
-                      </div>
-                    </div>
+                    <div class="hint" id="margin-audit" hidden></div>
                     <div class="hint" id="margin-status" hidden></div>
-                  </details>
+                    <div class="hint" id="margin-default"></div>
+                    <button type="button" id="margin-detect-missing" class="btn btn--block btn--sm" hidden>
+                      检测这些页的正文行…
+                    </button>
+                  </div>
                 </div>
               </details>
               </div>
@@ -279,6 +277,17 @@
                   <button type="button" id="page-number-review-open" class="btn btn--block" hidden>核对异常…</button>
                   <p class="hint">未定位也能导出；预检会提示，manifest 会记录。</p>
                   <div class="hint" id="page-number-status" hidden></div>
+                </div>
+              </details>
+
+              <!-- 任务 36B：文字识别这一步先给状态与差异数字（只读，不在这里做裁决）。 -->
+              <details class="panel__group" id="panel-recognition-status" data-panel="recognition-status">
+                <summary><strong>识别状态</strong><span class="muted" id="rec-status-summary"></span></summary>
+                <div class="panel__body">
+                  <div class="panel__metrics" id="rec-status-metrics"></div>
+                  <p class="hint" id="rec-status-note">
+                    差异（汉字级 / 标点级）在这里只作数字；逐条裁决在「正文审校」。
+                  </p>
                 </div>
               </details>
 
