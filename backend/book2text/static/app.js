@@ -102,6 +102,21 @@ const VIEWS = ["library", "pages", "review", "merge"];
 
 let currentView = "library";
 
+// 任务 36A：工作流外壳。步骤条只显示有真实数据的五步；目录确认 / 结果预览
+// 数据与功能都还没做，不摆出来（不显示无法执行的步骤）。
+const WORKFLOW_STEPS = [
+  { id: "pages", label: "页面确认", short: "页面" },
+  { id: "margin", label: "版心确认", short: "版心" },
+  { id: "recognition", label: "文字识别", short: "识别" },
+  { id: "review", label: "正文审校", short: "审校" },
+  { id: "export", label: "文件导出", short: "导出" },
+];
+const PAGE_WORKFLOW_STEPS = ["pages", "margin", "recognition"];
+let workflowStep = null;
+let workflowStepPinned = false;
+let projectSummary = null;
+let projectExports = [];
+
 function showView(name) {
   if (!VIEWS.includes(name)) return;
   // 没有打开项目时，只有项目库是可达的
@@ -112,9 +127,9 @@ function showView(name) {
   el("topbar-library").hidden = target !== "library";
   el("topbar-project").hidden = target === "library";
   el("review-pager").hidden = target !== "review";
-  for (const button of el("view-tabs").querySelectorAll("[data-view-btn]")) {
-    button.classList.toggle("is-on", button.dataset.viewBtn === target);
-  }
+  // 换视图 = 当前步骤回落到该视图的默认步；用户点步骤条时才锁定。
+  workflowStepPinned = false;
+  syncWorkflowSteps();
   if (target !== "review") closeTaskDrawer();
   if (target === "pages" && currentProject) {
     // 回到页面视图时以数据库为准重拉一次：确认进度与类型不在前端缓存里说了算
@@ -127,6 +142,210 @@ function showView(name) {
     pageTileMetrics = null;
     schedulePageVisibility();
   }
+}
+
+/**
+ * 任务 36A：某一步的完成 / 失败 / 微计数。**只读收尾面板与质量统计的现成数据**，
+ * 不另算一套：
+ * - 页面：finish-summary.page_type.complete
+ * - 版心：finish-summary.margin.complete && undetermined=0（后端按 mode 判定，
+ *   custom 页即使 margin_box_method=NULL 也算已定）
+ * - 识别：主引擎 recognized(+has_candidate) = 正文页数、failed=0、第二引擎 checked=total
+ *   **不看差异处理进度**，也不看空文本行（458 条空文本不影响这一步）
+ * - 审校：needs_human=0 且 auto_passable=0 且版面 remaining=0
+ * - 导出：至少一条 succeeded 的导出记录
+ */
+function stepProgress(id) {
+  const fs = finishSummary;
+  const ps = projectSummary;
+  let done = false;
+  let failed = 0;
+  let failedText = "";
+  let count = "—";
+  let detail = "读取中…";
+  if (id === "pages") {
+    if (fs) {
+      const p = fs.page_type || {};
+      done = Boolean(p.complete);
+      count = `${p.confirmed || 0}/${p.total || 0}`;
+      detail = `页面类型已确认 ${count}`;
+    }
+  } else if (id === "margin") {
+    if (fs) {
+      const m = fs.margin || {};
+      done = Boolean(m.complete) && Number(m.undetermined || 0) === 0;
+      count = `${m.set || 0}/${m.total || 0}`;
+      detail =
+        `版心已定 ${count}` +
+        (m.fallback ? ` · ${m.fallback} 页本页包围盒兜底` : "") +
+        (m.undetermined ? ` · ${m.undetermined} 页未定` : "");
+    }
+  } else if (id === "recognition") {
+    if (ps && fs) {
+      const p = ps.pages || {};
+      const engine = fs.engine || {};
+      const included = Number(p.included || 0);
+      const primary = Math.min(
+        included,
+        Number(p.recognized || 0) + Number(p.has_candidate || 0)
+      );
+      failed = Number(p.failed || 0);
+      const failedJobs = Number((ps.jobs || {}).failed || 0);
+      failedText = failed
+        ? `${failed} 页失败`
+        : failedJobs
+          ? `${failedJobs} 个任务失败`
+          : "";
+      if (!failed && failedJobs) failed = failedJobs;
+      const auxDone = Boolean(engine.complete);
+      done = included > 0 && primary >= included && failed === 0 && auxDone;
+      count = `${primary}/${included}`;
+      detail =
+        `主引擎 ${primary}/${included} · 第二引擎 ${engine.checked || 0}/${engine.total || 0}` +
+        (failedText ? ` · ${failedText}` : "");
+    }
+  } else if (id === "review") {
+    if (fs) {
+      const r = fs.review || {};
+      const layout = fs.layout || {};
+      const needs = Number(r.needs_human || 0);
+      const passable = Number(r.auto_passable || 0);
+      const layoutLeft = Number(layout.remaining || 0);
+      done = needs === 0 && passable === 0 && layoutLeft === 0;
+      count = needs ? `剩 ${needs} 页` : passable ? `可自动通过 ${passable} 页` : "已确认";
+      detail =
+        `待人工 ${needs} 页 · 可直接通过 ${passable} 页 · 版面未确认 ${layoutLeft} 页`;
+    }
+  } else if (id === "export") {
+    const succeeded = (projectExports || []).filter(
+      (record) => record.status === "succeeded"
+    );
+    done = succeeded.length > 0;
+    count = `${succeeded.length} 次`;
+    const latest = succeeded[0];
+    detail = latest
+      ? `已成功导出 ${succeeded.length} 次 · 最近 ${latest.created_at.slice(0, 16).replace("T", " ")}`
+      : "还没有成功导出";
+  }
+  return { done, failed, failedText, count, detail };
+}
+
+function autoWorkflowStep() {
+  if (!currentProject) return null;
+  const exportOpen = el("export-panel") && !el("export-panel").hidden;
+  if (exportOpen) return "export";
+  if (currentView === "review") return "review";
+  if (currentView !== "pages") return "review";
+  for (const id of PAGE_WORKFLOW_STEPS) {
+    if (!stepProgress(id).done) return id;
+  }
+  return "recognition";
+}
+
+/** 画步骤条（五步；目录确认 / 结果预览等有数据再加）。 */
+function syncWorkflowSteps() {
+  const nav = el("workflow-steps");
+  if (!nav) return;
+  const current = el("workflow-current");
+  const hasProject = Boolean(currentProject);
+  nav.hidden = !hasProject;
+  if (current) current.hidden = !hasProject;
+  if (!hasProject) {
+    nav.innerHTML = "";
+    if (current) current.textContent = "";
+    return;
+  }
+  if (!workflowStepPinned) workflowStep = autoWorkflowStep();
+  if (currentProject.kind === "package" && workflowStep === "export") {
+    workflowStep = "review";
+  }
+  nav.innerHTML = "";
+  const isPackage = currentProject.kind === "package";
+  const visible = WORKFLOW_STEPS.filter((step) => !(isPackage && step.id === "export"));
+  visible.forEach((step) => {
+    const index = WORKFLOW_STEPS.findIndex((item) => item.id === step.id);
+    const progress = stepProgress(step.id);
+    const isCurrent = workflowStep === step.id;
+    const failed = Number(progress.failed || 0) > 0;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "workflow-step";
+    button.dataset.workflowStep = step.id;
+    if (isCurrent) {
+      button.classList.add("is-current");
+      button.setAttribute("aria-current", "step");
+    }
+    if (failed) button.classList.add("is-failed");
+    else if (progress.done) button.classList.add("is-done");
+
+    const badge = document.createElement("span");
+    badge.className = "workflow-step__badge";
+    badge.textContent = failed ? "!" : progress.done ? "✓" : String(index + 1);
+
+    const name = document.createElement("span");
+    name.className = "workflow-step__name";
+    const full = document.createElement("span");
+    full.className = "workflow-step__full";
+    full.textContent = step.label;
+    const short = document.createElement("span");
+    short.className = "workflow-step__short";
+    short.textContent = step.short;
+    name.append(full, short);
+
+    const count = document.createElement("span");
+    count.className = "workflow-step__count";
+    count.textContent = failed
+      ? progress.failedText || `${progress.failed} 页失败`
+      : isCurrent
+        ? progress.count
+        : "";
+
+    button.title =
+      `${step.label} · ${failed ? "有失败" : progress.done ? "已完成" : "未完成"}` +
+      ` · ${progress.detail}`;
+    button.append(badge, name, count);
+    nav.append(button);
+  });
+
+  if (current) {
+    const step = WORKFLOW_STEPS.find((item) => item.id === workflowStep);
+    if (step) {
+      const index = WORKFLOW_STEPS.findIndex((item) => item.id === workflowStep) + 1;
+      current.textContent = `${index} ${step.label}`;
+    }
+  }
+}
+
+function goToWorkflowStep(id) {
+  if (!currentProject) return;
+  if (currentProject.kind === "package" && id === "export") return;
+  if (id === "export") {
+    openExportPanel();
+    return;
+  }
+  if (id === "review") {
+    showView("review");
+    ensureReviewPage();
+    savePosition("review", detailPageNo);
+  } else {
+    showView("pages");
+    savePosition("pages", detailPageNo);
+  }
+  // showView 会先把当前步回落到视图默认值；点步骤的意图在它之后锁定。
+  workflowStep = id;
+  workflowStepPinned = true;
+  syncWorkflowSteps();
+}
+
+/** 导出面板入口（原顶栏「导出」按钮，任务 36A 起由「文件导出」步骤取代）。 */
+async function openExportPanel() {
+  if (!currentProject) return;
+  workflowStep = "export";
+  workflowStepPinned = true;
+  syncWorkflowSteps();
+  openModal("export-panel");
+  await refreshExportPreflight();
+  await loadExports();
 }
 
 /** 打开一个对话框（.mask）。同一时刻允许多层，但退出键只关最上面一个。 */
@@ -145,7 +364,12 @@ function closeModal(id) {
     structureCandidates = [];
     el("structure-result").hidden = true;
   }
-  if (id === "export-panel") el("export-compare").hidden = true;
+  if (id === "export-panel") {
+    el("export-compare").hidden = true;
+    // 关掉导出面板 ≠ 还站在「文件导出」这一步：回到当前视图的默认步。
+    workflowStepPinned = false;
+    syncWorkflowSteps();
+  }
 }
 
 const openMasks = () => [...document.querySelectorAll(".mask")].filter((node) => !node.hidden);
@@ -170,15 +394,11 @@ function setupNewProjectModal() {
 
 function setupShell() {
   setupNewProjectModal();
-  for (const button of el("view-tabs").querySelectorAll("[data-view-btn]")) {
-    button.addEventListener("click", () => {
-      showView(button.dataset.viewBtn);
-      // 上次位置（说明书 7.2）：切到页面视图就记下"在页面视图"
-      savePosition(button.dataset.viewBtn, detailPageNo);
-      // 进审校视图总要有页可看：上次那一页 → 第一个没审完的页 → 第一页
-      if (button.dataset.viewBtn === "review") ensureReviewPage();
-    });
-  }
+  // 步骤条 = 唯一导航（任务 36A）：点步骤切到对应的现有视图。
+  el("workflow-steps").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-workflow-step]");
+    if (button) goToWorkflowStep(button.dataset.workflowStep);
+  });
   el("settings-open").addEventListener("click", () => openModal("settings-panel"));
   el("settings-close").addEventListener("click", () => closeModal("settings-panel"));
   el("stats-open").addEventListener("click", () => {
@@ -189,11 +409,7 @@ function setupShell() {
   el("structure-open").addEventListener("click", () => openModal("structure-panel"));
   el("structure-close").addEventListener("click", () => closeModal("structure-panel"));
   el("structure-cancel").addEventListener("click", () => closeModal("structure-panel"));
-  el("export-open").addEventListener("click", async () => {
-    openModal("export-panel");
-    await refreshExportPreflight();
-    await loadExports();
-  });
+
   el("export-close").addEventListener("click", () => closeModal("export-panel"));
   el("export-cancel").addEventListener("click", () => closeModal("export-panel"));
   el("package-result-close").addEventListener("click", () => closeModal("package-result"));
@@ -1088,7 +1304,9 @@ async function loadExports() {
   if (!currentProject) return;
   try {
     const data = await apiJson(`/api/projects/${currentProject.project_id}/exports`);
-    renderExportHistory(data.exports);
+    projectExports = data.exports || [];
+    renderExportHistory(projectExports);
+    syncWorkflowSteps();
   } catch (error) {
     showError(el("export-error"), error);
   }
@@ -1755,6 +1973,7 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     el("export-include-notes").checked = false;
     await refreshProject(projectId);
     applyProjectSettings();
+    syncWorkflowSteps();
     await loadAutoApplyStatus();
     pagesOverlayOn = loadPageOverlayPreference();
     pagesMarginOn = loadPageMarginPreference();
@@ -1816,6 +2035,9 @@ async function refreshProject(projectId) {
   await loadExports();
   // 质量统计（说明书 8.5 / 13.4）：数字多、算起来比页面列表重，单独一个请求拿
   await loadSummary();
+  // 步骤条需要收尾面板与导出记录；这里补一次，避免只在页面视图里才加载
+  await loadFinishSummary({ silent: true });
+  syncWorkflowSteps();
   // 审校包项目（助手端）：横幅、隐藏不该有的功能、显示"导出审校结果"
   await applyPackageMode();
 }
@@ -1844,7 +2066,9 @@ async function loadSummary() {
   } catch {
     return; // 摘要读不到不该影响主流程
   }
+  projectSummary = data;
   renderSummary(data);
+  syncWorkflowSteps();
 }
 
 function renderSummary(data) {
@@ -9808,6 +10032,7 @@ async function loadFinishSummary({ silent = false } = {}) {
     finishSummaryProject = currentProject.project_id;
     updateFinishChips();
     renderFinishPanel();
+    syncWorkflowSteps();
   } catch (error) {
     if (!silent) showError(el("pages-error"), error);
   } finally {
@@ -10177,7 +10402,7 @@ function finishStartReview() {
 
 function finishOpenExport() {
   closeFinishPanel();
-  openModal("export-panel");
+  openExportPanel();
 }
 
 function setupReviewControls() {
@@ -10360,6 +10585,10 @@ async function closeProject() {
   if (marginNotice) marginNotice.hidden = true;
   finishSummary = null;
   finishSummaryProject = null;
+  projectSummary = null;
+  projectExports = [];
+  workflowStep = null;
+  workflowStepPinned = false;
   updateFinishChips();
   workflowByPageId = new Map();
   workflowSummary = null;
@@ -11221,7 +11450,6 @@ async function applyPackageMode() {
     el("package-banner").hidden = true;
     el("package-open").hidden = true;
     closeModal("package-result");
-    el("export-open").hidden = false;
     el("structure-open").hidden = false;
     el("selection-recognize").hidden = false;
     el("selection-actionbar").hidden = false;
@@ -11235,10 +11463,10 @@ async function applyPackageMode() {
     el("page-setup-bar").hidden = false;
     el("assign-list-toggle").hidden = false;
     el("assign-open").hidden = false;
+    syncWorkflowSteps();
     return;
   }
 
-  el("export-open").hidden = true;          // 助手不能导出 TXT / JSONL
   el("package-open").hidden = false;        // 但能导出审校结果包
   el("structure-open").hidden = true;       // 也没有页眉页脚工具
   el("assign-list-toggle").hidden = true;   // 助手不派活给别人
@@ -11253,6 +11481,7 @@ async function applyPackageMode() {
   el("panel-recognition-settings").hidden = true;  // 任务包不做识别
   el("panel-pagenum-settings").hidden = true;      // 任务包也不改页码映射
   el("page-setup-bar").hidden = true;
+  syncWorkflowSteps();
   el("detail-recognize").hidden = true;
   el("aux-run").hidden = true;
 

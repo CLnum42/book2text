@@ -128,14 +128,71 @@ code { font-size: 12px; background: var(--surface-3); padding: 0 4px; border-rad
 }
 .icon-btn:hover { background: var(--surface-3); color: var(--text); }
 
-.tabs { display: flex; background: #f0f1f3; border-radius: 8px; padding: 3px; gap: 2px; }
-.tabs .tab {
-  border: 0; background: none; cursor: pointer; font: inherit;
-  padding: 4px 16px; border-radius: 6px; font-size: 13px; color: var(--muted);
+/* ─────────────────────────── 工作流步骤条（任务 36A） ───────────────────────────
+   五步：页面确认 / 版心确认 / 文字识别 / 正文审校 / 文件导出。
+   完成 = 绿✓；当前 = 蓝底加粗 + 左侧竖条；未开始 = 灰数字；失败 = 红 ! + 数量。
+   颜色之外都有图标 / 数字 / 文字，色盲也能区分。 */
+.workflow-steps { display: flex; align-items: stretch; min-width: 0; height: 100%; overflow: hidden; }
+.workflow-step {
+  position: relative; border: 0; background: none; cursor: pointer; font: inherit;
+  display: flex; align-items: center; gap: 7px; height: 100%; padding: 0 10px;
+  color: var(--muted); white-space: nowrap; flex: none;
 }
-.tabs .tab.is-on {
-  background: var(--surface); color: var(--text); font-weight: 600;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, .1);
+.workflow-step + .workflow-step::before {
+  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 1px; height: 20px; background: var(--line-soft);
+}
+.workflow-step:hover { background: var(--surface-3); }
+.workflow-step__badge {
+  width: 18px; height: 18px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10.5px; font-weight: 700; line-height: 1;
+  background: var(--surface-3); color: var(--faint); border: 1px solid var(--line);
+}
+.workflow-step__name { font-size: 12.5px; }
+.workflow-step__short { display: none; }
+.workflow-step__count { display: none; font-size: 10.5px; color: var(--faint); font-weight: 500; }
+.workflow-step.is-current .workflow-step__count,
+.workflow-step.is-failed .workflow-step__count { display: inline; }
+.workflow-step.is-done { color: var(--ok-text); }
+.workflow-step.is-done .workflow-step__badge {
+  background: var(--ok); border-color: var(--ok); color: #fff;
+}
+.workflow-step.is-done:not(.is-current)::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 5px;
+  height: 2px; border-radius: 1px; background: var(--ok); opacity: .45;
+}
+.workflow-step.is-failed { color: var(--bad-text); }
+.workflow-step.is-failed .workflow-step__badge {
+  background: var(--bad); border-color: var(--bad); color: #fff;
+}
+.workflow-step.is-failed .workflow-step__count { color: var(--bad-text); }
+.workflow-step.is-current {
+  background: var(--accent-soft); color: var(--accent-text); font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.workflow-step.is-current .workflow-step__badge {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.workflow-step.is-current.is-failed .workflow-step__badge {
+  background: var(--bad); border-color: var(--bad);
+}
+.workflow-current {
+  display: none; align-items: center; gap: 6px; min-width: 0;
+  font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+@media (max-width: 1319px) {
+  .workflow-step__full { display: none; }
+  .workflow-step__short { display: inline; }
+  .workflow-step { padding: 0 8px; }
+}
+@media (max-width: 1119px) {
+  .workflow-step__name, .workflow-step__count { display: none !important; }
+  .workflow-step { padding: 0 6px; gap: 0; }
+  .workflow-step.is-done:not(.is-current)::after { display: none; }
+  .workflow-current { display: inline-flex; }
+  .proj { max-width: 110px; }
 }
 .save { font-size: 12px; color: var(--ok-text); white-space: nowrap; }
 
@@ -167,6 +224,13 @@ code { font-size: 12px; background: var(--surface-3); padding: 0 4px; border-rad
 }
 .noticebar--info { background: var(--accent-soft); color: var(--accent-text); border-color: #d7e4fd; }
 .noticebar--warn { background: var(--warn-soft); color: #92600a; border-color: #f3e3bd; }
+
+/* 工作区工具条（任务 36A）：分页器从顶栏搬到这里，之后缩放 / 筛选也统一放这里。 */
+.workspace-toolbar {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.workspace-toolbar__label { font-size: 11.5px; color: var(--faint); }
 
 /* ─────────────────────────────── 工作区 / 视图 ─────────────────────────────── */
 

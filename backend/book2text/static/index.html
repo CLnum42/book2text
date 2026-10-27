@@ -26,31 +26,13 @@
         <button type="button" id="project-close" class="icon-btn" title="回到项目库">‹</button>
         <span class="proj" id="project-title">项目</span>
         <span class="chip chip--blue" id="package-chip" hidden>审校任务</span>
-        <div class="vdiv"></div>
-        <div class="tabs" id="view-tabs">
-          <button type="button" class="tab" data-view-btn="pages">页面</button>
-          <button type="button" class="tab" data-view-btn="review">审校</button>
-        </div>
-        <button type="button" id="export-open" class="btn">导出</button>
-        <button type="button" id="package-open" class="btn btn--pri" hidden>导出审校结果</button>
-        <div class="vdiv"></div>
-        <div class="pager" id="review-pager" hidden>
-          <button type="button" id="review-prev" class="btn btn--sm" title="上一页">◀</button>
-          <span class="pager__no" id="review-page-no">—</span>
-          <button type="button" id="review-next" class="btn btn--sm" title="下一页">▶</button>
-          <button type="button" id="review-jump" class="btn btn--sm">跳转</button>
-          <select id="review-jump-filter" class="select select--sm" title="在哪些页面之间翻">
-            <option value="">全部页</option>
-            <option value="todo">还没审完</option>
-            <option value="uncertain">有不确定块</option>
-            <option value="failed">识别失败</option>
-            <option value="candidate">有待选新结果</option>
-            <option value="layout_unconfirmed">版面未确认</option>
-            <option value="divergence_chars">有分歧（汉字级）</option>
-            <option value="divergence">有分歧（含标点级）</option>
-          </select>
-        </div>
+
+        <!-- 任务 36A：七步工作流的导航外壳；本轮只显示有真实数据的五步。 -->
+        <nav class="workflow-steps" id="workflow-steps" aria-label="项目工作流步骤"></nav>
+        <span class="workflow-current" id="workflow-current" hidden></span>
+
         <span class="spacer"></span>
+        <button type="button" id="package-open" class="btn btn--pri" hidden>导出审校结果</button>
         <span class="save" id="review-save-state"></span>
         <button type="button" id="task-chip" class="tpill" hidden>任务</button>
       </div>
@@ -381,6 +363,26 @@
 
       <!-- ─────────────────────────── 视图：审校 ─────────────────────────── -->
       <section class="view view--review" id="view-review" hidden>
+        <!-- 工作区工具条（任务 36A）：分页器从顶栏搬到这里，顶栏腾给步骤条。 -->
+        <div class="workspace-toolbar" id="review-toolbar">
+          <span class="workspace-toolbar__label">审校页</span>
+          <div class="pager" id="review-pager">
+            <button type="button" id="review-prev" class="btn btn--sm" title="上一页">◀</button>
+            <span class="pager__no" id="review-page-no">—</span>
+            <button type="button" id="review-next" class="btn btn--sm" title="下一页">▶</button>
+            <button type="button" id="review-jump" class="btn btn--sm">跳转</button>
+            <select id="review-jump-filter" class="select select--sm" title="在哪些页面之间翻">
+              <option value="">全部页</option>
+              <option value="todo">还没审完</option>
+              <option value="uncertain">有不确定块</option>
+              <option value="failed">识别失败</option>
+              <option value="candidate">有待选新结果</option>
+              <option value="layout_unconfirmed">版面未确认</option>
+              <option value="divergence_chars">有分歧（汉字级）</option>
+              <option value="divergence">有分歧（含标点级）</option>
+            </select>
+          </div>
+        </div>
         <div class="alert alert--error" id="page-detail-error" hidden></div>
         <div class="alert alert--warn" id="page-detail-warning" hidden></div>
         <div class="noticebar noticebar--info" id="review-banner" hidden></div>
