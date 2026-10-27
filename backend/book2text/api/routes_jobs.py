@@ -26,6 +26,7 @@ from ..core.project import executor as executor_module
 from ..core.project import jobs as jobs_module
 from ..core.project import library as project_library
 from ..core.project import recognition
+from ..core.project import workflow as workflow_module
 from .deps import library_dir as _library
 from .deps import page_payload, project_error as _project_error
 from .deps import require_main_project as _require_main
@@ -107,12 +108,23 @@ def _page_payloads(
     states = blocks_module.page_recognition_states(project_id, library=library)
     reviews = blocks_module.page_review_states(project_id, library=library)
     divergences = blocks_module.page_divergences(project_id, library=library)
+    try:
+        layout_lines = workflow_module.layout_line_counts(project_id, library=library)
+    except Exception:  # noqa: BLE001 - 老库没有检测表：按"还没检测"处理
+        layout_lines = {}
+    try:
+        text_lines = workflow_module.text_line_counts(project_id, library=library)
+    except Exception:  # noqa: BLE001 - 只影响"有没有行可拟合"的提示
+        text_lines = {}
     return [
         page_payload(
             page,
             states.get(page.page_id),
             reviews.get(page.page_id),
             divergences.get(page.page_id),
+            None,
+            layout_lines.get(page.page_id, 0),
+            text_lines.get(page.page_id, 0),
         )
         for page in project_library.list_pages(project_id, library=library)
         if page.page_id in page_ids

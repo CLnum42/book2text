@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>版心确认 / 文字识别 · 三态与三档宽度（静态设计稿）</title>
+<style>
+:root{
+  --bg:#f3f4f6;--surface:#fff;--surface-2:#fafbfc;--surface-3:#f7f8fa;--paper:#f8f6f0;
+  --line:#e2e4e8;--line-soft:#eef0f2;--line-strong:#d0d3d9;
+  --text:#1f2329;--text-2:#33383f;--muted:#646a73;--faint:#9aa0a8;
+  --accent:#2563eb;--accent-hover:#1d4ed8;--accent-soft:#eef4ff;--accent-text:#1d4ed8;
+  --ok:#16a34a;--ok-text:#15803d;--ok-soft:#e9f7ee;
+  --warn:#d97706;--warn-text:#b45309;--warn-soft:#fdf3e0;
+  --bad:#dc2626;--bad-text:#b91c1c;--bad-soft:#fdecec;
+  --margin:#0b5f58;--margin-custom:#6d28d9;--margin-bbox:#b45309;
+  --radius:8px;
+  --shadow-page:0 2px 14px rgba(16,24,40,.18),0 1px 3px rgba(16,24,40,.12);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:#e9eaee;color:var(--text);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;overflow:hidden}
+b,strong{font-weight:600}
+button{font:inherit;color:inherit}
+[hidden]{display:none!important}
+
+/* 稿子外层的切换条：截图时加 ?embed=1 隐藏 */
+.ctl{height:36px;display:flex;align-items:center;gap:14px;padding:0 14px;background:#1f2329;color:#dfe3e8;font-size:12px;flex:none}
+.ctl strong{color:#fff}
+.ctl__group{display:flex;gap:4px;align-items:center}
+.ctl__group span{color:#9aa3ae;margin-right:2px}
+.ctl button{height:24px;padding:0 9px;border:1px solid rgba(255,255,255,.18);border-radius:5px;background:rgba(255,255,255,.06);color:#dfe3e8;font-size:11.5px;cursor:pointer}
+.ctl button.on{background:#2563eb;border-color:#2563eb;color:#fff}
+.ctl__hint{margin-left:auto;color:#9aa3ae}
+body.embed .ctl{display:none}
+body.embed .app{height:100%}
+.app{height:calc(100% - 36px);display:flex;flex-direction:column;background:var(--bg)}
+
+/* ───────────────────────── 顶栏 ───────────────────────── */
+.topbar{height:48px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--surface);border-bottom:1px solid var(--line);position:relative;z-index:20}
+.back{width:22px;height:22px;flex:none;display:grid;place-items:center;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--faint);font-size:12px}
+.proj{font-size:13px;font-weight:600;max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+.steps{display:flex;align-items:center;min-width:0;height:34px}
+.step{position:relative;display:flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:0;background:none;font-size:12.5px;color:var(--muted);white-space:nowrap;cursor:pointer}
+.step+.step::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:1px;background:var(--line-soft)}
+.step__no{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:10.5px;background:var(--surface-3);color:var(--faint);border:1px solid var(--line);flex:none;font-variant-numeric:tabular-nums}
+.step__short{display:none}
+.step__count{font-size:10.5px;color:var(--faint);margin-left:1px;font-variant-numeric:tabular-nums}
+.step.is-done{color:var(--ok-text)}
+.step.is-done .step__no{background:var(--ok);border-color:var(--ok);color:#fff}
+.step.is-done::after{content:"";position:absolute;left:10px;right:10px;bottom:1px;height:2px;background:var(--ok);border-radius:1px}
+.step.is-current{background:var(--accent-soft);border-radius:7px;color:var(--accent-text);font-weight:600}
+.step.is-current::before{display:none}
+.step.is-current .step__no{background:var(--accent);border-color:var(--accent);color:#fff}
+.step.is-warn .step__no{background:var(--warn-soft);border-color:#eed9b8;color:var(--warn-text);font-weight:700}
+.step-dots{display:none;align-items:center;gap:4px;margin-left:6px}
+.step-dots i{width:6px;height:6px;border-radius:50%;background:#d5d9e0}
+.step-dots i.done{background:#a9d8b7}
+.step-dots i.cur{width:7px;height:7px;background:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.16)}
+.topright{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+.save{font-size:11.5px;color:var(--ok-text);white-space:nowrap}
+.tpill{height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border:1px solid var(--line-strong);border-radius:13px;background:var(--surface);font-size:11.5px;color:var(--text-2);white-space:nowrap}
+.tpill b{font-variant-numeric:tabular-nums}
+.tpill .pulse{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.14)}
+
+@media (max-width:1319px){
+  .step__full{display:none}.step__short{display:inline}
+  .step{padding:0 7px}
+  .proj{max-width:150px}
+}
+@media (max-width:1119px){
+  .step{display:none}
+  .step.is-current{display:flex}
+  .step.is-current .step__full{display:inline}
+  .step.is-current .step__short{display:none}
+  .step-dots{display:flex}
+  .proj{max-width:110px}
+  .save{display:none}
+}
+
+/* ───────────────────────── 状态条：本步唯一的主操作位置 ───────────────────────── */
+.statusbar{height:56px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--line)}
+.state{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:6px;font-size:11.5px;font-weight:600;border:1px solid var(--line);background:var(--surface-3);color:var(--muted);flex:none;white-space:nowrap}
+.state__dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.75}
+.state--blue{background:var(--accent-soft);border-color:#c9dafb;color:var(--accent-text)}
+.state--blue .state__dot{opacity:1;animation:pulse 1.6s ease-in-out infinite}
+.state--warn{background:var(--warn-soft);border-color:#efd8b5;color:var(--warn-text)}
+.state--ok{background:var(--ok-soft);border-color:#bfe6cb;color:var(--ok-text)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.statusbar__main{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.statusbar__sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.statusbar__sub::before{content:"·";margin-right:8px;color:var(--line-strong)}
+.statusbar__progress{display:flex;align-items:center;gap:8px;flex:none}
+.inlinebar{width:132px;height:6px;border-radius:3px;background:#e7eaf0;overflow:hidden;flex:none}
+.inlinebar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.inlinecount{font-size:11.5px;color:var(--text-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.statusbar__actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+@media (max-width:1119px){
+  .statusbar{padding:0 12px;gap:8px}
+  .statusbar__sub{display:none}
+  .statusbar__main{font-size:12.5px}
+  .inlinebar{width:96px}
+}
+@media (max-width:1000px){
+  .statusbar__main{max-width:280px}
+}
+
+/* ───────────────────────── 按钮 ───────────────────────── */
+.btn{height:28px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 10px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface);color:var(--text-2);font-size:12px;white-space:nowrap;cursor:pointer}
+.btn:hover{background:var(--surface-2)}
+.btn--pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn--pri:hover{background:var(--accent-hover)}
+.btn--sm{height:24px;padding:0 8px;font-size:11.5px}
+.btn--ghost{border-color:transparent;background:none;color:var(--accent-text);padding:0 4px}
+.btn--danger{color:var(--bad-text)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn[disabled]{opacity:.5;cursor:default}
+
+/* ───────────────────────── 工作区 ───────────────────────── */
+.main{flex:1;min-height:0;display:flex}
+.canvas{flex:1;min-width:0;display:flex;flex-direction:column;background:#e9eaee}
+.ctools{height:40px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--surface);border-bottom:1px solid var(--line-soft)}
+.pager{display:flex;align-items:center;gap:4px;flex:none}
+.pager__btn{width:26px;height:26px;display:grid;place-items:center;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--text-2);font-size:12px;cursor:pointer}
+.pager__no{font-size:12px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;margin:0 2px}
+.pager__no span{color:var(--faint);font-weight:400}
+.ctools .vdiv{width:1px;height:18px;background:var(--line);margin:0 2px;flex:none}
+.zoom{display:flex;align-items:center;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:none}
+.zoom button{height:26px;padding:0 8px;border:0;background:var(--surface);color:var(--muted);font-size:11.5px;cursor:pointer;border-left:1px solid var(--line)}
+.zoom button:first-child{border-left:0}
+.zoom button.on{background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.ctools .spacer{flex:1}
+.zoom-compact{display:none}
+@media (max-width:1119px){
+  .zoom{display:none}
+  .zoom-compact{display:inline-flex}
+  .ctools .ctools__badge{display:none!important}
+  .ctools__filter{display:none!important}
+  .pager__jump{display:none!important}
+  .ctools{gap:6px;padding:0 10px}
+}
+.ghost-toggle{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-size:11.5px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.ghost-toggle.on{background:var(--accent-soft);border-color:#c9dafb;color:var(--accent-text)}
+.ghost-toggle input{margin:0}
+.cstage{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;justify-content:center;align-items:flex-start}
+.cstage::-webkit-scrollbar{width:8px;height:8px}
+.cstage::-webkit-scrollbar-thumb{background:rgba(15,18,24,.16);border-radius:4px}
+
+/* ───────────────────────── 右栏 ───────────────────────── */
+.rail{width:300px;flex:none;border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+.rail__body{flex:1;min-height:0;overflow:auto}
+.rail__body::-webkit-scrollbar{width:8px}
+.rail__body::-webkit-scrollbar-thumb{background:rgba(15,18,24,.14);border-radius:4px}
+.rail__sec{padding:10px 12px 11px;border-bottom:1px solid var(--line-soft)}
+.rail__h{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--faint);margin:0 0 7px;letter-spacing:.2px}
+.rail__h .more{margin-left:auto;font-size:11px;font-weight:400;color:var(--accent-text);cursor:pointer;background:none;border:0;padding:0}
+.rail__foot{flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line);background:var(--surface-2);font-size:11px;color:var(--faint)}
+.rail__foot .spacer{flex:1}
+.linkish{background:none;border:0;padding:0;color:var(--accent-text);font-size:11.5px;cursor:pointer}
+.linkish:hover{text-decoration:underline}
+@media (max-width:1319px){.rail{width:288px}}
+@media (max-width:1119px){.rail{width:272px}}
+
+/* 三步小导轨：把「检测 → 拟合 → 抽查」的依赖画出来 */
+.msteps{display:flex;flex-direction:column;gap:1px}
+.mstep{display:flex;align-items:flex-start;gap:9px;padding:6px 7px 6px 6px;border-radius:6px;position:relative}
+.mstep.is-current{background:var(--accent-soft)}
+.mstep__no{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--surface-3);color:var(--faint);margin-top:1px}
+.mstep.is-done .mstep__no{background:var(--ok);border-color:var(--ok);color:#fff}
+.mstep.is-current .mstep__no{background:var(--accent);border-color:var(--accent);color:#fff}
+.mstep.is-warn .mstep__no{background:var(--warn-soft);border-color:#efd8b5;color:var(--warn-text)}
+.mstep__main{min-width:0;flex:1}
+.mstep__t{display:flex;align-items:baseline;gap:6px;font-size:12.5px;font-weight:600;color:var(--text-2);line-height:1.35}
+.mstep.is-current .mstep__t{color:var(--accent-text)}
+.mstep__badge{margin-left:auto;font-size:10.5px;font-weight:400;color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mstep.is-current .mstep__badge{color:var(--accent-text)}
+.mstep.is-warn .mstep__badge{color:var(--warn-text);font-weight:600}
+.mstep.is-done .mstep__badge{color:var(--ok-text)}
+.mstep__s{font-size:11px;color:var(--muted);line-height:1.5;margin-top:1px}
+.mstep__bar{height:4px;border-radius:2px;background:#e7eaf0;overflow:hidden;margin-top:5px}
+.mstep__bar i{display:block;height:100%;background:var(--accent);border-radius:2px}
+
+/* 小卡片 / 键值 */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:11.5px;line-height:1.55}
+.kv dt{color:var(--faint);white-space:nowrap}
+.kv dd{margin:0;color:var(--text-2);font-variant-numeric:tabular-nums}
+.edges{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin:6px 0 7px;font-size:11.5px;color:var(--muted)}
+.edges div{display:flex;justify-content:space-between;gap:6px;border-bottom:1px dashed var(--line-soft);padding-bottom:3px}
+.edges b{color:var(--text);font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:4px;height:19px;padding:0 6px;border-radius:4px;font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--surface-3);color:var(--muted);white-space:nowrap;vertical-align:1px}
+.chip--ok{background:var(--ok-soft);border-color:#c6e8d0;color:var(--ok-text)}
+.chip--warn{background:var(--warn-soft);border-color:#efd8b5;color:var(--warn-text)}
+.chip--blue{background:var(--accent-soft);border-color:#c9dafb;color:var(--accent-text)}
+.chip--dash{border-style:dashed;background:transparent;color:var(--faint)}
+.rowline{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2);line-height:1.6}
+.rowline .spacer{flex:1}
+.note{font-size:11px;line-height:1.6;color:var(--muted);margin:7px 0 0}
+.note b{color:var(--text-2)}
+.undet-list{font-size:11px;color:var(--muted);line-height:1.7;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.undet-list b{color:var(--warn-text);font-weight:600}
+.btnrow{display:flex;gap:6px;margin-top:8px}
+.btnrow .btn{flex:1;min-width:0}
+.btn--block{width:100%;margin-top:8px}
+.segbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:#e7eaf0;margin:6px 0 5px}
+.segbar i{display:block;height:100%}
+.segbar .ok{background:var(--ok)}
+.segbar .warn{background:var(--warn)}
+
+/* ───────────────────────── PDF 页 ───────────────────────── */
+.scanpage{position:relative;width:330px;height:458px;flex:none;background:var(--paper);box-shadow:var(--shadow-page);overflow:hidden;color:#2b2e33;
+  font-family:"Songti SC","STSong","Noto Serif CJK SC",serif;font-size:10.5px;line-height:17px;text-align:justify}
+.scanpage::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(120% 80% at 20% 0%,rgba(255,255,255,.55),transparent 55%),
+  linear-gradient(180deg,rgba(120,105,80,.05),rgba(120,105,80,.015));pointer-events:none;z-index:1}
+.scanpage__head,.scanpage__foot{position:absolute;left:26px;right:26px;font:8.5px/1 -apple-system,"PingFang SC",sans-serif;color:#8b8a86;display:flex;justify-content:space-between;z-index:2}
+.scanpage__head{top:14px;padding-bottom:4px;border-bottom:1px solid rgba(0,0,0,.08)}
+.scanpage__foot{bottom:12px;padding-top:4px;border-top:1px solid rgba(0,0,0,.08)}
+.scanpage__body{position:absolute;left:14%;right:10%;top:8%;bottom:12%;z-index:2;overflow:hidden}
+.scanpage__body p{margin:0 0 3px;text-indent:2em}
+.scanpage__body p:first-child{text-indent:0}
+.scanpage__lines{position:absolute;left:0;right:0;top:0;bottom:0;z-index:3;pointer-events:none}
+
+/* 占位：未检测 */
+.margin-placeholder{position:absolute;left:14%;top:8%;right:10%;bottom:12%;border:1.5px dashed #9aa0a8;border-radius:2px;z-index:4;pointer-events:none}
+.margin-placeholder span{position:absolute;left:-1px;top:calc(100% + 5px);height:17px;display:inline-flex;align-items:center;padding:0 6px;border:1px dashed #b4b9c1;border-top:0;border-radius:0 0 4px 4px;background:rgba(248,246,240,.94);color:#7c828b;font:10px/1 -apple-system,"PingFang SC",sans-serif;white-space:nowrap}
+
+/* 检测中的行框 */
+.linebox{position:absolute;border:1px solid rgba(37,99,235,.28);border-radius:2px;background:rgba(37,99,235,.025)}
+.linebox.is-cur{border-color:rgba(37,99,235,.95);border-width:1.5px;background:rgba(37,99,235,.10);box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+
+
+/* 拟合后的版心：框外压暗（沿用产品 #0b5f58） */
+.marginbox{position:absolute;border:1.5px solid var(--margin);border-radius:2px;z-index:4;
+  box-shadow:0 0 0 1px rgba(255,255,255,.55),0 0 0 9999px rgba(15,18,24,.30)}
+.marginbox.is-bbox{border-color:var(--margin-bbox);border-style:dashed}
+.handle{position:absolute;background:rgba(15,118,110,.92);border:1px solid #fff;border-radius:3px;box-shadow:0 1px 2px rgba(15,18,24,.25);z-index:5}
+.h-n,.h-s{left:10px;right:10px;height:6px}
+.h-n{top:-4px}.h-s{bottom:-4px}
+.h-w,.h-e{top:10px;bottom:10px;width:6px}
+.h-w{left:-4px}.h-e{right:-4px}
+.h-nw,.h-ne,.h-sw,.h-se{width:11px;height:11px;border-radius:3px}
+.h-nw{top:-6px;left:-6px}.h-ne{top:-6px;right:-6px}
+.h-sw{bottom:-6px;left:-6px}.h-se{bottom:-6px;right:-6px}
+.page-tag{position:absolute;z-index:6;display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 7px;border-radius:5px;background:rgba(255,255,255,.96);border:1px solid var(--line-strong);box-shadow:0 1px 3px rgba(16,24,40,.12);font:10.5px/1 -apple-system,"PingFang SC",sans-serif;color:var(--text-2);white-space:nowrap}
+.page-tag--blue{border-color:#c9dafb;color:var(--accent-text);background:rgba(238,244,255,.97)}
+.page-tag--warn{border-color:#efd8b5;color:var(--warn-text);background:rgba(253,243,224,.97)}
+.page-corner{position:absolute;left:23%;top:6.5%;z-index:6;transform:translateY(-24px)}
+.page-corner--in{transform:translate(4px,4px)}
+
+/* 识别页网格 */
+.recwrap{width:100%;align-self:stretch}
+.recgrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;align-content:start}
+.rectile{border:1px solid var(--line);border-radius:6px;background:var(--surface);overflow:hidden;position:relative}
+.rectile.is-cur{border-color:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.18)}
+.rectile__paper{width:84px;height:116px;margin:8px auto 5px;background:var(--paper);position:relative;overflow:hidden;border-radius:2px;box-shadow:0 1px 3px rgba(16,24,40,.10)}
+.rectile__paper i{position:absolute;left:10%;right:10%;height:1.5px;background:rgba(35,38,43,.20);border-radius:1px}
+.rectile__paper i:nth-child(3n+1){right:22%}
+.rectile__foot{display:flex;align-items:center;gap:5px;padding:0 7px 7px;font-size:10.5px;color:var(--muted);white-space:nowrap}
+.rectile__no{font-weight:600;color:var(--text-2);font-variant-numeric:tabular-nums}
+.rectile__state{margin-left:auto;font-size:10px}
+.rectile__state.ok{color:var(--ok-text)}
+.rectile__state.bad{color:var(--bad-text)}
+.rectile__state.now{color:var(--accent-text);font-weight:600}
+.rectile__check{position:absolute;right:-4px;top:-4px;width:15px;height:15px;border-radius:50%;display:grid;place-items:center;font-size:9px;color:#fff;background:var(--ok);z-index:2}
+.rectile__ring{position:absolute;inset:4px;border:2px solid var(--accent);border-radius:5px;z-index:2;pointer-events:none}
+.rectile__ring::after{content:"识别中";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--accent);color:#fff;font-size:9.5px;line-height:16px;padding:0 6px;border-radius:3px;white-space:nowrap}
+.recgrid.is-narrow{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:1319px){.recgrid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media (max-width:1119px){.recgrid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}}
+</style>
+</head>
+<body>
+<div class="ctl" id="ctl">
+  <strong>静态设计稿</strong>
+  <span>版心确认 / 文字识别</span>
+  <div class="ctl__group"><span>场景</span>
+    <button data-scene="margin-A">版心 · 未检测</button>
+    <button data-scene="margin-B">版心 · 检测中</button>
+    <button data-scene="margin-C">版心 · 拟合完成</button>
+    <button data-scene="rec-A">识别 · 未开始</button>
+    <button data-scene="rec-B">识别 · 识别中</button>
+    <button data-scene="rec-C">识别 · 待复核</button>
+  </div>
+  <span class="ctl__hint">窗口拉到 1440 / 1120 / 960 宽，高度固定 628</span>
+</div>
+
+<div class="app" id="app"></div>
+
+<script>
+const PARAMS = new URLSearchParams(location.search);
+const SCENE = PARAMS.get("scene") || "margin-A";
+if (PARAMS.get("embed") === "1") document.body.classList.add("embed");
+
+const STEPS = [
+  {id:"pages", full:"页面确认", short:"页面"},
+  {id:"margin", full:"版心确认", short:"版心"},
+  {id:"recognition", full:"文字识别", short:"识别"},
+  {id:"index", full:"目录确认", short:"目录"},
+  {id:"review", full:"正文审校", short:"审校"},
+  {id:"export", full:"文件导出", short:"导出"},
+];
+
+function topbar(current, opts = {}) {
+  const steps = STEPS.map((s, i) => {
+    const cls = ["step"];
+    if (s.id === current) cls.push("is-current");
+    else if (["pages","margin","recognition","index","review","export"].indexOf(s.id) <
+             ["pages","margin","recognition","index","review","export"].indexOf(current)) cls.push("is-done");
+    if (opts.warnStep === s.id) cls.push("is-warn");
+    const no = cls.includes("is-done") ? "✓" : (i + 1);
+    const count = opts.counts && opts.counts[s.id] ? `<span class="step__count">${opts.counts[s.id]}</span>` : "";
+    return `<button class="${cls.join(" ")}"${s.id === current ? ' aria-current="step"' : ""}>` +
+      `<span class="step__no">${no}</span><span class="step__full">${s.full}</span><span class="step__short">${s.short}</span>${count}</button>`;
+  }).join("");
+  const dots = STEPS.map((s) => {
+    if (s.id === current) return '<i class="cur"></i>';
+    const before = STEPS.findIndex(x => x.id === s.id) < STEPS.findIndex(x => x.id === current);
+    return `<i class="${before ? "done" : ""}"></i>`;
+  }).join("");
+  const task = opts.task
+    ? `<span class="tpill">${opts.taskPulse ? '<span class="pulse"></span>' : ""}${opts.task}</span>`
+    : "";
+  return `<header class="topbar">
+    <button class="back" aria-label="回到项目库">‹</button>
+    <span class="proj">《导读巴赫金》</span>
+    <nav class="steps" aria-label="项目工作流步骤">${steps}<span class="step-dots" aria-hidden="true">${dots}</span></nav>
+    <div class="topright"><span class="save">已保存 ✓ 14:32</span>${task}</div>
+  </header>`;
+}
+
+function btn(label, kind = "", extra = "") {
+  return `<button class="btn ${kind}" ${extra}>${label}</button>`;
+}
+
+function statusbar(state, main, sub, actions, progress) {
+  return `<div class="statusbar">
+    <span class="state ${state.cls}"><span class="state__dot"></span>${state.text}</span>
+    <span class="statusbar__main">${main}</span>
+    ${sub ? `<span class="statusbar__sub">${sub}</span>` : ""}
+    ${progress ? `<span class="statusbar__progress"><span class="inlinebar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress.pct}"><i style="width:${progress.pct}%"></i></span><span class="inlinecount">${progress.text}</span></span>` : ""}
+    <span class="statusbar__actions">${actions}</span>
+  </div>`;
+}
+
+function pageBase(mode) {
+  const p1 = "对话不是两个主体之间的相互补充，而是存在本身得以显现的方式。巴赫金一再强调，复调并非多种声音的简单相加，而是各自独立、互不融合的意识在同一文本中的并存。";
+  const p2 = "从这个角度看，陀思妥耶夫斯基的小说不是作者思想的传声筒。人物拥有自己的立场，作者的声音退到一旁，既不裁决，也不替他们说话。";
+  const p3 = "这种平等并不等于相对主义。作者仍然在写作，仍然选择让谁开口、让哪些问题被提出来；只是他不把自己的答案塞进人物的嘴里。";
+  const p4 = "因此，阅读复调小说需要一种特别的耐心：不是寻找唯一的结论，而是让几个互不相让的声音在耳边同时响着，直到它们之间的紧张本身变成理解的对象。";
+  const p5 = "在这个意义上，对话性不是技巧，而是对人之为人的一种理解：意识只有在与他者的相遇中才成为意识，意义也只在回应中产生。";
+  const p6 = "巴赫金把这种关系称为“他人之言”：每一个词都带着说它的人的位置，也预备着听它的人的回答。";
+  const overlay = mode === "placeholder"
+    ? `<div class="margin-placeholder"><span>版心占位 · 检测后生成</span></div>`
+    : "";
+  return `<div class="scanpage" data-mode="${mode}" role="img" aria-label="第 ${mode === "detecting" ? 128 : mode === "fitted" ? 30 : 1} 页扫描图">
+    <div class="scanpage__head"><span>第二章　复调与对话</span><span>034</span></div>
+    <div class="scanpage__body"><p>${p1}</p><p>${p2}</p><p>${p3}</p><p>${p4}</p><p>${p5}</p><p>${p6}</p></div>
+    <div class="scanpage__foot"><span>导读巴赫金</span><span>034</span></div>
+    ${overlay}
+  </div>`;
+}
+
+/** 用真实文字行量出检测框 / 版心框，保证框与正文严格对齐（不是画在空气里）。 */
+function decoratePage() {
+  const page = document.querySelector(".scanpage");
+  if (!page) return;
+  const mode = page.dataset.mode;
+  const body = page.querySelector(".scanpage__body");
+  const prect = page.getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(body);
+  let rects = Array.from(range.getClientRects()).filter((r) => r.width > 40 && r.height > 4);
+  const seen = new Set();
+  rects = rects.filter((r) => {
+    const key = Math.round(r.top);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (!rects.length) return;
+  if (mode === "detecting") {
+    rects.forEach((r, i) => {
+      const d = document.createElement("div");
+      d.className = "linebox" + (i === 8 ? " is-cur" : "");
+      d.style.left = (r.left - prect.left) + "px";
+      d.style.top = (r.top - prect.top) + "px";
+      d.style.width = r.width + "px";
+      d.style.height = r.height + "px";
+      page.appendChild(d);
+    });
+  }
+  if (mode === "fitted") {
+    const left = Math.min(...rects.map((r) => r.left));
+    const top = Math.min(...rects.map((r) => r.top));
+    const right = Math.max(...rects.map((r) => r.right));
+    const bottom = Math.max(...rects.map((r) => r.bottom));
+    const pad = 3;
+    const box = document.createElement("div");
+    box.className = "marginbox";
+    box.style.left = (left - prect.left - pad) + "px";
+    box.style.top = (top - prect.top - pad) + "px";
+    box.style.width = (right - left + pad * 2) + "px";
+    box.style.height = (bottom - top + pad * 2) + "px";
+    box.innerHTML = ['n','s','w','e','nw','ne','sw','se'].map((h) => `<span class="handle h-${h}"></span>`).join("");
+    page.appendChild(box);
+    const f = (x, base) => (((x - base) / prect.width) * 100).toFixed(1);
+    const fy = (x, base) => (((x - base) / prect.height) * 100).toFixed(1);
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v + "%"; };
+    set("edge-l", f(left, prect.left));
+    set("edge-t", fy(top, prect.top));
+    set("edge-r", f(right, prect.left));
+    set("edge-b", fy(bottom, prect.top));
+  }
+}
+
+function canvasToolbar(opts) {
+  const page = opts.page || 1;
+  const total = 267;
+  return `<div class="ctools">
+    <div class="pager"><button class="pager__btn" aria-label="上一页">‹</button>
+      <span class="pager__no">第 ${page} 页 <span>/ ${total}</span></span>
+      <button class="pager__btn" aria-label="下一页">›</button>
+      <button class="btn btn--sm pager__jump" style="margin-left:4px">跳转…</button>
+    </div>
+    ${opts.badge ? `<span class="chip ctools__badge ${opts.badgeCls || ""}">${opts.badge}</span>` : ""}
+    ${opts.filter ? `<button class="btn btn--sm ctools__filter">${opts.filter}</button>` : ""}
+    <span class="spacer"></span>
+    <div class="zoom" role="group" aria-label="缩放">
+      ${["网格","大网格","单列","单页"].map((z, i) => `<button class="${(!opts.grid && i === 3) || (opts.grid && i === 1) ? "on" : ""}">${z}</button>`).join("")}
+    </div>
+    <button class="btn btn--sm zoom-compact">${opts.grid ? "大网格" : "单页"}</button>
+    <span class="vdiv"></span>
+    <button class="ghost-toggle ${opts.marginOn ? "on" : ""}"><input type="checkbox" ${opts.marginOn ? "checked" : ""} ${opts.marginDisabled ? "disabled" : ""}>版心</button>
+    <button class="btn btn--sm" aria-label="更多">⋯</button>
+  </div>`;
+}
+
+function msteps(items) {
+  return `<div class="msteps">` + items.map((it) => `
+    <div class="mstep ${it.cls}">
+      <span class="mstep__no">${it.no}</span>
+      <div class="mstep__main">
+        <div class="mstep__t"><span>${it.title}</span><span class="mstep__badge">${it.badge || ""}</span></div>
+        <div class="mstep__s">${it.sub}</div>
+        ${it.pct != null ? `<div class="mstep__bar"><i style="width:${it.pct}%"></i></div>` : ""}
+      </div>
+    </div>`).join("") + `</div>`;
+}
+
+const MARGIN_STEPS_A = [
+  {cls:"is-current", no:"1", title:"检测正文行", badge:"未开始", sub:"只找每页的文字行，不识别文字"},
+  {cls:"", no:"2", title:"拟合版心", badge:"等待", sub:"按行框算四边，检测完自动跑"},
+  {cls:"", no:"3", title:"抽查", badge:"等待", sub:"只处理没拟合出来的页"},
+];
+const MARGIN_STEPS_B = [
+  {cls:"is-current", no:"1", title:"检测正文行", badge:"128 / 267", sub:"正在检测第 128 页", pct:48},
+  {cls:"", no:"2", title:"拟合版心", badge:"等待", sub:"检测完自动开始，不用再点"},
+  {cls:"", no:"3", title:"抽查", badge:"等待", sub:"只处理没拟合出来的页"},
+];
+const MARGIN_STEPS_C = [
+  {cls:"is-done", no:"✓", title:"检测正文行", badge:"267 / 267", sub:"已检测，可随时重新检测"},
+  {cls:"is-done", no:"✓", title:"拟合版心", badge:"255 已定", sub:"另有 12 页没拟合出可靠版心"},
+  {cls:"is-warn is-current", no:"3", title:"抽查", badge:"12 页待处理", sub:"只处理没拟合出来的页"},
+];
+
+function marginScene(kind) {
+  const isA = kind === "A", isB = kind === "B";
+  let bar, canvas, rail, task = null, taskPulse = false, counts = null;
+
+  if (isA) {
+    bar = statusbar(
+      {cls:"", text:"未检测"},
+      "还没有检测正文行，版心拟合不出来",
+      "先检测：只找文字行，不识别文字",
+      `${btn("检测全部 267 页", "btn--pri")}${btn("只检测这一页")}`
+    );
+    canvas = `<section class="canvas">
+      ${canvasToolbar({page:1, marginOn:true, marginDisabled:true})}
+      <div class="cstage">${pageBase("placeholder")}</div>
+    </section>`;
+    rail = `<aside class="rail" aria-label="版心确认右栏">
+      <div class="rail__body">
+        <div class="rail__sec">
+          <div class="rail__h">本步要做的 3 件事<button class="more">改范围</button></div>
+          ${msteps(MARGIN_STEPS_A)}
+        </div>
+        <div class="rail__sec">
+          <div class="rail__h">检测范围</div>
+          <div class="kv">
+            <dt>正文页</dt><dd>267 页（页面确认时纳入的正文页）</dd>
+            <dt>页面确认</dt><dd>267 / 267 <span class="chip chip--ok">✓ 已完成</span></dd>
+          </div>
+          <button class="btn btn--sm btn--block" style="margin-top:8px">改检测范围…</button>
+          <p class="note">检测只写“文字行框”，不改页型、不写识别文字。可以随时中断，已检测的页不会重跑。</p>
+        </div>
+      </div>
+      <div class="rail__foot"><span>收尾 0 / 6</span><span class="spacer"></span><span>?</span></div>
+    </aside>`;
+  } else if (isB) {
+    task = "检测 <b>128 / 267</b> ▸"; taskPulse = true;
+    bar = statusbar(
+      {cls:"state--blue", text:"检测中"},
+      "正在检测并拟合版心",
+      "检测完自动拟合，不用再点",
+      `${btn("暂停")}${btn("取消", "", 'data-danger="1"')}`,
+      {pct:48, text:"128 / 267 页 · 第 128 页"}
+    );
+    canvas = `<section class="canvas">
+      ${canvasToolbar({page:128, marginOn:true, marginDisabled:true, badge:"正在检测第 128 页", badgeCls:"chip--blue"})}
+      <div class="cstage">${pageBase("detecting")}</div>
+    </section>`;
+    rail = `<aside class="rail" aria-label="版心确认右栏">
+      <div class="rail__body">
+        <div class="rail__sec">
+          <div class="rail__h">本步要做的 3 件事<button class="more">改范围</button></div>
+          ${msteps(MARGIN_STEPS_B)}
+        </div>
+        <div class="rail__sec">
+          <div class="rail__h">检测进度</div>
+          <div class="kv">
+            <dt>已检测</dt><dd>127 页</dd>
+            <dt>剩余</dt><dd>140 页</dd>
+            <dt>失败</dt><dd>0 页 <span class="chip chip--ok">无</span></dd>
+            <dt>当前</dt><dd>第 128 页 · 正在找文字行</dd>
+          </div>
+          <label class="rowline" style="margin-top:8px"><input type="checkbox" checked> 页面跟随当前检测页</label>
+          <p class="note">检测中可以继续看别的页；关掉“跟随”就不会自动翻页。</p>
+        </div>
+      </div>
+      <div class="rail__foot"><span>收尾 0 / 6</span><span class="spacer"></span><span>?</span></div>
+    </aside>`;
+  } else {
+    bar = statusbar(
+      {cls:"state--warn", text:"还差 12 页"},
+      "255 页已拟合，12 页没拟合出来",
+      "这 12 页还要单独处理",
+      `${btn("处理 12 页", "btn--pri")}${btn("抽查已拟合页")}`
+    );
+    canvas = `<section class="canvas">
+      ${canvasToolbar({page:30, marginOn:true, badge:"自动拟合 · 依据 18 条正文行", badgeCls:"chip--ok", filter:"只看未定 12"})}
+      <div class="cstage">${pageBase("fitted")}</div>
+    </section>`;
+    rail = `<aside class="rail" aria-label="版心确认右栏">
+      <div class="rail__body">
+        <div class="rail__sec">
+          <div class="rail__h">本步要做的 3 件事<button class="more">改范围</button></div>
+          ${msteps(MARGIN_STEPS_C)}
+        </div>
+        <div class="rail__sec">
+          <div class="rail__h">全书</div>
+          <div class="segbar" role="img" aria-label="255 页已拟合，12 页未定"><i class="ok" style="width:95.5%"></i><i class="warn" style="width:4.5%"></i></div>
+          <div class="rowline"><span>已拟合 <b>255</b></span><span>未定 <b style="color:var(--warn-text)">12</b></span><span class="spacer"></span><span>共 267 页</span></div>
+          <div class="undet-list" title="42、57、63、71、88、96、104、117、129、148、176、203">未定页：<b>42、57、63、71、88、96…</b> 共 12 页</div>
+          <button class="linkish" style="margin-top:4px">逐页看这 12 页 ›</button>
+        </div>
+        <div class="rail__sec">
+          <div class="rail__h">第 30 页 · 正文 <span class="chip chip--ok">已定</span></div>
+          <div class="kv">
+            <dt>来源</dt><dd>自动拟合 · 依据 18 条正文行</dd>
+          </div>
+          <div class="edges">
+            <div>左 <b id="edge-l">—</b></div><div>上 <b id="edge-t">—</b></div>
+            <div>右 <b id="edge-r">—</b></div><div>下 <b id="edge-b">—</b></div>
+          </div>
+          <div class="btnrow"><button class="btn btn--sm">重置为本页自动</button><button class="btn btn--sm">改为整页</button></div>
+          <p class="note">拖动四边或四角修改，松手即保存。</p>
+        </div>
+      </div>
+      <div class="rail__foot"><span>收尾 0 / 6</span><span class="spacer"></span><span>?</span></div>
+    </aside>`;
+  }
+  return topbar("margin", {task, taskPulse, counts}) + bar + `<main class="main">${canvas}${rail}</main>`;
+}
+
+/* ───────────────────────── 文字识别 ───────────────────────── */
+
+function recTile(no, state) {
+  const lines = Array.from({length: 9}, (_, i) =>
+    `<i style="top:${12 + i * 8.6}%"></i>`).join("");
+  let overlay = "";
+  let label = "未识别";
+  let cls = "";
+  if (state === "ok") { overlay = '<span class="rectile__check">✓</span>'; label = "已识别"; cls = "ok"; }
+  if (state === "cur") { overlay = '<span class="rectile__ring"></span>'; label = "识别中"; cls = "now"; }
+  if (state === "bad") { overlay = '<span class="rectile__check" style="background:var(--bad)">!</span>'; label = "失败"; cls = "bad"; }
+  return `<div class="rectile ${state === "cur" ? "is-cur" : ""}">
+    <div class="rectile__paper">${lines}${overlay}</div>
+    <div class="rectile__foot"><span class="rectile__no">第 ${no} 页</span><span class="rectile__state ${cls}">${label}</span></div>
+  </div>`;
+}
+
+function recGrid(n, done, cur, bad, start) {
+  const first = start || 1;
+  return `<div class="recwrap"><div class="recgrid">` +
+    Array.from({length: n}, (_, i) => {
+      const no = first + i;
+      const state = no === cur ? "cur" : (bad && bad.indexOf(no) >= 0 ? "bad" : (no <= done ? "ok" : ""));
+      return recTile(no, state);
+    }).join("") + `</div></div>`;
+}
+
+const REC_STEPS_A = [
+  {cls:"is-current", no:"1", title:"主引擎识别", badge:"0 / 267", sub:"RapidOCR 整页识别，不改原文"},
+  {cls:"", no:"2", title:"第二引擎复核", badge:"等待", sub:"Apple Vision 逐行比对，不改文字"},
+  {cls:"", no:"3", title:"差异计算", badge:"等待", sub:"复核完自动算，差异去正文审校"},
+];
+const REC_STEPS_B = [
+  {cls:"is-current", no:"1", title:"主引擎识别", badge:"128 / 267", sub:"正在识别第 128 页", pct:48},
+  {cls:"", no:"2", title:"第二引擎复核", badge:"等待", sub:"主引擎全部完成后开始"},
+  {cls:"", no:"3", title:"差异计算", badge:"等待", sub:"复核完自动算"},
+];
+const REC_STEPS_C = [
+  {cls:"is-done", no:"✓", title:"主引擎识别", badge:"267 / 267", sub:"已完成，0 页失败"},
+  {cls:"is-current", no:"2", title:"第二引擎复核", badge:"0 / 267", sub:"逐行比对，只标“两路读法不同”"},
+  {cls:"", no:"3", title:"差异计算", badge:"等待", sub:"复核完自动算"},
+];
+
+function recognitionScene(kind) {
+  const isA = kind === "A", isB = kind === "B";
+  let bar, canvas, rail, task = null, taskPulse = false;
+  if (isA) {
+    bar = statusbar(
+      {cls:"", text:"未开始"},
+      "主引擎还没开始识别",
+      "正文 267 页 · 第二引擎复核 0 页",
+      `${btn("开始识别 267 页", "btn--pri")}${btn("识别设置…")}`
+    );
+    canvas = `<section class="canvas">
+      ${canvasToolbar({page:1, grid:true, badge:"267 页正文待识别", badgeCls:"chip--warn", filter:"全部"})}
+      <div class="cstage">${recGrid(24, 0, 0, [])}</div>
+    </section>`;
+    rail = `<aside class="rail" aria-label="文字识别右栏">
+      <div class="rail__body">
+        <div class="rail__sec">
+          <div class="rail__h">本步要做的 3 件事<button class="more">设置</button></div>
+          ${msteps(REC_STEPS_A)}
+        </div>
+        <div class="rail__sec">
+          <div class="rail__h">识别设置</div>
+          <div class="rowline">RapidOCR · 200 DPI · 中文<span class="spacer"></span><button class="linkish">改…</button></div>
+          <div class="rowline" style="margin-top:2px">第二引擎 <span class="chip chip--blue">双引擎比对</span><span class="spacer"></span></div>
+          <p class="note">识别的是<b>整页</b>，不按版心裁图；版心只影响导出。识别中途可以暂停，已识别的页不会重跑。</p>
+        </div>
+        <div class="rail__sec">
+          <div class="rail__h">前置</div>
+          <div class="kv"><dt>页面确认</dt><dd>267 / 267 ✓</dd><dt>版心</dt><dd>255 / 267 <span class="chip chip--warn">12 页未定</span></dd></div>
+          <p class="note">版心未定也能识别，只是导出时那 12 页会按块类型判定。</p>
+        </div>
+      </div>
+      <div class="rail__foot"><span>收尾 0 / 6</span><span class="spacer"></span><span>?</span></div>
+    </aside>`;
+  } else if (isB) {
+    task = "识别 <b>128 / 267</b> ▸"; taskPulse = true;
+    bar = statusbar(
+      {cls:"state--blue", text:"识别中"},
+      "正在识别第 128 页",
+      "已识别 127 页 · 失败 0 页",
+      `${btn("暂停")}${btn("取消", "", 'data-danger="1"')}`,
+      {pct:48, text:"128 / 267 页"}
+    );
+    canvas = `<section class="canvas">
+      ${canvasToolbar({page:128, grid:true, badge:"识别中 · 第 128 页", badgeCls:"chip--blue", filter:"全部"})}
+      <div class="cstage">${recGrid(24, 127, 128, [], 121)}</div>
+    </section>`;
+    rail = `<aside class="rail" aria-label="文字识别右栏">
+      <div class="rail__body">
+        <div class="rail__sec">
+          <div class="rail__h">本步要做的 3 件事<button class="more">设置</button></div>
+          ${msteps(REC_STEPS_B)}
+        </div>
+        <div class="rail__sec">
+          <div class="rail__h">进度</div>
+          <div class="kv"><dt>已识别</dt><dd>127 页</dd><dt>剩余</dt><dd>140 页</dd><dt>失败</dt><dd>0 页</dd><dt>当前</dt><dd>第 128 页 · RapidOCR</dd></div>
+          <label class="rowline" style="margin-top:8px"><input type="checkbox" checked> 页面跟随当前识别页</label>
+          <p class="note">识别中也可以翻页查看已完成的页；关掉“跟随”就不会自动翻页。</p>
+        </div>
+      </div>
+      <div class="rail__foot"><span>收尾 0 / 6</span><span class="spacer"></span><span>?</span></div>
+    </aside>`;
+  } else {
+    bar = statusbar(
+      {cls:"state--warn", text:"待复核"},
+      "主引擎 267 / 267 完成，第二引擎 0 / 267",
+      "复核不改文字，只标出两路读法不同的行",
+      `${btn("开始复核", "btn--pri")}${btn("稍后")}`
+    );
+    canvas = `<section class="canvas">
+      ${canvasToolbar({page:1, grid:true, badge:"267 页已识别 · 0 页失败", badgeCls:"chip--ok", filter:"全部"})}
+      <div class="cstage">${recGrid(24, 267, 0, [])}</div>
+    </section>`;
+    rail = `<aside class="rail" aria-label="文字识别右栏">
+      <div class="rail__body">
+        <div class="rail__sec">
+          <div class="rail__h">本步要做的 3 件事<button class="more">设置</button></div>
+          ${msteps(REC_STEPS_C)}
+        </div>
+        <div class="rail__sec">
+          <div class="rail__h">复核是什么</div>
+          <p class="note" style="margin-top:0">第二引擎逐行读同一页，只记录“两种读法”，<b>不会自动改任何字</b>。差别会进「正文审校」，由你逐条裁决。</p>
+          <div class="kv" style="margin-top:7px"><dt>耗时</dt><dd>逐页比对，随页数增加</dd><dt>可中断</dt><dd>已复核的页不会重跑</dd></div>
+          <button class="btn btn--sm btn--block">先复核前 20 页试试</button>
+        </div>
+        <div class="rail__sec">
+          <div class="rail__h">识别设置</div>
+          <div class="rowline">RapidOCR · 200 DPI · 中文<span class="spacer"></span><button class="linkish">改…</button></div>
+          <div class="rowline" style="margin-top:2px">第二引擎 <span class="chip chip--blue">Apple Vision</span></div>
+        </div>
+      </div>
+      <div class="rail__foot"><span>收尾 0 / 6</span><span class="spacer"></span><span>?</span></div>
+    </aside>`;
+  }
+  return topbar("recognition", {task, taskPulse}) + bar + `<main class="main">${canvas}${rail}</main>`;
+}
+
+function render() {
+  const [step, kind] = SCENE.split("-");
+  document.getElementById("app").innerHTML = step === "rec"
+    ? recognitionScene(kind)
+    : marginScene(kind);
+  document.querySelectorAll("#ctl [data-scene]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.scene === SCENE);
+  });
+  document.title = `${step === "rec" ? "文字识别" : "版心确认"} · ${kind} · 静态设计稿`;
+  requestAnimationFrame(() => {
+    decoratePage();
+    const cur = document.querySelector(".rectile.is-cur");
+    const stage = document.querySelector(".cstage");
+    if (cur && stage) {
+      const delta = cur.getBoundingClientRect().top - stage.getBoundingClientRect().top;
+      stage.scrollTop = Math.max(0, stage.scrollTop + delta - 12);
+    }
+  });
+}
+
+document.querySelectorAll("#ctl [data-scene]").forEach((b) => {
+  b.addEventListener("click", () => {
+    const url = new URL(location.href);
+    url.searchParams.set("scene", b.dataset.scene);
+    location.href = url.toString();
+  });
+});
+
+render();
+</script>
+</body>
+</html>

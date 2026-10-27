@@ -139,17 +139,19 @@ def test_fit_all_only_touches_inherit_and_auto(minimal_project: Path) -> None:
     _insert_layout_lines(minimal_project, 1)
 
     result = margin_box.fit_all_pages(minimal_project.name, library=minimal_project.parent)
-    # 任务 36B 追加了 only_missing / limit 两个参数：默认值下多出四个字段，
-    # 但"做多少 / 跳过谁"的语义不变。
+    # 任务 36B 追加了 only_missing / limit；刀 1 再追加 no_text / skipped_not_body
+    # （无文字页单独报、非正文页不进自动补拟合）。"做多少 / 跳过谁"的语义不变。
     assert result == {
         "updated": 1,
         "fitted": 1,
         "fallback": 0,
         "undetermined": 0,
+        "no_text": 0,
         "skipped_custom": 1,
         "skipped_none": 1,
         "skipped_inherit": 0,
         "skipped_fitted": 0,
+        "skipped_not_body": 0,
         "remaining": 0,
         "only_missing": False,
     }

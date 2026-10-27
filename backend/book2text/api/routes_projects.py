@@ -37,6 +37,8 @@ def _page_payloads(request: Request, project_id: str, pages) -> list[dict[str, o
     reviews = blocks_module.page_review_states(project_id, library=library)
     divergences = blocks_module.page_divergences(project_id, library=library)
     occupied = assignments_module.page_assignment_map(project_id, library=library)
+    layout_lines = _layout_line_counts(request, project_id)
+    text_lines = _text_line_counts(request, project_id)
     return [
         page_payload(
             page,
@@ -44,9 +46,27 @@ def _page_payloads(request: Request, project_id: str, pages) -> list[dict[str, o
             reviews.get(page.page_id),
             divergences.get(page.page_id),
             _assignment_brief(occupied.get(page.page_id), page.page_id),
+            layout_lines.get(page.page_id, 0),
+            text_lines.get(page.page_id, 0),
         )
         for page in pages
     ]
+
+
+def _layout_line_counts(request: Request, project_id: str) -> dict[str, int]:
+    """每页检测行数；老库没有检测表时按"还没检测"处理，不让页面接口挂掉。"""
+    try:
+        return workflow_module.layout_line_counts(project_id, library=_library(request))
+    except Exception:  # noqa: BLE001 - 检测表缺失只是少一个提示，页面本身还要能看
+        return {}
+
+
+def _text_line_counts(request: Request, project_id: str) -> dict[str, int]:
+    """每页识别行数（刀 1：版心可以回退 OCR 行拟合）。"""
+    try:
+        return workflow_module.text_line_counts(project_id, library=_library(request))
+    except Exception:  # noqa: BLE001 - 只影响"有没有行可拟合"的提示
+        return {}
 
 
 def _assignment_brief(assignment, page_id: str) -> dict[str, object] | None:
@@ -281,6 +301,8 @@ def patch_pages(
         raise _project_error(exc, status=404) from exc
     reviews = blocks_module.page_review_states(project_id, library=library)
     divergences = blocks_module.page_divergences(project_id, library=library)
+    layout_lines = _layout_line_counts(request, project_id)
+    text_lines = _text_line_counts(request, project_id)
     return {
         "updated": len(updated),
         "pages": [
@@ -289,6 +311,9 @@ def patch_pages(
                 states.get(page.page_id),
                 reviews.get(page.page_id),
                 divergences.get(page.page_id),
+                None,
+                layout_lines.get(page.page_id, 0),
+                text_lines.get(page.page_id, 0),
             )
             for page in updated
         ],

@@ -74,20 +74,26 @@ def test_two_layer_judgement_inside_notes_and_outside_paragraphs() -> None:
     assert layout.page_number_values == {"b5": "11"}
     assert layout.note_ids == {"b3"}
     assert layout.note_inside_ids == {"b3"}
-    assert layout.counts == {"inside": 3, "outside": 2, "page_number": 1}
+    assert layout.counts == {"inside": 3, "outside": 2, "rescued": 0, "page_number": 1}
 
 
 def test_straddling_block_uses_center_not_full_containment() -> None:
-    """跨边界的块按中心点判：中心在内算正文，中心在外算非正文。"""
+    """跨在版心左边界上的块留在正文（刀 0：文字列里的字不删），整块在列外的仍排除。
+
+    只按中心点判会把"中心差一点在框外、字却在列里"的块整块删掉；现在的口径是：
+    x 范围与版心有重叠、且中心不在上下 8% 边带 → 保留，并记进 `rescued_ids`。
+    """
     project = _project((0.1, 0.1, 0.9, 0.9))
     page = _page()
     blocks = [
         _block("inside", "paragraph", [0.02, 0.5, 0.2, 0.55]),   # 中心 0.11
-        _block("outside", "paragraph", [0.02, 0.5, 0.15, 0.55]),  # 中心 0.085
+        _block("straddle", "paragraph", [0.02, 0.5, 0.15, 0.55]),  # 中心 0.085，与列重叠
+        _block("margin", "paragraph", [0.01, 0.5, 0.08, 0.55]),  # 整块在左列外
     ]
     layout = margin_rules.classify_page(page, blocks, project, enabled=True)
-    assert layout.inside_ids == {"inside"}
-    assert layout.outside_ids == {"outside"}
+    assert layout.inside_ids == {"inside", "straddle"}
+    assert layout.outside_ids == {"margin"}
+    assert layout.rescued_ids == {"straddle"}
 
 
 def test_page_none_disables_the_margin_layer() -> None:

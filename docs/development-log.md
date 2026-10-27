@@ -7,6 +7,73 @@
 
 ---
 
+## 2026-10-27 — 刀 0 / 刀 1：版心不删文字列里的字 + 版心从识别行拟合
+
+决策：`D-094`；边界：`L-86`；PM 终稿 `docs/pm/margin-recognition-steps.md`、设计主稿
+`docs/ux/margin-recognition-steps.md`。
+
+### 任务目标
+
+先把「版心一有框，导出就静默少 30 个标题」和「0 检测行却报版心已拟合」这两件事修掉，
+不换步骤顺序、不裁界面（那是刀 2–4）。
+
+### 改了什么
+
+- `core/export/margin_rules.py`：`classify_page()` 只把"列外 / 上下 8% 边带"的块判非正文；
+  块的 x 与版心 x 有重叠、中心不在上下边带 → 留在正文并记进 `rescued_ids`（异常页依据）；
+  `heading` / `title` 无条件保留。导出与审计共用这一份判定。
+- `core/export/project.py`：预检的 `margin_pages` 新增 `no_text`；「无文字」不再算未定。
+- `core/project/margin_box.py`：`fit_page_margin()` 检测行优先、没有就回退**识别行**
+  （`block_line`，带 `SKIP_BLOCK_TYPES`，与 `suggest_margin_box` 同口径）；无文字页单独报
+  `no_text`（必须是"识别跑过且确实没字"，从没识别过的页仍是未定）；`page_margin_audit()`
+  同时报"行越界"与"被例外救回的块"；`fit_all_pages(only_missing)` 跳过非正文页。
+- `core/project/review_status.py`：`finish_summary.margin` 分母改为**正文页**，
+  9 个无文字页标"跳过"并计入已定；`core/project/blocks.py` 加 `pages_with_text()` /
+  `page_has_successful_run()`。
+- `api/`：页面载荷加 `text_lines`（识别行数）；`workflow.text_line_counts()` 一次查询。
+- `static/app.js`：去掉前端"只拟合有检测行的页"的预筛（后端回退识别行）；
+  拟合结果按 `fitted / fallback / undetermined / no_text` 分报，0 框时不再出现"已自动拟合"；
+  「下一步」按这一页的真实状态说（无框 / 兜底 / 无行 各有说法）；审计条分报"框外文字已保留"。
+
+### 真书实跑（先备份，只写 `margin_box` / `margin_box_method`）
+
+| 项目 | 正文页 | 拟合 | 兜底 | 无文字 | 未定 | 耗时 | `finish_summary.margin` |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `b2t_BRRBR0`（267 页样书） | 267 | 253 | 5 | 9 | 0 | 1.1 s | **267/267，绿** |
+| `b2t_XPAT9E`（鹿鼎记 512 页） | 475 | 1 | 0 | 0 | 474 | 2.2 s | 1/475（没识别，如实未定） |
+| `b2t_8AFV96`（巴赫金 267 页） | 267 | 12 | 2 | 0 | 253 | 1.0 s | 14/267（只识别了一部分，如实未定） |
+
+- 备份：各项目 `backups/project-before-knife1-20261027-1839*.db`（sqlite backup API）。
+- 指纹：三本书 `block.text` / `review_status` / `page_confirmed` / `page_label` 前后一致
+  （`b2t_BRRBR0` `fb69c3bb…`、`b2t_XPAT9E` `129f716d…`、`b2t_8AFV96` `8ce130bb…`）。
+- `b2t_XPAT9E` 37 个非正文页不再进分母（`skipped_not_body=37`），步骤条不会被它们卡死。
+
+### 刀 0 验收（真书 `b2t_BRRBR0`）
+
+- 39 个"纯中心点会删"的块全部在导出正文里（28 个标题/章首 + 11 个纯数字章号），**0 丢失**；
+  PM 列的 6 个例子（p4 / p20 / p88 / p110 / p156 / p240）逐一在位。
+- 书眉 / 页码：框外 180 个边带块仍被排除（`excluded=247`）。
+- 异常页 26 页（p4、p10、p14、p15、p20…），审计与导出同一口径。
+- 拟合框内的书眉仍会进正文（64 块）——那是拟合边界问题，不是刀 0，记进 `L-86`，留给刀 5 / 拟合参数。
+
+### 测试
+
+- `pytest -q`：**908 passed**（含 4 个既有测试按新口径改写：两个 UI 文案断言、
+  `fit_all` 返回字典、导出排除用例改成"版心放到文字列之外"）。
+- 未验证：UI 三档宽度 / 628 高的视觉（刀 2–4 重做，Designer 主稿为准）；Windows 未跑。
+
+### 用户操作说明
+
+重启服务（或用打包版重开项目）后：进「版心确认」→ 已识别的书直接出框；
+预览页数如 `267 页正文 · 253 自动 · 5 兜底 · 9 无文字`。想回退：用上面的备份替换
+`project.db`（或「重置为自动拟合」逐页重算）。
+
+### 下一步建议
+
+刀 2：换步骤顺序（页面确认 → 文字识别 → 版心确认），补三个空状态帧；检测入口进 ⋯。
+
+---
+
 ## 2026-10-27 — 任务 54：队列口径对账 + 成稿预检条 + 真书全链路
 
 ### 队列口径对账（真书 `b2t_YV1P2Y`）

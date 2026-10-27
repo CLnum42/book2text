@@ -969,6 +969,60 @@ def _latest_layout_boxes(directory: Path, page_id: str) -> list[BBox]:
     return boxes
 
 
+def _page_ocr_line_boxes(
+    project_id: str, page: library_module.Page, *, library: Path | None
+) -> tuple[list[BBox], bool, bool]:
+    """这一页的 OCR 行框（`block_line`）+ 有没有文字 + 有没有识别过。
+
+    与 `suggest_margin_box` 的回退口径同源：显式 `header / footer / page_number /
+    figure / decoration` 整块跳过（书眉页码不参与拟合），其余块的行框都算正文行。
+
+    ``has_text`` / ``recognized`` 合起来才能区分三件事：还没识别（未定）、
+    识别过但整页没有字（无文字，跳过）、有字（能拟合）。
+    """
+    blocks = blocks_module.list_blocks(project_id, library=library, page_no=page.page_no)
+    has_text = any((block.text or "").strip() for block in blocks)
+    active = {
+        block.block_id for block in blocks if block.block_type not in SKIP_BLOCK_TYPES
+    }
+    if not active:
+        recognized = blocks_module.page_has_successful_run(
+            project_id, page.page_id, library=library
+        )
+        return [], has_text, recognized
+    lines = blocks_module.list_block_lines(
+        project_id, library=library, page_no=page.page_no
+    )
+    boxes = [
+        line.bbox
+        for line in lines
+        if line.block_id in active and line.bbox is not None
+    ]
+    return boxes, has_text, True
+
+
+def _page_fit_lines(
+    directory: Path,
+    project_id: str,
+    page: library_module.Page,
+    *,
+    library: Path | None,
+) -> tuple[list[BBox], str, bool, bool]:
+    """拟合这一页该用哪些行框：检测行优先，没有就回退 OCR 行（刀 1）。
+
+    返回 ``(行框, 来源, 有没有文字, 有没有识别过)``。检测行本来就是为了版心才跑的
+    那一次；识别行与它同模型同 DPI，所以没有检测行的页（真机上两本 0 检测行的书
+    都是这种情况）直接拿 OCR 行拟合，不再要求用户先等一遍检测。
+    """
+    layout_boxes = _latest_layout_boxes(directory, page.page_id)
+    if layout_boxes:
+        return layout_boxes, "layout", True, True
+    boxes, has_text, recognized = _page_ocr_line_boxes(
+        project_id, page, library=library
+    )
+    return boxes, "ocr", has_text, recognized
+
+
 def fit_page_margin(
     project_id: str,
     page_no: int,
@@ -976,12 +1030,14 @@ def fit_page_margin(
     library: Path | None = None,
     only_auto: bool = True,
 ) -> dict[str, object]:
-    """用这一页的检测行拟合版心，写回 `page.margin_box` + `margin_box_method`。
+    """用这一页的**行框**拟合版心，写回 `page.margin_box` + `margin_box_method`。
 
     - **不覆盖 custom**；`none` 也不动；
-    - 拟合不出（有效长行 < 3）→ 退**本页所有检测行的包围盒**（method=`bbox`）；
-    - 本页连检测行都没有 → `margin_box = NULL` + method=NULL（**未定**），
-      读取时**不回退全局框**，也不参与版心判定；
+    - 行框来源：检测行优先（`page_layout_line`），没有检测行就回退**识别行**
+      （`block_line`，刀 1）——识别行就是同一套行框，不必为了版心先等一遍检测；
+    - 拟合不出（有效长行 < 3）→ 退**本页所有行的包围盒**（method=`bbox`）；
+    - 一条行都没有 → `margin_box = NULL` + method=NULL（**未定**），
+      读取时**不回退全局框**，也不参与版心判定；本页连文字都没有时另报 `no_text`；
     - 重检测 / 重新拟合时覆盖上一次的结果（界面、导出、审计读同一份）。
     """
     target_library = library if library is not None else library_module.default_library_dir()
@@ -994,9 +1050,14 @@ def fit_page_margin(
         return {"page_no": page_no, "updated": False, "reason": "custom_or_none"}
     if only_auto and page.margin_box_mode != MODE_AUTO:
         return {"page_no": page_no, "updated": False, "reason": "not_auto"}
-    boxes = _latest_layout_boxes(directory, page.page_id)
+    boxes, source, has_text, recognized = _page_fit_lines(
+        directory, project_id, page, library=target_library
+    )
     fitted = fit_page_margin_box(boxes)
     method = None if fitted.undetermined else fitted.method
+    # 「无文字」不等于「还没识别」（刀 1）：识别跑过、结果整页没有字（插图 / 空白）才算
+    # 无文字，跳过；从没识别过的页是未定，不能拿"无文字"把它放过去。
+    no_text = bool(fitted.undetermined and not has_text and recognized)
     with db_module.open_database(directory) as conn:
         conn.execute(
             "UPDATE page SET margin_box = ?, margin_box_method = ?"
@@ -1012,6 +1073,8 @@ def fit_page_margin(
         "method": fitted.method,
         "fallback": fitted.method == FIT_METHOD_BBOX,
         "undetermined": fitted.undetermined,
+        "no_text": no_text,
+        "source": source,
         "lines": fitted.lines,
         "long_lines": fitted.long_lines,
     }
@@ -1030,7 +1093,8 @@ def fit_all_pages(
 
     - ``only_missing=True``：只处理 ``mode=auto`` 且 ``margin_box`` 仍是 NULL 的页
       （界面进「版心确认」时自动补拟合）。``inherit`` 是用户显式选择沿用默认框，
-      这一类也不碰——自动补拟合不该改变它。
+      这一类也不碰——自动补拟合不该改变它。非正文页（``include=False``）也不在
+      自动补拟合的范围里：它们不参与版心判定，算进分母会让步骤条永远绿不了。
     - ``limit``：这一轮最多处理多少页；``remaining`` 回传还有多少页没轮到，
       界面据此分批调用并显示真实进度。
     """
@@ -1038,6 +1102,7 @@ def fit_all_pages(
     directory = library_module.require_project_dir(project_id, library=target_library)
     pages = library_module.list_pages(project_id, library=target_library)
     skipped_custom = skipped_none = skipped_inherit = skipped_fitted = 0
+    skipped_not_body = 0
     targets: list[library_module.Page] = []
     for page in pages:
         if page.margin_box_mode == MODE_CUSTOM:
@@ -1050,13 +1115,16 @@ def fit_all_pages(
             if page.margin_box_mode != MODE_AUTO:
                 skipped_inherit += 1
                 continue
+            if not page.include:
+                skipped_not_body += 1
+                continue
             if page.margin_box is not None:
                 skipped_fitted += 1
                 continue
         targets.append(page)
     batch = targets[:limit] if limit is not None else targets
     remaining = len(targets) - len(batch)
-    updated = fitted = fallback = undetermined = 0
+    updated = fitted = fallback = undetermined = no_text = 0
     for page in batch:
         if page.margin_box_mode == MODE_INHERIT:
             with db_module.open_database(directory) as conn:
@@ -1068,7 +1136,9 @@ def fit_all_pages(
         result = fit_page_margin(project_id, page.page_no, library=target_library)
         if result.get("updated"):
             updated += 1
-            if result.get("undetermined"):
+            if result.get("no_text"):
+                no_text += 1
+            elif result.get("undetermined"):
                 undetermined += 1
             elif result.get("fallback"):
                 fallback += 1
@@ -1079,10 +1149,12 @@ def fit_all_pages(
         "fitted": fitted,
         "fallback": fallback,
         "undetermined": undetermined,
+        "no_text": no_text,
         "skipped_custom": skipped_custom,
         "skipped_none": skipped_none,
         "skipped_inherit": skipped_inherit,
         "skipped_fitted": skipped_fitted,
+        "skipped_not_body": skipped_not_body,
         "remaining": remaining,
         "only_missing": only_missing,
     }
@@ -1091,11 +1163,20 @@ def fit_all_pages(
 def page_margin_audit(
     project_id: str, page_no: int, *, library: Path | None = None
 ) -> dict[str, object]:
-    """这一页有多少"正文长行"落在**该页自己的**生效版心之外（可疑提示用）。
+    """这一页的版心审计：行越界（拟合准不准）+ 被例外救回来的块（异常页）。
 
-    任务 33 起口径从"中心点越界"改成"**任一边**越界"：中心在框内、字却被切掉一条，
-    正是用户看到"版心框切过正文"的那种情况，只看中心会把它掩盖过去。
+    两件事分开报，因为后果不同：
+
+    - ``outside`` / ``total_lines``：正文长行**任一边**越出版心（任务 33 口径）。
+      中心在框内、字却被切掉一条，正是"版心框切过正文"的情况，只看中心会漏。
+    - ``rescued``：中心在框外、但按导出同一套规则**留在正文**的块（刀 0：文字列内的
+      标题 / 章首）。它们不会丢，但这一页值得看一眼——导出与审计用同一个函数判定，
+      不会出现"审计说 0 页、导出少了 30 个标题"。
+
+    行框来源与拟合同源：检测行优先，没有就回退 OCR 行（刀 1）。
     """
+    from ..export import margin_rules  # 局部导入：margin_rules 反向依赖本模块
+
     target_library = library if library is not None else library_module.default_library_dir()
     directory = library_module.require_project_dir(project_id, library=target_library)
     pages = library_module.list_pages(project_id, library=target_library)
@@ -1103,39 +1184,43 @@ def page_margin_audit(
     if page is None:
         raise library_module.ProjectError(f"没有第 {page_no} 页")
     project = library_module.load_project(project_id, library=target_library)
-    box = effective_margin_box(project, page)
-    boxes = _latest_layout_boxes(directory, page.page_id)
+    boxes, line_source, _has_text, _recognized = _page_fit_lines(
+        directory, project_id, page, library=target_library
+    )
     long_lines = [
         b for b in boxes if b[2] - b[0] > AUTO_LONG_LINE and _looks_like_text_line(b)
     ]
+    blocks = blocks_module.list_blocks(
+        project_id, library=target_library, page_no=page_no
+    )
+    layout = margin_rules.classify_page(page, blocks, project, enabled=True)
+    box = layout.margin_box if layout.applied else None
+    rescued_blocks = [b for b in blocks if b.block_id in layout.rescued_ids]
     method = None if box is None else getattr(page, "margin_box_method", None)
-    if box is None:
-        return {
-            "page_no": page_no,
-            "total_lines": len(long_lines),
-            "outside": 0,
-            "samples": [],
-            "method": method,
-            "source": page_margin_source_label(project, page),
-            "undetermined": page.margin_box_mode == MODE_AUTO,
-        }
-    outside = []
-    for b in long_lines:
-        if (
-            b[0] < box[0] - 1e-9
-            or b[1] < box[1] - 1e-9
-            or b[2] > box[2] + 1e-9
-            or b[3] > box[3] + 1e-9
-        ):
-            outside.append(list(b))
+
+    outside: list[list[float]] = []
+    if box is not None:
+        for b in long_lines:
+            if (
+                b[0] < box[0] - 1e-9
+                or b[1] < box[1] - 1e-9
+                or b[2] > box[2] + 1e-9
+                or b[3] > box[3] + 1e-9
+            ):
+                outside.append(list(b))
     return {
         "page_no": page_no,
         "total_lines": len(long_lines),
         "outside": len(outside),
         "samples": outside[:5],
+        "rescued": len(rescued_blocks),
+        "rescued_samples": [(b.text or "").strip()[:40] for b in rescued_blocks[:5]],
+        "rescued_ids": [b.block_id for b in rescued_blocks],
+        "anomalous": bool(outside or rescued_blocks),
+        "lines_source": line_source,
         "method": method if page.margin_box_mode == MODE_AUTO else None,
         "source": page_margin_source_label(project, page),
-        "undetermined": False,
+        "undetermined": box is None and page.margin_box_mode == MODE_AUTO,
     }
 
 

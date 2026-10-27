@@ -1204,6 +1204,16 @@ body.diff-mode .page-overlay .box--active {
 .mfoot { flex: none; display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--line-soft); }
 .mbody { flex: 1; min-height: 0; display: flex; }
 .mbody--single { display: block; overflow: auto; padding: 16px 20px; }
+/* 检测版面：计划清单（几页 / 预计多久）——先看清再决定跑 */
+.layout-plan { margin: 10px 0 4px; display: grid; gap: 3px; }
+.layout-plan__row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  font-size: 12.5px; color: var(--text-2); padding: 2px 0;
+  border-bottom: 1px dashed var(--line-soft);
+}
+.layout-plan__row:last-child { border-bottom: 0; }
+.layout-plan__row strong { font-variant-numeric: tabular-nums; color: var(--text); }
+.layout-plan__row--muted { color: var(--faint); font-size: 11.5px; }
 .mleft { width: 340px; flex: none; border-right: 1px solid var(--line-soft); padding: 16px 20px; overflow: auto; }
 .mright { flex: 1; min-width: 0; padding: 16px 20px; overflow: auto; background: #fafbfc; }
 .modal--collab .mright { background: var(--surface); }
@@ -1781,6 +1791,23 @@ body[data-workflow-step="recognition"] #page-setup-bar { display: none; }
 .index-row__pdf { margin-left: auto; font-size: 10.5px; color: var(--faint); }
 .index-row.is-current .index-row__pdf { color: var(--accent-text); }
 .index-empty { padding: 12px; }
+/* 只有 PDF 页序时（还没识别 / 没定位页码）：这不是目录，整列按"页序"呈现 */
+.index-notice {
+  margin: 8px 10px 2px; padding: 9px 10px; border-radius: 8px;
+  background: var(--warn-soft); border: 1px solid #ecd3a8; color: var(--text-2);
+  font-size: 11.5px; line-height: 1.65;
+}
+.index-notice strong { display: block; color: var(--warn-text); margin-bottom: 2px; }
+.index-notice p { margin: 0; }
+.index-notice .btn { margin-top: 6px; }
+.index-row.is-page-order { color: var(--faint); }
+.index-row.is-page-order .index-row__pdf {
+  margin-left: 0; font-size: 12px; color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.index-row.is-page-order .index-row__note {
+  margin-left: auto; font-size: 10.5px; color: var(--faint);
+}
 .index-viewer {
   flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
   background: #e7e9ec;
@@ -2294,12 +2321,31 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
   flex: none; font-size: 11px; padding: 1px 7px; border-radius: 999px;
   background: var(--warn-soft); color: var(--warn-text); border: 1px solid #ecd3a8;
 }
-.reading-split { flex: 1; min-height: 0; display: flex; }
+.reading-split {
+  flex: 1; min-height: 0; display: flex;
+  /* 三栏宽度可拖（P1-4）：拖出来的值写在 --reading-tree-w / --reading-pdf-w 上，
+     下面两栏用 var() 取；窄屏（<1120）由媒体查询接管，忽略这两个值。 */
+  --reading-tree-w: 232px;
+  --reading-pdf-w: 420px;
+}
 .reading-tree {
-  width: 232px; flex: none; min-height: 0; overflow: auto;
+  width: var(--reading-tree-w); flex: none; min-height: 0; overflow: auto;
   background: var(--surface); border-right: 1px solid var(--line);
   padding: 4px 0 20px;
 }
+/* 分栏手柄：只有一条 6px 的可拖带子，平时不抢视线 */
+.reading-grip {
+  flex: none; width: 6px; cursor: col-resize; position: relative;
+  background: var(--surface); touch-action: none;
+}
+.reading-grip::after {
+  content: ""; position: absolute; inset: 0 2px; border-radius: 2px;
+  background: transparent; transition: background .12s ease;
+}
+.reading-grip:hover::after, .reading-grip.is-active::after { background: var(--accent); opacity: .45; }
+body.is-resizing-reading { cursor: col-resize; user-select: none; }
+body.is-resizing-reading .reading-stream { pointer-events: none; }
+
 .reading-tree__row {
   display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
   width: 100%; padding: 6px 12px; border: 0; background: none; cursor: pointer;
@@ -2314,7 +2360,7 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
 .reading-tree__count { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .reading-tree__row.is-current .reading-tree__count { color: var(--accent-text); }
 .reading-pdf {
-  width: 420px; flex: none; min-height: 0; display: flex;
+  width: var(--reading-pdf-w); flex: none; min-height: 0; display: flex;
   background: #e7e9ec; border-right: 1px solid var(--line);
 }
 .reading-pdf__scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px; text-align: center; }
@@ -2364,15 +2410,18 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
 .reading-empty { padding: 18px; }
 .reading-sentinel { height: 1px; }
 @media (max-width: 1319px) {
-  .reading-tree { width: 200px; }
-  .reading-pdf { width: 340px; }
+  /* 窄一档的默认值；用户拖过就按拖的来（var 在 .reading-split 上） */
+  .reading-split { --reading-tree-w: 200px; --reading-pdf-w: 340px; }
   .reading-stream { padding: 16px 22px 80px; }
 }
 @media (max-width: 1119px) {
+  .reading-split { --reading-tree-w: 44px; --reading-pdf-w: 340px; }
   .reading-tree { width: 44px; overflow: hidden; }
   .reading-tree__row { padding: 6px 6px; }
   .reading-tree__row .reading-tree__no { display: none; }
   .reading-pdf { display: none; }
+  /* 窄屏不显示拖拽条：PDF 都收起了，拖它没有意义 */
+  .reading-grip { display: none; }
 }
 @media (max-height: 700px) {
   .reading-toolbar { height: 40px; padding: 0 8px; gap: 6px; }

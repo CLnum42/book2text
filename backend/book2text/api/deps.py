@@ -34,11 +34,17 @@ def page_payload(
     review: blocks_module.PageReview | None = None,
     divergence: blocks_module.PageDivergence | None = None,
     assignment: object | None = None,
+    layout_lines: int = 0,
+    text_lines: int = 0,
 ) -> dict[str, object]:
     """页面载荷 = 页记录 + **推导出的识别状态与审校进度**（说明书 5.3 不单独存储状态）。
 
     ``divergence`` 是第二引擎的分歧概况（说明书 8.5）：界面据此在缩略图上打标记，
     并支持"有分歧"这条疑难筛选。没传时是"没复核过"的空值，不是"两路一致"。
+
+    ``layout_lines`` 是这一页最近一次成功**版面检测**检出的行数（0 = 还没检测）；
+    ``text_lines`` 是识别行数（刀 1 起版心可以回退 OCR 行拟合）。界面判断
+    "这一页有没有行可拟合"要把两者都算上，不用猜。
     """
     state = recognition or blocks_module.empty_recognition(page.page_id)
     return {
@@ -48,6 +54,8 @@ def page_payload(
         "divergence": (divergence or blocks_module.EMPTY_PAGE_DIVERGENCE).to_dict(),
         # 分派给谁（说明书 6.7.6：分派中的页面显示"张三 · 审校中"）；没分派就是 None
         "assignment": assignment,
+        "layout_lines": layout_lines,
+        "text_lines": text_lines,
     }
 
 

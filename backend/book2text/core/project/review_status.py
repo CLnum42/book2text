@@ -647,19 +647,40 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     confirmed_pages = sum(1 for page in pages if page.page_confirmed)
     layout_done = sum(1 for page in body_pages if page.layout_confirmed)
 
-    margin_done = sum(1 for page in pages if _margin_effective(project, page))
+    margin_done = sum(1 for page in body_pages if _margin_effective(project, page))
     # 任务 33：兜底不再是"回退默认版心"，而是"本页包围盒"；没有框的页是"未定"。
+    # 刀 1（2026-10-27）：分母只算**正文页**（37 个非正文页不进），否则步骤条永远
+    # 绿不了；「无文字」的页（插图 / 空白）标"跳过"，不算未定，也不挡完成。
+    text_pages = blocks_module.pages_with_text(project_id, library=library)
     fallback_pages = [
         page.page_no
-        for page in pages
+        for page in body_pages
         if page.margin_box_mode == "auto" and page.margin_box is not None
         and getattr(page, "margin_box_method", None) == "bbox"
     ]
+    no_text_pages = [
+        page.page_no
+        for page in body_pages
+        if page.margin_box_mode == "auto"
+        and page.margin_box is None
+        and page.page_id not in text_pages
+        # 只有识别真的跑过、且结果确实没有字，才算"无文字，跳过"；
+        # 从没识别过的页是未定（鹿鼎记 474 页就是这种情况，不能算跳过）。
+        and (states.get(page.page_id) is not None)
+        and states[page.page_id].status
+        in (blocks_module.STATUS_RECOGNIZED, blocks_module.STATUS_HAS_CANDIDATE)
+    ]
+    no_text_nos = set(no_text_pages)
     undetermined_pages = [
         page.page_no
-        for page in pages
-        if page.margin_box_mode == "auto" and page.margin_box is None
+        for page in body_pages
+        if page.margin_box_mode == "auto"
+        and page.margin_box is None
+        and page.page_no not in no_text_nos
     ]
+    # "已定"= 正文页有生效版心，或这一页本来就没有字（跳过）
+    margin_settled = margin_done + len(no_text_pages)
+    margin_total = len(body_pages)
 
     auto_passable = []
     confirmed_body = 0
@@ -702,6 +723,7 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
             "missing": len(pages),
             "chapters": 0,
             "numbering_step": 1,
+            "page_order_only": True,
             "complete": False,
         }
 
@@ -722,7 +744,7 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     queue = queue_items(project_id, library=library)
     complete = [
         confirmed_pages == len(pages),
-        margin_done == len(pages),
+        margin_settled >= margin_total,
         layout_done == len(body_pages),
         pn_done,
         len(auto_passable) == 0
@@ -738,10 +760,12 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
             "complete": complete[0],
         },
         "margin": {
-            "set": margin_done,
-            "total": len(pages),
+            "set": margin_settled,
+            "total": margin_total,
             "fallback": len(fallback_pages),
             "fallback_pages": fallback_pages,
+            "no_text": len(no_text_pages),
+            "no_text_pages": no_text_pages,
             "undetermined": len(undetermined_pages),
             "undetermined_pages": undetermined_pages,
             "complete": complete[1],

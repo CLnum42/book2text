@@ -105,6 +105,19 @@ def start_layout_job(
     return _job_payload(request, project_id, jobs_module.get_job(directory, job.job_id))
 
 
+@router.get("/{project_id}/layout/plan")
+def get_layout_plan(request: Request, project_id: str) -> dict[str, Any]:
+    """检测计划：哪些正文页还没检测、按本项目历史实测大概要多久。"""
+    try:
+        plan = layout_detection.layout_plan(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        status = 404 if not project_library.project_exists(
+            project_id, library=_library(request)
+        ) else 400
+        raise _project_error(exc, status=status) from exc
+    return {"ok": True, **plan}
+
+
 @router.get("/{project_id}/pages/{page_no}/layout")
 def get_page_layout(
     request: Request, project_id: str, page_no: int

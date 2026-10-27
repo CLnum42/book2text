@@ -120,6 +120,9 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
         if entry["chapter"]
     ]
     numbered = sum(1 for entry in entries if not entry["missing"])
+    # 有页 ≠ 有索引：一页印刷页码都没读到的时候，这份列表只是 PDF 页序，
+    # 不能当作"目录确认已完成"（否则步骤条会亮绿灯，用户却什么页码都没有）。
+    page_order_only = numbered == 0
     payload = {
         "schema": INDEX_SCHEMA,
         "generated_at": project.updated_at,
@@ -131,7 +134,10 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
             "numbered": numbered,
             "missing": len(entries) - numbered,
             "chapters": len(chapters),
-            "complete": len(entries) > 0,
+            # `page_order_only`：整本还没有印刷页码，下面只是 PDF 页序。
+            # 界面据此显示"尚未识别"空态，步骤条不许变绿。
+            "page_order_only": page_order_only,
+            "complete": not page_order_only,
         },
         "notes": _notes(
             numbering_step=numbering_step, numbered=numbered, entries=len(entries)

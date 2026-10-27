@@ -215,6 +215,83 @@ class LayoutOutcome:
     items: tuple[jobs_module.JobItemRecord, ...]
 
 
+# ---------------------------------------------------------------- 检测计划与估时
+#
+# 界面上"检测版面"不是主入口，但按下去之前必须说清两件事：**要跑多少页**、
+# **大概多久**。页数从检测记录算（没检测过的页），时间优先用本项目的历史实测
+# 中位数；没有历史时才退回下面这个常数——它是这台机器上实测出来的，不是拍的。
+
+# RapidOCR det + 200 dpi 渲染，单页耗时：本机实测（Apple Silicon，macOS）
+# 5 页一次 2 秒，逐页 elapsed_seconds 均值 0.384、最小 0.316、最大 0.625（首启那次）。
+# 取 0.45 作保守默认值；项目里有历史耗时时用历史中位数（见 `_seconds_per_page`）。
+DEFAULT_SECONDS_PER_PAGE = 0.45
+# 历史耗时的采样条数：只取最近的，换机器 / 换 DPI 之后老数据会自然被挤出去。
+ESTIMATE_SAMPLE_SIZE = 60
+
+
+def _seconds_per_page(directory: Path) -> tuple[float, str]:
+    """单页检测耗时（秒）与来源：`history`（本项目历史中位数）/ `default`。"""
+    try:
+        with db_module.open_database(directory, apply_migrations=False) as conn:
+            rows = conn.execute(
+                """
+                SELECT elapsed_seconds FROM layout_run
+                WHERE status = 'succeeded' AND elapsed_seconds IS NOT NULL
+                ORDER BY created_at DESC, rowid DESC LIMIT ?
+                """,
+                (ESTIMATE_SAMPLE_SIZE,),
+            ).fetchall()
+    except Exception:  # noqa: BLE001 - 老库没有检测表就是"没有历史"
+        return DEFAULT_SECONDS_PER_PAGE, "default"
+    values = sorted(
+        float(row["elapsed_seconds"])
+        for row in rows
+        if row["elapsed_seconds"] is not None and float(row["elapsed_seconds"]) > 0
+    )
+    if not values:
+        return DEFAULT_SECONDS_PER_PAGE, "default"
+    middle = len(values) // 2
+    if len(values) % 2:
+        median = values[middle]
+    else:
+        median = (values[middle - 1] + values[middle]) / 2
+    return round(median, 3), "history"
+
+
+def layout_plan(project_id: str, *, library: Path | None = None) -> dict[str, object]:
+    """这一本"检测版面"要做什么、大概多久。
+
+    - `need_detection`：正文页里**还没有成功检测记录**的页号（检测要跑的正是这些）；
+    - `need_fit`：已检测、但 `auto` 页还没有版心框的页号（只需再拟合，不重检测）；
+    - `seconds_per_page` / `estimated_seconds`：按本项目历史实测中位估算，
+      没有历史时用 `DEFAULT_SECONDS_PER_PAGE`，并在 `estimate_source` 里说明来源。
+    """
+    target_library = library if library is not None else default_library_dir()
+    directory = require_project_dir(project_id, library=target_library)
+    pages = list_pages(project_id, library=target_library)
+    summaries = workflow_module.layout_summaries(directory)
+    body = [page for page in pages if page.include]
+    need_detection = [page.page_no for page in body if page.page_id not in summaries]
+    need_fit = [
+        page.page_no
+        for page in body
+        if page.page_id in summaries
+        and page.margin_box_mode == "auto"
+        and page.margin_box is None
+    ]
+    seconds, source = _seconds_per_page(directory)
+    return {
+        "total_pages": len(pages),
+        "body_pages": len(body),
+        "detected": len(body) - len(need_detection),
+        "need_detection": need_detection,
+        "need_fit": need_fit,
+        "seconds_per_page": seconds,
+        "estimated_seconds": int(round(seconds * len(need_detection))),
+        "estimate_source": source,
+    }
+
+
 DECISION_RUN = "run"
 DECISION_PAUSE = "pause"
 DECISION_STOP = "stop"

@@ -142,8 +142,10 @@
           <span class="spacer"></span>
           <div class="page-more-wrap">
             <button type="button" id="page-more" class="btn btn--sm"
-                    title="更多：诊断（质量统计）/ 协作（任务包）">⋯</button>
+                    title="更多：版面（检测）/ 诊断（质量统计）/ 协作（任务包）">⋯</button>
             <div class="page-more" id="page-more-menu" hidden>
+              <div class="page-more__group">版面</div>
+              <button type="button" id="layout-detect-open" class="page-more__item">检测版面…</button>
               <div class="page-more__group">诊断</div>
               <button type="button" id="stats-open" class="page-more__item">质量统计</button>
               <div class="page-more__group">协作</div>
@@ -248,8 +250,8 @@
 
               <div id="margin-panel">
               <!-- 任务 36B：版心确认只留三件事——看四边、重置为本页自动、撤销。
-                   不再有「自拟合 / 自定义」模式选择，也没有折叠的「检测」按钮：
-                   进这一步时，没有拟合框的页会自动拟合。 -->
+                   「检测版面」不是这一步的主入口（一跑几分钟、用户也判断不了检测行），
+                   挪进右上角「⋯ → 检测版面…」；这里只如实说明还差哪些页、为什么。 -->
               <details class="panel__group" id="panel-margin-settings" data-panel="margin">
                 <summary><strong>版心</strong><span class="muted" id="margin-confidence"></span></summary>
                 <div class="panel__body">
@@ -271,15 +273,13 @@
 
                     <div class="hint" id="margin-audit" hidden></div>
                     <div class="hint" id="margin-status" hidden></div>
+                    <div class="hint" id="margin-detect-hint" hidden></div>
                     <div class="margin-outside">
                       <div class="flabel">版心外的书眉 / 页脚 / 页码</div>
                       <p class="hint">这些家具落在版心外，导出默认不进正文；要批量改类型用结构工具。</p>
                       <button type="button" id="structure-open" class="btn btn--block btn--sm">结构工具…</button>
                     </div>
                     <div class="hint" id="margin-default"></div>
-                    <button type="button" id="margin-detect-missing" class="btn btn--block btn--sm" hidden>
-                      检测这些页的正文行…
-                    </button>
                   </div>
                 </div>
               </details>
@@ -400,6 +400,12 @@
               <div class="hint" id="index-jump-status" hidden></div>
             </div>
             <div class="index-meta" id="index-meta"></div>
+            <!-- 只有 PDF 页序时（还没识别 / 没定位页码）必须说清楚：这不是目录 -->
+            <div class="index-notice" id="index-notice" hidden>
+              <strong id="index-notice-title"></strong>
+              <p id="index-notice-text"></p>
+              <button type="button" id="index-notice-go" class="btn btn--sm" hidden></button>
+            </div>
             <ol class="index-list" id="index-list"></ol>
             <p class="muted index-empty" id="index-empty" hidden>
               这一页还没有页码索引。
@@ -673,8 +679,10 @@
           <button type="button" id="reading-submit" class="btn btn--pri btn--sm" disabled>提交 0 处改动</button>
         </div>
         <div class="reading-preflight" id="reading-preflight" hidden></div>
-        <div class="reading-split">
+        <div class="reading-split" id="reading-split">
           <aside class="reading-tree" id="reading-tree"></aside>
+          <div class="reading-grip" id="reading-grip-tree" role="separator" aria-orientation="vertical"
+               aria-label="拖动调整左树宽度，双击恢复默认" title="拖动调整宽度；双击恢复默认"></div>
           <div class="reading-pdf">
             <div class="reading-pdf__scroll" id="reading-pdf-scroll">
               <div class="reading-pdf__canvas" id="reading-pdf-canvas">
@@ -684,6 +692,8 @@
               <p class="muted" id="reading-image-status">正在渲染…</p>
             </div>
           </div>
+          <div class="reading-grip" id="reading-grip-pdf" role="separator" aria-orientation="vertical"
+               aria-label="拖动调整 PDF 宽度，双击恢复默认" title="拖动调整宽度；双击恢复默认"></div>
           <div class="reading-stream" id="reading-stream"></div>
         </div>
       </section>
@@ -1343,6 +1353,31 @@
           <span class="spacer"></span>
           <button type="button" id="new-project-cancel" class="btn">取消</button>
           <button type="button" id="new-project-pick" class="btn btn--pri">选择 PDF…</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────── 对话框：检测版面 ─────────────────────────── -->
+    <div class="mask" id="layout-detect-mask" hidden>
+      <div class="modal modal--small">
+        <div class="mhead">检测版面
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="layout-detect-cancel-x">✕</button>
+        </div>
+        <div class="mbody mbody--single">
+          <p class="hint">
+            检测只找<strong>正文行的位置</strong>，不识别文字、不改任何块。
+            版心靠这些行框拟合：跑完会自动为没有版心的页拟合一次。
+          </p>
+          <div class="layout-plan" id="layout-detect-plan">正在读取检测计划…</div>
+          <div class="hint" id="layout-detect-note" hidden></div>
+          <div class="alert alert--error" id="layout-detect-error" hidden></div>
+        </div>
+        <div class="mfoot">
+          <span class="muted">可暂停 / 取消</span>
+          <span class="spacer"></span>
+          <button type="button" id="layout-detect-cancel" class="btn">取消</button>
+          <button type="button" id="layout-detect-start" class="btn btn--pri">开始检测</button>
         </div>
       </div>
     </div>

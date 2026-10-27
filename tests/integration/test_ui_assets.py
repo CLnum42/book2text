@@ -508,10 +508,18 @@ def test_margin_view_is_wired_to_the_page_view() -> None:
         "margin-edges",
         "margin-basis",
         "margin-next",
-        "margin-detect-missing",
+        "margin-detect-hint",
         "margin-fit-progress",
     ):
         assert f'id="{element_id}"' in page_html, element_id
+
+    # 检测入口不占版心步主位，挪进右上角「⋯」；检测计划单独一个对话框
+    assert 'id="margin-detect-missing"' not in page_html
+    assert 'id="layout-detect-open"' in page_html
+    assert 'id="layout-detect-mask"' in page_html
+    # 没有检测行时不许说"已自动拟合"：文案按这一页的真实状态出
+    assert "版心已自动拟合；拖动四边调整，不改也算已定" not in script
+    assert "这一页还没有可用的正文行，版心暂时未定" in script
 
     # 模式选择卡片已经拿掉：页面上不许再出现这四个来源按钮
     assert 'id="margin-modes"' not in page_html
@@ -755,7 +763,7 @@ def test_layout_detection_and_workflow_filter_are_wired() -> None:
         "panel-layout-blocks",
         "layout-block-status",
         "layout-block-confirm",
-        "margin-detect-missing",
+        "layout-detect-open",
     ):
         assert f'id="{element_id}"' in page, element_id
 
@@ -765,8 +773,10 @@ def test_layout_detection_and_workflow_filter_are_wired() -> None:
     assert "function workflowChip(" in script
     assert "startLayoutDetection" in script
     assert 'layout: "版面检测"' in script
-    # 任务 36B：检测入口只在"这几个页还没有检测行"时出现，并且顺手拟合版心
-    assert "renderMarginDetectButton" in script
+    # 检测入口在「⋯」里：先看计划（几页 / 大概多久）再决定跑不跑
+    assert "function openLayoutDetectDialog(" in script
+    assert "/layout/plan" in script
+    assert "function refreshMarginDetectHint(" in script
     assert "prepare: true" in script
     # 版面块确认搬到「页面确认」步（不再是版心分区里的折叠项）
     assert "function renderLayoutBlocks(" in script
@@ -994,8 +1004,17 @@ def test_workflow_steps_scope_the_right_panel() -> None:
     # 版心步：进来自动拟合未定的页；只碰 auto 且没有框的页
     assert "function ensureMarginFitted(" in script
     assert "function marginUndeterminedPages(" in script
-    assert "marginFitTried" in script
-    assert "function renderMarginDetectButton(" in script
+    assert "function marginPagesWithoutLines(" in script
+    assert "function pageLayoutLines(" in script
+    # 有行可拟合 = 检测行 + 识别行（刀 1：没有检测行也能用 OCR 行拟合）
+    assert "function pageHasFitLines(" in script
+    assert "function pageTextLines(" in script
+    # 不再由前端按"检测行数"预筛：后端回退识别行，无文字的页单独报 no_text
+    assert "pageLayoutLines(page) > 0 && !marginFitTried.has(page.page_no)" not in script
+    assert 'Number(data.no_text || 0)' in script
+    assert "function marginFitSummaryText(" in script
+    assert "页没有文字（插图 / 空白），跳过" in script
+    assert "页还没有可用的正文行，版心未定" in script
     # 面板只剩三个动作（重置 / 撤销 / 下一页），模式卡片已经删除
     assert 'el("margin-page-actions")' in script
     assert "function undoMarginEdit(" in script
@@ -1054,8 +1073,17 @@ def test_page_index_step_is_wired() -> None:
     assert 'const ix = fs.index || {};' in script
     assert 'Boolean(ix.complete)' in script
     assert "未识别页码" in script
-    # 版心步的"下一步"不再写审校
-    assert "版心已自动拟合；拖动四边调整，不改也算已定" in script
+    # 版心步的"下一步"按这一页的真实状态说，不按步骤顺序说
+    assert "版心已按本页正文行生成；拖动四边调整，不改也算已定" in script
+    # 兜底与"没有行"各有自己的说法，不许混成一句"已拟合"
+    assert "版心是本页正文行的包围盒（兜底）" in script
+    assert "这一页还没有正文行，版心要等文字识别完成才能生成" in script
+    # 只有 PDF 页序时：说明条 + 跳转停用 + 步骤条不绿（complete 由后端给）
+    assert "function indexIsPageOrderOnly(" in script
+    assert "尚未识别：下面只有 PDF 页序" in script
+    assert "function syncIndexJumpState(" in script
+    assert "is-page-order" in script
+    assert ".index-notice" in css
 
     assert ".index-row.is-current" in css
     assert ".index-split" in css

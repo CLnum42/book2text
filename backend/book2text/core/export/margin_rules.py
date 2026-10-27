@@ -13,6 +13,12 @@
 - 第一层（版心）：块**中心点**落在版心外 → 非正文。页眉 / 页脚 / 页码按此处理。
   用中心点而不是"完全包含"：一个块跨过版心边界时，完全包含会把正文块也排除；
   中心点是"这一块主要在哪边"的稳定近似，且与用户在版心视图里看到的框一致。
+  **例外（刀 0，2026-10-27）**：版心只用来排除"列外 / 上下边带"的家具，不删文字列
+  里的字——块的 x 范围与版心的 x 范围有重叠、且中心不在上下 8% 边带里时，即使中心
+  在框外也留在正文（计入异常页）；`heading` / `title` 无条件保留。书眉（顶带）、
+  页码（列外）仍然排除。原因：拟合框天然只包连续正文长行，章首 / 节标题在其上方、
+  间距更大，收不进来；纯中心判定会把它们静默删掉（《导读巴赫金》267 页实测 30 个
+  标题块，导出后少约 195 字，而当时的审计报 0 页异常）。
 - 第二层（类型）：中心在版心内，但类型是脚注 / 旁批 / 插图 / 装饰 / 图注等 → 非正文。
   脚注与旁批进注释流（用户勾"同时导出注释"时），其余只作结构信息。
 
@@ -41,6 +47,14 @@ MODE_NONE = margin_box_module.MODE_NONE
 # 页面上下边带（与 `streams.EDGE_TOP / EDGE_BOTTOM` 同口径）
 PAGE_NUMBER_EDGE_BAND = 0.08
 
+# 版心不删文字列里的字（刀 0）：块的 x 与版心 x 有重叠、且中心不在这条边带里就保留。
+RESCUE_EDGE_BAND = PAGE_NUMBER_EDGE_BAND
+# 标题无条件保留：章首 / 节标题常在正文块上方、间距更大，拟合框收不进来。
+ALWAYS_KEEP_TYPES = frozenset({
+    segments_module.BLOCK_TYPE_HEADING,
+    "title",  # 早期数据 / 外部导入可能用 title 表示标题
+})
+
 NOTE_TYPES = frozenset({
     segments_module.BLOCK_TYPE_FOOTNOTE,
     segments_module.BLOCK_TYPE_MARGIN_NOTE,
@@ -68,6 +82,9 @@ class PageMarginLayout:
     page_number_values: Mapping[str, str]
     note_ids: frozenset[str]
     note_inside_ids: frozenset[str]
+    # 中心在框外、但按刀 0 的例外留在正文的块（文字列内 / 标题）：**异常页的依据**，
+    # 导出保留它们，界面与预检要列出来让用户看。
+    rescued_ids: frozenset[str] = frozenset()
 
     @property
     def page_number_ids(self) -> frozenset[str]:
@@ -79,6 +96,7 @@ class PageMarginLayout:
         return {
             "inside": len(self.inside_ids),
             "outside": len(self.outside_ids),
+            "rescued": len(self.rescued_ids),
             "page_number": len(self.page_number_values),
         }
 
@@ -123,6 +141,27 @@ def _in_edge_band(center: tuple[float, float] | None) -> bool:
     return center[1] <= PAGE_NUMBER_EDGE_BAND or center[1] >= 1 - PAGE_NUMBER_EDGE_BAND
 
 
+def _bbox_tuple(raw) -> tuple[float, float, float, float] | None:
+    if raw is None:
+        return None
+    try:
+        values = tuple(float(value) for value in raw)
+    except (TypeError, ValueError):
+        return None
+    if len(values) != 4:
+        return None
+    return values  # type: ignore[return-value]
+
+
+def x_overlaps_box(bbox, box: tuple[float, float, float, float]) -> bool:
+    """块的 x 范围与版心的 x 范围有重叠（列内的字，即使中心在上下框外也不该删）。"""
+    parsed = _bbox_tuple(bbox)
+    if parsed is None:
+        return False
+    x0, _, x1, _ = parsed
+    return x1 > box[0] + 1e-9 and x0 < box[2] - 1e-9
+
+
 def classify_page(
     page: Page,
     blocks: Sequence[object],
@@ -143,16 +182,27 @@ def classify_page(
 
     inside: set[str] = set()
     outside: set[str] = set()
+    rescued: set[str] = set()
     numbers: dict[str, str] = {}
     notes: set[str] = set()
     notes_inside: set[str] = set()
 
     for block in blocks:
-        center = block_center(getattr(block, "bbox", None))
+        block_type = getattr(block, "block_type", "")
+        bbox = getattr(block, "bbox", None)
+        center = block_center(bbox)
         # 没有框的块判断不了位置：按"版心内"处理，宁可留在正文里也不静默丢数据
         is_inside = True
-        if applied and center is not None:
-            is_inside = center_inside(center, box)
+        if applied and center is not None and not center_inside(center, box):
+            # 刀 0：中心在框外 ≠ 该删。只删"列外 / 上下边带"的家具。
+            if block_type in ALWAYS_KEEP_TYPES:
+                is_inside = True
+                rescued.add(block.block_id)
+            elif x_overlaps_box(bbox, box) and not _in_edge_band(center):
+                is_inside = True
+                rescued.add(block.block_id)
+            else:
+                is_inside = False
 
         block_id = block.block_id
         if is_inside:
@@ -160,7 +210,6 @@ def classify_page(
         else:
             outside.add(block_id)
 
-        block_type = getattr(block, "block_type", "")
         if block_type in NOTE_TYPES:
             notes.add(block_id)
             if is_inside:
@@ -186,6 +235,7 @@ def classify_page(
         unset=unset,
         inside_ids=frozenset(inside),
         outside_ids=frozenset(outside),
+        rescued_ids=frozenset(rescued),
         page_number_values=dict(numbers),
         note_ids=frozenset(notes),
         note_inside_ids=frozenset(notes_inside),

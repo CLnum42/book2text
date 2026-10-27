@@ -227,8 +227,9 @@ function stepProgress(id) {
       done = Boolean(m.complete) && Number(m.undetermined || 0) === 0;
       count = `${m.set || 0}/${m.total || 0}`;
       detail =
-        `版心已定 ${count}` +
+        `正文页版心已定 ${count}` +
         (m.fallback ? ` · ${m.fallback} 页本页包围盒兜底` : "") +
+        (m.no_text ? ` · ${m.no_text} 页无文字跳过` : "") +
         (m.undetermined ? ` · ${m.undetermined} 页未定` : "");
     }
   } else if (id === "recognition") {
@@ -522,29 +523,58 @@ function marginUndeterminedPages() {
   );
 }
 
+/** 这一页最近一次成功版面检测的行数（0 = 还没检测 / 一行都没检出）。 */
+function pageLayoutLines(page) {
+  return Number((page && page.layout_lines) || 0);
+}
+
+/** 这一页的识别行数（刀 1：版心可以回退 OCR 行拟合）。 */
+function pageTextLines(page) {
+  return Number((page && page.text_lines) || 0);
+}
+
+/** 这一页有没有可拟合的行框：检测行优先，没有就看识别行。 */
+function pageHasFitLines(page) {
+  return pageLayoutLines(page) + pageTextLines(page) > 0;
+}
+
+/**
+ * 版心未定、而且**没有可用正文行**的页（拟合不出来，不是"还没轮到"）。
+ *
+ * 版心是从行框推出来的：检测行（`layout_run`）或者识别行（`block_line`）。
+ * 两样都没有的页，拟合出来的只能是空——界面必须如实说"未定"，不能报"已拟合"。
+ */
+function marginPagesWithoutLines() {
+  return marginUndeterminedPages().filter((page) => !pageHasFitLines(page));
+}
+
 /**
  * 进「版心确认」时自动拟合未定的页。
  *
  * - 只碰 `mode=auto` 且还没有框的页：`.custom` 绝不覆盖，`.none` / `.inherit` 也不动；
- * - 一批 60 页一次请求，界面按批更新进度条（394 页实测全书 2.3 秒，分批后不会假死）；
- * - 拟合不出来（这一页连检测行都没有）的页记进 `marginFitTried`，不反复重试。
+ * - **不预先按"有没有行"筛页**：后端会回退识别行拟合（刀 1），无文字的页单独报
+ *   `no_text`，不该由前端猜；猜错就会把整本没检测过的书误判成"没有行"；
+ * - 一批 20 页一次请求，界面按批更新进度条（分批后不会假死）；
+ * - 拟合失败的页记进 `marginFitTried`，本次会话不反复重试；任务结束 / 重新进这一步会清空。
  */
 async function ensureMarginFitted() {
+  refreshMarginDetectHint();
   if (!currentProject || currentProject.kind === "package") return;
   if (marginFitRunning) return;
   const pending = marginUndeterminedPages().filter(
     (page) => !marginFitTried.has(page.page_no)
   );
-  if (!pending.length) {
-    renderMarginDetectButton();
-    return;
-  }
+  if (!pending.length) return;
   marginFitRunning = true;
   for (const page of pending) marginFitTried.add(page.page_no);
   showMarginFitProgress(0, pending.length);
-  let done = 0;
+  let attempted = 0;
+  let fitted = 0;
+  let fallback = 0;
+  let undetermined = 0;
+  let noText = 0;
   try {
-    while (done < pending.length) {
+    while (attempted < pending.length) {
       const data = await apiJson(
         `/api/projects/${currentProject.project_id}/margin-box/fit-all`,
         {
@@ -554,8 +584,12 @@ async function ensureMarginFitted() {
         }
       );
       const updated = Number(data.updated || 0);
-      done += updated;
-      showMarginFitProgress(done, pending.length);
+      attempted += updated;
+      fitted += Number(data.fitted || 0);
+      fallback += Number(data.fallback || 0);
+      undetermined += Number(data.undetermined || 0);
+      noText += Number(data.no_text || 0);
+      showMarginFitProgress(attempted, pending.length);
       if (!updated || Number(data.remaining || 0) === 0) break;
     }
     await refreshPageStates();
@@ -565,17 +599,37 @@ async function ensureMarginFitted() {
       await loadFinishSummary({ silent: true });
     }
     setMarginStatus(
-      done
-        ? `已自动拟合 ${done} 页版心；本页自定义的页保持原样。`
-        : "这些页还没有检测行，暂时拟合不出版心。"
+      marginFitSummaryText(fitted, fallback, undetermined, noText)
     );
   } catch (error) {
     showError(el("pages-error"), error);
   } finally {
     marginFitRunning = false;
     hideMarginFitProgressSoon();
-    renderMarginDetectButton();
+    refreshMarginDetectHint();
   }
+}
+
+/** 拟合结果的真实说法：只在**确实写出框**的页数上说"已拟合"。 */
+function marginFitSummaryText(fitted, fallback, undetermined, noText) {
+  const parts = [];
+  const settled = fitted + fallback;
+  if (settled > 0) {
+    parts.push(
+      `版心已生成：自动拟合 ${fitted} 页` +
+        (fallback ? ` · 本页包围盒兜底 ${fallback} 页` : "")
+    );
+  }
+  if (noText > 0) {
+    parts.push(`${noText} 页没有文字（插图 / 空白），跳过`);
+  }
+  if (undetermined > 0) {
+    parts.push(
+      `${undetermined} 页还没有可用的正文行，版心未定` +
+        (settled > 0 ? "" : "（先完成文字识别，再回来生成版心）")
+    );
+  }
+  return parts.length ? `${parts.join(" · ")}。` : "";
 }
 
 function showMarginFitProgress(done, total) {
@@ -597,14 +651,48 @@ function hideMarginFitProgressSoon() {
   }, 1600);
 }
 
-/** 拟合不出来的页（没有检测行）才给一个"检测这些页"的入口；有检测行时不出现。 */
-function renderMarginDetectButton() {
-  const button = el("margin-detect-missing");
-  if (!button) return;
-  const missing = marginUndeterminedPages();
-  button.hidden = missing.length === 0;
-  button.textContent = `检测这些页的正文行…（${missing.length} 页还没有检测行）`;
+/**
+ * 版心还差哪些页、为什么差。
+ *
+ * 这里只说**事实**（没有可用的正文行 → 拟合不出来），不说"下一步去识别"这类
+ * 跟着步骤顺序变的话：检测入口在右上角「⋯ → 检测版面…」，不占这一步的主位。
+ */
+function refreshMarginDetectHint() {
+  const hint = el("margin-detect-hint");
+  if (!hint) return;
+  if (!currentProject || currentProject.kind === "package") {
+    hint.hidden = true;
+    return;
+  }
+  const noLines = marginPagesWithoutLines().length;
+  const undetermined = marginUndeterminedPages().length;
+  if (!undetermined) {
+    hint.hidden = true;
+    return;
+  }
+  const bits = [`还有 ${undetermined} 页没有版心`];
+  if (noLines) bits.push(`其中 ${noLines} 页没有可用的正文行（检测行 / 识别行框都没有）`);
+  bits.push("版心是从行框推出来的，没有行框的页拟合不出来");
+  bits.push("要先有行：可以在右上角「⋯ → 检测版面…」里跑一次检测");
+  hint.textContent = bits.join("；") + "。";
+  hint.hidden = false;
 }
+
+/** 「⋯」里的检测入口：名字里带上还差多少页，点开先看计划再决定跑不跑。 */
+function refreshLayoutDetectEntry() {
+  const item = el("layout-detect-open");
+  if (!item) return;
+  if (!currentProject || currentProject.kind === "package") {
+    item.hidden = true;
+    return;
+  }
+  item.hidden = false;
+  const undetermined = marginUndeterminedPages().length;
+  item.textContent = undetermined
+    ? `检测版面…（${undetermined} 页还没有版心）`
+    : "检测版面…";
+}
+
 
 function goToWorkflowStep(id) {
   if (!currentProject) return;
@@ -2600,7 +2688,11 @@ function pageMarginSourceLabel(page) {
   if (page.margin_box_mode === "custom") return "本页自定义";
   if (page.margin_box_mode === "auto") {
     const method = pageMarginMethod(page);
-    if (method === "undetermined") return "未定（还没有拟合框）";
+    if (method === "undetermined") {
+      return pageHasFitLines(page)
+        ? "未定（有正文行，还没拟合）"
+        : "未定（没有可用的正文行）";
+    }
     if (method === "bbox") return "本页包围盒（兜底）";
     return "自动拟合";
   }
@@ -3334,14 +3426,32 @@ function updateSelectionPanel() {
     typeSummary.textContent = "";
   }
 
-  // 顶部"下一步"：只给一条，不重复 setupbar 的计数。按当前步骤说下一步，
-  // 版心之后是文字识别，不是审校（任务 37 修正）。
+  // 顶部"下一步"：只给一条，不重复 setupbar 的计数。**按这一页的真实状态说**，
+  // 不按步骤顺序说：没有框的页不能写"已自动拟合"（这页连行框都没有，拟合不出来）。
   const next = el("selection-next");
   if (workflowStep === "margin") {
-    next.textContent =
-      count === 1
-        ? "版心已自动拟合；拖动四边调整，不改也算已定"
-        : "在左边点一页：版心框会画在页面上，四边 / 四角可拖";
+    if (count !== 1) {
+      next.textContent = "在左边点一页：版心框会画在页面上，四边 / 四角可拖";
+    } else {
+      const page = selected[0];
+      const hasBox =
+        Boolean(marginBoxOfPage(page)) || page.margin_box_mode === "none";
+      if (page.margin_box_mode === "none") {
+        next.textContent = "这一页标了「不适用版心」，整页都按正文处理";
+      } else if (hasBox) {
+        next.textContent =
+          pageMarginMethod(page) === "bbox"
+            ? "版心是本页正文行的包围盒（兜底）；拖动四边调整，不改也算已定"
+            : "版心已按本页正文行生成；拖动四边调整，不改也算已定";
+      } else if (pageHasFitLines(page)) {
+        next.textContent = "这一页有正文行但还没有版心：点「重置为本页自动」重新生成";
+      } else {
+        next.textContent =
+          pageTextLines(page) === 0
+            ? "这一页还没有正文行，版心要等文字识别完成才能生成"
+            : "这一页还没有可用的正文行，版心暂时未定";
+      }
+    }
   } else if (workflowStep === "recognition") {
     next.textContent = count
       ? "识别完成后，去「正文审校」逐条看差异"
@@ -4667,7 +4777,7 @@ function refreshMarginTiles() {
 
 let marginStatusTimer = null;
 
-function setMarginStatus(text, isError = false) {
+function setMarginStatus(text, isError = false, holdMs = 9000) {
   const node = el("margin-status");
   if (!node) return;
   node.textContent = text || "";
@@ -4677,7 +4787,7 @@ function setMarginStatus(text, isError = false) {
   if (text) {
     marginStatusTimer = setTimeout(() => {
       node.hidden = true;
-    }, 9000);
+    }, holdMs);
   }
 }
 
@@ -4760,6 +4870,18 @@ function marginSourceText() {
   return "手动设置";
 }
 
+/**
+ * 版心未定的依据说明：**这一页到底有没有行**，说清楚。
+ * 两处（面板首屏 / 审计回包）共用一句，免得后到的审计把首屏的实话盖回去。
+ */
+function marginBasisForUndetermined(page) {
+  const lines = pageLayoutLines(page) + pageTextLines(page);
+  if (lines > 0) {
+    return `未定：这一页有 ${lines} 行正文，但还没有拟合出四边（「重置为本页自动」可重算）`;
+  }
+  return "未定：这一页还没有可用的正文行（检测行 / 识别行框都没有），拟合不出版心";
+}
+
 async function ensureMarginAudit(page) {
   const node = el("margin-audit");
   if (!node || !currentProject || !page) return;
@@ -4773,24 +4895,31 @@ async function ensureMarginAudit(page) {
     );
     if (marginAuditPage !== page.page_no) return;
     const basis = el("margin-basis");
+    const linesWord = data.lines_source === "layout" ? "检测行" : "识别行";
     if (basis && page.margin_box_mode === "auto") {
       const total = Number(data.total_lines || 0);
       const method = pageMarginMethod(page);
       if (method === "undetermined") {
-        basis.textContent =
-          "未定：本页还没有可用的拟合框，整页计入；先检测这一页的正文行";
+        basis.textContent = marginBasisForUndetermined(page);
       } else if (method === "bbox") {
         basis.textContent =
-          `来源：本页所有检测行的包围盒（兜底） · ${total} 条正文长行`;
+          `来源：本页所有${linesWord}的包围盒（兜底） · ${total} 条正文长行`;
       } else {
         basis.textContent =
-          `来源：本页检测行自动拟合 · 把握：${total >= 10 ? "较稳" : total >= 3 ? "偏少" : "不足"}` +
+          `来源：本页${linesWord}自动拟合 · 把握：${total >= 10 ? "较稳" : total >= 3 ? "偏少" : "不足"}` +
           `（${total} 条正文长行）`;
       }
     }
-    if (Number(data.outside || 0) > 0) {
+    const rescued = Number(data.rescued || 0);
+    const outside = Number(data.outside || 0);
+    if (rescued > 0) {
       node.textContent =
-        `这页有 ${data.outside} 行正文落在本页版心之外，可能拟合不准；` +
+        `这页有 ${rescued} 块文字在版心框外（标题 / 章首等），已按"文字列里的字不删"保留；` +
+        "导出不会少，值得看一眼。";
+      node.hidden = false;
+    } else if (outside > 0) {
+      node.textContent =
+        `这页有 ${outside} 行正文落在本页版心之外，可能拟合不准；` +
         "拖动版心核对一下。";
       node.hidden = false;
     } else {
@@ -4847,7 +4976,8 @@ function renderMarginPanel() {
   next.hidden = true;
 
   const selected = selectionPages();
-  renderMarginDetectButton();
+  refreshMarginDetectHint();
+  refreshLayoutDetectEntry();
 
   if (!selected.length) {
     state.textContent = "未选择页面";
@@ -4916,7 +5046,7 @@ function renderMarginPanel() {
       : page.margin_box_mode === "custom"
         ? "来源：你拖出来的四边（只影响这一页）"
         : !box || method === "undetermined"
-          ? "未定：这一页还没有检测行，拟合不出版心"
+          ? marginBasisForUndetermined(page)
           : method === "bbox"
             ? "来源：本页所有检测行的包围盒（行太少时的兜底）"
             : "来源：本页检测行自动拟合（不用默认版心）";
@@ -6449,6 +6579,8 @@ async function pollTask() {
   }
   // 轮询只刷新抽屉 / 顶栏 pill 的内容：用户关掉抽屉之后，任务还在跑也不许自己弹回来。
   renderTask(data);
+  // 检测任务在版心分区里也留一行进度（"做了多少 / 还要多久"），别让人只盯着抽屉
+  if (data.job.job_type === "layout") updateMarginDetectProgress(data);
 
   if (!["queued", "running", "paused"].includes(data.job.status)) {
     stopTaskPolling();
@@ -6460,6 +6592,7 @@ async function pollTask() {
       await refreshMarginState();
       if (currentView === "pages") syncPageStates();
       await loadTasks();
+      reportLayoutDetectOutcome(data);
       if (announceTaskFailure(data.job)) {
         renderTask(data);
         openTaskDrawer();
@@ -6672,9 +6805,9 @@ function renderWorkflowFilter(counts, summary) {
 }
 
 function renderLayoutStatus() {
-  // 任务 36B：检测入口只剩「这几个还没检测行的页」这一个，出现在版心分区里。
-  // 有拟合框的页不需要它，所以平时看不见。
-  renderMarginDetectButton();
+  // 检测入口在「⋯」里（PM：不占版心步的主位）；这里只更新它的文案与版心的缺口提示。
+  refreshMarginDetectHint();
+  refreshLayoutDetectEntry();
 }
 
 /** 版面检测入口：建任务 → 抽屉 + 轮询（任务 58）。 */
@@ -6701,6 +6834,239 @@ async function startLayoutDetection({ pages = null, scope = null, prepare = fals
     showError(el("pages-error"), error);
     return null;
   }
+}
+
+// ---------------------------------------------------------------- 检测版面（⋯ 里的小入口）
+//
+// PM 的意见：检测一跑几分钟、用户也判断不了检测行对不对，**不该占版心步的主位**。
+// 所以入口在右上角「⋯ → 检测版面…」，点开先看计划（几页 / 大概多久）再决定跑不跑。
+// 后端用 `prepare` 模式：有检测行的页只补拟合，没有的才真检测。
+
+let layoutPlanCache = null;
+
+/** 打开检测对话框：先取计划，再让用户决定。 */
+async function openLayoutDetectDialog() {
+  if (!currentProject) return;
+  layoutPlanCache = null;
+  el("layout-detect-error").hidden = true;
+  el("layout-detect-note").hidden = true;
+  el("layout-detect-plan").textContent = "正在读取检测计划…";
+  el("layout-detect-start").disabled = true;
+  el("layout-detect-start").textContent = "开始检测";
+  openModal("layout-detect-mask");
+  await refreshLayoutDetectPlan();
+}
+
+async function refreshLayoutDetectPlan() {
+  if (!currentProject) return;
+  try {
+    const plan = await apiJson(
+      `/api/projects/${currentProject.project_id}/layout/plan`
+    );
+    layoutPlanCache = plan;
+    renderLayoutDetectPlan(plan);
+  } catch (error) {
+    el("layout-detect-plan").textContent =
+      `检测计划读取失败：${error.message || "未知错误"}`;
+    el("layout-detect-start").disabled = true;
+  }
+}
+
+/** 秒 → "约 2 分 10 秒"（粗一点，别给出假精度）。 */
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  if (total < 60) return `约 ${total} 秒`;
+  const minutes = Math.floor(total / 60);
+  const rest = total % 60;
+  return rest ? `约 ${minutes} 分 ${rest} 秒` : `约 ${minutes} 分钟`;
+}
+
+function renderLayoutDetectPlan(plan) {
+  const detect = (plan.need_detection || []).length;
+  const fit = (plan.need_fit || []).length;
+  const rows = [];
+  rows.push(
+    `<div class="layout-plan__row"><span>正文页</span><strong>${plan.body_pages || 0}</strong></div>`
+  );
+  rows.push(
+    `<div class="layout-plan__row"><span>已有检测结果</span><strong>${plan.detected || 0}</strong></div>`
+  );
+  rows.push(
+    `<div class="layout-plan__row"><span>这次要检测</span><strong>${detect}</strong></div>`
+  );
+  if (fit) {
+    rows.push(
+      `<div class="layout-plan__row"><span>只补拟合版心</span><strong>${fit}</strong></div>`
+    );
+  }
+  if (detect) {
+    const perPage = Number(plan.seconds_per_page || 0);
+    rows.push(
+      `<div class="layout-plan__row"><span>预计耗时</span><strong>${formatDuration(plan.estimated_seconds)}</strong></div>`
+    );
+    rows.push(
+      `<div class="layout-plan__row layout-plan__row--muted"><span>单页约</span><span>${perPage.toFixed(2)} 秒</span></div>`
+    );
+  }
+  el("layout-detect-plan").innerHTML = rows.join("");
+
+  const note = el("layout-detect-note");
+  const bits = [];
+  if (detect) {
+    bits.push(
+      plan.estimate_source === "history"
+        ? "耗时按这本书已经跑过的检测实测中位数估算"
+        : "这本书还没跑过检测，耗时按本机实测速度估算"
+    );
+    bits.push("跑的过程中可以暂停 / 取消，进度在右侧任务抽屉里");
+  } else {
+    bits.push("正文页都有检测行了，不需要再检测");
+  }
+  if (fit) bits.push(`另有 ${fit} 页已有检测行，只补拟合版心，不会重检测`);
+  note.textContent = bits.join("；") + "。";
+  note.hidden = false;
+
+  const start = el("layout-detect-start");
+  start.disabled = detect + fit === 0;
+  start.textContent = detect ? `开始检测（${detect} 页）` : fit ? `只补拟合（${fit} 页）` : "没有要做的";
+}
+
+async function startLayoutDetectFromDialog() {
+  if (!currentProject || !layoutPlanCache) return;
+  const plan = layoutPlanCache;
+  const pages = [...(plan.need_detection || []), ...(plan.need_fit || [])];
+  if (!pages.length) return;
+  el("layout-detect-error").hidden = true;
+  el("layout-detect-start").disabled = true;
+  el("layout-detect-start").textContent = "正在建任务…";
+  const data = await startLayoutDetection({ pages, prepare: true });
+  if (!data || !data.job) {
+    // 失败原因就地显示：以前错误写进 #pages-error，对话框一关就看不见了，
+    // 用户的感觉是"点了没反应"——这正是 P1-3 要修的。
+    const node = el("layout-detect-error");
+    node.textContent =
+      (el("pages-error") && el("pages-error").textContent) || "任务没建成，原因未知。";
+    node.hidden = false;
+    el("layout-detect-start").disabled = false;
+    el("layout-detect-start").textContent = "重试";
+    return;
+  }
+  closeModal("layout-detect-mask");
+  showMarginDetectProgress(0, data.job.total || pages.length);
+  setMarginStatus(
+    `开始检测 ${data.job.total || pages.length} 页版面（只检测，不识别文字）…`,
+    false,
+    60000
+  );
+}
+
+/** 检测任务在跑：在版心分区里显示"做了多少 / 还要多久"。 */
+function updateMarginDetectProgress(data) {
+  const job = data && data.job;
+  if (!job || job.job_type !== "layout") return;
+  const active = ["queued", "running", "paused"].includes(job.status);
+  if (!active) return;
+  const done = job.done + job.failed;
+  showMarginDetectProgress(done, job.total || 0);
+  const eta = estimateRemainingSeconds(data);
+  el("margin-fit-text").textContent =
+    `正在检测版面… ${done} / ${job.total} 页` +
+    (job.status === "paused"
+      ? "（已暂停）"
+      : eta > 0
+        ? ` · 还需${formatDuration(eta)}`
+        : "");
+}
+
+/** 按已经跑出来的速度估剩余时间；样本太少时不给假精度。 */
+function estimateRemainingSeconds(data) {
+  const job = data.job || {};
+  const done = Number(job.done || 0) + Number(job.failed || 0);
+  const remaining = Number(job.total || 0) - done;
+  if (!job.started_at || done < 2 || remaining <= 0) return 0;
+  const started = Date.parse(job.started_at);
+  if (!Number.isFinite(started)) return 0;
+  const elapsed = (Date.now() - started) / 1000;
+  if (elapsed <= 0) return 0;
+  return (elapsed / done) * remaining;
+}
+
+function showMarginDetectProgress(done, total) {
+  const wrap = el("margin-fit-progress");
+  if (!wrap) return;
+  wrap.hidden = false;
+  const percent = total ? Math.round((done / total) * 100) : 0;
+  el("margin-fit-fill").style.width = `${percent}%`;
+  el("margin-fit-text").textContent = `正在检测版面… ${done} / ${total} 页`;
+}
+
+/** 检测任务结算：把结果说清楚（成功多少、失败多少、版心补了多少、是不是崩了）。 */
+function reportLayoutDetectOutcome(data) {
+  const job = data && data.job;
+  if (!job || job.job_type !== "layout") return;
+  const total = Number(job.total || 0);
+  const done = Number(job.done || 0);
+  const failed = Number(job.failed || 0);
+  const left = Math.max(total - done - failed, 0);
+  const head = [];
+  // **进程意外结束 ≠ 完成**：这时候说"检测完成"就是谎报（检测进程被页面内容崩掉时就是这样）
+  if (job.status === "interrupted") {
+    head.push(
+      `版面检测中断：检测进程意外结束了（已完成 ${done} / ${total} 页，还剩 ${left} 页）。` +
+        "失败页在任务抽屉里能看到页码；点「继续」只重做剩下的页。"
+    );
+    if (failed) {
+      head.push(
+        "如果每次都在同一页停下，是那一页让检测引擎崩了（不是你的操作问题），把页码记下来报给开发者。"
+      );
+    }
+    setMarginStatus(head.join(" "), true, 30000);
+    finishMarginDetectBar(done, total);
+    return;
+  }
+  if (job.status === "cancelled") {
+    setMarginStatus(
+      `版面检测已取消：完成 ${done} 页，剩下的 ${left} 页没做。已经检出的行和版心都保留。`,
+      false,
+      20000
+    );
+    finishMarginDetectBar(done, total);
+    return;
+  }
+  if (job.status === "failed" && !done) {
+    setMarginStatus(
+      "版面检测没有成功：原因见任务抽屉里的失败页。",
+      true,
+      30000
+    );
+    finishMarginDetectBar(done, total);
+    return;
+  }
+  // 拟合结果按**刷新后的真实状态**说：检出 0 行的页拟合出来仍是空的，不能写成"已补拟合"
+  const stillEmpty = marginPagesWithoutLines().length;
+  const tail = stillEmpty
+    ? `还有 ${stillEmpty} 页这次没检出正文行（空白页 / 插图页常见），这些页的版心仍是未定。`
+    : "版心已按检测行补拟合，回去看页面的四边。";
+  setMarginStatus(
+    (failed
+      ? `版面检测完成：${total} 页里 ${failed} 页失败（原因在任务抽屉，重试只重做失败页）。`
+      : `版面检测完成：${total} 页。`) + tail,
+    failed > 0,
+    30000
+  );
+  finishMarginDetectBar(done, total);
+}
+
+/** 检测结束时进度条停在真实进度上，过一会儿收起来（别留在界面上像个假进度）。 */
+function finishMarginDetectBar(done, total) {
+  const wrap = el("margin-fit-progress");
+  if (!wrap) return;
+  el("margin-fit-fill").style.width = `${total ? Math.round((done / total) * 100) : 0}%`;
+  el("margin-fit-text").textContent = `检测：${done} / ${total} 页`;
+  window.setTimeout(() => {
+    const node = el("margin-fit-progress");
+    if (node && !marginFitRunning) node.hidden = true;
+  }, 5000);
 }
 
 /**
@@ -6987,6 +7353,7 @@ async function openPageIndex() {
   } else {
     renderPageIndex();
   }
+  syncIndexJumpState();
   const empty = el("index-empty");
   if (!pageIndexData || !pageIndexData.pages.length) {
     empty.hidden = false;
@@ -7005,6 +7372,8 @@ async function openPageIndex() {
     (detailPageNo !== null ? detailPageNo : null) ||
     pageIndexData.pages[0].page_no;
   openIndexPage(target, { scrollList: true });
+  // 开页会清跳转提示；页序模式的"没有印刷页码"要在**开页之后**再摆一次
+  syncIndexJumpState();
 }
 
 function renderPageIndex() {
@@ -7013,18 +7382,22 @@ function renderPageIndex() {
   list.innerHTML = "";
   if (!pageIndexData) {
     meta.textContent = "";
+    renderIndexNotice(null);
     return;
   }
   const stats = pageIndexData.stats || {};
-  const bits = [
-    `${stats.total || 0} 页`,
-    `${stats.numbered || 0} 页有印刷页码`,
-  ];
+  const pageOrderOnly = indexIsPageOrderOnly();
+  const bits = pageOrderOnly
+    ? // 一页印刷页码都没有：这是一份 PDF 页序，别写成"0 页有印刷页码"让人以为是目录
+      [`仅 PDF 页序 · ${stats.total || 0} 页`, "还没有印刷页码"]
+    : [`${stats.total || 0} 页`, `${stats.numbered || 0} 页有印刷页码`];
   if (stats.chapters) bits.push(`${stats.chapters} 章`);
   if (pageIndexData.numbering_step === 2) bits.push("页码隔 2 递增");
-  if (stats.missing) bits.push(`${stats.missing} 页未识别页码`);
+  if (!pageOrderOnly && stats.missing) bits.push(`${stats.missing} 页未识别页码`);
   meta.textContent = bits.join(" · ");
   meta.title = (pageIndexData.notes || []).join("\n");
+
+  renderIndexNotice(pageOrderOnly ? stats : null);
 
   const fragment = document.createDocumentFragment();
   for (const entry of pageIndexData.pages) {
@@ -7042,6 +7415,22 @@ function renderPageIndex() {
       fragment.append(head);
     }
     const row = document.createElement("li");
+    if (pageOrderOnly) {
+      // 只有页序：一行只写"PDF 第 N 页"，不摆"未识别页码"占位——那是目录才有的东西
+      row.className = "index-row is-page-order";
+      row.dataset.pageNo = String(entry.page_no);
+      row.tabIndex = 0;
+      row.title = `PDF 第 ${entry.page_no} 页（还没有印刷页码）`;
+      const pdf = document.createElement("span");
+      pdf.className = "index-row__pdf";
+      pdf.textContent = `PDF 第 ${entry.page_no} 页`;
+      const note = document.createElement("span");
+      note.className = "index-row__note";
+      note.textContent = "无印刷页码";
+      row.append(pdf, note);
+      fragment.append(row);
+      continue;
+    }
     row.className = "index-row" + (entry.missing ? " is-missing" : "");
     row.dataset.pageNo = String(entry.page_no);
     row.tabIndex = 0;
@@ -7064,6 +7453,33 @@ function renderPageIndex() {
   list.append(fragment);
   highlightIndexRow(false);
 }
+
+/** 整本一页印刷页码都没有 = 这份列表只是 PDF 页序（还没识别 / 没定位页码）。 */
+function indexIsPageOrderOnly() {
+  const stats = (pageIndexData && pageIndexData.stats) || {};
+  if (typeof stats.page_order_only === "boolean") return stats.page_order_only;
+  return !Number(stats.numbered || 0);
+}
+
+/** 页序模式的说明条：这不是目录，印刷页码还没出来。 */
+function renderIndexNotice(stats) {
+  const notice = el("index-notice");
+  if (!notice) return;
+  if (!stats) {
+    notice.hidden = true;
+    return;
+  }
+  el("index-notice-title").textContent = "尚未识别：下面只有 PDF 页序";
+  el("index-notice-text").textContent =
+    `共 ${stats.total || 0} 页，一页印刷页码都还没有。` +
+    "印刷页码来自识别出的页码行（再经「页码定位」确认），所以这一步要等那两件事做完才有内容；" +
+    "现在点任意一页只是按 PDF 页序翻页。";
+  const go = el("index-notice-go");
+  go.hidden = false;
+  go.textContent = "打开「文字识别」";
+  notice.hidden = false;
+}
+
 
 // ---------------------------------------------------------------- 右：连续页列（按需加载）
 
@@ -7496,15 +7912,20 @@ function scrollIndexToPage(pageNo) {
 }
 
 function updateIndexPageHeader(pageNo) {
-  el("index-page-no").textContent = `第 ${pageNo} 页`;
+  const pageOrderOnly = Boolean(pageIndexData) && indexIsPageOrderOnly();
+  el("index-page-no").textContent = pageOrderOnly
+    ? `PDF 第 ${pageNo} 页`
+    : `第 ${pageNo} 页`;
   const entry =
     pageIndexData && pageIndexData.pages.find((item) => item.page_no === pageNo);
   // 页头只写实际检测到的印刷页；"同一叶另一面"的跳转便利只放在列表行的 title 里。
-  el("index-printed").textContent = entry
-    ? entry.missing
-      ? "未识别页码（照样可以审校 / 导出）"
-      : `印刷页 ${entry.printed[0] || ""}`
-    : "";
+  el("index-printed").textContent = pageOrderOnly
+    ? "无印刷页码（只有 PDF 页序）"
+    : entry
+      ? entry.missing
+        ? "未识别页码（照样可以审校 / 导出）"
+        : `印刷页 ${entry.printed[0] || ""}`
+      : "";
   const pages = pageIndexData ? pageIndexData.pages : [];
   const index = pages.findIndex((item) => item.page_no === pageNo);
   el("index-prev").disabled = index <= 0;
@@ -7517,7 +7938,8 @@ function openIndexPage(pageNo, { scrollList = true } = {}) {
   const page = indexPageRecord(pageNo);
   if (!page) return;
   indexCurrentPage = pageNo;
-  setIndexJumpStatus("");
+  // 页序模式的"没有印刷页码"说明是**常驻**的，翻页不该把它清掉
+  if (!indexIsPageOrderOnly()) setIndexJumpStatus("");
   ensureIndexPages();
   if (!indexTopMap.size) measureIndexTiles();
   updateIndexPageHeader(pageNo);
@@ -7635,20 +8057,47 @@ function toggleIndexMargin() {
   paintIndexDecorations();
 }
 
-function setIndexJumpStatus(text, isError = false) {
+function setIndexJumpStatus(text, isError = false, holdMs = 9000) {
   const node = el("index-jump-status");
   if (!node) return;
   node.textContent = text || "";
   node.hidden = !text;
   node.style.color = isError ? "var(--bad-fg)" : "";
   if (indexJumpTimer) clearTimeout(indexJumpTimer);
-  if (text) indexJumpTimer = setTimeout(() => { node.hidden = true; }, 9000);
+  if (text && holdMs > 0) indexJumpTimer = setTimeout(() => { node.hidden = true; }, holdMs);
+}
+
+/**
+ * 页序模式下"按印刷页码跳转"必须停用：没有印刷页码，输入框就是骗人的。
+ * 有页码时恢复，并把提示收起来。
+ */
+function syncIndexJumpState() {
+  const input = el("index-jump-input");
+  const go = el("index-jump-go");
+  if (!input || !go) return;
+  const pageOrderOnly = Boolean(pageIndexData) && indexIsPageOrderOnly();
+  input.disabled = pageOrderOnly;
+  go.disabled = pageOrderOnly;
+  input.placeholder = pageOrderOnly ? "还没有印刷页码" : "如 80";
+  if (pageOrderOnly) {
+    setIndexJumpStatus(
+      "还没有印刷页码，不能按印刷页码跳；左边按 PDF 页序排列。",
+      false,
+      0
+    );
+  } else {
+    setIndexJumpStatus("");
+  }
 }
 
 /** 按印刷页码跳转：精确命中就跳；没有就跳到最接近的印刷页并如实说明。 */
 function jumpToPrintedPage() {
   if (!pageIndexData || !pageIndexData.pages.length) {
     setIndexJumpStatus("页码索引还没准备好。", true);
+    return;
+  }
+  if (indexIsPageOrderOnly()) {
+    setIndexJumpStatus("这本书还没有印刷页码，只能按 PDF 页序翻。", true);
     return;
   }
   const raw = el("index-jump-input").value || "";
@@ -7692,6 +8141,7 @@ function jumpToPrintedPage() {
 function setupPageIndex() {
   el("index-prev").addEventListener("click", () => stepIndexPage(-1));
   el("index-next").addEventListener("click", () => stepIndexPage(1));
+  el("index-notice-go").addEventListener("click", () => goToWorkflowStep("recognition"));
   el("index-zoom-out").addEventListener("click", () => changeIndexZoom(-1));
   el("index-zoom-in").addEventListener("click", () => changeIndexZoom(1));
   el("index-overlay-toggle").addEventListener("click", toggleIndexOverlay);
@@ -12366,6 +12816,7 @@ function renderFinishPanel() {
   el("finish-margin-status").textContent = `${margin.set} / ${margin.total} 已定`;
   const marginNotes = [];
   if (margin.fallback) marginNotes.push(`${margin.fallback} 页退本页包围盒`);
+  if (margin.no_text) marginNotes.push(`${margin.no_text} 页无文字，跳过`);
   if (margin.undetermined) marginNotes.push(`${margin.undetermined} 页未定（还没有拟合框）`);
   el("finish-margin-sub").textContent = marginNotes.length
     ? marginNotes.join(" · ")
@@ -14253,11 +14704,14 @@ function setupLibrary() {
   el("pages-margin-toggle").addEventListener("click", toggleMarginView);
   el("layout-block-apply-all").addEventListener("click", adoptAllHighSuggestions);
   el("layout-block-confirm").addEventListener("click", confirmLayoutFromPanel);
-  el("margin-detect-missing").addEventListener("click", () => {
-    const missing = marginUndeterminedPages().map((page) => page.page_no);
-    if (!missing.length) return;
-    startLayoutDetection({ pages: missing, prepare: true });
+  el("layout-detect-open").addEventListener("click", () => {
+    // 点 ⋯ 里的条目：先收起菜单，再开对话框（模板遮罩不能挂在菜单里）
+    el("page-more-menu").hidden = true;
+    openLayoutDetectDialog();
   });
+  el("layout-detect-cancel").addEventListener("click", () => closeModal("layout-detect-mask"));
+  el("layout-detect-cancel-x").addEventListener("click", () => closeModal("layout-detect-mask"));
+  el("layout-detect-start").addEventListener("click", startLayoutDetectFromDialog);
   setupMarginDrag();
   el("setup-confirm-selected").addEventListener("click", confirmSelectedPages);
   el("split-page-numbers").addEventListener("click", openSplitBatchPanel);
@@ -15847,6 +16301,8 @@ function readingOptions() {
 
 async function openReading() {
   if (!currentProject) return;
+  // 三栏宽度在打开时套一次：视图刚显示出来才量得到真实宽度
+  applyReadingSplit();
   const projectId = currentProject.project_id;
   if (readingProject === projectId && readingData) {
     renderReading({ reset: true });
@@ -16586,6 +17042,144 @@ async function undoReadingSubmit() {
   }
 }
 
+// ---------------------------------------------------------------- 阅读审校三栏宽度（P1-4）
+//
+// 用户："左边的 pdf 图片太小，看不清楚，能不能左右窗口可以拖动？"
+// 三栏 = 左树 / PDF / 正文。两条 6px 的手柄可拖，宽度记在 localStorage；
+// 最小宽度卡住，别拖到正文没字、或 PDF 看不见；窄屏（<1120）不显示手柄（CSS 管）。
+
+const READING_SPLIT_KEY = "b2t.readingSplit.v1";
+const READING_SPLIT_DEFAULT = { tree: 232, pdf: 420 };
+const READING_SPLIT_MIN = { tree: 150, pdf: 240, stream: 360 };
+const READING_GRIP_TOTAL = 12;
+
+let readingSplitState = null;
+
+function readingSplitPrefs() {
+  if (readingSplitState) return readingSplitState;
+  let stored = null;
+  try {
+    stored = JSON.parse(localStorage.getItem(READING_SPLIT_KEY) || "null");
+  } catch {
+    stored = null;
+  }
+  readingSplitState = {
+    tree: Number.isFinite(stored && stored.tree)
+      ? Number(stored.tree)
+      : READING_SPLIT_DEFAULT.tree,
+    pdf: Number.isFinite(stored && stored.pdf)
+      ? Number(stored.pdf)
+      : READING_SPLIT_DEFAULT.pdf,
+  };
+  return readingSplitState;
+}
+
+function clampNumber(value, min, max) {
+  if (max < min) return min;
+  return Math.min(Math.max(value, min), max);
+}
+
+/** 把当前宽度写进 CSS 变量；窗口太窄时**只收显示值**，不改用户记住的宽度。 */
+function applyReadingSplit() {
+  const split = el("reading-split");
+  if (!split) return;
+  // 窄屏（<1120）是 CSS 的紧凑布局（树 44px、PDF 收起）：内联变量会盖过媒体查询，
+  // 所以这时清掉内联值，把宽度交回样式表；宽屏再按用户拖的值铺开。
+  if (window.innerWidth < 1120) {
+    split.style.removeProperty("--reading-tree-w");
+    split.style.removeProperty("--reading-pdf-w");
+    return;
+  }
+  const prefs = readingSplitPrefs();
+  let tree = prefs.tree;
+  let pdf = prefs.pdf;
+  const total = split.clientWidth
+    ? split.clientWidth - READING_GRIP_TOTAL
+    : 0;
+  if (total > 0) {
+    tree = clampNumber(tree, READING_SPLIT_MIN.tree, total - pdf - READING_SPLIT_MIN.stream);
+    pdf = clampNumber(pdf, READING_SPLIT_MIN.pdf, total - tree - READING_SPLIT_MIN.stream);
+  }
+  split.style.setProperty("--reading-tree-w", `${Math.round(tree)}px`);
+  split.style.setProperty("--reading-pdf-w", `${Math.round(pdf)}px`);
+}
+
+function saveReadingSplit() {
+  try {
+    localStorage.setItem(
+      READING_SPLIT_KEY,
+      JSON.stringify({ tree: Math.round(readingSplitPrefs().tree), pdf: Math.round(readingSplitPrefs().pdf) })
+    );
+  } catch {
+    // 存不进去（隐私模式 / 配额满）不影响当前这次拖动
+  }
+}
+
+function resetReadingSplit() {
+  readingSplitState = { ...READING_SPLIT_DEFAULT };
+  try {
+    localStorage.removeItem(READING_SPLIT_KEY);
+  } catch {
+    // 忽略
+  }
+  applyReadingSplit();
+}
+
+/** 拖一条手柄：两种拖动各自只改自己那一栏，另一栏保持不动。 */
+function setupReadingSplit() {
+  const split = el("reading-split");
+  if (!split) return;
+  const grips = [
+    { node: el("reading-grip-tree"), key: "tree" },
+    { node: el("reading-grip-pdf"), key: "pdf" },
+  ];
+  for (const grip of grips) {
+    const node = grip.node;
+    if (!node) continue;
+    node.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const start = readingSplitPrefs()[grip.key];
+      node.setPointerCapture(event.pointerId);
+      node.classList.add("is-active");
+      document.body.classList.add("is-resizing-reading");
+      const move = (moved) => {
+        const prefs = readingSplitPrefs();
+        const width = split.clientWidth - READING_GRIP_TOTAL;
+        // 另一栏当前**生效**的宽度也按同样规则取，避免两栏一起越界
+        const otherKey = grip.key === "tree" ? "pdf" : "tree";
+        const other = clampNumber(
+          prefs[otherKey],
+          READING_SPLIT_MIN[otherKey],
+          width - READING_SPLIT_MIN[otherKey] - READING_SPLIT_MIN.stream
+        );
+        const max = width - other - READING_SPLIT_MIN.stream;
+        prefs[grip.key] = clampNumber(
+          start + (moved.clientX - startX),
+          READING_SPLIT_MIN[grip.key],
+          max
+        );
+        applyReadingSplit();
+      };
+      const finish = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", finish);
+        window.removeEventListener("pointercancel", finish);
+        node.classList.remove("is-active");
+        document.body.classList.remove("is-resizing-reading");
+        saveReadingSplit();
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", finish);
+      window.addEventListener("pointercancel", finish);
+    });
+    // 双击回默认：拖歪了不用去清 localStorage
+    node.addEventListener("dblclick", resetReadingSplit);
+  }
+  window.addEventListener("resize", applyReadingSplit);
+}
+
 function setupReading() {
   el("reading-next-unreviewed").addEventListener("click", gotoNextUnreviewed);
   el("reading-submit").addEventListener("click", submitReadingDrafts);
@@ -16654,6 +17248,7 @@ function boot() {
   setupPageIndex();
   setupPreview();
   setupReading();
+  setupReadingSplit();
   setupPageMore();
   setupExportPanel();
   setupStructurePanel();

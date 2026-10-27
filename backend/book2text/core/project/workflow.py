@@ -409,6 +409,49 @@ def latest_layout_run(directory: Path, page_id: str) -> dict | None:
     return dict(row) if row is not None else None
 
 
+def layout_summaries(directory: Path) -> dict[str, dict]:
+    """每页最近一次成功检测的摘要，按 `page_id` 索引（一次查询，不做 N+1）。"""
+    with _open(directory) as conn:
+        return _layout_map(conn)
+
+
+def layout_line_counts(
+    project_id: str, *, library: Path | None = None
+) -> dict[str, int]:
+    """每页最近一次成功检测的**行数**（`layout_run.line_count`）。
+
+    界面要回答"这一页到底有没有检测行"：版心拟合靠行框，没有行的页拟合不出来，
+    不能再显示成"已自动拟合"。0 表示这一页还没检测过（或上次一行都没检出）。
+    """
+    directory = require_project_dir(project_id, library=library)
+    return {
+        page_id: int(item["line_count"])
+        for page_id, item in layout_summaries(directory).items()
+    }
+
+
+def text_line_counts(
+    project_id: str, *, library: Path | None = None
+) -> dict[str, int]:
+    """每页的**识别行数**（`block_line`，一次查询）。
+
+    刀 1 起版心可以从识别行拟合（检测行优先、没有就回退 OCR 行），所以界面判断
+    "这一页有没有行可拟合"必须把两种行都算上；只看检测行会把整本没检测过的书
+    误判成"没有行"。
+    """
+    directory = require_project_dir(project_id, library=library)
+    with _open(directory) as conn:
+        rows = conn.execute(
+            """
+            SELECT b.page_id, COUNT(l.line_id) AS line_count
+            FROM block_line l JOIN block b ON b.block_id = l.block_id
+            WHERE b.deleted_at IS NULL
+            GROUP BY b.page_id
+            """
+        ).fetchall()
+    return {row["page_id"]: int(row["line_count"]) for row in rows}
+
+
 def _layout_map(conn) -> dict[str, dict]:
     """每页最近一次成功检测的摘要（一次查询，不做 N+1）。"""
     rows = conn.execute(

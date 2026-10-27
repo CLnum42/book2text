@@ -290,9 +290,12 @@ def test_preflight_and_manifest_record_margin_exclusions(
     library_dir: Path,
     project_ready: str,
 ) -> None:
-    """任务 34：预检与 manifest 报"版心外被排除的块数 + 类型分布"；关掉开关则不写。"""
-    # 第 1 页只保留顶部一条版心：其余块都被版心排除
-    set_page_margin(client, auth_headers, project_ready, 1, "custom", [0.0, 0.09, 1.0, 0.18])
+    """任务 34：预检与 manifest 报"版心外被排除的块数 + 类型分布"；关掉开关则不写。
+
+    刀 0 起"文字列里的字不删"：x 与版心重叠的块即使中心在上下框外也保留。
+    要测排除这条路，就把版心放到**文字列之外**（左侧一条），这样正文块全在列外。
+    """
+    set_page_margin(client, auth_headers, project_ready, 1, "custom", [0.0, 0.09, 0.05, 0.95])
 
     pre = preflight(client, auth_headers, project_ready)
     assert pre["margin_judgement"] is True

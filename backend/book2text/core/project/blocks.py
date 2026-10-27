@@ -473,6 +473,43 @@ def list_block_lines(
     ]
 
 
+def pages_with_text(
+    project_id: str, *, library: Path | None = None
+) -> set[str]:
+    """有**非空识别文字**的 page_id 集合（一次查询，不做 N+1）。
+
+    收尾面板要区分"这页还没有正文行（未定）"与"这页本来就没有字"（插图页 / 空白页）：
+    后者缺版心不算未定，否则步骤条永远绿不了。没识别过的页自然不在集合里。
+    """
+    with _open_for_read(project_id, library) as conn:
+        _require_tables(conn, project_id)
+        rows = conn.execute(
+            """
+            SELECT DISTINCT b.page_id FROM block b
+            WHERE b.deleted_at IS NULL AND TRIM(COALESCE(b.text, '')) <> ''
+            """
+        ).fetchall()
+    return {row["page_id"] for row in rows}
+
+
+def page_has_successful_run(
+    project_id: str, page_id: str, *, library: Path | None = None
+) -> bool:
+    """这一页有没有**已成功的主引擎识别运行**（一次查询）。
+
+    「无文字」（插图页 / 空白页）与「还没识别」必须分开：只有识别真的跑过、
+    结果确实没有字，才叫无文字；从没识别过的页是未定，不是无文字。
+    """
+    with _open_for_read(project_id, library) as conn:
+        _require_tables(conn, project_id)
+        row = conn.execute(
+            "SELECT 1 FROM ocr_run WHERE page_id = ? AND run_type = ? AND status = 'succeeded'"
+            " LIMIT 1",
+            (page_id, RUN_TYPE_PRIMARY),
+        ).fetchone()
+    return row is not None
+
+
 def load_page_content(
     project_id: str, page_no: int, *, library: Path | None = None
 ) -> tuple[Page, list[RunRecord], list[BlockRecord], list[BlockLineRecord]]:
