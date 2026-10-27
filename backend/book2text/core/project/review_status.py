@@ -20,6 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import blocks as blocks_module
+from . import continuations as continuations_module
 from . import ink_gaps as ink_gaps_module
 from . import library as library_module
 from . import margin_box as margin_box_module
@@ -490,6 +491,9 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     「审校」行同时给"可直接通过"与"要人看"的数量：
     可直接通过 = 正文页里识别成功、无建议 / 无分歧 / 无漏行 / 版面已确认 /
     版心已定 / 第二引擎已复核、且还没有确认过的页；其余未确认正文页算要人看。
+
+    「审校」完成还要跨页延续的第三桶为 0（任务 42）：自动判定判不了的
+    16 处页边界只要还有人没看，这一步就不算完——否则那 16 处段落错误没人知道。
     """
     pages = library_module.list_pages(project_id, library=library)
     project = _project(project_id, library)
@@ -500,6 +504,7 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     wf_by_no = {item["page_no"]: item for item in workflow["pages"]}
     pending = project_pending(project_id, library=library)
     pending_nos = {item["page_no"] for item in pending["pages"]}
+    continuation = continuations_module.pending(project_id, library=library)
 
     body_pages = [page for page in pages if page.include]
     confirmed_pages = sum(1 for page in pages if page.page_confirmed)
@@ -582,7 +587,9 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
         margin_done == len(pages),
         layout_done == len(body_pages),
         pn_done,
-        len(auto_passable) == 0 and len(needs_human) == 0,
+        len(auto_passable) == 0
+        and len(needs_human) == 0
+        and continuation["count"] == 0,
         len(checked_pages) == len(body_pages),
     ]
     return {
@@ -623,6 +630,9 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
             "needs_human_pages": needs_human,
             "confirmed": confirmed_body,
             "total": len(body_pages),
+            # 任务 42：F1 第三桶（自动判不了的页边界）——没确认完，审校就不算完成
+            "continuation_pending": continuation["count"],
+            "continuation_total": continuation["total"],
             "complete": complete[4],
         },
         "index": index_state,

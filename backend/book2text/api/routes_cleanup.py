@@ -21,6 +21,7 @@ from ..core.project import continuations as continuations_module
 from ..core.project import editing
 from ..core.project import furniture as furniture_module
 from ..core.project import library as project_library
+from .deps import actor_name as _actor_name
 from .deps import library_dir as _library
 from .deps import project_error as _project_error
 from .deps import require_main_project as _require_main
@@ -30,6 +31,21 @@ router = APIRouter(prefix="/api/projects", tags=["cleanup"])
 
 
 class CleanupRequest(BaseModel):
+    actor_name: str | None = Field(default=None, max_length=100)
+
+
+class ContinuationResolveRequest(BaseModel):
+    """人工裁决一处待确认的页边界：标延续 / 标结束。"""
+
+    block_id: str = Field(min_length=1, max_length=64)
+    continues: bool
+    actor_name: str | None = Field(default=None, max_length=100)
+
+
+class ContinuationReopenRequest(BaseModel):
+    """把一处已确认的页边界放回待确认（改判 / 点错了）。"""
+
+    block_id: str = Field(min_length=1, max_length=64)
     actor_name: str | None = Field(default=None, max_length=100)
 
 
@@ -58,6 +74,56 @@ def continuation_apply(
         raise _project_error(exc, status=404) from exc
     except editing.BlockConflict as exc:  # pragma: no cover - 批量不做并发检查
         raise AppError(409, "block_conflict", "块已经被改过", detail=str(exc)) from exc
+    return _with_history(request, project_id, result)
+
+
+@router.get("/{project_id}/cleanup/continuations/pending")
+def continuation_pending(request: Request, project_id: str) -> dict[str, Any]:
+    """只读：F1 第三桶（自动判不了）的逐条明细，给「跨页延续待确认」面板用。
+
+    每条带判断依据：页末行原文、走满程度、下页首行缩进与原文；人工在这里
+    一键标延续 / 标结束，点完这一处就从待确认里移走。
+    """
+    try:
+        return continuations_module.pending(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+@router.post("/{project_id}/cleanup/continuations/resolve")
+def continuation_resolve(
+    request: Request, project_id: str, body: ContinuationResolveRequest
+) -> dict[str, Any]:
+    """人工裁决一处：写 `continues_to_next` + `continues_reviewed=1`，可撤销。"""
+    _require_main(request, project_id)
+    try:
+        result = continuations_module.resolve(
+            project_id,
+            body.block_id,
+            body.continues,
+            library=_library(request),
+            actor_name=_actor_name(request, body.actor_name),
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    return _with_history(request, project_id, result)
+
+
+@router.post("/{project_id}/cleanup/continuations/reopen")
+def continuation_reopen(
+    request: Request, project_id: str, body: ContinuationReopenRequest
+) -> dict[str, Any]:
+    """把一处已确认的边界放回待确认（改判 / 点错了）；不改 `continues_to_next`。"""
+    _require_main(request, project_id)
+    try:
+        result = continuations_module.reopen(
+            project_id,
+            body.block_id,
+            library=_library(request),
+            actor_name=_actor_name(request, body.actor_name),
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
     return _with_history(request, project_id, result)
 
 

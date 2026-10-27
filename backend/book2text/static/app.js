@@ -244,10 +244,20 @@ function stepProgress(id) {
       const needs = Number(r.needs_human || 0);
       const passable = Number(r.auto_passable || 0);
       const layoutLeft = Number(layout.remaining || 0);
-      done = needs === 0 && passable === 0 && layoutLeft === 0;
-      count = needs ? `剩 ${needs} 页` : passable ? `可自动通过 ${passable} 页` : "已确认";
+      // 任务 42：完成判定读收尾面板的 r.complete（已含跨页延续第三桶），
+      // 不在这里另算一套；版面未确认仍然挡着这一步。
+      const continuation = Number(r.continuation_pending || 0);
+      done = Boolean(r.complete) && layoutLeft === 0;
+      count = needs
+        ? `剩 ${needs} 页`
+        : passable
+          ? `可自动通过 ${passable} 页`
+          : continuation
+            ? `延续待确认 ${continuation}`
+            : "已确认";
       detail =
-        `待人工 ${needs} 页 · 可直接通过 ${passable} 页 · 版面未确认 ${layoutLeft} 页`;
+        `待人工 ${needs} 页 · 可直接通过 ${passable} 页 · 版面未确认 ${layoutLeft} 页` +
+        (continuation ? ` · 跨页延续待确认 ${continuation} 处` : "");
     }
   } else if (id === "preview") {
     // 用户明确要求：结果预览不设完成态——它永远不是"已完成"，也不算失败。
@@ -7497,6 +7507,8 @@ let detailHistoryState = { undo: 0, redo: 0 };
 let finishSummary = null;
 let finishSummaryProject = null;
 let finishSummaryLoading = false;
+/** 加载途中又有人要求刷新：跑完再补一次，别把新计数丢掉。 */
+let finishSummaryAgain = false;
 let finishLayoutRemaining = [];
 let finishLayoutRunning = false;
 let finishLayoutStop = false;
@@ -10994,7 +11006,13 @@ function finishIcon(id, state) {
 }
 
 async function loadFinishSummary({ silent = false } = {}) {
-  if (!currentProject || finishSummaryLoading) return;
+  if (!currentProject) return;
+  if (finishSummaryLoading) {
+    // 已经有一次在跑：记下"跑完再来一次"，别把这一次（例如刚确认完跨页延续）
+    // 直接丢掉——丢掉就会在界面上留下旧计数。
+    finishSummaryAgain = true;
+    return;
+  }
   finishSummaryLoading = true;
   try {
     const data = await apiJson(
@@ -11009,6 +11027,10 @@ async function loadFinishSummary({ silent = false } = {}) {
     if (!silent) showError(el("pages-error"), error);
   } finally {
     finishSummaryLoading = false;
+    if (finishSummaryAgain) {
+      finishSummaryAgain = false;
+      loadFinishSummary({ silent: true });
+    }
   }
 }
 
@@ -11062,12 +11084,18 @@ function renderFinishPanel() {
   el("finish-open-pagenum").textContent = pn.located ? "核对页码…" : "定位页码…";
 
   const review = data.review;
-  const reviewDone = review.auto_passable === 0 && review.needs_human === 0;
+  // 任务 42：F1 第三桶（16 处跨页延续）没确认完，审校这一行就不算完成
+  const continuationCount = Number(review.continuation_pending || 0);
+  const reviewDone =
+    review.auto_passable === 0 &&
+    review.needs_human === 0 &&
+    continuationCount === 0;
   finishIcon("finish-icon-review", reviewDone ? "ok" : "warn");
   el("finish-review-status").textContent =
     `${review.auto_passable} 页可直接通过 · ${review.needs_human} 页要人看`;
   el("finish-review-sub").textContent =
-    `已确认 ${review.confirmed} / ${review.total} 页正文`;
+    `已确认 ${review.confirmed} / ${review.total} 页正文` +
+    (continuationCount ? ` · 跨页延续待确认 ${continuationCount} 处` : "");
   const auto = el("finish-auto-pass");
   auto.hidden = review.auto_passable === 0;
   auto.disabled = finishAutoRunning || review.auto_passable === 0;
@@ -11089,8 +11117,16 @@ function renderFinishPanel() {
   check.textContent = `复核全部未复核页（${engine.total - engine.checked}）`;
 
   const bottom = el("finish-bottom-note");
-  if (review.needs_human === 0 && review.auto_passable === 0) {
+  if (
+    continuationCount === 0 &&
+    review.needs_human === 0 &&
+    review.auto_passable === 0
+  ) {
     bottom.textContent = "所有正文页都已确认，可以导出；预检会记录实际状态。";
+  } else if (review.needs_human === 0 && review.auto_passable === 0) {
+    bottom.textContent =
+      `还有 ${continuationCount} 处跨页延续要人确认（决定段落是否跨页合并）；` +
+      "确认完这一项，正文审校才算完成。";
   } else if (review.needs_human === 0) {
     bottom.textContent =
       `还有 ${review.auto_passable} 页可直接通过（未经人工）。` +
@@ -11103,6 +11139,26 @@ function renderFinishPanel() {
   el("finish-start-review").textContent = review.needs_human
     ? `从第 ${review.needs_human_pages[0] || 1} 页开始审校`
     : "回到第 1 页审校";
+
+  // 任务 42：跨页延续第三桶的两个入口（审校工具条计数 + 数据清理行）
+  const continuationChip = el("review-continuations");
+  if (continuationChip) {
+    continuationChip.hidden = continuationCount === 0;
+    continuationChip.textContent = `跨页延续待确认 ${continuationCount}`;
+  }
+  const continuationOpen = el("cleanup-continuation-review-open");
+  if (continuationOpen) {
+    continuationOpen.disabled = continuationCount === 0;
+    continuationOpen.textContent = continuationCount
+      ? `逐条确认（${continuationCount}）…`
+      : "全部已确认";
+  }
+  const continuationStatus = el("cleanup-continuation-review-status");
+  if (continuationStatus) {
+    continuationStatus.textContent = continuationCount
+      ? `还有 ${continuationCount} 处自动判不了：页末行走满版心，但末字是句末标点。`
+      : `全书 ${review.continuation_total || 0} 个页边界都已确认。`;
+  }
 }
 
 // ---------------------------------------------------------------- 数据清理（任务 41）
@@ -11241,6 +11297,208 @@ async function undoLastCleanup() {
       note.textContent = error.message || "没有可撤销的操作";
       note.hidden = false;
     }
+  }
+}
+
+// ---------------------------------------------------------------- 跨页延续待确认（任务 42）
+//
+// F1 的第三桶：自动判定判不了（页末行走满版心，但末字是句末标点）。以前这 16 处
+// 只出现在计划的数字里，人没有地方看、也没法点——段落错了没人知道。这里逐条给
+// 依据（本页末行 / 下页首行原文）与一键「标延续 / 标结束」，每条一个可撤销批次。
+//
+// 入口两个：收尾面板「数据清理 → 跨页延续待人工」、审校工具条上的计数按钮。
+// 没确认完之前，正文审校不算完成（后端 finish-summary.review.complete 已经带上这条）。
+
+let continuationPending = null;
+
+async function openContinuationReview() {
+  if (!currentProject || currentProject.kind === "package") return;
+  openModal("continuation-panel");
+  await loadContinuationReview();
+}
+
+async function loadContinuationReview() {
+  const error = el("continuation-error");
+  error.hidden = true;
+  let data;
+  try {
+    data = await apiJson(
+      `/api/projects/${currentProject.project_id}/cleanup/continuations/pending`
+    );
+  } catch (failure) {
+    showError(error, failure);
+    return;
+  }
+  continuationPending = data;
+  renderContinuationReview();
+}
+
+function continuationMetaText(entry) {
+  const parts = [];
+  if (entry.gap !== null && entry.gap !== undefined) {
+    parts.push(`页末行右端还差 ${entry.gap} 行距到版心边`);
+  } else {
+    parts.push("版心未定，量不出走满程度");
+  }
+  if (entry.next_indent) {
+    parts.push(`下页首行缩进 ${(entry.next_indent * 100).toFixed(1)}%`);
+  } else {
+    parts.push("下页首行没有缩进");
+  }
+  return parts.join(" · ");
+}
+
+function continuationLine(label, text, prefix) {
+  const row = document.createElement("div");
+  row.className = "continuation-row__line";
+  const tag = document.createElement("span");
+  tag.className = "continuation-row__label";
+  tag.textContent = label;
+  const quote = document.createElement("span");
+  quote.className = "continuation-row__quote";
+  quote.textContent = text ? `${prefix}${text}` : "（这一页没有读到文字）";
+  row.append(tag, quote);
+  return row;
+}
+
+function renderContinuationReview() {
+  const data = continuationPending;
+  if (!data) return;
+  const list = el("continuation-list");
+  const empty = el("continuation-empty");
+  list.innerHTML = "";
+  const remaining = Number(data.count || 0);
+  el("continuation-meta").textContent =
+    remaining > 0
+      ? `还剩 ${remaining} 处`
+      : "已全部确认";
+  el("continuation-footnote").textContent =
+    `全书 ${data.total || 0} 个页边界 · 确认 ${(data.total || 0) - remaining} / ${data.total || 0}`;
+  empty.hidden = (data.entries || []).length > 0;
+  for (const entry of data.entries || []) {
+    list.append(continuationRow(entry));
+  }
+}
+
+function continuationRow(entry) {
+  const li = document.createElement("li");
+  li.className = "continuation-row";
+  const head = document.createElement("div");
+  head.className = "continuation-row__head";
+  const where = document.createElement("strong");
+  where.textContent = `第 ${entry.page_no} → ${entry.next_page_no} 页`;
+  const meta = document.createElement("span");
+  meta.className = "muted";
+  meta.textContent = continuationMetaText(entry);
+  const spacer = document.createElement("span");
+  spacer.className = "spacer";
+  const jump = document.createElement("button");
+  jump.type = "button";
+  jump.className = "btn btn--sm";
+  jump.textContent = "看原文";
+  jump.title = `在审校里打开第 ${entry.page_no} 页`;
+  jump.addEventListener("click", () => {
+    closeModal("continuation-panel");
+    openPageDetail(entry.page_no);
+  });
+  head.append(where, meta, spacer, jump);
+  li.append(head);
+
+  const lines = document.createElement("div");
+  lines.className = "continuation-row__lines";
+  lines.append(continuationLine("本页末行", entry.last_text, "…"));
+  lines.append(continuationLine("下页首行", entry.next_text, ""));
+  li.append(lines);
+
+  const actions = document.createElement("div");
+  actions.className = "continuation-row__actions";
+  if (entry.reviewed) {
+    li.classList.add("is-settled");
+    const settled = document.createElement("span");
+    settled.className = "continuation-row__settled";
+    settled.textContent = entry.continues_to_next ? "已标延续 ✓" : "已标结束 ✓";
+    const revert = document.createElement("button");
+    revert.type = "button";
+    revert.className = "btn btn--ghost btn--sm";
+    revert.textContent = "撤销这处";
+    revert.title = "放回待确认（不改文字，也不撤销别人做的修改）";
+    revert.addEventListener("click", () => reopenContinuation(entry));
+    actions.append(settled, revert);
+  } else {
+    const keep = document.createElement("button");
+    keep.type = "button";
+    keep.className = "btn btn--pri btn--sm";
+    keep.textContent = "标延续（合成一段）";
+    keep.addEventListener("click", () => resolveContinuation(entry, true));
+    const end = document.createElement("button");
+    end.type = "button";
+    end.className = "btn btn--sm";
+    end.textContent = "标结束（分成两段）";
+    end.addEventListener("click", () => resolveContinuation(entry, false));
+    actions.append(keep, end);
+  }
+  li.append(actions);
+  return li;
+}
+
+async function resolveContinuation(entry, continues) {
+  const error = el("continuation-error");
+  error.hidden = true;
+  try {
+    const result = await apiJson(
+      `/api/projects/${currentProject.project_id}/cleanup/continuations/resolve`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ block_id: entry.block_id, continues }),
+      }
+    );
+    entry.reviewed = true;
+    entry.continues_to_next = Boolean(continues);
+    continuationPending.count = Number(result.remaining || 0);
+    renderContinuationReview();
+    await afterContinuationChange(entry.page_no);
+  } catch (failure) {
+    showError(error, failure);
+  }
+}
+
+async function reopenContinuation(entry) {
+  const error = el("continuation-error");
+  error.hidden = true;
+  try {
+    const result = await apiJson(
+      `/api/projects/${currentProject.project_id}/cleanup/continuations/reopen`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ block_id: entry.block_id }),
+      }
+    );
+    if (result.bucket === "review") {
+      entry.reviewed = false;
+      entry.continues_to_next = Boolean(result.continues_to_next);
+    } else {
+      // 放回之后自动判定已经能定了（不再是待人工）——从列表里移走
+      continuationPending.entries = continuationPending.entries.filter(
+        (item) => item.block_id !== entry.block_id
+      );
+    }
+    continuationPending.count = Number(result.remaining || 0);
+    renderContinuationReview();
+    await afterContinuationChange(entry.page_no);
+  } catch (failure) {
+    showError(error, failure);
+  }
+}
+
+/** 改过跨页边界：导出的段落结构变了，刷新收尾状态与预览缓存。 */
+async function afterContinuationChange(pageNo) {
+  previewData = null;
+  previewProject = null;
+  await loadFinishSummary({ silent: true });
+  if (detailPageNo !== null && detailPageNo === pageNo) {
+    await loadPageDetail(pageNo, { forceSuggestions: true });
   }
 }
 
@@ -11557,6 +11815,10 @@ function setupReviewControls() {
   el("cleanup-continuation-run").addEventListener("click", runContinuationCleanup);
   el("cleanup-furniture-run").addEventListener("click", runFurnitureCleanup);
   el("cleanup-undo").addEventListener("click", undoLastCleanup);
+  el("cleanup-continuation-review-open").addEventListener("click", openContinuationReview);
+  el("review-continuations").addEventListener("click", openContinuationReview);
+  el("continuation-close").addEventListener("click", () => closeModal("continuation-panel"));
+  el("continuation-done").addEventListener("click", () => closeModal("continuation-panel"));
   el("finish-start-review").addEventListener("click", finishStartReview);
   el("finish-export").addEventListener("click", finishOpenExport);
   el("diff-queue-toggle").addEventListener("click", () => setQueueOpen(!queueOpen));

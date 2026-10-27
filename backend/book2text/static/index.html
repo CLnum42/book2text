@@ -447,6 +447,10 @@
               <option value="divergence">有分歧（含标点级）</option>
             </select>
           </div>
+          <span class="spacer"></span>
+          <!-- 任务 42：F1 第三桶的入口。没确认完，正文审校这一步不算完成。 -->
+          <button type="button" id="review-continuations" class="btn btn--sm continuation-chip" hidden
+                  title="自动判定判不了的页边界：页末行走满版心，但末字是句末标点。逐条确认后，正文审校才算完成">跨页延续待确认 0</button>
         </div>
         <div class="alert alert--error" id="page-detail-error" hidden></div>
         <div class="alert alert--warn" id="page-detail-warning" hidden></div>
@@ -838,6 +842,33 @@
           </span>
           <span class="spacer"></span>
           <button type="button" id="page-number-review-done" class="btn">完成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────── 对话框：跨页延续待确认（任务 42） ─────────────────── -->
+    <div class="mask" id="continuation-panel" hidden>
+      <div class="modal modal--continuation">
+        <div class="mhead">
+          跨页延续待确认
+          <span class="muted" id="continuation-meta"></span>
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="continuation-close">✕</button>
+        </div>
+        <div class="mbody continuation-body">
+          <p class="hint">
+            自动判定判不了的页边界：页末行走满了版心，但最后一个字是句末标点。
+            看两页的原文判断这一段是否被页切开——<strong>标延续</strong> = 导出时合成一段，
+            <strong>标结束</strong> = 分成两段。确认完这一处就从列表里移走，点错了可以撤销这处。
+          </p>
+          <div class="alert alert--error" id="continuation-error" hidden></div>
+          <ol class="continuation-list" id="continuation-list"></ol>
+          <p class="muted" id="continuation-empty" hidden>没有待确认的页边界，这一项已经完成。</p>
+        </div>
+        <div class="mfoot">
+          <span class="muted" id="continuation-footnote"></span>
+          <span class="spacer"></span>
+          <button type="button" id="continuation-done" class="btn">完成</button>
         </div>
       </div>
     </div>
@@ -1305,6 +1336,15 @@
             </div>
           </div>
           <button type="button" id="cleanup-continuation-run" class="btn btn--sm">运行…</button>
+        </div>
+        <div class="finish-cleanup__row">
+          <div class="finish-main">
+            <strong>跨页延续待人工</strong>
+            <div class="finish-sub" id="cleanup-continuation-review-status">
+              自动判定判不了的页边界，逐条看两页原文决定。
+            </div>
+          </div>
+          <button type="button" id="cleanup-continuation-review-open" class="btn btn--sm">逐条确认…</button>
         </div>
         <div class="finish-cleanup__row">
           <div class="finish-main">

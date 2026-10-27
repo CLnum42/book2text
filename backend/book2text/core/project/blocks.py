@@ -153,6 +153,9 @@ class BlockRecord:
     updated_at: str
     # 版面（框 / 类型 / 顺序）是否被人工确认过；默认未确认（老项目升级后同样是未确认）。
     layout_confirmed: bool = False
+    # 「延续到下一页」是否**人看过并决定**（任务 42）。自动判定写 continues_to_next
+    # 但不动这一列——机器判的不算人看过；撤销时写回 0，那一处重新回到待确认。
+    continues_reviewed: bool = False
 
     @property
     def modified(self) -> bool:
@@ -181,6 +184,7 @@ class BlockRecord:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "layout_confirmed": self.layout_confirmed,
+            "continues_reviewed": self.continues_reviewed,
             "modified": self.modified,
         }
 
@@ -375,6 +379,9 @@ def row_to_block(row) -> BlockRecord:
         updated_at=row["updated_at"],
         # 迁移 0006 之前的库在 SELECT 里也会带上这一列（默认 0）；用 len(row) 兼容旧行对象
         layout_confirmed=bool(row["layout_confirmed"]) if "layout_confirmed" in row.keys() else False,
+        continues_reviewed=(
+            bool(row["continues_reviewed"]) if "continues_reviewed" in row.keys() else False
+        ),
     )
 
 

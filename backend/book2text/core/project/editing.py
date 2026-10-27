@@ -55,6 +55,9 @@ ACTION_REASSIGN_LINE = "reassign_line"
 ACTION_CONFIRM_LAYOUT = "confirm_layout"
 ACTION_ACK_KEPT = "diff_ack_kept"
 ACTION_ACK_ADOPTED = "diff_ack_adopted"
+# 人工裁决一处跨页边界（任务 42）：与 set_continues 分开记，因为"人看过"与
+# "自动判定"是两件事，而且撤销这一批时要把 continues_reviewed 写回 0。
+ACTION_CONFIRM_CONTINUATION = "confirm_continuation"
 
 REVIEW_STATUSES = ("unreviewed", "confirmed", "uncertain")
 
@@ -430,6 +433,87 @@ def apply_continuations(
     return events, changed, tuple(sorted(pages))
 
 
+def review_continuation(
+    project_id: str,
+    block_id: str,
+    continues: bool,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+) -> tuple[blocks_module.BlockRecord, list[Event]]:
+    """人工裁决一处跨页边界（任务 42）：写 `continues_to_next` + `continues_reviewed=1`。
+
+    与 ``apply_continuations`` 的区别是语义：那一个是系统的自动判定（actor=system，
+    不动 `continues_reviewed`）；这一个记的是**人看过了**，界面据此把这一处从
+    「跨页延续待确认」里移走。撤销时 `continues_reviewed` 会写回 0，那一处重新回到
+    待确认——这正是这一列存在的理由（见迁移 0020）。
+    """
+    return _continuation_review(
+        project_id,
+        block_id,
+        {"continues_to_next": bool(continues), "continues_reviewed": True},
+        library=library,
+        actor_name=actor_name,
+    )
+
+
+def reopen_continuation(
+    project_id: str,
+    block_id: str,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+) -> tuple[blocks_module.BlockRecord, list[Event]]:
+    """把一处已经人工裁决过的跨页边界**放回待确认**（不改 `continues_to_next`）。
+
+    面板上"撤销这处 / 改判"走这里；它同样是一条可撤销的事件。
+    """
+    return _continuation_review(
+        project_id,
+        block_id,
+        {"continues_reviewed": False},
+        library=library,
+        actor_name=actor_name,
+    )
+
+
+def _continuation_review(
+    project_id: str,
+    block_id: str,
+    values: dict,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+) -> tuple[blocks_module.BlockRecord, list[Event]]:
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch_id = new_ulid()
+
+    with _open(directory) as conn:
+        row = _block_of(conn, block_id)
+        if row is None or row["deleted_at"]:
+            raise ProjectError(f"找不到块：{block_id}")
+        events, _ = _set_block_fields(
+            conn,
+            block_id,
+            values,
+            batch_id=batch_id,
+            action=ACTION_CONFIRM_CONTINUATION,
+            actor_name=actor_name,
+            now=now,
+            actor=ACTOR_USER,
+        )
+        if events:
+            conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        record = _read_block(conn, block_id)
+    return record, events
+
+
 # ---------------------------------------------------------------- 框与行归属
 
 # 手动框不允许小到点不中；也避免退化成一条线（那样一行都落不进去）
@@ -574,7 +658,12 @@ _TABLES = {
 
 def _column_value(row, name: str):
     value = row[name]
-    if name in ("include", "continues_to_next", "layout_confirmed"):
+    if name in (
+        "include",
+        "continues_to_next",
+        "layout_confirmed",
+        "continues_reviewed",
+    ):
         return bool(value)
     return value
 

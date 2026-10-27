@@ -1899,3 +1899,29 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
   display: flex; align-items: center; gap: 8px; margin-top: 6px;
   padding-top: 6px; border-top: 1px solid var(--line-soft);
 }
+
+/* 任务 42：跨页延续待确认——F1 第三桶的入口、逐条面板与依据 */
+.continuation-chip { white-space: nowrap; }
+.modal--continuation { width: 780px; height: 640px; max-width: 100%; }
+.continuation-body { display: block; overflow: auto; padding: 14px 20px 8px; }
+.continuation-body > .hint { margin: 0 0 10px; }
+.continuation-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.continuation-row {
+  border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px;
+  background: var(--surface); display: flex; flex-direction: column; gap: 8px;
+}
+.continuation-row.is-settled { background: var(--surface-2); border-color: var(--line-soft); }
+.continuation-row__head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.continuation-row__head strong { font-size: 12.5px; }
+.continuation-row__head .muted { font-size: 11px; }
+.continuation-row__lines { display: flex; flex-direction: column; gap: 3px; }
+.continuation-row__line { display: flex; gap: 8px; font-size: 12.5px; line-height: 1.55; }
+.continuation-row__label {
+  flex: none; width: 58px; color: var(--faint); font-size: 11px; padding-top: 2px;
+}
+.continuation-row__quote { min-width: 0; color: var(--text); word-break: break-word; }
+.continuation-row__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.continuation-row__settled { font-size: 12px; color: var(--ok-text); font-weight: 600; }
