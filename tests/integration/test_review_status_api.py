@@ -596,3 +596,39 @@ def test_finish_summary_keeps_review_open_until_continuations_confirmed(
     ).json()
     assert summary["review"]["continuation_pending"] == 0
     assert summary["review"]["complete"] is True
+
+def test_block_edit_looks_up_page_in_one_query(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_with_ocr: str,
+    monkeypatch,
+) -> None:
+    """任务 43：块编辑不再"逐页翻块找这一块"。
+
+    以前 `_require_page_editable` 从第 1 页开始每页 list_blocks，直到找到这块：
+    第 370 页的块要 370 次查询，一次按键多等约 290 ms。现在一次 JOIN 拿页码。
+    """
+    from book2text.api import routes_review
+
+    project_id = project_with_ocr
+    payload = client.get(
+        f"/api/projects/{project_id}/pages/2/blocks", headers=auth_headers
+    ).json()
+    block_id = payload["blocks"][0]["block_id"]
+
+    calls: list[object] = []
+    original = routes_review.blocks_module.list_blocks
+
+    def counting(*args, **kwargs):
+        calls.append(kwargs.get("page_no"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(routes_review.blocks_module, "list_blocks", counting)
+    response = client.patch(
+        f"/api/projects/{project_id}/blocks/{block_id}",
+        json={"review_status": "uncertain"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert calls == [], "块编辑不该逐页 list_blocks 找块"
+

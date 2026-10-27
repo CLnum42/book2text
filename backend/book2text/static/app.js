@@ -130,6 +130,21 @@ let pageZoomTouched = false;
 /** 版心编辑的撤销栈（前端内存，最多 20 步）：拖动只写一次库，撤销也是写一次。 */
 const marginUndoStack = [];
 
+/** 任务 43：离开页面视图时停掉网格里在飞 / 排队的缩略图请求。
+ *
+ * 394 页的网格一次会排上百个 `size=thumb`；切到审校后它们还在后台渲染，
+ * 一次按键要等几秒。图片清掉 src 后浏览器会取消排队中的请求，回来时
+ * applyPageZoom() 会重新挂上（只加载视口附近的页）。
+ */
+function pausePageThumbnails() {
+  const grid = el("page-grid");
+  if (!grid) return;
+  for (const image of grid.querySelectorAll("img[src]")) {
+    image.removeAttribute("src");
+  }
+  visiblePageNos.clear();
+}
+
 function showView(name) {
   if (!VIEWS.includes(name)) return;
   // 没有打开项目时，只有项目库是可达的
@@ -140,6 +155,8 @@ function showView(name) {
   el("topbar-library").hidden = target !== "library";
   el("topbar-project").hidden = target === "library";
   el("review-pager").hidden = target !== "review";
+  // 任务 43：不在页面视图就把网格缩略图停掉，审校 / 预览不跟后台渲染抢 CPU
+  if (target !== "pages" && currentProject) pausePageThumbnails();
   // 换视图 = 当前步骤回落到该视图的默认步；用户点步骤条时才锁定。
   workflowStepPinned = false;
   syncWorkflowSteps();
@@ -156,6 +173,8 @@ function showView(name) {
     schedulePageVisibility();
     // 缩放是三步共用的：可能在目录确认步里改过，回来要按当前档位重排网格。
     applyPageZoom();
+    // 任务 43：审校期间暂停的建议预取，回到页面视图再接着排。
+    pumpPageSuggestionQueue();
   }
   if (target === "index" && currentProject) {
     openPageIndex();
@@ -2978,6 +2997,11 @@ function ensurePageSuggestion(pageNo) {
 let suggestionScanQueued = 0;
 
 function pumpPageSuggestionQueue() {
+  // 任务 43：角标建议只有页面视图用得到。审校 / 预览里不再发起新请求——
+  // 否则正在审校时后台还在逐页跑 block-suggestions，一次按键要等几秒。
+  // 已经在飞的请求（最多 PAGE_SUGGESTION_CONCURRENCY 个）会自己结束；
+  // 回到页面视图时 showView 再把它接上。
+  if (currentView !== "pages") return;
   while (
     pageSuggestionActive < PAGE_SUGGESTION_CONCURRENCY &&
     pageSuggestionQueue.length
@@ -4154,7 +4178,7 @@ function updatePageVisibility() {
  * 一次最多排 PAGE_BLOCK_PREFETCH_BURST 页；视口内的页优先（distance = 0）。
  */
 function pumpPageBlockPrefetch(candidates) {
-  if (!currentProject || !pagesOverlayOn || !candidates.length) return;
+  if (!currentProject || currentView !== "pages" || !pagesOverlayOn || !candidates.length) return;
   if (pageBlockPending.size >= PAGE_BLOCK_FETCH_LIMIT) return;
   if (pageBlockPrefetchInFlight >= PAGE_BLOCK_PREFETCH_LIMIT) return;
   candidates.sort((a, b) => a.distance - b.distance);
@@ -7498,6 +7522,8 @@ const diffStripOpen = new Set();
 /** 页内差异队列（任务 65）：一次只给一处，状态只在本页有效。 */
 let diffQueue = [];
 let queueIndex = -1;
+/** 等差异队列处理完再补算建议 / 漏行的页（任务 43）。 */
+let pendingPageAux = null;
 let queueOpen = true;
 const queueDecisions = new Map(); // key -> "adopted" | "kept"
 let lastQueueDecisionKey = null;
@@ -7599,6 +7625,7 @@ function ensureReviewPage() {
 }
 
 function closePageDetail() {
+  pendingPageAux = null;
   detailPageNo = null;
   detailWorkflow = null;
   if (boxCreateMode) setBoxCreateMode(false);
@@ -7632,23 +7659,26 @@ function savePosition(view, pageNo) {
 async function loadPageDetail(pageNo, { forceSuggestions = false } = {}) {
   const project = currentProject;
   if (!project) return;
-  const suggestionsPromise =
-    project.kind === "package"
-      ? Promise.resolve({ suggestions: [], note: null })
-      : fetchPageSuggestions(pageNo, { force: forceSuggestions }).catch(() => ({
-          suggestions: [],
-          page_numbers: [],
-          note: null,
-        }));
+  // 任务 43：先用缓存里的建议把页面画出来，**不再为建议 / 漏行等一次全库重复统计**——
+  // 它们会和逐条裁决抢 CPU：第 370 页实测，一边算建议一边按键，单键从 56 ms 涨到 300–470 ms。
+  // 有差异队列的页，等队列处理完再补算（那时用户不按队列键了）；没有队列的页立即补算。
+  const cachedSuggestions =
+    project.kind === "package" ? null : pageSuggestionCache.get(pageNo);
+  applyDetailSuggestions(
+    cachedSuggestions || { suggestions: [], page_numbers: [], note: null }
+  );
+  pendingPageAux = null;
   try {
     const data = await apiJson(
       `/api/projects/${project.project_id}/pages/${pageNo}/blocks`
     );
-    const suggestions = await suggestionsPromise;
     if (detailPageNo !== null && detailPageNo !== pageNo) return;
-    applyDetailSuggestions(suggestions);
     renderPageDetail(data);
-    loadInkGaps(pageNo); // 不 await：漏行提示是辅助信息，晚一点出来不影响审校
+    if (queueHasPendingItems()) {
+      pendingPageAux = pageNo;
+    } else {
+      runPageAux(pageNo, { forceSuggestions });
+    }
   } catch (error) {
     showError(el("page-detail-error"), error);
   }
@@ -7669,11 +7699,26 @@ function applyDetailSuggestions(payload) {
   );
 }
 
+/** 这一页还有没处理的差异（队列非空且有未裁决项）。 */
+function queueHasPendingItems() {
+  if (!diffQueue.length) return false;
+  return queueCounts().remaining > 0;
+}
+
+/** 队列空出来以后再补算建议 / 漏行：页面一打开不算，避免和按键抢 CPU。 */
+function runPageAux(pageNo, { forceSuggestions = false } = {}) {
+  if (pendingPageAux !== null && pendingPageAux !== pageNo) return;
+  pendingPageAux = null;
+  if (detailPageNo !== pageNo) return;
+  loadInkGaps(pageNo); // 不 await：漏行提示是辅助信息，晚一点出来不影响审校
+  refreshDetailSuggestions({ force: forceSuggestions });
+}
+
 /** 只重拉建议、刷新块头徽章；不动块文本（结构 / 候选结果变了之后用）。 */
-async function refreshDetailSuggestions() {
+async function refreshDetailSuggestions({ force = false } = {}) {
   if (detailPageNo === null || !currentProject) return;
   const pageNo = detailPageNo;
-  forgetPageSuggestions(pageNo);
+  if (force) forgetPageSuggestions(pageNo);
   let payload = null;
   try {
     payload = await fetchPageSuggestions(pageNo);
@@ -7683,7 +7728,12 @@ async function refreshDetailSuggestions() {
   if (detailPageNo !== pageNo || !currentProject) return;
   applyDetailSuggestions(payload);
   renderSuggestionTools();
-  renderReviewBlocks(reviewBlocks);
+  // 建议是异步补算的：用户正在编辑框里打字时不要重建块列表（那会顶掉光标）。
+  // 徽章等下一次渲染再出现，数据已经更新。
+  const active = document.activeElement;
+  const editing =
+    active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT");
+  if (!editing) renderReviewBlocks(reviewBlocks);
   renderLayoutPanel();
 }
 
@@ -9092,10 +9142,13 @@ function renderDiffQueue() {
   if (!hasQueue) return;
 
   const countsNow = queueCounts();
-  if (!queueOpen) return;
-
   const item = queueIndex >= 0 ? diffQueue[queueIndex] : null;
   const complete = !item || countsNow.remaining === 0;
+  // 任务 43：队列处理完（或用户收起队列）后，再补算建议 / 漏行
+  if ((complete || !queueOpen) && pendingPageAux === queuePageNo) {
+    runPageAux(queuePageNo, { forceSuggestions: true });
+  }
+  if (!queueOpen) return;
   bar.classList.toggle("is-complete", complete);
   const position = el("diff-queue-position");
   const meta = el("diff-queue-meta");
@@ -10607,7 +10660,7 @@ async function applyCandidateBlock(candidateIndex, targetBlockId, button) {
     });
     // 换完之后对应关系可能变了（那一块已经与现有一致），重新拉一次对比
     await openCandidateCompare();
-    await refreshDetailSuggestions();
+    await refreshDetailSuggestions({ force: true });
     await refreshPageStates();
   } catch (error) {
     button.disabled = false;
@@ -10917,7 +10970,7 @@ async function decideCandidate(decision) {
       runs: [],
       active_run: null,
     });
-    await refreshDetailSuggestions();
+    await refreshDetailSuggestions({ force: true });
     await refreshPageStates();
   } catch (error) {
     showError(el("page-detail-error"), error);
@@ -11613,6 +11666,11 @@ async function finishRunLayout() {
     await loadFinishSummary({ silent: true });
   }
   el("finish-confirm-layout").disabled = false;
+  // 任务 43：批量确认改了「版面未确认」这个页头状态。已经打开着的那一页
+  // 要重载一次页详情（否则页头一直写着没确认，用户以为没生效）。
+  if (detailPageNo !== null && !finishLayoutRemaining.includes(detailPageNo)) {
+    await loadPageDetail(detailPageNo, { forceSuggestions: false });
+  }
 }
 
 async function finishConfirmLayout() {

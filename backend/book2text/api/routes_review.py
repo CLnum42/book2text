@@ -28,6 +28,7 @@ from ..core.project import margin_box as margin_box_module
 from ..core.project import recognition
 from ..core.project import structure as structure_module
 from ..core.project import workflow as workflow_module
+from ..core.storage import db as db_module
 from .deps import actor_name as _actor_name
 from .deps import require_editable_page
 from .deps import require_main_project as _require_main
@@ -131,13 +132,28 @@ def _require_page_editable(request: Request, project_id: str, block_id: str, *, 
 
     `deps.require_editable_page` 是按**页码**判的，块编辑路径手里只有块 id，这里先查它在哪一页。
     审校包里上下文页的存在本身就是"给你看跨页段落用的"，改它会让结果包与主项目对不上。
+
+    **一次 JOIN 拿到页码**，不逐页翻块：以前是"每页 list_blocks 直到找到这块"，
+    第 370 页的块要跑 370 次查询，一次按键多等约 290 ms（任务 43 实测）。
     """
-    for page in project_library.list_pages(project_id, library=library):
-        blocks = blocks_module.list_blocks(project_id, library=library, page_no=page.page_no)
-        if any(block.block_id == block_id for block in blocks):
-            require_editable_page(project_id, page.page_no, library=library)
-            return
-    # 查不到就交给编辑层报"找不到块"（保持原来的 404 语义）
+    directory = project_library.require_project_dir(project_id, library=library)
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        row = conn.execute(
+            "SELECT p.page_no, p.is_context FROM block b"
+            " JOIN page p ON p.page_id = b.page_id"
+            " WHERE b.block_id = ? AND b.deleted_at IS NULL",
+            (block_id,),
+        ).fetchone()
+    if row is None:
+        # 查不到就交给编辑层报"找不到块"（保持原来的 404 语义）
+        return
+    if int(row["is_context"] or 0):
+        raise AppError(
+            403,
+            "context_page_readonly",
+            "这是只读上下文页",
+            detail="任务包只附带分派范围前后各 1 页，用来判断跨页段落，不能编辑。",
+        )
 
 
 def _page_blocks_payload(request: Request, project_id: str, page_no: int) -> dict[str, Any]:

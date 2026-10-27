@@ -1223,3 +1223,45 @@ def test_confirm_page_refreshes_finish_counts() -> None:
     block = script[start : script.index("\n}\n", start)]
     assert "loadFinishSummary({ silent: true })" in block
     assert "await loadFinishSummary" not in block, "刷新不能挡住翻页"
+
+
+def test_review_pauses_page_grid_prefetch() -> None:
+    """任务 43：审校按键不能被页面视图的缩略图 / 角标预取拖慢。
+
+    页面视图一次会排上百个 `size=thumb` 与 `block-suggestions`；切到审校后
+    还在后台跑的话，一次按键要等几秒（实测第 370 页 13 键 40.5 秒）。
+    离开页面视图要停掉：缩略图清 src、建议与块数据预取看 currentView。
+    回到页面视图必须能把缩略图重新挂上（否则用户看到一片空白）。
+    """
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "function pausePageThumbnails(" in script
+    pause = script[script.index("function pausePageThumbnails(") :]
+    pause = pause[: pause.index("\n}\n")]
+    assert 'removeAttribute("src")' in pause
+
+    assert 'if (target !== "pages" && currentProject) pausePageThumbnails();' in script
+    # 回来时由 applyPageZoom 重新挂 src（页面视图分支里调用）
+    assert "applyPageZoom();" in script
+
+    for name in ("function pumpPageSuggestionQueue(", "function pumpPageBlockPrefetch("):
+        start = script.index(name)
+        block = script[start : script.index("\n}\n", start)]
+        assert 'currentView !== "pages"' in block, name
+
+    # 批量确认版面后，已经打开的审校页页头要跟着刷新
+    start = script.index("async function finishRunLayout(")
+    block = script[start : script.index("\n}\n", start)]
+    assert "loadPageDetail(detailPageNo" in block
+
+    # 页面打开不等建议 / 漏行：先渲染，队列处理完再补算（否则按键和全库统计抢 CPU）
+    start = script.index("async function loadPageDetail(")
+    block = script[start : script.index("\n}\n", start)]
+    assert "queueHasPendingItems()" in block
+    assert "pendingPageAux = pageNo" in block
+    assert "function queueHasPendingItems(" in script
+    assert "function runPageAux(" in script
+    start = script.index("function renderDiffQueue(")
+    block = script[start : script.index("\n}\n", start)]
+    assert "pendingPageAux === queuePageNo" in block
