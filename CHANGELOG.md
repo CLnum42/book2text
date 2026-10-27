@@ -7,6 +7,19 @@
 
 ## [0.1.0] — 2026-10-21
 
+### 变更 — CI 拆成两套，日常只跑 Ubuntu（2026-10-27）
+
+- **`tests.yml`（每次提交的守门人）**：单个 ubuntu-latest job，只装 dev 依赖，
+  `-m "not macos_only"` 排除 macOS 专属用例，目标 3 分钟内跑完。
+- **`tests-full.yml`（手动 / 打 tag）**：macOS 14 全量（含 OCR / Apple Vision）+
+  Windows 非 OCR；`workflow_dispatch` 或 push `v*` tag 时跑。
+- 零 skip 守卫原样保留：选中的集合里出现 skip 就算失败；Ubuntu 侧另外断言
+  marker 过滤真的 deselect 了 macOS 组。需要 macOS 的测试加 `macos_only` 标记，
+  原来在模块导入期 skip 的 5 个模块改成运行时 autouse fixture。
+- 两套都加 `concurrency`；依赖缓存用 setup-uv + `.venv` 缓存。
+- 起因：私有仓库 macOS runner 按 **10×** 计费，连续 58 次双平台把额度烧穿
+  （#58 起 job 未启动）。文档：`docs/workflow.md` 第 9 节。
+
 ### 变更 — 功能归位（任务 39，2026-10-27）
 
 - **结构工具**从工具条搬到版心确认步右栏的「版心外的书眉 / 页脚 / 页码」分组。

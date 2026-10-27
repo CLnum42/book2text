@@ -839,3 +839,49 @@ class ArbitrationEngine(Protocol):
 - 版心 / 页边带重叠行的归属在倾斜扫描上的表现；
 - 检测行与现有 OCR 行在**换检测模型 / 换 DPI** 后是否仍然对齐（任务 58 只验证了同模型同 DPI）；
 - 双栏 / 竖排书的检测阅读顺序（当前是简单的从上到下、从左到右）。
+
+---
+
+## 9. 持续集成（2026-10-27 起：两套）
+
+私有仓库的 GitHub Actions 按分钟倍数计费：**Ubuntu 1×、Windows 2×、macOS 10×**。
+之前每刀都跑「macOS 全量 + Windows」，58 次之后额度被烧穿（`#58` 起 job 直接未启动）。
+现在拆成两套，日常只烧 1×。
+
+### 9.1 两套 CI 的分工
+
+| 文件 | 触发 | 跑什么 | 什么时候该看它 |
+|---|---|---|---|
+| `.github/workflows/tests.yml` | push 到 `main`、PR | 单个 **ubuntu-latest** job，`-m "not macos_only"`，只装 dev 依赖 | **每次提交的守门人**，必须绿 |
+| `.github/workflows/tests-full.yml` | `workflow_dispatch` 手动、push `v*` tag | **macOS 14 全量**（dev + ocr-eval，含 Apple Vision）+ **Windows 非 OCR** | 发版本 / 打 tag 前；改 OCR、Apple Vision、子进程、路径编码、打包脚本；`uv.lock` 或 Python 版本变动；修 macOS-only bug 后回归 |
+
+- 两套都有 `concurrency`：日常那套同一分支新提交会取消上一次（省额度）；
+  全量那套不自动取消（手动触发的两次可能是不同目的）。
+- 依赖缓存：`astral-sh/setup-uv` 的 uv 缓存 + `.venv` 缓存（key 含 `uv.lock` 哈希）；
+  macOS 还单独缓存 RapidOCR 模型（约 31 MB，从 modelscope.cn 下载）。
+
+### 9.2 零 skip 守卫（没有放宽）
+
+铁律不变：**选中的集合里出现任何 skip 就算失败**。没有 `--allow-skips`，也没有把守卫改成警告。
+
+- 需要 macOS 环境（OCR / Apple Vision / 真实引擎）的测试标 `@pytest.mark.macos_only`；
+  Ubuntu job 用 `-m "not macos_only"` **deselect**（不是 skip），并额外断言
+  "摘要里必须有 deselected"，防止 marker 没生效时整组被静默跳过。
+- macOS 全量那套**不加任何 marker 过滤**，仍然零 skip，强度与旧 CI 一致。
+- 原本在模块导入期 `pytest.skip(...)` 的 5 个模块（RapidOCR 适配器 / 版面检测 /
+  Apple Vision / 子进程 / 识别引擎集成）改成 **autouse fixture 里运行时 skip**：
+  模块级 skip 发生在 marker 过滤之前，会让 Ubuntu 的零 skip 守卫误报。
+  marker 过滤掉它们时，fixture 根本不会执行。
+- Windows job 仍用 `-m "not ocr"` + 显式 `--ignore` 那 5 个模块（导入期会构造引擎），
+  这是写明的排除，不是静默跳过。
+
+### 9.3 本地复现 CI
+
+```bash
+# 与 Ubuntu 守门一致（不装 OCR，deselect macos_only）：应看到 "0 skipped"
+uv run pytest -q -rs -m "not macos_only"
+
+# 与 macOS 全量一致（要装 ocr-eval）：应看到全量通过、0 skipped
+uv sync --frozen --group dev --group ocr-eval
+uv run pytest -q -rs
+```
