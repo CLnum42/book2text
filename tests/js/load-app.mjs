@@ -106,7 +106,9 @@ export function loadApp(options = {}) {
   // 自检：本文件要用的函数必须真的存在，别让用例在 undefined 上做无意义的断言。
   // 用 `require` 指定：对历史版本跑单个测试文件时，那个版本可能还没有别的函数
   // （例如 7b803c5 有 computeCharSpans、还没有 readingDiffUnits）。
-  for (const name of options.require || ["readingDiffUnits"]) {
+  // 默认只要 `computeCharSpans`：`readingDiffUnits` 已在 L11 搬进 reading-view.js，
+  // 纯函数单测改从 `load-reading-view.mjs` 拿（模块只露 6 个导出，R8 不许为测试加口子）。
+  for (const name of options.require || ["computeCharSpans"]) {
     if (typeof ctx[name] !== "function") {
       throw new Error(`load-app: ctx.${name} 不是函数——加载假设失效了，先查 app.js 的开头/结尾结构`);
     }

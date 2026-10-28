@@ -1639,7 +1639,9 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert module_script.count("/review/marks?") == 2
     # L2 笔2：submitReadingDrafts 搬进模块，接口路径跟着搬（app.js 里 0，模块里 1）。
     assert (script + module_script).count("/review/submit-drafts") == 1
-    assert "line_spans" in script
+    # L12：line_spans 随正文流/行渲染搬进模块（app.js 里 0 处）→ 合查。
+    assert "line_spans" not in script
+    assert module_script.count("line_spans") >= 1
     assert "computeCharSpans(" in script
     # 三处队列口径统一：树 / 顶栏 / finish-summary 都读同一个统计
     assert "queue_items(" in (STATIC_DIR / ".." / ".." / ".." / "backend" / "book2text" / "core" / "project" / "review_status.py").read_text(encoding="utf-8")
@@ -1656,10 +1658,15 @@ def test_reading_view_is_wired_for_merge() -> None:
     # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
     assert module_script.count("function buildReadingPages(") == 1
     assert (script + module_script).count("function buildReadingPages(") >= 1
-    assert "function paintReadingTile(" in script
+    # L7：paintReadingTile 随左栏搬进模块（app.js 定义数 0）。判据同前：模块恰 1 处 + 合查。
+    # L10：paintReadingDiffBoxes / readingDiffUnits 随字框渲染搬进模块，判据相同。
+    # L11：setReviewOverlaysForReading 随收口簇搬进模块，判据相同。
+    assert module_script.count("function paintReadingTile(") == 1
+    assert (script + module_script).count("function paintReadingTile(") >= 1
     assert module_script.count("function setReadingHover(") == 1
     assert (script + module_script).count("function setReadingHover(") >= 1
-    assert "function setReviewOverlaysForReading(" in script
+    assert module_script.count("function setReviewOverlaysForReading(") == 1
+    assert (script + module_script).count("function setReviewOverlaysForReading(") >= 1
     assert "box.dataset.blockId" in script
     # L1 第二笔：reading-pdf-scroll 的 scroll 监听随 setupReading 搬进模块（app.js 里是 0）。
     # 判据改成"两个文件合起来只许绑一处"：搬走后仍能确认它存在，且不允许多绑一份。
@@ -1674,8 +1681,10 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert ".reading-page" in css
     assert "is-linked" in css
     # 任务 59 第二刀：字级色块（有字框按字/词画，没有字框整行一个虚线框）
-    assert "function paintReadingDiffBoxes(" in script
-    assert "function readingDiffUnits(" in script
+    assert module_script.count("function paintReadingDiffBoxes(") == 1
+    assert (script + module_script).count("function paintReadingDiffBoxes(") >= 1
+    assert module_script.count("function readingDiffUnits(") == 1
+    assert (script + module_script).count("function readingDiffUnits(") >= 1
     assert "reading-diff-box" in css
     assert "reading-mark--word" in css
     # 字框回填入口与对话框
@@ -1752,8 +1761,13 @@ def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
     # 判据同前：模块里恰好 1 处真实现 + 合查仍存在。
     assert module_script.count("function refreshReadingCurrentHighlight(") == 1
     assert (script + module_script).count("function refreshReadingCurrentHighlight(") >= 1
-    assert 'node.classList.add("is-current")' in script
-    assert "key === readingPanelKey" in script
+    # L11：当前项的判定与着色都搬进模块。原来那两条在 app.js 里找 `is-current`，
+    # 抓到的是左侧按钮 / 索引行的同名类（同名不同物，审校的高亮走了也照绿）——改成在模块里找。
+    # 判据只锁"当前项由 panelKey 决定 + 确实有 is-current 着色"，**不锁取值的写法**：
+    # L12 前后这行出现过 `injected.getReadingPanelKey()`（状态在 app.js）与
+    # `readingPanelKey`（状态迁进模块）两种形态，锁死写法会让状态迁移本身把测试撞红。
+    assert module_script.count("readingPanelKey") >= 1
+    assert module_script.count('classList.add("is-current")') >= 1
     assert ".reading-mark.is-current" in css
     assert ".reading-diff-box.is-current" in css
     assert ".reading-diff-box.is-acked" in css

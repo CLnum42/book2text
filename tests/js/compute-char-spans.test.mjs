@@ -37,17 +37,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadApp } from "./load-app.mjs";
+import { loadReadingView } from "./load-reading-view.mjs";
 
 const ctx = loadApp({ require: ["computeCharSpans"] });
 const computeCharSpans = ctx.computeCharSpans;
-// 对历史版本复跑时，readingDiffUnits 可能还不存在（任务 63 之前）。那几条用例要跳过，
-// 否则会把"函数不在"当成"逻辑错了"，红就失去意义。
+// 分支计数统计由 app.js 挂在 window 上（readingDiffUnits 注入的就是它）
+const stats = ctx.window.__b2tWordBoxStats;
+// L11：`readingDiffUnits` 搬进 reading-view.js 且没有公开导出（R8），改由模块单元加载器取到。
+// 依赖注入照生产来：`computeCharSpans`（仍在 app.js）+ 统计对象。
+const readingModule = loadReadingView({ require: [] });
+readingModule.setInjected({
+  computeCharSpans: ctx.computeCharSpans,
+  getWordBoxMappingStats: () => stats,
+});
+// 只在真的没有这个函数时才 skip（对历史版本复跑用）；HEAD 上它必须在，
+// 否则就是"应该跑的用例被悄悄跳过"——那等于覆盖倒退。
 const readingDiffUnitsSkip =
-  typeof ctx.readingDiffUnits === "function" ? false : "该版本还没有 readingDiffUnits";
+  typeof readingModule.ctx.readingDiffUnits === "function" ? false : "该版本还没有 readingDiffUnits";
 
 /** 经 readingDiffUnits 的 kind / ranges（跨 realm，比前要归一化）。 */
 function diffUnits(lineText, candidate) {
-  return plain(ctx.readingDiffUnits(lineText, candidate, charBoxes(lineText)));
+  return plain(readingModule.ctx.readingDiffUnits(lineText, candidate, charBoxes(lineText)));
 }
 
 const span = (aStart, aEnd, bStart, bEnd, kind) => ({ aStart, aEnd, bStart, bEnd, kind });

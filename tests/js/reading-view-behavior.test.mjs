@@ -25,6 +25,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { loadApp, runInApp } from "./load-app.mjs";
+import { loadReadingView } from "./load-reading-view.mjs";
 
 const READING_VIEW_SRC = readFileSync(
   new URL("../../backend/book2text/static/reading-view.js", import.meta.url),
@@ -37,8 +38,20 @@ function installReadingView(target) {
 }
 
 const ctx = loadApp({
-  require: ["readingEntryVisible", "enterReviewStep"],
+  require: ["enterReviewStep"],
 });
+
+/**
+ * L11：`readingKey` / `readingEntryVisible` 搬进 reading-view.js 且没有公开导出（R8 只有 6 项），
+ * 所以用模块单元加载器取纯函数版本，注入项**接到 app.js 那个上下文的状态上**
+ * （`runInApp` 读顶层 `let`，读回来的是同一份 Map/字符串），行为与生产一致。
+ */
+const readingUnit = loadReadingView({ require: ["readingKey", "readingEntryVisible"] });
+readingUnit.setInjected({
+  getReadingDrafts: () => runInApp(ctx, "readingDrafts"),
+  getReadingFilter: () => runInApp(ctx, "readingFilter"),
+});
+const moduleReadingEntryVisible = (entry) => readingUnit.ctx.readingEntryVisible(entry);
 
 // ---------------------------------------------------------------- 最小假 DOM
 
@@ -241,9 +254,12 @@ function makeEntry(blockId, lineIndex, pageNo, level = "differs_chars") {
 }
 
 function setEntries(entries) {
-  // 注意：`entries` 是宿主变量，vm 里看不到，所以只嵌一次 JSON，再在 vm 里读回来
+  // 注意：`entries` 是宿主变量，vm 里看不到，所以只嵌一次 JSON，再在 vm 里读回来。
+  // L11：`readingKey` 搬进模块（app.js 里 0 处），建 marks 表时用模块那个版本——
+  // 通过宿主槽位传进 vm（`__readingKey`），别在 app 里再实现一遍键格式。
+  ctx.__readingKey = readingUnit.ctx.readingKey;
   runInApp(ctx, `readingEntries = ${JSON.stringify(entries)};
-    readingMarks = new Map(readingEntries.map((e) => [readingKey(e.block_id, e.line_index), e]));`);
+    readingMarks = new Map(readingEntries.map((e) => [__readingKey(e.block_id, e.line_index), e]));`);
 }
 
 function readState(code) {
@@ -312,7 +328,7 @@ function installReadingDeps() {
     readingFlowPages: () => get("readingFlowPages()"),
     readingLineNode: () => null,
     // 队列链路：这些函数仍住在 app.js（L4 只搬了 gotoNextUnreviewed 本身），注入侧转发回去
-    readingKey: (blockId, lineIndex) => ctx.readingKey(blockId, lineIndex),
+    readingKey: (blockId, lineIndex) => readingUnit.ctx.readingKey(blockId, lineIndex),
     gotoReadingEntry: (entry) => ctx.gotoReadingEntry(entry),
     logReadingNext: (entry, extra) => ctx.logReadingNext(entry, extra),
     ensureReadingMarksWindow: (pageNo) => ctx.ensureReadingMarksWindow(pageNo),
@@ -550,16 +566,16 @@ test("过滤器：汉字级不混入标点条目；未审不混入已 ack / 已�
   // **只注入状态、不注入行为**：本用例锁的是"过滤器规则"（readingEntryVisible），
   // setter → 状态 的接线由 boundary.test.mjs 的静态断言与 QA 的页面级交互覆盖。
   runInApp(ctx, 'readingFilter = "chars";');
-  assert.equal(readState(`readingEntryVisible(${JSON.stringify(chars)})`), true);
-  assert.equal(readState(`readingEntryVisible(${JSON.stringify(punct)})`), false, "标点条目混进了汉字级队列");
+  assert.equal(moduleReadingEntryVisible(chars), true);
+  assert.equal(moduleReadingEntryVisible(punct), false, "标点条目混进了汉字级队列");
 
   runInApp(ctx, 'readingFilter = "unacked";');
-  assert.equal(readState(`readingEntryVisible(${JSON.stringify(acked)})`), false, "已审的条目还在未审队列里");
-  assert.equal(readState(`readingEntryVisible(${JSON.stringify(drafted)})`), false, "已存草稿的条目还在未审队列里");
-  assert.equal(readState(`readingEntryVisible(${JSON.stringify(punct)})`), true, "标点在未审视图里应当仍可见");
+  assert.equal(moduleReadingEntryVisible(acked), false, "已审的条目还在未审队列里");
+  assert.equal(moduleReadingEntryVisible(drafted), false, "已存草稿的条目还在未审队列里");
+  assert.equal(moduleReadingEntryVisible(punct), true, "标点在未审视图里应当仍可见");
 
   runInApp(ctx, 'readingFilter = "all";');
-  assert.equal(readState(`readingEntryVisible(${JSON.stringify(punct)})`), true);
+  assert.equal(moduleReadingEntryVisible(punct), true);
 });
 
 // ---------------------------------------------------------------- 7. 偏好

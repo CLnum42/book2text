@@ -13,11 +13,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadApp } from "./load-app.mjs";
+import { loadReadingView } from "./load-reading-view.mjs";
 
-const ctx = loadApp();
-const readingDiffUnits = ctx.readingDiffUnits;
-// 模块级统计挂在 window 上（顶层 const 拿不到，源码自己挂了 window），用来证明走了哪条分支
-const stats = ctx.window.__b2tWordBoxStats;
+// L11：`readingDiffUnits` 搬进 reading-view.js。它不是公开导出（R8 只有 6 个稳定项），
+// 所以用模块单元加载器剥掉 IIFE 取到它；它依赖的两个注入项从 app.js 那个上下文里接过来：
+// - `computeCharSpans` 仍住 app.js；
+// - `getWordBoxMappingStats` 拿的是 app.js 挂到 window 上的同一个统计对象（分支计数靠它）。
+const app = loadApp({ require: ["computeCharSpans"] });
+const stats = app.window.__b2tWordBoxStats;
+const module = loadReadingView({ require: ["readingDiffUnits"] });
+module.setInjected({
+  computeCharSpans: app.computeCharSpans,
+  getWordBoxMappingStats: () => stats,
+});
+const readingDiffUnits = module.ctx.readingDiffUnits;
 
 /**
  * vm 里返回的数组/对象来自**另一个 realm**（不同的 Array/Object 原型），
