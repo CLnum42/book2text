@@ -18577,6 +18577,11 @@ function renderReading({ reset = false, startAt = null } = {}) {
     }
     if (maxPage && !readingWindowHas(maxPage)) ensureReadingMarksWindow(maxPage);
   }
+  // 重绘会重建 `.reading-line` 节点，`is-current` 跟着一起没了；`readingPanelKey`
+  // 也在 `reset` 里被清空、由 `retryReadingPendingPanel()` 恢复。所以**每次重绘之后
+  // 都要按当前状态回补一次**——它幂等，别指望"某一次 openReadingPanel 的副作用"能活过重绘。
+  // （QA 实测：目标行在 DOM 里、面板开着，`is-current` 却是 0，就是这么丢的。）
+  refreshReadingCurrentHighlight();
 }
 
 function buildReadingSentinel() {
@@ -19194,6 +19199,11 @@ function openReadingPanel(entry) {
       drawReadingPdfBox(entry.bbox, entry.page_no);
     }
   }
+  // 行节点可能在这一帧之后才挂上（补窗口 / 重铺）：下一帧按同一个 key 再补一次高亮。
+  // 面板元素在独立 host 里、跨重绘存活，所以这里不需要重开面板，只需要重挂 class。
+  requestAnimationFrame(() => {
+    if (readingPanelKey === key) refreshReadingCurrentHighlight();
+  });
 }
 
 function closeReadingPanel() {
@@ -20506,12 +20516,30 @@ function onReadingScroll() {
     const key = line.dataset.key;
     const mark = readingMarks.get(key);
     const pageNo = Number(line.dataset.page);
+    // 任务 88：**面板行还在视口内时，页码与左栏一起钉住**（D-105：顶部页码 = 左栏可见页 =
+    // 面板项所在页）。否则 `jumpReadingTo` / 居中引发的右栏滚动会按"视口顶行"把页码写回上一页
+    // （实测第 142 页被写回 141，写入者就是下面这两处）。行滚出视口后守卫自然失效。
+    window.__b2tPagePin = window.__b2tPagePin || { held: 0, noLine: 0 };
+    let allowPageWrite = true;
+    if (readingPanelKey) {
+      const panelLine = readingLineNode(readingPanelKey);
+      if (!panelLine) {
+        allowPageWrite = false;
+        window.__b2tPagePin.noLine += 1;
+      } else {
+        const pr = panelLine.getBoundingClientRect();
+        if (pr.bottom > rect.top && pr.top < rect.bottom) {
+          allowPageWrite = false;
+          window.__b2tPagePin.held += 1;
+        }
+      }
+    }
     if (mark && mark.page_no && mark.page_no !== readingPageNo) {
       if (!readingDriverActive("left")) markReadingDriver("right");
-      updateReadingPage(mark.page_no, { scrollLeft: true, syncStream: false });
+      if (allowPageWrite) updateReadingPage(mark.page_no, { scrollLeft: true, syncStream: false });
     } else if (!mark && pageNo && pageNo !== readingPageNo) {
       if (!readingDriverActive("left")) markReadingDriver("right");
-      updateReadingPage(pageNo, { scrollLeft: true, syncStream: false });
+      if (allowPageWrite) updateReadingPage(pageNo, { scrollLeft: true, syncStream: false });
     }
     if (mark && mark.bbox) {
       if (mark.page_no !== readingPageNo) {
