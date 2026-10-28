@@ -19076,24 +19076,27 @@ function buildReadingLine(segment, span, displayText = null) {
   return line;
 }
 
+/**
+ * 「已审 / 总数」的唯一口径：库里已判 + 本次会话草稿（**全局，不按 marks 窗口**）。
+ *
+ * 旧实现只数当前窗口里的 `readingEntries`，换一次窗口之前的草稿就不算了——
+ * QA 实测"20 次 Enter 后已审从 0 涨到 3 又跌回 0"，根因就是它。
+ */
+function readingProgressNumbers() {
+  const counts = readingGlobalCounts;
+  const draftKeys = new Set([...readingDrafts.keys(), ...readingInlineEdits.keys()]);
+  if (!counts) {
+    return { processed: draftKeys.size, total: readingEntries.length };
+  }
+  const total = Number(counts.chars_total || 0);
+  const doneInDb = Math.max(0, total - Number(counts.chars_unacked || 0));
+  return { processed: Math.min(total, doneInDb + draftKeys.size), total };
+}
+
 function renderReadingProgress() {
   // 任务 67：marks 只加载窗口，`readingEntries` 不再是全书 —— 进度数字必须用
   // 服务端给的全书计数，否则换一次窗口进度条就缩水一次（用户会以为审过的丢了）。
-  const counts = readingGlobalCounts;
-  let total;
-  let processed;
-  if (counts) {
-    total = Number(counts.chars_total || 0);
-    const doneInDb = Math.max(0, total - Number(counts.chars_unacked || 0));
-    // 未提交的草稿也算这一处已判（与 readingEntryDone 同一个口径），只数得着窗口内的
-    const draftDone = readingEntries.filter(
-      (entry) => entry.level !== "differs_punct" && !entry.ack && readingEntryDone(entry)
-    ).length;
-    processed = Math.min(total, doneInDb + draftDone);
-  } else {
-    total = readingEntries.length;
-    processed = readingEntries.filter(readingEntryDone).length;
-  }
+  const { processed, total } = readingProgressNumbers();
   const drafts = readingDrafts.size + readingInlineEdits.size;
   // 显示分两类、判定看合并：进度条只算含汉字差异的行，标点单独一行小字
   const punctTotals = punctGroupsData?.totals || {};
