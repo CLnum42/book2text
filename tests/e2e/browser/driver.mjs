@@ -2035,6 +2035,15 @@ async function dockProbe(page, args) {
     await page.waitForTimeout(450);
     return { snap: await page.evaluate(dockSnapshotRaw) };
   }
+  if (mode === "clear_prefs") {
+    const removed = await page.evaluate(() => {
+      const keys = ["b2t.readingDock.v1", "b2t.readingTree.v1"];
+      const had = keys.map((k) => [k, localStorage.getItem(k)]);
+      for (const k of keys) localStorage.removeItem(k);
+      return had;
+    });
+    return { removed };
+  }
   if (mode === "toggle_tree") {
     await page.click("#reading-tree-toggle", { label: "收起/展开左树" });
     await page.waitForTimeout(500);
