@@ -18112,7 +18112,10 @@ function setReviewOverlaysForReading() {
 /** 阅读流左栏（PDF 页列）当前滚动位置；没有左栏时按 0。 */
 let readingAutoJumpDone = false;
 
+/** 用户最后一次**自己**在审校视图里动手（滚轮 / 按下 / 按键）的时刻。 */
 let readingUserMovedAt = 0;
+/** 用户真实输入触发的滚动序号；`readingProgramScrollSeq` 是程序滚动的序号，
+ * 两者不等说明"这次滚动是用户滚的"，左右跟随据此判断。 */
 let readingUserScrollSeq = 0;
 let readingProgramScrollSeq = 0;
 
@@ -19349,6 +19352,9 @@ function readingEntriesForPage(pageNo) {
       return 0;
     });
 }
+
+/** 左树里"展开了的页"（条目级展开状态）。 */
+const readingTreeOpen = new Set();
 
 function renderReadingTree() {
   const tree = el("reading-tree");
