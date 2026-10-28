@@ -2791,3 +2791,13 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   margin-top: 3px; color: #15803d; background: rgba(22, 163, 74, .08);
   border-radius: 4px; padding: 2px 4px; word-break: break-word;
 }
+
+/* 任务 85：候选面板挂在 `renderReading` 永远不碰的宿主里。
+   以前面板是 `#reading-stream` 的子节点，任何一次 `renderReading({reset:true})`
+   都会 `innerHTML=""` 把它删掉——"重建 vs 重绘"永远在赛跑。 */
+.reading-panel-host {
+  flex: none; max-height: 38vh; overflow: auto; padding: 8px 12px 0;
+  background: var(--surface); border-bottom: 1px solid var(--line); z-index: 8;
+}
+.reading-panel-host[hidden] { display: none; }
+.reading-panel { margin: 0 0 8px; }

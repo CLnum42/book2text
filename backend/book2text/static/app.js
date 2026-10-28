@@ -18470,6 +18470,7 @@ function renderReading({ reset = false, startAt = null } = {}) {
     stream.innerHTML = "";
     readingRendered = startAt != null ? Math.max(0, startAt) : 0;
     readingSegmentNodes = [];
+    // 只清 DOM 引用：`readingPendingPanelEntry` 跨重绘存活，末尾由 retryReadingPendingPanel 恢复
     readingPanelKey = null;
     if (readingObserver) readingObserver.disconnect();
     readingObserver = null;
@@ -19107,17 +19108,13 @@ function openReadingPanel(entry) {
   edit.addEventListener("click", () => startReadingEdit(entry, panel));
   actions.append(adopt, keep, edit);
   panel.append(head, candidate, actions);
-  if (line) line.after(panel);
-  else {
-    panel.classList.add("reading-panel--floating");
-    const stream = el("reading-stream");
-    if (stream) {
-      if (stream.firstChild) stream.insertBefore(panel, stream.firstChild);
-      else stream.append(panel);
-    } else {
-      return;
-    }
-  }
+  // **结构上不可能被清掉**：面板挂进 `#reading-panel-host`，它不在 `#reading-stream` 里，
+  // `renderReading({reset:true})` 怎么 `innerHTML=""` 都碰不到它。
+  const host = el("reading-panel-host");
+  if (!host) return;
+  host.innerHTML = "";
+  host.append(panel);
+  host.hidden = false;
   refreshReadingCurrentHighlight();
   if (entry.page_no && entry.page_no !== readingPageNo) {
     updateReadingPage(entry.page_no, { scrollLeft: false, syncStream: false });
@@ -19136,6 +19133,8 @@ function openReadingPanel(entry) {
 }
 
 function closeReadingPanel() {
+  const host = el("reading-panel-host");
+  if (host) { host.innerHTML = ""; host.hidden = true; }
   // 用户主动关 = 真的关；重绘导致的移除走 renderReading，不清 pending
   readingPendingPanelKey = null;
   readingPendingPanelEntry = null;
@@ -19822,6 +19821,15 @@ let readingPendingPanelKey = null;
 let readingPendingPanelEntry = null;
 
 function retryReadingPendingPanel() {
+  // 面板已经在宿主里（重绘碰不到它），但 `readingPanelKey` 可能被 reset 清成了 null：
+  // 把当前项恢复回来，高亮才跟着回来。
+  if (!readingPendingPanelEntry && !readingPanelKey) {
+    const host = el("reading-panel-host");
+    const stub = host && host.querySelector(".reading-panel");
+    const key = stub && stub.dataset.key;
+    if (key) { readingPanelKey = key; refreshReadingCurrentHighlight(); }
+    return;
+  }
   if (!readingPendingPanelEntry) return;
   const entry = readingPendingPanelEntry;
   const key = readingKey(entry.block_id, entry.line_index);
@@ -20433,7 +20441,7 @@ function logReadingNext(entry, extra = {}) {
     entryPage: entry ? entry.page_no : null,
     pageNo: readingPageNo,
     panelKey: readingPanelKey,
-    panelOpened: Boolean(document.querySelector("#reading-stream .reading-panel")),
+    panelOpened: Boolean(document.querySelector("#reading-panel-host .reading-panel")),
     lineFound: entry ? Boolean(readingLineNode(readingKey(entry.block_id, entry.line_index))) : false,
     window: readingMarksWindow,
     blocks: entry ? (readingPageBlocks.get(entry.page_no) || []).length : null,
