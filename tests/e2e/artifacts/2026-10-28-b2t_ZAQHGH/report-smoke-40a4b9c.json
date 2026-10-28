@@ -1,0 +1,257 @@
+{
+  "title": "七步冒烟",
+  "rows": [
+    {
+      "step": "0 打开项目",
+      "assertion": "视口 = 用户机器（1423×900 CSS px，dpr 2）",
+      "status": "PASS",
+      "evidence": "1423×900，dpr 2"
+    },
+    {
+      "step": "0 打开项目",
+      "assertion": "步骤条 6 步",
+      "status": "PASS",
+      "evidence": "1、✓、✓、–、5、6"
+    },
+    {
+      "step": "0 打开项目",
+      "assertion": "项目页数 = 662（API）",
+      "status": "PASS",
+      "evidence": "662"
+    },
+    {
+      "step": "1 页面确认",
+      "assertion": "页面摘要显示 662 页（UI = API）",
+      "status": "PASS",
+      "evidence": "API：共 662 页，纳入 662；已确认 0/662；UI：共 662 页 · 正文 662 页 · 已识别 662 页 · 已确认 0 页"
+    },
+    {
+      "step": "1 页面确认",
+      "assertion": "纳入集合 = 662 页",
+      "status": "PASS",
+      "evidence": "include=1 的页：662"
+    },
+    {
+      "step": "2 文字识别",
+      "assertion": "662 页都有主引擎结果（API + 库）",
+      "status": "PASS",
+      "evidence": "主引擎 662/662；active_run 页数 662；UI 步骤：文字识别 · 已完成 · 主引擎 662/662 · 第二引擎 662/662（已跑完）"
+    },
+    {
+      "step": "2 文字识别",
+      "assertion": "步骤条数字与 API 一致",
+      "status": "PASS",
+      "evidence": "文字识别 · 已完成 · 主引擎 662/662 · 第二引擎 662/662（已跑完）"
+    },
+    {
+      "step": "3 版心确认",
+      "assertion": "有文字的页都有版心框（库）",
+      "status": "PASS",
+      "evidence": "版心已定 662/662（无文字页 9 不需要框）；库里 margin_box 非空 653 页（应 = 653）；无框但有块的页 0；未定 0"
+    },
+    {
+      "step": "3 版心确认",
+      "assertion": "版心步被后端判定完成",
+      "status": "PASS",
+      "evidence": "complete=True；版心已定 662/662（无文字页 9 不需要框）；库里 margin_box 非空 653 页（应 = 653）；无框但有块的页 0；未定 0"
+    },
+    {
+      "step": "3 版心确认",
+      "assertion": "步骤条显示 662/662（UI = API）",
+      "status": "PASS",
+      "evidence": "count='662/662' title=版心确认 · 已完成 · 正文页版心已定 662/662 · 31 页本页包围盒兜底 · 9 页无文字跳过"
+    },
+    {
+      "step": "4 目录确认",
+      "assertion": "界面页码计数 = finish-summary（UI = API）",
+      "status": "PASS",
+      "evidence": "索引 1/662 页有印刷页码、缺 661；complete=False skippable=True；UI：「662 页 · 1 页有印刷页码 · 661 页未识别页码」"
+    },
+    {
+      "step": "4 目录确认",
+      "assertion": "无可信页码时步骤条写「可跳过」（与 API skippable 一致）",
+      "status": "PASS",
+      "evidence": "count='可跳过'；索引 1/662 页有印刷页码、缺 661；complete=False skippable=True；UI：「662 页 · 1 页有印刷页码 · 661 页未识别页码」"
+    },
+    {
+      "step": "4 目录确认",
+      "assertion": "页图底线：分辨率 ≥ 1.0 / filter=none / 非占位（目录确认·适合宽度）",
+      "status": "PASS",
+      "evidence": "1/1 个可见页图满足「分辨率 ≥ 1.0 且 filter=none 且非占位」；最小比例 p1 1.185（size=zoom，naturalWidth=2550，CSS宽=1076，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | filter | 占位类 | 结果\np1 | zoom | 2550 | 1076 | 2 | 1.185 | none | 否 | PASS"
+    },
+    {
+      "step": "4 目录确认",
+      "assertion": "页图底线：分辨率 ≥ 1.0 / filter=none / 非占位（目录确认·85%）",
+      "status": "PASS",
+      "evidence": "1/1 个可见页图满足「分辨率 ≥ 1.0 且 filter=none 且非占位」；最小比例 p1 1.022（size=mid，naturalWidth=1870，CSS宽=914.6，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | filter | 占位类 | 结果\np1 | mid | 1870 | 914.6 | 2 | 1.022 | none | 否 | PASS"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "队列数（左树头「队列 N 处」）= API total_items",
+      "status": "PASS",
+      "evidence": "左树头「队列 859 处」；行之和 859；API：汉字 567 + 标点 292 = 859，pending=859；进度「已审 0 / 567 条」"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "左树各行「N 处」之和 = API pending_items",
+      "status": "PASS",
+      "evidence": "左树头「队列 859 处」；行之和 859；API：汉字 567 + 标点 292 = 859，pending=859；进度「已审 0 / 567 条」"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "顶栏分母（汉字）+ 标点 = 队列总数",
+      "status": "PASS",
+      "evidence": "左树头「队列 859 处」；行之和 859；API：汉字 567 + 标点 292 = 859，pending=859；进度「已审 0 / 567 条」"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "顶栏「已审 0 / 573 字」分母 = API chars_total",
+      "status": "PASS",
+      "evidence": "已审 0 / 567 条"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "阅读流文本自检 0 失败（__b2tTextCheckFails）",
+      "status": "PASS",
+      "evidence": "0"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "打开审校：顶部 == 左栏（无当前项）",
+      "status": "PASS",
+      "evidence": "面板第 None 页 / 顶部第 1 页 / 左栏主导第 1 页（25% 锚点=1，中心=1）；面板可见=False；高亮 line=0 mark=0 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793187827038}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793187824726}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793187822522}, {\"reason\": \"afterFix\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793187798851}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793187798715}]"
+    },
+    {
+      "step": "5 正文审校 · 左右页同步（点左树条目（第 50 页））",
+      "assertion": "步骤未能执行",
+      "status": "BLOCKED",
+      "evidence": "浏览器命令 page_sync 失败：\nError: 正文流里没有可点的差异标记：{\"marks\":50,\"lines\":952,\"segs\":320,\"filter\":\"all\",\"visibleSegments\":4821,\"entries\":9,\"panelKey\":null,\"label\":\"第50页\",\"scrollTop\":23365,\"scrollHeight\":27344}\n    at clickMarkAt (file:///private/tmp/b2t-40a/tests/e2e/browser/driver.mjs:505:11)\n    at async clickFirstMark (file:///private/tmp/b2t-40a/tests/e2e/browser/driver.mjs:530:3)\n    at async pageSync (file:///private/tmp/b2t-40a/tests/e2e/browser/driver.mjs:564:5)\n    at async run (file:///private/tmp/b2t-40a/tests/e2e/browser/driver.mjs:44:14)\n    at async file:////[eval2]:6:30"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "当前行高亮且 data-key === 面板 key（20/20）",
+      "status": "PASS",
+      "evidence": "20/20 次：目标行存在且带 is-current"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "missing = 0",
+      "status": "PASS",
+      "evidence": "20 次里没有 missing"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "不许谎报完成",
+      "status": "PASS",
+      "evidence": "最终进度「已审 0 / 567 条」；队列 pending=859"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "队列非空时 branch=none = 0",
+      "status": "PASS",
+      "evidence": "pending=859；branch：next-lines 12、pending-open 8"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "顶部页码从不为 1（除非条目本身在第 1 页）",
+      "status": "PASS",
+      "evidence": "20 次都没有跳回第 1 页"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "面板 500ms 后仍可见（逐次数）",
+      "status": "PASS",
+      "evidence": "20/20 次在 500ms 后仍可见；branch：next-lines 12、pending-open 8"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "连按 20 次：三方一致 + 面板可见 + 当前行高亮",
+      "status": "FAIL",
+      "evidence": "通过 19/20；失败项：[{\"index\": 15, \"label\": null, \"panel\": null, \"dominant\": null, \"panelVisible\": null, \"highlight\": null, \"reason\": null}]"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "三方一致：左栏手动滚到第 120 页",
+      "status": "FAIL",
+      "evidence": "当前差异项第 99 页 ≠ 顶部第 105 页 ≠ 左栏主导第 106 页；面板第 99 页 / 顶部第 105 页 / 左栏主导第 106 页（25% 锚点=105，中心=106）；面板可见=True；高亮 line=0 mark=0 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"afterFix\", \"label\": 99, \"tilePage\": 99, \"panelPage\": 99, \"ok\": true, \"scrollTop\": 49828, \"at\": 1793187884374}, {\"reason\": \"leftScroll\", \"label\": 99, \"tilePage\": 99, \"panelPage\": 99, \"ok\": true, \"scrollTop\": 49828, \"at\": 1793187884229}, {\"reason\": \"updateReadingPage\", \"label\": 98, \"tilePage\": 98, \"panelPage\": 99, \"ok\": false, \"scrollTop\": 49319, \"at\": 1793187884056}, {\"reason\": \"leftScroll\", \"label\": 98, \"tilePage\": 98, \"panelPage\": null, \"ok\": true, \"scrollTop\": 49319, \"at\": 1793187883661}, {\"reason\": \"afterFix\", \"label\": 98, \"tilePage\": 98, \"panelPage\": null, \"ok\": true, \"scrollTop\": 49319, \"at\": 1793187883058}]"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "候选面板可见（500ms 后仍在）：左栏手动滚到第 120 页",
+      "status": "PASS",
+      "evidence": "panelVisible=true；面板第 99 页 / 顶部第 105 页 / 左栏主导第 106 页（25% 锚点=105，中心=106）；面板可见=True；高亮 line=0 mark=0 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"afterFix\", \"label\": 99, \"tilePage\": 99, \"panelPage\": 99, \"ok\": true, \"scrollTop\": 49828, \"at\": 1793187884374}, {\"reason\": \"leftScroll\", \"label\": 99, \"tilePage\": 99, \"panelPage\": 99, \"ok\": true, \"scrollTop\": 49828, \"at\": 1793187884229}, {\"reason\": \"updateReadingPage\", \"label\": 98, \"tilePage\": 98, \"panelPage\": 99, \"ok\": false, \"scrollTop\": 49319, \"at\": 1793187884056}, {\"reason\": \"leftScroll\", \"label\": 98, \"tilePage\": 98, \"panelPage\": null, \"ok\": true, \"scrollTop\": 49319, \"at\": 1793187883661}, {\"reason\": \"afterFix\", \"label\": 98, \"tilePage\": 98, \"panelPage\": null, \"ok\": true, \"scrollTop\": 49319, \"at\": 1793187883058}]"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "当前行有高亮：左栏手动滚到第 120 页",
+      "status": "FAIL",
+      "evidence": "行层/字层/PDF 框都没有；面板第 99 页 / 顶部第 105 页 / 左栏主导第 106 页（25% 锚点=105，中心=106）；面板可见=True；高亮 line=0 mark=0 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"afterFix\", \"label\": 99, \"tilePage\": 99, \"panelPage\": 99, \"ok\": true, \"scrollTop\": 49828, \"at\": 1793187884374}, {\"reason\": \"leftScroll\", \"label\": 99, \"tilePage\": 99, \"panelPage\": 99, \"ok\": true, \"scrollTop\": 49828, \"at\": 1793187884229}, {\"reason\": \"updateReadingPage\", \"label\": 98, \"tilePage\": 98, \"panelPage\": 99, \"ok\": false, \"scrollTop\": 49319, \"at\": 1793187884056}, {\"reason\": \"leftScroll\", \"label\": 98, \"tilePage\": 98, \"panelPage\": null, \"ok\": true, \"scrollTop\": 49319, \"at\": 1793187883661}, {\"reason\": \"afterFix\", \"label\": 98, \"tilePage\": 98, \"panelPage\": null, \"ok\": true, \"scrollTop\": 49319, \"at\": 1793187883058}]"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "三方一致：窗口尺寸变化（拖页列 + 1180px）",
+      "status": "FAIL",
+      "evidence": "当前差异项第 99 页 ≠ 顶部第 41 页 ≠ 左栏主导第 41 页；面板第 99 页 / 顶部第 41 页 / 左栏主导第 41 页（25% 锚点=41，中心=41）；面板可见=True；高亮 line=0 mark=0 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 41, \"tilePage\": 41, \"panelPage\": null, \"ok\": true, \"scrollTop\": 17204, \"at\": 1793187912003}, {\"reason\": \"afterFix\", \"label\": 41, \"tilePage\": 41, \"panelPage\": null, \"ok\": true, \"scrollTop\": 17204, \"at\": 1793187911262}, {\"reason\": \"leftScroll\", \"label\": 41, \"tilePage\": 49, \"panelPage\": null, \"ok\": false, \"scrollTop\": 20660, \"at\": 1793187910905}, {\"reason\": \"afterFix\", \"label\": 49, \"tilePage\": 49, \"panelPage\": null, \"ok\": true, \"scrollTop\": 20964, \"at\": 1793187910332}, {\"reason\": \"leftScroll\", \"label\": 49, \"tilePage\": 57, \"panelPage\": null, \"ok\": false, \"scrollTop\": 24472, \"at\": 1793187909879}]"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "候选面板可见（500ms 后仍在）：窗口尺寸变化（拖页列 + 1180px）",
+      "status": "PASS",
+      "evidence": "panelVisible=true；面板第 99 页 / 顶部第 41 页 / 左栏主导第 41 页（25% 锚点=41，中心=41）；面板可见=True；高亮 line=0 mark=0 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 41, \"tilePage\": 41, \"panelPage\": null, \"ok\": true, \"scrollTop\": 17204, \"at\": 1793187912003}, {\"reason\": \"afterFix\", \"label\": 41, \"tilePage\": 41, \"panelPage\": null, \"ok\": true, \"scrollTop\": 17204, \"at\": 1793187911262}, {\"reason\": \"leftScroll\", \"label\": 41, \"tilePage\": 49, \"panelPage\": null, \"ok\": false, \"scrollTop\": 20660, \"at\": 1793187910905}, {\"reason\": \"afterFix\", \"label\": 49, \"tilePage\": 49, \"panelPage\": null, \"ok\": true, \"scrollTop\": 20964, \"at\": 1793187910332}, {\"reason\": \"leftScroll\", \"label\": 49, \"tilePage\": 57, \"panelPage\": null, \"ok\": false, \"scrollTop\": 24472, \"at\": 1793187909879}]"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "当前行有高亮：窗口尺寸变化（拖页列 + 1180px）",
+      "status": "FAIL",
+      "evidence": "行层/字层/PDF 框都没有；面板第 99 页 / 顶部第 41 页 / 左栏主导第 41 页（25% 锚点=41，中心=41）；面板可见=True；高亮 line=0 mark=0 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 41, \"tilePage\": 41, \"panelPage\": null, \"ok\": true, \"scrollTop\": 17204, \"at\": 1793187912003}, {\"reason\": \"afterFix\", \"label\": 41, \"tilePage\": 41, \"panelPage\": null, \"ok\": true, \"scrollTop\": 17204, \"at\": 1793187911262}, {\"reason\": \"leftScroll\", \"label\": 41, \"tilePage\": 49, \"panelPage\": null, \"ok\": false, \"scrollTop\": 20660, \"at\": 1793187910905}, {\"reason\": \"afterFix\", \"label\": 49, \"tilePage\": 49, \"panelPage\": null, \"ok\": true, \"scrollTop\": 20964, \"at\": 1793187910332}, {\"reason\": \"leftScroll\", \"label\": 49, \"tilePage\": 57, \"panelPage\": null, \"ok\": false, \"scrollTop\": 24472, \"at\": 1793187909879}]"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "尺寸变化后仍在当前差异项所在页",
+      "status": "FAIL",
+      "evidence": "跳转前第 99 页；拖动页列后第 41 页；改视口后第 41 页"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "跨页条目：不适用",
+      "status": "PASS",
+      "evidence": "没有跨页段（本书 0 个跨页段）"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "主动关闭后不许自己冒出来",
+      "status": "PASS",
+      "evidence": "关闭前面板可见；滚一下 + 跳页重绘后 panelBack=false；顶部第 1 页 / 主导第 1 页"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "页图底线：分辨率 ≥ 1.0 / filter=none / 非占位（审校第 1 屏）",
+      "status": "PASS",
+      "evidence": "2/2 个可见页图满足「分辨率 ≥ 1.0 且 filter=none 且非占位」；最小比例 p1 1.968（size=view，naturalWidth=1275，CSS宽=324，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | filter | 占位类 | 结果\np1 | view | 1275 | 324 | 2 | 1.968 | none | 否 | PASS\np2 | view | 1275 | 324 | 2 | 1.968 | none | 否 | PASS"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "页图底线：分辨率 ≥ 1.0 / filter=none / 非占位（审校中间一屏）",
+      "status": "PASS",
+      "evidence": "3/3 个可见页图满足「分辨率 ≥ 1.0 且 filter=none 且非占位」；最小比例 p331 1.968（size=view，naturalWidth=1275，CSS宽=324，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | filter | 占位类 | 结果\np331 | view | 1275 | 324 | 2 | 1.968 | none | 否 | PASS\np332 | view | 1275 | 324 | 2 | 1.968 | none | 否 | PASS\np333 | view | 1275 | 324 | 2 | 1.968 | none | 否 | PASS"
+    },
+    {
+      "step": "6 导出",
+      "assertion": "导出覆盖 662 页，预览段数 = 预检段数",
+      "status": "PASS",
+      "evidence": "预检：导出页 662 · 有正文的页 653 · 4821 段 · 753335 字；预览 4821 段；UI：导出页数 662 页 正文段数 4821 段 正文字数 753335 字 注释条数 0 条（未导出） 注释字数 0 字 元数据页数 662 页 页码映射 0 / 662 页 跨块合"
+    },
+    {
+      "step": "6 导出",
+      "assertion": "导出面板的页数/段数 = 预检（UI = API）",
+      "status": "PASS",
+      "evidence": "导出页数 662 页 正文段数 4821 段 正文字数 753335 字 注释条数 0 条（未导出） 注释字数 0 字 元数据页数 662 页 页码映射 0 / 662 页 跨块合并的段 0 段 断词还原 74 处 未审校的段 4821 段"
+    },
+    {
+      "step": "6 导出",
+      "assertion": "点击导出真的落盘",
+      "status": "PASS",
+      "evidence": "export_id=20261028-1145_txt · 4821 段 · 753335 字 · 未审 4821 段 · 2026-10-28 11:45；文件 ['body.txt', 'meta.json', 'manifest.json']"
+    }
+  ]
+}
