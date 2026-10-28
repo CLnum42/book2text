@@ -69,12 +69,13 @@ L0 平台              core/dom.js（el）、core/api.js（apiJson + token）、
 | **R6** | 一个模块文件只向 `window` 挂**一个**接口对象，且必须在 `init()` 之后才可被调用 | 扫 `window.X =` 赋值次数 |
 | **R7** | 禁止 `<script type="module">`（D-046 无构建 + ES module 默认 deferred 会改 boot 时序）；且 `reading-view.js` 必须在 `app.js` **之前**加载 | 扫 `index.html`（`c425eb2` 已上闸） |
 | **R8** | **重构不许新增导出**（Chief，2026-10-28）。需要新增一个导出才能搬动一块代码 = 这一刀边界切错，改边界别加接口 | 导出棘轮：`Object.keys(window.ReadingView)` ≤11 且只降不升 |
+| **R9** | **被引用但没声明的标识符一律红**（no-undef）。`readingTreeOpen` 就是这条抓出来的：HEAD 上 7 次引用、0 次声明，渲染左树直接 `ReferenceError` | `boundary.test.mjs`（`4a6f675` 上闸） |
 
 **依赖方向一句话**：`views → core → 平台`；外壳只能通过接口对象调视图；视图永远不许知道外壳和别的视图。
 
 **例外表纪律（R4-dup 的 AC 例外名额）**：例外表里每条都要带 `owner` 与到期切片；**死代码一旦删除，对应例外必须同批删掉，否则例外表本身失信**。当前状态：`rerenderReadingLine` 之外的两对同名函数已批删（单独提交，不计入任何层），删完 AC 例外应从 3 条缩到 1 条，到期点仍是"正文流① 搬完"。
 
-**R9（评审清单，不上闸）**：共享状态（`currentProject` / `token` / `exportOptions`）只以 getter 注入，不许缓存在模块级变量里。
+**R10（评审清单，不上闸）**：共享状态（`currentProject` / `token` / `exportOptions`）只以 getter 注入，不许缓存在模块级变量里。
 原编号是 R4，**与"真实现份数"撞号，已让位**。降级理由：判定"有没有把 getter 缓存下来"要数据流分析，正则做不到，硬写成测试只会自欺。这条靠评审，不靠闸。
 
 **两笔债要分开记**（Chief 2026-10-28）：**"真没法机检"**（R9）和**"没人写"**（R3/R5/R7 曾经）是两回事。前者认了，后者今天还能还。
@@ -110,7 +111,7 @@ L0 平台              core/dom.js（el）、core/api.js（apiJson + token）、
 
 ---
 
-## 3. 状态归属表（66 个，全量）
+## 3. 状态归属表（现状 66 + 破环期新增 3 = 69）
 
 判定：**私有** = 块外零引用，随切片整组搬；**越界** = 块外有读或写，见 §4；**死状态** = 可直接删。
 "赋值点"指 `x = / += / ++` 这类直接赋值行数（`Map/Set` 的 `.set/.add/.push` 未计入，属原地变更）。
@@ -228,7 +229,17 @@ L0 平台              core/dom.js（el）、core/api.js（apiJson + token）、
 | `readingPendingOn` | 18041 | let | 1 | 1 | 私有 | |
 | `readingPreflightData` | 18045 | let | 1 | 2 | 私有 | |
 
-**合计：58 私有 / 5 有外部引用 / 3 可删。**
+**合计：58 私有 / 5 有外部引用 / 3 可删。破环期新增 3 行全私有（见 S10），合计 61 私有 / 5 / 3 = 69。**
+
+### S10 破环期新增（3，计划；破环第一个提交落地）
+
+| 状态 | 行号 | 类型 | 赋值点 | 引用 | 归属判定 | 备注 |
+|---|---|---|---|---|---|---|
+| `readingIntents` | 待定 | Map | 1（`queueReadingIntent`） | 内部 | 私有 | key ⊆ 6 kind，项内无函数值，`size ≤ 6`；见 §12.1.1 |
+| `readingFlushRaf` | 待定 | let | 2 | 内部 | 私有 | 模块自己的 rAF，一帧最多一次 |
+| `readingIntentStats` | 待定 | const 对象 | 0（`.coalesced/.dropped++` 属原地变更） | 内部 | 私有 | 覆盖计数 + 丢弃计数，只读不改 |
+
+> **R5 联动**：L4 基线仍是 66 行；破环第一个提交必须**同提交**加这 3 行并把 R5 期望值 66→69，否则表过期即红。
 
 ---
 
@@ -273,7 +284,7 @@ window.ReadingView = {
   init(deps),            // 由 boot() 调一次
   enter(projectId),      // showView("reading") / enterReviewStep 都走这里
   exit(),                // 置 active=false，断 observer/timer（现在没有任何清理，切走即在跑）
-  getCurrent(),          // → { projectId, pageNo }：savePosition 用，必须同步、便宜
+  getCurrent(),          // → { pageNo }：enterReviewStep 用，必须同步、便宜（§12.4）
   reload(),              // 标点 / 乱码批次裁决后"整条流重开"
   toggleFollow(),        // 9347 chip
 };
@@ -304,7 +315,7 @@ window.ReadingView = {
 - Slice 2 收尾把临时集合清空、上限改成 **6**；此后任何新增导出都会让这条立即红。
 - 长度只许往下调，注释里写明"改小可以，改大必须 Architect 签字"。
 
-**`getCurrent()` 只给两个字段**，别加 `done/total/draftCount`：那是"顶部数字"，由模块自己渲染（badge 与它的数据源切在一起，见 §6 R8），外壳不拉。外壳拉一次状态，就会有第二个写点。
+**`getCurrent()` 只给一个字段**（`pageNo`；`projectId` 全仓库 0 读者，按 §12.4 删掉），别加 `done/total/draftCount`：那是"顶部数字"，由模块自己渲染（badge 与它的数据源切在一起，见 §6 R8），外壳不拉。外壳拉一次状态，就会有第二个写点。
 
 ---
 
@@ -684,6 +695,48 @@ Slice 1 实测（2026-10-28）：
    `openReadingPanel→updateReadingPage`、`setReadingHover→ensureReadingBlocks`、
    `verifyReadingPageSync→updateReadingPage`、`gotoReadingEntry→jumpReadingTo`、`gotoReadingEntry→updateReadingPage`。
    统一改法：**渲染只读状态、只把"要补数据/要跳页"塞进队列，由帧末的同步函数消费**；渲染不再直接调加载器、不再改页码。
+
+#### 12.1.1 队列与帧末消费（Chief 决定一；Architect 定稿，HEAD `df77f19`）
+
+**归属**：队列归审校模块，不归外壳。L5 之前声明在审校块内（`app.js:17938–20950` 内顶层），L5 时整段搬进 `reading-view.js`——**源码位置变，owner 不变**。
+
+**形状**（这是全部，不许扩展）：
+
+| kind | payload | 出队时调用 | 来自哪条边（HEAD `df77f19`） |
+|---|---|---|---|
+| `marks` | `{ pageNo }` | `ensureReadingMarksWindow(pageNo)` | 18549、19461 |
+| `blocks` | `{ pageNos: number[] }` | `ensureReadingBlocks(pageNo)`（逐页） | 20136 |
+| `panel` | `{}` | `retryReadingPendingPanel()` | 18527 |
+| `jump` | `{ segmentIndex }` | `jumpReadingTo(segmentIndex)` | 20675 |
+| `goto` | `{ pageNo, scrollLeft, syncStream }` | `updateReadingPage(…)` | 19164、20339、20670 |
+| `scroll` | `{ pageNo }` | `scrollReadingToPage(pageNo)` | 19453 |
+
+**四条硬规则**（都可机检）：
+1. **队列项只能是字面量数据**，值里出现函数即违规——能塞函数就能塞"重绘完了通知我"，那就是事件总线，桥从后门接回来。
+2. **每个 kind 只保留"当前愿望"，后写覆盖先写**（last-write-wins）。所以 **长度 ≤ 6 = kind 数**，是结构上限不是数值上限；出现第 7 项说明有人塞了非幂等事件，直接红。丢弃策略 = 覆盖，不排队。`blocks` 是唯一允许数组的 payload（一次悬浮覆盖多页），入队时按 `Set` 去重。
+3. **单点写入、单点消费**：写只经 `queueReadingIntent(kind, payload)`；消费只在 `flushReadingIntents()`。渲染路径函数体内**不许出现** `ensureReadingMarksWindow / ensureReadingBlocks / retryReadingPendingPanel / jumpReadingTo / updateReadingPage / scrollReadingToPage` 这 6 个名字。渲染路径 = `renderReading`(18497) / `renderReadingTree`(19359) / `openReadingPanel`(19110) / `setReadingHover`(20111) / `verifyReadingPageSync`(20290) / `gotoReadingEntry`(20663)。用户主动操作的处理函数不受此限。
+4. **消费用模块自己的 rAF，一帧最多一次**：`readingFlushRaf` 非 0 时不重复排帧；flush 期间新入队 → 不递归，排下一帧；`!active` 或 `exit()` → 清空、不消费；`enter()` 换项目同样清空。
+
+**出队顺序固定**：`marks → blocks → panel → jump → goto → scroll`（数据先于跳页，跳页先于滚动校正）。写死顺序的理由：`goto` 后紧跟 `scroll` 会互相覆盖，这正是"页码跳回第 1 页"的成因之一，不能让实现者各自挑顺序。
+
+**intent 粒度 = 用户可见的一次动作，不是一次函数调用。** `gotoReadingEntry`（20663）本来是 `updateReadingPage` + `scrollPdfColumnToPage` + `jumpReadingTo` 三件事（20670–20675）连着做；入队时必须是**一个** `goto` + 一个 `jump`，不许只搬其中一半——半搬会双滚，行为就变了。
+
+**数据到达后的重绘不算渲染路径。** 19461 的 `ensureReadingMarksWindow(...).then(() => renderReadingTree())`、20136 的 `ensureReadingBlocks(...).then(paint…)` 是"数据到了补一次"的路径，消费方可以在 promise 回来后直调渲染/绘画；禁止的是**渲染函数自己**去调加载器。
+
+**对外壳的推论（把 Chief 的"不持有外壳引用"变成可判定的句子）**：
+- 允许：`init(deps)` 一次性注入、之后**不可增补**的依赖对象。判定 = 该对象上没有注册 API（`on*` / `add*` / `subscribe`）、没有 setter。
+- 禁止：外壳的 rAF / setTimeout / 事件总线 / 全局回调表；以及**外壳在运行期主动驱动审校重绘**。
+- 现存违规 1 处，破环必须一起清：`app.js:20967–20972` 的 `onViewportResize` 注入——外壳在 resize 时直接调 `measureReadingTops()` + `updateReadingPage()`。resize 是模块自己的事，改成模块自己绑 `addEventListener("resize", …)`、内部判断 active。
+
+**与 §18 的两处对齐（DevLead 改措辞，我这边定口径）**：
+- **队列上限 = 6，不是 32**。§18.1.4 的"上限 32"和 §18.4 C4 的"≤32"按本节改为 **≤6**；C4 的"丢弃计数"改读 `readingIntentStats.dropped`（`!active`/`exit`/换项目清空时累加），`coalesced`（同 kind 覆盖次数）只作发现、不算失败——高频覆盖是正常重绘，不是 bug。
+- **§18.3 第 9 条边名字写错**：`gotoReadingEntry→jumpReadingToPage` 里的函数不存在（全仓库 0 处），实际是 `jumpReadingTo`（`app.js:19526`，调用点 20675）。按 `jumpReadingToPage` 数，这条永远 0 → 假绿，而且 base 上只能红 **12/13**，13/13 这条自证永远达不到。
+
+**上闸三条（交给 TestDev，随破环第一个提交进 `run.mjs`）**：
+1. 渲染路径 6 个函数体内不出现上列 6 个调用名（作用域 = 函数体；口径 = 去注释后文本匹配）；
+2. 队列 payload 里不出现函数值（对象/数组递归查 `typeof === "function"`）；
+3. `readingIntents` 的 key ⊆ 6 个 kind，且 `size ≤ 6`。
+
 3. **母环余下 12 处**都是外壳按钮（用户主动换视图），合法，保留。
 
 ### 12.2 破环后 L5 能切多细（实测）
@@ -698,6 +751,29 @@ Slice 1 实测（2026-10-28）：
 
 - 破环**不混进任何纯搬运切片**：独立提交序列（切桥 1 个 / 9 条边逐条 / 母环 4 处）、独立基线（L4 结束那份）、独立 tag（可单独回退）。
 - **每切一条边，先写特征测试锁住当前可观察行为，切完必须一样。** 9 条边里 6 条正是这周 bug 的来源；不先锁行为就切 = 拿行为改造赌博。
+
+---
+
+### 12.4 快照字段表：外壳从审校模块拉什么（唯一方向）
+
+**量法**（HEAD `df77f19`，块 `app.js:17938–20950`，去注释后整词匹配）：块内顶层 `let/var` **62** 个，被块外引用 **2** 个——`readingPageNo`（20955、20970 两行）、`readingFollow`（20963 一行）；块内顶层函数 **113** 个，被块外引用 **7** 个，全在 `boot()` 注入对象（20953–20966）与 `showView` 兜底（`app.js:246–251`）。
+
+**唯一快照 = `getCurrent()`，只许 1 个字段：**
+
+| 字段 | 类型 | 唯一读者 | 状态 |
+|---|---|---|---|
+| `pageNo` | `number \| null` | `enterReviewStep()`（`app.js:992`）→ `savePosition("review", …)` | 保留 |
+
+**证据裁掉的四个**：
+
+| 候选字段 | 块外读者 | 裁定 |
+|---|---|---|
+| `projectId` | 0（`.projectId` 只在 2599 行是 `card.dataset`，无关） | 删；§5 的 `{projectId, pageNo}` 收成 `{pageNo}` |
+| `done/total` / 未审校计数 | 0 | 不进快照；badge 由模块自己渲染（§6 R8） |
+| 导出范围 | 0 | 不进快照；导出走 `export/preview?segments_only=1`（D-106），不读审校状态 |
+| 草稿是否脏 | 0（`submitReadingDrafts` 20709 / `undoReadingSubmit` 20769 块外 0 调用者） | 不进快照；将来导出前若需先提交，加的是**命令** `flushDrafts(): Promise<void>`，不是字段，且要走本节 + §5 并带到期点 |
+
+**契约**：同步、便宜（O(1)，不读 DOM、不触发渲染）、只读。`Object.keys(getCurrent()).length` 上限 **1**，且不得为 0（992 行依赖它）；加字段 = 改本节 + §5 + Architect 签字。
 
 ---
 
@@ -816,7 +892,9 @@ Slice 1 实测（2026-10-28）：
 3. 断言每条的所在文件 == owner。
 4. **另加两条防表过期**：OWNERS 里的每个状态必须在源码里还存在（删了状态不删表项 → 红）；每次搬层要把对应表项改成模块文件（同批提交，不同批 → 红）。
 
-**现状读数**：66 个状态，65 个 owner = `app.js`，`readingSplitState` owner = `reading-view.js`。当前 `reading-view.js` 不写任何 app.js 状态 → **违规 0、豁免 0**。
+**现状读数**：**67 条** = 66 个 app.js 状态 + `readingSplitState`（owner = `reading-view.js`）。当前 `reading-view.js` 不写任何 app.js 状态 → **违规 0、豁免 0**。
+
+> 更正（2026-10-28，TestDev 实测）：原写 66 条，漏了 `readingTreeOpen`——它在 `09e6af3` 被误删、随后补回，现在是活声明（`5fd4ac7`），所以 OWNERS 必须是 67。**这不是数字打架，是"被删掉的状态还算不算"的判据：算。因为它被引用。**
 
 **变异样例（必须先在假数据上红）**：在 `reading-view.js` 里插一行 `readingPageNo = 5;` → 期望报
 `readingPageNo 的 owner 是 app.js，reading-view.js:NNN 写了它`。
@@ -824,6 +902,18 @@ Slice 1 实测（2026-10-28）：
 
 **为什么现在就有用**：面板那个"6 写点"就是这条规则的现实证据——`readingPendingPanelKey` 的写点横跨 L5 和 L8。R5 上闸后，任何"顺手在别处写一下"都会立刻红。
 
+
+### 13.2b 机检覆盖数（架构健康指标之一）
+
+**定义**：`(已上闸的规则数) / (应当上闸的规则总数)`。统计对象 = 文档 §2 的规则表。
+
+规则清单（**R4 与 R4b 算同一判据的两种形态，计 1 条**）：
+R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同文件重名）/ R5 一状态一 owner / R6 一模块一接口对象 / R7 禁 `type=module` / R8 不许新增导出 / R9 no-undef = **9 条**。
+`R10`（注入不缓存）是评审清单，**不计入分母**。
+
+**现状 7/9**：已上闸 R1、R3、R4(含 R4b)、R5、R7、R8、R9；待上闸 **R2**（要等第二个视图模块）、**R6**（一模块一窗口接口对象）。
+
+> 分母曾经从 8 变到 9，是 R9 加进来造成的；**报这个数必须同时报"分母由哪些规则组成"**，否则又会飘。TestDev 报过 7/8，是分母没跟着加 R9。
 
 ### 13.3 报数必须带对象（Chief 2026-10-28）
 
