@@ -19200,7 +19200,7 @@ function renderReadingTree() {
       // 点头部：既导航到这一页，也展开/收起它
       if (readingTreeOpen.has(page.page_no)) readingTreeOpen.delete(page.page_no);
       else readingTreeOpen.add(page.page_no);
-      scrollReadingToPage(page.page_no);
+      queueReadingIntent("scroll", { pageNo: page.page_no });
       renderReadingTree();
       // 这一页不在已加载的 marks 窗口里：补那一页 ±10，回来再铺条目
       if (
