@@ -20146,7 +20146,9 @@ function verifyReadingPageSync(reason = "", { fix = true } = {}) {
     // 用和"左栏滚动 → 页码"同一个锚点（视口 25% 处的那一页），否则会把顶部露出
     // 46px 的上一页判成当前页（实测 label 39 / tilePage 38 那种假不一致）
     const top = scroller.getBoundingClientRect().top;
-    const anchor = top + scroller.clientHeight * 0.25;
+    // 用**视口中心**判定"当前是哪一页"：居中定位时当前行就在中心；
+    // 用 25% 会把"页面顶部落在中心线以下"的正常情况判成上一页（实测 20 次里 17 次误报）
+    const anchor = top + scroller.clientHeight * 0.5;
     let tilePage = null;
     for (const [pageNo, tile] of readingTiles) {
       const rect = tile.getBoundingClientRect();
