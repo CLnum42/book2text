@@ -475,10 +475,22 @@ async function clickMarkAt(page, label) {
     };
     const found = visible();
     if (found) return found;
-    // 视口里没有：把正文流里第一处差异滚到中间（只移动视口，点击仍是真鼠标）
+    // 视口里没有：把正文流里第一处差异滚到中间。
+    // **不能对 mark 用 scrollIntoView**：它会去滚别的祖先（app.js 里也有同样的教训注释），
+    // 正文流自己不动，于是"滚了但还是看不见"。直接改 #reading-stream.scrollTop。
     const first = document.querySelector("#reading-stream .reading-mark");
     if (!first) return null;
-    first.scrollIntoView({ block: "center", behavior: "auto" });
+    const stream = document.getElementById("reading-stream");
+    if (stream) {
+      const offset =
+        first.getBoundingClientRect().top -
+        stream.getBoundingClientRect().top +
+        stream.scrollTop -
+        stream.clientHeight * 0.4;
+      stream.scrollTop = Math.max(0, offset);
+    } else {
+      first.scrollIntoView({ block: "center", behavior: "auto" });
+    }
     await new Promise((resolve) => setTimeout(resolve, 150));
     return visible();
   });
