@@ -493,13 +493,14 @@ test("R7：index.html 不许出现 type=module，且模块先于 app.js 加载",
  * 新增一个未申报的同名对立即红；已知对减少也红（逼着删基线条目，不许悄悄消失）。
  */
 /**
- * 例外表：同文件同名真实现的**已知死代码**（冻结期不删，Chief 定的）。
- * 每条必须带 owner 与到期点；上限 3 条——三对正好占满，再多一条就红。
+ * 例外表：同文件同名真实现的**已知死代码**。
+ *
+ * 2026-10-29 清空：最后一条 `rerenderReadingLine`（app.js 里 2 份，第二份是死定义）
+ * 随 L9 一起删掉了。到期就删条目、同批把上限收到 0——留着一条指向已删代码的例外，
+ * 就是"例外表挂着不存在的东西"，等于给未来的一次重名留了免检名额。
  */
-const SAME_FILE_DUP_EXCEPTIONS = [
-  { file: "app.js", name: "rerenderReadingLine", count: 2, owner: "Chief/DevLead", expires: "正文流① 搬完" },
-];
-const SAME_FILE_DUP_EXCEPTION_MAX = 1;
+const SAME_FILE_DUP_EXCEPTIONS = [];
+const SAME_FILE_DUP_EXCEPTION_MAX = 0;
 
 /** 顶层（缩进 0）声明：`function NAME(` 与 `NAME = (…) =>` / `= function`。 */
 function topLevelDeclarationsByName(source) {

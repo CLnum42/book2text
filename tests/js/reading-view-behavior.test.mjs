@@ -112,6 +112,7 @@ const realStorage = {
 };
 let apiRouter = null;
 const WINDOW_LISTENERS = {};   // 模块把 pointermove/pointerup 挂在 window 上，用例要能手动触发
+const CREATED_NODES = [];      // createElement 造出来的节点（审校面板的按钮在这里面）
 
 function installStubs() {
   // 浏览器侧全局
@@ -146,7 +147,13 @@ function installStubs() {
   };
   ctx.document.querySelector = () => fakeNode();
   ctx.document.querySelectorAll = () => [];
-  ctx.document.createElement = () => fakeNode();
+  // 面板是 createElement 现搭的（不在 ELEMENTS 里），用例要能按文字点按钮。
+  // 记一份"造出来的节点"，不做树遍历：够用且不假装自己有两百行 DOM 实现。
+  ctx.document.createElement = () => {
+    const node = fakeNode();
+    CREATED_NODES.push(node);
+    return node;
+  };
   ctx.document.createDocumentFragment = () => fakeNode();
   ctx.document.createTextNode = (text) => Object.assign(fakeNode(), { textContent: String(text) });
   ctx.document.createRange = () => ({ selectNodeContents() {}, setStart() {}, setEnd() {} });
@@ -190,12 +197,26 @@ async function clickReadingNext() {
   await Promise.all(handlers.map((handler) => handler({ type: "click" })));
 }
 
+/**
+ * 点一个"界面上写着这段字"的按钮——审校面板的「采用候选 / 保留原文 / 自己改」是
+ * `document.createElement` 现搭的，所以按文字在 CREATED_NODES 里找**最近造的那个**。
+ * 找不到直接失败：别让用例在"按钮其实不存在"时静默通过。
+ */
+async function clickCreatedButton(text) {
+  const node = [...CREATED_NODES].reverse().find((item) => item.textContent === text);
+  assert.ok(node, `界面上找不到写着「${text}」的按钮——面板没开，或按钮文案变了`);
+  const handlers = node.listeners.click || [];
+  assert.ok(handlers.length > 0, `「${text}」按钮没有绑 click`);
+  await Promise.all(handlers.map((handler) => handler({ type: "click" })));
+}
+
 /** 每条例行都从同一份干净状态出发。 */
 function resetState() {
   ELEMENTS.clear();
   NOTICE_LOG.length = 0;
   apiRouter = null;
   for (const type of Object.keys(WINDOW_LISTENERS)) delete WINDOW_LISTENERS[type];
+  CREATED_NODES.length = 0;
   runInApp(
     ctx,
     `currentView = "library";
@@ -241,7 +262,14 @@ installStubs();
  */
 function installReadingDeps() {
   const get = (expr) => runInApp(ctx, expr);
-  const set = (expr, value) => runInApp(ctx, `${expr} = ${JSON.stringify(value)};`);
+  // **不要把 value 序列化**：Map / Set / 观察器实例过一遍 JSON 就成 `{}`，
+  // 模块里 `.keys()` / `.observe()` 立刻炸（L8 的 readingDrafts、L5 的 IntersectionObserver 都栽在
+  // 同一个 `JSON.stringify` 上）。改成先放到宿主 ctx 上、再在 vm 里赋值——vm 与宿主共享对象，
+  // 身份保住了，`readState("readingDrafts.size")` 也照旧读得到。
+  const set = (expr, value) => {
+    ctx.__setValue = value;
+    runInApp(ctx, `${expr} = __setValue;`);
+  };
   // 观察器状态（Intersection / Resize）：模块自己 `new`，再 set 进来、get 回去；
   // 未建立时模块依赖 `get()` 为假值（`if (!get()) return;`）。
   // 通用 set 兜底是 `JSON.stringify(value)`——实例会变成 `{}`：随后 `.observe()` 直接 TypeError，
@@ -351,11 +379,6 @@ function installReadingDeps() {
   ctx.ReadingView.init(deps);
 }
 
-// 计数修复（任务 93）移植到 main 后（d48b16d），这条自动开跑；没移植时 skip 并写明原因。
-const progressNumbersSkip =
-  typeof ctx.readingProgressNumbers === "function"
-    ? false
-    : "main 还没有 readingProgressNumbers（任务 93 的计数提取）；移植后这条自动开跑";
 
 
 // ---------------------------------------------------------------- 1. enter / exit
@@ -466,29 +489,50 @@ test("当前项：cursor 与最后一次跳转的目标一致（key / 页 / 行�
 
 // ---------------------------------------------------------------- 4. 已审计数
 
-test("已审计数：接全书 counts，不随当前窗口变化", { skip: progressNumbersSkip }, () => {
+// 计数搬迁（L9）之后 `readingProgressNumbers()` 住在模块里、不再挂在 app.js 的全局上，
+// 所以这条不再直调它，而是读**用户能看见的那行字**（`#reading-progress-text`）。
+// 覆盖点没变：数字来自全书 counts（不是当前窗口的条目数），换一次窗口不能缩水。
+test("已审计数：接全书 counts，不随当前窗口变化", () => {
   resetState();
-  setEntries([makeEntry("a", 0, 1)]);
+  setEntries([makeEntry("a", 0, 1)]);          // 窗口里只有 1 条
   runInApp(ctx, `readingGlobalCounts = { chars_total: 100, chars_unacked: 40 };
-    readingDrafts = new Map([["a:0", { block_id: "a", line_index: 0 }]]);`);
-  const wide = readState("JSON.stringify(readingProgressNumbers())");
+    readingDrafts = new Map([["a:0", { block_id: "a", line_index: 0 }]]);`);   // 本次会话已裁 1 条
+  installReadingDeps();
+  const progressText = () => ctx.document.getElementById("reading-progress-text").textContent;
+
+  // 进入审校会把进度重新画一次（openReading 的同步段），不需要等正文流加载完
+  ctx.ReadingView.enter("p1");
+  assert.equal(progressText(), "已审 61 / 100 条",
+    `已审计数没按全书 counts 算：${progressText()}（60 条库里已判 + 1 条本次草稿）`);
+
+  // 换窗口：条目从 1 条变 3 条。旧实现按窗口数，这里会变成「已审 3 / 3」
   setEntries([makeEntry("a", 0, 1), makeEntry("b", 0, 2), makeEntry("c", 0, 3)]);
-  const narrow = readState("JSON.stringify(readingProgressNumbers())");
-  assert.deepEqual(JSON.parse(wide), { processed: 61, total: 100 });
-  assert.deepEqual(JSON.parse(narrow), { processed: 61, total: 100 }, "换窗口后已审计数变了");
+  ctx.ReadingView.enter("p1");
+  assert.equal(progressText(), "已审 61 / 100 条", "换一次窗口已审计数就变了（用户会以为审过的丢了）");
 });
 
 // ---------------------------------------------------------------- 5. 草稿
 
-test("草稿：裁决一次 draftCount +1，同一条重复草稿不重复计数", () => {
+// L8：draftReading 搬进模块、没有公开导出（R8 也不许为测试加）。所以走**用户真实路径**：
+// 点「下一处未审」→ 面板打开 → 点「保留原文」/「采用候选」。断言仍落在 readingDrafts 上。
+test("草稿：裁决一次 draftCount +1，同一条重复裁决不重复计数", () => {
   resetState();
   const entry = makeEntry("a", 1, 1);
   setEntries([entry]);
-  ctx.draftReading(entry, "kept", null);
-  assert.equal(readState("readingDrafts.size"), 1, "裁决后草稿数没 +1");
-  ctx.draftReading(entry, "adopted", null);
-  assert.equal(readState("readingDrafts.size"), 1, "同一条审了两次被算成两处草稿");
-  assert.equal(readState('readingDrafts.get("a:1").ack'), "adopted", "重复裁决没覆盖成最后一次");
+  apiRouter = (url) => (url.includes("/review/next-lines")
+    ? { lines: [entry], total: 1, outside_stream: { count: 0, sample: [] } }
+    : null);
+  ctx.ensureReadingMarksWindow = async () => {};
+  return (async () => {
+    installReadingDeps();
+    await clickReadingNext();                       // 面板在这里打开
+    await clickCreatedButton("保留原文");
+    assert.equal(readState("readingDrafts.size"), 1, "裁决后草稿数没 +1");
+    assert.equal(readState('readingDrafts.get("a:1").ack'), "kept", "「保留原文」没记成 kept");
+    await clickCreatedButton("采用候选");
+    assert.equal(readState("readingDrafts.size"), 1, "同一条审了两次被算成两处草稿");
+    assert.equal(readState('readingDrafts.get("a:1").ack'), "adopted", "重复裁决没覆盖成最后一次");
+  })();
 });
 
 // ---------------------------------------------------------------- 6. 过滤器

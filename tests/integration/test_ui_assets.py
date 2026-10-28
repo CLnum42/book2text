@@ -1628,7 +1628,10 @@ def test_reading_view_is_wired_for_merge() -> None:
     # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
     assert module_script.count("function submitReadingDrafts(") == 1
     assert (script + module_script).count("function submitReadingDrafts(") >= 1
-    assert "b2t.readingDrafts." in script
+    # L9：草稿落盘的前缀随草稿读写搬进模块（app.js 里 0 处）。模块里恰好 1 处 + 合查存在。
+    # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
+    assert module_script.count("b2t.readingDrafts.") == 1
+    assert (script + module_script).count("b2t.readingDrafts.") >= 1
     # L5：marks 的两条读取（全书 first=1 / 单页 page=N）随队列搬进模块，app.js 里 0 处。
     # 断言"只住在模块里"而不是"恰好 1 处"——模块里合法地出现两处调用 + 一处注释。
     # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
@@ -1745,7 +1748,10 @@ def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
     assert ".index-image-retry" in css
     assert ".index-image-status" in css
     # ② 当前审校项：文本流与页面同色同框型（琥珀），其余弱化、已审淡绿
-    assert "function refreshReadingCurrentHighlight(" in script
+    # L9：当前项左右同款高亮随正文行渲染搬进模块（app.js 定义数 0，无转发）。
+    # 判据同前：模块里恰好 1 处真实现 + 合查仍存在。
+    assert module_script.count("function refreshReadingCurrentHighlight(") == 1
+    assert (script + module_script).count("function refreshReadingCurrentHighlight(") >= 1
     assert 'node.classList.add("is-current")' in script
     assert "key === readingPanelKey" in script
     assert ".reading-mark.is-current" in css
