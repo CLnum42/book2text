@@ -1614,7 +1614,7 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert "queue_items(" in (STATIC_DIR / ".." / ".." / ".." / "backend" / "book2text" / "core" / "project" / "review_status.py").read_text(encoding="utf-8")
     # L3：跟随 / 成稿 / 定向补审入口
     assert "function setReadingFollow(" in script
-    assert "function toggleReadingProof(" in script
+    # toggleReadingProof 已于 2026-10-28 作为零引用死函数删除（L1 提交 A）
     assert "is-proof" in css
     assert "reading-proof__pages" in css
     # 任务 57：左栏是连续页列（可独立滚）+ 版心/块框 + 悬停联动

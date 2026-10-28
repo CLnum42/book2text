@@ -18112,16 +18112,9 @@ function setReviewOverlaysForReading() {
 /** 阅读流左栏（PDF 页列）当前滚动位置；没有左栏时按 0。 */
 let readingAutoJumpDone = false;
 
-function readingPdfScrollTop() {
-  const scroller = el("reading-pdf-scroll");
-  return scroller ? scroller.scrollTop : 0;
-}
-
-/** 用户最后一次**自己**在审校视图里动手（滚轮 / 按下 / 按键）的时刻。 */
 let readingUserMovedAt = 0;
-
-let readingUserScrollSeq = 0;   // 用户真实输入事件（wheel/pointerdown/keydown）计数
-let readingProgramScrollSeq = 0; // 我们自己滚动时的 seq 快照：相等说明这次滚动不是用户发的
+let readingUserScrollSeq = 0;
+let readingProgramScrollSeq = 0;
 
 function markReadingUserMoved() {
   readingUserMovedAt = performance.now();
@@ -18316,12 +18309,6 @@ function readingMarkOrder(entry) {
   return [Number(entry.seq) || 0, Number(entry.span_index) || 0, Number(entry.page_no) || 0];
 }
 
-function readingOrderAfter(order, other) {
-  if (order[0] !== other[0]) return order[0] > other[0];
-  return order[1] > other[1];
-}
-
-/** 这一页在已加载的窗口里吗？（窗口外要先补一块 marks） */
 function readingWindowHas(pageNo) {
   if (!readingMarksWindow) return false;
   return pageNo >= readingMarksWindow.page_from && pageNo <= readingMarksWindow.page_to;
@@ -19303,14 +19290,6 @@ function rerenderReadingLine(entry) {
   line.replaceWith(fresh);
 }
 
-function buildReadingTree() {
-  return null;
-}
-
-/** 左树里"展开了的页"（任务 82：条目级展开状态）。 */
-const readingTreeOpen = new Set();
-
-/** 取一条差异所在行的**完整行文本**（用于左树预览）。 */
 function readingEntryLineText(entry) {
   for (const segment of readingVisibleSegments() || []) {
     if (segment.seq !== entry.seq) continue;
@@ -20407,15 +20386,6 @@ function setReadingFollow(on) {
   if (!readingFollow) hideReadingPdfBox();
 }
 
-function toggleReadingProof() {
-  readingProof = !readingProof;
-
-  el("view-reading").classList.toggle("is-proof", readingProof);
-  renderReading({ reset: true });
-  renderReadingPreflight();
-}
-
-/** 成稿模式的预检条：红字全藏了，这里给"这就是要导出的东西"的证据。 */
 async function renderReadingPreflight() {
   const bar = el("reading-preflight");
   if (!bar) return;
@@ -20684,12 +20654,6 @@ async function gotoNextUnreviewed() {
   logReadingNext(entry, { branch: "next-lines" });
 }
 
-function readingCursorOrder() {
-  return readingCursorEntry ? readingMarkOrder(readingCursorEntry) : null;
-}
-
-/** 下一处"还有汉字未审"的页（严格在 afterPage 之后，绕一圈）；没有就返回 null。 */
-
 function gotoReadingEntry(entry) {
   if (!entry || !entry.page_no) return;
   // **先驱动"我在第几页"**：顶部页码 + 左侧 PDF + 左树高亮。
@@ -20822,20 +20786,8 @@ async function undoReadingSubmit() {
 //
 // 任务 94 Slice 1：`reading-view.js` 搬走了宽度偏好与拖拽实现，这里只留**转发**，
 // 调用点保持不变。Slice 2 会把调用点也改成直接走 `ReadingView.*`。
-function readingSplitPrefs() {
-  return window.ReadingView.splitPrefs();
-}
-
 function applyReadingSplit() {
   window.ReadingView.applySplit();
-}
-
-function saveReadingSplit() {
-  window.ReadingView.saveSplit();
-}
-
-function setupReadingSplit() {
-  window.ReadingView.setupSplit();
 }
 
 function setupReading() {
