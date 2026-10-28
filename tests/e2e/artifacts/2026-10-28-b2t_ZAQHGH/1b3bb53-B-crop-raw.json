@@ -1,0 +1,484 @@
+{
+  "rows": [
+    {
+      "i": 1,
+      "key": "01M609YX81FD04QZPC431BX5MJ:0",
+      "panelPage": "第 4 页 · 第 1 行第二路：",
+      "level": "第 4 页 · 第 1 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.398679,
+        0.462361,
+        0.51018,
+        0.483101
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 4,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 2,
+      "key": "01M609Z2E2YA4PBREPDYGTHDK2:0",
+      "panelPage": "第 8 页 · 第 1 行第二路：",
+      "level": "第 8 页 · 第 1 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.121224,
+        0.14923,
+        0.537407,
+        0.175535
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 8,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 3,
+      "key": "01M609Z5DZJXQVJA3ZFKP66KVC:4",
+      "panelPage": "第 9 页 · 第 5 行第二路：",
+      "level": "第 9 页 · 第 5 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.123169,
+        0.679883,
+        0.823938,
+        0.703153
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 9,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 4,
+      "key": "01M609Z5DZJXQVJA3ZFKP66KVC:6",
+      "panelPage": "第 9 页 · 第 7 行第二路：",
+      "level": "第 9 页 · 第 7 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.122521,
+        0.730469,
+        0.799304,
+        0.753739
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 9,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 5,
+      "key": "01M609ZAB2WQ1F46V39SS5PBG5:1",
+      "panelPage": "第 11 页 · 第 2 行第二路：",
+      "level": "第 11 页 · 第 2 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.122521,
+        0.655601,
+        0.844034,
+        0.679377
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 11,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 6,
+      "key": "01M609ZG2CDVNEMWPVA8NQN6KQ:1",
+      "panelPage": "第 13 页 · 第 2 行第二路：",
+      "level": "第 13 页 · 第 2 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.123169,
+        0.67533,
+        0.840792,
+        0.6986
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 13,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 7,
+      "key": "01M609ZJWZXYZEMM5ZECCH9AB9:7",
+      "panelPage": "第 14 页 · 第 8 行第二路：",
+      "level": "第 14 页 · 第 8 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.123169,
+        0.283284,
+        0.818751,
+        0.30706
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 14,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 8,
+      "key": "01M609ZJWZXYZEMM5ZECCH9AB9:12",
+      "panelPage": "第 14 页 · 第 13 行第二路：",
+      "level": "第 14 页 · 第 13 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.122521,
+        0.411774,
+        0.807083,
+        0.435044
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 14,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 9,
+      "key": "01M609ZPAJ6YKCMRK8X7B02E89:3",
+      "panelPage": "第 15 页 · 第 4 行第二路：",
+      "level": "第 15 页 · 第 4 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.152341,
+        0.391034,
+        0.81551,
+        0.41228
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 15,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 10,
+      "key": "01M609ZRR5QR0S2WQD1D5SX80W:6",
+      "panelPage": "第 16 页 · 第 7 行第二路：",
+      "level": "第 16 页 · 第 7 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.122521,
+        0.53824,
+        0.862185,
+        0.563028
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 16,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 11,
+      "key": "01M609ZSNKZN55A4SH15W3MAD4:0",
+      "panelPage": "第 17 页 · 第 1 行第二路：",
+      "level": "第 17 页 · 第 1 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.237263,
+        0.211452,
+        0.403217,
+        0.238262
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 17,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 12,
+      "key": "01M609ZV2HS9G6HG3QGC1YSEP2:0",
+      "panelPage": "第 18 页 · 第 1 行第二路：",
+      "level": "第 18 页 · 第 1 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.119928,
+        0.22511,
+        0.838199,
+        0.255462
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 18,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 13,
+      "key": "01M60A174VX0T0FJ00NPK13A3D:0",
+      "panelPage": "第 23 页 · 第 1 行第二路：",
+      "level": "第 23 页 · 第 1 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.123818,
+        0.229157,
+        0.862833,
+        0.252933
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 23,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 14,
+      "key": "01M60A4584VHDBQY0QBR6DRHNA:2",
+      "panelPage": "第 27 页 · 第 3 行第二路：",
+      "level": "第 27 页 · 第 3 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.123169,
+        0.445667,
+        0.869964,
+        0.467419
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 27,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 15,
+      "key": "01M60A5E7TWV6TY7YEBS3K18SP:2",
+      "panelPage": "第 37 页 · 第 3 行第二路：",
+      "level": "第 37 页 · 第 3 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.121873,
+        0.23118,
+        0.849868,
+        0.256979
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 37,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 16,
+      "key": "01M60A5PJBMD2S7J9THR3P1M23:0",
+      "panelPage": "第 39 页 · 第 1 行第二路：",
+      "level": "第 39 页 · 第 1 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.121873,
+        0.103702,
+        0.828475,
+        0.129501
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 39,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 17,
+      "key": "01M60A76WCZ7VVF1RJVJNK0DT8:4",
+      "panelPage": "第 48 页 · 第 5 行第二路：",
+      "level": "第 48 页 · 第 5 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.121873,
+        0.227133,
+        0.555558,
+        0.252933
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 48,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 18,
+      "key": "01M60A7D9H4EGK8FT2MGSPBDJ4:5",
+      "panelPage": "第 49 页 · 第 6 行第二路：",
+      "level": "第 49 页 · 第 6 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.123169,
+        0.232698,
+        0.835606,
+        0.255968
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 49,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 19,
+      "key": "01M60A7H784BM6CF9MA7QD86D5:2",
+      "panelPage": "第 50 页 · 第 3 行第二路：",
+      "level": "第 50 页 · 第 3 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.121873,
+        0.176041,
+        0.803841,
+        0.200323
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 50,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 20,
+      "key": "01M60A7Y9HMB1D9TS2TADYWSPX:0",
+      "panelPage": "第 53 页 · 第 1 行第二路：",
+      "level": "第 53 页 · 第 1 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.123818,
+        0.233204,
+        0.862185,
+        0.254956
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 53,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 21,
+      "key": "01M60A83FGPV49BZCJ3QD0DGF3:0",
+      "panelPage": "第 54 页 · 第 1 行第二路：",
+      "level": "第 54 页 · 第 1 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.121224,
+        0.596921,
+        0.862833,
+        0.62272
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 54,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 22,
+      "key": "01M60ADT5AJM8B89WPC0YEK2WD:0",
+      "panelPage": "第 56 页 · 第 1 行第二路：",
+      "level": "第 56 页 · 第 1 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.123169,
+        0.571628,
+        0.875798,
+        0.595909
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 56,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 23,
+      "key": "01M60AEA85AMWTG0JE1G0E7X86:4",
+      "panelPage": "第 59 页 · 第 5 行第二路：",
+      "level": "第 59 页 · 第 5 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.123169,
+        0.335389,
+        0.74485,
+        0.358658
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 59,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    },
+    {
+      "i": 24,
+      "key": "01M60AEA86KSEH4RX917B1TF6V:6",
+      "panelPage": "第 59 页 · 第 7 行第二路：",
+      "level": "第 59 页 · 第 7 行第二路：",
+      "cropAttr": null,
+      "plan": null,
+      "markBbox": [
+        0.124466,
+        0.680389,
+        0.788283,
+        0.702141
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 59,
+      "expected": null,
+      "cropElHeight": 241,
+      "bg": "",
+      "emptyText": "放大图稍后接入"
+    }
+  ]
+}
