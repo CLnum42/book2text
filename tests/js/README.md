@@ -88,6 +88,16 @@ B2T_APP_JS=/tmp/app-old.js node tests/js/run.mjs compute-char-spans
 3. **替换实现时别把辅助函数一起删掉**。改 `stripCommentsAndStrings` 时顺手删掉了
    `lineOf`/`columnOf`，R1/R4 直接 `ReferenceError`。辅助函数与主逻辑分开改、分开验证。
 
+
+## 记录"位置"时必须记全部出现行，不能只记首次
+
+R3 要判"某个 DOM id 的引用落在哪个函数里"。第一版用 `Map<id, 首个行号>`，变异验证时踩到：
+**块内先引用一次、块外后来又引用一次**，只记首次会把块外那次吞掉，判定为绿——一个真实的越界被"实现偷懒"放过了。
+
+正确做法：`domIdsIn` 记**该 id 的全部出现行**（`Map<id, 行号[]>`），再逐行找包围它的顶层函数。
+同类教训在 R4 已经有过一次（"行数用原文数"）：**判据本身对，不代表实现没把它吃掉**。
+写守卫时先问一句"我这个数据结构能不能表示反例"，表示不了就是漏。
+
 ## 例外表：上限必须跟着收
 
 `boundary.test.mjs` 里有两张例外表（R1 的 `ALLOW`、R4b 的 `SAME_FILE_DUP_EXCEPTIONS`），

@@ -1070,3 +1070,15 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | 2026-10-28 | C4 | 上限改为「kind ⊆ 6 且 flush 后残留 0」，改读 `readingIntentStats.dropped`，不查深度 | Chief | f69df40 |
 
 只有 DevLead 能加行。没有登记行的放宽一律按违规算。
+
+---
+
+## 19. 待办（必须带触发条件，不许"下次顺手"）
+
+| # | 事项 | 触发条件 | 状态 |
+|---|---|---|---|
+| T1 | `boundary.test.mjs` 里 4 条 R3 豁免的 `expires` 从「正文流① 搬完」改为「**punct 整体搬完**」（`reading-garbled-count`/`reading-garbled-open`/`reading-punct-count`/`reading-punct-open`） | **下一笔碰 `boundary.test.mjs` 的提交必须带上这 4 个字符串**；若该提交没改，单独开一笔（30 秒） | 未做 |
+| T2 | R2（视图互引）上闸 | 第二个视图模块（`pages-view.js` 或 `index-view.js`）创建时 | 未做 |
+| T3 | R6（一模块一 window 接口对象）上闸 | 同上 | 未做 |
+
+**为什么写进表而不是记在脑子里**：T1 的错法很具体——正文流① 排在前，做完会有人按表检查这 4 条该不该到期、发现不该，然后记一句"待 punct"就沉了；下次再看表，写的还是「正文流①」。**到期点写错 = 这条豁免永远不会被主动清理**，和"例外表挂着已删代码"是同一种松，只是松在文字上。
