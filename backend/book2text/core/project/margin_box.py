@@ -83,6 +83,10 @@ SPREAD_UNRELIABLE = 0.030
 MAX_PAGES_NOTE = 10
 # 左右边缘的"覆盖率" = 落在最密一簇里的行数 / 全部长行数。
 # 双栏、逐页不同的缩进、大量旁批会让它很低；此时众数只代表一小撮行。
+#: 上下边缘允许的离散（章末页只排半页是正常现象，比左右宽一档）
+VERTICAL_SPREAD_MEDIUM = 0.040
+VERTICAL_SPREAD_UNRELIABLE = 0.070
+
 COVERAGE_HIGH = 0.30
 COVERAGE_MIN = 0.20
 
@@ -390,6 +394,10 @@ def suggest_from_page_boxes(
     rights: list[float] = []
     tops: list[float] = []
     bottoms: list[float] = []
+    # 每页的"文字块外边界"：左端最左、右端最右。参差（ragged）排版里，
+    # **这一对的稳定性才是版心稳不稳的证据**（行尾随机短，但每页最宽的那一行都顶到版心）。
+    page_left_min: list[float] = []
+    page_right_max: list[float] = []
     participating = 0
     line_count = 0
 
@@ -403,6 +411,8 @@ def suggest_from_page_boxes(
         rights.extend(box[2] for box in boxes)
         tops.append(min(box[1] for box in boxes))
         bottoms.append(max(box[3] for box in boxes))
+        page_left_min.append(min(box[0] for box in boxes))
+        page_right_max.append(max(box[2] for box in boxes))
 
     empty = MarginSuggestion(
         margin_box=None,
@@ -444,12 +454,44 @@ def suggest_from_page_boxes(
         margin_box = None
 
     notes: list[str] = []
-    worst = max(stat.spread for stat in edges.values())
+    # 左右与上下的离散要**分开看**（任务 71）：章末页的最后一行常常只到半页，
+    # 所以"下边缘"的离散天然比左右大得多，拿它和左右一起取 max 会把正常的书判成不可靠
+    # （《安乐哲 译本处理》：左右离散 0.6%，下边缘 3.5% → 原来直接 low）。
+    worst = max(edges["left"].spread, edges["right"].spread)
+    worst_vertical = max(edges["top"].spread, edges["bottom"].spread)
     coverage = min(left_coverage, right_coverage)
+    # 任务 71：**不能只看"左右两边都贴边"**。左对齐（ragged-right）的英文书——
+    # 大多数英文书都是——行右端天然参差，右边缘覆盖率必然很低，但版心是确定的：
+    # 左边缘极整齐、上下覆盖 100%。原来的规则会把这类书全部判成"低可信，可能双栏"，
+    # 实测《安乐哲 译本处理》662 页：左 74.6% / 右 11.7%，被判 low。
+    # 现在改成：**只要有一侧贴得很齐**（这一侧就是对齐边）+ 离散度达标，就算可靠；
+    # 另一侧参差只在 notes 里说明，并且置信度最多判到 medium（不判 high，因为它确实
+    # 少了一条边的证据）。
+    aligned_coverage = max(left_coverage, right_coverage)
+    ragged_side = "right" if right_coverage < left_coverage else "left"
+    # 参差那一侧的**外边界**稳不稳：右参差看每页最右端，左参差看每页最左端。
+    # 单看覆盖率会把"版心本身在漂移"的书也放过（测试里左右各页差 40% 页宽那种），
+    # 所以再加这一条：外边界的中段离散必须很小。
+    if ragged_side == "right":
+        outer = sorted(page_right_max)
+    else:
+        outer = sorted(page_left_min)
+    if len(outer) >= 5:
+        tail = outer[len(outer) // 4 : len(outer) - len(outer) // 4 or None]
+        ragged_outer_spread = _iqr(tail) if len(tail) >= 2 else 0.0
+    else:
+        ragged_outer_spread = 0.0
+    ragged_book = (
+        aligned_coverage >= COVERAGE_MIN
+        and coverage < COVERAGE_MIN
+        and ragged_outer_spread <= SPREAD_MEDIUM
+    )
     reliable = (
         participating >= MIN_PAGES
         and worst <= SPREAD_UNRELIABLE
-        and coverage >= COVERAGE_MIN
+        and worst_vertical <= VERTICAL_SPREAD_UNRELIABLE
+        and aligned_coverage >= COVERAGE_MIN
+        and (coverage >= COVERAGE_MIN or ragged_book)
     )
     if participating < MIN_PAGES:
         notes.append(
@@ -457,11 +499,22 @@ def suggest_from_page_boxes(
         )
     if worst > SPREAD_MEDIUM:
         notes.append(
-            f"边缘离散较大（最大 {worst:.1%} 页宽），建议不可靠：可能是双栏、竖排或旁批较多。"
+            f"左右边缘离散较大（最大 {worst:.1%} 页宽），建议不可靠：可能是双栏、竖排或旁批较多。"
         )
-    if coverage < COVERAGE_MIN:
+    elif worst_vertical > VERTICAL_SPREAD_MEDIUM:
+        notes.append(
+            f"上下边缘离散 {worst_vertical:.1%}（章末页往往只排到半页，这是正常的）。"
+        )
+    if coverage < COVERAGE_MIN and not ragged_book:
         notes.append(
             f"左右的边缘只覆盖 {coverage:.0%} 的正文行，建议不可靠：各页的缩进 / 分栏可能不一致。"
+        )
+    elif ragged_book:
+        side_label = "右" if ragged_side == "right" else "左"
+        good_side = "左" if ragged_side == "right" else "右"
+        notes.append(
+            f"这本书是「{good_side}对齐」排版：{good_side}侧有 {aligned_coverage:.0%} 的行贴边，"
+            f"{side_label}侧参差（{coverage:.0%}）是正常的，不是双栏。"
         )
     if MIN_PAGES <= participating < MAX_PAGES_NOTE:
         notes.append(f"参与页数较少（{participating} 页），多识别几页会更稳。")
@@ -477,9 +530,10 @@ def suggest_from_page_boxes(
         worst <= SPREAD_HIGH
         and participating >= MAX_PAGES_NOTE
         and coverage >= COVERAGE_HIGH
+        and not ragged_book
     ):
         confidence = CONFIDENCE_HIGH
-    elif worst <= SPREAD_MEDIUM:
+    elif worst <= SPREAD_MEDIUM and worst_vertical <= VERTICAL_SPREAD_MEDIUM:
         confidence = CONFIDENCE_MEDIUM
     else:
         confidence = CONFIDENCE_LOW

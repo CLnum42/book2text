@@ -36,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import statistics
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -277,7 +278,112 @@ def collect_candidates(
                 block_type=block.block_type,
             )
         )
-    return candidates, pages, {"states": states, "recognized": recognized}
+    # 任务 71：**数字原生 PDF 的页码在文字层里**，而块级的候选只认"版心外的纯数字行"。
+    # 这本书每页页眉印的是 `Page 31`（带词的数字），而且位置在版心框内 ——
+    # 两条规则各挡一半，结果 662 页一个候选都没有（真正原因，不是"没有页码"）。
+    # 页码是**结构化信息**：文字层里就是准确的那个数字，用它不违反"不拿文字层当第二引擎"。
+    text_layer = _text_layer_candidates(project, pages, target_library)
+    if text_layer:
+        for page_no, items in text_layer.items():
+            existing = {(item.value, item.kind) for item in candidates.get(page_no, [])}
+            for item in items:
+                if (item.value, item.kind) in existing:
+                    continue
+                candidates.setdefault(page_no, []).append(item)
+    return candidates, pages, {
+        "states": states,
+        "recognized": recognized,
+        "text_layer_used": len(text_layer),
+    }
+
+
+#: 页眉 / 页脚里"带词的数字页码"：`Page 31`、`page 31`、`P. 31`、`- 31 -`
+_NUMBERED_LABEL = re.compile(r"^(?:page|p\.?)\s*[-–—]?\s*(\d{1,4})\s*[-–—]?$", re.IGNORECASE)
+#: 页眉 / 页脚里的裸数字（有些书只印数字，但落在版心框内，块级候选会漏）
+_BARE_NUMBER = re.compile(r"^[-–—\s]*(\d{1,4})[-–—\s]*$")
+#: 只在这些页里找：正常正文页不会多到离谱
+_TEXT_LAYER_MAX_PAGES = 2000
+
+
+def _digital_native(pages: list[library_module.Page]) -> bool:
+    """绝大多数正文页都有文字层 → 数字原生 PDF（不是整页扫描图）。"""
+    body = [page for page in pages if page.include]
+    if not body:
+        return False
+    with_layer = sum(1 for page in body if page.has_text_layer)
+    return with_layer >= max(1, int(len(body) * 0.8))
+
+
+def _near_edge(bbox: tuple[float, float, float, float]) -> bool:
+    """这一行是不是贴在页边（页眉 / 页脚 / 页边外侧 8% 内）。"""
+    x0, y0, x1, y1 = bbox
+    return min(y0, 1 - y1, x0, 1 - x1) <= 0.08
+
+
+def _text_layer_candidates(
+    project: object, pages: list[library_module.Page], library: Path
+) -> dict[int, list[Candidate]]:
+    """从**文字层**的页眉 / 页脚取页码（只给数字原生的书用）。
+
+    为什么直接读文字层而不是继续翻块：页码常在版心框内（`_position_ok` 会排除），
+    而且页眉常被识别成 `Page 31` 这种"带词的数字"（`canonical_page_value` 不认）。
+    文字层里这一行就是原样的字符串与坐标，取它最可靠。
+    """
+    from ..pdf import render as render_module
+
+    if not _digital_native(pages):
+        return {}
+    try:
+        source = library_module.project_dir(library, project.project_id) / "source" / "original.pdf"
+    except Exception:  # noqa: BLE001 - 拿不到源文件就当没有文字层
+        return {}
+    if not source.exists():
+        return {}
+    found: dict[int, list[Candidate]] = {}
+    body = [page for page in pages if page.include][:_TEXT_LAYER_MAX_PAGES]
+    for page in body:
+        if not page.has_text_layer:
+            continue
+        try:
+            lines = render_module.page_text_lines(source, page.page_no - 1) or []
+        except Exception:  # noqa: BLE001 - 单页读不了不影响其它页
+            continue
+        if not lines:
+            continue
+        # 只看开头两行与结尾两行：页眉 / 页脚就在那里
+        edge = list(lines[:2]) + list(lines[-2:])
+        seen: set[tuple[str, str]] = set()
+        for text, bbox in edge:
+            raw = " ".join(str(text).split())
+            if not raw or len(raw) > 24:
+                continue
+            match = _NUMBERED_LABEL.match(raw)
+            kind = "text_layer_label"
+            if match is None:
+                # 裸数字只认**贴边**的（离页边 8% 以内）：`Page N` 本身已足够明确，
+                # 而正文里的小标题编号（`3`、`4`）也在页面上部，不贴边，别误收
+                if not _near_edge(bbox):
+                    continue
+                match = _BARE_NUMBER.match(raw)
+                kind = "text_layer_bare"
+            if match is None:
+                continue
+            value = str(int(match.group(1))) if match.group(1).isdigit() else match.group(1)
+            if (value, kind) in seen:
+                continue
+            seen.add((value, kind))
+            found.setdefault(page.page_no, []).append(
+                Candidate(
+                    page_no=page.page_no,
+                    value=value,
+                    kind=kind,
+                    x=(bbox[0] + bbox[2]) / 2,
+                    y=(bbox[1] + bbox[3]) / 2,
+                    text=raw,
+                    block_type="text_layer",
+                )
+            )
+    return found
 
 
 # ---------------------------------------------------------------- 聚类
