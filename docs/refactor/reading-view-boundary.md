@@ -1096,6 +1096,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | 2026-10-28 | C4 | 上限改为「kind ⊆ 6 且 flush 后残留 0」，改读 `readingIntentStats.dropped`，不查深度 | Chief | f69df40 |
 | 2026-10-29 | A1b / A3 | 删：旧偏好用例里借 `splitPrefs/saveSplit` 直读内部的两行，以及「序列净删除 0」的旧判法；补：偏好用例改真实拖动事件（`pointerdown→pointermove→pointerup`，断言 CSS 变量 232→300px + localStorage + 重载保持），A1b 改成「只有合规 test-contract 提交可删 tests/js 行」，合规 = 三样俱全；变异：`MAX_EXPORTS 6→5`／`TEMPORARY` 塞回 `splitPrefs`／产品侧松手不 save 各自红在目标断言 | DevLead | 50bc45f |
 | 2026-10-29 | R9 / R11 | 删：R9 只认「成员访问/调用/赋值目标」的旧口径、R11 写死两份文件且把缺函数体记 0 的旧实现；补：R9 三种裸引用（实参/条件/模板 `${}`）与 class 参数声明，R11 扫全目录 `*.js` 且缺函数体即红，两条各加「喂合成样例必须红」的自检；变异：三种裸引用喂进去必红、六种非引用必不红；caller 改名/搬到第三份文件必红；删掉 §18.6 某行 → A3+A1b 红，清空「变异」一格 → A3 红 | DevLead | 5c2f5ab |
+| 2026-10-29 | L7–L10 测试耦合 | 删：草稿用例直调 `ctx.draftReading` 的两行、「已审计数」的 `progressNumbersSkip` 守卫（它会让这条永久 skip = 覆盖倒退）、R4b 例外表最后一条与 `MAX 1`；补：草稿改走「下一处未审」开面板 + 点「保留原文/采用候选」，「已审计数」改读 `#reading-progress-text` 并对换窗口前后各断言一次，installReadingDeps 的 setter 改成"宿主对象直接赋进 vm"（Map/观察器不再被 JSON 抹成 `{}`），两条集成断言改 module==1 + 合查；变异：进度总数改回按窗口条目数、草稿 key 加时间戳、setter 回退 JSON、app.js 塞两份同名函数、模块两处字面量改名，各自红在目标断言 | DevLead | f70f544 |
 
 只有 DevLead 能加行。没有登记行的放宽一律按违规算。
 
