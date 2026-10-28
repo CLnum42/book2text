@@ -1419,11 +1419,22 @@ adoptAllHighSuggestions  6028 / 12573   第一份不可达
 rerenderReadingLine      18912 / 19347  第一份不可达，且它在偷偷咬人
 ```
 
-**第三对不是纯死代码**：`18912` 是 `rerenderReadingLine(key)`（按行 key 重画），`19347` 是 `rerenderReadingLine(entry)`（按 entry 重画），后者覆盖前者。但 `saveInlineEdit` 调的是 `rerenderReadingLine(key)`，传进去的是**字符串** → entry 版读 `entry.block_id` 得到 `undefined` → `readingLineNode("undefined:undefined")` 返回 null → 直接 return。
+**第三对的形态**：`18912` 是 `rerenderReadingLine(key)`（按行 key 重画），`19347` 是 `rerenderReadingLine(entry)`（按 entry 重画），后者覆盖前者。
 
-**净效果：就地保存之后那一行不重画**，要等下一次整块重铺才看得见改动。不抛异常、不影响导出、CER 也抓不到——属于"用户看不见的静默失败"。
+**谁被它咬了**（TestDev 实地核过调用点，共 2 个调用者）：
 
-**处置**：前两对已按 Chief 裁定单独提交删除（零行为变化，不进任何一层的账）。第三对在重构冻结期**不删不改**，等正文流搬完后单独排期修，修的时候要连 `saveInlineEdit` 的调用口径一起改。
+```
+19343  draftReading(entry,…)        传 entry    → 打到 19347 ✓ 正常
+21018  setupReading() 折叠展开/收起   传 dataset.key（字符串）→ 打到 19347 ✗ 静默 return
+```
+
+entry 版读字符串的 `entry.block_id` 得到 `undefined` → `readingKey(undefined, undefined)` → `readingLineNode("undefined:undefined")` 返回 null → 直接 return。
+
+**净效果：点折叠三角展开/收起后，那一行不重画**（`dataset.expanded` 变了，画面没变），要等下一次整块重铺才看见。不抛异常、不影响导出、CER 也抓不到——属于"用户看不见的静默失败"。
+
+**我第一次记错了**：写成"就地保存之后不重画"，其实 `saveInlineEdit`(18894) 根本不调 `rerenderReadingLine`（它只切 `is-inline-edited` class + 刷进度条）。写进文档前没核调用点，这类错和"照着用户描述直接改"是同一个毛病。
+
+**处置**：前两对已按 Chief 裁定单独提交删除（零行为变化，不进任何一层的账）。第三对在重构冻结期**不删不改**：`18912` 是纯死代码（0 个调用者，删它零行为变化），`21018` 的修法是"让折叠那一处改传 entry，或把 key 逻辑并进 entry 版"——两者都等正文流搬完再动。
 
 **机检**：`tests/js/boundary.test.mjs` 的 `R4b-same-file`（TestDev `c425eb2`）会咬住同文件同名真实现；例外表带 owner 与到期点，**死代码一旦删除，对应例外必须同批删掉**，否则例外表本身失信。
 
