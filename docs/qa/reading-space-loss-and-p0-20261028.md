@@ -104,3 +104,39 @@ CJK 的 join 不插空格，gap 为空，行为不变。
 - **不是等松手**：最后一次改宽度（300 ms）之后约 **250–280 ms** 就重取（防抖窗口，不是 mouseup）；
 - **不闪白**：先在离屏 `Image` 里下完新档再换 `src`，旧图全程可见（改前是"先摘 src 再取"，
   期间 `is-ready=false`，会白一下）。
+
+
+## 任务 82：连续切片——DOM 文本 = 导出文本（全书 0 不一致）
+
+**问题**：任务 81 把占位空格去掉之后，全书自检仍报 **11 处"重复字符"**：
+`laboreefficient` / `Yiwwen` / `nearssynonyms` / `Nansshih` / `ch'uncch'iu`……
+比多一个空格更糟——用户会以为 OCR 重复了，去改，**一改就把多余的字母写进库里**。
+
+**结构根源**：每行只切 `[start, end]`，行间空隙用额外的 gap 节点补。这个组合在
+`line_spans` 有重叠 / 重复区间时，同一个字符既出现在 gap 里、又出现在相邻行的切片里。
+
+**改法（按 Chief 的建议）**：**行与行首尾相接、无缝无叠的连续切片**。
+
+```js
+let cursor = 0;
+for (每个 span) {
+  const start = Math.max(cursor, span.start);
+  const nextStart = 下一行的 start（最后一行 = text.length）;
+  const piece = text.slice(start, nextStart);   // 行尾分隔符自然落在这一行末尾
+  line = buildReadingLine(segment, span, piece);
+  cursor = nextStart;
+}
+```
+
+- 整段被切成 N 段**连续**切片，拼起来逐字等于 `segment.text`——从结构上不可能丢字或重字；
+- 去掉原来那层 gap 节点；
+- **编辑仍然基于这一行自己的字**（`dataset.baseText` = 逻辑行文本），保存时去掉行尾分隔符，
+  所以不会把 join 空格写进 `block_line.text`（块==行拼接 的校验照旧通过）。
+
+**验收**：
+
+| 项 | 结果 |
+|---|---|
+| 全书 662 页 / 83 个窗口 / 325 个带差异标记的段 | **不一致 0**（全局自检失败计数 0） |
+| 11 个复现点（seq 99 / 741 / 974 / 1066 / 1441 …） | 逐个复查 **same: true** |
+| 复制粘贴（选中带标记正文取选区文本） | 与导出**逐字一致**、与 DOM 一致（68 字） |

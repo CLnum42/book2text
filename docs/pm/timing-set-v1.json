@@ -1,0 +1,423 @@
+{
+  "v": 1,
+  "purpose": "P0-b 旧臂计时与可选配对补测的固化条目清单（替代集见 docs/pm/review-timing-acceptance.md §1）",
+  "source": "/tmp/b2t-heuristic-eval/analysis.json rows（40 页金标准可定位 231 条）",
+  "seed": 20261028,
+  "generated_at": "2026-10-28",
+  "selection": {
+    "A_set": "10 噪声(6 汉字+4 标点) + 10 真错(5+5)，旧臂正式跑这一集",
+    "B_set": "同结构，替补；A 集有条目映射失败或违反排除条件时按序替换",
+    "totals": "噪声 20 = 11 汉字 + 9 标点；真错 20 = 10 汉字 + 10 标点（与金标准实际比例一致）"
+  },
+  "exclusions_pending_mapping": [
+    "跨页延续段（continues）",
+    "第二路空文本",
+    "版心外",
+    "format_only（无可看差别）",
+    "文本与金标准一致率 <98% 的映射"
+  ],
+  "mapping_rule": "在旧臂项目副本上用 block_line 按 page_no + 行序对齐，校验文本与金标准一致率 ≥98%；失败则用 B 集按 order 替换并记录",
+  "note": "本文件不含任何原文、不含差异文本，只有页码/行序/分类/差异字数。",
+  "items": [
+    {
+      "set": "A",
+      "page": 5,
+      "index": 19,
+      "level": "differs_chars",
+      "cls": "C_both_wrong",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 1
+    },
+    {
+      "set": "A",
+      "page": 10,
+      "index": 24,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 2
+    },
+    {
+      "set": "A",
+      "page": 22,
+      "index": 21,
+      "level": "differs_punct",
+      "cls": "C_both_wrong",
+      "len_diff": 2,
+      "item_key": null,
+      "order": 3
+    },
+    {
+      "set": "A",
+      "page": 22,
+      "index": 6,
+      "level": "differs_punct",
+      "cls": "B",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 4
+    },
+    {
+      "set": "A",
+      "page": 13,
+      "index": 12,
+      "level": "differs_punct",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 5
+    },
+    {
+      "set": "A",
+      "page": 6,
+      "index": 13,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 6
+    },
+    {
+      "set": "A",
+      "page": 29,
+      "index": 25,
+      "level": "differs_chars",
+      "cls": "C_both_wrong",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 7
+    },
+    {
+      "set": "A",
+      "page": 17,
+      "index": 0,
+      "level": "differs_chars",
+      "cls": "B",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 8
+    },
+    {
+      "set": "A",
+      "page": 14,
+      "index": 17,
+      "level": "differs_punct",
+      "cls": "A",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 9
+    },
+    {
+      "set": "A",
+      "page": 20,
+      "index": 21,
+      "level": "differs_punct",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 10
+    },
+    {
+      "set": "A",
+      "page": 33,
+      "index": 17,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 11
+    },
+    {
+      "set": "A",
+      "page": 38,
+      "index": 9,
+      "level": "differs_punct",
+      "cls": "A",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 12
+    },
+    {
+      "set": "A",
+      "page": 38,
+      "index": 8,
+      "level": "differs_punct",
+      "cls": "C_both_wrong",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 13
+    },
+    {
+      "set": "A",
+      "page": 4,
+      "index": 25,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 14
+    },
+    {
+      "set": "A",
+      "page": 30,
+      "index": 3,
+      "level": "differs_chars",
+      "cls": "C_both_wrong",
+      "len_diff": 2,
+      "item_key": null,
+      "order": 15
+    },
+    {
+      "set": "A",
+      "page": 10,
+      "index": 15,
+      "level": "differs_punct",
+      "cls": "B",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 16
+    },
+    {
+      "set": "A",
+      "page": 8,
+      "index": 8,
+      "level": "differs_punct",
+      "cls": "B",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 17
+    },
+    {
+      "set": "A",
+      "page": 39,
+      "index": 11,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 18
+    },
+    {
+      "set": "A",
+      "page": 7,
+      "index": 2,
+      "level": "differs_chars",
+      "cls": "B",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 19
+    },
+    {
+      "set": "A",
+      "page": 6,
+      "index": 17,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 20
+    },
+    {
+      "set": "B",
+      "page": 40,
+      "index": 0,
+      "level": "differs_punct",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 1
+    },
+    {
+      "set": "B",
+      "page": 11,
+      "index": 2,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 2
+    },
+    {
+      "set": "B",
+      "page": 23,
+      "index": 2,
+      "level": "differs_punct",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 3
+    },
+    {
+      "set": "B",
+      "page": 22,
+      "index": 14,
+      "level": "differs_punct",
+      "cls": "B",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 4
+    },
+    {
+      "set": "B",
+      "page": 1,
+      "index": 17,
+      "level": "differs_punct",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 5
+    },
+    {
+      "set": "B",
+      "page": 37,
+      "index": 19,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 6
+    },
+    {
+      "set": "B",
+      "page": 19,
+      "index": 13,
+      "level": "differs_punct",
+      "cls": "C_both_wrong",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 7
+    },
+    {
+      "set": "B",
+      "page": 30,
+      "index": 0,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 8
+    },
+    {
+      "set": "B",
+      "page": 35,
+      "index": 2,
+      "level": "differs_chars",
+      "cls": "C_both_wrong",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 9
+    },
+    {
+      "set": "B",
+      "page": 7,
+      "index": 20,
+      "level": "differs_chars",
+      "cls": "C_both_wrong",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 10
+    },
+    {
+      "set": "B",
+      "page": 6,
+      "index": 15,
+      "level": "differs_chars",
+      "cls": "C_both_wrong",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 11
+    },
+    {
+      "set": "B",
+      "page": 19,
+      "index": 20,
+      "level": "differs_punct",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 12
+    },
+    {
+      "set": "B",
+      "page": 4,
+      "index": 2,
+      "level": "differs_punct",
+      "cls": "C_both_wrong",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 13
+    },
+    {
+      "set": "B",
+      "page": 39,
+      "index": 16,
+      "level": "differs_punct",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 14
+    },
+    {
+      "set": "B",
+      "page": 18,
+      "index": 22,
+      "level": "differs_punct",
+      "cls": "B",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 15
+    },
+    {
+      "set": "B",
+      "page": 21,
+      "index": 18,
+      "level": "differs_chars",
+      "cls": "C_both_wrong",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 16
+    },
+    {
+      "set": "B",
+      "page": 13,
+      "index": 1,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 17
+    },
+    {
+      "set": "B",
+      "page": 28,
+      "index": 23,
+      "level": "differs_chars",
+      "cls": "A",
+      "len_diff": 0,
+      "item_key": null,
+      "order": 18
+    },
+    {
+      "set": "B",
+      "page": 5,
+      "index": 10,
+      "level": "differs_punct",
+      "cls": "B",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 19
+    },
+    {
+      "set": "B",
+      "page": 6,
+      "index": 10,
+      "level": "differs_chars",
+      "cls": "C_both_wrong",
+      "len_diff": 1,
+      "item_key": null,
+      "order": 20
+    }
+  ]
+}

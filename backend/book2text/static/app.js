@@ -18427,16 +18427,20 @@ function buildReadingSegment(segment) {
     node.append(document.createTextNode(segment.text));
     return node;
   }
+  // 任务 82：**连续切片**——每一行拿 `[cursor, 下一行起点)`，cursor 一路向后不跳不叠。
+  // 这样把整段切成 N 段连续的切片，拼起来逐字等于 `segment.text`：
+  // 行间分隔符（join_lines 补的空格）自然落在前一行末尾，既不会丢、也不会重复。
+  // 之前"每行只切 [start,end] + 额外补 gap 节点"的做法，在 line_spans 有重叠/重复时
+  // 会让同一个字符既在 gap 里、又在相邻行切片里——实测出现 `laboreefficient`。
+  let cursor = 0;
   for (let i = 0; i < spans.length; i += 1) {
-    // 任务 78：**行与行之间的分隔符不能丢**。`line_spans` 的区间不含 join_lines 补的
-    // 那个空格，直接 slice 再拼起来，英文就是 "prevent"+"the people" → "preventthe people"。
-    // 用户因此看到"doingwhat"，以为 OCR 漏了空格去改一个本来没错的地方——
-    // **他审的字就不是导出的字了**。这里把间距原样补回去（CJK 没有间距，gap 为空）。
-    if (i > 0) {
-      const gap = segment.text.slice(spans[i - 1].end, spans[i].start);
-      if (gap) node.append(document.createTextNode(gap));
-    }
-    const line = buildReadingLine(segment, span_at(spans, i));
+    const start = Math.max(cursor, Number(spans[i].start) || 0);
+    const nextStart =
+      i + 1 < spans.length
+        ? Math.max(start, Number(spans[i + 1].start) || start)
+        : segment.text.length;
+    const piece = segment.text.slice(start, nextStart);
+    const line = buildReadingLine(segment, span_at(spans, i), piece);
     // 任务 66：块边界要**看得见**。跨页段在视觉上是一段连贯的话，
     // 实际是两个块；不标出来，用户会以为能跨过去改（这本书有 312 个跨页段）。
     if (i + 1 < spans.length && spans[i + 1].block_id !== spans[i].block_id) {
@@ -18589,7 +18593,10 @@ function onInlineInput(event) {
 function saveInlineEdit(line) {
   const key = line.dataset.key;
   const base = line.dataset.baseText || "";
-  const text = (line.innerText || "").replace(/\n$/, "");
+  // 渲染用连续切片（行尾带 join_lines 的分隔符），但**这一行的字**不含它：
+  // 保存前把尾部空白去掉，否则会把分隔符写进 block_line.text，
+  // 提交时块文本 == 行拼接 的校验会失败（那条校验是对的）。
+  const text = (line.innerText || "").replace(/\n$/, "").replace(/\s+$/, "");
   if (!text || text === base) {
     readingInlineEdits.delete(key);
   } else {
@@ -18658,7 +18665,7 @@ function span_at(spans, index) {
   return spans[index];
 }
 
-function buildReadingLine(segment, span) {
+function buildReadingLine(segment, span, displayText = null) {
   const key = readingKey(span.block_id, span.line_index);
   const mark = readingMarks.get(key);
   const draft = readingDrafts.get(key);
@@ -18668,8 +18675,12 @@ function buildReadingLine(segment, span) {
   line.dataset.block = span.block_id;
   line.dataset.line = String(span.line_index);
   line.dataset.page = String(span.page_no);
-  const baseText = readingLineText(segment, span);
-  line.dataset.baseText = baseText;
+  // `text` = 逻辑行文本（行自己的字，用于编辑与写回）；
+  // `displayText` = 这一行在连续切片里实际占的字符（含行尾分隔符）。
+  // **编辑仍然基于 text**，所以保存时不会把分隔符写进库里。
+  const text = readingLineText(segment, span);
+  line.dataset.baseText = text;
+  const baseText = displayText == null ? text : displayText;
   if (mark) {
     line.dataset.level = mark.level;
     line.classList.add("is-diff");
