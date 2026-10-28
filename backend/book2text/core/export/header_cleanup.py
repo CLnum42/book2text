@@ -71,3 +71,35 @@ def merged_header_prefix(text: str) -> str | None:
     """如果首行是"页码 + 正文"并在一起，返回页码那一截（用于报数 / 诊断）。"""
     match = PAGE_PREFIX.match(" ".join((text or "").split()))
     return match.group(0).strip() if match else None
+
+
+#: 短页码：裸罗马数字，或 `7b` 这种把 `76` 认成 `7b` 的 1–4 个字符
+_SHORT_PAGE_TOKEN = re.compile(r"^[\divxlcdmIVXLCDM]{1,4}\w?$")
+#: 贴边判定（归一化 x）：左侧栏外 / 右侧栏外
+MARGIN_LEFT_MAX = 0.28
+MARGIN_RIGHT_MIN = 0.70
+
+
+def is_page_number_noise(text: str, bbox=None, *, first_line: bool = False) -> bool:
+    """这一行是不是**纯页码**（审校队列里要排掉的噪声），两条并列判据。
+
+    与 `is_page_line` 的区别：那条只给"每页第一行"这个结构性位置用，
+    它认裸数字（正文里单独一行 `11` 会被误伤）。这里要判的是"整页任意位置的行"，
+    所以裸数字必须**同时**贴边才算——书里真的有整行只有 `红楼梦` 的正文。
+
+    - 带词页码：`Page xxi` / `Page104` / `P. 28`（大小写、有无空格都算）；
+    - 裸短页码：整行 ≤4 字符、形如 `ix` / `7b`，**并且**它是这一块的第一行
+      （`first_line=True`，即"页眉并进了首段"）、整行贴在页面左/右栏外
+      （`bbox` 是归一化的 `[x0, y0, x1, y1]`）。位置 + 结构两条都满足才判，
+      避免把正文中间单独一行的短词（`红楼梦` 那类）误伤。
+    """
+    compact = " ".join((text or "").split())
+    if not compact:
+        return False
+    if is_labeled_page_line(compact):
+        return True
+    if first_line and len(compact) <= 4 and _SHORT_PAGE_TOKEN.match(compact):
+        if bbox is not None and len(bbox) >= 4:
+            if bbox[2] <= MARGIN_LEFT_MAX or bbox[0] >= MARGIN_RIGHT_MIN:
+                return True
+    return False

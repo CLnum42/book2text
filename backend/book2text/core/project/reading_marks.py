@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from ..ocr import compare as compare_module
+from ..export import header_cleanup
 from . import blocks as blocks_module
 from ..storage import db as db_module
 from . import cache_policy
@@ -39,7 +40,7 @@ from . import review_status
 DEFAULT_RADIUS = 10
 
 #: marks payload 的结构版本；改了字段或语义就 +1
-MARKS_CACHE_VERSION = 1
+MARKS_CACHE_VERSION = 2
 
 _CACHE: dict[str, tuple[str, dict]] = {}
 """项目 → (签名, 数据)。只留最近两个项目，避免内存无限涨。"""
@@ -121,6 +122,12 @@ def _build_items(index: blocks_module.DivergenceIndex) -> list[dict[str, Any]]:
             if mark.level not in (compare_module.DIFFERS_CHARS, compare_module.DIFFERS_PUNCT):
                 continue
             line = lines.get(mark.line_index)
+            # 任务 82：整行就是页码的差异不进队列（与 review_status.queue_items 同一判据，
+            # 两边口径必须一致，否则左树计数和列表条数对不上）
+            if line is not None and header_cleanup.is_page_number_noise(
+                line.text or "", line.bbox, first_line=mark.line_index == 0
+            ):
+                continue
             items.append(
                 {
                     "page_no": page_no_by_block.get(block.block_id, block.page_no),

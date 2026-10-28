@@ -715,6 +715,10 @@
                     title="纯标点 / 空格差异按模式批量裁决（一次覆盖几百行）">
               标点 <span id="reading-punct-count">0</span>
             </button>
+            <button type="button" id="reading-garbled-open" class="btn btn--sm reading-garbled-btn"
+                    title="识别把整行打散成字母碎片的行（候选是对的），可以一批全部采用候选">
+              整行乱码 <span id="reading-garbled-count">0</span>
+            </button>
             <span class="reading-pill" id="reading-draft-chip" hidden>未提交 0</span>
           </div>
           <span class="rt-sep"></span>
@@ -1520,6 +1524,33 @@
           <button type="button" id="punct-groups-undo" class="btn" disabled
                   title="只退最近一次批量裁决（和顶栏的撤销同一个栈）">撤销最近一次</button>
           <button type="button" id="punct-groups-done" class="btn btn--pri">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 整行乱码（2026-10-28）：识别把一整行打散成字母碎片，候选（Vision）是对的。
+         一行会直接进语料，比个别错字严重，所以单独一类、支持批量采用候选。 -->
+    <div class="mask" id="garbled-mask" hidden>
+      <div class="modal modal--wide">
+        <div class="mhead">整行乱码 · 批量采用候选
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="garbled-close">✕</button>
+        </div>
+        <div class="mbody mbody--single">
+          <p class="hint" id="garbled-summary"></p>
+          <p class="hint">
+            这些行是识别把整行打散成字母碎片（<code>phind,  n ons o ns a n onad</code>），
+            候选是完整的句子。<strong>全部采用候选</strong>把这几行换成第二引擎的文本；
+            <strong>全部保留原文</strong>只写裁决、不改文本。两种都会记进撤销栈，⌘Z 一次全退。
+          </p>
+          <div class="alert alert--error" id="garbled-error" hidden></div>
+          <ul class="garbled-list" id="garbled-list"></ul>
+        </div>
+        <div class="mfoot">
+          <span class="muted" id="garbled-foot"></span>
+          <span class="spacer"></span>
+          <button type="button" id="garbled-keep" class="btn">全部保留原文</button>
+          <button type="button" id="garbled-adopt" class="btn btn--pri">全部采用候选</button>
         </div>
       </div>
     </div>

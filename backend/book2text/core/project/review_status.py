@@ -23,6 +23,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..export import header_cleanup
 from . import blocks as blocks_module
 from . import cache_policy
 from . import continuations as continuations_module
@@ -581,6 +582,18 @@ def review_tree(project_id: str, *, library: Path | None = None) -> dict:
 QUEUE_BLOCK_TYPES = frozenset({"paragraph", "heading"})
 
 
+def _is_page_number_mark(mark, line_by_index: dict) -> bool:
+    """这条差异是不是"整行就是页码"那种噪声（只影响显示与计数，不改数据）。"""
+    line = line_by_index.get(getattr(mark, "line_index", -1))
+    if line is None:
+        return False
+    return header_cleanup.is_page_number_noise(
+        getattr(line, "text", "") or "",
+        getattr(line, "bbox", None),
+        first_line=getattr(mark, "line_index", -1) == 0,
+    )
+
+
 def queue_items(
     project_id: str,
     *,
@@ -640,6 +653,16 @@ def queue_items(
             for mark in divergence.marks
             if mark.level in (compare_module.DIFFERS_CHARS, compare_module.DIFFERS_PUNCT)
         ]
+        # 任务 82：**整行就是页码**的差异不进队列（`Page xxi` vs `Page xx1`、
+        # 裸露的 `ix`、OCR 把 `76` 认成的 `7b`）。让用户在罗马数字大小写上做决定
+        # 是纯噪声；数据一个字都不动，只是不显示。
+        if marks:
+            line_by_index = {line.line_index: line for line in lines_by_block.get(block.block_id, [])}
+            marks = [
+                mark
+                for mark in marks
+                if not _is_page_number_mark(mark, line_by_index)
+            ]
         if not marks:
             continue
         if not idx.inside(block):
@@ -668,7 +691,7 @@ def queue_items(
 
 
 #: 收尾面板 payload 的结构版本；**改了字段或语义就 +1**
-FINISH_CACHE_VERSION = 2
+FINISH_CACHE_VERSION = 3
 
 _FINISH_CACHE: dict[str, tuple[str, dict]] = {}
 """收尾面板结果缓存：项目 → (签名, 结果)。

@@ -23,6 +23,7 @@ from ..core.project import auto_apply as auto_apply_module
 from ..core.project import blocks as blocks_module
 from ..core.project import ink_gaps as ink_gaps_module
 from ..core.project import editing
+from ..core.project import garbled_lines as garbled_module
 from ..core.project import library as project_library
 from ..core.project import margin_box as margin_box_module
 from ..core.project import punct_groups as punct_groups_module
@@ -367,6 +368,52 @@ class PunctGroupDecideRequest(BaseModel):
 
     key: str = Field(min_length=1, max_length=400)
     ack: Literal["kept", "adopted"]
+
+
+@router.get("/{project_id}/review/garbled-lines")
+def review_garbled_lines(request: Request, project_id: str) -> dict[str, Any]:
+    """疑似整行乱码（识别把整行打散成字母碎片）：只读清单 + 分母。
+
+    判据见 `core/project/garbled_lines.py`：原文长度 < 候选 55%，或单字母 token 过半。
+    候选在这些行上是对的；批量采用走下面那个 POST。
+    """
+    try:
+        return garbled_module.collect(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+class GarbledDecideRequest(BaseModel):
+    ack: Literal["kept", "adopted"]
+
+
+@router.post("/{project_id}/review/garbled-lines/decide")
+def decide_garbled_lines(
+    request: Request, project_id: str, body: GarbledDecideRequest
+) -> dict[str, Any]:
+    """整批裁决：`adopted` = 全部换成候选文本，`kept` = 只写裁决不改文本。"""
+    try:
+        result = garbled_module.decide(
+            project_id,
+            ack=body.ack,
+            library=_library(request),
+            actor_name=_actor_name(request, None),
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    if result["events"]:
+        _history(request).push(
+            project_id,
+            _Batch(events=tuple(result["events"]), page_nos=tuple(result["pages"])),
+        )
+    undo, redo = _history(request).depth(project_id)
+    return {
+        "batch_id": result["batch_id"],
+        "applied": result["applied"],
+        "skipped": result["skipped"],
+        "ack": result["ack"],
+        "history": {"undo": undo, "redo": redo},
+    }
 
 
 @router.get("/{project_id}/review/punct-groups")

@@ -2109,3 +2109,49 @@ def _is_newer_than_decision(run: RunRecord, declined_at: str | None) -> bool:
 def empty_recognition(page_id: str) -> PageRecognition:
     """给还没有任何运行记录的页面用的初始状态。"""
     return replace(EMPTY_RECOGNITION, page_id=page_id)
+
+
+def lines_with_candidates(
+    project_id: str, *, library: Path | None = None
+) -> list[dict]:
+    """所有"有第二引擎候选"的行（供整行乱码检测用）：块 / 行 / 页号 / 两路文本。"""
+    with _open_for_read(project_id, library) as conn:
+        _require_tables(conn, project_id)
+        rows = conn.execute(
+            """
+            SELECT l.block_id, l.line_index, l.text, l.aux_text, p.page_no, l.diff_ack
+            FROM block_line l
+            JOIN block b ON b.block_id = l.block_id
+            JOIN page p ON p.page_id = b.page_id
+            WHERE l.aux_text IS NOT NULL AND trim(l.aux_text) <> ''
+              AND b.deleted_at IS NULL
+            ORDER BY p.page_no, b.order_index, l.line_index
+            """
+        ).fetchall()
+    return [
+        {
+            "block_id": row[0],
+            "line_index": int(row[1]),
+            "text": row[2],
+            "aux_text": row[3],
+            "page_no": int(row[4] or 0),
+            "diff_ack": row[5],
+        }
+        for row in rows
+    ]
+
+
+def count_lines_with_candidates(project_id: str, *, library: Path | None = None) -> int:
+    """有候选的行总数（分母，用于报"106 / 13588"）。"""
+    with _open_for_read(project_id, library) as conn:
+        _require_tables(conn, project_id)
+        row = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM block_line l
+            JOIN block b ON b.block_id = l.block_id
+            WHERE l.aux_text IS NOT NULL AND trim(l.aux_text) <> ''
+              AND b.deleted_at IS NULL
+            """
+        ).fetchone()
+    return int(row[0] if row else 0)
