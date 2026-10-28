@@ -18225,6 +18225,9 @@ function boot() {
     pageProfileFor: (...args) => pageProfileFor(...args),
     punctReviewSet: (...args) => punctReviewSet(...args),
     // 任务 94 L5：模块要读的常量
+    // R3：页面显示开关元素（模块不直接碰 pages 子树的 id）
+    getPagesMarginToggle: () => el("pages-margin-toggle"),
+    getPagesOverlayToggle: () => el("pages-overlay-toggle"),
     INDEX_IMAGE_WINDOW: INDEX_IMAGE_WINDOW,
     READING_CHUNK: READING_CHUNK,
     READING_NEAR_MARGIN: READING_NEAR_MARGIN,

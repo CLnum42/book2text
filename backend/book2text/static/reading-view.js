@@ -3037,12 +3037,12 @@ function setReviewOverlaysForReading() {
   if (!injected.getPagesMarginOn()) {
     injected.setPagesMarginOn( true);
     injected.savePageMarginPreference();
-    el("pages-margin-toggle")?.classList.add("is-on");
+    injected.getPagesMarginToggle()?.classList.add("is-on");
   }
   if (!injected.getPagesOverlayOn()) {
     injected.setPagesOverlayOn( true);
     injected.savePageOverlayPreference();
-    el("pages-overlay-toggle")?.classList.add("is-on");
+    injected.getPagesOverlayToggle()?.classList.add("is-on");
   }
   // 已经画过的页要按新开关重画一遍（否则要等下一次滚动才出框）
   for (const pageNo of injected.getReadingVisibleSet()) paintReadingTile(pageNo);
