@@ -1996,6 +1996,9 @@ async function dockSnapshotRaw() {
       : null,
     treeRail: rect("#reading-tree-rail"),
     splitClass: (document.getElementById("reading-split") || {}).className || null,
+    splitStyle: (document.getElementById("reading-split") || {}).getAttribute
+      ? document.getElementById("reading-split").getAttribute("style") : null,
+    railExists: Boolean(document.getElementById("reading-tree-rail")),
     railHidden: (document.getElementById("reading-tree-rail") || {}).hidden ?? null,
     innerHeight: window.innerHeight,
     prefs: { dock: localStorage.getItem("b2t.readingDock.v1"), tree: localStorage.getItem("b2t.readingTree.v1") },
@@ -2037,6 +2040,11 @@ async function dockProbe(page, args) {
     await page.mouse.click(box.x, box.y, { clickCount: 1 });
     await page.mouse.click(box.x, box.y, { clickCount: 2 });
     await page.waitForTimeout(450);
+    return { snap: await page.evaluate(dockSnapshotRaw) };
+  }
+  if (mode === "reload") {
+    await page.reload();
+    await page.waitForTimeout(1200);
     return { snap: await page.evaluate(dockSnapshotRaw) };
   }
   if (mode === "clear_prefs") {
