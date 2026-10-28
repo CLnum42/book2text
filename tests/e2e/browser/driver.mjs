@@ -104,6 +104,8 @@ export async function run(cfg) {
       return await interactionsProbe(page, args);
     case "click_accept":
       return await clickAccept(page, args);
+    case "l3_probe":
+      return await l3Probe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -2818,6 +2820,120 @@ async function clickAccept(page, args) {
   await page.waitForTimeout(args.wait || 2000);
   const snap = await page.evaluate(dockSnapshotRaw);
   return { accepted, snap };
+}
+
+/** L3：冷启 / 热启 / 用户动过不抢位置。 */
+async function l3Probe(page, args) {
+  const mode = args.mode || "cold";
+  const installNet = () =>
+    page.evaluate(() => {
+      if (window.__b2tReqLog) return;
+      window.__b2tReqLog = [];
+      const orig = window.fetch;
+      window.fetch = function (...a) {
+        try {
+          const url = typeof a[0] === "string" ? a[0] : (a[0] && a[0].url) || "";
+          window.__b2tReqLog.push({ url: String(url), at: Date.now() });
+        } catch (error) { /* 记录失败不影响请求 */ }
+        return orig.apply(this, a);
+      };
+    });
+  const readReqs = () => page.evaluate(() => window.__b2tReqLog || []);
+  const clearReqs = () => page.evaluate(() => { window.__b2tReqLog = []; });
+  const installMutations = () =>
+    page.evaluate(() => {
+      if (window.__b2tStreamMut !== undefined) { window.__b2tStreamMut = 0; return; }
+      window.__b2tStreamMut = 0;
+      const stream = document.getElementById("reading-stream");
+      if (stream) {
+        new MutationObserver((list) => { window.__b2tStreamMut += list.length; })
+          .observe(stream, { childList: true, subtree: true });
+      }
+    });
+  const readState = () =>
+    page.evaluate(() => {
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const m = label.match(/(\d+)/);
+      const stream = document.getElementById("reading-stream");
+      const data = typeof readingData !== "undefined" ? readingData : null;
+      return {
+        label: m ? Number(m[1]) : null,
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        scrollTop: stream ? Math.round(stream.scrollTop) : null,
+        segs: stream ? stream.querySelectorAll(".reading-seg").length : 0,
+        rendered: typeof readingRendered !== "undefined" ? readingRendered : null,
+        segments: data && data.segments ? data.segments.length : null,
+        project: typeof readingProject !== "undefined" ? readingProject : null,
+        mut: window.__b2tStreamMut,
+        reqCount: (window.__b2tReqLog || []).length,
+      };
+    });
+
+  const stepTo = async (step) => {
+    await page.click(`button[data-workflow-step="${step}"]`, { label: `切到 ${step}` });
+    await page.waitForTimeout(900);
+  };
+
+  if (mode === "cold") {
+    // 先离开审校（保证 reading 状态被清），再挂监听回来
+    await stepTo("pages");
+    await installNet();
+    await installMutations();
+    await clearReqs();
+    await page.evaluate(() => { if (window.__b2tStreamMut !== undefined) window.__b2tStreamMut = 0; });
+    await stepTo("review");
+    await page
+      .waitForFunction(() => document.querySelectorAll("#reading-stream .reading-seg").length > 0,
+                       undefined, { timeout: 60000 })
+      .catch(() => {});
+    await page.waitForTimeout(2500);
+    const reqs = await readReqs();
+    const st = await readState();
+    const apis = reqs.map((r) => {
+      const u = r.url.replace(/^https?:\/\/[^/]+/, "");
+      if (u.includes("/preview")) return "preview";
+      if (u.includes("/review/marks")) return "marks";
+      if (u.includes("/review/tree")) return "tree";
+      return u;
+    });
+    return { mode, apis, reqCount: reqs.length, state: st };
+  }
+
+  if (mode === "hot") {
+    // 确保在审校页并已渲染
+    await stepTo("review");
+    await page.waitForTimeout(2000);
+    await installNet();
+    await installMutations();
+    const before = await readState();
+    await clearReqs();
+    await page.evaluate(() => { window.__b2tStreamMut = 0; });
+    await stepTo("pages");
+    await stepTo("review");
+    await page.waitForTimeout(2500);
+    const reqs = await readReqs();
+    const after = await readState();
+    return { mode, before, after, newRequests: reqs.length, requests: reqs.map((r) => r.url.replace(/^https?:\/\/[^/]+/, "")) };
+  }
+
+  if (mode === "moved") {
+    await stepTo("review");
+    await page.waitForTimeout(1500);
+    const box = await page.evaluate(() => {
+      const s = document.getElementById("reading-stream");
+      const r = s.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(box.x, box.y, { label: "移到正文流" });
+    await page.mouse.wheel(0, 1500, { label: "真实滚动" });
+    await page.waitForTimeout(600);
+    const afterWheel = await readState();
+    // 等一轮异步收尾/补 marks 的时间，再看位置有没有被拽走
+    await page.waitForTimeout(3000);
+    const later = await readState();
+    return { mode, afterWheel, later, stolenBy: (later.scrollTop || 0) - (afterWheel.scrollTop || 0) };
+  }
+  return { mode: "unknown" };
 }
 
 async function nextProbe(page) {
