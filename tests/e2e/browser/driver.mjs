@@ -1964,7 +1964,7 @@ async function dockSnapshotRaw() {
       topbar: rect(".topbar"), toolbar: rect(".reading-toolbar"),
       split: rect("#reading-split"), dock: rect("#reading-dock"),
       dockGrip: rect("#reading-dock-grip"), host: rect("#reading-panel-host"),
-      tree: rect("#reading-tree"), pdf: rect("#reading-pdf-column"),
+      tree: rect("#reading-tree"), pdf: rect(".reading-pdf"),
       stream: rect("#reading-stream"), dockHidden: Boolean(dock && dock.hidden),
       hostParent: host && host.parentElement ? host.parentElement.id || host.parentElement.className : null,
     },
