@@ -102,12 +102,16 @@ def test_dpi_and_language_go_into_the_job_params(
 def test_default_settings_keep_the_old_behaviour(
     client: TestClient, auth_headers: dict[str, str], project_id: str
 ) -> None:
-    """没有动过设置的项目：仍是 200 DPI / ch / RapidOCR。"""
+    """没有动过设置的项目：200 DPI / **auto（按页判断语言）** / RapidOCR。
+
+    任务 64 起默认语言从 `ch` 改成 `auto`：双语书里中文页与英文页各一半，
+    一个项目级语言必然有一半是错的（英文页 F1 0.47 vs 0.90）。
+    """
     response = start_ocr(client, auth_headers, project_id, [1])
     assert response.status_code == 200, response.text
     params = response.json()["job"]["params"]
     assert params["dpi"] == 200
-    assert params["language"] == "ch"
+    assert params["language"] == "auto"
     assert params["engine_setting"] == "rapidocr"
     assert params["engine_id"]  # 假引擎的 id，测试环境替换了 RapidOCR 适配器
 
@@ -206,7 +210,7 @@ def test_recognition_settings_fall_back_on_bad_stored_values(
     assert resolved == {
         "recognition_engine": "rapidocr",
         "recognition_dpi": 200,
-        "recognition_language": "ch",
+        "recognition_language": "auto",
         "dual_engine_strategy": "mark",
     }
 

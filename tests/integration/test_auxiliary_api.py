@@ -269,3 +269,52 @@ def test_auxiliary_endpoint_returns_differences(
     assert len(data["differences"]) == 3
     assert data["differences"][0]["aux_text"] == "一模一样"
     assert data["blocks"], "顺带把最新的块返回，界面不用再拉一次"
+
+
+def test_page_language_is_detected_and_stored(client, auth_headers, library_dir, recognized_page):
+    """任务 64：按页判语言并落库（英文页 en-US、中文页 zh-Hans）。"""
+    from book2text.core.ocr import language as language_module
+
+    assert language_module.detect("这是一行完全中文的正文，大约二十个字左右。") == "zh-Hans"
+    assert language_module.detect("This is an English sentence with enough letters.") == "en-US"
+    assert language_module.detect("中文 English mixed 中文 English mixed 中文 English") == "mixed"
+    assert language_module.detect("短") is None
+
+    # 夹具页的正文是中文 → 复核后页面语言应为 zh-Hans 或 mixed（取决于假引擎文本）
+    language_module = language_module
+    import json
+
+    from book2text.core.project import recognition
+    from tests.fakes import FakeSecondEngine
+
+    recognition.run_auxiliary(
+        library_dir / recognized_page, 1, engine=FakeSecondEngine(texts=["中文一行"])
+    )
+    data = client.get(f"/api/projects/{recognized_page}", headers=auth_headers).json()
+    stored = data["pages"][0]["ocr_language"]
+    assert stored in ("zh-Hans", "mixed")
+
+
+def test_aux_rerun_backs_up_and_uses_vision(client, auth_headers, library_dir, recognized_page):
+    """重跑第二引擎：先备份，任务引擎不是文字层。"""
+    response = client.post(
+        f"/api/projects/{recognized_page}/aux/rerun", headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["engine"] == "apple_vision"
+    assert body["language"] == "auto"
+    from pathlib import Path
+
+    assert Path(body["backup_path"]).is_file()
+    assert body["job"]["job_type"] == "auxiliary"
+
+
+def test_aux_language_summary(client, auth_headers, recognized_page):
+    response = client.get(
+        f"/api/projects/{recognized_page}/aux/languages", headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total"] >= 0
+    assert "unknown" in body

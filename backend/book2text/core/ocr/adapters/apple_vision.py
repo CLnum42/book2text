@@ -43,6 +43,10 @@ _LANGUAGE_SETS = {
     "ch": DEFAULT_LANGUAGES,
     "mixed": DEFAULT_LANGUAGES,
     "en": ("en-US",),
+    # 任务 64：按页判定的结果（`core/ocr/language.py`）直接用 BCP-47 表达
+    "zh-Hans": ("zh-Hans",),
+    "en-US": ("en-US",),
+    "auto": DEFAULT_LANGUAGES,
 }
 
 

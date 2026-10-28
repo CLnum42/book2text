@@ -252,6 +252,8 @@ class PagePatch(BaseModel):
     # 而不是被 pydantic 静默忽略。
     include: bool | None = None
     note: str | None = Field(default=None, max_length=500)
+    # 任务 64：每页识别语言的覆盖值（"auto" 交回自动判定）
+    ocr_language: str | None = None
 
 
 def _reject_include(include: bool | None) -> None:
@@ -276,6 +278,7 @@ def patch_page(request: Request, project_id: str, page_id: str, patch: PagePatch
             library=library,
             page_type=patch.page_type,
             note=patch.note,
+            ocr_language=patch.ocr_language,
         )
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc

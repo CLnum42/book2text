@@ -56,6 +56,8 @@ TRASH_MARKER_NAME = ".trash.json"
 # **去留由类型决定**：body 进识别与语料，其余四类不进；`page.include` 是派生列
 # （body → 1，其余 → 0），唯一来源是 page_type，界面与 API 都不再单独设置它。
 PAGE_TYPES = ("front", "toc", "body", "body_excluded", "back")
+#: 每页的识别语言（任务 64）：自动判定 / 中文 / 英文 / 中英都开
+OCR_LANGUAGES = ("zh-Hans", "en-US", "mixed")
 DEFAULT_PAGE_TYPE = "body"
 INCLUDED_PAGE_TYPE = "body"
 
@@ -222,6 +224,9 @@ class Page:
     与 `page_label`（PDF 自己的页标签）分开；导出当前不读这一列。"""
     printed_page_source: str | None = None
     """印刷页码的来源：``template``（按页码模板自动填充）/ ``manual``（人工）/ NULL。"""
+    ocr_language: str | None = None
+    """这一页的识别语言（任务 64）：``zh-Hans`` / ``en-US`` / ``mixed``。
+    NULL = 还没判过；识别时会按正文自动判并写回，界面可覆盖。"""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -244,6 +249,7 @@ class Page:
             "margin_box_method": self.margin_box_method,
             "printed_page": self.printed_page,
             "printed_page_source": self.printed_page_source,
+            "ocr_language": self.ocr_language,
         }
 
 
@@ -738,6 +744,7 @@ def _row_to_page(row) -> Page:
         margin_box_method=_column(row, "margin_box_method"),
         printed_page=_column(row, "printed_page"),
         printed_page_source=_column(row, "printed_page_source"),
+        ocr_language=_column(row, "ocr_language"),
     )
 
 
@@ -1198,8 +1205,9 @@ def update_page(
     library: Path | None = None,
     page_type: str | None = None,
     note: str | None = None,
+    ocr_language: str | None = None,
 ) -> Page:
-    """更新单页的类型 / 备注（说明书 6.2 的批量操作的单项形式）。
+    """更新单页的类型 / 备注 / 识别语言（说明书 6.2 的批量操作的单项形式）。
 
     **不再接受 include 参数**：`page.include` 是派生列，唯一来源是 `page_type`
     （body → 1，其余 → 0）。想改去留就改类型。
@@ -1216,6 +1224,15 @@ def update_page(
     if note is not None:
         assignments.append("note = ?")
         params.append(note)
+    if ocr_language is not None:
+        # "auto" = 交回自动判定（清空）；其余必须是我们认识的语言码
+        if ocr_language == "auto":
+            assignments.append("ocr_language = NULL")
+        elif ocr_language in OCR_LANGUAGES:
+            assignments.append("ocr_language = ?")
+            params.append(ocr_language)
+        else:
+            raise ProjectError(f"未知的识别语言：{ocr_language!r}")
 
     if not assignments:
         raise ProjectError("没有要更新的字段")

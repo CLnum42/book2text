@@ -49,6 +49,7 @@ from pathlib import Path
 from ..ocr.adapters import RapidOcrAdapter
 from ..ocr.adapters.apple_vision import AppleVisionAdapter
 from ..ocr import compare as compare_module
+from ..ocr import language as language_module
 from ..ocr import text_layer as text_layer_module
 from ..ocr.base import BBox, OcrEngine, OcrEngineError, OcrLine, OcrParams, OcrResult
 from ..pdf import render
@@ -79,7 +80,9 @@ RAW_SCHEMA_ID = "book2text.ocr-run.v1"
 # 机理是检测模型对输入尺寸敏感：同一行在 150/200/400 DPI 检出、在 250/300/500 漏掉。
 # **这是单本书的结论**，换书 / 换扫描质量需要复核（见 docs/ocr-evaluation.md 6.6）。
 DEFAULT_DPI = 200
-DEFAULT_LANGUAGE = "ch"
+#: 任务 64：默认"按页判断"——双语书里中文页与英文页各一半，
+#: 用一个项目级语言必然有一半是错的（英文页 F1 0.47 vs 0.90）。
+DEFAULT_LANGUAGE = "auto"
 MIN_DPI = 72
 MAX_DPI = 600
 
@@ -91,7 +94,7 @@ ENGINE_DUAL = "dual"
 DEFAULT_ENGINE = ENGINE_RAPIDOCR
 RECOGNITION_ENGINES = (ENGINE_RAPIDOCR, ENGINE_APPLE_VISION, ENGINE_DUAL)
 # 界面上给的三个 DPI 档（接口仍接受 72–600 的任意值，与旧客户端兼容）
-RECOGNITION_LANGUAGES = ("ch", "en", "mixed")
+RECOGNITION_LANGUAGES = ("auto", "ch", "en", "mixed")
 DUAL_STRATEGIES = ("mark", "candidates")
 DEFAULT_DUAL_STRATEGY = "mark"
 
@@ -586,12 +589,53 @@ def _append_aux_result(results: list[dict], counts: dict, row, aux_text: str) ->
     )
 
 
+def page_text_for_language(b: object, page_id: str) -> str:
+    """一页的正文（用于判语言）：块文本按顺序拼起来。"""
+    rows = b.execute(
+        "SELECT text FROM block WHERE page_id = ? AND deleted_at IS NULL ORDER BY order_index",
+        (page_id,),
+    ).fetchall()
+    return "\n".join((row["text"] or "") for row in rows)
+
+
+def _resolve_page_language(
+    directory: Path, page_no: int, requested: str | None
+) -> str:
+    """这一页该用的识别语言（任务 64）。
+
+    优先级：显式传进来的（测试 / 重跑指定）> `page.ocr_language` 覆盖值 >
+    按主引擎正文判定（结果**写回**页面，别再每次现算）> 项目设置。
+    """
+    requested = (requested or "").strip()
+    if requested and requested != "auto":
+        return requested
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        page = conn.execute(
+            "SELECT page_id, ocr_language FROM page WHERE page_no = ?", (page_no,)
+        ).fetchone()
+        if page is None:
+            raise ProjectError(f"没有第 {page_no} 页")
+        stored = page["ocr_language"] if "ocr_language" in page.keys() else None
+        if stored:
+            return str(stored)
+        detected = language_module.detect(page_text_for_language(conn, page["page_id"]))
+        if detected is None:
+            detected = DEFAULT_LANGUAGE if DEFAULT_LANGUAGE != "auto" else "mixed"
+        conn.execute(
+            "UPDATE page SET ocr_language = ? WHERE page_id = ?",
+            (detected, page["page_id"]),
+        )
+        conn.commit()
+        return detected
+
+
 def run_auxiliary(
     directory: Path,
     page_no: int,
     *,
     engine: OcrEngine | None = None,
     prefer_text_layer: bool = False,
+    language: str | None = None,
 ) -> dict:
     """用第二引擎逐行复核一页（说明书 8.5 / R1b）。
 
@@ -605,6 +649,8 @@ def run_auxiliary(
     source = directory / SOURCE_DIR_NAME / SOURCE_FILE_NAME
     run_id = new_ulid()
     now = _now()
+    # 任务 64：按页语言（页面已判定就用它，没有就现判并写回）
+    page_language = _resolve_page_language(directory, page_no, language)
 
     with db_module.open_database(directory, apply_migrations=False) as conn:
         page = conn.execute("SELECT * FROM page WHERE page_no = ?", (page_no,)).fetchone()
@@ -627,17 +673,34 @@ def run_auxiliary(
         ).fetchall()
         if not lines:
             raise ProjectError("这一页没有可复核的行（块里没有行记录）")
+        # 任务 64：已经人工裁决过、且文本没变的行**不覆盖**——
+        # 重跑第二引擎时那条 ack 必须原样保留（验收要求）。
+        kept_rows = []
+        for row in lines:
+            if not row["diff_ack"]:
+                kept_rows.append(row)
+                continue
+            block_lines = (row["block_text"] or "").split("\n")
+            current = (
+                block_lines[row["line_index"]]
+                if row["line_index"] < len(block_lines)
+                else None
+            )
+            if current is None or (row["diff_ack_text"] or "") != current:
+                kept_rows.append(row)
+        lines = kept_rows or lines
 
         # 用第一引擎那次的 DPI 渲染：行框是那一次量出来的，换 DPI 就对不上了
         primary_params = json.loads(active["params_json"] or "{}")
         dpi = int(primary_params.get("dpi") or DEFAULT_DPI)
 
-    # ---- 文字层优先（任务 58）--------------------------------------------
-    # 可搜索 PDF 的文字层就是某一版 OCR 的结果（这本书是用户自己用 Apple Vision
-    # 做的），拿它当第二意见，比再跑一遍同样的模型快几十分钟。
+    # ---- 文字层当第二引擎（任务 58，2026-10-28 起**默认关闭**）------------
+    # 保留代码只为复现历史实验与测试：可搜索 PDF 的文字层就是某一版 OCR 的结果。
+    # **不推荐使用**：实测英文页 F1 0.948（Vision en 0.979、Vision ch 0.47），
+    # 而且文字层的错误与 Vision 中文模式同源——拿它当"第二意见"会把假差异灌进队列
+    # （双语书 5469 条差异里一大半是它自己造成的）。
+    # 只有显式传 `prefer_text_layer=True`（测试 / 诊断）才走这条路。
     text_lines: list[text_layer_module.TextLayerLine] = []
-    # `prefer_text_layer`：生产任务（批量复核 / 单页复核）打开，有文字层就读文字层；
-    # 显式注入引擎的调用（测试 / 诊断要指定"这一遍用谁"）默认不打开。
     if prefer_text_layer and page["has_text_layer"]:
         try:
             raw_lines = render.page_text_lines(source, page_no - 1) or []
@@ -673,6 +736,7 @@ def run_auxiliary(
                 json.dumps(
                     {
                         "dpi": dpi,
+                        "language": page_language,
                         "scope": "block_lines",
                         "source": "text_layer" if text_lines else "engine",
                     },
@@ -717,7 +781,7 @@ def run_auxiliary(
                     crop = _crop_line(image, blocks_module.BBox(*bbox))
                     if crop is not None:  # 退化 / 过小的行框不送引擎（native 崩溃风险）
                         try:
-                            aux_text = _read_one_line(secondary, crop)
+                            aux_text = _read_one_line(secondary, crop, page_language)
                         finally:
                             crop.close()
                 _append_aux_result(results, counts, row, aux_text)
@@ -947,10 +1011,14 @@ def _crop_line(image, bbox: blocks_module.BBox):
     return crop
 
 
-def _read_one_line(engine: OcrEngine, crop) -> str:
-    """一张行图 → 一行文本。引擎可能返回多段（把一行拆开），取最长的那段。"""
+def _read_one_line(engine: OcrEngine, crop, language: str | None = None) -> str:
+    """一张行图 → 一行文本。引擎可能返回多段（把一行拆开），取最长的那段。
+
+    `language` 是**这一页**的语言（任务 64）。以前这里传 `OcrParams(dpi=0)`，
+    项目语言根本到不了第二引擎——Vision 一律中英都开，英文页撇号因此大量丢失。
+    """
     try:
-        result = engine.recognize(crop, OcrParams(dpi=0))
+        result = engine.recognize(crop, OcrParams(dpi=0, language=language or "auto"))
     except OcrEngineError:
         return ""
     texts = [line.text.strip() for line in result.lines if line.text.strip()]
@@ -1335,8 +1403,11 @@ def _run_auxiliary_item(
         conn.commit()
 
     try:
+        # 任务 64：**不再默认用文字层当第二引擎**。用户拍板"一律用第二引擎"，
+        # 实测文字层在英文页更差（F1 0.948 vs Vision en 0.979），而且它的错与
+        # Vision 中文模式同源——用它做"第二意见"会把假差异灌进审校队列。
         result = run_auxiliary(
-            directory, item.page_no, engine=engine, prefer_text_layer=True
+            directory, item.page_no, engine=engine, prefer_text_layer=False
         )
     except (ProjectError, EngineUnavailable) as exc:
         jobs_module.mark_item_failed(directory, item.item_id, str(exc))

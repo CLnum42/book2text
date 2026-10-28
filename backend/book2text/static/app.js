@@ -15736,6 +15736,10 @@ function setupLibrary() {
     el("page-more-menu").hidden = true;
     openWordBoxesDialog();
   });
+  el("aux-rerun").addEventListener("click", () => {
+    el("page-more-menu").hidden = true;
+    rerunAuxiliary();
+  });
   el("word-boxes-cancel").addEventListener("click", () => closeModal("word-boxes-mask"));
   el("word-boxes-cancel-x").addEventListener("click", () => closeModal("word-boxes-mask"));
   el("word-boxes-start").addEventListener("click", startWordBoxesBackfill);
@@ -17255,6 +17259,37 @@ async function acceptAllClean() {
     mergeHandled.add(page.page_id);
   }
   renderMergeListView();
+}
+
+// ---------------------------------------------------------------- 重跑第二引擎（任务 64）
+//
+// 用户拍板：以后一律用第二引擎（Vision），不用文字层。已有项目的 aux 是文字层，
+// 这里给一个"换掉"的动作：先备份（服务端做），只覆盖 aux_text / diff_status，
+// 已裁决的行不覆盖；分批可续（就是个普通的复核任务）。
+
+async function rerunAuxiliary() {
+  if (!currentProject) return;
+  const ok = window.confirm(
+    "用 Apple Vision 重跑第二引擎？\n\n" +
+      "· 会先自动备份项目数据库\n" +
+      "· 只覆盖第二引擎结果与差异状态；正文、块、版心、块类型不动\n" +
+      "· 已裁决（保留/采用）的行会跳过\n" +
+      "· 按页判定语言（中文页 zh-Hans / 英文页 en-US）\n\n" +
+      "490 页大约 20–25 分钟，可以暂停 / 继续。"
+  );
+  if (!ok) return;
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/aux/rerun`, {
+      method: "POST",
+    });
+    const warning = el("library-warning");
+    warning.textContent =
+      `已建复核任务（Vision · 按页语言）。备份：${data.backup_path}`;
+    warning.hidden = false;
+    await loadTasks();
+  } catch (error) {
+    showError(el("pages-error"), error);
+  }
 }
 
 // ---------------------------------------------------------------- 标点差异 · 按模式批量（任务 61）

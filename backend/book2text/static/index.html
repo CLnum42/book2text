@@ -147,6 +147,10 @@
               <div class="page-more__group">版面</div>
               <button type="button" id="layout-detect-open" class="page-more__item">检测版面…</button>
               <button type="button" id="word-boxes-open" class="page-more__item">字框回填…</button>
+              <button type="button" id="aux-rerun" class="page-more__item"
+                      title="用 Apple Vision 按页语言重跑第二引擎（自动备份；已裁决的行不覆盖）">
+                重跑第二引擎（Vision）…
+              </button>
               <div class="page-more__group">诊断</div>
               <button type="button" id="stats-open" class="page-more__item">质量统计</button>
               <div class="page-more__group">协作</div>
@@ -353,11 +357,15 @@
 
                   <div class="flabel">语言</div>
                   <select id="rec-language" class="select select--block">
-                    <option value="ch">中文（默认）</option>
+                    <option value="auto">自动（按页判断，默认）</option>
+                    <option value="ch">中文</option>
                     <option value="en">英文</option>
                     <option value="mixed">中英混合</option>
                   </select>
-                  <p class="hint" id="rec-language-note">写进识别任务参数；RapidOCR 三档当前结果相同。</p>
+                  <p class="hint" id="rec-language-note">
+                    第二引擎（Vision）的语言<b>按页判定</b>：看主引擎识别出的正文，汉字占多 → 中文，
+                    拉丁字母占多 → 英文（实测英文页 0.47 → 0.90）。判定结果落到页上，可单页覆盖。
+                  </p>
 
                   <div class="flabel" id="rec-strategy-label">双引擎策略</div>
                   <select id="rec-dual-strategy" class="select select--block">
