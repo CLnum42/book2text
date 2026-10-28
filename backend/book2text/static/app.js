@@ -19926,10 +19926,10 @@ function paintReadingDiffBoxes(pageNo) {
       const state = key === readingPanelKey ? " is-current" : mark.ack ? " is-acked" : "";
       const words = line.word_boxes ? JSON.parse(line.word_boxes) : [];
       const { ranges, kind } = readingDiffUnits(line.text || "", mark.candidate || "", words);
-      if (ranges === null) {
-        if (line.bbox) addBox(line.bbox, "reading-diff-box--line" + state);
-        continue;
-      }
+      // **行层常驻**（用户要求：一眼看到"这一行有差异"），字层画在它上面看"差在这几个字"。
+      // 原来只有"拿不到字框"时才退化出一行，于是绝大多数行只有零散字块、没有行框。
+      if (line.bbox) addBox(line.bbox, "reading-diff-box--line" + state);
+      if (ranges === null) continue;
       for (const wordIndex of ranges) {
         const bbox = words[wordIndex] && words[wordIndex].bbox;
         if (bbox) addBox(bbox, (kind === "punct" ? "reading-diff-box--punct" : "") + state);
@@ -20155,11 +20155,16 @@ function verifyReadingPageSync(reason = "", { fix = true } = {}) {
         break;
       }
     }
-    const ok = tilePage === readingPageNo;
+    // 三方一致：当前差异项所在页 == 顶部页码 == 左侧可见页。
+    // 只看前两个数会漏掉真正错的情况（面板第 13 页、顶部与左侧都是第 28 页 → ok:true）。
+    const panelMark = readingPanelKey ? readingMarks.get(readingPanelKey) : null;
+    const panelPage = panelMark && panelMark.page_no ? Number(panelMark.page_no) : null;
+    const ok = tilePage === readingPageNo && (!panelPage || panelPage === readingPageNo);
     const record = {
       reason,
       label: readingPageNo,
       tilePage,
+      panelPage,
       ok,
       scrollTop: Math.round(scroller.scrollTop),
       at: Date.now(),
@@ -20169,10 +20174,14 @@ function verifyReadingPageSync(reason = "", { fix = true } = {}) {
     readingPageSyncLog.length = Math.min(readingPageSyncLog.length, 5);
     window.__b2tPageSync = record;
     window.__b2tPageSyncLog = readingPageSyncLog;
-    if (fix && !ok && tilePage !== null && !readingPageSyncFixing) {
-      // **纠正，不只是记录**：按当前页码重新定位（用户的心智是"我在第几页"，不是"我滚了多远"）
+    if (fix && !ok && !readingPageSyncFixing) {
+      // **纠正，不只是记录**。以"当前差异项所在页"为准（那才是用户正在看的东西）
       readingPageSyncFixing = true;
-      scrollPdfColumnToPage(readingPageNo);
+      if (panelPage && panelPage !== readingPageNo) {
+        updateReadingPage(panelPage, { scrollLeft: true, syncStream: false });
+      } else {
+        scrollPdfColumnToPage(readingPageNo);
+      }
       // 纠正本身会再触发一次滚动：150 ms 后补一次核对（只核对、不再纠正，避免来回抖）
       setTimeout(() => {
         readingPageSyncFixing = false;
@@ -20424,16 +20433,21 @@ function readingNextPageWithUnacked(afterPage) {
 }
 
 function gotoReadingEntry(entry) {
+  if (!entry || !entry.page_no) return;
+  // **先驱动"我在第几页"**：顶部页码 + 左侧 PDF + 左树高亮。
+  // 原来这里先找行、找不到就 `return`，于是页码和左侧 PDF 根本没动——
+  // 用户看到的是"面板第 13 页、顶部第 28 页、左边第 28 页"（现场就是这么来的）。
+  updateReadingPage(entry.page_no, { syncStream: false, scrollLeft: false });
+  suppressReadingFollow();
+  scrollPdfColumnToPage(entry.page_no);
   const segments = readingVisibleSegments();
   const index = segments.findIndex((segment) => segment.seq === entry.seq);
-  if (index < 0) return;
-  jumpReadingTo(index);
+  if (index >= 0) jumpReadingTo(index);
   const key = readingKey(entry.block_id, entry.line_index);
   const line = readingLineNode(key);
-  if (!line) return;
-  updateReadingPage(entry.page_no, { syncStream: false, scrollLeft: false });
-  centerReadingLinePair(entry);
+  if (line) centerReadingLinePair(entry);
   if (!readingDrafts.has(key)) openReadingPanel(entry);
+  verifyReadingPageSync("gotoEntry");
 }
 
 async function submitReadingDrafts() {

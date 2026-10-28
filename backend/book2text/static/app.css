@@ -2615,8 +2615,17 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   background: rgba(220, 38, 38, .10); border: 1px solid rgba(220, 38, 38, .45);
   border-radius: 2px;
 }
+/* 行层常驻：浅黄=未激活、深黄=当前项、淡绿=已审（字层叠在它上面） */
 .reading-diff-box--line {
-  background: rgba(220, 38, 38, .06); border-style: dashed;
+  background: rgba(234, 179, 8, .13); border: 1px solid rgba(180, 83, 9, .30);
+  border-style: solid; border-radius: 3px;
+}
+.reading-diff-box--line.is-current {
+  background: rgba(234, 179, 8, .26); border: 2px solid #b45309; border-style: solid;
+  box-shadow: none;
+}
+.reading-diff-box--line.is-acked {
+  background: rgba(22, 163, 74, .12); border: 1px solid rgba(22, 163, 74, .45);
 }
 .reading-diff-box--punct {
   background: rgba(220, 38, 38, .07); border-style: dotted;
