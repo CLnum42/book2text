@@ -120,6 +120,62 @@ async function dismissMasks(page) {
  * 页图清晰度：比例 = img.naturalWidth ÷ (img CSS 宽 × dpr)，断言 ≥ 1.0。
  * 小于 1 = 图被放大显示，一定糊（用户为这个提过四次）。
  */
+async function waitVisiblePageImages(page, container, tileSelector, where, scroll) {
+  // 占位图（src=thumb）不算载入完成：必须 is-ready 且不再是 placeholder。
+  await waitFor(
+    page,
+    (input) => {
+      const scroller = document.querySelector(input.container);
+      if (!scroller) return false;
+      const cRect = scroller.getBoundingClientRect();
+      const tiles = [...document.querySelectorAll(input.tile)].filter((tile) => {
+        const rect = tile.getBoundingClientRect();
+        return rect.bottom > cRect.top && rect.top < cRect.bottom;
+      });
+      if (!tiles.length) return false;
+      return tiles.every((tile) => {
+        const image = tile.querySelector("img");
+        return Boolean(
+          image &&
+            image.complete &&
+            image.naturalWidth > 0 &&
+            image.classList.contains("is-ready") &&
+            !image.dataset.placeholder
+        );
+      });
+    },
+    `可见页图载入完成（${where}/${scroll}）`,
+    120000,
+    { container, tile: tileSelector }
+  );
+}
+
+async function scrollPageColumn(page, container, tileSelector, scroll) {
+  return await page.evaluate(
+    (input) => {
+      const node = document.querySelector(input.container);
+      if (!node) return -1;
+      if (input.scroll === "top") {
+        node.scrollTop = 0;
+        return node.scrollTop;
+      }
+      const tiles = [...node.querySelectorAll(input.tile)];
+      const target = tiles[Math.floor(tiles.length / 2)];
+      if (target) {
+        const top =
+          target.getBoundingClientRect().top -
+          node.getBoundingClientRect().top +
+          node.scrollTop -
+          node.clientHeight / 2 +
+          target.clientHeight / 2;
+        node.scrollTop = Math.max(0, top);
+      }
+      return node.scrollTop;
+    },
+    { container, tile: tileSelector, scroll }
+  );
+}
+
 async function measureImages(page, args) {
   const where = args.where || "review";
   const scroll = args.scroll || "top";
@@ -167,67 +223,32 @@ async function measureImages(page, args) {
   }
 
   if (scroll === "middle") {
-    // 滚到"整列中间"那一页，而不是 scrollTop = 一半高度：
-    // 页图还没载入时 scrollHeight 可能不足，直接设一半会落回顶部（实测发生过）。
     // 打开阅读流是异步的（662 页要拼整本预览）；它完成时会把页列滚回"当前页"。
-    // 所以这里反复"滚到中间 → 确认位置站住了"，不是 sleep 一次就信。
-    const stuck = await page.evaluate(async (input) => {
-      const node = document.querySelector(input.container);
-      if (!node) return -1;
-      for (let attempt = 0; attempt < 12; attempt += 1) {
-        const tiles = [...node.querySelectorAll(input.tile)];
-        const target = tiles[Math.floor(tiles.length / 2)];
-        if (target) {
-          const top =
-            target.getBoundingClientRect().top -
-            node.getBoundingClientRect().top +
-            node.scrollTop -
-            node.clientHeight / 2 +
-            target.clientHeight / 2;
-          node.scrollTop = Math.max(0, top);
-        }
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        if (node.scrollTop > 100) return node.scrollTop;
-      }
-      return node.scrollTop;
-    }, { container, tile: tileSelector });
-    if (!(stuck > 100)) {
-      throw new Error(`页列滚不到中间（scrollTop=${stuck}）：可能被"跟随/重新打开"拽回去了`);
+    // 所以"滚到中间 → 等图 → 再确认位置还在中间"，站不住就重来，最多 5 次。
+    let settled = false;
+    let lastTop = -1;
+    for (let attempt = 0; attempt < 5 && !settled; attempt += 1) {
+      await scrollPageColumn(page, container, tileSelector, "middle");
+      await page.waitForTimeout(350);
+      lastTop = await page.evaluate(
+        (sel) => (document.querySelector(sel) || {}).scrollTop || 0,
+        container
+      );
+      if (!(lastTop > 100)) continue;
+      await waitVisiblePageImages(page, container, tileSelector, where, scroll);
+      lastTop = await page.evaluate(
+        (sel) => (document.querySelector(sel) || {}).scrollTop || 0,
+        container
+      );
+      settled = lastTop > 100;
     }
-  } else if (scroll === "top") {
-    await page.evaluate((sel) => {
-      const node = document.querySelector(sel);
-      if (node) node.scrollTop = 0;
-    }, container);
+    if (!settled) {
+      throw new Error(`页列滚不到中间（scrollTop=${lastTop}）：可能被"跟随/重新打开"拽回去了`);
+    }
+  } else {
+    await scrollPageColumn(page, container, tileSelector, "top");
+    await waitVisiblePageImages(page, container, tileSelector, where, scroll);
   }
-
-  // 等"当前可见的页块"都载入完成（占位 thumb 不算完成：必须 is-ready）。
-  await waitFor(
-    page,
-    (input) => {
-      const scroller = document.querySelector(input.container);
-      if (!scroller) return false;
-      const cRect = scroller.getBoundingClientRect();
-      const tiles = [...document.querySelectorAll(input.tile)].filter((tile) => {
-        const rect = tile.getBoundingClientRect();
-        return rect.bottom > cRect.top && rect.top < cRect.bottom;
-      });
-      if (!tiles.length) return false;
-      return tiles.every((tile) => {
-        const image = tile.querySelector("img");
-        return Boolean(
-          image &&
-            image.complete &&
-            image.naturalWidth > 0 &&
-            image.classList.contains("is-ready") &&
-            !image.dataset.placeholder
-        );
-      });
-    },
-    `可见页图载入完成（${where}/${scroll}）`,
-    120000,
-    { container, tile: tileSelector }
-  );
 
   if (args.forcePlaceholderClass) {
     // 负向自检用：给第一张可见页图加回占位类（= 高清图 + CSS blur）。

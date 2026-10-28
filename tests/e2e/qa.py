@@ -84,7 +84,8 @@ def _image_table(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _image_check(report: Report, step: str, result: dict[str, Any], label: str) -> None:
+def _image_check(report: Report, step: str, result: dict[str, Any], label: str,
+                 min_page: int | None = None) -> None:
     """页图底线：分辨率 ≥ 1.0、filter === none、不带 is-placeholder。
 
     分辨率够但被模糊是真实发生过的一类 bug：高清图到了、占位类没摘，
@@ -93,6 +94,12 @@ def _image_check(report: Report, step: str, result: dict[str, Any], label: str) 
     rows = result.get("rows", [])
     if not rows:
         report.fail(step, f"页图底线（{label}）", "没有量到任何可见页块")
+        return
+    if min_page is not None and max(row["page"] for row in rows) < min_page:
+        report.fail(step, f"页图底线（{label}）",
+                    f"测量位置不可信：本该在书的中段，实际停在第 "
+                    f"{min(row['page'] for row in rows)}–{max(row['page'] for row in rows)} 页\n"
+                    + _image_table(rows))
         return
     bad = [row for row in rows if _image_issues(row)]
     worst = min(rows, key=lambda row: row["ratio"])
@@ -216,7 +223,8 @@ def cmd_images(args: argparse.Namespace) -> int:
     for where, scroll, label in screens:
         try:
             result = _browser.run(state, "images", {"where": where, "scroll": scroll})
-            _image_check(report, label, result, label)
+            _image_check(report, label, result, label,
+                         min_page=50 if scroll == "middle" else None)
         except Exception as error:  # noqa: BLE001
             report.blocked(label, str(error))
 
@@ -424,7 +432,7 @@ def cmd_smoke(args: argparse.Namespace) -> int:
                     try:
                         _image_check(report, "5 正文审校",
                                      _browser.run(state, "images", {"where": "review", "scroll": scroll}),
-                                     label)
+                                     label, min_page=50 if scroll == "middle" else None)
                     except Exception as error:  # noqa: BLE001
                         report.blocked(f"5 正文审校 · 页图清晰度（{label}）", str(error))
             except Exception as error:  # noqa: BLE001
