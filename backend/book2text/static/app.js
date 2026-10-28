@@ -18138,49 +18138,6 @@ function checkReadingSegmentText(node, segment) {
   window.__b2tTextCheckFails = (window.__b2tTextCheckFails || 0) + 1;
 }
 
-function buildReadingSegment(segment) {
-  const node = document.createElement("div");
-  node.className = "reading-seg";
-  node.dataset.seq = String(segment.seq);
-  const pages = (segment.pages || []).map((page) => page.page_no);
-  if (pages.length) node.dataset.pages = pages.join(" ");
-  if (readingProof && pages.length) {
-    const range = document.createElement("span");
-    range.className = "reading-proof__pages";
-    range.textContent =
-      pages.length > 1 ? `第 ${pages[0]}–${pages[pages.length - 1]} 页` : `第 ${pages[0]} 页`;
-    node.append(range);
-  }
-  const spans = segment.line_spans || [];
-  if (!spans.length) {
-    node.append(document.createTextNode(segment.text));
-    return node;
-  }
-  // 任务 82：**连续切片**——每一行拿 `[cursor, 下一行起点)`，cursor 一路向后不跳不叠。
-  // 这样把整段切成 N 段连续的切片，拼起来逐字等于 `segment.text`：
-  // 行间分隔符（join_lines 补的空格）自然落在前一行末尾，既不会丢、也不会重复。
-  // 之前"每行只切 [start,end] + 额外补 gap 节点"的做法，在 line_spans 有重叠/重复时
-  // 会让同一个字符既在 gap 里、又在相邻行切片里——实测出现 `laboreefficient`。
-  let cursor = 0;
-  for (let i = 0; i < spans.length; i += 1) {
-    const start = Math.max(cursor, Number(spans[i].start) || 0);
-    const nextStart =
-      i + 1 < spans.length
-        ? Math.max(start, Number(spans[i + 1].start) || start)
-        : segment.text.length;
-    const piece = segment.text.slice(start, nextStart);
-    const line = buildReadingLine(segment, span_at(spans, i), piece);
-    // 任务 66：块边界要**看得见**。跨页段在视觉上是一段连贯的话，
-    // 实际是两个块；不标出来，用户会以为能跨过去改（这本书有 312 个跨页段）。
-    if (i + 1 < spans.length && spans[i + 1].block_id !== spans[i].block_id) {
-      line.classList.add("is-block-end");
-      line.title = "此处是块 / 页边界，下一段属于另一个块（编辑不会跨过去）";
-    }
-    node.append(line);
-  }
-  checkReadingSegmentText(node, segment);
-  return node;
-}
 
 function readingLineText(segment, span) {
   return segment.text.slice(span.start, span.end);
@@ -18418,13 +18375,6 @@ function renderReadingProgress() {
   el("reading-submit").classList.toggle("is-ready", drafts > 0);
 }
 
-/** 把 `scroller` 滚到"让 `target` 的中点落在视口垂直中央"，贴边时夹住不抖。 */
-function scrollScrollerToCenter(scroller, targetTop, targetHeight) {
-  if (!scroller) return;
-  const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-  const wanted = targetTop + targetHeight / 2 - scroller.clientHeight / 2;
-  scroller.scrollTop = Math.max(0, Math.min(wanted, max));
-}
 
 /**
  * 任务 82：选中一条差异 → **左侧 PDF 的这一行、右侧正文的这一行都落在视口垂直中央**。
@@ -18434,11 +18384,6 @@ function scrollScrollerToCenter(scroller, targetTop, targetHeight) {
  * 扫视时不用重新找。贴边（第一页 / 最后一页）夹住即可，不做二次补偿（会抖）。
  */
 let readingSuppressFollowUntil = 0;
-
-/** 我们自己滚左栏（居中）时，别让"左→右跟随"把右栏拽回页首。 */
-function suppressReadingFollow(ms = 700) {
-  readingSuppressFollowUntil = performance.now() + ms;
-}
 
 
 function readingLineNode(key) {
@@ -18773,31 +18718,6 @@ function paintReadingDiffBoxes(pageNo) {
 }
 
 
-/** 把**左侧 PDF 页列**滚到某一页（任务 72 前它也叫 scrollReadingToPage，
- *  同名把"右侧正文跳到这一页"那份覆盖掉了 —— 点左树不跳页就是它造成的）。 */
-function scrollPdfColumnToPage(pageNo) {
-  const scroller = el("reading-pdf-scroll");
-  const tile = readingTiles.get(pageNo);
-  if (!scroller || !tile) return;
-  const top = tile.offsetTop - scroller.clientHeight * 0.06;
-  const target = Math.max(0, top);
-  // 这次滚动是我们发的：把用户事件计数记下来，左栏回调据此判定"不是用户在滚"
-  readingProgramScrollSeq = readingUserScrollSeq;
-  if (Math.abs(scroller.scrollTop - target) > 8) scroller.scrollTop = target;
-}
-
-
-/** 左→右 / 右→左的互斥标记：谁先动谁锁 350 ms。 */
-function markReadingDriver(driver) {
-  readingSyncDriver = driver;
-  readingSyncUntil = performance.now() + 350;
-}
-
-function readingDriverActive(driver) {
-  return readingSyncDriver === driver && performance.now() < readingSyncUntil;
-}
-
-
 let readingPageSyncTimer = 0;
 let readingPageSyncFixing = false;
 
@@ -18812,45 +18732,7 @@ let readingPageSyncFixing = false;
 const readingPageSyncLog = [];
 
 
-function hideReadingPdfBox() {
-  const box = el("reading-pdf-box");
-  if (box) box.hidden = true;
-  readingPendingBox = null;
-}
-
-function drawReadingPdfBox(bbox, pageNo) {
-  const box = el("reading-pdf-box");
-  const tile = readingTiles.get(pageNo);
-  if (!box || !tile || !Array.isArray(bbox) || bbox.length !== 4) return;
-  const [x0, y0, x1, y1] = bbox;
-  const width = tile.clientWidth || tile.getBoundingClientRect().width;
-  const height = tile.clientHeight || tile.getBoundingClientRect().height;
-  box.style.left = `${Math.round(x0 * width)}px`;
-  box.style.top = `${Math.round(tile.offsetTop + y0 * height)}px`;
-  box.style.width = `${Math.round((x1 - x0) * width)}px`;
-  box.style.height = `${Math.round((y1 - y0) * height)}px`;
-  box.hidden = false;
-}
-
 const readingNextLog = [];
-
-/** 记一条「下一处未审」的现场（最近 20 条），下次偶发失败时一条日志定位。 */
-function logReadingNext(entry, extra = {}) {
-  readingNextLog.unshift({
-    at: Date.now(),
-    entryKey: entry ? readingKey(entry.block_id, entry.line_index) : null,
-    entryPage: entry ? entry.page_no : null,
-    pageNo: readingPageNo,
-    panelKey: readingPanelKey,
-    panelOpened: Boolean(document.querySelector("#reading-panel-host .reading-panel")),
-    lineFound: entry ? Boolean(readingLineNode(readingKey(entry.block_id, entry.line_index))) : false,
-    window: readingMarksWindow,
-    blocks: entry ? (readingPageBlocks.get(entry.page_no) || []).length : null,
-    ...extra,
-  });
-  readingNextLog.length = Math.min(readingNextLog.length, 20);
-  window.__b2tNextLog = readingNextLog;
-}
 
 
 // ---------------------------------------------------------------- 阅读审校三栏宽度（P1-4）
@@ -18913,12 +18795,8 @@ function boot() {
     setReadingJumpSettleTicks: (value) => { readingJumpSettleTicks = value; },
     getReadingPanelKey: () => readingPanelKey,
     setReadingPendingBox: (value) => { readingPendingBox = value; },
-    drawReadingPdfBox: (bbox, pageNo) => drawReadingPdfBox(bbox, pageNo),
     readingVisibleSegments: () => readingVisibleSegments(),
-    hideReadingPdfBox: () => hideReadingPdfBox(),
-    readingDriverActive: (driver) => readingDriverActive(driver),
     readingLineNode: (key) => readingLineNode(key),
-    markReadingDriver: (driver) => markReadingDriver(driver),
     apiJson: (path, options) => apiJson(path, options),
     readingKey: (blockId, lineIndex) => readingKey(blockId, lineIndex),
     loadFinishSummary: (options) => loadFinishSummary(options),
@@ -18952,7 +18830,6 @@ function boot() {
     setReadingTops: (value) => { readingTops = value; },
     getReadingCursorEntry: () => readingCursorEntry,
     setReadingCursorEntry: (value) => { readingCursorEntry = value; },
-    logReadingNext: (entry, extra) => logReadingNext(entry, extra),
     showNoticeBar: (text) => showNoticeBar(text),
     readingInlineStorageKey: () => readingInlineStorageKey(),
     readingDraftStorageKey: () => readingDraftStorageKey(),
@@ -19005,7 +18882,6 @@ function boot() {
     setReadingStackProject: (value) => { readingStackProject = value; },
     setReadingVisibleObserver: (value) => { readingVisibleObserver = value; },
     // 任务 94 L5：审校环里仍留在 app.js 的叶子函数（模块经注入调用）
-    buildReadingSegment: (...args) => buildReadingSegment(...args),
     clearPendingPanel: (...args) => clearPendingPanel(...args),
     draftReading: (...args) => draftReading(...args),
     exportOptions: (...args) => exportOptions(...args),
@@ -19015,11 +18891,8 @@ function boot() {
     paintReadingTile: (...args) => paintReadingTile(...args),
     punctReviewSet: (...args) => punctReviewSet(...args),
     refreshReadingCurrentHighlight: (...args) => refreshReadingCurrentHighlight(...args),
-    scrollPdfColumnToPage: (...args) => scrollPdfColumnToPage(...args),
-    scrollScrollerToCenter: (...args) => scrollScrollerToCenter(...args),
     setPanel: (...args) => setPanel(...args),
     settlePanel: (...args) => settlePanel(...args),
-    suppressReadingFollow: (...args) => suppressReadingFollow(...args),
     // 任务 94 L5：模块要读的常量
     INDEX_IMAGE_WINDOW: INDEX_IMAGE_WINDOW,
     READING_CHUNK: READING_CHUNK,
@@ -19039,6 +18912,20 @@ function boot() {
     readingEntryLineText: (...args) => readingEntryLineText(...args),
     readingEntryVisible: (...args) => readingEntryVisible(...args),
     readingMarkOrder: (...args) => readingMarkOrder(...args),
+    // L6 刀3：状态 getter
+    getReadingNextLog: () => readingNextLog,
+    getReadingProof: () => readingProof,
+    getReadingSyncDriver: () => readingSyncDriver,
+    getReadingSyncUntil: () => readingSyncUntil,
+    // L6 刀3：状态 setter（有写点才给）
+    setReadingProgramScrollSeq: (value) => { readingProgramScrollSeq = value; return value; },
+    setReadingSuppressFollowUntil: (value) => { readingSuppressFollowUntil = value; return value; },
+    setReadingSyncDriver: (value) => { readingSyncDriver = value; return value; },
+    setReadingSyncUntil: (value) => { readingSyncUntil = value; return value; },
+    // L6 刀3：仍留在 app.js 的叶子函数
+    buildReadingLine: (...args) => buildReadingLine(...args),
+    checkReadingSegmentText: (...args) => checkReadingSegmentText(...args),
+    span_at: (...args) => span_at(...args),
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {

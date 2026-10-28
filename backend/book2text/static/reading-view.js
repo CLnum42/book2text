@@ -356,7 +356,7 @@ function startInlineEdit(line) {
   // 有差异标记就用标记的行框；没有标记（普通正文行）就去块缓存里找这一行的框。
   const lineBox = (mark && mark.bbox) || readingLineBox(line.dataset.block, Number(line.dataset.line));
   if (lineBox) {
-    injected.drawReadingPdfBox?.(lineBox, pageNo);
+    drawReadingPdfBox(lineBox, pageNo);
     drawEditingLineBox(lineBox, pageNo);
     markEditingLineBox(line.dataset.block, Number(line.dataset.line));
   }
@@ -432,7 +432,7 @@ function setReadingFollow(on) {
     chip.classList.toggle("is-on", injected.getReadingFollow());
     chip.setAttribute("aria-pressed", injected.getReadingFollow() ? "true" : "false");
   }
-  if (!injected.getReadingFollow()) injected.hideReadingPdfBox?.();
+  if (!injected.getReadingFollow()) hideReadingPdfBox();
 }
 
 function onReadingScroll() {
@@ -442,7 +442,7 @@ function onReadingScroll() {
     if (!injected.getReadingFollow() || !injected.isReadingActive()) return;
     // 任务 72：左栏正在驱动（350 ms 锁内）就整个跳过——
     // 否则左栏刚把正文跳到第 60 页，这里按"正文顶部那一行"又把页码改回第 1 页。
-    if (injected.readingDriverActive?.("left")) return;
+    if (readingDriverActive("left")) return;
     const stream = el("reading-stream");
     if (!stream) return;
     const rect = stream.getBoundingClientRect();
@@ -510,17 +510,17 @@ function onReadingScroll() {
       }
     }
     if (mark && mark.page_no && mark.page_no !== injected.getPageNo()) {
-      if (!injected.readingDriverActive?.("left")) injected.markReadingDriver?.("right");
+      if (!readingDriverActive("left")) markReadingDriver("right");
       if (allowPageWrite) updateReadingPage(mark.page_no, { scrollLeft: true, syncStream: false });
     } else if (!mark && pageNo && pageNo !== injected.getPageNo()) {
-      if (!injected.readingDriverActive?.("left")) injected.markReadingDriver?.("right");
+      if (!readingDriverActive("left")) markReadingDriver("right");
       if (allowPageWrite) updateReadingPage(pageNo, { scrollLeft: true, syncStream: false });
     }
     if (mark && mark.bbox) {
       if (mark.page_no !== injected.getPageNo()) {
         injected.setReadingPendingBox(mark.bbox);
       } else {
-        injected.drawReadingPdfBox?.(mark.bbox, mark.page_no);
+        drawReadingPdfBox(mark.bbox, mark.page_no);
       }
     }
   }));
@@ -925,7 +925,7 @@ async function gotoNextUnreviewed() {
       body: JSON.stringify(readingOptions()),
     });
   } catch (error) {
-    injected.logReadingNext?.(null, { branch: "error", reason: String(error.message || error) });
+    logReadingNext(null, { branch: "error", reason: String(error.message || error) });
     injected.showNoticeBar?.(`找下一处失败：${error.message || "未知错误"}`);
     return;
   }
@@ -935,7 +935,7 @@ async function gotoNextUnreviewed() {
   );
   const outside = payload.outside_stream || { count: 0, sample: [] };
   if (!usable.length) {
-    injected.logReadingNext?.(null, { branch: "none", total: payload.total, outside: outside.count });
+    logReadingNext(null, { branch: "none", total: payload.total, outside: outside.count });
     // 队列里还有差异、只是不在正文流里：必须把数说出来，不许说"全部处理完"
     if (Number(outside.count) > 0) {
       injected.showNoticeBar?.(
@@ -967,13 +967,13 @@ async function gotoNextUnreviewed() {
   );
   if (!entry) {
     // 服务端说这行在流里、前端却查不到条目：只可能是 marks 窗口还没到，不静默、不谎报完成
-    injected.logReadingNext?.(target, { branch: "missing", reason: "entry-not-in-window" });
+    logReadingNext(target, { branch: "missing", reason: "entry-not-in-window" });
     injected.showNoticeBar?.("这一处差异的标记还没加载完，稍等一下再按一次「下一处未审」");
     return;
   }
   injected.setReadingCursorEntry(entry);
   gotoReadingEntry(entry);
-  injected.logReadingNext?.(entry, { branch: "next-lines" });
+  logReadingNext(entry, { branch: "next-lines" });
 }
   // ---------------------------------------------------------------- 审校环（任务 94 · L5）
   // 从 app.js 原样搬入；依赖由 init() 注入。状态仍归 app.js：
@@ -1155,7 +1155,7 @@ function refreshReadingMarksPaint() {
   if (!stream || !injected.getReadingData()) return;
   // 跳页途中（左栏在驱动）不重画：重画会把滚动位置恢复成"作废前的位置"，
   // 刚跳到的第 80 页会被弹回第 1 页（任务 72 实测）。
-  if (injected.readingDriverActive("left")) {
+  if (readingDriverActive("left")) {
     injected.setReadingRepaintPending( true);
     return;
   }
@@ -1248,7 +1248,7 @@ function renderReading({ reset = false, startAt = null } = {}) {
   const firstNew = injected.getReadingRendered();
   const fragment = document.createDocumentFragment();
   for (let index = injected.getReadingRendered(); index < end; index += 1) {
-    const node = injected.buildReadingSegment(segments[index]);
+    const node = buildReadingSegment(segments[index]);
     injected.getReadingSegmentNodes()[index] = node;
     fragment.append(node);
   }
@@ -1342,7 +1342,7 @@ function centerReadingLinePair(entry) {
   if (stream && line) {
     const lineRect = line.getBoundingClientRect();
     const streamRect = stream.getBoundingClientRect();
-    injected.scrollScrollerToCenter(
+    scrollScrollerToCenter(
       stream,
       lineRect.top - streamRect.top + stream.scrollTop,
       lineRect.height
@@ -1352,14 +1352,14 @@ function centerReadingLinePair(entry) {
   const tile = entry.page_no ? injected.getReadingTiles().get(entry.page_no) : null;
   if (scroller && tile && entry.bbox) {
     // 先挂抑制：下面这行会触发 scroll 事件，不抑制的话"左→右跟随"会把右栏拉回这一页页首
-    injected.suppressReadingFollow();
+    suppressReadingFollow();
     verifyReadingPageSync("centerLine");
     const tileRect = tile.getBoundingClientRect();
     const scrollerRect = scroller.getBoundingClientRect();
     const tileTop = tileRect.top - scrollerRect.top + scroller.scrollTop;
     const lineCenter = ((entry.bbox[1] + entry.bbox[3]) / 2) * tileRect.height;
     const lineHeight = Math.max(2, (entry.bbox[3] - entry.bbox[1]) * tileRect.height);
-    injected.scrollScrollerToCenter(scroller, tileTop + lineCenter - lineHeight / 2, lineHeight);
+    scrollScrollerToCenter(scroller, tileTop + lineCenter - lineHeight / 2, lineHeight);
   }
 }
 
@@ -1427,7 +1427,7 @@ function openReadingPanel(entry) {
     if (entry.page_no !== injected.getPageNo()) {
       injected.setReadingPendingBox( entry.bbox);
     } else {
-      injected.drawReadingPdfBox(entry.bbox, entry.page_no);
+      drawReadingPdfBox(entry.bbox, entry.page_no);
     }
   }
   // 行节点可能在这一帧之后才挂上（补窗口 / 重铺）：下一帧按同一个 key 再补一次高亮。
@@ -1729,7 +1729,7 @@ function refreshReadingImageProfiles(force = false) {
   for (const pageNo of [...injected.getReadingLoadedImages()]) warmSwapReadingImage(pageNo, wanted);
   // 页列宽度一变，tile 的宽高都跟着变：同一个 `scrollTop` 会落到别的页上。
   // 按"当前页码"重新锚定一次（用户的心智是"我在第几页"），再核对。
-  if (injected.getPageNo()) injected.scrollPdfColumnToPage(injected.getPageNo());
+  if (injected.getPageNo()) scrollPdfColumnToPage(injected.getPageNo());
   verifyReadingPageSync("resize");
 }
 
@@ -1767,7 +1767,7 @@ function retryReadingPendingPanel() {
   if (!injected.readingLineNode(key)) return;      // 行还没挂上，等下一次数据到达
   injected.clearPendingPanel();
   openReadingPanel(entry);
-  injected.logReadingNext(entry, { branch: "pending-open", reason: "data-arrived" });
+  logReadingNext(entry, { branch: "pending-open", reason: "data-arrived" });
 }
 
 function ensureReadingBlocks(pageNo) {
@@ -1877,9 +1877,9 @@ function updateReadingPageFromLeftScroll() {
   if (
     injected.getReadingFollow() &&
     performance.now() > injected.getReadingSuppressFollowUntil() &&
-    !injected.readingDriverActive("left")
+    !readingDriverActive("left")
   ) {
-    injected.markReadingDriver("left");
+    markReadingDriver("left");
     scrollStreamToPage(best.pageNo);
   }
 }
@@ -1960,7 +1960,7 @@ function verifyReadingPageSync(reason = "", { fix = true } = {}) {
       if (panelPage && panelPage !== injected.getPageNo()) {
         queueReadingIntent("goto", { pageNo: panelPage, scrollLeft: true, syncStream: false });
       } else {
-        injected.scrollPdfColumnToPage(injected.getPageNo());
+        scrollPdfColumnToPage(injected.getPageNo());
       }
       // 纠正本身会再触发一次滚动：150 ms 后补一次核对（只核对、不再纠正，避免来回抖）
       setTimeout(() => {
@@ -1978,22 +1978,22 @@ function updateReadingPage(pageNo, { scrollLeft = true, syncStream = true } = {}
   injected.setReadingPageNo( pageNo);
   // 任务 67：翻到窗口外的页就补那一页 ±10 的 marks（异步，不挡翻页）
   if (injected.getReadingData()) ensureReadingMarksWindow(pageNo);
-  injected.hideReadingPdfBox();
+  hideReadingPdfBox();
   el("reading-page-no").textContent = `第 ${pageNo} 页`;
   el("reading-prev").disabled = pageNo <= 1;
   el("reading-next").disabled = pageNo >= total;
   ensureReadingPages();
   ensureReadingTile(pageNo);
   markReadingCurrentTile(pageNo);
-  if (scrollLeft) injected.scrollPdfColumnToPage(pageNo);
+  if (scrollLeft) scrollPdfColumnToPage(pageNo);
   // 任务 72：点左树 / 翻页按钮 → 右侧正文跟到这一页第一段（页级反向同步的另一半）。
   // 只在"不是右栏自己在驱动"时做，否则会互相拉扯。
-  if (syncStream && injected.getReadingFollow() && injected.getReadingData() && !injected.readingDriverActive("right")) {
-    injected.markReadingDriver("left");
+  if (syncStream && injected.getReadingFollow() && injected.getReadingData() && !readingDriverActive("right")) {
+    markReadingDriver("left");
     scrollStreamToPage(pageNo);
   }
   if (injected.getReadingPendingBox()) {
-    injected.drawReadingPdfBox(injected.getReadingPendingBox(), pageNo);
+    drawReadingPdfBox(injected.getReadingPendingBox(), pageNo);
     injected.setReadingPendingBox( null);
   }
   markReadingTreeCurrent(pageNo);
@@ -2010,8 +2010,8 @@ function gotoReadingEntry(entry) {
   // 入队后它里面的 ensureReadingMarksWindow 会拖到面板打开之后，marks 回来的重绘
   // 会把刚开的面板按"无 key + 无 pending"的清尾规则藏掉（QA 四态对照：回同步 60/60）。
   updateReadingPage(entry.page_no, { syncStream: false, scrollLeft: false });
-  injected.suppressReadingFollow();
-  injected.scrollPdfColumnToPage(entry.page_no);
+  suppressReadingFollow();
+  scrollPdfColumnToPage(entry.page_no);
   const segments = injected.readingVisibleSegments();
   const index = segments.findIndex((segment) => segment.seq === entry.seq);
   // 边 8 不切（顺序依赖）：jump 的 reset 必须早于下面的 openReadingPanel。
@@ -2039,7 +2039,7 @@ function gotoReadingEntry(entry) {
     else if (!injected.readingLineNode(key)) reason = "line-not-mounted";
     setTimeout(() => {
       if (!document.querySelector("#reading-panel-host .reading-panel")) openReadingPanel(entry);
-      injected.logReadingNext(entry, { branch: "retry", reason, retried: true });
+      logReadingNext(entry, { branch: "retry", reason, retried: true });
     }, 260);
   }
   verifyReadingPageSync("gotoEntry");
@@ -2329,6 +2329,127 @@ function removeReadingSentinel() {
   const stream = el("reading-stream");
   if (!stream) return;
   for (const node of stream.querySelectorAll(".reading-sentinel")) node.remove();
+}
+
+  // ---------------------------------------------------------------- 审校环·滚动与页框叶子（任务 94 · L6 刀3）
+  // 从 app.js 原样搬入；依赖由 init() 注入。状态仍归 app.js（get/set）。
+
+function buildReadingSegment(segment) {
+  const node = document.createElement("div");
+  node.className = "reading-seg";
+  node.dataset.seq = String(segment.seq);
+  const pages = (segment.pages || []).map((page) => page.page_no);
+  if (pages.length) node.dataset.pages = pages.join(" ");
+  if (injected.getReadingProof() && pages.length) {
+    const range = document.createElement("span");
+    range.className = "reading-proof__pages";
+    range.textContent =
+      pages.length > 1 ? `第 ${pages[0]}–${pages[pages.length - 1]} 页` : `第 ${pages[0]} 页`;
+    node.append(range);
+  }
+  const spans = segment.line_spans || [];
+  if (!spans.length) {
+    node.append(document.createTextNode(segment.text));
+    return node;
+  }
+  // 任务 82：**连续切片**——每一行拿 `[cursor, 下一行起点)`，cursor 一路向后不跳不叠。
+  // 这样把整段切成 N 段连续的切片，拼起来逐字等于 `segment.text`：
+  // 行间分隔符（join_lines 补的空格）自然落在前一行末尾，既不会丢、也不会重复。
+  // 之前"每行只切 [start,end] + 额外补 gap 节点"的做法，在 line_spans 有重叠/重复时
+  // 会让同一个字符既在 gap 里、又在相邻行切片里——实测出现 `laboreefficient`。
+  let cursor = 0;
+  for (let i = 0; i < spans.length; i += 1) {
+    const start = Math.max(cursor, Number(spans[i].start) || 0);
+    const nextStart =
+      i + 1 < spans.length
+        ? Math.max(start, Number(spans[i + 1].start) || start)
+        : segment.text.length;
+    const piece = segment.text.slice(start, nextStart);
+    const line = injected.buildReadingLine(segment, injected.span_at(spans, i), piece);
+    // 任务 66：块边界要**看得见**。跨页段在视觉上是一段连贯的话，
+    // 实际是两个块；不标出来，用户会以为能跨过去改（这本书有 312 个跨页段）。
+    if (i + 1 < spans.length && spans[i + 1].block_id !== spans[i].block_id) {
+      line.classList.add("is-block-end");
+      line.title = "此处是块 / 页边界，下一段属于另一个块（编辑不会跨过去）";
+    }
+    node.append(line);
+  }
+  injected.checkReadingSegmentText(node, segment);
+  return node;
+}
+
+/** 把 `scroller` 滚到"让 `target` 的中点落在视口垂直中央"，贴边时夹住不抖。 */
+function scrollScrollerToCenter(scroller, targetTop, targetHeight) {
+  if (!scroller) return;
+  const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  const wanted = targetTop + targetHeight / 2 - scroller.clientHeight / 2;
+  scroller.scrollTop = Math.max(0, Math.min(wanted, max));
+}
+
+/** 我们自己滚左栏（居中）时，别让"左→右跟随"把右栏拽回页首。 */
+function suppressReadingFollow(ms = 700) {
+  injected.setReadingSuppressFollowUntil( performance.now() + ms);
+}
+
+/** 把**左侧 PDF 页列**滚到某一页（任务 72 前它也叫 scrollReadingToPage，
+ *  同名把"右侧正文跳到这一页"那份覆盖掉了 —— 点左树不跳页就是它造成的）。 */
+function scrollPdfColumnToPage(pageNo) {
+  const scroller = el("reading-pdf-scroll");
+  const tile = injected.getReadingTiles().get(pageNo);
+  if (!scroller || !tile) return;
+  const top = tile.offsetTop - scroller.clientHeight * 0.06;
+  const target = Math.max(0, top);
+  // 这次滚动是我们发的：把用户事件计数记下来，左栏回调据此判定"不是用户在滚"
+  injected.setReadingProgramScrollSeq( injected.getReadingUserScrollSeq());
+  if (Math.abs(scroller.scrollTop - target) > 8) scroller.scrollTop = target;
+}
+
+/** 左→右 / 右→左的互斥标记：谁先动谁锁 350 ms。 */
+function markReadingDriver(driver) {
+  injected.setReadingSyncDriver( driver);
+  injected.setReadingSyncUntil( performance.now() + 350);
+}
+
+function readingDriverActive(driver) {
+  return injected.getReadingSyncDriver() === driver && performance.now() < injected.getReadingSyncUntil();
+}
+
+function hideReadingPdfBox() {
+  const box = el("reading-pdf-box");
+  if (box) box.hidden = true;
+  injected.setReadingPendingBox( null);
+}
+
+function drawReadingPdfBox(bbox, pageNo) {
+  const box = el("reading-pdf-box");
+  const tile = injected.getReadingTiles().get(pageNo);
+  if (!box || !tile || !Array.isArray(bbox) || bbox.length !== 4) return;
+  const [x0, y0, x1, y1] = bbox;
+  const width = tile.clientWidth || tile.getBoundingClientRect().width;
+  const height = tile.clientHeight || tile.getBoundingClientRect().height;
+  box.style.left = `${Math.round(x0 * width)}px`;
+  box.style.top = `${Math.round(tile.offsetTop + y0 * height)}px`;
+  box.style.width = `${Math.round((x1 - x0) * width)}px`;
+  box.style.height = `${Math.round((y1 - y0) * height)}px`;
+  box.hidden = false;
+}
+
+/** 记一条「下一处未审」的现场（最近 20 条），下次偶发失败时一条日志定位。 */
+function logReadingNext(entry, extra = {}) {
+  injected.getReadingNextLog().unshift({
+    at: Date.now(),
+    entryKey: entry ? injected.readingKey(entry.block_id, entry.line_index) : null,
+    entryPage: entry ? entry.page_no : null,
+    pageNo: injected.getPageNo(),
+    panelKey: injected.getReadingPanelKey(),
+    panelOpened: Boolean(document.querySelector("#reading-panel-host .reading-panel")),
+    lineFound: entry ? Boolean(injected.readingLineNode(injected.readingKey(entry.block_id, entry.line_index))) : false,
+    window: injected.getReadingMarksWindow(),
+    blocks: entry ? (injected.getReadingPageBlocks().get(entry.page_no) || []).length : null,
+    ...extra,
+  });
+  injected.getReadingNextLog().length = Math.min(injected.getReadingNextLog().length, 20);
+  window.__b2tNextLog = injected.getReadingNextLog();
 }
 
   // ---------------------------------------------------------------- 对外接口
