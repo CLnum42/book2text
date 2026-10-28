@@ -19925,7 +19925,7 @@ function applyReadingLinked(pageNo) {
  * - 没有字框（老数据、回填失败）：退化成整行一个虚线框，不整页不标；
  * - 只画差异，同行的相同字一个都不画。
  */
-const wordBoxMappingStats = { ok: 0, miss: 0, mappedChars: 0 };
+const wordBoxMappingStats = { offset: 0, position: 0, positionMiss: 0, missSamples: [] };
 window.__b2tWordBoxStats = wordBoxMappingStats;
 
 function readingDiffUnits(lineText, candidate, wordBoxes) {
@@ -19934,30 +19934,41 @@ function readingDiffUnits(lineText, candidate, wordBoxes) {
   const kind = spans.some((span) => span.kind !== "replace") ? "punct" : "chars";
   if (!wordBoxes || !wordBoxes.length) return { ranges: null, kind };
   // 字框的文本拼起来应与行文本一致；按累加长度把差异区间映射到字框下标
-  // 任务 86：**按"词在行文本里的真实位置"映射**，不能把词框文本拼起来直接当偏移。
-  // 英文的 word_boxes 是"词"，词间空格不属于任何框：拼起来 75 字 vs 行文本 90 字，
-  // 旧判据 `offset !== lineText.length` 永远成立 → 英文书永远退化成整行黄框。
+  // 任务 86：两条分支，**中文走旧的偏移映射，英文走位置映射**。
+  // 旧代码"拼接长度相等就按偏移画"看着土，但对中文是对的——先想清楚它为什么能工作，
+  // 再决定哪条路给谁走（实测：中文逐字框拼接长度等于行文本长度）。
+  const concatLength = wordBoxes.reduce((sum, unit) => sum + String(unit.text || "").length, 0);
   const starts = [];
-  let cursor = 0;
-  let mapped = 0;
-  for (const unit of wordBoxes) {
-    const word = String(unit.text || "");
-    if (!word) {
-      starts.push(cursor);
-      continue;
+  if (concatLength === (lineText || "").length) {
+    // 分支 1：纯偏移（中文 / 无空格插入的场景），没有查找、不可能 miss
+    let offset = 0;
+    for (const unit of wordBoxes) {
+      starts.push(offset);
+      offset += String(unit.text || "").length;
     }
-    const at = (lineText || "").indexOf(word, cursor);
-    if (at < 0) {
-      // 词在行文本里找不到（OCR 与字框不同步）：整行退化，不许乱框
-      wordBoxMappingStats.miss += 1;
-      return { ranges: null, kind };
+    wordBoxMappingStats.offset += 1;
+  } else {
+    // 分支 2：按位置找词（英文：词间空格不属于任何框），找不到就整行退化
+    let cursor = 0;
+    for (const unit of wordBoxes) {
+      const word = String(unit.text || "");
+      if (!word) {
+        starts.push(cursor);
+        continue;
+      }
+      const at = (lineText || "").indexOf(word, cursor);
+      if (at < 0) {
+        wordBoxMappingStats.positionMiss += 1;
+        if (wordBoxMappingStats.missSamples.length < 3) {
+          wordBoxMappingStats.missSamples.push(String(lineText || "").slice(0, 60));
+        }
+        return { ranges: null, kind };
+      }
+      starts.push(at);
+      cursor = at + word.length;
     }
-    starts.push(at);
-    cursor = at + word.length;
-    mapped += word.length;
+    wordBoxMappingStats.position += 1;
   }
-  wordBoxMappingStats.ok += 1;
-  wordBoxMappingStats.mappedChars += mapped;
   const wanted = new Set();
   for (const span of spans) {
     for (let index = 0; index < wordBoxes.length; index += 1) {
