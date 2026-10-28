@@ -55,9 +55,31 @@ CONFIDENCE_LABELS = {
 # 页首文字里的关键词 → 页面类型（五类：front / toc / body_excluded / back / body）
 _TEXT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("front", ("图书在版编目", "cip", "isbn", "版权")),
+    # 任务 80：英文数字原生书的版权页 / 编目页（这本书第 3、4 页就是这么漏掉的）
+    (
+        "front",
+        (
+            "library of congress",
+            "cataloging-in-publication",
+            "all rights reserved",
+            "copyright",
+            "published by",
+            "printed in",
+        ),
+    ),
     ("front", ("前言", "序言", "自序", "译者序", "序文", "导言", "译者的话", "凡例")),
     ("toc", ("目录", "目 录", "contents")),
-    ("back", ("索引", "附录", "参考文献", "后记", "跋", "index", "appendix", "references")),
+    ("back", ("索引", "附录", "参考文献", "后记", "跋")),
+    # 任务 80：英文的 index / appendix / references 在正文里太常见
+    # （这本书第 37 页讲引用体例就出现了 "Sinological Index Series"），
+    # 只在**首行就是标题**时才算，见 `_HEADING_KEYWORDS`。
+
+)
+
+#: 只认"首行就是标题"的英文词（出现在正文里太常见）
+_HEADING_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("back", ("index", "appendix", "references", "bibliography", "glossary")),
+    ("toc", ("contents", "table of contents")),
 )
 
 # 目录页的点线：`第一章 …… 12` / `第一章 ........ 12`
@@ -131,11 +153,34 @@ def ink_ratio(image) -> float:
     return sum(histogram[:_INK_PIXEL_THRESHOLD]) / total
 
 
+#: 页眉里的页码：`Page 28` / `Page xii`（数字原生书常见）
+_HEADER_NUMBER = re.compile(
+    r"^\s*(?:page|p\.?)\s*[-–—]?\s*(\d{1,4}|[ivxlcdm]{1,7})\s*[-–—]?\s*$",
+    re.IGNORECASE,
+)
+_ROMAN_ONLY = re.compile(r"^[ivxlcdm]+$", re.IGNORECASE)
+
+
+def header_number_kind(text: str) -> str:
+    """一页页眉里的页码类型：`arabic` / `roman` / `none`。
+
+    **为什么用它**：数字原生 PDF 的前置页（版权 / 编目 / 目录 / 序）通常印罗马页码或不印，
+    正文从"印阿拉伯页码 1"那一页开始。这条比关键词稳得多——关键词只能认出版面文字，
+    而页码结构是整本书一致的。
+    """
+    first = (text or "").strip().split("\n", 1)[0]
+    match = _HEADER_NUMBER.match(first)
+    if not match:
+        return "none"
+    return "roman" if _ROMAN_ONLY.match(match.group(1)) else "arabic"
+
+
 def suggest_page(
     signals: PageSignals,
     *,
     ink: float | None,
     project_has_blocks: bool,
+    front_matter: bool = False,
 ) -> PageSuggestion | None:
     """给一页算一条建议；没有把握或不必要就返回 None。"""
     if signals.page_confirmed:
@@ -172,6 +217,17 @@ def suggest_page(
                     CONFIDENCE_MEDIUM,
                     f"页首文字里出现「{keywords[0]}」，但没有识别出该类型",
                 )
+        first_line = signals.text.strip().split("\n", 1)[0].strip().casefold()
+        for page_type, keywords in _HEADING_KEYWORDS:
+            if any(
+                first_line == keyword or first_line.startswith(keyword + " ")
+                for keyword in keywords
+            ):
+                return make(
+                    page_type,
+                    CONFIDENCE_MEDIUM,
+                    f"首行标题是「{first_line[:20]}」，看起来是{page_type}页",
+                )
         if looks_like_toc(signals.text):
             return make(
                 "toc",
@@ -181,6 +237,14 @@ def suggest_page(
 
     if signals.page_no == 1:
         return make("front", CONFIDENCE_MEDIUM, "第 1 页（通常为封面 / 前置），且不是空白页")
+    if front_matter:
+        # 任务 80：正文从"印阿拉伯页码 1"那页开始，之前的页都是前置（版权 / 编目 / 序 …）。
+        # 置信度给 medium：结构信号很稳，但用户仍可能把某一页当前言正文。
+        return make(
+            "front",
+            CONFIDENCE_MEDIUM,
+            "在第一个印刷页码（阿拉伯数字）之前 —— 前置页：封面 / 版权 / 编目 / 序",
+        )
     if signals.block_count > 0:
         return None
 
@@ -245,6 +309,25 @@ def suggest_pages_for_project(
     project_directory = library_module.project_dir(target_library, project_id)
     pdf_path = project_directory / library_module.SOURCE_DIR_NAME / library_module.SOURCE_FILE_NAME
 
+    # 任务 80：正文从"印阿拉伯页码"的第一页开始；之前的页都算前置。
+    # 只对**数字原生**（有文字层）的书用这条：扫描件常常没有页眉页码，会全判成前置。
+    first_arabic_page: int | None = None
+    if project_has_blocks:
+        for page in pages:
+            page_blocks = sorted(by_page.get(page.page_no, []), key=lambda b: b.order_index)
+            if not page_blocks:
+                continue
+            # 页眉不一定是"第一个块"：这本书第 38 页第一个块是章号 `1`，`Page 1` 在后面
+            # 一个独立的块里。所以看前几个块，取第一个"像页眉页码"的。
+            kind = "none"
+            for block in page_blocks[:4]:
+                kind = header_number_kind(block.text)
+                if kind != "none":
+                    break
+            if kind == "arabic":
+                first_arabic_page = page.page_no
+                break
+
     suggestions: list[dict[str, object]] = []
     for page in analyzed:
         page_blocks = by_page.get(page.page_no, [])
@@ -262,6 +345,11 @@ def suggest_pages_for_project(
             _page_signals(page, len(page_blocks), text),
             ink=ink,
             project_has_blocks=project_has_blocks,
+            front_matter=bool(
+                first_arabic_page is not None
+                and page.page_no < first_arabic_page
+                and page.has_text_layer
+            ),
         )
         if suggestion is not None:
             suggestions.append(suggestion.to_dict())

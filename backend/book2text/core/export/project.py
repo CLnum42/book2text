@@ -269,6 +269,11 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
         # 导出的是 Block.text（说明书 5.3：保留行内换行），按 `\n` 拆回行再做 9.2 的合并。
         # 不要用 block_line 的文本：那是识别原文，人工改过的字会丢。
         raw_lines = block.text.split("\n")
+        # 任务 80：**整块就是一行页码**的块，无论排在第几个，都肯定是页眉而不是正文
+        # （目录页那种 "Page viii 153 155…" 不是整行匹配，不会被误删）。
+        # 这本书第 38 页的 `Page 1` 就是独立块、且不是该页第一个块，靠首块规则漏掉了。
+        if len(raw_lines) == 1 and header_cleanup.is_page_line(raw_lines[0]):
+            continue
         # 任务 74：**页眉页码行**（`Page 28`）识别时落成了 paragraph 块，
         # 会被当正文导出。只从"每页第一个块的第一行"判断（严格的窄规则）——
         # 全书行级正则替换踩过坑：正文里真有整行是"红楼梦"的。
