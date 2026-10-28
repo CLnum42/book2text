@@ -37,13 +37,16 @@ function installReadingView(target) {
 }
 
 const ctx = loadApp({
-  require: ["gotoNextUnreviewed", "readingEntryVisible", "enterReviewStep"],
+  require: ["readingEntryVisible", "enterReviewStep"],
 });
 
 // ---------------------------------------------------------------- 最小假 DOM
 
+const ELEMENTS = new Map();   // id → 假元素（同一 id 必须是同一个对象，否则监听器挂不住）
+
 function fakeNode() {
   const node = {
+    listeners: {},
     dataset: {},
     style: { setProperty() {}, removeProperty() {}, getPropertyValue: () => "" },
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
@@ -70,8 +73,12 @@ function fakeNode() {
     setAttribute() {},
     removeAttribute() {},
     getAttribute: () => null,
-    addEventListener() {},
-    removeEventListener() {},
+    addEventListener(type, handler) {
+      (this.listeners[type] = this.listeners[type] || []).push(handler);
+    },
+    removeEventListener(type, handler) {
+      this.listeners[type] = (this.listeners[type] || []).filter((item) => item !== handler);
+    },
     focus() {},
     select() {},
     scrollIntoView() {},
@@ -126,7 +133,10 @@ function installStubs() {
   ctx.localStorage = realStorage;   // 加载器里的 localStorage 是 noop 桩，偏好读写要真存储
   ctx.innerWidth = 1400;
 
-  ctx.document.getElementById = () => fakeNode();
+  ctx.document.getElementById = (id) => {
+    if (!ELEMENTS.has(id)) ELEMENTS.set(id, fakeNode());
+    return ELEMENTS.get(id);
+  };
   ctx.document.querySelector = () => fakeNode();
   ctx.document.querySelectorAll = () => [];
   ctx.document.createElement = () => fakeNode();
@@ -156,13 +166,26 @@ function installStubs() {
   ctx.syncWorkflowSteps = () => {};
   ctx.hydrateView = () => {};
   ctx.loadLanguageSummary = () => {};
-  ctx.measureReadingTops = () => {};
   ctx.ensureReadingPages = () => {};
   ctx.updateReadingPage = (pageNo) => runInApp(ctx, `readingPageNo = ${Number(pageNo)};`);
 }
 
+/**
+ * 点「下一处未审」按钮——L4 之后 gotoNextUnreviewed 搬进模块，
+ * 公开入口是 `#reading-next-unreviewed` 的 click（reading-view.js:169 绑的本地函数）。
+ * 返回的 promise 就是那次点击触发的异步处理（模块的 handler 是 async，addEventListener 拿到的是它本身）。
+ */
+async function clickReadingNext() {
+  const node = ELEMENTS.get("reading-next-unreviewed");
+  assert.ok(node, "找不到 #reading-next-unreviewed —— 模块 init 没绑上按钮");
+  const handlers = node.listeners.click || [];
+  assert.ok(handlers.length > 0, "#reading-next-unreviewed 没有绑 click 处理器");
+  await Promise.all(handlers.map((handler) => handler({ type: "click" })));
+}
+
 /** 每条例行都从同一份干净状态出发。 */
 function resetState() {
+  ELEMENTS.clear();
   NOTICE_LOG.length = 0;
   apiRouter = null;
   runInApp(
@@ -233,6 +256,12 @@ function installReadingDeps() {
     readingVisibleSegments: () => get("readingVisibleSegments()"),
     readingFlowPages: () => get("readingFlowPages()"),
     readingLineNode: () => null,
+    // 队列链路：这些函数仍住在 app.js（L4 只搬了 gotoNextUnreviewed 本身），注入侧转发回去
+    readingKey: (blockId, lineIndex) => ctx.readingKey(blockId, lineIndex),
+    gotoReadingEntry: (entry) => ctx.gotoReadingEntry(entry),
+    logReadingNext: (entry, extra) => ctx.logReadingNext(entry, extra),
+    ensureReadingMarksWindow: (pageNo) => ctx.ensureReadingMarksWindow(pageNo),
+    showNoticeBar: (text) => ctx.showNoticeBar(text),
     getReadingData: () => get("readingData"),
     getReadingProject: () => get("readingProject"),
     getReadingAutoJumpDone: () => get("readingAutoJumpDone"),
@@ -366,9 +395,10 @@ test("队列推进：连续 3 次落在 3 个不同 key，页码单调不减", (
   ctx.ensureReadingMarksWindow = async () => {};
 
   return (async () => {
+    installReadingDeps();
     const seen = [];
     for (let index = 0; index < 3; index += 1) {
-      await ctx.gotoNextUnreviewed();
+      await clickReadingNext();
       const cursor = JSON.parse(readState("JSON.stringify([readingCursorEntry.block_id, readingCursorEntry.line_index, readingCursorEntry.page_no])"));
       seen.push({ key: `${cursor[0]}:${cursor[1]}`, page: cursor[2] });
     }
@@ -393,10 +423,11 @@ test("当前项：cursor 与最后一次跳转的目标一致（key / 页 / 行�
   ctx.ensureReadingMarksWindow = async () => {};
 
   return (async () => {
-    await ctx.gotoNextUnreviewed();
+    installReadingDeps();
+    await clickReadingNext();
     const first = JSON.parse(readState("JSON.stringify([readingCursorEntry.block_id, readingCursorEntry.line_index, readingCursorEntry.page_no])"));
     assert.deepEqual(first, ["b1", 0, 1]);
-    await ctx.gotoNextUnreviewed();
+    await clickReadingNext();
     const second = JSON.parse(readState("JSON.stringify([readingCursorEntry.block_id, readingCursorEntry.line_index, readingCursorEntry.page_no])"));
     assert.deepEqual(second, ["b9", 4, 2], "当前项不是最后一次跳转的那条");
     assert.equal(readState("readingPageNo"), 2, "跳转后页码没跟上当前项");
@@ -491,7 +522,8 @@ test("没有下一处时不静默：明确说明，且不谎报进度", () => {
   ctx.ensureReadingMarksWindow = async () => {};
 
   return (async () => {
-    const returned = await ctx.gotoNextUnreviewed();
+    installReadingDeps();
+    const returned = await clickReadingNext();
     const log = JSON.parse(readState("JSON.stringify(readingNextLog)"));
     assert.equal(log[0].branch, "none", `没有下一处时记录的 branch 是 ${log[0].branch}`);
     assert.ok(NOTICE_LOG.length > 0, "没有下一处时用户什么都没看到（静默失败）");
@@ -511,7 +543,8 @@ test("流外还有差异时要说数：不谎报“全部处理完”", () => {
   ctx.ensureReadingMarksWindow = async () => {};
 
   return (async () => {
-    await ctx.gotoNextUnreviewed();
+    installReadingDeps();
+    await clickReadingNext();
     assert.match(NOTICE_LOG[NOTICE_LOG.length - 1], /不在正文流/, "流外还有 3 处，却说全部处理完了");
   })();
 });
