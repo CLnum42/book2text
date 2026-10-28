@@ -18176,8 +18176,12 @@ function readingPdfScrollTop() {
 /** 用户最后一次**自己**在审校视图里动手（滚轮 / 按下 / 按键）的时刻。 */
 let readingUserMovedAt = 0;
 
+let readingUserScrollSeq = 0;   // 用户真实输入事件（wheel/pointerdown/keydown）计数
+let readingProgramScrollSeq = 0; // 我们自己滚动时的 seq 快照：相等说明这次滚动不是用户发的
+
 function markReadingUserMoved() {
   readingUserMovedAt = performance.now();
+  readingUserScrollSeq += 1;
 }
 
 /**
@@ -20181,6 +20185,8 @@ function scrollPdfColumnToPage(pageNo) {
   if (!scroller || !tile) return;
   const top = tile.offsetTop - scroller.clientHeight * 0.06;
   const target = Math.max(0, top);
+  // 这次滚动是我们发的：把用户事件计数记下来，左栏回调据此判定"不是用户在滚"
+  readingProgramScrollSeq = readingUserScrollSeq;
   if (Math.abs(scroller.scrollTop - target) > 8) scroller.scrollTop = target;
 }
 
@@ -20210,16 +20216,18 @@ function updateReadingPageFromLeftScroll() {
   // 此时左栏锚点还停在上一页，写进去就把刚定位好的页码改掉（QA run F：
   // gotoEntry 写 118 → leftScroll 写 117，两个回调隔着几十毫秒，后者赢）。
   if (readingJumpSettleKey) return;
-  // **面板开着就一律不写**。页码以面板项所在页为准（D-105），左栏只是"看"，不负责
-  // 决定当前页。QA 十轮 196/200 后抓到两处漏挡，都出在"用差值阈值判"上：
-  //   1. |Δ|==2 直接放过（C 轮 面板 59 / 左栏算出 61 → 顶部与左栏都成 61）；
-  //   2. |Δ|==1 本该挡，但 `readingMarks.get(panelKey)` 在补窗口前是 undefined，
-  //      整段保护被跳过（H 149/148、I 194/193 就是这么漏的）。
-  // 阈值和"mark 是否已加载"都不该是判据——**面板开着这件事本身就是判据**。
-  // 重绘窗口里 `readingPanelKey` 会被清空：那一刻用 `readingPendingPanelKey` 兜住。
-  // 用户滚左栏时若想改页码，收起面板即可（改版后下区常驻，这条语义会在任务 91 里重定）。
-  const panelKey = readingPanelKey || readingPendingPanelKey;
-  if (panelKey) return;
+  // **这次滚动是谁发的，才是判据**——不是差值阈值，也不是"面板开没开"。
+  //
+  // QA 十轮 196/200 抓到的两处漏挡都出在"用 |Δ| 判"上：
+  //   · |Δ|==2 直接放过（C 轮 面板 59 / 左栏算出 61 → 顶部与左栏都成 61）；
+  //   · |Δ|==1 本该挡，但补窗口前 `readingMarks.get(panelKey)` 是 undefined，
+  //     整段保护被跳过（H 149/148、I 194/193）。
+  // 而"面板开着就一律不写"又会把用户真正滚左栏时的跟随也挡掉（smoke：滚到 120 页，顶部仍 99）。
+  //
+  // 所以只看事件来源：`scrollPdfColumnToPage()` 是**我们**滚的，它会把当时的用户事件计数
+  // 记进 `readingProgramScrollSeq`；左栏回调里两者相等 → 这次滚动没有用户输入参与 → 不写页码。
+  // 用户 wheel / pointerdown / keydown 会让 `readingUserScrollSeq` +1，之后左栏滚动照常跟随。
+  if (readingUserScrollSeq === readingProgramScrollSeq) return;
   readingPageNo = best.pageNo;
   el("reading-page-no").textContent = `第 ${best.pageNo} 页`;
   markReadingCurrentTile(best.pageNo);
