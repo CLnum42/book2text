@@ -2963,6 +2963,12 @@ async function l4Probe(page, args) {
       const label = (document.getElementById("reading-page-no") || {}).textContent || "";
       const m = label.match(/(\d+)/);
       const stream = document.getElementById("reading-stream");
+      const segNodes = [...stream.querySelectorAll(".reading-seg")].slice(0, 12);
+      const segs = segNodes.map((n) => {
+        const r = n.getBoundingClientRect();
+        return { top: Math.round(r.top), h: Math.round(r.height) };
+      });
+      const cs = getComputedStyle(stream);
       const lines = [...stream.querySelectorAll(".reading-line")].slice(0, 40);
       const rects = lines.map((n) => {
         const r = n.getBoundingClientRect();
@@ -2984,6 +2990,16 @@ async function l4Probe(page, args) {
         inlineMarks: document.querySelectorAll("#reading-stream .reading-line.is-inline-edited").length,
         segs: stream.querySelectorAll(".reading-seg").length,
         lineSample: rects.slice(0, 4),
+        segsSample: segs.slice(0, 5),
+        segOverlaps: (() => {
+          let n = 0;
+          for (let i = 1; i < segs.length; i += 1) {
+            if (segs[i].top < segs[i - 1].top + segs[i - 1].h - 2) n += 1;
+          }
+          return n;
+        })(),
+        streamFont: cs.fontSize,
+        streamLineHeight: cs.lineHeight,
         overlaps,
         scrollTop: Math.round(stream.scrollTop),
       };
@@ -3046,9 +3062,9 @@ async function l4Probe(page, args) {
     if (keys.length < 2) return { error: "拿不到行 key" };
     await page.evaluate((ks) => {
       const pid = typeof currentProject !== "undefined" && currentProject ? currentProject.project_id : "";
-      const payload = {};
-      for (const k of ks) payload[k] = { base: "", text: "QA草稿", at: Date.now() };
-      localStorage.setItem(`b2t.readingInline.${pid}`, JSON.stringify(payload));
+      // 存储格式是 {"items":[{key,base,text,at}]}，不是 map（读实现 loadReadingInlineEdits）
+      const items = ks.map((k) => ({ key: k, base: "", text: "QA草稿", at: Date.now() }));
+      localStorage.setItem(`b2t.readingInline.${pid}`, JSON.stringify({ items }));
     }, keys);
     await page.reload();
     await page.waitForTimeout(2500);
@@ -3079,11 +3095,21 @@ async function l4Probe(page, args) {
     await page.waitForTimeout(1500);
     const after = await read();
     // 恢复视口
+    // 改完尺寸再滚一下：页码/滚动映射还应正常
+    const box = await page.evaluate(() => {
+      const s = document.getElementById("reading-stream");
+      const r = s.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(box.x, box.y, { label: "移到正文流" });
+    await page.mouse.wheel(0, 900, { label: "改尺寸后滚一屏" });
+    await page.waitForTimeout(900);
+    const afterWheel = await read();
     await page.cdp("Emulation.setDeviceMetricsOverride", {
       width: 1423, height: 900, deviceScaleFactor: 2, mobile: false,
     });
     await page.waitForTimeout(800);
-    return { before, after };
+    return { before, after, afterWheel };
   }
 
   if (mode === "edit") {
