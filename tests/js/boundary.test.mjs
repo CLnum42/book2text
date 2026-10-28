@@ -3,6 +3,8 @@
 // 纯文本静态检查，不加载 app.js、不依赖 DOM，毫秒级。
 //
 // **R1（依赖方向）**：`static/reading-view.js` 里不得出现 `app.js` 顶层声明过、且它**自己没有声明**的名字。
+//   只看**自由引用**：属性访问 `a.name` / `a?.name` 与对象字面量 key 都不算（`injected.gotoNextUnreviewed`
+//   不是对全局 gotoNextUnreviewed 的引用；把注入键改成别名反而让名字和真函数对不上）。
 //   判定：S = app.js 的顶层声明名；L = reading-view.js 自己声明过的名字（任意缩进层级）；
 //        I = reading-view.js 去注释/字符串后的标识符。断言 |I ∩ (S \ L)| == 0。
 //   **第 3 步（L）不能省**：reading-view.js 自己声明了 `el`，app.js:28 也有 `const el`；
@@ -260,6 +262,13 @@ test("R1：reading-view.js 不许引用 app.js 的顶层声明（模块先加载
     if (!appTop.has(name)) continue;   // 不是 app.js 的顶层名字
     if (viewOwn.has(name)) continue;   // 模块自己声明了 → 同名不同物
     if (allowed.has(name)) continue;   // 例外表（必须为空）
+    // **属性访问不是自由引用**：`injected.gotoNextUnreviewed` / `a?.name` 里的名字
+    // 与全局绑定无关（与 R5/R9 同一条口径）。这里漏掉会把所有"注入键=真函数名"误报成依赖。
+    if ((strippedView[match.index - 1] || "") === ".") continue;
+    // 对象字面量的 key（`{ gotoNextUnreviewed: 1 }`）也不是引用
+    const prevChar = strippedView.slice(Math.max(0, match.index - 8), match.index).trimEnd().slice(-1);
+    const nextChar = strippedView.slice(match.index + name.length).trimStart().slice(0, 1);
+    if ((prevChar === "{" || prevChar === ",") && nextChar === ":") continue;
     violations.push(
       `reading-view.js:${lineOf(strippedView, match.index)}:${columnOf(strippedView, match.index)} `
       + `用了 app.js:${appTop.get(name)} 的 ${name}`,
