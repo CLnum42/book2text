@@ -22,6 +22,17 @@
 //    三个旧版本上同样红 → 不是回归，是从来没人验过的长期潜伏缺陷。
 //    证据：`𠀀`→`𠀁` 的 span 是 `[1,2]`，切在一个代理对中间；下游三处
 //    `text.slice(span.aStart, span.aEnd)`（app.js:13111/13117/13069）会拿到孤立低代理。
+//
+// **任务 90 的契约变更（2026-10-28）**
+//
+// Builder 的修法 `alignSpansToCodePoints` 把 span 边界对齐到码位（整字扩宽、重叠合并），
+// 所以这里有两条用例按"契约变了"重写，不是让测试迁就实现：
+// - 「代理对整字替换」原来断言 `span === [1,2]`——**那正是缺陷本身**（旧契约）。
+//   已删除，改成不变式：边界不许落在代理对之间，且按区间切片不许切出孤立代理。
+//   不锁具体下标（[0,2] 还是别的对齐策略），否则合法的对齐方式变更会误红。
+// - 「代理对混排」原来断言 `span === [2,3]`——同样是旧下标。现在只锁**映射到哪些字框**：
+//   旧 `[2,3]` 与新 `[1,3]` 都只命中字框 1，`ranges` 都是 `[1]`。
+//   实测 4 组场景（单字替换 / 与汉字混排 / 逐词框 / 代理对在行首），旧新 `ranges` 完全一致。
 // 3. 其余用例在 HEAD 与上述三个旧版本上都是绿的——没有可以诚实标红的回归点，不硬凑。
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -87,37 +98,52 @@ test("不等长走 LCS：insert / delete / replace 三种 kind 都会出现", ()
 
 // ---------------------------------------------------------------- 2. 代理对（UTF-16 下标）
 
-test("代理对整字替换：下标切在代理对中间（UTF-16 口径）", () => {
-  const dragon = "\u{20000}"; // 𠀀
-  const other = "\u{20001}"; // 𠀁
-  assert.equal(dragon.length, 2, "前提：这个字占 2 个 code unit");
-  assert.deepEqual(norm(computeCharSpans(dragon, other)), [[1, 2, 1, 2, "replace"]]);
-  // 证据：下游按这个下标切片，拿到的是孤立低代理
-  const piece = dragon.slice(1, 2);
-  assert.equal(piece.length, 1);
-  const code = piece.charCodeAt(0);
-  assert.ok(code >= 0xdc00 && code <= 0xdfff, `切片结果是孤立低代理 U+${code.toString(16)}`);
-});
-
-test("代理对：span 的边界不许落在代理对中间", { todo: "任务 90：computeCharSpans 用 UTF-16 下标，span 会切开代理对；下游三处 slice 显示乱码" }, () => {
-  const dragon = "\u{20000}";
-  const candidate = "\u{20001}";
+test("代理对：span 的边界不许落在代理对中间（不变式，不锁具体下标）", {
+  todo: "任务 90：computeCharSpans 用 UTF-16 下标，span 会切开代理对；下游拿 span 下标 slice 显示乱码",
+}, () => {
+  // 旧契约就是这个缺陷本身：span=[1,2]（切在代理对中间），`slice(1,2)` 得到孤立低代理 U+DC00。
+  // 新契约只要求"边界落在码位边界上"——不锁具体是 [0,2] 还是别的对齐策略，
+  // 否则以后任何合法的对齐方式（整字扩宽 / 换成码位下标）都会让这条误红。
+  const cases = [
+    ["\u{20000}", "\u{20001}"],         // 单个代理对字整字替换
+    ["甲\u{20000}乙", "甲\u{20001}乙"],   // 与普通汉字混排
+    ["\u{20000}甲", "\u{20001}甲"],       // 代理对在行首
+  ];
   const broken = [];
-  for (const item of computeCharSpans(dragon, candidate)) {
-    if (splitsSurrogatePair(dragon, item.aStart)) broken.push(["aStart", item.aStart]);
-    if (splitsSurrogatePair(dragon, item.aEnd)) broken.push(["aEnd", item.aEnd]);
-    if (splitsSurrogatePair(candidate, item.bStart)) broken.push(["bStart", item.bStart]);
-    if (splitsSurrogatePair(candidate, item.bEnd)) broken.push(["bEnd", item.bEnd]);
+  for (const [line, candidate] of cases) {
+    for (const item of computeCharSpans(line, candidate)) {
+      for (const [side, text, index] of [
+        ["aStart", line, item.aStart],
+        ["aEnd", line, item.aEnd],
+        ["bStart", candidate, item.bStart],
+        ["bEnd", candidate, item.bEnd],
+      ]) {
+        if (splitsSurrogatePair(text, index)) broken.push([line, side, index]);
+      }
+      // 另一面：按区间切片不许切出孤立代理
+      const sliced = [...line.slice(item.aStart, item.aEnd)];
+      assert.ok(sliced.every((ch) => ch.length > 0), "切片出现空码位（孤立代理被吃掉了）");
+      for (const ch of line.slice(item.aStart, item.aEnd)) {
+        const code = ch.charCodeAt(0);
+        assert.ok(!(code >= 0xdc00 && code <= 0xdfff), `切片结果是孤立低代理 U+${code.toString(16)}`);
+      }
+    }
   }
   assert.deepEqual(broken, [], "差异区间切开了代理对，按 aStart/aEnd 切片会得到孤立代理");
 });
 
-test("代理对混排：readingDiffUnits 的映射仍然正确（影响只在切片展示层）", { skip: readingDiffUnitsSkip }, () => {
+test("代理对混排：对齐前后都落在同一个字框上（锁字框集合，不锁 span 下标）", { skip: readingDiffUnitsSkip }, () => {
   const line = "甲\u{20000}乙";
   const candidate = "甲\u{20001}乙";
-  assert.deepEqual(norm(computeCharSpans(line, candidate)), [[2, 3, 2, 3, "replace"]]);
-  // 字框的 offset 也是 code unit 累加，两边同口径 → 映射对得上
-  assert.deepEqual(diffUnits(line, candidate).ranges, [1]);
+  // 契约：差异映射到**哪个字框**才是用户看得见的结果。
+  // 旧 span [2,3]（切在代理对中间）与新 span [1,3]（对齐到整字）都只命中字框 1（文本是 𠀀），
+  // 所以对齐不改变"画在哪"，只改变"切出来的字符完不完整"。
+  const result = diffUnits(line, candidate);
+  assert.deepEqual(result.ranges, [1]);
+  assert.equal(charBoxes(line)[1].text, "\u{20000}", "字框 1 就是那个两 code unit 的字");
+  // 顺带锁住：字框 0/2 不许被扩宽后的区间误选
+  assert.equal(result.ranges.includes(0), false);
+  assert.equal(result.ranges.includes(2), false);
 });
 
 // ---------------------------------------------------------------- 3. 组合字符
