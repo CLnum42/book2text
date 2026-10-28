@@ -19370,6 +19370,14 @@ function readingCropLineGap(entry) {
   if (blockGaps.length >= 3) {
     return { gap: median(blockGaps), n: blockGaps.length, level: "block" };
   }
+  // **行数不够时不要退到"页级"**：页级算出来的是段间距（段与段之间常有 2–3 倍行距），
+  // 拿它当行距会让窗口高度变成整段、字缩成十几像素（实测截图就是这样）。
+  // 改用"这一行自己的行高 × 1.25"——行框高度稳定，误差远小于段间距。
+  const markBbox = (readingMarks.get(readingKey(entry.block_id, entry.line_index)) || {}).bbox;
+  const lineH = markBbox ? Number(markBbox[3]) - Number(markBbox[1]) : 0;
+  if (lineH > 0) {
+    return { gap: lineH * 1.25, n: blockGaps.length, level: "bbox×1.25" };
+  }
   const pageLines = [];
   for (const item of blocks) for (const line of item.lines || []) pageLines.push(line);
   const pageGaps = gapsOf(pageLines);
