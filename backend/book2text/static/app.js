@@ -243,8 +243,13 @@ function showView(name) {
     pumpPageSuggestionQueue();
   }
   if (target === "reading" && currentProject) {
-    setReviewOverlaysForReading();
-    openReading();
+    // 任务 94 Slice 2：进入审校只有一条路——ReadingView.enter()（§4 第 1 组）
+    if (window.ReadingView) {
+      window.ReadingView.enter(currentProject.project_id);
+    } else {
+      setReviewOverlaysForReading();
+      openReading();
+    }
   }
   if (target === "review" && currentProject) {
     // 任务 45：审校步默认只留差异层——版心与块框关掉，避免五套彩色打架
@@ -984,7 +989,8 @@ function auxNeedsWarning() {
 
 function enterReviewStep() {
   showView("reading");
-  savePosition("review", window.ReadingView ? window.ReadingView.getCurrent().pageNo : readingPageNo);
+  const where = window.ReadingView ? window.ReadingView.getCurrent() : null;
+  if (where && where.pageNo) savePosition("review", where.pageNo);
 }
 
 async function activeAuxJob() {
@@ -17762,7 +17768,7 @@ async function decideGarbledLines(ack) {
     );
     closeGarbledPanel();
     // 裁决落到行上：marks / 计数 / 进度都要重拉（走既有的"整批之后重开阅读流"）
-    await reloadReadingAfterBatch();
+    await window.ReadingView.reload();
     await refreshGarbledLines();
     showNoticeBar(
       ack === "adopted"
@@ -17927,7 +17933,7 @@ function renderPunctGroups() {
       else next.add(group.key);
       savePunctReviewSet(next);
       renderPunctGroups();
-      reloadReadingAfterBatch();
+      window.ReadingView.reload();
     });
     actions.append(adopt, keep, oneByOne);
 
@@ -17955,7 +17961,7 @@ async function decidePunctGroup(group, ack) {
     };
     await refreshPunctGroups();
     renderPunctGroups();
-    await reloadReadingAfterBatch();
+    await window.ReadingView.reload();
   } catch (error) {
     showError(el("punct-groups-error"), error);
   } finally {
@@ -17972,7 +17978,7 @@ async function undoPunctBatch() {
     punctLastBatch = null;
     await refreshPunctGroups();
     renderPunctGroups();
-    await reloadReadingAfterBatch();
+    await window.ReadingView.reload();
   } catch (error) {
     showError(el("punct-groups-error"), error);
   } finally {
@@ -17981,13 +17987,6 @@ async function undoPunctBatch() {
 }
 
 /** 批量裁决改了正文：整条阅读流重开一次（marks / 树 / 进度都跟着变）。 */
-async function reloadReadingAfterBatch() {
-  readingProject = null;
-  readingData = null;
-  readingMarks = new Map();
-  await openReading();
-  renderPunctGroupBadge();
-}
 
 // ---------------------------------------------------------------- 启动
 
@@ -18193,6 +18192,22 @@ function markReadingUserMoved() {
  */
 function readingMovedSinceOpen(sinceMs) {
   return readingUserMovedAt > sinceMs;
+}
+
+/**
+ * 标点 / 乱码批次裁决后整条流重开（§4 第 3 组）。
+ *
+ * **归属在审校，不在标点**：这个函数原来长在标点代码段里，直接写 `readingProject` /
+ * `readingData` / `readingMarks`——两个模块各写一份审校状态，正是"重绘互相吃掉"的根。
+ * 现在它和 `openReading()` 放在一起；外部只调 `ReadingView.reload()`。
+ */
+async function readingReloadAfterBatch() {
+  readingProject = null;
+  readingData = null;
+  readingMarks = new Map();
+  await openReading();
+  renderPunctGroupBadge();
+  window.ReadingView?.emit?.("content-changed");
 }
 
 async function openReading() {
@@ -21040,10 +21055,14 @@ function boot() {
     el,
     getPageNo: () => readingPageNo,
     getProjectId: () => (currentProject ? currentProject.project_id : null),
-    enter: (projectId) => openReading(projectId),
+    enter: () => {
+      // 进入审校的固定前置：版心/块框按阅读态设置（原来在 showView 里，现在收进这一条入口）
+      setReviewOverlaysForReading();
+      openReading();
+    },
     exit: () => showView("pages"),
     toggleFollow: () => setReadingFollow(!readingFollow),
-    reload: () => openReading(),
+    reload: () => readingReloadAfterBatch(),
     onViewportResize: () => {
       if (currentView !== "reading") return;
       measureReadingTops();
