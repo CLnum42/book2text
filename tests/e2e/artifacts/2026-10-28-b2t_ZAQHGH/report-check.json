@@ -1,0 +1,35 @@
+{
+  "title": "三组一致性断言",
+  "rows": [
+    {
+      "step": "A 显示=导出",
+      "assertion": "右栏可见文本 = 导出段文本",
+      "status": "FAIL",
+      "evidence": "自检失败 1；seq 5 第 4 字起不同：显示「lcc: :pp」 vs 导出「lcc::pp」"
+    },
+    {
+      "step": "B 提交→库",
+      "assertion": "2 处编辑都写进了库",
+      "status": "PASS",
+      "evidence": "01M609YSCT… 'title:\\nauthor:\\npubli' → 'title: QA1\\nauthor:\\np'；01M609YSCT… 'language:' → 'language: QA2'"
+    },
+    {
+      "step": "B 提交→库",
+      "assertion": "库里的块文本包含 UI 上新输入的行",
+      "status": "PASS",
+      "evidence": "全部命中"
+    },
+    {
+      "step": "B 提交→库",
+      "assertion": "revision 递增（写入确实是一次提交）",
+      "status": "PASS",
+      "evidence": "[(3, 2), (3, 2)]"
+    },
+    {
+      "step": "C 撤销→字节",
+      "assertion": "撤销后内容指纹 = 提交前（逐字段）",
+      "status": "PASS",
+      "evidence": "b410141f697b598c… == b410141f697b598c…；界面重渲染=False"
+    }
+  ]
+}
