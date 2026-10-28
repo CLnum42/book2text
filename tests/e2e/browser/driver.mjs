@@ -52,6 +52,10 @@ export async function run(cfg) {
       return await scrollFollow(page, args);
     case "review_state":
       return await reviewState(page);
+    case "label_watch":
+      return await labelWatch(page);
+    case "label_writes":
+      return await labelWrites(page);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -1669,6 +1673,47 @@ async function reviewState(page) {
       scrollHeight: stream ? Math.round(stream.scrollHeight) : null,
     };
   });
+}
+
+/** 给 #reading-page-no 挂写入钩子：每次 textContent 被写都记调用栈与当时状态。 */
+async function labelWatch(page) {
+  return await page.evaluate(() => {
+    if (window.__labelWatchInstalled) return { installed: true, reused: true };
+    const node = document.getElementById("reading-page-no");
+    if (!node) return { installed: false, reason: "没有 #reading-page-no" };
+    const desc = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
+    window.__labelWrites = [];
+    Object.defineProperty(node, "textContent", {
+      configurable: true,
+      get() {
+        return desc.get.call(this);
+      },
+      set(value) {
+        const stream = document.getElementById("reading-stream");
+        window.__labelWrites.push({
+          value: String(value).replace(/\s+/g, ""),
+          at: Date.now(),
+          stack: (new Error().stack || "").split("\n").slice(1, 8).map((l) => l.trim()),
+          pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+          driver: typeof readingSyncDriver !== "undefined" ? readingSyncDriver : null,
+          until: typeof readingSyncUntil !== "undefined" ? Math.round(readingSyncUntil) : null,
+          now: Math.round(performance.now()),
+          settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : null,
+          pin: window.__b2tPagePin ? { held: window.__b2tPagePin.held, escape: window.__b2tPagePin.escape } : null,
+          scrollTop: stream ? Math.round(stream.scrollTop) : null,
+          scrollHeight: stream ? Math.round(stream.scrollHeight) : null,
+        });
+        if (window.__labelWrites.length > 400) window.__labelWrites.splice(0, 200);
+        return desc.set.call(this, value);
+      },
+    });
+    window.__labelWatchInstalled = true;
+    return { installed: true };
+  });
+}
+
+async function labelWrites(page) {
+  return await page.evaluate(() => window.__labelWrites || []);
 }
 
 async function nextProbe(page) {
