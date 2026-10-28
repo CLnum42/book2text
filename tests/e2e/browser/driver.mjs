@@ -1277,7 +1277,7 @@ async function highlightProbe(page, maxJumps = 28) {
  */
 async function pinGuard(page, args) {
   const target = args.targetPage || 142;
-  const maxJumps = args.maxJumps || 40;
+  const maxJumps = args.maxJumps || 240;
   await ensureReading(page);
 
   const read = () =>
@@ -1368,6 +1368,7 @@ async function pinGuard(page, args) {
   // ---------------------------------------------------------------- 1. 跳转不漂
   let jumps = 0;
   let landing = null;
+  const jumpRows = [];
   while (jumps < maxJumps) {
     await page.click("#reading-next-unreviewed", { label: `下一处未审 ${jumps + 1}` });
     jumps += 1;
@@ -1386,6 +1387,16 @@ async function pinGuard(page, args) {
       )
       .catch(() => {});
     const now = await read();
+    jumpRows.push({
+      n: jumps,
+      panelPage: now.panelPage,
+      label: now.label,
+      dominant: now.dominant,
+      anchorPage: now.anchorPage,
+      scrollTop: now.scrollTop,
+      panelLineTop: now.panelLineTop,
+      at: Date.now(),
+    });
     if (now.panelPage === target) {
       landing = now;
       break;
@@ -1394,7 +1405,7 @@ async function pinGuard(page, args) {
     if (now.panelPage !== null && now.panelPage > target) break;
   }
   if (!landing) {
-    return { target, jumps, error: "没跳到目标页", last: await read() };
+    return { target, jumps, jumpRows, error: "没跳到目标页", last: await read() };
   }
   await page.waitForTimeout(500);
   const at500 = await read();
@@ -1454,7 +1465,7 @@ async function pinGuard(page, args) {
   const step144 = await scrollToPage(target + 2);
   const step146 = await scrollToPage(target + 4);
 
-  return { target, jumps, landing, at500, at1500, step143, step144, step146 };
+  return { target, jumps, jumpRows, landing, at500, at1500, step143, step144, step146 };
 }
 
 async function nextProbe(page) {

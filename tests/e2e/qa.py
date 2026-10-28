@@ -993,10 +993,17 @@ def cmd_pinguard(args: argparse.Namespace) -> int:
     except Exception as error:  # noqa: BLE001
         report.blocked("三段探针", str(error))
         return report.finish(report_path)
-    report_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 原始数据单独落盘：report.finish 会写同一个路径，别让它把证据覆盖掉。
+    raw_path = Path(state["run_dir"]) / "raw-pinguard.json"
+    raw_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     if data.get("error"):
-        report.blocked("第 1 段·跳转", f"{data['error']}（按了 {data.get('jumps')} 次："
-                                     + _pin_brief(data.get("last")) + "）")
+        tail = (data.get("jumpRows") or [])[-6:]
+        report.blocked("第 1 段·跳转",
+                       f"{data['error']}（按了 {data.get('jumps')} 次；最后 6 次："
+                       + "；".join(f"#{row['n']} 面板{row.get('panelPage')}/顶部{row.get('label')}"
+                                  f"/锚点{row.get('anchorPage')}/scrollTop{row.get('scrollTop')}"
+                                  for row in tail)
+                       + f"；{_pin_brief(data.get('last'))}；raw={raw_path}）")
         return report.finish(report_path)
 
     target = int(data["target"])
