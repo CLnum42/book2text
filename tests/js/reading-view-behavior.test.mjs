@@ -199,6 +199,14 @@ function readState(code) {
 
 installStubs();
 
+// splitPrefs / saveSplit 是**搬运期临时导出**（Architect：Slice 2 结束后
+// `Object.keys(window.ReadingView)` 只许 7 个）。这条偏好用例借它们验证
+// "三栏宽度重入后还在"；它们被移除时自动 skip，不许把临时导出当稳定接口锁住。
+const splitApiSkip =
+  typeof ctx.ReadingView?.splitPrefs === "function" && typeof ctx.ReadingView?.saveSplit === "function"
+    ? false
+    : "splitPrefs/saveSplit 临时导出已移除（Slice 2 收尾）；这条偏好用例要改用稳定接口重写";
+
 // ---------------------------------------------------------------- 1. enter / exit
 
 test("进入审校：视图切到 reading，且位置被记录", () => {
@@ -357,7 +365,7 @@ test("过滤器：汉字级不混入标点条目；未审不混入已 ack / 已�
 
 // ---------------------------------------------------------------- 7. 偏好
 
-test("偏好：三栏宽度写进 localStorage，重新加载模块后还在", () => {
+test("偏好：三栏宽度写进 localStorage，重新加载模块后还在", { skip: splitApiSkip }, () => {
   resetState();
   installReadingView(ctx);
   ctx.ReadingView.init({});
