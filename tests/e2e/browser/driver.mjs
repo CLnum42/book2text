@@ -3194,6 +3194,7 @@ async function gotoProbe(page, args) {
 
   await ensureReading(page);
   await install();
+  if (mode === "read") return { results: [await read()] };
   const results = [];
   const doNext = async (tag) => {
     await clear();
