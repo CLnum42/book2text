@@ -1178,6 +1178,20 @@ async function prepare(page, cfg) {
     }
   });
   await page.reload();
+  // 页面级错误收集：**"删错声明"这类 bug 不会红在任何断言上**，只会在控制台里
+  // 报 ReferenceError（树渲染不出来）。prepare 时就挂上收集器，smoke 结束再读。
+  await page.evaluate(() => {
+    window.__b2tErrors = window.__b2tErrors || [];
+    if (!window.__b2tErrInstalled) {
+      window.__b2tErrInstalled = true;
+      window.addEventListener("error", (e) => {
+        window.__b2tErrors.push({ kind: "error", msg: String(e.message || ""), src: String(e.filename || ""), line: e.lineno });
+      });
+      window.addEventListener("unhandledrejection", (e) => {
+        window.__b2tErrors.push({ kind: "rejection", msg: String((e.reason && e.reason.message) || e.reason || "") });
+      });
+    }
+  });
   await waitFor(
     page,
     () => {
