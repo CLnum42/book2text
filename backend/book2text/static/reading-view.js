@@ -1006,11 +1006,13 @@ async function gotoNextUnreviewed() {
   function enter(projectId) {
     // 未 init 时保持搬走前的 no-op（原 enter 注入项没接上时也是空转）；生产 boot 必注入 getProject
     if (!injected.getProject) return;
+    injected.clearReadingIntents?.(true);
     injected.setReviewOverlaysForReading?.();
     openReading();
   }
 
   function exit() {
+    injected.clearReadingIntents?.(true);
     injected.exit?.();
   }
 

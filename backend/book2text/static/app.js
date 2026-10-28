@@ -18067,6 +18067,64 @@ let readingUserMovedAt = 0;
 let readingUserScrollSeq = 0;
 let readingProgramScrollSeq = 0;
 
+// ---------------------------------------------------------------- 破环：审校意图队列（§12.1.1）
+//
+// 渲染只读状态，不直接调加载器、不直接改页码：把"这一帧还想补的事"按 kind 入队，
+// 帧末由 flushReadingIntents() 统一消费。每个 kind 只保留"当前愿望"（后写覆盖先写），
+// 所以长度 ≤ 6 是**结构上限**。队列归审校，L5 时整段搬进 reading-view.js。
+const READING_INTENT_KINDS = ["marks", "blocks", "panel", "jump", "goto", "scroll"];
+const readingIntents = new Map();
+const readingIntentStats = { dropped: 0, coalesced: 0 };
+let readingFlushRaf = 0;
+
+/** 清空队列；dropped=true 表示"这次是丢弃"（!active / exit / 换项目），计入统计。 */
+function clearReadingIntents(dropped = false) {
+  if (dropped) readingIntentStats.dropped += readingIntents.size;
+  readingIntents.clear();
+  if (readingFlushRaf) {
+    cancelAnimationFrame(readingFlushRaf);
+    readingFlushRaf = 0;
+  }
+}
+
+/** 单点写入：kind 只能是这 6 个；同 kind 直接覆盖，不排队。 */
+function queueReadingIntent(kind, payload) {
+  if (!READING_INTENT_KINDS.includes(kind)) {
+    throw new Error(`unknown reading intent: ${kind}`);
+  }
+  if (readingIntents.has(kind)) readingIntentStats.coalesced += 1;
+  // blocks 是唯一允许数组的 payload：一次悬浮可能覆盖多页，入队时按 Set 去重。
+  if (kind === "blocks") payload = { pageNos: [...new Set(payload.pageNos || [])] };
+  readingIntents.set(kind, payload);
+  if (!readingFlushRaf) readingFlushRaf = requestAnimationFrame(flushReadingIntents);
+}
+
+/** 单点消费：固定顺序 marks → blocks → panel → jump → goto → scroll；一帧最多一次。 */
+function flushReadingIntents() {
+  readingFlushRaf = 0;
+  if (!currentProject || currentView !== "reading") {
+    clearReadingIntents(true);
+    return;
+  }
+  // 先快照再清空：flush 期间新入队的愿望留给下一帧，不递归。
+  const intents = new Map(readingIntents);
+  readingIntents.clear();
+  if (intents.has("marks")) ensureReadingMarksWindow(intents.get("marks").pageNo);
+  if (intents.has("blocks")) {
+    for (const pageNo of intents.get("blocks").pageNos) ensureReadingBlocks(pageNo);
+  }
+  if (intents.has("panel")) retryReadingPendingPanel();
+  if (intents.has("jump")) jumpReadingTo(intents.get("jump").segmentIndex);
+  if (intents.has("goto")) {
+    const intent = intents.get("goto");
+    updateReadingPage(intent.pageNo, { scrollLeft: intent.scrollLeft, syncStream: intent.syncStream });
+  }
+  if (intents.has("scroll")) scrollReadingToPage(intents.get("scroll").pageNo);
+  if (readingIntents.size && !readingFlushRaf) {
+    readingFlushRaf = requestAnimationFrame(flushReadingIntents);
+  }
+}
+
 /**
  * 吃掉一次 `/review/marks` 的返回（全书或窗口都一样）。
  *
@@ -20230,6 +20288,7 @@ function boot() {
     gotoReadingEntry: (entry) => gotoReadingEntry(entry),
     readingInlineStorageKey: () => readingInlineStorageKey(),
     readingDraftStorageKey: () => readingDraftStorageKey(),
+    clearReadingIntents: (dropped) => clearReadingIntents(dropped),
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {
