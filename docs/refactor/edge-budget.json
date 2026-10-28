@@ -15,6 +15,6 @@
     "edge:setReadingHover->ensureReadingBlocks": 1,
     "edge:verifyReadingPageSync->updateReadingPage": 0,
     "edge:gotoReadingEntry->jumpReadingTo": 1,
-    "edge:gotoReadingEntry->updateReadingPage": 0
+    "edge:gotoReadingEntry->updateReadingPage": 1
   }
 }
