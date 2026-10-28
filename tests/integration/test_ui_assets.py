@@ -1625,7 +1625,11 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert module_script.count("function submitReadingDrafts(") == 1
     assert (script + module_script).count("function submitReadingDrafts(") >= 1
     assert "b2t.readingDrafts." in script
-    assert "/review/marks" in script
+    # L5：marks 的两条读取（全书 first=1 / 单页 page=N）随队列搬进模块，app.js 里 0 处。
+    # 断言"只住在模块里"而不是"恰好 1 处"——模块里合法地出现两处调用 + 一处注释。
+    # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
+    assert script.count("/review/marks") == 0
+    assert module_script.count("/review/marks?") == 2
     # L2 笔2：submitReadingDrafts 搬进模块，接口路径跟着搬（app.js 里 0，模块里 1）。
     assert (script + module_script).count("/review/submit-drafts") == 1
     assert "line_spans" in script
@@ -1640,9 +1644,14 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert "is-proof" in css
     assert "reading-proof__pages" in css
     # 任务 57：左栏是连续页列（可独立滚）+ 版心/块框 + 悬停联动
-    assert "function buildReadingPages(" in script
+    # L5：buildReadingPages / setReadingHover 随左栏搬进模块（app.js 定义数 0，无转发）。
+    # 判据同前：模块里恰好 1 处真实现，app.js 里 0 处；合查防"两边都留一份"。
+    # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
+    assert module_script.count("function buildReadingPages(") == 1
+    assert (script + module_script).count("function buildReadingPages(") >= 1
     assert "function paintReadingTile(" in script
-    assert "function setReadingHover(" in script
+    assert module_script.count("function setReadingHover(") == 1
+    assert (script + module_script).count("function setReadingHover(") >= 1
     assert "function setReviewOverlaysForReading(" in script
     assert "box.dataset.blockId" in script
     # L1 第二笔：reading-pdf-scroll 的 scroll 监听随 setupReading 搬进模块（app.js 里是 0）。
@@ -1652,7 +1661,9 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert scroll_listener_count == 1, (
         f"reading-pdf-scroll 的 scroll 监听必须存在且只绑一处，实际 {scroll_listener_count} 处"
     )
-    assert "setReadingHover(" in script
+    # L5：悬停联动的调用点也随左栏搬进模块。上面已锁"定义恰 1 处"，这里锁"至少还有 1 处调用"：
+    # 合查 ≥2 = 1 处定义 + ≥1 处调用，比原来的"app.js 里提到过"更严，不是放宽。
+    assert (script + module_script).count("setReadingHover(") >= 2
     assert ".reading-page" in css
     assert "is-linked" in css
     # 任务 59 第二刀：字级色块（有字框按字/词画，没有字框整行一个虚线框）
@@ -1714,6 +1725,7 @@ def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
     """任务 61：目录确认的页图不许"永远是灰的"；当前审校项左右同款高亮。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     # ① 页图：状态条在页列**前面**（挂在 490 个页块之后等于永远看不见）
@@ -1749,7 +1761,10 @@ def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
     assert "/review/punct-groups/decide" in script
     assert "function decidePunctGroup(" in script
     assert "全部采用候选" in script and "全部保留原文" in script and "逐条看" in script
-    assert "mark.level === \"differs_punct\" && !punctWatch.has(mark.pattern_key)" in script
+    # L5：标点差异的"未看过的 pattern 才计数"这条判据随 renderPunctGroupBadge 搬进模块
+    # （app.js 里 0 处）。判据同前：模块恰 1 处 + 合查存在。
+    assert module_script.count('mark.level === "differs_punct" && !punctWatch.has(mark.pattern_key)') == 1
+    assert 'mark.level === "differs_punct" && !punctWatch.has(mark.pattern_key)' in (script + module_script)
     assert ".punct-group__pattern" in css
 
 

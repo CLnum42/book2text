@@ -234,9 +234,28 @@ installStubs();
 function installReadingDeps() {
   const get = (expr) => runInApp(ctx, expr);
   const set = (expr, value) => runInApp(ctx, `${expr} = ${JSON.stringify(value)};`);
+  // 观察器状态（Intersection / Resize）：模块自己 `new`，再 set 进来、get 回去；
+  // 未建立时模块依赖 `get()` 为假值（`if (!get()) return;`）。
+  // 通用 set 兜底是 `JSON.stringify(value)`——实例会变成 `{}`：随后 `.observe()` 直接 TypeError，
+  // 或者 `if (get()) get().disconnect()` 判真后 `.disconnect` 也不是函数（2026-10-29 L5 落地红了 3 条）。
+  // 所以这一类状态一律存实例本体，null 原样透传（用例只要求能 observe/unobserve/disconnect，
+  // 观察是否真的生效属于浏览器行为，不在 node 层验）。
+  let nearObserver = { observe() {}, unobserve() {}, disconnect() {} };
+  let visibleObserver = { observe() {}, unobserve() {}, disconnect() {} };
   // 需要真实读写的状态（其余 get*/set* 一律给空实现：本用例只跑"加载一次"，不碰那些链路）
   const SPECIAL = {
     el: (id) => ctx.document.getElementById(id),
+    getReadingNearObserver: () => nearObserver,
+    setReadingNearObserver: (value) => {
+      nearObserver = value;
+    },
+    getReadingVisibleObserver: () => visibleObserver,
+    setReadingVisibleObserver: (value) => {
+      visibleObserver = value;
+    },
+    // 块数据：loadIndexBlocks 仍住在 app.js（注入侧有转发），转发给它比重造一份假数据更真。
+    // 通用兜底返回 undefined 会让 `ensureReadingBlocks` 里的 `.then` 直接炸。
+    loadIndexBlocks: (pageNo) => ctx.loadIndexBlocks(pageNo),
     apiJson: (url, options) => ctx.apiJson(url, options),
     readingOptions: () => ({ page_types: ["body"], confirmed_only: false, page_numbers: null }),
     getProject: () => get("currentProject"),
@@ -277,6 +296,16 @@ function installReadingDeps() {
     setReadingPageCounts: (value) => set("readingPageCounts", value),
     setReadingFirstUnackedPage: (value) => set("readingFirstUnackedPage", value),
   };
+  // 剩下两个观察器（readingObserver / readingResizeObserver）与 near/visible 同类：
+  // 未建立时 get() 必须是假值，set 之后 get() 必须拿回同一个实例。统一按类生成，避免下一个再漏。
+  const observerState = { readingObserver: null, readingResizeObserver: null };
+  for (const key of Object.keys(observerState)) {
+    const Name = key[0].toUpperCase() + key.slice(1);
+    SPECIAL[`get${Name}`] = () => observerState[key];
+    SPECIAL[`set${Name}`] = (value) => {
+      observerState[key] = value ?? null;
+    };
+  }
   // 模块 spread 了 deps，所以必须把**用到的每个名字**都显式给出（Proxy 过不了 spread）
   const names = [...new Set([...READING_VIEW_SRC.matchAll(/injected\.([A-Za-z_]+)/g)].map((m) => m[1]))];
   const deps = {};
