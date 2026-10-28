@@ -1,0 +1,73 @@
+{
+  "rows": [
+    {
+      "name": "1 过滤器",
+      "ok": true,
+      "detail": "{\"all\":{\"entries\":7,\"segs\":8,\"filter\":\"all\"},\"chars\":{\"entries\":7,\"segs\":32,\"filter\":\"chars\"},\"unacked\":{\"entries\":7,\"segs\":32,\"filter\":\"unacked\"}}"
+    },
+    {
+      "name": "2 翻页",
+      "ok": true,
+      "detail": "before label/pageNo/pdfTop 1/1/0 -> after 2/2/461"
+    },
+    {
+      "name": "3 进入编辑",
+      "ok": true,
+      "detail": "editing=01M609YSCTY9T6D986R8XMC3ZC:0 contenteditable=true"
+    },
+    {
+      "name": "4 提交",
+      "ok": false,
+      "detail": "Error: 按了两次 Enter 仍没有草稿"
+    },
+    {
+      "name": "5 撤销",
+      "ok": false,
+      "detail": "PageDialogOpenedError: Runtime.evaluate cannot run while a JavaScript alert dialog (\"没有可撤销的操作\") is open; handle it with page.acceptDialog() or page.dismissDialo"
+    },
+    {
+      "name": "6 悬停",
+      "ok": true,
+      "detail": "hoveredSeq 23 -> null; hover 类 1->0; linked 1->0"
+    },
+    {
+      "name": "7 跟随开关",
+      "ok": true,
+      "detail": "follow true->false; chip 跟随：开->跟随：关"
+    },
+    {
+      "name": "8 滚动同步",
+      "ok": true,
+      "detail": "顶部 4 -> 7（scrollTop 1379->2579）"
+    },
+    {
+      "name": "9 用户动过不抢位置",
+      "ok": true,
+      "detail": "scrollTop 2579 -> 2579"
+    },
+    {
+      "name": "10 左右联动",
+      "ok": true,
+      "detail": "顶部 7->9；pdfTop 3006->3906；正文 scrollTop 2579->3508"
+    }
+  ],
+  "snap": {
+    "label": 9,
+    "pageNo": 9,
+    "scrollTop": 3508,
+    "pdfTop": 3906,
+    "segs": 72,
+    "entries": 7,
+    "filter": "all",
+    "drafts": 0,
+    "inlineEdits": 0,
+    "editing": null,
+    "follow": true,
+    "chipText": "跟随：开",
+    "chipOn": true,
+    "hover": 1,
+    "linked": 1,
+    "panelKey": "01M609YX81FD04QZPC431BX5MJ:0",
+    "progress": "已审 0 / 567 条"
+  }
+}
