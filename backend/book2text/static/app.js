@@ -20537,7 +20537,12 @@ function onReadingScroll() {
         const tr = target.getBoundingClientRect();
         const settled = tr.bottom > rect.top && tr.top < rect.bottom;
         if (settled) {
+          // **落位那一帧也不许写**：目标行刚进视口时，35% 锚点还落在上一页最后一行
+          // （QA 实测：跳 142，锚点行 141，同一个 rAF 里清掉标志又写页码 → 142 变 141，
+          //  +1.5s 仍是 141）。清标志与写页码必须分到两次滚动事件里，这次先不写。
           readingJumpSettleKey = null;
+          allowPageWrite = false;
+          window.__b2tPagePin.held += 1;
         } else {
           readingJumpSettleTicks += 1;
           allowPageWrite = false;
@@ -20547,6 +20552,20 @@ function onReadingScroll() {
             readingJumpSettleKey = null;
             window.__b2tPagePin.escape += 1;
           }
+        }
+      }
+    }
+    // 面板项那一行还在视口里 → 页码以面板项为准（D-105）。文档末尾没法再往下滚，
+    // 35% 锚点会常态性落在上一页最后一行（QA 实测 142 页落位后锚点是 141），
+    // 只靠落位窗口挡不住之后的滚动事件。
+    // **行节点取不到时放行（fail-open）**：早先那版取不到就挡，重绘换掉节点后页码被永久钉死。
+    if (allowPageWrite && readingPanelKey) {
+      const pinLine = readingLineNode(readingPanelKey);
+      if (pinLine) {
+        const pr = pinLine.getBoundingClientRect();
+        if (pr.bottom > rect.top && pr.top < rect.bottom) {
+          allowPageWrite = false;
+          window.__b2tPagePin.held += 1;
         }
       }
     }
