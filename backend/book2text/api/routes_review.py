@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 from collections import deque
 from dataclasses import dataclass
@@ -368,6 +369,88 @@ class PunctGroupDecideRequest(BaseModel):
 
     key: str = Field(min_length=1, max_length=400)
     ack: Literal["kept", "adopted"]
+
+
+@router.post("/{project_id}/review/next-lines")
+def review_next_lines(request: Request, project_id: str, body: Any = None) -> dict[str, Any]:
+    """「下一处未审」的唯一数据源：**正文流顺序**的未审行表 + 流外差异计数。
+
+    为什么不用页级计数找：`page_counts` 是队列口径（按页），而阅读流里的行
+    （`line_spans`）才是用户能审的东西。实测第 11/14/18/23 页各有 1–2 处未审差异，
+    但那些行**不在任何 segment 的 line_spans 里**（脚注 / 被排除块），
+    于是「找到页 → 找不到行」→ 前端只能报"没有下一处"。这里按行给，前端不再自己筛页。
+
+    segments 用**和 `export/preview?segments_only=1` 完全同一个函数**（含缓存），
+    保证"显示 = 导出"的口径不在这里分叉。
+    """
+    # 延迟导入：routes_exports 与这里共用 ExportRequest 的形状，模块级导入会成环
+    from .routes_exports import ExportRequest as _ExportRequest
+    from ..core.export import project as project_export
+    from ..core.project import reading_marks as marks_module
+
+    if not isinstance(body, _ExportRequest):
+        body = _ExportRequest()
+    library = _library(request)
+    _require_main(request, project_id)
+    try:
+        raw = project_export.preview_segments_json(
+            project_id, library=library, options=body.options()
+        )
+        segments = json.loads(raw).get("segments") or []
+        data = marks_module.marks_data(project_id, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+    # 流内顺序：segment 顺序 × line_span 顺序
+    order: dict[tuple[str, int], int] = {}
+    seq = 0
+    for segment in segments:
+        for span in segment.get("line_spans") or []:
+            key = (str(span.get("block_id")), int(span.get("line_index", -1)))
+            if key not in order:
+                order[key] = seq
+                seq += 1
+
+    lines: list[dict[str, Any]] = []
+    outside: list[dict[str, Any]] = []
+    for item in data.get("items") or []:
+        if item.get("ack"):
+            continue
+        if item.get("level") == "differs_punct":
+            continue
+        key = (str(item.get("block_id")), int(item.get("line_index", -1)))
+        if key in order:
+            lines.append(
+                {
+                    "block_id": key[0],
+                    "line_index": key[1],
+                    "page_no": int(item.get("page_no") or 0),
+                    "order": order[key],
+                }
+            )
+        else:
+            outside.append(
+                {
+                    "page_no": int(item.get("page_no") or 0),
+                    "block_id": key[0],
+                    "line_index": key[1],
+                    "reason": "not_in_stream",
+                }
+            )
+    lines.sort(key=lambda item: item["order"])
+    for item in lines:
+        item.pop("order", None)
+    counts = data.get("counts") or {}
+    return {
+        "lines": lines,
+        "total": len(lines),
+        "outside_stream": {
+            "count": len(outside),
+            "by_reason": {"not_in_stream": len(outside)},
+            "sample": outside[:5],
+        },
+        "chars_unacked": int(counts.get("chars_unacked") or 0),
+    }
 
 
 @router.get("/{project_id}/review/garbled-lines")

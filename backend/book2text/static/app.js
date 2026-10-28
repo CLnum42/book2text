@@ -20495,52 +20495,66 @@ function logReadingNext(entry, extra = {}) {
 
 async function gotoNextUnreviewed() {
   if (!readingData) return;
-  // 任务 67：marks 只加载窗口，所以"下一处"分两步——
-  // 先在已加载窗口里按文档顺序找游标之后的第一处；找不到再让服务端告诉我们
-  // 下一个"还有汉字未审"的页，补那一页 ±10 的 marks 再找。
-  const cursorOrder = readingCursorOrder();
-  const next = readingEntries.find(
-    (entry) =>
-      !readingEntryDone(entry) &&
-      (!cursorOrder || readingOrderAfter(readingMarkOrder(entry), cursorOrder))
-  );
-  if (next) {
-    readingCursorEntry = next;
-    gotoReadingEntry(next);
-    logReadingNext(next, { branch: "window" });
-    return;
-  }
-  const afterPage = cursorOrder ? cursorOrder[2] : 0;
-  const pageNo = readingNextPageWithUnacked(afterPage);
-  if (pageNo == null) {
-    const total = readingGlobalCounts
-      ? Number(readingGlobalCounts.chars_total || 0)
-      : readingEntries.length;
-    el("reading-progress-text").textContent = `已处理 ${total} / ${total} · 全部处理完`;
-    // 静默无操作是最差的选择：队列空了要明确说"没有下一处"，并给下一步
-    showNoticeBar("全书未审已处理完 · 可以去「成稿模式」通读一遍，或者直接导出");
-    return;
-  }
-  // 换到那一页的窗口（可能已经加载过），再从头找——这次必须能找到，
-  // 否则说明计数口径和 marks 不一致，宁可停在原地也不死循环。
-  await ensureReadingMarksWindow(pageNo);
-  const target = readingEntries.find(
-    (entry) => !readingEntryDone(entry) && entry.page_no >= pageNo
-  );
-  if (!target) {
-    logReadingNext(null, {
-      branch: "none",
-      globalUnacked: Number(readingGlobalCounts?.chars_unacked || 0),
-      pagesWithCounts: readingPageCounts.size,
-      // 前 3 条原样打出来：一眼看出 chars_unacked 是不是全 0（旧快照）
-      sample: [...readingPageCounts.entries()].slice(0, 3),
+  // **唯一数据源：服务端按正文流顺序给出的未审行表**。
+  // 不再用"页级计数 + 已加载 marks"自己找——页级口径包含流外的行（脚注/被排除块），
+  // 找到页却找不到行，就会report"没有下一处"（实测卡在 11/14/18/23）。
+  let payload;
+  try {
+    payload = await apiJson(`/api/projects/${currentProject.project_id}/review/next-lines`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(readingOptions()),
     });
-    showNoticeBar("全书未审已处理完 · 可以去「成稿模式」通读一遍，或者直接导出");
+  } catch (error) {
+    logReadingNext(null, { branch: "error", reason: String(error.message || error) });
+    showNoticeBar(`找下一处失败：${error.message || "未知错误"}`);
     return;
   }
-  readingCursorEntry = target;
-  gotoReadingEntry(target);
-  logReadingNext(target, { branch: "fetch" });
+  const lines = payload.lines || [];
+  const usable = lines.filter(
+    (line) => !readingDrafts.has(readingKey(line.block_id, line.line_index))
+  );
+  const outside = payload.outside_stream || { count: 0, sample: [] };
+  if (!usable.length) {
+    logReadingNext(null, { branch: "none", total: payload.total, outside: outside.count });
+    // 队列里还有差异、只是不在正文流里：必须把数说出来，不许说"全部处理完"
+    if (Number(outside.count) > 0) {
+      showNoticeBar(
+        `正文流内已无未审；另有 ${outside.count} 处差异不在正文流里（前置页 / 脚注 / 被排除的块）`
+      );
+    } else {
+      showNoticeBar("全书未审已处理完 · 可以去「成稿模式」通读一遍，或者直接导出");
+    }
+    return;
+  }
+  const keyOf = (line) => readingKey(line.block_id, line.line_index);
+  const cursorKey = readingCursorEntry
+    ? readingKey(readingCursorEntry.block_id, readingCursorEntry.line_index)
+    : null;
+  let cursor = cursorKey ? usable.findIndex((line) => keyOf(line) === cursorKey) : -1;
+  let target;
+  if (cursor >= 0) {
+    target = usable[(cursor + 1) % usable.length];
+  } else {
+    // 没有游标：从当前位置往后第一处，再绕回开头
+    const page = Number(readingPageNo || 0);
+    const after = usable.findIndex((line) => Number(line.page_no) >= page);
+    target = usable[after >= 0 ? after : 0];
+  }
+  if (!target) return;
+  await ensureReadingMarksWindow(target.page_no);
+  const entry = readingEntries.find(
+    (item) => item.block_id === target.block_id && item.line_index === target.line_index
+  );
+  if (!entry) {
+    // 服务端说这行在流里、前端却查不到条目：只可能是 marks 窗口还没到，不静默、不谎报完成
+    logReadingNext(target, { branch: "missing", reason: "entry-not-in-window" });
+    showNoticeBar("这一处差异的标记还没加载完，稍等一下再按一次「下一处未审」");
+    return;
+  }
+  readingCursorEntry = entry;
+  gotoReadingEntry(entry);
+  logReadingNext(entry, { branch: "next-lines" });
 }
 
 function readingCursorOrder() {
@@ -20548,26 +20562,6 @@ function readingCursorOrder() {
 }
 
 /** 下一处"还有汉字未审"的页（严格在 afterPage 之后，绕一圈）；没有就返回 null。 */
-function readingNextPageWithUnacked(afterPage) {
-  // 注意：`readingPageCounts` 来自**服务端全书**的 `page_counts`（marks 响应里始终是全书的），
-  // 不是"已加载窗口"。`readingEntries` 才是窗口数据——找下一处不许用它做全书判断。
-  const pages = [...readingPageCounts.entries()]
-    .map(([pageNo, item]) => ({
-      page_no: Number(pageNo),
-      // 用 `||` 不用 `??`：旧快照里 `chars_unacked` 存在但全是 0（字段是后加的），
-      // `??` 不会回退，于是过滤后一条不剩 → "下一处未审"凭空说没有了（实测卡在 94/102/109）。
-      unacked: Number(item?.chars_unacked || item?.unacked || 0),
-    }))
-    // **必须在正文流里的页**：`page_counts` 是"队列里的差异页"，前置页 / 版心外的页
-    // 也有差异但不在正文流里，选中就找不到条目（`branch: none` 的真正来源）。
-    .filter((item) => item.unacked > 0 && readingFlowPages().has(item.page_no))
-    .sort((a, b) => a.page_no - b.page_no);
-  if (!pages.length) return null;
-  const forward = pages.find((item) => item.page_no > afterPage);
-  if (forward) return forward.page_no;
-  const wrap = pages.find((item) => item.page_no <= afterPage);
-  return wrap ? wrap.page_no : null;
-}
 
 function gotoReadingEntry(entry) {
   if (!entry || !entry.page_no) return;
