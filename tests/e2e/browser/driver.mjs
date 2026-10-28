@@ -1533,6 +1533,21 @@ async function nextProbe(page) {
         reason: log.reason || null,
         blocks: log.blocks ?? null,
         panelOpened: log.panelOpened ?? null,
+        // 高亮要连 key 一起验：只数 is-current 会把"高亮了别的行"判成通过。
+        panelKey: (document.querySelector(".reading-panel") || {}).dataset
+          ? document.querySelector(".reading-panel").dataset.key || null
+          : null,
+        targetExists: Boolean(
+          (document.querySelector(".reading-panel") || {}).dataset &&
+          document.querySelector(`#reading-stream .reading-line[data-key="${document.querySelector(".reading-panel").dataset.key}"]`)
+        ),
+        targetCurrent: Boolean(
+          (document.querySelector(".reading-panel") || {}).dataset &&
+          (() => {
+            const node = document.querySelector(`#reading-stream .reading-line[data-key="${document.querySelector(".reading-panel").dataset.key}"]`);
+            return node && node.classList.contains("is-current");
+          })()
+        ),
         lineFound: log.lineFound ?? null,
         entryPage: log.entryPage ?? null,
         globalUnacked: log.globalUnacked ?? null,

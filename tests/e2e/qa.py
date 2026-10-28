@@ -225,6 +225,7 @@ def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any
                     "dominant": snap.get("tileDominant"),
                     "panelVisible": snap.get("panelVisible"),
                     "highlight": (snap.get("highlight") or {}).get("any"),
+                    "highlightKey": item.get("targetCurrent"),
                     "panelVisibleAfter500ms": snap2.get("panelVisible"),
                     "progressed": item.get("progressed"),
                     "branch": (item.get("logEntry") or {}).get("branch"),
@@ -234,6 +235,28 @@ def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any
         total = len([item for item in iterations if not item.get("stopped")])
         branches, opened_false = _branch_stats(result.get("nextLog") or [])
         branch_text = "、".join(f"{name} {count}" for name, count in sorted(branches.items())) or "无"
+
+        # 判据：行高亮 20/20，且带 is-current 的那一行必须就是面板的 key（只数数量会漏）。
+        hl_bad = [
+            item for item in iterations
+            if not item.get("stopped") and not item.get("targetCurrent")
+        ]
+        if hl_bad:
+            brief_hl = [
+                {
+                    "index": item.get("index"),
+                    "panelKey": item.get("panelKey"),
+                    "lineExists": item.get("targetExists"),
+                    "lineCurrent": item.get("targetCurrent"),
+                    "currentLines": (item.get("snapshot") or {}).get("highlight", {}).get("lineCurrent"),
+                }
+                for item in hl_bad[:5]
+            ]
+            report.fail(step, "当前行高亮且 data-key === 面板 key（20/20）",
+                        f"{len(hl_bad)} 次不满足：" + json.dumps(brief_hl, ensure_ascii=False))
+        else:
+            report.ok(step, "当前行高亮且 data-key === 面板 key（20/20）",
+                      f"{total}/{total} 次：目标行存在且带 is-current")
 
         # 判据：missing 必须为 0（否则把 key 交出去）
         missing = [
