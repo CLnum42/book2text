@@ -18589,6 +18589,13 @@ function renderReading({ reset = false, startAt = null } = {}) {
   // 都要按当前状态回补一次**——它幂等，别指望"某一次 openReadingPanel 的副作用"能活过重绘。
   // （QA 实测：目标行在 DOM 里、面板开着，`is-current` 却是 0，就是这么丢的。）
   refreshReadingCurrentHighlight();
+  // 面板 DOM 在独立 host 里，`reset` 碰不到它：如果这次重绘既没有 `readingPanelKey`
+  // 也没有待恢复的面板，残留的旧面板就再也对不上了。
+  // QA 现场：正文和顶部已回到第 1 页，`#reading-panel-host` 里还挂着第 368 页的旧面板，
+  // 因为 `openReadingPanel` 看到"已有面板"就不重建。
+  if (!readingPanelKey && !readingPendingPanelEntry && !readingPendingPanelKey) {
+    hideReadingPanelHost();
+  }
 }
 
 function buildReadingSentinel() {
@@ -19211,6 +19218,15 @@ function openReadingPanel(entry) {
   requestAnimationFrame(() => {
     if (readingPanelKey === key) refreshReadingCurrentHighlight();
   });
+}
+
+function hideReadingPanelHost() {
+  // 只清 DOM，不动 pending / key：给"重绘后没有待恢复面板"的收尾用
+  const host = el("reading-panel-host");
+  if (host && host.querySelector(".reading-panel")) {
+    host.innerHTML = "";
+    host.hidden = true;
+  }
 }
 
 function closeReadingPanel() {
