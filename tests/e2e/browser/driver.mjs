@@ -2189,8 +2189,6 @@ async function cropProbe(page, args) {
           h: plan.rows * plan.gap,
         };
       }
-      const lineBox = key && typeof readingLineBox === "function"
-        ? readingLineBox(panel ? panel.dataset.key.split(":")[0] : null, null) : null;
       return {
         key,
         panelPage: panel ? (panel.querySelector(".reading-panel__head strong") || {}).textContent || null : null,
