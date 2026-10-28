@@ -673,6 +673,7 @@ Slice 1 实测（2026-10-28）：
 ### 12.1 破环轮廓（三步，按收益排）
 
 1. **切桥**：4 处视图内 `showView` 改成注入的 `navigate()`。审校环从母环上摘下来，审校侧症状才能独立治。
+   **必须排第 1，不能先切 9 条边**（Chief 2026-10-28）：先切边的话审校环还挂在母环上，切完看不出改善，还会把母环的症状误判成"切错了"。
 2. **切审校环的 9 条回调边**（渲染 → 数据/状态）：
    `renderReading→ensureReadingMarksWindow`、`renderReading→retryReadingPendingPanel`、
    `renderReadingTree→ensureReadingMarksWindow`、`renderReadingTree→scrollReadingToPage`、
