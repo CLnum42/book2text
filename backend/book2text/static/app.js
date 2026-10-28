@@ -984,7 +984,7 @@ function auxNeedsWarning() {
 
 function enterReviewStep() {
   showView("reading");
-  savePosition("review", readingPageNo);
+  savePosition("review", window.ReadingView ? window.ReadingView.getCurrent().pageNo : readingPageNo);
 }
 
 async function activeAuxJob() {
@@ -20862,142 +20862,24 @@ async function undoReadingSubmit() {
 // 三栏 = 左树 / PDF / 正文。两条 6px 的手柄可拖，宽度记在 localStorage；
 // 最小宽度卡住，别拖到正文没字、或 PDF 看不见；窄屏（<1120）不显示手柄（CSS 管）。
 
-const READING_SPLIT_KEY = "b2t.readingSplit.v1";
-const READING_SPLIT_DEFAULT = { tree: 232, pdf: 420 };
-const READING_SPLIT_MIN = { tree: 150, pdf: 240, stream: 360 };
-const READING_GRIP_TOTAL = 12;
-
-let readingSplitState = null;
-
+// ---------------------------------------------------------------- 三栏宽度（已迁到 reading-view.js）
+//
+// 任务 94 Slice 1：`reading-view.js` 搬走了宽度偏好与拖拽实现，这里只留**转发**，
+// 调用点保持不变。Slice 2 会把调用点也改成直接走 `ReadingView.*`。
 function readingSplitPrefs() {
-  if (readingSplitState) return readingSplitState;
-  let stored = null;
-  try {
-    stored = JSON.parse(localStorage.getItem(READING_SPLIT_KEY) || "null");
-  } catch {
-    stored = null;
-  }
-  readingSplitState = {
-    tree: Number.isFinite(stored && stored.tree)
-      ? Number(stored.tree)
-      : READING_SPLIT_DEFAULT.tree,
-    pdf: Number.isFinite(stored && stored.pdf)
-      ? Number(stored.pdf)
-      : READING_SPLIT_DEFAULT.pdf,
-  };
-  return readingSplitState;
+  return window.ReadingView.splitPrefs();
 }
 
-function clampNumber(value, min, max) {
-  if (max < min) return min;
-  return Math.min(Math.max(value, min), max);
-}
-
-/** 把当前宽度写进 CSS 变量；窗口太窄时**只收显示值**，不改用户记住的宽度。 */
 function applyReadingSplit() {
-  const split = el("reading-split");
-  if (!split) return;
-  // 窄屏（<1120）是 CSS 的紧凑布局（树 44px、PDF 收起）：内联变量会盖过媒体查询，
-  // 所以这时清掉内联值，把宽度交回样式表；宽屏再按用户拖的值铺开。
-  if (window.innerWidth < 1120) {
-    split.style.removeProperty("--reading-tree-w");
-    split.style.removeProperty("--reading-pdf-w");
-    return;
-  }
-  const prefs = readingSplitPrefs();
-  let tree = prefs.tree;
-  let pdf = prefs.pdf;
-  const total = split.clientWidth
-    ? split.clientWidth - READING_GRIP_TOTAL
-    : 0;
-  if (total > 0) {
-    tree = clampNumber(tree, READING_SPLIT_MIN.tree, total - pdf - READING_SPLIT_MIN.stream);
-    pdf = clampNumber(pdf, READING_SPLIT_MIN.pdf, total - tree - READING_SPLIT_MIN.stream);
-  }
-  split.style.setProperty("--reading-tree-w", `${Math.round(tree)}px`);
-  split.style.setProperty("--reading-pdf-w", `${Math.round(pdf)}px`);
+  window.ReadingView.applySplit();
 }
 
 function saveReadingSplit() {
-  try {
-    localStorage.setItem(
-      READING_SPLIT_KEY,
-      JSON.stringify({ tree: Math.round(readingSplitPrefs().tree), pdf: Math.round(readingSplitPrefs().pdf) })
-    );
-  } catch {
-    // 存不进去（隐私模式 / 配额满）不影响当前这次拖动
-  }
+  window.ReadingView.saveSplit();
 }
 
-function resetReadingSplit() {
-  readingSplitState = { ...READING_SPLIT_DEFAULT };
-  try {
-    localStorage.removeItem(READING_SPLIT_KEY);
-  } catch {
-    // 忽略
-  }
-  applyReadingSplit();
-}
-
-/** 拖一条手柄：两种拖动各自只改自己那一栏，另一栏保持不动。 */
 function setupReadingSplit() {
-  const split = el("reading-split");
-  if (!split) return;
-  const grips = [
-    { node: el("reading-grip-tree"), key: "tree" },
-    { node: el("reading-grip-pdf"), key: "pdf" },
-  ];
-  for (const grip of grips) {
-    const node = grip.node;
-    if (!node) continue;
-    node.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      const startX = event.clientX;
-      const start = readingSplitPrefs()[grip.key];
-      node.setPointerCapture(event.pointerId);
-      node.classList.add("is-active");
-      document.body.classList.add("is-resizing-reading");
-      const move = (moved) => {
-        const prefs = readingSplitPrefs();
-        const width = split.clientWidth - READING_GRIP_TOTAL;
-        // 另一栏当前**生效**的宽度也按同样规则取，避免两栏一起越界
-        const otherKey = grip.key === "tree" ? "pdf" : "tree";
-        const other = clampNumber(
-          prefs[otherKey],
-          READING_SPLIT_MIN[otherKey],
-          width - READING_SPLIT_MIN[otherKey] - READING_SPLIT_MIN.stream
-        );
-        const max = width - other - READING_SPLIT_MIN.stream;
-        prefs[grip.key] = clampNumber(
-          start + (moved.clientX - startX),
-          READING_SPLIT_MIN[grip.key],
-          max
-        );
-        applyReadingSplit();
-      };
-      const finish = () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", finish);
-        window.removeEventListener("pointercancel", finish);
-        node.classList.remove("is-active");
-        document.body.classList.remove("is-resizing-reading");
-        saveReadingSplit();
-      };
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", finish);
-      window.addEventListener("pointercancel", finish);
-    });
-    // 双击回默认：拖歪了不用去清 localStorage
-    node.addEventListener("dblclick", resetReadingSplit);
-  }
-  window.addEventListener("resize", () => {
-    applyReadingSplit();
-    if (currentView === "reading") {
-      measureReadingTops();
-      if (readingPageNo) updateReadingPage(readingPageNo, { scrollLeft: true });
-    }
-  });
+  window.ReadingView.setupSplit();
 }
 
 function setupReading() {
@@ -21153,6 +21035,15 @@ function setupReading() {
 
 
 function boot() {
+  // 任务 94 Slice 1：审校视图模块初始化（依赖由此注入，模块内部不直接碰这些全局）
+  window.ReadingView?.init({
+    el,
+    getPageNo: () => readingPageNo,
+    getProjectId: () => (currentProject ? currentProject.project_id : null),
+    enter: (projectId) => openReading(projectId),
+    exit: () => showView("pages"),
+    toggleFollow: () => setReadingFollow(!readingFollow),
+  });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !openMasks().length && currentProject && selectedPages.size) {
@@ -21184,7 +21075,7 @@ function boot() {
   setupPageIndex();
   setupPreview();
   setupReading();
-  setupReadingSplit();
+  // 三栏拖动由 reading-view.js 的 init() 负责（任务 94），这里不再重复绑定
   setupPageMore();
   setupExportPanel();
   setupStructurePanel();
