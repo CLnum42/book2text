@@ -2716,10 +2716,15 @@ async function interactionsProbe(page, args) {
   // 6) 悬停：移到段落 → 高亮出现；移开 → 消失
   try {
     const seg = await page.evaluate(() => {
-      const node = document.querySelector("#reading-stream .reading-seg");
-      if (!node) return null;
-      const r = node.getBoundingClientRect();
-      return { x: Math.min(window.innerWidth - 20, r.x + 30), y: r.y + Math.min(20, r.height / 2) };
+      // 只挑**当前视口内**的段落：第一个 seg 可能滚到屏幕外，elementFromPoint 会返回 null
+      for (const node of document.querySelectorAll("#reading-stream .reading-seg")) {
+        const r = node.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0 && r.top > 100 && r.bottom < window.innerHeight - 50
+            && r.x > 700 && r.right < window.innerWidth - 20) {
+          return { x: Math.round(r.x + 40), y: Math.round(r.y + Math.min(24, r.height / 2)) };
+        }
+      }
+      return null;
     });
     if (!seg) throw new Error("没有段落");
     const under = await page.evaluate(({ x, y }) => {
