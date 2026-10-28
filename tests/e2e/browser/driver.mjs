@@ -448,7 +448,28 @@ async function clickMarkAt(page, label) {
     await new Promise((resolve) => setTimeout(resolve, 150));
     return visible();
   });
-  if (!point) throw new Error("正文流里没有可点的差异标记");
+  if (!point) {
+    // 别只说"没有标记"：把当时的选择器状态一起带出来，才能分清是探针没等到还是真的没铺。
+    const diag = await page.evaluate(() => {
+      const stream = document.getElementById("reading-stream");
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      return {
+        marks: document.querySelectorAll("#reading-stream .reading-mark").length,
+        lines: document.querySelectorAll("#reading-stream .reading-line").length,
+        segs: document.querySelectorAll("#reading-stream .reading-seg").length,
+        filter: typeof readingFilter !== "undefined" ? readingFilter : "n/a",
+        visibleSegments: typeof readingVisibleSegments === "function" ? readingVisibleSegments().length : "n/a",
+        entries: typeof readingEntries !== "undefined" ? readingEntries.length : "n/a",
+        panelKey: (document.querySelector(".reading-panel") || {}).dataset
+          ? document.querySelector(".reading-panel").dataset.key || null
+          : null,
+        label: label.replace(/\s+/g, ""),
+        scrollTop: stream ? Math.round(stream.scrollTop) : null,
+        scrollHeight: stream ? Math.round(stream.scrollHeight) : null,
+      };
+    });
+    throw new Error("正文流里没有可点的差异标记：" + JSON.stringify(diag));
+  }
   await page.mouse.click(point.x, point.y, { label });
   await waitFor(
     page,
