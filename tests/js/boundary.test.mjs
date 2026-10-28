@@ -8,9 +8,18 @@
 //   **第 3 步（L）不能省**：reading-view.js 自己声明了 `el`，app.js:28 也有 `const el`；
 //   它还声明了 4 个 split 函数而 app.js 留着同名转发 stub。那是同名不同物，不是依赖。
 //
-// **R4（真实现份数 = 1）**：同名函数全仓库只许一份真实现；其余每份函数体 ≤6 行，
+// **R4-dup（真实现份数 = 1）**：跨文件同名函数只许一份真实现；其余每份函数体 ≤6 行，
 //   且只含 `window.ReadingView.x(...)` / `ReadingView.x(...)`。
 //   这条取代了作废的"行数守恒（±30）"判据——IIFE 包装、依赖注入、转发 stub 都是搬运必然带的。
+//   注意编号：Architect 文档里的 R4 是"共享状态只注入不缓存"，这里是 R4-dup，别混。
+//
+// **R4b-same-file**：同一文件里同名顶层声明出现两次及以上 → 后者覆盖前者，未申报即红。
+//   只看**缩进 0**：函数内部的两个 `const row = …` 是不同作用域，不互相覆盖
+//   （当前 app.js 里 `row` 6560/13064、`target` 8338/10445 就都是缩进 2 的局部变量）。
+//   别名也算同名：顶层 `const foo = (…) =>` 与 `function foo(…)` 同属一个作用域。
+//
+// **R7**：`index.html` 不许出现 `<script type="module">`（默认 deferred，会改 boot 时序，
+//   这仓库一半 bug 是时序问题）；且 `reading-view.js` 的 `<script>` 必须在 `app.js` 之前。
 //
 // **例外表**：`ALLOW` 必须为空；上限 3 条，每条要带 owner + 到期切片。
 //
@@ -247,7 +256,7 @@ function classify(def) {
   return { kind: "stub" };
 }
 
-test("R4：同名函数只许一份真实现，其余必须是 ≤6 行的薄转发", () => {
+test("R4-dup（真实现份数=1）：同名函数只许一份真实现，其余必须是 ≤6 行的薄转发", () => {
   const files = readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js")).map((name) => join(STATIC_DIR, name));
   const byName = new Map();
   for (const file of files) {
@@ -280,6 +289,142 @@ test("R4：同名函数只许一份真实现，其余必须是 ≤6 行的薄转
   }
 
   assert.deepEqual(problems, [], problems.join("；"));
+});
+
+// ---------------------------------------------------------------- R7：加载时序
+
+/**
+ * 这个仓库的加载顺序靠"经典脚本 + `reading-view.js` 在 `app.js` 之前"撑住。
+ * `type="module"` 默认 deferred，会改 boot 时序——这仓库一半 bug 是时序问题。
+ */
+test("R7：index.html 不许出现 type=module，且模块先于 app.js 加载", () => {
+  const indexPath = join(STATIC_DIR, "index.html");
+  let html;
+  try {
+    html = readFileSync(indexPath, "utf8");
+  } catch {
+    assert.fail(`找不到 ${indexPath}：B2T_STATIC_DIR 指向的目录必须包含 index.html`);
+    return;
+  }
+  const moduleTags = html.match(/<script[^>]*\btype\s*=\s*["']module["'][^>]*>/gi) || [];
+  assert.deepEqual(
+    moduleTags,
+    [],
+    "index.html 出现了 <script type=\"module\">：会改 boot 时序，本项目禁用",
+  );
+  const viewAt = html.indexOf("/static/reading-view.js");
+  const appAt = html.indexOf("/static/app.js");
+  assert.ok(viewAt !== -1, "index.html 里没有 reading-view.js 的 <script>");
+  assert.ok(appAt !== -1, "index.html 里没有 app.js 的 <script>");
+  assert.ok(
+    viewAt < appAt,
+    `reading-view.js 必须先在 app.js 之前加载（现在顺序反了：view=${viewAt} app=${appAt}）`,
+  );
+});
+
+// ---------------------------------------------------------------- R4b：同文件同名真实现
+
+/**
+ * 同一文件里同名声明出现两次及以上（**只看顶层，缩进 0**）→ 后者覆盖前者，是实打实的重定义。
+ *
+ * 为什么只看顶层：函数内部的两个 `const row = …` 是不同作用域，不会互相覆盖。
+ * 当前 app.js 里就有 2 个这样的假阳性（`row` 6560/13064、`target` 8338/10445，都在缩进 2），
+ * 所以判据是"缩进 0 + 同名"，不是"全文同名"。
+ *
+ * 别名也算：`const foo = (…) =>` 与 `function foo(…)` 同名同样算重定义（顶层两者都在同一作用域）。
+ *
+ * 基线：这三个是**已知缺陷、冻结期不修**（DevLead 记在 docs/known-limitations.md）。
+ * 基线只记"文件 + 名字 + 份数"，不记行号——行号会随改动漂移，漂一次红一次没意义。
+ * 新增一个未申报的同名对立即红；已知对减少也红（逼着删基线条目，不许悄悄消失）。
+ */
+/**
+ * 例外表：同文件同名真实现的**已知死代码**（冻结期不删，Chief 定的）。
+ * 每条必须带 owner 与到期点；上限 3 条——三对正好占满，再多一条就红。
+ */
+const SAME_FILE_DUP_EXCEPTIONS = [
+  { file: "app.js", name: "adoptBlockSuggestion", count: 2, owner: "Chief/DevLead", expires: "正文流① 搬完" },
+  { file: "app.js", name: "adoptAllHighSuggestions", count: 2, owner: "Chief/DevLead", expires: "正文流① 搬完" },
+  { file: "app.js", name: "rerenderReadingLine", count: 2, owner: "Chief/DevLead", expires: "正文流① 搬完" },
+];
+const SAME_FILE_DUP_EXCEPTION_MAX = 3;
+
+/** 顶层（缩进 0）声明：`function NAME(` 与 `NAME = (…) =>` / `= function`。 */
+function topLevelDeclarationsByName(source) {
+  const found = new Map();
+  source.split("\n").forEach((raw, index) => {
+    if (!raw || /^\s/.test(raw)) return;   // 只看缩进 0
+    const fn = /^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(raw);
+    const alias = /^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/.exec(raw);
+    const name = fn ? fn[1] : alias ? alias[1] : null;
+    if (!name) return;
+    const list = found.get(name) || [];
+    list.push(index + 1);
+    found.set(name, list);
+  });
+  return found;
+}
+
+test("R4b-same-file：同一文件内同名真实现（后者覆盖前者，未申报即红）", () => {
+  // 例外表本身要合格：上限 3 条、每条带 owner 与到期点
+  const allowed = new Set();
+  const tableProblems = [];
+  for (const entry of SAME_FILE_DUP_EXCEPTIONS) {
+    if (!entry.owner) tableProblems.push(`例外 ${entry.name} 缺 owner`);
+    if (!entry.expires) tableProblems.push(`例外 ${entry.name} 缺到期点`);
+    allowed.add(`${entry.file}:${entry.name}`);
+  }
+  assert.ok(
+    SAME_FILE_DUP_EXCEPTIONS.length <= SAME_FILE_DUP_EXCEPTION_MAX,
+    `例外表 ${SAME_FILE_DUP_EXCEPTIONS.length} 条，超过上限 ${SAME_FILE_DUP_EXCEPTION_MAX}——超了要停下问 DevLead，不许扩`,
+  );
+  assert.deepEqual(tableProblems, [], tableProblems.join("；"));
+
+  const problems = [];
+  const files = readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"));
+  const seen = new Set();
+  for (const fileName of files) {
+    const source = readFileSync(join(STATIC_DIR, fileName), "utf8");
+    for (const [name, lines] of topLevelDeclarationsByName(source)) {
+      const exception = SAME_FILE_DUP_EXCEPTIONS.find((item) => item.file === fileName && item.name === name);
+      if (lines.length < 2) {
+        if (exception) {
+          problems.push(
+            `函数 ${name} 的已知重复不见了（例外 ${exception.count} 份，现在 ${lines.length} 份：`
+            + `${fileName}:${lines.join("、")}）——若已修复，请从例外表删除（到期点：${exception.expires}）`,
+          );
+        }
+        continue;
+      }
+      if (!exception) {
+        problems.push(
+          `函数 ${name} 在同一文件有两份真实现（${lines.map((line) => `${fileName}:${line}`).join(" / ")}）`,
+        );
+        continue;
+      }
+      seen.add(`${fileName}:${name}`);
+      if (lines.length !== exception.count) {
+        problems.push(
+          `函数 ${name} 的同文件重复份数变了（例外 ${exception.count}，实际 ${lines.length}：`
+          + `${lines.map((line) => `${fileName}:${line}`).join(" / ")}）`,
+        );
+      }
+    }
+  }
+  for (const entry of SAME_FILE_DUP_EXCEPTIONS) {
+    if (!seen.has(`${entry.file}:${entry.name}`)) {
+      problems.push(`例外表里的 ${entry.name} 在实际代码里没有重复了——到期请删除（到期点：${entry.expires}）`);
+    }
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("R4b-same-file 例外表：上限 3 条，每条带 owner 与到期点", () => {
+  assert.ok(SAME_FILE_DUP_EXCEPTIONS.length <= SAME_FILE_DUP_EXCEPTION_MAX,
+    `例外表 ${SAME_FILE_DUP_EXCEPTIONS.length} 条，超过上限 ${SAME_FILE_DUP_EXCEPTION_MAX}`);
+  for (const entry of SAME_FILE_DUP_EXCEPTIONS) {
+    assert.ok(entry.owner, `例外 ${entry.name} 缺 owner`);
+    assert.ok(entry.expires, `例外 ${entry.name} 缺到期点`);
+  }
 });
 
 // ---------------------------------------------------------------- 对外导出棘轮
@@ -353,6 +498,18 @@ test("写路径 emit 不得再出现在公开对象上（事件只出不进）",
 // | 把 app.js 的 stub 改成 7 行（调用 + 6 行注释） | `函数 applyReadingSplit 的转发 app.js:20872 不合格：函数体 7 行（上限 6）` |
 // | 删掉 reading-view.js 里的真实现（只留转发） | `函数 applyReadingSplit 找不到真实现（app.js:20872 / reading-view.js:56）` |
 // | 在 reading-view.js 里引用 `readingPageNo`（R1 的 7c1d00c 形态） | `reading-view.js 引用了 1 处 app.js 的顶层声明` |
+//
+// | R4b-same-file：新增一对同文件重复（`function renderReadingProgress` 再来一份） | `函数 renderReadingProgress 在同一文件有两份真实现（app.js:19092 / app.js:21117）` |
+// | R4b-same-file：同名**箭头别名**（顶层 `const renderReadingProgress = () => {}`） | 同上（证明别名与 function 同权） |
+// | R4b-same-file：修掉一对已知重复（例外过期） | `函数 rerenderReadingLine 的已知重复不见了（例外 2 份，现在 1 份：app.js:18912）——若已修复，请从例外表删除（到期点：正文流① 搬完）` |
+// | R7：index.html 里给 app.js 加上 `type="module"` | `index.html 出现了 <script type="module">：会改 boot 时序，本项目禁用` |
+// | R7：交换两个 `<script>` 的顺序 | `reading-view.js 必须先在 app.js 之前加载（现在顺序反了：view=93090 app=93049）` |
+//
+// 已知死代码三对（冻结期不删，例外表里带 owner 与到期点 `正文流① 搬完`）：
+// - `adoptBlockSuggestion`：app.js 两份（后声明的生效）
+// - `adoptAllHighSuggestions`：app.js 两份（后声明的生效）
+// - `rerenderReadingLine`：app.js 两份——18912 是 `rerenderReadingLine(key)`，
+//   19347 是 `rerenderReadingLine(entry)`；后者生效，所以**按 key 调用的那处会在运行时静默失效**。
 //
 // R1 的历史红：`B2T_VIEW_JS=/tmp/rv-7c1d00c.js node tests/js/run.mjs boundary` →
 // `reading-view.js 引用了 5 处 app.js 的顶层声明`（currentView / measureReadingTops / readingPageNo×2 /
