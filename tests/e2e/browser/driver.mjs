@@ -1187,6 +1187,7 @@ async function step(page, cfg, which) {
 // ---------------------------------------------------------------- 阅读流
 
 async function nextProbe(page) {
+  await ensureReading(page);
   const rows = [];
   for (let i = 0; i < 20; i += 1) {
     await page.click("#reading-next-unreviewed", { label: `下一处未审 ${i + 1}` });
@@ -1205,6 +1206,8 @@ async function nextProbe(page) {
         panelOpened: log.panelOpened ?? null,
         lineFound: log.lineFound ?? null,
         entryPage: log.entryPage ?? null,
+        globalUnacked: log.globalUnacked ?? null,
+        pagesWithCounts: log.pagesWithCounts ?? null,
         inReading: Boolean(document.getElementById("view-reading") && !document.getElementById("view-reading").hidden),
       };
     }, i));
