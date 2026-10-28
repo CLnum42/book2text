@@ -18199,6 +18199,7 @@ async function openReading() {
   if (!currentProject) return;
   // 三栏宽度在打开时套一次：视图刚显示出来才量得到真实宽度
   applyReadingSplit();
+  readingDockApplyHeight(readingDockPrefs().h);
   const projectId = currentProject.project_id;
   if (readingProject === projectId && readingData) {
     renderReading({ reset: true });
@@ -19161,6 +19162,128 @@ function readingLineNode(key) {
   return stream ? stream.querySelector(`.reading-line[data-key="${key}"]`) : null;
 }
 
+// ---------------------------------------------------------------- 下区审校面板（任务 91 第 1 步）
+//
+// 从"列间浮动面板"改成"底部常驻面板"：`#reading-panel-host` 仍是被渲染进去的容器，
+// 但它现在位于 `#reading-dock` 的右列，`renderReading({reset:true})` 结构上碰不到它。
+// 高度 / 收起状态按项目记，别让用户每个项目重调一次。
+
+const READING_DOCK_KEY = "b2t.readingDock.v1";
+const READING_DOCK_DEFAULT_HEIGHT = 276;
+const READING_DOCK_MIN_HEIGHT = 248;
+const READING_DOCK_MAX_HEIGHT = 420;
+
+function readingDockStore() {
+  try {
+    return JSON.parse(localStorage.getItem(READING_DOCK_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+function readingDockPrefs() {
+  const projectId = currentProject ? currentProject.project_id : "";
+  const one = readingDockStore()[projectId] || {};
+  return {
+    h: Number.isFinite(one.h) ? one.h : READING_DOCK_DEFAULT_HEIGHT,
+    collapsed: Boolean(one.collapsed),
+  };
+}
+
+function readingDockSave(patch) {
+  if (!currentProject) return;
+  const projectId = currentProject.project_id;
+  const all = readingDockStore();
+  all[projectId] = { ...readingDockPrefs(), ...patch };
+  try {
+    localStorage.setItem(READING_DOCK_KEY, JSON.stringify(all));
+  } catch {
+    /* 存不了偏好不影响功能 */
+  }
+}
+
+function readingDockApplyHeight(h) {
+  const value = Math.min(READING_DOCK_MAX_HEIGHT, Math.max(READING_DOCK_MIN_HEIGHT, Number(h) || READING_DOCK_DEFAULT_HEIGHT));
+  const dock = el("reading-dock");
+  if (dock) dock.style.setProperty("--reading-dock-h", `${value}px`);
+}
+
+function readingDockSetVisible(visible) {
+  const dock = el("reading-dock");
+  const grip = el("reading-dock-grip");
+  if (dock) dock.hidden = !visible;
+  if (grip) grip.hidden = !visible;
+}
+
+function readingDockHeader(entry) {
+  const where = el("reading-dock-where");
+  const level = el("reading-dock-level");
+  const count = el("reading-dock-count");
+  if (where) {
+    where.textContent = entry
+      ? `第 ${entry.page_no} 页 · 第 ${entry.line_index + 1} 行`
+      : "—";
+  }
+  if (level) {
+    level.hidden = !entry;
+    if (entry) {
+      level.textContent = entry.level === "differs_punct" ? "标点级" : "汉字级";
+    }
+  }
+  if (count) {
+    const total = readingGlobalCounts ? Number(readingGlobalCounts.chars_total || 0) : 0;
+    const unacked = readingGlobalCounts ? Number(readingGlobalCounts.chars_unacked || 0) : 0;
+    count.textContent = total ? `${Math.max(0, total - unacked)} / ${total}` : "";
+  }
+}
+
+/** 打开下区并换成这一条；点击差异条目时调用（收起状态会被重新展开）。 */
+function readingDockShow(entry) {
+  readingDockApplyHeight(readingDockPrefs().h);
+  readingDockSetVisible(true);
+  readingDockHeader(entry);
+  readingDockSave({ collapsed: false });
+}
+
+function readingDockCollapse() {
+  readingDockSetVisible(false);
+  readingDockSave({ collapsed: true });
+}
+
+function initReadingDockGrip() {
+  const grip = el("reading-dock-grip");
+  if (!grip || grip.dataset.bound === "1") return;
+  grip.dataset.bound = "1";
+  let dragging = false;
+  let startY = 0;
+  let startH = 0;
+  const onMove = (event) => {
+    if (!dragging) return;
+    readingDockApplyHeight(startH - (event.clientY - startY));
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.removeEventListener("pointermove", onMove);
+    const dock = el("reading-dock");
+    const raw = dock ? getComputedStyle(dock).getPropertyValue("--reading-dock-h") : "";
+    const h = parseInt(raw, 10);
+    readingDockSave({ h: Number.isFinite(h) ? h : READING_DOCK_DEFAULT_HEIGHT });
+  };
+  grip.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    startY = event.clientY;
+    const dock = el("reading-dock");
+    startH = dock ? dock.getBoundingClientRect().height : READING_DOCK_DEFAULT_HEIGHT;
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp, { once: true });
+  });
+  grip.addEventListener("dblclick", () => {
+    readingDockApplyHeight(READING_DOCK_DEFAULT_HEIGHT);
+    readingDockSave({ h: READING_DOCK_DEFAULT_HEIGHT });
+  });
+}
+
 function openReadingPanel(entry) {
   closeReadingPanel();
   const key = readingKey(entry.block_id, entry.line_index);
@@ -19213,6 +19336,7 @@ function openReadingPanel(entry) {
   host.innerHTML = "";
   host.append(panel);
   host.hidden = false;
+  readingDockShow(entry);
   refreshReadingCurrentHighlight();
   if (entry.page_no && entry.page_no !== readingPageNo) {
     updateReadingPage(entry.page_no, { scrollLeft: false, syncStream: false });
@@ -19241,12 +19365,14 @@ function hideReadingPanelHost() {
   if (host && host.querySelector(".reading-panel")) {
     host.innerHTML = "";
     host.hidden = true;
+    readingDockSetVisible(false);
   }
 }
 
 function closeReadingPanel() {
   const host = el("reading-panel-host");
   if (host) { host.innerHTML = ""; host.hidden = true; }
+  readingDockSetVisible(false);
   readingJumpSettleKey = null;
   // 用户主动关 = 真的关；重绘导致的移除走 renderReading，不清 pending
   readingPendingPanelKey = null;
@@ -21072,6 +21198,8 @@ function setupReading() {
     openPageDetail(readingPageNo);
   });
   el("reading-stream").addEventListener("scroll", onReadingScroll, { passive: true });
+  el("reading-dock-collapse")?.addEventListener("click", () => readingDockCollapse());
+  initReadingDockGrip();
   el("reading-pdf-scroll").addEventListener("scroll", onReadingPdfScroll, { passive: true });
   // 悬停段落：右栏绿底 + 左边对应块绿框（只高亮，不滚）
   el("reading-stream").addEventListener("mouseover", (event) => {

@@ -777,9 +777,26 @@
           </div>
           <div class="reading-grip" id="reading-grip-pdf" role="separator" aria-orientation="vertical"
                aria-label="拖动调整 PDF 宽度，双击恢复默认" title="拖动调整宽度；双击恢复默认"></div>
-          <div id="reading-panel-host" class="reading-panel-host" hidden></div>
         <div class="reading-stream" id="reading-stream"></div>
         </div>
+        <div class="reading-dock-grip" id="reading-dock-grip" role="separator" aria-orientation="horizontal"
+             aria-label="拖动调整审校面板高度，双击恢复默认" title="拖动调整高度；双击恢复默认"></div>
+        <section class="reading-dock" id="reading-dock" hidden>
+          <header class="reading-dock__head">
+            <span class="reading-dock__where" id="reading-dock-where">—</span>
+            <span class="reading-dock__level" id="reading-dock-level" hidden></span>
+            <span class="spacer"></span>
+            <span class="reading-dock__count" id="reading-dock-count"></span>
+            <button type="button" class="icon-btn reading-dock__collapse" id="reading-dock-collapse"
+                    title="收起（Esc）">收起 ⌄</button>
+          </header>
+          <div class="reading-dock__body">
+            <div class="reading-dock__crop" id="reading-dock-crop">
+              <p class="muted reading-dock__crop-empty">放大图稍后接入</p>
+            </div>
+            <div class="reading-dock__edit" id="reading-panel-host" hidden></div>
+          </div>
+        </section>
       </section>
 
       <!-- ─────────────────────────── 视图：结果预览（与导出同一份 segments） ─────────────────────────── -->
