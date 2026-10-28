@@ -558,11 +558,15 @@ async function pageSync(page, cfg, args) {
       }));
     }
     const nextLog = await page.evaluate(() => window.__b2tNextLog || []);
+    const finalProgress = await page.evaluate(
+      () => (document.getElementById("reading-progress-text") || {}).innerText || ""
+    );
     return {
       path,
       before,
       iterations,
       nextLog: nextLog.slice(0, 20),
+      finalProgress,
       snapshot: iterations.length ? iterations[iterations.length - 1].snapshot : await pageSyncSnapshot(page),
       screenshot: await screenshot(page, cfg, "pagesync-next20"),
     };

@@ -235,6 +235,35 @@ def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any
         branches, opened_false = _branch_stats(result.get("nextLog") or [])
         branch_text = "、".join(f"{name} {count}" for name, count in sorted(branches.items())) or "无"
 
+        # 判据：missing 必须为 0（否则把 key 交出去）
+        missing = [
+            item for item in iterations
+            if (item.get("logEntry") or {}).get("branch") == "missing"
+        ]
+        if missing:
+            brief_missing = [
+                {
+                    "index": item.get("index"),
+                    "entryKey": (item.get("logEntry") or {}).get("entryKey"),
+                    "entryPage": (item.get("logEntry") or {}).get("entryPage"),
+                    "page": (item.get("snapshot") or {}).get("label"),
+                }
+                for item in missing[:5]
+            ]
+            report.fail(step, "missing = 0",
+                        f"{len(missing)} 次 missing：" + json.dumps(brief_missing, ensure_ascii=False))
+        else:
+            report.ok(step, "missing = 0", "20 次里没有 missing")
+
+        # 判据：不许谎报完成
+        final_progress = str(result.get("finalProgress") or "")
+        if "全部处理完" in final_progress and (queue_pending or 0) > 0:
+            report.fail(step, "不许谎报完成",
+                        f"chars_unacked={queue_pending} 仍 >0，但界面显示「{final_progress}」")
+        else:
+            report.ok(step, "不许谎报完成",
+                      f"最终进度「{final_progress}」；队列 pending={queue_pending}")
+
         # 判据 4：队列非空时 branch=none 必须为 0
         none_count = branches.get("none", 0)
         if queue_pending is None:

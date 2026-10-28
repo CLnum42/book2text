@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(os.environ.get("B2T_QA_REPO") or Path(__file__).resolve().parents[2])
 PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
 if not PYTHON.is_file():  # pragma: no cover - 只在没建 venv 的机器上走到
     PYTHON = Path(sys.executable)
@@ -111,6 +111,11 @@ def start(
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    # 默认用仓库工作区；B2T_QA_REPO 指向 git worktree 时可以精确测某个提交，
+    # 不被别人未提交的改动污染（本轮 HEAD=90d96fc，工作区有未提交改动）。
+    env["PYTHONPATH"] = str(REPO_ROOT / "backend") + (
+        os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
+    )
     command = [
         str(PYTHON),
         "-c",
