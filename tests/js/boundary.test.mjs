@@ -628,11 +628,17 @@ test("R9：app.js 里被引用但没声明的标识符一律红（no-undef）", 
 // ---------------------------------------------------------------- R3：DOM 归属
 
 /**
- * **规格：docs/refactor/reading-view-boundary.md §16（DevLead 裁决走 (a)：33 行豁免 + MAX 只降不升）**
+ * **规格：docs/refactor/reading-view-boundary.md §16（作用域 = 审校块外）**
  *
- * 实测（本机 2026-10-28）：`view-reading` 子树 39 个 id，`app.js` 引用其中 **34** 个
- * （§16 写的"4 行"是旧读数，已由 Architect 修正）。这 34 行是**过渡期豁免**，
- * 每搬一块到模块就得删一行；`MAX_EXEMPTIONS` 必须同批收（c45b8a5 的教训）。
+ * 为什么不是全 app.js：审校块（`阅读审校（L 刀` 起、`function boot(` 前止）里那 30 个引用
+ * 是**搬运期的合法状态**（L1–L12 会搬走）。如果按 id 全量豁免，以后块里新写一句
+ * `el("reading-stream")` 会因为 id 已在表里而**一声不响**——守卫空转。
+ *
+ * 实测（本机 2026-10-28）：`view-reading` 子树 39 个 id、`app.js` 引用 34 个
+ * （块内 30 + 块外 4）、5 个完全没被引用。块外那 4 个是 2 个函数
+ * （`renderGarbledBadge` / `renderPunctGroupBadge`）→ 4 行豁免，到期 `正文流① 搬完`。
+ *
+ * 块范围**每次运行重算**（不写死行号）：找含 `阅读审校（L 刀` 的行到 `function boot(` 前一行。
  * 模块文件（`*-view.js`）零豁免：id 必须能在自己 `<section id="view-X">` 子树里找到。
  */
 const R3_EXEMPTIONS = [
@@ -640,38 +646,24 @@ const R3_EXEMPTIONS = [
   { id: "reading-garbled-open", line: 17651, owner: "app.js", expires: "正文流① 搬完" },
   { id: "reading-punct-count", line: 17753, owner: "app.js", expires: "正文流① 搬完" },
   { id: "reading-punct-open", line: 17761, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-stream", line: 18173, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-tree", line: 18175, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-progress-text", line: 19037, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-progress-fill", line: 19038, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-draft-chip", line: 19041, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-submit", line: 19044, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-pdf-scroll", line: 19090, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-panel-host", line: 19157, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-pages", line: 19569, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-pdf-box", line: 19573, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-image-status", line: 19786, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-diff-layer", line: 20031, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-page-no", line: 20204, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-prev", line: 20361, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-next", line: 20362, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-follow-toggle", line: 20383, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-follow-chip", line: 20386, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-preflight", line: 20396, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-next-unreviewed", line: 20800, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-display-menu", line: 20802, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-more-menu", line: 20803, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-display-open", line: 20805, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-more-open", line: 20811, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-pending-toggle", line: 20817, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "view-reading", line: 20819, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-discard-all", line: 20830, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-help", line: 20841, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-undo", line: 20855, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-filter", line: 20858, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-blindspot", line: 20865, owner: "app.js", expires: "正文流① 搬完" },
 ];
-const R3_MAX_EXEMPTIONS = 34;   // 只降不升；条目数变了必须同批改这里
+const R3_MAX_EXEMPTIONS = 4;   // 只降不升；条目数变了必须同批改这里
+
+/**
+ * 审校块的范围：含 `阅读审校（L 刀` 的那一行 → `function boot(` 的前一行。
+ * **每次运行重算**，不写死行号（§15 第 5 条：按名字定位）。
+ */
+function readingBlockRange(source) {
+  const lines = source.split("\n");
+  let start = 0;
+  let end = 0;
+  lines.forEach((text, index) => {
+    if (!start && text.includes("阅读审校（L 刀")) start = index + 1;
+    if (!end && /^function boot\(/.test(text)) end = index;   // 前一行
+  });
+  if (!start || !end || end <= start) return null;
+  return { start, end };
+}
 
 /** 解析 index.html：view 名 → 该 `<section>` 子树里的 id 集合（按标签深度找同层 `</section>`）。 */
 function parseViewSections(html) {
@@ -705,7 +697,7 @@ function parseViewSections(html) {
 
 /** JS 里引用的 DOM id：`el("x")` / `getElementById("x")` / `querySelector("#x")`。 */
 function domIdsIn(jsStripped) {
-  const found = new Map();
+  const found = new Map();   // id -> 所有出现行（块外判定必须看全部出现，不能只看首次）
   const patterns = [
     /\bel\(\s*["']([^"']+)["']\s*\)/g,
     /getElementById\(\s*["']([^"']+)["']\s*\)/g,
@@ -714,7 +706,9 @@ function domIdsIn(jsStripped) {
   for (const pattern of patterns) {
     let m;
     while ((m = pattern.exec(jsStripped)) !== null) {
-      if (!found.has(m[1])) found.set(m[1], lineOf(jsStripped, m.index));
+      const list = found.get(m[1]) || [];
+      list.push(lineOf(jsStripped, m.index));
+      found.set(m[1], list);
     }
   }
   return found;
@@ -731,26 +725,38 @@ test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子�
     const viewName = fileName.replace(/-view\.js$/, "");
     const expected = sections.get(viewName) || new Set();
     const stripped = stripCommentsOnly(readFileSync(join(STATIC_DIR, fileName), "utf8"));
-    for (const [id, line] of domIdsIn(stripped)) {
-      if (!expected.has(id)) problems.push(`${fileName}:${line} 引用了不属于 view-${viewName} 的 id ${id}`);
+    for (const [id, occurrences] of domIdsIn(stripped)) {
+      if (!expected.has(id)) {
+        for (const line of occurrences) problems.push(`${fileName}:${line} 引用了不属于 view-${viewName} 的 id ${id}`);
+      }
     }
   }
 
-  // app.js：只许引用豁免表里的 reading 子树 id
+  // app.js：**审校块外**不许引用 reading 子树的 id（块内是搬运期合法状态，不占豁免名额）
   const exempt = new Map(R3_EXEMPTIONS.map((item) => [item.id, item]));
   const readingIds = sections.get("reading");
-  const appStripped = stripCommentsOnly(readFileSync(APP_FILE, "utf8"));
+  const appSource = readFileSync(APP_FILE, "utf8");
+  const appStripped = stripCommentsOnly(appSource);
   const appIds = domIdsIn(appStripped);
-  for (const [id, line] of appIds) {
+  const block = readingBlockRange(appSource);
+  assert.ok(block, "算不出审校块范围（找不到 `阅读审校（L 刀` 或 `function boot(`）——R3 不能在没有范围的情况下跑");
+  const inBlock = (line) => line >= block.start && line <= block.end;
+  const outsideIds = new Map();   // id -> 块外的行号列表
+  for (const [id, occurrences] of appIds) {
     if (!readingIds.has(id)) continue;              // 不是 reading 子树的 id，不归 R3 管
+    const outside = occurrences.filter((line) => !inBlock(line));
+    if (!outside.length) continue;                  // 全部出现在块内：搬运期合法状态
+    outsideIds.set(id, outside);
     if (!exempt.has(id)) {
-      problems.push(`app.js:${line} 引用了 view-reading 的 id ${id}，但豁免表里没有它`);
+      for (const line of outside) {
+        problems.push(`app.js:${line} 在审校块外引用了 view-reading 的 id ${id}，但豁免表里没有它`);
+      }
     }
   }
   // 豁免表防过期：每条必须还在被引用；条目数必须等于 MAX（只降不升，删条目要同批收）
   for (const item of R3_EXEMPTIONS) {
-    if (!appIds.has(item.id)) {
-      problems.push(`豁免 ${item.id} 在 app.js 里已经不再被引用——到期了请同批删除（到期点：${item.expires}）`);
+    if (!outsideIds.has(item.id)) {
+      problems.push(`豁免 ${item.id} 在审校块外已经不再被引用——到期了请同批删除（到期点：${item.expires}）`);
     }
     if (!item.owner) problems.push(`豁免 ${item.id} 缺 owner`);
     if (!item.expires) problems.push(`豁免 ${item.id} 缺到期点`);
