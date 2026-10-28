@@ -19925,19 +19925,39 @@ function applyReadingLinked(pageNo) {
  * - 没有字框（老数据、回填失败）：退化成整行一个虚线框，不整页不标；
  * - 只画差异，同行的相同字一个都不画。
  */
+const wordBoxMappingStats = { ok: 0, miss: 0, mappedChars: 0 };
+window.__b2tWordBoxStats = wordBoxMappingStats;
+
 function readingDiffUnits(lineText, candidate, wordBoxes) {
   const spans = computeCharSpans(lineText || "", candidate || "");
   if (!spans.length) return { ranges: [], kind: null };
   const kind = spans.some((span) => span.kind !== "replace") ? "punct" : "chars";
   if (!wordBoxes || !wordBoxes.length) return { ranges: null, kind };
   // 字框的文本拼起来应与行文本一致；按累加长度把差异区间映射到字框下标
+  // 任务 86：**按"词在行文本里的真实位置"映射**，不能把词框文本拼起来直接当偏移。
+  // 英文的 word_boxes 是"词"，词间空格不属于任何框：拼起来 75 字 vs 行文本 90 字，
+  // 旧判据 `offset !== lineText.length` 永远成立 → 英文书永远退化成整行黄框。
   const starts = [];
-  let offset = 0;
+  let cursor = 0;
+  let mapped = 0;
   for (const unit of wordBoxes) {
-    starts.push(offset);
-    offset += String(unit.text || "").length;
+    const word = String(unit.text || "");
+    if (!word) {
+      starts.push(cursor);
+      continue;
+    }
+    const at = (lineText || "").indexOf(word, cursor);
+    if (at < 0) {
+      // 词在行文本里找不到（OCR 与字框不同步）：整行退化，不许乱框
+      wordBoxMappingStats.miss += 1;
+      return { ranges: null, kind };
+    }
+    starts.push(at);
+    cursor = at + word.length;
+    mapped += word.length;
   }
-  if (offset !== (lineText || "").length) return { ranges: null, kind };
+  wordBoxMappingStats.ok += 1;
+  wordBoxMappingStats.mappedChars += mapped;
   const wanted = new Set();
   for (const span of spans) {
     for (let index = 0; index < wordBoxes.length; index += 1) {
