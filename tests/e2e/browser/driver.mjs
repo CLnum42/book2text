@@ -100,6 +100,8 @@ export async function run(cfg) {
       return await handlersProbe(page, args);
     case "click_sel":
       return await clickSel(page, args);
+    case "interactions_probe":
+      return await interactionsProbe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -2572,6 +2574,206 @@ async function clickSel(page, args) {
   await page.waitForTimeout(args.wait || 900);
   const after = await readWith();
   return { before, after, changed: before.label !== after.label || before.pageNo !== after.pageNo };
+}
+
+/** L2：10 个交互逐项验证（每项都要可观测效果）。 */
+async function interactionsProbe(page, args) {
+  await ensureReading(page);
+  const rows = [];
+  const rec = (name, ok, detail) => rows.push({ name, ok, detail });
+  const snap = () =>
+    page.evaluate(() => {
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const m = label.match(/(\d+)/);
+      const stream = document.getElementById("reading-stream");
+      const scroller = document.getElementById("reading-pdf-scroll");
+      const panel = document.querySelector(".reading-panel");
+      const chip = document.getElementById("reading-follow-chip");
+      return {
+        label: m ? Number(m[1]) : null,
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        scrollTop: stream ? Math.round(stream.scrollTop) : null,
+        pdfTop: scroller ? Math.round(scroller.scrollTop) : null,
+        segs: stream ? stream.querySelectorAll(".reading-seg").length : 0,
+        entries: typeof readingEntries !== "undefined" ? readingEntries.length : null,
+        filter: typeof readingFilter !== "undefined" ? readingFilter : null,
+        drafts: typeof readingDrafts !== "undefined" ? readingDrafts.size : null,
+        inlineEdits: typeof readingInlineEdits !== "undefined" ? readingInlineEdits.size : null,
+        editing: typeof readingEditingKey !== "undefined" ? readingEditingKey : null,
+        follow: typeof readingFollow !== "undefined" ? readingFollow : null,
+        chipText: chip ? chip.textContent.replace(/\s+/g, "") : null,
+        chipOn: chip ? chip.classList.contains("is-on") : null,
+        hover: document.querySelectorAll("#reading-stream .reading-seg.is-hover").length,
+        linked: document.querySelectorAll("#reading-pages .box.is-linked").length,
+        panelKey: panel ? panel.dataset.key || null : null,
+        progress: (document.getElementById("reading-progress-text") || {}).textContent || "",
+      };
+    });
+
+  // 1) 过滤器：三个值下的条目数
+  try {
+    const counts = {};
+    for (const value of ["all", "chars", "unacked"]) {
+      const has = await page.evaluate((v) =>
+        Boolean(document.querySelector(`#reading-filter option[value="${v}"]`)), value);
+      if (!has) { counts[value] = "no-option"; continue; }
+      await page.selectOption("#reading-filter", value);
+      await page.waitForTimeout(800);
+      const s = await snap();
+      counts[value] = { entries: s.entries, segs: s.segs, filter: s.filter };
+    }
+    await page.selectOption("#reading-filter", "all");
+    await page.waitForTimeout(500);
+    const uniq = new Set(Object.values(counts).filter((v) => v !== "no-option")
+      .map((v) => JSON.stringify(v)));
+    await rec("1 过滤器", uniq.size > 1, JSON.stringify(counts));
+  } catch (error) { await rec("1 过滤器", false, String(error).slice(0, 160)); }
+
+  // 2) 翻页：label / readingPageNo / scrollTop 三者同步
+  try {
+    const b = await snap();
+    await page.click("#reading-next", { label: "下一页" });
+    await page.waitForTimeout(900);
+    const a = await snap();
+    const synced = a.label === a.pageNo && a.pageNo === b.pageNo + 1;
+    await rec("2 翻页", synced,
+              `before label/pageNo/pdfTop ${b.label}/${b.pageNo}/${b.pdfTop} -> after ${a.label}/${a.pageNo}/${a.pdfTop}`);
+    await page.click("#reading-prev").catch(() => {});
+    await page.waitForTimeout(600);
+  } catch (error) { await rec("2 翻页", false, String(error).slice(0, 160)); }
+
+  // 3) 进入编辑：点正文某行
+  try {
+    const point = await page.evaluate(() => {
+      const line = document.querySelector("#reading-stream .reading-line");
+      if (!line) return null;
+      line.scrollIntoView({ block: "center" });
+      const r = line.getBoundingClientRect();
+      return { x: r.x + Math.min(40, r.width / 2), y: r.y + r.height / 2, key: line.dataset.key };
+    });
+    if (!point) throw new Error("正文流没有行");
+    await page.mouse.click(point.x, point.y, { label: "点正文行进编辑" });
+    await page.waitForTimeout(700);
+    const s = await snap();
+    const hasBox = await page.evaluate(() =>
+      Boolean(document.querySelector('#reading-stream .reading-line[contenteditable]')));
+    await rec("3 进入编辑", Boolean(s.editing) && hasBox, `editing=${s.editing} contenteditable=${hasBox}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+  } catch (error) { await rec("3 进入编辑", false, String(error).slice(0, 160)); }
+
+  // 4) 提交：造一个草稿再提交
+  try {
+    await ensureReading(page);
+    await page.click("#reading-next-unreviewed", { label: "开一条" });
+    await page.waitForTimeout(900);
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(700);
+    const before = await snap();
+    if (!before.drafts) throw new Error("没有草稿，无法验证提交");
+    await page.click("#reading-submit", { label: "提交草稿" });
+    await page.waitForTimeout(2500);
+    const after = await snap();
+    await rec("4 提交", after.drafts === 0 && after.progress !== before.progress,
+              `drafts ${before.drafts}->${after.drafts}; 进度 ${before.progress} -> ${after.progress}`);
+  } catch (error) { await rec("4 提交", false, String(error).slice(0, 160)); }
+
+  // 5) 撤销
+  try {
+    const before = await snap();
+    await page.click("#reading-more-open", { label: "打开更多" });
+    await page.waitForTimeout(300);
+    await page.click("#reading-undo", { label: "撤回上次提交" });
+    await page.waitForTimeout(600);
+    const hadDialog = await page.acceptDialog().then(() => true).catch(() => false);
+    await page.waitForTimeout(2500);
+    const after = await snap();
+    await rec("5 撤销", hadDialog && after.progress !== before.progress,
+              `confirm=${hadDialog}; 进度 ${before.progress} -> ${after.progress}`);
+  } catch (error) {
+    await rec("5 撤销", false, String(error).slice(0, 160));
+    await page.dismissDialog().catch(() => {});
+  }
+
+  // 6) 悬停：移到段落 → 高亮出现；移开 → 消失
+  try {
+    const seg = await page.evaluate(() => {
+      const node = document.querySelector("#reading-stream .reading-seg");
+      if (!node) return null;
+      const r = node.getBoundingClientRect();
+      return { x: Math.min(window.innerWidth - 20, r.x + 30), y: r.y + Math.min(20, r.height / 2) };
+    });
+    if (!seg) throw new Error("没有段落");
+    await page.mouse.move(seg.x, seg.y, { label: "悬停段落" });
+    await page.waitForTimeout(500);
+    const on = await snap();
+    await page.mouse.move(20, 400, { label: "移开" });
+    await page.waitForTimeout(500);
+    const off = await snap();
+    await rec("6 悬停", on.hover > 0 && off.hover === 0,
+              `hover ${on.hover} -> ${off.hover}; linked ${on.linked} -> ${off.linked}`);
+  } catch (error) { await rec("6 悬停", false, String(error).slice(0, 160)); }
+
+  // 7) 跟随开关（chip + 菜单里的 toggle 都试）
+  try {
+    const b = await snap();
+    await page.click("#reading-display-open", { label: "打开显示菜单" });
+    await page.waitForTimeout(300);
+    await page.click("#reading-follow-toggle", { label: "切换跟随" });
+    await page.waitForTimeout(600);
+    const a = await snap();
+    await page.mouse.click(700, 300, { label: "关菜单" });
+    await rec("7 跟随开关", b.follow !== a.follow && b.chipOn !== a.chipOn,
+              `follow ${b.follow}->${a.follow}; chip ${b.chipText}->${a.chipText}`);
+    // 切回去
+    await page.click("#reading-display-open").catch(() => {});
+    await page.waitForTimeout(250);
+    await page.click("#reading-follow-toggle").catch(() => {});
+    await page.mouse.click(700, 300).catch(() => {});
+    await page.waitForTimeout(300);
+  } catch (error) { await rec("7 跟随开关", false, String(error).slice(0, 160)); }
+
+  // 8) 右栏滚一屏 → 顶部页码跟着变
+  try {
+    const b = await snap();
+    const box = await page.evaluate(() => {
+      const s = document.getElementById("reading-stream");
+      const r = s.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(box.x, box.y, { label: "移到正文流" });
+    await page.mouse.wheel(0, 1200, { label: "右栏滚一屏" });
+    await page.waitForTimeout(900);
+    const a = await snap();
+    await rec("8 滚动同步", a.label !== b.label, `顶部 ${b.label} -> ${a.label}（scrollTop ${b.scrollTop}->${a.scrollTop}）`);
+  } catch (error) { await rec("8 滚动同步", false, String(error).slice(0, 160)); }
+
+  // 9) "用户动过"：wheel 之后 1 秒，滚动位置不被异步收尾抢走
+  try {
+    const before = await snap();
+    await page.waitForTimeout(1200);
+    const after = await snap();
+    await rec("9 用户动过不抢位置", Math.abs((after.scrollTop || 0) - (before.scrollTop || 0)) < 30,
+              `scrollTop ${before.scrollTop} -> ${after.scrollTop}`);
+  } catch (error) { await rec("9 用户动过不抢位置", false, String(error).slice(0, 160)); }
+
+  // 10) 左栏滚 → 正文跟到对应页
+  try {
+    const b = await snap();
+    const box = await page.evaluate(() => {
+      const s = document.getElementById("reading-pdf-scroll");
+      const r = s.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(box.x, box.y, { label: "移到左栏" });
+    await page.mouse.wheel(0, 900, { label: "左栏滚一屏" });
+    await page.waitForTimeout(1200);
+    const a = await snap();
+    await rec("10 左右联动", a.label !== b.label || a.pdfTop !== b.pdfTop,
+              `顶部 ${b.label}->${a.label}；pdfTop ${b.pdfTop}->${a.pdfTop}；正文 scrollTop ${b.scrollTop}->${a.scrollTop}`);
+  } catch (error) { await rec("10 左右联动", false, String(error).slice(0, 160)); }
+
+  return { rows, snap: await snap() };
 }
 
 async function nextProbe(page) {
