@@ -17740,8 +17740,6 @@ async function refreshPunctGroups() {
     if (box) showError(box, error);
   }
   renderPunctGroupBadge();
-  // 标点数字到了要重画进度条那句小字（它和汉字进度分两行显示）
-  if (readingData) renderReadingProgress();
   return punctGroupsData;
 }
 
@@ -19044,15 +19042,9 @@ function renderReadingProgress() {
   // 服务端给的全书计数，否则换一次窗口进度条就缩水一次（用户会以为审过的丢了）。
   const { processed, total } = readingProgressNumbers();
   const drafts = readingDrafts.size + readingInlineEdits.size;
-  // 显示分两类、判定看合并：进度条只算含汉字差异的行，标点单独一行小字
-  const punctTotals = punctGroupsData?.totals || {};
-  const punctLeft = Number(punctTotals.undecided_lines || 0);
+  // 标点计数不在这里：角标文本由 `renderPunctGroupBadge()` 写 `reading-punct-count`，
+  // 进度条只算"汉字差异条数"（`readingProgressNumbers()`，不含标点）。
   el("reading-progress-text").textContent = `已审 ${processed} / ${total} 条`;
-  const punctNote = null;
-  if (punctNote) {
-    const groups = Number(punctTotals.groups || 0);
-    punctNote.hidden = true;   // 标点计数只在工具条那一个按钮上出现（任务 66 去重）
-  }
   const fill = el("reading-progress-fill");
   fill.style.width = total ? `${Math.round((processed / total) * 100)}%` : "0%";
   fill.classList.toggle("is-done", total > 0 && processed >= total);
