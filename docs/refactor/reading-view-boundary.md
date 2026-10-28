@@ -1,7 +1,8 @@
 # 审校页（#view-reading）模块边界 — 阶段 0
 
 > 基线：`main@f500692`（产品代码 = `2d33dd4`，tag `run-2026-10-28`）。
-> 规模：`app.js` 21,198 行；审校相关块约 **3,185 行**（18,003–21,187）；顶层状态 **61 个 `reading*` let/const**。
+> 规模：`app.js` 21,198 行；审校相关块约 **3,185 行**（18,003–21,187）；顶层状态 **67 个声明 = 63 个 `let reading*` + 4 个 `const reading*`**（`readingSpanCache` / `readingTreeOpen` / `readingPageSyncLog` / `readingNextLog`）。
+> **本表为草案**，权威版由 Architect 主笔（带行号）；Slice 2 之前以它的地图为准。
 
 ## 0. 架构前提（不许破）
 
