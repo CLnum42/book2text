@@ -2819,8 +2819,13 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .reading-dock__collapse { font-size: 11px; color: var(--faint); white-space: nowrap; flex: none; }
 .reading-dock__body { flex: 1; min-height: 0; display: flex; }
 .reading-dock__crop {
-  width: 420px; flex: none; min-width: 0; overflow: hidden;
+  position: relative; width: 420px; flex: none; min-width: 0; overflow: hidden;
   border-right: 1px solid var(--line); background: var(--surface-2);
+}
+.reading-dock__crop-mark {
+  position: absolute; pointer-events: none;
+  background: rgba(255, 214, 102, 0.35);
+  outline: 1px solid #e0a800; outline-offset: -1px;
 }
 .reading-dock__crop-empty { margin: 12px; font-size: 12px; }
 .reading-dock__edit { flex: 1; min-width: 0; overflow: auto; padding: 8px 12px; }
