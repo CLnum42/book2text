@@ -102,6 +102,8 @@ export async function run(cfg) {
       return await clickSel(page, args);
     case "interactions_probe":
       return await interactionsProbe(page, args);
+    case "click_accept":
+      return await clickAccept(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -2809,6 +2811,15 @@ async function interactionsProbe(page, args) {
   } catch (error) { await rec("10 左右联动", false, String(error).slice(0, 160)); }
 
   return { rows, snap: await snap() };
+}
+
+/** 点一个会弹 confirm 的按钮：点完立刻应答，再回报状态。 */
+async function clickAccept(page, args) {
+  await page.click(args.selector, { label: args.label || args.selector });
+  const accepted = await page.acceptDialog().then(() => true).catch(() => false);
+  await page.waitForTimeout(args.wait || 2000);
+  const snap = await page.evaluate(dockSnapshotRaw);
+  return { accepted, snap };
 }
 
 async function nextProbe(page) {
