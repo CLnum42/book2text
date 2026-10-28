@@ -275,13 +275,19 @@ window.ReadingView = {
 3. 同项目且已加载 → 重绘不重拉；否则拉 `segments_only=1`；
 4. 进入时置 `active = true`，`exit()` 置 `false`——模块内部 8 处 `currentView === "reading"` 判断全部改成本地 `active`。
 
-**`emit` 不许出现在公开接口上**（`db37d1d` 时是 13 个 key，含 `emit`）：它是**写路径**——任何模块拿到 `window.ReadingView.emit('content-changed')` 就能驱动审校重绘，等于给边界开了一个后门；而且当前 0 个外部调用者。事件只出不进：模块内部 `emit`，外部只许 `on`。
+**`on` / `emit` 整个事件机制都要删，不只是 `emit`**（`db37d1d` 时是 13 个 key）。理由：
+- `emit` 是**写路径**——任何模块拿到 `window.ReadingView.emit('content-changed')` 就能驱动审校重绘，等于给边界开后门；0 个外部调用者。
+- `on` 0 个订阅者，且按 §1.2 的子面板方案，标点角标走 `getPunctBadge()` 注入 + `reload()`，**不需要事件**。
+- 两者加上 `listeners` Map 共 22 行（`reading-view.js:196–211`、`:221–222`），全是死代码。没有订阅者的事件缝不是缝，是下一次被人当成接口写进去的邀请。
+
+删完公开接口 = **6 个 key**：`init / enter / exit / getCurrent / reload / toggleFollow`。
 
 **过渡期例外（必须有到期点）**：`db37d1d` 的接口对象还多挂了 `splitPrefs / applySplit / saveSplit / resetSplit / setupSplit` 五个拆分偏好函数，同时 app.js 留着 5 个转发 stub。这是搬运期的临时态，**到期点 = Slice 2 结束**：届时这 5 个名字必须从 `window.ReadingView` 消失（改成模块内部函数 + 模块自己绑事件），app.js 的 stub 一并删除。
 
 **上闸时机与机制**：现在就上，不要等 Slice 2 收尾——"收尾时再加"的门禁等于没有门禁。做法是**只降不升的棘轮**：
-- 今天断言 `Object.keys(window.ReadingView)` ⊆ `{init, enter, exit, getCurrent, reload, toggleFollow, on}` ∪ `{splitPrefs, applySplit, saveSplit, resetSplit, setupSplit}`，且长度 ≤ 12（去掉 `emit` 后）。
-- Slice 2 收尾把临时集合清空、上限改成 **7**；此后任何新增导出都会让这条立即红。
+- 删完 `on`/`emit` 后：`Object.keys(window.ReadingView)` = **11** = 6 稳定 + 5 临时；上限钉 11。
+- 今天的使用断言：keys ⊆ `{init, enter, exit, getCurrent, reload, toggleFollow}` ∪ `{splitPrefs, applySplit, saveSplit, resetSplit, setupSplit}`，且长度 ≤ 11。
+- Slice 2 收尾把临时集合清空、上限改成 **6**；此后任何新增导出都会让这条立即红。
 - 长度只许往下调，注释里写明"改小可以，改大必须 Architect 签字"。
 
 **`getCurrent()` 只给两个字段**，别加 `done/total/draftCount`：那是"顶部数字"，由 `on('content-changed')` 推给外壳渲染，不需要外壳来拉。外壳拉一次状态，就会有第二个写点。
