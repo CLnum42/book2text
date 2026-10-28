@@ -460,7 +460,7 @@ Slice 1 实测（2026-10-28）：
 
 ---
 
-## 11. L1 施工表（HEAD `c45b8a5`，10 函数 / 212 行）
+## 11. L1 施工表（HEAD `c45b8a5`，11 个函数：10 个处理 + 1 个留 / 212 行）
 
 **212 行 = 160 行搬 + 52 行删。** 8 个函数全仓库零引用，是死代码，**不要搬，直接删**；搬的只有 2 个。
 
@@ -468,6 +468,7 @@ Slice 1 实测（2026-10-28）：
 
 | 函数 | 行号 | 行数 | 处理 | 为什么在 L1 而不是 L2 |
 |---|---|---:|---|---|
+| `setReviewOverlaysForReading` | 18099–18116 | 18 | **留（不搬）** | 调用者 = `showView`(250) + `boot` 的 `enter:` lambda；**待归 `core/display-prefs`**（它依赖的 4 个页面显示符号被 20+ 函数共用）。**不计入 212** |
 | `readingReloadAfterBatch` | 18151–18158 | 8 | 搬 | 唯一调用点是 `boot()` 的 `reload:` 注入(21016)，属 `reload` 导出 |
 | `setupReading` | 20849–21000 | 152 | 搬 | 唯一调用点是 `boot()`(21053)，由 `init` 导出覆盖 |
 | `readingPdfScrollTop` | 18117–18127 | 11 | **删** | 全仓库零引用（含块外） |
@@ -483,10 +484,10 @@ Slice 1 实测（2026-10-28）：
 
 **L1 注入 = 临时 21 + 永久 3 = 24**（`el` 模块自带、`currentView` 改本地 `active`，都不注入）。
 
-**L1 的注入依赖 = 24 个**（临时 21 + 永久 3）：
-- 临时 21（按消失层）：L2 11（`markReadingUserMoved`/`startInlineEdit`/`setReadingFilter`/`setReadingHoverByBlock`/`onReadingPdfScroll`/`setReadingFollow`/`onReadingScroll`/`stepReadingPage`/`submitReadingDrafts`/`undoReadingSubmit`/`renderReadingPreflight`）… 注：实际 21 条，逐条名单见 §13.3。
-- 永久 3：`showView`（→`navigate()`）、`openPageDetail`（→注入）、`renderPunctGroupBadge`（→`onPunctGroups`）。
-- 另有两个"不注入"：`el`（模块自带）、`currentView`（改本地 `active`）。
+**L1 的注入依赖 = 24 个**（临时 21 + 永久 3）。**逐条名单以 §13.3 为准**，这里不重复（重复会漂）：
+- 临时 21 按消失层：L2 10 / L3 2 / L4 1 / L5 3 / L6 1 / L8 4；
+- 永久 3：`showView`（→`navigate()`）、`openPageDetail`（→注入）、`renderPunctGroupBadge`（→`onPunctGroups`）；
+- 不注入 2 个：`el`（模块自带）、`currentView`（改本地 `active`）。
 
 **行数账（3,061 到底怎么来的；L1 改为 212 后更新）**：
 - 3,061 = 53（头部：节注释 + 状态声明）+ 3,008（各函数区间）
