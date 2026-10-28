@@ -342,11 +342,9 @@ test("R7：index.html 不许出现 type=module，且模块先于 app.js 加载",
  * 每条必须带 owner 与到期点；上限 3 条——三对正好占满，再多一条就红。
  */
 const SAME_FILE_DUP_EXCEPTIONS = [
-  { file: "app.js", name: "adoptBlockSuggestion", count: 2, owner: "Chief/DevLead", expires: "正文流① 搬完" },
-  { file: "app.js", name: "adoptAllHighSuggestions", count: 2, owner: "Chief/DevLead", expires: "正文流① 搬完" },
   { file: "app.js", name: "rerenderReadingLine", count: 2, owner: "Chief/DevLead", expires: "正文流① 搬完" },
 ];
-const SAME_FILE_DUP_EXCEPTION_MAX = 3;
+const SAME_FILE_DUP_EXCEPTION_MAX = 1;
 
 /** 顶层（缩进 0）声明：`function NAME(` 与 `NAME = (…) =>` / `= function`。 */
 function topLevelDeclarationsByName(source) {
@@ -506,8 +504,7 @@ test("写路径 emit 不得再出现在公开对象上（事件只出不进）",
 // | R7：交换两个 `<script>` 的顺序 | `reading-view.js 必须先在 app.js 之前加载（现在顺序反了：view=93090 app=93049）` |
 //
 // 已知死代码三对（冻结期不删，例外表里带 owner 与到期点 `正文流① 搬完`）：
-// - `adoptBlockSuggestion`：app.js 两份（后声明的生效）
-// - `adoptAllHighSuggestions`：app.js 两份（后声明的生效）
+// - ~~`adoptBlockSuggestion` / `adoptAllHighSuggestions`：两份~~ 已删除（2026-10-28，前置死定义清掉，只剩后声明生效的那份）
 // - `rerenderReadingLine`：app.js 两份——18912 是 `rerenderReadingLine(key)`，
 //   19347 是 `rerenderReadingLine(entry)`；后者生效，所以**按 key 调用的那处会在运行时静默失效**。
 //
@@ -516,5 +513,5 @@ test("写路径 emit 不得再出现在公开对象上（事件只出不进）",
 // updateReadingPage，行号 157–159），与 docs §6 记录的 5 处一致。
 //
 // 一个与本规则无关的既有发现（没在本测试里管，R4 只查**跨文件**同名）：
-// app.js 自己有两份同名真实现 `adoptBlockSuggestion`（5999 / 12548）与
-// `adoptAllHighSuggestions`（6021 / 12567）——后声明的覆盖前者。不是搬运造成的，但迟早要收拾。
+// 历史：app.js 曾有两份同名真实现 `adoptBlockSuggestion` 与 `adoptAllHighSuggestions`
+// （后声明的覆盖前者），2026-10-28 已删除前置那份；`rerenderReadingLine` 的一对仍在冻结期。

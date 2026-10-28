@@ -6003,56 +6003,6 @@ function highConfidenceCount(suggestions) {
   return (suggestions || []).filter((item) => item.confidence === "high").length;
 }
 
-async function adoptBlockSuggestion(item, button = null) {
-  if (!currentProject) return;
-  if (button) button.disabled = true;
-  try {
-    await apiJson(
-      `/api/projects/${currentProject.project_id}/blocks/${item.block_id}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ block_type: item.suggested_type }),
-      }
-    );
-    forgetPageSuggestions(item.page_no);
-    await refreshPageStates();
-    await loadLayoutBlocks(item.page_no, { forceSuggestions: true });
-    await loadFinishSummary({ silent: true });
-  } catch (error) {
-    if (button) button.disabled = false;
-    showError(el("pages-error"), error);
-  }
-}
-
-async function adoptAllHighSuggestions() {
-  const payload = layoutBlockPayload;
-  if (!payload) return;
-  const high = payload.suggestions.filter((item) => item.confidence === "high");
-  if (!high.length) return;
-  const button = el("layout-block-apply-all");
-  button.disabled = true;
-  button.textContent = `正在采用 ${high.length} 条…`;
-  try {
-    for (const item of high) {
-      await apiJson(
-        `/api/projects/${currentProject.project_id}/blocks/${item.block_id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ block_type: item.suggested_type }),
-        }
-      );
-    }
-    forgetPageSuggestions(payload.pageNo);
-    await refreshPageStates();
-    await loadLayoutBlocks(payload.pageNo, { forceSuggestions: true });
-    await loadFinishSummary({ silent: true });
-  } catch (error) {
-    showError(el("pages-error"), error);
-  }
-}
-
 async function confirmLayoutFromPanel() {
   const page = layoutBlockPageRecord();
   if (!page || !currentProject) return;
