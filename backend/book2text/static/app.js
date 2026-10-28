@@ -18368,6 +18368,47 @@ function expandToWordRange(text, start, end) {
   return { start: left, end: right, word: true };
 }
 
+/**
+ * **常驻自检：右栏显示的字必须和导出的一字不差**（任务 79，默认关闭）。
+ *
+ * 开法：地址栏加 `?checktext=1`，或在控制台 `window.__b2tTextCheck = true`。
+ *
+ * 为什么需要：这类 bug（字符规范化只改块不改行、行文本没同步、行间空格被丢）
+ * **不抛异常、不弄红测试、也不让 CER 变差**——只会让用户审到错的东西。
+ * 已经被咬过三次，所以每次验收都把它打开。
+ */
+function textCheckEnabled() {
+  if (window.__b2tTextCheck) return true;
+  try {
+    return new URLSearchParams(location.search).get("checktext") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function checkReadingSegmentText(node, segment) {
+  if (!textCheckEnabled()) return;
+  // 角标 / 折叠提示 / 页范围这些是**渲染附加物**，不属于正文，比较前摘掉
+  const clone = node.cloneNode(true);
+  for (const extra of clone.querySelectorAll(
+    ".reading-chip, .reading-fold, .reading-proof__pages, .reading-mark__hint"
+  )) {
+    extra.remove();
+  }
+  const shown = clone.textContent || "";
+  const expected = segment.text || "";
+  if (shown === expected) return;
+  let i = 0;
+  while (i < shown.length && i < expected.length && shown[i] === expected[i]) i += 1;
+  const from = Math.max(0, i - 20);
+  console.error(
+    `[文本自检] 第 ${segment.seq} 段右栏显示与导出不一致（第 ${i} 个字符起）\n` +
+      `  显示: …${shown.slice(from, i + 20)}…\n` +
+      `  导出: …${expected.slice(from, i + 20)}…`
+  );
+  window.__b2tTextCheckFails = (window.__b2tTextCheckFails || 0) + 1;
+}
+
 function buildReadingSegment(segment) {
   const node = document.createElement("div");
   node.className = "reading-seg";
@@ -18404,6 +18445,7 @@ function buildReadingSegment(segment) {
     }
     node.append(line);
   }
+  checkReadingSegmentText(node, segment);
   return node;
 }
 
@@ -19146,9 +19188,28 @@ function refreshReadingImageProfiles(force = false) {
     return;
   }
   readingImageProfile = wanted;
-  for (const pageNo of [...readingLoadedImages]) releaseReadingImage(pageNo);
-  for (const visible of readingVisibleSet) ensureReadingImage(visible);
-  if (readingPageNo) ensureReadingImage(readingPageNo);
+  // 任务 79：**不要先摘 src 再重取**——那会让页图空白一下（用户看到闪白）。
+  // 先在离屏 Image 里把新档下完，加载完再换上去，旧图一直可见。
+  for (const pageNo of [...readingLoadedImages]) warmSwapReadingImage(pageNo, wanted);
+}
+
+/** 预热新档，加载完再换上去（换的时候旧图还在，不闪白）。 */
+function warmSwapReadingImage(pageNo, profile) {
+  const tile = readingTiles.get(pageNo);
+  const image = tile ? tile.querySelector("img") : null;
+  if (!image) return;
+  const url = pageImageUrl(pageNo, profile);
+  if (image.src && image.src.endsWith(url)) return;
+  const warm = new Image();
+  warm.onload = () => {
+    image.src = url;
+    image.classList.add("is-ready");
+    delete image.dataset.pending;
+  };
+  warm.onerror = () => {
+    // 新档拿不到就保持旧图，不制造空白
+  };
+  warm.src = url;
 }
 
 function observeReadingColumnResize() {
