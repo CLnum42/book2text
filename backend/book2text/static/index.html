@@ -460,6 +460,8 @@
               <button type="button" id="index-overlay-toggle" class="btn btn--sm"
                       title="与页面视图同一个开关：块框（类型配色 + 序号）">块框</button>
               <span class="spacer"></span>
+              <button type="button" id="index-quality" class="btn btn--sm"
+                      title="页图清晰度：自动 = 按这张图实际要显示的设备像素选档；标准 / 高清 = 手动钉住">清晰度：自动</button>
               <div class="zoombar" title="与页面视图共用缩放状态">
                 <button type="button" id="index-zoom-out" class="btn btn--sm">－</button>
                 <span class="muted" id="index-zoom-label">100%</span>
@@ -700,6 +702,10 @@
             <button type="button" id="reading-prev" class="btn btn--sm" title="上一页">◀</button>
             <span class="pager__no" id="reading-page-no">—</span>
             <button type="button" id="reading-next" class="btn btn--sm" title="下一页">▶</button>
+            <!-- 任务 72：跟随是左↔右同步的总开关，藏在「显示 ▾」里没人知道。
+                 提到工具条上，一眼能看到现在是开还是关。 -->
+            <button type="button" id="reading-follow-chip" class="btn btn--sm is-on"
+                    title="开着时：左栏滚到哪一页，右边的正文就跟到那一页；反过来也跟。点一下关掉。">跟随：开</button>
           </div>
           <span class="rt-sep"></span>
           <div class="rt-group rt-group--progress">
@@ -729,6 +735,10 @@
               <label class="page-more__item"><input type="radio" name="reading-markup" value="all" checked> 全部标记</label>
               <label class="page-more__item"><input type="radio" name="reading-markup" value="simple"> 简单标记</label>
               <label class="page-more__item"><input type="radio" name="reading-markup" value="none"> 无标记</label>
+              <div class="page-more__group">清晰度</div>
+              <label class="page-more__item"><input type="radio" name="reading-quality" value="auto" checked> 自动（按实际像素选档）</label>
+              <label class="page-more__item"><input type="radio" name="reading-quality" value="standard"> 标准</label>
+              <label class="page-more__item"><input type="radio" name="reading-quality" value="high"> 高清</label>
               <div class="page-more__group">视图</div>
               <label class="page-more__item"><input type="checkbox" id="reading-follow-toggle" checked> 跟随滚动</label>
             </div>

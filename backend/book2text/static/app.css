@@ -171,6 +171,20 @@ code { font-size: 12px; background: var(--surface-3); padding: 0 4px; border-rad
   background: var(--bad); border-color: var(--bad); color: #fff;
 }
 .workflow-step.is-failed .workflow-step__count { color: var(--bad-text); }
+/* 任务 73：**可跳过**——这本书本来就没有可用页码。既不是完成（绿勾），
+   也不是失败（红）：虚线灰圈 + 灰色文字，文案写「可跳过」。
+   三种状态混在一起，用户会以为目录已经核对过了。 */
+.workflow-step.is-skippable { color: var(--faint); }
+.workflow-step.is-skippable .workflow-step__badge {
+  background: transparent; border: 1px dashed var(--line-strong); color: var(--faint);
+}
+.workflow-step.is-skippable .workflow-step__count {
+  display: inline; color: var(--faint); font-style: italic;
+}
+.workflow-step.is-skippable:not(.is-current)::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 5px;
+  height: 0; border-bottom: 2px dotted var(--line-strong); opacity: .7;
+}
 .workflow-step.is-current {
   background: var(--accent-soft); color: var(--accent-text); font-weight: 600;
   box-shadow: inset 3px 0 0 var(--accent);

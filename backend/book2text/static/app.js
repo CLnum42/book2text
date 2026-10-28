@@ -283,6 +283,7 @@ function stepProgress(id) {
   let done = false;
   let failed = 0;
   let failedText = "";
+  let skippable = false;
   let count = "—";
   let detail = "读取中…";
   if (id === "pages") {
@@ -332,15 +333,22 @@ function stepProgress(id) {
     }
   } else if (id === "index") {
     // 任务 37：目录确认 = 页码跳转索引生成成功，人工操作 0 次。
+    // 任务 73：三态——真的建出可用索引（绿 ✓）/ 这本书没有可用页码（可跳过，虚线灰）/
+    // 有页码但还没确认（普通序号）。原来 `numbered > 0` 就算完成，1/662 也会变绿。
     if (fs) {
       const ix = fs.index || {};
       done = Boolean(ix.complete);
-      count = `${ix.numbered || 0}/${ix.total || 0}`;
+      skippable = !done && Boolean(ix.skippable);
+      count = skippable ? "可跳过" : `${ix.numbered || 0}/${ix.total || 0}`;
       detail =
         `索引 ${ix.numbered || 0}/${ix.total || 0} 页有印刷页码` +
         (ix.chapters ? ` · ${ix.chapters} 章` : "") +
         (ix.numbering_step === 2 ? " · 页码隔 2 递增" : "") +
-        (ix.missing ? ` · ${ix.missing} 页缺页码（照样可点）` : "");
+        (skippable
+          ? " · 这本书没有可用页码，目录确认可以跳过（导出按 PDF 页序）"
+          : ix.missing
+            ? ` · ${ix.missing} 页缺页码（照样可点）`
+            : "");
     }
   } else if (id === "review") {
     if (fs) {
@@ -389,7 +397,7 @@ function stepProgress(id) {
       ? `已成功导出 ${succeeded.length} 次 · 最近 ${latest.created_at.slice(0, 16).replace("T", " ")}`
       : "还没有成功导出";
   }
-  return { done, failed, failedText, count, detail };
+  return { done, failed, failedText, skippable, count, detail };
 }
 
 function autoWorkflowStep() {
@@ -444,6 +452,7 @@ function syncWorkflowSteps() {
     if (step.plain) button.classList.add("workflow-step--plain");
     if (failed) button.classList.add("is-failed");
     else if (progress.done) button.classList.add("is-done");
+    else if (progress.skippable) button.classList.add("is-skippable");
 
     const badge = document.createElement("span");
     badge.className = "workflow-step__badge";
@@ -453,7 +462,9 @@ function syncWorkflowSteps() {
         ? "!"
         : progress.done
           ? "✓"
-          : String(index + 1);
+          : progress.skippable
+            ? "–"
+            : String(index + 1);
 
     const name = document.createElement("span");
     name.className = "workflow-step__name";
@@ -1324,6 +1335,10 @@ async function loadAppInfo() {
     return;
   }
 
+  // 任务 72：页图档位表由服务端给（40/150/220/300），别在前端再写一份
+  if (info.render_profiles && typeof info.render_profiles === "object") {
+    renderProfiles = { ...renderProfiles, ...info.render_profiles };
+  }
   el("stage-tag").textContent = info.app.stage;
   el("version-label").textContent = `版本 ${info.app.version}`;
 
@@ -4742,10 +4757,49 @@ function pageZoomLevel() {
  * 现在按设备像素比选档：Retina + 够宽的窗口用 `zoom`（300 DPI），否则还是 `view`。
  * 体积靠 JPEG q=82 压下来（view 0.22 MB / zoom 0.62 MB，PNG 分别要 1.77 MB / 约 7 MB）。
  */
-function detailImageProfile() {
+/** 页图档位 → DPI；启动时用 `/api/app/info` 的值覆盖（前后端只留一份真值）。 */
+let renderProfiles = { thumb: 40, view: 150, mid: 220, zoom: 300 };
+/** 清晰度：auto = 按实际需要的像素选档；standard / high = 用户手动钉住。 */
+let imageQualityMode = "auto";
+const IMAGE_PROFILE_ORDER = ["view", "mid", "zoom"];
+
+/** 某一档在一页上渲染出来的**像素宽度**（页面宽度 pt → px）。 */
+function profileWidthPx(profile, widthPt) {
+  const dpi = Number(renderProfiles[profile] || 150);
+  return Math.round(((Number(widthPt) || 612) / 72) * dpi);
+}
+
+function pageWidthPt(pageNo) {
+  const page = currentProject
+    ? (currentProject.pages || []).find((item) => item.page_no === pageNo)
+    : null;
+  return page ? Number(page.width_pt) || 612 : 612;
+}
+
+/**
+ * 按"这张图实际要显示多少设备像素"选档（任务 72）。
+ *
+ * **上一版用窗口宽度判断是错的**：真正决定清晰度的是容器 CSS 宽度 × devicePixelRatio。
+ * 实测（612pt 页、dpr 2、目录确认）：940px 窗口 + 140% 缩放时容器 830 CSS px、
+ * 需要 1660 设备像素，而规则给了 `view`（1275px）→ **比例 0.77，被拉大 1.3 倍**。
+ * 现在按比例选：需要 1660 → 取 `mid`（1870px），比例 1.13。
+ */
+function detailImageProfile(cssWidth, widthPt) {
+  if (imageQualityMode === "standard") return "view";
+  if (imageQualityMode === "high") return "zoom";
   const dpr = Number(window.devicePixelRatio || 1);
-  const width = Number(window.innerWidth || 0);
-  return dpr >= 2 && width >= 1000 ? "zoom" : "view";
+  const need = Math.max(0, Number(cssWidth) || 0) * dpr;
+  if (!need) return "view";
+  for (const profile of IMAGE_PROFILE_ORDER) {
+    if (profileWidthPx(profile, widthPt) >= need) return profile;
+  }
+  return "zoom";
+}
+
+/** 对一个页块取档：量它的 CSS 宽，配这一页的 pt 宽。 */
+function pageProfileFor(element, pageNo) {
+  const cssWidth = element ? element.getBoundingClientRect().width : 0;
+  return detailImageProfile(cssWidth, pageWidthPt(pageNo));
 }
 
 function pageImageUrl(pageNo, size) {
@@ -8150,6 +8204,8 @@ const INDEX_IMAGE_LIMIT = 20;
 const INDEX_IMAGE_WINDOW = 10;
 
 let indexTiles = new Map();
+/** 目录确认当前页图用的档位（缩放变化时据此决定要不要重取）。 */
+let indexImageProfile = "";
 let indexPagesProject = null;
 let indexNearPages = new Set();
 /** 真正在视口里的页：版心 / 块框 / 首行框只给这些页画（任务 48）。 */
@@ -8557,7 +8613,7 @@ async function pumpIndexImages() {
       const tile = indexTiles.get(pageNo);
       const image = tile && tile.querySelector("img");
       if (!image) continue;
-      const url = pageImageUrl(pageNo, detailImageProfile());
+      const url = pageImageUrl(pageNo, pageProfileFor(tile, pageNo));
       image.dataset.src = url;
       image.loading = "eager";
       const started = performance.now();
@@ -9002,11 +9058,83 @@ function stepIndexPage(delta) {
 }
 
 /** 缩放与页面视图共用 pageZoomIndex；这里改的是整个页列的宽度。 */
+/**
+ * 缩放 / 窗口变化后重新判断档位：需要更高的档就把这一页的图作废重取。
+ * 只在"需要的档变了"时动手（85%→70% 这种不需要重取，省一次渲染）。
+ */
+/** 清晰度：auto / standard / high，按浏览器记住（不写项目数据库）。 */
+const IMAGE_QUALITY_LABELS = { auto: "自动", standard: "标准", high: "高清" };
+
+function loadImageQuality() {
+  const saved = localStorage.getItem("b2t.imageQuality");
+  imageQualityMode = ["auto", "standard", "high"].includes(saved) ? saved : "auto";
+}
+
+function setImageQuality(mode) {
+  if (!["auto", "standard", "high"].includes(mode)) return;
+  imageQualityMode = mode;
+  localStorage.setItem("b2t.imageQuality", mode);
+  syncImageQualityUi();
+  // 档位变了：把已经取过的页图作废，按新档重取（标准 → 高清时才会真的重取）
+  indexImageProfile = "";
+  indexLoadedImages.clear();
+  for (const tile of indexTiles.values()) {
+    const image = tile.querySelector("img");
+    if (!image) continue;
+    delete image.dataset.src;
+    delete image.dataset.pending;
+    image.removeAttribute("src");
+  }
+  for (const visible of indexVisiblePages) ensureIndexImage(visible);
+  if (indexCurrentPage) ensureIndexImage(indexCurrentPage);
+  // 其它视图（页面视图 / 审校左栏）下次取图时会读到新的档位
+}
+
+function syncImageQualityUi() {
+  const label = IMAGE_QUALITY_LABELS[imageQualityMode] || "自动";
+  const button = el("index-quality");
+  if (button) button.textContent = `清晰度：${label}`;
+  for (const radio of document.querySelectorAll('input[name="reading-quality"]')) {
+    radio.checked = radio.value === imageQualityMode;
+  }
+}
+
+function refreshIndexImageProfiles() {
+  const tiles = [...indexTiles.values()].filter((tile) => tile.querySelector("img"));
+  if (!tiles.length) return;
+  const sample = tiles[0];
+  const pageNo = Number(sample.dataset.pageNo);
+  const wanted = pageProfileFor(sample, pageNo);
+  if (!indexImageProfile) {
+    indexImageProfile = wanted;
+    return;
+  }
+  if (wanted === indexImageProfile) return;
+  indexImageProfile = wanted;
+  indexLoadedImages.clear();
+  for (const tile of tiles) {
+    const image = tile.querySelector("img");
+    delete image.dataset.src;
+    delete image.dataset.pending;
+    delete image.dataset.profile;
+    image.removeAttribute("src");
+    tile.querySelectorAll(".index-page__placeholder").forEach((node) => node.remove());
+  }
+  for (const pageNo of indexImageQueue.splice(0)) {
+    // 队列里挂的旧档也一起作废，下面按新档重新排队
+  }
+  for (const visible of indexVisiblePages) ensureIndexImage(visible);
+  if (indexCurrentPage) ensureIndexImage(indexCurrentPage);
+}
+
 function applyIndexZoom() {
   if (!indexTiles.size) return;
   const scale = INDEX_ZOOM_SCALES[pageZoomIndex] || 1;
   const width = `${Math.round(scale * 100)}%`;
   for (const tile of indexTiles.values()) tile.style.width = width;
+  // 任务 72：缩放变了，**需要的像素数就变了**，档位必须跟着重算。
+  // 原来只在建块时取一次图，85% 拉来的 `view` 图会被拉伸到 100% 的容器里 → 糊。
+  refreshIndexImageProfiles();
   const label = el("index-zoom-label");
   if (label) {
     label.textContent = pageZoomIndex >= INDEX_ZOOM_SCALES.length - 1
@@ -9152,6 +9280,17 @@ function setupPageIndex() {
   el("index-notice-go").addEventListener("click", () => goToWorkflowStep("recognition"));
   el("index-zoom-out").addEventListener("click", () => changeIndexZoom(-1));
   el("index-zoom-in").addEventListener("click", () => changeIndexZoom(1));
+  // 任务 72：清晰度出口。自动判定永远有人不满意，手动钉住比反复调阈值划算。
+  el("reading-follow-chip")?.addEventListener("click", () => setReadingFollow(!readingFollow));
+  el("index-quality")?.addEventListener("click", () => {
+    const order = ["auto", "standard", "high"];
+    setImageQuality(order[(order.indexOf(imageQualityMode) + 1) % order.length]);
+  });
+  for (const radio of document.querySelectorAll('input[name="reading-quality"]')) {
+    radio.addEventListener("change", () => {
+      if (radio.checked) setImageQuality(radio.value);
+    });
+  }
   el("index-overlay-toggle").addEventListener("click", toggleIndexOverlay);
   el("index-margin-toggle").addEventListener("click", toggleIndexMargin);
   el("index-jump-go").addEventListener("click", jumpToPrintedPage);
@@ -9340,7 +9479,7 @@ function ensurePreviewImage(pageNo) {
   if (!tile) return;
   const image = tile.querySelector("img");
   if (!image || image.dataset.src) return;
-  const url = pageImageUrl(pageNo, detailImageProfile());
+  const url = pageImageUrl(pageNo, pageProfileFor(tile, pageNo));
   image.dataset.src = url;
   // 窗口内（当前页 ±1 / 当前段跨的页）要马上有图：lazy 会把视口外一屏的页压住，
   // 跨页段两页交界时就会先看到空白再等图。
@@ -14331,7 +14470,7 @@ function continuationPageBlock(pageNo, bbox, tagText) {
   if (page) wrap.style.aspectRatio = `${page.width_pt} / ${page.height_pt}`;
   const image = document.createElement("img");
   image.alt = `第 ${pageNo} 页`;
-  image.src = pageImageUrl(pageNo, detailImageProfile());
+  image.src = pageImageUrl(pageNo, detailImageProfile(wrap.clientWidth || 600, page.width_pt));
   wrap.append(image);
   if (Array.isArray(bbox) && bbox.length === 4) {
     const mark = document.createElement("div");
@@ -14412,7 +14551,7 @@ function prefetchContinuationPages(entry) {
   // 下一张卡片的两页先拉进缓存，翻条不用等
   for (const pageNo of [entry.page_no, entry.next_page_no]) {
     const image = new Image();
-    image.src = pageImageUrl(pageNo, detailImageProfile());
+    image.src = pageImageUrl(pageNo, detailImageProfile(600, pageWidthPt(pageNo)));
   }
 }
 
@@ -17702,6 +17841,9 @@ let readingFirstUnackedPage = null;
 let readingMarksLoading = false;
 let readingMarksQueued = null;
 let readingRepaintPending = false;   // 编辑期间欠着的一次重画
+// 任务 72：左↔右同步互斥（谁先动谁锁 350 ms，另一个方向只跟随不反向驱动）
+let readingSyncDriver = null;
+let readingSyncUntil = 0;
 
 let readingDrafts = new Map();
 let readingFilter = "all";
@@ -18038,6 +18180,13 @@ async function ensureReadingMarksWindow(pageNo) {
 function refreshReadingMarksPaint() {
   const stream = el("reading-stream");
   if (!stream || !readingData) return;
+  // 跳页途中（左栏在驱动）不重画：重画会把滚动位置恢复成"作废前的位置"，
+  // 刚跳到的第 80 页会被弹回第 1 页（任务 72 实测）。
+  if (readingDriverActive("left")) {
+    readingRepaintPending = true;
+    return;
+  }
+  const pageAtSave = readingPageNo;
   const top = stream.scrollTop;
   const segmentsToKeep = Math.max(readingRendered, 0);
   renderReading({ reset: true });
@@ -18046,7 +18195,8 @@ function refreshReadingMarksPaint() {
     renderReading();
     guard += 1;
   }
-  stream.scrollTop = top;
+  // 重画期间页码被改过（用户又跳了）就不恢复旧位置，否则等于把人拽回去
+  if (readingPageNo === pageAtSave) stream.scrollTop = top;
 }
 
 function readingVisibleSegments() {
@@ -18280,7 +18430,9 @@ function startInlineEdit(line) {
   line.focus();
   const mark = readingMarks.get(line.dataset.key);
   const pageNo = mark && mark.page_no ? mark.page_no : Number(line.dataset.page);
-  if (pageNo && pageNo !== readingPageNo) updateReadingPage(pageNo);
+  if (pageNo && pageNo !== readingPageNo) {
+    updateReadingPage(pageNo, { syncStream: false });
+  }
   if (mark && mark.bbox) drawReadingPdfBox(mark.bbox, mark.page_no || pageNo);
   line.addEventListener("input", onInlineInput);
   line.addEventListener("keydown", onInlineKeydown);
@@ -18701,7 +18853,20 @@ function scrollReadingToPage(pageNo) {
   jumpReadingTo(index);
   const node = readingSegmentNodes[index];
   if (!node) return;
-  node.scrollIntoView({ block: "start", behavior: "auto" });
+  // **直接滚 `#reading-stream`**（它自己就是滚动容器，overflow:auto）。
+  // `scrollIntoView` 在这里会挑到别的祖先滚动，正文实际没动——实测点左树
+  // 页码变了、正文还停在第一页，就是这么来的。
+  const stream = el("reading-stream");
+  if (stream) {
+    const top =
+      node.getBoundingClientRect().top -
+      stream.getBoundingClientRect().top +
+      stream.scrollTop -
+      8;
+    stream.scrollTop = Math.max(0, top);
+  } else {
+    node.scrollIntoView({ block: "start", behavior: "auto" });
+  }
   updateReadingPage(pageNo);
   markReadingTreeCurrent(pageNo);
 }
@@ -18922,7 +19087,7 @@ function pumpReadingImages() {
       delete image.dataset.pending;
       step();
     };
-    image.src = pageImageUrl(pageNo, detailImageProfile());
+    image.src = pageImageUrl(pageNo, pageProfileFor(image, pageNo));
   };
   step();
 }
@@ -19119,7 +19284,9 @@ function markReadingCurrentTile(pageNo) {
   if (tile) tile.classList.add("is-current");
 }
 
-function scrollReadingToPage(pageNo) {
+/** 把**左侧 PDF 页列**滚到某一页（任务 72 前它也叫 scrollReadingToPage，
+ *  同名把"右侧正文跳到这一页"那份覆盖掉了 —— 点左树不跳页就是它造成的）。 */
+function scrollPdfColumnToPage(pageNo) {
   const scroller = el("reading-pdf-scroll");
   const tile = readingTiles.get(pageNo);
   if (!scroller || !tile) return;
@@ -19128,7 +19295,16 @@ function scrollReadingToPage(pageNo) {
   if (Math.abs(scroller.scrollTop - target) > 8) scroller.scrollTop = target;
 }
 
-/** 跟随关掉时，左栏自己滚：只更新页码 / 高亮，不动右栏文字。 */
+/**
+ * 左栏（PDF 页列）滚动 → 右侧正文跟到这一页的第一段（任务 72）。
+ *
+ * 用户原话：「滑动 PDF 页，右边文字不会跟着滑动」。之前只有"右带动左"，
+ * 反向只有页码文字在变，正文不动。这里补上页级反向同步（故意不做行级映射：
+ * 页级已经够用，行级要维护一条额外的对应表，容易错位）。
+ *
+ * **防打架**：同一个 `readingSyncDriver` 互斥——左先动就锁 350 ms，
+ * 这段时间右栏自己的 scroll 回调不反向驱动左栏（否则会来回拉扯）。
+ */
 function updateReadingPageFromLeftScroll() {
   if (!readingTops.length) return;
   const scroller = el("reading-pdf-scroll");
@@ -19139,11 +19315,51 @@ function updateReadingPageFromLeftScroll() {
     if (entry.top <= anchor) best = entry;
     else break;
   }
-  if (!best || best.pageNo === readingPageNo) return;
+  if (!best) return;
+  if (best.pageNo === readingPageNo) return;
   readingPageNo = best.pageNo;
   el("reading-page-no").textContent = `第 ${best.pageNo} 页`;
   markReadingCurrentTile(best.pageNo);
   markReadingTreeCurrent(best.pageNo);
+  if (readingFollow && !readingDriverActive("left")) {
+    markReadingDriver("left");
+    scrollStreamToPage(best.pageNo);
+  }
+}
+
+/** 左→右 / 右→左的互斥标记：谁先动谁锁 350 ms。 */
+function markReadingDriver(driver) {
+  readingSyncDriver = driver;
+  readingSyncUntil = performance.now() + 350;
+}
+
+function readingDriverActive(driver) {
+  return readingSyncDriver === driver && performance.now() < readingSyncUntil;
+}
+
+/**
+ * 把右侧正文滚到"这一页的第一段"，并把这一段设为当前段。
+ * 页级就够：用户要的是"翻到这一页"，不是精确到某一行。
+ */
+function scrollStreamToPage(pageNo) {
+  if (!readingData) return;
+  const segments = readingVisibleSegments();
+  if (!segments.length) return;
+  let index = segments.findIndex((segment) =>
+    (segment.line_spans || []).some((span) => Number(span.page_no) >= pageNo)
+  );
+  if (index < 0) index = segments.length - 1;
+  jumpReadingTo(index);
+  const node = readingSegmentNodes[index];
+  if (!node) return;
+  node.scrollIntoView({ block: "start", behavior: "auto" });
+  setReadingHover(String(segments[index].seq));
+  markReadingTreeCurrent(pageNo);
+  // 跳的过程中正文会触发自己的 scroll 回调，可能把页码改回去：这里钉一下
+  readingPageNo = pageNo;
+  const label = el("reading-page-no");
+  if (label) label.textContent = `第 ${pageNo} 页`;
+  markReadingCurrentTile(pageNo);
 }
 
 /** 量页列的滚动偏移（建列 / 缩放 / 窗口变化后）。 */
@@ -19164,12 +19380,13 @@ function onReadingPdfScroll() {
   readingPdfScrollRaf = requestAnimationFrame(() => {
     readingPdfScrollRaf = 0;
     if (currentView !== "reading") return;
-    if (readingFollow) return;
+    // 任务 72：**跟随开着的时候左栏滚动才该带动右侧**。原来这里写着
+    // `if (readingFollow) return;`——正好反了：用户开着"跟随"滚左栏，右边完全不动。
     updateReadingPageFromLeftScroll();
   });
 }
 
-function updateReadingPage(pageNo, { scrollLeft = true } = {}) {
+function updateReadingPage(pageNo, { scrollLeft = true, syncStream = true } = {}) {
   if (!currentProject) return;
   const total = currentProject.pages.length;
   if (!pageNo || pageNo < 1 || pageNo > total) return;
@@ -19183,7 +19400,13 @@ function updateReadingPage(pageNo, { scrollLeft = true } = {}) {
   ensureReadingPages();
   ensureReadingTile(pageNo);
   markReadingCurrentTile(pageNo);
-  if (scrollLeft) scrollReadingToPage(pageNo);
+  if (scrollLeft) scrollPdfColumnToPage(pageNo);
+  // 任务 72：点左树 / 翻页按钮 → 右侧正文跟到这一页第一段（页级反向同步的另一半）。
+  // 只在"不是右栏自己在驱动"时做，否则会互相拉扯。
+  if (syncStream && readingFollow && readingData && !readingDriverActive("right")) {
+    markReadingDriver("left");
+    scrollStreamToPage(pageNo);
+  }
   if (readingPendingBox) {
     drawReadingPdfBox(readingPendingBox, pageNo);
     readingPendingBox = null;
@@ -19195,6 +19418,13 @@ function setReadingFollow(on) {
   readingFollow = Boolean(on);
   const toggle = el("reading-follow-toggle");
   if (toggle) toggle.checked = readingFollow;
+  // 工具条上的那个「跟随：开/关」要一直跟状态一致（两处都能点）
+  const chip = el("reading-follow-chip");
+  if (chip) {
+    chip.textContent = readingFollow ? "跟随：开" : "跟随：关";
+    chip.classList.toggle("is-on", readingFollow);
+    chip.setAttribute("aria-pressed", readingFollow ? "true" : "false");
+  }
   if (!readingFollow) hideReadingPdfBox();
 }
 
@@ -19273,6 +19503,9 @@ function onReadingScroll() {
   readingScrollRaf = requestAnimationFrame(() => {
     readingScrollRaf = 0;
     if (!readingFollow || currentView !== "reading") return;
+    // 任务 72：左栏正在驱动（350 ms 锁内）就整个跳过——
+    // 否则左栏刚把正文跳到第 60 页，这里按"正文顶部那一行"又把页码改回第 1 页。
+    if (readingDriverActive("left")) return;
     const stream = el("reading-stream");
     if (!stream) return;
     const rect = stream.getBoundingClientRect();
@@ -19291,9 +19524,11 @@ function onReadingScroll() {
     const mark = readingMarks.get(key);
     const pageNo = Number(line.dataset.page);
     if (mark && mark.page_no && mark.page_no !== readingPageNo) {
-      updateReadingPage(mark.page_no);
+      if (!readingDriverActive("left")) markReadingDriver("right");
+      updateReadingPage(mark.page_no, { scrollLeft: true, syncStream: false });
     } else if (!mark && pageNo && pageNo !== readingPageNo) {
-      updateReadingPage(pageNo);
+      if (!readingDriverActive("left")) markReadingDriver("right");
+      updateReadingPage(pageNo, { scrollLeft: true, syncStream: false });
     }
     if (mark && mark.bbox) {
       if (mark.page_no !== readingPageNo) {
@@ -19309,7 +19544,7 @@ function stepReadingPage(delta) {
   const total = currentProject ? currentProject.pages.length : 0;
   const next = Math.min(total, Math.max(1, readingPageNo + delta));
   if (next === readingPageNo) return;
-  scrollReadingToPage(next);
+  scrollPdfColumnToPage(next);
 }
 
 async function gotoNextUnreviewed() {
@@ -19376,7 +19611,7 @@ function gotoReadingEntry(entry) {
   const key = readingKey(entry.block_id, entry.line_index);
   const line = readingLineNode(key);
   if (!line) return;
-  updateReadingPage(entry.page_no);
+  updateReadingPage(entry.page_no, { syncStream: false });
   line.scrollIntoView({ block: "center", behavior: "auto" });
   if (!readingDrafts.has(key)) openReadingPanel(entry);
 }
@@ -19766,6 +20001,8 @@ function boot() {
   setupExportPanel();
   setupStructurePanel();
   showView("library");
+  loadImageQuality();
+  syncImageQualityUi();
   loadAppInfo();
   loadLibrary();
 }

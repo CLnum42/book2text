@@ -59,6 +59,9 @@ def app_info(request: Request) -> dict[str, Any]:
         # 说明书 Phase 6 的"首次运行环境检查（含填写我的名字）"：没有设置文件就是首次运行
         "settings": settings.to_dict(),
         "limits": _CURRENT_LIMITS,
+        # 任务 72：页图档位 → DPI。前端按"这张图实际要显示多少设备像素"选档，
+        # 表格由服务端给，避免前后端各写一份 40/150/220/300。
+        "render_profiles": dict(render.RENDER_PROFILES),
     }
 
 

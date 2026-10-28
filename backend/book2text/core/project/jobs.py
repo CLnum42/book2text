@@ -204,6 +204,65 @@ def get_job(directory: Path, job_id: str) -> JobRecord:
     return _row_to_job(row)
 
 
+def unresolved_failed_jobs(directory: Path) -> int:
+    """**还没被补救**的失败任务数（任务 72）。
+
+    用户看到「1 个任务失败」的红字，可那 9 页早就补跑成功了——历史里的失败记录
+    不会自己消失，于是这个红色数字永远修不掉，用户以为还有东西坏了。
+
+    判据：一个失败任务里，只要它失败的页**后来有过同类成功运行**，这次失败就算
+    "已补救"，不计入。全部失败页都被补过 → 这个任务不再出现在红字里。
+    （历史记录本身不改：审计要看得到"当时失败过、后来补上了"。）
+    """
+    run_type = {"ocr": "primary", "auxiliary": "auxiliary"}
+    try:
+        with _open(directory) as conn:
+            _require_tables(conn)
+            jobs = conn.execute(
+                "SELECT * FROM job WHERE status = 'failed' ORDER BY created_at"
+            ).fetchall()
+            if not jobs:
+                return 0
+            unresolved = 0
+            for job in jobs:
+                kind = run_type.get(job["job_type"])
+                if kind is None:
+                    # 版面检测等其它任务：没有"补跑"的概念，按失败算
+                    unresolved += 1
+                    continue
+                items = conn.execute(
+                    "SELECT page_id FROM job_item WHERE job_id = ? AND status = 'failed'",
+                    (job["job_id"],),
+                ).fetchall()
+                if not items:
+                    # 任务根本没跑起来就失败了（例如引擎不可用）：它一页都没尝试过，
+                    # 这些页同样需要"后来成功过"才算已被补救
+                    items = conn.execute(
+                        "SELECT page_id FROM job_item WHERE job_id = ?",
+                        (job["job_id"],),
+                    ).fetchall()
+                if not items:
+                    continue
+                pending = 0
+                for item in items:
+                    fixed = conn.execute(
+                        """
+                        SELECT 1 FROM ocr_run
+                        WHERE page_id = ? AND run_type = ? AND status = 'succeeded'
+                          AND created_at > ?
+                        LIMIT 1
+                        """,
+                        (item["page_id"], kind, job["created_at"]),
+                    ).fetchone()
+                    if not fixed:
+                        pending += 1
+                if pending:
+                    unresolved += 1
+            return unresolved
+    except Exception:  # noqa: BLE001 - 任务表读不到就当没有失败（不制造假红字）
+        return 0
+
+
 def active_jobs(directory: Path) -> list[JobRecord]:
     """还在排队 / 运行 / 暂停的任务（删除项目前的并发检查用）。"""
     placeholders = ", ".join("?" for _ in ACTIVE_STATUSES)

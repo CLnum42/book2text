@@ -52,13 +52,27 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
     target_library = library if library is not None else library_module.default_library_dir()
     project = library_module.load_project(project_id, library=target_library)
     pages = library_module.list_pages(project_id, library=target_library)
-    signature = f"{project.updated_at}|{len(pages)}|{sum(1 for p in pages if p.printed_page)}"
+    directory = library_module.require_project_dir(project_id, library=target_library)
+    # 任务 73：签名原来只看 printed_page 的数量，**加块（例如补上页码文本）不会变**，
+    # 于是缓存里的旧索引被当成新的返回——测试里"加了页码块却还是 complete=False"就是它。
+    # 把块的数量与最新更新时间一起放进签名（一次很便宜的两列查询）。
+    try:
+        with db_module.open_database(directory, apply_migrations=False) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), '') AS u "
+                "FROM block WHERE deleted_at IS NULL"
+            ).fetchone()
+            block_stamp = f"{row['n']}|{row['u']}"
+    except Exception:  # noqa: BLE001 - 读不到就当没有块信息（宁可不缓存错）
+        block_stamp = "?"
+    signature = (
+        f"{project.updated_at}|{len(pages)}|"
+        f"{sum(1 for p in pages if p.printed_page)}|{block_stamp}"
+    )
     cached = _CACHE.get(project_id)
     now = time.time()
     if cached and cached[1] == signature and now - cached[0] < _CACHE_TTL_SECONDS:
         return cached[2]
-
-    directory = library_module.require_project_dir(project_id, library=target_library)
     candidates, _, _ = page_numbers_module.collect_candidates(
         project_id, library=target_library
     )
@@ -136,6 +150,15 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
         if entry["chapter"]
     ]
     numbered = sum(1 for entry in entries if not entry["missing"])
+    # 任务 73：**"有 1 页有页码"不能算完成**。这本书 662 页只有 1 页有印刷页码，
+    # 原来 `complete = numbered > 0` 直接变绿，用户以为目录核对过了。
+    # 现在分三种：真的建出可用索引（≥ 半数的页有页码）＝完成；
+    # 全书几乎没有页码、也没有可信模板＝可跳过（这本书就是）；
+    # 其余＝未完成（有页码但还没确认 / 索引还不完整）。
+    # 阈值：至少有 3 页、且覆盖 1/4 以上的页，才算"建出了可用的索引"。
+    # 一半太严：很多书的前言 / 版权 / 空白页本来就不印页码（测试样本 20 页里只有 6 页
+    # 有号码，却是完全可用的索引）；而这本书 662 页只有 1 页有号，仍然不算。
+    usable_numbered = max(3, int(len(entries) * 0.25))
     missing_front_back = sum(
         1 for entry in entries if entry["missing_reason"] == "front_back"
     )
@@ -149,6 +172,13 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
     # 有页 ≠ 有索引：一页印刷页码都没读到的时候，这份列表只是 PDF 页序，
     # 不能当作"目录确认已完成"（否则步骤条会亮绿灯，用户却什么页码都没有）。
     page_order_only = numbered == 0
+    index_ready = numbered >= usable_numbered
+    # 可跳过：这本书本来就没有可用页码（有零星页码但远不够当索引），
+    # 也没应用过页码模板 / 手动页码。用户不需要做，但也没做成——界面上是
+    # 虚线灰圈，不是绿勾（绿勾留给"真的建出了可用的索引"）。
+    skippable = (not index_ready) and numbered <= 1 and not any(
+        entry["source"] in ("manual", "template") for entry in entries
+    )
     payload = {
         "schema": INDEX_SCHEMA,
         "generated_at": project.updated_at,
@@ -168,7 +198,9 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
             # `page_order_only`：整本还没有印刷页码，下面只是 PDF 页序。
             # 界面据此显示"尚未识别"空态，步骤条不许变绿。
             "page_order_only": page_order_only,
-            "complete": not page_order_only,
+            "index_ready": index_ready,
+            "skippable": skippable,
+            "complete": index_ready,
         },
         "notes": _notes(
             numbering_step=numbering_step,

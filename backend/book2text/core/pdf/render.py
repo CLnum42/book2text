@@ -54,8 +54,12 @@ def _serialized(func):
 # 当前数值是待验证的初值，不是最终结论。
 RENDER_PROFILES: dict[str, int] = {
     "thumb": 40,   # 缩略图
-    "view": 150,   # 审校显示用的中等分辨率
-    "zoom": 300,   # 放大查看
+    "view": 150,   # 标准（原"中等分辨率"）
+    # 任务 72：150 不够、300 太大（一页 650 KB）是最常见的情况。
+    # 612pt 的页面在 220 DPI 下约 1870px、200–300 KB，正好覆盖"容器 700–900 CSS px
+    # × dpr 2"这一档——用户报糊的正是这一档。
+    "mid": 220,
+    "zoom": 300,   # 放大查看 / 高清
 }
 
 DEFAULT_PROFILE = "view"

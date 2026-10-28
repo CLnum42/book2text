@@ -239,6 +239,13 @@ def project_summary(project_id: str, *, library: Path | None = None) -> ProjectS
     reviews = blocks_module.page_review_states(project_id, library=target_library)
     divergences = blocks_module.page_divergences(project_id, library=target_library)
     job_counts = jobs_module.count_by_status(project_dir(target_library, project_id))
+    # 任务 72：红色「N 个任务失败」只算**还没被补救**的——补跑成功的失败记录
+    # 留在历史里（审计要看），但不能再占着红字（用户看到的是一个永远修不掉的数）。
+    # 注意：**不要往 job_counts 里加键**——下面的 total 是 `sum(job_counts.values())`。
+    failed_total = job_counts.get(jobs_module.STATUS_FAILED, 0)
+    job_counts[jobs_module.STATUS_FAILED] = jobs_module.unresolved_failed_jobs(
+        project_dir(target_library, project_id)
+    )
 
     page_counts = dict.fromkeys(_COUNTED_STATUSES, 0)
     for page in pages:
