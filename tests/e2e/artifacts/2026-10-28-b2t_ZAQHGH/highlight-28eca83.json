@@ -1,0 +1,814 @@
+[
+  {
+    "index": 1,
+    "pageNo": 1,
+    "panelOpen": true,
+    "panelKey": "01M609YSCTY9T6D986R8XMC3ZS:1",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-diff is-current",
+    "readingRendered": 32,
+    "segCount": 32,
+    "log0": {
+      "at": 1793183971522,
+      "entryKey": "01M609YSCTY9T6D986R8XMC3ZS:1",
+      "entryPage": 1,
+      "pageNo": 1,
+      "panelKey": "01M609YSCTY9T6D986R8XMC3ZS:1",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 1,
+        "page_to": 11
+      },
+      "blocks": 15,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 2,
+    "pageNo": 1,
+    "panelOpen": true,
+    "panelKey": "01M609YSCVVSZQER654WQVCREE:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-diff is-current",
+    "readingRendered": 32,
+    "segCount": 32,
+    "log0": {
+      "at": 1793183973567,
+      "entryKey": "01M609YSCVVSZQER654WQVCREE:0",
+      "entryPage": 1,
+      "pageNo": 1,
+      "panelKey": "01M609YSCVVSZQER654WQVCREE:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 1,
+        "page_to": 11
+      },
+      "blocks": 15,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 3,
+    "pageNo": 4,
+    "panelOpen": true,
+    "panelKey": "01M609YX81FD04QZPC431BX5MJ:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-diff is-current",
+    "readingRendered": 48,
+    "segCount": 48,
+    "log0": {
+      "at": 1793183975633,
+      "entryKey": "01M609YX81FD04QZPC431BX5MJ:0",
+      "entryPage": 4,
+      "pageNo": 4,
+      "panelKey": "01M609YX81FD04QZPC431BX5MJ:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 1,
+        "page_to": 11
+      },
+      "blocks": 9,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 4,
+    "pageNo": 8,
+    "panelOpen": true,
+    "panelKey": "01M609Z2E2YA4PBREPDYGTHDK2:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-diff is-current",
+    "readingRendered": 72,
+    "segCount": 24,
+    "log0": {
+      "at": 1793183977754,
+      "entryKey": "01M609Z2E2YA4PBREPDYGTHDK2:0",
+      "entryPage": 8,
+      "pageNo": 8,
+      "panelKey": "01M609Z2E2YA4PBREPDYGTHDK2:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 1,
+        "page_to": 11
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 5,
+    "pageNo": 9,
+    "panelOpen": true,
+    "panelKey": "01M609Z5DZJXQVJA3ZFKP66KVC:4",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-diff is-current",
+    "readingRendered": 80,
+    "segCount": 80,
+    "log0": {
+      "at": 1793183979850,
+      "entryKey": "01M609Z5DZJXQVJA3ZFKP66KVC:4",
+      "entryPage": 9,
+      "pageNo": 9,
+      "panelKey": "01M609Z5DZJXQVJA3ZFKP66KVC:4",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 1,
+        "page_to": 11
+      },
+      "blocks": 11,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 6,
+    "pageNo": 9,
+    "panelOpen": true,
+    "panelKey": "01M609Z5DZJXQVJA3ZFKP66KVC:6",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-diff is-current",
+    "readingRendered": 80,
+    "segCount": 80,
+    "log0": {
+      "at": 1793183982102,
+      "entryKey": "01M609Z5DZJXQVJA3ZFKP66KVC:6",
+      "entryPage": 9,
+      "pageNo": 9,
+      "panelKey": "01M609Z5DZJXQVJA3ZFKP66KVC:6",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 2,
+        "page_to": 22
+      },
+      "blocks": 11,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 7,
+    "pageNo": 11,
+    "panelOpen": true,
+    "panelKey": "01M609ZAB2WQ1F46V39SS5PBG5:1",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-diff is-current",
+    "readingRendered": 88,
+    "segCount": 88,
+    "log0": {
+      "at": 1793183984451,
+      "entryKey": "01M609ZAB2WQ1F46V39SS5PBG5:1",
+      "entryPage": 11,
+      "pageNo": 11,
+      "panelKey": "01M609ZAB2WQ1F46V39SS5PBG5:1",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 1,
+        "page_to": 11
+      },
+      "blocks": 8,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 8,
+    "pageNo": 13,
+    "panelOpen": true,
+    "panelKey": "01M609ZG2CDVNEMWPVA8NQN6KQ:1",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-diff is-current",
+    "readingRendered": 104,
+    "segCount": 104,
+    "log0": {
+      "at": 1793183986601,
+      "entryKey": "01M609ZG2CDVNEMWPVA8NQN6KQ:1",
+      "entryPage": 13,
+      "pageNo": 13,
+      "panelKey": "01M609ZG2CDVNEMWPVA8NQN6KQ:1",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 2,
+        "page_to": 22
+      },
+      "blocks": 10,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 9,
+    "pageNo": 14,
+    "panelOpen": true,
+    "panelKey": "01M609ZJWZXYZEMM5ZECCH9AB9:7",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-diff is-current",
+    "readingRendered": 104,
+    "segCount": 104,
+    "log0": {
+      "at": 1793183988729,
+      "entryKey": "01M609ZJWZXYZEMM5ZECCH9AB9:7",
+      "entryPage": 14,
+      "pageNo": 14,
+      "panelKey": "01M609ZJWZXYZEMM5ZECCH9AB9:7",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 2,
+        "page_to": 22
+      },
+      "blocks": 7,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 10,
+    "pageNo": 14,
+    "panelOpen": true,
+    "panelKey": "01M609ZJWZXYZEMM5ZECCH9AB9:12",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 112,
+    "segCount": 112,
+    "log0": {
+      "at": 1793183990788,
+      "entryKey": "01M609ZJWZXYZEMM5ZECCH9AB9:12",
+      "entryPage": 14,
+      "pageNo": 14,
+      "panelKey": "01M609ZJWZXYZEMM5ZECCH9AB9:12",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 2,
+        "page_to": 22
+      },
+      "blocks": 7,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 11,
+    "pageNo": 15,
+    "panelOpen": true,
+    "panelKey": "01M609ZPAJ6YKCMRK8X7B02E89:3",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-diff is-current",
+    "readingRendered": 120,
+    "segCount": 120,
+    "log0": {
+      "at": 1793183992945,
+      "entryKey": "01M609ZPAJ6YKCMRK8X7B02E89:3",
+      "entryPage": 15,
+      "pageNo": 15,
+      "panelKey": "01M609ZPAJ6YKCMRK8X7B02E89:3",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 2,
+        "page_to": 22
+      },
+      "blocks": 10,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 12,
+    "pageNo": 16,
+    "panelOpen": true,
+    "panelKey": "01M609ZRR5QR0S2WQD1D5SX80W:6",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 128,
+    "segCount": 128,
+    "log0": {
+      "at": 1793183995087,
+      "entryKey": "01M609ZRR5QR0S2WQD1D5SX80W:6",
+      "entryPage": 16,
+      "pageNo": 16,
+      "panelKey": "01M609ZRR5QR0S2WQD1D5SX80W:6",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 2,
+        "page_to": 22
+      },
+      "blocks": 5,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 13,
+    "pageNo": 17,
+    "panelOpen": true,
+    "panelKey": "01M609ZSNKZN55A4SH15W3MAD4:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 128,
+    "segCount": 128,
+    "log0": {
+      "at": 1793183997265,
+      "entryKey": "01M609ZSNKZN55A4SH15W3MAD4:0",
+      "entryPage": 17,
+      "pageNo": 17,
+      "panelKey": "01M609ZSNKZN55A4SH15W3MAD4:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 2,
+        "page_to": 22
+      },
+      "blocks": 3,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 14,
+    "pageNo": 18,
+    "panelOpen": true,
+    "panelKey": "01M609ZV2HS9G6HG3QGC1YSEP2:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 128,
+    "segCount": 128,
+    "log0": {
+      "at": 1793183999489,
+      "entryKey": "01M609ZV2HS9G6HG3QGC1YSEP2:0",
+      "entryPage": 18,
+      "pageNo": 18,
+      "panelKey": "01M609ZV2HS9G6HG3QGC1YSEP2:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 2,
+        "page_to": 22
+      },
+      "blocks": 4,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 15,
+    "pageNo": 23,
+    "panelOpen": true,
+    "panelKey": "01M60A174VX0T0FJ00NPK13A3D:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 160,
+    "segCount": 160,
+    "log0": {
+      "at": 1793184001681,
+      "entryKey": "01M60A174VX0T0FJ00NPK13A3D:0",
+      "entryPage": 23,
+      "pageNo": 23,
+      "panelKey": "01M60A174VX0T0FJ00NPK13A3D:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 13,
+        "page_to": 33
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 16,
+    "pageNo": 27,
+    "panelOpen": true,
+    "panelKey": "01M60A4584VHDBQY0QBR6DRHNA:2",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 192,
+    "segCount": 192,
+    "log0": {
+      "at": 1793184003896,
+      "entryKey": "01M60A4584VHDBQY0QBR6DRHNA:2",
+      "entryPage": 27,
+      "pageNo": 27,
+      "panelKey": "01M60A4584VHDBQY0QBR6DRHNA:2",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 13,
+        "page_to": 33
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 17,
+    "pageNo": 37,
+    "panelOpen": true,
+    "panelKey": "01M60A5E7TWV6TY7YEBS3K18SP:2",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 248,
+    "segCount": 248,
+    "log0": {
+      "at": 1793184006203,
+      "entryKey": "01M60A5E7TWV6TY7YEBS3K18SP:2",
+      "entryPage": 37,
+      "pageNo": 37,
+      "panelKey": "01M60A5E7TWV6TY7YEBS3K18SP:2",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 27,
+        "page_to": 47
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 18,
+    "pageNo": 39,
+    "panelOpen": true,
+    "panelKey": "01M60A5PJBMD2S7J9THR3P1M23:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 256,
+    "segCount": 256,
+    "log0": {
+      "at": 1793184008223,
+      "entryKey": "01M60A5PJBMD2S7J9THR3P1M23:0",
+      "entryPage": 39,
+      "pageNo": 39,
+      "panelKey": "01M60A5PJBMD2S7J9THR3P1M23:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 29,
+        "page_to": 49
+      },
+      "blocks": 9,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 19,
+    "pageNo": 49,
+    "panelOpen": true,
+    "panelKey": "01M60A7D9H4EGK8FT2MGSPBDJ4:5",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 312,
+    "segCount": 312,
+    "log0": {
+      "at": 1793184010577,
+      "entryKey": "01M60A7D9H4EGK8FT2MGSPBDJ4:5",
+      "entryPage": 49,
+      "pageNo": 49,
+      "panelKey": "01M60A7D9H4EGK8FT2MGSPBDJ4:5",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 39,
+        "page_to": 59
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 20,
+    "pageNo": 50,
+    "panelOpen": true,
+    "panelKey": "01M60A7H784BM6CF9MA7QD86D5:2",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 312,
+    "segCount": 312,
+    "log0": {
+      "at": 1793184012693,
+      "entryKey": "01M60A7H784BM6CF9MA7QD86D5:2",
+      "entryPage": 50,
+      "pageNo": 50,
+      "panelKey": "01M60A7H784BM6CF9MA7QD86D5:2",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 40,
+        "page_to": 60
+      },
+      "blocks": 6,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 21,
+    "pageNo": 53,
+    "panelOpen": true,
+    "panelKey": "01M60A7Y9HMB1D9TS2TADYWSPX:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 352,
+    "segCount": 352,
+    "log0": {
+      "at": 1793184014748,
+      "entryKey": "01M60A7Y9HMB1D9TS2TADYWSPX:0",
+      "entryPage": 53,
+      "pageNo": 53,
+      "panelKey": "01M60A7Y9HMB1D9TS2TADYWSPX:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 43,
+        "page_to": 63
+      },
+      "blocks": 7,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 22,
+    "pageNo": 54,
+    "panelOpen": true,
+    "panelKey": "01M60A83FGPV49BZCJ3QD0DGF3:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 360,
+    "segCount": 360,
+    "log0": {
+      "at": 1793184017176,
+      "entryKey": "01M60A83FGPV49BZCJ3QD0DGF3:0",
+      "entryPage": 54,
+      "pageNo": 54,
+      "panelKey": "01M60A83FGPV49BZCJ3QD0DGF3:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 44,
+        "page_to": 64
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 23,
+    "pageNo": 56,
+    "panelOpen": true,
+    "panelKey": "01M60ADT5AJM8B89WPC0YEK2WD:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 384,
+    "segCount": 384,
+    "log0": {
+      "at": 1793184019284,
+      "entryKey": "01M60ADT5AJM8B89WPC0YEK2WD:0",
+      "entryPage": 56,
+      "pageNo": 56,
+      "panelKey": "01M60ADT5AJM8B89WPC0YEK2WD:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 46,
+        "page_to": 66
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 24,
+    "pageNo": 59,
+    "panelOpen": true,
+    "panelKey": "01M60AEA85AMWTG0JE1G0E7X86:4",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 392,
+    "segCount": 392,
+    "log0": {
+      "at": 1793184021328,
+      "entryKey": "01M60AEA85AMWTG0JE1G0E7X86:4",
+      "entryPage": 59,
+      "pageNo": 59,
+      "panelKey": "01M60AEA85AMWTG0JE1G0E7X86:4",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 49,
+        "page_to": 69
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 25,
+    "pageNo": 59,
+    "panelOpen": true,
+    "panelKey": "01M60AEA86KSEH4RX917B1TF6V:6",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 392,
+    "segCount": 392,
+    "log0": {
+      "at": 1793184023514,
+      "entryKey": "01M60AEA86KSEH4RX917B1TF6V:6",
+      "entryPage": 59,
+      "pageNo": 59,
+      "panelKey": "01M60AEA86KSEH4RX917B1TF6V:6",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 49,
+        "page_to": 69
+      },
+      "blocks": 7,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 26,
+    "pageNo": 64,
+    "panelOpen": true,
+    "panelKey": "01M60AF6PBKR293VJ9DH3F9B4A:4",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 424,
+    "segCount": 424,
+    "log0": {
+      "at": 1793184025384,
+      "entryKey": "01M60AF6PBKR293VJ9DH3F9B4A:4",
+      "entryPage": 64,
+      "pageNo": 64,
+      "panelKey": "01M60AF6PBKR293VJ9DH3F9B4A:4",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 50,
+        "page_to": 70
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 27,
+    "pageNo": 64,
+    "panelOpen": true,
+    "panelKey": "01M60AF6PCYKH0J2KCCDS0SM5Y:5",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 424,
+    "segCount": 424,
+    "log0": {
+      "at": 1793184027507,
+      "entryKey": "01M60AF6PCYKH0J2KCCDS0SM5Y:5",
+      "entryPage": 64,
+      "pageNo": 64,
+      "panelKey": "01M60AF6PCYKH0J2KCCDS0SM5Y:5",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 54,
+        "page_to": 74
+      },
+      "blocks": 4,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  },
+  {
+    "index": 28,
+    "pageNo": 66,
+    "panelOpen": true,
+    "panelKey": "01M60AFFZ4K98WE9B2JK8X7WSV:0",
+    "currentLines": 1,
+    "targetExists": true,
+    "targetCurrent": true,
+    "targetClass": "reading-line is-current",
+    "readingRendered": 432,
+    "segCount": 432,
+    "log0": {
+      "at": 1793184029672,
+      "entryKey": "01M60AFFZ4K98WE9B2JK8X7WSV:0",
+      "entryPage": 66,
+      "pageNo": 66,
+      "panelKey": "01M60AFFZ4K98WE9B2JK8X7WSV:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 56,
+        "page_to": 76
+      },
+      "blocks": 5,
+      "branch": "next-lines"
+    },
+    "framesToCurrent": 1,
+    "frameTimeout": false
+  }
+]

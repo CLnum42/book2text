@@ -1215,7 +1215,23 @@ async function highlightProbe(page, maxJumps = 28) {
         { timeout: 4000 }
       )
       .catch(() => {});
-    await page.waitForTimeout(500);
+    // 记 is-current 出现需要几帧（从点击后开始数，上限 120 帧）
+    const frameInfo = await page.evaluate(async () => {
+      return await new Promise((resolve) => {
+        let frames = 0;
+        const tick = () => {
+          frames += 1;
+          const panel = document.querySelector(".reading-panel");
+          const key = panel ? panel.dataset.key : null;
+          const target = key ? document.querySelector(`#reading-stream .reading-line[data-key="${key}"]`) : null;
+          if (target && target.classList.contains("is-current")) return resolve({ frames, ok: true });
+          if (frames >= 120) return resolve({ frames, ok: false });
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+    });
+    await page.waitForTimeout(200);
     const row = await page.evaluate((index) => {
       const panel = document.querySelector(".reading-panel");
       const head = document.querySelector(".reading-panel__head strong");
@@ -1234,11 +1250,14 @@ async function highlightProbe(page, maxJumps = 28) {
         currentLines: currentLines.length,
         targetExists: Boolean(target),
         targetCurrent: Boolean(target && target.classList.contains("is-current")),
+        targetClass: target ? target.className : null,
         readingRendered: typeof readingRendered !== "undefined" ? readingRendered : null,
         segCount,
         log0: (window.__b2tNextLog || [])[0] || null,
       };
     }, i);
+    row.framesToCurrent = frameInfo.frames;
+    row.frameTimeout = !frameInfo.ok;
     rows.push(row);
     if (row.pageNo !== null && row.pageNo >= 174) break;
   }
