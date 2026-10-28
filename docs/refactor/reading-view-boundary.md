@@ -455,3 +455,32 @@ Slice 1 实测（2026-10-28）：
 3. **到期点明确**：punct 整体搬时，badge 的数据与 DOM 一起进模块，`getPunctBadge()` 这类注入点**一个都不需要**。
 
 **验收侧的连带影响**：该切片的验收必须同时看"标点数与审校进度同屏一致"这一条（顶栏 badge 与正文流进度不同步，是两个写点的典型症状）。
+
+---
+
+## 11. L1 施工表（HEAD `c45b8a5`，11 函数 / 230 行）
+
+**230 行 = 178 行搬 + 52 行删。** 8 个函数全仓库零引用，是死代码，**不要搬，直接删**；搬的只有 3 个。
+
+| 函数 | 行号 | 行数 | 处理 | 为什么在 L1 而不是 L2 |
+|---|---|---:|---|---|
+| `setReviewOverlaysForReading` | 18099–18116 | 18 | 搬 | 唯一调用点 `showView()`(250)，由 `enter` 导出覆盖；L2–L12 无人调用 |
+| `readingReloadAfterBatch` | 18151–18158 | 8 | 搬 | 唯一调用点是 `boot()` 的 `reload:` 注入(21016)，属 `reload` 导出 |
+| `setupReading` | 20849–21000 | 152 | 搬 | 唯一调用点是 `boot()`(21053)，由 `init` 导出覆盖 |
+| `readingPdfScrollTop` | 18117–18127 | 11 | **删** | 全仓库零引用（含块外） |
+| `readingOrderAfter` | 18321–18326 | 6 | **删** | 全仓库零引用 |
+| `buildReadingTree` | 19314–19321 | 8 | **删** | 全仓库零引用 |
+| `toggleReadingProof` | 20418–20426 | 9 | **删** | 全仓库零引用（任务 66 去掉「成稿」按钮后遗留） |
+| `readingCursorOrder` | 20695–20700 | 6 | **删** | 全仓库零引用 |
+| `readingSplitPrefs` | 20833–20836 | 4 | **删** | 0 调用；真实现已在 `reading-view.js` |
+| `saveReadingSplit` | 20841–20844 | 4 | **删** | 同上 |
+| `setupReadingSplit` | 20845–20848 | 4 | **删** | 同上 |
+
+**判据**：L1 里的函数，其调用者只有两种——① 零引用（删）；② `boot()` / `showView()` 这两个已被导出覆盖的入口。只要有一个调用者在 L2–L12，它就必须等那一层。
+
+**L1 的注入依赖 = 24 个**（`setupReading` 绑 30 个处理器带来的）：`saveReadingInlineEdits`(18040) / `saveReadingDrafts`(18072) / `markReadingUserMoved`(18128) / `openReading`(18159) / `readingMarkOrder`(18317) / `renderReading`(18509) / `startInlineEdit`(18807) / `exitInlineEdit`(18875) / `renderReadingProgress`(19042) / `setReadingFilter`(19068) / `openReadingPanel`(19128) / `closeReadingPanel`(19211) / `rerenderReadingLine`(19297) / `paintReadingTile`(19942) / `setReadingHoverByBlock`(20105) / `setReadingHover`(20134) / `onReadingPdfScroll`(20288) / `setReadingFollow`(20404) / `renderReadingPreflight`(20427) / `onReadingScroll`(20511) / `stepReadingPage`(20602) / `gotoNextUnreviewed`(20629) / `submitReadingDrafts`(20747) / `undoReadingSubmit`(20807)
+
+**行数账（3,061 到底怎么来的）**：
+- 3,061 = 53（头部：节注释 + 状态声明）+ 3,008（各函数区间）
+- 3,008 = 2,995（121 个不同函数名）+ 13（**重名死定义**：`rerenderReadingLine` 首份 18860–18872，被 19289 覆盖）
+- 12 层合计 2,995 → 未归层的只有 **53 + 13 = 66 行**，没有 668 行缺口。
