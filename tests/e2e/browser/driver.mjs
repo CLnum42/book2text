@@ -1980,6 +1980,19 @@ async function dockSnapshotRaw() {
       candidate: text(".reading-panel__candidate"),
     },
     progress: text("#reading-progress-text"),
+    label: text("#reading-page-no"),
+    dominant: (() => {
+      const sc = document.getElementById("reading-pdf-scroll");
+      if (!sc) return null;
+      const sr = sc.getBoundingClientRect();
+      let best = null;
+      for (const tile of sc.querySelectorAll(".reading-page")) {
+        const tr = tile.getBoundingClientRect();
+        const overlap = Math.min(tr.bottom, sr.bottom) - Math.max(tr.top, sr.top);
+        if (overlap > 0 && (!best || overlap > best.overlap)) best = { page: Number(tile.dataset.pageNo), overlap };
+      }
+      return best ? best.page : null;
+    })(),
     notice: text("#auto-apply-notice-text"),
     noticeHidden: (document.getElementById("auto-apply-notice") || {}).hidden ?? null,
     edit: {
