@@ -94,6 +94,8 @@ export async function run(cfg) {
       return await errorWatch(page, args);
     case "crop_sizes":
       return await cropSizeProbe(page);
+    case "punct_probe":
+      return await punctProbe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -2272,6 +2274,85 @@ async function cropSizeProbe(page) {
     window.pageImageUrl = orig;
     return out;
   });
+}
+
+/**
+ * 标点批量裁决探针：判一组之后，正文流是否真的重开（setReadingProject/Data/Marks 接没接上）。
+ * 判据用三个客观信号：readingData 对象身份变了、正文流 DOM 被重建、marks 窗口重新加载。
+ */
+async function punctProbe(page, args) {
+  const mode = args.mode || "decide";
+  await ensureReading(page);
+
+  const read = () =>
+    page.evaluate(() => {
+      const stream = document.getElementById("reading-stream");
+      const data = typeof readingData !== "undefined" ? readingData : null;
+      const progress = (document.getElementById("reading-progress-text") || {}).textContent || "";
+      return {
+        segs: stream ? stream.querySelectorAll(".reading-seg").length : 0,
+        scrollTop: stream ? Math.round(stream.scrollTop) : null,
+        progress: progress.replace(/\s+/g, " ").trim(),
+        hasProbeMarker: Boolean(data && data.__probeMarker),
+        segments: data && data.segments ? data.segments.length : null,
+        marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : null,
+        marksSize: typeof readingMarks !== "undefined" && readingMarks.size !== undefined
+          ? readingMarks.size : null,
+        project: typeof readingProject !== "undefined" ? readingProject : null,
+        badge: (document.getElementById("reading-punct-count") || {}).textContent || null,
+        modalHidden: (document.getElementById("punct-groups-mask") || {}).hidden ?? null,
+        groups: document.querySelectorAll("#punct-groups-list > *").length,
+        adoptButtons: document.querySelectorAll("#punct-groups-list .btn--pri").length,
+        building: typeof readingBuilding !== "undefined" ? readingBuilding : null,
+      };
+    });
+
+  const before = await read();
+  // 给 readingData 打标记：重开之后拿到的是新对象，标记会消失
+  await page.evaluate(() => {
+    if (typeof readingData !== "undefined" && readingData) readingData.__probeMarker = 1;
+    window.__punctStreamMutations = 0;
+    window.__punctObserver = new MutationObserver((list) => {
+      window.__punctStreamMutations += list.length;
+    });
+    const stream = document.getElementById("reading-stream");
+    if (stream) window.__punctObserver.observe(stream, { childList: true, subtree: true });
+  });
+
+  await page.click("#reading-punct-open", { label: "打开标点分组" });
+  await page.waitForFunction(
+    () => {
+      const mask = document.getElementById("punct-groups-mask");
+      return Boolean(mask && !mask.hidden);
+    },
+    undefined,
+    { timeout: 15000 }
+  );
+  await page.waitForTimeout(400);
+  const opened = await read();
+
+  if (mode === "open") {
+    return { before, opened };
+  }
+
+  if (!opened.adoptButtons) {
+    return { before, opened, error: "没有可判的标点分组（分组列表为空）" };
+  }
+  await page.click("#punct-groups-list .btn--pri", { label: "全部采用候选（第一组）" });
+  // 等"重开"的可观测结果：readingData 换对象 / 流 DOM 重建 / 进度变化
+  const started = Date.now();
+  let after = await read();
+  while (Date.now() - started < 25000) {
+    await page.waitForTimeout(300);
+    after = await read();
+    if (!after.hasProbeMarker) break;          // 换了新对象 = 真的重开
+  }
+  const mutations = await page.evaluate(() => {
+    if (window.__punctObserver) window.__punctObserver.disconnect();
+    return window.__punctStreamMutations || 0;
+  });
+  const errors = await page.evaluate(() => window.__b2tErrors || []);
+  return { before, opened, after, mutations, errors, ms: Date.now() - started };
 }
 
 async function nextProbe(page) {
