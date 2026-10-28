@@ -17998,22 +17998,6 @@ function readingInlineStorageKey() {
   return currentProject ? `b2t.readingInline.${currentProject.project_id}` : "";
 }
 
-function saveReadingInlineEdits() {
-  try {
-    const items = [...readingInlineEdits.entries()].map(([key, value]) => ({
-      key,
-      base: value.base,
-      text: value.text,
-      at: value.at,
-    }));
-    localStorage.setItem(
-      readingInlineStorageKey(),
-      JSON.stringify({ items, savedAt: Date.now() })
-    );
-  } catch {
-    /* 存不下不影响当前会话 */
-  }
-}
 
 function saveReadingDrafts() {
   try {
@@ -18070,15 +18054,6 @@ function readingMarkOrder(entry) {
 let readingMarksRequestSeq = 0;
 
 
-/** 正文流里出现过的页号（前置页 / 版心外的页不在里面）。 */
-function readingFlowPages() {
-  const set = new Set();
-  for (const segment of readingData ? readingData.segments || [] : []) {
-    for (const page of segment.pages || []) set.add(page.page_no);
-  }
-  return set;
-}
-
 function readingVisibleSegments() {
   if (!readingData) return [];
   let includeFootnotes = false;
@@ -18094,10 +18069,6 @@ function readingVisibleSegments() {
   });
 }
 
-function readingEntryDone(entry) {
-  if (entry.ack) return true;
-  return readingDrafts.has(readingKey(entry.block_id, entry.line_index));
-}
 
 function readingEntryVisible(entry) {
   const draft = readingDrafts.get(readingKey(entry.block_id, entry.line_index));
@@ -18109,12 +18080,6 @@ function readingEntryVisible(entry) {
   return true;
 }
 
-
-function removeReadingSentinel() {
-  const stream = el("reading-stream");
-  if (!stream) return;
-  for (const node of stream.querySelectorAll(".reading-sentinel")) node.remove();
-}
 
 /**
  * 把一个差异字符区间扩成"字 / 词"单位（任务 59）。
@@ -18482,15 +18447,6 @@ function readingLineNode(key) {
 }
 
 
-function hideReadingPanelHost() {
-  // 只清 DOM，不动 pending / key：给"重绘后没有待恢复面板"的收尾用
-  const host = el("reading-panel-host");
-  if (host && host.querySelector(".reading-panel")) {
-    host.innerHTML = "";
-    host.hidden = true;
-  }
-}
-
 function closeReadingPanel() {
   const host = el("reading-panel-host");
   if (host) { host.innerHTML = ""; host.hidden = true; }
@@ -18538,26 +18494,6 @@ function refreshReadingCurrentHighlight() {
   if (readingPageNo) paintReadingDiffBoxes(readingPageNo);
 }
 
-function startReadingEdit(entry, panel) {
-  const key = readingKey(entry.block_id, entry.line_index);
-  const line = readingLineNode(key);
-  if (!line) return;
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "reading-panel__input";
-  input.value = line.textContent.replace(/草稿.*$/, "").trim();
-  const save = document.createElement("button");
-  save.type = "button";
-  save.className = "btn btn--pri btn--sm";
-  save.textContent = "存草稿";
-  save.addEventListener("click", () => draftReading(entry, null, input.value));
-  const row = document.createElement("div");
-  row.className = "reading-panel__edit";
-  row.append(input, save);
-  panel.append(row);
-  input.focus();
-  input.select();
-}
 
 function draftReading(entry, ack, text) {
   const key = readingKey(entry.block_id, entry.line_index);
@@ -18604,54 +18540,6 @@ function readingEntryLineText(entry) {
   return "";
 }
 
-/**
- * 一条差异的预览：差异前后各留 10 个字，差异部分用 `<mark>` 标出来。
- *
- * 只做显示：文本全部来自 `segment.text` 的切片，不拼、不补、不占位。
- */
-function buildReadingTreePreview(entry) {
-  const wrap = document.createElement("span");
-  wrap.className = "reading-tree__preview";
-  const lineText = readingEntryLineText(entry);
-  if (!lineText) {
-    wrap.textContent = (entry.candidate || "").slice(0, 40) || "（这一页的差异还没加载）";
-    return wrap;
-  }
-  const spans = computeCharSpans(lineText, entry.candidate || "");
-  if (!spans.length) {
-    wrap.textContent = lineText.slice(0, 40);
-    return wrap;
-  }
-  const first = spans[0];
-  const from = Math.max(0, first.aStart - 10);
-  const to = Math.min(lineText.length, Math.max(first.aEnd, first.aStart + 1) + 10);
-  if (from > 0) wrap.append(document.createTextNode("…"));
-  if (first.aStart > from) {
-    wrap.append(document.createTextNode(lineText.slice(from, first.aStart)));
-  }
-  const mark = document.createElement("mark");
-  mark.textContent = lineText.slice(first.aStart, Math.max(first.aEnd, first.aStart + 1));
-  wrap.append(mark);
-  if (to > Math.max(first.aEnd, first.aStart + 1)) {
-    wrap.append(document.createTextNode(lineText.slice(Math.max(first.aEnd, first.aStart + 1), to)));
-  }
-  if (to < lineText.length) wrap.append(document.createTextNode("…"));
-  return wrap;
-}
-
-/** 这一页在已加载窗口里的差异条目（按文档顺序）。 */
-function readingEntriesForPage(pageNo) {
-  return readingEntries
-    .filter((entry) => entry.page_no === pageNo && readingEntryVisible(entry))
-    .sort((a, b) => {
-      const oa = readingMarkOrder(a);
-      const ob = readingMarkOrder(b);
-      for (let i = 0; i < oa.length; i += 1) {
-        if (oa[i] !== ob[i]) return oa[i] - ob[i];
-      }
-      return 0;
-    });
-}
 
 /** 左树里"展开了的页"（条目级展开状态）。 */
 const readingTreeOpen = new Set();
@@ -18996,7 +18884,6 @@ function boot() {
     getReadingEditingKey: () => readingEditingKey,
     isReadingActive: () => currentView === "reading",
     renderReadingProgress: () => renderReadingProgress(),
-    saveReadingInlineEdits: () => saveReadingInlineEdits(),
     saveReadingDrafts: () => saveReadingDrafts(),
     navigate: (name) => showView(name),
     openPageDetail: (pageNo) => openPageDetail(pageNo),
@@ -19057,7 +18944,6 @@ function boot() {
     getReadingPageBlocks: () => readingPageBlocks,
     refreshPunctGroups: () => refreshPunctGroups(),
     refreshGarbledLines: () => refreshGarbledLines(),
-    readingFlowPages: () => readingFlowPages(),
     setReviewOverlaysForReading: () => setReviewOverlaysForReading(),
     // 任务 94 L4：队列 / 草稿加载 / 视口处理搬进模块后的句柄
     setReadingInlineEdits: (value) => { readingInlineEdits = value; },
@@ -19120,25 +19006,19 @@ function boot() {
     setReadingVisibleObserver: (value) => { readingVisibleObserver = value; },
     // 任务 94 L5：审校环里仍留在 app.js 的叶子函数（模块经注入调用）
     buildReadingSegment: (...args) => buildReadingSegment(...args),
-    buildReadingTreePreview: (...args) => buildReadingTreePreview(...args),
     clearPendingPanel: (...args) => clearPendingPanel(...args),
     draftReading: (...args) => draftReading(...args),
     exportOptions: (...args) => exportOptions(...args),
-    hideReadingPanelHost: (...args) => hideReadingPanelHost(...args),
     loadIndexBlocks: (...args) => loadIndexBlocks(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
     paintReadingDiffBoxes: (...args) => paintReadingDiffBoxes(...args),
     paintReadingTile: (...args) => paintReadingTile(...args),
     punctReviewSet: (...args) => punctReviewSet(...args),
-    readingEntriesForPage: (...args) => readingEntriesForPage(...args),
-    readingEntryDone: (...args) => readingEntryDone(...args),
     refreshReadingCurrentHighlight: (...args) => refreshReadingCurrentHighlight(...args),
-    removeReadingSentinel: (...args) => removeReadingSentinel(...args),
     scrollPdfColumnToPage: (...args) => scrollPdfColumnToPage(...args),
     scrollScrollerToCenter: (...args) => scrollScrollerToCenter(...args),
     setPanel: (...args) => setPanel(...args),
     settlePanel: (...args) => settlePanel(...args),
-    startReadingEdit: (...args) => startReadingEdit(...args),
     suppressReadingFollow: (...args) => suppressReadingFollow(...args),
     // 任务 94 L5：模块要读的常量
     INDEX_IMAGE_WINDOW: INDEX_IMAGE_WINDOW,
@@ -19154,6 +19034,11 @@ function boot() {
     clearTileMargin: (...args) => clearTileMargin(...args),
     pageImageUrl: (...args) => pageImageUrl(...args),
     showReadingPlaceholder: (...args) => showReadingPlaceholder(...args),
+    // L6 刀2：仍留在 app.js 的叶子函数
+    computeCharSpans: (...args) => computeCharSpans(...args),
+    readingEntryLineText: (...args) => readingEntryLineText(...args),
+    readingEntryVisible: (...args) => readingEntryVisible(...args),
+    readingMarkOrder: (...args) => readingMarkOrder(...args),
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {

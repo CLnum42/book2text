@@ -201,7 +201,7 @@ function setupReading() {
     if (!count) return;
     if (!window.confirm(`放弃全部 ${count} 处未提交改动？（不可恢复）`)) return;
     injected.getInlineEdits().clear();
-    injected.saveReadingInlineEdits?.();
+    saveReadingInlineEdits();
     injected.getDrafts().clear();
     injected.saveReadingDrafts?.();
     renderReading({ reset: true });
@@ -582,7 +582,7 @@ async function submitReadingDrafts() {
     for (const key of okKeys) injected.getDrafts().delete(key);
     injected.saveReadingDrafts?.();
     for (const key of okKeys) injected.getInlineEdits().delete(key);
-    injected.saveReadingInlineEdits?.();
+    saveReadingInlineEdits();
     if (failed.length) {
       window.alert(`${failed.length} 处提交失败，仍留在草稿里：\n${failed[0].error || ""}`);
     }
@@ -715,7 +715,7 @@ async function openReading() {
     1;
   // 任务 82：`first_unacked_page` 可能是前置页（第 1–37 页）——它们在队列里、
   // 但不在正文流里，跳过去右边是一片空。落到正文流里第一处有差异的页。
-  const flowPages = injected.readingFlowPages?.();
+  const flowPages = readingFlowPages();
   if (!flowPages.has(page)) {
     // 用全书每页计数找"正文流里第一处还有未审差异的页"（marks 窗口在别的页时，
     // `readingEntries` 是空的，不能靠它）
@@ -871,7 +871,7 @@ function restoreInlineEditsPrompt() {
     return;
   }
   injected.getInlineEdits().clear();
-  injected.saveReadingInlineEdits?.();
+  saveReadingInlineEdits();
 }
 
 function loadReadingDrafts() {
@@ -1254,7 +1254,7 @@ function renderReading({ reset = false, startAt = null } = {}) {
   }
   stream.append(fragment);
   injected.setReadingRendered( end);
-  injected.removeReadingSentinel();
+  removeReadingSentinel();
   // 任务 84：`reset` 会把面板元素和 `readingPanelKey` 一起清掉。**挂起的"待开面板"
   // 必须跨过重绘**——DOM 重建完之后如果那一行挂上了，就把面板重新开出来。
   queueReadingIntent("panel", {});
@@ -1291,7 +1291,7 @@ function renderReading({ reset = false, startAt = null } = {}) {
   // QA 现场：正文和顶部已回到第 1 页，`#reading-panel-host` 里还挂着第 368 页的旧面板，
   // 因为 `openReadingPanel` 看到"已有面板"就不重建。
   if (!injected.getReadingPanelKey() && !injected.getReadingPendingPanelEntry() && !injected.getReadingPendingPanelKey()) {
-    injected.hideReadingPanelHost();
+    hideReadingPanelHost();
   }
 }
 
@@ -1330,7 +1330,7 @@ function saveInlineEdit(line) {
   } else {
     injected.getReadingInlineEdits().set(key, { base, text, at: Date.now() });
   }
-  injected.saveReadingInlineEdits();
+  saveReadingInlineEdits();
   line.classList.toggle("is-inline-edited", injected.getReadingInlineEdits().has(key));
   injected.renderReadingProgress();
 }
@@ -1405,7 +1405,7 @@ function openReadingPanel(entry) {
   edit.type = "button";
   edit.className = "btn btn--sm";
   edit.textContent = "自己改";
-  edit.addEventListener("click", () => injected.startReadingEdit(entry, panel));
+  edit.addEventListener("click", () => startReadingEdit(entry, panel));
   actions.append(adopt, keep, edit);
   panel.append(head, candidate, actions);
   // **结构上不可能被清掉**：面板挂进 `#reading-panel-host`，它不在 `#reading-stream` 里，
@@ -1456,7 +1456,7 @@ function renderReadingTree() {
   outside.title = "版心外的差异与脚注 / 图注等非正文块不进阅读流队列";
   head.append(outside);
   tree.append(head);
-  const flowPages = injected.readingFlowPages();
+  const flowPages = readingFlowPages();
   // 当前页自动展开：用户不用先找页、再展开，进来就能看到"这一页有哪几处、分别是什么"
   if (injected.getPageNo()) injected.getReadingTreeOpen().add(injected.getPageNo());
   const pages = injected.getReadingTreeData().pages || [];
@@ -1488,7 +1488,7 @@ function renderReadingTree() {
     const items = document.createElement("div");
     items.className = "reading-tree__items";
     items.hidden = !open;
-    const entries = open ? injected.readingEntriesForPage(page.page_no) : [];
+    const entries = open ? readingEntriesForPage(page.page_no) : [];
     if (open && !entries.length) {
       const empty = document.createElement("div");
       empty.className = "reading-tree__item";
@@ -1507,13 +1507,13 @@ function renderReadingTree() {
       item.type = "button";
       item.className = "reading-tree__item";
       item.dataset.key = injected.readingKey(entry.block_id, entry.line_index);
-      const done = injected.readingEntryDone(entry);
+      const done = readingEntryDone(entry);
       if (done) item.classList.add("is-done");
       if (item.dataset.key === injected.getReadingPanelKey()) item.classList.add("is-current");
       const lineNo = document.createElement("span");
       lineNo.className = "reading-tree__line";
       lineNo.textContent = `行${entry.line_index + 1}`;
-      item.append(lineNo, injected.buildReadingTreePreview(entry));
+      item.append(lineNo, buildReadingTreePreview(entry));
       if (done) {
         const flag = document.createElement("span");
         flag.className = "reading-tree__flag";
@@ -1536,7 +1536,7 @@ function renderReadingTree() {
       // 这一页不在已加载的 marks 窗口里：补那一页 ±10，回来再铺条目
       if (
         injected.getReadingTreeOpen().has(page.page_no) &&
-        !injected.readingEntriesForPage(page.page_no).length &&
+        !readingEntriesForPage(page.page_no).length &&
         flowPages.has(page.page_no)
       ) {
         ensureReadingMarksWindow(page.page_no).then(() => renderReadingTree());
@@ -2210,6 +2210,125 @@ function disconnectReadingObservers() {
   if (injected.getReadingVisibleObserver()) injected.getReadingVisibleObserver().disconnect();
   injected.setReadingNearObserver( null);
   injected.setReadingVisibleObserver( null);
+}
+
+  // ---------------------------------------------------------------- 审校环·编辑 / 树预显 / 正文段（任务 94 · L6 刀2）
+  // 从 app.js 原样搬入；依赖由 init() 注入。状态仍归 app.js（get/set）。
+
+function saveReadingInlineEdits() {
+  try {
+    const items = [...injected.getReadingInlineEdits().entries()].map(([key, value]) => ({
+      key,
+      base: value.base,
+      text: value.text,
+      at: value.at,
+    }));
+    localStorage.setItem(
+      injected.readingInlineStorageKey(),
+      JSON.stringify({ items, savedAt: Date.now() })
+    );
+  } catch {
+    /* 存不下不影响当前会话 */
+  }
+}
+
+function startReadingEdit(entry, panel) {
+  const key = injected.readingKey(entry.block_id, entry.line_index);
+  const line = injected.readingLineNode(key);
+  if (!line) return;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "reading-panel__input";
+  input.value = line.textContent.replace(/草稿.*$/, "").trim();
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "btn btn--pri btn--sm";
+  save.textContent = "存草稿";
+  save.addEventListener("click", () => injected.draftReading(entry, null, input.value));
+  const row = document.createElement("div");
+  row.className = "reading-panel__edit";
+  row.append(input, save);
+  panel.append(row);
+  input.focus();
+  input.select();
+}
+
+function hideReadingPanelHost() {
+  // 只清 DOM，不动 pending / key：给"重绘后没有待恢复面板"的收尾用
+  const host = el("reading-panel-host");
+  if (host && host.querySelector(".reading-panel")) {
+    host.innerHTML = "";
+    host.hidden = true;
+  }
+}
+
+/**
+ * 一条差异的预览：差异前后各留 10 个字，差异部分用 `<mark>` 标出来。
+ *
+ * 只做显示：文本全部来自 `segment.text` 的切片，不拼、不补、不占位。
+ */
+function buildReadingTreePreview(entry) {
+  const wrap = document.createElement("span");
+  wrap.className = "reading-tree__preview";
+  const lineText = injected.readingEntryLineText(entry);
+  if (!lineText) {
+    wrap.textContent = (entry.candidate || "").slice(0, 40) || "（这一页的差异还没加载）";
+    return wrap;
+  }
+  const spans = injected.computeCharSpans(lineText, entry.candidate || "");
+  if (!spans.length) {
+    wrap.textContent = lineText.slice(0, 40);
+    return wrap;
+  }
+  const first = spans[0];
+  const from = Math.max(0, first.aStart - 10);
+  const to = Math.min(lineText.length, Math.max(first.aEnd, first.aStart + 1) + 10);
+  if (from > 0) wrap.append(document.createTextNode("…"));
+  if (first.aStart > from) {
+    wrap.append(document.createTextNode(lineText.slice(from, first.aStart)));
+  }
+  const mark = document.createElement("mark");
+  mark.textContent = lineText.slice(first.aStart, Math.max(first.aEnd, first.aStart + 1));
+  wrap.append(mark);
+  if (to > Math.max(first.aEnd, first.aStart + 1)) {
+    wrap.append(document.createTextNode(lineText.slice(Math.max(first.aEnd, first.aStart + 1), to)));
+  }
+  if (to < lineText.length) wrap.append(document.createTextNode("…"));
+  return wrap;
+}
+
+/** 这一页在已加载窗口里的差异条目（按文档顺序）。 */
+function readingEntriesForPage(pageNo) {
+  return injected.getReadingEntries()
+    .filter((entry) => entry.page_no === pageNo && injected.readingEntryVisible(entry))
+    .sort((a, b) => {
+      const oa = injected.readingMarkOrder(a);
+      const ob = injected.readingMarkOrder(b);
+      for (let i = 0; i < oa.length; i += 1) {
+        if (oa[i] !== ob[i]) return oa[i] - ob[i];
+      }
+      return 0;
+    });
+}
+
+function readingEntryDone(entry) {
+  if (entry.ack) return true;
+  return injected.getReadingDrafts().has(injected.readingKey(entry.block_id, entry.line_index));
+}
+
+/** 正文流里出现过的页号（前置页 / 版心外的页不在里面）。 */
+function readingFlowPages() {
+  const set = new Set();
+  for (const segment of injected.getReadingData() ? injected.getReadingData().segments || [] : []) {
+    for (const page of segment.pages || []) set.add(page.page_no);
+  }
+  return set;
+}
+
+function removeReadingSentinel() {
+  const stream = el("reading-stream");
+  if (!stream) return;
+  for (const node of stream.querySelectorAll(".reading-sentinel")) node.remove();
 }
 
   // ---------------------------------------------------------------- 对外接口
