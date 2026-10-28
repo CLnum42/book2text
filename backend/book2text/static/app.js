@@ -18053,98 +18053,6 @@ function readingEntryVisible(entry) {
 
 
 /**
- * 把一个差异字符区间扩成"字 / 词"单位（任务 59）。
- *
- * - 中文：一个字就是单位，不扩（本来就只标差异字）；
- * - 英文：引擎给的是**词级**框，扩到整词边界（`Ladyship's` 一框就整词标）；
- * - 没有字框也不影响这一步：词边界从文本本身算，字框只用于页面上的色块。
- */
-function expandToWordRange(text, start, end) {
-  if (!/[A-Za-z]/.test(text.slice(start, end))) return { start, end, word: false };
-  let left = start;
-  while (left > 0 && /[A-Za-z'’\-]/.test(text[left - 1])) left -= 1;
-  let right = end;
-  while (right < text.length && /[A-Za-z'’\-]/.test(text[right])) right += 1;
-  return { start: left, end: right, word: true };
-}
-
-
-function readingLineText(segment, span) {
-  return segment.text.slice(span.start, span.end);
-}
-
-/**
- * 一行被就地编辑过 → 按当前修订档渲染（任务 66）。
- *
- * - `all`：删除红删除线 + 插入绿下划线；连续 >12 字的改动折叠成「⟦替换 N 字⟧」
- * - `simple`：只显示终稿 + 左边距琥珀条 + 段首 ▸（点 ▸ 临时切回 all）
- * - `none`：终稿无痕，但**改过的行左侧仍有一个小圆点**（不然改错了看不出来）
- */
-function paintInlineRevision(line, inline) {
-  const key = line.dataset.key;
-  line.classList.add("is-inline-edited");
-  line.dataset.revBase = inline.base;
-  line.dataset.revText = inline.text;
-  const chip = document.createElement("span");
-  chip.className = "reading-chip reading-chip--edit";
-  chip.textContent = "草稿";
-  if (readingMarkupLevel === "none") {
-    line.textContent = inline.text;
-    line.append(chip);
-    line.classList.add("is-changed-dot");
-    return;
-  }
-  if (readingMarkupLevel === "simple") {
-    line.textContent = inline.text;
-    line.append(chip);
-    line.classList.add("is-changed-bar");
-    return;
-  }
-  const spans = computeCharSpans(inline.base, inline.text);
-  const replaced =
-    spans.reduce((sum, span) => sum + Math.max(span.aEnd - span.aStart, span.bEnd - span.bStart), 0);
-  line.classList.add("is-changed-bar");
-  if (replaced > 12) {
-    // 长改动：折叠，点一下展开（展开是临时状态，不改数据）
-    const fold = document.createElement("button");
-    fold.type = "button";
-    fold.className = "reading-fold";
-    fold.textContent = `⟦替换 ${replaced} 字 · 点击展开⟧`;
-    fold.dataset.key = key;
-    if (line.dataset.expanded !== "1") {
-      line.append(fold, chip);
-      return;
-    }
-    fold.remove();
-  }
-  line.append(document.createTextNode(inline.text.slice(0, 0)));
-  let cursor = 0;
-  for (const span of spans) {
-    if (span.aStart > cursor) {
-      line.append(document.createTextNode(inline.text.slice(cursor, span.bStart)));
-    }
-    if (span.aEnd > span.aStart) {
-      const delEl = document.createElement("del");
-      delEl.className = "reading-del";
-      delEl.textContent = inline.base.slice(span.aStart, span.aEnd);
-      line.append(delEl);
-    }
-    if (span.bEnd > span.bStart) {
-      const insEl = document.createElement("ins");
-      insEl.className = "reading-ins";
-      insEl.textContent = inline.text.slice(span.bStart, span.bEnd);
-      line.append(insEl);
-    }
-    cursor = span.bEnd;
-  }
-  if (cursor < inline.text.length) {
-    line.append(document.createTextNode(inline.text.slice(cursor)));
-  }
-  line.append(chip);
-}
-
-
-/**
  * 任务 82：选中一条差异 → **左侧 PDF 的这一行、右侧正文的这一行都落在视口垂直中央**。
  *
  * 用户原话："选中右边的差异后，左边的 PDF 高亮行的位置不定，建议点击差异修改，
@@ -18152,12 +18060,6 @@ function paintInlineRevision(line, inline) {
  * 扫视时不用重新找。贴边（第一页 / 最后一页）夹住即可，不做二次补偿（会抖）。
  */
 let readingSuppressFollowUntil = 0;
-
-
-function readingLineNode(key) {
-  const stream = el("reading-stream");
-  return stream ? stream.querySelector(`.reading-line[data-key="${key}"]`) : null;
-}
 
 
 /** 左树里"展开了的页"（条目级展开状态）。 */
@@ -18431,7 +18333,6 @@ function boot() {
     getReadingPanelKey: () => readingPanelKey,
     setReadingPendingBox: (value) => { readingPendingBox = value; },
     readingVisibleSegments: () => readingVisibleSegments(),
-    readingLineNode: (key) => readingLineNode(key),
     apiJson: (path, options) => apiJson(path, options),
     readingKey: (blockId, lineIndex) => readingKey(blockId, lineIndex),
     loadFinishSummary: (options) => loadFinishSummary(options),
@@ -18555,9 +18456,7 @@ function boot() {
     // L6 刀9：状态 getter
     getReadingSpanCache: () => readingSpanCache,
     // L6 刀9：仍留在 app.js 的叶子函数
-    expandToWordRange: (...args) => expandToWordRange(...args),
-    paintInlineRevision: (...args) => paintInlineRevision(...args),
-    readingLineText: (...args) => readingLineText(...args),
+
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {

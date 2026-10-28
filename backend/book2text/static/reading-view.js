@@ -469,7 +469,7 @@ function onReadingScroll() {
     window.__b2tPagePin = window.__b2tPagePin || { held: 0, escape: 0 };
     let allowPageWrite = true;
     if (injected.getReadingJumpSettleKey()) {
-      const target = injected.getReadingPanelKey() ? injected.readingLineNode?.(injected.getReadingJumpSettleKey()) : null;
+      const target = injected.getReadingPanelKey() ? readingLineNode(injected.getReadingJumpSettleKey()) : null;
       if (!target) {
         // 行没了 / 面板关了：别再等
         injected.setReadingJumpSettleKey(null);
@@ -500,7 +500,7 @@ function onReadingScroll() {
     // 只靠落位窗口挡不住之后的滚动事件。
     // **行节点取不到时放行（fail-open）**：早先那版取不到就挡，重绘换掉节点后页码被永久钉死。
     if (allowPageWrite && injected.getReadingPanelKey()) {
-      const pinLine = injected.readingLineNode?.(injected.getReadingPanelKey());
+      const pinLine = readingLineNode(injected.getReadingPanelKey());
       if (pinLine) {
         const pr = pinLine.getBoundingClientRect();
         if (pr.bottom > rect.top && pr.top < rect.bottom) {
@@ -746,7 +746,7 @@ async function openReading() {
 /** 从块缓存里取某一行的框（没有就返回 null）。 */
 function readingLineBox(blockId, lineIndex) {
   if (!blockId) return null;
-  const pageNo = Number(injected.readingLineNode?.(`${blockId}:${lineIndex}`)?.dataset?.page || 0);
+  const pageNo = Number(readingLineNode(`${blockId}:${lineIndex}`)?.dataset?.page || 0);
   const blocks = pageNo ? injected.getReadingPageBlocks().get(pageNo) : null;
   if (!blocks) return null;
   const block = blocks.find((item) => item.block_id === blockId);
@@ -769,7 +769,7 @@ function markEditingLineBox(blockId) {
 }
 
 function exitInlineEdit() {
-  const node = injected.getReadingEditingKey() ? injected.readingLineNode?.(injected.getReadingEditingKey()) : null;
+  const node = injected.getReadingEditingKey() ? readingLineNode(injected.getReadingEditingKey()) : null;
   if (node) {
     const key = node.dataset.key;
     clearTimeout(Number(node.dataset.editTimer || 0));
@@ -1205,7 +1205,7 @@ function refreshReadingMarksPaint() {
 function ensureReadingLineRendered(entry) {
   if (!entry) return null;
   const key = injected.readingKey(entry.block_id, entry.line_index);
-  const existing = injected.readingLineNode(key);
+  const existing = readingLineNode(key);
   if (existing) return existing;
   const segments = injected.readingVisibleSegments();
   let index = -1;
@@ -1224,7 +1224,7 @@ function ensureReadingLineRendered(entry) {
   if (index < 0) return null;
   setPanel(entry);
   renderReading({ reset: true, startAt: Math.max(0, index - 1) });
-  return injected.readingLineNode(key);
+  return readingLineNode(key);
 }
 
 function renderReading({ reset = false, startAt = null } = {}) {
@@ -1338,7 +1338,7 @@ function saveInlineEdit(line) {
 function centerReadingLinePair(entry) {
   const key = injected.readingKey(entry.block_id, entry.line_index);
   const stream = el("reading-stream");
-  const line = injected.readingLineNode(key);
+  const line = readingLineNode(key);
   if (stream && line) {
     const lineRect = line.getBoundingClientRect();
     const streamRect = stream.getBoundingClientRect();
@@ -1366,7 +1366,7 @@ function centerReadingLinePair(entry) {
 function openReadingPanel(entry) {
   closeReadingPanel();
   const key = injected.readingKey(entry.block_id, entry.line_index);
-  const line = injected.readingLineNode(key);
+  const line = readingLineNode(key);
   // 窗口化渲染的竞态：跳转后那一行可能还没挂上 DOM。
   // 面板本来只需要 `mark`（候选文本）与 `bbox`，**不依赖行节点**——
   // 行节点只用来定位与样式。所以找不到就降级挂到正文流顶部，绝不让用户"跳过去了但没有面板"。
@@ -1764,7 +1764,7 @@ function retryReadingPendingPanel() {
   if (!injected.getReadingPendingPanelEntry()) return;
   const entry = injected.getReadingPendingPanelEntry();
   const key = injected.readingKey(entry.block_id, entry.line_index);
-  if (!injected.readingLineNode(key)) return;      // 行还没挂上，等下一次数据到达
+  if (!readingLineNode(key)) return;      // 行还没挂上，等下一次数据到达
   clearPendingPanel();
   openReadingPanel(entry);
   logReadingNext(entry, { branch: "pending-open", reason: "data-arrived" });
@@ -2018,7 +2018,7 @@ function gotoReadingEntry(entry) {
   // 入队后它在帧末跑，reset 会把刚开的面板按"无 key + 无 pending"的清尾规则藏掉（QA：2/60）。
   if (index >= 0) jumpReadingTo(index);
   const key = injected.readingKey(entry.block_id, entry.line_index);
-  let line = injected.readingLineNode(key);
+  let line = readingLineNode(key);
   if (!line) {
     // 目标段不在已挂载的窗口里：按它的下标重铺一次（不固定 sleep，靠渲染完成后再查）。
     // 走同一个 helper，顺带覆盖"条目没有 seq"（左树）的情况。
@@ -2036,7 +2036,7 @@ function gotoReadingEntry(entry) {
     let reason = "no-line";
     const seg = injected.readingVisibleSegments()[index];
     if (!seg) reason = "no-segment";
-    else if (!injected.readingLineNode(key)) reason = "line-not-mounted";
+    else if (!readingLineNode(key)) reason = "line-not-mounted";
     setTimeout(() => {
       if (!document.querySelector("#reading-panel-host .reading-panel")) openReadingPanel(entry);
       logReadingNext(entry, { branch: "retry", reason, retried: true });
@@ -2234,7 +2234,7 @@ function saveReadingInlineEdits() {
 
 function startReadingEdit(entry, panel) {
   const key = injected.readingKey(entry.block_id, entry.line_index);
-  const line = injected.readingLineNode(key);
+  const line = readingLineNode(key);
   if (!line) return;
   const input = document.createElement("input");
   input.type = "text";
@@ -2443,7 +2443,7 @@ function logReadingNext(entry, extra = {}) {
     pageNo: injected.getPageNo(),
     panelKey: injected.getReadingPanelKey(),
     panelOpened: Boolean(document.querySelector("#reading-panel-host .reading-panel")),
-    lineFound: entry ? Boolean(injected.readingLineNode(injected.readingKey(entry.block_id, entry.line_index))) : false,
+    lineFound: entry ? Boolean(readingLineNode(injected.readingKey(entry.block_id, entry.line_index))) : false,
     window: injected.getReadingMarksWindow(),
     blocks: entry ? (injected.getReadingPageBlocks().get(entry.page_no) || []).length : null,
     ...extra,
@@ -2578,7 +2578,7 @@ function closeReadingPanel() {
 
 function rerenderReadingLine(entry) {
   const key = injected.readingKey(entry.block_id, entry.line_index);
-  const line = injected.readingLineNode(key);
+  const line = readingLineNode(key);
   if (!line) return;
   const segment = injected.readingVisibleSegments().find((seg) =>
     (seg.line_spans || []).some(
@@ -2638,7 +2638,7 @@ function buildReadingLine(segment, span, displayText = null) {
   // `text` = 逻辑行文本（行自己的字，用于编辑与写回）；
   // `displayText` = 这一行在连续切片里实际占的字符（含行尾分隔符）。
   // **编辑仍然基于 text**，所以保存时不会把分隔符写进库里。
-  const text = injected.readingLineText(segment, span);
+  const text = readingLineText(segment, span);
   line.dataset.baseText = text;
   const baseText = displayText == null ? text : displayText;
   if (mark) {
@@ -2648,7 +2648,7 @@ function buildReadingLine(segment, span, displayText = null) {
   // 就地编辑过的行：按修订三档渲染（只改显示，不改数据）
   const inline = injected.getReadingInlineEdits().get(key);
   if (inline && inline.text !== inline.base) {
-    injected.paintInlineRevision(line, inline);
+    paintInlineRevision(line, inline);
     return line;
   }
   if (draft) {
@@ -2688,7 +2688,7 @@ function buildReadingLine(segment, span, displayText = null) {
   const ranges = [];
   for (const charSpan of charSpans) {
     // 英文扩到整词（引擎给的是词级框）；中文保持单字
-    const range = injected.expandToWordRange(baseText, charSpan.aStart, charSpan.aEnd);
+    const range = expandToWordRange(baseText, charSpan.aStart, charSpan.aEnd);
     const last = ranges[ranges.length - 1];
     if (last && range.start <= last.end) {
       last.end = Math.max(last.end, range.end);
@@ -2784,7 +2784,7 @@ function refreshReadingCurrentHighlight() {
     node.classList.remove("is-current");
   }
   if (injected.getReadingPanelKey()) {
-    const line = injected.readingLineNode(injected.getReadingPanelKey());
+    const line = readingLineNode(injected.getReadingPanelKey());
     if (line) {
       line.classList.add("is-current");
       for (const mark of line.querySelectorAll(".reading-mark")) mark.classList.add("is-current");
@@ -2800,6 +2800,104 @@ function refreshReadingCurrentHighlight() {
   // 页面上只有已加载块的页画过差异框：重画这些页 + 当前 key 所在页
   for (const pageNo of injected.getReadingPageBlocks().keys()) injected.paintReadingDiffBoxes(pageNo);
   if (injected.getPageNo()) injected.paintReadingDiffBoxes(injected.getPageNo());
+}
+
+  // ---------------------------------------------------------------- 审校环·词边界 / 行文本 / 行内修订 / 行节点（任务 94 · L10）
+  // 从 app.js 原样搬入；依赖由 init() 注入。状态仍归 app.js（get/set）。
+
+/**
+ * 把一个差异字符区间扩成"字 / 词"单位（任务 59）。
+ *
+ * - 中文：一个字就是单位，不扩（本来就只标差异字）；
+ * - 英文：引擎给的是**词级**框，扩到整词边界（`Ladyship's` 一框就整词标）；
+ * - 没有字框也不影响这一步：词边界从文本本身算，字框只用于页面上的色块。
+ */
+function expandToWordRange(text, start, end) {
+  if (!/[A-Za-z]/.test(text.slice(start, end))) return { start, end, word: false };
+  let left = start;
+  while (left > 0 && /[A-Za-z'’\-]/.test(text[left - 1])) left -= 1;
+  let right = end;
+  while (right < text.length && /[A-Za-z'’\-]/.test(text[right])) right += 1;
+  return { start: left, end: right, word: true };
+}
+
+function readingLineText(segment, span) {
+  return segment.text.slice(span.start, span.end);
+}
+
+/**
+ * 一行被就地编辑过 → 按当前修订档渲染（任务 66）。
+ *
+ * - `all`：删除红删除线 + 插入绿下划线；连续 >12 字的改动折叠成「⟦替换 N 字⟧」
+ * - `simple`：只显示终稿 + 左边距琥珀条 + 段首 ▸（点 ▸ 临时切回 all）
+ * - `none`：终稿无痕，但**改过的行左侧仍有一个小圆点**（不然改错了看不出来）
+ */
+function paintInlineRevision(line, inline) {
+  const key = line.dataset.key;
+  line.classList.add("is-inline-edited");
+  line.dataset.revBase = inline.base;
+  line.dataset.revText = inline.text;
+  const chip = document.createElement("span");
+  chip.className = "reading-chip reading-chip--edit";
+  chip.textContent = "草稿";
+  if (injected.getMarkupLevel() === "none") {
+    line.textContent = inline.text;
+    line.append(chip);
+    line.classList.add("is-changed-dot");
+    return;
+  }
+  if (injected.getMarkupLevel() === "simple") {
+    line.textContent = inline.text;
+    line.append(chip);
+    line.classList.add("is-changed-bar");
+    return;
+  }
+  const spans = injected.computeCharSpans(inline.base, inline.text);
+  const replaced =
+    spans.reduce((sum, span) => sum + Math.max(span.aEnd - span.aStart, span.bEnd - span.bStart), 0);
+  line.classList.add("is-changed-bar");
+  if (replaced > 12) {
+    // 长改动：折叠，点一下展开（展开是临时状态，不改数据）
+    const fold = document.createElement("button");
+    fold.type = "button";
+    fold.className = "reading-fold";
+    fold.textContent = `⟦替换 ${replaced} 字 · 点击展开⟧`;
+    fold.dataset.key = key;
+    if (line.dataset.expanded !== "1") {
+      line.append(fold, chip);
+      return;
+    }
+    fold.remove();
+  }
+  line.append(document.createTextNode(inline.text.slice(0, 0)));
+  let cursor = 0;
+  for (const span of spans) {
+    if (span.aStart > cursor) {
+      line.append(document.createTextNode(inline.text.slice(cursor, span.bStart)));
+    }
+    if (span.aEnd > span.aStart) {
+      const delEl = document.createElement("del");
+      delEl.className = "reading-del";
+      delEl.textContent = inline.base.slice(span.aStart, span.aEnd);
+      line.append(delEl);
+    }
+    if (span.bEnd > span.bStart) {
+      const insEl = document.createElement("ins");
+      insEl.className = "reading-ins";
+      insEl.textContent = inline.text.slice(span.bStart, span.bEnd);
+      line.append(insEl);
+    }
+    cursor = span.bEnd;
+  }
+  if (cursor < inline.text.length) {
+    line.append(document.createTextNode(inline.text.slice(cursor)));
+  }
+  line.append(chip);
+}
+
+function readingLineNode(key) {
+  const stream = el("reading-stream");
+  return stream ? stream.querySelector(`.reading-line[data-key="${key}"]`) : null;
 }
 
   // ---------------------------------------------------------------- 对外接口
