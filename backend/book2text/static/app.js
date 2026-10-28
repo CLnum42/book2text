@@ -244,12 +244,9 @@ function showView(name) {
   }
   if (target === "reading" && currentProject) {
     // 任务 94 Slice 2：进入审校只有一条路——ReadingView.enter()（§4 第 1 组）
-    if (window.ReadingView) {
-      window.ReadingView.enter(currentProject.project_id);
-    } else {
-      setReviewOverlaysForReading();
-      openReading();
-    }
+    // R7 机检保证 reading-view.js 先于 app.js 加载，ReadingView 必然存在；
+    // 原 else 分支（setReviewOverlaysForReading + openReading）与 enter 内部同序，是死路。
+    window.ReadingView?.enter(currentProject.project_id);
   }
   if (target === "review" && currentProject) {
     // 任务 45：审校步默认只留差异层——版心与块框关掉，避免五套彩色打架
@@ -18120,132 +18117,6 @@ let readingUserScrollSeq = 0;
 let readingProgramScrollSeq = 0;
 
 /**
- * 打开阅读流的异步阶段（正文预览 → marks → 重画）里，用户是不是自己动过？
- *
- * **不能拿 scrollTop 比较**：打开时页码跟随、图片就位都会程序性地滚一下，
- * 那样会被误判成"用户动过"（实测：于是永远不跳到第一处未审页）。
- * 这里只认真实输入事件（wheel / pointerdown / keydown）。
- */
-function readingMovedSinceOpen(sinceMs) {
-  return readingUserMovedAt > sinceMs;
-}
-
-async function openReading() {
-  if (!currentProject) return;
-  // 三栏宽度在打开时套一次：视图刚显示出来才量得到真实宽度
-  applyReadingSplit();
-  const projectId = currentProject.project_id;
-  if (readingProject === projectId && readingData) {
-    renderReading({ reset: true });
-    renderReadingProgress();
-    ensureReadingPages();
-    measureReadingTops();
-    if (readingPageNo) updateReadingPage(readingPageNo, { scrollLeft: true });
-    refreshPunctGroups();
-    return;
-  }
-  const started = performance.now();
-  readingOpenStartedAt = started;
-  // 任务 81：记下打开时的滚动位置。marks 是异步来的，它回来时会按"第一处未审页"跳一次——
-  // 如果这期间用户已经自己滚走了，就不能再把他拽回去（QA 复跑时正是被这一跳拽回第 1 页）。
-  const openedAt = readingOpenStartedAt;
-  const firstOpenForProject = readingProject !== projectId || !readingAutoJumpDone;
-  const stream = el("reading-stream");
-  stream.innerHTML = '<p class="muted reading-empty">正在按导出设置组装正文…</p>';
-  el("reading-tree").innerHTML = "";
-  let preview;
-  try {
-    preview = await apiJson(
-      `/api/projects/${projectId}/export/preview?segments_only=1`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(readingOptions()),
-      }
-    );
-  } catch (error) {
-    stream.innerHTML = "";
-    const p = document.createElement("p");
-    p.className = "muted reading-empty";
-    p.textContent = `正文流加载失败：${error.message || "未知错误"}`;
-    stream.append(p);
-    return;
-  }
-  readingData = preview;
-  readingProject = projectId;
-  readingMarks = new Map();
-  readingEntries = [];
-  readingMarksWindow = null;
-  readingGlobalCounts = null;
-  readingPageCounts = new Map();
-  readingFirstUnackedPage = null;
-  // 先出正文（无红字），红字随后补：点击到正文可见不用等 marks / tree
-  renderReading({ reset: true });
-  const metrics = (window.__b2tReadingMetrics = window.__b2tReadingMetrics || {});
-  metrics.openedAt = Math.round(started);
-  metrics.firstPaintMs = Math.round(performance.now() - started);
-  metrics.segments = readingVisibleSegments().length;
-  // 任务 67：只拉**第一处未审页 ±10** 的 marks（`first=1` 让服务端自己定位），
-  // 不再等 1.52 MB 的全书 marks；tree（左栏每页计数）单独拉，不挡红字。
-  let marks;
-  try {
-    marks = await apiJson(`/api/projects/${projectId}/review/marks?first=1`);
-  } catch (error) {
-    metrics.error = String(error.message || error);
-    return;
-  }
-  metrics.marksMs = Math.round(performance.now() - started);
-  applyReadingMarksPayload(marks);
-  loadReadingDrafts();
-  loadReadingInlineEdits();
-  restoreInlineEditsPrompt();
-  renderReading({ reset: true });
-  renderReadingProgress();
-  metrics.firstMarkMs = Math.round(performance.now() - started);
-  metrics.entries = readingEntries.length;
-  metrics.window = marks.window;
-  metrics.counts = marks.counts;
-  ensureReadingPages();
-  measureReadingTops();
-  metrics.openMs = Math.round(performance.now() - started);
-  // 标点差异面板的数字（后台拉，不挡正文）：主队列只放汉字差异，其余在这里按模式判
-  refreshPunctGroups();
-  refreshGarbledLines();
-  let page =
-    marks.first_unacked_page ||
-    readingEntries[0]?.page_no ||
-    currentProject.pages[0]?.page_no ||
-    1;
-  // 任务 82：`first_unacked_page` 可能是前置页（第 1–37 页）——它们在队列里、
-  // 但不在正文流里，跳过去右边是一片空。落到正文流里第一处有差异的页。
-  const flowPages = readingFlowPages();
-  if (!flowPages.has(page)) {
-    // 用全书每页计数找"正文流里第一处还有未审差异的页"（marks 窗口在别的页时，
-    // `readingEntries` 是空的，不能靠它）
-    const candidate = [...readingPageCounts.keys()]
-      .map((key) => Number(key))
-      .filter((no) => flowPages.has(no) && Number(readingPageCounts.get(String(no))?.unacked || 0) > 0)
-      .sort((a, b) => a - b)[0];
-    if (candidate) page = candidate;
-  }
-  // 用户在这几秒里自己滚过了：保留他的位置，不跳到"第一处未审页"
-  // 自动跳页**只允许发生一次**（任务 85）：marks 迟到 / 块到达 / 窗口重铺都不许再跳。
-  if (firstOpenForProject && !readingAutoJumpDone && !readingMovedSinceOpen(openedAt)) {
-    readingAutoJumpDone = true;
-    updateReadingPage(page);
-  }
-  // 左树后补（只影响左栏计数，不影响正文与红字）
-  apiJson(`/api/projects/${projectId}/review/tree`)
-    .then((tree) => {
-      readingTreeData = tree;
-      renderReadingTree();
-      metrics.treeMs = Math.round(performance.now() - started);
-      metrics.treeUnacked = tree.stats ? tree.stats.unacked : null;
-    })
-    .catch(() => {});
-}
-
-/**
  * 吃掉一次 `/review/marks` 的返回（全书或窗口都一样）。
  *
  * 任务 67：`entries` 只由**已加载的窗口**生成；进度数字用返回里的全书 `counts`，
@@ -18746,32 +18617,6 @@ function paintInlineRevision(line, inline) {
   line.append(chip);
 }
 
-/** 点正文 = 落光标、该行成为当前行（块边界不可跨越：一行一个编辑区）。 */
-/** 从块缓存里取某一行的框（没有就返回 null）。 */
-function readingLineBox(blockId, lineIndex) {
-  if (!blockId) return null;
-  const pageNo = Number(readingLineNode(`${blockId}:${lineIndex}`)?.dataset?.page || 0);
-  const blocks = pageNo ? readingPageBlocks.get(pageNo) : null;
-  if (!blocks) return null;
-  const block = blocks.find((item) => item.block_id === blockId);
-  const line = block && (block.lines || [])[lineIndex];
-  return line && line.bbox ? line.bbox : null;
-}
-
-/**
- * 左侧标出"我正在这个块里改一行"：块框给一层很淡的琥珀。
- * 真正的**行标记**是 `#reading-pdf-box`（按行框画的那个橙框），这里不重复造。
- */
-function markEditingLineBox(blockId) {
-  for (const node of document.querySelectorAll("#reading-pages .box.is-editing-block")) {
-    node.classList.remove("is-editing-block");
-  }
-  if (!blockId) return;
-  for (const node of document.querySelectorAll(`#reading-pages .box[data-block-id="${blockId}"]`)) {
-    node.classList.add("is-editing-block");
-  }
-}
-
 function onInlineInput(event) {
   const line = event.currentTarget;
   // 每行一个定时器：全局一个的话，连着改三行只有最后一行会落草稿
@@ -18809,46 +18654,6 @@ function rerenderReadingLine(key) {
     return;
   }
   paintInlineRevision(node, inline);
-}
-
-function exitInlineEdit() {
-  const node = readingEditingKey ? readingLineNode(readingEditingKey) : null;
-  if (node) {
-    const key = node.dataset.key;
-    clearTimeout(Number(node.dataset.editTimer || 0));
-    saveInlineEdit(node);
-    node.removeAttribute("contenteditable");
-    node.classList.remove("is-editing");
-    node.classList.remove("is-current");
-    node.removeEventListener("input", onInlineInput);
-    node.removeEventListener("keydown", onInlineKeydown);
-  }
-  // 退出编辑：左侧的"正在改这一行"标记一起收掉
-  for (const box of document.querySelectorAll("#reading-pages .box.is-editing-block")) {
-    box.classList.remove("is-editing-block");
-  }
-  for (const node of document.querySelectorAll("#reading-pages .reading-edit-line")) node.remove();
-  readingEditingKey = null;
-  if (readingRepaintPending) {
-    readingRepaintPending = false;
-    refreshReadingMarksPaint();
-  }
-}
-
-function onInlineKeydown(event) {
-  if (event.key === "Enter" && (event.altKey || event.metaKey)) {
-    // ⌥↵ / ⌘↵：收草稿并跳下一处
-    event.preventDefault();
-    exitInlineEdit();
-    gotoNextUnreviewed();
-    return;
-  }
-  if (event.key === "Escape") {
-    event.preventDefault();
-    exitInlineEdit();
-    return;
-  }
-  // 普通回车 = 段内换行（contenteditable 默认行为），不拦
 }
 
 function span_at(spans, index) {
@@ -20282,30 +20087,6 @@ function hideReadingPdfBox() {
   readingPendingBox = null;
 }
 
-/** 跟随时的"当前行框"：画在页列里对应那一页上（页列是 position: relative）。 */
-/**
- * 在左侧页块里画出"正在编辑的这一行"（任务 76）。
- *
- * 不依赖 `#reading-pdf-box`：那个节点在重建页列时会被 `wrap.innerHTML = ""` 清掉，
- * 复用它会时有时无。这里每条页块自己挂一个 `.reading-edit-line`，位置按行框算。
- */
-function drawEditingLineBox(bbox, pageNo) {
-  for (const node of document.querySelectorAll("#reading-pages .reading-edit-line")) node.remove();
-  const tile = readingTiles.get(pageNo);
-  if (!tile || !Array.isArray(bbox) || bbox.length !== 4) return;
-  const [x0, y0, x1, y1] = bbox;
-  const width = tile.clientWidth || tile.getBoundingClientRect().width;
-  const height = tile.clientHeight || tile.getBoundingClientRect().height;
-  if (!width || !height) return;
-  const node = document.createElement("div");
-  node.className = "reading-edit-line";
-  node.style.left = `${Math.round(x0 * width)}px`;
-  node.style.top = `${Math.round(y0 * height)}px`;
-  node.style.width = `${Math.round((x1 - x0) * width)}px`;
-  node.style.height = `${Math.round((y1 - y0) * height)}px`;
-  tile.append(node);
-}
-
 function drawReadingPdfBox(bbox, pageNo) {
   const box = el("reading-pdf-box");
   const tile = readingTiles.get(pageNo);
@@ -20473,11 +20254,6 @@ function boot() {
     el,
     getPageNo: () => readingPageNo,
     getProjectId: () => (currentProject ? currentProject.project_id : null),
-    enter: () => {
-      // 进入审校的固定前置：版心/块框按阅读态设置（原来在 showView 里，现在收进这一条入口）
-      setReviewOverlaysForReading();
-      openReading();
-    },
     exit: () => showView("pages"),
     onPunctGroups: () => openPunctGroups(),
     onGarbledPanel: () => openGarbledPanel(),
@@ -20485,7 +20261,6 @@ function boot() {
     setReadingProject: (value) => { readingProject = value; },
     setReadingData: (value) => { readingData = value; },
     setMarks: (value) => { readingMarks = value; },
-    openReading: () => openReading(),
     renderPunctGroupBadge: () => renderPunctGroupBadge(),
     // 任务 94 Slice 2（第二笔）：setupReading 的依赖——只注入句柄与 getter/setter，不注入值
     getMarks: () => readingMarks,
@@ -20507,7 +20282,6 @@ function boot() {
     setReadingHover: (seq) => setReadingHover(seq),
     openReadingPanel: (entry) => openReadingPanel(entry),
     closeReadingPanel: () => closeReadingPanel(),
-    exitInlineEdit: () => exitInlineEdit(),
     rerenderReadingLine: (key) => rerenderReadingLine(key),
     // 任务 94 L2：10 个交互函数搬进模块后的状态句柄与回调（只注入句柄 / getter-setter，不注入值）
     getProject: () => currentProject,
@@ -20531,12 +20305,8 @@ function boot() {
     getReadingPanelKey: () => readingPanelKey,
     setReadingPendingBox: (value) => { readingPendingBox = value; },
     updateReadingPage: (pageNo, options) => updateReadingPage(pageNo, options),
-    readingLineBox: (blockId, lineIndex) => readingLineBox(blockId, lineIndex),
     drawReadingPdfBox: (bbox, pageNo) => drawReadingPdfBox(bbox, pageNo),
-    drawEditingLineBox: (bbox, pageNo) => drawEditingLineBox(bbox, pageNo),
-    markEditingLineBox: (blockId, lineIndex) => markEditingLineBox(blockId, lineIndex),
     onInlineInput: (event) => onInlineInput(event),
-    onInlineKeydown: (event) => onInlineKeydown(event),
     readingVisibleSegments: () => readingVisibleSegments(),
     updateReadingPageFromLeftScroll: () => updateReadingPageFromLeftScroll(),
     verifyReadingPageSync: (reason, options) => verifyReadingPageSync(reason, options),
@@ -20547,6 +20317,40 @@ function boot() {
     apiJson: (path, options) => apiJson(path, options),
     readingKey: (blockId, lineIndex) => readingKey(blockId, lineIndex),
     loadFinishSummary: (options) => loadFinishSummary(options),
+    // 任务 94 L3：openReading / 行编辑辅助搬进模块后的状态句柄与回调
+    getReadingProject: () => readingProject,
+    getReadingData: () => readingData,
+    getReadingOpenStartedAt: () => readingOpenStartedAt,
+    setReadingOpenStartedAt: (value) => { readingOpenStartedAt = value; },
+    getReadingAutoJumpDone: () => readingAutoJumpDone,
+    setReadingAutoJumpDone: (value) => { readingAutoJumpDone = value; },
+    getReadingEntries: () => readingEntries,
+    setReadingEntries: (value) => { readingEntries = value; },
+    setReadingMarksWindow: (value) => { readingMarksWindow = value; },
+    setReadingGlobalCounts: (value) => { readingGlobalCounts = value; },
+    getReadingPageCounts: () => readingPageCounts,
+    setReadingPageCounts: (value) => { readingPageCounts = value; },
+    setReadingFirstUnackedPage: (value) => { readingFirstUnackedPage = value; },
+    setReadingTreeData: (value) => { readingTreeData = value; },
+    getReadingRepaintPending: () => readingRepaintPending,
+    setReadingRepaintPending: (value) => { readingRepaintPending = value; },
+    getReadingUserMovedAt: () => readingUserMovedAt,
+    getReadingTiles: () => readingTiles,
+    getReadingPageBlocks: () => readingPageBlocks,
+    ensureReadingPages: () => ensureReadingPages(),
+    measureReadingTops: () => measureReadingTops(),
+    refreshPunctGroups: () => refreshPunctGroups(),
+    readingOptions: () => readingOptions(),
+    applyReadingMarksPayload: (payload) => applyReadingMarksPayload(payload),
+    loadReadingDrafts: () => loadReadingDrafts(),
+    loadReadingInlineEdits: () => loadReadingInlineEdits(),
+    restoreInlineEditsPrompt: () => restoreInlineEditsPrompt(),
+    refreshGarbledLines: () => refreshGarbledLines(),
+    readingFlowPages: () => readingFlowPages(),
+    renderReadingTree: () => renderReadingTree(),
+    saveInlineEdit: (line) => saveInlineEdit(line),
+    refreshReadingMarksPaint: () => refreshReadingMarksPaint(),
+    setReviewOverlaysForReading: () => setReviewOverlaysForReading(),
     onViewportResize: () => {
       if (currentView !== "reading") return;
       measureReadingTops();

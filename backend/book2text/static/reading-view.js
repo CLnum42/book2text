@@ -299,10 +299,10 @@ function setupReading() {
     if (injected.getReadingEditingKey()) {
       if (event.key === "Escape") {
         event.preventDefault();
-        injected.exitInlineEdit?.();
+        exitInlineEdit();
       } else if (event.key === "Enter" && (event.altKey || event.metaKey)) {
         event.preventDefault();
-        injected.exitInlineEdit?.();
+        exitInlineEdit();
         injected.gotoNextUnreviewed?.();
       }
       return;
@@ -327,7 +327,7 @@ async function readingReloadAfterBatch() {
   injected.setReadingProject?.(null);
   injected.setReadingData?.(null);
   injected.setMarks?.(new Map());
-  await injected.openReading?.();
+  await openReading();
   injected.renderPunctGroupBadge?.();
 }
 
@@ -341,7 +341,7 @@ function markReadingUserMoved() {
 
 function startInlineEdit(line) {
   if (!line || injected.getReadingEditingKey() === line.dataset.key) return;
-  injected.exitInlineEdit?.();
+  exitInlineEdit();
   injected.setReadingEditingKey(line.dataset.key);
   line.classList.add("is-editing");
   line.classList.add("is-current");
@@ -354,17 +354,17 @@ function startInlineEdit(line) {
   }
   // 任务 76：**编辑某一行时，左侧要能看出"改的是图上哪一行"**。
   // 有差异标记就用标记的行框；没有标记（普通正文行）就去块缓存里找这一行的框。
-  const lineBox = (mark && mark.bbox) || injected.readingLineBox?.(line.dataset.block, Number(line.dataset.line));
+  const lineBox = (mark && mark.bbox) || readingLineBox(line.dataset.block, Number(line.dataset.line));
   if (lineBox) {
     injected.drawReadingPdfBox?.(lineBox, pageNo);
-    injected.drawEditingLineBox?.(lineBox, pageNo);
-    injected.markEditingLineBox?.(line.dataset.block, Number(line.dataset.line));
+    drawEditingLineBox(lineBox, pageNo);
+    markEditingLineBox(line.dataset.block, Number(line.dataset.line));
   }
   line.addEventListener("input", injected.onInlineInput);
-  line.addEventListener("keydown", injected.onInlineKeydown);
+  line.addEventListener("keydown", onInlineKeydown);
   line.addEventListener("blur", () => {
     // 失焦只收起编辑态，草稿留着
-    if (injected.getReadingEditingKey() === line.dataset.key) injected.exitInlineEdit?.();
+    if (injected.getReadingEditingKey() === line.dataset.key) exitInlineEdit();
   });
 }
 
@@ -588,7 +588,7 @@ async function submitReadingDrafts() {
     }
     injected.setReadingData(null);
     injected.setReadingProject(null);
-    await injected.openReading?.();
+    await openReading();
     await injected.loadFinishSummary?.({ silent: true });
     injected.renderReadingProgress?.();
   } catch (error) {
@@ -607,11 +607,229 @@ async function undoReadingSubmit() {
     });
     injected.setReadingData(null);
     injected.setReadingProject(null);
-    await injected.openReading?.();
+    await openReading();
     await injected.loadFinishSummary?.({ silent: true });
   } catch (error) {
     window.alert(error.message || "没有可撤销的操作");
   }
+}
+  // ---------------------------------------------------------------- 审校打开 / 行编辑（任务 94 · L3）
+  // 从 app.js 原样搬入；依赖全部由 init() 注入，模块本身不碰 app.js 的顶层符号。
+
+/**
+ * 打开阅读流的异步阶段（正文预览 → marks → 重画）里，用户是不是自己动过？
+ *
+ * **不能拿 scrollTop 比较**：打开时页码跟随、图片就位都会程序性地滚一下，
+ * 那样会被误判成"用户动过"（实测：于是永远不跳到第一处未审页）。
+ * 这里只认真实输入事件（wheel / pointerdown / keydown）。
+ */
+function readingMovedSinceOpen(sinceMs) {
+  return injected.getReadingUserMovedAt() > sinceMs;
+}
+
+async function openReading() {
+  if (!injected.getProject()) return;
+  // 三栏宽度在打开时套一次：视图刚显示出来才量得到真实宽度
+  applyReadingSplit();
+  const projectId = injected.getProject().project_id;
+  if (injected.getReadingProject() === projectId && injected.getReadingData()) {
+    injected.renderReading?.({ reset: true });
+    injected.renderReadingProgress?.();
+    injected.ensureReadingPages?.();
+    injected.measureReadingTops?.();
+    if (injected.getPageNo()) injected.updateReadingPage?.(injected.getPageNo(), { scrollLeft: true });
+    injected.refreshPunctGroups?.();
+    return;
+  }
+  const started = performance.now();
+  injected.setReadingOpenStartedAt(started);
+  // 任务 81：记下打开时的滚动位置。marks 是异步来的，它回来时会按"第一处未审页"跳一次——
+  // 如果这期间用户已经自己滚走了，就不能再把他拽回去（QA 复跑时正是被这一跳拽回第 1 页）。
+  const openedAt = injected.getReadingOpenStartedAt();
+  const firstOpenForProject = injected.getReadingProject() !== projectId || !injected.getReadingAutoJumpDone();
+  const stream = el("reading-stream");
+  stream.innerHTML = '<p class="muted reading-empty">正在按导出设置组装正文…</p>';
+  el("reading-tree").innerHTML = "";
+  let preview;
+  try {
+    preview = await injected.apiJson?.(
+      `/api/projects/${projectId}/export/preview?segments_only=1`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(injected.readingOptions?.()),
+      }
+    );
+  } catch (error) {
+    stream.innerHTML = "";
+    const p = document.createElement("p");
+    p.className = "muted reading-empty";
+    p.textContent = `正文流加载失败：${error.message || "未知错误"}`;
+    stream.append(p);
+    return;
+  }
+  injected.setReadingData(preview);
+  injected.setReadingProject(projectId);
+  injected.setMarks(new Map());
+  injected.setReadingEntries([]);
+  injected.setReadingMarksWindow(null);
+  injected.setReadingGlobalCounts(null);
+  injected.setReadingPageCounts(new Map());
+  injected.setReadingFirstUnackedPage(null);
+  // 先出正文（无红字），红字随后补：点击到正文可见不用等 marks / tree
+  injected.renderReading?.({ reset: true });
+  const metrics = (window.__b2tReadingMetrics = window.__b2tReadingMetrics || {});
+  metrics.openedAt = Math.round(started);
+  metrics.firstPaintMs = Math.round(performance.now() - started);
+  metrics.segments = injected.readingVisibleSegments?.().length;
+  // 任务 67：只拉**第一处未审页 ±10** 的 marks（`first=1` 让服务端自己定位），
+  // 不再等 1.52 MB 的全书 marks；tree（左栏每页计数）单独拉，不挡红字。
+  let marks;
+  try {
+    marks = await injected.apiJson?.(`/api/projects/${projectId}/review/marks?first=1`);
+  } catch (error) {
+    metrics.error = String(error.message || error);
+    return;
+  }
+  metrics.marksMs = Math.round(performance.now() - started);
+  injected.applyReadingMarksPayload?.(marks);
+  injected.loadReadingDrafts?.();
+  injected.loadReadingInlineEdits?.();
+  injected.restoreInlineEditsPrompt?.();
+  injected.renderReading?.({ reset: true });
+  injected.renderReadingProgress?.();
+  metrics.firstMarkMs = Math.round(performance.now() - started);
+  metrics.entries = injected.getReadingEntries().length;
+  metrics.window = marks.window;
+  metrics.counts = marks.counts;
+  injected.ensureReadingPages?.();
+  injected.measureReadingTops?.();
+  metrics.openMs = Math.round(performance.now() - started);
+  // 标点差异面板的数字（后台拉，不挡正文）：主队列只放汉字差异，其余在这里按模式判
+  injected.refreshPunctGroups?.();
+  injected.refreshGarbledLines?.();
+  let page =
+    marks.first_unacked_page ||
+    injected.getReadingEntries()[0]?.page_no ||
+    injected.getProject().pages[0]?.page_no ||
+    1;
+  // 任务 82：`first_unacked_page` 可能是前置页（第 1–37 页）——它们在队列里、
+  // 但不在正文流里，跳过去右边是一片空。落到正文流里第一处有差异的页。
+  const flowPages = injected.readingFlowPages?.();
+  if (!flowPages.has(page)) {
+    // 用全书每页计数找"正文流里第一处还有未审差异的页"（marks 窗口在别的页时，
+    // `readingEntries` 是空的，不能靠它）
+    const candidate = [...injected.getReadingPageCounts().keys()]
+      .map((key) => Number(key))
+      .filter((no) => flowPages.has(no) && Number(injected.getReadingPageCounts().get(String(no))?.unacked || 0) > 0)
+      .sort((a, b) => a - b)[0];
+    if (candidate) page = candidate;
+  }
+  // 用户在这几秒里自己滚过了：保留他的位置，不跳到"第一处未审页"
+  // 自动跳页**只允许发生一次**（任务 85）：marks 迟到 / 块到达 / 窗口重铺都不许再跳。
+  if (firstOpenForProject && !injected.getReadingAutoJumpDone() && !readingMovedSinceOpen(openedAt)) {
+    injected.setReadingAutoJumpDone(true);
+    injected.updateReadingPage?.(page);
+  }
+  // 左树后补（只影响左栏计数，不影响正文与红字）
+  injected.apiJson?.(`/api/projects/${projectId}/review/tree`)
+    .then((tree) => {
+      injected.setReadingTreeData(tree);
+      injected.renderReadingTree?.();
+      metrics.treeMs = Math.round(performance.now() - started);
+      metrics.treeUnacked = tree.stats ? tree.stats.unacked : null;
+    })
+    .catch(() => {});
+}
+
+/** 点正文 = 落光标、该行成为当前行（块边界不可跨越：一行一个编辑区）。 */
+/** 从块缓存里取某一行的框（没有就返回 null）。 */
+function readingLineBox(blockId, lineIndex) {
+  if (!blockId) return null;
+  const pageNo = Number(injected.readingLineNode?.(`${blockId}:${lineIndex}`)?.dataset?.page || 0);
+  const blocks = pageNo ? injected.getReadingPageBlocks().get(pageNo) : null;
+  if (!blocks) return null;
+  const block = blocks.find((item) => item.block_id === blockId);
+  const line = block && (block.lines || [])[lineIndex];
+  return line && line.bbox ? line.bbox : null;
+}
+
+/**
+ * 左侧标出"我正在这个块里改一行"：块框给一层很淡的琥珀。
+ * 真正的**行标记**是 `#reading-pdf-box`（按行框画的那个橙框），这里不重复造。
+ */
+function markEditingLineBox(blockId) {
+  for (const node of document.querySelectorAll("#reading-pages .box.is-editing-block")) {
+    node.classList.remove("is-editing-block");
+  }
+  if (!blockId) return;
+  for (const node of document.querySelectorAll(`#reading-pages .box[data-block-id="${blockId}"]`)) {
+    node.classList.add("is-editing-block");
+  }
+}
+
+function exitInlineEdit() {
+  const node = injected.getReadingEditingKey() ? injected.readingLineNode?.(injected.getReadingEditingKey()) : null;
+  if (node) {
+    const key = node.dataset.key;
+    clearTimeout(Number(node.dataset.editTimer || 0));
+    injected.saveInlineEdit?.(node);
+    node.removeAttribute("contenteditable");
+    node.classList.remove("is-editing");
+    node.classList.remove("is-current");
+    node.removeEventListener("input", injected.onInlineInput);
+    node.removeEventListener("keydown", onInlineKeydown);
+  }
+  // 退出编辑：左侧的"正在改这一行"标记一起收掉
+  for (const box of document.querySelectorAll("#reading-pages .box.is-editing-block")) {
+    box.classList.remove("is-editing-block");
+  }
+  for (const node of document.querySelectorAll("#reading-pages .reading-edit-line")) node.remove();
+  injected.setReadingEditingKey(null);
+  if (injected.getReadingRepaintPending()) {
+    injected.setReadingRepaintPending(false);
+    injected.refreshReadingMarksPaint?.();
+  }
+}
+
+function onInlineKeydown(event) {
+  if (event.key === "Enter" && (event.altKey || event.metaKey)) {
+    // ⌥↵ / ⌘↵：收草稿并跳下一处
+    event.preventDefault();
+    exitInlineEdit();
+    injected.gotoNextUnreviewed?.();
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    exitInlineEdit();
+    return;
+  }
+  // 普通回车 = 段内换行（contenteditable 默认行为），不拦
+}
+
+/** 跟随时的"当前行框"：画在页列里对应那一页上（页列是 position: relative）。 */
+/**
+ * 在左侧页块里画出"正在编辑的这一行"（任务 76）。
+ *
+ * 不依赖 `#reading-pdf-box`：那个节点在重建页列时会被 `wrap.innerHTML = ""` 清掉，
+ * 复用它会时有时无。这里每条页块自己挂一个 `.reading-edit-line`，位置按行框算。
+ */
+function drawEditingLineBox(bbox, pageNo) {
+  for (const node of document.querySelectorAll("#reading-pages .reading-edit-line")) node.remove();
+  const tile = injected.getReadingTiles().get(pageNo);
+  if (!tile || !Array.isArray(bbox) || bbox.length !== 4) return;
+  const [x0, y0, x1, y1] = bbox;
+  const width = tile.clientWidth || tile.getBoundingClientRect().width;
+  const height = tile.clientHeight || tile.getBoundingClientRect().height;
+  if (!width || !height) return;
+  const node = document.createElement("div");
+  node.className = "reading-edit-line";
+  node.style.left = `${Math.round(x0 * width)}px`;
+  node.style.top = `${Math.round(y0 * height)}px`;
+  node.style.width = `${Math.round((x1 - x0) * width)}px`;
+  node.style.height = `${Math.round((y1 - y0) * height)}px`;
+  tile.append(node);
 }
   // ---------------------------------------------------------------- 对外接口
 
@@ -642,7 +860,10 @@ async function undoReadingSubmit() {
   }
 
   function enter(projectId) {
-    injected.enter?.(projectId);
+    // 未 init 时保持搬走前的 no-op（原 enter 注入项没接上时也是空转）；生产 boot 必注入 getProject
+    if (!injected.getProject) return;
+    injected.setReviewOverlaysForReading?.();
+    openReading();
   }
 
   function exit() {
