@@ -20558,7 +20558,9 @@ function readingNextPageWithUnacked(afterPage) {
       // `??` 不会回退，于是过滤后一条不剩 → "下一处未审"凭空说没有了（实测卡在 94/102/109）。
       unacked: Number(item?.chars_unacked || item?.unacked || 0),
     }))
-    .filter((item) => item.unacked > 0)
+    // **必须在正文流里的页**：`page_counts` 是"队列里的差异页"，前置页 / 版心外的页
+    // 也有差异但不在正文流里，选中就找不到条目（`branch: none` 的真正来源）。
+    .filter((item) => item.unacked > 0 && readingFlowPages().has(item.page_no))
     .sort((a, b) => a.page_no - b.page_no);
   if (!pages.length) return null;
   const forward = pages.find((item) => item.page_no > afterPage);
