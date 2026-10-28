@@ -1369,24 +1369,27 @@ async function pinGuard(page, args) {
   let jumps = 0;
   let landing = null;
   const jumpRows = [];
+  let prevPanel = null;
   while (jumps < maxJumps) {
     await page.click("#reading-next-unreviewed", { label: `下一处未审 ${jumps + 1}` });
     jumps += 1;
+    // 只等"面板页变了"（最多 1.2s）：这是跳转真的推进了的可观测证据。
+    // 不要在这里等 label==panel —— 守卫冻住页码时那一等就是 3 秒，几十次点击会把整个探针拖超时。
     await page
       .waitForFunction(
-        (want) => {
+        (prev) => {
           const head = document.querySelector(".reading-panel__head strong");
-          const label = document.getElementById("reading-page-no");
-          if (!head || !label) return false;
+          if (!head) return false;
           const panel = Number(((head.textContent || "").match(/第\s*(\d+)\s*页/) || [0, 0])[1]) || null;
-          const top = Number(((label.textContent || "").match(/(\d+)/) || [0, 0])[1]) || null;
-          return panel !== null && top === panel;
+          return panel !== null && panel !== prev;
         },
-        undefined,
-        { timeout: 3000 }
+        prevPanel,
+        { timeout: 1200 }
       )
       .catch(() => {});
+    await page.waitForTimeout(120);
     const now = await read();
+    prevPanel = now.panelPage;
     jumpRows.push({
       n: jumps,
       panelPage: now.panelPage,

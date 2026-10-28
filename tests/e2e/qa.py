@@ -989,7 +989,8 @@ def cmd_pinguard(args: argparse.Namespace) -> int:
         report.blocked("准备", str(error))
         return report.finish(report_path)
     try:
-        data = _browser.run(state, "pin_guard", {"targetPage": args.page})
+        data = _browser.run(state, "pin_guard", {"targetPage": args.page, "maxJumps": args.max_jumps},
+                            timeout=900.0)
     except Exception as error:  # noqa: BLE001
         report.blocked("三段探针", str(error))
         return report.finish(report_path)
@@ -1115,6 +1116,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("queueend", help="清空未审队列后验证「下一处未审」的队尾提示").set_defaults(func=cmd_queueend)
     pinguard = sub.add_parser("pinguard", help="页码守卫三段：跳转不漂 / 滚一页要跟 / 滚多页继续跟")
     pinguard.add_argument("--page", type=int, default=142, help="跳转落位目标页（默认 142）")
+    pinguard.add_argument("--max-jumps", type=int, default=240, help="为达到目标页最多按多少次「下一处未审」")
     pinguard.set_defaults(func=cmd_pinguard)
     return parser
 
