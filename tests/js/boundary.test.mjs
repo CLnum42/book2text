@@ -54,7 +54,8 @@ const ALLOW = [];
 /**
  * 把注释与字符串字面量抹成空格，**保持长度与换行不变**，这样后续行号/列号还准。
  *
- * 支持的语法：`//`、`/* *\/`、`'…'`、`"…"`、模板字符串（整段抹掉，含 `${}` 里的表达式——
+ * 支持的语法：`//`、`/* *\/`、`'…'`、`"…"`、模板字符串、**正则字面量**（`/["']/` 这种不认会把
+ * 后面一大片代码当成字符串吞掉——app.js 里就有）。模板字符串整段抹掉，含 `${}` 里的表达式——
  * 已知取舍：模板里插值引用了 app.js 的名字不会被抓到。当前代码里没有这种用法，
  * 真出现了这条局限会在评审时被人工补上）。
  */
@@ -66,6 +67,16 @@ function stripCommentsAndStrings(source) {
     for (let k = from; k < to; k += 1) {
       if (out[k] !== "\n") out[k] = " ";
     }
+  };
+  // 正则字面量的判定：前一个有效字符是这些（或行首 / return 之类关键字）时，`/` 开的是正则
+  const REGEX_PRECEDERS = "([{=,:;!&|?+-*%~^<>";
+  const KEYWORD_BEFORE_REGEX = /(?:^|[^\w$])(?:return|typeof|instanceof|case|in|of|void|delete|new|throw)\s*$/;
+  const looksLikeRegex = (at) => {
+    let k = at - 1;
+    while (k >= 0 && /\s/.test(source[k])) k -= 1;
+    if (k < 0) return true;
+    if (REGEX_PRECEDERS.includes(source[k])) return true;
+    return KEYWORD_BEFORE_REGEX.test(source.slice(Math.max(0, k - 12), k + 1));
   };
   while (i < n) {
     const ch = source[i];
@@ -80,6 +91,28 @@ function stripCommentsAndStrings(source) {
       const stop = end === -1 ? n : end + 2;
       blank(i, stop);
       i = stop;
+    } else if (ch === "/" && looksLikeRegex(i)) {
+      // 正则字面量：跳过转义与字符类 `[...]`，找到收尾的 `/`
+      let k = i + 1;
+      let inClass = false;
+      while (k < n) {
+        const cur = source[k];
+        if (cur === "\\") {
+          k += 2;
+          continue;
+        }
+        if (cur === "[") inClass = true;
+        else if (cur === "]") inClass = false;
+        else if (cur === "/" && !inClass) {
+          k += 1;
+          break;
+        } else if (cur === "\n") {
+          break;   // 没闭合就按除法处理，别吞掉整份文件
+        }
+        k += 1;
+      }
+      blank(i, k);
+      i = k;
     } else if (ch === "'" || ch === '"' || ch === "`") {
       const quote = ch;
       let k = i + 1;
@@ -362,7 +395,7 @@ function topLevelDeclarationsByName(source) {
   return found;
 }
 
-test("R4b-same-file：同一文件内同名真实现（后者覆盖前者，未申报即红）", () => {
+test("R4b（同文件重名覆盖）：同一文件内同名真实现（后者覆盖前者，未申报即红）", () => {
   // 例外表本身要合格：上限 3 条、每条带 owner 与到期点
   const allowed = new Set();
   const tableProblems = [];
@@ -416,13 +449,162 @@ test("R4b-same-file：同一文件内同名真实现（后者覆盖前者，未�
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
-test("R4b-same-file 例外表：上限 3 条，每条带 owner 与到期点", () => {
+test("R4b 例外表：上限 3 条，每条带 owner 与到期点", () => {
   assert.ok(SAME_FILE_DUP_EXCEPTIONS.length <= SAME_FILE_DUP_EXCEPTION_MAX,
     `例外表 ${SAME_FILE_DUP_EXCEPTIONS.length} 条，超过上限 ${SAME_FILE_DUP_EXCEPTION_MAX}`);
   for (const entry of SAME_FILE_DUP_EXCEPTIONS) {
     assert.ok(entry.owner, `例外 ${entry.name} 缺 owner`);
     assert.ok(entry.expires, `例外 ${entry.name} 缺到期点`);
   }
+});
+
+
+// ---------------------------------------------------------------- R5：一状态一 owner
+
+/**
+ * **规格：docs/refactor/reading-view-boundary.md §17（口径原文照抄，别以后争）**
+ *
+ * - 作用域：全仓库 JS（static/app.js + static/*-view.js），按文件归属。
+ * - 口径：去注释与字符串；赋值点 = `NAME =` / `+=` / `-=` / `++` / `--`；
+ *   **排除** `==` / `===`、声明行（`let NAME =`）、以及 `NAME.set/.add/.push/.delete`
+ *   这类原地变更（第一版不查原地变更）。
+ * - 对象：被测 SHA 的源码树。
+ * - 断言：每条的所在文件 == owner（OWNERS 来源 = 文档 §3）。
+ * - 两条防表过期：OWNERS 里的状态必须还存在；搬层必须同批改 owner。
+ *
+ * **有意设计的红（别为了变绿改回去）**：搬层时某个状态的声明/写点会从 app.js 挪到
+ * reading-view.js。那时 OWNERS 表项必须**同批**改成 reading-view.js，否则 R5 会红——
+ * 这是规则在提醒"owner 变了"，不是误报。把表改回 app.js 只会制造一个假绿。
+ *
+ * 现状（2026-10-28）：65 个状态 owner = app.js，`readingSplitState` owner = reading-view.js；
+ * 违规 0 / 豁免 0。
+ */
+const OWNERS = {
+  readingData: "app.js",
+  readingProject: "app.js",
+  readingEntries: "app.js",
+  readingSegmentNodes: "app.js",
+  readingRendered: "app.js",
+  readingTops: "app.js",
+  readingObserver: "app.js",
+  readingAppendScheduled: "app.js",
+  readingSpanCache: "app.js",
+  readingOpenStartedAt: "app.js",
+  readingAutoJumpDone: "app.js",
+  readingMarks: "app.js",
+  readingMarksWindow: "app.js",
+  readingGlobalCounts: "app.js",
+  readingPageCounts: "app.js",
+  readingFirstUnackedPage: "app.js",
+  readingMarksInFlight: "app.js",
+  readingMarksRequestSeq: "app.js",
+  readingTreeData: "app.js",
+  readingFilter: "app.js",
+  readingCursorEntry: "app.js",
+  readingTiles: "app.js",
+  readingPageBlocks: "app.js",
+  readingBlockPromises: "app.js",
+  readingLoadedImages: "app.js",
+  readingImageQueue: "app.js",
+  readingImagePumping: "app.js",
+  readingImageProfile: "app.js",
+  readingImageToken: "app.js",
+  readingNearObserver: "app.js",
+  readingVisibleObserver: "app.js",
+  readingNearSet: "app.js",
+  readingVisibleSet: "app.js",
+  readingResizeObserver: "app.js",
+  readingStackProject: "app.js",
+  readingHoveredSeq: "app.js",
+  readingPdfScrollRaf: "app.js",
+  readingPanelKey: "app.js",
+  readingPendingPanelKey: "app.js",
+  readingPendingPanelEntry: "app.js",
+  readingJumpSettleKey: "app.js",
+  readingJumpSettleTicks: "app.js",
+  readingPendingBox: "app.js",
+  readingDrafts: "app.js",
+  readingInlineEdits: "app.js",
+  readingEditingKey: "app.js",
+  readingInlineTimer: "app.js",
+  readingRepaintPending: "app.js",
+  readingPageNo: "app.js",
+  readingSyncDriver: "app.js",
+  readingSyncUntil: "app.js",
+  readingScrollRaf: "app.js",
+  readingUserMovedAt: "app.js",
+  readingUserScrollSeq: "app.js",
+  readingProgramScrollSeq: "app.js",
+  readingSuppressFollowUntil: "app.js",
+  readingPageSyncTimer: "app.js",
+  readingPageSyncFixing: "app.js",
+  readingPageSyncLog: "app.js",
+  readingNextLog: "app.js",
+  readingFollow: "app.js",
+  readingProof: "app.js",
+  readingMarkupLevel: "app.js",
+  readingPendingOn: "app.js",
+  readingPreflightData: "app.js",
+  readingSplitState: "reading-view.js",
+};
+const R5_MAX_EXCUSES = 0;   // 现状零豁免；将来开口必须显式改这个数
+const R5_EXCUSES = [];      // { state, file, owner, expires }
+
+/**
+ * 某文件里某状态的赋值点行号。
+ *
+ * 用**全位置**匹配而不是行首锚定：`{ readingPageNo = 5; }` 这种同行写法同样要抓到
+ * （变异验证踩过：行首锚定会漏掉它）。排除：
+ * - 属性写 `obj.NAME =`（lookbehind 排除 `.`）
+ * - 比较 `==` / `===` / 箭头 `=>`（负向前瞻）
+ * - 声明行 `let NAME =`（前缀是 let/const/var）
+ */
+function assignmentLines(stripped, name) {
+  const lines = [];
+  const pattern = new RegExp(`(?<![\\w$.])${name}\\s*(?:\\+\\+|--|\\+=|-=|=)(?![=>])`, "g");
+  let match;
+  while ((match = pattern.exec(stripped)) !== null) {
+    const before = stripped.slice(Math.max(0, match.index - 12), match.index);
+    if (/(?:let|const|var)\s*$/.test(before)) continue;   // 声明行
+    lines.push(lineOf(stripped, match.index));
+  }
+  return lines;
+}
+
+test("R5：一状态一 owner——每个状态的赋值点只能出现在 owner 文件里", () => {
+  const problems = [];
+  const files = readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"));
+  for (const fileName of files) {
+    const stripped = stripCommentsAndStrings(readFileSync(join(STATIC_DIR, fileName), "utf8"));
+    for (const [state, owner] of Object.entries(OWNERS)) {
+      if (owner !== fileName) {
+        // 非 owner 文件里出现写点 = 违规（原地变更不在本版口径内）
+        for (const line of assignmentLines(stripped, state)) {
+          problems.push(`${state} 的 owner 是 ${owner}，${fileName}:${line} 写了它`);
+        }
+        continue;
+      }
+      // owner 文件里的写点不报，但只做一次"确实有写点"的记账（防止 owner 写错文件却没人发现）
+      assignmentLines(stripped, state);
+    }
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("R5 防表过期：OWNERS 里的状态必须还存在（删了状态要同批删表项）", () => {
+  const files = readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"));
+  const declared = new Set();
+  for (const fileName of files) {
+    const stripped = stripCommentsAndStrings(readFileSync(join(STATIC_DIR, fileName), "utf8"));
+    for (const match of stripped.matchAll(/(?:^|[^\w$])(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) {
+      declared.add(match[1]);
+    }
+  }
+  const missing = Object.keys(OWNERS).filter((state) => !declared.has(state));
+  assert.deepEqual(missing, [],
+    `OWNERS 里的状态在源码里不存在了：${missing.join("、")}——删状态请同批删表项，别把表变成墓地`);
+  assert.ok(R5_EXCUSES.length <= R5_MAX_EXCUSES,
+    `R5 豁免 ${R5_EXCUSES.length} 条，上限 ${R5_MAX_EXCUSES}——开口要显式加数字`);
 });
 
 // ---------------------------------------------------------------- 对外导出棘轮
@@ -455,7 +637,7 @@ function readingViewExportKeys() {
   return Object.keys((sandbox.window && sandbox.window.ReadingView) || {});
 }
 
-test("对外导出棘轮：只许出现 STABLE ∪ TEMPORARY（+待删的写路径），总数只许降", () => {
+test("R8（导出棘轮）：只许出现 STABLE ∪ TEMPORARY（+待删的写路径），总数只许降", () => {
   const keys = readingViewExportKeys();
   const allowed = new Set([...STABLE, ...TEMPORARY, ...PENDING_REMOVAL]);
   const unexpected = keys.filter((key) => !allowed.has(key));
@@ -469,17 +651,17 @@ test("对外导出棘轮：只许出现 STABLE ∪ TEMPORARY（+待删的写路�
   assert.deepEqual(missingStable, [], `稳定导出现在没有 ${missingStable.join("、")}`);
 });
 
-test("对外导出棘轮：TEMPORARY 里每个都必须真的还在（到期是删，不是悄悄少一个）", () => {
+test("R8（导出棘轮）：TEMPORARY 里每个都必须真的还在（到期是删，不是悄悄少一个）", () => {
   const keys = readingViewExportKeys();
   const missing = TEMPORARY.filter((name) => !keys.includes(name));
   assert.deepEqual(missing, [], `临时导出少了 ${missing.join("、")}：要么恢复，要么在 TEMPORARY 里说明它去哪了`);
 });
 
-test("对外导出棘轮：临时导出不超过 5 条（防止往 TEMPORARY 里塞第六个）", () => {
+test("R8（导出棘轮）：临时导出不超过 5 条（防止往 TEMPORARY 里塞第六个）", () => {
   assert.ok(TEMPORARY.length <= 5, `TEMPORARY 有 ${TEMPORARY.length} 条，上限 5`);
 });
 
-test("写路径 emit 不得再出现在公开对象上（事件只出不进）", () => {
+test("R8（导出棘轮）：写路径 emit 不得再出现在公开对象上（事件只出不进）", () => {
   // 26ac481 收进模块内部、e5c4c37 连同 on/listeners 一起删掉。这条从"到期检查"转成常驻断言：
   // 谁再把写路径挂到 window.ReadingView 上（外部就能驱动重绘），立即红。
   const keys = readingViewExportKeys();
@@ -507,6 +689,15 @@ test("写路径 emit 不得再出现在公开对象上（事件只出不进）",
 // - ~~`adoptBlockSuggestion` / `adoptAllHighSuggestions`：两份~~ 已删除（2026-10-28，前置死定义清掉，只剩后声明生效的那份）
 // - `rerenderReadingLine`：app.js 两份——18912 是 `rerenderReadingLine(key)`，
 //   19347 是 `rerenderReadingLine(entry)`；后者生效，所以**按 key 调用的那处会在运行时静默失效**。
+//
+// | R5：模块里写 app.js 的状态（`readingPageNo = 5;`） | `readingPageNo 的 owner 是 app.js，reading-view.js:185 写了它`（同时 R1 也红：模块引用了 app.js 顶层名） |
+// | R5：外壳里写模块状态（`readingSplitState = null;`） | `readingSplitState 的 owner 是 reading-view.js，app.js:21011 写了它` |
+// | R5：删掉状态但不删表项 | `OWNERS 里的状态在源码里不存在了：readingSplitState——删状态请同批删表项，别把表变成墓地` |
+//
+// 扫描器自身的坑（已修）：`stripCommentsAndStrings` 一开始不认**正则字面量**，
+// app.js 里的 `/["']/` 会被当成字符串开头，把后面一大片代码抹掉——R5 的"状态是否存在"
+// 因此误报 43 个。现在支持正则（含 `[...]` 字符类与转义），并且**全位置**匹配赋值点
+// （行首锚定会漏掉 `{ readingPageNo = 5; }` 这种同行写法）。
 //
 // R1 的历史红：`B2T_VIEW_JS=/tmp/rv-7c1d00c.js node tests/js/run.mjs boundary` →
 // `reading-view.js 引用了 5 处 app.js 的顶层声明`（currentView / measureReadingTops / readingPageNo×2 /
