@@ -45,6 +45,46 @@ from ..storage.ulid import new_ulid
 EMPTY_MARK = "∅"
 """模式里表示"这一边没有字符"的记号：`∅→‘` 读作"原文缺单引号，候选有"。"""
 
+#: 标点类别：**英文**按这一层归并（`'→∅`、`'→"`、`'→␣` 都算「引号被改动」）。
+#: 中文保持精确片段（`；→，` 这种用户一眼能判断）。
+PUNCT_CLASSES = {
+    "'": "引号", '"': "引号", "‘": "引号", "’": "引号", "“": "引号", "”": "引号",
+    ".": "句点", "。": "句点", ",": "逗号", "，": "逗号", ";": "分号", "；": "分号",
+    ":": "冒号", "：": "冒号", "-": "破折号", "–": "破折号", "—": "破折号",
+    "―": "破折号", "?": "问号", "？": "问号", "!": "叹号", "！": "叹号",
+    " ": "空格", "␣": "空格", "∅": "无",
+}
+
+
+def punct_class(char: str) -> str:
+    return PUNCT_CLASSES.get(char, "其他")
+
+
+def _is_english_pattern(pairs: list[tuple[str, str]]) -> bool:
+    """片段里是不是**全是 ASCII**（英文页的引号 / 句点 / 撇号这类）。"""
+    chars = [c for a, b in pairs for c in (a + b) if c not in "␣∅"]
+    return bool(chars) and all(ord(c) < 128 for c in chars)
+
+
+def _dominant(pairs: list[tuple[str, str]]) -> tuple[str, str]:
+    """一行里"最主要的那个改动"：非空格优先，其次片段更长。"""
+
+    def weight(pair: tuple[str, str]) -> tuple[int, int]:
+        a, b = pair
+        non_empty = (a not in ("", " ")) or (b not in ("", " "))
+        return (1 if non_empty else 0, max(len(a), len(b)))
+
+    return sorted(pairs, key=weight, reverse=True)[0]
+
+
+def _group_key(pairs: list[tuple[str, str]]) -> str:
+    """分组键：中文 = 精确片段，英文 = 主片段的标点类别。"""
+    if _is_english_pattern(pairs):
+        a, b = _dominant(pairs)
+        return f"[英] {punct_class(a[:1] or EMPTY_MARK)}→{punct_class(b[:1] or EMPTY_MARK)}"
+    return pattern_key(pairs)
+
+
 SAMPLE_LIMIT = 5
 """每组给几条带上下文的样例（用户凭 5 条就能判断整组该采用还是该保留）。"""
 
@@ -94,6 +134,22 @@ def pattern_key(pairs: list[tuple[str, str]]) -> str:
     return "|".join(f"{_raw(a)}→{_raw(b)}" for a, b in pairs)
 
 
+def _hint(key: str, items: list[PunctLine]) -> str:
+    """给一组的"该怎么办"。
+
+    2026-10-28 实测（双语书）：`[英] 引号→无` 728 行里，原文有撇号、**候选把撇号
+    变成了空格或直接删掉**（页 36 实图：`She'll` / `we'll` / `it's` 都在，文字层却读成
+    `She ll`）。所以这一类**不能"全部采用候选"**——那会把正确的撇号删掉。
+    """
+    if not key.startswith("[英]"):
+        return ""
+    if "引号→无" in key or "引号→空格" in key or "引号→其他" in key:
+        return "候选少了引号 / 撇号（多半是文字层的问题）· 建议保留原文"
+    if "无→引号" in key:
+        return "原文少了引号 / 撇号（OCR 吞掉了）· 建议采用候选"
+    return ""
+
+
 def _raw(text: str) -> str:
     """模式键里的原文：空格写成 `␣`，空串写成 `∅`（不然前端根本看不见/传不了）。"""
     if not text:
@@ -138,7 +194,7 @@ def _collect_lines(
             if record is None or record.aux_text is None:
                 continue
             pairs = fragments(mark.current, record.aux_text)
-            key = pattern_key(pairs)
+            key = _group_key(pairs)
             collected.append(
                 (
                     PunctLine(
@@ -183,6 +239,7 @@ def collect(
             {
                 "key": key,
                 "pattern": key.replace("|", " "),
+                "hint": _hint(key, items),
                 "count": len(items),
                 "adopted": adopted,
                 "kept": kept,

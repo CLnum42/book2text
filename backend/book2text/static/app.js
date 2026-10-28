@@ -148,6 +148,65 @@ function pausePageThumbnails() {
   visiblePageNos.clear();
 }
 
+/**
+ * 视图专属数据的懒加载（任务 63）。
+ *
+ * 打开项目时会话只发「步骤条 + 项目载荷 + 当前视图」这三样；页面工作流角标、
+ * 页码索引、导出预检这些**只属于某个视图**的请求，等用户真的切过去再发。
+ * 490 页的书上，这三样加起来有 6 s 以上，以前它们跟着开机一起挤，
+ * 步骤条要十几秒才亮。
+ */
+const viewHydrated = { pages: false, index: false, export: false };
+
+/**
+ * 启动队列（任务 63）：步骤条（`finish-summary`）没亮之前，视图专属的重请求
+ * 一个都不发——490 页的书上它们加起来 10 s 以上，会把步骤条饿到十几秒。
+ * `finishSummary` 一到就按入队顺序开跑。
+ */
+let bootQueue = [];
+let stepsReady = false;
+
+function queueAfterSteps(fn) {
+  if (stepsReady) {
+    fn();
+    return;
+  }
+  bootQueue.push(fn);
+}
+
+function flushBootQueue() {
+  const queued = bootQueue;
+  bootQueue = [];
+  for (const fn of queued) {
+    try {
+      fn();
+    } catch (error) {
+      console.warn("启动队列里的任务失败", error);
+    }
+  }
+}
+
+function resetViewHydration() {
+  viewHydrated.pages = false;
+  viewHydrated.index = false;
+  viewHydrated.export = false;
+}
+
+async function hydrateView(name) {
+  if (!currentProject) return;
+  if (name === "pages" && !viewHydrated.pages) {
+    viewHydrated.pages = true;
+    await loadWorkflow();
+  } else if (name === "index" && !viewHydrated.index) {
+    viewHydrated.index = true;
+    loadPageNumberSummary();
+  } else if (name === "export" && !viewHydrated.export) {
+    viewHydrated.export = true;
+    await refreshExportPreflight();
+    await loadExports();
+  }
+}
+
 function showView(name) {
   if (!VIEWS.includes(name)) return;
   // 没有打开项目时，只有项目库是可达的
@@ -166,6 +225,8 @@ function showView(name) {
   syncWorkflowSteps();
   if (target !== "review") closeTaskDrawer();
   if (target === "pages" && currentProject) {
+    // 这一视图的工作流角标 / 待处理页：进来才拉（骨架先显示，数字后到）
+    queueAfterSteps(() => hydrateView("pages"));
     // 回到页面视图时以数据库为准重拉一次：确认进度与类型不在前端缓存里说了算
     renderPageSetup();
     refreshPageStates();
@@ -193,10 +254,14 @@ function showView(name) {
     ensureReviewTree();
   }
   if (target === "index" && currentProject) {
+    queueAfterSteps(() => hydrateView("index"));
     openPageIndex();
   }
   if (target === "preview" && currentProject) {
     openPreview();
+  }
+  if (target === "export" && currentProject) {
+    queueAfterSteps(() => hydrateView("export"));
   }
 }
 
@@ -2201,6 +2266,9 @@ function setupExportPanel() {
 /** 当前打开的项目（含页面列表）。 */
 let currentProject = null;
 
+/** 正在打开项目（还没决定"回到哪个视图"）：这段时间不要自动切页面视图。 */
+let bootingProject = false;
+
 /** 项目库列表的最近一次结果（错误对话框里要写项目名）。 */
 let libraryProjects = [];
 
@@ -2897,6 +2965,7 @@ async function createProjectFromFile(file) {
 async function openProject(projectId, { force = false, readOnly = false } = {}) {
   el("library-error").hidden = true;
   el("library-warning").hidden = true;
+  bootingProject = true;
 
   try {
     const opened = await apiJson(
@@ -2933,15 +3002,14 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     lastStepPanelKey = null;
     pageZoomTouched = false;
     renderRecognitionSettings();
-    loadPageNumberSummary();
     reviewMarginOn = loadReviewMarginPreference();
     reviewBlockFilter = "pending";
     el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
     el("pages-margin-toggle").classList.toggle("is-on", pagesMarginOn);
     el("review-margin-toggle").classList.toggle("is-on", reviewMarginOn);
-    // refreshProject 可能已经渲染过页面视图；默认"开"是在那之后才读出来的，
-    // 这里补一次可见性计算，让块框立刻出现。
-    schedulePageVisibility();
+    // refreshProject 可能已经渲染过页面视图；默认"开"是在那之后才读出来的。
+    // 任务 63：页面缩略图会立刻开始拉图（490 页要几十秒 CPU），所以也排到步骤条之后。
+    queueAfterSteps(() => schedulePageVisibility());
     await loadLibrary();
     if (openWarning) {
       const warning = el("library-warning");
@@ -2950,7 +3018,9 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     }
     // 说明书 7.2：打开项目默认回到上次的位置（上次在审校就回审校那一页）
     await resumeLastPosition();
+    bootingProject = false;
   } catch (error) {
+    bootingProject = false;
     if (
       (error.code === "project_lock_expired" || error.code === "project_busy") &&
       error.data &&
@@ -2995,16 +3065,18 @@ async function refreshProject(projectId) {
   closePageDetail();
   structureCandidates = [];
   el("structure-result").hidden = true;
-  // 任务 58：页面工作流角标 / 筛选项（只读索引，不驱动流程）
-  await loadWorkflow();
+  // 任务 63：页面工作流角标、导出预检、导出记录都只属于某个视图，
+  // 这里不再开机就拉（490 页实测这三样 6 s+，把步骤条饿到十几秒）。
+  // 它们由 `hydrateView()` 在真正切到那个视图时加载。
+  resetViewHydration();
+  stepsReady = false;
+  bootQueue = [];
   renderProject();
   // 任务可能还在跑（比如刷新了页面），把抽屉里的进度接回来
   await loadTasks();
-  // 导出面板：预检 + 历史（说明书 6.6 要求预检摘要实时算）
-  await refreshExportPreflight();
-  await loadExports();
-  // 质量统计（说明书 8.5 / 13.4）：数字多、算起来比页面列表重，单独一个请求拿
-  await loadSummary();
+  // 质量统计（说明书 8.5 / 13.4）：数字多、算起来比页面列表重；
+  // 任务 63：排到步骤条点亮之后再拉
+  queueAfterSteps(() => loadSummary());
   // 步骤条需要收尾面板与导出记录；这里补一次，避免只在页面视图里才加载
   await loadFinishSummary({ silent: true });
   syncWorkflowSteps();
@@ -3128,7 +3200,9 @@ function renderProject() {
   el("package-chip").hidden = project.kind !== "package";
   renderProjectMeta();
   renderPages();
-  if (currentView === "library") showView("pages");
+  // 任务 63：打开项目时**不要**先切到页面视图——那会把页面工作流 / 状态 / 建议
+  // 三个重请求都拉起来，然后马上又被"上次的视图"切走。等 resumeLastPosition 决定。
+  if (currentView === "library" && !bootingProject) showView("pages");
 }
 
 /**
@@ -6417,6 +6491,9 @@ async function loadPageNumberSummary() {
   if (!currentProject) return;
   const node = el("page-number-summary");
   if (!node) return;
+  if (!node.textContent || !node.children.length) {
+    node.textContent = "正在读取页码状态…";
+  }
   try {
     const data = await apiJson(
       `/api/projects/${currentProject.project_id}/page-numbers/summary`
@@ -13702,6 +13779,10 @@ async function loadFinishSummary({ silent = false } = {}) {
     );
     finishSummary = data;
     finishSummaryProject = currentProject.project_id;
+    if (!stepsReady) {
+      stepsReady = true;
+      flushBootQueue();
+    }
     updateFinishChips();
     renderFinishPanel();
     syncWorkflowSteps();
@@ -17321,6 +17402,13 @@ function renderPunctGroups() {
       state.className = "chip chip--warn";
     }
     head.append(pattern, count, state);
+    if (group.hint) {
+      const hint = document.createElement("span");
+      hint.className = "chip chip--warn";
+      hint.textContent = group.hint;
+      hint.title = "这条是系统给的判断依据，不是硬约束；逐条看可以自己定";
+      head.append(hint);
+    }
 
     const samples = document.createElement("ul");
     samples.className = "punct-group__samples";

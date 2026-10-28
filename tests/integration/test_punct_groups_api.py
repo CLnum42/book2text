@@ -219,3 +219,24 @@ def test_deciding_an_empty_pattern_is_reported(
 
     assert response.status_code == 400
     assert "没有待裁决" in response.json()["error"]["detail"]
+
+
+def test_english_punctuation_is_grouped_by_class_not_exact_fragment() -> None:
+    """任务 63：英文按标点类别归并；中文保持精确片段（一行有多种片段时用 `|`）。"""
+    # `'→∅`、`'→"`、`'→␣` 在英文里都归成「引号→…」，不该各成一组
+    assert punct_groups._group_key([("'", "")]) == "[英] 引号→无"
+    assert punct_groups._group_key([("'", '"')]) == "[英] 引号→引号"
+    assert punct_groups._group_key([("'", " ")]) == "[英] 引号→空格"
+    # 一行有多个英文片段时，按"主片段"归组（非空格优先、片段更长优先）
+    assert punct_groups._group_key([("'", ""), (".", "")]) == "[英] 引号→无"
+    # 中文保持精确片段，不并类
+    assert punct_groups._group_key([("；", "，")]) == "；→，"
+    assert punct_groups._group_key([("。", "、"), ("，", ",")]) == "。→、|，→,"
+
+
+def test_hint_tells_which_side_lost_the_quote() -> None:
+    """英文引号「候选→无」是**候选丢了**（文字层），要提示"保留原文"，别让人批量采用。"""
+    assert "保留原文" in punct_groups._hint("[英] 引号→无", [])
+    assert "保留原文" in punct_groups._hint("[英] 引号→其他", [])
+    assert "采用候选" in punct_groups._hint("[英] 无→引号", [])
+    assert punct_groups._hint("；→，", []) == ""

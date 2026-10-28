@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 
 from . import blocks as blocks_module
@@ -322,9 +324,10 @@ def project_pending(
         and (states.get(page.page_id) is not None)
         and states[page.page_id].status == blocks_module.STATUS_RECOGNIZED
     ]
-    suggestion_map = structure_module.suggestions_by_page(
-        project_id, library=library, page_numbers=recognized
-    )
+    # 任务 63：**不带 page_numbers** 调用，才能命中"整本建议"的缓存
+    # （带子集每次都要重算 1.8 s，收尾面板每次刷新都会踩到）。
+    # 结果里多出来的页不影响：下面只按 `page.page_no` 取。
+    suggestion_map = structure_module.suggestions_by_page(project_id, library=library)
     bboxes_by_page = _block_bboxes(project_id, library=library)
     items: list[dict] = []
     counts: dict[str, int] = {}
@@ -671,6 +674,49 @@ _FINISH_CACHE: dict[str, tuple[str, dict]] = {}
 """
 
 
+def _finish_cache_path(project_id: str, library: Path) -> Path:
+    return library_module.project_dir(library, project_id) / "cache" / "finish-summary.json"
+
+
+def _read_finish_cache(project_id: str, library: Path, signature: str) -> dict | None:
+    """读磁盘上的收尾面板结果（任务 63：跨进程也秒回）。
+
+    Chief 的建议：收尾面板只是几个计数，没必要每次开机都重算 2.8 s。
+    这里把 `{signature, payload}` 写到 `<项目>/cache/finish-summary.json`；
+    `signature` 是项目 `updated_at` + 数据库文件 mtime，任何写入都会让它对不上。
+    """
+    if not signature:
+        return None
+    path = _finish_cache_path(project_id, library)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("signature") != signature:
+        return None
+    data = payload.get("payload")
+    return data if isinstance(data, dict) else None
+
+
+def _write_finish_cache(
+    project_id: str, library: Path, signature: str, payload: dict
+) -> None:
+    if not signature:
+        return
+    path = _finish_cache_path(project_id, library)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_name(path.name + ".tmp")
+        temp.write_text(
+            json.dumps({"signature": signature, "payload": payload}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        os.replace(temp, path)
+    except OSError:
+        # 写不进去只是少一次缓存，不影响正确性
+        pass
+
+
 def _finish_signature(project_id: str, library: Path) -> str:
     try:
         project = library_module.load_project(project_id, library=library)
@@ -702,6 +748,10 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     cached = _FINISH_CACHE.get(project_id)
     if cached and signature and cached[0] == signature:
         return cached[1]
+    disk = _read_finish_cache(project_id, target_library, signature)
+    if disk is not None:
+        _FINISH_CACHE[project_id] = (signature, disk)
+        return disk
     pages = library_module.list_pages(project_id, library=library)
     project = _project(project_id, library)
     states = blocks_module.page_recognition_states(project_id, library=library)
@@ -913,4 +963,5 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     }
     if signature:
         _FINISH_CACHE[project_id] = (signature, result)
+        _write_finish_cache(project_id, target_library, signature, result)
     return result
