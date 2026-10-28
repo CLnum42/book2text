@@ -56,6 +56,8 @@ export async function run(cfg) {
       return await labelWatch(page);
     case "label_writes":
       return await labelWrites(page);
+    case "reset_diag":
+      return await resetDiag(page);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -1718,6 +1720,32 @@ async function labelWatch(page) {
 
 async function labelWrites(page) {
   return await page.evaluate(() => window.__labelWrites || []);
+}
+
+/** 重置诊断：读阅读态是"重开项目"还是"只重画流"。 */
+async function resetDiag(page) {
+  return await page.evaluate(() => {
+    const segs = typeof readingData !== "undefined" && readingData && readingData.segments
+      ? readingData.segments.length : null;
+    const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+    return {
+      resetDiag: true,
+      readingProject: typeof readingProject !== "undefined" ? readingProject : "n/a",
+      currentProjectId: typeof currentProject !== "undefined" && currentProject ? currentProject.project_id : "n/a",
+      readingAutoJumpDone: typeof readingAutoJumpDone !== "undefined" ? readingAutoJumpDone : "n/a",
+      readingDataSegments: segs,
+      readingPanelKey: typeof readingPanelKey !== "undefined" ? readingPanelKey : "n/a",
+      readingPendingPanelKey: typeof readingPendingPanelKey !== "undefined" ? readingPendingPanelKey : "n/a",
+      readingPendingPanelEntry: typeof readingPendingPanelEntry !== "undefined" && readingPendingPanelEntry
+        ? readingPendingPanelEntry.block_id : "n/a",
+      panelInHost: Boolean(document.querySelector("#reading-panel-host .reading-panel")),
+      panelHead: (document.querySelector(".reading-panel__head strong") || {}).textContent || null,
+      label: label.replace(/\s+/g, ""),
+      readingEntries: typeof readingEntries !== "undefined" ? readingEntries.length : "n/a",
+      marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : "n/a",
+      streamSegs: document.querySelectorAll("#reading-stream .reading-seg").length,
+    };
+  });
 }
 
 async function nextProbe(page) {
