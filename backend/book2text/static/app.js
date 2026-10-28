@@ -20137,12 +20137,12 @@ function gotoReadingEntry(entry) {
   // 原来这里先找行、找不到就 `return`，于是页码和左侧 PDF 根本没动——
   // 用户看到的是"面板第 13 页、顶部第 28 页、左边第 28 页"（现场就是这么来的）。
   setPanel(entry);      // 跨 reset 存活：重绘后由 retryReadingPendingPanel 补开
-  updateReadingPage(entry.page_no, { syncStream: false, scrollLeft: false });
+  queueReadingIntent("goto", { pageNo: entry.page_no, scrollLeft: false, syncStream: false });
   suppressReadingFollow();
   scrollPdfColumnToPage(entry.page_no);
   const segments = readingVisibleSegments();
   const index = segments.findIndex((segment) => segment.seq === entry.seq);
-  if (index >= 0) jumpReadingTo(index);
+  if (index >= 0) queueReadingIntent("jump", { segmentIndex: index });
   const key = readingKey(entry.block_id, entry.line_index);
   let line = readingLineNode(key);
   if (!line) {
