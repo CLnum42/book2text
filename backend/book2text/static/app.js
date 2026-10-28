@@ -19615,6 +19615,10 @@ function refreshReadingImageProfiles(force = false) {
   // 任务 79：**不要先摘 src 再重取**——那会让页图空白一下（用户看到闪白）。
   // 先在离屏 Image 里把新档下完，加载完再换上去，旧图一直可见。
   for (const pageNo of [...readingLoadedImages]) warmSwapReadingImage(pageNo, wanted);
+  // 页列宽度一变，tile 的宽高都跟着变：同一个 `scrollTop` 会落到别的页上。
+  // 按"当前页码"重新锚定一次（用户的心智是"我在第几页"），再核对。
+  if (readingPageNo) scrollPdfColumnToPage(readingPageNo);
+  verifyReadingPageSync("resize");
 }
 
 /** 预热新档，加载完再换上去（换的时候旧图还在，不闪白）。 */
@@ -20114,6 +20118,7 @@ function onReadingPdfScroll() {
     // 任务 72：**跟随开着的时候左栏滚动才该带动右侧**。原来这里写着
     // `if (readingFollow) return;`——正好反了：用户开着"跟随"滚左栏，右边完全不动。
     updateReadingPageFromLeftScroll();
+    verifyReadingPageSync("leftScroll");
   });
 }
 
@@ -20128,7 +20133,9 @@ let readingPageSyncFixing = false;
  * 这里在每次页码变化后一帧做一次核对，不一致就纠正一次，并把结果暴露在
  * `window.__b2tPageSync` 上供 QA 断言（{label, tilePage, ok}）。
  */
-function verifyReadingPageSync(reason = "") {
+const readingPageSyncLog = [];
+
+function verifyReadingPageSync(reason = "", { fix = true } = {}) {
   clearTimeout(readingPageSyncTimer);
   readingPageSyncTimer = setTimeout(() => {
     if (currentView !== "reading" || !readingPageNo) return;
@@ -20149,18 +20156,27 @@ function verifyReadingPageSync(reason = "") {
       }
     }
     const ok = tilePage === readingPageNo;
-    window.__b2tPageSync = {
+    const record = {
       reason,
       label: readingPageNo,
       tilePage,
       ok,
       scrollTop: Math.round(scroller.scrollTop),
+      at: Date.now(),
     };
-    if (!ok && tilePage !== null && !readingPageSyncFixing) {
+    // 留最近 5 次（用户报"左右不对应"时，前一次的状态往往才是线索）
+    readingPageSyncLog.unshift(record);
+    readingPageSyncLog.length = Math.min(readingPageSyncLog.length, 5);
+    window.__b2tPageSync = record;
+    window.__b2tPageSyncLog = readingPageSyncLog;
+    if (fix && !ok && tilePage !== null && !readingPageSyncFixing) {
+      // **纠正，不只是记录**：按当前页码重新定位（用户的心智是"我在第几页"，不是"我滚了多远"）
       readingPageSyncFixing = true;
       scrollPdfColumnToPage(readingPageNo);
+      // 纠正本身会再触发一次滚动：150 ms 后补一次核对（只核对、不再纠正，避免来回抖）
       setTimeout(() => {
         readingPageSyncFixing = false;
+        verifyReadingPageSync("afterFix", { fix: false });
       }, 150);
     }
   }, 130);
