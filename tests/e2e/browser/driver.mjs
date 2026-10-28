@@ -2672,6 +2672,8 @@ async function interactionsProbe(page, args) {
       { timeout: 10000 }
     );
     await page.waitForTimeout(400);
+    // 焦点必须离开 select/input：文档级键盘处理器对 INPUT/TEXTAREA/SELECT 直接 return
+    await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
     await page.keyboard.press("Enter");
     await page.waitForTimeout(900);
     let before = await snap();
@@ -2720,6 +2722,12 @@ async function interactionsProbe(page, args) {
       return { x: Math.min(window.innerWidth - 20, r.x + 30), y: r.y + Math.min(20, r.height / 2) };
     });
     if (!seg) throw new Error("没有段落");
+    const under = await page.evaluate(({ x, y }) => {
+      const node = document.elementFromPoint(x, y);
+      const segNode = node && node.closest ? node.closest(".reading-seg") : null;
+      return { tag: node ? node.tagName : null, inSeg: Boolean(segNode) };
+    }, seg);
+    if (!under.inSeg) throw new Error(`落点不在段落里：${JSON.stringify(under)}`);
     await page.mouse.move(seg.x - 60, seg.y, { label: "移到段落附近" });
     await page.waitForTimeout(200);
     await page.mouse.move(seg.x, seg.y, { label: "悬停段落" });
