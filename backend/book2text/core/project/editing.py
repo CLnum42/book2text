@@ -743,11 +743,11 @@ def sync_line_text(
     actor_name: str | None = None,
     actor: str = ACTOR_USER,
 ) -> list[Event]:
-    """把一行的新文本写回 `block_line.text`，并**校验**它与块文本一致（任务 66）。
+    """把**被编辑的那一行**写回 `block_line.text`，并校验块与行一致（任务 66）。
 
-    就地编辑是"按行改、按块存"：写 `block.text` 的同时必须把那一行的
-    `block_line.text` 也改掉，否则审校看到的是新字、导出/差异算的还是旧行。
-    写完立刻校验 `block.text == "\n".join(block_line.text)`，不一致就抛错拒绝提交。
+    **只写这一行**：整块重写会把 5000 多个本来一致的块全动一遍（2026-10-28 我这么干过，
+    已退回）。写完仍校验 `block.text == "\n".join(行文本)`——不一致说明这次提交本身有问题，
+    直接拒绝，而不是去"修数据"。
     """
     if library is None:
         library = library_module.default_library_dir()
@@ -758,61 +758,76 @@ def sync_line_text(
         ).fetchone()
         if block is None:
             raise ProjectError(f"找不到块：{block_id}")
-        # 一行改了之后，**整块的行文本都按块文本重写一遍**：历史数据里
-        # `block_line.text` 是识别原文、`block.text` 可能早已被编辑过，两者本来就可能
-        # 不一致；只改一行的话，下面的等式永远不成立，提交会被误拒（实测 3 条只过 1 条）。
-        block_lines = (block["text"] or "").split("\n")
-        existing = conn.execute(
-            "SELECT line_index FROM block_line WHERE block_id = ?", (block_id,)
-        ).fetchall()
+        row = conn.execute(
+            "SELECT line_id, text FROM block_line WHERE block_id = ? AND line_index = ?",
+            (block_id, line_index),
+        ).fetchone()
+        if row is None:
+            raise ProjectError(f"块 {block_id} 没有第 {line_index + 1} 行")
         events: list[Event] = []
-        batch = batch_id or new_ulid()
-        if len(existing) == len(block_lines):
-            before_rows = {
-                row["line_index"]: row["text"]
-                for row in conn.execute(
-                    "SELECT line_index, text FROM block_line WHERE block_id = ?", (block_id,)
+        before = row["text"]
+        if before != text:
+            events.append(
+                _record(
+                    conn,
+                    entity_type="block_line",
+                    entity_id=row["line_id"],
+                    action=ACTION_EDIT_TEXT,
+                    before={"text": before},
+                    after={"text": text},
+                    batch_id=batch_id or new_ulid(),
+                    actor=actor,
+                    actor_name=actor_name,
                 )
-            }
-            for index, value in enumerate(block_lines):
-                if before_rows.get(index) == value:
-                    continue
-                # 行文本的改动也要进事件表，否则撤销只退块文本、行文本留在改后的状态
-                events.append(
-                    _record(
-                        conn,
-                        entity_type="block_line",
-                        entity_id=f"{block_id}:{index}",
-                        action=ACTION_EDIT_TEXT,
-                        before={"text": before_rows.get(index)},
-                        after={"text": value},
-                        batch_id=batch,
-                        actor=actor,
-                        actor_name=actor_name,
-                    )
-                )
-            conn.executemany(
-                "UPDATE block_line SET text = ? WHERE block_id = ? AND line_index = ?",
-                [(block_lines[i], block_id, i) for i in range(len(block_lines))],
             )
-        else:
             conn.execute(
-                "UPDATE block_line SET text = ? WHERE block_id = ? AND line_index = ?",
-                (text, block_id, line_index),
-            )
-        rows = conn.execute(
-            "SELECT line_index, text FROM block_line WHERE block_id = ? ORDER BY line_index",
-            (block_id,),
-        ).fetchall()
-        joined = "\n".join((row["text"] or "") for row in rows)
-        if joined != (block["text"] or ""):
-            conn.rollback()
-            raise ProjectError(
-                "提交被拒绝：块文本与行文本对不上（改的是行，存的是块，两边必须一致）"
+                "UPDATE block_line SET text = ? WHERE line_id = ?", (text, row["line_id"])
             )
         conn.execute("UPDATE project SET updated_at = ?", (_now(),))
         conn.commit()
     return events
+
+
+def resync_lines(
+    project_id: str,
+    block_ids: Sequence[str],
+    *,
+    library: Path | None = None,
+) -> int:
+    """撤销 / 重做之后，把**对不上的行**按块文本修一次（对得上的一个字都不动）。
+
+    撤销只回放块事件，行文本会留在改后的状态；这里按块文本校正，但**只写不一致的行**
+    （否则每次撤销都重写整块，等于换个地方重演"整块重写"的问题）。返回写了几行。
+    """
+    if library is None:
+        library = library_module.default_library_dir()
+    directory = project_dir(library, project_id)
+    written = 0
+    with _open(directory) as conn:
+        for block_id in dict.fromkeys(block_ids):
+            block = conn.execute(
+                "SELECT text FROM block WHERE block_id = ? AND deleted_at IS NULL", (block_id,)
+            ).fetchone()
+            if block is None:
+                continue
+            want = (block["text"] or "").split("\n")
+            rows = conn.execute(
+                "SELECT line_index, text FROM block_line WHERE block_id = ? ORDER BY line_index",
+                (block_id,),
+            ).fetchall()
+            if len(rows) != len(want):
+                continue
+            for row in rows:
+                value = want[row["line_index"]]
+                if (row["text"] or "") != value:
+                    conn.execute(
+                        "UPDATE block_line SET text = ? WHERE block_id = ? AND line_index = ?",
+                        (value, block_id, row["line_index"]),
+                    )
+                    written += 1
+        if written:
+            conn.commit()
+    return written
 
 
 def ack_diff_line(

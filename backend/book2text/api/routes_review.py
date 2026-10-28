@@ -1178,6 +1178,16 @@ def _apply_history(
     except project_library.ProjectError as exc:
         raise _project_error(exc) from exc
 
+    # 撤销 / 重做只回放块事件；行文本（任务 66 的就地编辑）要跟着块文本校正。
+    # `resync_lines` 只写"确实对不上"的行，对得上的一行都不动。
+    touched_blocks = [
+        event.entity_id
+        for event in batch.events
+        if getattr(event, "entity_type", "") == "block"
+    ]
+    if touched_blocks:
+        editing.resync_lines(project_id, touched_blocks, library=library)
+
     # 栈里放的是**原始那一批事件**：撤销写回 before、重做再写 after，
     # 于是同一个批次可以在两个栈之间来回搬（放"新事件"进去会让值绕圈走到别处去）。
     if direction == "undo":
