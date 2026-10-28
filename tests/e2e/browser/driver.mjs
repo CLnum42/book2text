@@ -42,6 +42,8 @@ export async function run(cfg) {
       return await exportStep(page, cfg);
     case "page_sync":
       return await pageSync(page, cfg, args);
+    case "highlight_probe":
+      return await highlightProbe(page);
     case "next_probe":
       return await nextProbe(page);
     case "next_log":
@@ -1189,6 +1191,59 @@ async function step(page, cfg, which) {
 }
 
 // ---------------------------------------------------------------- 阅读流
+
+/**
+ * 单次跳转的高亮验证：走 gotoReadingEntry（下一处未审），确认
+ * 面板开了 + readingPanelKey 非空 + 目标行带 is-current（500ms 后）。
+ */
+async function highlightProbe(page, maxJumps = 28) {
+  await ensureReading(page);
+  const rows = [];
+  for (let i = 0; i < maxJumps; i += 1) {
+    await page.click("#reading-next-unreviewed", { label: `下一处未审 ${i + 1}` });
+    await page
+      .waitForFunction(
+        () => {
+          const head = document.querySelector(".reading-panel__head strong");
+          const label = document.getElementById("reading-page-no");
+          if (!head || !label) return false;
+          const panel = Number(((head.textContent || "").match(/第\s*(\d+)\s*页/) || [0, 0])[1]) || null;
+          const top = Number(((label.textContent || "").match(/(\d+)/) || [0, 0])[1]) || null;
+          return panel !== null && top === panel;
+        },
+        undefined,
+        { timeout: 4000 }
+      )
+      .catch(() => {});
+    await page.waitForTimeout(500);
+    const row = await page.evaluate((index) => {
+      const panel = document.querySelector(".reading-panel");
+      const head = document.querySelector(".reading-panel__head strong");
+      const pageNo = head
+        ? Number(((head.textContent || "").match(/第\s*(\d+)\s*页/) || [0, 0])[1]) || null
+        : null;
+      const key = panel ? panel.dataset.key || null : null;
+      const currentLines = [...document.querySelectorAll("#reading-stream .reading-line.is-current")];
+      const target = key ? document.querySelector(`#reading-stream .reading-line[data-key="${key}"]`) : null;
+      const segCount = document.querySelectorAll("#reading-stream .reading-seg").length;
+      return {
+        index: index + 1,
+        pageNo,
+        panelOpen: Boolean(panel),
+        panelKey: key,
+        currentLines: currentLines.length,
+        targetExists: Boolean(target),
+        targetCurrent: Boolean(target && target.classList.contains("is-current")),
+        readingRendered: typeof readingRendered !== "undefined" ? readingRendered : null,
+        segCount,
+        log0: (window.__b2tNextLog || [])[0] || null,
+      };
+    }, i);
+    rows.push(row);
+    if (row.pageNo !== null && row.pageNo >= 174) break;
+  }
+  return rows;
+}
 
 async function nextProbe(page) {
   await ensureReading(page);
