@@ -205,7 +205,7 @@ function setupReading() {
     injected.getDrafts().clear();
     saveReadingDrafts();
     renderReading({ reset: true });
-    injected.renderReadingProgress?.();
+    renderReadingProgress();
   });
   el("reading-help").addEventListener("click", () => {
     window.alert(
@@ -590,10 +590,10 @@ async function submitReadingDrafts() {
     injected.setReadingProject(null);
     await openReading();
     await injected.loadFinishSummary?.({ silent: true });
-    injected.renderReadingProgress?.();
+    renderReadingProgress();
   } catch (error) {
     button.disabled = false;
-    injected.renderReadingProgress?.();
+    renderReadingProgress();
     window.alert(`提交失败：${error.message || "未知错误"}`);
   }
 }
@@ -634,7 +634,7 @@ async function openReading() {
   const projectId = injected.getProject().project_id;
   if (injected.getReadingProject() === projectId && injected.getReadingData()) {
     renderReading({ reset: true });
-    injected.renderReadingProgress?.();
+    renderReadingProgress();
     ensureReadingPages();
     measureReadingTops();
     if (injected.getPageNo()) updateReadingPage(injected.getPageNo(), { scrollLeft: true });
@@ -697,7 +697,7 @@ async function openReading() {
   loadReadingInlineEdits();
   restoreInlineEditsPrompt();
   renderReading({ reset: true });
-  injected.renderReadingProgress?.();
+  renderReadingProgress();
   metrics.firstMarkMs = Math.round(performance.now() - started);
   metrics.entries = injected.getReadingEntries().length;
   metrics.window = marks.window;
@@ -877,7 +877,7 @@ function restoreInlineEditsPrompt() {
 function loadReadingDrafts() {
   injected.setReadingDrafts(new Map());
   try {
-    const raw = localStorage.getItem(injected.readingDraftStorageKey?.());
+    const raw = localStorage.getItem(readingDraftStorageKey());
     if (!raw) return;
     const data = JSON.parse(raw);
     for (const item of data.items || []) {
@@ -1147,7 +1147,7 @@ async function loadReadingMarksWindow(pageNo) {
   } else {
     refreshReadingMarksPaint();
   }
-  injected.renderReadingProgress();
+  renderReadingProgress();
 }
 
 function refreshReadingMarksPaint() {
@@ -1285,7 +1285,7 @@ function renderReading({ reset = false, startAt = null } = {}) {
   // 也在 `reset` 里被清空、由 `retryReadingPendingPanel()` 恢复。所以**每次重绘之后
   // 都要按当前状态回补一次**——它幂等，别指望"某一次 openReadingPanel 的副作用"能活过重绘。
   // （QA 实测：目标行在 DOM 里、面板开着，`is-current` 却是 0，就是这么丢的。）
-  injected.refreshReadingCurrentHighlight();
+  refreshReadingCurrentHighlight();
   // 面板 DOM 在独立 host 里，`reset` 碰不到它：如果这次重绘既没有 `readingPanelKey`
   // 也没有待恢复的面板，残留的旧面板就再也对不上了。
   // QA 现场：正文和顶部已回到第 1 页，`#reading-panel-host` 里还挂着第 368 页的旧面板，
@@ -1332,7 +1332,7 @@ function saveInlineEdit(line) {
   }
   saveReadingInlineEdits();
   line.classList.toggle("is-inline-edited", injected.getReadingInlineEdits().has(key));
-  injected.renderReadingProgress();
+  renderReadingProgress();
 }
 
 function centerReadingLinePair(entry) {
@@ -1415,7 +1415,7 @@ function openReadingPanel(entry) {
   host.innerHTML = "";
   host.append(panel);
   host.hidden = false;
-  injected.refreshReadingCurrentHighlight();
+  refreshReadingCurrentHighlight();
   if (entry.page_no && entry.page_no !== injected.getPageNo()) {
     updateReadingPage(entry.page_no, { scrollLeft: false, syncStream: false });
   }
@@ -1433,7 +1433,7 @@ function openReadingPanel(entry) {
   // 行节点可能在这一帧之后才挂上（补窗口 / 重铺）：下一帧按同一个 key 再补一次高亮。
   // 面板元素在独立 host 里、跨重绘存活，所以这里不需要重开面板，只需要重挂 class。
   requestAnimationFrame(() => {
-    if (injected.getReadingPanelKey() === key) injected.refreshReadingCurrentHighlight();
+    if (injected.getReadingPanelKey() === key) refreshReadingCurrentHighlight();
   });
 }
 
@@ -1758,7 +1758,7 @@ function retryReadingPendingPanel() {
     const host = el("reading-panel-host");
     const stub = host && host.querySelector(".reading-panel");
     const key = stub && stub.dataset.key;
-    if (key) { injected.setReadingPanelKey( key); injected.refreshReadingCurrentHighlight(); }
+    if (key) { injected.setReadingPanelKey( key); refreshReadingCurrentHighlight(); }
     return;
   }
   if (!injected.getReadingPendingPanelEntry()) return;
@@ -2365,7 +2365,7 @@ function buildReadingSegment(segment) {
         ? Math.max(start, Number(spans[i + 1].start) || start)
         : segment.text.length;
     const piece = segment.text.slice(start, nextStart);
-    const line = injected.buildReadingLine(segment, span_at(spans, i), piece);
+    const line = buildReadingLine(segment, span_at(spans, i), piece);
     // 任务 66：块边界要**看得见**。跨页段在视觉上是一段连贯的话，
     // 实际是两个块；不标出来，用户会以为能跨过去改（这本书有 312 个跨页段）。
     if (i + 1 < spans.length && spans[i + 1].block_id !== spans[i].block_id) {
@@ -2505,7 +2505,7 @@ function draftReading(entry, ack, text) {
   saveReadingDrafts();
   closeReadingPanel();
   rerenderReadingLine(entry);
-  injected.renderReadingProgress();
+  renderReadingProgress();
 }
 
 function readingEntryLineText(entry) {
@@ -2534,7 +2534,7 @@ function showReadingPlaceholder(pageNo, image) {
 function saveReadingDrafts() {
   try {
     localStorage.setItem(
-      injected.readingDraftStorageKey(),
+      readingDraftStorageKey(),
       JSON.stringify({
         at: new Date().toISOString(),
         items: [...injected.getReadingDrafts().values()],
@@ -2573,7 +2573,7 @@ function closeReadingPanel() {
   if (!stream) return;
   for (const node of stream.querySelectorAll(".reading-panel")) node.remove();
   injected.setReadingPanelKey( null);
-  injected.refreshReadingCurrentHighlight();
+  refreshReadingCurrentHighlight();
 }
 
 function rerenderReadingLine(entry) {
@@ -2589,7 +2589,7 @@ function rerenderReadingLine(entry) {
   const span = (segment.line_spans || []).find(
     (item) => injected.readingKey(item.block_id, item.line_index) === key
   );
-  const fresh = injected.buildReadingLine(segment, span);
+  const fresh = buildReadingLine(segment, span);
   line.replaceWith(fresh);
 }
 
@@ -2616,6 +2616,190 @@ function settlePanel(entry) {
   }
   setPanel(entry);
   return false;
+}
+
+  // ---------------------------------------------------------------- 审校环·正文行 / 进度 / 高亮（任务 94 · L9 · buildReadingLine 红线）
+  // 从 app.js 原样搬入；依赖由 init() 注入。状态仍归 app.js（get/set）。
+
+function readingDraftStorageKey() {
+  return injected.getProject() ? `b2t.readingDrafts.${injected.getProject().project_id}` : "";
+}
+
+function buildReadingLine(segment, span, displayText = null) {
+  const key = injected.readingKey(span.block_id, span.line_index);
+  const mark = injected.getReadingMarks().get(key);
+  const draft = injected.getReadingDrafts().get(key);
+  const line = document.createElement("span");
+  line.className = "reading-line";
+  line.dataset.key = key;
+  line.dataset.block = span.block_id;
+  line.dataset.line = String(span.line_index);
+  line.dataset.page = String(span.page_no);
+  // `text` = 逻辑行文本（行自己的字，用于编辑与写回）；
+  // `displayText` = 这一行在连续切片里实际占的字符（含行尾分隔符）。
+  // **编辑仍然基于 text**，所以保存时不会把分隔符写进库里。
+  const text = injected.readingLineText(segment, span);
+  line.dataset.baseText = text;
+  const baseText = displayText == null ? text : displayText;
+  if (mark) {
+    line.dataset.level = mark.level;
+    line.classList.add("is-diff");
+  }
+  // 就地编辑过的行：按修订三档渲染（只改显示，不改数据）
+  const inline = injected.getReadingInlineEdits().get(key);
+  if (inline && inline.text !== inline.base) {
+    injected.paintInlineRevision(line, inline);
+    return line;
+  }
+  if (draft) {
+    line.classList.add("is-draft");
+    line.textContent = draft.text != null ? draft.text : baseText;
+    const chip = document.createElement("span");
+    chip.className = "reading-chip";
+    chip.textContent = draft.ack === "adopted" ? "草稿 · 已采用" : draft.ack === "kept" ? "草稿 · 保留" : "草稿";
+    line.append(chip);
+    return line;
+  }
+  if (mark && mark.ack === "kept") {
+    line.classList.add("is-kept");
+  }
+  if (mark && mark.ack === "adopted") {
+    line.classList.add("is-kept");
+  }
+  if (!mark || !injected.readingEntryVisible(mark)) {
+    line.textContent = baseText;
+    return line;
+  }
+  // 红字：只包差异字符（汉字级实线 / 标点级虚线）
+  const cacheKey = `${key}\u0000${baseText}\u0000${mark.candidate || ""}`;
+  let charSpans = injected.getReadingSpanCache().get(cacheKey);
+  if (!charSpans) {
+    charSpans = injected.computeCharSpans(baseText, mark.candidate || "");
+    injected.getReadingSpanCache().set(cacheKey, charSpans);
+  }
+  if (!charSpans.length) {
+    line.textContent = baseText;
+    return line;
+  }
+  // 任务 81：**先把差异区间并成互不重叠的并集，再按顺序拼一次**。
+  // 原来是在循环里"发现重叠就把文字追加给上一个 mark"，`cursor` 与追加区间一旦错位
+  // 就会重复字符（实测 `laborefficient` 被显示成 `laboreefficient`）——
+  // 这类"显示 ≠ 导出"已经被咬过四次，不能再靠逐次判断补丁。
+  const ranges = [];
+  for (const charSpan of charSpans) {
+    // 英文扩到整词（引擎给的是词级框）；中文保持单字
+    const range = injected.expandToWordRange(baseText, charSpan.aStart, charSpan.aEnd);
+    const last = ranges[ranges.length - 1];
+    if (last && range.start <= last.end) {
+      last.end = Math.max(last.end, range.end);
+      last.word = last.word || range.word;
+    } else {
+      ranges.push({ start: range.start, end: range.end, word: range.word });
+    }
+  }
+
+  let cursor = 0;
+  for (const range of ranges) {
+    if (range.start > cursor) {
+      line.append(document.createTextNode(baseText.slice(cursor, range.start)));
+    }
+    const markEl = document.createElement("mark");
+    markEl.className =
+      "reading-mark " +
+      (mark.level === "differs_punct" ? "reading-mark--punct" : "reading-mark--chars") +
+      (range.word ? " reading-mark--word" : "") +
+      (mark.ack ? " is-acked" : "") +
+      (key === injected.getReadingPanelKey() ? " is-current" : "");
+    // 任务 81：**占位不许进 textContent**。空区间（原文这里没有字、候选那边有）
+    // 只需要"这里有个插入位置"的视觉标记，不是字符；原来用 `|| " "` 塞了空格，
+    // 右栏就比导出多一个空格（`lcc: :pp` vs `lcc::pp`）。
+    const slice = baseText.slice(range.start, range.end);
+    if (slice) {
+      markEl.textContent = slice;
+    } else {
+      markEl.classList.add("reading-mark--insert");
+      markEl.setAttribute("aria-label", "这里缺字（候选有、原文没有）");
+    }
+    markEl.dataset.key = key;
+    markEl.title = range.word ? "英文按词标：这个词里有差异" : "";
+    line.append(markEl);
+    cursor = Math.max(cursor, range.end);
+  }
+  if (cursor < baseText.length) {
+    line.append(document.createTextNode(baseText.slice(cursor)));
+  }
+  return line;
+}
+
+/**
+ * 「已审 / 总数」的唯一口径：库里已判 + 本次会话草稿（**全局，不按 marks 窗口**）。
+ *
+ * 旧实现只数当前窗口里的 `readingEntries`，换一次窗口之前的草稿就不算了——
+ * QA 实测"20 次 Enter 后已审从 0 涨到 3 又跌回 0"，根因就是它。
+ */
+function readingProgressNumbers() {
+  const counts = injected.getReadingGlobalCounts();
+  const draftKeys = new Set([...injected.getReadingDrafts().keys(), ...injected.getReadingInlineEdits().keys()]);
+  if (!counts) {
+    return { processed: draftKeys.size, total: injected.getReadingEntries().length };
+  }
+  const total = Number(counts.chars_total || 0);
+  const doneInDb = Math.max(0, total - Number(counts.chars_unacked || 0));
+  return { processed: Math.min(total, doneInDb + draftKeys.size), total };
+}
+
+function renderReadingProgress() {
+  // 任务 67：marks 只加载窗口，`readingEntries` 不再是全书 —— 进度数字必须用
+  // 服务端给的全书计数，否则换一次窗口进度条就缩水一次（用户会以为审过的丢了）。
+  const { processed, total } = readingProgressNumbers();
+  const drafts = injected.getReadingDrafts().size + injected.getReadingInlineEdits().size;
+  // 标点计数不在这里：角标文本由 `renderPunctGroupBadge()` 写 `reading-punct-count`，
+  // 进度条只算"汉字差异条数"（`readingProgressNumbers()`，不含标点）。
+  el("reading-progress-text").textContent = `已审 ${processed} / ${total} 条`;
+  const fill = el("reading-progress-fill");
+  fill.style.width = total ? `${Math.round((processed / total) * 100)}%` : "0%";
+  fill.classList.toggle("is-done", total > 0 && processed >= total);
+  const chip = el("reading-draft-chip");
+  chip.hidden = drafts === 0;
+  chip.textContent = `未提交 ${drafts}`;
+  const submit = el("reading-submit");
+  submit.disabled = drafts === 0;
+  submit.textContent = drafts ? `提交 ${drafts} 处` : "提交 0 处";
+  el("reading-submit").classList.toggle("is-ready", drafts > 0);
+}
+
+/**
+ * 当前审校项的"两边同款"高亮（任务 61）。
+ *
+ * 用户原话：「左边 pdf 里应该把选中的行高亮出来，右边也高亮出对应的行（左右最好用同样的
+ * 颜色和高亮方式，如方框框选）」。所以这里只做一件事：把 `readingPanelKey` 那一条
+ * 在**文本流**和**页面上**都标成 `is-current`（琥珀实线框 + 浅底），其余差异维持弱化红。
+ * 只改样式，不滚页、不动跟随。
+ */
+function refreshReadingCurrentHighlight() {
+  for (const node of document.querySelectorAll("#reading-stream .reading-line.is-current")) {
+    node.classList.remove("is-current");
+  }
+  for (const node of document.querySelectorAll("#reading-stream .reading-mark.is-current")) {
+    node.classList.remove("is-current");
+  }
+  if (injected.getReadingPanelKey()) {
+    const line = injected.readingLineNode(injected.getReadingPanelKey());
+    if (line) {
+      line.classList.add("is-current");
+      for (const mark of line.querySelectorAll(".reading-mark")) mark.classList.add("is-current");
+    }
+  }
+  for (const item of document.querySelectorAll("#reading-tree .reading-tree__item.is-current")) {
+    if (item.dataset.key !== injected.getReadingPanelKey()) item.classList.remove("is-current");
+  }
+  if (injected.getReadingPanelKey()) {
+    const item = document.querySelector(`#reading-tree .reading-tree__item[data-key="${injected.getReadingPanelKey()}"]`);
+    if (item) item.classList.add("is-current");
+  }
+  // 页面上只有已加载块的页画过差异框：重画这些页 + 当前 key 所在页
+  for (const pageNo of injected.getReadingPageBlocks().keys()) injected.paintReadingDiffBoxes(pageNo);
+  if (injected.getPageNo()) injected.paintReadingDiffBoxes(injected.getPageNo());
 }
 
   // ---------------------------------------------------------------- 对外接口

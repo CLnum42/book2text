@@ -17989,10 +17989,6 @@ function readingKey(blockId, lineIndex) {
   return `${blockId}:${lineIndex}`;
 }
 
-function readingDraftStorageKey() {
-  return currentProject ? `b2t.readingDrafts.${currentProject.project_id}` : "";
-}
-
 
 /**
  * 进「正文审校」默认开版心 + 块框（任务 57）。
@@ -18148,150 +18144,6 @@ function paintInlineRevision(line, inline) {
 }
 
 
-function buildReadingLine(segment, span, displayText = null) {
-  const key = readingKey(span.block_id, span.line_index);
-  const mark = readingMarks.get(key);
-  const draft = readingDrafts.get(key);
-  const line = document.createElement("span");
-  line.className = "reading-line";
-  line.dataset.key = key;
-  line.dataset.block = span.block_id;
-  line.dataset.line = String(span.line_index);
-  line.dataset.page = String(span.page_no);
-  // `text` = 逻辑行文本（行自己的字，用于编辑与写回）；
-  // `displayText` = 这一行在连续切片里实际占的字符（含行尾分隔符）。
-  // **编辑仍然基于 text**，所以保存时不会把分隔符写进库里。
-  const text = readingLineText(segment, span);
-  line.dataset.baseText = text;
-  const baseText = displayText == null ? text : displayText;
-  if (mark) {
-    line.dataset.level = mark.level;
-    line.classList.add("is-diff");
-  }
-  // 就地编辑过的行：按修订三档渲染（只改显示，不改数据）
-  const inline = readingInlineEdits.get(key);
-  if (inline && inline.text !== inline.base) {
-    paintInlineRevision(line, inline);
-    return line;
-  }
-  if (draft) {
-    line.classList.add("is-draft");
-    line.textContent = draft.text != null ? draft.text : baseText;
-    const chip = document.createElement("span");
-    chip.className = "reading-chip";
-    chip.textContent = draft.ack === "adopted" ? "草稿 · 已采用" : draft.ack === "kept" ? "草稿 · 保留" : "草稿";
-    line.append(chip);
-    return line;
-  }
-  if (mark && mark.ack === "kept") {
-    line.classList.add("is-kept");
-  }
-  if (mark && mark.ack === "adopted") {
-    line.classList.add("is-kept");
-  }
-  if (!mark || !readingEntryVisible(mark)) {
-    line.textContent = baseText;
-    return line;
-  }
-  // 红字：只包差异字符（汉字级实线 / 标点级虚线）
-  const cacheKey = `${key}\u0000${baseText}\u0000${mark.candidate || ""}`;
-  let charSpans = readingSpanCache.get(cacheKey);
-  if (!charSpans) {
-    charSpans = computeCharSpans(baseText, mark.candidate || "");
-    readingSpanCache.set(cacheKey, charSpans);
-  }
-  if (!charSpans.length) {
-    line.textContent = baseText;
-    return line;
-  }
-  // 任务 81：**先把差异区间并成互不重叠的并集，再按顺序拼一次**。
-  // 原来是在循环里"发现重叠就把文字追加给上一个 mark"，`cursor` 与追加区间一旦错位
-  // 就会重复字符（实测 `laborefficient` 被显示成 `laboreefficient`）——
-  // 这类"显示 ≠ 导出"已经被咬过四次，不能再靠逐次判断补丁。
-  const ranges = [];
-  for (const charSpan of charSpans) {
-    // 英文扩到整词（引擎给的是词级框）；中文保持单字
-    const range = expandToWordRange(baseText, charSpan.aStart, charSpan.aEnd);
-    const last = ranges[ranges.length - 1];
-    if (last && range.start <= last.end) {
-      last.end = Math.max(last.end, range.end);
-      last.word = last.word || range.word;
-    } else {
-      ranges.push({ start: range.start, end: range.end, word: range.word });
-    }
-  }
-
-  let cursor = 0;
-  for (const range of ranges) {
-    if (range.start > cursor) {
-      line.append(document.createTextNode(baseText.slice(cursor, range.start)));
-    }
-    const markEl = document.createElement("mark");
-    markEl.className =
-      "reading-mark " +
-      (mark.level === "differs_punct" ? "reading-mark--punct" : "reading-mark--chars") +
-      (range.word ? " reading-mark--word" : "") +
-      (mark.ack ? " is-acked" : "") +
-      (key === readingPanelKey ? " is-current" : "");
-    // 任务 81：**占位不许进 textContent**。空区间（原文这里没有字、候选那边有）
-    // 只需要"这里有个插入位置"的视觉标记，不是字符；原来用 `|| " "` 塞了空格，
-    // 右栏就比导出多一个空格（`lcc: :pp` vs `lcc::pp`）。
-    const slice = baseText.slice(range.start, range.end);
-    if (slice) {
-      markEl.textContent = slice;
-    } else {
-      markEl.classList.add("reading-mark--insert");
-      markEl.setAttribute("aria-label", "这里缺字（候选有、原文没有）");
-    }
-    markEl.dataset.key = key;
-    markEl.title = range.word ? "英文按词标：这个词里有差异" : "";
-    line.append(markEl);
-    cursor = Math.max(cursor, range.end);
-  }
-  if (cursor < baseText.length) {
-    line.append(document.createTextNode(baseText.slice(cursor)));
-  }
-  return line;
-}
-
-/**
- * 「已审 / 总数」的唯一口径：库里已判 + 本次会话草稿（**全局，不按 marks 窗口**）。
- *
- * 旧实现只数当前窗口里的 `readingEntries`，换一次窗口之前的草稿就不算了——
- * QA 实测"20 次 Enter 后已审从 0 涨到 3 又跌回 0"，根因就是它。
- */
-function readingProgressNumbers() {
-  const counts = readingGlobalCounts;
-  const draftKeys = new Set([...readingDrafts.keys(), ...readingInlineEdits.keys()]);
-  if (!counts) {
-    return { processed: draftKeys.size, total: readingEntries.length };
-  }
-  const total = Number(counts.chars_total || 0);
-  const doneInDb = Math.max(0, total - Number(counts.chars_unacked || 0));
-  return { processed: Math.min(total, doneInDb + draftKeys.size), total };
-}
-
-function renderReadingProgress() {
-  // 任务 67：marks 只加载窗口，`readingEntries` 不再是全书 —— 进度数字必须用
-  // 服务端给的全书计数，否则换一次窗口进度条就缩水一次（用户会以为审过的丢了）。
-  const { processed, total } = readingProgressNumbers();
-  const drafts = readingDrafts.size + readingInlineEdits.size;
-  // 标点计数不在这里：角标文本由 `renderPunctGroupBadge()` 写 `reading-punct-count`，
-  // 进度条只算"汉字差异条数"（`readingProgressNumbers()`，不含标点）。
-  el("reading-progress-text").textContent = `已审 ${processed} / ${total} 条`;
-  const fill = el("reading-progress-fill");
-  fill.style.width = total ? `${Math.round((processed / total) * 100)}%` : "0%";
-  fill.classList.toggle("is-done", total > 0 && processed >= total);
-  const chip = el("reading-draft-chip");
-  chip.hidden = drafts === 0;
-  chip.textContent = `未提交 ${drafts}`;
-  const submit = el("reading-submit");
-  submit.disabled = drafts === 0;
-  submit.textContent = drafts ? `提交 ${drafts} 处` : "提交 0 处";
-  el("reading-submit").classList.toggle("is-ready", drafts > 0);
-}
-
-
 /**
  * 任务 82：选中一条差异 → **左侧 PDF 的这一行、右侧正文的这一行都落在视口垂直中央**。
  *
@@ -18305,41 +18157,6 @@ let readingSuppressFollowUntil = 0;
 function readingLineNode(key) {
   const stream = el("reading-stream");
   return stream ? stream.querySelector(`.reading-line[data-key="${key}"]`) : null;
-}
-
-
-/**
- * 当前审校项的"两边同款"高亮（任务 61）。
- *
- * 用户原话：「左边 pdf 里应该把选中的行高亮出来，右边也高亮出对应的行（左右最好用同样的
- * 颜色和高亮方式，如方框框选）」。所以这里只做一件事：把 `readingPanelKey` 那一条
- * 在**文本流**和**页面上**都标成 `is-current`（琥珀实线框 + 浅底），其余差异维持弱化红。
- * 只改样式，不滚页、不动跟随。
- */
-function refreshReadingCurrentHighlight() {
-  for (const node of document.querySelectorAll("#reading-stream .reading-line.is-current")) {
-    node.classList.remove("is-current");
-  }
-  for (const node of document.querySelectorAll("#reading-stream .reading-mark.is-current")) {
-    node.classList.remove("is-current");
-  }
-  if (readingPanelKey) {
-    const line = readingLineNode(readingPanelKey);
-    if (line) {
-      line.classList.add("is-current");
-      for (const mark of line.querySelectorAll(".reading-mark")) mark.classList.add("is-current");
-    }
-  }
-  for (const item of document.querySelectorAll("#reading-tree .reading-tree__item.is-current")) {
-    if (item.dataset.key !== readingPanelKey) item.classList.remove("is-current");
-  }
-  if (readingPanelKey) {
-    const item = document.querySelector(`#reading-tree .reading-tree__item[data-key="${readingPanelKey}"]`);
-    if (item) item.classList.add("is-current");
-  }
-  // 页面上只有已加载块的页画过差异框：重画这些页 + 当前 key 所在页
-  for (const pageNo of readingPageBlocks.keys()) paintReadingDiffBoxes(pageNo);
-  if (readingPageNo) paintReadingDiffBoxes(readingPageNo);
 }
 
 
@@ -18587,7 +18404,6 @@ function boot() {
     getDrafts: () => readingDrafts,
     getReadingEditingKey: () => readingEditingKey,
     isReadingActive: () => currentView === "reading",
-    renderReadingProgress: () => renderReadingProgress(),
     navigate: (name) => showView(name),
     openPageDetail: (pageNo) => openPageDetail(pageNo),
     // 任务 94 L2：10 个交互函数搬进模块后的状态句柄与回调（只注入句柄 / getter-setter，不注入值）
@@ -18650,7 +18466,6 @@ function boot() {
     getReadingCursorEntry: () => readingCursorEntry,
     setReadingCursorEntry: (value) => { readingCursorEntry = value; },
     showNoticeBar: (text) => showNoticeBar(text),
-    readingDraftStorageKey: () => readingDraftStorageKey(),
     // 任务 94 L5：审校环搬进模块后的状态句柄（状态仍归 app.js，get+set 成对）
     getCurrentView: () => currentView,
     getReadingAppendScheduled: () => readingAppendScheduled,
@@ -18706,7 +18521,6 @@ function boot() {
     paintReadingDiffBoxes: (...args) => paintReadingDiffBoxes(...args),
     paintReadingTile: (...args) => paintReadingTile(...args),
     punctReviewSet: (...args) => punctReviewSet(...args),
-    refreshReadingCurrentHighlight: (...args) => refreshReadingCurrentHighlight(...args),
     // 任务 94 L5：模块要读的常量
     INDEX_IMAGE_WINDOW: INDEX_IMAGE_WINDOW,
     READING_CHUNK: READING_CHUNK,
@@ -18734,11 +18548,16 @@ function boot() {
     setReadingSyncDriver: (value) => { readingSyncDriver = value; return value; },
     setReadingSyncUntil: (value) => { readingSyncUntil = value; return value; },
     // L6 刀3：仍留在 app.js 的叶子函数
-    buildReadingLine: (...args) => buildReadingLine(...args),
     // L6 刀7：仍留在 app.js 的叶子函数
     // L6 刀8：状态 setter（有写点才给）
     setReadingPendingPanelEntry: (value) => { readingPendingPanelEntry = value; return value; },
     setReadingPendingPanelKey: (value) => { readingPendingPanelKey = value; return value; },
+    // L6 刀9：状态 getter
+    getReadingSpanCache: () => readingSpanCache,
+    // L6 刀9：仍留在 app.js 的叶子函数
+    expandToWordRange: (...args) => expandToWordRange(...args),
+    paintInlineRevision: (...args) => paintInlineRevision(...args),
+    readingLineText: (...args) => readingLineText(...args),
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {
