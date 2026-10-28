@@ -96,6 +96,8 @@ export async function run(cfg) {
       return await cropSizeProbe(page);
     case "punct_probe":
       return await punctProbe(page, args);
+    case "handlers_probe":
+      return await handlersProbe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -2361,6 +2363,163 @@ async function punctProbe(page, args) {
   });
   const errors = await page.evaluate(() => window.__b2tErrors || []);
   return { before, opened, after, mutations, errors, ms: Date.now() - started, timeline };
+}
+
+/**
+ * 处理器接线探针（L1 第二笔：setupReading 搬进 reading-view.js 后，30 个绑定的东西还活着吗）。
+ * 每个控件都要有"可观测效果"，不是"点了没报错"。
+ */
+async function handlersProbe(page, args) {
+  await ensureReading(page);
+  const rows = [];
+  const snap = () =>
+    page.evaluate(() => {
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const m = label.match(/(\d+)/);
+      return {
+        page: m ? Number(m[1]) : null,
+        panelKey: (document.querySelector(".reading-panel") || {}).dataset
+          ? document.querySelector(".reading-panel").dataset.key || null : null,
+        filter: (document.getElementById("reading-filter") || {}).value || null,
+        segs: document.querySelectorAll("#reading-stream .reading-seg").length,
+        pendingClass: (document.getElementById("view-reading") || {}).className || "",
+        view: typeof currentView !== "undefined" ? currentView : null,
+        displayHidden: (document.getElementById("reading-display-menu") || {}).hidden ?? null,
+        moreHidden: (document.getElementById("reading-more-menu") || {}).hidden ?? null,
+        submitDisabled: (document.getElementById("reading-submit") || {}).disabled ?? null,
+        notice: (document.getElementById("auto-apply-notice-text") || {}).textContent || "",
+      };
+    });
+  const record = async (name, ok, detail) => {
+    rows.push({ name, ok, detail });
+  };
+
+  // 1) 翻页
+  let before = await snap();
+  try {
+    await page.click("#reading-next", { label: "下一页" });
+    await page.waitForTimeout(700);
+    let after = await snap();
+    if (after.page === before.page) {
+      // 可能已经到末页，反向试一次
+      await page.click("#reading-prev", { label: "上一页" });
+      await page.waitForTimeout(700);
+      after = await snap();
+    }
+    await record("翻页 next/prev", after.page !== before.page, `${before.page} -> ${after.page}`);
+  } catch (error) {
+    await record("翻页 next/prev", false, String(error).slice(0, 160));
+  }
+
+  // 2) 过滤器
+  before = await snap();
+  try {
+    const options = await page.evaluate(() =>
+      [...document.querySelectorAll("#reading-filter option")].map((o) => o.value));
+    const nextValue = options.find((v) => v !== before.filter) || before.filter;
+    await page.selectOption("#reading-filter", nextValue);
+    await page.waitForTimeout(700);
+    const after = await snap();
+    await record("过滤器 select", after.filter === nextValue && after.filter !== before.filter,
+                 `${before.filter} -> ${after.filter}`);
+  } catch (error) {
+    await record("过滤器 select", false, String(error).slice(0, 160));
+  }
+
+  // 3) 显示菜单 / 更多菜单：点开 → 点空白关
+  for (const [name, btn, menu] of [
+    ["显示菜单", "#reading-display-open", "#reading-display-menu"],
+    ["更多菜单", "#reading-more-open", "#reading-more-menu"],
+  ]) {
+    try {
+      await page.click(btn, { label: `打开${name}` });
+      await page.waitForTimeout(300);
+      const opened = await page.evaluate((sel) => {
+        const m = document.querySelector(sel);
+        return Boolean(m && !m.hidden);
+      }, menu);
+      await page.mouse.click(700, 300, { label: "点空白处" });
+      await page.waitForTimeout(300);
+      const closed = await page.evaluate((sel) => {
+        const m = document.querySelector(sel);
+        return Boolean(m && m.hidden);
+      }, menu);
+      await record(name, opened && closed, `打开=${opened} 点空白关=${closed}`);
+    } catch (error) {
+      await record(name, false, String(error).slice(0, 160));
+    }
+  }
+
+  // 4) 待审红字开关 → view-reading 的 hide-pending 类
+  try {
+    const had = (await snap()).pendingClass.includes("hide-pending");
+    await page.click("#reading-pending-toggle", { label: "切换待审红字" });
+    await page.waitForTimeout(500);
+    const has = (await snap()).pendingClass.includes("hide-pending");
+    await page.click("#reading-pending-toggle", { label: "切回待审红字" });
+    await page.waitForTimeout(300);
+    await record("待审红字开关", had !== has, `hide-pending: ${had} -> ${has}`);
+  } catch (error) {
+    await record("待审红字开关", false, String(error).slice(0, 160));
+  }
+
+  // 5) 提交 / 撤销（隔离库上安全）
+  try {
+    await page.click("#reading-submit", { label: "提交（空）" });
+    await page.waitForTimeout(600);
+    const after = await snap();
+    await record("提交按钮", true, `disabled=${after.submitDisabled} notice=${(after.notice || "").slice(0, 40)}`);
+  } catch (error) {
+    await record("提交按钮", false, String(error).slice(0, 160));
+  }
+  try {
+    await page.click("#reading-more-open", { label: "打开更多" });
+    await page.waitForTimeout(300);
+    await page.click("#reading-undo", { label: "撤回上次提交" });
+    await page.waitForTimeout(600);
+    await record("撤销按钮", true, "点击未抛错（无可撤销时只应提示）");
+  } catch (error) {
+    await record("撤销按钮", false, String(error).slice(0, 160));
+  }
+
+  // 6) 盲区出口
+  try {
+    const beforeView = (await snap()).view;
+    await page.click("#reading-more-open", { label: "打开更多" });
+    await page.waitForTimeout(250);
+    await page.click("#reading-blindspot", { label: "可疑行" });
+    await page.waitForTimeout(1200);
+    const after = await snap();
+    await record("盲区出口", after.view !== beforeView, `view ${beforeView} -> ${after.view}`);
+    // 回到审校，方便后面键盘测试
+    await page.evaluate(() => {
+      const btn = document.querySelector('button[data-workflow-step="review"]');
+      if (btn) btn.click();
+    });
+    await page.waitForTimeout(800);
+  } catch (error) {
+    await record("盲区出口", false, String(error).slice(0, 160));
+  }
+
+  // 7) 键盘：Enter 跳下一处 / Esc 关面板
+  try {
+    await ensureReading(page);
+    await page.click("#reading-next-unreviewed", { label: "打开一条" });
+    await page.waitForTimeout(900);
+    const b = await snap();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(900);
+    const a = await snap();
+    await record("键盘 Enter", Boolean(b.panelKey) && a.panelKey !== b.panelKey,
+                 `${b.panelKey} -> ${a.panelKey}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(600);
+    const c = await snap();
+    await record("键盘 Esc 关面板", c.panelKey === null, `panelKey ${a.panelKey} -> ${c.panelKey}`);
+  } catch (error) {
+    await record("键盘", false, String(error).slice(0, 160));
+  }
+  return { rows };
 }
 
 async function nextProbe(page) {
