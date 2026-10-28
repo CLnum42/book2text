@@ -40,6 +40,10 @@ export async function run(cfg) {
       return await undo(page, cfg);
     case "export":
       return await exportStep(page, cfg);
+    case "page_sync":
+      return await pageSync(page, cfg, args);
+    case "queue_end":
+      return await queueEnd(page, cfg);
     case "images":
       return await measureImages(page, args);
     case "audit":
@@ -210,6 +214,427 @@ async function scrollPageColumn(page, container, tileSelector, scroll) {
     },
     { container, tile: tileSelector, scroll }
   );
+}
+
+/** 读三方：当前差异项页（面板头） / 顶部页码 / 左栏 25% 可见页，并附同步日志。 */
+async function pageSyncSnapshot(page) {
+  const read = async () =>
+    await page.evaluate(() => {
+      const scroller = document.getElementById("reading-pdf-scroll");
+      const labelText = (document.getElementById("reading-page-no") || {}).innerText || "";
+      const match = labelText.match(/(\d+)/);
+      const label = match ? Number(match[1]) : null;
+
+      const visibleTiles = [];
+      if (scroller) {
+        const rect = scroller.getBoundingClientRect();
+        for (const tile of scroller.querySelectorAll(".reading-page")) {
+          const tileRect = tile.getBoundingClientRect();
+          const overlap = Math.min(tileRect.bottom, rect.bottom) - Math.max(tileRect.top, rect.top);
+          if (overlap > 0) {
+            visibleTiles.push({
+              page: Number(tile.dataset.pageNo),
+              top: Math.round(tileRect.top - rect.top),
+              height: Math.round(tileRect.height),
+              overlap: Math.round(overlap),
+            });
+          }
+        }
+      }
+      const dominant = visibleTiles.length
+        ? visibleTiles.reduce((best, item) => (item.overlap > best.overlap ? item : best), visibleTiles[0])
+        : null;
+
+      const tileAt = (ratio) => {
+        if (!scroller) return null;
+        const rect = scroller.getBoundingClientRect();
+        const anchor = rect.top + scroller.clientHeight * ratio;
+        for (const tile of scroller.querySelectorAll(".reading-page")) {
+          const tileRect = tile.getBoundingClientRect();
+          if (tileRect.top <= anchor && tileRect.bottom > anchor) return Number(tile.dataset.pageNo);
+        }
+        return null;
+      };
+
+      const panelHead = document.querySelector(".reading-panel__head strong");
+      let panelPage = null;
+      if (panelHead) {
+        const panelText = panelHead.textContent || "";
+        const panelMatch = panelText.match(/第\s*(\d+)\s*页/);
+        if (panelMatch) panelPage = Number(panelMatch[1]);
+      }
+      const panel = document.querySelector(".reading-panel");
+      let panelVisible = false;
+      if (panel) {
+        const r = panel.getBoundingClientRect();
+        panelVisible = r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight;
+      }
+      const lineCurrent = document.querySelectorAll("#reading-stream .reading-line.is-current").length;
+      const markCurrent = document.querySelectorAll("#reading-stream .reading-mark.is-current").length;
+      const pdfBox = document.getElementById("reading-pdf-box");
+      const pdfBoxes = pdfBox && !pdfBox.hidden ? pdfBox.querySelectorAll(".box").length : 0;
+      const diffBoxes = document.querySelectorAll("#reading-diff-layer .box").length;
+
+      return {
+        label,
+        labelText: labelText.trim(),
+        panelPage,
+        panelText: panelHead ? (panelHead.textContent || "").trim() : null,
+        tilePage: tileAt(0.25),
+        tileCenter: tileAt(0.5),
+        tileDominant: dominant ? dominant.page : null,
+        visibleTiles,
+        scrollTop: scroller ? Math.round(scroller.scrollTop) : null,
+        viewport: `${window.innerWidth}x${window.innerHeight}`,
+        panelVisible,
+        highlight: { lineCurrent, markCurrent, pdfBoxes, diffBoxes, any: lineCurrent + markCurrent + pdfBoxes + diffBoxes > 0 },
+        sync: window.__b2tPageSync || null,
+        syncLog: (window.__b2tPageSyncLog || []).slice(0, 5),
+      };
+    });
+
+  let last = await read();
+  let lastKey = null;
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const key = JSON.stringify([
+      last.label, last.panelPage, last.tilePage, last.scrollTop, last.viewport,
+    ]);
+    if (key === lastKey) return last;
+    lastKey = key;
+    await page.waitForTimeout(140);
+    last = await read();
+  }
+  return last;
+}
+
+async function clickTreePage(page, pageNo) {
+  // 左树只列"有差异的页"（这本书 356 行 / 662 页）。目标页没有差异时没有这一行，
+  // 退到最近的、存在的一行，并在结果里如实记 requested / actual。
+  const actual = await page.evaluate((wanted) => {
+    const rows = [...document.querySelectorAll(".reading-tree__row[data-page]")].map((row) =>
+      Number(row.dataset.page)
+    );
+    if (!rows.length) return null;
+    if (rows.includes(wanted)) return wanted;
+    const below = rows.filter((value) => value < wanted).sort((a, b) => b - a)[0];
+    const above = rows.filter((value) => value > wanted).sort((a, b) => a - b)[0];
+    if (below === undefined) return above ?? null;
+    if (above === undefined) return below;
+    return wanted - below <= above - wanted ? below : above;
+  }, pageNo);
+  if (actual === null) throw new Error("左树没有任何页行");
+  const selector = `.reading-tree__row[data-page="${actual}"]`;
+  await page.click(selector, { label: `点左树第 ${actual} 页` });
+  await waitFor(
+    page,
+    (no) => {
+      const node = document.getElementById("reading-page-no");
+      return Boolean(node && node.textContent.replace(/\s+/g, "").includes(`第${no}页`));
+    },
+    `顶部页码变成第 ${actual} 页`,
+    30000,
+    actual
+  );
+  return { requested: pageNo, actual };
+}
+
+async function waitInvariantForLabel(page, label) {
+  // 应用的 __b2tPageSync 在页码变化后 130ms 才核对；等它针对当前页码跑过一次，
+  // 量到的才是"用户会看到的稳态"，而不是翻页瞬间。
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const sync = await page.evaluate(() => window.__b2tPageSync || null);
+    if (sync && sync.label === label) return sync;
+    await page.waitForTimeout(150);
+  }
+  return null;
+}
+
+async function dragPdfGrip(page, delta) {
+  const box = await page.evaluate(() => {
+    const grip = document.getElementById("reading-grip-pdf");
+    if (!grip) return null;
+    const rect = grip.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return null;
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  });
+  if (!box) return false;
+  await page.mouse.move(box.x, box.y, { label: "移到页列分隔条" });
+  await page.mouse.down();
+  await page.mouse.move(box.x + delta, box.y, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  return true;
+}
+
+async function wheelToPage(page, pageNo) {
+  const box = await page.evaluate(() => {
+    const scroller = document.getElementById("reading-pdf-scroll");
+    const rect = scroller.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(box.x, box.y, { label: "移到页列上" });
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const current = await page.evaluate(() => {
+      const scroller = document.getElementById("reading-pdf-scroll");
+      const rect = scroller.getBoundingClientRect();
+      const anchor = rect.top + scroller.clientHeight * 0.25;
+      for (const tile of scroller.querySelectorAll(".reading-page")) {
+        const tileRect = tile.getBoundingClientRect();
+        if (tileRect.top <= anchor && tileRect.bottom > anchor) return Number(tile.dataset.pageNo);
+      }
+      return null;
+    });
+    if (current !== null && Math.abs(current - pageNo) <= 1) break;
+    const direction = current === null || current < pageNo ? 1 : -1;
+    await page.mouse.wheel(0, direction * 900, { label: "滚页列" });
+    await page.waitForTimeout(40);
+  }
+  // 让"左栏滚动 → 顶部页码"跟上（这是应用自身的同步，不是我们替它改）
+  await waitFor(
+    page,
+    (no) => {
+      const label = document.getElementById("reading-page-no");
+      return Boolean(label && Math.abs(Number((label.textContent.match(/(\d+)/) || [0, 0])[1]) - no) <= 2);
+    },
+    "滚动后顶部页码跟上",
+    30000,
+    pageNo
+  );
+}
+
+/**
+ * 左右页同步的六条路径。返回顶部页码、左栏 25% 处的页、是否一致、应用不变量。
+ * 全程真实鼠标（点树 / 滚轮 / 点按钮），不 dispatchEvent。
+ */
+async function clickMarkAt(page, label) {
+  // `.reading-mark` 一屏有几十个（同一行可能多个词级 mark），选择器不唯一；
+  // 用坐标点第一处"可见且在视口里"的 mark —— 仍然是真实鼠标。
+  const point = await page.evaluate(async () => {
+    const visible = () => {
+      for (const mark of document.querySelectorAll("#reading-stream .reading-mark")) {
+        const rect = mark.getBoundingClientRect();
+        if (
+          rect.width > 0 && rect.height > 0 &&
+          rect.bottom > 0 && rect.top < window.innerHeight &&
+          rect.right > 0 && rect.left < window.innerWidth
+        ) {
+          return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+        }
+      }
+      return null;
+    };
+    const found = visible();
+    if (found) return found;
+    // 视口里没有：把正文流里第一处差异滚到中间（只移动视口，点击仍是真鼠标）
+    const first = document.querySelector("#reading-stream .reading-mark");
+    if (!first) return null;
+    first.scrollIntoView({ block: "center", behavior: "auto" });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return visible();
+  });
+  if (!point) throw new Error("正文流里没有可点的差异标记");
+  await page.mouse.click(point.x, point.y, { label });
+  await waitFor(
+    page,
+    () => Boolean(document.querySelector(".reading-panel__head strong")),
+    "差异面板打开",
+    30000
+  );
+}
+
+async function ensurePanelOpen(page) {
+  const open = await page.evaluate(() => Boolean(document.querySelector(".reading-panel__head strong")));
+  if (open) return;
+  await clickMarkAt(page, "点一处差异");
+}
+
+async function clickFirstMark(page) {
+  // 跳页后 marks 是异步补窗口的：先等正文流里真的出现标记，再点。
+  await waitFor(
+    page,
+    () => document.querySelectorAll("#reading-stream .reading-mark").length > 0,
+    "正文流出现差异标记",
+    20000
+  ).catch(() => {});
+  await clickMarkAt(page, "点一处差异");
+}
+
+/**
+ * 左右页同步（三方）：当前差异项页 == 顶部页码 == 左栏 25% 可见页。
+ * 只看前两个数会漏掉真正错的情况（面板第 13 页、顶部与左侧都是第 28 页）。
+ */
+async function pageSync(page, cfg, args) {
+  const path = args.path || "open";
+  await ensureReading(page);
+  const before = await pageSyncSnapshot(page);
+  let beforeTree = null;
+
+  if (path === "open") {
+    await page.click('button[data-workflow-step="pages"]', { label: "切到页面确认" });
+    await waitFor(
+      page,
+      () => Boolean(document.getElementById("view-pages") && !document.getElementById("view-pages").hidden),
+      "页面视图可见",
+      30000
+    );
+    await page.click('button[data-workflow-step="review"]', { label: "重新进入正文审校" });
+    await waitFor(
+      page,
+      () => Boolean(document.getElementById("view-reading") && !document.getElementById("view-reading").hidden),
+      "阅读视图可见",
+      60000
+    );
+    const snapshot = await pageSyncSnapshot(page);
+    return { path, before, snapshot, screenshot: await screenshot(page, cfg, "pagesync-open") };
+  }
+
+  if (path === "tree") {
+    beforeTree = await clickTreePage(page, args.page || 50);
+    await clickFirstMark(page);
+    const snapshot = await pageSyncSnapshot(page);
+    return { path, before, beforeTree, snapshot, screenshot: await screenshot(page, cfg, "pagesync-tree") };
+  }
+
+  if (path === "next20") {
+    const iterations = [];
+    let previous = await page.evaluate(() => ({
+      label: (document.getElementById("reading-page-no") || {}).textContent || "",
+      panel: (document.querySelector(".reading-panel__head strong") || {}).textContent || "",
+    }));
+    for (let i = 0; i < 20; i += 1) {
+      await page.click("#reading-next-unreviewed", { label: `下一处未审（第 ${i + 1} 次）` });
+      // 同一页上可能有多处：页码不变但面板换了，所以两个都等
+      const changed = await page
+        .waitForFunction(
+          (prev) => {
+            const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+            const panel = (document.querySelector(".reading-panel__head strong") || {}).textContent || "";
+            return label !== prev.label || panel !== prev.panel;
+          },
+          previous,
+          { timeout: 15000 }
+        )
+        .then(() => true)
+        .catch(() => false);
+      const snapshot = await pageSyncSnapshot(page);
+      const finished = /全部处理完|全部处理完毕|没有未审|都审完/.test(snapshot.labelText + " " + (snapshot.panelText || ""));
+      if (finished) {
+        iterations.push({ index: i + 1, stopped: true, finished: true, snapshot });
+        break;
+      }
+      // 没变化也记一条并继续：可能是一次慢加载，也可能就是"点了没反应"，都要暴露出来
+      iterations.push({ index: i + 1, changed, snapshot });
+      previous = await page.evaluate(() => ({
+        label: (document.getElementById("reading-page-no") || {}).textContent || "",
+        panel: (document.querySelector(".reading-panel__head strong") || {}).textContent || "",
+      }));
+    }
+    return {
+      path,
+      before,
+      iterations,
+      snapshot: iterations.length ? iterations[iterations.length - 1].snapshot : await pageSyncSnapshot(page),
+      screenshot: await screenshot(page, cfg, "pagesync-next20"),
+    };
+  }
+
+  if (path === "scroll") {
+    // 面板开着时，应用会以"当前差异项所在页"为准把页列拉回去（设计如此）。
+    // 所以这里不追求滚到 120 页，而是滚几下后验证三方仍然一致。
+    await ensurePanelOpen(page);
+    const box = await page.evaluate(() => {
+      const scroller = document.getElementById("reading-pdf-scroll");
+      const rect = scroller.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    });
+    await page.mouse.move(box.x, box.y, { label: "移到页列上" });
+    for (let i = 0; i < 3; i += 1) {
+      await page.mouse.wheel(0, 900, { label: "手动滚页列" });
+      await page.waitForTimeout(200);
+    }
+    const snapshot = await pageSyncSnapshot(page);
+    return { path, before, snapshot, screenshot: await screenshot(page, cfg, "pagesync-scroll") };
+  }
+
+  if (path === "resize") {
+    await ensurePanelOpen(page);
+    const itemBefore = await pageSyncSnapshot(page);
+    const afterDrag = args.skipDrag
+      ? null
+      : ((await dragPdfGrip(page, args.dragDelta ?? -60)), await pageSyncSnapshot(page));
+    await page.cdp("Emulation.setDeviceMetricsOverride", {
+      width: 1180,
+      height: 900,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await page.waitForFunction(() => window.innerWidth === 1180, undefined, { timeout: 15000 });
+    await page.waitForTimeout(500);
+    const resized = await pageSyncSnapshot(page);
+    await page.cdp("Emulation.setDeviceMetricsOverride", {
+      width: cfg.viewport.width,
+      height: cfg.viewport.height,
+      deviceScaleFactor: cfg.viewport.dpr,
+      mobile: false,
+    });
+    await page.waitForFunction((width) => window.innerWidth === width, cfg.viewport.width, { timeout: 15000 });
+    return {
+      path,
+      before: itemBefore,
+      afterDrag,
+      snapshot: resized,
+      restored: true,
+      screenshot: await screenshot(page, cfg, "pagesync-resize"),
+    };
+  }
+
+  if (path === "crosspage") {
+    const target = await page.evaluate(() => {
+      const segments = (typeof readingData !== "undefined" && readingData && readingData.segments) || [];
+      for (const segment of segments) {
+        const pages = [...new Set((segment.line_spans || []).map((span) => Number(span.page_no)))];
+        if (pages.length < 2) continue;
+        for (const span of segment.line_spans || []) {
+          const key = `${span.block_id}:${span.line_index}`;
+          if (typeof readingMarks !== "undefined" && readingMarks.has(key)) {
+            return { key, page: Number(span.page_no), seq: segment.seq, pages };
+          }
+        }
+      }
+      return null;
+    });
+    if (!target) {
+      // 窗口里没有跨页段的标记时，退一步：找任意跨页段的第一页，跳过去点该页第一处差异。
+      const fallbackPage = await page.evaluate(() => {
+        const segments = (typeof readingData !== "undefined" && readingData && readingData.segments) || [];
+        const segment = segments.find((item) => new Set((item.line_spans || []).map((s) => s.page_no)).size > 1);
+        return segment ? Number(segment.pages[0].page_no) : null;
+      });
+      if (!fallbackPage) return { path, before, skipped: true, reason: "没有跨页段" };
+      beforeTree = await clickTreePage(page, fallbackPage);
+      await clickFirstMark(page);
+      const snapshot = await pageSyncSnapshot(page);
+      return { path, before, beforeTree, snapshot, fallback: true, screenshot: await screenshot(page, cfg, "pagesync-crosspage") };
+    }
+    beforeTree = await clickTreePage(page, target.page);
+    const selector = `.reading-mark[data-key="${target.key}"]`;
+    const exists = await page.evaluate((sel) => Boolean(document.querySelector(sel)), selector);
+    if (exists) {
+      await page.click(selector, { label: "点跨页段的差异项" });
+    } else {
+      await clickFirstMark(page);
+    }
+    await waitFor(
+      page,
+      () => Boolean(document.querySelector(".reading-panel__head strong")),
+      "差异面板打开（跨页项）",
+      30000
+    );
+    const snapshot = await pageSyncSnapshot(page);
+    return { path, before, beforeTree, target, snapshot, screenshot: await screenshot(page, cfg, "pagesync-crosspage") };
+  }
+
+  throw new Error(`未知的同步路径：${path}`);
 }
 
 async function measureImages(page, args) {
@@ -687,6 +1112,46 @@ async function step(page, cfg, which) {
 }
 
 // ---------------------------------------------------------------- 阅读流
+
+async function queueEnd(page, cfg) {
+  // 队列已清空时不能等左树（没有行）；只确认在阅读视图。
+  const visible = await page.evaluate(() => {
+    const node = document.getElementById("view-reading");
+    return Boolean(node && !node.hidden);
+  });
+  if (!visible) throw new Error("当前不在阅读视图");
+  const snapshot = async () =>
+    await page.evaluate(() => ({
+      progress: (document.getElementById("reading-progress-text") || {}).innerText || "",
+      button: (document.getElementById("reading-next-unreviewed") || {}).innerText || "",
+      panel: Boolean(document.querySelector(".reading-panel")),
+      toast: (document.querySelector(".toast, .notification, .app-toast") || {}).innerText || "",
+    }));
+  const before = await snapshot();
+  await page.click("#reading-next-unreviewed", { label: "下一处未审（队列已空）" });
+  // 等一个可观测变化：进度文案变了，或者出现了提示；两秒内没变化也继续看结果
+  await page
+    .waitForFunction(
+      (text) => {
+        const progress = (document.getElementById("reading-progress-text") || {}).innerText || "";
+        const toast = (document.querySelector(".toast, .notification, .app-toast") || {}).innerText || "";
+        return progress !== text || toast.length > 0;
+      },
+      before.progress,
+      { timeout: 2500 }
+    )
+    .catch(() => {});
+  const after = await snapshot();
+  const message = [after.progress, after.toast].filter(Boolean).join(" | ");
+  return {
+    before,
+    after,
+    message,
+    explicit: /全部处理完|全部处理完毕|没有未审|已经全部|都审完/.test(message),
+    panelVisible: after.panel,
+    buttonText: after.button,
+  };
+}
 
 async function ensureReading(page) {
   await dismissMasks(page);

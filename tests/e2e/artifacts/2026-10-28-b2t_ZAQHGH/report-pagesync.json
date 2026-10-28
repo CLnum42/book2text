@@ -1,0 +1,83 @@
+{
+  "title": "左右页同步（六条路径）",
+  "rows": [
+    {
+      "step": "打开审校",
+      "assertion": "打开审校：顶部 == 左栏（无当前项）",
+      "status": "PASS",
+      "evidence": "面板第 None 页 / 顶部第 1 页 / 左栏主导第 1 页（25% 锚点=1，中心=1）；面板可见=False；高亮 line=0 mark=0 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177720832}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177718601}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177712377}]"
+    },
+    {
+      "step": "点左树条目（第 50 页）",
+      "assertion": "三方一致：点左树条目（第 50 页）",
+      "status": "PASS",
+      "evidence": "面板第 51 页 / 顶部第 51 页 / 左栏主导第 51 页（25% 锚点=51，中心=51）；面板可见=True；高亮 line=1 mark=1 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 50, \"tilePage\": 50, \"panelPage\": null, \"ok\": true, \"scrollTop\": 24890, \"at\": 1793177724482}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177721908}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177720832}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177718601}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177712377}]"
+    },
+    {
+      "step": "点左树条目（第 50 页）",
+      "assertion": "候选面板可见：点左树条目（第 50 页）",
+      "status": "PASS",
+      "evidence": "panelVisible=true；面板第 51 页 / 顶部第 51 页 / 左栏主导第 51 页（25% 锚点=51，中心=51）；面板可见=True；高亮 line=1 mark=1 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 50, \"tilePage\": 50, \"panelPage\": null, \"ok\": true, \"scrollTop\": 24890, \"at\": 1793177724482}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177721908}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177720832}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177718601}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177712377}]"
+    },
+    {
+      "step": "点左树条目（第 50 页）",
+      "assertion": "当前行有高亮：点左树条目（第 50 页）",
+      "status": "PASS",
+      "evidence": "面板第 51 页 / 顶部第 51 页 / 左栏主导第 51 页（25% 锚点=51，中心=51）；面板可见=True；高亮 line=1 mark=1 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 50, \"tilePage\": 50, \"panelPage\": null, \"ok\": true, \"scrollTop\": 24890, \"at\": 1793177724482}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177721908}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177720832}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177718601}, {\"reason\": \"updateReadingPage\", \"label\": 1, \"tilePage\": 1, \"panelPage\": null, \"ok\": true, \"scrollTop\": 0, \"at\": 1793177712377}]"
+    },
+    {
+      "step": "连按下一处未审 20 次",
+      "assertion": "连按 20 次：三方一致 + 面板可见 + 当前行高亮",
+      "status": "FAIL",
+      "evidence": "通过 18/20；失败项：[{\"index\": 8, \"label\": 64, \"panel\": null, \"dominant\": 64, \"panelVisible\": false, \"highlight\": false, \"reason\": null}, {\"index\": 10, \"label\": 66, \"panel\": null, \"dominant\": 66, \"panelVisible\": false, \"highlight\": false, \"reason\": null}]"
+    },
+    {
+      "step": "左栏手动滚到第 120 页",
+      "assertion": "三方一致：左栏手动滚到第 120 页",
+      "status": "PASS",
+      "evidence": "面板第 94 页 / 顶部第 94 页 / 左栏主导第 94 页（25% 锚点=94，中心=94）；面板可见=True；高亮 line=1 mark=2 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47283, \"at\": 1793177750665}, {\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47217, \"at\": 1793177749487}, {\"reason\": \"gotoEntry\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47217, \"at\": 1793177748494}, {\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47192, \"at\": 1793177747525}, {\"reason\": \"gotoEntry\", \"label\": 93, \"tilePage\": 93, \"panelPage\": 93, \"ok\": true, \"scrollTop\": 46741, \"at\": 1793177746470}]"
+    },
+    {
+      "step": "左栏手动滚到第 120 页",
+      "assertion": "候选面板可见：左栏手动滚到第 120 页",
+      "status": "PASS",
+      "evidence": "panelVisible=true；面板第 94 页 / 顶部第 94 页 / 左栏主导第 94 页（25% 锚点=94，中心=94）；面板可见=True；高亮 line=1 mark=2 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47283, \"at\": 1793177750665}, {\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47217, \"at\": 1793177749487}, {\"reason\": \"gotoEntry\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47217, \"at\": 1793177748494}, {\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47192, \"at\": 1793177747525}, {\"reason\": \"gotoEntry\", \"label\": 93, \"tilePage\": 93, \"panelPage\": 93, \"ok\": true, \"scrollTop\": 46741, \"at\": 1793177746470}]"
+    },
+    {
+      "step": "左栏手动滚到第 120 页",
+      "assertion": "当前行有高亮：左栏手动滚到第 120 页",
+      "status": "PASS",
+      "evidence": "面板第 94 页 / 顶部第 94 页 / 左栏主导第 94 页（25% 锚点=94，中心=94）；面板可见=True；高亮 line=1 mark=2 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47283, \"at\": 1793177750665}, {\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47217, \"at\": 1793177749487}, {\"reason\": \"gotoEntry\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47217, \"at\": 1793177748494}, {\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 47192, \"at\": 1793177747525}, {\"reason\": \"gotoEntry\", \"label\": 93, \"tilePage\": 93, \"panelPage\": 93, \"ok\": true, \"scrollTop\": 46741, \"at\": 1793177746470}]"
+    },
+    {
+      "step": "窗口尺寸变化（拖页列 + 1180px）",
+      "assertion": "三方一致：窗口尺寸变化（拖页列 + 1180px）",
+      "status": "PASS",
+      "evidence": "面板第 94 页 / 顶部第 94 页 / 左栏主导第 94 页（25% 锚点=94，中心=94）；面板可见=True；高亮 line=1 mark=2 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40068, \"at\": 1793177813292}, {\"reason\": \"afterFix\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40068, \"at\": 1793177812765}, {\"reason\": \"updateReadingPage\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40068, \"at\": 1793177812495}, {\"reason\": \"leftScroll\", \"label\": 80, \"tilePage\": 94, \"panelPage\": 94, \"ok\": false, \"scrollTop\": 40068, \"at\": 1793177812355}, {\"reason\": \"afterFix\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40663, \"at\": 1793177811664}]"
+    },
+    {
+      "step": "窗口尺寸变化（拖页列 + 1180px）",
+      "assertion": "候选面板可见：窗口尺寸变化（拖页列 + 1180px）",
+      "status": "PASS",
+      "evidence": "panelVisible=true；面板第 94 页 / 顶部第 94 页 / 左栏主导第 94 页（25% 锚点=94，中心=94）；面板可见=True；高亮 line=1 mark=2 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40068, \"at\": 1793177813292}, {\"reason\": \"afterFix\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40068, \"at\": 1793177812765}, {\"reason\": \"updateReadingPage\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40068, \"at\": 1793177812495}, {\"reason\": \"leftScroll\", \"label\": 80, \"tilePage\": 94, \"panelPage\": 94, \"ok\": false, \"scrollTop\": 40068, \"at\": 1793177812355}, {\"reason\": \"afterFix\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40663, \"at\": 1793177811664}]"
+    },
+    {
+      "step": "窗口尺寸变化（拖页列 + 1180px）",
+      "assertion": "当前行有高亮：窗口尺寸变化（拖页列 + 1180px）",
+      "status": "PASS",
+      "evidence": "面板第 94 页 / 顶部第 94 页 / 左栏主导第 94 页（25% 锚点=94，中心=94）；面板可见=True；高亮 line=1 mark=2 pdfBox=0 diffBox=0；__b2tPageSyncLog=[{\"reason\": \"leftScroll\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40068, \"at\": 1793177813292}, {\"reason\": \"afterFix\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40068, \"at\": 1793177812765}, {\"reason\": \"updateReadingPage\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40068, \"at\": 1793177812495}, {\"reason\": \"leftScroll\", \"label\": 80, \"tilePage\": 94, \"panelPage\": 94, \"ok\": false, \"scrollTop\": 40068, \"at\": 1793177812355}, {\"reason\": \"afterFix\", \"label\": 94, \"tilePage\": 94, \"panelPage\": 94, \"ok\": true, \"scrollTop\": 40663, \"at\": 1793177811664}]"
+    },
+    {
+      "step": "窗口尺寸变化（拖页列 + 1180px）",
+      "assertion": "尺寸变化后仍在当前差异项所在页",
+      "status": "PASS",
+      "evidence": "前 94 → 后 94"
+    },
+    {
+      "step": "跨页条目",
+      "assertion": "跨页条目：不适用",
+      "status": "PASS",
+      "evidence": "没有跨页段（本书 0 个跨页段）"
+    }
+  ]
+}

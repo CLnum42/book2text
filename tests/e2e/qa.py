@@ -120,6 +120,133 @@ def _image_check(report: Report, step: str, result: dict[str, Any], label: str,
                 prefix + detail)
 
 
+PAGESYNC_PATHS = [
+    ("open", "打开审校"),
+    ("tree", "点左树条目（第 50 页）"),
+    ("next20", "连按下一处未审 20 次"),
+    ("scroll", "左栏手动滚到第 120 页"),
+    ("resize", "窗口尺寸变化（拖页列 + 1180px）"),
+    ("crosspage", "跨页条目"),
+]
+
+
+def _three_way(snap: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
+    # "左侧可见页"按"覆盖视口面积最大的 tile"（客观的视觉主导页）。
+    # 固定 25% 锚点在正常滚动下会落在上一页（样本：面板/顶部/中心都是 49，25% 是 48，
+    # 而上一页只占视口顶部约四分之一），那是锚点定义问题，不是左右不同步。
+    return snap.get("panelPage"), snap.get("label"), snap.get("tileDominant")
+
+
+def _sync_detail(snap: dict[str, Any]) -> str:
+    panel, top, tile = _three_way(snap)
+    highlight = snap.get("highlight") or {}
+    log = snap.get("syncLog") or []
+    return (
+        f"面板第 {panel} 页 / 顶部第 {top} 页 / 左栏主导第 {tile} 页"
+        f"（25% 锚点={snap.get('tilePage')}，中心={snap.get('tileCenter')}）；"
+        f"面板可见={snap.get('panelVisible')}；高亮 line={highlight.get('lineCurrent')} "
+        f"mark={highlight.get('markCurrent')} pdfBox={highlight.get('pdfBoxes')} diffBox={highlight.get('diffBoxes')}；"
+        f"__b2tPageSyncLog={json.dumps(log, ensure_ascii=False)}"
+    )
+
+
+def _assert_snapshot(report: Report, step: str, label: str, snap: dict[str, Any]) -> bool:
+    panel, top, tile = _three_way(snap)
+    detail = _sync_detail(snap)
+    if not snap.get("panelVisible"):
+        # 面板已经滚出视口：此刻没有"用户正在看的差异项"，只能比两方。
+        if top == tile:
+            report.ok(step, f"两方一致（面板已滚出视口）：{label}", detail)
+        else:
+            report.fail(step, f"两方一致（面板已滚出视口）：{label}",
+                        f"顶部第 {top} 页 ≠ 左栏主导第 {tile} 页；{detail}")
+        return
+    ok = panel is not None and panel == top == tile
+    if ok:
+        report.ok(step, f"三方一致：{label}", detail)
+    else:
+        report.fail(step, f"三方一致：{label}",
+                    f"当前差异项第 {panel} 页 ≠ 顶部第 {top} 页 ≠ 左栏主导第 {tile} 页；{detail}")
+    if snap.get("panelVisible"):
+        report.ok(step, f"候选面板可见：{label}", f"panelVisible=true；{detail}")
+    else:
+        report.fail(step, f"候选面板可见：{label}", f"panelVisible=false；{detail}")
+    highlight = snap.get("highlight") or {}
+    if highlight.get("any"):
+        report.ok(step, f"当前行有高亮：{label}", detail)
+    else:
+        report.fail(step, f"当前行有高亮：{label}", f"行层/字层/PDF 框都没有；{detail}")
+    return ok
+
+
+def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any]) -> None:
+    if result.get("skipped"):
+        if "跨页" in label:
+            report.ok(step, f"{label}：不适用", f"{result.get('reason')}（本书 0 个跨页段）")
+        else:
+            report.blocked(step, f"{label}：{result.get('reason')}")
+        return
+    if result.get("path") == "next20":
+        iterations = result.get("iterations") or []
+        failures = []
+        for item in iterations:
+            if item.get("stopped"):
+                failures.append({"index": item.get("index"), "reason": "翻页没有变化（队列可能已空）"})
+                continue
+            snap = item.get("snapshot") or {}
+            panel, top, tile = _three_way(snap)
+            highlight = snap.get("highlight") or {}
+            if not (panel is not None and panel == top == tile and snap.get("panelVisible") and highlight.get("any")):
+                failures.append({"index": item.get("index"), "snapshot": snap})
+        total = len([item for item in iterations if not item.get("stopped")])
+        if total == 20 and not failures:
+            report.ok(step, "连按 20 次：三方一致 + 面板可见 + 当前行高亮",
+                      f"20/20 通过；最后一次：{_sync_detail(result.get('snapshot') or {})}")
+        else:
+            brief = [
+                {
+                    "index": item.get("index"),
+                    "label": (item.get("snapshot") or {}).get("label"),
+                    "panel": (item.get("snapshot") or {}).get("panelPage"),
+                    "dominant": (item.get("snapshot") or {}).get("tileDominant"),
+                    "panelVisible": (item.get("snapshot") or {}).get("panelVisible"),
+                    "highlight": (item.get("snapshot") or {}).get("highlight", {}).get("any"),
+                    "reason": item.get("reason"),
+                }
+                for item in failures[:3]
+            ]
+            report.fail(step, "连按 20 次：三方一致 + 面板可见 + 当前行高亮",
+                        f"通过 {total - len(failures)}/{total}；失败项：" +
+                        json.dumps(brief, ensure_ascii=False)[:900])
+        return
+
+    snap = result.get("snapshot") or {}
+    if result.get("path") == "open":
+        # 打开审校时还没有"当前差异项"，只比两方（顶部 == 左栏）
+        panel, top, tile = _three_way(snap)
+        detail = _sync_detail(snap)
+        if top == tile:
+            report.ok(step, f"打开审校：顶部 == 左栏（无当前项）", detail)
+        else:
+            report.fail(step, f"打开审校：顶部 == 左栏（无当前项）", detail)
+        return
+    _assert_snapshot(report, step, label, snap)
+    if result.get("path") == "resize":
+        before = result.get("before") or {}
+        if not before.get("panelVisible"):
+            report.ok(step, "尺寸变化后仍在当前差异项所在页",
+                      "面板在尺寸变化前已滚出视口，无当前项可锚定，本项不适用")
+            return
+        after_drag = result.get("afterDrag") or {}
+        if after_drag and after_drag.get("label") != before.get("label"):
+            report.fail(step, "尺寸变化后仍在当前差异项所在页",
+                        f"跳转前第 {before.get('label')} 页；拖动页列后第 {after_drag.get('label')} 页；"
+                        f"改视口后第 {snap.get('label')} 页")
+        else:
+            report.ok(step, "尺寸变化后仍在当前差异项所在页",
+                      f"前 {before.get('label')} → 后 {snap.get('label')}")
+
+
 def _api(state: dict[str, Any]) -> Api:
     return Api(state["base_url"], state["token"])
 
@@ -276,6 +403,88 @@ def cmd_images(args: argparse.Namespace) -> int:
     return report.finish(report_path)
 
 
+def cmd_pagesync(args: argparse.Namespace) -> int:
+    state = _require_state()
+    report = Report("左右页同步（六条路径）")
+    report_path = Path(state["run_dir"]) / "report-pagesync.json"
+    try:
+        _browser.run(state, "prepare")
+    except Exception as error:  # noqa: BLE001
+        report.blocked("准备", str(error))
+        return report.finish(report_path)
+    for path, label in PAGESYNC_PATHS:
+        try:
+            _pagesync_check(report, label, label, _browser.run(state, "page_sync", {"path": path}))
+        except Exception as error:  # noqa: BLE001
+            report.blocked(label, str(error))
+    return report.finish(report_path)
+
+
+def cmd_queueend(args: argparse.Namespace) -> int:
+    """队列跑完时按「下一处未审」：必须明确告诉用户"全部处理完"，不能毫无反应。"""
+    state = _require_state()
+    report = Report("队列跑完时的提示")
+    report_path = Path(state["run_dir"]) / "report-queueend.json"
+    try:
+        _browser.run(state, "prepare")
+    except Exception as error:  # noqa: BLE001
+        report.blocked("准备", str(error))
+        return report.finish(report_path)
+
+    with _api(state) as api:
+        finish = api.finish_summary(state["project_id"])
+        pending = finish["review"]["pending_items"]
+        report.ok("队列长度", "测量前确认未审数量（干净副本）",
+                  f"pending_items={pending}（汉字 {finish['review']['chars_pending']} + "
+                  f"标点 {finish['review']['punct_pending']}）")
+        if pending == 0:
+            report.blocked("清空队列", "副本里已经没有未审项，无法验证队尾提示")
+            return report.finish(report_path)
+
+        # 全部 ack（ack=kept 只记"保留原文"，不改文本）——不是"批量采用"。
+        items = []
+        marks = api.get(f"/api/projects/{state['project_id']}/review/marks").get("items", [])
+        for mark in marks:
+            items.append({
+                "block_id": mark["block_id"],
+                "line_index": mark["line_index"],
+                "ack": "kept",
+                "new_line_text": None,
+            })
+        for start in range(0, len(items), 200):
+            api.post(f"/api/projects/{state['project_id']}/review/submit-drafts",
+                     {"items": items[start:start + 200]})
+        after = api.finish_summary(state["project_id"])
+        if after["review"]["pending_items"] != 0:
+            report.fail("清空队列", "全部 ack 后 pending_items 应为 0",
+                        f"仍剩 {after['review']['pending_items']}")
+            return report.finish(report_path)
+        report.ok("清空队列", "全部 ack 后 pending_items = 0",
+                  f"ack {len(items)} 条；pending=0")
+
+    # 队列是经 API 清空的，界面还拿着旧 marks；重开一次再看"队尾提示"，
+    # 否则测到的是"界面以为还有未审"的旧状态。
+    try:
+        _browser.run(state, "prepare")
+    except Exception as error:  # noqa: BLE001
+        report.blocked("重开界面", str(error))
+        return report.finish(report_path)
+    try:
+        result = _browser.run(state, "queue_end", {})
+    except Exception as error:  # noqa: BLE001
+        report.blocked("队尾提示", str(error))
+        return report.finish(report_path)
+    message = result.get("message") or ""
+    if result.get("explicit"):
+        report.ok("队尾提示", "按「下一处未审」后界面明确说已全部处理完",
+                  f"文案：{message!r}")
+    else:
+        report.fail("队尾提示", "按「下一处未审」后界面明确说已全部处理完",
+                    f"没有明确提示；progress={message!r}，面板可见={result.get('panelVisible')}，"
+                    f"按钮文案={result.get('buttonText')!r}")
+    return report.finish(report_path)
+
+
 def cmd_smoke(args: argparse.Namespace) -> int:
     state = _require_state()
     report = Report("七步冒烟")
@@ -429,7 +638,7 @@ def cmd_smoke(args: argparse.Namespace) -> int:
                     report.ok("5 正文审校", "顶栏分母（汉字）+ 标点 = 队列总数", detail)
                 else:
                     report.ok("5 正文审校", "队列拆分（汉字 + 标点 = 总数）已记录", detail)
-                if f"/ {review['chars_total']} 字" in reading["progress"]:
+                if f"/ {review['chars_total']} " in reading["progress"]:
                     report.ok("5 正文审校", "顶栏「已审 0 / 573 字」分母 = API chars_total", reading["progress"])
                 else:
                     report.fail("5 正文审校", "顶栏进度分母 = API chars_total",
@@ -438,6 +647,12 @@ def cmd_smoke(args: argparse.Namespace) -> int:
                     report.ok("5 正文审校", "阅读流文本自检 0 失败（__b2tTextCheckFails）", "0")
                 else:
                     report.fail("5 正文审校", "阅读流文本自检", f"{reading['checkFails']} 处不一致")
+                for path, sync_label in PAGESYNC_PATHS:
+                    try:
+                        _pagesync_check(report, "5 正文审校", sync_label,
+                                        _browser.run(state, "page_sync", {"path": path}))
+                    except Exception as error:  # noqa: BLE001
+                        report.blocked(f"5 正文审校 · 左右页同步（{sync_label}）", str(error))
                 for scroll, label in (("top", "审校第 1 屏"), ("middle", "审校中间一屏")):
                     try:
                         _image_check(report, "5 正文审校",
@@ -651,6 +866,8 @@ def build_parser() -> argparse.ArgumentParser:
     images.add_argument("--selftest", action="store_true", help="负向自检：低清档 / 高清+模糊，断言都必须报 FAIL")
     images.set_defaults(func=cmd_images)
     sub.add_parser("check", help="三组一致性断言：显示=导出 / 提交→库 / 撤销→字节").set_defaults(func=cmd_check)
+    sub.add_parser("pagesync", help="左右页同步（三方）：六条路径").set_defaults(func=cmd_pagesync)
+    sub.add_parser("queueend", help="清空未审队列后验证「下一处未审」的队尾提示").set_defaults(func=cmd_queueend)
     return parser
 
 
