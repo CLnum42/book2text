@@ -152,12 +152,13 @@ function setupReadingSplit() {
     // 双击回默认：拖歪了不用去清 localStorage
     node.addEventListener("dblclick", resetReadingSplit);
   }
+  // R1（Architect 边界规则）：本文件在 app.js **之前**加载，不许出现 app.js 顶层符号。
+  // 这里原来直接读 `currentView` / `readingPageNo`、调 `measureReadingTops()` /
+  // `updateReadingPage()`——能跑只因为回调晚于 boot 触发，属于靠运气的时序。
+  // 改成注入回调，由外壳决定视口变化时做什么。
   window.addEventListener("resize", () => {
     applyReadingSplit();
-    if (currentView === "reading") {
-      measureReadingTops();
-      if (readingPageNo) updateReadingPage(readingPageNo, { scrollLeft: true });
-    }
+    injected.onViewportResize?.();
   });
 }
   // ---------------------------------------------------------------- 对外接口
@@ -186,12 +187,18 @@ function setupReadingSplit() {
     injected.toggleFollow?.();
   }
 
+  /** 正文流/标记需要按当前设置重建时由外壳触发（Architect 接口第 5 个）。 */
+  function reload() {
+    injected.reload?.();
+  }
+
   window.ReadingView = {
     init,
     enter,
     exit,
     getCurrent,
     toggleFollow,
+    reload,
     // 偏好与布局（app.js 仍通过薄转发调用，Slice 2 再彻底收进去）
     splitPrefs: readingSplitPrefs,
     applySplit: applyReadingSplit,

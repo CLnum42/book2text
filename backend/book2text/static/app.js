@@ -21043,6 +21043,12 @@ function boot() {
     enter: (projectId) => openReading(projectId),
     exit: () => showView("pages"),
     toggleFollow: () => setReadingFollow(!readingFollow),
+    reload: () => openReading(),
+    onViewportResize: () => {
+      if (currentView !== "reading") return;
+      measureReadingTops();
+      if (readingPageNo) updateReadingPage(readingPageNo, { scrollLeft: true });
+    },
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {
