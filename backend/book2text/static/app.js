@@ -19414,15 +19414,16 @@ function readingCropPlan(entry) {
   // **不要用"减行"来满足"窗口 ≤45% 页宽"**——窗口宽度 = displayW×gap×纵横比/40，
   // 跟行数无关；减行只会把字放大（实测一路降到 3 行、字变成 66px）。45% 只作为记录值。
   const displayH = Math.min(contentH, rows * 40);
-  const windowH = gap ? rows * gap : bboxH * 2;
-  const windowW = gap ? (displayW * rows * gap * aspect) / displayH : 0.26;
+  const rawWindowH = gap ? rows * gap : bboxH * 2;
+  const rawWindowW = gap ? (displayW * rows * gap * aspect) / displayH : 0.26;
   const degrade = gap
-    ? windowW > 0.45
+    ? rawWindowW > 0.45
       ? "window>45%"
       : null
     : "no-line-gap";
-  windowW = Math.min(0.98, Math.max(0.08, windowW));
-  windowH = Math.min(0.98, Math.max(0.02, windowH));
+  // clamp 出新值（别在 const 上再赋值——上一版就是这么抛 TypeError、裁图全挂的）
+  const windowW = Math.min(0.98, Math.max(0.08, rawWindowW));
+  const windowH = Math.min(0.98, Math.max(0.02, rawWindowH));
   const x0 = Math.min(Math.max(0, cx - windowW / 2), Math.max(0, 1 - windowW));
   const y0 = Math.min(Math.max(0, cy - windowH / 2), Math.max(0, 1 - windowH));
   return {
@@ -19445,7 +19446,16 @@ function readingCropPlan(entry) {
 function readingCropPaint(entry) {
   const cropEl = el("reading-dock-crop");
   if (!cropEl || !currentProject) return;
-  const plan = readingCropPlan(entry);
+  let plan = null;
+  try {
+    plan = readingCropPlan(entry);
+  } catch (error) {
+    // 裁图是"看得更清楚"的增强，绝不能因为它抛异常把面板/高亮一起带挂
+    console.error("readingCropPlan failed", error);
+    cropEl.style.backgroundImage = "none";
+    cropEl.innerHTML = '<p class="muted reading-dock__crop-empty">放大图出错（已记录）</p>';
+    return;
+  }
   window.__b2tCropPlan = plan;
   if (!plan) {
     // 这一条没有可用行框：退一步显示**整页图**（不做放大、不画高亮），
