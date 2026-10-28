@@ -41,11 +41,11 @@ import { loadReadingView } from "./load-reading-view.mjs";
 
 const ctx = loadApp({ require: ["computeCharSpans"] });
 const computeCharSpans = ctx.computeCharSpans;
-// 分支计数统计由 app.js 挂在 window 上（readingDiffUnits 注入的就是它）
-const stats = ctx.window.__b2tWordBoxStats;
 // L11：`readingDiffUnits` 搬进 reading-view.js 且没有公开导出（R8），改由模块单元加载器取到。
 // 依赖注入照生产来：`computeCharSpans`（仍在 app.js）+ 统计对象。
 const readingModule = loadReadingView({ require: [] });
+// L12：分支统计对象随 readingDiffUnits 一起搬进模块（`window.__b2tWordBoxStats` 在模块上下文里）
+const stats = readingModule.ctx.window.__b2tWordBoxStats;
 readingModule.setInjected({
   computeCharSpans: ctx.computeCharSpans,
   getWordBoxMappingStats: () => stats,

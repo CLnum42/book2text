@@ -436,13 +436,20 @@ test("R4-dup（真实现份数=1）：同名函数只许一份真实现，其余
     /setReadingFilter\(\s*event\.target\.value\s*\)/.test(viewText),
     "reading-view.js 的 filter 监听没有把值交给 setReadingFilter",
   );
+  // L12：状态迁进模块后不再有 `injected.setReadingFilterValue` 这条链。
+  // 继续断言注入回调 = 让"状态搬家"本身把测试撞红。改成锁**行为**：
+  // 值写进模块内的 `readingFilter`，且同一函数里立刻重画（用户看到的列表才会变）。
   assert.ok(
-    /injected\.setReadingFilterValue\s*\(/.test(viewText),
-    "reading-view.js 的 setReadingFilter 没有走注入回调 injected.setReadingFilterValue",
+    /function setReadingFilter\(value\)\s*\{\s*readingFilter = value;/.test(viewText),
+    "reading-view.js 的 setReadingFilter 没把值写进 readingFilter",
   );
   assert.ok(
-    /setReadingFilterValue\s*:\s*\(\s*\w+\s*\)\s*=>\s*\{[^}]*readingFilter\s*=\s*\w+/.test(appText),
-    "app.js 的注入回调没有把值写进 readingFilter（setter 链路断了）",
+    /readingFilter = value;[\s\S]{0,80}renderReading\(\{ reset: true \}\)/.test(viewText),
+    "setReadingFilter 改了 filter 却没重画——用户看到的列表不会变",
+  );
+  assert.ok(
+    !/setReadingFilterValue\s*:/.test(appText),
+    "app.js 里还留着 setReadingFilterValue 注入项——状态已在模块内，这条注入是死接线",
   );
 });
 
@@ -904,9 +911,11 @@ test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子�
   const appSource = readFileSync(APP_FILE, "utf8");
   const appStripped = stripCommentsOnly(appSource);
   const appIds = domIdsIn(appStripped);
+  // L12：审校块已经 0 行（函数全搬走），`阅读审校（L 刀` 标记随之删除。
+  // 所以"找不到块"是**结构达成后的正常状态**，不是红：此时 app.js 里任何对 reading 子树的引用
+  // 都属于"块外"，按豁免表判。若将来有人又把审校代码写回 app.js，那些引用同样会被判越界。
   const block = readingBlockRange(appSource);
-  assert.ok(block, "算不出审校块范围（找不到 `阅读审校（L 刀` 或 `function boot(`）——R3 不能在没有范围的情况下跑");
-  const inBlock = (line) => line >= block.start && line <= block.end;
+  const inBlock = (line) => Boolean(block) && line >= block.start && line <= block.end;
   // 判"这一行属于哪个顶层函数"，再看该函数是否整体落在审校块内（=归 reading）
   const functionRanges = topLevelFunctionRanges(stripCommentsAndStrings(appSource));
   const ownerOfLine = (line) => {
@@ -915,6 +924,7 @@ test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子�
     return hit[hit.length - 1];                          // 最靠后的那个（区间不重叠时等价）
   };
   const isReadingOwned = (line) => {
+    if (!block) return false;                           // 没有审校块：所有引用都在"块外"
     const fn = ownerOfLine(line);
     if (!fn) return false;                              // 顶层代码不归 reading
     return fn.start >= block.start && fn.end <= block.end;
@@ -969,73 +979,78 @@ test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子�
  * 现状（2026-10-28）：65 个状态 owner = app.js，`readingSplitState` owner = reading-view.js；
  * 违规 0 / 豁免 0。
  */
+/**
+ * 状态 → owner（一份状态只许有一个 owner）。
+ *
+ * **2026-10-29 L12 ①（状态迁移）**：审校的 64 个状态整段迁进 `reading-view.js`，
+ * 表项 owner 从 `app.js` 全量改成模块；`readingImageToken` / `readingInlineTimer` /
+ * `readingPreflightData` 三个零引用状态同批删除，表项也一起删（删状态不删表项 = 表变墓地）。
+ * 这条表就是 §3 归属清单在测试里的副本：**搬层必须同批改表**，否则 R5 会红。
+ */
 const OWNERS = {
-  readingTreeOpen: "app.js",
-  readingData: "app.js",
-  readingProject: "app.js",
-  readingEntries: "app.js",
-  readingSegmentNodes: "app.js",
-  readingRendered: "app.js",
-  readingTops: "app.js",
-  readingObserver: "app.js",
-  readingAppendScheduled: "app.js",
-  readingSpanCache: "app.js",
-  readingOpenStartedAt: "app.js",
-  readingAutoJumpDone: "app.js",
-  readingMarks: "app.js",
-  readingMarksWindow: "app.js",
-  readingGlobalCounts: "app.js",
-  readingPageCounts: "app.js",
-  readingFirstUnackedPage: "app.js",
-  readingMarksInFlight: "app.js",
-  readingMarksRequestSeq: "app.js",
-  readingTreeData: "app.js",
-  readingFilter: "app.js",
-  readingCursorEntry: "app.js",
-  readingTiles: "app.js",
-  readingPageBlocks: "app.js",
-  readingBlockPromises: "app.js",
-  readingLoadedImages: "app.js",
-  readingImageQueue: "app.js",
-  readingImagePumping: "app.js",
-  readingImageProfile: "app.js",
-  readingImageToken: "app.js",
-  readingNearObserver: "app.js",
-  readingVisibleObserver: "app.js",
-  readingNearSet: "app.js",
-  readingVisibleSet: "app.js",
-  readingResizeObserver: "app.js",
-  readingStackProject: "app.js",
-  readingHoveredSeq: "app.js",
-  readingPdfScrollRaf: "app.js",
-  readingPanelKey: "app.js",
-  readingPendingPanelKey: "app.js",
-  readingPendingPanelEntry: "app.js",
-  readingJumpSettleKey: "app.js",
-  readingJumpSettleTicks: "app.js",
-  readingPendingBox: "app.js",
-  readingDrafts: "app.js",
-  readingInlineEdits: "app.js",
-  readingEditingKey: "app.js",
-  readingInlineTimer: "app.js",
-  readingRepaintPending: "app.js",
-  readingPageNo: "app.js",
-  readingSyncDriver: "app.js",
-  readingSyncUntil: "app.js",
-  readingScrollRaf: "app.js",
-  readingUserMovedAt: "app.js",
-  readingUserScrollSeq: "app.js",
-  readingProgramScrollSeq: "app.js",
-  readingSuppressFollowUntil: "app.js",
-  readingPageSyncTimer: "app.js",
-  readingPageSyncFixing: "app.js",
-  readingPageSyncLog: "app.js",
-  readingNextLog: "app.js",
-  readingFollow: "app.js",
-  readingProof: "app.js",
-  readingMarkupLevel: "app.js",
-  readingPendingOn: "app.js",
-  readingPreflightData: "app.js",
+  readingTreeOpen: "reading-view.js",
+  readingData: "reading-view.js",
+  readingProject: "reading-view.js",
+  readingEntries: "reading-view.js",
+  readingSegmentNodes: "reading-view.js",
+  readingRendered: "reading-view.js",
+  readingTops: "reading-view.js",
+  readingObserver: "reading-view.js",
+  readingAppendScheduled: "reading-view.js",
+  readingSpanCache: "reading-view.js",
+  readingOpenStartedAt: "reading-view.js",
+  readingAutoJumpDone: "reading-view.js",
+  readingMarks: "reading-view.js",
+  readingMarksWindow: "reading-view.js",
+  readingGlobalCounts: "reading-view.js",
+  readingPageCounts: "reading-view.js",
+  readingFirstUnackedPage: "reading-view.js",
+  readingMarksInFlight: "reading-view.js",
+  readingMarksRequestSeq: "reading-view.js",
+  readingTreeData: "reading-view.js",
+  readingFilter: "reading-view.js",
+  readingCursorEntry: "reading-view.js",
+  readingTiles: "reading-view.js",
+  readingPageBlocks: "reading-view.js",
+  readingBlockPromises: "reading-view.js",
+  readingLoadedImages: "reading-view.js",
+  readingImageQueue: "reading-view.js",
+  readingImagePumping: "reading-view.js",
+  readingImageProfile: "reading-view.js",
+  readingNearObserver: "reading-view.js",
+  readingVisibleObserver: "reading-view.js",
+  readingNearSet: "reading-view.js",
+  readingVisibleSet: "reading-view.js",
+  readingResizeObserver: "reading-view.js",
+  readingStackProject: "reading-view.js",
+  readingHoveredSeq: "reading-view.js",
+  readingPdfScrollRaf: "reading-view.js",
+  readingPanelKey: "reading-view.js",
+  readingPendingPanelKey: "reading-view.js",
+  readingPendingPanelEntry: "reading-view.js",
+  readingJumpSettleKey: "reading-view.js",
+  readingJumpSettleTicks: "reading-view.js",
+  readingPendingBox: "reading-view.js",
+  readingDrafts: "reading-view.js",
+  readingInlineEdits: "reading-view.js",
+  readingEditingKey: "reading-view.js",
+  readingRepaintPending: "reading-view.js",
+  readingPageNo: "reading-view.js",
+  readingSyncDriver: "reading-view.js",
+  readingSyncUntil: "reading-view.js",
+  readingScrollRaf: "reading-view.js",
+  readingUserMovedAt: "reading-view.js",
+  readingUserScrollSeq: "reading-view.js",
+  readingProgramScrollSeq: "reading-view.js",
+  readingSuppressFollowUntil: "reading-view.js",
+  readingPageSyncTimer: "reading-view.js",
+  readingPageSyncFixing: "reading-view.js",
+  readingPageSyncLog: "reading-view.js",
+  readingNextLog: "reading-view.js",
+  readingFollow: "reading-view.js",
+  readingProof: "reading-view.js",
+  readingMarkupLevel: "reading-view.js",
+  readingPendingOn: "reading-view.js",
   readingSplitState: "reading-view.js",
 };
 const R5_MAX_EXCUSES = 0;   // 现状零豁免；将来开口必须显式改这个数

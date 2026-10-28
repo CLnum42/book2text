@@ -20,8 +20,10 @@ import { loadReadingView } from "./load-reading-view.mjs";
 // - `computeCharSpans` 仍住 app.js；
 // - `getWordBoxMappingStats` 拿的是 app.js 挂到 window 上的同一个统计对象（分支计数靠它）。
 const app = loadApp({ require: ["computeCharSpans"] });
-const stats = app.window.__b2tWordBoxStats;
 const module = loadReadingView({ require: ["readingDiffUnits"] });
+// L12：分支统计对象 `window.__b2tWordBoxStats` 也跟着函数搬进模块了 —— 从**模块上下文**读，
+// 从 app.js 读只会拿到 undefined（然后所有分支计数断言都变成"没有埋点"的假红）。
+const stats = module.ctx.window.__b2tWordBoxStats;
 module.setInjected({
   computeCharSpans: app.computeCharSpans,
   getWordBoxMappingStats: () => stats,

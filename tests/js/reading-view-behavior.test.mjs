@@ -25,7 +25,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { loadApp, runInApp } from "./load-app.mjs";
-import { loadReadingView } from "./load-reading-view.mjs";
 
 const READING_VIEW_SRC = readFileSync(
   new URL("../../backend/book2text/static/reading-view.js", import.meta.url),
@@ -34,7 +33,17 @@ const READING_VIEW_SRC = readFileSync(
 
 /** 把模块骨架（经典脚本）载进同一个上下文，模拟 index.html 的加载顺序。 */
 function installReadingView(target) {
-  vm.runInContext(READING_VIEW_SRC, target, { filename: "reading-view.js" });
+  // L12 把审校的 64 个状态搬进了模块的**词法作用域**，模块外读不到（R8 只有 6 个导出，
+  // 也不许为测试加导出）。所以在测试脚手架里给 IIFE 追加一个 eval 出口：
+  // `window.__rvEval(code)` 能在模块自己的作用域里读/写这些状态。
+  // 这是**测试侧的一次性处理**，与 load-app 剥 `boot();` 同一条口径，不改产品文件。
+  const tail = "\n})();";
+  assert.ok(READING_VIEW_SRC.includes(tail), "reading-view.js 的结尾不是 `})();`——剥除点变了，先人工确认");
+  const patched = READING_VIEW_SRC.replace(
+    /\}\)\(\);\s*$/,
+    "  window.__rvEval = (code) => eval(code);\n})();\n",
+  );
+  vm.runInContext(patched, target, { filename: "reading-view.js" });
 }
 
 const ctx = loadApp({
@@ -42,16 +51,11 @@ const ctx = loadApp({
 });
 
 /**
- * L11：`readingKey` / `readingEntryVisible` 搬进 reading-view.js 且没有公开导出（R8 只有 6 项），
- * 所以用模块单元加载器取纯函数版本，注入项**接到 app.js 那个上下文的状态上**
- * （`runInApp` 读顶层 `let`，读回来的是同一份 Map/字符串），行为与生产一致。
+ * L11/L12：`readingKey` / `readingEntryVisible` 搬进 reading-view.js 且没有公开导出（R8 只有 6 项）。
+ * L12 又把状态搬进了模块的词法作用域 —— 所以**必须调同一个模块实例里的那份函数**
+ * （`rvEval` 取出来，闭包里就是当前状态），另起一个模块实例会对着空状态判，永远返回 true。
  */
-const readingUnit = loadReadingView({ require: ["readingKey", "readingEntryVisible"] });
-readingUnit.setInjected({
-  getReadingDrafts: () => runInApp(ctx, "readingDrafts"),
-  getReadingFilter: () => runInApp(ctx, "readingFilter"),
-});
-const moduleReadingEntryVisible = (entry) => readingUnit.ctx.readingEntryVisible(entry);
+const moduleReadingEntryVisible = (entry) => rvEval("readingEntryVisible")(entry);
 
 // ---------------------------------------------------------------- 最小假 DOM
 
@@ -194,7 +198,7 @@ function installStubs() {
   ctx.hydrateView = () => {};
   ctx.loadLanguageSummary = () => {};
   ctx.ensureReadingPages = () => {};
-  ctx.updateReadingPage = (pageNo) => runInApp(ctx, `readingPageNo = ${Number(pageNo)};`);
+  ctx.updateReadingPage = (pageNo) => rvEval(`readingPageNo = ${Number(pageNo)};`);
 }
 
 /**
@@ -237,8 +241,11 @@ function resetState() {
        { page_no: 1, page_id: "pg1", width_pt: 612, height_pt: 792 },
        { page_no: 2, page_id: "pg2", width_pt: 612, height_pt: 792 },
        { page_no: 3, page_id: "pg3", width_pt: 612, height_pt: 792 },
-     ] };
-     readingData = { segments: [] }; readingProject = "p1";
+     ] };`,
+  );
+  // L12：审校状态已搬进模块，必须写在模块作用域里（app.js 里写它们现在会 ReferenceError）
+  rvEval(
+    `readingData = { segments: [] }; readingProject = "p1";
      readingEntries = []; readingMarks = new Map(); readingDrafts = new Map(); readingInlineEdits = new Map();
      readingPageBlocks = new Map(); readingTiles = new Map(); readingPageCounts = new Map();
      readingGlobalCounts = null;
@@ -257,13 +264,25 @@ function setEntries(entries) {
   // 注意：`entries` 是宿主变量，vm 里看不到，所以只嵌一次 JSON，再在 vm 里读回来。
   // L11：`readingKey` 搬进模块（app.js 里 0 处），建 marks 表时用模块那个版本——
   // 通过宿主槽位传进 vm（`__readingKey`），别在 app 里再实现一遍键格式。
-  ctx.__readingKey = readingUnit.ctx.readingKey;
-  runInApp(ctx, `readingEntries = ${JSON.stringify(entries)};
+  ctx.__readingKey = rvEval("readingKey");
+  rvEval(`readingEntries = ${JSON.stringify(entries)};
     readingMarks = new Map(readingEntries.map((e) => [__readingKey(e.block_id, e.line_index), e]));`);
 }
 
-function readState(code) {
+/** 读/写**模块内**状态（L12 之后审校状态都在 reading-view.js 的词法作用域里）。 */
+function rvEval(code) {
+  assert.equal(typeof ctx.__rvEval, "function", "模块没装 __rvEval 出口——installReadingView 没跑");
+  return ctx.__rvEval(code);
+}
+
+/** 读/写 **app.js** 状态（currentView / currentProject 这类外壳状态仍然在 app.js）。 */
+function readApp(code) {
   return runInApp(ctx, code);
+}
+
+/** 历史名字：绝大多数调用点读的是审校状态，默认走模块。 */
+function readState(code) {
+  return rvEval(code);
 }
 
 installStubs();
@@ -277,14 +296,25 @@ installStubs();
  * 状态仍在 app.js（R5 的 owner），所以 getter/setter 都映射回 vm 里的变量。
  */
 function installReadingDeps() {
-  const get = (expr) => runInApp(ctx, expr);
+  // 读：先当模块状态读（L12 之后绝大多数是它），不是模块的名字再退回 app.js 的外壳状态。
+  const get = (expr) => {
+    try {
+      return rvEval(expr);
+    } catch {
+      return runInApp(ctx, expr);
+    }
+  };
   // **不要把 value 序列化**：Map / Set / 观察器实例过一遍 JSON 就成 `{}`，
   // 模块里 `.keys()` / `.observe()` 立刻炸（L8 的 readingDrafts、L5 的 IntersectionObserver 都栽在
   // 同一个 `JSON.stringify` 上）。改成先放到宿主 ctx 上、再在 vm 里赋值——vm 与宿主共享对象，
   // 身份保住了，`readState("readingDrafts.size")` 也照旧读得到。
   const set = (expr, value) => {
     ctx.__setValue = value;
-    runInApp(ctx, `${expr} = __setValue;`);
+    try {
+      rvEval(`${expr} = __setValue;`);
+    } catch {
+      runInApp(ctx, `${expr} = __setValue;`);
+    }
   };
   // 观察器状态（Intersection / Resize）：模块自己 `new`，再 set 进来、get 回去；
   // 未建立时模块依赖 `get()` 为假值（`if (!get()) return;`）。
@@ -403,7 +433,7 @@ test("进入审校：视图切到 reading，且位置被记录", () => {
   resetState();
   readState('readingPageNo = 2;');
   ctx.enterReviewStep();
-  assert.equal(readState("currentView"), "reading", "用户看到的主区域不是审校视图");
+  assert.equal(readApp("currentView"), "reading", "用户看到的主区域不是审校视图");
   assert.equal(readState("readingPageNo"), 2, "进入时把当前页丢了");
 });
 
@@ -412,9 +442,9 @@ test("退出审校再回来：视图切换，但页码不被重置", () => {
   ctx.enterReviewStep();
   readState("readingPageNo = 3;");
   ctx.showView("pages");
-  assert.equal(readState("currentView"), "pages");
+  assert.equal(readApp("currentView"), "pages");
   ctx.enterReviewStep();
-  assert.equal(readState("currentView"), "reading");
+  assert.equal(readApp("currentView"), "reading");
   assert.equal(readState("readingPageNo"), 3, "回到审校时回到了别的页（用户会以为丢了位置）");
 });
 
@@ -511,7 +541,7 @@ test("当前项：cursor 与最后一次跳转的目标一致（key / 页 / 行�
 test("已审计数：接全书 counts，不随当前窗口变化", () => {
   resetState();
   setEntries([makeEntry("a", 0, 1)]);          // 窗口里只有 1 条
-  runInApp(ctx, `readingGlobalCounts = { chars_total: 100, chars_unacked: 40 };
+  rvEval(`readingGlobalCounts = { chars_total: 100, chars_unacked: 40 };
     readingDrafts = new Map([["a:0", { block_id: "a", line_index: 0 }]]);`);   // 本次会话已裁 1 条
   installReadingDeps();
   const progressText = () => ctx.document.getElementById("reading-progress-text").textContent;
@@ -560,21 +590,21 @@ test("过滤器：汉字级不混入标点条目；未审不混入已 ack / 已�
   const acked = { ...makeEntry("a", 2, 1), ack: "kept" };
   const drafted = makeEntry("a", 3, 1);
   setEntries([chars, punct, acked, drafted]);
-  runInApp(ctx, `readingDrafts = new Map([["a:3", { block_id: "a", line_index: 3 }]]);`);
+  rvEval(`readingDrafts = new Map([["a:3", { block_id: "a", line_index: 3 }]]);`);
 
   // L2 笔2 把 setReadingFilter 搬进模块（app.js 定义数 0），这里不能再调它。
   // **只注入状态、不注入行为**：本用例锁的是"过滤器规则"（readingEntryVisible），
   // setter → 状态 的接线由 boundary.test.mjs 的静态断言与 QA 的页面级交互覆盖。
-  runInApp(ctx, 'readingFilter = "chars";');
+  rvEval('readingFilter = "chars";');
   assert.equal(moduleReadingEntryVisible(chars), true);
   assert.equal(moduleReadingEntryVisible(punct), false, "标点条目混进了汉字级队列");
 
-  runInApp(ctx, 'readingFilter = "unacked";');
+  rvEval('readingFilter = "unacked";');
   assert.equal(moduleReadingEntryVisible(acked), false, "已审的条目还在未审队列里");
   assert.equal(moduleReadingEntryVisible(drafted), false, "已存草稿的条目还在未审队列里");
   assert.equal(moduleReadingEntryVisible(punct), true, "标点在未审视图里应当仍可见");
 
-  runInApp(ctx, 'readingFilter = "all";');
+  rvEval('readingFilter = "all";');
   assert.equal(moduleReadingEntryVisible(punct), true);
 });
 
