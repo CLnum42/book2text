@@ -60,6 +60,8 @@ export async function run(cfg) {
       return await resetDiag(page);
     case "stress_next":
       return await stressNext(page, args);
+    case "perf_probe":
+      return await perfProbe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -1850,6 +1852,48 @@ async function stressNext(page, args) {
     }
   }
   return { rows, last: rows[rows.length - 1] };
+}
+
+/** 性能探针：idle 时测 1s 的 rAF 帧数（判断是否被后台节流）+ 长任务统计。 */
+async function perfProbe(page, args) {
+  const ms = args.ms || 1000;
+  await page.evaluate(() => {
+    window.__longTasks = window.__longTasks || [];
+    if (!window.__longTaskObserver) {
+      try {
+        window.__longTaskObserver = new PerformanceObserver((list) => {
+          for (const e of list.getEntries()) window.__longTasks.push(Math.round(e.duration));
+        });
+        window.__longTaskObserver.observe({ entryTypes: ["longtask"] });
+      } catch (error) {
+        window.__longTaskObserver = null;
+      }
+    }
+  });
+  const idle = await page.evaluate(async (duration) => {
+    let frames = 0;
+    const start = performance.now();
+    await new Promise((resolve) => {
+      const tick = () => {
+        frames += 1;
+        if (performance.now() - start >= duration) resolve();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    return { frames, elapsed: Math.round(performance.now() - start), visibility: document.visibilityState };
+  }, ms);
+  // 长任务：清空后再按 10 次「下一处未审」
+  const before = await page.evaluate(() => {
+    window.__longTasks = [];
+    return (window.__b2tNextLog || []).length;
+  });
+  for (let i = 0; i < 10; i += 1) {
+    await page.click("#reading-next-unreviewed", { label: `性能采样 ${i + 1}` }).catch(() => {});
+    await page.waitForTimeout(300);
+  }
+  const longTasks = await page.evaluate(() => window.__longTasks.slice(0, 40));
+  return { idle, longTasks, visibility: idle.visibility, before };
 }
 
 async function nextProbe(page) {
