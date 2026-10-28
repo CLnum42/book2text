@@ -18199,6 +18199,8 @@ async function openReading() {
   if (!currentProject) return;
   // 三栏宽度在打开时套一次：视图刚显示出来才量得到真实宽度
   applyReadingSplit();
+  readingDockApplyHeight(readingDockPrefs().h);
+  readingTreeApplyCollapsed();
   const projectId = currentProject.project_id;
   if (readingProject === projectId && readingData) {
     renderReading({ reset: true });
@@ -19161,6 +19163,315 @@ function readingLineNode(key) {
   return stream ? stream.querySelector(`.reading-line[data-key="${key}"]`) : null;
 }
 
+// ---------------------------------------------------------------- 下区审校面板（任务 91 第 1 步）
+//
+// 从"列间浮动面板"改成"底部常驻面板"：`#reading-panel-host` 仍是被渲染进去的容器，
+// 但它现在位于 `#reading-dock` 的右列，`renderReading({reset:true})` 结构上碰不到它。
+// 高度 / 收起状态按项目记，别让用户每个项目重调一次。
+
+const READING_DOCK_KEY = "b2t.readingDock.v1";
+const READING_DOCK_DEFAULT_HEIGHT = 276;
+const READING_DOCK_MIN_HEIGHT = 248;
+const READING_DOCK_MAX_HEIGHT = 420;
+
+const READING_TREE_KEY = "b2t.readingTree.v1";
+
+function readingTreeCollapsed() {
+  if (!currentProject) return false;
+  try {
+    const all = JSON.parse(localStorage.getItem(READING_TREE_KEY) || "{}") || {};
+    return Boolean(all[currentProject.project_id]);
+  } catch {
+    return false;
+  }
+}
+
+function readingTreeSaveCollapsed(collapsed) {
+  if (!currentProject) return;
+  try {
+    const all = JSON.parse(localStorage.getItem(READING_TREE_KEY) || "{}") || {};
+    all[currentProject.project_id] = Boolean(collapsed);
+    localStorage.setItem(READING_TREE_KEY, JSON.stringify(all));
+  } catch {
+    /* 存不了不影响功能 */
+  }
+}
+
+function readingTreeApplyCollapsed() {
+  const split = el("reading-split");
+  const rail = el("reading-tree-rail");
+  const collapsed = readingTreeCollapsed();
+  if (split) split.classList.toggle("is-tree-collapsed", collapsed);
+  if (rail) rail.hidden = !collapsed;
+  const count = el("reading-tree-rail-count");
+  if (count) {
+    const unacked = readingGlobalCounts ? Number(readingGlobalCounts.chars_unacked || 0) : 0;
+    count.textContent = String(unacked);
+  }
+}
+
+function readingTreeToggle() {
+  const next = !readingTreeCollapsed();
+  readingTreeSaveCollapsed(next);
+  readingTreeApplyCollapsed();
+}
+
+function readingDockStore() {
+  try {
+    return JSON.parse(localStorage.getItem(READING_DOCK_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+function readingDockPrefs() {
+  const projectId = currentProject ? currentProject.project_id : "";
+  const one = readingDockStore()[projectId] || {};
+  return {
+    h: Number.isFinite(one.h) ? one.h : READING_DOCK_DEFAULT_HEIGHT,
+    collapsed: Boolean(one.collapsed),
+  };
+}
+
+function readingDockSave(patch) {
+  if (!currentProject) return;
+  const projectId = currentProject.project_id;
+  const all = readingDockStore();
+  all[projectId] = { ...readingDockPrefs(), ...patch };
+  try {
+    localStorage.setItem(READING_DOCK_KEY, JSON.stringify(all));
+  } catch {
+    /* 存不了偏好不影响功能 */
+  }
+}
+
+function readingDockApplyHeight(h) {
+  const value = Math.min(READING_DOCK_MAX_HEIGHT, Math.max(READING_DOCK_MIN_HEIGHT, Number(h) || READING_DOCK_DEFAULT_HEIGHT));
+  const dock = el("reading-dock");
+  if (dock) dock.style.setProperty("--reading-dock-h", `${value}px`);
+}
+
+function readingDockSetVisible(visible) {
+  const dock = el("reading-dock");
+  const grip = el("reading-dock-grip");
+  if (dock) dock.hidden = !visible;
+  if (grip) grip.hidden = !visible;
+}
+
+function readingDockHeader(entry) {
+  const where = el("reading-dock-where");
+  const level = el("reading-dock-level");
+  const count = el("reading-dock-count");
+  if (where) {
+    where.textContent = entry
+      ? `第 ${entry.page_no} 页 · 第 ${entry.line_index + 1} 行`
+      : "—";
+  }
+  if (level) {
+    level.hidden = !entry;
+    if (entry) {
+      level.textContent = entry.level === "differs_punct" ? "标点级" : "汉字级";
+    }
+  }
+  if (count) {
+    const total = readingGlobalCounts ? Number(readingGlobalCounts.chars_total || 0) : 0;
+    const unacked = readingGlobalCounts ? Number(readingGlobalCounts.chars_unacked || 0) : 0;
+    count.textContent = total ? `${Math.max(0, total - unacked)} / ${total}` : "";
+  }
+}
+
+/** 打开下区并换成这一条；点击差异条目时调用（收起状态会被重新展开）。 */
+function readingDockShow(entry) {
+  readingDockApplyHeight(readingDockPrefs().h);
+  readingDockSetVisible(true);
+  readingDockHeader(entry);
+  readingDockSave({ collapsed: false });
+}
+
+function readingDockCollapse() {
+  readingDockSetVisible(false);
+  readingDockSave({ collapsed: true });
+}
+
+function initReadingDockGrip() {
+  const grip = el("reading-dock-grip");
+  if (!grip || grip.dataset.bound === "1") return;
+  grip.dataset.bound = "1";
+  let dragging = false;
+  let startY = 0;
+  let startH = 0;
+  const onMove = (event) => {
+    if (!dragging) return;
+    readingDockApplyHeight(startH - (event.clientY - startY));
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.removeEventListener("pointermove", onMove);
+    const dock = el("reading-dock");
+    const raw = dock ? getComputedStyle(dock).getPropertyValue("--reading-dock-h") : "";
+    const h = parseInt(raw, 10);
+    readingDockSave({ h: Number.isFinite(h) ? h : READING_DOCK_DEFAULT_HEIGHT });
+    const current = readingPanelKey ? readingMarks.get(readingPanelKey) : null;
+    if (current) readingCropPaint(current);
+  };
+  grip.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    startY = event.clientY;
+    const dock = el("reading-dock");
+    startH = dock ? dock.getBoundingClientRect().height : READING_DOCK_DEFAULT_HEIGHT;
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp, { once: true });
+  });
+  grip.addEventListener("dblclick", () => {
+    readingDockApplyHeight(READING_DOCK_DEFAULT_HEIGHT);
+    readingDockSave({ h: READING_DOCK_DEFAULT_HEIGHT });
+  });
+}
+
+// ---------------------------------------------------------------- 下区 5 行局部放大（任务 91 第 2 步）
+//
+// 几何全部来自 mark.bbox / 块内相邻行 bbox，**不按字宽或行距估算**（容差 0）。
+// 窗口是下区高度的因变量：行数 × 实测中位行距决定放大倍数，不是写死比例。
+
+const READING_CROP_WIDTH = 404;   // 左列 420 减去左右内边距
+const READING_CROP_PAD = 16;
+
+function readingCropLineGap(entry) {
+  const pageNo = entry.page_no;
+  const blocks = readingPageBlocks.get(pageNo) || [];
+  const median = (values) => {
+    const list = values.filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+    if (!list.length) return null;
+    return list[Math.floor(list.length / 2)];
+  };
+  const gapsOf = (lineList) => {
+    const centers = lineList
+      .filter((line) => line && line.bbox)
+      .map((line) => (Number(line.bbox[1]) + Number(line.bbox[3])) / 2)
+      .sort((a, b) => a - b);
+    const gaps = [];
+    for (let i = 1; i < centers.length; i += 1) gaps.push(centers[i] - centers[i - 1]);
+    return gaps;
+  };
+  const block = blocks.find((item) => item && item.block_id === entry.block_id);
+  const blockGaps = block ? gapsOf(block.lines || []) : [];
+  if (blockGaps.length >= 3) {
+    return { gap: median(blockGaps), n: blockGaps.length, level: "block" };
+  }
+  const pageLines = [];
+  for (const item of blocks) for (const line of item.lines || []) pageLines.push(line);
+  const pageGaps = gapsOf(pageLines);
+  if (pageGaps.length >= 3) {
+    return { gap: median(pageGaps), n: pageGaps.length, level: "page" };
+  }
+  return { gap: null, n: Math.max(blockGaps.length, pageGaps.length), level: "none" };
+}
+
+/** 算裁窗几何：返回 { pageNo, x0, y0, w, h, rows, lineH, degrade, gap }（全部归一化到页宽 / 页高）。 */
+function readingCropPlan(entry) {
+  if (!entry) return null;
+  const key = readingKey(entry.block_id, entry.line_index);
+  const mark = readingMarks.get(key);
+  const bbox = (mark && mark.bbox) || readingLineBox(entry.block_id, entry.line_index);
+  if (!bbox || bbox.length < 4) return null;
+  const cropEl = el("reading-dock-crop");
+  const contentH = Math.max(60, (cropEl ? cropEl.clientHeight : 182) - READING_CROP_PAD);
+  const { gap, n, level } = readingCropLineGap(entry);
+  // bbox 的 y 是"占页高的比例"，x 是"占页宽的比例"：换算窗口宽度时必须乘纵横比，
+  // 否则窗口按页宽算得偏窄、纵向只装得下 3 行（实测 182px 内容区里只显示 3 行）。
+  const pageRecord = readingPageRecord(entry.page_no);
+  const aspect = pageRecord && pageRecord.width_pt
+    ? Number(pageRecord.height_pt || 792) / Number(pageRecord.width_pt || 612)
+    : 792 / 612;
+  const bboxH = Math.max(0.004, Number(bbox[3]) - Number(bbox[1]));
+  const cx = (Number(bbox[0]) + Number(bbox[2])) / 2;
+  const cy = (Number(bbox[1]) + Number(bbox[3])) / 2;
+
+  let rows = gap ? 5 : 4;
+  let windowH = gap ? rows * gap : bboxH * 2;
+  let windowW = gap ? (READING_CROP_WIDTH * rows * gap * aspect) / contentH : 0.26;
+  let degrade = gap ? null : "no-line-gap";
+
+  if (gap) {
+    // 降级：窗口 > 45% 页宽 或 行高 > 40px → 减行并**重算窗口**
+    while (rows > 3 && (windowW > 0.45 || contentH / rows > 40)) {
+      rows -= 1;
+      windowH = rows * gap;
+      windowW = (READING_CROP_WIDTH * rows * gap * aspect) / contentH;
+      degrade = windowW > 0.45 ? "window>45%" : "lineH>40";
+    }
+  }
+  windowW = Math.min(0.98, Math.max(0.08, windowW));
+  windowH = Math.min(0.98, Math.max(0.02, windowH));
+  const x0 = Math.min(Math.max(0, cx - windowW / 2), Math.max(0, 1 - windowW));
+  const y0 = Math.min(Math.max(0, cy - windowH / 2), Math.max(0, 1 - windowH));
+  return {
+    pageNo: entry.page_no,
+    bbox: [Number(bbox[0]), Number(bbox[1]), Number(bbox[2]), Number(bbox[3])],
+    x0,
+    y0,
+    w: windowW,
+    h: windowH,
+    rows,
+    lineH: Math.round(contentH / rows),
+    degrade,
+    gap,
+    gapN: n,
+    gapLevel: level,
+  };
+}
+
+function readingCropPaint(entry) {
+  const cropEl = el("reading-dock-crop");
+  if (!cropEl || !currentProject) return;
+  const plan = readingCropPlan(entry);
+  window.__b2tCropPlan = plan;
+  if (!plan) {
+    cropEl.style.backgroundImage = "none";
+    cropEl.innerHTML = '<p class="muted reading-dock__crop-empty">这一条没有行框，画不出放大图</p>';
+    return;
+  }
+  const url = pageImageUrl(plan.pageNo, "zoom");
+  cropEl.innerHTML = "";
+  cropEl.style.backgroundImage = `url("${url}")`;
+  cropEl.style.backgroundRepeat = "no-repeat";
+  // **用 naturalWidth 换算，不用百分比、不用 CSS 像素**：不同 size 档位（view/mid/zoom）
+  // 的位图宽度不同，百分比定位会在小容器里算出不同区域（错位看着像"图糊了"）。
+  const paint = (naturalWidth, naturalHeight) => {
+    if (!naturalWidth || !naturalHeight) return;
+    const scale = READING_CROP_WIDTH / (plan.w * naturalWidth); // 显示 px / 源 px
+    cropEl.style.backgroundSize = `${naturalWidth * scale}px ${naturalHeight * scale}px`;
+    cropEl.style.backgroundPosition = `${-plan.x0 * naturalWidth * scale}px ${-plan.y0 * naturalHeight * scale}px`;
+    cropEl.dataset.crop = JSON.stringify({
+      x0: Number(plan.x0.toFixed(4)),
+      y0: Number(plan.y0.toFixed(4)),
+      w: Number(plan.w.toFixed(4)),
+      h: Number(plan.h.toFixed(4)),
+      rows: plan.rows,
+      lineH: plan.lineH,
+      gap: plan.gap ? Number(plan.gap.toFixed(4)) : null,
+      gapN: plan.gapN,
+      gapLevel: plan.gapLevel,
+      degrade: plan.degrade,
+      nw: naturalWidth,
+      scale: Number(scale.toFixed(3)),
+    });
+  };
+  // 裁切图上的高亮：**同一个 bbox**，只做线性换算，不按字宽/行距估算（容差 0）。
+  const [bx0, by0, bx1, by1] = plan.bbox;
+  const mark = document.createElement("div");
+  mark.className = "reading-dock__crop-mark";
+  mark.style.left = `${((bx0 - plan.x0) / plan.w) * 100}%`;
+  mark.style.top = `${((by0 - plan.y0) / plan.h) * 100}%`;
+  mark.style.width = `${((bx1 - bx0) / plan.w) * 100}%`;
+  mark.style.height = `${((by1 - by0) / plan.h) * 100}%`;
+  cropEl.append(mark);
+  const probe = new Image();
+  probe.onload = () => paint(probe.naturalWidth, probe.naturalHeight);
+  probe.src = url;
+}
+
 function openReadingPanel(entry) {
   closeReadingPanel();
   const key = readingKey(entry.block_id, entry.line_index);
@@ -19184,9 +19495,19 @@ function openReadingPanel(entry) {
   close.textContent = "✕";
   close.addEventListener("click", closeReadingPanel);
   head.append(close);
+  // 原文 / 候选并排（规格要求两行都能看见，用户要对照着改）
+  const origin = document.createElement("p");
+  origin.className = "reading-panel__origin";
+  const originLabel = document.createElement("span");
+  originLabel.className = "reading-panel__tag";
+  originLabel.textContent = "原文";
+  origin.append(originLabel, document.createTextNode(entry.text || entry.ocr_text || ""));
   const candidate = document.createElement("p");
   candidate.className = "reading-panel__candidate";
-  candidate.textContent = entry.candidate || "（第二路没有文字）";
+  const candLabel = document.createElement("span");
+  candLabel.className = "reading-panel__tag";
+  candLabel.textContent = "候选";
+  candidate.append(candLabel, document.createTextNode(entry.candidate || "（第二路没有文字）"));
   const actions = document.createElement("div");
   actions.className = "reading-panel__actions";
   const adopt = document.createElement("button");
@@ -19205,7 +19526,7 @@ function openReadingPanel(entry) {
   edit.textContent = "自己改";
   edit.addEventListener("click", () => startReadingEdit(entry, panel));
   actions.append(adopt, keep, edit);
-  panel.append(head, candidate, actions);
+  panel.append(head, origin, candidate, actions);
   // **结构上不可能被清掉**：面板挂进 `#reading-panel-host`，它不在 `#reading-stream` 里，
   // `renderReading({reset:true})` 怎么 `innerHTML=""` 都碰不到它。
   const host = el("reading-panel-host");
@@ -19213,6 +19534,8 @@ function openReadingPanel(entry) {
   host.innerHTML = "";
   host.append(panel);
   host.hidden = false;
+  readingDockShow(entry);
+  readingCropPaint(entry);
   refreshReadingCurrentHighlight();
   if (entry.page_no && entry.page_no !== readingPageNo) {
     updateReadingPage(entry.page_no, { scrollLeft: false, syncStream: false });
@@ -19241,12 +19564,14 @@ function hideReadingPanelHost() {
   if (host && host.querySelector(".reading-panel")) {
     host.innerHTML = "";
     host.hidden = true;
+    readingDockSetVisible(false);
   }
 }
 
 function closeReadingPanel() {
   const host = el("reading-panel-host");
   if (host) { host.innerHTML = ""; host.hidden = true; }
+  readingDockSetVisible(false);
   readingJumpSettleKey = null;
   // 用户主动关 = 真的关；重绘导致的移除走 renderReading，不清 pending
   readingPendingPanelKey = null;
@@ -21072,6 +21397,9 @@ function setupReading() {
     openPageDetail(readingPageNo);
   });
   el("reading-stream").addEventListener("scroll", onReadingScroll, { passive: true });
+  el("reading-dock-collapse")?.addEventListener("click", () => readingDockCollapse());
+  el("reading-tree-toggle")?.addEventListener("click", () => readingTreeToggle());
+  initReadingDockGrip();
   el("reading-pdf-scroll").addEventListener("scroll", onReadingPdfScroll, { passive: true });
   // 悬停段落：右栏绿底 + 左边对应块绿框（只高亮，不滚）
   el("reading-stream").addEventListener("mouseover", (event) => {
@@ -21135,16 +21463,45 @@ function setupReading() {
       if (event.key === "Escape") {
         event.preventDefault();
         exitInlineEdit();
-      } else if (event.key === "Enter" && (event.altKey || event.metaKey)) {
+      } else if (event.key === "Enter" && event.shiftKey) {
         event.preventDefault();
+        showNoticeBar("行级文本不支持换行");
+      } else if (event.key === "Enter") {
+        // 编辑态 Enter **绝不前进**：落草稿 + 退出 + 停在原地。
+        // 前进只走 Cmd/Ctrl+Enter（或非编辑态的 Enter / Space）。
+        event.preventDefault();
+        const advance = event.metaKey || event.ctrlKey || event.altKey;
         exitInlineEdit();
-        gotoNextUnreviewed();
+        if (advance) gotoNextUnreviewed();
       }
       return;
     }
+    // 键盘闭环（任务 91 第 3 步）：非编辑态 Enter=保留并下一处、Space=采用并下一处、E=编辑。
+    // **Enter 必须先把当前条记成"保留"**——旧实现直接 gotoNext，当前条既不记录也不算已审，
+    // 连续按 Enter 会批量漏审（PM 审计点出来的已知缺陷）。
+    const currentEntry = readingPanelKey ? readingMarks.get(readingPanelKey) : null;
     if (event.key === "Enter") {
       event.preventDefault();
+      if (event.shiftKey) {
+        showNoticeBar("行级文本不支持换行：Enter 保留并下一处，E 进编辑");
+        return;
+      }
+      if (currentEntry && !readingEntryDone(currentEntry)) {
+        draftReading(currentEntry, "kept", null);
+      }
       gotoNextUnreviewed();
+    } else if (event.key === " " && event.target.tagName !== "BUTTON") {
+      if (!currentEntry) return;
+      event.preventDefault();
+      if (!readingEntryDone(currentEntry)) {
+        draftReading(currentEntry, "adopted", currentEntry.candidate);
+      }
+      gotoNextUnreviewed();
+    } else if (event.key.toLowerCase() === "e" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      if (!currentEntry) return;
+      event.preventDefault();
+      const line = readingLineNode(readingKey(currentEntry.block_id, currentEntry.line_index));
+      if (line) startInlineEdit(line);
     } else if (event.key === "Escape") {
       closeReadingPanel();
     }
