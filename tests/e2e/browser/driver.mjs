@@ -120,6 +120,42 @@ async function dismissMasks(page) {
  * 页图清晰度：比例 = img.naturalWidth ÷ (img CSS 宽 × dpr)，断言 ≥ 1.0。
  * 小于 1 = 图被放大显示，一定糊（用户为这个提过四次）。
  */
+async function setIndexZoom(page, percent) {
+  // 目录确认的缩放档：55% / 70% / 85% / 适合宽度。85% 是余量最薄的一档，必须常驻盯。
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const label = await page.evaluate(
+      () => (document.getElementById("index-zoom-label") || {}).textContent || ""
+    );
+    if (label.trim() === `${percent}%`) return;
+    const current = label.includes("适合") ? 100 : Number.parseInt(label, 10) || 100;
+    const selector = current > percent ? "#index-zoom-out" : "#index-zoom-in";
+    const disabled = await page.evaluate(
+      (sel) => Boolean(document.querySelector(sel) && document.querySelector(sel).disabled),
+      selector
+    );
+    if (disabled) {
+      throw new Error(`无法把目录缩放调到 ${percent}%（当前「${label.trim()}」）`);
+    }
+    await page.click(selector, { label: `目录缩放 ${current > percent ? "减小" : "增大"}` });
+    await waitFor(
+      page,
+      (before) => {
+        const node = document.getElementById("index-zoom-label");
+        return Boolean(node && node.textContent.trim() !== before);
+      },
+      `目录缩放离开「${label.trim()}」`,
+      10000,
+      label.trim()
+    );
+  }
+  const finalLabel = await page.evaluate(
+    () => (document.getElementById("index-zoom-label") || {}).textContent || ""
+  );
+  if (finalLabel.trim() !== `${percent}%`) {
+    throw new Error(`目录缩放没到 ${percent}%（当前「${finalLabel.trim()}」）`);
+  }
+}
+
 async function waitVisiblePageImages(page, container, tileSelector, where, scroll) {
   // 占位图（src=thumb）不算载入完成：必须 is-ready 且不再是 placeholder。
   await waitFor(
@@ -195,6 +231,35 @@ async function measureImages(page, args) {
     );
   } else {
     await ensureReading(page);
+  }
+
+  if (where === "index" && args.zoomPercent) {
+    await setIndexZoom(page, args.zoomPercent);
+    // 缩放变了，所需像素也变了；等可见图换到够清晰的档位再量。
+    // 等不到也不在这里判死：后面三条底线会如实报 FAIL（比例/模糊/占位类）。
+    await page
+      .waitForFunction(
+        () => {
+          const scroller = document.getElementById("index-canvas");
+          if (!scroller) return false;
+          const cRect = scroller.getBoundingClientRect();
+          const dpr = window.devicePixelRatio || 1;
+          const tiles = [...document.querySelectorAll(".index-page")].filter((tile) => {
+            const rect = tile.getBoundingClientRect();
+            return rect.bottom > cRect.top && rect.top < cRect.bottom;
+          });
+          if (!tiles.length) return false;
+          return tiles.every((tile) => {
+            const image = tile.querySelector("img");
+            if (!image || !image.classList.contains("is-ready") || !image.naturalWidth) return false;
+            const width = image.getBoundingClientRect().width;
+            return width > 0 && image.naturalWidth >= width * dpr * 0.99;
+          });
+        },
+        undefined,
+        { timeout: 15000 }
+      )
+      .catch(() => {});
   }
 
   const container = where === "index" ? "#index-canvas" : "#reading-pdf-scroll";

@@ -219,10 +219,17 @@ def cmd_images(args: argparse.Namespace) -> int:
         report.blocked("准备", str(error))
         return report.finish(report_path)
 
-    screens = [("review", "top", "审校第 1 屏"), ("review", "middle", "审校中间一屏"), ("index", "top", "目录确认一屏")]
-    for where, scroll, label in screens:
+    screens = [
+        ("review", "top", "审校第 1 屏", {}),
+        ("review", "middle", "审校中间一屏", {}),
+        ("index", "top", "目录确认·适合宽度", {}),
+        # 85% 是余量最薄的一档（Builder 实测 mid 1870 / 914.6 → 1.02），最该常驻盯。
+        ("index", "top", "目录确认·85%", {"zoomPercent": 85}),
+    ]
+    for where, scroll, label, extra in screens:
         try:
-            result = _browser.run(state, "images", {"where": where, "scroll": scroll})
+            payload = {"where": where, "scroll": scroll, **extra}
+            result = _browser.run(state, "images", payload)
             _image_check(report, label, result, label,
                          min_page=50 if scroll == "middle" else None)
         except Exception as error:  # noqa: BLE001
@@ -250,7 +257,7 @@ def cmd_images(args: argparse.Namespace) -> int:
             # 用目录确认那一屏做负向自检：上一项自检把审校 p1 的 src 换成了 thumb，
             # 在这里接着量会变成"低清 + 模糊"，证明不了"分辨率够但被模糊"。
             result = _browser.run(state, "images",
-                                  {"where": "index", "scroll": "top",
+                                  {"where": "index", "scroll": "top", "zoomPercent": 85,
                                    "forcePlaceholderClass": True, "forceBlur": True})
             rows = result.get("rows", [])
             bad = [row for row in rows if _image_issues(row)]
@@ -388,12 +395,15 @@ def cmd_smoke(args: argparse.Namespace) -> int:
                 else:
                     report.fail("4 目录确认", "无可信页码时步骤条写「可跳过」",
                                 f"count={tile.get('count')!r}；{detail}")
-                try:
-                    _image_check(report, "4 目录确认",
-                                 _browser.run(state, "images", {"where": "index", "scroll": "top"}),
-                                 "目录确认一屏")
-                except Exception as error:  # noqa: BLE001
-                    report.blocked("4 目录确认 · 页图清晰度", str(error))
+                for extra, label in (({}, "目录确认·适合宽度"),
+                                     ({"zoomPercent": 85}, "目录确认·85%")):
+                    try:
+                        _image_check(report, "4 目录确认",
+                                     _browser.run(state, "images",
+                                                  {"where": "index", "scroll": "top", **extra}),
+                                     label)
+                    except Exception as error:  # noqa: BLE001
+                        report.blocked(f"4 目录确认 · 页图清晰度（{label}）", str(error))
             except Exception as error:  # noqa: BLE001
                 report.blocked("4 目录确认", str(error))
 
