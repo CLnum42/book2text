@@ -18302,6 +18302,14 @@ function renderReading({ reset = false, startAt = null } = {}) {
   stream.append(fragment);
   readingRendered = end;
   removeReadingSentinel();
+  // 任务 77：**重画之后把悬停状态补回来**。右栏重建（切页补 marks / 滚动补段）会把
+  // `is-hover` 一起冲掉，用户看到的是"鼠标还停在块上、右边的绿没了"。
+  if (readingHoveredSeq !== null && readingHoveredSeq !== undefined) {
+    const hovered = stream.querySelector(
+      `.reading-seg[data-seq="${readingHoveredSeq}"]`
+    );
+    if (hovered) hovered.classList.add("is-hover");
+  }
   if (end < segments.length) stream.append(buildReadingSentinel());
   // 任务 67：滚动会把后面的段铺出来，那些页可能在 marks 窗口外——补一块再画红字
   if (readingMarksWindow && end > firstNew) {

@@ -56,13 +56,51 @@
 `border: 1px solid rgba(11,95,88,.42)`（原来 1px 实色 + 1px 白边，白边是"粗"的观感来源），
 内外对比仍靠 0.34 的遮罩。**拖动手柄的样式与热区一点没动**。
 
-## P1-2 块高亮改成色块 + 悬停双向联动
+## P1-2 块高亮改成色块 + 悬停双向联动（**真实鼠标事件验过**）
 
 - 悬停/选中：`background: rgba(22,163,74,.28)` 铺满整块 + 1px 细边（原来只有 outline）；
 - 右→左（原有）：悬停右栏段落 → 左侧对应块铺绿；
 - 左→右（新增）：`setReadingHoverByBlock()`，悬停 PDF 上的块 → 右侧对应段落加 `is-hover`
   （同一颜色 `rgba(22,163,74,.16)` + 内描边），左侧这一段的所有块一起铺绿。
-  实测直接调用：`hoveredSeq` 命中该段、`linked = 1`、块背景 `rgba(22,163,74,0.28)`。
+### 真实鼠标事件验收（CDP `Input.dispatchMouseEvent` / `mouseMoved`，不是 `element.dispatchEvent`）
+
+第一次用真实鼠标测**不亮**，查出两个真原因（都是"看着像功能的死代码"那一类）：
+
+1. **块的元素是 `pointer-events: none`**：叠层为了不挡拖拽默认不吃事件，真实鼠标根本到不了块上。
+   `element.dispatchEvent` 能骗过自己，真鼠标不行。→ 只给阅读流的块开 `pointer-events: auto`
+   （差异层 / 版心框仍是 none）。
+2. **右栏重画把 `is-hover` 冲掉**：切页补 marks 会重建段节点，鼠标还停在块上、右边的绿没了。
+   → `renderReading` 里按 `readingHoveredSeq` 把 `is-hover` 补回来。
+
+改完的真实鼠标结果（1423×900）：
+
+| 方向 | 结果 |
+|---|---|
+| 鼠标移到左侧块中心（387, 299） | 右侧段 `is-hover` ✅、底色 `rgba(22,163,74,0.16)`、左侧 `is-linked` 1 个 |
+| 鼠标移到右侧段中心（898, 118） | 左侧块铺 `rgba(22,163,74,0.28)` ✅、该段同时 `is-hover` |
+| 鼠标移开（5, 5） | `is-linked` 0、`is-hover` 0（干净退出） |
+
+截图：`docs/screenshots/hover-left-to-right.png`、`hover-right-to-left.png`。
+
+## 页码剔除抽查：10 页首行删前 / 删后
+
+| 页 | 删前首行 | 删后首行 | 残留 |
+|---:|---|---|---|
+| 30 | `Page xxii` | `Nan Tzu has not only gone generally unnoticed in Western` | 无 |
+| 32 | `Page xxiii` | `in its capacity for reconciling selected elements of conflicting` | 无 |
+| 34 | `Page xxiv` | `franchise these vassals and consolidate its own power at their` | 无 |
+| 36 | `Page xxV` | `for the early Han author; analyzing The Art of Rulership's` | 无 |
+| 41 | `Page 2` | `endowment. It is the cultivation of rightness through the dynami` | 无 |
+| 43 | `Page 3` | `mines the degree to which a society supports or retards the proj` | 无 |
+| 45 | `Page 4` | `forty I was of one mind, at fifty I understood the unfolding of` | 无 |
+| 48 | `Page 5` | `Yin, 14 wear the ceremonial cap of Chou, and as for music there` | 无 |
+| 50 | `Page 6` | `of Chinese culture had culminated in a sophisticated pattern for` | 无 |
+| 52 | `Page 7` | `Have no recourse to use it.` | 无 |
+
+**"页码 + 正文"并成一行的例子**（第 11 页）：原首行
+`Page x stakes out a new position that manages to embrace both:` →
+摘前缀后 `stakes out a new position that manages to embrace both:`，
+**没有啃掉单词**（规则要求数字后面必须有空白分隔，`Page x ` 整段带空格一起摘）。
 
 ## P1-3 编辑时左侧标出"正在改的那一行"
 

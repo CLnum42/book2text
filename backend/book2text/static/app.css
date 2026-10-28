@@ -2444,6 +2444,10 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 /* 悬停联动：右栏这一段 + 左边这一段对应的所有块都亮绿，只高亮、不滚 */
 /* 任务 76：用户要"色块铺满"，不是只描边。悬停 = 半透明绿铺满 + 一圈细边，
    两侧用同一个颜色和透明度，看得出是"同一条"。 */
+/* 任务 77：**叠层默认 pointer-events:none，真实鼠标根本到不了块上**，
+   于是"悬停 PDF 块 → 右边段落亮"永远不触发（用 element.dispatchEvent 能骗过自己，
+   真实鼠标不行）。只给阅读流的块开 auto，别的叠加层（差异层 / 版心框）保持不变。 */
+#reading-pages .box { pointer-events: auto; }
 #reading-pages .box.is-linked {
   background: rgba(22, 163, 74, .28);
   outline: 1px solid rgba(22, 163, 74, .75);
