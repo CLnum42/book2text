@@ -1107,6 +1107,32 @@ def cmd_pinguard(args: argparse.Namespace) -> int:
     return report.finish(report_path)
 
 
+def cmd_scrollfollow(args: argparse.Namespace) -> int:
+    """只记数据：面板开着滚正文流，顶部页码跟不跟。不判定（定性用）。"""
+    state = _require_state()
+    state_data = _browser.run(state, "prepare")
+    data = _browser.run(state, "scroll_follow",
+                        {"step": args.step, "steps": args.steps, "up": args.up}, timeout=300.0)
+    raw_path = Path(state["run_dir"]) / "raw-scrollfollow.json"
+    raw_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def line(tag: str, row: dict[str, Any]) -> str:
+        pin = row.get("pin") or {}
+        return (f"{tag} | scrollTop {row.get('scrollTop')}/{row.get('maxScroll')} | 顶部 {row.get('label')} | "
+                f"锚点行 {row.get('anchorPage')}（mark={'有' if row.get('mark') else '无'}） | "
+                f"面板 {row.get('panelPage')} | 左栏主导 {row.get('dominant')} | "
+                f"is-current {row.get('currentLines')} | held {pin.get('held')} escape {pin.get('escape')} | "
+                f"settle {row.get('settleKey')}")
+
+    print("项目已打开：", state_data.get("view"))
+    print(line("落位后", data["base"]))
+    print(line("上滚后", data["rows"][0]))
+    for index, row in enumerate(data["rows"][1:], start=1):
+        print(line(f"下滚{index}", row))
+    print(f"\n原始数据：{raw_path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Book2Text QA：隔离环境 + 一致性验收")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1141,6 +1167,11 @@ def build_parser() -> argparse.ArgumentParser:
     pinguard.add_argument("--page", type=int, default=142, help="跳转落位目标页（默认 142）")
     pinguard.add_argument("--max-jumps", type=int, default=240, help="为达到目标页最多按多少次「下一处未审」")
     pinguard.set_defaults(func=cmd_pinguard)
+    sf = sub.add_parser("scrollfollow", help="只记数据：面板开着滚正文流，顶部页码跟不跟（不判定）")
+    sf.add_argument("--step", type=int, default=400)
+    sf.add_argument("--steps", type=int, default=8)
+    sf.add_argument("--up", type=int, default=1600, help="先上滚多少 px 留出余量")
+    sf.set_defaults(func=cmd_scrollfollow)
     return parser
 
 

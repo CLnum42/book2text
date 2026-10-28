@@ -48,6 +48,8 @@ export async function run(cfg) {
       return await nextProbe(page);
     case "pin_guard":
       return await pinGuard(page, args);
+    case "scroll_follow":
+      return await scrollFollow(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -1485,6 +1487,93 @@ async function pinGuard(page, args) {
   const step146 = await scrollToPage(target + 4);
 
   return { target, jumps, jumpRows, landing, at500, at1500, step143, step144, step146 };
+}
+
+/**
+ * 只记数据的"滚正文流"探针：面板开着，先上滚留出余量，再按 400px 往下滚，
+ * 每步记 顶部 / 锚点行页 / 面板页 / 左栏主导 / pin。不做判定（DevLead 要用来定性）。
+ */
+async function scrollFollow(page, args) {
+  const stepPx = args.step || 400;
+  const steps = args.steps || 8;
+  const upPx = args.up || 1600;
+  await ensureReading(page);
+  await ensurePanelOpen(page);
+  await page.waitForTimeout(400);
+
+  const read = () =>
+    page.evaluate(() => {
+      const stream = document.getElementById("reading-stream");
+      const rect = stream.getBoundingClientRect();
+      const labelNode = document.getElementById("reading-page-no");
+      const label = labelNode
+        ? Number(((labelNode.textContent || "").match(/(\d+)/) || [0, 0])[1]) || null
+        : null;
+      const anchor = rect.top + rect.height * 0.35;
+      let anchorLine = null;
+      for (const item of stream.querySelectorAll(".reading-line")) {
+        const r = item.getBoundingClientRect();
+        if (r.bottom >= anchor) {
+          anchorLine = { key: item.dataset.key || null, page: Number(item.dataset.page) || null };
+          break;
+        }
+      }
+      const panel = document.querySelector(".reading-panel");
+      const head = document.querySelector(".reading-panel__head strong");
+      const panelPage = head
+        ? Number(((head.textContent || "").match(/第\s*(\d+)\s*页/) || [0, 0])[1]) || null
+        : null;
+      const scroller = document.getElementById("reading-pdf-scroll");
+      let dominant = null;
+      if (scroller) {
+        const sRect = scroller.getBoundingClientRect();
+        let best = null;
+        for (const tile of scroller.querySelectorAll(".reading-page")) {
+          const tr = tile.getBoundingClientRect();
+          const overlap = Math.min(tr.bottom, sRect.bottom) - Math.max(tr.top, sRect.top);
+          if (overlap > 0 && (!best || overlap > best.overlap)) best = { page: Number(tile.dataset.pageNo) };
+        }
+        if (best) dominant = best.page;
+      }
+      const pin = window.__b2tPagePin || null;
+      return {
+        scrollTop: Math.round(stream.scrollTop),
+        maxScroll: Math.round(stream.scrollHeight - stream.clientHeight),
+        label,
+        labelText: labelNode ? labelNode.textContent.replace(/\s+/g, "") : null,
+        anchorPage: anchorLine ? anchorLine.page : null,
+        anchorKey: anchorLine ? anchorLine.key : null,
+        mark: anchorLine ? Boolean(readingMarks.get(anchorLine.key)) : null,
+        panelPage,
+        dominant,
+        currentLines: document.querySelectorAll("#reading-stream .reading-line.is-current").length,
+        pin: pin ? { held: pin.held, escape: pin.escape } : null,
+        settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "n/a",
+      };
+    });
+
+  const box = await page.evaluate(() => {
+    const stream = document.getElementById("reading-stream");
+    const rect = stream.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(box.x, box.y, { label: "移到正文流上" });
+
+  const base = await read();
+  if (upPx) {
+    await page.mouse.wheel(0, -upPx, { label: `正文流上滚 ${upPx}px` });
+    await page.waitForTimeout(400);
+  }
+  const afterUp = await read();
+  const rows = [afterUp];
+  for (let i = 0; i < steps; i += 1) {
+    await page.mouse.wheel(0, stepPx, { label: `正文流下滚 ${stepPx}px（第 ${i + 1} 次）` });
+    await page.waitForTimeout(450);
+    const row = await read();
+    rows.push(row);
+    if (row.scrollTop === rows[rows.length - 2].scrollTop) break;
+  }
+  return { base, rows, stepPx };
 }
 
 async function nextProbe(page) {
