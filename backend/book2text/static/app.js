@@ -18149,8 +18149,10 @@ function startInlineEdit(line) {
 
 function onInlineInput(event) {
   const line = event.currentTarget;
-  clearTimeout(readingInlineTimer);
-  readingInlineTimer = setTimeout(() => saveInlineEdit(line), 350);
+  // 每行一个定时器：全局一个的话，连着改三行只有最后一行会落草稿
+  clearTimeout(Number(line.dataset.editTimer || 0));
+  const timer = setTimeout(() => saveInlineEdit(line), 350);
+  line.dataset.editTimer = String(timer);
 }
 
 function saveInlineEdit(line) {
@@ -18185,7 +18187,8 @@ function exitInlineEdit() {
   const node = readingEditingKey ? readingLineNode(readingEditingKey) : null;
   if (node) {
     const key = node.dataset.key;
-    if (readingInlineEdits.has(key)) saveInlineEdit(node);
+    clearTimeout(Number(node.dataset.editTimer || 0));
+    saveInlineEdit(node);
     node.removeAttribute("contenteditable");
     node.classList.remove("is-editing");
     node.classList.remove("is-current");
@@ -18305,7 +18308,7 @@ function buildReadingLine(segment, span) {
 function renderReadingProgress() {
   const total = readingEntries.length;
   const processed = readingEntries.filter(readingEntryDone).length;
-  const drafts = readingDrafts.size;
+  const drafts = readingDrafts.size + readingInlineEdits.size;
   // 显示分两类、判定看合并：进度条只算含汉字差异的行，标点单独一行小字
   const punctTotals = punctGroupsData?.totals || {};
   const punctLeft = Number(punctTotals.undecided_lines || 0);
@@ -18323,7 +18326,7 @@ function renderReadingProgress() {
   chip.textContent = `未提交 ${drafts}`;
   const submit = el("reading-submit");
   submit.disabled = drafts === 0;
-  submit.textContent = drafts ? `提交 ${drafts} 处改动` : "提交 0 处改动";
+  submit.textContent = drafts ? `提交 ${drafts} 处` : "提交 0 处";
   el("reading-submit").classList.toggle("is-ready", drafts > 0);
 }
 
