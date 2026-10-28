@@ -251,7 +251,7 @@ L0 平台              core/dom.js（el）、core/api.js（apiJson + token）、
 
 ---
 
-## 5. 对外接口（按证据裁到 6 个 + 事件）
+## 5. 对外接口（按证据裁到 6 个，无事件）
 
 ```js
 window.ReadingView = {
@@ -261,7 +261,6 @@ window.ReadingView = {
   getCurrent(),          // → { projectId, pageNo }：savePosition 用，必须同步、便宜
   reload(),              // 标点 / 乱码批次裁决后"整条流重开"
   toggleFollow(),        // 9347 chip
-  on(event, fn),         // 'content-changed' | 'error'；返回退订函数
 };
 ```
 
@@ -290,7 +289,7 @@ window.ReadingView = {
 - Slice 2 收尾把临时集合清空、上限改成 **6**；此后任何新增导出都会让这条立即红。
 - 长度只许往下调，注释里写明"改小可以，改大必须 Architect 签字"。
 
-**`getCurrent()` 只给两个字段**，别加 `done/total/draftCount`：那是"顶部数字"，由 `on('content-changed')` 推给外壳渲染，不需要外壳来拉。外壳拉一次状态，就会有第二个写点。
+**`getCurrent()` 只给两个字段**，别加 `done/total/draftCount`：那是"顶部数字"，由模块自己渲染（badge 与它的数据源切在一起，见 §6 R8），外壳不拉。外壳拉一次状态，就会有第二个写点。
 
 ---
 
@@ -348,6 +347,18 @@ onViewportResize: () => {
 
 Slice 2 把 `readingPageNo` / `measureReadingTops` / `updateReadingPage` 搬进模块后，这个注入自然消失（R1 保持绿）；`currentView` 换成模块自己的 `active`。
 
+### R8（Chief 定，2026-10-28）：重构不许新增导出
+
+> **重构不许新增导出。如果需要新增一个导出才能搬动一块代码，说明这一刀的边界切错了——改边界，别加接口。**
+
+为什么 `refreshChrome` 看起来需要、其实不需要：它是把 **badge 和它的数据源切开了**。**切在一起就不需要接口。**
+和 D-106 同理——**接口是结构不清的补偿**：正文明明只有一份，却要给三个视图各造一个入口，于是有了"唯一入口"的规定；
+模块边界明明切在数据源上，却要给外面递一个刷新方法，于是有了新导出。两步都是同一个错误：切在数据上，不切在调用上。
+
+**这条规则的可检查形态**：导出棘轮（`tests/js/boundary.test.mjs`）只降不升，当前 11；任何"为了搬代码"而加的 key 都必须先过 Architect 的签字，默认答案是重切边界。
+
+---
+
 ### 为什么先上 R1，不是 R2/R3
 
 - R1 **已绿**（`5d7e0ef`），且**每次提取新模块都会自动被同一道闸拦住**——它守的是"新模块不许偷看老代码"这个方向，正是 254 个全局长回来的路径。
@@ -400,7 +411,7 @@ grep -nE '\b(readingPageNo|readingFollow|readingData|readingProject|readingMarks
 /opt/homebrew/bin/node tests/js/run.mjs   # 25 pass / 0 fail / 1 todo（代理对是已知 TODO），退出码 0
 ```
 
-## 6. Slice 1 验收口径（Chief 22:5x 更正后）
+## 9. Slice 1 验收口径（Chief 更正后）
 
 原判据"`app.js` 减少行数 ≈ 新文件增加行数（±30）"**作废**——它会被骨架代码骗：
 IIFE 包装、依赖注入、头注释、4 个转发 stub 都是搬运必然带的，实测 -109 / +201 差 93 行却完全正确。
@@ -418,3 +429,16 @@ Slice 1 实测（2026-10-28）：
 - 真实现份数：`readingSplitPrefs` / `applyReadingSplit` / `saveReadingSplit` / `setupReadingSplit` **各 1**
 - 四个数：段数 4821、字数 753335、正文归一化 sha256 `9ca42f50a3ed1dd6`、差异 567（与基线逐项相同）
 - `pytest` 1002 passed；`tests/js` 25 pass / 1 todo
+
+---
+
+## 10. Slice 4 裁定记档（2026-10-28，Architect）
+
+**裁定：** Slice 4（`reading-follow-chip` 之外的 `punct` / `garbled` 两个 badge）**并进「punct 整体搬」**，不单独成刀。
+
+三条理由，按重要性：
+1. **不破棘轮**：单独搬 badge 需要从模块往外递一个 `refreshChrome`（或等价方法），会让公开导出从 11 变 12。按 R8，这就是边界切错——badge 和它的数据源被切开了。
+2. **不留两份 badge 数据**：现在 `reading-punct-count` / `reading-garbled-count` 的文本由 punct / garbled 模块算、DOM 归 `#view-reading`。分开搬等于让两个模块各算一份，正是"面板 142 / 顶部 141"的成因（反模式 #3）。
+3. **到期点明确**：punct 整体搬时，badge 的数据与 DOM 一起进模块，`getPunctBadge()` 这类注入点**一个都不需要**。
+
+**验收侧的连带影响**：该切片的验收必须同时看"标点数与审校进度同屏一致"这一条（顶栏 badge 与正文流进度不同步，是两个写点的典型症状）。
