@@ -17994,21 +17994,6 @@ function readingDraftStorageKey() {
 }
 
 
-function saveReadingDrafts() {
-  try {
-    localStorage.setItem(
-      readingDraftStorageKey(),
-      JSON.stringify({
-        at: new Date().toISOString(),
-        items: [...readingDrafts.values()],
-      })
-    );
-  } catch {
-    /* localStorage 满了也不该挡审校 */
-  }
-}
-
-
 /**
  * 进「正文审校」默认开版心 + 块框（任务 57）。
  *
@@ -18087,24 +18072,6 @@ function expandToWordRange(text, start, end) {
   return { start: left, end: right, word: true };
 }
 
-/**
- * **常驻自检：右栏显示的字必须和导出的一字不差**（任务 79，默认关闭）。
- *
- * 开法：地址栏加 `?checktext=1`，或在控制台 `window.__b2tTextCheck = true`。
- *
- * 为什么需要：这类 bug（字符规范化只改块不改行、行文本没同步、行间空格被丢）
- * **不抛异常、不弄红测试、也不让 CER 变差**——只会让用户审到错的东西。
- * 已经被咬过三次，所以每次验收都把它打开。
- */
-function textCheckEnabled() {
-  if (window.__b2tTextCheck) return true;
-  try {
-    return new URLSearchParams(location.search).get("checktext") === "1";
-  } catch {
-    return false;
-  }
-}
-
 
 function readingLineText(segment, span) {
   return segment.text.slice(span.start, span.end);
@@ -18178,21 +18145,6 @@ function paintInlineRevision(line, inline) {
     line.append(document.createTextNode(inline.text.slice(cursor)));
   }
   line.append(chip);
-}
-
-
-/** 重画一行（折叠展开 / 切换修订档后调用）。 */
-function rerenderReadingLine(key) {
-  const node = readingLineNode(key);
-  if (!node) return;
-  const inline = readingInlineEdits.get(key);
-  node.replaceChildren();
-  if (!inline) {
-    node.append(document.createTextNode(node.dataset.baseText || ""));
-    node.classList.remove("is-inline-edited", "is-changed-bar", "is-changed-dot");
-    return;
-  }
-  paintInlineRevision(node, inline);
 }
 
 
@@ -18356,19 +18308,6 @@ function readingLineNode(key) {
 }
 
 
-function closeReadingPanel() {
-  const host = el("reading-panel-host");
-  if (host) { host.innerHTML = ""; host.hidden = true; }
-  readingJumpSettleKey = null;
-  // 用户主动关 = 真的关；重绘导致的移除走 renderReading，不清 pending
-  clearPendingPanel();
-  const stream = el("reading-stream");
-  if (!stream) return;
-  for (const node of stream.querySelectorAll(".reading-panel")) node.remove();
-  readingPanelKey = null;
-  refreshReadingCurrentHighlight();
-}
-
 /**
  * 当前审校项的"两边同款"高亮（任务 61）。
  *
@@ -18401,24 +18340,6 @@ function refreshReadingCurrentHighlight() {
   // 页面上只有已加载块的页画过差异框：重画这些页 + 当前 key 所在页
   for (const pageNo of readingPageBlocks.keys()) paintReadingDiffBoxes(pageNo);
   if (readingPageNo) paintReadingDiffBoxes(readingPageNo);
-}
-
-
-function rerenderReadingLine(entry) {
-  const key = readingKey(entry.block_id, entry.line_index);
-  const line = readingLineNode(key);
-  if (!line) return;
-  const segment = readingVisibleSegments().find((seg) =>
-    (seg.line_spans || []).some(
-      (span) => readingKey(span.block_id, span.line_index) === key
-    )
-  );
-  if (!segment) return;
-  const span = (segment.line_spans || []).find(
-    (item) => readingKey(item.block_id, item.line_index) === key
-  );
-  const fresh = buildReadingLine(segment, span);
-  line.replaceWith(fresh);
 }
 
 
@@ -18465,31 +18386,6 @@ let readingResizeObserver = null;
 /** 跳转时没开出来的面板：挂起 key，等"块/行到达"再试，不靠定时器猜。 */
 let readingPendingPanelKey = null;
 let readingPendingPanelEntry = null;
-
-/** 挂起"重绘后要补开的面板"：key 由 entry 推出，entry 跨 reset 存活（重绘后由 retryReadingPendingPanel 补开）。 */
-function setPanel(entry) {
-  readingPendingPanelKey = readingKey(entry.block_id, entry.line_index);
-  readingPendingPanelEntry = entry;
-}
-
-/** 清掉挂起项：用户主动关面板，或补开 / 落位已经成功。 */
-function clearPendingPanel() {
-  readingPendingPanelKey = null;
-  readingPendingPanelEntry = null;
-}
-
-/**
- * 跳转落位结算：面板已经开出来就清挂起；没开出来就重新挂起并返回 false，
- * 交给调用方安排重试（期间任何一次重绘都由 retryReadingPendingPanel 补开）。
- */
-function settlePanel(entry) {
-  if (document.querySelector("#reading-panel-host .reading-panel")) {
-    clearPendingPanel();
-    return true;
-  }
-  setPanel(entry);
-  return false;
-}
 
 
 /** 画一页的版心 + 块框（复用页面视图那套渲染，不另写）。 */
@@ -18692,11 +18588,8 @@ function boot() {
     getReadingEditingKey: () => readingEditingKey,
     isReadingActive: () => currentView === "reading",
     renderReadingProgress: () => renderReadingProgress(),
-    saveReadingDrafts: () => saveReadingDrafts(),
     navigate: (name) => showView(name),
     openPageDetail: (pageNo) => openPageDetail(pageNo),
-    closeReadingPanel: () => closeReadingPanel(),
-    rerenderReadingLine: (key) => rerenderReadingLine(key),
     // 任务 94 L2：10 个交互函数搬进模块后的状态句柄与回调（只注入句柄 / getter-setter，不注入值）
     getProject: () => currentProject,
     getReadingFollow: () => readingFollow,
@@ -18807,7 +18700,6 @@ function boot() {
     setReadingStackProject: (value) => { readingStackProject = value; },
     setReadingVisibleObserver: (value) => { readingVisibleObserver = value; },
     // 任务 94 L5：审校环里仍留在 app.js 的叶子函数（模块经注入调用）
-    clearPendingPanel: (...args) => clearPendingPanel(...args),
     exportOptions: (...args) => exportOptions(...args),
     loadIndexBlocks: (...args) => loadIndexBlocks(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
@@ -18815,8 +18707,6 @@ function boot() {
     paintReadingTile: (...args) => paintReadingTile(...args),
     punctReviewSet: (...args) => punctReviewSet(...args),
     refreshReadingCurrentHighlight: (...args) => refreshReadingCurrentHighlight(...args),
-    setPanel: (...args) => setPanel(...args),
-    settlePanel: (...args) => settlePanel(...args),
     // 任务 94 L5：模块要读的常量
     INDEX_IMAGE_WINDOW: INDEX_IMAGE_WINDOW,
     READING_CHUNK: READING_CHUNK,
@@ -18846,7 +18736,9 @@ function boot() {
     // L6 刀3：仍留在 app.js 的叶子函数
     buildReadingLine: (...args) => buildReadingLine(...args),
     // L6 刀7：仍留在 app.js 的叶子函数
-    textCheckEnabled: (...args) => textCheckEnabled(...args),
+    // L6 刀8：状态 setter（有写点才给）
+    setReadingPendingPanelEntry: (value) => { readingPendingPanelEntry = value; return value; },
+    setReadingPendingPanelKey: (value) => { readingPendingPanelKey = value; return value; },
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {

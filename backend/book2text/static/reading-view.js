@@ -203,7 +203,7 @@ function setupReading() {
     injected.getInlineEdits().clear();
     saveReadingInlineEdits();
     injected.getDrafts().clear();
-    injected.saveReadingDrafts?.();
+    saveReadingDrafts();
     renderReading({ reset: true });
     injected.renderReadingProgress?.();
   });
@@ -284,7 +284,7 @@ function setupReading() {
       const line = fold.closest(".reading-line");
       if (line) {
         line.dataset.expanded = line.dataset.expanded === "1" ? "0" : "1";
-        injected.rerenderReadingLine?.(line.dataset.key);
+        rerenderReadingLine(line.dataset.key);
       }
       return;
     }
@@ -311,7 +311,7 @@ function setupReading() {
       event.preventDefault();
       gotoNextUnreviewed();
     } else if (event.key === "Escape") {
-      injected.closeReadingPanel?.();
+      closeReadingPanel();
     }
   });
 }
@@ -580,7 +580,7 @@ async function submitReadingDrafts() {
         .map((item) => injected.readingKey?.(item.block_id, item.line_index))
     );
     for (const key of okKeys) injected.getDrafts().delete(key);
-    injected.saveReadingDrafts?.();
+    saveReadingDrafts();
     for (const key of okKeys) injected.getInlineEdits().delete(key);
     saveReadingInlineEdits();
     if (failed.length) {
@@ -1222,7 +1222,7 @@ function ensureReadingLineRendered(entry) {
     );
   }
   if (index < 0) return null;
-  injected.setPanel(entry);
+  setPanel(entry);
   renderReading({ reset: true, startAt: Math.max(0, index - 1) });
   return injected.readingLineNode(key);
 }
@@ -1364,7 +1364,7 @@ function centerReadingLinePair(entry) {
 }
 
 function openReadingPanel(entry) {
-  injected.closeReadingPanel();
+  closeReadingPanel();
   const key = injected.readingKey(entry.block_id, entry.line_index);
   const line = injected.readingLineNode(key);
   // 窗口化渲染的竞态：跳转后那一行可能还没挂上 DOM。
@@ -1384,7 +1384,7 @@ function openReadingPanel(entry) {
   close.className = "icon-btn";
   close.title = "收起";
   close.textContent = "✕";
-  close.addEventListener("click", injected.closeReadingPanel);
+  close.addEventListener("click", closeReadingPanel);
   head.append(close);
   const candidate = document.createElement("p");
   candidate.className = "reading-panel__candidate";
@@ -1765,7 +1765,7 @@ function retryReadingPendingPanel() {
   const entry = injected.getReadingPendingPanelEntry();
   const key = injected.readingKey(entry.block_id, entry.line_index);
   if (!injected.readingLineNode(key)) return;      // 行还没挂上，等下一次数据到达
-  injected.clearPendingPanel();
+  clearPendingPanel();
   openReadingPanel(entry);
   logReadingNext(entry, { branch: "pending-open", reason: "data-arrived" });
 }
@@ -2005,7 +2005,7 @@ function gotoReadingEntry(entry) {
   // **先驱动"我在第几页"**：顶部页码 + 左侧 PDF + 左树高亮。
   // 原来这里先找行、找不到就 `return`，于是页码和左侧 PDF 根本没动——
   // 用户看到的是"面板第 13 页、顶部第 28 页、左边第 28 页"（现场就是这么来的）。
-  injected.setPanel(entry);      // 跨 reset 存活：重绘后由 retryReadingPendingPanel 补开
+  setPanel(entry);      // 跨 reset 存活：重绘后由 retryReadingPendingPanel 补开
   // 边 9 不切（顺序依赖）：updateReadingPage 必须在 openReadingPanel 之前发起。
   // 入队后它里面的 ensureReadingMarksWindow 会拖到面板打开之后，marks 回来的重绘
   // 会把刚开的面板按"无 key + 无 pending"的清尾规则藏掉（QA 四态对照：回同步 60/60）。
@@ -2029,7 +2029,7 @@ function gotoReadingEntry(entry) {
   // 从这里开始到目标行真正进视口之前，页码同步一律不写（否则会被顶行的上一页改写）
   injected.setReadingJumpSettleKey( key);
   injected.setReadingJumpSettleTicks( 0);
-  const settled = injected.settlePanel(entry);
+  const settled = settlePanel(entry);
   // 偶发"跳到了但没有面板/没有当前项"（QA 2/20）：面板没建起来就再开一次，
   // 并把原因记进 __b2tNextLog。第二次仍失败也记下来，不静默。
   if (!settled) {
@@ -2465,7 +2465,7 @@ function readingMarkOrder(entry) {
 }
 
 function checkReadingSegmentText(node, segment) {
-  if (!injected.textCheckEnabled()) return;
+  if (!textCheckEnabled()) return;
   // 角标 / 折叠提示 / 页范围这些是**渲染附加物**，不属于正文，比较前摘掉
   const clone = node.cloneNode(true);
   for (const extra of clone.querySelectorAll(
@@ -2502,9 +2502,9 @@ function draftReading(entry, ack, text) {
     old_text: entry.current || "",
     at: new Date().toISOString(),
   });
-  injected.saveReadingDrafts();
-  injected.closeReadingPanel();
-  injected.rerenderReadingLine(entry);
+  saveReadingDrafts();
+  closeReadingPanel();
+  rerenderReadingLine(entry);
   injected.renderReadingProgress();
 }
 
@@ -2526,6 +2526,96 @@ function showReadingPlaceholder(pageNo, image) {
   image.dataset.placeholder = "1";
   image.classList.add("is-placeholder");
   image.src = injected.pageImageUrl(pageNo, "thumb");
+}
+
+  // ---------------------------------------------------------------- 审校环·草稿 / 进度 / 面板（任务 94 · L8）
+  // 从 app.js 原样搬入；依赖由 init() 注入。状态仍归 app.js（get/set）。
+
+function saveReadingDrafts() {
+  try {
+    localStorage.setItem(
+      injected.readingDraftStorageKey(),
+      JSON.stringify({
+        at: new Date().toISOString(),
+        items: [...injected.getReadingDrafts().values()],
+      })
+    );
+  } catch {
+    /* localStorage 满了也不该挡审校 */
+  }
+}
+
+/**
+ * **常驻自检：右栏显示的字必须和导出的一字不差**（任务 79，默认关闭）。
+ *
+ * 开法：地址栏加 `?checktext=1`，或在控制台 `window.__b2tTextCheck = true`。
+ *
+ * 为什么需要：这类 bug（字符规范化只改块不改行、行文本没同步、行间空格被丢）
+ * **不抛异常、不弄红测试、也不让 CER 变差**——只会让用户审到错的东西。
+ * 已经被咬过三次，所以每次验收都把它打开。
+ */
+function textCheckEnabled() {
+  if (window.__b2tTextCheck) return true;
+  try {
+    return new URLSearchParams(location.search).get("checktext") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function closeReadingPanel() {
+  const host = el("reading-panel-host");
+  if (host) { host.innerHTML = ""; host.hidden = true; }
+  injected.setReadingJumpSettleKey( null);
+  // 用户主动关 = 真的关；重绘导致的移除走 renderReading，不清 pending
+  clearPendingPanel();
+  const stream = el("reading-stream");
+  if (!stream) return;
+  for (const node of stream.querySelectorAll(".reading-panel")) node.remove();
+  injected.setReadingPanelKey( null);
+  injected.refreshReadingCurrentHighlight();
+}
+
+function rerenderReadingLine(entry) {
+  const key = injected.readingKey(entry.block_id, entry.line_index);
+  const line = injected.readingLineNode(key);
+  if (!line) return;
+  const segment = injected.readingVisibleSegments().find((seg) =>
+    (seg.line_spans || []).some(
+      (span) => injected.readingKey(span.block_id, span.line_index) === key
+    )
+  );
+  if (!segment) return;
+  const span = (segment.line_spans || []).find(
+    (item) => injected.readingKey(item.block_id, item.line_index) === key
+  );
+  const fresh = injected.buildReadingLine(segment, span);
+  line.replaceWith(fresh);
+}
+
+/** 挂起"重绘后要补开的面板"：key 由 entry 推出，entry 跨 reset 存活（重绘后由 retryReadingPendingPanel 补开）。 */
+function setPanel(entry) {
+  injected.setReadingPendingPanelKey( injected.readingKey(entry.block_id, entry.line_index));
+  injected.setReadingPendingPanelEntry( entry);
+}
+
+/** 清掉挂起项：用户主动关面板，或补开 / 落位已经成功。 */
+function clearPendingPanel() {
+  injected.setReadingPendingPanelKey( null);
+  injected.setReadingPendingPanelEntry( null);
+}
+
+/**
+ * 跳转落位结算：面板已经开出来就清挂起；没开出来就重新挂起并返回 false，
+ * 交给调用方安排重试（期间任何一次重绘都由 retryReadingPendingPanel 补开）。
+ */
+function settlePanel(entry) {
+  if (document.querySelector("#reading-panel-host .reading-panel")) {
+    clearPendingPanel();
+    return true;
+  }
+  setPanel(entry);
+  return false;
 }
 
   // ---------------------------------------------------------------- 对外接口
