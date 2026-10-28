@@ -3459,3 +3459,28 @@ Retina 上等于放大 2 倍所以糊，PNG 又让一页到 1.77 MB。
 **验证：** 报告 `docs/qa/inline-edit-final-verification-20261028.md`；
 首屏红字 11.5 s → **305 ms**（热）/ 4.3 s（冷）；`pytest` 976 passed。
 **状态：** 生效（2026-10-28）。
+
+## D-100 | 2026-10-28 | 后台重活限线程 + 降优先级；派生缓存允许"忙时复用 10 秒"
+
+**背景：** 识别（662 页英文书）跑起来后，onnxruntime 把 10 个核吃满：界面请求从 5 ms 掉到
+357 ms（收尾面板）、取页图 126 → 260 ms。机制是代码里**完全没有**线程数 / 优先级控制
+（`intra_op_num_threads = -1`、没有 `OMP_NUM_THREADS`、没有 `nice`）。
+
+**决定：**
+
+1. **后台重活最多用 `cpu_count - 2` 个线程**（`core/limits.py`）。两处都要设，因为它们互不认识：
+   ONNX Runtime 认 `intra_op_num_threads`，numpy / OpenBLAS / MKL / Accelerate 只认环境变量
+   （在 spawn 之前设，子进程继承）。
+2. **识别子进程降一档优先级**：POSIX `nice(10)`（spawn 时 `preexec_fn` + worker 启动时各一次，
+   覆盖"不是从执行者启动"的情况），Windows 用 `BELOW_NORMAL_PRIORITY_CLASS`。
+3. **派生缓存"忙时复用 10 秒"**（`core/project/cache_policy.py`）：识别每认完一页都写库，
+   签名每 3–5 秒变一次，收尾面板 / marks / segments 于是永远命不中。
+   规则：**只有本项目确实有任务在跑、且缓存不超过 10 秒**才复用；任务结束立刻回到实时。
+4. 界面上明说：「识别进行中，界面可能变慢一点（已经给界面留了核，不会卡死）」。
+
+**代价 / 边界：** 10 秒的复用窗口意味着长任务里"用户自己刚做的裁决"在收尾面板上最多晚 10 秒
+可见（只影响步骤条，不影响审校面板本身）；`finish-summary` 仍有毛刺（590–610 ms，
+进程刚起 + 缓存刚被作废时 3.5 s），根因是"整本重算"，要另做增量。
+
+**验证：** 报告 `docs/qa/ocr-worker-throttling-20261028.md`；识别均页 4.24 s → 3.51 s
+（没变慢），识别中界面请求全部 ≤300 ms；`pytest` 976 passed。**状态：** 生效（2026-10-28）。

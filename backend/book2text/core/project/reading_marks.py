@@ -23,12 +23,14 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
 from ..ocr import compare as compare_module
 from . import blocks as blocks_module
 from ..storage import db as db_module
+from . import cache_policy
 from . import library as library_module
 from . import punct_groups as punct_groups_module
 from . import review_status
@@ -38,6 +40,8 @@ DEFAULT_RADIUS = 10
 
 _CACHE: dict[str, tuple[str, dict]] = {}
 """项目 → (签名, 数据)。只留最近两个项目，避免内存无限涨。"""
+
+_CACHE_AT: dict[str, float] = {}
 
 _BUILD_LOCK = threading.Lock()
 """并发首次请求时只让一个线程读盘 / 重算（任务 67）。"""
@@ -150,6 +154,11 @@ def marks_data(project_id: str, *, library: Path | None = None) -> dict[str, Any
     cached = _CACHE.get(project_id)
     if cached and signature and cached[0] == signature:
         return cached[1]
+    # 识别在跑时签名每 3–5 秒变一次：允许复用 3 秒内的结果（任务 68，见 cache_policy）
+    if cached and cache_policy.can_reuse(
+        project_id, target_library, _CACHE_AT.get(project_id)
+    ):
+        return cached[1]
     # 开项目时 marks / tree / finish 同时打进来：只让一个线程读盘 / 重算
     with _BUILD_LOCK:
         cached = _CACHE.get(project_id)
@@ -164,6 +173,7 @@ def _build_marks_data(project_id: str, target_library: Path, signature: str) -> 
         if len(_CACHE) >= 2 and project_id not in _CACHE:
             _CACHE.pop(next(iter(_CACHE)))
         _CACHE[project_id] = (signature, disk)
+        _CACHE_AT[project_id] = time.monotonic()
         return disk
     index = blocks_module.divergence_index(project_id, library=target_library)
     items = _build_items(index)
@@ -220,6 +230,7 @@ def _build_marks_data(project_id: str, target_library: Path, signature: str) -> 
         if project_id not in _CACHE and len(_CACHE) >= 2:
             _CACHE.pop(next(iter(_CACHE)))
         _CACHE[project_id] = (signature, data)
+        _CACHE_AT[project_id] = time.monotonic()
         _write_disk(project_id, target_library, signature, data)
     return data
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -629,6 +630,8 @@ def preview(project_id: str, *, library: Path | None = None, options: ExportOpti
 _PREVIEW_CACHE: dict[str, tuple[str, str]] = {}
 """项目 → (签名, JSON 字符串)。只留最近两个项目。"""
 
+_PREVIEW_CACHE_AT: dict[str, float] = {}
+
 _PREVIEW_LOCK = threading.Lock()
 """并发首次请求时只让一个线程算（任务 67）。"""
 
@@ -664,6 +667,13 @@ def preview_segments_json(
     signature = preview_segments_signature(project_id, library=library, options=options)
     cached = _PREVIEW_CACHE.get(project_id)
     if cached and cached[0] == signature:
+        return cached[1]
+    # 识别在跑时每认完一页都会让签名变化：允许复用 3 秒内的结果（任务 68）
+    from ..project import cache_policy
+
+    if cached and cache_policy.can_reuse(
+        project_id, library, _PREVIEW_CACHE_AT.get(project_id)
+    ):
         return cached[1]
     with _PREVIEW_LOCK:
         cached = _PREVIEW_CACHE.get(project_id)
@@ -726,6 +736,7 @@ def _remember_preview(project_id: str, signature: str, raw: str) -> None:
     if project_id not in _PREVIEW_CACHE and len(_PREVIEW_CACHE) >= 2:
         _PREVIEW_CACHE.pop(next(iter(_PREVIEW_CACHE)))
     _PREVIEW_CACHE[project_id] = (signature, raw)
+    _PREVIEW_CACHE_AT[project_id] = time.monotonic()
 
 
 # ---------------------------------------------------------------- 生成与落盘

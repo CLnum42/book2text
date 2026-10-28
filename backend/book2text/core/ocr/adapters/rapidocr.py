@@ -17,6 +17,8 @@ from typing import Any
 
 from PIL import Image
 
+from ... import limits as limits_module
+
 from ..base import (
     BBox,
     OcrEngineError,
@@ -123,7 +125,17 @@ class RapidOcrAdapter:
             raise OcrEngineError(f"导入 rapidocr 失败：{exc}") from exc
 
         try:
-            self._engine = RapidOCR(params={"Global.log_level": ENGINE_LOG_LEVEL})
+            # 任务 68：不让识别把整机核数吃满，给界面留核（见 `core/limits.py`）。
+            # 这两个键是 RapidOCR 自己的配置项，最终落到 ONNX Runtime 的
+            # `SessionOptions.intra_op_num_threads / inter_op_num_threads`。
+            threads = limits_module.worker_thread_count()
+            self._engine = RapidOCR(
+                params={
+                    "Global.log_level": ENGINE_LOG_LEVEL,
+                    "EngineConfig.onnxruntime.intra_op_num_threads": threads,
+                    "EngineConfig.onnxruntime.inter_op_num_threads": 1,
+                }
+            )
         except Exception as exc:
             raise OcrEngineError(f"初始化 RapidOCR 失败：{exc}") from exc
         return self._engine

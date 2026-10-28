@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import threading
@@ -27,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .. import limits as limits_module
 from ..project import jobs as jobs_module
 
 LOG_DIR_NAME = "logs"
@@ -154,6 +156,13 @@ class Supervisor:
         handle = log_path.open("a", encoding="utf-8")
 
         command = list(self._command_builder(directory, job_id))
+        # 任务 68：给 UI 留核。识别子进程里 onnxruntime 默认把**所有核**开满，
+        # 662 页英文书实测识别期间 `/review/finish-summary` 从 5 ms 掉到 357 ms、
+        # 取页图从 126 ms 掉到 260 ms。这里在 spawn 之前把 BLAS / OMP 的线程数
+        # 限到 `cpu_count - 2`（子进程继承环境变量），适配器里再设
+        # `intra_op_num_threads`——两处都要设：ONNX Runtime 只认后者，
+        # numpy / OpenBLAS 只认环境变量。
+        child_env = _limited_thread_env()
         try:
             process = subprocess.Popen(  # noqa: S603 - 命令由本模块拼装，不由用户输入决定
                 command,
@@ -163,6 +172,10 @@ class Supervisor:
                 # 自成进程组：终端上的 Ctrl+C 不该直接打断子进程——
                 # 收尾由服务自己的 shutdown 做（它知道要不要修理任务状态）
                 start_new_session=True,
+                env=child_env,
+                # 识别是后台活：低一档优先级，前台请求先拿 CPU（POSIX 用 nice，
+                # Windows 走 BELOW_NORMAL_PRIORITY_CLASS）
+                **_priority_kwargs(),
             )
         except OSError as exc:
             handle.close()
@@ -280,3 +293,36 @@ def _created_recently(created_at: str, now: datetime, seconds: float) -> bool:
     if created.tzinfo is None:
         created = created.replace(tzinfo=timezone.utc)
     return (now - created).total_seconds() < seconds
+
+def worker_thread_count() -> int:
+    """识别子进程该用几个线程（规则见 `core/limits.py`）。"""
+    return limits_module.worker_thread_count()
+
+
+def _limited_thread_env() -> dict[str, str]:
+    """子进程环境：限掉 BLAS / OMP 的默认线程数（它们各干各的，互不认识）。"""
+    env = dict(os.environ)
+    threads = str(worker_thread_count())
+    for name in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+    ):
+        env[name] = threads
+    return env
+
+
+def _priority_kwargs() -> dict[str, object]:
+    """让子进程低一档优先级（POSIX 用 nice，Windows 用创建标志）。"""
+    if os.name == "nt":  # pragma: no cover - Windows 打包未验证
+        return {"creationflags": 0x00004000}   # BELOW_NORMAL_PRIORITY_CLASS
+    return {"preexec_fn": _nice_child}
+
+
+def _nice_child() -> None:  # pragma: no cover - 只在子进程里跑
+    try:
+        os.nice(10)
+    except OSError:
+        pass

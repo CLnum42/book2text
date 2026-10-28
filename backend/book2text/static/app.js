@@ -7979,6 +7979,11 @@ function renderTask(data) {
   if (job.status === "interrupted") {
     hints.push("任务中断（应用被关闭或识别进程异常退出），点“继续”接着做没做完的。");
   }
+  if (running) {
+    // 任务 68：识别把 CPU 吃到只剩 2 个核给界面。用户会感觉"翻页慢一点"，
+    // 说出来他就不会以为坏了；也顺便说明为什么没有占满整机。
+    hints.push("识别进行中，界面可能变慢一点（已经给界面留了核，不会卡死）。");
+  }
   el("drawer-hint").textContent = hints.join(" ");
   el("drawer-hint").hidden = hints.length === 0;
 

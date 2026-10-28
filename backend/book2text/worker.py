@@ -64,6 +64,26 @@ def _orphan_watchdog() -> threading.Event | None:
     return orphaned
 
 
+def _lower_priority() -> None:
+    """把本进程的调度优先级降一档（任务 68）。
+
+    父进程 spawn 时已经用 `preexec_fn` 设过 nice；这里再设一次是为了覆盖
+    "不是从执行者启动"的情况（手动跑、测试、以后换启动方式），
+    并且 Windows 上走 `SetPriorityClass`（POSIX 的 nice 在那边不存在）。
+    """
+    try:
+        if os.name == "nt":  # pragma: no cover - Windows 打包未验证
+            import ctypes
+
+            BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+            handle = ctypes.windll.kernel32.GetCurrentProcess()
+            ctypes.windll.kernel32.SetPriorityClass(handle, BELOW_NORMAL_PRIORITY_CLASS)
+        else:
+            os.nice(10)
+    except Exception:  # noqa: BLE001 - 降不了优先级也要继续干活
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="book2text.worker",
@@ -74,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     directory = Path(args.project_dir)
+    _lower_priority()
     orphaned = _orphan_watchdog() or threading.Event()  # 没有管道时给一个永不触发的
 
     def log(message: str) -> None:
@@ -113,3 +134,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover - 由 `python -m book2text.worker` 触发
     sys.exit(main())
+

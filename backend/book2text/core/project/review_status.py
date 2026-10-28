@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 from . import blocks as blocks_module
+from . import cache_policy
 from . import continuations as continuations_module
 from . import ink_gaps as ink_gaps_module
 from . import library as library_module
@@ -727,6 +729,17 @@ def _finish_signature(project_id: str, library: Path) -> str:
     return f"{updated}|{db_module.content_signature(directory)}"
 
 
+_FINISH_CACHE_AT: dict[str, float] = {}
+
+
+def _cache_age(project_id: str) -> float:
+    """这份收尾面板结果放了多久（秒）；没缓存过就是极大值。"""
+    stamp = _FINISH_CACHE_AT.get(project_id)
+    if stamp is None:
+        return float("inf")
+    return max(0.0, time.monotonic() - stamp)
+
+
 def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     """收尾面板的六个状态：全部从数据库实时聚合，不依赖前端估算。
 
@@ -742,9 +755,18 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     cached = _FINISH_CACHE.get(project_id)
     if cached and signature and cached[0] == signature:
         return cached[1]
+    # 任务 68：识别在跑的时候，**每认完一页都会写库**，签名每 4 秒变一次，
+    # 收尾面板于是每次都重算（662 页英文书实测 760 ms，是识别期间最慢的一个请求）。
+    # 识别期间允许用一份"最多 3 秒前"的结果：步骤条是个进度指示，落后 3 秒看不见；
+    # 任务结束后签名稳定，立刻回到实时。
+    if cached and cache_policy.can_reuse(
+        project_id, target_library, _FINISH_CACHE_AT.get(project_id)
+    ):
+        return cached[1]
     disk = _read_finish_cache(project_id, target_library, signature)
     if disk is not None:
         _FINISH_CACHE[project_id] = (signature, disk)
+        _FINISH_CACHE_AT[project_id] = time.monotonic()
         return disk
     pages = library_module.list_pages(project_id, library=library)
     project = _project(project_id, library)
@@ -957,5 +979,6 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     }
     if signature:
         _FINISH_CACHE[project_id] = (signature, result)
+        _FINISH_CACHE_AT[project_id] = time.monotonic()
         _write_finish_cache(project_id, target_library, signature, result)
     return result
