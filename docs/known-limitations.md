@@ -1404,3 +1404,42 @@ size=view  naturalWidth=1275  页块 384 CSS px  dpr=2  →  比例 1.66
 
 **以后的验收口径**：报"清晰度修好了"必须同时给三个数——
 **比例 ≥1.0 / `filter === "none"` / 不带 `is-placeholder`**。缺一个都不算通过。
+
+---
+
+## L-104 · 同名函数被后声明覆盖：改第一份不生效，且会静默失效（2026-10-28 发现，两对已删 / 一对待修）
+
+**现象**：`app.js` 同一个作用域里两次声明同名函数，**函数声明提升，后声明整体覆盖前声明**，前一份永远不可调用。改前一份、跑测试，全绿，但产品行为一点没变。
+
+现有三对（`b3df75a` 时扫描结果）：
+
+```
+adoptBlockSuggestion     6006 / 12554   第一份不可达
+adoptAllHighSuggestions  6028 / 12573   第一份不可达
+rerenderReadingLine      18912 / 19347  第一份不可达，且它在偷偷咬人
+```
+
+**第三对不是纯死代码**：`18912` 是 `rerenderReadingLine(key)`（按行 key 重画），`19347` 是 `rerenderReadingLine(entry)`（按 entry 重画），后者覆盖前者。但 `saveInlineEdit` 调的是 `rerenderReadingLine(key)`，传进去的是**字符串** → entry 版读 `entry.block_id` 得到 `undefined` → `readingLineNode("undefined:undefined")` 返回 null → 直接 return。
+
+**净效果：就地保存之后那一行不重画**，要等下一次整块重铺才看得见改动。不抛异常、不影响导出、CER 也抓不到——属于"用户看不见的静默失败"。
+
+**处置**：前两对已按 Chief 裁定单独提交删除（零行为变化，不进任何一层的账）。第三对在重构冻结期**不删不改**，等正文流搬完后单独排期修，修的时候要连 `saveInlineEdit` 的调用口径一起改。
+
+**机检**：`tests/js/boundary.test.mjs` 的 `R4b-same-file`（TestDev `c425eb2`）会咬住同文件同名真实现；例外表带 owner 与到期点，**死代码一旦删除，对应例外必须同批删掉**，否则例外表本身失信。
+
+---
+
+## L-105 · 审校页有一个"页码 ⇄ marks ⇄ 重画"的调用环（拆分期不修，UX 阶段头号项）
+
+**环**：
+
+```
+updateReadingPage → ensureReadingMarksWindow → loadReadingMarksWindow
+→ refreshReadingMarksPaint → renderReading → … → updateReadingPage
+```
+
+**为什么这是问题**：页码变了要补 marks 窗口，补完要重画，重画又会改页码。这不是"两个模块互相调用"，**是一个互递归的渲染过程**。这周出来的 bug 全从这个环里冒出来：状态被重绘吃掉、页码跳回第 1 页、面板开了又被收。
+
+**重构期的处置**：**原样搬成黑盒，一行都不改**。破环属于行为改造，违反"迁移只搬不改"。哪一层搬它，就按哪一层的切片整块搬走。
+
+**UX 优化阶段的第一件事**：把这个环改成单向（数据变了 → 置脏 → 单帧重画），再动任何审校手感的东西。**先让它可定位，再让它可修。**
