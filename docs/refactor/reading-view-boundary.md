@@ -862,32 +862,42 @@ getCurrent pageNo number|null
 
 **规则（按作用域分两条）：**
 1. **模块文件**（`static/*-view.js`）：出现的每个 DOM id 字面量，必须能在自己 `<section id="view-X">` 的子树里找到。**零豁免。**
-2. **外壳 `app.js`**：只允许**审校块内**的代码引用 `#view-reading` 的 id（这些函数要随 L1–L12 搬走）；**块外**代码引用 = 违规。豁免表当前 **4 行**（badge，到期 = punct 整体搬完）：
+2. **外壳 `app.js`**：引用 `#view-reading` 的 id 的语句，**其所在函数必须归 reading 所有**。归 reading 的函数 → 合法（它们随 L1–L12 搬走）；**不归 reading 的函数 → 一律红**。
 
-| 行（`c45b8a5` 基准） | id | 所在函数 | 到期 |
+**"归 reading 所有"怎么判**（与 R5 同一套口径：按 owner 判，不按行号）：
+- 函数区间落在审校块标记内（起点 = 含 `阅读审校（L 刀` 的行，终点 = `^function boot\(` 前一行，每次运行重算）；**等价于 §11/§11.1 那 121 个名字**；
+- 已搬进 `reading-view.js` 的函数归模块所有；
+- **行号不作判据**（§15 第 5 条）。
+
+**豁免表：4 行**（到期 = punct 整体搬完），`MAX = 4`，**只降不升**，过期也红：
+
+| 行（`c45b8a5` 基准） | id | 所在函数（不归 reading） | 到期 |
 |---|---|---|---|
 | 17647 | `reading-garbled-count` | `renderGarbledBadge` | punct 整体搬 |
 | 17651 | `reading-garbled-open` | `renderGarbledBadge` | 同上 |
 | 17753 | `reading-punct-count` | `renderPunctGroupBadge` | 同上 |
 | 17761 | `reading-punct-open` | `renderPunctGroupBadge` | 同上 |
 
-**块怎么定（不能用固定行号）**：起点 = 含 `阅读审校（L 刀` 的那一行，终点 = 匹配 `^function boot\(` 的前一行。**每次运行时重新算**——这是 §15 第 5 条的直接应用：行号会漂，标记不会。
-
 **实测读数（HEAD `c45b8a5`）**：
 - `#view-reading` 子树 id：**39 个**
-- `app.js` 引用到的：**34 个**（其中只经 `el("…")` 的 30 个；另有 4 个还有非 el 用法：`reading-stream` / `reading-tree` / `reading-pdf-scroll` / `reading-diff-layer`）
-- 只在审校块内被引用（合规，随层搬走）：**30 个**
-- **块外引用（违规、走豁免）：4 个 id / 4 行 / 2 个函数**（上表）
-- `app.js` 完全不引用的：5 个（`reading-grip-pdf` / `reading-grip-tree` / `reading-next-hint` / `reading-proof-holder` / `reading-split`）
+- `app.js` 引用到的：**34 个**（只经 `el("…")` 的 30 个；另有 4 个还有非 el 用法：`reading-stream` / `reading-tree` / `reading-pdf-scroll` / `reading-diff-layer`）
+- 由 **reading 所有的函数**引用（天然合法，不进豁免表）：**30 个**
+- 由**非 reading 函数**引用（真越界，进豁免表）：**4 个 id / 4 行 / 2 个函数**
+- `app.js` 完全不引用：5 个（`reading-grip-pdf` / `reading-grip-tree` / `reading-next-hint` / `reading-proof-holder` / `reading-split`）
 
-> **TestDev 实测 33 / 29 条违规，是因为把规则套在整个 `app.js` 上**：那样 34 个 id 全算违规，扣豁免就是 29+。**规则的作用域是"块外"**——块内引用是搬运期的合法态。若实现里数出 33 而不是 34，把两边 id 清单直接 diff 就能定位到差的那一个。
+**为什么不用 id 级豁免**（Chief 2026-10-28 裁定，推翻 `4a6f675` 的 34 行方案）：
 
-**算法**：① 按标签深度扫 `index.html`，取 `view-reading` 子树 id（别见第一个 `</section>` 就停，里面有嵌套）；② 去注释与字符串后扫 id 字面量；③ 每个引用点归属到函数，判断该函数是否落在块标记区间内；④ 块外引用必须命中豁免表。
+| | 按 id 豁免 34 条 | 按引用位置判（本版） |
+|---|---|---|
+| 审校块内 30 个引用 | 靠豁免表放行 | **天然合法，不需要豁免** |
+| 块外 4 行真越界 | 埋在 34 条里，看不见 | **单独 4 条，带到期点** |
+| 将来 punct/pages 新写一个 `reading-*` | **被豁免表盖住** | **立刻红** |
 
-**红/绿**：红 = Slice 3（`6a99114`）之前 7 行 / 5 个 id；绿 = 块外只剩上表 4 行。
+同一份代码、同一个 HEAD，两种判据一样绿；**差别只在未来那个洞**。这和"例外表挂着已删代码"是同一类松。（现行实现 `4a6f675` 仍是 34 条 id 豁免，`MAX=34`；按本版应改回 4，`MAX=4`。）
 
-**落地状态（2026-10-28，`4a6f675`）**：DevLead 裁决按 (a) 实施——**34 行豁免 + `MAX=34` 只降不升 + 过期也红**。Architect 保留意见：34 个 id 里 30 个只被审校块内代码引用（搬运期合法态），用 id 级豁免会把"以后有人在 punct/pages 里写 `reading-*`"一起遮住；本节的方案是"作用域 = 块外 + 4 行豁免"。两者在 HEAD 上**一样绿**，差别只在未来：块外作用域抓得住新越界，id 豁免抓不住。
-**到期点**：壳里的 `reading-*` 引用搬完（实际是 L1–L12 全搬完，因为块内代码就在 app.js），届时 `MAX` 归 **0**，R3 变成零豁免形态。
+**算法**：① 按标签深度扫 `index.html`，取 `view-reading` 子树 id（别见第一个 `</section>` 就停，里有嵌套）；② 去注释与字符串后扫 id 字面量；③ **每个引用点归属到包裹它的顶层函数**，判断该函数是否归 reading；④ 非 reading 函数的引用必须命中 4 行豁免表。
+
+**红/绿**：红 = Slice 3（`6a99114`）之前 7 行 / 5 个 id；绿 = 非 reading 函数只剩上表 4 行。**L1–L12 全部搬完后，非 reading 函数对 reading id 的引用应为 0，豁免表清空，R3 进入零豁免形态。**
 
 ## 17. R5（一状态一 owner）上闸规格 —— 目标 6/8
 
