@@ -18251,8 +18251,7 @@ function ensureReadingLineRendered(entry) {
     );
   }
   if (index < 0) return null;
-  readingPendingPanelKey = key;
-  readingPendingPanelEntry = entry;
+  setPanel(entry);
   renderReading({ reset: true, startAt: Math.max(0, index - 1) });
   return readingLineNode(key);
 }
@@ -18889,8 +18888,7 @@ function closeReadingPanel() {
   if (host) { host.innerHTML = ""; host.hidden = true; }
   readingJumpSettleKey = null;
   // 用户主动关 = 真的关；重绘导致的移除走 renderReading，不清 pending
-  readingPendingPanelKey = null;
-  readingPendingPanelEntry = null;
+  clearPendingPanel();
   const stream = el("reading-stream");
   if (!stream) return;
   for (const node of stream.querySelectorAll(".reading-panel")) node.remove();
@@ -19568,6 +19566,31 @@ function markReadingImageFailed(pageNo) {
 let readingPendingPanelKey = null;
 let readingPendingPanelEntry = null;
 
+/** 挂起"重绘后要补开的面板"：key 由 entry 推出，entry 跨 reset 存活（重绘后由 retryReadingPendingPanel 补开）。 */
+function setPanel(entry) {
+  readingPendingPanelKey = readingKey(entry.block_id, entry.line_index);
+  readingPendingPanelEntry = entry;
+}
+
+/** 清掉挂起项：用户主动关面板，或补开 / 落位已经成功。 */
+function clearPendingPanel() {
+  readingPendingPanelKey = null;
+  readingPendingPanelEntry = null;
+}
+
+/**
+ * 跳转落位结算：面板已经开出来就清挂起；没开出来就重新挂起并返回 false，
+ * 交给调用方安排重试（期间任何一次重绘都由 retryReadingPendingPanel 补开）。
+ */
+function settlePanel(entry) {
+  if (document.querySelector("#reading-panel-host .reading-panel")) {
+    clearPendingPanel();
+    return true;
+  }
+  setPanel(entry);
+  return false;
+}
+
 function retryReadingPendingPanel() {
   // 面板已经在宿主里（重绘碰不到它），但 `readingPanelKey` 可能被 reset 清成了 null：
   // 把当前项恢复回来，高亮才跟着回来。
@@ -19582,8 +19605,7 @@ function retryReadingPendingPanel() {
   const entry = readingPendingPanelEntry;
   const key = readingKey(entry.block_id, entry.line_index);
   if (!readingLineNode(key)) return;      // 行还没挂上，等下一次数据到达
-  readingPendingPanelKey = null;
-  readingPendingPanelEntry = null;
+  clearPendingPanel();
   openReadingPanel(entry);
   logReadingNext(entry, { branch: "pending-open", reason: "data-arrived" });
 }
@@ -20056,8 +20078,7 @@ function gotoReadingEntry(entry) {
   // **先驱动"我在第几页"**：顶部页码 + 左侧 PDF + 左树高亮。
   // 原来这里先找行、找不到就 `return`，于是页码和左侧 PDF 根本没动——
   // 用户看到的是"面板第 13 页、顶部第 28 页、左边第 28 页"（现场就是这么来的）。
-  readingPendingPanelKey = readingKey(entry.block_id, entry.line_index);
-  readingPendingPanelEntry = entry;      // 跨 reset 存活：重绘后由 retryReadingPendingPanel 补开
+  setPanel(entry);      // 跨 reset 存活：重绘后由 retryReadingPendingPanel 补开
   updateReadingPage(entry.page_no, { syncStream: false, scrollLeft: false });
   suppressReadingFollow();
   scrollPdfColumnToPage(entry.page_no);
@@ -20076,15 +20097,10 @@ function gotoReadingEntry(entry) {
   // 从这里开始到目标行真正进视口之前，页码同步一律不写（否则会被顶行的上一页改写）
   readingJumpSettleKey = key;
   readingJumpSettleTicks = 0;
-  if (document.querySelector("#reading-panel-host .reading-panel")) {
-    readingPendingPanelKey = null;
-    readingPendingPanelEntry = null;
-  }
+  const settled = settlePanel(entry);
   // 偶发"跳到了但没有面板/没有当前项"（QA 2/20）：面板没建起来就再开一次，
   // 并把原因记进 __b2tNextLog。第二次仍失败也记下来，不静默。
-  if (!document.querySelector("#reading-panel-host .reading-panel")) {
-    readingPendingPanelKey = key;
-    readingPendingPanelEntry = entry;
+  if (!settled) {
     let reason = "no-line";
     const seg = readingVisibleSegments()[index];
     if (!seg) reason = "no-segment";
