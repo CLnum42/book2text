@@ -18164,6 +18164,8 @@ function setReviewOverlaysForReading() {
 }
 
 /** 阅读流左栏（PDF 页列）当前滚动位置；没有左栏时按 0。 */
+let readingAutoJumpDone = false;
+
 function readingPdfScrollTop() {
   const scroller = el("reading-pdf-scroll");
   return scroller ? scroller.scrollTop : 0;
@@ -18206,6 +18208,7 @@ async function openReading() {
   // 任务 81：记下打开时的滚动位置。marks 是异步来的，它回来时会按"第一处未审页"跳一次——
   // 如果这期间用户已经自己滚走了，就不能再把他拽回去（QA 复跑时正是被这一跳拽回第 1 页）。
   const openedAt = readingOpenStartedAt;
+  const firstOpenForProject = readingProject !== projectId || !readingAutoJumpDone;
   const stream = el("reading-stream");
   stream.innerHTML = '<p class="muted reading-empty">正在按导出设置组装正文…</p>';
   el("reading-tree").innerHTML = "";
@@ -18285,7 +18288,11 @@ async function openReading() {
     if (candidate) page = candidate;
   }
   // 用户在这几秒里自己滚过了：保留他的位置，不跳到"第一处未审页"
-  if (!readingMovedSinceOpen(openedAt)) updateReadingPage(page);
+  // 自动跳页**只允许发生一次**（任务 85）：marks 迟到 / 块到达 / 窗口重铺都不许再跳。
+  if (firstOpenForProject && !readingAutoJumpDone && !readingMovedSinceOpen(openedAt)) {
+    readingAutoJumpDone = true;
+    updateReadingPage(page);
+  }
   // 左树后补（只影响左栏计数，不影响正文与红字）
   apiJson(`/api/projects/${projectId}/review/tree`)
     .then((tree) => {
@@ -20097,6 +20104,10 @@ function updateReadingPageFromLeftScroll() {
   }
   if (!best) return;
   if (best.pageNo === readingPageNo) return;
+  // 面板开着时，页码以"当前差异项所在页"（mark.page_no）为准，
+  // 不让左栏滚动把它改成相邻页（QA 看到的 126 vs 127 就是这里）
+  const panelMark = readingPanelKey ? readingMarks.get(readingPanelKey) : null;
+  if (panelMark && panelMark.page_no && Math.abs(panelMark.page_no - best.pageNo) <= 1) return;
   readingPageNo = best.pageNo;
   el("reading-page-no").textContent = `第 ${best.pageNo} 页`;
   markReadingCurrentTile(best.pageNo);
