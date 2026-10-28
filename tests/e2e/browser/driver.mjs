@@ -66,6 +66,8 @@ export async function run(cfg) {
       return await taskMetrics(page, args);
     case "dock_probe":
       return await dockProbe(page, args);
+    case "crop_probe":
+      return await cropProbe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -2106,6 +2108,57 @@ async function dockProbe(page, args) {
     rows.push({ i: i + 1, spec, before, after });
   }
   return { rows, snap: await read() };
+}
+
+/** B 组：连按下一处并采每条的裁窗数据（data-crop / plan / mark.bbox / 公式重算）。 */
+async function cropProbe(page, args) {
+  const n = args.n || 20;
+  await ensureReading(page);
+  const rows = [];
+  for (let i = 0; i < n; i += 1) {
+    await page.click("#reading-next-unreviewed", { label: `采样第 ${i + 1} 条` }).catch(() => {});
+    await page.waitForTimeout(850);
+    const row = await page.evaluate(() => {
+      const cropEl = document.getElementById("reading-dock-crop");
+      let attr = null;
+      try { attr = cropEl && cropEl.dataset.crop ? JSON.parse(cropEl.dataset.crop) : null; } catch (e) { attr = String(e); }
+      const panel = document.querySelector(".reading-panel");
+      const key = panel ? panel.dataset.key || null : null;
+      const mark = key && typeof readingMarks !== "undefined" ? readingMarks.get(key) : null;
+      const plan = window.__b2tCropPlan || null;
+      let expected = null;
+      if (plan && plan.gap) {
+        const contentH = Math.max(60, (cropEl ? cropEl.clientHeight : 182) - 16);
+        const pageRec = typeof readingPageRecord === "function" ? readingPageRecord(plan.pageNo) : null;
+        const aspect = pageRec && pageRec.width_pt
+          ? Number(pageRec.height_pt || 792) / Number(pageRec.width_pt || 612) : 792 / 612;
+        expected = {
+          contentH,
+          aspect: Math.round(aspect * 10000) / 10000,
+          w: (404 * plan.rows * plan.gap * aspect) / contentH,
+          h: plan.rows * plan.gap,
+        };
+      }
+      const lineBox = key && typeof readingLineBox === "function"
+        ? readingLineBox(panel ? panel.dataset.key.split(":")[0] : null, null) : null;
+      return {
+        key,
+        panelPage: panel ? (panel.querySelector(".reading-panel__head strong") || {}).textContent || null : null,
+        level: panel ? (panel.querySelector(".reading-panel__head strong") || {}).textContent || null : null,
+        cropAttr: attr,
+        plan,
+        markBbox: mark && mark.bbox ? mark.bbox : null,
+        markLevel: mark ? mark.level : null,
+        markPage: mark ? mark.page_no : null,
+        expected,
+        cropElHeight: cropEl ? cropEl.clientHeight : null,
+        bg: cropEl ? cropEl.style.backgroundImage.slice(0, 60) : null,
+        emptyText: cropEl ? (cropEl.innerText || "").replace(/\s+/g, " ").trim().slice(0, 60) : null,
+      };
+    });
+    rows.push({ i: i + 1, ...row });
+  }
+  return { rows };
 }
 
 async function nextProbe(page) {
