@@ -1,0 +1,5012 @@
+{
+  "rows": [
+    {
+      "i": 1,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 802
+          },
+          "dock": {
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 894,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 802
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 802
+          },
+          "dockHidden": true,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "—",
+          "level": "",
+          "count": "",
+          "hidden": true,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": null,
+          "attr": null,
+          "bg": ""
+        },
+        "panel": {
+          "key": null,
+          "page": null,
+          "candidate": null
+        },
+        "progress": "已审 0 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": null,
+        "drafts": 0,
+        "inlineEdits": 0,
+        "entriesDone": 0,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 802
+          },
+          "dock": {
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 894,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 802
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 802
+          },
+          "dockHidden": true,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "—",
+          "level": "",
+          "count": "",
+          "hidden": true,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": null,
+          "attr": null,
+          "bg": ""
+        },
+        "panel": {
+          "key": null,
+          "page": null,
+          "candidate": null
+        },
+        "progress": "已审 0 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": null,
+        "drafts": 0,
+        "inlineEdits": 0,
+        "entriesDone": 0,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 2,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 802
+          },
+          "dock": {
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 894,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 0,
+            "y": 0,
+            "w": 0,
+            "h": 0
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 802
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 802
+          },
+          "dockHidden": true,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "—",
+          "level": "",
+          "count": "",
+          "hidden": true,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": null,
+          "attr": null,
+          "bg": ""
+        },
+        "panel": {
+          "key": null,
+          "page": null,
+          "candidate": null
+        },
+        "progress": "已审 0 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": null,
+        "drafts": 0,
+        "inlineEdits": 0,
+        "entriesDone": 0,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 1 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 1,
+            "bbox": [
+              0.471285,
+              0.203358,
+              0.548427,
+              0.231686
+            ],
+            "x0": 0.43580153254901954,
+            "y0": 0.18565225,
+            "w": 0.1481089349019608,
+            "h": 0.0637395,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.0212465,
+            "gapN": 32,
+            "gapLevel": "page"
+          },
+          "attr": {
+            "x0": 0.4358,
+            "y0": 0.1857,
+            "w": 0.1481,
+            "h": 0.0637,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0212,
+            "gapN": 32,
+            "gapLevel": "page",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 1.07
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/1/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609YSCVVSZQER654WQVCREE:0",
+          "page": "第 1 页 · 第 1 行第二路：",
+          "candidate": "候选Rulerskip"
+        },
+        "progress": "已审 0 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609YSCVVSZQER654WQVCREE:0",
+        "drafts": 0,
+        "inlineEdits": 0,
+        "entriesDone": 0,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 3,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 1 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 1,
+            "bbox": [
+              0.471285,
+              0.203358,
+              0.548427,
+              0.231686
+            ],
+            "x0": 0.43580153254901954,
+            "y0": 0.18565225,
+            "w": 0.1481089349019608,
+            "h": 0.0637395,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.0212465,
+            "gapN": 32,
+            "gapLevel": "page"
+          },
+          "attr": {
+            "x0": 0.4358,
+            "y0": 0.1857,
+            "w": 0.1481,
+            "h": 0.0637,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0212,
+            "gapN": 32,
+            "gapLevel": "page",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 1.07
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/1/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609YSCVVSZQER654WQVCREE:0",
+          "page": "第 1 页 · 第 1 行第二路：",
+          "candidate": "候选Rulerskip"
+        },
+        "progress": "已审 0 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609YSCVVSZQER654WQVCREE:0",
+        "drafts": 0,
+        "inlineEdits": 0,
+        "entriesDone": 0,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 1 页 · 第 2 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 1,
+            "bbox": [
+              0.382473,
+              0.607544,
+              0.437575,
+              0.629802
+            ],
+            "x0": 0.3359695325490196,
+            "y0": 0.58680325,
+            "w": 0.1481089349019608,
+            "h": 0.0637395,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.0212465,
+            "gapN": 32,
+            "gapLevel": "page"
+          },
+          "attr": {
+            "x0": 0.336,
+            "y0": 0.5868,
+            "w": 0.1481,
+            "h": 0.0637,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0212,
+            "gapN": 32,
+            "gapLevel": "page",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 1.07
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/1/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609YSCTY9T6D986R8XMC3ZS:1",
+          "page": "第 1 页 · 第 2 行第二路：",
+          "candidate": "候选ddc:"
+        },
+        "progress": "已审 1 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609YSCTY9T6D986R8XMC3ZS:1",
+        "drafts": 1,
+        "inlineEdits": 0,
+        "entriesDone": 1,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 4,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 1 页 · 第 2 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 1,
+            "bbox": [
+              0.382473,
+              0.607544,
+              0.437575,
+              0.629802
+            ],
+            "x0": 0.3359695325490196,
+            "y0": 0.58680325,
+            "w": 0.1481089349019608,
+            "h": 0.0637395,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.0212465,
+            "gapN": 32,
+            "gapLevel": "page"
+          },
+          "attr": {
+            "x0": 0.336,
+            "y0": 0.5868,
+            "w": 0.1481,
+            "h": 0.0637,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0212,
+            "gapN": 32,
+            "gapLevel": "page",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 1.07
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/1/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609YSCTY9T6D986R8XMC3ZS:1",
+          "page": "第 1 页 · 第 2 行第二路：",
+          "candidate": "候选ddc:"
+        },
+        "progress": "已审 1 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609YSCTY9T6D986R8XMC3ZS:1",
+        "drafts": 1,
+        "inlineEdits": 0,
+        "entriesDone": 1,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 4 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 4,
+            "bbox": [
+              0.398679,
+              0.462361,
+              0.51018,
+              0.483101
+            ],
+            "x0": 0.36450733843137245,
+            "y0": 0.4340325,
+            "w": 0.17984432313725504,
+            "h": 0.07739700000000005,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025799000000000016,
+            "gapN": 17,
+            "gapLevel": "page"
+          },
+          "attr": {
+            "x0": 0.3645,
+            "y0": 0.434,
+            "w": 0.1798,
+            "h": 0.0774,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0258,
+            "gapN": 17,
+            "gapLevel": "page",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.881
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/4/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609YX81FD04QZPC431BX5MJ:0",
+          "page": "第 4 页 · 第 1 行第二路：",
+          "candidate": "候选93-4547ł"
+        },
+        "progress": "已审 2 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609YX81FD04QZPC431BX5MJ:0",
+        "drafts": 2,
+        "inlineEdits": 0,
+        "entriesDone": 2,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 5,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 4 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 4,
+            "bbox": [
+              0.398679,
+              0.462361,
+              0.51018,
+              0.483101
+            ],
+            "x0": 0.36450733843137245,
+            "y0": 0.4340325,
+            "w": 0.17984432313725504,
+            "h": 0.07739700000000005,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025799000000000016,
+            "gapN": 17,
+            "gapLevel": "page"
+          },
+          "attr": {
+            "x0": 0.3645,
+            "y0": 0.434,
+            "w": 0.1798,
+            "h": 0.0774,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0258,
+            "gapN": 17,
+            "gapLevel": "page",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.881
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/4/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609YX81FD04QZPC431BX5MJ:0",
+          "page": "第 4 页 · 第 1 行第二路：",
+          "candidate": "候选93-4547ł"
+        },
+        "progress": "已审 2 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609YX81FD04QZPC431BX5MJ:0",
+        "drafts": 2,
+        "inlineEdits": 0,
+        "entriesDone": 2,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 8 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 8,
+            "bbox": [
+              0.121224,
+              0.14923,
+              0.537407,
+              0.175535
+            ],
+            "x0": 0.19931549999999998,
+            "y0": 0.1360775,
+            "w": 0.26,
+            "h": 0.05260999999999999,
+            "rows": 4,
+            "lineH": 56,
+            "degrade": "no-line-gap",
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none"
+          },
+          "attr": {
+            "x0": 0.1993,
+            "y0": 0.1361,
+            "w": 0.26,
+            "h": 0.0526,
+            "rows": 4,
+            "lineH": 56,
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none",
+            "degrade": "no-line-gap",
+            "nw": 2550,
+            "scale": 0.609
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/8/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609Z2E2YA4PBREPDYGTHDK2:0",
+          "page": "第 8 页 · 第 1 行第二路：",
+          "candidate": "候选6. LI MIN #E (Benefiting the People)"
+        },
+        "progress": "已审 3 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609Z2E2YA4PBREPDYGTHDK2:0",
+        "drafts": 3,
+        "inlineEdits": 0,
+        "entriesDone": 3,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 6,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 8 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 8,
+            "bbox": [
+              0.121224,
+              0.14923,
+              0.537407,
+              0.175535
+            ],
+            "x0": 0.19931549999999998,
+            "y0": 0.1360775,
+            "w": 0.26,
+            "h": 0.05260999999999999,
+            "rows": 4,
+            "lineH": 56,
+            "degrade": "no-line-gap",
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none"
+          },
+          "attr": {
+            "x0": 0.1993,
+            "y0": 0.1361,
+            "w": 0.26,
+            "h": 0.0526,
+            "rows": 4,
+            "lineH": 56,
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none",
+            "degrade": "no-line-gap",
+            "nw": 2550,
+            "scale": 0.609
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/8/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609Z2E2YA4PBREPDYGTHDK2:0",
+          "page": "第 8 页 · 第 1 行第二路：",
+          "candidate": "候选6. LI MIN #E (Benefiting the People)"
+        },
+        "progress": "已审 3 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609Z2E2YA4PBREPDYGTHDK2:0",
+        "drafts": 3,
+        "inlineEdits": 0,
+        "entriesDone": 3,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 9 页 · 第 5 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 9,
+            "bbox": [
+              0.123169,
+              0.679883,
+              0.823938,
+              0.703153
+            ],
+            "x0": 0.3845131674509805,
+            "y0": 0.6531990000000001,
+            "w": 0.17808066509803894,
+            "h": 0.07663799999999987,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025545999999999958,
+            "gapN": 6,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3845,
+            "y0": 0.6532,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 6,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/9/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609Z5DZJXQVJA3ZFKP66KVC:4",
+          "page": "第 9 页 · 第 5 行第二路：",
+          "candidate": "候选philosophical traditions. By studying how such terms as \"penal"
+        },
+        "progress": "已审 4 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609Z5DZJXQVJA3ZFKP66KVC:4",
+        "drafts": 4,
+        "inlineEdits": 0,
+        "entriesDone": 4,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 7,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 9 页 · 第 5 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 9,
+            "bbox": [
+              0.123169,
+              0.679883,
+              0.823938,
+              0.703153
+            ],
+            "x0": 0.3845131674509805,
+            "y0": 0.6531990000000001,
+            "w": 0.17808066509803894,
+            "h": 0.07663799999999987,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025545999999999958,
+            "gapN": 6,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3845,
+            "y0": 0.6532,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 6,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/9/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609Z5DZJXQVJA3ZFKP66KVC:4",
+          "page": "第 9 页 · 第 5 行第二路：",
+          "candidate": "候选philosophical traditions. By studying how such terms as \"penal"
+        },
+        "progress": "已审 4 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609Z5DZJXQVJA3ZFKP66KVC:4",
+        "drafts": 4,
+        "inlineEdits": 0,
+        "entriesDone": 4,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 9 页 · 第 7 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 9,
+            "bbox": [
+              0.122521,
+              0.730469,
+              0.799304,
+              0.753739
+            ],
+            "x0": 0.3718721674509805,
+            "y0": 0.7037850000000001,
+            "w": 0.17808066509803894,
+            "h": 0.07663799999999987,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025545999999999958,
+            "gapN": 6,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3719,
+            "y0": 0.7038,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 6,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/9/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609Z5DZJXQVJA3ZFKP66KVC:6",
+          "page": "第 9 页 · 第 7 行第二路：",
+          "candidate": "候选people\" (li-min) were understood in their carlier Legalist and"
+        },
+        "progress": "已审 5 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609Z5DZJXQVJA3ZFKP66KVC:6",
+        "drafts": 5,
+        "inlineEdits": 0,
+        "entriesDone": 5,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 8,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 9 页 · 第 7 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 9,
+            "bbox": [
+              0.122521,
+              0.730469,
+              0.799304,
+              0.753739
+            ],
+            "x0": 0.3718721674509805,
+            "y0": 0.7037850000000001,
+            "w": 0.17808066509803894,
+            "h": 0.07663799999999987,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025545999999999958,
+            "gapN": 6,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3719,
+            "y0": 0.7038,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 6,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/9/image?size=zoom&token=qa-20261028-220113-9"
+        },
+        "panel": {
+          "key": "01M609Z5DZJXQVJA3ZFKP66KVC:6",
+          "page": "第 9 页 · 第 7 行第二路：",
+          "candidate": "候选people\" (li-min) were understood in their carlier Legalist and"
+        },
+        "progress": "已审 5 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609Z5DZJXQVJA3ZFKP66KVC:6",
+        "drafts": 5,
+        "inlineEdits": 0,
+        "entriesDone": 5,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 11 页 · 第 2 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 11,
+            "bbox": [
+              0.122521,
+              0.655601,
+              0.844034,
+              0.679377
+            ],
+            "x0": 0.3942371674509809,
+            "y0": 0.6291700000000002,
+            "w": 0.17808066509803813,
+            "h": 0.07663799999999954,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025545999999999847,
+            "gapN": 4,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3942,
+            "y0": 0.6292,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 4,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/11/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZAB2WQ1F46V39SS5PBG5:1",
+          "page": "第 11 页 · 第 2 行第二路：",
+          "candidate": "候选Lao Izu, however, predominate in the author's insistence that the"
+        },
+        "progress": "已审 4 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZAB2WQ1F46V39SS5PBG5:1",
+        "drafts": 6,
+        "inlineEdits": 0,
+        "entriesDone": 4,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 9,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 11 页 · 第 2 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 11,
+            "bbox": [
+              0.122521,
+              0.655601,
+              0.844034,
+              0.679377
+            ],
+            "x0": 0.3942371674509809,
+            "y0": 0.6291700000000002,
+            "w": 0.17808066509803813,
+            "h": 0.07663799999999954,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025545999999999847,
+            "gapN": 4,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3942,
+            "y0": 0.6292,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 4,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/11/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZAB2WQ1F46V39SS5PBG5:1",
+          "page": "第 11 页 · 第 2 行第二路：",
+          "candidate": "候选Lao Izu, however, predominate in the author's insistence that the"
+        },
+        "progress": "已审 4 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZAB2WQ1F46V39SS5PBG5:1",
+        "drafts": 6,
+        "inlineEdits": 0,
+        "entriesDone": 4,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 13 页 · 第 2 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 13,
+            "bbox": [
+              0.123169,
+              0.67533,
+              0.840792,
+              0.6986
+            ],
+            "x0": 0.39382199647058813,
+            "y0": 0.6490255,
+            "w": 0.17631700705882364,
+            "h": 0.07587900000000003,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.02529300000000001,
+            "gapN": 3,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3938,
+            "y0": 0.649,
+            "w": 0.1763,
+            "h": 0.0759,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0253,
+            "gapN": 3,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.899
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/13/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZG2CDVNEMWPVA8NQN6KQ:1",
+          "page": "第 13 页 · 第 2 行第二路：",
+          "candidate": "候选(ca. 190-140 в.c.) Despite its obvious importance at this time, this"
+        },
+        "progress": "已审 5 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZG2CDVNEMWPVA8NQN6KQ:1",
+        "drafts": 7,
+        "inlineEdits": 0,
+        "entriesDone": 5,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 10,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 13 页 · 第 2 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 13,
+            "bbox": [
+              0.123169,
+              0.67533,
+              0.840792,
+              0.6986
+            ],
+            "x0": 0.39382199647058813,
+            "y0": 0.6490255,
+            "w": 0.17631700705882364,
+            "h": 0.07587900000000003,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.02529300000000001,
+            "gapN": 3,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3938,
+            "y0": 0.649,
+            "w": 0.1763,
+            "h": 0.0759,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0253,
+            "gapN": 3,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.899
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/13/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZG2CDVNEMWPVA8NQN6KQ:1",
+          "page": "第 13 页 · 第 2 行第二路：",
+          "candidate": "候选(ca. 190-140 в.c.) Despite its obvious importance at this time, this"
+        },
+        "progress": "已审 5 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZG2CDVNEMWPVA8NQN6KQ:1",
+        "drafts": 7,
+        "inlineEdits": 0,
+        "entriesDone": 5,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 14 页 · 第 8 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 14,
+            "bbox": [
+              0.123169,
+              0.283284,
+              0.818751,
+              0.30706
+            ],
+            "x0": 0.38191792470588226,
+            "y0": 0.25685224999999995,
+            "w": 0.17808415058823548,
+            "h": 0.07663950000000008,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025546500000000028,
+            "gapN": 12,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3819,
+            "y0": 0.2569,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 12,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/14/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZJWZXYZEMM5ZECCH9AB9:7",
+          "page": "第 14 页 · 第 8 行第二路：",
+          "candidate": "候选easily locatable in well-defined traditions, and so led others to"
+        },
+        "progress": "已审 6 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZJWZXYZEMM5ZECCH9AB9:7",
+        "drafts": 8,
+        "inlineEdits": 0,
+        "entriesDone": 6,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 11,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 14 页 · 第 8 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 14,
+            "bbox": [
+              0.123169,
+              0.283284,
+              0.818751,
+              0.30706
+            ],
+            "x0": 0.38191792470588226,
+            "y0": 0.25685224999999995,
+            "w": 0.17808415058823548,
+            "h": 0.07663950000000008,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025546500000000028,
+            "gapN": 12,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3819,
+            "y0": 0.2569,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 12,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/14/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZJWZXYZEMM5ZECCH9AB9:7",
+          "page": "第 14 页 · 第 8 行第二路：",
+          "candidate": "候选easily locatable in well-defined traditions, and so led others to"
+        },
+        "progress": "已审 6 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZJWZXYZEMM5ZECCH9AB9:7",
+        "drafts": 8,
+        "inlineEdits": 0,
+        "entriesDone": 6,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 14 页 · 第 13 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 14,
+            "bbox": [
+              0.122521,
+              0.411774,
+              0.807083,
+              0.435044
+            ],
+            "x0": 0.37575992470588226,
+            "y0": 0.38508924999999994,
+            "w": 0.17808415058823548,
+            "h": 0.07663950000000008,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025546500000000028,
+            "gapN": 12,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3758,
+            "y0": 0.3851,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 12,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/14/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZJWZXYZEMM5ZECCH9AB9:12",
+          "page": "第 14 页 · 第 13 行第二路：",
+          "candidate": "候选Huai-nan Izu not only belongs there, but is its final and most"
+        },
+        "progress": "已审 7 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZJWZXYZEMM5ZECCH9AB9:12",
+        "drafts": 9,
+        "inlineEdits": 0,
+        "entriesDone": 7,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 12,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 14 页 · 第 13 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 14,
+            "bbox": [
+              0.122521,
+              0.411774,
+              0.807083,
+              0.435044
+            ],
+            "x0": 0.37575992470588226,
+            "y0": 0.38508924999999994,
+            "w": 0.17808415058823548,
+            "h": 0.07663950000000008,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025546500000000028,
+            "gapN": 12,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3758,
+            "y0": 0.3851,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 12,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/14/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZJWZXYZEMM5ZECCH9AB9:12",
+          "page": "第 14 页 · 第 13 行第二路：",
+          "candidate": "候选Huai-nan Izu not only belongs there, but is its final and most"
+        },
+        "progress": "已审 7 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZJWZXYZEMM5ZECCH9AB9:12",
+        "drafts": 9,
+        "inlineEdits": 0,
+        "entriesDone": 7,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 15 页 · 第 4 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 15,
+            "bbox": [
+              0.152341,
+              0.391034,
+              0.81551,
+              0.41228
+            ],
+            "x0": 0.40370171490196083,
+            "y0": 0.36713225,
+            "w": 0.16044757019607842,
+            "h": 0.06904949999999999,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.023016499999999995,
+            "gapN": 6,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.4037,
+            "y0": 0.3671,
+            "w": 0.1604,
+            "h": 0.069,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.023,
+            "gapN": 6,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.987
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/15/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZPAJ6YKCMRK8X7B02E89:3",
+          "page": "第 15 页 · 第 4 行第二路：",
+          "candidate": "候选a n undene ae pa qa tne an pen"
+        },
+        "progress": "已审 8 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZPAJ6YKCMRK8X7B02E89:3",
+        "drafts": 10,
+        "inlineEdits": 0,
+        "entriesDone": 8,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 13,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 15 页 · 第 4 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 15,
+            "bbox": [
+              0.152341,
+              0.391034,
+              0.81551,
+              0.41228
+            ],
+            "x0": 0.40370171490196083,
+            "y0": 0.36713225,
+            "w": 0.16044757019607842,
+            "h": 0.06904949999999999,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.023016499999999995,
+            "gapN": 6,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.4037,
+            "y0": 0.3671,
+            "w": 0.1604,
+            "h": 0.069,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.023,
+            "gapN": 6,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.987
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/15/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZPAJ6YKCMRK8X7B02E89:3",
+          "page": "第 15 页 · 第 4 行第二路：",
+          "candidate": "候选a n undene ae pa qa tne an pen"
+        },
+        "progress": "已审 8 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZPAJ6YKCMRK8X7B02E89:3",
+        "drafts": 10,
+        "inlineEdits": 0,
+        "entriesDone": 8,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 16 页 · 第 7 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 16,
+            "bbox": [
+              0.122521,
+              0.53824,
+              0.862185,
+              0.563028
+            ],
+            "x0": 0.4033126674509803,
+            "y0": 0.5123150000000001,
+            "w": 0.17808066509803933,
+            "h": 0.07663800000000004,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025546000000000013,
+            "gapN": 8,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.4033,
+            "y0": 0.5123,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 8,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/16/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZRR5QR0S2WQD1D5SX80W:6",
+          "page": "第 16 页 · 第 7 行第二路：",
+          "candidate": "候选ansed eadi te seto taneм t pos nzp tan o"
+        },
+        "progress": "已审 9 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZRR5QR0S2WQD1D5SX80W:6",
+        "drafts": 11,
+        "inlineEdits": 0,
+        "entriesDone": 9,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 14,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 16 页 · 第 7 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 16,
+            "bbox": [
+              0.122521,
+              0.53824,
+              0.862185,
+              0.563028
+            ],
+            "x0": 0.4033126674509803,
+            "y0": 0.5123150000000001,
+            "w": 0.17808066509803933,
+            "h": 0.07663800000000004,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025546000000000013,
+            "gapN": 8,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.4033,
+            "y0": 0.5123,
+            "w": 0.1781,
+            "h": 0.0766,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0255,
+            "gapN": 8,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.89
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/16/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZRR5QR0S2WQD1D5SX80W:6",
+          "page": "第 16 页 · 第 7 行第二路：",
+          "candidate": "候选ansed eadi te seto taneм t pos nzp tan o"
+        },
+        "progress": "已审 9 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZRR5QR0S2WQD1D5SX80W:6",
+        "drafts": 11,
+        "inlineEdits": 0,
+        "entriesDone": 9,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 17 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 17,
+            "bbox": [
+              0.237263,
+              0.211452,
+              0.403217,
+              0.238262
+            ],
+            "x0": 0.19858070745098033,
+            "y0": 0.17250025,
+            "w": 0.24331858509803928,
+            "h": 0.10471350000000001,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.034904500000000005,
+            "gapN": 4,
+            "gapLevel": "page"
+          },
+          "attr": {
+            "x0": 0.1986,
+            "y0": 0.1725,
+            "w": 0.2433,
+            "h": 0.1047,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0349,
+            "gapN": 4,
+            "gapLevel": "page",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.651
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/17/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZSNKZN55A4SH15W3MAD4:0",
+          "page": "第 17 页 · 第 1 行第二路：",
+          "candidate": "候选HAROLD D. ROTH"
+        },
+        "progress": "已审 10 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZSNKZN55A4SH15W3MAD4:0",
+        "drafts": 12,
+        "inlineEdits": 0,
+        "entriesDone": 10,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 15,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 17 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 17,
+            "bbox": [
+              0.237263,
+              0.211452,
+              0.403217,
+              0.238262
+            ],
+            "x0": 0.19858070745098033,
+            "y0": 0.17250025,
+            "w": 0.24331858509803928,
+            "h": 0.10471350000000001,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.034904500000000005,
+            "gapN": 4,
+            "gapLevel": "page"
+          },
+          "attr": {
+            "x0": 0.1986,
+            "y0": 0.1725,
+            "w": 0.2433,
+            "h": 0.1047,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0349,
+            "gapN": 4,
+            "gapLevel": "page",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.651
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/17/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZSNKZN55A4SH15W3MAD4:0",
+          "page": "第 17 页 · 第 1 行第二路：",
+          "candidate": "候选HAROLD D. ROTH"
+        },
+        "progress": "已审 10 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZSNKZN55A4SH15W3MAD4:0",
+        "drafts": 12,
+        "inlineEdits": 0,
+        "entriesDone": 10,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 18 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 18,
+            "bbox": [
+              0.119928,
+              0.22511,
+              0.838199,
+              0.255462
+            ],
+            "x0": 0.38826125215686275,
+            "y0": 0.20120875,
+            "w": 0.18160449568627457,
+            "h": 0.07815450000000002,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.026051500000000005,
+            "gapN": 9,
+            "gapLevel": "page"
+          },
+          "attr": {
+            "x0": 0.3883,
+            "y0": 0.2012,
+            "w": 0.1816,
+            "h": 0.0782,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0261,
+            "gapN": 9,
+            "gapLevel": "page",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.872
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/18/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZV2HS9G6HG3QGC1YSEP2:0",
+          "page": "第 18 页 · 第 1 行第二路：",
+          "candidate": "候选ANIMPORTANT COMPENDIUM of knowledge and philosophical speculation"
+        },
+        "progress": "已审 11 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZV2HS9G6HG3QGC1YSEP2:0",
+        "drafts": 13,
+        "inlineEdits": 0,
+        "entriesDone": 11,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 16,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 18 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 18,
+            "bbox": [
+              0.119928,
+              0.22511,
+              0.838199,
+              0.255462
+            ],
+            "x0": 0.38826125215686275,
+            "y0": 0.20120875,
+            "w": 0.18160449568627457,
+            "h": 0.07815450000000002,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.026051500000000005,
+            "gapN": 9,
+            "gapLevel": "page"
+          },
+          "attr": {
+            "x0": 0.3883,
+            "y0": 0.2012,
+            "w": 0.1816,
+            "h": 0.0782,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0261,
+            "gapN": 9,
+            "gapLevel": "page",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.872
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/18/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M609ZV2HS9G6HG3QGC1YSEP2:0",
+          "page": "第 18 页 · 第 1 行第二路：",
+          "candidate": "候选ANIMPORTANT COMPENDIUM of knowledge and philosophical speculation"
+        },
+        "progress": "已审 11 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M609ZV2HS9G6HG3QGC1YSEP2:0",
+        "drafts": 13,
+        "inlineEdits": 0,
+        "entriesDone": 11,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 23 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 23,
+            "bbox": [
+              0.123818,
+              0.229157,
+              0.862833,
+              0.252933
+            ],
+            "x0": 0.36332549999999997,
+            "y0": 0.217269,
+            "w": 0.26,
+            "h": 0.04755200000000004,
+            "rows": 4,
+            "lineH": 56,
+            "degrade": "no-line-gap",
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none"
+          },
+          "attr": {
+            "x0": 0.3633,
+            "y0": 0.2173,
+            "w": 0.26,
+            "h": 0.0476,
+            "rows": 4,
+            "lineH": 56,
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none",
+            "degrade": "no-line-gap",
+            "nw": 2550,
+            "scale": 0.609
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/23/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M60A174VX0T0FJ00NPK13A3D:0",
+          "page": "第 23 页 · 第 1 行第二路：",
+          "candidate": "候选Тнs воок is basically an exercise in conceptual reconstruction. After"
+        },
+        "progress": "已审 12 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M60A174VX0T0FJ00NPK13A3D:0",
+        "drafts": 14,
+        "inlineEdits": 0,
+        "entriesDone": 12,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 17,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 23 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 23,
+            "bbox": [
+              0.123818,
+              0.229157,
+              0.862833,
+              0.252933
+            ],
+            "x0": 0.36332549999999997,
+            "y0": 0.217269,
+            "w": 0.26,
+            "h": 0.04755200000000004,
+            "rows": 4,
+            "lineH": 56,
+            "degrade": "no-line-gap",
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none"
+          },
+          "attr": {
+            "x0": 0.3633,
+            "y0": 0.2173,
+            "w": 0.26,
+            "h": 0.0476,
+            "rows": 4,
+            "lineH": 56,
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none",
+            "degrade": "no-line-gap",
+            "nw": 2550,
+            "scale": 0.609
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/23/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M60A174VX0T0FJ00NPK13A3D:0",
+          "page": "第 23 页 · 第 1 行第二路：",
+          "candidate": "候选Тнs воок is basically an exercise in conceptual reconstruction. After"
+        },
+        "progress": "已审 12 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M60A174VX0T0FJ00NPK13A3D:0",
+        "drafts": 14,
+        "inlineEdits": 0,
+        "entriesDone": 12,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 27 页 · 第 3 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 27,
+            "bbox": [
+              0.123169,
+              0.445667,
+              0.869964,
+              0.467419
+            ],
+            "x0": 0.36656649999999996,
+            "y0": 0.434791,
+            "w": 0.26,
+            "h": 0.04350399999999999,
+            "rows": 4,
+            "lineH": 56,
+            "degrade": "no-line-gap",
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none"
+          },
+          "attr": {
+            "x0": 0.3666,
+            "y0": 0.4348,
+            "w": 0.26,
+            "h": 0.0435,
+            "rows": 4,
+            "lineH": 56,
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none",
+            "degrade": "no-line-gap",
+            "nw": 2550,
+            "scale": 0.609
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/27/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M60A4584VHDBQY0QBR6DRHNA:2",
+          "page": "第 27 页 · 第 3 行第二路：",
+          "candidate": "候选reason that much in the evolution of philosophical ideas tends to be"
+        },
+        "progress": "已审 3 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M60A4584VHDBQY0QBR6DRHNA:2",
+        "drafts": 15,
+        "inlineEdits": 0,
+        "entriesDone": 3,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 18,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 27 页 · 第 3 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 27,
+            "bbox": [
+              0.123169,
+              0.445667,
+              0.869964,
+              0.467419
+            ],
+            "x0": 0.36656649999999996,
+            "y0": 0.434791,
+            "w": 0.26,
+            "h": 0.04350399999999999,
+            "rows": 4,
+            "lineH": 56,
+            "degrade": "no-line-gap",
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none"
+          },
+          "attr": {
+            "x0": 0.3666,
+            "y0": 0.4348,
+            "w": 0.26,
+            "h": 0.0435,
+            "rows": 4,
+            "lineH": 56,
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none",
+            "degrade": "no-line-gap",
+            "nw": 2550,
+            "scale": 0.609
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/27/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M60A4584VHDBQY0QBR6DRHNA:2",
+          "page": "第 27 页 · 第 3 行第二路：",
+          "candidate": "候选reason that much in the evolution of philosophical ideas tends to be"
+        },
+        "progress": "已审 3 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M60A4584VHDBQY0QBR6DRHNA:2",
+        "drafts": 15,
+        "inlineEdits": 0,
+        "entriesDone": 3,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 37 页 · 第 3 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 37,
+            "bbox": [
+              0.121873,
+              0.23118,
+              0.849868,
+              0.256979
+            ],
+            "x0": 0.3558705,
+            "y0": 0.2182805,
+            "w": 0.26,
+            "h": 0.05159800000000003,
+            "rows": 4,
+            "lineH": 56,
+            "degrade": "no-line-gap",
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none"
+          },
+          "attr": {
+            "x0": 0.3559,
+            "y0": 0.2183,
+            "w": 0.26,
+            "h": 0.0516,
+            "rows": 4,
+            "lineH": 56,
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none",
+            "degrade": "no-line-gap",
+            "nw": 2550,
+            "scale": 0.609
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/37/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M60A5E7TWV6TY7YEBS3K18SP:2",
+          "page": "第 37 页 · 第 3 行第二路：",
+          "candidate": "候选sinologist's reference library and their convenience for the reader."
+        },
+        "progress": "已审 4 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M60A5E7TWV6TY7YEBS3K18SP:2",
+        "drafts": 16,
+        "inlineEdits": 0,
+        "entriesDone": 4,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 19,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 37 页 · 第 3 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 37,
+            "bbox": [
+              0.121873,
+              0.23118,
+              0.849868,
+              0.256979
+            ],
+            "x0": 0.3558705,
+            "y0": 0.2182805,
+            "w": 0.26,
+            "h": 0.05159800000000003,
+            "rows": 4,
+            "lineH": 56,
+            "degrade": "no-line-gap",
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none"
+          },
+          "attr": {
+            "x0": 0.3559,
+            "y0": 0.2183,
+            "w": 0.26,
+            "h": 0.0516,
+            "rows": 4,
+            "lineH": 56,
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none",
+            "degrade": "no-line-gap",
+            "nw": 2550,
+            "scale": 0.609
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/37/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M60A5E7TWV6TY7YEBS3K18SP:2",
+          "page": "第 37 页 · 第 3 行第二路：",
+          "candidate": "候选sinologist's reference library and their convenience for the reader."
+        },
+        "progress": "已审 4 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M60A5E7TWV6TY7YEBS3K18SP:2",
+        "drafts": 16,
+        "inlineEdits": 0,
+        "entriesDone": 4,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 39 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 39,
+            "bbox": [
+              0.121873,
+              0.103702,
+              0.828475,
+              0.129501
+            ],
+            "x0": 0.38525183843137245,
+            "y0": 0.07790299999999997,
+            "w": 0.17984432313725504,
+            "h": 0.07739700000000005,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025799000000000016,
+            "gapN": 4,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3853,
+            "y0": 0.0779,
+            "w": 0.1798,
+            "h": 0.0774,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0258,
+            "gapN": 4,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.881
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/39/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M60A5PJBMD2S7J9THR3P1M23:0",
+          "page": "第 39 页 · 第 1 行第二路：",
+          "candidate": "候选THIS ANALYSIs of the political philosophy propounded in The Art of"
+        },
+        "progress": "已审 1 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M60A5PJBMD2S7J9THR3P1M23:0",
+        "drafts": 17,
+        "inlineEdits": 0,
+        "entriesDone": 1,
+        "treeRail": null,
+        "shot": null
+      }
+    },
+    {
+      "i": 20,
+      "spec": {
+        "key": "Enter",
+        "wait": 800
+      },
+      "before": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 39 页 · 第 1 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 39,
+            "bbox": [
+              0.121873,
+              0.103702,
+              0.828475,
+              0.129501
+            ],
+            "x0": 0.38525183843137245,
+            "y0": 0.07790299999999997,
+            "w": 0.17984432313725504,
+            "h": 0.07739700000000005,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.025799000000000016,
+            "gapN": 4,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.3853,
+            "y0": 0.0779,
+            "w": 0.1798,
+            "h": 0.0774,
+            "rows": 3,
+            "lineH": 75,
+            "gap": 0.0258,
+            "gapN": 4,
+            "gapLevel": "block",
+            "degrade": "lineH>40",
+            "nw": 2550,
+            "scale": 0.881
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/39/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M60A5PJBMD2S7J9THR3P1M23:0",
+          "page": "第 39 页 · 第 1 行第二路：",
+          "candidate": "候选THIS ANALYSIs of the political philosophy propounded in The Art of"
+        },
+        "progress": "已审 1 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M60A5PJBMD2S7J9THR3P1M23:0",
+        "drafts": 17,
+        "inlineEdits": 0,
+        "entriesDone": 1,
+        "treeRail": null,
+        "shot": null
+      },
+      "after": {
+        "viewport": {
+          "w": 1423,
+          "h": 900
+        },
+        "heights": {
+          "topbar": {
+            "x": 0,
+            "y": 0,
+            "w": 1423,
+            "h": 48
+          },
+          "toolbar": {
+            "x": 0,
+            "y": 48,
+            "w": 1423,
+            "h": 44
+          },
+          "split": {
+            "x": 0,
+            "y": 92,
+            "w": 1423,
+            "h": 526
+          },
+          "dock": {
+            "x": 0,
+            "y": 624,
+            "w": 1423,
+            "h": 276
+          },
+          "dockGrip": {
+            "x": 0,
+            "y": 618,
+            "w": 1423,
+            "h": 6
+          },
+          "host": {
+            "x": 420,
+            "y": 659,
+            "w": 1003,
+            "h": 241
+          },
+          "tree": {
+            "x": 0,
+            "y": 92,
+            "w": 232,
+            "h": 526
+          },
+          "pdf": null,
+          "stream": {
+            "x": 664,
+            "y": 92,
+            "w": 759,
+            "h": 526
+          },
+          "dockHidden": false,
+          "hostParent": "reading-dock__body"
+        },
+        "dock": {
+          "where": "第 48 页 · 第 5 行",
+          "level": "汉字级",
+          "count": "0 / 567",
+          "hidden": false,
+          "collapseTitle": "收起（Esc）"
+        },
+        "crop": {
+          "plan": {
+            "pageNo": 48,
+            "bbox": [
+              0.121873,
+              0.227133,
+              0.555558,
+              0.252933
+            ],
+            "x0": 0.2470296803921569,
+            "y0": 0.20057550000000002,
+            "w": 0.18337163921568625,
+            "h": 0.07891499999999999,
+            "rows": 3,
+            "lineH": 75,
+            "degrade": "lineH>40",
+            "gap": 0.026304999999999995,
+            "gapN": 4,
+            "gapLevel": "block"
+          },
+          "attr": {
+            "x0": 0.2087,
+            "y0": 0.2142,
+            "w": 0.26,
+            "h": 0.0516,
+            "rows": 4,
+            "lineH": 56,
+            "gap": null,
+            "gapN": 0,
+            "gapLevel": "none",
+            "degrade": "no-line-gap",
+            "nw": 2550,
+            "scale": 0.609
+          },
+          "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/48/image?size=zoom&token=qa-20261028-220113-"
+        },
+        "panel": {
+          "key": "01M60A76WCZ7VVF1RJVJNK0DT8:4",
+          "page": "第 48 页 · 第 5 行第二路：",
+          "candidate": "候选wanton and sycophants are dangerousẠỊạ"
+        },
+        "progress": "已审 0 / 567 条",
+        "notice": null,
+        "edit": {
+          "key": null,
+          "nodeExists": false,
+          "contenteditable": null,
+          "text": null
+        },
+        "currentLine": "01M60A76WCZ7VVF1RJVJNK0DT8:4",
+        "drafts": 18,
+        "inlineEdits": 0,
+        "entriesDone": 0,
+        "treeRail": null,
+        "shot": null
+      }
+    }
+  ],
+  "snap": {
+    "viewport": {
+      "w": 1423,
+      "h": 900
+    },
+    "heights": {
+      "topbar": {
+        "x": 0,
+        "y": 0,
+        "w": 1423,
+        "h": 48
+      },
+      "toolbar": {
+        "x": 0,
+        "y": 48,
+        "w": 1423,
+        "h": 44
+      },
+      "split": {
+        "x": 0,
+        "y": 92,
+        "w": 1423,
+        "h": 526
+      },
+      "dock": {
+        "x": 0,
+        "y": 624,
+        "w": 1423,
+        "h": 276
+      },
+      "dockGrip": {
+        "x": 0,
+        "y": 618,
+        "w": 1423,
+        "h": 6
+      },
+      "host": {
+        "x": 420,
+        "y": 659,
+        "w": 1003,
+        "h": 241
+      },
+      "tree": {
+        "x": 0,
+        "y": 92,
+        "w": 232,
+        "h": 526
+      },
+      "pdf": null,
+      "stream": {
+        "x": 664,
+        "y": 92,
+        "w": 759,
+        "h": 526
+      },
+      "dockHidden": false,
+      "hostParent": "reading-dock__body"
+    },
+    "dock": {
+      "where": "第 48 页 · 第 5 行",
+      "level": "汉字级",
+      "count": "0 / 567",
+      "hidden": false,
+      "collapseTitle": "收起（Esc）"
+    },
+    "crop": {
+      "plan": {
+        "pageNo": 48,
+        "bbox": [
+          0.121873,
+          0.227133,
+          0.555558,
+          0.252933
+        ],
+        "x0": 0.2470296803921569,
+        "y0": 0.20057550000000002,
+        "w": 0.18337163921568625,
+        "h": 0.07891499999999999,
+        "rows": 3,
+        "lineH": 75,
+        "degrade": "lineH>40",
+        "gap": 0.026304999999999995,
+        "gapN": 4,
+        "gapLevel": "block"
+      },
+      "attr": {
+        "x0": 0.2087,
+        "y0": 0.2142,
+        "w": 0.26,
+        "h": 0.0516,
+        "rows": 4,
+        "lineH": 56,
+        "gap": null,
+        "gapN": 0,
+        "gapLevel": "none",
+        "degrade": "no-line-gap",
+        "nw": 2550,
+        "scale": 0.609
+      },
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/48/image?size=zoom&token=qa-20261028-220113-"
+    },
+    "panel": {
+      "key": "01M60A76WCZ7VVF1RJVJNK0DT8:4",
+      "page": "第 48 页 · 第 5 行第二路：",
+      "candidate": "候选wanton and sycophants are dangerousẠỊạ"
+    },
+    "progress": "已审 0 / 567 条",
+    "notice": null,
+    "edit": {
+      "key": null,
+      "nodeExists": false,
+      "contenteditable": null,
+      "text": null
+    },
+    "currentLine": "01M60A76WCZ7VVF1RJVJNK0DT8:4",
+    "drafts": 18,
+    "inlineEdits": 0,
+    "entriesDone": 0,
+    "treeRail": null,
+    "shot": null
+  }
+}
