@@ -110,6 +110,8 @@ export async function run(cfg) {
       return await l4Probe(page, args);
     case "goto_probe":
       return await gotoProbe(page, args);
+    case "next20_probe":
+      return await next20Probe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -3239,6 +3241,75 @@ async function gotoProbe(page, args) {
     return { results };
   }
   return { mode: "unknown" };
+}
+
+/** 连按 20 次「下一处未审」，失败时抓 pending 并在 100ms 后看是否补开。 */
+async function next20Probe(page, args) {
+  await ensureReading(page);
+  const read = () =>
+    page.evaluate(() => {
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const m = label.match(/(\d+)/);
+      const panel = document.querySelector(".reading-panel");
+      const head = document.querySelector(".reading-panel__head strong");
+      const scroller = document.getElementById("reading-pdf-scroll");
+      let dominant = null;
+      if (scroller) {
+        const sr = scroller.getBoundingClientRect();
+        let best = null;
+        for (const tile of scroller.querySelectorAll(".reading-page")) {
+          const tr = tile.getBoundingClientRect();
+          const overlap = Math.min(tr.bottom, sr.bottom) - Math.max(tr.top, sr.top);
+          if (overlap > 0 && (!best || overlap > best.overlap)) best = { page: Number(tile.dataset.pageNo), overlap };
+        }
+        if (best) dominant = best.page;
+      }
+      const pendingKey = typeof readingPendingPanelKey !== "undefined" ? readingPendingPanelKey : "UNDEF";
+      const pendingEntry = typeof readingPendingPanelEntry !== "undefined"
+        ? (readingPendingPanelEntry ? readingPendingPanelEntry.block_id : null) : "UNDEF";
+      const pv = panel ? panel.getBoundingClientRect() : null;
+      return {
+        label: m ? Number(m[1]) : null,
+        panelPage: head ? Number(((head.textContent || "").match(/第\s*(\d+)\s*页/) || [0, 0])[1]) || null : null,
+        panelKey: panel ? panel.dataset.key || null : null,
+        panelVisible: Boolean(pv && pv.width > 0 && pv.height > 0 && pv.bottom > 0 && pv.top < window.innerHeight),
+        dominant,
+        pendingKey, pendingEntry,
+        nextLog0: (window.__b2tNextLog || [])[0] || null,
+        editKey: typeof readingEditingKey !== "undefined" ? readingEditingKey : "UNDEF",
+      };
+    });
+
+  await page.evaluate(() => {
+    window.__next20Log = [];
+    if (!window.__next20Logged) {
+      const orig = window.logReadingNext;
+      if (typeof orig === "function") {
+        window.logReadingNext = function (entry, extra) {
+          try { window.__next20Log.push({ entry: entry ? `${entry.block_id}:${entry.line_index}` : null, extra }); } catch (e) {}
+          return orig.apply(this, arguments);
+        };
+        window.__next20Logged = true;
+      }
+    }
+  });
+
+  const rows = [];
+  for (let i = 1; i <= 20; i += 1) {
+    await page.click("#reading-next-unreviewed", { label: `下一处 ${i}` }).catch(() => {});
+    await page.waitForTimeout(700);
+    let st = await read();
+    let reopened = null;
+    if (!st.panelVisible) {
+      await page.waitForTimeout(120);   // 下一帧再看：补开 = 晚一帧，否则 = 丢了
+      const again = await read();
+      reopened = { panelVisible: again.panelVisible, panelKey: again.panelKey };
+      st = again;
+    }
+    rows.push({ i, ...st, reopened });
+  }
+  const log = await page.evaluate(() => (window.__next20Log || []).slice(-30));
+  return { rows, log };
 }
 
 async function nextProbe(page) {
