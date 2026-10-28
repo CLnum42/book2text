@@ -7,6 +7,42 @@
 
 ---
 
+## 2026-10-28 — 任务 61 续：差异数字分两类显示、判定看合并
+
+### 任务目标
+
+Chief 拍板：**显示分两类，判定看合并**。标点可以按模式批量，但"没判"不能算完成；
+页图只做内存缓存（当前页 ±10、最多 20 张），不做磁盘缓存。
+
+### 改了什么
+
+- `review_status.queue_items()`：新增 `chars_total/chars_unacked/punct_total/punct_unacked`，
+  并把统计口径从 `divergence.chars/punct`（只算未裁决行）改成**按 marks 数**
+  ——否则一个块的差异全裁完后 total 会掉、acked 也统计不到（实测 899 行全标 kept 后
+  total 724 / acked 354，与事实不符）。
+- `review_status.finish_summary()`：`review.complete` 增加 `queue.unacked == 0`；
+  `review` 行带分项与 `punct_groups`（组数 / 已判组数 / 待判行数）。
+- `punct_groups.group_counts()`：收尾面板用；**不做缓存**（试过按 updated_at + 60 s 缓存，
+  等长的 `。`→`、` 替换抓不住，会给出错的"已判完"）。
+- `api/routes_review.review_marks()`：按 `QUEUE_BLOCK_TYPES` 过滤，marks 与队列同口径
+  （1623 = 899 + 724）。
+- 前端：阅读流 `汉字 X / Y` + 小字 `另有标点 …`；收尾面板两行；步骤条只读 `r.complete`；
+  页图 `INDEX_IMAGE_LIMIT` 8 → 20、窗口 ±10，并加 `size=thumb` 占位（模糊显示）。
+
+### 验证
+
+- 副本 `b2t_YV1P2Y`：把 899 行汉字差异全部标 kept 后 →
+  `汉字差异 899 / 899 · 标点差异 0 / 73 组`，步骤条**不变绿**，
+  detail 写 `标点 0/73 组（724 行待判）`（截图 `review-split-counts-step.png`、
+  `review-split-counts-finish.png`）。
+- 新测试 `test_review_completion_requires_punctuation_groups_decided`：无差异时
+  `complete=True` → 造一条标点差异 → **False** → 判掉那一组 → True。
+- `pytest` 见任务 62 的最终运行（同一份代码）。
+
+### 下一步建议
+
+按 Chief 新任务书做性能：步骤条不等大响应、finish-summary 秒回、DPI/编码、叠加层降本。
+
 ## 2026-10-28 — 任务 61：目录页图 / 当前项高亮 / 标点差异按模式批量
 
 ### 任务目标

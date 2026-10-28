@@ -270,3 +270,25 @@ def decide(
         "pages": sorted(pages),
         "ack": ack,
     }
+
+
+# ---------------------------------------------------------------- 计数（收尾面板用）
+
+def group_counts(project_id: str, *, library: Path | None = None) -> dict:
+    """标点差异的组数 / 行数 / 已判组数（收尾面板显示用；判定看行级 ack）。
+
+    **不缓存。** 试过按 `project.updated_at` + 60 s 缓存，结果：第二引擎复核重跑会把
+    `aux_text` 从"`。`"换成"`、`"（长度不变、也不动 project.updated_at），缓存就拿着
+    旧分组说"标点已判完"。加长的指纹（块数 / 字数 / 已裁决数）仍然抓不住等长替换。
+    宁可多花 0.35 s（394 页实测），也不要给出一个错的"已判完"。
+    """
+    target_library = library if library is not None else library_module.default_library_dir()
+    data = collect(project_id, library=target_library)
+    totals = data["totals"]
+    return {
+        "groups": totals["groups"],
+        "lines": totals["lines"],
+        "decided_groups": totals["groups"] - totals["undecided_groups"],
+        "undecided_groups": totals["undecided_groups"],
+        "undecided_lines": totals["undecided_lines"],
+    }

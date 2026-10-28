@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from book2text.core.project import blocks as blocks_module
 from book2text.core.project import recognition
 from book2text.core.project import review_status
 from tests.conftest import TEST_TOKEN
@@ -666,3 +667,92 @@ def test_review_tree_lists_every_page_and_groups_by_chapter(
     assert all(page["unacked"] == 0 for page in data["pages"])
     assert data["stats"]["pages"] == 3
 
+
+
+def test_review_completion_requires_punctuation_groups_decided(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_with_ocr: str,
+    library_dir: Path,
+    monkeypatch,
+) -> None:
+    """2026-10-28 拍板：显示分两类，**判定看合并**。
+
+    汉字差异全裁掉、但标点组一条没判 → 正文审校不许变绿；判完标点组才变绿。
+    """
+    project_id = project_with_ocr
+    ocr(client, auth_headers, project_id, [3])
+    prepare_page(client, auth_headers, project_id, [1, 2, 3])
+    monkeypatch.setattr(
+        review_status.ink_gaps_module,
+        "find_ink_gaps",
+        lambda *args, **kwargs: {"candidates": []},
+    )
+    for page_no in (1, 2, 3):
+        recognition.run_auxiliary(
+            library_dir / project_id,
+            page_no,
+            engine=FakeSecondEngine(texts=[text for text, _, _ in FAKE_LINES]),
+        )
+    client.post(
+        f"/api/projects/{project_id}/review/auto-pass",
+        json={"page_numbers": [1, 2, 3]},
+        headers=auth_headers,
+    )
+    pending = client.get(
+        f"/api/projects/{project_id}/cleanup/continuations/pending",
+        headers=auth_headers,
+    ).json()
+    for entry in pending["entries"]:
+        client.post(
+            f"/api/projects/{project_id}/cleanup/continuations/resolve",
+            json={"block_id": entry["block_id"], "continues": True},
+            headers=auth_headers,
+        )
+
+    summary = client.get(
+        f"/api/projects/{project_id}/review/finish-summary", headers=auth_headers
+    ).json()
+    assert summary["review"]["complete"] is True, "没有差异时应当完成"
+    assert summary["review"]["punct_groups"]["groups"] == 0
+
+    # 让第一页第 2 行只差一个标点（全角句号 → 顿号），其余照抄
+    lines = blocks_module.list_block_lines(project_id, library=library_dir)
+    texts = [line.text for line in lines]
+    texts[1] = texts[1].replace("。", "、")
+    if texts[1] == lines[1].text:  # 夹具那一行没有句号时改末尾标点
+        texts[1] = texts[1] + "、"
+    recognition.run_auxiliary(
+        library_dir / project_id, 1, engine=FakeSecondEngine(texts=texts)
+    )
+
+    summary = client.get(
+        f"/api/projects/{project_id}/review/finish-summary", headers=auth_headers
+    ).json()
+    review = summary["review"]
+    assert review["needs_human"] == 0
+    assert review["auto_passable"] == 0
+    assert review["continuation_pending"] == 0
+    assert review["punct_total"] >= 1
+    assert review["punct_pending"] >= 1
+    assert review["punct_groups"]["undecided_groups"] >= 1
+    assert review["complete"] is False, "标点组没判，不能算完成"
+    assert summary["k"] < summary["k_total"]
+
+    # 步骤条读的就是这个 complete（前端不再自己算一套）
+    group = client.get(
+        f"/api/projects/{project_id}/review/punct-groups", headers=auth_headers
+    ).json()["groups"][0]
+    decided = client.post(
+        f"/api/projects/{project_id}/review/punct-groups/decide",
+        json={"key": group["key"], "ack": "kept"},
+        headers=auth_headers,
+    )
+    assert decided.status_code == 200, decided.text
+
+    summary = client.get(
+        f"/api/projects/{project_id}/review/finish-summary", headers=auth_headers
+    ).json()
+    assert summary["review"]["punct_pending"] == 0
+    assert summary["review"]["punct_groups"]["undecided_groups"] == 0
+    assert summary["review"]["complete"] is True

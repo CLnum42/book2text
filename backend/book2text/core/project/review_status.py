@@ -26,8 +26,10 @@ from . import library as library_module
 from . import margin_box as margin_box_module
 from . import page_index as page_index_module
 from . import page_numbers as page_numbers_module
+from . import punct_groups as punct_groups_module
 from . import structure as structure_module
 from . import workflow as workflow_module
+from ..ocr import compare as compare_module
 from ..storage import db as db_module
 
 AUTO_PASS_FAILED = "recognition_failed"
@@ -585,7 +587,19 @@ def queue_items(project_id: str, *, library: Path | None = None) -> dict:
     for line in blocks_module.list_block_lines(project_id, library=target_library):
         lines_by_block.setdefault(line.block_id, []).append(line)
     per_page: dict[int, dict] = {}
-    totals = {"total": 0, "unacked": 0, "acked": 0, "outside": 0, "other_types": 0}
+    totals = {
+        "total": 0,
+        "unacked": 0,
+        "acked": 0,
+        "outside": 0,
+        "other_types": 0,
+        # 分两类：含汉字差异 / 纯标点差异。显示分开、判定合并（D-096 / 2026-10-28 拍板）：
+        # 标点可以按模式批量裁决，但"没判"不能算完成。
+        "chars_total": 0,
+        "chars_unacked": 0,
+        "punct_total": 0,
+        "punct_unacked": 0,
+    }
     for block in blocks:
         if not block.include:
             continue
@@ -603,22 +617,41 @@ def queue_items(project_id: str, *, library: Path | None = None) -> dict:
         divergence = blocks_module.block_divergence(
             block, lines_by_block.get(block.block_id, [])
         )
-        substantive = divergence.chars + divergence.punct
-        if not substantive:
+        # **按 marks 数，不按 divergence.chars / punct 数**：后两者只统计"未裁决"的行，
+        # 一个块的差异全裁完就会变成 0，于是这些行连"已裁决"都统计不到
+        # （2026-10-28 实测：899 行汉字差异全标 kept 后 total 掉到 724、acked 只有 354）。
+        # marks 里已裁决的行**仍然在**（审计要看），所以 total = 全部差异行、
+        # acked = 其中已裁决的、unacked = 剩下的。
+        marks = [
+            mark
+            for mark in divergence.marks
+            if mark.level in (compare_module.DIFFERS_CHARS, compare_module.DIFFERS_PUNCT)
+        ]
+        if not marks:
             continue
         inside = margin_box_module.block_inside_margin(project, page, block.bbox)
         if not inside:
-            totals["outside"] += substantive
+            totals["outside"] += len(marks)
             continue
+        acked_here = sum(1 for mark in marks if mark.ack)
         entry = per_page.setdefault(
             block.page_no, {"page_no": block.page_no, "total": 0, "unacked": 0, "acked": 0}
         )
-        entry["total"] += substantive
-        entry["acked"] += divergence.acked
-        entry["unacked"] += substantive - divergence.acked
-        totals["total"] += substantive
-        totals["acked"] += divergence.acked
-        totals["unacked"] += substantive - divergence.acked
+        entry["total"] += len(marks)
+        entry["acked"] += acked_here
+        entry["unacked"] += len(marks) - acked_here
+        totals["total"] += len(marks)
+        totals["acked"] += acked_here
+        totals["unacked"] += len(marks) - acked_here
+        for mark in marks:
+            if mark.level == compare_module.DIFFERS_CHARS:
+                totals["chars_total"] += 1
+                if not mark.ack:
+                    totals["chars_unacked"] += 1
+            else:
+                totals["punct_total"] += 1
+                if not mark.ack:
+                    totals["punct_unacked"] += 1
     return {"per_page": per_page, "totals": totals, "pages": len(per_page)}
 
 
@@ -758,7 +791,10 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
         pn_done,
         len(auto_passable) == 0
         and len(needs_human) == 0
-        and continuation["count"] == 0,
+        and continuation["count"] == 0
+        # 整条审校队列（汉字差异 + 标点差异）都必须有裁决。标点可以按模式批量判，
+        # 但"没判"不能算完成——否则主队列清零、步骤变绿，几百行标点差异没人看过。
+        and queue["totals"]["unacked"] == 0,
         main_done == len(body_pages),
     ]
     return {
@@ -804,6 +840,12 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
             # 审校队列的唯一口径（与左树 / 阅读流顶栏同源）：版心内正文差异行
             "total_items": queue["totals"]["total"],
             "pending_items": queue["totals"]["unacked"],
+            # 分两类显示（判定仍看上面的合计）
+            "chars_total": queue["totals"]["chars_total"],
+            "chars_pending": queue["totals"]["chars_unacked"],
+            "punct_total": queue["totals"]["punct_total"],
+            "punct_pending": queue["totals"]["punct_unacked"],
+            "punct_groups": punct_groups_module.group_counts(project_id, library=library),
             "outside_items": queue["totals"]["outside"],
             "other_items": queue["totals"]["other_types"],
             # 任务 42：F1 第三桶（自动判不了的页边界）——没确认完，审校就不算完成

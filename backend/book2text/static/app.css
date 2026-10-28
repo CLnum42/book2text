@@ -2603,3 +2603,10 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .punct-group__page { flex: 0 0 auto; color: var(--faint); }
 .punct-group__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .punct-group__actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── 页图占位与内存窗口（任务 62） ─────────────────────────────────── */
+/* 低分辨率占位图（size=thumb）：先顶上，高精度图到了替换；模糊一点表示"还没清" */
+.index-page img.is-placeholder,
+.reading-page img.is-placeholder { display: block; filter: blur(1.5px); }
+/* 阅读流顶栏的标点小字：与"汉字 x / y"分开写 */
+.reading-punct-note { font-size: 11px; color: var(--faint); white-space: nowrap; }

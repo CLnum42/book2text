@@ -26,6 +26,7 @@ from ..core.project import editing
 from ..core.project import library as project_library
 from ..core.project import margin_box as margin_box_module
 from ..core.project import punct_groups as punct_groups_module
+from ..core.project import review_status as review_status_module
 from ..core.project import recognition
 from ..core.project import structure as structure_module
 from ..core.ocr import compare as compare_module
@@ -353,6 +354,10 @@ def review_marks(request: Request, project_id: str) -> dict[str, Any]:
     for block in blocks:
         page = next((item for item in pages if item.page_no == block.page_no), None)
         if page is None or not block.include:
+            continue
+        # 队列口径（任务 58 / 61）：只有正文块（paragraph / heading）进审校队列。
+        # 这里不一起过滤的话，marks 会比队列多出几行（脚注等），进度条的分母就对不上。
+        if block.block_type not in review_status_module.QUEUE_BLOCK_TYPES:
             continue
         if not margin_box_module.block_inside_margin(project, page, block.bbox):
             continue

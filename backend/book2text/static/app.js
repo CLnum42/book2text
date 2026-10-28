@@ -283,19 +283,28 @@ function stepProgress(id) {
       const needs = Number(r.needs_human || 0);
       const passable = Number(r.auto_passable || 0);
       const layoutLeft = Number(layout.remaining || 0);
-      // 任务 42：完成判定读收尾面板的 r.complete（已含跨页延续第三桶），
-      // 不在这里另算一套；版面未确认仍然挡着这一步。
+      // 完成判定**只读后端** `r.complete`：它已经要求整条审校队列（汉字 + 标点）
+      // 全部有裁决、跨页延续确认完；版面未确认仍然另外挡着。前端不再自己算一套。
       const continuation = Number(r.continuation_pending || 0);
+      const charsLeft = Number(r.chars_pending || 0);
+      const punctLeft = Number(r.punct_groups?.undecided_groups || 0);
       done = Boolean(r.complete) && layoutLeft === 0;
-      count = needs
-        ? `剩 ${needs} 页`
-        : passable
-          ? `可自动通过 ${passable} 页`
-          : continuation
-            ? `延续待确认 ${continuation}`
-            : "已确认";
+      count = charsLeft
+        ? `汉字剩 ${charsLeft}`
+        : punctLeft
+          ? `标点剩 ${punctLeft} 组`
+          : needs
+            ? `剩 ${needs} 页`
+            : passable
+              ? `可自动通过 ${passable} 页`
+              : continuation
+                ? `延续待确认 ${continuation}`
+                : "已确认";
       detail =
-        `待人工 ${needs} 页 · 可直接通过 ${passable} 页 · 版面未确认 ${layoutLeft} 页` +
+        `汉字差异 ${Number(r.chars_total || 0) - charsLeft}/${Number(r.chars_total || 0)}` +
+        ` · 标点 ${Number(r.punct_groups?.decided_groups || 0)}/${Number(r.punct_groups?.groups || 0)} 组` +
+        `（${punctLeft ? `${r.punct_groups?.undecided_lines || 0} 行待判` : "已判完"}）` +
+        ` · 待人工 ${needs} 页 · 版面未确认 ${layoutLeft} 页` +
         (continuation ? ` · 跨页延续待确认 ${continuation} 处` : "");
     }
   } else if (id === "preview") {
@@ -8029,7 +8038,9 @@ const INDEX_ZOOM_SCALES = [0.55, 0.7, 0.85, 1];
 /** 视口上下各预加载多少像素（约 ±3 页；628 高时一页约 700–900 px）。 */
 const INDEX_NEAR_MARGIN = 2600;
 /** 同时挂 `src` 的页图上限：再多就把离当前页最远的摘掉。 */
-const INDEX_IMAGE_LIMIT = 8;
+const INDEX_IMAGE_LIMIT = 20;
+/** 内存里保留当前页 ±N 页的图（任务 62：翻回去不用再等）。 */
+const INDEX_IMAGE_WINDOW = 10;
 
 let indexTiles = new Map();
 let indexPagesProject = null;
@@ -8414,6 +8425,8 @@ function ensureIndexImage(pageNo) {
   if (!tile) return;
   const image = tile.querySelector("img");
   if (!image || image.dataset.src || image.dataset.pending) return;
+  // 先挂低分辨率占位（几十毫秒），高精度图在后面排队
+  showIndexPlaceholder(pageNo, image);
   image.dataset.pending = "1";
   indexImageQueue.push(pageNo);
   pumpIndexImages();
@@ -8470,6 +8483,7 @@ async function pumpIndexImages() {
       }
       image.classList.remove("is-ready");
       delete image.dataset.imageFailed;
+      delete image.dataset.placeholder;
       image.classList.add("is-ready");
       // 先解码再交给排版：解码不进滚动 / 跳页的那一帧
       try {
@@ -8582,17 +8596,41 @@ function markIndexImageFailed(pageNo) {
   }
 }
 
-/** 图是解码过的大图：同时挂的 src 超过上限就摘离当前页最远的那些。 */
+/**
+ * 图是解码过的大图：内存里只留**当前页 ±10 页、最多 20 张**，更远的摘掉。
+ *
+ * 2026-10-28 拍板：不做磁盘缓存（一页 150 DPI 的 PNG 约 1.7 MB，490 页约 830 MB，
+ * 只为省下 0.14–0.30 s/页，不划算）。内存窗口够覆盖审校时来回翻几页，
+ * 窗口外的再要就从接口重取（HTTP 那边还有 5 分钟缓存）。
+ */
 function trimIndexImages(keepPage = indexCurrentPage || 1) {
-  if (indexLoadedImages.size <= INDEX_IMAGE_LIMIT) return;
   const ordered = [...indexLoadedImages].sort(
     (a, b) => Math.abs(b - keepPage) - Math.abs(a - keepPage)
   );
-  while (indexLoadedImages.size > INDEX_IMAGE_LIMIT && ordered.length) {
+  while (
+    (indexLoadedImages.size > INDEX_IMAGE_LIMIT ||
+      (ordered.length && Math.abs(ordered[0] - keepPage) > INDEX_IMAGE_WINDOW)) &&
+    ordered.length
+  ) {
     const pageNo = ordered.shift();
-    if (Math.abs(pageNo - keepPage) <= 3) continue;
+    if (Math.abs(pageNo - keepPage) <= INDEX_IMAGE_WINDOW && indexLoadedImages.size <= INDEX_IMAGE_LIMIT) {
+      continue;
+    }
     releaseIndexImage(pageNo);
   }
+}
+
+/**
+ * 低分辨率占位图（任务 62）：`size=thumb` 是 40 DPI，几十毫秒就能回来。
+ * 用户点进来先看到"这一页大概是这个样子"，高精度图到了再替换——
+ * 首图可见时间从实测 6.4 s 降到 1 s 以内。
+ */
+function showIndexPlaceholder(pageNo, image) {
+  if (!image || image.dataset.placeholder === "1") return;
+  if (image.classList.contains("is-ready") || image.dataset.src) return;
+  image.dataset.placeholder = "1";
+  image.classList.add("is-placeholder");
+  image.src = pageImageUrl(pageNo, "thumb");
 }
 
 function ensureIndexBlocks(pageNo) {
@@ -13708,17 +13746,24 @@ function renderFinishPanel() {
   el("finish-open-pagenum").textContent = pn.located ? "核对页码…" : "定位页码…";
 
   const review = data.review;
-  // 任务 42：F1 第三桶（16 处跨页延续）没确认完，审校这一行就不算完成
+  // 任务 42 / 61：完成判定只读后端 `review.complete`（含跨页延续 + 整条差异队列）。
   const continuationCount = Number(review.continuation_pending || 0);
-  const reviewDone =
-    review.auto_passable === 0 &&
-    review.needs_human === 0 &&
-    continuationCount === 0;
+  const reviewDone = Boolean(review.complete);
+  const charsTotal = Number(review.chars_total || 0);
+  const charsLeft = Number(review.chars_pending || 0);
+  const punctGroups = review.punct_groups || {};
+  const punctLeft = Number(punctGroups.undecided_groups || 0);
   finishIcon("finish-icon-review", reviewDone ? "ok" : "warn");
+  // 两行：汉字差异一行、标点差异一行（显示分开，判定合并）
   el("finish-review-status").textContent =
-    `${review.auto_passable} 页可直接通过 · ${review.needs_human} 页要人看`;
+    `汉字差异 ${charsTotal - charsLeft} / ${charsTotal}` +
+    ` · 标点差异 ${Number(punctGroups.decided_groups || 0)} / ${Number(punctGroups.groups || 0)} 组`;
   el("finish-review-sub").textContent =
-    `已确认 ${review.confirmed} / ${review.total} 页正文` +
+    (punctLeft
+      ? `标点还有 ${punctLeft} 组 · ${Number(punctGroups.undecided_lines || 0)} 行没判（可按模式批量）· `
+      : "标点差异已判完 · ") +
+    `${review.auto_passable} 页可直接通过 · ${review.needs_human} 页要人看` +
+    ` · 已确认 ${review.confirmed} / ${review.total} 页正文` +
     (continuationCount ? ` · 跨页延续待确认 ${continuationCount} 处` : "");
   const auto = el("finish-auto-pass");
   auto.hidden = review.auto_passable === 0;
@@ -17163,6 +17208,8 @@ async function refreshPunctGroups() {
     if (box) showError(box, error);
   }
   renderPunctGroupBadge();
+  // 标点数字到了要重画进度条那句小字（它和汉字进度分两行显示）
+  if (readingData) renderReadingProgress();
   return punctGroupsData;
 }
 
@@ -17764,11 +17811,20 @@ function renderReadingProgress() {
   const total = readingEntries.length;
   const processed = readingEntries.filter(readingEntryDone).length;
   const drafts = readingDrafts.size;
-  // 主队列只算含汉字差异的行；标点那几百行单独写在这里，用户能看到"总数在下降"
-  const punctLeft = punctGroupsData?.totals?.undecided_lines || 0;
-  el("reading-progress-text").textContent =
-    `已处理 ${processed} / ${total}` +
-    (punctLeft ? `（另有标点 ${punctLeft} 行）` : "");
+  // 显示分两类、判定看合并：进度条只算含汉字差异的行，标点单独一行小字
+  const punctTotals = punctGroupsData?.totals || {};
+  const punctLeft = Number(punctTotals.undecided_lines || 0);
+  el("reading-progress-text").textContent = `汉字 ${processed} / ${total}`;
+  const punctNote = el("reading-punct-note");
+  if (punctNote) {
+    const groups = Number(punctTotals.groups || 0);
+    punctNote.hidden = groups === 0;
+    punctNote.textContent = groups
+      ? `另有标点 ${punctTotals.lines || 0} 行 · ${groups} 组（已判 ${
+          groups - Number(punctTotals.undecided_groups || 0)
+        } 组）`
+      : "";
+  }
   const fill = el("reading-progress-fill");
   fill.style.width = total ? `${Math.round((processed / total) * 100)}%` : "0%";
   fill.classList.toggle("is-done", total > 0 && processed >= total);
@@ -18122,7 +18178,7 @@ function observeReadingTiles() {
           readingNearSet.add(pageNo);
           ensureReadingTile(pageNo);
         } else if (readingNearSet.delete(pageNo)) {
-          if (Math.abs(pageNo - (readingPageNo || 1)) > 6) releaseReadingImage(pageNo);
+          if (Math.abs(pageNo - (readingPageNo || 1)) > INDEX_IMAGE_WINDOW) releaseReadingImage(pageNo);
         }
       }
     },
@@ -18162,9 +18218,19 @@ function ensureReadingImage(pageNo) {
   if (!tile) return;
   const image = tile.querySelector("img");
   if (!image || readingLoadedImages.has(pageNo) || image.dataset.pending) return;
+  showReadingPlaceholder(pageNo, image);
   image.dataset.pending = "1";
   readingImageQueue.push(pageNo);
   pumpReadingImages();
+}
+
+/** 低分辨率占位（同目录确认）：先让用户看到"像什么"，高精度随后替换。 */
+function showReadingPlaceholder(pageNo, image) {
+  if (!image || image.dataset.placeholder === "1") return;
+  if (image.classList.contains("is-ready") || image.getAttribute("src")) return;
+  image.dataset.placeholder = "1";
+  image.classList.add("is-placeholder");
+  image.src = pageImageUrl(pageNo, "thumb");
 }
 
 /** 图一张一张解：一次跳 300 页时同时解 7 张大图会出一帧近 1 秒的长帧。 */
@@ -18191,6 +18257,7 @@ function pumpReadingImages() {
     image.onload = () => {
       image.classList.add("is-ready");
       delete image.dataset.pending;
+      delete image.dataset.placeholder;
       const status = el("reading-image-status");
       if (status) status.hidden = true;
       paintReadingTile(pageNo);
