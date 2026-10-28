@@ -958,6 +958,124 @@ def _first_diff(seq: int, shown: str, source: str) -> str:
 # ---------------------------------------------------------------- CLI
 
 
+def _pin_brief(row: dict[str, Any] | None) -> str:
+    if not row:
+        return "（没有采样）"
+    pin = row.get("pin") or {}
+    return (
+        f"顶部 {row.get('label')} / 左栏主导 {row.get('dominant')} / 面板 {row.get('panelPage')} / "
+        f"锚点行 {row.get('anchorPage')}（mark={'有' if row.get('anchorMark') else '无'}）/ "
+        f"is-current {row.get('currentLines')} / 面板行{'在' if row.get('panelLineIn') else '不在'}视口 / "
+        f"pin.held={pin.get('held')} pin.escape={pin.get('escape')} / "
+        f"settleKey={row.get('settleKey')}"
+    )
+
+
+def cmd_pinguard(args: argparse.Namespace) -> int:
+    """页码守卫三段：跳转不漂 / 滚一页要跟 / 滚多页继续跟。
+
+    判据（DevLead 定）：
+    - 跳转落位后 500ms 与 +1.5s：顶部 = 左栏主导 = 面板页
+    - 面板开着滚到相邻页：顶部必须变成相邻页（上一版 |Δ|≤1 就死在这条）
+    - 继续滚到 +2/+4：顶部跟着走；held 只在跳转那次涨、之后不涨；escape = 0
+    - 滚完 is-current 仍 ≥1（别为了修页码把高亮弄丢）
+    """
+    state = _require_state()
+    report = Report("页码守卫三段（跳转不漂 / 滚一页 / 滚多页）")
+    report_path = Path(state["run_dir"]) / "report-pinguard.json"
+    try:
+        _browser.run(state, "prepare")
+    except Exception as error:  # noqa: BLE001
+        report.blocked("准备", str(error))
+        return report.finish(report_path)
+    try:
+        data = _browser.run(state, "pin_guard", {"targetPage": args.page})
+    except Exception as error:  # noqa: BLE001
+        report.blocked("三段探针", str(error))
+        return report.finish(report_path)
+    report_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    if data.get("error"):
+        report.blocked("第 1 段·跳转", f"{data['error']}（按了 {data.get('jumps')} 次："
+                                     + _pin_brief(data.get("last")) + "）")
+        return report.finish(report_path)
+
+    target = int(data["target"])
+    landing = data.get("landing") or {}
+    at500 = data.get("at500") or {}
+    at1500 = data.get("at1500") or {}
+
+    # ---------------------------------------------------------------- 1. 跳转不漂
+    if not landing.get("panelKey"):
+        report.fail("第 1 段·跳转不漂", "跳到目标页后面板没有 key（面板没开 / 不是这条路径）",
+                    _pin_brief(landing))
+    elif not landing.get("panelLineExists"):
+        report.fail("第 1 段·跳转不漂", "面板 key 在正文流里找不到行",
+                    _pin_brief(landing))
+    else:
+        report.ok("第 1 段·前置", "跳转后面板开着、目标行在流里",
+                  f"按了 {data.get('jumps')} 次「下一处未审」进第 {target} 页；"
+                  f"panelKey={landing.get('panelKey')}；{_pin_brief(landing)}")
+
+    for label, snap, wait in (("500ms", at500, "500ms"), ("+1.5s", at1500, "1.5s 后")):
+        problems = []
+        if snap.get("label") != target:
+            problems.append(f"顶部 {snap.get('label')} ≠ {target}")
+        if snap.get("dominant") != target:
+            problems.append(f"左栏主导 {snap.get('dominant')} ≠ {target}")
+        if snap.get("panelPage") != target:
+            problems.append(f"面板 {snap.get('panelPage')} ≠ {target}")
+        if problems:
+            report.fail(f"第 1 段·跳转不漂（{label}）", "；".join(problems), _pin_brief(snap))
+        else:
+            report.ok(f"第 1 段·跳转不漂（{label}）",
+                      f"顶部 = 左栏主导 = 面板 = 第 {target} 页（{wait} 仍站住）", _pin_brief(snap))
+
+    # ---------------------------------------------------------------- 2. 滚一页要跟
+    step143 = data.get("step143") or {}
+    if step143.get("label") != target + 1:
+        report.fail("第 2 段·滚一页要跟",
+                    f"滚到锚点第 {step143.get('anchorPage')} 页，顶部却停在 {step143.get('label')} 页"
+                    f"（应为 {target + 1}）",
+                    _pin_brief(step143))
+    elif (step143.get("currentLines") or 0) < 1:
+        report.fail("第 2 段·滚一页要跟", "页码跟上了，但 is-current 没了（高亮被弄丢）",
+                    _pin_brief(step143))
+    else:
+        report.ok("第 2 段·滚一页要跟",
+                  f"面板开着滚到第 {target + 1} 页：顶部 {step143.get('label')}、"
+                  f"is-current {step143.get('currentLines')}",
+                  _pin_brief(step143))
+
+    # ---------------------------------------------------------------- 3. 滚多页继续跟
+    step144 = data.get("step144") or {}
+    step146 = data.get("step146") or {}
+    held_after_jump = (at1500.get("pin") or {}).get("held")
+    held_later = [(row.get("pin") or {}).get("held")
+                  for row in (step143, step144, step146)]
+    escape = (step146.get("pin") or {}).get("escape")
+    problems = []
+    if step144.get("label") != target + 2:
+        problems.append(f"第 {target + 2} 页：顶部 {step144.get('label')}")
+    if step146.get("label") != target + 4:
+        problems.append(f"第 {target + 4} 页：顶部 {step146.get('label')}")
+    if any(value != held_after_jump for value in held_later):
+        problems.append(f"held 在跳转后还在涨：落位时 {held_after_jump} → 滚动后 {held_later}")
+    if escape not in (0, None):
+        problems.append(f"escape={escape}（保底放行被触发，说明有落位一直没完成）")
+    if problems:
+        report.fail("第 3 段·滚多页继续跟", "；".join(problems),
+                    "\n".join(f"第 {row.get('anchorPage')} 页：" + _pin_brief(row)
+                               for row in (step143, step144, step146)))
+    else:
+        report.ok("第 3 段·滚多页继续跟",
+                  f"滚到 {target + 2} / {target + 4} 页顶部都跟着走；"
+                  f"held 跳转后不再涨（{held_after_jump}）；escape=0；"
+                  f"is-current {step146.get('currentLines')}",
+                  "\n".join(f"第 {row.get('anchorPage')} 页：" + _pin_brief(row)
+                             for row in (step143, step144, step146)))
+    return report.finish(report_path)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Book2Text QA：隔离环境 + 一致性验收")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -988,6 +1106,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check", help="三组一致性断言：显示=导出 / 提交→库 / 撤销→字节").set_defaults(func=cmd_check)
     sub.add_parser("pagesync", help="左右页同步（三方）：六条路径").set_defaults(func=cmd_pagesync)
     sub.add_parser("queueend", help="清空未审队列后验证「下一处未审」的队尾提示").set_defaults(func=cmd_queueend)
+    pinguard = sub.add_parser("pinguard", help="页码守卫三段：跳转不漂 / 滚一页要跟 / 滚多页继续跟")
+    pinguard.add_argument("--page", type=int, default=142, help="跳转落位目标页（默认 142）")
+    pinguard.set_defaults(func=cmd_pinguard)
     return parser
 
 

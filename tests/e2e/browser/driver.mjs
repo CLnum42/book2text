@@ -46,6 +46,8 @@ export async function run(cfg) {
       return await highlightProbe(page);
     case "next_probe":
       return await nextProbe(page);
+    case "pin_guard":
+      return await pinGuard(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -1262,6 +1264,197 @@ async function highlightProbe(page, maxJumps = 28) {
     if (row.pageNo !== null && row.pageNo >= 174) break;
   }
   return rows;
+}
+
+/**
+ * 页码守卫三段探针（任务 88 第三版：只挡"跳转落位中"的写入）。
+ *
+ * 1. 跳转不漂：连按「下一处未审」直到进第 142 页；落位后 500ms 与 +1.5s 各测一次
+ * 2. 滚一页要跟：面板开着滚到相邻页 143，顶部必须变成 143
+ * 3. 滚多页继续跟：144 / 146；held 只在跳转那次涨、之后不涨，escape 必须为 0
+ *
+ * 每一段都记锚点行的 data-page 与 mark 是否存在——滚完要能分清"守卫挡了"还是"锚点没到"。
+ */
+async function pinGuard(page, args) {
+  const target = args.targetPage || 142;
+  const maxJumps = args.maxJumps || 40;
+  await ensureReading(page);
+
+  const read = () =>
+    page.evaluate(() => {
+      const stream = document.getElementById("reading-stream");
+      if (!stream) return { error: "没有 #reading-stream" };
+      const rect = stream.getBoundingClientRect();
+      const labelNode = document.getElementById("reading-page-no");
+      const label = labelNode
+        ? Number(((labelNode.textContent || "").match(/(\d+)/) || [0, 0])[1]) || null
+        : null;
+
+      // 与应用 onReadingScroll 同一个锚点：正文流视口 35% 处那一行。
+      const anchor = rect.top + stream.clientHeight * 0.35;
+      let anchorLine = null;
+      for (const item of stream.querySelectorAll(".reading-line")) {
+        const r = item.getBoundingClientRect();
+        if (r.bottom >= anchor) {
+          anchorLine = {
+            key: item.dataset.key || null,
+            page: Number(item.dataset.page) || null,
+            top: Math.round(r.top - rect.top),
+            mark: Boolean(readingMarks.get(item.dataset.key)),
+          };
+          break;
+        }
+      }
+
+      const panel = document.querySelector(".reading-panel");
+      const panelKey = panel ? panel.dataset.key || null : null;
+      const head = document.querySelector(".reading-panel__head strong");
+      const panelPage = head
+        ? Number(((head.textContent || "").match(/第\s*(\d+)\s*页/) || [0, 0])[1]) || null
+        : null;
+      const panelLine = panelKey
+        ? stream.querySelector(`.reading-line[data-key="${panelKey}"]`)
+        : null;
+      let panelLineTop = null;
+      let panelLineIn = false;
+      if (panelLine) {
+        const pr = panelLine.getBoundingClientRect();
+        panelLineTop = Math.round(pr.top - rect.top);
+        panelLineIn = pr.bottom > rect.top && pr.top < rect.bottom;
+      }
+
+      const scroller = document.getElementById("reading-pdf-scroll");
+      let dominant = null;
+      if (scroller) {
+        const sRect = scroller.getBoundingClientRect();
+        let best = null;
+        for (const tile of scroller.querySelectorAll(".reading-page")) {
+          const tr = tile.getBoundingClientRect();
+          const overlap = Math.min(tr.bottom, sRect.bottom) - Math.max(tr.top, sRect.top);
+          if (overlap > 0 && (!best || overlap > best.overlap)) {
+            best = { page: Number(tile.dataset.pageNo), overlap };
+          }
+        }
+        if (best) dominant = best.page;
+      }
+
+      const pin = window.__b2tPagePin || null;
+      const settleKey = typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "n/a";
+      const settleTicks = typeof readingJumpSettleTicks !== "undefined" ? readingJumpSettleTicks : "n/a";
+      return {
+        scrollTop: Math.round(stream.scrollTop),
+        maxScroll: Math.round(stream.scrollHeight - stream.clientHeight),
+        label,
+        labelText: labelNode ? labelNode.textContent.replace(/\s+/g, "") : null,
+        anchorKey: anchorLine ? anchorLine.key : null,
+        anchorPage: anchorLine ? anchorLine.page : null,
+        anchorTop: anchorLine ? anchorLine.top : null,
+        anchorMark: anchorLine ? anchorLine.mark : null,
+        panelPage,
+        panelKey,
+        panelLineExists: Boolean(panelLine),
+        panelLineTop,
+        panelLineIn,
+        dominant,
+        panelVisible: Boolean(panel && panel.getBoundingClientRect().height > 0),
+        currentLines: document.querySelectorAll("#reading-stream .reading-line.is-current").length,
+        currentMarks: document.querySelectorAll("#reading-stream .reading-mark.is-current").length,
+        settleKey,
+        settleTicks,
+        pin: pin ? { held: pin.held, escape: pin.escape } : null,
+      };
+    });
+
+  // ---------------------------------------------------------------- 1. 跳转不漂
+  let jumps = 0;
+  let landing = null;
+  while (jumps < maxJumps) {
+    await page.click("#reading-next-unreviewed", { label: `下一处未审 ${jumps + 1}` });
+    jumps += 1;
+    await page
+      .waitForFunction(
+        (want) => {
+          const head = document.querySelector(".reading-panel__head strong");
+          const label = document.getElementById("reading-page-no");
+          if (!head || !label) return false;
+          const panel = Number(((head.textContent || "").match(/第\s*(\d+)\s*页/) || [0, 0])[1]) || null;
+          const top = Number(((label.textContent || "").match(/(\d+)/) || [0, 0])[1]) || null;
+          return panel !== null && top === panel;
+        },
+        undefined,
+        { timeout: 3000 }
+      )
+      .catch(() => {});
+    const now = await read();
+    if (now.panelPage === target) {
+      landing = now;
+      break;
+    }
+    // 已经越过目标页：这本队列是按页向前推进的，别再无意义地消耗
+    if (now.panelPage !== null && now.panelPage > target) break;
+  }
+  if (!landing) {
+    return { target, jumps, error: "没跳到目标页", last: await read() };
+  }
+  await page.waitForTimeout(500);
+  const at500 = await read();
+  await page.waitForTimeout(1500);
+  const at1500 = await read();
+
+  // ---------------------------------------------------------------- 2/3. 滚着跟
+  const box = await page.evaluate(() => {
+    const stream = document.getElementById("reading-stream");
+    const rect = stream.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(box.x, box.y, { label: "移到正文流上" });
+
+  const scrollToPage = async (wantPage) => {
+    let last = await read();
+    for (let i = 0; i < 60; i += 1) {
+      if (last.anchorPage !== null && last.anchorPage >= wantPage) break;
+      await page.mouse.wheel(0, 240, { label: `滚正文流到第 ${wantPage} 页` });
+      await page.waitForTimeout(160);
+      const next = await read();
+      if (next.scrollTop === last.scrollTop) {
+        last = next;
+        break;
+      }
+      last = next;
+    }
+    // 等"顶部页码追上锚点"（应用自己写，最多 1.5s），再量稳态
+    await page
+      .waitForFunction(
+        () => {
+          const stream = document.getElementById("reading-stream");
+          if (!stream) return false;
+          const rect = stream.getBoundingClientRect();
+          const anchor = rect.top + rect.height * 0.35;
+          for (const item of stream.querySelectorAll(".reading-line")) {
+            const r = item.getBoundingClientRect();
+            if (r.bottom >= anchor) {
+              const label = document.getElementById("reading-page-no");
+              const top = label
+                ? Number(((label.textContent || "").match(/(\d+)/) || [0, 0])[1]) || null
+                : null;
+              return top !== null && Math.abs(top - (Number(item.dataset.page) || 0)) <= 1;
+            }
+          }
+          return false;
+        },
+        undefined,
+        { timeout: 1500 }
+      )
+      .catch(() => {});
+    await page.waitForTimeout(400);
+    return await read();
+  };
+
+  const step143 = await scrollToPage(target + 1);
+  const step144 = await scrollToPage(target + 2);
+  const step146 = await scrollToPage(target + 4);
+
+  return { target, jumps, landing, at500, at1500, step143, step144, step146 };
 }
 
 async function nextProbe(page) {
