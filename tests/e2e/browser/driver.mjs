@@ -542,6 +542,20 @@ async function pageSync(page, cfg, args) {
           .catch(() => {});
       }
       const snapshot = await pageSyncSnapshot(page);
+      // 高亮要连 key 一起验：只数 is-current 会把"高亮了别的行"判成通过。
+      const highlightKey = await page.evaluate(() => {
+        const panel = document.querySelector(".reading-panel");
+        const key = panel ? panel.dataset.key || null : null;
+        const node = key
+          ? document.querySelector(`#reading-stream .reading-line[data-key="${key}"]`)
+          : null;
+        return {
+          panelKey: key,
+          targetExists: Boolean(node),
+          targetCurrent: Boolean(node && node.classList.contains("is-current")),
+          currentLines: document.querySelectorAll("#reading-stream .reading-line.is-current").length,
+        };
+      });
       // 通用防"被收掉"：等 500ms 再看一次，出现过的面板必须还在。
       await page.waitForTimeout(500);
       const snapshot2 = await pageSyncSnapshot(page);
@@ -555,7 +569,9 @@ async function pageSync(page, cfg, args) {
         break;
       }
       // 没变化也记一条并继续：可能是一次慢加载，也可能就是"点了没反应"，都要暴露出来
-      iterations.push({ index: i + 1, changed, progressed, snapshot, snapshot2, logEntry });
+      iterations.push({
+        index: i + 1, changed, progressed, snapshot, snapshot2, logEntry, ...highlightKey,
+      });
       previous = await page.evaluate(() => ({
         label: (document.getElementById("reading-page-no") || {}).textContent || "",
         panel: (document.querySelector(".reading-panel__head strong") || {}).textContent || "",
