@@ -20049,7 +20049,7 @@ function verifyReadingPageSync(reason = "", { fix = true } = {}) {
       // **纠正，不只是记录**。以"当前差异项所在页"为准（那才是用户正在看的东西）
       readingPageSyncFixing = true;
       if (panelPage && panelPage !== readingPageNo) {
-        updateReadingPage(panelPage, { scrollLeft: true, syncStream: false });
+        queueReadingIntent("goto", { pageNo: panelPage, scrollLeft: true, syncStream: false });
       } else {
         scrollPdfColumnToPage(readingPageNo);
       }
