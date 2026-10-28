@@ -64,6 +64,8 @@ export async function run(cfg) {
       return await perfProbe(page, args);
     case "task_metrics":
       return await taskMetrics(page, args);
+    case "dock_probe":
+      return await dockProbe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -1927,6 +1929,98 @@ async function taskMetrics(page, args) {
   return { presses, delta, perPress: Object.fromEntries(
     Object.entries(delta).map(([k, v]) => [k, Math.round((v / presses) * 1000) / 1000])
   ), logBefore, atBefore, afterLog };
+}
+
+/** 任务 91 审校页改版：一次取全布局/下区/裁切/编辑态/进度的快照。 */
+async function dockSnapshotRaw() {
+  const rect = (sel) => {
+    const node = document.querySelector(sel);
+    if (!node) return null;
+    const r = node.getBoundingClientRect();
+    return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+  };
+  const text = (sel) => {
+    const node = document.querySelector(sel);
+    return node ? (node.textContent || "").replace(/\s+/g, " ").trim() : null;
+  };
+  const cropEl = document.getElementById("reading-dock-crop");
+  let crop = null;
+  try {
+    crop = cropEl && cropEl.dataset.crop ? JSON.parse(cropEl.dataset.crop) : null;
+  } catch (error) {
+    crop = { parseError: String(error) };
+  }
+  const dock = document.getElementById("reading-dock");
+  const host = document.getElementById("reading-panel-host");
+  const panel = document.querySelector(".reading-panel");
+  const editingKey = typeof readingEditingKey !== "undefined" ? readingEditingKey : null;
+  const editNode = editingKey
+    ? document.querySelector(`#reading-stream .reading-line[data-key="${editingKey}"]`)
+    : null;
+  const cur = document.querySelector("#reading-stream .reading-line.is-current");
+  return {
+    viewport: { w: window.innerWidth, h: window.innerHeight },
+    heights: {
+      topbar: rect(".topbar"), toolbar: rect(".reading-toolbar"),
+      split: rect("#reading-split"), dock: rect("#reading-dock"),
+      dockGrip: rect("#reading-dock-grip"), host: rect("#reading-panel-host"),
+      tree: rect("#reading-tree"), pdf: rect("#reading-pdf-column"),
+      stream: rect("#reading-stream"), dockHidden: Boolean(dock && dock.hidden),
+      hostParent: host && host.parentElement ? host.parentElement.id || host.parentElement.className : null,
+    },
+    dock: {
+      where: text("#reading-dock-where"), level: text("#reading-dock-level"),
+      count: text("#reading-dock-count"), hidden: Boolean(dock && dock.hidden),
+      collapseTitle: (document.getElementById("reading-dock-collapse") || {}).title || null,
+    },
+    crop: { plan: (window.__b2tCropPlan || null), attr: crop, bg: cropEl ? cropEl.style.backgroundImage.slice(0, 80) : null },
+    panel: {
+      key: panel ? panel.dataset.key || null : null,
+      page: text(".reading-panel__head strong"),
+      candidate: text(".reading-panel__candidate"),
+    },
+    progress: text("#reading-progress-text"),
+    notice: text("#notice-bar") || text(".notice-bar"),
+    edit: {
+      key: editingKey,
+      nodeExists: Boolean(editNode),
+      contenteditable: editNode ? editNode.getAttribute("contenteditable") : null,
+      text: editNode ? editNode.textContent : null,
+    },
+    currentLine: cur ? cur.dataset.key || null : null,
+    drafts: typeof readingDrafts !== "undefined" ? readingDrafts.size : null,
+    inlineEdits: typeof readingInlineEdits !== "undefined" ? readingInlineEdits.size : null,
+    entriesDone: typeof readingEntries !== "undefined"
+      ? readingEntries.filter((e) => typeof readingEntryDone === "function" && readingEntryDone(e)).length
+      : null,
+    treeRail: rect("#reading-tree-rail"),
+    shot: null,
+  };
+}
+
+/** mode=snapshot：只读一次快照；mode=keys：按给定键序列，记录每次前后。 */
+async function dockProbe(page, args) {
+  const mode = args.mode || "snapshot";
+  // dockSnapshotRaw 是自包含函数，直接交给 page.evaluate 序列化执行
+  const read = async () => await page.evaluate(dockSnapshotRaw);
+  if (mode === "snapshot") return { snap: await read() };
+  const keys = args.keys || [{ key: "Enter" }];
+  const rows = [];
+  for (let i = 0; i < keys.length; i += 1) {
+    const spec = keys[i];
+    const before = await read();
+    if (spec.modifiers) {
+      for (const mod of spec.modifiers) await page.keyboard.down(mod);
+    }
+    await page.keyboard.press(spec.key);
+    if (spec.modifiers) {
+      for (const mod of spec.modifiers.slice().reverse()) await page.keyboard.up(mod);
+    }
+    await page.waitForTimeout(spec.wait || 700);
+    const after = await read();
+    rows.push({ i: i + 1, spec, before, after });
+  }
+  return { rows, snap: await read() };
 }
 
 async function nextProbe(page) {
