@@ -18207,7 +18207,6 @@ async function readingReloadAfterBatch() {
   readingMarks = new Map();
   await openReading();
   renderPunctGroupBadge();
-  window.ReadingView?.emit?.("content-changed");
 }
 
 async function openReading() {

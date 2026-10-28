@@ -188,8 +188,10 @@ function setupReadingSplit() {
   }
 
   /** 正文流/标记需要按当前设置重建时由外壳触发（Architect 接口第 5 个）。 */
-  function reload() {
-    return injected.reload?.();
+  async function reload() {
+    await injected.reload?.();
+    // 内容重建完成 → 通知订阅者（标点/乱码那边不再去探审校内部状态）
+    emit("content-changed");
   }
 
   // 极简事件：只给"内容变了"和"出错"用，避免别的模块读我们的状态
@@ -219,7 +221,6 @@ function setupReadingSplit() {
     toggleFollow,
     reload,
     on,
-    emit,
     // 偏好与布局（app.js 仍通过薄转发调用，Slice 2 再彻底收进去）
     splitPrefs: readingSplitPrefs,
     applySplit: applyReadingSplit,
