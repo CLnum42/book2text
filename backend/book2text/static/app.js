@@ -20556,7 +20556,12 @@ function stepReadingPage(delta) {
   const total = currentProject ? currentProject.pages.length : 0;
   const next = Math.min(total, Math.max(1, readingPageNo + delta));
   if (next === readingPageNo) return;
-  scrollPdfColumnToPage(next);
+  // 任务 95：翻页按钮是**明确的用户意图**，必须同时写页码。
+  // 原来只 `scrollPdfColumnToPage(next)`，而 `updateReadingPageFromLeftScroll` 对
+  // "程序滚动"有早退守卫（`readingUserScrollSeq === readingProgramScrollSeq`），
+  // 于是 scrollTop 动了、label 和 readingPageNo 却停在原地（QA 基线复现：0→461 而页码仍是 1）。
+  // 走 `updateReadingPage`：写页码 + 左栏定位 + 右栏跟随；守卫保持原样（它挡的是异步重绘回拽）。
+  updateReadingPage(next);
 }
 
 const readingNextLog = [];
