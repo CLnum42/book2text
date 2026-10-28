@@ -17998,40 +17998,6 @@ function readingInlineStorageKey() {
   return currentProject ? `b2t.readingInline.${currentProject.project_id}` : "";
 }
 
-function loadReadingInlineEdits() {
-  readingInlineEdits = new Map();
-  try {
-    const raw = localStorage.getItem(readingInlineStorageKey());
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    for (const item of data.items || []) {
-      if (!item || !item.key || item.text == null) continue;
-      readingInlineEdits.set(item.key, {
-        base: item.base || "",
-        text: item.text,
-        at: item.at || Date.now(),
-      });
-    }
-  } catch {
-    readingInlineEdits = new Map();
-  }
-}
-
-/** 重开项目时有未提交的就地编辑：给一次"恢复 / 丢弃"（切换视图不算丢，所以只在首次加载问）。 */
-function restoreInlineEditsPrompt() {
-  if (!readingInlineEdits.size) return;
-  const count = readingInlineEdits.size;
-  const when = new Date(
-    Math.min(...[...readingInlineEdits.values()].map((item) => item.at || Date.now()))
-  );
-  const label = `${when.getMonth() + 1}-${when.getDate()} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
-  if (window.confirm(`有 ${count} 处未提交的正文改动（${label}）。\n\n「确定」= 恢复它们；「取消」= 丢弃。`)) {
-    return;
-  }
-  readingInlineEdits.clear();
-  saveReadingInlineEdits();
-}
-
 function saveReadingInlineEdits() {
   try {
     const items = [...readingInlineEdits.entries()].map(([key, value]) => ({
@@ -18046,21 +18012,6 @@ function saveReadingInlineEdits() {
     );
   } catch {
     /* 存不下不影响当前会话 */
-  }
-}
-
-function loadReadingDrafts() {
-  readingDrafts = new Map();
-  try {
-    const raw = localStorage.getItem(readingDraftStorageKey());
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    for (const item of data.items || []) {
-      if (!item || !item.block_id) continue;
-      readingDrafts.set(readingKey(item.block_id, item.line_index), item);
-    }
-  } catch {
-    readingDrafts = new Map();
   }
 }
 
@@ -18615,14 +18566,6 @@ function paintInlineRevision(line, inline) {
     line.append(document.createTextNode(inline.text.slice(cursor)));
   }
   line.append(chip);
-}
-
-function onInlineInput(event) {
-  const line = event.currentTarget;
-  // 每行一个定时器：全局一个的话，连着改三行只有最后一行会落草稿
-  clearTimeout(Number(line.dataset.editTimer || 0));
-  const timer = setTimeout(() => saveInlineEdit(line), 350);
-  line.dataset.editTimer = String(timer);
 }
 
 function saveInlineEdit(line) {
@@ -19964,19 +19907,6 @@ function scrollStreamToPage(pageNo) {
   markReadingCurrentTile(pageNo);
 }
 
-/** 量页列的滚动偏移（建列 / 缩放 / 窗口变化后）。 */
-function measureReadingTops() {
-  const scroller = el("reading-pdf-scroll");
-  if (!scroller) return;
-  const base = scroller.getBoundingClientRect().top - scroller.scrollTop;
-  readingTops = [];
-  for (const [pageNo, tile] of readingTiles) {
-    const rect = tile.getBoundingClientRect();
-    readingTops.push({ pageNo, top: rect.top - base });
-  }
-  readingTops.sort((a, b) => a.pageNo - b.pageNo);
-}
-
 let readingPageSyncTimer = 0;
 let readingPageSyncFixing = false;
 
@@ -20121,72 +20051,6 @@ function logReadingNext(entry, extra = {}) {
   window.__b2tNextLog = readingNextLog;
 }
 
-async function gotoNextUnreviewed() {
-  if (!readingData) return;
-  // **唯一数据源：服务端按正文流顺序给出的未审行表**。
-  // 不再用"页级计数 + 已加载 marks"自己找：页级口径包含流外的行（脚注/被排除块），
-  // 找到页却找不到行就会报"没有下一处"。实测 567 条未审汉字 = 流内 562 + 流外 5
-  // （流外在页 48/106/499/621/630）。早先说的"卡在 11/14/18/23"已推翻：那几页的行
-  // 都在流内，none 是补 marks 窗口的竞态，由 ensureReadingMarksWindow 共享在飞请求修掉。
-  let payload;
-  try {
-    payload = await apiJson(`/api/projects/${currentProject.project_id}/review/next-lines`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(readingOptions()),
-    });
-  } catch (error) {
-    logReadingNext(null, { branch: "error", reason: String(error.message || error) });
-    showNoticeBar(`找下一处失败：${error.message || "未知错误"}`);
-    return;
-  }
-  const lines = payload.lines || [];
-  const usable = lines.filter(
-    (line) => !readingDrafts.has(readingKey(line.block_id, line.line_index))
-  );
-  const outside = payload.outside_stream || { count: 0, sample: [] };
-  if (!usable.length) {
-    logReadingNext(null, { branch: "none", total: payload.total, outside: outside.count });
-    // 队列里还有差异、只是不在正文流里：必须把数说出来，不许说"全部处理完"
-    if (Number(outside.count) > 0) {
-      showNoticeBar(
-        `正文流内已无未审；另有 ${outside.count} 处差异不在正文流里（前置页 / 脚注 / 被排除的块）`
-      );
-    } else {
-      showNoticeBar("全书未审已处理完 · 可以去「成稿模式」通读一遍，或者直接导出");
-    }
-    return;
-  }
-  const keyOf = (line) => readingKey(line.block_id, line.line_index);
-  const cursorKey = readingCursorEntry
-    ? readingKey(readingCursorEntry.block_id, readingCursorEntry.line_index)
-    : null;
-  let cursor = cursorKey ? usable.findIndex((line) => keyOf(line) === cursorKey) : -1;
-  let target;
-  if (cursor >= 0) {
-    target = usable[(cursor + 1) % usable.length];
-  } else {
-    // 没有游标：从当前位置往后第一处，再绕回开头
-    const page = Number(readingPageNo || 0);
-    const after = usable.findIndex((line) => Number(line.page_no) >= page);
-    target = usable[after >= 0 ? after : 0];
-  }
-  if (!target) return;
-  await ensureReadingMarksWindow(target.page_no);
-  const entry = readingEntries.find(
-    (item) => item.block_id === target.block_id && item.line_index === target.line_index
-  );
-  if (!entry) {
-    // 服务端说这行在流里、前端却查不到条目：只可能是 marks 窗口还没到，不静默、不谎报完成
-    logReadingNext(target, { branch: "missing", reason: "entry-not-in-window" });
-    showNoticeBar("这一处差异的标记还没加载完，稍等一下再按一次「下一处未审」");
-    return;
-  }
-  readingCursorEntry = entry;
-  gotoReadingEntry(entry);
-  logReadingNext(entry, { branch: "next-lines" });
-}
-
 function gotoReadingEntry(entry) {
   if (!entry || !entry.page_no) return;
   // **先驱动"我在第几页"**：顶部页码 + 左侧 PDF + 左树高亮。
@@ -20264,7 +20128,6 @@ function boot() {
     getDrafts: () => readingDrafts,
     getReadingEditingKey: () => readingEditingKey,
     isReadingActive: () => currentView === "reading",
-    gotoNextUnreviewed: () => gotoNextUnreviewed(),
     renderReading: (options) => renderReading(options),
     renderReadingProgress: () => renderReadingProgress(),
     saveReadingInlineEdits: () => saveReadingInlineEdits(),
@@ -20298,7 +20161,6 @@ function boot() {
     setReadingPendingBox: (value) => { readingPendingBox = value; },
     updateReadingPage: (pageNo, options) => updateReadingPage(pageNo, options),
     drawReadingPdfBox: (bbox, pageNo) => drawReadingPdfBox(bbox, pageNo),
-    onInlineInput: (event) => onInlineInput(event),
     readingVisibleSegments: () => readingVisibleSegments(),
     updateReadingPageFromLeftScroll: () => updateReadingPageFromLeftScroll(),
     verifyReadingPageSync: (reason, options) => verifyReadingPageSync(reason, options),
@@ -20330,24 +20192,28 @@ function boot() {
     getReadingTiles: () => readingTiles,
     getReadingPageBlocks: () => readingPageBlocks,
     ensureReadingPages: () => ensureReadingPages(),
-    measureReadingTops: () => measureReadingTops(),
     refreshPunctGroups: () => refreshPunctGroups(),
     readingOptions: () => readingOptions(),
     applyReadingMarksPayload: (payload) => applyReadingMarksPayload(payload),
-    loadReadingDrafts: () => loadReadingDrafts(),
-    loadReadingInlineEdits: () => loadReadingInlineEdits(),
-    restoreInlineEditsPrompt: () => restoreInlineEditsPrompt(),
     refreshGarbledLines: () => refreshGarbledLines(),
     readingFlowPages: () => readingFlowPages(),
     renderReadingTree: () => renderReadingTree(),
     saveInlineEdit: (line) => saveInlineEdit(line),
     refreshReadingMarksPaint: () => refreshReadingMarksPaint(),
     setReviewOverlaysForReading: () => setReviewOverlaysForReading(),
-    onViewportResize: () => {
-      if (currentView !== "reading") return;
-      measureReadingTops();
-      if (readingPageNo) updateReadingPage(readingPageNo, { scrollLeft: true });
-    },
+    // 任务 94 L4：队列 / 草稿加载 / 视口处理搬进模块后的句柄
+    setReadingInlineEdits: (value) => { readingInlineEdits = value; },
+    setReadingDrafts: (value) => { readingDrafts = value; },
+    getReadingTops: () => readingTops,
+    setReadingTops: (value) => { readingTops = value; },
+    getReadingCursorEntry: () => readingCursorEntry,
+    setReadingCursorEntry: (value) => { readingCursorEntry = value; },
+    logReadingNext: (entry, extra) => logReadingNext(entry, extra),
+    showNoticeBar: (text) => showNoticeBar(text),
+    ensureReadingMarksWindow: (pageNo) => ensureReadingMarksWindow(pageNo),
+    gotoReadingEntry: (entry) => gotoReadingEntry(entry),
+    readingInlineStorageKey: () => readingInlineStorageKey(),
+    readingDraftStorageKey: () => readingDraftStorageKey(),
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {

@@ -158,7 +158,7 @@ function setupReadingSplit() {
   // 改成注入回调，由外壳决定视口变化时做什么。
   window.addEventListener("resize", () => {
     applyReadingSplit();
-    injected.onViewportResize?.();
+    onReadingViewportResize();
   });
 }
 
@@ -166,7 +166,7 @@ function setupReadingSplit() {
   // 从 app.js 原样搬入；依赖全部由 init() 注入，模块本身不碰 app.js 的顶层符号。
 
 function setupReading() {
-  el("reading-next-unreviewed").addEventListener("click", injected.gotoNextUnreviewed);
+  el("reading-next-unreviewed").addEventListener("click", gotoNextUnreviewed);
   const closeReadingMenus = () => {
     el("reading-display-menu").hidden = true;
     el("reading-more-menu").hidden = true;
@@ -303,13 +303,13 @@ function setupReading() {
       } else if (event.key === "Enter" && (event.altKey || event.metaKey)) {
         event.preventDefault();
         exitInlineEdit();
-        injected.gotoNextUnreviewed?.();
+        gotoNextUnreviewed();
       }
       return;
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      injected.gotoNextUnreviewed?.();
+      gotoNextUnreviewed();
     } else if (event.key === "Escape") {
       injected.closeReadingPanel?.();
     }
@@ -360,7 +360,7 @@ function startInlineEdit(line) {
     drawEditingLineBox(lineBox, pageNo);
     markEditingLineBox(line.dataset.block, Number(line.dataset.line));
   }
-  line.addEventListener("input", injected.onInlineInput);
+  line.addEventListener("input", onInlineInput);
   line.addEventListener("keydown", onInlineKeydown);
   line.addEventListener("blur", () => {
     // 失焦只收起编辑态，草稿留着
@@ -636,7 +636,7 @@ async function openReading() {
     injected.renderReading?.({ reset: true });
     injected.renderReadingProgress?.();
     injected.ensureReadingPages?.();
-    injected.measureReadingTops?.();
+    measureReadingTops();
     if (injected.getPageNo()) injected.updateReadingPage?.(injected.getPageNo(), { scrollLeft: true });
     injected.refreshPunctGroups?.();
     return;
@@ -693,9 +693,9 @@ async function openReading() {
   }
   metrics.marksMs = Math.round(performance.now() - started);
   injected.applyReadingMarksPayload?.(marks);
-  injected.loadReadingDrafts?.();
-  injected.loadReadingInlineEdits?.();
-  injected.restoreInlineEditsPrompt?.();
+  loadReadingDrafts();
+  loadReadingInlineEdits();
+  restoreInlineEditsPrompt();
   injected.renderReading?.({ reset: true });
   injected.renderReadingProgress?.();
   metrics.firstMarkMs = Math.round(performance.now() - started);
@@ -703,7 +703,7 @@ async function openReading() {
   metrics.window = marks.window;
   metrics.counts = marks.counts;
   injected.ensureReadingPages?.();
-  injected.measureReadingTops?.();
+  measureReadingTops();
   metrics.openMs = Math.round(performance.now() - started);
   // 标点差异面板的数字（后台拉，不挡正文）：主队列只放汉字差异，其余在这里按模式判
   injected.refreshPunctGroups?.();
@@ -777,7 +777,7 @@ function exitInlineEdit() {
     node.removeAttribute("contenteditable");
     node.classList.remove("is-editing");
     node.classList.remove("is-current");
-    node.removeEventListener("input", injected.onInlineInput);
+    node.removeEventListener("input", onInlineInput);
     node.removeEventListener("keydown", onInlineKeydown);
   }
   // 退出编辑：左侧的"正在改这一行"标记一起收掉
@@ -797,7 +797,7 @@ function onInlineKeydown(event) {
     // ⌥↵ / ⌘↵：收草稿并跳下一处
     event.preventDefault();
     exitInlineEdit();
-    injected.gotoNextUnreviewed?.();
+    gotoNextUnreviewed();
     return;
   }
   if (event.key === "Escape") {
@@ -830,6 +830,150 @@ function drawEditingLineBox(bbox, pageNo) {
   node.style.width = `${Math.round((x1 - x0) * width)}px`;
   node.style.height = `${Math.round((y1 - y0) * height)}px`;
   tile.append(node);
+}
+  // ---------------------------------------------------------------- 队列 / 草稿 / 视口（任务 94 · L4）
+  // 从 app.js 原样搬入；依赖全部由 init() 注入，模块本身不碰 app.js 的顶层符号。
+
+function onReadingViewportResize() {
+  if (!injected.isReadingActive()) return;
+  measureReadingTops();
+  if (injected.getPageNo()) injected.updateReadingPage(injected.getPageNo(), { scrollLeft: true });
+}
+
+function loadReadingInlineEdits() {
+  injected.setReadingInlineEdits(new Map());
+  try {
+    const raw = localStorage.getItem(injected.readingInlineStorageKey?.());
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    for (const item of data.items || []) {
+      if (!item || !item.key || item.text == null) continue;
+      injected.getInlineEdits().set(item.key, {
+        base: item.base || "",
+        text: item.text,
+        at: item.at || Date.now(),
+      });
+    }
+  } catch {
+    injected.setReadingInlineEdits(new Map());
+  }
+}
+
+/** 重开项目时有未提交的就地编辑：给一次"恢复 / 丢弃"（切换视图不算丢，所以只在首次加载问）。 */
+function restoreInlineEditsPrompt() {
+  if (!injected.getInlineEdits().size) return;
+  const count = injected.getInlineEdits().size;
+  const when = new Date(
+    Math.min(...[...injected.getInlineEdits().values()].map((item) => item.at || Date.now()))
+  );
+  const label = `${when.getMonth() + 1}-${when.getDate()} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
+  if (window.confirm(`有 ${count} 处未提交的正文改动（${label}）。\n\n「确定」= 恢复它们；「取消」= 丢弃。`)) {
+    return;
+  }
+  injected.getInlineEdits().clear();
+  injected.saveReadingInlineEdits?.();
+}
+
+function loadReadingDrafts() {
+  injected.setReadingDrafts(new Map());
+  try {
+    const raw = localStorage.getItem(injected.readingDraftStorageKey?.());
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    for (const item of data.items || []) {
+      if (!item || !item.block_id) continue;
+      injected.getDrafts().set(injected.readingKey?.(item.block_id, item.line_index), item);
+    }
+  } catch {
+    injected.setReadingDrafts(new Map());
+  }
+}
+
+function onInlineInput(event) {
+  const line = event.currentTarget;
+  // 每行一个定时器：全局一个的话，连着改三行只有最后一行会落草稿
+  clearTimeout(Number(line.dataset.editTimer || 0));
+  const timer = setTimeout(() => injected.saveInlineEdit?.(line), 350);
+  line.dataset.editTimer = String(timer);
+}
+
+/** 量页列的滚动偏移（建列 / 缩放 / 窗口变化后）。 */
+function measureReadingTops() {
+  const scroller = el("reading-pdf-scroll");
+  if (!scroller) return;
+  const base = scroller.getBoundingClientRect().top - scroller.scrollTop;
+  injected.setReadingTops([]);
+  for (const [pageNo, tile] of injected.getReadingTiles()) {
+    const rect = tile.getBoundingClientRect();
+    injected.getReadingTops().push({ pageNo, top: rect.top - base });
+  }
+  injected.getReadingTops().sort((a, b) => a.pageNo - b.pageNo);
+}
+
+async function gotoNextUnreviewed() {
+  if (!injected.getReadingData()) return;
+  // **唯一数据源：服务端按正文流顺序给出的未审行表**。
+  // 不再用"页级计数 + 已加载 marks"自己找：页级口径包含流外的行（脚注/被排除块），
+  // 找到页却找不到行就会报"没有下一处"。实测 567 条未审汉字 = 流内 562 + 流外 5
+  // （流外在页 48/106/499/621/630）。早先说的"卡在 11/14/18/23"已推翻：那几页的行
+  // 都在流内，none 是补 marks 窗口的竞态，由 ensureReadingMarksWindow 共享在飞请求修掉。
+  let payload;
+  try {
+    payload = await injected.apiJson?.(`/api/projects/${injected.getProject().project_id}/review/next-lines`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(injected.readingOptions?.()),
+    });
+  } catch (error) {
+    injected.logReadingNext?.(null, { branch: "error", reason: String(error.message || error) });
+    injected.showNoticeBar?.(`找下一处失败：${error.message || "未知错误"}`);
+    return;
+  }
+  const lines = payload.lines || [];
+  const usable = lines.filter(
+    (line) => !injected.getDrafts().has(injected.readingKey?.(line.block_id, line.line_index))
+  );
+  const outside = payload.outside_stream || { count: 0, sample: [] };
+  if (!usable.length) {
+    injected.logReadingNext?.(null, { branch: "none", total: payload.total, outside: outside.count });
+    // 队列里还有差异、只是不在正文流里：必须把数说出来，不许说"全部处理完"
+    if (Number(outside.count) > 0) {
+      injected.showNoticeBar?.(
+        `正文流内已无未审；另有 ${outside.count} 处差异不在正文流里（前置页 / 脚注 / 被排除的块）`
+      );
+    } else {
+      injected.showNoticeBar?.("全书未审已处理完 · 可以去「成稿模式」通读一遍，或者直接导出");
+    }
+    return;
+  }
+  const keyOf = (line) => injected.readingKey?.(line.block_id, line.line_index);
+  const cursorKey = injected.getReadingCursorEntry()
+    ? injected.readingKey?.(injected.getReadingCursorEntry().block_id, injected.getReadingCursorEntry().line_index)
+    : null;
+  let cursor = cursorKey ? usable.findIndex((line) => keyOf(line) === cursorKey) : -1;
+  let target;
+  if (cursor >= 0) {
+    target = usable[(cursor + 1) % usable.length];
+  } else {
+    // 没有游标：从当前位置往后第一处，再绕回开头
+    const page = Number(injected.getPageNo() || 0);
+    const after = usable.findIndex((line) => Number(line.page_no) >= page);
+    target = usable[after >= 0 ? after : 0];
+  }
+  if (!target) return;
+  await injected.ensureReadingMarksWindow?.(target.page_no);
+  const entry = injected.getReadingEntries().find(
+    (item) => item.block_id === target.block_id && item.line_index === target.line_index
+  );
+  if (!entry) {
+    // 服务端说这行在流里、前端却查不到条目：只可能是 marks 窗口还没到，不静默、不谎报完成
+    injected.logReadingNext?.(target, { branch: "missing", reason: "entry-not-in-window" });
+    injected.showNoticeBar?.("这一处差异的标记还没加载完，稍等一下再按一次「下一处未审」");
+    return;
+  }
+  injected.setReadingCursorEntry(entry);
+  injected.gotoReadingEntry?.(entry);
+  injected.logReadingNext?.(entry, { branch: "next-lines" });
 }
   // ---------------------------------------------------------------- 对外接口
 
