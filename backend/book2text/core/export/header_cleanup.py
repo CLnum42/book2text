@@ -57,7 +57,9 @@ def strip_leading_header_line(lines: list[str]) -> list[str]:
     first = lines[0]
     compact = " ".join(first.split())
     if PAGE_LINE.match(compact) or BARE_PAGE_LINE.match(compact):
-        return lines[1:]
+        # 置空而不是删除：`join_lines` 按位置记账，删一行会让整块的 line_index 前移，
+        # 而 marks 用的是原块下标（567 条未审里 30 条受影响，25 条会静默画到隔壁行）。
+        return [""] + list(lines[1:])
     match = PAGE_PREFIX.match(compact)
     if match:
         tail = compact[match.end():].strip()

@@ -650,7 +650,7 @@ def preview(project_id: str, *, library: Path | None = None, options: ExportOpti
 # 不再过一遍 `jsonable_encoder`。
 
 #: 阅读流 segments 的结构版本；改了字段或语义就 +1
-PREVIEW_CACHE_VERSION = 1
+PREVIEW_CACHE_VERSION = 2   # 任务 89：strip 置空而非删除，line_spans 下标语义变了
 
 _PREVIEW_CACHE: dict[str, tuple[str, str]] = {}
 """项目 → (签名, JSON 字符串)。只留最近两个项目。"""

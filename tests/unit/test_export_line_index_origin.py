@@ -58,11 +58,15 @@ def test_clean_lines_is_one_to_one() -> None:
     assert cleaned == ["Page 5", "aaa bbb", "", "ccc ddd"]
 
 
-def test_strip_leading_header_line_shortens_the_list() -> None:
-    """真正缩短列表的是 `strip_leading_header_line`：这就是索引前移 1 的来源。"""
+def test_strip_leading_header_line_blanks_instead_of_shortening() -> None:
+    """任务 89：页眉**置空**而不是删除，`line_spans` 的下标才是原块下标。
+
+    旧契约（缩短列表）会让整块的 `line_index` 前移 1：marks 用原块下标，
+    于是差异静默画到隔壁行（实测 567 条未审里 25 条）。
+    """
     lines = ["Page 5", "aaa bbb", "ccc ddd"]
     stripped = header_cleanup.strip_leading_header_line(list(lines))
-    assert stripped == ["aaa bbb", "ccc ddd"]
-    # 保住原行号要靠调用方（当前没有保住）：再交给 `_join_block` 时下标已从 0 开始
+    assert stripped == ["", "aaa bbb", "ccc ddd"]      # 长度不变，首行置空
     _text, _hyphenations, spans = project_export._join_block(stripped, RULES)
-    assert [span["line_index"] for span in spans] == [0, 1]
+    assert [span["line_index"] for span in spans] == [1, 2]   # 原块下标
+    assert _text == "aaa bbb ccc ddd"                          # 正文一字不差

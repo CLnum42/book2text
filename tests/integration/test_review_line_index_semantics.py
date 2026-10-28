@@ -21,21 +21,20 @@
 所以这些用例走**真实调用链**：识别 → 导出段 → 标记 → next-lines。
 
 **红过没有**：写这组用例时全红（4 条里 3 条），红因就是上面两条。
-现在这 4 条挂 `xfail(strict=True)`：当前跑成 **xfailed**（已知缺陷，不算回归），
-`strict=True` 保证 Builder 修好后它们会变成 **XPASS → 让测试失败**，提醒把标记摘掉。
-不用非 strict：那样修好了也静默绿，缺陷修没修没人知道。
+`122b622` 曾把这 4 条挂 `xfail(strict=True)`（main 不挂红，修好后 XPASS 报警）：
+红 3 条 → xfailed 4 条 → **任务 89 修法落地后 5 条全绿**，标记已摘。
+strict 的用意是"修好了必须有人动手摘标记"，不许静默变绿。
 断言的都是"索引语义"而不是实现细节，修法落在哪一层都不需要改用例。
 
-**`strip_leading_header_line` 的返回值契约缺陷（给 Builder 的线索）**
+**`strip_leading_header_line` 的契约（任务 89 已按第 3 条方案修好）**
 
-它现在只返回"删完后的列表"（`lines[1:]` 或原列表），**只能表达"删了 / 没删"，
-表达不了"删的是第几行"**。调用方 `_prepare` 手里因此没有任何映射能还原原行号，
-只能拿缩短后的列表从 0 重新枚举——这就是下钻不下去的原因。
+旧契约只返回"删完后的列表"（`lines[1:]` 或原列表），**只能表达"删了 / 没删"，
+表达不了"删的是第几行"**；调用方 `_prepare` 手里没有映射能还原原行号。
 
-要让索引不丢，这个契约得能给出"输出第 i 行来自输入第几行"（返回删除偏移、
-或返回 `(lines, original_indices)`、或干脆不删、把页眉行置空由 `join_lines` 跳过——
-`join_lines` 已经明确会跳过空行且保留 `line_index`，见
+现契约：**不删，把页眉行置空**（`[""] + lines[1:]`），长度不变、行号就是原块下标。
+依据是 `join_lines` 本来就会跳过空行且保留 `line_index`（见
 `tests/unit/test_export_line_index_origin.py::test_join_lines_keeps_index_of_skipped_blank_line`）。
+契约本身由 `tests/unit/test_header_strip_contract.py` 单锁。
 """
 
 from __future__ import annotations
@@ -143,10 +142,6 @@ def line_key(item: dict) -> tuple[str, int]:
 
 # ---------------------------------------------------------------- 索引语义
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="任务 89：_prepare 的 strip_leading_header_line 删行后下标整体前移，待修",
-)
 def test_line_spans_keep_original_block_line_index(
     client: TestClient, auth_headers: dict[str, str], page_with_header_line: str
 ) -> None:
@@ -165,10 +160,6 @@ def test_line_spans_keep_original_block_line_index(
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="任务 89：_prepare 的 strip_leading_header_line 删行后下标整体前移，待修",
-)
 def test_span_text_slice_equals_the_line_it_claims(
     client: TestClient, auth_headers: dict[str, str], page_with_header_line: str
 ) -> None:
@@ -188,10 +179,6 @@ def test_span_text_slice_equals_the_line_it_claims(
     assert not mismatches, f"span 指向的行和它的文本对不上：{mismatches}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="任务 89：_prepare 的 strip_leading_header_line 删行后下标整体前移，待修",
-)
 def test_marks_line_index_maps_back_to_the_same_line(
     client: TestClient, auth_headers: dict[str, str], page_with_header_line: str
 ) -> None:
@@ -226,10 +213,6 @@ def test_marks_line_index_maps_back_to_the_same_line(
     assert not problems, f"标记的行索引映射不回同一行：{problems}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="任务 89：错位（索引仍在范围内但指向隔壁行，25/567），待修",
-)
 def test_aliased_mark_is_not_outside_but_points_to_the_wrong_line(
     client: TestClient, auth_headers: dict[str, str], page_with_header_line: str
 ) -> None:
