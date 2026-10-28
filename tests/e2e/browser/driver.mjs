@@ -106,6 +106,8 @@ export async function run(cfg) {
       return await clickAccept(page, args);
     case "l3_probe":
       return await l3Probe(page, args);
+    case "l4_probe":
+      return await l4Probe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -2949,6 +2951,162 @@ async function l3Probe(page, args) {
     await page.waitForTimeout(3000);
     const later = await readState();
     return { mode, afterWheel, later, stolenBy: (later.scrollTop || 0) - (afterWheel.scrollTop || 0) };
+  }
+  return { mode: "unknown" };
+}
+
+/** L4：下一处未审四分支 / 草稿恢复 / 视口变化 / 编辑态定时器。 */
+async function l4Probe(page, args) {
+  const mode = args.mode || "next";
+  const read = () =>
+    page.evaluate(() => {
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const m = label.match(/(\d+)/);
+      const stream = document.getElementById("reading-stream");
+      const lines = [...stream.querySelectorAll(".reading-line")].slice(0, 40);
+      const rects = lines.map((n) => {
+        const r = n.getBoundingClientRect();
+        return { top: Math.round(r.top), h: Math.round(r.height) };
+      });
+      let overlaps = 0;
+      for (let i = 1; i < rects.length; i += 1) {
+        if (rects[i].top < rects[i - 1].top + rects[i - 1].h - 2) overlaps += 1;
+      }
+      return {
+        label: m ? Number(m[1]) : null,
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        panelKey: (document.querySelector(".reading-panel") || {}).dataset
+          ? document.querySelector(".reading-panel").dataset.key || null : null,
+        progress: (document.getElementById("reading-progress-text") || {}).textContent || "",
+        notice: (document.getElementById("auto-apply-notice-text") || {}).textContent || "",
+        drafts: typeof readingDrafts !== "undefined" ? readingDrafts.size : null,
+        inline: typeof readingInlineEdits !== "undefined" ? readingInlineEdits.size : null,
+        inlineMarks: document.querySelectorAll("#reading-stream .reading-line.is-inline-edited").length,
+        segs: stream.querySelectorAll(".reading-seg").length,
+        lineSample: rects.slice(0, 4),
+        overlaps,
+        scrollTop: Math.round(stream.scrollTop),
+      };
+    });
+
+  if (mode === "next") {
+    await ensureReading(page);
+    const out = { clicks: [], emptyBranch: null, errorBranch: null };
+    for (let i = 0; i < 20; i += 1) {
+      await page.click("#reading-next-unreviewed", { label: `下一处 ${i + 1}` }).catch(() => {});
+      await page.waitForTimeout(500);
+      const st = await read();
+      out.clicks.push({ i: i + 1, label: st.label, panelKey: st.panelKey, progress: st.progress });
+    }
+    // 空队列分支：让 next-lines 返回空
+    await page.evaluate(() => {
+      window.__origFetchL4 = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).includes("/review/next-lines")) {
+          return Promise.resolve(new Response(JSON.stringify({ lines: [], total: 0, outside_stream: { count: 0, sample: [] } }), {
+            status: 200, headers: { "Content-Type": "application/json" },
+          }));
+        }
+        return window.__origFetchL4.apply(this, arguments);
+      };
+    });
+    await page.click("#reading-next-unreviewed", { label: "空队列" }).catch(() => {});
+    await page.waitForTimeout(800);
+    out.emptyBranch = (await read()).notice;
+    // 失败分支
+    await page.evaluate(() => {
+      window.fetch = function (url) {
+        if (String(url).includes("/review/next-lines")) return Promise.reject(new Error("mock-network-down"));
+        return window.__origFetchL4.apply(this, arguments);
+      };
+    });
+    await page.click("#reading-next-unreviewed", { label: "请求失败" }).catch(() => {});
+    await page.waitForTimeout(1000);
+    out.errorBranch = (await read()).notice;
+    // 恢复
+    await page.evaluate(() => { if (window.__origFetchL4) window.fetch = window.__origFetchL4; });
+    return out;
+  }
+
+  if (mode === "restore") {
+    await ensureReading(page);
+    const keys = await page.evaluate(() => {
+      const data = typeof readingData !== "undefined" ? readingData : null;
+      const segs = (data && data.segments) || [];
+      const keys = [];
+      for (const seg of segs) {
+        for (const span of seg.line_spans || []) {
+          keys.push(`${span.block_id}:${span.line_index}`);
+          if (keys.length >= 2) break;
+        }
+        if (keys.length >= 2) break;
+      }
+      return keys;
+    });
+    if (keys.length < 2) return { error: "拿不到行 key" };
+    await page.evaluate((ks) => {
+      const pid = typeof currentProject !== "undefined" && currentProject ? currentProject.project_id : "";
+      const payload = {};
+      for (const k of ks) payload[k] = { base: "", text: "QA草稿", at: Date.now() };
+      localStorage.setItem(`b2t.readingInline.${pid}`, JSON.stringify(payload));
+    }, keys);
+    await page.reload();
+    await page.waitForTimeout(2500);
+    // 打开项目
+    await page.evaluate((pid) => {
+      const card = document.querySelector(`#project-list li.pcard[data-project-id="${pid}"]`);
+      const btn = card && card.querySelector(".pcard__actions button.btn--pri");
+      if (btn) btn.click();
+    }, args.projectId || "b2t_ZAQHGH");
+    // 恢复提示是 window.confirm：等它出现再接受
+    let promptSeen = false;
+    for (let i = 0; i < 30; i += 1) {
+      await page.waitForTimeout(400);
+      const accepted = await page.acceptDialog().then(() => true).catch(() => false);
+      if (accepted) { promptSeen = true; break; }
+    }
+    await page.waitForTimeout(2500);
+    const st = await read();
+    return { keys, promptSeen, state: st };
+  }
+
+  if (mode === "resize") {
+    await ensureReading(page);
+    const before = await read();
+    await page.cdp("Emulation.setDeviceMetricsOverride", {
+      width: 1180, height: 800, deviceScaleFactor: 2, mobile: false,
+    });
+    await page.waitForTimeout(1500);
+    const after = await read();
+    // 恢复视口
+    await page.cdp("Emulation.setDeviceMetricsOverride", {
+      width: 1423, height: 900, deviceScaleFactor: 2, mobile: false,
+    });
+    await page.waitForTimeout(800);
+    return { before, after };
+  }
+
+  if (mode === "edit") {
+    await ensureReading(page);
+    const point = await page.evaluate(() => {
+      for (const node of document.querySelectorAll("#reading-stream .reading-line")) {
+        const r = node.getBoundingClientRect();
+        if (r.top > 100 && r.bottom < window.innerHeight - 50 && r.x > 700) {
+          return { x: r.x + 30, y: r.y + r.height / 2, key: node.dataset.key };
+        }
+      }
+      return null;
+    });
+    if (!point) return { error: "没有可见行" };
+    await page.mouse.click(point.x, point.y, { label: "点行进编辑" });
+    await page.waitForTimeout(500);
+    const editing = await page.evaluate(() => typeof readingEditingKey !== "undefined" ? readingEditingKey : null);
+    await page.keyboard.type("QA", { delay: 40 });
+    await page.waitForTimeout(700);   // onInlineInput 的 350ms 防抖
+    const st = await read();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    return { point, editing, state: st };
   }
   return { mode: "unknown" };
 }
