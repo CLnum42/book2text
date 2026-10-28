@@ -18119,11 +18119,6 @@ let readingUserMovedAt = 0;
 let readingUserScrollSeq = 0;
 let readingProgramScrollSeq = 0;
 
-function markReadingUserMoved() {
-  readingUserMovedAt = performance.now();
-  readingUserScrollSeq += 1;
-}
-
 /**
  * 打开阅读流的异步阶段（正文预览 → marks → 重画）里，用户是不是自己动过？
  *
@@ -18777,35 +18772,6 @@ function markEditingLineBox(blockId) {
   }
 }
 
-function startInlineEdit(line) {
-  if (!line || readingEditingKey === line.dataset.key) return;
-  exitInlineEdit();
-  readingEditingKey = line.dataset.key;
-  line.classList.add("is-editing");
-  line.classList.add("is-current");
-  line.setAttribute("contenteditable", "plaintext-only");
-  line.focus();
-  const mark = readingMarks.get(line.dataset.key);
-  const pageNo = mark && mark.page_no ? mark.page_no : Number(line.dataset.page);
-  if (pageNo && pageNo !== readingPageNo) {
-    updateReadingPage(pageNo, { syncStream: false });
-  }
-  // 任务 76：**编辑某一行时，左侧要能看出"改的是图上哪一行"**。
-  // 有差异标记就用标记的行框；没有标记（普通正文行）就去块缓存里找这一行的框。
-  const lineBox = (mark && mark.bbox) || readingLineBox(line.dataset.block, Number(line.dataset.line));
-  if (lineBox) {
-    drawReadingPdfBox(lineBox, pageNo);
-    drawEditingLineBox(lineBox, pageNo);
-    markEditingLineBox(line.dataset.block, Number(line.dataset.line));
-  }
-  line.addEventListener("input", onInlineInput);
-  line.addEventListener("keydown", onInlineKeydown);
-  line.addEventListener("blur", () => {
-    // 失焦只收起编辑态，草稿留着
-    if (readingEditingKey === line.dataset.key) exitInlineEdit();
-  });
-}
-
 function onInlineInput(event) {
   const line = event.currentTarget;
   // 每行一个定时器：全局一个的话，连着改三行只有最后一行会落草稿
@@ -19030,11 +18996,6 @@ function renderReadingProgress() {
   submit.disabled = drafts === 0;
   submit.textContent = drafts ? `提交 ${drafts} 处` : "提交 0 处";
   el("reading-submit").classList.toggle("is-ready", drafts > 0);
-}
-
-function setReadingFilter(value) {
-  readingFilter = value;
-  renderReading({ reset: true });
 }
 
 /** 把 `scroller` 滚到"让 `target` 的中点落在视口垂直中央"，贴边时夹住不抖。 */
@@ -20057,42 +20018,6 @@ function paintReadingDiffBoxes(pageNo) {
   }
 }
 
-/** 悬停右栏某段：右边绿底、左边这一段的所有块绿框——**只高亮，不滚**。 */
-/**
- * 左边悬停某个块 → 右边对应段落亮（`is-hover`），左边的块本身也标 `is-linked`。
- *
- * 只高亮、不滚动：用户只是"看看这块是右边哪一段"。找不到对应段（跨页 / 已过滤）
- * 就什么都不做，别把别处点亮。
- */
-function setReadingHoverByBlock(blockId) {
-  const segments = readingVisibleSegments();
-  const index = segments.findIndex((segment) =>
-    (segment.line_spans || []).some((span) => span.block_id === blockId)
-  );
-  if (index < 0) {
-    setReadingHover(null);
-    return;
-  }
-  const segment = segments[index];
-  if (readingHoveredSeq === Number(segment.seq)) return;
-  readingHoveredSeq = Number(segment.seq);
-  // 先把**两边**上一条的清干净：只清右侧会让左边留下旧的绿块（用户说"离开没取消选中"）
-  for (const node of document.querySelectorAll("#reading-stream .reading-seg.is-hover")) {
-    node.classList.remove("is-hover");
-  }
-  for (const box of document.querySelectorAll("#reading-pages .box.is-linked")) {
-    box.classList.remove("is-linked");
-  }
-  const node = document.querySelector(`#reading-stream .reading-seg[data-seq="${segment.seq}"]`);
-  if (!node) return;
-  node.classList.add("is-hover");
-  // 左边这一段的所有块一起亮（同一段常跨块）
-  const blockIds = new Set((segment.line_spans || []).map((span) => span.block_id));
-  for (const tile of document.querySelectorAll("#reading-pages .box")) {
-    if (blockIds.has(tile.dataset.blockId)) tile.classList.add("is-linked");
-  }
-}
-
 function setReadingHover(seq) {
   // `seq` 可能来自 dataset（字符串）：先统一成数字，否则异步回来时比对永远不相等
   const target = seq === null || seq === undefined || seq === ""
@@ -20247,18 +20172,6 @@ function measureReadingTops() {
   readingTops.sort((a, b) => a.pageNo - b.pageNo);
 }
 
-function onReadingPdfScroll() {
-  if (readingPdfScrollRaf) return;
-  readingPdfScrollRaf = requestAnimationFrame(() => {
-    readingPdfScrollRaf = 0;
-    if (currentView !== "reading") return;
-    // 任务 72：**跟随开着的时候左栏滚动才该带动右侧**。原来这里写着
-    // `if (readingFollow) return;`——正好反了：用户开着"跟随"滚左栏，右边完全不动。
-    updateReadingPageFromLeftScroll();
-    verifyReadingPageSync("leftScroll");
-  });
-}
-
 let readingPageSyncTimer = 0;
 let readingPageSyncFixing = false;
 
@@ -20363,20 +20276,6 @@ function updateReadingPage(pageNo, { scrollLeft = true, syncStream = true } = {}
   verifyReadingPageSync("updateReadingPage");
 }
 
-function setReadingFollow(on) {
-  readingFollow = Boolean(on);
-  const toggle = el("reading-follow-toggle");
-  if (toggle) toggle.checked = readingFollow;
-  // 工具条上的那个「跟随：开/关」要一直跟状态一致（两处都能点）
-  const chip = el("reading-follow-chip");
-  if (chip) {
-    chip.textContent = readingFollow ? "跟随：开" : "跟随：关";
-    chip.classList.toggle("is-on", readingFollow);
-    chip.setAttribute("aria-pressed", readingFollow ? "true" : "false");
-  }
-  if (!readingFollow) hideReadingPdfBox();
-}
-
 function hideReadingPdfBox() {
   const box = el("reading-pdf-box");
   if (box) box.hidden = true;
@@ -20419,109 +20318,6 @@ function drawReadingPdfBox(bbox, pageNo) {
   box.style.width = `${Math.round((x1 - x0) * width)}px`;
   box.style.height = `${Math.round((y1 - y0) * height)}px`;
   box.hidden = false;
-}
-
-function onReadingScroll() {
-  if (!readingFollow || readingScrollRaf) return;
-  readingScrollRaf = requestAnimationFrame(() => {
-    readingScrollRaf = 0;
-    if (!readingFollow || currentView !== "reading") return;
-    // 任务 72：左栏正在驱动（350 ms 锁内）就整个跳过——
-    // 否则左栏刚把正文跳到第 60 页，这里按"正文顶部那一行"又把页码改回第 1 页。
-    if (readingDriverActive("left")) return;
-    const stream = el("reading-stream");
-    if (!stream) return;
-    const rect = stream.getBoundingClientRect();
-    const anchor = rect.top + rect.height * 0.35;
-    // 按行矩形找"视口 35% 处的那一行"：行是 inline span，elementFromPoint 会落在
-    // 段落的行距空白上，拿不到行元素。
-    let line = null;
-    for (const item of stream.querySelectorAll(".reading-line")) {
-      if (item.getBoundingClientRect().bottom >= anchor) {
-        line = item;
-        break;
-      }
-    }
-    if (!line) return;
-    const key = line.dataset.key;
-    const mark = readingMarks.get(key);
-    const pageNo = Number(line.dataset.page);
-    // 任务 88：**只挡"跳转落位中"的那几次写入**。
-    //
-    // `jumpReadingTo` / `centerReadingLinePair` 把正文滚到目标行的过程中，视口顶行还停在
-    // 上一页（实测：跳第 142 页时顶行属于 141），这时同步写页码就会把 142 改成 141。
-    // 落位完成后标志清空，之后任何滚动（相邻页、跨页、往回滚）都照常跟随——
-    // 不用页差阈值（`≤1` 会把"滚一整页"也挡掉），也不看行节点矩形（重绘换掉节点会把页码钉死）。
-    window.__b2tPagePin = window.__b2tPagePin || { held: 0, escape: 0 };
-    let allowPageWrite = true;
-    if (readingJumpSettleKey) {
-      const target = readingPanelKey ? readingLineNode(readingJumpSettleKey) : null;
-      if (!target) {
-        // 行没了 / 面板关了：别再等
-        readingJumpSettleKey = null;
-      } else {
-        const tr = target.getBoundingClientRect();
-        const settled = tr.bottom > rect.top && tr.top < rect.bottom;
-        if (settled) {
-          // **落位那一帧也不许写**：目标行刚进视口时，35% 锚点还落在上一页最后一行
-          // （QA 实测：跳 142，锚点行 141，同一个 rAF 里清掉标志又写页码 → 142 变 141，
-          //  +1.5s 仍是 141）。清标志与写页码必须分到两次滚动事件里，这次先不写。
-          readingJumpSettleKey = null;
-          allowPageWrite = false;
-          window.__b2tPagePin.held += 1;
-        } else {
-          readingJumpSettleTicks += 1;
-          allowPageWrite = false;
-          window.__b2tPagePin.held += 1;
-          // 保底：一直落不了位（补行失败之类）就放行——宁可跟错一次，不能把页码冻住
-          if (readingJumpSettleTicks >= 12) {
-            readingJumpSettleKey = null;
-            window.__b2tPagePin.escape += 1;
-          }
-        }
-      }
-    }
-    // 面板项那一行还在视口里 → 页码以面板项为准（D-105）。文档末尾没法再往下滚，
-    // 35% 锚点会常态性落在上一页最后一行（QA 实测 142 页落位后锚点是 141），
-    // 只靠落位窗口挡不住之后的滚动事件。
-    // **行节点取不到时放行（fail-open）**：早先那版取不到就挡，重绘换掉节点后页码被永久钉死。
-    if (allowPageWrite && readingPanelKey) {
-      const pinLine = readingLineNode(readingPanelKey);
-      if (pinLine) {
-        const pr = pinLine.getBoundingClientRect();
-        if (pr.bottom > rect.top && pr.top < rect.bottom) {
-          allowPageWrite = false;
-          window.__b2tPagePin.held += 1;
-        }
-      }
-    }
-    if (mark && mark.page_no && mark.page_no !== readingPageNo) {
-      if (!readingDriverActive("left")) markReadingDriver("right");
-      if (allowPageWrite) updateReadingPage(mark.page_no, { scrollLeft: true, syncStream: false });
-    } else if (!mark && pageNo && pageNo !== readingPageNo) {
-      if (!readingDriverActive("left")) markReadingDriver("right");
-      if (allowPageWrite) updateReadingPage(pageNo, { scrollLeft: true, syncStream: false });
-    }
-    if (mark && mark.bbox) {
-      if (mark.page_no !== readingPageNo) {
-        readingPendingBox = mark.bbox;
-      } else {
-        drawReadingPdfBox(mark.bbox, mark.page_no);
-      }
-    }
-  });
-}
-
-function stepReadingPage(delta) {
-  const total = currentProject ? currentProject.pages.length : 0;
-  const next = Math.min(total, Math.max(1, readingPageNo + delta));
-  if (next === readingPageNo) return;
-  // 任务 95：翻页按钮是**明确的用户意图**，必须同时写页码。
-  // 原来只 `scrollPdfColumnToPage(next)`，而 `updateReadingPageFromLeftScroll` 对
-  // "程序滚动"有早退守卫（`readingUserScrollSeq === readingProgramScrollSeq`），
-  // 于是 scrollTop 动了、label 和 readingPageNo 却停在原地（QA 基线复现：0→461 而页码仍是 1）。
-  // 走 `updateReadingPage`：写页码 + 左栏定位 + 右栏跟随；守卫保持原样（它挡的是异步重绘回拽）。
-  updateReadingPage(next);
 }
 
 const readingNextLog = [];
@@ -20656,82 +20452,6 @@ function gotoReadingEntry(entry) {
   verifyReadingPageSync("gotoEntry");
 }
 
-async function submitReadingDrafts() {
-  if (!currentProject || (!readingDrafts.size && !readingInlineEdits.size)) return;
-  const items = [...readingDrafts.values()].map((draft) => ({
-    block_id: draft.block_id,
-    line_index: draft.line_index,
-    ack: draft.ack,
-    new_line_text:
-      draft.ack === "kept" ? null : draft.text == null ? null : draft.text,
-  }));
-  // 任务 66：就地编辑按"行文本"提交；服务端会校验 block.text == join(行文本)
-  for (const [key, edit] of readingInlineEdits) {
-    const [blockId, lineIndex] = key.split(":");
-    items.push({
-      block_id: blockId,
-      line_index: Number(lineIndex),
-      new_line_text: edit.text,
-      ack: null,
-    });
-  }
-  const ok = window.confirm(
-    `提交 ${items.length} 处改动？\n\n采用/手改会改写块文本，保留只记「保留原文」；写库后可以一次撤销。`
-  );
-  if (!ok) return;
-  const button = el("reading-submit");
-  button.disabled = true;
-  button.textContent = "提交中…";
-  try {
-    const result = await apiJson(
-      `/api/projects/${currentProject.project_id}/review/submit-drafts`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
-      }
-    );
-    const failed = (result.results || []).filter((item) => !item.ok);
-    const okKeys = new Set(
-      (result.results || [])
-        .filter((item) => item.ok)
-        .map((item) => readingKey(item.block_id, item.line_index))
-    );
-    for (const key of okKeys) readingDrafts.delete(key);
-    saveReadingDrafts();
-    for (const key of okKeys) readingInlineEdits.delete(key);
-    saveReadingInlineEdits();
-    if (failed.length) {
-      window.alert(`${failed.length} 处提交失败，仍留在草稿里：\n${failed[0].error || ""}`);
-    }
-    readingData = null;
-    readingProject = null;
-    await openReading();
-    await loadFinishSummary({ silent: true });
-    renderReadingProgress();
-  } catch (error) {
-    button.disabled = false;
-    renderReadingProgress();
-    window.alert(`提交失败：${error.message || "未知错误"}`);
-  }
-}
-
-async function undoReadingSubmit() {
-  if (!currentProject) return;
-  if (!window.confirm("撤销上一次批量操作？（提交的草稿改动会退回提交前）")) return;
-  try {
-    await apiJson(`/api/projects/${currentProject.project_id}/undo`, {
-      method: "POST",
-    });
-    readingData = null;
-    readingProject = null;
-    await openReading();
-    await loadFinishSummary({ silent: true });
-  } catch (error) {
-    window.alert(error.message || "没有可撤销的操作");
-  }
-}
-
 // ---------------------------------------------------------------- 阅读审校三栏宽度（P1-4）
 //
 // 用户："左边的 pdf 图片太小，看不清楚，能不能左右窗口可以拖动？"
@@ -20759,7 +20479,6 @@ function boot() {
       openReading();
     },
     exit: () => showView("pages"),
-    toggleFollow: () => setReadingFollow(!readingFollow),
     onPunctGroups: () => openPunctGroups(),
     onGarbledPanel: () => openGarbledPanel(),
     // 任务 94 Slice 2（第一笔）：readingReloadAfterBatch 搬进模块后要读写的审校状态 / 回调
@@ -20779,27 +20498,55 @@ function boot() {
     getReadingEditingKey: () => readingEditingKey,
     isReadingActive: () => currentView === "reading",
     gotoNextUnreviewed: () => gotoNextUnreviewed(),
-    setReadingFollow: (on) => setReadingFollow(on),
     renderReading: (options) => renderReading(options),
     renderReadingProgress: () => renderReadingProgress(),
     saveReadingInlineEdits: () => saveReadingInlineEdits(),
     saveReadingDrafts: () => saveReadingDrafts(),
-    submitReadingDrafts: () => submitReadingDrafts(),
-    undoReadingSubmit: () => undoReadingSubmit(),
-    stepReadingPage: (delta) => stepReadingPage(delta),
-    setReadingFilter: (value) => setReadingFilter(value),
     showView: (name) => showView(name),
     openPageDetail: (pageNo) => openPageDetail(pageNo),
     setReadingHover: (seq) => setReadingHover(seq),
-    setReadingHoverByBlock: (blockId) => setReadingHoverByBlock(blockId),
     openReadingPanel: (entry) => openReadingPanel(entry),
     closeReadingPanel: () => closeReadingPanel(),
     exitInlineEdit: () => exitInlineEdit(),
     rerenderReadingLine: (key) => rerenderReadingLine(key),
-    startInlineEdit: (line) => startInlineEdit(line),
-    onReadingScroll: () => onReadingScroll(),
-    onReadingPdfScroll: () => onReadingPdfScroll(),
-    markReadingUserMoved: () => markReadingUserMoved(),
+    // 任务 94 L2：10 个交互函数搬进模块后的状态句柄与回调（只注入句柄 / getter-setter，不注入值）
+    getProject: () => currentProject,
+    getReadingFollow: () => readingFollow,
+    setReadingFollowFlag: (value) => { readingFollow = value; },
+    setReadingUserMovedAt: (value) => { readingUserMovedAt = value; },
+    getReadingUserScrollSeq: () => readingUserScrollSeq,
+    setReadingUserScrollSeq: (value) => { readingUserScrollSeq = value; },
+    setReadingEditingKey: (value) => { readingEditingKey = value; },
+    setReadingFilterValue: (value) => { readingFilter = value; },
+    getReadingHoveredSeq: () => readingHoveredSeq,
+    setReadingHoveredSeq: (value) => { readingHoveredSeq = value; },
+    getReadingPdfScrollRaf: () => readingPdfScrollRaf,
+    setReadingPdfScrollRaf: (value) => { readingPdfScrollRaf = value; },
+    getReadingScrollRaf: () => readingScrollRaf,
+    setReadingScrollRaf: (value) => { readingScrollRaf = value; },
+    getReadingJumpSettleKey: () => readingJumpSettleKey,
+    setReadingJumpSettleKey: (value) => { readingJumpSettleKey = value; },
+    getReadingJumpSettleTicks: () => readingJumpSettleTicks,
+    setReadingJumpSettleTicks: (value) => { readingJumpSettleTicks = value; },
+    getReadingPanelKey: () => readingPanelKey,
+    setReadingPendingBox: (value) => { readingPendingBox = value; },
+    updateReadingPage: (pageNo, options) => updateReadingPage(pageNo, options),
+    readingLineBox: (blockId, lineIndex) => readingLineBox(blockId, lineIndex),
+    drawReadingPdfBox: (bbox, pageNo) => drawReadingPdfBox(bbox, pageNo),
+    drawEditingLineBox: (bbox, pageNo) => drawEditingLineBox(bbox, pageNo),
+    markEditingLineBox: (blockId, lineIndex) => markEditingLineBox(blockId, lineIndex),
+    onInlineInput: (event) => onInlineInput(event),
+    onInlineKeydown: (event) => onInlineKeydown(event),
+    readingVisibleSegments: () => readingVisibleSegments(),
+    updateReadingPageFromLeftScroll: () => updateReadingPageFromLeftScroll(),
+    verifyReadingPageSync: (reason, options) => verifyReadingPageSync(reason, options),
+    hideReadingPdfBox: () => hideReadingPdfBox(),
+    readingDriverActive: (driver) => readingDriverActive(driver),
+    readingLineNode: (key) => readingLineNode(key),
+    markReadingDriver: (driver) => markReadingDriver(driver),
+    apiJson: (path, options) => apiJson(path, options),
+    readingKey: (blockId, lineIndex) => readingKey(blockId, lineIndex),
+    loadFinishSummary: (options) => loadFinishSummary(options),
     onViewportResize: () => {
       if (currentView !== "reading") return;
       measureReadingTops();
