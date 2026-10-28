@@ -2394,6 +2394,16 @@ body[data-workflow-step="recognition"] .filterbar .filterbar__filters .vdiv { di
   --reading-tree-w: 232px;
   --reading-pdf-w: 420px;
 }
+/* 任务 91 第 4 步：左树折叠成 44px 窄条，省出的宽度给正文（PDF 保持 420） */
+.reading-split.is-tree-collapsed { --reading-tree-w: 44px; }
+.reading-split.is-tree-collapsed .reading-tree > *:not(.reading-tree__rail) { display: none; }
+.reading-tree__rail {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0;
+}
+.reading-tree__rail-count { font-size: 12px; font-weight: 600; color: var(--accent); }
+.reading-tree__rail-label {
+  font-size: 11px; color: var(--faint); writing-mode: vertical-rl; letter-spacing: 2px;
+}
 .reading-tree {
   width: var(--reading-tree-w); flex: none; min-height: 0; overflow: auto;
   background: var(--surface); border-right: 1px solid var(--line);

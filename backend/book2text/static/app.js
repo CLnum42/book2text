@@ -18200,6 +18200,7 @@ async function openReading() {
   // 三栏宽度在打开时套一次：视图刚显示出来才量得到真实宽度
   applyReadingSplit();
   readingDockApplyHeight(readingDockPrefs().h);
+  readingTreeApplyCollapsed();
   const projectId = currentProject.project_id;
   if (readingProject === projectId && readingData) {
     renderReading({ reset: true });
@@ -19172,6 +19173,48 @@ const READING_DOCK_KEY = "b2t.readingDock.v1";
 const READING_DOCK_DEFAULT_HEIGHT = 276;
 const READING_DOCK_MIN_HEIGHT = 248;
 const READING_DOCK_MAX_HEIGHT = 420;
+
+const READING_TREE_KEY = "b2t.readingTree.v1";
+
+function readingTreeCollapsed() {
+  if (!currentProject) return false;
+  try {
+    const all = JSON.parse(localStorage.getItem(READING_TREE_KEY) || "{}") || {};
+    return Boolean(all[currentProject.project_id]);
+  } catch {
+    return false;
+  }
+}
+
+function readingTreeSaveCollapsed(collapsed) {
+  if (!currentProject) return;
+  try {
+    const all = JSON.parse(localStorage.getItem(READING_TREE_KEY) || "{}") || {};
+    all[currentProject.project_id] = Boolean(collapsed);
+    localStorage.setItem(READING_TREE_KEY, JSON.stringify(all));
+  } catch {
+    /* 存不了不影响功能 */
+  }
+}
+
+function readingTreeApplyCollapsed() {
+  const split = el("reading-split");
+  const rail = el("reading-tree-rail");
+  const collapsed = readingTreeCollapsed();
+  if (split) split.classList.toggle("is-tree-collapsed", collapsed);
+  if (rail) rail.hidden = !collapsed;
+  const count = el("reading-tree-rail-count");
+  if (count) {
+    const unacked = readingGlobalCounts ? Number(readingGlobalCounts.chars_unacked || 0) : 0;
+    count.textContent = String(unacked);
+  }
+}
+
+function readingTreeToggle() {
+  const next = !readingTreeCollapsed();
+  readingTreeSaveCollapsed(next);
+  readingTreeApplyCollapsed();
+}
 
 function readingDockStore() {
   try {
@@ -21355,6 +21398,7 @@ function setupReading() {
   });
   el("reading-stream").addEventListener("scroll", onReadingScroll, { passive: true });
   el("reading-dock-collapse")?.addEventListener("click", () => readingDockCollapse());
+  el("reading-tree-toggle")?.addEventListener("click", () => readingTreeToggle());
   initReadingDockGrip();
   el("reading-pdf-scroll").addEventListener("scroll", onReadingPdfScroll, { passive: true });
   // 悬停段落：右栏绿底 + 左边对应块绿框（只高亮，不滚）
