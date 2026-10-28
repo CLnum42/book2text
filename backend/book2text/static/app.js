@@ -21519,6 +21519,8 @@ function setupReading() {
   el("reading-stream").addEventListener("scroll", onReadingScroll, { passive: true });
   el("reading-dock-collapse")?.addEventListener("click", () => readingDockCollapse());
   el("reading-tree-toggle")?.addEventListener("click", () => readingTreeToggle());
+  // 折叠后的窄条本身也要能点开（QA A6：只挂了工具条那个按钮，点窄条没反应）
+  el("reading-tree-rail")?.addEventListener("click", () => readingTreeToggle());
   readingCropApplyWidth(readingCropPrefs());
   initReadingDockSplit();
   initReadingDockGrip();
