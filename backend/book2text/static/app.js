@@ -20528,8 +20528,13 @@ async function gotoNextUnreviewed() {
     (entry) => !readingEntryDone(entry) && entry.page_no >= pageNo
   );
   if (!target) {
-    logReadingNext(null, { branch: "none", globalUnacked: Number(readingGlobalCounts?.chars_unacked || 0),
-                            pagesWithCounts: readingPageCounts.size });
+    logReadingNext(null, {
+      branch: "none",
+      globalUnacked: Number(readingGlobalCounts?.chars_unacked || 0),
+      pagesWithCounts: readingPageCounts.size,
+      // 前 3 条原样打出来：一眼看出 chars_unacked 是不是全 0（旧快照）
+      sample: [...readingPageCounts.entries()].slice(0, 3),
+    });
     showNoticeBar("全书未审已处理完 · 可以去「成稿模式」通读一遍，或者直接导出");
     return;
   }
@@ -20549,7 +20554,9 @@ function readingNextPageWithUnacked(afterPage) {
   const pages = [...readingPageCounts.entries()]
     .map(([pageNo, item]) => ({
       page_no: Number(pageNo),
-      unacked: Number(item?.chars_unacked ?? item?.unacked ?? 0),
+      // 用 `||` 不用 `??`：旧快照里 `chars_unacked` 存在但全是 0（字段是后加的），
+      // `??` 不会回退，于是过滤后一条不剩 → "下一处未审"凭空说没有了（实测卡在 94/102/109）。
+      unacked: Number(item?.chars_unacked || item?.unacked || 0),
     }))
     .filter((item) => item.unacked > 0)
     .sort((a, b) => a.page_no - b.page_no);

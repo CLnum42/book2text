@@ -40,7 +40,7 @@ from . import review_status
 DEFAULT_RADIUS = 10
 
 #: marks payload 的结构版本；改了字段或语义就 +1
-MARKS_CACHE_VERSION = 2
+MARKS_CACHE_VERSION = 3
 
 _CACHE: dict[str, tuple[str, dict]] = {}
 """项目 → (签名, 数据)。只留最近两个项目，避免内存无限涨。"""
