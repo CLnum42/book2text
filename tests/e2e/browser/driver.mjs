@@ -1195,14 +1195,58 @@ async function nextProbe(page) {
   const rows = [];
   for (let i = 0; i < 20; i += 1) {
     await page.click("#reading-next-unreviewed", { label: `下一处未审 ${i + 1}` });
-    await page.waitForTimeout(1000);
+    // 等"顶部页码追上当前面板"（最多 3 秒），再等 300ms 看是否站住；
+    // 只等 1 秒会把"还在跳"误判成"没同步"。
+    await page
+      .waitForFunction(
+        () => {
+          const head = document.querySelector(".reading-panel__head strong");
+          const label = document.getElementById("reading-page-no");
+          if (!head || !label) return false;
+          const panel = Number(((head.textContent || "").match(/第\s*(\d+)\s*页/) || [0, 0])[1]) || null;
+          const top = Number(((label.textContent || "").match(/(\d+)/) || [0, 0])[1]) || null;
+          return panel !== null && top === panel;
+        },
+        undefined,
+        { timeout: 3000 }
+      )
+      .catch(() => {});
+    // 行高亮是"行进了渲染窗口"之后才有的：再给它最多 1.5 秒
+    await page
+      .waitForFunction(
+        () => document.querySelectorAll("#reading-stream .reading-line.is-current, #reading-stream .reading-mark.is-current").length > 0,
+        undefined,
+        { timeout: 1500 }
+      )
+      .catch(() => {});
+    await page.waitForTimeout(150);
     rows.push(await page.evaluate((index) => {
       const panel = document.querySelector(".reading-panel");
       const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const labelNo = Number((label.match(/(\d+)/) || [0, 0])[1]) || null;
+      const head = document.querySelector(".reading-panel__head strong");
+      const panelPage = head ? Number(((head.textContent || "").match(/第\s*(\d+)\s*页/) || [0, 0])[1]) || null : null;
+      const scroller = document.getElementById("reading-pdf-scroll");
+      let dominant = null;
+      if (scroller) {
+        const rect = scroller.getBoundingClientRect();
+        const tiles = [...scroller.querySelectorAll(".reading-page")].map((tile) => {
+          const r = tile.getBoundingClientRect();
+          const overlap = Math.min(r.bottom, rect.bottom) - Math.max(r.top, rect.top);
+          return { page: Number(tile.dataset.pageNo), overlap };
+        }).filter((t) => t.overlap > 0);
+        if (tiles.length) dominant = tiles.reduce((a, b) => (b.overlap > a.overlap ? b : a)).page;
+      }
+      const highlight = document.querySelectorAll("#reading-stream .reading-line.is-current, #reading-stream .reading-mark.is-current").length;
       const log = (window.__b2tNextLog || [])[0] || {};
       return {
         index: index + 1,
         label,
+        labelNo,
+        panelPage,
+        dominant,
+        threeWay: panelPage !== null && panelPage === labelNo && labelNo === dominant,
+        highlight,
         panel: Boolean(panel),
         branch: log.branch || null,
         reason: log.reason || null,
