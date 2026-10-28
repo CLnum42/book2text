@@ -489,6 +489,169 @@ Slice 1 实测（2026-10-28）：
 
 ---
 
+### 11.1 L2–L12（同一份采样，`c45b8a5`；行号 = 函数起止，括号内 = 行数）
+
+> L1 见上表（230 = 搬 178 + 删 52）。`app.js ≈` 只扣函数体行，未扣 53 行头注释与状态声明。
+
+**L1（230 行 / 11 函数）→ 累计 230，app.js ≈ 20,835，临时注入 24**
+
+- `setReviewOverlaysForReading 18099–18116(18)`
+- `readingPdfScrollTop 18117–18127(11)`
+- `readingReloadAfterBatch 18151–18158(8)`
+- `readingOrderAfter 18321–18326(6)`
+- `buildReadingTree 19314–19321(8)`
+- `toggleReadingProof 20418–20426(9)`
+- `readingCursorOrder 20695–20700(6)`
+- `readingSplitPrefs 20833–20836(4)`
+- `saveReadingSplit 20841–20844(4)`
+- `setupReadingSplit 20845–20848(4)`
+- `setupReading 20849–21000(152)`
+
+**L2（342 行 / 11 函数）→ 累计 572，app.js ≈ 20,493，临时注入 30**
+
+- `markReadingUserMoved 18128–18139(12)`
+- `startInlineEdit 18807–18835(29)`
+- `setReadingFilter 19068–19073(6)`
+- `setReadingHoverByBlock 20105–20133(29)`
+- `onReadingPdfScroll 20288–20312(25)`
+- `setReadingFollow 20404–20417(14)`
+- `renderReadingPreflight 20427–20466(40)`
+- `onReadingScroll 20511–20601(91)`
+- `stepReadingPage 20602–20611(10)`
+- `submitReadingDrafts 20747–20806(60)`
+- `undoReadingSubmit 20807–20832(26)`
+
+**L3（213 行 / 7 函数）→ 累计 785，app.js ≈ 20,280，临时注入 35**
+
+- `readingMovedSinceOpen 18140–18150(11)`
+- `openReading 18159–18279(121)`
+- `readingLineBox 18783–18796(14)`
+- `markEditingLineBox 18797–18806(10)`
+- `exitInlineEdit 18875–18898(24)`
+- `onInlineKeydown 18899–18914(16)`
+- `drawEditingLineBox 20480–20496(17)`
+
+**L4（139 行 / 7 函数）→ 累计 924，app.js ≈ 20,141，临时注入 33**
+
+- `loadReadingInlineEdits 18006–18025(20)`
+- `restoreInlineEditsPrompt 18026–18039(14)`
+- `loadReadingDrafts 18057–18071(15)`
+- `onInlineInput 18836–18843(8)`
+- `measureReadingTops 20276–20287(12)`
+- `gotoNextUnreviewed 20629–20694(66)`
+- `applyReadingSplit 20837–20840(4)`
+
+**L5（1041 行 / 32 函数）→ 累计 1965，app.js ≈ 19,100，临时注入 36**
+
+- `readingOptions 18086–18098(13)`
+- `applyReadingMarksPayload 18280–18291(12)`
+- `rebuildReadingEntries 18292–18316(25)`
+- `readingWindowHas 18327–18342(16)`
+- `ensureReadingMarksWindow 18343–18370(28)`
+- `loadReadingMarksWindow 18371–18391(21)`
+- `refreshReadingMarksPaint 18392–18443(52)`
+- `ensureReadingLineRendered 18444–18470(27)`
+- `renderReading 18509–18576(68)`
+- `buildReadingSentinel 18577–18599(23)`
+- `saveInlineEdit 18844–18861(18)`
+- `centerReadingLinePair 19095–19122(28)`
+- `openReadingPanel 19128–19201(74)`
+- `renderReadingTree 19382–19493(112)`
+- `scrollReadingToPage 19494–19520(27)`
+- `markReadingTreeCurrent 19521–19548(28)`
+- `jumpReadingTo 19549–19582(34)`
+- `ensureReadingPages 19583–19590(8)`
+- `buildReadingPages 19591–19637(47)`
+- `observeReadingTiles 19645–19698(54)`
+- `refreshReadingImageProfiles 19699–19719(21)`
+- `observeReadingColumnResize 19738–19750(13)`
+- `ensureReadingTile 19751–19755(5)`
+- `retryReadingPendingPanel 19900–19919(20)`
+- `ensureReadingBlocks 19920–19941(22)`
+- `setReadingHover 20134–20166(33)`
+- `markReadingCurrentTile 20167–20176(10)`
+- `updateReadingPageFromLeftScroll 20198–20240(43)`
+- `scrollStreamToPage 20254–20275(22)`
+- `verifyReadingPageSync 20313–20374(62)`
+- `updateReadingPage 20375–20403(29)`
+- `gotoReadingEntry 20701–20746(46)`
+
+**L6（428 行 / 24 函数）→ 累计 2393，app.js ≈ 18,672，临时注入 20**
+
+- `saveReadingInlineEdits 18040–18056(17)`
+- `readingFlowPages 18471–18478(8)`
+- `readingEntryDone 18494–18498(5)`
+- `removeReadingSentinel 18600–18612(13)`
+- `buildReadingSegment 18663–18706(44)`
+- `scrollScrollerToCenter 19074–19090(17)`
+- `suppressReadingFollow 19091–19094(4)`
+- `hideReadingPanelHost 19202–19210(9)`
+- `startReadingEdit 19259–19279(21)`
+- `buildReadingTreePreview 19338–19368(31)`
+- `readingEntriesForPage 19369–19381(13)`
+- `disconnectReadingObservers 19638–19644(7)`
+- `warmSwapReadingImage 19720–19737(18)`
+- `ensureReadingImage 19756–19771(16)`
+- `pumpReadingImages 19781–19841(61)`
+- `releaseReadingImage 19842–19861(20)`
+- `markReadingImageFailed 19862–19899(38)`
+- `clearReadingDecorations 19965–19972(8)`
+- `scrollPdfColumnToPage 20177–20197(21)`
+- `markReadingDriver 20241–20245(5)`
+- `readingDriverActive 20246–20253(8)`
+- `hideReadingPdfBox 20467–20479(13)`
+- `drawReadingPdfBox 20497–20510(14)`
+- `logReadingNext 20612–20628(17)`
+
+**L7（95 行 / 8 函数）→ 累计 2488，app.js ≈ 18,577，临时注入 15**
+
+- `readingInlineStorageKey 18002–18005(4)`
+- `readingMarkOrder 18317–18320(4)`
+- `checkReadingSegmentText 18640–18662(23)`
+- `span_at 18915–18918(4)`
+- `draftReading 19280–19296(17)`
+- `readingEntryLineText 19322–19337(16)`
+- `showReadingPlaceholder 19772–19780(9)`
+- `paintReadingTile 19942–19959(18)`
+
+**L8（112 行 / 7 函数）→ 累计 2600，app.js ≈ 18,465，临时注入 10**
+
+- `saveReadingDrafts 18072–18085(14)`
+- `textCheckEnabled 18631–18639(9)`
+- `renderReadingProgress 19042–19067(26)`
+- `closeReadingPanel 19211–19232(22)`
+- `rerenderReadingLine 19297–19313(17)`
+- `readingPageRecord 19960–19964(5)`
+- `applyReadingLinked 19982–20000(19)`
+
+**L9（163 行 / 5 函数）→ 累计 2763，app.js ≈ 18,302，临时注入 8**
+
+- `readingDraftStorageKey 17997–18001(5)`
+- `buildReadingLine 18919–19030(112)`
+- `readingProgressNumbers 19031–19041(11)`
+- `refreshReadingCurrentHighlight 19233–19258(26)`
+- `readingHoveredBlockIds 19973–19981(9)`
+
+**L10（166 行 / 6 函数）→ 累计 2929，app.js ≈ 18,136，临时注入 3**
+
+- `readingVisibleSegments 18479–18493(15)`
+- `expandToWordRange 18613–18630(18)`
+- `readingLineText 18707–18717(11)`
+- `paintInlineRevision 18718–18782(65)`
+- `readingLineNode 19123–19127(5)`
+- `paintReadingDiffBoxes 20053–20104(52)`
+
+**L11（62 行 / 2 函数）→ 累计 2991，app.js ≈ 18,074，临时注入 1**
+
+- `readingEntryVisible 18499–18508(10)`
+- `readingDiffUnits 20001–20052(52)`
+
+**L12（4 行 / 1 函数）→ 累计 2995，app.js ≈ 18,070，临时注入 0**
+
+- `readingKey 17993–17996(4)`
+
+---
+
 ## 12. 作战地图：全前端的环（优化阶段用，拆分期不动）
 
 采样：`HEAD` 全文 833 个顶层函数，节点 = 顶格 `function` 声明，边 = 函数体里出现另一个函数名（**裸引用算边**）。多节点强连通分量 **10 个**，环内 188 个函数 / 7,633 行。
@@ -581,3 +744,16 @@ Slice 1 实测（2026-10-28）：
 
 收敛成三个入口：`setPanel(entry)` / `clearPendingPanel()` / `settlePanel(entry)`。
 **这不是顺手改行为**：4 个入口合成 3 个，可观察行为不变；原样搬才是把病根搬进新房子。
+
+
+---
+
+## 15. 交接纪律（Chief 定，2026-10-28）
+
+**交接要么贴全文，要么确认对方收到。"我发了"不算。**
+
+执行方式（本项目专用，因为 CI 死了、消息会丢）：
+1. **任何"表格级"资产先进 repo**（`docs/refactor/`），消息只做指路 + 贴全文二选一；**repo 里的版本是唯一权威**。
+2. 消息发出后，**必须拿到对方的一句回执**（例："L1 表收到，230=178+52"）；没有回执 = 未交接。
+3. 回执里要复述关键数字——复述不了说明没真读。
+4. 已知事故：Builder 的"前置页有差异但不可审"结论一路交接下来，QA 一条实测（流外队列页 = 0）就否了，白改一轮。**传错的结论比多贴一遍表贵得多。**
