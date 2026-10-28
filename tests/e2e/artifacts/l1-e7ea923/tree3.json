@@ -1,0 +1,80 @@
+[
+  {
+    "run": 1,
+    "panel": 51,
+    "top": 51,
+    "dominant": 51,
+    "tile25": 51,
+    "panelVisible": true,
+    "sync": {
+      "reason": "leftScroll",
+      "label": 50,
+      "tilePage": 50,
+      "panelPage": null,
+      "ok": true,
+      "scrollTop": 24890,
+      "at": 1793202002975
+    },
+    "syncLog0": {
+      "reason": "leftScroll",
+      "label": 50,
+      "tilePage": 50,
+      "panelPage": null,
+      "ok": true,
+      "scrollTop": 24890,
+      "at": 1793202002975
+    }
+  },
+  {
+    "run": 2,
+    "panel": 51,
+    "top": 51,
+    "dominant": 51,
+    "tile25": 51,
+    "panelVisible": true,
+    "sync": {
+      "reason": "leftScroll",
+      "label": 51,
+      "tilePage": 51,
+      "panelPage": null,
+      "ok": true,
+      "scrollTop": 25399,
+      "at": 1793202014418
+    },
+    "syncLog0": {
+      "reason": "leftScroll",
+      "label": 51,
+      "tilePage": 51,
+      "panelPage": null,
+      "ok": true,
+      "scrollTop": 25399,
+      "at": 1793202014418
+    }
+  },
+  {
+    "run": 3,
+    "panel": 51,
+    "top": 51,
+    "dominant": 51,
+    "tile25": 51,
+    "panelVisible": true,
+    "sync": {
+      "reason": "leftScroll",
+      "label": 51,
+      "tilePage": 51,
+      "panelPage": null,
+      "ok": true,
+      "scrollTop": 25399,
+      "at": 1793202024145
+    },
+    "syncLog0": {
+      "reason": "leftScroll",
+      "label": 51,
+      "tilePage": 51,
+      "panelPage": null,
+      "ok": true,
+      "scrollTop": 25399,
+      "at": 1793202024145
+    }
+  }
+]
