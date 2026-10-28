@@ -20142,7 +20142,9 @@ function gotoReadingEntry(entry) {
   scrollPdfColumnToPage(entry.page_no);
   const segments = readingVisibleSegments();
   const index = segments.findIndex((segment) => segment.seq === entry.seq);
-  if (index >= 0) queueReadingIntent("jump", { segmentIndex: index });
+  // 边 8 不切（顺序依赖）：jump 的 reset 必须早于下面的 openReadingPanel。
+  // 入队后它在帧末跑，reset 会把刚开的面板按"无 key + 无 pending"的清尾规则藏掉（QA：2/60）。
+  if (index >= 0) jumpReadingTo(index);
   const key = readingKey(entry.block_id, entry.line_index);
   let line = readingLineNode(key);
   if (!line) {
