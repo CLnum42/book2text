@@ -199,6 +199,12 @@ function readState(code) {
 
 installStubs();
 
+// 计数修复（任务 93）移植到 main 后（d48b16d），这条自动开跑；没移植时 skip 并写明原因。
+const progressNumbersSkip =
+  typeof ctx.readingProgressNumbers === "function"
+    ? false
+    : "main 还没有 readingProgressNumbers（任务 93 的计数提取）；移植后这条自动开跑";
+
 // splitPrefs / saveSplit 是**搬运期临时导出**（Architect：Slice 2 结束后
 // `Object.keys(window.ReadingView)` 只许 7 个）。这条偏好用例借它们验证
 // "三栏宽度重入后还在"；它们被移除时自动 skip，不许把临时导出当稳定接口锁住。
@@ -310,10 +316,7 @@ test("当前项：cursor 与最后一次跳转的目标一致（key / 页 / 行�
 
 // ---------------------------------------------------------------- 4. 已审计数
 
-test("已审计数：接全书 counts，不随当前窗口变化", {
-  skip: "main 还没有 readingProgressNumbers（任务 93 的提取在暂停的 ux/dock 分支）；"
-      + "main 的 renderReadingProgress 仍按窗口内 readingEntries 数草稿。合并后取消 skip",
-}, () => {
+test("已审计数：接全书 counts，不随当前窗口变化", { skip: progressNumbersSkip }, () => {
   resetState();
   setEntries([makeEntry("a", 0, 1)]);
   runInApp(ctx, `readingGlobalCounts = { chars_total: 100, chars_unacked: 40 };
@@ -383,7 +386,7 @@ test("偏好：三栏宽度写进 localStorage，重新加载模块后还在", {
 });
 
 test("偏好：左树折叠状态", {
-  skip: "main 没有左树折叠状态（readingTreeSaveCollapsed 只存在于暂停的 ux/dock 分支）",
+  skip: "main 无此状态（左树折叠在暂停的 ux/dock 分支，属新功能，UX 冻结中）；合并后再开",
 }, () => {});
 
 // ---------------------------------------------------------------- 8. 失败不静默
