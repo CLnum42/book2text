@@ -8037,6 +8037,9 @@ let indexNearPages = new Set();
 /** 真正在视口里的页：版心 / 块框 / 首行框只给这些页画（任务 48）。 */
 let indexVisiblePages = new Set();
 let indexLoadedImages = new Set();
+/** 每页图失败过几次（自动重试一次，还不行就在页块里给「点此重试」）。 */
+const indexImageAttempts = new Map();
+const INDEX_IMAGE_TIMEOUT_MS = 10000;
 let indexBlocksByPage = new Map();
 const indexBlocksPending = new Map();
 let indexObserver = null;
@@ -8098,7 +8101,7 @@ async function openPageIndex() {
   const empty = el("index-empty");
   if (!pageIndexData || !pageIndexData.pages.length) {
     empty.hidden = false;
-    el("index-image-status").textContent = "这一页还没有页码索引。";
+    setIndexImageStatus("这一页还没有页码索引。");
     return;
   }
   empty.hidden = true;
@@ -8135,8 +8138,9 @@ function renderPageIndex() {
   if (stats.chapters) bits.push(`${stats.chapters} 章`);
   if (pageIndexData.numbering_step === 2) bits.push("页码隔 2 递增");
   if (!pageOrderOnly && stats.missing) {
-    // 缺页码分三类：前置/后置、回目页（都不印）、真没识别出来。前两类不是失败。
+    // 缺页码分四类：前置/后置、目录页、回目页（都不印）、真没识别出来。前三类不是失败。
     if (stats.missing_front_back) bits.push(`${stats.missing_front_back} 页前置/后置`);
+    if (stats.missing_toc) bits.push(`${stats.missing_toc} 页目录页`);
     if (stats.missing_chapter) bits.push(`${stats.missing_chapter} 页回目页`);
     if (stats.missing_unknown) bits.push(`${stats.missing_unknown} 页未识别页码`);
   }
@@ -8178,11 +8182,13 @@ function renderPageIndex() {
       continue;
     }
     const reason = entry.missing ? entry.missing_reason || "unknown" : null;
-    // 前两类别叫"未识别"——它们本来就不印页码，写成失败会让人以为识别坏了
+    // 前三类别叫"未识别"——它们本来就不印页码，写成失败会让人以为识别坏了
     row.className =
       "index-row" +
       (entry.missing ? " is-missing" : "") +
-      (reason === "front_back" || reason === "chapter" ? " is-explain" : "");
+      (reason === "front_back" || reason === "toc" || reason === "chapter"
+        ? " is-explain"
+        : "");
     row.dataset.pageNo = String(entry.page_no);
     row.tabIndex = 0;
     const extraJump = (entry.jump || []).filter(
@@ -8191,9 +8197,11 @@ function renderPageIndex() {
     row.title = entry.missing
       ? reason === "front_back"
         ? `第 ${entry.page_no} 页是前置 / 后置页，本来就不印阿拉伯页码；照样可以点进去`
-        : reason === "chapter"
-          ? `第 ${entry.page_no} 页是回目页（${entry.chapter || "回目首页"}），排版惯例不印页码；照样可以点进去`
-          : `第 ${entry.page_no} 页没有识别到印刷页码，照样可以点进去`
+        : reason === "toc"
+          ? `第 ${entry.page_no} 页是目录页，本来就不印阿拉伯页码；照样可以点进去`
+          : reason === "chapter"
+            ? `第 ${entry.page_no} 页是回目页（${entry.chapter || "回目首页"}），排版惯例不印页码；照样可以点进去`
+            : `第 ${entry.page_no} 页没有识别到印刷页码，照样可以点进去`
       : `印刷页 ${entry.printed[0] || ""}` +
         (extraJump.length ? `（输入 ${extraJump.join(" / ")} 也会跳到这一页）` : "");
     const printed = document.createElement("span");
@@ -8201,9 +8209,11 @@ function renderPageIndex() {
     printed.textContent = entry.missing
       ? reason === "front_back"
         ? "前置/后置"
-        : reason === "chapter"
-          ? "回目页"
-          : "未识别页码"
+        : reason === "toc"
+          ? "目录页"
+          : reason === "chapter"
+            ? "回目页"
+            : "未识别页码"
       : entry.printed[0] || "";
     const pdf = document.createElement("span");
     pdf.className = "index-row__pdf";
@@ -8269,6 +8279,7 @@ function buildIndexPages() {
   indexTiles.clear();
   indexNearPages.clear();
   indexLoadedImages.clear();
+  indexImageAttempts.clear();
   indexBlocksByPage.clear();
   indexBlocksPending.clear();
   indexTops = [];
@@ -8430,24 +8441,35 @@ async function pumpIndexImages() {
       image.dataset.src = url;
       image.loading = "eager";
       const started = performance.now();
-      const ok = await new Promise((resolve) => {
-        image.onload = () => resolve(true);
-        image.onerror = () => resolve(false);
-        image.src = url;
-      });
+      if (pageNo === indexCurrentPage) setIndexImageStatus(`正在渲染第 ${pageNo} 页…`);
+      const ok = await waitForImageLoad(image, url);
       delete image.dataset.pending;
+      if (image.dataset.cancelled === "1") {
+        // 加载途中滚走了：这次结果直接丢掉，图也收回（不留解码内存）
+        delete image.dataset.cancelled;
+        image.removeAttribute("src");
+        delete image.dataset.src;
+        image.classList.remove("is-ready");
+        indexLoadedImages.delete(pageNo);
+        continue;
+      }
       if (!ok) {
         image.removeAttribute("src");
         delete image.dataset.src;
-        if (pageNo === indexCurrentPage) {
-          const status = el("index-image-status");
-          if (status) {
-            status.hidden = false;
-            status.textContent = `第 ${pageNo} 页的图像读不出来。`;
-          }
+        const attempts = (indexImageAttempts.get(pageNo) || 0) + 1;
+        indexImageAttempts.set(pageNo, attempts);
+        if (attempts < 2 && currentView === "index") {
+          // 自动重试一次：不挡后面的页，600 ms 后自己回队列
+          setTimeout(() => {
+            if (currentView === "index" && indexTiles.has(pageNo)) ensureIndexImage(pageNo);
+          }, 600);
+        } else {
+          markIndexImageFailed(pageNo);
         }
         continue;
       }
+      image.classList.remove("is-ready");
+      delete image.dataset.imageFailed;
       image.classList.add("is-ready");
       // 先解码再交给排版：解码不进滚动 / 跳页的那一帧
       try {
@@ -8461,10 +8483,7 @@ async function pumpIndexImages() {
       if (metrics.imageMs.length > 20) metrics.imageMs.shift();
       metrics.imageCount = (metrics.imageCount || 0) + 1;
       reportIndexMetrics();
-      if (pageNo === indexCurrentPage) {
-        const status = el("index-image-status");
-        if (status) status.hidden = true;
-      }
+      if (pageNo === indexCurrentPage) setIndexImageStatus("");
       trimIndexImages();
       await new Promise((resolve) => setTimeout(resolve, 24));
     }
@@ -8480,10 +8499,87 @@ function releaseIndexImage(pageNo) {
   if (!tile) return;
   const image = tile.querySelector("img");
   if (!image || !image.dataset.src) return;
+  if (image.dataset.pending === "1") {
+    // **还在加载**：现在摘 src 会让 onload/onerror 都不触发，泵就永远卡住（见 waitForImageLoad）。
+    // 只做标记，等这次加载自己结束，由泵负责清理。
+    image.dataset.cancelled = "1";
+    return;
+  }
   image.removeAttribute("src");
   delete image.dataset.src;
   image.classList.remove("is-ready");
   indexLoadedImages.delete(pageNo);
+}
+
+/**
+ * 给一张页图挂 src，等它结束。**一定会 settle**：超时也算失败。
+ *
+ * 2026-10-28 用户看到"目录确认只有块框、页图全无"的根因就在这里：
+ * 原来用 `new Promise(resolve => { image.onload=…; image.onerror=…; })`，而
+ * `releaseIndexImage()`（滚远 / 跳页时调用）会把还在加载的图的 `src` 摘掉——
+ * 摘掉 src 既不会触发 onload 也不会触发 onerror，那个 Promise **永远不 resolve**，
+ * `pumpIndexImages()` 的 while 循环就卡死，`indexImagePumping` 一直是 true，
+ * 于是这一次会话里**后面每一页都再也不会去拿图**（只有一片灰）。
+ * 现在：加载中被释放只做标记，等它自己结束再清理；等待本身带超时，绝不悬空。
+ */
+function waitForImageLoad(image, url, timeoutMs = INDEX_IMAGE_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      image.onload = null;
+      image.onerror = null;
+      resolve(ok);
+    };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    image.onload = () => finish(true);
+    image.onerror = () => finish(false);
+    image.src = url;
+  });
+}
+
+/** 页图状态条：说清在等哪一页，而不是让用户对着一片灰猜。 */
+function setIndexImageStatus(text) {
+  const status = el("index-image-status");
+  if (!status) return;
+  if (!text) {
+    status.hidden = true;
+    status.textContent = "";
+    return;
+  }
+  status.hidden = false;
+  status.textContent = text;
+}
+
+/** 一页的图重试两次仍然失败：页块里放一个可点的重试，别留空白。 */
+function markIndexImageFailed(pageNo) {
+  const tile = indexTiles.get(pageNo);
+  if (!tile) return;
+  const image = tile.querySelector("img");
+  if (image) {
+    image.removeAttribute("src");
+    delete image.dataset.src;
+    image.classList.remove("is-ready");
+  }
+  delete indexTiles.get(pageNo)?.dataset.imageFailed;
+  tile.dataset.imageFailed = "1";
+  if (tile.querySelector(".index-image-retry")) return;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "index-image-retry";
+  retry.textContent = "这一页的图像读不出来 · 点这里重试";
+  retry.addEventListener("click", () => {
+    retry.remove();
+    delete tile.dataset.imageFailed;
+    indexImageAttempts.delete(pageNo);
+    ensureIndexImage(pageNo);
+  });
+  tile.append(retry);
+  if (pageNo === indexCurrentPage) {
+    setIndexImageStatus(`第 ${pageNo} 页的图像读不出来（渲染超时或失败）`);
+  }
 }
 
 /** 图是解码过的大图：同时挂的 src 超过上限就摘离当前页最远的那些。 */
@@ -8672,11 +8768,12 @@ function scrollIndexToPage(pageNo) {
   scroller.scrollTop = target;
 }
 
-/** 页头那一行：印刷页 / 前置后置 / 回目页 / 真没识别出来，四种说法分开。 */
+/** 页头那一行：印刷页 / 前置后置 / 目录页 / 回目页 / 真没识别出来，五种说法分开。 */
 function indexPrintedLabel(entry) {
   if (!entry) return "";
   if (!entry.missing) return `印刷页 ${entry.printed[0] || ""}`;
   if (entry.missing_reason === "front_back") return "前置/后置页 · 不印页码";
+  if (entry.missing_reason === "toc") return "目录页 · 不印页码";
   if (entry.missing_reason === "chapter") {
     return `回目页 · 不印页码${entry.chapter ? "（" + entry.chapter + "）" : ""}`;
   }
@@ -8712,14 +8809,12 @@ function openIndexPage(pageNo, { scrollList = true } = {}) {
   if (!indexTopMap.size) measureIndexTiles();
   updateIndexPageHeader(pageNo);
   const image = indexTiles.get(pageNo)?.querySelector("img");
-  const status = el("index-image-status");
-  if (status) {
-    if (!image || !image.classList.contains("is-ready")) {
-      status.hidden = false;
-      status.textContent = "正在渲染…";
-    } else {
-      status.hidden = true;
-    }
+  if (image && image.classList.contains("is-ready")) {
+    setIndexImageStatus("");
+  } else if (indexTiles.get(pageNo)?.dataset.imageFailed === "1") {
+    setIndexImageStatus(`第 ${pageNo} 页的图像读不出来（渲染超时或失败）`);
+  } else {
+    setIndexImageStatus(`正在渲染第 ${pageNo} 页…（第一次打开需要几秒）`);
   }
   scrollIndexToPage(pageNo);
   loadIndexTile(pageNo);
@@ -15483,6 +15578,10 @@ function setupLibrary() {
   });
   el("aux-warning-cancel").addEventListener("click", () => closeModal("aux-warning-mask"));
   el("aux-warning-wait").addEventListener("click", waitForAuxThenReview);
+  el("reading-punct-open").addEventListener("click", openPunctGroups);
+  el("punct-groups-close").addEventListener("click", () => closeModal("punct-groups-mask"));
+  el("punct-groups-done").addEventListener("click", () => closeModal("punct-groups-mask"));
+  el("punct-groups-undo").addEventListener("click", undoPunctBatch);
   el("lock-conflict-close").addEventListener("click", closeLockConflict);
   el("lock-conflict-cancel").addEventListener("click", closeLockConflict);
   el("lock-conflict-force").addEventListener("click", confirmLockConflict);
@@ -17011,6 +17110,252 @@ async function acceptAllClean() {
   renderMergeListView();
 }
 
+// ---------------------------------------------------------------- 标点差异 · 按模式批量（任务 61）
+//
+// 用户现场（红楼梦 3）：1676 条差异行里 710 行只差标点 / 空格，归成 64 种模式；
+// `；→，` 一种就 293 行，`∅→‘` 119 行（RapidOCR 系统性地吞掉开头引号）。
+// 逐条点这 710 行是纯体力活，而"全部采用候选"能一次修掉几百处真错。
+//
+// 主队列（左树 / 进度 / 下一处未审）只放含汉字差异的行；这里按模式判，
+// 判完写的是**行级 diff_ack**（和逐条审同一份数据），所以队列数字、导出、撤销全同步。
+
+let punctGroupsData = null;
+let punctGroupsProject = null;
+let punctLastBatch = null;
+let punctBusy = false;
+
+function punctReviewStorageKey() {
+  return currentProject ? `b2t.punctPerLine.${currentProject.project_id}` : "";
+}
+
+/** 被用户点了「逐条看」的模式：这些行回到主队列，逐条审。 */
+function punctReviewSet() {
+  try {
+    const raw = localStorage.getItem(punctReviewStorageKey());
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function savePunctReviewSet(set) {
+  try {
+    localStorage.setItem(punctReviewStorageKey(), JSON.stringify([...set]));
+  } catch {
+    /* 存不下不影响功能：只是下次打开又要选一次 */
+  }
+}
+
+function punctGroupByKey(key) {
+  return (punctGroupsData?.groups || []).find((group) => group.key === key) || null;
+}
+
+async function refreshPunctGroups() {
+  if (!currentProject) return null;
+  const projectId = currentProject.project_id;
+  try {
+    const data = await apiJson(`/api/projects/${projectId}/review/punct-groups`);
+    punctGroupsData = data;
+    punctGroupsProject = projectId;
+  } catch (error) {
+    punctGroupsData = { groups: [], totals: { groups: 0, lines: 0, undecided_lines: 0, undecided_groups: 0 } };
+    const box = el("punct-groups-error");
+    if (box) showError(box, error);
+  }
+  renderPunctGroupBadge();
+  return punctGroupsData;
+}
+
+/** 顶栏按钮上的数字：还剩多少行没判（判完就只剩模式数）。 */
+function renderPunctGroupBadge() {
+  const counts = punctGroupsData?.totals || { undecided_lines: 0, undecided_groups: 0 };
+  const set = punctReviewSet();
+  const perLine = (punctGroupsData?.groups || [])
+    .filter((group) => set.has(group.key))
+    .reduce((sum, group) => sum + group.undecided, 0);
+  const badge = el("reading-punct-count");
+  if (badge) {
+    badge.textContent = perLine
+      ? `${counts.undecided_lines} 行`
+      : counts.undecided_groups
+        ? `${counts.undecided_lines} 行 · ${counts.undecided_groups} 组`
+        : "已判完";
+  }
+  const button = el("reading-punct-open");
+  if (button) {
+    button.classList.toggle("is-on", Boolean(counts.undecided_groups));
+    button.title = counts.undecided_groups
+      ? `还有 ${counts.undecided_groups} 种标点模式没判（${counts.undecided_lines} 行）`
+      : "标点差异都已裁决";
+  }
+}
+
+async function openPunctGroups() {
+  el("punct-groups-error").hidden = true;
+  openModal("punct-groups-mask");
+  if (punctGroupsProject !== (currentProject && currentProject.project_id) || !punctGroupsData) {
+    await refreshPunctGroups();
+  }
+  renderPunctGroups();
+}
+
+function renderPunctGroups() {
+  const list = el("punct-groups-list");
+  if (!list) return;
+  list.innerHTML = "";
+  const data = punctGroupsData;
+  if (!data) return;
+  const set = punctReviewSet();
+  const totals = data.totals || {};
+  const pending = (data.groups || []).filter((group) => group.undecided && !set.has(group.key));
+  el("punct-groups-summary").textContent =
+    `${totals.lines || 0} 行纯标点 / 空格差异 · ${totals.groups || 0} 种模式 · ` +
+    (pending.length
+      ? `还有 ${pending.length} 种没判（${pending.reduce((sum, g) => sum + g.undecided, 0)} 行）`
+      : "全部判完了");
+  el("punct-groups-foot").textContent = punctLastBatch
+    ? `最近一次：${punctLastBatch.label}`
+    : "";
+  el("punct-groups-undo").disabled = !punctLastBatch;
+
+  if (!(data.groups || []).length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent = "这本书没有纯标点 / 空格差异。";
+    list.append(empty);
+    return;
+  }
+  for (const group of data.groups) {
+    const perLine = set.has(group.key);
+    const row = document.createElement("li");
+    row.className = "punct-group" + (group.undecided && !perLine ? "" : " is-done");
+
+    const head = document.createElement("div");
+    head.className = "punct-group__head";
+    const pattern = document.createElement("code");
+    pattern.className = "punct-group__pattern";
+    pattern.textContent = group.pattern;
+    const count = document.createElement("span");
+    count.className = "punct-group__count";
+    count.textContent = `${group.count} 行`;
+    const state = document.createElement("span");
+    state.className = "chip chip--gray";
+    if (perLine) {
+      state.textContent = "已转为逐条";
+    } else if (!group.undecided) {
+      state.textContent = group.adopted ? `已采用 ${group.adopted} 行` : `已保留 ${group.kept} 行`;
+      state.className = "chip chip--green";
+    } else if (group.adopted || group.kept) {
+      state.textContent = `已判 ${group.adopted + group.kept} / ${group.count}`;
+      state.className = "chip chip--warn";
+    } else {
+      state.textContent = "未判";
+      state.className = "chip chip--warn";
+    }
+    head.append(pattern, count, state);
+
+    const samples = document.createElement("ul");
+    samples.className = "punct-group__samples";
+    for (const sample of group.samples || []) {
+      const item = document.createElement("li");
+      const page = document.createElement("span");
+      page.className = "punct-group__page";
+      page.textContent = `第 ${sample.page_no} 页`;
+      const text = document.createElement("span");
+      text.className = "punct-group__text";
+      text.textContent = sample.text.length > 60 ? `${sample.text.slice(0, 60)}…` : sample.text;
+      item.append(page, text);
+      item.title = `原文：${sample.text}\n候选：${sample.candidate_text}`;
+      samples.append(item);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "punct-group__actions";
+    const adopt = document.createElement("button");
+    adopt.type = "button";
+    adopt.className = "btn btn--sm btn--pri";
+    adopt.textContent = "全部采用候选";
+    adopt.disabled = Boolean(perLine) || punctBusy;
+    adopt.addEventListener("click", () => decidePunctGroup(group, "adopted"));
+    const keep = document.createElement("button");
+    keep.type = "button";
+    keep.className = "btn btn--sm";
+    keep.textContent = "全部保留原文";
+    keep.disabled = Boolean(perLine) || punctBusy;
+    keep.addEventListener("click", () => decidePunctGroup(group, "kept"));
+    const oneByOne = document.createElement("button");
+    oneByOne.type = "button";
+    oneByOne.className = "btn btn--sm";
+    oneByOne.textContent = perLine ? "收回主队列" : "逐条看";
+    oneByOne.title = "把这几种模式的行放回主队列，逐条审";
+    oneByOne.addEventListener("click", () => {
+      const next = punctReviewSet();
+      if (perLine) next.delete(group.key);
+      else next.add(group.key);
+      savePunctReviewSet(next);
+      renderPunctGroups();
+      reloadReadingAfterBatch();
+    });
+    actions.append(adopt, keep, oneByOne);
+
+    row.append(head, samples, actions);
+    list.append(row);
+  }
+}
+
+async function decidePunctGroup(group, ack) {
+  if (punctBusy || !currentProject) return;
+  punctBusy = true;
+  el("punct-groups-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${currentProject.project_id}/review/punct-groups/decide`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: group.key, ack }),
+      }
+    );
+    punctLastBatch = {
+      label: `${group.pattern} ${ack === "adopted" ? "全部采用" : "全部保留"} ${data.applied} 行`,
+      batchId: data.batch_id,
+    };
+    await refreshPunctGroups();
+    renderPunctGroups();
+    await reloadReadingAfterBatch();
+  } catch (error) {
+    showError(el("punct-groups-error"), error);
+  } finally {
+    punctBusy = false;
+  }
+}
+
+async function undoPunctBatch() {
+  if (!currentProject || punctBusy) return;
+  punctBusy = true;
+  el("punct-groups-error").hidden = true;
+  try {
+    await apiJson(`/api/projects/${currentProject.project_id}/undo`, { method: "POST" });
+    punctLastBatch = null;
+    await refreshPunctGroups();
+    renderPunctGroups();
+    await reloadReadingAfterBatch();
+  } catch (error) {
+    showError(el("punct-groups-error"), error);
+  } finally {
+    punctBusy = false;
+  }
+}
+
+/** 批量裁决改了正文：整条阅读流重开一次（marks / 树 / 进度都跟着变）。 */
+async function reloadReadingAfterBatch() {
+  readingProject = null;
+  readingData = null;
+  readingMarks = new Map();
+  await openReading();
+  renderPunctGroupBadge();
+}
+
 // ---------------------------------------------------------------- 启动
 
 // ---------------------------------------------------------------- 阅读审校（L 刀：连续正文流）
@@ -17121,6 +17466,7 @@ async function openReading() {
     ensureReadingPages();
     measureReadingTops();
     if (readingPageNo) updateReadingPage(readingPageNo, { scrollLeft: true });
+    refreshPunctGroups();
     return;
   }
   const started = performance.now();
@@ -17171,10 +17517,14 @@ async function openReading() {
     readingMarks.set(readingKey(mark.block_id, mark.line_index), mark);
   }
   readingEntries = [];
+  const punctWatch = punctReviewSet();
   for (const segment of readingVisibleSegments()) {
     for (const span of segment.line_spans || []) {
       const mark = readingMarks.get(readingKey(span.block_id, span.line_index));
       if (!mark) continue;
+      // 主队列只放含汉字差异的行；纯标点 / 空格按模式批量判（任务 61），
+      // 只有被用户点了「逐条看」的那几种模式才回到主队列。
+      if (mark.level === "differs_punct" && !punctWatch.has(mark.pattern_key)) continue;
       readingEntries.push({
         ...mark,
         seq: segment.seq,
@@ -17190,6 +17540,8 @@ async function openReading() {
   measureReadingTops();
   metrics.openMs = Math.round(performance.now() - started);
   metrics.entries = readingEntries.length;
+  // 标点差异面板的数字（后台拉，不挡正文）：主队列只放汉字差异，其余在这里按模式判
+  refreshPunctGroups();
   metrics.treeUnacked = tree.stats ? tree.stats.unacked : null;
   const first = readingEntries.find((entry) => !readingEntryDone(entry));
   const page = first ? first.page_no : (currentProject.pages[0]?.page_no || 1);
@@ -17355,6 +17707,9 @@ function buildReadingLine(segment, span) {
   if (mark && mark.ack === "kept") {
     line.classList.add("is-kept");
   }
+  if (mark && mark.ack === "adopted") {
+    line.classList.add("is-kept");
+  }
   if (!mark || !readingEntryVisible(mark)) {
     line.textContent = baseText;
     return line;
@@ -17390,7 +17745,9 @@ function buildReadingLine(segment, span) {
     markEl.className =
       "reading-mark " +
       (mark.level === "differs_punct" ? "reading-mark--punct" : "reading-mark--chars") +
-      (range.word ? " reading-mark--word" : "");
+      (range.word ? " reading-mark--word" : "") +
+      (mark.ack ? " is-acked" : "") +
+      (key === readingPanelKey ? " is-current" : "");
     markEl.textContent = baseText.slice(range.start, range.end) || " ";
     markEl.dataset.key = key;
     markEl.title = range.word ? "英文按词标：这个词里有差异" : "";
@@ -17407,7 +17764,11 @@ function renderReadingProgress() {
   const total = readingEntries.length;
   const processed = readingEntries.filter(readingEntryDone).length;
   const drafts = readingDrafts.size;
-  el("reading-progress-text").textContent = `已处理 ${processed} / ${total}`;
+  // 主队列只算含汉字差异的行；标点那几百行单独写在这里，用户能看到"总数在下降"
+  const punctLeft = punctGroupsData?.totals?.undecided_lines || 0;
+  el("reading-progress-text").textContent =
+    `已处理 ${processed} / ${total}` +
+    (punctLeft ? `（另有标点 ${punctLeft} 行）` : "");
   const fill = el("reading-progress-fill");
   fill.style.width = total ? `${Math.round((processed / total) * 100)}%` : "0%";
   fill.classList.toggle("is-done", total > 0 && processed >= total);
@@ -17473,6 +17834,7 @@ function openReadingPanel(entry) {
   actions.append(adopt, keep, edit);
   panel.append(head, candidate, actions);
   line.after(panel);
+  refreshReadingCurrentHighlight();
   line.scrollIntoView({ block: "center", behavior: "auto" });
   // 打开候选时把这一行的行框画到左 PDF 上（显式动作，不依赖跟随开关）
   if (entry.bbox) {
@@ -17490,6 +17852,34 @@ function closeReadingPanel() {
   if (!stream) return;
   for (const node of stream.querySelectorAll(".reading-panel")) node.remove();
   readingPanelKey = null;
+  refreshReadingCurrentHighlight();
+}
+
+/**
+ * 当前审校项的"两边同款"高亮（任务 61）。
+ *
+ * 用户原话：「左边 pdf 里应该把选中的行高亮出来，右边也高亮出对应的行（左右最好用同样的
+ * 颜色和高亮方式，如方框框选）」。所以这里只做一件事：把 `readingPanelKey` 那一条
+ * 在**文本流**和**页面上**都标成 `is-current`（琥珀实线框 + 浅底），其余差异维持弱化红。
+ * 只改样式，不滚页、不动跟随。
+ */
+function refreshReadingCurrentHighlight() {
+  for (const node of document.querySelectorAll("#reading-stream .reading-line.is-current")) {
+    node.classList.remove("is-current");
+  }
+  for (const node of document.querySelectorAll("#reading-stream .reading-mark.is-current")) {
+    node.classList.remove("is-current");
+  }
+  if (readingPanelKey) {
+    const line = readingLineNode(readingPanelKey);
+    if (line) {
+      line.classList.add("is-current");
+      for (const mark of line.querySelectorAll(".reading-mark")) mark.classList.add("is-current");
+    }
+  }
+  // 页面上只有已加载块的页画过差异框：重画这些页 + 当前 key 所在页
+  for (const pageNo of readingPageBlocks.keys()) paintReadingDiffBoxes(pageNo);
+  if (readingPageNo) paintReadingDiffBoxes(readingPageNo);
 }
 
 function startReadingEdit(entry, panel) {
@@ -17946,17 +18336,20 @@ function paintReadingDiffBoxes(pageNo) {
     if (!block.lines) continue;
     for (let index = 0; index < block.lines.length; index += 1) {
       const line = block.lines[index];
-      const mark = readingMarks.get(readingKey(block.block_id, index));
+      const key = readingKey(block.block_id, index);
+      const mark = readingMarks.get(key);
       if (!mark || !readingEntryVisible(mark)) continue;
+      // 三态：当前审校项（琥珀实线框）/ 已审（淡绿）/ 其他未审（弱化红）
+      const state = key === readingPanelKey ? " is-current" : mark.ack ? " is-acked" : "";
       const words = line.word_boxes ? JSON.parse(line.word_boxes) : [];
       const { ranges, kind } = readingDiffUnits(line.text || "", mark.candidate || "", words);
       if (ranges === null) {
-        if (line.bbox) addBox(line.bbox, "reading-diff-box--line");
+        if (line.bbox) addBox(line.bbox, "reading-diff-box--line" + state);
         continue;
       }
       for (const wordIndex of ranges) {
         const bbox = words[wordIndex] && words[wordIndex].bbox;
-        if (bbox) addBox(bbox, kind === "punct" ? "reading-diff-box--punct" : "");
+        if (bbox) addBox(bbox, (kind === "punct" ? "reading-diff-box--punct" : "") + state);
       }
     }
   }

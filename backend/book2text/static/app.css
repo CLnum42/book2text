@@ -1185,6 +1185,7 @@ body.diff-mode .page-overlay .box--active {
 .modal--collab { width: 880px; height: 600px; max-width: 100%; }
 .modal--settings { width: 820px; max-width: 100%; height: 660px; }
 .modal--small { width: 560px; max-width: 100%; }
+.modal--wide { width: 860px; max-width: 100%; }
 .split-batch-list {
   margin: 4px 0 12px; padding-left: 20px; font-size: 12.5px; line-height: 1.65; color: var(--text-2);
 }
@@ -1857,6 +1858,21 @@ body[data-workflow-step="recognition"] #page-setup-bar { display: none; }
   padding: 12px 14px 28px; text-align: center;
 }
 .index-canvas .muted { margin: 0; }
+/* 页图状态条：吸在页列顶部，页图慢 / 失败时用户才知道在等什么（任务 61） */
+.index-image-status {
+  position: sticky; top: 0; z-index: 6;
+  display: inline-block; padding: 4px 10px; margin: 0 auto 8px;
+  border-radius: 999px; background: rgba(255, 255, 255, .92);
+  box-shadow: var(--shadow-1); font-size: 12.5px;
+}
+/* 一页的图彻底读不出来：页块里给一个能点的重试，而不是留一整块灰 */
+.index-image-retry {
+  position: absolute; inset: 0; z-index: 7;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--faint); background: rgba(255, 255, 255, .55);
+  color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer;
+}
+.index-image-retry:hover { background: rgba(255, 255, 255, .8); }
 /* 任务 48（K1）：右边连续多页（和结果预览同一套页块写法） */
 .index-pages { position: relative; }
 .index-page img.is-ready { display: block; }
@@ -2434,11 +2450,24 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 }
 .reading-seg { margin: 0 0 14px; text-indent: 2em; }
 .reading-line { text-indent: 0; }
+/* 差异标记三态（任务 61）：未审 = 弱化的红；当前 = 琥珀实线框（左右同款）；
+   已审 = 淡绿。当前那一条必须一眼能从其它差异里挑出来。 */
 .reading-mark {
-  background: rgba(220, 38, 38, .12); color: inherit; cursor: pointer;
-  border-bottom: 2px solid #dc2626; padding-bottom: 1px;
+  background: rgba(220, 38, 38, .08); color: inherit; cursor: pointer;
+  border-bottom: 1px solid rgba(220, 38, 38, .5); padding-bottom: 1px;
+  border-radius: 2px;
 }
-.reading-mark--punct { background: rgba(220, 38, 38, .10); border-bottom-style: dotted; }
+.reading-mark--punct { background: rgba(220, 38, 38, .07); border-bottom-style: dotted; }
+.reading-mark.is-current {
+  background: rgba(217, 119, 6, .20);
+  border-bottom-color: transparent;
+  box-shadow: 0 0 0 2px #d97706;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.reading-mark.is-acked {
+  background: rgba(22, 163, 74, .12); border-bottom: 1px solid rgba(22, 163, 74, .5);
+}
 /* 英文词级框：整词标（引擎给的就是一个词框） */
 .reading-mark--word { border-radius: 2px; }
 .reading-legend { font-size: 10.5px; white-space: nowrap; }
@@ -2507,14 +2536,30 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .reading-diff-layer { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 .reading-diff-box {
   position: absolute; box-sizing: border-box; pointer-events: none;
-  background: rgba(220, 38, 38, .22); border: 1px solid rgba(220, 38, 38, .65);
+  background: rgba(220, 38, 38, .10); border: 1px solid rgba(220, 38, 38, .45);
   border-radius: 2px;
 }
 .reading-diff-box--line {
-  background: rgba(220, 38, 38, .10); border-style: dashed;
+  background: rgba(220, 38, 38, .06); border-style: dashed;
 }
 .reading-diff-box--punct {
-  background: rgba(220, 38, 38, .12); border-style: dotted;
+  background: rgba(220, 38, 38, .07); border-style: dotted;
+}
+/* 当前审校项：和右栏**同色同框型**（琥珀 2px 实线 + 浅底），用户不用做视觉翻译 */
+.reading-diff-box.is-current {
+  background: rgba(217, 119, 6, .20); border: 2px solid #d97706; border-style: solid;
+  border-radius: 3px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .55);
+}
+/* 已审：淡绿 */
+.reading-diff-box.is-acked {
+  background: rgba(22, 163, 74, .10); border: 1px solid rgba(22, 163, 74, .45);
+  border-style: solid;
+}
+/* 当前行：右侧正文里整行给一个淡琥珀底 + 左边一条竖线，和左边色块呼应 */
+.reading-line.is-current {
+  background: rgba(217, 119, 6, .10);
+  box-shadow: inset 3px 0 0 #d97706;
+  border-radius: 4px;
 }
 .reading-pdf__canvas img { position: relative; }
 /* 成稿模式：隐藏所有红字 / 草稿标记 / 面板，只留干净正文与段首页范围 */
@@ -2536,3 +2581,25 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   flex: none; padding: 6px 14px; font-size: 11.5px; color: var(--muted);
   background: var(--ok-soft); border-bottom: 1px solid #bfe5cc;
 }
+
+/* ── 标点差异 · 按模式批量（任务 61） ───────────────────────────────── */
+.punct-groups { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.punct-group {
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  background: var(--surface); display: flex; flex-direction: column; gap: 8px;
+}
+.punct-group.is-done { opacity: .72; }
+.punct-group__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.punct-group__pattern {
+  font-size: 14px; font-weight: 600; padding: 1px 8px; border-radius: 6px;
+  background: var(--surface-2); border: 1px solid var(--line-strong);
+}
+.punct-group__count { font-size: 12.5px; color: var(--text-2); }
+.punct-group__samples {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px;
+  font-size: 12.5px; color: var(--text-2);
+}
+.punct-group__samples li { display: flex; gap: 8px; min-width: 0; }
+.punct-group__page { flex: 0 0 auto; color: var(--faint); }
+.punct-group__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.punct-group__actions { display: flex; gap: 6px; flex-wrap: wrap; }

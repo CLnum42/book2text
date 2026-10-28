@@ -104,6 +104,10 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
         if not printed:
             if page.page_type in ("front", "back"):
                 missing_reason = "front_back"
+            elif page.page_type == "toc":
+                # 目录页同样不印阿拉伯页码（2026-10-28：用户把 4 页前置改成"目录"后，
+                # 摘要立刻冒出"4 页未识别页码"——错的不是页码，是分类没认这一类）。
+                missing_reason = "toc"
             elif title:
                 missing_reason = "chapter"
             else:
@@ -138,6 +142,7 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
     missing_chapter = sum(
         1 for entry in entries if entry["missing_reason"] == "chapter"
     )
+    missing_toc = sum(1 for entry in entries if entry["missing_reason"] == "toc")
     missing_unknown = sum(
         1 for entry in entries if entry["missing_reason"] == "unknown"
     )
@@ -156,6 +161,7 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
             "missing": len(entries) - numbered,
             # 缺页码的三类：前置 / 后置（不印）、回目页（惯例不印）、真没识别出来
             "missing_front_back": missing_front_back,
+            "missing_toc": missing_toc,
             "missing_chapter": missing_chapter,
             "missing_unknown": missing_unknown,
             "chapters": len(chapters),
@@ -169,6 +175,7 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
             numbered=numbered,
             entries=len(entries),
             front_back=missing_front_back,
+            toc=missing_toc,
             chapter=missing_chapter,
             unknown=missing_unknown,
         ),
@@ -349,6 +356,7 @@ def _notes(
     numbered: int,
     entries: int,
     front_back: int = 0,
+    toc: int = 0,
     chapter: int = 0,
     unknown: int = 0,
 ) -> list[str]:
@@ -364,6 +372,8 @@ def _notes(
         bits = []
         if front_back:
             bits.append(f"{front_back} 页前置 / 后置（本来不印阿拉伯页码）")
+        if toc:
+            bits.append(f"{toc} 页目录页（本来不印阿拉伯页码）")
         if chapter:
             bits.append(f"{chapter} 页回目页（排版惯例，回目首页不印页码）")
         if unknown:

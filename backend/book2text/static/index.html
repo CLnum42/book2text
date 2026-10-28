@@ -457,8 +457,10 @@
                  任务 48（K1）：右边是**连续页列**，像 PDF 阅读器一样往下滚；
                  页块由脚本建，图和块只给视口附近 ±3 页挂上。 -->
             <div class="index-canvas" id="index-canvas">
+              <!-- 状态条**必须在页列前面**：原来挂在 490 个页块之后（约 80 万像素处），
+                   一旦页图慢了 / 失败了，用户看到的只有一片灰，永远读不到这句话。 -->
+              <p class="muted index-image-status" id="index-image-status" hidden></p>
               <div class="index-pages" id="index-pages"></div>
-              <p class="muted" id="index-image-status">正在渲染…</p>
             </div>
           </div>
         </div>
@@ -700,6 +702,10 @@
             <option value="chars">只看汉字级</option>
             <option value="unacked">只看未审</option>
           </select>
+          <button type="button" id="reading-punct-open" class="btn btn--sm"
+                  title="纯标点 / 空格差异按模式批量裁决（一次覆盖几百行）">
+            标点差异 <span id="reading-punct-count">0</span>
+          </button>
           <button type="button" id="reading-undo" class="btn btn--sm" title="撤销上一次提交">撤销</button>
           <button type="button" id="reading-submit" class="btn btn--pri btn--sm" disabled>提交 0 处改动</button>
         </div>
@@ -1421,6 +1427,33 @@
     </div>
 
     <!-- ─────────────────────────── 对话框：第二引擎还没跑完 ─────────────────────────── -->
+    <!-- 标点差异 · 按模式批量（任务 61）：710 行只有 64 种模式，一批判几百行 -->
+    <div class="mask" id="punct-groups-mask" hidden>
+      <div class="modal modal--wide">
+        <div class="mhead">标点差异 · 按模式批量
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="punct-groups-close">✕</button>
+        </div>
+        <div class="mbody mbody--single">
+          <p class="hint" id="punct-groups-summary"></p>
+          <p class="hint">
+            这些行只差标点 / 空格，逐条点价值不大；同一模式一次判完。
+            <strong>全部采用候选</strong>会把这几百行换成第二引擎的标点（<code>∅→‘</code>
+            这类多半是 OCR 吞了开头引号，采用就是修正）；<strong>全部保留原文</strong>只写裁决、不改文本。
+          </p>
+          <div class="alert alert--error" id="punct-groups-error" hidden></div>
+          <ul class="punct-groups" id="punct-groups-list"></ul>
+        </div>
+        <div class="mfoot">
+          <span class="muted" id="punct-groups-foot"></span>
+          <span class="spacer"></span>
+          <button type="button" id="punct-groups-undo" class="btn" disabled
+                  title="只退最近一次批量裁决（和顶栏的撤销同一个栈）">撤销最近一次</button>
+          <button type="button" id="punct-groups-done" class="btn btn--pri">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <div class="mask" id="aux-warning-mask" hidden>
       <div class="modal modal--small">
         <div class="mhead">第二引擎复核还没跑完

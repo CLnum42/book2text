@@ -1679,3 +1679,54 @@ def test_project_lock_conflict_dialog_is_wired() -> None:
     # 卡片徽标与入口
     assert 'entry.lock_expired ? "锁已过期" : "使用中"' in script
     assert '"接管并打开"' in script
+
+
+def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
+    """任务 61：目录确认的页图不许"永远是灰的"；当前审校项左右同款高亮。"""
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+
+    # ① 页图：状态条在页列**前面**（挂在 490 个页块之后等于永远看不见）
+    assert page.index('id="index-image-status"') < page.index('id="index-pages"')
+    for element_id in ("index-image-status", "index-canvas"):
+        assert f'id="{element_id}"' in page, element_id
+    # 加载中不摘 src（摘了 onload/onerror 都不触发，泵会永久卡死）+ 超时 + 重试
+    assert "function waitForImageLoad(" in script
+    assert "image.dataset.cancelled" in script
+    assert "INDEX_IMAGE_TIMEOUT_MS" in script
+    assert "function markIndexImageFailed(" in script
+    assert "这一页的图像读不出来 · 点这里重试" in script
+    assert ".index-image-retry" in css
+    assert ".index-image-status" in css
+    # ② 当前审校项：文本流与页面同色同框型（琥珀），其余弱化、已审淡绿
+    assert "function refreshReadingCurrentHighlight(" in script
+    assert 'node.classList.add("is-current")' in script
+    assert "key === readingPanelKey" in script
+    assert ".reading-mark.is-current" in css
+    assert ".reading-diff-box.is-current" in css
+    assert ".reading-diff-box.is-acked" in css
+    assert "#d97706" in css
+    # ③ 标点差异面板
+    for element_id in (
+        "reading-punct-open",
+        "reading-punct-count",
+        "punct-groups-mask",
+        "punct-groups-list",
+        "punct-groups-undo",
+    ):
+        assert f'id="{element_id}"' in page, element_id
+    assert "/review/punct-groups" in script
+    assert "/review/punct-groups/decide" in script
+    assert "function decidePunctGroup(" in script
+    assert "全部采用候选" in script and "全部保留原文" in script and "逐条看" in script
+    assert "mark.level === \"differs_punct\" && !punctWatch.has(mark.pattern_key)" in script
+    assert ".punct-group__pattern" in css
+
+
+def test_page_number_labels_know_toc_pages() -> None:
+    """目录页也不印阿拉伯页码——不能算"未识别页码"（任务 61）。"""
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    assert 'missing_reason === "toc"' in script
+    assert "目录页 · 不印页码" in script
+    assert "stats.missing_toc" in script

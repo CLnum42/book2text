@@ -25,6 +25,7 @@ from ..core.project import ink_gaps as ink_gaps_module
 from ..core.project import editing
 from ..core.project import library as project_library
 from ..core.project import margin_box as margin_box_module
+from ..core.project import punct_groups as punct_groups_module
 from ..core.project import recognition
 from ..core.project import structure as structure_module
 from ..core.ocr import compare as compare_module
@@ -376,6 +377,20 @@ def review_marks(request: Request, project_id: str) -> dict[str, Any]:
                     "ack": mark.ack,
                     # 行框（归一化）：跟随模式下在左 PDF 上框出当前行
                     "bbox": list(line.bbox) if line is not None and line.bbox else None,
+                    # 纯标点差异的"模式键"（`；→，`、`∅→‘`）：主队列据此把这几百行
+                    # 交给「标点差异 · 按模式批量」面板，而不是让用户逐条点（任务 61）
+                    "pattern_key": (
+                        punct_groups_module.pattern_key(
+                            punct_groups_module.fragments(
+                                mark.current,
+                                line.aux_text if line is not None else "",
+                            )
+                        )
+                        if mark.level == compare_module.DIFFERS_PUNCT
+                        and line is not None
+                        and line.aux_text is not None
+                        else None
+                    ),
                 }
             )
     counts = {"total": len(items), "chars": 0, "punct": 0, "acked": 0}
@@ -384,6 +399,62 @@ def review_marks(request: Request, project_id: str) -> dict[str, Any]:
         if item["ack"]:
             counts["acked"] += 1
     return {"items": items, "counts": counts}
+
+
+class PunctGroupDecideRequest(BaseModel):
+    """一个"标点差异模式"的批量裁决（任务 61）。"""
+
+    key: str = Field(min_length=1, max_length=400)
+    ack: Literal["kept", "adopted"]
+
+
+@router.get("/{project_id}/review/punct-groups")
+def review_punct_groups(request: Request, project_id: str) -> dict[str, Any]:
+    """纯标点 / 空格差异按模式分组（每组给数量 + 5 条样例 + 裁决进度）。
+
+    只读。主队列（阅读流）只放含汉字差异的行；这 700 来行由用户按模式批量判，
+    一次覆盖几百行——书里 `；→，` 一种就有 293 行，`∅→‘` 119 行（OCR 吞了引号）。
+    """
+    try:
+        return punct_groups_module.collect(project_id, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+
+
+@router.post("/{project_id}/review/punct-groups/decide")
+def decide_punct_group(
+    request: Request, project_id: str, body: PunctGroupDecideRequest
+) -> dict[str, Any]:
+    """一个模式的所有行一次性裁决：采用候选 / 保留原文。
+
+    同一批写进一个 batch，撤销一次全退；一行失败不连累整组（真实状态优先）。
+    """
+    try:
+        result = punct_groups_module.decide(
+            project_id,
+            key=body.key,
+            ack=body.ack,
+            library=_library(request),
+            actor_name=_actor_name(request, None),
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    if result["events"]:
+        _history(request).push(
+            project_id,
+            _Batch(
+                events=tuple(result["events"]),
+                page_nos=tuple(result["pages"]),
+            ),
+        )
+    undo, redo = _history(request).depth(project_id)
+    return {
+        "batch_id": result["batch_id"],
+        "applied": result["applied"],
+        "skipped": result["skipped"],
+        "ack": result["ack"],
+        "history": {"undo": undo, "redo": redo},
+    }
 
 
 class DraftItem(BaseModel):
