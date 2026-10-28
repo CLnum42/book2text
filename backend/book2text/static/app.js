@@ -8634,6 +8634,10 @@ function ensureIndexImage(pageNo) {
   if (!tile) return;
   const image = tile.querySelector("img");
   if (!image || image.dataset.src || image.dataset.pending) return;
+  // 任务 80：**先摘掉上一轮残留的 onload/onerror**，再挂占位图。
+  // 否则占位图自己加载完会触发上一个闭包，把 thumb 标成 `is-ready` 并且不再排队取高清图。
+  image.onload = null;
+  image.onerror = null;
   // 先挂低分辨率占位（几十毫秒），高精度图在后面排队
   showIndexPlaceholder(pageNo, image);
   image.dataset.pending = "1";
@@ -8692,7 +8696,7 @@ async function pumpIndexImages() {
       }
       image.classList.remove("is-ready");
       delete image.dataset.imageFailed;
-      delete image.dataset.placeholder;
+      clearImagePlaceholder(image);
       image.classList.add("is-ready");
       // 先解码再交给排版：解码不进滚动 / 跳页的那一帧
       try {
@@ -8785,6 +8789,7 @@ function markIndexImageFailed(pageNo) {
     image.removeAttribute("src");
     delete image.dataset.src;
     image.classList.remove("is-ready");
+    clearImagePlaceholder(image);
   }
   delete indexTiles.get(pageNo)?.dataset.imageFailed;
   tile.dataset.imageFailed = "1";
@@ -8840,6 +8845,17 @@ function showIndexPlaceholder(pageNo, image) {
   image.dataset.placeholder = "1";
   image.classList.add("is-placeholder");
   image.src = pageImageUrl(pageNo, "thumb");
+}
+
+/**
+ * 摘掉占位状态。**`is-placeholder` 这个类必须一起摘**——它带着 `filter: blur(1.5px)`，
+ * 只删 `dataset.placeholder` 会把模糊永久留在最后的清晰图上（用户看到的就是"糊"，
+ * 而 `naturalWidth ÷ (CSS 宽 × dpr)` 却是 1.66，量比例永远查不出来）。
+ */
+function clearImagePlaceholder(image) {
+  if (!image) return;
+  delete image.dataset.placeholder;
+  image.classList.remove("is-placeholder");
 }
 
 function ensureIndexBlocks(pageNo) {
@@ -19261,6 +19277,10 @@ function ensureReadingImage(pageNo) {
   if (!tile) return;
   const image = tile.querySelector("img");
   if (!image || readingLoadedImages.has(pageNo) || image.dataset.pending) return;
+  // 任务 80：同目录确认——先摘掉上一轮残留的 onload/onerror，再挂占位图。
+  // 否则占位图加载完会触发旧闭包，把 thumb 标成 `is-ready`，这一页就永远停在模糊的缩略图上。
+  image.onload = null;
+  image.onerror = null;
   showReadingPlaceholder(pageNo, image);
   image.dataset.pending = "1";
   readingImageQueue.push(pageNo);
@@ -19298,9 +19318,13 @@ function pumpReadingImages() {
     }
     readingLoadedImages.add(pageNo);
     image.onload = () => {
+      // 占位图（thumb）自己的加载**不算**这一页好了：只有目标档位到了才收尾。
+      // 否则会在排队等待期间被旧闭包抢先触发，把缩略图标成 `is-ready`。
+      if ((image.getAttribute("src") || "").includes("size=thumb")) return;
       image.classList.add("is-ready");
       delete image.dataset.pending;
-      delete image.dataset.placeholder;
+      // 任务 80：占位类一起摘（它带 blur(1.5px)，留着就成了"高清图 + 永久模糊"）
+      clearImagePlaceholder(image);
       const status = el("reading-image-status");
       if (status) status.hidden = true;
       paintReadingTile(pageNo);
@@ -19308,6 +19332,21 @@ function pumpReadingImages() {
     };
     image.onerror = () => {
       delete image.dataset.pending;
+      // 取图失败：**不能把模糊的缩略图留在那里冒充最终图**（用户分不清"糊"和"还没来"），
+      // 也不能把这一页留在 readingLoadedImages 里——那样它再也不会被重取。
+      clearImagePlaceholder(image);
+      image.classList.remove("is-ready");
+      image.removeAttribute("src");
+      readingLoadedImages.delete(pageNo);
+      const attempts = Number(tile.dataset.imageAttempts || 0) + 1;
+      tile.dataset.imageAttempts = String(attempts);
+      if (attempts <= 2 && currentView === "reading" && readingTiles.has(pageNo)) {
+        setTimeout(() => {
+          if (currentView === "reading" && readingTiles.has(pageNo)) ensureReadingImage(pageNo);
+        }, 600);
+      } else {
+        markReadingImageFailed(pageNo);
+      }
       step();
     };
     // 任务 75：**量外层页块**，不要量 `<img>` 自己。图在加载完成前是隐藏的
@@ -19323,10 +19362,54 @@ function releaseReadingImage(pageNo) {
   const tile = readingTiles.get(pageNo);
   const image = tile ? tile.querySelector("img") : null;
   if (!image) return;
+  // 摘 `src` 不会触发 onload/onerror：先把闭包摘掉，免得下一张图（或占位图）误触发旧逻辑
+  image.onload = null;
+  image.onerror = null;
   image.removeAttribute("src");
   image.classList.remove("is-ready");
+  clearImagePlaceholder(image);
   delete image.dataset.pending;
   readingLoadedImages.delete(pageNo);
+}
+
+/**
+ * 三次取图都失败：留一张**不带模糊**的低分辨率占位 + 一个可点的重试。
+ *
+ * 不留"模糊的缩略图"——用户分不清"这张图糊"和"还没加载完"；
+ * 也不留一块空白——那等于告诉用户"这一页不存在"。
+ */
+function markReadingImageFailed(pageNo) {
+  const tile = readingTiles.get(pageNo);
+  if (!tile) return;
+  const image = tile.querySelector("img");
+  if (image) {
+    // 摘掉闭包再挂缩略图：否则缩略图也失败时会再触发本函数，attempts 会自激涨到几万次
+    image.onload = null;
+    image.onerror = null;
+    clearImagePlaceholder(image);
+    image.classList.remove("is-ready");
+    if (!image.getAttribute("src")) image.src = pageImageUrl(pageNo, "thumb");
+  }
+  tile.dataset.imageFailed = "1";
+  if (tile.querySelector(".reading-image-retry")) return;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "index-image-retry reading-image-retry";
+  retry.textContent = "这一页的图像读不出来 · 点这里重试";
+  retry.addEventListener("click", () => {
+    retry.remove();
+    delete tile.dataset.imageFailed;
+    delete tile.dataset.imageAttempts;
+    ensureReadingImage(pageNo);
+  });
+  tile.append(retry);
+  if (pageNo === readingPageNo) {
+    const status = el("reading-image-status");
+    if (status) {
+      status.hidden = false;
+      status.textContent = `第 ${pageNo} 页的图像读不出来（渲染超时或失败）`;
+    }
+  }
 }
 
 function ensureReadingBlocks(pageNo) {

@@ -3561,3 +3561,31 @@ Retina 上等于放大 2 倍所以糊，PNG 又让一页到 1.77 MB。
 **验证：** 这本书版心 `low → medium`；单元测试 12 条全过（含"逐页漂移必须判不可靠"）；
 `pytest` 见 `docs/qa/english-monolingual-ames-20261028.md`。
 **状态：** 生效（2026-10-28）。
+
+## D-104 | 2026-10-28 | 页图"糊"是 `is-placeholder` 的 blur 留在了高清图上；模糊改成由 src 决定
+
+**背景**：用户第四次报"审校页图糊"。前四轮都在量分辨率
+`naturalWidth ÷ (CSS 宽 × dpr)`，量出来 1.66（384 CSS px 的页块配 1275 的图），
+每次判"已经清楚"。实测 `getComputedStyle(img).filter` 是 **`blur(1.5px)`**：
+占位样式 `.is-placeholder` 带着模糊，而加载完成后只 `delete dataset.placeholder`，
+**类的样式从来没被摘掉**——清晰图 + 永久模糊，用户看到的就是"糊"。
+
+**决定**
+
+1. 新增 `clearImagePlaceholder()`：**data 属性与类一起清**，在四条收尾路径上调用
+   （目录确认成功、目录确认失败、审校 `onload`、审校释放/失败）。
+2. 模糊**不再依赖"类有没有被删"**：CSS 改成
+   `img.is-placeholder[src*="size=thumb"] { filter: blur(1.5px) }`。
+   只要 `src` 换成非缩略图，模糊在样式层就不可能出现 —— 结构上防复发。
+3. 进队列前先 `image.onload = null; image.onerror = null`，`onload` 里再守卫
+   "src 还含 `size=thumb` 就不算 ready"，防止排队期间被旧闭包把缩略图标成完成。
+4. 取图失败不再留模糊缩略图冒充最终图，改为"不带模糊的缩略图 + 重试按钮"，并把该页
+   移出 `readingLoadedImages` 以便自动重取。
+
+**代价 / 边界：** 以后新增任何"占位样式"都必须遵守同一条规则——
+**视觉降级由 `src` 决定，不由一个可能残留的类决定**。
+
+**验证**：类故意保留、只换 src 到高清 → `filter: none`；24 帧 rAF 采样里
+"高清 + 模糊"的帧数 0；第 14 页拉普拉斯方差 540.6 → 1977.5。
+详见 `docs/qa/reading-page-image-blur-placeholder-20261028.md`。
+**状态：** 生效（2026-10-28）。
