@@ -58,6 +58,8 @@ export async function run(cfg) {
       return await labelWrites(page);
     case "reset_diag":
       return await resetDiag(page);
+    case "stress_next":
+      return await stressNext(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -1746,6 +1748,108 @@ async function resetDiag(page) {
       streamSegs: document.querySelectorAll("#reading-stream .reading-seg").length,
     };
   });
+}
+
+/**
+ * 连按压力探针：一直按到 90+ 次或连续 3 次零推进，每步记
+ *  - 主线程是否活着（rAF 心跳是否前进、performance.now 是否前进）
+ *  - 点击是否到达元素（捕获阶段计数）
+ *  - handler 是否写日志（__b2tNextLog 条目数）
+ *  - 目标行是否在 readingEntries / DOM 里
+ */
+async function stressNext(page, args) {
+  const maxPresses = args.presses || 120;
+  const stallLimit = args.stalls || 3;
+  await ensureReading(page);
+  await page.evaluate(() => {
+    window.__b2tClickHits = 0;
+    window.__b2tRafCount = 0;
+    const btn = document.getElementById("reading-next-unreviewed");
+    if (btn && !btn.__b2tCounted) {
+      btn.addEventListener("click", () => { window.__b2tClickHits += 1; }, true);
+      btn.__b2tCounted = true;
+    }
+    const tick = () => { window.__b2tRafCount += 1; requestAnimationFrame(tick); };
+    if (!window.__b2tRafStarted) { window.__b2tRafStarted = true; requestAnimationFrame(tick); }
+  });
+
+  const read = () =>
+    page.evaluate(() => {
+      const s = (el) => (document.getElementById(el) || {}).textContent || "";
+      const panel = document.querySelector(".reading-panel");
+      const head = document.querySelector(".reading-panel__head strong");
+      const key = panel ? panel.dataset.key || null : null;
+      const line = key
+        ? document.querySelector(`#reading-stream .reading-line[data-key="${key}"]`)
+        : null;
+      const inEntries = key && typeof readingEntries !== "undefined"
+        ? readingEntries.some((e) => `${e.block_id}:${e.line_index}` === key)
+        : null;
+      const inMarks = key && typeof readingMarks !== "undefined"
+        ? readingMarks.has(key)
+        : null;
+      return {
+        label: s("reading-page-no").replace(/\s+/g, ""),
+        panelPage: head ? (head.textContent.match(/第\s*(\d+)\s*页/) || [])[1] || null : null,
+        panelKey: key,
+        targetExists: Boolean(line),
+        targetInEntries: inEntries,
+        targetInMarks: inMarks,
+        currentLines: document.querySelectorAll("#reading-stream .reading-line.is-current").length,
+        rafCount: window.__b2tRafCount || 0,
+        clickHits: window.__b2tClickHits || 0,
+        nextLogLen: (window.__b2tNextLog || []).length,
+        nextLogAt: (window.__b2tNextLog || [])[0] ? window.__b2tNextLog[0].at : null,
+        now: Math.round(performance.now()),
+        entries: typeof readingEntries !== "undefined" ? readingEntries.length : null,
+        marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : null,
+        settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : null,
+      };
+    });
+
+  const rows = [];
+  let stalls = 0;
+  for (let i = 1; i <= maxPresses; i += 1) {
+    const before = await read();
+    let clickError = null;
+    try {
+      await page.click("#reading-next-unreviewed", { label: `下一处未审（压力 ${i}）` });
+    } catch (error) {
+      clickError = String(error).slice(0, 200);
+    }
+    await page.waitForTimeout(450);
+    const after = await read();
+    const advanced = after.label !== before.label || after.panelKey !== before.panelKey
+      || after.panelPage !== before.panelPage;
+    const row = {
+      i,
+      label: after.label,
+      panelPage: after.panelPage,
+      panelKey: after.panelKey,
+      advanced,
+      clickError,
+      rafDelta: after.rafCount - before.rafCount,
+      nowDelta: after.now - before.now,
+      clickHits: after.clickHits,
+      nextLogLen: after.nextLogLen,
+      logAt: after.nextLogAt,
+      targetExists: after.targetExists,
+      targetInEntries: after.targetInEntries,
+      targetInMarks: after.targetInMarks,
+      currentLines: after.currentLines,
+      entries: after.entries,
+      marksWindow: after.marksWindow,
+      settleKey: after.settleKey,
+    };
+    rows.push(row);
+    if (!advanced) {
+      stalls += 1;
+      if (stalls >= stallLimit) break;
+    } else {
+      stalls = 0;
+    }
+  }
+  return { rows, last: rows[rows.length - 1] };
 }
 
 async function nextProbe(page) {
