@@ -210,27 +210,6 @@ function setupReadingSplit() {
   /** 正文流/标记需要按当前设置重建时由外壳触发（Architect 接口第 5 个）。 */
   async function reload() {
     await injected.reload?.();
-    // 内容重建完成 → 通知订阅者（标点/乱码那边不再去探审校内部状态）
-    emit("content-changed");
-  }
-
-  // 极简事件：只给"内容变了"和"出错"用，避免别的模块读我们的状态
-  const listeners = new Map();
-
-  function on(event, fn) {
-    if (!listeners.has(event)) listeners.set(event, new Set());
-    listeners.get(event).add(fn);
-    return () => listeners.get(event)?.delete(fn);
-  }
-
-  function emit(event, payload) {
-    for (const fn of listeners.get(event) || []) {
-      try {
-        fn(payload);
-      } catch (error) {
-        console.error("ReadingView listener failed", event, error);
-      }
-    }
   }
 
   window.ReadingView = {
@@ -240,7 +219,6 @@ function setupReadingSplit() {
     getCurrent,
     toggleFollow,
     reload,
-    on,
     // 偏好与布局（app.js 仍通过薄转发调用，Slice 2 再彻底收进去）
     splitPrefs: readingSplitPrefs,
     applySplit: applyReadingSplit,

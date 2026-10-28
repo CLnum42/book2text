@@ -290,12 +290,13 @@ test("R4：同名函数只许一份真实现，其余必须是 ≤6 行的薄转
  * 为什么不能等 Slice 2 收尾再加：收尾时的门禁等于没有门禁，中途长出来的第 14 个 key
  * 没人拦。这里把当前的份数钉住，只许改小；改大要 Architect 签字。
  *
- * `PENDING_REMOVAL` 是"已判定必须删、但还没删"的写路径（`emit`）。它一旦从代码里消失，
- * 「待删名单必须清空」那条会自动开跑，逼着把名单删掉、MAX 回到 12。
+ * `PENDING_REMOVAL` 是"已判定必须删、但还没删"的写路径。`emit` 已在 26ac481 删除，
+ * 名单已清空；「写路径 emit 必须从公开对象上删掉」现在是常驻断言（不再 skip），
+ * 谁把写路径加回来都会红。
  */
 const STABLE = ["init", "enter", "exit", "getCurrent", "reload", "toggleFollow", "on"];
 const TEMPORARY = ["splitPrefs", "applySplit", "saveSplit", "resetSplit", "setupSplit"]; // 到期：Slice 2 收尾
-const PENDING_REMOVAL = ["emit"];   // 写路径；0 个外部调用者，Architect 判定必须删
+const PENDING_REMOVAL = [];   // 写路径 emit 已于 26ac481 删除；名单清空，写路径不许再加回来
 const MAX_EXPORTS = 12;             // 只许改小
 
 /** 在干净的 vm 里加载模块，读出 `Object.keys(window.ReadingView)`（不加载 app.js）。 */
