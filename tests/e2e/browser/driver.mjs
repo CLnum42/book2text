@@ -2662,15 +2662,31 @@ async function interactionsProbe(page, args) {
     await page.waitForTimeout(400);
   } catch (error) { await rec("3 进入编辑", false, String(error).slice(0, 160)); }
 
-  // 4) 提交：造一个草稿再提交
+  // 4) 提交：造一个草稿再提交（先等面板真的打开，否则 Enter 不会落草稿）
   try {
     await ensureReading(page);
     await page.click("#reading-next-unreviewed", { label: "开一条" });
-    await page.waitForTimeout(900);
+    await page.waitForFunction(
+      () => Boolean(document.querySelector("#reading-panel-host .reading-panel")),
+      undefined,
+      { timeout: 10000 }
+    );
+    await page.waitForTimeout(400);
     await page.keyboard.press("Enter");
-    await page.waitForTimeout(700);
-    const before = await snap();
-    if (!before.drafts) throw new Error("没有草稿，无法验证提交");
+    await page.waitForTimeout(900);
+    let before = await snap();
+    if (!before.drafts) {
+      // 再按一次（第一次可能只是打开面板）
+      await page.waitForFunction(
+        () => Boolean(document.querySelector("#reading-panel-host .reading-panel")),
+        undefined,
+        { timeout: 8000 }
+      );
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(900);
+      before = await snap();
+    }
+    if (!before.drafts) throw new Error("按了两次 Enter 仍没有草稿");
     await page.click("#reading-submit", { label: "提交草稿" });
     await page.waitForTimeout(2500);
     const after = await snap();
@@ -2684,7 +2700,7 @@ async function interactionsProbe(page, args) {
     await page.click("#reading-more-open", { label: "打开更多" });
     await page.waitForTimeout(300);
     await page.click("#reading-undo", { label: "撤回上次提交" });
-    await page.waitForTimeout(600);
+    // 点完**立刻**应答：对话框开着时任何 evaluate/waitForTimeout 都会失败
     const hadDialog = await page.acceptDialog().then(() => true).catch(() => false);
     await page.waitForTimeout(2500);
     const after = await snap();
@@ -2704,14 +2720,20 @@ async function interactionsProbe(page, args) {
       return { x: Math.min(window.innerWidth - 20, r.x + 30), y: r.y + Math.min(20, r.height / 2) };
     });
     if (!seg) throw new Error("没有段落");
+    await page.mouse.move(seg.x - 60, seg.y, { label: "移到段落附近" });
+    await page.waitForTimeout(200);
     await page.mouse.move(seg.x, seg.y, { label: "悬停段落" });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(600);
     const on = await snap();
+    const hoverSeq = await page.evaluate(() =>
+      typeof readingHoveredSeq !== "undefined" ? readingHoveredSeq : null);
     await page.mouse.move(20, 400, { label: "移开" });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(600);
     const off = await snap();
-    await rec("6 悬停", on.hover > 0 && off.hover === 0,
-              `hover ${on.hover} -> ${off.hover}; linked ${on.linked} -> ${off.linked}`);
+    const hoverSeqOff = await page.evaluate(() =>
+      typeof readingHoveredSeq !== "undefined" ? readingHoveredSeq : null);
+    await rec("6 悬停", hoverSeq !== null && hoverSeqOff === null,
+              `hoveredSeq ${hoverSeq} -> ${hoverSeqOff}; hover 类 ${on.hover}->${off.hover}; linked ${on.linked}->${off.linked}`);
   } catch (error) { await rec("6 悬停", false, String(error).slice(0, 160)); }
 
   // 7) 跟随开关（chip + 菜单里的 toggle 都试）
