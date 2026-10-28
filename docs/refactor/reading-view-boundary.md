@@ -1,8 +1,8 @@
 # 审校页（#view-reading）模块边界 — 权威版
 
 > **本版取代 `5ef9287` 的草案**（草案由 DevLead 主笔启动 Slice 1，权威版归 Architect）。
-> 基线：`refactor/slice1@7c1d00c`（Slice 1 已落地：三栏宽度偏好 + 视图外壳迁入 `static/reading-view.js`）。
-> 复核对象：`backend/book2text/static/app.js` = **21,090 行**；审校区块 = **17,994–21,036 行（3,043 行）**；块内 **119 个顶层函数**、**66 个顶层状态**（62 `let` + 4 `const`）。
+> 基线：`main@5d7e0ef`（Slice 1 已落地：三栏宽度偏好 + 视图外壳迁入 `static/reading-view.js`；R1 已修）。
+> 复核对象：`backend/book2text/static/app.js` = **21,096 行**；审校区块 = **17,994–21,036 行（3,043 行）**；块内 **119 个顶层函数**、**66 个顶层状态**（62 `let` + 4 `const`）。
 > 所有行号按该 commit；变动超过 5 行后重新扫一遍，别按记忆改。
 
 ---
@@ -28,14 +28,14 @@
 ```
 L3 外壳 shell        app.js 剩余部分（boot 装配、showView 路由、尚未迁的 6 个视图）
                       ↓ 只调公开接口
-L2 视图模块          views/*.js —— 每个视图一个文件、一个 window 上的接口对象
+L2 视图模块          static/<name>-view.js —— 每个视图一个文件、一个 window 上的接口对象
                       ↓ 只用注入进来的服务
 L1 域服务            core/*.js —— 无视图状态，有数据归属（项目、页面图、导出正文流、marks 计数）
                       ↓
 L0 平台              core/dom.js（el）、core/api.js（apiJson + token）、浏览器 API
 ```
 
-### 1.2 文件与归属（目标态；Slice 1 只建了 `views/reading-view.js`）
+### 1.2 文件与归属（目标态；Slice 1 已建 `static/reading-view.js`，**保持扁平路径**，不为目录层级再搬一次）
 
 | 文件 | 拥有什么 | 绝不做什么 |
 |---|---|---|
@@ -45,8 +45,8 @@ L0 平台              core/dom.js（el）、core/api.js（apiJson + token）、
 | `static/core/project.js` | `currentProject` 的唯一 owner：`get()`、`set()`、`subscribe()` | 不被视图直接写 |
 | `static/core/pages.js` | 页码 ↔ 页面图 URL / 清晰度档位 / 瓷砖渲染（`pageImageUrl`、`pageProfileFor`、渲染瓷砖、版心框绘制） | 不含"审校"或"页面确认"的业务判断 |
 | `static/core/export.js` | `exportOptions()`、`/export/preview` 的唯一前端调用点、`segments_only` 解析（D-106） | 不渲染任何视图 DOM |
-| `static/views/reading-view.js` | `#view-reading` 整棵 DOM + §3 全部 66 个状态 | 不引用 app.js 任何顶层符号 |
-| `static/views/pages-view.js` … | 各自 `<section id="view-*">` | 同上 |
+| `static/reading-view.js` | `#view-reading` 整棵 DOM + §3 全部 66 个状态 | 不引用 app.js 任何顶层符号 |
+| `static/pages-view.js` … | 各自 `<section id="view-*">` | 同上 |
 | `static/app.js` | `boot()` 装配、`showView()` 路由、视图间跳转 | 不读任何视图的私有状态 |
 
 **为什么 PDF 栏必须下沉到 `core/pages.js`**：审校页 PDF 栏现在直接调 `pageImageUrl`（4 次）、`pageProfileFor`（2）、`renderPageBlocks`（2）、`clearPageBlocks`（2）、`paintTileMargin`（2）、`clearTileMargin`（2）、`clearImagePlaceholder`（4）、`INDEX_IMAGE_WINDOW`（1）、`loadIndexBlocks`（1）——这 9 个是"页面确认"视图的内部函数。不抽出来，审校模块就会永久依赖 `pages-view`，迁移顺序会被锁死成"先 pages 后 reading"，而实际顺序是反的。
@@ -62,8 +62,8 @@ L0 平台              core/dom.js（el）、core/api.js（apiJson + token）、
 | # | 规则 | 判定方式 |
 |---|---|---|
 | **R1** | **视图模块文件内不得出现 `app.js` 的任何顶层声明名**（`function` / `let` / `const` / `var` 在缩进 0 声明的名字）。缺依赖就加到 `init()` 的注入参数里 | 静态扫描，见 §6 |
-| **R2** | 视图模块之间不得互相引用：`views/x.js` 内不得出现 `window.YView`（Y≠X）；需要共享的能力下沉到 `core/` | 静态扫描 `window\.[A-Z]\w*` |
-| **R3** | 视图只许操作自己 `<section id="view-x">` 内的 id：`views/x.js` 里出现的 DOM id 必须能在该 section 的子树里找到 | 解析 `index.html` 的 section 范围 + 扫 `el("…")` 字面量 |
+| **R2** | 视图模块之间不得互相引用：`static/x-view.js` 内不得出现 `window.YView`（Y≠X）；需要共享的能力下沉到 `core/` | 静态扫描 `window\.[A-Z]\w*` |
+| **R3** | 视图只许操作自己 `<section id="view-x">` 内的 id：`static/x-view.js` 里出现的 DOM id 必须能在该 section 的子树里找到 | 解析 `index.html` 的 section 范围 + 扫 `el("…")` 字面量 |
 | **R4** | 共享状态（`currentProject` / `token` / `exportOptions`）只以 **getter** 注入（`getProject: () => …`），模块不许把返回值缓存在模块级变量里；每次用都重新取 | 人眼 + 代码评审（`init` 后不许出现 `injected.project = ` 这类赋值） |
 | **R5** | 每个状态只有一个 owner 模块；其他模块只能通过 owner 的公开方法改。**同层双写一律算错** | 本文件的 §3 表就是 owner 清单；跨文件写同一名字 = 违规 |
 | **R6** | 一个模块文件只向 `window` 挂**一个**接口对象，且必须在 `init()` 之后才可被调用 | 扫 `window.X =` 赋值次数 |
@@ -275,6 +275,8 @@ window.ReadingView = {
 3. 同项目且已加载 → 重绘不重拉；否则拉 `segments_only=1`；
 4. 进入时置 `active = true`，`exit()` 置 `false`——模块内部 8 处 `currentView === "reading"` 判断全部改成本地 `active`。
 
+**过渡期例外（必须有到期点）**：`5d7e0ef` 的接口对象还多挂了 `splitPrefs / applySplit / saveSplit / resetSplit / setupSplit` 五个拆分偏好函数，同时 app.js 留着 5 个转发 stub。这是搬运期的临时态，**到期点 = Slice 2 结束**：届时这 5 个名字必须从 `window.ReadingView` 消失（改成模块内部函数 + 模块自己绑事件），app.js 的 stub 一并删除。到期未清 = R6 违规，Architect 在 Slice 2 验收时检查：`Object.keys(window.ReadingView)` 只允许 `init/enter/exit/getCurrent/reload/toggleFollow/on` 七个。
+
 **`getCurrent()` 只给两个字段**，别加 `done/total/draftCount`：那是"顶部数字"，由 `on('content-changed')` 推给外壳渲染，不需要外壳来拉。外壳拉一次状态，就会有第二个写点。
 
 ---
@@ -285,27 +287,34 @@ window.ReadingView = {
 
 ### 规则
 
-**R1：`views/reading-view.js` 里不得出现 `app.js` 顶层声明过的任何名字。**
+**R1：`static/reading-view.js` 里不得出现 `app.js` 顶层声明过、且该文件自己没有声明的任何名字。**
 
 ### 判定算法（无需加载、无需 jsdom，纯文本）
 
-1. 读 `static/app.js`，取**缩进 0** 的声明名集合 `S`：`^function\s+NAME`、`^async function\s+NAME`、`^(let|const|var)\s+NAME`（多声明按逗号拆）。
-2. 读 `static/views/reading-view.js`，去掉注释与字符串字面量，取标识符集合 `I`。
-3. 断言 `|I ∩ S| == 0`。失败时报：`reading-view.js:行:col 用了 app.js:行 的 <名字>`。
-4. 例外表 `ALLOW` 必须为空。真要临时放行，条目必须写成 `{ name, untilSlice: "S2" }`，**当对应切片落地时这条测试自动失败**（检查 `untilSlice` 是否已过期的办法：在例外表里写上"过期就删"的注释 + 每条例外带一个 git blame 检查不可靠，改为：例外表必须同时列出 `expiryCommit` 之外的 `owner` 字段并由 architect 在切片验收时手删——机械版：例外表超过 3 条即失败）。
+1. 读 `static/app.js`，取顶层声明名集合 `S`：`^function\s+NAME`、`^async function\s+NAME`、`^(let|const|var)\s+NAME`（多声明按逗号拆）。
+2. 读 `static/reading-view.js`，**去掉注释与字符串字面量**（不去会把注释里的名字算成引用），取标识符集合 `I`。
+3. 读同一个文件，取**该文件自己声明过的名字** `L`：任意缩进层级的 `function NAME` / `(let|const|var) NAME`。
+4. 断言 `|I ∩ (S \ L)| == 0`。失败时报：`reading-view.js:行 用了 app.js:行 的 <名字>`。
+5. 例外表 `ALLOW` 必须为空。例外表上限 3 条，超过即失败；每条必须带 `owner` 与"到期切片"注释，由 Architect 在切片验收时手删。
 
-### 当前状态：**要红**（4 个符号 / 3 行）
+**第 3 步不能省（我第一版写错了，TestDev 别照抄）**：不加 `L` 会在当前代码上报 26 条假红——
+`reading-view.js` 自己声明了 `el`，而 `app.js:28` 也有 `const el`；它还自己声明了
+`readingSplitPrefs` / `applyReadingSplit` / `saveReadingSplit` / `setupReadingSplit`，而
+`app.js:20869–20881` 还留着这 4 个转发 stub。这是**同名不同物**，不是依赖。
+正确判据是"这个标识符在模块里有没有自己的绑定"，不是"app.js 有没有同名声明"。
 
-| 位置 | 用的符号 | 该符号在 app.js |
+**这也顺带守住了"真实现份数=1"**：如果哪天有人把实现搬回 app.js、模块只留转发，`L` 里就没有这些名字了，检查会立刻把它们标成依赖——正是我们要它红的时候。
+
+### 红/绿证据（TestDev 的"先在已知坏数据上红过"要求）
+
+| 版本 | 结果 | 明细 |
 |---|---|---|
-| `reading-view.js:157` | `currentView` | 105 |
-| `reading-view.js:158` | `measureReadingTops` | 20312（块内） |
-| `reading-view.js:159` | `readingPageNo` | 18022（块内） |
-| `reading-view.js:159` | `updateReadingPage` | 20411（块内） |
+| `7c1d00c`（Slice 1 原始提交） | **红：5 处 / 4 个符号** | `reading-view.js:147` `currentView`(app.js:105)、`:148` `measureReadingTops`(20312)、`:149` `readingPageNo`(18022) 两次、`:149` `updateReadingPage`(20411) |
+| `5d7e0ef`（修完） | **绿：0** | 4 个名字只剩在注释里，去注释后为 0 |
 
-都在同一个 `resize` 回调里。**这是 Slice 1 里唯一真正的结构问题**：`reading-view.js` 在 app.js **之前**加载（`index.html:1835–1836`），这 4 个符号此刻还不存在，能跑只因为回调在 `boot()` 之后才触发——正是这个仓库一半 bug 的成因（时序靠运气）。
+红的那版里 4 个符号全在同一个 `resize` 回调里。`reading-view.js` 在 app.js **之前**加载（`index.html:1835–1836`），这 4 个符号在加载时并不存在，能跑只因为回调在 `boot()` 之后才触发——正是这个仓库一半 bug 的成因（时序靠运气）。
 
-**修法（3 行，零行为变化）**：`init()` 增加 `onViewportResize: () => void`，`reading-view.js` 里改成：
+**已采用的修法（零行为变化）**：`init()` 增加 `onViewportResize: () => void`，`reading-view.js` 里改成：
 
 ```js
 window.addEventListener("resize", () => {
@@ -314,7 +323,7 @@ window.addEventListener("resize", () => {
 });
 ```
 
-`boot()` 注入：
+`boot()` 注入（`5d7e0ef` 已落地）：
 
 ```js
 onViewportResize: () => {
@@ -328,7 +337,7 @@ Slice 2 把 `readingPageNo` / `measureReadingTops` / `updateReadingPage` 搬进�
 
 ### 为什么先上 R1，不是 R2/R3
 
-- R1 **今天就能变绿**（3 行），且**每次提取新模块都会自动被同一道闸拦住**——它守的是"新模块不许偷看老代码"这个方向，正是 254 个全局长回来的路径。
+- R1 **已绿**（`5d7e0ef`），且**每次提取新模块都会自动被同一道闸拦住**——它守的是"新模块不许偷看老代码"这个方向，正是 254 个全局长回来的路径。
 - R3（DOM 归属）现在有 7 行违规，但它需要解析 `index.html` 的 section 范围，而且 5 个 id 的归属改法要先定 §1.2 的子面板方案，**排给 Slice 2 之后**。
 - R2 依赖第二个视图模块出现才有意义（现在只有一个）。
 
