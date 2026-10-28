@@ -679,6 +679,51 @@ def cmd_queueend(args: argparse.Namespace) -> int:
     return report.finish(report_path)
 
 
+def _smoke_finish(report: Report, report_path: Path, state: dict[str, Any] | None = None) -> int:
+    """smoke 的收尾：控制台零错误 + K1/K2 单列 + 通用 finish。
+
+    "删错声明"这类 bug 不会红在任何断言上，只会让某一步 BLOCK 成"等待超时"；
+    报告里那句超时看不出根因，所以控制台错误必须**单列一行**，不能藏在 BLOCK 原因里。
+    """
+    errors: list[dict[str, Any]] = []
+    read_ok = False
+    if state is None:
+        report.blocked("控制台", "没有 state，读不到控制台错误（不许当成 0）")
+    else:
+        try:
+            errors = _browser.run(state, "error_watch", {"mode": "read"}) or []
+            read_ok = True
+        except Exception as error:  # noqa: BLE001
+            report.blocked("控制台", f"读控制台错误失败：{error}")
+    if read_ok and errors:
+        sample = "；".join(f"[{item.get('kind')}] {str(item.get('msg'))[:120]}" for item in errors[:5])
+        report.fail("控制台", f"控制台错误 {len(errors)} 条（必须 0）", sample)
+    elif read_ok:
+        report.ok("控制台", "控制台错误 0 条", "0")
+    code = report.finish(report_path)
+
+    # K1/K2 单列：42/44 里的 42 不应该被已知偶发项污染
+    failed = [row for row in report.rows if row["status"] != "PASS"]
+    def known_k1(row: dict[str, Any]) -> bool:
+        return "左栏手动滚到第 120 页" in row.get("assertion", "")
+    def known_k2(row: dict[str, Any]) -> bool:
+        return "窗口尺寸变化" in row.get("assertion", "") and "高亮" in row.get("assertion", "")
+    k1 = sum(1 for row in failed if known_k1(row))
+    k2 = sum(1 for row in failed if known_k2(row))
+    rest = [row for row in failed if not known_k1(row) and not known_k2(row)]
+    total = len(report.rows)
+    print()
+    non_k_total = total - k1 - k2
+    non_k_failed = len(rest)
+    print(f"smoke {total - len(failed)}/{total}（K1 {k1} 条、K2 {k2} 条单列；"
+          f"其余 {non_k_total} 条：{non_k_total - non_k_failed} 过 / {non_k_failed} 失败）")
+    print(f"控制台错误 {len(errors)} 条" + ("" if read_ok else "（没读到，见 BLOCK）"))
+    if rest:
+        for row in rest:
+            print(f"  另外失败：{row.get('assertion')} —— {str(row.get('evidence'))[:160]}")
+    return code
+
+
 def cmd_smoke(args: argparse.Namespace) -> int:
     state = _require_state()
     report = Report("七步冒烟")
@@ -689,7 +734,7 @@ def cmd_smoke(args: argparse.Namespace) -> int:
             open_snapshot = _browser.run(state, "prepare")
         except Exception as error:  # noqa: BLE001 - 报告要保留完整原因
             report.blocked("0 打开项目", f"{error}")
-            return report.finish(report_path)
+            return _smoke_finish(report, report_path, state)
 
         # 0 打开项目
         report.ok("0 打开项目", "视口 = 用户机器（1423×900 CSS px，dpr 2）",
@@ -888,7 +933,7 @@ def cmd_smoke(args: argparse.Namespace) -> int:
         finally:
             stored.close()
 
-    return report.finish(report_path)
+    return _smoke_finish(report, report_path, state)
 
 
 def _count_before(text: str, unit: str) -> int:
