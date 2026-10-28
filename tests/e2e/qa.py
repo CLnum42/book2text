@@ -127,7 +127,19 @@ PAGESYNC_PATHS = [
     ("scroll", "左栏手动滚到第 120 页"),
     ("resize", "窗口尺寸变化（拖页列 + 1180px）"),
     ("crosspage", "跨页条目"),
+    ("closepanel", "主动关闭面板后不许自己冒出来"),
 ]
+
+
+def _branch_stats(next_log: list[dict[str, Any]]) -> tuple[dict[str, int], int]:
+    branches: dict[str, int] = {}
+    opened_false = 0
+    for record in next_log or []:
+        branch = str(record.get("branch") or "?")
+        branches[branch] = branches.get(branch, 0) + 1
+        if record.get("panelOpened") is False:
+            opened_false += 1
+    return branches, opened_false
 
 
 def _three_way(snap: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
@@ -150,7 +162,8 @@ def _sync_detail(snap: dict[str, Any]) -> str:
     )
 
 
-def _assert_snapshot(report: Report, step: str, label: str, snap: dict[str, Any]) -> bool:
+def _assert_snapshot(report: Report, step: str, label: str, snap: dict[str, Any],
+                     snap2: dict[str, Any] | None = None) -> bool:
     panel, top, tile = _three_way(snap)
     detail = _sync_detail(snap)
     if not snap.get("panelVisible"):
@@ -168,7 +181,11 @@ def _assert_snapshot(report: Report, step: str, label: str, snap: dict[str, Any]
         report.fail(step, f"三方一致：{label}",
                     f"当前差异项第 {panel} 页 ≠ 顶部第 {top} 页 ≠ 左栏主导第 {tile} 页；{detail}")
     if snap.get("panelVisible"):
-        report.ok(step, f"候选面板可见：{label}", f"panelVisible=true；{detail}")
+        if snap2 is not None and not snap2.get("panelVisible"):
+            report.fail(step, f"候选面板 500ms 后仍在：{label}",
+                        f"出现后又被收掉了；{detail}")
+        else:
+            report.ok(step, f"候选面板可见（500ms 后仍在）：{label}", f"panelVisible=true；{detail}")
     else:
         report.fail(step, f"候选面板可见：{label}", f"panelVisible=false；{detail}")
     highlight = snap.get("highlight") or {}
@@ -194,14 +211,31 @@ def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any
                 failures.append({"index": item.get("index"), "reason": "翻页没有变化（队列可能已空）"})
                 continue
             snap = item.get("snapshot") or {}
+            snap2 = item.get("snapshot2") or {}
             panel, top, tile = _three_way(snap)
             highlight = snap.get("highlight") or {}
-            if not (panel is not None and panel == top == tile and snap.get("panelVisible") and highlight.get("any")):
-                failures.append({"index": item.get("index"), "snapshot": snap})
+            stayed = (not snap2) or snap2.get("panelVisible")
+            if not (panel is not None and panel == top == tile and snap.get("panelVisible")
+                    and highlight.get("any") and stayed):
+                failures.append({
+                    "index": item.get("index"),
+                    "page": snap.get("label"),
+                    "panel": snap.get("panelPage"),
+                    "dominant": snap.get("tileDominant"),
+                    "panelVisible": snap.get("panelVisible"),
+                    "highlight": (snap.get("highlight") or {}).get("any"),
+                    "panelVisibleAfter500ms": snap2.get("panelVisible"),
+                    "branch": (item.get("logEntry") or {}).get("branch"),
+                    "reason": (item.get("logEntry") or {}).get("reason"),
+                    "blocks": (item.get("logEntry") or {}).get("blocks"),
+                })
         total = len([item for item in iterations if not item.get("stopped")])
+        branches, opened_false = _branch_stats(result.get("nextLog") or [])
+        branch_text = "、".join(f"{name} {count}" for name, count in sorted(branches.items())) or "无"
         if total == 20 and not failures:
-            report.ok(step, "连按 20 次：三方一致 + 面板可见 + 当前行高亮",
-                      f"20/20 通过；最后一次：{_sync_detail(result.get('snapshot') or {})}")
+            report.ok(step, "连按 20 次：三方一致 + 面板可见 + 行高亮 + 500ms 后仍在",
+                      f"20/20 通过；branch 分布：{branch_text}；panelOpened=false {opened_false} 条；"
+                      f"最后一次：{_sync_detail(result.get('snapshot') or {})}")
         else:
             brief = [
                 {
@@ -220,6 +254,20 @@ def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any
                         json.dumps(brief, ensure_ascii=False)[:900])
         return
 
+    if result.get("path") == "closepanel":
+        opened = result.get("opened") or {}
+        close_result = result.get("closeResult") or {}
+        after = close_result.get("after") or {}
+        if opened.get("panelVisible") and close_result.get("panelBack") is False:
+            report.ok(step, "主动关闭后不许自己冒出来",
+                      f"关闭前面板可见；滚一下 + 跳页重绘后 panelBack=false；"
+                      f"顶部第 {after.get('label')} 页 / 主导第 {after.get('tileDominant')} 页")
+        else:
+            report.fail(step, "主动关闭后不许自己冒出来",
+                        f"关闭前 panelVisible={opened.get('panelVisible')}；"
+                        f"之后 panelBack={close_result.get('panelBack')}；{_sync_detail(after)}")
+        return
+
     snap = result.get("snapshot") or {}
     if result.get("path") == "open":
         # 打开审校时还没有"当前差异项"，只比两方（顶部 == 左栏）
@@ -230,7 +278,7 @@ def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any
         else:
             report.fail(step, f"打开审校：顶部 == 左栏（无当前项）", detail)
         return
-    _assert_snapshot(report, step, label, snap)
+    _assert_snapshot(report, step, label, snap, result.get("snapshot2"))
     if result.get("path") == "resize":
         before = result.get("before") or {}
         if not before.get("panelVisible"):

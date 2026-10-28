@@ -42,6 +42,10 @@ export async function run(cfg) {
       return await exportStep(page, cfg);
     case "page_sync":
       return await pageSync(page, cfg, args);
+    case "next_probe":
+      return await nextProbe(page);
+    case "next_log":
+      return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
       return await queueEnd(page, cfg);
     case "images":
@@ -516,23 +520,40 @@ async function pageSync(page, cfg, args) {
         )
         .then(() => true)
         .catch(() => false);
+      // fetch / pending-open 分支里，面板可能在 marks/blocks 到达后才补开：
+      // 等它真的出现在 DOM（最多 10 秒），别在"还没开"的那一瞬下结论。
+      if (!changed) {
+        await page
+          .waitForFunction(
+            () => Boolean(document.querySelector("#reading-stream .reading-panel")),
+            undefined,
+            { timeout: 10000 }
+          )
+          .catch(() => {});
+      }
       const snapshot = await pageSyncSnapshot(page);
+      // 通用防"被收掉"：等 500ms 再看一次，出现过的面板必须还在。
+      await page.waitForTimeout(500);
+      const snapshot2 = await pageSyncSnapshot(page);
+      const logEntry = await page.evaluate(() => (window.__b2tNextLog || [])[0] || null);
       const finished = /全部处理完|全部处理完毕|没有未审|都审完/.test(snapshot.labelText + " " + (snapshot.panelText || ""));
       if (finished) {
-        iterations.push({ index: i + 1, stopped: true, finished: true, snapshot });
+        iterations.push({ index: i + 1, stopped: true, finished: true, snapshot, snapshot2 });
         break;
       }
       // 没变化也记一条并继续：可能是一次慢加载，也可能就是"点了没反应"，都要暴露出来
-      iterations.push({ index: i + 1, changed, snapshot });
+      iterations.push({ index: i + 1, changed, snapshot, snapshot2, logEntry });
       previous = await page.evaluate(() => ({
         label: (document.getElementById("reading-page-no") || {}).textContent || "",
         panel: (document.querySelector(".reading-panel__head strong") || {}).textContent || "",
       }));
     }
+    const nextLog = await page.evaluate(() => window.__b2tNextLog || []);
     return {
       path,
       before,
       iterations,
+      nextLog: nextLog.slice(0, 20),
       snapshot: iterations.length ? iterations[iterations.length - 1].snapshot : await pageSyncSnapshot(page),
       screenshot: await screenshot(page, cfg, "pagesync-next20"),
     };
@@ -585,6 +606,40 @@ async function pageSync(page, cfg, args) {
       snapshot: resized,
       restored: true,
       screenshot: await screenshot(page, cfg, "pagesync-resize"),
+    };
+  }
+
+  if (path === "closepanel") {
+    await ensurePanelOpen(page);
+    const opened = await pageSyncSnapshot(page);
+    await page.click("#reading-stream .reading-panel .icon-btn", { label: "关闭候选面板" });
+    await waitFor(
+      page,
+      () => !document.querySelector("#reading-stream .reading-panel"),
+      "面板已关闭",
+      15000
+    );
+    // 滚一下 + 触发一次重绘（跳页会 renderReading reset），面板都不许自己冒回来
+    const box = await page.evaluate(() => {
+      const scroller = document.getElementById("reading-pdf-scroll");
+      const rect = scroller.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    });
+    await page.mouse.move(box.x, box.y, { label: "移到页列上" });
+    await page.mouse.wheel(0, 700, { label: "滚一下" });
+    // 触发一次重绘：切差异筛选会让 renderReading(reset) 重铺正文流（不跳页、不开面板）
+    await page.selectOption("#reading-filter", "unacked");
+    await page.waitForTimeout(300);
+    await page.selectOption("#reading-filter", "all");
+    await page.waitForTimeout(800);
+    const after = await pageSyncSnapshot(page);
+    const panelBack = await page.evaluate(() => Boolean(document.querySelector("#reading-stream .reading-panel")));
+    return {
+      path,
+      before,
+      opened,
+      closeResult: { panelBack, after },
+      screenshot: await screenshot(page, cfg, "pagesync-close"),
     };
   }
 
@@ -1112,6 +1167,32 @@ async function step(page, cfg, which) {
 }
 
 // ---------------------------------------------------------------- 阅读流
+
+async function nextProbe(page) {
+  const rows = [];
+  for (let i = 0; i < 20; i += 1) {
+    await page.click("#reading-next-unreviewed", { label: `下一处未审 ${i + 1}` });
+    await page.waitForTimeout(1000);
+    rows.push(await page.evaluate((index) => {
+      const panel = document.querySelector("#reading-stream .reading-panel");
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const log = (window.__b2tNextLog || [])[0] || {};
+      return {
+        index: index + 1,
+        label,
+        panel: Boolean(panel),
+        branch: log.branch || null,
+        reason: log.reason || null,
+        blocks: log.blocks ?? null,
+        panelOpened: log.panelOpened ?? null,
+        lineFound: log.lineFound ?? null,
+        entryPage: log.entryPage ?? null,
+        inReading: Boolean(document.getElementById("view-reading") && !document.getElementById("view-reading").hidden),
+      };
+    }, i));
+  }
+  return rows;
+}
 
 async function queueEnd(page, cfg) {
   // 队列已清空时不能等左树（没有行）；只确认在阅读视图。
