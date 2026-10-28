@@ -3607,3 +3607,37 @@ Retina 上等于放大 2 倍所以糊，PNG 又让一页到 1.77 MB。
    （实测：居中后右栏被拉回页首）。同类改动一律 `suppressReadingFollow()` 后再滚。
 
 **状态：** 生效（2026-10-28）。
+
+## D-106 | 2026-10-28 | 「正文流」只能有一个定义：`build_segments` + `ExportOptions`；前端不许再自己筛
+
+**背景**：同一个项目、同一时刻，"正文流有多少段"出现了两个数：
+4821 段 / 13405 span / 流外 5 条，与 4577 段 / 12701 span / 流外 22 条。
+两个数都不是量错——**它们量的不是同一个对象**。代码里"正文流"有三处实现：
+服务端 `build_segments`（按 `ExportOptions.excluded_block_types()` 排块）、
+前端 `readingVisibleSegments()`（又排一次空段与脚注段）、
+`next-lines` 用自己的 span 集合判"流内"。任何一处单独改，另两处就变成假数据。
+
+**决定**
+
+1. **唯一入口**：`backend/book2text/core/export/segments.py::build_segments`；
+   "哪个块算正文"只由它和 `ExportOptions.excluded_block_types()`
+   （`backend/book2text/core/export/project.py`）决定。
+2. **唯一调用路径**：`project_export.preview_segments_json`
+   （`backend/book2text/core/export/project.py:692`）。`POST /export/preview?segments_only=1`
+   是这条定义唯一的 HTTP 出口；`POST /review/next-lines` 必须读它返回的同一份
+   segments + 同一套 options，**禁止另建一套 span 集合**。
+3. **前端不许再筛段**：`readingVisibleSegments()` 不得改变段集合
+   （空段 / 脚注 / 页型早已由服务端按 options 排除）；它只允许做渲染需要的取段。
+4. **"流内"只有一个判据**：`segments[].line_spans` 里出现的 `(block_id, line_index)`。
+   `outside_stream` 就是它的补集，不按 `block_type` 猜原因。
+5. 以后任何新功能要问"这算不算正文"，必须调同一个函数。发现第二处自己算，
+   **按 bug 处理**，不是按风格问题。
+
+**代价 / 边界**：阅读流的 options 必须原样传给服务端（`readingOptions()`）；
+用户改导出设置 → 流变 → 未审行表跟着变，这是设计，不是 bug。
+
+**验证**：干净副本上 `len(lines) + outside.count == counts.chars_unacked`
+（`4d50b32`：562 + 5 = 567）。段数再不一致时，第一件事查 options 是否一致、
+有没有第二处自己算集合。证据：`docs/qa/`、`tests/e2e/artifacts/2026-10-28-b2t_ZAQHGH/`。
+
+**状态：** 生效（2026-10-28）。前端筛选的移除另开一轮，见任务 88。
