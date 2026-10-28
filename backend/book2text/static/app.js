@@ -18383,7 +18383,7 @@ function renderReading({ reset = false, startAt = null } = {}) {
   removeReadingSentinel();
   // 任务 84：`reset` 会把面板元素和 `readingPanelKey` 一起清掉。**挂起的"待开面板"
   // 必须跨过重绘**——DOM 重建完之后如果那一行挂上了，就把面板重新开出来。
-  retryReadingPendingPanel();
+  queueReadingIntent("panel", {});
   // 任务 77：**重画之后把悬停状态补回来**。右栏重建（切页补 marks / 滚动补段）会把
   // `is-hover` 一起冲掉，用户看到的是"鼠标还停在块上、右边的绿没了"。
   if (readingHoveredSeq !== null && readingHoveredSeq !== undefined) {
