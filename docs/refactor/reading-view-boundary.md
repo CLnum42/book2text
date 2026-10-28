@@ -757,3 +757,31 @@ Slice 1 实测（2026-10-28）：
 2. 消息发出后，**必须拿到对方的一句回执**（例："L1 表收到，230=178+52"）；没有回执 = 未交接。
 3. 回执里要复述关键数字——复述不了说明没真读。
 4. 已知事故：Builder 的"前置页有差异但不可审"结论一路交接下来，QA 一条实测（流外队列页 = 0）就否了，白改一轮。**传错的结论比多贴一遍表贵得多。**
+
+
+---
+
+## 16. R3（DOM 归属）上闸规格 —— 目标 4/8
+
+**规则**：
+1. **模块文件**（`static/*-view.js`）：出现的每个 DOM id 字面量，必须能在 `<section id="view-<name>">` 的子树里找到。**零豁免。**
+2. **外壳 `app.js`**（过渡期）：不得引用 `#view-reading` 子树里的 id。**豁免表当前 4 行**（badge 写值，到期 = punct 整体搬完）：
+
+| 行 | id | 到期 |
+|---|---|---|
+| 17647 | `reading-garbled-count` | punct 整体搬 |
+| 17651 | `reading-garbled-open` | 同上 |
+| 17753 | `reading-punct-count` | 同上 |
+| 17761 | `reading-punct-open` | 同上 |
+
+**算法**（纯文本，不加载 DOM，~60 行，毫秒级）：
+1. 解析 `index.html`：扫 `<section ... id="view-X" ...>` 到 **同层** `</section>`，按标签深度计数（不能见到第一个 `</section>` 就停——视图里有嵌套）。得到 `sectionIds[X] = {id…}`，以及每个 id 属于哪个视图。
+2. 扫 JS 文件里**字符串字面量**形式的 id：`el("x")`、`getElementById("x")`、`querySelector("#x")`。去注释、去模板串。
+3. 断言：模块文件的 id 集合 ⊆ 自己 section 的 id 集合；`app.js` 的 id 集合 ∩ `sectionIds["reading"]` ⊆ 豁免表。
+4. 豁免表每条必须有 `owner` 与到期切片；**死代码删了，对应豁免同批删**（§2 例外表纪律）。
+
+**红/绿证据**（这条必须先在已知坏数据上红过）：
+- 红：Slice 3（`6a99114`）之前是 7 行 / 5 个 id —— 上面 4 行 + `reading-follow-chip`(9347) + 两个 click 绑定(15947–15948)。
+- 绿：HEAD 上模块文件 0 命中；`app.js` 只剩上面 4 行豁免。
+
+**为什么现在值钱**：Slice 3 已经把 follow chip 和两个 click 绑定收归模块，剩下 4 行是 badge 写值——它们会让 punct 和 reading 各算一份 badge 数据，正是"面板 142 / 顶部 141"的成因。R3 上闸后，任何"顺手在别处写一个 `reading-*` 的 id"都会立刻红。
