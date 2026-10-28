@@ -19061,9 +19061,12 @@ function readingLineNode(key) {
 
 function openReadingPanel(entry) {
   closeReadingPanel();
-  const line = readingLineNode(readingKey(entry.block_id, entry.line_index));
-  if (!line) return;
-  readingPanelKey = readingKey(entry.block_id, entry.line_index);
+  const key = readingKey(entry.block_id, entry.line_index);
+  const line = readingLineNode(key);
+  // 窗口化渲染的竞态：跳转后那一行可能还没挂上 DOM。
+  // 面板本来只需要 `mark`（候选文本）与 `bbox`，**不依赖行节点**——
+  // 行节点只用来定位与样式。所以找不到就降级挂到正文流顶部，绝不让用户"跳过去了但没有面板"。
+  readingPanelKey = key;
   const panel = document.createElement("div");
   panel.className = "reading-panel";
   panel.dataset.key = readingPanelKey;
@@ -19101,7 +19104,17 @@ function openReadingPanel(entry) {
   edit.addEventListener("click", () => startReadingEdit(entry, panel));
   actions.append(adopt, keep, edit);
   panel.append(head, candidate, actions);
-  line.after(panel);
+  if (line) line.after(panel);
+  else {
+    panel.classList.add("reading-panel--floating");
+    const stream = el("reading-stream");
+    if (stream) {
+      if (stream.firstChild) stream.insertBefore(panel, stream.firstChild);
+      else stream.append(panel);
+    } else {
+      return;
+    }
+  }
   refreshReadingCurrentHighlight();
   if (entry.page_no && entry.page_no !== readingPageNo) {
     updateReadingPage(entry.page_no, { scrollLeft: false, syncStream: false });
@@ -20446,7 +20459,12 @@ function gotoReadingEntry(entry) {
   const index = segments.findIndex((segment) => segment.seq === entry.seq);
   if (index >= 0) jumpReadingTo(index);
   const key = readingKey(entry.block_id, entry.line_index);
-  const line = readingLineNode(key);
+  let line = readingLineNode(key);
+  if (!line && index >= 0) {
+    // 目标段不在已挂载的窗口里：按它的下标重铺一次（不固定 sleep，靠渲染完成后再查）
+    renderReading({ reset: true, startAt: Math.max(0, index - 1) });
+    line = readingLineNode(key);
+  }
   if (line) centerReadingLinePair(entry);
   if (!readingDrafts.has(key)) openReadingPanel(entry);
   verifyReadingPageSync("gotoEntry");

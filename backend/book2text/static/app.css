@@ -2631,9 +2631,18 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   background: rgba(220, 38, 38, .07); border-style: dotted;
 }
 /* 当前审校项：和右栏**同色同框型**（琥珀 2px 实线 + 浅底），用户不用做视觉翻译 */
+/* 当前项的**字层**用深红（用户明确要求：浅红=未激活、深红=激活、深绿=已审）。
+   行层用琥珀/深黄，两层颜色拉开，用户分得清"哪是行、哪是字"。 */
 .reading-diff-box.is-current {
-  background: rgba(217, 119, 6, .20); border: 2px solid #d97706; border-style: solid;
-  border-radius: 3px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .55);
+  background: rgba(185, 28, 28, .34); border: 1px solid rgba(153, 27, 27, .85);
+  border-style: solid; border-radius: 2px; box-shadow: none;
+}
+.reading-diff-box--line.is-current {
+  background: rgba(234, 179, 8, .26); border: 2px solid #b45309; border-style: solid;
+}
+.reading-panel--floating {
+  margin: 0 0 14px; position: sticky; top: 0; z-index: 6;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .12);
 }
 /* 已审：淡绿 */
 .reading-diff-box.is-acked {
