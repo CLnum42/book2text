@@ -18490,6 +18490,9 @@ function renderReading({ reset = false, startAt = null } = {}) {
   stream.append(fragment);
   readingRendered = end;
   removeReadingSentinel();
+  // 任务 84：`reset` 会把面板元素和 `readingPanelKey` 一起清掉。**挂起的"待开面板"
+  // 必须跨过重绘**——DOM 重建完之后如果那一行挂上了，就把面板重新开出来。
+  retryReadingPendingPanel();
   // 任务 77：**重画之后把悬停状态补回来**。右栏重建（切页补 marks / 滚动补段）会把
   // `is-hover` 一起冲掉，用户看到的是"鼠标还停在块上、右边的绿没了"。
   if (readingHoveredSeq !== null && readingHoveredSeq !== undefined) {
@@ -19133,6 +19136,9 @@ function openReadingPanel(entry) {
 }
 
 function closeReadingPanel() {
+  // 用户主动关 = 真的关；重绘导致的移除走 renderReading，不清 pending
+  readingPendingPanelKey = null;
+  readingPendingPanelEntry = null;
   const stream = el("reading-stream");
   if (!stream) return;
   for (const node of stream.querySelectorAll(".reading-panel")) node.remove();
@@ -20506,6 +20512,8 @@ function gotoReadingEntry(entry) {
   // **先驱动"我在第几页"**：顶部页码 + 左侧 PDF + 左树高亮。
   // 原来这里先找行、找不到就 `return`，于是页码和左侧 PDF 根本没动——
   // 用户看到的是"面板第 13 页、顶部第 28 页、左边第 28 页"（现场就是这么来的）。
+  readingPendingPanelKey = readingKey(entry.block_id, entry.line_index);
+  readingPendingPanelEntry = entry;      // 跨 reset 存活：重绘后由 retryReadingPendingPanel 补开
   updateReadingPage(entry.page_no, { syncStream: false, scrollLeft: false });
   suppressReadingFollow();
   scrollPdfColumnToPage(entry.page_no);
@@ -20521,6 +20529,10 @@ function gotoReadingEntry(entry) {
   }
   if (line) centerReadingLinePair(entry);
   if (!readingDrafts.has(key)) openReadingPanel(entry);
+  if (document.querySelector("#reading-stream .reading-panel")) {
+    readingPendingPanelKey = null;
+    readingPendingPanelEntry = null;
+  }
   // 偶发"跳到了但没有面板/没有当前项"（QA 2/20）：面板没建起来就再开一次，
   // 并把原因记进 __b2tNextLog。第二次仍失败也记下来，不静默。
   if (!document.querySelector("#reading-stream .reading-panel")) {
