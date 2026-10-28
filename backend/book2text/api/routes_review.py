@@ -17,7 +17,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Body, Request
 from pydantic import BaseModel, Field
 
 from ..core.project import auto_apply as auto_apply_module
@@ -372,7 +372,9 @@ class PunctGroupDecideRequest(BaseModel):
 
 
 @router.post("/{project_id}/review/next-lines")
-def review_next_lines(request: Request, project_id: str, body: Any = None) -> dict[str, Any]:
+def review_next_lines(
+    request: Request, project_id: str, raw_body: dict | None = Body(default=None)
+) -> dict[str, Any]:
     """「下一处未审」的唯一数据源：**正文流顺序**的未审行表 + 流外差异计数。
 
     为什么不用页级计数找：`page_counts` 是队列口径（按页），而阅读流里的行
@@ -388,8 +390,9 @@ def review_next_lines(request: Request, project_id: str, body: Any = None) -> di
     from ..core.export import project as project_export
     from ..core.project import reading_marks as marks_module
 
-    if not isinstance(body, _ExportRequest):
-        body = _ExportRequest()
+    # FastAPI 不把 `Any` 当 body 参数：`body: Any = None` 永远是 None，
+    # 接口会静默用默认 options，和 export/preview 的口径分叉。必须用 Body 收 raw dict。
+    body = _ExportRequest(**(raw_body or {}))
     library = _library(request)
     _require_main(request, project_id)
     try:
@@ -450,6 +453,12 @@ def review_next_lines(request: Request, project_id: str, body: Any = None) -> di
             "sample": outside[:5],
         },
         "chars_unacked": int(counts.get("chars_unacked") or 0),
+        "options_echo": {
+            "page_types": list(getattr(body.options(), "page_types", ()) or ()),
+            "include_footnotes": bool(getattr(body.options(), "include_footnotes", False)),
+            "include_captions": bool(getattr(body.options(), "include_captions", True)),
+            "include_notes": bool(getattr(body.options(), "include_notes", False)),
+        },
     }
 
 
