@@ -1,0 +1,5191 @@
+{
+  "path": "next20",
+  "before": {
+    "label": 228,
+    "labelText": "第 228 页",
+    "anchorPage": 228,
+    "anchorKey": "01M60B40YPNCGEH0Z0PEGRV04T:3",
+    "panelLineIn": false,
+    "settleKey": null,
+    "userSeq": 0,
+    "programSeq": 0,
+    "pin": {
+      "held": 135,
+      "escape": 0
+    },
+    "panelPage": 228,
+    "panelText": "第 228 页 · 第 1 行第二路：",
+    "tilePage": 228,
+    "tileCenter": 228,
+    "tileDominant": 228,
+    "visibleTiles": [
+      {
+        "page": 227,
+        "top": -459,
+        "height": 497,
+        "overlap": 38
+      },
+      {
+        "page": 228,
+        "top": 50,
+        "height": 497,
+        "overlap": 497
+      },
+      {
+        "page": 229,
+        "top": 559,
+        "height": 497,
+        "overlap": 249
+      }
+    ],
+    "scrollTop": 115489,
+    "viewport": "1423x900",
+    "panelVisible": true,
+    "highlight": {
+      "lineCurrent": 1,
+      "markCurrent": 0,
+      "pdfBoxes": 0,
+      "diffBoxes": 0,
+      "any": true
+    },
+    "sync": {
+      "reason": "leftScroll",
+      "label": 228,
+      "tilePage": 228,
+      "panelPage": null,
+      "ok": true,
+      "scrollTop": 115489,
+      "at": 1793192370478
+    },
+    "syncLog": [
+      {
+        "reason": "leftScroll",
+        "label": 228,
+        "tilePage": 228,
+        "panelPage": null,
+        "ok": true,
+        "scrollTop": 115489,
+        "at": 1793192370478
+      },
+      {
+        "reason": "centerLine",
+        "label": 228,
+        "tilePage": 228,
+        "panelPage": null,
+        "ok": true,
+        "scrollTop": 115466,
+        "at": 1793192366897
+      },
+      {
+        "reason": "leftScroll",
+        "label": 228,
+        "tilePage": 228,
+        "panelPage": null,
+        "ok": true,
+        "scrollTop": 115466,
+        "at": 1793192364657
+      },
+      {
+        "reason": "centerLine",
+        "label": 227,
+        "tilePage": 227,
+        "panelPage": null,
+        "ok": true,
+        "scrollTop": 114732,
+        "at": 1793192360419
+      },
+      {
+        "reason": "leftScroll",
+        "label": 227,
+        "tilePage": 227,
+        "panelPage": null,
+        "ok": true,
+        "scrollTop": 114732,
+        "at": 1793192358537
+      }
+    ]
+  },
+  "iterations": [
+    {
+      "index": 1,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 229,
+        "labelText": "第 229 页",
+        "anchorPage": 229,
+        "anchorKey": "01M60B43D0ADGYP98RXV0TSR7N:2",
+        "panelLineIn": true,
+        "settleKey": "01M60B43D0ADGYP98RXV0TSR7T:0",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 135,
+          "escape": 0
+        },
+        "panelPage": 229,
+        "panelText": "第 229 页 · 第 1 行第二路：",
+        "tilePage": 228,
+        "tileCenter": 229,
+        "tileDominant": 229,
+        "visibleTiles": [
+          {
+            "page": 228,
+            "top": -230,
+            "height": 497,
+            "overlap": 267
+          },
+          {
+            "page": 229,
+            "top": 279,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 230,
+            "top": 788,
+            "height": 497,
+            "overlap": 20
+          }
+        ],
+        "scrollTop": 115769,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "gotoEntry",
+          "label": 229,
+          "tilePage": 229,
+          "panelPage": 229,
+          "ok": true,
+          "scrollTop": 115769,
+          "at": 1793192371583
+        },
+        "syncLog": [
+          {
+            "reason": "gotoEntry",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192371583
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": 228,
+            "ok": true,
+            "scrollTop": 115481,
+            "at": 1793192371385
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 115489,
+            "at": 1793192370478
+          },
+          {
+            "reason": "centerLine",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 115466,
+            "at": 1793192366897
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 115466,
+            "at": 1793192364657
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 229,
+        "labelText": "第 229 页",
+        "anchorPage": 229,
+        "anchorKey": "01M60B43D0ADGYP98RXV0TSR7N:2",
+        "panelLineIn": true,
+        "settleKey": "01M60B43D0ADGYP98RXV0TSR7T:0",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 135,
+          "escape": 0
+        },
+        "panelPage": 229,
+        "panelText": "第 229 页 · 第 1 行第二路：",
+        "tilePage": 228,
+        "tileCenter": 229,
+        "tileDominant": 229,
+        "visibleTiles": [
+          {
+            "page": 228,
+            "top": -230,
+            "height": 497,
+            "overlap": 267
+          },
+          {
+            "page": 229,
+            "top": 279,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 230,
+            "top": 788,
+            "height": 497,
+            "overlap": 20
+          }
+        ],
+        "scrollTop": 115769,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "gotoEntry",
+          "label": 229,
+          "tilePage": 229,
+          "panelPage": 229,
+          "ok": true,
+          "scrollTop": 115769,
+          "at": 1793192371583
+        },
+        "syncLog": [
+          {
+            "reason": "gotoEntry",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192371583
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": 228,
+            "ok": true,
+            "scrollTop": 115481,
+            "at": 1793192371385
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 115489,
+            "at": 1793192370478
+          },
+          {
+            "reason": "centerLine",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 115466,
+            "at": 1793192366897
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 115466,
+            "at": 1793192364657
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192371450,
+        "entryKey": "01M60B43D0ADGYP98RXV0TSR7T:0",
+        "entryPage": 229,
+        "pageNo": 229,
+        "panelKey": "01M60B43D0ADGYP98RXV0TSR7T:0",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 218,
+          "page_to": 238
+        },
+        "blocks": 3,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B43D0ADGYP98RXV0TSR7T:0",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 2,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 234,
+        "labelText": "第 234 页",
+        "anchorPage": 234,
+        "anchorKey": "01M60B4RYKS05EPWAFGABHBQ9Y:1",
+        "panelLineIn": true,
+        "settleKey": "01M60B4RYKS05EPWAFGABHBQA1:0",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 136,
+          "escape": 0
+        },
+        "panelPage": 234,
+        "panelText": "第 234 页 · 第 1 行第二路：",
+        "tilePage": 234,
+        "tileCenter": 234,
+        "tileDominant": 234,
+        "visibleTiles": [
+          {
+            "page": 233,
+            "top": -336,
+            "height": 497,
+            "overlap": 160
+          },
+          {
+            "page": 234,
+            "top": 172,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 235,
+            "top": 681,
+            "height": 497,
+            "overlap": 127
+          }
+        ],
+        "scrollTop": 118420,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 16,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "gotoEntry",
+          "label": 234,
+          "tilePage": 234,
+          "panelPage": 234,
+          "ok": true,
+          "scrollTop": 118420,
+          "at": 1793192373623
+        },
+        "syncLog": [
+          {
+            "reason": "gotoEntry",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192373623
+          },
+          {
+            "reason": "leftScroll",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192372435
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192371583
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": 228,
+            "ok": true,
+            "scrollTop": 115481,
+            "at": 1793192371385
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 115489,
+            "at": 1793192370478
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 234,
+        "labelText": "第 234 页",
+        "anchorPage": 234,
+        "anchorKey": "01M60B4RYKS05EPWAFGABHBQ9Y:1",
+        "panelLineIn": true,
+        "settleKey": "01M60B4RYKS05EPWAFGABHBQA1:0",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 136,
+          "escape": 0
+        },
+        "panelPage": 234,
+        "panelText": "第 234 页 · 第 1 行第二路：",
+        "tilePage": 234,
+        "tileCenter": 234,
+        "tileDominant": 234,
+        "visibleTiles": [
+          {
+            "page": 233,
+            "top": -336,
+            "height": 497,
+            "overlap": 160
+          },
+          {
+            "page": 234,
+            "top": 172,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 235,
+            "top": 681,
+            "height": 497,
+            "overlap": 127
+          }
+        ],
+        "scrollTop": 118420,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 16,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "gotoEntry",
+          "label": 234,
+          "tilePage": 234,
+          "panelPage": 234,
+          "ok": true,
+          "scrollTop": 118420,
+          "at": 1793192373623
+        },
+        "syncLog": [
+          {
+            "reason": "gotoEntry",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192373623
+          },
+          {
+            "reason": "leftScroll",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192372435
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192371583
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": 228,
+            "ok": true,
+            "scrollTop": 115481,
+            "at": 1793192371385
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 115489,
+            "at": 1793192370478
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192373492,
+        "entryKey": "01M60B4RYKS05EPWAFGABHBQA1:0",
+        "entryPage": 234,
+        "pageNo": 234,
+        "panelKey": "01M60B4RYKS05EPWAFGABHBQA1:0",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 218,
+          "page_to": 238
+        },
+        "blocks": 0,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B4RYKS05EPWAFGABHBQA1:0",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 3,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 238,
+        "labelText": "第 238 页",
+        "anchorPage": 238,
+        "anchorKey": "01M60B5BHA0ADP7XKA55VJGVKP:0",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 139,
+          "escape": 0
+        },
+        "panelPage": 238,
+        "panelText": "第 238 页 · 第 1 行第二路：",
+        "tilePage": 238,
+        "tileCenter": 238,
+        "tileDominant": 238,
+        "visibleTiles": [
+          {
+            "page": 237,
+            "top": -328,
+            "height": 497,
+            "overlap": 169
+          },
+          {
+            "page": 238,
+            "top": 181,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 239,
+            "top": 690,
+            "height": 497,
+            "overlap": 118
+          }
+        ],
+        "scrollTop": 120447,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 234,
+          "tilePage": 234,
+          "panelPage": 234,
+          "ok": true,
+          "scrollTop": 118420,
+          "at": 1793192374544
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192374544
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192373623
+          },
+          {
+            "reason": "leftScroll",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192372435
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192371583
+          },
+          {
+            "reason": "leftScroll",
+            "label": 228,
+            "tilePage": 228,
+            "panelPage": 228,
+            "ok": true,
+            "scrollTop": 115481,
+            "at": 1793192371385
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 238,
+        "labelText": "第 238 页",
+        "anchorPage": 238,
+        "anchorKey": "01M60B5BHA0ADP7XKA55VJGVKP:0",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 139,
+          "escape": 0
+        },
+        "panelPage": 238,
+        "panelText": "第 238 页 · 第 1 行第二路：",
+        "tilePage": 238,
+        "tileCenter": 238,
+        "tileDominant": 238,
+        "visibleTiles": [
+          {
+            "page": 237,
+            "top": -328,
+            "height": 497,
+            "overlap": 169
+          },
+          {
+            "page": 238,
+            "top": 181,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 239,
+            "top": 690,
+            "height": 497,
+            "overlap": 118
+          }
+        ],
+        "scrollTop": 120447,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "centerLine",
+          "label": 238,
+          "tilePage": 238,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 120447,
+          "at": 1793192376339
+        },
+        "syncLog": [
+          {
+            "reason": "centerLine",
+            "label": 238,
+            "tilePage": 238,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 120447,
+            "at": 1793192376339
+          },
+          {
+            "reason": "leftScroll",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192374544
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192373623
+          },
+          {
+            "reason": "leftScroll",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192372435
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192371583
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192375520,
+        "entryKey": "01M60B5BHA0ADP7XKA55VJGVKS:0",
+        "entryPage": 238,
+        "pageNo": 238,
+        "panelKey": "01M60B5BHA0ADP7XKA55VJGVKS:0",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 218,
+          "page_to": 238
+        },
+        "blocks": 0,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B5BHA0ADP7XKA55VJGVKS:0",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 4,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 245,
+        "labelText": "第 245 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCVVSZQER654WQVCREE:0",
+        "panelLineIn": false,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 140,
+          "escape": 0
+        },
+        "panelPage": 245,
+        "panelText": "第 245 页 · 第 3 行第二路：",
+        "tilePage": 244,
+        "tileCenter": 245,
+        "tileDominant": 245,
+        "visibleTiles": [
+          {
+            "page": 244,
+            "top": -291,
+            "height": 497,
+            "overlap": 206
+          },
+          {
+            "page": 245,
+            "top": 218,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 246,
+            "top": 727,
+            "height": 497,
+            "overlap": 81
+          }
+        ],
+        "scrollTop": 123973,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 245,
+          "tilePage": 245,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 123973,
+          "at": 1793192382323
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192382323
+          },
+          {
+            "reason": "centerLine",
+            "label": 238,
+            "tilePage": 238,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 120447,
+            "at": 1793192376339
+          },
+          {
+            "reason": "leftScroll",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192374544
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192373623
+          },
+          {
+            "reason": "leftScroll",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192372435
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 245,
+        "labelText": "第 245 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCVVSZQER654WQVCREE:0",
+        "panelLineIn": false,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 140,
+          "escape": 0
+        },
+        "panelPage": 245,
+        "panelText": "第 245 页 · 第 3 行第二路：",
+        "tilePage": 244,
+        "tileCenter": 245,
+        "tileDominant": 245,
+        "visibleTiles": [
+          {
+            "page": 244,
+            "top": -291,
+            "height": 497,
+            "overlap": 206
+          },
+          {
+            "page": 245,
+            "top": 218,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 246,
+            "top": 727,
+            "height": 497,
+            "overlap": 81
+          }
+        ],
+        "scrollTop": 123973,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 245,
+          "tilePage": 245,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 123973,
+          "at": 1793192382323
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192382323
+          },
+          {
+            "reason": "centerLine",
+            "label": 238,
+            "tilePage": 238,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 120447,
+            "at": 1793192376339
+          },
+          {
+            "reason": "leftScroll",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192374544
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192373623
+          },
+          {
+            "reason": "leftScroll",
+            "label": 229,
+            "tilePage": 229,
+            "panelPage": 229,
+            "ok": true,
+            "scrollTop": 115769,
+            "at": 1793192372435
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192381919,
+        "entryKey": "01M60B5TRKW8E8QKWM92M7DSPE:2",
+        "entryPage": 245,
+        "pageNo": 245,
+        "panelKey": "01M60B5TRKW8E8QKWM92M7DSPE:2",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 235,
+          "page_to": 255
+        },
+        "blocks": 0,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B5TRKW8E8QKWM92M7DSPE:2",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 5,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 249,
+        "labelText": "第 249 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCTY9T6D986R8XMC3ZW:0",
+        "panelLineIn": false,
+        "settleKey": "01M60B63YRKASWFWZBS97PE065:1",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 141,
+          "escape": 0
+        },
+        "panelPage": 249,
+        "panelText": "第 249 页 · 第 2 行第二路：",
+        "tilePage": 248,
+        "tileCenter": 249,
+        "tileDominant": 249,
+        "visibleTiles": [
+          {
+            "page": 248,
+            "top": -262,
+            "height": 497,
+            "overlap": 235
+          },
+          {
+            "page": 249,
+            "top": 247,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 250,
+            "top": 755,
+            "height": 497,
+            "overlap": 53
+          }
+        ],
+        "scrollTop": 125980,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "centerLine",
+          "label": 245,
+          "tilePage": 245,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 123973,
+          "at": 1793192384793
+        },
+        "syncLog": [
+          {
+            "reason": "centerLine",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192384793
+          },
+          {
+            "reason": "leftScroll",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192382323
+          },
+          {
+            "reason": "centerLine",
+            "label": 238,
+            "tilePage": 238,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 120447,
+            "at": 1793192376339
+          },
+          {
+            "reason": "leftScroll",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192374544
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192373623
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 249,
+        "labelText": "第 249 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCTY9T6D986R8XMC3ZW:0",
+        "panelLineIn": false,
+        "settleKey": "01M60B63YRKASWFWZBS97PE065:1",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 142,
+          "escape": 0
+        },
+        "panelPage": 249,
+        "panelText": "第 249 页 · 第 2 行第二路：",
+        "tilePage": 248,
+        "tileCenter": 249,
+        "tileDominant": 249,
+        "visibleTiles": [
+          {
+            "page": 248,
+            "top": -262,
+            "height": 497,
+            "overlap": 235
+          },
+          {
+            "page": 249,
+            "top": 247,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 250,
+            "top": 755,
+            "height": 497,
+            "overlap": 53
+          }
+        ],
+        "scrollTop": 125980,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "gotoEntry",
+          "label": 249,
+          "tilePage": 249,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 125980,
+          "at": 1793192389065
+        },
+        "syncLog": [
+          {
+            "reason": "gotoEntry",
+            "label": 249,
+            "tilePage": 249,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 125980,
+            "at": 1793192389065
+          },
+          {
+            "reason": "centerLine",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192384793
+          },
+          {
+            "reason": "leftScroll",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192382323
+          },
+          {
+            "reason": "centerLine",
+            "label": 238,
+            "tilePage": 238,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 120447,
+            "at": 1793192376339
+          },
+          {
+            "reason": "leftScroll",
+            "label": 234,
+            "tilePage": 234,
+            "panelPage": 234,
+            "ok": true,
+            "scrollTop": 118420,
+            "at": 1793192374544
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192388715,
+        "entryKey": "01M60B63YRKASWFWZBS97PE065:1",
+        "entryPage": 249,
+        "pageNo": 249,
+        "panelKey": "01M60B63YRKASWFWZBS97PE065:1",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 239,
+          "page_to": 259
+        },
+        "blocks": 0,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B63YRKASWFWZBS97PE065:1",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 6,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 251,
+        "labelText": "第 251 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCVVSZQER654WQVCREG:2",
+        "panelLineIn": false,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 143,
+          "escape": 0
+        },
+        "panelPage": 251,
+        "panelText": "第 251 页 · 第 5 行第二路：",
+        "tilePage": 250,
+        "tileCenter": 251,
+        "tileDominant": 251,
+        "visibleTiles": [
+          {
+            "page": 250,
+            "top": -219,
+            "height": 497,
+            "overlap": 278
+          },
+          {
+            "page": 251,
+            "top": 290,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 252,
+            "top": 799,
+            "height": 497,
+            "overlap": 9
+          }
+        ],
+        "scrollTop": 126955,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 249,
+          "tilePage": 249,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 125980,
+          "at": 1793192390022
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 249,
+            "tilePage": 249,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 125980,
+            "at": 1793192390022
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 249,
+            "tilePage": 249,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 125980,
+            "at": 1793192389065
+          },
+          {
+            "reason": "centerLine",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192384793
+          },
+          {
+            "reason": "leftScroll",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192382323
+          },
+          {
+            "reason": "centerLine",
+            "label": 238,
+            "tilePage": 238,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 120447,
+            "at": 1793192376339
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 251,
+        "labelText": "第 251 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCVVSZQER654WQVCREG:2",
+        "panelLineIn": false,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 143,
+          "escape": 0
+        },
+        "panelPage": 251,
+        "panelText": "第 251 页 · 第 5 行第二路：",
+        "tilePage": 250,
+        "tileCenter": 251,
+        "tileDominant": 251,
+        "visibleTiles": [
+          {
+            "page": 250,
+            "top": -219,
+            "height": 497,
+            "overlap": 278
+          },
+          {
+            "page": 251,
+            "top": 290,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 252,
+            "top": 799,
+            "height": 497,
+            "overlap": 9
+          }
+        ],
+        "scrollTop": 126955,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 251,
+          "tilePage": 251,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 126955,
+          "at": 1793192395124
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 251,
+            "tilePage": 251,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 126955,
+            "at": 1793192395124
+          },
+          {
+            "reason": "leftScroll",
+            "label": 249,
+            "tilePage": 249,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 125980,
+            "at": 1793192390022
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 249,
+            "tilePage": 249,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 125980,
+            "at": 1793192389065
+          },
+          {
+            "reason": "centerLine",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192384793
+          },
+          {
+            "reason": "leftScroll",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192382323
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192394684,
+        "entryKey": "01M60B68MNPSG9ZE7S17YA8CBS:4",
+        "entryPage": 251,
+        "pageNo": 251,
+        "panelKey": "01M60B68MNPSG9ZE7S17YA8CBS:4",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 241,
+          "page_to": 261
+        },
+        "blocks": 6,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B68MNPSG9ZE7S17YA8CBS:4",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 7,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 260,
+        "labelText": "第 260 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCVVSZQER654WQVCREA:0",
+        "panelLineIn": false,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 145,
+          "escape": 0
+        },
+        "panelPage": 260,
+        "panelText": "第 260 页 · 第 2 行第二路：",
+        "tilePage": 260,
+        "tileCenter": 260,
+        "tileDominant": 260,
+        "visibleTiles": [
+          {
+            "page": 259,
+            "top": -328,
+            "height": 497,
+            "overlap": 169
+          },
+          {
+            "page": 260,
+            "top": 181,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 261,
+            "top": 690,
+            "height": 497,
+            "overlap": 118
+          }
+        ],
+        "scrollTop": 131644,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "centerLine",
+          "label": 251,
+          "tilePage": 251,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 126955,
+          "at": 1793192397675
+        },
+        "syncLog": [
+          {
+            "reason": "centerLine",
+            "label": 251,
+            "tilePage": 251,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 126955,
+            "at": 1793192397675
+          },
+          {
+            "reason": "leftScroll",
+            "label": 251,
+            "tilePage": 251,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 126955,
+            "at": 1793192395124
+          },
+          {
+            "reason": "leftScroll",
+            "label": 249,
+            "tilePage": 249,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 125980,
+            "at": 1793192390022
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 249,
+            "tilePage": 249,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 125980,
+            "at": 1793192389065
+          },
+          {
+            "reason": "centerLine",
+            "label": 245,
+            "tilePage": 245,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 123973,
+            "at": 1793192384793
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 260,
+        "labelText": "第 260 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCVVSZQER654WQVCREA:0",
+        "panelLineIn": false,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 145,
+          "escape": 0
+        },
+        "panelPage": 260,
+        "panelText": "第 260 页 · 第 2 行第二路：",
+        "tilePage": 260,
+        "tileCenter": 260,
+        "tileDominant": 260,
+        "visibleTiles": [
+          {
+            "page": 259,
+            "top": -328,
+            "height": 497,
+            "overlap": 169
+          },
+          {
+            "page": 260,
+            "top": 181,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 261,
+            "top": 690,
+            "height": 497,
+            "overlap": 118
+          }
+        ],
+        "scrollTop": 131644,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 260,
+          "tilePage": 260,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 131644,
+          "at": 1793192401662
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 260,
+            "tilePage": 260,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 131644,
+            "at": 1793192401662
+          },
+          {
+            "reason": "centerLine",
+            "label": 251,
+            "tilePage": 251,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 126955,
+            "at": 1793192397675
+          },
+          {
+            "reason": "leftScroll",
+            "label": 251,
+            "tilePage": 251,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 126955,
+            "at": 1793192395124
+          },
+          {
+            "reason": "leftScroll",
+            "label": 249,
+            "tilePage": 249,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 125980,
+            "at": 1793192390022
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 249,
+            "tilePage": 249,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 125980,
+            "at": 1793192389065
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192401111,
+        "entryKey": "01M60B6WXBRCF4QEV2H9WRWY40:1",
+        "entryPage": 260,
+        "pageNo": 260,
+        "panelKey": "01M60B6WXBRCF4QEV2H9WRWY40:1",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 250,
+          "page_to": 270
+        },
+        "blocks": 0,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B6WXBRCF4QEV2H9WRWY40:1",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 8,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 263,
+        "labelText": "第 263 页",
+        "anchorPage": 263,
+        "anchorKey": "01M60B73HFEZ7A7HSF1WE3XMZH:0",
+        "panelLineIn": true,
+        "settleKey": "01M60B73HFEZ7A7HSF1WE3XMZQ:0",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 146,
+          "escape": 0
+        },
+        "panelPage": 263,
+        "panelText": "第 263 页 · 第 1 行第二路：",
+        "tilePage": 262,
+        "tileCenter": 263,
+        "tileDominant": 263,
+        "visibleTiles": [
+          {
+            "page": 262,
+            "top": -275,
+            "height": 497,
+            "overlap": 222
+          },
+          {
+            "page": 263,
+            "top": 234,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 264,
+            "top": 743,
+            "height": 497,
+            "overlap": 65
+          }
+        ],
+        "scrollTop": 133118,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "centerLine",
+          "label": 260,
+          "tilePage": 260,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 131644,
+          "at": 1793192403930
+        },
+        "syncLog": [
+          {
+            "reason": "centerLine",
+            "label": 260,
+            "tilePage": 260,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 131644,
+            "at": 1793192403930
+          },
+          {
+            "reason": "leftScroll",
+            "label": 260,
+            "tilePage": 260,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 131644,
+            "at": 1793192401662
+          },
+          {
+            "reason": "centerLine",
+            "label": 251,
+            "tilePage": 251,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 126955,
+            "at": 1793192397675
+          },
+          {
+            "reason": "leftScroll",
+            "label": 251,
+            "tilePage": 251,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 126955,
+            "at": 1793192395124
+          },
+          {
+            "reason": "leftScroll",
+            "label": 249,
+            "tilePage": 249,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 125980,
+            "at": 1793192390022
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 263,
+        "labelText": "第 263 页",
+        "anchorPage": 263,
+        "anchorKey": "01M60B73HFEZ7A7HSF1WE3XMZH:0",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 147,
+          "escape": 0
+        },
+        "panelPage": 263,
+        "panelText": "第 263 页 · 第 1 行第二路：",
+        "tilePage": 262,
+        "tileCenter": 263,
+        "tileDominant": 263,
+        "visibleTiles": [
+          {
+            "page": 262,
+            "top": -275,
+            "height": 497,
+            "overlap": 222
+          },
+          {
+            "page": 263,
+            "top": 234,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 264,
+            "top": 743,
+            "height": 497,
+            "overlap": 65
+          }
+        ],
+        "scrollTop": 133118,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 263,
+          "tilePage": 263,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 133118,
+          "at": 1793192409271
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192409271
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192408219
+          },
+          {
+            "reason": "centerLine",
+            "label": 260,
+            "tilePage": 260,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 131644,
+            "at": 1793192403930
+          },
+          {
+            "reason": "leftScroll",
+            "label": 260,
+            "tilePage": 260,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 131644,
+            "at": 1793192401662
+          },
+          {
+            "reason": "centerLine",
+            "label": 251,
+            "tilePage": 251,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 126955,
+            "at": 1793192397675
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192407839,
+        "entryKey": "01M60B73HFEZ7A7HSF1WE3XMZQ:0",
+        "entryPage": 263,
+        "pageNo": 263,
+        "panelKey": "01M60B73HFEZ7A7HSF1WE3XMZQ:0",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 253,
+          "page_to": 273
+        },
+        "blocks": 11,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B73HFEZ7A7HSF1WE3XMZQ:0",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 9,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 263,
+        "labelText": "第 263 页",
+        "anchorPage": 263,
+        "anchorKey": "01M60B73HFEZ7A7HSF1WE3XMZV:0",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 149,
+          "escape": 0
+        },
+        "panelPage": 263,
+        "panelText": "第 263 页 · 第 3 行第二路：",
+        "tilePage": 263,
+        "tileCenter": 263,
+        "tileDominant": 263,
+        "visibleTiles": [
+          {
+            "page": 262,
+            "top": -338,
+            "height": 497,
+            "overlap": 159
+          },
+          {
+            "page": 263,
+            "top": 171,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 264,
+            "top": 680,
+            "height": 497,
+            "overlap": 128
+          }
+        ],
+        "scrollTop": 133181,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 263,
+          "tilePage": 263,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 133181,
+          "at": 1793192414673
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133181,
+            "at": 1793192414673
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192411797
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192409271
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192408219
+          },
+          {
+            "reason": "centerLine",
+            "label": 260,
+            "tilePage": 260,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 131644,
+            "at": 1793192403930
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 263,
+        "labelText": "第 263 页",
+        "anchorPage": 263,
+        "anchorKey": "01M60B73HFEZ7A7HSF1WE3XMZV:0",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 149,
+          "escape": 0
+        },
+        "panelPage": 263,
+        "panelText": "第 263 页 · 第 3 行第二路：",
+        "tilePage": 263,
+        "tileCenter": 263,
+        "tileDominant": 263,
+        "visibleTiles": [
+          {
+            "page": 262,
+            "top": -338,
+            "height": 497,
+            "overlap": 159
+          },
+          {
+            "page": 263,
+            "top": 171,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 264,
+            "top": 680,
+            "height": 497,
+            "overlap": 128
+          }
+        ],
+        "scrollTop": 133181,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 263,
+          "tilePage": 263,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 133181,
+          "at": 1793192414673
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133181,
+            "at": 1793192414673
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192411797
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192409271
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192408219
+          },
+          {
+            "reason": "centerLine",
+            "label": 260,
+            "tilePage": 260,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 131644,
+            "at": 1793192403930
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192414155,
+        "entryKey": "01M60B73HFEZ7A7HSF1WE3XMZV:2",
+        "entryPage": 263,
+        "pageNo": 263,
+        "panelKey": "01M60B73HFEZ7A7HSF1WE3XMZV:2",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 253,
+          "page_to": 273
+        },
+        "blocks": 11,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B73HFEZ7A7HSF1WE3XMZV:2",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 10,
+      "changed": false,
+      "progressed": false,
+      "snapshot": {
+        "label": 263,
+        "labelText": "第 263 页",
+        "anchorPage": 263,
+        "anchorKey": "01M60B73HGA7DPW8N4VGMGNW65:0",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 150,
+          "escape": 0
+        },
+        "panelPage": 263,
+        "panelText": "第 263 页 · 第 3 行第二路：",
+        "tilePage": 263,
+        "tileCenter": 263,
+        "tileDominant": 263,
+        "visibleTiles": [
+          {
+            "page": 262,
+            "top": -446,
+            "height": 497,
+            "overlap": 51
+          },
+          {
+            "page": 263,
+            "top": 63,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 264,
+            "top": 572,
+            "height": 497,
+            "overlap": 236
+          }
+        ],
+        "scrollTop": 133289,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "centerLine",
+          "label": 263,
+          "tilePage": 263,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 133289,
+          "at": 1793192426203
+        },
+        "syncLog": [
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192426203
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192423864
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133181,
+            "at": 1793192414673
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192411797
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192409271
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 263,
+        "labelText": "第 263 页",
+        "anchorPage": 263,
+        "anchorKey": "01M60B73HGA7DPW8N4VGMGNW65:0",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 150,
+          "escape": 0
+        },
+        "panelPage": 263,
+        "panelText": "第 263 页 · 第 3 行第二路：",
+        "tilePage": 263,
+        "tileCenter": 263,
+        "tileDominant": 263,
+        "visibleTiles": [
+          {
+            "page": 262,
+            "top": -446,
+            "height": 497,
+            "overlap": 51
+          },
+          {
+            "page": 263,
+            "top": 63,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 264,
+            "top": 572,
+            "height": 497,
+            "overlap": 236
+          }
+        ],
+        "scrollTop": 133289,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "centerLine",
+          "label": 263,
+          "tilePage": 263,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 133289,
+          "at": 1793192426203
+        },
+        "syncLog": [
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192426203
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192423864
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133181,
+            "at": 1793192414673
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192411797
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192409271
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192422927,
+        "entryKey": "01M60B73HGA7DPW8N4VGMGNW65:2",
+        "entryPage": 263,
+        "pageNo": 263,
+        "panelKey": "01M60B73HGA7DPW8N4VGMGNW65:2",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 253,
+          "page_to": 273
+        },
+        "blocks": 11,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B73HGA7DPW8N4VGMGNW65:2",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 11,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 263,
+        "labelText": "第 263 页",
+        "anchorPage": 263,
+        "anchorKey": "01M60B73HGA7DPW8N4VGMGNW65:1",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 151,
+          "escape": 0
+        },
+        "panelPage": 263,
+        "panelText": "第 263 页 · 第 4 行第二路：",
+        "tilePage": 263,
+        "tileCenter": 263,
+        "tileDominant": 263,
+        "visibleTiles": [
+          {
+            "page": 262,
+            "top": -459,
+            "height": 497,
+            "overlap": 38
+          },
+          {
+            "page": 263,
+            "top": 50,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 264,
+            "top": 559,
+            "height": 497,
+            "overlap": 249
+          }
+        ],
+        "scrollTop": 133302,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "centerLine",
+          "label": 263,
+          "tilePage": 263,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 133289,
+          "at": 1793192426203
+        },
+        "syncLog": [
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192426203
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192423864
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133181,
+            "at": 1793192414673
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192411797
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192409271
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 263,
+        "labelText": "第 263 页",
+        "anchorPage": 263,
+        "anchorKey": "01M60B73HGA7DPW8N4VGMGNW65:1",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 151,
+          "escape": 0
+        },
+        "panelPage": 263,
+        "panelText": "第 263 页 · 第 4 行第二路：",
+        "tilePage": 263,
+        "tileCenter": 263,
+        "tileDominant": 263,
+        "visibleTiles": [
+          {
+            "page": 262,
+            "top": -459,
+            "height": 497,
+            "overlap": 38
+          },
+          {
+            "page": 263,
+            "top": 50,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 264,
+            "top": 559,
+            "height": 497,
+            "overlap": 249
+          }
+        ],
+        "scrollTop": 133302,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 263,
+          "tilePage": 263,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 133302,
+          "at": 1793192453044
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133302,
+            "at": 1793192453044
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192426203
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192423864
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133181,
+            "at": 1793192414673
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192411797
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192452102,
+        "entryKey": "01M60B73HGA7DPW8N4VGMGNW65:3",
+        "entryPage": 263,
+        "pageNo": 263,
+        "panelKey": "01M60B73HGA7DPW8N4VGMGNW65:3",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 253,
+          "page_to": 273
+        },
+        "blocks": 11,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B73HGA7DPW8N4VGMGNW65:3",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 12,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 264,
+        "labelText": "第 264 页",
+        "anchorPage": 264,
+        "anchorKey": "01M60B74XQ98SPKYD6BVNQ9KNV:4",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 152,
+          "escape": 0
+        },
+        "panelPage": 264,
+        "panelText": "第 264 页 · 第 1 行第二路：",
+        "tilePage": 263,
+        "tileCenter": 264,
+        "tileDominant": 264,
+        "visibleTiles": [
+          {
+            "page": 263,
+            "top": -258,
+            "height": 497,
+            "overlap": 239
+          },
+          {
+            "page": 264,
+            "top": 251,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 265,
+            "top": 760,
+            "height": 497,
+            "overlap": 48
+          }
+        ],
+        "scrollTop": 133610,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 263,
+          "tilePage": 263,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 133302,
+          "at": 1793192453044
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133302,
+            "at": 1793192453044
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192426203
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192423864
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133181,
+            "at": 1793192414673
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133118,
+            "at": 1793192411797
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 264,
+        "labelText": "第 264 页",
+        "anchorPage": 264,
+        "anchorKey": "01M60B74XQ98SPKYD6BVNQ9KNV:4",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 152,
+          "escape": 0
+        },
+        "panelPage": 264,
+        "panelText": "第 264 页 · 第 1 行第二路：",
+        "tilePage": 263,
+        "tileCenter": 264,
+        "tileDominant": 264,
+        "visibleTiles": [
+          {
+            "page": 263,
+            "top": -258,
+            "height": 497,
+            "overlap": 239
+          },
+          {
+            "page": 264,
+            "top": 251,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 265,
+            "top": 760,
+            "height": 497,
+            "overlap": 48
+          }
+        ],
+        "scrollTop": 133610,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 264,
+          "tilePage": 264,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 133610,
+          "at": 1793192461336
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 264,
+            "tilePage": 264,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133610,
+            "at": 1793192461336
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133302,
+            "at": 1793192453044
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192426203
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192423864
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133181,
+            "at": 1793192414673
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192460359,
+        "entryKey": "01M60B74XRT8NNAQD25WJKD8P5:0",
+        "entryPage": 264,
+        "pageNo": 264,
+        "panelKey": "01M60B74XRT8NNAQD25WJKD8P5:0",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 254,
+          "page_to": 274
+        },
+        "blocks": 4,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B74XRT8NNAQD25WJKD8P5:0",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 13,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 265,
+        "labelText": "第 265 页",
+        "anchorPage": 265,
+        "anchorKey": "01M60B769TPKTAEVJ2YRXAWBAG:1",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 153,
+          "escape": 0
+        },
+        "panelPage": 265,
+        "panelText": "第 265 页 · 第 3 行第二路：",
+        "tilePage": 264,
+        "tileCenter": 265,
+        "tileDominant": 265,
+        "visibleTiles": [
+          {
+            "page": 264,
+            "top": -198,
+            "height": 497,
+            "overlap": 299
+          },
+          {
+            "page": 265,
+            "top": 311,
+            "height": 497,
+            "overlap": 497
+          }
+        ],
+        "scrollTop": 134059,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 265,
+          "tilePage": 265,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 134059,
+          "at": 1793192468676
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134059,
+            "at": 1793192468676
+          },
+          {
+            "reason": "leftScroll",
+            "label": 264,
+            "tilePage": 264,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133610,
+            "at": 1793192461336
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133302,
+            "at": 1793192453044
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192426203
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192423864
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 265,
+        "labelText": "第 265 页",
+        "anchorPage": 265,
+        "anchorKey": "01M60B769TPKTAEVJ2YRXAWBAG:1",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 153,
+          "escape": 0
+        },
+        "panelPage": 265,
+        "panelText": "第 265 页 · 第 3 行第二路：",
+        "tilePage": 264,
+        "tileCenter": 265,
+        "tileDominant": 265,
+        "visibleTiles": [
+          {
+            "page": 264,
+            "top": -198,
+            "height": 497,
+            "overlap": 299
+          },
+          {
+            "page": 265,
+            "top": 311,
+            "height": 497,
+            "overlap": 497
+          }
+        ],
+        "scrollTop": 134059,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 265,
+          "tilePage": 265,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 134059,
+          "at": 1793192468676
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134059,
+            "at": 1793192468676
+          },
+          {
+            "reason": "leftScroll",
+            "label": 264,
+            "tilePage": 264,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133610,
+            "at": 1793192461336
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133302,
+            "at": 1793192453044
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192426203
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192423864
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192468131,
+        "entryKey": "01M60B769TPKTAEVJ2YRXAWBAG:2",
+        "entryPage": 265,
+        "pageNo": 265,
+        "panelKey": "01M60B769TPKTAEVJ2YRXAWBAG:2",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 255,
+          "page_to": 275
+        },
+        "blocks": 2,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B769TPKTAEVJ2YRXAWBAG:2",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 14,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 265,
+        "labelText": "第 265 页",
+        "anchorPage": 265,
+        "anchorKey": "01M60B769TPKTAEVJ2YRXAWBAG:2",
+        "panelLineIn": true,
+        "settleKey": "01M60B769TPKTAEVJ2YRXAWBAG:4",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 153,
+          "escape": 0
+        },
+        "panelPage": 265,
+        "panelText": "第 265 页 · 第 5 行第二路：",
+        "tilePage": 264,
+        "tileCenter": 265,
+        "tileDominant": 265,
+        "visibleTiles": [
+          {
+            "page": 264,
+            "top": -224,
+            "height": 497,
+            "overlap": 273
+          },
+          {
+            "page": 265,
+            "top": 285,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 266,
+            "top": 794,
+            "height": 497,
+            "overlap": 14
+          }
+        ],
+        "scrollTop": 134085,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 265,
+          "tilePage": 265,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 134059,
+          "at": 1793192468676
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134059,
+            "at": 1793192468676
+          },
+          {
+            "reason": "leftScroll",
+            "label": 264,
+            "tilePage": 264,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133610,
+            "at": 1793192461336
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133302,
+            "at": 1793192453044
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192426203
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192423864
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 265,
+        "labelText": "第 265 页",
+        "anchorPage": 265,
+        "anchorKey": "01M60B769TPKTAEVJ2YRXAWBAG:2",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 154,
+          "escape": 0
+        },
+        "panelPage": 265,
+        "panelText": "第 265 页 · 第 5 行第二路：",
+        "tilePage": 264,
+        "tileCenter": 265,
+        "tileDominant": 265,
+        "visibleTiles": [
+          {
+            "page": 264,
+            "top": -224,
+            "height": 497,
+            "overlap": 273
+          },
+          {
+            "page": 265,
+            "top": 285,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 266,
+            "top": 794,
+            "height": 497,
+            "overlap": 14
+          }
+        ],
+        "scrollTop": 134085,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "gotoEntry",
+          "label": 265,
+          "tilePage": 265,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 134085,
+          "at": 1793192476061
+        },
+        "syncLog": [
+          {
+            "reason": "gotoEntry",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192476061
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134059,
+            "at": 1793192468676
+          },
+          {
+            "reason": "leftScroll",
+            "label": 264,
+            "tilePage": 264,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133610,
+            "at": 1793192461336
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133302,
+            "at": 1793192453044
+          },
+          {
+            "reason": "centerLine",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133289,
+            "at": 1793192426203
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192475644,
+        "entryKey": "01M60B769TPKTAEVJ2YRXAWBAG:4",
+        "entryPage": 265,
+        "pageNo": 265,
+        "panelKey": "01M60B769TPKTAEVJ2YRXAWBAG:4",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 255,
+          "page_to": 275
+        },
+        "blocks": 2,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B769TPKTAEVJ2YRXAWBAG:4",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 15,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 266,
+        "labelText": "第 266 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCVVSZQER654WQVCREG:3",
+        "panelLineIn": false,
+        "settleKey": "01M60B78JJ3AAYJQM422W2XRC8:0",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 155,
+          "escape": 0
+        },
+        "panelPage": 266,
+        "panelText": "第 266 页 · 第 1 行第二路：",
+        "tilePage": 266,
+        "tileCenter": 266,
+        "tileDominant": 266,
+        "visibleTiles": [
+          {
+            "page": 265,
+            "top": -366,
+            "height": 497,
+            "overlap": 130
+          },
+          {
+            "page": 266,
+            "top": 142,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 267,
+            "top": 651,
+            "height": 497,
+            "overlap": 157
+          }
+        ],
+        "scrollTop": 134736,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 265,
+          "tilePage": 265,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 134085,
+          "at": 1793192477093
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192477093
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192476061
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134059,
+            "at": 1793192468676
+          },
+          {
+            "reason": "leftScroll",
+            "label": 264,
+            "tilePage": 264,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133610,
+            "at": 1793192461336
+          },
+          {
+            "reason": "leftScroll",
+            "label": 263,
+            "tilePage": 263,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133302,
+            "at": 1793192453044
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 266,
+        "labelText": "第 266 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCVVSZQER654WQVCREG:3",
+        "panelLineIn": false,
+        "settleKey": "01M60B78JJ3AAYJQM422W2XRC8:0",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 155,
+          "escape": 0
+        },
+        "panelPage": 266,
+        "panelText": "第 266 页 · 第 1 行第二路：",
+        "tilePage": 266,
+        "tileCenter": 266,
+        "tileDominant": 266,
+        "visibleTiles": [
+          {
+            "page": 265,
+            "top": -366,
+            "height": 497,
+            "overlap": 130
+          },
+          {
+            "page": 266,
+            "top": 142,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 267,
+            "top": 651,
+            "height": 497,
+            "overlap": 157
+          }
+        ],
+        "scrollTop": 134736,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 266,
+          "tilePage": 266,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 134736,
+          "at": 1793192484046
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 266,
+            "tilePage": 266,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134736,
+            "at": 1793192484046
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192477093
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192476061
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134059,
+            "at": 1793192468676
+          },
+          {
+            "reason": "leftScroll",
+            "label": 264,
+            "tilePage": 264,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133610,
+            "at": 1793192461336
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192483100,
+        "entryKey": "01M60B78JJ3AAYJQM422W2XRC8:0",
+        "entryPage": 266,
+        "pageNo": 266,
+        "panelKey": "01M60B78JJ3AAYJQM422W2XRC8:0",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 256,
+          "page_to": 276
+        },
+        "blocks": 9,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B78JJ3AAYJQM422W2XRC8:0",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 16,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 267,
+        "labelText": "第 267 页",
+        "anchorPage": 267,
+        "anchorKey": "01M60B7A130RE89P6QEB733A95:2",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 156,
+          "escape": 0
+        },
+        "panelPage": 267,
+        "panelText": "第 267 页 · 第 5 行第二路：",
+        "tilePage": 266,
+        "tileCenter": 267,
+        "tileDominant": 267,
+        "visibleTiles": [
+          {
+            "page": 266,
+            "top": -239,
+            "height": 497,
+            "overlap": 258
+          },
+          {
+            "page": 267,
+            "top": 270,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 268,
+            "top": 779,
+            "height": 497,
+            "overlap": 29
+          }
+        ],
+        "scrollTop": 135118,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 266,
+          "tilePage": 266,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 134736,
+          "at": 1793192484046
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 266,
+            "tilePage": 266,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134736,
+            "at": 1793192484046
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192477093
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192476061
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134059,
+            "at": 1793192468676
+          },
+          {
+            "reason": "leftScroll",
+            "label": 264,
+            "tilePage": 264,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 133610,
+            "at": 1793192461336
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 267,
+        "labelText": "第 267 页",
+        "anchorPage": 267,
+        "anchorKey": "01M60B7A130RE89P6QEB733A95:2",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 156,
+          "escape": 0
+        },
+        "panelPage": 267,
+        "panelText": "第 267 页 · 第 5 行第二路：",
+        "tilePage": 266,
+        "tileCenter": 267,
+        "tileDominant": 267,
+        "visibleTiles": [
+          {
+            "page": 266,
+            "top": -239,
+            "height": 497,
+            "overlap": 258
+          },
+          {
+            "page": 267,
+            "top": 270,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 268,
+            "top": 779,
+            "height": 497,
+            "overlap": 29
+          }
+        ],
+        "scrollTop": 135118,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 267,
+          "tilePage": 267,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 135118,
+          "at": 1793192491411
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192491411
+          },
+          {
+            "reason": "leftScroll",
+            "label": 266,
+            "tilePage": 266,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134736,
+            "at": 1793192484046
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192477093
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192476061
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134059,
+            "at": 1793192468676
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192490424,
+        "entryKey": "01M60B7A130RE89P6QEB733A95:4",
+        "entryPage": 267,
+        "pageNo": 267,
+        "panelKey": "01M60B7A130RE89P6QEB733A95:4",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 257,
+          "page_to": 277
+        },
+        "blocks": 3,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B7A130RE89P6QEB733A95:4",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 17,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 273,
+        "labelText": "第 273 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCVVSZQER654WQVCREZ:1",
+        "panelLineIn": false,
+        "settleKey": "01M60B880H72N322F2B0CMC9QN:5",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 158,
+          "escape": 0
+        },
+        "panelPage": 273,
+        "panelText": "第 273 页 · 第 6 行第二路：",
+        "tilePage": 272,
+        "tileCenter": 273,
+        "tileDominant": 273,
+        "visibleTiles": [
+          {
+            "page": 272,
+            "top": -226,
+            "height": 497,
+            "overlap": 271
+          },
+          {
+            "page": 273,
+            "top": 283,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 274,
+            "top": 791,
+            "height": 497,
+            "overlap": 17
+          }
+        ],
+        "scrollTop": 138159,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "centerLine",
+          "label": 267,
+          "tilePage": 267,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 135118,
+          "at": 1793192493829
+        },
+        "syncLog": [
+          {
+            "reason": "centerLine",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192493829
+          },
+          {
+            "reason": "leftScroll",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192491411
+          },
+          {
+            "reason": "leftScroll",
+            "label": 266,
+            "tilePage": 266,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134736,
+            "at": 1793192484046
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192477093
+          },
+          {
+            "reason": "gotoEntry",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192476061
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 273,
+        "labelText": "第 273 页",
+        "anchorPage": 1,
+        "anchorKey": "01M609YSCVVSZQER654WQVCREZ:1",
+        "panelLineIn": false,
+        "settleKey": "01M60B880H72N322F2B0CMC9QN:5",
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 158,
+          "escape": 0
+        },
+        "panelPage": 273,
+        "panelText": "第 273 页 · 第 6 行第二路：",
+        "tilePage": 272,
+        "tileCenter": 273,
+        "tileDominant": 273,
+        "visibleTiles": [
+          {
+            "page": 272,
+            "top": -226,
+            "height": 497,
+            "overlap": 271
+          },
+          {
+            "page": 273,
+            "top": 283,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 274,
+            "top": 791,
+            "height": 497,
+            "overlap": 17
+          }
+        ],
+        "scrollTop": 138159,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 273,
+          "tilePage": 273,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 138159,
+          "at": 1793192498973
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138159,
+            "at": 1793192498973
+          },
+          {
+            "reason": "centerLine",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192493829
+          },
+          {
+            "reason": "leftScroll",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192491411
+          },
+          {
+            "reason": "leftScroll",
+            "label": 266,
+            "tilePage": 266,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134736,
+            "at": 1793192484046
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192477093
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192497900,
+        "entryKey": "01M60B880H72N322F2B0CMC9QN:5",
+        "entryPage": 273,
+        "pageNo": 273,
+        "panelKey": "01M60B880H72N322F2B0CMC9QN:5",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 263,
+          "page_to": 283
+        },
+        "blocks": 0,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B880H72N322F2B0CMC9QN:5",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 18,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 273,
+        "labelText": "第 273 页",
+        "anchorPage": 273,
+        "anchorKey": "01M60B880JEEY1XQMNKY72RQ21:3",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 159,
+          "escape": 0
+        },
+        "panelPage": 273,
+        "panelText": "第 273 页 · 第 2 行第二路：",
+        "tilePage": 273,
+        "tileCenter": 273,
+        "tileDominant": 273,
+        "visibleTiles": [
+          {
+            "page": 272,
+            "top": -353,
+            "height": 497,
+            "overlap": 144
+          },
+          {
+            "page": 273,
+            "top": 156,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 274,
+            "top": 664,
+            "height": 497,
+            "overlap": 144
+          }
+        ],
+        "scrollTop": 138286,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 273,
+          "tilePage": 273,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 138159,
+          "at": 1793192498973
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138159,
+            "at": 1793192498973
+          },
+          {
+            "reason": "centerLine",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192493829
+          },
+          {
+            "reason": "leftScroll",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192491411
+          },
+          {
+            "reason": "leftScroll",
+            "label": 266,
+            "tilePage": 266,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134736,
+            "at": 1793192484046
+          },
+          {
+            "reason": "leftScroll",
+            "label": 265,
+            "tilePage": 265,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134085,
+            "at": 1793192477093
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 273,
+        "labelText": "第 273 页",
+        "anchorPage": 273,
+        "anchorKey": "01M60B880JEEY1XQMNKY72RQ21:3",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 159,
+          "escape": 0
+        },
+        "panelPage": 273,
+        "panelText": "第 273 页 · 第 2 行第二路：",
+        "tilePage": 273,
+        "tileCenter": 273,
+        "tileDominant": 273,
+        "visibleTiles": [
+          {
+            "page": 272,
+            "top": -353,
+            "height": 497,
+            "overlap": 144
+          },
+          {
+            "page": 273,
+            "top": 156,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 274,
+            "top": 664,
+            "height": 497,
+            "overlap": 144
+          }
+        ],
+        "scrollTop": 138286,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 1,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 273,
+          "tilePage": 273,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 138286,
+          "at": 1793192506666
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138286,
+            "at": 1793192506666
+          },
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138159,
+            "at": 1793192498973
+          },
+          {
+            "reason": "centerLine",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192493829
+          },
+          {
+            "reason": "leftScroll",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192491411
+          },
+          {
+            "reason": "leftScroll",
+            "label": 266,
+            "tilePage": 266,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 134736,
+            "at": 1793192484046
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192506000,
+        "entryKey": "01M60B880KZXV8HJ94BFMQF8NJ:1",
+        "entryPage": 273,
+        "pageNo": 273,
+        "panelKey": "01M60B880KZXV8HJ94BFMQF8NJ:1",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 263,
+          "page_to": 283
+        },
+        "blocks": 4,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B880KZXV8HJ94BFMQF8NJ:1",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 19,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 274,
+        "labelText": "第 274 页",
+        "anchorPage": 274,
+        "anchorKey": "01M60B8GHAZ17SE0NZYVJFX17Z:0",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 160,
+          "escape": 0
+        },
+        "panelPage": 274,
+        "panelText": "第 274 页 · 第 2 行第二路：",
+        "tilePage": 274,
+        "tileCenter": 274,
+        "tileDominant": 274,
+        "visibleTiles": [
+          {
+            "page": 273,
+            "top": -446,
+            "height": 497,
+            "overlap": 51
+          },
+          {
+            "page": 274,
+            "top": 63,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 275,
+            "top": 572,
+            "height": 497,
+            "overlap": 236
+          }
+        ],
+        "scrollTop": 138887,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "centerLine",
+          "label": 273,
+          "tilePage": 273,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 138286,
+          "at": 1793192508827
+        },
+        "syncLog": [
+          {
+            "reason": "centerLine",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138286,
+            "at": 1793192508827
+          },
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138286,
+            "at": 1793192506666
+          },
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138159,
+            "at": 1793192498973
+          },
+          {
+            "reason": "centerLine",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192493829
+          },
+          {
+            "reason": "leftScroll",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192491411
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 274,
+        "labelText": "第 274 页",
+        "anchorPage": 274,
+        "anchorKey": "01M60B8GHAZ17SE0NZYVJFX17Z:0",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 160,
+          "escape": 0
+        },
+        "panelPage": 274,
+        "panelText": "第 274 页 · 第 2 行第二路：",
+        "tilePage": 274,
+        "tileCenter": 274,
+        "tileDominant": 274,
+        "visibleTiles": [
+          {
+            "page": 273,
+            "top": -446,
+            "height": 497,
+            "overlap": 51
+          },
+          {
+            "page": 274,
+            "top": 63,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 275,
+            "top": 572,
+            "height": 497,
+            "overlap": 236
+          }
+        ],
+        "scrollTop": 138887,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 274,
+          "tilePage": 274,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 138887,
+          "at": 1793192515723
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 274,
+            "tilePage": 274,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138887,
+            "at": 1793192515723
+          },
+          {
+            "reason": "centerLine",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138286,
+            "at": 1793192508827
+          },
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138286,
+            "at": 1793192506666
+          },
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138159,
+            "at": 1793192498973
+          },
+          {
+            "reason": "centerLine",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192493829
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192514673,
+        "entryKey": "01M60B8GHAZ17SE0NZYVJFX17Z:1",
+        "entryPage": 274,
+        "pageNo": 274,
+        "panelKey": "01M60B8GHAZ17SE0NZYVJFX17Z:1",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 264,
+          "page_to": 284
+        },
+        "blocks": 7,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B8GHAZ17SE0NZYVJFX17Z:1",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    },
+    {
+      "index": 20,
+      "changed": true,
+      "progressed": true,
+      "snapshot": {
+        "label": 275,
+        "labelText": "第 275 页",
+        "anchorPage": 275,
+        "anchorKey": "01M60B8PZ4P5XGXTFTNBYN119A:2",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 161,
+          "escape": 0
+        },
+        "panelPage": 275,
+        "panelText": "第 275 页 · 第 2 行第二路：",
+        "tilePage": 274,
+        "tileCenter": 275,
+        "tileDominant": 275,
+        "visibleTiles": [
+          {
+            "page": 274,
+            "top": -227,
+            "height": 497,
+            "overlap": 270
+          },
+          {
+            "page": 275,
+            "top": 282,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 276,
+            "top": 791,
+            "height": 497,
+            "overlap": 17
+          }
+        ],
+        "scrollTop": 139177,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 274,
+          "tilePage": 274,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 138887,
+          "at": 1793192515723
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 274,
+            "tilePage": 274,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138887,
+            "at": 1793192515723
+          },
+          {
+            "reason": "centerLine",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138286,
+            "at": 1793192508827
+          },
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138286,
+            "at": 1793192506666
+          },
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138159,
+            "at": 1793192498973
+          },
+          {
+            "reason": "centerLine",
+            "label": 267,
+            "tilePage": 267,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 135118,
+            "at": 1793192493829
+          }
+        ]
+      },
+      "snapshot2": {
+        "label": 275,
+        "labelText": "第 275 页",
+        "anchorPage": 275,
+        "anchorKey": "01M60B8PZ4P5XGXTFTNBYN119A:2",
+        "panelLineIn": true,
+        "settleKey": null,
+        "userSeq": 0,
+        "programSeq": 0,
+        "pin": {
+          "held": 161,
+          "escape": 0
+        },
+        "panelPage": 275,
+        "panelText": "第 275 页 · 第 2 行第二路：",
+        "tilePage": 274,
+        "tileCenter": 275,
+        "tileDominant": 275,
+        "visibleTiles": [
+          {
+            "page": 274,
+            "top": -227,
+            "height": 497,
+            "overlap": 270
+          },
+          {
+            "page": 275,
+            "top": 282,
+            "height": 497,
+            "overlap": 497
+          },
+          {
+            "page": 276,
+            "top": 791,
+            "height": 497,
+            "overlap": 17
+          }
+        ],
+        "scrollTop": 139177,
+        "viewport": "1423x900",
+        "panelVisible": true,
+        "highlight": {
+          "lineCurrent": 1,
+          "markCurrent": 0,
+          "pdfBoxes": 0,
+          "diffBoxes": 0,
+          "any": true
+        },
+        "sync": {
+          "reason": "leftScroll",
+          "label": 275,
+          "tilePage": 275,
+          "panelPage": null,
+          "ok": true,
+          "scrollTop": 139177,
+          "at": 1793192522652
+        },
+        "syncLog": [
+          {
+            "reason": "leftScroll",
+            "label": 275,
+            "tilePage": 275,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 139177,
+            "at": 1793192522652
+          },
+          {
+            "reason": "leftScroll",
+            "label": 274,
+            "tilePage": 274,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138887,
+            "at": 1793192515723
+          },
+          {
+            "reason": "centerLine",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138286,
+            "at": 1793192508827
+          },
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138286,
+            "at": 1793192506666
+          },
+          {
+            "reason": "leftScroll",
+            "label": 273,
+            "tilePage": 273,
+            "panelPage": null,
+            "ok": true,
+            "scrollTop": 138159,
+            "at": 1793192498973
+          }
+        ]
+      },
+      "logEntry": {
+        "at": 1793192522158,
+        "entryKey": "01M60B8PZ4P5XGXTFTNBYN119E:1",
+        "entryPage": 275,
+        "pageNo": 275,
+        "panelKey": "01M60B8PZ4P5XGXTFTNBYN119E:1",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 265,
+          "page_to": 285
+        },
+        "blocks": 8,
+        "branch": "next-lines"
+      },
+      "panelKey": "01M60B8PZ4P5XGXTFTNBYN119E:1",
+      "targetExists": true,
+      "targetCurrent": true,
+      "currentLines": 1
+    }
+  ],
+  "nextLog": [
+    {
+      "at": 1793192522158,
+      "entryKey": "01M60B8PZ4P5XGXTFTNBYN119E:1",
+      "entryPage": 275,
+      "pageNo": 275,
+      "panelKey": "01M60B8PZ4P5XGXTFTNBYN119E:1",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 265,
+        "page_to": 285
+      },
+      "blocks": 8,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192514673,
+      "entryKey": "01M60B8GHAZ17SE0NZYVJFX17Z:1",
+      "entryPage": 274,
+      "pageNo": 274,
+      "panelKey": "01M60B8GHAZ17SE0NZYVJFX17Z:1",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 264,
+        "page_to": 284
+      },
+      "blocks": 7,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192506000,
+      "entryKey": "01M60B880KZXV8HJ94BFMQF8NJ:1",
+      "entryPage": 273,
+      "pageNo": 273,
+      "panelKey": "01M60B880KZXV8HJ94BFMQF8NJ:1",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 263,
+        "page_to": 283
+      },
+      "blocks": 4,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192497900,
+      "entryKey": "01M60B880H72N322F2B0CMC9QN:5",
+      "entryPage": 273,
+      "pageNo": 273,
+      "panelKey": "01M60B880H72N322F2B0CMC9QN:5",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 263,
+        "page_to": 283
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192497897,
+      "entryKey": "01M60B880H72N322F2B0CMC9QN:5",
+      "entryPage": 273,
+      "pageNo": 273,
+      "panelKey": "01M60B880H72N322F2B0CMC9QN:5",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 263,
+        "page_to": 283
+      },
+      "blocks": 0,
+      "branch": "pending-open",
+      "reason": "data-arrived"
+    },
+    {
+      "at": 1793192490424,
+      "entryKey": "01M60B7A130RE89P6QEB733A95:4",
+      "entryPage": 267,
+      "pageNo": 267,
+      "panelKey": "01M60B7A130RE89P6QEB733A95:4",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 257,
+        "page_to": 277
+      },
+      "blocks": 3,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192483100,
+      "entryKey": "01M60B78JJ3AAYJQM422W2XRC8:0",
+      "entryPage": 266,
+      "pageNo": 266,
+      "panelKey": "01M60B78JJ3AAYJQM422W2XRC8:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 256,
+        "page_to": 276
+      },
+      "blocks": 9,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192483097,
+      "entryKey": "01M60B78JJ3AAYJQM422W2XRC8:0",
+      "entryPage": 266,
+      "pageNo": 266,
+      "panelKey": "01M60B78JJ3AAYJQM422W2XRC8:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 256,
+        "page_to": 276
+      },
+      "blocks": 9,
+      "branch": "pending-open",
+      "reason": "data-arrived"
+    },
+    {
+      "at": 1793192475644,
+      "entryKey": "01M60B769TPKTAEVJ2YRXAWBAG:4",
+      "entryPage": 265,
+      "pageNo": 265,
+      "panelKey": "01M60B769TPKTAEVJ2YRXAWBAG:4",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 255,
+        "page_to": 275
+      },
+      "blocks": 2,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192468131,
+      "entryKey": "01M60B769TPKTAEVJ2YRXAWBAG:2",
+      "entryPage": 265,
+      "pageNo": 265,
+      "panelKey": "01M60B769TPKTAEVJ2YRXAWBAG:2",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 255,
+        "page_to": 275
+      },
+      "blocks": 2,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192460359,
+      "entryKey": "01M60B74XRT8NNAQD25WJKD8P5:0",
+      "entryPage": 264,
+      "pageNo": 264,
+      "panelKey": "01M60B74XRT8NNAQD25WJKD8P5:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 254,
+        "page_to": 274
+      },
+      "blocks": 4,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192452102,
+      "entryKey": "01M60B73HGA7DPW8N4VGMGNW65:3",
+      "entryPage": 263,
+      "pageNo": 263,
+      "panelKey": "01M60B73HGA7DPW8N4VGMGNW65:3",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 253,
+        "page_to": 273
+      },
+      "blocks": 11,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192422927,
+      "entryKey": "01M60B73HGA7DPW8N4VGMGNW65:2",
+      "entryPage": 263,
+      "pageNo": 263,
+      "panelKey": "01M60B73HGA7DPW8N4VGMGNW65:2",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 253,
+        "page_to": 273
+      },
+      "blocks": 11,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192414155,
+      "entryKey": "01M60B73HFEZ7A7HSF1WE3XMZV:2",
+      "entryPage": 263,
+      "pageNo": 263,
+      "panelKey": "01M60B73HFEZ7A7HSF1WE3XMZV:2",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 253,
+        "page_to": 273
+      },
+      "blocks": 11,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192407839,
+      "entryKey": "01M60B73HFEZ7A7HSF1WE3XMZQ:0",
+      "entryPage": 263,
+      "pageNo": 263,
+      "panelKey": "01M60B73HFEZ7A7HSF1WE3XMZQ:0",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 253,
+        "page_to": 273
+      },
+      "blocks": 11,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192401111,
+      "entryKey": "01M60B6WXBRCF4QEV2H9WRWY40:1",
+      "entryPage": 260,
+      "pageNo": 260,
+      "panelKey": "01M60B6WXBRCF4QEV2H9WRWY40:1",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 250,
+        "page_to": 270
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192401109,
+      "entryKey": "01M60B6WXBRCF4QEV2H9WRWY40:1",
+      "entryPage": 260,
+      "pageNo": 260,
+      "panelKey": "01M60B6WXBRCF4QEV2H9WRWY40:1",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 250,
+        "page_to": 270
+      },
+      "blocks": 0,
+      "branch": "pending-open",
+      "reason": "data-arrived"
+    },
+    {
+      "at": 1793192394684,
+      "entryKey": "01M60B68MNPSG9ZE7S17YA8CBS:4",
+      "entryPage": 251,
+      "pageNo": 251,
+      "panelKey": "01M60B68MNPSG9ZE7S17YA8CBS:4",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 241,
+        "page_to": 261
+      },
+      "blocks": 6,
+      "branch": "next-lines"
+    },
+    {
+      "at": 1793192394681,
+      "entryKey": "01M60B68MNPSG9ZE7S17YA8CBS:4",
+      "entryPage": 251,
+      "pageNo": 251,
+      "panelKey": "01M60B68MNPSG9ZE7S17YA8CBS:4",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 241,
+        "page_to": 261
+      },
+      "blocks": 6,
+      "branch": "pending-open",
+      "reason": "data-arrived"
+    },
+    {
+      "at": 1793192388715,
+      "entryKey": "01M60B63YRKASWFWZBS97PE065:1",
+      "entryPage": 249,
+      "pageNo": 249,
+      "panelKey": "01M60B63YRKASWFWZBS97PE065:1",
+      "panelOpened": true,
+      "lineFound": true,
+      "window": {
+        "page_from": 239,
+        "page_to": 259
+      },
+      "blocks": 0,
+      "branch": "next-lines"
+    }
+  ],
+  "finalProgress": "已审 0 / 567 条",
+  "snapshot": {
+    "label": 275,
+    "labelText": "第 275 页",
+    "anchorPage": 275,
+    "anchorKey": "01M60B8PZ4P5XGXTFTNBYN119A:2",
+    "panelLineIn": true,
+    "settleKey": null,
+    "userSeq": 0,
+    "programSeq": 0,
+    "pin": {
+      "held": 161,
+      "escape": 0
+    },
+    "panelPage": 275,
+    "panelText": "第 275 页 · 第 2 行第二路：",
+    "tilePage": 274,
+    "tileCenter": 275,
+    "tileDominant": 275,
+    "visibleTiles": [
+      {
+        "page": 274,
+        "top": -227,
+        "height": 497,
+        "overlap": 270
+      },
+      {
+        "page": 275,
+        "top": 282,
+        "height": 497,
+        "overlap": 497
+      },
+      {
+        "page": 276,
+        "top": 791,
+        "height": 497,
+        "overlap": 17
+      }
+    ],
+    "scrollTop": 139177,
+    "viewport": "1423x900",
+    "panelVisible": true,
+    "highlight": {
+      "lineCurrent": 1,
+      "markCurrent": 0,
+      "pdfBoxes": 0,
+      "diffBoxes": 0,
+      "any": true
+    },
+    "sync": {
+      "reason": "leftScroll",
+      "label": 274,
+      "tilePage": 274,
+      "panelPage": null,
+      "ok": true,
+      "scrollTop": 138887,
+      "at": 1793192515723
+    },
+    "syncLog": [
+      {
+        "reason": "leftScroll",
+        "label": 274,
+        "tilePage": 274,
+        "panelPage": null,
+        "ok": true,
+        "scrollTop": 138887,
+        "at": 1793192515723
+      },
+      {
+        "reason": "centerLine",
+        "label": 273,
+        "tilePage": 273,
+        "panelPage": null,
+        "ok": true,
+        "scrollTop": 138286,
+        "at": 1793192508827
+      },
+      {
+        "reason": "leftScroll",
+        "label": 273,
+        "tilePage": 273,
+        "panelPage": null,
+        "ok": true,
+        "scrollTop": 138286,
+        "at": 1793192506666
+      },
+      {
+        "reason": "leftScroll",
+        "label": 273,
+        "tilePage": 273,
+        "panelPage": null,
+        "ok": true,
+        "scrollTop": 138159,
+        "at": 1793192498973
+      },
+      {
+        "reason": "centerLine",
+        "label": 267,
+        "tilePage": 267,
+        "panelPage": null,
+        "ok": true,
+        "scrollTop": 135118,
+        "at": 1793192493829
+      }
+    ]
+  },
+  "screenshot": "/private/var/folders/07/2_jn368n3ldbmfg6d3qvm8_r0000gn/T/b2t-qa/b2t-qa-20261028-205212-88626/screenshots/pagesync-next20.png"
+}

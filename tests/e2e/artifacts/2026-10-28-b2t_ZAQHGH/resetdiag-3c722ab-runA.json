@@ -1,0 +1,40 @@
+{
+  "pre": {
+    "resetDiag": true,
+    "readingProject": "b2t_ZAQHGH",
+    "currentProjectId": "b2t_ZAQHGH",
+    "readingAutoJumpDone": true,
+    "readingDataSegments": 4821,
+    "readingPanelKey": null,
+    "readingPendingPanelKey": null,
+    "readingPendingPanelEntry": "n/a",
+    "panelInHost": false,
+    "panelHead": null,
+    "label": "第1页",
+    "readingEntries": 7,
+    "marksWindow": {
+      "page_from": 1,
+      "page_to": 11
+    },
+    "streamSegs": 32
+  },
+  "post": {
+    "resetDiag": true,
+    "readingProject": "b2t_ZAQHGH",
+    "currentProjectId": "b2t_ZAQHGH",
+    "readingAutoJumpDone": true,
+    "readingDataSegments": 4821,
+    "readingPanelKey": "01M60A7D9H4EGK8FT2MGSPBDJ4:5",
+    "readingPendingPanelKey": null,
+    "readingPendingPanelEntry": "n/a",
+    "panelInHost": true,
+    "panelHead": "第 49 页 · 第 6 行第二路：",
+    "label": "第49页",
+    "readingEntries": 9,
+    "marksWindow": {
+      "page_from": 39,
+      "page_to": 59
+    },
+    "streamSegs": 312
+  }
+}
