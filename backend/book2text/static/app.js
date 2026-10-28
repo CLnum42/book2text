@@ -2909,7 +2909,14 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     // 注释流是这次导出的选项，不是项目设置：每次打开项目回到"不导出"的默认。
     // 必须在 refreshProject 之前复位——它会立刻发一次导出预检，用的是这个复选框的值。
     el("export-include-notes").checked = false;
+    // 任务 62：步骤条的数字来自 finish-summary，它和项目载荷**并行**取，
+    // 不要排在后面（490 页的书光项目载荷就 1.2 s）。返回后 `syncWorkflowSteps` 会再画一次。
+    const finishPrefetch = loadFinishSummary({ silent: true });
     await refreshProject(projectId);
+    // 任务 62：步骤条的数字只等 finish-summary。**先把它等到、把步骤条点亮**，
+    // 再去开「上次的视图」——审校视图要组装整本导出预览（490 页实测 7 s），
+    // 先跑它会把 finish-summary 饿在 CPU 后面，步骤条十几秒才亮。
+    await finishPrefetch;
     applyProjectSettings();
     syncWorkflowSteps();
     await loadAutoApplyStatus();
@@ -4650,6 +4657,20 @@ function warnUnconfirmed(pages, action) {
 
 function pageZoomLevel() {
   return PAGE_ZOOM_LEVELS[pageZoomIndex];
+}
+
+/**
+ * 页图档位（任务 62）。
+ *
+ * 审校 / 目录确认的页图原来是固定 150 DPI（`view`）：447pt 宽的页渲染成约 931 px，
+ * 而 Retina 屏上这一页显示约 880 CSS px = **1760 设备像素**，等于放大 2 倍，所以糊。
+ * 现在按设备像素比选档：Retina + 够宽的窗口用 `zoom`（300 DPI），否则还是 `view`。
+ * 体积靠 JPEG q=82 压下来（view 0.22 MB / zoom 0.62 MB，PNG 分别要 1.77 MB / 约 7 MB）。
+ */
+function detailImageProfile() {
+  const dpr = Number(window.devicePixelRatio || 1);
+  const width = Number(window.innerWidth || 0);
+  return dpr >= 2 && width >= 1000 ? "zoom" : "view";
 }
 
 function pageImageUrl(pageNo, size) {
@@ -8450,7 +8471,7 @@ async function pumpIndexImages() {
       const tile = indexTiles.get(pageNo);
       const image = tile && tile.querySelector("img");
       if (!image) continue;
-      const url = pageImageUrl(pageNo, "view");
+      const url = pageImageUrl(pageNo, detailImageProfile());
       image.dataset.src = url;
       image.loading = "eager";
       const started = performance.now();
@@ -9233,7 +9254,7 @@ function ensurePreviewImage(pageNo) {
   if (!tile) return;
   const image = tile.querySelector("img");
   if (!image || image.dataset.src) return;
-  const url = pageImageUrl(pageNo, "view");
+  const url = pageImageUrl(pageNo, detailImageProfile());
   image.dataset.src = url;
   // 窗口内（当前页 ±1 / 当前段跨的页）要马上有图：lazy 会把视口外一屏的页压住，
   // 跨页段两页交界时就会先看到空白再等图。
@@ -14212,7 +14233,7 @@ function continuationPageBlock(pageNo, bbox, tagText) {
   if (page) wrap.style.aspectRatio = `${page.width_pt} / ${page.height_pt}`;
   const image = document.createElement("img");
   image.alt = `第 ${pageNo} 页`;
-  image.src = pageImageUrl(pageNo, "view");
+  image.src = pageImageUrl(pageNo, detailImageProfile());
   wrap.append(image);
   if (Array.isArray(bbox) && bbox.length === 4) {
     const mark = document.createElement("div");
@@ -14293,7 +14314,7 @@ function prefetchContinuationPages(entry) {
   // 下一张卡片的两页先拉进缓存，翻条不用等
   for (const pageNo of [entry.page_no, entry.next_page_no]) {
     const image = new Image();
-    image.src = pageImageUrl(pageNo, "view");
+    image.src = pageImageUrl(pageNo, detailImageProfile());
   }
 }
 
@@ -18267,7 +18288,7 @@ function pumpReadingImages() {
       delete image.dataset.pending;
       step();
     };
-    image.src = pageImageUrl(pageNo, "view");
+    image.src = pageImageUrl(pageNo, detailImageProfile());
   };
   step();
 }

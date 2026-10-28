@@ -184,9 +184,20 @@ def render_page_image(
         document.close()
 
 
+#: 编码格式：`view` / `zoom` 用 JPEG（扫描页的灰度噪点让 PNG 大一个数量级）。
+#: 2026-10-28 实测（447pt 宽页面，第 36 页）：view@150DPI 的 PNG 1.77 MB → JPEG(q=82) 0.42 MB；
+#: zoom@300DPI 的 PNG 约 7 MB → JPEG 1.3 MB。缩略图仍用 PNG（小图，边缘干净）。
+ENCODE_FORMAT = {"thumb": "PNG", "view": "JPEG", "zoom": "JPEG"}
+JPEG_QUALITY = 82
+
+
 @_serialized
 def render_page_png(path: Path, page_index: int, *, profile: str = DEFAULT_PROFILE) -> bytes:
-    """把某一页渲染成 PNG 字节。``page_index`` 从 0 开始。"""
+    """把某一页渲染成 **PNG** 字节。``page_index`` 从 0 开始。
+
+    比 `render_page_encoded` 大一个数量级（扫描页），接口层不要用它传大图；
+    留着是为了"要无损 PNG"的调用方与测试。
+    """
     if profile not in RENDER_PROFILES:
         raise PdfError(
             f"未知的渲染档位 {profile!r}，可选：{', '.join(sorted(RENDER_PROFILES))}"
@@ -196,6 +207,33 @@ def render_page_png(path: Path, page_index: int, *, profile: str = DEFAULT_PROFI
         buffer = BytesIO()
         image.save(buffer, format="PNG")
         return buffer.getvalue()
+    finally:
+        image.close()
+
+
+@_serialized
+def render_page_encoded(
+    path: Path, page_index: int, *, profile: str = DEFAULT_PROFILE
+) -> tuple[str, bytes]:
+    """渲染一页并编码，返回 `(content_type, bytes)`。
+
+    `view` / `zoom` 用 JPEG q=82（体积降一个数量级，肉眼几乎无差），`thumb` 用 PNG。
+    调用方按返回的 content_type 设置响应头即可。
+    """
+    if profile not in RENDER_PROFILES:
+        raise PdfError(
+            f"未知的渲染档位 {profile!r}，可选：{', '.join(sorted(RENDER_PROFILES))}"
+        )
+    image = render_page_image(path, page_index, dpi=RENDER_PROFILES[profile])
+    try:
+        buffer = BytesIO()
+        if ENCODE_FORMAT.get(profile, "PNG") == "JPEG":
+            image.convert("RGB").save(
+                buffer, format="JPEG", quality=JPEG_QUALITY, optimize=True
+            )
+            return "image/jpeg", buffer.getvalue()
+        image.save(buffer, format="PNG")
+        return "image/png", buffer.getvalue()
     finally:
         image.close()
 

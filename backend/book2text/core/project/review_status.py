@@ -293,12 +293,18 @@ def revoke_auto_pass(project_id: str, page_no: int, *, library: Path | None = No
     return {"page_no": page_no, "page_id": page.page_id, "stage": stage, "revoked": True}
 
 
-def project_pending(project_id: str, *, library: Path | None = None) -> dict:
+def project_pending(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    divergences: dict | None = None,
+) -> dict:
     """页面视图的「待处理」：只返回**有理由**的页，并给出理由计数。"""
     pages = library_module.list_pages(project_id, library=library)
     project = _project(project_id, library)
     states = blocks_module.page_recognition_states(project_id, library=library)
-    divergences = blocks_module.page_divergences(project_id, library=library)
+    if divergences is None:
+        divergences = blocks_module.page_divergences(project_id, library=library)
     aux = blocks_module.pages_with_auxiliary_run(project_id, library=library)
     directory = library_module.require_project_dir(project_id, library=library)
     try:
@@ -569,7 +575,12 @@ def review_tree(project_id: str, *, library: Path | None = None) -> dict:
 QUEUE_BLOCK_TYPES = frozenset({"paragraph", "heading"})
 
 
-def queue_items(project_id: str, *, library: Path | None = None) -> dict:
+def queue_items(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    index: "blocks_module.DivergenceIndex | None" = None,
+) -> dict:
     """审校队列的**唯一**统计口径（左树 / 顶栏分母 / 收尾面板三处共用）。
 
     集合 = 正文块（paragraph / heading）+ 版心内 + 有第二引擎文本的实质差异行
@@ -579,13 +590,13 @@ def queue_items(project_id: str, *, library: Path | None = None) -> dict:
     返回 per_page（页面 → 队列内的未裁决数 / 总数）与汇总。
     """
     target_library = library if library is not None else library_module.default_library_dir()
-    project = library_module.load_project(project_id, library=target_library)
-    pages = library_module.list_pages(project_id, library=target_library)
+    # 任务 62：能共用收尾面板算好的索引就共用（块级分歧只算一次）
+    idx = index or blocks_module.divergence_index(project_id, library=target_library)
+    project = idx.project
+    pages = list(idx.pages.values())
     page_by_no = {page.page_no: page for page in pages}
-    blocks = blocks_module.list_blocks(project_id, library=target_library)
-    lines_by_block: dict[str, list] = {}
-    for line in blocks_module.list_block_lines(project_id, library=target_library):
-        lines_by_block.setdefault(line.block_id, []).append(line)
+    blocks = list(idx.blocks)
+    lines_by_block = idx.lines_by_block
     per_page: dict[int, dict] = {}
     totals = {
         "total": 0,
@@ -604,9 +615,7 @@ def queue_items(project_id: str, *, library: Path | None = None) -> dict:
         if not block.include:
             continue
         if block.block_type not in QUEUE_BLOCK_TYPES:
-            divergence = blocks_module.block_divergence(
-                block, lines_by_block.get(block.block_id, [])
-            )
+            divergence = idx.by_block.get(block.block_id) or blocks_module.EMPTY_BLOCK_DIVERGENCE
             other = divergence.chars + divergence.punct
             if other:
                 totals["other_types"] += other
@@ -614,9 +623,7 @@ def queue_items(project_id: str, *, library: Path | None = None) -> dict:
         page = page_by_no.get(block.page_no)
         if page is None:
             continue
-        divergence = blocks_module.block_divergence(
-            block, lines_by_block.get(block.block_id, [])
-        )
+        divergence = idx.by_block.get(block.block_id) or blocks_module.EMPTY_BLOCK_DIVERGENCE
         # **按 marks 数，不按 divergence.chars / punct 数**：后两者只统计"未裁决"的行，
         # 一个块的差异全裁完就会变成 0，于是这些行连"已裁决"都统计不到
         # （2026-10-28 实测：899 行汉字差异全标 kept 后 total 掉到 724、acked 只有 354）。
@@ -629,8 +636,7 @@ def queue_items(project_id: str, *, library: Path | None = None) -> dict:
         ]
         if not marks:
             continue
-        inside = margin_box_module.block_inside_margin(project, page, block.bbox)
-        if not inside:
+        if not idx.inside(block):
             totals["outside"] += len(marks)
             continue
         acked_here = sum(1 for mark in marks if mark.ack)
@@ -655,6 +661,32 @@ def queue_items(project_id: str, *, library: Path | None = None) -> dict:
     return {"per_page": per_page, "totals": totals, "pages": len(per_page)}
 
 
+_FINISH_CACHE: dict[str, tuple[str, dict]] = {}
+"""收尾面板结果缓存：项目 → (签名, 结果)。
+
+签名用 `project.updated_at` + **`project.db` / `project.db-wal` 的 mtime**。
+只要有任何写入提交，SQLite 文件的 mtime 就会变（WAL 模式下看 `-wal`），
+所以不需要给每个写入方加"版本号"，也不会出现"同一秒内改了却拿旧结果"。
+读一次 `stat()` 是微秒级，换来 2.4 s → ~0 ms。
+"""
+
+
+def _finish_signature(project_id: str, library: Path) -> str:
+    try:
+        project = library_module.load_project(project_id, library=library)
+        updated = project.updated_at
+    except library_module.ProjectError:
+        return ""
+    directory = library_module.project_dir(library, project_id)
+    parts = [updated]
+    for suffix in ("", "-wal"):
+        try:
+            parts.append(str(directory.joinpath(f"project.db{suffix}").stat().st_mtime_ns))
+        except OSError:
+            parts.append("-")
+    return "|".join(parts)
+
+
 def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     """收尾面板的六个状态：全部从数据库实时聚合，不依赖前端估算。
 
@@ -665,14 +697,21 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     「审校」完成还要跨页延续的第三桶为 0（任务 42）：自动判定判不了的
     16 处页边界只要还有人没看，这一步就不算完——否则那 16 处段落错误没人知道。
     """
+    target_library = library if library is not None else library_module.default_library_dir()
+    signature = _finish_signature(project_id, target_library)
+    cached = _FINISH_CACHE.get(project_id)
+    if cached and signature and cached[0] == signature:
+        return cached[1]
     pages = library_module.list_pages(project_id, library=library)
     project = _project(project_id, library)
     states = blocks_module.page_recognition_states(project_id, library=library)
-    divergences = blocks_module.page_divergences(project_id, library=library)
+    # 任务 62：块级分歧只算**一次**，收尾 / 队列 / 标点分组共用这份索引
+    idx = blocks_module.divergence_index(project_id, library=library)
+    divergences = idx.by_page
     aux = blocks_module.pages_with_auxiliary_run(project_id, library=library)
     workflow = workflow_module.project_workflow(project_id, library=library)
     wf_by_no = {item["page_no"]: item for item in workflow["pages"]}
-    pending = project_pending(project_id, library=library)
+    pending = project_pending(project_id, library=library, divergences=divergences)
     pending_nos = {item["page_no"] for item in pending["pages"]}
     continuation = continuations_module.pending(project_id, library=library)
 
@@ -783,7 +822,7 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     compared = identical + format_only + chars + punct
     diverging_rate = round((chars + punct) / compared, 4) if compared else 0.0
 
-    queue = queue_items(project_id, library=library)
+    queue = queue_items(project_id, library=library, index=idx)
     complete = [
         confirmed_pages == len(pages),
         margin_settled >= margin_total,
@@ -797,7 +836,7 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
         and queue["totals"]["unacked"] == 0,
         main_done == len(body_pages),
     ]
-    return {
+    result = {
         "project": {"project_id": project_id, "name": project.name},
         "page_type": {
             "confirmed": confirmed_pages,
@@ -845,7 +884,9 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
             "chars_pending": queue["totals"]["chars_unacked"],
             "punct_total": queue["totals"]["punct_total"],
             "punct_pending": queue["totals"]["punct_unacked"],
-            "punct_groups": punct_groups_module.group_counts(project_id, library=library),
+            "punct_groups": punct_groups_module.group_counts(
+                project_id, library=library, index=idx
+            ),
             "outside_items": queue["totals"]["outside"],
             "other_items": queue["totals"]["other_types"],
             # 任务 42：F1 第三桶（自动判不了的页边界）——没确认完，审校就不算完成
@@ -870,3 +911,6 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
         "k": sum(1 for item in complete if item),
         "k_total": 6,
     }
+    if signature:
+        _FINISH_CACHE[project_id] = (signature, result)
+    return result

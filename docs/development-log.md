@@ -7,6 +7,43 @@
 
 ---
 
+## 2026-10-28 — 任务 62：启动速度 / 页图清晰度 / 渲染成本 / 标点分组统计
+
+### 任务目标
+
+用户报「PDF 页多了以后渲染慢」「审校页图糊」「步骤条很久才亮」。Chief 定的顺序：
+先做 ①②③（性能与清晰度），④ 只报统计。
+
+### 改了什么
+
+- `blocks.divergence_index()`：块/行/复核记录/页/项目各读一次，`block_divergence` 每块一次，
+  收尾面板 / 队列 / 标点分组共用；按 db mtime 缓存（490 页 750 ms → 0.1 ms）。
+- `compare.compare_line` / `unify_whitespace`：原样相同、没有怪空白的行走快路径。
+- `structure.suggestions_by_page`：整本 + 默认规则按 mtime 缓存（1.8 s → ~0）。
+- `review_status.finish_summary`：结果按 mtime 缓存（2.90 s → 0.004 s）。
+- `render`：`view` / `zoom` 改 JPEG q82（`thumb` 仍 PNG），新增 `render_page_encoded()`
+  返回 `(content_type, bytes)`；路由按返回类型设响应头。
+- 前端：`detailImageProfile()` 按 dpr/窗口选 `zoom` 或 `view`；打开项目时
+  `finish-summary` 与项目载荷并行，且先等它点亮步骤条再去开上次的视图。
+
+### 验证
+
+详见 `docs/qa/startup-dpi-render-punct-stats-20261028.md`，摘要：
+
+| 指标 | 改前 | 改后 |
+|---|---:|---:|
+| 点击打开 → 步骤条真实数字 | 11,521 ms | **4,344 ms** |
+| `finish-summary`（warm） | 2,900 ms | **3.6 ms** |
+| `view` 页图（150 DPI） | 1.77 MB / 256 ms | **232 KB / 142 ms** |
+| `zoom` 页图（300 DPI） | 约 7 MB | **650 KB / 366 ms** |
+| 滚 50 页 | — | 均帧 16.6 ms / 最大 20.8 ms / 0 掉帧 / DOM 1.9 万 |
+
+④ 双语书 2,351 行标点差异 = 514 组；前 20/50/100/200 组覆盖 59.3% / 72.3% / 80.1% / 86.6%。
+英文 1,508 行/223 组、中文 843 行/291 组；按"英文标点类别 + 每行主片段"归并是 155 组、
+前 20 组 82.9%。这套口径要确认后再落。
+
+未验证：Windows；首屏剩余 4 s（`/pages`、`/page-numbers` 还在开机时一起发）。
+
 ## 2026-10-28 — 任务 61 续：差异数字分两类显示、判定看合并
 
 ### 任务目标

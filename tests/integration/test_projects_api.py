@@ -725,3 +725,35 @@ def test_listing_shows_last_position(
     assert entry["last_view"] == "review"
     assert entry["last_page_no"] == second["page_no"]
     assert entry["failed_pages"] == 0
+
+
+def test_detail_image_profiles_are_jpeg_and_thumb_stays_png(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    """任务 62：`view` / `zoom` 改 JPEG q=82（体积降一个数量级），缩略图仍是 PNG。"""
+    project_id = create(client, auth_headers, sample_pdf).json()["project"]["project_id"]
+
+    view = client.get(
+        f"/api/projects/{project_id}/pages/1/image",
+        params={"size": "view"},
+        headers=auth_headers,
+    )
+    assert view.status_code == 200
+    assert view.headers["content-type"] == "image/jpeg"
+    assert view.content.startswith(b"\xff\xd8"), "JPEG 头"
+
+    zoom = client.get(
+        f"/api/projects/{project_id}/pages/1/image",
+        params={"size": "zoom"},
+        headers=auth_headers,
+    )
+    assert zoom.headers["content-type"] == "image/jpeg"
+
+    thumb = client.get(
+        f"/api/projects/{project_id}/pages/1/image",
+        params={"size": "thumb"},
+        headers=auth_headers,
+    )
+    assert thumb.headers["content-type"] == "image/png"
+    # 同一页：150 DPI 的 JPEG 必须比 300 DPI 的小（档位真的不同）
+    assert len(view.content) < len(zoom.content)

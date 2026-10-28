@@ -32,6 +32,7 @@
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from dataclasses import dataclass
 
@@ -105,12 +106,25 @@ def _is_cjk(char: str) -> bool:
     )
 
 
+#: 需要"规范化空白"的字符：制表 / 不换行空格 / 各种宽度空格 / 行分隔符。
+#: 命中才走逐字符的慢路径；绝大多数中文行一个都不含，可以直接返回。
+_ODD_WHITESPACE = re.compile("[\t\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\n\r]")
+#: 连续空格 / 行首尾空白（也要走慢路径）。
+_MESSY_WHITESPACE = re.compile(r"  |^ | $")
+
+
 def unify_whitespace(text: str, *, keep_newlines: bool = True) -> str:
     """说明书第 1 步：统一换行与空白字符，去除行首尾空白。
 
     ``keep_newlines=False`` 时把换行也压成空格——整篇比对时用，
     这样 OCR 与金标准的**换行位置不同不会被算成错误**。
+
+    2026-10-28：加了一条**快路径**——没有"怪空白 / 连续空格 / 首尾空格"的行直接返回。
+    全书比对时这占 95% 以上（`finish_summary` 实测 7.6 s → 见任务 62 的报告），
+    而逐字符 `unicodedata.category()` 是当时最大的热点。
     """
+    if not _ODD_WHITESPACE.search(text) and not _MESSY_WHITESPACE.search(text):
+        return text
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = "".join(
         " " if unicodedata.category(char) in ("Zs", "Zl", "Zp") else char
@@ -179,6 +193,9 @@ def compare_line(reference: str, candidate: str) -> str:
     对应说明书 8.5 的一致性判定：先归一化，再比较；
     格式差异**不计入分歧**，否则中文行会因为空格差异全被标成有分歧（说明书 8.6）。
     """
+    # 原样就相同：不必归一化（两路都对的行占绝大多数，这条快路径省掉整条归一化链）
+    if reference == candidate:
+        return IDENTICAL
     if unify_whitespace(reference) == unify_whitespace(candidate):
         return IDENTICAL
     if normalize_for_comparison(reference) == normalize_for_comparison(candidate):

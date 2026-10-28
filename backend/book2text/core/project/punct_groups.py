@@ -102,17 +102,18 @@ def _raw(text: str) -> str:
 
 
 def _collect_lines(
-    project_id: str, library: Path | None = None
+    project_id: str,
+    library: Path | None = None,
+    index: "blocks_module.DivergenceIndex | None" = None,
 ) -> list[tuple[PunctLine, str, str]]:
     """收集"只有标点 / 空格差异"的行：返回 (行, 模式键, 模式显示)。"""
     target_library = library if library is not None else library_module.default_library_dir()
-    project = library_module.load_project(project_id, library=target_library)
-    pages = library_module.list_pages(project_id, library=target_library)
+    idx = index or blocks_module.divergence_index(project_id, library=target_library)
+    project = idx.project
+    pages = list(idx.pages.values())
     page_by_no = {page.page_no: page for page in pages}
-    blocks = blocks_module.list_blocks(project_id, library=target_library)
-    lines_by_block: dict[str, list] = {}
-    for line in blocks_module.list_block_lines(project_id, library=target_library):
-        lines_by_block.setdefault(line.block_id, []).append(line)
+    blocks = list(idx.blocks)
+    lines_by_block = idx.lines_by_block
 
     collected: list[tuple[PunctLine, str, str]] = []
     for block in blocks:
@@ -126,7 +127,7 @@ def _collect_lines(
         if not margin_box_module.block_inside_margin(project, page, block.bbox):
             continue
         lines = lines_by_block.get(block.block_id, [])
-        divergence = blocks_module.block_divergence(block, lines)
+        divergence = idx.by_block.get(block.block_id) or blocks_module.EMPTY_BLOCK_DIVERGENCE
         if divergence.stale:
             continue
         line_records = {line.line_index: line for line in lines}
@@ -162,10 +163,15 @@ def _collect_lines(
 _QUEUE_BLOCK_TYPES = frozenset({"paragraph", "heading"})
 
 
-def collect(project_id: str, *, library: Path | None = None) -> dict:
+def collect(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    index: "blocks_module.DivergenceIndex | None" = None,
+) -> dict:
     """按"差异模式"分组（`；→，`、`∅→‘`…），每组给数量、样例与裁决进度。"""
     groups: dict[str, list[PunctLine]] = {}
-    for line, key, _pattern in _collect_lines(project_id, library):
+    for line, key, _pattern in _collect_lines(project_id, library, index):
         groups.setdefault(key, []).append(line)
 
     payload = []
@@ -274,7 +280,12 @@ def decide(
 
 # ---------------------------------------------------------------- 计数（收尾面板用）
 
-def group_counts(project_id: str, *, library: Path | None = None) -> dict:
+def group_counts(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    index: "blocks_module.DivergenceIndex | None" = None,
+) -> dict:
     """标点差异的组数 / 行数 / 已判组数（收尾面板显示用；判定看行级 ack）。
 
     **不缓存。** 试过按 `project.updated_at` + 60 s 缓存，结果：第二引擎复核重跑会把
@@ -283,7 +294,7 @@ def group_counts(project_id: str, *, library: Path | None = None) -> dict:
     宁可多花 0.35 s（394 页实测），也不要给出一个错的"已判完"。
     """
     target_library = library if library is not None else library_module.default_library_dir()
-    data = collect(project_id, library=target_library)
+    data = collect(project_id, library=target_library, index=index)
     totals = data["totals"]
     return {
         "groups": totals["groups"],

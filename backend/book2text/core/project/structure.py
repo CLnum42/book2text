@@ -865,6 +865,10 @@ def suggest_block_types(
     )
 
 
+_SUGGESTION_CACHE: dict[str, tuple[str, dict]] = {}
+"""项目 → (数据库 mtime 签名, 整本建议)。只留最近两个项目。"""
+
+
 def suggestions_by_page(
     project_id: str,
     *,
@@ -876,9 +880,30 @@ def suggestions_by_page(
 
     与 `suggest_block_types` 同一套规则，但把整本书的 pages / blocks / 行高统计
     只加载一次；267 页逐页调用那个函数会重复扫全书，慢到不可用。
+
+    任务 62：整本（`page_numbers=None`、默认规则）的结果按数据库文件 mtime 缓存，
+    490 页双语实测 1.8 s → ~0 ms；任何写入提交都会让 mtime 变化，缓存自动失效。
     """
     active = rules or HeaderFooterRules()
     target_library = library if library is not None else default_library_dir()
+    signature = ""
+    if page_numbers is None and rules is None:
+        try:
+            directory = library_module.project_dir(target_library, project_id)
+            parts = []
+            for suffix in ("", "-wal"):
+                try:
+                    parts.append(
+                        str(directory.joinpath(f"project.db{suffix}").stat().st_mtime_ns)
+                    )
+                except OSError:
+                    parts.append("-")
+            signature = "|".join(parts)
+        except Exception:  # noqa: BLE001 - 拿不到签名就不缓存
+            signature = ""
+        cached = _SUGGESTION_CACHE.get(project_id)
+        if cached and signature and cached[0] == signature:
+            return cached[1]
     pages = list_pages(project_id, library=target_library)
     eligible = {page.page_no for page in pages if page.page_type in active.page_types}
     wanted = {int(no) for no in page_numbers} if page_numbers is not None else eligible
@@ -936,6 +961,10 @@ def suggestions_by_page(
             project=project,
             active=active,
         ))
+    if signature:
+        if project_id not in _SUGGESTION_CACHE and len(_SUGGESTION_CACHE) >= 2:
+            _SUGGESTION_CACHE.pop(next(iter(_SUGGESTION_CACHE)))
+        _SUGGESTION_CACHE[project_id] = (signature, result)
     return result
 
 

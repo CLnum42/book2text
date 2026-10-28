@@ -440,11 +440,16 @@ def page_image(
         raise AppError(404, "page_not_found", f"没有第 {page_no} 页") from None
     index = page.pdf_page_index if page.pdf_page_index is not None else page_no - 1
     try:
-        png = render.render_page_png(source, index, profile=size)
+        media_type, body = render.render_page_encoded(source, index, profile=size)
     except render.PdfError as exc:
         raise AppError(400, "render_failed", "无法渲染该页", str(exc)) from exc
 
-    return Response(content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=300"})
+    # `view` / `zoom` 是 JPEG（任务 62：体积降一个数量级），缩略图仍是 PNG
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 class LastViewPatch(BaseModel):

@@ -756,3 +756,53 @@ def test_review_completion_requires_punctuation_groups_decided(
     assert summary["review"]["punct_pending"] == 0
     assert summary["review"]["punct_groups"]["undecided_groups"] == 0
     assert summary["review"]["complete"] is True
+
+
+def test_finish_summary_is_cached_and_invalidated_by_writes(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    project_with_ocr: str,
+    library_dir: Path,
+) -> None:
+    """任务 62：收尾面板要"秒回"，但任何写入都必须让它失效。
+
+    缓存签名是数据库文件的 mtime（WAL 看 `-wal`）——不靠"版本号"，
+    所以同一秒内的写入也不会拿到旧结果。
+    """
+    import time
+
+    from book2text.core.project import review_status
+
+    project_id = project_with_ocr
+    review_status._FINISH_CACHE.clear()
+    first_started = time.perf_counter()
+    first = client.get(
+        f"/api/projects/{project_id}/review/finish-summary", headers=auth_headers
+    )
+    first_ms = (time.perf_counter() - first_started) * 1000
+    assert first.status_code == 200
+
+    second_started = time.perf_counter()
+    second = client.get(
+        f"/api/projects/{project_id}/review/finish-summary", headers=auth_headers
+    )
+    second_ms = (time.perf_counter() - second_started) * 1000
+    assert second.json()["review"]["total_items"] == first.json()["review"]["total_items"]
+    assert second_ms < max(50.0, first_ms / 2), (first_ms, second_ms)
+
+    # 写一笔（改页面类型）→ 签名必须变（缓存失效），下一次数值来自重新计算
+    signature_before = review_status._finish_signature(project_id, library_dir)
+    page = client.get(f"/api/projects/{project_id}", headers=auth_headers).json()["pages"][0]
+    patched = client.patch(
+        f"/api/projects/{project_id}/pages",
+        json={"page_ids": [page["page_id"]], "page_type": "body_excluded"},
+        headers=auth_headers,
+    )
+    assert patched.status_code == 200, patched.text
+    signature_after = review_status._finish_signature(project_id, library_dir)
+    assert signature_after != signature_before, "写入必须让缓存签名变化"
+    third = client.get(
+        f"/api/projects/{project_id}/review/finish-summary", headers=auth_headers
+    )
+    assert third.status_code == 200
+    assert third.json()["page_type"]["total"] == first.json()["page_type"]["total"]
