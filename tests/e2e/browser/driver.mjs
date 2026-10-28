@@ -40,6 +40,8 @@ export async function run(cfg) {
       return await undo(page, cfg);
     case "export":
       return await exportStep(page, cfg);
+    case "images":
+      return await measureImages(page, args);
     case "audit":
       return await auditMarks(page);
     case "inspect":
@@ -112,6 +114,210 @@ async function dismissMasks(page) {
       15000
     );
   }
+}
+
+/**
+ * 页图清晰度：比例 = img.naturalWidth ÷ (img CSS 宽 × dpr)，断言 ≥ 1.0。
+ * 小于 1 = 图被放大显示，一定糊（用户为这个提过四次）。
+ */
+async function measureImages(page, args) {
+  const where = args.where || "review";
+  const scroll = args.scroll || "top";
+  const dpr = await page.evaluate(() => window.devicePixelRatio || 1);
+
+  if (where === "index") {
+    await dismissMasks(page);
+    await page.click('button[data-workflow-step="index"]', { label: "进入目录确认" });
+    await waitFor(
+      page,
+      () => {
+        const view = document.getElementById("view-index");
+        return Boolean(view && !view.hidden);
+      },
+      "目录确认视图可见",
+      60000
+    );
+  } else {
+    await ensureReading(page);
+  }
+
+  const container = where === "index" ? "#index-canvas" : "#reading-pdf-scroll";
+  const tileSelector = where === "index" ? ".index-page" : ".reading-page";
+
+  // 审校视图的「跟随」会把正文流和页列绑在一起：脚本滚页列时会被正文流拽回去
+  // （实测 top→middle 连着量时 scrollTop 会弹回 0）。量图时先关掉，它只影响联动，
+  // 不影响页图本身的取档与渲染。
+  if (where === "review") {
+    const followOn = await page.evaluate(() => {
+      const chip = document.getElementById("reading-follow-chip");
+      return Boolean(chip && chip.classList.contains("is-on"));
+    });
+    if (followOn) {
+      await page.click("#reading-follow-chip", { label: "关闭跟随" });
+      await waitFor(
+        page,
+        () => {
+          const chip = document.getElementById("reading-follow-chip");
+          return Boolean(chip && !chip.classList.contains("is-on"));
+        },
+        "关闭阅读跟随",
+        15000
+      );
+    }
+  }
+
+  if (scroll === "middle") {
+    // 滚到"整列中间"那一页，而不是 scrollTop = 一半高度：
+    // 页图还没载入时 scrollHeight 可能不足，直接设一半会落回顶部（实测发生过）。
+    // 打开阅读流是异步的（662 页要拼整本预览）；它完成时会把页列滚回"当前页"。
+    // 所以这里反复"滚到中间 → 确认位置站住了"，不是 sleep 一次就信。
+    const stuck = await page.evaluate(async (input) => {
+      const node = document.querySelector(input.container);
+      if (!node) return -1;
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        const tiles = [...node.querySelectorAll(input.tile)];
+        const target = tiles[Math.floor(tiles.length / 2)];
+        if (target) {
+          const top =
+            target.getBoundingClientRect().top -
+            node.getBoundingClientRect().top +
+            node.scrollTop -
+            node.clientHeight / 2 +
+            target.clientHeight / 2;
+          node.scrollTop = Math.max(0, top);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        if (node.scrollTop > 100) return node.scrollTop;
+      }
+      return node.scrollTop;
+    }, { container, tile: tileSelector });
+    if (!(stuck > 100)) {
+      throw new Error(`页列滚不到中间（scrollTop=${stuck}）：可能被"跟随/重新打开"拽回去了`);
+    }
+  } else if (scroll === "top") {
+    await page.evaluate((sel) => {
+      const node = document.querySelector(sel);
+      if (node) node.scrollTop = 0;
+    }, container);
+  }
+
+  // 等"当前可见的页块"都载入完成（占位 thumb 不算完成：必须 is-ready）。
+  await waitFor(
+    page,
+    (input) => {
+      const scroller = document.querySelector(input.container);
+      if (!scroller) return false;
+      const cRect = scroller.getBoundingClientRect();
+      const tiles = [...document.querySelectorAll(input.tile)].filter((tile) => {
+        const rect = tile.getBoundingClientRect();
+        return rect.bottom > cRect.top && rect.top < cRect.bottom;
+      });
+      if (!tiles.length) return false;
+      return tiles.every((tile) => {
+        const image = tile.querySelector("img");
+        return Boolean(
+          image &&
+            image.complete &&
+            image.naturalWidth > 0 &&
+            image.classList.contains("is-ready") &&
+            !image.dataset.placeholder
+        );
+      });
+    },
+    `可见页图载入完成（${where}/${scroll}）`,
+    120000,
+    { container, tile: tileSelector }
+  );
+
+  if (args.forceSize) {
+    // 负向自检用：把第一张可见页图人为换成低清档，断言必须能报 FAIL。
+    // 只改 QA 浏览器里的这一张图，不碰产品代码与磁盘。
+    await page.evaluate((input) => {
+      const scroller = document.querySelector(input.container);
+      const cRect = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: 0 };
+      const tile = [...document.querySelectorAll(input.tile)].find((item) => {
+        const rect = item.getBoundingClientRect();
+        return rect.bottom > cRect.top && rect.top < cRect.bottom;
+      });
+      const image = tile && tile.querySelector("img");
+      if (!image) return;
+      const url = new URL(image.currentSrc || image.src, location.href);
+      url.searchParams.set("size", input.forceSize);
+      image.src = url.href;
+    }, { container, tile: tileSelector, forceSize: args.forceSize });
+    await waitFor(
+      page,
+      (input) => {
+        const scroller = document.querySelector(input.container);
+        const cRect = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: 0 };
+        const tiles = [...document.querySelectorAll(input.tile)].filter((tile) => {
+          const rect = tile.getBoundingClientRect();
+          return rect.bottom > cRect.top && rect.top < cRect.bottom;
+        });
+        return tiles.some((tile) => {
+          const image = tile.querySelector("img");
+          return Boolean(
+            image && image.complete && image.naturalWidth > 0 &&
+            image.currentSrc.includes(`size=${input.forceSize}`)
+          );
+        });
+      },
+      `人为换成 ${args.forceSize} 档后的图载入完成`,
+      60000,
+      { container, tile: tileSelector, forceSize: args.forceSize }
+    );
+  }
+
+  return await page.evaluate(
+    (input) => {
+      const scroller = document.querySelector(input.container);
+      const cRect = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: 0 };
+      const dpr = window.devicePixelRatio || 1;
+      const rows = [];
+      for (const tile of document.querySelectorAll(input.tile)) {
+        const tileRect = tile.getBoundingClientRect();
+        const visible = tileRect.bottom > cRect.top && tileRect.top < cRect.bottom;
+        if (!visible) continue;
+        const image = tile.querySelector("img");
+        if (!image) continue;
+        const rect = image.getBoundingClientRect();
+        const cssWidth = rect.width > 1 ? rect.width : tileRect.width;
+        const src = image.currentSrc || image.src || "";
+        let size = "none";
+        try {
+          size = new URL(src, location.href).searchParams.get("size") || "none";
+        } catch (error) {
+          size = "?";
+        }
+        const ratio = image.naturalWidth > 0 && cssWidth > 0
+          ? image.naturalWidth / (cssWidth * dpr)
+          : 0;
+        rows.push({
+          where: input.where,
+          scroll: input.scroll,
+          page: Number(tile.dataset.pageNo || 0),
+          size,
+          naturalWidth: image.naturalWidth,
+          cssWidth: Math.round(cssWidth * 10) / 10,
+          dpr,
+          ratio: Math.round(ratio * 1000) / 1000,
+          ready: image.classList.contains("is-ready"),
+          placeholder: image.dataset.placeholder === "1",
+          src: src.slice(0, 200),
+        });
+      }
+      return {
+        where: input.where,
+        scroll: input.scroll,
+        dpr,
+        rows,
+        scrollTop: scroller ? Math.round(scroller.scrollTop) : -1,
+        scrollHeight: scroller ? Math.round(scroller.scrollHeight) : -1,
+        totalTiles: document.querySelectorAll(input.tile).length,
+      };
+    },
+    { container, tile: tileSelector, where, scroll }
+  );
 }
 
 async function auditMarks(page) {

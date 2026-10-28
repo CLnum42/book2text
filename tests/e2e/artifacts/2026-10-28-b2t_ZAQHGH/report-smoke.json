@@ -74,6 +74,12 @@
       "evidence": "count='可跳过'；索引 1/662 页有印刷页码、缺 661；complete=False skippable=True；UI：「662 页 · 1 页有印刷页码 · 661 页未识别页码」"
     },
     {
+      "step": "4 目录确认",
+      "assertion": "页图清晰度：比例 ≥ 1.0（目录确认一屏）",
+      "status": "PASS",
+      "evidence": "1/1 个可见页块比例 ≥ 1.0；最小 p1 1.185（size=zoom，naturalWidth=2550，CSS宽=1076，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | 结果\np1 | zoom | 2550 | 1076 | 2 | 1.185 | PASS"
+    },
+    {
       "step": "5 正文审校",
       "assertion": "队列数（左树头「队列 N 处」）= API total_items",
       "status": "PASS",
@@ -99,27 +105,39 @@
     },
     {
       "step": "5 正文审校",
-      "assertion": "阅读流文本自检",
-      "status": "FAIL",
-      "evidence": "2 处不一致"
+      "assertion": "阅读流文本自检 0 失败（__b2tTextCheckFails）",
+      "status": "PASS",
+      "evidence": "0"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "页图清晰度：比例 ≥ 1.0（审校第 1 屏）",
+      "status": "PASS",
+      "evidence": "2/2 个可见页块比例 ≥ 1.0；最小 p1 1.660（size=view，naturalWidth=1275，CSS宽=384，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | 结果\np1 | view | 1275 | 384 | 2 | 1.660 | PASS\np2 | view | 1275 | 384 | 2 | 1.660 | PASS"
+    },
+    {
+      "step": "5 正文审校",
+      "assertion": "页图清晰度：比例 ≥ 1.0（审校中间一屏）",
+      "status": "PASS",
+      "evidence": "2/2 个可见页块比例 ≥ 1.0；最小 p1 1.660（size=view，naturalWidth=1275，CSS宽=384，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | 结果\np1 | view | 1275 | 384 | 2 | 1.660 | PASS\np2 | view | 1275 | 384 | 2 | 1.660 | PASS"
     },
     {
       "step": "6 导出",
       "assertion": "导出覆盖 662 页，预览段数 = 预检段数",
       "status": "PASS",
-      "evidence": "预检：导出页 662 · 有正文的页 653 · 4814 段 · 753327 字；预览 4814 段；UI：导出页数 662 页 正文段数 4814 段 正文字数 753327 字 注释条数 0 条（未导出） 注释字数 0 字 元数据页数 662 页 页码映射 0 / 662 页 跨块合"
+      "evidence": "预检：导出页 662 · 有正文的页 653 · 4821 段 · 753335 字；预览 4821 段；UI：导出页数 662 页 正文段数 4821 段 正文字数 753335 字 注释条数 0 条（未导出） 注释字数 0 字 元数据页数 662 页 页码映射 0 / 662 页 跨块合"
     },
     {
       "step": "6 导出",
       "assertion": "导出面板的页数/段数 = 预检（UI = API）",
       "status": "PASS",
-      "evidence": "导出页数 662 页 正文段数 4814 段 正文字数 753327 字 注释条数 0 条（未导出） 注释字数 0 字 元数据页数 662 页 页码映射 0 / 662 页 跨块合并的段 0 段 断词还原 74 处 未审校的段 4814 段"
+      "evidence": "导出页数 662 页 正文段数 4821 段 正文字数 753335 字 注释条数 0 条（未导出） 注释字数 0 字 元数据页数 662 页 页码映射 0 / 662 页 跨块合并的段 0 段 断词还原 74 处 未审校的段 4821 段"
     },
     {
       "step": "6 导出",
       "assertion": "点击导出真的落盘",
       "status": "PASS",
-      "evidence": "export_id=20261028-0635_txt · 4814 段 · 753327 字 · 未审 4814 段 · 2026-10-28 06:35；文件 ['body.txt', 'meta.json', 'manifest.json']"
+      "evidence": "export_id=20261028-0724_txt · 4821 段 · 753335 字 · 未审 4821 段 · 2026-10-28 07:24；文件 ['body.txt', 'meta.json', 'manifest.json']"
     }
   ]
 }

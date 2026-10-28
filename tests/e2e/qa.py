@@ -59,6 +59,35 @@ class Report:
         return 1 if failed else 0
 
 
+def _image_table(rows: list[dict[str, Any]]) -> str:
+    lines = ["页号 | size | naturalWidth | CSS宽 | dpr | 比例 | 结果"]
+    for row in rows:
+        ok = row["ratio"] >= 1.0
+        lines.append(
+            f"p{row['page']} | {row['size']} | {row['naturalWidth']} | {row['cssWidth']} | "
+            f"{row['dpr']} | {row['ratio']:.3f} | {'PASS' if ok else 'FAIL'}"
+        )
+    return "\n".join(lines)
+
+
+def _image_check(report: Report, step: str, result: dict[str, Any], label: str) -> None:
+    """页图清晰度断言：比例 = naturalWidth ÷ (CSS 宽 × dpr)，必须 ≥ 1.0。"""
+    rows = result.get("rows", [])
+    if not rows:
+        report.fail(step, f"页图清晰度（{label}）", "没有量到任何可见页块")
+        return
+    bad = [row for row in rows if row["ratio"] < 1.0]
+    worst = min(rows, key=lambda row: row["ratio"])
+    evidence = (f"{len(rows) - len(bad)}/{len(rows)} 个可见页块比例 ≥ 1.0；"
+                f"最小 p{worst['page']} {worst['ratio']:.3f}（size={worst['size']}，"
+                f"naturalWidth={worst['naturalWidth']}，CSS宽={worst['cssWidth']}，dpr={worst['dpr']}）\n"
+                + _image_table(rows))
+    if not bad:
+        report.ok(step, f"页图清晰度：比例 ≥ 1.0（{label}）", evidence)
+    else:
+        report.fail(step, f"页图清晰度：比例 ≥ 1.0（{label}）", evidence)
+
+
 def _api(state: dict[str, Any]) -> Api:
     return Api(state["base_url"], state["token"])
 
@@ -146,6 +175,42 @@ def cmd_reading(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------- 七步冒烟
+
+
+def cmd_images(args: argparse.Namespace) -> int:
+    state = _require_state()
+    report = Report("页图清晰度")
+    report_path = Path(state["run_dir"]) / "report-images.json"
+    try:
+        _browser.run(state, "prepare")
+    except Exception as error:  # noqa: BLE001
+        report.blocked("准备", str(error))
+        return report.finish(report_path)
+
+    screens = [("review", "top", "审校第 1 屏"), ("review", "middle", "审校中间一屏"), ("index", "top", "目录确认一屏")]
+    for where, scroll, label in screens:
+        try:
+            result = _browser.run(state, "images", {"where": where, "scroll": scroll})
+            _image_check(report, label, result, label)
+        except Exception as error:  # noqa: BLE001
+            report.blocked(label, str(error))
+
+    if args.selftest:
+        # 负向自检：人为把一张可见页图换成 thumb，断言必须报 FAIL，否则说明它测不出问题。
+        try:
+            result = _browser.run(state, "images",
+                                  {"where": "review", "scroll": "top", "forceSize": "thumb"})
+            rows = result.get("rows", [])
+            bad = [row for row in rows if row["ratio"] < 1.0]
+            if bad:
+                report.ok("负向自检", "人为换成低清档后断言确实报 FAIL",
+                          _image_table(rows))
+            else:
+                report.fail("负向自检", "人为换成低清档后断言确实报 FAIL",
+                            "换成 thumb 后比例仍 ≥ 1.0，断言不可信\n" + _image_table(rows))
+        except Exception as error:  # noqa: BLE001
+            report.blocked("负向自检", str(error))
+    return report.finish(report_path)
 
 
 def cmd_smoke(args: argparse.Namespace) -> int:
@@ -267,6 +332,12 @@ def cmd_smoke(args: argparse.Namespace) -> int:
                 else:
                     report.fail("4 目录确认", "无可信页码时步骤条写「可跳过」",
                                 f"count={tile.get('count')!r}；{detail}")
+                try:
+                    _image_check(report, "4 目录确认",
+                                 _browser.run(state, "images", {"where": "index", "scroll": "top"}),
+                                 "目录确认一屏")
+                except Exception as error:  # noqa: BLE001
+                    report.blocked("4 目录确认 · 页图清晰度", str(error))
             except Exception as error:  # noqa: BLE001
                 report.blocked("4 目录确认", str(error))
 
@@ -301,6 +372,13 @@ def cmd_smoke(args: argparse.Namespace) -> int:
                     report.ok("5 正文审校", "阅读流文本自检 0 失败（__b2tTextCheckFails）", "0")
                 else:
                     report.fail("5 正文审校", "阅读流文本自检", f"{reading['checkFails']} 处不一致")
+                for scroll, label in (("top", "审校第 1 屏"), ("middle", "审校中间一屏")):
+                    try:
+                        _image_check(report, "5 正文审校",
+                                     _browser.run(state, "images", {"where": "review", "scroll": scroll}),
+                                     label)
+                    except Exception as error:  # noqa: BLE001
+                        report.blocked(f"5 正文审校 · 页图清晰度（{label}）", str(error))
             except Exception as error:  # noqa: BLE001
                 report.blocked("5 正文审校", str(error))
 
@@ -503,6 +581,9 @@ def build_parser() -> argparse.ArgumentParser:
     reading.set_defaults(func=cmd_reading)
 
     sub.add_parser("smoke", help="七步冒烟（一键）").set_defaults(func=cmd_smoke)
+    images = sub.add_parser("images", help="页图清晰度：审校第 1 屏 / 中间一屏 / 目录确认一屏")
+    images.add_argument("--selftest", action="store_true", help="负向自检：人为换成低清档，断言必须报 FAIL")
+    images.set_defaults(func=cmd_images)
     sub.add_parser("check", help="三组一致性断言：显示=导出 / 提交→库 / 撤销→字节").set_defaults(func=cmd_check)
     return parser
 

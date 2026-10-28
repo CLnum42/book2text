@@ -3,9 +3,9 @@
   "rows": [
     {
       "step": "A 显示=导出",
-      "assertion": "右栏可见文本 = 导出段文本",
-      "status": "FAIL",
-      "evidence": "自检失败 1；seq 5 第 4 字起不同：显示「lcc: :pp」 vs 导出「lcc::pp」"
+      "assertion": "32 个已渲染段落逐字相同",
+      "status": "PASS",
+      "evidence": "自检失败 0；首段「title: author: publisher: isbn10 | asin:…」"
     },
     {
       "step": "B 提交→库",
@@ -23,7 +23,7 @@
       "step": "B 提交→库",
       "assertion": "revision 递增（写入确实是一次提交）",
       "status": "PASS",
-      "evidence": "[(3, 2), (3, 2)]"
+      "evidence": "[(1, 0), (1, 0)]"
     },
     {
       "step": "C 撤销→字节",

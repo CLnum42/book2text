@@ -17,8 +17,9 @@
 ```bash
 .venv/bin/python tests/e2e/qa.py up --project b2t_ZAQHGH   # 复制项目库 + 起独立服务（18765 起）
 .venv/bin/python tests/e2e/qa.py prepare                   # 开浏览器（1423×900@2）→ 打开项目（此时已可截图）
-.venv/bin/python tests/e2e/qa.py smoke                     # 七步冒烟
+.venv/bin/python tests/e2e/qa.py smoke                     # 七步冒烟（含两条底线）
 .venv/bin/python tests/e2e/qa.py check                     # 三组一致性断言
+.venv/bin/python tests/e2e/qa.py images --selftest         # 只量页图清晰度 + 低清负向自检
 .venv/bin/python tests/e2e/qa.py down                      # 关服务 + 删临时库
 ```
 
@@ -48,9 +49,18 @@ tests/e2e/
 | 1 页面确认 | 页面摘要里的页数 = API；纳入集合 = 662 |
 | 2 文字识别 | 主引擎 662/662 + `active_run` 662 页；步骤条数字 = API |
 | 3 版心确认 | 有文字的页都有版心框（`margin_box` = 662 − 无文字页）；步骤条 662/662 |
-| 4 目录确认 | 界面"1 页有印刷页码 / 661 页未识别" = finish-summary；无可信页码时步骤条写「可跳过」 |
-| 5 正文审校 | 左树头「队列 N 处」= 各行「N 处」之和 = API `total_items`；顶栏分母 = API `chars_total`；阅读流文本自检 0 失败 |
+| 4 目录确认 | 界面"1 页有印刷页码 / 661 页未识别" = finish-summary；无可信页码时步骤条写「可跳过」；**页图清晰度 ≥ 1.0（目录一屏）** |
+| 5 正文审校 | 左树头「队列 N 处」= 各行「N 处」之和 = API `total_items`；顶栏分母 = API `chars_total`；阅读流文本自检 0 失败；**页图清晰度 ≥ 1.0（第 1 屏 + 中间一屏）** |
 | 6 导出 | 导出覆盖 662 页；预览段数 = 预检段数；点「导出」真的落盘（`body.txt` / `meta.json` / `manifest.json`） |
+
+## 两条不能破的底线
+
+1. **显示 = 导出**：右栏看到的字，必须逐字等于导出器写出的字。
+2. **页图清晰度**：`比例 = img.naturalWidth ÷ (img 的 CSS 宽 × devicePixelRatio) ≥ 1.0`。
+   小于 1 就是低清图被放大显示，一定糊（用户为这一条提过四次）。
+
+页图判据同时记录 `size=`（请求档位）、`naturalWidth`、CSS 宽、dpr 四项——
+失败时一眼能分出是"请求了低档"（size=thumb/view）还是"占位图没替换"（naturalWidth 很小且仍在）。
 
 ## 三组一致性断言（`check`）
 
@@ -79,7 +89,7 @@ tests/e2e/
 
 ---
 
-## 2026-10-28 首次真跑（`b2t_ZAQHGH`，662 页英文书）
+## 2026-10-28 首次真跑（修复前）—— 抓到 1 个真 bug
 
 命令（逐条可复现）：
 
@@ -97,7 +107,7 @@ tests/e2e/
 | `smoke` | **19/20** | 唯一 FAIL 是产品 bug（下条）；其余六步的 UI 数字都与 API/库对上 |
 | `check` | **4/5** | A（显示=导出）失败 = 同一个 bug；B（提交→库）、C（撤销→字节）通过 |
 
-### 抓到的真 bug：空区间差异标记被渲染成一个空格
+### 抓到的真 bug（已修复）：空区间差异标记被渲染成一个空格
 
 - **样本**：`b2t_ZAQHGH` 第 1 页，块 `01M609YSCTY9T6D986R8XMC3ZS` 第 1 行，
   `current=":pp"`、`candidate="ddc:"`（差异是"插入"，base 侧区间为空）。
@@ -112,6 +122,27 @@ tests/e2e/
 - **期望**：占位不进入文本（如空 `<span>` + `aria-hidden`，或伪元素），
   `textContent` 必须与 `segment.text` 逐字相同。
 - 打开 `?checktext=1` 时应用自带的 `[文本自检]` 也会报这一处（`__b2tTextCheckFails=1`）。
+- **已修复**：`257c5b5`（占位不进 textContent）+ `f57ec23`（行与行连续切片）；
+  修复后 `qa.py check` 的 A 项从 FAIL 变 PASS（32 个已渲染段落逐字相同）。
+
+### 修复后复跑（2026-10-28 15:30）
+
+开发修了 `257c5b5`（空区间不再用空格占位）+ `f57ec23`（行与行连续切片）之后：
+
+| 命令 | 结果 |
+|---|---|
+| `qa.py smoke` | **23/23 通过**（新增 3 条页图清晰度） |
+| `qa.py check` | **5/5 通过**（A：32 个已渲染段落逐字相同） |
+| `qa.py images --selftest` | 正常 3/3 通过；负向自检报 FAIL（thumb 比例 0.443） |
+
+页图清晰度实测（`qa.py images --selftest` 的表）：
+
+| 屏 | 页号 | size | naturalWidth | CSS宽 | dpr | 比例 | 结果 |
+|---|---|---|---|---|---|---|---|
+| 审校第 1 屏 | p1 / p2 | view | 1275 | 384 | 2 | 1.660 | PASS |
+| 审校中间一屏 | p331 / p332 / p333 | view | 1275 | 384 | 2 | 1.660 | PASS |
+| 目录确认一屏 | p1 | zoom | 2550 | 1076 | 2 | 1.185 | PASS |
+| 负向自检（人为 thumb） | p1 | thumb | 340 | 384 | 2 | **0.443** | **FAIL（预期）** |
 
 ### 流程卡点（不是 bug，是这本书还没走到的步骤）
 
