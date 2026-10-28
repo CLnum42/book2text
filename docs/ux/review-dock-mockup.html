@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>审校页改版 · 左树可折叠 + 上预览 / 下常驻审校面板（布局稿 v2）</title>
+<style>
+:root{
+  --bg:#f3f4f6;--surface:#fff;--surface-2:#fafbfc;--surface-3:#f7f8fa;--paper:#f8f6f0;
+  --line:#e2e4e8;--line-soft:#eef0f2;--line-strong:#d0d3d9;
+  --text:#1f2329;--text-2:#33383f;--muted:#646a73;--faint:#9aa0a8;
+  --accent:#2563eb;--accent-soft:#eef4ff;--accent-text:#1d4ed8;
+  --ok:#16a34a;--ok-text:#15803d;
+  --warn:#d97706;--warn-text:#b45309;--warn-soft:#fdf3e0;
+  --bad:#dc2626;--bad-text:#b91c1c;--bad-soft:#fdecec;
+  --purple:#7a4bb5;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#e9eaee;color:var(--text);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+.draftbar{display:flex;align-items:center;gap:14px;padding:7px 16px;background:#1f2329;color:#e6e8eb;font-size:12px}
+.draftbar strong{color:#fff}
+.draftbar .tag{margin-left:auto;background:rgba(255,255,255,.12);padding:1px 7px;border-radius:5px;color:#cfd3d8}
+.stage{padding:16px 18px 0}
+.frame{margin-bottom:26px}
+.label{font-size:12px;font-weight:600;color:#4b5563;margin:0 0 6px 2px}
+.label span{font-weight:400;color:#6b7280}
+.caption{padding:6px 18px 16px;font-size:11.5px;color:#5b6169;line-height:1.65}
+.caption b{color:#1f2329}
+.spacer{flex:1}
+.btn{height:26px;padding:0 9px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--text-2);font-size:11.5px;display:inline-flex;align-items:center;gap:4px}
+.btn--pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+.btn--sm{height:22px;padding:0 7px;font-size:11px}
+
+.shell{width:1423px;height:900px;background:var(--surface);border:1px solid var(--line);border-radius:3px;
+  box-shadow:0 3px 16px rgba(16,24,40,.1);overflow:hidden;display:flex;flex-direction:column;position:relative}
+.topbar{height:48px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line)}
+.proj{font-size:12.5px;font-weight:600;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.steps{display:flex;align-items:center;gap:2px}
+.step{display:flex;align-items:center;gap:5px;height:28px;padding:0 8px;border-radius:6px;font-size:11.5px;color:var(--muted)}
+.step__no{width:16px;height:16px;border-radius:50%;display:grid;place-items:center;font-size:9.5px;background:var(--surface-3);color:var(--faint);border:1px solid var(--line)}
+.step--done{color:var(--ok-text)}
+.step--done .step__no{background:var(--ok);border-color:var(--ok);color:#fff}
+.step--cur{background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.step--cur .step__no{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.rtool{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line)}
+.progtext{font-size:11.5px;color:var(--muted)}
+.progtext b{color:var(--text)}
+.pbar{width:96px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.pbar i{display:block;height:100%;width:12%;background:var(--accent)}
+.punct{height:24px;padding:0 8px;border:1px solid #ecd9bd;border-radius:12px;background:var(--warn-soft);color:var(--warn-text);font-size:11px}
+
+.split{height:526px;flex:none;display:flex;min-height:0}
+.tree{width:232px;flex:none;background:var(--surface-2);border-right:1px solid var(--line);overflow:hidden;padding:4px 0;font-size:11.5px}
+.trow{display:flex;align-items:center;gap:5px;min-height:24px;padding:0 8px;color:var(--muted)}
+.trow--ch{min-height:28px;font-size:12px;color:var(--text-2);font-weight:600;padding-left:9px}
+.trow--pg{padding-left:20px}
+.trow.on{background:var(--accent-soft);color:var(--accent-text);box-shadow:inset 2px 0 0 var(--accent)}
+.trow.done{color:var(--faint)}
+.trow .cnt{margin-left:auto;font-size:10.5px;color:var(--bad-text);font-variant-numeric:tabular-nums}
+.trow .cnt.ok{color:var(--faint)}
+.caret{width:8px;font-size:10px;color:var(--faint)}
+.tree__fold{display:flex;justify-content:flex-end;padding:0 6px 2px}
+.tree__fold button{width:22px;height:22px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--muted);font-size:11px}
+
+.pdf{width:420px;flex:none;background:#e4e6ea;border-right:1px solid var(--line);overflow:hidden;padding:10px 0}
+.pdfpage{position:relative;width:380px;margin:0 auto;background:var(--paper);padding:28px 28px 36px;
+  box-shadow:0 2px 10px rgba(0,0,0,.18);font-family:"Songti SC","STSong",serif;font-size:9.5px;line-height:19px;color:#2b2e33}
+.pdfpage .rh{position:absolute;top:10px;left:28px;right:28px;font:7.5px/1 -apple-system,sans-serif;color:#9aa0a8;
+  display:flex;justify-content:space-between;padding-bottom:3px;border-bottom:1px solid rgba(0,0,0,.1)}
+.pdfpage .pl{white-space:pre}
+.syncline{position:absolute;left:22px;right:22px;height:15px;border-top:2px solid var(--warn);border-bottom:1px solid rgba(217,119,6,.35);
+  background:rgba(217,119,6,.09);border-radius:2px}
+
+.stream{flex:1;min-width:0;overflow:hidden;padding:18px 34px;font-size:15px;line-height:30.75px;font-family:"Songti SC",serif;color:#23262b}
+.seg{margin-bottom:14px;text-indent:2em}
+.seg__h{text-indent:0;display:flex;gap:8px;font:10px/1.4 -apple-system,sans-serif;color:var(--faint);margin-bottom:2px}
+.mk{padding:0 1px;border-radius:2px;background:rgba(220,38,38,.08);border-bottom:1px solid rgba(220,38,38,.5)}
+.mk.done{background:rgba(22,163,74,.10);border-bottom:1px dotted rgba(22,163,74,.7)}
+.mk.curline{background:var(--warn-soft);border-bottom:0;box-shadow:inset 3px 0 0 var(--warn);padding-left:6px}
+
+.grip{height:6px;flex:none;background:var(--surface);position:relative;cursor:row-resize}
+.grip::after{content:"";position:absolute;left:50%;top:2px;width:44px;height:2px;margin-left:-22px;border-radius:1px;background:var(--line-strong)}
+
+.dock{height:276px;flex:none;display:flex;flex-direction:column;background:var(--surface);border-top:1px solid var(--line)}
+.dock__head{height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid var(--line-soft)}
+.dock__title{font-size:12.5px;font-weight:600}
+.badge{font:10px/18px -apple-system;padding:0 6px;border-radius:4px;background:var(--warn-soft);color:var(--warn-text);border:1px solid #f0d9c0}
+.dock__body{height:182px;flex:none;display:flex;min-height:0;padding:8px 0}
+.dock__crop{width:420px;flex:none;padding:0 8px;position:relative}   /* 内宽 404；高 = body 内高 166 / 142 */
+.crop{position:relative;height:100%;overflow:hidden;border-radius:6px;background:var(--paper);
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);font-family:"Songti SC",serif;font-size:27px;line-height:33px;color:#23262b}
+.crop .cl{padding-left:12px;white-space:pre}
+.crop .mark{position:absolute;left:6px;right:6px;border-radius:3px;pointer-events:none}
+.crop .mark--cur{background:rgba(217,119,6,.10);box-shadow:0 0 0 1.5px rgba(217,119,6,.55)}
+.zoomtag{position:absolute;right:12px;top:5px;font:10px/16px -apple-system;color:var(--faint);background:rgba(255,255,255,.9);padding:0 5px;border-radius:3px;z-index:2}
+.dock__edit{flex:1;min-width:0;display:flex;flex-direction:column;padding:0 14px 0 10px}
+.ab{flex:none;font-size:11.5px;line-height:18px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ab b{font-weight:500;color:var(--bad-text)}
+.ab .b{color:var(--purple);border-bottom:2px dotted var(--purple)}
+.dock__text{flex:1;min-height:0;overflow:auto;margin-top:2px;font-family:"Songti SC",serif;font-size:14px;line-height:26px;color:#23262b;
+  background:var(--surface-2);border:1px solid var(--line-soft);border-radius:6px;padding:4px 10px}
+.dock__text .hl{background:var(--warn-soft);box-shadow:inset 3px 0 0 var(--warn)}
+.dock__foot{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px;border-top:1px solid var(--line-soft);background:var(--surface)}
+.dock__foot .note{font-size:10.5px;color:var(--faint)}
+.dock__foot .btn{height:30px}
+
+.ruler{position:absolute;left:-70px;top:0;width:66px;height:900px;font-size:10px;color:#6b7280}
+.rule{position:absolute;left:0;width:66px;border-left:1px solid #9aa0a8;padding-left:4px}
+.rule::before,.rule::after{content:"";position:absolute;left:-4px;width:8px;border-top:1px solid #9aa0a8}
+.rule::before{top:0}.rule::after{bottom:0}
+
+.mini{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.mini .shell{width:1423px;height:420px}
+.rail{width:44px;flex:none;background:var(--surface-2);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 0}
+.rail button{width:26px;height:26px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--muted);font-size:11px;padding:0}
+.rail .ch{writing-mode:vertical-rl;font-size:11px;color:var(--text-2);letter-spacing:2px}
+.rail .n{font-size:9.5px;background:var(--bad-soft);color:var(--bad-text);border-radius:8px;padding:0 4px}
+</style>
+</head>
+<body>
+
+<div class="draftbar">
+  <strong>布局稿 v2</strong><span>左树可折叠 + 上预览 / 下常驻审校面板 · 已并入 PM 结论</span>
+  <span class="tag">docs/ux/review-dock-mockup.html</span>
+</div>
+
+<div class="stage">
+
+  <div class="frame" style="padding-left:74px">
+    <p class="label">A · 1423 × 900@2 · 下区展开（默认 276） <span>48 + 44 + 526 + 6 + 276 = 900；上区 17.1 行</span></p>
+    <div style="position:relative">
+      <div class="ruler">
+        <div class="rule" style="top:0;height:48px">48 顶栏</div>
+        <div class="rule" style="top:48px;height:44px">44 工具条</div>
+        <div class="rule" style="top:92px;height:526px">526 上区<br><span style="color:#8a8f96">正文 17 行</span></div>
+        <div class="rule" style="top:618px;height:6px;font-size:8px;line-height:8px">6</div>
+        <div class="rule" style="top:624px;height:276px">276 下区<br><span style="color:#8a8f96">34+182+44+16</span></div>
+      </div>
+
+      <div class="shell">
+        <div class="topbar">
+          <span class="proj">《红楼梦》双语对照 3_正文</span>
+          <div class="steps">
+            <span class="step step--done"><span class="step__no">✓</span>页面确认</span>
+            <span class="step step--done"><span class="step__no">✓</span>版心确认</span>
+            <span class="step step--done"><span class="step__no">✓</span>文字识别</span>
+            <span class="step step--done"><span class="step__no">✓</span>目录确认</span>
+            <span class="step step--cur"><span class="step__no">5</span>正文审校</span>
+            <span class="step"><span class="step__no">6</span>文件导出</span>
+          </div>
+          <span class="spacer"></span>
+          <span style="font-size:11px;color:var(--faint)">已保存 ✓ 19:20</span>
+        </div>
+
+        <div class="rtool">
+          <button class="btn btn--sm">◀</button><span style="font-size:12px;font-weight:600;min-width:52px;text-align:center">第 147 页</span><button class="btn btn--sm">▶</button>
+          <span class="progtext">已审 <b>0</b> / 2084 字</span>
+          <span class="pbar"><i></i></span>
+          <button class="punct">标点 <b>514</b> 组 ↗</button>
+          <button class="btn btn--pri btn--sm">下一处未审 ⏎</button>
+          <span class="spacer"></span>
+          <button class="btn btn--sm">筛选 ▾</button><button class="btn btn--sm">显示 ▾</button>
+          <button class="btn btn--sm">提交 0 处</button><button class="btn btn--sm">⋯</button>
+        </div>
+
+        <div class="split">
+          <aside class="tree">
+            <div class="tree__fold"><button title="折叠目录">⇤</button></div>
+            <div class="trow trow--ch"><span class="caret">▾</span><span>第二回</span><span class="cnt ok">118</span><span class="cnt">37 处</span></div>
+            <div class="trow trow--pg"><span>第 145 页</span><span class="cnt">3 处</span></div>
+            <div class="trow trow--pg on"><span>第 147 页</span><span class="cnt">4 处</span></div>
+            <div class="trow trow--pg"><span>第 148 页</span><span class="cnt">2 处</span></div>
+            <div class="trow trow--pg done"><span>第 149 页</span><span class="cnt ok">✓</span></div>
+            <div class="trow trow--ch"><span class="caret">▸</span><span>第三回</span><span class="cnt ok">196</span><span class="cnt">41 处</span></div>
+          </aside>
+
+          <aside class="pdf">
+            <div class="pdfpage">
+              <div class="rh"><span>红楼梦 147</span><span>147</span></div>
+              <div class="pl">维太平不易之元，蓉桂竞芳之月，</div>
+              <div class="pl">无可奈何之日，怡红院浊玉，谨以群</div>
+              <div class="pl">花之蕊、冰鲛之殼，沁芳之泉、枫露</div>
+              <div class="pl">之茗：四者虽微，聊以达诚申信，乃</div>
+              <div class="pl">致祭于白帝宫中抚司秋艳芙蓉女儿</div>
+              <div class="pl">之前曰：窃思女儿自临人世，迄今凡</div>
+              <div class="pl">十有六载。其为体则冰雪不足喻其</div>
+              <div class="pl">洁，而玉得于衾枕栉沐之间，栖息</div>
+              <div class="pl">宴游之夕，相与共处者，仅五年八</div>
+              <div class="pl">月有奇。</div>
+              <div class="syncline" style="top:148px"></div>
+            </div>
+          </aside>
+
+          <div class="stream">
+            <div class="seg">
+              <div class="seg__h"><b style="color:var(--text-2)">§128</b><span>第 147 页 · 2 块</span></div>
+              <span>维太平不易之元，蓉桂竞芳之月，无可奈何之日，怡红院浊玉，谨以群花之蕊、冰鲛之<span class="mk">殼</span>，沁芳之泉、枫露之茗：四者虽微，聊以达诚申信，乃致祭于白帝宫中抚司秋艳芙蓉女儿之前曰：窃思女儿自临人世，迄今凡十有六载。忆女儿<span class="mk done">曩</span>生之昔，其为质则金玉不足喻其贵；</span>
+            </div>
+            <div class="seg">
+              <span class="mk curline">其为体则冰雪不足喻其潔，而玉得于衾枕栉沐之间，栖息宴游之夕，相与共处者，仅五年八月有奇。</span>
+            </div>
+            <div class="seg">
+              <span>尔乃西风古寺，淹滞青磷；落日荒丘，零星白骨<span class="mk">。</span>楸榆飒飒，蓬艾萧萧。隔雾圹以啼猿，绕烟塍而泣鬼。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grip" title="拖动调整（248–420），双击复位"></div>
+
+        <div class="dock">
+          <div class="dock__head">
+            <span class="dock__title">第 147 页 · 第 3 行</span>
+            <span class="badge">汉字级</span>
+            <span class="spacer"></span>
+            <span style="font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums">3 / 567</span>
+            <button class="btn btn--sm" title="收起（Esc）">收起 ⌄</button>
+          </div>
+          <div class="dock__body">
+            <div class="dock__crop">
+              <div class="crop" title="放大倍数 = 下区行高 ÷ 上区行高（示例 L≈35、900 高时约 3.7×），不压在图上">
+                <div class="cl">之前曰：窃思女儿自临人世，</div>
+                <div class="cl">迄今凡十有六载。其为体则</div>
+                <div class="cl">冰雪不足喻其洁，而玉得于</div>
+                <div class="cl">衾枕栉沐之间，栖息宴游之</div>
+                <div class="cl">夕，相与共处者，仅五年八</div>
+                <div class="mark" style="top:0;height:33px"></div>
+                <div class="mark" style="top:33px;height:33px"></div>
+                <div class="mark mark--cur" style="top:66px;height:33px"></div>
+                <div class="mark" style="top:99px;height:33px"></div>
+                <div class="mark" style="top:132px;height:33px"></div>
+              </div>
+            </div>
+            <div class="dock__edit">
+              <div class="ab">原文 …冰雪不足喻其<b>潔</b>，而玉得于衾枕栉沐之间…　候选 …冰雪不足喻其<b class="b">洁</b>，而玉得于衾枕栉沐之间…</div>
+              <div class="dock__text">
+                <span class="hl">潔，而玉得于衾枕栉沐之间，栖息宴游之夕，相与共处者，仅五年八月有奇。</span>
+              </div>
+            </div>
+          </div>
+          <div class="dock__foot">
+            <span class="note">Enter 保留 · Space 采用 · E 编辑</span>
+            <span class="spacer"></span>
+            <button class="btn">手动编辑 <span style="color:var(--faint);font-size:10px">E</span></button>
+            <button class="btn">保留原文 <span style="color:var(--faint);font-size:10px">⏎</span></button>
+            <button class="btn btn--pri">采用候选 <span style="color:#cfe0ff;font-size:10px">␣</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption">
+      <b>48 + 44 + 526 + 6 + 276 = 900</b>。下区 34（标题）+ 182（内容）+ 44（底栏）+ 16（留白）。裁切列 420 与上区 PDF 同一条竖线；窗口 ±13% 页宽、行高 33、相对上区 3.7×。
+      「原文/候选」在右列首行，标题栏不放内部词。<b>放大倍数不压在图上</b>（会盖住首行字），只在 hover 提示里给出；实现时按 下区行高 ÷ 上区行高 实时算，不写死。
+    </p>
+  </div>
+
+  <div class="frame" style="padding-left:74px">
+    <p class="label">B · 左树折叠（44px 窄条） <span>宽度给正文：759 → 947（约 46 → 60 字/行）；PDF 保持 420</span></p>
+    <div class="shell" style="height:420px">
+      <div class="topbar"><span class="proj">《红楼梦》…</span><span class="spacer"></span><span style="font-size:11px;color:var(--faint)">折叠按项目记；&lt;1120 自动折叠</span></div>
+      <div class="split" style="height:372px">
+        <aside class="rail">
+          <button title="展开目录（[）">☰</button>
+          <span class="ch">第二回</span>
+          <span class="n">37</span>
+        </aside>
+        <aside class="pdf" style="width:420px">
+          <div class="pdfpage" style="width:380px">
+            <div class="rh"><span>红楼梦 147</span><span>147</span></div>
+            <div class="pl">维太平不易之元，蓉桂竞芳之月，</div>
+            <div class="pl">无可奈何之日，怡红院浊玉，谨以群</div>
+            <div class="pl">花之蕊、冰鲛之殼，沁芳之泉、枫露</div>
+            <div class="pl">之茗：四者虽微，聊以达诚申信，乃</div>
+            <div class="syncline" style="top:96px"></div>
+          </div>
+        </aside>
+        <div class="stream">
+          <div class="seg"><span>维太平不易之元，蓉桂竞芳之月，无可奈何之日，怡红院浊玉，谨以群花之蕊、冰鲛之<span class="mk">殼</span>，沁芳之泉、枫露之茗：四者虽微，聊以达诚申信。</span></div>
+          <div class="seg"><span class="mk curline">其为体则冰雪不足喻其潔，而玉得于衾枕栉沐之间，栖息宴游之夕。</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="caption">窄条 44px 里放三样：展开按钮、竖排章名、待审数。<b>完全收起会丢"我在第几章、还剩多少"</b>，所以留条；宽度全部给正文，PDF 不缩（420 时字高已约 12px）。</p>
+  </div>
+
+  <div class="frame">
+    <p class="label">C · 628 高（下区 252，上区 282 ≈ 8.6 行）与 &lt;620（下区改浮层） <span>宽 1180 时树自动折 44</span></p>
+    <div class="mini">
+      <div class="shell" style="height:628px;width:1180px">
+        <div class="topbar" style="height:48px"><span class="proj">《红楼梦》…</span><span class="spacer"></span><span style="font-size:11px;color:var(--faint)">628 高</span></div>
+        <div class="rtool" style="height:40px"><button class="btn btn--sm">◀</button><span style="font-size:12px;font-weight:600">147</span><button class="btn btn--sm">▶</button><span class="progtext"><b>0</b>/2084</span><span class="pbar" style="width:64px"><i></i></span><button class="btn btn--pri btn--sm">下一处</button><span class="spacer"></span><button class="btn btn--sm">显示 ▾</button><button class="btn btn--sm">提交 0 处</button><button class="btn btn--sm">⋯</button></div>
+        <div class="split" style="height:282px">
+          <aside class="rail"><button>☰</button><span class="ch">第二回</span><span class="n">4</span></aside>
+          <aside class="pdf" style="width:420px"><div class="pdfpage" style="width:380px"><div class="rh"><span>红楼梦 147</span><span>147</span></div><div class="pl">维太平不易之元，蓉桂竞芳之月，</div><div class="pl">无可奈何之日，怡红院浊玉，谨以群</div><div class="pl">花之蕊、冰鲛之殼，沁芳之泉、枫露</div><div class="pl">之茗：四者虽微，聊以达诚申信，乃</div><div class="syncline" style="top:96px"></div></div></aside>
+          <div class="stream" style="padding:18px 26px"><div class="seg"><span>维太平不易之元，蓉桂竞芳之月，无可奈何之日，怡红院浊玉，谨以群花之蕊、冰鲛之<span class="mk">殼</span>，沁芳之泉、枫露之茗：</span></div><div class="seg"><span class="mk curline">其为体则冰雪不足喻其潔，而玉得于衾枕栉沐之间。</span></div></div>
+        </div>
+        <div class="grip"></div>
+        <div class="dock" style="height:252px">
+          <div class="dock__head" style="height:34px"><span class="dock__title">第 147 页 · 第 3 行</span><span class="badge">汉字级</span><span class="spacer"></span><button class="btn btn--sm">收起 ⌄</button></div>
+          <div class="dock__body" style="height:158px">
+            <div class="dock__crop"><div class="crop" style="font-size:22px;line-height:28px"><div class="cl">之前曰：窃思女儿自临人世，</div><div class="cl">迄今凡十有六载。其为体则</div><div class="cl">冰雪不足喻其洁，而玉得于</div><div class="cl">衾枕栉沐之间，栖息宴游之</div><div class="cl">夕，相与共处者，仅五年八</div><div class="mark mark--cur" style="top:56px;height:28px"></div></div></div>
+            <div class="dock__edit"><div class="ab">原文 …其<b>潔</b>…　候选 …其<b class="b">洁</b>…</div><div class="dock__text" style="font-size:13px;line-height:24px">潔，而玉得于衾枕栉沐之间，栖息宴游之夕…</div></div>
+          </div>
+          <div class="dock__foot" style="height:44px"><span class="note">Enter 保留 · Space 采用</span><span class="spacer"></span><button class="btn">手动编辑</button><button class="btn">保留原文</button><button class="btn btn--pri">采用候选</button></div>
+        </div>
+      </div>
+
+      <div class="shell" style="height:560px;width:960px">
+        <div class="topbar" style="height:44px"><span class="proj">《红楼梦》…</span><span class="spacer"></span><span style="font-size:11px;color:var(--faint)">560 高：下区改浮层</span></div>
+        <div class="rtool" style="height:40px"><button class="btn btn--sm">◀</button><span style="font-size:12px;font-weight:600">147</span><button class="btn btn--sm">▶</button><button class="btn btn--pri btn--sm">下一处</button><span class="spacer"></span><button class="btn btn--sm">显示 ▾</button><button class="btn btn--sm">⋯</button></div>
+        <div style="flex:1;position:relative;min-height:0">
+          <div class="split" style="height:476px">
+            <aside class="rail"><button>☰</button><span class="ch">第二回</span><span class="n">4</span></aside>
+            <div class="stream" style="padding:18px 30px"><div class="seg"><span>维太平不易之元，蓉桂竞芳之月，无可奈何之日，怡红院浊玉，谨以群花之蕊、冰鲛之<span class="mk">殼</span>，沁芳之泉、枫露之茗：四者虽微，聊以达诚申信，乃致祭于白帝宫中抚司秋艳芙蓉女儿之前曰：</span></div><div class="seg"><span class="mk curline">其为体则冰雪不足喻其潔，而玉得于衾枕栉沐之间。</span></div><div class="seg"><span>尔乃西风古寺，淹滞青磷；落日荒丘，零星白骨。</span></div></div>
+          </div>
+          <div class="dock" style="position:absolute;left:0;right:0;bottom:0;height:250px;border-radius:10px 10px 0 0;box-shadow:0 -8px 24px rgba(15,18,24,.18)">
+            <div class="dock__head" style="height:34px"><span class="dock__title">第 147 页 · 第 3 行</span><span class="badge">汉字级</span><span class="spacer"></span><span style="font-size:10.5px;color:var(--faint)">浮层：不压缩上区</span><button class="btn btn--sm">收起 ⌄</button></div>
+            <div class="dock__body" style="height:156px">
+              <div class="dock__crop"><div class="crop" style="font-size:22px;line-height:28px"><div class="cl">之前曰：窃思女儿自临人世，</div><div class="cl">迄今凡十有六载。其为体则</div><div class="cl">冰雪不足喻其洁，而玉得于</div><div class="cl">衾枕栉沐之间，栖息宴游之</div><div class="cl">夕，相与共处者，仅五年八</div><div class="mark mark--cur" style="top:56px;height:28px"></div></div></div>
+              <div class="dock__edit"><div class="ab">原文 …其<b>潔</b>…　候选 …其<b class="b">洁</b>…</div><div class="dock__text" style="font-size:13px;line-height:24px">潔，而玉得于衾枕栉沐之间，栖息宴游之夕…</div></div>
+            </div>
+            <div class="dock__foot" style="height:44px"><span class="note">Enter 保留 · Space 采用</span><span class="spacer"></span><button class="btn">手动编辑</button><button class="btn">保留原文</button><button class="btn btn--pri">采用候选</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption">628：工具条 40 + 上区 282 + 手柄 6 + 下区 252，上区 8.6 行；<b>&lt;620 改浮层</b>（不压缩上区）。960 宽时树折 44、下区两列仍在（420 + 余宽）。</p>
+  </div>
+
+</div>
+
+</body>
+</html>

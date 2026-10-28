@@ -26,6 +26,8 @@ body{
 .hd{width:1280px;margin:0 0 28px 32px}
 .hd h1{font-size:22px;margin:0 0 8px;letter-spacing:.2px}
 .hd p{font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.6}
+.hd p .src{color:var(--faint);font-size:11px}
+.hd p code{font:10.5px/1.4 ui-monospace,Menlo,monospace;background:#f1f3f6;border-radius:3px;padding:1px 4px}
 .legend{display:flex;gap:18px;font-size:11.5px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .sw{width:18px;height:10px;border-radius:2px;display:inline-block}
@@ -85,12 +87,10 @@ body{
   font-size:12px;color:var(--text);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .pgbtn .dim{color:var(--faint);font-size:10px}
 .prog{display:flex;flex-direction:column;gap:1px;min-width:232px}
-.prog-top{display:flex;align-items:center;gap:9px;white-space:nowrap;height:15px;line-height:15px}
-.prog-top b{font-size:13px;letter-spacing:.1px}
-.prog-top span{font-size:11px;color:var(--muted)}
-.barline{display:flex;align-items:center;gap:5px;height:9px;line-height:9px}
-.barline em{font-style:normal;font-size:9px;color:var(--faint);letter-spacing:.3px;white-space:nowrap}
-.barline .num{margin-left:2px;font-size:9px;color:var(--faint);font-variant-numeric:tabular-nums}
+.prog-eta{font-size:11px;color:var(--muted);height:14px;line-height:14px;white-space:nowrap}
+.barline{display:flex;align-items:center;gap:5px;height:10px;line-height:10px}
+.barline em{font-style:normal;font-size:10px;color:var(--faint);letter-spacing:.3px;white-space:nowrap}
+.barline .num{margin-left:2px;font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums}
 .track{height:4px;width:120px;background:#eef0f3;border-radius:3px;overflow:hidden;flex:none}
 .track i{display:block;height:100%;background:var(--accent);border-radius:3px}
 .track.is-punct i{background:var(--warn)}
@@ -284,7 +284,7 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var
 <div class="board">
   <div class="hd">
     <h1>正文审校 · 一屏三改</h1>
-    <p>一条 = 一处差异　·　判决即前进　·　进度说人话　|　基线 main@e0a228c，1280 / 1000 宽 × 800 / 628 高　|　静态稿，未改产品代码</p>
+    <p>一条 = 一处差异　·　判决即前进　·　进度说人话　|　基线 main@e0a228c，1280 / 1000 宽 × 800 / 628 高　|　静态稿，未改产品代码<br><span class="src">数字口径：<code>queue_items()</code> 899 汉字 + 724 标点 = 1623（2026-10-28）。</span></p>
     <div class="legend">
       <span><i class="sw sw-bad"></i>待判（红）</span>
       <span><i class="sw sw-acc"></i>当前（蓝）</span>
@@ -326,7 +326,7 @@ function topbar(o){
       <span class="step todo"><b>6</b>导出</span>
     </div>
     <span class="spacer"></span>
-    <span class="help">? 快捷键</span>
+    <span class="help" title="怎么审 + 快捷键；提示条收起后可在这里重开">? 审校帮助</span>
   </div>`;
 }
 
@@ -336,10 +336,9 @@ function toolbar(o){
     ${o.narrow ? `<button class="pgbtn">☰ 目录</button>` : ""}
     <button class="pgbtn">${o.narrow ? `第${o.page}页` : `第 ${o.page} 页 <span class="dim">▾</span>`}</button>
     <div class="prog">
-      <div class="prog-top"><b>待判 ${p.charsLeft} 处</b>
-        <span>${p.eta || (o.progress.kind === "empty" ? "判 20 条后估时" : "")}</span></div>
-      <div class="barline"><em>汉字</em><span class="track"><i style="width:${p.pct}%"></i></span><em class="num">${923 - p.charsLeft}/923</em></div>
-      <div class="barline"><em>标点</em><span class="track is-punct"><i style="width:${p.punctPct || 0}%"></i></span><em class="num">0/28 组</em></div>
+      <div class="prog-eta">${p.eta || (o.progress.kind === "empty" ? "判 20 条后估时" : "")}</div>
+      <div class="barline"><em>汉字</em><span class="track"><i style="width:${p.pct}%"></i></span><em class="num">${p.judged}/899</em></div>
+      <div class="barline"><em>标点</em><span class="track is-punct"><i style="width:${p.punctPct || 0}%"></i></span><em class="num">0/724 行</em></div>
     </div>
     <span class="vsep"></span>
     <button class="chip"><span class="dot"></span>标点 ${p.punct} 组</button>
@@ -460,7 +459,7 @@ function screen(o){
       ${o.onboard ? `<div class="onboard"><span class="tag">怎么审</span>
         <span>红色是待判的字，蓝色是当前这处。Enter 保留 · 空格 采用 · E 改；判完自动到下一处。</span>
         <span class="spacer"></span>
-        <button class="btn btn-sm">先判标点（28 组，约 3 分钟）</button>
+        <button class="btn btn-sm">先判标点（73 组，覆盖 724 行）</button>
         <button class="btn btn-sm btn-ghost">知道了</button></div>` : ""}
       <div class="view split">
         ${narrow ? "" : `<aside class="tree">${treeHTML(o)}</aside>`}
@@ -489,20 +488,21 @@ const panels = {
 };
 
 const progress = {
-  first: {kind:"empty", charsLeft:923, pct:0, eta:"", punct:28},
-  judge: {kind:"run", charsLeft:823, pct:10.8, eta:"约剩 1 小时 50 分", punct:28},
-  next:  {kind:"run", charsLeft:822, pct:10.9, eta:"约剩 1 小时 49 分", punct:28},
-  edit:  {kind:"run", charsLeft:823, pct:10.8, eta:"约剩 1 小时 50 分", punct:28},
-  narrow:{kind:"run", charsLeft:823, pct:10.8, eta:"约剩 1 小时 50 分", punct:28}
+  first: {kind:"empty", judged:0, pct:0, eta:"", punct:73},
+  judge: {kind:"run", judged:100, pct:11.1, eta:"约剩 1 小时 47 分", punct:73},
+  next:  {kind:"run", judged:101, pct:11.2, eta:"约剩 1 小时 46 分", punct:73},
+  edit:  {kind:"run", judged:100, pct:11.1, eta:"约剩 1 小时 47 分", punct:73},
+  narrow:{kind:"run", judged:100, pct:11.1, eta:"约剩 1 小时 47 分", punct:73}
 };
 
 const frames = [
-  {id:"F1", cap:"刚打开（0 判）", note:"看 F1：剩余量、从哪开始、第一条已经就位", frame:{
+  {id:"F1", cap:"刚打开（0 判 · 引导条首次显示）", note:"看 F1：两条轨、从哪开始、第一条已经就位", frame:{
     w:1280,h:800,page:87,pdfw:422,state:"judge",panel:panels.yi,progress:progress.first,
     judging:true,onboard:true,hitTop:"41%",
-    notes:["主数字只有「待判 923 处」；样本不足时不编 ETA，写明「判 20 条后估时」。",
+    notes:["不设「待判 N 处」总数：两条轨 `汉字 0/899`、`标点 0/724 行`，避免汉字判完就以为全书完了。",
+      "引导条只首次显示；判第一条或 6 秒后收起；「? 审校帮助」可重开（浮层，不再占一行）。",
       "第一条已定位、面板已展开：打开即可判，不用先找红字。",
-      "标点单列成自己的进度轨 + chip（28 组，约 3 分钟），不混进汉字百分比。",
+      "标点单列成自己的进度轨（724 行）+ chip（73 组，覆盖 724 行），不混进汉字百分比。",
       "「抽检可疑行」从 ⋯ 里提出来常驻——两路一致也可能都错。"]
   }},
   {id:"F2", cap:"正在判一条", note:"看 F2：一条 = 一处差异，面板只给 ±6 字", frame:{
@@ -518,7 +518,7 @@ const frames = [
     judging:true,anchor:180,hitTop:"48%",
     notes:["旧条变绿、上移 2 行；新条落在同一视线高度，面板位置几乎不动。",
       "面板里已经是下一条的内容，不需要再点顶部「下一处」。",
-      "进度 823→822、本页 3/7→4/7、ETA 少 1 分钟，三处同时变。",
+      "汉字 100/899 → 101/899、本页 3/7 → 4/7、ETA 少 1 分钟，三处同时变。",
       "「✓ 已保留」先在面板头出现，2.5 秒后只剩绿字；⌘Z 可撤销这一次判断。"]
   }},
   {id:"F4", cap:"手改一个字", note:"看 F4：光标落在差异字上，不整行选中", frame:{
@@ -529,12 +529,13 @@ const frames = [
       "改过的字用青色下划线，和「已判绿」「待判红」分开；左图同步框这一行。",
       "编辑中顶栏是「未保存」，Esc 完成后自动存草稿。"]
   }},
-  {id:"F5", cap:"628 高度（面板展开）", note:"看 F5：628 下面板 + 7 行上下文（要求 ≥6）", frame:{
+  {id:"F5", cap:"628 高度（面板展开 · 引导条已收起）", note:"看 F5：正文 536px = 18.8 行；面板下 7 行（要求 ≥6）", frame:{
     w:1280,h:628,page:87,pdfw:422,state:"judge",panel:panels.yi,progress:progress.judge,
     judging:true,anchor:180,hitTop:"41%",
-    notes:["顶栏 48 + 工具条 44 = 92；正文视口 536。",
+    notes:["顶栏 48 + 工具条 44 = 92；正文 536px，15/1.9 = 18.8 行。",
       "当前行锚在 180px（视口 33%），上方仍留 6.3 行上下文。",
       "面板 124px；面板下到视口底还有约 7 行（200px），要求是 ≥6 行。",
+      "引导条不常驻：首次显示，首判或 6 秒后收起；这一帧是收起态，正文回到 536。",
       "页面 422 宽、整页在视口内；点页图可放大到 900 宽核对。"]
   }},
   {id:"F6", cap:"<1120 宽（1000 × 628，目录收起）", note:"看 F6：窄屏正文 ≥560", frame:{
@@ -572,7 +573,7 @@ if (solo) {
   const row = document.querySelector(".row");
   if (row) {
     row.style.margin = "0";
-    row.querySelector(".cap")?.remove();
+    if (!location.search.includes("cap")) row.querySelector(".cap")?.remove();
     row.querySelector(".notes")?.remove();
     const scr = row.querySelector(".screen");
     scr.style.borderRadius = "0";

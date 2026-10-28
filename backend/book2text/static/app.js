@@ -19063,24 +19063,24 @@ function buildReadingLine(segment, span, displayText = null) {
   return line;
 }
 
+/** 「已审 / 总数」的唯一口径：库里已判 + 本次会话草稿（**全局，不按 marks 窗口**）。 */
+function readingProgressNumbers() {
+  const counts = readingGlobalCounts;
+  // 草稿是全局 Map（跨窗口、跨页都在），按 key 去重后计数；这是 QA 实测"计数会倒退"的根因——
+  // 旧实现只数当前窗口里的 `readingEntries`，一换窗口之前的草稿就不算了。
+  const draftKeys = new Set([...readingDrafts.keys(), ...readingInlineEdits.keys()]);
+  if (!counts) {
+    return { processed: draftKeys.size, total: readingEntries.length };
+  }
+  const total = Number(counts.chars_total || 0);
+  const doneInDb = Math.max(0, total - Number(counts.chars_unacked || 0));
+  return { processed: Math.min(total, doneInDb + draftKeys.size), total };
+}
+
 function renderReadingProgress() {
   // 任务 67：marks 只加载窗口，`readingEntries` 不再是全书 —— 进度数字必须用
   // 服务端给的全书计数，否则换一次窗口进度条就缩水一次（用户会以为审过的丢了）。
-  const counts = readingGlobalCounts;
-  let total;
-  let processed;
-  if (counts) {
-    total = Number(counts.chars_total || 0);
-    const doneInDb = Math.max(0, total - Number(counts.chars_unacked || 0));
-    // 未提交的草稿也算这一处已判（与 readingEntryDone 同一个口径），只数得着窗口内的
-    const draftDone = readingEntries.filter(
-      (entry) => entry.level !== "differs_punct" && !entry.ack && readingEntryDone(entry)
-    ).length;
-    processed = Math.min(total, doneInDb + draftDone);
-  } else {
-    total = readingEntries.length;
-    processed = readingEntries.filter(readingEntryDone).length;
-  }
+  const { processed, total } = readingProgressNumbers();
   const drafts = readingDrafts.size + readingInlineEdits.size;
   // 显示分两类、判定看合并：进度条只算含汉字差异的行，标点单独一行小字
   const punctTotals = punctGroupsData?.totals || {};
@@ -19274,9 +19274,8 @@ function readingDockHeader(entry) {
     }
   }
   if (count) {
-    const total = readingGlobalCounts ? Number(readingGlobalCounts.chars_total || 0) : 0;
-    const unacked = readingGlobalCounts ? Number(readingGlobalCounts.chars_unacked || 0) : 0;
-    count.textContent = total ? `${Math.max(0, total - unacked)} / ${total}` : "";
+    const { processed, total } = readingProgressNumbers();
+    count.textContent = total ? `${processed} / ${total}` : "";
   }
 }
 
@@ -21459,6 +21458,14 @@ function setupReading() {
   document.addEventListener("keydown", (event) => {
     if (currentView !== "reading") return;
     if (event.target && /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+    // Esc 逐级：**编辑态先只退编辑**。blur 可能先于 keydown 把 readingEditingKey 置空，
+    // 所以这里连"焦点还在可编辑元素里"也一起判，否则一次 Esc 会把面板一起关掉。
+    if (event.key === "Escape" && (readingEditingKey || (event.target && event.target.isContentEditable))) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (readingEditingKey) exitInlineEdit();
+      return;
+    }
     if (readingEditingKey) {
       if (event.key === "Escape") {
         event.preventDefault();
