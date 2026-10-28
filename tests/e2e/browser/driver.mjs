@@ -50,6 +50,8 @@ export async function run(cfg) {
       return await pinGuard(page, args);
     case "scroll_follow":
       return await scrollFollow(page, args);
+    case "review_state":
+      return await reviewState(page);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -1641,6 +1643,32 @@ async function scrollFollow(page, args) {
     if (row.scrollTop === rows[rows.length - 2].scrollTop) break;
   }
   return { base, rows, stepPx };
+}
+
+/** 审校视图的"数据层"状态：marks 窗口、mark 页范围、正文流片段数。定位 TRE E 路径没标记用。 */
+async function reviewState(page) {
+  return await page.evaluate(() => {
+    const stream = document.getElementById("reading-stream");
+    const pages = typeof readingMarks !== "undefined" ? [...readingMarks.values()].map((m) => m.page_no) : [];
+    const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+    return {
+      label: label.replace(/\s+/g, ""),
+      filter: typeof readingFilter !== "undefined" ? readingFilter : "n/a",
+      marksMapSize: typeof readingMarks !== "undefined" ? readingMarks.size : "n/a",
+      markPages: pages.length ? [Math.min(...pages), Math.max(...pages)] : null,
+      marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : "n/a",
+      entries: typeof readingEntries !== "undefined" ? readingEntries.length : "n/a",
+      visibleSegments: typeof readingVisibleSegments === "function" ? readingVisibleSegments().length : "n/a",
+      segs: document.querySelectorAll("#reading-stream .reading-seg").length,
+      lines: document.querySelectorAll("#reading-stream .reading-line").length,
+      marksInDom: document.querySelectorAll("#reading-stream .reading-mark").length,
+      panelKey: (document.querySelector(".reading-panel") || {}).dataset
+        ? document.querySelector(".reading-panel").dataset.key || null
+        : null,
+      scrollTop: stream ? Math.round(stream.scrollTop) : null,
+      scrollHeight: stream ? Math.round(stream.scrollHeight) : null,
+    };
+  });
 }
 
 async function nextProbe(page) {
