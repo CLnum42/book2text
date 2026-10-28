@@ -285,9 +285,43 @@ async function pageSyncSnapshot(page) {
       const pdfBoxes = pdfBox && !pdfBox.hidden ? pdfBox.querySelectorAll(".box").length : 0;
       const diffBoxes = document.querySelectorAll("#reading-diff-layer .box").length;
 
+      const stream = document.getElementById("reading-stream");
+      let anchorPage = null;
+      let anchorKey = null;
+      if (stream) {
+        const sRect = stream.getBoundingClientRect();
+        const anchorY = sRect.top + stream.clientHeight * 0.35;
+        for (const item of stream.querySelectorAll(".reading-line")) {
+          const r = item.getBoundingClientRect();
+          if (r.bottom >= anchorY) {
+            anchorPage = Number(item.dataset.page) || null;
+            anchorKey = item.dataset.key || null;
+            break;
+          }
+        }
+      }
+      const pinNow = window.__b2tPagePin || null;
+      let panelLineIn = null;
+      if (stream) {
+        const panelEl = document.querySelector(".reading-panel");
+        const pk = panelEl ? panelEl.dataset.key : null;
+        const line = pk
+          ? stream.querySelector(`.reading-line[data-key="${pk}"]`)
+          : null;
+        if (line) {
+          const sRect = stream.getBoundingClientRect();
+          const lr = line.getBoundingClientRect();
+          panelLineIn = lr.bottom > sRect.top && lr.top < sRect.bottom;
+        }
+      }
       return {
         label,
         labelText: labelText.trim(),
+        anchorPage,
+        anchorKey,
+        panelLineIn,
+        settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "n/a",
+        pin: pinNow ? { held: pinNow.held, escape: pinNow.escape } : null,
         panelPage,
         panelText: panelHead ? (panelHead.textContent || "").trim() : null,
         tilePage: tileAt(0.25),
