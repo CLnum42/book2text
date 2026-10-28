@@ -18446,14 +18446,18 @@ function refreshReadingMarksPaint() {
     ? readingEntries.find((entry) => readingKey(entry.block_id, entry.line_index) === panelKey)
     : null;
   const segmentsToKeep = Math.max(readingRendered, 0);
-  renderReading({ reset: true });
+  // **只重铺尾部一段**：从第 0 段重建 300+ 段 DOM 是主要卡顿来源（QA：1-8 帧/450ms）。
+  // 保留最后 24 段（≈ 两屏），铺到原来的段数为止；滚动位置随后由 openReadingPanel 居中恢复。
+  const fromSeg = Math.max(0, segmentsToKeep - 24);
+  renderReading({ reset: true, startAt: fromSeg });
   let guard = 0;
   while (readingRendered < segmentsToKeep && guard < 400) {
     renderReading();
     guard += 1;
   }
-  // 重画期间页码被改过（用户又跳了）就不恢复旧位置，否则等于把人拽回去
-  if (readingPageNo === pageAtSave) stream.scrollTop = top;
+  // 重画期间页码被改过（用户又跳了）就不恢复旧位置，否则等于把人拽回去。
+  // 只重铺尾部时（fromSeg>0）绝对滚动位置没有意义，交给 openReadingPanel 居中恢复。
+  if (fromSeg === 0 && readingPageNo === pageAtSave) stream.scrollTop = top;
   if (panelEntry && readingPageNo === pageAtSave) {
     // 重画可能把目标行刷出渲染范围（`reset` 从第 0 段顺序铺，`segmentsToKeep` 只按
     // 段数恢复）：面板照开（面板不依赖行节点），但那一行不在 DOM 里 → 用户看到面板、
@@ -18581,8 +18585,12 @@ function renderReading({ reset = false, startAt = null } = {}) {
     if (hovered) hovered.classList.add("is-hover");
   }
   if (end < segments.length) stream.append(buildReadingSentinel());
-  // 任务 67：滚动会把后面的段铺出来，那些页可能在 marks 窗口外——补一块再画红字
-  if (readingMarksWindow && end > firstNew) {
+  // 任务 67：滚动会把后面的段铺出来，那些页可能在 marks 窗口外——补一块再画红字。
+  // **全量重建（reset）时绝不能这么干**：QA 120 连按实测，`refreshReadingMarksPaint`
+  // 先 reset 从第 0 段铺，这里就按"这一块的最大页"（≈11）去要窗口，窗口被拉回 1-11；
+  // 加载完又触发一次重画，又从第 0 段铺……用户在 200 页，窗口在 1-11/2-22/13-33 之间打转，
+  // 面板 key 不在任何已加载窗口里 → 17/120 次点击零推进、rAF 只有 1-8 帧/450ms。
+  if (!reset && readingMarksWindow && end > firstNew) {
     let maxPage = 0;
     for (let index = firstNew; index < end; index += 1) {
       for (const page of segments[index].pages || []) {
