@@ -113,3 +113,20 @@ export function loadApp(options = {}) {
   }
   return ctx;
 }
+
+/**
+ * 在**同一个上下文里**再执行一段脚本——用来给模块级状态打桩。
+ *
+ * 为什么需要：`loadApp` 返回的 ctx 上取不到顶层 `let`/`const`（它们在全局词法环境里），
+ * 但同一个 context 里后续执行的脚本**能看见并赋值**它们（顶层 `let` 是可写的）。
+ * 所以 `runInApp(ctx, "readingMarks = new Map([])")` 可以打桩。
+ *
+ * 边界：
+ * - 顶层 `let`/`var` → 可以整个重新赋值；
+ * - 顶层 `const`（如 `const el = (id) => document.getElementById(id)`）→ 改不了，
+ *   但它们**用到的东西**可以改（例如改 `document.getElementById` 的返回值）；
+ * - 顶层函数声明（会成为全局对象属性）可以直接 `ctx.fn = ...` 覆盖。
+ */
+export function runInApp(ctx, code) {
+  return vm.runInContext(code, ctx, { filename: "stub.js" });
+}

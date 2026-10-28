@@ -22,6 +22,7 @@ process.on("exit", (code) => {
 const TEST_FILES = [
   ["reading-diff-units", () => import("./reading-diff-units.test.mjs")],
   ["compute-char-spans", () => import("./compute-char-spans.test.mjs")],
+  ["reading-view-behavior", () => import("./reading-view-behavior.test.mjs")],
 ];
 const selector = process.argv[2];
 const selected = TEST_FILES.filter(([name]) => !selector || name.includes(selector));
