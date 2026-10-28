@@ -26,6 +26,11 @@
 //
 // **例外表**：`ALLOW` 必须为空；上限 3 条，每条要带 owner + 到期切片。
 //
+// **两条守卫互补**（同一次误删的两个方向，单条只覆盖一半）：
+// - R9 抓"用了没声明"：`readingTreeOpen` 在 19374 被引用、全文件无声明；
+// - R5 抓"声明没了但 OWNERS 表还挂着"：`readingTreeOpen` 的 owner 是 app.js，状态却不存在。
+// 删一个声明，两条会同时红。同理 R3（块外引用）与 R4b（同文件重名覆盖）也是一对。
+//
 // **红过没有**（规格文档 §6 已记录，这里再复跑一次）：
 // - R1 在 `7c1d00c`（Slice 1 原始提交）**红 5 处 / 4 个符号**：`reading-view.js:147` `currentView`
 //   (app.js:105)、`:148` `measureReadingTops`、`:149` `readingPageNo`（两次）、`:149` `updateReadingPage`。
@@ -387,6 +392,20 @@ test("R4-dup（真实现份数=1）：同名函数只许一份真实现，其余
   }
 
   assert.deepEqual(problems, [], problems.join("；"));
+
+  // R4-dup 延伸：**重开的唯一入口是模块的 reload()**（L1 第一笔 eb02997 之后）
+  // app.js 不许再长回自己的实现，也不许绕过模块直接调内部函数。
+  // 用去注释后的代码判：注释里提到 readingReloadAfterBatch 是允许的（说明历史），代码里不许出现。
+  const appCode = stripCommentsAndStrings(readFileSync(APP_FILE, "utf8"));
+  const viewCode = stripCommentsAndStrings(readFileSync(VIEW_FILE, "utf8"));
+  const appImpl = (appCode.match(/^(?:async\s+)?function readingReloadAfterBatch\s*\(/gm) || []).length;
+  const appMentions = (appCode.match(/\breadingReloadAfterBatch\b/g) || []).length;
+  const viewImpls = (viewCode.match(/(?:^|\n)\s*(?:async\s+)?function readingReloadAfterBatch\s*\(/g) || []).length;
+  const reloadCalls = (appCode.match(/window\.ReadingView\.reload\s*\(/g) || []).length;
+  assert.equal(appImpl, 0, "app.js 里又长出了 readingReloadAfterBatch 的实现——重开必须只走模块 reload()");
+  assert.equal(appMentions, 0, `app.js 仍提到 readingReloadAfterBatch（${appMentions} 处）：本地实现或绕过模块的直接调用都不许`);
+  assert.equal(viewImpls, 1, `reading-view.js 里 readingReloadAfterBatch 的定义应恰好 1 处，实际 ${viewImpls}`);
+  assert.ok(reloadCalls >= 1, "app.js 里找不到 window.ReadingView.reload() 调用——重开入口断了");
 });
 
 // ---------------------------------------------------------------- R7：加载时序
