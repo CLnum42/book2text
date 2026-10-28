@@ -1,4 +1,5 @@
-// 模块边界守门（R1 + R4）——规格来自 docs/refactor/reading-view-boundary.md §6。
+// 模块边界守门（R1/R3/R4/R4b/R5/R7/R8/R9）+ 特征测试契约（A5）——
+// 规格来自 docs/refactor/reading-view-boundary.md §6、§16、§17、§18.2。
 //
 // 纯文本静态检查，不加载 app.js、不依赖 DOM，毫秒级。
 //
@@ -1042,6 +1043,160 @@ test("R8（导出棘轮）：写路径 emit 不得再出现在公开对象上（
   assert.deepEqual(PENDING_REMOVAL, [], "PENDING_REMOVAL 必须始终为空");
 });
 
+// ---------------------------------------------------------------- A5：特征测试契约（§18.2 闸 A）
+//
+// **A5：破环的特征测试只许锁「用户能感知的结果」，不许锁「谁在什么时候调的」。**
+// 为什么：队列切完之后，9 条边的可观察效果都挪到帧末 flush 里（§12.1.1）。断言调用次数/顺序的
+// 测试，切边之后会红——那时红的不是破环，是测试写错了；只能走 A3 单开提交改判据，等于把假红
+// 当判据变更。所以这类断言要在一落地就拦掉，而不是等它变红。
+//
+// 口径（写死在这里，以后争的时候看这一段）：
+// - 扫描对象：`tests/js/*.test.mjs`（破环新增的特征测试自动纳入），**不含本文件**——本文件拿合成
+//   样例自测检测器，扫自己必然命中。
+// - 判定以**语句**为单位：从 `assert` 到配对 `)`，在去注释/字符串后的文本上匹配三类标识符：
+//   ① 调用计数（`calls` / `callCount` / `timesCalled` / `invocations` / `hitCount` …）
+//   ② 调用顺序（`order` / `seq` / `sequence` / `trace` / `callLog` / `callStack` …）
+//   ③ `mock` / `spy` / `stub` / `fake` 命名（注入面调用断言通常这么写）
+//   命中即红。**基线站得住**：`let calls = 0; calls += 1;` 这种"数了但没断言"不在 assert 语句里，
+//   不红——现有行为测试里就有这种写法（真实链路的副作用计数，不是契约）。
+// - 探针豁免：C1–C4 的探针单独成文件、文件名含 `probe`，并登记在 `A5_PROBE_FILES`
+//   （每条带 owner + 到期点）；**名字带 probe 但没登记 = 红**，防止拿命名绕过。
+// - 例外表 `A5_EXCUSES` 现状为空、上限 0；条目按「文件 + 语句指纹」定位（行号漂移不误红），
+//   **违规消失也要红**（表过期 = 有人已经改好，删表项）。
+//
+// 已知局限（不装看不见）：只认语句级文本。先存变量、隔几行再断言的拼装形态抓不到；
+// 那种形态靠 A4 变异红兜底——它锁的若是注入面，切完队列后必然变红。
+const A5_COUNTER = /\b(calls?|callCount|callsMade|invokedCount|invocations?|timesCalled|hitCount)\b/;
+const A5_ORDER = /\b(order|seq|sequence|trace|callLog|callOrder|callStack)\b/;
+const A5_MOCK = /\b(mock|spy|stub|fake)\w*/i;
+/** 探针测试文件白名单：{ file, owner, expires }，上限见 A5_MAX_PROBE_FILES。 */
+const A5_PROBE_FILES = [];
+const A5_MAX_PROBE_FILES = 4;
+/** 例外表：{ file, statement, owner, expires }；statement 是归一化后的语句指纹。现状零豁免。 */
+const A5_EXCUSES = [];
+const A5_MAX_EXCUSES = 0;
+
+const A5_TEST_DIR = fileURLToPath(new URL("./", import.meta.url));
+
+/** 取出源码里所有 `assert…(…)` 语句（跨行也算一条），文本已抹掉注释/字符串并压成一行。 */
+function assertStatements(source) {
+  const text = stripCommentsAndStrings(source);
+  const out = [];
+  const re = /\bassert\b/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    const open = text.indexOf("(", match.index);
+    if (open === -1) break;
+    let depth = 0;
+    let end = -1;
+    for (let k = open; k < text.length; k += 1) {
+      if (text[k] === "(") depth += 1;
+      else if (text[k] === ")") {
+        depth -= 1;
+        if (depth === 0) { end = k; break; }
+      }
+    }
+    if (end === -1) break;
+    const line = text.slice(0, match.index).split("\n").length;
+    out.push({ line, text: text.slice(match.index, end + 1).replace(/\s+/g, " ") });
+    re.lastIndex = end + 1;
+  }
+  return out;
+}
+
+/** 一条断言语句为什么违规；合法返回 null。 */
+function a5Reason(statement) {
+  if (A5_MOCK.test(statement)) return "断言了 mock/spy/stub/fake（注入面调用）";
+  if (A5_COUNTER.test(statement)) return "断言了调用次数";
+  if (A5_ORDER.test(statement)) return "断言了调用顺序";
+  return null;
+}
+
+test("A5：特征测试不许断言调用次数/顺序/注入面（§18.2 闸 A）", () => {
+  const files = readdirSync(A5_TEST_DIR)
+    .filter((name) => name.endsWith(".test.mjs") && name !== "boundary.test.mjs");
+  const probe = new Set(A5_PROBE_FILES.map((item) => item.file));
+  const violations = [];
+  for (const file of files) {
+    if (probe.has(file)) continue;
+    for (const stmt of assertStatements(readFileSync(join(A5_TEST_DIR, file), "utf8"))) {
+      const reason = a5Reason(stmt.text);
+      if (reason) violations.push({ file, line: stmt.line, text: stmt.text, reason });
+    }
+  }
+  const excused = new Set(A5_EXCUSES.map((item) => `${item.file}\u0000${item.statement}`));
+  const real = violations.filter((v) => !excused.has(`${v.file}\u0000${v.text}`));
+  assert.deepEqual(
+    real.map((v) => `${v.file}:${v.line} ${v.reason}：${v.text.slice(0, 90)}`),
+    [],
+    "特征测试锁住的是实现，不是行为：切完队列后它会红，且只能走 A3 改判据（这条是为了不把假红当回退理由）",
+  );
+  assert.ok(A5_EXCUSES.length <= A5_MAX_EXCUSES,
+    `A5 例外 ${A5_EXCUSES.length} 条，上限 ${A5_MAX_EXCUSES}——开口要显式加数字`);
+
+  // 例外表不许过期：每条指纹必须真的还能命中一处违规
+  const current = new Set(violations.map((v) => `${v.file}\u0000${v.text}`));
+  const stale = A5_EXCUSES.filter((item) => !current.has(`${item.file}\u0000${item.statement}`));
+  assert.deepEqual(stale.map((item) => `${item.file}：${item.statement.slice(0, 60)}`), [],
+    "A5 例外表过期：违规已经不存在了，请删表项（别把表变成墓地）");
+});
+
+test("A5 配套：tests/js 下的每个测试文件都必须在 run.mjs 里注册", () => {
+  // 反向的假绿：测试文件写了、闸也扫了，但没进 TEST_FILES 就永远不会被跑。
+  // 这条不属闸 A 的判据，是它的地基——先保证"写了就一定会跑"。
+  const files = readdirSync(A5_TEST_DIR).filter((name) => name.endsWith(".test.mjs"));
+  const runner = readFileSync(join(A5_TEST_DIR, "run.mjs"), "utf8");
+  const registered = new Set([...runner.matchAll(/\.\/([\w.-]+\.test\.mjs)/g)].map((m) => m[1]));
+  const missing = files.filter((name) => !registered.has(name));
+  assert.deepEqual(missing, [],
+    `这些测试文件没在 run.mjs 的 TEST_FILES 里注册，写了也不会跑：${missing.join("、")}`);
+});
+
+test("A5 探针豁免：名字带 probe 的测试文件必须登记（防止用命名绕过）", () => {
+  const files = readdirSync(A5_TEST_DIR).filter((name) => name.endsWith(".test.mjs"));
+  const registered = new Set(A5_PROBE_FILES.map((item) => item.file));
+  const unregistered = files.filter((name) => /probe/i.test(name) && !registered.has(name));
+  assert.deepEqual(unregistered, [],
+    "文件名含 probe 但没登记进 A5_PROBE_FILES：豁免要走表，不许靠文件名自己开门");
+  const missing = A5_PROBE_FILES.filter((item) => !files.includes(item.file));
+  assert.deepEqual(missing.map((item) => item.file), [], "A5_PROBE_FILES 里登记了不存在的文件");
+  for (const item of A5_PROBE_FILES) {
+    assert.ok(item.owner && item.expires, `A5 探针 ${item.file} 缺 owner 或到期点`);
+  }
+  assert.ok(A5_PROBE_FILES.length <= A5_MAX_PROBE_FILES,
+    `A5 探针 ${A5_PROBE_FILES.length} 条，上限 ${A5_MAX_PROBE_FILES}`);
+});
+
+// 自检：没有这一条，A5 就是"从来不红的闸"。合成样例必须红，合法断言必须绿。
+test("A5 自检：检测器在合成样例上必须红，在合法断言上必须绿", () => {
+  const mustFire = [
+    ["assert.equal(calls, 1);", "调用次数"],
+    ["assert.equal(api.calls.length, 2);", "调用次数"],
+    ["assert.deepEqual(order, ['a', 'b']);", "调用顺序"],
+    ["assert.deepEqual(seq, [1, 2]);", "调用顺序"],
+    ["assert.ok(spy.calledOnce);", "mock/spy"],
+  ];
+  for (const [snippet, want] of mustFire) {
+    const stmts = assertStatements(snippet);
+    assert.equal(stmts.length, 1, `自检：${snippet} 没被解析成一条 assert 语句`);
+    const reason = a5Reason(stmts[0].text);
+    assert.ok(reason && reason.includes(want), `自检失败：A5 没抓到「${snippet}」（reason=${reason}）`);
+  }
+  const mustPass = [
+    "assert.equal(pages.length, 3);",
+    "assert.deepEqual(pages, [1, 2, 3]);",
+    "assert.equal(new Set(keys).size, 3);",
+    "assert.equal(cursor.page, 2);",
+  ];
+  for (const snippet of mustPass) {
+    const stmts = assertStatements(snippet);
+    assert.equal(stmts.length, 1, `自检：${snippet} 没被解析成一条 assert 语句`);
+    assert.equal(a5Reason(stmts[0].text), null, `自检失败：A5 误判了合法断言「${snippet}」`);
+  }
+  // 数了但没断言：现有行为测试里的真实写法，必须不红
+  assert.deepEqual(assertStatements("let calls = 0; calls += 1;").map((s) => a5Reason(s.text)), []);
+});
+
 // ---------------------------------------------------------------- 变异验证（写进文件头，避免只在交付说明里）
 //
 // | 变异 | 实测（原始断言文本） |
@@ -1065,6 +1220,8 @@ test("R8（导出棘轮）：写路径 emit 不得再出现在公开对象上（
 // | R5：模块里写 app.js 的状态（`readingPageNo = 5;`） | `readingPageNo 的 owner 是 app.js，reading-view.js:185 写了它`（同时 R1 也红：模块引用了 app.js 顶层名） |
 // | R5：外壳里写模块状态（`readingSplitState = null;`） | `readingSplitState 的 owner 是 reading-view.js，app.js:21011 写了它` |
 // | R5：删掉状态但不删表项 | `OWNERS 里的状态在源码里不存在了：readingSplitState——删状态请同批删表项，别把表变成墓地` |
+//
+// | A5：临时测试文件里写 `assert.equal(calls, 1)` | `A5：… assert.equal(calls, 1)`（实测 2026-10-28，app.js 未动；同一文件还会撞「没在 run.mjs 里注册」） |
 //
 // 扫描器自身的坑（已修）：`stripCommentsAndStrings` 一开始不认**正则字面量**，
 // app.js 里的 `/["']/` 会被当成字符串开头，把后面一大片代码抹掉——R5 的"状态是否存在"
