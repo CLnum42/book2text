@@ -25,6 +25,36 @@ def database_path(project_dir: Path) -> Path:
     return project_dir / DB_FILE_NAME
 
 
+def content_signature(project_dir: Path) -> str:
+    """数据库内容签名：`project.db` 的 mtime + **非空** WAL 的 mtime。
+
+    派生缓存（收尾面板 / marks / 阅读流 segments / 分歧索引）都拿它当失效键。
+
+    **空 `-wal` 不算变化**（任务 67 实测踩到的坑）：打开项目会把 SQLite 的
+    `-wal` 文件建出来（0 字节）并刷新它的 mtime，但库里的内容一个字节都没动。
+    如果把它算进签名，每次"打开项目"都会让四个缓存同时失效，
+    冷启动实测从 0.9 s 恶化到 8.6 s（四个请求各自重算一遍）。
+    """
+    parts: list[str] = []
+    try:
+        parts.append(str(database_path(project_dir).stat().st_mtime_ns))
+    except OSError:
+        parts.append("-")
+    wal = project_dir / f"{DB_FILE_NAME}-wal"
+    try:
+        stat = wal.stat()
+    except OSError:
+        stat = None
+    # 只有真的写进 WAL 了才算内容变化。**"没有 WAL 文件"和"0 字节 WAL"必须同一结果**：
+    # SQLite 会随连接建出 / 清掉这个文件，两种状态来回切；
+    # 若签名跟着变，派生缓存就会每隔一次请求失效一次（任务 67 实测）。
+    if stat is None or not stat.st_size:
+        parts.append("empty")
+    else:
+        parts.append(f"{stat.st_mtime_ns}:{stat.st_size}")
+    return "|".join(parts)
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     """打开连接。行以字典风格访问（``row["col"]``），并开启 WAL 与外键。"""
     connection = sqlite3.connect(db_path)

@@ -724,13 +724,7 @@ def _finish_signature(project_id: str, library: Path) -> str:
     except library_module.ProjectError:
         return ""
     directory = library_module.project_dir(library, project_id)
-    parts = [updated]
-    for suffix in ("", "-wal"):
-        try:
-            parts.append(str(directory.joinpath(f"project.db{suffix}").stat().st_mtime_ns))
-        except OSError:
-            parts.append("-")
-    return "|".join(parts)
+    return f"{updated}|{db_module.content_signature(directory)}"
 
 
 def finish_summary(project_id: str, *, library: Path | None = None) -> dict:

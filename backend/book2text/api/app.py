@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import os
+import time
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -103,6 +105,23 @@ def create_app(
     app.state.job_supervisor = supervisor
     # 审校的撤销 / 重做栈：只活在本次运行里（说明书 5.3）
     app.state.review_history = routes_review.ReviewHistory()
+
+    # 排查首屏卡顿用的请求计时（`B2T_TIME_REQUESTS=1` 时开）。
+    # 只看 /api，输出到标准输出；默认关闭，生产路径没有任何额外开销。
+    if os.environ.get("B2T_TIME_REQUESTS"):
+
+        @app.middleware("http")
+        async def _timing(request, call_next):  # type: ignore[no-untyped-def]
+            started = time.perf_counter()
+            response = await call_next(request)
+            elapsed = (time.perf_counter() - started) * 1000
+            if request.url.path.startswith("/api/"):
+                query = f"?{request.url.query}" if request.url.query else ""
+                print(
+                    f"[timing] {elapsed:8.1f} ms  {request.method} {request.url.path}{query}",
+                    flush=True,
+                )
+            return response
 
     app.add_exception_handler(errors.AppError, errors.app_error_handler)
     app.add_exception_handler(StarletteHTTPException, errors.http_exception_handler)

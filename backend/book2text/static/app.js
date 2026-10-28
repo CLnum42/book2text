@@ -17677,13 +17677,23 @@ let readingProject = null;
 let readingTreeData = null;
 let readingMarks = new Map();
 let readingEntries = [];
+// 任务 67：marks 只按页窗口加载（当前页 ±10）。全书 4435 条 = 1.52 MB / 0.90 s，
+// 开机首屏红字全卡在那；窗口化后 1.7 ms / ~72 KB。计数和"下一处"靠下面这三个全书数字。
+let readingMarksWindow = null;        // {page_from, page_to}；null = 还没加载
+let readingGlobalCounts = null;       // {chars_total, chars_unacked, punct_total, punct_unacked, ...}
+let readingPageCounts = new Map();    // page_no(string) → {total, unacked, acked, chars*, punct*}
+let readingFirstUnackedPage = null;
+let readingMarksLoading = false;
+let readingMarksQueued = null;
+let readingRepaintPending = false;   // 编辑期间欠着的一次重画
+
 let readingDrafts = new Map();
 let readingFilter = "all";
 let readingPageNo = 1;
 let readingRendered = 0;
 let readingSegmentNodes = [];
 let readingPanelKey = null;
-let readingCursor = -1;
+let readingCursorEntry = null;   // 上一次跳到的 entry（窗口换了 index 就不算数）
 let readingObserver = null;
 let readingImageToken = 0;
 let readingOpenStartedAt = 0;
@@ -17863,30 +17873,84 @@ async function openReading() {
   readingProject = projectId;
   readingMarks = new Map();
   readingEntries = [];
+  readingMarksWindow = null;
+  readingGlobalCounts = null;
+  readingPageCounts = new Map();
+  readingFirstUnackedPage = null;
   // 先出正文（无红字），红字随后补：点击到正文可见不用等 marks / tree
   renderReading({ reset: true });
   const metrics = (window.__b2tReadingMetrics = window.__b2tReadingMetrics || {});
+  metrics.openedAt = Math.round(started);
   metrics.firstPaintMs = Math.round(performance.now() - started);
   metrics.segments = readingVisibleSegments().length;
+  // 任务 67：只拉**第一处未审页 ±10** 的 marks（`first=1` 让服务端自己定位），
+  // 不再等 1.52 MB 的全书 marks；tree（左栏每页计数）单独拉，不挡红字。
   let marks;
-  let tree;
   try {
-    [marks, tree] = await Promise.all([
-      apiJson(`/api/projects/${projectId}/review/marks`),
-      apiJson(`/api/projects/${projectId}/review/tree`),
-    ]);
+    marks = await apiJson(`/api/projects/${projectId}/review/marks?first=1`);
   } catch (error) {
     metrics.error = String(error.message || error);
     return;
   }
-  readingTreeData = tree;
-  for (const mark of marks.items || []) {
+  metrics.marksMs = Math.round(performance.now() - started);
+  applyReadingMarksPayload(marks);
+  loadReadingDrafts();
+  loadReadingInlineEdits();
+  restoreInlineEditsPrompt();
+  renderReading({ reset: true });
+  renderReadingProgress();
+  metrics.firstMarkMs = Math.round(performance.now() - started);
+  metrics.entries = readingEntries.length;
+  metrics.window = marks.window;
+  metrics.counts = marks.counts;
+  ensureReadingPages();
+  measureReadingTops();
+  metrics.openMs = Math.round(performance.now() - started);
+  // 标点差异面板的数字（后台拉，不挡正文）：主队列只放汉字差异，其余在这里按模式判
+  refreshPunctGroups();
+  const page =
+    marks.first_unacked_page ||
+    readingEntries[0]?.page_no ||
+    currentProject.pages[0]?.page_no ||
+    1;
+  updateReadingPage(page);
+  // 左树后补（只影响左栏计数，不影响正文与红字）
+  apiJson(`/api/projects/${projectId}/review/tree`)
+    .then((tree) => {
+      readingTreeData = tree;
+      renderReadingTree();
+      metrics.treeMs = Math.round(performance.now() - started);
+      metrics.treeUnacked = tree.stats ? tree.stats.unacked : null;
+    })
+    .catch(() => {});
+}
+
+/**
+ * 吃掉一次 `/review/marks` 的返回（全书或窗口都一样）。
+ *
+ * 任务 67：`entries` 只由**已加载的窗口**生成；进度数字用返回里的全书 `counts`，
+ * 否则窗口一换进度条就会跟着缩水（用户会以为先前审的丢了）。
+ */
+function applyReadingMarksPayload(payload) {
+  readingMarks = new Map();
+  for (const mark of payload.items || []) {
     readingMarks.set(readingKey(mark.block_id, mark.line_index), mark);
   }
+  readingMarksWindow = payload.window || null;
+  readingGlobalCounts = payload.counts || null;
+  readingPageCounts = new Map(Object.entries(payload.page_counts || {}));
+  readingFirstUnackedPage = payload.first_unacked_page ?? null;
+  rebuildReadingEntries();
+}
+
+function rebuildReadingEntries() {
   readingEntries = [];
+  if (!readingData) return;
   const punctWatch = punctReviewSet();
   for (const segment of readingVisibleSegments()) {
-    for (const span of segment.line_spans || []) {
+    const spans = segment.line_spans || [];
+    for (let i = 0; i < spans.length; i += 1) {
+      const span = spans[i];
       const mark = readingMarks.get(readingKey(span.block_id, span.line_index));
       if (!mark) continue;
       // 主队列只放含汉字差异的行；纯标点 / 空格按模式批量判（任务 61），
@@ -17895,26 +17959,78 @@ async function openReading() {
       readingEntries.push({
         ...mark,
         seq: segment.seq,
+        span_index: i,
         page_no: mark.page_no || span.page_no,
       });
     }
   }
-  loadReadingDrafts();
-  loadReadingInlineEdits();
-  restoreInlineEditsPrompt();
-  renderReadingTree();
+}
+
+function readingMarkOrder(entry) {
+  return [Number(entry.seq) || 0, Number(entry.span_index) || 0, Number(entry.page_no) || 0];
+}
+
+function readingOrderAfter(order, other) {
+  if (order[0] !== other[0]) return order[0] > other[0];
+  return order[1] > other[1];
+}
+
+/** 这一页在已加载的窗口里吗？（窗口外要先补一块 marks） */
+function readingWindowHas(pageNo) {
+  if (!readingMarksWindow) return false;
+  return pageNo >= readingMarksWindow.page_from && pageNo <= readingMarksWindow.page_to;
+}
+
+/**
+ * 切到窗口外的一页时，补拉那一页 ±10 的 marks。
+ *
+ * 只重画已经铺出来的那几段（`READING_CHUNK` = 8 段，几十毫秒），并保持滚动位置——
+ * 直接 `renderReading({reset:true})` 会把用户滚到的地方弹回文首。
+ */
+async function ensureReadingMarksWindow(pageNo) {
+  if (!currentProject || !readingData) return;
+  if (!pageNo || readingWindowHas(pageNo)) return;
+  if (readingMarksLoading) {
+    readingMarksQueued = pageNo;
+    return;
+  }
+  readingMarksLoading = true;
+  try {
+    const payload = await apiJson(
+      `/api/projects/${currentProject.project_id}/review/marks?page=${pageNo}`
+    );
+    applyReadingMarksPayload(payload);
+    // 正在编辑某一行时**不重画**：重画会换掉那个 DOM 节点，光标和没落草稿的输入
+    // 一起丢（任务 67 实测：翻页补 marks 正好撞上用户点进一行，编辑态瞬间消失）。
+    // 红字晚一点到没关系，退出编辑时补画。
+    if (readingEditingKey) {
+      readingRepaintPending = true;
+    } else {
+      refreshReadingMarksPaint();
+    }
+    renderReadingProgress();
+  } catch (error) {
+    // 窗口没补上只是这一段暂时没红字，不影响正文与其他功能
+  } finally {
+    readingMarksLoading = false;
+    const queued = readingMarksQueued;
+    readingMarksQueued = null;
+    if (queued && !readingWindowHas(queued)) ensureReadingMarksWindow(queued);
+  }
+}
+
+function refreshReadingMarksPaint() {
+  const stream = el("reading-stream");
+  if (!stream || !readingData) return;
+  const top = stream.scrollTop;
+  const segmentsToKeep = Math.max(readingRendered, 0);
   renderReading({ reset: true });
-  renderReadingProgress();
-  ensureReadingPages();
-  measureReadingTops();
-  metrics.openMs = Math.round(performance.now() - started);
-  metrics.entries = readingEntries.length;
-  // 标点差异面板的数字（后台拉，不挡正文）：主队列只放汉字差异，其余在这里按模式判
-  refreshPunctGroups();
-  metrics.treeUnacked = tree.stats ? tree.stats.unacked : null;
-  const first = readingEntries.find((entry) => !readingEntryDone(entry));
-  const page = first ? first.page_no : (currentProject.pages[0]?.page_no || 1);
-  updateReadingPage(page);
+  let guard = 0;
+  while (readingRendered < segmentsToKeep && guard < 400) {
+    renderReading();
+    guard += 1;
+  }
+  stream.scrollTop = top;
 }
 
 function readingVisibleSegments() {
@@ -17964,6 +18080,7 @@ function renderReading({ reset = false, startAt = null } = {}) {
     return;
   }
   const end = Math.min(segments.length, readingRendered + READING_CHUNK);
+  const firstNew = readingRendered;
   const fragment = document.createDocumentFragment();
   for (let index = readingRendered; index < end; index += 1) {
     const node = buildReadingSegment(segments[index]);
@@ -17974,6 +18091,16 @@ function renderReading({ reset = false, startAt = null } = {}) {
   readingRendered = end;
   removeReadingSentinel();
   if (end < segments.length) stream.append(buildReadingSentinel());
+  // 任务 67：滚动会把后面的段铺出来，那些页可能在 marks 窗口外——补一块再画红字
+  if (readingMarksWindow && end > firstNew) {
+    let maxPage = 0;
+    for (let index = firstNew; index < end; index += 1) {
+      for (const page of segments[index].pages || []) {
+        if (page.page_no > maxPage) maxPage = page.page_no;
+      }
+    }
+    if (maxPage && !readingWindowHas(maxPage)) ensureReadingMarksWindow(maxPage);
+  }
 }
 
 function buildReadingSentinel() {
@@ -18196,6 +18323,10 @@ function exitInlineEdit() {
     node.removeEventListener("keydown", onInlineKeydown);
   }
   readingEditingKey = null;
+  if (readingRepaintPending) {
+    readingRepaintPending = false;
+    refreshReadingMarksPaint();
+  }
 }
 
 function onInlineKeydown(event) {
@@ -18306,8 +18437,23 @@ function buildReadingLine(segment, span) {
 }
 
 function renderReadingProgress() {
-  const total = readingEntries.length;
-  const processed = readingEntries.filter(readingEntryDone).length;
+  // 任务 67：marks 只加载窗口，`readingEntries` 不再是全书 —— 进度数字必须用
+  // 服务端给的全书计数，否则换一次窗口进度条就缩水一次（用户会以为审过的丢了）。
+  const counts = readingGlobalCounts;
+  let total;
+  let processed;
+  if (counts) {
+    total = Number(counts.chars_total || 0);
+    const doneInDb = Math.max(0, total - Number(counts.chars_unacked || 0));
+    // 未提交的草稿也算这一处已判（与 readingEntryDone 同一个口径），只数得着窗口内的
+    const draftDone = readingEntries.filter(
+      (entry) => entry.level !== "differs_punct" && !entry.ack && readingEntryDone(entry)
+    ).length;
+    processed = Math.min(total, doneInDb + draftDone);
+  } else {
+    total = readingEntries.length;
+    processed = readingEntries.filter(readingEntryDone).length;
+  }
   const drafts = readingDrafts.size + readingInlineEdits.size;
   // 显示分两类、判定看合并：进度条只算含汉字差异的行，标点单独一行小字
   const punctTotals = punctGroupsData?.totals || {};
@@ -19012,6 +19158,8 @@ function updateReadingPage(pageNo, { scrollLeft = true } = {}) {
   const total = currentProject.pages.length;
   if (!pageNo || pageNo < 1 || pageNo > total) return;
   readingPageNo = pageNo;
+  // 任务 67：翻到窗口外的页就补那一页 ±10 的 marks（异步，不挡翻页）
+  if (readingData) ensureReadingMarksWindow(pageNo);
   hideReadingPdfBox();
   el("reading-page-no").textContent = `第 ${pageNo} 页`;
   el("reading-prev").disabled = pageNo <= 1;
@@ -19148,26 +19296,60 @@ function stepReadingPage(delta) {
   scrollReadingToPage(next);
 }
 
-function gotoNextUnreviewed() {
-  if (!readingEntries.length) return;
-  const total = readingEntries.length;
-  let start = readingCursor;
-  for (let step = 0; step < total; step += 1) {
-    const index = (start + 1 + step) % total;
-    const entry = readingEntries[index];
-    if (readingEntryDone(entry)) continue;
-    readingCursor = index;
-    gotoReadingEntry(entry);
+async function gotoNextUnreviewed() {
+  if (!readingData) return;
+  // 任务 67：marks 只加载窗口，所以"下一处"分两步——
+  // 先在已加载窗口里按文档顺序找游标之后的第一处；找不到再让服务端告诉我们
+  // 下一个"还有汉字未审"的页，补那一页 ±10 的 marks 再找。
+  const cursorOrder = readingCursorOrder();
+  const next = readingEntries.find(
+    (entry) =>
+      !readingEntryDone(entry) &&
+      (!cursorOrder || readingOrderAfter(readingMarkOrder(entry), cursorOrder))
+  );
+  if (next) {
+    readingCursorEntry = next;
+    gotoReadingEntry(next);
     return;
   }
-  // 到文末仍没有未审：回卷到第一处并提示
-  const first = readingEntries.find((entry) => !readingEntryDone(entry));
-  if (!first) {
+  const afterPage = cursorOrder ? cursorOrder[2] : 0;
+  const pageNo = readingNextPageWithUnacked(afterPage);
+  if (pageNo == null) {
+    const total = readingGlobalCounts
+      ? Number(readingGlobalCounts.chars_total || 0)
+      : readingEntries.length;
     el("reading-progress-text").textContent = `已处理 ${total} / ${total} · 全部处理完`;
     return;
   }
-  readingCursor = -1;
-  gotoReadingEntry(first);
+  // 换到那一页的窗口（可能已经加载过），再从头找——这次必须能找到，
+  // 否则说明计数口径和 marks 不一致，宁可停在原地也不死循环。
+  await ensureReadingMarksWindow(pageNo);
+  const target = readingEntries.find(
+    (entry) => !readingEntryDone(entry) && entry.page_no >= pageNo
+  );
+  if (!target) return;
+  readingCursorEntry = target;
+  gotoReadingEntry(target);
+}
+
+function readingCursorOrder() {
+  return readingCursorEntry ? readingMarkOrder(readingCursorEntry) : null;
+}
+
+/** 下一处"还有汉字未审"的页（严格在 afterPage 之后，绕一圈）；没有就返回 null。 */
+function readingNextPageWithUnacked(afterPage) {
+  const pages = [...readingPageCounts.entries()]
+    .map(([pageNo, item]) => ({
+      page_no: Number(pageNo),
+      unacked: Number(item?.chars_unacked ?? item?.unacked ?? 0),
+    }))
+    .filter((item) => item.unacked > 0)
+    .sort((a, b) => a.page_no - b.page_no);
+  if (!pages.length) return null;
+  const forward = pages.find((item) => item.page_no > afterPage);
+  if (forward) return forward.page_no;
+  const wrap = pages.find((item) => item.page_no <= afterPage);
+  return wrap ? wrap.page_no : null;
 }
 
 function gotoReadingEntry(entry) {

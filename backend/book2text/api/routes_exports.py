@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -115,13 +116,25 @@ def export_preview(
     """
     _require_main(request, project_id)
     library, _project = _project_or_404(request, project_id)
+    if segments_only:
+        # 阅读审校这条路：返回**已序列化好**的 JSON（缓存命中时 ~40 ms），
+        # 直接交给 uvicorn，不再走 jsonable_encoder（4 MB 结构过一遍要 1.4 s）
+        try:
+            raw = project_export.preview_segments_json(
+                project_id, library=library, options=body.options()
+            )
+        except project_export.ExportError as exc:
+            raise _export_error(exc) from exc
+        except project_library.ProjectError as exc:
+            raise _project_error(exc) from exc
+        return Response(content=raw, media_type="application/json")
     try:
         result = project_export.preview(
             project_id,
             library=library,
             options=body.options(),
             limit=limit,
-            segments_only=segments_only,
+            segments_only=False,
         )
     except project_export.ExportError as exc:
         raise _export_error(exc) from exc

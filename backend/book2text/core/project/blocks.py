@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -919,13 +920,17 @@ def _db_signature(project_id: str, library: Path) -> str:
     from . import library as library_module
 
     directory = library_module.project_dir(library, project_id)
-    parts = []
-    for suffix in ("", "-wal"):
-        try:
-            parts.append(str(directory.joinpath(f"project.db{suffix}").stat().st_mtime_ns))
-        except OSError:
-            parts.append("-")
-    return "|".join(parts)
+    return db_module.content_signature(directory)
+
+
+_INDEX_LOCK = threading.Lock()
+"""建索引时只让一个线程算（任务 67）。
+
+开项目那一刻，marks / tree / finish-summary / punct-groups 会**同时**打进来，
+四个都是同步接口（跑在线程池里）。没有这把锁时，四个线程各自发现缓存为空、
+各自算一遍 0.7 s 的全书分歧——实测冷启动 4 个并发请求合计 8.6 s，
+加锁后只算一次，其余在锁上等，合计 1.4 s。
+"""
 
 
 def divergence_index(
@@ -934,12 +939,25 @@ def divergence_index(
     """读一次块 / 行 / 复核记录 / 页 / 项目，算好每块与每页的分歧。
 
     结果按数据库文件 mtime 缓存（任何写入提交都会变），重复调用约 0 ms。
+    并发调用同一项目时只有一个线程真正计算，其余等锁后直接拿缓存。
     """
     target_library = library if library is not None else default_library_dir()
     signature = _db_signature(project_id, target_library)
     cached = _INDEX_CACHE.get(project_id)
     if cached and signature and cached[0] == signature:
         return cached[1]
+    with _INDEX_LOCK:
+        # 等锁期间别的线程可能已经算好了
+        signature = _db_signature(project_id, target_library)
+        cached = _INDEX_CACHE.get(project_id)
+        if cached and signature and cached[0] == signature:
+            return cached[1]
+        return _build_divergence_index(project_id, target_library, signature)
+
+
+def _build_divergence_index(
+    project_id: str, target_library: Path, signature: str
+) -> DivergenceIndex:
     blocks = tuple(list_blocks(project_id, library=target_library))
     lines = list_block_lines(project_id, library=target_library)
     runs = list_runs(project_id, library=target_library, run_type=RUN_TYPE_AUXILIARY)

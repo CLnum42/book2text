@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -615,6 +616,116 @@ def preview(project_id: str, *, library: Path | None = None, options: ExportOpti
         "segments": records,
         "segment_count": len(records),
     }
+
+
+# ---------------------------------------------------------------- 阅读流段的缓存（任务 67）
+#
+# 阅读审校一进来就要**全书**的 segments（4364 段 / 3.8 MB）：`_prepare` 362 ms、
+# `json.dumps` 23 ms，但走 FastAPI 默认序列化再传出去实测 1.88 s。
+# 这里缓存"已经序列化好的 JSON 字符串"，并按 `project.db` 的 mtime + 选项签名失效：
+# 重复打开（含重启后）实测 ~40 ms，而且能直接 `Response(content=...)` 交给 uvicorn，
+# 不再过一遍 `jsonable_encoder`。
+
+_PREVIEW_CACHE: dict[str, tuple[str, str]] = {}
+"""项目 → (签名, JSON 字符串)。只留最近两个项目。"""
+
+_PREVIEW_LOCK = threading.Lock()
+"""并发首次请求时只让一个线程算（任务 67）。"""
+
+
+def _db_mtime_signature(project_id: str, library: Path) -> str:
+    return db_module.content_signature(library_module.project_dir(library, project_id))
+
+
+def _options_signature(options: ExportOptions) -> str:
+    data = []
+    for field_name in sorted(options.__dataclass_fields__):
+        value = getattr(options, field_name)
+        if isinstance(value, (tuple, list)):
+            value = list(value)
+        data.append(f"{field_name}={value!r}")
+    return ";".join(data)
+
+
+def preview_segments_signature(
+    project_id: str, *, library: Path, options: ExportOptions
+) -> str:
+    return f"{_db_mtime_signature(project_id, library)}#{_options_signature(options)}"
+
+
+def _preview_cache_path(project_id: str, library: Path) -> Path:
+    return library_module.project_dir(library, project_id) / "cache" / "preview-segments.json"
+
+
+def preview_segments_json(
+    project_id: str, *, library: Path, options: ExportOptions
+) -> str:
+    """阅读流要的 segments，返回**已序列化**的 JSON 字符串（内存 + 磁盘两级缓存）。"""
+    signature = preview_segments_signature(project_id, library=library, options=options)
+    cached = _PREVIEW_CACHE.get(project_id)
+    if cached and cached[0] == signature:
+        return cached[1]
+    with _PREVIEW_LOCK:
+        cached = _PREVIEW_CACHE.get(project_id)
+        if cached and cached[0] == signature:
+            return cached[1]
+        return _build_preview_segments_json(project_id, library, options, signature)
+
+
+def _build_preview_segments_json(
+    project_id: str, library: Path, options: ExportOptions, signature: str
+) -> str:
+    path = _preview_cache_path(project_id, library)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict) and payload.get("signature") == signature:
+            raw = payload.get("json")
+            if isinstance(raw, str):
+                _remember_preview(project_id, signature, raw)
+                return raw
+    except (OSError, json.JSONDecodeError):
+        pass
+    prepared = _prepare(project_id, library=library, options=options)
+    labels = {page.page_no: page.page_label for page in prepared.pages if page.page_label}
+    records = [
+        jsonl_module.segment_to_record(
+            segment,
+            page_labels=labels,
+            engine_id=_engine_id(),
+            engine_version=_engine_version(),
+        )
+        for segment in prepared.segments
+    ]
+    raw = json.dumps(
+        {
+            "segments": records,
+            "segment_count": len(records),
+            "preflight": None,
+            "text": "",
+            "jsonl": "",
+            "truncated": False,
+        },
+        ensure_ascii=False,
+    )
+    _remember_preview(project_id, signature, raw)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_name(path.name + ".tmp")
+        temp.write_text(
+            json.dumps({"signature": signature, "json": raw}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        temp.replace(path)
+    except OSError:
+        # 写不进去只是少一层缓存，不影响正确性
+        pass
+    return raw
+
+
+def _remember_preview(project_id: str, signature: str, raw: str) -> None:
+    if project_id not in _PREVIEW_CACHE and len(_PREVIEW_CACHE) >= 2:
+        _PREVIEW_CACHE.pop(next(iter(_PREVIEW_CACHE)))
+    _PREVIEW_CACHE[project_id] = (signature, raw)
 
 
 # ---------------------------------------------------------------- 生成与落盘

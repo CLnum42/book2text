@@ -26,6 +26,7 @@ from ..core.project import editing
 from ..core.project import library as project_library
 from ..core.project import margin_box as margin_box_module
 from ..core.project import punct_groups as punct_groups_module
+from ..core.project import reading_marks as reading_marks_module
 from ..core.project import review_status as review_status_module
 from ..core.project import recognition
 from ..core.project import structure as structure_module
@@ -331,79 +332,34 @@ class DiffAckRequest(BaseModel):
 
 
 @router.get("/{project_id}/review/marks")
-def review_marks(request: Request, project_id: str) -> dict[str, Any]:
-    """全书逐行的差异标记（阅读审校连续流用）。
+def review_marks(
+    request: Request,
+    project_id: str,
+    page: int | None = None,
+    radius: int | None = None,
+    first: bool = False,
+) -> dict[str, Any]:
+    """逐行的差异标记（阅读审校连续流用），**默认按页窗口返回**。
 
     一条 = 一行的一处实质差异（汉字级 / 标点级），带 A/B 文本与已有的裁决。
     阅读流要靠它把红字标到 `line_spans` 切出来的行元素里。
+
+    任务 67：全书 4435 条一次返回是 1.52 MB / 0.90 s，开机首屏全卡在这里。
+    现在带 `page` 就只返回该页 ±`radius`（默认 10）页的标记（~77 KB / 1 ms）；
+    `counts` / `page_counts` / `first_unacked_page` 仍然是全书的，进度条和
+    "下一处未审"要用。不带 `page` 时行为与以前一致（全书），供调试 / 脚本使用。
     """
     library = _library(request)
     try:
-        project = project_library.load_project(project_id, library=library)
-        pages = project_library.list_pages(project_id, library=library)
+        return reading_marks_module.marks_window(
+            project_id,
+            library=library,
+            page=page,
+            radius=reading_marks_module.DEFAULT_RADIUS if radius is None else radius,
+            first=first,
+        )
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
-    page_by_block: dict[str, int] = {}
-    blocks = blocks_module.list_blocks(project_id, library=library)
-    for block in blocks:
-        page_by_block[block.block_id] = block.page_no
-    lines_by_block: dict[str, list] = {}
-    for line in blocks_module.list_block_lines(project_id, library=library):
-        lines_by_block.setdefault(line.block_id, []).append(line)
-    items: list[dict[str, Any]] = []
-    for block in blocks:
-        page = next((item for item in pages if item.page_no == block.page_no), None)
-        if page is None or not block.include:
-            continue
-        # 队列口径（任务 58 / 61）：只有正文块（paragraph / heading）进审校队列。
-        # 这里不一起过滤的话，marks 会比队列多出几行（脚注等），进度条的分母就对不上。
-        if block.block_type not in review_status_module.QUEUE_BLOCK_TYPES:
-            continue
-        if not margin_box_module.block_inside_margin(project, page, block.bbox):
-            continue
-        divergence = blocks_module.block_divergence(
-            block, lines_by_block.get(block.block_id, [])
-        )
-        line_records = {
-            line.line_index: line for line in lines_by_block.get(block.block_id, [])
-        }
-        for mark in divergence.marks:
-            if mark.level not in (compare_module.DIFFERS_CHARS, compare_module.DIFFERS_PUNCT):
-                continue
-            line = line_records.get(mark.line_index)
-            items.append(
-                {
-                    "page_no": block.page_no,
-                    "block_id": block.block_id,
-                    "line_index": mark.line_index,
-                    "level": mark.level,
-                    "current": mark.current,
-                    "candidate": mark.candidate,
-                    "ack": mark.ack,
-                    # 行框（归一化）：跟随模式下在左 PDF 上框出当前行
-                    "bbox": list(line.bbox) if line is not None and line.bbox else None,
-                    # 纯标点差异的"模式键"（`；→，`、`∅→‘`）：主队列据此把这几百行
-                    # 交给「标点差异 · 按模式批量」面板，而不是让用户逐条点（任务 61）
-                    "pattern_key": (
-                        punct_groups_module.pattern_key(
-                            punct_groups_module.fragments(
-                                mark.current,
-                                line.aux_text if line is not None else "",
-                            )
-                        )
-                        if mark.level == compare_module.DIFFERS_PUNCT
-                        and line is not None
-                        and line.aux_text is not None
-                        else None
-                    ),
-                }
-            )
-    counts = {"total": len(items), "chars": 0, "punct": 0, "acked": 0}
-    for item in items:
-        counts[item["level"].split("_")[-1] if item["level"].startswith("differs_") else "chars"] += 1
-        if item["ack"]:
-            counts["acked"] += 1
-    return {"items": items, "counts": counts}
 
 
 class PunctGroupDecideRequest(BaseModel):
