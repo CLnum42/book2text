@@ -1193,6 +1193,18 @@ async function prepare(page, cfg) {
   // 页面级错误收集：**"删错声明"这类 bug 不会红在任何断言上**，只会在控制台里
   // 报 ReferenceError（树渲染不出来）。prepare 时就挂上收集器，smoke 结束再读。
   await page.evaluate(() => {
+    // 网络记录器：冷启要数 preview → marks → tree 的调用（只记 URL，不改行为）
+    if (!window.__b2tReqLog) {
+      window.__b2tReqLog = [];
+      const origFetch = window.fetch;
+      window.fetch = function (...a) {
+        try {
+          const url = typeof a[0] === "string" ? a[0] : (a[0] && a[0].url) || "";
+          window.__b2tReqLog.push({ url: String(url), at: Date.now() });
+        } catch (error) { /* 记录失败不影响请求 */ }
+        return origFetch.apply(this, a);
+      };
+    }
     window.__b2tErrors = window.__b2tErrors || [];
     if (!window.__b2tErrInstalled) {
       window.__b2tErrInstalled = true;
@@ -2875,13 +2887,15 @@ async function l3Probe(page, args) {
   };
 
   if (mode === "cold") {
-    // 先离开审校（保证 reading 状态被清），再挂监听回来
-    await stepTo("pages");
+    // prepare 已经装了网络记录器：直接看"打开项目 → 进审校"期间的请求
     await installNet();
     await installMutations();
-    await clearReqs();
     await page.evaluate(() => { if (window.__b2tStreamMut !== undefined) window.__b2tStreamMut = 0; });
-    await stepTo("review");
+    const onReading = await page.evaluate(() => {
+      const v = document.getElementById("view-reading");
+      return Boolean(v && !v.hidden);
+    });
+    if (!onReading) await stepTo("review");
     await page
       .waitForFunction(() => document.querySelectorAll("#reading-stream .reading-seg").length > 0,
                        undefined, { timeout: 60000 })
@@ -2909,6 +2923,9 @@ async function l3Probe(page, args) {
     await clearReqs();
     await page.evaluate(() => { window.__b2tStreamMut = 0; });
     await stepTo("pages");
+    // 切走之后再清空：pages 视图自己的请求（blocks/suggestions）不算审校的新请求
+    await clearReqs();
+    await installMutations();
     await stepTo("review");
     await page.waitForTimeout(2500);
     const reqs = await readReqs();
