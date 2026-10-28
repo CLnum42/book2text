@@ -2473,7 +2473,17 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   background: rgba(22, 163, 74, .16); border-radius: 6px;
   box-shadow: inset 0 0 0 1px rgba(22, 163, 74, .45);
 }
-.reading-seg.is-hover .reading-mark { background: rgba(22, 163, 74, .18); }
+.reading-seg.is-hover /* 任务 81：空区间的"插入位置"锚点——**没有文本节点**，只是一个可见的细标记。
+   不能占字符，否则右栏会比导出多出一个空格。 */
+.reading-mark--insert {
+  display: inline-block; width: 0; height: 1.05em; vertical-align: -0.18em;
+  margin: 0 1px; padding: 0; background: none;
+  border: 0; border-left: 2px solid rgba(220, 38, 38, .8);
+  border-radius: 0; box-shadow: 0 0 0 1px rgba(220, 38, 38, .18);
+}
+.reading-mark--insert.is-acked { border-left-color: rgba(22, 163, 74, .8); }
+.reading-mark--insert.is-current { border-left-color: #d97706; }
+.reading-mark { background: rgba(22, 163, 74, .18); }
 .reading-pdf__scroll img {
   display: none; width: 100%; height: auto; background: var(--page-paper);
   box-shadow: var(--shadow-1);

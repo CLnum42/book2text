@@ -18710,19 +18710,25 @@ function buildReadingLine(segment, span) {
     line.textContent = baseText;
     return line;
   }
-  let cursor = 0;
+  // 任务 81：**先把差异区间并成互不重叠的并集，再按顺序拼一次**。
+  // 原来是在循环里"发现重叠就把文字追加给上一个 mark"，`cursor` 与追加区间一旦错位
+  // 就会重复字符（实测 `laborefficient` 被显示成 `laboreefficient`）——
+  // 这类"显示 ≠ 导出"已经被咬过四次，不能再靠逐次判断补丁。
+  const ranges = [];
   for (const charSpan of charSpans) {
     // 英文扩到整词（引擎给的是词级框）；中文保持单字
     const range = expandToWordRange(baseText, charSpan.aStart, charSpan.aEnd);
-    if (range.start < cursor) {
-      // 与上一个区间重叠（两个差异字在同一个词里）：并进上一个 mark
-      const previous = line.lastElementChild;
-      if (previous && previous.classList && previous.classList.contains("reading-mark")) {
-        previous.textContent += baseText.slice(cursor, range.end);
-        cursor = Math.max(cursor, range.end);
-        continue;
-      }
+    const last = ranges[ranges.length - 1];
+    if (last && range.start <= last.end) {
+      last.end = Math.max(last.end, range.end);
+      last.word = last.word || range.word;
+    } else {
+      ranges.push({ start: range.start, end: range.end, word: range.word });
     }
+  }
+
+  let cursor = 0;
+  for (const range of ranges) {
     if (range.start > cursor) {
       line.append(document.createTextNode(baseText.slice(cursor, range.start)));
     }
@@ -18733,7 +18739,16 @@ function buildReadingLine(segment, span) {
       (range.word ? " reading-mark--word" : "") +
       (mark.ack ? " is-acked" : "") +
       (key === readingPanelKey ? " is-current" : "");
-    markEl.textContent = baseText.slice(range.start, range.end) || " ";
+    // 任务 81：**占位不许进 textContent**。空区间（原文这里没有字、候选那边有）
+    // 只需要"这里有个插入位置"的视觉标记，不是字符；原来用 `|| " "` 塞了空格，
+    // 右栏就比导出多一个空格（`lcc: :pp` vs `lcc::pp`）。
+    const slice = baseText.slice(range.start, range.end);
+    if (slice) {
+      markEl.textContent = slice;
+    } else {
+      markEl.classList.add("reading-mark--insert");
+      markEl.setAttribute("aria-label", "这里缺字（候选有、原文没有）");
+    }
     markEl.dataset.key = key;
     markEl.title = range.word ? "英文按词标：这个词里有差异" : "";
     line.append(markEl);

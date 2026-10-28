@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>正文审校 · 一屏三改 · 设计稿</title>
+<style>
+:root{
+  --bg:#f3f4f6; --surface:#fff; --surface-2:#fafbfc; --surface-3:#f7f8fa;
+  --line:#e2e4e8; --line-soft:#eef0f2; --line-strong:#d0d3d9;
+  --text:#1f2329; --text-2:#33383f; --muted:#646a73; --faint:#9aa0a8;
+  --accent:#2563eb; --accent-hover:#1d4ed8; --accent-soft:#eef4ff;
+  --ok:#16a34a; --ok-soft:#e9f7ee; --ok-text:#15803d;
+  --warn:#d97706; --warn-soft:#fdf3e0;
+  --bad:#dc2626; --bad-soft:#fdecec; --bad-text:#b91c1c;
+  --teal:#0f766e; --paper:#f8f6f0;
+  --radius:8px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:#e8eaee; color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.board{width:1588px;margin:0 auto;padding:36px 0 80px}
+.hd{width:1280px;margin:0 0 28px 32px}
+.hd h1{font-size:22px;margin:0 0 8px;letter-spacing:.2px}
+.hd p{font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.6}
+.legend{display:flex;gap:18px;font-size:11.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:18px;height:10px;border-radius:2px;display:inline-block}
+.sw-bad{background:rgba(220,38,38,.09);border-bottom:2px solid #b42318}
+.sw-acc{background:rgba(37,99,235,.12);border-bottom:2px solid var(--accent)}
+.sw-ok{background:rgba(22,163,74,.08);border-bottom:2px solid rgba(22,163,74,.6)}
+.sw-teal{background:rgba(15,118,110,.12);border-bottom:2px solid var(--teal)}
+.sw-warn{background:rgba(217,119,6,.05);border-bottom:2px dotted #b45309}
+
+.row{display:flex;gap:26px;align-items:flex-start;margin:0 0 30px 32px}
+.fcol{flex:none}
+.cap{font-size:13px;color:var(--text);margin:0 0 8px;display:flex;align-items:baseline;gap:8px}
+.cap b{font-size:11px;letter-spacing:.6px;color:var(--accent);font-weight:700}
+.cap em{font-style:normal;color:var(--faint);font-size:11.5px;margin-left:4px}
+.notes{width:214px;flex:none;font-size:11.5px;line-height:1.62;color:#4b5563;padding-top:26px}
+.notes b{display:block;font-size:11.5px;color:var(--text);margin-bottom:6px}
+.notes ul{margin:0;padding:0 0 0 14px}
+.notes li{margin:0 0 6px}
+.notes code{font:10.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:#f1f3f6;border-radius:3px;padding:1px 4px;color:#3f4650}
+
+/* ── 屏幕外壳 ───────────────────────────────────────── */
+.screen{
+  position:relative; display:flex; flex-direction:column;
+  background:var(--bg); border:1px solid #d6d9df; border-radius:10px;
+  overflow:hidden; box-shadow:0 8px 28px rgba(16,24,40,.12);
+  flex:none;
+}
+.app{height:100%;display:flex;flex-direction:column;min-height:0}
+.topbar{
+  height:48px;flex:none;display:flex;align-items:center;gap:14px;
+  padding:0 14px;background:var(--surface);border-bottom:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:8px;min-width:0;flex:none}
+.logo{width:20px;height:20px;border-radius:5px;background:var(--text);color:#fff;font-size:11px;
+  display:flex;align-items:center;justify-content:center;flex:none}
+.proj{font-size:13px;font-weight:600;white-space:nowrap;max-width:322px;overflow:hidden;text-overflow:ellipsis}
+.steps{display:flex;align-items:center;gap:2px;flex:none}
+.step{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);
+  padding:4px 7px;border-radius:6px;white-space:nowrap}
+.step i{width:14px;height:14px;border-radius:50%;border:1px solid var(--line-strong);
+  display:flex;align-items:center;justify-content:center;font-style:normal;font-size:9px;color:var(--faint)}
+.step.done i{background:var(--ok-soft);border-color:#bfe6cd;color:var(--ok-text)}
+.step.done{color:var(--faint)}
+.step.cur{background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.step.cur b{width:14px;height:14px;border-radius:50%;background:var(--accent);color:#fff;
+  font-size:9px;display:flex;align-items:center;justify-content:center;font-weight:600}
+.step.todo{color:var(--faint)}
+.spacer{flex:1}
+
+/* ── 工具条 ─────────────────────────────────────────── */
+.tb{
+  height:44px;flex:none;display:flex;align-items:center;gap:10px;
+  padding:0 12px;background:var(--surface);border-bottom:1px solid var(--line);
+}
+.tb-narrow{height:40px;gap:8px}
+.pgbtn{height:26px;padding:0 9px;border:1px solid var(--line-strong);border-radius:6px;background:#fff;
+  font-size:12px;color:var(--text);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.pgbtn .dim{color:var(--faint);font-size:10px}
+.prog{display:flex;flex-direction:column;gap:1px;min-width:232px}
+.prog-top{display:flex;align-items:center;gap:9px;white-space:nowrap;height:15px;line-height:15px}
+.prog-top b{font-size:13px;letter-spacing:.1px}
+.prog-top span{font-size:11px;color:var(--muted)}
+.barline{display:flex;align-items:center;gap:5px;height:9px;line-height:9px}
+.barline em{font-style:normal;font-size:9px;color:var(--faint);letter-spacing:.3px;white-space:nowrap}
+.barline .num{margin-left:2px;font-size:9px;color:var(--faint);font-variant-numeric:tabular-nums}
+.track{height:4px;width:120px;background:#eef0f3;border-radius:3px;overflow:hidden;flex:none}
+.track i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.track.is-punct i{background:var(--warn)}
+.vsep{width:1px;height:20px;background:var(--line);flex:none}
+.chip{height:26px;padding:0 9px;border-radius:999px;border:1px solid #ecd3a8;background:var(--warn-soft);
+  color:#8a5a00;font-size:11.5px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.chip .dot{width:6px;height:6px;border-radius:50%;background:var(--warn)}
+.linkish{font-size:11.5px;color:var(--muted);border:0;background:none;padding:0 2px;
+  border-bottom:1px dotted var(--line-strong);white-space:nowrap}
+.btn{height:26px;padding:0 10px;border:1px solid var(--line-strong);background:#fff;border-radius:6px;
+  font-size:12px;color:var(--text);display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.btn-sm{height:24px;font-size:11.5px;padding:0 9px}
+.btn-pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-ghost{border-color:transparent;background:transparent;color:var(--muted)}
+kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line-strong);
+  border-radius:3px;padding:1px 4px;background:var(--surface-2);color:var(--muted)}
+.btn-pri kbd{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.32);color:#fff}
+.saved{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);white-space:nowrap}
+.saved .gdot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.saved.is-dirty{color:var(--warn-text)}
+.saved.is-dirty .gdot{background:var(--warn)}
+.help{font-size:11.5px;color:var(--faint);white-space:nowrap}
+
+/* ── 一次性引导条 ───────────────────────────────────── */
+.onboard{
+  height:40px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;
+  background:#f7faff;border-bottom:1px solid #dbe7ff;font-size:12px;color:var(--text-2);
+}
+.onboard .tag{font-size:10.5px;color:var(--accent-text);background:var(--accent-soft);
+  border:1px solid #d6e4ff;border-radius:999px;padding:1px 7px;white-space:nowrap}
+.onboard b{color:var(--text)}
+
+/* ── 三栏 ───────────────────────────────────────────── */
+.split{flex:1;min-height:0;display:flex;position:relative}
+
+.tree{
+  width:232px;flex:none;min-height:0;background:var(--surface);
+  border-right:1px solid var(--line);display:flex;flex-direction:column;
+}
+.tree-head{height:46px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px 0 12px;
+  border-bottom:1px solid var(--line-soft)}
+.tree-head .tt{font-size:12px;font-weight:600}
+.tree-head .tt span{color:var(--faint);font-weight:400;font-size:11px;margin-left:3px}
+.filter{margin-left:auto;height:22px;padding:0 8px;border-radius:999px;font-size:10.5px;
+  border:1px solid #cfe0ff;background:var(--accent-soft);color:var(--accent-text)}
+.tree-scroll{flex:1;min-height:0;overflow:hidden;padding:6px 0 10px}
+.chapter{padding:5px 0 3px}
+.ch-row{display:flex;align-items:baseline;gap:6px;padding:2px 10px 0 12px}
+.ch-row .cv{font-size:9px;color:var(--faint);flex:none;width:9px}
+.ch-name{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
+.ch-count{margin-left:auto;font-size:10.5px;color:var(--faint);white-space:nowrap}
+.chapter.is-cur .ch-name{color:var(--accent-text)}
+.chapter.is-cur .ch-count{color:var(--accent-text)}
+.ch-title{font-size:10.5px;color:var(--faint);padding:0 12px 4px 27px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-pages{padding:2px 0 2px}
+.page-row{display:flex;align-items:center;gap:8px;height:24px;padding:0 10px 0 27px;
+  font-size:12px;color:var(--text-2)}
+.page-row .pc{margin-left:auto;font-size:10.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+.page-row.done{color:var(--faint)}
+.page-row.done .pc{color:var(--ok-text)}
+.page-row.cur{background:var(--accent-soft);color:var(--accent-text);
+  box-shadow:inset 3px 0 0 var(--accent);font-weight:600}
+.page-row.cur .pc{color:var(--accent-text)}
+.tree-foot{height:26px;flex:none;border-top:1px solid var(--line-soft);display:flex;align-items:center;
+  gap:10px;padding:0 12px;font-size:9.5px;color:var(--faint);white-space:nowrap}
+.tree-foot i{width:7px;height:7px;border-radius:2px;display:inline-block;margin-right:3px}
+
+.pdf{
+  width:var(--pdfw,422px);flex:none;min-height:0;background:#e7e9ec;
+  border-right:1px solid var(--line);position:relative;display:flex;flex-direction:column;
+}
+.pdf-scroll{flex:1;min-height:0;padding:10px 10px 0;overflow:hidden;text-align:center}
+.scan{
+  width:100%;height:auto;aspect-ratio:1/1.414;margin:0 auto;background:var(--paper);position:relative;
+  overflow:hidden;
+  box-shadow:0 1px 3px rgba(16,24,40,.18);padding:14px 13px 10px;
+  font-family:"Songti SC","STSong",serif;color:#4b4b4b;
+  background-image:radial-gradient(rgba(90,70,40,.05) .6px,transparent .6px);
+  background-size:3px 3px;
+}
+.scan .pn{position:absolute;top:5px;right:9px;font-size:8px;color:#9a9a9a;letter-spacing:.5px}
+.scan h4{font-size:11px;font-weight:600;text-align:center;margin:2px 0 1px;letter-spacing:1px}
+.scan h5{font-size:8.5px;font-weight:500;text-align:center;margin:0 0 10px;color:#6a6a6a}
+.scan p{font-size:9.5px;line-height:18px;margin:0 0 3px;text-align:justify;opacity:.82;letter-spacing:.2px}
+.scan-hit{position:absolute;left:7px;right:7px;height:19px;border:2px solid var(--accent);
+  background:rgba(37,99,235,.12);border-radius:2px}
+.scan-hit .num{position:absolute;right:-18px;top:-2px;width:15px;height:15px;border-radius:50%;
+  background:var(--accent);color:#fff;font:9px/15px -apple-system,sans-serif;text-align:center}
+.scan-hit.is-edit{border-color:var(--teal);background:rgba(15,118,110,.10)}
+.scan-hit.is-edit .num{background:var(--teal)}
+.scan-next{width:100%;height:300px;margin:12px auto 0;background:var(--paper);position:relative;
+  box-shadow:0 1px 3px rgba(16,24,40,.14);padding:14px 13px;font-family:"Songti SC","STSong",serif;color:#4b4b4b;
+  overflow:hidden;background-image:radial-gradient(rgba(90,70,40,.05) .6px,transparent .6px);background-size:3px 3px}
+.scan-next .pn{position:absolute;top:5px;right:9px;font-size:8px;color:#9a9a9a}
+.scan-next h4{font-size:11px;font-weight:600;text-align:center;margin:2px 0 1px;letter-spacing:1px}
+.pdf-zoom{position:absolute;top:18px;right:16px;z-index:3;width:26px;height:26px;border-radius:50%;
+  border:1px solid var(--line-strong);background:rgba(255,255,255,.95);color:var(--text-2);
+  font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 1px 3px rgba(16,24,40,.12)}
+
+.stream{
+  flex:1;min-width:0;min-height:0;position:relative;overflow:hidden;
+  background:var(--surface);padding:16px 20px 0;
+}
+.doc{max-width:600px;margin:0 auto}
+.seg{
+  font-size:15px;line-height:1.9;margin:0 0 10px;text-indent:2em;
+  letter-spacing:.01em;color:var(--text);
+}
+.seg.cont{text-indent:0}
+.mk{padding:0 1px;border-radius:2px;box-decoration-break:clone}
+.mk.pending{background:rgba(220,38,38,.07);border-bottom:1.5px solid #b42318}
+.mk.punct{background:rgba(217,119,6,.05);border-bottom:1.5px dotted #b45309}
+.mk.curr{background:rgba(37,99,235,.12);border-bottom:2px solid var(--accent)}
+.mk.done{background:rgba(22,163,74,.07);border-bottom:1.5px solid rgba(22,163,74,.55)}
+.mk.hand{background:rgba(15,118,110,.12);border-bottom:2px solid var(--teal)}
+.caret{display:inline-block;width:2px;height:18px;background:#111;vertical-align:-3px;margin-right:-1px;
+  animation:none;position:relative;top:1px}
+
+/* ── 就地对照面板 ───────────────────────────────────── */
+.panel{
+  position:relative;margin:6px 0 12px;padding:7px 12px 9px;
+  background:#fff;border:1px solid #dbe7ff;border-left:3px solid var(--accent);
+  border-radius:0 8px 8px 0;box-shadow:0 2px 10px rgba(37,99,235,.07);
+  text-indent:0;
+}
+.panel::before{content:"";position:absolute;left:calc(var(--caret-x,18px) - 4px);top:-5px;width:8px;height:8px;
+  background:#fff;border-left:1px solid #dbe7ff;border-top:1px solid #dbe7ff;transform:rotate(45deg)}
+.p-head{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--muted);margin-bottom:2px}
+.p-head .pos{color:var(--text-2);font-weight:600}
+.p-head .same{color:var(--faint)}
+.p-head .spacer{flex:1}
+.p-head .full{font-size:11px;color:var(--accent-text);background:none;border:0;padding:0;
+  border-bottom:1px dotted #b9cdf2}
+.p-head .psaved{color:var(--ok-text);background:var(--ok-soft);border:1px solid #bfe6cd;
+  border-radius:999px;padding:0 6px;font-size:10.5px;white-space:nowrap}
+.cmp{margin:1px 0 5px}
+.cmp-row{display:flex;align-items:baseline;gap:10px;font-size:14.5px;line-height:24px;white-space:nowrap}
+.cmp-label{flex:none;width:44px;text-align:right;font-size:10.5px;color:var(--faint)}
+.cmp-row.is-b .cmp-label{color:var(--accent-text)}
+.cmp-text{overflow:hidden;text-overflow:ellipsis}
+.cd{font-weight:700;padding:0 1px;border-radius:2px;background:var(--accent-soft);
+  box-shadow:inset 0 -2px 0 var(--accent)}
+.p-actions{display:flex;align-items:center;gap:8px}
+.p-actions .spacer{flex:1}
+.p-tip{font-size:10px;color:var(--faint);white-space:nowrap}
+.p-tip kbd{font-size:9px;padding:0 3px}
+
+/* ── 编辑条 ─────────────────────────────────────────── */
+.editbar{
+  position:relative;display:flex;align-items:center;gap:9px;margin:6px 0 12px;padding:6px 10px;
+  background:#f5fbfa;border:1px solid #cfe9e5;border-left:3px solid var(--teal);
+  border-radius:0 8px 8px 0;font-size:11.5px;color:var(--text-2);text-indent:0;
+}
+.editbar::before{content:"";position:absolute;left:calc(var(--caret-x,18px) - 4px);top:-5px;width:8px;height:8px;
+  background:#f5fbfa;border-left:1px solid #cfe9e5;border-top:1px solid #cfe9e5;transform:rotate(45deg)}
+.editbar .pen{color:var(--teal);font-size:13px}
+.editbar b{font-size:11.5px;color:var(--text)}
+.editbar .chg{font-size:11.5px;color:var(--muted)}
+.editbar .chg em{font-style:normal;color:var(--teal);font-weight:600}
+.editbar .spacer{flex:1}
+.editbar .hint{font-size:10px;color:var(--faint)}
+
+/* ── 完成 toast ─────────────────────────────────────── */
+.toast{
+  position:absolute;top:10px;right:16px;z-index:4;display:flex;align-items:center;gap:7px;
+  height:28px;padding:0 10px;border-radius:999px;background:#ecfdf3;border:1px solid #bfe6cd;
+  color:#11653a;font-size:11.5px;box-shadow:0 2px 8px rgba(16,24,40,.08);
+}
+.toast .tick{width:14px;height:14px;border-radius:50%;background:var(--ok);color:#fff;
+  font-size:9px;display:flex;align-items:center;justify-content:center}
+.toast kbd{font-size:9px;background:#fff;border-color:#c9e5d3;color:#11653a}
+
+/* ── 抽屉 ───────────────────────────────────────────── */
+.drawer-layer{position:absolute;inset:0;z-index:6}
+.backdrop{position:absolute;inset:0;background:rgba(15,18,24,.22)}
+.drawer{position:absolute;left:0;top:0;bottom:0;width:300px;background:#fff;
+  border-right:1px solid var(--line);box-shadow:12px 0 32px rgba(15,18,24,.18);
+  display:flex;flex-direction:column}
+.drawer .tree-head{height:44px}
+.drawer .tree-scroll{padding-top:2px}
+.xbtn{margin-left:6px;width:22px;height:22px;border-radius:6px;border:1px solid var(--line);
+  background:#fff;color:var(--muted);font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
+
+/* ── 628 高压缩 ─────────────────────────────────────── */
+.screen.h628 .prog{gap:2px}
+.screen.h628 .p-head{margin-bottom:1px}
+</style>
+</head>
+<body>
+<div class="board">
+  <div class="hd">
+    <h1>正文审校 · 一屏三改</h1>
+    <p>一条 = 一处差异　·　判决即前进　·　进度说人话　|　基线 main@e0a228c，1280 / 1000 宽 × 800 / 628 高　|　静态稿，未改产品代码</p>
+    <div class="legend">
+      <span><i class="sw sw-bad"></i>待判（红）</span>
+      <span><i class="sw sw-acc"></i>当前（蓝）</span>
+      <span><i class="sw sw-ok"></i>已判（绿）</span>
+      <span><i class="sw sw-teal"></i>手改（青）</span>
+      <span><i class="sw sw-warn"></i>标点待判（琥珀虚线）</span>
+    </div>
+  </div>
+  <div id="frames"></div>
+</div>
+
+<script>
+const P = {
+  p1: "却说贾宝玉暗暗预备下大筲箩的钱，听见贾母说赏，忙命小厮们快撒钱，只听满台钱响，贾母大悦。二人遂起身，小厮们忙将一把新暖银壶捧来，递与贾琏手内，随了贾珍趋至里面。",
+  p2: '贾珍先至李婶席上，躬身取下杯来，回身，贾琏忙斟了一盏，然后便至薛姨妈席上，也斟了。二人忙起身，笑说：“二位爷请坐着罢了，何必多礼。”于是除邢王二夫人，满席都离了席，俱垂手旁<span class="mk pending">侍</span>。',
+  p3: "贾珍等至贾母榻前，因榻矮，二人便屈膝跪了：贾珍在前捧杯，贾琏在后捧壶。虽只二人捧酒，那贾琮弟兄等却都是一溜排班，随着他二人进来，见他二人跪下，也都一溜跪下。",
+  p4a: "宝玉也忙跪下。湘云悄推他，笑道：“你这会子又帮着跪下做什么？有这么着的呢，你也去斟一巡酒，岂不好？”宝玉悄笑道：“再等一会子再斟去。”说着，等他二人斟完起来，又给邢王二夫人斟过了。贾母笑道：“你们去罢，他们倒便",
+  p4b: "些呢。”贾珍等方退出。",
+  p5a: '当下天有二鼓，戏演的是《八义观灯》八出，正在热闹之际。宝玉因下席往外走。贾母问：“往哪里去？外头炮仗利害，留神天上',
+  p5b: '下火纸来烧着。”',
+  p6: "宝玉笑回说：“不往远去，只出去就来。”贾母命婆子们：“好生跟着。”于是宝玉出来，只有麝月秋纹几个小丫头随着。",
+  p7: "贾母因说：“袭人怎么不见？他如今也有些拿大了，单支使小女孩子出来。”王夫人忙起身笑说道：“他妈前日没了，因有热孝，不便前头来。”",
+  p8: "贾母点头，又笑道：“跟主子，却讲不起这孝与不孝。要是他还跟我，难道这会子也不在这里？这些竟成了例了。”凤姐儿忙过来笑回道：“今晚便没孝，那园子里头也须得看着灯烛花爆，最是担险的。”",
+  p9: "这里一唱戏，园子里的谁不来偷瞧瞧，他还细心，各处照看。况且这一散后，宝兄弟回去睡觉，色色都是齐全的。若他再来了，众人又不经心，散了回去，铺盖也是冷的，茶水也不齐全，便各色都不便宜，自然我叫他不用来。老祖宗要叫他来，我就叫他就是了。"
+};
+const SCAN = [P.p1,P.p2,P.p3,P.p4a.replace(/<\/?[^>]+>/g,"")+P.p4b,P.p5a+P.p5b,P.p6,P.p7,P.p8,P.p9,P.p1,P.p8]
+  .map(t=>t.replace(/<[^>]+>/g,""));
+
+function topbar(o){
+  return `<div class="topbar">
+    <div class="brand"><span class="logo">B2</span>
+      <span class="proj">${o.short ? "《红楼梦》正文" : "《红楼梦》双语对照 3_正文_中文部分"}</span></div>
+    <div class="steps">
+      <span class="step done"><i>✓</i>页面</span>
+      <span class="step done"><i>✓</i>识别</span>
+      <span class="step done"><i>✓</i>版心</span>
+      <span class="step done"><i>✓</i>目录</span>
+      <span class="step cur"><b>5</b>审校</span>
+      <span class="step todo"><b>6</b>导出</span>
+    </div>
+    <span class="spacer"></span>
+    <span class="help">? 快捷键</span>
+  </div>`;
+}
+
+function toolbar(o){
+  const p = o.progress;
+  return `<div class="tb ${o.h628 ? "tb-narrow" : ""}">
+    ${o.narrow ? `<button class="pgbtn">☰ 目录</button>` : ""}
+    <button class="pgbtn">${o.narrow ? `第${o.page}页` : `第 ${o.page} 页 <span class="dim">▾</span>`}</button>
+    <div class="prog">
+      <div class="prog-top"><b>待判 ${p.charsLeft} 处</b>
+        <span>${p.eta || (o.progress.kind === "empty" ? "判 20 条后估时" : "")}</span></div>
+      <div class="barline"><em>汉字</em><span class="track"><i style="width:${p.pct}%"></i></span><em class="num">${923 - p.charsLeft}/923</em></div>
+      <div class="barline"><em>标点</em><span class="track is-punct"><i style="width:${p.punctPct || 0}%"></i></span><em class="num">0/28 组</em></div>
+    </div>
+    <span class="vsep"></span>
+    <button class="chip"><span class="dot"></span>标点 ${p.punct} 组</button>
+    <button class="linkish">抽检可疑行</button>
+    <span class="spacer"></span>
+    ${o.judging || o.editing ? "" : `<button class="btn btn-pri">继续审校 <kbd>⏎</kbd></button>`}
+    <button class="btn">显示 ▾</button>
+    <span class="saved ${o.dirty ? "is-dirty" : ""}"><span class="gdot"></span>${o.dirty ? "未保存" : "已保存"}</span>
+  </div>`;
+}
+
+function treeHTML(o){
+  return `<div class="tree-head"><span class="tt">全书 <span>27 回</span></span>
+      <button class="filter">只看未审</button></div>
+    <div class="tree-scroll">
+      ${chapter("第五十二回", "俏平儿情掩虾须镯 勇晴雯病补雀金裘", 6, false)}
+      ${chapter("第五十三回", "宁国府除夕祭宗祠 荣国府元宵开夜宴", 9, false)}
+      ${chapter("第五十四回", "史太君破陈腐旧套 王熙凤效戏彩斑衣", 22, true, o)}
+      ${chapter("第五十五回", "辱亲女愚妾争闲气 欺幼主刁奴蓄险心", 9, false)}
+      ${chapter("第五十六回", "敏探春兴利除宿弊 时宝钗小惠全大体", 7, false)}
+      ${chapter("第五十七回", "慧紫鹃情辞试忙玉 慈姨妈爱语慰痴颦", 11, false)}
+    </div>
+    <div class="tree-foot"><span><i style="background:rgba(220,38,38,.5)"></i>待判</span><span><i style="background:#2563eb"></i>当前</span><span><i style="background:#16a34a"></i>已判</span><span><i style="background:#0f766e"></i>手改</span></div>`;
+}
+function chapter(name, title, count, open, o){
+  if (!open) {
+    return `<div class="chapter"><div class="ch-row"><span class="cv">▸</span><span class="ch-name">${name}</span><span class="ch-count">${count} 处</span></div>
+      <div class="ch-title">${title}</div></div>`;
+  }
+  return `<div class="chapter is-cur"><div class="ch-row"><span class="cv">▾</span><span class="ch-name">${name}</span><span class="ch-count">${count} 处</span></div>
+    <div class="ch-title">${title}</div>
+    <div class="ch-pages">
+      <div class="page-row done"><span>第 85 页</span><span class="pc">✓</span></div>
+      <div class="page-row done"><span>第 86 页</span><span class="pc">✓</span></div>
+      <div class="page-row cur"><span>第 87 页</span><span class="pc">7 处</span></div>
+      <div class="page-row"><span>第 88 页</span><span class="pc">5 处</span></div>
+      <div class="page-row"><span>第 89 页</span><span class="pc">4 处</span></div>
+      <div class="page-row"><span>第 90 页</span><span class="pc">2 处</span></div>
+      <div class="page-row"><span>第 91 页</span><span class="pc">3 处</span></div>
+      <div class="page-row"><span>第 92 页</span><span class="pc">1 处</span></div>
+    </div></div>`;
+}
+
+function pdfHTML(o){
+  return `<div class="pdf">
+    <div class="pdf-scroll">
+      <div class="scan">
+        <span class="pn">87</span>
+        <h4>第五十四回</h4>
+        <h5>史太君破陈腐旧套　王熙凤效戏彩斑衣</h5>
+        ${SCAN.map(t=>`<p>${t}</p>`).join("")}
+        <div class="scan-hit ${o.editing ? "is-edit" : ""}" style="top:${o.hitTop}"><span class="num">3</span></div>
+      </div>
+      <div class="scan-next"><span class="pn">88</span><h4>第五十四回</h4></div>
+    </div>
+    <button class="pdf-zoom" title="放大页图（Esc 关）">⤢</button>
+  </div>`;
+}
+
+function panelHTML(o){
+  const c = o.panel;
+  return `<div class="panel">
+    <div class="p-head">${c.done ? `<span class="psaved">✓ 已保留</span>` : ""}<span class="pos">第 ${o.page} 页 · 本页 ${c.count}</span>
+      <span class="same">其余 ${c.same} 字相同</span><span class="spacer"></span>
+      <button class="full">看整行</button></div>
+    <div class="cmp">
+      <div class="cmp-row"><span class="cmp-label">原文</span><span class="cmp-text">${c.a}</span></div>
+      <div class="cmp-row is-b"><span class="cmp-label">候选</span><span class="cmp-text">${c.b}</span></div>
+    </div>
+    <div class="p-actions">
+      <button class="btn btn-sm btn-pri">保留原文 <kbd>⏎</kbd></button>
+      <button class="btn btn-sm">采用候选 <kbd>space</kbd></button>
+      <button class="btn btn-sm btn-ghost">自己改 <kbd>E</kbd></button>
+      <span class="spacer"></span>
+      <span class="p-tip">Esc 停手 · ⌘Z 撤销</span>
+    </div>
+  </div>`;
+}
+
+function editbarHTML(){
+  return `<div class="editbar">
+    <span class="pen">✎</span><b>正在改第 3 处</b>
+    <span class="chg">原文「宜」→ 现在「<em>意</em>」</span>
+    <span class="spacer"></span><span class="hint">Esc 完成 · ⌘Z 撤销</span>
+    <button class="btn btn-sm">完成</button>
+  </div>`;
+}
+
+function prose(o){
+  const st = o.state;
+  const d4 = st === "next" ? "done" : (st === "edit" ? "hand" : "curr");
+  const d5 = st === "next" ? "curr" : "pending";
+  const p4mid = st === "edit"
+    ? `<span class="caret"></span><span class="mk hand">意</span>`
+    : `<span class="mk ${d4}">宜</span>`;
+  const p5mid = st === "next" ? `<span class="mk curr">吊</span>` : `<span class="mk ${d5}">吊</span>`;
+
+  let html = `<p class="seg">${P.p1}</p><p class="seg">${P.p2}</p><p class="seg">${P.p3}</p>
+    <p class="seg">${P.p4a}${p4mid}${P.p4b}</p>`;
+  if (st === "edit") html += editbarHTML();
+  else if (o.panel && o.panel.after === "p4") html += panelHTML(o);
+  html += `<p class="seg">${P.p5a}${p5mid}${P.p5b}</p>`;
+  if (o.panel && o.panel.after === "p5") html += panelHTML(o);
+  html += `<p class="seg">${P.p6}</p><p class="seg">${P.p7}</p><p class="seg">${P.p8}</p><p class="seg">${P.p9}</p>`;
+  if (st === "edit") {
+    html = html.replace(`<p class="seg">${P.p5a}`, `<p class="seg">${P.p5a}`);
+  }
+  return html;
+}
+
+function screen(o){
+  const narrow = !!o.narrow;
+  const is628 = o.h <= 700;
+  return `<div class="screen ${is628 ? "h628" : ""}" style="width:${o.w}px;height:${o.h}px;--pdfw:${o.pdfw}px" ${o.anchor ? `data-anchor="${o.anchor}"` : ""}>
+    <div class="app">
+      ${topbar(o)}
+      ${toolbar({ ...o, h628: is628 })}
+      ${o.onboard ? `<div class="onboard"><span class="tag">怎么审</span>
+        <span>红色是待判的字，蓝色是当前这处。Enter 保留 · 空格 采用 · E 改；判完自动到下一处。</span>
+        <span class="spacer"></span>
+        <button class="btn btn-sm">先判标点（28 组，约 3 分钟）</button>
+        <button class="btn btn-sm btn-ghost">知道了</button></div>` : ""}
+      <div class="view split">
+        ${narrow ? "" : `<aside class="tree">${treeHTML(o)}</aside>`}
+        ${pdfHTML(o)}
+        <div class="stream">
+          <div class="doc">${prose(o)}</div>
+        </div>
+        ${o.drawer ? `<div class="drawer-layer"><div class="backdrop"></div>
+          <aside class="drawer">
+            <div class="tree-head"><span class="tt">目录 <span>27 回</span></span>
+              <button class="filter">只看未审</button><button class="xbtn">×</button></div>
+            ${treeHTML(o).replace(/^<div class="tree-head">[\s\S]*?<\/div>/, "")}
+          </aside></div>` : ""}
+      </div>
+    </div>
+  </div>`;
+}
+
+const panels = {
+  yi: {count:"3/7", same:"19", after:"p4",
+    a:'…你们去罢，他们倒便<span class="cd">宜</span>些呢。”贾珍等…',
+    b:'…你们去罢，他们倒便<span class="cd">意</span>些呢。”贾珍等…'},
+  diao: {count:"4/7", same:"22", after:"p5", done:true,
+    a:'…外头炮仗利害，留神天上<span class="cd">吊</span>下火纸…',
+    b:'…外头炮仗利害，留神天上<span class="cd">掉</span>下火纸…'}
+};
+
+const progress = {
+  first: {kind:"empty", charsLeft:923, pct:0, eta:"", punct:28},
+  judge: {kind:"run", charsLeft:823, pct:10.8, eta:"约剩 1 小时 50 分", punct:28},
+  next:  {kind:"run", charsLeft:822, pct:10.9, eta:"约剩 1 小时 49 分", punct:28},
+  edit:  {kind:"run", charsLeft:823, pct:10.8, eta:"约剩 1 小时 50 分", punct:28},
+  narrow:{kind:"run", charsLeft:823, pct:10.8, eta:"约剩 1 小时 50 分", punct:28}
+};
+
+const frames = [
+  {id:"F1", cap:"刚打开（0 判）", note:"看 F1：剩余量、从哪开始、第一条已经就位", frame:{
+    w:1280,h:800,page:87,pdfw:422,state:"judge",panel:panels.yi,progress:progress.first,
+    judging:true,onboard:true,hitTop:"41%",
+    notes:["主数字只有「待判 923 处」；样本不足时不编 ETA，写明「判 20 条后估时」。",
+      "第一条已定位、面板已展开：打开即可判，不用先找红字。",
+      "标点单列成自己的进度轨 + chip（28 组，约 3 分钟），不混进汉字百分比。",
+      "「抽检可疑行」从 ⋯ 里提出来常驻——两路一致也可能都错。"]
+  }},
+  {id:"F2", cap:"正在判一条", note:"看 F2：一条 = 一处差异，面板只给 ±6 字", frame:{
+    w:1280,h:800,page:87,pdfw:422,state:"judge",panel:panels.yi,progress:progress.judge,
+    judging:true,anchor:280,hitTop:"41%",
+    notes:["面板只给差异片段 ±6 字，两行对照；差异字加粗 + 2px 下划线，黑白截图也分得清。",
+      "默认按钮是「保留原文」（80.9% 的情况），不是「采用」。",
+      "面板头写「第 87 页 · 本页 3/7」；引擎坐标「第二路」不再出现。",
+      "「看整行」才展开整行；否则永远只读这 12 字。"]
+  }},
+  {id:"F3", cap:"判完的下一帧（按 ↵ 之后）", note:"看 F3：面板不关、内容换人、视线不动", frame:{
+    w:1280,h:628,page:87,pdfw:422,state:"next",panel:panels.diao,progress:progress.next,
+    judging:true,anchor:180,hitTop:"48%",
+    notes:["旧条变绿、上移 2 行；新条落在同一视线高度，面板位置几乎不动。",
+      "面板里已经是下一条的内容，不需要再点顶部「下一处」。",
+      "进度 823→822、本页 3/7→4/7、ETA 少 1 分钟，三处同时变。",
+      "「✓ 已保留」先在面板头出现，2.5 秒后只剩绿字；⌘Z 可撤销这一次判断。"]
+  }},
+  {id:"F4", cap:"手改一个字", note:"看 F4：光标落在差异字上，不整行选中", frame:{
+    w:1280,h:628,page:87,pdfw:422,state:"edit",progress:progress.edit,
+    dirty:true,judging:true,editing:true,anchor:185,hitTop:"41%",
+    notes:["单击正文落光标；点红色标记开面板——两个动作不打架。",
+      "从面板按 E：光标直接落在差异字上，不是全选整行（旧版改整行）。",
+      "改过的字用青色下划线，和「已判绿」「待判红」分开；左图同步框这一行。",
+      "编辑中顶栏是「未保存」，Esc 完成后自动存草稿。"]
+  }},
+  {id:"F5", cap:"628 高度（面板展开）", note:"看 F5：628 下面板 + 7 行上下文（要求 ≥6）", frame:{
+    w:1280,h:628,page:87,pdfw:422,state:"judge",panel:panels.yi,progress:progress.judge,
+    judging:true,anchor:180,hitTop:"41%",
+    notes:["顶栏 48 + 工具条 44 = 92；正文视口 536。",
+      "当前行锚在 180px（视口 33%），上方仍留 6.3 行上下文。",
+      "面板 124px；面板下到视口底还有约 7 行（200px），要求是 ≥6 行。",
+      "页面 422 宽、整页在视口内；点页图可放大到 900 宽核对。"]
+  }},
+  {id:"F6", cap:"<1120 宽（1000 × 628，目录收起）", note:"看 F6：窄屏正文 ≥560", frame:{
+    w:1000,h:628,page:87,pdfw:380,state:"judge",panel:panels.yi,progress:progress.narrow,
+    judging:true,narrow:true,short:true,anchor:180,hitTop:"41%",
+    notes:["<1240 左树收进「☰ 目录」抽屉，不再挤成 44px 的一列对勾。",
+      "1000 宽：页图 380 + 正文 574，正文 ≥560 的下限。",
+      "页码、进度、页内位置仍在工具条上，方向感不丢。",
+      "「继续审校」在面板关闭时才出现，窄屏也不会挤爆工具条。"]
+  }},
+  {id:"F7", cap:"<1120 宽（抽屉展开）", note:"看 F7：抽屉浮层，不挤压正文", frame:{
+    w:1000,h:628,page:87,pdfw:380,state:"judge",panel:panels.yi,progress:progress.narrow,
+    judging:true,narrow:true,short:true,drawer:true,anchor:180,hitTop:"41%",
+    notes:["抽屉 300px 浮在页面之上，正文不重排、不丢位置。",
+      "27 回折叠，当前回自动展开；选页即跳、抽屉自动关。",
+      "「只看未审」默认开：27 回里只留下还有差异的回目。",
+      "底部图例用文字 + 色块，黑白 / 色盲也能对上。"]
+  }}
+];
+
+document.getElementById("frames").innerHTML = frames.map(f=>`
+  <div class="row" id="${f.id}">
+    <div class="fcol">
+      <div class="cap"><b>${f.id}</b>${f.cap}<em>${f.note}</em></div>
+      ${screen(f.frame)}
+    </div>
+    <div class="notes"><b>要点</b><ul>${f.frame.notes.map(n=>`<li>${n}</li>`).join("")}</ul></div>
+  </div>`).join("");
+
+/* 单独看一帧：mockup.html#F3 —— 只留这一屏，按 1:1 截图 */
+const solo = (location.hash || "").replace("#", "");
+if (solo) {
+  document.querySelector(".hd").remove();
+  document.querySelectorAll(".row").forEach(r => { if (r.id !== solo) r.remove(); });
+  const row = document.querySelector(".row");
+  if (row) {
+    row.style.margin = "0";
+    row.querySelector(".cap")?.remove();
+    row.querySelector(".notes")?.remove();
+    const scr = row.querySelector(".screen");
+    scr.style.borderRadius = "0";
+    scr.style.boxShadow = "none";
+    scr.style.border = "0";
+    document.body.style.background = "#fff";
+    const board = document.querySelector(".board");
+    board.style.cssText = "width:auto;padding:0;margin:0";
+    document.documentElement.style.width = scr.style.width;
+    document.documentElement.style.height = scr.style.height;
+  }
+}
+
+function align(){
+  document.querySelectorAll(".screen").forEach(s=>{
+    const stream = s.querySelector(".stream");
+    const doc = stream.querySelector(".doc");
+    const cur = doc.querySelector(".mk.curr, .caret");
+    if (!cur) return;
+    if (s.dataset.anchor) {
+      const a = +s.dataset.anchor;
+      doc.style.marginTop = "0px";
+      void doc.offsetHeight;
+      const st = stream.getBoundingClientRect();
+      const ct = cur.getBoundingClientRect();
+      doc.style.marginTop = (a - (ct.top - st.top)) + "px";
+    }
+    const box = doc.querySelector(".panel, .editbar");
+    if (box) {
+      const x = cur.getBoundingClientRect().left - box.getBoundingClientRect().left + 6;
+      box.style.setProperty("--caret-x", Math.max(12, Math.min(x, box.clientWidth - 18)) + "px");
+    }
+  });
+}
+align();
+[40, 200, 600, 1200].forEach(t => setTimeout(align, t));
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(align);
+window.addEventListener("load", align);
+if (location.search.includes("size")) {
+  setTimeout(() => {
+    document.title = "SIZE " + document.body.scrollWidth + "x" + document.body.scrollHeight;
+  }, 1500);
+}
+if (location.search.includes("debug")) {
+  setTimeout(() => {
+    const out = [...document.querySelectorAll(".screen")].map((s, i) => {
+      const st = s.querySelector(".stream");
+      const cur = s.querySelector(".mk.curr, .caret");
+      const doc = s.querySelector(".doc");
+      const rel = cur ? Math.round(cur.getBoundingClientRect().top - st.getBoundingClientRect().top) : "none";
+      const tb = s.querySelector(".tb"), pg = tb.querySelector(".prog"), bl = tb.querySelector(".barline"), tr = tb.querySelector(".track");
+      const rb = (n) => n ? Math.round(n.getBoundingClientRect().left) + "," + Math.round(n.getBoundingClientRect().width) + "x" + Math.round(n.getBoundingClientRect().height) : "-";
+      return i + ":rel=" + rel + ",anchor=" + (s.dataset.anchor || "-") + ",mt=" + (doc.style.marginTop || "-") + ",box=" + (!!s.querySelector(".panel,.editbar")) + ",prog=" + rb(pg) + ",bl=" + rb(bl) + ",tr=" + rb(tr) + ",tb=" + rb(tb) + ",top=" + rb(tb.querySelector(".prog-top"));
+    }).join(" | ");
+    document.title = "DEBUG " + out;
+  }, 2000);
+}
+</script>
+</body>
+</html>
