@@ -20161,13 +20161,17 @@ function verifyReadingPageSync(reason = "", { fix = true } = {}) {
     const top = scroller.getBoundingClientRect().top;
     // 用**视口中心**判定"当前是哪一页"：居中定位时当前行就在中心；
     // 用 25% 会把"页面顶部落在中心线以下"的正常情况判成上一页（实测 20 次里 17 次误报）
-    const anchor = top + scroller.clientHeight * 0.5;
+    // 主导页 = **覆盖视口面积最大的 tile**（QA 定；固定 25% 线会常态性假阴性）
     let tilePage = null;
+    let bestArea = 0;
+    const viewTop = top;
+    const viewBottom = top + scroller.clientHeight;
     for (const [pageNo, tile] of readingTiles) {
       const rect = tile.getBoundingClientRect();
-      if (rect.top <= anchor && rect.bottom > anchor) {
+      const overlap = Math.min(rect.bottom, viewBottom) - Math.max(rect.top, viewTop);
+      if (overlap > bestArea) {
+        bestArea = overlap;
         tilePage = pageNo;
-        break;
       }
     }
     // 三方一致：当前差异项所在页 == 顶部页码 == 左侧可见页。
@@ -20391,6 +20395,26 @@ function stepReadingPage(delta) {
   scrollPdfColumnToPage(next);
 }
 
+const readingNextLog = [];
+
+/** 记一条「下一处未审」的现场（最近 20 条），下次偶发失败时一条日志定位。 */
+function logReadingNext(entry, extra = {}) {
+  readingNextLog.unshift({
+    at: Date.now(),
+    entryKey: entry ? readingKey(entry.block_id, entry.line_index) : null,
+    entryPage: entry ? entry.page_no : null,
+    pageNo: readingPageNo,
+    panelKey: readingPanelKey,
+    panelOpened: Boolean(document.querySelector("#reading-stream .reading-panel")),
+    lineFound: entry ? Boolean(readingLineNode(readingKey(entry.block_id, entry.line_index))) : false,
+    window: readingMarksWindow,
+    blocks: entry ? (readingPageBlocks.get(entry.page_no) || []).length : null,
+    ...extra,
+  });
+  readingNextLog.length = Math.min(readingNextLog.length, 20);
+  window.__b2tNextLog = readingNextLog;
+}
+
 async function gotoNextUnreviewed() {
   if (!readingData) return;
   // 任务 67：marks 只加载窗口，所以"下一处"分两步——
@@ -20405,6 +20429,7 @@ async function gotoNextUnreviewed() {
   if (next) {
     readingCursorEntry = next;
     gotoReadingEntry(next);
+    logReadingNext(next, { branch: "window" });
     return;
   }
   const afterPage = cursorOrder ? cursorOrder[2] : 0;
@@ -20425,11 +20450,13 @@ async function gotoNextUnreviewed() {
     (entry) => !readingEntryDone(entry) && entry.page_no >= pageNo
   );
   if (!target) {
+    logReadingNext(null, { branch: "none" });
     showNoticeBar("全书未审已处理完 · 可以去「成稿模式」通读一遍，或者直接导出");
     return;
   }
   readingCursorEntry = target;
   gotoReadingEntry(target);
+  logReadingNext(target, { branch: "fetch" });
 }
 
 function readingCursorOrder() {
@@ -20472,6 +20499,18 @@ function gotoReadingEntry(entry) {
   }
   if (line) centerReadingLinePair(entry);
   if (!readingDrafts.has(key)) openReadingPanel(entry);
+  // 偶发"跳到了但没有面板/没有当前项"（QA 2/20）：面板没建起来就再开一次，
+  // 并把原因记进 __b2tNextLog。第二次仍失败也记下来，不静默。
+  if (!document.querySelector("#reading-stream .reading-panel")) {
+    let reason = "no-line";
+    const seg = readingVisibleSegments()[index];
+    if (!seg) reason = "no-segment";
+    else if (!readingLineNode(key)) reason = "line-not-mounted";
+    setTimeout(() => {
+      if (!document.querySelector("#reading-stream .reading-panel")) openReadingPanel(entry);
+      logReadingNext(entry, { branch: "retry", reason, retried: true });
+    }, 260);
+  }
   verifyReadingPageSync("gotoEntry");
 }
 
