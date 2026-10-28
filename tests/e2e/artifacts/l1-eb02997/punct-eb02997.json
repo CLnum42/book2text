@@ -1,0 +1,82 @@
+{
+  "before": {
+    "segs": 32,
+    "scrollTop": 0,
+    "progress": "已审 0 / 567 条",
+    "hasProbeMarker": false,
+    "segments": 4821,
+    "marksWindow": {
+      "page_from": 1,
+      "page_to": 11
+    },
+    "marksSize": 14,
+    "project": "b2t_ZAQHGH",
+    "badge": "177 行 · 27 组",
+    "modalHidden": true,
+    "groups": 27,
+    "adoptButtons": 27,
+    "building": null
+  },
+  "opened": {
+    "segs": 32,
+    "scrollTop": 0,
+    "progress": "已审 0 / 567 条",
+    "hasProbeMarker": true,
+    "segments": 4821,
+    "marksWindow": {
+      "page_from": 1,
+      "page_to": 11
+    },
+    "marksSize": 14,
+    "project": "b2t_ZAQHGH",
+    "badge": "177 行 · 27 组",
+    "modalHidden": false,
+    "groups": 27,
+    "adoptButtons": 27,
+    "building": null
+  },
+  "after": {
+    "segs": 8,
+    "scrollTop": 0,
+    "progress": "已审 0 / 567 条",
+    "hasProbeMarker": false,
+    "segments": 4821,
+    "marksWindow": null,
+    "marksSize": 0,
+    "project": "b2t_ZAQHGH",
+    "badge": "113 行 · 26 组",
+    "modalHidden": false,
+    "groups": 26,
+    "adoptButtons": 26,
+    "building": null
+  },
+  "mutations": 8,
+  "errors": [],
+  "ms": 919,
+  "timeline": [
+    {
+      "ms": 304,
+      "segs": 0,
+      "segments": null,
+      "hasProbeMarker": false,
+      "progress": "已审 0 / 567 条",
+      "badge": "113 行 · 26 组"
+    },
+    {
+      "ms": 607,
+      "segs": 0,
+      "segments": null,
+      "hasProbeMarker": false,
+      "progress": "已审 0 / 567 条",
+      "badge": "113 行 · 26 组"
+    },
+    {
+      "ms": 914,
+      "segs": 8,
+      "segments": 4821,
+      "hasProbeMarker": false,
+      "progress": "已审 0 / 567 条",
+      "badge": "113 行 · 26 组"
+    }
+  ]
+}
