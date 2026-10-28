@@ -976,6 +976,10 @@ def test_workflow_steps_scope_the_right_panel() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     # 分区节点：页面确认步的「版面块」、文字识别步的「识别状态」
@@ -1042,6 +1046,10 @@ def test_page_index_step_is_wired() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1101,6 +1109,10 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1158,6 +1170,10 @@ def test_result_preview_reuses_page_renderers_and_follows_segments() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     # 左边不是裸图：页块里带版心 / 块框 / 命中层
@@ -1205,6 +1221,10 @@ def test_toolbar_filters_and_tools_are_placed_per_step() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     # ⋯ 菜单：诊断（质量统计）/ 协作（任务包）
@@ -1388,6 +1408,10 @@ def test_review_workspace_v2_is_wired() -> None:
     """任务 45（H 刀）：左树、三色整行差异、逐字文本面板、三档三栏、默认关版心/块框。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1460,6 +1484,10 @@ def test_index_view_reuses_page_rendering() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1497,6 +1525,10 @@ def test_page_index_scrolls_continuously_with_lazy_pages() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     assert 'id="index-pages"' in page
@@ -1541,6 +1573,10 @@ def test_orthography_cleanup_is_wired() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1580,6 +1616,10 @@ def test_reading_view_is_wired_for_merge() -> None:
     """L 刀：正文审校＝连续正文流（步骤 6），草稿先落 localStorage、提交才写库。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1623,7 +1663,13 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert "function setReadingHover(" in script
     assert "function setReviewOverlaysForReading(" in script
     assert "box.dataset.blockId" in script
-    assert 'el("reading-pdf-scroll").addEventListener("scroll"' in script
+    # L1 第二笔：reading-pdf-scroll 的 scroll 监听随 setupReading 搬进模块（app.js 里是 0）。
+    # 判据改成"两个文件合起来只许绑一处"：搬走后仍能确认它存在，且不允许多绑一份。
+    scroll_listener = 'el("reading-pdf-scroll").addEventListener("scroll"'
+    scroll_listener_count = (script + module_script).count(scroll_listener)
+    assert scroll_listener_count == 1, (
+        f"reading-pdf-scroll 的 scroll 监听必须存在且只绑一处，实际 {scroll_listener_count} 处"
+    )
     assert "setReadingHover(" in script
     assert ".reading-page" in css
     assert "is-linked" in css
@@ -1686,6 +1732,10 @@ def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
     """任务 61：目录确认的页图不许"永远是灰的"；当前审校项左右同款高亮。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # L1 之后，审校视图的一部分搬进了模块（经典脚本，先于 app.js 加载）。
+    # 存在性断言要跟着搬：在**两个文件合起来**里找，并且断言唯一性——
+    # 只找一处会漏"模块里删了但 app.js 还留着"这类残骸，不查唯一性则两边都绑会假绿。
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     # ① 页图：状态条在页列**前面**（挂在 490 个页块之后等于永远看不见）
