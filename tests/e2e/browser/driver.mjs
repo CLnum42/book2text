@@ -64,6 +64,14 @@ export async function run(cfg) {
       return await perfProbe(page, args);
     case "task_metrics":
       return await taskMetrics(page, args);
+    case "dock_probe":
+      return await dockProbe(page, args);
+    case "crop_probe":
+      return await cropProbe(page, args);
+    case "error_watch":
+      return await errorWatch(page, args);
+    case "crop_sizes":
+      return await cropSizeProbe(page);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -1929,6 +1937,279 @@ async function taskMetrics(page, args) {
   ), logBefore, atBefore, afterLog };
 }
 
+/** 任务 91 审校页改版：一次取全布局/下区/裁切/编辑态/进度的快照。 */
+async function dockSnapshotRaw() {
+  const rect = (sel) => {
+    const node = document.querySelector(sel);
+    if (!node) return null;
+    const r = node.getBoundingClientRect();
+    return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+  };
+  const text = (sel) => {
+    const node = document.querySelector(sel);
+    return node ? (node.textContent || "").replace(/\s+/g, " ").trim() : null;
+  };
+  const cropEl = document.getElementById("reading-dock-crop");
+  let crop = null;
+  try {
+    crop = cropEl && cropEl.dataset.crop ? JSON.parse(cropEl.dataset.crop) : null;
+  } catch (error) {
+    crop = { parseError: String(error) };
+  }
+  const dock = document.getElementById("reading-dock");
+  const host = document.getElementById("reading-panel-host");
+  const panel = document.querySelector(".reading-panel");
+  const editingKey = typeof readingEditingKey !== "undefined" ? readingEditingKey : null;
+  const editNode = editingKey
+    ? document.querySelector(`#reading-stream .reading-line[data-key="${editingKey}"]`)
+    : null;
+  const cur = document.querySelector("#reading-stream .reading-line.is-current");
+  return {
+    viewport: { w: window.innerWidth, h: window.innerHeight },
+    heights: {
+      topbar: rect(".topbar"), toolbar: rect(".reading-toolbar"),
+      split: rect("#reading-split"), dock: rect("#reading-dock"),
+      dockGrip: rect("#reading-dock-grip"), host: rect("#reading-panel-host"),
+      tree: rect("#reading-tree"), pdf: rect(".reading-pdf"),
+      stream: rect("#reading-stream"), dockHidden: Boolean(dock && dock.hidden),
+      hostParent: host && host.parentElement ? host.parentElement.id || host.parentElement.className : null,
+    },
+    dock: {
+      where: text("#reading-dock-where"), level: text("#reading-dock-level"),
+      count: text("#reading-dock-count"), hidden: Boolean(dock && dock.hidden),
+      collapseTitle: (document.getElementById("reading-dock-collapse") || {}).title || null,
+    },
+    crop: { plan: (window.__b2tCropPlan || null), attr: crop, bg: cropEl ? cropEl.style.backgroundImage.slice(0, 80) : null },
+    panel: {
+      key: panel ? panel.dataset.key || null : null,
+      page: text(".reading-panel__head strong"),
+      candidate: text(".reading-panel__candidate"),
+    },
+    progress: text("#reading-progress-text"),
+    label: text("#reading-page-no"),
+    dominant: (() => {
+      const sc = document.getElementById("reading-pdf-scroll");
+      if (!sc) return null;
+      const sr = sc.getBoundingClientRect();
+      let best = null;
+      for (const tile of sc.querySelectorAll(".reading-page")) {
+        const tr = tile.getBoundingClientRect();
+        const overlap = Math.min(tr.bottom, sr.bottom) - Math.max(tr.top, sr.top);
+        if (overlap > 0 && (!best || overlap > best.overlap)) best = { page: Number(tile.dataset.pageNo), overlap };
+      }
+      return best ? best.page : null;
+    })(),
+    notice: text("#auto-apply-notice-text"),
+    noticeHidden: (document.getElementById("auto-apply-notice") || {}).hidden ?? null,
+    edit: {
+      key: editingKey,
+      nodeExists: Boolean(editNode),
+      contenteditable: editNode ? editNode.getAttribute("contenteditable") : null,
+      text: editNode ? editNode.textContent : null,
+    },
+    currentLine: cur ? cur.dataset.key || null : null,
+    drafts: typeof readingDrafts !== "undefined" ? readingDrafts.size : null,
+    inlineEdits: typeof readingInlineEdits !== "undefined" ? readingInlineEdits.size : null,
+    entriesDone: typeof readingEntries !== "undefined"
+      ? readingEntries.filter((e) => typeof readingEntryDone === "function" && readingEntryDone(e)).length
+      : null,
+    treeRail: rect("#reading-tree-rail"),
+    splitClass: (document.getElementById("reading-split") || {}).className || null,
+    splitStyle: (document.getElementById("reading-split") || {}).getAttribute
+      ? document.getElementById("reading-split").getAttribute("style") : null,
+    railExists: Boolean(document.getElementById("reading-tree-rail")),
+    railHidden: (document.getElementById("reading-tree-rail") || {}).hidden ?? null,
+    innerHeight: window.innerHeight,
+    prefs: { dock: localStorage.getItem("b2t.readingDock.v1"), tree: localStorage.getItem("b2t.readingTree.v1") },
+    shot: null,
+  };
+}
+
+/** mode=snapshot：只读一次快照；mode=keys：按给定键序列，记录每次前后。 */
+async function dockProbe(page, args) {
+  const mode = args.mode || "snapshot";
+  if (args.viewport) {
+    await page.cdp("Emulation.setDeviceMetricsOverride", {
+      width: args.viewport.w, height: args.viewport.h, deviceScaleFactor: 2, mobile: false,
+    });
+    await page.waitForTimeout(250);
+  }
+  if (mode === "grip") {
+    const box = await page.evaluate(() => {
+      const g = document.getElementById("reading-dock-grip");
+      if (!g) return null;
+      const r = g.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    if (!box) throw new Error("没有 #reading-dock-grip");
+    await page.mouse.move(box.x, box.y);
+    await page.mouse.down();
+    await page.mouse.move(box.x, box.y + (args.dy || 0), { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    return { snap: await page.evaluate(dockSnapshotRaw) };
+  }
+  if (mode === "grip_dblclick") {
+    const box = await page.evaluate(() => {
+      const g = document.getElementById("reading-dock-grip");
+      if (!g) return null;
+      const r = g.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.click(box.x, box.y, { clickCount: 1 });
+    await page.mouse.click(box.x, box.y, { clickCount: 2 });
+    await page.waitForTimeout(450);
+    return { snap: await page.evaluate(dockSnapshotRaw) };
+  }
+  if (mode === "reload") {
+    await page.reload();
+    await page.waitForTimeout(1200);
+    return { snap: await page.evaluate(dockSnapshotRaw) };
+  }
+  if (mode === "clear_prefs") {
+    const removed = await page.evaluate(() => {
+      const keys = ["b2t.readingDock.v1", "b2t.readingTree.v1"];
+      const had = keys.map((k) => [k, localStorage.getItem(k)]);
+      for (const k of keys) localStorage.removeItem(k);
+      return had;
+    });
+    return { removed };
+  }
+  if (mode === "click_rail") {
+    const box = await page.evaluate(() => {
+      const rail = document.getElementById("reading-tree-rail");
+      if (!rail || rail.hidden) return null;
+      const r = rail.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + 40 };
+    });
+    if (!box) return { railClick: "no-rail" };
+    await page.mouse.click(box.x, box.y, { label: "点左树窄条" });
+    await page.waitForTimeout(500);
+    return { railClick: "clicked", snap: await page.evaluate(dockSnapshotRaw) };
+  }
+  if (mode === "toggle_tree") {
+    await page.click("#reading-tree-toggle", { label: "收起/展开左树" });
+    await page.waitForTimeout(500);
+    return { snap: await page.evaluate(dockSnapshotRaw) };
+  }
+  // dockSnapshotRaw 是自包含函数，直接交给 page.evaluate 序列化执行
+  const read = async () => await page.evaluate(dockSnapshotRaw);
+  if (mode === "snapshot") return { snap: await read() };
+  const keys = args.keys || [{ key: "Enter" }];
+  const rows = [];
+  for (let i = 0; i < keys.length; i += 1) {
+    const spec = keys[i];
+    const before = await read();
+    if (spec.modifiers) {
+      for (const mod of spec.modifiers) await page.keyboard.down(mod);
+    }
+    await page.keyboard.press(spec.key);
+    if (spec.modifiers) {
+      for (const mod of spec.modifiers.slice().reverse()) await page.keyboard.up(mod);
+    }
+    await page.waitForTimeout(spec.wait || 700);
+    const after = await read();
+    rows.push({ i: i + 1, spec, before, after });
+  }
+  return { rows, snap: await read() };
+}
+
+/** B 组：连按下一处并采每条的裁窗数据（data-crop / plan / mark.bbox / 公式重算）。 */
+async function cropProbe(page, args) {
+  const n = args.n || 20;
+  await ensureReading(page);
+  const rows = [];
+  for (let i = 0; i < n; i += 1) {
+    await page.click("#reading-next-unreviewed", { label: `采样第 ${i + 1} 条` }).catch(() => {});
+    await page.waitForTimeout(850);
+    const row = await page.evaluate(() => {
+      const cropEl = document.getElementById("reading-dock-crop");
+      let attr = null;
+      try { attr = cropEl && cropEl.dataset.crop ? JSON.parse(cropEl.dataset.crop) : null; } catch (e) { attr = String(e); }
+      const panel = document.querySelector(".reading-panel");
+      const key = panel ? panel.dataset.key || null : null;
+      const mark = key && typeof readingMarks !== "undefined" ? readingMarks.get(key) : null;
+      const plan = window.__b2tCropPlan || null;
+      let expected = null;
+      if (plan && plan.gap) {
+        const contentH = Math.max(60, (cropEl ? cropEl.clientHeight : 182) - 16);
+        const pageRec = typeof readingPageRecord === "function" ? readingPageRecord(plan.pageNo) : null;
+        const aspect = pageRec && pageRec.width_pt
+          ? Number(pageRec.height_pt || 792) / Number(pageRec.width_pt || 612) : 792 / 612;
+        expected = {
+          contentH,
+          aspect: Math.round(aspect * 10000) / 10000,
+          w: (404 * plan.rows * plan.gap * aspect) / contentH,
+          h: plan.rows * plan.gap,
+        };
+      }
+      const lineBox = key && typeof readingLineBox === "function"
+        ? readingLineBox(panel ? panel.dataset.key.split(":")[0] : null, null) : null;
+      return {
+        key,
+        panelPage: panel ? (panel.querySelector(".reading-panel__head strong") || {}).textContent || null : null,
+        level: panel ? (panel.querySelector(".reading-panel__head strong") || {}).textContent || null : null,
+        cropAttr: attr,
+        plan,
+        markBbox: mark && mark.bbox ? mark.bbox : null,
+        markLevel: mark ? mark.level : null,
+        markPage: mark ? mark.page_no : null,
+        expected,
+        cropElHeight: cropEl ? cropEl.clientHeight : null,
+        bg: cropEl ? cropEl.style.backgroundImage.slice(0, 60) : null,
+        emptyText: cropEl ? (cropEl.innerText || "").replace(/\s+/g, " ").trim().slice(0, 60) : null,
+      };
+    });
+    rows.push({ i: i + 1, ...row });
+  }
+  return { rows };
+}
+
+/** 捕获页面 JS 错误（openReadingPanel 中途抛异常时，面板会挂上但裁图不画）。 */
+async function errorWatch(page, args) {
+  const mode = args.mode || "install";
+  if (mode === "install") {
+    const info = await page.evaluate(() => {
+      window.__b2tErrors = window.__b2tErrors || [];
+      if (!window.__b2tErrInstalled) {
+        window.__b2tErrInstalled = true;
+        window.addEventListener("error", (e) => {
+          window.__b2tErrors.push({ kind: "error", msg: String(e.message || ""), src: String(e.filename || ""), line: e.lineno });
+        });
+        window.addEventListener("unhandledrejection", (e) => {
+          window.__b2tErrors.push({ kind: "rejection", msg: String((e.reason && e.reason.message) || e.reason || "") });
+        });
+      }
+      return { installed: true };
+    });
+    return info;
+  }
+  if (mode === "manual_paint") {
+    const out = await page.evaluate(() => {
+      const key = typeof readingPanelKey !== "undefined" ? readingPanelKey : null;
+      const entry = key && typeof readingMarks !== "undefined" ? readingMarks.get(key) : null;
+      let error = null;
+      try {
+        if (!entry) throw new Error("no entry for panel key " + key);
+        readingCropPaint(entry);
+      } catch (e) {
+        error = String(e && e.stack ? e.stack : e);
+      }
+      const cropEl = document.getElementById("reading-dock-crop");
+      let attr = null;
+      try { attr = cropEl && cropEl.dataset.crop ? JSON.parse(cropEl.dataset.crop) : null; } catch (e) {}
+      return { key, error, attr, plan: window.__b2tCropPlan || null };
+    });
+    await page.waitForTimeout(700);
+    const after = await page.evaluate(() => {
+      const cropEl = document.getElementById("reading-dock-crop");
+      try { return { attr: cropEl && cropEl.dataset.crop ? JSON.parse(cropEl.dataset.crop) : null }; } catch (e) { return {}; }
+    });
+    return { ...out, after };
+  }
+  return await page.evaluate(() => window.__b2tErrors || []);
+}
+
 /** B7：同一条目强制用 view/mid/zoom 三档重画裁窗，比较 data-crop 的 x0/y0/w/h。 */
 async function cropSizeProbe(page) {
   return await page.evaluate(async () => {
@@ -1953,8 +2234,6 @@ async function cropSizeProbe(page) {
       out[size] = attr;
     }
     window.pageImageUrl = orig;
-    const el = document.getElementById("reading-dock-crop");
-    try { out.restored = el && el.dataset.crop ? JSON.parse(el.dataset.crop) : null; } catch (error) { out.restored = null; }
     return out;
   });
 }
