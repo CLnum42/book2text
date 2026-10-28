@@ -17932,157 +17932,6 @@ async function undoPunctBatch() {
 
 // ---------------------------------------------------------------- 启动
 
-// ---------------------------------------------------------------- 阅读审校（L 刀：连续正文流）
-//
-// 与导出同一份 segments（含 line_spans）：段是排版单位、行是审校单位。
-// 差异只在行内用红字标出来（汉字级实线 / 标点级虚线）；点红字在该行下面
-// 展开候选面板。采用 / 保留 / 手改**全部先落草稿**（localStorage），
-// 顶部「提交 N 处改动」才写库（后端一个 batch，撤销一次全退）。
-
-// 窗口一次只铺 8 段：跳转时重建整个窗口也只要几十毫秒（24 段会到 1 秒）
-const READING_CHUNK = 8;
-let readingData = null;
-let readingProject = null;
-let readingTreeData = null;
-let readingMarks = new Map();
-let readingEntries = [];
-// 任务 67：marks 只按页窗口加载（当前页 ±10）。全书 4435 条 = 1.52 MB / 0.90 s，
-// 开机首屏红字全卡在那；窗口化后 1.7 ms / ~72 KB。计数和"下一处"靠下面这三个全书数字。
-let readingMarksWindow = null;        // {page_from, page_to}；null = 还没加载
-let readingGlobalCounts = null;       // {chars_total, chars_unacked, punct_total, punct_unacked, ...}
-let readingPageCounts = new Map();    // page_no(string) → {total, unacked, acked, chars*, punct*}
-let readingFirstUnackedPage = null;
-let readingMarksInFlight = null;      // 在飞的补窗口请求；并发调用共享同一个 promise
-let readingRepaintPending = false;   // 编辑期间欠着的一次重画
-// 任务 72：左↔右同步互斥（谁先动谁锁 350 ms，另一个方向只跟随不反向驱动）
-let readingSyncDriver = null;
-let readingSyncUntil = 0;
-
-let readingDrafts = new Map();
-let readingFilter = "all";
-let readingPageNo = 1;
-let readingRendered = 0;
-let readingSegmentNodes = [];
-let readingPanelKey = null;
-// 跳转后等待目标行落位的 key：只挡这一段页码写入（见 onReadingScroll）
-let readingJumpSettleKey = null;
-let readingJumpSettleTicks = 0;
-let readingCursorEntry = null;   // 上一次跳到的 entry（窗口换了 index 就不算数）
-let readingObserver = null;
-let readingImageToken = 0;
-let readingOpenStartedAt = 0;
-const readingSpanCache = new Map();
-let readingAppendScheduled = false;
-let readingFollow = true;
-let readingProof = false;
-// 任务 66：就地编辑（按行编辑、草稿按块/按行存）
-let readingInlineEdits = new Map();   // key(block:line) → {base, text, at}
-let readingEditingKey = null;
-let readingMarkupLevel = "all";      // all / simple / none（纯视图开关）
-let readingPendingOn = true;          // 待审红字（原「成稿」= 取消它）
-let readingInlineTimer = 0;
-let readingScrollRaf = 0;
-let readingPendingBox = null;
-let readingPreflightData = null;
-
-
-/** 阅读流左栏（PDF 页列）当前滚动位置；没有左栏时按 0。 */
-let readingAutoJumpDone = false;
-
-/** 用户最后一次**自己**在审校视图里动手（滚轮 / 按下 / 按键）的时刻。 */
-let readingUserMovedAt = 0;
-/** 用户真实输入触发的滚动序号；`readingProgramScrollSeq` 是程序滚动的序号，
- * 两者不等说明"这次滚动是用户滚的"，左右跟随据此判断。 */
-let readingUserScrollSeq = 0;
-let readingProgramScrollSeq = 0;
-
-
-let readingMarksRequestSeq = 0;
-
-
-/**
- * 任务 82：选中一条差异 → **左侧 PDF 的这一行、右侧正文的这一行都落在视口垂直中央**。
- *
- * 用户原话："选中右边的差异后，左边的 PDF 高亮行的位置不定，建议点击差异修改，
- * 该行就直接跳到页面中间，保持统一的位置。" 这是肌肉记忆需求——每次同一位置，
- * 扫视时不用重新找。贴边（第一页 / 最后一页）夹住即可，不做二次补偿（会抖）。
- */
-let readingSuppressFollowUntil = 0;
-
-
-/** 左树里"展开了的页"（条目级展开状态）。 */
-const readingTreeOpen = new Set();
-
-
-// ---------------------------------------------------------------- 阅读审校左栏：连续页列
-//
-// 任务 57。用户原话："左边目前是裸 PDF，应该显示版心和文本识别框。而且应该可以上下
-// 滚动，而不是只有右边文字可以上下滚动，左边不能滚动。"
-//
-// 做法与目录确认 / 结果预览同一套：页块是空壳（先占住真实比例），图和块只给视口
-// 附近 ±3 页挂上；版心 + 块框复用 `paintTileMargin` / `renderPageBlocks`。
-// 跟随开着时右栏滚到哪一页、左边滚到哪一页；关掉后左边自己滚，互不打扰。
-
-let readingTiles = new Map();
-let readingPageBlocks = new Map();
-let readingBlockPromises = new Map();
-let readingLoadedImages = new Set();
-let readingImageQueue = [];
-let readingImagePumping = false;
-let readingNearObserver = null;
-let readingVisibleObserver = null;
-let readingNearSet = new Set();
-let readingVisibleSet = new Set();
-let readingStackProject = null;
-let readingTops = [];
-let readingHoveredSeq = null;
-let readingPdfScrollRaf = 0;
-
-const READING_NEAR_MARGIN = 900;
-
-
-/** 一页要的东西：图 + 块数据；两个都到齐才画框。 */
-/**
- * 审校页取的档位（任务 78）。和目录确认一样，**宽度变了就得重算并重取**：
- * 左侧页列被拖宽 / 窗口变大 / 折叠左树之后，原来那张 `view` 图会被拉伸到新宽度上。
- */
-let readingImageProfile = "";
-let readingResizeObserver = null;
-
-
-/** 跳转时没开出来的面板：挂起 key，等"块/行到达"再试，不靠定时器猜。 */
-let readingPendingPanelKey = null;
-let readingPendingPanelEntry = null;
-
-
-/**
- * 字级色块（任务 59）：把这一段里每行的差异字画到左边页面上。
- *
- * - 有字框：按差异字 / 词画小色块（中文单字、英文整词）；
- * - 没有字框（老数据、回填失败）：退化成整行一个虚线框，不整页不标；
- * - 只画差异，同行的相同字一个都不画。
- */
-const wordBoxMappingStats = { offset: 0, position: 0, positionMiss: 0, missSamples: [] };
-window.__b2tWordBoxStats = wordBoxMappingStats;
-
-
-let readingPageSyncTimer = 0;
-let readingPageSyncFixing = false;
-
-/**
- * P0（2026-10-28）：**左栏顶部可见的那一页必须等于顶部页码**。
- *
- * 用户截图里左 PDF 是第 40 页、顶部写第 50 页、右栏是第 50 页的内容——三者对不上，
- * 他就没法审。这条不变量以前没有任何地方检查：程序跳页、跟随、重画各走各的。
- * 这里在每次页码变化后一帧做一次核对，不一致就纠正一次，并把结果暴露在
- * `window.__b2tPageSync` 上供 QA 断言（{label, tilePage, ok}）。
- */
-const readingPageSyncLog = [];
-
-
-const readingNextLog = [];
-
-
 // ---------------------------------------------------------------- 阅读审校三栏宽度（P1-4）
 //
 // 用户："左边的 pdf 图片太小，看不清楚，能不能左右窗口可以拖动？"
@@ -18093,132 +17942,27 @@ function boot() {
   // 任务 94 Slice 1：审校视图模块初始化（依赖由此注入，模块内部不直接碰这些全局）
   window.ReadingView?.init({
     el,
-    getPageNo: () => readingPageNo,
     getProjectId: () => (currentProject ? currentProject.project_id : null),
     exit: () => showView("pages"),
     onPunctGroups: () => openPunctGroups(),
     onGarbledPanel: () => openGarbledPanel(),
     // 任务 94 Slice 2（第一笔）：readingReloadAfterBatch 搬进模块后要读写的审校状态 / 回调
-    setReadingProject: (value) => { readingProject = value; },
-    setReadingData: (value) => { readingData = value; },
-    setMarks: (value) => { readingMarks = value; },
     renderPunctGroupBadge: () => renderPunctGroupBadge(),
     // 任务 94 Slice 2（第二笔）：setupReading 的依赖——只注入句柄与 getter/setter，不注入值
-    getMarks: () => readingMarks,
-    getPendingOn: () => readingPendingOn,
-    setPendingOn: (value) => { readingPendingOn = value; },
-    getMarkupLevel: () => readingMarkupLevel,
-    setMarkupLevel: (value) => { readingMarkupLevel = value; },
-    getInlineEdits: () => readingInlineEdits,
-    getDrafts: () => readingDrafts,
-    getReadingEditingKey: () => readingEditingKey,
     isReadingActive: () => currentView === "reading",
     navigate: (name) => showView(name),
     openPageDetail: (pageNo) => openPageDetail(pageNo),
     // 任务 94 L2：10 个交互函数搬进模块后的状态句柄与回调（只注入句柄 / getter-setter，不注入值）
     getProject: () => currentProject,
-    getReadingFollow: () => readingFollow,
-    getReadingFirstUnackedPage: () => readingFirstUnackedPage,
-    getReadingGlobalCounts: () => readingGlobalCounts,
-    getReadingImageQueue: () => readingImageQueue,
-    setReadingFollowFlag: (value) => { readingFollow = value; },
-    setReadingUserMovedAt: (value) => { readingUserMovedAt = value; },
-    getReadingUserScrollSeq: () => readingUserScrollSeq,
-    setReadingUserScrollSeq: (value) => { readingUserScrollSeq = value; },
-    setReadingEditingKey: (value) => { readingEditingKey = value; },
-    setReadingFilterValue: (value) => { readingFilter = value; },
-    getReadingHoveredSeq: () => readingHoveredSeq,
-    setReadingHoveredSeq: (value) => { readingHoveredSeq = value; },
-    getReadingPdfScrollRaf: () => readingPdfScrollRaf,
-    setReadingPdfScrollRaf: (value) => { readingPdfScrollRaf = value; },
-    getReadingScrollRaf: () => readingScrollRaf,
-    setReadingScrollRaf: (value) => { readingScrollRaf = value; },
-    getReadingJumpSettleKey: () => readingJumpSettleKey,
-    setReadingJumpSettleKey: (value) => { readingJumpSettleKey = value; },
-    getReadingJumpSettleTicks: () => readingJumpSettleTicks,
-    setReadingJumpSettleTicks: (value) => { readingJumpSettleTicks = value; },
-    getReadingPanelKey: () => readingPanelKey,
-    setReadingPendingBox: (value) => { readingPendingBox = value; },
     apiJson: (path, options) => apiJson(path, options),
     loadFinishSummary: (options) => loadFinishSummary(options),
     // 任务 94 L3：openReading / 行编辑辅助搬进模块后的状态句柄与回调
-    getReadingProject: () => readingProject,
-    getReadingData: () => readingData,
-    getReadingOpenStartedAt: () => readingOpenStartedAt,
-    setReadingOpenStartedAt: (value) => { readingOpenStartedAt = value; },
-    getReadingAutoJumpDone: () => readingAutoJumpDone,
-    setReadingAutoJumpDone: (value) => { readingAutoJumpDone = value; },
-    getReadingEntries: () => readingEntries,
-    setReadingEntries: (value) => { readingEntries = value; },
-    setReadingMarksWindow: (value) => { readingMarksWindow = value; },
-    setReadingGlobalCounts: (value) => { readingGlobalCounts = value; },
-    getReadingPageCounts: () => readingPageCounts,
-    setReadingPageCounts: (value) => { readingPageCounts = value; },
-    setReadingFirstUnackedPage: (value) => { readingFirstUnackedPage = value; },
-    setReadingTreeData: (value) => { readingTreeData = value; },
-    getReadingRepaintPending: () => readingRepaintPending,
-    setReadingRepaintPending: (value) => { readingRepaintPending = value; },
-    getReadingUserMovedAt: () => readingUserMovedAt,
-    getReadingTiles: () => readingTiles,
-    getReadingPageBlocks: () => readingPageBlocks,
     refreshPunctGroups: () => refreshPunctGroups(),
     refreshGarbledLines: () => refreshGarbledLines(),
     // 任务 94 L4：队列 / 草稿加载 / 视口处理搬进模块后的句柄
-    setReadingInlineEdits: (value) => { readingInlineEdits = value; },
-    setReadingDrafts: (value) => { readingDrafts = value; },
-    getReadingTops: () => readingTops,
-    setReadingTops: (value) => { readingTops = value; },
-    getReadingCursorEntry: () => readingCursorEntry,
-    setReadingCursorEntry: (value) => { readingCursorEntry = value; },
     showNoticeBar: (text) => showNoticeBar(text),
     // 任务 94 L5：审校环搬进模块后的状态句柄（状态仍归 app.js，get+set 成对）
     getCurrentView: () => currentView,
-    getReadingAppendScheduled: () => readingAppendScheduled,
-    getReadingBlockPromises: () => readingBlockPromises,
-    getReadingDrafts: () => readingDrafts,
-    getReadingImageProfile: () => readingImageProfile,
-    getReadingInlineEdits: () => readingInlineEdits,
-    getReadingLoadedImages: () => readingLoadedImages,
-    getReadingMarks: () => readingMarks,
-    getReadingMarksInFlight: () => readingMarksInFlight,
-    getReadingMarksRequestSeq: () => readingMarksRequestSeq,
-    getReadingMarksWindow: () => readingMarksWindow,
-    getReadingNearObserver: () => readingNearObserver,
-    getReadingNearSet: () => readingNearSet,
-    getReadingObserver: () => readingObserver,
-    getReadingPageSyncFixing: () => readingPageSyncFixing,
-    getReadingPageSyncLog: () => readingPageSyncLog,
-    getReadingPageSyncTimer: () => readingPageSyncTimer,
-    getReadingPendingBox: () => readingPendingBox,
-    getReadingPendingPanelEntry: () => readingPendingPanelEntry,
-    getReadingPendingPanelKey: () => readingPendingPanelKey,
-    getReadingProgramScrollSeq: () => readingProgramScrollSeq,
-    getReadingRendered: () => readingRendered,
-    getReadingResizeObserver: () => readingResizeObserver,
-    getReadingSegmentNodes: () => readingSegmentNodes,
-    getReadingStackProject: () => readingStackProject,
-    getReadingSuppressFollowUntil: () => readingSuppressFollowUntil,
-    getReadingTreeData: () => readingTreeData,
-    getReadingTreeOpen: () => readingTreeOpen,
-    getReadingVisibleObserver: () => readingVisibleObserver,
-    getReadingVisibleSet: () => readingVisibleSet,
-    setReadingAppendScheduled: (value) => { readingAppendScheduled = value; },
-    setReadingImageProfile: (value) => { readingImageProfile = value; },
-    setReadingImageQueue: (value) => { readingImageQueue = value; },
-    setReadingMarks: (value) => { readingMarks = value; },
-    setReadingMarksInFlight: (value) => { readingMarksInFlight = value; },
-    setReadingMarksRequestSeq: (value) => { readingMarksRequestSeq = value; return value; },
-    setReadingNearObserver: (value) => { readingNearObserver = value; },
-    setReadingObserver: (value) => { readingObserver = value; },
-    setReadingPageNo: (value) => { readingPageNo = value; },
-    setReadingPageSyncFixing: (value) => { readingPageSyncFixing = value; },
-    setReadingPageSyncTimer: (value) => { readingPageSyncTimer = value; },
-    setReadingPanelKey: (value) => { readingPanelKey = value; },
-    setReadingRendered: (value) => { readingRendered = value; },
-    setReadingResizeObserver: (value) => { readingResizeObserver = value; },
-    setReadingSegmentNodes: (value) => { readingSegmentNodes = value; },
-    setReadingStackProject: (value) => { readingStackProject = value; },
-    setReadingVisibleObserver: (value) => { readingVisibleObserver = value; },
     // 任务 94 L5：审校环里仍留在 app.js 的叶子函数（模块经注入调用）
     exportOptions: (...args) => exportOptions(...args),
     loadIndexBlocks: (...args) => loadIndexBlocks(...args),
@@ -18229,12 +17973,8 @@ function boot() {
     getPagesMarginToggle: () => el("pages-margin-toggle"),
     getPagesOverlayToggle: () => el("pages-overlay-toggle"),
     INDEX_IMAGE_WINDOW: INDEX_IMAGE_WINDOW,
-    READING_CHUNK: READING_CHUNK,
-    READING_NEAR_MARGIN: READING_NEAR_MARGIN,
     // L6 刀1：状态 getter
-    getReadingImagePumping: () => readingImagePumping,
     // L6 刀1：状态 setter（有写点才给）
-    setReadingImagePumping: (value) => { readingImagePumping = value; return value; },
     // L6 刀1：仍留在 app.js 的叶子函数
     clearImagePlaceholder: (...args) => clearImagePlaceholder(...args),
     clearPageBlocks: (...args) => clearPageBlocks(...args),
@@ -18243,28 +17983,15 @@ function boot() {
     // L6 刀2：仍留在 app.js 的叶子函数
     computeCharSpans: (...args) => computeCharSpans(...args),
     // L6 刀3：状态 getter
-    getReadingNextLog: () => readingNextLog,
-    getReadingProof: () => readingProof,
-    getReadingSyncDriver: () => readingSyncDriver,
-    getReadingSyncUntil: () => readingSyncUntil,
     // L6 刀3：状态 setter（有写点才给）
-    setReadingProgramScrollSeq: (value) => { readingProgramScrollSeq = value; return value; },
-    setReadingSuppressFollowUntil: (value) => { readingSuppressFollowUntil = value; return value; },
-    setReadingSyncDriver: (value) => { readingSyncDriver = value; return value; },
-    setReadingSyncUntil: (value) => { readingSyncUntil = value; return value; },
     // L6 刀3：仍留在 app.js 的叶子函数
     // L6 刀7：仍留在 app.js 的叶子函数
     // L6 刀8：状态 setter（有写点才给）
-    setReadingPendingPanelEntry: (value) => { readingPendingPanelEntry = value; return value; },
-    setReadingPendingPanelKey: (value) => { readingPendingPanelKey = value; return value; },
     // L6 刀9：状态 getter
-    getReadingSpanCache: () => readingSpanCache,
     // L6 刀9：仍留在 app.js 的叶子函数
     // L6 刀12：状态 getter
     getPagesMarginOn: () => pagesMarginOn,
     getPagesOverlayOn: () => pagesOverlayOn,
-    getReadingFilter: () => readingFilter,
-    getWordBoxMappingStats: () => wordBoxMappingStats,
     // L6 刀12：状态 setter（有写点才给）
     setPagesMarginOn: (value) => { pagesMarginOn = value; return value; },
     setPagesOverlayOn: (value) => { pagesOverlayOn = value; return value; },
