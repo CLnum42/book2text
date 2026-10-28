@@ -7468,6 +7468,9 @@ async function pollTask() {
       openTaskDrawer();
     }
     await loadSummary(); // 任务结束后统计会变（复核行数、任务失败率）
+    // 任务 69：任务在跑期间收尾面板给的是旧快照（不跟识别抢 CPU），
+    // 任务一结束必须重算一次，否则步骤条会一直停在快照上。
+    await loadFinishSummary({ silent: true });
     // 自动应用由识别子进程在结算后写入：这里等一轮再查，新出现的那一条会弹提示
     await loadAutoApplyStatus({ announce: true, jobId: data.job.job_id });
   } else {
@@ -13749,7 +13752,10 @@ function nextUnfinishedPage(afterPageNo) {
 // ---------------------------------------------------------------- 收尾面板（任务 66）
 
 function finishChipText() {
-  return finishSummary ? `收尾 ${finishSummary.k}/6` : "收尾 —/6";
+  // 任务 69：识别在跑时服务端给的是**旧快照**（不重算 662 页），这里要说明白，
+  // 否则用户会以为"刚认完的页怎么没算进去"。
+  const suffix = finishSummary && finishSummary.stale ? " · 更新中" : "";
+  return finishSummary ? `收尾 ${finishSummary.k}/6${suffix}` : "收尾 —/6";
 }
 
 function updateFinishChips() {
@@ -13759,7 +13765,12 @@ function updateFinishChips() {
     node.textContent = finishChipText();
     node.classList.toggle("is-incomplete", Boolean(finishSummary) && finishSummary.k < 6);
     node.classList.toggle("is-done", Boolean(finishSummary) && finishSummary.k === 6);
+    node.title = finishSummary && finishSummary.stale
+      ? "识别进行中，这里的数字是上一次算好的快照（不跟识别抢 CPU）。识别结束后自动变准。"
+      : "";
   }
+  const note = el("finish-stale-note");
+  if (note) note.hidden = !(finishSummary && finishSummary.stale);
 }
 
 function finishIcon(id, state) {

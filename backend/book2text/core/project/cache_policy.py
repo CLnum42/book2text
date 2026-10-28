@@ -29,19 +29,51 @@ from . import library as library_module
 MAX_AGE_SECONDS = 10.0
 
 
+_JOB_STATE: dict[str, tuple[float, bool]] = {}
+"""项目 → (查询时刻, 有没有任务在跑)。
+
+为什么记得住：识别写库时 SQLite 有写锁，每次请求都查任务表会在锁上等
+（实测 finish-summary 因此出现 220–420 ms 毛刺）。任务动辄跑几十分钟，
+"2 秒前查过"和"现在查"没有区别；而任务结束后最多多给 2 秒旧快照，
+下一次请求就会重算成真实值。
+"""
+
+_JOB_STATE_TTL = 2.0
+
+
 def job_running(project_id: str, library: Path) -> bool:
-    """这个项目现在有没有识别 / 复核 / 版面任务在跑。"""
+    """这个项目现在有没有识别 / 复核 / 版面任务在跑（结果记忆 2 秒）。"""
+    now = time.monotonic()
+    cached = _JOB_STATE.get(project_id)
+    if cached and now - cached[0] < _JOB_STATE_TTL:
+        return cached[1]
     try:
         directory = library_module.project_dir(library, project_id)
-        return bool(jobs_module.active_jobs(directory))
+        running = bool(jobs_module.active_jobs(directory))
     except Exception:  # noqa: BLE001 - 任务表读不到就按"没在跑"处理（退回实时计算）
-        return False
+        running = False
+    _JOB_STATE[project_id] = (now, running)
+    return running
 
 
 def can_reuse(project_id: str, library: Path, cached_at: float | None) -> bool:
-    """缓存能否在"忙时"被复用：有任务在跑 **且** 缓存足够新。"""
+    """缓存能否在"忙时"被复用：有任务在跑 **且** 缓存不过期（默认 10 秒）。"""
     if cached_at is None:
         return False
     if time.monotonic() - cached_at > MAX_AGE_SECONDS:
         return False
+    return job_running(project_id, library)
+
+
+def can_serve_stale(project_id: str, library: Path) -> bool:
+    """有任务在跑时**一律**复用旧快照（不看年龄）。
+
+    只给"整本重算很贵、而用户此刻并不需要实时值"的接口用（目前是收尾面板）。
+    识别 662 页要 20–55 分钟，每认完一页都写库、每写一次都会让缓存失效；
+    按 10 秒窗口复用等于每两三页就整本重算一次（662 页 340 ms–3.5 s），
+    而它算出来的只是步骤条上几个此刻没人盯的数字。
+
+    正确性边界：任务结束时签名稳定，第一次请求就会重算成真实值；
+    响应里带 `stale: true` / `served_at`，界面上写「识别进行中，数据更新中…」。
+    """
     return job_running(project_id, library)

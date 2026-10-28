@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import blocks as blocks_module
@@ -680,6 +681,17 @@ def _finish_cache_path(project_id: str, library: Path) -> Path:
     return library_module.project_dir(library, project_id) / "cache" / "finish-summary.json"
 
 
+def _read_finish_cache_any(project_id: str, library: Path) -> dict | None:
+    """读磁盘上的收尾面板快照，**不校验签名**（只给"识别进行中先用旧值"用）。"""
+    path = _finish_cache_path(project_id, library)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    data = payload.get("payload") if isinstance(payload, dict) else None
+    return data if isinstance(data, dict) else None
+
+
 def _read_finish_cache(project_id: str, library: Path, signature: str) -> dict | None:
     """读磁盘上的收尾面板结果（任务 63：跨进程也秒回）。
 
@@ -740,6 +752,13 @@ def _cache_age(project_id: str) -> float:
     return max(0.0, time.monotonic() - stamp)
 
 
+def _stale_snapshot(payload: dict, computed_at: float | None) -> dict:
+    """把缓存里的收尾面板结果标成"旧快照"返回（不改缓存本身）。"""
+    served_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    age = None if computed_at is None else round(max(0.0, time.monotonic() - computed_at), 1)
+    return {**payload, "stale": True, "served_at": served_at, "stale_age_seconds": age}
+
+
 def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     """收尾面板的六个状态：全部从数据库实时聚合，不依赖前端估算。
 
@@ -751,17 +770,30 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
     16 处页边界只要还有人没看，这一步就不算完——否则那 16 处段落错误没人知道。
     """
     target_library = library if library is not None else library_module.default_library_dir()
+    # 任务 69：识别在跑的整个过程中，**一律返回旧快照，不再重算**。
+    # 识别每认完一页都写库，签名每 3–5 秒变一次；662 页整本重算空闲 340 ms、
+    # 有负载时 3.5 s——为了步骤条上几个此刻没人盯的数字，去跟识别抢几十次核，不值得。
+    #
+    # 所以"有没有任务在跑"这个判断放在**最前面**：命中就直接返回快照，
+    # 连签名（要 `load_project` + stat 库文件）都不算——那两个动作在识别写库时
+    # 会被 SQLite 写锁拖到 100–400 ms，正是上一版毛刺的来源。
+    # 任务一结束判断变假，走下面的正常路径，第一次请求就是真实值。
+    if cache_policy.can_serve_stale(project_id, target_library):
+        snapshot = _FINISH_CACHE.get(project_id)
+        served_at = _FINISH_CACHE_AT.get(project_id)
+        if snapshot is None:
+            # 进程刚起、内存里还没有：磁盘上那份快照就算签名不匹配也先拿来用
+            disk_any = _read_finish_cache_any(project_id, target_library)
+            if disk_any is not None:
+                _FINISH_CACHE[project_id] = ("", disk_any)
+                _FINISH_CACHE_AT[project_id] = time.monotonic()
+                snapshot = ("", disk_any)
+                served_at = _FINISH_CACHE_AT[project_id]
+        if snapshot is not None:
+            return _stale_snapshot(snapshot[1], served_at)
     signature = _finish_signature(project_id, target_library)
     cached = _FINISH_CACHE.get(project_id)
     if cached and signature and cached[0] == signature:
-        return cached[1]
-    # 任务 68：识别在跑的时候，**每认完一页都会写库**，签名每 4 秒变一次，
-    # 收尾面板于是每次都重算（662 页英文书实测 760 ms，是识别期间最慢的一个请求）。
-    # 识别期间允许用一份"最多 3 秒前"的结果：步骤条是个进度指示，落后 3 秒看不见；
-    # 任务结束后签名稳定，立刻回到实时。
-    if cached and cache_policy.can_reuse(
-        project_id, target_library, _FINISH_CACHE_AT.get(project_id)
-    ):
         return cached[1]
     disk = _read_finish_cache(project_id, target_library, signature)
     if disk is not None:
