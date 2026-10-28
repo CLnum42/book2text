@@ -600,12 +600,12 @@ textarea {
 .page-margin__box {
   position: absolute; box-sizing: border-box; pointer-events: none;
   /* 任务 35：2px → 1px，少盖住边缘的字；外侧 1px 半透明白线保证深色扫描页上也看得见。 */
-  border: 1px solid #0b5f58; border-radius: 2px;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, .55),
-    0 0 0 9999px rgba(15, 18, 24, .34);
+  /* 任务 76：用户说这条框"看着很不协调"。改成半透明细线 + 只靠内外明暗对比，
+     去掉原来那圈 1px 白边（它就是"粗"的观感来源）。拖动手柄的热区一点没动。 */
+  border: 1px solid rgba(11, 95, 88, .42); border-radius: 2px;
+  box-shadow: 0 0 0 9999px rgba(15, 18, 24, .34);
 }
-.page-margin--custom .page-margin__box { border-color: #6d28d9; }
+.page-margin--custom .page-margin__box { border-color: rgba(109, 40, 217, .5); }
 .page-margin--inherit .page-margin__box { border-style: dashed; }
 .page-margin__handle {
   position: absolute; pointer-events: auto; touch-action: none;
@@ -628,7 +628,7 @@ textarea {
 .page-margin__handle--sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
 .page-margin__handle--se { bottom: -7px; right: -7px; cursor: nwse-resize; }
 .page-margin__handle:hover { background: #0b4f4a; }
-.page-margin__box.is-dragging { border-width: 2px; }
+.page-margin__box.is-dragging { border-width: 2px; border-color: #0b5f58; }
 body.margin-dragging, body.margin-dragging * { user-select: none; -webkit-user-select: none; }
 
 /* 右栏版心面板 */
@@ -2442,13 +2442,32 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .reading-page .page-overlay { z-index: 2; }
 .reading-page.is-current { box-shadow: 0 0 0 2px var(--accent), var(--shadow-1); }
 /* 悬停联动：右栏这一段 + 左边这一段对应的所有块都亮绿，只高亮、不滚 */
+/* 任务 76：用户要"色块铺满"，不是只描边。悬停 = 半透明绿铺满 + 一圈细边，
+   两侧用同一个颜色和透明度，看得出是"同一条"。 */
 #reading-pages .box.is-linked {
-  outline: 2px solid #16a34a; outline-offset: 1px;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, .22);
+  background: rgba(22, 163, 74, .28);
+  outline: 1px solid rgba(22, 163, 74, .75);
+  outline-offset: 0;
   z-index: 3;
 }
+/* 正在编辑的那一行：块本身只给一层很淡的琥珀（"我在这个块里"），
+   **真正的行标记是 `#reading-pdf-box`**（按行框画的琥珀框），用户看的是那一行。 */
+#reading-pages .box.is-editing-block {
+  background: rgba(217, 119, 6, .12);
+  outline: 1px dashed rgba(217, 119, 6, .55);
+  outline-offset: 0;
+  z-index: 3;
+}
+/* 正在编辑的那一行：左侧页块上按**行框**画一个琥珀框（和右侧光标所在行对应） */
+.reading-edit-line {
+  position: absolute; pointer-events: none; z-index: 4; box-sizing: border-box;
+  border: 2px solid #d97706; border-radius: 2px;
+  background: rgba(217, 119, 6, .20);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .5);
+}
 .reading-seg.is-hover {
-  background: rgba(22, 163, 74, .12); border-radius: 6px;
+  background: rgba(22, 163, 74, .16); border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(22, 163, 74, .45);
 }
 .reading-seg.is-hover .reading-mark { background: rgba(22, 163, 74, .18); }
 .reading-pdf__scroll img {

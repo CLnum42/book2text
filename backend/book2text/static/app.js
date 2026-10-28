@@ -277,6 +277,24 @@ function showView(name) {
  * - 审校：needs_human=0 且 auto_passable=0 且版面 remaining=0
  * - 导出：至少一条 succeeded 的导出记录
  */
+/**
+ * 正在跑的**第二引擎**任务进度（实时，来自任务抽屉的轮询），没有就返回 null。
+ *
+ * 为什么单独拿：收尾面板在任务期间返回旧快照（不跟识别抢 CPU），而进度必须实时——
+ * 两个数据源混用会出现「0/457 进行中」和「88/457」同屏的打架。
+ */
+function liveAuxProgress() {
+  const job = lastTaskData && lastTaskData.job;
+  if (!job || job.job_type !== "auxiliary") return null;
+  if (!["queued", "running", "paused"].includes(job.status)) return null;
+  return {
+    done: Number(job.done || 0),
+    total: Number(job.total || 0),
+    failed: Number(job.failed || 0),
+    status: job.status,
+  };
+}
+
 function stepProgress(id) {
   const fs = finishSummary;
   const ps = projectSummary;
@@ -325,10 +343,18 @@ function stepProgress(id) {
       // 41 分钟的后台任务不该把这一步卡成灰。
       done = included > 0 && primary >= included && failed === 0;
       count = `${primary}/${included}`;
+      // 任务 75：**进度类数字读实时任务，不读快照**。
+      // 任务在跑时收尾面板给的是旧快照（为了不跟识别抢 CPU），里面 engine.checked
+      // 还是 0，于是识别步显示「第二引擎 0/457 进行中」，抽屉却是 88/457 —— 两个数
+      // 打架、还会随快照刷新一闪一闪。抽屉/顶栏拿的是实时 job，这里跟它对齐。
+      const live = liveAuxProgress();
+      const auxText = live
+        ? `第二引擎 ${live.done}/${live.total}（进行中${live.failed ? ` · 失败 ${live.failed}` : ""}）`
+        : `第二引擎 ${engine.checked || 0}/${engine.total || 0}` +
+          (engine.aux_complete ? "（已跑完）" : "（可选，没跑完）");
       detail =
         `主引擎 ${primary}/${included}` +
-        ` · 第二引擎 ${engine.checked || 0}/${engine.total || 0}` +
-        (engine.aux_complete ? "（已跑完）" : "（可选，没跑完）") +
+        ` · ${auxText}` +
         (failedText ? ` · ${failedText}` : "");
     }
   } else if (id === "index") {
@@ -4798,8 +4824,28 @@ function detailImageProfile(cssWidth, widthPt) {
 
 /** 对一个页块取档：量它的 CSS 宽，配这一页的 pt 宽。 */
 function pageProfileFor(element, pageNo) {
-  const cssWidth = element ? element.getBoundingClientRect().width : 0;
+  const cssWidth = measureCssWidth(element);
   return detailImageProfile(cssWidth, pageWidthPt(pageNo));
+}
+
+/**
+ * 量一个元素"将来会显示成多宽"（CSS px）。
+ *
+ * 优先 `getBoundingClientRect`；隐藏 / 还没布局时退回 `offsetWidth`、父元素宽度，
+ * 最后按视口估一个（宁可给高一档，也不要因为量到 0 而拿到最模糊的图）。
+ */
+function measureCssWidth(element) {
+  if (!element) return 0;
+  const rect = element.getBoundingClientRect();
+  if (rect.width > 1) return rect.width;
+  const offset = element.offsetWidth || 0;
+  if (offset > 1) return offset;
+  const parent = element.parentElement;
+  if (parent) {
+    const parentRect = parent.getBoundingClientRect();
+    if (parentRect.width > 1) return parentRect.width;
+  }
+  return Math.max(320, Number(window.innerWidth || 0) * 0.5);
 }
 
 function pageImageUrl(pageNo, size) {
@@ -18420,6 +18466,31 @@ function paintInlineRevision(line, inline) {
 }
 
 /** 点正文 = 落光标、该行成为当前行（块边界不可跨越：一行一个编辑区）。 */
+/** 从块缓存里取某一行的框（没有就返回 null）。 */
+function readingLineBox(blockId, lineIndex) {
+  if (!blockId) return null;
+  const pageNo = Number(readingLineNode(`${blockId}:${lineIndex}`)?.dataset?.page || 0);
+  const blocks = pageNo ? readingPageBlocks.get(pageNo) : null;
+  if (!blocks) return null;
+  const block = blocks.find((item) => item.block_id === blockId);
+  const line = block && (block.lines || [])[lineIndex];
+  return line && line.bbox ? line.bbox : null;
+}
+
+/**
+ * 左侧标出"我正在这个块里改一行"：块框给一层很淡的琥珀。
+ * 真正的**行标记**是 `#reading-pdf-box`（按行框画的那个橙框），这里不重复造。
+ */
+function markEditingLineBox(blockId) {
+  for (const node of document.querySelectorAll("#reading-pages .box.is-editing-block")) {
+    node.classList.remove("is-editing-block");
+  }
+  if (!blockId) return;
+  for (const node of document.querySelectorAll(`#reading-pages .box[data-block-id="${blockId}"]`)) {
+    node.classList.add("is-editing-block");
+  }
+}
+
 function startInlineEdit(line) {
   if (!line || readingEditingKey === line.dataset.key) return;
   exitInlineEdit();
@@ -18433,7 +18504,14 @@ function startInlineEdit(line) {
   if (pageNo && pageNo !== readingPageNo) {
     updateReadingPage(pageNo, { syncStream: false });
   }
-  if (mark && mark.bbox) drawReadingPdfBox(mark.bbox, mark.page_no || pageNo);
+  // 任务 76：**编辑某一行时，左侧要能看出"改的是图上哪一行"**。
+  // 有差异标记就用标记的行框；没有标记（普通正文行）就去块缓存里找这一行的框。
+  const lineBox = (mark && mark.bbox) || readingLineBox(line.dataset.block, Number(line.dataset.line));
+  if (lineBox) {
+    drawReadingPdfBox(lineBox, pageNo);
+    drawEditingLineBox(lineBox, pageNo);
+    markEditingLineBox(line.dataset.block, Number(line.dataset.line));
+  }
   line.addEventListener("input", onInlineInput);
   line.addEventListener("keydown", onInlineKeydown);
   line.addEventListener("blur", () => {
@@ -18490,6 +18568,11 @@ function exitInlineEdit() {
     node.removeEventListener("input", onInlineInput);
     node.removeEventListener("keydown", onInlineKeydown);
   }
+  // 退出编辑：左侧的"正在改这一行"标记一起收掉
+  for (const box of document.querySelectorAll("#reading-pages .box.is-editing-block")) {
+    box.classList.remove("is-editing-block");
+  }
+  for (const node of document.querySelectorAll("#reading-pages .reading-edit-line")) node.remove();
   readingEditingKey = null;
   if (readingRepaintPending) {
     readingRepaintPending = false;
@@ -19087,7 +19170,11 @@ function pumpReadingImages() {
       delete image.dataset.pending;
       step();
     };
-    image.src = pageImageUrl(pageNo, pageProfileFor(image, pageNo));
+    // 任务 75：**量外层页块**，不要量 `<img>` 自己。图在加载完成前是隐藏的
+    // （`display:none` / 还没 `is-ready`），`getBoundingClientRect().width` 是 **0**
+    // → need=0 → 永远拿到 `view`（150 DPI）。目录确认用的是外层 wrap，所以那边是好的。
+    const profile = pageProfileFor(tile, pageNo);
+    image.src = pageImageUrl(pageNo, profile);
   };
   step();
 }
@@ -19243,6 +19330,34 @@ function paintReadingDiffBoxes(pageNo) {
 }
 
 /** 悬停右栏某段：右边绿底、左边这一段的所有块绿框——**只高亮，不滚**。 */
+/**
+ * 左边悬停某个块 → 右边对应段落亮（`is-hover`），左边的块本身也标 `is-linked`。
+ *
+ * 只高亮、不滚动：用户只是"看看这块是右边哪一段"。找不到对应段（跨页 / 已过滤）
+ * 就什么都不做，别把别处点亮。
+ */
+function setReadingHoverByBlock(blockId) {
+  const segments = readingVisibleSegments();
+  const index = segments.findIndex((segment) =>
+    (segment.line_spans || []).some((span) => span.block_id === blockId)
+  );
+  if (index < 0) return;
+  const segment = segments[index];
+  if (readingHoveredSeq === Number(segment.seq)) return;
+  readingHoveredSeq = Number(segment.seq);
+  for (const node of document.querySelectorAll("#reading-stream .reading-seg.is-hover")) {
+    node.classList.remove("is-hover");
+  }
+  const node = document.querySelector(`#reading-stream .reading-seg[data-seq="${segment.seq}"]`);
+  if (!node) return;
+  node.classList.add("is-hover");
+  // 左边这一段的所有块一起亮（同一段常跨块）
+  const blockIds = new Set((segment.line_spans || []).map((span) => span.block_id));
+  for (const tile of document.querySelectorAll("#reading-pages .box")) {
+    if (blockIds.has(tile.dataset.blockId)) tile.classList.add("is-linked");
+  }
+}
+
 function setReadingHover(seq) {
   // `seq` 可能来自 dataset（字符串）：先统一成数字，否则异步回来时比对永远不相等
   const target = seq === null || seq === undefined || seq === ""
@@ -19484,6 +19599,29 @@ function hideReadingPdfBox() {
 }
 
 /** 跟随时的"当前行框"：画在页列里对应那一页上（页列是 position: relative）。 */
+/**
+ * 在左侧页块里画出"正在编辑的这一行"（任务 76）。
+ *
+ * 不依赖 `#reading-pdf-box`：那个节点在重建页列时会被 `wrap.innerHTML = ""` 清掉，
+ * 复用它会时有时无。这里每条页块自己挂一个 `.reading-edit-line`，位置按行框算。
+ */
+function drawEditingLineBox(bbox, pageNo) {
+  for (const node of document.querySelectorAll("#reading-pages .reading-edit-line")) node.remove();
+  const tile = readingTiles.get(pageNo);
+  if (!tile || !Array.isArray(bbox) || bbox.length !== 4) return;
+  const [x0, y0, x1, y1] = bbox;
+  const width = tile.clientWidth || tile.getBoundingClientRect().width;
+  const height = tile.clientHeight || tile.getBoundingClientRect().height;
+  if (!width || !height) return;
+  const node = document.createElement("div");
+  node.className = "reading-edit-line";
+  node.style.left = `${Math.round(x0 * width)}px`;
+  node.style.top = `${Math.round(y0 * height)}px`;
+  node.style.width = `${Math.round((x1 - x0) * width)}px`;
+  node.style.height = `${Math.round((y1 - y0) * height)}px`;
+  tile.append(node);
+}
+
 function drawReadingPdfBox(bbox, pageNo) {
   const box = el("reading-pdf-box");
   const tile = readingTiles.get(pageNo);
@@ -19915,6 +20053,14 @@ function setupReading() {
     setReadingHover(seg ? seg.dataset.seq : null);
   });
   el("reading-stream").addEventListener("mouseleave", () => setReadingHover(null));
+  // 任务 76：**反向联动**——鼠标悬停左边 PDF 上的某个块，右侧对应段落亮起来。
+  // 和"右→左"用同一套类名（`is-linked` / `is-hover`）、同一颜色，用户能看出是一条。
+  el("reading-pages").addEventListener("mouseover", (event) => {
+    const box = event.target.closest && event.target.closest(".box");
+    if (!box || !box.dataset.blockId) return;
+    setReadingHoverByBlock(box.dataset.blockId);
+  });
+  el("reading-pages").addEventListener("mouseleave", () => setReadingHover(null));
   el("reading-stream").addEventListener("click", (event) => {
     const markEl = event.target.closest && event.target.closest(".reading-mark");
     if (!markEl) return;

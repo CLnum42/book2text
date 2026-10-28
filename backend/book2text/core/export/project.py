@@ -30,7 +30,7 @@ from ..project import library as library_module
 from ..project import structure as structure_module
 from ..project.library import Page
 from ..storage import db as db_module
-from . import cleanup, jsonl as jsonl_module, manifest as manifest_module
+from . import cleanup, header_cleanup, jsonl as jsonl_module, manifest as manifest_module
 from . import margin_rules as margin_rules_module
 from . import segments as segments_module, streams as streams_module, txt
 from .joining import join_lines
@@ -253,6 +253,11 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
         else {}
     )
 
+    # 任务 74：每页**第一个块**（按 order_index）才可能带页眉行；别一页里每个块都去剥
+    first_block_of_page: dict[int, str] = {}
+    for block in sorted(page_blocks, key=lambda item: (item.page_no, item.order_index)):
+        first_block_of_page.setdefault(block.page_no, block.block_id)
+
     sources: list[segments_module.SegmentSource] = []
     for block in page_blocks:
         include = block.include
@@ -263,7 +268,16 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
                 include = include and block.block_id in layout.inside_ids
         # 导出的是 Block.text（说明书 5.3：保留行内换行），按 `\n` 拆回行再做 9.2 的合并。
         # 不要用 block_line 的文本：那是识别原文，人工改过的字会丢。
-        text, hyphenations, line_spans = _join_block(block.text.split("\n"), rules)
+        raw_lines = block.text.split("\n")
+        # 任务 74：**页眉页码行**（`Page 28`）识别时落成了 paragraph 块，
+        # 会被当正文导出。只从"每页第一个块的第一行"判断（严格的窄规则）——
+        # 全书行级正则替换踩过坑：正文里真有整行是"红楼梦"的。
+        if first_block_of_page.get(block.page_no) == block.block_id:
+            raw_lines = header_cleanup.strip_leading_header_line(raw_lines)
+            if not raw_lines:
+                # 整块就是一行页码：这一块不进正文
+                continue
+        text, hyphenations, line_spans = _join_block(raw_lines, rules)
         sources.append(
             segments_module.SegmentSource(
                 block_id=block.block_id,

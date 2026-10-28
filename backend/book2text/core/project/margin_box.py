@@ -50,6 +50,7 @@ from pathlib import Path
 
 from ..storage import db as db_module
 from . import blocks as blocks_module
+from ..export import header_cleanup
 from . import library as library_module
 
 # 页级四态（任务 62）：auto 是默认，每页用自己的检测行拟合；inherit 是显式沿用兜底
@@ -656,6 +657,22 @@ def suggest_margin_box(
     }
     lines = blocks_module.list_block_lines(project_id, library=target_library)
 
+    # 任务 74：拟合前先剔掉**页眉带**里那一行页码（`Page 28`）。
+    # 不剔的话顶边会贴着页眉拟合——用户看到"页码几乎全落在版心内部"就是这么来的。
+    # 只认"每页第一个块的第一行"，与导出侧同一条窄规则。
+    first_line_of_page: dict[int, str] = {}
+    ordered_blocks = sorted(active_block.values(), key=lambda item: (item.page_no, item.order_index))
+    seen_pages: set[int] = set()
+    for block in ordered_blocks:
+        if block.page_no in seen_pages:
+            continue
+        seen_pages.add(block.page_no)
+        page_lines = [
+            line for line in lines if line.block_id == block.block_id and line.line_index == 0
+        ]
+        if page_lines and page_lines[0].bbox is not None:
+            first_line_of_page[block.page_no] = str(page_lines[0].line_id)
+
     ocr_page_boxes: dict[int, list[BBox]] = {}
     for line in lines:
         block = active_block.get(line.block_id)
@@ -664,6 +681,11 @@ def suggest_margin_box(
         page = page_by_id.get(block.page_id)
         if page is None:
             continue
+        if first_line_of_page.get(page.page_no) == str(line.line_id):
+            # 只看这一行"像不像页眉"：整行页码，或"页码 + 正文"并在一起（长行也算）
+            head_text = " ".join((line.text or "").split())
+            if header_cleanup.is_page_line(head_text) or header_cleanup.merged_header_prefix(head_text):
+                continue
         ocr_page_boxes.setdefault(page.page_no, []).append(line.bbox)
     for page_no, boxes in ocr_page_boxes.items():
         page_boxes.setdefault(page_no, boxes)

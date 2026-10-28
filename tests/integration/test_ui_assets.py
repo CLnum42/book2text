@@ -907,7 +907,8 @@ def test_trash_select_all_and_margin_visual_are_wired() -> None:
     assert "不在当前筛选" in script
 
     # 版心视觉：1px 边框 + 更深的版心外灰度
-    assert "border: 1px solid #0b5f58;" in styles
+    # 任务 76：版心框改成 1px 半透明（用户说原来那圈白边"看着很不协调"）
+    assert "border: 1px solid rgba(11, 95, 88, .42);" in styles
     assert "rgba(15, 18, 24, .34)" in styles
     assert "rgba(15, 18, 24, .30)" in styles
     # 把手还在（改细不能把拖动弄丢）
