@@ -1,0 +1,54 @@
+{
+  "rows": [
+    {
+      "name": "翻页 next/prev",
+      "ok": false,
+      "detail": "1 -> 1（nextDisabled=false）"
+    },
+    {
+      "name": "过滤器 select",
+      "ok": true,
+      "detail": "all -> chars"
+    },
+    {
+      "name": "显示菜单",
+      "ok": true,
+      "detail": "打开=true 点空白关=true"
+    },
+    {
+      "name": "更多菜单",
+      "ok": true,
+      "detail": "打开=true 点空白关=true"
+    },
+    {
+      "name": "待审红字开关",
+      "ok": true,
+      "detail": "hide-pending: false -> true"
+    },
+    {
+      "name": "提交按钮",
+      "ok": true,
+      "detail": "disabled（当前 0 草稿，符合预期）"
+    },
+    {
+      "name": "撤销按钮",
+      "ok": true,
+      "detail": "点击后弹出确认框（处理器活着），已取消"
+    },
+    {
+      "name": "盲区出口",
+      "ok": true,
+      "detail": "view reading -> review"
+    },
+    {
+      "name": "键盘 Enter",
+      "ok": true,
+      "detail": "01M609YSCTY9T6D986R8XMC3ZS:1 -> 01M609YSCVVSZQER654WQVCREE:0"
+    },
+    {
+      "name": "键盘 Esc 关面板",
+      "ok": true,
+      "detail": "panelKey 01M609YSCVVSZQER654WQVCREE:0 -> null"
+    }
+  ]
+}
