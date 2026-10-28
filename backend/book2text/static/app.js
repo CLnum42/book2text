@@ -18353,6 +18353,7 @@ function rebuildReadingEntries() {
   }
   // 左树的条目级列表跟着 marks 窗口走：窗口换了，这一页下面的条目也要换
   if (readingTreeData) renderReadingTree();
+  readingTreeApplyCollapsed();
 }
 
 function readingMarkOrder(entry) {
@@ -18947,6 +18948,9 @@ function onInlineKeydown(event) {
   }
   if (event.key === "Escape") {
     event.preventDefault();
+    // **必须在这里吃掉事件**：退出编辑后 readingEditingKey 立刻变 null、contenteditable 也摘掉，
+    // 等它冒泡到 document，那里已经判断不出"刚才在编辑"，会把面板一起关掉（QA D1）。
+    event.stopPropagation();
     exitInlineEdit();
     return;
   }
@@ -19214,6 +19218,7 @@ function readingTreeToggle() {
   const next = !readingTreeCollapsed();
   readingTreeSaveCollapsed(next);
   readingTreeApplyCollapsed();
+  applyReadingSplit();
 }
 
 function readingDockStore() {
@@ -19224,11 +19229,17 @@ function readingDockStore() {
   }
 }
 
+/** 下区默认高度：1423×900 用 276；628 高（≤700）用 252——否则上区只剩 258，读不了上下文。 */
+function readingDockDefaultHeight() {
+  const viewportH = Number(window.innerHeight || 900);
+  return viewportH <= 700 ? 252 : READING_DOCK_DEFAULT_HEIGHT;
+}
+
 function readingDockPrefs() {
   const projectId = currentProject ? currentProject.project_id : "";
   const one = readingDockStore()[projectId] || {};
   return {
-    h: Number.isFinite(one.h) ? one.h : READING_DOCK_DEFAULT_HEIGHT,
+    h: Number.isFinite(one.h) ? one.h : readingDockDefaultHeight(),
     collapsed: Boolean(one.collapsed),
   };
 }
@@ -21226,6 +21237,13 @@ function applyReadingSplit() {
   if (window.innerWidth < 1120) {
     split.style.removeProperty("--reading-tree-w");
     split.style.removeProperty("--reading-pdf-w");
+    return;
+  }
+  if (readingTreeCollapsed()) {
+    // 折叠时用内联变量直接写 44px：applyReadingSplit 自己的内联值会盖过 `.is-tree-collapsed` 类名
+    split.style.setProperty("--reading-tree-w", "44px");
+    const prefsCollapsed = readingSplitPrefs();
+    split.style.setProperty("--reading-pdf-w", `${Math.round(prefsCollapsed.pdf)}px`);
     return;
   }
   const prefs = readingSplitPrefs();
