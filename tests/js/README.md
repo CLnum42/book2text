@@ -69,6 +69,15 @@ B2T_APP_JS=/tmp/app-old.js node tests/js/run.mjs compute-char-spans
 正确做法：**行数用原文（`bodyRaw`）数，注释行、空行都算一行；判断"只含转发调用"才用去注释后的 body。**
 两件事用的是两份文本，混用就会漏判。以后所有"代码行数/体积"判定都照这个来。
 
+## 例外表：上限必须跟着收
+
+`boundary.test.mjs` 里有两张例外表（R1 的 `ALLOW`、R4b 的 `SAME_FILE_DUP_EXCEPTIONS`），
+都带 `MAX` 上限。**删条目时必须同时把 `MAX` 收到实际条数**——只删行、不改上限，等于给未来
+留了两格偷来的预算，下一个人往空位里塞新例外不用经过任何人。
+
+例子：`c45b8a5` 删掉两对死代码时，`SAME_FILE_DUP_EXCEPTIONS` 从 3 条收到 1 条，
+`SAME_FILE_DUP_EXCEPTION_MAX` 也从 3 收到 1。只做前半截，守卫会变松而不是变紧。
+
 ## 不是本目录该干的事
 
 - 端到端验收（真浏览器、真库）：`tests/e2e/`，QA 的地盘，不要在这里复制。
