@@ -40,7 +40,8 @@ import vm from "node:vm";
 // B2T_STATIC_DIR：把整个 static 目录指到别处（迁移复跑 / 变异验证用），默认仓库里的
 const STATIC_DIR = process.env.B2T_STATIC_DIR
   || fileURLToPath(new URL("../../backend/book2text/static/", import.meta.url));
-const APP_FILE = join(STATIC_DIR, "app.js");
+// B2T_APP_JS：把 app.js 指到别处（历史版本复跑 / 变异验证），和 load-app.mjs 同一个变量名
+const APP_FILE = process.env.B2T_APP_JS || join(STATIC_DIR, "app.js");
 // B2T_VIEW_JS：对历史版本跑同一条 R1（照 load-app.mjs 里 B2T_APP_JS 的做法）。
 // 例：git show 7c1d00c:backend/book2text/static/reading-view.js > /tmp/rv-7c1d00c.js
 //     B2T_VIEW_JS=/tmp/rv-7c1d00c.js node tests/js/run.mjs boundary
@@ -145,6 +146,60 @@ function lineOf(source, index) {
 function columnOf(source, index) {
   const lineStart = source.lastIndexOf("\n", index - 1) + 1;
   return index - lineStart + 1;
+}
+
+/**
+ * 只去注释与正则字面量，**保留字符串**——提取 `el("id")` / `querySelector("#id")` 要用到字符串。
+ * 正则字面量同样要识别，否则 `/["']/` 会把后面的字符串当成未闭合字符串吞掉。
+ */
+function stripCommentsOnly(source) {
+  const out = source.split("");
+  const n = source.length;
+  let i = 0;
+  const blank = (from, to) => {
+    for (let k = from; k < to; k += 1) if (out[k] !== "\n") out[k] = " ";
+  };
+  const REGEX_PRECEDERS = "([{=,:;!&|?+-*%~^<>";
+  const looksLikeRegex = (at) => {
+    let k = at - 1;
+    while (k >= 0 && /\s/.test(source[k])) k -= 1;
+    if (k < 0) return true;
+    return REGEX_PRECEDERS.includes(source[k]);
+  };
+  while (i < n) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === "/" && next === "/") {
+      const end = source.indexOf("\n", i);
+      const stop = end === -1 ? n : end;
+      blank(i, stop); i = stop;
+    } else if (ch === "/" && next === "*") {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end === -1 ? n : end + 2;
+      blank(i, stop); i = stop;
+    } else if (ch === "/" && looksLikeRegex(i)) {
+      let k = i + 1; let inClass = false;
+      while (k < n) {
+        const cur = source[k];
+        if (cur === "\\") { k += 2; continue; }
+        if (cur === "[") inClass = true;
+        else if (cur === "]") inClass = false;
+        else if (cur === "/" && !inClass) { k += 1; break; }
+        else if (cur === "\n") break;
+        k += 1;
+      }
+      blank(i, k); i = k;
+    } else if (ch === "'" || ch === '"' || ch === "`") {
+      const quote = ch; let k = i + 1;
+      while (k < n) {
+        if (source[k] === "\\") { k += 2; continue; }
+        if (source[k] === quote) { k += 1; break; }
+        k += 1;
+      }
+      i = k;   // 字符串保留
+    } else i += 1;
+  }
+  return out.join("");
 }
 
 /** app.js 顶层声明名 → 首次声明行。`^function` / `^async function` / `^(let|const|var)`，逗号拆多声明。 */
@@ -459,6 +514,255 @@ test("R4b 例外表：上限 3 条，每条带 owner 与到期点", () => {
 });
 
 
+// ---------------------------------------------------------------- R9：no-undef（app.js）
+
+/**
+ * **规格（Chief）：`static/app.js` 里被引用、但全文件没有声明的标识符 = 红。**
+ *
+ * 为什么必须有这条：静态检查永远抓不到"引用了一个已删的声明"——`node --check` 过、单测也过，
+ * 真跑起来才 `ReferenceError`。实例：`09e6af3` 删 52 行死函数时把紧挨着的
+ * `const readingTreeOpen = new Set();` 一起带走，而它还被用 6 次 → 进审校页打开左树直接崩。
+ *
+ * 口径（三件套，写死）：
+ * - 作用域：`static/app.js` 单文件（`B2T_APP_JS` 可指到别处复跑）。
+ * - 口径：去注释与字符串（**正则字面量单独处理**，否则 `/["']/` 会吞掉后半个文件）；只查**裸标识符**。
+ * - 排除：关键字；浏览器/语言内建（白名单很短，每条带理由）；属性访问 `a.name`、可选链 `a?.name`；
+ *   对象字面量的 key 与方法名；形参 / catch 参数 / 解构绑定的本地名。
+ *
+ * 精度取舍（实测记录）：纯文本做完整 no-undef 会误报——本文件实测把**解构形参默认值**
+ * （`{ manual = false }`）算漏后还剩 3 个假阳性，补齐形参解析后 HEAD 为 0。
+ * 第一版只认"高置信度引用形态"（成员访问 `.` / 调用 `(` / 赋值目标 `=`），
+ * 不认对象方法定义与 shorthand；这条口径写在注释里，将来要扩先改这里。
+ */
+const R9_WHITELIST = new Set([
+  // 浏览器宿主对象 / API（页面里天然存在，不需要在 app.js 声明）
+  "window", "document", "console", "navigator", "location", "history", "screen", "localStorage",
+  "sessionStorage", "performance", "fetch", "getComputedStyle", "matchMedia", "scrollTo",
+  "requestAnimationFrame", "cancelAnimationFrame", "requestIdleCallback", "setTimeout",
+  "clearTimeout", "setInterval", "clearInterval", "queueMicrotask", "structuredClone",
+  "IntersectionObserver", "ResizeObserver", "MutationObserver", "DOMParser", "XMLSerializer",
+  "Notification", "Audio", "Image", "Blob", "File", "FileReader", "FormData", "AbortController",
+  "TextEncoder", "TextDecoder", "atob", "btoa", "crypto", "CSS", "devicePixelRatio",
+  "Event", "CustomEvent", "KeyboardEvent", "PointerEvent", "DragEvent", "XMLHttpRequest",
+  // 语言内建
+  "Math", "JSON", "Promise", "Object", "Array", "String", "Number", "Boolean", "Date", "RegExp",
+  "Error", "TypeError", "RangeError", "Map", "Set", "WeakMap", "WeakSet", "Symbol", "Intl",
+  "URL", "URLSearchParams", "Uint8Array", "Int32Array", "Float32Array", "ArrayBuffer", "DataView",
+  "undefined", "NaN", "Infinity", "globalThis", "encodeURIComponent", "decodeURIComponent",
+  "parseInt", "parseFloat", "isNaN", "isFinite", "arguments",
+]);
+const R9_KEYWORDS = new Set((
+  "const new class extends super this function return await let null try catch if throw typeof "
+  + "false for of true else in do while switch case default break continue delete void instanceof "
+  + "yield async static get set from as import export constructor var debugger with finally"
+).split(" "));
+
+/** 声明集合：let/const/var/function/class + 形参（含解构/默认值）+ catch + 解构声明。 */
+function r9DeclaredNames(stripped) {
+  const declared = new Set();
+  for (const m of stripped.matchAll(/(?<![\w$.])(?:let|const|var|function|class)\s+([A-Za-z_$][\w$]*)/g)) {
+    declared.add(m[1]);
+  }
+  // 形参：按逗号全深度拆（默认值里的对象字面量拆开也没关系——多声明只会少报，不会多报）
+  const addParams = (text) => {
+    for (const part of text.split(",")) {
+      const beforeDefault = part.split("=")[0];
+      for (const id of beforeDefault.matchAll(/[A-Za-z_$][\w$]*/g)) {
+        if (!R9_KEYWORDS.has(id[0])) declared.add(id[0]);
+      }
+    }
+  };
+  for (const m of stripped.matchAll(/function\s*[A-Za-z_$\w$]*\s*\(/g)) {
+    let depth = 0;
+    let k = m.index + m[0].length - 1;
+    const startK = k;
+    for (; k < stripped.length; k += 1) {
+      if (stripped[k] === "(") depth += 1;
+      else if (stripped[k] === ")") {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    addParams(stripped.slice(startK + 1, k));
+  }
+  for (const m of stripped.matchAll(/\(([^()]*)\)\s*=>/g)) addParams(m[1]);
+  for (const m of stripped.matchAll(/([A-Za-z_$][\w$]*)\s*=>/g)) declared.add(m[1]);
+  for (const m of stripped.matchAll(/catch\s*\(\s*([A-Za-z_$][\w$]*)/g)) declared.add(m[1]);
+  for (const m of stripped.matchAll(/(?:let|const|var)\s*[\[{]([^}\]]*)[\]}]/g)) {
+    for (const id of m[1].matchAll(/[A-Za-z_$][\w$]*/g)) declared.add(id[0]);
+  }
+  return declared;
+}
+
+test("R9：app.js 里被引用但没声明的标识符一律红（no-undef）", () => {
+  const source = readFileSync(APP_FILE, "utf8");
+  const stripped = stripCommentsAndStrings(source);
+  const declared = r9DeclaredNames(stripped);
+  const fileName = APP_FILE.split("/").pop();
+
+  const problems = new Map();   // name -> 首次引用行
+  for (const m of stripped.matchAll(/[A-Za-z_$][\w$]*/g)) {
+    const name = m[0];
+    if (declared.has(name) || R9_WHITELIST.has(name) || R9_KEYWORDS.has(name)) continue;
+    const beforeChar = stripped[m.index - 1] || "";
+    if (beforeChar === ".") continue;                       // 属性访问
+    const prevChar = stripped.slice(Math.max(0, m.index - 8), m.index).trimEnd().slice(-1);
+    const after = stripped.slice(m.index + name.length);
+    const nextChar = after.trimStart().slice(0, 1);
+    const next2 = after.trimStart().slice(0, 2);
+    // 对象字面量的 key / 方法名
+    if ((prevChar === "{" || prevChar === ",") && (nextChar === ":" || nextChar === "(")) continue;
+    // 高置信度引用：成员访问 / 调用 / 赋值目标
+    const isMember = nextChar === ".";
+    const isCall = nextChar === "(";
+    const isAssign = nextChar === "=" && !next2.startsWith("==") && !next2.startsWith("=>");
+    if (!(isMember || isCall || isAssign)) continue;
+    if (!problems.has(name)) problems.set(name, lineOf(stripped, m.index));
+  }
+  const messages = [...problems].map(
+    ([name, line]) => `标识符 ${name} 在 ${fileName}:${line} 被引用，但全文件没有声明（可能是删函数时连带的活声明）`,
+  );
+  assert.deepEqual(messages, [], messages.join("\n"));
+});
+
+// ---------------------------------------------------------------- R3：DOM 归属
+
+/**
+ * **规格：docs/refactor/reading-view-boundary.md §16（DevLead 裁决走 (a)：33 行豁免 + MAX 只降不升）**
+ *
+ * 实测（本机 2026-10-28）：`view-reading` 子树 39 个 id，`app.js` 引用其中 **34** 个
+ * （§16 写的"4 行"是旧读数，已由 Architect 修正）。这 34 行是**过渡期豁免**，
+ * 每搬一块到模块就得删一行；`MAX_EXEMPTIONS` 必须同批收（c45b8a5 的教训）。
+ * 模块文件（`*-view.js`）零豁免：id 必须能在自己 `<section id="view-X">` 子树里找到。
+ */
+const R3_EXEMPTIONS = [
+  { id: "reading-garbled-count", line: 17647, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-garbled-open", line: 17651, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-punct-count", line: 17753, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-punct-open", line: 17761, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-stream", line: 18173, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-tree", line: 18175, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-progress-text", line: 19037, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-progress-fill", line: 19038, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-draft-chip", line: 19041, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-submit", line: 19044, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-pdf-scroll", line: 19090, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-panel-host", line: 19157, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-pages", line: 19569, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-pdf-box", line: 19573, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-image-status", line: 19786, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-diff-layer", line: 20031, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-page-no", line: 20204, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-prev", line: 20361, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-next", line: 20362, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-follow-toggle", line: 20383, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-follow-chip", line: 20386, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-preflight", line: 20396, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-next-unreviewed", line: 20800, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-display-menu", line: 20802, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-more-menu", line: 20803, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-display-open", line: 20805, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-more-open", line: 20811, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-pending-toggle", line: 20817, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "view-reading", line: 20819, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-discard-all", line: 20830, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-help", line: 20841, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-undo", line: 20855, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-filter", line: 20858, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-blindspot", line: 20865, owner: "app.js", expires: "正文流① 搬完" },
+];
+const R3_MAX_EXEMPTIONS = 34;   // 只降不升；条目数变了必须同批改这里
+
+/** 解析 index.html：view 名 → 该 `<section>` 子树里的 id 集合（按标签深度找同层 `</section>`）。 */
+function parseViewSections(html) {
+  const sections = new Map();
+  const openTag = /<section\b[^>]*\bid="view-([\w-]+)"[^>]*>/gi;
+  let match;
+  while ((match = openTag.exec(html)) !== null) {
+    const viewName = match[1];
+    let depth = 1;
+    let cursor = openTag.lastIndex;
+    let end = html.length;
+    const tag = /<\/?section\b/gi;
+    tag.lastIndex = cursor;
+    let tagMatch;
+    while ((tagMatch = tag.exec(html)) !== null) {
+      if (tagMatch[0][1] === "/") {
+        depth -= 1;
+        if (depth === 0) {
+          end = tagMatch.index;
+          break;
+        }
+      } else {
+        depth += 1;
+      }
+    }
+    const subtree = html.slice(match.index, end);
+    sections.set(viewName, new Set([...subtree.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1])));
+  }
+  return sections;
+}
+
+/** JS 里引用的 DOM id：`el("x")` / `getElementById("x")` / `querySelector("#x")`。 */
+function domIdsIn(jsStripped) {
+  const found = new Map();
+  const patterns = [
+    /\bel\(\s*["']([^"']+)["']\s*\)/g,
+    /getElementById\(\s*["']([^"']+)["']\s*\)/g,
+    /querySelector(?:All)?\(\s*["']#([A-Za-z][\w-]*)[^"']*["']\s*\)/g,
+  ];
+  for (const pattern of patterns) {
+    let m;
+    while ((m = pattern.exec(jsStripped)) !== null) {
+      if (!found.has(m[1])) found.set(m[1], lineOf(jsStripped, m.index));
+    }
+  }
+  return found;
+}
+
+test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子树的引用必须在豁免表里", () => {
+  const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
+  const sections = parseViewSections(html);
+  assert.ok(sections.has("reading"), "index.html 里找不到 <section id=\"view-reading\">");
+  const problems = [];
+
+  // 模块文件：零豁免
+  for (const fileName of readdirSync(STATIC_DIR).filter((name) => name.endsWith("-view.js"))) {
+    const viewName = fileName.replace(/-view\.js$/, "");
+    const expected = sections.get(viewName) || new Set();
+    const stripped = stripCommentsOnly(readFileSync(join(STATIC_DIR, fileName), "utf8"));
+    for (const [id, line] of domIdsIn(stripped)) {
+      if (!expected.has(id)) problems.push(`${fileName}:${line} 引用了不属于 view-${viewName} 的 id ${id}`);
+    }
+  }
+
+  // app.js：只许引用豁免表里的 reading 子树 id
+  const exempt = new Map(R3_EXEMPTIONS.map((item) => [item.id, item]));
+  const readingIds = sections.get("reading");
+  const appStripped = stripCommentsOnly(readFileSync(APP_FILE, "utf8"));
+  const appIds = domIdsIn(appStripped);
+  for (const [id, line] of appIds) {
+    if (!readingIds.has(id)) continue;              // 不是 reading 子树的 id，不归 R3 管
+    if (!exempt.has(id)) {
+      problems.push(`app.js:${line} 引用了 view-reading 的 id ${id}，但豁免表里没有它`);
+    }
+  }
+  // 豁免表防过期：每条必须还在被引用；条目数必须等于 MAX（只降不升，删条目要同批收）
+  for (const item of R3_EXEMPTIONS) {
+    if (!appIds.has(item.id)) {
+      problems.push(`豁免 ${item.id} 在 app.js 里已经不再被引用——到期了请同批删除（到期点：${item.expires}）`);
+    }
+    if (!item.owner) problems.push(`豁免 ${item.id} 缺 owner`);
+    if (!item.expires) problems.push(`豁免 ${item.id} 缺到期点`);
+  }
+  assert.equal(
+    R3_EXEMPTIONS.length,
+    R3_MAX_EXEMPTIONS,
+    `豁免 ${R3_EXEMPTIONS.length} 条，MAX=${R3_MAX_EXEMPTIONS}：删条目必须同批改 MAX（只降不升）`,
+  );
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
 // ---------------------------------------------------------------- R5：一状态一 owner
 
 /**
@@ -480,6 +784,7 @@ test("R4b 例外表：上限 3 条，每条带 owner 与到期点", () => {
  * 违规 0 / 豁免 0。
  */
 const OWNERS = {
+  readingTreeOpen: "app.js",
   readingData: "app.js",
   readingProject: "app.js",
   readingEntries: "app.js",
