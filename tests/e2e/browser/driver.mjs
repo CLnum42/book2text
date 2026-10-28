@@ -62,6 +62,8 @@ export async function run(cfg) {
       return await stressNext(page, args);
     case "perf_probe":
       return await perfProbe(page, args);
+    case "task_metrics":
+      return await taskMetrics(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -1894,6 +1896,37 @@ async function perfProbe(page, args) {
   }
   const longTasks = await page.evaluate(() => window.__longTasks.slice(0, 40));
   return { idle, longTasks, visibility: idle.visibility, before };
+}
+
+/** 主线程工作量：CDP Performance.getMetrics，按 20 次点击取 TaskDuration 等增量。 */
+async function taskMetrics(page, args) {
+  const presses = args.presses || 20;
+  const keys = ["TaskDuration", "ScriptDuration", "LayoutDuration", "RecalcStyleDuration"];
+  const readMetrics = async () => {
+    const out = await page.cdp("Performance.getMetrics");
+    const map = {};
+    for (const item of (out && out.metrics) || []) map[item.name] = item.value;
+    return map;
+  };
+  await page.cdp("Performance.enable");
+  const before = await readMetrics();
+  const logBefore = await page.evaluate(() => (window.__b2tNextLog || []).length);
+  const atBefore = await page.evaluate(() => (window.__b2tNextLog || [])[0]
+    ? window.__b2tNextLog[0].at : null);
+  for (let i = 0; i < presses; i += 1) {
+    await page.click("#reading-next-unreviewed", { label: `主线程采样 ${i + 1}` }).catch(() => {});
+    await page.waitForTimeout(300);
+  }
+  const after = await readMetrics();
+  const delta = {};
+  for (const key of keys) delta[key] = Math.round(((after[key] || 0) - (before[key] || 0)) * 1000) / 1000;
+  const afterLog = await page.evaluate(() => ({
+    len: (window.__b2tNextLog || []).length,
+    at: (window.__b2tNextLog || [])[0] ? window.__b2tNextLog[0].at : null,
+  }));
+  return { presses, delta, perPress: Object.fromEntries(
+    Object.entries(delta).map(([k, v]) => [k, Math.round((v / presses) * 1000) / 1000])
+  ), logBefore, atBefore, afterLog };
 }
 
 async function nextProbe(page) {
