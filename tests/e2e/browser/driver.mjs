@@ -3149,8 +3149,13 @@ async function gotoProbe(page, args) {
       const stream = document.getElementById("reading-stream");
       window.__gotoSampler = true;
       stream.addEventListener("scroll", () => {
-        window.__gotoSamples.push({ t: Math.round(performance.now()), top: Math.round(stream.scrollTop) });
+        window.__gotoSamples.push({ t: Math.round(performance.now()), top: Math.round(stream.scrollTop), src: "event" });
       }, { passive: true });
+      if (!window.__gotoPollTimer) {
+        window.__gotoPollTimer = setInterval(() => {
+          window.__gotoSamples.push({ t: Math.round(performance.now()), top: Math.round(stream.scrollTop), src: "poll" });
+        }, 50);
+      }
     });
   const clear = () => page.evaluate(() => { window.__gotoSamples = []; });
   const read = () =>
