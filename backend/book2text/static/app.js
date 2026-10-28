@@ -18387,6 +18387,14 @@ function buildReadingSegment(segment) {
     return node;
   }
   for (let i = 0; i < spans.length; i += 1) {
+    // 任务 78：**行与行之间的分隔符不能丢**。`line_spans` 的区间不含 join_lines 补的
+    // 那个空格，直接 slice 再拼起来，英文就是 "prevent"+"the people" → "preventthe people"。
+    // 用户因此看到"doingwhat"，以为 OCR 漏了空格去改一个本来没错的地方——
+    // **他审的字就不是导出的字了**。这里把间距原样补回去（CJK 没有间距，gap 为空）。
+    if (i > 0) {
+      const gap = segment.text.slice(spans[i - 1].end, spans[i].start);
+      if (gap) node.append(document.createTextNode(gap));
+    }
     const line = buildReadingLine(segment, span_at(spans, i));
     // 任务 66：块边界要**看得见**。跨页段在视觉上是一段连贯的话，
     // 实际是两个块；不标出来，用户会以为能跨过去改（这本书有 312 个跨页段）。
@@ -19015,6 +19023,7 @@ function ensureReadingPages() {
   if (!currentProject) return;
   if (readingStackProject === currentProject.project_id && readingTiles.size) return;
   buildReadingPages();
+  observeReadingColumnResize();
 }
 
 /** 重建页列（换项目时）：490 个空壳，图和块都还空着。 */
@@ -19119,6 +19128,42 @@ function observeReadingTiles() {
 }
 
 /** 一页要的东西：图 + 块数据；两个都到齐才画框。 */
+/**
+ * 审校页取的档位（任务 78）。和目录确认一样，**宽度变了就得重算并重取**：
+ * 左侧页列被拖宽 / 窗口变大 / 折叠左树之后，原来那张 `view` 图会被拉伸到新宽度上。
+ */
+let readingImageProfile = "";
+let readingResizeObserver = null;
+
+function refreshReadingImageProfiles(force = false) {
+  const tiles = [...readingTiles.values()];
+  const sample = tiles.find((tile) => Number(tile.dataset.pageNo) === readingPageNo) || tiles[0];
+  if (!sample) return;
+  const pageNo = Number(sample.dataset.pageNo);
+  const wanted = pageProfileFor(sample, pageNo);
+  if (!force && (!readingImageProfile || wanted === readingImageProfile)) {
+    readingImageProfile = wanted;
+    return;
+  }
+  readingImageProfile = wanted;
+  for (const pageNo of [...readingLoadedImages]) releaseReadingImage(pageNo);
+  for (const visible of readingVisibleSet) ensureReadingImage(visible);
+  if (readingPageNo) ensureReadingImage(readingPageNo);
+}
+
+function observeReadingColumnResize() {
+  const wrap = el("reading-pages");
+  if (!wrap || readingResizeObserver || typeof ResizeObserver === "undefined") return;
+  let timer = 0;
+  readingResizeObserver = new ResizeObserver(() => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (currentView === "reading") refreshReadingImageProfiles();
+    }, 250);
+  });
+  readingResizeObserver.observe(wrap);
+}
+
 function ensureReadingTile(pageNo) {
   ensureReadingImage(pageNo);
   ensureReadingBlocks(pageNo).then(() => paintReadingTile(pageNo));
@@ -19349,12 +19394,19 @@ function setReadingHoverByBlock(blockId) {
   const index = segments.findIndex((segment) =>
     (segment.line_spans || []).some((span) => span.block_id === blockId)
   );
-  if (index < 0) return;
+  if (index < 0) {
+    setReadingHover(null);
+    return;
+  }
   const segment = segments[index];
   if (readingHoveredSeq === Number(segment.seq)) return;
   readingHoveredSeq = Number(segment.seq);
+  // 先把**两边**上一条的清干净：只清右侧会让左边留下旧的绿块（用户说"离开没取消选中"）
   for (const node of document.querySelectorAll("#reading-stream .reading-seg.is-hover")) {
     node.classList.remove("is-hover");
+  }
+  for (const box of document.querySelectorAll("#reading-pages .box.is-linked")) {
+    box.classList.remove("is-linked");
   }
   const node = document.querySelector(`#reading-stream .reading-seg[data-seq="${segment.seq}"]`);
   if (!node) return;
@@ -20069,6 +20121,14 @@ function setupReading() {
     setReadingHoverByBlock(box.dataset.blockId);
   });
   el("reading-pages").addEventListener("mouseleave", () => setReadingHover(null));
+  // 从块移到块外的空白：pointerout 里判断"相关目标已经不在任何块里"就清，
+  // 否则空白区域没有 mouseleave 可等，高亮会一直留着。
+  el("reading-pages").addEventListener("pointerout", (event) => {
+    const to = event.relatedTarget;
+    if (to && to.closest && to.closest("#reading-pages .box")) return;
+    if (to && to.closest && to.closest("#reading-pages")) return;
+    setReadingHover(null);
+  });
   el("reading-stream").addEventListener("click", (event) => {
     const markEl = event.target.closest && event.target.closest(".reading-mark");
     if (!markEl) return;
