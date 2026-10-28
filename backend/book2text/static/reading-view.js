@@ -843,7 +843,7 @@ function onReadingViewportResize() {
 function loadReadingInlineEdits() {
   injected.setReadingInlineEdits(new Map());
   try {
-    const raw = localStorage.getItem(injected.readingInlineStorageKey?.());
+    const raw = localStorage.getItem(readingInlineStorageKey());
     if (!raw) return;
     const data = JSON.parse(raw);
     for (const item of data.items || []) {
@@ -1395,12 +1395,12 @@ function openReadingPanel(entry) {
   adopt.type = "button";
   adopt.className = "btn btn--pri btn--sm";
   adopt.textContent = "采用候选";
-  adopt.addEventListener("click", () => injected.draftReading(entry, "adopted", entry.candidate));
+  adopt.addEventListener("click", () => draftReading(entry, "adopted", entry.candidate));
   const keep = document.createElement("button");
   keep.type = "button";
   keep.className = "btn btn--sm";
   keep.textContent = "保留原文";
-  keep.addEventListener("click", () => injected.draftReading(entry, "kept", null));
+  keep.addEventListener("click", () => draftReading(entry, "kept", null));
   const edit = document.createElement("button");
   edit.type = "button";
   edit.className = "btn btn--sm";
@@ -2076,7 +2076,7 @@ function ensureReadingImage(pageNo) {
   // 否则占位图加载完会触发旧闭包，把 thumb 标成 `is-ready`，这一页就永远停在模糊的缩略图上。
   image.onload = null;
   image.onerror = null;
-  injected.showReadingPlaceholder(pageNo, image);
+  showReadingPlaceholder(pageNo, image);
   image.dataset.pending = "1";
   injected.getReadingImageQueue().push(pageNo);
   pumpReadingImages();
@@ -2224,7 +2224,7 @@ function saveReadingInlineEdits() {
       at: value.at,
     }));
     localStorage.setItem(
-      injected.readingInlineStorageKey(),
+      readingInlineStorageKey(),
       JSON.stringify({ items, savedAt: Date.now() })
     );
   } catch {
@@ -2244,7 +2244,7 @@ function startReadingEdit(entry, panel) {
   save.type = "button";
   save.className = "btn btn--pri btn--sm";
   save.textContent = "存草稿";
-  save.addEventListener("click", () => injected.draftReading(entry, null, input.value));
+  save.addEventListener("click", () => draftReading(entry, null, input.value));
   const row = document.createElement("div");
   row.className = "reading-panel__edit";
   row.append(input, save);
@@ -2270,7 +2270,7 @@ function hideReadingPanelHost() {
 function buildReadingTreePreview(entry) {
   const wrap = document.createElement("span");
   wrap.className = "reading-tree__preview";
-  const lineText = injected.readingEntryLineText(entry);
+  const lineText = readingEntryLineText(entry);
   if (!lineText) {
     wrap.textContent = (entry.candidate || "").slice(0, 40) || "（这一页的差异还没加载）";
     return wrap;
@@ -2302,8 +2302,8 @@ function readingEntriesForPage(pageNo) {
   return injected.getReadingEntries()
     .filter((entry) => entry.page_no === pageNo && injected.readingEntryVisible(entry))
     .sort((a, b) => {
-      const oa = injected.readingMarkOrder(a);
-      const ob = injected.readingMarkOrder(b);
+      const oa = readingMarkOrder(a);
+      const ob = readingMarkOrder(b);
       for (let i = 0; i < oa.length; i += 1) {
         if (oa[i] !== ob[i]) return oa[i] - ob[i];
       }
@@ -2365,7 +2365,7 @@ function buildReadingSegment(segment) {
         ? Math.max(start, Number(spans[i + 1].start) || start)
         : segment.text.length;
     const piece = segment.text.slice(start, nextStart);
-    const line = injected.buildReadingLine(segment, injected.span_at(spans, i), piece);
+    const line = injected.buildReadingLine(segment, span_at(spans, i), piece);
     // 任务 66：块边界要**看得见**。跨页段在视觉上是一段连贯的话，
     // 实际是两个块；不标出来，用户会以为能跨过去改（这本书有 312 个跨页段）。
     if (i + 1 < spans.length && spans[i + 1].block_id !== spans[i].block_id) {
@@ -2374,7 +2374,7 @@ function buildReadingSegment(segment) {
     }
     node.append(line);
   }
-  injected.checkReadingSegmentText(node, segment);
+  checkReadingSegmentText(node, segment);
   return node;
 }
 
@@ -2450,6 +2450,82 @@ function logReadingNext(entry, extra = {}) {
   });
   injected.getReadingNextLog().length = Math.min(injected.getReadingNextLog().length, 20);
   window.__b2tNextLog = injected.getReadingNextLog();
+}
+
+  // ---------------------------------------------------------------- 审校环叶子（任务 94 · L7）
+  // 从 app.js 原样搬入；依赖由 init() 注入。状态仍归 app.js（get/set）。
+
+/** 就地编辑草稿的存储键（与逐行裁决草稿分开：一个是改字，一个是裁决）。 */
+function readingInlineStorageKey() {
+  return injected.getProject() ? `b2t.readingInline.${injected.getProject().project_id}` : "";
+}
+
+function readingMarkOrder(entry) {
+  return [Number(entry.seq) || 0, Number(entry.span_index) || 0, Number(entry.page_no) || 0];
+}
+
+function checkReadingSegmentText(node, segment) {
+  if (!injected.textCheckEnabled()) return;
+  // 角标 / 折叠提示 / 页范围这些是**渲染附加物**，不属于正文，比较前摘掉
+  const clone = node.cloneNode(true);
+  for (const extra of clone.querySelectorAll(
+    ".reading-chip, .reading-fold, .reading-proof__pages, .reading-mark__hint"
+  )) {
+    extra.remove();
+  }
+  const shown = clone.textContent || "";
+  const expected = segment.text || "";
+  if (shown === expected) return;
+  let i = 0;
+  while (i < shown.length && i < expected.length && shown[i] === expected[i]) i += 1;
+  const from = Math.max(0, i - 20);
+  console.error(
+    `[文本自检] 第 ${segment.seq} 段右栏显示与导出不一致（第 ${i} 个字符起）\n` +
+      `  显示: …${shown.slice(from, i + 20)}…\n` +
+      `  导出: …${expected.slice(from, i + 20)}…`
+  );
+  window.__b2tTextCheckFails = (window.__b2tTextCheckFails || 0) + 1;
+}
+
+function span_at(spans, index) {
+  return spans[index];
+}
+
+function draftReading(entry, ack, text) {
+  const key = injected.readingKey(entry.block_id, entry.line_index);
+  injected.getReadingDrafts().set(key, {
+    block_id: entry.block_id,
+    line_index: entry.line_index,
+    page_no: entry.page_no,
+    ack,
+    text: text == null ? undefined : text,
+    old_text: entry.current || "",
+    at: new Date().toISOString(),
+  });
+  injected.saveReadingDrafts();
+  injected.closeReadingPanel();
+  injected.rerenderReadingLine(entry);
+  injected.renderReadingProgress();
+}
+
+function readingEntryLineText(entry) {
+  for (const segment of injected.readingVisibleSegments() || []) {
+    if (segment.seq !== entry.seq) continue;
+    for (const span of segment.line_spans || []) {
+      if (span.block_id !== entry.block_id || span.line_index !== entry.line_index) continue;
+      return segment.text.slice(span.start, span.end);
+    }
+  }
+  return "";
+}
+
+/** 低分辨率占位（同目录确认）：先让用户看到"像什么"，高精度随后替换。 */
+function showReadingPlaceholder(pageNo, image) {
+  if (!image || image.dataset.placeholder === "1") return;
+  if (image.classList.contains("is-ready") || image.getAttribute("src")) return;
+  image.dataset.placeholder = "1";
+  image.classList.add("is-placeholder");
+  image.src = injected.pageImageUrl(pageNo, "thumb");
 }
 
   // ---------------------------------------------------------------- 对外接口

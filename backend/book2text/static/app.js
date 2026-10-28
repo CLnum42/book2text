@@ -17993,11 +17993,6 @@ function readingDraftStorageKey() {
   return currentProject ? `b2t.readingDrafts.${currentProject.project_id}` : "";
 }
 
-/** 就地编辑草稿的存储键（与逐行裁决草稿分开：一个是改字，一个是裁决）。 */
-function readingInlineStorageKey() {
-  return currentProject ? `b2t.readingInline.${currentProject.project_id}` : "";
-}
-
 
 function saveReadingDrafts() {
   try {
@@ -18044,11 +18039,6 @@ let readingUserMovedAt = 0;
  * 两者不等说明"这次滚动是用户滚的"，左右跟随据此判断。 */
 let readingUserScrollSeq = 0;
 let readingProgramScrollSeq = 0;
-
-
-function readingMarkOrder(entry) {
-  return [Number(entry.seq) || 0, Number(entry.span_index) || 0, Number(entry.page_no) || 0];
-}
 
 
 let readingMarksRequestSeq = 0;
@@ -18113,29 +18103,6 @@ function textCheckEnabled() {
   } catch {
     return false;
   }
-}
-
-function checkReadingSegmentText(node, segment) {
-  if (!textCheckEnabled()) return;
-  // 角标 / 折叠提示 / 页范围这些是**渲染附加物**，不属于正文，比较前摘掉
-  const clone = node.cloneNode(true);
-  for (const extra of clone.querySelectorAll(
-    ".reading-chip, .reading-fold, .reading-proof__pages, .reading-mark__hint"
-  )) {
-    extra.remove();
-  }
-  const shown = clone.textContent || "";
-  const expected = segment.text || "";
-  if (shown === expected) return;
-  let i = 0;
-  while (i < shown.length && i < expected.length && shown[i] === expected[i]) i += 1;
-  const from = Math.max(0, i - 20);
-  console.error(
-    `[文本自检] 第 ${segment.seq} 段右栏显示与导出不一致（第 ${i} 个字符起）\n` +
-      `  显示: …${shown.slice(from, i + 20)}…\n` +
-      `  导出: …${expected.slice(from, i + 20)}…`
-  );
-  window.__b2tTextCheckFails = (window.__b2tTextCheckFails || 0) + 1;
 }
 
 
@@ -18228,9 +18195,6 @@ function rerenderReadingLine(key) {
   paintInlineRevision(node, inline);
 }
 
-function span_at(spans, index) {
-  return spans[index];
-}
 
 function buildReadingLine(segment, span, displayText = null) {
   const key = readingKey(span.block_id, span.line_index);
@@ -18440,23 +18404,6 @@ function refreshReadingCurrentHighlight() {
 }
 
 
-function draftReading(entry, ack, text) {
-  const key = readingKey(entry.block_id, entry.line_index);
-  readingDrafts.set(key, {
-    block_id: entry.block_id,
-    line_index: entry.line_index,
-    page_no: entry.page_no,
-    ack,
-    text: text == null ? undefined : text,
-    old_text: entry.current || "",
-    at: new Date().toISOString(),
-  });
-  saveReadingDrafts();
-  closeReadingPanel();
-  rerenderReadingLine(entry);
-  renderReadingProgress();
-}
-
 function rerenderReadingLine(entry) {
   const key = readingKey(entry.block_id, entry.line_index);
   const line = readingLineNode(key);
@@ -18472,17 +18419,6 @@ function rerenderReadingLine(entry) {
   );
   const fresh = buildReadingLine(segment, span);
   line.replaceWith(fresh);
-}
-
-function readingEntryLineText(entry) {
-  for (const segment of readingVisibleSegments() || []) {
-    if (segment.seq !== entry.seq) continue;
-    for (const span of segment.line_spans || []) {
-      if (span.block_id !== entry.block_id || span.line_index !== entry.line_index) continue;
-      return segment.text.slice(span.start, span.end);
-    }
-  }
-  return "";
 }
 
 
@@ -18524,16 +18460,6 @@ const READING_NEAR_MARGIN = 900;
  */
 let readingImageProfile = "";
 let readingResizeObserver = null;
-
-
-/** 低分辨率占位（同目录确认）：先让用户看到"像什么"，高精度随后替换。 */
-function showReadingPlaceholder(pageNo, image) {
-  if (!image || image.dataset.placeholder === "1") return;
-  if (image.classList.contains("is-ready") || image.getAttribute("src")) return;
-  image.dataset.placeholder = "1";
-  image.classList.add("is-placeholder");
-  image.src = pageImageUrl(pageNo, "thumb");
-}
 
 
 /** 跳转时没开出来的面板：挂起 key，等"块/行到达"再试，不靠定时器猜。 */
@@ -18831,7 +18757,6 @@ function boot() {
     getReadingCursorEntry: () => readingCursorEntry,
     setReadingCursorEntry: (value) => { readingCursorEntry = value; },
     showNoticeBar: (text) => showNoticeBar(text),
-    readingInlineStorageKey: () => readingInlineStorageKey(),
     readingDraftStorageKey: () => readingDraftStorageKey(),
     // 任务 94 L5：审校环搬进模块后的状态句柄（状态仍归 app.js，get+set 成对）
     getCurrentView: () => currentView,
@@ -18883,7 +18808,6 @@ function boot() {
     setReadingVisibleObserver: (value) => { readingVisibleObserver = value; },
     // 任务 94 L5：审校环里仍留在 app.js 的叶子函数（模块经注入调用）
     clearPendingPanel: (...args) => clearPendingPanel(...args),
-    draftReading: (...args) => draftReading(...args),
     exportOptions: (...args) => exportOptions(...args),
     loadIndexBlocks: (...args) => loadIndexBlocks(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
@@ -18906,12 +18830,9 @@ function boot() {
     clearPageBlocks: (...args) => clearPageBlocks(...args),
     clearTileMargin: (...args) => clearTileMargin(...args),
     pageImageUrl: (...args) => pageImageUrl(...args),
-    showReadingPlaceholder: (...args) => showReadingPlaceholder(...args),
     // L6 刀2：仍留在 app.js 的叶子函数
     computeCharSpans: (...args) => computeCharSpans(...args),
-    readingEntryLineText: (...args) => readingEntryLineText(...args),
     readingEntryVisible: (...args) => readingEntryVisible(...args),
-    readingMarkOrder: (...args) => readingMarkOrder(...args),
     // L6 刀3：状态 getter
     getReadingNextLog: () => readingNextLog,
     getReadingProof: () => readingProof,
@@ -18924,8 +18845,8 @@ function boot() {
     setReadingSyncUntil: (value) => { readingSyncUntil = value; return value; },
     // L6 刀3：仍留在 app.js 的叶子函数
     buildReadingLine: (...args) => buildReadingLine(...args),
-    checkReadingSegmentText: (...args) => checkReadingSegmentText(...args),
-    span_at: (...args) => span_at(...args),
+    // L6 刀7：仍留在 app.js 的叶子函数
+    textCheckEnabled: (...args) => textCheckEnabled(...args),
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {
