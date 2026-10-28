@@ -233,7 +233,7 @@ function setupReading() {
   });
   el("reading-blindspot").addEventListener("click", () => {
     // C1 盲区出口：两路一致但可疑的行，去单页审校里逐行看
-    injected.showView?.("review");
+    injected.navigate?.("review");
     injected.openPageDetail?.(injected.getPageNo());
   });
   el("reading-stream").addEventListener("scroll", onReadingScroll, { passive: true });

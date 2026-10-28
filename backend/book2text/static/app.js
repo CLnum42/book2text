@@ -20148,7 +20148,7 @@ function boot() {
     renderReadingProgress: () => renderReadingProgress(),
     saveReadingInlineEdits: () => saveReadingInlineEdits(),
     saveReadingDrafts: () => saveReadingDrafts(),
-    showView: (name) => showView(name),
+    navigate: (name) => showView(name),
     openPageDetail: (pageNo) => openPageDetail(pageNo),
     setReadingHover: (seq) => setReadingHover(seq),
     openReadingPanel: (entry) => openReadingPanel(entry),
