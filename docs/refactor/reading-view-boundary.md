@@ -818,3 +818,25 @@ Slice 1 实测（2026-10-28）：
 反向变异：把 `readingSplitState` 的 owner 改成 `app.js` 且 app.js 不写它 → 表过期检查应报"owner 与写点不一致"。
 
 **为什么现在就有用**：面板那个"6 写点"就是这条规则的现实证据——`readingPendingPanelKey` 的写点横跨 L5 和 L8。R5 上闸后，任何"顺手在别处写一下"都会立刻红。
+
+
+### 13.3 报数必须带对象（Chief 2026-10-28）
+
+同一个数在不同对象上不同值，**报数时必须写清对象**：
+
+| 数 | 对象 | 口径 | 状态 |
+|---|---|---|---|
+| **24** | **新 L1**（`setupReading` + `readingReloadAfterBatch`） | 出边 = 临时 21 + 永久 3 | **现行** |
+| 21 | 新 L1 临时 | 块内顶层函数名，按名去重 | 现行 |
+| 3 | 新 L1 永久 | 块外符号（`showView`/`openPageDetail`/`renderPunctGroupBadge`） | 现行 |
+| 28 | **全块** | 审校块所有代码 → 块外顶层符号 | 现行 |
+| 22 | 方案 A（L1 也搬 `setReviewOverlays`）临时 | 块内函数名 | 已否决（见 §11） |
+| 7 | 方案 A 永久 | 块外符号 | 已否决 |
+| 23 | **旧 8 函数 L1 名单**（208 行版） | 块内函数名 | **作废** |
+| 30 | — | 那是"上限"，不是读数 | **作废** |
+
+**新 L1 临时 21 个，按消失层**：L2 10（`markReadingUserMoved`/`startInlineEdit`/`setReadingFilter`/`setReadingHoverByBlock`/`onReadingPdfScroll`/`setReadingFollow`/`onReadingScroll`/`stepReadingPage`/`submitReadingDrafts`/`undoReadingSubmit`）；L3 2（`openReading`/`exitInlineEdit`）；L4 1（`gotoNextUnreviewed`）；L5 3（`renderReading`/`openReadingPanel`/`setReadingHover`）；L6 1（`saveReadingInlineEdits`）；L8 4（`saveReadingDrafts`/`renderReadingProgress`/`closeReadingPanel`/`rerenderReadingLine`）。
+**永久 3 个**：`showView`（→ `navigate()`）、`openPageDetail`（→ 注入）、`renderPunctGroupBadge`（→ `onPunctGroups`）。
+**不注入 2 个**：`el`（模块自带）、`currentView`（改本地 `active`）。
+
+> 前一版报的"24 临时"里有 3 个（`renderReadingPreflight`/`paintReadingTile`/`readingMarkOrder`）分别来自 3 个**将被删除的死函数**，死函数一删它们就不在账上了。这就是"先剔死代码再量耦合"（§2）的现实价值。
