@@ -1,0 +1,20 @@
+{
+  "_comment": "闸 B 的只降不升预算（§18.3）。base = ring-break-base，全部 1；每切一条边，在**同一笔**提交里把它改成 0（预算文件在 docs/ 不在 tests/js，所以不撞 A1）。测试断言：current == budget 且 budget <= base。",
+  "baseTag": "ring-break-base",
+  "moduleShowView": 0,
+  "edges": {
+    "bridge:setupReading": 0,
+    "bridge:openPageDetail": 1,
+    "bridge:renderMergeView": 1,
+    "bridge:submitMergeDecisions": 1,
+    "edge:renderReading->ensureReadingMarksWindow": 1,
+    "edge:renderReading->retryReadingPendingPanel": 1,
+    "edge:renderReadingTree->ensureReadingMarksWindow": 1,
+    "edge:renderReadingTree->scrollReadingToPage": 1,
+    "edge:openReadingPanel->updateReadingPage": 1,
+    "edge:setReadingHover->ensureReadingBlocks": 1,
+    "edge:verifyReadingPageSync->updateReadingPage": 1,
+    "edge:gotoReadingEntry->jumpReadingTo": 1,
+    "edge:gotoReadingEntry->updateReadingPage": 1
+  }
+}

@@ -44,6 +44,16 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import vm from "node:vm";
+import { execFileSync } from "node:child_process";
+import {
+  BRIDGE_EXCEPTIONS,
+  BRIDGE_EXCEPTION_MAX,
+  checkBridgeExceptions,
+  evaluateEdges,
+  evaluateEdgeSources,
+  moduleShowViewInSource,
+} from "./edge-ratchet.mjs";
+import { evaluateFeatureContract } from "./feature-contract.mjs";
 
 // B2T_STATIC_DIR：把整个 static 目录指到别处（迁移复跑 / 变异验证用），默认仓库里的
 const STATIC_DIR = process.env.B2T_STATIC_DIR
@@ -1023,6 +1033,89 @@ test("R5 防表过期：OWNERS 里的状态必须还存在（删了状态要同�
     `OWNERS 里的状态在源码里不存在了：${missing.join("、")}——删状态请同批删表项，别把表变成墓地`);
   assert.ok(R5_EXCUSES.length <= R5_MAX_EXCUSES,
     `R5 豁免 ${R5_EXCUSES.length} 条，上限 ${R5_MAX_EXCUSES}——开口要显式加数字`);
+});
+
+// ---------------------------------------------------------------- R11：闸 B（静态边棘轮）
+
+/**
+ * **§18.3 闸 B**：13 条边（4 桥 + 9 回调）的调用点合计只降不升。
+ *
+ * 棘轮怎么锁：预算表在 `docs/refactor/edge-budget.json`（**不在 tests/js**，所以切边提交可以
+ * 同批改它而不撞闸 A 的 A1）。断言三条：
+ * 1. 当前计数 == 预算值（少切了没改预算 → 红；偷偷把预算改大 → 第 2 条红）
+ * 2. 预算值 <= `ring-break-base` 上的实测值（只降不升）
+ * 3. 模块文件全文 `showView(` 也一起锁（破环后必须走注入的 `navigate()`）
+ *
+ * 基点计数每次从 tag 的树里现算（`git show`），不写死数字。
+ */
+test("R11（闸 B）：静态边棘轮 13 条只降不升（对照 ring-break-base 现算）", () => {
+  const repo = fileURLToPath(new URL("../..", import.meta.url));
+  const budget = JSON.parse(
+    readFileSync(new URL("../../docs/refactor/edge-budget.json", import.meta.url), "utf8"),
+  );
+  const gitShow = (ref, path) =>
+    execFileSync("git", ["show", `${ref}:${path}`], { cwd: repo, encoding: "utf8" });
+
+  const base = evaluateEdgeSources(
+    gitShow(budget.baseTag, "backend/book2text/static/app.js"),
+    gitShow(budget.baseTag, "backend/book2text/static/reading-view.js"),
+  );
+  const current = evaluateEdges(process.env.B2T_STATIC_DIR);
+  const problems = [];
+  // 桥例外表：3 条 app.js 内部桥，各自带 owner 与到期点；上限 3、只降不升、归零即过期
+  if (BRIDGE_EXCEPTIONS.length > BRIDGE_EXCEPTION_MAX) {
+    problems.push(`桥例外 ${BRIDGE_EXCEPTIONS.length} 条，上限 ${BRIDGE_EXCEPTION_MAX}`);
+  }
+  for (const entry of BRIDGE_EXCEPTIONS) {
+    if (!entry.owner) problems.push(`桥例外 ${entry.name} 缺 owner`);
+    if (!entry.expires) problems.push(`桥例外 ${entry.name} 缺到期点`);
+  }
+  problems.push(...checkBridgeExceptions(current));
+
+  for (const item of current) {
+    const expected = budget.edges[item.key];
+    if (expected === undefined) {
+      problems.push(`预算表里没有 ${item.key}——13 条边一条都不许漏`);
+      continue;
+    }
+    if (item.count !== expected) {
+      problems.push(`${item.label}：当前 ${item.count} 处，预算 ${expected} 处（切了就要同批改预算；没切不许改小）`);
+    }
+    const baseItem = base.find((entry) => entry.key === item.key);
+    if (baseItem && expected > baseItem.count) {
+      problems.push(`${item.label}：预算 ${expected} > base ${baseItem.count}——棘轮只许降`);
+    }
+  }
+  const baseModuleShowView = moduleShowViewInSource(
+    gitShow(budget.baseTag, "backend/book2text/static/reading-view.js"),
+  );
+  const currentModuleShowView = moduleShowViewInSource(
+    readFileSync(process.env.B2T_VIEW_JS || VIEW_FILE, "utf8"),
+  );
+  if (currentModuleShowView !== budget.moduleShowView) {
+    problems.push(`模块文件 showView( 当前 ${currentModuleShowView} 处，预算 ${budget.moduleShowView} 处`);
+  }
+  if (budget.moduleShowView > baseModuleShowView) {
+    problems.push(`模块 showView 预算 ${budget.moduleShowView} > base ${baseModuleShowView}——只许降`);
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+// ---------------------------------------------------------------- R12：闸 A（特征测试契约）
+
+/**
+ * **§18.2 闸 A 的静态部分**：A1（产品提交不许碰 tests/js）、A1b（序列删除行 0）、
+ * A3（改判据必须单开 `test-contract:` 提交并登记 §18.6）。
+ * A2（回放）/A4（变异红两遍）是运行期检查，形态是 `tests/js/mutation-check.mjs`。
+ */
+test("R12（闸 A）：特征测试契约 A1 / A1b / A3", () => {
+  const { problems, commitCount } = evaluateFeatureContract();
+  if (commitCount === 0) {
+    // 基点刚打完、还没有切边提交：契约自然成立，但要把这个事实说出来
+    assert.deepEqual(problems, [], problems.join("\n"));
+    return;
+  }
+  assert.deepEqual(problems, [], `${commitCount} 笔提交里违反契约：\n${problems.join("\n")}`);
 });
 
 // ---------------------------------------------------------------- 对外导出棘轮

@@ -1,0 +1,24 @@
+# 闸 B 基线红证据（§18.3）
+# SHA:    afe20fe4aa6422d4529fa8c242859ebda4c7164b
+# tag:    ring-break-base
+# 谁跑:   TestDev（DevLead 用同一命令复跑比对字节）
+# 命令:   git worktree add --detach /tmp/rb-base ring-break-base && B2T_STATIC_DIR=/tmp/rb-base/backend/book2text/static node tests/js/edge-ratchet.mjs --expect-red
+# 口径:   去注释与字符串后，caller 函数体内 callee 的**全部出现**计数（不是首次）
+# 日期:   2026-10-29
+
+闸 B · 静态边棘轮 13/13 RED
+RED   桥 setupReading → showView(  （reading-view.js 体内 1 处）
+EXEMPT 桥 openPageDetail → showView(  （app.js 体内 1 处；例外，到期点见 BRIDGE_EXCEPTIONS）
+EXEMPT 桥 renderMergeView → showView(  （app.js 体内 1 处；例外，到期点见 BRIDGE_EXCEPTIONS）
+EXEMPT 桥 submitMergeDecisions → showView(  （app.js 体内 1 处；例外，到期点见 BRIDGE_EXCEPTIONS）
+RED   边 renderReading → ensureReadingMarksWindow  （app.js 体内 1 处）
+RED   边 renderReading → retryReadingPendingPanel  （app.js 体内 1 处）
+RED   边 renderReadingTree → ensureReadingMarksWindow  （app.js 体内 1 处）
+RED   边 renderReadingTree → scrollReadingToPage  （app.js 体内 1 处）
+RED   边 openReadingPanel → updateReadingPage  （app.js 体内 1 处）
+RED   边 setReadingHover → ensureReadingBlocks  （app.js 体内 1 处）
+RED   边 verifyReadingPageSync → updateReadingPage  （app.js 体内 1 处）
+RED   边 gotoReadingEntry → jumpReadingTo  （app.js 体内 1 处）
+RED   边 gotoReadingEntry → updateReadingPage  （app.js 体内 1 处）
+RED   附加：reading-view.js 全文 showView( = 1 处（不计入 13 条）
+合计：0/13 条已归零，13 条仍有调用点

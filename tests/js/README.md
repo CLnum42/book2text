@@ -107,6 +107,29 @@ R3 要判"某个 DOM id 的引用落在哪个函数里"。第一版用 `Map<id, 
 例子：`c45b8a5` 删掉两对死代码时，`SAME_FILE_DUP_EXCEPTIONS` 从 3 条收到 1 条，
 `SAME_FILE_DUP_EXCEPTION_MAX` 也从 3 收到 1。只做前半截，守卫会变松而不是变紧。
 
+## 破环期的两道闸（§18）
+
+**闸 B · 静态边棘轮**
+
+```bash
+node tests/js/edge-ratchet.mjs              # 期望非例外边全 0；不满足 = 退出码 1
+node tests/js/edge-ratchet.mjs --expect-red # 期望 13/13 全红（只用于 base 证据）
+B2T_STATIC_DIR=/tmp/rb-base/backend/book2text/static node tests/js/edge-ratchet.mjs --expect-red
+```
+
+- 13 条边 = 4 桥（桥内 `showView(` 计数）+ 9 回调边（caller 体内 callee 计数）
+- 计数口径：**去注释与字符串后的全部出现**（不是首次；没去注释会多数出注释里的名字）
+- 只降不升的预算在 `docs/refactor/edge-budget.json`：**每切一条边，在同一笔提交里改那一行**
+  （预算在 docs/ 不在 tests/js，所以不撞闸 A 的 A1）。预算值必须等于当前计数、且不大于 base 实测值
+- 3 条 app.js 内部桥走例外表（`edge-ratchet.mjs` 的 `BRIDGE_EXCEPTIONS`）：带 owner + 到期点、
+  上限 3、归零即过期。**总条数始终 13**——改总数等于悄悄放宽
+
+**闸 A · 特征测试契约**
+
+- 静态部分（A1/A1b/A3）在 `boundary.test.mjs` 的 R12：产品提交不许碰 `tests/js`；序列删除行 = 0；
+  改旧断言必须单开 `test-contract:` 提交并登记 §18.6
+- 运行部分（A2 回放 / A4 变异红）用 `tests/js/mutation-check.mjs`（同一份测试在 base worktree 上先绿、插变异后必须红）
+
 ## 不是本目录该干的事
 
 - 端到端验收（真浏览器、真库）：`tests/e2e/`，QA 的地盘，不要在这里复制。
