@@ -1,0 +1,487 @@
+[
+  {
+    "index": 1,
+    "label": "第 1 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 15,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 1,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 2,
+    "label": "第 1 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 15,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 1,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 3,
+    "label": "第 4 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 9,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 4,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 4,
+    "label": "第 8 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 6,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 8,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 5,
+    "label": "第 9 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 11,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 9,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 6,
+    "label": "第 9 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 11,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 9,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 7,
+    "label": "第 11 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 8,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 11,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 8,
+    "label": "第 13 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 10,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 13,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 9,
+    "label": "第 14 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 7,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 14,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 10,
+    "label": "第 14 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 7,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 14,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 11,
+    "label": "第 15 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 10,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 15,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 12,
+    "label": "第 15 页",
+    "panel": true,
+    "branch": "none",
+    "reason": null,
+    "blocks": null,
+    "panelOpened": true,
+    "lineFound": false,
+    "entryPage": null,
+    "globalUnacked": 567,
+    "pagesWithCounts": 356,
+    "sample": [
+      [
+        "1",
+        {
+          "total": 4,
+          "unacked": 4,
+          "acked": 0,
+          "chars": 2,
+          "chars_unacked": 2,
+          "punct": 2,
+          "punct_unacked": 2
+        }
+      ],
+      [
+        "4",
+        {
+          "total": 2,
+          "unacked": 2,
+          "acked": 0,
+          "chars": 1,
+          "chars_unacked": 1,
+          "punct": 1,
+          "punct_unacked": 1
+        }
+      ],
+      [
+        "6",
+        {
+          "total": 2,
+          "unacked": 2,
+          "acked": 0,
+          "chars": 0,
+          "chars_unacked": 0,
+          "punct": 2,
+          "punct_unacked": 2
+        }
+      ]
+    ],
+    "inReading": true
+  },
+  {
+    "index": 13,
+    "label": "第 16 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 5,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 16,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 14,
+    "label": "第 17 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 3,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 17,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 15,
+    "label": "第 18 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 4,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 18,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 16,
+    "label": "第 18 页",
+    "panel": true,
+    "branch": "none",
+    "reason": null,
+    "blocks": null,
+    "panelOpened": true,
+    "lineFound": false,
+    "entryPage": null,
+    "globalUnacked": 567,
+    "pagesWithCounts": 356,
+    "sample": [
+      [
+        "1",
+        {
+          "total": 4,
+          "unacked": 4,
+          "acked": 0,
+          "chars": 2,
+          "chars_unacked": 2,
+          "punct": 2,
+          "punct_unacked": 2
+        }
+      ],
+      [
+        "4",
+        {
+          "total": 2,
+          "unacked": 2,
+          "acked": 0,
+          "chars": 1,
+          "chars_unacked": 1,
+          "punct": 1,
+          "punct_unacked": 1
+        }
+      ],
+      [
+        "6",
+        {
+          "total": 2,
+          "unacked": 2,
+          "acked": 0,
+          "chars": 0,
+          "chars_unacked": 0,
+          "punct": 2,
+          "punct_unacked": 2
+        }
+      ]
+    ],
+    "inReading": true
+  },
+  {
+    "index": 17,
+    "label": "第 23 页",
+    "panel": true,
+    "branch": "retry",
+    "reason": "no-line",
+    "blocks": 9,
+    "panelOpened": true,
+    "lineFound": true,
+    "entryPage": 23,
+    "globalUnacked": null,
+    "pagesWithCounts": null,
+    "sample": null,
+    "inReading": true
+  },
+  {
+    "index": 18,
+    "label": "第 23 页",
+    "panel": true,
+    "branch": "none",
+    "reason": null,
+    "blocks": null,
+    "panelOpened": true,
+    "lineFound": false,
+    "entryPage": null,
+    "globalUnacked": 567,
+    "pagesWithCounts": 356,
+    "sample": [
+      [
+        "1",
+        {
+          "total": 4,
+          "unacked": 4,
+          "acked": 0,
+          "chars": 2,
+          "chars_unacked": 2,
+          "punct": 2,
+          "punct_unacked": 2
+        }
+      ],
+      [
+        "4",
+        {
+          "total": 2,
+          "unacked": 2,
+          "acked": 0,
+          "chars": 1,
+          "chars_unacked": 1,
+          "punct": 1,
+          "punct_unacked": 1
+        }
+      ],
+      [
+        "6",
+        {
+          "total": 2,
+          "unacked": 2,
+          "acked": 0,
+          "chars": 0,
+          "chars_unacked": 0,
+          "punct": 2,
+          "punct_unacked": 2
+        }
+      ]
+    ],
+    "inReading": true
+  },
+  {
+    "index": 19,
+    "label": "第 23 页",
+    "panel": true,
+    "branch": "none",
+    "reason": null,
+    "blocks": null,
+    "panelOpened": true,
+    "lineFound": false,
+    "entryPage": null,
+    "globalUnacked": 567,
+    "pagesWithCounts": 356,
+    "sample": [
+      [
+        "1",
+        {
+          "total": 4,
+          "unacked": 4,
+          "acked": 0,
+          "chars": 2,
+          "chars_unacked": 2,
+          "punct": 2,
+          "punct_unacked": 2
+        }
+      ],
+      [
+        "4",
+        {
+          "total": 2,
+          "unacked": 2,
+          "acked": 0,
+          "chars": 1,
+          "chars_unacked": 1,
+          "punct": 1,
+          "punct_unacked": 1
+        }
+      ],
+      [
+        "6",
+        {
+          "total": 2,
+          "unacked": 2,
+          "acked": 0,
+          "chars": 0,
+          "chars_unacked": 0,
+          "punct": 2,
+          "punct_unacked": 2
+        }
+      ]
+    ],
+    "inReading": true
+  },
+  {
+    "index": 20,
+    "label": "第 23 页",
+    "panel": true,
+    "branch": "none",
+    "reason": null,
+    "blocks": null,
+    "panelOpened": true,
+    "lineFound": false,
+    "entryPage": null,
+    "globalUnacked": 567,
+    "pagesWithCounts": 356,
+    "sample": [
+      [
+        "1",
+        {
+          "total": 4,
+          "unacked": 4,
+          "acked": 0,
+          "chars": 2,
+          "chars_unacked": 2,
+          "punct": 2,
+          "punct_unacked": 2
+        }
+      ],
+      [
+        "4",
+        {
+          "total": 2,
+          "unacked": 2,
+          "acked": 0,
+          "chars": 1,
+          "chars_unacked": 1,
+          "punct": 1,
+          "punct_unacked": 1
+        }
+      ],
+      [
+        "6",
+        {
+          "total": 2,
+          "unacked": 2,
+          "acked": 0,
+          "chars": 0,
+          "chars_unacked": 0,
+          "punct": 2,
+          "punct_unacked": 2
+        }
+      ]
+    ],
+    "inReading": true
+  }
+]

@@ -1208,6 +1208,7 @@ async function nextProbe(page) {
         entryPage: log.entryPage ?? null,
         globalUnacked: log.globalUnacked ?? null,
         pagesWithCounts: log.pagesWithCounts ?? null,
+        sample: log.sample ?? null,
         inReading: Boolean(document.getElementById("view-reading") && !document.getElementById("view-reading").hidden),
       };
     }, i));
