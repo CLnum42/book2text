@@ -20528,7 +20528,8 @@ async function gotoNextUnreviewed() {
     (entry) => !readingEntryDone(entry) && entry.page_no >= pageNo
   );
   if (!target) {
-    logReadingNext(null, { branch: "none" });
+    logReadingNext(null, { branch: "none", globalUnacked: Number(readingGlobalCounts?.chars_unacked || 0),
+                            pagesWithCounts: readingPageCounts.size });
     showNoticeBar("全书未审已处理完 · 可以去「成稿模式」通读一遍，或者直接导出");
     return;
   }
@@ -20543,6 +20544,8 @@ function readingCursorOrder() {
 
 /** 下一处"还有汉字未审"的页（严格在 afterPage 之后，绕一圈）；没有就返回 null。 */
 function readingNextPageWithUnacked(afterPage) {
+  // 注意：`readingPageCounts` 来自**服务端全书**的 `page_counts`（marks 响应里始终是全书的），
+  // 不是"已加载窗口"。`readingEntries` 才是窗口数据——找下一处不许用它做全书判断。
   const pages = [...readingPageCounts.entries()]
     .map(([pageNo, item]) => ({
       page_no: Number(pageNo),
