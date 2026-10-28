@@ -2056,6 +2056,18 @@ async function dockProbe(page, args) {
     });
     return { removed };
   }
+  if (mode === "click_rail") {
+    const box = await page.evaluate(() => {
+      const rail = document.getElementById("reading-tree-rail");
+      if (!rail || rail.hidden) return null;
+      const r = rail.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + 40 };
+    });
+    if (!box) return { railClick: "no-rail" };
+    await page.mouse.click(box.x, box.y, { label: "点左树窄条" });
+    await page.waitForTimeout(500);
+    return { railClick: "clicked", snap: await page.evaluate(dockSnapshotRaw) };
+  }
   if (mode === "toggle_tree") {
     await page.click("#reading-tree-toggle", { label: "收起/展开左树" });
     await page.waitForTimeout(500);
