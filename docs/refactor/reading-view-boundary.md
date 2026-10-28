@@ -377,3 +377,22 @@ grep -nE '\b(readingPageNo|readingFollow|readingData|readingProject|readingMarks
 # JS 用例基线（本机：/opt/homebrew/bin/node）
 /opt/homebrew/bin/node tests/js/run.mjs   # 25 pass / 0 fail / 1 todo（代理对是已知 TODO），退出码 0
 ```
+
+## 6. Slice 1 验收口径（Chief 22:5x 更正后）
+
+原判据"`app.js` 减少行数 ≈ 新文件增加行数（±30）"**作废**——它会被骨架代码骗：
+IIFE 包装、依赖注入、头注释、4 个转发 stub 都是搬运必然带的，实测 -109 / +201 差 93 行却完全正确。
+
+**新判据（可机检，交 TestDev 做成测试）**：
+
+> 每个被搬走的函数，全仓库只许有**一份真实现**。
+> `app.js` 若保留同名函数，函数体必须 **≤6 行**，且只含 `return window.ReadingView.x(...)` 或 `window.ReadingView.x(...)`。
+
+±30 行降级为参考值，**不作为通过条件**。
+
+Slice 1 实测（2026-10-28）：
+- 搬走 4 个函数 + 6 个常量：137 行
+- `app.js` 21,198 → 21,089（-109）；`reading-view.js` +201（137 搬 + 64 骨架）
+- 真实现份数：`readingSplitPrefs` / `applyReadingSplit` / `saveReadingSplit` / `setupReadingSplit` **各 1**
+- 四个数：段数 4821、字数 753335、正文归一化 sha256 `9ca42f50a3ed1dd6`、差异 567（与基线逐项相同）
+- `pytest` 1002 passed；`tests/js` 25 pass / 1 todo
