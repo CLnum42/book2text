@@ -721,7 +721,8 @@ Slice 1 实测（2026-10-28）：
 ### 13.3 两个数分开报
 
 - **临时注入**（会被内化）：上表。**L4 结束时是 33，不是 0**；到 L12 才归零。
-- **永久依赖**（永远内化不了，属 core/服务层）：`apiJson`、`exportOptions`、`currentProject`、`localStorage`、`performance.now`、`computeCharSpans`、`pageImageUrl`/`pageProfileFor`（页面图）、`punctGroupsData`/`punctReviewSet`（标点）。
+- **永久依赖**（永远内化不了，属 core/服务层）。**到 L4 结束实测 = 14 个，不是 5 个**：`apiJson`、`currentProject`、`loadFinishSummary`、`openPageDetail`、`pagesMarginOn`、`pagesOverlayOn`、`project_id`、`refreshGarbledLines`、`refreshPunctGroups`、`renderPunctGroupBadge`、`savePageMarginPreference`、`savePageOverlayPreference`、`showNoticeBar`、`showView`。
+  （`el`、`currentView` 不算：模块自带 `el`、`currentView` 改本地 `active`。Chief 批的"永久 5"只是其中的"块外服务"子集——`apiJson`/`exportOptions`/`currentProject`/`localStorage`/`performance.now`；L4 的真集合还要加上路由 2 个、标点 3 个、页面视图状态与偏好 4 个。）
   **`refreshPunctGroups` / `renderPunctGroupBadge` 不算临时债**——它们是跨模块（标点），必须走已存在的 `onPunctGroups` 注入，不许由 `openReading` 直接调。
 
 ---
@@ -785,3 +786,29 @@ Slice 1 实测（2026-10-28）：
 - 绿：HEAD 上模块文件 0 命中；`app.js` 只剩上面 4 行豁免。
 
 **为什么现在值钱**：Slice 3 已经把 follow chip 和两个 click 绑定收归模块，剩下 4 行是 badge 写值——它们会让 punct 和 reading 各算一份 badge 数据，正是"面板 142 / 顶部 141"的成因。R3 上闸后，任何"顺手在别处写一个 `reading-*` 的 id"都会立刻红。
+
+
+---
+
+## 17. R5（一状态一 owner）上闸规格 —— 目标 6/8
+
+**判据**：文档 §3 的 66 行归属表就是 owner 清单。某状态的**任何赋值点**落在非 owner 文件里 = 违规。
+
+**口径（三件套）**：
+- **作用域**：全仓库 JS（`static/app.js` + `static/*-view.js`），按文件归属。
+- **口径**：去注释与字符串；赋值点 = `NAME =` / `+=` / `-=` / `++` / `--`；**排除** `==` / `===`、声明行（`let NAME =`）、以及 `NAME.set/.add/.push/.delete` 这类原地变更（第一版不查原地变更，口径写在这里，别以后争执）。
+- **对象**：被测 SHA 的源码树。
+
+**怎么数**：
+1. 测试里硬编码 `OWNERS = { 状态名: "app.js" | "reading-view.js" }`（来源 = 文档 §3）。
+2. 逐文件扫每个状态的赋值点行号。
+3. 断言每条的所在文件 == owner。
+4. **另加两条防表过期**：OWNERS 里的每个状态必须在源码里还存在（删了状态不删表项 → 红）；每次搬层要把对应表项改成模块文件（同批提交，不同批 → 红）。
+
+**现状读数**：66 个状态，65 个 owner = `app.js`，`readingSplitState` owner = `reading-view.js`。当前 `reading-view.js` 不写任何 app.js 状态 → **违规 0、豁免 0**。
+
+**变异样例（必须先在假数据上红）**：在 `reading-view.js` 里插一行 `readingPageNo = 5;` → 期望报
+`readingPageNo 的 owner 是 app.js，reading-view.js:NNN 写了它`。
+反向变异：把 `readingSplitState` 的 owner 改成 `app.js` 且 app.js 不写它 → 表过期检查应报"owner 与写点不一致"。
+
+**为什么现在就有用**：面板那个"6 写点"就是这条规则的现实证据——`readingPendingPanelKey` 的写点横跨 L5 和 L8。R5 上闸后，任何"顺手在别处写一下"都会立刻红。
