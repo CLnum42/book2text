@@ -18011,8 +18011,7 @@ let readingMarksWindow = null;        // {page_from, page_to}；null = 还没加
 let readingGlobalCounts = null;       // {chars_total, chars_unacked, punct_total, punct_unacked, ...}
 let readingPageCounts = new Map();    // page_no(string) → {total, unacked, acked, chars*, punct*}
 let readingFirstUnackedPage = null;
-let readingMarksLoading = false;
-let readingMarksQueued = null;
+let readingMarksInFlight = null;      // 在飞的补窗口请求；并发调用共享同一个 promise
 let readingRepaintPending = false;   // 编辑期间欠着的一次重画
 // 任务 72：左↔右同步互斥（谁先动谁锁 350 ms，另一个方向只跟随不反向驱动）
 let readingSyncDriver = null;
@@ -18367,37 +18366,52 @@ function readingWindowHas(pageNo) {
  *
  * 只重画已经铺出来的那几段（`READING_CHUNK` = 8 段，几十毫秒），并保持滚动位置——
  * 直接 `renderReading({reset:true})` 会把用户滚到的地方弹回文首。
+ *
+ * 并发语义：**共享在飞的请求，且目标页真正进窗口才 resolve**。旧写法在有请求在飞时
+ * 只把页号塞进 `readingMarksQueued` 就 `return`，调用方的 `await` 立刻通过、拿到的是
+ * 旧窗口——20 连点的第 8 次正好是第一次必须补窗口（窗口 1–11 里恰好 7 条未审），
+ * 于是对着旧 entries 找行，报 `branch:none`。这是竞态，不是口径。
  */
 async function ensureReadingMarksWindow(pageNo) {
   if (!currentProject || !readingData) return;
   if (!pageNo || readingWindowHas(pageNo)) return;
-  if (readingMarksLoading) {
-    readingMarksQueued = pageNo;
-    return;
-  }
-  readingMarksLoading = true;
-  try {
-    const payload = await apiJson(
-      `/api/projects/${currentProject.project_id}/review/marks?page=${pageNo}`
-    );
-    applyReadingMarksPayload(payload);
-    // 正在编辑某一行时**不重画**：重画会换掉那个 DOM 节点，光标和没落草稿的输入
-    // 一起丢（任务 67 实测：翻页补 marks 正好撞上用户点进一行，编辑态瞬间消失）。
-    // 红字晚一点到没关系，退出编辑时补画。
-    if (readingEditingKey) {
-      readingRepaintPending = true;
+  // 最多三轮：等在飞 → 自己发 → 确认。失败重试有上限，也不把异常抛给调用方。
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (readingMarksInFlight) {
+      await readingMarksInFlight;
     } else {
-      refreshReadingMarksPaint();
+      const pending = loadReadingMarksWindow(pageNo).then(
+        () => true,
+        () => false
+      );
+      readingMarksInFlight = pending;
+      let ok = false;
+      try {
+        ok = await pending;
+      } finally {
+        if (readingMarksInFlight === pending) readingMarksInFlight = null;
+      }
+      // 请求成功、窗口却还不含该页：页码越界被服务端裁掉，再发也一样。
+      if (ok) return;
     }
-    renderReadingProgress();
-  } catch (error) {
-    // 窗口没补上只是这一段暂时没红字，不影响正文与其他功能
-  } finally {
-    readingMarksLoading = false;
-    const queued = readingMarksQueued;
-    readingMarksQueued = null;
-    if (queued && !readingWindowHas(queued)) ensureReadingMarksWindow(queued);
+    if (readingWindowHas(pageNo)) return;
   }
+}
+
+async function loadReadingMarksWindow(pageNo) {
+  const payload = await apiJson(
+    `/api/projects/${currentProject.project_id}/review/marks?page=${pageNo}`
+  );
+  applyReadingMarksPayload(payload);
+  // 正在编辑某一行时**不重画**：重画会换掉那个 DOM 节点，光标和没落草稿的输入
+  // 一起丢（任务 67 实测：翻页补 marks 正好撞上用户点进一行，编辑态瞬间消失）。
+  // 红字晚一点到没关系，退出编辑时补画。
+  if (readingEditingKey) {
+    readingRepaintPending = true;
+  } else {
+    refreshReadingMarksPaint();
+  }
+  renderReadingProgress();
 }
 
 function refreshReadingMarksPaint() {
@@ -20496,8 +20510,10 @@ function logReadingNext(entry, extra = {}) {
 async function gotoNextUnreviewed() {
   if (!readingData) return;
   // **唯一数据源：服务端按正文流顺序给出的未审行表**。
-  // 不再用"页级计数 + 已加载 marks"自己找——页级口径包含流外的行（脚注/被排除块），
-  // 找到页却找不到行，就会report"没有下一处"（实测卡在 11/14/18/23）。
+  // 不再用"页级计数 + 已加载 marks"自己找：页级口径包含流外的行（脚注/被排除块），
+  // 找到页却找不到行就会报"没有下一处"。实测 567 条未审汉字 = 流内 562 + 流外 5
+  // （流外在页 48/106/499/621/630）。早先说的"卡在 11/14/18/23"已推翻：那几页的行
+  // 都在流内，none 是补 marks 窗口的竞态，由 ensureReadingMarksWindow 共享在飞请求修掉。
   let payload;
   try {
     payload = await apiJson(`/api/projects/${currentProject.project_id}/review/next-lines`, {
@@ -20585,13 +20601,13 @@ function gotoReadingEntry(entry) {
   }
   if (line) centerReadingLinePair(entry);
   if (!readingDrafts.has(key)) openReadingPanel(entry);
-  if (document.querySelector("#reading-stream .reading-panel")) {
+  if (document.querySelector("#reading-panel-host .reading-panel")) {
     readingPendingPanelKey = null;
     readingPendingPanelEntry = null;
   }
   // 偶发"跳到了但没有面板/没有当前项"（QA 2/20）：面板没建起来就再开一次，
   // 并把原因记进 __b2tNextLog。第二次仍失败也记下来，不静默。
-  if (!document.querySelector("#reading-stream .reading-panel")) {
+  if (!document.querySelector("#reading-panel-host .reading-panel")) {
     readingPendingPanelKey = key;
     readingPendingPanelEntry = entry;
     let reason = "no-line";
@@ -20599,7 +20615,7 @@ function gotoReadingEntry(entry) {
     if (!seg) reason = "no-segment";
     else if (!readingLineNode(key)) reason = "line-not-mounted";
     setTimeout(() => {
-      if (!document.querySelector("#reading-stream .reading-panel")) openReadingPanel(entry);
+      if (!document.querySelector("#reading-panel-host .reading-panel")) openReadingPanel(entry);
       logReadingNext(entry, { branch: "retry", reason, retried: true });
     }, 260);
   }
