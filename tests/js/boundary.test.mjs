@@ -628,7 +628,7 @@ test("R9：app.js 里被引用但没声明的标识符一律红（no-undef）", 
 // ---------------------------------------------------------------- R3：DOM 归属
 
 /**
- * **规格：docs/refactor/reading-view-boundary.md §16（作用域 = 审校块外）**
+ * **规格：docs/refactor/reading-view-boundary.md §16（判法 = 引用所在函数是否归 reading）**
  *
  * 为什么不是全 app.js：审校块（`阅读审校（L 刀` 起、`function boot(` 前止）里那 30 个引用
  * 是**搬运期的合法状态**（L1–L12 会搬走）。如果按 id 全量豁免，以后块里新写一句
@@ -638,7 +638,11 @@ test("R9：app.js 里被引用但没声明的标识符一律红（no-undef）", 
  * （块内 30 + 块外 4）、5 个完全没被引用。块外那 4 个是 2 个函数
  * （`renderGarbledBadge` / `renderPunctGroupBadge`）→ 4 行豁免，到期 `正文流① 搬完`。
  *
- * 块范围**每次运行重算**（不写死行号）：找含 `阅读审校（L 刀` 的行到 `function boot(` 前一行。
+ * 判法：引用行 → 找到**包围它的顶层函数区间** → 该区间是否整个落在审校块内。
+ * 块范围**每次运行重算**（不写死行号）：含 `阅读审校（L 刀` 的行 → `function boot(` 前一行。
+ * - 归 reading 的函数 → 合法（这些函数随 L1–L12 搬走），**不占豁免**；
+ * - 不归 reading（含**顶层代码**，不在任何函数里）→ 一律红，除非在 4 条豁免里。
+ * 为什么不用"行号在块内"：顶层代码落在块的行区间里但不是 reading 的函数，按行判会被放过。
  * 模块文件（`*-view.js`）零豁免：id 必须能在自己 `<section id="view-X">` 子树里找到。
  */
 const R3_EXEMPTIONS = [
@@ -648,6 +652,40 @@ const R3_EXEMPTIONS = [
   { id: "reading-punct-open", line: 17761, owner: "app.js", expires: "正文流① 搬完" },
 ];
 const R3_MAX_EXEMPTIONS = 4;   // 只降不升；条目数变了必须同批改这里
+
+/**
+ * 顶层函数区间：`^(async )?function NAME(` 起，按花括号配对找结束行。
+ * 用于"某行属于哪个函数"（R3 判引用位置）。
+ */
+function topLevelFunctionRanges(stripped) {
+  const lines = stripped.split("\n");
+  const ranges = [];
+  lines.forEach((text, index) => {
+    const m = /^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(text);
+    if (!m) return;
+    const startLine = index + 1;
+    // 从这一行开始按花括号配对（先找到函数体的 `{`）
+    let depth = 0;
+    let started = false;
+    let endLine = startLine;
+    for (let k = index; k < lines.length; k += 1) {
+      for (const ch of lines[k]) {
+        if (ch === "{") {
+          depth += 1;
+          started = true;
+        } else if (ch === "}") {
+          depth -= 1;
+        }
+      }
+      if (started && depth === 0) {
+        endLine = k + 1;
+        break;
+      }
+    }
+    ranges.push({ name: m[1], start: startLine, end: endLine });
+  });
+  return ranges;
+}
 
 /**
  * 审校块的范围：含 `阅读审校（L 刀` 的那一行 → `function boot(` 的前一行。
@@ -741,22 +779,36 @@ test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子�
   const block = readingBlockRange(appSource);
   assert.ok(block, "算不出审校块范围（找不到 `阅读审校（L 刀` 或 `function boot(`）——R3 不能在没有范围的情况下跑");
   const inBlock = (line) => line >= block.start && line <= block.end;
-  const outsideIds = new Map();   // id -> 块外的行号列表
+  // 判"这一行属于哪个顶层函数"，再看该函数是否整体落在审校块内（=归 reading）
+  const functionRanges = topLevelFunctionRanges(stripCommentsAndStrings(appSource));
+  const ownerOfLine = (line) => {
+    const hit = functionRanges.filter((item) => item.start <= line && line <= item.end);
+    if (!hit.length) return null;                       // 顶层代码：不归任何函数
+    return hit[hit.length - 1];                          // 最靠后的那个（区间不重叠时等价）
+  };
+  const isReadingOwned = (line) => {
+    const fn = ownerOfLine(line);
+    if (!fn) return false;                              // 顶层代码不归 reading
+    return fn.start >= block.start && fn.end <= block.end;
+  };
+  const outsideIds = new Map();   // id -> 违规行号列表（不属于 reading 的引用）
   for (const [id, occurrences] of appIds) {
-    if (!readingIds.has(id)) continue;              // 不是 reading 子树的 id，不归 R3 管
-    const outside = occurrences.filter((line) => !inBlock(line));
-    if (!outside.length) continue;                  // 全部出现在块内：搬运期合法状态
-    outsideIds.set(id, outside);
+    if (!readingIds.has(id)) continue;                  // 不是 reading 子树的 id，不归 R3 管
+    const violations = occurrences.filter((line) => !isReadingOwned(line));
+    if (!violations.length) continue;                   // 全部在 reading 自己的函数里
+    outsideIds.set(id, violations);
     if (!exempt.has(id)) {
-      for (const line of outside) {
-        problems.push(`app.js:${line} 在审校块外引用了 view-reading 的 id ${id}，但豁免表里没有它`);
+      for (const line of violations) {
+        const fn = ownerOfLine(line);
+        const where = fn ? `函数 ${fn.name}（${fn.start}-${fn.end}）不归 reading` : "顶层代码不归 reading";
+        problems.push(`app.js:${line} 引用了 view-reading 的 id ${id}，但${where}，且豁免表里没有它`);
       }
     }
   }
   // 豁免表防过期：每条必须还在被引用；条目数必须等于 MAX（只降不升，删条目要同批收）
   for (const item of R3_EXEMPTIONS) {
     if (!outsideIds.has(item.id)) {
-      problems.push(`豁免 ${item.id} 在审校块外已经不再被引用——到期了请同批删除（到期点：${item.expires}）`);
+      problems.push(`豁免 ${item.id} 已经不再被非 reading 代码引用——到期了请同批删除（到期点：${item.expires}）`);
     }
     if (!item.owner) problems.push(`豁免 ${item.id} 缺 owner`);
     if (!item.expires) problems.push(`豁免 ${item.id} 缺到期点`);
