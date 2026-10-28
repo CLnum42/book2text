@@ -108,6 +108,8 @@ export async function run(cfg) {
       return await l3Probe(page, args);
     case "l4_probe":
       return await l4Probe(page, args);
+    case "goto_probe":
+      return await gotoProbe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -3133,6 +3135,102 @@ async function l4Probe(page, args) {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
     return { point, editing, state: st };
+  }
+  return { mode: "unknown" };
+}
+
+/** 破环：goto/jump 延迟到帧末后的居中与双滚风险。 */
+async function gotoProbe(page, args) {
+  const mode = args.mode || "next";
+  const install = () =>
+    page.evaluate(() => {
+      if (window.__gotoSampler) return;
+      window.__gotoSamples = [];
+      const stream = document.getElementById("reading-stream");
+      window.__gotoSampler = true;
+      stream.addEventListener("scroll", () => {
+        window.__gotoSamples.push({ t: Math.round(performance.now()), top: Math.round(stream.scrollTop) });
+      }, { passive: true });
+    });
+  const clear = () => page.evaluate(() => { window.__gotoSamples = []; });
+  const read = () =>
+    page.evaluate(() => {
+      const stream = document.getElementById("reading-stream");
+      const sr = stream.getBoundingClientRect();
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const m = label.match(/(\d+)/);
+      const line = document.querySelector("#reading-stream .reading-line.is-current");
+      let centerDelta = null;
+      let lineTop = null;
+      if (line) {
+        const lr = line.getBoundingClientRect();
+        lineTop = Math.round(lr.top - sr.top);
+        centerDelta = Math.round((lr.top + lr.height / 2) - (sr.top + sr.height / 2));
+      }
+      const samples = (window.__gotoSamples || []).slice();
+      const tops = samples.map((s) => s.top);
+      const distinct = [...new Set(tops)];
+      return {
+        label: m ? Number(m[1]) : null,
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        panelKey: (document.querySelector(".reading-panel") || {}).dataset
+          ? document.querySelector(".reading-panel").dataset.key || null : null,
+        panelPage: (document.querySelector(".reading-panel__head strong") || {}).textContent || null,
+        scrollTop: Math.round(stream.scrollTop),
+        streamH: Math.round(sr.height),
+        lineTop,
+        centerDelta,
+        centered: centerDelta !== null && Math.abs(centerDelta) <= sr.height * 0.25,
+        scrollEvents: samples.length,
+        distinctTops: distinct,
+        samples: samples.slice(-12),
+      };
+    });
+
+  await ensureReading(page);
+  await install();
+  const results = [];
+  const doNext = async (tag) => {
+    await clear();
+    await page.click("#reading-next-unreviewed", { label: `${tag} 下一处` }).catch(() => {});
+    await page.waitForTimeout(1400);
+    results.push({ tag, ...(await read()) });
+  };
+  if (mode === "next") {
+    for (let i = 1; i <= 3; i += 1) await doNext(`next${i}`);
+    return { results };
+  }
+  if (mode === "tree") {
+    // 点左树某一个有差异的页
+    const pageNo = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll(".reading-tree__row[data-page]")];
+      const pick = rows[Math.min(3, rows.length - 1)];
+      return pick ? Number(pick.dataset.page) : null;
+    });
+    if (!pageNo) return { error: "左树没有页行" };
+    await clear();
+    await page.click(`.reading-tree__row[data-page="${pageNo}"]`, { label: "点左树页" });
+    await page.waitForTimeout(1400);
+    results.push({ tag: `tree p${pageNo}`, ...(await read()) });
+    return { results };
+  }
+  if (mode === "panel") {
+    // 点正文流里的一处差异标记（开面板），再点面板里的"原文"一行（走 gotoReadingEntry）
+    await page.click("#reading-next-unreviewed").catch(() => {});
+    await page.waitForTimeout(1200);
+    const point = await page.evaluate(() => {
+      for (const mark of document.querySelectorAll("#reading-stream .reading-mark")) {
+        const r = mark.getBoundingClientRect();
+        if (r.top > 120 && r.bottom < window.innerHeight - 80) return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      }
+      return null;
+    });
+    if (!point) return { error: "没有可见的差异标记" };
+    await clear();
+    await page.mouse.click(point.x, point.y, { label: "点一处差异" });
+    await page.waitForTimeout(1400);
+    results.push({ tag: "panel-mark", ...(await read()) });
+    return { results };
   }
   return { mode: "unknown" };
 }
