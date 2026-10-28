@@ -18405,7 +18405,7 @@ function renderReading({ reset = false, startAt = null } = {}) {
         if (page.page_no > maxPage) maxPage = page.page_no;
       }
     }
-    if (maxPage && !readingWindowHas(maxPage)) ensureReadingMarksWindow(maxPage);
+    if (maxPage && !readingWindowHas(maxPage)) queueReadingIntent("marks", { pageNo: maxPage });
   }
   // 重绘会重建 `.reading-line` 节点，`is-current` 跟着一起没了；`readingPanelKey`
   // 也在 `reset` 里被清空、由 `retryReadingPendingPanel()` 恢复。所以**每次重绘之后

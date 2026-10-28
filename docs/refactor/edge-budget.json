@@ -7,7 +7,7 @@
     "bridge:openPageDetail": 1,
     "bridge:renderMergeView": 1,
     "bridge:submitMergeDecisions": 1,
-    "edge:renderReading->ensureReadingMarksWindow": 1,
+    "edge:renderReading->ensureReadingMarksWindow": 0,
     "edge:renderReading->retryReadingPendingPanel": 1,
     "edge:renderReadingTree->ensureReadingMarksWindow": 1,
     "edge:renderReadingTree->scrollReadingToPage": 1,
