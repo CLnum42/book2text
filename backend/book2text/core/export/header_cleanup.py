@@ -37,6 +37,16 @@ def is_page_line(text: str) -> bool:
     return bool(PAGE_LINE.match(compact) or BARE_PAGE_LINE.match(compact))
 
 
+def is_labeled_page_line(text: str) -> bool:
+    """整行是**带词**的页码（`Page 28` / `P. 28` / `Page viii`）。
+
+    与 `is_page_line` 的区别：**不认裸数字**。裸数字只在"每页第一个块的第一行"这个
+    位置才当页眉（那里是结构性位置）；出现在任意位置的裸数字很可能就是正文里的一个数
+    （测试里就有一页正文块只有 `11`）。
+    """
+    return bool(PAGE_LINE.match(" ".join((text or "").split())))
+
+
 def strip_leading_header_line(lines: list[str]) -> list[str]:
     """摘掉首行页眉（只处理第一行；不是页眉就原样返回）。
 

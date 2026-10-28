@@ -272,12 +272,15 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
         # 任务 80：**整块就是一行页码**的块，无论排在第几个，都肯定是页眉而不是正文
         # （目录页那种 "Page viii 153 155…" 不是整行匹配，不会被误删）。
         # 这本书第 38 页的 `Page 1` 就是独立块、且不是该页第一个块，靠首块规则漏掉了。
-        if len(raw_lines) == 1 and header_cleanup.is_page_line(raw_lines[0]):
+        # 只处理"被识别成正文"的块：真正的页眉 / 页码块有各自的类型，
+        # 走不带页眉页码的导出配置时自然被排除；用户显式要导页码时也不该被这里删掉。
+        body_like = block.block_type in ("paragraph", "heading")
+        if body_like and len(raw_lines) == 1 and header_cleanup.is_labeled_page_line(raw_lines[0]):
             continue
         # 任务 74：**页眉页码行**（`Page 28`）识别时落成了 paragraph 块，
         # 会被当正文导出。只从"每页第一个块的第一行"判断（严格的窄规则）——
         # 全书行级正则替换踩过坑：正文里真有整行是"红楼梦"的。
-        if first_block_of_page.get(block.page_no) == block.block_id:
+        if body_like and first_block_of_page.get(block.page_no) == block.block_id:
             raw_lines = header_cleanup.strip_leading_header_line(raw_lines)
             if not raw_lines:
                 # 整块就是一行页码：这一块不进正文
