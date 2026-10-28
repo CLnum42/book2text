@@ -500,23 +500,13 @@ Slice 1 实测（2026-10-28）：
 
 ### 11.1 L2–L12（同一份采样，`c45b8a5`；行号 = 函数起止，括号内 = 行数）
 
-> L1 见上表（230 = 搬 178 + 删 52）。`app.js ≈` 只扣函数体行，未扣 53 行头注释与状态声明。
+> L1 见 §11（**212 = 搬 160 + 删 52**；`setReviewOverlaysForReading` 18 行留 app.js，不计入）。`app.js ≈` 只扣函数体行，未扣 53 行头注释与状态声明。
 
-**L1（230 行 / 11 函数）→ 累计 230，app.js ≈ 20,835，临时注入 24**
+**L1（212 = 搬 160 + 删 52）→ 累计 212，app.js ≈ 20,853，注入 24（临时 21 + 永久 3）**
 
-- `setReviewOverlaysForReading 18099–18116(18)`
-- `readingPdfScrollTop 18117–18127(11)`
-- `readingReloadAfterBatch 18151–18158(8)`
-- `readingOrderAfter 18321–18326(6)`
-- `buildReadingTree 19314–19321(8)`
-- `toggleReadingProof 20418–20426(9)`
-- `readingCursorOrder 20695–20700(6)`
-- `readingSplitPrefs 20833–20836(4)`
-- `saveReadingSplit 20841–20844(4)`
-- `setupReadingSplit 20845–20848(4)`
-- `setupReading 20849–21000(152)`
+- 函数清单见 §11 表；`setReviewOverlaysForReading`(18099–18116, 18 行) 留 app.js，不计入。
 
-**L2（342 行 / 11 函数）→ 累计 572，app.js ≈ 20,493，临时注入 30**
+**L2（342 行 / 11 函数）→ 累计 554，app.js ≈ 20,511，临时注入 30**
 
 - `markReadingUserMoved 18128–18139(12)`
 - `startInlineEdit 18807–18835(29)`
@@ -530,7 +520,7 @@ Slice 1 实测（2026-10-28）：
 - `submitReadingDrafts 20747–20806(60)`
 - `undoReadingSubmit 20807–20832(26)`
 
-**L3（213 行 / 7 函数）→ 累计 785，app.js ≈ 20,280，临时注入 35**
+**L3（213 行 / 7 函数）→ 累计 767，app.js ≈ 20,298，临时注入 35**
 
 - `readingMovedSinceOpen 18140–18150(11)`
 - `openReading 18159–18279(121)`
@@ -540,7 +530,7 @@ Slice 1 实测（2026-10-28）：
 - `onInlineKeydown 18899–18914(16)`
 - `drawEditingLineBox 20480–20496(17)`
 
-**L4（139 行 / 7 函数）→ 累计 924，app.js ≈ 20,141，临时注入 33**
+**L4（139 行 / 7 函数）→ 累计 906，app.js ≈ 20,159，临时注入 33**
 
 - `loadReadingInlineEdits 18006–18025(20)`
 - `restoreInlineEditsPrompt 18026–18039(14)`
@@ -550,7 +540,7 @@ Slice 1 实测（2026-10-28）：
 - `gotoNextUnreviewed 20629–20694(66)`
 - `applyReadingSplit 20837–20840(4)`
 
-**L5（1041 行 / 32 函数）→ 累计 1965，app.js ≈ 19,100，临时注入 36**
+**L5（1,041 行 / 32 函数）→ 累计 1,947，app.js ≈ 19,118，临时注入 36**
 
 - `readingOptions 18086–18098(13)`
 - `applyReadingMarksPayload 18280–18291(12)`
@@ -585,7 +575,7 @@ Slice 1 实测（2026-10-28）：
 - `updateReadingPage 20375–20403(29)`
 - `gotoReadingEntry 20701–20746(46)`
 
-**L6（428 行 / 24 函数）→ 累计 2393，app.js ≈ 18,672，临时注入 20**
+**L6（428 行 / 24 函数）→ 累计 2,375，app.js ≈ 18,690，临时注入 20**
 
 - `saveReadingInlineEdits 18040–18056(17)`
 - `readingFlowPages 18471–18478(8)`
@@ -612,7 +602,7 @@ Slice 1 实测（2026-10-28）：
 - `drawReadingPdfBox 20497–20510(14)`
 - `logReadingNext 20612–20628(17)`
 
-**L7（95 行 / 8 函数）→ 累计 2488，app.js ≈ 18,577，临时注入 15**
+**L7（95 行 / 8 函数）→ 累计 2,470，app.js ≈ 18,595，临时注入 15**
 
 - `readingInlineStorageKey 18002–18005(4)`
 - `readingMarkOrder 18317–18320(4)`
@@ -623,7 +613,7 @@ Slice 1 实测（2026-10-28）：
 - `showReadingPlaceholder 19772–19780(9)`
 - `paintReadingTile 19942–19959(18)`
 
-**L8（112 行 / 7 函数）→ 累计 2600，app.js ≈ 18,465，临时注入 10**
+**L8（112 行 / 7 函数）→ 累计 2,582，app.js ≈ 18,483，临时注入 10**
 
 - `saveReadingDrafts 18072–18085(14)`
 - `textCheckEnabled 18631–18639(9)`
@@ -633,7 +623,7 @@ Slice 1 实测（2026-10-28）：
 - `readingPageRecord 19960–19964(5)`
 - `applyReadingLinked 19982–20000(19)`
 
-**L9（163 行 / 5 函数）→ 累计 2763，app.js ≈ 18,302，临时注入 8**
+**L9（163 行 / 5 函数）→ 累计 2,745，app.js ≈ 18,320，临时注入 8**
 
 - `readingDraftStorageKey 17997–18001(5)`
 - `buildReadingLine 18919–19030(112)`
@@ -641,7 +631,7 @@ Slice 1 实测（2026-10-28）：
 - `refreshReadingCurrentHighlight 19233–19258(26)`
 - `readingHoveredBlockIds 19973–19981(9)`
 
-**L10（166 行 / 6 函数）→ 累计 2929，app.js ≈ 18,136，临时注入 3**
+**L10（166 行 / 6 函数）→ 累计 2,911，app.js ≈ 18,154，临时注入 3**
 
 - `readingVisibleSegments 18479–18493(15)`
 - `expandToWordRange 18613–18630(18)`
@@ -650,12 +640,12 @@ Slice 1 实测（2026-10-28）：
 - `readingLineNode 19123–19127(5)`
 - `paintReadingDiffBoxes 20053–20104(52)`
 
-**L11（62 行 / 2 函数）→ 累计 2991，app.js ≈ 18,074，临时注入 1**
+**L11（62 行 / 2 函数）→ 累计 2,973，app.js ≈ 18,092，临时注入 1**
 
 - `readingEntryVisible 18499–18508(10)`
 - `readingDiffUnits 20001–20052(52)`
 
-**L12（4 行 / 1 函数）→ 累计 2995，app.js ≈ 18,070，临时注入 0**
+**L12（4 行 / 1 函数）→ 累计 2,977，app.js ≈ 18,088，临时注入 0**
 
 - `readingKey 17993–17996(4)`
 
@@ -764,7 +754,7 @@ Slice 1 实测（2026-10-28）：
 
 执行方式（本项目专用，因为 CI 死了、消息会丢）：
 1. **任何"表格级"资产先进 repo**（`docs/refactor/`），消息只做指路 + 贴全文二选一；**repo 里的版本是唯一权威**。
-2. 消息发出后，**必须拿到对方的一句回执**（例："L1 表收到，230=178+52"）；没有回执 = 未交接。
+2. 消息发出后，**必须拿到对方的一句回执**（例："L1 表收到，212=160+52"）；没有回执 = 未交接。
 3. 回执里要复述关键数字——复述不了说明没真读。
 4. 已知事故：Builder 的"前置页有差异但不可审"结论一路交接下来，QA 一条实测（流外队列页 = 0）就否了，白改一轮。**传错的结论比多贴一遍表贵得多。**
 
