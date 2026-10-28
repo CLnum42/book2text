@@ -392,15 +392,68 @@ def _api(state: dict[str, Any]) -> Api:
 
 
 def cmd_up(args: argparse.Namespace) -> int:
-    state = _env.start(project_id=args.project)
+    try:
+        state = _env.start(project_id=args.project, allow_input_drift=args.allow_input_drift)
+    except RuntimeError as error:  # 守卫拒绝 / 端口占满 / 服务起不来：给人话，不给人栈
+        print(f"\n{error}\n")
+        return 3
     print("隔离环境已就绪：")
     print(f"  项目副本：{state['library']}/{state['project_id']}")
     print(f"  服务    ：{state['base_url']}（pid {state['pid']}）")
     print(f"  界面    ：{state['url']}")
     print(f"  日志    ：{state['log']}")
+    print(f"  指纹守卫：{state['input_guard']}"
+          + (f"（差异 {len(state['input_drift'])} 项，--allow-input-drift）" if state["input_drift"] else ""))
     print()
     print("下一步：")
     print("  .venv/bin/python tests/e2e/qa.py prepare")
+    return 0
+
+
+def cmd_fingerprint(args: argparse.Namespace) -> int:
+    """离线比一遍输入/管线指纹：不起服务、不开浏览器，几秒出结果。"""
+    import os as _os
+    import shutil as _shutil
+
+    import _fingerprint
+
+    run_dir = _env._check_under_runtime(
+        _env.RUNTIME_ROOT / f"{_env._SAFE_RUN_PREFIX}fp-{time.strftime('%Y%m%d-%H%M%S')}-{_os.getpid()}"
+    )
+    try:
+        (run_dir / "library").mkdir(parents=True)
+        # 始终在副本上算：算的过程会写缓存，绝不能落到用户的库上。
+        _env.snapshot_project(args.project, run_dir / "library", source_root=args.library)
+        actual = _fingerprint.compute(args.project, run_dir / "library")
+    finally:
+        _shutil.rmtree(run_dir, ignore_errors=True)
+
+    try:
+        expected = _fingerprint.load_baseline()
+    except FileNotFoundError:
+        print(f"没有基线文件：{_fingerprint.baseline_path()}（仅打印实测）")
+        print(json.dumps(actual, ensure_ascii=False, indent=2))
+        return 2
+    if expected.get("project_id") != args.project:
+        print(f"基线是 {expected.get('project_id')}，本次是 {args.project}：不适用，仅打印实测")
+        print(json.dumps(actual, ensure_ascii=False, indent=2))
+        return 0
+
+    drift = _fingerprint.diff(expected, actual)
+    bad = {(item["layer"], item["field"]) for item in drift}
+    print(f"基线：{_fingerprint.baseline_path()}")
+    for layer in ("input", "pipeline"):
+        print(f"\n[{layer}]")
+        for field, want in (expected.get(layer) or {}).items():
+            got = (actual.get(layer) or {}).get(field)
+            mark = "≠" if (layer, field) in bad else "="
+            print(f"  {mark} {field:22s} {want!r:>14}  {got!r:>14}")
+    print()
+    if drift:
+        print(_fingerprint.format_drift(drift))
+        print("结论：不许拿这份基线做对照（输入/管线已变）。")
+        return 1
+    print("输入/管线指纹与基线逐字段全等：可以拿基线做对照。")
     return 0
 
 
@@ -1139,7 +1192,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     up = sub.add_parser("up", help="复制项目库并起隔离服务")
     up.add_argument("--project", default=PROJECT_DIR_NAME, help=f"源项目 id（默认 {PROJECT_DIR_NAME}）")
+    up.add_argument(
+        "--allow-input-drift",
+        action="store_true",
+        help="输入/管线指纹与基线不符时仍然开跑（这次读数不得当基线对照）",
+    )
     up.set_defaults(func=cmd_up)
+
+    fp = sub.add_parser("fingerprint", help="离线比输入/管线指纹（不开服务、不开浏览器）")
+    fp.add_argument("--project", default=PROJECT_DIR_NAME, help=f"源项目 id（默认 {PROJECT_DIR_NAME}）")
+    fp.add_argument("--library", type=Path, default=_env.DEFAULT_LIBRARY, help="源库根目录")
+    fp.set_defaults(func=cmd_fingerprint)
 
     down = sub.add_parser("down", help="关服务、删临时库")
     down.add_argument("--keep", action="store_true", help="只关服务，保留临时库供排查")

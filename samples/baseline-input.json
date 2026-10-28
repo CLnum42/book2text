@@ -1,0 +1,31 @@
+{
+  "project_id": "b2t_ZAQHGH",
+  "name": "安乐哲 译本处理（662 页）",
+  "baseline": {
+    "commit": "2d33dd4",
+    "tag": "run-2026-10-28",
+    "dir": "tests/e2e/artifacts/baseline-run-2026-10-28"
+  },
+  "input": {
+    "source_sha256": "1c501e0f29694d5dacdc35782f80543e2ca97cb080a3c67eaaed58969c0ec407",
+    "source_file": "安乐哲 译本处理.PDF",
+    "source_bytes": 2597736,
+    "page_count": 662,
+    "pages_in_db": 662,
+    "text_pages": 653,
+    "blocks": 4851,
+    "chars": 756247
+  },
+  "pipeline": {
+    "body_segments": 4821,
+    "body_chars": 753335,
+    "body_pages": 653,
+    "merged_segments": 0,
+    "hyphenations": 74,
+    "unreviewed_segments": 4821,
+    "queue_total": 859,
+    "queue_chars": 567,
+    "queue_punct": 292,
+    "queue_acked": 0
+  }
+}
