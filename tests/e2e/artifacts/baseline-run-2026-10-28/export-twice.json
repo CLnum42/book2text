@@ -1,0 +1,44 @@
+[
+  {
+    "run": 1,
+    "dir": "20261028-1454_txt",
+    "files": {
+      "body.txt": {
+        "bytes": 764486,
+        "sha256_16": "14f55b35e40a524a",
+        "norm_sha16": "14f55b35e40a524a",
+        "chars_nonspace": 631334,
+        "lines": 9641
+      },
+      "meta.json": {
+        "bytes": 547391,
+        "sha256_16": "10586efa1fac40e6"
+      },
+      "manifest.json": {
+        "bytes": 44479,
+        "sha256_16": "dc1ffbfb1ed3a7f0"
+      }
+    }
+  },
+  {
+    "run": 2,
+    "dir": "20261028-1454_txt-2",
+    "files": {
+      "body.txt": {
+        "bytes": 764486,
+        "sha256_16": "14f55b35e40a524a",
+        "norm_sha16": "14f55b35e40a524a",
+        "chars_nonspace": 631334,
+        "lines": 9641
+      },
+      "meta.json": {
+        "bytes": 547391,
+        "sha256_16": "10586efa1fac40e6"
+      },
+      "manifest.json": {
+        "bytes": 44479,
+        "sha256_16": "4ed901e3f87ba3fe"
+      }
+    }
+  }
+]
