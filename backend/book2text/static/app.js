@@ -20206,9 +20206,17 @@ function updateReadingPageFromLeftScroll() {
   }
   if (!best) return;
   if (best.pageNo === readingPageNo) return;
+  // **跳转落位期间左栏一律不写**：`gotoReadingEntry` 自己的滚动会触发这里，
+  // 此时左栏锚点还停在上一页，写进去就把刚定位好的页码改掉（QA run F：
+  // gotoEntry 写 118 → leftScroll 写 117，两个回调隔着几十毫秒，后者赢）。
+  if (readingJumpSettleKey) return;
   // 面板开着时，页码以"当前差异项所在页"（mark.page_no）为准，
-  // 不让左栏滚动把它改成相邻页（QA 看到的 126 vs 127 就是这里）
-  const panelMark = readingPanelKey ? readingMarks.get(readingPanelKey) : null;
+  // 不让左栏滚动把它改成相邻页（QA 看到的 126 vs 127 就是这里）。
+  // **重绘窗口里 `readingPanelKey` 会被清空**，只认它就会漏挡（QA run F 的现场）：
+  // 那一刻用 `readingPendingPanelKey` 兜住，还没恢复面板时也不许写。
+  const panelKey = readingPanelKey || readingPendingPanelKey;
+  if (!readingPanelKey && readingPendingPanelKey) return;
+  const panelMark = panelKey ? readingMarks.get(panelKey) : null;
   if (panelMark && panelMark.page_no && Math.abs(panelMark.page_no - best.pageNo) <= 1) return;
   readingPageNo = best.pageNo;
   el("reading-page-no").textContent = `第 ${best.pageNo} 页`;
