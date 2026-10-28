@@ -18441,8 +18441,51 @@ function refreshReadingMarksPaint() {
   // 重画期间页码被改过（用户又跳了）就不恢复旧位置，否则等于把人拽回去
   if (readingPageNo === pageAtSave) stream.scrollTop = top;
   if (panelEntry && readingPageNo === pageAtSave) {
+    // 重画可能把目标行刷出渲染范围（`reset` 从第 0 段顺序铺，`segmentsToKeep` 只按
+    // 段数恢复）：面板照开（面板不依赖行节点），但那一行不在 DOM 里 → 用户看到面板、
+    // 看不到差异在哪（QA 20 次里 7 次 `is-current = 0`）。先补行，再开面板。
+    const line = ensureReadingLineRendered(panelEntry);
     openReadingPanel(panelEntry);
+    if (!line) {
+      showNoticeBar(
+        `这一处差异所在的行不在当前正文窗口里（第 ${panelEntry.page_no} 页第 ${panelEntry.line_index + 1} 行），已尝试展开`
+      );
+    }
   }
+}
+
+/**
+ * 目标行必须真的在 DOM 里，才谈得上"高亮"。
+ *
+ * `renderReading` 是**从第 0 段顺序往后铺**的（`readingRendered` 计数）。跳到第 500 段
+ * 之后再 `reset` 重画，目标行就落在铺出来的范围外——面板照开，光标行却不存在。
+ * 这里按目标行所在段重铺一次再查；查不到返回 null，由调用方给显式提示，
+ * 绝不"只开面板了事"。
+ */
+function ensureReadingLineRendered(entry) {
+  if (!entry) return null;
+  const key = readingKey(entry.block_id, entry.line_index);
+  const existing = readingLineNode(key);
+  if (existing) return existing;
+  const segments = readingVisibleSegments();
+  let index = -1;
+  if (entry.seq !== null && entry.seq !== undefined) {
+    index = segments.findIndex((segment) => Number(segment.seq) === Number(entry.seq));
+  }
+  if (index < 0) {
+    // 左树条目没有 `seq`：按 line_span 反查它属于哪一段
+    index = segments.findIndex((segment) =>
+      (segment.line_spans || []).some(
+        (span) =>
+          span.block_id === entry.block_id && Number(span.line_index) === Number(entry.line_index)
+      )
+    );
+  }
+  if (index < 0) return null;
+  readingPendingPanelKey = key;
+  readingPendingPanelEntry = entry;
+  renderReading({ reset: true, startAt: Math.max(0, index - 1) });
+  return readingLineNode(key);
 }
 
 /** 正文流里出现过的页号（前置页 / 版心外的页不在里面）。 */
@@ -20594,10 +20637,10 @@ function gotoReadingEntry(entry) {
   if (index >= 0) jumpReadingTo(index);
   const key = readingKey(entry.block_id, entry.line_index);
   let line = readingLineNode(key);
-  if (!line && index >= 0) {
-    // 目标段不在已挂载的窗口里：按它的下标重铺一次（不固定 sleep，靠渲染完成后再查）
-    renderReading({ reset: true, startAt: Math.max(0, index - 1) });
-    line = readingLineNode(key);
+  if (!line) {
+    // 目标段不在已挂载的窗口里：按它的下标重铺一次（不固定 sleep，靠渲染完成后再查）。
+    // 走同一个 helper，顺带覆盖"条目没有 seq"（左树）的情况。
+    line = ensureReadingLineRendered(entry);
   }
   if (line) centerReadingLinePair(entry);
   if (!readingDrafts.has(key)) openReadingPanel(entry);
