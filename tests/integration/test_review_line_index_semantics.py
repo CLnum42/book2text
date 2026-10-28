@@ -8,16 +8,34 @@
 - 于是后面的行整体前移 1：`line_spans.line_index == [0,1]`；
 - 而 `reading_marks` 的 `line_index` 用的是**原块行索引** `[1,2]`。
 
-后果分两种（本文件两条都造出来了）：
+后果分两种（本文件都造出来了）：
 
-1. 块内最后一行的索引越界 → 前端查不到行，只能记进 `outside_stream`（实测全书 5 条）；
-2. 中间行**错位到别的行** → 差异被画到隔壁行上，还不报错（比越界隐蔽）。
+1. 块内最后一行的索引越界 → 前端查不到行，只能记进 `outside_stream`；
+2. 中间行**错位到别的行** → 差异被画到隔壁行上，不报错、**不进 `outside_stream`**（比越界隐蔽）。
+
+真实数（DevLead 在干净副本上复测，567 条未审汉字）：落在"有行被删"块里的 **30 条 / 21 块**，
+其中 **越界 5 条、错位 25 条**（位移分布 `{1: 25}`，全是整体前移 1）。
+所以爆炸半径是 30 条而不是 5 条，25 条是静默画错行。
 
 `_join_block` 本身不会删行（见 `tests/unit/test_export_join_line_indices.py` 的绿色用例），
 所以这些用例走**真实调用链**：识别 → 导出段 → 标记 → next-lines。
 
 **红过没有**：写这组用例时全红（4 条里 3 条），红因就是上面两条。
-修好后它们应当全部转绿，且不需要改用例——断言的都是"索引语义"，不是实现细节。
+现在这 4 条挂 `xfail(strict=True)`：当前跑成 **xfailed**（已知缺陷，不算回归），
+`strict=True` 保证 Builder 修好后它们会变成 **XPASS → 让测试失败**，提醒把标记摘掉。
+不用非 strict：那样修好了也静默绿，缺陷修没修没人知道。
+断言的都是"索引语义"而不是实现细节，修法落在哪一层都不需要改用例。
+
+**`strip_leading_header_line` 的返回值契约缺陷（给 Builder 的线索）**
+
+它现在只返回"删完后的列表"（`lines[1:]` 或原列表），**只能表达"删了 / 没删"，
+表达不了"删的是第几行"**。调用方 `_prepare` 手里因此没有任何映射能还原原行号，
+只能拿缩短后的列表从 0 重新枚举——这就是下钻不下去的原因。
+
+要让索引不丢，这个契约得能给出"输出第 i 行来自输入第几行"（返回删除偏移、
+或返回 `(lines, original_indices)`、或干脆不删、把页眉行置空由 `join_lines` 跳过——
+`join_lines` 已经明确会跳过空行且保留 `line_index`，见
+`tests/unit/test_export_line_index_origin.py::test_join_lines_keeps_index_of_skipped_blank_line`）。
 """
 
 from __future__ import annotations
@@ -125,6 +143,10 @@ def line_key(item: dict) -> tuple[str, int]:
 
 # ---------------------------------------------------------------- 索引语义
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="任务 89：_prepare 的 strip_leading_header_line 删行后下标整体前移，待修",
+)
 def test_line_spans_keep_original_block_line_index(
     client: TestClient, auth_headers: dict[str, str], page_with_header_line: str
 ) -> None:
@@ -143,6 +165,10 @@ def test_line_spans_keep_original_block_line_index(
     )
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="任务 89：_prepare 的 strip_leading_header_line 删行后下标整体前移，待修",
+)
 def test_span_text_slice_equals_the_line_it_claims(
     client: TestClient, auth_headers: dict[str, str], page_with_header_line: str
 ) -> None:
@@ -162,6 +188,10 @@ def test_span_text_slice_equals_the_line_it_claims(
     assert not mismatches, f"span 指向的行和它的文本对不上：{mismatches}"
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="任务 89：_prepare 的 strip_leading_header_line 删行后下标整体前移，待修",
+)
 def test_marks_line_index_maps_back_to_the_same_line(
     client: TestClient, auth_headers: dict[str, str], page_with_header_line: str
 ) -> None:
@@ -196,20 +226,66 @@ def test_marks_line_index_maps_back_to_the_same_line(
     assert not problems, f"标记的行索引映射不回同一行：{problems}"
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="任务 89：错位（索引仍在范围内但指向隔壁行，25/567），待修",
+)
+def test_aliased_mark_is_not_outside_but_points_to_the_wrong_line(
+    client: TestClient, auth_headers: dict[str, str], page_with_header_line: str
+) -> None:
+    """错位哨兵：索引**没越界**、不在 `outside_stream`，但它指的行是错的。
+
+    这条和"越界"是两件事，分开锁：
+    - 越界 → 进 `outside_stream`，用户至少知道"流外还有 N 处"；
+    - 错位 → 索引在 `line_spans` 里，账目上也属于流内，**却把差异画到隔壁行**，全程无声。
+      任务 89 的 30 条里 25 条是这一类。
+    """
+    block = block_payload(client, auth_headers, page_with_header_line)
+    source_lines = block["text"].split("\n")
+    assert source_lines == ["Page 5", "aaa bbb", "ccc ddd"]
+
+    segment = segment_for_block(segments(client, auth_headers, page_with_header_line),
+                                block["block_id"])
+    span_by_index = {span["line_index"]: span for span in segment["line_spans"]}
+
+    # 块里第 1 行 `aaa bbb` 的差异：mark 的 line_index 是 1（原块索引）
+    chars_marks = [item for item in marks(client, auth_headers, page_with_header_line)["items"]
+                   if item["level"] == "differs_chars" and item["line_index"] == 1]
+    assert len(chars_marks) == 1, "前提不成立：原文第 1 行没有汉字级差异"
+    target = chars_marks[0]
+
+    # 第一句：它没越界（span 在），所以不该被算成"流外"
+    span = span_by_index.get(target["line_index"])
+    assert span is not None, "这条 mark 的索引不在 line_spans 里——那是越界，本用例不覆盖"
+
+    payload = next_lines(client, auth_headers, page_with_header_line)
+    outside = payload["outside_stream"]
+    assert len(outside["sample"]) == outside["count"], "sample 不完整，无法断言'某条不在流外'"
+    assert line_key(target) not in [line_key(item) for item in outside["sample"]], (
+        "没越界的 mark 被算进了 outside_stream"
+    )
+
+    # 第二句（现在红）：span 指向的那一行，文本必须还是它本来那一行
+    sliced = segment["text"][span["start"]:span["end"]]
+    assert sliced == source_lines[target["line_index"]], (
+        f"标记指向的行被画到隔壁行：line_index={target['line_index']} 本应是 "
+        f"{source_lines[target['line_index']]!r}，span 却指向 {sliced!r}"
+    )
+
+
 # ---------------------------------------------------------------- 计数不变式
 
 def test_next_lines_accounts_for_every_chars_mark(
     client: TestClient, auth_headers: dict[str, str], page_with_header_line: str
 ) -> None:
-    """`len(lines) + outside_stream.count == chars_unacked`，且越界那条被显式计数。
+    """`len(lines) + outside_stream.count == chars_unacked`，账目必须自洽。
 
-    这条**现在是绿的**：越界的标记确实被 `outside_stream` 收走了，所以"会不会漏报"
-    这层计数是自洽的；坏的是索引语义（上面三条），不是账目。
+    这条**修前修后都该是绿的**，所以只锁不变量、不锁"现在越界几条"：
+    任务 89 未修时 `outside_stream.count == 1`（原块第 2 行越界），修好后应为 0
+    （两行都在流内）。把 1 写死会让 Builder 一修就红——那是拿测试绑住缺陷。
     """
     payload = next_lines(client, auth_headers, page_with_header_line)
-    assert len(payload["lines"]) + payload["outside_stream"]["count"] == payload["chars_unacked"]
     assert payload["chars_unacked"] == 2
-    # 越界的那条（原块第 2 行）只能进 outside_stream，前端画不出来
-    assert payload["outside_stream"]["count"] == 1
-    assert payload["outside_stream"]["sample"][0]["line_index"] == 2
+    assert len(payload["lines"]) + payload["outside_stream"]["count"] == payload["chars_unacked"]
     assert payload["total"] == len(payload["lines"])
+    assert payload["outside_stream"]["count"] >= 0
