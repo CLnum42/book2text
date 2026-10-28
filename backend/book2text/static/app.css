@@ -2838,8 +2838,18 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .reading-dock__collapse { font-size: 11px; color: var(--faint); white-space: nowrap; flex: none; }
 .reading-dock__body { flex: 1; min-height: 0; display: flex; }
 .reading-dock__crop {
-  position: relative; width: 420px; flex: none; min-width: 0; overflow: hidden;
-  border-right: 1px solid var(--line); background: var(--surface-2);
+  position: relative; width: var(--reading-crop-w, 420px); flex: none; min-width: 0; overflow: hidden;
+  background: var(--surface-2);
+}
+.reading-dock__grip {
+  flex: none; width: 6px; cursor: col-resize;
+  background: var(--line); border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+}
+.reading-dock__grip:hover { background: var(--line-strong); }
+/* 下区不能盖住左边的目录队列：左右都从 PDF 列左边开始对齐 */
+.reading-dock, .reading-dock-grip { margin-left: var(--reading-tree-w, 232px); }
+@media (max-width: 1120px) {
+  .reading-dock, .reading-dock-grip { margin-left: 44px; }
 }
 .reading-dock__crop-mark {
   position: absolute; pointer-events: none;

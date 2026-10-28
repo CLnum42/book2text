@@ -19344,7 +19344,8 @@ function initReadingDockGrip() {
 // 几何全部来自 mark.bbox / 块内相邻行 bbox，**不按字宽或行距估算**（容差 0）。
 // 窗口是下区高度的因变量：行数 × 实测中位行距决定放大倍数，不是写死比例。
 
-const READING_CROP_WIDTH = 404;   // 左列 420 减去左右内边距
+const READING_CROP_WIDTH_DEFAULT = 420;   // 裁切列默认宽（可拖）
+const READING_CROP_WIDTH = 404;           // 兼容旧引用：实际宽度见 readingCropDisplayWidth()
 const READING_CROP_PAD = 16;
 
 function readingCropLineGap(entry) {
@@ -19383,10 +19384,20 @@ function readingCropPlan(entry) {
   if (!entry) return null;
   const key = readingKey(entry.block_id, entry.line_index);
   const mark = readingMarks.get(key);
-  const bbox = (mark && mark.bbox) || readingLineBox(entry.block_id, entry.line_index);
+  let bbox = (mark && mark.bbox) || readingLineBox(entry.block_id, entry.line_index);
+  if (!bbox) {
+    // 有些差异没有自带 bbox（比如标点级 / 行未匹配）：退回块缓存里这一行的行框
+    const blocks = readingPageBlocks.get(entry.page_no) || [];
+    const block = blocks.find((item) => item && item.block_id === entry.block_id);
+    const blockLine = block
+      ? (block.lines || []).find((item) => Number(item.line_index) === Number(entry.line_index))
+      : null;
+    if (blockLine && blockLine.bbox) bbox = blockLine.bbox;
+  }
   if (!bbox || bbox.length < 4) return null;
   const cropEl = el("reading-dock-crop");
   const contentH = Math.max(60, (cropEl ? cropEl.clientHeight : 182) - READING_CROP_PAD);
+  const displayW = Math.max(200, (cropEl ? cropEl.clientWidth : READING_CROP_WIDTH_DEFAULT) - READING_CROP_PAD);
   const { gap, n, level } = readingCropLineGap(entry);
   // bbox 的 y 是"占页高的比例"，x 是"占页宽的比例"：换算窗口宽度时必须乘纵横比，
   // 否则窗口按页宽算得偏窄、纵向只装得下 3 行（实测 182px 内容区里只显示 3 行）。
@@ -19398,20 +19409,18 @@ function readingCropPlan(entry) {
   const cx = (Number(bbox[0]) + Number(bbox[2])) / 2;
   const cy = (Number(bbox[1]) + Number(bbox[3])) / 2;
 
-  let rows = gap ? 5 : 4;
-  let windowH = gap ? rows * gap : bboxH * 2;
-  let windowW = gap ? (READING_CROP_WIDTH * rows * gap * aspect) / contentH : 0.26;
-  let degrade = gap ? null : "no-line-gap";
-
-  if (gap) {
-    // 降级：窗口 > 45% 页宽 或 行高 > 40px → 减行并**重算窗口**
-    while (rows > 3 && (windowW > 0.45 || contentH / rows > 40)) {
-      rows -= 1;
-      windowH = rows * gap;
-      windowW = (READING_CROP_WIDTH * rows * gap * aspect) / contentH;
-      degrade = windowW > 0.45 ? "window>45%" : "lineH>40";
-    }
-  }
+  const rows = gap ? 5 : 4;
+  // 显示行高封顶 40px：裁切区高度压到 rows×40 以内、上下留白（规格允许留白，不允许字超 40px）。
+  // **不要用"减行"来满足"窗口 ≤45% 页宽"**——窗口宽度 = displayW×gap×纵横比/40，
+  // 跟行数无关；减行只会把字放大（实测一路降到 3 行、字变成 66px）。45% 只作为记录值。
+  const displayH = Math.min(contentH, rows * 40);
+  const windowH = gap ? rows * gap : bboxH * 2;
+  const windowW = gap ? (displayW * rows * gap * aspect) / displayH : 0.26;
+  const degrade = gap
+    ? windowW > 0.45
+      ? "window>45%"
+      : null
+    : "no-line-gap";
   windowW = Math.min(0.98, Math.max(0.08, windowW));
   windowH = Math.min(0.98, Math.max(0.02, windowH));
   const x0 = Math.min(Math.max(0, cx - windowW / 2), Math.max(0, 1 - windowW));
@@ -19424,7 +19433,8 @@ function readingCropPlan(entry) {
     w: windowW,
     h: windowH,
     rows,
-    lineH: Math.round(contentH / rows),
+    displayH: Math.round(displayH),
+    lineH: Math.round(displayH / rows),
     degrade,
     gap,
     gapN: n,
@@ -19438,12 +19448,20 @@ function readingCropPaint(entry) {
   const plan = readingCropPlan(entry);
   window.__b2tCropPlan = plan;
   if (!plan) {
-    cropEl.style.backgroundImage = "none";
-    cropEl.innerHTML = '<p class="muted reading-dock__crop-empty">这一条没有行框，画不出放大图</p>';
+    // 这一条没有可用行框：退一步显示**整页图**（不做放大、不画高亮），
+    // 总比"放大图稍后接入"这种占位文字有用——用户至少能看到这一页。
+    cropEl.style.height = "";
+    cropEl.style.alignSelf = "";
+    cropEl.style.backgroundImage = `url("${pageImageUrl(entry.page_no, "view")}")`;
+    cropEl.style.backgroundSize = "contain";
+    cropEl.style.backgroundPosition = "center";
+    cropEl.style.backgroundRepeat = "no-repeat";
     return;
   }
   const url = pageImageUrl(plan.pageNo, "zoom");
   cropEl.innerHTML = "";
+  cropEl.style.height = `${plan.displayH}px`;
+  cropEl.style.alignSelf = "center";
   cropEl.style.backgroundImage = `url("${url}")`;
   cropEl.style.backgroundRepeat = "no-repeat";
   // **用 naturalWidth 换算，不用百分比、不用 CSS 像素**：不同 size 档位（view/mid/zoom）
@@ -19482,6 +19500,73 @@ function readingCropPaint(entry) {
   probe.src = url;
 }
 
+const READING_CROP_KEY = "b2t.readingCrop.v1";
+const READING_CROP_MIN_W = 240;
+const READING_CROP_MAX_W = 760;
+
+function readingCropPrefs() {
+  const projectId = currentProject ? currentProject.project_id : "";
+  try {
+    const all = JSON.parse(localStorage.getItem(READING_CROP_KEY) || "{}") || {};
+    const value = Number(all[projectId]);
+    return Number.isFinite(value) && value > 0 ? value : READING_CROP_WIDTH_DEFAULT;
+  } catch {
+    return READING_CROP_WIDTH_DEFAULT;
+  }
+}
+
+function readingCropSaveWidth(width) {
+  if (!currentProject) return;
+  try {
+    const all = JSON.parse(localStorage.getItem(READING_CROP_KEY) || "{}") || {};
+    all[currentProject.project_id] = Math.round(width);
+    localStorage.setItem(READING_CROP_KEY, JSON.stringify(all));
+  } catch {
+    /* 存不了不影响功能 */
+  }
+}
+
+function readingCropApplyWidth(width) {
+  const crop = el("reading-dock-crop");
+  if (!crop) return;
+  const value = Math.min(READING_CROP_MAX_W, Math.max(READING_CROP_MIN_W, Math.round(width)));
+  crop.style.setProperty("--reading-crop-w", `${value}px`);
+}
+
+function initReadingDockSplit() {
+  const grip = el("reading-dock-split");
+  if (!grip || grip.dataset.bound === "1") return;
+  grip.dataset.bound = "1";
+  let dragging = false;
+  let startX = 0;
+  let startW = 0;
+  const onMove = (event) => {
+    if (!dragging) return;
+    readingCropApplyWidth(startW + (event.clientX - startX));
+    const entry = readingPanelKey ? readingMarks.get(readingPanelKey) : null;
+    if (entry) readingCropPaint(entry);
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.removeEventListener("pointermove", onMove);
+    const crop = el("reading-dock-crop");
+    if (crop) readingCropSaveWidth(crop.getBoundingClientRect().width);
+  };
+  grip.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    startX = event.clientX;
+    const crop = el("reading-dock-crop");
+    startW = crop ? crop.getBoundingClientRect().width : READING_CROP_WIDTH_DEFAULT;
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp, { once: true });
+  });
+  grip.addEventListener("dblclick", () => {
+    readingCropApplyWidth(READING_CROP_WIDTH_DEFAULT);
+    readingCropSaveWidth(READING_CROP_WIDTH_DEFAULT);
+  });
+}
+
 function openReadingPanel(entry) {
   closeReadingPanel();
   const key = readingKey(entry.block_id, entry.line_index);
@@ -19511,7 +19596,19 @@ function openReadingPanel(entry) {
   const originLabel = document.createElement("span");
   originLabel.className = "reading-panel__tag";
   originLabel.textContent = "原文";
-  origin.append(originLabel, document.createTextNode(entry.text || entry.ocr_text || ""));
+  const originNode = readingLineNode(key);
+  let originText = (originNode && originNode.dataset.baseText) || entry.text || entry.ocr_text || "";
+  if (!originText) {
+    // 行节点可能不在已渲染窗口里：退回块缓存里同一行的文本
+    const blocks = readingPageBlocks.get(entry.page_no) || [];
+    const block = blocks.find((item) => item && item.block_id === entry.block_id);
+    const blockLine = block
+      ? (block.lines || []).find((item) => Number(item.line_index) === Number(entry.line_index))
+      : null;
+    if (blockLine) originText = blockLine.text || "";
+  }
+  if (!originText) originText = "（原文未加载）";
+  origin.append(originLabel, document.createTextNode(originText));
   const candidate = document.createElement("p");
   candidate.className = "reading-panel__candidate";
   const candLabel = document.createElement("span");
@@ -19536,6 +19633,12 @@ function openReadingPanel(entry) {
   edit.textContent = "自己改";
   edit.addEventListener("click", () => startReadingEdit(entry, panel));
   actions.append(adopt, keep, edit);
+  origin.style.cursor = "text";
+  origin.title = "点击直接编辑这一行";
+  origin.addEventListener("click", () => {
+    const node = readingLineNode(key);
+    if (node) startInlineEdit(node);
+  });
   panel.append(head, origin, candidate, actions);
   // **结构上不可能被清掉**：面板挂进 `#reading-panel-host`，它不在 `#reading-stream` 里，
   // `renderReading({reset:true})` 怎么 `innerHTML=""` 都碰不到它。
@@ -21416,6 +21519,8 @@ function setupReading() {
   el("reading-stream").addEventListener("scroll", onReadingScroll, { passive: true });
   el("reading-dock-collapse")?.addEventListener("click", () => readingDockCollapse());
   el("reading-tree-toggle")?.addEventListener("click", () => readingTreeToggle());
+  readingCropApplyWidth(readingCropPrefs());
+  initReadingDockSplit();
   initReadingDockGrip();
   el("reading-pdf-scroll").addEventListener("scroll", onReadingPdfScroll, { passive: true });
   // 悬停段落：右栏绿底 + 左边对应块绿框（只高亮，不滚）
