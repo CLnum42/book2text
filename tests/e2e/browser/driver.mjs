@@ -2338,7 +2338,9 @@ async function punctProbe(page, args) {
   if (!opened.adoptButtons) {
     return { before, opened, error: "没有可判的标点分组（分组列表为空）" };
   }
-  await page.click("#punct-groups-list .btn--pri", { label: "全部采用候选（第一组）" });
+  // 一组一个按钮，选择器必须收敛到"第一组"这一颗
+  await page.click("#punct-groups-list > *:first-child .punct-group__actions .btn--pri",
+                  { label: "全部采用候选（第一组）" });
   // 等"重开"的可观测结果：readingData 换对象 / 流 DOM 重建 / 进度变化
   const started = Date.now();
   let after = await read();
