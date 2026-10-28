@@ -56,6 +56,9 @@ B2T_APP_JS=/tmp/app-old.js node tests/js/run.mjs compute-char-spans
 - `compute-char-spans.test.mjs` —— `computeCharSpans(current, candidate)`（`app.js:11574`）：
   等长快路径 vs LCS、代理对（UTF-16 下标会切开代理对，挂 todo）、组合字符、全角标点、
   空输入、超长行的耗时上限（防 O(n²)）。
+- `boundary.test.mjs` —— 模块边界守门（R1 + R4，规格 `docs/refactor/reading-view-boundary.md` §6）：
+  R1 新模块不许引用 app.js 的顶层声明（去注释/字符串，排除自己声明过的同名符号）；
+  R4 同名函数只许一份真实现，其余 ≤6 行薄转发。`B2T_VIEW_JS` / `B2T_STATIC_DIR` 可指向别处复跑。
 - `run.mjs` —— 入口，只汇总耗时和退出码，不替 `node:test` 宣布"全绿"。
 
 ## 不是本目录该干的事
