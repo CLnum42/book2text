@@ -1,0 +1,175 @@
+{
+  "base": {
+    "scrollTop": 0,
+    "maxScroll": 1379,
+    "label": 1,
+    "labelText": "第1页",
+    "anchorPage": 1,
+    "anchorKey": "01M609YSCTY9T6D986R8XMC3ZW:0",
+    "mark": false,
+    "panelPage": 1,
+    "dominant": 1,
+    "currentLines": 1,
+    "pin": {
+      "held": 0,
+      "escape": 0
+    },
+    "settleKey": null
+  },
+  "rows": [
+    {
+      "scrollTop": 0,
+      "maxScroll": 1379,
+      "label": 1,
+      "labelText": "第1页",
+      "anchorPage": 1,
+      "anchorKey": "01M609YSCTY9T6D986R8XMC3ZW:0",
+      "mark": false,
+      "panelPage": 1,
+      "dominant": 1,
+      "currentLines": 1,
+      "pin": {
+        "held": 0,
+        "escape": 0
+      },
+      "settleKey": null
+    },
+    {
+      "scrollTop": 400,
+      "maxScroll": 1379,
+      "label": 1,
+      "labelText": "第1页",
+      "anchorPage": 1,
+      "anchorKey": "01M609YSCVVSZQER654WQVCRET:1",
+      "mark": false,
+      "panelPage": 1,
+      "dominant": 1,
+      "currentLines": 1,
+      "pin": {
+        "held": 0,
+        "escape": 0
+      },
+      "settleKey": null
+    },
+    {
+      "scrollTop": 800,
+      "maxScroll": 1921,
+      "label": 3,
+      "labelText": "第3页",
+      "anchorPage": 3,
+      "anchorKey": "01M609YVNR0R6HYT5Q8WGF1J35:0",
+      "mark": false,
+      "panelPage": 1,
+      "dominant": 2,
+      "currentLines": 1,
+      "pin": {
+        "held": 0,
+        "escape": 0
+      },
+      "settleKey": null
+    },
+    {
+      "scrollTop": 1200,
+      "maxScroll": 2402,
+      "label": 4,
+      "labelText": "第4页",
+      "anchorPage": 4,
+      "anchorKey": "01M609YX80SFY32CFCTEWWBBSH:0",
+      "mark": false,
+      "panelPage": 1,
+      "dominant": 3,
+      "currentLines": 1,
+      "pin": {
+        "held": 0,
+        "escape": 0
+      },
+      "settleKey": null
+    },
+    {
+      "scrollTop": 1600,
+      "maxScroll": 2791,
+      "label": 4,
+      "labelText": "第4页",
+      "anchorPage": 4,
+      "anchorKey": "01M609YX80SFY32CFCTEWWBBT0:0",
+      "mark": false,
+      "panelPage": 1,
+      "dominant": 3,
+      "currentLines": 1,
+      "pin": {
+        "held": 0,
+        "escape": 0
+      },
+      "settleKey": null
+    },
+    {
+      "scrollTop": 2000,
+      "maxScroll": 3887,
+      "label": 6,
+      "labelText": "第6页",
+      "anchorPage": 6,
+      "anchorKey": "01M609YZZR3R1PGHEYN58DW4PT:0",
+      "mark": false,
+      "panelPage": 1,
+      "dominant": 5,
+      "currentLines": 1,
+      "pin": {
+        "held": 0,
+        "escape": 0
+      },
+      "settleKey": null
+    },
+    {
+      "scrollTop": 2400,
+      "maxScroll": 3887,
+      "label": 6,
+      "labelText": "第6页",
+      "anchorPage": 6,
+      "anchorKey": "01M609YZZR3R1PGHEYN58DW4Q9:1",
+      "mark": false,
+      "panelPage": 1,
+      "dominant": 5,
+      "currentLines": 1,
+      "pin": {
+        "held": 0,
+        "escape": 0
+      },
+      "settleKey": null
+    },
+    {
+      "scrollTop": 2800,
+      "maxScroll": 3887,
+      "label": 7,
+      "labelText": "第7页",
+      "anchorPage": 7,
+      "anchorKey": "01M609Z141RP1S2T21YZD2F278:1",
+      "mark": false,
+      "panelPage": 1,
+      "dominant": 6,
+      "currentLines": 1,
+      "pin": {
+        "held": 0,
+        "escape": 0
+      },
+      "settleKey": null
+    },
+    {
+      "scrollTop": 3200,
+      "maxScroll": 4676,
+      "label": 8,
+      "labelText": "第8页",
+      "anchorPage": 8,
+      "anchorKey": "01M609Z2E30380MT3SHSKG7YXZ:0",
+      "mark": false,
+      "panelPage": 1,
+      "dominant": 7,
+      "currentLines": 1,
+      "pin": {
+        "held": 0,
+        "escape": 0
+      },
+      "settleKey": null
+    }
+  ],
+  "stepPx": 400
+}
