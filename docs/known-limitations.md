@@ -1556,3 +1556,35 @@ updateReadingPage → ensureReadingMarksWindow → loadReadingMarksWindow
 > 每个闸都要有一条"扫描器自检"：喂合成样例必须红（A5 已按此形态实现）。缺自检的闸，绿是默认值，不是结论。
 
 **R8 是反例（做对了）**：`vm.runInContext(reading-view.js)` + `Object.keys(...)` —— **真跑真数**，不从文本里猜。**结构性的东西要真的建出来数。**
+
+---
+
+## L-107 · 审校面板偶发不打开（复现率 1/20，2026-10-29 交接给下一阶段）
+
+**现象**：连按「下一处未审」20 次，偶发 1 次面板没开：
+
+```
+panelPage = None / panelVisible = false
+readingPendingPanelKey = null / readingPendingPanelEntry = null
+100ms 后重查：panelVisible 仍 false（不是晚一帧，是没补开）
+```
+
+顶部页码与左栏一致（如 48/48），**只有面板没挂上**。
+
+**复现率**：最终验收轮 **1/20**；破环期的四态对照为 `base 120/120 · 边8切后 118/120 · 边8回退 59/60 · 边9回同步 60/60`。
+
+**已知排除（都验过，别再查一遍）**：
+- **不是边 8**：`jumpReadingTo` 已回退为同步调用（`gotoReadingEntry` 内，早于 `openReadingPanel`）
+- **不是边 9**：`updateReadingPage(entry.page_no, …)` 已是同步调用（reading-view.js:2162）
+- **不是跳转没执行**：`entry` 查得到、`gotoReadingEntry` 确实跑了、页码写对了
+- **不是晚一帧**：`readingPendingPanelKey/Entry` 都是 null，`retryReadingPendingPanel` 无从恢复
+
+**下次怎么抓（要哪几个量）**：
+1. `panelPage` / `panelVisible` / `readingPanelKey`
+2. pending 两个值（**失败时是 null 还是 undefined——这两种指向不同断点**）
+3. `__b2tNextLog` 里那次点击的 `branch`（`next-lines` / `none` / `missing` 分支不同，面板路径不同）
+4. `openReadingPanel` 是否被调用过（可临时打点或看 DOM 是否曾插入过）
+
+**为什么必须单开而不是记成"已知偶发"**：这是用户最初的问题——**「很多时候我找不到差异在哪里」**。重构的目的是让这类问题可定位、可修；**记一句"偶发"等于把它埋掉。**
+
+**与 K1/K2 的关系**：三者互相独立。K1 是页码语义冲突（左栏滚到 120 页）、K2 是尺寸变化后高亮丢失、本条是面板未挂载。
