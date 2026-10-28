@@ -9350,7 +9350,6 @@ function setupPageIndex() {
   el("index-zoom-out").addEventListener("click", () => changeIndexZoom(-1));
   el("index-zoom-in").addEventListener("click", () => changeIndexZoom(1));
   // 任务 72：清晰度出口。自动判定永远有人不满意，手动钉住比反复调阈值划算。
-  el("reading-follow-chip")?.addEventListener("click", () => setReadingFollow(!readingFollow));
   el("index-quality")?.addEventListener("click", () => {
     const order = ["auto", "standard", "high"];
     setImageQuality(order[(order.indexOf(imageQualityMode) + 1) % order.length]);
@@ -15950,8 +15949,6 @@ function setupLibrary() {
   });
   el("aux-warning-cancel").addEventListener("click", () => closeModal("aux-warning-mask"));
   el("aux-warning-wait").addEventListener("click", waitForAuxThenReview);
-  el("reading-punct-open").addEventListener("click", openPunctGroups);
-  el("reading-garbled-open").addEventListener("click", openGarbledPanel);
   el("garbled-close").addEventListener("click", closeGarbledPanel);
   el("garbled-adopt").addEventListener("click", () => decideGarbledLines("adopted"));
   el("garbled-keep").addEventListener("click", () => decideGarbledLines("kept"));
@@ -21064,6 +21061,8 @@ function boot() {
     },
     exit: () => showView("pages"),
     toggleFollow: () => setReadingFollow(!readingFollow),
+    onPunctGroups: () => openPunctGroups(),
+    onGarbledPanel: () => openGarbledPanel(),
     reload: () => readingReloadAfterBatch(),
     onViewportResize: () => {
       if (currentView !== "reading") return;

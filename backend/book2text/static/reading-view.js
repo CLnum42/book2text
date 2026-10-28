@@ -163,9 +163,29 @@ function setupReadingSplit() {
 }
   // ---------------------------------------------------------------- 对外接口
 
+  /** 绑 #view-reading 里归审校的控件（§4 第 2 组）：原来由 page-index / 标点 / 乱码三处代码持有。 */
+  function bindViewControls() {
+    const follow = el("reading-follow-chip");
+    if (follow && follow.dataset.rvBound !== "1") {
+      follow.dataset.rvBound = "1";
+      follow.addEventListener("click", () => injected.toggleFollow?.());
+    }
+    const punct = el("reading-punct-open");
+    if (punct && punct.dataset.rvBound !== "1") {
+      punct.dataset.rvBound = "1";
+      punct.addEventListener("click", () => injected.onPunctGroups?.());
+    }
+    const garbled = el("reading-garbled-open");
+    if (garbled && garbled.dataset.rvBound !== "1") {
+      garbled.dataset.rvBound = "1";
+      garbled.addEventListener("click", () => injected.onGarbledPanel?.());
+    }
+  }
+
   function init(deps) {
     injected = { ...injected, ...(deps || {}) };
     setupReadingSplit();
+    bindViewControls();
   }
 
   function enter(projectId) {
