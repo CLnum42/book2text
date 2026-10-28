@@ -20239,14 +20239,6 @@ function gotoReadingEntry(entry) {
 // 三栏 = 左树 / PDF / 正文。两条 6px 的手柄可拖，宽度记在 localStorage；
 // 最小宽度卡住，别拖到正文没字、或 PDF 看不见；窄屏（<1120）不显示手柄（CSS 管）。
 
-// ---------------------------------------------------------------- 三栏宽度（已迁到 reading-view.js）
-//
-// 任务 94 Slice 1：`reading-view.js` 搬走了宽度偏好与拖拽实现，这里只留**转发**，
-// 调用点保持不变。Slice 2 会把调用点也改成直接走 `ReadingView.*`。
-function applyReadingSplit() {
-  window.ReadingView.applySplit();
-}
-
 
 function boot() {
   // 任务 94 Slice 1：审校视图模块初始化（依赖由此注入，模块内部不直接碰这些全局）
