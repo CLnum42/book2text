@@ -2002,6 +2002,44 @@ async function dockSnapshotRaw() {
 /** mode=snapshot：只读一次快照；mode=keys：按给定键序列，记录每次前后。 */
 async function dockProbe(page, args) {
   const mode = args.mode || "snapshot";
+  if (args.viewport) {
+    await page.cdp("Emulation.setDeviceMetricsOverride", {
+      width: args.viewport.w, height: args.viewport.h, deviceScaleFactor: 2, mobile: false,
+    });
+    await page.waitForTimeout(250);
+  }
+  if (mode === "grip") {
+    const box = await page.evaluate(() => {
+      const g = document.getElementById("reading-dock-grip");
+      if (!g) return null;
+      const r = g.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    if (!box) throw new Error("没有 #reading-dock-grip");
+    await page.mouse.move(box.x, box.y);
+    await page.mouse.down();
+    await page.mouse.move(box.x, box.y + (args.dy || 0), { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    return { snap: await page.evaluate(dockSnapshotRaw) };
+  }
+  if (mode === "grip_dblclick") {
+    const box = await page.evaluate(() => {
+      const g = document.getElementById("reading-dock-grip");
+      if (!g) return null;
+      const r = g.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.click(box.x, box.y, { clickCount: 1 });
+    await page.mouse.click(box.x, box.y, { clickCount: 2 });
+    await page.waitForTimeout(450);
+    return { snap: await page.evaluate(dockSnapshotRaw) };
+  }
+  if (mode === "toggle_tree") {
+    await page.click("#reading-tree-toggle", { label: "收起/展开左树" });
+    await page.waitForTimeout(500);
+    return { snap: await page.evaluate(dockSnapshotRaw) };
+  }
   // dockSnapshotRaw 是自包含函数，直接交给 page.evaluate 序列化执行
   const read = async () => await page.evaluate(dockSnapshotRaw);
   if (mode === "snapshot") return { snap: await read() };
