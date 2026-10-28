@@ -75,9 +75,9 @@
     },
     {
       "step": "4 目录确认",
-      "assertion": "页图清晰度：比例 ≥ 1.0（目录确认一屏）",
+      "assertion": "页图底线：分辨率 ≥ 1.0 / filter=none / 非占位（目录确认一屏）",
       "status": "PASS",
-      "evidence": "1/1 个可见页块比例 ≥ 1.0；最小 p1 1.185（size=zoom，naturalWidth=2550，CSS宽=1076，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | 结果\np1 | zoom | 2550 | 1076 | 2 | 1.185 | PASS"
+      "evidence": "1/1 个可见页图满足「分辨率 ≥ 1.0 且 filter=none 且非占位」；最小比例 p1 1.185（size=zoom，naturalWidth=2550，CSS宽=1076，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | filter | 占位类 | 结果\np1 | zoom | 2550 | 1076 | 2 | 1.185 | none | 否 | PASS"
     },
     {
       "step": "5 正文审校",
@@ -111,15 +111,15 @@
     },
     {
       "step": "5 正文审校",
-      "assertion": "页图清晰度：比例 ≥ 1.0（审校第 1 屏）",
+      "assertion": "页图底线：分辨率 ≥ 1.0 / filter=none / 非占位（审校第 1 屏）",
       "status": "PASS",
-      "evidence": "2/2 个可见页块比例 ≥ 1.0；最小 p1 1.660（size=view，naturalWidth=1275，CSS宽=384，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | 结果\np1 | view | 1275 | 384 | 2 | 1.660 | PASS\np2 | view | 1275 | 384 | 2 | 1.660 | PASS"
+      "evidence": "2/2 个可见页图满足「分辨率 ≥ 1.0 且 filter=none 且非占位」；最小比例 p1 1.660（size=view，naturalWidth=1275，CSS宽=384，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | filter | 占位类 | 结果\np1 | view | 1275 | 384 | 2 | 1.660 | none | 否 | PASS\np2 | view | 1275 | 384 | 2 | 1.660 | none | 否 | PASS"
     },
     {
       "step": "5 正文审校",
-      "assertion": "页图清晰度：比例 ≥ 1.0（审校中间一屏）",
+      "assertion": "页图底线：分辨率 ≥ 1.0 / filter=none / 非占位（审校中间一屏）",
       "status": "PASS",
-      "evidence": "2/2 个可见页块比例 ≥ 1.0；最小 p1 1.660（size=view，naturalWidth=1275，CSS宽=384，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | 结果\np1 | view | 1275 | 384 | 2 | 1.660 | PASS\np2 | view | 1275 | 384 | 2 | 1.660 | PASS"
+      "evidence": "2/2 个可见页图满足「分辨率 ≥ 1.0 且 filter=none 且非占位」；最小比例 p1 1.660（size=view，naturalWidth=1275，CSS宽=384，dpr=2）\n页号 | size | naturalWidth | CSS宽 | dpr | 比例 | filter | 占位类 | 结果\np1 | view | 1275 | 384 | 2 | 1.660 | none | 否 | PASS\np2 | view | 1275 | 384 | 2 | 1.660 | none | 否 | PASS"
     },
     {
       "step": "6 导出",
@@ -137,7 +137,7 @@
       "step": "6 导出",
       "assertion": "点击导出真的落盘",
       "status": "PASS",
-      "evidence": "export_id=20261028-0724_txt · 4821 段 · 753335 字 · 未审 4821 段 · 2026-10-28 07:24；文件 ['body.txt', 'meta.json', 'manifest.json']"
+      "evidence": "export_id=20261028-0729_txt · 4821 段 · 753335 字 · 未审 4821 段 · 2026-10-28 07:29；文件 ['body.txt', 'meta.json', 'manifest.json']"
     }
   ]
 }

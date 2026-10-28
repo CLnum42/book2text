@@ -53,14 +53,19 @@ tests/e2e/
 | 5 正文审校 | 左树头「队列 N 处」= 各行「N 处」之和 = API `total_items`；顶栏分母 = API `chars_total`；阅读流文本自检 0 失败；**页图清晰度 ≥ 1.0（第 1 屏 + 中间一屏）** |
 | 6 导出 | 导出覆盖 662 页；预览段数 = 预检段数；点「导出」真的落盘（`body.txt` / `meta.json` / `manifest.json`） |
 
-## 两条不能破的底线
+## 三条不能破的底线
 
 1. **显示 = 导出**：右栏看到的字，必须逐字等于导出器写出的字。
-2. **页图清晰度**：`比例 = img.naturalWidth ÷ (img 的 CSS 宽 × devicePixelRatio) ≥ 1.0`。
-   小于 1 就是低清图被放大显示，一定糊（用户为这一条提过四次）。
+2. **页图分辨率**：`比例 = img.naturalWidth ÷ (img 的 CSS 宽 × devicePixelRatio) ≥ 1.0`。
+   小于 1 就是低清图被放大显示。
+3. **页图没被模糊**：对每个可见页图，
+   - `getComputedStyle(img).filter === "none"` —— 不是 none 就是被 CSS 模糊；
+   - `img.classList.contains("is-placeholder") === false` —— 不能还挂着占位类。
 
-页图判据同时记录 `size=`（请求档位）、`naturalWidth`、CSS 宽、dpr 四项——
-失败时一眼能分出是"请求了低档"（size=thumb/view）还是"占位图没替换"（naturalWidth 很小且仍在）。
+第 2、3 条必须一起看：**高清图 + 残留 `is-placeholder`（blur 1.5px）时，比例仍是 1.66，
+只看分辨率会 PASS**——用户提了四次"页图糊"就是这一类（用户 2026-10-28 定位到的根因）。
+页图判据同时记录 `size=`（请求档位）、`naturalWidth`、CSS 宽、dpr、filter、占位类——
+失败时一眼能分出是"请求了低档"、"占位图没替换"，还是"分辨率够但被模糊"。
 
 ## 三组一致性断言（`check`）
 
@@ -133,16 +138,24 @@ tests/e2e/
 |---|---|
 | `qa.py smoke` | **23/23 通过**（新增 3 条页图清晰度） |
 | `qa.py check` | **5/5 通过**（A：32 个已渲染段落逐字相同） |
-| `qa.py images --selftest` | 正常 3/3 通过；负向自检报 FAIL（thumb 比例 0.443） |
+| `qa.py images --selftest` | 正常 3/3 通过；负向自检 2 条都按预期报 FAIL（见下表） |
 
-页图清晰度实测（`qa.py images --selftest` 的表）：
+页图底线实测（`qa.py images --selftest` 的表）：
 
-| 屏 | 页号 | size | naturalWidth | CSS宽 | dpr | 比例 | 结果 |
-|---|---|---|---|---|---|---|---|
-| 审校第 1 屏 | p1 / p2 | view | 1275 | 384 | 2 | 1.660 | PASS |
-| 审校中间一屏 | p331 / p332 / p333 | view | 1275 | 384 | 2 | 1.660 | PASS |
-| 目录确认一屏 | p1 | zoom | 2550 | 1076 | 2 | 1.185 | PASS |
-| 负向自检（人为 thumb） | p1 | thumb | 340 | 384 | 2 | **0.443** | **FAIL（预期）** |
+| 屏 | 页号 | size | naturalWidth | CSS宽 | dpr | 比例 | filter | 占位类 | 结果 |
+|---|---|---|---|---|---|---|---|---|---|
+| 审校第 1 屏 | p1 / p2 | view | 1275 | 384 | 2 | 1.660 | none | 否 | PASS |
+| 审校中间一屏 | p331 / p332 / p333 | view | 1275 | 384 | 2 | 1.660 | none | 否 | PASS |
+| 目录确认一屏 | p1 | zoom | 2550 | 1076 | 2 | 1.185 | none | 否 | PASS |
+| 负向自检·低清档 | p1 | thumb | 340 | 384 | 2 | **0.443** | none | 否 | **FAIL（预期）** |
+| 负向自检·高清+模糊 | p1 | zoom | 2550 | 1076 | 2 | **1.185** | **blur(1.5px)** | 是 | **FAIL（预期）** |
+
+> 注意：这两个负向自检是"证明断言能抓到"的对照，不是产品现状。
+> 截止 2026-10-28 15:40，**HEAD（提交版）仍有占位类不清除的 bug**（`app.css` 对
+> `.is-placeholder` 一律 blur，`app.js` 加载完成后不摘类）；测量跑的是**开发工作区**
+> （含未提交修复：`clearImagePlaceholder` + blur 只作用于 `[src*="size=thumb"]`）。
+> 所以"直接加类"在工作区 CSS 下 filter 已是 none，由第 3 条的"占位类"部分抓住；
+> "高清+模糊"用内联 blur 模拟旧 CSS，由 filter 部分抓住。修复合入后应以 HEAD 再跑一次。
 
 ### 流程卡点（不是 bug，是这本书还没走到的步骤）
 

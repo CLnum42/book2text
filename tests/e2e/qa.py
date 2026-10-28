@@ -59,33 +59,58 @@ class Report:
         return 1 if failed else 0
 
 
+def _image_issues(row: dict[str, Any]) -> list[str]:
+    """一条页图不能破的三件事：分辨率、没被模糊、不是占位图。"""
+    issues: list[str] = []
+    if row["ratio"] < 1.0:
+        issues.append(f"分辨率不足（比例 {row['ratio']:.3f} < 1.0）")
+    if row.get("filter", "none") != "none":
+        issues.append(f"被 CSS 模糊（filter={row['filter']}）")
+    if row.get("placeholderClass"):
+        issues.append("仍带 is-placeholder 占位类")
+    return issues
+
+
 def _image_table(rows: list[dict[str, Any]]) -> str:
-    lines = ["页号 | size | naturalWidth | CSS宽 | dpr | 比例 | 结果"]
+    lines = ["页号 | size | naturalWidth | CSS宽 | dpr | 比例 | filter | 占位类 | 结果"]
     for row in rows:
-        ok = row["ratio"] >= 1.0
+        issues = _image_issues(row)
         lines.append(
             f"p{row['page']} | {row['size']} | {row['naturalWidth']} | {row['cssWidth']} | "
-            f"{row['dpr']} | {row['ratio']:.3f} | {'PASS' if ok else 'FAIL'}"
+            f"{row['dpr']} | {row['ratio']:.3f} | {row.get('filter', 'none')} | "
+            f"{'是' if row.get('placeholderClass') else '否'} | "
+            f"{'PASS' if not issues else 'FAIL：' + '；'.join(issues)}"
         )
     return "\n".join(lines)
 
 
 def _image_check(report: Report, step: str, result: dict[str, Any], label: str) -> None:
-    """页图清晰度断言：比例 = naturalWidth ÷ (CSS 宽 × dpr)，必须 ≥ 1.0。"""
+    """页图底线：分辨率 ≥ 1.0、filter === none、不带 is-placeholder。
+
+    分辨率够但被模糊是真实发生过的一类 bug：高清图到了、占位类没摘，
+    naturalWidth ÷ (CSS宽 × dpr) 仍然 1.66，只看分辨率会 PASS。
+    """
     rows = result.get("rows", [])
     if not rows:
-        report.fail(step, f"页图清晰度（{label}）", "没有量到任何可见页块")
+        report.fail(step, f"页图底线（{label}）", "没有量到任何可见页块")
         return
-    bad = [row for row in rows if row["ratio"] < 1.0]
+    bad = [row for row in rows if _image_issues(row)]
     worst = min(rows, key=lambda row: row["ratio"])
-    evidence = (f"{len(rows) - len(bad)}/{len(rows)} 个可见页块比例 ≥ 1.0；"
-                f"最小 p{worst['page']} {worst['ratio']:.3f}（size={worst['size']}，"
-                f"naturalWidth={worst['naturalWidth']}，CSS宽={worst['cssWidth']}，dpr={worst['dpr']}）\n"
-                + _image_table(rows))
+    detail = (f"{len(rows) - len(bad)}/{len(rows)} 个可见页图满足「分辨率 ≥ 1.0 且 filter=none 且非占位」；"
+              f"最小比例 p{worst['page']} {worst['ratio']:.3f}（size={worst['size']}，"
+              f"naturalWidth={worst['naturalWidth']}，CSS宽={worst['cssWidth']}，dpr={worst['dpr']}）\n"
+              + _image_table(rows))
     if not bad:
-        report.ok(step, f"页图清晰度：比例 ≥ 1.0（{label}）", evidence)
-    else:
-        report.fail(step, f"页图清晰度：比例 ≥ 1.0（{label}）", evidence)
+        report.ok(step, f"页图底线：分辨率 ≥ 1.0 / filter=none / 非占位（{label}）", detail)
+        return
+    blur_only = [
+        row for row in bad
+        if row["ratio"] >= 1.0
+        and (row.get("filter", "none") != "none" or row.get("placeholderClass"))
+    ]
+    prefix = "分辨率够但被模糊了：" if blur_only else ""
+    report.fail(step, f"页图底线：分辨率 ≥ 1.0 / filter=none / 非占位（{label}）",
+                prefix + detail)
 
 
 def _api(state: dict[str, Any]) -> Api:
@@ -196,20 +221,43 @@ def cmd_images(args: argparse.Namespace) -> int:
             report.blocked(label, str(error))
 
     if args.selftest:
-        # 负向自检：人为把一张可见页图换成 thumb，断言必须报 FAIL，否则说明它测不出问题。
+        # 负向自检 1：换成 thumb，必须因"分辨率不足"报 FAIL。
         try:
             result = _browser.run(state, "images",
                                   {"where": "review", "scroll": "top", "forceSize": "thumb"})
             rows = result.get("rows", [])
             bad = [row for row in rows if row["ratio"] < 1.0]
             if bad:
-                report.ok("负向自检", "人为换成低清档后断言确实报 FAIL",
+                report.ok("负向自检·低清档", "换成 thumb 后断言报 FAIL（分辨率不足）",
                           _image_table(rows))
             else:
-                report.fail("负向自检", "人为换成低清档后断言确实报 FAIL",
+                report.fail("负向自检·低清档", "换成 thumb 后断言报 FAIL",
                             "换成 thumb 后比例仍 ≥ 1.0，断言不可信\n" + _image_table(rows))
         except Exception as error:  # noqa: BLE001
-            report.blocked("负向自检", str(error))
+            report.blocked("负向自检·低清档", str(error))
+
+        # 负向自检 2：高清图 + 加回占位类（= 永久 CSS 模糊）。
+        # 比例仍是 1.66，但 filter 不是 none —— 证明新检查抓得到"分辨率够但糊"。
+        try:
+            # 用目录确认那一屏做负向自检：上一项自检把审校 p1 的 src 换成了 thumb，
+            # 在这里接着量会变成"低清 + 模糊"，证明不了"分辨率够但被模糊"。
+            result = _browser.run(state, "images",
+                                  {"where": "index", "scroll": "top",
+                                   "forcePlaceholderClass": True, "forceBlur": True})
+            rows = result.get("rows", [])
+            bad = [row for row in rows if _image_issues(row)]
+            caught = [row for row in bad if row["ratio"] >= 1.0 and row.get("filter", "none") != "none"]
+            if caught:
+                sample = caught[0]
+                report.ok("负向自检·高清+模糊", "分辨率仍 ≥1.0、filter 非 none 时断言报 FAIL",
+                          f"p{sample['page']}：比例 {sample['ratio']:.3f}，"
+                          f"filter={sample['filter']}，占位类={'是' if sample['placeholderClass'] else '否'}\n"
+                          + _image_table(rows))
+            else:
+                report.fail("负向自检·高清+模糊", "加回 is-placeholder 后断言应报 FAIL",
+                            "没有抓到 filter 非 none 的页图（或比例被误判）\n" + _image_table(rows))
+        except Exception as error:  # noqa: BLE001
+            report.blocked("负向自检·高清+模糊", str(error))
     return report.finish(report_path)
 
 
@@ -582,7 +630,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("smoke", help="七步冒烟（一键）").set_defaults(func=cmd_smoke)
     images = sub.add_parser("images", help="页图清晰度：审校第 1 屏 / 中间一屏 / 目录确认一屏")
-    images.add_argument("--selftest", action="store_true", help="负向自检：人为换成低清档，断言必须报 FAIL")
+    images.add_argument("--selftest", action="store_true", help="负向自检：低清档 / 高清+模糊，断言都必须报 FAIL")
     images.set_defaults(func=cmd_images)
     sub.add_parser("check", help="三组一致性断言：显示=导出 / 提交→库 / 撤销→字节").set_defaults(func=cmd_check)
     return parser

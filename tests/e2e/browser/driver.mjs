@@ -229,6 +229,36 @@ async function measureImages(page, args) {
     { container, tile: tileSelector }
   );
 
+  if (args.forcePlaceholderClass) {
+    // 负向自检用：给第一张可见页图加回占位类（= 高清图 + CSS blur）。
+    // 只改 QA 浏览器 DOM，不碰产品代码；比例仍应 ≥1.0，但 filter 会变成 blur。
+    await page.evaluate((input) => {
+      const scroller = document.querySelector(input.container);
+      const cRect = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: 0 };
+      const tile = [...document.querySelectorAll(input.tile)].find((item) => {
+        const rect = item.getBoundingClientRect();
+        return rect.bottom > cRect.top && rect.top < cRect.bottom;
+      });
+      const image = tile && tile.querySelector("img");
+      if (image) image.classList.add("is-placeholder");
+    }, { container, tile: tileSelector });
+  }
+
+  if (args.forceBlur) {
+    // 负向自检用：给第一张可见页图加内联 blur（模拟"高清图 + 永久模糊"）。
+    // 只改 QA 浏览器 DOM，不碰产品代码；分辨率应仍是 1.66 左右，filter 变成 blur。
+    await page.evaluate((input) => {
+      const scroller = document.querySelector(input.container);
+      const cRect = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: 0 };
+      const tile = [...document.querySelectorAll(input.tile)].find((item) => {
+        const rect = item.getBoundingClientRect();
+        return rect.bottom > cRect.top && rect.top < cRect.bottom;
+      });
+      const image = tile && tile.querySelector("img");
+      if (image) image.style.filter = "blur(1.5px)";
+    }, { container, tile: tileSelector });
+  }
+
   if (args.forceSize) {
     // 负向自检用：把第一张可见页图人为换成低清档，断言必须能报 FAIL。
     // 只改 QA 浏览器里的这一张图，不碰产品代码与磁盘。
@@ -301,6 +331,9 @@ async function measureImages(page, args) {
           cssWidth: Math.round(cssWidth * 10) / 10,
           dpr,
           ratio: Math.round(ratio * 1000) / 1000,
+          filter: getComputedStyle(image).filter || "none",
+          placeholderClass: image.classList.contains("is-placeholder"),
+          classes: image.className,
           ready: image.classList.contains("is-ready"),
           placeholder: image.dataset.placeholder === "1",
           src: src.slice(0, 200),
