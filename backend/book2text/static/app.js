@@ -19026,11 +19026,8 @@ function updateReadingPage(pageNo, { scrollLeft = true } = {}) {
 
 function setReadingFollow(on) {
   readingFollow = Boolean(on);
-  const button = el("reading-follow");
-  if (button) {
-    button.classList.toggle("is-on", readingFollow);
-    button.textContent = readingFollow ? "跟随" : "已停止跟随";
-  }
+  const toggle = el("reading-follow-toggle");
+  if (toggle) toggle.checked = readingFollow;
   if (!readingFollow) hideReadingPdfBox();
 }
 
@@ -19426,8 +19423,7 @@ function setupReading() {
     el("view-reading").classList.toggle("hide-pending", !readingPendingOn);
   });
   el("reading-follow-toggle").addEventListener("change", (event) => {
-    readingFollow = event.target.checked;
-    el("reading-follow")?.classList.toggle("is-on", readingFollow);
+    setReadingFollow(event.target.checked);
   });
   for (const radio of document.querySelectorAll('input[name="reading-markup"]')) {
     radio.addEventListener("change", (event) => {

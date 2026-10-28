@@ -1593,8 +1593,8 @@ def test_reading_view_is_wired_for_merge() -> None:
         "reading-submit",
         "reading-undo",
         "reading-pages",
-        "reading-follow",
-        "reading-proof",
+        "reading-follow-toggle",
+        "reading-pending-toggle",
         "reading-blindspot",
         "reading-pdf-box",
     ):
