@@ -38,6 +38,9 @@ from . import review_status
 #: 阅读流默认窗口半径（页）：当前页 ±10，与页图内存缓存同一个尺度
 DEFAULT_RADIUS = 10
 
+#: marks payload 的结构版本；改了字段或语义就 +1
+MARKS_CACHE_VERSION = 1
+
 _CACHE: dict[str, tuple[str, dict]] = {}
 """项目 → (签名, 数据)。只留最近两个项目，避免内存无限涨。"""
 
@@ -56,6 +59,7 @@ def _signature(project_id: str, library: Path) -> str:
         return ""
     directory = library_module.project_dir(library, project_id)
     parts.append(db_module.content_signature(directory))
+    parts.append(f"v{MARKS_CACHE_VERSION}")
     return "|".join(parts)
 
 

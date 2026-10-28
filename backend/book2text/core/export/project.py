@@ -627,6 +627,9 @@ def preview(project_id: str, *, library: Path | None = None, options: ExportOpti
 # 重复打开（含重启后）实测 ~40 ms，而且能直接 `Response(content=...)` 交给 uvicorn，
 # 不再过一遍 `jsonable_encoder`。
 
+#: 阅读流 segments 的结构版本；改了字段或语义就 +1
+PREVIEW_CACHE_VERSION = 1
+
 _PREVIEW_CACHE: dict[str, tuple[str, str]] = {}
 """项目 → (签名, JSON 字符串)。只留最近两个项目。"""
 
@@ -637,7 +640,11 @@ _PREVIEW_LOCK = threading.Lock()
 
 
 def _db_mtime_signature(project_id: str, library: Path) -> str:
-    return db_module.content_signature(library_module.project_dir(library, project_id))
+    # 结构版本号：payload 形状变了也要让磁盘缓存失效
+    return (
+        f"v{PREVIEW_CACHE_VERSION}|"
+        + db_module.content_signature(library_module.project_dir(library, project_id))
+    )
 
 
 def _options_signature(options: ExportOptions) -> str:

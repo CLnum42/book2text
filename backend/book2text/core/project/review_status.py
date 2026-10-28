@@ -667,6 +667,9 @@ def queue_items(
     return {"per_page": per_page, "totals": totals, "pages": len(per_page)}
 
 
+#: 收尾面板 payload 的结构版本；**改了字段或语义就 +1**
+FINISH_CACHE_VERSION = 2
+
 _FINISH_CACHE: dict[str, tuple[str, dict]] = {}
 """收尾面板结果缓存：项目 → (签名, 结果)。
 
@@ -738,7 +741,9 @@ def _finish_signature(project_id: str, library: Path) -> str:
     except library_module.ProjectError:
         return ""
     directory = library_module.project_dir(library, project_id)
-    return f"{updated}|{db_module.content_signature(directory)}"
+    # 结构版本号：payload 的**形状**变了（加字段 / 改语义）也要让磁盘缓存失效，
+    # 否则升级后第一次打开会读到旧形状的快照（实测：目录步还显示旧的"完成"）。
+    return f"v{FINISH_CACHE_VERSION}|{updated}|{db_module.content_signature(directory)}"
 
 
 _FINISH_CACHE_AT: dict[str, float] = {}
