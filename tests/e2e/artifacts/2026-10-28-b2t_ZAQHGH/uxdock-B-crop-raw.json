@@ -1,0 +1,1372 @@
+{
+  "rows": [
+    {
+      "i": 1,
+      "key": "01M609YSCTY9T6D986R8XMC3ZS:1",
+      "panelPage": "第 1 页 · 第 2 行第二路：",
+      "level": "第 1 页 · 第 2 行第二路：",
+      "cropAttr": {
+        "x0": 0.2282,
+        "y0": 0.5491,
+        "w": 0.3637,
+        "h": 0.1391,
+        "rows": 5,
+        "lineH": 40,
+        "gap": 0.0278,
+        "gapN": 1,
+        "gapLevel": "bbox×1.25",
+        "degrade": null,
+        "nw": 2550,
+        "scale": 0.436
+      },
+      "plan": {
+        "pageNo": 1,
+        "bbox": [
+          0.382473,
+          0.607544,
+          0.437575,
+          0.629802
+        ],
+        "x0": 0.22819577941176472,
+        "y0": 0.54911675,
+        "w": 0.36365644117647056,
+        "h": 0.1391125,
+        "rows": 5,
+        "displayH": 200,
+        "lineH": 40,
+        "degrade": null,
+        "gap": 0.0278225,
+        "gapN": 1,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.382473,
+        0.607544,
+        0.437575,
+        0.629802
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 1,
+      "expected": {
+        "contentH": 184,
+        "aspect": 1.2941,
+        "w": 0.39527874040920713,
+        "h": 0.1391125
+      },
+      "cropElHeight": 200,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/1/image?size=zoom&token=",
+      "emptyText": ""
+    },
+    {
+      "i": 2,
+      "key": "01M609YSCVVSZQER654WQVCREE:0",
+      "panelPage": "第 1 页 · 第 1 行第二路：",
+      "level": "第 1 页 · 第 1 行第二路：",
+      "cropAttr": {
+        "x0": 0.2583,
+        "y0": 0.129,
+        "w": 0.5031,
+        "h": 0.177,
+        "rows": 5,
+        "lineH": 37,
+        "gap": 0.0354,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.315
+      },
+      "plan": {
+        "pageNo": 1,
+        "bbox": [
+          0.471285,
+          0.203358,
+          0.548427,
+          0.231686
+        ],
+        "x0": 0.2583182122762149,
+        "y0": 0.12899700000000003,
+        "w": 0.5030755754475702,
+        "h": 0.17704999999999996,
+        "rows": 5,
+        "displayH": 184,
+        "lineH": 37,
+        "degrade": "window>45%",
+        "gap": 0.03540999999999999,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.471285,
+        0.203358,
+        0.548427,
+        0.231686
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 1,
+      "expected": {
+        "contentH": 168,
+        "aspect": 1.2941,
+        "w": 0.5509875350140054,
+        "h": 0.17704999999999996
+      },
+      "cropElHeight": 184,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/1/image?size=zoom&token=",
+      "emptyText": ""
+    },
+    {
+      "i": 3,
+      "key": "01M609YX81FD04QZPC431BX5MJ:0",
+      "panelPage": "第 4 页 · 第 1 行第二路：",
+      "level": "第 4 页 · 第 1 行第二路：",
+      "cropAttr": {
+        "x0": 0.2527,
+        "y0": 0.4079,
+        "w": 0.4034,
+        "h": 0.1296,
+        "rows": 5,
+        "lineH": 34,
+        "gap": 0.0259,
+        "gapN": 1,
+        "gapLevel": "bbox×1.25",
+        "degrade": null,
+        "nw": 2550,
+        "scale": 0.393
+      },
+      "plan": {
+        "pageNo": 4,
+        "bbox": [
+          0.398679,
+          0.462361,
+          0.51018,
+          0.483101
+        ],
+        "x0": 0.2527300952380954,
+        "y0": 0.4079185000000001,
+        "w": 0.4033988095238092,
+        "h": 0.12962499999999988,
+        "rows": 5,
+        "displayH": 168,
+        "lineH": 34,
+        "degrade": null,
+        "gap": 0.025924999999999976,
+        "gapN": 1,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.398679,
+        0.462361,
+        0.51018,
+        0.483101
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 4,
+      "expected": {
+        "contentH": 152,
+        "aspect": 1.2941,
+        "w": 0.4458618421052628,
+        "h": 0.12962499999999988
+      },
+      "cropElHeight": 168,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/4/image?size=zoom&token=",
+      "emptyText": ""
+    },
+    {
+      "i": 4,
+      "key": "01M609Z2E2YA4PBREPDYGTHDK2:0",
+      "panelPage": "第 8 页 · 第 1 行第二路：",
+      "level": "第 8 页 · 第 1 行第二路：",
+      "cropAttr": {
+        "x0": 0.0133,
+        "y0": 0.0802,
+        "w": 0.632,
+        "h": 0.1644,
+        "rows": 5,
+        "lineH": 27,
+        "gap": 0.0329,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.251
+      },
+      "plan": {
+        "pageNo": 8,
+        "bbox": [
+          0.121224,
+          0.14923,
+          0.537407,
+          0.175535
+        ],
+        "x0": 0.01330279455017308,
+        "y0": 0.080179375,
+        "w": 0.6320254108996538,
+        "h": 0.16440624999999998,
+        "rows": 5,
+        "displayH": 136,
+        "lineH": 27,
+        "degrade": "window>45%",
+        "gap": 0.032881249999999994,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.121224,
+        0.14923,
+        0.537407,
+        0.175535
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 8,
+      "expected": {
+        "contentH": 120,
+        "aspect": 1.2941,
+        "w": 0.7162954656862743,
+        "h": 0.16440624999999998
+      },
+      "cropElHeight": 136,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/8/image?size=zoom&token=",
+      "emptyText": ""
+    },
+    {
+      "i": 5,
+      "key": "01M609Z5DZJXQVJA3ZFKP66KVC:4",
+      "panelPage": "第 9 页 · 第 5 行第二路：",
+      "level": "第 9 页 · 第 5 行第二路：",
+      "cropAttr": {
+        "x0": 0.1953,
+        "y0": 0.6277,
+        "w": 0.5565,
+        "h": 0.1277,
+        "rows": 5,
+        "lineH": 24,
+        "gap": 0.0255,
+        "gapN": 6,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.285
+      },
+      "plan": {
+        "pageNo": 9,
+        "bbox": [
+          0.123169,
+          0.679883,
+          0.823938,
+          0.703153
+        ],
+        "x0": 0.19530246078431412,
+        "y0": 0.6276530000000002,
+        "w": 0.5565020784313717,
+        "h": 0.1277299999999998,
+        "rows": 5,
+        "displayH": 120,
+        "lineH": 24,
+        "degrade": "window>45%",
+        "gap": 0.025545999999999958,
+        "gapN": 6,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.123169,
+        0.679883,
+        0.823938,
+        0.703153
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 9,
+      "expected": {
+        "contentH": 104,
+        "aspect": 1.2941,
+        "w": 0.6421177828054289,
+        "h": 0.1277299999999998
+      },
+      "cropElHeight": 120,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/9/image?size=zoom&token=",
+      "emptyText": ""
+    },
+    {
+      "i": 6,
+      "key": "01M609Z5DZJXQVJA3ZFKP66KVC:6",
+      "panelPage": "第 9 页 · 第 7 行第二路：",
+      "level": "第 9 页 · 第 7 行第二路：",
+      "cropAttr": {
+        "x0": 0.0815,
+        "y0": 0.6782,
+        "w": 0.7589,
+        "h": 0.1277,
+        "rows": 5,
+        "lineH": 18,
+        "gap": 0.0255,
+        "gapN": 6,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.209
+      },
+      "plan": {
+        "pageNo": 9,
+        "bbox": [
+          0.122521,
+          0.730469,
+          0.799304,
+          0.753739
+        ],
+        "x0": 0.08147926470588296,
+        "y0": 0.6782390000000003,
+        "w": 0.7588664705882341,
+        "h": 0.1277299999999998,
+        "rows": 5,
+        "displayH": 88,
+        "lineH": 18,
+        "degrade": "window>45%",
+        "gap": 0.025545999999999958,
+        "gapN": 6,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.122521,
+        0.730469,
+        0.799304,
+        0.753739
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 9,
+      "expected": {
+        "contentH": 72,
+        "aspect": 1.2941,
+        "w": 0.9275034640522861,
+        "h": 0.1277299999999998
+      },
+      "cropElHeight": 88,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/9/image?size=zoom&token=",
+      "emptyText": ""
+    },
+    {
+      "i": 7,
+      "key": "01M609ZAB2WQ1F46V39SS5PBG5:1",
+      "panelPage": "第 11 页 · 第 2 行第二路：",
+      "level": "第 11 页 · 第 2 行第二路：",
+      "cropAttr": {
+        "x0": 0.0195,
+        "y0": 0.6036,
+        "w": 0.9275,
+        "h": 0.1277,
+        "rows": 5,
+        "lineH": 14,
+        "gap": 0.0255,
+        "gapN": 4,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.171
+      },
+      "plan": {
+        "pageNo": 11,
+        "bbox": [
+          0.122521,
+          0.655601,
+          0.844034,
+          0.679377
+        ],
+        "x0": 0.01952576797385891,
+        "y0": 0.6036240000000004,
+        "w": 0.9275034640522821,
+        "h": 0.12772999999999923,
+        "rows": 5,
+        "displayH": 72,
+        "lineH": 14,
+        "degrade": "window>45%",
+        "gap": 0.025545999999999847,
+        "gapN": 4,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.122521,
+        0.655601,
+        0.844034,
+        0.679377
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 11,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.1130041568627387,
+        "h": 0.12772999999999923
+      },
+      "cropElHeight": 72,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/11/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 8,
+      "key": "01M609ZG2CDVNEMWPVA8NQN6KQ:1",
+      "panelPage": "第 13 页 · 第 2 行第二路：",
+      "level": "第 13 页 · 第 2 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.6237,
+        "w": 0.98,
+        "h": 0.1265,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0253,
+        "gapN": 3,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 13,
+        "bbox": [
+          0.123169,
+          0.67533,
+          0.840792,
+          0.6986
+        ],
+        "x0": 0,
+        "y0": 0.6237325,
+        "w": 0.98,
+        "h": 0.12646500000000005,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.02529300000000001,
+        "gapN": 3,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.123169,
+        0.67533,
+        0.840792,
+        0.6986
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 13,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.1019812941176474,
+        "h": 0.12646500000000005
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/13/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 9,
+      "key": "01M609ZJWZXYZEMM5ZECCH9AB9:7",
+      "panelPage": "第 14 页 · 第 8 行第二路：",
+      "level": "第 14 页 · 第 8 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.2313,
+        "w": 0.98,
+        "h": 0.1277,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0255,
+        "gapN": 12,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 14,
+        "bbox": [
+          0.123169,
+          0.283284,
+          0.818751,
+          0.30706
+        ],
+        "x0": 0,
+        "y0": 0.23130574999999992,
+        "w": 0.98,
+        "h": 0.12773250000000014,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.025546500000000028,
+        "gapN": 12,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.123169,
+        0.283284,
+        0.818751,
+        0.30706
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 14,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.1130259411764718,
+        "h": 0.12773250000000014
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/14/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 10,
+      "key": "01M609ZJWZXYZEMM5ZECCH9AB9:12",
+      "panelPage": "第 14 页 · 第 13 行第二路：",
+      "level": "第 14 页 · 第 13 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.3595,
+        "w": 0.98,
+        "h": 0.1277,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0255,
+        "gapN": 12,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 14,
+        "bbox": [
+          0.122521,
+          0.411774,
+          0.807083,
+          0.435044
+        ],
+        "x0": 0,
+        "y0": 0.3595427499999999,
+        "w": 0.98,
+        "h": 0.12773250000000014,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.025546500000000028,
+        "gapN": 12,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.122521,
+        0.411774,
+        0.807083,
+        0.435044
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 14,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.1130259411764718,
+        "h": 0.12773250000000014
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/14/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 11,
+      "key": "01M609ZPAJ6YKCMRK8X7B02E89:3",
+      "panelPage": "第 15 页 · 第 4 行第二路：",
+      "level": "第 15 页 · 第 4 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.3441,
+        "w": 0.98,
+        "h": 0.1151,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.023,
+        "gapN": 6,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 15,
+        "bbox": [
+          0.152341,
+          0.391034,
+          0.81551,
+          0.41228
+        ],
+        "x0": 0,
+        "y0": 0.34411575,
+        "w": 0.98,
+        "h": 0.11508249999999998,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.023016499999999995,
+        "gapN": 6,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.152341,
+        0.391034,
+        0.81551,
+        0.41228
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 15,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.0027973137254902,
+        "h": 0.11508249999999998
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/15/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 12,
+      "key": "01M609ZRR5QR0S2WQD1D5SX80W:6",
+      "panelPage": "第 16 页 · 第 7 行第二路：",
+      "level": "第 16 页 · 第 7 行第二路：",
+      "cropAttr": {
+        "x0": 0.0024,
+        "y0": 0.4868,
+        "w": 0.98,
+        "h": 0.1277,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0255,
+        "gapN": 8,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 16,
+        "bbox": [
+          0.122521,
+          0.53824,
+          0.862185,
+          0.563028
+        ],
+        "x0": 0.002352999999999994,
+        "y0": 0.486769,
+        "w": 0.98,
+        "h": 0.12773000000000007,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.025546000000000013,
+        "gapN": 8,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.122521,
+        0.53824,
+        0.862185,
+        0.563028
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 16,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.1130041568627458,
+        "h": 0.12773000000000007
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/16/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 13,
+      "key": "01M609ZSNKZN55A4SH15W3MAD4:0",
+      "panelPage": "第 17 页 · 第 1 行第二路：",
+      "level": "第 17 页 · 第 1 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.1411,
+        "w": 0.98,
+        "h": 0.1676,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0335,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 17,
+        "bbox": [
+          0.237263,
+          0.211452,
+          0.403217,
+          0.238262
+        ],
+        "x0": 0,
+        "y0": 0.14107575,
+        "w": 0.98,
+        "h": 0.1675625,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.0335125,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.237263,
+        0.211452,
+        0.403217,
+        0.238262
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 17,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.4600936274509806,
+        "h": 0.1675625
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/17/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 14,
+      "key": "01M609ZV2HS9G6HG3QGC1YSEP2:0",
+      "panelPage": "第 18 页 · 第 1 行第二路：",
+      "level": "第 18 页 · 第 1 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.1454,
+        "w": 0.98,
+        "h": 0.1897,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0379,
+        "gapN": 1,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 18,
+        "bbox": [
+          0.119928,
+          0.22511,
+          0.838199,
+          0.255462
+        ],
+        "x0": 0,
+        "y0": 0.14543599999999995,
+        "w": 0.98,
+        "h": 0.18970000000000012,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.03794000000000002,
+        "gapN": 1,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.119928,
+        0.22511,
+        0.838199,
+        0.255462
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 18,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.6529937254901972,
+        "h": 0.18970000000000012
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/18/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 15,
+      "key": "01M60A174VX0T0FJ00NPK13A3D:0",
+      "panelPage": "第 23 页 · 第 1 行第二路：",
+      "level": "第 23 页 · 第 1 行第二路：",
+      "cropAttr": {
+        "x0": 0.0033,
+        "y0": 0.1667,
+        "w": 0.98,
+        "h": 0.1486,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0297,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 23,
+        "bbox": [
+          0.123818,
+          0.229157,
+          0.862833,
+          0.252933
+        ],
+        "x0": 0.0033254999999999812,
+        "y0": 0.16674499999999995,
+        "w": 0.98,
+        "h": 0.14860000000000012,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.029720000000000024,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.123818,
+        0.229157,
+        0.862833,
+        0.252933
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 23,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.2948596078431385,
+        "h": 0.14860000000000012
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/23/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 16,
+      "key": "01M60A4584VHDBQY0QBR6DRHNA:2",
+      "panelPage": "第 27 页 · 第 3 行第二路：",
+      "level": "第 27 页 · 第 3 行第二路：",
+      "cropAttr": {
+        "x0": 0.0066,
+        "y0": 0.3886,
+        "w": 0.98,
+        "h": 0.1359,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0272,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 27,
+        "bbox": [
+          0.123169,
+          0.445667,
+          0.869964,
+          0.467419
+        ],
+        "x0": 0.006566499999999975,
+        "y0": 0.388568,
+        "w": 0.98,
+        "h": 0.13594999999999996,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.027189999999999992,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.123169,
+        0.445667,
+        0.869964,
+        0.467419
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 27,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.1846309803921566,
+        "h": 0.13594999999999996
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/27/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 17,
+      "key": "01M60A5E7TWV6TY7YEBS3K18SP:2",
+      "panelPage": "第 37 页 · 第 3 行第二路：",
+      "level": "第 37 页 · 第 3 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.1635,
+        "w": 0.98,
+        "h": 0.1612,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0322,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 37,
+        "bbox": [
+          0.121873,
+          0.23118,
+          0.849868,
+          0.256979
+        ],
+        "x0": 0,
+        "y0": 0.16345762499999994,
+        "w": 0.98,
+        "h": 0.1612437500000001,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.03224875000000002,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.121873,
+        0.23118,
+        0.849868,
+        0.256979
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 37,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.405033774509805,
+        "h": 0.1612437500000001
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/37/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 18,
+      "key": "01M60A5PJBMD2S7J9THR3P1M23:0",
+      "panelPage": "第 39 页 · 第 1 行第二路：",
+      "level": "第 39 页 · 第 1 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.036,
+        "w": 0.98,
+        "h": 0.1612,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0322,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 39,
+        "bbox": [
+          0.121873,
+          0.103702,
+          0.828475,
+          0.129501
+        ],
+        "x0": 0,
+        "y0": 0.03597962499999999,
+        "w": 0.98,
+        "h": 0.16124375000000002,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.03224875000000001,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.121873,
+        0.103702,
+        0.828475,
+        0.129501
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 39,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.4050337745098043,
+        "h": 0.16124375000000002
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/39/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 19,
+      "key": "01M60A76WCZ7VVF1RJVJNK0DT8:4",
+      "panelPage": "第 48 页 · 第 5 行第二路：",
+      "level": "第 48 页 · 第 5 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.1594,
+        "w": 0.98,
+        "h": 0.1613,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0323,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 48,
+        "bbox": [
+          0.121873,
+          0.227133,
+          0.555558,
+          0.252933
+        ],
+        "x0": 0,
+        "y0": 0.15940799999999994,
+        "w": 0.98,
+        "h": 0.16125000000000012,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.03225000000000002,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.121873,
+        0.227133,
+        0.555558,
+        0.252933
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 48,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.4050882352941185,
+        "h": 0.16125000000000012
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/48/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 20,
+      "key": "01M60A7D9H4EGK8FT2MGSPBDJ4:5",
+      "panelPage": "第 49 页 · 第 6 行第二路：",
+      "level": "第 49 页 · 第 6 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.1798,
+        "w": 0.98,
+        "h": 0.129,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0258,
+        "gapN": 7,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 49,
+        "bbox": [
+          0.123169,
+          0.232698,
+          0.835606,
+          0.255968
+        ],
+        "x0": 0,
+        "y0": 0.17983550000000006,
+        "w": 0.98,
+        "h": 0.1289949999999998,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.02579899999999996,
+        "gapN": 7,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.123169,
+        0.232698,
+        0.835606,
+        0.255968
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 49,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.1240270196078415,
+        "h": 0.1289949999999998
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/49/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 21,
+      "key": "01M60A7H784BM6CF9MA7QD86D5:2",
+      "panelPage": "第 50 页 · 第 3 行第二路：",
+      "level": "第 50 页 · 第 3 行第二路：",
+      "cropAttr": {
+        "x0": 0,
+        "y0": 0.1237,
+        "w": 0.98,
+        "h": 0.129,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0258,
+        "gapN": 3,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 50,
+        "bbox": [
+          0.121873,
+          0.176041,
+          0.803841,
+          0.200323
+        ],
+        "x0": 0,
+        "y0": 0.12368324999999994,
+        "w": 0.98,
+        "h": 0.12899750000000015,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.02579950000000003,
+        "gapN": 3,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.121873,
+        0.176041,
+        0.803841,
+        0.200323
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 50,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.1240488039215701,
+        "h": 0.12899750000000015
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/50/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 22,
+      "key": "01M60A7Y9HMB1D9TS2TADYWSPX:0",
+      "panelPage": "第 53 页 · 第 1 行第二路：",
+      "level": "第 53 页 · 第 1 行第二路：",
+      "cropAttr": {
+        "x0": 0.003,
+        "y0": 0.1761,
+        "w": 0.98,
+        "h": 0.136,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0272,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 53,
+        "bbox": [
+          0.123818,
+          0.233204,
+          0.862185,
+          0.254956
+        ],
+        "x0": 0.0030014999999999903,
+        "y0": 0.17610499999999996,
+        "w": 0.98,
+        "h": 0.13595000000000013,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.027190000000000027,
+        "gapN": 0,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.123818,
+        0.233204,
+        0.862185,
+        0.254956
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 53,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.184630980392158,
+        "h": 0.13595000000000013
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/53/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 23,
+      "key": "01M60A83FGPV49BZCJ3QD0DGF3:0",
+      "panelPage": "第 54 页 · 第 1 行第二路：",
+      "level": "第 54 页 · 第 1 行第二路：",
+      "cropAttr": {
+        "x0": 0.002,
+        "y0": 0.5292,
+        "w": 0.98,
+        "h": 0.1612,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0322,
+        "gapN": 1,
+        "gapLevel": "bbox×1.25",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 54,
+        "bbox": [
+          0.121224,
+          0.596921,
+          0.862833,
+          0.62272
+        ],
+        "x0": 0.0020284999999999886,
+        "y0": 0.529198625,
+        "w": 0.98,
+        "h": 0.1612437500000001,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.03224875000000002,
+        "gapN": 1,
+        "gapLevel": "bbox×1.25"
+      },
+      "markBbox": [
+        0.121224,
+        0.596921,
+        0.862833,
+        0.62272
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 54,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.405033774509805,
+        "h": 0.1612437500000001
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/54/image?size=zoom&token",
+      "emptyText": ""
+    },
+    {
+      "i": 24,
+      "key": "01M60ADT5AJM8B89WPC0YEK2WD:0",
+      "panelPage": "第 56 页 · 第 1 行第二路：",
+      "level": "第 56 页 · 第 1 行第二路：",
+      "cropAttr": {
+        "x0": 0.0095,
+        "y0": 0.5186,
+        "w": 0.98,
+        "h": 0.1303,
+        "rows": 5,
+        "lineH": 12,
+        "gap": 0.0261,
+        "gapN": 6,
+        "gapLevel": "block",
+        "degrade": "window>45%",
+        "nw": 2550,
+        "scale": 0.162
+      },
+      "plan": {
+        "pageNo": 56,
+        "bbox": [
+          0.123169,
+          0.571628,
+          0.875798,
+          0.595909
+        ],
+        "x0": 0.009483499999999978,
+        "y0": 0.5186384999999998,
+        "w": 0.98,
+        "h": 0.13026000000000038,
+        "rows": 5,
+        "displayH": 60,
+        "lineH": 12,
+        "degrade": "window>45%",
+        "gap": 0.026052000000000075,
+        "gapN": 6,
+        "gapLevel": "block"
+      },
+      "markBbox": [
+        0.123169,
+        0.571628,
+        0.875798,
+        0.595909
+      ],
+      "markLevel": "differs_chars",
+      "markPage": 56,
+      "expected": {
+        "contentH": 60,
+        "aspect": 1.2941,
+        "w": 1.1350498823529447,
+        "h": 0.13026000000000038
+      },
+      "cropElHeight": 60,
+      "bg": "url(\"/api/projects/b2t_ZAQHGH/pages/56/image?size=zoom&token",
+      "emptyText": ""
+    }
+  ]
+}
