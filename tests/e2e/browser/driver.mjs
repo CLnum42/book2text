@@ -1980,7 +1980,8 @@ async function dockSnapshotRaw() {
       candidate: text(".reading-panel__candidate"),
     },
     progress: text("#reading-progress-text"),
-    notice: text("#notice-bar") || text(".notice-bar"),
+    notice: text("#auto-apply-notice-text"),
+    noticeHidden: (document.getElementById("auto-apply-notice") || {}).hidden ?? null,
     edit: {
       key: editingKey,
       nodeExists: Boolean(editNode),
