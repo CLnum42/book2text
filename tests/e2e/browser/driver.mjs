@@ -1929,6 +1929,36 @@ async function taskMetrics(page, args) {
   ), logBefore, atBefore, afterLog };
 }
 
+/** B7：同一条目强制用 view/mid/zoom 三档重画裁窗，比较 data-crop 的 x0/y0/w/h。 */
+async function cropSizeProbe(page) {
+  return await page.evaluate(async () => {
+    const key = typeof readingPanelKey !== "undefined" ? readingPanelKey : null;
+    const entry = key && typeof readingMarks !== "undefined" ? readingMarks.get(key) : null;
+    if (!entry) return { error: "no panel entry" };
+    const orig = window.pageImageUrl;
+    const out = {};
+    for (const size of ["view", "mid", "zoom"]) {
+      window.pageImageUrl = function (pg) { return orig(pg, size); };
+      readingCropPaint(entry);
+      const started = performance.now();
+      let attr = null;
+      while (performance.now() - started < 5000) {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        const el = document.getElementById("reading-dock-crop");
+        if (el && el.dataset.crop) {
+          try { attr = JSON.parse(el.dataset.crop); } catch (error) { attr = null; }
+          if (attr && attr.nw) break;
+        }
+      }
+      out[size] = attr;
+    }
+    window.pageImageUrl = orig;
+    const el = document.getElementById("reading-dock-crop");
+    try { out.restored = el && el.dataset.crop ? JSON.parse(el.dataset.crop) : null; } catch (error) { out.restored = null; }
+    return out;
+  });
+}
+
 async function nextProbe(page) {
   await ensureReading(page);
   const rows = [];
