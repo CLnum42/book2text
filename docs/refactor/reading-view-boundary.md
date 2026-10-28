@@ -854,6 +854,7 @@ getCurrent pageNo number|null
    - Builder 的"前置页有差异但不可审"结论一路交接下来，QA 一条实测（流外队列页 = 0）就否了，白改一轮。**传错的结论比多贴一遍表贵得多。**
    - `readingTreeOpen` 事故（2026-10-28）：L1 的 52 行删除拿 `c45b8a5` 的行号范围去切 `2b67132` 的树，范围上移吞掉了 `const readingTreeOpen = new Set();`。HEAD 上该名字出现 7 次、声明 0 次，进审校页打开左树直接 `ReferenceError`。**JS 单测不加载渲染器，所以那时还是全绿。**
 7. **施工后按名字复核**：`git grep -c` 逐个核"要删的确实没人用、要留的确实还在"，别只跑测试。
+8. **提交署名（2026-10-28，破环前已发生）**：`84c26f8` / `ae71e48` 两笔的提交信息没有列出 Architect 的四处改动（§12.1.1 / §12.4 / §3 S10），是别人 `git commit -a` 卷进来的。内容已核对无误，**不回退、不改写已推历史**，追溯靠本节这一行。**破环期间禁用 `git commit -a`，只 `git add <具体路径>`**——破环的提交序列要能单独回退、单独署名。
 
 
 ---
@@ -969,7 +970,7 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 1. 静态：该边的调用点 = 0（闸 B）
 2. 行为：锁住该边的特征测试在 `ring-break-base` 上绿，切边提交后仍绿（闸 A）
 3. 运行时：模块的注入面不向外壳回流（闸 C）
-4. 队列：上限 32、丢弃计数可读、单点写入单点消费（口径在 §12.1，归 Architect）
+4. 队列：kind 名 ⊆ 6 个、`flush` 后残留 **0**、单点写入单点消费、payload 内无函数值；`!active`/`exit`/换项目清空，`readingIntentStats.dropped` 可读（口径在 §12.1.1，归 Architect）
 5. 提交：切边提交不含 L1–L4 搬运，不含 `tests/js/` 的删除行（闸 A）
 
 §12.3 说「先写特征测试，切完必须一样」——**测试放在哪次提交**必须写死，否则「一样」是自证。见 18.2。
@@ -980,12 +981,19 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 
 | # | 断言 | 怎么红 |
 |---|---|---|
-| **A1** | `git diff --numstat ring-break-base..HEAD -- tests/js` 删除行合计 = **0**，删除文件 = **0** | 改一行旧断言 = 1 行删除 → 红；切边提交里出现 `tests/js/` 修改 → 红 |
-| **A2** | 序列内**新增**的每个测试文件，在 `ring-break-base` 的 worktree 上跑必须**绿** | 只为切后行为量身写的测试，在 tag 上红 → 红 |
+| **A1** | **逐笔**：任何一笔切边/产品代码提交，`git show --name-only <sha>` ∩ `tests/js/` = ∅（新增也算） | 切边提交里带测试文件 → 红 |
+| **A1b** | **序列合计**：`git diff --numstat ring-break-base..HEAD -- tests/js` 删除行合计 = **0**，删除文件 = **0** | 测试提交里删/改旧断言 → 红 |
+| **A2** | **回放**：序列内新增的每个测试文件，在 `ring-break-base` 的 worktree 上跑必须**绿** | 只为切后行为量身写的测试，在 tag 上红 → 红 |
 | **A3** | 改判据必须单开提交：不含产品代码、首行 `test-contract:`、DevLead 在 §18.6 登记；该提交后 `ring-break-base` 前移 | 夹在切边提交里 → 红 |
+| **A4** | **变异红（两遍，同一份文件、同一个 base worktree）**：① 把新增测试拷进 base 树、不插变异跑一遍必须**绿**（= A2 的回放）；② 在 base 树上给**被调用那一端**（`callee`，如 `ensureReadingMarksWindow` / `updateReadingPage`）的函数体首行插一行 `throw`（临时，不进提交），跑同一份测试必须**红**。`callee` 被多个调用方共用、隔离不到这条边时，才许退回 `caller` 首行，并在提交说明里写清为什么。两遍都过才算锁住；绿了但没红 = 锁的不是这条边，单列报，该边不算算完 | 不插变异不绿 = A2 红；插了 `throw` 还绿 = 假锁，红 |
 
 **为什么要有 A2**：只查「不许改测试」挡不住「新写一条只对切后成立的测试」——结局和改断言一样。回放把「它锁的是旧行为」变成可机检的事。
-**权限**：只有 DevLead 能登记 A3 并移动 `ring-break-base`；Builder 不可。
+**为什么要有 A4**：A2 只证明「测试在旧树上绿」，挡不住「测试根本没走那条边」——绿可能锁的是外壳按钮。
+**A4 为什么打在 callee 上**（Chief）：打 `caller` 首行只能证明「测试跑到了这个函数」——任何顺带调用 `renderReading` 的断言都会失败，证明不了它依赖的是**这条边的效果**。所以变异插在基线树上**被调用那一端**；`callee` 被多个调用方共用、隔离不到这条边，才退回 `caller`，并在提交说明里写明理由。
+**A4 的对象固定死在 base 树上**（Architect）：切完队列后 9 条边的效果都挪到帧末 flush，在切后代码上插 `throw` 也会红，但那时红的是「队列还在跑」，证明不了同一条边。所以只认 base 树上的红。
+**只锁用户可感知的结果**（面板开了、页码对上、树高亮）：新增测试里**不许断言调用次数、调用顺序、注入面调用**（C1–C4 探针除外）。锁了顺序的测试切完队列必红，会被误判成「切错了」；而顺手在切边提交里改测试会立刻撞 A1（删除行 0），只能走 A3 单开提交。这条由 TestDev 做成静态检查，与八道闸并列领 R 编号。
+
+**权限**：只有 DevLead 能登记 A3 并移动 `ring-break-base`；Builder 不可。A4 的插 `throw` 小脚本归 TestDev（插一行、跑一条、2 秒级）。
 
 ### 18.3 闸 B：静态边棘轮（13 条）
 
@@ -997,11 +1005,13 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 | 回调边 | 9 | 每条：`caller` 函数体内 `callee` 出现 = 0 |
 
 **桥（4）**：`setupReading`、`openPageDetail`、`renderMergeView`、`submitMergeDecisions` —— 改走注入的 `navigate()`。
-**回调边（9）**：`renderReading→ensureReadingMarksWindow`、`renderReading→retryReadingPendingPanel`、`renderReadingTree→ensureReadingMarksWindow`、`renderReadingTree→scrollReadingToPage`、`openReadingPanel→updateReadingPage`、`setReadingHover→ensureReadingBlocks`、`verifyReadingPageSync→updateReadingPage`、`gotoReadingEntry→jumpReadingToPage`、`gotoReadingEntry→updateReadingPage`。
+**回调边（9）**：`renderReading→ensureReadingMarksWindow`、`renderReading→retryReadingPendingPanel`、`renderReadingTree→ensureReadingMarksWindow`、`renderReadingTree→scrollReadingToPage`、`openReadingPanel→updateReadingPage`、`setReadingHover→ensureReadingBlocks`、`verifyReadingPageSync→updateReadingPage`、`gotoReadingEntry→jumpReadingTo`、`gotoReadingEntry→updateReadingPage`。
 
 **棘轮**：13 条合计预期 **0**，任何一条从 0 变 ≥1 = 红。**红/绿证据**：在 `ring-break-base` 上同一份检查必须红出 **13/13**（证明抓得到这些边），最终提交 0/13。模块里 `showView` 现在还挂在 R1 例外表上，破环后该行必须删、例外表回 0 行（上限 3 不动）。
 R 编号由 TestDev 在闸表里领，§2 的 R1–R8 不动。
 
+> **第 9 条边 2026-10-28 更正**：旧名 `jumpReadingToPage` 全仓库 **0 处**，照它数永远 0——假绿，base 上最多只能红 12/13。实为 `jumpReadingTo`（`app.js:19526`，调用点 20675）。更正后实测：**HEAD `e0a8f4b` 的树，13/13 全部可检出**（9 条回调边 + 4 条桥，各命中 ≥1 处）。这只是证明名字对、边在；**真正的 13/13 红证据要在 `ring-break-base` 上重验**。
+>
 > 若某一条在破环范围内做不到 0（合法到期点在 L5），**不许悄悄放过**：走 §18.6 登记、条数从 13 改成 12 并写明到期切片。
 
 ### 18.4 闸 C：运行时注入面探针（一次运行，四条断言）
@@ -1014,11 +1024,12 @@ R 编号由 TestDev 在闸表里领，§2 的 R1–R8 不动。
 | # | 断言 |
 |---|---|
 | **C1** | `render*` / `flush` 路径内调用 `navigate()` 次数 = **0** |
-| **C2** | `render*` 调用栈内，**非 getter** 注入面调用次数 = **0**（白名单 = 名字以 `get` 开头的只读 getter；`api`/`notify`/`navigate`/`onPunctGroups` 一个都不许在 render 里） |
+| **C2** | `render*` 调用栈内，**快照表外**注入面调用次数 = **0**。白名单 = §12.4 的 `snapshot-fields v1` 可解析块（一行一个字段 `函数名 字段名 类型`），**闸直接读这个块，文档与闸同源** —— 名字以 `get` 开头但不在表里 = 拒；在表里但名字不以 `get` 开头 = 放行；**0 条 / 列数不符 / 解析失败 = 红，不默认放行** |
 | **C3** | `flush` 重入 = **0**；同一队列快照被消费 = **1** 次 |
-| **C4** | 队列最大深度 ≤ **32**；丢弃计数 ≠ 0 时单列报（不算失败，算发现） |
+| **C4** | 队列 kind 名 ⊆ `{marks, blocks, panel, jump, goto, scroll}`（6 是**结构上限**不是数值上限；出现第 7 个 kind = 设计变更，走登记）；`flush` 后**残留 = 0**（>0 = 消费不清，红）；`readingIntentStats.dropped`（清空时累加）≠ 0 单列报；`coalesced` 只作发现、不算失败；payload 内函数值 = **0**（出现即违规，堵事件总线从后门接回来） |
 
 C2 是这条闸真正的价值：9 条边的共同形态就是「渲染里顺手取数/改页」，C2 直接量它。
+C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的恒真，查它等于没查（Chief）；真正会出事的是「消费不清」，所以判据是 flush 后残留 0。
 若真实数据上某条 `render*` 必须同步取数 → **不许改闸**：报 Architect 改设计，或走 §18.6 判据变更。
 
 ### 18.5 联合验收（报「通过」的唯一格式）
@@ -1032,4 +1043,12 @@ C2 是这条闸真正的价值：9 条边的共同形态就是「渲染里顺手
 
 ### 18.6 判据变更登记
 
-空表。只有 DevLead 能加行：sha / 改哪条判据 / 为什么 / 批准人。没有登记行的放宽一律按违规算。
+| 日期 | 判据 | 变更 | 批准人 | 提交 |
+|---|---|---|---|---|
+| 2026-10-28 | A1 | 按字面逐笔执行：切边提交内出现 `tests/js/` 即拒；新增测试放相邻独立提交，再受 A2 约束 | Chief | 本笔 |
+| 2026-10-28 | A4（新增） | 变异红两遍：拷测试进 base 树跑绿 → 在 `callee` 首行插 `throw` 跑红；共用 callee 才退回 `caller` 并写明理由 | Chief | 本笔 |
+| 2026-10-28 | 特征测试口径 | 新增测试不许断言调用次数、顺序、注入面调用（C1–C4 探针除外），TestDev 做成静态检查领 R 编号 | Chief | 本笔 |
+| 2026-10-28 | C2 | 白名单改为 §12.4 `snapshot-fields` 可解析块（同源），废掉 `get` 前缀法 | Chief | 本笔 |
+| 2026-10-28 | C4 | 上限改为「kind ⊆ 6 且 flush 后残留 0」，改读 `readingIntentStats.dropped`，不查深度 | Chief | 本笔 |
+
+只有 DevLead 能加行。没有登记行的放宽一律按违规算。
