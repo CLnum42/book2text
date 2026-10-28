@@ -18135,21 +18135,6 @@ function readingMovedSinceOpen(sinceMs) {
   return readingUserMovedAt > sinceMs;
 }
 
-/**
- * 标点 / 乱码批次裁决后整条流重开（§4 第 3 组）。
- *
- * **归属在审校，不在标点**：这个函数原来长在标点代码段里，直接写 `readingProject` /
- * `readingData` / `readingMarks`——两个模块各写一份审校状态，正是"重绘互相吃掉"的根。
- * 现在它和 `openReading()` 放在一起；外部只调 `ReadingView.reload()`。
- */
-async function readingReloadAfterBatch() {
-  readingProject = null;
-  readingData = null;
-  readingMarks = new Map();
-  await openReading();
-  renderPunctGroupBadge();
-}
-
 async function openReading() {
   if (!currentProject) return;
   // 三栏宽度在打开时套一次：视图刚显示出来才量得到真实宽度
@@ -20963,7 +20948,12 @@ function boot() {
     toggleFollow: () => setReadingFollow(!readingFollow),
     onPunctGroups: () => openPunctGroups(),
     onGarbledPanel: () => openGarbledPanel(),
-    reload: () => readingReloadAfterBatch(),
+    // 任务 94 Slice 2（第一笔）：readingReloadAfterBatch 搬进模块后要读写的审校状态 / 回调
+    setReadingProject: (value) => { readingProject = value; },
+    setReadingData: (value) => { readingData = value; },
+    setMarks: (value) => { readingMarks = value; },
+    openReading: () => openReading(),
+    renderPunctGroupBadge: () => renderPunctGroupBadge(),
     onViewportResize: () => {
       if (currentView !== "reading") return;
       measureReadingTops();

@@ -161,6 +161,25 @@ function setupReadingSplit() {
     injected.onViewportResize?.();
   });
 }
+
+  // ---------------------------------------------------------------- 审校外壳（任务 94 · Slice 2）
+  // 从 app.js 原样搬入；依赖全部由 init() 注入，模块本身不碰 app.js 的顶层符号。
+
+/**
+ * 标点 / 乱码批次裁决后整条流重开（§4 第 3 组）。
+ *
+ * **归属在审校，不在标点**：这个函数原来长在标点代码段里，直接写 `readingProject` /
+ * `readingData` / `readingMarks`——两个模块各写一份审校状态，正是"重绘互相吃掉"的根。
+ * 现在它和 `openReading()` 放在一起；外部只调 `ReadingView.reload()`。
+ */
+async function readingReloadAfterBatch() {
+  injected.setReadingProject?.(null);
+  injected.setReadingData?.(null);
+  injected.setMarks?.(new Map());
+  await injected.openReading?.();
+  injected.renderPunctGroupBadge?.();
+}
+
   // ---------------------------------------------------------------- 对外接口
 
   /** 绑 #view-reading 里归审校的控件（§4 第 2 组）：原来由 page-index / 标点 / 乱码三处代码持有。 */
@@ -209,7 +228,7 @@ function setupReadingSplit() {
 
   /** 正文流/标记需要按当前设置重建时由外壳触发（Architect 接口第 5 个）。 */
   async function reload() {
-    await injected.reload?.();
+    await readingReloadAfterBatch();
   }
 
   window.ReadingView = {
