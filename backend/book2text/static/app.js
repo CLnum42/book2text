@@ -18405,10 +18405,17 @@ async function ensureReadingMarksWindow(pageNo) {
   }
 }
 
+let readingMarksRequestSeq = 0;
+
 async function loadReadingMarksWindow(pageNo) {
+  // **最新请求赢**：QA 120 连按实测，第 200 页时 marks 窗口会跳回 1-11 / 2-22 / 13-33，
+  // 结果是面板 key 既不在 readingMarks 也不在 readingEntries，行节点渲染不出来、
+  // 游标原地打转（17/120 次点击零推进）。早期页的请求晚到就该被丢掉。
+  const seq = (readingMarksRequestSeq += 1);
   const payload = await apiJson(
     `/api/projects/${currentProject.project_id}/review/marks?page=${pageNo}`
   );
+  if (seq !== readingMarksRequestSeq) return;   // 过期响应：已经被更晚的请求取代
   applyReadingMarksPayload(payload);
   // 正在编辑某一行时**不重画**：重画会换掉那个 DOM 节点，光标和没落草稿的输入
   // 一起丢（任务 67 实测：翻页补 marks 正好撞上用户点进一行，编辑态瞬间消失）。
