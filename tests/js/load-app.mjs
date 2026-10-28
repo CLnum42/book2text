@@ -103,9 +103,13 @@ export function loadApp(options = {}) {
   const ctx = vm.createContext(sandbox);
   vm.runInContext(src, ctx, { filename: String(appPath) });
 
-  // 自检：被测函数必须真的存在，别让用例在 undefined 上做无意义的断言
-  if (typeof ctx.readingDiffUnits !== "function") {
-    throw new Error("load-app: ctx.readingDiffUnits 不是函数——加载假设失效了，先查 app.js 的开头/结尾结构");
+  // 自检：本文件要用的函数必须真的存在，别让用例在 undefined 上做无意义的断言。
+  // 用 `require` 指定：对历史版本跑单个测试文件时，那个版本可能还没有别的函数
+  // （例如 7b803c5 有 computeCharSpans、还没有 readingDiffUnits）。
+  for (const name of options.require || ["readingDiffUnits"]) {
+    if (typeof ctx[name] !== "function") {
+      throw new Error(`load-app: ctx.${name} 不是函数——加载假设失效了，先查 app.js 的开头/结尾结构`);
+    }
   }
   return ctx;
 }

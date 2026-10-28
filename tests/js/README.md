@@ -21,6 +21,15 @@ git show <commit>:backend/book2text/static/app.js > /tmp/app-old.js
 B2T_APP_JS=/tmp/app-old.js node tests/js/run.mjs
 ```
 
+只跑其中一个文件（旧版本可能还没有别的函数，整套跑会在加载阶段失败）：
+
+```bash
+B2T_APP_JS=/tmp/app-old.js node tests/js/run.mjs compute-char-spans
+```
+
+已知缺陷用 `test(name, { todo: "原因" }, fn)` 标记，不写成裸红（裸红会让 `run.mjs` 退出码非 0，
+分不清"回归"和"已知缺陷"）。跑出来是 `⚠ … # 原因` + `ℹ todo N`，退出码仍是 0。
+
 ## 能力边界（重要，别越界）
 
 | 能测 | 不能测 |
@@ -35,7 +44,8 @@ B2T_APP_JS=/tmp/app-old.js node tests/js/run.mjs
 `const token = new URLSearchParams(location.search).get("token")`。
 上下文里少给 `URLSearchParams`，脚本会在第 14 行就中断——函数声明照样能拿到（声明提升），
 但一调用就 `ReferenceError: Cannot access 'x' before initialization`。
-`load-app.mjs` 已经补了这些全局，并且 `ranges` 是 vm 里另一个 realm 的数组，
+`load-app.mjs` 已经补了这些全局（`loadApp({ require: [...] })` 可指定本文件要用的函数，
+对历史版本复跑时用），并且 `ranges` 是 vm 里另一个 realm 的数组，
 比较前要 JSON 归一化，否则 `deepStrictEqual` 会因原型不同误报。
 
 ## 文件
@@ -43,6 +53,9 @@ B2T_APP_JS=/tmp/app-old.js node tests/js/run.mjs
 - `load-app.mjs` —— 零侵入加载器：读源码、剥掉末尾的 `boot();`、给最小浏览器 stub、`vm.runInContext`。
 - `reading-diff-units.test.mjs` —— `readingDiffUnits(lineText, candidate, wordBoxes)`（`app.js:19945`）。
   包含英文整行退化那次事故的回归用例。
+- `compute-char-spans.test.mjs` —— `computeCharSpans(current, candidate)`（`app.js:11574`）：
+  等长快路径 vs LCS、代理对（UTF-16 下标会切开代理对，挂 todo）、组合字符、全角标点、
+  空输入、超长行的耗时上限（防 O(n²)）。
 - `run.mjs` —— 入口，只汇总耗时和退出码，不替 `node:test` 宣布"全绿"。
 
 ## 不是本目录该干的事

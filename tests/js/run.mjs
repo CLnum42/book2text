@@ -16,8 +16,20 @@ process.on("exit", (code) => {
   console.log(`\n耗时 ${ms.toFixed(0)}ms，退出码 ${code}`);
 });
 
-// node:test 在本进程里注册用例，跑完自动设置退出码
-await import("./reading-diff-units.test.mjs");
+// 可选参数：只跑某一个测试文件（对历史版本做定点复跑时用，例如
+// `B2T_APP_JS=/tmp/app-7b803c5.js node tests/js/run.mjs compute-char-spans`
+// ——那个版本还没有 readingDiffUnits，整套跑会在加载阶段就失败）。
+const TEST_FILES = [
+  ["reading-diff-units", () => import("./reading-diff-units.test.mjs")],
+  ["compute-char-spans", () => import("./compute-char-spans.test.mjs")],
+];
+const selector = process.argv[2];
+const selected = TEST_FILES.filter(([name]) => !selector || name.includes(selector));
+if (!selected.length) {
+  console.error(`没有匹配 ${selector} 的测试文件；可选：${TEST_FILES.map(([name]) => name).join(", ")}`);
+  process.exit(2);
+}
+for (const [, load] of selected) await load();
 
 // 显式引用一次，避免"文件没跑"和"跑了但全绿"看起来一样
 if (typeof test !== "function") throw new Error("node:test 不可用");
