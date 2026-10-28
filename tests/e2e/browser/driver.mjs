@@ -68,6 +68,8 @@ export async function run(cfg) {
       return await dockProbe(page, args);
     case "crop_probe":
       return await cropProbe(page, args);
+    case "error_watch":
+      return await errorWatch(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -2159,6 +2161,51 @@ async function cropProbe(page, args) {
     rows.push({ i: i + 1, ...row });
   }
   return { rows };
+}
+
+/** 捕获页面 JS 错误（openReadingPanel 中途抛异常时，面板会挂上但裁图不画）。 */
+async function errorWatch(page, args) {
+  const mode = args.mode || "install";
+  if (mode === "install") {
+    const info = await page.evaluate(() => {
+      window.__b2tErrors = window.__b2tErrors || [];
+      if (!window.__b2tErrInstalled) {
+        window.__b2tErrInstalled = true;
+        window.addEventListener("error", (e) => {
+          window.__b2tErrors.push({ kind: "error", msg: String(e.message || ""), src: String(e.filename || ""), line: e.lineno });
+        });
+        window.addEventListener("unhandledrejection", (e) => {
+          window.__b2tErrors.push({ kind: "rejection", msg: String((e.reason && e.reason.message) || e.reason || "") });
+        });
+      }
+      return { installed: true };
+    });
+    return info;
+  }
+  if (mode === "manual_paint") {
+    const out = await page.evaluate(() => {
+      const key = typeof readingPanelKey !== "undefined" ? readingPanelKey : null;
+      const entry = key && typeof readingMarks !== "undefined" ? readingMarks.get(key) : null;
+      let error = null;
+      try {
+        if (!entry) throw new Error("no entry for panel key " + key);
+        readingCropPaint(entry);
+      } catch (e) {
+        error = String(e && e.stack ? e.stack : e);
+      }
+      const cropEl = document.getElementById("reading-dock-crop");
+      let attr = null;
+      try { attr = cropEl && cropEl.dataset.crop ? JSON.parse(cropEl.dataset.crop) : null; } catch (e) {}
+      return { key, error, attr, plan: window.__b2tCropPlan || null };
+    });
+    await page.waitForTimeout(700);
+    const after = await page.evaluate(() => {
+      const cropEl = document.getElementById("reading-dock-crop");
+      try { return { attr: cropEl && cropEl.dataset.crop ? JSON.parse(cropEl.dataset.crop) : null }; } catch (e) { return {}; }
+    });
+    return { ...out, after };
+  }
+  return await page.evaluate(() => window.__b2tErrors || []);
 }
 
 async function nextProbe(page) {
