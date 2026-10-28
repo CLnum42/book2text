@@ -1995,6 +1995,10 @@ async function dockSnapshotRaw() {
       ? readingEntries.filter((e) => typeof readingEntryDone === "function" && readingEntryDone(e)).length
       : null,
     treeRail: rect("#reading-tree-rail"),
+    splitClass: (document.getElementById("reading-split") || {}).className || null,
+    railHidden: (document.getElementById("reading-tree-rail") || {}).hidden ?? null,
+    innerHeight: window.innerHeight,
+    prefs: { dock: localStorage.getItem("b2t.readingDock.v1"), tree: localStorage.getItem("b2t.readingTree.v1") },
     shot: null,
   };
 }
