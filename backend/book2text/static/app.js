@@ -227,6 +227,7 @@ function showView(name) {
   if (target === "pages" && currentProject) {
     // 这一视图的工作流角标 / 待处理页：进来才拉（骨架先显示，数字后到）
     queueAfterSteps(() => hydrateView("pages"));
+    queueAfterSteps(() => loadLanguageSummary());
     // 回到页面视图时以数据库为准重拉一次：确认进度与类型不在前端缓存里说了算
     renderPageSetup();
     refreshPageStates();
@@ -15736,6 +15737,13 @@ function setupLibrary() {
     el("page-more-menu").hidden = true;
     openWordBoxesDialog();
   });
+  el("backups-open").addEventListener("click", () => {
+    el("page-more-menu").hidden = true;
+    openBackups();
+  });
+  el("backups-close").addEventListener("click", () => closeModal("backups-mask"));
+  el("backups-cancel").addEventListener("click", () => closeModal("backups-mask"));
+  el("backups-restore").addEventListener("click", restoreSelectedBackup);
   el("aux-rerun").addEventListener("click", () => {
     el("page-more-menu").hidden = true;
     rerunAuxiliary();
@@ -17259,6 +17267,112 @@ async function acceptAllClean() {
     mergeHandled.add(page.page_id);
   }
   renderMergeListView();
+}
+
+// ---------------------------------------------------------------- 恢复备份（任务 65）
+
+let backupsData = null;
+let backupSelected = null;
+
+async function openBackups() {
+  backupSelected = null;
+  el("backups-error").hidden = true;
+  openModal("backups-mask");
+  await loadBackups();
+}
+
+async function loadBackups() {
+  const list = el("backups-list");
+  list.innerHTML = "";
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/backups`);
+    backupsData = data.backups || [];
+  } catch (error) {
+    showError(el("backups-error"), error);
+    return;
+  }
+  el("backups-foot").textContent = backupsData.length
+    ? `共 ${backupsData.length} 份`
+    : "这个项目还没有备份";
+  el("backups-restore").disabled = true;
+  for (const item of backupsData) {
+    const row = document.createElement("li");
+    row.className = "backup-row";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "backup-pick";
+    radio.value = item.name;
+    radio.addEventListener("change", () => {
+      backupSelected = item;
+      el("backups-restore").disabled = false;
+    });
+    const main = document.createElement("div");
+    main.className = "backup-row__main";
+    const title = document.createElement("div");
+    title.textContent = `${formatMarginTime(item.created_at) || item.name} · ${humanBytes(item.size)}`;
+    const note = document.createElement("div");
+    note.className = "muted";
+    note.textContent = `${item.note} · ${item.name}`;
+    main.append(title, note);
+    row.append(radio, main);
+    list.append(row);
+  }
+}
+
+async function restoreSelectedBackup() {
+  if (!backupSelected || !currentProject) return;
+  const projectId = currentProject.project_id;
+  const ok = window.confirm(
+    `用「${backupSelected.name}」覆盖当前项目库？\n\n` +
+      "· 会丢掉这份备份之后的所有改动\n" +
+      "· 恢复前会把当前库再备份一份（「恢复前的安全备份」）\n" +
+      "· 恢复后会自动重新打开项目"
+  );
+  if (!ok) return;
+  el("backups-error").hidden = true;
+  const button = el("backups-restore");
+  button.disabled = true;
+  button.textContent = "正在恢复…";
+  try {
+    // 恢复要求没有写入方：先关项目
+    await apiJson(`/api/projects/${projectId}/close`, { method: "POST" }).catch(() => null);
+    const data = await apiJson(
+      `/api/projects/${projectId}/backups/${encodeURIComponent(backupSelected.name)}/restore?confirm=true`,
+      { method: "POST" }
+    );
+    closeModal("backups-mask");
+    await openProject(projectId);
+    const warning = el("library-warning");
+    warning.textContent = `已恢复备份 ${data.from}；恢复前的库另存为 ${data.safety_backup}`;
+    warning.hidden = false;
+  } catch (error) {
+    showError(el("backups-error"), error);
+  } finally {
+    button.disabled = false;
+    button.textContent = "恢复选中的备份";
+  }
+}
+
+// ---------------------------------------------------------------- 语言分布（任务 64）
+
+async function loadLanguageSummary() {
+  const node = el("rec-language-summary");
+  if (!node || !currentProject) return;
+  try {
+    const data = await apiJson(`/api/projects/${currentProject.project_id}/aux/languages`);
+    const counts = data.counts || {};
+    const bits = [];
+    if (counts["en-US"]) bits.push(`en-US ${counts["en-US"]} 页`);
+    if (counts["zh-Hans"]) bits.push(`zh-Hans ${counts["zh-Hans"]} 页`);
+    if (counts.mixed) bits.push(`中英混合 ${counts.mixed} 页`);
+    node.hidden = false;
+    node.textContent =
+      bits.length
+        ? `第二引擎语言：${bits.join(" · ")}` + (data.unknown ? ` · 未判定 ${data.unknown} 页` : " · 未判定 0 页")
+        : "第二引擎语言：还没判定（识别 / 复核一次后自动判）";
+  } catch {
+    node.hidden = true;
+  }
 }
 
 // ---------------------------------------------------------------- 重跑第二引擎（任务 64）

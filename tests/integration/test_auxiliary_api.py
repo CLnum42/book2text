@@ -318,3 +318,47 @@ def test_aux_language_summary(client, auth_headers, recognized_page):
     body = response.json()
     assert body["total"] >= 0
     assert "unknown" in body
+
+
+def test_backups_are_listed_and_restore_requires_project_closed(
+    client, auth_headers, library_dir, recognized_page
+):
+    """任务 65：列备份 / 恢复要先关项目 / 恢复前再备份当前库。"""
+    from pathlib import Path
+
+    # 打开项目会自动备份一次
+    client.post(f"/api/projects/{recognized_page}/open", headers=auth_headers)
+    listed = client.get(
+        f"/api/projects/{recognized_page}/backups", headers=auth_headers
+    ).json()
+    assert listed["count"] >= 1
+    name = listed["backups"][0]["name"]
+    assert name.startswith("project-")
+    assert listed["backups"][0]["note"]
+
+    # 项目还开着 → 拒绝恢复
+    busy = client.post(
+        f"/api/projects/{recognized_page}/backups/{name}/restore?confirm=true",
+        headers=auth_headers,
+    )
+    assert busy.status_code == 409, busy.text
+
+    client.post(f"/api/projects/{recognized_page}/close", headers=auth_headers)
+    ok = client.post(
+        f"/api/projects/{recognized_page}/backups/{name}/restore?confirm=true",
+        headers=auth_headers,
+    )
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert body["restored"] is True
+    assert body["safety_backup"].startswith("project-before-restore-")
+    safety = Path(library_dir) / recognized_page / "backups" / body["safety_backup"]
+    assert safety.is_file()
+
+
+def test_restore_rejects_path_traversal(client, auth_headers, recognized_page):
+    response = client.post(
+        f"/api/projects/{recognized_page}/backups/..%2Fproject.db/restore?confirm=true",
+        headers=auth_headers,
+    )
+    assert response.status_code in (400, 404)

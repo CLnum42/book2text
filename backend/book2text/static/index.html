@@ -147,6 +147,10 @@
               <div class="page-more__group">版面</div>
               <button type="button" id="layout-detect-open" class="page-more__item">检测版面…</button>
               <button type="button" id="word-boxes-open" class="page-more__item">字框回填…</button>
+              <button type="button" id="backups-open" class="page-more__item"
+                      title="列出这个项目的数据库备份，可恢复到某一份（恢复前会再备份当前库）">
+                恢复备份…
+              </button>
               <button type="button" id="aux-rerun" class="page-more__item"
                       title="用 Apple Vision 按页语言重跑第二引擎（自动备份；已裁决的行不覆盖）">
                 重跑第二引擎（Vision）…
@@ -362,6 +366,7 @@
                     <option value="en">英文</option>
                     <option value="mixed">中英混合</option>
                   </select>
+                  <p class="hint" id="rec-language-summary" hidden></p>
                   <p class="hint" id="rec-language-note">
                     第二引擎（Vision）的语言<b>按页判定</b>：看主引擎识别出的正文，汉字占多 → 中文，
                     拉丁字母占多 → 英文（实测英文页 0.47 → 0.90）。判定结果落到页上，可单页覆盖。
@@ -1436,6 +1441,30 @@
     </div>
 
     <!-- ─────────────────────────── 对话框：第二引擎还没跑完 ─────────────────────────── -->
+    <!-- 恢复备份（任务 65）：列备份 → 关项目 → 二次确认 → 恢复 → 自动重开 -->
+    <div class="mask" id="backups-mask" hidden>
+      <div class="modal modal--small">
+        <div class="mhead">恢复备份
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="backups-close">✕</button>
+        </div>
+        <div class="mbody mbody--single">
+          <p class="hint">
+            恢复会用选中的那份数据库覆盖当前项目库。**恢复前会把当前库再备份一份**
+            （「恢复前的安全备份」），恢复错了还能退回来。恢复要求项目先关闭。
+          </p>
+          <div class="alert alert--error" id="backups-error" hidden></div>
+          <ul class="backup-list" id="backups-list"></ul>
+        </div>
+        <div class="mfoot">
+          <span class="muted" id="backups-foot"></span>
+          <span class="spacer"></span>
+          <button type="button" id="backups-cancel" class="btn">取消</button>
+          <button type="button" id="backups-restore" class="btn btn--danger" disabled>恢复选中的备份</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 标点差异 · 按模式批量（任务 61）：710 行只有 64 种模式，一批判几百行 -->
     <div class="mask" id="punct-groups-mask" hidden>
       <div class="modal modal--wide">
