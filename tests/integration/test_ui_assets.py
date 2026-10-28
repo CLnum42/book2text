@@ -1640,3 +1640,42 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert "window.confirm(" in script
     assert ".reading-mark" in css and ".reading-panel" in css
     assert ".reading-line.is-draft" in css
+
+
+def test_project_lock_conflict_dialog_is_wired() -> None:
+    """任务 60：锁挡住删除 / 打开时，界面要说清"谁、什么时候、是否过期"。
+
+    用户 2026-10-27 只看到"该项目正被另一台电脑使用：MacBook-Air-2.local"，而那就是
+    本机改名前的自己。所以这里钉住四件事：确认框存在、强制按钮只对过期锁出现、
+    卡片上有"锁已过期"标记、错误里的结构化 `data.lock` 真的被读。
+    """
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+    for element_id in (
+        "lock-conflict-mask",
+        "lock-conflict-title",
+        "lock-conflict-text",
+        "lock-conflict-facts",
+        "lock-conflict-advice",
+        "lock-conflict-force",
+        "lock-conflict-cancel",
+        "lock-conflict-close",
+    ):
+        assert f'id="{element_id}"' in page_html, element_id
+
+    # 结构化错误（code + data.lock）被读出来画确认框
+    assert "error.data.lock" in script
+    assert "project_lock_expired" in script
+    assert "function showLockConflict(" in script
+    assert "function confirmLockConflict(" in script
+    assert "force=true" in script
+    # 过期锁才给强制删除；真占用不给
+    assert 'force.hidden = action === "open" ? false : !expired;' in script
+    # 来源 / 时间 / 状态三项人话
+    assert "（本机以前的名字）" in script
+    assert "（另一台电脑）" in script
+    assert "这把锁已过期" in script
+    # 卡片徽标与入口
+    assert 'entry.lock_expired ? "锁已过期" : "使用中"' in script
+    assert '"接管并打开"' in script

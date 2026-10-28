@@ -15,12 +15,13 @@ const token = new URLSearchParams(location.search).get("token") || "";
 
 /** 后端返回的统一错误格式（说明书第 11 节）。 */
 class ApiError extends Error {
-  constructor(message, code, correlationId, detail) {
+  constructor(message, code, correlationId, detail, data) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.correlationId = correlationId;
     this.detail = detail;
+    this.data = data;
   }
 }
 
@@ -49,7 +50,8 @@ async function apiJson(path, options = {}) {
       error.message || `请求失败（HTTP ${response.status}）`,
       error.code,
       error.correlation_id,
-      error.detail
+      error.detail,
+      error.data
     );
   }
   return payload;
@@ -2190,6 +2192,9 @@ function setupExportPanel() {
 /** 当前打开的项目（含页面列表）。 */
 let currentProject = null;
 
+/** 项目库列表的最近一次结果（错误对话框里要写项目名）。 */
+let libraryProjects = [];
+
 /**
  * 页面工作流状态（任务 58）。键是 page_id；没有这个项目的状态时为空。
  * 只用于**显示与筛选**：检测 / 识别 / 导出仍各走各的，状态不驱动流程。
@@ -2421,6 +2426,7 @@ async function loadLibrary() {
   try {
     const data = await apiJson("/api/projects");
     el("library-path").textContent = data.library_dir;
+    libraryProjects = data.projects || [];
     renderProjectList(data.projects);
   } catch (error) {
     showError(el("library-error"), error);
@@ -2488,8 +2494,8 @@ function renderProjectList(projects) {
     if (entry.lock_held) {
       const chip = document.createElement("span");
       chip.className = "chip chip--warn";
-      chip.textContent = "使用中";
-      chip.title = `${entry.lock_reason}：另一个窗口正在写这个项目`;
+      chip.textContent = entry.lock_expired ? "锁已过期" : "使用中";
+      chip.title = entry.lock_reason || "这个项目正被另一个窗口 / 另一台电脑打开";
       title.append(chip);
     }
     if (entry.text_layer_hint) {
@@ -2531,8 +2537,10 @@ function renderProjectList(projects) {
       const force = document.createElement("button");
       force.type = "button";
       force.className = "btn btn--danger";
-      force.textContent = "强制打开";
-      force.title = "有让两台电脑同时写入同一数据库的风险";
+      force.textContent = entry.lock_expired ? "接管并打开" : "强制打开";
+      force.title = entry.lock_expired
+        ? "这把锁已经过期（持有者进程不在了），接管不会影响项目数据"
+        : "有让两台电脑同时写入同一数据库的风险";
       force.addEventListener("click", () => openProject(entry.project_id, { force: true }));
       actions.append(readOnly, force);
     }
@@ -2565,8 +2573,131 @@ async function deleteProject(entry) {
     await apiJson(`/api/projects/${entry.project_id}?confirm=true`, { method: "DELETE" });
     await loadLibrary();
   } catch (error) {
+    // 被 `.lock` 挡住时不能只甩一句"正在使用中"：说清是谁、什么时候、锁是不是已经过期，
+    // 过期的锁给一个「强制删除」（后端 `?force=true` 只接受过期锁）。
+    if (
+      (error.code === "project_lock_expired" || error.code === "project_busy") &&
+      error.data &&
+      error.data.lock
+    ) {
+      showLockConflict(entry, error.data.lock, "delete");
+      return;
+    }
     showError(el("library-error"), error);
   }
+}
+
+// ---------------------------------------------------------------- 项目锁冲突（任务 60）
+//
+// 用户 2026-10-27 在删除项目时看到"该项目正被另一台电脑使用：MacBook-Air-2.local"，
+// 而那台"电脑"就是本机改了名、锁是应用被强杀后留下的死锁。所以这里不再只说"被占用"：
+//
+//   来源 —— 本机 / 本机以前的名字 / 另一台电脑
+//   时间 —— 最后一次心跳（多久以前）
+//   状态 —— 进程已不存在（锁已过期） / 进程还在写
+//
+// 过期 → 可以强制删除（或强制打开）；真占用 → 不给强制，先说清要先关掉谁。
+
+let lockConflictTarget = null;
+
+function lockStampText(value) {
+  if (!value) return "时间未知";
+  const then = new Date(value);
+  if (Number.isNaN(then.getTime())) return value.slice(0, 16);
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${pad(then.getMonth() + 1)}-${pad(then.getDate())} ${pad(then.getHours())}:${pad(then.getMinutes())}`;
+}
+
+function lockSourceText(lock) {
+  const host = lock.hostname || "未知主机";
+  if (lock.host_note === "本机") return `${host}（本机）`;
+  if (lock.host_note === "本机以前的名字") return `${host}（本机以前的名字）`;
+  return `${host}（另一台电脑）`;
+}
+
+/** "12 天前" → "12 天"（写进"已经 N 天没有心跳"这种句子时不能带"前"）。 */
+function lockSpanText(lock) {
+  const text = String(lock.age_text || "").replace(/前$/, "");
+  return text || "很久";
+}
+
+function lockStateText(lock) {
+  if (!lock.expired) {
+    return lock.host_note === "另一台电脑"
+      ? "另一台电脑的心跳正常，它还在写这个项目"
+      : `进程 ${lock.pid} 还在写这个项目`;
+  }
+  if (lock.host_note === "另一台电脑") {
+    return `已经 ${lockSpanText(lock)}没有心跳，这把锁已过期`;
+  }
+  return `进程 ${lock.pid} 已不存在，这把锁已过期`;
+}
+
+/** 画"锁挡住操作"的对话框。`action` 是 "delete" 或 "open"。 */
+function showLockConflict(entry, lock, action) {
+  lockConflictTarget = { entry, lock, action };
+  const expired = Boolean(lock && lock.expired);
+  const force = el("lock-conflict-force");
+  el("lock-conflict-error").hidden = true;
+  el("lock-conflict-title").textContent = expired
+    ? "这把锁已过期，可以直接接管"
+    : "项目正被另一个窗口使用";
+  el("lock-conflict-text").textContent = expired
+    ? "锁的持有进程已经不在了，留着它只会一直挡住你。接管这把锁不会动项目里的任何数据。"
+    : "同一个项目同时被两处写入可能损坏数据库，所以这里不能替你决定。";
+  fillDefinitionList(el("lock-conflict-facts"), [
+    ["项目", `《${entry.name}》`],
+    ["来源", lockSourceText(lock)],
+    ["时间", `${lockStampText(lock.last_seen_at)}${lock.age_text ? `（${lock.age_text}）` : ""}`],
+    ["状态", lockStateText(lock)],
+  ]);
+  const advice = el("lock-conflict-advice");
+  if (action === "delete") {
+    advice.textContent = expired
+      ? "删除只是把项目移入废纸篓，数据仍在磁盘上，可以随时恢复。"
+      : "先在那个窗口里关闭项目（或退出应用），再回来删除。";
+  } else {
+    advice.textContent = expired
+      ? "确认那台电脑已经不再打开这个项目，再接管；接管后会以本机的锁继续。"
+      : "如果那个窗口确实是你自己开的，请回那个窗口继续，别同时开两个。";
+  }
+  // 删除只对"过期锁"给强制；真占用一律不给。打开这条路本来就有「强制打开」。
+  force.hidden = action === "open" ? false : !expired;
+  force.textContent = action === "open" ? "强制打开" : "强制删除";
+  openModal("lock-conflict-mask");
+}
+
+async function confirmLockConflict() {
+  const target = lockConflictTarget;
+  if (!target) return;
+  const button = el("lock-conflict-force");
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = target.action === "open" ? "正在打开…" : "正在删除…";
+  el("lock-conflict-error").hidden = true;
+  try {
+    if (target.action === "open") {
+      closeModal("lock-conflict-mask");
+      await openProject(target.entry.project_id, { force: true });
+    } else {
+      await apiJson(
+        `/api/projects/${target.entry.project_id}?confirm=true&force=true`,
+        { method: "DELETE" }
+      );
+      closeModal("lock-conflict-mask");
+      await loadLibrary();
+    }
+  } catch (error) {
+    showError(el("lock-conflict-error"), error);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+function closeLockConflict() {
+  lockConflictTarget = null;
+  closeModal("lock-conflict-mask");
 }
 
 async function openTrashPanel() {
@@ -2763,11 +2894,9 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
       `/api/projects/${projectId}/open?force=${force}&read_only=${readOnly}`,
       { method: "POST" }
     );
-    if (opened.warning) {
-      const warning = el("library-warning");
-      warning.textContent = opened.warning;
-      warning.hidden = false;
-    }
+    // 打开项目的提示（强制接管了过期锁 / 覆盖了死锁 / 有任务被中断）先存着：
+    // 下面 `loadLibrary()` 会用 `hidden = true` 清掉提示条，必须等它跑完再显示。
+    const openWarning = opened.warning || "";
     // 注释流是这次导出的选项，不是项目设置：每次打开项目回到"不导出"的默认。
     // 必须在 refreshProject 之前复位——它会立刻发一次导出预检，用的是这个复选框的值。
     el("export-include-notes").checked = false;
@@ -2798,11 +2927,32 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     // 这里补一次可见性计算，让块框立刻出现。
     schedulePageVisibility();
     await loadLibrary();
+    if (openWarning) {
+      const warning = el("library-warning");
+      warning.textContent = openWarning;
+      warning.hidden = false;
+    }
     // 说明书 7.2：打开项目默认回到上次的位置（上次在审校就回审校那一页）
     await resumeLastPosition();
   } catch (error) {
+    if (
+      (error.code === "project_lock_expired" || error.code === "project_busy") &&
+      error.data &&
+      error.data.lock
+    ) {
+      showLockConflict({ project_id: projectId, name: currentProjectName(projectId) }, error.data.lock, "open");
+      return;
+    }
     showError(el("library-error"), error);
   }
+}
+
+/** 错误对话框里要写项目名：项目列表已经加载过，查一下就行。 */
+function currentProjectName(projectId) {
+  const cached = (libraryProjects || []).find((item) => item.project_id === projectId);
+  if (cached) return cached.name;
+  if (currentProject && currentProject.project_id === projectId) return currentProject.name;
+  return projectId;
 }
 
 /** "继续"回到上次的视图与页面（说明书 7.2）。没有记录时落在页面视图。 */
@@ -15333,6 +15483,9 @@ function setupLibrary() {
   });
   el("aux-warning-cancel").addEventListener("click", () => closeModal("aux-warning-mask"));
   el("aux-warning-wait").addEventListener("click", waitForAuxThenReview);
+  el("lock-conflict-close").addEventListener("click", closeLockConflict);
+  el("lock-conflict-cancel").addEventListener("click", closeLockConflict);
+  el("lock-conflict-force").addEventListener("click", confirmLockConflict);
   el("word-boxes-open").addEventListener("click", () => {
     el("page-more-menu").hidden = true;
     openWordBoxesDialog();

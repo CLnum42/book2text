@@ -2,10 +2,13 @@
 
 所有接口的错误响应形状固定为::
 
-    {"error": {"code": "...", "message": "...", "detail": "...", "correlation_id": "..."}}
+    {"error": {"code": "...", "message": "...", "detail": "...",
+               "correlation_id": "...", "data": {...}}}
 
 `message` 面向用户，`detail` 面向排查，`correlation_id` 用于把界面上的报错
-和日志里的记录对上。
+和日志里的记录对上。`data` 是**可选的机器可读部分**（例如项目锁的持有者、
+时间、是否已过期），只有需要界面据此做判断或画确认框时才出现——纯文字的错误
+不该逼前端去解析 `detail`。
 """
 
 from __future__ import annotations
@@ -28,16 +31,23 @@ class AppError(Exception):
         code: str,
         message: str,
         detail: str = "",
+        data: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
         self.detail = detail
+        self.data = data
 
 
-def error_payload(code: str, message: str, detail: str = "") -> dict[str, Any]:
-    return {
+def error_payload(
+    code: str,
+    message: str,
+    detail: str = "",
+    data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "error": {
             "code": code,
             "message": message,
@@ -45,18 +55,27 @@ def error_payload(code: str, message: str, detail: str = "") -> dict[str, Any]:
             "correlation_id": uuid.uuid4().hex[:12],
         }
     }
+    if data:
+        payload["error"]["data"] = data
+    return payload
 
 
 def error_response(
-    status_code: int, code: str, message: str, detail: str = ""
+    status_code: int,
+    code: str,
+    message: str,
+    detail: str = "",
+    data: dict[str, Any] | None = None,
 ) -> JSONResponse:
     return JSONResponse(
-        status_code=status_code, content=error_payload(code, message, detail)
+        status_code=status_code, content=error_payload(code, message, detail, data)
     )
 
 
 async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
-    return error_response(exc.status_code, exc.code, exc.message, exc.detail)
+    return error_response(
+        exc.status_code, exc.code, exc.message, exc.detail, getattr(exc, "data", None)
+    )
 
 
 async def http_exception_handler(

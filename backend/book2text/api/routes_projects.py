@@ -183,6 +183,18 @@ def open_project(
             read_only=read_only,
             keep_job_ids=keep,
         )
+    except project_library.ProjectLocked as exc:
+        # 锁挡住打开：带上结构化信息，界面才能说清"谁在写、锁是不是已经过期"，
+        # 而不是只给一句"项目操作失败"。仍按 400（不是删除那条 409 路径）。
+        lock_detail = exc.status.detail()
+        lock_detail["project_id"] = project_id
+        raise AppError(
+            400,
+            "project_lock_expired" if exc.expired else "project_busy",
+            "这个项目暂时打不开",
+            detail=str(exc),
+            data={"lock": lock_detail},
+        ) from exc
     except project_library.ProjectError as exc:
         raise _project_error(exc) from exc
 

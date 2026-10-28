@@ -7,6 +7,68 @@
 
 ---
 
+## 2026-10-28 — 任务 60：项目锁的生命周期（判死 / 心跳 / 接管 / 启动清理）
+
+### 任务目标
+
+用户删项目时被"另一台电脑 `MacBook-Air-2.local`"挡住，而那台电脑就是本机改了名
+（→ `MacBook-Air-3.local`）；库里 11 个项目的锁全是应用被强杀后留下的死锁。
+只解决这一件事：**锁要能判死、能认出自家的旧名字、正常退出要释放、过期时要让用户
+看得懂怎么办**。步骤顺序、识别、版心、导出一律不动。
+
+### 当前状态
+
+- `core/project/lock.py` 只有"文件在 = 占用"，只比主机名，没有心跳、没有机器指纹，
+  没有启动清理，正常退出也不一定释放（依赖前端 `close` 调用）。
+- `library.trash_project` 只要 `project_busy_reason()` 非空就抛 `ProjectBusy` → 409，
+  界面只能显示一句"该项目正被另一台电脑使用"。
+
+### 实施计划
+
+1. 重写 `lock.py`：`LockInfo` 加 `heartbeat_at` / `machine_id`；`LockStatus` 改状态机
+   （free / held / expired_same_machine / expired_other_machine），加 `detail()`、
+   心跳线程、`release_all()`、`clean_stale_locks()`。
+2. `library.py`：`trash_project(force=)`、`ProjectLocked`（子类，带 `LockStatus`）、
+   `open_project` 对过期锁的拒绝文案、`LibraryPageSummary.lock_expired`。
+3. `api/errors.py` 支持 `data`；`routes_trash` / `routes_projects` 把 `data.lock` 传出去。
+4. `main.py`：启动清理 + `atexit` / SIGHUP 释放 + `finally release_all()`；
+   `api/app.py` 的 lifespan 也清一次并在关闭时释放。
+5. 界面：`index.html` 加确认框，`app.js` 画"来源 / 时间 / 状态"、过期才给强制按钮、
+   卡片加「锁已过期」与「接管并打开」。
+6. 测试：单测 17 条 + 接口 7 条 + UI 接线 1 条；文档与截图。
+
+不在范围：多用户权限、远程锁、把锁换成数据库行锁（单机单用户不需要）。
+
+### 实现与验证
+
+判定表与实测数字见 `docs/qa/project-lock-lifecycle-20261028.md`，摘要：
+
+- 同机死锁 → 打开 200（warning 写"覆盖了一把过期的锁"）、删除 200；启动时自动清掉。
+- 用户现场那种 `MacBook-Air-2.local` + 死 PID → 认成"本机以前的主机名"，自动接管。
+- `Old-PC.local` + 12 天没心跳 → 打开 400 / 删除 409 `project_lock_expired`（带
+  `data.lock`），`&force=true` 才删；真活进程的锁 force 也 409。
+- `kill -TERM` 服务后 `.lock` 已删除；心跳 0.3 s 间隔下单测里 `heartbeat_at` 确实在刷新。
+
+```
+.venv/bin/python -m pytest -q  →  953 passed, 1 warning（119.6 s）
+```
+
+未验证：Windows（`winreg` 指纹、`os.kill(pid,0)`、关窗时的 atexit）、两台真机同名、
+网盘同步延迟——都写进 QA 报告的"没验的"。
+
+### 用户操作说明
+
+- 重启 8765 后：应用启动会把本机残留的死锁清掉（启动输出里有一行"已清理 N 把…"）。
+- 删除 / 打开被锁挡住时，弹窗会写清 **来源 / 时间 / 状态**：锁过期就点「强制删除」
+  （或「强制打开」）一步过去；真有人开着就只会让你先关掉那个窗口。
+- 回退：`git revert` 这一个 commit；锁文件格式向后兼容（老锁没有 `heartbeat_at` /
+  `machine_id` 时退回 `acquired_at` / 主机名判断），不需要清理数据。
+
+### 下一步建议
+
+让用户重启应用后在真库上删一次项目（先拿废纸篓里的恢复项试），确认那 11 把旧锁的
+场景不再出现；如果他在另一台 Mac 上也开着同一份网盘库，再单独验一次跨机心跳。
+
 ## 2026-10-27 — 刀 0 / 刀 1：版心不删文字列里的字 + 版心从识别行拟合
 
 决策：`D-094`；边界：`L-86`；PM 终稿 `docs/pm/margin-recognition-steps.md`、设计主稿

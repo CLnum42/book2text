@@ -106,6 +106,27 @@ class ProjectBusy(ProjectError):
     """项目正在被打开 / 有任务在跑，不能删除（接口层转 409）。"""
 
 
+class ProjectLocked(ProjectBusy):
+    """项目的 `.lock` 挡住了删除，附带结构化信息（谁、什么时候、是否已过期）。
+
+    拆出这个子类是为了让界面能"说清该怎么办"：过期的锁给一个「强制删除」按钮，
+    真被占用（另一个窗口 / 另一台电脑心跳正常）的只给「取消」。
+    `status.expired` 决定这三样。
+    """
+
+    def __init__(self, message: str, status: "lock_module.LockStatus") -> None:
+        super().__init__(message)
+        self.status = status
+
+    @property
+    def expired(self) -> bool:
+        return self.status.expired
+
+    @property
+    def can_force(self) -> bool:
+        return self.status.can_take_over
+
+
 @dataclass(frozen=True)
 class Project:
     project_id: str
@@ -244,6 +265,8 @@ class LibraryPageSummary:
     text_layer_hint: bool
     lock_held: bool
     lock_reason: str
+    lock_expired: bool = False
+    """卡住的原因是一把**过期**的锁（另一台电脑留下的、心跳已停很久）。"""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -259,6 +282,7 @@ class LibraryPageSummary:
             "text_layer_hint": self.text_layer_hint,
             "lock_held": self.lock_held,
             "lock_reason": self.lock_reason,
+            "lock_expired": self.lock_expired,
         }
 
 
@@ -825,8 +849,11 @@ def list_projects(*, library: Path | None = None) -> list[LibraryPageSummary]:
             continue
 
         lock_status = lock_module.status(entry)
-        # "使用中"只对**别人**显示：本进程自己开着的项目在项目卡上不该看起来被占用
-        held_by_other = lock_status.held and not lock_status.mine
+        # "使用中"只对**别人**显示：本进程自己开着的项目在项目卡上不该看起来被占用。
+        # 过期锁（另一台电脑很久没心跳）也算"挡住"，但要在卡上说明是**过期**，
+        # 否则用户看到一个"使用中"却不知道怎么办。
+        blocked = lock_status.held and not lock_status.mine
+        expired_other = lock_status.state == lock_module.STATE_EXPIRED_OTHER_MACHINE
         summaries.append(
             LibraryPageSummary(
                 project=project,
@@ -842,8 +869,11 @@ def list_projects(*, library: Path | None = None) -> list[LibraryPageSummary]:
                     counts.total > 0
                     and counts.with_text_layer / counts.total >= TEXT_LAYER_HINT_RATIO
                 ),
-                lock_held=held_by_other,
-                lock_reason=lock_status.describe() if held_by_other else "",
+                lock_held=blocked or expired_other,
+                lock_reason=(
+                    lock_status.describe() if (blocked or expired_other) else ""
+                ),
+                lock_expired=expired_other,
             )
         )
     return summaries
@@ -934,39 +964,43 @@ def _read_trash_marker(directory: Path, project_id: str) -> TrashedProject:
     )
 
 
-def project_busy_reason(project_id: str, *, library: Path | None = None) -> str | None:
-    """项目是否正被打开 / 还有任务在跑；返回给用户的原因，未占用返回 None。"""
+def trash_project(
+    project_id: str,
+    *,
+    library: Path | None = None,
+    actor: str = "",
+    force: bool = False,
+) -> TrashedProject:
+    """把项目移入废纸篓：**只移动目录，不删数据**。
+
+    `force=True` 只接管**已过期**的锁（另一台电脑很久没心跳、或本机死进程留下的）。
+    真正有人开着的项目（另一个窗口 / 另一台电脑心跳正常）**不接受强制**——
+    那是两台电脑同时写一个 SQLite 的前置条件，不能作为"确认一下就过"的选项。
+    """
     target_library = library or default_library_dir()
     directory = project_dir(target_library, project_id)
     if not directory.is_dir():
         raise ProjectError(f"找不到项目：{project_id}")
     lock_status = lock_module.status(directory)
     if lock_status.held:
-        return lock_status.describe() or "项目正在被打开"
+        # "本进程自己开着"也在这里：删一个开着的项目会留下半截状态
+        raise ProjectLocked(f"不能删除：{lock_status.describe()}", lock_status)
+    if lock_status.stale:
+        # 本机（含本机以前的主机名）+ 进程已经不存在：不值得再问一句，
+        # 直接清掉这把死锁——用户 2026-10-27 被卡住的就是这种锁，问了只会更困惑。
+        lock_module.release(directory, force=True)
+    elif lock_status.expired:
+        if not force:
+            raise ProjectLocked(lock_status.describe(), lock_status)
+        # 跨机器的过期锁要用户确认过一次（心跳可能只是网盘没同步过来）
+        lock_module.release(directory, force=True)
     try:
         active = jobs_module.active_jobs(directory)
     except Exception:  # noqa: BLE001 - 老库没有 job 表时按没有任务处理
         active = []
     if active:
         kinds = "、".join(sorted({job.job_type for job in active}))
-        return f"有 {len(active)} 个任务还在排队 / 运行 / 暂停（{kinds}）"
-    return None
-
-
-def trash_project(
-    project_id: str,
-    *,
-    library: Path | None = None,
-    actor: str = "",
-) -> TrashedProject:
-    """把项目移入废纸篓：**只移动目录，不删数据**。"""
-    target_library = library or default_library_dir()
-    directory = project_dir(target_library, project_id)
-    if not directory.is_dir():
-        raise ProjectError(f"找不到项目：{project_id}")
-    reason = project_busy_reason(project_id, library=target_library)
-    if reason:
-        raise ProjectBusy(f"不能删除：{reason}")
+        raise ProjectBusy(f"不能删除：有 {len(active)} 个任务还在排队 / 运行 / 暂停（{kinds}）")
     project = load_project(project_id, library=target_library)
     destination = trashed_dir(target_library, project_id)
     if destination.exists():
@@ -1104,16 +1138,32 @@ def open_project(
     # 自己（同一个服务进程）已经开着的项目不拦：应用只有一个进程，
     # 另一个标签页再打开它看到的还是同一个"我开着它"。
     if lock_status.held and not lock_status.mine and not force:
-        raise ProjectError(
+        raise ProjectLocked(
             f"{lock_status.describe()}。可以选择只读打开，或强制打开"
-            "（强制打开有让两台电脑同时写入同一数据库的风险）"
+            "（强制打开有让两台电脑同时写入同一数据库的风险）",
+            lock_status,
+        )
+
+    # 过期锁分两种：本机死进程留下的直接接管（不用问，问了用户也不知道）；
+    # 跨机器的只是"可疑"（心跳可能只是网盘没同步），**要用户确认一次**。
+    if (
+        lock_status.state == lock_module.STATE_EXPIRED_OTHER_MACHINE
+        and not force
+        and not lock_status.mine
+    ):
+        raise ProjectLocked(
+            f"{lock_status.describe()}。"
+            "可以点「强制打开」接管这把过期锁，或选择只读打开",
+            lock_status,
         )
 
     warning = ""
     if lock_status.held and force:
         warning = f"已强制打开，但{lock_status.describe()}"
+    elif lock_status.state == lock_module.STATE_EXPIRED_OTHER_MACHINE:
+        warning = f"已强制接管一把过期的锁：{lock_status.describe()}"
     elif lock_status.stale:
-        warning = "覆盖了上次异常退出留下的锁"
+        warning = f"覆盖了一把过期的锁：{lock_status.describe()}"
 
     backup_path = db_module.backup_database(directory)
     lock_info = lock_module.acquire(directory)

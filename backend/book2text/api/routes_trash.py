@@ -7,7 +7,12 @@
 
 项目目录整体移到 `<库>/.trash/<项目 id>/`：库列表只扫库根的一层目录，`.trash`
 不是合法项目 ID，所以列表 / 统计 / 所有按项目 ID 的接口天然看不到它；恢复就是搬回来。
-"正在打开 / 有任务在跑"由 `library.project_busy_reason` 检查，接口转 409。
+
+**`.lock` 挡住删除时不再只回一句"正在使用中"**（任务 60）：接口带结构化信息
+（谁、什么时候、进程还在不在、锁是否过期），界面据此画确认框：
+
+- 过期锁 → `?force=true` 可以删（用户已经在本机确认过一次）；
+- 真占用（另一个窗口 / 另一台电脑心跳正常）→ 不给强制，先关掉那个窗口。
 """
 
 from __future__ import annotations
@@ -30,13 +35,34 @@ def _project_error_with_trash(exc: project_library.ProjectError) -> AppError:
     return AppError(status, "project_error", message)
 
 
+def _locked_error(exc: project_library.ProjectLocked, project_id: str) -> AppError:
+    detail = exc.status.detail()
+    detail["project_id"] = project_id
+    if exc.expired:
+        return AppError(
+            409,
+            "project_lock_expired",
+            "这个项目的锁已过期，确认后可以删除",
+            detail=str(exc),
+            data={"lock": detail},
+        )
+    return AppError(
+        409,
+        "project_busy",
+        "项目正在使用中，不能删除",
+        detail=str(exc),
+        data={"lock": detail},
+    )
+
+
 @router.delete("/projects/{project_id}")
 def delete_project(
     request: Request,
     project_id: str,
     confirm: bool = Query(default=False),
+    force: bool = Query(default=False),
 ) -> dict[str, Any]:
-    """把项目移入废纸篓（不删数据）。"""
+    """把项目移入废纸篓（不删数据）。`force=true` 只用于接管**已过期**的锁。"""
     if not confirm:
         raise AppError(400, "confirmation_required", "删除项目需要二次确认")
     try:
@@ -44,7 +70,10 @@ def delete_project(
             project_id,
             library=_library(request),
             actor=_actor_name(request) or "",
+            force=force,
         )
+    except project_library.ProjectLocked as exc:
+        raise _locked_error(exc, project_id) from exc
     except project_library.ProjectBusy as exc:
         raise AppError(
             409,

@@ -1447,6 +1447,30 @@
       </div>
     </div>
 
+    <!-- 项目锁挡住操作：说清"谁、什么时候、进程还在不在"，过期的锁给一次强制接管 -->
+    <div class="mask" id="lock-conflict-mask" hidden>
+      <div class="modal modal--small">
+        <div class="mhead" id="lock-conflict-heading">项目锁挡住了这次操作
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="lock-conflict-close">✕</button>
+        </div>
+        <div class="mbody mbody--single">
+          <div class="step-verdict">
+            <strong id="lock-conflict-title">锁已过期</strong>
+            <p class="hint" id="lock-conflict-text"></p>
+          </div>
+          <dl class="kv" id="lock-conflict-facts"></dl>
+          <p class="hint" id="lock-conflict-advice"></p>
+          <div class="alert alert--error" id="lock-conflict-error" hidden></div>
+        </div>
+        <div class="mfoot">
+          <span class="spacer"></span>
+          <button type="button" id="lock-conflict-cancel" class="btn">取消</button>
+          <button type="button" id="lock-conflict-force" class="btn btn--danger" hidden>强制删除</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ─────────────────────────── 对话框：检测版面 ─────────────────────────── -->
     <div class="mask" id="layout-detect-mask" hidden>
       <div class="modal modal--small">

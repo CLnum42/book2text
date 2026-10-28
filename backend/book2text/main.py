@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import secrets
+import signal
 import socket
 import sys
 
@@ -19,6 +21,7 @@ from .api.app import create_app
 from .api.security import allowed_origins
 from .core import platform as b2t_platform
 from .core.ocr import selfcheck
+from .core.project import lock as lock_module
 from .core.project.library import default_library_dir
 
 # 说明书 4.4：只监听 127.0.0.1，不监听 0.0.0.0。
@@ -102,6 +105,51 @@ def _print_banner(
     sys.stdout.flush()
 
 
+def _install_exit_handlers() -> None:
+    """正常退出（含 Ctrl+C / 关窗口 / 关终端）时释放本进程持有的项目锁。
+
+    SIGINT / SIGTERM 由 uvicorn 自己接（它做优雅关闭，`uvicorn.run` 返回后
+    `main()` 的 `finally` 会释放），所以这里只管它不接的两个：SIGHUP（关终端）
+    和 Windows 的 SIGBREAK。`atexit` 再兜一层：任何走到解释器退出的路径都会清锁；
+    真被 SIGKILL / 断电的，靠 `lock.status()` 的"判死"，这也是那张表存在的原因。
+    """
+    atexit.register(lock_module.release_all)
+
+    def _release_and_exit(signum: int, _frame: object) -> None:
+        lock_module.release_all()
+        raise SystemExit(128 + signum)
+
+    for name in ("SIGHUP", "SIGBREAK"):
+        handler = getattr(signal, name, None)
+        if handler is None:
+            continue
+        try:
+            signal.signal(handler, _release_and_exit)
+        except (ValueError, OSError):
+            # 不在主线程 / 平台不支持：atexit 与"判死"仍然兜得住
+            continue
+
+
+def _clean_previous_locks(library: Path) -> None:
+    """启动时清掉**本机**残留的死锁（应用被强杀 / 重启后留下的）。
+
+    用户 2026-10-27 撞上的就是这个：库里 11 个项目的锁，PID 全是死的，其中一批
+    还带着这台机器以前的主机名（`MacBook-Air-2` → `MacBook-Air-3`）。只清"本机 +
+    进程已不存在"的，别的电脑的锁不动（那是"可疑"，要用户确认）。
+    """
+    cleaned = lock_module.clean_stale_locks(library)
+    stale = cleaned.get("removed") or []
+    corrupt = cleaned.get("corrupt") or []
+    if not stale and not corrupt:
+        return
+    parts = []
+    if stale:
+        parts.append(f"{len(stale)} 把本机残留的锁（进程已退出）")
+    if corrupt:
+        parts.append(f"{len(corrupt)} 个损坏的锁文件")
+    print(f"已清理 {'、'.join(parts)}：{'、'.join([*stale, *corrupt])}")
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = list(argv if argv is not None else sys.argv[1:])
 
@@ -155,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
     url = f"http://{HOST}:{port}/?token={token}"
 
     library = args.library or default_library_dir()
+    _install_exit_handlers()
+    _clean_previous_locks(library)
     app = create_app(
         session_token=token, origins=allowed_origins(port), library_dir=library
     )
@@ -171,6 +221,12 @@ def main(argv: list[str] | None = None) -> int:
         uvicorn.run(app, host=HOST, port=port, log_level="info")
     except KeyboardInterrupt:
         pass
+    finally:
+        # uvicorn 收到 SIGTERM / SIGINT 会优雅关闭然后返回；走到这里说明服务真的停了，
+        # 把还挂着的项目锁一起放掉，不要留给下一次启动去"判死"。
+        released = lock_module.release_all()
+        if released:
+            print(f"已释放 {released} 个项目锁。")
 
     print("\nBook2Text 已停止。")
     return 0

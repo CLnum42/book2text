@@ -19,6 +19,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .. import __version__, paths
 from ..core.project import executor as executor_module
 from ..core.project import jobs as jobs_module
+from ..core.project import lock as lock_module
 from ..core.project.library import default_library_dir
 from . import (
     errors,
@@ -73,8 +74,12 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # 启动先扫一遍库：清掉**本机死进程**留下的锁（应用被强杀 / 重启后的残留）。
+        # 只清本机的，别的电脑的锁要用户确认——见 `core/project/lock.py` 开头那张表。
+        app.state.stale_locks = lock_module.clean_stale_locks(library)
         yield
         _shutdown_running_jobs(supervisor)
+        lock_module.release_all()
 
     app = FastAPI(
         title="Book2Text",
