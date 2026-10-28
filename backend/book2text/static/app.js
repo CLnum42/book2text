@@ -19452,9 +19452,19 @@ function openReadingPanel(entry) {
   close.textContent = "✕";
   close.addEventListener("click", closeReadingPanel);
   head.append(close);
+  // 原文 / 候选并排（规格要求两行都能看见，用户要对照着改）
+  const origin = document.createElement("p");
+  origin.className = "reading-panel__origin";
+  const originLabel = document.createElement("span");
+  originLabel.className = "reading-panel__tag";
+  originLabel.textContent = "原文";
+  origin.append(originLabel, document.createTextNode(entry.text || entry.ocr_text || ""));
   const candidate = document.createElement("p");
   candidate.className = "reading-panel__candidate";
-  candidate.textContent = entry.candidate || "（第二路没有文字）";
+  const candLabel = document.createElement("span");
+  candLabel.className = "reading-panel__tag";
+  candLabel.textContent = "候选";
+  candidate.append(candLabel, document.createTextNode(entry.candidate || "（第二路没有文字）"));
   const actions = document.createElement("div");
   actions.className = "reading-panel__actions";
   const adopt = document.createElement("button");
@@ -19473,7 +19483,7 @@ function openReadingPanel(entry) {
   edit.textContent = "自己改";
   edit.addEventListener("click", () => startReadingEdit(entry, panel));
   actions.append(adopt, keep, edit);
-  panel.append(head, candidate, actions);
+  panel.append(head, origin, candidate, actions);
   // **结构上不可能被清掉**：面板挂进 `#reading-panel-host`，它不在 `#reading-stream` 里，
   // `renderReading({reset:true})` 怎么 `innerHTML=""` 都碰不到它。
   const host = el("reading-panel-host");
@@ -21409,16 +21419,45 @@ function setupReading() {
       if (event.key === "Escape") {
         event.preventDefault();
         exitInlineEdit();
-      } else if (event.key === "Enter" && (event.altKey || event.metaKey)) {
+      } else if (event.key === "Enter" && event.shiftKey) {
         event.preventDefault();
+        showNoticeBar("行级文本不支持换行");
+      } else if (event.key === "Enter") {
+        // 编辑态 Enter **绝不前进**：落草稿 + 退出 + 停在原地。
+        // 前进只走 Cmd/Ctrl+Enter（或非编辑态的 Enter / Space）。
+        event.preventDefault();
+        const advance = event.metaKey || event.ctrlKey || event.altKey;
         exitInlineEdit();
-        gotoNextUnreviewed();
+        if (advance) gotoNextUnreviewed();
       }
       return;
     }
+    // 键盘闭环（任务 91 第 3 步）：非编辑态 Enter=保留并下一处、Space=采用并下一处、E=编辑。
+    // **Enter 必须先把当前条记成"保留"**——旧实现直接 gotoNext，当前条既不记录也不算已审，
+    // 连续按 Enter 会批量漏审（PM 审计点出来的已知缺陷）。
+    const currentEntry = readingPanelKey ? readingMarks.get(readingPanelKey) : null;
     if (event.key === "Enter") {
       event.preventDefault();
+      if (event.shiftKey) {
+        showNoticeBar("行级文本不支持换行：Enter 保留并下一处，E 进编辑");
+        return;
+      }
+      if (currentEntry && !readingEntryDone(currentEntry)) {
+        draftReading(currentEntry, "kept", null);
+      }
       gotoNextUnreviewed();
+    } else if (event.key === " " && event.target.tagName !== "BUTTON") {
+      if (!currentEntry) return;
+      event.preventDefault();
+      if (!readingEntryDone(currentEntry)) {
+        draftReading(currentEntry, "adopted", currentEntry.candidate);
+      }
+      gotoNextUnreviewed();
+    } else if (event.key.toLowerCase() === "e" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      if (!currentEntry) return;
+      event.preventDefault();
+      const line = readingLineNode(readingKey(currentEntry.block_id, currentEntry.line_index));
+      if (line) startInlineEdit(line);
     } else if (event.key === "Escape") {
       closeReadingPanel();
     }

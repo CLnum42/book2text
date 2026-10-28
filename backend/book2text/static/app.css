@@ -2566,6 +2566,12 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .reading-panel__head strong { font-size: 11.5px; color: var(--faint); font-weight: 600; }
 .reading-panel__head .icon-btn { margin-left: auto; }
 .reading-panel__candidate { margin: 0 0 6px; color: var(--text); }
+.reading-panel__origin { margin: 0 0 4px; color: var(--faint); }
+.reading-panel__tag {
+  display: inline-block; margin-right: 6px; padding: 0 4px; font-size: 10px;
+  border: 1px solid var(--line-strong); border-radius: 3px; color: var(--faint);
+}
+
 .reading-panel__actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .reading-panel__edit { display: flex; gap: 6px; margin-top: 6px; }
 .reading-panel__input {
@@ -2831,6 +2837,10 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .reading-dock__edit { flex: 1; min-width: 0; overflow: auto; padding: 8px 12px; }
 .reading-panel-host[hidden] { display: none; }
 .reading-panel { margin: 0 0 8px; }
+/* 下区已有标题栏（页·行·等级·计数·收起），面板自带的那一份是重复的，在 dock 里隐藏 */
+.reading-dock .reading-panel__head { display: none; }
+.reading-dock .reading-panel { margin: 0; border-left: 0; background: none; padding: 0; }
+
 @media (max-width: 900px) {
   .reading-dock__crop { display: none; }
 }
