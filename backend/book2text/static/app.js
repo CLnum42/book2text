@@ -19811,6 +19811,21 @@ function markReadingImageFailed(pageNo) {
   }
 }
 
+/** 跳转时没开出来的面板：挂起 key，等"块/行到达"再试，不靠定时器猜。 */
+let readingPendingPanelKey = null;
+let readingPendingPanelEntry = null;
+
+function retryReadingPendingPanel() {
+  if (!readingPendingPanelEntry) return;
+  const entry = readingPendingPanelEntry;
+  const key = readingKey(entry.block_id, entry.line_index);
+  if (!readingLineNode(key)) return;      // 行还没挂上，等下一次数据到达
+  readingPendingPanelKey = null;
+  readingPendingPanelEntry = null;
+  openReadingPanel(entry);
+  logReadingNext(entry, { branch: "pending-open", reason: "data-arrived" });
+}
+
 function ensureReadingBlocks(pageNo) {
   if (readingPageBlocks.has(pageNo)) return Promise.resolve(readingPageBlocks.get(pageNo));
   const pending = readingBlockPromises.get(pageNo);
@@ -19818,6 +19833,13 @@ function ensureReadingBlocks(pageNo) {
   const promise = loadIndexBlocks(pageNo)
     .then((blocks) => {
       readingPageBlocks.set(pageNo, blocks || []);
+      // **块到了就重画**：差异行框/字框要 `readingPageBlocks` 非空才画得出来。
+      // 跳转那一瞬块还没到 → `paintReadingDiffBoxes` 直接 return（一个框都不画），
+      // 行节点也没有 → 面板开不出来。"面板与高亮同时消失"就是这一条（任务 84）。
+      if (pageNo === readingPageNo) {
+        paintReadingTile(pageNo);
+        retryReadingPendingPanel();
+      }
       return blocks || [];
     })
     .finally(() => readingBlockPromises.delete(pageNo));
@@ -20502,6 +20524,8 @@ function gotoReadingEntry(entry) {
   // 偶发"跳到了但没有面板/没有当前项"（QA 2/20）：面板没建起来就再开一次，
   // 并把原因记进 __b2tNextLog。第二次仍失败也记下来，不静默。
   if (!document.querySelector("#reading-stream .reading-panel")) {
+    readingPendingPanelKey = key;
+    readingPendingPanelEntry = entry;
     let reason = "no-line";
     const seg = readingVisibleSegments()[index];
     if (!seg) reason = "no-segment";
