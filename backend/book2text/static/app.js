@@ -18023,6 +18023,9 @@ let readingPageNo = 1;
 let readingRendered = 0;
 let readingSegmentNodes = [];
 let readingPanelKey = null;
+// 跳转后等待目标行落位的 key：只挡这一段页码写入（见 onReadingScroll）
+let readingJumpSettleKey = null;
+let readingJumpSettleTicks = 0;
 let readingCursorEntry = null;   // 上一次跳到的 entry（窗口换了 index 就不算数）
 let readingObserver = null;
 let readingImageToken = 0;
@@ -19209,6 +19212,7 @@ function openReadingPanel(entry) {
 function closeReadingPanel() {
   const host = el("reading-panel-host");
   if (host) { host.innerHTML = ""; host.hidden = true; }
+  readingJumpSettleKey = null;
   // 用户主动关 = 真的关；重绘导致的移除走 renderReading，不清 pending
   readingPendingPanelKey = null;
   readingPendingPanelEntry = null;
@@ -20516,21 +20520,33 @@ function onReadingScroll() {
     const key = line.dataset.key;
     const mark = readingMarks.get(key);
     const pageNo = Number(line.dataset.page);
-    // 任务 88：**面板行还在视口内时，页码与左栏一起钉住**（D-105：顶部页码 = 左栏可见页 =
-    // 面板项所在页）。否则 `jumpReadingTo` / 居中引发的右栏滚动会按"视口顶行"把页码写回上一页
-    // （实测第 142 页被写回 141，写入者就是下面这两处）。行滚出视口后守卫自然失效。
-    window.__b2tPagePin = window.__b2tPagePin || { held: 0, noLine: 0 };
+    // 任务 88：**只挡"跳转落位中"的那几次写入**。
+    //
+    // `jumpReadingTo` / `centerReadingLinePair` 把正文滚到目标行的过程中，视口顶行还停在
+    // 上一页（实测：跳第 142 页时顶行属于 141），这时同步写页码就会把 142 改成 141。
+    // 落位完成后标志清空，之后任何滚动（相邻页、跨页、往回滚）都照常跟随——
+    // 不用页差阈值（`≤1` 会把"滚一整页"也挡掉），也不看行节点矩形（重绘换掉节点会把页码钉死）。
+    window.__b2tPagePin = window.__b2tPagePin || { held: 0, escape: 0 };
     let allowPageWrite = true;
-    if (readingPanelKey) {
-      const panelLine = readingLineNode(readingPanelKey);
-      if (!panelLine) {
-        allowPageWrite = false;
-        window.__b2tPagePin.noLine += 1;
+    if (readingJumpSettleKey) {
+      const target = readingPanelKey ? readingLineNode(readingJumpSettleKey) : null;
+      if (!target) {
+        // 行没了 / 面板关了：别再等
+        readingJumpSettleKey = null;
       } else {
-        const pr = panelLine.getBoundingClientRect();
-        if (pr.bottom > rect.top && pr.top < rect.bottom) {
+        const tr = target.getBoundingClientRect();
+        const settled = tr.bottom > rect.top && tr.top < rect.bottom;
+        if (settled) {
+          readingJumpSettleKey = null;
+        } else {
+          readingJumpSettleTicks += 1;
           allowPageWrite = false;
           window.__b2tPagePin.held += 1;
+          // 保底：一直落不了位（补行失败之类）就放行——宁可跟错一次，不能把页码冻住
+          if (readingJumpSettleTicks >= 12) {
+            readingJumpSettleKey = null;
+            window.__b2tPagePin.escape += 1;
+          }
         }
       }
     }
@@ -20672,6 +20688,9 @@ function gotoReadingEntry(entry) {
   }
   if (line) centerReadingLinePair(entry);
   if (!readingDrafts.has(key)) openReadingPanel(entry);
+  // 从这里开始到目标行真正进视口之前，页码同步一律不写（否则会被顶行的上一页改写）
+  readingJumpSettleKey = key;
+  readingJumpSettleTicks = 0;
   if (document.querySelector("#reading-panel-host .reading-panel")) {
     readingPendingPanelKey = null;
     readingPendingPanelEntry = null;
