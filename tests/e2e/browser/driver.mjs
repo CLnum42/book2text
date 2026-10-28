@@ -2377,9 +2377,12 @@ async function punctProbe(page, args) {
   while (Date.now() - started < 25000) {
     await page.waitForTimeout(300);
     after = await read();
+    const mutationCount = await page.evaluate(() => window.__punctStreamMutations || 0);
     timeline.push({ ms: Date.now() - started, segs: after.segs, segments: after.segments,
-                    hasProbeMarker: after.hasProbeMarker, progress: after.progress, badge: after.badge });
-    if (after.segments !== null && !after.hasProbeMarker && after.segs > 0) break;
+                    hasProbeMarker: after.hasProbeMarker, progress: after.progress,
+                    badge: after.badge, mut: mutationCount });
+    // 状态私有化后 readingData 不是全局：判据换成"流里有段 + (徽章变了 或 DOM 重建过)"
+    if (after.segs > 0 && (after.badge !== opened.badge || mutationCount > 0)) break;
   }
   const mutations = await page.evaluate(() => {
     if (window.__punctObserver) window.__punctObserver.disconnect();
