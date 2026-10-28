@@ -695,33 +695,55 @@
       <!-- ─────────────────────────── 视图：阅读审校（连续正文流，L 刀） ─────────────────────────── -->
       <section class="view view--reading" id="view-reading" hidden>
         <div class="reading-toolbar">
-          <button type="button" id="reading-prev" class="btn btn--sm" title="上一页">◀</button>
-          <span class="pager__no" id="reading-page-no">—</span>
-          <button type="button" id="reading-next" class="btn btn--sm" title="下一页">▶</button>
-          <span class="reading-toolbar__sep"></span>
+          <!-- 任务 66：11 个平铺控件 → 5 组：导航 / 进度 / 下一处 / 筛选与显示 / 动作 -->
+          <div class="rt-group rt-group--nav">
+            <button type="button" id="reading-prev" class="btn btn--sm" title="上一页">◀</button>
+            <span class="pager__no" id="reading-page-no">—</span>
+            <button type="button" id="reading-next" class="btn btn--sm" title="下一页">▶</button>
+          </div>
+          <span class="rt-sep"></span>
+          <div class="rt-group rt-group--progress">
+            <span class="muted" id="reading-progress-text">已审 0 / 0 字</span>
+            <span class="reading-progress"><span class="reading-progress__fill" id="reading-progress-fill"></span></span>
+            <button type="button" id="reading-punct-open" class="btn btn--sm reading-punct-btn"
+                    title="纯标点 / 空格差异按模式批量裁决（一次覆盖几百行）">
+              标点 <span id="reading-punct-count">0</span>
+            </button>
+            <span class="reading-pill" id="reading-draft-chip" hidden>未提交 0</span>
+          </div>
+          <span class="rt-sep"></span>
           <button type="button" id="reading-next-unreviewed" class="btn btn--pri btn--sm">
-            下一处未审 <kbd>⏎</kbd>
+            下一处未审 <kbd id="reading-next-hint">⏎</kbd>
           </button>
           <span class="spacer"></span>
-          <span class="muted" id="reading-progress-text">汉字 0 / 0</span>
-          <span class="muted reading-punct-note" id="reading-punct-note" hidden></span>
-          <span class="reading-progress"><span class="reading-progress__fill" id="reading-progress-fill"></span></span>
-          <span class="reading-pill" id="reading-draft-chip" hidden>未提交 0</span>
-          <button type="button" id="reading-follow" class="btn btn--sm is-on" title="正文滚动时左边的 PDF 跟随当前行">跟随</button>
-          <button type="button" id="reading-proof" class="btn btn--sm" title="成稿模式：隐藏所有红字与草稿标记，读一遍">成稿</button>
-          <button type="button" id="reading-blindspot" class="btn btn--sm" title="两路一致但可疑的行，去单页审校里逐行看">定向补审</button>
-          <span class="muted reading-legend" title="中文：一个差异字标一个；英文：引擎给的是词级框，整词标">中文按字 / 英文按词</span>
-          <select id="reading-filter" class="select" title="过滤差异">
+          <select id="reading-filter" class="select" title="筛选差异（中文按字 / 英文按词）">
             <option value="all">全部差异</option>
             <option value="chars">只看汉字级</option>
             <option value="unacked">只看未审</option>
           </select>
-          <button type="button" id="reading-punct-open" class="btn btn--sm"
-                  title="纯标点 / 空格差异按模式批量裁决（一次覆盖几百行）">
-            标点差异 <span id="reading-punct-count">0</span>
-          </button>
-          <button type="button" id="reading-undo" class="btn btn--sm" title="撤销上一次提交">撤销</button>
-          <button type="button" id="reading-submit" class="btn btn--pri btn--sm" disabled>提交 0 处改动</button>
+          <div class="rt-menu-wrap">
+            <button type="button" id="reading-display-open" class="btn btn--sm">显示 ▾</button>
+            <div class="page-more" id="reading-display-menu" hidden>
+              <label class="page-more__item"><input type="checkbox" id="reading-pending-toggle" checked> 待审红字</label>
+              <div class="page-more__group">修订标记</div>
+              <label class="page-more__item"><input type="radio" name="reading-markup" value="all" checked> 全部标记</label>
+              <label class="page-more__item"><input type="radio" name="reading-markup" value="simple"> 简单标记</label>
+              <label class="page-more__item"><input type="radio" name="reading-markup" value="none"> 无标记</label>
+              <div class="page-more__group">视图</div>
+              <label class="page-more__item"><input type="checkbox" id="reading-follow-toggle" checked> 跟随滚动</label>
+            </div>
+          </div>
+          <button type="button" id="reading-submit" class="btn btn--pri btn--sm" disabled>提交 0 处</button>
+          <div class="rt-menu-wrap">
+            <button type="button" id="reading-more-open" class="btn btn--sm" title="更多">⋯</button>
+            <div class="page-more" id="reading-more-menu" hidden>
+              <button type="button" id="reading-undo" class="page-more__item">撤回上次提交</button>
+              <button type="button" id="reading-blindspot" class="page-more__item">可疑行（两路一致但可能都错）</button>
+              <button type="button" id="reading-discard-all" class="page-more__item">放弃全部未提交…</button>
+              <button type="button" id="reading-help" class="page-more__item">快捷键帮助</button>
+            </div>
+          </div>
+          <span hidden id="reading-proof-holder"></span>
         </div>
         <div class="reading-preflight" id="reading-preflight" hidden></div>
         <div class="reading-split" id="reading-split">

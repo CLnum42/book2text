@@ -521,6 +521,15 @@ def submit_drafts(
                     actor_name=_actor_name(request, None),
                     batch_id=batch,
                 )
+                # 任务 66：就地编辑改的是"这一行"，行文本必须跟着块文本一起改，
+                # 否则会出现"块文本改了、行文本没改"（审的字不是导出的字）。
+                editing.sync_line_text(
+                    project_id,
+                    item.block_id,
+                    item.line_index,
+                    new_text.split("\n")[item.line_index],
+                    library=library,
+                )
             else:
                 raise blocks_module.ProjectError("草稿没有要写的内容")
             events.extend(item_events)

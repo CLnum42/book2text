@@ -2619,3 +2619,58 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 }
 .backup-row__main { min-width: 0; font-size: 13px; }
 .backup-row__main .muted { font-size: 11.5px; }
+
+/* ── 就地编辑 + 修订三档（任务 66） ─────────────────────────────── */
+.reading-line[contenteditable] { outline: none; }
+.reading-line.is-editing {
+  background: rgba(217, 119, 6, .08);
+  box-shadow: inset 2px 0 0 #d97706;
+  border-radius: 3px;
+}
+.reading-line.is-current {
+  background: rgba(217, 119, 6, .10);
+  box-shadow: inset 2px 0 0 #d97706;
+  border-radius: 3px;
+}
+/* 全部标记：删除线 + 下划线 */
+.reading-del {
+  color: #b91c1c; background: rgba(220, 38, 38, .08);
+  text-decoration: line-through; text-decoration-thickness: 1.5px;
+}
+.reading-ins {
+  color: #15803d; background: rgba(22, 163, 74, .10);
+  text-decoration: underline; text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+}
+.reading-fold {
+  font: inherit; font-size: 12.5px; padding: 0 6px; margin-right: 4px;
+  border: 1px dashed #d97706; border-radius: 4px; background: #fdf6e8;
+  color: #8a5a00; cursor: pointer;
+}
+/* 简单标记：左边距琥珀条 + 段首 ▸ */
+.reading-line.is-changed-bar { box-shadow: inset 2px 0 0 #f59e0b; padding-left: 4px; }
+.reading-view-marks .reading-line.is-changed-bar::before {
+  content: "▸"; color: #b45309; font-size: 10px; margin-right: 2px;
+}
+/* 无标记：终稿 + 改过的行左侧一个小圆点（改错了也能发现） */
+.reading-line.is-changed-dot { position: relative; }
+.reading-line.is-changed-dot::before {
+  content: "·"; position: absolute; left: -9px; color: #d97706;
+  font-size: 18px; line-height: 1;
+}
+/* 待审红字关掉（旧「成稿」）：只留终稿 */
+.view--reading.hide-pending .reading-mark { background: none !important; border-bottom: 0 !important; color: inherit; }
+.view--reading.hide-pending .reading-diff-box { display: none; }
+
+/* 审校工具条 5 组（任务 66） */
+.reading-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.rt-group { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.rt-sep { width: 1px; height: 18px; background: var(--line); flex: 0 0 auto; }
+.rt-menu-wrap { position: relative; }
+.reading-punct-btn span { color: var(--accent-text); font-weight: 600; }
+/* 块边界：极淡的虚线 + 行尾小刻度（跨页段编辑时才知道改不过去） */
+.reading-line.is-block-end::after {
+  content: ""; display: inline-block; width: 1px; height: 12px;
+  margin: 0 2px; background: var(--line-strong); vertical-align: -1px;
+}
+.reading-seg .reading-line.is-block-end { border-right: 1px dashed var(--faint); padding-right: 3px; }

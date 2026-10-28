@@ -17691,6 +17691,12 @@ const readingSpanCache = new Map();
 let readingAppendScheduled = false;
 let readingFollow = true;
 let readingProof = false;
+// 任务 66：就地编辑（按行编辑、草稿按块/按行存）
+let readingInlineEdits = new Map();   // key(block:line) → {base, text, at}
+let readingEditingKey = null;
+let readingMarkupLevel = "all";      // all / simple / none（纯视图开关）
+let readingPendingOn = true;          // 待审红字（原「成稿」= 取消它）
+let readingInlineTimer = 0;
 let readingScrollRaf = 0;
 let readingPendingBox = null;
 let readingPreflightData = null;
@@ -17701,6 +17707,62 @@ function readingKey(blockId, lineIndex) {
 
 function readingDraftStorageKey() {
   return currentProject ? `b2t.readingDrafts.${currentProject.project_id}` : "";
+}
+
+/** 就地编辑草稿的存储键（与逐行裁决草稿分开：一个是改字，一个是裁决）。 */
+function readingInlineStorageKey() {
+  return currentProject ? `b2t.readingInline.${currentProject.project_id}` : "";
+}
+
+function loadReadingInlineEdits() {
+  readingInlineEdits = new Map();
+  try {
+    const raw = localStorage.getItem(readingInlineStorageKey());
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    for (const item of data.items || []) {
+      if (!item || !item.key || item.text == null) continue;
+      readingInlineEdits.set(item.key, {
+        base: item.base || "",
+        text: item.text,
+        at: item.at || Date.now(),
+      });
+    }
+  } catch {
+    readingInlineEdits = new Map();
+  }
+}
+
+/** 重开项目时有未提交的就地编辑：给一次"恢复 / 丢弃"（切换视图不算丢，所以只在首次加载问）。 */
+function restoreInlineEditsPrompt() {
+  if (!readingInlineEdits.size) return;
+  const count = readingInlineEdits.size;
+  const when = new Date(
+    Math.min(...[...readingInlineEdits.values()].map((item) => item.at || Date.now()))
+  );
+  const label = `${when.getMonth() + 1}-${when.getDate()} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
+  if (window.confirm(`有 ${count} 处未提交的正文改动（${label}）。\n\n「确定」= 恢复它们；「取消」= 丢弃。`)) {
+    return;
+  }
+  readingInlineEdits.clear();
+  saveReadingInlineEdits();
+}
+
+function saveReadingInlineEdits() {
+  try {
+    const items = [...readingInlineEdits.entries()].map(([key, value]) => ({
+      key,
+      base: value.base,
+      text: value.text,
+      at: value.at,
+    }));
+    localStorage.setItem(
+      readingInlineStorageKey(),
+      JSON.stringify({ items, savedAt: Date.now() })
+    );
+  } catch {
+    /* 存不下不影响当前会话 */
+  }
 }
 
 function loadReadingDrafts() {
@@ -17838,6 +17900,8 @@ async function openReading() {
     }
   }
   loadReadingDrafts();
+  loadReadingInlineEdits();
+  restoreInlineEditsPrompt();
   renderReadingTree();
   renderReading({ reset: true });
   renderReadingProgress();
@@ -17975,14 +18039,180 @@ function buildReadingSegment(segment) {
     node.append(document.createTextNode(segment.text));
     return node;
   }
-  for (const span of spans) {
-    node.append(buildReadingLine(segment, span));
+  for (let i = 0; i < spans.length; i += 1) {
+    const line = buildReadingLine(segment, span_at(spans, i));
+    // 任务 66：块边界要**看得见**。跨页段在视觉上是一段连贯的话，
+    // 实际是两个块；不标出来，用户会以为能跨过去改（这本书有 312 个跨页段）。
+    if (i + 1 < spans.length && spans[i + 1].block_id !== spans[i].block_id) {
+      line.classList.add("is-block-end");
+      line.title = "此处是块 / 页边界，下一段属于另一个块（编辑不会跨过去）";
+    }
+    node.append(line);
   }
   return node;
 }
 
 function readingLineText(segment, span) {
   return segment.text.slice(span.start, span.end);
+}
+
+/**
+ * 一行被就地编辑过 → 按当前修订档渲染（任务 66）。
+ *
+ * - `all`：删除红删除线 + 插入绿下划线；连续 >12 字的改动折叠成「⟦替换 N 字⟧」
+ * - `simple`：只显示终稿 + 左边距琥珀条 + 段首 ▸（点 ▸ 临时切回 all）
+ * - `none`：终稿无痕，但**改过的行左侧仍有一个小圆点**（不然改错了看不出来）
+ */
+function paintInlineRevision(line, inline) {
+  const key = line.dataset.key;
+  line.classList.add("is-inline-edited");
+  line.dataset.revBase = inline.base;
+  line.dataset.revText = inline.text;
+  const chip = document.createElement("span");
+  chip.className = "reading-chip reading-chip--edit";
+  chip.textContent = "草稿";
+  if (readingMarkupLevel === "none") {
+    line.textContent = inline.text;
+    line.append(chip);
+    line.classList.add("is-changed-dot");
+    return;
+  }
+  if (readingMarkupLevel === "simple") {
+    line.textContent = inline.text;
+    line.append(chip);
+    line.classList.add("is-changed-bar");
+    return;
+  }
+  const spans = computeCharSpans(inline.base, inline.text);
+  const replaced =
+    spans.reduce((sum, span) => sum + Math.max(span.aEnd - span.aStart, span.bEnd - span.bStart), 0);
+  line.classList.add("is-changed-bar");
+  if (replaced > 12) {
+    // 长改动：折叠，点一下展开（展开是临时状态，不改数据）
+    const fold = document.createElement("button");
+    fold.type = "button";
+    fold.className = "reading-fold";
+    fold.textContent = `⟦替换 ${replaced} 字 · 点击展开⟧`;
+    fold.dataset.key = key;
+    if (line.dataset.expanded !== "1") {
+      line.append(fold, chip);
+      return;
+    }
+    fold.remove();
+  }
+  line.append(document.createTextNode(inline.text.slice(0, 0)));
+  let cursor = 0;
+  for (const span of spans) {
+    if (span.aStart > cursor) {
+      line.append(document.createTextNode(inline.text.slice(cursor, span.bStart)));
+    }
+    if (span.aEnd > span.aStart) {
+      const delEl = document.createElement("del");
+      delEl.className = "reading-del";
+      delEl.textContent = inline.base.slice(span.aStart, span.aEnd);
+      line.append(delEl);
+    }
+    if (span.bEnd > span.bStart) {
+      const insEl = document.createElement("ins");
+      insEl.className = "reading-ins";
+      insEl.textContent = inline.text.slice(span.bStart, span.bEnd);
+      line.append(insEl);
+    }
+    cursor = span.bEnd;
+  }
+  if (cursor < inline.text.length) {
+    line.append(document.createTextNode(inline.text.slice(cursor)));
+  }
+  line.append(chip);
+}
+
+/** 点正文 = 落光标、该行成为当前行（块边界不可跨越：一行一个编辑区）。 */
+function startInlineEdit(line) {
+  if (!line || readingEditingKey === line.dataset.key) return;
+  exitInlineEdit();
+  readingEditingKey = line.dataset.key;
+  line.classList.add("is-editing");
+  line.classList.add("is-current");
+  line.setAttribute("contenteditable", "plaintext-only");
+  line.focus();
+  const mark = readingMarks.get(line.dataset.key);
+  const pageNo = mark && mark.page_no ? mark.page_no : Number(line.dataset.page);
+  if (pageNo && pageNo !== readingPageNo) updateReadingPage(pageNo);
+  if (mark && mark.bbox) drawReadingPdfBox(mark.bbox, mark.page_no || pageNo);
+  line.addEventListener("input", onInlineInput);
+  line.addEventListener("keydown", onInlineKeydown);
+  line.addEventListener("blur", () => {
+    // 失焦只收起编辑态，草稿留着
+    if (readingEditingKey === line.dataset.key) exitInlineEdit();
+  });
+}
+
+function onInlineInput(event) {
+  const line = event.currentTarget;
+  clearTimeout(readingInlineTimer);
+  readingInlineTimer = setTimeout(() => saveInlineEdit(line), 350);
+}
+
+function saveInlineEdit(line) {
+  const key = line.dataset.key;
+  const base = line.dataset.baseText || "";
+  const text = (line.innerText || "").replace(/\n$/, "");
+  if (!text || text === base) {
+    readingInlineEdits.delete(key);
+  } else {
+    readingInlineEdits.set(key, { base, text, at: Date.now() });
+  }
+  saveReadingInlineEdits();
+  line.classList.toggle("is-inline-edited", readingInlineEdits.has(key));
+  renderReadingProgress();
+}
+
+/** 重画一行（折叠展开 / 切换修订档后调用）。 */
+function rerenderReadingLine(key) {
+  const node = readingLineNode(key);
+  if (!node) return;
+  const inline = readingInlineEdits.get(key);
+  node.replaceChildren();
+  if (!inline) {
+    node.append(document.createTextNode(node.dataset.baseText || ""));
+    node.classList.remove("is-inline-edited", "is-changed-bar", "is-changed-dot");
+    return;
+  }
+  paintInlineRevision(node, inline);
+}
+
+function exitInlineEdit() {
+  const node = readingEditingKey ? readingLineNode(readingEditingKey) : null;
+  if (node) {
+    const key = node.dataset.key;
+    if (readingInlineEdits.has(key)) saveInlineEdit(node);
+    node.removeAttribute("contenteditable");
+    node.classList.remove("is-editing");
+    node.classList.remove("is-current");
+    node.removeEventListener("input", onInlineInput);
+    node.removeEventListener("keydown", onInlineKeydown);
+  }
+  readingEditingKey = null;
+}
+
+function onInlineKeydown(event) {
+  if (event.key === "Enter" && (event.altKey || event.metaKey)) {
+    // ⌥↵ / ⌘↵：收草稿并跳下一处
+    event.preventDefault();
+    exitInlineEdit();
+    gotoNextUnreviewed();
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    exitInlineEdit();
+    return;
+  }
+  // 普通回车 = 段内换行（contenteditable 默认行为），不拦
+}
+
+function span_at(spans, index) {
+  return spans[index];
 }
 
 function buildReadingLine(segment, span) {
@@ -17996,9 +18226,16 @@ function buildReadingLine(segment, span) {
   line.dataset.line = String(span.line_index);
   line.dataset.page = String(span.page_no);
   const baseText = readingLineText(segment, span);
+  line.dataset.baseText = baseText;
   if (mark) {
     line.dataset.level = mark.level;
     line.classList.add("is-diff");
+  }
+  // 就地编辑过的行：按修订三档渲染（只改显示，不改数据）
+  const inline = readingInlineEdits.get(key);
+  if (inline && inline.text !== inline.base) {
+    paintInlineRevision(line, inline);
+    return line;
   }
   if (draft) {
     line.classList.add("is-draft");
@@ -18072,16 +18309,11 @@ function renderReadingProgress() {
   // 显示分两类、判定看合并：进度条只算含汉字差异的行，标点单独一行小字
   const punctTotals = punctGroupsData?.totals || {};
   const punctLeft = Number(punctTotals.undecided_lines || 0);
-  el("reading-progress-text").textContent = `汉字 ${processed} / ${total}`;
-  const punctNote = el("reading-punct-note");
+  el("reading-progress-text").textContent = `已审 ${processed} / ${total} 字`;
+  const punctNote = null;
   if (punctNote) {
     const groups = Number(punctTotals.groups || 0);
-    punctNote.hidden = groups === 0;
-    punctNote.textContent = groups
-      ? `另有标点 ${punctTotals.lines || 0} 行 · ${groups} 组（已判 ${
-          groups - Number(punctTotals.undecided_groups || 0)
-        } 组）`
-      : "";
+    punctNote.hidden = true;   // 标点计数只在工具条那一个按钮上出现（任务 66 去重）
   }
   const fill = el("reading-progress-fill");
   fill.style.width = total ? `${Math.round((processed / total) * 100)}%` : "0%";
@@ -18804,7 +19036,7 @@ function setReadingFollow(on) {
 
 function toggleReadingProof() {
   readingProof = !readingProof;
-  el("reading-proof").classList.toggle("is-on", readingProof);
+
   el("view-reading").classList.toggle("is-proof", readingProof);
   renderReading({ reset: true });
   renderReadingPreflight();
@@ -18952,7 +19184,7 @@ function gotoReadingEntry(entry) {
 }
 
 async function submitReadingDrafts() {
-  if (!currentProject || !readingDrafts.size) return;
+  if (!currentProject || (!readingDrafts.size && !readingInlineEdits.size)) return;
   const items = [...readingDrafts.values()].map((draft) => ({
     block_id: draft.block_id,
     line_index: draft.line_index,
@@ -18960,6 +19192,16 @@ async function submitReadingDrafts() {
     new_line_text:
       draft.ack === "kept" ? null : draft.text == null ? null : draft.text,
   }));
+  // 任务 66：就地编辑按"行文本"提交；服务端会校验 block.text == join(行文本)
+  for (const [key, edit] of readingInlineEdits) {
+    const [blockId, lineIndex] = key.split(":");
+    items.push({
+      block_id: blockId,
+      line_index: Number(lineIndex),
+      new_line_text: edit.text,
+      ack: null,
+    });
+  }
   const ok = window.confirm(
     `提交 ${items.length} 处改动？\n\n采用/手改会改写块文本，保留只记「保留原文」；写库后可以一次撤销。`
   );
@@ -18984,6 +19226,8 @@ async function submitReadingDrafts() {
     );
     for (const key of okKeys) readingDrafts.delete(key);
     saveReadingDrafts();
+    for (const key of okKeys) readingInlineEdits.delete(key);
+    saveReadingInlineEdits();
     if (failed.length) {
       window.alert(`${failed.length} 处提交失败，仍留在草稿里：\n${failed[0].error || ""}`);
     }
@@ -19161,6 +19405,60 @@ function setupReadingSplit() {
 
 function setupReading() {
   el("reading-next-unreviewed").addEventListener("click", gotoNextUnreviewed);
+  const closeReadingMenus = () => {
+    el("reading-display-menu").hidden = true;
+    el("reading-more-menu").hidden = true;
+  };
+  el("reading-display-open").addEventListener("click", (event) => {
+    event.stopPropagation();
+    const hidden = el("reading-display-menu").hidden;
+    closeReadingMenus();
+    el("reading-display-menu").hidden = !hidden;
+  });
+  el("reading-more-open").addEventListener("click", (event) => {
+    event.stopPropagation();
+    const hidden = el("reading-more-menu").hidden;
+    closeReadingMenus();
+    el("reading-more-menu").hidden = !hidden;
+  });
+  el("reading-pending-toggle").addEventListener("change", (event) => {
+    readingPendingOn = event.target.checked;
+    el("view-reading").classList.toggle("hide-pending", !readingPendingOn);
+  });
+  el("reading-follow-toggle").addEventListener("change", (event) => {
+    readingFollow = event.target.checked;
+    el("reading-follow")?.classList.toggle("is-on", readingFollow);
+  });
+  for (const radio of document.querySelectorAll('input[name="reading-markup"]')) {
+    radio.addEventListener("change", (event) => {
+      readingMarkupLevel = event.target.value;
+      renderReading({ reset: true });
+    });
+  }
+  el("reading-discard-all").addEventListener("click", () => {
+    const count = readingInlineEdits.size + readingDrafts.size;
+    if (!count) return;
+    if (!window.confirm(`放弃全部 ${count} 处未提交改动？（不可恢复）`)) return;
+    readingInlineEdits.clear();
+    saveReadingInlineEdits();
+    readingDrafts.clear();
+    saveReadingDrafts();
+    renderReading({ reset: true });
+    renderReadingProgress();
+  });
+  el("reading-help").addEventListener("click", () => {
+    window.alert(
+      "审校快捷键\n\n" +
+        "↵  浏览态：下一处未审；编辑态：段内换行\n" +
+        "⌥↵ 编辑态：收草稿并跳下一处\n" +
+        "Esc 退出编辑 / 关面板\n" +
+        "⌘Z 编辑中：字级撤销\n\n" +
+        "中文按字标差异，英文按词标（引擎给的就是词框）。"
+    );
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest || !event.target.closest(".rt-menu-wrap")) closeReadingMenus();
+  });
   el("reading-submit").addEventListener("click", submitReadingDrafts);
   el("reading-undo").addEventListener("click", undoReadingSubmit);
   el("reading-prev").addEventListener("click", () => stepReadingPage(-1));
@@ -19168,8 +19466,10 @@ function setupReading() {
   el("reading-filter").addEventListener("change", (event) =>
     setReadingFilter(event.target.value)
   );
-  el("reading-follow").addEventListener("click", () => setReadingFollow(!readingFollow));
-  el("reading-proof").addEventListener("click", toggleReadingProof);
+  // 任务 66：「跟随 / 成稿」不再是按钮，分别进了「显示 ▾」的勾选与「待审红字」
+  el("reading-follow-toggle")?.addEventListener("change", (event) => {
+    setReadingFollow(event.target.checked);
+  });
   el("reading-blindspot").addEventListener("click", () => {
     // C1 盲区出口：两路一致但可疑的行，去单页审校里逐行看
     showView("review");
@@ -19189,9 +19489,39 @@ function setupReading() {
     const mark = readingMarks.get(markEl.dataset.key);
     if (mark) openReadingPanel(mark);
   });
+  // 任务 66：点正文 = 落光标；点标记 = 开候选面板（标记优先，光标不落）
+  el("reading-stream").addEventListener("click", (event) => {
+    if (currentView !== "reading") return;
+    const target = event.target;
+    if (target.closest && target.closest(".reading-mark")) return;
+    const fold = target.closest && target.closest(".reading-fold");
+    if (fold) {
+      const line = fold.closest(".reading-line");
+      if (line) {
+        line.dataset.expanded = line.dataset.expanded === "1" ? "0" : "1";
+        rerenderReadingLine(line.dataset.key);
+      }
+      return;
+    }
+    const line = target.closest && target.closest(".reading-line");
+    if (!line) return;
+    if (event.detail > 1) return;   // 双击 = 原生选词
+    startInlineEdit(line);
+  });
   document.addEventListener("keydown", (event) => {
     if (currentView !== "reading") return;
     if (event.target && /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+    if (readingEditingKey) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        exitInlineEdit();
+      } else if (event.key === "Enter" && (event.altKey || event.metaKey)) {
+        event.preventDefault();
+        exitInlineEdit();
+        gotoNextUnreviewed();
+      }
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
       gotoNextUnreviewed();

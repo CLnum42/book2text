@@ -732,6 +732,47 @@ DIFF_ACK_ADOPTED = "adopted"
 DIFF_ACKS = (DIFF_ACK_KEPT, DIFF_ACK_ADOPTED)
 
 
+def sync_line_text(
+    project_id: str,
+    block_id: str,
+    line_index: int,
+    text: str,
+    *,
+    library: Path | None = None,
+) -> None:
+    """把一行的新文本写回 `block_line.text`，并**校验**它与块文本一致（任务 66）。
+
+    就地编辑是"按行改、按块存"：写 `block.text` 的同时必须把那一行的
+    `block_line.text` 也改掉，否则审校看到的是新字、导出/差异算的还是旧行。
+    写完立刻校验 `block.text == "\n".join(block_line.text)`，不一致就抛错拒绝提交。
+    """
+    if library is None:
+        library = library_module.default_library_dir()
+    directory = project_dir(library, project_id)
+    with _open(directory) as conn:
+        block = conn.execute(
+            "SELECT text FROM block WHERE block_id = ? AND deleted_at IS NULL", (block_id,)
+        ).fetchone()
+        if block is None:
+            raise ProjectError(f"找不到块：{block_id}")
+        conn.execute(
+            "UPDATE block_line SET text = ? WHERE block_id = ? AND line_index = ?",
+            (text, block_id, line_index),
+        )
+        rows = conn.execute(
+            "SELECT line_index, text FROM block_line WHERE block_id = ? ORDER BY line_index",
+            (block_id,),
+        ).fetchall()
+        joined = "\n".join((row["text"] or "") for row in rows)
+        if joined != (block["text"] or ""):
+            conn.rollback()
+            raise ProjectError(
+                "提交被拒绝：块文本与行文本对不上（改的是行，存的是块，两边必须一致）"
+            )
+        conn.execute("UPDATE project SET updated_at = ?", (_now(),))
+        conn.commit()
+
+
 def ack_diff_line(
     project_id: str,
     block_id: str,
