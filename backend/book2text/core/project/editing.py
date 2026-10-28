@@ -739,7 +739,10 @@ def sync_line_text(
     text: str,
     *,
     library: Path | None = None,
-) -> None:
+    batch_id: str | None = None,
+    actor_name: str | None = None,
+    actor: str = ACTOR_USER,
+) -> list[Event]:
     """把一行的新文本写回 `block_line.text`，并**校验**它与块文本一致（任务 66）。
 
     就地编辑是"按行改、按块存"：写 `block.text` 的同时必须把那一行的
@@ -755,10 +758,48 @@ def sync_line_text(
         ).fetchone()
         if block is None:
             raise ProjectError(f"找不到块：{block_id}")
-        conn.execute(
-            "UPDATE block_line SET text = ? WHERE block_id = ? AND line_index = ?",
-            (text, block_id, line_index),
-        )
+        # 一行改了之后，**整块的行文本都按块文本重写一遍**：历史数据里
+        # `block_line.text` 是识别原文、`block.text` 可能早已被编辑过，两者本来就可能
+        # 不一致；只改一行的话，下面的等式永远不成立，提交会被误拒（实测 3 条只过 1 条）。
+        block_lines = (block["text"] or "").split("\n")
+        existing = conn.execute(
+            "SELECT line_index FROM block_line WHERE block_id = ?", (block_id,)
+        ).fetchall()
+        events: list[Event] = []
+        batch = batch_id or new_ulid()
+        if len(existing) == len(block_lines):
+            before_rows = {
+                row["line_index"]: row["text"]
+                for row in conn.execute(
+                    "SELECT line_index, text FROM block_line WHERE block_id = ?", (block_id,)
+                )
+            }
+            for index, value in enumerate(block_lines):
+                if before_rows.get(index) == value:
+                    continue
+                # 行文本的改动也要进事件表，否则撤销只退块文本、行文本留在改后的状态
+                events.append(
+                    _record(
+                        conn,
+                        entity_type="block_line",
+                        entity_id=f"{block_id}:{index}",
+                        action=ACTION_EDIT_TEXT,
+                        before={"text": before_rows.get(index)},
+                        after={"text": value},
+                        batch_id=batch,
+                        actor=actor,
+                        actor_name=actor_name,
+                    )
+                )
+            conn.executemany(
+                "UPDATE block_line SET text = ? WHERE block_id = ? AND line_index = ?",
+                [(block_lines[i], block_id, i) for i in range(len(block_lines))],
+            )
+        else:
+            conn.execute(
+                "UPDATE block_line SET text = ? WHERE block_id = ? AND line_index = ?",
+                (text, block_id, line_index),
+            )
         rows = conn.execute(
             "SELECT line_index, text FROM block_line WHERE block_id = ? ORDER BY line_index",
             (block_id,),
@@ -771,6 +812,7 @@ def sync_line_text(
             )
         conn.execute("UPDATE project SET updated_at = ?", (_now(),))
         conn.commit()
+    return events
 
 
 def ack_diff_line(
