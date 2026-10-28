@@ -13,7 +13,7 @@
 //   B2T_STATIC_DIR=/tmp/base-static node tests/js/edge-ratchet.mjs --expect-red
 //
 // 退出码：符合期望 = 0；不符合 = 1；环境/文件错误 = 2。
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { stripCommentsAndStrings, functionBody, countWord } from "./static-scan.mjs";
@@ -59,42 +59,70 @@ export function staticPaths(staticDir) {
  * 逐条算一遍。
  * @returns {{label: string, count: number, kind: "bridge" | "edge", detail?: string}[]}
  */
+/**
+ * 目录里**所有** JS 源文件（app.js 最先，其余按文件名）。
+ *
+ * 为什么不再写死两份：L1–L6 一直在把函数搬进新文件。写死 app.js + reading-view.js 的话，
+ * 函数搬进第三份文件（`queue-view.js` 之类）那一刻，这条边就"查不到 caller" → 记 0 → 静默绿。
+ * 切模块越勤，这个口子越大。
+ */
+export function allSources(staticDir) {
+  const { app, base } = staticPaths(staticDir);
+  const others = readdirSync(base).filter((name) => name.endsWith(".js") && name !== "app.js").sort();
+  return [
+    { file: "app.js", source: readFileSync(app, "utf8") },
+    ...others.map((name) => ({ file: name, source: readFileSync(join(base, name), "utf8") })),
+  ];
+}
+
 export function evaluateEdges(staticDir) {
-  const { app, view } = staticPaths(staticDir);
-  return evaluateEdgeSources(readFileSync(app, "utf8"), readFileSync(view, "utf8"));
+  return evaluateSources(allSources(staticDir));
 }
 
 /** 按两份源码文本算 13 条边（测试也要用它读 ring-break-base 的树）。 */
-export function evaluateEdgeSources(appSource, viewSource) {
-  const appStripped = stripCommentsAndStrings(appSource);
-  const viewStripped = stripCommentsAndStrings(viewSource);
+export function evaluateEdgeSources(appSource, viewSource, extraSources = []) {
+  return evaluateSources([
+    { file: "app.js", source: appSource },
+    { file: "reading-view.js", source: viewSource },
+    ...extraSources.map((item) => (typeof item === "string" ? { file: "extra", source: item } : item)),
+  ]);
+}
+
+/** 按"文件名 → 源码"的列表算 13 条边。 */
+export function evaluateSources(sources) {
+  const stripped = sources.map((item) => ({ file: item.file, text: stripCommentsAndStrings(item.source) }));
+  // 同名函数以**第一个找到的**为准（app.js 在前）；找不到 = missing，**不是 0**
+  const find = (name) => {
+    for (const item of stripped) {
+      const body = functionBody(item.text, name);
+      if (body !== null) return { body, file: item.file };
+    }
+    return null;
+  };
   const results = [];
 
   for (const name of BRIDGES) {
-    const inApp = functionBody(appStripped, name);
-    const inView = functionBody(viewStripped, name);
-    const body = inApp ?? inView;
-    const where = inApp === null ? (inView === null ? "缺函数" : "reading-view.js") : "app.js";
-    const count = body === null ? 0 : countWord(body, "showView");
+    const hit = find(name);
+    const count = hit ? countWord(hit.body, "showView") : 0;
     results.push({
       key: `bridge:${name}`,
       label: `桥 ${name} → showView(`,
       count,
       kind: "bridge",
-      detail: `${where} 体内 ${count} 处`,
+      missing: !hit,
+      detail: hit ? `${hit.file} 体内 ${count} 处` : "缺函数（改名了，或整个函数不见了）",
     });
   }
   for (const [caller, callee] of EDGES) {
-    const inApp = functionBody(appStripped, caller);
-    const inView = functionBody(viewStripped, caller);
-    const body = inApp ?? inView;
-    const count = body === null ? 0 : countWord(body, callee);
+    const hit = find(caller);
+    const count = hit ? countWord(hit.body, callee) : 0;
     results.push({
       key: `edge:${caller}->${callee}`,
       label: `边 ${caller} → ${callee}`,
       count,
       kind: "edge",
-      detail: body === null ? "缺 caller 函数体" : `${inApp !== null ? "app.js" : "reading-view.js"} 体内 ${count} 处`,
+      missing: !hit,
+      detail: hit ? `${hit.file} 体内 ${count} 处` : "缺 caller 函数体（改名了，或整个函数不见了）",
     });
   }
   return results;
@@ -121,6 +149,7 @@ export function checkBridgeExceptions(results) {
     if (!item.expires) problems.push(`桥例外 ${item.name} 缺到期点`);
     const hit = results.find((entry) => entry.key === `bridge:${item.name}`);
     if (!hit) problems.push(`桥例外 ${item.name} 在 13 条里找不到——名字写错了`);
+    else if (hit.missing) problems.push(`桥例外 ${item.name} 的函数体找不到（改名或搬走了）——找不到不等于已经切干净`);
     else if (hit.count === 0) problems.push(`桥例外 ${item.name} 已经归零（切掉了），请同批删除例外（到期点：${item.expires}）`);
   }
   return problems;
@@ -136,14 +165,15 @@ if (isMain) {
     console.error(`edge-ratchet: ${error.message}`);
     process.exit(2);
   }
-  const red = results.filter((item) => item.count > 0);
+  const red = results.filter((item) => item.count > 0 || item.missing);
   const green = results.filter((item) => item.count === 0);
   const exemptNames = new Set(BRIDGE_EXCEPTIONS.map((item) => item.name));
   const exemptProblems = expectRed ? [] : checkBridgeExceptions(results);
   console.log(`闸 B · 静态边棘轮 ${red.length}/${results.length} RED`);
   for (const item of results) {
     const isExempt = item.kind === "bridge" && exemptNames.has(item.key.replace(/^bridge:/, ""));
-    const flag = item.count > 0 ? (isExempt ? "EXEMPT" : "RED  ") : "GREEN";
+    // missing 一律红：函数改名/搬走时"找不到"不等于"没有调用"
+    const flag = item.missing ? "MISS " : (item.count > 0 ? (isExempt ? "EXEMPT" : "RED  ") : "GREEN");
     console.log(`${flag} ${item.label}  （${item.detail}${isExempt ? "；例外，到期点见 BRIDGE_EXCEPTIONS" : ""}）`);
   }
   for (const problem of exemptProblems) console.log(`RED   例外表：${problem}`);

@@ -109,3 +109,105 @@ export function countWord(text, word) {
   const pattern = new RegExp(`(?<![\\w$])${word}(?![\\w$])`, "g");
   return (text.match(pattern) || []).length;
 }
+
+/**
+ * 同 `stripCommentsAndStrings`，但**保留模板字面量里 `${…}` 的表达式**，只抹掉字面文本。
+ *
+ * 为什么需要单独一份：整段模板一起抹掉，`` `${readingTreeOpen.has(1)}` `` 里的标识符就隐形了。
+ * no-undef（R9）必须看得见这一类引用——R9 自检里就有这个样例（喂进去必须红）。
+ *
+ * 只给 R9 用；闸 B 的计数仍用 `stripCommentsAndStrings`，否则函数体里模板插值的同名标识符
+ * 会被算成"又一处调用"，把棘轮变成误报。
+ */
+export function stripPreservingTemplateExpressions(source) {
+  const out = source.split("");
+  const n = source.length;
+  const blank = (from, to) => {
+    for (let k = from; k < to; k += 1) if (out[k] !== "\n") out[k] = " ";
+  };
+  const REGEX_PRECEDERS = "([{=,:;!&|?+-*%~^<>";
+  const KEYWORD_BEFORE_REGEX = /(?:^|[^\w$])(?:return|typeof|instanceof|case|in|of|void|delete|new|throw)\s*$/;
+  const looksLikeRegex = (at) => {
+    let k = at - 1;
+    while (k >= 0 && /\s/.test(source[k])) k -= 1;
+    if (k < 0) return true;
+    if (REGEX_PRECEDERS.includes(source[k])) return true;
+    return KEYWORD_BEFORE_REGEX.test(source.slice(Math.max(0, k - 12), k + 1));
+  };
+  // 跳过一段字符串（含转义），返回引号之后的位置
+  const skipString = (k, quote) => {
+    k += 1;
+    while (k < n) {
+      if (source[k] === "\\") { k += 2; continue; }
+      if (source[k] === quote) return k + 1;
+      k += 1;
+    }
+    return k;
+  };
+  const skipRegex = (k) => {
+    k += 1;
+    let inClass = false;
+    while (k < n) {
+      const cur = source[k];
+      if (cur === "\\") { k += 2; continue; }
+      if (cur === "[") inClass = true;
+      else if (cur === "]") inClass = false;
+      else if (cur === "/" && !inClass) return k + 1;
+      else if (cur === "\n") return k;
+      k += 1;
+    }
+    return k;
+  };
+  // 模板：抹文本、保留 `${…}`；插值内部按普通代码继续（可嵌套模板）
+  const skipTemplate = (k) => {
+    blank(k, k + 1);      // 起始反引号
+    k += 1;
+    while (k < n) {
+      const ch = source[k];
+      if (ch === "\\") { blank(k, Math.min(k + 2, n)); k += 2; continue; }
+      if (ch === "`") { blank(k, k + 1); return k + 1; }
+      if (ch === "$" && source[k + 1] === "{") {
+        blank(k, k + 2);  // `${` 也抹掉：留着 `$` 会被当成一个标识符（`$` 是合法名字）
+        k += 2;
+        let depth = 1;
+        while (k < n && depth > 0) {
+          const cur = source[k];
+          if (cur === "{") { depth += 1; k += 1; continue; }
+          if (cur === "}") { depth -= 1; k += 1; continue; }
+          if (cur === "'" || cur === '"') { const end = skipString(k, cur); blank(k, end); k = end; continue; }
+          if (cur === "`") { k = skipTemplate(k); continue; }
+          if (cur === "/" && source[k + 1] === "/") {
+            const end = source.indexOf("\n", k); const stop = end === -1 ? n : end; blank(k, stop); k = stop; continue;
+          }
+          if (cur === "/" && source[k + 1] === "*") {
+            const end = source.indexOf("*/", k + 2); const stop = end === -1 ? n : end + 2; blank(k, stop); k = stop; continue;
+          }
+          k += 1;
+        }
+        continue;
+      }
+      blank(k, k + 1); k += 1;
+    }
+    return k;
+  };
+
+  let i = 0;
+  while (i < n) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === "/" && next === "/") {
+      const end = source.indexOf("\n", i); const stop = end === -1 ? n : end; blank(i, stop); i = stop;
+    } else if (ch === "/" && next === "*") {
+      const end = source.indexOf("*/", i + 2); const stop = end === -1 ? n : end + 2; blank(i, stop); i = stop;
+    } else if (ch === "/" && looksLikeRegex(i)) {
+      const end = skipRegex(i); blank(i, end); i = end;
+    } else if (ch === "'" || ch === '"') {
+      const end = skipString(i, ch); blank(i, end); i = end;
+    } else if (ch === "`") {
+      i = skipTemplate(i);
+    } else {
+      i += 1;
+    }
+  }
+  return out.join("");
+}

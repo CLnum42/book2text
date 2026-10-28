@@ -54,6 +54,8 @@ import {
   moduleShowViewInSource,
 } from "./edge-ratchet.mjs";
 import { evaluateFeatureContract } from "./feature-contract.mjs";
+// R9 专用：保留模板 `${…}` 插值的去注释版本（本文件另有一份旧的去注释实现，只抹代码不抹模板）
+import { stripPreservingTemplateExpressions } from "./static-scan.mjs";
 
 // B2T_STATIC_DIR：把整个 static 目录指到别处（迁移复跑 / 变异验证用），默认仓库里的
 const STATIC_DIR = process.env.B2T_STATIC_DIR
@@ -650,6 +652,28 @@ function r9DeclaredNames(stripped) {
     }
     addParams(stripped.slice(startK + 1, k));
   }
+  // 类里的 constructor 与普通方法：参数同样是本地声明（第一版只收 function/箭头，于是
+  // `constructor(message, code, correlationId, …)` 里的 message/correlationId 被误报成未声明）
+  for (const m of stripped.matchAll(/(?:^|[^\w$.])(?:static\s+)?(?:async\s+)?(?:constructor|get|set|[A-Za-z_$][\w$]*)\s*\((?![^()]*=>)/g)) {
+    let depth = 0;
+    let k = m.index + m[0].length - 1;
+    const startK = k;
+    for (; k < stripped.length; k += 1) {
+      if (stripped[k] === "(") depth += 1;
+      else if (stripped[k] === ")") { depth -= 1; if (depth === 0) break; }
+    }
+    const head = m[0].trimEnd();
+    // 只认"方法定义"形态：`)` 后面紧跟 `{`；调用（`foo(bar)` 后面是 `;` 或 `)`）不算。
+    // 还要排除控制流关键字：`if (x) {` / `for (…) {` 形态和控制流长得很像，
+    // 把它们当方法定义会把 x 当成"已声明"——自检里 `if (__ghostCond)` 就是这么变绿的。
+    const nameMatch = /([A-Za-z_$][\w$]*)\s*\($/.exec(head);
+    if (!nameMatch) continue;
+    // constructor / get / set 本身在关键字表里，但它们是方法名，不是控制流
+    if (R9_KEYWORDS.has(nameMatch[1]) && !["constructor", "get", "set"].includes(nameMatch[1])) continue;
+    const afterParen = stripped.slice(k + 1).trimStart().slice(0, 1);
+    if (afterParen !== "{") continue;
+    addParams(stripped.slice(startK + 1, k));
+  }
   for (const m of stripped.matchAll(/\(([^()]*)\)\s*=>/g)) addParams(m[1]);
   for (const m of stripped.matchAll(/([A-Za-z_$][\w$]*)\s*=>/g)) declared.add(m[1]);
   for (const m of stripped.matchAll(/catch\s*\(\s*([A-Za-z_$][\w$]*)/g)) declared.add(m[1]);
@@ -659,35 +683,73 @@ function r9DeclaredNames(stripped) {
   return declared;
 }
 
-test("R9：app.js 里被引用但没声明的标识符一律红（no-undef）", () => {
-  const source = readFileSync(APP_FILE, "utf8");
-  const stripped = stripCommentsAndStrings(source);
+/**
+ * no-undef 的判定内核（独立出来，好让自检喂合成样例——见 R9 自检）。
+ *
+ * **口径**：任何"不是声明、不是属性、不是对象字面量 key/method/label"的标识符都算引用。
+ * 第一版只认"成员访问 / 调用 / 赋值目标"，于是这三类全绿：
+ *   `setTimeout(__ghost, 0)`（实参）、`if (__ghost)`（条件）、`` `${__ghost.has(1)}` ``（模板插值）
+ * ——`readingTreeOpen` 那次是靠 `.add()` 形态才被抓到，换个写法就漏。
+ */
+function r9NoUndefProblems(source, fileName = "app.js") {
+  // 用"保留 ${…}"的版本：整段模板一起抹掉，插值里的标识符就隐形了
+  const stripped = stripPreservingTemplateExpressions(source);
   const declared = r9DeclaredNames(stripped);
-  const fileName = APP_FILE.split("/").pop();
 
   const problems = new Map();   // name -> 首次引用行
   for (const m of stripped.matchAll(/[A-Za-z_$][\w$]*/g)) {
     const name = m[0];
     if (declared.has(name) || R9_WHITELIST.has(name) || R9_KEYWORDS.has(name)) continue;
     const beforeChar = stripped[m.index - 1] || "";
-    if (beforeChar === ".") continue;                       // 属性访问
+    if (beforeChar === "." || beforeChar === "#") continue;  // 属性访问 / 私有字段（`a?.b` 也算）
+    if (/[\w$]/.test(beforeChar)) continue;                 // 数字字面量的尾巴：0x1F / 1e5
     const prevChar = stripped.slice(Math.max(0, m.index - 8), m.index).trimEnd().slice(-1);
     const after = stripped.slice(m.index + name.length);
     const nextChar = after.trimStart().slice(0, 1);
-    const next2 = after.trimStart().slice(0, 2);
-    // 对象字面量的 key / 方法名
-    if ((prevChar === "{" || prevChar === ",") && (nextChar === ":" || nextChar === "(")) continue;
-    // 高置信度引用：成员访问 / 调用 / 赋值目标
-    const isMember = nextChar === ".";
-    const isCall = nextChar === "(";
-    const isAssign = nextChar === "=" && !next2.startsWith("==") && !next2.startsWith("=>");
-    if (!(isMember || isCall || isAssign)) continue;
+    // 对象字面量的 key / label（`{ name: … }`、`name:`）；method 简写（`{ name() {} }`）
+    if (nextChar === ":") continue;
+    if (nextChar === "(" && (prevChar === "{" || prevChar === ",")) continue;
     if (!problems.has(name)) problems.set(name, lineOf(stripped, m.index));
   }
-  const messages = [...problems].map(
+  return [...problems].map(
     ([name, line]) => `标识符 ${name} 在 ${fileName}:${line} 被引用，但全文件没有声明（可能是删函数时连带的活声明）`,
   );
+}
+
+test("R9：app.js 里被引用但没声明的标识符一律红（no-undef）", () => {
+  const source = readFileSync(APP_FILE, "utf8");
+  const messages = r9NoUndefProblems(source, APP_FILE.split("/").pop());
   assert.deepEqual(messages, [], messages.join("\n"));
+});
+
+/**
+ * R9 自检（L-106 第四层：闸必须能被样例喂红）。
+ * 合成样例里**必须红**的形态就是第一版漏掉的那三种 + 成员访问（对照）；
+ * 必须**不红**的是防误报底线。没有这条，R9 的"绿"只是"扫描器没看见"。
+ */
+test("R9 自检：裸引用三类必须红，六种非引用必须不红", () => {
+  const mustRed = {
+    "实参传引用": "function f() { setTimeout(__ghostArg, 0); }",
+    "条件里的裸引用": "function f() { if (__ghostCond) { return 1; } return 0; }",
+    "模板插值里的引用": "function f() { return `${__ghostTpl.has(1)}`; }",
+    "成员访问（对照）": "function f() { return __ghostMember.has(1); }",
+  };
+  for (const [label, code] of Object.entries(mustRed)) {
+    const messages = r9NoUndefProblems(code);
+    assert.ok(messages.length > 0, `R9 自检失败：${label}没红——扫描器看不见它，这段代码里就等于没有守卫`);
+  }
+  const mustGreen = {
+    "属性访问": "function f(obj) { return obj.__known; }",
+    "可选链属性": "function f(obj) { return obj?.__known; }",
+    "对象字面量 key": "function f() { return { __known: 1 }; }",
+    "method 简写": "function f() { return { __known() { return 1; } }; }",
+    "已声明": "function f() { const __known = 1; return __known; }",
+    "形参": "function f(__known) { return __known; }",
+  };
+  for (const [label, code] of Object.entries(mustGreen)) {
+    const messages = r9NoUndefProblems(code);
+    assert.deepEqual(messages, [], `R9 自检失败：${label}被误报——${messages.join("；")}`);
+  }
 });
 
 // ---------------------------------------------------------------- R3：DOM 归属
@@ -1073,6 +1135,11 @@ test("R11（闸 B）：静态边棘轮 13 条只降不升（对照 ring-break-ba
   problems.push(...checkBridgeExceptions(current));
 
   for (const item of current) {
+    // 找不到 caller 函数体 ≠ 没有调用：改名/搬走时"看不见"必须红，否则预算归零的边永远绿
+    if (item.missing) {
+      problems.push(`${item.label}：${item.detail}——13 条边一条都不许凭空消失`);
+      continue;
+    }
     const expected = budget.edges[item.key];
     if (expected === undefined) {
       problems.push(`预算表里没有 ${item.key}——13 条边一条都不许漏`);
@@ -1099,6 +1166,32 @@ test("R11（闸 B）：静态边棘轮 13 条只降不升（对照 ring-break-ba
     problems.push(`模块 showView 预算 ${budget.moduleShowView} > base ${baseModuleShowView}——只许降`);
   }
   assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+/**
+ * R11 自检（L-106 第四层：闸必须能被样例喂红）。
+ * 三条合成样例分别对应三种"静默绿"：
+ *   ① 调用在 → 必须数到 1（对照，证明扫描器看得见调用）
+ *   ② caller 改名 → 必须报 missing（不是记 0）
+ *   ③ caller 搬到第三份文件 → 仍然必须看得见（多文件扫描）
+ */
+test("R11 自检：调用必须数到；caller 改名必须红；搬到第三份文件仍要看得见", () => {
+  const withCall = "function renderReading() {\n  ensureReadingMarksWindow(1);\n}\n";
+  const empty = "function somethingElse() {}\n";
+  const edgeKey = "edge:renderReading->ensureReadingMarksWindow";
+
+  const found = evaluateEdgeSources(withCall, "").find((item) => item.key === edgeKey);
+  assert.equal(found.missing, false, "R11 自检失败：调用明明在，却报找不到 caller 函数体");
+  assert.equal(found.count, 1, "R11 自检失败：调用在，却数不到 1 处");
+
+  const renamed = evaluateEdgeSources("function renderReadingRenamed() {\n  ensureReadingMarksWindow(1);\n}\n", "")
+    .find((item) => item.key === edgeKey);
+  assert.equal(renamed.missing, true, "R11 自检失败：caller 改名后没报 missing——这条边从此静默绿");
+
+  const moved = evaluateEdgeSources(empty, "", [{ file: "new-view.js", source: withCall }])
+    .find((item) => item.key === edgeKey);
+  assert.equal(moved.missing, false, "R11 自检失败：函数搬进第三份文件就看不见了——切模块时这条闸会空转");
+  assert.equal(moved.count, 1, "R11 自检失败：搬到第三份文件后数不到调用");
 });
 
 // ---------------------------------------------------------------- R12：闸 A（特征测试契约）

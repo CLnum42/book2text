@@ -42,9 +42,9 @@ export function registrationContent(sha, docText) {
   if (!row) return null;
   return {
     row,
-    deleted: /删[:：]\s*\S/.test(row),
-    stricter: /补[:：]\s*\S/.test(row),
-    mutation: /变异[:：]\s*\S/.test(row),
+    deleted: /删[:：]\s*[^\s|—-]/.test(row),
+    stricter: /补[:：]\s*[^\s|—-]/.test(row),
+    mutation: /变异[:：]\s*[^\s|—-]/.test(row),
   };
 }
 
