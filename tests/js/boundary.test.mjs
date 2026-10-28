@@ -26,6 +26,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import vm from "node:vm";
 
 // B2T_STATIC_DIR：把整个 static 目录指到别处（迁移复跑 / 变异验证用），默认仓库里的
 const STATIC_DIR = process.env.B2T_STATIC_DIR
@@ -279,6 +280,66 @@ test("R4：同名函数只许一份真实现，其余必须是 ≤6 行的薄转
   }
 
   assert.deepEqual(problems, [], problems.join("；"));
+});
+
+// ---------------------------------------------------------------- 对外导出棘轮
+
+/**
+ * 公开导出 `window.ReadingView` 的**只降不升**棘轮（Architect 规格）。
+ *
+ * 为什么不能等 Slice 2 收尾再加：收尾时的门禁等于没有门禁，中途长出来的第 14 个 key
+ * 没人拦。这里把当前的份数钉住，只许改小；改大要 Architect 签字。
+ *
+ * `PENDING_REMOVAL` 是"已判定必须删、但还没删"的写路径（`emit`）。它一旦从代码里消失，
+ * 「待删名单必须清空」那条会自动开跑，逼着把名单删掉、MAX 回到 12。
+ */
+const STABLE = ["init", "enter", "exit", "getCurrent", "reload", "toggleFollow", "on"];
+const TEMPORARY = ["splitPrefs", "applySplit", "saveSplit", "resetSplit", "setupSplit"]; // 到期：Slice 2 收尾
+const PENDING_REMOVAL = ["emit"];   // 写路径；0 个外部调用者，Architect 判定必须删
+const MAX_EXPORTS = 12;             // 只许改小
+
+/** 在干净的 vm 里加载模块，读出 `Object.keys(window.ReadingView)`（不加载 app.js）。 */
+function readingViewExportKeys() {
+  const sandbox = {
+    window: null,
+    document: { getElementById: () => null },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+  };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(readFileSync(VIEW_FILE, "utf8"), sandbox, { filename: "reading-view.js" });
+  return Object.keys((sandbox.window && sandbox.window.ReadingView) || {});
+}
+
+test("对外导出棘轮：只许出现 STABLE ∪ TEMPORARY（+待删的写路径），总数只许降", () => {
+  const keys = readingViewExportKeys();
+  const allowed = new Set([...STABLE, ...TEMPORARY, ...PENDING_REMOVAL]);
+  const unexpected = keys.filter((key) => !allowed.has(key));
+  assert.deepEqual(unexpected, [], `出现了未申报的公开导出：${unexpected.join("、")}（改大要 Architect 签字）`);
+  assert.ok(
+    keys.length <= MAX_EXPORTS + PENDING_REMOVAL.length,
+    `公开导出现在 ${keys.length} 个，上限 ${MAX_EXPORTS + PENDING_REMOVAL.length}`,
+  );
+});
+
+test("对外导出棘轮：TEMPORARY 里每个都必须真的还在（到期是删，不是悄悄少一个）", () => {
+  const keys = readingViewExportKeys();
+  const missing = TEMPORARY.filter((name) => !keys.includes(name));
+  assert.deepEqual(missing, [], `临时导出少了 ${missing.join("、")}：要么恢复，要么在 TEMPORARY 里说明它去哪了`);
+});
+
+test("对外导出棘轮：临时导出不超过 5 条（防止往 TEMPORARY 里塞第六个）", () => {
+  assert.ok(TEMPORARY.length <= 5, `TEMPORARY 有 ${TEMPORARY.length} 条，上限 5`);
+});
+
+test("写路径 emit 必须从公开对象上删掉（事件只出不进）", {
+  skip: PENDING_REMOVAL.length
+    ? `emit 还在公开对象上（${PENDING_REMOVAL.join("、")}）。删它是产品代码改动，需 DevLead/Builder 落；删掉后这条自动开跑，并要求清空 PENDING_REMOVAL`
+    : false,
+}, () => {
+  const keys = readingViewExportKeys();
+  assert.equal(keys.includes("emit"), false, "写路径 emit 仍可被外部调用，等于给边界开后门");
+  assert.deepEqual(PENDING_REMOVAL, [], "emit 已删除，PENDING_REMOVAL 必须清空（MAX 回到 12）");
 });
 
 // ---------------------------------------------------------------- 变异验证（写进文件头，避免只在交付说明里）
