@@ -275,7 +275,14 @@ window.ReadingView = {
 3. 同项目且已加载 → 重绘不重拉；否则拉 `segments_only=1`；
 4. 进入时置 `active = true`，`exit()` 置 `false`——模块内部 8 处 `currentView === "reading"` 判断全部改成本地 `active`。
 
-**过渡期例外（必须有到期点）**：`5d7e0ef` 的接口对象还多挂了 `splitPrefs / applySplit / saveSplit / resetSplit / setupSplit` 五个拆分偏好函数，同时 app.js 留着 5 个转发 stub。这是搬运期的临时态，**到期点 = Slice 2 结束**：届时这 5 个名字必须从 `window.ReadingView` 消失（改成模块内部函数 + 模块自己绑事件），app.js 的 stub 一并删除。到期未清 = R6 违规，Architect 在 Slice 2 验收时检查：`Object.keys(window.ReadingView)` 只允许 `init/enter/exit/getCurrent/reload/toggleFollow/on` 七个。
+**`emit` 不许出现在公开接口上**（`db37d1d` 时是 13 个 key，含 `emit`）：它是**写路径**——任何模块拿到 `window.ReadingView.emit('content-changed')` 就能驱动审校重绘，等于给边界开了一个后门；而且当前 0 个外部调用者。事件只出不进：模块内部 `emit`，外部只许 `on`。
+
+**过渡期例外（必须有到期点）**：`db37d1d` 的接口对象还多挂了 `splitPrefs / applySplit / saveSplit / resetSplit / setupSplit` 五个拆分偏好函数，同时 app.js 留着 5 个转发 stub。这是搬运期的临时态，**到期点 = Slice 2 结束**：届时这 5 个名字必须从 `window.ReadingView` 消失（改成模块内部函数 + 模块自己绑事件），app.js 的 stub 一并删除。
+
+**上闸时机与机制**：现在就上，不要等 Slice 2 收尾——"收尾时再加"的门禁等于没有门禁。做法是**只降不升的棘轮**：
+- 今天断言 `Object.keys(window.ReadingView)` ⊆ `{init, enter, exit, getCurrent, reload, toggleFollow, on}` ∪ `{splitPrefs, applySplit, saveSplit, resetSplit, setupSplit}`，且长度 ≤ 12（去掉 `emit` 后）。
+- Slice 2 收尾把临时集合清空、上限改成 **7**；此后任何新增导出都会让这条立即红。
+- 长度只许往下调，注释里写明"改小可以，改大必须 Architect 签字"。
 
 **`getCurrent()` 只给两个字段**，别加 `done/total/draftCount`：那是"顶部数字"，由 `on('content-changed')` 推给外壳渲染，不需要外壳来拉。外壳拉一次状态，就会有第二个写点。
 
@@ -309,10 +316,10 @@ window.ReadingView = {
 
 | 版本 | 结果 | 明细 |
 |---|---|---|
-| `7c1d00c`（Slice 1 原始提交） | **红：5 处 / 4 个符号** | `reading-view.js:147` `currentView`(app.js:105)、`:148` `measureReadingTops`(20312)、`:149` `readingPageNo`(18022) 两次、`:149` `updateReadingPage`(20411) |
+| `7c1d00c`（Slice 1 原始提交） | **红：5 处 / 4 个符号** | `reading-view.js:157` `currentView`(app.js:105)、`:158` `measureReadingTops`(20312)、`:159` `readingPageNo`(18022，两次)、`:159` `updateReadingPage`(20411) |
 | `5d7e0ef`（修完） | **绿：0** | 4 个名字只剩在注释里，去注释后为 0 |
 
-红的那版里 4 个符号全在同一个 `resize` 回调里。`reading-view.js` 在 app.js **之前**加载（`index.html:1835–1836`），这 4 个符号在加载时并不存在，能跑只因为回调在 `boot()` 之后才触发——正是这个仓库一半 bug 的成因（时序靠运气）。
+红的那版里 4 个符号全在同一个 `resize` 回调（`157–159` 行）里。`reading-view.js` 在 app.js **之前**加载（`index.html:1835–1836`），这 4 个符号在加载时并不存在，能跑只因为回调在 `boot()` 之后才触发——正是这个仓库一半 bug 的成因（时序靠运气）。
 
 **已采用的修法（零行为变化）**：`init()` 增加 `onViewportResize: () => void`，`reading-view.js` 里改成：
 
