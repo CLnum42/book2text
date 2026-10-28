@@ -18684,14 +18684,6 @@ let readingPdfScrollRaf = 0;
 const READING_NEAR_MARGIN = 900;
 
 
-function disconnectReadingObservers() {
-  if (readingNearObserver) readingNearObserver.disconnect();
-  if (readingVisibleObserver) readingVisibleObserver.disconnect();
-  readingNearObserver = null;
-  readingVisibleObserver = null;
-}
-
-
 /** 一页要的东西：图 + 块数据；两个都到齐才画框。 */
 /**
  * 审校页取的档位（任务 78）。和目录确认一样，**宽度变了就得重算并重取**：
@@ -18700,41 +18692,6 @@ function disconnectReadingObservers() {
 let readingImageProfile = "";
 let readingResizeObserver = null;
 
-
-/** 预热新档，加载完再换上去（换的时候旧图还在，不闪白）。 */
-function warmSwapReadingImage(pageNo, profile) {
-  const tile = readingTiles.get(pageNo);
-  const image = tile ? tile.querySelector("img") : null;
-  if (!image) return;
-  const url = pageImageUrl(pageNo, profile);
-  if (image.src && image.src.endsWith(url)) return;
-  const warm = new Image();
-  warm.onload = () => {
-    image.src = url;
-    image.classList.add("is-ready");
-    delete image.dataset.pending;
-  };
-  warm.onerror = () => {
-    // 新档拿不到就保持旧图，不制造空白
-  };
-  warm.src = url;
-}
-
-
-function ensureReadingImage(pageNo) {
-  const tile = readingTiles.get(pageNo);
-  if (!tile) return;
-  const image = tile.querySelector("img");
-  if (!image || readingLoadedImages.has(pageNo) || image.dataset.pending) return;
-  // 任务 80：同目录确认——先摘掉上一轮残留的 onload/onerror，再挂占位图。
-  // 否则占位图加载完会触发旧闭包，把 thumb 标成 `is-ready`，这一页就永远停在模糊的缩略图上。
-  image.onload = null;
-  image.onerror = null;
-  showReadingPlaceholder(pageNo, image);
-  image.dataset.pending = "1";
-  readingImageQueue.push(pageNo);
-  pumpReadingImages();
-}
 
 /** 低分辨率占位（同目录确认）：先让用户看到"像什么"，高精度随后替换。 */
 function showReadingPlaceholder(pageNo, image) {
@@ -18745,121 +18702,6 @@ function showReadingPlaceholder(pageNo, image) {
   image.src = pageImageUrl(pageNo, "thumb");
 }
 
-/** 图一张一张解：一次跳 300 页时同时解 7 张大图会出一帧近 1 秒的长帧。 */
-function pumpReadingImages() {
-  if (readingImagePumping) return;
-  readingImagePumping = true;
-  const step = () => {
-    const pageNo = readingImageQueue.shift();
-    if (!pageNo) {
-      readingImagePumping = false;
-      return;
-    }
-    const tile = readingTiles.get(pageNo);
-    if (!tile) {
-      step();
-      return;
-    }
-    const image = tile.querySelector("img");
-    if (!image) {
-      step();
-      return;
-    }
-    readingLoadedImages.add(pageNo);
-    image.onload = () => {
-      // 占位图（thumb）自己的加载**不算**这一页好了：只有目标档位到了才收尾。
-      // 否则会在排队等待期间被旧闭包抢先触发，把缩略图标成 `is-ready`。
-      if ((image.getAttribute("src") || "").includes("size=thumb")) return;
-      image.classList.add("is-ready");
-      delete image.dataset.pending;
-      // 任务 80：占位类一起摘（它带 blur(1.5px)，留着就成了"高清图 + 永久模糊"）
-      clearImagePlaceholder(image);
-      const status = el("reading-image-status");
-      if (status) status.hidden = true;
-      paintReadingTile(pageNo);
-      step();
-    };
-    image.onerror = () => {
-      delete image.dataset.pending;
-      // 取图失败：**不能把模糊的缩略图留在那里冒充最终图**（用户分不清"糊"和"还没来"），
-      // 也不能把这一页留在 readingLoadedImages 里——那样它再也不会被重取。
-      clearImagePlaceholder(image);
-      image.classList.remove("is-ready");
-      image.removeAttribute("src");
-      readingLoadedImages.delete(pageNo);
-      const attempts = Number(tile.dataset.imageAttempts || 0) + 1;
-      tile.dataset.imageAttempts = String(attempts);
-      if (attempts <= 2 && currentView === "reading" && readingTiles.has(pageNo)) {
-        setTimeout(() => {
-          if (currentView === "reading" && readingTiles.has(pageNo)) ensureReadingImage(pageNo);
-        }, 600);
-      } else {
-        markReadingImageFailed(pageNo);
-      }
-      step();
-    };
-    // 任务 75：**量外层页块**，不要量 `<img>` 自己。图在加载完成前是隐藏的
-    // （`display:none` / 还没 `is-ready`），`getBoundingClientRect().width` 是 **0**
-    // → need=0 → 永远拿到 `view`（150 DPI）。目录确认用的是外层 wrap，所以那边是好的。
-    const profile = pageProfileFor(tile, pageNo);
-    image.src = pageImageUrl(pageNo, profile);
-  };
-  step();
-}
-
-function releaseReadingImage(pageNo) {
-  const tile = readingTiles.get(pageNo);
-  const image = tile ? tile.querySelector("img") : null;
-  if (!image) return;
-  // 摘 `src` 不会触发 onload/onerror：先把闭包摘掉，免得下一张图（或占位图）误触发旧逻辑
-  image.onload = null;
-  image.onerror = null;
-  image.removeAttribute("src");
-  image.classList.remove("is-ready");
-  clearImagePlaceholder(image);
-  delete image.dataset.pending;
-  readingLoadedImages.delete(pageNo);
-}
-
-/**
- * 三次取图都失败：留一张**不带模糊**的低分辨率占位 + 一个可点的重试。
- *
- * 不留"模糊的缩略图"——用户分不清"这张图糊"和"还没加载完"；
- * 也不留一块空白——那等于告诉用户"这一页不存在"。
- */
-function markReadingImageFailed(pageNo) {
-  const tile = readingTiles.get(pageNo);
-  if (!tile) return;
-  const image = tile.querySelector("img");
-  if (image) {
-    // 摘掉闭包再挂缩略图：否则缩略图也失败时会再触发本函数，attempts 会自激涨到几万次
-    image.onload = null;
-    image.onerror = null;
-    clearImagePlaceholder(image);
-    image.classList.remove("is-ready");
-    if (!image.getAttribute("src")) image.src = pageImageUrl(pageNo, "thumb");
-  }
-  tile.dataset.imageFailed = "1";
-  if (tile.querySelector(".reading-image-retry")) return;
-  const retry = document.createElement("button");
-  retry.type = "button";
-  retry.className = "index-image-retry reading-image-retry";
-  retry.textContent = "这一页的图像读不出来 · 点这里重试";
-  retry.addEventListener("click", () => {
-    retry.remove();
-    delete tile.dataset.imageFailed;
-    delete tile.dataset.imageAttempts;
-    ensureReadingImage(pageNo);
-  });
-  tile.append(retry);
-  if (pageNo === readingPageNo) {
-    const status = el("reading-image-status");
-    if (status) {
-      status.hidden = false;
-      status.textContent = `第 ${pageNo} 页的图像读不出来（渲染超时或失败）`;
-    }
-  }
-}
 
 /** 跳转时没开出来的面板：挂起 key，等"块/行到达"再试，不靠定时器猜。 */
 let readingPendingPanelKey = null;
@@ -18915,12 +18757,6 @@ function readingPageRecord(pageNo) {
   return currentProject.pages.find((item) => item.page_no === pageNo) || null;
 }
 
-function clearReadingDecorations(pageNo) {
-  const tile = readingTiles.get(pageNo);
-  if (!tile) return;
-  clearPageBlocks(tile);
-  clearTileMargin(tile);
-}
 
 /** 当前悬停段涉及的所有块 id（跨页段两页都算）。 */
 function readingHoveredBlockIds() {
@@ -19286,10 +19122,7 @@ function boot() {
     buildReadingSegment: (...args) => buildReadingSegment(...args),
     buildReadingTreePreview: (...args) => buildReadingTreePreview(...args),
     clearPendingPanel: (...args) => clearPendingPanel(...args),
-    clearReadingDecorations: (...args) => clearReadingDecorations(...args),
-    disconnectReadingObservers: (...args) => disconnectReadingObservers(...args),
     draftReading: (...args) => draftReading(...args),
-    ensureReadingImage: (...args) => ensureReadingImage(...args),
     exportOptions: (...args) => exportOptions(...args),
     hideReadingPanelHost: (...args) => hideReadingPanelHost(...args),
     loadIndexBlocks: (...args) => loadIndexBlocks(...args),
@@ -19300,7 +19133,6 @@ function boot() {
     readingEntriesForPage: (...args) => readingEntriesForPage(...args),
     readingEntryDone: (...args) => readingEntryDone(...args),
     refreshReadingCurrentHighlight: (...args) => refreshReadingCurrentHighlight(...args),
-    releaseReadingImage: (...args) => releaseReadingImage(...args),
     removeReadingSentinel: (...args) => removeReadingSentinel(...args),
     scrollPdfColumnToPage: (...args) => scrollPdfColumnToPage(...args),
     scrollScrollerToCenter: (...args) => scrollScrollerToCenter(...args),
@@ -19308,11 +19140,20 @@ function boot() {
     settlePanel: (...args) => settlePanel(...args),
     startReadingEdit: (...args) => startReadingEdit(...args),
     suppressReadingFollow: (...args) => suppressReadingFollow(...args),
-    warmSwapReadingImage: (...args) => warmSwapReadingImage(...args),
     // 任务 94 L5：模块要读的常量
     INDEX_IMAGE_WINDOW: INDEX_IMAGE_WINDOW,
     READING_CHUNK: READING_CHUNK,
     READING_NEAR_MARGIN: READING_NEAR_MARGIN,
+    // L6 刀1：状态 getter
+    getReadingImagePumping: () => readingImagePumping,
+    // L6 刀1：状态 setter（有写点才给）
+    setReadingImagePumping: (value) => { readingImagePumping = value; return value; },
+    // L6 刀1：仍留在 app.js 的叶子函数
+    clearImagePlaceholder: (...args) => clearImagePlaceholder(...args),
+    clearPageBlocks: (...args) => clearPageBlocks(...args),
+    clearTileMargin: (...args) => clearTileMargin(...args),
+    pageImageUrl: (...args) => pageImageUrl(...args),
+    showReadingPlaceholder: (...args) => showReadingPlaceholder(...args),
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {

@@ -1623,7 +1623,7 @@ function ensureReadingPages() {
 function buildReadingPages() {
   const wrap = el("reading-pages");
   if (!wrap || !injected.getProject()) return;
-  injected.disconnectReadingObservers();
+  disconnectReadingObservers();
   wrap.innerHTML = "";
   const box = el("reading-pdf-box");
   injected.getReadingTiles().clear();
@@ -1684,7 +1684,7 @@ function observeReadingTiles() {
           injected.getReadingNearSet().add(pageNo);
           ensureReadingTile(pageNo);
         } else if (injected.getReadingNearSet().delete(pageNo)) {
-          if (Math.abs(pageNo - (injected.getPageNo() || 1)) > injected.INDEX_IMAGE_WINDOW) injected.releaseReadingImage(pageNo);
+          if (Math.abs(pageNo - (injected.getPageNo() || 1)) > injected.INDEX_IMAGE_WINDOW) releaseReadingImage(pageNo);
         }
       }
     },
@@ -1700,7 +1700,7 @@ function observeReadingTiles() {
           ensureReadingTile(pageNo);
           injected.paintReadingTile(pageNo);
         } else if (injected.getReadingVisibleSet().delete(pageNo)) {
-          injected.clearReadingDecorations(pageNo);
+          clearReadingDecorations(pageNo);
         }
       }
       if (!injected.getReadingFollow()) updateReadingPageFromLeftScroll();
@@ -1726,7 +1726,7 @@ function refreshReadingImageProfiles(force = false) {
   injected.setReadingImageProfile( wanted);
   // 任务 79：**不要先摘 src 再重取**——那会让页图空白一下（用户看到闪白）。
   // 先在离屏 Image 里把新档下完，加载完再换上去，旧图一直可见。
-  for (const pageNo of [...injected.getReadingLoadedImages()]) injected.warmSwapReadingImage(pageNo, wanted);
+  for (const pageNo of [...injected.getReadingLoadedImages()]) warmSwapReadingImage(pageNo, wanted);
   // 页列宽度一变，tile 的宽高都跟着变：同一个 `scrollTop` 会落到别的页上。
   // 按"当前页码"重新锚定一次（用户的心智是"我在第几页"），再核对。
   if (injected.getPageNo()) injected.scrollPdfColumnToPage(injected.getPageNo());
@@ -1747,7 +1747,7 @@ function observeReadingColumnResize() {
 }
 
 function ensureReadingTile(pageNo) {
-  injected.ensureReadingImage(pageNo);
+  ensureReadingImage(pageNo);
   ensureReadingBlocks(pageNo).then(() => injected.paintReadingTile(pageNo));
 }
 
@@ -2043,6 +2043,173 @@ function gotoReadingEntry(entry) {
     }, 260);
   }
   verifyReadingPageSync("gotoEntry");
+}
+
+  // ---------------------------------------------------------------- 审校环·图片泵（任务 94 · L6 刀1）
+  // 从 app.js 原样搬入；依赖由 init() 注入。状态仍归 app.js（get/set）。
+
+/** 预热新档，加载完再换上去（换的时候旧图还在，不闪白）。 */
+function warmSwapReadingImage(pageNo, profile) {
+  const tile = injected.getReadingTiles().get(pageNo);
+  const image = tile ? tile.querySelector("img") : null;
+  if (!image) return;
+  const url = injected.pageImageUrl(pageNo, profile);
+  if (image.src && image.src.endsWith(url)) return;
+  const warm = new Image();
+  warm.onload = () => {
+    image.src = url;
+    image.classList.add("is-ready");
+    delete image.dataset.pending;
+  };
+  warm.onerror = () => {
+    // 新档拿不到就保持旧图，不制造空白
+  };
+  warm.src = url;
+}
+
+function ensureReadingImage(pageNo) {
+  const tile = injected.getReadingTiles().get(pageNo);
+  if (!tile) return;
+  const image = tile.querySelector("img");
+  if (!image || injected.getReadingLoadedImages().has(pageNo) || image.dataset.pending) return;
+  // 任务 80：同目录确认——先摘掉上一轮残留的 onload/onerror，再挂占位图。
+  // 否则占位图加载完会触发旧闭包，把 thumb 标成 `is-ready`，这一页就永远停在模糊的缩略图上。
+  image.onload = null;
+  image.onerror = null;
+  injected.showReadingPlaceholder(pageNo, image);
+  image.dataset.pending = "1";
+  injected.getReadingImageQueue().push(pageNo);
+  pumpReadingImages();
+}
+
+/** 图一张一张解：一次跳 300 页时同时解 7 张大图会出一帧近 1 秒的长帧。 */
+function pumpReadingImages() {
+  if (injected.getReadingImagePumping()) return;
+  injected.setReadingImagePumping( true);
+  const step = () => {
+    const pageNo = injected.getReadingImageQueue().shift();
+    if (!pageNo) {
+      injected.setReadingImagePumping( false);
+      return;
+    }
+    const tile = injected.getReadingTiles().get(pageNo);
+    if (!tile) {
+      step();
+      return;
+    }
+    const image = tile.querySelector("img");
+    if (!image) {
+      step();
+      return;
+    }
+    injected.getReadingLoadedImages().add(pageNo);
+    image.onload = () => {
+      // 占位图（thumb）自己的加载**不算**这一页好了：只有目标档位到了才收尾。
+      // 否则会在排队等待期间被旧闭包抢先触发，把缩略图标成 `is-ready`。
+      if ((image.getAttribute("src") || "").includes("size=thumb")) return;
+      image.classList.add("is-ready");
+      delete image.dataset.pending;
+      // 任务 80：占位类一起摘（它带 blur(1.5px)，留着就成了"高清图 + 永久模糊"）
+      injected.clearImagePlaceholder(image);
+      const status = el("reading-image-status");
+      if (status) status.hidden = true;
+      injected.paintReadingTile(pageNo);
+      step();
+    };
+    image.onerror = () => {
+      delete image.dataset.pending;
+      // 取图失败：**不能把模糊的缩略图留在那里冒充最终图**（用户分不清"糊"和"还没来"），
+      // 也不能把这一页留在 readingLoadedImages 里——那样它再也不会被重取。
+      injected.clearImagePlaceholder(image);
+      image.classList.remove("is-ready");
+      image.removeAttribute("src");
+      injected.getReadingLoadedImages().delete(pageNo);
+      const attempts = Number(tile.dataset.imageAttempts || 0) + 1;
+      tile.dataset.imageAttempts = String(attempts);
+      if (attempts <= 2 && injected.getCurrentView() === "reading" && injected.getReadingTiles().has(pageNo)) {
+        setTimeout(() => {
+          if (injected.getCurrentView() === "reading" && injected.getReadingTiles().has(pageNo)) ensureReadingImage(pageNo);
+        }, 600);
+      } else {
+        markReadingImageFailed(pageNo);
+      }
+      step();
+    };
+    // 任务 75：**量外层页块**，不要量 `<img>` 自己。图在加载完成前是隐藏的
+    // （`display:none` / 还没 `is-ready`），`getBoundingClientRect().width` 是 **0**
+    // → need=0 → 永远拿到 `view`（150 DPI）。目录确认用的是外层 wrap，所以那边是好的。
+    const profile = injected.pageProfileFor(tile, pageNo);
+    image.src = injected.pageImageUrl(pageNo, profile);
+  };
+  step();
+}
+
+function releaseReadingImage(pageNo) {
+  const tile = injected.getReadingTiles().get(pageNo);
+  const image = tile ? tile.querySelector("img") : null;
+  if (!image) return;
+  // 摘 `src` 不会触发 onload/onerror：先把闭包摘掉，免得下一张图（或占位图）误触发旧逻辑
+  image.onload = null;
+  image.onerror = null;
+  image.removeAttribute("src");
+  image.classList.remove("is-ready");
+  injected.clearImagePlaceholder(image);
+  delete image.dataset.pending;
+  injected.getReadingLoadedImages().delete(pageNo);
+}
+
+/**
+ * 三次取图都失败：留一张**不带模糊**的低分辨率占位 + 一个可点的重试。
+ *
+ * 不留"模糊的缩略图"——用户分不清"这张图糊"和"还没加载完"；
+ * 也不留一块空白——那等于告诉用户"这一页不存在"。
+ */
+function markReadingImageFailed(pageNo) {
+  const tile = injected.getReadingTiles().get(pageNo);
+  if (!tile) return;
+  const image = tile.querySelector("img");
+  if (image) {
+    // 摘掉闭包再挂缩略图：否则缩略图也失败时会再触发本函数，attempts 会自激涨到几万次
+    image.onload = null;
+    image.onerror = null;
+    injected.clearImagePlaceholder(image);
+    image.classList.remove("is-ready");
+    if (!image.getAttribute("src")) image.src = injected.pageImageUrl(pageNo, "thumb");
+  }
+  tile.dataset.imageFailed = "1";
+  if (tile.querySelector(".reading-image-retry")) return;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "index-image-retry reading-image-retry";
+  retry.textContent = "这一页的图像读不出来 · 点这里重试";
+  retry.addEventListener("click", () => {
+    retry.remove();
+    delete tile.dataset.imageFailed;
+    delete tile.dataset.imageAttempts;
+    ensureReadingImage(pageNo);
+  });
+  tile.append(retry);
+  if (pageNo === injected.getPageNo()) {
+    const status = el("reading-image-status");
+    if (status) {
+      status.hidden = false;
+      status.textContent = `第 ${pageNo} 页的图像读不出来（渲染超时或失败）`;
+    }
+  }
+}
+
+function clearReadingDecorations(pageNo) {
+  const tile = injected.getReadingTiles().get(pageNo);
+  if (!tile) return;
+  injected.clearPageBlocks(tile);
+  injected.clearTileMargin(tile);
+}
+
+function disconnectReadingObservers() {
+  if (injected.getReadingNearObserver()) injected.getReadingNearObserver().disconnect();
+  if (injected.getReadingVisibleObserver()) injected.getReadingVisibleObserver().disconnect();
+  injected.setReadingNearObserver( null);
+  injected.setReadingVisibleObserver( null);
 }
 
   // ---------------------------------------------------------------- 对外接口
