@@ -2342,19 +2342,25 @@ async function punctProbe(page, args) {
   await page.click("#punct-groups-list > *:first-child .punct-group__actions .btn--pri",
                   { label: "全部采用候选（第一组）" });
   // 等"重开"的可观测结果：readingData 换对象 / 流 DOM 重建 / 进度变化
+  // 等"重开完成"：readingData 换成**非空新对象**、正文流重新有几段。
+  // 只看 marker 消失不够——`setReadingData(null)` 那一步也会让 marker 消失，
+  // 如果 openReading() 没跑起来，会误判成"重开成功"（正文流其实是空的）。
   const started = Date.now();
   let after = await read();
+  const timeline = [];
   while (Date.now() - started < 25000) {
     await page.waitForTimeout(300);
     after = await read();
-    if (!after.hasProbeMarker) break;          // 换了新对象 = 真的重开
+    timeline.push({ ms: Date.now() - started, segs: after.segs, segments: after.segments,
+                    hasProbeMarker: after.hasProbeMarker, progress: after.progress, badge: after.badge });
+    if (after.segments !== null && !after.hasProbeMarker && after.segs > 0) break;
   }
   const mutations = await page.evaluate(() => {
     if (window.__punctObserver) window.__punctObserver.disconnect();
     return window.__punctStreamMutations || 0;
   });
   const errors = await page.evaluate(() => window.__b2tErrors || []);
-  return { before, opened, after, mutations, errors, ms: Date.now() - started };
+  return { before, opened, after, mutations, errors, ms: Date.now() - started, timeline };
 }
 
 async function nextProbe(page) {
