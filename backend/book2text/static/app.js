@@ -18052,6 +18052,23 @@ function setReviewOverlaysForReading() {
   for (const pageNo of readingVisibleSet) paintReadingTile(pageNo);
 }
 
+/** 阅读流左栏（PDF 页列）当前滚动位置；没有左栏时按 0。 */
+function readingPdfScrollTop() {
+  const scroller = el("reading-pdf-scroll");
+  return scroller ? scroller.scrollTop : 0;
+}
+
+/**
+ * 打开阅读流的异步阶段（正文预览 → marks → 重画）里，用户是不是自己滚过了？
+ *
+ * 容差 40px：滚动惯性、图片就位后的几像素抖动不算"用户动过"。
+ * 动过就**不再**把他拽到"第一处未审页"——否则用户刚翻到第 300 页就被弹回第 1 页
+ * （2026-10-28 QA 复跑时抓到的假通过就是这一跳造成的）。
+ */
+function readingMovedSinceOpen(topAtOpen) {
+  return Math.abs(readingPdfScrollTop() - topAtOpen) > 40;
+}
+
 async function openReading() {
   if (!currentProject) return;
   // 三栏宽度在打开时套一次：视图刚显示出来才量得到真实宽度
@@ -18068,6 +18085,9 @@ async function openReading() {
   }
   const started = performance.now();
   readingOpenStartedAt = started;
+  // 任务 81：记下打开时的滚动位置。marks 是异步来的，它回来时会按"第一处未审页"跳一次——
+  // 如果这期间用户已经自己滚走了，就不能再把他拽回去（QA 复跑时正是被这一跳拽回第 1 页）。
+  const scrollAtOpen = readingPdfScrollTop();
   const stream = el("reading-stream");
   stream.innerHTML = '<p class="muted reading-empty">正在按导出设置组装正文…</p>';
   el("reading-tree").innerHTML = "";
@@ -18133,7 +18153,8 @@ async function openReading() {
     readingEntries[0]?.page_no ||
     currentProject.pages[0]?.page_no ||
     1;
-  updateReadingPage(page);
+  // 用户在这几秒里自己滚过了：保留他的位置，不跳到"第一处未审页"
+  if (!readingMovedSinceOpen(scrollAtOpen)) updateReadingPage(page);
   // 左树后补（只影响左栏计数，不影响正文与红字）
   apiJson(`/api/projects/${projectId}/review/tree`)
     .then((tree) => {
