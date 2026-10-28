@@ -20414,6 +20414,8 @@ async function gotoNextUnreviewed() {
       ? Number(readingGlobalCounts.chars_total || 0)
       : readingEntries.length;
     el("reading-progress-text").textContent = `已处理 ${total} / ${total} · 全部处理完`;
+    // 静默无操作是最差的选择：队列空了要明确说"没有下一处"，并给下一步
+    showNoticeBar("全书未审已处理完 · 可以去「成稿模式」通读一遍，或者直接导出");
     return;
   }
   // 换到那一页的窗口（可能已经加载过），再从头找——这次必须能找到，
@@ -20422,7 +20424,10 @@ async function gotoNextUnreviewed() {
   const target = readingEntries.find(
     (entry) => !readingEntryDone(entry) && entry.page_no >= pageNo
   );
-  if (!target) return;
+  if (!target) {
+    showNoticeBar("全书未审已处理完 · 可以去「成稿模式」通读一遍，或者直接导出");
+    return;
+  }
   readingCursorEntry = target;
   gotoReadingEntry(target);
 }
