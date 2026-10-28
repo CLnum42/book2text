@@ -381,7 +381,7 @@ function setReadingFilter(value) {
  * 就什么都不做，别把别处点亮。
  */
 function setReadingHoverByBlock(blockId) {
-  const segments = injected.readingVisibleSegments?.();
+  const segments = readingVisibleSegments();
   const index = segments.findIndex((segment) =>
     (segment.line_spans || []).some((span) => span.block_id === blockId)
   );
@@ -577,7 +577,7 @@ async function submitReadingDrafts() {
     const okKeys = new Set(
       (result.results || [])
         .filter((item) => item.ok)
-        .map((item) => injected.readingKey?.(item.block_id, item.line_index))
+        .map((item) => readingKey(item.block_id, item.line_index))
     );
     for (const key of okKeys) injected.getDrafts().delete(key);
     saveReadingDrafts();
@@ -681,7 +681,7 @@ async function openReading() {
   const metrics = (window.__b2tReadingMetrics = window.__b2tReadingMetrics || {});
   metrics.openedAt = Math.round(started);
   metrics.firstPaintMs = Math.round(performance.now() - started);
-  metrics.segments = injected.readingVisibleSegments?.().length;
+  metrics.segments = readingVisibleSegments().length;
   // 任务 67：只拉**第一处未审页 ±10** 的 marks（`first=1` 让服务端自己定位），
   // 不再等 1.52 MB 的全书 marks；tree（左栏每页计数）单独拉，不挡红字。
   let marks;
@@ -882,7 +882,7 @@ function loadReadingDrafts() {
     const data = JSON.parse(raw);
     for (const item of data.items || []) {
       if (!item || !item.block_id) continue;
-      injected.getDrafts().set(injected.readingKey?.(item.block_id, item.line_index), item);
+      injected.getDrafts().set(readingKey(item.block_id, item.line_index), item);
     }
   } catch {
     injected.setReadingDrafts(new Map());
@@ -931,7 +931,7 @@ async function gotoNextUnreviewed() {
   }
   const lines = payload.lines || [];
   const usable = lines.filter(
-    (line) => !injected.getDrafts().has(injected.readingKey?.(line.block_id, line.line_index))
+    (line) => !injected.getDrafts().has(readingKey(line.block_id, line.line_index))
   );
   const outside = payload.outside_stream || { count: 0, sample: [] };
   if (!usable.length) {
@@ -946,9 +946,9 @@ async function gotoNextUnreviewed() {
     }
     return;
   }
-  const keyOf = (line) => injected.readingKey?.(line.block_id, line.line_index);
+  const keyOf = (line) => readingKey(line.block_id, line.line_index);
   const cursorKey = injected.getReadingCursorEntry()
-    ? injected.readingKey?.(injected.getReadingCursorEntry().block_id, injected.getReadingCursorEntry().line_index)
+    ? readingKey(injected.getReadingCursorEntry().block_id, injected.getReadingCursorEntry().line_index)
     : null;
   let cursor = cursorKey ? usable.findIndex((line) => keyOf(line) === cursorKey) : -1;
   let target;
@@ -1053,7 +1053,7 @@ function flushReadingIntents() {
 function applyReadingMarksPayload(payload) {
   injected.setReadingMarks( new Map());
   for (const mark of payload.items || []) {
-    injected.getReadingMarks().set(injected.readingKey(mark.block_id, mark.line_index), mark);
+    injected.getReadingMarks().set(readingKey(mark.block_id, mark.line_index), mark);
   }
   injected.setReadingMarksWindow( payload.window || null);
   injected.setReadingGlobalCounts( payload.counts || null);
@@ -1066,11 +1066,11 @@ function rebuildReadingEntries() {
   injected.setReadingEntries( []);
   if (!injected.getReadingData()) return;
   const punctWatch = injected.punctReviewSet();
-  for (const segment of injected.readingVisibleSegments()) {
+  for (const segment of readingVisibleSegments()) {
     const spans = segment.line_spans || [];
     for (let i = 0; i < spans.length; i += 1) {
       const span = spans[i];
-      const mark = injected.getReadingMarks().get(injected.readingKey(span.block_id, span.line_index));
+      const mark = injected.getReadingMarks().get(readingKey(span.block_id, span.line_index));
       if (!mark) continue;
       // 主队列只放含汉字差异的行；纯标点 / 空格按模式批量判（任务 61），
       // 只有被用户点了「逐条看」的那几种模式才回到主队列。
@@ -1165,7 +1165,7 @@ function refreshReadingMarksPaint() {
   // 记住它，重画完成后恢复——否则用户刚点开的那一处会凭空消失、位置也回到页首。
   const panelKey = injected.getReadingPanelKey();
   const panelEntry = panelKey
-    ? injected.getReadingEntries().find((entry) => injected.readingKey(entry.block_id, entry.line_index) === panelKey)
+    ? injected.getReadingEntries().find((entry) => readingKey(entry.block_id, entry.line_index) === panelKey)
     : null;
   const segmentsToKeep = Math.max(injected.getReadingRendered(), 0);
   // **只重铺尾部一段**：从第 0 段重建 300+ 段 DOM 是主要卡顿来源（QA：1-8 帧/450ms）。
@@ -1204,10 +1204,10 @@ function refreshReadingMarksPaint() {
  */
 function ensureReadingLineRendered(entry) {
   if (!entry) return null;
-  const key = injected.readingKey(entry.block_id, entry.line_index);
+  const key = readingKey(entry.block_id, entry.line_index);
   const existing = readingLineNode(key);
   if (existing) return existing;
-  const segments = injected.readingVisibleSegments();
+  const segments = readingVisibleSegments();
   let index = -1;
   if (entry.seq !== null && entry.seq !== undefined) {
     index = segments.findIndex((segment) => Number(segment.seq) === Number(entry.seq));
@@ -1239,7 +1239,7 @@ function renderReading({ reset = false, startAt = null } = {}) {
     if (injected.getReadingObserver()) injected.getReadingObserver().disconnect();
     injected.setReadingObserver( null);
   }
-  const segments = injected.readingVisibleSegments();
+  const segments = readingVisibleSegments();
   if (!segments.length) {
     stream.innerHTML = '<p class="muted reading-empty">按当前导出设置没有可读的正文。</p>';
     return;
@@ -1336,7 +1336,7 @@ function saveInlineEdit(line) {
 }
 
 function centerReadingLinePair(entry) {
-  const key = injected.readingKey(entry.block_id, entry.line_index);
+  const key = readingKey(entry.block_id, entry.line_index);
   const stream = el("reading-stream");
   const line = readingLineNode(key);
   if (stream && line) {
@@ -1365,7 +1365,7 @@ function centerReadingLinePair(entry) {
 
 function openReadingPanel(entry) {
   closeReadingPanel();
-  const key = injected.readingKey(entry.block_id, entry.line_index);
+  const key = readingKey(entry.block_id, entry.line_index);
   const line = readingLineNode(key);
   // 窗口化渲染的竞态：跳转后那一行可能还没挂上 DOM。
   // 面板本来只需要 `mark`（候选文本）与 `bbox`，**不依赖行节点**——
@@ -1506,7 +1506,7 @@ function renderReadingTree() {
       const item = document.createElement("button");
       item.type = "button";
       item.className = "reading-tree__item";
-      item.dataset.key = injected.readingKey(entry.block_id, entry.line_index);
+      item.dataset.key = readingKey(entry.block_id, entry.line_index);
       const done = readingEntryDone(entry);
       if (done) item.classList.add("is-done");
       if (item.dataset.key === injected.getReadingPanelKey()) item.classList.add("is-current");
@@ -1550,7 +1550,7 @@ function renderReadingTree() {
 }
 
 function scrollReadingToPage(pageNo) {
-  const segments = injected.readingVisibleSegments();
+  const segments = readingVisibleSegments();
   let index = segments.findIndex((segment) =>
     (segment.pages || []).some((page) => page.page_no === pageNo)
   );
@@ -1605,7 +1605,7 @@ function markReadingTreeCurrent(pageNo) {
  * 清掉正文流，从目标段前 2 段开始重新铺窗口——DOM 始终只挂视口附近的几十段。
  */
 function jumpReadingTo(segmentIndex) {
-  const segments = injected.readingVisibleSegments();
+  const segments = readingVisibleSegments();
   if (segmentIndex < 0 || segmentIndex >= segments.length) return;
   // 目标段已经在 DOM 里就直接用；不在就从它前 2 段重新铺窗口。
   if (injected.getReadingSegmentNodes()[segmentIndex]) return;
@@ -1698,7 +1698,7 @@ function observeReadingTiles() {
         if (entry.isIntersecting) {
           injected.getReadingVisibleSet().add(pageNo);
           ensureReadingTile(pageNo);
-          injected.paintReadingTile(pageNo);
+          paintReadingTile(pageNo);
         } else if (injected.getReadingVisibleSet().delete(pageNo)) {
           clearReadingDecorations(pageNo);
         }
@@ -1748,7 +1748,7 @@ function observeReadingColumnResize() {
 
 function ensureReadingTile(pageNo) {
   ensureReadingImage(pageNo);
-  ensureReadingBlocks(pageNo).then(() => injected.paintReadingTile(pageNo));
+  ensureReadingBlocks(pageNo).then(() => paintReadingTile(pageNo));
 }
 
 function retryReadingPendingPanel() {
@@ -1763,7 +1763,7 @@ function retryReadingPendingPanel() {
   }
   if (!injected.getReadingPendingPanelEntry()) return;
   const entry = injected.getReadingPendingPanelEntry();
-  const key = injected.readingKey(entry.block_id, entry.line_index);
+  const key = readingKey(entry.block_id, entry.line_index);
   if (!readingLineNode(key)) return;      // 行还没挂上，等下一次数据到达
   clearPendingPanel();
   openReadingPanel(entry);
@@ -1781,7 +1781,7 @@ function ensureReadingBlocks(pageNo) {
       // 跳转那一瞬块还没到 → `paintReadingDiffBoxes` 直接 return（一个框都不画），
       // 行节点也没有 → 面板开不出来。"面板与高亮同时消失"就是这一条（任务 84）。
       if (pageNo === injected.getPageNo()) {
-        injected.paintReadingTile(pageNo);
+        paintReadingTile(pageNo);
         retryReadingPendingPanel();
       }
       return blocks || [];
@@ -1812,14 +1812,14 @@ function setReadingHover(seq) {
   }
   const node = document.querySelector(`#reading-stream .reading-seg[data-seq="${target}"]`);
   if (node) node.classList.add("is-hover");
-  const segment = (injected.readingVisibleSegments() || []).find((item) => item.seq === target);
+  const segment = (readingVisibleSegments() || []).find((item) => item.seq === target);
   if (!segment) return;
   const pageNos = new Set((segment.line_spans || []).map((span) => span.page_no));
   for (const pageNo of pageNos) {
     ensureReadingBlocks(pageNo).then(() => {
       if (injected.getReadingHoveredSeq() !== target) return;
-      injected.paintReadingTile(pageNo);
-      injected.paintReadingDiffBoxes(pageNo);
+      paintReadingTile(pageNo);
+      paintReadingDiffBoxes(pageNo);
     });
   }
 }
@@ -1890,7 +1890,7 @@ function updateReadingPageFromLeftScroll() {
  */
 function scrollStreamToPage(pageNo) {
   if (!injected.getReadingData()) return;
-  const segments = injected.readingVisibleSegments();
+  const segments = readingVisibleSegments();
   if (!segments.length) return;
   let index = segments.findIndex((segment) =>
     (segment.line_spans || []).some((span) => Number(span.page_no) >= pageNo)
@@ -2012,12 +2012,12 @@ function gotoReadingEntry(entry) {
   updateReadingPage(entry.page_no, { syncStream: false, scrollLeft: false });
   suppressReadingFollow();
   scrollPdfColumnToPage(entry.page_no);
-  const segments = injected.readingVisibleSegments();
+  const segments = readingVisibleSegments();
   const index = segments.findIndex((segment) => segment.seq === entry.seq);
   // 边 8 不切（顺序依赖）：jump 的 reset 必须早于下面的 openReadingPanel。
   // 入队后它在帧末跑，reset 会把刚开的面板按"无 key + 无 pending"的清尾规则藏掉（QA：2/60）。
   if (index >= 0) jumpReadingTo(index);
-  const key = injected.readingKey(entry.block_id, entry.line_index);
+  const key = readingKey(entry.block_id, entry.line_index);
   let line = readingLineNode(key);
   if (!line) {
     // 目标段不在已挂载的窗口里：按它的下标重铺一次（不固定 sleep，靠渲染完成后再查）。
@@ -2034,7 +2034,7 @@ function gotoReadingEntry(entry) {
   // 并把原因记进 __b2tNextLog。第二次仍失败也记下来，不静默。
   if (!settled) {
     let reason = "no-line";
-    const seg = injected.readingVisibleSegments()[index];
+    const seg = readingVisibleSegments()[index];
     if (!seg) reason = "no-segment";
     else if (!readingLineNode(key)) reason = "line-not-mounted";
     setTimeout(() => {
@@ -2113,7 +2113,7 @@ function pumpReadingImages() {
       injected.clearImagePlaceholder(image);
       const status = el("reading-image-status");
       if (status) status.hidden = true;
-      injected.paintReadingTile(pageNo);
+      paintReadingTile(pageNo);
       step();
     };
     image.onerror = () => {
@@ -2233,7 +2233,7 @@ function saveReadingInlineEdits() {
 }
 
 function startReadingEdit(entry, panel) {
-  const key = injected.readingKey(entry.block_id, entry.line_index);
+  const key = readingKey(entry.block_id, entry.line_index);
   const line = readingLineNode(key);
   if (!line) return;
   const input = document.createElement("input");
@@ -2300,7 +2300,7 @@ function buildReadingTreePreview(entry) {
 /** 这一页在已加载窗口里的差异条目（按文档顺序）。 */
 function readingEntriesForPage(pageNo) {
   return injected.getReadingEntries()
-    .filter((entry) => entry.page_no === pageNo && injected.readingEntryVisible(entry))
+    .filter((entry) => entry.page_no === pageNo && readingEntryVisible(entry))
     .sort((a, b) => {
       const oa = readingMarkOrder(a);
       const ob = readingMarkOrder(b);
@@ -2313,7 +2313,7 @@ function readingEntriesForPage(pageNo) {
 
 function readingEntryDone(entry) {
   if (entry.ack) return true;
-  return injected.getReadingDrafts().has(injected.readingKey(entry.block_id, entry.line_index));
+  return injected.getReadingDrafts().has(readingKey(entry.block_id, entry.line_index));
 }
 
 /** 正文流里出现过的页号（前置页 / 版心外的页不在里面）。 */
@@ -2438,12 +2438,12 @@ function drawReadingPdfBox(bbox, pageNo) {
 function logReadingNext(entry, extra = {}) {
   injected.getReadingNextLog().unshift({
     at: Date.now(),
-    entryKey: entry ? injected.readingKey(entry.block_id, entry.line_index) : null,
+    entryKey: entry ? readingKey(entry.block_id, entry.line_index) : null,
     entryPage: entry ? entry.page_no : null,
     pageNo: injected.getPageNo(),
     panelKey: injected.getReadingPanelKey(),
     panelOpened: Boolean(document.querySelector("#reading-panel-host .reading-panel")),
-    lineFound: entry ? Boolean(readingLineNode(injected.readingKey(entry.block_id, entry.line_index))) : false,
+    lineFound: entry ? Boolean(readingLineNode(readingKey(entry.block_id, entry.line_index))) : false,
     window: injected.getReadingMarksWindow(),
     blocks: entry ? (injected.getReadingPageBlocks().get(entry.page_no) || []).length : null,
     ...extra,
@@ -2492,7 +2492,7 @@ function span_at(spans, index) {
 }
 
 function draftReading(entry, ack, text) {
-  const key = injected.readingKey(entry.block_id, entry.line_index);
+  const key = readingKey(entry.block_id, entry.line_index);
   injected.getReadingDrafts().set(key, {
     block_id: entry.block_id,
     line_index: entry.line_index,
@@ -2509,7 +2509,7 @@ function draftReading(entry, ack, text) {
 }
 
 function readingEntryLineText(entry) {
-  for (const segment of injected.readingVisibleSegments() || []) {
+  for (const segment of readingVisibleSegments() || []) {
     if (segment.seq !== entry.seq) continue;
     for (const span of segment.line_spans || []) {
       if (span.block_id !== entry.block_id || span.line_index !== entry.line_index) continue;
@@ -2577,17 +2577,17 @@ function closeReadingPanel() {
 }
 
 function rerenderReadingLine(entry) {
-  const key = injected.readingKey(entry.block_id, entry.line_index);
+  const key = readingKey(entry.block_id, entry.line_index);
   const line = readingLineNode(key);
   if (!line) return;
-  const segment = injected.readingVisibleSegments().find((seg) =>
+  const segment = readingVisibleSegments().find((seg) =>
     (seg.line_spans || []).some(
-      (span) => injected.readingKey(span.block_id, span.line_index) === key
+      (span) => readingKey(span.block_id, span.line_index) === key
     )
   );
   if (!segment) return;
   const span = (segment.line_spans || []).find(
-    (item) => injected.readingKey(item.block_id, item.line_index) === key
+    (item) => readingKey(item.block_id, item.line_index) === key
   );
   const fresh = buildReadingLine(segment, span);
   line.replaceWith(fresh);
@@ -2595,7 +2595,7 @@ function rerenderReadingLine(entry) {
 
 /** 挂起"重绘后要补开的面板"：key 由 entry 推出，entry 跨 reset 存活（重绘后由 retryReadingPendingPanel 补开）。 */
 function setPanel(entry) {
-  injected.setReadingPendingPanelKey( injected.readingKey(entry.block_id, entry.line_index));
+  injected.setReadingPendingPanelKey( readingKey(entry.block_id, entry.line_index));
   injected.setReadingPendingPanelEntry( entry);
 }
 
@@ -2626,7 +2626,7 @@ function readingDraftStorageKey() {
 }
 
 function buildReadingLine(segment, span, displayText = null) {
-  const key = injected.readingKey(span.block_id, span.line_index);
+  const key = readingKey(span.block_id, span.line_index);
   const mark = injected.getReadingMarks().get(key);
   const draft = injected.getReadingDrafts().get(key);
   const line = document.createElement("span");
@@ -2666,7 +2666,7 @@ function buildReadingLine(segment, span, displayText = null) {
   if (mark && mark.ack === "adopted") {
     line.classList.add("is-kept");
   }
-  if (!mark || !injected.readingEntryVisible(mark)) {
+  if (!mark || !readingEntryVisible(mark)) {
     line.textContent = baseText;
     return line;
   }
@@ -2798,8 +2798,8 @@ function refreshReadingCurrentHighlight() {
     if (item) item.classList.add("is-current");
   }
   // 页面上只有已加载块的页画过差异框：重画这些页 + 当前 key 所在页
-  for (const pageNo of injected.getReadingPageBlocks().keys()) injected.paintReadingDiffBoxes(pageNo);
-  if (injected.getPageNo()) injected.paintReadingDiffBoxes(injected.getPageNo());
+  for (const pageNo of injected.getReadingPageBlocks().keys()) paintReadingDiffBoxes(pageNo);
+  if (injected.getPageNo()) paintReadingDiffBoxes(injected.getPageNo());
 }
 
   // ---------------------------------------------------------------- 审校环·词边界 / 行文本 / 行内修订 / 行节点（任务 94 · L10）
@@ -2900,6 +2900,199 @@ function readingLineNode(key) {
   return stream ? stream.querySelector(`.reading-line[data-key="${key}"]`) : null;
 }
 
+  // ---------------------------------------------------------------- 审校环·收口簇（L11+L12；display-prefs 暂驻，到期 = core/display-prefs 建立时）
+  // 从 app.js 原样搬入；依赖由 init() 注入。状态仍归 app.js（get/set）。
+
+function readingKey(blockId, lineIndex) {
+  return `${blockId}:${lineIndex}`;
+}
+
+function readingVisibleSegments() {
+  if (!injected.getReadingData()) return [];
+  let includeFootnotes = false;
+  try {
+    includeFootnotes = Boolean(injected.exportOptions().include_footnotes);
+  } catch {
+    includeFootnotes = false;
+  }
+  return (injected.getReadingData().segments || []).filter((segment) => {
+    if (!segment.text || !segment.text.trim()) return false;
+    if (!includeFootnotes && segment.type === "footnote") return false;
+    return true;
+  });
+}
+
+function readingEntryVisible(entry) {
+  const draft = injected.getReadingDrafts().get(readingKey(entry.block_id, entry.line_index));
+  if (injected.getReadingFilter() === "chars" && entry.level !== "differs_chars") return false;
+  if (injected.getReadingFilter() === "unacked") {
+    if (entry.ack) return false;
+    if (draft) return false;
+  }
+  return true;
+}
+
+/** 当前悬停段涉及的所有块 id（跨页段两页都算）。 */
+function readingHoveredBlockIds() {
+  const segment = injected.getReadingHoveredSeq() !== null
+    ? (readingVisibleSegments() || []).find((item) => item.seq === injected.getReadingHoveredSeq())
+    : null;
+  if (!segment) return null;
+  return new Set((segment.line_spans || []).map((span) => span.block_id));
+}
+
+function readingDiffUnits(lineText, candidate, wordBoxes) {
+  const spans = injected.computeCharSpans(lineText || "", candidate || "");
+  if (!spans.length) return { ranges: [], kind: null };
+  const kind = spans.some((span) => span.kind !== "replace") ? "punct" : "chars";
+  if (!wordBoxes || !wordBoxes.length) return { ranges: null, kind };
+  // 字框的文本拼起来应与行文本一致；按累加长度把差异区间映射到字框下标
+  // 任务 86：两条分支，**中文走旧的偏移映射，英文走位置映射**。
+  // 旧代码"拼接长度相等就按偏移画"看着土，但对中文是对的——先想清楚它为什么能工作，
+  // 再决定哪条路给谁走（实测：中文逐字框拼接长度等于行文本长度）。
+  const concatLength = wordBoxes.reduce((sum, unit) => sum + String(unit.text || "").length, 0);
+  const starts = [];
+  if (concatLength === (lineText || "").length) {
+    // 分支 1：纯偏移（中文 / 无空格插入的场景），没有查找、不可能 miss
+    let offset = 0;
+    for (const unit of wordBoxes) {
+      starts.push(offset);
+      offset += String(unit.text || "").length;
+    }
+    injected.getWordBoxMappingStats().offset += 1;
+  } else {
+    // 分支 2：按位置找词（英文：词间空格不属于任何框），找不到就整行退化
+    let cursor = 0;
+    for (const unit of wordBoxes) {
+      const word = String(unit.text || "");
+      if (!word) {
+        starts.push(cursor);
+        continue;
+      }
+      const at = (lineText || "").indexOf(word, cursor);
+      if (at < 0) {
+        injected.getWordBoxMappingStats().positionMiss += 1;
+        if (injected.getWordBoxMappingStats().missSamples.length < 3) {
+          injected.getWordBoxMappingStats().missSamples.push(String(lineText || "").slice(0, 60));
+        }
+        return { ranges: null, kind };
+      }
+      starts.push(at);
+      cursor = at + word.length;
+    }
+    injected.getWordBoxMappingStats().position += 1;
+  }
+  const wanted = new Set();
+  for (const span of spans) {
+    for (let index = 0; index < wordBoxes.length; index += 1) {
+      const start = starts[index];
+      const end = start + String(wordBoxes[index].text || "").length;
+      if (end > span.aStart && start < span.aEnd) wanted.add(index);
+    }
+  }
+  return { ranges: [...wanted].sort((a, b) => a - b), kind };
+}
+
+function readingPageRecord(pageNo) {
+  if (!injected.getProject()) return null;
+  return injected.getProject().pages.find((item) => item.page_no === pageNo) || null;
+}
+
+/** 给某一页的块框套上"联动"样式。 */
+function applyReadingLinked(pageNo) {
+  const ids = readingHoveredBlockIds();
+  const tile = injected.getReadingTiles().get(pageNo);
+  if (!tile) return;
+  for (const box of tile.querySelectorAll(".box[data-block-id]")) {
+    box.classList.toggle("is-linked", Boolean(ids && ids.has(box.dataset.blockId)));
+  }
+}
+
+/** 画一页的版心 + 块框（复用页面视图那套渲染，不另写）。 */
+function paintReadingTile(pageNo) {
+  const tile = injected.getReadingTiles().get(pageNo);
+  const page = readingPageRecord(pageNo);
+  if (!tile || !page) return;
+  injected.paintTileMargin(tile, page);
+  const blocks = injected.getReadingPageBlocks().get(pageNo) || [];
+  const overlay = tile.querySelector(".page-overlay");
+  if (!overlay) return;
+  if (injected.getPagesOverlayOn() && blocks.length) {
+    if (overlay._renderedBlocks !== blocks) injected.renderPageBlocks(tile, blocks, { details: false });
+    applyReadingLinked(pageNo);
+  } else {
+    injected.clearPageBlocks(tile);
+  }
+  // 当前页：顺便把差异字 / 词画成色块（只画差异，相同字不画）
+  if (pageNo === injected.getPageNo()) paintReadingDiffBoxes(pageNo);
+}
+
+/**
+ * 进「正文审校」默认开版心 + 块框（任务 57）。
+ *
+ * 这里是读稿主界面：用户要看到"这一段的字在左边哪一块上"。块框用页面视图同一份状态；
+ * 两个开关都只改显示，不写库。
+ */
+function setReviewOverlaysForReading() {
+  if (!injected.getPagesMarginOn()) {
+    injected.setPagesMarginOn( true);
+    injected.savePageMarginPreference();
+    el("pages-margin-toggle")?.classList.add("is-on");
+  }
+  if (!injected.getPagesOverlayOn()) {
+    injected.setPagesOverlayOn( true);
+    injected.savePageOverlayPreference();
+    el("pages-overlay-toggle")?.classList.add("is-on");
+  }
+  // 已经画过的页要按新开关重画一遍（否则要等下一次滚动才出框）
+  for (const pageNo of injected.getReadingVisibleSet()) paintReadingTile(pageNo);
+}
+
+function paintReadingDiffBoxes(pageNo) {
+  const layer = el("reading-diff-layer");
+  const tile = injected.getReadingTiles().get(pageNo);
+  if (!layer) return;
+  for (const node of layer.querySelectorAll(".reading-diff-box")) node.remove();
+  if (!tile) return;
+  const blocks = injected.getReadingPageBlocks().get(pageNo) || [];
+  if (!blocks.length) return;
+  const width = tile.clientWidth || tile.getBoundingClientRect().width;
+  const height = tile.clientHeight || tile.getBoundingClientRect().height;
+  if (!width || !height) return;
+  const top = tile.offsetTop;
+  const addBox = (bbox, className) => {
+    const node = document.createElement("div");
+    node.className = "reading-diff-box" + (className ? " " + className : "");
+    node.style.left = `${Math.round(bbox[0] * width)}px`;
+    node.style.top = `${Math.round(top + bbox[1] * height)}px`;
+    node.style.width = `${Math.max(2, Math.round((bbox[2] - bbox[0]) * width))}px`;
+    node.style.height = `${Math.max(2, Math.round((bbox[3] - bbox[1]) * height))}px`;
+    layer.append(node);
+  };
+  // 这一页上**所有可见的差异行**：只画差异字 / 词，相同字一个都不画
+  for (const block of blocks) {
+    if (!block.lines) continue;
+    for (let index = 0; index < block.lines.length; index += 1) {
+      const line = block.lines[index];
+      const key = readingKey(block.block_id, index);
+      const mark = injected.getReadingMarks().get(key);
+      if (!mark || !readingEntryVisible(mark)) continue;
+      // 三态：当前审校项（琥珀实线框）/ 已审（淡绿）/ 其他未审（弱化红）
+      const state = key === injected.getReadingPanelKey() ? " is-current" : mark.ack ? " is-acked" : "";
+      const words = line.word_boxes ? JSON.parse(line.word_boxes) : [];
+      const { ranges, kind } = readingDiffUnits(line.text || "", mark.candidate || "", words);
+      // **行层常驻**（用户要求：一眼看到"这一行有差异"），字层画在它上面看"差在这几个字"。
+      // 原来只有"拿不到字框"时才退化出一行，于是绝大多数行只有零散字块、没有行框。
+      if (line.bbox) addBox(line.bbox, "reading-diff-box--line" + state);
+      if (ranges === null) continue;
+      for (const wordIndex of ranges) {
+        const bbox = words[wordIndex] && words[wordIndex].bbox;
+        if (bbox) addBox(bbox, (kind === "punct" ? "reading-diff-box--punct" : "") + state);
+      }
+    }
+  }
+}
+
   // ---------------------------------------------------------------- 对外接口
 
   /** 绑 #view-reading 里归审校的控件（§4 第 2 组）：原来由 page-index / 标点 / 乱码三处代码持有。 */
@@ -2932,7 +3125,7 @@ function readingLineNode(key) {
     // 未 init 时保持搬走前的 no-op（原 enter 注入项没接上时也是空转）；生产 boot 必注入 getProject
     if (!injected.getProject) return;
     clearReadingIntents(true);
-    injected.setReviewOverlaysForReading?.();
+    setReviewOverlaysForReading();
     openReading();
   }
 

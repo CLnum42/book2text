@@ -17985,31 +17985,6 @@ let readingScrollRaf = 0;
 let readingPendingBox = null;
 let readingPreflightData = null;
 
-function readingKey(blockId, lineIndex) {
-  return `${blockId}:${lineIndex}`;
-}
-
-
-/**
- * 进「正文审校」默认开版心 + 块框（任务 57）。
- *
- * 这里是读稿主界面：用户要看到"这一段的字在左边哪一块上"。块框用页面视图同一份状态；
- * 两个开关都只改显示，不写库。
- */
-function setReviewOverlaysForReading() {
-  if (!pagesMarginOn) {
-    pagesMarginOn = true;
-    savePageMarginPreference();
-    el("pages-margin-toggle")?.classList.add("is-on");
-  }
-  if (!pagesOverlayOn) {
-    pagesOverlayOn = true;
-    savePageOverlayPreference();
-    el("pages-overlay-toggle")?.classList.add("is-on");
-  }
-  // 已经画过的页要按新开关重画一遍（否则要等下一次滚动才出框）
-  for (const pageNo of readingVisibleSet) paintReadingTile(pageNo);
-}
 
 /** 阅读流左栏（PDF 页列）当前滚动位置；没有左栏时按 0。 */
 let readingAutoJumpDone = false;
@@ -18023,33 +17998,6 @@ let readingProgramScrollSeq = 0;
 
 
 let readingMarksRequestSeq = 0;
-
-
-function readingVisibleSegments() {
-  if (!readingData) return [];
-  let includeFootnotes = false;
-  try {
-    includeFootnotes = Boolean(exportOptions().include_footnotes);
-  } catch {
-    includeFootnotes = false;
-  }
-  return (readingData.segments || []).filter((segment) => {
-    if (!segment.text || !segment.text.trim()) return false;
-    if (!includeFootnotes && segment.type === "footnote") return false;
-    return true;
-  });
-}
-
-
-function readingEntryVisible(entry) {
-  const draft = readingDrafts.get(readingKey(entry.block_id, entry.line_index));
-  if (readingFilter === "chars" && entry.level !== "differs_chars") return false;
-  if (readingFilter === "unacked") {
-    if (entry.ack) return false;
-    if (draft) return false;
-  }
-  return true;
-}
 
 
 /**
@@ -18107,50 +18055,6 @@ let readingPendingPanelKey = null;
 let readingPendingPanelEntry = null;
 
 
-/** 画一页的版心 + 块框（复用页面视图那套渲染，不另写）。 */
-function paintReadingTile(pageNo) {
-  const tile = readingTiles.get(pageNo);
-  const page = readingPageRecord(pageNo);
-  if (!tile || !page) return;
-  paintTileMargin(tile, page);
-  const blocks = readingPageBlocks.get(pageNo) || [];
-  const overlay = tile.querySelector(".page-overlay");
-  if (!overlay) return;
-  if (pagesOverlayOn && blocks.length) {
-    if (overlay._renderedBlocks !== blocks) renderPageBlocks(tile, blocks, { details: false });
-    applyReadingLinked(pageNo);
-  } else {
-    clearPageBlocks(tile);
-  }
-  // 当前页：顺便把差异字 / 词画成色块（只画差异，相同字不画）
-  if (pageNo === readingPageNo) paintReadingDiffBoxes(pageNo);
-}
-
-function readingPageRecord(pageNo) {
-  if (!currentProject) return null;
-  return currentProject.pages.find((item) => item.page_no === pageNo) || null;
-}
-
-
-/** 当前悬停段涉及的所有块 id（跨页段两页都算）。 */
-function readingHoveredBlockIds() {
-  const segment = readingHoveredSeq !== null
-    ? (readingVisibleSegments() || []).find((item) => item.seq === readingHoveredSeq)
-    : null;
-  if (!segment) return null;
-  return new Set((segment.line_spans || []).map((span) => span.block_id));
-}
-
-/** 给某一页的块框套上"联动"样式。 */
-function applyReadingLinked(pageNo) {
-  const ids = readingHoveredBlockIds();
-  const tile = readingTiles.get(pageNo);
-  if (!tile) return;
-  for (const box of tile.querySelectorAll(".box[data-block-id]")) {
-    box.classList.toggle("is-linked", Boolean(ids && ids.has(box.dataset.blockId)));
-  }
-}
-
 /**
  * 字级色块（任务 59）：把这一段里每行的差异字画到左边页面上。
  *
@@ -18160,103 +18064,6 @@ function applyReadingLinked(pageNo) {
  */
 const wordBoxMappingStats = { offset: 0, position: 0, positionMiss: 0, missSamples: [] };
 window.__b2tWordBoxStats = wordBoxMappingStats;
-
-function readingDiffUnits(lineText, candidate, wordBoxes) {
-  const spans = computeCharSpans(lineText || "", candidate || "");
-  if (!spans.length) return { ranges: [], kind: null };
-  const kind = spans.some((span) => span.kind !== "replace") ? "punct" : "chars";
-  if (!wordBoxes || !wordBoxes.length) return { ranges: null, kind };
-  // 字框的文本拼起来应与行文本一致；按累加长度把差异区间映射到字框下标
-  // 任务 86：两条分支，**中文走旧的偏移映射，英文走位置映射**。
-  // 旧代码"拼接长度相等就按偏移画"看着土，但对中文是对的——先想清楚它为什么能工作，
-  // 再决定哪条路给谁走（实测：中文逐字框拼接长度等于行文本长度）。
-  const concatLength = wordBoxes.reduce((sum, unit) => sum + String(unit.text || "").length, 0);
-  const starts = [];
-  if (concatLength === (lineText || "").length) {
-    // 分支 1：纯偏移（中文 / 无空格插入的场景），没有查找、不可能 miss
-    let offset = 0;
-    for (const unit of wordBoxes) {
-      starts.push(offset);
-      offset += String(unit.text || "").length;
-    }
-    wordBoxMappingStats.offset += 1;
-  } else {
-    // 分支 2：按位置找词（英文：词间空格不属于任何框），找不到就整行退化
-    let cursor = 0;
-    for (const unit of wordBoxes) {
-      const word = String(unit.text || "");
-      if (!word) {
-        starts.push(cursor);
-        continue;
-      }
-      const at = (lineText || "").indexOf(word, cursor);
-      if (at < 0) {
-        wordBoxMappingStats.positionMiss += 1;
-        if (wordBoxMappingStats.missSamples.length < 3) {
-          wordBoxMappingStats.missSamples.push(String(lineText || "").slice(0, 60));
-        }
-        return { ranges: null, kind };
-      }
-      starts.push(at);
-      cursor = at + word.length;
-    }
-    wordBoxMappingStats.position += 1;
-  }
-  const wanted = new Set();
-  for (const span of spans) {
-    for (let index = 0; index < wordBoxes.length; index += 1) {
-      const start = starts[index];
-      const end = start + String(wordBoxes[index].text || "").length;
-      if (end > span.aStart && start < span.aEnd) wanted.add(index);
-    }
-  }
-  return { ranges: [...wanted].sort((a, b) => a - b), kind };
-}
-
-function paintReadingDiffBoxes(pageNo) {
-  const layer = el("reading-diff-layer");
-  const tile = readingTiles.get(pageNo);
-  if (!layer) return;
-  for (const node of layer.querySelectorAll(".reading-diff-box")) node.remove();
-  if (!tile) return;
-  const blocks = readingPageBlocks.get(pageNo) || [];
-  if (!blocks.length) return;
-  const width = tile.clientWidth || tile.getBoundingClientRect().width;
-  const height = tile.clientHeight || tile.getBoundingClientRect().height;
-  if (!width || !height) return;
-  const top = tile.offsetTop;
-  const addBox = (bbox, className) => {
-    const node = document.createElement("div");
-    node.className = "reading-diff-box" + (className ? " " + className : "");
-    node.style.left = `${Math.round(bbox[0] * width)}px`;
-    node.style.top = `${Math.round(top + bbox[1] * height)}px`;
-    node.style.width = `${Math.max(2, Math.round((bbox[2] - bbox[0]) * width))}px`;
-    node.style.height = `${Math.max(2, Math.round((bbox[3] - bbox[1]) * height))}px`;
-    layer.append(node);
-  };
-  // 这一页上**所有可见的差异行**：只画差异字 / 词，相同字一个都不画
-  for (const block of blocks) {
-    if (!block.lines) continue;
-    for (let index = 0; index < block.lines.length; index += 1) {
-      const line = block.lines[index];
-      const key = readingKey(block.block_id, index);
-      const mark = readingMarks.get(key);
-      if (!mark || !readingEntryVisible(mark)) continue;
-      // 三态：当前审校项（琥珀实线框）/ 已审（淡绿）/ 其他未审（弱化红）
-      const state = key === readingPanelKey ? " is-current" : mark.ack ? " is-acked" : "";
-      const words = line.word_boxes ? JSON.parse(line.word_boxes) : [];
-      const { ranges, kind } = readingDiffUnits(line.text || "", mark.candidate || "", words);
-      // **行层常驻**（用户要求：一眼看到"这一行有差异"），字层画在它上面看"差在这几个字"。
-      // 原来只有"拿不到字框"时才退化出一行，于是绝大多数行只有零散字块、没有行框。
-      if (line.bbox) addBox(line.bbox, "reading-diff-box--line" + state);
-      if (ranges === null) continue;
-      for (const wordIndex of ranges) {
-        const bbox = words[wordIndex] && words[wordIndex].bbox;
-        if (bbox) addBox(bbox, (kind === "punct" ? "reading-diff-box--punct" : "") + state);
-      }
-    }
-  }
-}
 
 
 let readingPageSyncTimer = 0;
@@ -18332,9 +18139,7 @@ function boot() {
     setReadingJumpSettleTicks: (value) => { readingJumpSettleTicks = value; },
     getReadingPanelKey: () => readingPanelKey,
     setReadingPendingBox: (value) => { readingPendingBox = value; },
-    readingVisibleSegments: () => readingVisibleSegments(),
     apiJson: (path, options) => apiJson(path, options),
-    readingKey: (blockId, lineIndex) => readingKey(blockId, lineIndex),
     loadFinishSummary: (options) => loadFinishSummary(options),
     // 任务 94 L3：openReading / 行编辑辅助搬进模块后的状态句柄与回调
     getReadingProject: () => readingProject,
@@ -18358,7 +18163,6 @@ function boot() {
     getReadingPageBlocks: () => readingPageBlocks,
     refreshPunctGroups: () => refreshPunctGroups(),
     refreshGarbledLines: () => refreshGarbledLines(),
-    setReviewOverlaysForReading: () => setReviewOverlaysForReading(),
     // 任务 94 L4：队列 / 草稿加载 / 视口处理搬进模块后的句柄
     setReadingInlineEdits: (value) => { readingInlineEdits = value; },
     setReadingDrafts: (value) => { readingDrafts = value; },
@@ -18419,8 +18223,6 @@ function boot() {
     exportOptions: (...args) => exportOptions(...args),
     loadIndexBlocks: (...args) => loadIndexBlocks(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
-    paintReadingDiffBoxes: (...args) => paintReadingDiffBoxes(...args),
-    paintReadingTile: (...args) => paintReadingTile(...args),
     punctReviewSet: (...args) => punctReviewSet(...args),
     // 任务 94 L5：模块要读的常量
     INDEX_IMAGE_WINDOW: INDEX_IMAGE_WINDOW,
@@ -18437,7 +18239,6 @@ function boot() {
     pageImageUrl: (...args) => pageImageUrl(...args),
     // L6 刀2：仍留在 app.js 的叶子函数
     computeCharSpans: (...args) => computeCharSpans(...args),
-    readingEntryVisible: (...args) => readingEntryVisible(...args),
     // L6 刀3：状态 getter
     getReadingNextLog: () => readingNextLog,
     getReadingProof: () => readingProof,
@@ -18456,7 +18257,19 @@ function boot() {
     // L6 刀9：状态 getter
     getReadingSpanCache: () => readingSpanCache,
     // L6 刀9：仍留在 app.js 的叶子函数
-
+    // L6 刀12：状态 getter
+    getPagesMarginOn: () => pagesMarginOn,
+    getPagesOverlayOn: () => pagesOverlayOn,
+    getReadingFilter: () => readingFilter,
+    getWordBoxMappingStats: () => wordBoxMappingStats,
+    // L6 刀12：状态 setter（有写点才给）
+    setPagesMarginOn: (value) => { pagesMarginOn = value; return value; },
+    setPagesOverlayOn: (value) => { pagesOverlayOn = value; return value; },
+    // L6 刀12：仍留在 app.js 的叶子函数
+    paintTileMargin: (...args) => paintTileMargin(...args),
+    renderPageBlocks: (...args) => renderPageBlocks(...args),
+    savePageMarginPreference: (...args) => savePageMarginPreference(...args),
+    savePageOverlayPreference: (...args) => savePageOverlayPreference(...args),
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {
