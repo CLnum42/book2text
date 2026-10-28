@@ -629,6 +629,37 @@ def _resolve_page_language(
         return detected
 
 
+def _record_empty_auxiliary(
+    directory: Path, *, page_id: str, page_no: int, page_language: str | None
+) -> None:
+    """给"没有行可复核"的页（印刷空页）记一条 0 行的成功辅助运行。"""
+    run_id = new_ulid()
+    now = _now()
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        conn.execute(
+            """
+            INSERT INTO ocr_run (
+                run_id, page_id, run_type, engine_id, engine_version, params_json,
+                status, created_at, finished_at, elapsed_seconds
+            ) VALUES (?, ?, 'auxiliary', ?, ?, ?, 'succeeded', ?, ?, 0)
+            """,
+            (
+                run_id,
+                page_id,
+                "empty_page",
+                "",
+                json.dumps(
+                    {"page_no": page_no, "language": page_language, "line_count": 0},
+                    ensure_ascii=False,
+                ),
+                now,
+                now,
+            ),
+        )
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+
+
 def run_auxiliary(
     directory: Path,
     page_no: int,
@@ -672,7 +703,30 @@ def run_auxiliary(
             (page["page_id"],),
         ).fetchall()
         if not lines:
-            raise ProjectError("这一页没有可复核的行（块里没有行记录）")
+            # 任务 70：**空页不该算失败**。这本书有 9 张印刷空页（渲染出来整页空白），
+            # 它们没有任何行可比；以前这里抛错，662 页的复核任务就永远以
+            # `failed 9` 收尾，而且"第二引擎复核完成"这一步永远绿不了
+            # （完成判定要求覆盖所有正文页）。
+            # 现在记一条 0 行的、**成功**的辅助运行：这一页确实被复核过了，只是没东西可比。
+            _record_empty_auxiliary(
+                directory,
+                page_id=page["page_id"],
+                page_no=page_no,
+                page_language=page_language,
+            )
+            return {
+                "run_id": None,
+                "page_no": page_no,
+                "dpi": 0,
+                "line_count": 0,
+                "identical": 0,
+                "format_only_differs": 0,
+                "differs": 0,
+                "elapsed_seconds": 0.0,
+                "empty_page": True,
+                "raw_result_path": None,
+                "differences": [],
+            }
         # 任务 64：已经人工裁决过、且文本没变的行**不覆盖**——
         # 重跑第二引擎时那条 ack 必须原样保留（验收要求）。
         kept_rows = []
