@@ -406,6 +406,32 @@ test("R4-dup（真实现份数=1）：同名函数只许一份真实现，其余
   assert.equal(appMentions, 0, `app.js 仍提到 readingReloadAfterBatch（${appMentions} 处）：本地实现或绕过模块的直接调用都不许`);
   assert.equal(viewImpls, 1, `reading-view.js 里 readingReloadAfterBatch 的定义应恰好 1 处，实际 ${viewImpls}`);
   assert.ok(reloadCalls >= 1, "app.js 里找不到 window.ReadingView.reload() 调用——重开入口断了");
+
+  // R4-dup 延伸：**过滤器 setter 的接线不许断**（L2 笔2 把 setReadingFilter 搬进模块后）
+  // 模块里：filter 控件 change → 本地 setReadingFilter(value) → injected.setReadingFilterValue(value)
+  // 外壳里：注入回调把值写进 readingFilter（状态 owner = app.js，R5 管归属）
+  // 为什么放在这里而不是特征测试：A5 禁止特征测试断言调用次数/注入面；
+  // 这条是纯静态接线检查，抓的是"搬完之后 setter 链路断了"这类回归。
+  // 注意：viewCode 是**去字符串**后的文本，`el("reading-filter")` 的字符串已被抹空。
+  // 断言里要匹配字符串字面量，必须用只去注释的版本。
+  const viewText = stripCommentsOnly(readFileSync(VIEW_FILE, "utf8"));
+  const appText = stripCommentsOnly(readFileSync(APP_FILE, "utf8"));
+  assert.ok(
+    /el\("reading-filter"\)\.addEventListener\("change"/.test(viewText),
+    "reading-view.js 里找不到 reading-filter 的 change 监听",
+  );
+  assert.ok(
+    /setReadingFilter\(\s*event\.target\.value\s*\)/.test(viewText),
+    "reading-view.js 的 filter 监听没有把值交给 setReadingFilter",
+  );
+  assert.ok(
+    /injected\.setReadingFilterValue\s*\(/.test(viewText),
+    "reading-view.js 的 setReadingFilter 没有走注入回调 injected.setReadingFilterValue",
+  );
+  assert.ok(
+    /setReadingFilterValue\s*:\s*\(\s*\w+\s*\)\s*=>\s*\{[^}]*readingFilter\s*=\s*\w+/.test(appText),
+    "app.js 的注入回调没有把值写进 readingFilter（setter 链路断了）",
+  );
 });
 
 // ---------------------------------------------------------------- R7：加载时序

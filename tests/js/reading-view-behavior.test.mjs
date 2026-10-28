@@ -352,17 +352,19 @@ test("过滤器：汉字级不混入标点条目；未审不混入已 ack / 已�
   setEntries([chars, punct, acked, drafted]);
   runInApp(ctx, `readingDrafts = new Map([["a:3", { block_id: "a", line_index: 3 }]]);`);
 
-  ctx.setReadingFilter("chars");
-  assert.equal(readState("readingFilter"), "chars");
+  // L2 笔2 把 setReadingFilter 搬进模块（app.js 定义数 0），这里不能再调它。
+  // **只注入状态、不注入行为**：本用例锁的是"过滤器规则"（readingEntryVisible），
+  // setter → 状态 的接线由 boundary.test.mjs 的静态断言与 QA 的页面级交互覆盖。
+  runInApp(ctx, 'readingFilter = "chars";');
   assert.equal(readState(`readingEntryVisible(${JSON.stringify(chars)})`), true);
   assert.equal(readState(`readingEntryVisible(${JSON.stringify(punct)})`), false, "标点条目混进了汉字级队列");
 
-  ctx.setReadingFilter("unacked");
+  runInApp(ctx, 'readingFilter = "unacked";');
   assert.equal(readState(`readingEntryVisible(${JSON.stringify(acked)})`), false, "已审的条目还在未审队列里");
   assert.equal(readState(`readingEntryVisible(${JSON.stringify(drafted)})`), false, "已存草稿的条目还在未审队列里");
   assert.equal(readState(`readingEntryVisible(${JSON.stringify(punct)})`), true, "标点在未审视图里应当仍可见");
 
-  ctx.setReadingFilter("all");
+  runInApp(ctx, 'readingFilter = "all";');
   assert.equal(readState(`readingEntryVisible(${JSON.stringify(punct)})`), true);
 });
 
