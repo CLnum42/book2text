@@ -165,6 +165,157 @@ function setupReadingSplit() {
   // ---------------------------------------------------------------- 审校外壳（任务 94 · Slice 2）
   // 从 app.js 原样搬入；依赖全部由 init() 注入，模块本身不碰 app.js 的顶层符号。
 
+function setupReading() {
+  el("reading-next-unreviewed").addEventListener("click", injected.gotoNextUnreviewed);
+  const closeReadingMenus = () => {
+    el("reading-display-menu").hidden = true;
+    el("reading-more-menu").hidden = true;
+  };
+  el("reading-display-open").addEventListener("click", (event) => {
+    event.stopPropagation();
+    const hidden = el("reading-display-menu").hidden;
+    closeReadingMenus();
+    el("reading-display-menu").hidden = !hidden;
+  });
+  el("reading-more-open").addEventListener("click", (event) => {
+    event.stopPropagation();
+    const hidden = el("reading-more-menu").hidden;
+    closeReadingMenus();
+    el("reading-more-menu").hidden = !hidden;
+  });
+  el("reading-pending-toggle").addEventListener("change", (event) => {
+    injected.setPendingOn?.(event.target.checked);
+    el("view-reading").classList.toggle("hide-pending", !injected.getPendingOn());
+  });
+  el("reading-follow-toggle").addEventListener("change", (event) => {
+    injected.setReadingFollow?.(event.target.checked);
+  });
+  for (const radio of document.querySelectorAll('input[name="reading-markup"]')) {
+    radio.addEventListener("change", (event) => {
+      injected.setMarkupLevel?.(event.target.value);
+      injected.renderReading?.({ reset: true });
+    });
+  }
+  el("reading-discard-all").addEventListener("click", () => {
+    const count = injected.getInlineEdits().size + injected.getDrafts().size;
+    if (!count) return;
+    if (!window.confirm(`放弃全部 ${count} 处未提交改动？（不可恢复）`)) return;
+    injected.getInlineEdits().clear();
+    injected.saveReadingInlineEdits?.();
+    injected.getDrafts().clear();
+    injected.saveReadingDrafts?.();
+    injected.renderReading?.({ reset: true });
+    injected.renderReadingProgress?.();
+  });
+  el("reading-help").addEventListener("click", () => {
+    window.alert(
+      "审校快捷键\n\n" +
+        "↵  浏览态：下一处未审；编辑态：段内换行\n" +
+        "⌥↵ 编辑态：收草稿并跳下一处\n" +
+        "Esc 退出编辑 / 关面板\n" +
+        "⌘Z 编辑中：字级撤销\n\n" +
+        "中文按字标差异，英文按词标（引擎给的就是词框）。"
+    );
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest || !event.target.closest(".rt-menu-wrap")) closeReadingMenus();
+  });
+  el("reading-submit").addEventListener("click", injected.submitReadingDrafts);
+  el("reading-undo").addEventListener("click", injected.undoReadingSubmit);
+  el("reading-prev").addEventListener("click", () => injected.stepReadingPage?.(-1));
+  el("reading-next").addEventListener("click", () => injected.stepReadingPage?.(1));
+  el("reading-filter").addEventListener("change", (event) =>
+    injected.setReadingFilter?.(event.target.value)
+  );
+  // 任务 66：「跟随 / 成稿」不再是按钮，分别进了「显示 ▾」的勾选与「待审红字」
+  el("reading-follow-toggle")?.addEventListener("change", (event) => {
+    injected.setReadingFollow?.(event.target.checked);
+  });
+  el("reading-blindspot").addEventListener("click", () => {
+    // C1 盲区出口：两路一致但可疑的行，去单页审校里逐行看
+    injected.showView?.("review");
+    injected.openPageDetail?.(injected.getPageNo());
+  });
+  el("reading-stream").addEventListener("scroll", injected.onReadingScroll, { passive: true });
+  el("reading-pdf-scroll").addEventListener("scroll", injected.onReadingPdfScroll, { passive: true });
+  // 悬停段落：右栏绿底 + 左边对应块绿框（只高亮，不滚）
+  el("reading-stream").addEventListener("mouseover", (event) => {
+    const seg = event.target.closest && event.target.closest(".reading-seg");
+    injected.setReadingHover?.(seg ? seg.dataset.seq : null);
+  });
+  // 任务 82：用户"自己动过"只认真实输入事件（程序滚动不算），用于异步收尾时别抢用户的滚动位置
+  for (const id of ["reading-pdf-scroll", "reading-stream", "reading-tree"]) {
+    const node = el(id);
+    if (!node) continue;
+    node.addEventListener("wheel", injected.markReadingUserMoved, { passive: true });
+    node.addEventListener("pointerdown", injected.markReadingUserMoved, { passive: true });
+    node.addEventListener("keydown", injected.markReadingUserMoved);
+  }
+  el("reading-stream").addEventListener("mouseleave", () => injected.setReadingHover?.(null));
+  // 任务 76：**反向联动**——鼠标悬停左边 PDF 上的某个块，右侧对应段落亮起来。
+  // 和"右→左"用同一套类名（`is-linked` / `is-hover`）、同一颜色，用户能看出是一条。
+  el("reading-pages").addEventListener("mouseover", (event) => {
+    const box = event.target.closest && event.target.closest(".box");
+    if (!box || !box.dataset.blockId) return;
+    injected.setReadingHoverByBlock?.(box.dataset.blockId);
+  });
+  el("reading-pages").addEventListener("mouseleave", () => injected.setReadingHover?.(null));
+  // 从块移到块外的空白：pointerout 里判断"相关目标已经不在任何块里"就清，
+  // 否则空白区域没有 mouseleave 可等，高亮会一直留着。
+  el("reading-pages").addEventListener("pointerout", (event) => {
+    const to = event.relatedTarget;
+    if (to && to.closest && to.closest("#reading-pages .box")) return;
+    if (to && to.closest && to.closest("#reading-pages")) return;
+    injected.setReadingHover?.(null);
+  });
+  el("reading-stream").addEventListener("click", (event) => {
+    const markEl = event.target.closest && event.target.closest(".reading-mark");
+    if (!markEl) return;
+    const mark = injected.getMarks().get(markEl.dataset.key);
+    if (mark) injected.openReadingPanel?.(mark);
+  });
+  // 任务 66：点正文 = 落光标；点标记 = 开候选面板（标记优先，光标不落）
+  el("reading-stream").addEventListener("click", (event) => {
+    if (!injected.isReadingActive()) return;
+    const target = event.target;
+    if (target.closest && target.closest(".reading-mark")) return;
+    const fold = target.closest && target.closest(".reading-fold");
+    if (fold) {
+      const line = fold.closest(".reading-line");
+      if (line) {
+        line.dataset.expanded = line.dataset.expanded === "1" ? "0" : "1";
+        injected.rerenderReadingLine?.(line.dataset.key);
+      }
+      return;
+    }
+    const line = target.closest && target.closest(".reading-line");
+    if (!line) return;
+    if (event.detail > 1) return;   // 双击 = 原生选词
+    injected.startInlineEdit?.(line);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (!injected.isReadingActive()) return;
+    if (event.target && /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+    if (injected.getReadingEditingKey()) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        injected.exitInlineEdit?.();
+      } else if (event.key === "Enter" && (event.altKey || event.metaKey)) {
+        event.preventDefault();
+        injected.exitInlineEdit?.();
+        injected.gotoNextUnreviewed?.();
+      }
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      injected.gotoNextUnreviewed?.();
+    } else if (event.key === "Escape") {
+      injected.closeReadingPanel?.();
+    }
+  });
+}
+
 /**
  * 标点 / 乱码批次裁决后整条流重开（§4 第 3 组）。
  *
@@ -204,6 +355,7 @@ async function readingReloadAfterBatch() {
   function init(deps) {
     injected = { ...injected, ...(deps || {}) };
     setupReadingSplit();
+    setupReading();
     bindViewControls();
   }
 
