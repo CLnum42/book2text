@@ -294,10 +294,10 @@ test("R4：同名函数只许一份真实现，其余必须是 ≤6 行的薄转
  * 名单已清空；「写路径 emit 必须从公开对象上删掉」现在是常驻断言（不再 skip），
  * 谁把写路径加回来都会红。
  */
-const STABLE = ["init", "enter", "exit", "getCurrent", "reload", "toggleFollow", "on"];
+const STABLE = ["init", "enter", "exit", "getCurrent", "reload", "toggleFollow"];
 const TEMPORARY = ["splitPrefs", "applySplit", "saveSplit", "resetSplit", "setupSplit"]; // 到期：Slice 2 收尾
 const PENDING_REMOVAL = [];   // 写路径 emit 已于 26ac481 删除；名单清空，写路径不许再加回来
-const MAX_EXPORTS = 12;             // 只许改小
+const MAX_EXPORTS = 11;             // 只许改小（e5c4c37 删掉 on/emit 后收紧到 11）
 
 /** 在干净的 vm 里加载模块，读出 `Object.keys(window.ReadingView)`（不加载 app.js）。 */
 function readingViewExportKeys() {
@@ -321,6 +321,9 @@ test("对外导出棘轮：只许出现 STABLE ∪ TEMPORARY（+待删的写路�
     keys.length <= MAX_EXPORTS + PENDING_REMOVAL.length,
     `公开导出现在 ${keys.length} 个，上限 ${MAX_EXPORTS + PENDING_REMOVAL.length}`,
   );
+  // 稳定导出不许悄悄消失（那是 breaking change，先改 STABLE 并说明）
+  const missingStable = STABLE.filter((key) => !keys.includes(key));
+  assert.deepEqual(missingStable, [], `稳定导出现在没有 ${missingStable.join("、")}`);
 });
 
 test("对外导出棘轮：TEMPORARY 里每个都必须真的还在（到期是删，不是悄悄少一个）", () => {
@@ -333,14 +336,13 @@ test("对外导出棘轮：临时导出不超过 5 条（防止往 TEMPORARY 里
   assert.ok(TEMPORARY.length <= 5, `TEMPORARY 有 ${TEMPORARY.length} 条，上限 5`);
 });
 
-test("写路径 emit 必须从公开对象上删掉（事件只出不进）", {
-  skip: PENDING_REMOVAL.length
-    ? `emit 还在公开对象上（${PENDING_REMOVAL.join("、")}）。删它是产品代码改动，需 DevLead/Builder 落；删掉后这条自动开跑，并要求清空 PENDING_REMOVAL`
-    : false,
-}, () => {
+test("写路径 emit 不得再出现在公开对象上（事件只出不进）", () => {
+  // 26ac481 收进模块内部、e5c4c37 连同 on/listeners 一起删掉。这条从"到期检查"转成常驻断言：
+  // 谁再把写路径挂到 window.ReadingView 上（外部就能驱动重绘），立即红。
   const keys = readingViewExportKeys();
-  assert.equal(keys.includes("emit"), false, "写路径 emit 仍可被外部调用，等于给边界开后门");
-  assert.deepEqual(PENDING_REMOVAL, [], "emit 已删除，PENDING_REMOVAL 必须清空（MAX 回到 12）");
+  assert.equal(keys.includes("emit"), false, "写路径 emit 又出现在公开对象上，等于给边界开后门");
+  assert.equal(keys.includes("on"), false, "事件订阅缝已随 e5c4c37 删除，不许再挂 on");
+  assert.deepEqual(PENDING_REMOVAL, [], "PENDING_REMOVAL 必须始终为空");
 });
 
 // ---------------------------------------------------------------- 变异验证（写进文件头，避免只在交付说明里）
