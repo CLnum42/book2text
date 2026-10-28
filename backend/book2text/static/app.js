@@ -18029,12 +18029,6 @@ function saveReadingDrafts() {
   }
 }
 
-function readingOptions() {
-  // 阅读流固定按"全书正文"取段：不受导出面板里的页码范围 / 仅已确认影响，
-  // 否则队列分母和左树、收尾面板会对不上。
-  const options = exportOptions();
-  return { ...options, confirmed_only: false, page_numbers: null };
-}
 
 /**
  * 进「正文审校」默认开版心 + 块框（任务 57）。
@@ -18067,252 +18061,14 @@ let readingUserMovedAt = 0;
 let readingUserScrollSeq = 0;
 let readingProgramScrollSeq = 0;
 
-// ---------------------------------------------------------------- 破环：审校意图队列（§12.1.1）
-//
-// 渲染只读状态，不直接调加载器、不直接改页码：把"这一帧还想补的事"按 kind 入队，
-// 帧末由 flushReadingIntents() 统一消费。每个 kind 只保留"当前愿望"（后写覆盖先写），
-// 所以长度 ≤ 6 是**结构上限**。队列归审校，L5 时整段搬进 reading-view.js。
-const READING_INTENT_KINDS = ["marks", "blocks", "panel", "jump", "goto", "scroll"];
-const readingIntents = new Map();
-const readingIntentStats = { dropped: 0, coalesced: 0 };
-let readingFlushRaf = 0;
-
-/** 清空队列；dropped=true 表示"这次是丢弃"（!active / exit / 换项目），计入统计。 */
-function clearReadingIntents(dropped = false) {
-  if (dropped) readingIntentStats.dropped += readingIntents.size;
-  readingIntents.clear();
-  if (readingFlushRaf) {
-    cancelAnimationFrame(readingFlushRaf);
-    readingFlushRaf = 0;
-  }
-}
-
-/** 单点写入：kind 只能是这 6 个；同 kind 直接覆盖，不排队。 */
-function queueReadingIntent(kind, payload) {
-  if (!READING_INTENT_KINDS.includes(kind)) {
-    throw new Error(`unknown reading intent: ${kind}`);
-  }
-  if (readingIntents.has(kind)) readingIntentStats.coalesced += 1;
-  // blocks 是唯一允许数组的 payload：一次悬浮可能覆盖多页，入队时按 Set 去重。
-  if (kind === "blocks") payload = { pageNos: [...new Set(payload.pageNos || [])] };
-  readingIntents.set(kind, payload);
-  if (!readingFlushRaf) readingFlushRaf = requestAnimationFrame(flushReadingIntents);
-}
-
-/** 单点消费：固定顺序 marks → blocks → panel → jump → goto → scroll；一帧最多一次。 */
-function flushReadingIntents() {
-  readingFlushRaf = 0;
-  if (!currentProject || currentView !== "reading") {
-    clearReadingIntents(true);
-    return;
-  }
-  // 先快照再清空：flush 期间新入队的愿望留给下一帧，不递归。
-  const intents = new Map(readingIntents);
-  readingIntents.clear();
-  if (intents.has("marks")) ensureReadingMarksWindow(intents.get("marks").pageNo);
-  if (intents.has("blocks")) {
-    for (const pageNo of intents.get("blocks").pageNos) ensureReadingBlocks(pageNo);
-  }
-  if (intents.has("panel")) retryReadingPendingPanel();
-  if (intents.has("jump")) jumpReadingTo(intents.get("jump").segmentIndex);
-  if (intents.has("goto")) {
-    const intent = intents.get("goto");
-    updateReadingPage(intent.pageNo, { scrollLeft: intent.scrollLeft, syncStream: intent.syncStream });
-  }
-  if (intents.has("scroll")) scrollReadingToPage(intents.get("scroll").pageNo);
-  if (readingIntents.size && !readingFlushRaf) {
-    readingFlushRaf = requestAnimationFrame(flushReadingIntents);
-  }
-}
-
-/**
- * 吃掉一次 `/review/marks` 的返回（全书或窗口都一样）。
- *
- * 任务 67：`entries` 只由**已加载的窗口**生成；进度数字用返回里的全书 `counts`，
- * 否则窗口一换进度条就会跟着缩水（用户会以为先前审的丢了）。
- */
-function applyReadingMarksPayload(payload) {
-  readingMarks = new Map();
-  for (const mark of payload.items || []) {
-    readingMarks.set(readingKey(mark.block_id, mark.line_index), mark);
-  }
-  readingMarksWindow = payload.window || null;
-  readingGlobalCounts = payload.counts || null;
-  readingPageCounts = new Map(Object.entries(payload.page_counts || {}));
-  readingFirstUnackedPage = payload.first_unacked_page ?? null;
-  rebuildReadingEntries();
-}
-
-function rebuildReadingEntries() {
-  readingEntries = [];
-  if (!readingData) return;
-  const punctWatch = punctReviewSet();
-  for (const segment of readingVisibleSegments()) {
-    const spans = segment.line_spans || [];
-    for (let i = 0; i < spans.length; i += 1) {
-      const span = spans[i];
-      const mark = readingMarks.get(readingKey(span.block_id, span.line_index));
-      if (!mark) continue;
-      // 主队列只放含汉字差异的行；纯标点 / 空格按模式批量判（任务 61），
-      // 只有被用户点了「逐条看」的那几种模式才回到主队列。
-      if (mark.level === "differs_punct" && !punctWatch.has(mark.pattern_key)) continue;
-      readingEntries.push({
-        ...mark,
-        seq: segment.seq,
-        span_index: i,
-        page_no: mark.page_no || span.page_no,
-      });
-    }
-  }
-  // 左树的条目级列表跟着 marks 窗口走：窗口换了，这一页下面的条目也要换
-  if (readingTreeData) renderReadingTree();
-}
 
 function readingMarkOrder(entry) {
   return [Number(entry.seq) || 0, Number(entry.span_index) || 0, Number(entry.page_no) || 0];
 }
 
-function readingWindowHas(pageNo) {
-  if (!readingMarksWindow) return false;
-  return pageNo >= readingMarksWindow.page_from && pageNo <= readingMarksWindow.page_to;
-}
-
-/**
- * 切到窗口外的一页时，补拉那一页 ±10 的 marks。
- *
- * 只重画已经铺出来的那几段（`READING_CHUNK` = 8 段，几十毫秒），并保持滚动位置——
- * 直接 `renderReading({reset:true})` 会把用户滚到的地方弹回文首。
- *
- * 并发语义：**共享在飞的请求，且目标页真正进窗口才 resolve**。旧写法在有请求在飞时
- * 只把页号塞进 `readingMarksQueued` 就 `return`，调用方的 `await` 立刻通过、拿到的是
- * 旧窗口——20 连点的第 8 次正好是第一次必须补窗口（窗口 1–11 里恰好 7 条未审），
- * 于是对着旧 entries 找行，报 `branch:none`。这是竞态，不是口径。
- */
-async function ensureReadingMarksWindow(pageNo) {
-  if (!currentProject || !readingData) return;
-  if (!pageNo || readingWindowHas(pageNo)) return;
-  // 最多三轮：等在飞 → 自己发 → 确认。失败重试有上限，也不把异常抛给调用方。
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (readingMarksInFlight) {
-      await readingMarksInFlight;
-    } else {
-      const pending = loadReadingMarksWindow(pageNo).then(
-        () => true,
-        () => false
-      );
-      readingMarksInFlight = pending;
-      let ok = false;
-      try {
-        ok = await pending;
-      } finally {
-        if (readingMarksInFlight === pending) readingMarksInFlight = null;
-      }
-      // 请求成功、窗口却还不含该页：页码越界被服务端裁掉，再发也一样。
-      if (ok) return;
-    }
-    if (readingWindowHas(pageNo)) return;
-  }
-}
 
 let readingMarksRequestSeq = 0;
 
-async function loadReadingMarksWindow(pageNo) {
-  // **最新请求赢**：QA 120 连按实测，第 200 页时 marks 窗口会跳回 1-11 / 2-22 / 13-33，
-  // 结果是面板 key 既不在 readingMarks 也不在 readingEntries，行节点渲染不出来、
-  // 游标原地打转（17/120 次点击零推进）。早期页的请求晚到就该被丢掉。
-  const seq = (readingMarksRequestSeq += 1);
-  const payload = await apiJson(
-    `/api/projects/${currentProject.project_id}/review/marks?page=${pageNo}`
-  );
-  if (seq !== readingMarksRequestSeq) return;   // 过期响应：已经被更晚的请求取代
-  applyReadingMarksPayload(payload);
-  // 正在编辑某一行时**不重画**：重画会换掉那个 DOM 节点，光标和没落草稿的输入
-  // 一起丢（任务 67 实测：翻页补 marks 正好撞上用户点进一行，编辑态瞬间消失）。
-  // 红字晚一点到没关系，退出编辑时补画。
-  if (readingEditingKey) {
-    readingRepaintPending = true;
-  } else {
-    refreshReadingMarksPaint();
-  }
-  renderReadingProgress();
-}
-
-function refreshReadingMarksPaint() {
-  const stream = el("reading-stream");
-  if (!stream || !readingData) return;
-  // 跳页途中（左栏在驱动）不重画：重画会把滚动位置恢复成"作废前的位置"，
-  // 刚跳到的第 80 页会被弹回第 1 页（任务 72 实测）。
-  if (readingDriverActive("left")) {
-    readingRepaintPending = true;
-    return;
-  }
-  const pageAtSave = readingPageNo;
-  const top = stream.scrollTop;
-  // 重画会把面板与"当前行"一起清掉（`renderReading({reset:true})` 里 `readingPanelKey=null`）。
-  // 记住它，重画完成后恢复——否则用户刚点开的那一处会凭空消失、位置也回到页首。
-  const panelKey = readingPanelKey;
-  const panelEntry = panelKey
-    ? readingEntries.find((entry) => readingKey(entry.block_id, entry.line_index) === panelKey)
-    : null;
-  const segmentsToKeep = Math.max(readingRendered, 0);
-  // **只重铺尾部一段**：从第 0 段重建 300+ 段 DOM 是主要卡顿来源（QA：1-8 帧/450ms）。
-  // 保留最后 24 段（≈ 两屏），铺到原来的段数为止；滚动位置随后由 openReadingPanel 居中恢复。
-  const fromSeg = Math.max(0, segmentsToKeep - 24);
-  renderReading({ reset: true, startAt: fromSeg });
-  let guard = 0;
-  while (readingRendered < segmentsToKeep && guard < 400) {
-    renderReading();
-    guard += 1;
-  }
-  // 重画期间页码被改过（用户又跳了）就不恢复旧位置，否则等于把人拽回去。
-  // 只重铺尾部时（fromSeg>0）绝对滚动位置没有意义，交给 openReadingPanel 居中恢复。
-  if (fromSeg === 0 && readingPageNo === pageAtSave) stream.scrollTop = top;
-  if (panelEntry && readingPageNo === pageAtSave) {
-    // 重画可能把目标行刷出渲染范围（`reset` 从第 0 段顺序铺，`segmentsToKeep` 只按
-    // 段数恢复）：面板照开（面板不依赖行节点），但那一行不在 DOM 里 → 用户看到面板、
-    // 看不到差异在哪（QA 20 次里 7 次 `is-current = 0`）。先补行，再开面板。
-    const line = ensureReadingLineRendered(panelEntry);
-    openReadingPanel(panelEntry);
-    if (!line) {
-      showNoticeBar(
-        `这一处差异所在的行不在当前正文窗口里（第 ${panelEntry.page_no} 页第 ${panelEntry.line_index + 1} 行），已尝试展开`
-      );
-    }
-  }
-}
-
-/**
- * 目标行必须真的在 DOM 里，才谈得上"高亮"。
- *
- * `renderReading` 是**从第 0 段顺序往后铺**的（`readingRendered` 计数）。跳到第 500 段
- * 之后再 `reset` 重画，目标行就落在铺出来的范围外——面板照开，光标行却不存在。
- * 这里按目标行所在段重铺一次再查；查不到返回 null，由调用方给显式提示，
- * 绝不"只开面板了事"。
- */
-function ensureReadingLineRendered(entry) {
-  if (!entry) return null;
-  const key = readingKey(entry.block_id, entry.line_index);
-  const existing = readingLineNode(key);
-  if (existing) return existing;
-  const segments = readingVisibleSegments();
-  let index = -1;
-  if (entry.seq !== null && entry.seq !== undefined) {
-    index = segments.findIndex((segment) => Number(segment.seq) === Number(entry.seq));
-  }
-  if (index < 0) {
-    // 左树条目没有 `seq`：按 line_span 反查它属于哪一段
-    index = segments.findIndex((segment) =>
-      (segment.line_spans || []).some(
-        (span) =>
-          span.block_id === entry.block_id && Number(span.line_index) === Number(entry.line_index)
-      )
-    );
-  }
-  if (index < 0) return null;
-  setPanel(entry);
-  renderReading({ reset: true, startAt: Math.max(0, index - 1) });
-  return readingLineNode(key);
-}
 
 /** 正文流里出现过的页号（前置页 / 版心外的页不在里面）。 */
 function readingFlowPages() {
@@ -18353,96 +18109,6 @@ function readingEntryVisible(entry) {
   return true;
 }
 
-function renderReading({ reset = false, startAt = null } = {}) {
-  const stream = el("reading-stream");
-  if (!stream || !readingData) return;
-  if (reset) {
-    stream.innerHTML = "";
-    readingRendered = startAt != null ? Math.max(0, startAt) : 0;
-    readingSegmentNodes = [];
-    // 只清 DOM 引用：`readingPendingPanelEntry` 跨重绘存活，末尾由 retryReadingPendingPanel 恢复
-    readingPanelKey = null;
-    if (readingObserver) readingObserver.disconnect();
-    readingObserver = null;
-  }
-  const segments = readingVisibleSegments();
-  if (!segments.length) {
-    stream.innerHTML = '<p class="muted reading-empty">按当前导出设置没有可读的正文。</p>';
-    return;
-  }
-  const end = Math.min(segments.length, readingRendered + READING_CHUNK);
-  const firstNew = readingRendered;
-  const fragment = document.createDocumentFragment();
-  for (let index = readingRendered; index < end; index += 1) {
-    const node = buildReadingSegment(segments[index]);
-    readingSegmentNodes[index] = node;
-    fragment.append(node);
-  }
-  stream.append(fragment);
-  readingRendered = end;
-  removeReadingSentinel();
-  // 任务 84：`reset` 会把面板元素和 `readingPanelKey` 一起清掉。**挂起的"待开面板"
-  // 必须跨过重绘**——DOM 重建完之后如果那一行挂上了，就把面板重新开出来。
-  queueReadingIntent("panel", {});
-  // 任务 77：**重画之后把悬停状态补回来**。右栏重建（切页补 marks / 滚动补段）会把
-  // `is-hover` 一起冲掉，用户看到的是"鼠标还停在块上、右边的绿没了"。
-  if (readingHoveredSeq !== null && readingHoveredSeq !== undefined) {
-    const hovered = stream.querySelector(
-      `.reading-seg[data-seq="${readingHoveredSeq}"]`
-    );
-    if (hovered) hovered.classList.add("is-hover");
-  }
-  if (end < segments.length) stream.append(buildReadingSentinel());
-  // 任务 67：滚动会把后面的段铺出来，那些页可能在 marks 窗口外——补一块再画红字。
-  // **全量重建（reset）时绝不能这么干**：QA 120 连按实测，`refreshReadingMarksPaint`
-  // 先 reset 从第 0 段铺，这里就按"这一块的最大页"（≈11）去要窗口，窗口被拉回 1-11；
-  // 加载完又触发一次重画，又从第 0 段铺……用户在 200 页，窗口在 1-11/2-22/13-33 之间打转，
-  // 面板 key 不在任何已加载窗口里 → 17/120 次点击零推进、rAF 只有 1-8 帧/450ms。
-  if (!reset && readingMarksWindow && end > firstNew) {
-    let maxPage = 0;
-    for (let index = firstNew; index < end; index += 1) {
-      for (const page of segments[index].pages || []) {
-        if (page.page_no > maxPage) maxPage = page.page_no;
-      }
-    }
-    if (maxPage && !readingWindowHas(maxPage)) queueReadingIntent("marks", { pageNo: maxPage });
-  }
-  // 重绘会重建 `.reading-line` 节点，`is-current` 跟着一起没了；`readingPanelKey`
-  // 也在 `reset` 里被清空、由 `retryReadingPendingPanel()` 恢复。所以**每次重绘之后
-  // 都要按当前状态回补一次**——它幂等，别指望"某一次 openReadingPanel 的副作用"能活过重绘。
-  // （QA 实测：目标行在 DOM 里、面板开着，`is-current` 却是 0，就是这么丢的。）
-  refreshReadingCurrentHighlight();
-  // 面板 DOM 在独立 host 里，`reset` 碰不到它：如果这次重绘既没有 `readingPanelKey`
-  // 也没有待恢复的面板，残留的旧面板就再也对不上了。
-  // QA 现场：正文和顶部已回到第 1 页，`#reading-panel-host` 里还挂着第 368 页的旧面板，
-  // 因为 `openReadingPanel` 看到"已有面板"就不重建。
-  if (!readingPanelKey && !readingPendingPanelEntry && !readingPendingPanelKey) {
-    hideReadingPanelHost();
-  }
-}
-
-function buildReadingSentinel() {
-  const node = document.createElement("div");
-  node.className = "reading-sentinel";
-  node.dataset.role = "sentinel";
-  if (!readingObserver) {
-    readingObserver = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        // 哨兵本身就在 rootMargin 里：一帧只补一块，别让回调递归把整本一次铺出来
-        if (readingAppendScheduled) return;
-        readingAppendScheduled = true;
-        requestAnimationFrame(() => {
-          readingAppendScheduled = false;
-          renderReading();
-        });
-      },
-      { root: el("reading-stream"), rootMargin: "800px 0px" }
-    );
-  }
-  readingObserver.observe(node);
-  return node;
-}
 
 function removeReadingSentinel() {
   const stream = el("reading-stream");
@@ -18625,22 +18291,6 @@ function paintInlineRevision(line, inline) {
   line.append(chip);
 }
 
-function saveInlineEdit(line) {
-  const key = line.dataset.key;
-  const base = line.dataset.baseText || "";
-  // 渲染用连续切片（行尾带 join_lines 的分隔符），但**这一行的字**不含它：
-  // 保存前把尾部空白去掉，否则会把分隔符写进 block_line.text，
-  // 提交时块文本 == 行拼接 的校验会失败（那条校验是对的）。
-  const text = (line.innerText || "").replace(/\n$/, "").replace(/\s+$/, "");
-  if (!text || text === base) {
-    readingInlineEdits.delete(key);
-  } else {
-    readingInlineEdits.set(key, { base, text, at: Date.now() });
-  }
-  saveReadingInlineEdits();
-  line.classList.toggle("is-inline-edited", readingInlineEdits.has(key));
-  renderReadingProgress();
-}
 
 /** 重画一行（折叠展开 / 切换修订档后调用）。 */
 function rerenderReadingLine(key) {
@@ -18825,112 +18475,12 @@ function suppressReadingFollow(ms = 700) {
   readingSuppressFollowUntil = performance.now() + ms;
 }
 
-function centerReadingLinePair(entry) {
-  const key = readingKey(entry.block_id, entry.line_index);
-  const stream = el("reading-stream");
-  const line = readingLineNode(key);
-  if (stream && line) {
-    const lineRect = line.getBoundingClientRect();
-    const streamRect = stream.getBoundingClientRect();
-    scrollScrollerToCenter(
-      stream,
-      lineRect.top - streamRect.top + stream.scrollTop,
-      lineRect.height
-    );
-  }
-  const scroller = el("reading-pdf-scroll");
-  const tile = entry.page_no ? readingTiles.get(entry.page_no) : null;
-  if (scroller && tile && entry.bbox) {
-    // 先挂抑制：下面这行会触发 scroll 事件，不抑制的话"左→右跟随"会把右栏拉回这一页页首
-    suppressReadingFollow();
-    verifyReadingPageSync("centerLine");
-    const tileRect = tile.getBoundingClientRect();
-    const scrollerRect = scroller.getBoundingClientRect();
-    const tileTop = tileRect.top - scrollerRect.top + scroller.scrollTop;
-    const lineCenter = ((entry.bbox[1] + entry.bbox[3]) / 2) * tileRect.height;
-    const lineHeight = Math.max(2, (entry.bbox[3] - entry.bbox[1]) * tileRect.height);
-    scrollScrollerToCenter(scroller, tileTop + lineCenter - lineHeight / 2, lineHeight);
-  }
-}
 
 function readingLineNode(key) {
   const stream = el("reading-stream");
   return stream ? stream.querySelector(`.reading-line[data-key="${key}"]`) : null;
 }
 
-function openReadingPanel(entry) {
-  closeReadingPanel();
-  const key = readingKey(entry.block_id, entry.line_index);
-  const line = readingLineNode(key);
-  // 窗口化渲染的竞态：跳转后那一行可能还没挂上 DOM。
-  // 面板本来只需要 `mark`（候选文本）与 `bbox`，**不依赖行节点**——
-  // 行节点只用来定位与样式。所以找不到就降级挂到正文流顶部，绝不让用户"跳过去了但没有面板"。
-  readingPanelKey = key;
-  const panel = document.createElement("div");
-  panel.className = "reading-panel";
-  panel.dataset.key = readingPanelKey;
-  const head = document.createElement("div");
-  head.className = "reading-panel__head";
-  const label = document.createElement("strong");
-  label.textContent = `第 ${entry.page_no} 页 · 第 ${entry.line_index + 1} 行第二路：`;
-  head.append(label);
-  const close = document.createElement("button");
-  close.type = "button";
-  close.className = "icon-btn";
-  close.title = "收起";
-  close.textContent = "✕";
-  close.addEventListener("click", closeReadingPanel);
-  head.append(close);
-  const candidate = document.createElement("p");
-  candidate.className = "reading-panel__candidate";
-  candidate.textContent = entry.candidate || "（第二路没有文字）";
-  const actions = document.createElement("div");
-  actions.className = "reading-panel__actions";
-  const adopt = document.createElement("button");
-  adopt.type = "button";
-  adopt.className = "btn btn--pri btn--sm";
-  adopt.textContent = "采用候选";
-  adopt.addEventListener("click", () => draftReading(entry, "adopted", entry.candidate));
-  const keep = document.createElement("button");
-  keep.type = "button";
-  keep.className = "btn btn--sm";
-  keep.textContent = "保留原文";
-  keep.addEventListener("click", () => draftReading(entry, "kept", null));
-  const edit = document.createElement("button");
-  edit.type = "button";
-  edit.className = "btn btn--sm";
-  edit.textContent = "自己改";
-  edit.addEventListener("click", () => startReadingEdit(entry, panel));
-  actions.append(adopt, keep, edit);
-  panel.append(head, candidate, actions);
-  // **结构上不可能被清掉**：面板挂进 `#reading-panel-host`，它不在 `#reading-stream` 里，
-  // `renderReading({reset:true})` 怎么 `innerHTML=""` 都碰不到它。
-  const host = el("reading-panel-host");
-  if (!host) return;
-  host.innerHTML = "";
-  host.append(panel);
-  host.hidden = false;
-  refreshReadingCurrentHighlight();
-  if (entry.page_no && entry.page_no !== readingPageNo) {
-    updateReadingPage(entry.page_no, { scrollLeft: false, syncStream: false });
-  }
-  // 左右同时把这一行放到视口中央（右侧由 centerReadingLinePair 负责，不用 scrollIntoView：
-  // 它在这套布局里会挑错滚动祖先）
-  centerReadingLinePair(entry);
-  // 打开候选时把这一行的行框画到左 PDF 上（显式动作，不依赖跟随开关）
-  if (entry.bbox) {
-    if (entry.page_no !== readingPageNo) {
-      readingPendingBox = entry.bbox;
-    } else {
-      drawReadingPdfBox(entry.bbox, entry.page_no);
-    }
-  }
-  // 行节点可能在这一帧之后才挂上（补窗口 / 重铺）：下一帧按同一个 key 再补一次高亮。
-  // 面板元素在独立 host 里、跨重绘存活，所以这里不需要重开面板，只需要重挂 class。
-  requestAnimationFrame(() => {
-    if (readingPanelKey === key) refreshReadingCurrentHighlight();
-  });
-}
 
 function hideReadingPanelHost() {
   // 只清 DOM，不动 pending / key：给"重绘后没有待恢复面板"的收尾用
@@ -19106,180 +18656,6 @@ function readingEntriesForPage(pageNo) {
 /** 左树里"展开了的页"（条目级展开状态）。 */
 const readingTreeOpen = new Set();
 
-function renderReadingTree() {
-  const tree = el("reading-tree");
-  if (!tree || !readingTreeData) return;
-  const scrollTop = tree.scrollTop;
-  tree.innerHTML = "";
-  const stats = readingTreeData.stats || {};
-  const head = document.createElement("div");
-  head.className = "reading-tree__head";
-  const queueTotal = stats.total_items ?? stats.unacked ?? 0;
-  head.textContent = `队列 ${queueTotal} 处`;
-  if (stats.outside_items) head.title = `版心外 ${stats.outside_items} 处不进队列`;
-  const outside = document.createElement("span");
-  outside.className = "reading-tree__outside";
-  outside.textContent =
-    `版心外 ${stats.outside_items || 0}` +
-    (stats.other_items ? ` · 其他 ${stats.other_items}` : "");
-  outside.title = "版心外的差异与脚注 / 图注等非正文块不进阅读流队列";
-  head.append(outside);
-  tree.append(head);
-  const flowPages = readingFlowPages();
-  // 当前页自动展开：用户不用先找页、再展开，进来就能看到"这一页有哪几处、分别是什么"
-  if (readingPageNo) readingTreeOpen.add(readingPageNo);
-  const pages = readingTreeData.pages || [];
-  const fragment = document.createDocumentFragment();
-  for (const page of pages) {
-    if (!page.total && !page.unacked) continue;
-    const wrap = document.createElement("div");
-    wrap.className = "reading-tree__page";
-    wrap.dataset.page = String(page.page_no);
-    const open = readingTreeOpen.has(page.page_no);
-    if (open) wrap.classList.add("is-open");
-
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "reading-tree__row";
-    row.dataset.page = String(page.page_no);
-    if (page.unacked === 0) row.classList.add("is-done");
-    const no = document.createElement("span");
-    no.className = "reading-tree__no";
-    const chevron = document.createElement("span");
-    chevron.className = "reading-tree__chevron";
-    chevron.textContent = "▶";
-    no.append(chevron, document.createTextNode(`第 ${page.page_no} 页`));
-    const count = document.createElement("span");
-    count.className = "reading-tree__count";
-    count.textContent = page.unacked ? `${page.unacked} 处` : "✓";
-    row.append(no, count);
-
-    const items = document.createElement("div");
-    items.className = "reading-tree__items";
-    items.hidden = !open;
-    const entries = open ? readingEntriesForPage(page.page_no) : [];
-    if (open && !entries.length) {
-      const empty = document.createElement("div");
-      empty.className = "reading-tree__item";
-      empty.style.cursor = "default";
-      const chars = Number(page.chars || 0);
-      const punct = Number(page.punct || 0);
-      empty.textContent = !flowPages.has(page.page_no)
-        ? "这一页不在正文流里（前置页 / 版心外），导出不会包含它"
-        : chars === 0 && punct > 0
-          ? `这一页只有标点/空格差异（${punct} 处）——用工具条上的「标点差异」批量判`
-          : "这一页的差异还没加载…";
-      items.append(empty);
-    }
-    for (const entry of entries) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "reading-tree__item";
-      item.dataset.key = readingKey(entry.block_id, entry.line_index);
-      const done = readingEntryDone(entry);
-      if (done) item.classList.add("is-done");
-      if (item.dataset.key === readingPanelKey) item.classList.add("is-current");
-      const lineNo = document.createElement("span");
-      lineNo.className = "reading-tree__line";
-      lineNo.textContent = `行${entry.line_index + 1}`;
-      item.append(lineNo, buildReadingTreePreview(entry));
-      if (done) {
-        const flag = document.createElement("span");
-        flag.className = "reading-tree__flag";
-        flag.textContent = "✓";
-        item.append(flag);
-      }
-      item.addEventListener("click", (event) => {
-        event.stopPropagation();
-        gotoReadingEntry(entry);
-      });
-      items.append(item);
-    }
-
-    row.addEventListener("click", () => {
-      // 点头部：既导航到这一页，也展开/收起它
-      if (readingTreeOpen.has(page.page_no)) readingTreeOpen.delete(page.page_no);
-      else readingTreeOpen.add(page.page_no);
-      queueReadingIntent("scroll", { pageNo: page.page_no });
-      renderReadingTree();
-      // 这一页不在已加载的 marks 窗口里：补那一页 ±10，回来再铺条目
-      if (
-        readingTreeOpen.has(page.page_no) &&
-        !readingEntriesForPage(page.page_no).length &&
-        flowPages.has(page.page_no)
-      ) {
-        ensureReadingMarksWindow(page.page_no).then(() => renderReadingTree());
-      }
-    });
-    wrap.append(row, items);
-    fragment.append(wrap);
-  }
-  tree.append(fragment);
-  tree.scrollTop = scrollTop;
-}
-
-function scrollReadingToPage(pageNo) {
-  const segments = readingVisibleSegments();
-  let index = segments.findIndex((segment) =>
-    (segment.pages || []).some((page) => page.page_no === pageNo)
-  );
-  if (index < 0) return;
-  jumpReadingTo(index);
-  const node = readingSegmentNodes[index];
-  if (!node) return;
-  // **直接滚 `#reading-stream`**（它自己就是滚动容器，overflow:auto）。
-  // `scrollIntoView` 在这里会挑到别的祖先滚动，正文实际没动——实测点左树
-  // 页码变了、正文还停在第一页，就是这么来的。
-  const stream = el("reading-stream");
-  if (stream) {
-    const top =
-      node.getBoundingClientRect().top -
-      stream.getBoundingClientRect().top +
-      stream.scrollTop -
-      8;
-    stream.scrollTop = Math.max(0, top);
-  } else {
-    node.scrollIntoView({ block: "start", behavior: "auto" });
-  }
-  updateReadingPage(pageNo);
-  markReadingTreeCurrent(pageNo);
-}
-
-function markReadingTreeCurrent(pageNo) {
-  const tree = el("reading-tree");
-  if (!tree) return;
-  const wasOpen = readingTreeOpen.has(pageNo);
-  readingTreeOpen.add(pageNo);        // 当前页永远展开：进来就能看到这一页有哪几处
-  for (const row of tree.querySelectorAll(".reading-tree__row.is-current")) {
-    row.classList.remove("is-current");
-  }
-  const row = tree.querySelector(`.reading-tree__row[data-page="${pageNo}"]`);
-  if (row) row.classList.add("is-current");
-  const pageEl = tree.querySelector(`.reading-tree__page[data-page="${pageNo}"]`);
-  if (pageEl) pageEl.classList.add("is-open");
-  // 换了页 / 上一页刚展开：条目要重新铺一次（只重画这一页，不动别的）
-  if (!wasOpen || !pageEl || !pageEl.querySelector(".reading-tree__item[data-key]")) {
-    renderReadingTree();
-    const again = el("reading-tree").querySelector(`.reading-tree__row[data-page="${pageNo}"]`);
-    if (again) {
-      again.classList.add("is-current");
-      again.scrollIntoView({ block: "nearest" });
-    }
-  }
-  return;
-}
-
-/**
- * 跳到某个段：**不要**从头渲染到它（跨 800 段会卡 1 秒）。
- * 清掉正文流，从目标段前 2 段开始重新铺窗口——DOM 始终只挂视口附近的几十段。
- */
-function jumpReadingTo(segmentIndex) {
-  const segments = readingVisibleSegments();
-  if (segmentIndex < 0 || segmentIndex >= segments.length) return;
-  // 目标段已经在 DOM 里就直接用；不在就从它前 2 段重新铺窗口。
-  if (readingSegmentNodes[segmentIndex]) return;
-  renderReading({ reset: true, startAt: Math.max(0, segmentIndex - 2) });
-}
 
 // ---------------------------------------------------------------- 阅读审校左栏：连续页列
 //
@@ -19307,60 +18683,6 @@ let readingPdfScrollRaf = 0;
 
 const READING_NEAR_MARGIN = 900;
 
-function ensureReadingPages() {
-  if (!currentProject) return;
-  if (readingStackProject === currentProject.project_id && readingTiles.size) return;
-  buildReadingPages();
-  observeReadingColumnResize();
-}
-
-/** 重建页列（换项目时）：490 个空壳，图和块都还空着。 */
-function buildReadingPages() {
-  const wrap = el("reading-pages");
-  if (!wrap || !currentProject) return;
-  disconnectReadingObservers();
-  wrap.innerHTML = "";
-  const box = el("reading-pdf-box");
-  readingTiles.clear();
-  readingPageBlocks.clear();
-  readingBlockPromises.clear();
-  readingLoadedImages.clear();
-  readingImageQueue = [];
-  readingNearSet.clear();
-  readingVisibleSet.clear();
-  readingTops = [];
-  const fragment = document.createDocumentFragment();
-  for (const page of currentProject.pages) {
-    const tile = document.createElement("div");
-    tile.className = "reading-page";
-    tile.dataset.pageNo = String(page.page_no);
-    tile.style.aspectRatio = `${page.width_pt} / ${page.height_pt}`;
-    const image = document.createElement("img");
-    image.alt = `第 ${page.page_no} 页`;
-    image.decoding = "async";
-    const margin = document.createElement("div");
-    margin.className = "page-margin";
-    margin.hidden = true;
-    const marginBox = document.createElement("div");
-    marginBox.className = "page-margin__box";
-    margin.append(marginBox);
-    const overlay = document.createElement("div");
-    overlay.className = "page-overlay page-overlay--readonly";
-    overlay.hidden = true;
-    tile.append(image, margin, overlay);
-    readingTiles.set(page.page_no, tile);
-    fragment.append(tile);
-  }
-  wrap.append(fragment);
-  // 页列重建会清空容器：字级色块层与跟随行框要重新挂回去
-  const diffLayer = document.createElement("div");
-  diffLayer.className = "reading-diff-layer";
-  diffLayer.id = "reading-diff-layer";
-  wrap.append(diffLayer);
-  if (box) wrap.append(box);
-  readingStackProject = currentProject.project_id;
-  observeReadingTiles();
-}
 
 function disconnectReadingObservers() {
   if (readingNearObserver) readingNearObserver.disconnect();
@@ -19369,51 +18691,6 @@ function disconnectReadingObservers() {
   readingVisibleObserver = null;
 }
 
-function observeReadingTiles() {
-  const scroller = el("reading-pdf-scroll");
-  if (!scroller || typeof IntersectionObserver !== "function") return;
-  const firstTile = readingTiles.values().next().value;
-  const tileHeight = firstTile ? firstTile.getBoundingClientRect().height : 0;
-  const margin = tileHeight
-    ? Math.max(600, Math.round(tileHeight * 2.5))
-    : READING_NEAR_MARGIN;
-  readingNearObserver = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        const tile = entry.target;
-        const pageNo = Number(tile.dataset.pageNo);
-        if (entry.isIntersecting) {
-          readingNearSet.add(pageNo);
-          ensureReadingTile(pageNo);
-        } else if (readingNearSet.delete(pageNo)) {
-          if (Math.abs(pageNo - (readingPageNo || 1)) > INDEX_IMAGE_WINDOW) releaseReadingImage(pageNo);
-        }
-      }
-    },
-    { root: scroller, rootMargin: `${margin}px 0px`, threshold: 0 }
-  );
-  readingVisibleObserver = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        const tile = entry.target;
-        const pageNo = Number(tile.dataset.pageNo);
-        if (entry.isIntersecting) {
-          readingVisibleSet.add(pageNo);
-          ensureReadingTile(pageNo);
-          paintReadingTile(pageNo);
-        } else if (readingVisibleSet.delete(pageNo)) {
-          clearReadingDecorations(pageNo);
-        }
-      }
-      if (!readingFollow) updateReadingPageFromLeftScroll();
-    },
-    { root: scroller, rootMargin: "0px", threshold: 0 }
-  );
-  for (const tile of readingTiles.values()) {
-    readingNearObserver.observe(tile);
-    readingVisibleObserver.observe(tile);
-  }
-}
 
 /** 一页要的东西：图 + 块数据；两个都到齐才画框。 */
 /**
@@ -19423,25 +18700,6 @@ function observeReadingTiles() {
 let readingImageProfile = "";
 let readingResizeObserver = null;
 
-function refreshReadingImageProfiles(force = false) {
-  const tiles = [...readingTiles.values()];
-  const sample = tiles.find((tile) => Number(tile.dataset.pageNo) === readingPageNo) || tiles[0];
-  if (!sample) return;
-  const pageNo = Number(sample.dataset.pageNo);
-  const wanted = pageProfileFor(sample, pageNo);
-  if (!force && (!readingImageProfile || wanted === readingImageProfile)) {
-    readingImageProfile = wanted;
-    return;
-  }
-  readingImageProfile = wanted;
-  // 任务 79：**不要先摘 src 再重取**——那会让页图空白一下（用户看到闪白）。
-  // 先在离屏 Image 里把新档下完，加载完再换上去，旧图一直可见。
-  for (const pageNo of [...readingLoadedImages]) warmSwapReadingImage(pageNo, wanted);
-  // 页列宽度一变，tile 的宽高都跟着变：同一个 `scrollTop` 会落到别的页上。
-  // 按"当前页码"重新锚定一次（用户的心智是"我在第几页"），再核对。
-  if (readingPageNo) scrollPdfColumnToPage(readingPageNo);
-  verifyReadingPageSync("resize");
-}
 
 /** 预热新档，加载完再换上去（换的时候旧图还在，不闪白）。 */
 function warmSwapReadingImage(pageNo, profile) {
@@ -19462,23 +18720,6 @@ function warmSwapReadingImage(pageNo, profile) {
   warm.src = url;
 }
 
-function observeReadingColumnResize() {
-  const wrap = el("reading-pages");
-  if (!wrap || readingResizeObserver || typeof ResizeObserver === "undefined") return;
-  let timer = 0;
-  readingResizeObserver = new ResizeObserver(() => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      if (currentView === "reading") refreshReadingImageProfiles();
-    }, 250);
-  });
-  readingResizeObserver.observe(wrap);
-}
-
-function ensureReadingTile(pageNo) {
-  ensureReadingImage(pageNo);
-  ensureReadingBlocks(pageNo).then(() => paintReadingTile(pageNo));
-}
 
 function ensureReadingImage(pageNo) {
   const tile = readingTiles.get(pageNo);
@@ -19649,45 +18890,6 @@ function settlePanel(entry) {
   return false;
 }
 
-function retryReadingPendingPanel() {
-  // 面板已经在宿主里（重绘碰不到它），但 `readingPanelKey` 可能被 reset 清成了 null：
-  // 把当前项恢复回来，高亮才跟着回来。
-  if (!readingPendingPanelEntry && !readingPanelKey) {
-    const host = el("reading-panel-host");
-    const stub = host && host.querySelector(".reading-panel");
-    const key = stub && stub.dataset.key;
-    if (key) { readingPanelKey = key; refreshReadingCurrentHighlight(); }
-    return;
-  }
-  if (!readingPendingPanelEntry) return;
-  const entry = readingPendingPanelEntry;
-  const key = readingKey(entry.block_id, entry.line_index);
-  if (!readingLineNode(key)) return;      // 行还没挂上，等下一次数据到达
-  clearPendingPanel();
-  openReadingPanel(entry);
-  logReadingNext(entry, { branch: "pending-open", reason: "data-arrived" });
-}
-
-function ensureReadingBlocks(pageNo) {
-  if (readingPageBlocks.has(pageNo)) return Promise.resolve(readingPageBlocks.get(pageNo));
-  const pending = readingBlockPromises.get(pageNo);
-  if (pending) return pending;
-  const promise = loadIndexBlocks(pageNo)
-    .then((blocks) => {
-      readingPageBlocks.set(pageNo, blocks || []);
-      // **块到了就重画**：差异行框/字框要 `readingPageBlocks` 非空才画得出来。
-      // 跳转那一瞬块还没到 → `paintReadingDiffBoxes` 直接 return（一个框都不画），
-      // 行节点也没有 → 面板开不出来。"面板与高亮同时消失"就是这一条（任务 84）。
-      if (pageNo === readingPageNo) {
-        paintReadingTile(pageNo);
-        retryReadingPendingPanel();
-      }
-      return blocks || [];
-    })
-    .finally(() => readingBlockPromises.delete(pageNo));
-  readingBlockPromises.set(pageNo, promise);
-  return promise;
-}
 
 /** 画一页的版心 + 块框（复用页面视图那套渲染，不另写）。 */
 function paintReadingTile(pageNo) {
@@ -19846,46 +19048,6 @@ function paintReadingDiffBoxes(pageNo) {
   }
 }
 
-function setReadingHover(seq) {
-  // `seq` 可能来自 dataset（字符串）：先统一成数字，否则异步回来时比对永远不相等
-  const target = seq === null || seq === undefined || seq === ""
-    ? null
-    : Number(seq);
-  if (target === readingHoveredSeq) return;
-  for (const node of document.querySelectorAll("#reading-stream .reading-seg.is-hover")) {
-    node.classList.remove("is-hover");
-  }
-  for (const box of document.querySelectorAll("#reading-pages .box.is-linked")) {
-    box.classList.remove("is-linked");
-  }
-  readingHoveredSeq = target;
-  if (target === null) {
-    for (const node of document.querySelectorAll("#reading-diff-layer .reading-diff-box")) {
-      node.remove();
-    }
-    return;
-  }
-  const node = document.querySelector(`#reading-stream .reading-seg[data-seq="${target}"]`);
-  if (node) node.classList.add("is-hover");
-  const segment = (readingVisibleSegments() || []).find((item) => item.seq === target);
-  if (!segment) return;
-  const pageNos = new Set((segment.line_spans || []).map((span) => span.page_no));
-  for (const pageNo of pageNos) {
-    ensureReadingBlocks(pageNo).then(() => {
-      if (readingHoveredSeq !== target) return;
-      paintReadingTile(pageNo);
-      paintReadingDiffBoxes(pageNo);
-    });
-  }
-}
-
-function markReadingCurrentTile(pageNo) {
-  for (const tile of document.querySelectorAll("#reading-pages .reading-page.is-current")) {
-    tile.classList.remove("is-current");
-  }
-  const tile = readingTiles.get(pageNo);
-  if (tile) tile.classList.add("is-current");
-}
 
 /** 把**左侧 PDF 页列**滚到某一页（任务 72 前它也叫 scrollReadingToPage，
  *  同名把"右侧正文跳到这一页"那份覆盖掉了 —— 点左树不跳页就是它造成的）。 */
@@ -19900,57 +19062,6 @@ function scrollPdfColumnToPage(pageNo) {
   if (Math.abs(scroller.scrollTop - target) > 8) scroller.scrollTop = target;
 }
 
-/**
- * 左栏（PDF 页列）滚动 → 右侧正文跟到这一页的第一段（任务 72）。
- *
- * 用户原话：「滑动 PDF 页，右边文字不会跟着滑动」。之前只有"右带动左"，
- * 反向只有页码文字在变，正文不动。这里补上页级反向同步（故意不做行级映射：
- * 页级已经够用，行级要维护一条额外的对应表，容易错位）。
- *
- * **防打架**：同一个 `readingSyncDriver` 互斥——左先动就锁 350 ms，
- * 这段时间右栏自己的 scroll 回调不反向驱动左栏（否则会来回拉扯）。
- */
-function updateReadingPageFromLeftScroll() {
-  if (!readingTops.length) return;
-  const scroller = el("reading-pdf-scroll");
-  if (!scroller) return;
-  const anchor = scroller.scrollTop + scroller.clientHeight * 0.25;
-  let best = readingTops[0];
-  for (const entry of readingTops) {
-    if (entry.top <= anchor) best = entry;
-    else break;
-  }
-  if (!best) return;
-  if (best.pageNo === readingPageNo) return;
-  // **跳转落位期间左栏一律不写**：`gotoReadingEntry` 自己的滚动会触发这里，
-  // 此时左栏锚点还停在上一页，写进去就把刚定位好的页码改掉（QA run F：
-  // gotoEntry 写 118 → leftScroll 写 117，两个回调隔着几十毫秒，后者赢）。
-  if (readingJumpSettleKey) return;
-  // **这次滚动是谁发的，才是判据**——不是差值阈值，也不是"面板开没开"。
-  //
-  // QA 十轮 196/200 抓到的两处漏挡都出在"用 |Δ| 判"上：
-  //   · |Δ|==2 直接放过（C 轮 面板 59 / 左栏算出 61 → 顶部与左栏都成 61）；
-  //   · |Δ|==1 本该挡，但补窗口前 `readingMarks.get(panelKey)` 是 undefined，
-  //     整段保护被跳过（H 149/148、I 194/193）。
-  // 而"面板开着就一律不写"又会把用户真正滚左栏时的跟随也挡掉（smoke：滚到 120 页，顶部仍 99）。
-  //
-  // 所以只看事件来源：`scrollPdfColumnToPage()` 是**我们**滚的，它会把当时的用户事件计数
-  // 记进 `readingProgramScrollSeq`；左栏回调里两者相等 → 这次滚动没有用户输入参与 → 不写页码。
-  // 用户 wheel / pointerdown / keydown 会让 `readingUserScrollSeq` +1，之后左栏滚动照常跟随。
-  if (readingUserScrollSeq === readingProgramScrollSeq) return;
-  readingPageNo = best.pageNo;
-  el("reading-page-no").textContent = `第 ${best.pageNo} 页`;
-  markReadingCurrentTile(best.pageNo);
-  markReadingTreeCurrent(best.pageNo);
-  if (
-    readingFollow &&
-    performance.now() > readingSuppressFollowUntil &&
-    !readingDriverActive("left")
-  ) {
-    markReadingDriver("left");
-    scrollStreamToPage(best.pageNo);
-  }
-}
 
 /** 左→右 / 右→左的互斥标记：谁先动谁锁 350 ms。 */
 function markReadingDriver(driver) {
@@ -19962,30 +19073,6 @@ function readingDriverActive(driver) {
   return readingSyncDriver === driver && performance.now() < readingSyncUntil;
 }
 
-/**
- * 把右侧正文滚到"这一页的第一段"，并把这一段设为当前段。
- * 页级就够：用户要的是"翻到这一页"，不是精确到某一行。
- */
-function scrollStreamToPage(pageNo) {
-  if (!readingData) return;
-  const segments = readingVisibleSegments();
-  if (!segments.length) return;
-  let index = segments.findIndex((segment) =>
-    (segment.line_spans || []).some((span) => Number(span.page_no) >= pageNo)
-  );
-  if (index < 0) index = segments.length - 1;
-  jumpReadingTo(index);
-  const node = readingSegmentNodes[index];
-  if (!node) return;
-  node.scrollIntoView({ block: "start", behavior: "auto" });
-  setReadingHover(String(segments[index].seq));
-  markReadingTreeCurrent(pageNo);
-  // 跳的过程中正文会触发自己的 scroll 回调，可能把页码改回去：这里钉一下
-  readingPageNo = pageNo;
-  const label = el("reading-page-no");
-  if (label) label.textContent = `第 ${pageNo} 页`;
-  markReadingCurrentTile(pageNo);
-}
 
 let readingPageSyncTimer = 0;
 let readingPageSyncFixing = false;
@@ -20000,96 +19087,6 @@ let readingPageSyncFixing = false;
  */
 const readingPageSyncLog = [];
 
-function verifyReadingPageSync(reason = "", { fix = true } = {}) {
-  clearTimeout(readingPageSyncTimer);
-  readingPageSyncTimer = setTimeout(() => {
-    if (currentView !== "reading" || !readingPageNo) return;
-    const scroller = el("reading-pdf-scroll");
-    if (!scroller) return;
-    // 用户正在自己滚左栏：这时候"顶部那一页"本来就会短暂等于中间页，别纠正（会打架）
-    if (performance.now() - readingUserMovedAt < 400) return;
-    // 用和"左栏滚动 → 页码"同一个锚点（视口 25% 处的那一页），否则会把顶部露出
-    // 46px 的上一页判成当前页（实测 label 39 / tilePage 38 那种假不一致）
-    const top = scroller.getBoundingClientRect().top;
-    // 用**视口中心**判定"当前是哪一页"：居中定位时当前行就在中心；
-    // 用 25% 会把"页面顶部落在中心线以下"的正常情况判成上一页（实测 20 次里 17 次误报）
-    // 主导页 = **覆盖视口面积最大的 tile**（QA 定；固定 25% 线会常态性假阴性）
-    let tilePage = null;
-    let bestArea = 0;
-    const viewTop = top;
-    const viewBottom = top + scroller.clientHeight;
-    for (const [pageNo, tile] of readingTiles) {
-      const rect = tile.getBoundingClientRect();
-      const overlap = Math.min(rect.bottom, viewBottom) - Math.max(rect.top, viewTop);
-      if (overlap > bestArea) {
-        bestArea = overlap;
-        tilePage = pageNo;
-      }
-    }
-    // 三方一致：当前差异项所在页 == 顶部页码 == 左侧可见页。
-    // 只看前两个数会漏掉真正错的情况（面板第 13 页、顶部与左侧都是第 28 页 → ok:true）。
-    const panelMark = readingPanelKey ? readingMarks.get(readingPanelKey) : null;
-    const panelPage = panelMark && panelMark.page_no ? Number(panelMark.page_no) : null;
-    const ok = tilePage === readingPageNo && (!panelPage || panelPage === readingPageNo);
-    const record = {
-      reason,
-      label: readingPageNo,
-      tilePage,
-      panelPage,
-      ok,
-      scrollTop: Math.round(scroller.scrollTop),
-      at: Date.now(),
-    };
-    // 留最近 5 次（用户报"左右不对应"时，前一次的状态往往才是线索）
-    readingPageSyncLog.unshift(record);
-    readingPageSyncLog.length = Math.min(readingPageSyncLog.length, 5);
-    window.__b2tPageSync = record;
-    window.__b2tPageSyncLog = readingPageSyncLog;
-    if (fix && !ok && !readingPageSyncFixing) {
-      // **纠正，不只是记录**。以"当前差异项所在页"为准（那才是用户正在看的东西）
-      readingPageSyncFixing = true;
-      if (panelPage && panelPage !== readingPageNo) {
-        queueReadingIntent("goto", { pageNo: panelPage, scrollLeft: true, syncStream: false });
-      } else {
-        scrollPdfColumnToPage(readingPageNo);
-      }
-      // 纠正本身会再触发一次滚动：150 ms 后补一次核对（只核对、不再纠正，避免来回抖）
-      setTimeout(() => {
-        readingPageSyncFixing = false;
-        verifyReadingPageSync("afterFix", { fix: false });
-      }, 150);
-    }
-  }, 130);
-}
-
-function updateReadingPage(pageNo, { scrollLeft = true, syncStream = true } = {}) {
-  if (!currentProject) return;
-  const total = currentProject.pages.length;
-  if (!pageNo || pageNo < 1 || pageNo > total) return;
-  readingPageNo = pageNo;
-  // 任务 67：翻到窗口外的页就补那一页 ±10 的 marks（异步，不挡翻页）
-  if (readingData) ensureReadingMarksWindow(pageNo);
-  hideReadingPdfBox();
-  el("reading-page-no").textContent = `第 ${pageNo} 页`;
-  el("reading-prev").disabled = pageNo <= 1;
-  el("reading-next").disabled = pageNo >= total;
-  ensureReadingPages();
-  ensureReadingTile(pageNo);
-  markReadingCurrentTile(pageNo);
-  if (scrollLeft) scrollPdfColumnToPage(pageNo);
-  // 任务 72：点左树 / 翻页按钮 → 右侧正文跟到这一页第一段（页级反向同步的另一半）。
-  // 只在"不是右栏自己在驱动"时做，否则会互相拉扯。
-  if (syncStream && readingFollow && readingData && !readingDriverActive("right")) {
-    markReadingDriver("left");
-    scrollStreamToPage(pageNo);
-  }
-  if (readingPendingBox) {
-    drawReadingPdfBox(readingPendingBox, pageNo);
-    readingPendingBox = null;
-  }
-  markReadingTreeCurrent(pageNo);
-  verifyReadingPageSync("updateReadingPage");
-}
 
 function hideReadingPdfBox() {
   const box = el("reading-pdf-box");
@@ -20131,57 +19128,12 @@ function logReadingNext(entry, extra = {}) {
   window.__b2tNextLog = readingNextLog;
 }
 
-function gotoReadingEntry(entry) {
-  if (!entry || !entry.page_no) return;
-  // **先驱动"我在第几页"**：顶部页码 + 左侧 PDF + 左树高亮。
-  // 原来这里先找行、找不到就 `return`，于是页码和左侧 PDF 根本没动——
-  // 用户看到的是"面板第 13 页、顶部第 28 页、左边第 28 页"（现场就是这么来的）。
-  setPanel(entry);      // 跨 reset 存活：重绘后由 retryReadingPendingPanel 补开
-  // 边 9 不切（顺序依赖）：updateReadingPage 必须在 openReadingPanel 之前发起。
-  // 入队后它里面的 ensureReadingMarksWindow 会拖到面板打开之后，marks 回来的重绘
-  // 会把刚开的面板按"无 key + 无 pending"的清尾规则藏掉（QA 四态对照：回同步 60/60）。
-  updateReadingPage(entry.page_no, { syncStream: false, scrollLeft: false });
-  suppressReadingFollow();
-  scrollPdfColumnToPage(entry.page_no);
-  const segments = readingVisibleSegments();
-  const index = segments.findIndex((segment) => segment.seq === entry.seq);
-  // 边 8 不切（顺序依赖）：jump 的 reset 必须早于下面的 openReadingPanel。
-  // 入队后它在帧末跑，reset 会把刚开的面板按"无 key + 无 pending"的清尾规则藏掉（QA：2/60）。
-  if (index >= 0) jumpReadingTo(index);
-  const key = readingKey(entry.block_id, entry.line_index);
-  let line = readingLineNode(key);
-  if (!line) {
-    // 目标段不在已挂载的窗口里：按它的下标重铺一次（不固定 sleep，靠渲染完成后再查）。
-    // 走同一个 helper，顺带覆盖"条目没有 seq"（左树）的情况。
-    line = ensureReadingLineRendered(entry);
-  }
-  if (line) centerReadingLinePair(entry);
-  if (!readingDrafts.has(key)) openReadingPanel(entry);
-  // 从这里开始到目标行真正进视口之前，页码同步一律不写（否则会被顶行的上一页改写）
-  readingJumpSettleKey = key;
-  readingJumpSettleTicks = 0;
-  const settled = settlePanel(entry);
-  // 偶发"跳到了但没有面板/没有当前项"（QA 2/20）：面板没建起来就再开一次，
-  // 并把原因记进 __b2tNextLog。第二次仍失败也记下来，不静默。
-  if (!settled) {
-    let reason = "no-line";
-    const seg = readingVisibleSegments()[index];
-    if (!seg) reason = "no-segment";
-    else if (!readingLineNode(key)) reason = "line-not-mounted";
-    setTimeout(() => {
-      if (!document.querySelector("#reading-panel-host .reading-panel")) openReadingPanel(entry);
-      logReadingNext(entry, { branch: "retry", reason, retried: true });
-    }, 260);
-  }
-  verifyReadingPageSync("gotoEntry");
-}
 
 // ---------------------------------------------------------------- 阅读审校三栏宽度（P1-4）
 //
 // 用户："左边的 pdf 图片太小，看不清楚，能不能左右窗口可以拖动？"
 // 三栏 = 左树 / PDF / 正文。两条 6px 的手柄可拖，宽度记在 localStorage；
 // 最小宽度卡住，别拖到正文没字、或 PDF 看不见；窄屏（<1120）不显示手柄（CSS 管）。
-
 
 function boot() {
   // 任务 94 Slice 1：审校视图模块初始化（依赖由此注入，模块内部不直接碰这些全局）
@@ -20207,19 +19159,19 @@ function boot() {
     getDrafts: () => readingDrafts,
     getReadingEditingKey: () => readingEditingKey,
     isReadingActive: () => currentView === "reading",
-    renderReading: (options) => renderReading(options),
     renderReadingProgress: () => renderReadingProgress(),
     saveReadingInlineEdits: () => saveReadingInlineEdits(),
     saveReadingDrafts: () => saveReadingDrafts(),
     navigate: (name) => showView(name),
     openPageDetail: (pageNo) => openPageDetail(pageNo),
-    setReadingHover: (seq) => setReadingHover(seq),
-    openReadingPanel: (entry) => openReadingPanel(entry),
     closeReadingPanel: () => closeReadingPanel(),
     rerenderReadingLine: (key) => rerenderReadingLine(key),
     // 任务 94 L2：10 个交互函数搬进模块后的状态句柄与回调（只注入句柄 / getter-setter，不注入值）
     getProject: () => currentProject,
     getReadingFollow: () => readingFollow,
+    getReadingFirstUnackedPage: () => readingFirstUnackedPage,
+    getReadingGlobalCounts: () => readingGlobalCounts,
+    getReadingImageQueue: () => readingImageQueue,
     setReadingFollowFlag: (value) => { readingFollow = value; },
     setReadingUserMovedAt: (value) => { readingUserMovedAt = value; },
     getReadingUserScrollSeq: () => readingUserScrollSeq,
@@ -20238,11 +19190,8 @@ function boot() {
     setReadingJumpSettleTicks: (value) => { readingJumpSettleTicks = value; },
     getReadingPanelKey: () => readingPanelKey,
     setReadingPendingBox: (value) => { readingPendingBox = value; },
-    updateReadingPage: (pageNo, options) => updateReadingPage(pageNo, options),
     drawReadingPdfBox: (bbox, pageNo) => drawReadingPdfBox(bbox, pageNo),
     readingVisibleSegments: () => readingVisibleSegments(),
-    updateReadingPageFromLeftScroll: () => updateReadingPageFromLeftScroll(),
-    verifyReadingPageSync: (reason, options) => verifyReadingPageSync(reason, options),
     hideReadingPdfBox: () => hideReadingPdfBox(),
     readingDriverActive: (driver) => readingDriverActive(driver),
     readingLineNode: (key) => readingLineNode(key),
@@ -20270,15 +19219,9 @@ function boot() {
     getReadingUserMovedAt: () => readingUserMovedAt,
     getReadingTiles: () => readingTiles,
     getReadingPageBlocks: () => readingPageBlocks,
-    ensureReadingPages: () => ensureReadingPages(),
     refreshPunctGroups: () => refreshPunctGroups(),
-    readingOptions: () => readingOptions(),
-    applyReadingMarksPayload: (payload) => applyReadingMarksPayload(payload),
     refreshGarbledLines: () => refreshGarbledLines(),
     readingFlowPages: () => readingFlowPages(),
-    renderReadingTree: () => renderReadingTree(),
-    saveInlineEdit: (line) => saveInlineEdit(line),
-    refreshReadingMarksPaint: () => refreshReadingMarksPaint(),
     setReviewOverlaysForReading: () => setReviewOverlaysForReading(),
     // 任务 94 L4：队列 / 草稿加载 / 视口处理搬进模块后的句柄
     setReadingInlineEdits: (value) => { readingInlineEdits = value; },
@@ -20289,11 +19232,87 @@ function boot() {
     setReadingCursorEntry: (value) => { readingCursorEntry = value; },
     logReadingNext: (entry, extra) => logReadingNext(entry, extra),
     showNoticeBar: (text) => showNoticeBar(text),
-    ensureReadingMarksWindow: (pageNo) => ensureReadingMarksWindow(pageNo),
-    gotoReadingEntry: (entry) => gotoReadingEntry(entry),
     readingInlineStorageKey: () => readingInlineStorageKey(),
     readingDraftStorageKey: () => readingDraftStorageKey(),
-    clearReadingIntents: (dropped) => clearReadingIntents(dropped),
+    // 任务 94 L5：审校环搬进模块后的状态句柄（状态仍归 app.js，get+set 成对）
+    getCurrentView: () => currentView,
+    getReadingAppendScheduled: () => readingAppendScheduled,
+    getReadingBlockPromises: () => readingBlockPromises,
+    getReadingDrafts: () => readingDrafts,
+    getReadingImageProfile: () => readingImageProfile,
+    getReadingInlineEdits: () => readingInlineEdits,
+    getReadingLoadedImages: () => readingLoadedImages,
+    getReadingMarks: () => readingMarks,
+    getReadingMarksInFlight: () => readingMarksInFlight,
+    getReadingMarksRequestSeq: () => readingMarksRequestSeq,
+    getReadingMarksWindow: () => readingMarksWindow,
+    getReadingNearObserver: () => readingNearObserver,
+    getReadingNearSet: () => readingNearSet,
+    getReadingObserver: () => readingObserver,
+    getReadingPageSyncFixing: () => readingPageSyncFixing,
+    getReadingPageSyncLog: () => readingPageSyncLog,
+    getReadingPageSyncTimer: () => readingPageSyncTimer,
+    getReadingPendingBox: () => readingPendingBox,
+    getReadingPendingPanelEntry: () => readingPendingPanelEntry,
+    getReadingPendingPanelKey: () => readingPendingPanelKey,
+    getReadingProgramScrollSeq: () => readingProgramScrollSeq,
+    getReadingRendered: () => readingRendered,
+    getReadingResizeObserver: () => readingResizeObserver,
+    getReadingSegmentNodes: () => readingSegmentNodes,
+    getReadingStackProject: () => readingStackProject,
+    getReadingSuppressFollowUntil: () => readingSuppressFollowUntil,
+    getReadingTreeData: () => readingTreeData,
+    getReadingTreeOpen: () => readingTreeOpen,
+    getReadingVisibleObserver: () => readingVisibleObserver,
+    getReadingVisibleSet: () => readingVisibleSet,
+    setReadingAppendScheduled: (value) => { readingAppendScheduled = value; },
+    setReadingImageProfile: (value) => { readingImageProfile = value; },
+    setReadingImageQueue: (value) => { readingImageQueue = value; },
+    setReadingMarks: (value) => { readingMarks = value; },
+    setReadingMarksInFlight: (value) => { readingMarksInFlight = value; },
+    setReadingMarksRequestSeq: (value) => { readingMarksRequestSeq = value; return value; },
+    setReadingNearObserver: (value) => { readingNearObserver = value; },
+    setReadingObserver: (value) => { readingObserver = value; },
+    setReadingPageNo: (value) => { readingPageNo = value; },
+    setReadingPageSyncFixing: (value) => { readingPageSyncFixing = value; },
+    setReadingPageSyncTimer: (value) => { readingPageSyncTimer = value; },
+    setReadingPanelKey: (value) => { readingPanelKey = value; },
+    setReadingRendered: (value) => { readingRendered = value; },
+    setReadingResizeObserver: (value) => { readingResizeObserver = value; },
+    setReadingSegmentNodes: (value) => { readingSegmentNodes = value; },
+    setReadingStackProject: (value) => { readingStackProject = value; },
+    setReadingVisibleObserver: (value) => { readingVisibleObserver = value; },
+    // 任务 94 L5：审校环里仍留在 app.js 的叶子函数（模块经注入调用）
+    buildReadingSegment: (...args) => buildReadingSegment(...args),
+    buildReadingTreePreview: (...args) => buildReadingTreePreview(...args),
+    clearPendingPanel: (...args) => clearPendingPanel(...args),
+    clearReadingDecorations: (...args) => clearReadingDecorations(...args),
+    disconnectReadingObservers: (...args) => disconnectReadingObservers(...args),
+    draftReading: (...args) => draftReading(...args),
+    ensureReadingImage: (...args) => ensureReadingImage(...args),
+    exportOptions: (...args) => exportOptions(...args),
+    hideReadingPanelHost: (...args) => hideReadingPanelHost(...args),
+    loadIndexBlocks: (...args) => loadIndexBlocks(...args),
+    pageProfileFor: (...args) => pageProfileFor(...args),
+    paintReadingDiffBoxes: (...args) => paintReadingDiffBoxes(...args),
+    paintReadingTile: (...args) => paintReadingTile(...args),
+    punctReviewSet: (...args) => punctReviewSet(...args),
+    readingEntriesForPage: (...args) => readingEntriesForPage(...args),
+    readingEntryDone: (...args) => readingEntryDone(...args),
+    refreshReadingCurrentHighlight: (...args) => refreshReadingCurrentHighlight(...args),
+    releaseReadingImage: (...args) => releaseReadingImage(...args),
+    removeReadingSentinel: (...args) => removeReadingSentinel(...args),
+    scrollPdfColumnToPage: (...args) => scrollPdfColumnToPage(...args),
+    scrollScrollerToCenter: (...args) => scrollScrollerToCenter(...args),
+    setPanel: (...args) => setPanel(...args),
+    settlePanel: (...args) => settlePanel(...args),
+    startReadingEdit: (...args) => startReadingEdit(...args),
+    suppressReadingFollow: (...args) => suppressReadingFollow(...args),
+    warmSwapReadingImage: (...args) => warmSwapReadingImage(...args),
+    // 任务 94 L5：模块要读的常量
+    INDEX_IMAGE_WINDOW: INDEX_IMAGE_WINDOW,
+    READING_CHUNK: READING_CHUNK,
+    READING_NEAR_MARGIN: READING_NEAR_MARGIN,
   });
   // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
   document.addEventListener("keydown", (event) => {
