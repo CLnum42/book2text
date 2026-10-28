@@ -1614,7 +1614,11 @@ def test_reading_view_is_wired_for_merge() -> None:
     # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
     assert module_script.count("function openReading(") == 1
     assert (script + module_script).count("function openReading(") >= 1
-    assert "function buildReadingSegment(" in script
+    # L6 刀3：buildReadingSegment 随正文流渲染搬进模块（app.js 定义数 0，无转发）。
+    # 判据同前：模块里恰好 1 处真实现 + 合查仍存在。
+    # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
+    assert module_script.count("function buildReadingSegment(") == 1
+    assert (script + module_script).count("function buildReadingSegment(") >= 1
     # L4 笔2：gotoNextUnreviewed 搬进模块（app.js 定义数 0）。模块里恰好 1 处；合查仍存在。
     # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
     assert module_script.count("function gotoNextUnreviewed(") == 1

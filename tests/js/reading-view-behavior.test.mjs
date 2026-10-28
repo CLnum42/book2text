@@ -79,6 +79,8 @@ function fakeNode() {
     removeEventListener(type, handler) {
       this.listeners[type] = (this.listeners[type] || []).filter((item) => item !== handler);
     },
+    setPointerCapture() {},
+    releasePointerCapture() {},
     focus() {},
     select() {},
     scrollIntoView() {},
@@ -109,6 +111,7 @@ const realStorage = {
   get length() { return STORAGE.size; },
 };
 let apiRouter = null;
+const WINDOW_LISTENERS = {};   // 模块把 pointermove/pointerup 挂在 window 上，用例要能手动触发
 
 function installStubs() {
   // 浏览器侧全局
@@ -125,8 +128,12 @@ function installStubs() {
     disconnect() {}
   };
   ctx.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
-  ctx.addEventListener = () => {};
-  ctx.removeEventListener = () => {};
+  ctx.addEventListener = (type, handler) => {
+    (WINDOW_LISTENERS[type] = WINDOW_LISTENERS[type] || []).push(handler);
+  };
+  ctx.removeEventListener = (type, handler) => {
+    WINDOW_LISTENERS[type] = (WINDOW_LISTENERS[type] || []).filter((item) => item !== handler);
+  };
   ctx.dispatchEvent = () => true;
   ctx.scrollTo = () => {};
   ctx.innerHeight = 900;
@@ -188,6 +195,7 @@ function resetState() {
   ELEMENTS.clear();
   NOTICE_LOG.length = 0;
   apiRouter = null;
+  for (const type of Object.keys(WINDOW_LISTENERS)) delete WINDOW_LISTENERS[type];
   runInApp(
     ctx,
     `currentView = "library";
@@ -349,13 +357,6 @@ const progressNumbersSkip =
     ? false
     : "main 还没有 readingProgressNumbers（任务 93 的计数提取）；移植后这条自动开跑";
 
-// splitPrefs / saveSplit 是**搬运期临时导出**（Architect：Slice 2 结束后
-// `Object.keys(window.ReadingView)` 只许 7 个）。这条偏好用例借它们验证
-// "三栏宽度重入后还在"；它们被移除时自动 skip，不许把临时导出当稳定接口锁住。
-const splitApiSkip =
-  typeof ctx.ReadingView?.splitPrefs === "function" && typeof ctx.ReadingView?.saveSplit === "function"
-    ? false
-    : "splitPrefs/saveSplit 临时导出已移除（Slice 2 收尾）；这条偏好用例要改用稳定接口重写";
 
 // ---------------------------------------------------------------- 1. enter / exit
 
@@ -519,21 +520,71 @@ test("过滤器：汉字级不混入标点条目；未审不混入已 ack / 已�
 
 // ---------------------------------------------------------------- 7. 偏好
 
-test("偏好：三栏宽度写进 localStorage，重新加载模块后还在", { skip: splitApiSkip }, () => {
+// 偏好：拖动三栏手柄 → 宽度写进 localStorage → 重新加载模块后仍生效。
+// 原来借 splitPrefs/saveSplit 这两个**临时导出**直读内部状态；L6 收尾把它们删了，
+// 所以改成只经由稳定接口 + 真实事件驱动（init / pointerdown→pointermove→pointerup），
+// 断言也换成用户能看见的东西：拖动后宽度跟着变、被记住、重载后仍然生效。
+// 没有改成 skip：那条用例验的是"用户拖过的宽度要记得住"，skip 掉等于这段覆盖消失。
+test("偏好：拖动三栏手柄改宽度，重新加载模块后仍生效", () => {
   resetState();
   installReadingView(ctx);
-  ctx.ReadingView.init({});
-  ctx.ReadingView.splitPrefs().tree = 300;
-  ctx.ReadingView.saveSplit();
+  const split = ctx.document.getElementById("reading-split");
+  // 假 DOM 的 clientWidth 默认 100：可用宽度会算成负数，宽度被夹到下限，掩盖"拖动生效"。
+  // 给一个真实视口宽度，让夹取逻辑不参与这条断言。
+  split.clientWidth = 1400;
+  const vars = new Map();
+  split.style = {
+    setProperty: (key, value) => vars.set(key, value),
+    removeProperty: (key) => vars.delete(key),
+    getPropertyValue: (key) => vars.get(key) ?? "",
+  };
+  // 套用宽度的公开触发点是窗口 resize（openReading 里那次要一路 await 到正文流，这里不需要）。
+  // init 只绑事件不套宽度，所以给 resize 一个"审校未激活"的最小注入，让 handler 走完 apply。
+  ctx.ReadingView.init({ isReadingActive: () => false });
+  (WINDOW_LISTENERS.resize || [])[0]({});
+  assert.equal(vars.get("--reading-tree-w"), "232px", "默认宽度没套到三栏上");
+
+  const grip = ctx.document.getElementById("reading-grip-tree");
+  const pointers = grip.listeners.pointerdown || [];
+  assert.ok(pointers.length > 0, "左树手柄没绑 pointerdown——用户拖不动分栏");
+  pointers[0]({ button: 0, clientX: 100, pointerId: 1, preventDefault() {} });
+  const moves = WINDOW_LISTENERS.pointermove || [];
+  assert.ok(moves.length > 0, "按下手柄后没监听 pointermove——拖动时宽度不会跟着走");
+  moves[moves.length - 1]({ clientX: 168 });
+  assert.equal(vars.get("--reading-tree-w"), "300px", "拖动后三栏宽度没跟着变");
+  const ups = WINDOW_LISTENERS.pointerup || [];
+  assert.ok(ups.length > 0, "松开时没收到 pointerup——宽度不会被记住");
+  ups[ups.length - 1]({ clientX: 168 });
+
   const saved = readState("localStorage.getItem('b2t.readingSplit.v1')");
-  assert.ok(saved && saved.includes("300"), `三栏宽度没写进 localStorage：${saved}`);
+  assert.ok(saved && saved.includes("300"), `拖动后宽度没写进 localStorage：${saved}`);
 
   // 模拟"模块重入"：新上下文共用同一份 localStorage，重新加载 reading-view.js
   const ctx2 = loadApp();
   ctx2.localStorage = realStorage;
+  ctx2.innerWidth = 1400;
+  const elements2 = new Map();
+  ctx2.document.getElementById = (id) => {
+    if (!elements2.has(id)) elements2.set(id, fakeNode());
+    return elements2.get(id);
+  };
+  const listeners2 = {};
+  ctx2.addEventListener = (type, handler) => {
+    (listeners2[type] = listeners2[type] || []).push(handler);
+  };
+  ctx2.removeEventListener = () => {};
   installReadingView(ctx2);
-  const prefs = JSON.parse(vm.runInContext("JSON.stringify(window.ReadingView.splitPrefs())", ctx2));
-  assert.equal(prefs.tree, 300, "重新加载后三栏宽度丢了");
+  const split2 = ctx2.document.getElementById("reading-split");   // 首次调用才会建节点
+  split2.clientWidth = 1400;
+  const vars2 = new Map();
+  split2.style = {
+    setProperty: (key, value) => vars2.set(key, value),
+    removeProperty: (key) => vars2.delete(key),
+    getPropertyValue: (key) => vars2.get(key) ?? "",
+  };
+  ctx2.ReadingView.init({ isReadingActive: () => false });
+  (listeners2.resize || [])[0]({});
+  assert.equal(vars2.get("--reading-tree-w"), "300px", "重新加载后三栏宽度丢了");
 });
 
 test("偏好：左树折叠状态", {

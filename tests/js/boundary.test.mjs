@@ -711,10 +711,10 @@ test("R9：app.js 里被引用但没声明的标识符一律红（no-undef）", 
  * 模块文件（`*-view.js`）零豁免：id 必须能在自己 `<section id="view-X">` 子树里找到。
  */
 const R3_EXEMPTIONS = [
-  { id: "reading-garbled-count", line: 17647, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-garbled-open", line: 17651, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-punct-count", line: 17753, owner: "app.js", expires: "正文流① 搬完" },
-  { id: "reading-punct-open", line: 17761, owner: "app.js", expires: "正文流① 搬完" },
+  { id: "reading-garbled-count", line: 17647, owner: "app.js", expires: "punct 整体搬完" },
+  { id: "reading-garbled-open", line: 17651, owner: "app.js", expires: "punct 整体搬完" },
+  { id: "reading-punct-count", line: 17753, owner: "app.js", expires: "punct 整体搬完" },
+  { id: "reading-punct-open", line: 17761, owner: "app.js", expires: "punct 整体搬完" },
 ];
 const R3_MAX_EXEMPTIONS = 4;   // 只降不升；条目数变了必须同批改这里
 
@@ -1131,9 +1131,9 @@ test("R12（闸 A）：特征测试契约 A1 / A1b / A3", () => {
  * 谁把写路径加回来都会红。
  */
 const STABLE = ["init", "enter", "exit", "getCurrent", "reload", "toggleFollow"];
-const TEMPORARY = ["splitPrefs", "applySplit", "saveSplit", "resetSplit", "setupSplit"]; // 到期：Slice 2 收尾
+const TEMPORARY = [];   // L6 收尾：splitPrefs/applySplit/saveSplit/resetSplit/setupSplit 已从公开对象删除
 const PENDING_REMOVAL = [];   // 写路径 emit 已于 26ac481 删除；名单清空，写路径不许再加回来
-const MAX_EXPORTS = 11;             // 只许改小（e5c4c37 删掉 on/emit 后收紧到 11）
+const MAX_EXPORTS = 6;              // 只许改小（L6 收尾删掉 5 个临时导出后收紧到 6）
 
 /** 在干净的 vm 里加载模块，读出 `Object.keys(window.ReadingView)`（不加载 app.js）。 */
 function readingViewExportKeys() {
