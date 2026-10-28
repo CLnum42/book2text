@@ -99,6 +99,15 @@ def start(
     (run_dir / "library").mkdir(parents=True)
     (run_dir / "screenshots").mkdir()
 
+    # 开跑前先查遗留：ego-browser 的 space 不关会累积，最终以"起不来"的形式爆发。
+    leftovers = _list_spaces(run_dir)
+    if leftovers:
+        raise RuntimeError(
+            "发现遗留的 ego-browser space（上一次 down 没关掉）："
+            + ", ".join(f"id={item['id']} name={item['name']}" for item in leftovers)
+            + "。先 `qa.py down` 或手工 close 后再 up。"
+        )
+
     project_copy = _copy_project(project_id, run_dir / "library")
     # 用户设置（名字）跟着库走。不拷的话首次运行卡片会挡住界面，
     # 而 QA 要验的是工作流，不是"第一次运行"的引导。
@@ -219,6 +228,10 @@ def stop(*, remove: bool = True) -> dict[str, Any]:
                 os.kill(pid, signal.SIGKILL)
             killed = True
 
+    # 关掉 ego-browser 的 task space：不关就会泄漏，累积到上限后以"起不来"的形式爆发。
+    # 必须放在删 run_dir 之前（_browser 要往 run_dir 写 task/result 文件）。
+    teardown = _teardown_space(state)
+
     removed = False
     run_dir = _check_under_runtime(Path(state["run_dir"]))
     if remove and run_dir.name.startswith(_SAFE_RUN_PREFIX) and run_dir.is_dir():
@@ -230,5 +243,33 @@ def stop(*, remove: bool = True) -> dict[str, Any]:
         "pid": pid,
         "forced": killed,
         "removed": removed,
+        "space_finished": teardown,
         "run_dir": str(run_dir),
     }
+
+def _browser_run_meta(state: dict[str, Any], cmd: str) -> Any:
+    """给 _browser.run 一个最小 state（列表/销毁 space 时服务还没起或已停）。"""
+    import _browser  # 延迟导入：_browser 依赖 ego-browser 存在才可用
+
+    return _browser.run(state, cmd, None, timeout=60.0)
+
+
+def _list_spaces(run_dir: Path) -> list[dict[str, Any]]:
+    """列出属于 agent 的 b2t-qa-* space（守卫用；失败不阻塞开跑）。"""
+    try:
+        data = _browser_run_meta(
+            {"run_dir": str(run_dir), "space": "b2t-qa-guard", "url": "", "project_id": "",
+             "screenshots": str(run_dir / "screenshots")},
+            "list_spaces",
+        )
+    except Exception:  # noqa: BLE001 - 浏览器不可用不该挡住 up；真正的 up 会自己报错
+        return []
+    return [item for item in (data or []) if item.get("ownership") == "agent"]
+
+
+def _teardown_space(state: dict[str, Any]) -> dict[str, Any]:
+    """关闭本轮的 task space；失败只记录，不影响拆环境。"""
+    try:
+        return _browser_run_meta(state, "teardown")
+    except Exception as error:  # noqa: BLE001
+        return {"finished": False, "reason": str(error)}

@@ -27,6 +27,21 @@
 所有证据落在 `$TMPDIR/b2t-qa/<run>/`：`report-smoke.json` / `report-check.json` /
 `server.log` / `screenshots/*.png`。
 
+### 收尾必须关掉 ego-browser 的 space（否则会泄漏）
+
+`down` 会调 `await task.finish({ keep: [] })` 关掉本轮 space，输出里的
+`space_finished` 就是结果。**不要跳过 `down`，也不要手工杀进程了事**——
+space 不关会一直占着浏览器上下文，累积到上限后以"莫名其妙起不来"的形式爆发。
+
+`up` 之前会先列出属于 agent 的 `b2t-qa-*` space；**发现有遗留就直接报错并打印 id**，
+不会静默继续。这时先 `qa.py down`（或按 id 手工关）再 `up`。
+
+手工核查残留（在 tests/e2e 目录下）：
+
+```bash
+python -c "import _env, pathlib; print(_env._list_spaces(pathlib.Path('/tmp')))"
+```
+
 ## 结构
 
 ```

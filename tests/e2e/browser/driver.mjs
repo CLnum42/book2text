@@ -13,6 +13,28 @@
 const WAIT = 120000;
 
 export async function run(cfg) {
+  // ---- 不建/不动 space 的两条命令：必须在 taskSpace() 之前处理，
+  //      否则 taskSpace(name) 会在名字不存在时**新建一个**，守卫本身就成了泄漏源。
+  if (cfg.cmd === "list_spaces") {
+    const spaces = await listTaskSpaces();
+    return spaces
+      .filter((space) => String(space.name || "").startsWith("b2t-qa-"))
+      .map((space) => ({ id: space.id, name: space.name, ownership: space.ownership }));
+  }
+  if (cfg.cmd === "teardown") {
+    const spaces = await listTaskSpaces();
+    const mine = spaces
+      .filter((space) => space.name === cfg.space)
+      .map((space) => space.id);
+    if (!mine.length) return { finished: false, reason: "no-space" };
+    try {
+      const task = await taskSpace(cfg.space);
+      await task.finish({ keep: [] });
+      return { finished: true, ids: mine };
+    } catch (error) {
+      return { finished: false, reason: String(error && error.message ? error.message : error) };
+    }
+  }
   const task = await taskSpace(cfg.space);
   const page = task.page("p1");
   const args = cfg.args || {};
