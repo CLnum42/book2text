@@ -1102,6 +1102,8 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    # 同文件先例（L1/L2）：存在性断言合查 app.js + 模块
+    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
 
     for element_id in (
         "view-preview",
@@ -1131,7 +1133,10 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
     assert 'const VIEWS = ["library", "pages", "index", "review", "reading", "preview", "merge"];' in script
     # 连续正文流视图（阅读审校）存在
     assert 'id="view-reading"' in page
-    assert "function openReading(" in script
+    # L3：openReading 搬进模块（app.js 定义数 0）。模块里恰好 1 处；合查仍存在。
+    # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
+    assert module_script.count("function openReading(") == 1
+    assert (script + module_script).count("function openReading(") >= 1
 
     # 与导出共用同一份组装：只调 /export/preview，不另写合并逻辑
     assert "function openPreview(" in script
@@ -1605,7 +1610,10 @@ def test_reading_view_is_wired_for_merge() -> None:
     ):
         assert f'id="{element_id}"' in page, element_id
 
-    assert "function openReading(" in script
+    # L3：openReading 搬进模块（app.js 定义数 0）。模块里恰好 1 处；合查仍存在。
+    # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
+    assert module_script.count("function openReading(") == 1
+    assert (script + module_script).count("function openReading(") >= 1
     assert "function buildReadingSegment(" in script
     assert "function gotoNextUnreviewed(" in script
     # L2 笔2：submitReadingDrafts 搬进模块（app.js 定义数 0，无转发）。

@@ -175,7 +175,8 @@ function resetState() {
      ] };
      readingData = { segments: [] }; readingProject = "p1";
      readingEntries = []; readingMarks = new Map(); readingDrafts = new Map(); readingInlineEdits = new Map();
-     readingPageBlocks = new Map(); readingGlobalCounts = null;
+     readingPageBlocks = new Map(); readingTiles = new Map(); readingPageCounts = new Map();
+     readingGlobalCounts = null;
      readingPageNo = 1; readingCursorEntry = null; readingPanelKey = null;
      readingFilter = "all"; readingNextLog.length = 0; readingTreeData = null;
      localStorage.clear();`,
@@ -198,6 +199,91 @@ function readState(code) {
 }
 
 installStubs();
+
+/**
+ * 给模块注入最小 deps（模拟 app.js 的 init 注入），让 `ReadingView.reload()` 能真正跑完一次加载。
+ *
+ * 为什么用它而不是 `await ctx.openReading()`：L3 把 openReading 搬进模块后，app.js 里已经没有它；
+ * `ReadingView.enter()` 是 fire-and-forget（内部 `openReading()` 不带 await），等不到完成；
+ * `reload()` 是公开的 async 入口，内部 `response → await openReading()`，是唯一能等到"加载完成"的口。
+ * 状态仍在 app.js（R5 的 owner），所以 getter/setter 都映射回 vm 里的变量。
+ */
+function installReadingDeps() {
+  const get = (expr) => runInApp(ctx, expr);
+  const set = (expr, value) => runInApp(ctx, `${expr} = ${JSON.stringify(value)};`);
+  // 需要真实读写的状态（其余 get*/set* 一律给空实现：本用例只跑"加载一次"，不碰那些链路）
+  const SPECIAL = {
+    el: (id) => ctx.document.getElementById(id),
+    apiJson: (url, options) => ctx.apiJson(url, options),
+    readingOptions: () => ({ page_types: ["body"], confirmed_only: false, page_numbers: null }),
+    getProject: () => get("currentProject"),
+    getProjectId: () => {
+      const project = get("currentProject");
+      return project ? project.project_id : null;
+    },
+    getPageNo: () => get("readingPageNo"),
+    getMarks: () => get("readingMarks"),
+    getDrafts: () => get("readingDrafts"),
+    getInlineEdits: () => get("readingInlineEdits"),
+    getReadingEntries: () => get("readingEntries"),
+    getReadingPageCounts: () => get("readingPageCounts instanceof Map ? readingPageCounts : new Map()"),
+    getReadingPageBlocks: () => get("readingPageBlocks instanceof Map ? readingPageBlocks : new Map()"),
+    getReadingTiles: () => get("readingTiles instanceof Map ? readingTiles : new Map()"),
+    // 这两个的返回值会被取 .length，空实现（undefined）会炸；映射回 vm 里的真实函数
+    readingVisibleSegments: () => get("readingVisibleSegments()"),
+    readingFlowPages: () => get("readingFlowPages()"),
+    readingLineNode: () => null,
+    getReadingData: () => get("readingData"),
+    getReadingProject: () => get("readingProject"),
+    getReadingAutoJumpDone: () => get("readingAutoJumpDone"),
+    getReadingOpenStartedAt: () => get("readingOpenStartedAt"),
+    setReadingOpenStartedAt: (value) => set("readingOpenStartedAt", value),
+    setReadingAutoJumpDone: (value) => set("readingAutoJumpDone", value),
+    setReadingData: (value) => set("readingData", value),
+    setReadingProject: (value) => set("readingProject", value),
+    setMarks: (value) => set("readingMarks", value),
+    setReadingEntries: (value) => set("readingEntries", value),
+    setReadingMarksWindow: (value) => set("readingMarksWindow", value),
+    setReadingGlobalCounts: (value) => set("readingGlobalCounts", value),
+    setReadingPageCounts: (value) => set("readingPageCounts", value),
+    setReadingFirstUnackedPage: (value) => set("readingFirstUnackedPage", value),
+  };
+  // 模块 spread 了 deps，所以必须把**用到的每个名字**都显式给出（Proxy 过不了 spread）
+  const names = [...new Set([...READING_VIEW_SRC.matchAll(/injected\.([A-Za-z_]+)/g)].map((m) => m[1]))];
+  const deps = {};
+  for (const name of names) {
+    if (SPECIAL[name]) {
+      deps[name] = SPECIAL[name];
+      continue;
+    }
+    // 未覆盖的名字：get*/is* 尝试按"去掉前缀、首字母小写"读 vm 里的同名状态（读不到就给 undefined）；
+    // set* 同理写回；其余回调给空实现。这样 L4/L5 再搬东西时不用逐个补 deps。
+    if (/^(get|is)/.test(name)) {
+      const stateName = name.replace(/^(get|is)/, "").replace(/^./, (ch) => ch.toLowerCase());
+      deps[name] = () => {
+        try {
+          return get(stateName);
+        } catch {
+          return undefined;
+        }
+      };
+      continue;
+    }
+    if (/^set/.test(name)) {
+      const stateName = name.replace(/^set/, "").replace(/^./, (ch) => ch.toLowerCase());
+      deps[name] = (value) => {
+        try {
+          set(stateName, value);
+        } catch {
+          /* 未映射的 setter：忽略 */
+        }
+      };
+      continue;
+    }
+    deps[name] = () => undefined;
+  }
+  ctx.ReadingView.init(deps);
+}
 
 // 计数修复（任务 93）移植到 main 后（d48b16d），这条自动开跑；没移植时 skip 并写明原因。
 const progressNumbersSkip =
@@ -249,7 +335,10 @@ test("进入审校：正文段数按服务端返回的正文流渲染（4821 段
   };
   ctx.refreshPunctGroups = () => {};
   return (async () => {
-    await ctx.openReading();
+    // L3：openReading 搬进模块 → 走公开 async 入口 reload()，它内部 await 同一次加载。
+    // 断言不变：读到的仍是 app.js 侧的 readingData（状态 owner 没变），段数必须等于服务端返回。
+    installReadingDeps();
+    await ctx.ReadingView.reload();
     assert.equal(readState("readingData.segments.length"), 4821, "正文段数没按服务端返回的正文流来");
     assert.equal(readState("readingProject"), "p1");
   })();
