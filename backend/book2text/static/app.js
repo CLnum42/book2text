@@ -20210,14 +20210,16 @@ function updateReadingPageFromLeftScroll() {
   // 此时左栏锚点还停在上一页，写进去就把刚定位好的页码改掉（QA run F：
   // gotoEntry 写 118 → leftScroll 写 117，两个回调隔着几十毫秒，后者赢）。
   if (readingJumpSettleKey) return;
-  // 面板开着时，页码以"当前差异项所在页"（mark.page_no）为准，
-  // 不让左栏滚动把它改成相邻页（QA 看到的 126 vs 127 就是这里）。
-  // **重绘窗口里 `readingPanelKey` 会被清空**，只认它就会漏挡（QA run F 的现场）：
-  // 那一刻用 `readingPendingPanelKey` 兜住，还没恢复面板时也不许写。
+  // **面板开着就一律不写**。页码以面板项所在页为准（D-105），左栏只是"看"，不负责
+  // 决定当前页。QA 十轮 196/200 后抓到两处漏挡，都出在"用差值阈值判"上：
+  //   1. |Δ|==2 直接放过（C 轮 面板 59 / 左栏算出 61 → 顶部与左栏都成 61）；
+  //   2. |Δ|==1 本该挡，但 `readingMarks.get(panelKey)` 在补窗口前是 undefined，
+  //      整段保护被跳过（H 149/148、I 194/193 就是这么漏的）。
+  // 阈值和"mark 是否已加载"都不该是判据——**面板开着这件事本身就是判据**。
+  // 重绘窗口里 `readingPanelKey` 会被清空：那一刻用 `readingPendingPanelKey` 兜住。
+  // 用户滚左栏时若想改页码，收起面板即可（改版后下区常驻，这条语义会在任务 91 里重定）。
   const panelKey = readingPanelKey || readingPendingPanelKey;
-  if (!readingPanelKey && readingPendingPanelKey) return;
-  const panelMark = panelKey ? readingMarks.get(panelKey) : null;
-  if (panelMark && panelMark.page_no && Math.abs(panelMark.page_no - best.pageNo) <= 1) return;
+  if (panelKey) return;
   readingPageNo = best.pageNo;
   el("reading-page-no").textContent = `第 ${best.pageNo} 页`;
   markReadingCurrentTile(best.pageNo);
