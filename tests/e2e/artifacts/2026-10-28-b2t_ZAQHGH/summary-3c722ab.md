@@ -49,3 +49,15 @@ branch next-lines(idx18) → pending-open(idx19/20)，entryPage 455
 `readingProject` 仍是 `b2t_ZAQHGH`、`readingAutoJumpDone=true`、`readingDataSegments=4821`、
 `panelInHost=false`，而 `label=第100页`、`marksWindow 90–110`、`streamSegs 24`——
 像是**同一项目内的阅读态被重建**，不是切项目。下次复现时 `reset_diag` 会直接把四个值打出来。
+
+## 追加：120 连按压力探针（干净单环境，`stress-3c722ab-120presses.json`）
+
+- 从第 1 页连按 120 次，到第 227 页，**没有复现 455 那种彻底卡死**。
+- 但 **17/120 次点击没有推进**（同一页、同一 panelKey 连着两次）。
+- 每次点击都到了元素：`clickHits == i`，无 click 异常 → 事件层没问题。
+- 主线程活着但很卡：每 450ms 只回 **1–7 帧**（正常约 27 帧）。
+- `__b2tNextLog` **只保留 20 条**（`nextLogLen` 恒为 20）——之前“日志不新增”的说法要更正：长度不变是上限导致，真正要看 `[0].at`。
+- **关键：`marksWindow` 会跳回早期页**。当前页 200+ 时，窗口在 `1-11`（37 次）、`2-22`（38 次）、`13-33`（24 次）之间来回，只有零星几次落在当前页附近（`204-224` 等）。
+- `targetInEntries / targetInMarks` 只有 32/120 为 true；其余时候面板里的 key 既不在 `readingEntries` 也不在 `readingMarks`，行节点渲染不出来，没法高亮、游标也容易原地打转。
+
+推断（待证）：某个早期页的 `ensureReadingMarksWindow` 请求 **晚到**，把新窗口覆盖回旧页（没有"最新请求赢"的保护），于是阅读器在 200 页却只持有第 1–33 页的 marks。455 那次彻底卡死很可能是同一条的极端情形。
