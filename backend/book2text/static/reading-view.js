@@ -2516,11 +2516,7 @@ function logReadingNext(entry, extra = {}) {
     getCurrent,
     toggleFollow,
     reload,
-    // 偏好与布局（app.js 仍通过薄转发调用，Slice 2 再彻底收进去）
-    splitPrefs: readingSplitPrefs,
-    applySplit: applyReadingSplit,
-    saveSplit: saveReadingSplit,
-    resetSplit: resetReadingSplit,
-    setupSplit: setupReadingSplit,
+    // 偏好与布局已回收为模块内部函数（Slice 2 收尾）：app.js 侧 0 个消费者，
+    // 5 个临时转发导出已删除——公开接口收敛到 6 个稳定项，只降不升。
   };
 })();
