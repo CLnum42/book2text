@@ -524,158 +524,161 @@ Slice 1 实测（2026-10-28）：
 
 ---
 
-### 11.1 L2–L12（行号 = 函数起止，括号内 = 行数）
+### 11.1 L2–L12（只给函数名；行数已删）
 
-> **行号基准 `c45b8a5`（app.js 21,065 行）。施工树已经漂过三次，行号整体偏移 100+ 行——施工前必须按「函数名」重新定位，行号只作参考。删除和搬运一律以函数名为唯一定位依据。**
+> **逐函数行数全部删掉了**（2026-10-29，DevLead 提议、Architect 采纳）。理由：文档里的行数会变成第二个出处，第二个出处必然过期——今晚已经因此错三次（668、230→212、302→270）。
+> **施工与对账一律按函数名**；层头的「估算 X 行」只用于排期和 19k 可达性估算，**不是施工依据**。
+> 已执行层请在提交里报 §13.2c 的三个数（搬走 / 净减 / 骨架），**实测以提交报告为准**。
+
 
 > L1 见 §11（**212 = 搬 160 + 删 52**；`setReviewOverlaysForReading` 18 行留 app.js，不计入）。`app.js ≈` 只扣函数体行，未扣 53 行头注释与状态声明。
 
-**L1（212 = 搬 160 + 删 52）→ 累计 212，app.js ≈ 20,853，注入 24（临时 21 + 永久 3）**
+**L1（212 = 搬 160 + 删 52）→ 累计估算 212，app.js ≈ 20,853，注入 24（临时 21 + 永久 3）**
 
 - 函数清单见 §11 表；`setReviewOverlaysForReading`(18099–18116, 18 行) 留 app.js，不计入。
 
-**L2（342 行 / 11 函数）→ 累计 554，app.js ≈ 20,511，临时注入 30**
+**L2（估算 342 行 / 11 函数）→ 累计估算 554，app.js ≈ 20,511，临时注入 30**
 
-- `markReadingUserMoved 18128–18139(12)`
-- `startInlineEdit 18807–18835(29)`
-- `setReadingFilter 19068–19073(6)`
-- `setReadingHoverByBlock 20105–20133(29)`
-- `onReadingPdfScroll 20288–20312(25)`
-- `setReadingFollow 20404–20417(14)`
-- `renderReadingPreflight 20427–20466(40)`
-- `onReadingScroll 20511–20601(91)`
-- `stepReadingPage 20602–20611(10)`
-- `submitReadingDrafts 20747–20806(60)`
-- `undoReadingSubmit 20807–20832(26)`
+- `markReadingUserMoved 18128–18139`
+- `startInlineEdit 18807–18835`
+- `setReadingFilter 19068–19073`
+- `setReadingHoverByBlock 20105–20133`
+- `onReadingPdfScroll 20288–20312`
+- `setReadingFollow 20404–20417`
+- `renderReadingPreflight 20427–20466`
+- `onReadingScroll 20511–20601`
+- `stepReadingPage 20602–20611`
+- `submitReadingDrafts 20747–20806`
+- `undoReadingSubmit 20807–20832`
 
-**L3（213 行 / 7 函数）→ 累计 767，app.js ≈ 20,298，临时注入 35**
+**L3（估算 213 行 / 7 函数）→ 累计估算 767，app.js ≈ 20,298，临时注入 35**
 
-- `readingMovedSinceOpen 18140–18150(11)`
-- `openReading 18159–18279(121)`
-- `readingLineBox 18783–18796(14)`
-- `markEditingLineBox 18797–18806(10)`
-- `exitInlineEdit 18875–18898(24)`
-- `onInlineKeydown 18899–18914(16)`
-- `drawEditingLineBox 20480–20496(17)`
+- `readingMovedSinceOpen 18140–18150`
+- `openReading 18159–18279`
+- `readingLineBox 18783–18796`
+- `markEditingLineBox 18797–18806`
+- `exitInlineEdit 18875–18898`
+- `onInlineKeydown 18899–18914`
+- `drawEditingLineBox 20480–20496`
 
-**L4（139 行 / 7 函数）→ 累计 906，app.js ≈ 20,159，临时注入 33**
+**L4（估算 139 行 / 7 函数）→ 累计估算 906，app.js ≈ 20,159，临时注入 33**
 
-- `loadReadingInlineEdits 18006–18025(20)`
-- `restoreInlineEditsPrompt 18026–18039(14)`
-- `loadReadingDrafts 18057–18071(15)`
-- `onInlineInput 18836–18843(8)`
-- `measureReadingTops 20276–20287(12)`
-- `gotoNextUnreviewed 20629–20694(66)`
-- `applyReadingSplit 20837–20840(4)`
+- `loadReadingInlineEdits 18006–18025`
+- `restoreInlineEditsPrompt 18026–18039`
+- `loadReadingDrafts 18057–18071`
+- `onInlineInput 18836–18843`
+- `measureReadingTops 20276–20287`
+- `gotoNextUnreviewed 20629–20694`
+- `applyReadingSplit 20837–20840`
 
-**L5（1,041 行 / 32 函数）→ 累计 1,947，app.js ≈ 19,118，临时注入 36**
+**L5（估算 1,041 行 / 32 函数）→ 累计估算 1,947，app.js ≈ 19,118，临时注入 36**
 
-- `readingOptions 18086–18098(13)`
-- `applyReadingMarksPayload 18280–18291(12)`
-- `rebuildReadingEntries 18292–18316(25)`
-- `readingWindowHas 18327–18342(16)`
-- `ensureReadingMarksWindow 18343–18370(28)`
-- `loadReadingMarksWindow 18371–18391(21)`
-- `refreshReadingMarksPaint 18392–18443(52)`
-- `ensureReadingLineRendered 18444–18470(27)`
-- `renderReading 18509–18576(68)`
-- `buildReadingSentinel 18577–18599(23)`
-- `saveInlineEdit 18844–18861(18)`
-- `centerReadingLinePair 19095–19122(28)`
-- `openReadingPanel 19128–19201(74)`
-- `renderReadingTree 19382–19493(112)`
-- `scrollReadingToPage 19494–19520(27)`
-- `markReadingTreeCurrent 19521–19548(28)`
-- `jumpReadingTo 19549–19582(34)`
-- `ensureReadingPages 19583–19590(8)`
-- `buildReadingPages 19591–19637(47)`
-- `observeReadingTiles 19645–19698(54)`
-- `refreshReadingImageProfiles 19699–19719(21)`
-- `observeReadingColumnResize 19738–19750(13)`
-- `ensureReadingTile 19751–19755(5)`
-- `retryReadingPendingPanel 19900–19919(20)`
-- `ensureReadingBlocks 19920–19941(22)`
-- `setReadingHover 20134–20166(33)`
-- `markReadingCurrentTile 20167–20176(10)`
-- `updateReadingPageFromLeftScroll 20198–20240(43)`
-- `scrollStreamToPage 20254–20275(22)`
-- `verifyReadingPageSync 20313–20374(62)`
-- `updateReadingPage 20375–20403(29)`
-- `gotoReadingEntry 20701–20746(46)`
+- `readingOptions 18086–18098`
+- `applyReadingMarksPayload 18280–18291`
+- `rebuildReadingEntries 18292–18316`
+- `readingWindowHas 18327–18342`
+- `ensureReadingMarksWindow 18343–18370`
+- `loadReadingMarksWindow 18371–18391`
+- `refreshReadingMarksPaint 18392–18443`
+- `ensureReadingLineRendered 18444–18470`
+- `renderReading 18509–18576`
+- `buildReadingSentinel 18577–18599`
+- `saveInlineEdit 18844–18861`
+- `centerReadingLinePair 19095–19122`
+- `openReadingPanel 19128–19201`
+- `renderReadingTree 19382–19493`
+- `scrollReadingToPage 19494–19520`
+- `markReadingTreeCurrent 19521–19548`
+- `jumpReadingTo 19549–19582`
+- `ensureReadingPages 19583–19590`
+- `buildReadingPages 19591–19637`
+- `observeReadingTiles 19645–19698`
+- `refreshReadingImageProfiles 19699–19719`
+- `observeReadingColumnResize 19738–19750`
+- `ensureReadingTile 19751–19755`
+- `retryReadingPendingPanel 19900–19919`
+- `ensureReadingBlocks 19920–19941`
+- `setReadingHover 20134–20166`
+- `markReadingCurrentTile 20167–20176`
+- `updateReadingPageFromLeftScroll 20198–20240`
+- `scrollStreamToPage 20254–20275`
+- `verifyReadingPageSync 20313–20374`
+- `updateReadingPage 20375–20403`
+- `gotoReadingEntry 20701–20746`
 
-**L6（428 行 / 24 函数）→ 累计 2,375，app.js ≈ 18,690，临时注入 20**
+**L6（估算 428 行 / 24 函数）→ 累计估算 2,375，app.js ≈ 18,690，临时注入 20**
 
-- `saveReadingInlineEdits 18040–18056(17)`
-- `readingFlowPages 18471–18478(8)`
-- `readingEntryDone 18494–18498(5)`
-- `removeReadingSentinel 18600–18612(13)`
-- `buildReadingSegment 18663–18706(44)`
-- `scrollScrollerToCenter 19074–19090(17)`
-- `suppressReadingFollow 19091–19094(4)`
-- `hideReadingPanelHost 19202–19210(9)`
-- `startReadingEdit 19259–19279(21)`
-- `buildReadingTreePreview 19338–19368(31)`
-- `readingEntriesForPage 19369–19381(13)`
-- `disconnectReadingObservers 19638–19644(7)`
-- `warmSwapReadingImage 19720–19737(18)`
-- `ensureReadingImage 19756–19771(16)`
-- `pumpReadingImages 19781–19841(61)`
-- `releaseReadingImage 19842–19861(20)`
-- `markReadingImageFailed 19862–19899(38)`
-- `clearReadingDecorations 19965–19972(8)`
-- `scrollPdfColumnToPage 20177–20197(21)`
-- `markReadingDriver 20241–20245(5)`
-- `readingDriverActive 20246–20253(8)`
-- `hideReadingPdfBox 20467–20479(13)`
-- `drawReadingPdfBox 20497–20510(14)`
-- `logReadingNext 20612–20628(17)`
+- `saveReadingInlineEdits 18040–18056`
+- `readingFlowPages 18471–18478`
+- `readingEntryDone 18494–18498`
+- `removeReadingSentinel 18600–18612`
+- `buildReadingSegment 18663–18706`
+- `scrollScrollerToCenter 19074–19090`
+- `suppressReadingFollow 19091–19094`
+- `hideReadingPanelHost 19202–19210`
+- `startReadingEdit 19259–19279`
+- `buildReadingTreePreview 19338–19368`
+- `readingEntriesForPage 19369–19381`
+- `disconnectReadingObservers 19638–19644`
+- `warmSwapReadingImage 19720–19737`
+- `ensureReadingImage 19756–19771`
+- `pumpReadingImages 19781–19841`
+- `releaseReadingImage 19842–19861`
+- `markReadingImageFailed 19862–19899`
+- `clearReadingDecorations 19965–19972`
+- `scrollPdfColumnToPage 20177–20197`
+- `markReadingDriver 20241–20245`
+- `readingDriverActive 20246–20253`
+- `hideReadingPdfBox 20467–20479`
+- `drawReadingPdfBox 20497–20510`
+- `logReadingNext 20612–20628`
 
-**L7（95 行 / 8 函数）→ 累计 2,470，app.js ≈ 18,595，临时注入 15**
+**L7（估算 95 行 / 8 函数）→ 累计估算 2,470，app.js ≈ 18,595，临时注入 15**
 
-- `readingInlineStorageKey 18002–18005(4)`
-- `readingMarkOrder 18317–18320(4)`
-- `checkReadingSegmentText 18640–18662(23)`
-- `span_at 18915–18918(4)`
-- `draftReading 19280–19296(17)`
-- `readingEntryLineText 19322–19337(16)`
-- `showReadingPlaceholder 19772–19780(9)`
-- `paintReadingTile 19942–19959(18)`
+- `readingInlineStorageKey 18002–18005`
+- `readingMarkOrder 18317–18320`
+- `checkReadingSegmentText 18640–18662`
+- `span_at 18915–18918`
+- `draftReading 19280–19296`
+- `readingEntryLineText 19322–19337`
+- `showReadingPlaceholder 19772–19780`
+- `paintReadingTile 19942–19959`
 
-**L8（112 行 / 7 函数）→ 累计 2,582，app.js ≈ 18,483，临时注入 10**
+**L8（估算 112 行 / 7 函数）→ 累计估算 2,582，app.js ≈ 18,483，临时注入 10**
 
-- `saveReadingDrafts 18072–18085(14)`
-- `textCheckEnabled 18631–18639(9)`
-- `renderReadingProgress 19042–19067(26)`
-- `closeReadingPanel 19211–19232(22)`
-- `rerenderReadingLine 19297–19313(17)`
-- `readingPageRecord 19960–19964(5)`
-- `applyReadingLinked 19982–20000(19)`
+- `saveReadingDrafts 18072–18085`
+- `textCheckEnabled 18631–18639`
+- `renderReadingProgress 19042–19067`
+- `closeReadingPanel 19211–19232`
+- `rerenderReadingLine 19297–19313`
+- `readingPageRecord 19960–19964`
+- `applyReadingLinked 19982–20000`
 
-**L9（163 行 / 5 函数）→ 累计 2,745，app.js ≈ 18,320，临时注入 8**
+**L9（估算 163 行 / 5 函数）→ 累计估算 2,745，app.js ≈ 18,320，临时注入 8**
 
-- `readingDraftStorageKey 17997–18001(5)`
-- `buildReadingLine 18919–19030(112)`
-- `readingProgressNumbers 19031–19041(11)`
-- `refreshReadingCurrentHighlight 19233–19258(26)`
-- `readingHoveredBlockIds 19973–19981(9)`
+- `readingDraftStorageKey 17997–18001`
+- `buildReadingLine 18919–19030`
+- `readingProgressNumbers 19031–19041`
+- `refreshReadingCurrentHighlight 19233–19258`
+- `readingHoveredBlockIds 19973–19981`
 
-**L10（166 行 / 6 函数）→ 累计 2,911，app.js ≈ 18,154，临时注入 3**
+**L10（估算 166 行 / 6 函数）→ 累计估算 2,911，app.js ≈ 18,154，临时注入 3**
 
-- `readingVisibleSegments 18479–18493(15)`
-- `expandToWordRange 18613–18630(18)`
-- `readingLineText 18707–18717(11)`
-- `paintInlineRevision 18718–18782(65)`
-- `readingLineNode 19123–19127(5)`
-- `paintReadingDiffBoxes 20053–20104(52)`
+- `readingVisibleSegments 18479–18493`
+- `expandToWordRange 18613–18630`
+- `readingLineText 18707–18717`
+- `paintInlineRevision 18718–18782`
+- `readingLineNode 19123–19127`
+- `paintReadingDiffBoxes 20053–20104`
 
-**L11（62 行 / 2 函数）→ 累计 2,973，app.js ≈ 18,092，临时注入 1**
+**L11（估算 62 行 / 2 函数）→ 累计估算 2,973，app.js ≈ 18,092，临时注入 1**
 
-- `readingEntryVisible 18499–18508(10)`
-- `readingDiffUnits 20001–20052(52)`
+- `readingEntryVisible 18499–18508`
+- `readingDiffUnits 20001–20052`
 
-**L12（4 行 / 1 函数）→ 累计 2,977，app.js ≈ 18,088，临时注入 0**
+**L12（估算 4 行 / 1 函数）→ 累计估算 2,977，app.js ≈ 18,088，临时注入 0**
 
-- `readingKey 17993–17996(4)`
+- `readingKey 17993–17996`
 
 ---
 
@@ -813,7 +816,8 @@ getCurrent pageNo number|null
 
 | 层 | L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 预期注入 | 24 | 30 | 35 | 33 | **36** | 20 | 15 | 10 | 8 | 3 | 1 | 0 |
+| 预期注入（估算） | 24 | 30 | 35 | 33 | **36** | 20 | 15 | 10 | 8 | 3 | 1 | 0 |
+| **实测** | **24** | **26** | — | — | — | — | — | — | — | — | — | — |
 
 ### 13.2 它不单调递减——"变大就是切错"作废
 
