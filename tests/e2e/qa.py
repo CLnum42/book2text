@@ -196,7 +196,8 @@ def _assert_snapshot(report: Report, step: str, label: str, snap: dict[str, Any]
     return ok
 
 
-def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any]) -> None:
+def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any],
+                    queue_pending: int | None = None) -> None:
     if result.get("skipped"):
         if "跨页" in label:
             report.ok(step, f"{label}：不适用", f"{result.get('reason')}（本书 0 个跨页段）")
@@ -216,7 +217,7 @@ def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any
             highlight = snap.get("highlight") or {}
             stayed = (not snap2) or snap2.get("panelVisible")
             if not (panel is not None and panel == top == tile and snap.get("panelVisible")
-                    and highlight.get("any") and stayed):
+                    and highlight.get("any") and stayed and item.get("progressed")):
                 failures.append({
                     "index": item.get("index"),
                     "page": snap.get("label"),
@@ -225,6 +226,7 @@ def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any
                     "panelVisible": snap.get("panelVisible"),
                     "highlight": (snap.get("highlight") or {}).get("any"),
                     "panelVisibleAfter500ms": snap2.get("panelVisible"),
+                    "progressed": item.get("progressed"),
                     "branch": (item.get("logEntry") or {}).get("branch"),
                     "reason": (item.get("logEntry") or {}).get("reason"),
                     "blocks": (item.get("logEntry") or {}).get("blocks"),
@@ -232,6 +234,41 @@ def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any
         total = len([item for item in iterations if not item.get("stopped")])
         branches, opened_false = _branch_stats(result.get("nextLog") or [])
         branch_text = "、".join(f"{name} {count}" for name, count in sorted(branches.items())) or "无"
+
+        # 判据 4：队列非空时 branch=none 必须为 0
+        none_count = branches.get("none", 0)
+        if queue_pending is None:
+            report.blocked(step, "队列非空时 branch=none = 0：没有拿到队列长度")
+        elif queue_pending > 0 and none_count == 0:
+            report.ok(step, "队列非空时 branch=none = 0", f"pending={queue_pending}；branch：{branch_text}")
+        elif queue_pending > 0:
+            report.fail(step, "队列非空时 branch=none = 0",
+                        f"pending={queue_pending}，但 none 出现 {none_count} 次；branch：{branch_text}")
+        else:
+            report.ok(step, "队列为空，branch=none 合理", f"pending=0；branch：{branch_text}")
+
+        # 判据 3：顶部页码从不为 1（除非条目本身在第 1 页）
+        page1 = [
+            item for item in iterations
+            if (item.get("snapshot") or {}).get("label") == 1
+            and ((item.get("logEntry") or {}).get("entryPage") or (item.get("snapshot") or {}).get("panelPage")) != 1
+        ]
+        if page1:
+            sample = page1[0]
+            report.fail(step, "顶部页码从不为 1（除非条目本身在第 1 页）",
+                        f"{len(page1)} 次跳回第 1 页；例：第 {sample.get('index')} 次 "
+                        f"entryPage={(sample.get('logEntry') or {}).get('entryPage')}")
+        else:
+            report.ok(step, "顶部页码从不为 1（除非条目本身在第 1 页）", "20 次都没有跳回第 1 页")
+
+        # 判据 1：500ms 后仍可见
+        stayed = [
+            item for item in iterations
+            if not item.get("stopped") and (item.get("snapshot2") or {}).get("panelVisible")
+        ]
+        report.ok(step, "面板 500ms 后仍可见（逐次数）",
+                  f"{len(stayed)}/{total} 次在 500ms 后仍可见；branch：{branch_text}")
+
         if total == 20 and not failures:
             report.ok(step, "连按 20 次：三方一致 + 面板可见 + 行高亮 + 500ms 后仍在",
                       f"20/20 通过；branch 分布：{branch_text}；panelOpened=false {opened_false} 条；"
@@ -460,9 +497,13 @@ def cmd_pagesync(args: argparse.Namespace) -> int:
     except Exception as error:  # noqa: BLE001
         report.blocked("准备", str(error))
         return report.finish(report_path)
+    with _api(state) as api:
+        pending = api.finish_summary(state["project_id"])["review"]["pending_items"]
     for path, label in PAGESYNC_PATHS:
         try:
-            _pagesync_check(report, label, label, _browser.run(state, "page_sync", {"path": path}))
+            _pagesync_check(report, label, label,
+                            _browser.run(state, "page_sync", {"path": path}),
+                            queue_pending=pending if path == "next20" else None)
         except Exception as error:  # noqa: BLE001
             report.blocked(label, str(error))
     return report.finish(report_path)
@@ -698,7 +739,9 @@ def cmd_smoke(args: argparse.Namespace) -> int:
                 for path, sync_label in PAGESYNC_PATHS:
                     try:
                         _pagesync_check(report, "5 正文审校", sync_label,
-                                        _browser.run(state, "page_sync", {"path": path}))
+                                        _browser.run(state, "page_sync", {"path": path}),
+                                        queue_pending=(finish["review"]["pending_items"]
+                                                       if path == "next20" else None))
                     except Exception as error:  # noqa: BLE001
                         report.blocked(f"5 正文审校 · 左右页同步（{sync_label}）", str(error))
                 for scroll, label in (("top", "审校第 1 屏"), ("middle", "审校中间一屏")):

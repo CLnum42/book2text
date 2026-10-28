@@ -299,12 +299,18 @@ async function pageSyncSnapshot(page) {
 
   let last = await read();
   let lastKey = null;
-  for (let attempt = 0; attempt < 25; attempt += 1) {
-    const key = JSON.stringify([
-      last.label, last.panelPage, last.tilePage, last.scrollTop, last.viewport,
-    ]);
-    if (key === lastKey) return last;
-    lastKey = key;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    // 重渲染的瞬间 #reading-page-no 可能短暂不存在：这时候的"稳定"是假稳定，
+    // 不能拿 null 去判三方；等到页码重新出现再说。
+    if (last.label !== null) {
+      const key = JSON.stringify([
+        last.label, last.panelPage, last.tilePage, last.scrollTop, last.viewport,
+      ]);
+      if (key === lastKey) return last;
+      lastKey = key;
+    } else {
+      lastKey = null;
+    }
     await page.waitForTimeout(140);
     last = await read();
   }
@@ -536,13 +542,16 @@ async function pageSync(page, cfg, args) {
       await page.waitForTimeout(500);
       const snapshot2 = await pageSyncSnapshot(page);
       const logEntry = await page.evaluate(() => (window.__b2tNextLog || [])[0] || null);
+      const progressed = Boolean(
+        snapshot.labelText !== previous.label || (snapshot.panelText || "") !== (previous.panel || "")
+      );
       const finished = /全部处理完|全部处理完毕|没有未审|都审完/.test(snapshot.labelText + " " + (snapshot.panelText || ""));
       if (finished) {
         iterations.push({ index: i + 1, stopped: true, finished: true, snapshot, snapshot2 });
         break;
       }
       // 没变化也记一条并继续：可能是一次慢加载，也可能就是"点了没反应"，都要暴露出来
-      iterations.push({ index: i + 1, changed, snapshot, snapshot2, logEntry });
+      iterations.push({ index: i + 1, changed, progressed, snapshot, snapshot2, logEntry });
       previous = await page.evaluate(() => ({
         label: (document.getElementById("reading-page-no") || {}).textContent || "",
         panel: (document.querySelector(".reading-panel__head strong") || {}).textContent || "",
@@ -612,10 +621,10 @@ async function pageSync(page, cfg, args) {
   if (path === "closepanel") {
     await ensurePanelOpen(page);
     const opened = await pageSyncSnapshot(page);
-    await page.click("#reading-stream .reading-panel .icon-btn", { label: "关闭候选面板" });
+    await page.click(".reading-panel .icon-btn", { label: "关闭候选面板" });
     await waitFor(
       page,
-      () => !document.querySelector("#reading-stream .reading-panel"),
+      () => !document.querySelector(".reading-panel"),
       "面板已关闭",
       15000
     );
@@ -633,7 +642,7 @@ async function pageSync(page, cfg, args) {
     await page.selectOption("#reading-filter", "all");
     await page.waitForTimeout(800);
     const after = await pageSyncSnapshot(page);
-    const panelBack = await page.evaluate(() => Boolean(document.querySelector("#reading-stream .reading-panel")));
+    const panelBack = await page.evaluate(() => Boolean(document.querySelector(".reading-panel")));
     return {
       path,
       before,
@@ -1061,7 +1070,16 @@ async function prepare(page, cfg) {
     "步骤条数字（finish-summary）就绪",
     180000
   );
+  const sanity = await page.evaluate(() => ({
+    openProject: typeof openProject,
+    showView: typeof showView,
+    libraryCards: document.querySelectorAll("#project-list li.pcard").length,
+  }));
+  if (sanity.openProject !== "function" || sanity.showView !== "function" || sanity.libraryCards < 1) {
+    throw new Error(`页面没有正常加载（疑似 JS 语法/运行时错误）：${JSON.stringify(sanity)}`);
+  }
   const snapshot = await stepsSnapshot(page);
+  snapshot.sanity = sanity;
   snapshot.screenshot = await screenshot(page, cfg, "prepare");
   snapshot.localStorageKeys = await page.evaluate(() => Object.keys(localStorage));
   return snapshot;
@@ -1174,7 +1192,7 @@ async function nextProbe(page) {
     await page.click("#reading-next-unreviewed", { label: `下一处未审 ${i + 1}` });
     await page.waitForTimeout(1000);
     rows.push(await page.evaluate((index) => {
-      const panel = document.querySelector("#reading-stream .reading-panel");
+      const panel = document.querySelector(".reading-panel");
       const label = (document.getElementById("reading-page-no") || {}).textContent || "";
       const log = (window.__b2tNextLog || [])[0] || {};
       return {
