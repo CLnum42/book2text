@@ -64,12 +64,20 @@ L0 平台              core/dom.js（el）、core/api.js（apiJson + token）、
 | **R1** | **视图模块文件内不得出现 `app.js` 的任何顶层声明名**（`function` / `let` / `const` / `var` 在缩进 0 声明的名字）。缺依赖就加到 `init()` 的注入参数里 | 静态扫描，见 §6 |
 | **R2** | 视图模块之间不得互相引用：`static/x-view.js` 内不得出现 `window.YView`（Y≠X）；需要共享的能力下沉到 `core/` | 静态扫描 `window\.[A-Z]\w*` |
 | **R3** | 视图只许操作自己 `<section id="view-x">` 内的 id：`static/x-view.js` 里出现的 DOM id 必须能在该 section 的子树里找到 | 解析 `index.html` 的 section 范围 + 扫 `el("…")` 字面量 |
-| **R4** | 共享状态（`currentProject` / `token` / `exportOptions`）只以 **getter** 注入（`getProject: () => …`），模块不许把返回值缓存在模块级变量里；每次用都重新取 | 人眼 + 代码评审（`init` 后不许出现 `injected.project = ` 这类赋值） |
+| **R4**（= `R4-dup`） | **同名函数全仓库只许一份真实现**。跨文件：一份真实现 + 其余 ≤6 行转发。**同文件重名 = 函数声明提升后后者覆盖前者，前者永不可调用**（这也是债，但性质不同，报错必须分开写） | `boundary.test.mjs`；同文件判为"重名覆盖"，跨文件判为"两份真实现" |
 | **R5** | 每个状态只有一个 owner 模块；其他模块只能通过 owner 的公开方法改。**同层双写一律算错** | 本文件的 §3 表就是 owner 清单；跨文件写同一名字 = 违规 |
 | **R6** | 一个模块文件只向 `window` 挂**一个**接口对象，且必须在 `init()` 之后才可被调用 | 扫 `window.X =` 赋值次数 |
-| **R7** | 禁止 `<script type="module">`（D-046 无构建 + ES module 默认 deferred 会改 boot 时序） | 扫 `index.html` |
+| **R7** | 禁止 `<script type="module">`（D-046 无构建 + ES module 默认 deferred 会改 boot 时序）；且 `reading-view.js` 必须在 `app.js` **之前**加载 | 扫 `index.html`（`c425eb2` 已上闸） |
+| **R8** | **重构不许新增导出**（Chief，2026-10-28）。需要新增一个导出才能搬动一块代码 = 这一刀边界切错，改边界别加接口 | 导出棘轮：`Object.keys(window.ReadingView)` ≤11 且只降不升 |
 
 **依赖方向一句话**：`views → core → 平台`；外壳只能通过接口对象调视图；视图永远不许知道外壳和别的视图。
+
+**例外表纪律（R4-dup 的 AC 例外名额）**：例外表里每条都要带 `owner` 与到期切片；**死代码一旦删除，对应例外必须同批删掉，否则例外表本身失信**。当前状态：`rerenderReadingLine` 之外的两对同名函数已批删（单独提交，不计入任何层），删完 AC 例外应从 3 条缩到 1 条，到期点仍是"正文流① 搬完"。
+
+**R9（评审清单，不上闸）**：共享状态（`currentProject` / `token` / `exportOptions`）只以 getter 注入，不许缓存在模块级变量里。
+原编号是 R4，**与"真实现份数"撞号，已让位**。降级理由：判定"有没有把 getter 缓存下来"要数据流分析，正则做不到，硬写成测试只会自欺。这条靠评审，不靠闸。
+
+**两笔债要分开记**（Chief 2026-10-28）：**"真没法机检"**（R9）和**"没人写"**（R3/R5/R7 曾经）是两回事。前者认了，后者今天就能还。
 
 ### 2.1 审校块当前需要的外部符号（28 个，就是 `init()` 的注入清单）
 
@@ -244,8 +252,13 @@ L0 平台              core/dom.js（el）、core/api.js（apiJson + token）、
 - 改法：搬进 reading 模块，暴露 `reload()`。外部三个调用点改成 `ReadingView.reload()`。
 
 **第 4 组：审校状态被当作"信号"读**
-- `app.js:17791` —— `refreshPunctGroups()` 用 `if (readingData) renderReadingProgress()` 判断"正文流在不在"。
-- 改法：reading 发 `'content-changed'` 事件，punct 不读状态。
+- `app.js:17772` —— `refreshPunctGroups()` 里 `if (readingData) renderReadingProgress();`：标点数据到了就顺手让审校重画一次进度条。
+- **原改法作废**（"reading 发 `'content-changed'` 事件"）：事件机制已在 `e5c4c37` 整体删除，0 订阅者的缝不留。
+- **新改法：直接删掉这行，连同 `renderReadingProgress` 里那段读标点数据的死代码。** 证据：
+  - `renderReadingProgress`（`app.js:19070–19095`）里 `const punctLeft = Number(punctTotals.undecided_lines || 0);` 算出来**从未使用**，紧接着 `const punctNote = null;` 恒为 null，`if (punctNote)` 分支永不执行（任务 66 把标点计数挪到工具条按钮后留下的残骸）；
+  - 标点角标的文本由 `renderPunctGroupBadge()`（`app.js:17776`）自己写 `reading-punct-count`，与进度条无关；
+  - 进度条依赖的是 `readingProgressNumbers()`（marks 计数 + 草稿数），不含标点。
+- 删完之后 reading 不再读 `punctGroupsData`——**块内对标点数据的引用清零**（原 28 个共享输入再少一个）。前置于 L8（`renderReadingProgress` 在 L8）。
 
 **结论**：草案说"边界基本干净、只有 2 处越界"不成立。**真正的问题是 DOM 归属被三个模块瓜分 + 标点模块反向写审校状态**，这两条不修，Slice 2 搬正文流时会把它们一起搬歪。
 
