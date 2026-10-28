@@ -98,6 +98,8 @@ export async function run(cfg) {
       return await punctProbe(page, args);
     case "handlers_probe":
       return await handlersProbe(page, args);
+    case "click_sel":
+      return await clickSel(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -2536,6 +2538,40 @@ async function handlersProbe(page, args) {
     await page.dismissDialog().catch(() => {});
   }
   return { rows };
+}
+
+/** 点一个选择器并回报前后状态（排查"按钮点了没反应"用）。 */
+async function clickSel(page, args) {
+  const read = () =>
+    page.evaluate(() => {
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const scroller = document.getElementById("reading-pdf-scroll");
+      return {
+        label: label.replace(/\s+/g, ""),
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        scrollTop: scroller ? Math.round(scroller.scrollTop) : null,
+        disabled: (document.querySelector(args_holder.selector) || {}).disabled ?? null,
+      };
+    });
+  // 把 selector 传进页面作用域
+  await page.evaluate((sel) => { window.__clickSelArg = sel; }, args.selector);
+  const readWith = () =>
+    page.evaluate(() => {
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const scroller = document.getElementById("reading-pdf-scroll");
+      const node = document.querySelector(window.__clickSelArg);
+      return {
+        label: label.replace(/\s+/g, ""),
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        scrollTop: scroller ? Math.round(scroller.scrollTop) : null,
+        disabled: node ? node.disabled : null,
+      };
+    });
+  const before = await readWith();
+  await page.click(args.selector, { label: args.label || args.selector });
+  await page.waitForTimeout(args.wait || 900);
+  const after = await readWith();
+  return { before, after, changed: before.label !== after.label || before.pageNo !== after.pageNo };
 }
 
 async function nextProbe(page) {
