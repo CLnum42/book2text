@@ -845,3 +845,79 @@ Slice 1 实测（2026-10-28）：
 **不注入 2 个**：`el`（模块自带）、`currentView`（改本地 `active`）。
 
 > 前一版报的"24 临时"里有 3 个（`renderReadingPreflight`/`paintReadingTile`/`readingMarkOrder`）分别来自 3 个**将被删除的死函数**，死函数一删它们就不在账上了。这就是"先剔死代码再量耦合"（§2）的现实价值。
+
+---
+
+## 18. 破环验收判据（DevLead，2026-10-28）
+
+这是 Chief「决定二」的可执行层。**切完 = 13 条边（4 桥 + 9 回调）同时满足静态判据（闸 B）与运行时判据（闸 C），且特征测试契约（闸 A）未被破坏。** 缺一条只能报「切了，未验收」，不能报「通过」。
+
+### 18.1 一条边算完的定义（DoD）
+
+1. 静态：该边的调用点 = 0（闸 B）
+2. 行为：锁住该边的特征测试在 `ring-break-base` 上绿，切边提交后仍绿（闸 A）
+3. 运行时：模块的注入面不向外壳回流（闸 C）
+4. 队列：上限 32、丢弃计数可读、单点写入单点消费（口径在 §12.1，归 Architect）
+5. 提交：切边提交不含 L1–L4 搬运，不含 `tests/js/` 的删除行（闸 A）
+
+§12.3 说「先写特征测试，切完必须一样」——**测试放在哪次提交**必须写死，否则「一样」是自证。见 18.2。
+
+### 18.2 闸 A：特征测试契约（删除行 0 + 回放）
+
+基点 = tag `ring-break-base`（L4 结束那份，§12.3）。对象 = 被测 SHA 的树。
+
+| # | 断言 | 怎么红 |
+|---|---|---|
+| **A1** | `git diff --numstat ring-break-base..HEAD -- tests/js` 删除行合计 = **0**，删除文件 = **0** | 改一行旧断言 = 1 行删除 → 红；切边提交里出现 `tests/js/` 修改 → 红 |
+| **A2** | 序列内**新增**的每个测试文件，在 `ring-break-base` 的 worktree 上跑必须**绿** | 只为切后行为量身写的测试，在 tag 上红 → 红 |
+| **A3** | 改判据必须单开提交：不含产品代码、首行 `test-contract:`、DevLead 在 §18.6 登记；该提交后 `ring-break-base` 前移 | 夹在切边提交里 → 红 |
+
+**为什么要有 A2**：只查「不许改测试」挡不住「新写一条只对切后成立的测试」——结局和改断言一样。回放把「它锁的是旧行为」变成可机检的事。
+**权限**：只有 DevLead 能登记 A3 并移动 `ring-break-base`；Builder 不可。
+
+### 18.3 闸 B：静态边棘轮（13 条）
+
+对象 = 被测 SHA 的源码树，纯文本扫描，不加载、不跑 DOM。
+
+| 组 | 条数 | 判定式（全仓库计数） |
+|---|---|---|
+| 桥 | 4 | `showView(` 出现 = 0：模块文件内 + 这 4 个函数体内各自 `showView(` = 0 |
+| 回调边 | 9 | 每条：`caller` 函数体内 `callee` 出现 = 0 |
+
+**桥（4）**：`setupReading`、`openPageDetail`、`renderMergeView`、`submitMergeDecisions` —— 改走注入的 `navigate()`。
+**回调边（9）**：`renderReading→ensureReadingMarksWindow`、`renderReading→retryReadingPendingPanel`、`renderReadingTree→ensureReadingMarksWindow`、`renderReadingTree→scrollReadingToPage`、`openReadingPanel→updateReadingPage`、`setReadingHover→ensureReadingBlocks`、`verifyReadingPageSync→updateReadingPage`、`gotoReadingEntry→jumpReadingToPage`、`gotoReadingEntry→updateReadingPage`。
+
+**棘轮**：13 条合计预期 **0**，任何一条从 0 变 ≥1 = 红。**红/绿证据**：在 `ring-break-base` 上同一份检查必须红出 **13/13**（证明抓得到这些边），最终提交 0/13。模块里 `showView` 现在还挂在 R1 例外表上，破环后该行必须删、例外表回 0 行（上限 3 不动）。
+R 编号由 TestDev 在闸表里领，§2 的 R1–R8 不动。
+
+> 若某一条在破环范围内做不到 0（合法到期点在 L5），**不许悄悄放过**：走 §18.6 登记、条数从 13 改成 12 并写明到期切片。
+
+### 18.4 闸 C：运行时注入面探针（一次运行，四条断言）
+
+对象 = e2e 在真实 662 页书上跑的固定序列 **S1**，不是「随便点几下」。
+**S1 七步**：进审校 → 「下一处未审」×3 → 编辑一条并保存 → 开面板 → 关面板 → 打开批量采用面板（不执行）→ 导出预检。
+
+探针：包住 `init()` 注入的每个函数，记录「调用栈里当前是否在模块的 `render*` / `flush` / 模块自持 rAF 内」。
+
+| # | 断言 |
+|---|---|
+| **C1** | `render*` / `flush` 路径内调用 `navigate()` 次数 = **0** |
+| **C2** | `render*` 调用栈内，**非 getter** 注入面调用次数 = **0**（白名单 = 名字以 `get` 开头的只读 getter；`api`/`notify`/`navigate`/`onPunctGroups` 一个都不许在 render 里） |
+| **C3** | `flush` 重入 = **0**；同一队列快照被消费 = **1** 次 |
+| **C4** | 队列最大深度 ≤ **32**；丢弃计数 ≠ 0 时单列报（不算失败，算发现） |
+
+C2 是这条闸真正的价值：9 条边的共同形态就是「渲染里顺手取数/改页」，C2 直接量它。
+若真实数据上某条 `render*` 必须同步取数 → **不许改闸**：报 Architect 改设计，或走 §18.6 判据变更。
+
+### 18.5 联合验收（报「通过」的唯一格式）
+
+四条全绿才签收：
+
+1. 闸 A / B / C 在 **被测 HEAD 的 sha** 上全绿，附可复现命令与读数
+2. 基线三元组逐项相同（输入指纹 + 管线产物指纹 + 前端读数，归 QA 的 `BASELINE.md`）。**输入指纹不符 = 不受理**，不叫「数漂了」
+3. 已知 FAIL **必须原地 FAIL**：K1（手动滚走后面板/顶部/左栏三方分叉）、K2（尺寸变化后 `line=0 mark=0`）。它们变绿要单独报，不算破环收益，也不算「顺手修好」
+4. 报数格式：`HEAD <sha> / 工作区 <状态> / 读数 <对象> <值>`
+
+### 18.6 判据变更登记
+
+空表。只有 DevLead 能加行：sha / 改哪条判据 / 为什么 / 批准人。没有登记行的放宽一律按违规算。
