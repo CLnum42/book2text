@@ -473,9 +473,13 @@ function setupReading() {
       }
       return;
     }
-    // 焦点在面板里的按钮上时，Enter 交给原生 click：否则 document 的 keydown 和按钮的
-    // 原生激活会各判一次，连按 Enter 会一次跳过两条（记录仍然只有一条）。
-    // 但**空格 / E 必须由这里接管**：空格若落给焦点上的「保留原文」，会执行保留而不是采用。
+    // **按键路由（别改回"全交原生"或"全拦"）**：
+    // - Enter：焦点在面板按钮上时交给原生 click（按钮自己就是「保留原文」/「看整行」等，
+    //   native 激活只判一次）。若这里也处理，keydown 与原生 click 会各判一次，
+    //   一次跳两条（记录仍然只有一条）——这是 2026-10-29 修掉的"跳过"形态。
+    // - 空格 / E：**必须由 document 接管**。空格是唯一会改正文的键（采用候选），
+    //   落给焦点按钮就变成"保留原文"；E 同理要进编辑。所以先 preventDefault 再执行，
+    //   且 entry 取 `panel._readingEntry`（不按 key 反查，见 openReadingPanel 的注释）。
     if (event.key === "Escape") {
       closeReadingPanel();
       return;
@@ -1652,8 +1656,13 @@ function openReadingPanel(entry) {
   const panel = document.createElement("div");
   panel.className = "reading-panel";
   panel.dataset.key = readingPanelKey;
-  // 当前条目挂在面板 DOM 上：窗口换页时 readingEntries 可能暂时找不到 key，
-  // 但面板上的这一条永远是用户正在看的那条（空格=采用必须认它，不能 no-op）。
+  // **当前条目挂在面板 DOM 上，不靠 readingPanelKey 反查**（2026-10-29 实机 bug）。
+  //
+  // 为什么不能只存 key：marks 是按页窗口加载的，面板刚换页的那一瞬，
+  // `readingPanelKey` 可能还不在当前 `readingEntries` 里。键盘分支若此时按 key 反查，
+  // 会拿到 null → 空格落到焦点上的原生按钮（默认焦点是「保留原文」）→
+  // **用户以为在「采用候选」，实际执行了「保留」——改错字，且不报错**。
+  // 面板上的这一条永远是用户正在看的那条，所以 entry 跟着面板走。
   panel._readingEntry = entry;
   const head = document.createElement("div");
   head.className = "reading-panel__head";

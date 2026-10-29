@@ -130,6 +130,8 @@ export async function run(cfg) {
       return await libraryNoticeProbe(page, args);
     case "review_actions_probe":
       return await reviewActionsProbe(page, args);
+    case "review_space_probe":
+      return await reviewSpaceProbe(page, args);
     case "merge_probe":
       return await mergeProbe(page, cfg, args);
     case "step_timing":
@@ -3726,6 +3728,89 @@ async function mergeProbe(page, cfg, args) {
  * 每轮：点「下一处未审」→ 等面板 → 点「保留原文」→ 等它收掉。
  * 点击走 `page.click`（CDP 真实鼠标），不用 `element.click()` 合成事件。
  */
+/**
+ * 空格=采用候选 的回归探针（2026-10-29，实机 bug 的防回归）。
+ *
+ * 线上真实形态：面板刚换页时 `readingPanelKey` 可能不在当前 `readingEntries` 窗口里，
+ * 空格于是落给焦点上的「保留原文」按钮——**用户以为在采用候选，实际按了保留**。
+ * 这是静默错动作（不崩溃、不报错、单测抓不到），所以必须用真键盘 + 真焦点验。
+ *
+ * 判据（每条都要）：
+ *   ① 空格后草稿 ack = "adopted"（不是 kept）
+ *   ② 草稿 text ≠ old_text 且非空（候选真的进了草稿）
+ *   ③ 面板换到下一条（key 变了）
+ */
+async function reviewSpaceProbe(page, args) {
+  await ensureReading(page);
+  const rounds = Number(args.rounds || 3);
+  const panelActions = "#reading-panel-host .reading-panel__actions button:nth-child(2)";
+  const rows = [];
+  for (let i = 1; i <= rounds; i += 1) {
+    const hasPanel = await page.evaluate(() => Boolean(document.querySelector("#reading-panel-host .reading-panel")));
+    if (!hasPanel) {
+      await page.click("#reading-next-unreviewed", { label: `下一处 ${i}` });
+    }
+    const opened = await page
+      .waitForFunction(
+        () => Boolean(document.querySelector("#reading-panel-host .reading-panel")),
+        undefined,
+        { timeout: args.openTimeout || 5000 }
+      )
+      .then(() => true)
+      .catch(() => false);
+    if (!opened) {
+      rows.push({ i, opened: false });
+      continue;
+    }
+    const before = await page.evaluate(() => {
+      const panel = document.querySelector("#reading-panel-host .reading-panel");
+      const entry = panel && panel._readingEntry;
+      return {
+        key: panel ? panel.dataset.key : null,
+        candidate: entry ? entry.candidate || "" : "",
+        chip: (document.getElementById("reading-draft-chip") || {}).textContent || null,
+      };
+    });
+    // 真键盘：焦点在「保留原文」（默认焦点），空格必须由 document 接管成"采用候选"
+    await page.press(panelActions, " ");
+    await page.waitForTimeout(320);
+    const after = await page.evaluate((key) => {
+      const drafts = {};
+      for (const storageKey of Object.keys(localStorage)) {
+        if (!storageKey.startsWith("b2t.readingDrafts")) continue;
+        try {
+          for (const item of JSON.parse(localStorage.getItem(storageKey)).items || []) {
+            drafts[`${item.block_id}:${item.line_index}`] = item;
+          }
+        } catch (error) {
+          /* 草稿解析失败按没有处理，下一条断言会红 */
+        }
+      }
+      const panel = document.querySelector("#reading-panel-host .reading-panel");
+      return {
+        key,
+        nextKey: panel ? panel.dataset.key : null,
+        chip: (document.getElementById("reading-draft-chip") || {}).textContent || null,
+        draft: drafts[key] || null,
+      };
+    }, before.key);
+    const draft = after.draft;
+    rows.push({
+      i,
+      opened: true,
+      key: before.key,
+      nextKey: after.nextKey,
+      advanced: Boolean(after.nextKey && after.nextKey !== before.key),
+      chipBefore: before.chip,
+      chipAfter: after.chip,
+      ack: draft ? draft.ack : null,
+      textLen: draft && draft.text ? draft.text.length : 0,
+      changedText: Boolean(draft && draft.text && draft.text !== draft.old_text),
+    });
+  }
+  return { rounds, rows, adopted: rows.filter((row) => row.ack === "adopted").length };
+}
+
 async function reviewActionsProbe(page, args) {
   await ensureReading(page);
   const rounds = Number(args.rounds || 20);

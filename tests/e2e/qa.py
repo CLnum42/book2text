@@ -606,6 +606,43 @@ def cmd_library_notice(args: argparse.Namespace) -> int:
     return report.finish(report_path)
 
 
+def cmd_review_space(args: argparse.Namespace) -> int:
+    """空格=采用候选 的实机回归（2026-10-29 静默错动作的防回归）。
+
+    形态：面板默认焦点在「保留原文」，面板刚换页时 entry 可能不在当前窗口里；
+    空格若落给原生按钮，会执行「保留原文」——**改错字而不报错**。
+    这条探针只做一件事：真键盘按空格，断言草稿 ack=adopted 且 text≠old_text。
+    """
+    state = _require_state()
+    try:
+        _browser.run(state, "prepare")
+    except Exception as error:  # noqa: BLE001
+        print(f"准备失败：{error}")
+        return 2
+    try:
+        data = _browser.run(state, "review_space_probe", {"rounds": args.rounds}, timeout=600.0)
+    except Exception as error:  # noqa: BLE001
+        print(f"探针失败：{error}")
+        return 2
+    rows = data.get("rows") or []
+    bad = [
+        row for row in rows
+        if not (row.get("opened") and row.get("ack") == "adopted"
+                and row.get("changedText") and row.get("advanced"))
+    ]
+    print(f"项目：{state['project_id']}")
+    print(f"空格采用探针：{len(rows) - len(bad)}/{len(rows)} 条 ack=adopted 且正文草稿已改、面板已前进")
+    for row in rows:
+        print(f"  #{row.get('i')} key={row.get('key')} -> {row.get('nextKey')} "
+              f"ack={row.get('ack')} textLen={row.get('textLen')} "
+              f"changed={row.get('changedText')} chip {row.get('chipBefore')} -> {row.get('chipAfter')}")
+    if bad:
+        print(f"✗ {len(bad)} 条把「采用候选」执行成了别的动作（静默错动作）")
+        return 1
+    print("✓ 空格在面板内一律走「采用候选」，且候选进了草稿")
+    return 0
+
+
 def cmd_review_sequence(args: argparse.Namespace) -> int:
     """审校**语义序列**回放：面板开着就判、没开才点「下一处」，直到队列判满。
 
@@ -1445,6 +1482,10 @@ def build_parser() -> argparse.ArgumentParser:
     reading = sub.add_parser("reading", help="读取正文审校界面状态与已渲染段落")
     reading.add_argument("--page", type=int, default=None)
     reading.set_defaults(func=cmd_reading)
+
+    space = sub.add_parser("review_space", help="空格=采用候选 的实机回归（静默错动作）")
+    space.add_argument("--rounds", type=int, default=3)
+    space.set_defaults(func=cmd_review_space)
 
     seq = sub.add_parser("review_sequence", help="审校语义序列回放（改前/改后同一条路径）")
     seq.add_argument("--rounds", type=int, default=200, help="最多推进多少轮（队列判满会提前停）")
