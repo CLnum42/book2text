@@ -1356,6 +1356,19 @@
     </div>
 
     <!-- ─────────────────────────── 对话框：设置 ─────────────────────────── -->
+    <div class="mask" id="confirm-dialog-mask" hidden>
+      <div class="modal modal--confirm" id="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+        <h3 id="confirm-dialog-title"></h3>
+        <p id="confirm-dialog-lead"></p>
+        <ul id="confirm-dialog-list" hidden></ul>
+        <button type="button" id="confirm-dialog-detail-toggle" hidden></button>
+        <p id="confirm-dialog-detail" hidden></p>
+        <div class="modal-actions">
+          <button type="button" id="confirm-dialog-safe" class="btn"></button>
+          <button type="button" id="confirm-dialog-danger" class="btn btn--danger" hidden></button>
+        </div>
+      </div>
+    </div>
     <div class="mask" id="trash-panel" hidden>
       <div class="modal modal--settings">
         <div class="mhead">

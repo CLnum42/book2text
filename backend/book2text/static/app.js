@@ -3860,7 +3860,7 @@ function applyTileState(tile, page) {
   if (!page.include) {
     button.title = "不是「正文」类型，不参与识别。要把这一页纳入识别，把类型改成「正文」。";
   } else if (recognition.status === "recognized") {
-    button.title = "重新识别这一页（已有人工成果时不会覆盖，只作为待选结果）";
+    button.title = "重新识别这一页（不会覆盖，这次结果先不采用）";
   } else {
     button.title = "识别这一页（在后台任务里跑，进度看右下角）";
   }
@@ -6077,6 +6077,71 @@ let taskFailureAnnouncedFor = null;
 
 function openTaskDrawer() {
   el("task-drawer").hidden = false;
+}
+
+// ---------------------------------------------------------------- 通用确认框（规格 docs/ux/confirm-dialog-spec.md）
+// 规则：固定 8 个槽位、只用 textContent 写（**禁止 innerHTML="" 重建**：那会连带清掉宿主层监听）。
+// 返回值：安全键 → "safe"；危险键 → "danger"；Esc / 点遮罩 → null。
+// 单键形态（不传 dangerText）禁止承载危险动作。
+let confirmPending = null;
+
+function confirmAction({ title, lead, list = [], detail = "", safeText, dangerText = "" }) {
+  const mask = el("confirm-dialog-mask");
+  if (!mask) return Promise.resolve(null);
+  if (confirmPending) { confirmPending.close(null); }   // 单实例：连续触发不叠加
+
+  el("confirm-dialog-title").textContent = title;
+  el("confirm-dialog-lead").textContent = lead;
+  const listNode = el("confirm-dialog-list");
+  listNode.replaceChildren();
+  for (const item of list) {
+    const li = document.createElement("li");
+    li.textContent = item;
+    listNode.append(li);
+  }
+  listNode.hidden = list.length === 0;
+
+  const toggle = el("confirm-dialog-detail-toggle");
+  const detailNode = el("confirm-dialog-detail");
+  detailNode.textContent = detail || "";
+  detailNode.hidden = true;
+  toggle.hidden = !detail;
+  toggle.textContent = "详情";
+  toggle.onclick = () => { detailNode.hidden = !detailNode.hidden; };
+
+  const safe = el("confirm-dialog-safe");
+  const danger = el("confirm-dialog-danger");
+  safe.textContent = safeText;
+  danger.hidden = !dangerText;
+  danger.textContent = dangerText || "";
+  danger.disabled = false;
+  // 危险键：不默认聚焦（下面聚焦安全键）+ 不响应 Enter
+  danger.onkeydown = (event) => { if (event.key === "Enter") event.preventDefault(); };
+
+  mask.hidden = false;
+  safe.focus();
+
+  return new Promise((resolve) => {
+    const close = (result) => {
+      mask.hidden = true;
+      safe.onclick = null;
+      danger.onclick = null;
+      mask.onclick = null;
+      document.removeEventListener("keydown", onKey);
+      confirmPending = null;
+      resolve(result);
+    };
+    confirmPending = { close };
+    const onKey = (event) => { if (event.key === "Escape") close(null); };
+    safe.onclick = () => close("safe");
+    danger.onclick = () => {
+      danger.disabled = true;          // 防双击
+      danger.textContent = "正在开始…";
+      close("danger");
+    };
+    mask.onclick = (event) => { if (event.target === mask) close(null); };
+    document.addEventListener("keydown", onKey);
+  });
 }
 
 function closeTaskDrawer() {
@@ -12560,11 +12625,57 @@ async function patchSelectedPages(patch) {
   }
 }
 
+// 恢复粒度文案（PM 定稿；数字/计数由调用方传，模板不写死）
+const RESTORE_DETAIL_TEXT =
+  "恢复只把整本项目数据（块与审校状态）回到这份备份的时刻；那一刻之后的改动会丢。" +
+  "识别原始输出、缩略图缓存、已导出的文件不在备份里，也不会回去。";
+
+/** 查这些页里哪些有人工成果（接口 routes_projects.py:163）。查不到就按"没有"走旧路，不阻断用户。 */
+async function humanTouchedPages(project, pages) {
+  const nos = pages.map((page) => page.page_no);
+  if (!nos.length) return [];
+  try {
+    const data = await apiJson(
+      `/api/projects/${project.project_id}/pages/human-touched?pages=${nos.join(",")}`
+    );
+    return (data.pages || []).filter((row) => row.human_touched).map((row) => row.page_no);
+  } catch (error) {
+    return [];
+  }
+}
+
 async function recognizeSelection(force = false) {
   const project = currentProject;
   const pages = selectionPages().filter((page) => page.include);
   if (!project || !pages.length) return;
-  if (!warnUnconfirmed(pages, "识别所选页")) return;
+
+  // 有人工成果的页：先问，再让用户选「跳过」还是「仍要重识别」（后者会先备份整库）
+  let targetPages = pages;
+  let useForce = force;
+  const touched = await humanTouchedPages(project, pages);
+  if (touched.length) {
+    const remaining = pages.length - touched.length;
+    const choice = await confirmAction({
+      title: `${touched.length} 页有人工改动`,
+      lead:
+        remaining > 0
+          ? `重识别这 ${touched.length} 页会丢掉你改过的字，跳过则保留。`
+          : `这 ${touched.length} 页都有人工改动，跳过则保留。`,
+      list: [`那 ${touched.length} 页之后的改动会丢`, "原始输出与缓存不在备份里"],
+      detail: RESTORE_DETAIL_TEXT,
+      safeText: remaining > 0 ? `跳过并识别剩下的 ${remaining} 页` : "跳过，不识别",
+      dangerText: `仍要重识别这 ${touched.length} 页`,
+    });
+    if (choice === null) return;                 // Esc / 点遮罩：什么都不做
+    if (choice === "safe") {
+      targetPages = pages.filter((page) => !touched.includes(page.page_no));
+      if (!targetPages.length) return;           // 全被跳过：不建任务
+    } else {
+      useForce = true;                           // 危险键：force=true（后端会先备份）
+    }
+  }
+
+  if (!warnUnconfirmed(targetPages, "识别所选页")) return;
   if (
     force &&
     !window.confirm(
@@ -12582,8 +12693,9 @@ async function recognizeSelection(force = false) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        pages: pages.map((page) => page.page_no),
+        pages: targetPages.map((page) => page.page_no),
         skip_recognized: skip,
+        ...(useForce ? { force: true } : {}),
       }),
     });
     applyRecognizedPages(data.pages);

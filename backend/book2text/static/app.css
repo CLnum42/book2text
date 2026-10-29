@@ -1206,6 +1206,12 @@ body.diff-mode .page-overlay .box--active {
   background: var(--surface); border-radius: var(--radius-lg); box-shadow: 0 20px 60px rgba(0, 0, 0, .32);
   display: flex; flex-direction: column; overflow: hidden; max-height: 100%;
 }
+.modal--confirm { width: 420px; max-width: 100%; padding: 20px; }
+.modal--confirm h3 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.modal--confirm p { margin: 0 0 10px; font-size: 14px; line-height: 1.6; }
+.modal--confirm ul { margin: 0 0 10px; padding-left: 18px; font-size: 14px; line-height: 1.6; }
+.modal--confirm .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.modal--confirm .btn { height: 36px; }
 .modal--structure, .modal--export { width: 900px; height: 660px; max-width: 100%; }
 .modal--collab { width: 880px; height: 600px; max-width: 100%; }
 .modal--settings { width: 820px; max-width: 100%; height: 660px; }
