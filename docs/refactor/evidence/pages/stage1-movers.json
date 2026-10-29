@@ -4,10 +4,7 @@
   "来源": "docs/refactor/evidence/pages/semantic-ops.md §操作 1 + stage1-names.md",
   "基线_app_js_行数": 15311,
   "函数数": 21,
-  "行数": {
-    "movers": 1159,
-    "call_sites条数": 80
-  },
+  "行数": 1090,
   "说明": "2026-10-29 修正：外壳基础设施（showView/renderPages/refreshPageStates/applyPageZoom/recognizePage/schedulePageVisibility）从 movers 移出 → call_sites + 3 个模块入口。",
   "movers": [
     {
@@ -62,9 +59,9 @@
     {
       "name": "renderRecognitionStatus",
       "start": 5714,
-      "end": 5760,
+      "end": 5761,
       "lines": 48,
-      "role": "操作1 的 16 个函数之一"
+      "role": "并集（原两条 5714-5760 与 5714-5761）"
     },
     {
       "name": "renderRecognitionVerdict",
@@ -90,9 +87,9 @@
     {
       "name": "syncPageStates",
       "start": 6893,
-      "end": 6912,
+      "end": 6913,
       "lines": 21,
-      "role": "操作1 的 16 个函数之一"
+      "role": "并集（原两条 6893-6912 与 6893-6913）"
     },
     {
       "name": "updateMarginDetectProgress",
@@ -130,24 +127,10 @@
       "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
     },
     {
-      "name": "renderRecognitionStatus",
-      "start": 5714,
-      "end": 5761,
-      "lines": 48,
-      "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
-    },
-    {
       "name": "savePageMargin",
       "start": 5250,
       "end": 5285,
       "lines": 36,
-      "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
-    },
-    {
-      "name": "syncPageStates",
-      "start": 6893,
-      "end": 6913,
-      "lines": 21,
       "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
     },
     {
@@ -876,16 +859,19 @@
   },
   "top_level": [],
   "冻结": {
-    "movers条数": 21,
-    "movers行数": 1159,
+    "movers条数": 19,
+    "movers行数": 1090,
     "call_sites条数": 80,
     "模块入口": [
       "enter",
       "render",
-      "refresh"
+      "refresh",
+      "外壳那一行的铁律"
     ],
-    "作者": "Architect（唯一作者；rules.py / build_view.py 归 DevLead）",
-    "sha256说明": "本文件的 sha256 由提交后的文件计算并写在提交信息里；**文件内不写自身 sha**（会自指）"
+    "去重说明": "原 19 条按名字去重为 19 条（重复：renderRecognitionStatus / syncPageStates 各出现两次，分属「16 个函数」与「私有调用者」两栏）",
+    "唯一性规矩": "movers 内名字必须唯一；同一函数只能出现一次，角色取\"更具体\"的那个（渲染函数 > 调用者）",
+    "作者": "Architect",
+    "sha256说明": "文件内不写自身 sha（自指），sha 由提交后计算并写在提交信息/回执里"
   },
   "转发形态（DevLead 提出的两个实质问题）": {
     "renderPages 的转发": {
@@ -938,5 +924,6 @@
       }
     ],
     "结论": "7 处里 **2 处**（4217 / 13021）在切视图后还做了别的事；`enter()` 若只切视图就会漏动作。因此 enter() 的定义 = **切视图 + 渲染 + 刷新状态**，且外壳不许在这些调用点再做这三件事。"
-  }
+  },
+  "条数": 19
 }
