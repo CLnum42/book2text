@@ -240,6 +240,7 @@ INIT_ANCHOR = "boot();"
 
 # ---- 刀 1 的跨刀能力注入（其余四刀的入口：模块只调用，不搬）----
 IDENT_CROSS_SLICE = [
+    ("pageBlockCache", "injected.getPageBlockCache()", "const"),   # 刀1：外壳两处 .clear() + index 读 → 注入
     ("applyPageZoom", "injected.applyPageZoom", "function"),   # 刀1 依赖（刀2-5 未搬）
     ("applySetupSuggestion", "injected.applySetupSuggestion", "function"),   # 刀1 依赖（刀2-5 未搬）
     ("applyTileState", "injected.applyTileState", "function"),   # 刀1 依赖（刀2-5 未搬）
@@ -295,9 +296,11 @@ IDENT = IDENT + IDENT_CROSS_SLICE
 IDENT_FULL = IDENT_FULL + IDENT_CROSS_SLICE   # 生成器读的是 IDENT_FULL，这里必须一起加
 
 # ---- 刀 1 的 pages 私有数据：**模块自己持有**（注入 = 外壳一份、模块一份，libraryProjects 那次的起点）----
-MOVED_STATES += ["PAGE_OVERLAY_FRAME_LIMIT", "detailPageNo", "pageBlockCache", "pageBlockPending"]
+#: **_pageBlockCache 不搬_**：外壳 app.js:1199 / 1221 有 `.clear()` 写点、index 在 7932 读它 →
+#: 判据「数据只许搬读写者全在模块内的」。它走注入（getter + clear 能力），三处外壳引用在落盘同批改。
+MOVED_STATES += ["PAGE_OVERLAY_FRAME_LIMIT", "detailPageNo", "pageBlockPending"]
 
-EXPECT_SEAMS = 86   # 37 基础 + 49 跨刀能力（刀 1 依赖刀 2-5 的入口）      # 函数接缝（**不含 el**：el 是模块自建，见 MODULE_LOCAL）
+EXPECT_SEAMS = 87   # 37 基础 + 49 跨刀能力 + pageBlockCache（const，注入）      # 函数接缝（**不含 el**：el 是模块自建，见 MODULE_LOCAL）
 EXPECT_STATES = 45     # 状态/常量；46 = 45 + el（el 在 IDENT 里）
 EXPECT_TOTAL = 46      # 名单 states_and_consts 的条数
 
