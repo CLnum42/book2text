@@ -145,3 +145,68 @@ pages 落盘 → 抽屉（这一步）→ 用户"点缩略图不再被拽走"
 
 **二选一，不许不动**：要么按新树重算，要么在文件头写死「本文件基线为抽屉之前（`f73e756`），勿引」。
 今天已经因为"名单没冻结/没重算"白跑三轮（`43 / 120 / 114` 三个数）。
+
+---
+
+## ⑦ 五条断言的可执行检查清单（动手时照做，不用再想）
+
+> 目标文件：`tests/js/review-detail-drawer.test.mjs`（新增）+ 一条 e2e。**每条都写“失败长什么样”**，
+> 因为**失败信息写得含糊，等于没有断言**——今天已经有两次“红了但看不出红在哪”。
+
+### 陈设（所有用例共用）
+
+```js
+// 用 load-app.mjs 的桩：不加载真 DOM，只记录开合与调用
+const calls = [];                       // 记录 savePosition / renderReading / renderPages 的调用
+const drawer = { hidden: true };        // #page-detail-drawer 的最小桩
+```
+
+### ① `currentView` 开抽屉前后相同
+
+| 项 | 内容 |
+|---|---|
+| 怎么测 | `showView("pages")` → 记 `currentView` → `openPageDetail(3)` → 再记 |
+| 期望 | 两次相等，且 `=== "pages"` |
+| 失败长什么样 | `期望 currentView 保持 pages，实际变成 review`（**要点名变成了哪个视图**） |
+
+### ② 抽屉 `hidden` 由 true→false→true
+
+| 项 | 内容 |
+|---|---|
+| 怎么测 | 初始断言 `hidden === true`；`openPageDetail(3)` → `false`；`closeDetailDrawer()` → `true` |
+| 期望 | 三段都成立 |
+| 失败长什么样 | `打开了但 hidden 仍是 true（渲染进了别处）` / `关了但 hidden 仍是 false（关不回来）` |
+
+### ③ 关闭后原视图的滚动/页码没被动过
+
+| 项 | 内容 |
+|---|---|
+| 怎么测 | `pages`：记列表滚动位置 → 开 → 关 → 比；`reading`：记 `readingPageNo` → 开 → 关 → 比 |
+| 期望 | 两个值都不变 |
+| 失败长什么样 | `关抽屉后列表滚到顶部（重绘吞了位置）` / `readingPageNo 从 12 变成 3` |
+
+### ④ 关抽屉不许触发 `renderReading` / `renderPages`
+
+| 项 | 内容 |
+|---|---|
+| 怎么测 | 关之前给两个渲染函数装计数桩 → `closeDetailDrawer()` → 读计数 |
+| 期望 | 两次计数都为 **0** |
+| 失败长什么样 | `closeDetailDrawer 触发了 renderPages（1 次）——位置会在重绘里丢失` |
+| 备注 | **这条是五条里最容易翻车的**：加一行"关完刷新一下"就红，而页面本身不报错 |
+
+### ⑤ 开关抽屉不许写入任何 `"review"` 名的位置记录
+
+| 项 | 内容 |
+|---|---|
+| 怎么测 | 给 `savePosition` 装记账桩 → 开 → 关 → 检查参数列表 |
+| 期望 | **没有任何一次**参数是 `"review"` |
+| 失败长什么样 | `savePosition("review", 3) 被调用——只是看了一眼详情，被记成"在旧审校看到第 3 页"` |
+| 备注 | 这条防的是"删掉后被人顺手加回来"，因为它**看起来**像是在保存用户进度 |
+
+### e2e 补一条（真浏览器）
+
+```
+pages → 点第 3 页缩略图 → 抽屉可见 → 按 Esc → 抽屉不可见 → 仍在 pages，列表仍停在第 3 页附近
+```
+
+**五条 node 用例 + 一条 e2e**：node 挡逻辑，e2e 挡"看起来对但用户感知错"。
