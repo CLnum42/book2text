@@ -71,6 +71,18 @@
 `layoutBlockPage`（`app.js:4889` 外壳写）/ `suggestionScrollListening`（`app.js:3454` 外壳读）。
 **只写"它被 pages 用"就判搬，是漏判的一半**——另一半在"外壳还在不碰它"。
 
+## 5.2 刀 1 / 刀 2 与 PageTile 接线（2026-10-29 裁定，可搜关键词「尚未接 PageTile」）
+
+> **刀 1 落盘时 pages 尚未接 PageTile，页图仍走 `size=thumb` 旧路径；接线在刀 2。**
+> **终考判据（`img.src` 赋值 = 1 / observer ≤ 6 / 三个消费者同一张 `img`）在刀 2 生效。**
+
+- **刀 1 的 accept 不要求 acid**（PageTile 接线不在本刀范围）；
+- **刀 2 的 accept 必须带 acid**，且必须是真通过的那份；
+- **判据不删、只挪生效刀号**——删了，第三消费者就再没人验。
+- 证据（Builder 实测，刀 1 落盘后）：662 个页块仍走 `size=thumb`；`#view-pages .page-tile` 上
+  `__pagesTile/__pageTile` 句柄 = 0；`writes(size=view) = 0`。**原因是 `buildTile` / `applyTileState` /
+  `capturePageTileMetrics` 不在刀 1 的 19 条里**——不是探针坏了。
+
 ## 6. 名单冻结规矩（2026-10-29，第四次"消费中被改"之后）
 
 **收敛期禁止任何人以"冻结"名义写回文件。**

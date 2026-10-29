@@ -1,3 +1,11 @@
+## 三条后补：PageTile 接线函数（到期判据 = acid 通过）
+
+`buildTile` / `applyTileState` / `capturePageTileMetrics` 归 **刀 2**（证据：刀 1 落盘后
+662 个页块仍走 `size=thumb`、`__pageTile` 句柄 0、`writes(size=view)=0`）。
+
+**它们的到期判据不是"函数搬走"，是 `accept_pages --stage 2 --acid` 通过**
+（`img.src` 赋值 = 1 / observer ≤ 6 / 三消费者同一张 `img`）。搬走但 acid 不过 = 没到期。
+
 # 刀2–5 可机读名单（函数 → 引用 id → 刀号）
 
 > **函数集合来自 `scripts/r3_pages_count.mjs` 的落盘后实测，不是手工列举。**
