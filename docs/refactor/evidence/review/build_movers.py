@@ -294,7 +294,10 @@ def build():
     if not header["对账"]["三区两两不相交?"]:
         problems.append("movers / stays / external 有重名")
 
-    OUT_JSON.write_text(json.dumps(header, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # 注意：`movers.json` 已于 2026-10-29 冻结（提交 8b88e48，sha256 ced9c4b0…），
+    # 本脚本**不再重写它**——只产出施工用的 entangled.json 与非权威的 movers.txt。
+    if "--write-frozen" in sys.argv:
+        OUT_JSON.write_text(json.dumps(header, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     OUT_TXT.write_text(
         "# 非权威，真源 movers.json\n" + "\n".join(item["name"] for item in movers) + "\n",
         encoding="utf-8",
