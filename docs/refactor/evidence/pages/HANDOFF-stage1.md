@@ -133,6 +133,11 @@ A1b: 未登记的 test-contract / move: 提交合计删除 tests/js 8 行
    （出处：今天两次拒绝替别人签；`a9ecee1` 的 A/B/C 是 TestDev 实跑的。）
 10. **数据归属必须列两侧引用行号**：外壳有写点或读点就注入，不搬。
    （出处：`libraryProjects` / `marginFitRunning` / `pageBlockCache` / `detailPageNo` 四次。）
+11. **闸的观测对象是索引树，不是工作区——索引绿 ≠ 工作区绿**：未暂存的坏改动不会拦你的提交（也不该拦）。
+   （出处：`8b6169d`；工作区那棵树的 `tests/js/boundary.test.mjs` 是刀 2 的 16 名表，索引里没有它。）
+12. **工作区红 ≠ 提交会红**：判定这笔提交会不会红，看 `git diff --cached`，不看 `git diff`。
+   （出处：`068b0d7` 那次误判——不是谁粗心，是闸的观测对象和工作区不是同一棵树。）
+   实测（2026-10-29）：同一时刻，索引树 `node tests/js/run.mjs` 全绿（`✓ pre-commit：索引版 tests/js/run.mjs 全绿（4s，tree 96ebcaf2）`），工作区那棵树跑 node 是红的（表 16 / 模块 20）。两棵树结论相反，同时存在。
 ## 10. 刀 2 启动条件（四样，缺一不开工）
 
 ### ① 名单（要逐个列名 + 行范围，不接受只有数量）
