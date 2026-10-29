@@ -1412,6 +1412,12 @@ function domIdsIn(jsStripped) {
 /**
  * `stage2-movers-seed.md` 的「函数 → 刀号」映射（到期刀的唯一权威来源）。
  * 文件不在 → 空表（判不了就跳过，由「待定/到期」那几条另行兜底）。
+ *
+ * **列顺序别写死成「第 2 列是数字」**：真 seed 是 `| 函数 | 引用的 id | 行范围 | 刀N |`，
+ * 第 2 列是 id 清单。早期这里按 `\| \d+ \|` 匹配 → 一个都匹不到 → `seedStages.size === 0`
+ * → 下面「到期刀 == 现算 max」「seed 与实测函数集合对集」**两条整体跳过、空跑**，
+ * 到期刀随便改闸都绿（2026-10-29 由 TestDev 变异① 抓到）。
+ * 现在只认「反引号函数名」开头、「刀N」结尾，中间两列不约束；`seed 行数 == 解析数` 另有一条测试兜着。
  */
 function pagesSeedStages() {
   const file = fileURLToPath(new URL("../../docs/refactor/evidence/pages/stage2-movers-seed.md", import.meta.url));
@@ -1422,7 +1428,7 @@ function pagesSeedStages() {
     return new Map();
   }
   const map = new Map();
-  for (const m of text.matchAll(/^\| `([A-Za-z_$][\w$]*)` \| \d+ \| [^|]+ \| 刀(\d) \|/gm)) {
+  for (const m of text.matchAll(/^\| `([A-Za-z_$][\w$]*)` \| [^|]+ \| [^|]+ \| 刀(\d) \|/gm)) {
     map.set(m[1], Number(m[2]));
   }
   return map;
@@ -1440,6 +1446,9 @@ function r3Problems({
   // pages 走**另一张表**：到期按刀、上限按 id，和 reading 那 4 条（R3_MAX_EXEMPTIONS）互不影响。
   pagesExemptions = PAGES_R3_EXEMPTIONS, pagesStage = PAGES_STAGE, pagesTotalCap = PAGES_R3_TOTAL_CAP,
   pagesPendingCap = PAGES_R3_PENDING,
+  // seed 的「函数 → 刀号」也要可注入：合成夹具（假 html / 假源码）里没有真函数名，
+  // 不注入就会与真 seed 对不上，误报「seed 与实测函数集合不等」。
+  pagesSeed = pagesSeedStages(),
 }) {
   const sections = parseViewSections(html);
   const problems = [];
@@ -1541,7 +1550,7 @@ function r3Problems({
         problems.push(`豁免 ${item.id} 到期（刀 ${item.stage}）但 app.js 还引用着 ${occurrences.length} 处——到期不搬 = 红`);
       }
     }
-    const seedStages = pagesSeedStages();
+    const seedStages = pagesSeed;
 
     // **函数集合对集**：seed 的 69 个函数 == 表里 id 的引用函数并集。
     // 挡住「换了 seed 但表没重算」——那种漂不会红，只会让整张表偏早或偏晚。
@@ -1625,6 +1634,8 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
     // reading 的 4 条豁免是另一个机制，这张合成夹具里不掺进来
     exemptions: [],
     pagesStage: 1, pagesTotalCap: 3, pagesPendingCap: 2,
+    // 合成夹具里没有真函数名：seed 给空表，否则会与真 seed 对不上（误报「集合不等」）
+    pagesSeed: new Map(),
   };
 
   const green = r3Problems({
@@ -1671,6 +1682,48 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
     expired.some((item) => item.includes("到期（刀 2）")),
     `R3 pages 自检失败：到期不搬也放过——${expired.join("；")}`,
   );
+
+  // ⑤ 到期刀不许手调：a 被 painter（刀 2）与 bumper（刀 5）引用 → max = 5，填 2 必须红。
+  //    这条判据 2026-10-29 之前**整块空跑**：seed 解析正则按「第 2 列是数字」写，真 seed 匹不到一行，
+  //    `seedStages.size === 0` 让「到期刀 == max」和「seed/实测集合对集」两条一起跳过，闸照绿。
+  const tuneBase = {
+    html: '<section id="view-reading"></section>'
+      + '<section id="view-pages"><div id="a"></div></section>',
+    appSource: 'function painter() {\n  el("a");\n}\nfunction bumper() {\n  el("a");\n}\n',
+    viewSources: [{ fileName: "pages-view.js", source: "" }],
+    exemptions: [],
+    pagesStage: 1, pagesTotalCap: 5, pagesPendingCap: 0,
+    pagesSeed: new Map([["painter", 2], ["bumper", 5]]),
+  };
+  const tuned = r3Problems({ ...tuneBase, pagesExemptions: [{ id: "a", cap: 2, stage: 2 }] });
+  assert.ok(
+    tuned.some((item) => item.includes("到期刀 2 ≠ 现算的 max 5")),
+    `R3 pages 自检失败：到期刀手调也放过——${tuned.join("；")}`,
+  );
+});
+
+/**
+ * R3 到期判据的**存在性**自检：seed 必须真的被解析出来。
+ *
+ * 为什么需要它：`r3Problems()` 里「到期刀 == 现算 max」「seed 与实测函数集合对集」两条
+ * 都包在 `if (seedStages.size > 0)` 里——解析器一旦匹不到任何一行，**两条整块跳过**，
+ * 闸照绿，表上 79 个到期日成了装饰。2026-10-29 真发生过：正则按「第 2 列是数字」写，
+ * 而真 seed 第 2 列是 id 清单 → 匹配 0 行。这条自检让「判据存在」本身可被证伪。
+ */
+test("R3 自检（到期判据存在性）：seed 必须解析出函数→刀号，且与 seed 行数相等", () => {
+  const file = fileURLToPath(new URL("../../docs/refactor/evidence/pages/stage2-movers-seed.md", import.meta.url));
+  const text = readFileSync(file, "utf8");
+  const rows = [...text.matchAll(/^\| `[A-Za-z_$][\w$]*` \|/gm)].length;
+  const parsed = pagesSeedStages();
+  assert.ok(rows > 0, "seed 里一行函数表都没有——文件结构变了，先修这条自检");
+  assert.equal(
+    parsed.size, rows,
+    `seed 有 ${rows} 行函数表，只解析出 ${parsed.size} 个函数——解析正则又漂了，`
+    + "「到期刀 == max」与「seed/实测集合对集」两条会整体空跑（闸绿、判据不存在）",
+  );
+  for (const [name, stage] of parsed) {
+    assert.ok(stage >= 1 && stage <= 5, `seed 里 ${name} 的刀号 ${stage} 不在 1..5——解析串位了`);
+  }
 });
 
 test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子树的引用必须在豁免表里", () => {
