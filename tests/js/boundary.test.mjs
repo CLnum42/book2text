@@ -414,10 +414,13 @@ function classify(def) {
     .join("\n")
     .replace(/;$/, "")
     .trim();
-  // 转发器形态：`window.<XxxView>.fn(...)`，允许 `.apply/.call` 转发参数
-  // （2026-10-29：pages 刀生成的转发是 `return window.PagesView.fn.apply(window.PagesView, arguments)`，
-  //  旧正则只认 `ReadingView.fn(`，于是 63 条薄转发被误判成"两份真实现"——闸的词汇表落后于实际形态）。
-  const forwards = /^(?:return\s+)?(?:window\.)?[A-Z][A-Za-z0-9]*View\.[A-Za-z_$][\w$]*(?:\.(?:apply|call))?\s*\([\s\S]*\)$/.test(statement);
+  // 转发器形态（Chief 2026-10-29 定三条，缺一不可）：
+  //   a) 函数体只有一条语句，且是 return；
+  //   b) return 的是 `window.<XxxView>.<fn>(…)` 或 `.apply/.call` 形式；
+  //   c) **转发的名字必须等于本函数名**（foo 只能转给 foo）——否则借转发外形放行第二份真实现。
+  const oneStatement = statement.split("\n").filter(Boolean).length === 1 && /^return\b/.test(statement);
+  const forwardHit = /^(?:return\s+)(?:window\.)?([A-Za-z_$][\w$]*)View\.([A-Za-z_$][\w$]*)(?:\.(?:apply|call))?\s*\([\s\S]*\)$/.exec(statement);
+  const forwards = oneStatement && forwardHit !== null && forwardHit[2] === def.name;
   if (!forwards) return { kind: "real" };
   if (lines.length > 6) return { kind: "stubTooLong", why: `函数体 ${lines.length} 行（上限 6）` };
   return { kind: "stub" };
@@ -567,6 +570,22 @@ test("R4-dup 自检：两份真实现必须红，≤6 行转发必须绿，单�
   // 注意：`classify()` 认的转发桩形态目前**只认 ReadingView**
   // （`window.ReadingView.x(...)`）；别的模块的转发会被判成真实现。这是已知限制，
   // 试点的做法是"第一个模块之外的转发不让存在"（切片时不切"调用方还在 app.js"的函数）。
+  // 改名转发 → 不许豁免（借转发外形放行第二份真实现）
+  const renamed = r4dupProblems([
+    { file: "app.js", source: "function foo() { return window.PagesView.bar.apply(window.PagesView, arguments); }\n" },
+    { file: "page-pages.js", source: "function foo() {\n  a();\n  b();\n  c();\n}\n" },
+  ]);
+  assert.ok(renamed.some((item) => item.includes("两份真实现") || item.includes("找不到真实现")),
+    `R4-dup 自检失败：foo 转发给 bar 也放过了——同名条件没生效（${renamed.join("；")}）`);
+
+  // 函数体夹 if / 多条语句 → 不是薄转发
+  const sneaky = r4dupProblems([
+    { file: "app.js", source: "function foo() {\n  if (x) return window.PagesView.foo.apply(window.PagesView, arguments);\n  return 2;\n}\n" },
+    { file: "page-pages.js", source: "function foo() {\n  a();\n  b();\n}\n" },
+  ]);
+  assert.ok(sneaky.some((item) => item.includes("两份真实现")),
+    `R4-dup 自检失败：夹了 if 的伪转发器被当成薄转发（${sneaky.join("；")}）`);
+
   // 转发器形态的词汇表：`window.PagesView.fn.apply(...)` 也必须认
   const applyShape = r4dupProblems([
     { file: "app.js", source: "function pausePageThumbnails() { return window.PagesView.pausePageThumbnails.apply(window.PagesView, arguments); }\n" },
