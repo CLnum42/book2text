@@ -14,6 +14,7 @@
 | `pages` 定形态 | 归属调查完成 | `PageTile` 落地 + 用户 40 页试用 | 定 1 个还是 5 个模块 |
 | `review` | 未量（1.9× 已作废） | `pages` 之后 | 先做同一份归属调查 |
 | `PageTile` / overlay | 契约定稿，模块未落 | DevLead（`library` 之后） | tile → overlay |
+| CI node 闸 | job 已配置、**未验证**（Actions 起不来，Billing） | 用户（Billing） | 推一个含违规提交的分支，CI 必须报错；**验证前不许说「CI 挡住了」** |
 | 闸体系 | 三层已上（提交 / 推送 / 绕过点名） | — | `move:` 的退休判据挂在 §20.9 ⑪ |
 
 ## 不在这张表里的

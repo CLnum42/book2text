@@ -1097,6 +1097,9 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 
 **权限**：只有 DevLead 能登记 A3 并移动 `ring-break-base`；Builder 不可。A4 的插 `throw` 小脚本归 TestDev（插一行、跑一条、2 秒级）。
 
+**基点的现状（2026-10-29，Chief 核出）**：`ring-break-base` = `afe20fe`，打在 **L0** 上——`git show ring-break-base:backend/book2text/static/app.js | wc -l` = 20,275（HEAD 15,870），`ls-tree` 的 `static/` 下只有 `reading-view.js` 一个模块。**它不是回放基，A2 / A4 现在暂停使用**：在它上面跑新测试，红的原因是「`init` 注入不存在、模块没拆」，会把「测试锁错对象」和「实现错了」混成同一个红。
+**真 base 判据**：最后一笔搬运（`merge`）落地后的那笔提交；打 tag 走 §18.6 登记 + §18.3 的 13/13 四件证据。**现在不移动 tag。**
+
 #### 18.2.1 `move:` 笔类（迁移笔的例外，2026-10-29 Chief 定；TestDev 实现须与本段一字不差）
 
 **为什么要有它**：A1 / A1b 与 R5 / R8 会互相锁死——产品笔让 R5 红（状态换了 owner），测试笔先提又让 `VIEW_EXPORTS` 红（登记了但文件不存在）。**两笔没有一笔是绿的。** 解法不是"绕过"，是给迁移笔一个**带期效的例外**：
@@ -1122,10 +1125,10 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 **桥（4）**：`setupReading`、`openPageDetail`、`renderMergeView`、`submitMergeDecisions` —— 改走注入的 `navigate()`。
 **回调边（9）**：`renderReading→ensureReadingMarksWindow`、`renderReading→retryReadingPendingPanel`、`renderReadingTree→ensureReadingMarksWindow`、`renderReadingTree→scrollReadingToPage`、`openReadingPanel→updateReadingPage`、`setReadingHover→ensureReadingBlocks`、`verifyReadingPageSync→updateReadingPage`、`gotoReadingEntry→jumpReadingTo`、`gotoReadingEntry→updateReadingPage`。
 
-**棘轮**：13 条合计预期 **0**，任何一条从 0 变 ≥1 = 红。**红/绿证据**：在 `ring-break-base` 上同一份检查必须红出 **13/13**（证明抓得到这些边），最终提交 0/13。模块里 `showView` 现在还挂在 R1 例外表上，破环后该行必须删、例外表回 0 行（上限 3 不动）。
+**棘轮**：13 条合计预期 **0**，任何一条从 0 变 ≥1 = 红。**红/绿证据**：在**真 base**（merge 落地后打的 tag，见 §18.2 基点现状）上同一份检查必须红出 **13/13**（证明抓得到这些边），最终提交 0/13。**当前 tag `ring-break-base` = `afe20fe` 是 L0 树，暂停使用**；今天在它上面跑只会红在「模块没拆」，红的原因不对。模块里 `showView` 现在还挂在 R1 例外表上，破环后该行必须删、例外表回 0 行（上限 3 不动）。
 R 编号由 TestDev 在闸表里领，§2 的 R1–R8 不动。
 
-> **第 9 条边 2026-10-28 更正**：旧名 `jumpReadingToPage` 全仓库 **0 处**，照它数永远 0——假绿，base 上最多只能红 12/13。实为 `jumpReadingTo`（`app.js:19526`，调用点 20675）。更正后实测：**HEAD `e0a8f4b` 的树，13/13 全部可检出**（9 条回调边 + 4 条桥，各命中 ≥1 处）。这只是证明名字对、边在；**真正的 13/13 红证据要在 `ring-break-base` 上重验**。
+> **第 9 条边 2026-10-28 更正**：旧名 `jumpReadingToPage` 全仓库 **0 处**，照它数永远 0——假绿，base 上最多只能红 12/13。实为 `jumpReadingTo`（`app.js:19526`，调用点 20675）。更正后实测：**HEAD `e0a8f4b` 的树，13/13 全部可检出**（9 条回调边 + 4 条桥，各命中 ≥1 处）。**量的对象是 HEAD 的树，不是 tag 那棵树**——这两件事不要混：HEAD 上的 13/13 只证明名字对、边在；**红证据要在真 base 上重验**。
 >
 > 若某一条在破环范围内做不到 0（合法到期点在 L5），**不许悄悄放过**：走 §18.6 登记、条数从 13 改成 12 并写明到期切片。
 
@@ -1204,6 +1207,8 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | 2026-10-29 | A3 拆两段 | pre-commit 只判形态（改 `tests/js` 且 deletions>0 → 首行必须 `test-contract:`），「是否已登记」改为 CI + `status.sh` 的可见红灯、不阻断提交。理由：登记只有 DevLead 能做，放 pre-commit 会让每次契约变更都要两人接力，接不上就有人 `--no-verify`，绕过记录比漏检更难查 | Chief | 待补（TestDev 实现 R12 两段后填） |
 
 | 2026-10-29 | A3 拆两段（R12） | 删：A3 在 pre-commit 就要求「已登记」的单段判定（它会把登记提交自己也挡住，`511df76` 那种「闸红、下一个人只能绕过」的窗口）。补：内核按「谁有权判」切两段——形态段（A1 同笔、首行必须 `test-contract:`/`move:`、test-contract 动产品、普通提交删文件）留在 pre-commit；登记段（§18.6 有行且带删/补/变异、未登记删除行合计）改成 `tests/js/contract-registry.mjs`（仪表盘 exit 0，`--strict` 供 CI exit 1）+ `scripts/status.sh` 的「闸A登记」一行；R12 在 `B2T_CONTRACT_STRICT=1` 时把登记段也当失败。自检改成「形态段放行 + 登记段红灯」与「登记齐全两段全绿」。变异：非 test-contract 删一行 → 形态段红；test-contract 且不登记 → 提交放行（89/0，只打印红灯）+ 严格模式 exit 1 + status.sh 2 条红灯；只删 README 一行 → 绿。**R7 两条变异 DevLead 已复跑**（`/tmp` 的 static 副本 + `B2T_STATIC_DIR`）：删 `library-view.js` 的 `<script>` → 「index.html 里没有 library-view.js 的 `<script>`——文件存在但没加载」；把它排到 `app.js` 之后 → 「library-view.js 必须在 app.js 之前加载（现在顺序反了：view=93309 app=93268）」。其余变异未复跑，按 TestDev 在真实 worktree 上的结果 | DevLead | d04e6eb |
+**`contract-registry.mjs` 的统计范围现在是过渡范围**：它算的是 `ring-break-base..HEAD`（今天 172 笔），而当前 tag 打在 L0 上（见 §18.2），这个范围**不等于破环序列**。真 base 切出前，「0 笔不合格」只能当「这一段历史里没有未登记的 test-contract 提交」，**不许当「登记齐全」的结论用**；输出里的那句 `… 笔提交的 §18.6 登记齐全` 也要在 TestDev 下次动它时改成「过渡范围」措辞。
+
 只有 DevLead 能加行。没有登记行的放宽一律按违规算。
 
 ---
