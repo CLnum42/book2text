@@ -92,3 +92,49 @@ pages 落盘 → 抽屉（这一步）→ 用户"点缩略图不再被拽走"
 ```
 
 **先让用户感到变化，再删代码。** 反过来做，删完没人觉得变好，还会因为"少了个页面"被问一句"我那页去哪了"。
+
+---
+
+## ⑥ 改动点清单（`HEAD` 行号 → 改什么；**只是标注，不动代码**）
+
+### `backend/book2text/static/index.html`
+
+`detail-*` / `page-detail-*` **不是一整块**，它和 review 自己的控件交错着，**分 5 段**（搬的时候逐段可回滚）：
+
+| 段 | 行 | 内容 | 处置 |
+|---|---|---|---|
+| A | **510–511** | `page-detail-error` / `page-detail-warning` | 移入抽屉 |
+| B | **573–586** | `detail-canvas` / `detail-image` / `detail-margin` / `detail-lines` / `detail-overlay` / `detail-diff-layer` / `detail-ink-gaps` / `detail-image-status` | 移入抽屉（**页图那一整列**） |
+| C | **615–616** | `page-detail-title` / `page-detail-meta` | 移入抽屉头（`.drawer__head`） |
+| D | **627–629** | `detail-box-create` / `detail-recognize` | 移入抽屉工具条 |
+| E | **682 / 689** | `detail-blocks`（块列表）/ `detail-close`（返回按钮） | 移入抽屉体；`detail-close` 的文案从"返回页面"改成"关闭" |
+| — | 485–698 | `#view-review` 本体 | **本次不动**（删是下一步） |
+
+**不加新 id**：全部沿用现有名字，渲染函数一行不用改（`renderPageDetail` 等 8 个函数按 id 取节点，节点搬了照样取得到）。
+
+### `backend/book2text/static/app.js`
+
+| 行 | 现状 | 改成 |
+|---|---|---|
+| **8072–8082** `openPageDetail` | `showView("review")` + `renderReviewPager()` + `loadPageDetail` + `savePosition("review", …)` | 去掉 `showView` 与 `savePosition`（**`currentView` 不变**），改为 `openDetailDrawer()` + `loadPageDetail`；`reviewBlockFilter` 那两行的默认值挪进"进 review 时"的路径 |
+| **1352** `detail-close` 处理器 | `showView("pages")` | `closeDetailDrawer()`（**不回任何视图**，因为没离开过） |
+| **13256–13257** `finishStartReview` | `showView("review")` + `openPageDetail(target)` | `showView("reading")`（"开始工作"不是"看详情"） |
+| **11594** `confirmCurrentPage` | `await openPageDetail(next)` | `await ReadingView.nextUnreviewed()`（继续审校） |
+| **15067** `boot` 注入 | `openPageDetail: (pageNo) => openPageDetail(pageNo)` | 名字不变，实现自然改变（**注入面零改动**） |
+| **7270** 重载守卫 | `currentView === "review" && detailPageNo !== null` | 改成 `detailDrawerOpen && detailPageNo !== null`（否则抽屉开着时识别完成不重载） |
+| 新增 | — | `openDetailDrawer()` / `closeDetailDrawer()`（约 20 行：`hidden` 开关 + 焦点/ESC + `detailDrawerOpen` 标志） |
+
+**注意 8072 那四行里藏着一条状态**：`savePosition("review", pageNo)` 会把"上次看到的页"记到 review 名下。抽屉化之后**这一句必须删**——否则用户只是看了一眼详情，就被改成"我在旧审校里看到第 N 页"。
+
+### 同批必须重算的三份输入（否则静默过期）
+
+`detail-*` 一离开 `#view-review`，这三份立刻变：
+
+| 文件 | 会变成什么 | 动作 |
+|---|---|---|
+| `docs/refactor/evidence/review/movers.json` | review 子树 id 94 → 约 82，闭包与三区会变 | **重算**（`build_movers.py`，脚本生成不手抄） |
+| `docs/refactor/evidence/review/delete-plan.md` | 字面量账（§4 的 19/4/3/1/1）要重算 | **重算**（`gen_rules.py` / 对应脚本） |
+| `docs/refactor/review-attribution.md` | 94 → 约 82 | **重算或标死** |
+
+**二选一，不许不动**：要么按新树重算，要么在文件头写死「本文件基线为抽屉之前（`f73e756`），勿引」。
+今天已经因为"名单没冻结/没重算"白跑三轮（`43 / 120 / 114` 三个数）。
