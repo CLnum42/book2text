@@ -10,7 +10,7 @@ NODE_BIN=${NODE_BIN:-/opt/homebrew/bin}
 
 echo "① rollback app.js / 删旧产物 / index.html 复原"
 git show HEAD:backend/book2text/static/app.js > backend/book2text/static/app.js
-rm -f backend/book2text/static/page-pages.js backend/book2text/static/pages-view.js
+rm -f backend/book2text/static/page-pages.js backend/book2text/static/pages-view.js   # 旧名 page-pages.js 是改名前的产物，防御性一并删（改名见 docs/refactor/pages-plan.md）
 git show HEAD:backend/book2text/static/index.html > backend/book2text/static/index.html
 
 echo "② --write"

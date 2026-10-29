@@ -14,14 +14,14 @@
 
 ```
 grep -oE 'PagesView\.[A-Za-z_]+' backend/book2text/static/app.js | sort -u   → 20 个（见 §4）
-page-pages.js 的 api 字面量：const api = { init, enter }  → 2 个（第 1204 行）
-app.js 15,311 → 14,372（减量 939）· page-pages.js 1,206 行 · R3 270 → 198（硬判据，已过）
+pages-view.js 的 api 字面量：const api = { init, enter }  → 2 个（第 1204 行）
+app.js 15,311 → 14,372（减量 939）· pages-view.js 1,206 行 · R3 270 → 198（硬判据，已过）
 ```
 
 ## 2. 裁定：R8 改成收敛棘轮（Chief 2026-10-29）
 
 ```
-本刀登记值 = 模块**真实**导出键集合（从 page-pages.js 的 api 字面量读出，不许猜、不许凑）
+本刀登记值 = 模块**真实**导出键集合（从 pages-view.js 的 api 字面量读出，不许猜、不许凑）
 本刀实测    = 20（或 20+1，以 grep 扫描为准）· 终点 3
 落差说明    = 本刀 20 → 终点 3，靠把 41 个调用者搬进模块逐刀收敛；注释里必须写这句
 终点       = 3（enter / render / refresh），写在同一表项的注释里
@@ -82,8 +82,29 @@ R3 必须仍是 198（实测 198 ✔）
 ## 7. 当前树的状态（交接时刻）
 
 ```
-工作区：已回滚（app.js 15,311 / page-pages.js 已删 / node 127 pass 0 fail）
+工作区：已回滚（app.js 15,311 / pages-view.js 已删 / node 127 pass 0 fail）
 未提交：rules.py（三处改注入 + EXPECT_SEAMS 87）、build_view.py（重名守卫 + 交集守卫）、
         stage1-movers.json（去重 19 条 / 1,090 行）、HANDOFF 本文
 已提交未推：9 笔（见 git log）
 ```
+## 8. 两条待修（登记时发现，别现在改闸）
+
+**① 同一个判据、两个入口、两种结论**（2026-10-29 实测）：
+
+```
+node tests/js/run.mjs                                                → ✔ R12 登记全绿
+node tests/js/contract-registry.mjs --strict --allow-transitional-base → ✖ 1 条不合格（A1b）
+```
+
+而 **pre-push 跑的是 `--strict`**，所以 **pre-push 是唯一算数的入口**：
+`run.mjs` 绿不代表能推。以后说「R12 绿了」要么写清入口，要么写「按 pre-push 的口径」。
+同一判据两处结论不同，是最容易让人白推一次的东西。
+
+**② `A1b` 只报数量、不点名**：
+
+```
+A1b: 未登记的 test-contract / move: 提交合计删除 tests/js 8 行
+```
+
+它不说是哪一笔——今天靠逐笔 `git show --numstat -- tests/js` 才定位到 `a9ecee1`。
+**这和项目自己的「按名字对集，不按数字」直接冲突**。待修：A1b 输出里带上 sha 列表。
