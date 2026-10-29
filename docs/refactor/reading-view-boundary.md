@@ -1125,6 +1125,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | T4 | ~~`showView` 接 `exit()`~~ → **已裁决：删 `exit`**（三个模块）。`.exit(` 全仓库 0 个调用点，它是**永不执行的导出**；实测重复 `enter()` 不重复绑监听、不重建观察器，今天不需要"离开时清理"这个口子 | 证据见下方「T4 裁决证据」 | **已完成**：`ReadingView` 6→5 / `PreviewView` 3→2 / `IndexView` 4→3，棘轮同降 |
 
 | T5 | **导出棘轮按模块建**（`VIEW_EXPORTS`：`ReadingView` 6 / `PreviewView` 3 / `IndexView` 4，新 `*-view.js` 不登记即红） | 每拆一个视图都必须同批登记 | **已完成** `477beea`（D-100 条件 ③） |
+| T6 | **`loadLibrary()` 不隐藏 `#library-error`**（`app.js:2550` 只 `el("library-warning").hidden = true`）——上一次加载失败的错误会留在页面上，成功的刷新也不清。其余四个操作（`deleteProject` / `createProjectFromFile` / `openProject` / `openPackageFile`）都在开头 `el("library-error").hidden = true`，只有它没有 | **随 `library` 切片一起改**（那几行本来就要搬进模块）；改完 e2e 的 B 条可以从 `warning` 扩到 `error` | 未做（一行） |
 
 ### T4 裁决证据（2026-10-29，真浏览器实测）
 
