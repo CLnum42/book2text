@@ -595,12 +595,17 @@ function r7bProblems(html, modules) {
     if (!exposes || exposes.length === 0) continue;      // 不暴露 window 的脚本不用加载检查
     const at = html.indexOf(`/static/${file}`);
     if (at === -1) {
-      problems.push(`${file} 暴露了 window.${exposes[0]}，但 index.html 里没有它的 <script>`
-        + "——消费者会走 `if (!api) return null` 的降级路径：页面不报错、行为全没，静态门全绿");
+      problems.push(`${file} 暴露了 window.${exposes[0]}，但 index.html 里没有它的 <script>。`
+        + `修法三步：① 在 index.html 加 <script src="/static/${file}"></script>；`
+        + "② 放在 app.js 之前（和其余视图模块同一段）；③ 核对文件名拼写/大小写。"
+        + "不修的话消费者会走 `if (!api) return null` 的降级路径：页面不报错、行为全没，静态门全绿");
       continue;
     }
     if (appAt !== -1 && at > appAt) {
-      problems.push(`${file} 必须在 app.js 之前加载（现在顺序反了：module=${at} app=${appAt}）`);
+      problems.push(`${file} 必须在 app.js 之前加载（现在顺序反了：module=${at} app=${appAt}）。`
+        + `修法三步：① 把 <script src="/static/${file}"></script> 移到 app.js 之前；`
+        + "② 确认只有一处 <script>（重复加载会执行两遍）；③ 挪完刷新页面看 window."
+        + `${exposes[0]} 是否存在，而不是只看静态门`);
     }
   }
   return problems;
