@@ -891,11 +891,15 @@ def test_trash_select_all_and_margin_visual_are_wired() -> None:
 
     assert "/api/trash" in script
     assert "confirm=true" in script
-    assert "function deleteProject(" in script
+    # library 切片：`deleteProject` 随目录页搬进 library-view.js（app.js 里 0 处），
+    # 废纸篓三个函数仍在 app.js —— 所以前一条查模块，后三条**不合查**（它们确实还住外壳）。
+    library_script = (STATIC_DIR / "library-view.js").read_text(encoding="utf-8")
+    assert "function deleteProject(" in library_script
+    assert "function deleteProject(" not in script
     assert "function loadTrash(" in script
     assert "restoreTrashProject(" in script
     assert "purgeTrashProject(" in script
-    assert "移入废纸篓" in script
+    assert "移入废纸篓" in script + library_script
     assert "无法恢复" in script
 
     # 全选 / 取消 / ⌘A / Esc / 点空白取消
@@ -1754,10 +1758,16 @@ def test_project_lock_conflict_dialog_is_wired() -> None:
     ):
         assert f'id="{element_id}"' in page_html, element_id
 
-    # 结构化错误（code + data.lock）被读出来画确认框
-    assert "error.data.lock" in script
-    assert "project_lock_expired" in script
+    # 结构化错误（code + data.lock）被读出来画确认框。
+    # `openProject` / `deleteProject` 搬进 library-view.js（裁定 B：锁冲突**对话框**留外壳，
+    # 但"谁来发现锁冲突"在模块里），所以这两条查两文件合查。
+    library_script = (STATIC_DIR / "library-view.js").read_text(encoding="utf-8")
+    both = script + library_script
+    assert "error.data.lock" in both
+    assert "project_lock_expired" in both
+    # 对话框本身仍在外壳（全局 modal，不属于 view-library）
     assert "function showLockConflict(" in script
+    assert "function showLockConflict(" not in library_script
     assert "function confirmLockConflict(" in script
     assert "force=true" in script
     # 过期锁才给强制删除；真占用不给
@@ -1766,9 +1776,9 @@ def test_project_lock_conflict_dialog_is_wired() -> None:
     assert "（本机以前的名字）" in script
     assert "（另一台电脑）" in script
     assert "这把锁已过期" in script
-    # 卡片徽标与入口
-    assert 'entry.lock_expired ? "锁已过期" : "使用中"' in script
-    assert '"接管并打开"' in script
+    # 卡片徽标与入口（项目卡由模块渲染，随 renderProjectList 搬走）
+    assert 'entry.lock_expired ? "锁已过期" : "使用中"' in both
+    assert '"接管并打开"' in both
 
 
 def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
