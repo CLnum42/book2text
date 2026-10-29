@@ -1,0 +1,224 @@
+{
+ "刀": 1,
+ "操作": "渲染与加载",
+ "来源": "docs/refactor/evidence/pages/semantic-ops.md §操作 1 + stage1-names.md",
+ "基线_app_js_行数": 15311,
+ "函数数": 30,
+ "行数": {
+  "十六个函数": 987,
+  "调用者": 495
+ },
+ "说明": "直接喂 build_view.py --movers 本文件 --rules pages/rules.py；生成器会 fail-closed。第 15 个调用者是 top-level 调用点（不是函数，不能搬）——落盘后按 R3/R5 失败点逐处处理。",
+ "movers": [
+  {
+   "name": "loadLayoutBlocks",
+   "start": 5538,
+   "end": 5576,
+   "lines": 40,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "loadSetupSuggestions",
+   "start": 4226,
+   "end": 4243,
+   "lines": 19,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "refreshRecognizedPages",
+   "start": 7252,
+   "end": 7275,
+   "lines": 25,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "renderLayoutBlocks",
+   "start": 5579,
+   "end": 5678,
+   "lines": 101,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "renderMarginPanel",
+   "start": 5390,
+   "end": 5504,
+   "lines": 116,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "renderPageSetup",
+   "start": 4133,
+   "end": 4159,
+   "lines": 28,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "renderPages",
+   "start": 6862,
+   "end": 6884,
+   "lines": 24,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "renderRecognitionStatus",
+   "start": 5714,
+   "end": 5760,
+   "lines": 48,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "renderRecognitionVerdict",
+   "start": 5769,
+   "end": 5882,
+   "lines": 115,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "renderStepPanels",
+   "start": 558,
+   "end": 617,
+   "lines": 61,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "renderSuggestionPanel",
+   "start": 4314,
+   "end": 4369,
+   "lines": 57,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "renderTypePicker",
+   "start": 4265,
+   "end": 4310,
+   "lines": 47,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "syncPageStates",
+   "start": 6893,
+   "end": 6912,
+   "lines": 21,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "updateMarginDetectProgress",
+   "start": 7550,
+   "end": 7564,
+   "lines": 16,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "updatePageVisibility",
+   "start": 4655,
+   "end": 4755,
+   "lines": 102,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "updateSelectionPanel",
+   "start": 3754,
+   "end": 3919,
+   "lines": 167,
+   "role": "操作1 的 16 个函数之一"
+  },
+  {
+   "name": "applyPageZoom",
+   "start": 4784,
+   "end": 4840,
+   "lines": 57,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "ensureMarginFitted",
+   "start": 702,
+   "end": 775,
+   "lines": 74,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "notifyApplied",
+   "start": 13824,
+   "end": 13828,
+   "lines": 5,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "recognizePage",
+   "start": 6937,
+   "end": 6964,
+   "lines": 28,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "refreshPageStates",
+   "start": 7286,
+   "end": 7298,
+   "lines": 13,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "reloadProjectPages",
+   "start": 7038,
+   "end": 7050,
+   "lines": 13,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "renderPages",
+   "start": 6862,
+   "end": 6885,
+   "lines": 24,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "renderRecognitionStatus",
+   "start": 5714,
+   "end": 5761,
+   "lines": 48,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "renderStepPanels",
+   "start": 558,
+   "end": 618,
+   "lines": 61,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "savePageMargin",
+   "start": 5250,
+   "end": 5285,
+   "lines": 36,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "schedulePageVisibility",
+   "start": 4638,
+   "end": 4645,
+   "lines": 8,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "showView",
+   "start": 210,
+   "end": 275,
+   "lines": 66,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "syncPageStates",
+   "start": 6893,
+   "end": 6913,
+   "lines": 21,
+   "role": "非 mover 调用者（必须同批进模块）"
+  },
+  {
+   "name": "undoMarginEdit",
+   "start": 6064,
+   "end": 6104,
+   "lines": 41,
+   "role": "非 mover 调用者（必须同批进模块）"
+  }
+ ]
+}
