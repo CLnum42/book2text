@@ -3,10 +3,9 @@
  "操作": "渲染与加载",
  "来源": "docs/refactor/evidence/pages/semantic-ops.md §操作 1 + stage1-names.md",
  "基线_app_js_行数": 15311,
- "函数数": 27,
+ "函数数": 23,
  "行数": {
-  "十六个函数": 987,
-  "调用者": 368
+  "函数与私有调用者": 1240
  },
  "说明": "直接喂 build_view.py --movers 本文件 --rules pages/rules.py；生成器会 fail-closed。第 15 个调用者是 top-level 调用点（不是函数，不能搬）——落盘后按 R3/R5 失败点逐处处理。",
  "movers": [
@@ -120,84 +119,56 @@
    "start": 4784,
    "end": 4840,
    "lines": 57,
-   "role": "非 mover 调用者（必须同批进模块）"
+   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
   },
   {
    "name": "ensureMarginFitted",
    "start": 702,
    "end": 775,
    "lines": 74,
-   "role": "非 mover 调用者（必须同批进模块）"
-  },
-  {
-   "name": "notifyApplied",
-   "start": 13824,
-   "end": 13828,
-   "lines": 5,
-   "role": "非 mover 调用者（必须同批进模块）"
-  },
-  {
-   "name": "recognizePage",
-   "start": 6937,
-   "end": 6964,
-   "lines": 28,
-   "role": "非 mover 调用者（必须同批进模块）"
-  },
-  {
-   "name": "refreshPageStates",
-   "start": 7286,
-   "end": 7298,
-   "lines": 13,
-   "role": "非 mover 调用者（必须同批进模块）"
+   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
   },
   {
    "name": "reloadProjectPages",
    "start": 7038,
    "end": 7050,
    "lines": 13,
-   "role": "非 mover 调用者（必须同批进模块）"
+   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
   },
   {
    "name": "renderPages",
    "start": 6862,
    "end": 6885,
    "lines": 24,
-   "role": "非 mover 调用者（必须同批进模块）"
+   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
   },
   {
    "name": "renderRecognitionStatus",
    "start": 5714,
    "end": 5761,
    "lines": 48,
-   "role": "非 mover 调用者（必须同批进模块）"
+   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
   },
   {
    "name": "savePageMargin",
    "start": 5250,
    "end": 5285,
    "lines": 36,
-   "role": "非 mover 调用者（必须同批进模块）"
-  },
-  {
-   "name": "schedulePageVisibility",
-   "start": 4638,
-   "end": 4645,
-   "lines": 8,
-   "role": "非 mover 调用者（必须同批进模块）"
+   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
   },
   {
    "name": "syncPageStates",
    "start": 6893,
    "end": 6913,
    "lines": 21,
-   "role": "非 mover 调用者（必须同批进模块）"
+   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
   },
   {
    "name": "undoMarginEdit",
    "start": 6064,
    "end": 6104,
    "lines": 41,
-   "role": "非 mover 调用者（必须同批进模块）"
+   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
   }
  ],
  "移出（留在外壳）": {
@@ -216,5 +187,37 @@
     "text": "* 轮询的就地刷新（syncPageStates）也能更新，不必为了一个数字重建整格。"
    }
   ]
- }
+ },
+ "外壳侧只改调用点（函数留 app.js）": [
+  {
+   "name": "notifyApplied",
+   "start": 13824,
+   "end": 13828,
+   "lines": 5,
+   "改法": "不碰任何 id，纯通知 → 调模块入口"
+  },
+  {
+   "name": "recognizePage",
+   "start": 6937,
+   "end": 6964,
+   "lines": 28,
+   "改法": "showView 的 pages 分支/详情抽屉里调它 → 改成 PagesView.enter()"
+  },
+  {
+   "name": "refreshPageStates",
+   "start": 7286,
+   "end": 7298,
+   "lines": 13,
+   "改法": "不碰任何 id → 调模块入口"
+  },
+  {
+   "name": "schedulePageVisibility",
+   "start": 4638,
+   "end": 4645,
+   "lines": 8,
+   "改法": "不碰任何 id → 调模块入口"
+  }
+ ],
+ "判据": "pages 私有 = 只碰 view-pages 子树 id；外壳流程 = 碰别视图 id 或不碰 id → 只改调用点",
+ "未决": "renderPages 按 id 归属是 pages 私有（页内 1 / 页外 0），若 Chief 仍判它留外壳，请指认它碰的别视图 id"
 }
