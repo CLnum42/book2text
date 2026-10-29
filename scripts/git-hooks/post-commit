@@ -1,63 +1,77 @@
 #!/bin/sh
-# Book2Text post-commit：判断"这笔提交是否绕过了 pre-commit 闸"，绕过则留痕；并提示闸没覆盖的测试。
+# Book2Text post-commit：区分「绕过」与「重写」，绕过才记账。
 #
-# 为什么留痕必须写在这里（实测 /tmp/hvtest）：
-#   git commit --no-verify 会同时跳过 pre-commit 和 commit-msg，**但 post-commit 照跑**。
-#   所以"允许绕过，但绕了留痕"只能挂在 post-commit 上；写进 commit-msg = 等于没写。
+# 为什么必须区分（2026-10-29，Chief 抓）：
+#   rebase / cherry-pick **会跑 post-commit**，而它们必然没有 pre-commit 写的
+#   `.git/b2t-gate-pass` → 每笔都被记成"绕过"。实测一次 rebase 3 笔 → 账本翻倍，
+#   status.sh 天天报"绕过 6 次、3 条 NO-REASON"，真实绕过是 0。
+#   **闸自己产生假警报，比没有闸更快被关掉。**
 #
-# 本 hook 永不阻塞提交（post-commit 发生在提交之后，退出码影响不了它），只做三件事：
-#   1) 判定这笔提交是否通过闸（比对 pre-commit 记下的 tree oid）；
-#   2) 绕过则追加一行日志（带 WITH-REASON / NO-REASON）；
-#   3) 改了 Python 就明说"闸里没有 pytest"——沉默比红更坏。
+# 两种判据都做（缺一不可）：
+#   1) 重写进行中：`.git/rebase-merge` / `rebase-apply` / `CHERRY_PICK_HEAD` / `REVERT_HEAD` 存在；
+#   2) 重写已完成：`post-rewrite` hook 把 new sha 记进 `.git/b2t-rewrites`，这里命中即 REWRITE
+#      （rebase 收尾时才写 marker，两阶段都得覆盖）。
+#
+# 账本格式（制表符分隔）：
+#   时间  sha  tag  branch@worktree  理由  subject
+#   tag ∈ BYPASS / BYPASS-WITH-REASON / REWRITE
 
 set -u
 
 REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 cd "$REPO" || exit 0
+GITDIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir)
+[ -n "$GITDIR" ] || GITDIR="$REPO/.git"
 
-MARK="$REPO/.git/b2t-gate-pass"
-BYPASS_LOG="$REPO/.git/b2t-gate-bypass.log"
-HEAD_TREE=$(git rev-parse "HEAD^{tree}" 2>/dev/null) || exit 0
+MARK="$GITDIR/b2t-gate-pass"
+BYPASS_LOG="$GITDIR/b2t-gate-bypass.log"
+REWRITES="$GITDIR/b2t-rewrites"
+
+HEAD_SHA=$(git rev-parse HEAD 2>/dev/null) || exit 0
 SHA=$(git rev-parse --short HEAD 2>/dev/null) || exit 0
+HEAD_TREE=$(git rev-parse "HEAD^{tree}" 2>/dev/null) || exit 0
 SUBJ=$(git log -1 --pretty=%s 2>/dev/null) || SUBJ="?"
 BODY=$(git log -1 --pretty=%B 2>/dev/null) || BODY=""
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || BRANCH="?"
+WHERE="$BRANCH@$(basename "$REPO")"
 
 PASSED=""
 if [ -f "$MARK" ]; then PASSED=$(cat "$MARK" 2>/dev/null || true); fi
 rm -f "$MARK"
 
+# ---- 是不是"重写"？----
+IS_REWRITE=0
+for m in rebase-merge rebase-apply; do
+  [ -d "$GITDIR/$m" ] && IS_REWRITE=1
+done
+for m in CHERRY_PICK_HEAD REVERT_HEAD; do
+  [ -f "$GITDIR/$m" ] && IS_REWRITE=1
+done
+if [ "$IS_REWRITE" = 0 ] && [ -f "$REWRITES" ] && grep -qx "$HEAD_SHA" "$REWRITES" 2>/dev/null; then
+  IS_REWRITE=1
+fi
+
+if [ "$IS_REWRITE" = 1 ]; then
+  printf '%s\t%s\tREWRITE\t%s\t%s\t%s\n' "$(date '+%F %T')" "$SHA" "$WHERE" "rebase/cherry-pick 重写，未经提交闸（不计入绕过）" "$SUBJ" >>"$BYPASS_LOG" 2>/dev/null || true
+  exit 0
+fi
+
+# ---- 通过了闸就不记 ----
 if [ -n "$PASSED" ] && [ "$HEAD_TREE" = "$PASSED" ]; then
-  GATE="通过"
+  exit 0
+fi
+
+# ---- 真绕过 ----
+if printf '%s' "$BODY" | grep -qi '^[[:space:]]*Bypass-Reason:'; then
+  REASON=$(printf '%s' "$BODY" | grep -i '^[[:space:]]*Bypass-Reason:' | head -n 1 | sed 's/^[[:space:]]*//')
+  TAG="BYPASS-WITH-REASON"
 else
-  GATE="未通过"
-  # 绕过也要写理由；没写就标 NO-REASON（不拦，但让它显眼）
-  if printf '%s' "$BODY" | grep -qi '^[[:space:]]*Bypass-Reason:'; then
-    REASON=$(printf '%s' "$BODY" | grep -i '^[[:space:]]*Bypass-Reason:' | head -n 1 | sed 's/^[[:space:]]*//')
-    TAG="WITH-REASON"
-  else
-    REASON="Bypass-Reason: (缺)"
-    TAG="NO-REASON"
-  fi
-  printf '%s\t%s\t%s\t%s\t%s\n' \
-    "$(date '+%F %T')" "$SHA" "$TAG" "$REASON" "$SUBJ" >>"$BYPASS_LOG" 2>/dev/null || true
-  echo "" >&2
-  echo "⚠ post-commit：这笔提交没有经过 pre-commit 闸（$SHA $SUBJ）" >&2
-  if [ "$TAG" = "NO-REASON" ]; then
-    echo "  而且提交信息里没有 Bypass-Reason: ——已标 NO-REASON。" >&2
-    echo "  下次注意：--no-verify 时在提交信息里补一行 Bypass-Reason: <为什么>。" >&2
-  fi
-  echo "  已留痕：$BYPASS_LOG" >&2
-  echo "" >&2
+  REASON="Bypass-Reason: (缺)"
+  TAG="BYPASS"
 fi
-
-# ---- 闸没覆盖 pytest：改了 Python 就明说，别让它静默 ----
-PY_CHANGED=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | grep -E '\.py$' || true)
-if [ -n "$PY_CHANGED" ]; then
-  N=$(printf '%s\n' "$PY_CHANGED" | wc -l | tr -d ' ')
-  echo "ℹ post-commit：这笔改了 $N 个 .py 文件，但 pre-commit 闸里**没有 pytest**。" >&2
-  echo "  后端回归要自己跑：pytest -q（分钟级，故不进提交闸）。" >&2
-  printf '%s\n' "$PY_CHANGED" | head -n 5 | sed 's/^/    /' >&2
-  echo "" >&2
-fi
-
+printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date '+%F %T')" "$SHA" "$TAG" "$WHERE" "$REASON" "$SUBJ" >>"$BYPASS_LOG" 2>/dev/null || true
+echo "" >&2
+echo "⚠ post-commit：这笔提交绕过了 pre-commit 闸（$SHA $SUBJ）" >&2
+[ "$TAG" = "BYPASS" ] && echo "  没有 Bypass-Reason: ——已标 BYPASS。" >&2
+echo "  已留痕：$BYPASS_LOG" >&2
 exit 0

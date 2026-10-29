@@ -1,0 +1,12 @@
+#!/bin/sh
+# Book2Text post-rewrite：git 在 rebase / amend 完成后调用（stdin 每行 "old new"）。
+# 作用只有一个：把 new sha 记进 .git/b2t-rewrites，供 post-commit 判 REWRITE。
+# 没有它，rebase 收尾阶段写的 post-commit 记录仍会被误判成"绕过"。
+set -u
+REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+GITDIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$REPO/.git")
+while read -r OLD NEW; do
+  [ -n "${NEW:-}" ] || continue
+  printf '%s\n' "$NEW" >>"$GITDIR/b2t-rewrites" 2>/dev/null || true
+done
+exit 0

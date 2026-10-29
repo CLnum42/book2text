@@ -14,7 +14,7 @@ REPO=$(git rev-parse --show-toplevel 2>/dev/null) || {
 }
 HOOKS="$REPO/scripts/git-hooks"
 
-for f in "$HOOKS/pre-commit" "$HOOKS/post-commit" "$HOOKS/pre-push"; do
+for f in "$HOOKS/pre-commit" "$HOOKS/post-commit" "$HOOKS/post-rewrite" "$HOOKS/pre-push"; do
   [ -f "$f" ] || { echo "✗ 缺 hook 脚本：$f" >&2; exit 1; }
   chmod +x "$f" 2>/dev/null || { echo "✗ 无法 chmod +x $f" >&2; exit 1; }
 done
