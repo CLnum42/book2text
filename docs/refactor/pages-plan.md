@@ -49,7 +49,7 @@
 ## 3. 前置条件（不满足不要开工）
 
 - `page-tile` 稳定（今天 observer 11 → 6，且酸测试绿）；**在刚换完地基的楼上浇筑 = 把两个风险叠一起**；
-- `pages/movers.json` 与 `semantic-ops.md` 的基线 sha 与当天 `HEAD` 一致（否则名单过期，重算再开）；
+- `pages/movers.json` 与 `semantic-ops.md` 的基线 sha 必须**等于本文件的锚 `main@cce0159`**；不一致 = 名单过期，重算再开（否则名单过期，重算再开）。本文件两处 `app.js` 行号引用按 `main@cce0159` 的树。
 - 63 个转发器的 4 个"无调用"已人工确认（`confirmLayoutFromPanel` / `confirmSelectedPages` / `scanVisiblePageSuggestions` / `startAuxiliaryAll`）——**零引用 ≠ 死代码，今天已误判两次**。
 
 ## 4. 禁止项
