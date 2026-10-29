@@ -5940,9 +5940,38 @@ async function recognizePage(page) {
   }
 }
 
+// 发起中：从「点击」到 `startTaskPolling(job_id)` 之间按钮必须是禁用的。
+// 真风险：这窗口里 taskJobId 还是 null，再点一次会在后端建出**第二个 job**。
+let jobStartPending = false;
+const JOB_START_BUTTONS = ["rec-start-all", "selection-recognize", "selection-check", "check-pending"];
+
+function setJobStartBusy(busy) {
+  for (const id of JOB_START_BUTTONS) {
+    const node = el(id);
+    if (!node) continue;
+    node.disabled = busy;
+    if (!busy) continue;
+    if (!node.dataset.restoreText) node.dataset.restoreText = node.textContent || "";
+    node.textContent = "发起中…";
+  }
+  if (!busy) {
+    for (const id of JOB_START_BUTTONS) {
+      const node = el(id);
+      // 用 in 判断：原文案可能是空串，`if (dataset.restoreText)` 会把它当成"没存过"
+      if (node && "restoreText" in node.dataset) {
+        node.textContent = node.dataset.restoreText;
+        delete node.dataset.restoreText;
+      }
+    }
+  }
+}
+
 async function startBatchRecognition(scope) {
   const project = currentProject;
   if (!project) return;
+  if (jobStartPending) return;      // 连点/双击不会建第二个 job
+  jobStartPending = true;
+  setJobStartBusy(true);
   const pending = project.pages.filter(
     (page) => page.include && recognitionOf(page).status !== "recognized"
   );
@@ -5960,6 +5989,9 @@ async function startBatchRecognition(scope) {
     startTaskPolling(data.job.job_id);
   } catch (error) {
     showError(el("pages-error"), error);
+  } finally {
+    jobStartPending = false;
+    setJobStartBusy(false);          // 成功 / 失败 / 异常都恢复，不卡在 disabled
   }
 }
 
@@ -5982,6 +6014,9 @@ function applyRecognizedPages(pages) {
 async function checkSelection(scope) {
   const project = currentProject;
   if (!project) return;
+  if (jobStartPending) return;
+  jobStartPending = true;
+  setJobStartBusy(true);
   el("pages-error").hidden = true;
 
   let body;
@@ -6008,6 +6043,9 @@ async function checkSelection(scope) {
     startTaskPolling(data.job.job_id);
   } catch (error) {
     showError(el("pages-error"), error);
+  } finally {
+    jobStartPending = false;
+    setJobStartBusy(false);
   }
 }
 
