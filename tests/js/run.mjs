@@ -23,6 +23,7 @@ const TEST_FILES = [
   ["reading-diff-units", () => import("./reading-diff-units.test.mjs")],
   ["compute-char-spans", () => import("./compute-char-spans.test.mjs")],
   ["reading-view-behavior", () => import("./reading-view-behavior.test.mjs")],
+  ["index-view-behavior", () => import("./index-view-behavior.test.mjs")],
   ["boundary", () => import("./boundary.test.mjs")],
 ];
 const selector = process.argv[2];

@@ -56,6 +56,12 @@ B2T_APP_JS=/tmp/app-old.js node tests/js/run.mjs compute-char-spans
 - `compute-char-spans.test.mjs` —— `computeCharSpans(current, candidate)`（`app.js:11574`）：
   等长快路径 vs LCS、代理对（UTF-16 下标会切开代理对，挂 todo）、组合字符、全角标点、
   空输入、超长行的耗时上限（防 O(n²)）。
+- `index-view-behavior.test.mjs` —— 目录确认视图的**行为改动**特征测试（Slice I1）：
+  `loadPageIndex` 从"取数 + 写三处 DOM + 顺手渲染"改成纯数据服务，返回 `{status: ok|error|busy}`，
+  渲染归模块的 `openPageIndex`。锁三条：① 预览那条路径调它时目录 DOM 一个字节都不写（哨兵）；
+  ② 回目录时确实渲染（不然第一条可以靠"永远不渲染"骗过）；③ `busy` 时一个字不写且返回 busy 不是 error。
+  变异：把 DOM 写点塞回 `loadPageIndex` / 去掉 `openPageIndex` 里的渲染 / busy 分支清列表，各自红。
+  `B2T_INDEX_JS` 可把被测模块指到别处（变异验证用，与 `B2T_APP_JS` 同口径）。
 - `boundary.test.mjs` —— 模块边界守门（R1 + R4，规格 `docs/refactor/reading-view-boundary.md` §6）：
   R1 新模块不许引用 app.js 的顶层声明（去注释/字符串，排除自己声明过的同名符号）；
   R4 同名函数只许一份真实现，其余 ≤6 行薄转发。`B2T_VIEW_JS` / `B2T_STATIC_DIR` 可指向别处复跑。
