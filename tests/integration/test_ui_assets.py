@@ -239,23 +239,93 @@ def test_page_layout_panel_and_filter_are_present() -> None:
 
 # ---------------------------------------------------------------- 任务 41：建议徽章 / 抽屉
 
+#: 外壳 + 已落盘的全部视图模块。函数体搬到哪个文件，`_function_body_any()` 就在哪个文件里找它；
+#: 模块还没落盘（刀 2–5 之前）的跳过即可，不用改测试。
+VIEW_MODULE_FILES = (
+    "reading-view.js",
+    "index-view.js",
+    "preview-view.js",
+    "library-view.js",
+    "merge-view.js",
+    "pages-view.js",
+)
+FUNCTION_SEARCH_FILES = VIEW_MODULE_FILES + ("app.js",)
+
+
 def _script() -> str:
     return (STATIC_DIR / "app.js").read_text(encoding="utf-8")
 
 
-def _function_body(name: str) -> str:
-    """截取 `function name(...) { ... }` 的源码，直到下一个顶层函数或分隔线。
+def _view_script(name: str = "pages-view.js") -> str:
+    """已落盘视图模块的源码（`pages-view.js` / `library-view.js` / `index-view.js` …）。"""
+    return (STATIC_DIR / name).read_text(encoding="utf-8")
 
-    只用于"这个函数里有没有调用某个入口"这类静态约定：界面没有 JS 测试运行器，
-    真正的行为验收在真浏览器里做（见开发日志任务 41）。
+
+def _script_with_view(name: str = "pages-view.js") -> str:
+    """`app.js` + 某个视图模块的源码，给**「某字符串在文件里」**这类静态约定用。
+
+    拆模块之后，被断言的东西可能合法地住进模块里；两份一起查即"命中任一"。
+    **不要拿它做「某字符串在某个函数里」的断言**——拼起来会让别处的同名调用充数
+    （例：`app.js` 里 `forgetPageBlocks(pageNo)` 有 3 处，都不在 `refreshRecognizedPages` 里）。
+    带函数范围的断言用 `_function_body_any()`。
     """
-    source = _script()
+    return _script() + "\n" + _view_script(name)
+
+
+def _extract_function(source: str, name: str) -> str | None:
+    """`function name(...) { ... }` 的源码切片；没有这个函数返回 None。"""
     match = re.search(rf"\n(?:async )?function {name}\(", source)
-    assert match, f"app.js 里没有 function {name}("
-    start = match.start()
+    if not match:
+        return None
     rest = source[match.end():]
     end = re.search(r"\n(?:async )?function [A-Za-z0-9_]+\(|\n// -{10,}", rest)
-    return source[start: match.end() + (end.start() if end else len(rest))]
+    return source[match.start(): match.end() + (end.start() if end else len(rest))]
+
+
+def _is_forwarder(body: str) -> bool:
+    """搬走后的转发桩：整段只有一次 `.apply(` / `.call(` 转发，没有自己的函数体。
+
+    这是"这不是真实现"的**正面定义**——不是按文件名排除。外壳留桩、模块给实体，
+    两者可以同时存在；判据只看这一段源码是不是只有转发。
+    """
+    return ".apply(" in body or ".call(" in body
+
+
+def _function_body_any(name: str, files: tuple[str, ...] = FUNCTION_SEARCH_FILES) -> str:
+    """在所有视图模块 + `app.js` 里找这个函数，返回**实体**的正文（命中多份就是多份的合体）。
+
+    搬走之后外壳常常只剩一句转发桩（`return window.PagesView.x.apply(...)`），
+    函数体在模块里。转发桩由 `_is_forwarder()` 正面识别并丢弃；只剩转发桩 = 实体真的丢了。
+    同一函数名在多个文件里都有实体时全部取回拼接——调用方断言"任一处成立"即可。
+    """
+    real: list[str] = []
+    stubs: list[str] = []
+    for file in files:
+        path = STATIC_DIR / file
+        if not path.exists():      # 这个模块还没落盘（刀 2–5 之前）→ 跳过，不报错
+            continue
+        body = _extract_function(path.read_text(encoding="utf-8"), name)
+        if body is None:
+            continue
+        (stubs if _is_forwarder(body) else real).append(body)
+    assert real or stubs, (
+        f"这些文件里都没有 function {name}(：{'、'.join(files)}")
+    assert real, (
+        f"function {name}( 只有转发桩，实体既不在 app.js 也不在视图模块里"
+        f"（找过：{'、'.join(files)}）")
+    return "\n".join(real)
+
+
+def _function_body(name: str) -> str:
+    """截取 `app.js` 里 `function name(...) { ... }` 的源码，直到下一个顶层函数或分隔线。
+
+    只用于"这个函数里有没有调用某个入口"这类静态约定：界面没有 JS 测试运行器，
+    真正的行为验收在真浏览器里做（见开发日志任务 41）。**搬进模块的函数用
+    `_function_body_any()`**——在这里会截到转发桩。
+    """
+    body = _extract_function(_script(), name)
+    assert body, f"app.js 里没有 function {name}("
+    return body
 
 
 def _strip_js_comments(text: str) -> str:
@@ -357,7 +427,7 @@ def test_block_frames_refresh_as_pages_finish_and_prefetch_while_scrolling() -> 
     collect = _function_body("collectNewlySucceededPages")
     assert 'item.status !== "succeeded"' in collect
     assert "taskRefreshedPages" in collect  # 每页只处理一次，轮询不重复重拉
-    refresh = _function_body("refreshRecognizedPages")
+    refresh = _function_body_any("refreshRecognizedPages")  # 实体在 pages-view.js，app.js 只剩转发桩
     assert "forgetPageBlocks(pageNo)" in refresh
     assert "queueOverlayRender(pageNo)" in refresh
     # 审校视图：正在看的那一页重新载入（先落库再重绘，别盖掉没存完的输入）
@@ -374,7 +444,7 @@ def test_block_frames_refresh_as_pages_finish_and_prefetch_while_scrolling() -> 
     assert "PAGE_BLOCK_PREFETCH_LIMIT = 4" in script
     assert "PAGE_BLOCK_PREFETCH_BURST = 8" in script
     assert "function pumpPageBlockPrefetch(" in script
-    visibility = _function_body("updatePageVisibility")
+    visibility = _function_body_any("updatePageVisibility")  # 同上：实体在模块里
     assert "prefetchBand" in visibility
     assert "pumpPageBlockPrefetch(prefetchCandidates)" in visibility
     # 只为已识别的页预取，不为整本未识别页发空请求
@@ -496,7 +566,8 @@ def test_margin_view_is_wired_to_the_page_view() -> None:
     没有模式选择卡片，也没有折叠的「检测」按钮，进这一步自动拟合未定的页。
     """
     page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 版心面板的接线随 pages 刀 1 搬进 pages-view.js：文案类断言两份合查（命中任一即可）
+    script = _script_with_view("pages-view.js")
     styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -876,6 +947,7 @@ def test_trash_select_all_and_margin_visual_are_wired() -> None:
     """任务 35：废纸篓、全选 / 取消全选 / 点空白取消、版心视觉都真的接上。"""
     page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    pages_script = _view_script("pages-view.js")
     styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -908,7 +980,8 @@ def test_trash_select_all_and_margin_visual_are_wired() -> None:
     assert 'event.key.toLowerCase() === "a"' in script
     assert 'event.key === "Escape"' in script
     assert 'event.target.closest(".page-tile")' in script
-    assert "不在当前筛选" in script
+    # 「不在当前筛选」的提示文案随页面瓷砖接线进了 pages-view.js（app.js 里 0 处）
+    assert "不在当前筛选" in script + pages_script
 
     # 版心视觉：1px 边框 + 更深的版心外灰度
     # 任务 76：版心框改成 1px 半透明（用户说原来那圈白边"看着很不协调"）
@@ -980,6 +1053,7 @@ def test_workflow_steps_scope_the_right_panel() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    pages_script = _view_script("pages-view.js")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     # 分区节点：页面确认步的「版面块」、文字识别步的「识别状态」
@@ -1019,12 +1093,13 @@ def test_workflow_steps_scope_the_right_panel() -> None:
     assert "function pageTextLines(" in script
     # 不再由前端按"检测行数"预筛：后端回退识别行，无文字的页单独报 no_text
     assert "pageLayoutLines(page) > 0 && !marginFitTried.has(page.page_no)" not in script
-    assert 'Number(data.no_text || 0)' in script
+    # 后端回退识别行的那段接线随版心搬进 pages-view.js（app.js 里 0 处）
+    assert 'Number(data.no_text || 0)' in script + pages_script
     assert "function marginFitSummaryText(" in script
     assert "页没有文字（插图 / 空白），跳过" in script
     assert "页还没有可用的正文行，版心未定" in script
     # 面板只剩三个动作（重置 / 撤销 / 下一页），模式卡片已经删除
-    assert 'el("margin-page-actions")' in script
+    assert 'el("margin-page-actions")' in script + pages_script
     assert "function undoMarginEdit(" in script
     assert "confirmLayoutFromPanel" in script
 
@@ -1051,6 +1126,8 @@ def test_page_index_step_is_wired() -> None:
     # 仍住在外壳里的那几个**不合查**——它们确实还在 app.js。
     index_script = (STATIC_DIR / "index-view.js").read_text(encoding="utf-8")
     index_both = script + index_script
+    # 版心步的文案随版心搬进 pages-view.js（app.js 里 0 处）
+    pages_both = script + _view_script("pages-view.js")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1087,10 +1164,10 @@ def test_page_index_step_is_wired() -> None:
     assert 'Boolean(ix.complete)' in script
     assert "未识别页码" in index_both
     # 版心步的"下一步"按这一页的真实状态说，不按步骤顺序说
-    assert "版心已按本页正文行生成；拖动四边调整，不改也算已定" in script
+    assert "版心已按本页正文行生成；拖动四边调整，不改也算已定" in pages_both
     # 兜底与"没有行"各有自己的说法，不许混成一句"已拟合"
-    assert "版心是本页正文行的包围盒（兜底）" in script
-    assert "这一页还没有可用的正文行（识别行 / 检测行都没有），版心暂时生成不了" in script
+    assert "版心是本页正文行的包围盒（兜底）" in pages_both
+    assert "这一页还没有可用的正文行（识别行 / 检测行都没有），版心暂时生成不了" in pages_both
     # 只有 PDF 页序时：说明条 + 跳转停用 + 步骤条不绿（complete 由后端给）
     assert "function indexIsPageOrderOnly(" in index_both
     assert "尚未识别：下面只有 PDF 页序" in index_both
