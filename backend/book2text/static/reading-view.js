@@ -61,6 +61,13 @@ let readingPageNo = 1;
 let readingRendered = 0;
 let readingSegmentNodes = [];
 let readingPanelKey = null;
+// UX V3：左树按章折叠的展开状态（跨重绘存活）；默认只展开当前页所在章。
+let readingTreeExpandedChapters = new Set();
+let readingTreeChapterAuto = null;   // 上一次自动展开的章（用户手动折叠后不抢回来）
+// UX V3：最近 20 次判决的时刻，用来算「约剩 M 分钟」；进程内有效，不落盘。
+let readingJudgeTimes = [];
+// UX V3：窗口边界上正在向服务端要「下一处未审」；这期间面板保持打开，Enter 先不重复判。
+let readingAdvancing = false;
 // 跳转后等待目标行落位的 key：只挡这一段页码写入（见 onReadingScroll）
 let readingJumpSettleKey = null;
 let readingJumpSettleTicks = 0;
@@ -464,9 +471,17 @@ function setupReading() {
       }
       return;
     }
-    if (event.key === "Enter") {
+    // 焦点在面板里的按钮上时，交给原生 click：否则 document 的 keydown 和按钮的
+    // 原生激活会各判一次，连按 Enter 会一次跳过两条（记录仍然只有一条）。
+    if (event.key === "Escape") {
+      closeReadingPanel();
+      return;
+    }
+    if (event.target && event.target.closest && event.target.closest("#reading-panel-host")) return;
+    if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      // UX V3：面板开着时 Enter = "保留原文并下一处"（原来的写法无条件 gotoNextUnreviewed，
+      if (readingAdvancing) return;
+      // UX V3：面板开着时 Enter/空格 = "保留原文并下一处"（原来的写法无条件 gotoNextUnreviewed，
       // 于是面板开着按 Enter 会跳过当前条且不记录——这是那个既有 bug）。
       const panelEntry = readingPanelKey
         ? readingEntries.find((item) => readingKey(item.block_id, item.line_index) === readingPanelKey)
@@ -475,9 +490,7 @@ function setupReading() {
         draftReading(panelEntry, "kept", null);
         return;
       }
-      gotoNextUnreviewed();
-    } else if (event.key === "Escape") {
-      closeReadingPanel();
+      if (event.key === "Enter") gotoNextUnreviewed();
     }
   });
 }
@@ -1459,7 +1472,17 @@ function renderReading({ reset = false, startAt = null } = {}) {
   // QA 现场：正文和顶部已回到第 1 页，`#reading-panel-host` 里还挂着第 368 页的旧面板，
   // 因为 `openReadingPanel` 看到"已有面板"就不重建。
   if (!readingPanelKey && !readingPendingPanelEntry && !readingPendingPanelKey) {
-    hideReadingPanelHost();
+    // UX V3：判决即前进会触发「换页 + 重绘」，重绘把 key 清空后不能把刚开的面板当残留藏掉。
+    // 只要宿主里的面板仍指向当前页（mark 的 page_no == readingPageNo），就认它是当前项。
+    const host = el("reading-panel-host");
+    const stub = host && host.querySelector(".reading-panel");
+    const stubKey = stub && stub.dataset.key;
+    const stubMark = stubKey ? readingMarks.get(stubKey) : null;
+    if (stubKey && stubMark && Number(stubMark.page_no) === Number(readingPageNo)) {
+      readingPanelKey = stubKey;
+    } else {
+      hideReadingPanelHost();
+    }
   }
 }
 
@@ -1531,6 +1554,68 @@ function centerReadingLinePair(entry) {
   }
 }
 
+/**
+ * UX V3 ①：一条 = 一处差异。
+ * 取 before/after 的公共前后缀，差异段两侧各留 radius 个字；返回两行要显示的范围。
+ * 不拼、不补：片段全部是原文切片，差异段逐字返回，渲染时再包强调。
+ */
+function readingDiffWindow(before, after, radius = 6) {
+  const a = String(before || "");
+  const b = String(after || "");
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head += 1;
+  let tail = 0;
+  while (
+    tail < a.length - head &&
+    tail < b.length - head &&
+    a[a.length - 1 - tail] === b[b.length - 1 - tail]
+  ) {
+    tail += 1;
+  }
+  const aStart = head;
+  const aEnd = a.length - tail;
+  const bStart = head;
+  const bEnd = b.length - tail;
+  return {
+    a, b,
+    aFrom: Math.max(0, aStart - radius), aTo: Math.min(a.length, aEnd + radius), aStart, aEnd,
+    bFrom: Math.max(0, bStart - radius), bTo: Math.min(b.length, bEnd + radius), bStart, bEnd,
+  };
+}
+
+/** 一行片段：省略号 + 前后文 + 差异字（逐字 <b>，差异字必须有强调）。 */
+function readingSnippetRow(label, text, from, start, end, to, full) {
+  const row = document.createElement("div");
+  row.className = "reading-panel__row";
+  const tag = document.createElement("span");
+  tag.className = "reading-panel__row-label";
+  tag.textContent = label;
+  const body = document.createElement("span");
+  body.className = "reading-panel__row-text";
+  const left = full ? 0 : from;
+  const right = full ? text.length : to;
+  if (left > 0) body.append(document.createTextNode("…"));
+  if (start > left) body.append(document.createTextNode(text.slice(left, start)));
+  const changed = text.slice(Math.min(start, end), Math.max(start, end));
+  if (changed) {
+    for (const char of changed) {
+      const em = document.createElement("b");
+      em.className = "reading-panel__changed";
+      em.textContent = char;
+      body.append(em);
+    }
+  } else {
+    const empty = document.createElement("span");
+    empty.className = "reading-panel__empty";
+    empty.textContent = "∅";
+    body.append(empty);
+  }
+  if (end < right) body.append(document.createTextNode(text.slice(end, right)));
+  if (right < text.length) body.append(document.createTextNode("…"));
+  row.append(tag, body);
+  return row;
+}
+
 function openReadingPanel(entry) {
   closeReadingPanel();
   const key = readingKey(entry.block_id, entry.line_index);
@@ -1539,6 +1624,7 @@ function openReadingPanel(entry) {
   // 面板本来只需要 `mark`（候选文本）与 `bbox`，**不依赖行节点**——
   // 行节点只用来定位与样式。所以找不到就降级挂到正文流顶部，绝不让用户"跳过去了但没有面板"。
   readingPanelKey = key;
+  readingAdvancing = false;
   const panel = document.createElement("div");
   panel.className = "reading-panel";
   panel.dataset.key = readingPanelKey;
@@ -1554,9 +1640,30 @@ function openReadingPanel(entry) {
   close.textContent = "✕";
   close.addEventListener("click", closeReadingPanel);
   head.append(close);
-  const candidate = document.createElement("p");
-  candidate.className = "reading-panel__candidate";
-  candidate.textContent = entry.candidate || "（第二路没有文字）";
+  // UX V3 ①：默认只显示差异片段（前后各 ±6 字），「看整行」再展开全文。
+  const snippet = document.createElement("div");
+  snippet.className = "reading-panel__snippet";
+  let panelExpanded = false;
+  const beforeText = entry.current || "";
+  const afterText = entry.candidate || "";
+  const drawSnippet = () => {
+    const window = readingDiffWindow(beforeText, afterText);
+    const rows = [
+      readingSnippetRow("原文", window.a, window.aFrom, window.aStart, window.aEnd, window.aTo, panelExpanded),
+      readingSnippetRow("候选", window.b, window.bFrom, window.bStart, window.bEnd, window.bTo, panelExpanded),
+    ];
+    snippet.replaceChildren(...rows);
+  };
+  drawSnippet();
+  const expand = document.createElement("button");
+  expand.type = "button";
+  expand.className = "btn btn--sm reading-panel__expand";
+  expand.textContent = "看整行";
+  expand.addEventListener("click", () => {
+    panelExpanded = !panelExpanded;
+    expand.textContent = panelExpanded ? "收起整行" : "看整行";
+    drawSnippet();
+  });
   const actions = document.createElement("div");
   actions.className = "reading-panel__actions";
   const adopt = document.createElement("button");
@@ -1576,7 +1683,7 @@ function openReadingPanel(entry) {
   edit.textContent = "自己改";
   edit.addEventListener("click", () => startReadingEdit(entry, panel));
   actions.append(adopt, keep, edit);
-  panel.append(head, candidate, actions);
+  panel.append(head, snippet, expand, actions);
   // **结构上不可能被清掉**：面板挂进 `#reading-panel-host`，它不在 `#reading-stream` 里，
   // `renderReading({reset:true})` 怎么 `innerHTML=""` 都碰不到它。
   const host = el("reading-panel-host");
@@ -1584,6 +1691,8 @@ function openReadingPanel(entry) {
   host.innerHTML = "";
   host.append(panel);
   host.hidden = false;
+  // UX V3 ③：默认焦点在「保留原文」——打开面板直接回车就是「保留原文并前进」。
+  keep.focus();
   noteReadingAction("panel");
   refreshReadingCurrentHighlight();
   if (entry.page_no && entry.page_no !== readingPageNo) {
@@ -1627,96 +1736,156 @@ function renderReadingTree() {
   head.append(outside);
   tree.append(head);
   const flowPages = readingFlowPages();
+  // 页块展开后才补 marks 窗口（调用留在 renderReadingTree 里，不放 builder：
+  // 边棘轮按函数名计边，挪进 builder 会让 renderReadingTree → ensureReadingMarksWindow 消失）。
+  const expandLater = (pageNo) => {
+    if (
+      readingTreeOpen.has(pageNo) &&
+      !readingEntriesForPage(pageNo).length &&
+      flowPages.has(pageNo)
+    ) {
+      ensureReadingMarksWindow(pageNo).then(() => renderReadingTree());
+    }
+  };
   // 当前页自动展开：用户不用先找页、再展开，进来就能看到"这一页有哪几处、分别是什么"
   if (readingPageNo) readingTreeOpen.add(readingPageNo);
   const pages = readingTreeData.pages || [];
-  const fragment = document.createDocumentFragment();
-  for (const page of pages) {
-    if (!page.total && !page.unacked) continue;
-    const wrap = document.createElement("div");
-    wrap.className = "reading-tree__page";
-    wrap.dataset.page = String(page.page_no);
-    const open = readingTreeOpen.has(page.page_no);
-    if (open) wrap.classList.add("is-open");
-
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "reading-tree__row";
-    row.dataset.page = String(page.page_no);
-    if (page.unacked === 0) row.classList.add("is-done");
-    const no = document.createElement("span");
-    no.className = "reading-tree__no";
-    const chevron = document.createElement("span");
-    chevron.className = "reading-tree__chevron";
-    chevron.textContent = "▶";
-    no.append(chevron, document.createTextNode(`第 ${page.page_no} 页`));
-    const count = document.createElement("span");
-    count.className = "reading-tree__count";
-    count.textContent = page.unacked ? `${page.unacked} 处` : "✓";
-    row.append(no, count);
-
-    const items = document.createElement("div");
-    items.className = "reading-tree__items";
-    items.hidden = !open;
-    const entries = open ? readingEntriesForPage(page.page_no) : [];
-    if (open && !entries.length) {
-      const empty = document.createElement("div");
-      empty.className = "reading-tree__item";
-      empty.style.cursor = "default";
-      const chars = Number(page.chars || 0);
-      const punct = Number(page.punct || 0);
-      empty.textContent = !flowPages.has(page.page_no)
-        ? "这一页不在正文流里（前置页 / 版心外），导出不会包含它"
-        : chars === 0 && punct > 0
-          ? `这一页只有标点/空格差异（${punct} 处）——用工具条上的「标点差异」批量判`
-          : "这一页的差异还没加载…";
-      items.append(empty);
-    }
-    for (const entry of entries) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "reading-tree__item";
-      item.dataset.key = readingKey(entry.block_id, entry.line_index);
-      const done = readingEntryDone(entry);
-      if (done) item.classList.add("is-done");
-      if (item.dataset.key === readingPanelKey) item.classList.add("is-current");
-      const lineNo = document.createElement("span");
-      lineNo.className = "reading-tree__line";
-      lineNo.textContent = `行${entry.line_index + 1}`;
-      item.append(lineNo, buildReadingTreePreview(entry));
-      if (done) {
-        const flag = document.createElement("span");
-        flag.className = "reading-tree__flag";
-        flag.textContent = "✓";
-        item.append(flag);
-      }
-      item.addEventListener("click", (event) => {
-        event.stopPropagation();
-        gotoReadingEntry(entry);
-      });
-      items.append(item);
-    }
-
-    row.addEventListener("click", () => {
-      // 点头部：既导航到这一页，也展开/收起它
-      if (readingTreeOpen.has(page.page_no)) readingTreeOpen.delete(page.page_no);
-      else readingTreeOpen.add(page.page_no);
-      queueReadingIntent("scroll", { pageNo: page.page_no });
-      renderReadingTree();
-      // 这一页不在已加载的 marks 窗口里：补那一页 ±10，回来再铺条目
-      if (
-        readingTreeOpen.has(page.page_no) &&
-        !readingEntriesForPage(page.page_no).length &&
-        flowPages.has(page.page_no)
-      ) {
-        ensureReadingMarksWindow(page.page_no).then(() => renderReadingTree());
-      }
-    });
-    wrap.append(row, items);
-    fragment.append(wrap);
+  const chapters = Array.isArray(readingTreeData.chapters) ? readingTreeData.chapters : [];
+  const visiblePages = pages.filter((page) => page.total || page.unacked);
+  const currentChapter = readingPageNo
+    ? (pages.find((page) => page.page_no === readingPageNo) || {}).chapter || null
+    : null;
+  // UX V3：左树按章折叠。默认只展开当前页所在章；用户开合过的章跨重绘保留。
+  if (currentChapter && readingTreeChapterAuto !== currentChapter) {
+    readingTreeChapterAuto = currentChapter;
+    readingTreeExpandedChapters.add(currentChapter);
   }
-  tree.append(fragment);
+  if (chapters.length) {
+    const chapterIds = new Set(chapters.map((chapter) => chapter.id));
+    for (const chapter of chapters) {
+      const kids = visiblePages.filter((page) => page.chapter === chapter.id);
+      if (!kids.length) continue;
+      const wrap = document.createElement("div");
+      wrap.className = "reading-tree__chapter";
+      wrap.dataset.chapter = chapter.id;
+      const open = readingTreeExpandedChapters.has(chapter.id);
+      wrap.classList.toggle("is-open", open);
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "reading-tree__row reading-tree__row--chapter";
+      const no = document.createElement("span");
+      no.className = "reading-tree__no";
+      const chevron = document.createElement("span");
+      chevron.className = "reading-tree__chevron";
+      chevron.textContent = open ? "▾" : "▶";
+      no.append(chevron, document.createTextNode(chapter.title || `第 ${kids[0].page_no} 页起`));
+      const count = document.createElement("span");
+      count.className = "reading-tree__count";
+      const sum = kids.reduce((total, page) => total + Number(page.unacked || 0), 0);
+      count.textContent = sum ? `${sum} 处` : "✓";
+      row.append(no, count);
+      const items = document.createElement("div");
+      items.className = "reading-tree__items";
+      items.hidden = !open;
+      row.addEventListener("click", () => {
+        if (readingTreeExpandedChapters.has(chapter.id)) readingTreeExpandedChapters.delete(chapter.id);
+        else readingTreeExpandedChapters.add(chapter.id);
+        renderReadingTree();
+      });
+      if (open) {
+        for (const page of kids) items.append(buildReadingTreePage(page, flowPages, expandLater));
+      }
+      wrap.append(row, items);
+      tree.append(wrap);
+    }
+    for (const page of visiblePages) {
+      if (page.chapter && chapterIds.has(page.chapter)) continue;
+      tree.append(buildReadingTreePage(page, flowPages, expandLater));
+    }
+  } else {
+    for (const page of visiblePages) tree.append(buildReadingTreePage(page, flowPages, expandLater));
+  }
   tree.scrollTop = scrollTop;
+}
+
+/** 左树里的一个页块（UX V3：章下面按页铺，页块本身的行为与旧版一致）。 */
+function buildReadingTreePage(page, flowPages, expandLater) {
+const wrap = document.createElement("div");
+wrap.className = "reading-tree__page";
+wrap.dataset.page = String(page.page_no);
+const open = readingTreeOpen.has(page.page_no);
+if (open) wrap.classList.add("is-open");
+
+const row = document.createElement("button");
+row.type = "button";
+row.className = "reading-tree__row";
+row.dataset.page = String(page.page_no);
+if (page.unacked === 0) row.classList.add("is-done");
+const no = document.createElement("span");
+no.className = "reading-tree__no";
+const chevron = document.createElement("span");
+chevron.className = "reading-tree__chevron";
+chevron.textContent = "▶";
+no.append(chevron, document.createTextNode(`第 ${page.page_no} 页`));
+const count = document.createElement("span");
+count.className = "reading-tree__count";
+count.textContent = page.unacked ? `${page.unacked} 处` : "✓";
+row.append(no, count);
+
+const items = document.createElement("div");
+items.className = "reading-tree__items";
+items.hidden = !open;
+const entries = open ? readingEntriesForPage(page.page_no) : [];
+if (open && !entries.length) {
+  const empty = document.createElement("div");
+  empty.className = "reading-tree__item";
+  empty.style.cursor = "default";
+  const chars = Number(page.chars || 0);
+  const punct = Number(page.punct || 0);
+  empty.textContent = !flowPages.has(page.page_no)
+    ? "这一页不在正文流里（前置页 / 版心外），导出不会包含它"
+    : chars === 0 && punct > 0
+      ? `这一页只有标点/空格差异（${punct} 处）——用工具条上的「标点差异」批量判`
+      : "这一页的差异还没加载…";
+  items.append(empty);
+}
+for (const entry of entries) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "reading-tree__item";
+  item.dataset.key = readingKey(entry.block_id, entry.line_index);
+  const done = readingEntryDone(entry);
+  if (done) item.classList.add("is-done");
+  if (item.dataset.key === readingPanelKey) item.classList.add("is-current");
+  const lineNo = document.createElement("span");
+  lineNo.className = "reading-tree__line";
+  lineNo.textContent = `行${entry.line_index + 1}`;
+  item.append(lineNo, buildReadingTreePreview(entry));
+  if (done) {
+    const flag = document.createElement("span");
+    flag.className = "reading-tree__flag";
+    flag.textContent = "✓";
+    item.append(flag);
+  }
+  item.addEventListener("click", (event) => {
+    event.stopPropagation();
+    gotoReadingEntry(entry);
+  });
+  items.append(item);
+}
+
+row.addEventListener("click", () => {
+  // 点头部：既导航到这一页，也展开/收起它
+  if (readingTreeOpen.has(page.page_no)) readingTreeOpen.delete(page.page_no);
+  else readingTreeOpen.add(page.page_no);
+  queueReadingIntent("scroll", { pageNo: page.page_no });
+  renderReadingTree();
+  // 这一页不在已加载的 marks 窗口里：补那一页 ±10，回来再铺条目
+  expandLater(page.page_no);
+});
+wrap.append(row, items);
+
+  return wrap;
 }
 
 function scrollReadingToPage(pageNo) {
@@ -2661,8 +2830,27 @@ function span_at(spans, index) {
   return spans[index];
 }
 
+/** UX V3 ②：判决后换到下一条未判的 entry（只在已加载窗口里找；窗口边界由 gotoNextUnreviewed 兜底）。 */
+function nextReadingEntryInWindow(entry) {
+  const key = readingKey(entry.block_id, entry.line_index);
+  const list = readingEntries.filter((item) => readingEntryVisible(item));
+  if (!list.length) return null;
+  const index = list.findIndex((item) => readingKey(item.block_id, item.line_index) === key);
+  const start = index >= 0 ? index + 1 : 0;
+  for (let step = 0; step < list.length; step += 1) {
+    const candidate = list[(start + step) % list.length];
+    if (readingEntryDone(candidate)) continue;
+    if (readingKey(candidate.block_id, candidate.line_index) === key) continue;
+    return candidate;
+  }
+  return null;
+}
+
 function draftReading(entry, ack, text) {
   const key = readingKey(entry.block_id, entry.line_index);
+  const stream = el("reading-stream");
+  const oldLine = readingLineNode(key);
+  const oldTop = oldLine && oldLine.getBoundingClientRect ? oldLine.getBoundingClientRect().top : null;
   readingDrafts.set(key, {
     block_id: entry.block_id,
     line_index: entry.line_index,
@@ -2673,10 +2861,38 @@ function draftReading(entry, ack, text) {
     at: new Date().toISOString(),
   });
   saveReadingDrafts();
+  readingJudgeTimes.push(performance.now());
+  if (readingJudgeTimes.length > 20) readingJudgeTimes.shift();
   noteReadingAction("judge");
-  closeReadingPanel();
   rerenderReadingLine(entry);
   renderReadingProgress();
+  // UX V3 ②：判决即前进——面板不关，内容换下一条，当前行钉在视口同一高度。
+  const next = nextReadingEntryInWindow(entry);
+  if (!next) {
+    // 窗口边界：面板**不关**（关了用户会以为被判丢了），向服务端要下一处；
+    // 到达后 openReadingPanel 会原地换内容。
+    readingAdvancing = true;
+    (async () => {
+      // 窗口边界换页会触发一次 reset；reset 与「开面板」同一帧竞争，
+      // 偶尔会把刚开的面板当残留藏掉。这里按服务端队列重试到面板真的在（不跳过：
+      // 已判的条目服务端 next-lines 会排除，重复调用只在同一条上重开）。
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await gotoNextUnreviewed();
+        if (document.querySelector("#reading-panel-host .reading-panel")) break;
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      }
+      readingAdvancing = false;
+      if (!document.querySelector("#reading-panel-host .reading-panel")) retryReadingPendingPanel();
+    })();
+    return;
+  }
+  openReadingPanel(next);
+  if (stream && oldTop !== null) {
+    const nextLine = readingLineNode(readingKey(next.block_id, next.line_index));
+    if (nextLine && nextLine.getBoundingClientRect) {
+      stream.scrollTop += nextLine.getBoundingClientRect().top - oldTop;
+    }
+  }
 }
 
 function readingEntryLineText(entry) {
@@ -2781,8 +2997,13 @@ function clearPendingPanel() {
  * 交给调用方安排重试（期间任何一次重绘都由 retryReadingPendingPanel 补开）。
  */
 function settlePanel(entry) {
+  const key = readingKey(entry.block_id, entry.line_index);
   if (document.querySelector("#reading-panel-host .reading-panel")) {
-    clearPendingPanel();
+    // UX V3：判决即前进会在「换页 + 重绘」的同一帧里开面板，reset 可能晚到一步。
+    // 挂起项多留一拍：这段时间里任何 reset 都由 retryReadingPendingPanel 把面板补回来。
+    setTimeout(() => {
+      if (readingPanelKey === key) clearPendingPanel();
+    }, 900);
     return true;
   }
   setPanel(entry);
@@ -2940,6 +3161,72 @@ function noteReadingAction(action) {
   window.StepTiming?.bump(action, stepTimingProgress());
 }
 
+/**
+ * UX V3 ③：进度说人话——主数字只留「待判 N 处」，判过 20 条给「约剩 M 分钟」，
+ * 汉字 / 标点两条独立轨。
+ *
+ * `#reading-progress-text` 保留旧句子（已审 X / Y 条）给既有行为测试与排障对照；
+ * 新增节点都是**运行时补**的（index.html 不动），拿不到父节点就安静跳过。
+ */
+function renderReadingProgressExtras(processed, total, counts) {
+  const legacy = el("reading-progress-text");
+  const group = legacy && legacy.parentNode;
+  if (!group || typeof document.createElement !== "function") return;
+  const ensure = (id, factory, before) => {
+    let node = el(id);
+    if (!node) {
+      node = factory();
+      node.id = id;
+      const anchor = before ? legacy : legacy.nextSibling;
+      if (group.insertBefore) group.insertBefore(node, anchor);
+      else group.append(node);
+    }
+    return node;
+  };
+  const pending = ensure("reading-pending-text", () => {
+    const node = document.createElement("strong");
+    node.className = "reading-pending";
+    return node;
+  }, true);
+  const pendingLeft = Math.max(0, total - processed);
+  pending.textContent = `待判 ${pendingLeft} 处`;
+  pending.title = `汉字差异：全书 ${total} 条，已判 ${processed} 条；标点差异在右侧独立轨`;
+  pending.classList.toggle("is-done", total > 0 && pendingLeft === 0);
+
+  const punctTotal = Number(counts && counts.punct_total ? counts.punct_total : 0);
+  const punctLeft = Number(counts && counts.punct_unacked ? counts.punct_unacked : 0);
+  let punct = group.querySelector ? group.querySelector('[data-reading="progress-punct"]') : null;
+  if (!punct && punctTotal > 0) {
+    punct = document.createElement("span");
+    punct.dataset.reading = "progress-punct";
+    punct.className = "muted reading-progress__punct";
+    if (group.insertBefore) group.insertBefore(punct, legacy);
+    else group.append(punct);
+  }
+  if (punct) {
+    punct.hidden = punctTotal <= 0;
+    punct.textContent = `标点 待判 ${Math.max(0, punctLeft)} 处 / ${punctTotal}`;
+  }
+
+  // 速度：最近 20 次判决的间隔（本会话真实事件时间，不估、不补）。
+  const eta = ensure("reading-progress-eta", () => {
+    const node = document.createElement("span");
+    node.className = "muted reading-progress__eta";
+    return node;
+  }, false);
+  const times = readingJudgeTimes;
+  if (times.length >= 20 && pendingLeft > 0) {
+    const span = times[times.length - 1] - times[0];
+    const perItem = span / Math.max(1, times.length - 1);
+    const minutes = Math.max(1, Math.ceil((pendingLeft * perItem) / 60000));
+    eta.hidden = false;
+    eta.textContent = `约剩 ${minutes} 分钟`;
+  } else {
+    eta.hidden = times.length < 20;
+    eta.textContent = "";
+  }
+}
+
 function renderReadingProgress() {
   // 任务 67：marks 只加载窗口，`readingEntries` 不再是全书 —— 进度数字必须用
   // 服务端给的全书计数，否则换一次窗口进度条就缩水一次（用户会以为审过的丢了）。
@@ -2958,6 +3245,14 @@ function renderReadingProgress() {
   submit.disabled = drafts === 0;
   submit.textContent = drafts ? `提交 ${drafts} 处` : "提交 0 处";
   el("reading-submit").classList.toggle("is-ready", drafts > 0);
+  try {
+    renderReadingProgressExtras(processed, total, readingGlobalCounts);
+  } catch (error) {
+    // 进度增强不许影响审校主流程；排障走控制台，不新增 window 埋点（R6）。
+    if (typeof console === "object" && console && console.warn) {
+      console.warn("[reading-progress] 增强进度渲染失败：", error && error.message ? error.message : error);
+    }
+  }
 }
 
 /**

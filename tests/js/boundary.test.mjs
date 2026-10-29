@@ -1520,6 +1520,10 @@ test("R3 自检：跨视图 id / 块外引用必须红，块内引用与豁免�
  */
 const OWNERS = {
   readingTreeOpen: "reading-view.js",
+  readingTreeExpandedChapters: "reading-view.js",
+  readingTreeChapterAuto: "reading-view.js",
+  readingJudgeTimes: "reading-view.js",
+  readingAdvancing: "reading-view.js",
   readingData: "reading-view.js",
   readingProject: "reading-view.js",
   readingEntries: "reading-view.js",
