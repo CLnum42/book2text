@@ -92,6 +92,8 @@ class OcrParams:
     language: str = "ch"
     # 与 `core/project/recognition.DEFAULT_DPI` 保持一致：由样本实测决定
     dpi: int = 200
+    # 强制重识别：有人工成果的页也要覆盖（用户显式要求时；建任务前已备份整库）
+    force: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
 

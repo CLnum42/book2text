@@ -43,6 +43,7 @@ import os
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -313,6 +314,7 @@ def create_ocr_job(
     dpi: int | None = None,
     language: str | None = None,
     engine: str | None = None,
+    force: bool = False,
 ) -> jobs_module.JobRecord:
     """建一个识别任务（不执行）。执行由 `core/jobs/executor.py` 起子进程完成。
 
@@ -380,6 +382,8 @@ def create_ocr_job(
         "engine_id": adapter.engine_id,
         # 项目设置的原值也记下来：任务载荷里能看出"这次是不是双引擎 / 选的哪个引擎"
         "engine_setting": engine_setting,
+        # 强制重识别：有人工成果的页也覆盖（覆盖前已在建任务时备份整库）
+        "force": bool(force),
     }
     if engine_setting == ENGINE_DUAL:
         secondary = default_secondary_engine()
@@ -389,6 +393,17 @@ def create_ocr_job(
                 f"双引擎比对需要第二引擎（{secondary.engine_id}）：{second_reason}"
             )
         params["secondary_engine_id"] = secondary.engine_id
+
+    if force:
+        # 强制覆盖前先备份整库：备份失败就整体失败，覆盖代码根本执行不到。
+        # 放在建任务之前，所以「备份失败 → 任务不建立」是自然结果，不是 catch 出来的。
+        try:
+            backup = db_module.backup_database(directory)
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            named = backup.with_name(f"project-before-recognize-{stamp}.db")
+            backup.replace(named)
+        except (OSError, sqlite3.Error) as exc:
+            raise ProjectError(f"重识别前的备份失败，已取消这次操作：{exc}") from exc
 
     return jobs_module.create_job(
         directory,
@@ -1186,6 +1201,7 @@ def _run_ocr_job(
     params = OcrParams(
         language=str(job.params.get("language", DEFAULT_LANGUAGE)),
         dpi=int(job.params.get("dpi", DEFAULT_DPI)),
+        force=bool(job.params.get("force", False)),
     )
     engine_version = adapter.version()
     source = directory / SOURCE_DIR_NAME / SOURCE_FILE_NAME
@@ -1617,6 +1633,7 @@ def _run_item(
         item_id=item_id,
         layout=layout,
         elapsed=elapsed,
+        force=bool(params.force),
     )
     if outcome["skipped"]:
         log(f"page {page_no} skipped human_touched blocks={len(layout.blocks)}")
@@ -1686,6 +1703,7 @@ def _persist_blocks(
     item_id: str,
     layout: grouping.PageLayout,
     elapsed: float,
+    force: bool = False,
 ) -> bool:
     """结算这次识别：块与行的写入、运行状态、active run、任务单元，**一个事务**。
 
@@ -1700,7 +1718,8 @@ def _persist_blocks(
         ).fetchone()
         has_active = active is not None and active["active_run_id"] is not None
         human_touched = _has_human_results(conn, page_id)
-        applied = not human_touched
+        # force=true 是用户的显式选择（建任务前已经备份整库），此时允许覆盖人工成果
+        applied = force or not human_touched
 
         if applied:
             # R1 / R2 的替换：旧块软删除（说明书 5.1：删除一律软删除）
@@ -1771,14 +1790,17 @@ def _persist_blocks(
             conn.execute(
                 "UPDATE page SET active_run_id = ? WHERE page_id = ?", (run_id, page_id)
             )
-        # 跳过是终态：记 'skipped'，不进 done（谎报识别了）、不进 failed（重试永远失败）
+        # 跳过是终态：记 'skipped'，不进 done（谎报识别了）、不进 failed（重试永远失败）。
+        # 注意判据是 `applied` 而不是 `human_touched`：force=true 时有人工成果也照样采用，
+        # 那种情况是"成功了"，不是"跳过了"。
+        skipped = not applied
         conn.execute(
             "UPDATE job_item SET status = ? WHERE item_id = ?",
-            ("skipped" if human_touched else "succeeded", item_id),
+            ("skipped" if skipped else "succeeded", item_id),
         )
         conn.execute("UPDATE project SET updated_at = ?", (now,))
         conn.commit()
-        return {"applied": bool(applied), "skipped": bool(human_touched)}
+        return {"applied": bool(applied), "skipped": bool(skipped)}
 
 
 # ---------------------------------------------------------------- 原始输出
