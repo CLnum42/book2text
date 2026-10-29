@@ -1308,3 +1308,79 @@ function refresh() {
 - 逐字节**全量**（76 个函数一个不漏），不是抽样；
 - 账对上（见 9），差额逐条列；
 - 搬完**先跑完整验收**（`node` + `pytest` + `qa.py smoke` + 导出对基线）**再提交**。
+
+---
+
+## 21. 瓷砖服务（页面图渲染）边界契约 —— pages / review 的前置
+
+**背景**：8 个渲染叶子（`renderPageBlocks` / `paintTileMargin` / `pageImageUrl` / `pageProfileFor` / `loadIndexBlocks` / `clearImagePlaceholder` / `clearTile*`）现在被 **reading / preview / index 三个模块各注入一份**；pages、review 拆完就是 5 个消费者 → **40 个注入点**。用户观察"所有步骤都围绕这个页面视图"，方向成立。
+
+### 21.1 判据：什么时候它必须是模块，而不是继续注入叶子
+
+**当一个概念有「每个消费者都必须自己维护、且必须唯一」的状态或生命周期时，它是模块；只有"参数进、值出"的变换才是叶子。**
+
+tile 满足三条：
+1. **唯一资源**：同一 `pageNo` 的图 URL 与尺寸档必须唯一（两个视图里应该是同一张图，不是两次请求）；
+2. **唯一生命周期**：每页一个观察器、一次加载、一次释放；
+3. **唯一失效语义**：图变 / 档位变 / 数据变，必须一处作废全部消费者。
+
+叶子注入保证不了唯一性：5 个消费者 = 5 份缓存、5 个 observer、5 套占位逻辑——**这正是"两个口径"的来源**。
+
+### 21.2 边界：渲染 vs 编排（确认 Chief 的判断）
+
+**一句可判定的切法：**
+
+> **"同一页在任何视图里必须长得一样"的，归 tile；"哪些页、点它干什么"的，归视图。**
+
+| 归 tile | 不归 tile |
+|---|---|
+| 图 URL、尺寸档（清晰度） | 显示哪些页、分页/窗口 |
+| blocks 叠加绘制 | 怎么滚动、滚到哪 |
+| 版心**线怎么画** | 版心**拖拽手柄**（归 pages 编排） |
+| 占位/缺失态 | 点击、拖拽、键盘 |
+| 懒加载与观察器 | 批量选择语义 |
+| 缓存作废 | diff 高亮**怎么标**（tile 只给 `overlays` 插槽） |
+
+**不做"整个页面视图一个模块"**：那会把 pages 的版心编辑、index 的缩放档、reading 的 diff 全吸进去——新上帝对象。用户观察的正确落点是"页面图渲染"这一层，不是"页面视图"这一层。
+
+### 21.3 API（一句话级）
+
+```js
+window.PageTile = {
+  init(deps),                                         // { api, getProject, getProfile, notify }
+  create(host, { pageNo, size, overlays, onReady }),  // → handle | null
+  update(handle, patch),                              // size / overlays / state
+  invalidate(target, reason),                         // target: pageNo | "*"; reason: image|profile|data
+  release(handle),                                    // 解绑观察器、回收槽位
+};
+```
+
+**硬约束（比 API 本身重要）**：`create` 的第一个参数是**宿主元素**，模块**不按 id 找 DOM**。它不属于任何 `<section>`——否则 R3 会把 5 个视图的 id 都判给它。
+
+### 21.4 它不负责什么（写进模块头，挡人）
+
+- 不决定显示哪些页（分页/窗口/选中都是视图的事）
+- 不绑任何点击 / 拖拽 / 键盘
+- 不画 diff 高亮（只提供 `overlays` 插槽，语义由视图给）
+- 不写版心结果、不做批量选择
+- 不管尺寸档从哪来（只接收；档位变化由视图调 `invalidate`）
+- 不做预取策略（谁 preload 谁决定）
+- **不自己读 `currentView` / 任何视图的 id**
+
+### 21.5 失败形态（原则：渲染路径绝不抛）
+
+| 情况 | 返回/状态 |
+|---|---|
+| 图缺失 / 404 | `status: "missing"`，画占位，`onReady({status:"missing"})`，**不抛** |
+| 页不存在 | `create()` 返回 `null`，调用方决定空态，**不抛** |
+| 尺寸档越界 | clamp 到合法档 + 记一次 warn，**不抛** |
+| 数据还没到 | `status: "pending"`，返回同一 handle，靠 `invalidate` 推进 |
+
+**为什么"不抛"写死**：渲染路径抛异常会吃掉整屏，这周的面板/高亮/页码 bug 全是这一类。
+
+### 21.6 落盘时的机检要求
+
+- **R3 变体**：`page-tile.js` 里**不得出现任何 id 字面量或 `el("…")`**（服务模块没有自己的 `<section>`）；
+- **R6**：一个文件一个 `window.PageTile`；
+- **R8**：出生接口登记进 `VIEW_EXPORTS`（或新的 `SERVICE_EXPORTS`），只降不升；
+- **R2**：不许引用 `window.XxxView`；需要视图给的东西一律走 deps。
