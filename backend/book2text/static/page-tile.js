@@ -318,15 +318,9 @@
     tileScheduleFrame();
   }
 
-  /**
-   * 取图 URL 的句柄。**过渡态**（2026-10-29，只活一笔）：测试侧还按旧名 `imageUrl` 传，
-   * 而 A1 不许产品笔同时改 tests/js —— 所以这里先认两个名字，测试切到 `getImageUrl` 之后
-   * 紧接着一笔把旧名字删掉。契约名只有 `getImageUrl`（Architect §21.10 ②）。
-   */
+  /** 取图 URL 的句柄（纯函数，Architect §21.10 ②）：契约名只有 `getImageUrl`。 */
   function urlBuilder() {
-    if (isFn(injected.getImageUrl)) return injected.getImageUrl;
-    if (isFn(injected.imageUrl)) return injected.imageUrl;
-    return null;
+    return isFn(injected.getImageUrl) ? injected.getImageUrl : null;
   }
 
   /** 必需依赖：缺了就必须 fail closed（§21.10 ②），不许静默出一片空白瓷砖。 */
