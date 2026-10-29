@@ -38,6 +38,19 @@ run_once() {
   git commit "$@" 2>&1
 }
 
+# ---- 并发串行化（2026-10-29 假 BYPASS 事故）----
+# pre-commit 写 .git/b2t-gate-pass、post-commit 读它比对 tree。两个 Bot 同时提交时
+# **后写覆盖先写** → 通过的那笔被记成 BYPASS。修法：把「pre-commit → commit → post-commit」
+# 整段用一把锁串起来。macOS 无 flock 命令，用 mkdir 的原子性做锁（可移植）。
+LOCKDIR="$REPO/.git/b2t-commit.lock"
+n=0
+while ! mkdir "$LOCKDIR" 2>/dev/null; do
+  n=$((n + 1))
+  if [ "$n" -gt 600 ]; then echo "✗ 提交锁等待超时（.git/b2t-commit.lock 存在）" >&2; exit 1; fi
+  sleep 0.2
+done
+trap 'rmdir "$LOCKDIR" 2>/dev/null' EXIT INT TERM
+
 i=1
 for d in 0.3 0.6 1.2 2.4 4.8; do
   out=$(run_once "$@")
