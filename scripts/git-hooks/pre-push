@@ -1,9 +1,14 @@
 #!/bin/sh
-# Book2Text pre-push：推送前跑后端回归（pytest），因为 pre-commit 里没有它。
+# Book2Text pre-push：推送前跑**两道**闸，因为 pre-commit 可以被 --no-verify 跳过。
 #
-# 为什么分开两个闸：
-#   tests/js/run.mjs  ≈ 6s  → 每笔提交都跑（pre-commit）
-#   pytest -q          ≈ 82s → 只在推送时跑（pre-push），否则没人愿意提交
+#   ① node tests/js/run.mjs                                          ≈ 11s（实测）
+#   ② node tests/js/contract-registry.mjs --strict --allow-transitional-base ≈ 7s（实测）
+#   ③ pytest -q                                                      ≈ 82s
+# 便宜的先跑、先失败。① ② 即便整段推送只有 *.md 也照跑（7–11 秒，且 §18.6 登记本身会被文档改动影响）。
+#
+# 这层能补的洞：`git commit --no-verify` 跳过 pre-commit，但**正常 `git push` 仍会跑 pre-push**。
+# 只有 `git push --no-verify` 能整层绕过，而 git 没有 post-push hook——那条只能靠 pre-commit 事后点名。
+# **这不是 CI**：CI 仍起不来（未验证），本闸只覆盖"从这台机器正常推送"。
 #
 # 三条设计约束：
 #   1) **只对碰了代码的推送跑**：整段推送只有 `*.md` 时跳过（文档改不出 pytest 红），并记一条 SKIP。
@@ -24,6 +29,18 @@ else
   echo "… pre-push：scripts/status.sh 不存在，跳过状态打印（不影响推送）" >&2
 fi
 
+# ---- 找 node：hook 的 PATH 不含 ~/.local/bin（与 pre-commit 同一张路径表） ----
+NODE=""
+for c in "$(command -v node 2>/dev/null)" "$HOME/.local/bin/node" /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do
+  if [ -n "$c" ] && [ -x "$c" ]; then NODE="$c"; break; fi
+done
+if [ -z "$NODE" ]; then
+  echo "✗ pre-push：找不到 node（查过 PATH / \$HOME/.local/bin / /opt/homebrew/bin / /usr/local/bin / /usr/bin）" >&2
+  echo "  拒绝推送——跑不起来的闸不允许静默放过（fail closed），纯文档推送也一样。" >&2
+  echo "  确需绕过：git push --no-verify（不会留 PASS 记录，下一笔提交会被点名）" >&2
+  exit 1
+fi
+
 COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir)
 MAIN=$(dirname "$COMMON")
 LOG="$COMMON/b2t-pytest.log"
@@ -34,6 +51,61 @@ EMPTY_TREE=$(git hash-object -t tree /dev/null 2>/dev/null || echo "")
 FAILED=0
 CHECKED=0
 SKIPPED=0
+NODECHECKED=0
+
+# 在**要推送的那棵树**上跑 node 闸。用临时 worktree 而不是工作区：
+# ① 四个人共用一个工作区，盘上随时是别人未提交的半成品；
+# ② contract-registry 要 `git log ring-break-base..HEAD`，`git archive` 出来的目录没有 .git，
+#    而仓库的 HEAD 又未必等于 local_sha（从别的 worktree 推、一次推多笔都会错位）。
+# 只有 worktree 能让"文件树 == HEAD == 要推的 sha"同时成立。
+run_node_gates() {
+  LOCAL_SHA=$1
+  WTROOT=$(mktemp -d "${TMPDIR:-/tmp}/b2t-push-node.XXXXXX") || {
+    echo "✗ pre-push：建不了临时目录（node 闸）" >&2; return 1
+  }
+  WT="$WTROOT/tree"
+  if ! git worktree add -q --detach "$WT" "$LOCAL_SHA" 2>"$WTROOT/add.log"; then
+    echo "✗ pre-push：导不出 $(echo "$LOCAL_SHA" | cut -c1-8) 的 worktree（node 闸）" >&2
+    tail -n 5 "$WTROOT/add.log" >&2 2>/dev/null || true
+    rm -rf "$WTROOT"; return 1
+  fi
+  NOUT=$(mktemp "${TMPDIR:-/tmp}/b2t-node-out.XXXXXX") || {
+    echo "✗ pre-push：建不了临时输出文件（node 闸）" >&2
+    git worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$WTROOT"; return 1
+  }
+  NSTART=$(date +%s)
+
+  # ① 套件（与 pre-commit 同一入口、同一条 env 隔离）
+  ( cd "$WT" && env -u B2T_APP_JS -u B2T_VIEW_JS -u B2T_STATIC_DIR \
+      "$NODE" tests/js/run.mjs ) >"$NOUT" 2>&1
+  RC1=$?
+  if [ "$RC1" -ne 0 ] || ! grep -q '^✔' "$NOUT"; then
+    echo "✗ pre-push：tests/js/run.mjs 红了（$(( $(date +%s) - NSTART ))s，退出码 $RC1）" >&2
+    echo "  验的是 $(echo "$LOCAL_SHA" | cut -c1-8) 这棵树，不是工作区。" >&2
+    tail -n 40 "$NOUT" >&2
+    rm -f "$NOUT"; git worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$WTROOT"
+    FAILED=1; return 1
+  fi
+  # ② 登记闸（R12）：--strict 下"有未登记/删行"必须红；base 过渡期按参数放行但会写明
+  ( cd "$WT" && "$NODE" tests/js/contract-registry.mjs --strict --allow-transitional-base ) >"$NOUT" 2>&1
+  RC2=$?
+  if [ "$RC2" -ne 0 ]; then
+    echo "✗ pre-push：contract-registry --strict 红了（退出码 $RC2）" >&2
+    tail -n 30 "$NOUT" >&2
+    rm -f "$NOUT"; git worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$WTROOT"
+    FAILED=1; return 1
+  fi
+
+  rm -f "$NOUT"
+  git worktree remove --force "$WT" >/dev/null 2>&1 || git worktree prune >/dev/null 2>&1 || true
+  rm -rf "$WTROOT"
+  NODECHECKED=$((NODECHECKED + 1))
+  # 同一本账：NODE 行证明"这道闸验过这个 tip"；RANGE 行仍然只在 pytest 也绿之后写，
+  # 所以 RANGE 的语义不变（= node + pytest 都过），pre-commit 的对账不用改。
+  printf 'NODE\t%s\t%s\tnode-gates-green\n' "$LOCAL_SHA" "$(date '+%F %T')" >>"$LOG" 2>/dev/null || true
+  echo "✓ pre-push：node 闸全绿（run.mjs + registry，$(( $(date +%s) - NSTART ))s）" >&2
+  return 0
+}
 
 check_one() {
   LOCAL_SHA=$1
@@ -52,7 +124,10 @@ check_one() {
     return 0
   fi
 
-  # 只有 Markdown → 跳过（pytest 读不到 .md 的内容做断言；唯一例外是 docs/**/*.json，见下）
+  # node 闸**不因纯 md 跳过**（Chief 2026-10-29）：7–11 秒，而且 §18.6 登记本身会被文档改动影响
+  run_node_gates "$LOCAL_SHA" || return 1
+
+  # 只有 Markdown → 只跳 pytest（它读不到 .md 的内容做断言；唯一例外是 docs/**/*.json，见下）
   NON_MD=$(printf '%s\n' "$FILES" | grep -v '\.md$' || true)
   if [ -z "$NON_MD" ]; then
     SKIPPED=$((SKIPPED + 1))
@@ -120,5 +195,5 @@ done
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-[ "$CHECKED" -gt 0 ] || echo "… pre-push：推送范围只有文档改动，跳过 pytest（已记 SKIP）" >&2
+[ "$CHECKED" -gt 0 ] || echo "… pre-push：推送范围只有文档改动，跳过 pytest（node 闸已跑 $NODECHECKED 次，SKIP 已记）" >&2
 exit 0

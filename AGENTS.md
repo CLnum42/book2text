@@ -82,7 +82,9 @@ git commit -m "…" -- <同一批路径…>
 
 **闸做了什么**：`pre-commit` 把**索引**导出到临时目录、跑 `node tests/js/run.mjs`（约 6 秒），红则拒绝提交；`post-commit` 记录绕过（`--no-verify` 时请加一行 `Bypass-Reason: <为什么>`）。
 
-**推送时另有一个闸**：`pre-push` 跑 `pytest -q`（约 82–85s），只在推送范围含非 `*.md` 改动时跑；`.venv` 缺失会拒绝推送（fail closed）。纯文档推送记一行 `SKIP`。
+**推送时另有一个闸**：`pre-push` 现在跑 **node 闸（`tests/js/run.mjs` ≈ 11s + `contract-registry.mjs --strict --allow-transitional-base` ≈ 7s，实测 15–19s）**，然后跑 `pytest -q`（约 82–85s）。node 闸**纯文档推送也跑**；pytest 只在推送范围含非 `*.md` 改动时跑，纯文档推送记一行 `SKIP`。`.venv` 或 `node` 缺失都会拒绝推送（fail closed）。
+
+**这层能补什么**：`git commit --no-verify` 跳过 pre-commit，但正常 `git push` 仍会跑 pre-push；只有 `git push --no-verify` 能整层绕过（git 没有 post-push hook，只能靠 pre-commit 事后点名）。**它不是 CI**——Actions 仍起不来，CI 一行不动。
 
 **推送绕过没有当场留痕的位置**（git 没有 post-push hook），所以 `pre-commit` 每次会点名"`origin/main` 最近哪些提交没有 pytest 记录"。**只报不拦**——推送已经发生了。
 
