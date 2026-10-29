@@ -21,7 +21,7 @@
   let mergeHandled = new Set();
   let mergeDecisions = new Map();
   let mergeActivePageId = null;
-  let lastStateRef = null;
+  let lastStateKey = null;
   let controlsBound = false;
 
   function charDiff(before, after) {
@@ -242,7 +242,7 @@
       item.className = "merge-item";
       const head = document.createElement("div");
       head.className = "merge-item__head";
-      head.textContent = `助手删除了 ${page.removed_blocks.length} 块（接受这一页时会一起删除，可撤销）`;
+      head.textContent = `助手删除了 ${page.removed_blocks.length} 块（接受这一页时会一起删除）`;
       item.append(head);
       cards.append(item);
     }
@@ -277,7 +277,7 @@
       );
       const hint = document.createElement("span");
       hint.className = "hint";
-      hint.textContent = "接受后的写入可整体撤销";
+      hint.textContent = "接受后立即写入";
       const accept = document.createElement("button");
       accept.type = "button";
       accept.className = "btn btn--pri";
@@ -514,7 +514,7 @@
     const submit = document.createElement("button");
     submit.type = "button";
     submit.className = "btn btn--primary";
-    submit.textContent = `提交 ${mergeDecisions.size} 页的决定（可撤销）`;
+    submit.textContent = `提交 ${mergeDecisions.size} 页的决定`;
     submit.addEventListener("click", submitMergeDecisions);
     const reset = document.createElement("button");
     reset.type = "button";
@@ -547,7 +547,7 @@
       injected.setSaveState(
         `已合并 ${data.accepted_pages} 页` +
           (data.rejected_pages ? `，保留现有 ${data.rejected_pages} 页` : "") +
-          "（⌘/Ctrl + Z 可撤销）"
+          ""
       );
       mergeDecisions = new Map();
       mergeHandled = new Set();
@@ -570,7 +570,7 @@
     if (!pending.length) return;
     if (
       !window.confirm(
-        `接受 ${pending.length} 页里没有冲突的变化？\n（块级修改与结构变化都会被写入，冲突项留给你单独处理；整批可撤销）`
+        `接受 ${pending.length} 页里没有冲突的变化？\n（块级修改与结构变化都会被写入，冲突项留给你单独处理）`
       )
     ) {
       return;
@@ -617,8 +617,11 @@
     if (assignmentId) return openMergeView(assignmentId);
     const state = currentMergeState();
     if (!state) return;
-    if (state !== lastStateRef) {
-      lastStateRef = state;
+    // 换没换新数据按 `assignment_id + seq` 判，**不按对象引用**：
+    // 「查看差异」每次都 fetch 出新对象，按引用比会导致「切走再回来裁决被清空」。
+    const key = `${(state.assignment && state.assignment.assignment_id) || ""}:${state.seq}`;
+    if (key !== lastStateKey) {
+      lastStateKey = key;
       mergeHandled = new Set();
       mergeDecisions = new Map();
       mergeActivePageId = null;
