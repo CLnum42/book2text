@@ -39,6 +39,15 @@ PASSED=""
 if [ -f "$MARK" ]; then PASSED=$(cat "$MARK" 2>/dev/null || true); fi
 rm -f "$MARK"
 
+# ---- 是不是"重放"？detached HEAD 上的提交在本仓库只可能是重放/实验（我们只在 main 上提交）----
+# cherry-pick 会跑 post-commit，但**不跑 pre-commit、也不触发 post-rewrite**，
+# 所以上次的 REWRITE 判定认不出它（2026-10-29 实测：7 条假 BYPASS 全来自临时 worktree 的 cherry-pick）。
+if ! git symbolic-ref -q HEAD >/dev/null 2>&1; then
+  printf '%s\t%s\tREPLAY\t%s\t%s\t%s\n' "$(date '+%F %T')" "$SHA" "$WHERE" \
+    "detached HEAD 上的重放（cherry-pick / 实验），未经提交闸（不计入绕过）" "$SUBJ" >>"$BYPASS_LOG" 2>/dev/null || true
+  exit 0
+fi
+
 # ---- 是不是"重写"？----
 IS_REWRITE=0
 for m in rebase-merge rebase-apply; do
