@@ -1,6 +1,9 @@
 # `view-pages` 的 R3 过渡豁免表（规格，表由 TestDev 落）
 
 > 基线 `HEAD`；`view-pages` 子树 **127** 个 id；被引用 **110** 种 / **258** 处。
+
+> **口径：闸**（`el` / `getElementById` / `querySelector(All)("#id")`）· **工具：** `node scripts/r3_pages_count.mjs --json`（`ids` / `total`）· **树：** `main@57890e1`（复算得 127 / 258 处 / 110 种）。
+> **「258 与 270 不是同一件事的两个版本」**——270 是字面量口径（`accept_pages.py`），两个口径**禁止互相减**。
 > 其中 **34 处**落在刀 1 的 19 个 movers 里（随刀搬走，**不进豁免表**）；
 > **刀 1 落盘后应剩 = 224 处 / 79 种 id**。
 
