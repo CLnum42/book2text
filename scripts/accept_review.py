@@ -2,18 +2,30 @@
 """scripts/accept_review.py —— `review` 第二刀落盘后的验收（机械部分）。
 
 口径来源（**脚本不发明数字**）：
-- `docs/refactor/review-slice.md`（两刀边界、减量门槛 2,400）
-- `docs/refactor/review-attribution.md`（14 逐字节归属：94 含根 / 93 不含根、17 个外部流程 420 行）
+- `docs/refactor/review-slice.md`（两刀边界、减量门槛 2,400..2,650）
+- `docs/refactor/review-attribution.md`（逐字节归属：94 含根 / 93 不含根、17 个外部流程）
 - `docs/refactor/accept-template.md`（三态退出码、id 按标签深度、字面量→0、减量硬判据、导出面精确相等）
 
-`review` 与 library 的形态不同，多一条**边界断言**：
-- **17 个外部流程函数必须「外壳有、模块没有」**（app.js 恰 1 处 `function` 声明、模块 0 处）——
-  这刀的核心边界就是它们**没被搬进去**；只数字面量会把"边界失守"漏掉：
-  它们一旦被拖进 `review-view.js`，字面量照样归零、行数照样减，但接缝全乱了。
+## 名单判据是「自洽」，不是「等于某个数」
 
-导出面**不由本脚本决定**：`review` 的出口数等 DevLead 给（`init`/`enter`/`notify` + 可能的域操作），
-所以写成参数 `--exports init,enter,notify`；不给就是"还没定"，模块落盘后按前置不满足处理（exit 2），
-**不抄 library 的 3 个**。
+`review` 的名单有四个互相打架的数：70（种子）/ 106（文档）/ 113（含跨视图）/ 121（调用闭包）——
+**方法不同，谁都不是判据**。所以本脚本不对任何一条硬编码条数开红（`≠106` 这种告警已删掉），
+只判名单**对不对得上自己**：
+
+① 三区 `movers` / `stays` / `external` 的并集条数 = 文件头声明的闭包条数，且三区**两两不相交**；
+② 三区行数之和 = 文件头声明的闭包行数；
+③ 每个 `movers` 名字在 app.js 里 `function <name>(` **恰好 1 处**（已经搬走的，则模块里恰好 1 处）。
+
+任一条不成立 → **exit 1 并点名**（不是告警）。门框在文件头：`closure_count` / `closure_lines`
+（JSON 字段，或 txt 里的 `# closure_count: 121` 这种行）——**声明不出来就没法对账，同样 exit 1**。
+
+## review 与 library 不同的地方
+
+- 名单从**文件**读（`docs/refactor/evidence/review/movers.txt|json`），脚本里不抄任何函数名；
+- 导出面**不由本脚本决定**：`--exports init,enter,notify` 传入，不给就是"还没定"（exit 2）；
+- 额外一条**边界断言**：17 个外部流程必须「外壳有、模块没有」——这刀的核心边界就是它们没被搬进去。
+  只数字面量会把"边界失守"漏掉：它们一旦被拖进 `review-view.js`，字面量照样归零、行数照样减，
+  但接缝全乱了。
 
 退出码三态：`2` 前置不满足（还没落盘 / 名单或导出面还没给）/ `1` 验收不过 / `0` 全过。
 只读、cwd 无关（按脚本自身位置定位仓库）。
@@ -43,14 +55,12 @@ BASELINE_IDS_NO_ROOT = 93          # 不含视图根（口径：根是容器，�
 BASELINE_IDS_WITH_ROOT = 94        # 含视图根——引用这个数时必须写明含不含根
 BASELINE_REFS = 89                 # app.js 引用到的 id 数（不含根集合）
 BASELINE_LITERALS = 218            # app.js 里这些 id 的字面量总处数（不含根集合）
-BASELINE_MOVERS = 106              # 能搬 113 − 树 7（review-slice.md §1）
 BASELINE_APP_LINES = 15311         # 本刀开工时的 app.js 行数（`sh scripts/status.sh --no-fetch` 读）
 MIN_SHRINK = 2400                  # review-slice.md §4：≥2,400；>2,650 说明顺手删了别的
 MAX_SHRINK = 2650
 
-# 17 个外部流程（review-attribution.md §1「不属于 review」，420 行）。
-# 首选从 `review-slice.md` §1 的名单块解析（改名单只改文档一处）；
-# 解析不出 17 个才退回这份内置清单，并打印警告——**不静默用旧的**。
+# 17 个外部流程（review-attribution.md §1「不属于 review」）。名单文件里有 external 区就用它，
+# 没有才从 `review-slice.md` §1 的名单块解析，再解析不出退回这份内置清单并**打印警告**。
 EXTERNAL_FLOW_FALLBACK = [
     "finishRunAutoPass", "finishRunLayout", "revertContinuation", "markContinuation",
     "onContinuationKeydown", "loadContinuationReview", "finishRevokeAutoPass", "undoLastCleanup",
@@ -58,6 +68,25 @@ EXTERNAL_FLOW_FALLBACK = [
     "pausePageThumbnails", "afterContinuationChange", "continuationRemaining", "closeFinishPanel",
     "renderContinuationPanel",
 ]
+
+# 名单文件的形态（三区），键名允许几种写法；**只认这些，不做模糊匹配**。
+ZONES = ("movers", "stays", "external")
+ZONE_KEYS = {
+    "movers": ("movers", "moves", "to_move"),
+    "stays": ("stays", "stay", "remaining"),
+    "external": ("external", "externals"),
+}
+LIST_KEYS = ("items", "list", "functions", "names", "entries")
+NAME_KEYS = ("name", "fn", "function")
+LINES_KEYS = ("lines", "line_count")
+COUNT_KEYS = ("closure_count", "closure_total", "total_count", "total", "count", "functions",
+              "函数数", "条数", "闭包总数", "闭包条数", "总数")
+LINE_TOTAL_KEYS = ("closure_lines", "total_lines", "闭包行数", "总行数")
+HEADER_KEYS = ("header", "口径", "reconcile", "对账", "closure", "totals", "counts", "summary", "meta")
+# 分组形态：`{"函数数": {"movers":…, "闭包":…}, "行数": {…}}`
+NUMBER_GROUPS_COUNT = ("函数数", "条数", "counts", "functions")
+NUMBER_GROUPS_LINES = ("行数", "lines", "line_counts")
+CLOSURE_TOTAL_KEYS = ("闭包", "closure", "total", "合计", "总数")
 
 EXIT_PREREQ, EXIT_FAIL, EXIT_OK = 2, 1, 0
 
@@ -105,6 +134,11 @@ def count_definitions(source: str, name: str) -> int:
     return sum(len(re.findall(pattern, source, re.M)) for pattern in patterns)
 
 
+def count_function_decls(source: str, name: str) -> int:
+    """只认 `function <name>(`（`const x = () =>` 不算——名单是函数名清单）。"""
+    return len(re.findall(rf"^\s*(?:async\s+)?function\s+{re.escape(name)}\s*\(", source, re.M))
+
+
 def module_exports(source: str) -> set[str] | None:
     match = re.search(r"window\.ReviewView\s*=\s*\{(.*?)\n\s*\};", source, re.S)
     if not match:
@@ -112,23 +146,343 @@ def module_exports(source: str) -> set[str] | None:
     return set(re.findall(r"^\s*([A-Za-z_$][\w$]*)\s*[:,]", match.group(1), re.M))
 
 
-def load_movers() -> tuple[list[str], str]:
-    """名单从**文件**读，脚本里不抄函数名（改名就得改两处）。支持两种可机读格式：
-    - `movers.txt`：一行一个名字，`#` 开头是注释；
-    - `movers.json`：数组；元素是字符串，或 `{"name": …, "lines": …}` 这类对象。
+# ── 名单：读、认形态、对账 ──────────────────────────────────────────────
+
+def _int_or_none(value) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _item_name(item):
+    if isinstance(item, str):
+        return item
+    if isinstance(item, dict):
+        for key in NAME_KEYS:
+            if isinstance(item.get(key), str):
+                return item[key]
+    return None
+
+
+def _item_lines(item) -> int | None:
+    if isinstance(item, dict):
+        for key in LINES_KEYS:
+            value = _int_or_none(item.get(key))
+            if value is not None:
+                return value
+    return None
+
+
+def _zone_payload(value) -> tuple[list, int | None, int | None]:
+    """三区的一个区：可以是数组，也可以是含名单的对象（顺带声明本区 count/lines）。"""
+    if isinstance(value, list):
+        return value, None, None
+    if isinstance(value, dict):
+        items: list = []
+        for key in LIST_KEYS:
+            if isinstance(value.get(key), list):
+                items = value[key]
+                break
+        declared_count = next((_int_or_none(value.get(k)) for k in COUNT_KEYS
+                               if _int_or_none(value.get(k)) is not None), None)
+        declared_lines = next((_int_or_none(value.get(k)) for k in LINE_TOTAL_KEYS
+                               if _int_or_none(value.get(k)) is not None), None)
+        return items, declared_count, declared_lines
+    return [], None, None
+
+
+def _blank_manifest(source: str, kind: str) -> dict:
+    return {
+        "source": source,
+        "kind": kind,                 # zones | flat
+        "header": [],
+        "zones": {zone: [] for zone in ZONES},
+        "present": set(),
+        "per_zone_decl": {},          # zone -> (count, lines) 本区自报
+        "closure_count": None,        # (出处, 值) 文件头声明的闭包条数
+        "closure_lines": None,        # (出处, 值) 文件头声明的闭包行数
+        "items": {},                  # zone -> [ {name, lines} ]
+        "malformed": [],              # 名单自身的问题（缺 name 等）
+    }
+
+
+def _collect_declarations(node, label: str, acc: dict) -> None:
+    """收集文件头声明。认三种形态（Builder 的三区名单用的是后两种）：
+    - 平铺 `closure_count: 211` / `closure_lines: 5072`；
+    - 分组 `{"函数数": {"movers": 114, …, "闭包": 211}, "行数": {"闭包": 5072, …}}`；
+    - 字符串 `{"闭包总数": "211 个 / 5072 行"}`。
+    **只认这些明确的键名**，不做模糊匹配（`start`/`end` 那种行号绝不进来）。
     """
-    if MOVERS_TXT.is_file():
-        raw = [line.strip() for line in MOVERS_TXT.read_text(encoding="utf-8").splitlines()]
-        names = [line for line in raw if line and not line.startswith("#")]
-        return names, str(MOVERS_TXT.relative_to(REPO))
+    if not isinstance(node, dict):
+        return
+    for key in COUNT_KEYS:
+        value = _int_or_none(node.get(key))
+        if value is not None:
+            acc["counts"].append((f"{label}{key}", value))
+    for key in LINE_TOTAL_KEYS:
+        value = _int_or_none(node.get(key))
+        if value is not None:
+            acc["lines"].append((f"{label}{key}", value))
+    for key, value in node.items():
+        if isinstance(value, dict):
+            if any(word in key for word in NUMBER_GROUPS_COUNT):
+                kind = "counts"
+            elif any(word in key for word in NUMBER_GROUPS_LINES):
+                kind = "lines"
+            else:
+                continue
+            for zone in ZONES:
+                for alias in ZONE_KEYS[zone]:
+                    number = _int_or_none(value.get(alias))
+                    if number is not None:
+                        acc[f"zone_{kind}"][zone] = number
+                        break
+            for total_key in CLOSURE_TOTAL_KEYS:
+                number = _int_or_none(value.get(total_key))
+                if number is not None:
+                    acc[kind].append((f"{label}{key}.{total_key}", number))
+                    break
+        elif isinstance(value, str) and "闭包" in key:
+            match = re.search(r"(\d+)\s*个", value)
+            if match:
+                acc["counts"].append((f"{label}{key}", int(match.group(1))))
+            match = re.search(r"(\d+)\s*行", value)
+            if match:
+                acc["lines"].append((f"{label}{key}", int(match.group(1))))
+
+
+def _parse_txt(text: str) -> tuple[dict, list[str]]:
+    """`# closure_count: 121` / `# closure_lines: 2975` 这类文件头声明；其余 `#` 行是口径说明。"""
+    declared = {"count": None, "lines": None}
+    header, names = [], []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            body = line.lstrip("#").strip()
+            match = re.match(r"(closure_count|closure_lines|闭包条数|闭包行数)\s*[:=]\s*(\d+)$", body)
+            if match:
+                declared["count" if "count" in match.group(1) or "条数" in match.group(1) else "lines"] = \
+                    int(match.group(2))
+            elif body:
+                header.append(body)
+            continue
+        names.append(line)
+    return declared, header
+
+
+def load_manifest() -> dict:
+    """名单从**文件**读（脚本里不抄函数名）。优先三区格式，其次平铺，最后 txt。"""
+    data = None
     if MOVERS_JSON.is_file():
-        data = json.loads(MOVERS_JSON.read_text(encoding="utf-8"))
-        names = [item if isinstance(item, str) else item.get("name") for item in data]
-        return [name for name in names if name], str(MOVERS_JSON.relative_to(REPO))
-    prereq(
-        "待搬函数名单没有：docs/refactor/evidence/review/movers.txt（或 movers.json）"
-        "——从 review-attribution.md 的四栏表生成，脚本里不抄 106 个名字",
-    )
+        try:
+            data = json.loads(MOVERS_JSON.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            prereq(f"{MOVERS_JSON.relative_to(REPO)} 不是合法 JSON：{error}")
+    source = str(MOVERS_JSON.relative_to(REPO)) if data is not None else None
+
+    if isinstance(data, dict):
+        manifest = _blank_manifest(source, "zones")
+        for zone in ZONES:
+            for key in ZONE_KEYS[zone]:
+                if key in data:
+                    items, declared_count, declared_lines = _zone_payload(data[key])
+                    manifest["present"].add(zone)
+                    manifest["items"][zone] = [
+                        {"name": _item_name(item), "lines": _item_lines(item)} for item in items
+                    ]
+                    manifest["per_zone_decl"][zone] = (declared_count, declared_lines)
+                    break
+        if manifest["present"]:
+            acc = {"counts": [], "lines": [], "zone_counts": {}, "zone_lines": {}}
+            _collect_declarations(data, "", acc)
+            for key in HEADER_KEYS:
+                _collect_declarations(data.get(key), f"{key}.", acc)
+            for zone in ZONES:
+                payload_count, payload_lines = manifest["per_zone_decl"].get(zone, (None, None))
+                manifest["per_zone_decl"][zone] = (
+                    acc["zone_counts"].get(zone, payload_count),
+                    acc["zone_lines"].get(zone, payload_lines),
+                )
+            manifest["_count_decls"] = acc["counts"]
+            manifest["_line_decls"] = acc["lines"]
+            for label, value in acc["counts"]:
+                manifest["closure_count"] = manifest["closure_count"] or (label, value)
+            for label, value in acc["lines"]:
+                manifest["closure_lines"] = manifest["closure_lines"] or (label, value)
+            for key in HEADER_KEYS:
+                value = data.get(key)
+                if isinstance(value, str) and value.strip():
+                    manifest["header"].append((key, value.strip()))
+                elif isinstance(value, dict):
+                    manifest["header"].append((key, value))
+            return manifest
+
+        prereq("movers.json 是对象，但没有 movers / stays / external 三区——格式不认识"
+               "（要么平铺数组，要么三区对象；键名见脚本 ZONE_KEYS）")
+
+    if MOVERS_TXT.is_file():
+        declared, header = _parse_txt(MOVERS_TXT.read_text(encoding="utf-8"))
+    elif data is not None:
+        declared, header = {"count": None, "lines": None}, []
+    elif MOVERS_JSON.is_file():
+        declared, header = {"count": None, "lines": None}, []
+    else:
+        prereq(
+            "待搬函数名单没有：docs/refactor/evidence/review/movers.txt（或 movers.json）"
+            "——从 review-attribution.md 的四栏表生成，脚本里不抄任何函数名",
+        )
+        return _blank_manifest("", "flat")
+
+    manifest = _blank_manifest(str(MOVERS_TXT.relative_to(REPO)) if MOVERS_TXT.is_file() else str(MOVERS_JSON.relative_to(REPO)), "flat")
+    manifest["header"] = [("", line) for line in header]
+    if declared["count"] is not None:
+        manifest["closure_count"] = ("closure_count", declared["count"])
+    if declared["lines"] is not None:
+        manifest["closure_lines"] = ("closure_lines", declared["lines"])
+    raw_items = data if isinstance(data, list) else None
+    if raw_items is None:
+        raw_items = MOVERS_TXT.read_text(encoding="utf-8").splitlines()
+        raw_items = [line.strip() for line in raw_items if line.strip() and not line.strip().startswith("#")]
+    manifest["items"]["movers"] = [
+        {"name": _item_name(item), "lines": _item_lines(item)} for item in raw_items
+    ]
+    manifest["present"] = {"movers"}
+    return manifest
+
+
+def _names(manifest: dict, zone: str) -> list[str]:
+    return [item["name"] for item in manifest["items"].get(zone, []) if item["name"]]
+
+
+def print_manifest(manifest: dict) -> None:
+    """第一屏：名单来源 + 各区条数 + 文件头口径。验收看的是第一眼。"""
+    if manifest["kind"] == "zones":
+        parts = " / ".join(f"{zone} {len(manifest['items'].get(zone, []))}" for zone in ZONES)
+        total = sum(len(manifest["items"].get(zone, [])) for zone in ZONES)
+        print(f"名单：{manifest['source']}（三区：{parts}；合计 {total}）")
+    else:
+        print(f"名单：{manifest['source']}（单列 {len(manifest['items'].get('movers', []))} 个；"
+              f"不是三区格式，①② 跳过）")
+    for label, value in manifest["header"]:
+        if isinstance(value, dict):
+            if any(word in label for word in ("对账", "reconcile", "summary")):
+                text = json.dumps(value, ensure_ascii=False)
+                print(f"口径：{label} = {text if len(text) <= 240 else text[:240] + '…'}")
+            else:
+                for key, item in value.items():
+                    shown = json.dumps(item, ensure_ascii=False) if isinstance(item, (dict, list)) else item
+                    print(f"口径：{label}.{key} = {shown}")
+        else:
+            prefix = f"{label} = " if label else ""
+            print(f"口径：{prefix}{value}")
+
+
+def manifest_problems(manifest: dict) -> list[str]:
+    """①② 三区自洽 + 名单自身形状。返回问题清单（空 = 自洽）。"""
+    problems: list[str] = []
+    zones = manifest["items"]
+    present = manifest["present"]
+
+    # 名单项本身：每个都必须有名字；三区格式每项都必须有行数（否则 ② 没法对账）
+    for zone in ZONES:
+        items = zones.get(zone, [])
+        nameless = sum(1 for item in items if not item["name"])
+        if nameless:
+            problems.append(f"{zone} 有 {nameless} 项没有 name（名单项必须是字符串或 {{name, lines}}）")
+        if manifest["kind"] == "zones":
+            no_lines = [item["name"] or "?" for item in items if item["lines"] is None]
+            if no_lines:
+                shown = "、".join(no_lines[:5]) + ("…" if len(no_lines) > 5 else "")
+                problems.append(f"{zone} 有 {len(no_lines)} 项没有行数（需要 {{name, lines}}）：{shown}"
+                                f"——行数对账（②）没它成立不了")
+
+    if manifest["kind"] != "zones":
+        # 平铺旧格式：没有三区就没有 ①②——只报形状，不假装对过账。
+        return problems
+
+    missing = [zone for zone in ZONES if zone not in present]
+    if missing:
+        problems.append(f"三区不全：缺 {'、'.join(missing)}（三区必须都在，才能判并集与不相交）")
+        return problems
+
+    # ①a 两两不相交
+    for index, left in enumerate(ZONES):
+        for right in ZONES[index + 1:]:
+            both = sorted(set(_names(manifest, left)) & set(_names(manifest, right)))
+            if both:
+                shown = "、".join(both)
+                problems.append(f"{left} ∩ {right} 非空，{len(both)} 个同名函数：{shown}")
+
+    # ①b 并集条数 = 文件头声明的闭包条数
+    total = sum(len(zones.get(zone, [])) for zone in ZONES)
+    count_decls = manifest.get("_count_decls") or ([] if not manifest["closure_count"] else [manifest["closure_count"]])
+    values = {value for _, value in count_decls}
+    if not count_decls:
+        problems.append("文件头没有声明闭包条数（需要 closure_count / 闭包总数；txt 写 `# closure_count: N`）"
+                        "——① 没有门框，判不了并集等不等")
+    elif len(values) > 1:
+        shown = " / ".join(f"{label}={value}" for label, value in count_decls)
+        problems.append(f"文件头自相矛盾：闭包条数声明了 {len(values)} 个值（{shown}）")
+    elif total not in values:
+        label, declared = count_decls[0]
+        problems.append(f"三区并集 {total} 个（movers {len(zones['movers'])} + stays {len(zones['stays'])}"
+                        f" + external {len(zones['external'])}）≠ 文件头 {label} = {declared}"
+                        f"（口径：并集含 external）")
+
+    # ② 行数对账
+    all_lines = [item["lines"] for zone in ZONES for item in zones.get(zone, [])]
+    line_total = sum(all_lines) if all_lines and all(line is not None for line in all_lines) else None
+    line_decls = manifest.get("_line_decls") or ([] if not manifest["closure_lines"] else [manifest["closure_lines"]])
+    line_values = {value for _, value in line_decls}
+    if line_total is not None:
+        if not line_decls:
+            problems.append("文件头没有声明闭包行数（需要 closure_lines / 闭包行数；txt 写 `# closure_lines: N`）"
+                            "——② 没有门框，判不了行数和")
+        elif len(line_values) > 1:
+            shown = " / ".join(f"{label}={value}" for label, value in line_decls)
+            problems.append(f"文件头自相矛盾：闭包行数声明了 {len(line_values)} 个值（{shown}）")
+        elif line_total not in line_values:
+            label, declared = line_decls[0]
+            problems.append(f"三区行数和 {line_total} ≠ 文件头 {label} = {declared}"
+                            f"（口径：行数和含 external）")
+
+    # 本区自报的 count / lines（有就核，没有不编）
+    for zone in ZONES:
+        declared_count, declared_lines = manifest["per_zone_decl"].get(zone, (None, None))
+        if declared_count is not None and declared_count != len(zones.get(zone, [])):
+            problems.append(f"{zone} 自报 {declared_count} 个，实际 {len(zones.get(zone, []))} 个")
+        if declared_lines is not None:
+            zone_lines = [item["lines"] for item in zones.get(zone, [])]
+            if zone_lines and all(line is not None for line in zone_lines) \
+                    and declared_lines != sum(zone_lines):
+                problems.append(f"{zone} 自报 {declared_lines} 行，实际 {sum(zone_lines)} 行")
+
+    # 区内重复
+    for zone in ZONES:
+        seen: dict[str, int] = {}
+        for name in _names(manifest, zone):
+            seen[name] = seen.get(name, 0) + 1
+        duplicated = sorted(name for name, times in seen.items() if times > 1)
+        if duplicated:
+            problems.append(f"{zone} 内有重复名：{'、'.join(duplicated)}——重复会让并集与行数都虚高")
+
+    return problems
+
+
+def status_problems(manifest: dict, app_source: str, module_source: str | None) -> list[str]:
+    """③ 每个 movers 名字必须在源码里对得上：app.js `function <name>(` 恰 1 处，或已搬进模块 1 处。"""
+    problems: list[str] = []
+    for name in _names(manifest, "movers"):
+        in_app = count_function_decls(app_source, name)
+        in_module = count_function_decls(module_source, name) if module_source else 0
+        if in_app > 1:
+            problems.append(f"{name} 在 app.js 里 function 声明了 {in_app} 处（应 1 处）")
+        elif in_app == 0 and in_module == 0:
+            problems.append(f"{name} 在 app.js 里没有 function 声明，{MODULE.name} 里也没有"
+                            f"——名单名字对不上源码（写错名，或既没搬也没留）")
+        elif in_app == 0 and in_module > 1:
+            problems.append(f"{name} 已离开 app.js，但在 {MODULE.name} 里声明了 {in_module} 处（应 1 处）")
+    return problems
 
 
 def load_external_flow() -> list[str]:
@@ -158,10 +512,27 @@ def parse_exports(argv: list[str]) -> set[str] | None:
 
 
 def main(argv: list[str]) -> int:
+    manifest = load_manifest()
+    print_manifest(manifest)
+
     for path, label in ((APP, "app.js"), (INDEX, "index.html"), (ATTRIBUTION, "review-attribution.md"),
                         (SLICE, "review-slice.md")):
         if not path.is_file():
             prereq(f"找不到 {label}：{path}")
+
+    app_source = APP.read_text(encoding="utf-8")
+    module_source = MODULE.read_text(encoding="utf-8") if MODULE.is_file() else None
+
+    # ①② 名单自洽 + ③ 名单对得上源码：任何一条不成立 → exit 1 并点名（不静默放行）
+    structural = manifest_problems(manifest)
+    status = status_problems(manifest, app_source, module_source)
+    if structural or status:
+        reason = "名单不自洽" if structural else "名单对不上源码"
+        print("---")
+        print(f"[1] 验收失败：{len(structural) + len(status)} 条（{reason}）")
+        for item in structural + status:
+            print(f"    ✗ {item}")
+        return EXIT_FAIL
 
     all_ids = section_ids(INDEX.read_text(encoding="utf-8"), f"view-{VIEW}")
     if not all_ids:
@@ -171,20 +542,22 @@ def main(argv: list[str]) -> int:
         print(f"⚠ view-{VIEW} 子树 id：不含根 {len(ids)} 个 / 含根 {len(all_ids)} 个"
               f"（基线 {BASELINE_IDS_NO_ROOT} / {BASELINE_IDS_WITH_ROOT}）——数变了先对账")
 
-    app_source = APP.read_text(encoding="utf-8")
     literals = id_literals(app_source, ids)
     refs = len(literals)
     total = sum(literals.values())
+    movers = _names(manifest, "movers")
 
-    if not MODULE.is_file():
-        # 当前状态：还没落盘。把要归零的数打出来（省得下次重新量），然后 exit 2。
+    if module_source is None:
+        # 还没落盘：把要归零的数打出来（省得下次重新量），然后 exit 2。
         print(f"  view-{VIEW} 子树 id：不含根 {len(ids)} 个（含根 {len(all_ids)}）")
         print(f"  app.js 仍引用：{refs} 个 id / {total} 处（基线 {BASELINE_REFS} 个 / {BASELINE_LITERALS} 处，目标 0）")
-        print(f"  待搬函数：{BASELINE_MOVERS} 个（能搬 113 − 树 7）；{len(load_external_flow())} 个外部流程留在外壳")
+        if manifest["kind"] == "zones":
+            print(f"  待搬函数：{len(movers)} 个（名单已自洽：三区对得上文件头声明）")
+        else:
+            print(f"  待搬函数：{len(movers)} 个（名单是平铺旧格式，①② 未判——等 Builder 出三区）")
         print(f"  {MODULE.name}：不存在")
         prereq(f"{MODULE.name} 还没落盘")
 
-    module_source = MODULE.read_text(encoding="utf-8")
     problems: list[str] = []
 
     # ① 字面量 → 0（逐 id 点名，别只说"还有残留"）
@@ -220,7 +593,12 @@ def main(argv: list[str]) -> int:
             problems.append(f"导出面多了 {'、'.join(sorted(extra))}（R8 按模块建：改大要签字）")
 
     # ④ 17 个外部流程必须「外壳有、模块没有」——这刀的核心边界
-    external_flow = load_external_flow()
+    if manifest["kind"] == "zones" and _names(manifest, "external"):
+        external_flow = _names(manifest, "external")
+        print(f"   外部流程来源：{manifest['source']} 的 external 区（{len(external_flow)} 个）")
+    else:
+        external_flow = load_external_flow()
+        print(f"   外部流程来源：review-slice.md §1（{len(external_flow)} 个）")
     wrong = []
     for name in external_flow:
         in_app = count_definitions(app_source, name)
@@ -230,11 +608,7 @@ def main(argv: list[str]) -> int:
     print(f"④ 外部流程：{len(external_flow) - len(wrong)}/{len(external_flow)} 个仍「外壳 1 / 模块 0」")
     problems.extend(f"边界失守——{item}" for item in wrong)
 
-    # ⑤ 106 个待搬函数：app.js 0 / 模块 1
-    movers, movers_src = load_movers()
-    print(f"   名单来源：{movers_src}（{len(movers)} 个）")
-    if len(movers) != BASELINE_MOVERS:
-        print(f"   ⚠ 名单 {len(movers)} 个（基线 {BASELINE_MOVERS}）——先对账")
+    # ⑤ 待搬函数：app.js 0 / 模块 1
     leftover = [name for name in movers if count_definitions(app_source, name) > 0]
     not_in_module = [name for name in movers if count_definitions(module_source, name) != 1]
     print(f"⑤ 待搬函数：{len(movers) - len(leftover)}/{len(movers)} 已离开 app.js；"
@@ -248,7 +622,7 @@ def main(argv: list[str]) -> int:
         for item in problems:
             print(f"    ✗ {item}")
         return EXIT_FAIL
-    print("[0] 验收通过：字面量 0 / 减量合规 / 导出面精确相等 / 17 个外部流程未越界 / 106 个函数各 1 处")
+    print("[0] 验收通过：名单自洽 / 字面量 0 / 减量合规 / 导出面精确相等 / 外部流程未越界 / movers 各 1 处")
     return EXIT_OK
 
 
