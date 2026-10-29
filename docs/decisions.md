@@ -3697,8 +3697,9 @@ Retina 上等于放大 2 倍所以糊，PNG 又让一页到 1.77 MB。
 ## D-100 | 2026-10-29 | 视图模块出生接口 = 生命周期三件 + 一个域操作；棘轮按模块建
 
 **决策：** 每个视图模块出生时的接口由 Architect 签字确定，此后**只降不升**（棘轮按模块分别建）。
-当前在册：`ReadingView` 6（`init/enter/exit/getCurrent/toggleFollow/reload`）、
-`PreviewView` 3（`init/enter/exit`）、`IndexView` 4（`init/enter/exit/refresh`）。
+当前在册：`ReadingView` 5（`init/enter/getCurrent/toggleFollow/reload`）、
+`PreviewView` 2（`init/enter`）、`IndexView` 3（`init/enter/refresh`）。
+**`exit` 三个模块都已删**（同日实测 `enter()` 幂等、无清理需求、且 `showView` 从不调用它——永不执行的导出）。证据见 `docs/refactor/reading-view-boundary.md` §19 T4。
 
 **理由：**
 - R8 的意图是**防止重构过程中接口膨胀**，不是"接口不许超过 3 个"。
@@ -3719,6 +3720,6 @@ Retina 上等于放大 2 倍所以糊，PNG 又让一页到 1.77 MB。
 ① 改行为，要额外做等价性证明；② **index 隐藏期间它的按钮 `is-on` 与清晰度文字会陈旧到下次进入**——
 那正是这一阶段花一整夜消灭的"异步重绘吞掉状态"那一类。**不拿新造的 UI 陈旧隐患换一个导出数字。**
 
-**影响：** `R8` 的检查方式从"只查 `ReadingView`"扩展为"每个 `*-view.js` 各自一个上限，起始值 = 落盘时的导出数"。
+**影响：** `R8` 的检查方式从"只查 `ReadingView`"扩展为"每个 `*-view.js` 各自一个上限，起始值 = 落盘时的导出数"；同日再降一轮（删三个 `exit`）：6/3/4 → **5/2/3**。
 
 **状态：** 生效（2026-10-29，`IndexView` 落盘 `7dda273` 之后的修订）。

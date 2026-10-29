@@ -977,21 +977,14 @@ function setupPreview() {
     await openPreview();
   };
 
-  /** 离开预览：撤掉欠着的两帧 rAF（回调本身也按 isActive 早退，撤掉只是别留空转）。 */
-  const exit = () => {
-    if (previewRightRaf) {
-      cancelAnimationFrame(previewRightRaf);
-      previewRightRaf = 0;
-    }
-    if (previewLeftRaf) {
-      cancelAnimationFrame(previewLeftRaf);
-      previewLeftRaf = 0;
-    }
-  };
-
+  // 任务 94（2026-10-29 裁决）：**不导出 `exit`**。
+  // 原来这里有一个"离开预览时撤掉两帧 rAF"的 `exit`，但 `showView` 从不调用它
+  // （`.exit(` 全仓库 0 个调用点），所以它是**永不执行的导出**——和死代码一样会让棘轮松一格。
+  // 实测（见 docs/refactor/reading-view-boundary.md §19 T4 的证据）：重复 `enter()` 不重复绑监听、
+  // 不重建观察器，所以今天不需要"离开时清理"这个口子。将来真要清理，再按 §20.1 重新立一个
+  // 有真实调用点的导出（那时它会有 showView 的调用点），不是现在先挂着。
   window.PreviewView = {
     init,
     enter,
-    exit,
   };
 })();

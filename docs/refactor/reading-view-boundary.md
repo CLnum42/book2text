@@ -1118,9 +1118,41 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | T1 | `boundary.test.mjs` 里 4 条 R3 豁免的 `expires` 从「正文流① 搬完」改为「**punct 整体搬完**」（`reading-garbled-count`/`reading-garbled-open`/`reading-punct-count`/`reading-punct-open`） | **下一笔碰 `boundary.test.mjs` 的提交必须带上这 4 个字符串**；若该提交没改，单独开一笔（30 秒） | **已完成** `50bc45f`（4 条 `expires` 现在都是「punct 整体搬完」） |
 | T2 | R2（视图互引）上闸 | 第二个视图模块（`pages-view.js` 或 `index-view.js`）创建时 | **已完成** `f8e690a`：`x-view.js` 里出现 `window.YView`（Y≠X）即红，带合成样例自检 |
 | T3 | R6（一模块一 window 接口对象）上闸 | 同上 | **已完成** `f8e690a`：每文件恰好 1 个接口对象、名字按文件名转驼峰；另配 `WINDOW_HOOK_EXCEPTIONS`（埋点出现即登记，`MAX` 12） |
-| T4 | **`showView` 接 `exit()`**——现在 `.exit(` 全仓库 **0 个调用点**，三个模块的 `exit` 都是死代码 | **index 落盘后即可开工**（`a937ff5`）；单独一轮，**改行为**，要行为等价证据（切视图后 observer/timer 是否真断）。做完才能把 `active` 收回模块（替掉 `injected.isActive()`） | 未做（**下一阶段第一优先**） |
+| T4 | ~~`showView` 接 `exit()`~~ → **已裁决：删 `exit`**（三个模块）。`.exit(` 全仓库 0 个调用点，它是**永不执行的导出**；实测重复 `enter()` 不重复绑监听、不重建观察器，今天不需要"离开时清理"这个口子 | 证据见下方「T4 裁决证据」 | **已完成**：`ReadingView` 6→5 / `PreviewView` 3→2 / `IndexView` 4→3，棘轮同降 |
 
 | T5 | **导出棘轮按模块建**（`VIEW_EXPORTS`：`ReadingView` 6 / `PreviewView` 3 / `IndexView` 4，新 `*-view.js` 不登记即红） | 每拆一个视图都必须同批登记 | **已完成** `477beea`（D-100 条件 ③） |
+
+### T4 裁决证据（2026-10-29，真浏览器实测）
+
+**问题**：`exit()` 三个模块都导出、`showView` 从不调用 → 是"永不执行的导出"。
+但删之前必须先回答一个问题：**重复进入会不会重复绑定？** 如果会，`exit` 就不是死代码，而是被漏掉的清理点。
+
+**量法**（`ego-browser` + 真页面，1423×900 dpr 2）：
+1. 页面里替换 `EventTarget.prototype.addEventListener`，按「**元素 × 事件类型**」计数（`WeakMap` 挂在元素上）；
+2. 替换 `IntersectionObserver`，记构造与 `disconnect` 次数；
+3. `showView("pages")` ↔ `showView(...)` 来回切 **3 轮**，每轮只扫**仍挂在文档上的元素**，看有没有同类处理函数 > 1。
+
+**读数**（同一元素上同类处理函数最大个数 / 有重复的元素数 / 新增 IO / disconnect）：
+
+```
+目录确认 3 轮：  1 / 0 个 / 0  / 0     ← 观察器一次都没重建（observeIndexTiles 认 indexObserver 非空就复用）
+正文审校 3 轮：  1 / 0 个 / +1 / +1   ← 建 1 断 1，稳定在 3 个
+结果预览 3 轮：  1 / 0 个 / 0  / 0
+```
+
+**结论**：三个模块的 `enter()` 都幂等，**没有双绑**。所以 `exit` 是永不执行的导出 → 删。
+
+**两个量错的口径，记下来（都是我自己踩的）**：
+- 第一次数的是"`addEventListener` 被调用了几次"——每轮都涨（+88 → +176 → +264），看起来像泄漏。
+  抓栈后发现是 `buildBoxLabel`（app.js）**每次重画都造新元素、给新元素绑**，旧元素被丢掉时处理函数跟着走。
+  **数"add 次数"量不出双绑，必须数"同一元素上活着几个"。**
+- 第二次是在**视图隐藏**状态下直接调 `IndexView.enter()`，量到"每次 enter 重建 2 个观察器"。
+  那是假象：隐藏时 `getBoundingClientRect().height = 0` → 页高算不出 → `buildIndexPages` 走重建分支。
+  **必须走真实路径 `showView`，在可见状态下量。**
+
+**留着的缺口（不在 T4 范围，别混进来）**：三个模块的观察器在切走视图后**不会断**，隐藏元素上的
+`IntersectionObserver` 仍会回调（多半 `isIntersecting=false`，做了无用功）。那是**性能**问题不是
+正确性问题，今天没有证据说明它影响任何可观测行为；要动它得单独一轮 + 收益数据。
 
 **为什么写进表而不是记在脑子里**：T1 的错法很具体——正文流① 排在前，做完会有人按表检查这 4 条该不该到期、发现不该，然后记一句"待 punct"就沉了；下次再看表，写的还是「正文流①」。**到期点写错 = 这条豁免永远不会被主动清理**，和"例外表挂着已删代码"是同一种松，只是松在文字上。
 
@@ -1134,7 +1166,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 |---|---|---|
 | `init(deps)` | **必选** | `boot()` 调一次；`deps` 见 20.4 |
 | `enter()` | **必选** | `showView(name)` 进这个视图时调 |
-| `exit()` | **必选** | 离开时调（断 observer/timer，置 `active=false`）。**现状：0 个调用点**（见 §19 T4） |
+| `exit()` | **已删**（2026-10-29） | 原定必选。实测 `enter()` 幂等、无清理需求，且 `showView` 从不调用 → 按"永不执行的导出"删除（见 §19 T4）。将来真要清理，再立一个有真实调用点的导出 |
 | `getCurrent()` | **按需** | **只有外壳真有调用点时才加**（目前只有 reading：`savePosition` 要页码） |
 | 业务方法（如 `reload`/`toggleFollow`） | **允许，逐个签字** | 每加一个过 R8：棘轮只降不升、写明调用点、Architect 签字 |
 
@@ -1193,8 +1225,9 @@ const deps = {
 
 | 模块 | 出生接口 | 签字 | 依据 |
 |---|---|---|---|
-| `ReadingView` | `init/enter/exit/getCurrent/toggleFollow/reload`（6） | 已在册 | 6 个都有调用点 |
-| `IndexView` | `init/enter/exit/refresh`（4） | **2026-10-29 批准** | 见下 |
+| `ReadingView` | `init/enter/getCurrent/toggleFollow/reload`（5） | 曾在册 6 个，2026-10-29 删 `exit` | 5 个都有调用点 |
+| `PreviewView` | `init/enter`（2） | 2026-10-29 下调（原 3，删 `exit`） | 见 §19 T4 |
+| `IndexView` | `init/enter/refresh`（3） | 2026-10-29 批准 4 个，同日删 `exit` 降到 3 | 见下 + §19 T4 |
 
 **`IndexView.refresh()` 批准**，三条理由（DevLead 举证，我复核过）：
 

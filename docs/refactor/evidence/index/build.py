@@ -62,8 +62,8 @@ HEADER = '''/**
  *   阅读左栏与预览都在调；前两者**不碰任何 DOM**（I1 把 DOM 写点搬进了本模块）；
  * - `imageQualityMode` + localStorage + 设置面板 radio——页面视图 / 审校 / 预览都读这个档位。
  *
- * **接口 4 个**：`init(deps) / enter() / exit() / refresh()`（§20.6 签字）。
- * 前三个是 §20.1 必选。`refresh` 是 §20.1 允许的**业务方法**，5 个真实调用点
+ * **接口 3 个**：`init(deps) / enter() / refresh()`（§20.6 签字 4 个，2026-10-29 实测后删 `exit` 降到 3）。
+ * `refresh` 是 §20.1 允许的**业务方法**，5 个真实调用点
  * （页面视图切版心 ×2、切块框叠加层 ×2、boot 里清晰度档位初始化后 ×1）——原代码在前 4 处
  * 由外壳 `if (currentView === "index")` 替模块判断"我现在在不在"，`refresh` 把
  * 这个守卫搬回模块自己（§20「模块不许读 currentView」）。
@@ -71,7 +71,7 @@ HEADER = '''/**
  * 写一次就够（§20.6 明确否决 `refresh({toggles:false})` 这类配置项化入口）。
  * **语义写死**（Chief 条件 ①）：`refresh()` 只重画装饰与开关态，不做数据加载、不做全量重建；
  * 换清晰度档要取图，所以走模块内的 `applyImageQuality()`，不走 `refresh()`。
- * `getCurrent` 按需——没有调用方，不加（加了就是为将来预留）。
+ * `getCurrent` 按需——没有调用方，不加；`exit` 同理被删（§19 T4 的证据：enter 幂等）。
  */
 (function () {
   "use strict";
@@ -220,22 +220,6 @@ INTERFACE = '''  // ------------------------------------------------------------
   const enter = () => openPageIndex();
 
   /**
-   * 离开目录确认：撤掉欠着的两帧 rAF。
-   * **不断 IntersectionObserver**——原代码离开时也不断（回到本视图靠
-   * `ensureIndexPages` 复用已有观察器），这里断掉是改行为，不在这刀里做。
-   */
-  const exit = () => {
-    if (indexScrollRaf) {
-      cancelAnimationFrame(indexScrollRaf);
-      indexScrollRaf = 0;
-    }
-    if (indexResizeRaf) {
-      cancelAnimationFrame(indexResizeRaf);
-      indexResizeRaf = 0;
-    }
-  };
-
-  /**
    * **语义写死（Chief 批准 A 时的条件 ①）**：
    *   **只重画装饰与开关态。不做数据加载、不做全量重建、不读 `currentView`。**
    * 具体就三件，多一件都算超出契约：
@@ -253,10 +237,13 @@ INTERFACE = '''  // ------------------------------------------------------------
     paintIndexDecorations();
   };
 
+  // 任务 94（2026-10-29 裁决）：**不导出 `exit`**。原来这里有一个"撤掉两帧 rAF"的 `exit`，
+  // 但 `showView` 从不调用它（`.exit(` 全仓库 0 个调用点）——永不执行的导出会让棘轮松一格。
+  // 实测重复 `enter()` 不重复绑监听、观察器 0 次重建（`observeIndexTiles` 认 `indexObserver` 非空就复用），
+  // 所以今天不需要"离开时清理"这个口子。将来真要断观察器，再立一个有真实调用点的导出（§20.1）。
   window.IndexView = {
     init,
     enter,
-    exit,
     refresh,
   };
 })();

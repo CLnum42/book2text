@@ -3279,10 +3279,11 @@ function paintReadingDiffBoxes(pageNo) {
     openReading();
   }
 
-  function exit() {
-    clearReadingIntents(true);
-    injected.exit?.();
-  }
+  // 任务 94（2026-10-29 裁决）：**不导出 `exit`**。原来这里是
+  // `clearReadingIntents(true); injected.exit?.();`，但 `showView` 从不调用它
+  // （`.exit(` 全仓库 0 个调用点）——永不执行的导出，会让棘轮松一格。
+  // 实测重复 `enter()` 不重复绑监听、观察器"建 1 断 1"稳定，今天不需要离开时清理这个口子。
+  // 将来真要"切走就丢掉欠着的 rAF / 断观察器"，再立一个有真实调用点的导出（§20.1）。
 
   function getCurrent() {
     return {
@@ -3303,7 +3304,6 @@ function paintReadingDiffBoxes(pageNo) {
   window.ReadingView = {
     init,
     enter,
-    exit,
     getCurrent,
     toggleFollow,
     reload,

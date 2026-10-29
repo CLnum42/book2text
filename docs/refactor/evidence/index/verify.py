@@ -185,8 +185,8 @@ def main():
     keys = []
     if block:
         keys = [k.strip() for k in block.group(1).split(",") if k.strip()]
-    if keys != ["init", "enter", "exit", "refresh"]:
-        fails.append("IndexView 的键不是 init/enter/exit/refresh：%s" % keys)
+    if keys != ["init", "enter", "refresh"]:
+        fails.append("IndexView 的键不是 init/enter/refresh：%s" % keys)
 
     # ---- 4. R3：模块不碰别的子树的 id ---------------------------------
     own = set(re.findall(r'el\("([a-z-]+)"\)', module))
@@ -206,7 +206,7 @@ def main():
             fails.append("app.js 里还声明着已搬走的 %s" % name)
     # 5b. 搬走的函数不许再被 app.js 裸调（回引用只能走 window.IndexView）
     for name in moved_fns:
-        if name in {"init", "enter", "exit", "refresh"}:
+        if name in {"init", "enter", "refresh"}:
             continue
         if re.search(r"(?<![\w$.])%s\s*\(" % re.escape(name), acode):
             fails.append("app.js 还在裸调已搬走的 %s()" % name)
