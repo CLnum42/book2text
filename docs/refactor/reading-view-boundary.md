@@ -1144,9 +1144,30 @@ R 编号由 TestDev 在闸表里领，§2 的 R1–R8 不动。
 | 命令 | 一行、可复制（跑闸 B 的入口 + `--expect-red`，入口名以 TestDev 落地为准） |
 | 输出文件 | `docs/refactor/evidence/edge-ratchet-<shortsha>.txt`，原样 stdout，随 tag 同批提交 |
 
-**判据**：输出里必须**逐条列出 13 条边的名字**且每条标 RED。少于 13 条 = 不许打 tag；也不许把证据降成 N/13 再宣布通过——那走 §18.6 登记到期点。
+**判据（Chief 2026-10-29 裁定 ①+②）**：输出里必须**逐条列出 13 条边的名字**，每条二选一：
+- 现役边 → 标 **RED**（真 base 上仍有调用点）；
+- 已归零边 → 标 **GREEN + 两样证据**：归零提交 sha、**父提交上同一条闸跑红**（见 §18.3 的 13 条证据表）。
 
-> **⚠ 现状与这条判据冲突（2026-10-29 实测，待 Chief 裁决）**：真 base 会是 merge 之后那笔，而当前代码里 13 项已经 **6 RED / 7 GREEN**——`setupReading` 与 6 条回调边在 L1–L4 模块化 / merge 搬迁时归零（`edge-budget` 各自记 0），green 的 7 项在真 base 上不会再红。**旧 tag `afe20fe`（L0）仍是 13/13 红，但那不是回放基**。所以「13/13 红证据」在真 base 上不可能满足；替代口径要么是「6 RED + 7 GREEN（每条 GREEN 注明归零提交）」，要么是把证据拆成「6 条现役边的红 + 7 条各自切边提交的变异」。**两种都需要 Chief 点头，本行不改判据。**
+只写「GREEN + 注明归零提交」不够——那证明边没了，不证明闸能发现它。少于 13 条 = 不许打 tag。
+
+**13 条「闸抓得到」证据（2026-10-29 实测，Chief 裁定 ①+② 后逐条跑）**
+
+当前 13 项 = **6 RED / 7 GREEN**（量的是 **HEAD 的树**，不是 tag）。每条 GREEN 两样证据齐：
+
+| 边 | 归零提交 | 父提交上同一条闸的红（原样） |
+|---|---|---|
+| 桥 `setupReading` | `53c539b` | `53c539b^` → `RED 桥 setupReading → showView(（reading-view.js 体内 1 处）` |
+| 桥 `renderMergeView` | `cef331b` | `8e95b8e` → `RED 桥 renderMergeView → showView(（app.js 体内 1 处）` |
+| 桥 `submitMergeDecisions` | `cef331b` | `8e95b8e` → `RED 桥 submitMergeDecisions → showView(（app.js 体内 1 处）` |
+| 边 `renderReading→ensureReadingMarksWindow` | `cd18546` | `ee156f7` → `RED 边 renderReading → ensureReadingMarksWindow（app.js 体内 1 处）` |
+| 边 `renderReading→retryReadingPendingPanel` | `bb69de8` | `cd18546` → `RED 边 renderReading → retryReadingPendingPanel（app.js 体内 1 处）` |
+| 边 `renderReadingTree→scrollReadingToPage` | `4ed8f0b` | `bb69de8` → `RED 边 renderReadingTree → scrollReadingToPage（app.js 体内 1 处）` |
+| 边 `verifyReadingPageSync→updateReadingPage` | `2fd62e9` | `4ed8f0b` → `RED 边 verifyReadingPageSync → updateReadingPage（app.js 体内 1 处）` |
+
+复现（每条 30 秒）：`git worktree add --detach /tmp/wt <父sha>` → `B2T_STATIC_DIR=/tmp/wt/backend/book2text/static node tests/js/edge-ratchet.mjs` → `git worktree remove --force /tmp/wt`。
+**余下 6 条现役**（`openPageDetail` 桥 + 5 条回调边）在真 base 上仍 RED；切它们时各自补同款两样证据。
+
+**「真 base」是哪个 sha（必须写死，否则又成第三个范围）**：现在**没有**真 base tag——`ring-break-base` 仍指 `afe20fe`（L0，`static/` 下只有 reading-view.js，`setupReading` 等函数还没出现）。上面 6/7 量的是 **HEAD `dd835c4` 的树**，不是 tag。真 base = **review 第一刀（17 函数归位）落盘后那笔**：打 tag 同批做三件（§18.3 上文）——删 `--allow-transitional-base`、更新 `tests/js/replay-base-modules.txt`（那时 6 个模块）、落四件证据。
 
 **打 tag 那一笔的同批动作（过渡态不许活成终态）**：
 1. 把 CI 里 `contract-registry --strict --allow-transitional-base` 的 `--allow-transitional-base` **删掉**。那面 flag 的存在是因为 tag 现在还打在 L0 上；真 base 一打出，它就成了「CI 永远放行 base 不合格」的常开开关。同批不删 = 这个 tag 不算切完。
