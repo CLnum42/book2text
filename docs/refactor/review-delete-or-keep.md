@@ -1,6 +1,6 @@
 # `view-review` 删还是留（分析，不动代码）
 
-> 依据：`HEAD` 树（`git show HEAD:backend/book2text/static/app.js`，15,311 行）、
+> 依据：`main@57890e1` 的树（`git show 57890e1:backend/book2text/static/app.js`，15,311 行）、
 > `docs/refactor/evidence/review/{delete-plan.md,entangled.json,movers.json}`。
 > 本文只出结论与清单，**任何代码改动等 `pages` 落盘之后**。
 

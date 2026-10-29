@@ -1,6 +1,6 @@
 # 页详情抽屉：把"看一页"从"换一个视图"里拆出来
 
-> 依据 `HEAD` 树：`app.js` 15,311 行、`index.html`、`reading-view.js`。**本文不改代码。**
+> 依据 `main@57890e1` 的树（`app.js` 15,311 行）、`index.html`、`reading-view.js`。**本文不改代码。**
 > 前置：`review-migration.md`（13 个 `openPageDetail` 调用点逐条定宿主）。
 
 ## 0. 一句话

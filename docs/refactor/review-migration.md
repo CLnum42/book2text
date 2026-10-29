@@ -1,6 +1,6 @@
 # `view-review` 迁移清单（不是删除清单）
 
-> 依据 `HEAD` 树：`app.js` 15,311 行、`reading-view.js`、`index.html`。
+> 依据 `main@57890e1` 的树（`app.js` 15,311 行）、`reading-view.js`、`index.html`。
 > 结论沿用 `review-delete-or-keep.md`：**要删**，但删之前先把**东西搬到哪**写死。
 > **本文不改代码。**
 
