@@ -74,6 +74,13 @@ def declaration_bounds(lines, name):
     return None
 
 
+#: 装配代码的标记：`init({ getX: () => …, setX: (v) => { X = v; return v; } })` 里的 get/set 键行。
+#: **这些行永远不进改写器**（HANDOFF §9⑮）。三次同型事故：多行块被当写点、重名把声明改成
+#: `function injected.X()`、这次 deps 里的 `setX: (value) => { X = value; … }` 被当成"改不动的写点"。
+#: 形态上的共同点：生成的产物又被自己的规则检了一遍——那不是健壮性，是在给自己制造假故障。
+DEPS_KEY_LINE = re.compile(r'^\s*(?:get|set)[A-Z][A-Za-z0-9_$]*\s*:\s*\(')
+
+
 def apply_set_blocks(text, rules):
     """多行赋值：`x = f({ … });` → 先算到局部，再 `injected.setX(局部);`。
 
@@ -90,7 +97,7 @@ def apply_set_blocks(text, rules):
         # ① 先在原文上把所有匹配块的范围算完
         ranges = []
         for i, ln in enumerate(lines):
-            if block["match"] not in ln:
+            if block["match"] not in ln or DEPS_KEY_LINE.match(ln):
                 continue
             depth, end = 0, None
             for j in range(i, len(lines)):
@@ -123,6 +130,8 @@ def rewrite_writes(text, rules):
     overrides = dict(getattr(rules, "SET_REWRITES", {}))
     out_lines, problems = [], []
     for line in text.split("\n"):
+        if DEPS_KEY_LINE.match(line):                     # 装配代码：原样保留，不报、不改（§9⑮）
+            out_lines.append(line); continue
         if line.strip() in overrides:                     # 缩进不参与匹配：同一个写点在不同层深
             indent = re.match(r"^(\s*)", line).group(1)
             out_lines.append(indent + overrides[line.strip()]); continue
@@ -256,6 +265,32 @@ def main():
     if dupes:
         print("✗ movers 名单里有重名（会复制两份真实现）：", "、".join(dupes))
         return 2
+
+    # ⓪0 增量三条守卫（fail-closed）：模块已存在时，不许"整份重写"把已有内容抹掉。
+    # 形态：读现有模块 → 追加新函数 → 增量更新 api。守卫是这一步的前提，先落守卫再落增量写入。
+    module_path = os.path.join(ROOT, "backend/book2text/static", f"{a.name.lower()}-view.js")
+    if os.path.exists(module_path):
+        existing = open(module_path, encoding="utf-8").read()
+        have_fns = set(re.findall(r'(?m)^  function ([A-Za-z_$][\w$]*)\s*\(', existing))
+        dup = sorted(set(movers) & have_fns)
+        if dup:
+            print("✗ 守卫①重名：这些函数在现有模块里已存在（增量不许覆盖）：", "、".join(dup))
+            return 2
+        have_states = set(re.findall(r'(?m)^  (?:let|const) ([A-Za-z_$][\w$]*)\s*=', existing))
+        dup_state = sorted(set(getattr(rules, "MOVED_STATES", [])) & have_states)
+        if dup_state:
+            print("✗ 守卫②声明重复：这些状态模块里已有声明（再声明就是两份）：", "、".join(dup_state))
+            return 2
+        want = set(getattr(rules, "EXPECTED_API_KEYS", None) or [])
+        if want:
+            # 守卫③比较的是「INTERFACE 准备写出的 api 键」与「预期键集合」——
+            # 不是「现有键 ∪ movers」：搬进来的 setup* / PageTile 函数不是导出，用那个公式会全判成多余。
+            m = re.search(r"const api = \{(.*?)\};", getattr(rules, "INTERFACE", ""), re.S) or \
+                re.search(r"const api = \{(.*?)\};", existing, re.S)
+            will = {k.strip().rstrip(",") for k in (m.group(1).split("\n") if m else []) if k.strip()}
+            if will != want:
+                print("✗ 守卫③api 键集合：多", sorted(will - want), "少", sorted(want - will))
+                return 2
 
     # ⓪ movers ∩ IDENT 必须为空：渲染函数要么搬进模块、要么注入，不能两者都是。
     # （2026-10-29 真实事故：renderMarginPanel 同时在两处 → 替换把函数声明写成
