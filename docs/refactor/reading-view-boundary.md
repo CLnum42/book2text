@@ -1227,13 +1227,18 @@ const deps = {
 **R8 的棘轮按模块建**：每个模块出生时由 Architect 签字确定初始接口，此后**只降不升**。
 出生接口的判据：**每个方法都必须有真实调用点**（今天就有，不许为将来预留）。
 
-| 模块 | 出生接口 | 签字 | 依据 |
-|---|---|---|---|
-| `ReadingView` | `init/enter/getCurrent/toggleFollow/reload`（5） | 曾在册 6 个，2026-10-29 删 `exit` | 5 个都有调用点 |
-| `PreviewView` | `init/enter`（2） | 2026-10-29 下调（原 3，删 `exit`） | 见 §19 T4 |
-| `IndexView` | `init/enter/refresh`（3） | 2026-10-29 批准 4 个，同日删 `exit` 降到 3 | 见下 + §19 T4 |
-| `LibraryView` | `init/enter/notify`（**3**） | **2026-10-30 批准**（§20.8） | 5 个真实调用点（任务包导入/备份还原/第二引擎重跑） |
-| `MergeView` | `init/enter`（**2**） | **2026-10-30 定稿**（§20.10，撤销早前对 `renderMergeView` 的签字） | `enter` 有 showView 分支调用；state 走注入 getter |
+| 模块 | 出生接口 | 调用点数（每个导出，实测 `app.js`） | 0 个的处置 | 签字 |
+|---|---|---|---|---|
+| `ReadingView` | `init/enter/getCurrent/reload` + `toggleFollow`(待删) | init **1** / enter **1** / getCurrent **1** / reload **4** / `toggleFollow` **0** | **`toggleFollow` → 删**（⑦ 第一个当场命中：follow chip 已搬进模块，外壳不再调） | 曾在册 6 个，2026-10-29 删 `exit` |
+| `PreviewView` | `init/enter`（2） | init **1** / enter **4** | — | 2026-10-29 下调（原 3，删 `exit`） |
+| `IndexView` | `init/enter/refresh`（3） | init **1** / enter **1** / refresh **6** | — | 2026-10-29 批准 4 个，同日删 `exit` 降到 3 |
+| `LibraryView` | `init/enter/notify`（3） | 未落盘；预计 1 / 1 / **5** | — | **2026-10-30 批准**（§20.8） |
+| `MergeView` | `init/enter`（**2**） | 未落盘；预计 1 / 1 | — | **2026-10-30 定稿**（§20.10） |
+
+**关于 Merge 3 vs 2（必须写清，两个数不能同时成立）**：
+- **2026-10-29 签的是 3**（`init/enter/renderMergeView`），依据是"外壳有数据、视图负责画"、`renderMergeView` 有 2 个调用点。
+- **2026-10-30 改成 2**：⑧ 要求"模块不缓存视图数据、只通过注入 getter 现取"落地后，`renderMergeView(state)` 只剩 `navigate` 一个动作——**它没有存在的理由**。外壳两处调用点改为 `mergeState = payload; showView("merge")`，`enter()` 用 `getMergeState()` 现取。
+- **结论：3 作废，2 生效。** 作废理由不是"少一个导出更好"，是"这个导出在新契约下没有职责"。
 
 **合计 10 个导出**（5+3+2）。**这张表和代码是同一份事实的两个副本，机检已经接上**：`tests/js/boundary.test.mjs` 的 `VIEW_EXPORTS` 登记每个 `*-view.js` 的导出名单——多一个 / 少一个 / 改名都红，**新 `*-view.js` 落盘不登记也红**。本表不会悄悄过期：和代码不一致时机检当场报，不用等下一个读注释的人。
 
@@ -1364,11 +1369,12 @@ function refresh() {
 | 可发现性 | 有签名、有文档、棘轮登记 | **没有签名、没人知道谁在调** |
 | 性质 | 外壳 → 模块（注入方向） | **模块 → 外壳（借出写能力）** |
 
-**裁定：A。** 三条理由：
+**裁定：A。** 四条理由（第 1 条是决定性的，别删）：
 
 1. **B 是"没有订阅者的事件缝"的变体**——我们删 `on`/`emit` 时否过同一种形状；区别只是那个是模块往外发事件，这个是模块往外注册一个"能写我 DOM 的函数"。
 2. **B 会让 R3 变成空文**：`app.js` 里确实不再出现 `el("library-error")`，但外壳手上握着一个能写它的函数——**判据查不到的东西，等于没有判据**。
 3. **A 的调用点整齐**：5 处，和 `IndexView.refresh()` 同级同量，不是"为将来预留"。
+4. **这已经不是"多一个导出 vs 少一个导出"的取舍，是"判据能不能生效"的取舍**：R3 查的是**看得见的形态**（`app.js` 里的 id 字面量），而 B 用闭包/注入把写点藏到外壳持有的变量里——**字面量消失、违规还在、判据判绿**。**这和 R9 那个洞是同一族**：判据只认形态，间接引用（闭包、注入、改名、搬到第三份文件）都能绕过形态。
 
 **`notify` 的第二层（§15 第 8 条）**：
 
