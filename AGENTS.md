@@ -76,9 +76,10 @@ git config core.hooksPath     # 应当输出 scripts/git-hooks
 **提交的默认姿势**（多 agent 共用一个工作区，避免把别人已 add 的文件卷进自己的提交）：
 
 ```bash
-git add <具体路径…>
-git commit -m "…" -- <同一批路径…>
+scripts/commit.sh -m "…" -- <具体路径…>
 ```
+
+它是 `git add` + `git commit` 的包装，**唯一额外行为是撞上 `index.lock` / `cannot lock ref` 时退避重试**（0.3→4.8s，5 次，约 9.3s）。**闸红了不重试**，直接退出——重试一个红闸只会拖时间，还会被误读成并发问题。
 
 **闸做了什么**：`pre-commit` 把**索引**导出到临时目录、跑 `node tests/js/run.mjs`（约 6 秒），红则拒绝提交；`post-commit` 记录绕过（`--no-verify` 时请加一行 `Bypass-Reason: <为什么>`）。
 

@@ -213,4 +213,11 @@ else
   echo "    最近一次 pre-push pytest：不存在（还没在装闸后推送过）"
 fi
 
+# ---- 并发信号（2026-10-29 Chief 加）：没人会主动报"我们俩在同一个树上动" ----
+GITDIR_CONC=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo .git)
+if [ -e "$GITDIR_CONC/index.lock" ]; then LOCK="有（index.lock 存在）"; else LOCK="无"; fi
+COMMIT_10M=$(git log --since="10 minutes ago" --oneline 2>/dev/null | wc -l | tr -d ' ')
+UNPUSHED=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "?")
+printf '并发       工作区锁 %s / 最近 10 分钟提交 %s 笔 / 未推 %s 笔\n' "$LOCK" "$COMMIT_10M" "$UNPUSHED"
+
 exit 0
