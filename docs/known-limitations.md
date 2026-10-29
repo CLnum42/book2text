@@ -1793,3 +1793,23 @@ host 里那个面板可能还是**对的**。规则判错了对象：它判的�
 
 **如需重做**：判据必须是**外部进展**——服务端队列真变了、或用户输入后界面无响应；
 **不许**再拿"我们自己更新的进度键没变"当卡顿证据。**勿照原口径重新发明。**
+
+## L-111 · 版心步最大缩放仍差 16%（0.861），因为渲染档位上限是 300 DPI（2026-10-30，只查未改）
+
+**三个数**：这一屏需要 **349 DPI**（1082 CSS px × dpr 2 = 2164 设备像素 ÷ 447.4 pt = 4.84 px/pt）；现有最高档 **300 DPI**；清晰度比 **0.861**（1864 / 2164）。
+
+**出处**：档位表 `backend/book2text/core/pdf/render.py:55-63`（`thumb 40 / view 150 / mid 220 / zoom 300`）；
+`scale = dpi / 72` 在 `render.py:172`；`size=<profile>` 直接映射档位在 `backend/book2text/api/routes_projects.py:411-425`；
+选档逻辑 `backend/book2text/static/app.js:4096-4106`（挑不到够用的就回退 `zoom`，`:4104`）。
+**不是接线问题，是能力上限**：`#pages-zoom-in` 已 disabled 是容器缩放 4/4 到顶，与图源无关。
+
+**拟改（独立一笔，未排期）**：`render.py` 加 `"zoom2": 350` ＋ `app.js:4072` `IMAGE_PROFILE_ORDER` 加一项 ＋
+`backend/book2text/static/page-tile.js:33` `SIZES` 同步——**三处少一处就退回旧档**。
+
+**代价（定向，不是全局）**：`detailImageProfile` 按需挑第一个够用的档，所以只有「最大缩放那一档」才付，
+普通翻页仍走 `view` / `mid` / `zoom`。该档 1864×2633 ≈ 4.9 MP → 2173×3069 ≈ 6.7 MP（+36% 像素），
+JPEG ≈ 1.3 MB → 1.7–1.8 MB，渲染耗时约 ×1.36；`MAX_RENDER_PIXELS = 40_000_000` 触不到。
+**无服务端图缓存**（现渲 + `Cache-Control: max-age=300`），所以不需要重跑缓存；
+新档是**新的 size 值 = 新 URL**，浏览器旧图 300s 自然过期即失效。
+
+**验的时候按两档测**：最大缩放 `naturalWidth / (CSS宽 × dpr) ≥ 1.0`；普通翻页的 `size` 值不变。
