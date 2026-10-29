@@ -136,8 +136,8 @@ export function registrationContent(sha, docText) {
  */
 const MOVE_TABLES = ["OWNERS", "VIEW_STATE_PREFIXES", "VIEW_EXPORTS"];
 /** 豁免表文件里**允许被 move: 笔改**的顶层常量（方向由 exemptionDeltaProblems 判，A1 只管位置）。 */
-const MOVE_EXEMPTION_BLOCKS = [
-  "PAGES_R3_EXEMPTIONS", "PAGES_R3_TOTAL_CAP", "PAGES_R3_STAGE", "PAGES_R3_PENDING", "PAGES_R3_BLOCKED_MAX",
+export const MOVE_EXEMPTION_BLOCKS = [
+  "PAGES_R3_EXEMPTIONS", "PAGES_R3_TOTAL_CAP", "PAGES_STAGE", "PAGES_R3_PENDING", "PAGES_R3_BLOCKED_MAX",
 ];
 const MOVE_FORBIDDEN = /(EXCUS|MAX)/;
 /** pages 的 R3 过渡豁免表（数据文件）。`move:` 笔**可以**改它，但只能往收紧的方向改。 */

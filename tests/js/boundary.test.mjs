@@ -61,7 +61,7 @@ import {
 } from "./edge-ratchet.mjs";
 import {
   evaluateFeatureContract, commitContractProblems, tableBlockRanges, isContractPath,
-  exemptionDeltaProblems, keepShellSegmentLabels, moveGateProblems, moveScopeProblems,
+  exemptionDeltaProblems, keepShellSegmentLabels, moveGateProblems, moveScopeProblems, MOVE_EXEMPTION_BLOCKS,
 } from "./feature-contract.mjs";
 // R9 专用：保留模板 `${…}` 插值的去注释版本（本文件另有一份旧的去注释实现，只抹代码不抹模板）
 import { stripPreservingTemplateExpressions } from "./static-scan.mjs";
@@ -2010,6 +2010,17 @@ test("R3 自检（blocked 阻塞段）：stage=5 且段号可查判绿，其余�
   const raised = r3Problems({ ...base, pagesExemptions: eight, pagesBlockedCap: 8 });
   assert.ok(raised.some((m) => m.includes("受阻项上限被抬到 8")),
     `blocked 自检失败：把上限抬到 8 被放过——${raised.join("；")}`);
+});
+
+test("A1 白名单存在性：MOVE_EXEMPTION_BLOCKS 里每个名字都必须是文件里真实存在的常量", () => {
+  const tablePath = fileURLToPath(new URL("./pages-r3-exemptions.mjs", import.meta.url));
+  const table = readFileSync(tablePath, "utf8");
+  for (const name of MOVE_EXEMPTION_BLOCKS) {
+    assert.ok(
+      new RegExp(`export const ${name}\\b`).test(table),
+      `白名单里的 ${name} 在 pages-r3-exemptions.mjs 里不存在——写错名字等于静默失效（PAGES_R3_STAGE 那次就是这样）`,
+    );
+  }
 });
 
 test("move: 自检（A1 认 Move-Gate 声明）：a 声明+收紧绿 / b 未声明红 / c 声明+放宽红 / e 块外改动红", () => {
