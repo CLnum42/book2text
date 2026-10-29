@@ -15,7 +15,7 @@
 ```
 grep -oE 'PagesView\.[A-Za-z_]+' backend/book2text/static/app.js | sort -u   → 20 个（见 §4）
 pages-view.js 的 api 字面量：const api = { init, enter }  → 2 个（第 1204 行）
-app.js 15,311 → 14,372（减量 939）· pages-view.js 1,206 行 · R3 270 → 198（硬判据，已过）
+app.js 15,311 → 14,387（减量 924）· pages-view.js 1,210 行 · R3 270 → 198（硬判据，已过）（量于 e01991d 的树；8 状态改注入后比首版少搬 15 行）
 ```
 
 ## 2. 裁定：R8 改成收敛棘轮（Chief 2026-10-29）
