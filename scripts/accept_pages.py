@@ -307,18 +307,31 @@ def module_functions(text: str) -> set[str]:
 
 
 def baseline() -> dict:
+    """基线字段的**两种名单形态**都要认（否则按刀一换名单，减量就变成负数）：
+
+    - 整刀名单 `movers.json`：`口径."app.js 行数"` + `对账.函数数/行数`
+    - 按刀名单 `stage1-movers.json`：顶层 `基线_app_js_行数` + `行数.movers` + `函数数`
+    """
     data = manifest() or {}
-    summary = data.get("对账", {})
-    counts = summary.get("函数数", {})
-    lines = summary.get("行数", {})
-    sc = data.get("states_and_consts", {})
+    summary = data.get("对账", {}) or {}
+    counts = summary.get("函数数", {}) or {}
+    lines = summary.get("行数", {}) or {}
+    top = data.get("行数", {}) or {}
+    sc = data.get("states_and_consts", {}) or {}
+    app_lines = (data.get("口径", {}) or {}).get("app.js 行数")
+    if app_lines is None:
+        app_lines = data.get("基线_app_js_行数")
+    movers_lines = lines.get("movers", top.get("movers"))
+    movers_count = counts.get("movers")
+    if movers_count is None:
+        movers_count = len(data.get("movers", []) or [])
     return {
         "closure_count": counts.get("闭包"),
         "closure_lines": lines.get("闭包"),
-        "movers": counts.get("movers"),
-        "movers_lines": lines.get("movers"),
+        "movers": movers_count,
+        "movers_lines": movers_lines,
         "states": sc.get("count"),
-        "app_lines": (data.get("口径", {}) or {}).get("app.js 行数"),
+        "app_lines": app_lines,
     }
 
 
