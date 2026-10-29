@@ -1124,6 +1124,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | T3 | R6（一模块一 window 接口对象）上闸 | 同上 | **已完成** `f8e690a`：每文件恰好 1 个接口对象、名字按文件名转驼峰；另配 `WINDOW_HOOK_EXCEPTIONS`（埋点出现即登记，`MAX` 12） |
 | T4 | ~~`showView` 接 `exit()`~~ → **已裁决：删 `exit`**（三个模块）。`.exit(` 全仓库 0 个调用点，它是**永不执行的导出**；实测重复 `enter()` 不重复绑监听、不重建观察器，今天不需要"离开时清理"这个口子 | 证据见下方「T4 裁决证据」 | **已完成**：`ReadingView` 6→5 / `PreviewView` 3→2 / `IndexView` 4→3，棘轮同降 |
 
+| T6 | **建 SCC 快照机制**：脚本算环内边 → 写 `docs/refactor/scc-snapshot.json`；与上次 diff，新增边必须解释或修掉 | 破环阶段末；之后每次大重构末 | 未做 |
 | T5 | **导出棘轮按模块建**（`VIEW_EXPORTS`：`ReadingView` 6 / `PreviewView` 3 / `IndexView` 4，新 `*-view.js` 不登记即红） | 每拆一个视图都必须同批登记 | **已完成** `477beea`（D-100 条件 ③） |
 | T6 | **`loadLibrary()` 不隐藏 `#library-error`**（`app.js:2550` 只 `el("library-warning").hidden = true`）——上一次加载失败的错误会留在页面上，成功的刷新也不清。其余四个操作（`deleteProject` / `createProjectFromFile` / `openProject` / `openPackageFile`）都在开头 `el("library-error").hidden = true`，只有它没有 | **随 `library` 切片一起改**（那几行本来就要搬进模块）；改完 e2e 的 B 条可以从 `warning` 扩到 `error` | 未做（一行） |
 
@@ -1341,6 +1342,25 @@ function refresh() {
 4. 每个已登记导出的**调用点数**必须与 §20.6 表一致；**为 0 且未删除 → 红**（⑦ 的机检版）。
 
 这样"新增一个没人调的导出"和"调一个没登记的方法"都当场红，不依赖有人在名单里记得加。
+
+**⑦c 边的集合是 SCC 的输出，不是输入（2026-10-29，Chief 定）**
+
+⑦b 只对**桥**成立——`window.X.method(` 是可枚举的代码形态。**对"边"不成立**：一条边是 `renderReading → ensureReadingMarksWindow` 这种**函数间调用关系**，"哪些算边"是**设计判断**，不是代码形态；硬要"默认包含"就得扫 800 函数全调用图，那不叫对账，叫重算。
+
+**所以边表不靠"忘不了"，靠派生：**
+
+```
+E_scc        = SCC 分析算出的当前环内边（派生物，不手工维护）
+CUT_EDGES    = 已切掉的边（手工，每条带 commit 与理由）
+REMAINING    = 还在的边（派生）
+断言①  E_scc = CUT ∪ REMAINING，且 CUT ∩ REMAINING = ∅
+断言②  CUT 里的边不得重新出现在 E_scc（回退即红）
+断言③  阶段末重跑 SCC 与上次快照 diff；**新增边必须解释或修掉**
+```
+
+**为什么这样够用**：边表主要防的是"环没切干净"。**边漏一条，SCC 会告诉你环还在**——不用逐笔提交盯，阶段末一定会报。
+
+**这才是"默认包含"在边上的正确形态**：表由计算产出，人只维护"已切"这一侧；**新增的边自动进报告，不依赖谁记得往 13 条里加行。**
 
 **⑧ 状态归属**：视图数据由外壳持有，模块**通过注入 getter 现取，不缓存副本**（R5 一状态一 owner 的实例）。
 
