@@ -2,7 +2,7 @@
   "刀": 2,
   "操作": "装配点接线（view-pages DOM 接线归 init）+ PageTile 接线",
   "基线": {
-    "head": null,
+    "head": "4a98a53",
     "appLines": 14387,
     "说明": "行范围在 origin/main 的树上量（刀1 已落盘，14,387 行）"
   },
@@ -203,5 +203,8 @@
     }
   ],
   "种数": 50,
-  "说明": "capturePageTileMetrics 有 1 个 id 引用，但**到期判据是 acid，不是搬移**——不要把它算进 R3 豁免账（否则刀2 剩余数会少 1 而没人知道为什么）。"
+  "说明": "capturePageTileMetrics 有 1 个 id 引用，但**到期判据是 acid，不是搬移**——不要把它算进 R3 豁免账（否则刀2 剩余数会少 1 而没人知道为什么）。",
+  "到期判据（机读）": {
+    "criterion取值": "move = 函数搬进模块即到期；acid = 必须 acid 通过才到期；解释放此处，脚本只读 criterion"
+  }
 }
