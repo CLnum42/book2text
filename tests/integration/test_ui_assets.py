@@ -979,7 +979,7 @@ def test_trash_select_all_and_margin_visual_are_wired() -> None:
     assert "function clearPageSelection(" in script
     assert 'event.key.toLowerCase() === "a"' in script
     assert 'event.key === "Escape"' in script
-    assert 'event.target.closest(".page-tile")' in script
+    assert 'event.target.closest(".page-tile")' in script + pages_script
     # 「不在当前筛选」的提示文案随页面瓷砖接线进了 pages-view.js（app.js 里 0 处）
     assert "不在当前筛选" in script + pages_script
 
@@ -1310,7 +1310,8 @@ def test_toolbar_filters_and_tools_are_placed_per_step() -> None:
     页面确认 / 版心确认 / 文字识别 三个步骤的筛选条由 CSS 按 body 步骤属性收敛。
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 刀 2 把装配接线搬进 pages-view.js：筛选条/⋯菜单的接线在模块里，脚本类断言合查（不写特例）
+    script = _script_with_view("pages-view.js")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     # ⋯ 菜单：诊断（质量统计）/ 协作（任务包）
