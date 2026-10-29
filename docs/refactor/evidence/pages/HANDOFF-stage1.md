@@ -210,3 +210,69 @@ accept_pages --acid 通过（四字段齐）：同页同档 img.src 赋值 = 1 �
     那不是健壮性，是在给自己制造假故障。
     （出处：刀 2 生成到 `/tmp`，27 行 deps 字面量被报「改不动」，而它们全在 `boot()` 这类 mover 的体内，
       是真的迁移正文，不是写点。）
+
+## 12. 刀 2 名单选错对象的证据（2026-10-29 夜，刀 2 开工前拦下）
+
+### ① 8 行实测（量于 `e0442e0` 的树，只读脚本，未改名单）
+
+`view-pages` 子树 id 集合 = 127 个，取法：`index.html` 里 `id="view-pages"` 做标签配对，
+子树 19,095 字节。「跨视图函数」判据 = 该函数体内**一次都不出现** view-pages 的 id 字面量
+（即它不写 pages 的 DOM），且不在刀 2 的 movers 里、也不在现有 `pages-view.js` 里。
+
+| 装配函数 | 行数 | pages id 命中 | 跨视图函数数 |
+|---|---:|---:|---:|
+| `setupRecognitionSettings` | 18 | 3 | **0** |
+| `setupPageMore` | 28 | 2 | **0** |
+| `setupPageNumberPanel` | 16 | 2 | 3 |
+| `setupExportPanel` | 38 | 1 | 7 |
+| `setupShell` | 43 | 2 | 8 |
+| `setupCollabControls` | 19 | 2 | 8 |
+| `setupLibrary` | 149 | 38 | 36 |
+| `boot` | 403 | 8 | **103** |
+| 合计 | 714 | **58** | 149（去重并集） |
+
+小面的名字（供重切名单用）：
+
+```
+setupPageNumberPanel : closeModal / openPageNumberPanel / openPageNumberReview
+setupExportPanel     : dismissMarginJudgementNotice / exportOptions / loadExportPreview /
+                       revealExport / runExport / schedulePreflight / showError
+setupCollabControls  : closeModal / createAssignment / downloadPackage / loadAssignments /
+                       openAssignPanel / previewAssign / revealPackage / setupPackageControls
+setupShell           : closeModal / goToWorkflowStep / loadSummary / openModal / openPageDetail /
+                       selectionPages / setupNewProjectModal / showView
+```
+
+### ② 三个判读
+
+1. **`boot` 是「各视图 init 的汇总口」**，不是 pages 的装配点：403 行、103 个跨视图引用、
+   只有 8 处 pages id。把 `boot` 当 pages 的 mover = 要求 pages 模块反过来依赖全部视图。
+2. **`setupLibrary` 是 library 视图的装配**（149 行、38 处 pages id 里含大量 library 元素），
+   36 个跨视图引用里 `openTrashPanel` / `openBackups` / `restoreSelectedBackup` / `undoAutoApply`
+   没有一个是 pages 的东西。
+3. **`setupCollabControls` 与 pages 无关**：8 个引用全是跨视图（协作、打包、分配）。
+   `setupShell` / `setupExportPanel` 同理是别的视图的装配。
+
+真正干净的只有 `setupRecognitionSettings`（3 / 0）、`setupPageMore`（2 / 0）、
+`setupPageNumberPanel`（2 / 3）。
+
+### ③ 结论
+
+**「装配函数」不属于任何单个视图。** 装配里对该视图的 DOM 接线确实该归该视图 `init`，
+但这句话意味着必须先「把一个装配函数**按视图切开**」——而切函数不是生成器能干的活
+（生成器只能整函数搬）。所以刀 2 的名单选错了**对象**，不是注入量太大：
+把 87 个跨视图函数注入 pages 的 deps，会让 pages 永久依赖其它每一个视图
+（它们不随刀 3–5 消失，和刀 1 那 98 条「跨刀能力」不是同一个机制）。
+
+### ④ 下一刀的定义
+
+```
+刀2.5 = 拆跨视图装配：把「某视图的 DOM 接线」从装配函数里提成独立函数
+        （人工 / 半自动，必须给出逐个函数的行范围名单），拆完再搬。
+拆之前的刀2 不可执行——名单要按「纯 pages 的装配」重切。
+```
+
+### ⑤ 口径自洽（这份数据可信的依据）
+
+8 个函数的 pages id 命中合计 **58**，等于 `stage2-movers.json` 里记的「58 处」。
+两个独立算法（Architect 数调用点 / 这里数 id 字面量）对上了同一个数，说明口径一致。
