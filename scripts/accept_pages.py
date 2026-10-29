@@ -52,6 +52,8 @@ VIEW = "pages"
 BASELINE_REFS = {"el": 111, "literal": 116, "occurrences": 270}
 #: 净减占比区间：下界来自 library 刀（371 行 → 净减 317 = 85.4%），上界是"不复制"的极限。
 SHRINK_LOW, SHRINK_HIGH = 0.85, 1.00
+#: `--acid` 的必填四字段。缺一 = 未验（exit 2），不是通过、也不是红。
+ACID_FIELDS = ("imgSrcAssignments", "observers", "sameImg", "evidence")
 
 
 def load_rules():
@@ -226,25 +228,61 @@ def main(argv: list[str]) -> int:
     print(f"④ 减量：app.js {base['app_lines']:,} → {app_lines:,}（净减 {shrink:,}；"
           f"门槛 {low:,}..{high:,} = movers 行数 × {SHRINK_LOW}..{SHRINK_HIGH}）")
     if module_exists and not low <= shrink <= high:
-        problems.append(f"④ 净减 {shrink:,} 不在 {low:,}..{high:,}（照名单派生，不写死数）")
+        problems.append(
+            f"④ 净减 {shrink:,} 不在 {low:,}..{high:,}——这是「复制」不是「搬」"
+            f"（门槛 = movers 行数 × {SHRINK_LOW}..{SHRINK_HIGH}，转发段会让净减少一点，但不会少这么多）",
+        )
 
     # ⑥ 第三消费者（只能来自实测）
     if not args.acid:
-        pending.append("⑤ 第三消费者没给实测（--acid <json>：同页同档 img.src 赋值次数 / observer 数）——"
-                       "这条不判就等于没验")
+        pending.append("⑤ 第三消费者没给实测（--acid <json>：{imgSrcAssignments, observers, sameImg, evidence}）"
+                       "——这条不判就等于没验")
     else:
-        acid = json.loads(Path(args.acid).read_text(encoding="utf-8"))
-        writes = acid.get("viewSrcWrites")
-        observers = acid.get("observers")
-        print(f"⑤ 第三消费者：同页同档 img.src 赋值 {writes} 次（须 1）· observer {observers} 个（须 ≤ 6）")
+        acid_path = Path(args.acid)
+        if not acid_path.is_file():
+            print(f"[2] 前置不满足：--acid 指向的文件不存在：{acid_path}")
+            return 2
+        acid = json.loads(acid_path.read_text(encoding="utf-8"))
+        # 缺字段 = **未验**，不是通过：`aac4568` 那次就是"只有实机证据、闸里没有用例"被当成过了。
+        missing_fields = [name for name in ACID_FIELDS if name not in acid]
+        if missing_fields:
+            print(f"[2] 前置不满足：--acid 缺字段 {'、'.join(missing_fields)}——"
+                  f"四个字段（{', '.join(ACID_FIELDS)}）缺一即「未验」，未验 ≠ 通过")
+            return 2
+        writes = acid["imgSrcAssignments"]
+        observers = acid["observers"]
+        same = acid["sameImg"]
+        evidence = acid["evidence"]
+        if not isinstance(evidence, str) or not evidence.strip():
+            print("[2] 前置不满足：--acid 的 evidence 是空的——证据路径都没写，等于没验")
+            return 2
+        evidence_path = Path(evidence)
+        if not evidence_path.is_absolute():
+            evidence_path = REPO / evidence_path
+        if not evidence_path.exists():
+            print(f"[2] 前置不满足：--acid 的 evidence 指的文件不存在：{evidence}（未验 ≠ 通过）")
+            return 2
+        print(f"⑤ 第三消费者：同页同档 img.src 赋值 {writes} 次（须 1）· observer {observers} 个（须 ≤ 6）"
+              f"· 同页同档同一张图 sameImg={same} · 证据 {evidence}")
         if writes != 1:
             problems.append(f"⑤ 同页同档 img.src 赋值 {writes} 次 ≠ 1——第三个消费者没走 PageTile")
         if not isinstance(observers, int) or observers > 6:
             problems.append(f"⑤ observer {observers} 个 > 6——调度又变成多份")
+        if same is not True:
+            problems.append(f"⑤ 同页同档取到的不是同一张图（sameImg={same}）——缓存/URL 参数又分叉了")
 
     if not module_exists:
+        # 落盘前的预检：名单错、名单与源码对不上，此刻就该红——否则落盘那天红的是「名单错」，
+        # 会被误读成「搬错了」，等于验收器自己骗人。
+        for name in misplaced:
+            problems.append(f"③ 名单里的 {name}")
         print(f"   {MODULE.name}：不存在（还没落盘）")
         print("---")
+        if problems:
+            print(f"[1] 验收失败：{len(problems)} 条（落盘前预检：名单自洽 / 名单与 app.js 对不上）")
+            for item in problems:
+                print(f"    ✗ {item}")
+            return 1
         print("[2] 前置不满足：模块还没写出来——上面是基线，落盘后直接判。")
         return 2
     print("---")
