@@ -127,11 +127,30 @@ def baseline() -> dict:
     }
 
 
+#: 调用方式错（参数不认识）用这个码，**不许与 2（未验）混在一起**：
+#: `land_pages.sh` 把参数原样透传，多一个自己的 flag 就会走到这里——那时该报"调用方式错"，
+#: 而不是"验收器 exit 2（多半是没给 --acid）"。
+EXIT_USAGE = 64
+
+
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="pages 落盘验收。只收 --acid / --expect-sha；别的参数一律算调用方式错。",
+    )
     parser.add_argument("--acid", default="", help="第三消费者的实测 JSON（img.src 赋值次数 / observer 数）")
     parser.add_argument("--expect-sha", default="", help="movers.json 的 sha256 前缀（判名单是不是那一版）")
-    args = parser.parse_args(argv)
+    # `land_pages.sh` 的 `"${@:-}"` 在无参数时会传一个**空字符串**进来（实测：POSIX sh 展开成 `[]`）。
+    # 空参数永远没有意义，丢掉它，别让它变成 "unrecognized arguments: " 再被误读成"没给 --acid"。
+    argv = [arg for arg in argv if arg != ""]
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code == 2:
+            print("[64] 调用方式错（不是验收失败）：accept_pages.py 只收 --acid / --expect-sha"
+                  f"——收到的是 {' '.join(argv) or '（空）'}")
+            print("     先修调用方（land_pages.sh 把参数原样透传），别去查产品。")
+            return EXIT_USAGE
+        raise
 
     base = baseline()
     rules = load_rules()
