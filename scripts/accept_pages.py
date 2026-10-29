@@ -20,7 +20,8 @@
 ④ **减量按名单派生**：`app.js` 净减 ∈ [movers 行数 × 0.85, × 1.00]。0.85 的先例是 library 刀
    （17 函数 371 行 → 净减 317 = 85.4%，转发段占了余下部分）。**不写死数**。
 ⑤ **第三消费者**（`PageTile`）：同页同档 `<img>.src` 赋值 = 1、observer 数 ≤ 6。
-   这两个数**只能来自真机/酸测试**，所以从 `--acid <json>` 读；不给就是「未验」→ exit 2。
+   这两个数**只能来自真机/酸测试**，所以从 `--acid <json>` 读；**第 2 刀起**不给就是「未验」→ exit 2
+   （刀 1 不是它的前置：PageTile 接线不在刀 1 名单里，已裁定进刀 2；刀号常量 `ACID_REQUIRED_FROM_STAGE`）。
    **不要数网络请求**：`/pages/N/image` 带 `max-age=300`，第二次命中浏览器缓存会把重复取图盖掉。
 
 退出码：`0` 全过 / `1` 验收不过 / `2` 前置不满足（还没落盘、酸测试没给、名单版本判不了）/
@@ -44,7 +45,7 @@ REPO = SCRIPT_DIR.parent
 STATIC = REPO / "backend/book2text/static"
 APP = STATIC / "app.js"
 INDEX = STATIC / "index.html"
-MODULE = STATIC / "page-pages.js"
+MODULE = STATIC / "pages-view.js"
 RULES = REPO / "docs/refactor/evidence/pages/rules.py"
 MANIFEST_JSON = REPO / "docs/refactor/evidence/pages/movers.json"
 #: 当前判的那份名单（`--movers` 可换；刀 1 用 stage1-movers.json）
@@ -60,6 +61,10 @@ BASELINE_REFS = {"el": 111, "literal": 116, "occurrences": 270}
 SHRINK_LOW, SHRINK_HIGH = 0.85, 1.00
 #: `--acid` 的必填四字段。缺一 = 未验（exit 2），不是通过、也不是红。
 ACID_FIELDS = ("imgSrcAssignments", "observers", "sameImg", "evidence")
+#: `--acid` 从第几刀起必填。刀 1 不是它的前置（PageTile 接线不在刀 1 名单里，已裁定进刀 2），
+#: 所以刀 1 允许不给；**刀 2 起缺了就是「未验」→ exit 2**。
+#: 这一条不许删（删了第三消费者再也没人验），只准挪这个数。
+ACID_REQUIRED_FROM_STAGE = 2
 PLAN = REPO / "docs/refactor/pages-plan.md"
 BOUNDARY_TESTS = REPO / "tests/js/boundary.test.mjs"
 
@@ -146,13 +151,15 @@ def run_stage(args, stage_n: int) -> int:
         print(f"[2] 前置不满足：第 {stage_n} 刀没给 --expect-sha——每刀必须用**该刀冻结版**名单的 sha，"
               f"否则判的是另一份名单（exit 2 = 未验）")
         return 2
-    if not args.acid:
-        print("[2] 前置不满足：第 %d 刀没给 --acid 实测——第三消费者没验，就不算搬完" % stage_n)
+    if args.acid:
+        acid_problems = check_acid(args.acid)
+        if acid_problems is None:
+            return 2
+        problems.extend(acid_problems)
+    elif stage_n >= ACID_REQUIRED_FROM_STAGE:
+        print("[2] 前置不满足：第 %d 刀没给 --acid 实测——从第 %d 刀起第三消费者没验就不算搬完"
+              % (stage_n, ACID_REQUIRED_FROM_STAGE))
         return 2
-    acid_problems = check_acid(args.acid)
-    if acid_problems is None:
-        return 2
-    problems.extend(acid_problems)
 
     print("---")
     if problems:
@@ -308,6 +315,11 @@ def module_functions(text: str) -> set[str]:
     return set(re.findall(r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(", text, re.M))
 
 
+def _as_dict(value) -> dict:
+    """字段可能是 int（按刀名单的 `行数: 1090` / `函数数: 21`）——不是 dict 就当空表，别炸。"""
+    return value if isinstance(value, dict) else {}
+
+
 def baseline() -> dict:
     """基线字段的**两种名单形态**都要认（否则按刀一换名单，减量就变成负数）：
 
@@ -315,15 +327,19 @@ def baseline() -> dict:
     - 按刀名单 `stage1-movers.json`：顶层 `基线_app_js_行数` + `行数.movers` + `函数数`
     """
     data = manifest() or {}
-    summary = data.get("对账", {}) or {}
-    counts = summary.get("函数数", {}) or {}
-    lines = summary.get("行数", {}) or {}
-    top = data.get("行数", {}) or {}
-    sc = data.get("states_and_consts", {}) or {}
+    summary = _as_dict(data.get("对账"))
+    counts = _as_dict(summary.get("函数数"))
+    lines = _as_dict(summary.get("行数"))
+    top_raw = data.get("行数")
+    top = _as_dict(top_raw)
+    sc = _as_dict(data.get("states_and_consts"))
     app_lines = (data.get("口径", {}) or {}).get("app.js 行数")
     if app_lines is None:
         app_lines = data.get("基线_app_js_行数")
     movers_lines = lines.get("movers", top.get("movers"))
+    if movers_lines is None and isinstance(top_raw, int):
+        movers_lines = top_raw          # 按刀名单把"这一刀的行数"直接写在顶层 `行数`
+
     movers_count = counts.get("movers")
     if movers_count is None:
         movers_count = len(data.get("movers", []) or [])
@@ -517,19 +533,29 @@ def main(argv: list[str]) -> int:
 
 
 def _run_guarded() -> int:
+    """main() 的输出先攒着：**崩溃时 `INTERNAL ERROR:` 必须是首行**（前面不留半截读数）。"""
+    import io
+    import traceback
+    buffer = io.StringIO()
+    real_stdout = sys.stdout
+    sys.stdout = buffer
     try:
-        return main(sys.argv[1:])
+        code = main(sys.argv[1:])
     except SystemExit:
         raise
     except Exception as exc:                      # noqa: BLE001 —— 这里就是要兜住一切
-        import traceback
+        sys.stdout = real_stdout
         frame = traceback.extract_tb(exc.__traceback__)[-1]
-        print(f"INTERNAL ERROR: {type(exc).__name__} at {frame.filename}:{frame.lineno} in {frame.name}",
-              file=sys.stderr)
-        print(f"INTERNAL ERROR: {exc}", file=sys.stderr)
-        print("  → 这是**脚本自己坏了**，不是判据不过：先修工具，别去查产品。原文见上两行。",
-              file=sys.stderr)
+        print(f"INTERNAL ERROR: {type(exc).__name__} at {frame.filename}:{frame.lineno} in {frame.name}")
+        print(f"INTERNAL ERROR: {exc}")
+        print("  → 这是**脚本自己坏了**，不是判据不过：先修工具，别去查产品。")
+        print("— 崩溃前的输出 —")
+        print(buffer.getvalue().rstrip())
         return EXIT_INTERNAL
+    finally:
+        sys.stdout = real_stdout
+    print(buffer.getvalue(), end="")
+    return code
 
 
 if __name__ == "__main__":

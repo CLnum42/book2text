@@ -14,7 +14,7 @@ set -u
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 cd "$REPO" || exit 1
 APP=backend/book2text/static/app.js
-MODULE=backend/book2text/static/page-pages.js
+MODULE=backend/book2text/static/pages-view.js
 MOVERS=docs/refactor/evidence/pages/movers.json
 RULES=docs/refactor/evidence/pages/rules.py
 GEN=docs/refactor/evidence/build_view.py
@@ -60,10 +60,10 @@ tail -3 /tmp/b2t-land.out
 # 3) 两文件语法 + index.html 的 script 标签（R7b 会拦漏）
 step "3) 语法与加载"
 "$NODE" --check "$APP" || die "app.js 语法错" "回滚：sh scripts/rollback_pages.sh，然后把报错原文贴出来"
-"$NODE" --check "$MODULE" || die "page-pages.js 语法错" "回滚：sh scripts/rollback_pages.sh"
-grep -q 'src="/static/page-pages.js"' backend/book2text/static/index.html \
-  || die "index.html 没有 page-pages.js 的 <script>" \
-         "在 merge-view.js 后、app.js 前加 <script src=\"/static/page-pages.js\"></script>（R7b 会拦）"
+"$NODE" --check "$MODULE" || die "pages-view.js 语法错" "回滚：sh scripts/rollback_pages.sh"
+grep -q 'src="/static/pages-view.js"' backend/book2text/static/index.html \
+  || die "index.html 没有 pages-view.js 的 <script>" \
+         "在 merge-view.js 后、app.js 前加 <script src=\"/static/pages-view.js\"></script>（R7b 会拦）"
 
 # 4) node 闸
 step "4) node 闸（必须 0 fail）"
@@ -93,9 +93,9 @@ fi
 
 step "6) 下一步（脚本不替你提交）"
 cat <<'EOF'
-  1) git diff --stat               # 只该有 app.js / page-pages.js / index.html / 三张登记表
-  2) 三张表同批：OWNERS（搬进模块的 10 个状态改 owner）/ VIEW_EXPORTS（page-pages.js 的 init,enter）/
-     VIEW_STATE_PREFIXES（page-pages.js 一行）
+  1) git diff --stat               # 只该有 app.js / pages-view.js / index.html / 三张登记表
+  2) 三张表同批：OWNERS（搬进模块的 10 个状态改 owner）/ VIEW_EXPORTS（pages-view.js 的 init,enter）/
+     VIEW_STATE_PREFIXES（pages-view.js 一行）
   3) 提交：scripts/commit.sh -F <msg> -- <路径…>；首行 `move(pages):`
   4) **Approved-by 找 Architect**（这一笔是我自己做的，我不签自己）
   5) 实机 acid 由 Builder 跑；没给数就是「未验」，报告里不许写「已达标」

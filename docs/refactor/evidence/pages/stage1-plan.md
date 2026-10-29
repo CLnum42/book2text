@@ -45,11 +45,11 @@
 ## ④ 回滚判据
 
 ```
-sh scripts/rollback_pages.sh     # 复原 app.js + index.html、删 page-pages.js
+sh scripts/rollback_pages.sh     # 复原 app.js + index.html、删 pages-view.js
 node tests/js/run.mjs            # 必须 fail 0
 git log --oneline -1             # 记下回到的那个 sha，写进本文件「刀 1 已回滚」一行
 ```
-**干净的定义**：`git status --porcelain` 只剩别人的改动 + `page-pages.js` 不存在 + node 闸 `fail 0`。
+**干净的定义**：`git status --porcelain` 只剩别人的改动 + `pages-view.js` 不存在 + node 闸 `fail 0`。
 **回滚后必须通知**：Builder 停 acid、TestDev 停夹具调整、Chief 一句带 pass/fail 数（开发协调群）。
 
 ## ⑤ 明天开工顺序

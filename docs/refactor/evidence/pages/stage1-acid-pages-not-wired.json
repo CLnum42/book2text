@@ -1,0 +1,14 @@
+{
+ "missingModule": false,
+ "target": 1,
+ "writes": 0,
+ "io": 3,
+ "indexSame": false,
+ "previewSame": false,
+ "sameImg": false,
+ "backWrites": 0,
+ "handlers": {
+  "pages": true,
+  "pageTile": true
+ }
+}

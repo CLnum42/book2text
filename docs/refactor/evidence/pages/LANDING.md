@@ -16,21 +16,21 @@ sh scripts/land_pages.sh          # 生成 → 语法 → 闸 → 验收，六�
 
 ```bash
 git checkout -- backend/book2text/static/app.js backend/book2text/static/index.html
-rm -f backend/book2text/static/page-pages.js
+rm -f backend/book2text/static/pages-view.js
 node tests/js/run.mjs        # 必须 127 pass / 0 fail
 ```
 
 判据只有一条：**`node tests/js/run.mjs` 回到 `fail 0`**。
 回不去就说明回滚不完整——先 `git status --porcelain` 看清还有哪个文件被改过。
 
-> 为什么这三步够：`pages` 落盘只动三个产品文件（`app.js` / `index.html` / 新建的 `page-pages.js`），
+> 为什么这三步够：`pages` 落盘只动三个产品文件（`app.js` / `index.html` / 新建的 `pages-view.js`），
 > 三张登记表在 `tests/js/boundary.test.mjs`，但它们不影响运行时——**要回到绿，只需把产品三件复原**。
 
 ## 三、回滚后必须通知谁
 
 | 对象 | 说什么 | 在哪说 |
 |---|---|---|
-| **Builder** | 「pages 已回滚，`page-pages.js` 不存在，**停 acid 实机测量**」 | 开发协调群 |
+| **Builder** | 「pages 已回滚，`pages-view.js` 不存在，**停 acid 实机测量**」 | 开发协调群 |
 | **TestDev** | 「pages 已回滚，夹具/闸的改动先别按落盘后的形态调整」 | 开发协调群 |
 | **Chief** | 一句话 + 回滚后 `node` 闸的 pass/fail 数 | 开发协调群（带数字） |
 
@@ -38,7 +38,7 @@ node tests/js/run.mjs        # 必须 127 pass / 0 fail
 
 ## 四、落盘的三个前置（缺一不可）
 
-1. **`index.html` 有 `<script src="/static/page-pages.js">` 且在 `app.js` 之前** —— `R7b` 会拦（2026-10-29 补的闸）；
+1. **`index.html` 有 `<script src="/static/pages-view.js">` 且在 `app.js` 之前** —— `R7b` 会拦（2026-10-29 补的闸）；
 2. **三张登记表同批**：`OWNERS`（搬进模块的 10 个状态改 owner）/ `VIEW_EXPORTS`（`init,enter`）/ `VIEW_STATE_PREFIXES`；
 3. **`Approved-by` 是别人**（Architect）：`move:` 笔的签名不许自己签自己。
 
@@ -75,3 +75,17 @@ agent 侧写的是 `return window.PagesView.<fn>.apply(window.PagesView, argumen
 | C. 把 `stays` 里 67 个调用点也搬进模块/改注入 | 等于第二刀，今天做不完 | 时间 |
 
 **未裁决前不许落盘**：A 之外的任何"让它先绿"的做法都是把缺口藏起来。
+
+## 刀 1 落盘记录：第三消费者未接 PageTile（2026-10-29）
+
+刀 1 落盘时 `pages` **没有**接 PageTile：662 个页块直接由外壳赋值
+`image.src = …/pages/N/image?size=thumb`，页块上 `__pagesTile/__pageTile` 句柄为 0，
+`img.dataset.status` 全为 null。即刀 1 只搬了渲染与加载的外层编排
+（19 条名单里没有 `buildTile` / `applyTileState` / `capturePageTileMetrics`）。
+
+证据：`docs/refactor/evidence/pages/stage1-acid-pages-not-wired.json`
+（`writes(size=view) 0 / io 3 / sameImg false`，只证明“没接上”，不是通过证据）。
+
+**接线在刀 2**：PageTile 第三消费者接线（取图路径）进刀 2 名单；刀 2 的 `accept` 必须带
+`--acid`，且必须是真通过的那份（同页同档 img.src=1 / observer ≤6 / 三个 consumer 同一张 `<img>`）。
+判据不删，只改到期日。

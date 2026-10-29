@@ -89,11 +89,8 @@ IDENT = [
     ('recognitionOf', 'injected.recognitionOf', 'function'),
     ('refreshMarginTiles', 'injected.refreshMarginTiles', 'function'),
     ('refreshPageStates', 'injected.refreshPageStates', 'function'),
-    ('renderMarginPanel', 'injected.renderMarginPanel', 'function'),
-    ('renderPages', 'injected.renderPages', 'function'),
     ('renderProjectMeta', 'injected.renderProjectMeta', 'function'),
     ('renderRecognitionSettings', 'injected.renderRecognitionSettings', 'function'),
-    ('renderRecognitionStatus', 'injected.renderRecognitionStatus', 'function'),
     ('renderStepPanels', 'injected.renderStepPanels', 'function'),
     ('renderTask', 'injected.renderTask', 'function'),
     ('schedulePageVisibility', 'injected.schedulePageVisibility', 'function'),
@@ -164,19 +161,18 @@ MODULE_LOCAL = ["el"]
 #: 判据是 app.js 里"声明消失"——两份状态比没搬更坏，而且没有任何静态门能发现。
 MOVED_STATES = [
     "layoutBlockLoading",
-    "layoutBlockPage",
-    "layoutBlockPayload",
-    "marginAuditLoading",
-    "panelAccordionProject",
-    "recStatusTimer",
     "setupSuggestionsLoading",
-    "suggestionScanQueued",
-    "suggestionScanTimer",
-    "suggestionScrollListening",
 ]
 
 #: 写点跨区的状态：`x = v;` → `injected.setX(v);`
 SETTERS = [
+    ('pageBlockPending', 'setPageBlockPending'),   # 刀1：改注入后模块侧仍有写点
+    ('suggestionScrollListening', 'setSuggestionScrollListening'),   # 刀1：改注入后模块侧仍有写点
+    ('suggestionScanTimer', 'setSuggestionScanTimer'),   # 刀1：改注入后模块侧仍有写点
+    ('panelAccordionProject', 'setPanelAccordionProject'),   # 刀1：改注入后模块侧仍有写点
+    ('marginAuditLoading', 'setMarginAuditLoading'),   # 刀1：改注入后模块侧仍有写点
+    ('layoutBlockPayload', 'setLayoutBlockPayload'),   # 刀1：改注入后模块侧仍有写点
+    ('layoutBlockPage', 'setLayoutBlockPage'),   # 刀1：改注入后模块侧仍有写点
     ("marginFitRunning", "setMarginFitRunning"),   # 刀1：模块正文里有写点（反证抓到），外壳持有
     ("marginAuditPage", "setMarginAuditPage"),
     ("pageTileMetrics", "setPageTileMetrics"),
@@ -195,6 +191,9 @@ SET_REWRITES = {
 
 #: 多行赋值：先算到局部，再 `injected.setX(局部);`
 SET_BLOCKS = [
+    # 刀1：这两处都是多行对象字面量（同一状态出现 2 次），按 match 全量替换 + 序号临时名
+    {"match": "layoutBlockPayload = {", "head": "const __layoutBlockPayload = {",
+     "after": "injected.setLayoutBlockPayload(__layoutBlockPayload);"},
     {"match": "pageTileMetrics = tiles.map(", "head": "const __pageTileMetrics = tiles.map((tile) => {",
      "after": "injected.setPageTileMetrics(__pageTileMetrics);"},
 ]
@@ -223,24 +222,55 @@ INTERFACE = """
     return api;
   }
 
-  /** 进入目录视图：按当前项目与筛选重画页列（重绘幂等，可反复调）。
-   *  `renderPages` 在 stays（被 clearPageSelection / handleTileClick 等外壳流程调用）→ 走注入。 */
-  function enter() {
-    injected.renderPages();
-    return true;
-  }
-
-  const api = { init, enter };
+  // **api 的键 = 外壳实际调用的名字集合**（落盘后 `grep -oE 'PagesView\\.[A-Za-z_]+' app.js | sort -u` 现扫；
+  // 回滚后的 app.js 里是 0 个，所以这份 20 个来自 HANDOFF-stage1.md §4 记录的那次实测）。
+  // 少一个键 → 外壳那处 `undefined.apply`，而 node / pytest / accept 三闸全看不见。
+  // 收敛棘轮：本刀 20 键 → 终点 3（enter / render / refresh），靠刀 2-5 把 41 个调用者搬进来逐刀降。
+  const api = {
+    init,
+    ensureMarginFitted,
+    loadLayoutBlocks,
+    loadSetupSuggestions,
+    refreshRecognizedPages,
+    reloadProjectPages,
+    renderLayoutBlocks,
+    renderMarginPanel,
+    renderPageSetup,
+    renderPages,
+    renderRecognitionStatus,
+    renderRecognitionVerdict,
+    renderSuggestionPanel,
+    renderTypePicker,
+    savePageMargin,
+    syncPageStates,
+    undoMarginEdit,
+    updateMarginDetectProgress,
+    updatePageVisibility,
+    updateSelectionPanel
+  };
   window.PagesView = api;
 """
 
 #: 让生成器把 app.js 里 63 个函数体换成转发（保住 async），并在 `setupLibrary();` 之后调 init 一次。
 FORWARDERS = True
-INIT_ANCHOR = "boot();"
+INIT_ANCHOR = "  setupLibrary();"   # 必须在 boot() 内：R13 要求注入块在函数体内
 
 # ---- 刀 1 的跨刀能力注入（其余四刀的入口：模块只调用，不搬）----
 IDENT_CROSS_SLICE = [
-    ("pageBlockCache", "injected.getPageBlockCache()", "const"),   # 刀1：外壳两处 .clear() + index 读 → 注入
+    ('layoutBlockPage', "injected.getLayoutBlockPage()", 'let'),   # 刀1：外壳仍引用 → 注入
+    ('layoutBlockPayload', "injected.getLayoutBlockPayload()", 'let'),   # 刀1：外壳仍引用 → 注入
+    ('marginAuditLoading', "injected.getMarginAuditLoading()", 'let'),   # 刀1：外壳仍引用 → 注入
+    ('panelAccordionProject', "injected.getPanelAccordionProject()", 'let'),   # 刀1：外壳仍引用 → 注入
+    ('suggestionScanTimer', "injected.getSuggestionScanTimer()", 'let'),   # 刀1：外壳仍引用 → 注入
+    ('suggestionScrollListening', "injected.getSuggestionScrollListening()", 'let'),   # 刀1：外壳仍引用 → 注入
+    ('PAGE_OVERLAY_FRAME_LIMIT', "injected.getPAGE_OVERLAY_FRAME_LIMIT()", 'const'),   # 刀1：外壳仍引用 → 注入
+    ('pageBlockPending', "injected.getPageBlockPending()", 'const'),   # 刀1：外壳仍引用 → 注入
+
+
+    ("pageBlockCache", "injected.getPageBlockCache()", "const"),
+    ("detailPageNo", "injected.getDetailPageNo()", "let"),
+    ("suggestionScanQueued", "injected.getSuggestionScanQueued()", "let"),   # 刀1：外壳仍读 → 注入
+    ("recStatusTimer", "injected.getRecStatusTimer()", "let"),   # 刀1：外壳仍读 → 注入   # 刀1：外壳读 + index 读 → 注入   # 刀1：外壳两处 .clear() + index 读 → 注入
     ("applyPageZoom", "injected.applyPageZoom", "function"),   # 刀1 依赖（刀2-5 未搬）
     ("applySetupSuggestion", "injected.applySetupSuggestion", "function"),   # 刀1 依赖（刀2-5 未搬）
     ("applyTileState", "injected.applyTileState", "function"),   # 刀1 依赖（刀2-5 未搬）
@@ -298,9 +328,9 @@ IDENT_FULL = IDENT_FULL + IDENT_CROSS_SLICE   # 生成器读的是 IDENT_FULL，
 # ---- 刀 1 的 pages 私有数据：**模块自己持有**（注入 = 外壳一份、模块一份，libraryProjects 那次的起点）----
 #: **_pageBlockCache 不搬_**：外壳 app.js:1199 / 1221 有 `.clear()` 写点、index 在 7932 读它 →
 #: 判据「数据只许搬读写者全在模块内的」。它走注入（getter + clear 能力），三处外壳引用在落盘同批改。
-MOVED_STATES += ["PAGE_OVERLAY_FRAME_LIMIT", "detailPageNo", "pageBlockPending"]
+#: detailPageNo 也**不搬**：app.js:1183 写、1471/1472 读、index-view.js 经 getDetailPageNo 读 → 三方引用 → 注入。
 
-EXPECT_SEAMS = 87   # 37 基础 + 49 跨刀能力 + pageBlockCache（const，注入）      # 函数接缝（**不含 el**：el 是模块自建，见 MODULE_LOCAL）
+EXPECT_SEAMS = 95   # 87 + 8 个外壳仍引用的状态（改注入）   # 84 + detailPageNo + recStatusTimer + suggestionScanQueued（外壳也读 → 全注入）   # 87 − 3（renderMarginPanel / renderPages / renderRecognitionStatus 是 movers，不是注入）   # 37 基础 + 49 跨刀能力 + pageBlockCache（const，注入）      # 函数接缝（**不含 el**：el 是模块自建，见 MODULE_LOCAL）
 EXPECT_STATES = 45     # 状态/常量；46 = 45 + el（el 在 IDENT 里）
 EXPECT_TOTAL = 46      # 名单 states_and_consts 的条数
 

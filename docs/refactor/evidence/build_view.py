@@ -77,31 +77,39 @@ def declaration_bounds(lines, name):
 def apply_set_blocks(text, rules):
     """多行赋值：`x = f({ … });` → 先算到局部，再 `injected.setX(局部);`。
 
-    规则 `SET_BLOCKS = [{"match": 起始行片段, "head": 新的起始行, "after": 插入行}]`。
-    起始行到括号配对处为止整段换头，收尾行之后插入 `after`。**找不到配对就报错，不猜。**
+    **两个必须**（2026-10-29，两次踩在同一处）：
+    1. **先在同一份原文上把所有块的行范围算完，再从后往前一次性替换**。
+       「边改边重新 split + 边算 depth」这个形态本身就是 bug 源——后处理的块会看见前一次插入的行，
+       结果同一个块被插两次（实测：源里 2 处 → 模块里 4 次 setter 调用，而 anti / node --check 全绿）。
+    2. 同一 match 出现 N 次就替换 N 次，临时名带序号：`__name1` / `__name2` …… 名字一眼看出对应哪个状态。
     """
     lines = text.split("\n")
     for block in getattr(rules, "SET_BLOCKS", []):
-        start = next((i for i, ln in enumerate(lines) if block["match"] in ln), None)
-        if start is None:
-            # **命中才改，没命中跳过**（2026-10-29 修）：SET_BLOCKS 是按"写点在哪一刀"写的，
-            # 写点可能属于别的刀（例：pageTileMetrics 在 capturePageTileMetrics，不在刀 1）。
-            # 跳过不是放行——**由第四条反证兜底**：若该状态真被搬走却仍是裸赋值，
-            # 模块正文里会出现"给 getter 赋值"，生成器当场红。
-            print(f"… SET_BLOCKS 跳过（本刀不含该写点）：{block['match']}", file=sys.stderr)
-            continue
-        depth = 0
-        end = None
-        for i in range(start, len(lines)):
-            depth += lines[i].count("(") + lines[i].count("[") + lines[i].count("{")
-            depth -= lines[i].count(")") + lines[i].count("]") + lines[i].count("}")
-            if depth <= 0:
-                end = i; break
-        if end is None:
-            raise SystemExit(f"✗ SET_BLOCKS 的括号没配对：{block['match']}")
-        indent = re.match(r"^(\s*)", lines[start]).group(1)
-        lines[start] = indent + block["head"]
-        lines.insert(end + 1, indent + block["after"])
+        base = re.search(r"__([A-Za-z_$][\w$]*)", block["head"])
+        base_name = base.group(1) if base else "__tmp"
+        # ① 先在原文上把所有匹配块的范围算完
+        ranges = []
+        for i, ln in enumerate(lines):
+            if block["match"] not in ln:
+                continue
+            depth, end = 0, None
+            for j in range(i, len(lines)):
+                depth += lines[j].count("(") + lines[j].count("[") + lines[j].count("{")
+                depth -= lines[j].count(")") + lines[j].count("]") + lines[j].count("}")
+                if depth <= 0:
+                    end = j
+                    break
+            if end is None:
+                raise SystemExit(f"✗ SET_BLOCKS 的括号没配对：{block['match']}")
+            ranges.append((i, end))
+        # ② 再从后往前一次性替换
+        for n, (start, end) in reversed(list(enumerate(ranges, start=1))):
+            suffix = str(n)
+            head = block["head"].replace("__" + base_name, "__" + base_name + suffix)
+            after = block["after"].replace("__" + base_name, "__" + base_name + suffix)
+            indent = re.match(r"^(\s*)", lines[start]).group(1)
+            lines[start] = indent + head
+            lines.insert(end + 1, indent + after)
     return "\n".join(lines)
 
 
@@ -131,6 +139,34 @@ def rewrite_writes(text, rules):
             problems.append(line.strip()[:100])
             out_lines.append(line)
     return "\n".join(out_lines), problems
+
+
+def count_checks(module_code, app_source, rules):
+    """数量自检（anti 证明不了这个）：模块里 setter 调用数 == 源里该赋值出现次数。
+
+    「形态对得上」与「数量对得上」是两件事——今天三次栽在这上面。
+    """
+    problems = []
+    # 只核对**这一刀真的用到的**规则：源文本（改写前）里没有该 match 就跳过，
+    # 否则「别的刀的规则」会被当成漏改（刀一只搬部分函数，很多规则的写点不在本刀）。
+    for block in getattr(rules, "SET_BLOCKS", []):
+        if block["match"] not in app_source:
+            continue
+        name = re.search(r"injected\.(set[A-Za-z_$][\w$]*)\(", block["after"]).group(1)
+        want = len(re.findall(re.escape(block["match"]), app_source))
+        # 只数**块改写**的次数（临时名声明），不要数所有 setX 调用——
+        # 同一状态还可能有 `x = null;` 这类单行写点，由 SETTERS 改写，混在一起会误报。
+        base = re.search(r"__([A-Za-z_$][\w$]*)", block["head"]).group(1)
+        got = len(re.findall(r"const __" + base + r"\d+ =", module_code))
+        if want != got:
+            problems.append(f"SET_BLOCKS {name}：源里 {want} 处，模块里 {got} 次调用（数量不符 = 重复插入或漏改）")
+    for old, _new in [(k, v) for k, v in getattr(rules, "SET_REWRITES", {}).items()]:
+        if old.strip() not in app_source:
+            continue
+        got = len(re.findall(re.escape(old.strip()), module_code))
+        if got != 1:
+            problems.append(f"SET_REWRITES「{old.strip()[:40]}」：模块里 {got} 次（应为 1）")
+    return problems
 
 
 def anti_checks(module_code, app_text, rules):
@@ -215,6 +251,23 @@ def main():
     lines = app_source.split("\n")
     app_lines_before = len(lines) - (1 if lines and lines[-1] == "" else 0)
 
+    # ⓪a movers 名单不许有重名：搬移按名字执行，重名必然复制两份真实现（R4-dup 会红，但那是落盘后才发现）
+    dupes = sorted({n for n in movers if movers.count(n) > 1})
+    if dupes:
+        print("✗ movers 名单里有重名（会复制两份真实现）：", "、".join(dupes))
+        return 2
+
+    # ⓪ movers ∩ IDENT 必须为空：渲染函数要么搬进模块、要么注入，不能两者都是。
+    # （2026-10-29 真实事故：renderMarginPanel 同时在两处 → 替换把函数声明写成
+    #  `function injected.renderMarginPanel()`；dry run 全绿，--write 才崩在 node --check。）
+    ident_names = {entry[0] for entry in getattr(rules, "IDENT_FULL", getattr(rules, "IDENT", []))}
+    both = sorted(set(movers) & ident_names)
+    if both:
+        print("✗ 这些名字同时出现在 movers 与 IDENT 里（要么搬进模块、要么注入，不能两者都是）：")
+        for n in both:
+            print(f"   - {n}")
+        return 2
+
     missing = [n for n in movers if not bounds_of(lines, n)]
     if missing:
         print("!! 名单里的函数在 app.js 找不到：", missing[:6]); return 2
@@ -237,6 +290,7 @@ def main():
         for i in range(start, end + 1):
             lines[i] = ""
     out = "\n\n".join(moved_states + ["\n\n".join(body)])
+    pre_rewrite = out
     out = apply_set_blocks(out, rules)
     out, tune_problems = rewrite_writes(out, rules)
     if tune_problems:
@@ -268,9 +322,9 @@ def main():
             if anchor is None:
                 print(f"!! INIT_ANCHOR 找不到：{rules.INIT_ANCHOR}"); return 2
             indent = re.match(r"^(\s*)", lines[anchor]).group(1)
-            init_lines = (f"{indent}if (window.{a.name}View) window.{a.name}View.init({{\n"
+            init_lines = (f"{indent}window.{a.name}View?.init({{\n"
                           + deps_literal(rules) + f"\n{indent}}});").split("\n")
-            lines[anchor:anchor] = init_lines          # 插在锚点**之前**：锚点用 `boot();`，插完就在顶层、boot 仍最后
+            lines[anchor + 1:anchor + 1] = init_lines   # 插在锚点**之后**：锚点是 boot() 里的 `setupLibrary();`
 
     os.makedirs(a.out, exist_ok=True)
     open(os.path.join(a.out, "module.js"), "w", encoding="utf-8").write(module)
@@ -280,7 +334,7 @@ def main():
         anti = anti_checks(module, "\n".join(lines), rules)      # 落盘前再跑一次反证（这里 anti 还没算）
         if residue or anti:
             print("✗ 自检没过，拒绝 --write（宁可不写，也不留一个带未定义标识符的 app.js）"); return 1
-        MODULE_OUT = os.path.join(ROOT, "backend/book2text/static", f"page-{a.name.lower()}.js")
+        MODULE_OUT = os.path.join(ROOT, "backend/book2text/static", f"{a.name.lower()}-view.js")
         for path, text in ((MODULE_OUT, module), (a.app, "\n".join(lines))):
             tmp = path + ".tmp.js"   # 后缀必须是 .js：node --check 认扩展名
             open(tmp, "w", encoding="utf-8").write(text)
@@ -295,7 +349,7 @@ def main():
                           "net": app_lines_before - app_lines_after}, ensure_ascii=False))
 
     lines_text = "\n".join(lines)
-    anti = anti_checks(module, lines_text, rules)
+    anti = anti_checks(module, lines_text, rules) + count_checks(module, pre_rewrite, rules)
     print(json.dumps({"movers": len(movers), "moved_lines": moved, "moved_states": len(moved_states),
                       "module_lines": module.count("\n"),
                       "residue": residue, "anti": anti,
