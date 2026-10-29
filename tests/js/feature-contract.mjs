@@ -66,6 +66,21 @@ export function registrationApprover(sha, docText) {
 }
 
 /**
+ * §18.6（2026-10-29）「批准人 ∈ 授权签署人」：**当前只有 DevLead**。
+ * 为什么需要它：本仓库所有 Bot 共用一个提交账号（`CLnum42`），所以「批准人 ≠ %an」只能拦
+ * "照抄作者字符串"；真实出事形态是 `Builder | aac4568`——干活的人给自己签字，那条规则判绿。
+ * 新增授权人要改这里，并按 §18.6 登记。
+ */
+export const AUTHORIZED_SIGNERS = ["DevLead"];
+
+/** 签名人不在授权名单 → 一句人话；否则 null。 */
+function unauthorizedSigner(sha, signer) {
+  if (!signer || AUTHORIZED_SIGNERS.includes(signer)) return null;
+  return `A3: ${sha.slice(0, 7)} 的签名人「${signer}」不在授权名单`
+    + `（${AUTHORIZED_SIGNERS.join(" / ")}）——干活的人不能给自己签字`;
+}
+
+/**
  * `Approved-by:` trailer（§18.6 2026-10-29「签名走 trailer」）。
  * 容忍 `Approved-by: DevLead` 与 `Approved-by:DevLead` 两种写法；返回 null = 没有这个 trailer。
  */
@@ -216,17 +231,17 @@ function registrationGap(sha, docText, kindLabel, author = null) {
   if (!registeredIn1886(sha, docText)) {
     return `A3: ${short} 是 ${kindLabel}，但没登记在 §18.6`;
   }
-  // §18.6（2026-10-29 补）：登记行的「批准人」== 该笔提交作者 → 红（自己批自己）。
-  // 整串比较：`%an` 是显示名，可能含空格/中文，切字段会错。
-  if (author) {
-    const approver = registrationApprover(sha, docText);
-    // 判不了就是红：行在、列读不出（表头被改名/换表）→ 不能静默放行。
-    if (approver === null) {
-      return `A3: ${short} 的 §18.6 登记行读不出「批准人」列——判不了就是红（表头是不是改了？）`;
-    }
-    if (approver === author) {
-      return `A3: ${short} 的 §18.6 登记「批准人」是它自己的提交作者（${author}）——自己签自己不算第二人复核`;
-    }
+  // 判不了就是红：行在、列读不出（表头被改名/换表）→ 不能静默放行。
+  const approver = registrationApprover(sha, docText);
+  if (approver === null) {
+    return `A3: ${short} 的 §18.6 登记行读不出「批准人」列——判不了就是红（表头是不是改了？）`;
+  }
+  // §18.6 判据 2：批准人必须是授权签署人（与"是不是作者"无关，所以不看 author）。
+  const unauthorized = unauthorizedSigner(sha, approver);
+  if (unauthorized) return unauthorized;
+  // §18.6 判据 1：批准人 == 该笔提交作者 → 红（自己批自己）。整串比，不切字段。
+  if (author && approver === author) {
+    return `A3: ${short} 的 §18.6 登记「批准人」是它自己的提交作者（${author}）——自己签自己不算第二人复核`;
   }
   const reg = registrationContent(sha, docText);
   if (!reg) {
@@ -303,7 +318,9 @@ export function commitContractProblems({
           `A3: ${short} 的 Approved-by 是它自己的提交作者（${author}）——自己签自己不算第二人复核`,
         );
       } else {
-        exempt = true;
+        const unauthorized = unauthorizedSigner(sha, trailer);
+        if (unauthorized) registryProblems.push(unauthorized);
+        else exempt = true;
       }
     } else if (!registeredIn1886(sha, docText)) {
       // 既没有 trailer、也没有表格登记行 → 缺签字（历史笔不在此列，它们有登记行）

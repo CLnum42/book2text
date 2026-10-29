@@ -2084,6 +2084,30 @@ test("R12 自检：Approved-by trailer——缺 → 红 / 等于作者 → 红 /
   const noSpace = commitContractProblems({ ...base, message: `${body}\n\nApproved-by:DevLead` });
   assert.deepEqual(noSpace.registryProblems, [],
     `R12 自检失败：无空格写法（Approved-by:DevLead）没认出来——${noSpace.registryProblems.join("；")}`);
+
+  // 判据 2：批准人必须在授权名单里。Builder 给自己签字 → 红（本仓库所有 Bot 共用同一个提交账号，
+  // 「≠ %an」拦不住这个真实形态）。
+  const builderSigned = commitContractProblems({ ...base, message: `${body}\n\nApproved-by: Builder` });
+  assert.ok(
+    builderSigned.registryProblems.some((item) => item.includes("不在授权名单") && item.includes("Builder")),
+    `R12 自检失败：非授权签署人（Builder）也放过——${builderSigned.registryProblems.join("；")}`,
+  );
+
+  // 表格路径（历史笔）同样要查授权名单
+  const tableDoc = [
+    "### 18.6 判据变更登记",
+    "| 日期 | 判据 | 变更 | 批准人 | 提交 |",
+    "|---|---|---|---|---|",
+    "| 2026-10-29 | X | 删：旧断言；补：更严的；变异：改坏一次红在目标行 | Builder | abc7777 |",
+  ].join("\n");
+  const tableBuilder = commitContractProblems({
+    sha: "abc7777", subject: "move(x): 历史笔", files: ["tests/js/boundary.test.mjs"],
+    deletions: 0, docText: tableDoc, author: "CLnum42",
+  });
+  assert.ok(
+    tableBuilder.registryProblems.some((item) => item.includes("不在授权名单")),
+    `R12 自检失败：表格里签署人越权也放过——${tableBuilder.registryProblems.join("；")}`,
+  );
 });
 
 /**
