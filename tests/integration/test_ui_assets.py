@@ -1545,7 +1545,13 @@ def test_page_index_scrolls_continuously_with_lazy_pages() -> None:
     assert 'id="index-pages"' in page
     assert "function buildIndexPages(" in index_both
     assert "IntersectionObserver" in script
-    assert "rootMargin" in index_both and "INDEX_NEAR_MARGIN" in index_both
+    # 2026-10-29：可见性调度从「index 自建 near/visible 两个 IntersectionObserver」
+    # 改成「滚动几何 + PageTile 单调度」（两套调度并存会各推各的）。
+    # 这条仍守同一件事：只给附近页取数据、只有视口里的页画装饰。
+    assert "indexScrollBound" in index_script
+    assert "function syncIndexWindow(" in index_script
+    assert "new IntersectionObserver" not in index_script
+    assert "INDEX_NEAR_MARGIN" in index_both
     # 只给附近页挂图 / 块，滚出去清掉，图有上限
     assert "function loadIndexTile(" in index_both
     assert "function clearIndexTile(" in index_both
@@ -1557,7 +1563,7 @@ def test_page_index_scrolls_continuously_with_lazy_pages() -> None:
     assert "function paintIndexTile(" in index_both
     # 只有视口里的页画装饰：near 只取数据、visible 才画
     assert "function observeIndexTiles(" in index_both
-    assert "indexVisibleObserver" in index_both
+    assert "indexVisiblePages" in index_both
     assert "function clearIndexDecorations(" in index_both
     # 页图按距离排队、一次解一张，并有同时挂载上限
     assert "function pumpIndexImages(" in index_both

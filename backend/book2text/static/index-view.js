@@ -79,6 +79,9 @@ let indexObserverMargin = 0;
 const indexImageQueue = [];
 let indexImagePumping = false;
 let indexTops = [];
+// 滚动几何调度（替代 index 自己的两个 IntersectionObserver）；只绑一次。
+let indexScrollBound = false;
+let indexWindowRaf = 0;
 let indexTopMap = new Map();
 let indexScrollRaf = 0;
 let indexResizeRaf = 0;
@@ -363,68 +366,86 @@ function disconnectIndexObserver() {
 }
 
 /**
- * 两个观察者，各管一件事：
- * - near（上下放宽约 ±3 页）：只负责把图 / 块数据**提前拿到**，不画；
- * - visible（视口内）：负责画版心 / 块框 / 首行框，滚出去立刻清掉。
- * 这样滚动时每帧最多画 1–2 页，不会给 ±3 页一起重画。
+ * 可见性调度交给滚动几何 + PageTile（2026-10-29）：原来 index 自己建 near/visible 两个
+ * IntersectionObserver，与 PageTile 的「一页一个 IO」并存 = 两套调度。现在只保留一份：
+ * - 图 / 块数据：由本函数的 near 集合喊 `loadIndexTile`，取图交给 PageTile；
+ * - 画版心 / 块框：由 visible 集合决定，滚出去立刻清掉。
+ * 计几何用 `indexTops`（量好的偏移），每帧 O(页数) 但只做加法与集合差，不碰 DOM。
  */
 function observeIndexTiles() {
   const scroller = el("index-canvas");
-  if (!scroller || typeof IntersectionObserver !== "function") return;
+  if (!scroller) return;
+  if (!indexScrollBound) {
+    indexScrollBound = true;
+    scroller.addEventListener("scroll", scheduleIndexWindow, { passive: true });
+    window.addEventListener("resize", scheduleIndexWindow, { passive: true });
+  }
+  scheduleIndexWindow();
+}
+
+function scheduleIndexWindow() {
+  if (indexWindowRaf) return;
+  indexWindowRaf = requestAnimationFrame(() => {
+    indexWindowRaf = 0;
+    syncIndexWindow();
+  });
+}
+
+function syncIndexWindow() {
+  const scroller = el("index-canvas");
+  if (!scroller || !indexTiles.size || !injected.isActive()) return;
   const firstTile = indexTiles.values().next().value;
-  const tileHeight = firstTile ? firstTile.getBoundingClientRect().height : 0;
-  // "视口附近 ±3 页"按页高算（页高随缩放变），至少留半页防止页面太矮时错过
-  const margin = tileHeight
-    ? Math.max(600, Math.round(tileHeight * 3))
-    : INDEX_NEAR_MARGIN;
-  if (indexObserver && Math.abs(margin - indexObserverMargin) > 80) {
-    indexObserver.disconnect();
-    indexObserver = null;
+  const tileHeight = firstTile
+    ? (indexTopMap.get(Number(firstTile.dataset.pageNo)) || {}).height || firstTile.getBoundingClientRect().height
+    : 0;
+  const margin = tileHeight ? Math.max(600, Math.round(tileHeight * 3)) : INDEX_NEAR_MARGIN;
+  const top = scroller.scrollTop;
+  const height = scroller.clientHeight || 800;
+  const near = new Set();
+  const visible = new Set();
+  // 没有量过偏移时退回 rect（只在首帧发生一次；之后 measureIndexTiles 会补上）
+  const entries = indexTops.length
+    ? indexTops
+    : [...indexTiles].map(([pageNo, tile]) => ({
+        pageNo,
+        top: tile.offsetTop,
+        height: tile.offsetHeight || tileHeight || 0,
+      }));
+  for (const entry of entries) {
+    const from = entry.top - top;
+    const to = from + (entry.height || 0);
+    if (to > 0 && from < height) visible.add(entry.pageNo);
+    if (to > -margin && from < height + margin) near.add(entry.pageNo);
   }
-  if (!indexObserver) {
-    indexObserverMargin = margin;
-    indexObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const tile = entry.target;
-          const pageNo = Number(tile.dataset.pageNo);
-          if (entry.isIntersecting) {
-            indexNearPages.add(pageNo);
-            loadIndexTile(pageNo);
-          } else if (indexNearPages.delete(pageNo)) {
-            clearIndexTile(pageNo);
-            // 已经离开几页之外的图不必再占解码内存
-            if (Math.abs(pageNo - (indexCurrentPage || 1)) > 6) releaseIndexImage(pageNo);
-          }
-        }
-        reportIndexMetrics();
-      },
-      { root: scroller, rootMargin: `${margin}px 0px`, threshold: 0 }
-    );
+  // 先更新 visible（loadIndexTile 靠它决定画不画）
+  for (const pageNo of visible) {
+    if (indexVisiblePages.has(pageNo)) continue;
+    indexVisiblePages.add(pageNo);
+    loadIndexTile(pageNo);
   }
-  if (!indexVisibleObserver) {
-    indexVisibleObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const tile = entry.target;
-          const pageNo = Number(tile.dataset.pageNo);
-          if (entry.isIntersecting) {
-            indexVisiblePages.add(pageNo);
-            loadIndexTile(pageNo);
-          } else if (indexVisiblePages.delete(pageNo)) {
-            clearIndexDecorations(pageNo);
-          }
-        }
-        reportIndexMetrics();
-        updateIndexActiveFromScroll();
-      },
-      { root: scroller, rootMargin: "0px", threshold: 0 }
-    );
+  for (const pageNo of [...indexVisiblePages]) {
+    if (visible.has(pageNo)) continue;
+    indexVisiblePages.delete(pageNo);
+    clearIndexDecorations(pageNo);
   }
-  for (const tile of indexTiles.values()) {
-    indexObserver.observe(tile);
-    indexVisibleObserver.observe(tile);
+  const wantImage = new Set(visible);
+  for (const pageNo of visible) {
+    wantImage.add(pageNo - 1);
+    wantImage.add(pageNo + 1);
   }
+  for (const pageNo of near) {
+    if (indexNearPages.has(pageNo)) continue;
+    indexNearPages.add(pageNo);
+    loadIndexTile(pageNo, { image: wantImage.has(pageNo) });
+  }
+  for (const pageNo of [...indexNearPages]) {
+    if (near.has(pageNo)) continue;
+    indexNearPages.delete(pageNo);
+    clearIndexTile(pageNo);
+    if (Math.abs(pageNo - (indexCurrentPage || 1)) > 6) releaseIndexImage(pageNo);
+  }
+  reportIndexMetrics();
+  updateIndexActiveFromScroll();
 }
 
 function reportIndexMetrics() {
@@ -757,11 +778,12 @@ function ensureIndexBlocks(pageNo) {
 }
 
 /** 一页进入"附近"：先挂图、拿块；**只有它在视口里才画**。 */
-async function loadIndexTile(pageNo) {
+async function loadIndexTile(pageNo, { image = true } = {}) {
   const tile = indexTiles.get(pageNo);
   const page = indexPageRecord(pageNo);
   if (!tile || !page) return;
-  ensureIndexImage(pageNo);
+  // 只给「视口 ±1」建图；更远的近页只预取块数据（建图 = PageTile 一页一个 IO，建多了就是新的一套调度）。
+  if (image) ensureIndexImage(pageNo);
   if (indexVisiblePages.has(pageNo)) paintIndexTile(pageNo);
   if (indexBlocksByPage.has(pageNo)) {
     if (indexVisiblePages.has(pageNo)) paintIndexTile(pageNo);
