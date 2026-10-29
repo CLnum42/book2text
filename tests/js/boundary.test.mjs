@@ -438,7 +438,12 @@ function r4dupProblems(fileSources) {
   }
 
   const problems = [];
+  // 模块生命周期入口是**每个视图模块各一份**，不是"重复实现"：
+  // `window.XxxView = { init, enter }` 是约定形状（R8 锁的就是这个形状）。
+  // 若把它们算进 R4-dup，第二个模块落盘就必红——这条排除与"同名逻辑函数只许一份"不冲突。
+  const LIFECYCLE = new Set(["init", "enter", "reload", "notify", "open", "refresh"]);
   for (const [name, defs] of byName) {
+    if (LIFECYCLE.has(name)) continue;
     const filesOfName = new Set(defs.map((item) => item.file));
     if (filesOfName.size < 2) continue;   // 只在一个文件里出现 → 不在本规则范围
     const classified = defs.map((item) => ({ def: item, verdict: classify(item) }));
