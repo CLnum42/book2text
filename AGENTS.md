@@ -81,6 +81,15 @@ scripts/commit.sh -m "…" -- <具体路径…>
 
 它是 `git add` + `git commit` 的包装，**唯一额外行为是撞上 `index.lock` / `cannot lock ref` 时退避重试**（0.3→4.8s，5 次，约 9.3s）。**闸红了不重试**，直接退出——重试一个红闸只会拖时间，还会被误读成并发问题。
 
+**共用工作区的两条硬纪律（2026-10-29，三个人轮流踩过）**：
+
+1. **禁用 `git reset --hard` / `git checkout -- .` / `git clean -fd`**——这个工作区是多人共用的，
+   一条清状态命令会把别人没提交的改动一起抹掉（今天已发生过一次）。要清自己的状态只许
+   `git stash push -- <自己的路径…>`（点名路径），或者干脆别清。
+2. **提交前先贴一次 `git diff --cached --name-only`**——索引是**共享对象**，谁暂存了什么别人看不见。
+   今天出现过"索引里十个文件只有一半"：一半已暂存、一半还在工作区，于是 pre-commit 验的是
+   半棵树（129 pass / 1 fail），而所有人都以为验的是完整的。**贴出来，才知道自己这一笔带走了谁的改动。**
+
 **闸做了什么**：`pre-commit` 把**索引**导出到临时目录、跑 `node tests/js/run.mjs`（约 6 秒），红则拒绝提交；`post-commit` 记录绕过（`--no-verify` 时请加一行 `Bypass-Reason: <为什么>`）。
 
 **推送时另有一个闸**：`pre-push` 现在跑 **node 闸（`tests/js/run.mjs` ≈ 11s + `contract-registry.mjs --strict --allow-transitional-base` ≈ 7s，实测 15–19s）**，然后跑 `pytest -q`（约 82–85s）。node 闸**纯文档推送也跑**；pytest 只在推送范围含非 `*.md` 改动时跑，纯文档推送记一行 `SKIP`。`.venv` 或 `node` 缺失都会拒绝推送（fail closed）。

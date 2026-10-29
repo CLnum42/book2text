@@ -1278,6 +1278,19 @@ Approved-by: DevLead
 - **两套并存**：本表是**历史记录**（`ring-break-base..4de5a8c` 及之前的笔），**新笔只走 trailer、不再往表里加行**；
 - **什么时候删表（照 §13.2e）**：trailer 机检连续全绿、且本表**不再被单独修改** → 表转为历史记录并停止维护。在此之前**不许一刀切抹掉历史行**（抹掉就再也追不回"当时是谁批的"）。
 
+**喂红不许改真文档（DevLead，2026-10-29）**：验证登记段/签名判据时，**不许**为了看红而去改
+`docs/refactor/reading-view-boundary.md` 本身（改真文档 → 产生一笔无关提交、还可能被人当成真的判据变更）。
+一律用 `--doc <path>` 把**改坏的副本**放 `/tmp` 喂进去：
+
+```
+cp docs/refactor/reading-view-boundary.md /tmp/bad.md   # 只改副本
+# 把某行「批准人」改成提交作者 / 整行删掉 / 清空「变异」一格
+node tests/js/contract-registry.mjs --strict --doc /tmp/bad.md   # 期望红
+```
+
+**这条是规则，不是习惯**：真文档是判据的唯一真源，喂红的样本污染它一次，下一个人就分不清
+"这条是判据变更还是喂红残留"。
+
 **`contract-registry.mjs` 的统计范围现在是过渡范围**：它算的是 `ring-break-base..HEAD`（今天 172 笔），而当前 tag 打在 L0 上（见 §18.2），这个范围**不等于破环序列**。真 base 切出前，「0 笔不合格」只能当「这一段历史里没有未登记的 test-contract 提交」，**不许当「登记齐全」的结论用**；输出里的那句 `… 笔提交的 §18.6 登记齐全` 也要在 TestDev 下次动它时改成「过渡范围」措辞。
 
 | 2026-10-29 | registry 读数口径 + base 树自检 | 删：`0 笔（N 笔提交的 §18.6 登记齐全）`——base 不是回放基时这句会被读成结论。补：base 不合法时输出 `过渡范围 <base>..HEAD（N 笔）：… 不许当「登记齐全」用`；新增 `baseTreeGap()`——`<base>:static` 与 HEAD 的 `*-view.js` 集合必须相等，不等 fail closed（`--strict` 红），过渡期须显式 `--allow-transitional-base` 且输出注明；`--base <ref>` 可换基点。变异：base=`afe20fe`（只有 reading-view.js）→ 红并说明两种红会混；`--base HEAD` → 绿「HEAD..HEAD（0 笔）登记齐全」；`--strict` 配 tag → exit 1，配 HEAD → exit 0。**三条读数 DevLead 已复跑**：默认 exit 0（带过渡红字）、`--strict` exit 1、`--strict --base HEAD` exit 0 | DevLead | a78188d |
