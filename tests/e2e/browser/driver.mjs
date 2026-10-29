@@ -3773,6 +3773,23 @@ async function pagesThirdConsumerProbe(page, args) {
         get() { return desc.get.call(this); },
         set(value) { window.__srcWrites.push(String(value)); desc.set.call(this, value); },
       });
+      // 选择器兼容：pages 的页图块可能不是 #view-pages img 这一套。
+      // 只定义「怎么找那个对象」；判据（同一张图 / 只取一次）不在这里放宽。
+      window.__probeImgFor = (viewKey, pageNo) => {
+        const roots = {
+          pages: ["view-pages", "page-grid", "pages-grid", "pages-canvas", "pages-page-grid"],
+          index: ["view-index", "index-canvas", "index-pages"],
+          preview: ["view-preview", "preview-pdf-scroll", "preview-pages"],
+        }[viewKey] || [viewKey];
+        const images = roots
+          .map((id) => document.getElementById(id))
+          .filter(Boolean)
+          .flatMap((root) => [...root.querySelectorAll("img")]);
+        const withPage = images.filter((img) => (img.getAttribute("src") || "").includes(`/pages/${pageNo}/image`));
+        if (withPage.length) return withPage[0];
+        // 目标页还没加载时，返回该视图第一张有页号的图，供"发现目标页"用
+        return images.find((img) => /\/pages\/[0-9]+\/image/.test(img.getAttribute("src") || "")) || null;
+      };
       window.__ioCount = 0;
       const NativeIO = window.IntersectionObserver;
       if (NativeIO) {
@@ -3790,23 +3807,20 @@ async function pagesThirdConsumerProbe(page, args) {
     ).length, n);
   const imageFor = (n) =>
     page.evaluate((page) => {
-      const img = [...document.querySelectorAll("#view-pages img")]
-        .find((item) => (item.getAttribute("src") || "").includes(`/pages/${page}/image`));
+      const img = window.__probeImgFor ? window.__probeImgFor("pages", page) : null;
       if (img) window.__probeImg = img;
       return Boolean(img);
     }, n);
 
   await page.evaluate(() => { window.showView("pages"); });
   await page.waitForFunction(
-    (page) => [...document.querySelectorAll("#view-pages img")].some((item) =>
-      (item.getAttribute("src") || "").includes(`/pages/${page}/image`)),
+    (page) => Boolean(window.__probeImgFor && window.__probeImgFor("pages", page)),
     pageNo,
     { timeout: args.timeout || 30000 }
   ).catch(() => false);
   await page.waitForTimeout(600);
   const firstImg = await page.evaluate(() => {
-    const img = [...document.querySelectorAll("#view-pages img")]
-      .find((item) => (item.getAttribute("src") || "").includes("/pages/"));
+    const img = window.__probeImgFor ? window.__probeImgFor("pages", 1) : null;
     return img ? (img.getAttribute("src") || "") : null;
   });
   const target = (firstImg && /\/pages\/([0-9]+)\/image/.exec(firstImg)) ? Number(/\/pages\/([0-9]+)\/image/.exec(firstImg)[1]) : pageNo;
@@ -3817,15 +3831,13 @@ async function pagesThirdConsumerProbe(page, args) {
   await page.evaluate(() => { window.showView("index"); });
   await page.waitForTimeout(1200);
   const indexSame = await page.evaluate((n) => {
-    const img = [...document.querySelectorAll("#view-index img")]
-      .find((item) => (item.getAttribute("src") || "").includes(`/pages/${n}/image`));
+    const img = window.__probeImgFor ? window.__probeImgFor("index", n) : null;
     return Boolean(img && window.__probeImg && img === window.__probeImg);
   }, target);
   await page.evaluate(() => { window.showView("preview"); });
   await page.waitForTimeout(1200);
   const previewSame = await page.evaluate((n) => {
-    const img = [...document.querySelectorAll("#view-preview img")]
-      .find((item) => (item.getAttribute("src") || "").includes(`/pages/${n}/image`));
+    const img = window.__probeImgFor ? window.__probeImgFor("preview", n) : null;
     return Boolean(img && window.__probeImg && img === window.__probeImg);
   }, target);
 
