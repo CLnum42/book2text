@@ -177,6 +177,7 @@ MOVED_STATES = [
 
 #: 写点跨区的状态：`x = v;` → `injected.setX(v);`
 SETTERS = [
+    ("marginFitRunning", "setMarginFitRunning"),   # 刀1：模块正文里有写点（反证抓到），外壳持有
     ("marginAuditPage", "setMarginAuditPage"),
     ("pageTileMetrics", "setPageTileMetrics"),
     ("pagesMarginOn", "setPagesMarginOn"),
@@ -237,7 +238,66 @@ INTERFACE = """
 FORWARDERS = True
 INIT_ANCHOR = "boot();"
 
-EXPECT_SEAMS = 37      # 函数接缝（**不含 el**：el 是模块自建，见 MODULE_LOCAL）
+# ---- 刀 1 的跨刀能力注入（其余四刀的入口：模块只调用，不搬）----
+IDENT_CROSS_SLICE = [
+    ("applyPageZoom", "injected.applyPageZoom", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("applySetupSuggestion", "injected.applySetupSuggestion", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("applyTileState", "injected.applyTileState", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("auxEstimateText", "injected.auxEstimateText", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("buildTile", "injected.buildTile", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("capturePageTileMetrics", "injected.capturePageTileMetrics", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("ensureMarginAudit", "injected.ensureMarginAudit", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("ensurePageSuggestion", "injected.ensurePageSuggestion", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("estimateRemainingSeconds", "injected.estimateRemainingSeconds", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("fetchPageBlocks", "injected.fetchPageBlocks", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("forgetPageBlocks", "injected.forgetPageBlocks", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("formatMarginBox", "injected.formatMarginBox", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("hideMarginFitProgressSoon", "injected.hideMarginFitProgressSoon", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("highConfidenceCount", "injected.highConfidenceCount", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("initPanelAccordion", "injected.initPanelAccordion", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("layoutBlockPageRecord", "injected.layoutBlockPageRecord", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("loadPageDetail", "injected.loadPageDetail", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("marginBasisForUndetermined", "injected.marginBasisForUndetermined", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("marginFitSummaryText", "injected.marginFitSummaryText", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("marginPagesWithoutLines", "injected.marginPagesWithoutLines", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("marginSourceText", "injected.marginSourceText", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("marginUndeterminedPages", "injected.marginUndeterminedPages", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("marginUndoButton", "injected.marginUndoButton", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("mergePageRecord", "injected.mergePageRecord", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("pageBlockKey", "injected.pageBlockKey", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("pageMarginSourceLabel", "injected.pageMarginSourceLabel", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("pageSetupStats", "injected.pageSetupStats", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("paintTileMargin", "injected.paintTileMargin", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("patchSelectedPages", "injected.patchSelectedPages", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("percentText", "injected.percentText", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("pumpPageBlockPrefetch", "injected.pumpPageBlockPrefetch", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("refreshLayoutDetectEntry", "injected.refreshLayoutDetectEntry", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("refreshMarginDetectHint", "injected.refreshMarginDetectHint", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("reloadDetailAfterRecognition", "injected.reloadDetailAfterRecognition", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("renderMarginStepVerdict", "injected.renderMarginStepVerdict", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("renderPageBlocks", "injected.renderPageBlocks", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("renderPageSummary", "injected.renderPageSummary", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("repaintTileMargin", "injected.repaintTileMargin", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("resetMarginsToAuto", "injected.resetMarginsToAuto", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("scheduleLayoutBlocks", "injected.scheduleLayoutBlocks", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("scheduleOverlayPump", "injected.scheduleOverlayPump", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("selectNextPage", "injected.selectNextPage", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("selectedSuggestions", "injected.selectedSuggestions", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("selectionPages", "injected.selectionPages", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("showMarginDetectProgress", "injected.showMarginDetectProgress", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("showMarginFitProgress", "injected.showMarginFitProgress", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("suggestionPagesByType", "injected.suggestionPagesByType", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("textLayerPages", "injected.textLayerPages", "function"),   # 刀1 依赖（刀2-5 未搬）
+    ("trimMarginUndo", "injected.trimMarginUndo", "function"),   # 刀1 依赖（刀2-5 未搬）
+]
+
+IDENT = IDENT + IDENT_CROSS_SLICE
+IDENT_FULL = IDENT_FULL + IDENT_CROSS_SLICE   # 生成器读的是 IDENT_FULL，这里必须一起加
+
+# ---- 刀 1 的 pages 私有数据：**模块自己持有**（注入 = 外壳一份、模块一份，libraryProjects 那次的起点）----
+MOVED_STATES += ["PAGE_OVERLAY_FRAME_LIMIT", "detailPageNo", "pageBlockCache", "pageBlockPending"]
+
+EXPECT_SEAMS = 86   # 37 基础 + 49 跨刀能力（刀 1 依赖刀 2-5 的入口）      # 函数接缝（**不含 el**：el 是模块自建，见 MODULE_LOCAL）
 EXPECT_STATES = 45     # 状态/常量；46 = 45 + el（el 在 IDENT 里）
 EXPECT_TOTAL = 46      # 名单 states_and_consts 的条数
 
