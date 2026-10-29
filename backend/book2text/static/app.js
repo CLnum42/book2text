@@ -2712,8 +2712,14 @@ async function resumeLastPosition() {
 async function refreshProject(projectId) {
   const data = await apiJson(`/api/projects/${projectId}`);
   currentProject = { ...data.project, pages: data.pages, read_only: false };
-  selectedPages.clear();
-  selectionAnchor = null;
+  // **保留选择**（2026-10-30，QA 实测：刷新项目会清掉用户刚选的页）：
+  // 页面对象是重建的，所以按 page_no 重新映射，只丢弃已不存在的页——
+  // 既不让旧对象残留，也不把用户的选择当垃圾扔掉。
+  const alivePageNos = new Set((data.pages || []).map((item) => item.page_no));
+  for (const pageNo of [...selectedPages]) {
+    if (!alivePageNos.has(pageNo)) selectedPages.delete(pageNo);
+  }
+  if (selectionAnchor !== null && !alivePageNos.has(selectionAnchor)) selectionAnchor = null;
   closePageDetail();
   structureCandidates = [];
   el("structure-result").hidden = true;
@@ -5014,9 +5020,12 @@ function selectNextPage(pageNo) {
   const index = pages.findIndex((page) => page.page_no === pageNo);
   const target = pages[index + 1] || pages[index] || null;
   if (!target) return;
-  selectedPages.clear();
-  selectedPages.add(target.page_no);
-  selectionAnchor = target.page_no;
+  // 多选时「下一页」只翻页，不改选择（2026-10-30：选 3 页按一下下一页，3 页变 1 页）
+  if (selectedPages.size <= 1) {
+    selectedPages.clear();
+    selectedPages.add(target.page_no);
+    selectionAnchor = target.page_no;
+  }
   renderPages();
   const tile = document.querySelector(
     `#page-grid .page-tile[data-page-no="${target.page_no}"]`
