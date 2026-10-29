@@ -92,3 +92,6 @@ MOVERS = [
     "lastPositionText", "recognitionExtra", "reviewExtra", "progressRow",
     "createProjectFromFile", "openProject", "currentProjectName",
 ]
+
+# 残余接缝白名单：这些名字不是"app.js 顶层符号的裸引用"
+RESIDUE_OK = ["project_id"]   # 对象字面量的键：{ project_id: x }
