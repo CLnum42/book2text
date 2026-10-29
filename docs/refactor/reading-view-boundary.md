@@ -1763,7 +1763,7 @@ const enter = () => {
 
 ```js
 window.PageTile = {
-  init(deps),                                         // { api, getProject, getProfile, notify }
+  init(deps),                                         // { api, getProject, getProfile, notify, getImageUrl }
   create(host, { pageNo, size, overlays, onReady }),  // → handle | null
   update(handle, patch),                              // size / overlays / state
   invalidate(target, reason),                         // target: pageNo | "*"; reason: image|profile|data
@@ -1836,6 +1836,26 @@ window.PageTile = {
 - **R6**：一个文件一个 `window.PageTile`；
 - **R8**：出生接口登记进 `SERVICE_EXPORTS`（或并入 `VIEW_EXPORTS`），只降不升；
 - **R2**：不许引用 `window.XxxView`，需要视图给的一律走 deps。
+
+### 21.10 签字：page-tile 三处待定（Architect，2026-10-29）
+
+Builder 按 `29c2f2f` 实现时留了三处没自己定。**三处都批，各带一个条件**；条件不满足就别接 `pages`（接了再改成本高）。
+
+**① 一个 `pageNo` 只有一个 `<img>`——批。**
+理由不是省内存，是 §21.8 的判据给的：数的是 `<img>.src` 带 `size=…` 的赋值次数，不是网络数。两个 `<img>` 必然各赋一次 = 2，判据当场破。
+**代价必须写死并测出来**：第二个宿主 `create` 同一页时，`el.append(record.img, slot)`（`page-tile.js:229`）是 DOM **移动**语义——图从宿主 A 搬走，宿主 A 的 `.ptile` 变空；而 `tileScanDetached`（`page-tile.js:74–80`）只看 `host.isConnected === false`，宿主 A 仍在文档里，**不会释放、不会告警，就是静默空白**。
+所以补一条酸测试锁住这个语义：**两个宿主同时挂同一页 → `src` 赋值仍 = 1、observer 仍 = 1、图在最后挂的宿主里、旧宿主 `.ptile__image` 为空**。这条测试是"契约外行为"的记录，不是推荐用法。
+接线规则（写进模块头）：**任何视图切换先 `release` 再 `create`，不许两个宿主同时持有同一页**；视图本来不同时可见，这条能守住。
+
+**② deps 加 `getImageUrl(pageNo, size)`——批。**
+理由：URL 是规则不是数据（项目 id + `token` + `size`，`app.js:4533` 的 `pageImageUrl` 依赖 `currentProject` 与 `token` 两个全局），模块自己拼一份就是复制规则，而且会顺手去读全局。
+条件三条：**纯函数**（不 fetch、不碰 DOM、不缓存 token）；**`init` 收到缺的 `getImageUrl` 必须 fail closed**（不许静默出一片空 tile）；**名字就叫 `getImageUrl`**，别叫 `imageUrl`——它是"按页+档位生成"，不是一份现成 URL。§21.4 的 deps 已按此更新。
+
+**③ Node 下 `setTimeout(16)` + `unref()` 兜底——批。**
+条件：只在 `typeof requestAnimationFrame !== "function"` 时走（`page-tile.js:52` 已是）；**注册表清空后必须停扫**（`page-tile.js:62` 已有 `if (registry.size > 0)`）；`unref` 只作可选守卫，不许为了 Node 把浏览器路径也换成定时器。
+补一条单测：**假 rAF 不存在 → 全部 release 后扫描计数不再增长**（用计数桩，别去查活动句柄，那个不稳定）。否则"停扫"只是代码里看着对。
+
+---
 
 ## 22. 视图模块落地模板（2026-10-29，chief 批准；照 `index` 这一刀验证过的形态固化）
 
