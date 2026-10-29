@@ -687,6 +687,7 @@ function stepReadingPage(delta) {
   const total = injected.getProject() ? injected.getProject().pages.length : 0;
   const next = Math.min(total, Math.max(1, readingPageNo + delta));
   if (next === readingPageNo) return;
+  noteReadingAction("page");
   // 任务 95：翻页按钮是**明确的用户意图**，必须同时写页码。
   // 原来只 `scrollPdfColumnToPage(next)`，而 `updateReadingPageFromLeftScroll` 对
   // "程序滚动"有早退守卫（`readingUserScrollSeq === readingProgramScrollSeq`），
@@ -745,6 +746,7 @@ async function submitReadingDrafts() {
     }
     readingData = null;
     readingProject = null;
+    noteReadingAction("back");
     await openReading();
     await injected.loadFinishSummary?.({ silent: true });
     renderReadingProgress();
@@ -1572,6 +1574,7 @@ function openReadingPanel(entry) {
   host.innerHTML = "";
   host.append(panel);
   host.hidden = false;
+  noteReadingAction("panel");
   refreshReadingCurrentHighlight();
   if (entry.page_no && entry.page_no !== readingPageNo) {
     updateReadingPage(entry.page_no, { scrollLeft: false, syncStream: false });
@@ -2660,6 +2663,7 @@ function draftReading(entry, ack, text) {
     at: new Date().toISOString(),
   });
   saveReadingDrafts();
+  noteReadingAction("judge");
   closeReadingPanel();
   rerenderReadingLine(entry);
   renderReadingProgress();
@@ -2903,6 +2907,27 @@ function readingProgressNumbers() {
   const total = Number(counts.chars_total || 0);
   const doneInDb = Math.max(0, total - Number(counts.chars_unacked || 0));
   return { processed: Math.min(total, doneInDb + draftKeys.size), total };
+}
+
+
+/**
+ * 插桩（只读，2026-10-29）：审校动作的**进度快照**。
+ * 三个键就是 step-timing 判"卡住"的口径（pageNo / 已判条数 / 面板开合），
+ * 由这里传进去——模块不许自己去读别的模块状态（Architect §21.10）。
+ */
+function stepTimingProgress() {
+  let processed = 0;
+  try {
+    processed = Number(readingProgressNumbers().processed || 0);
+  } catch (error) {
+    processed = 0;                      // 统计读不到时不许影响审校
+  }
+  return { pageNo: readingPageNo, judged: processed, panel: readingPanelKey ? "open" : "" };
+}
+
+/** 记一次审校动作。`StepTiming` 不在时是 no-op；统计永远不许改变审校行为。 */
+function noteReadingAction(action) {
+  window.StepTiming?.bump(action, stepTimingProgress());
 }
 
 function renderReadingProgress() {

@@ -460,12 +460,18 @@ function syncWorkflowSteps() {
   if (!hasProject) {
     nav.innerHTML = "";
     if (current) current.textContent = "";
+    // 插桩（只读）：没有项目就没有"步骤"，把当前步骤的计时收掉
+    window.StepTiming?.leave();
     return;
   }
   if (!workflowStepPinned) workflowStep = autoWorkflowStep();
   if (currentProject.kind === "package" && workflowStep === "export") {
     workflowStep = "review";
   }
+  // 插桩（只读，2026-10-29）：步骤进入/离开的唯一收敛点。
+  // `syncWorkflowSteps` 每次导航与重画都会调，`StepTiming.enter` 对同一步幂等
+  // （重绘不算用户时间）。目录/预览/合并没有独立步骤，时间归到当时的工作流步骤。
+  window.StepTiming?.enter(workflowStep);
   nav.innerHTML = "";
   const isPackage = currentProject.kind === "package";
   const visible = WORKFLOW_STEPS.filter(

@@ -186,12 +186,28 @@
     return name;
   }
 
-  /** 只读快照：深拷贝，改它不会污染正在进行的统计。 */
+  /**
+   * 只读快照：深拷贝，改它不会污染正在进行的统计。
+   *
+   * **当前步的时间要算进去**：`ms` 只在 `leave` 时结算，所以跑完 40 页还停在审校时，
+   * 审校那格的 `ms` 会是 0——分段数据当场就废了。所以快照额外给 `msSoFar`
+   * （已结算 + 这一次已进行的），`totalMsSoFar` 同理。`ms` / `totalMs` 保持"结算值"，
+   * 两个数分开是刻意的：混成一个数就又变成"两个统计范围"。
+   */
   function snapshot() {
+    const at = now();
+    const steps = JSON.parse(JSON.stringify(live.steps));
+    let totalSoFar = live.totalMs;
+    for (const record of Object.values(steps)) {
+      const running = record.enteredAt === null ? 0 : Math.max(0, at - record.enteredAt);
+      record.msSoFar = record.ms + running;
+      totalSoFar += running;
+    }
     return {
       totalMs: live.totalMs,
+      totalMsSoFar: totalSoFar,
       current: live.current,
-      steps: JSON.parse(JSON.stringify(live.steps)),
+      steps,
       actions: ACTIONS.slice(),
     };
   }
