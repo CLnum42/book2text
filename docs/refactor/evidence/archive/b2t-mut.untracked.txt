@@ -1,0 +1,1681 @@
+# b2t-mut 未跟踪文件（1 个）
+?? module.js
+
+===== module.js (65431 bytes, sha256 b8132af624359e12…) =====
+(function () {
+  "use strict";
+  let injected = {};
+  const el = (id) => document.getElementById(id);
+
+let layoutBlockLoading = false;
+
+let layoutBlockPage = null;
+
+let layoutBlockPayload = null;
+
+let marginAuditLoading = false;
+
+let panelAccordionProject = null;
+
+let recStatusTimer = null;
+
+let setupSuggestionsLoading = false;
+
+let suggestionScanQueued = 0;
+
+let suggestionScanTimer = null;
+
+let suggestionScrollListening = false;
+
+function applyPageRangeInput() {
+  const project = injected.getCurrentProject();
+  if (!project) return;
+  const { numbers, invalid } = injected.parsePageRange(el("page-range").value);
+  const known = new Set(project.pages.map((page) => page.page_no));
+  const unknown = [...numbers].filter((pageNo) => !known.has(pageNo));
+
+  if (invalid.length || unknown.length) {
+    const error = el("pages-error");
+    error.textContent =
+      (invalid.length ? `看不懂这段：${invalid.join("、")}。` : "") +
+      (unknown.length ? `这些页码不存在：${unknown.slice(0, 8).join("、")}。` : "") +
+      "可以写成 1-12 或 3,5,8。";
+    error.hidden = false;
+    return;
+  }
+  el("pages-error").hidden = true;
+
+  injected.selectedPages.clear();
+  for (const pageNo of numbers) injected.selectedPages.add(pageNo);
+  injected.setSelectionAnchor(numbers.size ? Math.min(...numbers) : null);
+  injected.renderPages();
+}
+
+/** 用接口返回的页面（含最新识别状态）更新本地列表，不重拉整个项目。 */
+function applyRecognizedPages(pages) {
+  for (const updated of pages || []) {
+    const index = injected.getCurrentProject().pages.findIndex(
+      (page) => page.page_id === updated.page_id
+    );
+    if (index >= 0) injected.getCurrentProject().pages[index] = updated;
+  }
+}
+
+async function applySetupSuggestion(item, button) {
+  if (!injected.getCurrentProject()) return;
+  button.disabled = true;
+  el("pages-error").hidden = true;
+  try {
+    await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/${item.page_id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_type: item.suggested_type }),
+      }
+    );
+    // 页类型变了：这一页不再/开始属于"正文页建议范围"，旧建议与角标都要作废
+    injected.forgetPageSuggestions(item.page_no);
+    await injected.refreshPageStates();
+    injected.renderPages();
+    await loadSetupSuggestions();
+  } catch (error) {
+    button.disabled = false;
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+/** 估时文字：文字层的页按几十毫秒算，其余按 Vision 的实测值算。 */
+function auxEstimateText(pages) {
+  const textPages = Math.min(pages, textLayerPages());
+  const enginePages = Math.max(pages - textPages, 0);
+  const seconds =
+    textPages * injected.AUX_TEXT_LAYER_SECONDS_PER_PAGE + enginePages * injected.AUX_SECONDS_PER_PAGE;
+  return injected.formatDuration(seconds);
+}
+
+function capturePageTileMetrics() {
+  const scroller = injected.pageScroller();
+  const grid = el("page-grid");
+  if (!scroller || !grid) {
+    injected.setPageTileMetrics(null);
+    return;
+  }
+  const tiles = [...grid.querySelectorAll(".page-tile")];
+  if (!tiles.length) {
+    injected.setPageTileMetrics(null);
+    return;
+  }
+  // 页面视图还没显示时（打开项目、从审校切过来之前）所有矩形都是 0：
+  // 那样量出来的"每一页都在视口里"会让 267 页同时排队请求块数据，
+  // 框画出来又被下一帧当成离屏清掉——用户看到的就是"块框迟迟不出来"。
+  // 宁可不记，等视图可见后的下一次可见性计算再量（见 updatePageVisibility）。
+  if (tiles[0].getBoundingClientRect().height <= 0) {
+    injected.setPageTileMetrics(null);
+    return;
+  }
+  const scrollerRect = scroller.getBoundingClientRect();
+  const scrollTop = scroller.scrollTop;
+  const __pageTileMetrics = tiles.map((tile) => {
+    const rect = tile.getBoundingClientRect();
+    return {
+      tile,
+      pageNo: Number(tile.dataset.pageNo),
+      top: rect.top - scrollerRect.top + scrollTop,
+      height: rect.height,
+    };
+  });
+  injected.setPageTileMetrics(__pageTileMetrics);
+}
+
+/**
+ * 第二引擎复核（说明书 8.5）：批量跑成后台任务，与识别共用任务抽屉。
+ *
+ * 与识别不同的两处都在提示里说清：**只有已识别的页**能复核（第二引擎读的是
+ * 第一引擎切出的行图），且默认跳过已复核的页。
+ */
+async function checkSelection(scope) {
+  const project = injected.getCurrentProject();
+  if (!project) return;
+  el("pages-error").hidden = true;
+
+  let body;
+  if (scope) {
+    // 全部已识别但还没复核过的页（说明书 8.5：可以随时补跑）
+    body = { scope };
+  } else {
+    const pages = selectionPages().filter((page) => page.include);
+    if (!pages.length) return;
+    body = {
+      pages: pages.map((page) => page.page_no),
+      skip_checked: el("selection-skip-checked").checked,
+    };
+  }
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/jobs/auxiliary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    applyRecognizedPages(data.pages);
+    injected.renderPages();
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+async function confirmLayoutFromPanel() {
+  const page = layoutBlockPageRecord();
+  if (!page || !injected.getCurrentProject()) return;
+  const button = el("layout-block-confirm");
+  button.disabled = true;
+  try {
+    await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/${page.page_no}/layout/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_numbers: [page.page_no] }),
+      }
+    );
+    await injected.refreshPageStates();
+    await loadLayoutBlocks(page.page_no);
+    await injected.loadFinishSummary({ silent: true });
+    injected.setMarginStatus(`第 ${page.page_no} 页版面已确认。`);
+  } catch (error) {
+    button.disabled = false;
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+async function confirmPageIds(pageIds) {
+  if (!injected.getCurrentProject() || !pageIds.length) return;
+  el("pages-error").hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_ids: pageIds }),
+      }
+    );
+    for (const updated of data.pages) {
+      const index = injected.getCurrentProject().pages.findIndex(
+        (page) => page.page_id === updated.page_id
+      );
+      if (index >= 0) injected.getCurrentProject().pages[index] = updated;
+    }
+    injected.renderPages();
+    injected.renderProjectMeta();
+    await loadSetupSuggestions();
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+function confirmSelectedPages() {
+  const ids = selectionPages().map((page) => page.page_id);
+  if (!ids.length) {
+    const hint = el("selection-hint");
+    hint.textContent = "先在左边网格里选几页，或点「全书… 确认全部未确认页」。";
+    hint.hidden = false;
+    return;
+  }
+  return confirmPageIds(ids);
+}
+
+async function ensureMarginAudit(page) {
+  const node = el("margin-audit");
+  if (!node || !injected.getCurrentProject() || !page) return;
+  if (injected.getMarginAuditPage() === page.page_no && !marginAuditLoading) return;
+  injected.setMarginAuditPage(page.page_no);
+  marginAuditLoading = true;
+  node.hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/${page.page_no}/margin-box/audit`
+    );
+    if (injected.getMarginAuditPage() !== page.page_no) return;
+    const basis = el("margin-basis");
+    const linesWord = data.lines_source === "layout" ? "检测行" : "识别行";
+    if (basis && page.margin_box_mode === "auto") {
+      const total = Number(data.total_lines || 0);
+      const method = injected.pageMarginMethod(page);
+      if (method === "undetermined") {
+        basis.textContent = marginBasisForUndetermined(page);
+      } else if (method === "bbox") {
+        basis.textContent =
+          `来源：本页所有${linesWord}的包围盒（兜底） · ${total} 条正文长行`;
+      } else {
+        basis.textContent =
+          `来源：本页${linesWord}自动拟合 · 把握：${total >= 10 ? "较稳" : total >= 3 ? "偏少" : "不足"}` +
+          `（${total} 条正文长行）`;
+      }
+    }
+    const rescued = Number(data.rescued || 0);
+    const outside = Number(data.outside || 0);
+    if (rescued > 0) {
+      node.textContent =
+        `这页有 ${rescued} 块文字在版心框外（标题 / 章首等），已按"文字列里的字不删"保留；` +
+        "导出不会少，值得看一眼。";
+      node.hidden = false;
+    } else if (outside > 0) {
+      node.textContent =
+        `这页有 ${outside} 行正文落在本页版心之外，可能拟合不准；` +
+        "拖动版心核对一下。";
+      node.hidden = false;
+    } else {
+      node.hidden = true;
+    }
+  } catch {
+    node.hidden = true;
+  } finally {
+    marginAuditLoading = false;
+  }
+}
+
+/** 排队算一页的建议；返回 true 表示这次真的排了新活（用于限量与续扫）。 */
+function ensurePageSuggestion(pageNo) {
+  const project = injected.getCurrentProject();
+  if (!project || project.kind === "package") return false;
+  if (
+    injected.pageSuggestionCache.has(pageNo) ||
+    injected.pageSuggestionPending.has(pageNo) ||
+    injected.pageSuggestionFailed.has(pageNo)
+  ) {
+    return false;
+  }
+  const page = project.pages.find((item) => item.page_no === pageNo);
+  if (!page || !page.include || page.page_type !== "body") return false;
+  if (injected.recognitionOf(page).status !== "recognized") return false;
+  injected.pageSuggestionPending.add(pageNo);
+  injected.pageSuggestionQueue.push(pageNo);
+  pumpPageSuggestionQueue();
+  return true;
+}
+
+function ensureSuggestionScrollListener() {
+  if (suggestionScrollListening) return;
+  const scroller = el("page-grid")?.closest(".split__main");
+  (scroller || window).addEventListener("scroll", scheduleSuggestionScan, {
+    passive: true,
+  });
+  window.addEventListener("resize", scheduleSuggestionScan);
+  suggestionScrollListening = true;
+}
+
+/** 默认展开"第一个未完成"的分区：未确认 → 版心 → 识别；都完成就留在页面类型。 */
+function firstUnfinishedPanel() {
+  const pages = injected.getCurrentProject() ? injected.getCurrentProject().pages : [];
+  if (pages.some((page) => !page.page_confirmed)) return "page-type";
+  const bodyPages = pages.filter((page) => page.include);
+  if (bodyPages.some((page) => page.margin_box_mode !== "none" && !injected.marginBoxOfPage(page))) {
+    return "margin";
+  }
+  if (bodyPages.some((page) => injected.recognitionOf(page).status === "unrecognized")) {
+    return "recognition";
+  }
+  return "page-type";
+}
+
+function hideMarginFitProgressSoon() {
+  window.setTimeout(() => {
+    const wrap = el("margin-fit-progress");
+    if (wrap && !injected.getMarginFitRunning()) wrap.hidden = true;
+  }, 1600);
+}
+
+function highConfidenceCount(suggestions) {
+  return (suggestions || []).filter((item) => item.confidence === "high").length;
+}
+
+/** 右栏手风琴：一次只开一个；折叠状态按项目记，默认落在第一个未完成的分区。 */
+function initPanelAccordion() {
+  if (!injected.getCurrentProject()) return;
+  const groups = [...document.querySelectorAll("#setup-panel details[data-panel]")];
+  if (!groups.length) return;
+  const key = `b2t.panel.accordion.v1.${injected.getCurrentProject().project_id}`;
+  if (panelAccordionProject !== injected.getCurrentProject().project_id) {
+    panelAccordionProject = injected.getCurrentProject().project_id;
+    let saved = null;
+    try {
+      saved = localStorage.getItem(key);
+    } catch {
+      saved = null;
+    }
+    const open = groups.find((group) => group.dataset.panel === saved) ||
+      groups.find((group) => group.dataset.panel === firstUnfinishedPanel()) ||
+      groups[0];
+    for (const group of groups) group.open = group === open;
+  }
+  for (const group of groups) {
+    if (group.dataset.accordionBound === "1") continue;
+    group.dataset.accordionBound = "1";
+    group.addEventListener("toggle", () => {
+      if (!group.open) return;
+      for (const other of groups) {
+        if (other !== group) other.open = false;
+      }
+      try {
+        localStorage.setItem(key, group.dataset.panel);
+      } catch {
+        // 存不了就只在本次会话里记住；不影响功能。
+      }
+    });
+  }
+}
+
+function layoutBlockPageRecord() {
+  if (!injected.getCurrentProject()) return null;
+  const selected = selectionPages();
+  return selected.length === 1 ? selected[0] : null;
+}
+
+async function loadLanguageSummary() {
+  const node = el("rec-language-summary");
+  if (!node || !injected.getCurrentProject()) return;
+  try {
+    const data = await apiJson(`/api/projects/${injected.getCurrentProject().project_id}/aux/languages`);
+    const counts = data.counts || {};
+    const bits = [];
+    if (counts["en-US"]) bits.push(`en-US ${counts["en-US"]} 页`);
+    if (counts["zh-Hans"]) bits.push(`zh-Hans ${counts["zh-Hans"]} 页`);
+    if (counts.mixed) bits.push(`中英混合 ${counts.mixed} 页`);
+    node.hidden = false;
+    node.textContent =
+      bits.length
+        ? `第二引擎语言：${bits.join(" · ")}` + (data.unknown ? ` · 未判定 ${data.unknown} 页` : " · 未判定 0 页")
+        : "第二引擎语言：还没判定（识别 / 复核一次后自动判）";
+  } catch {
+    node.hidden = true;
+  }
+}
+
+async function loadLayoutBlocks(pageNo, { forceSuggestions = false } = {}) {
+  if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") return;
+  layoutBlockPage = pageNo;
+  layoutBlockLoading = true;
+  layoutBlockPayload = null;
+  renderLayoutBlocks();
+  try {
+    // 先读块：块数与版面确认状态是本地数据，界面立刻有东西看。
+    const data = await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/${pageNo}/blocks`
+    );
+    if (layoutBlockPage !== pageNo) return;
+    layoutBlockPayload = {
+      pageNo,
+      blocks: Array.isArray(data.blocks) ? data.blocks : [],
+      layoutConfirmed: Boolean(data.page && data.page.layout_confirmed),
+      suggestions: [],
+      suggestionsLoading: true,
+    };
+    layoutBlockLoading = false;
+    renderLayoutBlocks();
+    // 块类型建议要扫全书的重复项，慢一点（真书 2–5 秒）：
+    // 有缓存先用缓存，采用 / 改类型之后再用 forceSuggestions 重算。
+    const suggestions = await injected.fetchPageSuggestions(pageNo, {
+      force: forceSuggestions,
+    }).catch(() => ({ suggestions: [] }));
+    if (layoutBlockPage !== pageNo || !layoutBlockPayload) return;
+    layoutBlockPayload = {
+      ...layoutBlockPayload,
+      suggestions: (suggestions && suggestions.suggestions) || [],
+      suggestionsLoading: false,
+    };
+  } catch (error) {
+    layoutBlockPayload = null;
+    injected.showError(el("pages-error"), error);
+  } finally {
+    layoutBlockLoading = false;
+    renderLayoutBlocks();
+  }
+}
+
+async function loadSetupSuggestions() {
+  if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") return;
+  setupSuggestionsLoading = true;
+  injected.setSetupSuggestionsLoaded(true);
+  injected.setSetupSuggestions([]);
+  renderSuggestionPanel();
+  try {
+    const data = await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/suggestions`
+    );
+    injected.setSetupSuggestions(data.suggestions || []);
+  } catch {
+    injected.setSetupSuggestions([]);
+  } finally {
+    setupSuggestionsLoading = false;
+    renderSuggestionPanel();
+    renderTypePicker();
+  }
+}
+
+/**
+ * 版心未定的依据说明：**这一页到底有没有行**，说清楚。
+ * 两处（面板首屏 / 审计回包）共用一句，免得后到的审计把首屏的实话盖回去。
+ */
+function marginBasisForUndetermined(page) {
+  const lines = pageLayoutLines(page) + pageTextLines(page);
+  if (lines > 0) {
+    return `未定：这一页有 ${lines} 行正文，但还没有拟合出四边（「重置为本页自动」可重算）`;
+  }
+  return "未定：这一页还没有可用的正文行（检测行 / 识别行框都没有），拟合不出版心";
+}
+
+/** 打开确认界面：先回数据库拉一次页面，保证看到的进度不是前端缓存。 */
+async function openPageSetup({ auto = false } = {}) {
+  if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") return;
+  injected.showView("pages");
+  await injected.refreshPageStates();
+  injected.renderPages();
+  await loadSetupSuggestions();
+  if (auto) {
+    el("setup-panel").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
+
+/** 这一页最近一次成功版面检测的行数（0 = 还没检测 / 一行都没检出）。 */
+function pageLayoutLines(page) {
+  return Number((page && page.layout_lines) || 0);
+}
+
+function pageSetupStats() {
+  const pages = injected.getCurrentProject() ? injected.getCurrentProject().pages : [];
+  const counts = { body: 0, body_excluded: 0, toc: 0, front: 0, back: 0 };
+  for (const page of pages) {
+    if (page.page_type in counts) counts[page.page_type] += 1;
+  }
+  return {
+    total: pages.length,
+    body: counts.body,
+    bodyExcluded: counts.body_excluded,
+    toc: counts.toc,
+    front: counts.front,
+    back: counts.back,
+    confirmed: pages.filter((page) => page.page_confirmed).length,
+    unconfirmed: pages.filter((page) => !page.page_confirmed).length,
+  };
+}
+
+/** 这一页的识别行数（刀 1：版心可以回退 OCR 行拟合）。 */
+function pageTextLines(page) {
+  return Number((page && page.text_lines) || 0);
+}
+
+/** 改一项识别设置：先写服务端，成功再更新本地；失败回显原值。 */
+async function patchRecognitionSetting(key, value) {
+  if (!injected.getCurrentProject()) return;
+  try {
+    const data = await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/settings`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      }
+    );
+    injected.getCurrentProject().settings = data.settings || {
+      ...(injected.getCurrentProject().settings || {}),
+      [key]: value,
+    };
+    injected.renderRecognitionSettings();
+    setRecognitionStatus("已保存，下一次识别按新设置执行");
+  } catch (error) {
+    injected.renderRecognitionSettings(); // 回显服务端的真实值
+    setRecognitionStatus(error.message || "设置没保存成功", true);
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+/** 批量改页面的类型（说明书 6.2 的批量操作，第 11 节的 PATCH /pages）。 */
+async function patchSelectedPages(patch) {
+  const project = injected.getCurrentProject();
+  const pages = selectionPages();
+  if (!project || !pages.length || !("page_type" in patch)) return;
+
+  el("pages-error").hidden = true;
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/pages`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page_ids: pages.map((page) => page.page_id), ...patch }),
+    });
+    for (const updated of data.pages) {
+      const index = project.pages.findIndex((page) => page.page_id === updated.page_id);
+      if (index >= 0) project.pages[index] = updated;
+    }
+    // 类型变了，建议范围跟着变：这些页的旧建议与角标作废
+    for (const updated of data.pages) injected.forgetPageSuggestions(updated.page_no);
+    injected.renderPages();
+    injected.renderProjectMeta();
+    await loadSetupSuggestions();
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+/** 任务 43：离开页面视图时停掉网格里在飞 / 排队的缩略图请求。
+ *
+ * 394 页的网格一次会排上百个 `size=thumb`；切到审校后它们还在后台渲染，
+ * 一次按键要等几秒。图片清掉 src 后浏览器会取消排队中的请求，回来时
+ * applyPageZoom() 会重新挂上（只加载视口附近的页）。
+ */
+function pausePageThumbnails() {
+  const grid = el("page-grid");
+  if (!grid) return;
+  for (const image of grid.querySelectorAll("img[src]")) {
+    image.removeAttribute("src");
+  }
+  injected.visiblePageNos.clear();
+}
+
+function pumpPageSuggestionQueue() {
+  // 任务 43：角标建议只有页面视图用得到。审校 / 预览里不再发起新请求——
+  // 否则正在审校时后台还在逐页跑 block-suggestions，一次按键要等几秒。
+  // 已经在飞的请求（最多 PAGE_SUGGESTION_CONCURRENCY 个）会自己结束；
+  // 回到页面视图时 showView 再把它接上。
+  if (injected.getCurrentView() !== "pages") return;
+  while (
+    injected.getPageSuggestionActive() < injected.PAGE_SUGGESTION_CONCURRENCY &&
+    injected.pageSuggestionQueue.length
+  ) {
+    const pageNo = injected.pageSuggestionQueue.shift();
+    injected.getPageSuggestionActive() += 1;
+    injected.fetchPageSuggestions(pageNo)
+      .catch(() => {
+        // 建议是辅助信息：读不到就不标，不打断翻页；本次会话不再反复重试这一页
+        injected.pageSuggestionFailed.add(pageNo);
+      })
+      .finally(() => {
+        injected.getPageSuggestionActive() -= 1;
+        injected.pageSuggestionPending.delete(pageNo);
+        if (injected.getPageSuggestionActive() === 0 && !injected.pageSuggestionQueue.length) {
+          // 这一轮排过队、可能还有可见页没轮到（一次最多 12 页）：再扫一轮
+          if (suggestionScanQueued > 0) {
+            suggestionScanQueued = 0;
+            scheduleSuggestionScan();
+          }
+        }
+        pumpPageSuggestionQueue();
+      });
+  }
+}
+
+async function recognizeSelection(force = false) {
+  const project = injected.getCurrentProject();
+  const pages = selectionPages().filter((page) => page.include);
+  if (!project || !pages.length) return;
+  if (!warnUnconfirmed(pages, "识别所选页")) return;
+  if (
+    force &&
+    !window.confirm(
+      `选中的 ${pages.length} 页正文都已识别。重新识别会替换自动结果；` +
+        "人工改过的块不会自动覆盖（沿用 R2 规则）。继续吗？"
+    )
+  ) {
+    return;
+  }
+
+  el("pages-error").hidden = true;
+  const skip = force ? false : el("selection-skip-recognized").checked;
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pages: pages.map((page) => page.page_no),
+        skip_recognized: skip,
+      }),
+    });
+    applyRecognizedPages(data.pages);
+    injected.renderPages();
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+function renderLayoutBlocks() {
+  const summary = el("layout-block-summary");
+  const body = el("layout-block-body");
+  const hint = el("layout-block-hint");
+  const list = el("layout-block-suggestions");
+  if (!summary || !body) return;
+  if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") {
+    summary.textContent = "";
+    body.hidden = true;
+    if (hint) hint.hidden = true;
+    return;
+  }
+  const page = layoutBlockPageRecord();
+  if (!page) {
+    summary.textContent = "选一页查看";
+    body.hidden = true;
+    if (hint) hint.hidden = false;
+    return;
+  }
+  summary.textContent = layoutBlockLoading
+    ? "读取中…"
+    : layoutBlockPayload
+      ? layoutBlockPayload.suggestionsLoading
+        ? `${layoutBlockPayload.blocks.length} 块 · 建议读取中…`
+        : `${layoutBlockPayload.blocks.length} 块 · 高把握 ${highConfidenceCount(layoutBlockPayload.suggestions)}`
+      : `第 ${page.page_no} 页`;
+  if (layoutBlockLoading || !layoutBlockPayload) {
+    body.hidden = false;
+    if (hint) hint.hidden = true;
+    el("layout-block-status").textContent = layoutBlockLoading
+      ? "正在读取这一页的块与建议…"
+      : "读取失败，点这一页重试。";
+    list.innerHTML = "";
+    el("layout-block-apply-all").hidden = true;
+    el("layout-block-confirm").hidden = true;
+    return;
+  }
+  body.hidden = false;
+  const payload = layoutBlockPayload;
+  const high = payload.suggestions.filter((item) => item.confidence === "high");
+  const suggestionsLoading = Boolean(payload.suggestionsLoading);
+  el("layout-block-status").textContent =
+    `本页版面：${payload.blocks.length} 块 · ` +
+    (suggestionsLoading ? "建议读取中…" : `高把握建议 ${high.length}`) +
+    ` · ${payload.layoutConfirmed ? "✓ 已确认" : "未确认"}`;
+  const note = el("layout-block-note");
+  if (note) {
+    note.hidden = !suggestionsLoading;
+    note.textContent = suggestionsLoading
+      ? "块类型建议要扫全书相似文字，稍等一下；块数与版面状态已经是准的。"
+      : "";
+  }
+
+  list.innerHTML = "";
+  const ordered = payload.suggestions
+    .slice()
+    .sort((left, right) =>
+      left.confidence === right.confidence
+        ? left.order_index - right.order_index
+        : left.confidence === "high"
+          ? -1
+          : 1
+    );
+  for (const item of ordered) {
+    const row = document.createElement("li");
+    row.className = "setup-suggestion";
+    const head = document.createElement("div");
+    head.className = "setup-suggestion__head";
+    const where = document.createElement("strong");
+    where.textContent = `第 ${item.order_index + 1} 块`;
+    const target = document.createElement("span");
+    target.className = "setup-suggestion__target";
+    target.textContent =
+      `建议：${injected.BLOCK_TYPE_LABELS[item.suggested_type] || item.suggested_type}`;
+    const confidence = document.createElement("span");
+    confidence.className = `chip setup-confidence setup-confidence--${item.confidence}`;
+    confidence.textContent = item.confidence === "high" ? "把握较大" : "需确认";
+    const adopt = document.createElement("button");
+    adopt.type = "button";
+    adopt.className = "btn btn--sm";
+    adopt.textContent = "采用";
+    adopt.title = `把这一块改成「${injected.BLOCK_TYPE_LABELS[item.suggested_type] || item.suggested_type}」（可撤销）`;
+    adopt.addEventListener("click", () => injected.adoptBlockSuggestion(item, adopt));
+    head.append(where, target, confidence, adopt);
+    const reason = document.createElement("div");
+    reason.className = "setup-suggestion__reason";
+    reason.textContent = item.reason || "";
+    row.append(head, reason);
+    list.append(row);
+  }
+
+  const applyAll = el("layout-block-apply-all");
+  applyAll.hidden = suggestionsLoading || high.length === 0;
+  applyAll.textContent = `采用全部高把握建议（${high.length}）`;
+  applyAll.disabled = high.length === 0;
+
+  const confirm = el("layout-block-confirm");
+  confirm.hidden = false;
+  confirm.textContent = payload.layoutConfirmed ? "✓ 版面已确认" : "确认本页版面";
+  confirm.disabled = payload.layoutConfirmed;
+}
+
+function renderPageSetup() {
+  const bar = el("page-setup-bar");
+  if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") {
+    bar.hidden = true;
+    el("setup-panel").hidden = true;
+    return;
+  }
+  const stats = pageSetupStats();
+  bar.hidden = false;
+  // 五类各报各的：总数 = 五类之和，别让人以为页数丢了
+  el("setup-summary").textContent =
+    `正文 ${stats.body} 页 · 正文排除 ${stats.bodyExcluded} 页` +
+    ` · 前置 ${stats.front} 页 · 目录 ${stats.toc} 页 · 后置 ${stats.back} 页` +
+    ` · 未确认 ${stats.unconfirmed} 页`;
+  el("setup-panel").hidden = false;
+  el("setup-progress").textContent = `${stats.confirmed} / ${stats.total} 已确认`;
+  el("setup-confirm-selected").disabled = injected.selectedPages.size === 0;
+  el("setup-confirm-all").disabled = stats.unconfirmed === 0;
+  el("setup-confirm-all").textContent = `全书… 确认全部未确认页（${stats.unconfirmed}）`;
+  updateSelectionPanel();
+  renderTypePicker();
+  renderSuggestionPanel();
+  initPanelAccordion();
+  injected.renderStepPanels();
+  if (injected.getFinishSummaryProject() !== injected.getCurrentProject().project_id) {
+    injected.loadFinishSummary({ silent: true });
+  }
+}
+
+/**
+ * 顶部那行统计：任务进行中它每分钟都要变，所以单独成一个函数，
+ * 轮询的就地刷新（syncPageStates）也能更新，不必为了一个数字重建整格。
+ */
+function renderPageSummary() {
+  const project = injected.getCurrentProject();
+  if (!project) return;
+  const all = project.pages;
+  const shown = injected.visiblePages().length;
+  el("page-summary").textContent =
+    `共 ${all.length} 页 · 正文 ${all.filter((page) => page.include).length} 页` +
+    ` · 已识别 ${all.filter((page) => injected.recognitionOf(page).status === "recognized").length} 页` +
+    ` · 已确认 ${all.filter((page) => page.page_confirmed).length} 页` +
+    (shown !== all.length ? ` · 当前显示 ${shown} 页` : "");
+}
+
+/**
+ * 识别步的"一句话 + 一个数字 + 一个主按钮"（任务 56 / 刀 2）。
+ *
+ * 数字看正文页：已识别 / 正文页数。识别**不读版心**，所以这一步先跑完，
+ * 版心那一步才有行框可用；这句话只说事实，不写"下一步去…"。
+ */
+function renderRecognitionVerdict() {
+  if (!injected.getCurrentProject()) return;
+  const body = injected.marginBodyPages();
+  const recognized = body.filter((page) =>
+    ["recognized", "has_candidate"].includes(injected.recognitionOf(page).status)
+  ).length;
+  const pending = Math.max(body.length - recognized, 0);
+  // 第二引擎：分母与主引擎相同，只算**已识别**的正文页（第二引擎读第一引擎切的行图）
+  const engine = (injected.getFinishSummary() && injected.getFinishSummary().engine) || {};
+  const auxChecked = Number(engine.checked || 0);
+  const auxTotal = Number(engine.total || recognized || 0);
+  const auxPending = Math.max(auxTotal - auxChecked, 0);
+  const state = el("rec-verdict-state");
+  const line = el("rec-verdict-line");
+  const button = el("rec-start-all");
+  const auxButton = el("rec-aux-all");
+  const auxNote = el("rec-aux-note");
+  el("rec-status-summary").textContent = `${recognized}/${body.length} 已识别`;
+  if (!state || !line || !button) return;
+
+  // 两路进度：主引擎 / 第二引擎各一行，写真实数字
+  const primaryNum = el("rec-primary-num");
+  const auxNum = el("rec-aux-num");
+  const primaryState = el("rec-primary-state");
+  const auxState = el("rec-aux-state");
+  if (primaryNum) primaryNum.textContent = `${recognized}/${body.length}`;
+  if (auxNum) auxNum.textContent = auxTotal ? `${auxChecked}/${auxTotal}` : "—";
+  const activeJob = injected.getTaskJobId() && injected.getLastTaskData() && injected.getLastTaskData().job
+    ? injected.getLastTaskData().job
+    : null;
+  const active = Boolean(
+    activeJob && ["queued", "running", "paused"].includes(activeJob.status)
+  );
+  const ocrRunning = active && activeJob.job_type === "ocr";
+  const auxRunning = active && activeJob.job_type === "auxiliary";
+  if (primaryState) primaryState.textContent = ocrRunning ? "进行中…" : pending ? "还差 " + pending + " 页" : "✓";
+  if (auxState) {
+    auxState.textContent = auxRunning
+      ? "进行中…"
+      : auxPending
+        ? "还差 " + auxPending + " 页"
+        : auxTotal
+          ? "✓"
+          : "—";
+  }
+
+  const wrap = state.parentElement;
+  const bothDone = pending === 0 && auxPending === 0 && auxTotal > 0;
+  wrap.classList.toggle("is-ok", bothDone);
+  wrap.classList.toggle("is-warn", !bothDone && !active);
+
+  if (auxButton) {
+    auxButton.hidden = false;
+    if (auxRunning) {
+      auxButton.textContent = "第二引擎复核中…";
+      auxButton.disabled = true;
+    } else if (!pending && auxPending) {
+      auxButton.textContent =
+        `第二引擎复核全书（${auxPending} 页 · ${auxEstimateText(auxPending)}）`;
+      auxButton.disabled = false;
+    } else if (!auxPending && auxTotal) {
+      auxButton.textContent = "第二引擎已跑完";
+      auxButton.disabled = true;
+    } else {
+      auxButton.textContent = "第二引擎复核全书";
+      auxButton.disabled = true;
+    }
+  }
+  if (auxNote) {
+    const textPages = textLayerPages();
+    if (auxPending && textPages) {
+      auxNote.textContent =
+        `这本书有 ${textPages} 页带文字层：第二引擎直接读文字层（不跑 Vision），几十秒就能跑完；` +
+        "它只标分歧、不改字，跑不跑都不影响后面的步骤。";
+    } else if (auxPending) {
+      auxNote.textContent =
+        "第二引擎独立复核一遍、只标分歧不改字；" +
+        `按本机实测约 ${injected.AUX_SECONDS_PER_PAGE} 秒/页。它不挡后面的步骤，可以先做别的。`;
+    } else {
+      auxNote.textContent = "两路都跑完了：主引擎出文字，第二引擎的分歧在「正文审校」里逐条看。";
+    }
+  }
+
+  if (ocrRunning) {
+    state.textContent = "正在识别…";
+    line.textContent = "主引擎在后台逐页跑，进度在右侧任务抽屉里；可以先去做别的。";
+    button.textContent = "正在识别…";
+    button.disabled = true;
+  } else if (auxRunning) {
+    state.textContent = "正在复核…";
+    line.textContent = "第二引擎在后台逐页复核（只标分歧、不改字），进度在右侧任务抽屉里。";
+    button.textContent = pending ? `开始识别（${pending} 页）` : "全部已识别";
+    button.disabled = !pending;
+  } else if (!body.length) {
+    state.textContent = "未准备";
+    line.textContent = "还没有确认过正文页：先在第 1 步把页面类型确认好。";
+    button.textContent = "开始识别";
+    button.disabled = true;
+  } else if (!pending) {
+    state.textContent = auxPending ? "主引擎已完成" : "已识别";
+    line.textContent = auxPending
+      ? `正文 ${body.length} 页都识别过了，这一步算完成；第二引擎还有 ${auxPending} 页没复核` +
+        "（可选，只影响审校时看不看得到两路分歧）。"
+      : `正文 ${body.length} 页都识别过了，第二引擎也复核完了；差异在「正文审校」里逐条看。`;
+    button.textContent = "全部已识别";
+    button.disabled = true;
+  } else {
+    state.textContent = recognized ? "部分已识别" : "未开始";
+    line.textContent =
+      `正文 ${body.length} 页里还有 ${pending} 页没有识别。` +
+      "识别不读版心，版心要等识别出行框之后才生成得了。";
+    button.textContent = `开始识别（${pending} 页）`;
+    button.disabled = false;
+  }
+}
+
+/** 建议区：只在选中页有建议时出现，条目就是"建议 vs 当前"的具体差别。 */
+function renderSuggestionPanel() {
+  const block = el("setup-suggestion-block");
+  const note = el("setup-suggestion-note");
+  const list = el("setup-suggestions");
+  if (!block) return;
+  const items = selectedSuggestions();
+  if (setupSuggestionsLoading && injected.selectedPages.size) {
+    block.hidden = false;
+    note.hidden = false;
+    note.textContent = "正在根据已有数据给建议（只读，不会自动改任何页）…";
+    list.innerHTML = "";
+    return;
+  }
+  if (!items.length) {
+    block.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+  block.hidden = false;
+  note.hidden = false;
+  note.textContent = "只给建议，点「采用」才改；圆点是建议类型，粗框是当前类型。";
+  list.innerHTML = "";
+  for (const item of items) {
+    const row = document.createElement("li");
+    row.className = "setup-suggestion";
+    const head = document.createElement("div");
+    head.className = "setup-suggestion__head";
+    const where = document.createElement("strong");
+    where.textContent = `第 ${item.page_no} 页`;
+    const target = document.createElement("span");
+    target.className = "setup-suggestion__target";
+    target.textContent = `建议：${injected.PAGE_TYPE_LABELS[item.suggested_type] || item.suggested_type}`;
+    const confidence = document.createElement("span");
+    confidence.className = `chip setup-confidence setup-confidence--${item.confidence}`;
+    confidence.textContent = `把握 ${item.confidence_label}`;
+    head.append(where, target, confidence);
+    const page = injected.getCurrentProject().pages.find((entry) => entry.page_no === item.page_no);
+    if (page && page.page_type !== item.suggested_type) {
+      const apply = document.createElement("button");
+      apply.type = "button";
+      apply.className = "btn btn--sm";
+      apply.textContent = "采用";
+      apply.addEventListener("click", () => applySetupSuggestion(item, apply));
+      head.append(apply);
+    } else {
+      const ok = document.createElement("span");
+      ok.className = "muted";
+      ok.textContent = "已是该类型";
+      head.append(ok);
+    }
+    const reason = document.createElement("div");
+    reason.className = "setup-suggestion__reason";
+    reason.textContent = item.reason;
+    row.append(head, reason);
+    list.append(row);
+  }
+}
+
+/**
+ * 页面类型常驻列表：当前类型高亮 + "当前"文字，建议类型加淡色圆点。
+ * 颜色只是辅助，文字标签始终在。
+ */
+function renderTypePicker() {
+  const wrap = el("selection-types");
+  if (!wrap) return;
+  const selected = selectionPages();
+  const types = new Set(selected.map((page) => page.page_type));
+  const mixed = types.size > 1;
+  const current = types.size === 1 ? [...types][0] : null;
+  el("selection-type-state").textContent = !selected.length
+    ? "先选页"
+    : mixed
+    ? `混合（${types.size} 种）`
+    : `当前：${injected.PAGE_TYPE_LABELS[current] || current}`;
+
+  const suggested = suggestionPagesByType();
+  wrap.innerHTML = "";
+  for (const type of injected.PAGE_TYPE_ORDER) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `ptype ptype--${type}`;
+    button.disabled = selected.length === 0;
+    button.title = selected.length
+      ? `把所选 ${selected.length} 页设为「${injected.PAGE_TYPE_LABELS[type] || type}」`
+      : "先在左边选页";
+    if (current === type) button.classList.add("is-current");
+    const dot = document.createElement("span");
+    dot.className = "ptype__dot";
+    const label = document.createElement("span");
+    label.className = "ptype__label";
+    label.textContent = injected.PAGE_TYPE_LABELS[type] || type;
+    button.append(dot, label);
+    if (current === type) {
+      const flag = document.createElement("span");
+      flag.className = "ptype__flag";
+      flag.textContent = "当前";
+      button.append(flag);
+    }
+    if (suggested.has(type)) {
+      button.classList.add("has-suggestion");
+      const mark = document.createElement("span");
+      mark.className = "ptype__suggest";
+      mark.title = `建议第 ${suggested.get(type).join("、")} 页用这个类型`;
+      button.append(mark);
+    }
+    button.addEventListener("click", () => patchSelectedPages({ page_type: type }));
+    wrap.append(button);
+  }
+}
+
+async function rerunAuxiliary() {
+  if (!injected.getCurrentProject()) return;
+  const ok = window.confirm(
+    "用 Apple Vision 重跑第二引擎？\n\n" +
+      "· 会先自动备份项目数据库\n" +
+      "· 只覆盖第二引擎结果与差异状态；正文、块、版心、块类型不动\n" +
+      "· 已裁决（保留/采用）的行会跳过\n" +
+      "· 按页判定语言（中文页 zh-Hans / 英文页 en-US）\n\n" +
+      "490 页大约 20–25 分钟，可以暂停 / 继续。"
+  );
+  if (!ok) return;
+  try {
+    const data = await apiJson(`/api/projects/${injected.getCurrentProject().project_id}/aux/rerun`, {
+      method: "POST",
+    });
+    window.LibraryView?.notify({ kind: "warning", text: String(`已建复核任务（Vision · 按页语言）。备份：${data.backup_path}`).trim() });
+    await injected.loadTasks();
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+/**
+ * 重置为「本页自动」：先 PATCH 回 auto（丢掉自定义），再按检测行拟合。
+ * 只处理 auto / inherit / custom 的页；不适用不动。
+ */
+async function resetMarginsToAuto(pages) {
+  const targets = (pages || []).filter(
+    (page) => page.margin_box_mode !== "none" && page.margin_box_mode !== undefined
+  );
+  if (!injected.getCurrentProject() || !targets.length) return;
+  for (const page of targets) {
+    injected.marginUndoStack.push({
+      pageNo: page.page_no,
+      mode: page.margin_box_mode,
+      box: page.margin_box ? [...page.margin_box] : null,
+    });
+  }
+  trimMarginUndo();
+  try {
+    if (targets.length === 1) {
+      const page = targets[0];
+      await apiJson(
+        `/api/projects/${injected.getCurrentProject().project_id}/pages/${page.page_no}/margin-box`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ margin_box_mode: "auto", margin_box: null }),
+        }
+      );
+      const fitted = await apiJson(
+        `/api/projects/${injected.getCurrentProject().project_id}/pages/${page.page_no}/margin-box/fit`,
+        { method: "POST" }
+      );
+      await injected.refreshPageStates();
+      injected.refreshMarginTiles();
+      injected.renderMarginPanel();
+      injected.setMarginStatus(
+        fitted.undetermined
+          ? `第 ${page.page_no} 页还没有检测行，版心暂时未定。`
+          : `第 ${page.page_no} 页已按检测行重新拟合。`
+      );
+      return;
+    }
+    await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/margin-box/pages`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page_nos: targets.map((page) => page.page_no),
+          margin_box_mode: "auto",
+          margin_box: null,
+        }),
+      }
+    );
+    const fit = await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/margin-box/fit-all`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ only_missing: true }),
+      }
+    );
+    for (const page of targets) injected.marginFitTried.delete(page.page_no);
+    await injected.refreshPageStates();
+    injected.refreshMarginTiles();
+    injected.renderMarginPanel();
+    injected.setMarginStatus(
+      `已把 ${targets.length} 页改回自动拟合：${fit.fitted || 0} 页拟合，` +
+        `${fit.fallback || 0} 页兜底，${fit.undetermined || 0} 页还没有检测行。`
+    );
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+function resetOverlayQueue() {
+  injected.overlayRenderQueue.length = 0;
+  injected.overlayRenderQueued.clear();
+}
+
+function savePageMarginPreference() {
+  try {
+    localStorage.setItem(injected.pageMarginStorageKey(), injected.getPagesMarginOn() ? "1" : "0");
+  } catch {
+    /* 隐私模式等写不进去：不影响本次会话 */
+  }
+}
+
+function savePageOverlayPreference() {
+  try {
+    localStorage.setItem(injected.pageOverlayStorageKey(), injected.getPagesOverlayOn() ? "1" : "0");
+  } catch {
+    /* 隐私模式等写不进去：不影响本次会话 */
+  }
+}
+
+function scanVisiblePageSuggestions() {
+  suggestionScanTimer = null;
+  if (!injected.getCurrentProject() || injected.getCurrentView() !== "pages" || injected.getPageZoomIndex() >= 2) return;
+  const grid = el("page-grid");
+  if (!grid) return;
+  const scroller = injected.pageScroller();
+  const metrics =
+    scroller && injected.getPageTileMetrics() && injected.getPageTileMetrics().length === grid.querySelectorAll(".page-tile").length
+      ? injected.getPageTileMetrics()
+      : null;
+  const scrollTop = scroller ? scroller.scrollTop : 0;
+  const viewport = scroller ? scroller.clientHeight : window.innerHeight;
+  /**
+   * 一页的竖直范围（相对视口）。有缓存的位置就用缓存：
+   * 滚动停止时不必为 267 个瓷砖各做一次 getBoundingClientRect。
+   */
+  const byTile = metrics ? new Map(metrics.map((entry) => [entry.tile, entry])) : null;
+  const boundsOf = (tile) => {
+    const item = byTile ? byTile.get(tile) : null;
+    if (!item) {
+      if (byTile) return null;
+      const rect = tile.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    }
+    return { top: item.top - scrollTop, bottom: item.top - scrollTop + item.height };
+  };
+  let budget = 12; // 一次最多算 12 页；还有没轮到的，队列空后会自动再扫一轮
+  for (const tile of grid.querySelectorAll(".page-tile")) {
+    if (budget <= 0) break;
+    const bounds = boundsOf(tile);
+    if (!bounds) continue;
+    if (bounds.bottom < -120 || bounds.top > viewport + 120) continue;
+    // 算过 / 排队中的页不占名额，否则上面几屏的缓存会把下面的可见页永远饿死
+    if (ensurePageSuggestion(Number(tile.dataset.pageNo))) {
+      budget -= 1;
+      suggestionScanQueued += 1;
+    }
+  }
+}
+
+function scheduleLayoutBlocks(force = false) {
+  const page = layoutBlockPageRecord();
+  if (!page) {
+    layoutBlockPage = null;
+    layoutBlockPayload = null;
+    renderLayoutBlocks();
+    return;
+  }
+  if (!force && layoutBlockPage === page.page_no && layoutBlockPayload) {
+    renderLayoutBlocks();
+    return;
+  }
+  loadLayoutBlocks(page.page_no);
+}
+
+/**
+ * 网格档滚动时不必每帧算 267 个矩形：停下来 60ms 后扫一次可见页。
+ *
+ * 原来是 140ms：滚动停下到角标出现之间有肉眼可见的空档；改成 60ms，
+ * 仍只扫一次（不是每帧），267 个瓷砖的位置也走 pageTileMetrics 缓存。
+ */
+function scheduleSuggestionScan() {
+  if (suggestionScanTimer) clearTimeout(suggestionScanTimer);
+  suggestionScanTimer = setTimeout(scanVisiblePageSuggestions, 60);
+}
+
+/** 只看"选中的页"上的建议：建议区要贴着当前页，不常挂在最上面。 */
+function selectedSuggestions() {
+  if (!injected.selectedPages.size) return [];
+  return injected.getSetupSuggestions().filter((item) => injected.selectedPages.has(item.page_no));
+}
+
+function selectionPages() {
+  return injected.getCurrentProject().pages.filter((page) => injected.selectedPages.has(page.page_no));
+}
+
+async function setAutoApplySetting(on) {
+  if (!injected.getCurrentProject()) return;
+  const checkbox = el("auto-apply-suggestions");
+  if (on) {
+    const ok = window.confirm(
+      "打开后，「之后完成」的识别任务会自动把「把握较大」的页眉 / 页脚 / 页码建议用上" +
+        "（只动 high：页码形态、跨页重复 ≥ 3 次的书眉页脚；标题与「需确认」不动）。\n\n" +
+        "每次自动应用都会在顶部提示，可一键整批撤销。现在打开吗？"
+    );
+    if (!ok) {
+      checkbox.checked = false;
+      return;
+    }
+  }
+  try {
+    const data = await apiJson(`/api/projects/${injected.getCurrentProject().project_id}/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auto_apply_high_suggestions: Boolean(on) }),
+    });
+    injected.getCurrentProject().settings = data.settings;
+    injected.applyProjectSettings();
+    injected.notifyApplied(
+      on
+        ? "已打开：之后完成的识别任务会自动应用高把握建议（顶部有提示，可撤销）。"
+        : "已关闭：识别完成后只给建议，不改块类型。"
+    );
+  } catch (error) {
+    checkbox.checked = !on;
+    injected.showError(el("selection-hint"), error);
+  }
+}
+
+function setRecognitionStatus(text, isError = false) {
+  const node = el("rec-status");
+  if (!node) return;
+  node.textContent = text || "";
+  node.hidden = !text;
+  node.style.color = isError ? "var(--bad-fg)" : "";
+  if (recStatusTimer) clearTimeout(recStatusTimer);
+  if (text) {
+    recStatusTimer = setTimeout(() => {
+      node.hidden = true;
+    }, 6000);
+  }
+}
+
+/** 任务 39（E 刀）：工具条上的「⋯」——诊断（质量统计）/ 协作（任务包）。 */
+function setupPageMore() {
+  const button = el("page-more");
+  const menu = el("page-more-menu");
+  if (!button || !menu) return;
+  const place = () => {
+    const rect = button.getBoundingClientRect();
+    const width = menu.offsetWidth || 200;
+    menu.style.top = `${Math.round(rect.bottom + 6)}px`;
+    menu.style.left = `${Math.round(
+      Math.min(window.innerWidth - width - 8, Math.max(8, rect.right - width))
+    )}px`;
+  };
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) place();
+  });
+  for (const item of menu.querySelectorAll("button")) {
+    item.addEventListener("click", () => {
+      menu.hidden = true;
+    });
+  }
+  document.addEventListener("click", (event) => {
+    if (menu.hidden) return;
+    if (menu.contains(event.target) || button.contains(event.target)) return;
+    menu.hidden = true;
+  });
+}
+
+function setupRecognitionSettings() {
+  el("rec-engine").addEventListener("change", (event) =>
+    patchRecognitionSetting("recognition_engine", event.target.value)
+  );
+  for (const radio of document.querySelectorAll('#rec-dpi input[type="radio"]')) {
+    radio.addEventListener("change", () => {
+      if (radio.checked) {
+        patchRecognitionSetting("recognition_dpi", Number(radio.value));
+      }
+    });
+  }
+  el("rec-language").addEventListener("change", (event) =>
+    patchRecognitionSetting("recognition_language", event.target.value)
+  );
+  el("rec-dual-strategy").addEventListener("change", (event) =>
+    patchRecognitionSetting("dual_engine_strategy", event.target.value)
+  );
+}
+
+function showMarginDetectProgress(done, total) {
+  const wrap = el("margin-fit-progress");
+  if (!wrap) return;
+  wrap.hidden = false;
+  const percent = total ? Math.round((done / total) * 100) : 0;
+  el("margin-fit-fill").style.width = `${percent}%`;
+  el("margin-fit-text").textContent = `正在检测版面… ${done} / ${total} 页`;
+}
+
+function showMarginFitProgress(done, total) {
+  const wrap = el("margin-fit-progress");
+  if (!wrap) return;
+  wrap.hidden = false;
+  const percent = total ? Math.round((done / total) * 100) : 0;
+  el("margin-fit-fill").style.width = `${percent}%`;
+  el("margin-fit-text").textContent =
+    done >= total
+      ? `自动拟合完成：${total} 页`
+      : `正在为 ${total} 页自动拟合版心… ${done} / ${total}`;
+}
+
+/** 第二引擎复核全书：只跑还没复核过的已识别正文页。 */
+async function startAuxiliaryAll() {
+  if (!injected.getCurrentProject()) return;
+  const status = el("rec-status");
+  if (status) status.hidden = true;
+  try {
+    const data = await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/jobs/auxiliary`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: "unchecked", skip_checked: true }),
+      }
+    );
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+  } catch (error) {
+    // 第二引擎不可用时必须当面说清（说明书 8.6：不假装还在比对）
+    if (status) {
+      status.textContent = `第二引擎没能开始：${error.message || "未知错误"}`;
+      status.style.color = "var(--bad-fg)";
+      status.hidden = false;
+    }
+  }
+}
+
+async function startBatchRecognition(scope) {
+  const project = injected.getCurrentProject();
+  if (!project) return;
+  const pending = project.pages.filter(
+    (page) => page.include && injected.recognitionOf(page).status !== "recognized"
+  );
+  if (!warnUnconfirmed(pending, "识别全部未识别页")) return;
+  el("pages-error").hidden = true;
+  try {
+    const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope }),
+    });
+    applyRecognizedPages(data.pages);
+    injected.renderPages();
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+/** 版面检测入口：建任务 → 抽屉 + 轮询（任务 58）。 */
+async function startLayoutDetection({ pages = null, scope = null, prepare = false }) {
+  if (!injected.getCurrentProject()) return;
+  el("pages-error").hidden = true;
+  const body = pages
+    ? { pages, skip_detected: false, prepare }
+    : { scope: scope || "body", prepare };
+  try {
+    const data = await apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/jobs/layout`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    injected.renderTask(data);
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+    return data;
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+    return null;
+  }
+}
+
+function suggestionPagesByType() {
+  const byType = new Map();
+  for (const item of selectedSuggestions()) {
+    if (!byType.has(item.suggested_type)) byType.set(item.suggested_type, []);
+    byType.get(item.suggested_type).push(item.page_no);
+  }
+  return byType;
+}
+
+/**
+ * 底栏开关按步显示：版心步只要「版心」，页面确认 / 文字识别只要「块框」。
+ *
+ * 开关本身按项目记住（`b2t.pagesMargin.v1.*`），但**显示**跟着步骤走：
+ * 不是版心步就把压暗关掉，免得把版心框叠在页面确认的网格上（这一步没有这个开关可关）。
+ */
+function syncStepToggles(marginStep) {
+  const button = el("pages-margin-toggle");
+  if (!injected.getCurrentProject()) return;
+  // 结果预览有自己的版心开关（任务 47）：这里只同步底栏按钮状态，
+  // 不按"非版心步就关掉"的规则把用户刚关掉的版心又打开。
+  if (injected.getCurrentView() === "preview") {
+    if (button) button.classList.toggle("is-on", injected.getPagesMarginOn());
+    return;
+  }
+  // 正文审校是读稿主界面：版心 + 块框默认开着（任务 57），**不按步骤把它们压暗**。
+  // 用户自己关掉也尊重——这里只同步底栏按钮状态。
+  if (injected.getCurrentView() === "reading") {
+    if (button) button.classList.toggle("is-on", injected.getPagesMarginOn());
+    return;
+  }
+  if (marginStep) {
+    if (!injected.getPagesMarginOn()) {
+      injected.setPagesMarginOn(true);
+      if (button) button.classList.add("is-on");
+      injected.refreshMarginTiles();
+    }
+    window.IndexView?.refresh();
+    return;
+  }
+  if (!injected.getPagesMarginOn()) return;
+  injected.setPagesMarginOn(false);
+  if (button) button.classList.remove("is-on");
+  for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
+    injected.clearTileMargin(tile);
+  }
+  window.IndexView?.refresh();
+}
+
+/** 这一本里有多少页可以直接读文字层（任务 58）。 */
+function textLayerPages() {
+  const pages = (injected.getProjectSummary() && injected.getProjectSummary().pages) || {};
+  return Number(pages.text_layer_pages || 0);
+}
+
+function toggleMarginView() {
+  injected.setPagesMarginOn(!injected.getPagesMarginOn());
+  savePageMarginPreference();
+  const button = el("pages-margin-toggle");
+  if (button) button.classList.toggle("is-on", injected.getPagesMarginOn());
+  if (!injected.getCurrentProject()) return;
+  if (injected.getPagesMarginOn()) {
+    injected.schedulePageVisibility();
+  } else {
+    for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
+      injected.clearTileMargin(tile);
+    }
+  }
+  window.IndexView?.refresh();
+  injected.renderMarginPanel();
+}
+
+function togglePageBlocksOverlay() {
+  injected.setPagesOverlayOn(!injected.getPagesOverlayOn());
+  savePageOverlayPreference();
+  el("pages-overlay-toggle").classList.toggle("is-on", injected.getPagesOverlayOn());
+  if (injected.getPagesOverlayOn()) {
+    for (const pageNo of injected.visiblePageNos) injected.queueOverlayRender(pageNo);
+    injected.schedulePageVisibility();
+  } else {
+    resetOverlayQueue();
+    for (const tile of el("page-grid").querySelectorAll(".page-tile")) {
+      injected.clearPageBlocks(tile);
+    }
+  }
+  window.IndexView?.refresh();
+}
+
+function trimMarginUndo() {
+  while (injected.marginUndoStack.length > 20) injected.marginUndoStack.shift();
+}
+
+function updateSelectionPanel() {
+  const count = injected.selectedPages.size;
+  const selected = selectionPages();
+  const numbers = [...selectedPages].sort((left, right) => left - right);
+  const bodySelected = selected.filter((page) => page.include);
+  const pendingBody = bodySelected.filter(
+    (page) => injected.recognitionOf(page).status === "unrecognized"
+  );
+  const pendingAll = injected.getCurrentProject()
+    ? injected.getCurrentProject().pages.filter(
+        (page) => page.include && injected.recognitionOf(page).status === "unrecognized"
+      )
+    : [];
+  const stats = pageSetupStats();
+
+  el("selection-count").textContent = count ? `已选 ${count} 页` : "未选择页面";
+  const range = el("selection-range");
+  if (!numbers.length) {
+    range.textContent = "";
+  } else if (numbers.length === 1) {
+    const page = selected[0];
+    const type = injected.PAGE_TYPE_LABELS[page.page_type] || page.page_type;
+    range.textContent =
+      `第 ${numbers[0]} 页 · ${type} · ${page.page_confirmed ? "已确认" : "待确认"} · ` +
+      injected.RECOGNITION_LABELS[injected.recognitionOf(page).status] || "";
+  } else {
+    const contiguous = numbers.length === numbers[numbers.length - 1] - numbers[0] + 1;
+    range.textContent = contiguous
+      ? `第 ${numbers[0]}–${numbers[numbers.length - 1]} 页`
+      : `第 ${numbers.slice(0, 6).join("、")}${numbers.length > 6 ? " 等" : ""}`;
+  }
+  if (numbers.length) {
+    const visibleNos = new Set(injected.visiblePages().map((page) => page.page_no));
+    const hidden = numbers.filter((no) => !visibleNos.has(no)).length;
+    if (hidden) range.textContent += ` · 其中 ${hidden} 页不在当前筛选`;
+  }
+
+  // 类型分布只在"混合"时出现；类型齐就不占一行。
+  const typeSummary = el("selection-types-summary");
+  if (count > 1) {
+    const byType = {};
+    for (const page of selected) {
+      const type = injected.PAGE_TYPE_LABELS[page.page_type] || page.page_type;
+      byType[type] = (byType[type] || 0) + 1;
+    }
+    const entries = Object.entries(byType);
+    typeSummary.textContent =
+      entries.length > 1 ? `类型 ${entries.map(([k, v]) => `${k} ${v}`).join(" · ")}` : "";
+  } else {
+    typeSummary.textContent = "";
+  }
+
+  // 顶部"下一步"：只给一条，不重复 setupbar 的计数。**按这一页的真实状态说**，
+  // 不按步骤顺序说：没有框的页不能写"已自动拟合"（这页连行框都没有，拟合不出来）。
+  const next = el("selection-next");
+  if (injected.getWorkflowStep() === "margin") {
+    if (count !== 1) {
+      next.textContent = "在左边点一页：版心框会画在页面上，四边 / 四角可拖";
+    } else {
+      const page = selected[0];
+      const hasBox =
+        Boolean(injected.marginBoxOfPage(page)) || page.margin_box_mode === "none";
+      if (page.margin_box_mode === "none") {
+        next.textContent = "这一页标了「不适用版心」，整页都按正文处理";
+      } else if (hasBox) {
+        next.textContent =
+          injected.pageMarginMethod(page) === "bbox"
+            ? "版心是本页正文行的包围盒（兜底）；拖动四边调整，不改也算已定"
+            : "版心已按本页正文行生成；拖动四边调整，不改也算已定";
+      } else if (injected.pageHasFitLines(page)) {
+        next.textContent = "这一页有正文行但还没有版心：点「重置为本页自动」重新生成";
+      } else {
+        // 两条文案都不许跟步骤顺序绑死（顺序还要调）：只说"没有行、所以生成不了"
+        next.textContent =
+          "这一页还没有可用的正文行（识别行 / 检测行都没有），版心暂时生成不了";
+      }
+    }
+  } else if (injected.getWorkflowStep() === "recognition") {
+    next.textContent = count
+      ? "识别完成后，去「正文审校」逐条看差异"
+      : "这一步只看识别状态；差异在「正文审校」里逐条看";
+  } else if (!count) {
+    if (stats.unconfirmed > 0) {
+      next.textContent = `${stats.unconfirmed} 页未确认 → 先确认页面类型`;
+    } else if (pendingAll.length) {
+      next.textContent = `${pendingAll.length} 页未识别 → 可以直接识别`;
+    } else {
+      next.textContent = "页面都准备好了，可以审校或导出";
+    }
+  } else if (count === 1) {
+    const page = selected[0];
+    if (!page.page_confirmed) next.textContent = "下一步：确认这一页算不算正文";
+    else if (injected.recognitionOf(page).status === "unrecognized") {
+      next.textContent = page.include ? "下一步：识别这一页" : "这一页不是正文，不参与识别";
+    } else next.textContent = "下一步：在审校里核对文字";
+  } else if (bodySelected.length === 0) {
+    next.textContent = "所选页都不是正文，不参与识别";
+  } else {
+    next.textContent = pendingBody.length
+      ? `下一步：识别所选正文里的 ${pendingBody.length} 页`
+      : "所选正文页都已识别";
+  }
+
+  renderTypePicker();
+  renderSuggestionPanel();
+  injected.renderMarginPanel();
+
+  // 底部主操作条：只算正文页；未选择时是"识别全部未识别页"。
+  const primary = el("selection-recognize");
+  const note = el("selection-primary-note");
+  if (!count) {
+    primary.textContent = pendingAll.length
+      ? `识别全部未识别页（${pendingAll.length}）`
+      : "没有待识别的页";
+    primary.disabled = pendingAll.length === 0;
+    note.textContent = pendingAll.length
+      ? "全书动作；识别前可先排除封面 / 空白页"
+      : "所有正文页都已识别";
+  } else if (!bodySelected.length) {
+    primary.textContent = "所选页都不是正文";
+    primary.disabled = true;
+    note.textContent = "把类型改成「正文」后才会出现在这里";
+  } else {
+    primary.textContent = `识别所选正文 ${bodySelected.length} 页`;
+    primary.disabled = bodySelected.length === 0;
+    const skipped = count - bodySelected.length;
+    note.textContent = skipped
+      ? `另 ${skipped} 页不是正文，会跳过`
+      : pendingBody.length
+        ? `其中 ${pendingBody.length} 页未识别`
+        : "所选正文页都已识别；点击会重新识别";
+  }
+  el("selection-more").disabled = false;
+  const allVisible = injected.visiblePages();
+  el("selection-all").textContent = `全选当前筛选结果（${allVisible.length}）`;
+
+  el("setup-confirm-selected").disabled = count === 0;
+  el("setup-confirm-all").disabled = stats.unconfirmed === 0;
+  el("setup-confirm-all").textContent = `全书… 确认全部未确认页（${stats.unconfirmed}）`;
+  el("selection-review-open").disabled = count === 0;
+  el("assign-open").disabled = count === 0;
+  el("selection-clear").hidden = count === 0;
+  el("check-pending").disabled = false;
+
+  // 分区头摘要（状态式）——未选择时也要显示全书口径。
+  el("setup-progress").textContent = count
+    ? `${selected.filter((page) => page.page_confirmed).length} 页已确认 · 全书 ${stats.confirmed} / ${stats.total}`
+    : `${stats.confirmed} / ${stats.total} 已确认`;
+  // 任务 36B：这两块跟着当前选择走（版面块只看单页；识别状态看全书）。
+  scheduleLayoutBlocks();
+  injected.renderRecognitionStatus();
+
+  const hint = el("selection-hint");
+  hint.hidden = true;
+  if (count === 0) return;
+  if (selected.every((page) => !page.include)) {
+    hint.textContent =
+      "选中的页都不是「正文」，不参与识别。要把它们纳入识别，把类型改成「正文」。";
+    hint.hidden = false;
+  } else if (count >= 3 && count <= 10) {
+    hint.textContent =
+      `选了 ${count} 页——可以先当样本试识别：认完点某一页的「结果」看看质量，` +
+      "再决定要不要识别整本。样本结果不代表整本书。";
+    hint.hidden = false;
+  }
+
+}
+
+/**
+ * 识别前的提醒：未确认不拦人，只问一次。
+ * 返回 false 表示用户点了取消。
+ */
+function warnUnconfirmed(pages, action) {
+  const unconfirmed = pages.filter((page) => !page.page_confirmed);
+  if (!unconfirmed.length) return true;
+  return window.confirm(
+    `还有 ${unconfirmed.length} 页没有确认页面类型（正文 / 正文排除 / 目录 / 前置 / 后置）。` +
+      `${action}仍会按现在的设置继续（只有「正文」进识别）——未确认不拦人。要现在继续吗？`
+  );
+}
+})();

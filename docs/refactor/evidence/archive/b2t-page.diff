@@ -1,0 +1,12 @@
+diff --git a/backend/book2text/static/reading-view.js b/backend/book2text/static/reading-view.js
+index 52b4878..232f93d 100644
+--- a/backend/book2text/static/reading-view.js
++++ b/backend/book2text/static/reading-view.js
+@@ -2095,6 +2095,7 @@ function ensureReadingTile(pageNo) {
+ }
+ 
+ function retryReadingPendingPanel() {
++  return;
+   // 面板已经在宿主里（重绘碰不到它），但 `readingPanelKey` 可能被 reset 清成了 null：
+   // 把当前项恢复回来，高亮才跟着回来。
+   if (!readingPendingPanelEntry && !readingPanelKey) {

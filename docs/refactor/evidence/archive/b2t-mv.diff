@@ -1,0 +1,478 @@
+diff --git a/backend/book2text/static/app.js b/backend/book2text/static/app.js
+index 191858d..a275bbd 100644
+--- a/backend/book2text/static/app.js
++++ b/backend/book2text/static/app.js
+@@ -264,11 +264,11 @@ function showView(name) {
+   if (target === "preview" && currentProject) {
+     // 任务 94 Slice P2：进预览只有一条路（§20.1）——模块内的 openPreview 由 enter 负责
+     window.PreviewView?.enter();
++  }
+   if (target === "merge" && currentProject) {
+     // 任务 94 / §20.10：进合并视图只有一条路，数据由外壳设进 mergeState
+     window.MergeView?.enter();
+   }
+-  }
+   if (target === "export" && currentProject) {
+     queueAfterSteps(() => hydrateView("export"));
+   }
+diff --git a/backend/book2text/static/merge-view.js b/backend/book2text/static/merge-view.js
+index 9591931..1a6cc96 100644
+--- a/backend/book2text/static/merge-view.js
++++ b/backend/book2text/static/merge-view.js
+@@ -317,7 +317,7 @@
+     }
+ 
+     const wanted = `/api/projects/${projectId()}/pages/${page.page_no}/image?size=view` +
+-      `&injected.token=${encodeURIComponent(injected.token)}`;
++      `&token=${encodeURIComponent(injected.token)}`;
+     if (image.dataset.pageNo !== String(page.page_no)) {
+       image.dataset.pageNo = String(page.page_no);
+       canvas.hidden = true;
+diff --git a/tests/e2e/browser/driver.mjs b/tests/e2e/browser/driver.mjs
+index fc390e3..1072519 100644
+--- a/tests/e2e/browser/driver.mjs
++++ b/tests/e2e/browser/driver.mjs
+@@ -126,6 +126,14 @@ export async function run(cfg) {
+       return await measureImages(page, args);
+     case "audit":
+       return await auditMarks(page);
++    case "merge_probe":
++      return await mergeProbe(page, cfg);
++    case "merge_submit_probe":
++      return await mergeSubmitProbe(page, cfg);
++    case "merge_micro_probe":
++      return await mergeMicroProbe(page, cfg);
++    case "merge_micro_submit":
++      return await mergeMicroSubmit(page, cfg);
+     case "library_notice_probe":
+       return await libraryNoticeProbe(page, args);
+     case "probe_globals":
+@@ -203,6 +211,410 @@ async function waitFor(page, fn, desc, timeout = WAIT, arg = undefined) {
+   }
+ }
+ 
++
++/** merge 页面级验证（§6 五步）：真实点击进入、逐页接受/拒绝、切走切回、提交、⌘Z 撤销。 */
++async function mergeProbe(page, cfg) {
++  const out = { steps: [] };
++  const step = (name, value) => out.steps.push({ name, value });
++
++  const text = (sel) => page.evaluate((s) => {
++    const node = document.querySelector(s);
++    return node ? String(node.innerText || "").replace(/\s+/g, " ").trim() : null;
++  }, sel);
++
++  const openAssignDialog = async () => {
++    // 「⋯」工具条在某些视图下不可见；可见时用真实鼠标点，不可见时对真实元素派发 click。
++    const visible = await page.evaluate(() => {
++      const b = document.getElementById("page-more");
++      if (!b) return false;
++      const r = b.getBoundingClientRect();
++      const cs = getComputedStyle(b);
++      return Boolean(r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && !b.closest("[hidden]"));
++    });
++    out.pageMoreVisible = visible;
++    if (visible) {
++      await page.click("#page-more", { label: "页面更多菜单" });
++    } else {
++      await page.evaluate(() => document.getElementById("page-more").click());
++    }
++    await page.evaluate(() => {
++      const item = document.getElementById("assign-list-toggle");
++      const panel = document.getElementById("assign-panel");
++      if (panel && panel.hidden) item.click();  // 只在收起时展开，避免点成"再收起"
++    });
++    await waitFor(
++      page,
++      () => {
++        const list = document.getElementById("assign-list");
++        return Boolean(list && list.querySelectorAll("li").length > 0);
++      },
++      "任务包列表出条目",
++      20000,
++    );
++  };
++
++  const clickMergeEntry = async () => {
++    const idx = await page.evaluate(() => [...document.querySelectorAll("#assign-list li")]
++      .findIndex((li) => [...li.querySelectorAll("button")].some((b) => b.textContent.trim() === "查看差异")));
++    if (idx < 0) throw new Error("任务包列表里没有带「查看差异」的行");
++    await page.evaluate((i) => {
++      const li = document.querySelectorAll("#assign-list li")[i];
++      [...li.querySelectorAll("button")].find((b) => b.textContent.trim() === "查看差异").click();
++    }, idx);
++    await waitFor(
++      page,
++      () => document.body.dataset.view === "merge" && document.querySelectorAll("#merge-pages li").length > 0,
++      "进入合并视图",
++      30000,
++    );
++    return idx;
++  };
++
++  out.viewAtStart = await page.evaluate(() => document.body.dataset.view);
++  out.mergeViewKeys = await page.evaluate(() => (window.MergeView ? Object.keys(window.MergeView) : null));
++  step("1. window.MergeView 键", out.mergeViewKeys);
++
++  await openAssignDialog();
++  out.assignRows = await page.evaluate(() => [...document.querySelectorAll("#assign-list li")]
++    .map((li) => String(li.innerText || "").replace(/\s+/g, " ").trim()));
++  step("2. 任务包行", out.assignRows);
++  out.rowIndex = await clickMergeEntry();
++  out.mergeTitle = await text("#merge-title");
++  out.stats = await page.evaluate(() => ["merge-stat-changed", "merge-stat-blocks", "merge-stat-conflict", "merge-stat-comments"]
++    .map((id) => (document.getElementById(id) || {}).textContent));
++  out.pageItems = await page.evaluate(() => document.querySelectorAll("#merge-pages li").length);
++  step("3. 合并视图", { title: out.mergeTitle, stats: out.stats, pageItems: out.pageItems });
++
++  // 第 1 页：原图 + 接受
++  await page.evaluate(() => document.querySelector("#merge-pages li").click());
++  await waitFor(
++    page,
++    () => {
++      const canvas = document.getElementById("merge-canvas");
++      const img = document.getElementById("merge-image");
++      return Boolean(canvas && !canvas.hidden && img && img.src && img.complete && img.naturalWidth > 0);
++    },
++    "第 1 页原图加载",
++    30000,
++  );
++  out.image = await page.evaluate(() => {
++    const img = document.getElementById("merge-image");
++    return { src: img.src, naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight };
++  });
++  out.firstPageHead = await text("#merge-detail .merge-detail__head");
++  await page.evaluate(() => {
++    const btn = [...document.querySelectorAll("#merge-detail button")].find((b) => b.textContent.trim() === "接受本页");
++    if (!btn) throw new Error("第 1 页没有「接受本页」");
++    btn.click();
++  });
++  step("4. 第 1 页接受", { head: out.firstPageHead, image: { w: out.image.naturalWidth, h: out.image.naturalHeight } });
++
++  // 第 2 页：拒绝
++  await page.evaluate(() => document.querySelectorAll("#merge-pages li")[1].click());
++  await waitFor(
++    page,
++    () => [...document.querySelectorAll("#merge-detail button")].some((b) => b.textContent.trim() === "拒绝本页"),
++    "第 2 页操作条",
++    20000,
++  );
++  out.secondPageHead = await text("#merge-detail .merge-detail__head");
++  await page.evaluate(() => {
++    const btn = [...document.querySelectorAll("#merge-detail button")].find((b) => b.textContent.trim() === "拒绝本页");
++    if (!btn) throw new Error("第 2 页没有「拒绝本页」");
++    btn.click();
++  });
++  out.footerAfterDecide = await text("#merge-footer");
++  step("5. 第 2 页拒绝后底栏", out.footerAfterDecide);
++
++  if (cfg.args && cfg.args.skipSwitch) {
++    const readBlock = () => page.evaluate(async () => {
++      const token = new URLSearchParams(location.search).get("token");
++      const pid = currentProject.project_id;
++      const res = await fetch(`/api/projects/${pid}/pages/1/blocks?token=${encodeURIComponent(token)}`);
++      const data = await res.json();
++      const b = (data.blocks || [])[0];
++      return b ? { text: b.text, status: b.review_status, by: b.reviewed_by } : null;
++    });
++    out.blockBeforeSubmit = await readBlock();
++    await page.evaluate(() => {
++      [...document.querySelectorAll("#merge-footer button")].find((b) => b.textContent.includes("提交")).click();
++    });
++    await waitFor(page, () => document.body.dataset.view === "pages", "提交后回页面视图", 30000);
++    out.viewAfterSubmit = await page.evaluate(() => document.body.dataset.view);
++    out.saveStateAfterSubmit2 = await page.evaluate(() => {
++      const nodes = [...document.querySelectorAll("*")].filter((e) => e.children.length === 0 && /已合并/.test(e.textContent || ""));
++      return nodes.map((e) => String(e.textContent).replace(/\s+/g, " ").trim()).slice(0, 3);
++    });
++    out.blockAfterSubmit = await readBlock();
++    await page.keyboard.down("Meta");
++    await page.keyboard.press("z");
++    await page.keyboard.up("Meta");
++    await new Promise((resolve) => setTimeout(resolve, 2500));
++    out.blockAfterUndo = await readBlock();
++    out.undoHint = await page.evaluate(() => {
++      const nodes = [...document.querySelectorAll("*")].filter((e) => e.children.length === 0 && /撤销/.test(e.textContent || ""));
++      return nodes.map((e) => String(e.textContent).replace(/\s+/g, " ").trim()).slice(0, 3);
++    });
++    out.errors = await page.evaluate(() => window.__b2tErrors || []);
++    return out;
++  }
++
++  // 切走（收起 → 页面视图）再切回
++  await page.click("#merge-close", { label: "收起合并视图" });
++  await waitFor(page, () => document.body.dataset.view === "pages", "收起后回到页面视图", 20000);
++  out.afterCloseView = await page.evaluate(() => document.body.dataset.view);
++  await openAssignDialog();
++  await clickMergeEntry();
++  out.footerAfterReturn = await text("#merge-footer");
++  out.itemsAfterReturn = await page.evaluate(() => [...document.querySelectorAll("#merge-pages li")]
++    .map((li) => ({ text: String(li.innerText || "").replace(/\s+/g, " ").trim().slice(0, 30), done: li.classList.contains("is-done") })));
++  step("6. 切走再切回", { footer: out.footerAfterReturn, items: out.itemsAfterReturn });
++
++  // 提交（切回后决定可能已被清空——那是要如实记录的结果，不是探针错误）
++  out.submitButtonAfterReturn = await page.evaluate(() => {
++    const btn = [...document.querySelectorAll("#merge-footer button")].find((b) => b.textContent.includes("提交"));
++    return btn ? String(btn.textContent).trim() : null;
++  });
++  if (!out.submitButtonAfterReturn) {
++    out.blocked = "切走再切回后底栏没有提交按钮：未提交的裁决被清空（§20.10 要求不清空）";
++    out.blocksNoSubmit = await page.evaluate(async () => {
++      const token = new URLSearchParams(location.search).get("token");
++      const pid = currentProject.project_id;
++      const res = await fetch(`/api/projects/${pid}/pages/1/blocks?token=${encodeURIComponent(token)}`);
++      const data = await res.json();
++      return (data.blocks || []).slice(0, 2).map((b) => b.text);
++    });
++    out.errors = await page.evaluate(() => window.__b2tErrors || []);
++    return out;
++  }
++  await page.evaluate(() => {
++    const btn = [...document.querySelectorAll("#merge-footer button")].find((b) => b.textContent.includes("提交"));
++    btn.click();
++  });
++  await waitFor(page, () => document.body.dataset.view === "pages", "提交后回页面视图", 30000);
++  out.afterSubmitView = await page.evaluate(() => document.body.dataset.view);
++  out.saveStateAfterSubmit = await page.evaluate(() => {
++    const nodes = [...document.querySelectorAll("*")].filter((e) => e.children.length === 0 && /已合并/.test(e.textContent || ""));
++    return nodes.map((e) => String(e.textContent).replace(/\s+/g, " ").trim()).slice(0, 3);
++  });
++  const readFirstBlock = () => page.evaluate(async () => {
++    const token = new URLSearchParams(location.search).get("token");
++    const pid = currentProject.project_id;
++    const res = await fetch(`/api/projects/${pid}/pages/1/blocks?token=${encodeURIComponent(token)}`);
++    const data = await res.json();
++    return (data.blocks || []).slice(0, 2).map((b) => ({ text: b.text, review_status: b.review_status, reviewed_by: b.reviewed_by }));
++  });
++  out.blocksAfterSubmit = await readFirstBlock();
++
++  // ⌘Z 撤销（真实键盘事件）
++  await page.keyboard.down("Meta");
++  await page.keyboard.press("z");
++  await page.keyboard.up("Meta");
++  await new Promise((resolve) => setTimeout(resolve, 2000));
++  out.blocksAfterUndo = await readFirstBlock();
++  out.undoVisible = await page.evaluate(() => {
++    const nodes = [...document.querySelectorAll("*")].filter((e) => e.children.length === 0 && /撤销|已撤销/.test(e.textContent || ""));
++    return nodes.map((e) => String(e.textContent).replace(/\s+/g, " ").trim()).slice(0, 3);
++  });
++  step("7. 提交与撤销", {
++    view: out.afterSubmitView,
++    saveState: out.saveStateAfterSubmit,
++    blocksAfterSubmit: out.blocksAfterSubmit.map((b) => b.text),
++    blocksAfterUndo: out.blocksAfterUndo.map((b) => b.text),
++  });
++
++  out.errors = await page.evaluate(() => window.__b2tErrors || []);
++  return out;
++}
++
++
++/** merge 提交 + ⌘Z 撤销：不切走，先做决定再提交，验证写入与整批撤销。 */
++async function mergeSubmitProbe(page, cfg) {
++  const out = {};
++  await page.evaluate(() => {
++    const item = document.getElementById("assign-list-toggle");
++    const panel = document.getElementById("assign-panel");
++    if (panel && panel.hidden) item.click();
++  });
++  const idx = await page.evaluate(() => [...document.querySelectorAll("#assign-list li")]
++    .findIndex((li) => [...li.querySelectorAll("button")].some((b) => b.textContent.trim() === "查看差异")));
++  if (idx < 0) throw new Error("没有带「查看差异」的任务包行");
++  await page.evaluate((i) => {
++    const li = document.querySelectorAll("#assign-list li")[i];
++    [...li.querySelectorAll("button")].find((b) => b.textContent.trim() === "查看差异").click();
++  }, idx);
++  await waitFor(page, () => document.body.dataset.view === "merge" && document.querySelectorAll("#merge-pages li").length > 0, "进入合并视图", 30000);
++  await page.evaluate(() => document.querySelector("#merge-pages li").click());
++  await waitFor(page, () => {
++    const c = document.getElementById("merge-canvas"), img = document.getElementById("merge-image");
++    return Boolean(c && !c.hidden && img && img.naturalWidth > 0);
++  }, "第 1 页原图", 30000);
++  await page.evaluate(() => {
++    [...document.querySelectorAll("#merge-detail button")].find((b) => b.textContent.trim() === "接受本页").click();
++  });
++  await new Promise((resolve) => setTimeout(resolve, 800));
++  out.footer = await page.evaluate(() => String(document.getElementById("merge-footer").innerText || "").replace(/\s+/g, " ").trim());
++  out.footerButtons = await page.evaluate(() => [...document.querySelectorAll("#merge-footer button")].map((b) => b.textContent.trim()));
++  out.detailButtons = await page.evaluate(() => [...document.querySelectorAll("#merge-detail button")].map((b) => b.textContent.trim()));
++  out.detailFoot = await page.evaluate(() => {
++    const f = document.querySelector("#merge-detail .merge-detail__foot");
++    return f ? String(f.innerText || "").replace(/\s+/g, " ").trim() : null;
++  });
++  out.errorsAfterAccept = await page.evaluate(() => window.__b2tErrors || []);
++  const readBlock = () => page.evaluate(async () => {
++    const token = new URLSearchParams(location.search).get("token");
++    const pid = currentProject.project_id;
++    const res = await fetch(`/api/projects/${pid}/pages/1/blocks?token=${encodeURIComponent(token)}`);
++    const data = await res.json();
++    const b = (data.blocks || [])[0];
++    return b ? { text: b.text, status: b.review_status, by: b.reviewed_by } : null;
++  });
++  out.blockBefore = await readBlock();
++  const hasSubmit = await page.evaluate(() => Boolean([...document.querySelectorAll("#merge-footer button")].find((b) => b.textContent.includes("提交"))));
++  if (!hasSubmit) {
++    out.blocked = "接受一页后底栏仍没有提交按钮";
++    out.errors = await page.evaluate(() => window.__b2tErrors || []);
++    return out;
++  }
++  await page.evaluate(() => {
++    [...document.querySelectorAll("#merge-footer button")].find((b) => b.textContent.includes("提交")).click();
++  });
++  await waitFor(page, () => document.body.dataset.view === "pages", "提交后回页面视图", 30000);
++  out.viewAfterSubmit = await page.evaluate(() => document.body.dataset.view);
++  out.saveState = await page.evaluate(() => {
++    const nodes = [...document.querySelectorAll("*")].filter((e) => e.children.length === 0 && /已合并/.test(e.textContent || ""));
++    return nodes.map((e) => String(e.textContent).replace(/\s+/g, " ").trim()).slice(0, 3);
++  });
++  out.blockAfterSubmit = await readBlock();
++  await page.keyboard.down("Meta");
++  await page.keyboard.press("z");
++  await page.keyboard.up("Meta");
++  await new Promise((resolve) => setTimeout(resolve, 2500));
++  out.blockAfterUndo = await readBlock();
++  out.undoHint = await page.evaluate(() => {
++    const nodes = [...document.querySelectorAll("*")].filter((e) => e.children.length === 0 && /撤销/.test(e.textContent || ""));
++    return nodes.map((e) => String(e.textContent).replace(/\s+/g, " ").trim()).slice(0, 3);
++  });
++  out.errors = await page.evaluate(() => window.__b2tErrors || []);
++  return out;
++}
++
++
++/** 最小闭环：进合并视图 → 选第 1 页 → 点接受 → 立刻读底栏/列表类名。 */
++async function mergeMicroProbe(page, cfg) {
++  const before = await page.evaluate(() => document.body.dataset.view);
++  if (before !== "merge") {
++    await page.evaluate(() => {
++      const panel = document.getElementById("assign-panel");
++      if (panel && panel.hidden) document.getElementById("assign-list-toggle").click();
++    });
++    await new Promise((r) => setTimeout(r, 500));
++    const idx = await page.evaluate(() => [...document.querySelectorAll("#assign-list li")]
++      .findIndex((li) => [...li.querySelectorAll("button")].some((b) => b.textContent.trim() === "查看差异")));
++    await page.evaluate((i) => {
++      const li = document.querySelectorAll("#assign-list li")[i];
++      [...li.querySelectorAll("button")].find((b) => b.textContent.trim() === "查看差异").click();
++    }, idx);
++    await waitFor(page, () => document.body.dataset.view === "merge" && document.querySelectorAll("#merge-pages li").length > 0, "进入合并视图", 30000);
++  }
++  const out = {};
++  out.step1 = await page.evaluate(() => ({
++    view: document.body.dataset.view,
++    items: [...document.querySelectorAll("#merge-pages li")].map((li) => li.className),
++  }));
++  await page.evaluate(() => document.querySelector("#merge-pages li").click());
++  out.step2 = await page.evaluate(() => ({
++    foot: String((document.querySelector("#merge-detail .merge-detail__foot") || {}).innerText || "").replace(/\s+/g, " ").trim(),
++    buttons: [...document.querySelectorAll("#merge-detail button")].map((b) => b.textContent.trim()),
++  }));
++  await page.evaluate(() => {
++    const btn = [...document.querySelectorAll("#merge-detail button")].find((b) => b.textContent.trim() === "接受本页");
++    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
++  });
++  await new Promise((r) => setTimeout(r, 300));
++  out.step3 = await page.evaluate(() => ({
++    foot: String((document.querySelector("#merge-detail .merge-detail__foot") || {}).innerText || "").replace(/\s+/g, " ").trim(),
++    footerText: String((document.getElementById("merge-footer") || {}).innerText || "").replace(/\s+/g, " ").trim(),
++    footerButtons: [...document.querySelectorAll("#merge-footer button")].map((b) => b.textContent.trim()),
++    items: [...document.querySelectorAll("#merge-pages li")].map((li) => li.className),
++    errors: window.__b2tErrors || [],
++  }));
++  return out;
++}
++
++
++/** 微流程：接受第 1 页、拒绝第 2 页 → 提交 → ⌘Z 撤销，逐步读库。 */
++async function mergeMicroSubmit(page, cfg) {
++  const out = {};
++  const readBlock = (pageNo = 1) => page.evaluate(async (no) => {
++    const token = new URLSearchParams(location.search).get("token");
++    const pid = currentProject.project_id;
++    const res = await fetch(`/api/projects/${pid}/pages/${no}/blocks?token=${encodeURIComponent(token)}`);
++    const data = await res.json();
++    const b = (data.blocks || [])[0];
++    return b ? { text: b.text, status: b.review_status, by: b.reviewed_by } : null;
++  }, pageNo);
++  const enterMerge = async () => {
++    const view = await page.evaluate(() => document.body.dataset.view);
++    if (view === "merge") {
++      await page.evaluate(() => document.getElementById("merge-close").click());
++      await waitFor(page, () => document.body.dataset.view === "pages", "收起回页面视图", 20000);
++    }
++    await page.evaluate(() => {
++      const panel = document.getElementById("assign-panel");
++      if (panel && panel.hidden) document.getElementById("assign-list-toggle").click();
++    });
++    await new Promise((r) => setTimeout(r, 500));
++    const idx = await page.evaluate(() => [...document.querySelectorAll("#assign-list li")]
++      .findIndex((li) => [...li.querySelectorAll("button")].some((b) => b.textContent.trim() === "查看差异")));
++    await page.evaluate((i) => {
++      const li = document.querySelectorAll("#assign-list li")[i];
++      [...li.querySelectorAll("button")].find((b) => b.textContent.trim() === "查看差异").click();
++    }, idx);
++    await waitFor(page, () => document.body.dataset.view === "merge" && document.querySelectorAll("#merge-pages li").length > 0, "进入合并视图", 30000);
++  };
++  await enterMerge();
++  const clickDetail = (label) => page.evaluate((text) => {
++    const btn = [...document.querySelectorAll("#merge-detail button")].find((b) => b.textContent.trim() === text);
++    if (!btn) throw new Error("找不到按钮：" + text);
++    btn.click();
++  }, label);
++  await page.evaluate(() => document.querySelectorAll("#merge-pages li")[0].click());
++  await new Promise((r) => setTimeout(r, 400));
++  await clickDetail("接受本页");
++  await page.evaluate(() => document.querySelectorAll("#merge-pages li")[1].click());
++  await new Promise((r) => setTimeout(r, 400));
++  await clickDetail("拒绝本页");
++  out.footer = await page.evaluate(() => String((document.getElementById("merge-footer") || {}).innerText || "").replace(/\s+/g, " ").trim());
++  out.blockBefore = await readBlock(1);
++  out.block2Before = await readBlock(2);
++  await page.evaluate(() => {
++    const btn = [...document.querySelectorAll("#merge-footer button")].find((b) => b.textContent.includes("提交"));
++    if (!btn) throw new Error("底栏没有提交按钮");
++    btn.click();
++  });
++  await waitFor(page, () => document.body.dataset.view === "pages", "提交后回页面视图", 30000);
++  out.viewAfterSubmit = await page.evaluate(() => document.body.dataset.view);
++  out.saveState = await page.evaluate(() => {
++    const nodes = [...document.querySelectorAll("*")].filter((e) => e.children.length === 0 && /已合并/.test(e.textContent || ""));
++    return nodes.map((e) => String(e.textContent).replace(/\s+/g, " ").trim()).slice(0, 3);
++  });
++  out.blockAfterSubmit = await readBlock(1);
++  out.block2AfterSubmit = await readBlock(2);
++  await page.keyboard.down("Meta");
++  await page.keyboard.press("z");
++  await page.keyboard.up("Meta");
++  await new Promise((r) => setTimeout(r, 2500));
++  out.blockAfterUndo = await readBlock(1);
++  out.block2AfterUndo = await readBlock(2);
++  out.undoHint = await page.evaluate(() => {
++    const nodes = [...document.querySelectorAll("*")].filter((e) => e.children.length === 0 && /撤销/.test(e.textContent || ""));
++    return nodes.map((e) => String(e.textContent).replace(/\s+/g, " ").trim()).slice(0, 4);
++  });
++  out.errors = await page.evaluate(() => window.__b2tErrors || []);
++  return out;
++}
++
+ async function recover(page, cfg) {
+   await page.acceptDialog().catch(() => {});
+   await page.goto("about:blank").catch(() => {});
+@@ -1289,12 +1701,15 @@ async function prepare(page, cfg) {
+     "步骤条数字（finish-summary）就绪",
+     180000
+   );
++  // 视图拆模块后 openProject 已不在全局（library-view.js 内），改用模块导出面自检。
+   const sanity = await page.evaluate(() => ({
+-    openProject: typeof openProject,
++    libraryView: typeof window.LibraryView,
++    libraryEnter: typeof (window.LibraryView || {}).enter,
++    libraryOpen: typeof (window.LibraryView || {}).open,
+     showView: typeof showView,
+     libraryCards: document.querySelectorAll("#project-list li.pcard").length,
+   }));
+-  if (sanity.openProject !== "function" || sanity.showView !== "function" || sanity.libraryCards < 1) {
++  if (sanity.libraryEnter !== "function" || sanity.showView !== "function" || sanity.libraryCards < 1) {
+     throw new Error(`页面没有正常加载（疑似 JS 语法/运行时错误）：${JSON.stringify(sanity)}`);
+   }
+   const snapshot = await stepsSnapshot(page);

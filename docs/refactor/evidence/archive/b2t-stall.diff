@@ -1,0 +1,13 @@
+diff --git a/backend/book2text/static/step-timing.js b/backend/book2text/static/step-timing.js
+index c81f3ad..6e26390 100644
+--- a/backend/book2text/static/step-timing.js
++++ b/backend/book2text/static/step-timing.js
+@@ -61,6 +61,8 @@
+       leftAt: null,
+       lastActionAt: null,
+       progressKey: "",
++      stalls: 0,
++      stuck: false,
+       idleOver60s: 0,
+       longestIdleMs: 0,
+       actions: {},

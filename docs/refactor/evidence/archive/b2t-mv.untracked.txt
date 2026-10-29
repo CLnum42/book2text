@@ -1,0 +1,111 @@
+# b2t-mv 未跟踪文件（1 个）
+?? merge-probe.json
+
+===== merge-probe.json (2849 bytes) =====
+{
+  "steps": [
+    {
+      "name": "1. window.MergeView 键",
+      "value": [
+        "init",
+        "enter"
+      ]
+    },
+    {
+      "name": "2. 任务包行",
+      "value": [
+        "QA冲突探针 · 第 10、11 页 · 已发出 下载任务包重新导出导入结果作废",
+        "QA助手 · 第 1、2、3 页 · 已回传 · 已导入第 1 次结果 下载任务包重新导出导入结果作废查看差异"
+      ]
+    },
+    {
+      "name": "3. 合并视图",
+      "value": {
+        "title": "合并审校结果：QA助手",
+        "stats": [
+          "变化 2 页",
+          "块级修改 2",
+          "冲突 0",
+          "💬 备注 2"
+        ],
+        "pageItems": 2
+      }
+    },
+    {
+      "name": "4. 第 1 页接受",
+      "value": {
+        "head": "第 1 页 · 块级修改 · 逐条接受或拒绝",
+        "image": {
+          "w": 932,
+          "h": 1406
+        }
+      }
+    },
+    {
+      "name": "5. 第 2 页拒绝后底栏",
+      "value": "提交 2 页的决定（可撤销） 清空决定"
+    },
+    {
+      "name": "6. 切走再切回",
+      "value": {
+        "footer": "",
+        "items": [
+          {
+            "text": "● p.1 块级修改 1 💬1",
+            "done": false
+          },
+          {
+            "text": "● p.2 块级修改 1 💬1",
+            "done": false
+          }
+        ]
+      }
+    }
+  ],
+  "viewAtStart": "merge",
+  "mergeViewKeys": [
+    "init",
+    "enter"
+  ],
+  "pageMoreVisible": true,
+  "assignRows": [
+    "QA冲突探针 · 第 10、11 页 · 已发出 下载任务包重新导出导入结果作废",
+    "QA助手 · 第 1、2、3 页 · 已回传 · 已导入第 1 次结果 下载任务包重新导出导入结果作废查看差异"
+  ],
+  "rowIndex": 1,
+  "mergeTitle": "合并审校结果：QA助手",
+  "stats": [
+    "变化 2 页",
+    "块级修改 2",
+    "冲突 0",
+    "💬 备注 2"
+  ],
+  "pageItems": 2,
+  "image": {
+    "src": "http://127.0.0.1:18765/api/projects/b2t_H6GXVG/pages/1/image?size=view&token=qa-20261029-140129-83040",
+    "naturalWidth": 932,
+    "naturalHeight": 1406
+  },
+  "firstPageHead": "第 1 页 · 块级修改 · 逐条接受或拒绝",
+  "secondPageHead": "第 2 页 · 块级修改 · 逐条接受或拒绝",
+  "footerAfterDecide": "提交 2 页的决定（可撤销） 清空决定",
+  "afterCloseView": "pages",
+  "footerAfterReturn": "",
+  "itemsAfterReturn": [
+    {
+      "text": "● p.1 块级修改 1 💬1",
+      "done": false
+    },
+    {
+      "text": "● p.2 块级修改 1 💬1",
+      "done": false
+    }
+  ],
+  "submitButtonAfterReturn": null,
+  "blocked": "切走再切回后底栏没有提交按钮：未提交的裁决被清空（§20.10 要求不清空）",
+  "blocksNoSubmit": [
+    "第一回",
+    "甄士隐梦幻识通灵\n贾雨村风尘怀闺秀"
+  ],
+  "errors": []
+}

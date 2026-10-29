@@ -1,0 +1,15 @@
+diff --git a/tests/js/boundary.test.mjs b/tests/js/boundary.test.mjs
+index 3c13d62..96399bd 100644
+--- a/tests/js/boundary.test.mjs
++++ b/tests/js/boundary.test.mjs
+@@ -1522,8 +1522,8 @@ const OWNERS = {
+   readingTreeOpen: "reading-view.js",
+   readingTreeExpandedChapters: "reading-view.js",
+   readingTreeChapterAuto: "reading-view.js",
+-  readingJudgeTimes: "reading-view.js",
+-  readingAdvancing: "reading-view.js",
++
++
+   readingPanelOpenedAt: "reading-view.js",
+   readingData: "reading-view.js",
+   readingProject: "reading-view.js",
