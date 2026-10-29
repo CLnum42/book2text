@@ -37,32 +37,56 @@ reading-view.js       3,320
 
 | 栏 | 函数 | 行数 | 占闭包 |
 |---|---:|---:|---:|
-| **能搬**（碰的 id 全在 review 段内） | **106** | **2,585** | 59.6% |
-| ├ 其中跨视图、需注入 | 32 | 813 | 18.7% |
-| **要留**（外壳拥有） | **17** | **484** | 11.2% |
+| **能搬**（碰的 id 全在 review 段内） | **113** | **2,825** | 65.2% |
+| ├ 其中跨视图、需注入 | 32 | 813 | 18.8% |
+| **要留**（外壳拥有） | **10** | **244** | 5.6% |
 | **要注入**（接缝：闭包外还有引用者） | **65** | **914** | 边数 **226** |
 | **不属于 review**（碰的 id 全在别的段） | **17** | **420** | 9.7% |
 | 未判定（无 id、引用者跨两类） | 4 | 34 | 0.8% |
 
-**要留（17 个 / 484 行）**：`renderReviewTree(177) openOrthographyPanel(72) showView(62) confirmCurrentPage(26) loadReviewTreeItems(21) openTreeItem(20) treeItemSummary(16) setupReviewPager(15) finishShowFallbackPages(14) openPageDetail(13) toggleReviewTreeChapter(9) toggleReviewTreePage(8) nextUnfinishedPage(8) stepPage(7) finishStartReview(7) treeLevelLabel(5) treeChapterOfPage(4)`
+**闭包口径（必须照这个加）**：闭包 = 四栏之和 + 「跨视图需注入」子项（子项已在“能搬”内，此处重复计一次）。
 
-> 注：`renderReviewTree` / `toggleReviewTree*` / `treeItem*` 被归到“要留”是因为它们写 `workflowStep`/`confirmCurrentPage` 这类外壳状态，**不是因为它们属于外壳**——这一栏要在切片时逐条复核（见 §4 风险 1）。
+```
+四栏：113 + 10 + 17 + 4 = 144 函数 / 2,825 + 244 + 420 + 34 = 3,523 行
+＋跨视图子项：32 / 813
+＝闭包：176 函数 / 4,336 行
+```
+
+**id 计数口径**：`id="view-review"` 子树 **含根 = 94、不含根 = 93**（tag-aware 重扫是 93）。
+本表用的是**含根 94**；`accept_library.py` 数含根（9），R3 判的是内容。**引用这个数时必须写明含不含视图根**，否则下一刀会对不上。
+
+**要留（10 个 / 244 行）**：`openOrthographyPanel(72) showView(62) confirmCurrentPage(26) openTreeItem(20) setupReviewPager(15) finishShowFallbackPages(14) openPageDetail(13) nextUnfinishedPage(8) stepPage(7) finishStartReview(7)`
+
+**树函数逐条结论（判据：它渲染的 DOM 属于谁的子树）**：
+
+| 函数 | 行 | 归属 | 依据 |
+|---|---:|---|---|
+| `renderReviewTree` | 177 | **模块** | 渲染 `#review-tree-list` / `#review-tree-stats`（review 子树）；内部 `openPageDetail` 走注入 |
+| `loadReviewTreeItems` | 21 | **模块** | 只填 `reviewTreeItems`（review 树的数据），不渲染 DOM |
+| `treeItemSummary` | 16 | **模块** | 只生成树条目摘要文本，纯 review 树展示件 |
+| `toggleReviewTreeChapter` | 9 | **模块** | 改 review 树展开状态并重画树，DOM 全在 review 子树 |
+| `toggleReviewTreePage` | 8 | **模块** | 同上 |
+| `treeLevelLabel` | 5 | **模块** | 纯标签文本，只服务树 |
+| `treeChapterOfPage` | 4 | **模块** | 只读 `reviewTree.pages`，纯树数据辅助 |
+| `openTreeItem` | 20 | **外壳** | 点条目 → `openPageDetail(pageNo)` + 定位队列，属流程推进，不渲染 review 节点 |
+
+即：**7 个归模块、1 个归外壳**。`workflowStep` 在这些函数里一次都没出现——原先“因为写 workflowStep 才归外壳”的说法不成立。
 
 **不属于 review（17 个 / 420 行）**：`finishRunAutoPass(91) finishRunLayout(77) revertContinuation(41) markContinuation(40) onContinuationKeydown(27) loadContinuationReview(23) finishRevokeAutoPass(22) undoLastCleanup(21) loadLanguageSummary(19) afterCleanupApplied(13) advanceContinuation(12) openFinishPanel(11) pausePageThumbnails(8) afterContinuationChange(5) continuationRemaining(5) closeFinishPanel(4) renderContinuationPanel(1)`
 
 > 这 17 个是**真正的其它流程**：续页确认（continuation）、收尾面板（finish）、自动通过（auto-pass）、清理撤销（cleanup）。
 > 它们只因“碰了 review 段的某个 id / 被 review 的渲染函数引用”被吸进闭包。
 
-## 2. 子面板分布（能搬 106 个，按 `data-` 前缀）
+## 2. 子面板分布（能搬 113 个，按 id 前缀）
 
 `view-review` 段 id 前缀分布：`review 29 / detail 12 / box 8 / candidate 8 / diff 7 / aux 6 / layout 4 / page 4 / ink 3 / queue 3 / zoom 3 / toggle 2`，其余各 1。
 
 | 前缀组 | 函数 | 行数 |
 |---|---:|---:|
-| （无 id，纯工具/辅助） | 45 | **1,128** |
+| （无 id，纯工具/辅助） | 51 | **1,191** |
 | 跨前缀（一个函数碰多组） | 16 | 507 |
+| `review-*` 审校主体（含树） | 12 | 402 |
 | `detail-*` 详情面板 | 14 | 346 |
-| `review-*` 审校主体 | 11 | 225 |
 | `page-*` | 7 | 178 |
 | `aux-*` 第二引擎 | 2 | 57 |
 | `box-*` 块框 | 4 | 56 |
@@ -71,7 +95,7 @@ reading-view.js       3,320
 | `ink-*` / `candidate-*` | 1 / 1 | 14 / 14 |
 | `viewer-*` / `diff-*` | 2 / 1 | 12 / 4 |
 
-**45 个 / 1,128 行没有 id**——审校页的“粘合剂”比 pages（42 个 / 494 行）大一倍多，说明 review 的渲染函数大量依赖共享工具。
+**51 个 / 1,191 行没有 id**——审校页的“粘合剂”比 pages（42 个 / 494 行）大两倍多，说明 review 的渲染函数大量依赖共享工具。
 
 ## 3. 结论：1 个模块还是 N 个？
 
@@ -79,8 +103,8 @@ reading-view.js       3,320
 
 依据：
 
-1. **子面板不独立**：`detail`(346) / `review`(225) / `page`(178) / `box`(56) / `candidate`(14) 加起来才 ~820 行，
-   而**无 id 的共享工具就有 1,128 行**——按子面板切会让 45 个工具函数被 5 个模块各注入一份，
+1. **子面板不独立**：`detail`(346) / `review`(402，含树) / `page`(178) / `box`(56) / `candidate`(14) 加起来 ~1,000 行，
+   而**无 id 的共享工具就有 1,191 行**——按子面板切会让 45 个工具函数被 5 个模块各注入一份，
    直接重演 D-109 说的“40 个注入点”。
 2. **接缝面 226 条边**（对比 pages 183、L1 的 24）：如此宽的注入面说明这些工具是**同一个渲染管线的内部件**，
    不是“两个模块共用两个服务”。

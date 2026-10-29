@@ -35,6 +35,17 @@ pages 要注入 66 个函数 / 817 行 / 183 条调用边
 | **不属于 pages**（碰的 id 全在别的 section） | 9 | **179** | 5.6% |
 | 未判定（无 id、调用者跨两类） | 4 | 38 | 1.2% |
 
+**闭包口径（必须照这个加）**：闭包 = 四栏之和 + 「跨视图需注入」子项（子项已在“能搬”内，此处重复计一次）。
+
+```
+四栏：101 + 9 + 9 + 4 = 123 函数 / 2,338 + 377 + 179 + 38 = 2,932 行
+＋跨视图子项：12 / 291
+＝闭包：135 函数 / 3,223 行
+```
+
+**id 计数口径**：`id="view-pages"` 子树 **含根 = 127、不含根 = 126**；本文用含根 127。
+
+
 - **要留 9 个**：`updateSelectionPanel(167)` `buildTile(97)` `syncStepToggles(32)` `startTileMarginDrag(25)`
   `setupCollabControls(22)` `selectRangeTo(11)` `handleTileClick(10)` `toggleSelection(8)` `selectOnly(5)`
 - **不属于 9 个**：`renderCompare(52)` `openPackageFile(24)` `loadComparePage(24)` `drawCompareOverlay(18)`
