@@ -1333,6 +1333,18 @@ function refresh() {
 
 ---
 
+### 20.7 已有三个模块的 `enter()` 第二层（§15 第 8 条回溯应用，`pages` 落盘前必须补）
+
+> 模板会复制缺陷，不会复制改进。三份现状都只写了"要什么"，下面是补齐的第二层。
+
+| 模块 | 谁调它 / 时机 / 幂等 | 依赖什么时候会没 | 失败如何观察 | 已知成本 |
+|---|---|---|---|---|
+| `ReadingView` | `showView`（`app.js:249`，`target==="reading"` 且有项目）。同项目且已加载 → **重绘不重拉**（幂等） | 切走项目 → 外壳不调；`injected.getProject` 未注入 → 直接 return；DOM 被重写 → `openReading` 重铺 | `#reading-stream` 里出现「**正文流加载失败：…**」（不抛） | 每次进入最多 1 次 `export/preview?segments_only=1`；同项目已载 0 次 |
+| `IndexView` | `showView`（`:262`）+ 步骤切换。有缓存 → 直接渲染；无缓存 → 生成一次（幂等） | 无项目 → 直接 return；`pageIndexData` 属于别的项目 → 重新生成 | `#index-meta` 显示「**页码索引读取失败：…**」 | 每次进入最多 1 次 `loadPageIndex()`；有缓存 0 次 |
+| `PreviewView` | `showView`（`:266`）+ 3 处显式调用（`12419 {invalidate}` / `12427 {force}` / `12772 {invalidate}`）。`{invalidate}` 只丢缓存 | 切走项目 → 外壳不调；`{force}` 带 `isActive()` 守卫 | `#preview-meta` 显示「**预览失败：…**」 | 每次进入 1 次 `/export/preview`（全量）；`{force}` 由外壳控制 |
+
+**新增视图（`pages` / `review` / `library` / `merge`）落盘时，这张表必须有对应一行**，否则不算契约完成（§15 第 8 条）。
+
 ## 21. 什么时候该做模块，而不是注入叶子（判据 + 第一个实例：瓷砖服务）
 
 > 2026-10-29 立。在此之前我们只有"能不能搬"的判据（caller-closed、零新增导出），**没有"该不该成为实体"的判据**。有了这条，以后遇到"这堆函数到底该不该独立"不用吵。
@@ -1347,6 +1359,9 @@ function refresh() {
 3. **唯一失效语义**——资源变化时，必须一次作废、全部消费者同时更新，而不是各自碰运气。
 
 **反判据（够不上就别做模块）**：无状态、无生命周期、无需失效广播的，就是叶子，继续注入或用纯函数。
+
+**反判据的第二个实例（2026-10-29，library 提示元素）**：`loadPackageResults` / `applyPackageMode` / `openPackageFile` / `rerunAuxiliary` / `restoreSelectedBackup` / `downloadResultPackage` 六处各写一次 `library-error` / `library-warning`。**它们不该升成模块**——提示元素只写文本，无状态、无生命周期、无失效广播。抽一个共享叶子 `showLibraryNotice(kind, text)`，6 处调用即可。
+**不是所有"被多处写"的东西都该升成模块；无生命周期的，共享叶子就够了。** 这条和 tile 是一对：同样是"多处重复"，一个升模块、一个只升叶子，差别只在**有没有必须唯一的生命周期**。
 
 ### 21.2 边界规则（第一个实例：瓷砖服务）
 
@@ -1368,6 +1383,9 @@ function refresh() {
 
 8 个渲染叶子（`renderPageBlocks`/`paintTileMargin`/`pageImageUrl`/`pageProfileFor`/`loadIndexBlocks`/`clearImagePlaceholder`/`clearTile*`）现在被 reading / preview / index **各注入一份**；pages、review 拆完是 5 个消费者 → **40 个注入点**。实测：`reading-view.js` 里 `pageImageUrl`×4、`clearImagePlaceholder`×4；`index-view.js` 里 `pageProfileFor`×3、`loadIndexBlocks`×3、`clearIndexDecorations`×4。
 5 个消费者 = 5 份缓存、5 个 observer、5 套占位逻辑——**这正是"两个口径"的来源**。
+
+> **23 个注入点已经疼了，不是即将疼。**（2026-10-29 实测：reading 8/8、index 8/8、preview 7/8 个叶子**全部**已在 `injected.*` 上。）
+> 所以 tile 不是预防性重构，是**止血**。将来一定有人说"不就有 23 个注入点，忍忍算了"——这句话用来挡它。
 
 ### 21.4 API
 
