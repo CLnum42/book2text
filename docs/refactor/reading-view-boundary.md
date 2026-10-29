@@ -1794,3 +1794,34 @@ version = hash(该 key 的全部字段  −  nonrender 黑名单)
 ### 23.6 不负责什么
 
 不拥有 PDF 图本身（那是 tile）；不做缩放/滚动（画布）；不决定显示哪些页（视图）；不做 OCR/审校数据读取（数据由视图传进来）；不做命中后的**行为**（只回答"命中谁"，点击做什么归视图）。
+
+
+---
+
+## 24. `library` 搬迁复核清单（Architect 复核用，2026-10-29）
+
+> 施工数字两个版本：DevLead 报"30 函数 / 636 行闭包"，Chief 报"17 函数 / 371 行"。**以函数名为准，行数不作判据**（§15 第 5 条 / §13.2e）。下面每一条都能独立打勾。
+
+**A. 名单与边界**
+1. 搬迁名单逐个 `grep -c "function <name>(" app.js` = **0**、模块里 = **1**（真实现份数=1）。
+2. **6 个种子函数不得进模块**：`loadPackageResults` / `applyPackageMode` / `openPackageFile` / `rerunAuxiliary` / `restoreSelectedBackup` / `downloadResultPackage`——它们属任务包/备份/重跑流程，只经 `notify` 接触 library。
+3. `diff` 形状只允许"搬走 + 转发（≤6 行）"；**任何行为改动单独一笔**（§22.4）。
+
+**B. 接口（§20.6 / §20.8）**
+4. `window.LibraryView` = `init / enter / notify`，**恰 3 个**。
+5. `notify` 调用点 = **5**（任务包导入完成/失败、备份还原、第二引擎重跑）；`enter` 调用点 ≥1（`showView` 的 library 分支）。
+6. 逐个导出数调用点，**0 个 → 补接或删**（⑦）。
+7. `enter()` **不清空 notice**（§20.8 硬语义）；library 自己的 4 个函数直接调内部函数、不走 `notify`。
+
+**C. 机检**
+8. **R3**：模块里出现的每个 id ⊆ `view-library` 子树；`app.js` 不再出现 `library-*` 的 id 字面量（写提示的那 18 个写点应全部收进模块或改为 `notify` 调用）。
+9. **R5**：搬走的状态在 §3 表里的 owner 同批改成模块；OWNERS 条数不变（除非状态删除）。
+10. **R2**：`library-view.js` 里无 `window.XxxView`；需要别的视图一律走 deps。
+11. **R6/R8**：`VIEW_EXPORTS` 同批登记 `library-view.js: [init, enter, notify]`。
+
+**D. 四基线**（与 §22.4 一致）
+12. `node tests/js/run.mjs` fail 0；`pytest` 全过；smoke ≥43/44 且唯一 FAIL 只能是 K1；导出 `body.txt` sha 与基线一致。
+
+**E. 记账**
+13. 提交报告三个数：**搬走行数 / app.js 净减 / 模块骨架增量**（§13.2c），并注明"行数口径"（span 还是代码行）。
+14. 注入依赖：报**集合**（函数名 → 行号），不只报数字（§20.9 ⑩）。
