@@ -1,0 +1,57 @@
+#!/bin/sh
+# Book2Text pre-commit 闸（本机唯一自动回归：CI 已死，见 docs/refactor/reading-view-boundary.md §20.9 ⑬）
+#
+# 装法：git config core.hooksPath scripts/git-hooks
+# 卸法：git config --unset core.hooksPath
+#
+# 设计约束（三条都是实测逼出来的，别改）：
+#   1) 缺依赖 fail closed：找不到 node 就拒绝提交。绝不 `|| exit 0`——
+#      那是"装了一个永远不会红的闸"，比不装更坏（D-110）。
+#   2) hook 的 PATH 通常不含 ~/.local/bin（GUI / ssh / IDE 里更明显），所以显式补查。
+#   3) 只跑前端纯函数套件（tests/js/run.mjs，实测 5.6s）。不跑 pytest（要环境、分钟级）。
+#
+# 通过时记录 index 的 tree oid，供 post-commit 判断"这笔提交是不是绕过闸做的"。
+
+set -u
+
+REPO=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "✗ pre-commit：拿不到仓库根目录" >&2
+  exit 1
+}
+cd "$REPO" || exit 1
+
+# ---- 找 node：hook 的 PATH 不含 ~/.local/bin ----
+NODE=""
+for c in "$(command -v node 2>/dev/null)" "$HOME/.local/bin/node" /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do
+  if [ -n "$c" ] && [ -x "$c" ]; then NODE="$c"; break; fi
+done
+if [ -z "$NODE" ]; then
+  echo "✗ pre-commit：找不到 node" >&2
+  echo "  查过：PATH / \$HOME/.local/bin / /opt/homebrew/bin / /usr/local/bin / /usr/bin" >&2
+  echo "  拒绝提交——跑不起来的闸不允许静默放过（fail closed）。" >&2
+  echo "  确实要先装 node，或临时用 git commit --no-verify（post-commit 会留痕）。" >&2
+  exit 1
+fi
+
+# ---- 跑套件 ----
+LOG="$REPO/.git/b2t-precommit.log"
+START=$(date +%s)
+if ! "$NODE" tests/js/run.mjs >"$LOG" 2>&1; then
+  echo "✗ pre-commit：node tests/js/run.mjs 红了（耗时 $(( $(date +%s) - START ))s）" >&2
+  echo "  日志：$LOG" >&2
+  tail -n 40 "$LOG" >&2
+  echo "" >&2
+  echo "  确需跳过：git commit --no-verify，并在提交信息里加一行" >&2
+  echo "    Bypass-Reason: <为什么这次不能等>" >&2
+  echo "  （绕过会被 post-commit 记进 .git/b2t-gate-bypass.log，没写理由的会被标 NO-REASON）" >&2
+  exit 1
+fi
+
+# ---- 记录"这笔提交通过了闸" ----
+git write-tree >"$REPO/.git/b2t-gate-pass" 2>/dev/null || {
+  echo "✗ pre-commit：套件绿了，但写不了 .git/b2t-gate-pass（权限？）" >&2
+  exit 1
+}
+
+echo "✓ pre-commit：tests/js/run.mjs 全绿（$(( $(date +%s) - START ))s）" >&2
+exit 0

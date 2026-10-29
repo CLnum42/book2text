@@ -1459,6 +1459,59 @@ EOF
 
 **这条和 ⑩⑪ 一样是"过渡态"**：⑫ 一旦上闸，它检查的是文档自己的结构，没有手工副本要对账——**所以它上闸即终态，没有退休期**（§13.2e ② 只对有手工副本的派生物成立）。
 
+**⑬（元规则，2026-10-29）每条闸必须能被样例喂红，并且能回答"它在谁的回合里跑"**
+
+两问缺一不可：
+
+| 问 | 合格答案 | 不合格答案 |
+|---|---|---|
+| 能被喂红吗？ | 给检测器一个**合成违规样例**，它报错；给合法样例，它不报 | "它现在全绿"（只证明此刻，不证明会红） |
+| 在谁的回合里跑？ | **某个动作发生时自动跑**（提交、装 hook、跑 run.mjs） | "提交前记得跑一下"（这是习惯，不是回合） |
+
+**现状审计（2026-10-29 实测）**：
+
+| 闸 | 有喂红夹具 | 证据 |
+|---|---|---|
+| R2 / R6 | 有（共用一条自检用例） | `boundary.test.mjs:641` |
+| R8（按模块） | 有 | `:1692` |
+| R9 | 有 | `:961` |
+| R11 | 有 | `:1522` |
+| A5 | 有 | `:1851` |
+| **R1 / R3 / R4-dup / R4b / R5 / R7 / R12** | **无** | 只有"现状绿"的断言 |
+
+**13 条闸，6 条有喂红夹具，7 条没有。** 缺夹具的闸只证明"此刻没坏"，不证明"坏了会响"——**而"坏了会响"才是闸的定义**。补齐顺序按容易度：R1 / R3 / R7（纯文本扫描，喂合成源码即可）→ R4-dup / R4b / R5（需先把判定内核提成纯函数，像 `windowInterfaceProblems` 那样）→ R12。
+
+**回合现状：13/13 都靠"有人手动跑 `node tests/js/run.mjs`"**（实测 **5.6s**，node 在 `/Users/chenlin/.local/bin/node`）。**这不是回合，是习惯。**
+
+**改法：git hook**（CI 已死，本地 hook 免费且不靠任何人记得）：
+
+```
+pre-commit   → node tests/js/run.mjs，红则拒提交
+post-commit  → 判断"这笔提交是否绕过"，绕过则留痕（--no-verify 也躲不掉）
+```
+
+**两条实测结论（决定了 hook 只能这么写）**：
+
+1. **`--no-verify` 会同时跳过 `pre-commit` 和 `commit-msg`，但 `post-commit` 照跑**（`/tmp/hvtest` 实测：正常提交只打印 `PRE-COMMIT-RAN`；`--no-verify` 后打印 `POST-COMMIT-RAN`）。所以要"能绕但绕了留痕"，**留痕只能写在 post-commit 里，写在 commit-msg 里等于没写**。
+2. **hook 的 PATH 不含 `~/.local/bin`**（GUI/ssh 环境更明显）。因此 hook 里必须显式找 node，且**找不到时 fail closed（拒绝提交），绝不允许 `|| exit 0`**——那是"装了一个永远不会红的闸"，比不装更坏。
+
+**机制**：`pre-commit` 通过后把 `git write-tree` 的 tree oid 写进 `.git/b2t-gate-pass`；`post-commit` 比对 `HEAD^{tree}`，不一致即判定绕过，追加到 `.git/b2t-gate-bypass.log`（时间 / sha / 标题 / **有没有写 `Bypass-Reason:`**）。日志本身要在 `run.mjs` 开头被报出来，否则"留痕"只是留给自己看。
+
+**hook 自己也要能被核**：`git config core.hooksPath` 没设置 = 未安装（2026-10-29 的现状就是未安装）。**一个"以为装了"的 hook，和不装完全一样。**
+
+落地位置与装法（脚本已在仓库里）：
+
+```bash
+scripts/git-hooks/pre-commit     # 跑 tests/js/run.mjs；红则拒提交；缺 node 也拒（fail closed）
+scripts/git-hooks/post-commit    # 比对 tree oid；绕过则写 .git/b2t-gate-bypass.log
+
+git config core.hooksPath scripts/git-hooks   # 装
+git config --unset core.hooksPath              # 卸
+```
+
+**五条行为在 `/tmp/hooktest` 沙盒里实测过**：绿→通过且无日志；红→拒绝提交；`--no-verify` 无理由→`NO-REASON`；`--no-verify` 带 `Bypass-Reason:`→`WITH-REASON`；`node` 全部找不到→拒绝提交并打印查过哪些路径。
+
+
 **⑧ 状态归属**：视图数据由外壳持有，模块**通过注入 getter 现取，不缓存副本**（R5 一状态一 owner 的实例）。
 
 **身份探针（具名概念，2026-10-29）**：模块允许存的唯一"数据引用"，用途只有一条——
