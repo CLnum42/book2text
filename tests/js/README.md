@@ -130,15 +130,17 @@ B2T_STATIC_DIR=/tmp/rb-base/backend/book2text/static node tests/js/edge-ratchet.
 - 3 条 app.js 内部桥走例外表（`edge-ratchet.mjs` 的 `BRIDGE_EXCEPTIONS`）：带 owner + 到期点、
   上限 3、归零即过期。**总条数始终 13**——改总数等于悄悄放宽
 
-**待办：三个视图模块的 `exit()` 都是零调用点的导出（2026-10-29 记）**
+**已结：三个模块的 `exit()` 已删除（2026-10-29 裁决，原待办划掉）**
 
-`reading-view.js` / `preview-view.js` / `index-view.js` 都导出了 `exit`，但 **`showView` 从来没有调用过它**
-（`grep '\.exit()' app.js` = 0）。按 R8 的精神，"有导出没入口"本身就是要解释的东西。
-- 现状不红：R8 只锁"导出名单 ⊆ STABLE ∪ TEMPORARY 且总数只降"，不锁调用点。
-- **没去接它是刻意的**：`showView → exit()` 是改行为（退出时要不要断 IntersectionObserver、
-  要不要清草稿/面板），要单独一轮 + 证据，不能混在搬运里。
-- 谁要动它：先在 §19 待办登记，接的时候补"退出后观察器已断/状态已清"的行为断言，
-  否则又是一条"接上了但没人验证"的线。
+`reading` / `preview` / `index` 都导出过 `exit`，但 `showView` 从没调用过它。原来记的是"待接"，
+**裁决是删**——因为实测证明 `enter()` 本来就幂等（真浏览器 `showView` 来回切 3 轮，按
+「元素 × 事件类型」数活着的处理函数：三视图同元素最多 1 个、有重复的元素 0 个；
+`reading` 的新建观察器与 disconnect 各 +1，是"建 1 断 1"平衡）。**没有要救的东西**，于是删掉，
+三个模块的导出棘轮各降 1（reading 5 / preview 2 / index 3）。
+
+留一条**不在本轮范围**的缺口（§19 T4 证据段）：三个模块的观察器切走视图后不会断，
+隐藏元素上仍会回调（多半 `isIntersecting=false`，做无用功）。那是**性能**不是正确性，
+要动它得单独一轮 + 收益数据。
 
 **视图模块的对外接口（R6 / R2）**
 

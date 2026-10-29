@@ -1567,10 +1567,10 @@ test("R12（闸 A）：特征测试契约 A1 / A1b / A3", () => {
  * 名单已清空；「写路径 emit 必须从公开对象上删掉」现在是常驻断言（不再 skip），
  * 谁把写路径加回来都会红。
  */
-const STABLE = ["init", "enter", "exit", "getCurrent", "reload", "toggleFollow"];
+const STABLE = ["init", "enter", "getCurrent", "reload", "toggleFollow"];   // exit 已于 8b0cfc7 删除（§19 T4 裁决：enter 幂等，exit 没有要救的东西）
 const TEMPORARY = [];   // L6 收尾：splitPrefs/applySplit/saveSplit/resetSplit/setupSplit 已从公开对象删除
 const PENDING_REMOVAL = [];   // 写路径 emit 已于 26ac481 删除；名单清空，写路径不许再加回来
-const MAX_EXPORTS = 6;              // 只许改小（L6 收尾删掉 5 个临时导出后收紧到 6）
+const MAX_EXPORTS = 5;              // 只许改小（8b0cfc7 删掉 exit 后收紧到 5）
 
 /** 在干净的 vm 里加载模块，读出 `Object.keys(window.ReadingView)`（不加载 app.js）。 */
 function readingViewExportKeys() {
@@ -1624,8 +1624,8 @@ test("R8（导出棘轮）：临时导出不超过 5 条（防止往 TEMPORARY �
  */
 const VIEW_EXPORTS = {
   "reading-view.js": { names: STABLE },                                    // 6
-  "preview-view.js": { names: ["init", "enter", "exit"] },                 // 3
-  "index-view.js": { names: ["init", "enter", "exit", "refresh"] },        // 4（D-100 签字）
+  "preview-view.js": { names: ["init", "enter"] },                          // 2
+  "index-view.js": { names: ["init", "enter", "refresh"] },                // 3（D-100 签字；exit 于 8b0cfc7 删除）
 };
 
 /** 在干净的 vm 里加载某个视图模块，读出它的接口对象的 key（不加载 app.js）。 */
@@ -1690,18 +1690,18 @@ test("R8（按模块）：每个视图模块的导出名与数量都只许等于
 });
 
 test("R8（按模块）自检：多一个 / 少一个 / 改名 / 未登记模块，都必须红", () => {
-  const index = ["init", "enter", "exit", "refresh"];
+  const index = ["init", "enter", "refresh"];
   assert.ok(
     exportRatchetProblems("index-view.js", [...index, "debug"]).length > 0,
     "R8 自检失败：IndexView 多第 5 个导出也放过",
   );
   assert.ok(
-    exportRatchetProblems("preview-view.js", ["init", "enter"]).length > 0,
+    exportRatchetProblems("preview-view.js", ["init"]).length > 0,
     "R8 自检失败：PreviewView 少一个导出也放过",
   );
   assert.ok(
-    exportRatchetProblems("preview-view.js", ["init", "enter", "leave"]).length > 0,
-    "R8 自检失败：把 exit 改名成 leave 也放过——只锁数量的实现会漏这个",
+    exportRatchetProblems("preview-view.js", ["init", "leave"]).length > 0,
+    "R8 自检失败：把 enter 改名成 leave 也放过——只锁数量的实现会漏这个",
   );
   assert.ok(
     exportRatchetProblems("probe-view.js", ["init"]).length > 0,
