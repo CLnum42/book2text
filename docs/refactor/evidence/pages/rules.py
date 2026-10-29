@@ -52,6 +52,7 @@ Chief 转来的「接缝 53 / 1,282」按本定义复现不出来；我用三种
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -460,6 +461,47 @@ def main() -> int:
     if len(IDENT) != EXPECT_SEAMS:
         problems.append(f"② IDENT 是 {len(IDENT)} 个，应为 {EXPECT_SEAMS}——接缝数变了要写进切片文档")
 
+    # ④ 生成器与它自己的产物必须**同一棵树互相复现**（2026-10-30）：
+    #   app.js 里 init 的 deps 键集合/顺序 == 本文件 IDENT_FULL + SETTERS 推出来的键。
+    #   防「生成器改了没入库」：那一刻 app.js 是旧规则生成的，谁重跑生成器 deps 就漂，R13 立刻红。
+    #   **定位失败本身也要红**：匹配不到 init 字面量 = 判据失效，不许 `if 匹配到才检查`（那等于默认通过）。
+    app_path = os.path.join(REPO, "backend/book2text/static/app.js")
+    try:
+        app_src = open(app_path, encoding="utf-8").read()
+    except FileNotFoundError:
+        app_src = None
+        problems.append("④ 找不到 backend/book2text/static/app.js——第④条无法执行（fail closed）")
+    if app_src is not None:
+        # 注意：本正则按**当前生成形态**（`PagesView?.init({` … 换行 + `});`）写的，非贪婪 + 换行锚。
+        # 若将来 init 里出现跨行对象/数组、或键缩进改版，这条定位可能提前截断——**改格式前先复核本行**。
+        # （更稳的写法是括号配平扫描而不是正则；当前形态无需，但别默认它永远成立。）
+        call = re.search(r"PagesView\?\.init\(\{(.*?)\n\s*\}\);", app_src, re.S)
+        if not call:
+            problems.append("④ 在 app.js 里没定位到 `PagesView?.init({ … });` 字面量——判据失效即红（不许静默跳过）")
+        else:
+            init_keys = re.findall(r"(?m)^\s+([A-Za-z_$][\w$]*):", call.group(1))
+            want_keys = []
+            for entry in IDENT_FULL:
+                hit = re.match(r"injected\.([A-Za-z_$][\w$]*)", entry[1])
+                if hit and hit.group(1) not in want_keys:
+                    want_keys.append(hit.group(1))
+            for _name, setter in SETTERS:
+                if setter not in want_keys:
+                    want_keys.append(setter)
+            si, sw = set(init_keys), set(want_keys)
+            if si != sw or len(init_keys) != len(want_keys):
+                missing = [k for k in want_keys if k not in si]
+                extra = [k for k in init_keys if k not in sw]
+                where = next((i for i, (a, b) in enumerate(zip(init_keys, want_keys)) if a != b), None)
+                problems.append(
+                    f"④ app.js init {len(init_keys)} 键 ≠ deps_literal {len(want_keys)} 键"
+                    f"（缺 {missing[:6]}{'…' if len(missing) > 6 else ''} · 多 {extra[:6]}{'…' if len(extra) > 6 else ''}"
+                    f" · 顺序首个不同位 {where}）——生成器的产物和生成器不在同一棵树，重跑生成器"
+                )
+            else:
+                print(f"✓ 第④条（生成器自洽）：app.js init {len(init_keys)} 键 == deps_literal {len(want_keys)} 键，"
+                      f"集合相等，顺序一致")
+
     # ③ 搬进模块的那些：写点逐条验，必须在 movers 里，不许抽样
     for name, kind, _, _, action in STATES:
         if action != "搬进模块":
@@ -482,7 +524,7 @@ def main() -> int:
         for item in problems:
             print("  " + item)
         return 1
-    print("\n✓ 三条自检全过：① IDENT 全部有来源 ② 46 条一个不漏 ③ 搬进模块的写点全在 movers 里")
+    print("\n✓ 四条自检全过：① IDENT 全部有来源 ② 46 条一个不漏 ③ 搬进模块的写点全在 movers 里 ④ 生成器自洽（init 键数 == deps_literal 键数）")
     return 0
 
 
