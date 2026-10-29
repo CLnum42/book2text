@@ -145,6 +145,23 @@ test("live 对象就是 window.__b2tStepTiming：QA 直接读它，不用先 sna
   assert.equal(metrics().steps.review.ms, 2_000);
 });
 
+// `stalls` / `stuck` / `consecutiveStalls` / `longestStallMs` 与那个 500ms 定时器
+// 于 2026-10-29 整批删除（死因见 docs/known-limitations.md L-110：`bump()` 先更新进度键
+// 再挂判定，判定基准已是"动作之后"的键 → 253 次动作产生 252 次 stall，恒等于动作数）。
+// 这里改成**守住删除本身**：字段不许再冒出来，否则有人会把它当"卡住次数"读。
+test("卡住口径已删除：快照里不许再出现 stalls / stuck / longestStallMs", () => {
+  const { timings } = setup();
+  timings.enter("review");
+  timings.bump("judge", { pageNo: 3, judged: 1, panel: "" });
+  const step = timings.snapshot().steps.review;
+  for (const gone of ["stalls", "stuck", "consecutiveStalls", "longestStallMs"]) {
+    assert.ok(!(gone in step), `字段 ${gone} 又回来了——这条判据已被证伪，别重新发明（L-110）`);
+  }
+  for (const kept of ["visits", "ms", "msSoFar", "idleOver60s", "longestIdleMs", "actions"]) {
+    assert.ok(kept in step, `可用字段 ${kept} 被删掉了`);
+  }
+});
+
 test("快照把当前步的进行中时间算进 msSoFar（否则跑完 40 页审校那格还是 0）", () => {
   const { clock, timings } = setup({ steps: ["pages", "review"] });
   timings.enter("pages");
