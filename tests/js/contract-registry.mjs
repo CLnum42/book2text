@@ -11,6 +11,8 @@
 //   node tests/js/contract-registry.mjs --base HEAD      # 换基点（自检 / 变异用）
 //   node tests/js/contract-registry.mjs --strict --allow-transitional-base
 //                                                        # 过渡期：base 不是回放基时只警告，仍查登记
+//   node tests/js/contract-registry.mjs --strict --base <sha> --doc /tmp/x.md
+//                                                        # 变异验证：真实提交 + 改坏的登记表副本
 //
 // 读数口径（与闸 A 完全同源，不另算一套）：`<base>..HEAD` 里每个 test-contract: / move: 提交，
 // 是否在 §18.6 有登记行且带「删：/补：/变异：」三样；未登记的删除行合计。
@@ -29,9 +31,16 @@ if (baseIndex !== -1 && !baseTag) {
   console.error("✖ --base 缺值");
   process.exit(2);
 }
+// --doc：喂 /tmp 里的登记表副本（变异验证用：真实提交 + 改坏的登记表），不碰仓库文档。
+const docIndex = argv.indexOf("--doc");
+const docPath = docIndex === -1 ? null : argv[docIndex + 1];
+if (docIndex !== -1 && !docPath) {
+  console.error("✖ --doc 缺值");
+  process.exit(2);
+}
 
 const gap = baseTreeGap({ baseTag });
-const { problems, registryProblems, commitCount } = evaluateFeatureContract({ baseTag });
+const { problems, registryProblems, commitCount } = evaluateFeatureContract({ baseTag, docPath });
 
 const shasOf = (items) => items
   .map((item) => (item.match(/\b([0-9a-f]{7})\b/) || [])[1])

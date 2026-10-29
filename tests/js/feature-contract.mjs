@@ -46,6 +46,35 @@ function registeredIn1886(sha, docText) {
 }
 
 /**
+ * 登记行的**批准人**（§18.6 第五列）。按表头定位列，不写死列号——表宽变了不会静默错位。
+ * 返回 null = 找不到该 sha 的登记行 / 表头没有「批准人」列。
+ */
+export function registrationApprover(sha, docText) {
+  const short = sha.slice(0, 7);
+  const table = docText.slice(docText.indexOf("### 18.6"));
+  const rows = table.split("\n").filter((line) => line.trimStart().startsWith("|"));
+  // 表头必须**整格**等于「批准人」：§18.6 上面还有个判据小表，里面也出现「批准人」字样，
+  // 用 includes 会选中那张表（列号 -1 → 静默 null → 自己批自己永远绿）。
+  const header = rows.find((line) => line.split("|").map((cell) => cell.trim()).includes("批准人"));
+  if (!header) return null;
+  const column = header.split("|").map((cell) => cell.trim()).indexOf("批准人");
+  if (column < 0) return null;
+  const row = rows.find((line) => line.includes(short) || line.includes(sha));
+  if (!row) return null;
+  const cell = row.split("|")[column];
+  return cell === undefined ? null : cell.trim();
+}
+
+/** 提交作者（显示名原样返回：可能含空格/中文，所以整串比，不切字段）。 */
+export function commitAuthor(sha) {
+  try {
+    return git(["log", "-1", "--format=%an", sha]);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 登记行的**内容**要求（Chief 2026-10-29）：光有 sha 不算登记，必须写清三样——
  * `删：…`（删了哪些断言）、`补：…`（换成了什么更严的）、`变异：…`（各改坏一次，红在哪）。
  * 理由：「删了几行」是替代指标，「改完还会不会咬人」才是根因。
@@ -172,12 +201,27 @@ export function moveScopeProblems({ sha, files, changes }) {
 }
 
 /** §18.6 登记判定：合格返回 null，否则返回一句人话（两段式里的「登记段」）。 */
-function registrationGap(sha, docText, kindLabel) {
+function registrationGap(sha, docText, kindLabel, author = null) {
   const short = sha.slice(0, 7);
   if (!registeredIn1886(sha, docText)) {
     return `A3: ${short} 是 ${kindLabel}，但没登记在 §18.6`;
   }
+  // §18.6（2026-10-29 补）：登记行的「批准人」== 该笔提交作者 → 红（自己批自己）。
+  // 整串比较：`%an` 是显示名，可能含空格/中文，切字段会错。
+  if (author) {
+    const approver = registrationApprover(sha, docText);
+    // 判不了就是红：行在、列读不出（表头被改名/换表）→ 不能静默放行。
+    if (approver === null) {
+      return `A3: ${short} 的 §18.6 登记行读不出「批准人」列——判不了就是红（表头是不是改了？）`;
+    }
+    if (approver === author) {
+      return `A3: ${short} 的 §18.6 登记「批准人」是它自己的提交作者（${author}）——自己签自己不算第二人复核`;
+    }
+  }
   const reg = registrationContent(sha, docText);
+  if (!reg) {
+    return `A3: ${short} 出现在 §18.6 里但不是表格登记行——只出现在正文里不算登记`;
+  }
   const lacking = [
     ["删了什么（删：…）", reg.deleted],
     ["补了什么更严的（补：…）", reg.stricter],
@@ -207,7 +251,7 @@ function registrationGap(sha, docText, kindLabel) {
  * @returns {{problems: string[], registryProblems: string[], exempt: boolean}}
  */
 export function commitContractProblems({
-  sha, subject, files, deletions, deletedFiles = [], docText, moveChanges = null,
+  sha, subject, files, deletions, deletedFiles = [], docText, moveChanges = null, author = null,
 }) {
   const short = sha.slice(0, 7);
   const problems = [];            // 形态段：pre-commit 拦
@@ -239,7 +283,7 @@ export function commitContractProblems({
   const needsRegistration = isMove || (deletions > 0 && touchesTests && isContract);
   let exempt = false;
   if (needsRegistration) {
-    const gap = registrationGap(sha, docText, isMove ? "move: 笔" : "test-contract 提交");
+    const gap = registrationGap(sha, docText, isMove ? "move: 笔" : "test-contract 提交", author);
     if (gap) registryProblems.push(gap);
     else exempt = true;
   }
@@ -345,7 +389,7 @@ export function baseTreeGap({ baseTag = "ring-break-base" } = {}) {
   return null;
 }
 
-export function evaluateFeatureContract({ baseTag = "ring-break-base" } = {}) {
+export function evaluateFeatureContract({ baseTag = "ring-break-base", docPath = null } = {}) {
   const problems = [];          // 形态段（pre-commit 拦）
   const registryProblems = [];  // 登记段（CI / status.sh 红灯）
   let unregisteredDeletions = 0;
@@ -354,7 +398,8 @@ export function evaluateFeatureContract({ baseTag = "ring-break-base" } = {}) {
   } catch {
     return { problems: [`找不到 tag ${baseTag}：闸 A 需要基点（DevLead 打 tag 后才能跑）`], registryProblems: [], commitCount: 0 };
   }
-  const docText = readFileSync(`${REPO_ROOT}/${DOC_REL}`, "utf8");
+  // docPath：变异验证时喂 /tmp 里的改坏副本（真实提交 + 改坏的登记表），不碰仓库文档。
+  const docText = readFileSync(docPath || `${REPO_ROOT}/${DOC_REL}`, "utf8");
   const commits = git(["rev-list", "--reverse", `${baseTag}..HEAD`]).split("\n").filter(Boolean);
 
   for (const sha of commits) {
@@ -371,6 +416,7 @@ export function evaluateFeatureContract({ baseTag = "ring-break-base" } = {}) {
       deletedFiles: git(["show", "--name-status", "--diff-filter=D", "--format=", sha, "--", ...CONTRACT_SCOPE])
         .split("\n").filter(Boolean),
       docText,
+      author: commitAuthor(sha),
       moveChanges: /^move[(:]/.test(subject) ? moveChangesFromGit(sha) : null,
     });
     problems.push(...verdict.problems);
