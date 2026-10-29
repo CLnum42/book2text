@@ -156,7 +156,7 @@
 | 事实 | 证据 |
 |---|---|
 | 阅读页列是 `<img>`，不是 canvas | `app.js` 的 `readingTiles` / `showReadingPlaceholder` |
-| 档位按 **CSS 宽 × dpr** 选，已乘 dpr | `detailImageProfile()`（`app.js:4813-4822`）：`need = cssWidth * devicePixelRatio` |
+| 档位按 **CSS 宽 × dpr** 选，已乘 dpr | `app.js` 的 `detailImageProfile()`：`need = cssWidth * devicePixelRatio` |
 | 380 CSS × dpr 2 = 760 设备像素 → 取 `view` | `view` = 150 DPI，612pt 页面 = **1275px**，是 1.7 倍超采样（`render.py` RENDER_PROFILES） |
 
 所以 dpr 是对的。按可能性排序，真正的来源是：
