@@ -139,3 +139,50 @@ def test_first_recognition_on_empty_page(
     job = latest_job(client, auth_headers, project_id)
     assert job["skipped"] == 0
     assert job["status"] == "succeeded"
+
+
+def test_human_touched_page_without_active_run_is_not_overwritten(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    library_dir: Path,
+    inprocess_jobs: FakeOcrEngine,
+) -> None:
+    """④ 有人工痕迹 **且 page.active_run_id 为 NULL** → 仍然不许覆盖。
+
+    这一条才是 `not has_active` 被删掉的意义所在：旧式
+    ``applied = not has_active or not _has_human_results(...)`` 在 active_run 为空时
+    直接 applied=True，于是整页软删重建——用户改过的文本就没了，而软删除在界面上
+    找不回来（说明书 R2 / 用户数据优先）。
+
+    造这个状态：首次识别 → 改一个块 → 把 page.active_run_id 置 NULL（模拟运行指针丢失）。
+    然后重新识别：块必须原样保留，任务记 skipped=1。
+    """
+    from backend.book2text.core.storage import db as db_module
+
+    project_id = create_project(client, auth_headers, sample_pdf)
+    recognize(client, auth_headers, project_id, 1)
+
+    blocks = blocks_of(client, auth_headers, project_id)
+    assert blocks, "首次识别没有落块"
+    first = blocks[0]
+    edit_block_text(client, auth_headers, project_id, first, MANUAL_TEXT)
+
+    with db_module.open_database(library_dir / project_id, apply_migrations=False) as conn:
+        conn.execute("UPDATE page SET active_run_id = NULL WHERE page_no = 1")
+        conn.commit()
+        row = conn.execute(
+            "SELECT active_run_id FROM page WHERE page_no = 1"
+        ).fetchone()
+    assert row["active_run_id"] is None, "夹具没把 active_run_id 置空"
+
+    recognize(client, auth_headers, project_id, 1)
+
+    after = blocks_of(client, auth_headers, project_id)
+    edited = next(item for item in after if item["block_id"] == first["block_id"])
+    assert edited["text"] == MANUAL_TEXT, (
+        "没有 active run 但有人工成果时被整页覆盖了——applied 仍然带着 not has_active"
+    )
+    job = latest_job(client, auth_headers, project_id)
+    assert job["skipped"] == 1
+    assert job["status"] == "succeeded_with_skips"
