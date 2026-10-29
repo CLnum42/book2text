@@ -68,6 +68,8 @@ let readingTreeChapterAuto = null;   // 上一次自动展开的章（用户手�
 let readingJudgeTimes = [];
 // UX V3：窗口边界上正在向服务端要「下一处未审」；这期间面板保持打开，Enter 先不重复判。
 let readingAdvancing = false;
+// 面板最近一次打开的时刻：换页/重绘与「刚开面板」同帧竞争时，用它区分“刚开的”与“残留的”。
+let readingPanelOpenedAt = 0;
 // 跳转后等待目标行落位的 key：只挡这一段页码写入（见 onReadingScroll）
 let readingJumpSettleKey = null;
 let readingJumpSettleTicks = 0;
@@ -1477,8 +1479,9 @@ function renderReading({ reset = false, startAt = null } = {}) {
     const host = el("reading-panel-host");
     const stub = host && host.querySelector(".reading-panel");
     const stubKey = stub && stub.dataset.key;
-    const stubMark = stubKey ? readingMarks.get(stubKey) : null;
-    if (stubKey && stubMark && Number(stubMark.page_no) === Number(readingPageNo)) {
+    // 刚开（2.5s 内）的面板是「判决即前进」刚换上的，reset 晚到一步不能把它当残留藏掉；
+    // 只有明显过期的旧面板才隐藏。
+    if (stubKey && performance.now() - readingPanelOpenedAt < 2500) {
       readingPanelKey = stubKey;
     } else {
       hideReadingPanelHost();
@@ -1625,6 +1628,7 @@ function openReadingPanel(entry) {
   // 行节点只用来定位与样式。所以找不到就降级挂到正文流顶部，绝不让用户"跳过去了但没有面板"。
   readingPanelKey = key;
   readingAdvancing = false;
+  readingPanelOpenedAt = performance.now();
   const panel = document.createElement("div");
   panel.className = "reading-panel";
   panel.dataset.key = readingPanelKey;

@@ -1524,6 +1524,7 @@ const OWNERS = {
   readingTreeChapterAuto: "reading-view.js",
   readingJudgeTimes: "reading-view.js",
   readingAdvancing: "reading-view.js",
+  readingPanelOpenedAt: "reading-view.js",
   readingData: "reading-view.js",
   readingProject: "reading-view.js",
   readingEntries: "reading-view.js",
