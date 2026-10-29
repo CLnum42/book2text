@@ -1114,10 +1114,12 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 
 | # | 事项 | 触发条件 | 状态 |
 |---|---|---|---|
-| T1 | `boundary.test.mjs` 里 4 条 R3 豁免的 `expires` 从「正文流① 搬完」改为「**punct 整体搬完**」（`reading-garbled-count`/`reading-garbled-open`/`reading-punct-count`/`reading-punct-open`） | **下一笔碰 `boundary.test.mjs` 的提交必须带上这 4 个字符串**；若该提交没改，单独开一笔（30 秒） | 未做 |
-| T2 | R2（视图互引）上闸 | 第二个视图模块（`pages-view.js` 或 `index-view.js`）创建时 | 未做 |
-| T3 | R6（一模块一 window 接口对象）上闸 | 同上 | 未做 |
-| T4 | **`showView` 接 `exit()`**——现在 `.exit(` 全仓库 **0 个调用点**，三个模块的 `exit` 都是死代码 | preview/index 拆完后单独一轮（**改行为**，要行为等价证据）；做完才能把 `active` 收回模块（替掉 `injected.isActive()`） | 未做 |
+| T1 | `boundary.test.mjs` 里 4 条 R3 豁免的 `expires` 从「正文流① 搬完」改为「**punct 整体搬完**」（`reading-garbled-count`/`reading-garbled-open`/`reading-punct-count`/`reading-punct-open`） | **下一笔碰 `boundary.test.mjs` 的提交必须带上这 4 个字符串**；若该提交没改，单独开一笔（30 秒） | **已完成** `50bc45f`（4 条 `expires` 现在都是「punct 整体搬完」） |
+| T2 | R2（视图互引）上闸 | 第二个视图模块（`pages-view.js` 或 `index-view.js`）创建时 | **已完成** `f8e690a`：`x-view.js` 里出现 `window.YView`（Y≠X）即红，带合成样例自检 |
+| T3 | R6（一模块一 window 接口对象）上闸 | 同上 | **已完成** `f8e690a`：每文件恰好 1 个接口对象、名字按文件名转驼峰；另配 `WINDOW_HOOK_EXCEPTIONS`（埋点出现即登记，`MAX` 12） |
+| T4 | **`showView` 接 `exit()`**——现在 `.exit(` 全仓库 **0 个调用点**，三个模块的 `exit` 都是死代码 | **index 落盘后即可开工**（`a937ff5`）；单独一轮，**改行为**，要行为等价证据（切视图后 observer/timer 是否真断）。做完才能把 `active` 收回模块（替掉 `injected.isActive()`） | 未做（**下一阶段第一优先**） |
+
+| T5 | **导出棘轮按模块建**（`VIEW_EXPORTS`：`ReadingView` 6 / `PreviewView` 3 / `IndexView` 4，新 `*-view.js` 不登记即红） | 每拆一个视图都必须同批登记 | **已完成** `477beea`（D-100 条件 ③） |
 
 **为什么写进表而不是记在脑子里**：T1 的错法很具体——正文流① 排在前，做完会有人按表检查这 4 条该不该到期、发现不该，然后记一句"待 punct"就沉了；下次再看表，写的还是「正文流①」。**到期点写错 = 这条豁免永远不会被主动清理**，和"例外表挂着已删代码"是同一种松，只是松在文字上。
 
