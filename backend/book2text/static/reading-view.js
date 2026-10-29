@@ -466,6 +466,15 @@ function setupReading() {
     }
     if (event.key === "Enter") {
       event.preventDefault();
+      // UX V3：面板开着时 Enter = "保留原文并下一处"（原来的写法无条件 gotoNextUnreviewed，
+      // 于是面板开着按 Enter 会跳过当前条且不记录——这是那个既有 bug）。
+      const panelEntry = readingPanelKey
+        ? readingEntries.find((item) => readingKey(item.block_id, item.line_index) === readingPanelKey)
+        : null;
+      if (panelEntry) {
+        draftReading(panelEntry, "kept", null);
+        return;
+      }
       gotoNextUnreviewed();
     } else if (event.key === "Escape") {
       closeReadingPanel();
@@ -1552,12 +1561,13 @@ function openReadingPanel(entry) {
   actions.className = "reading-panel__actions";
   const adopt = document.createElement("button");
   adopt.type = "button";
-  adopt.className = "btn btn--pri btn--sm";
+  adopt.className = "btn btn--sm";
   adopt.textContent = "采用候选";
   adopt.addEventListener("click", () => draftReading(entry, "adopted", entry.candidate));
   const keep = document.createElement("button");
   keep.type = "button";
-  keep.className = "btn btn--sm";
+  // UX V3：默认按钮是「保留原文」（80.9% 的判决是保留），不是「采用候选」。
+  keep.className = "btn btn--pri btn--sm";
   keep.textContent = "保留原文";
   keep.addEventListener("click", () => draftReading(entry, "kept", null));
   const edit = document.createElement("button");
