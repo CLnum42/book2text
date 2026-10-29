@@ -1116,6 +1116,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | T1 | `boundary.test.mjs` 里 4 条 R3 豁免的 `expires` 从「正文流① 搬完」改为「**punct 整体搬完**」（`reading-garbled-count`/`reading-garbled-open`/`reading-punct-count`/`reading-punct-open`） | **下一笔碰 `boundary.test.mjs` 的提交必须带上这 4 个字符串**；若该提交没改，单独开一笔（30 秒） | 未做 |
 | T2 | R2（视图互引）上闸 | 第二个视图模块（`pages-view.js` 或 `index-view.js`）创建时 | 未做 |
 | T3 | R6（一模块一 window 接口对象）上闸 | 同上 | 未做 |
+| T4 | **`showView` 接 `exit()`**——现在 `.exit(` 全仓库 **0 个调用点**，三个模块的 `exit` 都是死代码 | preview/index 拆完后单独一轮（**改行为**，要行为等价证据）；做完才能把 `active` 收回模块（替掉 `injected.isActive()`） | 未做 |
 
 **为什么写进表而不是记在脑子里**：T1 的错法很具体——正文流① 排在前，做完会有人按表检查这 4 条该不该到期、发现不该，然后记一句"待 punct"就沉了；下次再看表，写的还是「正文流①」。**到期点写错 = 这条豁免永远不会被主动清理**，和"例外表挂着已删代码"是同一种松，只是松在文字上。
 
@@ -1129,9 +1130,11 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 |---|---|---|
 | `init(deps)` | **必选** | `boot()` 调一次；`deps` 见 20.4 |
 | `enter()` | **必选** | `showView(name)` 进这个视图时调 |
-| `exit()` | **必选** | 离开时调（断 observer/timer，置 `active=false`） |
+| `exit()` | **必选** | 离开时调（断 observer/timer，置 `active=false`）。**现状：0 个调用点**（见 §19 T4） |
 | `getCurrent()` | **按需** | **只有外壳真有调用点时才加**（目前只有 reading：`savePosition` 要页码） |
 | 业务方法（如 `reload`/`toggleFollow`） | **允许，逐个签字** | 每加一个过 R8：棘轮只降不升、写明调用点、Architect 签字 |
+
+**`active` 的过渡口径（2026-10-29 修正）**：原定"模块自己记 `active`"**今天做不到**——`showView` 从不调 `exit()`（`.exit(` 全仓库 0 命中），模块没有"离开"的时点可依赖。所以过渡期统一用 `injected.isActive()`（preview / index 已是这个写法），**到期点 = §19 T4**。这不是偷懒，是缺口暴露：`exit()` 零调用意味着**三个模块的 observer/timer 在切视图时从不清理**——要单开一轮接上，不能混在搬运里。
 
 **不许这样加**：为了"将来可能用"预留方法。`on`/`emit` 已经被删过一次，理由相同——没有订阅者的事件缝不是缝。
 
@@ -1207,6 +1210,8 @@ function refresh() {
 不需要 `active ? ... : skip` 的 ternary——守卫留在 `paintIndexDecorations` 里，写一次就够。
 
 **认可的偏差（记录在案）**：`syncStepToggles` 那 2 处（636/645）原来只在 index 可见时画；走 `refresh()` 后，**index 隐藏时也会多一次 `syncIndexToggles()`**（写 4 个按钮的 class，幂等、不可观察）。接受，**不为它发明 `refresh({toggles:false})` 参数包**——参数化入口是把简单接口做成配置项的典型开头。
+
+**`loadPageIndex` 的 DOM 写点必须与搬迁同笔（2026-10-29 裁定）**：它在写 `index-meta` / `index-list` / `index-empty`（目录子树 id）。模块一旦拥有该子树，这三行留在 `app.js` 里 R3 直接红，而"搬进模块"的前提是模块已存在——**结构上不存在"先行为后代码"的中间态**。裁定：**同笔提交**，但必须附契约测试（preview 触发过 `loadPageIndex` 之后，目录列表不被重画；断言 `#index-list` 子节点数与最后渲染页序号不变）。
 
 **一条否决**：DevLead 表格第 5 行（preview 的 `init deps` 注入 `syncIndexToggles`）**不是 `refresh()` 的调用点**，也不许改成 preview 调 `window.IndexView.refresh()`——那是 R2 违规（模块互引）。它保持"外壳在 boot 里注入一个 lambda"的形态，由外壳决定是否顺带 `IndexView.refresh()`。
 
