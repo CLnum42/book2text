@@ -1410,28 +1410,86 @@ function domIdsIn(jsStripped) {
 }
 
 /**
- * `stage2-movers-seed.md` 的「函数 → 刀号」映射（到期刀的唯一权威来源）。
- * 文件不在 → 空表（判不了就跳过，由「待定/到期」那几条另行兜底）。
+ * `stage2-movers-seed.md` 的行：`{host, wire, stage}`。
  *
- * **列顺序别写死成「第 2 列是数字」**：真 seed 是 `| 函数 | 引用的 id | 行范围 | 刀N |`，
- * 第 2 列是 id 清单。早期这里按 `\| \d+ \|` 匹配 → 一个都匹不到 → `seedStages.size === 0`
- * → 下面「到期刀 == 现算 max」「seed 与实测函数集合对集」**两条整体跳过、空跑**，
- * 到期刀随便改闸都绿（2026-10-29 由 TestDev 变异① 抓到）。
- * 现在只认「反引号函数名」开头、「刀N」结尾，中间两列不约束；`seed 行数 == 解析数` 另有一条测试兜着。
+ * **按列拆，不按「第 N 列是什么类型」写正则**：早期版本按 `\| \d+ \|` 匹配第 2 列，
+ * 而真 seed 第 2 列是 id 清单 → 一个都匹不到 → `seedStages.size === 0`，下面两条判据
+ * **整体跳过、空跑**，到期刀随便改闸都绿（2026-10-29 由 TestDev 变异抓到，当天修）。
+ *
+ * `wire` 列（可空）是给「host 名被 `wirePagesXxx` 取代」的搬迁期登记：
+ * 一个 id 的接线从 `setupPageMore` 挪进 `wirePagesPageMore` 时，**显式写出来**，
+ * 不许用「去掉 setup 前缀推 wire 名」那种启发式——推错的后果是红变绿。
  */
-function pagesSeedStages() {
+function pagesSeedRows() {
   const file = fileURLToPath(new URL("../../docs/refactor/evidence/pages/stage2-movers-seed.md", import.meta.url));
   let text = "";
   try {
     text = readFileSync(file, "utf8");
   } catch {
-    return new Map();
+    return [];
   }
+  const rows = [];
+  for (const line of text.split("\n")) {
+    if (!line.startsWith("| `")) continue;
+    const cells = line.split("|").map((cell) => cell.trim());   // ['', '`fn`', ids, range, '刀N', wire, '']
+    const host = /^`([A-Za-z_$][\w$]*)`$/.exec(cells[1] || "");
+    const stage = /^刀(\d)$/.exec(cells[4] || "");
+    if (!host || !stage) continue;
+    const wire = (/`([A-Za-z_$][\w$]*)`/.exec(cells[5] || "") || [])[1] || "";
+    rows.push({ host: host[1], wire, stage: Number(stage[1]) });
+  }
+  return rows;
+}
+
+/** 「函数名（含 wire 名）→ 刀号」：到期刀按 max 算，wire 名必须和 host 名映到同一刀。 */
+function pagesSeedStages(rows = pagesSeedRows()) {
   const map = new Map();
-  for (const m of text.matchAll(/^\| `([A-Za-z_$][\w$]*)` \| [^|]+ \| [^|]+ \| 刀(\d) \|/gm)) {
-    map.set(m[1], Number(m[2]));
+  for (const row of rows) {
+    map.set(row.host, row.stage);
+    if (row.wire) map.set(row.wire, row.stage);
   }
   return map;
+}
+
+/**
+ * seed 与实测的**两向覆盖**（不是严格集合相等）。
+ *
+ * 严格相等会把两份文件绑成必须同一笔提交：`app.js` 改成 `wirePagesXxx` 而 seed 还没登记 → 红；
+ * 顺序错一步就红，而且看起来像"实现坏了"。分批落盘需要的是"改前、改后、中间态都绿"：
+ *
+ * ```
+ * ① measured ⊆ (seed 名 ∪ 各行的 wire)                      —— 实测的每个函数都登记过
+ * ② 每一行：自身名 或 它的 wire 至少一个在 measured 里        —— 没有"两头都不在"的丢失
+ * ```
+ *
+ * 两条合起来等价于集合相等，但对提交顺序不敏感；③「host 与 wire 同时存在」是合法中间态（绿）。
+ *
+ * @returns {string[]} 问题清单（空 = 覆盖住）
+ */
+function seedCoverageProblems(measured, rows) {
+  const problems = [];
+  const declared = new Set();
+  for (const row of rows) {
+    declared.add(row.host);
+    if (row.wire) declared.add(row.wire);
+  }
+  const onlyMeasured = [...measured].filter((name) => !declared.has(name));
+  const onlySeed = rows
+    .filter((row) => !measured.has(row.host) && !(row.wire && measured.has(row.wire)))
+    .map((row) => (row.wire ? `${row.host}（wire ${row.wire} 也没出现）` : row.host));
+  if (onlyMeasured.length > 0) {
+    problems.push(
+      `pages 的实测函数未在 seed 登记：${onlyMeasured.slice(0, 3).join("、")}`
+      + `（共 ${onlyMeasured.length} 个）——新函数要登记，旧名被取代要在 wire 列写清新的名字`,
+    );
+  }
+  if (onlySeed.length > 0) {
+    problems.push(
+      `pages 的 seed 里有函数的自身名与 wire 名在实测里都不存在：${onlySeed.slice(0, 3).join("、")}`
+      + `（共 ${onlySeed.length} 个）——这是真丢函数，不是改名`,
+    );
+  }
+  return problems;
 }
 
 /**
@@ -1446,9 +1504,9 @@ function r3Problems({
   // pages 走**另一张表**：到期按刀、上限按 id，和 reading 那 4 条（R3_MAX_EXEMPTIONS）互不影响。
   pagesExemptions = PAGES_R3_EXEMPTIONS, pagesStage = PAGES_STAGE, pagesTotalCap = PAGES_R3_TOTAL_CAP,
   pagesPendingCap = PAGES_R3_PENDING,
-  // seed 的「函数 → 刀号」也要可注入：合成夹具（假 html / 假源码）里没有真函数名，
-  // 不注入就会与真 seed 对不上，误报「seed 与实测函数集合不等」。
-  pagesSeed = pagesSeedStages(),
+  // seed 的**行**（host / wire / 刀）也要可注入：合成夹具（假 html / 假源码）里没有真函数名，
+  // 不注入就会与真 seed 对不上，误报「seed 覆盖不到实测」。
+  pagesSeed = pagesSeedRows(),
 }) {
   const sections = parseViewSections(html);
   const problems = [];
@@ -1550,11 +1608,12 @@ function r3Problems({
         problems.push(`豁免 ${item.id} 到期（刀 ${item.stage}）但 app.js 还引用着 ${occurrences.length} 处——到期不搬 = 红`);
       }
     }
-    const seedStages = pagesSeed;
+    const seedRows = pagesSeed;
+    const seedStages = pagesSeedStages(seedRows);
 
-    // **函数集合对集**：seed 的 69 个函数 == 表里 id 的引用函数并集。
-    // 挡住「换了 seed 但表没重算」——那种漂不会红，只会让整张表偏早或偏晚。
-    if (seedStages.size > 0) {
+    // **函数集合两向覆盖**（见 `seedCoverageProblems` 的说明：不用严格相等，否则把
+    // app.js 与 docs 两份文件绑成必须同一笔提交，分批落盘的中间态会被误判成实现坏了）。
+    if (seedRows.length > 0) {
       const union = new Set();
       for (const id of pagesTable.keys()) {
         for (const line of appAllIds.get(id) || []) {
@@ -1562,15 +1621,7 @@ function r3Problems({
           if (fn) union.add(fn.name);
         }
       }
-      const onlySeed = [...seedStages.keys()].filter((name) => !union.has(name));
-      const onlyTable = [...union].filter((name) => !seedStages.has(name));
-      if (onlySeed.length > 0 || onlyTable.length > 0) {
-        problems.push(
-          `pages 的 seed 与实测函数集合不等（seed ${seedStages.size} 个 / 实测 ${union.size} 个）：`
-          + `只在 seed：${onlySeed.slice(0, 3).join("、") || "无"}；只在实测：${onlyTable.slice(0, 3).join("、") || "无"}`
-          + "——换了 seed 就要按 max 重算一遍到期刀",
-        );
-      }
+      problems.push(...seedCoverageProblems(union, seedRows));
     }
 
     // **到期刀不许手调**：必须等于「引用它的所有函数在 seed 里的最大刀号」。
@@ -1635,7 +1686,7 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
     exemptions: [],
     pagesStage: 1, pagesTotalCap: 3, pagesPendingCap: 2,
     // 合成夹具里没有真函数名：seed 给空表，否则会与真 seed 对不上（误报「集合不等」）
-    pagesSeed: new Map(),
+    pagesSeed: [],
   };
 
   const green = r3Problems({
@@ -1693,7 +1744,7 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
     viewSources: [{ fileName: "pages-view.js", source: "" }],
     exemptions: [],
     pagesStage: 1, pagesTotalCap: 5, pagesPendingCap: 0,
-    pagesSeed: new Map([["painter", 2], ["bumper", 5]]),
+    pagesSeed: [{ host: "painter", wire: "", stage: 2 }, { host: "bumper", wire: "", stage: 5 }],
   };
   const tuned = r3Problems({ ...tuneBase, pagesExemptions: [{ id: "a", cap: 2, stage: 2 }] });
   assert.ok(
@@ -1714,16 +1765,63 @@ test("R3 自检（到期判据存在性）：seed 必须解析出函数→刀号
   const file = fileURLToPath(new URL("../../docs/refactor/evidence/pages/stage2-movers-seed.md", import.meta.url));
   const text = readFileSync(file, "utf8");
   const rows = [...text.matchAll(/^\| `[A-Za-z_$][\w$]*` \|/gm)].length;
-  const parsed = pagesSeedStages();
+  const parsed = pagesSeedRows();
   assert.ok(rows > 0, "seed 里一行函数表都没有——文件结构变了，先修这条自检");
   assert.equal(
-    parsed.size, rows,
-    `seed 有 ${rows} 行函数表，只解析出 ${parsed.size} 个函数——解析正则又漂了，`
-    + "「到期刀 == max」与「seed/实测集合对集」两条会整体空跑（闸绿、判据不存在）",
+    parsed.length, rows,
+    `seed 有 ${rows} 行函数表，只解析出 ${parsed.length} 个函数——解析又漂了，`
+    + "「到期刀 == max」与「seed/实测覆盖」两条会整体空跑（闸绿、判据不存在）",
   );
-  for (const [name, stage] of parsed) {
-    assert.ok(stage >= 1 && stage <= 5, `seed 里 ${name} 的刀号 ${stage} 不在 1..5——解析串位了`);
+  for (const row of parsed) {
+    assert.ok(row.stage >= 1 && row.stage <= 5, `seed 里 ${row.host} 的刀号 ${row.stage} 不在 1..5——解析串位了`);
   }
+});
+
+/**
+ * 「wire 列」自检三条（缺一条这一列就成摆设）：
+ *
+ * ```
+ * a. wire 写成不存在的名字、自身名也不在实测 → 红（真丢函数的形态）
+ * b. 实测冒出既不在 seed 名、也不在任一 wire 列的名字 → 红（新函数没登记）
+ * c. host 与 wire 同时在实测里 → 绿（搬迁期中间态，不许拦）
+ * ```
+ *
+ * 为什么必须有 c：刀 2.5 是分批把接线从 `setupXxx` 挪进 `wirePagesXxx`，中间态合法；
+ * 若判据要求"必须二选一"或"严格相等"，每一步都会被判红，最后只能靠绕过提交。
+ */
+test("R3 自检（seed wire 列）：坏的 wire 要红、多出的实测名要红、host+wire 并存要绿", () => {
+  const rows = [
+    { host: "setupPageMore", wire: "wirePagesPageMore", stage: 2 },
+    { host: "setupCollabControls", wire: "", stage: 2 },
+  ];
+  // 搬迁后：实测只有 wire 名
+  const moved = new Set(["wirePagesPageMore", "setupCollabControls"]);
+  assert.deepEqual(seedCoverageProblems(moved, rows), [],
+    `seed 自检失败：合法的 wire 登记被误报——${seedCoverageProblems(moved, rows).join("；")}`);
+
+  // c：搬迁期中间态——host 与 wire 同时出现在实测里，必须绿
+  const both = new Set(["setupPageMore", "wirePagesPageMore", "setupCollabControls"]);
+  assert.deepEqual(seedCoverageProblems(both, rows), [],
+    `seed 自检失败：host 与 wire 并存（搬迁中间态）被拦住——${seedCoverageProblems(both, rows).join("；")}`);
+
+  // a：wire 写成不存在的名字，且自身也不在实测 → 必须是"真丢函数"
+  const brokenWire = [
+    { host: "setupPageMore", wire: "wirePagesNope", stage: 2 },
+    { host: "setupCollabControls", wire: "", stage: 2 },
+  ];
+  const a = seedCoverageProblems(moved, brokenWire);
+  assert.ok(
+    a.some((item) => item.includes("setupPageMore（wire wirePagesNope 也没出现）")),
+    `seed 自检失败：坏的 wire 列被放过——${a.join("；")}`,
+  );
+
+  // b：实测里冒出一个没登记的新名字 → 必须红
+  const extra = new Set(["wirePagesPageMore", "setupCollabControls", "brandNewWiring"]);
+  const b = seedCoverageProblems(extra, rows);
+  assert.ok(
+    b.some((item) => item.includes("brandNewWiring")),
+    `seed 自检失败：没登记的新函数被放过——${b.join("；")}`,
+  );
 });
 
 test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子树的引用必须在豁免表里", () => {
