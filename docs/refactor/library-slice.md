@@ -88,7 +88,7 @@ renderRecognitionSettings  pageMarginStorageKey / pageOverlayStorageKey / review
 
 | 类 | 常量 | 处理 |
 |---|---|---|
-| **随模块搬走**（library 自己的状态） | `libraryProjects` · `lockConflictTarget` | 变模块内 `let`，不进 deps |
+| **留外壳，走 getter**（2026-10-29 改判） | `libraryProjects` · `lockConflictTarget` | **不搬**：`libraryProjects` 由外壳的 `loadLibrary()` 写入，而 `loadLibrary` 有 8 个调用点、一半在模块外（`boot` / `closeProject` / `openPackageFile`）→ 按 ⑧「模块不存副本」应**留外壳、模块用 `getLibraryProjects()` 现取**。`lockConflictTarget` 同理 |
 | **注入（只读或 get/set）** | `currentProject` → `getProject()`；`workflowStep` · `workflowStepPinned` · `projectSummary` · `projectExports` · `workflowSummary` · `workflowConfirmationCounts` · `pendingPageNos` · `pendingPageCount` · `setupSuggestions` · `setupSuggestionsLoaded` · `marginSuggestion` · `finishSummary` · `finishSummaryProject` · `reviewMarginOn` · `reviewBlockFilter` · `pageZoomTouched` · `pagesMarginOn` · `pagesOverlayOn` · `marginFitTried` · `marginUndoStack` · `backupSelected` · `lastStepPanelKey` · `workflowByPageId` · `token` | 走 getter；有写点的成对给 setter |
 | **不进 deps** | `el` | 模块自带一行（§20.4） |
 
