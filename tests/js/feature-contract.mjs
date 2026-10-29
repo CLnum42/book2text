@@ -294,6 +294,40 @@ function moveChangesFromGit(sha) {
 /**
  * @returns {{ problems: string[], commitCount: number }}
  */
+/**
+ * base 树能不能当**回放基**（A2/A4 与 13/13 红证据的树）。
+ *
+ * 判据（DevLead 2026-10-29）：`ring-break-base:<static>` 下的 `*-view.js` 集合必须等于 HEAD 的集合。
+ * 为什么只比这一项：tag 打早了（L0，static 下只有 `reading-view.js`）时，新测试在它上面会红在
+ * 「`init` 注入不存在、模块没拆」，而不是「这条边切错了」——两种红混成一种，A2/A4 就失去意义。
+ *
+ * 返回问题描述；null = 可以当回放基。
+ */
+export function baseTreeGap({ baseTag = "ring-break-base" } = {}) {
+  const statics = "backend/book2text/static";
+  let baseSha;
+  try {
+    baseSha = git(["rev-parse", "--short", baseTag]);
+  } catch {
+    return `找不到 ${baseTag}（A2/A4 与 13/13 红证据都要它当回放基）`;
+  }
+  let baseFiles;
+  try {
+    baseFiles = git(["ls-tree", "--name-only", `${baseTag}:${statics}`]).split("\n").filter(Boolean);
+  } catch {
+    return `${baseTag} 里没有 ${statics}`;
+  }
+  const headFiles = git(["ls-tree", "--name-only", `HEAD:${statics}`]).split("\n").filter(Boolean);
+  const views = (files) => files.filter((file) => /-view\.js$/.test(file)).sort();
+  const baseViews = views(baseFiles);
+  const headViews = views(headFiles);
+  if (baseViews.join(",") !== headViews.join(",")) {
+    return `ring-break-base=${baseSha} 不是回放基：base 树 static/ 下 *-view.js = [${baseViews.join("、")}]，`
+      + `HEAD = [${headViews.join("、")}]——在它上面跑 A2/A4 会红在「模块没拆」，不是「边切错了」`;
+  }
+  return null;
+}
+
 export function evaluateFeatureContract({ baseTag = "ring-break-base" } = {}) {
   const problems = [];          // 形态段（pre-commit 拦）
   const registryProblems = [];  // 登记段（CI / status.sh 红灯）
