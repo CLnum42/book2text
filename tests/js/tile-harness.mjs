@@ -101,7 +101,9 @@ function makeElement(environment, tag) {
 
 /**
  * 建一份测试环境：`document` / `IntersectionObserver` / 取图记录。
- * @param {{pages?: number[]}} [options]
+ * @param {{pages?: number[], setTimeout?: Function, clearTimeout?: Function}} [options]
+ *   `setTimeout` 可注入计数桩：用来断言"注册表清空后不再排扫"（§21.10 ③）。
+ *   环境里**没有** `requestAnimationFrame`，模块会走 Node 兜底那条路径。
  */
 export function makeEnvironment(options = {}) {
   const environment = {
@@ -153,8 +155,8 @@ export function makeEnvironment(options = {}) {
     const sandbox = {
       document,
       IntersectionObserver: Observation,
-      setTimeout,
-      clearTimeout,
+      setTimeout: options.setTimeout || setTimeout,
+      clearTimeout: options.clearTimeout || clearTimeout,
       console,
     };
     sandbox.window = sandbox;
@@ -213,7 +215,7 @@ export function makeDeps(environment, overrides = {}) {
   return {
     getProject: () => environment.project,
     getProfile: () => "view",
-    imageUrl: (pageNo, size) => `/api/projects/b2t_TEST/pages/${pageNo}/image?size=${size}&token=t`,
+    getImageUrl: (pageNo, size) => `/api/projects/b2t_TEST/pages/${pageNo}/image?size=${size}&token=t`,
     notify: (payload) => environment.notifications.push(payload),
     ...overrides,
   };

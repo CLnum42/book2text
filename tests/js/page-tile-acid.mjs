@@ -56,6 +56,30 @@ function tileNodes(body) {
     `held=${heldImage} other=${otherStillShows} disconnects=${environment.observers[0].disconnects}`);
 }
 
+// ①b 两宿主同挂同一页（Architect §21.10 ① 的代价，必须钉住）：图移动到最后挂的宿主、
+// 旧宿主空——这个"静默空白"单测抓不到，只有酸测试能抓
+{
+  const environment = makeEnvironment();
+  const tiles = environment.loadTile();
+  tiles.init(makeDeps(environment));
+  const first = environment.mount();
+  const second = environment.mount();
+  const a = tiles.create(first, { pageNo: 1, size: "view" });
+  const b = tiles.create(second, { pageNo: 1, size: "view" });
+  environment.show();
+  environment.settle();
+  const writes = srcCount(environment, "view");
+  const observers = environment.observers.length;
+  const inSecond = b.img.parentNode === b.el;
+  const firstEmpty = environment.tileOf(first).children.every((child) => child.tagName !== "IMG");
+  record("两宿主同挂同一页：仍只 1 次取图、1 个 observer",
+    writes === 1 && observers === 1, `src=${writes} observers=${observers}`);
+  record("两宿主同挂同一页：图在最后挂的宿主、旧宿主空（接线规则：先 release 再 create）",
+    inSecond && firstEmpty, `inSecond=${inSecond} firstEmpty=${firstEmpty}`);
+  tiles.release(a);
+  tiles.release(b);
+}
+
 // ② 泄漏面：建 N 个 → 宿主全摘 → 注册表与 observer 回 0
 {
   const environment = makeEnvironment({ pages: [1, 2, 3] });

@@ -156,3 +156,60 @@ test("overlays 是插槽：update 只换数据，重绘交给注入的 paintOver
   assert.equal(handle.overlays.marks[0], 7);
   assert.ok(painted.some((payload) => payload.overlays && payload.overlays.marks[0] === 7));
 });
+
+test("缺必需依赖：fail closed——create 一律 null，并提示一次（不许静默出一片空白）", () => {
+  const environment = makeEnvironment();
+  const tiles = environment.loadTile();
+  const notifications = [];
+  tiles.init({
+    getProject: () => environment.project,
+    notify: (payload) => notifications.push(payload),
+  });
+  const handle = tiles.create(environment.mount(), { pageNo: 1, size: "view" });
+  assert.equal(handle, null);
+  assert.equal(notifications.length, 1);
+  assert.ok(String(notifications[0].text).includes("getImageUrl"));
+});
+
+test("补齐依赖后重新 init：create 恢复正常（fail closed 不是永久坏掉）", () => {
+  const environment = makeEnvironment();
+  const tiles = environment.loadTile();
+  tiles.init({ getProject: () => environment.project });
+  assert.equal(tiles.create(environment.mount(), { pageNo: 1, size: "view" }), null);
+  tiles.init(makeDeps(environment));
+  const handle = tiles.create(environment.mount(), { pageNo: 1, size: "view" });
+  assert.ok(handle, "补上 getImageUrl 之后应当出瓷砖");
+});
+
+test("没有 rAF：注册表清空后不再排扫（不许留常驻定时器）", () => {
+  const queue = [];
+  let scheduled = 0;
+  const schedule = (fn) => {
+    scheduled += 1;
+    const entry = { fn, cancelled: false };
+    queue.push(entry);
+    return { unref() {}, entry };
+  };
+  const drainOne = () => {
+    const entry = queue.shift();
+    if (entry) entry.fn();
+  };
+
+  const environment = makeEnvironment({ setTimeout: schedule });
+  const tiles = environment.loadTile();
+  tiles.init(makeDeps(environment));
+  const host = environment.mount();
+  const handle = tiles.create(host, { pageNo: 1, size: "view" });
+  environment.show();
+  environment.settle();
+  assert.equal(scheduled, 1);
+  drainOne();                          // 注册表非空 → 扫完继续排
+  assert.equal(scheduled, 2);
+
+  environment.body.removeChild(host);   // 宿主没了
+  drainOne();                           // 扫到空组 → 释放 → 注册表空
+  const atEmpty = scheduled;
+  drainOne();                           // 队列已空：不该再排
+  assert.equal(scheduled, atEmpty, "注册表清空后还排扫 = 常驻定时器");
+  assert.equal(handle.dead, true);
+});

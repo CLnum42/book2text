@@ -7,15 +7,45 @@ import vm from "node:vm";
 
 const MODULE = new URL("../../backend/book2text/static/step-timing.js", import.meta.url);
 
+/** 可控定时器：模块的 500ms 判定必须在用例手里，不能等真实时间。 */
+function makeTimers() {
+  const pending = [];
+  return {
+    pending,
+    setTimeout(fn, ms) {
+      const entry = { fn, ms, cancelled: false };
+      pending.push(entry);
+      return entry;
+    },
+    clearTimeout(entry) {
+      if (entry) entry.cancelled = true;
+    },
+    /** 跑最近挂上的那个（=当前有效的 500ms 判定）。 */
+    run() {
+      const entry = pending.pop();
+      if (entry && !entry.cancelled) entry.fn();
+    },
+    active() {
+      return pending.filter((entry) => !entry.cancelled);
+    },
+  };
+}
+
 function setup(options = {}) {
   const clock = { at: 1_000_000 };
+  const timers = makeTimers();
   const sandbox = { window: {} };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(readFileSync(MODULE, "utf8"), sandbox, { filename: "step-timing.js" });
   const timings = sandbox.StepTiming;
-  timings.init({ now: () => clock.at, steps: options.steps || ["review"] });
-  return { clock, timings, metrics: () => sandbox.__b2tStepTiming };
+  timings.init({
+    now: () => clock.at,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+    steps: options.steps || ["review"],
+  });
+  return { clock, timers, timings, metrics: () => sandbox.__b2tStepTiming };
 }
 
 test("enter/leave：墙钟累计，重复 enter 不在同一步里重复计时", () => {
@@ -113,4 +143,71 @@ test("live 对象就是 window.__b2tStepTiming：QA 直接读它，不用先 sna
   timings.leave();
   assert.equal(metrics().totalMs, 2_000);
   assert.equal(metrics().steps.review.ms, 2_000);
+});
+
+test("卡住口径：动作后 500ms 进度键没变 → stalls + 1，longestStallMs 记这一次", () => {
+  const { clock, timers, timings } = setup();
+  timings.enter("review");
+  clock.at += 1_000;
+  timings.bump("judge", { pageNo: 3, judged: 1, panel: "" });
+  clock.at += 500;                    // 500ms 到了，进度键没动
+  timers.run();
+  const step = timings.snapshot().steps.review;
+  assert.equal(step.stalls, 1);
+  assert.equal(step.longestStallMs, 500);
+  assert.equal(step.stuck, false);
+});
+
+test("卡住口径：500ms 内进度键变了 → 不计（有进展就不是卡）", () => {
+  const { clock, timers, timings } = setup();
+  timings.enter("review");
+  clock.at += 1_000;
+  timings.bump("judge", { pageNo: 3, judged: 1, panel: "" });
+  timings.progress({ pageNo: 4, judged: 1, panel: "" });   // 翻页了 = 有进展
+  clock.at += 500;
+  timers.run();
+  const step = timings.snapshot().steps.review;
+  assert.equal(step.stalls, 0);
+  assert.equal(step.consecutiveStalls, 0);
+});
+
+test("卡住口径：同一步连续 3 次 → stuck: true", () => {
+  const { clock, timers, timings } = setup();
+  timings.enter("review");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    clock.at += 1_000;
+    timings.bump("judge", { pageNo: 3, judged: 1, panel: "" });
+    clock.at += 500;
+    timers.run();
+  }
+  const step = timings.snapshot().steps.review;
+  assert.equal(step.stalls, 3);
+  assert.equal(step.stuck, true);
+});
+
+test("同一个 500ms 判定只挂一个定时器：连续动作时上一个被取消", () => {
+  const { timers, timings } = setup();
+  timings.enter("review");
+  timings.bump("page", { pageNo: 1 });
+  timings.bump("page", { pageNo: 2 });
+  timings.bump("page", { pageNo: 3 });
+  assert.equal(timers.active().length, 1, "每次动作都要先取消上一次，否则上百次动作挂上百个 timer");
+});
+
+test("leave 清掉挂着的判定（步骤切走之后不再判这一步）", () => {
+  const { timers, timings } = setup();
+  timings.enter("review");
+  timings.bump("judge", { judged: 0 });
+  timings.leave();
+  assert.equal(timers.active().length, 0);
+});
+
+test("字段就是 Chief 定的那两套：stalls/stuck/longestStallMs + idleOver60s/longestIdleMs", () => {
+  const { timings } = setup();
+  timings.enter("review");
+  const step = timings.snapshot().steps.review;
+  for (const key of ["stalls", "stuck", "longestStallMs", "idleOver60s", "longestIdleMs"]) {
+    assert.ok(key in step, `缺字段 ${key}`);
+  }
+  assert.equal(step.stuck, false);
 });
