@@ -1113,3 +1113,63 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | T3 | R6（一模块一 window 接口对象）上闸 | 同上 | 未做 |
 
 **为什么写进表而不是记在脑子里**：T1 的错法很具体——正文流① 排在前，做完会有人按表检查这 4 条该不该到期、发现不该，然后记一句"待 punct"就沉了；下次再看表，写的还是「正文流①」。**到期点写错 = 这条豁免永远不会被主动清理**，和"例外表挂着已删代码"是同一种松，只是松在文字上。
+
+---
+
+## 20. 其它视图的模块契约（2026-10-29，拆 `preview/index/review/pages/merge/library` 之前定）
+
+### 20.1 公开接口：必选 3 + 按需 1
+
+| 方法 | 要求 | 判据 |
+|---|---|---|
+| `init(deps)` | **必选** | `boot()` 调一次；`deps` 见 20.4 |
+| `enter()` | **必选** | `showView(name)` 进这个视图时调 |
+| `exit()` | **必选** | 离开时调（断 observer/timer，置 `active=false`） |
+| `getCurrent()` | **按需** | **只有外壳真有调用点时才加**（目前只有 reading：`savePosition` 要页码） |
+| 业务方法（如 `reload`/`toggleFollow`） | **允许，逐个签字** | 每加一个过 R8：棘轮只降不升、写明调用点、Architect 签字 |
+
+**不许这样加**：为了"将来可能用"预留方法。`on`/`emit` 已经被删过一次，理由相同——没有订阅者的事件缝不是缝。
+
+### 20.2 R6 现在可以机检（8/9）
+
+**判定式**：扫每个 `static/*-view.js`，找 `window\.[A-Za-z_$][\w$]*\s*=` 的赋值，断言**恰好 1 个**，且名字 = 文件名转驼峰（`preview-view.js` → `PreviewView`）。
+违反 = 红。实现成本约 10 行，可直接上闸。
+
+### 20.3 R2 判定式（等第二个模块出现即可上闸）
+
+**判定式**：`static/x-view.js` 内不得出现 `window.YView`（Y≠X）的**任何**引用（含 `window.PagesView.xxx()`、`ReadingView.on(...)`）。
+- 需要跨视图能力 → 走 `deps` 注入，不走模块之间的直接引用；
+- 别人 `<section>` 里的 id 也不许碰（R3 已覆盖）。
+反例：`preview-view.js` 里写 `window.ReadingView.reload()` → 红。
+
+### 20.4 共享物：不建 core 文件，用一个 deps 字面量
+
+**结论：不新建共享文件**（同意 DevLead：那会变成第 8 个上帝对象）。做法：
+
+```js
+// boot() 里构造一次，按引用传给每个 init()
+const deps = {
+  api: apiJson,            // HTTP + token + 错误归一
+  navigate: (name) => showView(name),
+  notify: (text, opts) => showNoticeBar(text, opts),
+  getProject: () => currentProject,
+  savePosition,            // (view, pageNo) => void
+  openPageDetail,          // (pageNo) => void
+  storage: window.localStorage,
+};
+```
+
+规则：
+- **`el` 不进 deps**：每个模块自带 `const el = (id) => document.getElementById(id)`（reading 已经这么做）；
+- 模块只取自己用到的键，**不许把 `getProject()` 的返回值缓存到模块级变量**（R10）；
+- deps 的键是**稳定契约**，加键不经过棘轮（它不在 `window` 上），但要在本表登记；
+- 任何模块都不许直接读 `currentView`（自己记 `active`）。
+
+### 20.5 拆的顺序
+
+**同意** `preview`(41) → `index`(48) → `review`(221) → `pages`(270) → `merge`(663)，两条附加条件：
+
+1. **拆 `pages` 之前先定页面瓷砖服务**。`review` 和 `pages` 都用页面图/瓷砖渲染（`pageImageUrl`/`pageProfileFor`/`paintTile*`），不先定就会拆出两份实现——正是我们要收的"正文流两个口径"。放在 `review` 和 `pages` 之间做，不要拖到 `merge` 之后。
+2. **拆 `merge` 之前先确认它的 DOM 段能不能按子面板切**（337 个 id / 1,008 行 HTML 是最大单块）。切不开就整块搬，但要在文档里写明"merge 是单块，不可再分"。
+
+**每个新模块的验收 = 现有四基线 + R1/R2/R3/R5/R6/R9 全绿 + 导出 keys 不增。**
