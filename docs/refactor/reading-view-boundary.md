@@ -1145,6 +1145,8 @@ R 编号由 TestDev 在闸表里领，§2 的 R1–R8 不动。
 
 **判据**：输出里必须**逐条列出 13 条边的名字**且每条标 RED。少于 13 条 = 不许打 tag；也不许把证据降成 N/13 再宣布通过——那走 §18.6 登记到期点。
 
+**打 tag 那一笔的同批动作（过渡态不许活成终态）**：把 CI 里 `contract-registry --strict --allow-transitional-base` 的 `--allow-transitional-base` **删掉**。那面 flag 的存在是因为 tag 现在还打在 L0 上；真 base 一打出，它就成了「CI 永远放行 base 不合格」的常开开关。同批不删 = 这个 tag 不算切完。
+
 ### 18.4 闸 C：运行时注入面探针（一次运行，四条断言）
 
 对象 = e2e 在真实 662 页书上跑的固定序列 **S1**，不是「随便点几下」。
@@ -1209,6 +1211,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | 2026-10-29 | A3 拆两段（R12） | 删：A3 在 pre-commit 就要求「已登记」的单段判定（它会把登记提交自己也挡住，`511df76` 那种「闸红、下一个人只能绕过」的窗口）。补：内核按「谁有权判」切两段——形态段（A1 同笔、首行必须 `test-contract:`/`move:`、test-contract 动产品、普通提交删文件）留在 pre-commit；登记段（§18.6 有行且带删/补/变异、未登记删除行合计）改成 `tests/js/contract-registry.mjs`（仪表盘 exit 0，`--strict` 供 CI exit 1）+ `scripts/status.sh` 的「闸A登记」一行；R12 在 `B2T_CONTRACT_STRICT=1` 时把登记段也当失败。自检改成「形态段放行 + 登记段红灯」与「登记齐全两段全绿」。变异：非 test-contract 删一行 → 形态段红；test-contract 且不登记 → 提交放行（89/0，只打印红灯）+ 严格模式 exit 1 + status.sh 2 条红灯；只删 README 一行 → 绿。**R7 两条变异 DevLead 已复跑**（`/tmp` 的 static 副本 + `B2T_STATIC_DIR`）：删 `library-view.js` 的 `<script>` → 「index.html 里没有 library-view.js 的 `<script>`——文件存在但没加载」；把它排到 `app.js` 之后 → 「library-view.js 必须在 app.js 之前加载（现在顺序反了：view=93309 app=93268）」。其余变异未复跑，按 TestDev 在真实 worktree 上的结果 | DevLead | d04e6eb |
 **`contract-registry.mjs` 的统计范围现在是过渡范围**：它算的是 `ring-break-base..HEAD`（今天 172 笔），而当前 tag 打在 L0 上（见 §18.2），这个范围**不等于破环序列**。真 base 切出前，「0 笔不合格」只能当「这一段历史里没有未登记的 test-contract 提交」，**不许当「登记齐全」的结论用**；输出里的那句 `… 笔提交的 §18.6 登记齐全` 也要在 TestDev 下次动它时改成「过渡范围」措辞。
 
+| 2026-10-29 | registry 读数口径 + base 树自检 | 删：`0 笔（N 笔提交的 §18.6 登记齐全）`——base 不是回放基时这句会被读成结论。补：base 不合法时输出 `过渡范围 <base>..HEAD（N 笔）：… 不许当「登记齐全」用`；新增 `baseTreeGap()`——`<base>:static` 与 HEAD 的 `*-view.js` 集合必须相等，不等 fail closed（`--strict` 红），过渡期须显式 `--allow-transitional-base` 且输出注明；`--base <ref>` 可换基点。变异：base=`afe20fe`（只有 reading-view.js）→ 红并说明两种红会混；`--base HEAD` → 绿「HEAD..HEAD（0 笔）登记齐全」；`--strict` 配 tag → exit 1，配 HEAD → exit 0。**三条读数 DevLead 已复跑**：默认 exit 0（带过渡红字）、`--strict` exit 1、`--strict --base HEAD` exit 0 | DevLead | a78188d |
 只有 DevLead 能加行。没有登记行的放宽一律按违规算。
 
 ---
