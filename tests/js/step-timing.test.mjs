@@ -211,3 +211,18 @@ test("字段就是 Chief 定的那两套：stalls/stuck/longestStallMs + idleOve
   }
   assert.equal(step.stuck, false);
 });
+
+test("快照把当前步的进行中时间算进 msSoFar（否则跑完 40 页审校那格还是 0）", () => {
+  const { clock, timings } = setup({ steps: ["pages", "review"] });
+  timings.enter("pages");
+  clock.at += 4_000;
+  timings.enter("review");
+  clock.at += 6_000;                  // 审校还没离开
+  const shot = timings.snapshot();
+  assert.equal(shot.steps.pages.ms, 4_000);
+  assert.equal(shot.steps.pages.msSoFar, 4_000);
+  assert.equal(shot.steps.review.ms, 0, "结算值还没到 leave，就该是 0");
+  assert.equal(shot.steps.review.msSoFar, 6_000);
+  assert.equal(shot.totalMs, 4_000);
+  assert.equal(shot.totalMsSoFar, 10_000);
+});
