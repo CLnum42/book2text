@@ -179,9 +179,16 @@ def test_human_touched_page_without_active_run_is_not_overwritten(
     recognize(client, auth_headers, project_id, 1)
 
     after = blocks_of(client, auth_headers, project_id)
+    after_ids = [item["block_id"] for item in after]
+    # 先断言"旧块还在"：覆盖发生时是整页软删重建，旧 block_id 会消失，
+    # 直接 next(...) 找块会抛 StopIteration——那种红读不出"人工文本被冲掉"这件事。
+    assert first["block_id"] in after_ids, (
+        "旧块被替换了：没有 active run 但有人工成果时整页软删重建，人工文本随之丢失"
+        f"（覆盖前 block_id={first['block_id']}，覆盖后={after_ids}）"
+    )
     edited = next(item for item in after if item["block_id"] == first["block_id"])
     assert edited["text"] == MANUAL_TEXT, (
-        "没有 active run 但有人工成果时被整页覆盖了——applied 仍然带着 not has_active"
+        f"人工改过的文本被覆盖了（期望 {MANUAL_TEXT!r}，实际 {edited['text']!r}）"
     )
     job = latest_job(client, auth_headers, project_id)
     assert job["skipped"] == 1
