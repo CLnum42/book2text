@@ -16,14 +16,20 @@
 
 | 函数 | 引用的 id | 行范围 | 到期刀 | wire |
 |---|---|---|---|---|
-| `boot` | `pages-margin-toggle`、`pages-overlay-toggle` | 13983–14384（403 行） | 刀2 |  |
-| `setupCollabControls` | `assign-list-toggle`、`assign-open` | 13470–13487（19 行） | 刀2 |  |
+| `boot` | `pages-margin-toggle`、`pages-overlay-toggle` | 13983–14384（403 行） | 刀5 |  |
+| `setupCollabControls` | `assign-list-toggle`、`assign-open` | 13470–13487（19 行） | 刀4 |  |
 | `setupExportPanel` | `rec-margin-judgement` | 2210–2246（38 行） | 刀2 | `wirePagesExportMarginJudgement` |
-| `setupLibrary` | `apply-high-suggestions`、`auto-apply-suggestions`、`aux-rerun`、`backups-open`、`check-pending`、`filter-recognition`、`filter-triage`、`filter-type`、`filter-workflow`、`layout-block-apply-all`、`layout-block-confirm`、`layout-detect-open`、`margin-confirm-all`、`page-grid`、`page-more-menu`、`page-range`、`page-range-select`、`pages-margin-toggle`、`pages-only-included`、`pages-overlay-toggle`、`pages-zoom-in`、`pages-zoom-out`、`rec-aux-all`、`rec-start-all`、`selection-all`、`selection-check`、`selection-clear`、`selection-more`、`selection-more-menu`、`selection-recognize`、`selection-select-all`、`setup-confirm-all`、`setup-confirm-selected`、`split-page-numbers`、`word-boxes-open` | 12425–12572（149 行） | 刀2 | `wirePagesFilters`、`wirePagesPageGrid`、`wirePagesPageRange`、`wirePagesSelection`、`wirePagesSelectionMore`、`wirePagesPanes`、`wirePagesSetup` |
+| `setupLibrary` | `check-pending` | 12608–12703（96 行） | 刀4 | `wirePagesFilters`、`wirePagesPageGrid`、`wirePagesPageRange`、`wirePagesSelection`、`wirePagesSelectionMore`、`wirePagesPanes`、`wirePagesSetup`、`wirePagesAutoApplySuggestions`、`wirePagesSelectionCheck`、`wirePagesCheckPending` |
+| `setupLibrary` | `layout-detect-open` | 12608–12703（96 行） | 刀3 | `wirePagesFilters`、`wirePagesPageGrid`、`wirePagesPageRange`、`wirePagesSelection`、`wirePagesSelectionMore`、`wirePagesPanes`、`wirePagesSetup`、`wirePagesAutoApplySuggestions`、`wirePagesSelectionCheck`、`wirePagesCheckPending` |
+| `setupLibrary` | `apply-high-suggestions`、`aux-rerun`、`backups-open`、`page-more-menu`、`word-boxes-open` | 12608–12703（96 行） | 刀5 | `wirePagesFilters`、`wirePagesPageGrid`、`wirePagesPageRange`、`wirePagesSelection`、`wirePagesSelectionMore`、`wirePagesPanes`、`wirePagesSetup`、`wirePagesAutoApplySuggestions`、`wirePagesSelectionCheck`、`wirePagesCheckPending` |
+| `setupLibrary` | `layout-block-apply-all`、`page-more`、`page-number-open`、`page-range-select`、`rec-aux-all`、`rec-start-all`、`selection-all`、`selection-clear`、`selection-more`、`selection-more-menu`、`selection-select-all`、`setup-confirm-all`、`setup-confirm-selected`、`split-page-numbers` | 12608–12703（96 行） | 刀2 | `wirePagesFilters`、`wirePagesPageGrid`、`wirePagesPageRange`、`wirePagesSelection`、`wirePagesSelectionMore`、`wirePagesPanes`、`wirePagesSetup` |
+| `wirePagesAutoApplySuggestions` | `auto-apply-suggestions` | 12588–12592（5 行） | 刀5 |  |
+| `wirePagesSelectionCheck` | `selection-check` | 12597–12599（3 行） | 刀4 |  |
+| `wirePagesCheckPending` | `check-pending` | 12604–12606（3 行） | 刀4 |  |
 | `setupPageMore` | `page-more`、`page-more-menu` | 6882–6908（28 行） | 刀2 | `wirePagesPageMore` |
 | `setupPageNumberPanel` | `page-number-open`、`page-number-review-open` | 5852–5866（16 行） | 刀2 | `wirePagesPageNumberPanel` |
 | `setupRecognitionSettings` | `rec-dual-strategy`、`rec-engine`、`rec-language` | 3246–3262（18 行） | 刀2 | `wirePagesRecognitionSettings` |
-| `setupShell` | `selection-review-open`、`stats-open` | 1252–1293（43 行） | 刀2 |  |
+| `setupShell` | `selection-review-open`、`stats-open` | 1252–1293（43 行） | 刀5 |  |
 
 ## 刀3（15 个函数 / 29 种 id）
 

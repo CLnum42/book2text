@@ -95,22 +95,46 @@ page-number-panel · assign-panel · backups-mask · word-boxes-panel · split-b
 | `setupExportPanel` | 2223 | — |
 | `setupShell` | — | 1261–1264 · 1274–1278 |
 | `setupCollabControls` | — | 13482–13488 |
-| `setupLibrary` | 12446–12448 · 12453–12454 · 12472–12473 · 12478–12482 · 12485–12508 · 12559–12562 · 12576–12578 | 12441 · 12523–12531 · 12548–12557 · 12567–12571 |
+| `setupLibrary` | 旧树标签，已由 14 个 `wirePagesXxx` 取代（见 ⅵ） | **不在此列旧行号**：留外壳段的当前标签见 §ⅲ（旧标签已作废，避免「段号可查」在错的东西上通过） |
 | `boot` | 14026–14027 · 14258–14259 · 14294 · 14296 · 14361–14362 | — |
 
 `setupRecognitionSettings` 已由 Builder 拆完（`wirePagesRecognitionSettings`，3 处），不在上表。
 
 ### ⅲ 留外壳清单（刀 2.5 的验收物之一：不留清单，「留」会变成「忘了」）
 
-| 段（当前树行号） | 为什么留（混了哪个别的视图的调用） | 处置 |
-|---|---|---|
-| `setupShell` 1261–1264 | `openModal` @1262（通用骨架）+ `loadSummary` @1263（项目摘要/workflow，属 shell/library） | 永久留 |
-| `setupShell` 1274–1278 | `openPageDetail` @1277（页详情，别的视图） | 等页详情视图拆走再抽 |
-| `setupCollabControls` 13482–13488 | `openAssignPanel` @13482 / `loadAssignments` @13486 / `closeModal("assign-panel")` @13488（分配协作视图） | 永久留（该函数不属 pages） |
-| `setupLibrary` 12441 | `openSuggestionApplyPanel` @12441（建议应用面板，别的视图） | 等该面板拆走再抽 |
-| `setupLibrary` 12523–12531 | `adoptAllHighSuggestions` @12527 → 调 `loadPageDetail`（别的视图） | 等页详情拆走再抽 |
-| `setupLibrary` 12548–12557 | `openWordBoxesDialog` @12550 · `openBackups` @12554 · `closeModal("backups-mask")` @12556,12557 | 词框/备份各归其视图，永久留 |
-| `setupLibrary` 12567–12571 | `openLayoutDetectDialog` @12570（版心检测面板，别的视图） | 等该面板拆走再抽 |
+> **量于 `6372991` 的树**（`app.js` 14,517 行；14 个 `wirePagesXxx` 已抽完）。
+> **重锚判据是 id 集合相等 + 首行去空白相同，不是行号平移**：行号每抽一次就漂，
+> 旧版 §ⅲ 用的是 14,398 那棵树的标签，漂了约 166 行——**表照抄旧标签会让「段号可查」这条判据在错的东西上通过**。
+> 机检脚本：`python3 scripts/reanchor_pages_shell.py --spec <旧清单.json>`（7/7 通过；判定主键 = 段内 id 集合）。
+
+| 段（当前树，量于 `6372991`） | id 集合（机检主键） | 为什么留 | 处置 |
+|---|---|---|---|
+| `setupShell` 1261–1264 | `stats-open` | `openModal` @1262（通用骨架）+ `loadSummary` @1263（项目摘要/workflow） | 永久留 |
+| `setupShell` 1274–1278 | `selection-review-open` | `openPageDetail` @1277（页详情，别的视图） | 等页详情视图拆走再抽 |
+| `setupLibrary` 12613 | `apply-high-suggestions` | `openSuggestionApplyPanel` @12613（建议应用面板，别的视图） | 等该面板拆走再抽 |
+| `setupLibrary` 12669–12672 | `page-more-menu`、`word-boxes-open` | `openWordBoxesDialog`（词框对话框，别的视图） | 永久留 |
+| `setupLibrary` 12673–12676 | `backups-open`、`page-more-menu` | `openBackups` + `closeModal("backups-mask")`（备份/恢复，别的视图） | 永久留 |
+| `setupLibrary` 12680–12683 | `aux-rerun`、`page-more-menu` | 辅助识别联动，面板未拆 | 等面板拆走再抽 |
+| `setupLibrary` 12688–12692 | `layout-detect-open`、`page-more-menu` | `openLayoutDetectDialog`（版心检测面板，别的视图） | 等该面板拆走再抽 |
+
+**可逐字引用的标签**（豁免表的 `阻塞段` 字段请直接用下面这 7 串，函数名与范围之间是**一个空格、无反引号**——
+判据是「逐字出现在本清单里」，格式不一致就等于查不到）：
+
+```
+setupShell 1261–1264
+setupShell 1274–1278
+setupLibrary 12613
+setupLibrary 12669–12672
+setupLibrary 12673–12676
+setupLibrary 12680–12683
+setupLibrary 12688–12692
+```
+
+**`page-more-menu` 跨 4 段**（12669–12672 / 12673–12676 / 12680–12683 / 12688–12692），
+所以豁免表里它的 `阻塞段` 必须写全 4 个标签，只写一个就到不了期。
+
+**不在本表但同样留在壳里的**：`setupCollabControls` 13482–13488（分配协作视图，8 个引用全跨视图）
+——它不是「受阻」，是**该函数整个不属 pages**，id 的到期刀按原 stage 4 走。
 
 ### ⅳ 目标数（R3 不可能归零，因为 7 段留外壳）
 
@@ -139,3 +163,24 @@ getter（2）：currentProject（全局状态）· selectedPages（pages 状态�
 ```
 
 **先不改 `rules.py`**：等 Builder 把 16 段抽完、行号稳定后一次写。
+
+## ①-更正版 段表（取代上文 §① 的行号；旧行号一律作废）
+
+> **量于：工作区 `app.js`（`HEAD=03b7ef7` + Builder 未提交的抽段改动），`app.js` 共 14497 行。**
+> **抽段提交落盘后必须按定版重出一次**——行号会随提交漂移，**没有 sha 的行号等于误导**。
+
+| wire 函数 | 行范围 | 行数 | 覆盖的 id（种数）|
+|---|---|---:|---:|
+| `wirePagesExportMarginJudgement` | 2250–2256 | 8 | 1 |
+| `wirePagesRecognitionSettings` | 3267–3283 | 18 | 3 |
+| `wirePagesPageNumberPanel` | 5899–5901 | 4 | 2 |
+| `wirePagesPageMore` | 6928–6954 | 28 | 2 |
+| `wirePagesFilters` | 12476–12482 | 8 | 5 |
+| `wirePagesPageGrid` | 12490–12498 | 10 | 1 |
+| `wirePagesPageRange` | 12506–12510 | 6 | 2 |
+| `wirePagesSelection` | 12518–12530 | 14 | 4 |
+| `wirePagesSelectionMore` | 12538–12554 | 18 | 2 |
+| `wirePagesPanes` | 12562–12571 | 11 | 9 |
+| `wirePagesSetup` | 12579–12582 | 5 | 3 |
+
+合计：**11 个 wire 函数**；覆盖 id 种数 **34**

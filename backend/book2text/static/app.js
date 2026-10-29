@@ -12582,6 +12582,29 @@ function wirePagesSetup() {
   el("setup-confirm-all").addEventListener("click", confirmAllUnconfirmed);
 }
 
+/**
+ * 「高建议自动采用」开关的接线（刀 2.5 从 `setupLibrary` 原样搬出）。只碰 `view-pages` 的 id：`auto-apply-suggestions`。
+ */
+function wirePagesAutoApplySuggestions() {
+  el("auto-apply-suggestions").addEventListener("change", (event) =>
+    setAutoApplySetting(event.target.checked)
+  );
+}
+
+/**
+ * 「检查选中」按钮的接线（刀 2.5 从 `setupLibrary` 原样搬出）。只碰 `view-pages` 的 id：`selection-check`。
+ */
+function wirePagesSelectionCheck() {
+  el("selection-check").addEventListener("click", () => checkSelection(null));
+}
+
+/**
+ * 「检查未定」按钮的接线（刀 2.5 从 `setupLibrary` 原样搬出）。只碰 `view-pages` 的 id：`check-pending`。
+ */
+function wirePagesCheckPending() {
+  el("check-pending").addEventListener("click", () => checkSelection("unchecked"));
+}
+
 function setupLibrary() {
   el("project-close").addEventListener("click", closeProject);
   el("trash-open").addEventListener("click", openTrashPanel);
@@ -12592,9 +12615,7 @@ function setupLibrary() {
   el("suggestion-apply-close").addEventListener("click", () => closeModal("suggestion-apply-panel"));
   el("suggestion-apply-cancel").addEventListener("click", () => closeModal("suggestion-apply-panel"));
   el("suggestion-apply-run").addEventListener("click", runSuggestionApply);
-  el("auto-apply-suggestions").addEventListener("change", (event) =>
-    setAutoApplySetting(event.target.checked)
-  );
+  wirePagesAutoApplySuggestions();
   el("auto-apply-undo").addEventListener("click", () =>
     undoAutoApply(el("auto-apply-notice").dataset.autoApplyId)
   );
@@ -12618,8 +12639,8 @@ function setupLibrary() {
   setupReviewControls();
   setupBoxCreate();
   setupAuxControls();
-  el("selection-check").addEventListener("click", () => checkSelection(null));
-  el("check-pending").addEventListener("click", () => checkSelection("unchecked"));
+  wirePagesSelectionCheck();
+  wirePagesCheckPending();
   el("stats-refresh").addEventListener("click", loadSummary);
   setupTaskDrawer();
 

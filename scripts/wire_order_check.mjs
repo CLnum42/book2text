@@ -17,16 +17,23 @@ import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
-const PATH_SPEC = process.argv[2] || "backend/book2text/static/app.js";
+// 基准树：**刀 2.5 开工前**那一版（a9c5b01，app.js 14,387 行）。
+// 为什么不用 HEAD：刀 2.5 落盘后 HEAD 里已经有 wire 函数的函数体，
+// 「首行在 HEAD 里的行号」会变成新位置，等于拿搬完之后的位置比搬之前的顺序——必然假红。
+const BASE = (() => {
+  const i = process.argv.indexOf("--base");
+  return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : "a9c5b01";
+})();
+const PATH_SPEC = process.argv.slice(2).find((a) => a.endsWith(".js") && !a.startsWith("--")) || "backend/book2text/static/app.js";
 const nowLines = readFileSync(join(REPO, PATH_SPEC), "utf8").split("\n");
 let headLines;
 try {
-  headLines = execFileSync("git", ["-C", REPO, "show", `HEAD:${PATH_SPEC}`], {
+  headLines = execFileSync("git", ["-C", REPO, "show", `${BASE}:${PATH_SPEC}`], {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   }).split("\n");
 } catch (e) {
-  console.error(`✗ 读不到 HEAD 版 ${PATH_SPEC}：${e.message}`);
+  console.error(`✗ 读不到基准树 ${BASE} 的 ${PATH_SPEC}：${e.message}`);
   process.exit(2);
 }
 
@@ -72,7 +79,7 @@ for (const w of wires) {
     fail = 1;
   }
   if (headAt < 0) {
-    console.log(`✗ ${w.name}：函数体首行在 HEAD 里找不到（${w.body.trim().slice(0, 40)}…）`);
+    console.log(`✗ ${w.name}：函数体首行在 ${BASE} 里找不到（${w.body.trim().slice(0, 40)}…）`);
     fail = 1;
   }
   rows.push({
@@ -89,7 +96,7 @@ for (const r of rows) {
   if (!byHost.has(r.host)) byHost.set(r.host, []);
   byHost.get(r.host).push(r);
 }
-console.log("段 → 宿主 → 当前调用行 → 原段在 HEAD 的行");
+console.log(`段 → 宿主 → 当前调用行 → 原段在基准树 ${BASE} 的行`);
 for (const [host, list] of byHost) {
   list.sort((a, b) => a.callLine - b.callLine);
   console.log(`\n[${host}]`);
@@ -98,7 +105,7 @@ for (const [host, list] of byHost) {
     const bad = r.headLine >= 0 && r.headLine < prevHead;
     if (bad) fail = 1;
     console.log(
-      `  ${bad ? "✗" : "·"} ${r.name.padEnd(30)} 调用 :${String(r.callLine).padEnd(6)} HEAD :${r.headLine}`
+      `  ${bad ? "✗" : "·"} ${r.name.padEnd(30)} 调用 :${String(r.callLine).padEnd(6)} base :${r.headLine}`
     );
     if (!bad) prevHead = r.headLine;
   }
@@ -108,4 +115,4 @@ if (fail) {
   console.log("\n✗ 顺序判据不通过（调用顺序与原段先后不一致，或调用数不对）");
   process.exit(1);
 }
-console.log(`\n✓ 顺序判据通过：${wires.length} 个 wire 函数，各 1 处调用，宿主内调用顺序与原段先后一致`);
+console.log(`\n✓ 顺序判据通过：${wires.length} 个 wire 函数，各 1 处调用，宿主内调用顺序与 ${BASE} 里的原段先后一致`);
