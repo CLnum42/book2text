@@ -1271,6 +1271,36 @@ const OWNERS = {
   readingProof: "reading-view.js",
   readingMarkupLevel: "reading-view.js",
   readingPendingOn: "reading-view.js",
+  previewData: "preview-view.js",
+  previewProject: "preview-view.js",
+  previewOptions: "preview-view.js",
+  previewOptionsSignature: "preview-view.js",
+  previewLoading: "preview-view.js",
+  previewPageNo: "preview-view.js",
+  previewActiveSeq: "preview-view.js",
+  previewOnlySpan: "preview-view.js",
+  previewSegmentNodes: "preview-view.js",
+  previewSegmentsBySeq: "preview-view.js",
+  previewFirstSeqByPage: "preview-view.js",
+  previewTiles: "preview-view.js",
+  previewTileTops: "preview-view.js",
+  previewTileTopMap: "preview-view.js",
+  previewPagesProject: "preview-view.js",
+  previewLoadedPages: "preview-view.js",
+  previewTileBlocks: "preview-view.js",
+  previewBlocksPending: "preview-view.js",
+  previewActiveBlocks: "preview-view.js",
+  previewHitTiles: "preview-view.js",
+  previewHitToken: "preview-view.js",
+  previewRightRaf: "preview-view.js",
+  previewLeftRaf: "preview-view.js",
+  previewPendingHover: "preview-view.js",
+  previewSyncDriver: "preview-view.js",
+  previewSyncUntil: "preview-view.js",
+  previewImageStartedAt: "preview-view.js",
+  readingIntents: "reading-view.js",
+  readingIntentStats: "reading-view.js",
+  readingFlushRaf: "reading-view.js",
   readingSplitState: "reading-view.js",
 };
 const R5_MAX_EXCUSES = 0;   // 现状零豁免；将来开口必须显式改这个数
@@ -1312,6 +1342,40 @@ test("R5：一状态一 owner——每个状态的赋值点只能出现在 owner
       }
       // owner 文件里的写点不报，但只做一次"确实有写点"的记账（防止 owner 写错文件却没人发现）
       assignmentLines(stripped, state);
+    }
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+/**
+ * 每个视图模块的**状态前缀**。新增一个视图（`index-view.js` …）必须同批在这里加一行、
+ * 并把它的状态登记进 OWNERS——否则它整段都不在检查范围内，R5 绿 = 没覆盖（这是最坏的一种绿）。
+ * 这条注册表本身就是那条纪律的闸：磁盘上出现未登记的 `*-view.js` 直接红。
+ */
+const VIEW_STATE_PREFIXES = {
+  "reading-view.js": /^reading/,
+  "preview-view.js": /^preview/,
+};
+
+test("R5 防漏检：每个视图模块的顶层状态都必须在 OWNERS 里，且 owner 指向自己", () => {
+  const problems = [];
+  const modules = readdirSync(STATIC_DIR).filter((name) => name.endsWith("-view.js")).sort();
+  for (const fileName of modules) {
+    const pattern = VIEW_STATE_PREFIXES[fileName];
+    if (!pattern) {
+      problems.push(`${fileName}: 没有登记状态前缀——新视图落盘必须同批加 OWNERS 与 VIEW_STATE_PREFIXES 一行`);
+      continue;
+    }
+    const source = stripCommentsAndStrings(readFileSync(join(STATIC_DIR, fileName), "utf8"));
+    const declared = [...source.matchAll(/^[ \t]*(?:let|const|var)\s+([A-Za-z_$][\w$]*)/gm)]
+      .map((match) => match[1])
+      .filter((name) => pattern.test(name));
+    for (const name of declared) {
+      if (!(name in OWNERS)) {
+        problems.push(`${fileName}: 状态 ${name} 声明在模块里，但 OWNERS 里没有——不登记 = 不检查，绿是假的`);
+      } else if (OWNERS[name] !== fileName) {
+        problems.push(`${name} 的 owner 是 ${OWNERS[name]}，但它声明在 ${fileName}`);
+      }
     }
   }
   assert.deepEqual(problems, [], problems.join("\n"));
