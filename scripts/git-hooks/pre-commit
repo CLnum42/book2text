@@ -41,6 +41,25 @@ if [ -z "$NODE" ]; then
   exit 1
 fi
 
+# ---- 事后对账：已推提交里有没有没跑过 pytest 的 ----
+# git push --no-verify 会跳过 pre-push，而 git 没有 post-push hook —— 所以"推送绕过"的留痕
+# 只能靠这个必然会跑的回合（每次提交）。不是最理想，但它不依赖任何人记得。
+STAMP="$REPO/.git/b2t-hooks-installed"
+PLOG="$REPO/.git/b2t-pytest.log"
+if git rev-parse --verify -q origin/main >/dev/null 2>&1 && [ -f "$STAMP" ]; then
+  SINCE=$(cat "$STAMP" 2>/dev/null || echo 0)
+  MISSING=0
+  for sha in $(git log origin/main -n 20 --format='%H %ct' 2>/dev/null | awk -v s="$SINCE" '$2 >= s {print $1}'); do
+    if [ ! -f "$PLOG" ] || ! awk -v s="$sha" -F'\t' '$1 == s { found = 1 } END { exit !found }' "$PLOG"; then
+      MISSING=$((MISSING + 1))
+    fi
+  done
+  if [ "$MISSING" -gt 0 ]; then
+    echo "ℹ pre-commit：已推提交里有 $MISSING 笔没有 pytest 记录（git push --no-verify，或 .venv 缺失）" >&2
+    echo "  pre-push 只在推送时跑 pytest（约 82s）；绕过它不会有人当场发现，只会在下一次提交时冒出来。" >&2
+  fi
+fi
+
 TREE=$(git write-tree) || {
   echo "✗ pre-commit：git write-tree 失败（索引损坏？）" >&2
   exit 1

@@ -14,7 +14,7 @@ REPO=$(git rev-parse --show-toplevel 2>/dev/null) || {
 }
 HOOKS="$REPO/scripts/git-hooks"
 
-for f in "$HOOKS/pre-commit" "$HOOKS/post-commit"; do
+for f in "$HOOKS/pre-commit" "$HOOKS/post-commit" "$HOOKS/pre-push"; do
   [ -f "$f" ] || { echo "✗ 缺 hook 脚本：$f" >&2; exit 1; }
   chmod +x "$f" 2>/dev/null || { echo "✗ 无法 chmod +x $f" >&2; exit 1; }
 done
@@ -26,6 +26,11 @@ git config core.hooksPath scripts/git-hooks || {
 CUR=$(git config --get core.hooksPath)
 [ "$CUR" = "scripts/git-hooks" ] || { echo "✗ core.hooksPath=$CUR，期望 scripts/git-hooks" >&2; exit 1; }
 echo "✓ core.hooksPath = $CUR"
+
+# 记一个安装时间戳：pre-commit 用它只对"装机之后"的已推提交做 pytest 对账，
+# 免得把本 hook 出现之前的历史提交全报成"没跑过 pytest"。
+date +%s >"$REPO/.git/b2t-hooks-installed"
+echo "✓ 记账起点 .git/b2t-hooks-installed = $(cat "$REPO/.git/b2t-hooks-installed")"
 
 # ---------------- 真拒绝自检（一次性仓库，不碰真仓库） ----------------
 NODE=""

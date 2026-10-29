@@ -74,4 +74,8 @@ git commit -m "…" -- <同一批路径…>
 
 **闸做了什么**：`pre-commit` 把**索引**导出到临时目录、跑 `node tests/js/run.mjs`（约 6 秒），红则拒绝提交；`post-commit` 记录绕过（`--no-verify` 时请加一行 `Bypass-Reason: <为什么>`）。
 
-**闸没做什么**：不跑 `pytest`。改动 `*.py` 时 `post-commit` 会提示"后端回归要自己跑 `pytest -q`"——那是提示，不是通过。
+**推送时另有一个闸**：`pre-push` 跑 `pytest -q`（约 82–85s），只在推送范围含非 `*.md` 改动时跑；`.venv` 缺失会拒绝推送（fail closed）。纯文档推送记一行 `SKIP`。
+
+**推送绕过没有当场留痕的位置**（git 没有 post-push hook），所以 `pre-commit` 每次会点名"`origin/main` 最近哪些提交没有 pytest 记录"。**只报不拦**——推送已经发生了。
+
+**闸覆盖不到你盘上没 add 的改动**（它验索引）。所以"我本地跑绿了"和"这笔提交是绿的"是两件事。

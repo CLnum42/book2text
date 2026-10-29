@@ -1,0 +1,85 @@
+#!/bin/sh
+# Book2Text pre-push：推送前跑后端回归（pytest），因为 pre-commit 里没有它。
+#
+# 为什么分开两个闸：
+#   tests/js/run.mjs  ≈ 6s  → 每笔提交都跑（pre-commit）
+#   pytest -q          ≈ 82s → 只在推送时跑（pre-push），否则没人愿意提交
+#
+# 三条设计约束：
+#   1) **只对碰了代码的推送跑**：整段推送只有 `*.md` 时跳过（文档改不出 pytest 红），并记一条 SKIP。
+#   2) **缺 .venv 时 fail closed**：不能"跑不起来就当通过"（D-110）。要绕就 `git push --no-verify`。
+#   3) **通过记录按 sha 落盘**，供 pre-commit 事后对账：没有 PASS 记录的已推提交会被点名。
+#      `git push --no-verify` 会跳过本 hook，而 git 没有 post-push hook——所以"留痕"只能靠下一个人跑 pre-commit。
+
+set -u
+
+REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$REPO" || exit 0
+
+LOG="$REPO/.git/b2t-pytest.log"
+ZERO=0000000000000000000000000000000000000000
+EMPTY_TREE=$(git hash-object -t tree /dev/null 2>/dev/null || echo "")
+
+FAILED=0
+CHECKED=0
+SKIPPED=0
+
+check_one() {
+  LOCAL_SHA=$1
+  REMOTE_SHA=$2
+  case "$LOCAL_SHA" in "$ZERO") return 0 ;; esac
+
+  if [ "$REMOTE_SHA" = "$ZERO" ] || [ -z "$REMOTE_SHA" ]; then
+    BASE=$(git merge-base "$LOCAL_SHA" origin/main 2>/dev/null || true)
+    [ -n "$BASE" ] || BASE=$EMPTY_TREE
+  else
+    BASE=$REMOTE_SHA
+  fi
+
+  FILES=$(git diff --name-only "$BASE" "$LOCAL_SHA" 2>/dev/null || true)
+  if [ -z "$FILES" ]; then
+    return 0
+  fi
+
+  # 只有 Markdown → 跳过（pytest 读不到 .md 的内容做断言；唯一例外是 docs/**/*.json，见下）
+  NON_MD=$(printf '%s\n' "$FILES" | grep -v '\.md$' || true)
+  if [ -z "$NON_MD" ]; then
+    SKIPPED=$((SKIPPED + 1))
+    printf '%s\tSKIP\t%s\tmd-only\n' "$LOCAL_SHA" "$(date '+%F %T')" >>"$LOG" 2>/dev/null || true
+    return 0
+  fi
+
+  CHECKED=$((CHECKED + 1))
+  PY="$REPO/.venv/bin/python"
+  if [ ! -x "$PY" ]; then
+    echo "✗ pre-push：push 里含代码改动，但找不到 $PY" >&2
+    echo "  拒绝推送——跑不起来的闸不允许静默放过（fail closed）。" >&2
+    echo "  确需绕过：git push --no-verify（不会留 PASS 记录，下一笔提交会被点名）" >&2
+    FAILED=1
+    return 1
+  fi
+
+  echo "… pre-push：跑 pytest（推送范围含代码改动，约 82s）" >&2
+  START=$(date +%s)
+  if ! ( cd "$REPO" && "$PY" -m pytest -q ) >"$REPO/.git/b2t-pytest.out" 2>&1; then
+    echo "✗ pre-push：pytest 红了（$(( $(date +%s) - START ))s）" >&2
+    tail -n 30 "$REPO/.git/b2t-pytest.out" >&2
+    echo "  日志：.git/b2t-pytest.out" >&2
+    FAILED=1
+    return 1
+  fi
+  printf '%s\tPASS\t%s\t%s\n' "$LOCAL_SHA" "$(date '+%F %T')" "$(printf '%s\n' "$FILES" | wc -l | tr -d ' ') files" >>"$LOG" 2>/dev/null || true
+  echo "✓ pre-push：pytest 全绿（$(( $(date +%s) - START ))s）" >&2
+  return 0
+}
+
+while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
+  [ -n "${LOCAL_SHA:-}" ] || continue
+  check_one "$LOCAL_SHA" "$REMOTE_SHA" || true
+done
+
+if [ "$FAILED" -ne 0 ]; then
+  exit 1
+fi
+[ "$CHECKED" -gt 0 ] || echo "… pre-push：推送范围只有文档改动，跳过 pytest（已记 SKIP）" >&2
+exit 0
