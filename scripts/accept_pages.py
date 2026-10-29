@@ -115,7 +115,20 @@ def run_stage(args, stage_n: int) -> int:
         return 2
 
     base = baseline()
-    app_lines = len(app_text.split("\n")) - (1 if app_text.endswith("\n") else 0)
+    # **减量判据绑「这一刀的收尾树」，不绑 HEAD/工作区**（2026-10-30）：
+    # 后续功能继续往 app.js 加行（胶囊 +190 行）会把已经通过的一刀永久判红——
+    # 那不是回归，是判据绑错了对象。优先 --at，其次名单里的「收尾.head」，都没有才退回工作区。
+    closing = (manifest() or {}).get("收尾") or {}
+    at = args.at or closing.get("head")
+    if at:
+        got = subprocess.run(["git", "show", f"{at}:{APP_REL}"], cwd=REPO, capture_output=True, text=True)
+        if got.returncode != 0:
+            sys.exit(f"✗ --at {at} 取不到 {APP_REL}：{got.stderr.strip()[:200]}")
+        app_text_measured = got.stdout
+        print(f"   量于 {at} 的树（不是工作区）：{APP_REL}")
+    else:
+        app_text_measured = app_text
+    app_lines = len(app_text_measured.split("\n")) - (1 if app_text_measured.endswith("\n") else 0)
     shrink = (base["app_lines"] or 0) - app_lines
     floor = -(-spec["lines"] // 2)   # ceil(50%)：987 → 494（493 仍小于一半，必须红）
     print(f"   减量：app.js {base['app_lines']:,} → {app_lines:,}（净减 {shrink:,}；"
@@ -399,6 +412,8 @@ def main(argv: list[str]) -> int:
         description="pages 落盘验收。只收 --acid / --expect-sha；别的参数一律算调用方式错。",
     )
     parser.add_argument("--acid", default="", help="第三消费者的实测 JSON（img.src 赋值次数 / observer 数）")
+    parser.add_argument("--at", default=None,
+                        help="按该 sha 的树量 app.js（默认用名单的「收尾.head」，避免后续加行把已过的刀判红）")
     parser.add_argument("--movers", default="", help="名单文件（默认 docs/refactor/evidence/pages/movers.json；刀 1 用 stage1-movers.json）")
     parser.add_argument("--expect-sha", default="",
                         help="显式指定名单 sha256 前缀（对历史版本复跑用）；不给则与 HEAD 里的同名文件比对")

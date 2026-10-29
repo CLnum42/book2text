@@ -1,210 +1,215 @@
 {
-  "刀": 2,
-  "操作": "装配点接线（view-pages DOM 接线归 init）+ PageTile 接线",
-  "基线": {
-    "head": "4a98a53",
-    "appLines": 14387,
-    "说明": "行范围在 origin/main 的树上量（刀1 已落盘，14,387 行）"
+ "刀": 2,
+ "操作": "装配点接线（view-pages DOM 接线归 init）+ PageTile 接线",
+ "基线": {
+  "head": "4a98a53",
+  "appLines": 14387,
+  "说明": "行范围在 origin/main 的树上量（刀1 已落盘，14,387 行）"
+ },
+ "口径": {
+  "处数": "函数体内引用 view-pages id 的出现次数（同一行两次算两次）",
+  "种数": "去重后的 id 种类",
+  "来源": "scripts/r3_pages_count.mjs 的 occurrences，按 function 聚合"
+ },
+ "函数数": 11,
+ "处数": 59,
+ "到期判据两类": {
+  "装配点": "函数搬进模块即到期",
+  "PageTile 接线": "acid 通过才到期（搬走但 acid 不过 = 没到期）"
+ },
+ "movers": [
+  {
+   "name": "boot",
+   "start": 13983,
+   "end": 14384,
+   "lines": 403,
+   "ids": [
+    "pages-margin-toggle",
+    "pages-overlay-toggle"
+   ],
+   "judge": "函数搬进模块即到期",
+   "occurrences": 8,
+   "id_kinds": 2,
+   "criterion": "move"
   },
-  "口径": {
-    "处数": "函数体内引用 view-pages id 的出现次数（同一行两次算两次）",
-    "种数": "去重后的 id 种类",
-    "来源": "scripts/r3_pages_count.mjs 的 occurrences，按 function 聚合"
+  {
+   "name": "setupCollabControls",
+   "start": 13470,
+   "end": 13487,
+   "lines": 19,
+   "ids": [
+    "assign-list-toggle",
+    "assign-open"
+   ],
+   "judge": "函数搬进模块即到期",
+   "occurrences": 2,
+   "id_kinds": 2,
+   "criterion": "move"
   },
-  "函数数": 11,
-  "处数": 59,
-  "到期判据两类": {
-    "装配点": "函数搬进模块即到期",
-    "PageTile 接线": "acid 通过才到期（搬走但 acid 不过 = 没到期）"
+  {
+   "name": "setupExportPanel",
+   "start": 2210,
+   "end": 2246,
+   "lines": 38,
+   "ids": [
+    "rec-margin-judgement"
+   ],
+   "judge": "函数搬进模块即到期",
+   "occurrences": 1,
+   "id_kinds": 1,
+   "criterion": "move"
   },
-  "movers": [
-    {
-      "name": "boot",
-      "start": 13983,
-      "end": 14384,
-      "lines": 403,
-      "ids": [
-        "pages-margin-toggle",
-        "pages-overlay-toggle"
-      ],
-      "judge": "函数搬进模块即到期",
-      "occurrences": 8,
-      "id_kinds": 2,
-      "criterion": "move"
-    },
-    {
-      "name": "setupCollabControls",
-      "start": 13470,
-      "end": 13487,
-      "lines": 19,
-      "ids": [
-        "assign-list-toggle",
-        "assign-open"
-      ],
-      "judge": "函数搬进模块即到期",
-      "occurrences": 2,
-      "id_kinds": 2,
-      "criterion": "move"
-    },
-    {
-      "name": "setupExportPanel",
-      "start": 2210,
-      "end": 2246,
-      "lines": 38,
-      "ids": [
-        "rec-margin-judgement"
-      ],
-      "judge": "函数搬进模块即到期",
-      "occurrences": 1,
-      "id_kinds": 1,
-      "criterion": "move"
-    },
-    {
-      "name": "setupLibrary",
-      "start": 12425,
-      "end": 12572,
-      "lines": 149,
-      "ids": [
-        "apply-high-suggestions",
-        "auto-apply-suggestions",
-        "aux-rerun",
-        "backups-open",
-        "check-pending",
-        "filter-recognition",
-        "filter-triage",
-        "filter-type",
-        "filter-workflow",
-        "layout-block-apply-all",
-        "layout-block-confirm",
-        "layout-detect-open",
-        "margin-confirm-all",
-        "page-grid",
-        "page-more-menu",
-        "page-range",
-        "page-range-select",
-        "pages-margin-toggle",
-        "pages-only-included",
-        "pages-overlay-toggle",
-        "pages-zoom-in",
-        "pages-zoom-out",
-        "rec-aux-all",
-        "rec-start-all",
-        "selection-all",
-        "selection-check",
-        "selection-clear",
-        "selection-more",
-        "selection-more-menu",
-        "selection-recognize",
-        "selection-select-all",
-        "setup-confirm-all",
-        "setup-confirm-selected",
-        "split-page-numbers",
-        "word-boxes-open"
-      ],
-      "judge": "函数搬进模块即到期",
-      "occurrences": 38,
-      "id_kinds": 35,
-      "criterion": "move"
-    },
-    {
-      "name": "setupPageMore",
-      "start": 6882,
-      "end": 6908,
-      "lines": 28,
-      "ids": [
-        "page-more",
-        "page-more-menu"
-      ],
-      "judge": "函数搬进模块即到期",
-      "occurrences": 2,
-      "id_kinds": 2,
-      "criterion": "move"
-    },
-    {
-      "name": "setupPageNumberPanel",
-      "start": 5852,
-      "end": 5866,
-      "lines": 16,
-      "ids": [
-        "page-number-open",
-        "page-number-review-open"
-      ],
-      "judge": "函数搬进模块即到期",
-      "occurrences": 2,
-      "id_kinds": 2,
-      "criterion": "move"
-    },
-    {
-      "name": "setupRecognitionSettings",
-      "start": 3246,
-      "end": 3262,
-      "lines": 18,
-      "ids": [
-        "rec-dual-strategy",
-        "rec-engine",
-        "rec-language"
-      ],
-      "judge": "函数搬进模块即到期",
-      "occurrences": 3,
-      "id_kinds": 3,
-      "criterion": "move"
-    },
-    {
-      "name": "setupShell",
-      "start": 1252,
-      "end": 1293,
-      "lines": 43,
-      "ids": [
-        "selection-review-open",
-        "stats-open"
-      ],
-      "judge": "函数搬进模块即到期",
-      "occurrences": 2,
-      "id_kinds": 2,
-      "criterion": "move"
-    },
-    {
-      "name": "buildTile",
-      "start": 3715,
-      "end": 3810,
-      "lines": 97,
-      "ids": [],
-      "judge": "acid（img.src 赋值=1 / observer≤6 / 三消费者同一张 img）",
-      "occurrences": 0,
-      "id_kinds": 0,
-      "criterion": "acid",
-      "note": "不参与 R3 豁免账：ids 为空（闸口径下无 view-pages id 引用），绝不许进 pages-r3-exemptions"
-    },
-    {
-      "name": "applyTileState",
-      "start": 3814,
-      "end": 3871,
-      "lines": 59,
-      "ids": [],
-      "judge": "acid（img.src 赋值=1 / observer≤6 / 三消费者同一张 img）",
-      "occurrences": 0,
-      "id_kinds": 0,
-      "criterion": "acid",
-      "note": "不参与 R3 豁免账：ids 为空（闸口径下无 view-pages id 引用），绝不许进 pages-r3-exemptions"
-    },
-    {
-      "name": "capturePageTileMetrics",
-      "start": 4208,
-      "end": 4238,
-      "lines": 32,
-      "ids": [
-        "page-grid"
-      ],
-      "judge": "acid（img.src 赋值=1 / observer≤6 / 三消费者同一张 img）",
-      "occurrences": 1,
-      "id_kinds": 1,
-      "criterion": "acid",
-      "note": "不参与 R3 豁免账：ids 为空（闸口径下无 view-pages id 引用），绝不许进 pages-r3-exemptions"
-    }
-  ],
-  "种数": 50,
-  "说明": "capturePageTileMetrics 有 1 个 id 引用，但**到期判据是 acid，不是搬移**——不要把它算进 R3 豁免账（否则刀2 剩余数会少 1 而没人知道为什么）。",
-  "到期判据（机读）": {
-    "criterion取值": "move = 函数搬进模块即到期；acid = 必须 acid 通过才到期；解释放此处，脚本只读 criterion"
+  {
+   "name": "setupLibrary",
+   "start": 12425,
+   "end": 12572,
+   "lines": 149,
+   "ids": [
+    "apply-high-suggestions",
+    "auto-apply-suggestions",
+    "aux-rerun",
+    "backups-open",
+    "check-pending",
+    "filter-recognition",
+    "filter-triage",
+    "filter-type",
+    "filter-workflow",
+    "layout-block-apply-all",
+    "layout-block-confirm",
+    "layout-detect-open",
+    "margin-confirm-all",
+    "page-grid",
+    "page-more-menu",
+    "page-range",
+    "page-range-select",
+    "pages-margin-toggle",
+    "pages-only-included",
+    "pages-overlay-toggle",
+    "pages-zoom-in",
+    "pages-zoom-out",
+    "rec-aux-all",
+    "rec-start-all",
+    "selection-all",
+    "selection-check",
+    "selection-clear",
+    "selection-more",
+    "selection-more-menu",
+    "selection-recognize",
+    "selection-select-all",
+    "setup-confirm-all",
+    "setup-confirm-selected",
+    "split-page-numbers",
+    "word-boxes-open"
+   ],
+   "judge": "函数搬进模块即到期",
+   "occurrences": 38,
+   "id_kinds": 35,
+   "criterion": "move"
+  },
+  {
+   "name": "setupPageMore",
+   "start": 6882,
+   "end": 6908,
+   "lines": 28,
+   "ids": [
+    "page-more",
+    "page-more-menu"
+   ],
+   "judge": "函数搬进模块即到期",
+   "occurrences": 2,
+   "id_kinds": 2,
+   "criterion": "move"
+  },
+  {
+   "name": "setupPageNumberPanel",
+   "start": 5852,
+   "end": 5866,
+   "lines": 16,
+   "ids": [
+    "page-number-open",
+    "page-number-review-open"
+   ],
+   "judge": "函数搬进模块即到期",
+   "occurrences": 2,
+   "id_kinds": 2,
+   "criterion": "move"
+  },
+  {
+   "name": "setupRecognitionSettings",
+   "start": 3246,
+   "end": 3262,
+   "lines": 18,
+   "ids": [
+    "rec-dual-strategy",
+    "rec-engine",
+    "rec-language"
+   ],
+   "judge": "函数搬进模块即到期",
+   "occurrences": 3,
+   "id_kinds": 3,
+   "criterion": "move"
+  },
+  {
+   "name": "setupShell",
+   "start": 1252,
+   "end": 1293,
+   "lines": 43,
+   "ids": [
+    "selection-review-open",
+    "stats-open"
+   ],
+   "judge": "函数搬进模块即到期",
+   "occurrences": 2,
+   "id_kinds": 2,
+   "criterion": "move"
+  },
+  {
+   "name": "buildTile",
+   "start": 3715,
+   "end": 3810,
+   "lines": 97,
+   "ids": [],
+   "judge": "acid（img.src 赋值=1 / observer≤6 / 三消费者同一张 img）",
+   "occurrences": 0,
+   "id_kinds": 0,
+   "criterion": "acid",
+   "note": "不参与 R3 豁免账：ids 为空（闸口径下无 view-pages id 引用），绝不许进 pages-r3-exemptions"
+  },
+  {
+   "name": "applyTileState",
+   "start": 3814,
+   "end": 3871,
+   "lines": 59,
+   "ids": [],
+   "judge": "acid（img.src 赋值=1 / observer≤6 / 三消费者同一张 img）",
+   "occurrences": 0,
+   "id_kinds": 0,
+   "criterion": "acid",
+   "note": "不参与 R3 豁免账：ids 为空（闸口径下无 view-pages id 引用），绝不许进 pages-r3-exemptions"
+  },
+  {
+   "name": "capturePageTileMetrics",
+   "start": 4208,
+   "end": 4238,
+   "lines": 32,
+   "ids": [
+    "page-grid"
+   ],
+   "judge": "acid（img.src 赋值=1 / observer≤6 / 三消费者同一张 img）",
+   "occurrences": 1,
+   "id_kinds": 1,
+   "criterion": "acid",
+   "note": "不参与 R3 豁免账：ids 为空（闸口径下无 view-pages id 引用），绝不许进 pages-r3-exemptions"
   }
+ ],
+ "种数": 50,
+ "说明": "capturePageTileMetrics 有 1 个 id 引用，但**到期判据是 acid，不是搬移**——不要把它算进 R3 豁免账（否则刀2 剩余数会少 1 而没人知道为什么）。",
+ "到期判据（机读）": {
+  "criterion取值": "move = 函数搬进模块即到期；acid = 必须 acid 通过才到期；解释放此处，脚本只读 criterion"
+ },
+ "收尾": {
+  "head": "e0985a1",
+  "appLines": 14323,
+  "说明": "第 2 刀收尾树；减量判据绑这棵树，后续功能再加行不影响"
+ }
 }
