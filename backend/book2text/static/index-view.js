@@ -295,6 +295,12 @@ function buildIndexPages() {
   const wrap = el("index-pages");
   if (!wrap || !injected.getProject()) return;
   disconnectIndexObserver();
+  // PageTile 的句柄挂在页块上；重建前先交还，别让注册表里留着指向旧 DOM 的记录。
+  if (window.PageTile) {
+    for (const tile of indexTiles.values()) {
+      if (tile.__indexTile) window.PageTile.release(tile.__indexTile);
+    }
+  }
   wrap.innerHTML = "";
   indexTiles.clear();
   indexNearPages.clear();
@@ -429,9 +435,87 @@ function reportIndexMetrics() {
   metrics.blocksCached = indexBlocksByPage.size;
 }
 
+/** PageTile 的依赖（与 preview 同一组；init 可重复调用，模块会合并）。 */
+function indexTileApi() {
+  const api = window.PageTile;
+  if (!api) return null;
+  api.init({
+    getProject: () => injected.getProject(),
+    getImageUrl: (pageNo, size) => injected.pageImageUrl(pageNo, size),
+    notify: (info) => {
+      const text = info && (info.text || info.message) ? info.text || info.message : String(info);
+      injected.showNoticeBar?.(text);
+    },
+  });
+  return api;
+}
+
+/** PageTile status → 目录页块的显示态 + 原指标（imageMs / imageCount 口径不变）。 */
+function applyIndexTileStatus(handle, info) {
+  if (!handle || !handle.img) return;
+  const pageNo = handle.pageNo;
+  const image = handle.img;
+  image.classList.toggle("is-ready", info.status === "ready");
+  if (info.status === "ready") {
+    delete image.dataset.imageFailed;
+    indexLoadedImages.add(pageNo);
+    const metrics = (window.__b2tIndexMetrics = window.__b2tIndexMetrics || {});
+    const started = indexTileStartedAt.get(pageNo);
+    if (started) {
+      indexTileStartedAt.delete(pageNo);
+      (metrics.imageMs = metrics.imageMs || []).push(Math.round(performance.now() - started));
+      if (metrics.imageMs.length > 20) metrics.imageMs.shift();
+      metrics.imageCount = (metrics.imageCount || 0) + 1;
+    }
+    reportIndexMetrics();
+    if (pageNo === indexCurrentPage) setIndexImageStatus("");
+    trimIndexImages();
+  } else if (info.status === "missing") {
+    const attempts = (indexImageAttempts.get(pageNo) || 0) + 1;
+    indexImageAttempts.set(pageNo, attempts);
+    if (attempts >= 2) markIndexImageFailed(pageNo);
+  }
+}
+
+/** 每次起取图的时刻（PageTile 内部取图，仍按老口径记 imageMs）。 */
+const indexTileStartedAt = new Map();
+
 function ensureIndexImage(pageNo) {
   const tile = indexTiles.get(pageNo);
   if (!tile) return;
+  const api = indexTileApi();
+  if (api) {
+    const size = injected.pageProfileFor(tile, pageNo);
+    const exists = tile.__indexTile;
+    if (exists && !exists.dead) {
+      // 另一个视图也持有同一页时，PageTile 会把同一张图移到后挂的宿主；
+      // 本视图再进来先交还句柄、重建，把图移回自己的页块。
+      if (exists.img && exists.img.parentNode !== exists.el) {
+        api.release(exists);
+        delete tile.__indexTile;
+      } else {
+        if (exists.size !== size) api.update(exists, { size });
+        return;
+      }
+    }
+    // 一个页块只能有一张图：旧路径的占位 <img> 先摘掉
+    const legacy = tile.querySelector("img");
+    if (legacy) legacy.remove();
+    let handle = null;
+    handle = api.create(tile, {
+      pageNo,
+      size,
+      onReady: (info) => applyIndexTileStatus(handle, info),
+    });
+    if (!handle) return;   // fail closed：缺依赖时不出瓷砖，也不出第二张图
+    tile.__indexTile = handle;
+    indexTileStartedAt.set(pageNo, performance.now());
+    if (pageNo === indexCurrentPage) setIndexImageStatus(`正在渲染第 ${pageNo} 页…`);
+    applyIndexTileStatus(handle, { status: handle.status });
+    // 目录的近页（±3）本来就要图：不等观察器，直接作废触发一次取图。
+    if (handle.status !== "ready") api.invalidate(pageNo, "image");
+    return;
+  }
   const image = tile.querySelector("img");
   if (!image || image.dataset.src || image.dataset.pending) return;
   // 任务 80：**先摘掉上一轮残留的 onload/onerror**，再挂占位图。
@@ -524,6 +608,14 @@ function releaseIndexImage(pageNo) {
   if (queued >= 0) indexImageQueue.splice(queued, 1);
   const tile = indexTiles.get(pageNo);
   if (!tile) return;
+  const handle = tile.__indexTile;
+  if (handle && window.PageTile) {
+    window.PageTile.release(handle);
+    delete tile.__indexTile;
+    indexLoadedImages.delete(pageNo);
+    indexTileStartedAt.delete(pageNo);
+    return;
+  }
   const image = tile.querySelector("img");
   if (!image || !image.dataset.src) return;
   if (image.dataset.pending === "1") {

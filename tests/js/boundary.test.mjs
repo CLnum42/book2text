@@ -1525,6 +1525,7 @@ const OWNERS = {
   readingJudgeTimes: "reading-view.js",
   readingAdvancing: "reading-view.js",
   readingPanelOpenedAt: "reading-view.js",
+  indexTileStartedAt: "index-view.js",
   readingData: "reading-view.js",
   readingProject: "reading-view.js",
   readingEntries: "reading-view.js",

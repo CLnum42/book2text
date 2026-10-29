@@ -248,9 +248,16 @@ function ensurePreviewImage(pageNo) {
     const size = injected.pageProfileFor(tile, pageNo);
     const exists = tile.__previewTile;
     if (exists && !exists.dead) {
+      // 另一个视图也持有同一页时，PageTile 会把同一张图移到后挂的宿主；
+      // 本视图再进来先交还句柄、重建，把图移回自己的页块。
+      if (exists.img && exists.img.parentNode !== exists.el) {
+        api.release(exists);
+        delete tile.__previewTile;
+      } else {
       // 缩放会换档：升档由 PageTile 自己重取，降档沿用已缓存的更清晰那张。
-      if (exists.size !== size) api.update(exists, { size });
-      return;
+        if (exists.size !== size) api.update(exists, { size });
+        return;
+      }
     }
     // 旧路径留下的占位 <img> 先摘掉：一个页块只能有一张图（酸测试数的就是它）。
     const legacy = tile.querySelector("img");
