@@ -19,6 +19,7 @@ from ..core.collab import assignments as assignments_module
 from ..core.project import blocks as blocks_module
 from ..core.project import library as project_library
 from ..core.project import margin_box as margin_box_module
+from ..core.project import recognition as recognition_module
 from ..core.project import page_setup as page_setup_module
 from ..core.project import stats as stats_module
 from ..core.project import workflow as workflow_module
@@ -157,6 +158,44 @@ def get_summary(request: Request, project_id: str) -> dict[str, Any]:
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
     return summary.to_dict()
+
+
+@router.get("/{project_id}/pages/human-touched")
+def pages_human_touched(
+    request: Request,
+    project_id: str,
+    pages: str = Query(default="", description="逗号分隔的页号，例如 1,2,3"),
+) -> dict[str, Any]:
+    """**只读**：这些页里哪些已有人工成果（重新识别前先问它）。
+
+    判据复用 `recognition._has_human_results`，不写第二份统计。
+    参数不合法一律 400（空 / 非数字 / 不属于本项目）——静默返回 count=0 会让前端误判"可以放心覆盖"。
+    """
+    raw = [part.strip() for part in (pages or "").split(",") if part.strip()]
+    if not raw:
+        raise AppError(400, "bad_pages", "pages 不能为空", detail="形如 ?pages=1,2,3")
+    try:
+        wanted = sorted({int(part) for part in raw})
+    except ValueError as exc:
+        raise AppError(400, "bad_pages", "pages 里有非数字", detail=str(exc)) from exc
+
+    library = _library(request)
+    try:
+        project = project_library.load_project(project_id, library=library)
+    except project_library.ProjectError as exc:
+        raise _project_error(exc, status=404) from exc
+    if project.directory is None:  # pragma: no cover
+        raise AppError(500, "project_error", "项目缺少目录信息")
+
+    known = {int(item.page_no) for item in project_library.list_pages(project_id, library=library)}
+    outside = [no for no in wanted if no not in known]
+    if outside:
+        raise AppError(400, "page_not_found", "这些页号不在本项目里",
+                       detail=f"{outside}（本项目页码 1–{max(known) if known else 0}）")
+
+    flags = recognition_module.human_touched_for_pages(project.directory, wanted)
+    rows = [{"page_no": no, "human_touched": bool(flags.get(no, False))} for no in wanted]
+    return {"pages": rows, "count": sum(1 for row in rows if row["human_touched"])}
 
 
 @router.post("/{project_id}/open")

@@ -1656,6 +1656,22 @@ def _has_human_results(conn, page_id: str) -> bool:
     return int(row["n"]) > 0
 
 
+def human_touched_for_pages(directory: Path, page_nos: list[int]) -> dict[int, bool]:
+    """哪些页已经有人工成果（**只读**）。判据只此一份：逐页调 `_has_human_results`。"""
+    wanted = sorted({int(no) for no in page_nos})
+    if not wanted:
+        return {}
+    result: dict[int, bool] = {}
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        rows = conn.execute(
+            "SELECT page_id, page_no FROM page WHERE page_no IN (%s)"
+            % ",".join("?" for _ in wanted), tuple(wanted),
+        ).fetchall()
+        for row in rows:
+            result[int(row["page_no"])] = _has_human_results(conn, row["page_id"])
+    return result
+
+
 def _persist_blocks(
     directory: Path,
     page_id: str,

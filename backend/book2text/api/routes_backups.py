@@ -38,6 +38,8 @@ def _backup_note(name: str) -> str:
         return "字框回填前"
     if "before-aux-rerun" in name:
         return "重跑第二引擎前"
+    if "before-recognize" in name:
+        return "重识别前的自动备份"
     return "打开 / 批量操作前的自动备份"
 
 
