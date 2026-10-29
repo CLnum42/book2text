@@ -1292,6 +1292,11 @@ function refresh() {
    **为什么闭包不能用名字匹配**：`applyPackageMode` 这种名字里没有 library，可能被 library 的流程调用，
    **也可能完全不属于 library**。判归属不是看名字，是看**"从哪个入口能到达它"**。
 
+   **实证（2026-10-29，`library` 实测）**：闭包比种子多出 **19 个函数，其中名字带 library 前缀的 0 个**
+   （`timeAgo` / `progressRow` / `progressPercent` / `ratioText` / `recognitionExtra` / `reviewExtra` /
+   `showLockConflict` + 4 个 lock 文案 / `resumeLastPosition` …）。
+   **没有数字，"名字匹配会漏"只是常识；有数字，它是证据。**
+
    **收集法**：
    ```
    从入口（openLibrary / enter / loadLibrary）出发 → 递归收集它调用的、且组外无调用者的函数
