@@ -252,12 +252,12 @@ export function exemptionDeltaProblems({ sha, oldSource, newSource, keepListText
     }
     if (!now.blocked) {
       problems.push(
-        `豁免 ${id} 的到期刀 ${was.stage} → ${now.stage} 但没有「阻塞段: <段号>」——`
-        + "推迟必须写明卡在哪一段，否则就是无限期拖延",
+        `豁免 ${id} 的到期刀是 ${now.stage}，但没写「阻塞段」——受阻项必须写明卡在哪一段`
+        + "（推迟不写理由 = 无限期拖延）",
       );
       continue;
     }
-    for (const label of now.blocked.split(/[、,，]/).map((one) => one.trim()).filter(Boolean)) {
+    for (const label of now.blocked.split(/[、,，+]|\s\+\s/).map((one) => one.trim()).filter(Boolean)) {
       if (!labels.has(label.replace(/\s+/g, " "))) {
         problems.push(
           `豁免 ${id} 的阻塞段「${label}」不在留外壳清单里（${KEEP_LIST_REL} §ⅲ，现有 ${labels.size} 段）`

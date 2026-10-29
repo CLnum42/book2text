@@ -1755,7 +1755,7 @@ function r3Problems({
           + `（它要靠留外壳段解释为什么这一刀搬不走）`,
         );
       }
-      const labels = String(item["阻塞段"]).split(/[、,，]/).map((one) => one.trim()).filter(Boolean);
+      const labels = String(item["阻塞段"]).split(/[、,，+]|\s\+\s/).map((one) => one.trim()).filter(Boolean);
       if (labels.length === 0) {
         problems.push(`豁免 ${item.id} 的「阻塞段」是空的——空字段等于没有理由`);
       }
@@ -2066,7 +2066,7 @@ test("move: 自检（豁免表按方向）：cap 分组增/新增项/提前释�
     { id: "a", cap: 10, stage: 5 },
     { id: "b", cap: 5, stage: 5 },
   ]);
-  assert.ok(run(noReason).some((m) => m.includes("但没有「阻塞段")),
+  assert.ok(run(noReason).some((m) => m.includes("但没写「阻塞段」")),
     `move: 自检失败：推迟却不写阻塞段被放过——${run(noReason).join("；")}`);
 
   // c-3：段号查不到 → 红
