@@ -15,4 +15,16 @@
 **这些是消融/变异实验的现场，不是产品改动**——不要拿它们当分支合回。要复现：
 `git worktree add /tmp/复现名 <基点> --detach`，再 `git apply` 对应 `.diff`（未跟踪夹具在 `.untracked.txt` 里）。
 
-删树后 `git worktree list` 只剩主目录 + `wt-a2`（当时 10 分钟内有文件改动，疑在跑，未删）。
+删树后 `git worktree list` 只剩主目录 + `wt-a2`。
+
+## 唯一保留的树：`/private/tmp/wt-a2`
+
+```
+基点 dd0e593 · 用途：A2/回放验证 · 状态干净 · 无 .lock
+待删条件：A2 回放验完（或明确不再需要）→ 按同流程 remove + prune
+```
+
+**它是唯一保留的临时树，别让它变成第二个 `b2t-mut`。** 留它的理由不是"还有用"，是
+**"删一个干净但可能被引用的树，代价远大于留到明天"**——基点正好是账本那笔（`dd0e593` REPLAY 分类）、
+路径名对得上、删前 10 分钟内有文件 mtime（疑似刚 checkout）。**谁用完了谁删，删前先
+`git -C /private/tmp/wt-a2 status --porcelain` 确认干净。**
