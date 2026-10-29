@@ -160,6 +160,24 @@ B2T_STATIC_DIR=/tmp/rb-base/backend/book2text/static node tests/js/edge-ratchet.
   但那不叫"合规"，叫"没覆盖"。整段搬完必须同批登记（owner = `preview-view.js`），
   否则下一次「一状态两处写」它一声不响。
 
+**导出棘轮按模块建（D-100）**
+
+`VIEW_EXPORTS` 一张表，每个 `*-view.js` 一条上限 + 一份导出名清单：
+
+```
+reading-view.js  ReadingView  6  init enter exit getCurrent reload toggleFollow
+preview-view.js  PreviewView  3  init enter exit
+index-view.js    IndexView    4  init enter exit refresh
+```
+
+- **起始值 = 落盘时的导出数**，只降不升；**导出名也一起锁**（多一个 / 少一个 / 改名都红）——
+  只锁数量的话，`exit` 改名成 `leave` 照样绿。
+- 磁盘上出现没登记的 `*-view.js` → 红（和 `VIEW_STATE_PREFIXES` 同一个形态：新视图落盘必须同批登记）；
+  表里登记了但文件不在 → 也算过期。
+- 为什么：R8 原来只锁 `ReadingView`，第二、第三个模块落盘后谁的导出数都没人管——
+  它们可以一路长成上帝对象而 R8 一直绿。
+- 模块加载失败（语法错 / 顶层就抛）会被报成一条可读的问题，不让整条测试炸在 vm 里。
+
 **机检覆盖：11/11**
 （R1 R2 R3 R4 R5 R6 R7 R8 R9 R11 R12；**R10 是评审清单、不能机检，不计入分母**）
 

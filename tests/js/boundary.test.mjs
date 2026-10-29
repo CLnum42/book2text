@@ -1609,6 +1609,111 @@ test("R8（导出棘轮）：临时导出不超过 5 条（防止往 TEMPORARY �
   assert.ok(TEMPORARY.length <= 5, `TEMPORARY 有 ${TEMPORARY.length} 条，上限 5`);
 });
 
+/**
+ * **导出棘轮按模块建（D-100，Chief 批 A 时的条件 ③）**
+ *
+ * 为什么：上面那几条只锁 `ReadingView`。`PreviewView`（3）与 `IndexView`（4）落盘之后，
+ * 谁的导出数都没人管——第二、第三个模块可以长成上帝对象，而 R8 一直绿。
+ *
+ * 口径：
+ * - 每个 `*-view.js` 一条上限，**起始值 = 落盘时的导出数**，只降不升；
+ * - **导出名集合也一起锁**（不只锁数量）：多一个、少一个、改名都红；
+ * - 磁盘上出现没登记上限的 `*-view.js` → 直接红（和 `VIEW_STATE_PREFIXES` 同一个形态：
+ *   新视图落盘必须同批登记）。表里登记了但文件不在 → 也算过期。
+ * - 接口对象名由文件名决定（R6 已经锁了），这里只关心它下面挂了什么。
+ */
+const VIEW_EXPORTS = {
+  "reading-view.js": { names: STABLE },                                    // 6
+  "preview-view.js": { names: ["init", "enter", "exit"] },                 // 3
+  "index-view.js": { names: ["init", "enter", "exit", "refresh"] },        // 4（D-100 签字）
+};
+
+/** 在干净的 vm 里加载某个视图模块，读出它的接口对象的 key（不加载 app.js）。 */
+function moduleExportKeys(fileName) {
+  const sandbox = {
+    window: null,
+    document: { getElementById: () => null },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+  };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(readFileSync(join(STATIC_DIR, fileName), "utf8"), sandbox, { filename: fileName });
+  const iface = expectedInterfaceName(fileName);
+  return { iface, keys: Object.keys((sandbox.window && sandbox.window[iface]) || {}) };
+}
+
+/** 判定内核（独立出来，好让自检喂合成样例）。 */
+function exportRatchetProblems(fileName, keys) {
+  const entry = VIEW_EXPORTS[fileName];
+  if (!entry) {
+    return [`${fileName}: 没有登记导出上限——新视图落盘必须同批在 VIEW_EXPORTS 里登记（起始值 = 落盘时的导出数）`];
+  }
+  const expected = [...entry.names].sort();
+  const actual = [...keys].sort();
+  const added = actual.filter((key) => !expected.includes(key));
+  const missing = expected.filter((key) => !actual.includes(key));
+  const problems = [];
+  if (added.length > 0) {
+    problems.push(`${fileName}: 多出未申报的导出 ${added.join("、")}——改大要 Architect 签字，不是往表里加一行`);
+  }
+  if (missing.length > 0) {
+    problems.push(`${fileName}: 少了已登记的导出 ${missing.join("、")}——那是 breaking change，先改表并说明`);
+  }
+  if (actual.length > expected.length) {
+    problems.push(`${fileName}: 导出 ${actual.length} 个，上限 ${expected.length}（只降不升）`);
+  }
+  return problems;
+}
+
+test("R8（按模块）：每个视图模块的导出名与数量都只许等于登记值", () => {
+  const modules = readdirSync(STATIC_DIR).filter((name) => name.endsWith("-view.js")).sort();
+  assert.ok(modules.length > 0, `static 目录里一个 *-view.js 都没有（${STATIC_DIR}）——这条闸会空转`);
+  const problems = [];
+  for (const fileName of modules) {
+    let loaded;
+    try {
+      loaded = moduleExportKeys(fileName);
+    } catch (error) {
+      // 模块自己加载不起来（语法错 / 顶层就抛）→ 报成可读的问题，而不是让整条测试炸在 vm 里
+      problems.push(`${fileName}: 加载失败——${error.message}`);
+      continue;
+    }
+    problems.push(...exportRatchetProblems(fileName, loaded.keys));
+  }
+  // 表里登记了但文件不在 = 表过期
+  for (const fileName of Object.keys(VIEW_EXPORTS)) {
+    if (!modules.includes(fileName)) {
+      problems.push(`VIEW_EXPORTS 里登记了 ${fileName}，但 static 目录里没有这个文件——删表项`);
+    }
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("R8（按模块）自检：多一个 / 少一个 / 改名 / 未登记模块，都必须红", () => {
+  const index = ["init", "enter", "exit", "refresh"];
+  assert.ok(
+    exportRatchetProblems("index-view.js", [...index, "debug"]).length > 0,
+    "R8 自检失败：IndexView 多第 5 个导出也放过",
+  );
+  assert.ok(
+    exportRatchetProblems("preview-view.js", ["init", "enter"]).length > 0,
+    "R8 自检失败：PreviewView 少一个导出也放过",
+  );
+  assert.ok(
+    exportRatchetProblems("preview-view.js", ["init", "enter", "leave"]).length > 0,
+    "R8 自检失败：把 exit 改名成 leave 也放过——只锁数量的实现会漏这个",
+  );
+  assert.ok(
+    exportRatchetProblems("probe-view.js", ["init"]).length > 0,
+    "R8 自检失败：新模块没登记上限也放过",
+  );
+  assert.deepEqual(
+    exportRatchetProblems("index-view.js", index),
+    [],
+    "R8 自检失败：正例被误报",
+  );
+});
+
 test("R8（导出棘轮）：写路径 emit 不得再出现在公开对象上（事件只出不进）", () => {
   // 26ac481 收进模块内部、e5c4c37 连同 on/listeners 一起删掉。这条从"到期检查"转成常驻断言：
   // 谁再把写路径挂到 window.ReadingView 上（外部就能驱动重绘），立即红。
