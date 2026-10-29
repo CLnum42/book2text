@@ -37,6 +37,19 @@ git push origin HEAD:main    # 非快进会被远端拒；远端拒 = BASE 变�
 **不做 `update-ref` 直改本地 ref 之外的任何东西**；`update-ref` 只用于"确认无误后把本地 main 指到新 tip"，
 前置断言：`git rev-parse HEAD^{tree}` 与目标 sha 的 tree 相同，且 `git diff --stat` 为 0。
 
+## 0. 报"待推 N 笔"之前先跑这一条（2026-10-29，反复空转的根因）
+
+```sh
+git rev-list --left-right --count origin/main...HEAD   # origin 独有 / 本地独有
+git diff --stat origin/main..HEAD                       # 净差异
+```
+
+**`ahead`/`behind` 在空壳存在时是失真的**——它们数提交，不数内容。
+**净 diff 为空 = 全是空壳，真实待推 0。** 今天从"待推 1 笔"飘到 9 笔再飘回 1 笔，根子就是没人跑这一条。
+
+**对齐时不要重放空壳**：`--skip` 跳掉即可——重放会造出新的空 sha，于是又要多查一次。
+只把**真新增**的几笔 cherry-pick 到 `origin/main` 之上。
+
 ## 已知的空壳（本次核实）
 
 `118762b` / `bad4d94` / `ed74585` 三笔：`merge-base --is-ancestor` 为假，但
