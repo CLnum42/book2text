@@ -6044,31 +6044,123 @@ function closeTaskDrawer() {
   el("task-drawer").hidden = true;
 }
 
+/** 任务胶囊：宽屏「识别中 45/490 · 9.2%  ⏸ ✕」，窄屏「识别 45/490  ⏸ ✕」。 */
+const CHIP_COMPACT_BREAKPOINT = 900;   // < 900px 切成紧凑形态
+const CHIP_AUTO_HIDE_MS = 30000;       // 取消 / 失败的短痕迹留 30s
+
+let lastChipInput = null;
+let chipAutoHideTimer = null;
+let chipResizeBound = false;
+
+function chipIsCompact() {
+  return (typeof window !== "undefined" ? window.innerWidth : 0) < CHIP_COMPACT_BREAKPOINT;
+}
+
+/**
+ * 百分比**一律由 done/total 现算**，不读 `job.percent`。
+ * 真实事故：45/490 时 `job.percent` 是 6.7（后端按别的口径算的），分数却显示 45/490=9.2%——
+ * 两个数在同一行里打架。同源之后这种矛盾在结构上不可能出现。
+ */
+function taskProgressPercent(job) {
+  const total = Number(job && job.total) || 0;
+  const done = (Number(job && job.done) || 0) + (Number(job && job.failed) || 0);
+  if (total <= 0) return 0;
+  return Math.round((done / total) * 1000) / 10;
+}
+
+/** 动作名跟**任务**走，不跟视图变：识别（OCR）/ 检测（版面）/ 拟合（版面准备）/ 复核（第二引擎）。 */
+function taskProgressVerb(job) {
+  const type = job && job.job_type;
+  if (type === "layout") {
+    return job.params && job.params.mode === "prepare" ? "拟合" : "检测";
+  }
+  if (type === "auxiliary") return "复核";
+  return "识别";
+}
+
+/** 纯函数：胶囊文本。宽屏带 %、窄屏不带 %；两者用同一份 done/total。 */
+function taskProgressText(job, data, options = {}) {
+  const compact = options.compact === true;
+  const verb = taskProgressVerb(job);
+  const total = Number(job && job.total) || 0;
+  const done = (Number(job && job.done) || 0) + (Number(job && job.failed) || 0);
+  if (compact) return `${verb} ${done}/${total}`;
+  return `${verb}中 ${done}/${total} · ${taskProgressPercent(job).toFixed(1)}%`;
+}
+
 function taskChipClass(status) {
-  if (status === "failed" || status === "interrupted") return "tpill is-failed";
+  if (status === "failed" || status === "interrupted" || status === "cancelled") return "tpill is-failed";
   if (status && status !== "succeeded") return "tpill is-active";
   return "tpill";
 }
 
-/** 顶栏的任务 pill：一个圆点 + 文字 + 迷你进度条（效果图 02 的右上角）。 */
-function paintTaskChip({ text, status, percent = null, title = "" }) {
+/** 取消 / 失败后的短痕迹：留 30s 自动消失，点 ✕ 立即消失。 */
+function armChipAutoHide(ms = CHIP_AUTO_HIDE_MS) {
+  clearTimeout(chipAutoHideTimer);
+  chipAutoHideTimer = setTimeout(() => {
+    const chip = el("task-chip");
+    if (chip) chip.hidden = true;
+    lastChipInput = null;
+  }, ms);
+}
+
+function clearChipAutoHide() {
+  clearTimeout(chipAutoHideTimer);
+  chipAutoHideTimer = null;
+}
+
+/** 顶栏的任务胶囊：圆点 + 文本 +（进行中时）暂停/继续 + 取消。**同一个元素只有一个写者**。 */
+function paintTaskChip(input) {
   const chip = el("task-chip");
+  if (!chip) return;
+  lastChipInput = input;
+  const compact = chipIsCompact();
+  const text = compact ? input.textCompact || input.text : input.text;
   chip.hidden = false;
-  chip.className = taskChipClass(status);
-  chip.title = title || text;
+  chip.className = taskChipClass(input.status);
+  chip.title = input.title || text;
   chip.innerHTML = "";
   const dot = document.createElement("span");
   dot.className = "tpill__dot";
   const label = document.createElement("span");
+  label.className = "tpill__label";
   label.textContent = text;
   chip.append(dot, label);
-  if (percent !== null) {
-    const mini = document.createElement("span");
-    mini.className = "tpill__mini";
-    const fill = document.createElement("i");
-    fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-    mini.append(fill);
-    chip.append(mini);
+
+  const job = input.job;
+  const active = job && ["queued", "running", "paused"].includes(job.status);
+  if (active) {
+    const paused = job.status === "paused";
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "tpill__ctl";
+    toggle.textContent = paused ? "▶" : "⏸";
+    toggle.title = paused ? "继续" : "暂停";
+    toggle.setAttribute("aria-label", paused ? "继续任务" : "暂停任务");
+    toggle.dataset.state = paused ? "resume" : "pause";
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      controlJob(paused ? "resume" : "pause");
+    });
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "tpill__ctl";
+    cancel.textContent = "✕";
+    cancel.title = "取消任务";
+    cancel.setAttribute("aria-label", "取消任务");
+    cancel.addEventListener("click", (event) => {
+      event.stopPropagation();
+      controlJob("cancel");
+    });
+    chip.append(toggle, cancel);
+  }
+
+  // 切窄/切宽那一刻立刻重绘（不等 0.9s 轮询）
+  if (!chipResizeBound) {
+    chipResizeBound = true;
+    window.addEventListener("resize", () => {
+      if (lastChipInput) paintTaskChip(lastChipInput);
+    });
   }
 }
 
@@ -6673,25 +6765,59 @@ function renderTask(data) {
     failures.append(li);
   }
 
-  paintTaskChip({
-    text: `${typeLabel} ${label} ${job.done + job.failed}/${job.total}`,
-    status: job.status,
-    percent: job.percent,
-    title: `${typeLabel}任务 · ${label}`,
-  });
+  const chipActive = ["queued", "running", "paused"].includes(job.status);
+  if (chipActive) {
+    clearChipAutoHide();
+    paintTaskChip({
+      text: taskProgressText(job, data),
+      textCompact: taskProgressText(job, data, { compact: true }),
+      status: job.status,
+      title: `${typeLabel}任务 · ${label} · 点开看详情`,
+      job,
+    });
+  } else if (job.status === "succeeded") {
+    // 正常完成：胶囊 hidden（不留空壳，也没有数字）
+    clearChipAutoHide();
+    lastChipInput = null;
+    el("task-chip").hidden = true;
+  } else {
+    // 异常结束（取消 / 失败 / 中断）：留一句短痕迹，30s 后消失
+    const trace =
+      job.status === "cancelled" ? "已取消"
+        : job.status === "failed" ? "有失败页"
+        : "已中断";
+    paintTaskChip({
+      text: `${taskProgressVerb(job)}${trace}`,
+      status: job.status,
+      title: `${typeLabel}任务${trace} · 点开看详情`,
+    });
+    armChipAutoHide();
+  }
 }
 
 function renderRecentTasks(jobs) {
   const latest = jobs[0];
   lastTaskData = null;
-  if (latest) {
+  if (latest && ["queued", "running", "paused"].includes(latest.status)) {
+    clearChipAutoHide();
+    paintTaskChip({
+      text: taskProgressText(latest, lastTaskData),
+      textCompact: taskProgressText(latest, lastTaskData, { compact: true }),
+      status: latest.status,
+      title: `${JOB_TYPE_LABELS[latest.job_type] || latest.job_type} · 点开看详情`,
+      job: latest,
+    });
+  } else if (latest) {
+    clearChipAutoHide();
     paintTaskChip({
       text: `任务：${JOB_STATUS_LABELS[latest.status] || latest.status}`,
       status: latest.status,
       title: `${JOB_TYPE_LABELS[latest.job_type] || latest.job_type} · 点开看详情`,
     });
   } else {
-    paintTaskChip({ text: "任务：无", status: null, title: "这个项目还没有跑过任务" });
+    clearChipAutoHide();
+    lastChipInput = null;
+    el("task-chip").hidden = true;   // 没有任务 → hidden（别变成常驻空壳）
   }
 
   // 没有正在跑的任务：抽屉不摆半截进度条，改成说清"最近跑过什么"

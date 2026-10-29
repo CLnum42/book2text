@@ -232,6 +232,15 @@ code { font-size: 12px; background: var(--surface-3); padding: 0 4px; border-rad
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .tpill__mini { width: 54px; height: 4px; border-radius: 2px; background: rgba(37, 99, 235, .18); overflow: hidden; }
 .tpill__mini i { display: block; height: 100%; background: var(--accent); }
+/* 胶囊里的两个动作按钮（暂停/继续 同一按钮两态、✕ 取消）；别把它们做成第二个胶囊 */
+.tpill__ctl {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px;
+  background: transparent; color: var(--text-2); font: inherit; font-size: 11px; line-height: 1;
+  cursor: pointer;
+}
+.tpill__ctl:hover { background: rgba(15, 23, 42, .08); color: var(--text-1); }
+.tpill__ctl:disabled { opacity: .4; cursor: default; }
 
 /* ─────────────────────────────── 提示条 ─────────────────────────────── */
 
