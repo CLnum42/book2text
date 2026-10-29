@@ -1165,6 +1165,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | 2026-10-29 | 导出棘轮按模块 | 删：无（新增闸）；补：`VIEW_EXPORTS` 一表一模块（ReadingView 6 / PreviewView 3 / IndexView 4），**导出名集合也锁**（多一/少一/改名都红），未登记上限的新 `*-view.js` 直接红、表里登记了但文件不在也算过期，模块加载失败报成可读问题；自检喂"多一个/少一个/改名/未登记模块"四种形态必须红、正例必须绿；变异：IndexView 加 `debug` / PreviewView 删 `exit` / 造 `probe-view.js` / `exit` 改名 `leave`，逐条红在目标断言 | DevLead | 477beea |
 | 2026-10-29 | loadPageIndex 行为改动 | 删：无（新增特征测试）；补：`index-view-behavior.test.mjs` 三条——① 预览那条路径调 `loadPageIndex()` 时目录 DOM 零写入（meta 哨兵 + append/innerHTML 双计数）、② 回目录时确实渲染（防"永远不渲染"骗过）、③ `busy` 一个字不写且返回 busy；假 DOM 的 `innerHTML` 改访问器计数（只数 append 会让"清空重画"假绿）；`B2T_INDEX_JS` 支持变异复跑；变异：DOM 写点塞回 `loadPageIndex` / 去掉 `openPageIndex` 里的渲染 / busy 清列表，逐条红在目标断言 | DevLead | a900b2e |
 | 2026-10-29 | 导出棘轮降档 | 删：`STABLE` 里的 `exit`、`VIEW_EXPORTS` 里 preview/index 的 `exit` 项；补：`MAX_EXPORTS 6→5`、`VIEW_EXPORTS` preview 2 / index 3 / reading 5（复用 STABLE），自检两条换键（`const index` 去掉 exit；改名用例改 `enter→leave`；"少一个"用例改 `["init"]`——原来的 `["init","enter"]` 正好等于新登记值，会假绿）；README 的"exit 待接"改成"已删"并附量法；变异：PreviewView 加回 `exit` / IndexView 删掉 `refresh`，逐条红在目标断言 | DevLead | 1a4ad0c |
+| 2026-10-29 | 文档结构闸 + 七条夹具 + move: 笔类 | 删：无（新增闸与夹具）；补：`docs-structure.test.mjs`（全层级章节号、五条自检、失败信息 `文件:行:节号`）、R1/R3/R4-dup/R4b/R5/R7/R12 的合成样例夹具（内核提成纯函数）、`move:` 笔类（三张登记表派生块边界、豁免/上限不放行、fail closed）、run.mjs 回读绕过留痕；顺带删掉文档第 1779 行的重复 H1（与第 1 行逐字节相同）；变异：各闸的合成违规样例逐条喂红、合规样例不红；`move:` 四条（表内绿/表外红/动 MAX 红/空声明红） | DevLead | 4fb0733 |
 
 只有 DevLead 能加行。没有登记行的放宽一律按违规算。
 
