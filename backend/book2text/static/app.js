@@ -6078,14 +6078,33 @@ function taskProgressVerb(job) {
   return "识别";
 }
 
-/** 纯函数：胶囊文本。宽屏带 %、窄屏不带 %；两者用同一份 done/total。 */
+/**
+ * 纯函数：胶囊文本。宽屏带 %、窄屏不带 %；两者用同一份 done/total。
+ *
+ * 三条退化口径（Chief 2026-10-30）——原则是**百分比必须能由屏幕上的分数推出来**：
+ *   · total <= 0（还没拿到计划）→「识别中…」：0/0 是假分数，会让人以为完成了 0 页
+ *   · done > total（范围中途变小）→「识别 495/490」：只给分数，不给 101.0% 这种自相矛盾的数
+ *   · 0 < done <= total →「识别中 45/490 · 9.2%」
+ */
 function taskProgressText(job, data, options = {}) {
   const compact = options.compact === true;
   const verb = taskProgressVerb(job);
   const total = Number(job && job.total) || 0;
   const done = (Number(job && job.done) || 0) + (Number(job && job.failed) || 0);
-  if (compact) return `${verb} ${done}/${total}`;
-  return `${verb}中 ${done}/${total} · ${taskProgressPercent(job).toFixed(1)}%`;
+  if (total <= 0) return compact ? `${verb}…` : `${verb}中…`;
+  const score = `${done}/${total}`;
+  if (done > total) return `${verb} ${score}`;          // 溢出：不给百分比
+  if (compact) return `${verb} ${score}`;
+  return `${verb}中 ${score} · ${taskProgressPercent(job).toFixed(1)}%`;
+}
+
+/** 溢出时给 title 补一句原因（想让用户查得到「为什么没有百分比」）。 */
+function taskProgressTitle(job, base) {
+  const total = Number(job && job.total) || 0;
+  const done = (Number(job && job.done) || 0) + (Number(job && job.failed) || 0);
+  return total > 0 && done > total
+    ? `${base} · 已完成页数超过计划页数（范围刚变过）`
+    : base;
 }
 
 function taskChipClass(status) {
@@ -6772,7 +6791,7 @@ function renderTask(data) {
       text: taskProgressText(job, data),
       textCompact: taskProgressText(job, data, { compact: true }),
       status: job.status,
-      title: `${typeLabel}任务 · ${label} · 点开看详情`,
+      title: taskProgressTitle(job, `${typeLabel}任务 · ${label} · 点开看详情`),
       job,
     });
   } else if (job.status === "succeeded") {
@@ -6804,7 +6823,7 @@ function renderRecentTasks(jobs) {
       text: taskProgressText(latest, lastTaskData),
       textCompact: taskProgressText(latest, lastTaskData, { compact: true }),
       status: latest.status,
-      title: `${JOB_TYPE_LABELS[latest.job_type] || latest.job_type} · 点开看详情`,
+      title: taskProgressTitle(latest, `${JOB_TYPE_LABELS[latest.job_type] || latest.job_type} · 点开看详情`),
       job: latest,
     });
   } else if (latest) {
