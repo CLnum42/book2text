@@ -28,6 +28,8 @@ if (currentView === "review" || currentView === "reading") return "review";
 if (currentView !== "pages") return "review";     // 其余视图也落到这一步
 ```
 
+（中间省略 `index` / `preview` 两处）
+
 → **两个视图共用同一个步骤号**。用户在步骤条上看不出区别，但从哪进去决定了他看到的是旧单页还是新连续流。
 
 ## 依据 2：删会失去什么（`reading` 现在没有的）

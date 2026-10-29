@@ -27,7 +27,7 @@ accept 有、闸没有 → group("panel-page-settings", pageStep) 这类"把 id 
 闸有、accept 没有 → document.querySelectorAll('#rec-dpi input[type="radio"]') 这类带后缀的选择器
 ```
 
-## 2. 互不包含的实证（真树，2026-10-29 工作区 `app.js` = 14,496 行）
+## 2. 互不包含的实证（真树，`main@48210fa`，`app.js` 14,496 行）
 
 **① 闸数到、accept 数不到**
 

@@ -1,7 +1,7 @@
 # 刀 2.5：把 8 个装配函数里的 pages 接线先拆出来（一页纸，2026-10-29）
 
 > **原则**：只搬行、不改逻辑。抽出的 `wirePagesXxx()` 住 `app.js`，**刀 2 与装配点同批搬进 `pages-view.js` 的 `init`**。
-> 基线：`app.js` 14,387 行（origin/main 树）；8 个装配函数对 `view-pages` id 的引用共 **58 处**。
+> 基线：`main@cce0159`（`app.js` 14,387 行）；8 个装配函数对 `view-pages` id 的引用共 **58 处**。
 
 ## ① 拆法
 

@@ -2,7 +2,7 @@
 
 > 作者：PM。日期 2026-10-28。状态：审计结论，供 Designer 出稿、Chief 拍板。
 > 只审「阅读审校」这一屏（`view-reading`），不扩散到其他步骤。
-> 代码依据：`backend/book2text/static/app.js`（行号为 2026-10-28 的 main）。
+> 代码依据：`backend/book2text/static/app.js`（行号为 `main@4419e4c` 的树）。
 >
 > **口径修正（2026-10-28 复核）**：本文初稿引用的 `1733 = 923 + 810` 是 **Extractor 抽取端口径**
 > （`docs/pm/review-cost.md` §2.1），**不是界面口径**。用产品队列函数
