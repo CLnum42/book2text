@@ -25,10 +25,10 @@ import { stripCommentsAndStrings, functionBody, countWord } from "./static-scan.
  */
 export const BRIDGE_EXCEPTIONS = [
   { name: "openPageDetail", owner: "DevLead", expires: "pages 视图搬进模块时" },
-  { name: "renderMergeView", owner: "DevLead", expires: "merge 视图搬进模块时" },
-  { name: "submitMergeDecisions", owner: "DevLead", expires: "merge 视图搬进模块时" },
 ];
-export const BRIDGE_EXCEPTION_MAX = 3;
+// 2026-10-29 merge 视图落盘：renderMergeView / submitMergeDecisions 两条桥随搬迁切到注入
+// navigate()，例外按到期点删除；上限 3 → 1（只降不升）。
+export const BRIDGE_EXCEPTION_MAX = 1;
 
 export const BRIDGES = [
   "setupReading",
