@@ -132,6 +132,8 @@ export async function run(cfg) {
       return await reviewActionsProbe(page, args);
     case "review_space_probe":
       return await reviewSpaceProbe(page, args);
+    case "pages_third_consumer_probe":
+      return await pagesThirdConsumerProbe(page, args);
     case "merge_probe":
       return await mergeProbe(page, cfg, args);
     case "step_timing":
@@ -3740,6 +3742,115 @@ async function mergeProbe(page, cfg, args) {
  *   ② 草稿 text ≠ old_text 且非空（候选真的进了草稿）
  *   ③ 面板换到下一条（key 变了）
  */
+/**
+ * `pages` 是 PageTile 的**第三个消费者**——这一整套拆分的终考（2026-10-29 派单）。
+ *
+ * 判据（四条，全过才算第三消费者接上了）：
+ *   ① 同页同档 `img.src` 赋值 = 1（不是 2）
+ *   ② `IntersectionObserver` 构造 ≤ 6（不是回到 11）
+ *   ③ 三个 consumer（pages / index / preview）的 handle 指向**同一张 <img>**（sameImg）
+ *   ④ 切走再切回：不重新取图（该页该档 src 赋值 +0）
+ *
+ * **模块没落盘时必须是"模块缺失"的明确失败**，不许绿：没有对象就没有"一次取图"。
+ */
+async function pagesThirdConsumerProbe(page, args) {
+  const present = await page.evaluate(() => Boolean(window.PagesView));
+  if (!present) {
+    return {
+      missingModule: true,
+      reason: "window.PagesView 不存在——`pages` 刀 1 还没落盘，这个探针没有对象（不许当通过）",
+    };
+  }
+  const pageNo = Number(args.pageNo || 1);
+  // 插桩：只在探针开始时包一次，之后的取图 / 观察器构造都计数
+  await page.evaluate(() => {
+    if (!window.__tileProbeInstalled) {
+      window.__tileProbeInstalled = true;
+      const desc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src");
+      window.__srcWrites = [];
+      Object.defineProperty(HTMLImageElement.prototype, "src", {
+        configurable: true,
+        get() { return desc.get.call(this); },
+        set(value) { window.__srcWrites.push(String(value)); desc.set.call(this, value); },
+      });
+      window.__ioCount = 0;
+      const NativeIO = window.IntersectionObserver;
+      if (NativeIO) {
+        const Wrapped = function (...a) { window.__ioCount += 1; return new NativeIO(...a); };
+        Wrapped.prototype = NativeIO.prototype;
+        window.IntersectionObserver = Wrapped;
+      }
+    }
+    window.__srcWrites.length = 0;
+    window.__ioCount = 0;
+  });
+  const writesFor = (n) =>
+    page.evaluate((page) => window.__srcWrites.filter(
+      (url) => url.includes(`/pages/${page}/image`) && url.includes("size=view")
+    ).length, n);
+  const imageFor = (n) =>
+    page.evaluate((page) => {
+      const img = [...document.querySelectorAll("#view-pages img")]
+        .find((item) => (item.getAttribute("src") || "").includes(`/pages/${page}/image`));
+      if (img) window.__probeImg = img;
+      return Boolean(img);
+    }, n);
+
+  await page.evaluate(() => { window.showView("pages"); });
+  await page.waitForFunction(
+    (page) => [...document.querySelectorAll("#view-pages img")].some((item) =>
+      (item.getAttribute("src") || "").includes(`/pages/${page}/image`)),
+    pageNo,
+    { timeout: args.timeout || 30000 }
+  ).catch(() => false);
+  await page.waitForTimeout(600);
+  const firstImg = await page.evaluate(() => {
+    const img = [...document.querySelectorAll("#view-pages img")]
+      .find((item) => (item.getAttribute("src") || "").includes("/pages/"));
+    return img ? (img.getAttribute("src") || "") : null;
+  });
+  const target = (firstImg && /\/pages\/([0-9]+)\/image/.exec(firstImg)) ? Number(/\/pages\/([0-9]+)\/image/.exec(firstImg)[1]) : pageNo;
+  const writesFirst = await writesFor(target);
+
+  // ③ 同一张图：把 pages 的 img 记下来，切 index / preview 看是不是同一个节点
+  await imageFor(target);
+  await page.evaluate(() => { window.showView("index"); });
+  await page.waitForTimeout(1200);
+  const indexSame = await page.evaluate((n) => {
+    const img = [...document.querySelectorAll("#view-index img")]
+      .find((item) => (item.getAttribute("src") || "").includes(`/pages/${n}/image`));
+    return Boolean(img && window.__probeImg && img === window.__probeImg);
+  }, target);
+  await page.evaluate(() => { window.showView("preview"); });
+  await page.waitForTimeout(1200);
+  const previewSame = await page.evaluate((n) => {
+    const img = [...document.querySelectorAll("#view-preview img")]
+      .find((item) => (item.getAttribute("src") || "").includes(`/pages/${n}/image`));
+    return Boolean(img && window.__probeImg && img === window.__probeImg);
+  }, target);
+
+  // ④ 切回 pages：该页该档不应再取图
+  const beforeBack = await writesFor(target);
+  await page.evaluate(() => { window.showView("pages"); });
+  await page.waitForTimeout(900);
+  const afterBack = await writesFor(target);
+  const io = await page.evaluate(() => window.__ioCount || 0);
+  return {
+    missingModule: false,
+    target,
+    writes: writesFirst,
+    io,
+    indexSame,
+    previewSame,
+    sameImg: indexSame && previewSame,
+    backWrites: afterBack - beforeBack,
+    handlers: await page.evaluate(() => ({
+      pages: Boolean(window.PagesView),
+      pageTile: typeof window.PageTile === "object",
+    })),
+  };
+}
+
 async function reviewSpaceProbe(page, args) {
   await ensureReading(page);
   const rounds = Number(args.rounds || 3);

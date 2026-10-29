@@ -606,6 +606,48 @@ def cmd_library_notice(args: argparse.Namespace) -> int:
     return report.finish(report_path)
 
 
+def cmd_pages_third_consumer(args: argparse.Namespace) -> int:
+    """`pages` 第三消费者终考（PageTile）：一次取图 / observer ≤6 / 三视图同一张图 / 切回不重取。
+
+    模块没落盘时必须是「模块缺失」的明确失败（exit 2），不许当通过。
+    """
+    state = _require_state()
+    try:
+        _browser.run(state, "prepare")
+    except Exception as error:  # noqa: BLE001
+        print(f"准备失败：{error}")
+        return 2
+    try:
+        data = _browser.run(state, "pages_third_consumer_probe", {"pageNo": args.page_no}, timeout=900.0)
+    except Exception as error:  # noqa: BLE001
+        print(f"探针失败：{error}")
+        return 2
+    if data.get("missingModule"):
+        print(f"✗ 模块缺失：{data.get('reason')}")
+        return 2
+    problems = []
+    if data.get("writes") != 1:
+        problems.append(f"同页同档 img.src 赋值 = {data.get('writes')}（应为 1）")
+    if int(data.get("io") or 0) > 6:
+        problems.append(f"IntersectionObserver 构造 = {data.get('io')}（应 ≤6）")
+    if not data.get("sameImg"):
+        problems.append(f"三视图不是同一张图（index={data.get('indexSame')} preview={data.get('previewSame')}）")
+    if data.get("backWrites"):
+        problems.append(f"切回 pages 又取了 {data.get('backWrites')} 次图（应为 0）")
+    print(f"项目：{state['project_id']}  目标页：{data.get('target')}")
+    print(f"  ① img.src 赋值（size=view）  {data.get('writes')}   （期望 1）")
+    print(f"  ② IntersectionObserver 构造  {data.get('io')}   （期望 ≤6）")
+    print(f"  ③ 同一张图                  index={data.get('indexSame')} preview={data.get('previewSame')}")
+    print(f"  ④ 切回 pages 新增取图       {data.get('backWrites')}   （期望 0）")
+    if problems:
+        print("✗ 第三消费者没接上 PageTile：")
+        for item in problems:
+            print(f"    - {item}")
+        return 1
+    print("✓ pages / index / preview 共用一张图、一套观察器；终考通过")
+    return 0
+
+
 def cmd_review_space(args: argparse.Namespace) -> int:
     """空格=采用候选 的实机回归（2026-10-29 静默错动作的防回归）。
 
@@ -1482,6 +1524,10 @@ def build_parser() -> argparse.ArgumentParser:
     reading = sub.add_parser("reading", help="读取正文审校界面状态与已渲染段落")
     reading.add_argument("--page", type=int, default=None)
     reading.set_defaults(func=cmd_reading)
+
+    third = sub.add_parser("pages_third_consumer", help="pages 第三消费者终考（PageTile）")
+    third.add_argument("--page-no", type=int, default=1)
+    third.set_defaults(func=cmd_pages_third_consumer)
 
     space = sub.add_parser("review_space", help="空格=采用候选 的实机回归（静默错动作）")
     space.add_argument("--rounds", type=int, default=3)
