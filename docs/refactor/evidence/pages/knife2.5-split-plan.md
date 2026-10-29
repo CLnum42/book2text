@@ -184,3 +184,39 @@ getter（2）：currentProject（全局状态）· selectedPages（pages 状态�
 | `wirePagesSetup` | 12579–12582 | 5 | 3 |
 
 合计：**11 个 wire 函数**；覆盖 id 种数 **34**
+
+## ⑧ 进 init 的判据（2026-10-29 夜定稿，14/14 全进）
+
+### 三条机检
+
+```
+① 无宿主局部依赖：段内标识符只能是 el / document / 常量 / 页面数据 / injected.*
+   （不许出现宿主函数的形参或局部变量——14 段都是从宿主里提出来的独立顶层函数，天然满足）
+②′ **按求值时机判，不按字面形状判**：
+   不许在「挂载时」（段体顶层、不在任何回调里）依赖宿主状态；
+   回调体内的守卫是允许的，但必须走 injected.getter，不许引用 app.js 顶层名。
+③ 所绑 id 必须在 index.html 里静态存在（若由 JS 生成，生成语句必须在绑定之前）
+```
+
+**②′ 是修正过的**：旧版写成「不许出现 `if (!currentProject)`」，把「事件时求值」和「挂载时求值」混成一谈。
+按字面执行会把 `wirePagesPageGrid` 这种能在 init 里跑的段留在外壳。**判据要按求值时机分，不按字面形状分**——
+同族于「闸的禁令按方向判、不按对象判」。**旧版那句已删除，不许再按字面判。**
+
+### 实测（当前树，14 个 wirePagesXxx）
+
+```
+38 个绑定 id：全部在 view-pages 子树内静态存在；无一个是 JS 动态生成（createElement / insertAdjacentHTML / innerHTML 命中 0）
+script 标签在 </body> 前、boot() 之后执行 → init 时 DOM 已在树里，且都早于 setupLibrary()
+挂载时读宿主状态的段：0 个
+事件回调里读状态的段：2 个（wirePagesPageGrid → currentProject；wirePagesSelection → selectedPages）
+  → 两处都改成 injected.getCurrentProject() / injected.getSelectedPages()
+```
+
+### 结论
+
+```
+14 段全进 init（不是 13）——wirePagesPageGrid 也进，回调守卫走 getter。
+8 个宿主里删掉对应的 14 行 wirePagesXxx();
+deps：23 个 pages 流程函数 + 2 个 getter（currentProject / selectedPages）
+留外壳的只剩：boot 那 8 处 toggle 句柄（跨视图 init deps）+ setupLibrary 的混杂段
+```
