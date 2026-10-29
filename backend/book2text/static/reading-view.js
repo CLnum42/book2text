@@ -489,10 +489,21 @@ function setupReading() {
         ? readingEntries.find((item) => readingKey(item.block_id, item.line_index) === readingPanelKey)
         : null;
       if (panelEntry) {
-        draftReading(panelEntry, "kept", null);
+        // UX V3 键位（docs/ux/review-screen-ux-v3.md §7）：Enter=保留、空格=采用候选。
+        if (event.key === " ") draftReading(panelEntry, "adopted", panelEntry.candidate || null);
+        else draftReading(panelEntry, "kept", null);
         return;
       }
       if (event.key === "Enter") gotoNextUnreviewed();
+    } else if (event.key === "e" || event.key === "E") {
+      const panelEntry = readingPanelKey
+        ? readingEntries.find((item) => readingKey(item.block_id, item.line_index) === readingPanelKey)
+        : null;
+      const panel = document.querySelector("#reading-panel-host .reading-panel");
+      if (panelEntry && panel) {
+        event.preventDefault();
+        startReadingEdit(panelEntry, panel);
+      }
     }
   });
 }
