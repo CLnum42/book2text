@@ -5,6 +5,42 @@
 模板字段：任务目标 / 当前状态 / 实施计划 / 实现与验证 / 用户操作说明 / 下一步建议。
 未在真实环境运行过的测试一律注明，不得把未运行的测试写成通过。
 
+## 2026-10-29 — 任务 94 续：视图拆模块（Slice P2 preview / Slice I1 index）
+
+### 任务目标
+
+用户：「把其他视图也拆成各自的文件吧，这样方便以后专门的开发。」
+每个视图一个 `<name>-view.js`，经典脚本 + IIFE + `window.<Name>View`，在 app.js 之前加载；
+接口按 §20.1：必选 `init(deps) / enter() / exit()`，业务方法逐个过 R8 并写明调用点。
+
+### 改了什么
+
+- **Slice P2（preview）**：`preview-view.js` 997 行（43 函数 + 27 状态），接口 3 个；
+  `app.js` 18,045 → 17,192（净减 853）。接缝 4 处：`showView → enter()`、
+  收尾 / 跨页 → `enter({ force | invalidate })`、`boot → init(deps)`。
+- **Slice I1（index）**：`index-view.js` 1,195 行（46 函数 + 24 状态），接口 4 个
+  （`init / enter / exit / refresh`）；`app.js` 17,192 → 16,157（净减 1,035）。
+  注入 34 键。留 app.js 的只有"别人也在用"的：页码索引缓存（预览在读）+
+  `loadPageIndex` / `loadIndexBlocks` / `clearImagePlaceholder`（都改成不碰 DOM 的纯数据服务）+
+  图片清晰度档位（三个视图都读）。
+- `reading-view.js` 3,313 行 / 接口 6 个（上一轮已落，tag `refactor-done`）。
+
+### 验证
+
+- preview：逐字节 43/43（正 + 逆变换）+ 运行时等价 9/9；证据 `docs/refactor/evidence/preview-p2/`。
+- index：逐字节 46/46（正 + 逆变换）+ 24/24 状态声明；唯一改写是 `openPageIndex` 的加载分支
+  （`loadPageIndex` 里三个 DOM 写点按 R3 搬进模块，时点不变）；证据 `docs/refactor/evidence/index/`。
+- 真浏览器（`qa.py step index`）：`view=index`、`index-meta`「662 页 · 1 页有印刷页码」、
+  页面图 / 块框 / 版心开关都在。
+- `qa.py smoke`：41/45，控制台错误 0；3 条失败全是已登记问题（K1 顶部差 1 + L-107 第 17 次 1/20），
+  没引入新的。导出仍 662 页 / 653 页有正文 / 4821 段 / 753335 字。
+- `node tests/js/run.mjs`：64 条，R6 / R5 两条红（新模块的埋点与状态待登记，TestDev 同批补）。
+- `pytest`：5 个用例红（都是断言锁在旧位置的耦合，TestDev 改合查）。
+
+### 下一步建议
+
+`review`（221 处）→ `pages`（270 处）→ `merge`（663 处）。拆 `pages` 前先定"页面瓷砖服务"。
+
 ---
 
 ## 2026-10-28 — 任务 64：按页语言 + 一律用 Vision 复核
