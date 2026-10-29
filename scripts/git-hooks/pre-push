@@ -16,6 +16,14 @@ set -u
 REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 cd "$REPO" || exit 0
 
+# ---- 机械状态（仪表盘，不是闸）：**不写任何文件**、失败不挡推送 ----
+# 每次推送自动把"我推的是什么、远端是什么"打出来，不依赖谁记得跑。
+if [ -x "$REPO/scripts/status.sh" ]; then
+  "$REPO/scripts/status.sh" >&2 2>&1 || echo "… pre-push：status.sh 执行失败（不影响推送）" >&2
+else
+  echo "… pre-push：scripts/status.sh 不存在，跳过状态打印（不影响推送）" >&2
+fi
+
 COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir)
 MAIN=$(dirname "$COMMON")
 LOG="$COMMON/b2t-pytest.log"
