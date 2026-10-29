@@ -54,6 +54,143 @@ BASELINE_REFS = {"el": 111, "literal": 116, "occurrences": 270}
 SHRINK_LOW, SHRINK_HIGH = 0.85, 1.00
 #: `--acid` 的必填四字段。缺一 = 未验（exit 2），不是通过、也不是红。
 ACID_FIELDS = ("imgSrcAssignments", "observers", "sameImg", "evidence")
+PLAN = REPO / "docs/refactor/pages-plan.md"
+BOUNDARY_TESTS = REPO / "tests/js/boundary.test.mjs"
+
+
+def plan_slices() -> list[dict]:
+    """从 `pages-plan.md` 的 5 刀表解析（序号 / 操作 / 行数）。**不在这里手抄行数。**"""
+    if not PLAN.exists():
+        return []
+    slices = []
+    for line in PLAN.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"^\|\s*\*\*(\d)\*\*\s*\|\s*\*\*(.+?)\*\*\s*\|\s*([\d,]+)\s*\|", line)
+        if match:
+            slices.append({"n": int(match.group(1)), "name": match.group(2), "lines": int(match.group(3).replace(",", ""))})
+    return slices
+
+
+def r3_exemptions() -> tuple[int, int, list[str]]:
+    """R3 豁免表现状（条数 / 上限 / 涉及的 id）。计划要求「不新增豁免」。"""
+    text = BOUNDARY_TESTS.read_text(encoding="utf-8") if BOUNDARY_TESTS.exists() else ""
+    block = re.search(r"const R3_EXEMPTIONS = \[(.*?)\n\];", text, re.S)
+    ids = re.findall(r'id:\s*"([^"]+)"', block.group(1)) if block else []
+    cap = re.search(r"const R3_MAX_EXEMPTIONS = (\d+)", text)
+    return len(ids), int(cap.group(1)) if cap else -1, ids
+
+
+def run_stage(args, stage_n: int) -> int:
+    """按 `pages-plan.md` 的按刀口径判（**5 刀不是一次归零**）。
+
+    计划里写死的只有三件：每刀的行数、R3 的定性期望、以及「少于一半 = 复制不是搬」。
+    所以这里**只判得到的东西**：减量下界取自计划、R3 期望取自计划表、豁免只降不升。
+    上界计划没给（每刀 movers 归属没列），不自己发明。
+    """
+    slices = plan_slices()
+    spec = next((item for item in slices if item["n"] == stage_n), None)
+    if spec is None:
+        print(f"[64] 调用方式错（不是验收失败）：pages-plan.md 里没有第 {stage_n} 刀"
+              f"（现有 {[item['n'] for item in slices]}）")
+        return EXIT_USAGE
+    print(f"第 {spec['n']} 刀「{spec['name']}」：计划 {spec['lines']:,} 行（调用者）"
+          f"（出处 docs/refactor/pages-plan.md §1；该刀 movers 归属计划未列，所以行数只判调用者列）")
+
+    app_text = APP.read_text(encoding="utf-8") if APP.exists() else ""
+    if not app_text or not MODULE.exists():
+        print(f"   {MODULE.name}：{'不存在' if not MODULE.exists() else '在'}")
+        print(f"[2] 前置不满足：第 {spec['n']} 刀还没落盘")
+        return 2
+
+    base = baseline()
+    app_lines = len(app_text.split("\n")) - (1 if app_text.endswith("\n") else 0)
+    shrink = (base["app_lines"] or 0) - app_lines
+    floor = spec["lines"] // 2
+    print(f"   减量：app.js {base['app_lines']:,} → {app_lines:,}（净减 {shrink:,}；"
+          f"下界 {floor:,} = 计划行数的一半，计划原文「少于一半 = 复制不是搬，停」）")
+
+    problems: list[str] = []
+    if shrink < floor:
+        problems.append(f"第 {spec['n']} 刀净减 {shrink:,} < {floor:,}（计划 {spec['lines']:,} 的一半）"
+                        f"——这是「复制」不是「搬」，停")
+
+    ids = section_ids(INDEX.read_text(encoding="utf-8"), f"view-{VIEW}")
+    refs, _count = id_literal_count(app_text, ids)
+    if stage_n == 5:
+        print(f"   R3：view-{VIEW} 字面量 {refs} 处（第 5 刀必须归零）")
+        if refs != 0:
+            problems.append(f"第 5 刀之后 view-{VIEW} 仍有 {refs} 处字面量——计划要求这一刀归零")
+    else:
+        print(f"   R3：view-{VIEW} 字面量 {refs} 处（第 {stage_n} 刀：相对基线 {BASELINE_REFS['occurrences']} 处"
+              f"要下降、且**不能归零**）")
+        if refs == 0:
+            problems.append(f"第 {stage_n} 刀之后字面量已归零——与计划不符（其余组还在 app.js 里），先核对口径")
+        elif refs >= BASELINE_REFS["occurrences"]:
+            problems.append(f"第 {stage_n} 刀之后仍是 {refs} 处，没低于基线 "
+                            f"{BASELINE_REFS['occurrences']} 处——这一刀没减到字面量")
+
+    count, cap, exempt_ids = r3_exemptions()
+    print(f"   R3 豁免：{count} 条（上限 {cap}；计划要求「不新增豁免」）")
+    if cap >= 0 and count > cap:
+        problems.append(f"R3 豁免 {count} 条 > 上限 {cap}——计划禁止为过闸新增豁免")
+    pages_exempt = [item for item in exempt_ids if item.startswith("pages")]
+    if pages_exempt:
+        problems.append(f"R3 豁免里出现 pages 的 id：{pages_exempt}——§2 明确「不批只搬接线类靠开豁免过闸」")
+
+    if not args.expect_sha:
+        print(f"[2] 前置不满足：第 {stage_n} 刀没给 --expect-sha——每刀必须用**该刀冻结版**名单的 sha，"
+              f"否则判的是另一份名单（exit 2 = 未验）")
+        return 2
+    if not args.acid:
+        print("[2] 前置不满足：第 %d 刀没给 --acid 实测——第三消费者没验，就不算搬完" % stage_n)
+        return 2
+    acid_problems = check_acid(args.acid)
+    if acid_problems is None:
+        return 2
+    problems.extend(acid_problems)
+
+    print("---")
+    if problems:
+        print(f"[1] 验收失败：{len(problems)} 条")
+        for item in problems:
+            print(f"    ✗ {item}")
+        return 1
+    print(f"[0] 第 {spec['n']} 刀通过：减量过下界 / R3 符合该刀期望 / 豁免未增 / 酸测试齐")
+    return 0
+
+
+def check_acid(path_text: str) -> list[str] | None:
+    """--acid 四字段校验。返回 None = 未验（调用方 exit 2）；返回 [] / 问题清单 = 验过了。"""
+    acid_path = Path(path_text)
+    if not acid_path.is_file():
+        print(f"[2] 前置不满足：--acid 指向的文件不存在：{acid_path}")
+        return None
+    acid = json.loads(acid_path.read_text(encoding="utf-8"))
+    missing_fields = [name for name in ACID_FIELDS if name not in acid]
+    if missing_fields:
+        print(f"[2] 前置不满足：--acid 缺字段 {'、'.join(missing_fields)}——"
+              f"四个字段（{', '.join(ACID_FIELDS)}）缺一即「未验」，未验 ≠ 通过")
+        return None
+    writes, observers, same, evidence = (acid["imgSrcAssignments"], acid["observers"],
+                                         acid["sameImg"], acid["evidence"])
+    if not isinstance(evidence, str) or not evidence.strip():
+        print("[2] 前置不满足：--acid 的 evidence 是空的——证据路径都没写，等于没验")
+        return None
+    evidence_path = Path(evidence)
+    if not evidence_path.is_absolute():
+        evidence_path = REPO / evidence_path
+    if not evidence_path.exists():
+        print(f"[2] 前置不满足：--acid 的 evidence 指的文件不存在：{evidence}（未验 ≠ 通过）")
+        return None
+    print(f"⑤ 第三消费者：img.src 赋值 {writes} 次（须 1）· observer {observers} 个（须 ≤ 6）"
+          f"· sameImg={same} · 证据 {evidence}")
+    problems = []
+    if writes != 1:
+        problems.append(f"⑤ 同页同档 img.src 赋值 {writes} 次 ≠ 1——第三个消费者没走 PageTile")
+    if not isinstance(observers, int) or observers > 6:
+        problems.append(f"⑤ observer {observers} 个 > 6——调度又变成多份")
+    if same is not True:
+        problems.append(f"⑤ 同页同档取到的不是同一张图（sameImg={same}）——缓存/URL 参数又分叉了")
+    return problems
 
 
 def load_rules():
@@ -139,6 +276,10 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--acid", default="", help="第三消费者的实测 JSON（img.src 赋值次数 / observer 数）")
     parser.add_argument("--expect-sha", default="", help="movers.json 的 sha256 前缀（判名单是不是那一版）")
+    parser.add_argument("--stage", type=int, default=0,
+                        help="按 pages-plan.md 的第 N 刀判（1..5）：减量下界 + R3 该刀期望 + 豁免不增")
+    parser.add_argument("--slice", dest="stage", type=int,
+                        help=argparse.SUPPRESS)   # 别名：第一版叫 --slice，别让旧命令变用法错
     # `land_pages.sh` 的 `"${@:-}"` 在无参数时会传一个**空字符串**进来（实测：POSIX sh 展开成 `[]`）。
     # 空参数永远没有意义，丢掉它，别让它变成 "unrecognized arguments: " 再被误读成"没给 --acid"。
     argv = [arg for arg in argv if arg != ""]
@@ -152,6 +293,18 @@ def main(argv: list[str]) -> int:
             return EXIT_USAGE
         raise
 
+    # 名单版本校验放最前：**整刀与按刀都必须核**，否则按刀判的是另一份名单。
+    if args.expect_sha:
+        import hashlib
+        actual = hashlib.sha256(MANIFEST_JSON.read_bytes()).hexdigest()
+        if not actual.startswith(args.expect_sha):
+            print(f"[1] 验收失败：名单不是指定的那一版（期望 {args.expect_sha[:16]}…，实际 {actual[:16]}…）")
+            print("    名单被重排/换版本时验收必须先红——别拿错名单静默跑完。")
+            return 1
+
+    if args.stage:
+        return run_stage(args, args.stage)
+
     base = baseline()
     rules = load_rules()
     problems: list[str] = []
@@ -164,14 +317,6 @@ def main(argv: list[str]) -> int:
     if not MANIFEST_JSON.exists():
         print(f"[2] 前置不满足：找不到名单 {MANIFEST_JSON.relative_to(REPO)}")
         return 2
-    if args.expect_sha:
-        import hashlib
-        actual = hashlib.sha256(MANIFEST_JSON.read_bytes()).hexdigest()
-        if not actual.startswith(args.expect_sha):
-            print(f"[1] 验收失败：名单不是指定的那一版（期望 {args.expect_sha[:16]}…，实际 {actual[:16]}…）")
-            print("    名单被重排/换版本时验收必须先红——别拿错名单静默跑完。")
-            return 1
-
     # ① 名单自洽
     data = manifest()
     zones = {z: {x["name"]: x for x in data.get(z, [])} for z in ("movers", "stays", "external")}
@@ -257,38 +402,10 @@ def main(argv: list[str]) -> int:
         pending.append("⑤ 第三消费者没给实测（--acid <json>：{imgSrcAssignments, observers, sameImg, evidence}）"
                        "——这条不判就等于没验")
     else:
-        acid_path = Path(args.acid)
-        if not acid_path.is_file():
-            print(f"[2] 前置不满足：--acid 指向的文件不存在：{acid_path}")
+        acid_problems = check_acid(args.acid)
+        if acid_problems is None:
             return 2
-        acid = json.loads(acid_path.read_text(encoding="utf-8"))
-        # 缺字段 = **未验**，不是通过：`aac4568` 那次就是"只有实机证据、闸里没有用例"被当成过了。
-        missing_fields = [name for name in ACID_FIELDS if name not in acid]
-        if missing_fields:
-            print(f"[2] 前置不满足：--acid 缺字段 {'、'.join(missing_fields)}——"
-                  f"四个字段（{', '.join(ACID_FIELDS)}）缺一即「未验」，未验 ≠ 通过")
-            return 2
-        writes = acid["imgSrcAssignments"]
-        observers = acid["observers"]
-        same = acid["sameImg"]
-        evidence = acid["evidence"]
-        if not isinstance(evidence, str) or not evidence.strip():
-            print("[2] 前置不满足：--acid 的 evidence 是空的——证据路径都没写，等于没验")
-            return 2
-        evidence_path = Path(evidence)
-        if not evidence_path.is_absolute():
-            evidence_path = REPO / evidence_path
-        if not evidence_path.exists():
-            print(f"[2] 前置不满足：--acid 的 evidence 指的文件不存在：{evidence}（未验 ≠ 通过）")
-            return 2
-        print(f"⑤ 第三消费者：同页同档 img.src 赋值 {writes} 次（须 1）· observer {observers} 个（须 ≤ 6）"
-              f"· 同页同档同一张图 sameImg={same} · 证据 {evidence}")
-        if writes != 1:
-            problems.append(f"⑤ 同页同档 img.src 赋值 {writes} 次 ≠ 1——第三个消费者没走 PageTile")
-        if not isinstance(observers, int) or observers > 6:
-            problems.append(f"⑤ observer {observers} 个 > 6——调度又变成多份")
-        if same is not True:
-            problems.append(f"⑤ 同页同档取到的不是同一张图（sameImg={same}）——缓存/URL 参数又分叉了")
+        problems.extend(acid_problems)
 
     if not module_exists:
         # 落盘前的预检：名单错、名单与源码对不上，此刻就该红——否则落盘那天红的是「名单错」，
