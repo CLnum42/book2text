@@ -2,7 +2,7 @@
 """scripts/accept_review.py —— `review` 第二刀落盘后的验收（机械部分）。
 
 口径来源（**脚本不发明数字**）：
-- `docs/refactor/review-slice.md`（两刀边界、减量门槛 2,400..2,650）
+- `docs/refactor/review-slice.md`（两刀边界；§4 的 2,400..2,650 是按作废的 106/2,585 算的，已由「按名单派生」取代）
 - `docs/refactor/review-attribution.md`（逐字节归属：94 含根 / 93 不含根、17 个外部流程）
 - `docs/refactor/accept-template.md`（三态退出码、id 按标签深度、字面量→0、减量硬判据、导出面精确相等）
 
@@ -32,6 +32,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -56,8 +57,15 @@ BASELINE_IDS_WITH_ROOT = 94        # 含视图根——引用这个数时必须�
 BASELINE_REFS = 89                 # app.js 引用到的 id 数（不含根集合）
 BASELINE_LITERALS = 218            # app.js 里这些 id 的字面量总处数（不含根集合）
 BASELINE_APP_LINES = 15311         # 本刀开工时的 app.js 行数（`sh scripts/status.sh --no-fetch` 读）
-MIN_SHRINK = 2400                  # review-slice.md §4：≥2,400；>2,650 说明顺手删了别的
-MAX_SHRINK = 2650
+# 减量门槛**从名单派生**，不写死数字。
+# `review-slice.md` §4 的 2,400..2,650 是按作废的 106 / 2,585 切片算的；冻结名单是 120 个 / 2,974 行，
+# 写死任何一个数都会把对的判错（按 43/879 算过的 850..950 更是差 3 倍）。
+# 预期净减 ≈ movers 行数和 − 转发段占位。实测先例：library 刀 17 函数 / 371 行 → app.js 减 317（85.4%）。
+#   下界 0.85 × 预期：低于它说明有函数没搬（复制不是搬）；
+#   上界 1.00 × 预期：减得比名单还多 = 顺手删了别的。
+# 有豁免（entangled 等）时，用 `--exempt <文件|名字…>` 把不搬的函数从预期里扣掉，门槛跟着走。
+SHRINK_MIN_RATIO = 0.85
+ENTANGLED = REPO / "docs/refactor/evidence/review/entangled.json"
 
 # 17 个外部流程（review-attribution.md §1「不属于 review」）。名单文件里有 external 区就用它，
 # 没有才从 `review-slice.md` §1 的名单块解析，再解析不出退回这份内置清单并**打印警告**。
@@ -201,6 +209,7 @@ def _blank_manifest(source: str, kind: str) -> dict:
         "closure_lines": None,        # (出处, 值) 文件头声明的闭包行数
         "items": {},                  # zone -> [ {name, lines} ]
         "malformed": [],              # 名单自身的问题（缺 name 等）
+        "sha256": None,               # 名单文件内容的 sha256（防"读到别人改过的版本"）
     }
 
 
@@ -315,6 +324,7 @@ def load_manifest() -> dict:
                     manifest["header"].append((key, value.strip()))
                 elif isinstance(value, dict):
                     manifest["header"].append((key, value))
+            manifest["sha256"] = hashlib.sha256(MOVERS_JSON.read_bytes()).hexdigest()
             return manifest
 
         prereq("movers.json 是对象，但没有 movers / stays / external 三区——格式不认识"
@@ -347,6 +357,8 @@ def load_manifest() -> dict:
         {"name": _item_name(item), "lines": _item_lines(item)} for item in raw_items
     ]
     manifest["present"] = {"movers"}
+    used = MOVERS_TXT if MOVERS_TXT.is_file() else MOVERS_JSON
+    manifest["sha256"] = hashlib.sha256(used.read_bytes()).hexdigest() if used.is_file() else None
     return manifest
 
 
@@ -356,13 +368,15 @@ def _names(manifest: dict, zone: str) -> list[str]:
 
 def print_manifest(manifest: dict) -> None:
     """第一屏：名单来源 + 各区条数 + 文件头口径。验收看的是第一眼。"""
+    sha = manifest.get("sha256")
+    sha_note = f"；sha256 {sha[:12]}" if sha else ""
     if manifest["kind"] == "zones":
         parts = " / ".join(f"{zone} {len(manifest['items'].get(zone, []))}" for zone in ZONES)
         total = sum(len(manifest["items"].get(zone, [])) for zone in ZONES)
-        print(f"名单：{manifest['source']}（三区：{parts}；合计 {total}）")
+        print(f"名单：{manifest['source']}（三区：{parts}；合计 {total}{sha_note}）")
     else:
         print(f"名单：{manifest['source']}（单列 {len(manifest['items'].get('movers', []))} 个；"
-              f"不是三区格式，①② 跳过）")
+              f"不是三区格式，①② 跳过{sha_note}）")
     for label, value in manifest["header"]:
         if isinstance(value, dict):
             if any(word in label for word in ("对账", "reconcile", "summary")):
@@ -375,6 +389,29 @@ def print_manifest(manifest: dict) -> None:
         else:
             prefix = f"{label} = " if label else ""
             print(f"口径：{prefix}{value}")
+    movers = manifest["items"].get("movers", [])
+    mover_lines = sum(item["lines"] for item in movers if item["lines"] is not None)
+    if mover_lines:
+        print(f"     减量门槛按名单派生：movers {len(movers)} 个 / {mover_lines:,} 行"
+              f" → 预期净减 {int(mover_lines * SHRINK_MIN_RATIO):,}..{mover_lines:,}"
+              f"（{SHRINK_MIN_RATIO}..1.00；不写死数字）")
+    note_entangled(movers)
+
+
+def note_entangled(movers: list) -> None:
+    """entangled：引用 review id、却留在外壳的函数。它们同时决定了「字面量→0」可不可达。"""
+    if not ENTANGLED.is_file():
+        return
+    try:
+        data = json.loads(ENTANGLED.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    entries = [entry for entry in data.get("entries") or [] if isinstance(entry, dict)]
+    names = {entry.get("name") for entry in entries}
+    inside = sorted(name for name in names if name in {item["name"] for item in movers})
+    inside_lines = sum(item["lines"] or 0 for item in movers if item["name"] in set(inside))
+    print(f"     警示：entangled {len(entries)} 个 / {data.get('lines', 0):,} 行——其中 {len(inside)} 个在 movers 里"
+          f"（{inside_lines:,} 行）；纯搬运下 app.js 字面量无法归零，等方向（豁免 / 拆渲染 / 先 UX）")
 
 
 def manifest_problems(manifest: dict) -> list[str]:
@@ -502,6 +539,34 @@ def load_external_flow() -> list[str]:
     return list(EXTERNAL_FLOW_FALLBACK)
 
 
+def parse_sha(argv: list[str]) -> str | None:
+    """`--expect-sha <sha256>`：名单被重排/换版本时立刻红，而不是拿错名单静默跑完。"""
+    for index, arg in enumerate(argv):
+        if arg == "--expect-sha" and index + 1 < len(argv):
+            return argv[index + 1].strip().lower()
+        if arg.startswith("--expect-sha="):
+            return arg.split("=", 1)[1].strip().lower()
+    return None
+
+
+def parse_exempt(argv: list[str]) -> set[str]:
+    """`--exempt a,b` 或 `--exempt <文件>`：不搬的函数（entangled 等），从预期净减里扣掉。"""
+    for index, arg in enumerate(argv):
+        if arg == "--exempt" and index + 1 < len(argv):
+            raw = argv[index + 1].strip()
+        elif arg.startswith("--exempt="):
+            raw = arg.split("=", 1)[1].strip()
+        else:
+            continue
+        candidate = Path(raw)
+        if candidate.is_file():
+            names = {line.strip() for line in candidate.read_text(encoding="utf-8").splitlines()}
+        else:
+            names = {name.strip() for name in raw.split(",") if name.strip()}
+        return {name for name in names if name and not name.startswith("#")}
+    return set()
+
+
 def parse_exports(argv: list[str]) -> set[str] | None:
     for index, arg in enumerate(argv):
         if arg == "--exports" and index + 1 < len(argv):
@@ -514,6 +579,15 @@ def parse_exports(argv: list[str]) -> set[str] | None:
 def main(argv: list[str]) -> int:
     manifest = load_manifest()
     print_manifest(manifest)
+
+    expected_sha = parse_sha(argv)
+    if expected_sha:
+        actual_sha = manifest.get("sha256") or ""
+        if actual_sha != expected_sha:
+            print("---")
+            print(f"[1] 验收失败：名单不是指定的那一版（期望 {expected_sha[:16]}…，实际 {actual_sha[:16] or '?'}…）")
+            print("    名单被重排/换版本时，验收必须先红——别拿错名单静默跑完。")
+            return EXIT_FAIL
 
     for path, label in ((APP, "app.js"), (INDEX, "index.html"), (ATTRIBUTION, "review-attribution.md"),
                         (SLICE, "review-slice.md")):
@@ -568,11 +642,21 @@ def main(argv: list[str]) -> int:
     # ② 减量：≥2,400（<2,400 = 复制不是搬；>2,650 = 顺手删了别的）
     app_lines = len(app_source.splitlines())
     shrink = BASELINE_APP_LINES - app_lines
-    print(f"② app.js：{app_lines:,} 行（基线 {BASELINE_APP_LINES:,}，已减 {shrink}；门槛 {MIN_SHRINK}..{MAX_SHRINK}）")
-    if shrink < MIN_SHRINK:
-        problems.append(f"app.js 只减了 {shrink} 行（< {MIN_SHRINK}）：这是「复制」不是「搬」，停")
-    if shrink > MAX_SHRINK:
-        problems.append(f"app.js 减了 {shrink} 行（> {MAX_SHRINK}）：顺手删了别的，回退")
+    exempt = parse_exempt(argv)
+    mover_items = manifest["items"].get("movers", [])   # 带 lines 的那一份（movers 只是名字）
+    expected_lines = sum(item["lines"] or 0 for item in mover_items if item["name"] not in exempt)
+    exempt_lines = sum(item["lines"] or 0 for item in mover_items if item["name"] in exempt)
+    min_shrink = int(expected_lines * SHRINK_MIN_RATIO)
+    detail = f"名单 movers {len(movers) - len(exempt)} 个 / {expected_lines:,} 行 × {SHRINK_MIN_RATIO}..1.00"
+    if exempt:
+        detail += (f"；已扣豁免 {len(exempt)} 个 / {exempt_lines:,} 行"
+                   f"（--exempt 目前只影响②减量：⑤/① 仍按全名单判，豁免口径等方向定了再一起改）")
+    print(f"② app.js：{app_lines:,} 行（基线 {BASELINE_APP_LINES:,}，已减 {shrink}；"
+          f"预期净减 {min_shrink:,}..{expected_lines:,}：{detail}）")
+    if shrink < min_shrink:
+        problems.append(f"app.js 只减了 {shrink} 行（< {min_shrink}）：名单里还有函数没搬——这是「复制」不是「搬」，停")
+    if shrink > expected_lines:
+        problems.append(f"app.js 减了 {shrink} 行（> {expected_lines}）：比名单里要搬的还多——顺手删了别的，回退")
 
     # ③ 导出面：等 DevLead 给，参数传；不给就是还没定（exit 2，不猜）
     expected = parse_exports(argv)
