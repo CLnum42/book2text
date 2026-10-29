@@ -574,6 +574,85 @@ test("R4-dup 自检：两份真实现必须红，≤6 行转发必须绿，单�
   assert.deepEqual(single, [], "R4-dup 自检失败：同一文件内的重名不归这条管（那是 R4b）");
 });
 
+/**
+ * R7b 的判定内核（纯函数）——R7 只管 `*-view.js`，看不见**不是视图的模块**。
+ *
+ * 为什么需要它（2026-10-29 实测）：`page-tile.js` 写了 `window.PageTile`，但 `index.html`
+ * 里没有它的 `<script>`，而消费者写的是 `const api = window.PageTile; if (!api) return null;`
+ * —— 于是页面走降级路径、不报错，`node tests/js/run.mjs` 删掉那行 `<script>` 仍 **125 pass / 0 fail**。
+ * **模块写了没加载**是这个仓库最危险的失败形态（静默、全绿、线上没变化），所以判据不能只盯视图。
+ *
+ * @param {string} html index.html 内容
+ * @param {{file: string, exposes: string[]}[]} modules static 目录里除 app.js 外的 `*.js`
+ */
+function r7bProblems(html, modules) {
+  const problems = [];
+  if (!Array.isArray(modules)) {
+    return ["R7b 拿不到模块名单——按红处理，空名单会让这条闸空转"];
+  }
+  const appAt = html.indexOf("/static/app.js");
+  for (const { file, exposes } of modules) {
+    if (!exposes || exposes.length === 0) continue;      // 不暴露 window 的脚本不用加载检查
+    const at = html.indexOf(`/static/${file}`);
+    if (at === -1) {
+      problems.push(`${file} 暴露了 window.${exposes[0]}，但 index.html 里没有它的 <script>`
+        + "——消费者会走 `if (!api) return null` 的降级路径：页面不报错、行为全没，静态门全绿");
+      continue;
+    }
+    if (appAt !== -1 && at > appAt) {
+      problems.push(`${file} 必须在 app.js 之前加载（现在顺序反了：module=${at} app=${appAt}）`);
+    }
+  }
+  return problems;
+}
+
+test("R7b：static/*.js 里暴露了 window.X 的，都必须在 index.html 里且在 app.js 之前", () => {
+  const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
+  const modules = readdirSync(STATIC_DIR)
+    .filter((name) => name.endsWith(".js") && name !== "app.js")
+    .sort()
+    .map((file) => ({
+      file,
+      exposes: [...readFileSync(join(STATIC_DIR, file), "utf8").matchAll(/\bwindow\.([A-Za-z_$][\w$]*)\s*=/g)]
+        .map((match) => match[1]),
+    }));
+  const withGlobal = modules.filter((item) => item.exposes.length > 0);
+  assert.ok(withGlobal.length >= 3,
+    `只找到 ${withGlobal.length} 个暴露 window 的脚本（${withGlobal.map((i) => i.file).join("、")}）——目录指错了吧？`);
+  const problems = r7bProblems(html, modules);
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+/** R7b 自检（§20.9 ⑬）：漏加载 / 顺序反了 / 不暴露 window / 空名单。 */
+test("R7b 自检：漏 <script> / 排在 app.js 之后 必须红；不暴露 window 的不判；空名单红", () => {
+  const modules = [
+    { file: "page-tile.js", exposes: ["PageTile"] },
+    { file: "util.js", exposes: [] },
+  ];
+  const good = '<script src="/static/page-tile.js"></script>\n<script src="/static/app.js"></script>';
+  assert.deepEqual(r7bProblems(good, modules), [], "R7b 自检失败：正常写法被误报");
+
+  const missing = '<script src="/static/app.js"></script>';
+  assert.ok(
+    r7bProblems(missing, modules).some((item) => item.includes("page-tile.js")),
+    "R7b 自检失败：删掉 <script> 也放过——这正是 2026-10-29 漏掉的那一行",
+  );
+
+  const after = '<script src="/static/app.js"></script>\n<script src="/static/page-tile.js"></script>';
+  assert.ok(
+    r7bProblems(after, modules).some((item) => item.includes("顺序反了")),
+    "R7b 自检失败：模块排到 app.js 之后也放过",
+  );
+
+  assert.deepEqual(
+    r7bProblems('<script src="/static/app.js"></script>', [{ file: "util.js", exposes: [] }]),
+    [],
+    "R7b 自检失败：不暴露 window 的脚本被要求加载",
+  );
+
+  assert.ok(r7bProblems(good, null).length > 0, "R7b 自检失败：空名单没判红（闸会空转）");
+});
+
 test("R7：每个 static/*-view.js 都必须在 app.js 之前加载（名单从目录来）", () => {
   const indexPath = join(STATIC_DIR, "index.html");
   let html;
