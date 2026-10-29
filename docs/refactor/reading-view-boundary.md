@@ -1380,6 +1380,46 @@ function refresh() {
 
 **一条必须写死的语义**：`notify` 可能在任何视图下被调（导入发生在页面视图）。所以它写的是**隐藏 DOM**——`enter()` **不许清空 notice**，否则"用户在页视图导入，切回 library 时提示已消失"。只有 library 自己的操作（`loadLibrary` 等）才覆盖它。
 
+### 20.9 搬迁验收模板：三条可数的（并入 §22 模板）
+
+**⑦ 死导出检查（可数）**：搬完逐个导出 `grep -c "<Module>.<method>("`，**0 个就二选一——补接（补一行外壳）或删接口，不许留着。**
+已发生四次：`ReadingView.exit` / `PreviewView.exit` / `IndexView.exit`（零调用点 → 删）、`MergeView.enter`（外壳没那行 → 差点零调用点）。
+**规律不是"有人忘了调"，是"接口先于调用路径存在"。**
+
+**⑧ 状态归属**：视图数据由外壳持有，模块**通过注入 getter 现取，不缓存副本**（R5 一状态一 owner 的实例）。
+允许模块存**引用**做"是否换了新数据"的判断，但**不许把它当数据源**——每次画都用 getter 取。
+
+**⑨ 验收优先用直接计数**：用「入口被调几次 / 画了几次」这类**直接计数**，不用 DOM 变动次数当替代指标（`__mergeDraws` 优于数 `appendChild`——后者会被重排、占位、隐藏干扰）。
+
+### 20.10 MergeView 最终形态：2 个导出（本裁定覆盖早前对 `renderMergeView` 的签字）
+
+**问题**：Chief 定的 ⑧ 要求模块不缓存 state；一旦 `renderMergeView(state)` 不能存数据，它就只剩"navigate"一个动作——**那这个导出没有存在理由**。
+
+**最终形态**：
+
+```js
+window.MergeView = { init, enter };   // 2 个
+
+// 外壳侧（两处调用点，14850 / 14868）：
+mergeState = payload;
+showView("merge");        // → showView 的 merge 分支 → MergeView.enter()
+
+// 模块内：
+const enter = () => {
+  const state = injected.getMergeState();   // 现取，不缓存副本
+  if (!state) return showMergeEmpty();
+  if (state !== lastStateRef) { lastStateRef = state; mergeHandled = new Set(); mergeDecisions = new Map(); }
+  drawMergeView(state);
+};
+```
+
+**三条要点**：
+1. `renderMergeView` **不再导出**——它的两个调用点变成"设外壳 state + `showView("merge")`"，语义不变；
+2. `mergeHandled` / `mergeDecisions` **只在换数据时重置**（用对象身份比较），重进视图不重置——否则"切走再回来，未提交的裁决被清空"，这是行为改变；
+3. `lastStateRef` 只做"换没换新数据"的判断，**不是数据源**（⑧ 的允许项）。
+
+**验收**：`window.__mergeDraws` 一次导入 = 1；"从别处 `showView("merge")` 进入 → 用 getter 重画、不重置裁决"各一条。
+
 ## 21. 什么时候该做模块，而不是注入叶子（判据 + 第一个实例：瓷砖服务）
 
 > 2026-10-29 立。在此之前我们只有"能不能搬"的判据（caller-closed、零新增导出），**没有"该不该成为实体"的判据**。有了这条，以后遇到"这堆函数到底该不该独立"不用吵。
