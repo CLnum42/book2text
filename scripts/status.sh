@@ -141,11 +141,37 @@ COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null \
 
 BYPASS_LOG="$COMMON/b2t-gate-bypass.log"
 if [ -f "$BYPASS_LOG" ]; then
-  BYPASS_COUNT=$(grep -c . "$BYPASS_LOG" 2>/dev/null || echo 0)
-  echo "闸：绕过 ${BYPASS_COUNT:-0} 次（${BYPASS_LOG#$REPO/}）"
-  tail -n 3 "$BYPASS_LOG" 2>/dev/null | sed 's/^/     /'
+  # **按第 3 列 tag 聚合**，不按行数：账本里有表头注释（`#`）和空行，
+  # 按行数数会把它们算成"绕过"（2026-10-29 实测：按行数是 10，实际绕过 6）。
+  # 格式：时间 \t sha \t tag \t branch@worktree \t 理由 \t subject
+  COUNTS=$(awk -F'\t' '
+    /^[[:space:]]*#/ { next }
+    NF < 3 { next }
+    {
+      tag = $3
+      if (tag == "BYPASS") bypass++
+      else if (tag == "BYPASS-WITH-REASON") withReason++
+      else if (tag == "REWRITE") { rewrite++; last = $1 }
+    }
+    END {
+      printf "%d|%d|%d|%s\n", bypass + 0, withReason + 0, rewrite + 0, (last == "" ? "-" : last)
+    }
+  ' "$BYPASS_LOG" 2>/dev/null)
+  # 用 `|` 分隔取字段：时间列本身含空格（`2026-10-29 10:48:36`），按空白取会被截成日期
+  BYPASS_N=$(printf '%s' "$COUNTS" | cut -d'|' -f1)
+  REASON_N=$(printf '%s' "$COUNTS" | cut -d'|' -f2)
+  REWRITE_N=$(printf '%s' "$COUNTS" | cut -d'|' -f3)
+  REWRITE_LAST=$(printf '%s' "$COUNTS" | cut -d'|' -f4)
+  TOTAL=$(( ${BYPASS_N:-0} + ${REASON_N:-0} ))
+  printf '闸：绕过 %s 次（BYPASS %s / BYPASS-WITH-REASON %s）\n' "$TOTAL" "${BYPASS_N:-0}" "${REASON_N:-0}"
+  if [ "${REWRITE_N:-0}" -gt 0 ]; then
+    printf '    重写 %s 次（REWRITE，不计入绕过；最近一次 %s）\n' "$REWRITE_N" "$REWRITE_LAST"
+  else
+    printf '    重写 0 次（REWRITE，不计入绕过）\n'
+  fi
 else
-  echo "闸：绕过 0 次（.git/b2t-gate-bypass.log 不存在）"
+  echo "闸：绕过 0 次（BYPASS 0 / BYPASS-WITH-REASON 0）——.git/b2t-gate-bypass.log 不存在"
+  echo "    重写 0 次（REWRITE，不计入绕过）"
 fi
 
 PYTEST_LOG="$COMMON/b2t-pytest.log"
