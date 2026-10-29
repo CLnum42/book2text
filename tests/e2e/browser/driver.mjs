@@ -3773,22 +3773,29 @@ async function pagesThirdConsumerProbe(page, args) {
         get() { return desc.get.call(this); },
         set(value) { window.__srcWrites.push(String(value)); desc.set.call(this, value); },
       });
-      // 选择器兼容：pages 的页图块可能不是 #view-pages img 这一套。
-      // 只定义「怎么找那个对象」；判据（同一张图 / 只取一次）不在这里放宽。
+      // 页图对象从**真实 DOM**探测，不写死候选根：
+      //   ① 优先 `#view-<key>`（视图模块的根）；
+      //   ② 没有就找 id 含该视图名、且当前可见的容器；
+      //   ③ 再不行才在 document 里找「可见 + src 是这个页」的 img。
+      // 只解决"怎么找到那个对象"；判据（同一张图 / 只取一次）不在这里放宽。
       window.__probeImgFor = (viewKey, pageNo) => {
-        const roots = {
-          pages: ["view-pages", "page-grid", "pages-grid", "pages-canvas", "pages-page-grid"],
-          index: ["view-index", "index-canvas", "index-pages"],
-          preview: ["view-preview", "preview-pdf-scroll", "preview-pages"],
-        }[viewKey] || [viewKey];
-        const images = roots
-          .map((id) => document.getElementById(id))
-          .filter(Boolean)
-          .flatMap((root) => [...root.querySelectorAll("img")]);
-        const withPage = images.filter((img) => (img.getAttribute("src") || "").includes(`/pages/${pageNo}/image`));
+        const roots = [];
+        const byId = document.getElementById(`view-${viewKey}`);
+        if (byId) roots.push(byId);
+        if (!roots.length) {
+          for (const node of document.querySelectorAll(`[id*="${viewKey}"]`)) {
+            if (node.getClientRects().length) { roots.push(node); break; }
+          }
+        }
+        const pool = roots.length
+          ? roots.flatMap((root) => [...root.querySelectorAll("img")])
+          : [...document.querySelectorAll("img")];
+        const visible = pool.filter((img) => img.getClientRects().length);
+        const withPage = visible.filter((img) =>
+          (img.getAttribute("src") || "").includes(`/pages/${pageNo}/image`));
         if (withPage.length) return withPage[0];
-        // 目标页还没加载时，返回该视图第一张有页号的图，供"发现目标页"用
-        return images.find((img) => /\/pages\/[0-9]+\/image/.test(img.getAttribute("src") || "")) || null;
+        // 目标页还没加载时，返回该视图第一张可见的页图，供"发现目标页"用
+        return visible.find((img) => /\/pages\/[0-9]+\/image/.test(img.getAttribute("src") || "")) || null;
       };
       window.__ioCount = 0;
       const NativeIO = window.IntersectionObserver;
