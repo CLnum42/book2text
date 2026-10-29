@@ -317,7 +317,7 @@
     }
 
     const wanted = `/api/projects/${projectId()}/pages/${page.page_no}/image?size=view` +
-      `&injected.token=${encodeURIComponent(injected.token)}`;
+      `&token=${encodeURIComponent(injected.token)}`;
     if (image.dataset.pageNo !== String(page.page_no)) {
       image.dataset.pageNo = String(page.page_no);
       canvas.hidden = true;

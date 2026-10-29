@@ -264,10 +264,10 @@ function showView(name) {
   if (target === "preview" && currentProject) {
     // 任务 94 Slice P2：进预览只有一条路（§20.1）——模块内的 openPreview 由 enter 负责
     window.PreviewView?.enter();
+  }
   if (target === "merge" && currentProject) {
     // 任务 94 / §20.10：进合并视图只有一条路，数据由外壳设进 mergeState
     window.MergeView?.enter();
-  }
   }
   if (target === "export" && currentProject) {
     queueAfterSteps(() => hydrateView("export"));
