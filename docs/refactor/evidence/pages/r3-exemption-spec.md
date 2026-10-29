@@ -7,7 +7,7 @@
 ## 结论
 
 - **`page-grid` 无一处搬漏**：它的引用全在 stays 函数里（刀 1 movers 内 0 处）；
-- **`app.js:143`（`const grid = el("page-grid")`）不在顶层**——它在函数 **pausePageThumbnails** 里，属正常引用，**不是设计问题**；
+- **`pausePageThumbnails()` 里的 `el("page-grid")` 不在顶层**——属正常引用，**不是设计问题**；
 - 顶层引用实测 **0 处**。
 
 ## 豁免表（每项三样：id / 引用行号 / 到期刀）
