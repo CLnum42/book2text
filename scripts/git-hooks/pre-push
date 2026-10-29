@@ -147,7 +147,7 @@ check_one() {
     return 1
   fi
 
-  echo "… pre-push：跑 pytest（推送范围含代码改动，约 82s）" >&2
+  echo "… pre-push：跑 pytest（推送范围含代码改动，约 82s；验 $(echo "$LOCAL_SHA" | cut -c1-8) 的树，不验工作区）" >&2
   START=$(date +%s)
   # **验要推送的那棵树，不验工作区**（与 pre-commit 同一条理由）：
   # 多人共用一个工作区、或从临时 worktree 推送时，工作区与 local_sha 不是一回事。
@@ -168,6 +168,7 @@ check_one() {
   cp "$PYOUT" "$OUTLOG" 2>/dev/null || true
   if [ "$PYRC" -ne 0 ]; then
     echo "✗ pre-push：pytest 红了（$(( $(date +%s) - START ))s）" >&2
+    echo "  验的是 $(echo "$LOCAL_SHA" | cut -c1-8) 的树（git archive 导出），不是工作区。" >&2
     tail -n 30 "$PYOUT" >&2
     [ -f "$OUTLOG" ] && echo "  日志：$(basename "$OUTLOG")" >&2
     rm -f "$PYOUT"
@@ -183,7 +184,7 @@ check_one() {
   rm -f "$PYOUT"
   # 记"这次验过的 tip"：同一范围里的祖先提交都算覆盖（否则 rebase/多笔推送会反复被点名）
   printf 'RANGE\t%s\t%s\t%s\n' "$LOCAL_SHA" "$(date '+%F %T')" "$(printf '%s\n' "$FILES" | wc -l | tr -d ' ') files" >>"$LOG" 2>/dev/null || true
-  echo "✓ pre-push：pytest 全绿（$(( $(date +%s) - START ))s）" >&2
+  echo "✓ pre-push：pytest 全绿（$(( $(date +%s) - START ))s，验的是 $(echo "$LOCAL_SHA" | cut -c1-8) 的树）" >&2
   return 0
 }
 
