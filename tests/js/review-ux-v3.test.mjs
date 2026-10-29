@@ -10,16 +10,15 @@
 // 不判实现：不断言"调用了 advanceToNext()/draftReading()"，只断言面板文本、草稿记录、
 // 面板还开着、面板换成了哪一条、焦点在哪个按钮、滚动位置变没变。
 //
-// ## 为什么默认 skip
+// ## 默认就跑，没有 skip（Chief 2026-10-29 裁决）
 //
-// 仓库的 pre-commit 跑 `node tests/js/run.mjs`，**红了就拒提交**（AGENTS 1.5）。
-// 这三条描述的是 UX V3 的**目标行为**，HEAD 上还没实现——写死成红会让所有人推不动。
-// 所以默认 `skip`，并给一个强制开关：
+// 默认 skip 等于"跑才验"：`run.mjs` 的默认路径正是 pre-commit 唯一会跑的那条路径，
+// 在那里 skip = 这条闸平时不存在（与 `--no-verify` 同类，只是看不出来）。
+// 所以：**默认跑**。HEAD 上功能没落地时它就是红的——**红着是"待兑现的闸"，不是噪音**；
+// 落地那笔提交必须让这 4 条在 HEAD 上 pass（用例与实现是一对，同一天完成）。
 //
-//     B2T_REVIEW_UX_V3=1 node tests/js/run.mjs review-ux-v3     # 跑真断言（现在是红的）
-//
-// **落地后把 SKIP_REASON 改成 null 一行**，从此它就是挡人的闸。
-// （同 `reading-view-behavior.test.mjs` 的既有口径：main 上还不存在的行为按条件 skip，不写成红。）
+// 对历史版本定点复跑用 `B2T_READING_VIEW_JS` 指向副本——那是**换被测源码**，
+// 与 `B2T_APP_JS` 同性质，不是"关闸"的开关。
 //
 // ## 红/绿夹具（改动只在 /tmp 的副本上，不碰产品文件）
 //
@@ -27,7 +26,7 @@
 //
 //     # 历史 bug 版（e8a1ce3 之前：面板开着按 Enter 直接 gotoNextUnreviewed）
 //     git show 'e8a1ce3^:backend/book2text/static/reading-view.js' > /tmp/rv-prefix.js
-//     B2T_REVIEW_UX_V3=1 B2T_READING_VIEW_JS=/tmp/rv-prefix.js \
+//     B2T_READING_VIEW_JS=/tmp/rv-prefix.js \
 //       node tests/js/review-ux-v3.test.mjs      # ② 红「草稿数是 0——当前条被跳过且没记录」
 //
 //     # 把默认焦点挪到「采用候选」
@@ -42,12 +41,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { loadReadingView } from "./load-reading-view.mjs";
 
-const FORCE = process.env.B2T_REVIEW_UX_V3 === "1";
-const SKIP_REASON = FORCE
-  ? false
-  : "UX V3 行为尚未落地（面板 ±6 片段 / 判决即前进 / 默认焦点）；落地后去掉 skip，见文件头";
-
-// 变异验证用：B2T_READING_VIEW_JS 指向 /tmp 里的改坏副本，跑同一批断言。
+// 默认就跑，**没有 skip 开关**（Chief 2026-10-29：默认 skip 等于"跑才验"，和 --no-verify 同类）。
+// HEAD 上功能没落地时它就是红的——那是"待兑现的闸"，不是噪音。
+// 对历史版本定点复跑用 B2T_READING_VIEW_JS 指向副本（与 B2T_APP_JS 同性质），
+// **不是**关闭这条闸的开关。
 const MODULE_FILE = process.env.B2T_READING_VIEW_JS || undefined;
 
 // ---------------------------------------------------------------- 薄假 DOM
@@ -436,9 +433,7 @@ function assertEmphasized(panel, changedChar) {
 
 // ---------------------------------------------------------------- ① 一条 = 一处差异
 
-test("① 面板只显示差异片段（±6 字），不是整行；差异字有强调；「看整行」才展开整行", {
-  skip: SKIP_REASON,
-}, () => {
+test("① 面板只显示差异片段（±6 字），不是整行；差异字有强调；「看整行」才展开整行", () => {
   reset();
   const entry = makeEntry("b1", 0, 1, { current: LINE_A, candidate: CAND_A });
   const panel = openPanel(entry);
@@ -466,9 +461,7 @@ test("① 面板只显示差异片段（±6 字），不是整行；差异字有
 
 // ---------------------------------------------------------------- ② 判决即前进
 
-test("② 判决即前进：Enter 之后当前条已记录、下一条已加载、面板没关、视口没跳", {
-  skip: SKIP_REASON,
-}, async () => {
+test("② 判决即前进：Enter 之后当前条已记录、下一条已加载、面板没关、视口没跳", async () => {
   reset();
   const first = makeEntry("b1", 0, 1, { current: LINE_A, candidate: CAND_A });
   const second = makeEntry("b2", 0, 1, {
@@ -496,9 +489,7 @@ test("② 判决即前进：Enter 之后当前条已记录、下一条已加载�
   assert.equal(run("readingPageNo"), pageBefore, "判决之后页码变了");
 });
 
-test("② 空格和 Enter 一样：记录当前条并前进（不关面板）", {
-  skip: SKIP_REASON,
-}, async () => {
+test("② 空格和 Enter 一样：记录当前条并前进（不关面板）", async () => {
   reset();
   const first = makeEntry("b1", 0, 1, { current: LINE_A, candidate: CAND_A });
   const second = makeEntry("b2", 0, 1, {
@@ -518,9 +509,7 @@ test("② 空格和 Enter 一样：记录当前条并前进（不关面板）", 
 
 // ---------------------------------------------------------------- ③ 默认焦点
 
-test("③ 默认焦点在「保留原文」：打开面板直接按 Enter 就生效", {
-  skip: SKIP_REASON,
-}, async () => {
+test("③ 默认焦点在「保留原文」：打开面板直接按 Enter 就生效", async () => {
   reset();
   const entry = makeEntry("b1", 0, 1, { current: LINE_A, candidate: CAND_A });
   openPanel(entry);
