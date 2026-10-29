@@ -1166,7 +1166,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | T4 | ~~`showView` 接 `exit()`~~ → **已裁决：删 `exit`**（三个模块）。`.exit(` 全仓库 0 个调用点，它是**永不执行的导出**；实测重复 `enter()` 不重复绑监听、不重建观察器，今天不需要"离开时清理"这个口子 | 证据见下方「T4 裁决证据」 | **已完成**：`ReadingView` 6→5 / `PreviewView` 3→2 / `IndexView` 4→3，棘轮同降 |
 
 | T6 | **建 SCC 快照机制**：脚本算环内边 → 写 `docs/refactor/scc-snapshot.json`；与上次 diff，新增边必须解释或修掉 | 破环阶段末；之后每次大重构末 | 未做 |
-| T5 | **导出棘轮按模块建**（`VIEW_EXPORTS`：`ReadingView` 6 / `PreviewView` 3 / `IndexView` 4，新 `*-view.js` 不登记即红） | 每拆一个视图都必须同批登记 | **已完成** `477beea`（D-100 条件 ③） |
+| T5 | **导出棘轮按模块建**（`VIEW_EXPORTS`，新 `*-view.js` 不登记即红；导出名集合一起锁） | 每拆一个视图都必须同批登记 | **已完成** `477beea`，但**本行不复述数字**——权威源是 `tests/js/boundary.test.mjs` 的 `STABLE` / `VIEW_EXPORTS`。2026-10-29 曾在此写死 6/3/4 → 删 `exit` 后过期，是三份文档三个数的一份（见 §20.6 与 D-100）。**实际值以机检为准**：README 记录当前 5/2/3，`toggleFollow` 待删后为 4/2/3（§20.6 已定、未落） |
 | T6 | **`loadLibrary()` 不隐藏 `#library-error`**——上一次加载失败的错误会留在页面上，成功的刷新也不清（其余四个操作开头都清，只有它没有） | 已单独一笔修（**不混进搬运**，否则逐字节证书作废） | **已完成** `032d7cb`（stash 对照：修前 `hidden=false` → 修后 `hidden=true`） |
 
 ### T4 裁决证据（2026-10-29，真浏览器实测）
