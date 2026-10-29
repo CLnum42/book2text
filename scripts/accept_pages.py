@@ -23,7 +23,9 @@
    这两个数**只能来自真机/酸测试**，所以从 `--acid <json>` 读；不给就是「未验」→ exit 2。
    **不要数网络请求**：`/pages/N/image` 带 `max-age=300`，第二次命中浏览器缓存会把重复取图盖掉。
 
-退出码三态：`2` 前置不满足（还没落盘 / 酸测试没给）/ `1` 验收不过 / `0` 全过。
+退出码：`0` 全过 / `1` 验收不过 / `2` 前置不满足（还没落盘、酸测试没给、名单版本判不了）/
+`64` 调用方式错（参数不认识）/ `70` **脚本内部异常**（`INTERNAL ERROR:` 开头）。
+后两个必须与 `1` 分开：`exit 1 + traceback` 和 `exit 1 + 结论` 在日志里长得一样，修法却一个查产品、一个查工具。
 只读、cwd 无关（按脚本自身位置定位仓库）。
 """
 from __future__ import annotations
@@ -339,6 +341,9 @@ def baseline() -> dict:
 #: `land_pages.sh` 把参数原样透传，多一个自己的 flag 就会走到这里——那时该报"调用方式错"，
 #: 而不是"验收器 exit 2（多半是没给 --acid）"。
 EXIT_USAGE = 64
+#: 脚本内部异常（不是判据不过，也不是用法错）。**必须与 1 分开**：
+#: `exit 1 + traceback` 和 `exit 1 + 结论` 在日志里长得一样，而修法完全不同（查产品 vs 查工具）。
+EXIT_INTERNAL = 70
 
 
 def main(argv: list[str]) -> int:
@@ -511,5 +516,21 @@ def main(argv: list[str]) -> int:
     return 0
 
 
+def _run_guarded() -> int:
+    try:
+        return main(sys.argv[1:])
+    except SystemExit:
+        raise
+    except Exception as exc:                      # noqa: BLE001 —— 这里就是要兜住一切
+        import traceback
+        frame = traceback.extract_tb(exc.__traceback__)[-1]
+        print(f"INTERNAL ERROR: {type(exc).__name__} at {frame.filename}:{frame.lineno} in {frame.name}",
+              file=sys.stderr)
+        print(f"INTERNAL ERROR: {exc}", file=sys.stderr)
+        print("  → 这是**脚本自己坏了**，不是判据不过：先修工具，别去查产品。原文见上两行。",
+              file=sys.stderr)
+        return EXIT_INTERNAL
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(_run_guarded())
