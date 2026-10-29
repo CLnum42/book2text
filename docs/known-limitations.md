@@ -1579,6 +1579,23 @@ readingPendingPanelKey = null / readingPendingPanelEntry = null
 - **不是跳转没执行**：`entry` 查得到、`gotoReadingEntry` 确实跑了、页码写对了
 - **不是晚一帧**：`readingPendingPanelKey/Entry` 都是 null，`retryReadingPendingPanel` 无从恢复
 
+**新证据（2026-10-29，QA 两轮 smoke）——这条可能不是随机，先别看竞态**：
+
+```
+最终验收 c28f32d：连按 20 次 → 失败落在 index 17（0-based，= 第 18 次 = 页码 39）
+QA 复核 51529b8：连按 20 次 → 失败也落在 index 17
+```
+
+**两次不同构建、同一个位置**。真实竞态不会这么巧（20 个位置里挑同一个），
+所以下一步**先按"这个位置/这条 entry 有问题"查，不要先按时序查**：
+
+1. 第 18 条 entry 的 `key` / `page_no` / 是不是标点级 / 它的段是不是**跨页段**；
+2. 它的 `branch`（`__b2tNextLog`）在同一次运行里是 `next-lines` 还是别的；
+3. 换一台机器 / 换一次冷启，看它是否**仍然**落在第 18 条——若仍然，就是数据相关，不是竞态。
+
+**判据**：如果三次以上都落在同一条 → 改判为「特定 entry 打不开面板」，与 L-107 分家写。
+如果换构建就漂到别的位置 → 回到竞态，按下面的抓法查。
+
 **下次怎么抓（要哪几个量）**：
 1. `panelPage` / `panelVisible` / `readingPanelKey`
 2. pending 两个值（**失败时是 null 还是 undefined——这两种指向不同断点**）
