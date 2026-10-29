@@ -68,6 +68,7 @@ const TEST_FILES = [
   ["page-tile", () => import("./page-tile.test.mjs")],
   ["step-timing", () => import("./step-timing.test.mjs")],
   ["merge-p0", () => import("./merge-p0.test.mjs")],
+  ["review-ux-v3", () => import("./review-ux-v3.test.mjs")],
   ["docs-structure", () => import("./docs-structure.test.mjs")],
   ["boundary", () => import("./boundary.test.mjs")],
 ];
