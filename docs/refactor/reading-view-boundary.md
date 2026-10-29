@@ -1232,6 +1232,7 @@ const deps = {
 | `ReadingView` | `init/enter/getCurrent/toggleFollow/reload`（5） | 曾在册 6 个，2026-10-29 删 `exit` | 5 个都有调用点 |
 | `PreviewView` | `init/enter`（2） | 2026-10-29 下调（原 3，删 `exit`） | 见 §19 T4 |
 | `IndexView` | `init/enter/refresh`（3） | 2026-10-29 批准 4 个，同日删 `exit` 降到 3 | 见下 + §19 T4 |
+| `LibraryView` | `init/enter/notify`（**3**） | **2026-10-30 批准**（§20.8） | 5 个真实调用点（任务包导入/备份还原/第二引擎重跑） |
 
 **合计 10 个导出**（5+3+2）。**这张表和代码是同一份事实的两个副本，机检已经接上**：`tests/js/boundary.test.mjs` 的 `VIEW_EXPORTS` 登记每个 `*-view.js` 的导出名单——多一个 / 少一个 / 改名都红，**新 `*-view.js` 落盘不登记也红**。本表不会悄悄过期：和代码不一致时机检当场报，不用等下一个读注释的人。
 
@@ -1349,6 +1350,35 @@ function refresh() {
 | `PreviewView` | `showView`（`:266`）+ 3 处显式调用（`12419 {invalidate}` / `12427 {force}` / `12772 {invalidate}`）。`{invalidate}` 只丢缓存 | 切走项目 → 外壳不调；`{force}` 带 `isActive()` 守卫 | `#preview-meta` 显示「**预览失败：…**」 | 每次进入 1 次 `/export/preview`（全量）；`{force}` 由外壳控制 |
 
 **新增视图（`pages` / `review` / `library` / `merge`）落盘时，这张表必须有对应一行**，否则不算契约完成（§15 第 8 条）。
+
+### 20.8 `LibraryView.notify({kind, text})` 裁定：走 A（导出），不走 B（外壳持槽）
+
+**冲突（2026-10-30）**：`#library-error` / `#library-warning` 被 **10 个函数 / 18 个写点**写（`library-error` 12 处、`library-warning` 6 处）。其中 5 个函数**不属于 library**（`openPackageFile` / `applyPackageMode` / `loadPackageResults` / `restoreSelectedBackup` / `rerunAuxiliary`——任务包导入、备份还原、第二引擎重跑，全是外壳流程）。
+抽一条共享叶子容易，但 R3 不允许它留在 `app.js`（一旦 `view-library` 有模块，写它的 id 就是越界）。于是只有两条路：
+
+| | A. 导出 `notify` | B. 外壳持槽 `registerNotice(fn)` |
+|---|---|---|
+| 公开接口 | 2 → **3** | 2（零新增） |
+| 调用点 | 5 处，全是真实流程 | 外壳持一个变量 |
+| 可发现性 | 有签名、有文档、棘轮登记 | **没有签名、没人知道谁在调** |
+| 性质 | 外壳 → 模块（注入方向） | **模块 → 外壳（借出写能力）** |
+
+**裁定：A。** 三条理由：
+
+1. **B 是"没有订阅者的事件缝"的变体**——我们删 `on`/`emit` 时否过同一种形状；区别只是那个是模块往外发事件，这个是模块往外注册一个"能写我 DOM 的函数"。
+2. **B 会让 R3 变成空文**：`app.js` 里确实不再出现 `el("library-error")`，但外壳手上握着一个能写它的函数——**判据查不到的东西，等于没有判据**。
+3. **A 的调用点整齐**：5 处，和 `IndexView.refresh()` 同级同量，不是"为将来预留"。
+
+**`notify` 的第二层（§15 第 8 条）**：
+
+| 项 | 定 |
+|---|---|
+| 谁调 / 时机 | 5 个外壳流程结束时（导入完成/失败、还原、重跑）。**重复调用以后者为准**，不排队 |
+| 依赖什么时候没 | 模块未 init → 外壳用 `?.` 静默跳过（这是接线错误，不是运行态；靠 e2e 抓） |
+| 失败如何观察 | 它**本身就是**错误显示，不抛；`kind` 区分 `error` / `warning` |
+| 已知成本 | 零（一次文本写入） |
+
+**一条必须写死的语义**：`notify` 可能在任何视图下被调（导入发生在页面视图）。所以它写的是**隐藏 DOM**——`enter()` **不许清空 notice**，否则"用户在页视图导入，切回 library 时提示已消失"。只有 library 自己的操作（`loadLibrary` 等）才覆盖它。
 
 ## 21. 什么时候该做模块，而不是注入叶子（判据 + 第一个实例：瓷砖服务）
 
