@@ -1,0 +1,12 @@
+# 打 tag 时刻（= 真 base 那一笔提交）backend/book2text/static/ 下的 *-view.js 集合。
+#
+# 为什么是文件、不是运行时的 HEAD：真 base 打下去之后，HEAD 还会合法地长出新模块
+# （下一个视图落盘就是），拿"运行时的 HEAD 集合"比会把合法增长判成"base 不对"。所以这里
+# 冻结"打 tag 时刻应该有哪些模块"；切 ring-break-base 的人必须在**同一笔提交**里更新本文件
+# ——不改就会红（fail closed），这也正是 §18.3「打 tag 同批动作」的机检落点。
+#
+# 一行一个，排序；# 开头是注释。
+index-view.js
+library-view.js
+preview-view.js
+reading-view.js

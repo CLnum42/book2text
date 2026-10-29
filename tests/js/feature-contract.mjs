@@ -20,6 +20,8 @@ import { stripCommentsAndStrings } from "./static-scan.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const DOC_REL = "docs/refactor/reading-view-boundary.md";
+/** 打 tag 时刻的 *-view.js 冻结记录（切 ring-break-base 时同批更新，见 §18.3）。 */
+const REPLAY_BASE_RECORD = "tests/js/replay-base-modules.txt";
 
 /**
  * 「算契约对象」的 `tests/js` 路径集合（给 git pathspec 用）：可执行断言 + 数据夹具，
@@ -311,20 +313,35 @@ export function baseTreeGap({ baseTag = "ring-break-base" } = {}) {
   } catch {
     return `找不到 ${baseTag}（A2/A4 与 13/13 红证据都要它当回放基）`;
   }
+  // expected 是**打 tag 时刻的冻结记录**，不是运行时的 HEAD：真 base 打下去之后 HEAD 还会
+  // 合法地长新模块（下一个视图落盘），拿 HEAD 比会把合法增长判成"base 不对"（DevLead 2026-10-29）。
+  let record;
+  try {
+    record = readFileSync(`${REPO_ROOT}/${REPLAY_BASE_RECORD}`, "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .sort();
+  } catch {
+    return `没有 ${REPLAY_BASE_RECORD}：不知道打 tag 时刻 static/ 下应该有哪些 *-view.js，base 判定不能猜`;
+  }
+  if (record.length === 0) {
+    return `${REPLAY_BASE_RECORD} 是空的——空集合会让这条自检恒真，按红处理`;
+  }
   let baseFiles;
   try {
     baseFiles = git(["ls-tree", "--name-only", `${baseTag}:${statics}`]).split("\n").filter(Boolean);
   } catch {
     return `${baseTag} 里没有 ${statics}`;
   }
-  const headFiles = git(["ls-tree", "--name-only", `HEAD:${statics}`]).split("\n").filter(Boolean);
   const views = (files) => files.filter((file) => /-view\.js$/.test(file)).sort();
   const baseViews = views(baseFiles);
-  const headViews = views(headFiles);
-  if (baseViews.join(",") !== headViews.join(",")) {
+  if (baseViews.join(",") !== record.join(",")) {
     return `ring-break-base=${baseSha} 不是回放基：base 树 static/ 下 *-view.js = [${baseViews.join("、")}]，`
-      + `HEAD = [${headViews.join("、")}]——在它上面跑 A2/A4 会红在「模块没拆」，不是「边切错了」`;
+      + `打 tag 时刻应为 [${record.join("、")}]——在它上面跑 A2/A4 会红在「模块没拆」，不是「边切错了」`;
   }
+  // 不再与运行时的 HEAD 比集合：HEAD 后来合法长模块是常态（下一个视图落盘），拿它比会误红。
+  // 记录写错（多写/拼错一个模块）会与 base 树不等，上面那条会红，不需要额外的 ghost 检查。
   return null;
 }
 
