@@ -191,4 +191,8 @@ accept_pages --acid 通过（四字段齐）：同页同档 img.src 赋值 = 1 �
 | ④ | 识别页两个按钮 `disabled` 但界面没说为什么 | UX | PM/Designer | **A/B 已证不是刀 1 回归**；用户规则：不该有「点了没反应」的入口 |12. **`--staged` 单独不够**：要让**工作区与索引同时**回到 HEAD，必须 `git restore --source=HEAD --staged --worktree <单一路径>`。
     只给 `--staged` 会留下旧内容在工作区 → 仍是 `M` → 一旦被提交就把旧值写回去。
     这是「改动一半在索引、一半在工作区」那类事故的**反向操作**——同一个机制，两个方向都会咬人。
-    （出处：刀 1 收工前，`reading-view-boundary.md` 工作区是旧 sha、HEAD 是新 sha。）
+    （出处：刀 1 收工前，`reading-view-boundary.md` 工作区是旧 sha、HEAD 是新 sha。）13. **判函数死活也必须扫值位**，不只调用位（定义位 / 值位 / 调用位三栏缺一不可）。
+    死面的定义是「外壳没有任何真实消费者」——`addEventListener("click", fn)`、`setTimeout(fn, …)`、
+    对象字面量里的 `fn` 都是消费者，只是不在 `fn(` 形态里。
+    （出处：刀 2 判 20 个导出死活，最初得 5 个活——漏了 `app.js:5026 addEventListener("click", undoMarginEdit)`；
+     三栏重扫后 **16 活 / 4 死**。同型：`review` 闭包漏 71 个值引用、`pages` 转发器「无调用 4」。）
