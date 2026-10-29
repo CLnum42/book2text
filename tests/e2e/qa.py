@@ -529,6 +529,83 @@ def cmd_reading(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_library_notice(args: argparse.Namespace) -> int:
+    """`LibraryView.notify` 的硬语义：提示写在 library 视图的隐藏 DOM 里，切视图不许被清。
+
+    为什么必须 e2e：清空 DOM 是合法写操作——静态门、`?checktext=1`、控制台都不会红，
+    用户看到的是"提示不见了"，而所有检查都是绿的。
+
+    A. 在「页面确认」造 error 提示 → 切「目录确认」→ 文案一字不差还在。
+    B. 在目录页造 warning → `loadLibrary()`（刷新项目库）→ 提示被收掉。
+    """
+    state = _require_state()
+    report = Report("项目库提示跨视图存活")
+    report_path = Path(state["run_dir"]) / "report-library-notice.json"
+    try:
+        _browser.run(state, "prepare")
+    except Exception as error:  # noqa: BLE001
+        report.blocked("准备", str(error))
+        return report.finish(report_path)
+
+    try:
+        if args.selftest:
+            # 负向自检：模拟"enter() 里清空了提示"，A2 必须报 FAIL——
+            # 否则这条断言只是"今天没人清"的写照，不是回归闸。
+            probe = _browser.run(state, "library_notice_probe", {"selftest": True}, timeout=180.0)
+            if probe["a"]["textIntact"] is False:
+                report.ok("负向自检", "清空文案后「文案一字不差」必须报 FAIL",
+                          f"清空前={probe['text']!r}，清空后={probe['a']['after']['text']!r}")
+            else:
+                report.fail("负向自检", "清空文案后「文案一字不差」必须报 FAIL",
+                            f"探针没红：清空后仍判 textIntact={probe['a']['textIntact']}")
+            return report.finish(report_path)
+        data = _browser.run(state, "library_notice_probe", {}, timeout=180.0)
+    except Exception as error:  # noqa: BLE001
+        report.blocked("A/B 探针", str(error))
+        return report.finish(report_path)
+
+    text = data["text"]
+    warn_text = data["warnText"]
+    box_a = data["a"]
+    box_b = data["b"]
+
+    # A1：提示真的造出来了（否则后面两条是空断言）
+    if box_a["before"]["text"] == text and box_a["before"]["hidden"] is False:
+        report.ok("A 跨视图存活", "在「页面确认」视图下提示已写入",
+                  f"via={box_a['wrote'].get('via')}；文案={box_a['before']['text']!r}；hidden={box_a['before']['hidden']}")
+    else:
+        report.fail("A 跨视图存活", "在「页面确认」视图下提示已写入",
+                    f"期望文案={text!r}，实测={box_a['before']['text']!r}，hidden={box_a['before']['hidden']}；"
+                    f"写入方式={box_a['wrote']}")
+
+    # A2：切到目录确认后文案一字不差（锁文案，不锁 hidden）
+    if box_a["textIntact"]:
+        report.ok("A 跨视图存活", "切到「目录确认」后文案一字不差",
+                  f"视图={box_a['atPages']} → {box_a['atIndex']}；文案={box_a['after']['text']!r}")
+    else:
+        report.fail("A 跨视图存活", "切到「目录确认」后文案一字不差",
+                    f"期望={text!r}，实测={box_a['after']['text']!r}，hidden={box_a['after']['hidden']}；"
+                    f"视图从 {box_a['atPages']} 切到 {box_a['atIndex']}")
+
+    # B1：warning 造出来了
+    if box_b["before"]["text"] == warn_text and box_b["before"]["hidden"] is False:
+        report.ok("B 自己的操作能覆盖", "在目录页写下 warning 提示",
+                  f"文案={box_b['before']['text']!r}；hidden={box_b['before']['hidden']}")
+    else:
+        report.fail("B 自己的操作能覆盖", "在目录页写下 warning 提示",
+                    f"期望={warn_text!r}，实测={box_b['before']['text']!r}，hidden={box_b['before']['hidden']}")
+
+    # B2：loadLibrary 之后被收掉（或是换成新文案）
+    if box_b["overridden"]:
+        report.ok("B 自己的操作能覆盖", "刷新项目库后提示被收掉",
+                  f"load={box_b['load']}；之后 hidden={box_b['after']['hidden']}，文案={box_b['after']['text']!r}")
+    else:
+        report.fail("B 自己的操作能覆盖", "刷新项目库后提示被收掉",
+                    f"load={box_b['load']}；之后 hidden={box_b['after']['hidden']}，文案={box_b['after']['text']!r}（没被覆盖）")
+
+    return report.finish(report_path)
+
+
 def cmd_panel_lifecycle(args: argparse.Namespace) -> int:
     """L-107 新判据：面板**是否曾经出现过**——只看 DOM，不读私有状态。
 
@@ -1308,6 +1385,10 @@ def build_parser() -> argparse.ArgumentParser:
     lifecycle = sub.add_parser("panel_lifecycle", help="L-107：面板是否曾经出现过（只看 DOM）")
     lifecycle.add_argument("--times", type=int, default=20, help="连按「下一处未审」的次数")
     lifecycle.set_defaults(func=cmd_panel_lifecycle)
+
+    notice = sub.add_parser("library_notice", help="LibraryView.notify：提示跨视图存活 + 被自己的操作覆盖")
+    notice.add_argument("--selftest", action="store_true", help="负向自检：模拟 enter() 清空，A2 必须 FAIL")
+    notice.set_defaults(func=cmd_library_notice)
 
     sub.add_parser("smoke", help="七步冒烟（一键）").set_defaults(func=cmd_smoke)
     images = sub.add_parser("images", help="页图清晰度：审校第 1 屏 / 中间一屏 / 目录确认一屏")

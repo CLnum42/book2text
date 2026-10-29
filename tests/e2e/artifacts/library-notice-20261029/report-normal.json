@@ -1,0 +1,29 @@
+{
+  "title": "项目库提示跨视图存活",
+  "rows": [
+    {
+      "step": "A 跨视图存活",
+      "assertion": "在「页面确认」视图下提示已写入",
+      "status": "PASS",
+      "evidence": "via=['showError(library-error)']；文案='QA 跨视图提示 1793240395155'；hidden=False"
+    },
+    {
+      "step": "A 跨视图存活",
+      "assertion": "切到「目录确认」后文案一字不差",
+      "status": "PASS",
+      "evidence": "视图=['view-pages'] → ['view-index']；文案='QA 跨视图提示 1793240395155'"
+    },
+    {
+      "step": "B 自己的操作能覆盖",
+      "assertion": "在目录页写下 warning 提示",
+      "status": "PASS",
+      "evidence": "文案='QA 覆盖提示 1793240395155'；hidden=False"
+    },
+    {
+      "step": "B 自己的操作能覆盖",
+      "assertion": "刷新项目库后提示被收掉",
+      "status": "PASS",
+      "evidence": "load={'ok': True}；之后 hidden=True，文案='QA 覆盖提示 1793240395155'"
+    }
+  ]
+}

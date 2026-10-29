@@ -126,6 +126,8 @@ export async function run(cfg) {
       return await measureImages(page, args);
     case "audit":
       return await auditMarks(page);
+    case "library_notice_probe":
+      return await libraryNoticeProbe(page, args);
     case "probe_globals":
       // 探针自检：模块是 IIFE，内部 let/function 在 page.evaluate 里**看不到**。
       // 这类探测失效后不报错、只返回 "undefined"，报告里看起来像"状态是空的"，
@@ -3584,6 +3586,157 @@ async function panelLifecycleProbe(page, args) {
     return acc;
   }, {});
   return { times, rows, summary };
+}
+
+/**
+ * `LibraryView.notify` 的硬语义：**提示写在 library 视图那块隐藏 DOM 里，切视图不许被清**。
+ *
+ * 为什么必须 e2e：清空 DOM 是完全合法的写操作——静态门不红、`?checktext=1` 不红、
+ * 控制台也不报错，用户看到的是"提示不见了"，而所有检查都是绿的。
+ *
+ * A. 跨视图存活：在「页面确认」造提示 → 切「目录确认」→ 文案一字不差还在。
+ * B. 自己的操作能覆盖：在目录页造 warning → 调 loadLibrary（刷新项目库）→ 提示被收掉。
+ *
+ * 断言锁**文案**，不锁"元素可见"：`hidden` 只控制显示，
+ * "文案被换成空字符串"和"整块被清空"是同一种失败，只看 hidden 会漏。
+ */
+async function libraryNoticeProbe(page, args) {
+  const text = args.text || `QA 跨视图提示 ${Date.now()}`;
+  const warnText = args.warnText || `QA 覆盖提示 ${Date.now()}`;
+
+  const readNotice = (id) =>
+    page.evaluate((elementId) => {
+      const node = document.getElementById(elementId);
+      return {
+        exists: Boolean(node),
+        text: node ? node.textContent : null,
+        hidden: node ? node.hidden : null,
+        html: node ? node.innerHTML : null,
+      };
+    }, id);
+
+  const writeNotice = (kind, message) =>
+    page.evaluate(({ noticeKind, noticeText }) => {
+      const ids = { error: "library-error", warning: "library-warning" };
+      const id = ids[noticeKind];
+      const via = [];
+      if (window.LibraryView && typeof window.LibraryView.notify === "function") {
+        window.LibraryView.notify(noticeKind, noticeText);
+        via.push("LibraryView.notify");
+      } else if (noticeKind === "error" && typeof showError === "function" && typeof el === "function") {
+        showError(el("library-error"), new Error(noticeText));
+        via.push("showError(library-error)");
+      } else {
+        const node = document.getElementById(id);
+        if (!node) return { ok: false, reason: `找不到 #${id}` };
+        node.textContent = noticeText;
+        node.hidden = false;
+        via.push(`直接写 #${id}（模块未落地时的等价写法）`);
+      }
+      const node = document.getElementById(id);
+      return { ok: true, via, text: node ? node.textContent : null, hidden: node ? node.hidden : null };
+    }, { noticeKind: kind, noticeText: message });
+
+  const waitView = async (viewId, label) => {
+    await waitFor(
+      page,
+      (id) => {
+        const node = document.getElementById(id);
+        return Boolean(node && !node.hidden);
+      },
+      `${label}可见`,
+      30000,
+      viewId
+    );
+  };
+
+  // ---- A. 从「页面确认」造 error 提示 ----
+  await page.click('button[data-workflow-step="pages"]', { label: "切到页面确认" }).catch(() => {});
+  await waitView("view-pages", "页面确认");
+
+  const wroteError = await writeNotice("error", text);
+  const beforeError = await readNotice("library-error");
+  const atPages = await page.evaluate(() => ({
+    view: ["view-library", "view-pages", "view-index", "view-reading", "view-export"]
+      .filter((id) => {
+        const node = document.getElementById(id);
+        return node && !node.hidden;
+      }),
+  }));
+
+  // ---- 切到「目录确认」 ----
+  await page.click('button[data-workflow-step="index"]', { label: "切到目录确认" }).catch(() => {});
+  await waitView("view-index", "目录确认");
+  // 负向自检：模拟"`enter()` 里加了一句清空"，A2 必须红。
+  // 没有这一步，A2 绿只证明"今天没人清"，不证明"明天有人清时能抓到"。
+  if (args.selftest) {
+    await page.evaluate(() => {
+      const node = document.getElementById("library-error");
+      if (node) node.textContent = "";
+    });
+  }
+  const afterError = await readNotice("library-error");
+  const atIndex = await page.evaluate(() => ({
+    view: ["view-library", "view-pages", "view-index", "view-reading", "view-export"]
+      .filter((id) => {
+        const node = document.getElementById(id);
+        return node && !node.hidden;
+      }),
+  }));
+
+  const aOk =
+    beforeError.text === text &&
+    afterError.text === text &&
+    afterError.hidden === false;
+
+  // ---- B. 在目录页造 warning，再用 loadLibrary 覆盖 ----
+  const wroteWarning = await writeNotice("warning", warnText);
+  const beforeWarning = await readNotice("library-warning");
+  const loadResult = await page.evaluate(async () => {
+    if (typeof loadLibrary !== "function") return { ok: false, reason: "loadLibrary 不可见" };
+    await loadLibrary();
+    return { ok: true };
+  });
+  const afterWarning = await readNotice("library-warning");
+
+  const bOk =
+    beforeWarning.text === warnText &&
+    beforeWarning.hidden === false &&
+    (afterWarning.hidden === true || afterWarning.text !== warnText);
+
+  return {
+    text,
+    warnText,
+    selftest: Boolean(args.selftest),
+    a: {
+      wrote: wroteError,
+      before: beforeError,
+      after: afterError,
+      atPages: atPages.view,
+      atIndex: atIndex.view,
+      textIntact: afterError.text === text,
+      ok: aOk,
+    },
+    b: {
+      wrote: wroteWarning,
+      before: beforeWarning,
+      load: loadResult,
+      after: afterWarning,
+      overridden: afterWarning.hidden === true || afterWarning.text !== warnText,
+      ok: bOk,
+    },
+    // 收尾：把这次的提示清掉，别留给下一次运行当成"残留"
+    cleanup: await page.evaluate(() => {
+      for (const id of ["library-error", "library-warning"]) {
+        const node = document.getElementById(id);
+        if (node) {
+          node.textContent = "";
+          node.hidden = true;
+        }
+      }
+      return true;
+    }),
+  };
 }
 
 /** 目录确认：换清晰度档 → 按钮文案 + 可见页图 size 参数是否跟着换。 */
