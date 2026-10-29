@@ -111,8 +111,7 @@ jobs:
       # 登记段按设计不阻断提交（pre-commit 只判形态），但它必须有绕不过的落点：
       # 这里是唯一一处。--strict → 有未登记 / 登记不全的 test-contract 提交就 exit 1。
       - name: 契约登记段（§18.6，不阻断提交但阻断 CI）
-        # --allow-transitional-base：当前 tag `ring-break-base`=afe20fe 打在 L0 上，
-        # 不是回放基；不加这面 flag，这一步会在每次推送都红在与代码无关的地方，
-        # 红久了就被关掉（比没有闸更坏）。放行时输出里会写明「按 …放行」。
-        # 退场：真 base 打 tag 的那一笔必须同批删掉这面 flag，否则它就成了常开开关（§18.3）。
-        run: node tests/js/contract-registry.mjs --strict --allow-transitional-base
+        # 2026-10-29：`ring-break-base` 已切到 merge 落盘后的检查点（5 个 *-view.js），
+        # 这面 flag 按 §18.3 的退场条件**同批删除**。它一旦留着就是"CI 永远放行 base 不合格"的常开开关。
+        # 注意：**这是检查点，不是终态**——`pages` 落盘后要再切一次 tag（那时 6 个模块）。
+        run: node tests/js/contract-registry.mjs --strict

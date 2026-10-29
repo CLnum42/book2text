@@ -1098,7 +1098,9 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 **权限**：只有 DevLead 能登记 A3 并移动 `ring-break-base`；Builder 不可。A4 的插 `throw` 小脚本归 TestDev（插一行、跑一条、2 秒级）。
 
 **基点的现状（2026-10-29，Chief 核出）**：`ring-break-base` = `afe20fe`，打在 **L0** 上——`git show ring-break-base:backend/book2text/static/app.js | wc -l` = 20,275（HEAD 15,870），`ls-tree` 的 `static/` 下只有 `reading-view.js` 一个模块。**它不是回放基，A2 / A4 现在暂停使用**：在它上面跑新测试，红的原因是「`init` 注入不存在、模块没拆」，会把「测试锁错对象」和「实现错了」混成同一个红。
-**真 base 判据**：最后一笔搬运落地后的那笔提交——按 2026-10-29 新排期是 **review 第一刀（17 函数归位）**，不是 merge；打 tag 同批三件（删 `--allow-transitional-base`、更新 `tests/js/replay-base-modules.txt` 到当时的模块数、落 §18.3 的 13 条证据）。**现在不移动 tag。**
+**真 base 判据（2026-10-29 更新）**：`ring-break-base` 已切到 **merge 落盘后的检查点**（`static/` 下 5 个 `*-view.js`：index / library / merge / preview / reading）。打 tag 同批三件已全部落地：删 `--allow-transitional-base`、更新 `tests/js/replay-base-modules.txt`、§18.3 的 13 条证据。**
+
+**这是检查点，不是终态**：`pages` 落盘后要**再切一次**（那时 6 个模块）。不写这句，下一次切 tag 会被当成"重复劳动"而拖到明年。
 
 #### 18.2.1 `move:` 笔类（迁移笔的例外，2026-10-29 Chief 定；TestDev 实现须与本段一字不差）
 
@@ -1167,10 +1169,10 @@ R 编号由 TestDev 在闸表里领，§2 的 R1–R8 不动。
 复现（每条 30 秒）：`git worktree add --detach /tmp/wt <父sha>` → `B2T_STATIC_DIR=/tmp/wt/backend/book2text/static node tests/js/edge-ratchet.mjs` → `git worktree remove --force /tmp/wt`。
 **余下 6 条现役**（`openPageDetail` 桥 + 5 条回调边）在真 base 上仍 RED；切它们时各自补同款两样证据。
 
-**「真 base」是哪个 sha（必须写死，否则又成第三个范围）**：现在**没有**真 base tag——`ring-break-base` 仍指 `afe20fe`（L0，`static/` 下只有 reading-view.js，`setupReading` 等函数还没出现）。上面 6/7 量的是 **HEAD `dd835c4` 的树**，不是 tag。真 base = **review 第一刀（17 函数归位）落盘后那笔**：打 tag 同批做三件（§18.3 上文）——删 `--allow-transitional-base`、更新 `tests/js/replay-base-modules.txt`（那时 6 个模块）、落四件证据。
+**「真 base」是哪个 sha（必须写死，否则又成第三个范围）**：`ring-break-base` 现指 **merge 落盘后的检查点**（5 个模块，2026-10-29 切）；此前的 L0 值 `afe20fe` 已作废。上面 6/7 量的是当时 HEAD 的树。**`pages` 落盘后需再切一次**（6 个模块）——检查点会随模块数前移，但**只在"套件全绿"时移**。
 
 **打 tag 那一笔的同批动作（过渡态不许活成终态）**：
-1. 把 CI 里 `contract-registry --strict --allow-transitional-base` 的 `--allow-transitional-base` **删掉**。那面 flag 的存在是因为 tag 现在还打在 L0 上；真 base 一打出，它就成了「CI 永远放行 base 不合格」的常开开关。同批不删 = 这个 tag 不算切完。
+1. ✅ **已做（2026-10-29）**：把 CI 里 `contract-registry --strict --allow-transitional-base` 的 `--allow-transitional-base` **删掉了**。那面 flag 的存在是因为 tag 现在还打在 L0 上；真 base 一打出，它就成了「CI 永远放行 base 不合格」的常开开关。同批不删 = 这个 tag 不算切完。
 2. 把 `tests/js/replay-base-modules.txt` 更新成**该笔提交** `backend/book2text/static/` 下的 `*-view.js` 列表（真 base 打出时会是 **5 个**，含 `merge-view.js`）。**漏写 = 红，多写 = 红**（fail closed）——这是 base 自检两个方向的机检落点，别手改记录去凑绿：记录是「打 tag 时刻的事实」，不是期望值的旋钮。
 3. 上面两条做完，才允许把 13/13 四件证据的「SHA / 谁跑 / 命令 / 输出文件」填上实数。
 

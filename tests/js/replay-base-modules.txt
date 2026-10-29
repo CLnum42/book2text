@@ -8,5 +8,6 @@
 # 一行一个，排序；# 开头是注释。
 index-view.js
 library-view.js
+merge-view.js
 preview-view.js
 reading-view.js
