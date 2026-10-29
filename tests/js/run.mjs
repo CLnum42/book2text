@@ -66,6 +66,7 @@ const TEST_FILES = [
   ["reading-view-behavior", () => import("./reading-view-behavior.test.mjs")],
   ["index-view-behavior", () => import("./index-view-behavior.test.mjs")],
   ["page-tile", () => import("./page-tile.test.mjs")],
+  ["step-timing", () => import("./step-timing.test.mjs")],
   ["docs-structure", () => import("./docs-structure.test.mjs")],
   ["boundary", () => import("./boundary.test.mjs")],
 ];
