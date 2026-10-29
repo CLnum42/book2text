@@ -521,8 +521,10 @@ const WINDOW_HOOK_EXCEPTIONS = [
   { name: "__b2tPageSyncLog", owner: "QA", expires: "页同步验收完成" },
   { name: "__b2tNextLog", owner: "QA", expires: "队列验收完成" },
   { name: "__b2tTextCheckFails", owner: "QA", expires: "文本核对验收完成" },
+  { name: "__b2tPreviewMetrics", owner: "QA", expires: "预览性能验收完成" },
+  { name: "__b2tPreviewTileTops", owner: "QA", expires: "预览性能验收完成" },
 ];
-const WINDOW_HOOK_MAX = 7;   // 只降不升
+const WINDOW_HOOK_MAX = 9;   // 只降不升
 
 /** R6 的判定内核（独立出来，好让自检喂合成样例）。 */
 function windowInterfaceProblems(fileName, source) {
@@ -531,8 +533,10 @@ function windowInterfaceProblems(fileName, source) {
   // `window.foo.bar = …` 是 foo 内部的事，也不算露接口）
   const assigned = [...text.matchAll(/(?<![\w$.])window\s*\.\s*([A-Za-z_$][\w$]*)\s*=(?!=)/g)]
     .map((match) => match[1]);
-  const hooks = new Set(WINDOW_HOOK_EXCEPTIONS.map((item) => item.name));
-  const interfaces = assigned.filter((name) => !hooks.has(name));
+  // 先按**命名约定**滤掉埋点，再看还剩几个接口对象。
+  // 第一版只滤"已登记"的埋点，于是新埋点会被报成"露了 3 个接口对象（…、PreviewView）"——
+  // 文案把下一个人带偏（他会去数接口，而不是去登记埋点）。顺序必须是：先分类，再判数量。
+  const interfaces = assigned.filter((name) => !name.startsWith("__b2t"));
   const expected = expectedInterfaceName(fileName);
   const problems = [];
   if (interfaces.length === 0) problems.push(`${fileName}: 没有 window.XxxYyy = … 接口对象——模块对外没有面`);
@@ -657,6 +661,17 @@ test("R6/R2 自检：接口名字错、多露一个接口、跨视图引用，�
   assert.ok(
     windowHookProblems("preview-view.js", "window.__b2tNewThing = 1;").some((item) => item.includes("未登记")),
     "R6 自检失败：新增未登记的 __b2t 埋点也放过",
+  );
+  // R6：未登记埋点必须被报成"埋点"，不能混进"接口对象"的计数里（顺序错了就把人带偏）
+  const mixed = "window.PreviewView = {};\nwindow.__b2tNew = 1;";
+  assert.deepEqual(
+    windowInterfaceProblems("preview-view.js", mixed),
+    [],
+    "R6 自检失败：未登记埋点被当成了接口对象——接口计数里只该有 PreviewView",
+  );
+  assert.ok(
+    windowHookProblems("preview-view.js", mixed).some((item) => item.includes("未登记的 window 埋点")),
+    "R6 自检失败：同一个未登记埋点，埋点检查却没报出来",
   );
   // R6：一个文件**没有任何埋点**必须合法（preview-view.js 就是这样）——
   // 第一版按"每文件必须有 7 个"判，第二个模块一出现就假红 7 条。

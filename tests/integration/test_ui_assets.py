@@ -1139,14 +1139,17 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
     assert (script + module_script).count("function openReading(") >= 1
 
     # 与导出共用同一份组装：只调 /export/preview，不另写合并逻辑
-    assert "function openPreview(" in script
+    # 整段 preview 已搬进 preview-view.js（app.js 里 0 处）→ 这些断言改成两文件合查。
+    preview_script = (STATIC_DIR / "preview-view.js").read_text(encoding="utf-8")
+    preview_both = script + preview_script
+    assert "function openPreview(" in preview_both
     assert "/export/preview" in script
     assert "exportOptions()" in script
     # 段边界 / 跨页段 / 排掉了什么
-    assert "function buildPreviewSegment(" in script
-    assert "跨页续" in script
-    assert "版心外排除" in script
-    assert "previewVisibleSegments" in script
+    assert "function buildPreviewSegment(" in preview_both
+    assert "跨页续" in preview_both
+    assert "版心外排除" in preview_both
+    assert "previewVisibleSegments" in preview_both
     # 没有完成态：预览不在页面步里，也没有 is-done 判定
     assert 'PAGE_WORKFLOW_STEPS = ["pages", "recognition", "margin", "index"]' in script
     assert "结果预览不设完成态" in script
@@ -1172,31 +1175,39 @@ def test_result_preview_reuses_page_renderers_and_follows_segments() -> None:
     # 左边不是裸图：页块里带版心 / 块框 / 命中层
     assert 'class="preview-pages" id="preview-pages"' in page
     assert "preview-margin-toggle" in page and "preview-overlay-toggle" in page
-    assert "preview-page__hits" in script
+    assert "preview-page__hits" in preview_both
 
     # 复用同一套渲染函数与同一份开关 / 缩放状态
-    assert "function paintPreviewTile(" in script
+    assert "function paintPreviewTile(" in preview_both
     assert "paintTileMargin(tile, page)" in script
     assert "renderPageBlocks(tile, blocks" in script
-    assert "pagesMarginOn = true" in script and "pagesOverlayOn = true" in script
+    # 开关这里**不是**简单合查：整段 preview 搬走后，"预览打开时把开关置 true" 变成了
+    # 模块调注入回调 + app.js 的 setter 真正写状态，两半都得在，缺任一半链路就断了。
+    assert "injected.setPagesMarginOn(true)" in preview_script
+    assert "setPagesMarginOn: (value) => { pagesMarginOn = value;" in script
     assert "INDEX_ZOOM_SCALES" in script
 
     # 段 → 块：用现成的 block_ids + bbox，不猜字符位置
     assert "segment.block_ids" in script
-    assert "function highlightPreviewSegment(" in script
-    assert "function drawPreviewHits(" in script
-    assert "function scrollPreviewLeftToSegment(" in script
-    assert "function scrollPreviewLeftToPage(" in script
+    assert "function highlightPreviewSegment(" in preview_both
+    assert "function drawPreviewHits(" in preview_both
+    assert "function scrollPreviewLeftToSegment(" in preview_both
+    assert "function scrollPreviewLeftToPage(" in preview_both
 
     # 双向联动：右栏滚动驱动左边、左栏滚动驱动右边，但不同时反推
     assert "function onPreviewScroll(" in preview_both
     assert "function onPreviewLeftScroll(" in preview_both
-    assert "previewSyncDriver" in script and "markPreviewDriver" in script
+    assert "previewSyncDriver" in preview_both and "markPreviewDriver" in preview_both
 
     # 事件代理 + 一帧一次：不给 1139 段逐个挂监听
     assert 'el("preview-segs").addEventListener("pointerover", onPreviewSegHover)' in preview_both
     assert 'el("preview-segs").addEventListener("click", onPreviewSegClick)' in preview_both
-    builder = script[script.index("function buildPreviewSegment("):script.index("// ---------------------------------------------------------------- 联动：段 ↔ 页")]
+    # 切片从**合查**取：函数已搬进模块，app.js 里 index() 会抛 ValueError。
+    # 切片终点是模块里那段分隔注释（原注释随函数一起搬走）。
+    builder = preview_both[
+        preview_both.index("function buildPreviewSegment("):
+        preview_both.index("// ---------------------------------------------------------------- 联动：段 ↔ 页")
+    ]
     assert "addEventListener" not in builder
 
     # 浅绿用青绿，不是审校那三色
