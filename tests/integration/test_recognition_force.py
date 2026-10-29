@@ -148,3 +148,40 @@ def test_force_backup_failure_does_not_create_job(
     assert [block["text"] for block in blocks_of(client, auth_headers, project_id)] == before_texts, (
         "备份失败时块一个都不该变"
     )
+
+
+def test_force_backup_survives_page_failure(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    sample_pdf: Path,
+    inprocess_jobs: FakeOcrEngine,
+) -> None:
+    """④ 备份成功之后这一页失败了：备份必须留着（那是用户唯一的退路）。
+
+    顺序是「建任务前备份 → 逐页覆盖」。所以页失败时：
+    · 备份还在（退路没被"清理失败残留"顺手删掉）；
+    · 人工文本没有被半覆盖（这一页根本没应用）；
+    · 任务状态是 failed，不是 succeeded，也不是 succeeded_with_skips。
+    """
+    project_id = create_project(client, auth_headers, sample_pdf)
+    start_ocr(client, auth_headers, project_id, 1)
+
+    blocks = blocks_of(client, auth_headers, project_id)
+    assert blocks, "首次识别没有落块"
+    edit_block_text(client, auth_headers, project_id, blocks[0], MANUAL_TEXT)
+
+    # 让 force 那一轮在识别阶段就失败（同一个假引擎，按页生效：这一批只有 1 页）
+    inprocess_jobs._fail_message = "模拟引擎崩了"
+
+    start_ocr(client, auth_headers, project_id, 1, force=True)
+
+    backups = backups_of(client, auth_headers, project_id)
+    assert len(backups) == 1, f"备份成功之后页失败，备份必须还在，实际 {backups}"
+    assert backups[0]["note"] == "重识别前的自动备份", backups[0]
+
+    texts = [block["text"] for block in blocks_of(client, auth_headers, project_id)]
+    assert MANUAL_TEXT in texts, f"页失败了却把人工文本覆盖掉了：{texts}"
+
+    job = jobs_of(client, auth_headers, project_id)[0]
+    assert job["status"] == "failed", f"这一页失败了，任务不该报成功（实际 {job['status']}）"
+    assert job["skipped"] == 0, "它是失败，不是跳过"
