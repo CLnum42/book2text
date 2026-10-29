@@ -1098,7 +1098,7 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 **权限**：只有 DevLead 能登记 A3 并移动 `ring-break-base`；Builder 不可。A4 的插 `throw` 小脚本归 TestDev（插一行、跑一条、2 秒级）。
 
 **基点的现状（2026-10-29，Chief 核出）**：`ring-break-base` = `afe20fe`，打在 **L0** 上——`git show ring-break-base:backend/book2text/static/app.js | wc -l` = 20,275（HEAD 15,870），`ls-tree` 的 `static/` 下只有 `reading-view.js` 一个模块。**它不是回放基，A2 / A4 现在暂停使用**：在它上面跑新测试，红的原因是「`init` 注入不存在、模块没拆」，会把「测试锁错对象」和「实现错了」混成同一个红。
-**真 base 判据**：最后一笔搬运（`merge`）落地后的那笔提交；打 tag 走 §18.6 登记 + §18.3 的 13/13 四件证据。**现在不移动 tag。**
+**真 base 判据**：最后一笔搬运落地后的那笔提交——按 2026-10-29 新排期是 **review 第一刀（17 函数归位）**，不是 merge；打 tag 同批三件（删 `--allow-transitional-base`、更新 `tests/js/replay-base-modules.txt` 到当时的模块数、落 §18.3 的 13 条证据）。**现在不移动 tag。**
 
 #### 18.2.1 `move:` 笔类（迁移笔的例外，2026-10-29 Chief 定；TestDev 实现须与本段一字不差）
 
@@ -1126,7 +1126,7 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 **现状（2026-10-29，`cef331b` 之后）**：4 条里 3 条已 0——`setupReading` 随 L1 模块化归零、`renderMergeView` / `submitMergeDecisions` 随 merge 搬迁切到 `navigate()`（`edge-budget` 同笔记 0，桥例外上限 3→1）；只剩 `openPageDetail` 1 处（例外，到期点 = pages 搬进模块）。
 **回调边（9）**：`renderReading→ensureReadingMarksWindow`、`renderReading→retryReadingPendingPanel`、`renderReadingTree→ensureReadingMarksWindow`、`renderReadingTree→scrollReadingToPage`、`openReadingPanel→updateReadingPage`、`setReadingHover→ensureReadingBlocks`、`verifyReadingPageSync→updateReadingPage`、`gotoReadingEntry→jumpReadingTo`、`gotoReadingEntry→updateReadingPage`。
 
-**棘轮**：13 条合计预期 **0**，任何一条从 0 变 ≥1 = 红。**红/绿证据**：在**真 base**（merge 落地后打的 tag，见 §18.2 基点现状）上同一份检查必须红出 **13/13**（证明抓得到这些边），最终提交 0/13。**当前 tag `ring-break-base` = `afe20fe` 是 L0 树，暂停使用**；今天在它上面跑只会红在「模块没拆」，红的原因不对。模块里 `showView` 现在还挂在 R1 例外表上，破环后该行必须删、例外表回 0 行（上限 3 不动）。
+**棘轮**：13 条合计预期 **0**，任何一条从 0 变 ≥1 = 红。**红/绿证据（Chief 2026-10-29 裁定 ①+②）**：真 base 上逐条给出——现役 6 条标 **RED**，已归零 7 条标 **GREEN + 归零提交 + 父提交上同一条闸的红**（表见 §18.3「13 条闸证据」）。**不再要求 13/13 全红**：7 条在 L1–L4 / merge 搬迁时合法归零，要求它们再红等于要求代码回退。**当前 tag `ring-break-base` = `afe20fe` 是 L0 树，暂停使用**。模块里 `showView` 现在还挂在 R1 例外表上，破环后该行必须删、例外表回 0 行（上限 3 不动）。
 R 编号由 TestDev 在闸表里领，§2 的 R1–R8 不动。
 
 > **第 9 条边 2026-10-28 更正**：旧名 `jumpReadingToPage` 全仓库 **0 处**，照它数永远 0——假绿，base 上最多只能红 12/13。实为 `jumpReadingTo`（`app.js:19526`，调用点 20675）。更正后实测：**HEAD `e0a8f4b` 的树，13/13 全部可检出**（9 条回调边 + 4 条桥，各命中 ≥1 处）。**量的对象是 HEAD 的树，不是 tag 那棵树**——这两件事不要混：HEAD 上的 13/13 只证明名字对、边在；**红证据要在真 base 上重验**。
