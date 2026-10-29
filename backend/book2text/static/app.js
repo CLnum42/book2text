@@ -6051,6 +6051,10 @@ const CHIP_AUTO_HIDE_MS = 30000;       // 取消 / 失败的短痕迹留 30s
 let lastChipInput = null;
 let chipAutoHideTimer = null;
 let chipResizeBound = false;
+// 痕迹只由**状态跃迁**触发一次（真事故：轮询每轮把 cancelled 当新事件重画 → 计时器被无限续期，
+// 取消后 33 秒仍在，重载页面还再冒出来一次）。
+const chipActiveSeen = new Set();   // 本会话里「见过它活跃」的 job_id
+const chipTraceKeys = new Set();    // 已经展示过的 `job_id:status`（同一跃迁不重复画）
 
 function chipIsCompact() {
   return (typeof window !== "undefined" ? window.innerWidth : 0) < CHIP_COMPACT_BREAKPOINT;
@@ -6148,6 +6152,7 @@ function paintTaskChip(input) {
 
   const job = input.job;
   const active = job && ["queued", "running", "paused"].includes(job.status);
+  if (active && job.job_id) chipActiveSeen.add(job.job_id);
   if (active) {
     const paused = job.status === "paused";
     const toggle = document.createElement("button");
@@ -6819,17 +6824,22 @@ function renderTask(data) {
     lastChipInput = null;
     el("task-chip").hidden = true;
   } else {
-    // 异常结束（取消 / 失败 / 中断）：留一句短痕迹，30s 后消失
-    const trace =
-      job.status === "cancelled" ? "已取消"
-        : job.status === "failed" ? "有失败页"
-        : "已中断";
-    paintTaskChip({
-      text: `${taskProgressVerb(job)}${trace}`,
-      status: job.status,
-      title: `${typeLabel}任务${trace} · 点开看详情`,
-    });
-    armChipAutoHide();
+    // 异常结束（取消 / 失败 / 中断）：留一句短痕迹，30s 后消失。
+    // 只由**这一次跃迁**触发：本会话没见过它活跃（例如页面刚重载、历史列表里那条旧 job）→ 不画。
+    const traceKey = `${job.job_id || "?"}:${job.status}`;
+    if (chipActiveSeen.has(job.job_id) && !chipTraceKeys.has(traceKey)) {
+      chipTraceKeys.add(traceKey);
+      const trace =
+        job.status === "cancelled" ? "已取消"
+          : job.status === "failed" ? "有失败页"
+          : "已中断";
+      paintTaskChip({
+        text: `${taskProgressVerb(job)}${trace}`,
+        status: job.status,
+        title: `${typeLabel}任务${trace} · 点开看详情`,
+      });
+      armChipAutoHide();
+    }
   }
 }
 
@@ -6846,12 +6856,9 @@ function renderRecentTasks(jobs) {
       job: latest,
     });
   } else if (latest) {
-    clearChipAutoHide();
-    paintTaskChip({
-      text: `任务：${JOB_STATUS_LABELS[latest.status] || latest.status}`,
-      status: latest.status,
-      title: `${JOB_TYPE_LABELS[latest.job_type] || latest.job_type} · 点开看详情`,
-    });
+    // 历史任务（含 cancelled/failed）**不往胶囊上画**：痕迹是「刚才发生的事」，不是「历史列表」。
+    // 否则每轮轮询都把同一条 cancelled 当新事件重画，30s 计时被无限续期，重载后还会再冒一次。
+    // 这里不清计时器：正在倒数的痕迹不该被列表刷新打断。
   } else {
     clearChipAutoHide();
     lastChipInput = null;
