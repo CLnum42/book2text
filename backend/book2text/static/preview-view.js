@@ -143,6 +143,12 @@ function buildPreviewPages() {
   if (!wrap || !injected.getProject()) return;
   // 跨页分界线是静态节点（id 有登记），重建页块时留着，别一起清掉
   const junction = wrap.querySelector(".preview-junction");
+  // PageTile 的句柄挂在页块上；重建前先交还，别让注册表里留着指向旧 DOM 的记录。
+  if (window.PageTile) {
+    for (const tile of previewTiles.values()) {
+      if (tile.__previewTile) window.PageTile.release(tile.__previewTile);
+    }
+  }
   wrap.innerHTML = "";
   previewTiles.clear();
   previewTileTops = [];
@@ -193,9 +199,79 @@ function buildPreviewPages() {
   }
 }
 
+/** PageTile 的依赖：一次 init 可重复调用（模块会合并）。 */
+function previewTileApi() {
+  const api = window.PageTile;
+  if (!api) return null;
+  api.init({
+    getProject: () => injected.getProject(),
+    // 契约名是 getImageUrl(pageNo, size)；预览原来的 pageImageUrl(no, profile) 同义。
+    getImageUrl: (pageNo, size) => injected.pageImageUrl(pageNo, size),
+    notify: (info) => {
+      const text = info && (info.text || info.message) ? info.text || info.message : String(info);
+      injected.showNoticeBar?.(text);
+    },
+  });
+  return api;
+}
+
+/** 把 PageTile 的 status 翻成预览要的显示态（`.is-ready` 由 CSS 决定显不显示）。 */
+function applyPreviewTileStatus(handle, info) {
+  if (!handle || !handle.img) return;
+  const pageNo = handle.pageNo;
+  const image = handle.img;
+  image.classList.toggle("is-ready", info.status === "ready");
+  if (info.status === "ready") {
+    const started = previewImageStartedAt.get(pageNo);
+    if (started) {
+      previewImageStartedAt.delete(pageNo);
+      recordPreviewMetric("imageMs", Math.round(performance.now() - started));
+    }
+    if (pageNo === previewPageNo) {
+      const status = el("preview-image-status");
+      if (status) status.hidden = true;
+    }
+  } else if (info.status === "missing" && pageNo === previewPageNo) {
+    const status = el("preview-image-status");
+    if (status) {
+      status.hidden = false;
+      status.textContent = `第 ${pageNo} 页的图像读不出来。`;
+    }
+  }
+}
+
 function ensurePreviewImage(pageNo) {
   const tile = previewTiles.get(pageNo);
   if (!tile) return;
+  const api = previewTileApi();
+  if (api) {
+    const size = injected.pageProfileFor(tile, pageNo);
+    const exists = tile.__previewTile;
+    if (exists && !exists.dead) {
+      // 缩放会换档：升档由 PageTile 自己重取，降档沿用已缓存的更清晰那张。
+      if (exists.size !== size) api.update(exists, { size });
+      return;
+    }
+    // 旧路径留下的占位 <img> 先摘掉：一个页块只能有一张图（酸测试数的就是它）。
+    const legacy = tile.querySelector("img");
+    if (legacy) legacy.remove();
+    let handle = null;
+    handle = api.create(tile, {
+      pageNo,
+      size,
+      onReady: (info) => applyPreviewTileStatus(handle, info),
+    });
+    if (!handle) return;   // fail closed：缺依赖时不出瓷砖，也不出第二张图
+    tile.__previewTile = handle;
+    previewLoadedPages.add(pageNo);
+    previewImageStartedAt.set(pageNo, performance.now());
+    applyPreviewTileStatus(handle, { status: handle.status });
+    // 预览的窗口页是「当前 ±1」必定要看到的：不等 IntersectionObserver（页块加载前高度为 0，
+    // 观察器可能永远不触发，图就永远 pending）。直接作废触发一次取图，与接线前的 eager 语义一致。
+    if (handle.status !== "ready") api.invalidate(pageNo, "image");
+    return;
+  }
+  // 老路径（index.html 还没加载 page-tile.js 时的降级，行为与接线前一致）
   const image = tile.querySelector("img");
   if (!image || image.dataset.src) return;
   const url = injected.pageImageUrl(pageNo, injected.pageProfileFor(tile, pageNo));
@@ -237,6 +313,13 @@ function releasePreviewImages(anchor) {
     if (keep.has(pageNo)) continue;
     const tile = previewTiles.get(pageNo);
     if (!tile) continue;
+    const handle = tile.__previewTile;
+    if (handle && window.PageTile) {
+      window.PageTile.release(handle);
+      delete tile.__previewTile;
+      previewLoadedPages.delete(pageNo);
+      continue;
+    }
     const image = tile.querySelector("img");
     if (image) {
       image.removeAttribute("src");
