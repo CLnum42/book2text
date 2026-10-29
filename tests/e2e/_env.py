@@ -75,6 +75,10 @@ def _copy_project(project_id: str, library: Path, *, source_root: Path | None = 
     with sqlite3.connect(f"file:{source / 'project.db'}?mode=ro", uri=True) as src:
         with sqlite3.connect(target / "project.db") as dst:
             src.backup(dst)
+    # 用户的应用可能正开着这个项目（`.lock` 里记着它的 pid）。复制会把这个锁一起带走，
+    # 副本一打开就被判"正被另一个 Book2Text 窗口使用"（pid 还活着），整轮验收起不来。
+    # 副本是隔离库，不继承任何宿主机锁。
+    (target / ".lock").unlink(missing_ok=True)
     return target
 
 

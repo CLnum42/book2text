@@ -1289,12 +1289,16 @@ async function prepare(page, cfg) {
     "步骤条数字（finish-summary）就绪",
     180000
   );
+  // 视图拆模块后 openProject 已不在全局（library-view.js 内）。自检改看模块导出面：
+  // 只看旧的全局名会把"模块搬成功"误报成"页面没加载"，整轮 smoke 起不来。
   const sanity = await page.evaluate(() => ({
-    openProject: typeof openProject,
+    libraryView: typeof window.LibraryView,
+    libraryEnter: typeof (window.LibraryView || {}).enter,
+    libraryOpen: typeof (window.LibraryView || {}).open,
     showView: typeof showView,
     libraryCards: document.querySelectorAll("#project-list li.pcard").length,
   }));
-  if (sanity.openProject !== "function" || sanity.showView !== "function" || sanity.libraryCards < 1) {
+  if (sanity.libraryEnter !== "function" || sanity.showView !== "function" || sanity.libraryCards < 1) {
     throw new Error(`页面没有正常加载（疑似 JS 语法/运行时错误）：${JSON.stringify(sanity)}`);
   }
   const snapshot = await stepsSnapshot(page);
