@@ -21,9 +21,11 @@ python3 -c "import importlib.util;spec=importlib.util.spec_from_file_location('r
 |---|---|---|
 | `view-library` 子树 id | **9 个** | 从 `index.html` 第 56–77 行抽 `id="…"` |
 | `app.js` 仍引用 | **6 个 id / 24 处** | 同上集合逐个在 app.js 里查 |
-| 其中外壳侧写点 | **10 处** | 按所属函数分组统计（见下） |
-| 其中随 17 个函数搬走 | **8 处** |  |
-| **验收口径** | **19 处 → 0** | 按「处」不按「函数」 |
+| 其中 error/warning 写点 | **19 处**（error 13 + warning 6） |
+| └ 随 17 个函数搬走 | **9 处**：`deleteProject` 2 · `createProjectFromFile` 3 · `openProject` 4 |
+| └ 留在外壳，必须改调 `notify` | **10 处**：`loadLibrary` 3 · `closeProject` 1 · `openPackageFile` 2 · `applyPackageMode` 1 · `loadPackageResults` 1 · `restoreSelectedBackup` 1 · `rerunAuxiliary` 1 |
+| 另外 5 处字面量（非写点） | `create-progress` 2（随 `createProjectFromFile` 搬）· `library-empty` 1 + `project-list` 1（随 `renderProjectList` 搬）· `library-path` 1（`loadLibrary`，留） |
+| **验收口径** | 字面量 **24 → 0**（R3）；写点 **19 → 0**（notify 改齐） |
 
 ```
 create-progress 2 · library-empty 1 · library-error 13 · library-path 1
@@ -31,14 +33,18 @@ library-warning 6 · project-list 1     = 24 处
 不带 library- 前缀的两个：project-list / create-progress（按前缀 grep 会漏）
 ```
 
-外壳侧 7 个函数 / 10 处（搬不动，但必须改调 `LibraryView.notify`）：
+**按函数归属（精确函数边界量法，命令见文末）**：
 
 ```
-loadLibrary 3 · closeProject 1 · openPackageFile 2 · applyPackageMode 1
-loadPackageResults 1 · restoreSelectedBackup 1 · rerunAuxiliary 1
+createProjectFromFile 5 · loadLibrary 4 · openProject 4 · deleteProject 2
+openPackageFile 2 · renderProjectList 2 · closeProject 1 · applyPackageMode 1
+loadPackageResults 1 · restoreSelectedBackup 1 · rerunAuxiliary 1   = 24
 ```
 
-**「要留」不等于「可以继续写该视图的 DOM」**（§13.4）。
+**「要留」不等于「可以继续写该视图的 DOM」**（§13.4）：`loadLibrary` / `closeProject` 搬不动，但它们写的仍是 library 的 DOM，必须改调 `notify`。
+
+**出处命令**（逐处归因，精确到函数边界）：
+`python3 - <<'PY'` 读 `app.js`，对每个 id 找含 `"id"` 的行，再按「列 0 `function` → 第一个列 0 `}`」求所属函数。
 
 ## 3. 落盘后要对的四个数
 
