@@ -1177,3 +1177,35 @@ const deps = {
 2. **拆 `merge` 之前先确认它的 DOM 段能不能按子面板切**（337 个 id / 1,008 行 HTML 是最大单块）。切不开就整块搬，但要在文档里写明"merge 是单块，不可再分"。
 
 **每个新模块的验收 = 现有四基线 + R1/R2/R3/R5/R6/R9 全绿 + 导出 keys 不增。**
+
+### 20.6 已签字的出生接口（按模块分别建棘轮）
+
+**R8 的棘轮按模块建**：每个模块出生时由 Architect 签字确定初始接口，此后**只降不升**。
+出生接口的判据：**每个方法都必须有真实调用点**（今天就有，不许为将来预留）。
+
+| 模块 | 出生接口 | 签字 | 依据 |
+|---|---|---|---|
+| `ReadingView` | `init/enter/exit/getCurrent/toggleFollow/reload`（6） | 已在册 | 6 个都有调用点 |
+| `IndexView` | `init/enter/exit/refresh`（4） | **2026-10-29 批准** | 见下 |
+
+**`IndexView.refresh()` 批准**，三条理由（DevLead 举证，我复核过）：
+
+1. 原来 4 处 `if (currentView === "index") paintIndexDecorations();`（`app.js:636/645/5185/5405`）**是外壳替模块读 `currentView`**，直接违反 §20「模块自己记 `active`」。`refresh()` 一进模块，守卫跟着回家。
+2. `syncIndexToggles`(5 行) / `paintIndexDecorations`(8 行) 都是**纯写自己子树 DOM** 的镜子函数，不往外捐能力。
+3. 替代方案（不加导出、删掉 4 处戳）要改行为，且 index 隐藏期间按钮 class 可能陈旧——不拿新造的 UI 陈旧隐患换一个导出数字。
+
+**`refresh()` 的正确形态（修正 DevLead 提案）**：`paintIndexDecorations()` **本身已经有守卫**（`if (!currentProject || currentView !== "index" || !indexTiles.size) return;`），且**结尾已经调 `syncIndexToggles()`**。所以：
+
+```js
+function refresh() {
+  syncIndexToggles();       // 无条件，对应原 5185/5405 的显式调用
+  paintIndexDecorations();  // 自己守 active（把 currentView 改成模块的 active）
+}
+```
+
+不需要 `active ? ... : skip` 的 ternary——守卫留在 `paintIndexDecorations` 里，写一次就够。
+
+**认可的偏差（记录在案）**：`syncStepToggles` 那 2 处（636/645）原来只在 index 可见时画；走 `refresh()` 后，**index 隐藏时也会多一次 `syncIndexToggles()`**（写 4 个按钮的 class，幂等、不可观察）。接受，**不为它发明 `refresh({toggles:false})` 参数包**——参数化入口是把简单接口做成配置项的典型开头。
+
+**一条否决**：DevLead 表格第 5 行（preview 的 `init deps` 注入 `syncIndexToggles`）**不是 `refresh()` 的调用点**，也不许改成 preview 调 `window.IndexView.refresh()`——那是 R2 违规（模块互引）。它保持"外壳在 boot 里注入一个 lambda"的形态，由外壳决定是否顺带 `IndexView.refresh()`。
+
