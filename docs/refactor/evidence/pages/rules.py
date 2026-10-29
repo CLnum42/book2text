@@ -116,9 +116,9 @@ STATES = [
     ('finishSummaryProject', 'let', 2, 'shell+stays', '注入 get（外壳持有）'),
     ('lastTaskData', 'let', 2, 'shell+stays', '注入 get（外壳持有）'),
     ('layoutBlockLoading', 'let', 3, 'movers', '搬进模块'),
-    ('layoutBlockPage', 'let', 2, 'movers', '搬进模块'),
-    ('layoutBlockPayload', 'let', 5, 'movers', '搬进模块'),
-    ('marginAuditLoading', 'let', 2, 'movers', '搬进模块'),
+    ('layoutBlockPage', 'let', 2, 'movers', '注入 get（外壳仍引用）'),
+    ('layoutBlockPayload', 'let', 5, 'movers', '注入 get（外壳仍引用）'),
+    ('marginAuditLoading', 'let', 2, 'movers', '注入 get（外壳仍引用）'),
     ('marginAuditPage', 'let', 2, 'movers+shell', '注入 get/set（跨区）'),
     ('marginFitRunning', 'let', 2, 'stays', '注入 get（外壳持有）'),
     ('marginFitTried', 'const', 0, '—', '注入值'),
@@ -134,17 +134,17 @@ STATES = [
     ('pageZoomIndex', 'let', 6, 'shell', '注入 get（外壳持有）'),
     ('pagesMarginOn', 'let', 7, 'movers+shell', '注入 get/set（跨区）'),
     ('pagesOverlayOn', 'let', 5, 'movers+shell', '注入 get/set（跨区）'),
-    ('panelAccordionProject', 'let', 1, 'movers', '搬进模块'),
+    ('panelAccordionProject', 'let', 1, 'movers', '注入 get（外壳仍引用）'),
     ('projectSummary', 'let', 2, 'shell', '注入 get（外壳持有）'),
-    ('recStatusTimer', 'let', 1, 'movers', '搬进模块'),
+    ('recStatusTimer', 'let', 1, 'movers', '注入 get（外壳仍引用）'),
     ('selectedPages', 'const', 0, '—', '注入值'),
     ('selectionAnchor', 'let', 8, 'movers+shell', '注入 get/set（跨区）'),
     ('setupSuggestions', 'let', 4, 'movers+shell', '注入 get/set（跨区）'),
     ('setupSuggestionsLoaded', 'let', 2, 'movers+shell', '注入 get/set（跨区）'),
     ('setupSuggestionsLoading', 'let', 2, 'movers', '搬进模块'),
-    ('suggestionScanQueued', 'let', 1, 'movers', '搬进模块'),
-    ('suggestionScanTimer', 'let', 2, 'movers', '搬进模块'),
-    ('suggestionScrollListening', 'let', 1, 'movers', '搬进模块'),
+    ('suggestionScanQueued', 'let', 1, 'movers', '注入 get（外壳仍引用）'),
+    ('suggestionScanTimer', 'let', 2, 'movers', '注入 get（外壳仍引用）'),
+    ('suggestionScrollListening', 'let', 1, 'movers', '注入 get（外壳仍引用）'),
     ('taskJobId', 'let', 2, 'stays', '注入 get（外壳持有）'),
     ('visiblePageNos', 'const', 0, '—', '注入值'),
     ('workflowStep', 'let', 5, 'shell', '注入 get（外壳持有）'),
@@ -159,9 +159,9 @@ MODULE_LOCAL = ["el"]
 
 #: 写点全在 movers 的状态：**声明搬进模块、app.js 删掉**。
 #: 判据是 app.js 里"声明消失"——两份状态比没搬更坏，而且没有任何静态门能发现。
+#: **只描述「这一刀要做什么」**：刀 1 搬过的状态已在 pages-view.js 里，不是刀 2 的输入。
+#: （刀1 搬过：layoutBlockLoading / setupSuggestionsLoading —— 落盘后 app.js 里已无声明）
 MOVED_STATES = [
-    "layoutBlockLoading",
-    "setupSuggestionsLoading",
 ]
 
 #: 写点跨区的状态：`x = v;` → `injected.setX(v);`
@@ -225,7 +225,7 @@ INTERFACE = """
   // **api 的键 = 外壳实际调用的名字集合**（落盘后 `grep -oE 'PagesView\\.[A-Za-z_]+' app.js | sort -u` 现扫；
   // 回滚后的 app.js 里是 0 个，所以这份 20 个来自 HANDOFF-stage1.md §4 记录的那次实测）。
   // 少一个键 → 外壳那处 `undefined.apply`，而 node / pytest / accept 三闸全看不见。
-  // 收敛棘轮：本刀 20 键 → 终点 3（enter / render / refresh），靠刀 2-5 把 41 个调用者搬进来逐刀降。
+  // 收敛棘轮：刀1 20 键 → 刀2 16 键（删 4 个死面）→ 终点 3（enter / render / refresh），靠刀 2-5 把 41 个调用者搬进来逐刀降。
   const api = {
     init,
     ensureMarginFitted,
@@ -238,15 +238,11 @@ INTERFACE = """
     renderPageSetup,
     renderPages,
     renderRecognitionStatus,
-    renderRecognitionVerdict,
-    renderSuggestionPanel,
-    renderTypePicker,
     savePageMargin,
     syncPageStates,
     undoMarginEdit,
     updateMarginDetectProgress,
-    updatePageVisibility,
-    updateSelectionPanel
+    updatePageVisibility
   };
   window.PagesView = api;
 """
@@ -273,10 +269,7 @@ IDENT_CROSS_SLICE = [
     ("recStatusTimer", "injected.getRecStatusTimer()", "let"),   # 刀1：外壳仍读 → 注入   # 刀1：外壳读 + index 读 → 注入   # 刀1：外壳两处 .clear() + index 读 → 注入
     ("applyPageZoom", "injected.applyPageZoom", "function"),   # 刀1 依赖（刀2-5 未搬）
     ("applySetupSuggestion", "injected.applySetupSuggestion", "function"),   # 刀1 依赖（刀2-5 未搬）
-    ("applyTileState", "injected.applyTileState", "function"),   # 刀1 依赖（刀2-5 未搬）
     ("auxEstimateText", "injected.auxEstimateText", "function"),   # 刀1 依赖（刀2-5 未搬）
-    ("buildTile", "injected.buildTile", "function"),   # 刀1 依赖（刀2-5 未搬）
-    ("capturePageTileMetrics", "injected.capturePageTileMetrics", "function"),   # 刀1 依赖（刀2-5 未搬）
     ("ensureMarginAudit", "injected.ensureMarginAudit", "function"),   # 刀1 依赖（刀2-5 未搬）
     ("ensurePageSuggestion", "injected.ensurePageSuggestion", "function"),   # 刀1 依赖（刀2-5 未搬）
     ("estimateRemainingSeconds", "injected.estimateRemainingSeconds", "function"),   # 刀1 依赖（刀2-5 未搬）
@@ -330,7 +323,14 @@ IDENT_FULL = IDENT_FULL + IDENT_CROSS_SLICE   # 生成器读的是 IDENT_FULL，
 #: 判据「数据只许搬读写者全在模块内的」。它走注入（getter + clear 能力），三处外壳引用在落盘同批改。
 #: detailPageNo 也**不搬**：app.js:1183 写、1471/1472 读、index-view.js 经 getDetailPageNo 读 → 三方引用 → 注入。
 
-EXPECT_SEAMS = 95   # 87 + 8 个外壳仍引用的状态（改注入）   # 84 + detailPageNo + recStatusTimer + suggestionScanQueued（外壳也读 → 全注入）   # 87 − 3（renderMarginPanel / renderPages / renderRecognitionStatus 是 movers，不是注入）   # 37 基础 + 49 跨刀能力 + pageBlockCache（const，注入）      # 函数接缝（**不含 el**：el 是模块自建，见 MODULE_LOCAL）
+#: 增量守卫③：增量更新后的 api 键集合必须等于这个（刀2 = 16，实测有真实消费者的那 16 个）
+EXPECTED_API_KEYS = ["init", "ensureMarginFitted", "loadLayoutBlocks", "loadSetupSuggestions",
+                     "refreshRecognizedPages", "reloadProjectPages", "renderLayoutBlocks",
+                     "renderMarginPanel", "renderPageSetup", "renderPages",
+                     "renderRecognitionStatus", "savePageMargin", "syncPageStates",
+                     "undoMarginEdit", "updateMarginDetectProgress", "updatePageVisibility"]
+
+EXPECT_SEAMS = 92   # 95 − 3（applyTileState / buildTile / capturePageTileMetrics 进刀2 movers，不再注入）
 EXPECT_STATES = 45     # 状态/常量；46 = 45 + el（el 在 IDENT 里）
 EXPECT_TOTAL = 46      # 名单 states_and_consts 的条数
 
