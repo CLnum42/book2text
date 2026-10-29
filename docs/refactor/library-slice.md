@@ -38,8 +38,17 @@
 | `lockSpanText` | 4 | |
 | `ratioText` | 3 | |
 
-**注意**：17 个里**只有 4 个名字带 library/Project**（`renderProjectList` / `openProject` / `createProjectFromFile` / `deleteProject`），
-**另外 13 个名字里一个都没有**——这是 §22 第 6 条"名字匹配会漏"的直接证据（19 个新增、0 个前缀匹配）。
+**注意：17 个里只有 4 个名字带 library/Project**（`renderProjectList` / `openProject` / `createProjectFromFile` / `deleteProject`），
+**另外 13 个名字里一个都没有**。
+
+| 口径 | 数字 |
+|---|---|
+| 按函数数 | 13 / 17 = **76% 会被名字匹配漏掉** |
+| **按行数** | **311 / 371 = 84%** |
+
+**这是 §22 第 6 条"名字匹配会漏"最硬的一组实证**，和"闭包比种子多 19 个、带前缀的 0 个"是同一结论的两个口径：
+- 闭包口径：**该进来的 19 个里，靠名字一个都找不到**；
+- 行数口径：**会搬的 371 行里，84% 在名字上看不出归属。**
 
 ## 2. 要留（7 个 / 92 行，住在 `app.js`，由模块经注入调用）
 
