@@ -61,7 +61,7 @@ import {
 } from "./edge-ratchet.mjs";
 import {
   evaluateFeatureContract, commitContractProblems, tableBlockRanges, isContractPath,
-  exemptionDeltaProblems, keepShellSegmentLabels,
+  exemptionDeltaProblems, keepShellSegmentLabels, moveGateProblems,
 } from "./feature-contract.mjs";
 // R9 专用：保留模板 `${…}` 插值的去注释版本（本文件另有一份旧的去注释实现，只抹代码不抹模板）
 import { stripPreservingTemplateExpressions } from "./static-scan.mjs";
@@ -1755,7 +1755,10 @@ function r3Problems({
           + `（它要靠留外壳段解释为什么这一刀搬不走）`,
         );
       }
-      const labels = String(item["阻塞段"]).split(/[、,，+]|\s\+\s/).map((one) => one.trim()).filter(Boolean);
+      const raw = String(item["阻塞段"]).split(/[、,，+]|\s\+\s/).map((one) => one.trim()).filter(Boolean);
+      // `setupLibrary 12669–12672 + 12673–12676` 这种写法：后续段省略函数名，按第一段的函数名补前缀
+      const owner = (raw[0] || "").split(/\s+/)[0];
+      const labels = raw.map((one) => (/\s/.test(one) ? one : `${owner} ${one}`.trim()));
       if (labels.length === 0) {
         problems.push(`豁免 ${item.id} 的「阻塞段」是空的——空字段等于没有理由`);
       }
@@ -2007,6 +2010,53 @@ test("R3 自检（blocked 阻塞段）：stage=5 且段号可查判绿，其余�
   const raised = r3Problems({ ...base, pagesExemptions: eight, pagesBlockedCap: 8 });
   assert.ok(raised.some((m) => m.includes("受阻项上限被抬到 8")),
     `blocked 自检失败：把上限抬到 8 被放过——${raised.join("；")}`);
+});
+
+test("Move-Gate 五条：未声明改 tests/js 红 / 空声明红 / 声明成立绿 / 删声明红 / cap 增大红", () => {
+  const base = {
+    subject: "move(pages): 刀 2.5 落盘",
+    files: ["backend/book2text/static/app.js", "tests/js/boundary.test.mjs",
+      "tests/js/pages-r3-exemptions.mjs"],
+    exemptionTouched: true,
+    directionChecked: true,
+  };
+  const declared = "move(pages): 刀 2.5 落盘\n\nMove-Gate: tests/js/boundary.test.mjs, tests/js/pages-r3-exemptions.mjs";
+
+  // c：声明 + 只收紧 → 绿（c' 证明这个绿是声明换来的）
+  assert.deepEqual(moveGateProblems({ ...base, message: declared }), [],
+    `Move-Gate 自检失败：合法声明被判红——${moveGateProblems({ ...base, message: declared }).join("；")}`);
+
+  // c'：同 c 内容、删掉 Move-Gate: 行 → ④ 改动 ⊆ 声明 必须红
+  const noDecl = moveGateProblems({ ...base, message: "move(pages): 刀 2.5 落盘" });
+  assert.deepEqual(noDecl, [], "没有 Move-Gate 行 = 不是 Move-Gate 笔（走原 A1，不该由这里报）");
+  const partial = moveGateProblems({ ...base, message: "Move-Gate: tests/js/pages-r3-exemptions.mjs" });
+  assert.ok(partial.some((m) => m.includes("没在 Move-Gate 里声明")),
+    `Move-Gate 自检失败：改了 boundary 却没声明被放过——${partial.join("；")}`);
+
+  // a：未声明却改 boundary → 红（④）
+  const a = moveGateProblems({ ...base, message: "Move-Gate: tests/js/pages-r3-exemptions.mjs" });
+  assert.ok(a.some((m) => m.includes("tests/js/boundary.test.mjs")),
+    `Move-Gate 自检失败：未声明改动被放过——${a.join("；")}`);
+
+  // b：声明了没改 → 红（③）
+  const b = moveGateProblems({ ...base, message: "Move-Gate: tests/js/boundary.test.mjs, tests/js/feature-contract.mjs, tests/js/pages-r3-exemptions.mjs" });
+  assert.ok(b.some((m) => m.includes("声明了 tests/js/feature-contract.mjs")),
+    `Move-Gate 自检失败：空声明被放过——${b.join("；")}`);
+
+  // d：声明 + cap 增大 → 红（① 方向判据）
+  const d = moveGateProblems({
+    ...base,
+    message: declared,
+    directionProblems: ["cap 合计（全表）: 17 → 18（+1）——move: 只许收紧"],
+  });
+  assert.ok(d.some((m) => m.includes("cap 合计（全表）")),
+    `Move-Gate 自检失败：方向判据的红没传出来——${d.join("；")}`);
+
+  // 白名单 + test-contract: 不认
+  const offList = moveGateProblems({ ...base, message: "Move-Gate: backend/book2text/static/app.js" });
+  assert.ok(offList.some((m) => m.includes("白名单外")), `白名单没拦住——${offList.join("；")}`);
+  const contract = moveGateProblems({ ...base, subject: "test-contract: x", message: declared });
+  assert.ok(contract.some((m) => m.includes("不认 Move-Gate")), `test-contract: 也认了 Move-Gate——${contract.join("；")}`);
 });
 
 test("move: 自检（豁免表按方向）：cap 分组增/新增项/提前释放/推迟缺段号都要红，收紧判绿", () => {

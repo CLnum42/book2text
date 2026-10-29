@@ -157,6 +157,77 @@ export function parseExemptionEntries(source) {
   return entries;
 }
 
+/**
+ * **`Move-Gate` 不是权限，是声明。**
+ *
+ * 它只做一件事：让一笔「产品 + tests/js + docs」的搬运提交**把改动范围写在提交信息里**，
+ * 于是范围可以被机检。真正的守卫永远是**方向判据**（`exemptionDeltaProblems` 只许收紧）——
+ * 声明本身不给任何豁免权：白名单外的路径一律红，方向不对一律红。
+ *
+ * 为什么需要它：搬运笔天然是「拆开哪一脚都红」的形态（app.js 单提 → seed 缺名红；
+ * seed 单提 → 索引里没有新函数红；表单提 → 到期刀对不上红）。**只有一笔能过，而它必须被审。**
+ * 这条口子只属于搬迁笔：首行 `test-contract:` 的提交**不认** `Move-Gate`。
+ */
+export const MOVE_GATE_WHITELIST = [
+  "tests/js/boundary.test.mjs",
+  "tests/js/feature-contract.mjs",
+  "tests/js/pages-r3-exemptions.mjs",
+];
+
+/** 从提交信息里读 `Move-Gate: a, b, c`；没有这行 → null（不是 Move-Gate 笔）。 */
+export function moveGateDeclaration(message) {
+  const match = /^[ \t]*Move-Gate[ \t]*:[ \t]*(.+)$/im.exec(String(message || ""));
+  if (!match) return null;
+  return match[1].split(/[,，]/).map((one) => one.trim()).filter(Boolean);
+}
+
+/**
+ * Move-Gate 的四条机检（②「本笔后全套绿」由 pre-commit 的整套 node 闸承担——
+ * 它在**索引树**上跑，正是"本笔后"那棵树；这里不假装能自己跑自己）。
+ *
+ * ```
+ * ① 方向判据全过      —— 由调用方把 exemptionDeltaProblems 的结果传进来（没传就是没验）
+ * ② 本笔后全套绿      —— pre-commit 承担（见上）
+ * ③ 声明 ⊆ 实际改动   —— 声明了却没改 = 空声明（伪装）
+ * ④ 改动 ⊆ 声明        —— 改了 tests/js 却没声明 = 偷改判据
+ * ```
+ */
+export function moveGateProblems({ subject, message, files, directionProblems = [], directionChecked = false, exemptionTouched = false }) {
+  const declared = moveGateDeclaration(message);
+  if (declared === null) return [];
+  const problems = [];
+  const short = subject || "";
+  if (short.startsWith("test-contract:")) {
+    problems.push("Move-Gate 只属于搬迁笔：首行 test-contract: 的提交不认 Move-Gate——请单开 move: 笔");
+  }
+  const outside = declared.filter((path) => !MOVE_GATE_WHITELIST.includes(path));
+  if (outside.length > 0) {
+    problems.push(
+      `Move-Gate 声明了白名单外的路径：${outside.join("、")}——白名单只有 `
+      + `${MOVE_GATE_WHITELIST.join(" / ")}；写产品路径进来就能把 A1 绕掉`,
+    );
+  }
+  const changed = new Set(files || []);
+  const declaredButUnchanged = declared.filter((path) => !changed.has(path));
+  if (declaredButUnchanged.length > 0) {
+    problems.push(
+      `Move-Gate 声明了 ${declaredButUnchanged.join("、")}，但本笔没改它——空声明是伪装`,
+    );
+  }
+  const changedUndeclared = [...changed].filter((path) => isContractPath(path) && !declared.includes(path));
+  if (changedUndeclared.length > 0) {
+    problems.push(
+      `本笔改了 tests/js 的 ${changedUndeclared.join("、")}，但没在 Move-Gate 里声明——偷改判据`,
+    );
+  }
+  // 只有碰了豁免表才需要方向判据；碰了却没结果 = 没验（没验就是没验，不许默认通过）
+  if (exemptionTouched && !directionChecked) {
+    problems.push("Move-Gate ①：本笔碰了豁免表但方向判据没跑——没验就是没验");
+  }
+  problems.push(...directionProblems);
+  return problems;
+}
+
 /** 留外壳清单的段号标签（`setupLibrary 12548–12557`），供「阻塞段」查得到。 */
 export function keepShellSegmentLabels(text = null) {
   const source = text === null ? (() => {
@@ -433,6 +504,15 @@ export function commitContractProblems({
   // 但它有更严的代价：tests/js 的每一行改动都必须落在三张登记表里（见 moveScopeProblems）。
   if (isMove) {
     problems.push(...moveScopeProblems({ sha, files, changes: moveChanges || [] }));
+    problems.push(...moveGateProblems({
+      subject,
+      message,
+      files,
+      // 方向判据由 moveScopeProblems 里的 exemptionDeltaProblems 承担（碰了豁免表就一定会算）
+      directionProblems: [],
+      exemptionTouched: files.some((file) => file.endsWith(EXEMPTION_FILE)),
+      directionChecked: files.some((file) => file.endsWith(EXEMPTION_FILE)),
+    }));
   } else if (touchesProduct && touchesTests) {
     problems.push(`A1: ${short} 同时改了产品代码与 tests/js（${subject}）`);
   }
