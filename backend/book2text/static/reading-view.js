@@ -473,10 +473,26 @@ function setupReading() {
       }
       return;
     }
-    // 焦点在面板里的按钮上时，交给原生 click：否则 document 的 keydown 和按钮的
+    // 焦点在面板里的按钮上时，Enter 交给原生 click：否则 document 的 keydown 和按钮的
     // 原生激活会各判一次，连按 Enter 会一次跳过两条（记录仍然只有一条）。
+    // 但**空格 / E 必须由这里接管**：空格若落给焦点上的「保留原文」，会执行保留而不是采用。
     if (event.key === "Escape") {
       closeReadingPanel();
+      return;
+    }
+    const panelNodeForKey = document.querySelector("#reading-panel-host .reading-panel");
+    const panelEntryForKeys = (panelNodeForKey && panelNodeForKey._readingEntry) ||
+      (readingPanelKey
+        ? readingEntries.find((item) => readingKey(item.block_id, item.line_index) === readingPanelKey)
+        : null);
+    if (panelEntryForKeys && (event.key === " " || event.key === "e" || event.key === "E")) {
+      event.preventDefault();
+      if (event.key === " ") {
+        draftReading(panelEntryForKeys, "adopted", panelEntryForKeys.candidate || null);
+      } else {
+        const panelNode = document.querySelector("#reading-panel-host .reading-panel");
+        if (panelNode) startReadingEdit(panelEntryForKeys, panelNode);
+      }
       return;
     }
     if (event.target && event.target.closest && event.target.closest("#reading-panel-host")) return;
@@ -485,9 +501,11 @@ function setupReading() {
       if (readingAdvancing) return;
       // UX V3：面板开着时 Enter/空格 = "保留原文并下一处"（原来的写法无条件 gotoNextUnreviewed，
       // 于是面板开着按 Enter 会跳过当前条且不记录——这是那个既有 bug）。
-      const panelEntry = readingPanelKey
-        ? readingEntries.find((item) => readingKey(item.block_id, item.line_index) === readingPanelKey)
-        : null;
+      const panelForEnter = document.querySelector("#reading-panel-host .reading-panel");
+      const panelEntry = (panelForEnter && panelForEnter._readingEntry) ||
+        (readingPanelKey
+          ? readingEntries.find((item) => readingKey(item.block_id, item.line_index) === readingPanelKey)
+          : null);
       if (panelEntry) {
         // UX V3 键位（docs/ux/review-screen-ux-v3.md §7）：Enter=保留、空格=采用候选。
         if (event.key === " ") draftReading(panelEntry, "adopted", panelEntry.candidate || null);
@@ -495,15 +513,6 @@ function setupReading() {
         return;
       }
       if (event.key === "Enter") gotoNextUnreviewed();
-    } else if (event.key === "e" || event.key === "E") {
-      const panelEntry = readingPanelKey
-        ? readingEntries.find((item) => readingKey(item.block_id, item.line_index) === readingPanelKey)
-        : null;
-      const panel = document.querySelector("#reading-panel-host .reading-panel");
-      if (panelEntry && panel) {
-        event.preventDefault();
-        startReadingEdit(panelEntry, panel);
-      }
     }
   });
 }
@@ -1643,6 +1652,9 @@ function openReadingPanel(entry) {
   const panel = document.createElement("div");
   panel.className = "reading-panel";
   panel.dataset.key = readingPanelKey;
+  // 当前条目挂在面板 DOM 上：窗口换页时 readingEntries 可能暂时找不到 key，
+  // 但面板上的这一条永远是用户正在看的那条（空格=采用必须认它，不能 no-op）。
+  panel._readingEntry = entry;
   const head = document.createElement("div");
   head.className = "reading-panel__head";
   const label = document.createElement("strong");
