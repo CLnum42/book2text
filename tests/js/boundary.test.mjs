@@ -1885,14 +1885,26 @@ test("R11 自检：调用必须数到；caller 改名必须红；搬到第三份
  * A3（改判据必须单开 `test-contract:` 提交并登记 §18.6）。
  * A2（回放）/A4（变异红两遍）是运行期检查，形态是 `tests/js/mutation-check.mjs`。
  */
-test("R12（闸 A）：特征测试契约 A1 / A1b / A3", () => {
-  const { problems, commitCount } = evaluateFeatureContract();
+test("R12（闸 A）：pre-commit 只判形态——A1 / A3 形态 / A1b 形态", () => {
+  const { problems, registryProblems, commitCount } = evaluateFeatureContract();
+  const strict = process.env.B2T_CONTRACT_STRICT === "1";
+  // 登记段：不拦提交（§18.6 只有 DevLead 能加行，单笔契约变更不能靠两人接力完成），
+  // 但必须在输出里可见；CI 用 B2T_CONTRACT_STRICT=1 把它变成硬红，status.sh 单独读它。
+  if (registryProblems.length > 0) {
+    console.log(`\n✖ R12 登记红灯（不阻断提交，CI 用 B2T_CONTRACT_STRICT=1 拦）：\n  ${registryProblems.join("\n  ")}`);
+  } else if (commitCount > 0) {
+    console.log("✔ R12 登记：全部 test-contract / move: 提交都有合格登记");
+  }
+  if (strict) {
+    assert.deepEqual(registryProblems, [],
+      `${commitCount} 笔提交的 §18.6 登记不合格（CI 严格模式）：\n${registryProblems.join("\n")}`);
+  }
   if (commitCount === 0) {
     // 基点刚打完、还没有切边提交：契约自然成立，但要把这个事实说出来
     assert.deepEqual(problems, [], problems.join("\n"));
     return;
   }
-  assert.deepEqual(problems, [], `${commitCount} 笔提交里违反契约：\n${problems.join("\n")}`);
+  assert.deepEqual(problems, [], `${commitCount} 笔提交里违反形态契约：\n${problems.join("\n")}`);
 });
 
 // ---------------------------------------------------------------- 对外导出棘轮
@@ -1927,14 +1939,16 @@ test("R12 自检：产品卷测试必须红、未登记/非 test-contract 删除
   });
   assert.ok(mixed.problems.some((item) => item.startsWith("A1")), `R12 自检失败：产品卷测试也放过——${mixed.problems.join("；")}`);
 
-  // ② test-contract 删了旧断言但没登记 → A3
+  // ② test-contract 删了旧断言但没登记 → **形态段放行、登记段红灯**（两段式的全部意义）
   const unregistered = commitContractProblems({
     sha: "2222222", subject: "test-contract: 改判据", files: ["tests/js/boundary.test.mjs"],
     deletions: 3, docText,
   });
+  assert.deepEqual(unregistered.problems, [],
+    `R12 自检失败：未登记把 pre-commit 也挡住了——这正是要拆掉的那种接力死锁（${unregistered.problems.join("；")}）`);
   assert.ok(
-    unregistered.problems.some((item) => item.includes("没登记在 §18.6")),
-    `R12 自检失败：未登记的 test-contract 删除也放过——${unregistered.problems.join("；")}`,
+    unregistered.registryProblems.some((item) => item.includes("没登记在 §18.6")),
+    `R12 自检失败：未登记的 test-contract 删除没进红灯——${unregistered.registryProblems.join("；")}`,
   );
   assert.equal(unregistered.exempt, false, "R12 自检失败：未登记的提交不该被豁免 A1b");
 
@@ -1945,8 +1959,8 @@ test("R12 自检：产品卷测试必须红、未登记/非 test-contract 删除
     deletions: 2, docText,
   });
   assert.ok(
-    lacking.problems.some((item) => item.includes("登记缺")),
-    `R12 自检失败：登记缺「变异证明」也放过——${lacking.problems.join("；")}`,
+    lacking.registryProblems.some((item) => item.includes("登记缺")),
+    `R12 自检失败：登记缺「变异证明」也放过——${lacking.registryProblems.join("；")}`,
   );
 
   // ⑤ tests/js/README.md 是文档：只改它（哪怕删行）不需要 test-contract，也不触发 A1b。
@@ -1957,6 +1971,8 @@ test("R12 自检：产品卷测试必须红、未登记/非 test-contract 删除
   });
   assert.deepEqual(docOnly.problems, [],
     `R12 自检失败：只改 tests/js/README.md 被当成改断言——${docOnly.problems.join("；")}`);
+  assert.deepEqual(docOnly.registryProblems, [],
+    `R12 自检失败：只改 README 也进了登记红灯——${docOnly.registryProblems.join("；")}`);
 
   // ⑥ 文档和测试文件混在一笔、且有删除行、首行不是 test-contract → A3 仍然要红。
   //    排除 .md 不能把 *.mjs 一起放走，这是这条改动的边界。
@@ -1968,6 +1984,23 @@ test("R12 自检：产品卷测试必须红、未登记/非 test-contract 删除
     mixedDoc.problems.some((item) => item.startsWith("A3")),
     `R12 自检失败：混着 *.test.mjs 的删除被 .md 豁免一起放走了——${mixedDoc.problems.join("；")}`,
   );
+
+  // ⑧ 形态段全绿 + 登记段红灯：契约变更单人可提交，红灯留给 CI / status.sh
+  const split = commitContractProblems({
+    sha: "5555555", subject: "test-contract: 改一条判据", files: ["tests/js/boundary.test.mjs"],
+    deletions: 4, docText,
+  });
+  assert.deepEqual(split.problems, [], `R12 自检失败：形态段没放行 test-contract 提交——${split.problems.join("；")}`);
+  assert.ok(split.registryProblems.length > 0, "R12 自检失败：未登记没进红灯");
+
+  // ⑨ 登记齐全 → 两段都空且豁免
+  const bothGreen = commitContractProblems({
+    sha: "abc1234", subject: "test-contract: 合规", files: ["tests/js/boundary.test.mjs"],
+    deletions: 2, docText,
+  });
+  assert.deepEqual(bothGreen.problems, [], "R12 自检失败：合规提交形态段误报");
+  assert.deepEqual(bothGreen.registryProblems, [], "R12 自检失败：合规提交登记段误报");
+  assert.equal(bothGreen.exempt, true, "R12 自检失败：合规提交没被豁免");
 
   // ⑦ 谓词本身：任意层级的 *.md 都不算，*.mjs 与数据夹具都算
   assert.equal(isContractPath("tests/js/README.md"), false, "R12 自检失败：README.md 被当成契约对象");
@@ -1997,9 +2030,11 @@ test("R12 自检：产品卷测试必须红、未登记/非 test-contract 删除
     sha: "4444444", subject: "test-contract: 删文件", files: ["tests/js/x.test.mjs"],
     deletions: 1, deletedFiles: ["tests/js/x.test.mjs"], docText,
   });
+  assert.deepEqual(fileGone.problems, [],
+    `R12 自检失败：带 test-contract: 的删文件被形态段挡了（它只该进登记红灯）——${fileGone.problems.join("；")}`);
   assert.ok(
-    fileGone.problems.some((item) => item.startsWith("A1b")),
-    `R12 自检失败：删 tests/js 的文件也放过——${fileGone.problems.join("；")}`,
+    fileGone.registryProblems.some((item) => item.startsWith("A1b")),
+    `R12 自检失败：删 tests/js 的文件没登记也放过——${fileGone.registryProblems.join("；")}`,
   );
 });
 

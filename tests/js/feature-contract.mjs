@@ -169,27 +169,53 @@ export function moveScopeProblems({ sha, files, changes }) {
   return problems;
 }
 
+/** §18.6 登记判定：合格返回 null，否则返回一句人话（两段式里的「登记段」）。 */
+function registrationGap(sha, docText, kindLabel) {
+  const short = sha.slice(0, 7);
+  if (!registeredIn1886(sha, docText)) {
+    return `A3: ${short} 是 ${kindLabel}，但没登记在 §18.6`;
+  }
+  const reg = registrationContent(sha, docText);
+  const lacking = [
+    ["删了什么（删：…）", reg.deleted],
+    ["补了什么更严的（补：…）", reg.stricter],
+    ["变异证明（变异：…）", reg.mutation],
+  ].filter(([, ok]) => !ok).map(([label]) => label);
+  if (lacking.length > 0) {
+    return `A3: ${short} 的 §18.6 登记缺 ${lacking.join("、")}——只写 sha 不算登记`;
+  }
+  return null;
+}
+
 /**
  * 单笔提交的契约判定（**纯函数**，自检夹具直接喂合成提交）。
  *
- * 为什么把内核提出来：闸 A 原来只有"现状绿"断言——`git rev-list base..HEAD` 跑出来 0 问题，
- * 但没人证明过"违规真的会红"。红灯只在历史里出现过一次（`1f57e8d` 把 tests/js 卷进产品提交），
- * 那次能红只是因为历史恰好有违规。合成样例才是可重复的证明。
+ * **两段式（Chief 2026-10-29 裁定，§18.6 已登记）**：把判据按「谁有权判」切开——
+ * - `problems`（形态段）：**单人即可判**，pre-commit 拦。首行有没有 `test-contract:`、
+ *   产品与 tests/js 有没有同笔、删文件有没有单开提交——都不需要第二个人签字。
+ * - `registryProblems`（登记段）：**要第二人签**（§18.6 只有 DevLead 能加行），所以**不拦提交**，
+ *   进 CI（`B2T_CONTRACT_STRICT=1`）和 `scripts/status.sh` 的可见红灯。
+ *
+ * 为什么必须切：A3 原来在 pre-commit 就要求"已经登记"，而登记只有 DevLead 能做——每次契约
+ * 变更都得两人接力，谁接不上就有人 `--no-verify`，绕过记录比漏检更难查；更糟的是**登记提交
+ * 自己也会被 A3 挡住**（它要登记的那笔还没登记）。切完以后，契约变更单人可提，登记红灯可见。
  *
  * @param {{sha: string, subject: string, files: string[], deletions: number,
  *          deletedFiles?: string[], docText: string}} commit
- * @returns {{problems: string[], exempt: boolean}}
+ * @returns {{problems: string[], registryProblems: string[], exempt: boolean}}
  */
 export function commitContractProblems({
   sha, subject, files, deletions, deletedFiles = [], docText, moveChanges = null,
 }) {
   const short = sha.slice(0, 7);
-  const problems = [];
+  const problems = [];            // 形态段：pre-commit 拦
+  const registryProblems = [];    // 登记段：CI / status.sh 红灯，不拦提交
   const touchesProduct = files.some((file) => file.startsWith("backend/book2text/static/"));
   const touchesTests = files.some(isContractPath);
   const isMove = /^move[(:]/.test(subject);
+  const isContract = subject.startsWith("test-contract:");
 
-  // A1：普通提交不许同时碰产品与 tests/js；`move:` 笔是**唯一**例外，
+  // A1（形态）：普通提交不许同时碰产品与 tests/js；`move:` 笔是唯一例外，
   // 但它有更严的代价：tests/js 的每一行改动都必须落在三张登记表里（见 moveScopeProblems）。
   if (isMove) {
     problems.push(...moveScopeProblems({ sha, files, changes: moveChanges || [] }));
@@ -197,76 +223,37 @@ export function commitContractProblems({
     problems.push(`A1: ${short} 同时改了产品代码与 tests/js（${subject}）`);
   }
 
-  // A3：改旧断言（有删除行）→ 必须单开 test-contract: 提交、并在 §18.6 写清三样。
-  // 两个条件缺一不可：`deletions` 是**契约路径**的删除行（git 侧已排除 *.md），`touchesTests`
-  // 是同一口径的"碰了契约路径"。只靠 deletions，内核在合成样例里会把"只改 README"判成改断言。
+  // A3 形态：改了契约路径的旧断言（有删除行）→ 首行必须是 test-contract:（单人可判）
+  if (deletions > 0 && touchesTests && !isMove && !isContract) {
+    problems.push(`A3: ${short} 改了 tests/js 的旧断言（删除 ${deletions} 行）但首行不是 test-contract:（${subject}）`);
+  }
+  // A3 形态：test-contract 提交不许动产品代码（单人可判）
+  if (deletions > 0 && touchesTests && !isMove && isContract && touchesProduct) {
+    problems.push(`A3: ${short} 是 test-contract 提交却动了产品代码`);
+  }
+
+  // 登记段：需要登记的提交 = 所有 `move:` 笔（登记义务与删行无关）+
+  // 有删除行的 test-contract 提交。**判定放这里，不放形态段**。
+  const needsRegistration = isMove || (deletions > 0 && touchesTests && isContract);
   let exempt = false;
-  if (deletions > 0 && touchesTests) {
-    if (!subject.startsWith("test-contract:") && !isMove) {
-      problems.push(`A3: ${short} 改了 tests/js 的旧断言（删除 ${deletions} 行）但首行不是 test-contract:（${subject}）`);
-    } else if (isMove && deletions === 0) {
-      // move: 笔不删旧断言时也要登记（登记义务不降），走下面的三样检查
-    } else if (isMove) {
-      // move: 笔允许删 tests/js 的行（A1b 放行），但登记三样照旧
-      if (!registeredIn1886(sha, docText)) {
-        problems.push(`A3: ${short} 是 move: 笔但没登记在 §18.6`);
-      } else {
-        const reg = registrationContent(sha, docText);
-        const lacking = [
-          ["删了什么（删：…）", reg.deleted],
-          ["补了什么更严的（补：…）", reg.stricter],
-          ["变异证明（变异：…）", reg.mutation],
-        ].filter(([, ok]) => !ok).map(([label]) => label);
-        if (lacking.length > 0) {
-          problems.push(`A3: ${short} 的 §18.6 登记缺 ${lacking.join("、")}——只写 sha 不算登记`);
-        } else {
-          exempt = true;
-        }
-      }
-    } else {
-      if (touchesProduct) problems.push(`A3: ${short} 是 test-contract 提交却动了产品代码`);
-      if (!registeredIn1886(sha, docText)) {
-        problems.push(`A3: ${short} 是 test-contract 提交但没登记在 §18.6`);
-      } else {
-        const reg = registrationContent(sha, docText);
-        const lacking = [
-          ["删了什么（删：…）", reg.deleted],
-          ["补了什么更严的（补：…）", reg.stricter],
-          ["变异证明（变异：…）", reg.mutation],
-        ].filter(([, ok]) => !ok).map(([label]) => label);
-        if (lacking.length > 0) {
-          problems.push(`A3: ${short} 的 §18.6 登记缺 ${lacking.join("、")}——只写 sha 不算登记`);
-        } else {
-          exempt = true;
-        }
-      }
+  if (needsRegistration) {
+    const gap = registrationGap(sha, docText, isMove ? "move: 笔" : "test-contract 提交");
+    if (gap) registryProblems.push(gap);
+    else exempt = true;
+  }
+
+  // A1b：删 tests/js 的文件不算改断言。
+  // 形态段：普通提交删文件 = 红（单人可判）；登记段：test-contract/move: 提交删文件，
+  // 但登记不合格 = 红灯（删文件比删几行更重，登记义务不降）。
+  if (deletedFiles.length > 0) {
+    if (!isMove && !isContract) {
+      problems.push(`A1b: ${short} 删了 tests/js 的文件（${deletedFiles.join(", ")}）——删文件不算改断言，必须单开 test-contract:`);
+    } else if (!exempt) {
+      registryProblems.push(`A1b: ${short} 删了 tests/js 的文件（${deletedFiles.join(", ")}）但 §18.6 登记不合格`);
     }
   }
 
-  // move: 笔的登记义务与删行无关（"登记义务不降"）：增删都查
-  if (isMove && deletions === 0) {
-    if (!registeredIn1886(sha, docText)) {
-      problems.push(`A3: ${short} 是 move: 笔但没登记在 §18.6`);
-    } else {
-      const reg = registrationContent(sha, docText);
-      const lacking = [
-        ["删了什么（删：…）", reg.deleted],
-        ["补了什么更严的（补：…）", reg.stricter],
-        ["变异证明（变异：…）", reg.mutation],
-      ].filter(([, ok]) => !ok).map(([label]) => label);
-      if (lacking.length > 0) {
-        problems.push(`A3: ${short} 的 §18.6 登记缺 ${lacking.join("、")}——只写 sha 不算登记`);
-      } else {
-        exempt = true;
-      }
-    }
-  }
-
-  // A1b：只有**合规的 test-contract / move: 提交**可以删 tests/js 的行
-  if (!exempt && deletedFiles.length > 0) {
-    problems.push(`A1b: ${short} 删了 tests/js 的文件（${deletedFiles.join(", ")}）——删文件不算改断言`);
-  }
-  return { problems, exempt };
+  return { problems, registryProblems, exempt };
 }
 
 /** 从 git 刨 `move:` 笔在 tests/js 里的逐行变更（新增/删除的行范围 + 两个版本的源码）。 */
@@ -308,12 +295,13 @@ function moveChangesFromGit(sha) {
  * @returns {{ problems: string[], commitCount: number }}
  */
 export function evaluateFeatureContract({ baseTag = "ring-break-base" } = {}) {
-  const problems = [];
+  const problems = [];          // 形态段（pre-commit 拦）
+  const registryProblems = [];  // 登记段（CI / status.sh 红灯）
   let unregisteredDeletions = 0;
   try {
     git(["rev-parse", "--verify", baseTag]);
   } catch {
-    return { problems: [`找不到 tag ${baseTag}：闸 A 需要基点（DevLead 打 tag 后才能跑）`], commitCount: 0 };
+    return { problems: [`找不到 tag ${baseTag}：闸 A 需要基点（DevLead 打 tag 后才能跑）`], registryProblems: [], commitCount: 0 };
   }
   const docText = readFileSync(`${REPO_ROOT}/${DOC_REL}`, "utf8");
   const commits = git(["rev-list", "--reverse", `${baseTag}..HEAD`]).split("\n").filter(Boolean);
@@ -323,24 +311,26 @@ export function evaluateFeatureContract({ baseTag = "ring-break-base" } = {}) {
       .split("\n")
       .filter(Boolean);
     const deletions = numstat.reduce((sum, line) => sum + (Number(line.split("\t")[1]) || 0), 0);
+    const subject = git(["show", "-s", "--format=%s", sha]);
     const verdict = commitContractProblems({
       sha,
-      subject: git(["show", "-s", "--format=%s", sha]),
+      subject,
       files: git(["show", "--name-only", "--format=", sha]).split("\n").filter(Boolean),
       deletions,
       deletedFiles: git(["show", "--name-status", "--diff-filter=D", "--format=", sha, "--", ...CONTRACT_SCOPE])
         .split("\n").filter(Boolean),
       docText,
-      moveChanges: /^move[(:]/.test(git(["show", "-s", "--format=%s", sha]))
-        ? moveChangesFromGit(sha)
-        : null,
+      moveChanges: /^move[(:]/.test(subject) ? moveChangesFromGit(sha) : null,
     });
     problems.push(...verdict.problems);
+    registryProblems.push(...verdict.registryProblems);
     if (!verdict.exempt) unregisteredDeletions += deletions;
   }
 
   if (unregisteredDeletions !== 0) {
-    problems.push(`A1b: 非登记 test-contract 提交合计删除 tests/js ${unregisteredDeletions} 行（必须 0）`);
+    registryProblems.push(
+      `A1b: 未登记的 test-contract / move: 提交合计删除 tests/js ${unregisteredDeletions} 行（登记齐了就是 0）`,
+    );
   }
-  return { problems, commitCount: commits.length };
+  return { problems, registryProblems, commitCount: commits.length };
 }

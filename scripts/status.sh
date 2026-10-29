@@ -174,6 +174,19 @@ else
   echo "    重写 0 次（REWRITE，不计入绕过）"
 fi
 
+# ── 4.5 闸 A 登记红灯（R12 登记段：不阻断提交，这里与 CI 负责看见） ──────────
+# 只读、一行读数。缺 node 或脚本时明说，不用 0 冒充健康（仪表盘不是闸，见文件头约束 5）。
+NODE=""
+for c in "$(command -v node 2>/dev/null)" "$HOME/.local/bin/node" /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do
+  if [ -n "$c" ] && [ -x "$c" ]; then NODE="$c"; break; fi
+done
+if [ -n "$NODE" ] && [ -f "$REPO/tests/js/contract-registry.mjs" ]; then
+  REG=$("$NODE" "$REPO/tests/js/contract-registry.mjs" 2>/dev/null) || REG=""
+  printf '闸A登记  %s\n' "${REG:-?（读数失败，跑 node tests/js/contract-registry.mjs --strict 看详情）}"
+else
+  echo "闸A登记  ?（node 或 tests/js/contract-registry.mjs 缺失）"
+fi
+
 PYTEST_LOG="$COMMON/b2t-pytest.log"
 if [ -f "$PYTEST_LOG" ]; then
   LAST=$(tail -n 1 "$PYTEST_LOG" 2>/dev/null)
