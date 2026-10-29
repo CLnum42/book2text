@@ -844,7 +844,7 @@ getCurrent pageNo number|null
 R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同文件重名）/ R5 一状态一 owner / R6 一模块一接口对象 / R7 禁 `type=module` / R8 不许新增导出 / R9 no-undef = **9 条**。
 `R10`（注入不缓存）是评审清单，**不计入分母**。
 
-**现状 11/12**（分母 = **12 条可机检规则**：R1、R2、R3、R4(含 R4b)、R5、R6、R7、R8、R9、R11、R12、R13；**R10 按设计不上闸，不计入分母**）：已上闸 11 条（R1–R9、R11、R12）；**R13 待上闸**（merge 切片落盘前必须通过，Chief 2026-10-29）。R13 上闸后 12/12。
+**现状 12/12**（分母 = **12 条可机检规则**：R1、R2、R3、R4(含 R4b)、R5、R6、R7、R8、R9、R11、R12、R13；**R10 按设计不上闸，不计入分母**）：12 条全部上闸（R13 于 `511df76` 上闸，变异证明见 §18.6 同一行）。
 
 > **2026-10-29 第二次修正**：上一版写「11/12（分母 = R1–R12 共 12 条）」——同一句里又说「R10 不计入分母」，自相矛盾（12 把 R10 算进去了），且漏记 R13。**分母一律按组成列名，不按区间写 `R1–R12`**：区间会把不上闸的 R10 自动吞进去，"分母跟着规则表长"就成空话。这是分母第三次改（7→8→9→11→12），每次的组成都记在这一节。
 >
@@ -1081,11 +1081,17 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 | **A5** | **特征测试只锁行为**：不许断言调用次数 / 调用顺序 / 注入面调用。判定：扫 `tests/js/*.test.mjs` 每条 `assert`（先去注释与字符串），命中 ① 计数名 `calls/callCount/callsMade/invokedCount/invocations/timesCalled/hitCount` ② 顺序名 `order/seq/sequence/trace/callLog/callOrder/callStack` ③ `mock/spy/stub/fake` 命名 → 红。C1–C4 探针单独成文件、文件名含 `probe` 且登记在 `A5_PROBE_FILES`（带 owner + 到期点），未登记即红；例外表 `A5_EXCUSES` 现状 0、上限 0，按「文件+语句指纹」定位，**违规消失也红**。附则：`tests/js/*.test.mjs` 必须在 `run.mjs` 注册，没注册 = 红（写了不跑比写错更坏） | 违反即红；已用临时文件 `assert.equal(calls,1)` 先红后绿验过 |
 
 **为什么要有 A2**：只查「不许改测试」挡不住「新写一条只对切后成立的测试」——结局和改断言一样。回放把「它锁的是旧行为」变成可机检的事。
+**A3 拆两段（Chief 2026-10-29 定；TestDev 实现，作为 R12 的一部分在 merge 落盘前完成）**
+- **pre-commit 段（阻断提交）**：只判**形态**——一笔提交改了 `tests/js/**`（`.md` 除外）且删除行 > 0，首行不是 `test-contract:` 且不是 `move:` → 红。单人可判，不查登记。
+- **登记段（不阻断，但要看得见）**：`test-contract:` / `move:` 提交是否在 §18.6 登记（sha + 删/补/变异三样）→ 进 CI 与 `scripts/status.sh` 的**可见红灯**。**不放 pre-commit**：登记只有 DevLead 能做，放进去会让每次契约变更都要两人接力；接不上就有人 `--no-verify`，而绕过记录比漏检更难查（`511df76` 就是实例：闸红着，下一个人提交只能绕过）。
+- **验收（两段各喂一次红）**：形态段——非 `test-contract:` 删一行 `*.test.mjs` → pre-commit 红；登记段——`test-contract:` 提交未登记 → `status.sh`/CI 红，但 `git commit` 放行。
+
 **为什么要有 A4**：A2 只证明「测试在旧树上绿」，挡不住「测试根本没走那条边」——绿可能锁的是外壳按钮。
 **A4 为什么打在 callee 上**（Chief）：打 `caller` 首行只能证明「测试跑到了这个函数」——任何顺带调用 `renderReading` 的断言都会失败，证明不了它依赖的是**这条边的效果**。所以变异插在基线树上**被调用那一端**；`callee` 被多个调用方共用、隔离不到这条边，才退回 `caller`，并在提交说明里写明理由。
 **9 条边的预期阶梯**（HEAD `d90aa45` 的树，按名字数，行号会漂）：**T1 只有 1 条**——`renderReadingTree→scrollReadingToPage`（`scrollReadingToPage` 全仓库 1 个调用点）；其余 8 条 callee 都共用（`ensureReadingMarksWindow` 4 个调用点 / `updateReadingPage` 10 个 / `retryReadingPendingPanel` 2 个 / `ensureReadingBlocks` 2 个 / `jumpReadingTo` 3 个），走 T2。**共用不等于判不了**：T2 中和的是那一次调用，不是整个 callee。**边 8、边 9 共用 caller `gotoReadingEntry`，T3 对两者是同一个变异、区分不了，这两条必须 T2。** 9 个调用点全是独立语句，`void 0` 语法都合法。
 **A5 为什么在闸 A、不占 R 编号**（DevLead，2026-10-29，同日更正）：A5 约束的是**测试证据**，和 A1–A4 同一族，是**闸 A 的第五条断言**——编号随闸 A（R12）走，不另领 R 号；R11/R12 的号当天已被闸 B / 闸 A 领走，新落的生成器检查是 R13。我最初的判据「R11 还空着」写这一节时成立、当天作废，保留在前一版记录里便于对照。**若要把 A5 单列成 R 号**：分母 12→13、§2 / §13.2b / README 三处同批改，由我落。
 **A5 的已知盲区**（TestDev 报）：只认语句级文本；先存变量、隔几行再断言的拼装形态抓不到——那种形态靠 A4 的变异红兜底。
+
 **A4 的对象固定死在 base 树上**（Architect）：切完队列后 9 条边的效果都挪到帧末 flush，在切后代码上插 `throw` 也会红，但那时红的是「队列还在跑」，证明不了同一条边。所以只认 base 树上的红。
 **只锁用户可感知的结果**（面板开了、页码对上、树高亮）：新增测试里**不许断言调用次数、调用顺序、注入面调用**（C1–C4 探针除外）。锁了顺序的测试切完队列必红，会被误判成「切错了」；而顺手在切边提交里改测试会立刻撞 A1（删除行 0），只能走 A3 单开提交。这条由 TestDev 做成静态检查，与八道闸并列领 R 编号。
 
@@ -1193,6 +1199,9 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | 2026-10-29 | 文档结构闸 + 七条夹具 + move: 笔类 | 删：无（新增闸与夹具）；补：`docs-structure.test.mjs`（全层级章节号、五条自检、失败信息 `文件:行:节号`）、R1/R3/R4-dup/R4b/R5/R7/R12 的合成样例夹具（内核提成纯函数）、`move:` 笔类（三张登记表派生块边界、豁免/上限不放行、fail closed）、run.mjs 回读绕过留痕；顺带删掉文档第 1779 行的重复 H1（与第 1 行逐字节相同）；变异：各闸的合成违规样例逐条喂红、合规样例不红；`move:` 四条（表内绿/表外红/动 MAX 红/空声明红） | DevLead | 4fb0733 |
 | 2026-10-29 | R3 作用域扩展 | 删：R3 只判 `reading` 子树的旧口径；补：**只要有 `<view>-view.js`，app.js 里该视图的 DOM 字面量必须为 0**（reading 保留块内例外 + 4 条豁免），开关是"有没有模块文件"；红夹具按验收形态造（已落盘视图 + app.js 留字面量），另配"收干净必须绿"的对照；变异：在 app.js 副本里加 `el("index-empty")` → 红在「还引用着 view-index 的 id index-empty」 | DevLead | 63a469f |
 | 2026-10-29 | 文档结构闸扩三份 | 删：断链只认两级的旧正则（`§18.1.4` 只查 `§18.1` → 装闸也绿）、悬空引用写死行号 0；补：`DOC_FILES` 扩到 boundary/decisions/known-limitations 三份、断链全深度 + 跨文档并集 + 行内代码剔除、ID 型编号重复检测（只对 decisions 开红；`D-004 修订` 算独立号、`L-106`/`L-106b` 算两个号）、排序口径定死"字母后缀在数字子节之前"、已知答案回归（decisions 标题里只有一个 D-100）；变异：十条夹具逐条喂（含三级引用必红、行号必须 > 0、两个 D-100 必红、修订版与后缀版不算重复）；顺带修两处文档里指向不存在节的引用（1486 的示例写法、1290 的"设计稿 1.4 节"——原来写成带 § 的形式） | DevLead | 21fd027 |
+
+| 2026-10-29 | R7 / R13 / A1-A3 对象 | 删：R7 里写死 `reading-view.js` 的判定（名单改成从 `static/` 目录列 `*-view.js`，空名单红、加载不存在的 `*-view.js` 也红）；A3 只按 `deletions>0` 判的口径（加 `touchesTests` 守卫，纯函数内核不会把「只改 README」判成改断言）。补：新闸 R13 注入表可解析——`*-view.js` 的 init 注入块里，键值表达式的自由标识符必须属于 `app.js` 顶层声明 / 该工厂作用域 / 全局白名单；模块必读（`injected.X(` / `.` / `[`）但外壳没传 = 红；注入项解析不了 = 红（fail closed）；四个模块各带合成样例自检。A1/A1b/A3 的对象排除 `tests/js/**/*.md`（`*.mjs` 与数据夹具照判），git pathspec 与 `isContractPath` 同口径。变异：删 `library-view.js` 的 script → R7 红「没有 library-view.js 的 <script>」；把 `library-view.js` 排到 `app.js` 之后 → R7 红；`getProject: () => currentProject` 改 `() => project` → R13 红「注入键 getProject 引用了 project」；`injected.getProject(` 改 `injected.ghostApi(` → R13 红「模块读了 injected.ghostApi」；临时 worktree 真提交两笔——只删 `tests/js/README.md` 一行 → R12 绿；删 `boundary.test.mjs` 一行且首行非 `test-contract:` → A3 红 | DevLead | 511df76 |
+| 2026-10-29 | A3 拆两段 | pre-commit 只判形态（改 `tests/js` 且 deletions>0 → 首行必须 `test-contract:`），「是否已登记」改为 CI + `status.sh` 的可见红灯、不阻断提交。理由：登记只有 DevLead 能做，放 pre-commit 会让每次契约变更都要两人接力，接不上就有人 `--no-verify`，绕过记录比漏检更难查 | Chief | 待补（TestDev 实现 R12 两段后填） |
 
 只有 DevLead 能加行。没有登记行的放宽一律按违规算。
 

@@ -232,8 +232,17 @@ index-view.js    IndexView    4  init enter exit refresh
 `时间 \t sha \t TAG \t 理由 \t 标题`。`run.mjs` 每次跑都回读最近 7 天并 warn（**不红**）：
 没有这条回读，"留痕"只是留给自己看。
 
-**机检覆盖：11/11**
-（R1 R2 R3 R4 R5 R6 R7 R8 R9 R11 R12；**R10 是评审清单、不能机检，不计入分母**）
+**机检覆盖：12/12**
+（R1 R2 R3 R4 R5 R6 R7 R8 R9 R11 R12 R13；**R10 是评审清单、不能机检，不计入分母**）
+
+**R13 · 注入表来源可证（2026-10-29 上闸，`511df76`）**
+
+对象 = **生成器产出的注入表**（每个 `*-view.js` 的 `init(deps)` 注入块），不扫全仓库。
+每个注入键表达式里的自由标识符必须属于：`app.js` 顶层声明 / 该工厂作用域声明 / globals 白名单
+（白名单写死、只减不增）；模块必读的 `injected.X` 外壳没传 = 红；注入项解析不了 = 红（fail closed）。
+`getProject: () => project` 必须红——`project` 不在 `app.js` 顶层，只是"别的函数里声明过"，
+R9 那种"文件里声明过没有"的判定看不见它。不扩成完整 no-undef：理由见
+`docs/refactor/known-limitations.md:1553`（裸引用要处理 globals、解构默认值、模板插值，误报会让闸失信）。
 
 **闸 A · 特征测试契约**
 
