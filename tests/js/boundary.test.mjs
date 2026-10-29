@@ -1,4 +1,4 @@
-// 模块边界守门（R1/R3/R4/R4b/R5/R7/R8/R9）+ 特征测试契约（A5）——
+// 模块边界守门（R1/R3/R4/R4b/R5/R7/R8/R9/R13）+ 特征测试契约（A5）——
 // 规格来自 docs/refactor/reading-view-boundary.md §6、§16、§17、§18.2。
 //
 // 纯文本静态检查，不加载 app.js、不依赖 DOM，毫秒级。
@@ -22,7 +22,9 @@
 //   别名也算同名：顶层 `const foo = (…) =>` 与 `function foo(…)` 同属一个作用域。
 //
 // **R7**：`index.html` 不许出现 `<script type="module">`（默认 deferred，会改 boot 时序，
-//   这仓库一半 bug 是时序问题）；且 `reading-view.js` 的 `<script>` 必须在 `app.js` 之前。
+//   这仓库一半 bug 是时序问题）；且 `static/*-view.js` **每一个**的 `<script>` 都必须在 `app.js` 之前。
+//   名单**不手写**：从 static 目录列 `*-view.js`。library 落盘时漏了 library-view.js 的标签，
+//   静态门全绿、页面目录页永远空着——手写名单就是那次漏法的成因，名单必须从目录来。
 //
 // **例外表**：`ALLOW` 必须为空；上限 3 条，每条要带 owner + 到期切片。
 //
@@ -54,7 +56,7 @@ import {
   moduleShowViewInSource,
 } from "./edge-ratchet.mjs";
 import {
-  evaluateFeatureContract, commitContractProblems, tableBlockRanges,
+  evaluateFeatureContract, commitContractProblems, tableBlockRanges, isContractPath,
 } from "./feature-contract.mjs";
 // R9 专用：保留模板 `${…}` 插值的去注释版本（本文件另有一份旧的去注释实现，只抹代码不抹模板）
 import { stripPreservingTemplateExpressions } from "./static-scan.mjs";
@@ -514,19 +516,39 @@ test("R4-dup（真实现份数=1）：同名函数只许一份真实现，其余
  * 这个仓库的加载顺序靠"经典脚本 + `reading-view.js` 在 `app.js` 之前"撑住。
  * `type="module"` 默认 deferred，会改 boot 时序——这仓库一半 bug 是时序问题。
  */
-/** R7 的判定内核（纯函数，自检夹具喂合成 html）。 */
-function r7Problems(html) {
+/**
+ * R7 的判定内核（纯函数，自检夹具喂合成 html + 合成文件名单）。
+ *
+ * `viewFiles` 必须是**目录里真实存在**的 `*-view.js` 名单——不传就红（fail closed）：
+ * 空名单会让"每个模块都有 script"变成恒真，闸会退化成空转。
+ */
+function r7Problems(html, viewFiles) {
   const problems = [];
+  if (!Array.isArray(viewFiles) || viewFiles.length === 0) {
+    return ["R7 拿不到 view 文件名单（static 目录里没有 *-view.js）——空名单会让这条闸空转，按红处理"];
+  }
   const moduleTags = html.match(/<script[^>]*\btype\s*=\s*["']module["'][^>]*>/gi) || [];
   if (moduleTags.length > 0) {
     problems.push(`index.html 出现了 <script type="module">：会改 boot 时序，本项目禁用（${moduleTags.join("、")}）`);
   }
-  const viewAt = html.indexOf("/static/reading-view.js");
   const appAt = html.indexOf("/static/app.js");
-  if (viewAt === -1) problems.push("index.html 里没有 reading-view.js 的 <script>");
   if (appAt === -1) problems.push("index.html 里没有 app.js 的 <script>");
-  if (viewAt !== -1 && appAt !== -1 && viewAt > appAt) {
-    problems.push(`reading-view.js 必须先在 app.js 之前加载（现在顺序反了：view=${viewAt} app=${appAt}）`);
+  for (const file of viewFiles) {
+    const at = html.indexOf(`/static/${file}`);
+    if (at === -1) {
+      problems.push(`index.html 里没有 ${file} 的 <script>——文件存在但没加载，window 接口是 undefined，`
+        + "模块里全是 ?. 空转，页面静默空白而所有静态门全绿");
+      continue;
+    }
+    if (appAt !== -1 && at > appAt) {
+      problems.push(`${file} 必须在 app.js 之前加载（现在顺序反了：view=${at} app=${appAt}）`);
+    }
+  }
+  // 反向：index.html 加载了 static 目录里不存在的 *-view.js（拼错文件名 = 404 静默）
+  for (const match of html.matchAll(/\/static\/([\w.-]+-view\.js)/g)) {
+    if (!viewFiles.includes(match[1])) {
+      problems.push(`index.html 加载了 /static/${match[1]}，但 static 目录里没有这个文件（文件名拼错了？）`);
+    }
   }
   return problems;
 }
@@ -552,7 +574,7 @@ test("R4-dup 自检：两份真实现必须红，≤6 行转发必须绿，单�
   assert.deepEqual(single, [], "R4-dup 自检失败：同一文件内的重名不归这条管（那是 R4b）");
 });
 
-test("R7：index.html 不许出现 type=module，且模块先于 app.js 加载", () => {
+test("R7：每个 static/*-view.js 都必须在 app.js 之前加载（名单从目录来）", () => {
   const indexPath = join(STATIC_DIR, "index.html");
   let html;
   try {
@@ -561,29 +583,54 @@ test("R7：index.html 不许出现 type=module，且模块先于 app.js 加载",
     assert.fail(`找不到 ${indexPath}：B2T_STATIC_DIR 指向的目录必须包含 index.html`);
     return;
   }
-  const problems = r7Problems(html);
+  const viewFiles = readdirSync(STATIC_DIR).filter((name) => /-view\.js$/.test(name)).sort();
+  assert.ok(viewFiles.length >= 2,
+    `static 目录里只找到 ${viewFiles.length} 个 *-view.js（${viewFiles.join("、")}）——目录指错了吧？`);
+  const problems = r7Problems(html, viewFiles);
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
 /** R7 自检（§20.9 ⑬）。 */
-test("R7 自检：type=module / 顺序反了 / 少了 script 都必须红，正常写法必须绿", () => {
+test("R7 自检：少一个 view / 顺序反了 / type=module / 空名单都必须红，正常写法必须绿", () => {
+  const views = ["reading-view.js", "preview-view.js", "library-view.js"];
   const good = [
     '<script src="/static/reading-view.js"></script>',
     '<script src="/static/preview-view.js"></script>',
+    '<script src="/static/library-view.js"></script>',
     '<script src="/static/app.js"></script>',
   ].join("\n");
-  assert.deepEqual(r7Problems(good), [], "R7 自检失败：正常写法被误报");
+  assert.deepEqual(r7Problems(good, views), [], "R7 自检失败：正常写法被误报");
+
+  const missingOne = good.replace('<script src="/static/library-view.js"></script>\n', "");
   assert.ok(
-    r7Problems('<script type="module" src="/static/app.js"></script>\n<script src="/static/reading-view.js"></script>').length > 0,
+    r7Problems(missingOne, views).some((item) => item.includes("library-view.js")),
+    "R7 自检失败：删掉 library-view.js 的 script 也放过——这正是落盘时漏掉的那种",
+  );
+
+  const reordered = [
+    '<script src="/static/library-view.js"></script>',
+    '<script src="/static/app.js"></script>',
+    '<script src="/static/reading-view.js"></script>',
+  ].join("\n");
+  assert.ok(
+    r7Problems(reordered, views).some((item) => item.includes("顺序反了")),
+    "R7 自检失败：view 排到 app.js 之后也放过",
+  );
+
+  assert.ok(
+    r7Problems('<script type="module" src="/static/app.js"></script>\n<script src="/static/reading-view.js"></script>', ["reading-view.js"]).length > 0,
     "R7 自检失败：type=module 也放过",
   );
+
   assert.ok(
-    r7Problems('<script src="/static/app.js"></script>\n<script src="/static/reading-view.js"></script>').length > 0,
-    "R7 自检失败：app.js 先于 reading-view.js 也放过",
+    r7Problems(good, []).length > 0,
+    "R7 自检失败：空名单被当成绿——名单为空时这条闸会空转",
   );
+
   assert.ok(
-    r7Problems('<script src="/static/app.js"></script>').length > 0,
-    "R7 自检失败：少了 reading-view.js 的 script 也放过",
+    r7Problems('<script src="/static/ghost-view.js"></script>\n<script src="/static/app.js"></script>', ["reading-view.js"])
+      .some((item) => item.includes("ghost-view.js")),
+    "R7 自检失败：加载了不存在的 *-view.js 也放过（拼错文件名 = 404 静默）",
   );
 });
 
@@ -1902,6 +1949,33 @@ test("R12 自检：产品卷测试必须红、未登记/非 test-contract 删除
     `R12 自检失败：登记缺「变异证明」也放过——${lacking.problems.join("；")}`,
   );
 
+  // ⑤ tests/js/README.md 是文档：只改它（哪怕删行）不需要 test-contract，也不触发 A1b。
+  //    这条对应 DevLead 2026-10-29 的裁定（§18.6 已登记）：改一行机检覆盖率不是改断言。
+  const docOnly = commitContractProblems({
+    sha: "3333333", subject: "docs(refactor): README 覆盖率 11/11 → 12/12",
+    files: ["tests/js/README.md"], deletions: 1, docText,
+  });
+  assert.deepEqual(docOnly.problems, [],
+    `R12 自检失败：只改 tests/js/README.md 被当成改断言——${docOnly.problems.join("；")}`);
+
+  // ⑥ 文档和测试文件混在一笔、且有删除行、首行不是 test-contract → A3 仍然要红。
+  //    排除 .md 不能把 *.mjs 一起放走，这是这条改动的边界。
+  const mixedDoc = commitContractProblems({
+    sha: "4444444", subject: "docs(refactor): 顺手改测试",
+    files: ["tests/js/README.md", "tests/js/boundary.test.mjs"], deletions: 1, docText,
+  });
+  assert.ok(
+    mixedDoc.problems.some((item) => item.startsWith("A3")),
+    `R12 自检失败：混着 *.test.mjs 的删除被 .md 豁免一起放走了——${mixedDoc.problems.join("；")}`,
+  );
+
+  // ⑦ 谓词本身：任意层级的 *.md 都不算，*.mjs 与数据夹具都算
+  assert.equal(isContractPath("tests/js/README.md"), false, "R12 自检失败：README.md 被当成契约对象");
+  assert.equal(isContractPath("tests/js/docs/notes.md"), false, "R12 自检失败：嵌套 .md 没被排除");
+  assert.equal(isContractPath("tests/js/boundary.test.mjs"), true, "R12 自检失败：*.test.mjs 不算契约对象");
+  assert.equal(isContractPath("tests/js/fixtures/x.json"), true, "R12 自检失败：数据夹具不算契约对象");
+  assert.equal(isContractPath("backend/book2text/static/app.js"), false, "R12 自检失败：产品文件算进契约对象");
+
   // ④ 三样齐全 → 绿且豁免
   const ok = commitContractProblems({
     sha: "abc1234", subject: "test-contract: 合规", files: ["tests/js/boundary.test.mjs"],
@@ -2341,6 +2415,206 @@ test("A5 自检：检测器在合成样例上必须红，在合法断言上必�
   }
   // 数了但没断言：现有行为测试里的真实写法，必须不红
   assert.deepEqual(assertStatements("let calls = 0; calls += 1;").map((s) => a5Reason(s.text)), []);
+});
+
+// ---------------------------------------------------------------- R13：注入表可解析
+//
+// **规格（Chief，2026-10-29，library 落盘后现场抓到的洞）**：外壳传给视图模块的注入表
+// （`window.XView?.init({ … })`）里，每个键的值表达式引用的自由标识符，必须能在三处之一找到：
+//   ① `app.js` 顶层声明（缩进 0 的 function/const/let/var/class）
+//   ② 该注入块所在的工厂作用域（当前是 `boot()` 体内声明）
+//   ③ 浏览器/语言内建白名单（复用 R9 的 `R9_WHITELIST`）
+//
+// **为什么 R9 挡不住**：R9 的口径是"**这个文件里**声明过没有"，不是"**这一处**能不能看见"。
+// 生成器产出过 `getProject: () => project`——`project` 在别的函数里声明过，R9 绿，真页面
+// `project is not defined`。注入表是外壳与模块唯一的数据通道，写错一条，这块页面静默空白，
+// 而所有静态门与 1000+ 条测试全绿。
+//
+// 口径（写死，以后争的时候看这段）：
+// - 对象：`static/*-view.js` 全部模块（名单从目录来，不手写）；每个必须在 app.js 里有且只有一处
+//   `<接口名>.init({` 块，没有 = 红（模块拿不到 deps）。
+// - 注入项一行一个 `key: expr` 或简写 `key`；**解析不了的行 = 红**（fail closed，不许静默跳过）。
+// - 表达式里的本地名：箭头形参（`(...args)` / `(v)`）；`a.b` 的 `b` 是属性，不算引用。
+// - 模块侧必读：`injected.NAME(` / `injected.NAME.` / `injected.NAME[` 三种形态，必读但没传 = 红
+//   （运行时 TypeError）。`injected.NAME || 兜底` 与 `injected.NAME?.(…)` 是可选依赖，不算必读
+//   ——reading-view 的 `injected.storage` 就是带 `|| window.localStorage` 兜底的写法。
+// - 已知局限：工厂作用域的声明集合按"体内出现过就可见"取（宁松不误报），所以在 boot 的内层函数里
+//   声明的名字会漏判；反过来跨函数作用域（这次的 `project`）一定红。
+
+/** 从 `{` 起做花括号配对，返回配对的 `}` 位置；不配对返回 -1。 */
+function matchingBrace(text, openIndex) {
+  let depth = 0;
+  for (let k = openIndex; k < text.length; k += 1) {
+    if (text[k] === "{") depth += 1;
+    else if (text[k] === "}") {
+      depth -= 1;
+      if (depth === 0) return k;
+    }
+  }
+  return -1;
+}
+
+/** 包住 index 的最内层函数体里声明过的名字；找不到函数返回 null。 */
+function enclosingScopeNames(strippedApp, index) {
+  const heads = [...strippedApp.matchAll(
+    /(?:async\s+)?function\s+[A-Za-z_$][\w$]*\s*\(|(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:async\s*)?(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>/g,
+  )];
+  for (let i = heads.length - 1; i >= 0; i -= 1) {
+    const head = heads[i];
+    if (head.index > index) continue;
+    const open = strippedApp.indexOf("{", head.index + head[0].length - 1);
+    if (open === -1) continue;
+    const close = matchingBrace(strippedApp, open);
+    if (close === -1 || close < index) continue;
+    const names = new Set();
+    for (const decl of strippedApp.slice(open, close)
+      .matchAll(/(?:let|const|var|function|class)\s+([A-Za-z_$][\w$]*)/g)) {
+      names.add(decl[1]);
+    }
+    return names;
+  }
+  return null;
+}
+
+/** R13 判定内核（纯函数，自检喂合成源码）。返回问题列表，空数组 = 绿。 */
+function r13InjectionProblems({ appSource, modules }) {
+  const problems = [];
+  if (!Array.isArray(modules) || modules.length === 0) {
+    return ["R13 拿不到 view 模块名单（static 目录里没有 *-view.js）——空名单会让这条闸空转，按红处理"];
+  }
+  const app = stripCommentsAndStrings(appSource);
+  const topLevel = new Set();
+  for (const m of app.matchAll(
+    /^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)|^(?:const|let|var)\s+([A-Za-z_$][\w$]*)|^class\s+([A-Za-z_$][\w$]*)/gm,
+  )) {
+    topLevel.add(m[1] || m[2] || m[3]);
+  }
+
+  for (const { file, source } of modules) {
+    const iface = expectedInterfaceName(file);
+    const hit = new RegExp(`window\\s*\\.\\s*${iface}\\s*\\??\\.init\\s*\\(\\s*\\{`).exec(app);
+    if (!hit) {
+      problems.push(`${file}: app.js 里没有 window.${iface}.init({ … }) 注入块——模块存在却没人给它 deps`);
+      continue;
+    }
+    const bodyStart = app.indexOf("{", hit.index);
+    const bodyEnd = bodyStart === -1 ? -1 : matchingBrace(app, bodyStart);
+    if (bodyEnd === -1) {
+      problems.push(`${file}: ${iface} 的注入块花括号不配对，解析失败（fail closed）`);
+      continue;
+    }
+    const scopeNames = enclosingScopeNames(app, hit.index);
+    if (!scopeNames) {
+      problems.push(`${file}: ${iface} 的注入块不在任何函数体内——口径只覆盖"工厂函数里的 init"，请确认结构`);
+      continue;
+    }
+    const entries = [];
+    for (const rawLine of app.slice(bodyStart + 1, bodyEnd).split("\n")) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      const pair = /^([A-Za-z_$][\w$]*)\s*:\s*(.+?),?$/.exec(line);
+      if (pair) { entries.push([pair[1], pair[2]]); continue; }
+      const shorthand = /^([A-Za-z_$][\w$]*),?$/.exec(line);
+      if (shorthand) { entries.push([shorthand[1], shorthand[1]]); continue; }
+      problems.push(`${file}: 注入项这一行解析不了（fail closed，别让它静默跳过）：${line.slice(0, 80)}`);
+    }
+    const passed = new Set(entries.map(([key]) => key));
+    for (const [key, expr] of entries) {
+      const locals = new Set();
+      for (const m of expr.matchAll(/\(([^()]*)\)\s*=>/g)) {
+        for (const id of m[1].matchAll(/[A-Za-z_$][\w$]*/g)) locals.add(id[0]);
+      }
+      for (const m of expr.matchAll(/(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*=>/g)) locals.add(m[1]);
+      for (const m of expr.matchAll(/[A-Za-z_$][\w$]*/g)) {
+        const id = m[0];
+        if (locals.has(id) || topLevel.has(id) || scopeNames.has(id)
+          || R9_WHITELIST.has(id) || R9_KEYWORDS.has(id)) continue;
+        const before = expr[m.index - 1] || "";
+        if (before === "." || before === "$" || /[\w$]/.test(before)) continue;
+        problems.push(`${file}: 注入键 ${key} 的表达式引用了 ${id}——它既不是 app.js 顶层声明、`
+          + `也不在工厂作用域内、也不是全局白名单，运行时会 ReferenceError（${expr.trim().slice(0, 60)}）`);
+      }
+    }
+    const text = stripPreservingTemplateExpressions(source);
+    for (const m of text.matchAll(/injected\s*\.\s*([A-Za-z_$][\w$]*)\s*(?=[([.])/g)) {
+      if (!passed.has(m[1])) {
+        problems.push(`${file}: 模块读了 injected.${m[1]}（必读形态），但外壳注入表里没有这个键——运行时 TypeError`);
+      }
+    }
+  }
+  return problems;
+}
+
+test("R13：注入表每个键都能解析（顶层/工厂作用域/全局白名单），模块必读的键都传了", () => {
+  const appSource = readFileSync(APP_FILE, "utf8");
+  const modules = readdirSync(STATIC_DIR)
+    .filter((name) => /-view\.js$/.test(name))
+    .sort()
+    .map((file) => ({ file, source: readFileSync(join(STATIC_DIR, file), "utf8") }));
+  assert.ok(modules.length >= 2,
+    `static 目录里只找到 ${modules.length} 个 *-view.js——目录指错了吧？空名单不能让这条闸变绿`);
+  const problems = r13InjectionProblems({ appSource, modules });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+// R13 自检（§20.9 ⑬：闸必须能被样例喂红）。变异样例就是 library 这次真实踩到的三种形态。
+test("R13 自检：跨函数作用域的键 / 必读没传 / 解析失败 / 没有注入块 都必须红", () => {
+  const moduleOf = (body) => ({
+    file: "library-view.js",
+    source: `(function () {\n  "use strict";\n  let injected = { el: null };\n  ${body}\n  window.LibraryView = {};\n})();\n`,
+  });
+  const appWith = (entries, extra = "") => `let currentProject = null;\nfunction apiJson() {}\n`
+    + `function boot() {\n  window.LibraryView?.init({\n${entries}\n  });\n}\n${extra}\nboot();\n`;
+
+  const goodEntries = [
+    "    getProject: () => currentProject,",
+    "    el: (id) => document.getElementById(id),",
+    "    apiJson: (...args) => apiJson(...args),",
+    "    lastViewLabels: LAST_VIEW_LABELS,",
+  ].join("\n");
+  const goodApp = appWith(goodEntries, "const LAST_VIEW_LABELS = Object.freeze({});");
+  const goodModule = moduleOf("  function f() { return injected.getProject() || injected.el(\"x\") || injected.apiJson(1) || injected.lastViewLabels; }");
+  assert.deepEqual(
+    r13InjectionProblems({ appSource: goodApp, modules: [goodModule] }),
+    [],
+    "R13 自检失败：正常注入表被误报",
+  );
+
+  // ① 这次的洞：`project` 在别的函数里声明过，R9 绿、这一处看不见
+  const scopeRed = r13InjectionProblems({
+    appSource: appWith("    getProject: () => project,"),
+    modules: [moduleOf("  function f() { return injected.getProject(); }")],
+  });
+  assert.ok(scopeRed.some((item) => item.includes("project") && item.includes("getProject")),
+    `R13 自检失败：跨函数作用域的 project 也放过——${scopeRed.join("；")}`);
+
+  // ② 模块必读、外壳没传 → 运行时 TypeError
+  const missingRed = r13InjectionProblems({
+    appSource: appWith("    getProject: () => currentProject,"),
+    modules: [moduleOf("  function f() { return injected.ghostApi(1); }")],
+  });
+  assert.ok(missingRed.some((item) => item.includes("ghostApi")),
+    `R13 自检失败：必读没传也放过——${missingRed.join("；")}`);
+
+  // ③ 解析失败必须红（fail closed），不许静默跳过
+  const parseRed = r13InjectionProblems({
+    appSource: appWith("    getProject:\n      () => currentProject,"),
+    modules: [moduleOf("  function f() { return 1; }")],
+  });
+  assert.ok(parseRed.some((item) => item.includes("解析不了")),
+    `R13 自检失败：多行注入项被静默跳过——${parseRed.join("；")}`);
+
+  // ④ 模块存在但没有注入块 → 模块拿不到 deps
+  const noBlockRed = r13InjectionProblems({
+    appSource: "function boot() {}\nboot();\n",
+    modules: [moduleOf("  function f() { return 1; }")],
+  });
+  assert.ok(noBlockRed.some((item) => item.includes("注入块")),
+    `R13 自检失败：没有注入块也放过——${noBlockRed.join("；")}`);
+
+  // ⑤ 空名单 = 空转，必须红
+  assert.ok(r13InjectionProblems({ appSource: goodApp, modules: [] }).length > 0,
+    "R13 自检失败：空模块名单被当成绿");
 });
 
 // ---------------------------------------------------------------- 变异验证（写进文件头，避免只在交付说明里）

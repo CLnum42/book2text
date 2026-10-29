@@ -8,6 +8,9 @@
 // - **A1b**：序列合计 `git diff --numstat base..HEAD -- tests/js` 删除行 = 0、删除文件 = 0。
 // - **A3**：改了 `tests/js` 旧断言（有删除行）的提交必须：首行 `test-contract:`、不含产品代码、
 //   且 sha 登记在 docs/refactor/reading-view-boundary.md §18.6。
+// - **对象边界**：`tests/js/**/*.md` 是文档（README 记机检覆盖率），不参与 A1/A1b/A3；
+//   `*.mjs` 与数据夹具照判。理由见 §18.6 那一行：改一行读数不该被要求写「删/补/变异」，
+//   否则登记表会被文档编辑灌满，下一个人就不再信它。
 //
 // 为什么这样：A1 挡「切边顺手改测试」，A1b 挡「分散到多笔里偷偷改」，A3 挡「改判据不登记」。
 import { execFileSync } from "node:child_process";
@@ -17,6 +20,17 @@ import { stripCommentsAndStrings } from "./static-scan.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const DOC_REL = "docs/refactor/reading-view-boundary.md";
+
+/**
+ * 「算契约对象」的 `tests/js` 路径集合（给 git pathspec 用）：可执行断言 + 数据夹具，
+ * **排除 `*.md`**。git pathspec 里的 `*` 会跨 `/` 匹配，所以 `tests/js/*.md` 覆盖任意层级的文档。
+ */
+const CONTRACT_SCOPE = ["tests/js/", ":(exclude)tests/js/*.md"];
+
+/** 单个文件是否算契约对象（纯函数，自检与内核共用；`files` 来自 `git show --name-only`）。 */
+export function isContractPath(file) {
+  return typeof file === "string" && file.startsWith("tests/js/") && !/\.md$/i.test(file);
+}
 
 function git(args) {
   return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
@@ -113,7 +127,7 @@ export function moveScopeProblems({ sha, files, changes }) {
   const short = sha.slice(0, 7);
   const problems = [];
   const touchesProduct = files.some((file) => file.startsWith("backend/book2text/static/"));
-  const touchesTests = files.some((file) => file.startsWith("tests/js/"));
+  const touchesTests = files.some(isContractPath);
   if (!touchesProduct || !touchesTests) {
     const missing = !touchesProduct ? "backend/book2text/static/" : "tests/js/";
     problems.push(`A1: ${short} 是 move: 笔，但没有改 ${missing}——空声明的 move: 是伪装`);
@@ -172,7 +186,7 @@ export function commitContractProblems({
   const short = sha.slice(0, 7);
   const problems = [];
   const touchesProduct = files.some((file) => file.startsWith("backend/book2text/static/"));
-  const touchesTests = files.some((file) => file.startsWith("tests/js/"));
+  const touchesTests = files.some(isContractPath);
   const isMove = /^move[(:]/.test(subject);
 
   // A1：普通提交不许同时碰产品与 tests/js；`move:` 笔是**唯一**例外，
@@ -183,9 +197,11 @@ export function commitContractProblems({
     problems.push(`A1: ${short} 同时改了产品代码与 tests/js（${subject}）`);
   }
 
-  // A3：改旧断言（有删除行）→ 必须单开 test-contract: 提交、并在 §18.6 写清三样
+  // A3：改旧断言（有删除行）→ 必须单开 test-contract: 提交、并在 §18.6 写清三样。
+  // 两个条件缺一不可：`deletions` 是**契约路径**的删除行（git 侧已排除 *.md），`touchesTests`
+  // 是同一口径的"碰了契约路径"。只靠 deletions，内核在合成样例里会把"只改 README"判成改断言。
   let exempt = false;
-  if (deletions > 0) {
+  if (deletions > 0 && touchesTests) {
     if (!subject.startsWith("test-contract:") && !isMove) {
       problems.push(`A3: ${short} 改了 tests/js 的旧断言（删除 ${deletions} 行）但首行不是 test-contract:（${subject}）`);
     } else if (isMove && deletions === 0) {
@@ -255,7 +271,7 @@ export function commitContractProblems({
 
 /** 从 git 刨 `move:` 笔在 tests/js 里的逐行变更（新增/删除的行范围 + 两个版本的源码）。 */
 function moveChangesFromGit(sha) {
-  const diff = git(["show", "--unified=0", "--format=", sha, "--", "tests/js/"]);
+  const diff = git(["show", "--unified=0", "--format=", sha, "--", ...CONTRACT_SCOPE]);
   const byPath = new Map();
   let current = null;
   for (const line of diff.split("\n")) {
@@ -303,7 +319,7 @@ export function evaluateFeatureContract({ baseTag = "ring-break-base" } = {}) {
   const commits = git(["rev-list", "--reverse", `${baseTag}..HEAD`]).split("\n").filter(Boolean);
 
   for (const sha of commits) {
-    const numstat = git(["show", "--numstat", "--format=", sha, "--", "tests/js/"])
+    const numstat = git(["show", "--numstat", "--format=", sha, "--", ...CONTRACT_SCOPE])
       .split("\n")
       .filter(Boolean);
     const deletions = numstat.reduce((sum, line) => sum + (Number(line.split("\t")[1]) || 0), 0);
@@ -312,7 +328,7 @@ export function evaluateFeatureContract({ baseTag = "ring-break-base" } = {}) {
       subject: git(["show", "-s", "--format=%s", sha]),
       files: git(["show", "--name-only", "--format=", sha]).split("\n").filter(Boolean),
       deletions,
-      deletedFiles: git(["show", "--name-status", "--diff-filter=D", "--format=", sha, "--", "tests/js/"])
+      deletedFiles: git(["show", "--name-status", "--diff-filter=D", "--format=", sha, "--", ...CONTRACT_SCOPE])
         .split("\n").filter(Boolean),
       docText,
       moveChanges: /^move[(:]/.test(git(["show", "-s", "--format=%s", sha]))
