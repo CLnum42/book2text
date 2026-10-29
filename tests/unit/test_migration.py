@@ -610,3 +610,85 @@ def test_continuation_review_migration_upgrades_old_database(conn: sqlite3.Conne
     assert int(block["continues_to_next"]) == 1, "老的延续标记不能丢"
     assert int(block["continues_reviewed"]) == 0, "老项目默认没人看过，要回到待确认"
     assert current_version(conn) == LATEST_VERSION
+
+
+# ---------------------------------------------------------------- 迁移 0023：job_item 允许 skipped
+
+def test_migration_0023_allows_skipped_item_status(conn: sqlite3.Connection) -> None:
+    """有人工成果的页在批量识别里记 skipped：它是终态，但不是失败也不是成功。"""
+    migrate(conn, MIGRATIONS)
+    assert current_version(conn) == LATEST_VERSION
+    conn.execute(
+        "INSERT INTO project (project_id, name, source_file_name, source_sha256,"
+        " page_count, created_at, updated_at, schema_version)"
+        " VALUES ('p1', '测试', 'a.pdf', 'x', 1, '2026-01-01', '2026-01-01', 23)"
+    )
+    conn.execute(
+        "INSERT INTO job (job_id, job_type, status, total, done, failed, params_json,"
+        " created_at) VALUES ('j1', 'ocr', 'running', 1, 0, 0, '{}',"
+        " '2026-01-01T00:00:00+00:00')"
+    )
+    # 能插入 skipped 就说明 CHECK 已经放开
+    conn.execute(
+        "INSERT INTO job_item (item_id, job_id, page_id, status) VALUES ('i1', 'j1', 'pg1', 'skipped')"
+    )
+    row = conn.execute("SELECT status FROM job_item WHERE item_id = 'i1'").fetchone()
+    assert row["status"] == "skipped"
+
+
+def test_migration_0023_keeps_existing_items_and_index(conn: sqlite3.Connection) -> None:
+    """重建表不能丢数据、不能丢索引，也不能丢外键。"""
+    migrate(conn, MIGRATIONS[:23])
+    conn.execute(
+        "INSERT INTO project (project_id, name, source_file_name, source_sha256,"
+        " page_count, created_at, updated_at, schema_version)"
+        " VALUES ('p1', '老项目', 'a.pdf', 'x', 1, '2026-01-01', '2026-01-01', 22)"
+    )
+    conn.execute(
+        "INSERT INTO job (job_id, job_type, status, total, done, failed, params_json,"
+        " created_at) VALUES ('j1', 'ocr', 'running', 2, 1, 1, '{}',"
+        " '2026-01-01T00:00:00+00:00')"
+    )
+    conn.execute(
+        "INSERT INTO job_item (item_id, job_id, page_id, status, error_message, attempts)"
+        " VALUES ('i1', 'j1', 'pg1', 'succeeded', NULL, 1)"
+    )
+    conn.execute(
+        "INSERT INTO job_item (item_id, job_id, page_id, status, error_message, attempts)"
+        " VALUES ('i2', 'j1', 'pg2', 'failed', '超时', 2)"
+    )
+    conn.commit()
+
+    migrate(conn, MIGRATIONS)
+
+    rows = {
+        row["item_id"]: row
+        for row in conn.execute("SELECT * FROM job_item ORDER BY item_id").fetchall()
+    }
+    assert set(rows) == {"i1", "i2"}, "重建表不能丢行"
+    assert rows["i1"]["status"] == "succeeded" and rows["i1"]["attempts"] == 1
+    assert rows["i2"]["status"] == "failed" and rows["i2"]["error_message"] == "超时"
+
+    indexes = {
+        row["name"] for row in conn.execute("PRAGMA index_list('job_item')").fetchall()
+    }
+    assert "idx_job_item_job" in indexes, "重建表必须重建索引"
+    foreign_keys = conn.execute("PRAGMA foreign_key_list('job_item')").fetchall()
+    assert any(fk["table"] == "job" for fk in foreign_keys), "外键不能丢"
+
+
+def test_migration_0023_allows_succeeded_with_skips_job_status(conn: sqlite3.Connection) -> None:
+    """任务级：跑完但有页被跳过，不能记成 failed，也不能记成干净的 succeeded。"""
+    migrate(conn, MIGRATIONS)
+    conn.execute(
+        "INSERT INTO project (project_id, name, source_file_name, source_sha256,"
+        " page_count, created_at, updated_at, schema_version)"
+        " VALUES ('p1', '测试', 'a.pdf', 'x', 1, '2026-01-01', '2026-01-01', 23)"
+    )
+    conn.execute(
+        "INSERT INTO job (job_id, job_type, status, total, done, failed, params_json,"
+        " created_at) VALUES ('j1', 'ocr', 'succeeded_with_skips', 2, 1, 0, '{}',"
+        " '2026-01-01T00:00:00+00:00')"
+    )
+    row = conn.execute("SELECT status FROM job WHERE job_id = 'j1'").fetchone()
+    assert row["status"] == "succeeded_with_skips"

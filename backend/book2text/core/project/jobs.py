@@ -49,6 +49,7 @@ STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
 STATUS_PAUSED = "paused"
 STATUS_SUCCEEDED = "succeeded"
+STATUS_SUCCEEDED_WITH_SKIPS = "succeeded_with_skips"
 STATUS_FAILED = "failed"
 STATUS_CANCELLED = "cancelled"
 STATUS_INTERRUPTED = "interrupted"
@@ -57,6 +58,7 @@ STATUS_INTERRUPTED = "interrupted"
 ACTIVE_STATUSES = (STATUS_QUEUED, STATUS_RUNNING, STATUS_PAUSED)
 TERMINAL_STATUSES = (
     STATUS_SUCCEEDED,
+    STATUS_SUCCEEDED_WITH_SKIPS,
     STATUS_FAILED,
     STATUS_CANCELLED,
     STATUS_INTERRUPTED,
@@ -65,6 +67,7 @@ TERMINAL_STATUSES = (
 ITEM_STATUS_QUEUED = "queued"
 ITEM_STATUS_RUNNING = "running"
 ITEM_STATUS_SUCCEEDED = "succeeded"
+ITEM_STATUS_SKIPPED = "skipped"   # 有人工痕迹被跳过：终态，不进 done/failed、不进待重试
 ITEM_STATUS_FAILED = "failed"
 
 # 未成功的单元：还会被继续 / 重试挑走
@@ -676,12 +679,43 @@ def mark_interrupted(
     return len(stale)
 
 
+SUCCESS_TERMINAL_STATUSES = (STATUS_SUCCEEDED, STATUS_SUCCEEDED_WITH_SKIPS)
+
+
+def skipped_by_job_ids(directory: Path, job_ids: list[str]) -> dict[str, int]:
+    """一次 GROUP BY 取回多个任务的 skipped 数（API 列表用；不进 JobRecord）。"""
+    ids = [str(j) for j in job_ids if j]
+    if not ids:
+        return {}
+    with _open(directory) as conn:
+        _require_tables(conn)
+        rows = conn.execute(
+            "SELECT job_id, COUNT(*) AS n FROM job_item"
+            " WHERE status = ? AND job_id IN (%s) GROUP BY job_id"
+            % ",".join("?" for _ in ids),
+            (ITEM_STATUS_SKIPPED, *ids),
+        ).fetchall()
+    return {row["job_id"]: int(row["n"] or 0) for row in rows}
+
+
+def count_skipped(directory: Path, job_id: str) -> int:
+    """本任务里因「有人工痕迹」被跳过的页数（独立一类：不进 done、不进 failed）。"""
+    with _open(directory) as conn:
+        _require_tables(conn)
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM job_item WHERE job_id = ? AND status = ?",
+            (job_id, ITEM_STATUS_SKIPPED),
+        ).fetchone()
+    return int(row["n"] or 0)
+
+
 __all__ = [
     "ACTIVE_STATUSES",
     "INTERRUPTED_MESSAGE",
     "ITEM_STATUS_FAILED",
     "ITEM_STATUS_QUEUED",
     "ITEM_STATUS_RUNNING",
+    "ITEM_STATUS_SKIPPED",
     "ITEM_STATUS_SUCCEEDED",
     "JOB_TYPE_OCR",
     "JobError",
@@ -694,6 +728,10 @@ __all__ = [
     "STATUS_QUEUED",
     "STATUS_RUNNING",
     "STATUS_SUCCEEDED",
+    "STATUS_SUCCEEDED_WITH_SKIPS",
+    "SUCCESS_TERMINAL_STATUSES",
+    "count_skipped",
+    "skipped_by_job_ids",
     "TERMINAL_STATUSES",
     "UNFINISHED_ITEM_STATUSES",
     "active_job",

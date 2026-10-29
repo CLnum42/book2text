@@ -422,6 +422,7 @@ def test_re_recognize_replaces_blocks_when_nothing_was_reviewed(
     after = blocks_of(client, auth_headers, project_id, 1)
 
     assert second["job"]["status"] == "succeeded"
+    assert second["job"].get("skipped", 0) == 0, "没有人工成果时不该有跳过"
     assert after["active_run"]["run_id"] == second["items"][0]["run_id"]
     assert after["active_run"]["run_id"] != first["items"][0]["run_id"]
     assert after["block_count"] == before["block_count"]
@@ -446,9 +447,13 @@ def test_re_recognize_never_overwrites_human_work(
     library_dir: Path,
     inprocess_jobs,
 ) -> None:
-    """R2 的另一半：已有人工成果时，新运行只作为**待选结果**，不碰块。
+    """R2 的另一半：已有人工成果时，新运行不写块（结果只留在 ocr_runs 原始输出里）。
 
     说明书原话："系统绝不自动覆盖人工成果。"
+
+    2026-10-30 起口径收紧：这种页在任务里记 **skipped**，任务状态是
+    ``succeeded_with_skips``——此前记 succeeded，于是「任务说识别完成、页面没动」，
+    用户无从知道有几页被跳过（界面说的和系统做的不是一件事）。
     """
     project_id = create_project(client, auth_headers, sample_pdf)
     recognize(client, auth_headers, project_id, 1)
@@ -460,7 +465,8 @@ def test_re_recognize_never_overwrites_human_work(
     ).json()
     after = blocks_of(client, auth_headers, project_id, 1)
 
-    assert second["job"]["status"] == "succeeded"
+    assert second["job"]["status"] == "succeeded_with_skips"
+    assert second["job"]["skipped"] == 1, "这一页要记成「跳过」，不能冒充成功"
     assert [block["block_id"] for block in after["blocks"]] == [
         block["block_id"] for block in before["blocks"]
     ], "块没被替换"

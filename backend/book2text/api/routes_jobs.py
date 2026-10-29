@@ -85,8 +85,11 @@ def _job_payload(request: Request, project_id: str, job: jobs_module.JobRecord) 
     running_item = next(
         (item for item in items if item.status == jobs_module.ITEM_STATUS_RUNNING), None
     )
+    job_dict = job.to_dict()
+    # skipped 在边缘拼（不进 JobRecord）：这个端点的响应里必须有，否则前端读到 undefined
+    job_dict["skipped"] = jobs_module.count_skipped(directory, job.job_id)
     return {
-        "job": job.to_dict(),
+        "job": job_dict,
         "items": [item.to_dict() for item in items],
         "failed_items": [
             item.to_dict()
@@ -234,9 +237,15 @@ def list_jobs(
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
 
+    skipped_by_job = jobs_module.skipped_by_job_ids(directory, [job.job_id for job in found])
+    jobs_out = []
+    for job in found:
+        item = job.to_dict()
+        item["skipped"] = skipped_by_job.get(job.job_id, 0)   # 一次 GROUP BY，三端点同口径
+        jobs_out.append(item)
     return {
         "count": len(found),
-        "jobs": [job.to_dict() for job in found],
+        "jobs": jobs_out,
         "active": _job_payload(request, project_id, active) if active else None,
     }
 

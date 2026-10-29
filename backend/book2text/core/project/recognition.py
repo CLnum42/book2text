@@ -1425,11 +1425,14 @@ def _run_job_loop(
 
     job = jobs_module.get_job(directory, job_id)
     if not stopped:
-        jobs_module.set_status(
-            directory,
-            job_id,
-            jobs_module.STATUS_FAILED if job.failed else jobs_module.STATUS_SUCCEEDED,
-        )
+        skipped = jobs_module.count_skipped(directory, job_id)
+        if job.failed:
+            final_status = jobs_module.STATUS_FAILED
+        elif skipped and not job.done:
+            final_status = jobs_module.STATUS_SUCCEEDED_WITH_SKIPS
+        else:
+            final_status = jobs_module.STATUS_SUCCEEDED
+        jobs_module.set_status(directory, job_id, final_status)
         job = jobs_module.get_job(directory, job_id)
     say(f"job {job_id} end status={job.status} done={job.done} failed={job.failed}")
 
@@ -1607,7 +1610,7 @@ def _run_item(
         _fail_run(directory, run_id, item_id, ERROR_PERSIST_FAILED, f"写原始输出失败：{exc}")
         return run_id
 
-    _persist_blocks(
+    outcome = _persist_blocks(
         directory,
         page_id,
         run_id=run_id,
@@ -1615,7 +1618,10 @@ def _run_item(
         layout=layout,
         elapsed=elapsed,
     )
-    log(f"page {page_no} succeeded {elapsed:.1f}s blocks={len(layout.blocks)}")
+    if outcome["skipped"]:
+        log(f"page {page_no} skipped human_touched blocks={len(layout.blocks)}")
+    else:
+        log(f"page {page_no} succeeded {elapsed:.1f}s blocks={len(layout.blocks)}")
     return run_id
 
 
@@ -1693,7 +1699,8 @@ def _persist_blocks(
             "SELECT active_run_id FROM page WHERE page_id = ?", (page_id,)
         ).fetchone()
         has_active = active is not None and active["active_run_id"] is not None
-        applied = not has_active or not _has_human_results(conn, page_id)
+        human_touched = _has_human_results(conn, page_id)
+        applied = not human_touched
 
         if applied:
             # R1 / R2 的替换：旧块软删除（说明书 5.1：删除一律软删除）
@@ -1764,10 +1771,14 @@ def _persist_blocks(
             conn.execute(
                 "UPDATE page SET active_run_id = ? WHERE page_id = ?", (run_id, page_id)
             )
-        conn.execute("UPDATE job_item SET status = 'succeeded' WHERE item_id = ?", (item_id,))
+        # 跳过是终态：记 'skipped'，不进 done（谎报识别了）、不进 failed（重试永远失败）
+        conn.execute(
+            "UPDATE job_item SET status = ? WHERE item_id = ?",
+            ("skipped" if human_touched else "succeeded", item_id),
+        )
         conn.execute("UPDATE project SET updated_at = ?", (now,))
         conn.commit()
-        return applied
+        return {"applied": bool(applied), "skipped": bool(human_touched)}
 
 
 # ---------------------------------------------------------------- 原始输出

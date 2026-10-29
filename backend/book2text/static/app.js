@@ -5901,6 +5901,7 @@ const JOB_STATUS_LABELS = {
   succeeded: "已完成",
   failed: "有失败页",
   cancelled: "已取消",
+  succeeded_with_skips: "完成（有跳过）",
   interrupted: "已中断",
 };
 
@@ -6105,7 +6106,10 @@ function chipIsCompact() {
  */
 function taskProgressPercent(job) {
   const total = Number(job && job.total) || 0;
-  const done = (Number(job && job.done) || 0) + (Number(job && job.failed) || 0);
+  const done =
+    (Number(job && job.done) || 0) +
+    (Number(job && job.failed) || 0) +
+    (Number(job && job.skipped) || 0);   // 跳过也算处理完：3 跳过 + 7 成功 / total 10 = 100%
   if (total <= 0) return 0;
   return Math.round((done / total) * 1000) / 10;
 }
@@ -6132,7 +6136,10 @@ function taskProgressText(job, data, options = {}) {
   const compact = options.compact === true;
   const verb = taskProgressVerb(job);
   const total = Number(job && job.total) || 0;
-  const done = (Number(job && job.done) || 0) + (Number(job && job.failed) || 0);
+  const done =
+    (Number(job && job.done) || 0) +
+    (Number(job && job.failed) || 0) +
+    (Number(job && job.skipped) || 0);
   if (total <= 0) return compact ? `${verb}…` : `${verb}中…`;
   const score = `${done}/${total}`;
   if (done > total) return `${verb} ${score}`;          // 溢出：不给百分比
@@ -6807,9 +6814,11 @@ function renderTask(data) {
   el("drawer-fill").style.width = `${job.percent}%`;
   el("drawer-fill").style.background =
     job.status === "failed" || job.status === "interrupted" ? "var(--bad-fg)" : "var(--accent)";
+  const skippedCount = Number(job.skipped) || 0;
   el("drawer-counts").textContent =
-    `${job.done + job.failed} / ${job.total} 页 · 成功 ${job.done}` +
-    (job.failed ? ` · 失败 ${job.failed}` : "");
+    `${job.done + job.failed + skippedCount} / ${job.total} 页 · 成功 ${job.done}` +
+    (job.failed ? ` · 失败 ${job.failed}` : "") +
+    (skippedCount ? ` · 跳过 ${skippedCount}（有人工改动）` : "");   // 有跳过才出现
 
   // 只显示技术上真实支持的操作（说明书 6.3）
   const running = job.status === "running" || job.status === "queued";
@@ -6821,6 +6830,9 @@ function renderTask(data) {
   el("job-cancel").disabled = !["queued", "running", "paused"].includes(job.status);
 
   const hints = [];
+  if ((Number(job.skipped) || 0) > 0 && (job.status === "succeeded" || job.status === "succeeded_with_skips")) {
+    hints.push(`识别完成 · ${Number(job.skipped)} 页已跳过（有人工改动）`);
+  }
   if (job.status === "paused") {
     hints.push("已暂停：当前页做完后停下，点“继续”接着做。");
   }
@@ -6872,7 +6884,7 @@ function renderTask(data) {
       title: taskProgressTitle(job, `${typeLabel}任务 · ${label} · 点开看详情`),
       job,
     });
-  } else if (job.status === "succeeded") {
+  } else if (job.status === "succeeded" || job.status === "succeeded_with_skips") {
     // 正常完成：回落成「任务」（常驻入口，不是隐藏）
     clearChipAutoHide();
     paintIdleChip();

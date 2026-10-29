@@ -129,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         except jobs.JobError:  # pragma: no cover - 数据库不可用时只能放弃
             return 3
 
-    return 0 if outcome.job.status == jobs.STATUS_SUCCEEDED else 1
+    return 0 if outcome.job.status in jobs.SUCCESS_TERMINAL_STATUSES else 1
 
 
 if __name__ == "__main__":  # pragma: no cover - 由 `python -m book2text.worker` 触发
