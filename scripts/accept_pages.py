@@ -29,9 +29,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,6 +45,8 @@ INDEX = STATIC / "index.html"
 MODULE = STATIC / "page-pages.js"
 RULES = REPO / "docs/refactor/evidence/pages/rules.py"
 MANIFEST_JSON = REPO / "docs/refactor/evidence/pages/movers.json"
+#: 当前判的那份名单（`--movers` 可换；刀 1 用 stage1-movers.json）
+MANIFEST_PATH = MANIFEST_JSON
 
 VIEW = "pages"
 #: 基线（2026-10-29 HEAD 实测，**三种口径都打出来，判据只有「归零」**）：
@@ -193,6 +197,60 @@ def check_acid(path_text: str) -> list[str] | None:
     return problems
 
 
+def _sha256(path: Path) -> str:
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _head_bytes(path: Path) -> bytes | None:
+    """同名文件在 HEAD 里的内容（不在仓库里 / 没入库 → None）。"""
+    try:
+        rel = path.resolve().relative_to(REPO)
+    except ValueError:
+        return None
+    try:
+        out = subprocess.run(["git", "show", f"HEAD:{rel.as_posix()}"], cwd=REPO,
+                             capture_output=True, check=False)
+    except OSError:
+        return None
+    return out.stdout if out.returncode == 0 else None
+
+
+def check_manifest_version(args) -> int | None:
+    """名单版本门。None = 过；返回码 = 直接退出。
+
+    - 给了 `--expect-sha`：**以给定的为准**（对历史版本复跑），不符 → exit 1；
+    - 没给：与 **HEAD 里的同名文件**比对（现算两边 sha256）。工作区被改过 → exit 1，
+      这挡的正是"名单在消费时被改"（今天因此白跑三轮）。
+      判定不了的（不在 HEAD 里，比如指向 /tmp 的副本）→ exit 2（未验），不猜。
+    """
+    if not MANIFEST_PATH.is_file():
+        print(f"[2] 前置不满足：名单不存在：{MANIFEST_PATH}")
+        return 2
+    actual = _sha256(MANIFEST_PATH)
+    if args.expect_sha:
+        if not actual.startswith(args.expect_sha.lower()):
+            print(f"[1] 验收失败：名单不是指定的那一版（期望 {args.expect_sha[:16]}…，实际 {actual[:16]}…）")
+            print("    名单被重排/换版本时验收必须先红——别拿错名单静默跑完。")
+            return 1
+        print(f"名单：{MANIFEST_PATH.name} · sha256 {actual[:16]}…（显式指定，历史复跑口径）")
+        return None
+    head = _head_bytes(MANIFEST_PATH)
+    if head is None:
+        print(f"[2] 前置不满足：{MANIFEST_PATH.name} 不在 HEAD 里，无法自动核对版本——"
+              f"历史/外部副本请显式给 --expect-sha <sha>（未验 ≠ 通过）")
+        return 2
+    head_sha = hashlib.sha256(head).hexdigest()
+    if actual != head_sha:
+        print(f"[1] 验收失败：名单被改过——工作区 {actual[:16]}… ≠ HEAD {head_sha[:16]}…"
+              f"（{MANIFEST_PATH.name}）")
+        print("    不给 --expect-sha 时，判据要求名单与 HEAD 一致；确认是有意改动请先提交，")
+        print("    要对历史版本复跑请显式给 --expect-sha <那一版的 sha>。")
+        return 1
+    print(f"名单：{MANIFEST_PATH.name} · sha256 {actual[:16]}…（与 HEAD 一致）")
+    return None
+
+
 def load_rules():
     spec = importlib.util.spec_from_file_location("pages_rules", RULES)
     module = importlib.util.module_from_spec(spec)
@@ -201,9 +259,9 @@ def load_rules():
 
 
 def manifest() -> dict | None:
-    if not MANIFEST_JSON.exists():
+    if not MANIFEST_PATH.exists():
         return None
-    return json.loads(MANIFEST_JSON.read_text(encoding="utf-8"))
+    return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
 
 def section_ids(html: str, view: str) -> set[str]:
@@ -275,7 +333,9 @@ def main(argv: list[str]) -> int:
         description="pages 落盘验收。只收 --acid / --expect-sha；别的参数一律算调用方式错。",
     )
     parser.add_argument("--acid", default="", help="第三消费者的实测 JSON（img.src 赋值次数 / observer 数）")
-    parser.add_argument("--expect-sha", default="", help="movers.json 的 sha256 前缀（判名单是不是那一版）")
+    parser.add_argument("--movers", default="", help="名单文件（默认 docs/refactor/evidence/pages/movers.json；刀 1 用 stage1-movers.json）")
+    parser.add_argument("--expect-sha", default="",
+                        help="显式指定名单 sha256 前缀（对历史版本复跑用）；不给则与 HEAD 里的同名文件比对")
     parser.add_argument("--stage", type=int, default=0,
                         help="按 pages-plan.md 的第 N 刀判（1..5）：减量下界 + R3 该刀期望 + 豁免不增")
     parser.add_argument("--slice", dest="stage", type=int,
@@ -294,13 +354,15 @@ def main(argv: list[str]) -> int:
         raise
 
     # 名单版本校验放最前：**整刀与按刀都必须核**，否则按刀判的是另一份名单。
-    if args.expect_sha:
-        import hashlib
-        actual = hashlib.sha256(MANIFEST_JSON.read_bytes()).hexdigest()
-        if not actual.startswith(args.expect_sha):
-            print(f"[1] 验收失败：名单不是指定的那一版（期望 {args.expect_sha[:16]}…，实际 {actual[:16]}…）")
-            print("    名单被重排/换版本时验收必须先红——别拿错名单静默跑完。")
-            return 1
+    global MANIFEST_PATH
+    if args.movers:
+        MANIFEST_PATH = Path(args.movers).resolve()
+        if not MANIFEST_PATH.is_file():
+            print(f"[2] 前置不满足：--movers 指向的文件不存在：{args.movers}")
+            return 2
+    sha_exit = check_manifest_version(args)
+    if sha_exit is not None:
+        return sha_exit
 
     if args.stage:
         return run_stage(args, args.stage)
