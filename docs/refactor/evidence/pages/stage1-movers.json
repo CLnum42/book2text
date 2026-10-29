@@ -1,223 +1,858 @@
 {
- "刀": 1,
- "操作": "渲染与加载",
- "来源": "docs/refactor/evidence/pages/semantic-ops.md §操作 1 + stage1-names.md",
- "基线_app_js_行数": 15311,
- "函数数": 23,
- "行数": {
-  "函数与私有调用者": 1240
- },
- "说明": "直接喂 build_view.py --movers 本文件 --rules pages/rules.py；生成器会 fail-closed。第 15 个调用者是 top-level 调用点（不是函数，不能搬）——落盘后按 R3/R5 失败点逐处处理。",
- "movers": [
-  {
-   "name": "loadLayoutBlocks",
-   "start": 5538,
-   "end": 5576,
-   "lines": 40,
-   "role": "操作1 的 16 个函数之一"
+  "刀": 1,
+  "操作": "渲染与加载",
+  "来源": "docs/refactor/evidence/pages/semantic-ops.md §操作 1 + stage1-names.md",
+  "基线_app_js_行数": 15311,
+  "函数数": 21,
+  "行数": {
+    "movers": 1159,
+    "call_sites条数": 80
   },
-  {
-   "name": "loadSetupSuggestions",
-   "start": 4226,
-   "end": 4243,
-   "lines": 19,
-   "role": "操作1 的 16 个函数之一"
+  "说明": "2026-10-29 修正：外壳基础设施（showView/renderPages/refreshPageStates/applyPageZoom/recognizePage/schedulePageVisibility）从 movers 移出 → call_sites + 3 个模块入口。",
+  "movers": [
+    {
+      "name": "loadLayoutBlocks",
+      "start": 5538,
+      "end": 5576,
+      "lines": 40,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "loadSetupSuggestions",
+      "start": 4226,
+      "end": 4243,
+      "lines": 19,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "refreshRecognizedPages",
+      "start": 7252,
+      "end": 7275,
+      "lines": 25,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "renderLayoutBlocks",
+      "start": 5579,
+      "end": 5678,
+      "lines": 101,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "renderMarginPanel",
+      "start": 5390,
+      "end": 5504,
+      "lines": 116,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "renderPageSetup",
+      "start": 4133,
+      "end": 4159,
+      "lines": 28,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "renderPages",
+      "start": 6862,
+      "end": 6884,
+      "lines": 24,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "renderRecognitionStatus",
+      "start": 5714,
+      "end": 5760,
+      "lines": 48,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "renderRecognitionVerdict",
+      "start": 5769,
+      "end": 5882,
+      "lines": 115,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "renderSuggestionPanel",
+      "start": 4314,
+      "end": 4369,
+      "lines": 57,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "renderTypePicker",
+      "start": 4265,
+      "end": 4310,
+      "lines": 47,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "syncPageStates",
+      "start": 6893,
+      "end": 6912,
+      "lines": 21,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "updateMarginDetectProgress",
+      "start": 7550,
+      "end": 7564,
+      "lines": 16,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "updatePageVisibility",
+      "start": 4655,
+      "end": 4755,
+      "lines": 102,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "updateSelectionPanel",
+      "start": 3754,
+      "end": 3919,
+      "lines": 167,
+      "role": "操作1 的 16 个函数之一"
+    },
+    {
+      "name": "ensureMarginFitted",
+      "start": 702,
+      "end": 775,
+      "lines": 74,
+      "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
+    },
+    {
+      "name": "reloadProjectPages",
+      "start": 7038,
+      "end": 7050,
+      "lines": 13,
+      "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
+    },
+    {
+      "name": "renderRecognitionStatus",
+      "start": 5714,
+      "end": 5761,
+      "lines": 48,
+      "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
+    },
+    {
+      "name": "savePageMargin",
+      "start": 5250,
+      "end": 5285,
+      "lines": 36,
+      "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
+    },
+    {
+      "name": "syncPageStates",
+      "start": 6893,
+      "end": 6913,
+      "lines": 21,
+      "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
+    },
+    {
+      "name": "undoMarginEdit",
+      "start": 6064,
+      "end": 6104,
+      "lines": 41,
+      "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
+    }
+  ],
+  "移出（留在外壳）": {
+    "showView": "全应用路由器：0 个 pages 子树 id，碰的是 review-pager / topbar-library / topbar-project；搬它=路由器跟一个视图走",
+    "renderStepPanels": "步骤面板渲染（工作流 chrome），按 Chief 判定留外壳；它的调用点改成调模块入口"
   },
-  {
-   "name": "refreshRecognizedPages",
-   "start": 7252,
-   "end": 7275,
-   "lines": 25,
-   "role": "操作1 的 16 个函数之一"
+  "顶层调用点": {
+    "说明": "<top> 不在任何函数里，不能跟着搬，必须显式改写",
+    "位置": [
+      {
+        "line": 140,
+        "text": "* applyPageZoom() 会重新挂上（只加载视口附近的页）。"
+      },
+      {
+        "line": 6848,
+        "text": "* 轮询的就地刷新（syncPageStates）也能更新，不必为了一个数字重建整格。"
+      }
+    ]
   },
-  {
-   "name": "renderLayoutBlocks",
-   "start": 5579,
-   "end": 5678,
-   "lines": 101,
-   "role": "操作1 的 16 个函数之一"
+  "外壳侧只改调用点（函数留 app.js）": [
+    {
+      "name": "notifyApplied",
+      "start": 13824,
+      "end": 13828,
+      "lines": 5,
+      "改法": "不碰任何 id，纯通知 → 调模块入口"
+    },
+    {
+      "name": "recognizePage",
+      "start": 6937,
+      "end": 6964,
+      "lines": 28,
+      "改法": "showView 的 pages 分支/详情抽屉里调它 → 改成 PagesView.enter()"
+    },
+    {
+      "name": "refreshPageStates",
+      "start": 7286,
+      "end": 7298,
+      "lines": 13,
+      "改法": "不碰任何 id → 调模块入口"
+    },
+    {
+      "name": "schedulePageVisibility",
+      "start": 4638,
+      "end": 4645,
+      "lines": 8,
+      "改法": "不碰任何 id → 调模块入口"
+    }
+  ],
+  "判据": "pages 私有 = 只碰 view-pages 子树 id；外壳流程 = 碰别视图 id 或不碰 id → 只改调用点",
+  "未决": "renderPages 按 id 归属是 pages 私有（页内 1 / 页外 0），若 Chief 仍判它留外壳，请指认它碰的别视图 id",
+  "call_sites": [
+    {
+      "file": "app.js",
+      "line": 1000,
+      "in": "enterReviewStep",
+      "now": "showView(\"reading\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 1248,
+      "in": "goToWorkflowStep",
+      "now": "showView(\"index\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 1253,
+      "in": "goToWorkflowStep",
+      "now": "showView(\"preview\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 1255,
+      "in": "goToWorkflowStep",
+      "now": "showView(\"pages\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 1349,
+      "in": "setupShell",
+      "now": "showView(\"review\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 1352,
+      "in": "setupShell",
+      "now": "el(\"detail-close\").addEventListener(\"click\", () => showView(\"pages\"));",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 2785,
+      "in": "resumeLastPosition",
+      "now": "showView(\"reading\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 2787,
+      "in": "resumeLastPosition",
+      "now": "showView(\"pages\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 2935,
+      "in": "renderProject",
+      "now": "if (currentView === \"library\" && !bootingProject) showView(\"pages\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 4217,
+      "in": "openPageSetup",
+      "now": "showView(\"pages\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 8078,
+      "in": "openPageDetail",
+      "now": "showView(\"review\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 12088,
+      "in": "openOrthographyPanel",
+      "now": "showView(\"review\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 13021,
+      "in": "finishShowFallbackPages",
+      "now": "showView(\"pages\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 13256,
+      "in": "finishStartReview",
+      "now": "showView(\"review\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 13492,
+      "in": "closeProject",
+      "now": "showView(\"library\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 14529,
+      "in": "onResultFileChosen",
+      "now": "showView(\"merge\");   // 模块内 enter() 现取 state 重画（§20.10）",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 15059,
+      "in": "boot",
+      "now": "exit: () => showView(\"pages\"),",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 15066,
+      "in": "boot",
+      "now": "navigate: (name) => showView(name),",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 15249,
+      "in": "boot",
+      "now": "navigate: (...args) => showView(...args),",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 15301,
+      "in": "boot",
+      "now": "showView(\"library\");",
+      "to": "PagesView.enter(…)",
+      "why": "showView 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 2932,
+      "in": "renderProject",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 3682,
+      "in": "selectAllVisiblePages",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 3690,
+      "in": "clearPageSelection",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 3701,
+      "in": "handleTileClick",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 3747,
+      "in": "applyPageRangeInput",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 4219,
+      "in": "openPageSetup",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 4388,
+      "in": "applySetupSuggestion",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 4414,
+      "in": "confirmPageIds",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 5977,
+      "in": "selectNextPage",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 6899,
+      "in": "syncPageStates",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 6905,
+      "in": "syncPageStates",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 6944,
+      "in": "recognizePage",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 6962,
+      "in": "recognizePage",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 6981,
+      "in": "startBatchRecognition",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 7029,
+      "in": "checkSelection",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 7047,
+      "in": "reloadProjectPages",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 13022,
+      "in": "finishShowFallbackPages",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 13421,
+      "in": "patchSelectedPages",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 13456,
+      "in": "recognizeSelection",
+      "now": "renderPages();",
+      "to": "PagesView.render(…)",
+      "why": "renderPages 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 233,
+      "in": "showView",
+      "now": "refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 758,
+      "in": "ensureMarginFitted",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 4218,
+      "in": "openPageSetup",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 4387,
+      "in": "applySetupSuggestion",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 5699,
+      "in": "confirmLayoutFromPanel",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 6016,
+      "in": "resetMarginsToAuto",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 6047,
+      "in": "resetMarginsToAuto",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 6096,
+      "in": "undoMarginEdit",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 7170,
+      "in": "pollTask",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 7189,
+      "in": "pollTask",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 7216,
+      "in": "pollTask",
+      "now": "await Promise.all([refreshPageStates(), refreshRecognizedPages(donePages)]);",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 8383,
+      "in": "setupReviewAutoPass",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 8401,
+      "in": "setupReviewAutoPass",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 10145,
+      "in": "confirmPageLayout",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 10284,
+      "in": "adoptAllHighSuggestions",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 10970,
+      "in": "patchBlock",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 11091,
+      "in": "structureAction",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 11235,
+      "in": "applyCandidateBlock",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 11363,
+      "in": "createBlockFromBox",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 11545,
+      "in": "decideCandidate",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 11564,
+      "in": "reviewAction",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 11588,
+      "in": "confirmCurrentPage",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 12103,
+      "in": "afterCleanupApplied",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 13800,
+      "in": "refreshAfterTypeChanges",
+      "now": "refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 14064,
+      "in": "applySplitBatch",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 14178,
+      "in": "createAssignment",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 14314,
+      "in": "cancelAssignment",
+      "now": "await refreshPageStates();",
+      "to": "PagesView.refresh(…)",
+      "why": "refreshPageStates 是全应用级函数；搬进 pages 会让别的视图反向依赖"
+    },
+    {
+      "file": "app.js",
+      "line": 140,
+      "in": "fillDefinitionList",
+      "now": "* applyPageZoom() 会重新挂上（只加载视口附近的页）。",
+      "to": "留外壳，改注入（不搬）",
+      "why": "applyPageZoom 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 241,
+      "in": "showView",
+      "now": "applyPageZoom();",
+      "to": "留外壳，改注入（不搬）",
+      "why": "applyPageZoom 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 1265,
+      "in": "goToWorkflowStep",
+      "now": "applyPageZoom();",
+      "to": "留外壳，改注入（不搬）",
+      "why": "applyPageZoom 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 4851,
+      "in": "setPageZoom",
+      "now": "applyPageZoom();",
+      "to": "留外壳，改注入（不搬）",
+      "why": "applyPageZoom 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 6882,
+      "in": "renderPages",
+      "now": "applyPageZoom();",
+      "to": "留外壳，改注入（不搬）",
+      "why": "applyPageZoom 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 4019,
+      "in": "buildTile",
+      "now": "recognizePage(page);",
+      "to": "留外壳，改注入（不搬）",
+      "why": "recognizePage 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 13642,
+      "in": "setupLibrary",
+      "now": "if (page) recognizePage(page);",
+      "to": "留外壳，改注入（不搬）",
+      "why": "recognizePage 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 239,
+      "in": "showView",
+      "now": "schedulePageVisibility();",
+      "to": "留外壳，改注入（不搬）",
+      "why": "schedulePageVisibility 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 4633,
+      "in": "ensurePageScrollListener",
+      "now": "schedulePageVisibility();",
+      "to": "留外壳，改注入（不搬）",
+      "why": "schedulePageVisibility 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 4860,
+      "in": "togglePageBlocksOverlay",
+      "now": "schedulePageVisibility();",
+      "to": "留外壳，改注入（不搬）",
+      "why": "schedulePageVisibility 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 5080,
+      "in": "toggleMarginView",
+      "now": "schedulePageVisibility();",
+      "to": "留外壳，改注入（不搬）",
+      "why": "schedulePageVisibility 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 13801,
+      "in": "refreshAfterTypeChanges",
+      "now": "schedulePageVisibility();",
+      "to": "留外壳，改注入（不搬）",
+      "why": "schedulePageVisibility 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 14065,
+      "in": "applySplitBatch",
+      "now": "schedulePageVisibility();",
+      "to": "留外壳，改注入（不搬）",
+      "why": "schedulePageVisibility 被外壳流程调用"
+    },
+    {
+      "file": "app.js",
+      "line": 15224,
+      "in": "boot",
+      "now": "schedulePageVisibility: (...args) => schedulePageVisibility(...args),",
+      "to": "留外壳，改注入（不搬）",
+      "why": "schedulePageVisibility 被外壳流程调用"
+    }
+  ],
+  "模块入口": {
+    "enter": "进入视图（showView 的 pages 分支改调它）",
+    "render": "重绘（renderPages 的外部调用者改调它）",
+    "refresh": "识别后刷新（refreshPageStates 的外部调用者改调它）"
   },
-  {
-   "name": "renderMarginPanel",
-   "start": 5390,
-   "end": 5504,
-   "lines": 116,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "renderPageSetup",
-   "start": 4133,
-   "end": 4159,
-   "lines": 28,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "renderPages",
-   "start": 6862,
-   "end": 6884,
-   "lines": 24,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "renderRecognitionStatus",
-   "start": 5714,
-   "end": 5760,
-   "lines": 48,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "renderRecognitionVerdict",
-   "start": 5769,
-   "end": 5882,
-   "lines": 115,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "renderSuggestionPanel",
-   "start": 4314,
-   "end": 4369,
-   "lines": 57,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "renderTypePicker",
-   "start": 4265,
-   "end": 4310,
-   "lines": 47,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "syncPageStates",
-   "start": 6893,
-   "end": 6912,
-   "lines": 21,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "updateMarginDetectProgress",
-   "start": 7550,
-   "end": 7564,
-   "lines": 16,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "updatePageVisibility",
-   "start": 4655,
-   "end": 4755,
-   "lines": 102,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "updateSelectionPanel",
-   "start": 3754,
-   "end": 3919,
-   "lines": 167,
-   "role": "操作1 的 16 个函数之一"
-  },
-  {
-   "name": "applyPageZoom",
-   "start": 4784,
-   "end": 4840,
-   "lines": 57,
-   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
-  },
-  {
-   "name": "ensureMarginFitted",
-   "start": 702,
-   "end": 775,
-   "lines": 74,
-   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
-  },
-  {
-   "name": "reloadProjectPages",
-   "start": 7038,
-   "end": 7050,
-   "lines": 13,
-   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
-  },
-  {
-   "name": "renderPages",
-   "start": 6862,
-   "end": 6885,
-   "lines": 24,
-   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
-  },
-  {
-   "name": "renderRecognitionStatus",
-   "start": 5714,
-   "end": 5761,
-   "lines": 48,
-   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
-  },
-  {
-   "name": "savePageMargin",
-   "start": 5250,
-   "end": 5285,
-   "lines": 36,
-   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
-  },
-  {
-   "name": "syncPageStates",
-   "start": 6893,
-   "end": 6913,
-   "lines": 21,
-   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
-  },
-  {
-   "name": "undoMarginEdit",
-   "start": 6064,
-   "end": 6104,
-   "lines": 41,
-   "role": "pages 私有调用者（只碰 view-pages 的 id，跟着搬）"
-  }
- ],
- "移出（留在外壳）": {
-  "showView": "全应用路由器：0 个 pages 子树 id，碰的是 review-pager / topbar-library / topbar-project；搬它=路由器跟一个视图走",
-  "renderStepPanels": "步骤面板渲染（工作流 chrome），按 Chief 判定留外壳；它的调用点改成调模块入口"
- },
- "顶层调用点": {
-  "说明": "<top> 不在任何函数里，不能跟着搬，必须显式改写",
-  "位置": [
-   {
-    "line": 140,
-    "text": "* applyPageZoom() 会重新挂上（只加载视口附近的页）。"
-   },
-   {
-    "line": 6848,
-    "text": "* 轮询的就地刷新（syncPageStates）也能更新，不必为了一个数字重建整格。"
-   }
-  ]
- },
- "外壳侧只改调用点（函数留 app.js）": [
-  {
-   "name": "notifyApplied",
-   "start": 13824,
-   "end": 13828,
-   "lines": 5,
-   "改法": "不碰任何 id，纯通知 → 调模块入口"
-  },
-  {
-   "name": "recognizePage",
-   "start": 6937,
-   "end": 6964,
-   "lines": 28,
-   "改法": "showView 的 pages 分支/详情抽屉里调它 → 改成 PagesView.enter()"
-  },
-  {
-   "name": "refreshPageStates",
-   "start": 7286,
-   "end": 7298,
-   "lines": 13,
-   "改法": "不碰任何 id → 调模块入口"
-  },
-  {
-   "name": "schedulePageVisibility",
-   "start": 4638,
-   "end": 4645,
-   "lines": 8,
-   "改法": "不碰任何 id → 调模块入口"
-  }
- ],
- "判据": "pages 私有 = 只碰 view-pages 子树 id；外壳流程 = 碰别视图 id 或不碰 id → 只改调用点",
- "未决": "renderPages 按 id 归属是 pages 私有（页内 1 / 页外 0），若 Chief 仍判它留外壳，请指认它碰的别视图 id"
+  "top_level": []
 }

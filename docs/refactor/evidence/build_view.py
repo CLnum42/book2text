@@ -84,7 +84,12 @@ def apply_set_blocks(text, rules):
     for block in getattr(rules, "SET_BLOCKS", []):
         start = next((i for i, ln in enumerate(lines) if block["match"] in ln), None)
         if start is None:
-            raise SystemExit(f"✗ SET_BLOCKS 找不到起始行：{block['match']}")
+            # **命中才改，没命中跳过**（2026-10-29 修）：SET_BLOCKS 是按"写点在哪一刀"写的，
+            # 写点可能属于别的刀（例：pageTileMetrics 在 capturePageTileMetrics，不在刀 1）。
+            # 跳过不是放行——**由第四条反证兜底**：若该状态真被搬走却仍是裸赋值，
+            # 模块正文里会出现"给 getter 赋值"，生成器当场红。
+            print(f"… SET_BLOCKS 跳过（本刀不含该写点）：{block['match']}", file=sys.stderr)
+            continue
         depth = 0
         end = None
         for i in range(start, len(lines)):
