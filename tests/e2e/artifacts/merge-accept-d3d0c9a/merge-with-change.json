@@ -1,0 +1,52 @@
+{
+  "imported": {
+    "importStatus": 200,
+    "payloadKeys": [
+      "assignment",
+      "page_nos",
+      "seq",
+      "reviewer_name",
+      "summary",
+      "result_name",
+      "pages",
+      "changed_pages",
+      "counts"
+    ],
+    "summary": {
+      "page_count": 1,
+      "confirmed": 0,
+      "uncertain": 0,
+      "modified": 1,
+      "commented": 0,
+      "unreviewed": 4,
+      "unfinished_pages": [
+        1
+      ],
+      "structural_pages": []
+    },
+    "shown": {
+      "viewVisible": true,
+      "title": "合并审校结果：QA 合并验证",
+      "meta": "第 1 页 · 结果 2",
+      "statChanged": "变化 1 页",
+      "pagesChildren": 1,
+      "textLen": 525,
+      "errorText": ""
+    },
+    "responses": []
+  },
+  "image": {
+    "before": {
+      "src": "/api/projects/b2t_H6GXVG/pages/1/image?size=view&token=qa-20261029-182429-89120"
+    },
+    "after": {
+      "src": "/api/projects/b2t_H6GXVG/pages/1/image?size=view&token=qa-20261029-182429-89120",
+      "naturalWidth": 932,
+      "complete": true,
+      "canvasHidden": false
+    },
+    "hasTokenParam": true
+  },
+  "network": [],
+  "unauthorized": 0
+}

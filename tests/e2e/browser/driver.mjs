@@ -128,6 +128,30 @@ export async function run(cfg) {
       return await auditMarks(page);
     case "library_notice_probe":
       return await libraryNoticeProbe(page, args);
+    case "review_actions_probe":
+      return await reviewActionsProbe(page, args);
+    case "merge_probe":
+      return await mergeProbe(page, cfg, args);
+    case "step_timing":
+      // 只读：`window.__b2tStepTiming` 是 StepTiming 的 live 对象；
+      // `snapshot()` 额外给 msSoFar（正在进行的这一步还没 leave，ms 是 0）。
+      return await page.evaluate(() => {
+        const live = window.__b2tStepTiming || null;
+        let snapshot = null;
+        try {
+          snapshot = window.StepTiming && window.StepTiming.snapshot
+            ? window.StepTiming.snapshot()
+            : null;
+        } catch (error) {
+          snapshot = { error: String((error && error.message) || error) };
+        }
+        return {
+          hasStepTiming: Boolean(window.StepTiming),
+          live,
+          snapshot,
+          now: Date.now(),
+        };
+      });
     case "probe_globals":
       // 探针自检：模块是 IIFE，内部 let/function 在 page.evaluate 里**看不到**。
       // 这类探测失效后不报错、只返回 "undefined"，报告里看起来像"状态是空的"，
@@ -3590,6 +3614,211 @@ async function panelLifecycleProbe(page, args) {
     return acc;
   }, {});
   return { times, rows, summary };
+}
+
+/**
+ * 合并审校页级验证：导入结果包 → `showView("merge")` → 是否白屏 / 有没有 401。
+ *
+ * 白屏那个 bug（08dda77）：`showView` 的 merge 分支原来在 preview 的 if 里，
+ * 进 merge 视图时不渲染。判据不是"没报错"，是 `#merge-pages` 真的有了子节点、`#merge-meta` 有字。
+ * 401 那个：原图 URL 要带 `&token=`，靠点一页后看 `#merge-image` 的 naturalWidth 与网络状态码。
+ */
+async function mergeProbe(page, cfg, args) {
+  const imported = await page.evaluate(async ({ b64, filename, projectId }) => {
+    const responses = [];
+    const origFetch = window.fetch;
+    window.fetch = function (...a) {
+      const url = typeof a[0] === "string" ? a[0] : (a[0] && a[0].url) || "";
+      const promise = origFetch.apply(this, a);
+      promise
+        .then((r) => responses.push({ url: String(url).slice(0, 240), status: r.status }))
+        .catch(() => {});
+      return promise;
+    };
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    const token = new URLSearchParams(location.search).get("token") || "";
+    let payload = null;
+    try {
+      const response = await origFetch(
+        `/api/projects/${projectId}/results?filename=${encodeURIComponent(filename)}`,
+        {
+          method: "POST",
+          headers: { "X-B2T-Token": token, "Content-Type": "application/zip" },
+          body: bytes,
+        }
+      );
+      const status = response.status;
+      payload = await response.json().catch(() => null);
+      if (status !== 200) {
+        window.fetch = origFetch;
+        return { importStatus: status, payload, responses };
+      }
+    } catch (error) {
+      window.fetch = origFetch;
+      return { error: String(error), responses };
+    }
+    window.fetch = origFetch;
+    if (!payload) return { importStatus: 200, payload: null, responses };
+    mergeState = payload;
+    showView("merge");
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const view = document.getElementById("view-merge");
+    const pages = document.getElementById("merge-pages");
+    return {
+      importStatus: 200,
+      payloadKeys: Object.keys(payload),
+      summary: payload.summary || null,
+      shown: {
+        viewVisible: Boolean(view && !view.hidden),
+        title: (document.getElementById("merge-title") || {}).textContent || null,
+        meta: (document.getElementById("merge-meta") || {}).textContent || null,
+        statChanged: (document.getElementById("merge-stat-changed") || {}).textContent || null,
+        pagesChildren: pages ? pages.children.length : null,
+        textLen: view ? view.textContent.trim().length : 0,
+        errorText: ((document.getElementById("merge-error") || {}).textContent || "").trim(),
+      },
+      responses,
+    };
+  }, { b64: args.b64, filename: args.filename, projectId: cfg.projectId });
+
+  // 点第一页 → 看原图能不能加载（401 那个 bug 的现场）
+  let image = null;
+  if (imported && imported.shown && imported.shown.pagesChildren > 0) {
+    const before = await page.evaluate(() => {
+      const node = document.getElementById("merge-image");
+      return { src: node ? node.getAttribute("src") || "" : null };
+    });
+    await page
+      .click("#merge-pages li:first-child", { label: "点合并结果第一页" })
+      .catch(() => {});
+    await page.waitForTimeout(1200);
+    const after = await page.evaluate(() => {
+      const node = document.getElementById("merge-image");
+      return {
+        src: node ? node.getAttribute("src") || "" : null,
+        naturalWidth: node ? node.naturalWidth : null,
+        complete: node ? node.complete : null,
+        canvasHidden: (document.getElementById("merge-canvas") || {}).hidden ?? null,
+      };
+    });
+    image = { before, after, hasTokenParam: /[?&]token=/.test(after.src || "") };
+  }
+
+  const network = (imported.responses || []).filter(
+    (row) => row.status === 401 || row.status === 403 || /\/pages\/\d+\/image/.test(row.url)
+  );
+  return {
+    imported,
+    image,
+    network,
+    unauthorized: (imported.responses || []).filter((row) => row.status === 401).length,
+  };
+}
+
+/**
+ * 审校动作回放：给 step-timing 喂真实的 `panel` / `judge` 动作。
+ *
+ * 为什么需要它：`bump()` 只在真实交互里才有人调（翻页 / 开面板 / 裁决 / 撤销）。
+ * 不点，`__b2tStepTiming` 里的 `actions` 永远是空的，"判决次数 / 面板切换"就没有读数。
+ *
+ * 每轮：点「下一处未审」→ 等面板 → 点「保留原文」→ 等它收掉。
+ * 点击走 `page.click`（CDP 真实鼠标），不用 `element.click()` 合成事件。
+ */
+async function reviewActionsProbe(page, args) {
+  await ensureReading(page);
+  const rounds = Number(args.rounds || 20);
+  const panelSelector = "#reading-panel-host .reading-panel__actions button:nth-child(2)";
+  const rows = [];
+  for (let i = 1; i <= rounds; i += 1) {
+    const startedAt = Date.now();
+    const jumped = await page
+      .click("#reading-next-unreviewed", { label: `下一处 ${i}` })
+      .then(() => true)
+      .catch(() => false);
+    const opened = jumped
+      ? await page
+          .waitForFunction(
+            () => Boolean(document.querySelector("#reading-panel-host .reading-panel")),
+            undefined,
+            { timeout: args.openTimeout || 3000 }
+          )
+          .then(() => true)
+          .catch(() => false)
+      : false;
+    const projected = await page.evaluate(() => ({
+      pageNo: (document.getElementById("reading-page-no") || {}).textContent || null,
+      progress: (document.getElementById("reading-progress-text") || {}).textContent || null,
+      panelKey: (document.querySelector("#reading-panel-host .reading-panel") || {}).dataset
+        ? document.querySelector("#reading-panel-host .reading-panel").dataset.key || null
+        : null,
+    }));
+    // "点了按钮"不等于"判中了"：面板可能正好被重绘清掉，点击落空。
+    // 判中的唯一证据是进度里的已审条数变了（或面板换了一条）。
+    let clickedKeep = false;
+    let judged = false;
+    let after = projected;
+    if (opened) {
+      clickedKeep = await page
+        .click(panelSelector, { label: "保留原文" })
+        .then(() => true)
+        .catch(() => false);
+      await page.waitForTimeout(180);
+      after = await page.evaluate(() => ({
+        pageNo: (document.getElementById("reading-page-no") || {}).textContent || null,
+        progress: (document.getElementById("reading-progress-text") || {}).textContent || null,
+        panelKey: (document.querySelector("#reading-panel-host .reading-panel") || {}).dataset
+          ? document.querySelector("#reading-panel-host .reading-panel").dataset.key || null
+          : null,
+      }));
+      const numberIn = (text) => {
+        const match = String(text || "").match(/已审\s*(\d+)/);
+        return match ? Number(match[1]) : null;
+      };
+      const before = numberIn(projected.progress);
+      const afterNumber = numberIn(after.progress);
+      judged = before !== null && afterNumber !== null && afterNumber > before;
+    }
+    // 队列判完时「下一处未审」不开面板。别干等 8 秒超时——那会把墙钟和 stall 都污染。
+    const finished = /已审\s*(\d+)\s*\/\s*(\d+)/.exec(String(projected.progress || ""));
+    const allJudged = Boolean(finished && Number(finished[1]) >= Number(finished[2]));
+    if (!opened && allJudged) {
+      rows.push({ i, jumped, opened, clickedKeep, judged, pageNo: projected.pageNo,
+        progress: projected.progress, progressAfter: projected.progress,
+        panelKey: null, panelKeyAfter: null, ms: Date.now() - startedAt, stopped: "queue-finished" });
+      break;
+    }
+    rows.push({
+      i,
+      jumped,
+      opened,
+      clickedKeep,
+      judged,
+      pageNo: projected.pageNo,
+      progress: projected.progress,
+      progressAfter: after.progress,
+      panelKey: projected.panelKey,
+      panelKeyAfter: after.panelKey,
+      ms: Date.now() - startedAt,
+    });
+  }
+  const timing = await page.evaluate(() => {
+    let snapshot = null;
+    try {
+      snapshot = window.StepTiming && window.StepTiming.snapshot ? window.StepTiming.snapshot() : null;
+    } catch (error) {
+      snapshot = { error: String((error && error.message) || error) };
+    }
+    return { live: window.__b2tStepTiming || null, snapshot };
+  });
+  return {
+    rounds,
+    opened: rows.filter((row) => row.opened).length,
+    judged: rows.filter((row) => row.judged).length,
+    rows,
+    timing,
+  };
 }
 
 /**
