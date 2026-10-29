@@ -151,7 +151,11 @@ check_one() {
   START=$(date +%s)
   # **验要推送的那棵树，不验工作区**（与 pre-commit 同一条理由）：
   # 多人共用一个工作区、或从临时 worktree 推送时，工作区与 local_sha 不是一回事。
-  TMPTREE=$(mktemp -d "${TMPDIR:-/tmp}/b2t-push.XXXXXX")
+  # **必须 `pwd -P` 归一化**（2026-10-29 事故）：macOS 上 `$${TMPDIR}` 是 /var/... 而 Python
+  # 打印的是解析后的 /private/var/...，于是下面那条"STATIC_DIR 必须在这棵树里"的自检
+  # **永远不匹配 → fail closed → 挡住所有人**。自检方向对，但它自己成了永久红。
+  # 通用规则：**任何 fail-closed 的路径比较，比较前一律 pwd -P / realpath 规范化。**
+  TMPTREE=$(cd "$(mktemp -d "${TMPDIR:-/tmp}/b2t-push.XXXXXX")" && pwd -P)
   if ! git archive "$LOCAL_SHA" | tar -x -C "$TMPTREE"; then
     echo "✗ pre-push：导出 $(echo "$LOCAL_SHA" | cut -c1-8) 的树失败" >&2
     rm -rf "$TMPTREE"; FAILED=1; return 1
@@ -162,7 +166,22 @@ check_one() {
   PYOUT=$(mktemp "${TMPDIR:-/tmp}/b2t-pytest-out.XXXXXX") || {
     echo "✗ pre-push：建不了临时输出文件" >&2; rm -rf "$TMPTREE"; FAILED=1; return 1
   }
-  ( cd "$TMPTREE" && "$PY" -m pytest -q ) >"$PYOUT" 2>&1
+  # **光 cd 到那棵树不够**（2026-10-29 第五次"验错树"，最隐蔽的一次）：
+  # `from book2text import paths` 走 editable 安装 → STATIC_DIR 指向**真实工作区**，
+  # 于是"验的是树、测试读的是工作区"：别人的在制品能把你拦住，反之你的红树也能全绿。
+  # 修法 = 显式 PYTHONPATH，并把 STATIC_DIR 打出来 + **断言它在这棵树里**（防回归）。
+  STATIC_DIR=$( cd "$TMPTREE" && PYTHONPATH="$TMPTREE/backend" \
+      "$PY" -c 'from book2text import paths; print(paths.STATIC_DIR)' 2>/dev/null || echo "?" )
+  case "$STATIC_DIR" in
+    "$TMPTREE"*) : ;;
+    *)
+      echo "✗ pre-push：STATIC_DIR 指向 $STATIC_DIR，不是 $(echo "$LOCAL_SHA" | cut -c1-8) 这棵树" >&2
+      echo "  这不是测试红，是闸自己读错了树——修 PYTHONPATH，别再往下跑。" >&2
+      rm -f "$PYOUT"; rm -rf "$TMPTREE"; FAILED=1; return 1
+      ;;
+  esac
+  echo "… pre-push：验的是 $(echo "$LOCAL_SHA" | cut -c1-8) 的树；STATIC_DIR=$STATIC_DIR" >&2
+  ( cd "$TMPTREE" && PYTHONPATH="$TMPTREE/backend" "$PY" -m pytest -q ) >"$PYOUT" 2>&1
   PYRC=$?
   rm -rf "$TMPTREE"
   cp "$PYOUT" "$OUTLOG" 2>/dev/null || true
