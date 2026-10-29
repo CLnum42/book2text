@@ -98,7 +98,8 @@ check_one() {
     rm -f "$PYOUT"; FAILED=1; return 1
   fi
   rm -f "$PYOUT"
-  printf '%s\tPASS\t%s\t%s\n' "$LOCAL_SHA" "$(date '+%F %T')" "$(printf '%s\n' "$FILES" | wc -l | tr -d ' ') files" >>"$LOG" 2>/dev/null || true
+  # 记"这次验过的 tip"：同一范围里的祖先提交都算覆盖（否则 rebase/多笔推送会反复被点名）
+  printf 'RANGE\t%s\t%s\t%s\n' "$LOCAL_SHA" "$(date '+%F %T')" "$(printf '%s\n' "$FILES" | wc -l | tr -d ' ') files" >>"$LOG" 2>/dev/null || true
   echo "✓ pre-push：pytest 全绿（$(( $(date +%s) - START ))s）" >&2
   return 0
 }

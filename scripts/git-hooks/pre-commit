@@ -50,9 +50,13 @@ if git rev-parse --verify -q origin/main >/dev/null 2>&1 && [ -f "$STAMP" ]; the
   SINCE=$(cat "$STAMP" 2>/dev/null || echo 0)
   MISSING=0
   for sha in $(git log origin/main -n 20 --format='%H %ct' 2>/dev/null | awk -v s="$SINCE" '$2 >= s {print $1}'); do
-    if [ ! -f "$PLOG" ] || ! awk -v s="$sha" -F'\t' '$1 == s { found = 1 } END { exit !found }' "$PLOG"; then
-      MISSING=$((MISSING + 1))
+    COVERED=0
+    if [ -f "$PLOG" ]; then
+      for tip in $(awk -F'\t' '$1 == "RANGE" { print $2 } $2 == "PASS" { print $1 }' "$PLOG" 2>/dev/null); do
+        if git merge-base --is-ancestor "$sha" "$tip" 2>/dev/null; then COVERED=1; break; fi
+      done
     fi
+    [ "$COVERED" = 1 ] || MISSING=$((MISSING + 1))
   done
   if [ "$MISSING" -gt 0 ]; then
     echo "ℹ pre-commit：已推提交里有 $MISSING 笔没有 pytest 记录（git push --no-verify，或 .venv 缺失）" >&2
