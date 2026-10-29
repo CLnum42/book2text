@@ -1,576 +1,40 @@
 {
-  "口径": "引用 view-review 的 id、但被外壳/路由/别视图调用的函数；纯搬运无法让 app.js 字面量归零。",
-  "count": 40,
-  "lines": 1557,
-  "entries": [
-    {
-      "name": "activateDiff",
-      "lines": 33,
-      "start": 9489,
-      "end": 9521,
-      "reviewIds": [
-        "detail-blocks"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "blockDivergenceSection",
-        "drawDiffLayer",
-        "handleDiffMarkClick",
-        "openTreeItem"
-      ],
-      "why": "被外壳/C 外函数调用：blockDivergenceSection、handleDiffMarkClick、openTreeItem"
-    },
-    {
-      "name": "applyPackageMode",
-      "lines": 61,
-      "start": 14372,
-      "end": 14432,
-      "reviewIds": [
-        "aux-run",
-        "detail-recognize",
-        "finish-open-review"
-      ],
-      "outsideIds": [
-        "assign-list-toggle",
-        "assign-open",
-        "check-pending",
-        "package-banner",
-        "package-open",
-        "package-result-meta",
-        "page-setup-bar",
-        "panel-pagenum-settings",
-        "panel-recognition-settings",
-        "selection-actionbar",
-        "selection-check",
-        "selection-recognize",
-        "selection-skip-checked",
-        "setup-panel",
-        "structure-open"
-      ],
-      "calledByShell": [
-        "refreshProject"
-      ],
-      "why": "引用段外 id：assign-list-toggle、assign-open、check-pending、package-banner、package-open、package-result-meta…"
-    },
-    {
-      "name": "applyQueueAckLocally",
-      "lines": 76,
-      "start": 9743,
-      "end": 9818,
-      "reviewIds": [
-        "detail-blocks"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "adoptQueueCurrent",
-        "keepQueueCurrent"
-      ],
-      "why": "被外壳/C 外函数调用：adoptQueueCurrent、keepQueueCurrent"
-    },
-    {
-      "name": "applyZoom",
-      "lines": 11,
-      "start": 8278,
-      "end": 8288,
-      "reviewIds": [
-        "detail-canvas",
-        "detail-image",
-        "detail-overlay",
-        "zoom-fit"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "setupViewerTools",
-        "zoomBy"
-      ],
-      "why": "被外壳/C 外函数调用：zoomBy"
-    },
-    {
-      "name": "closePageDetail",
-      "lines": 10,
-      "start": 8107,
-      "end": 8116,
-      "reviewIds": [
-        "aux-panel",
-        "candidate-panel"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "closeProject",
-        "refreshProject",
-        "setupLibrary"
-      ],
-      "why": "被外壳/C 外函数调用：closeProject、refreshProject、setupLibrary"
-    },
-    {
-      "name": "confirmCurrentPage",
-      "lines": 26,
-      "start": 11574,
-      "end": 11599,
-      "reviewIds": [
-        "page-detail-error"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "setupReviewControls"
-      ],
-      "why": "确认后调 loadFinishSummary + nextUnfinishedPage + openPageDetail → 推进流程，不是渲染"
-    },
-    {
-      "name": "drawBoxDraft",
-      "lines": 13,
-      "start": 11330,
-      "end": 11342,
-      "reviewIds": [
-        "box-select-rect"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "onBoxMouseMove"
-      ],
-      "why": "被外壳/C 外函数调用：onBoxMouseMove"
-    },
-    {
-      "name": "drawDetailOverlay",
-      "lines": 64,
-      "start": 9986,
-      "end": 10049,
-      "reviewIds": [
-        "detail-overlay"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "refreshMarginState"
-      ],
-      "why": "被外壳/C 外函数调用：refreshMarginState"
-    },
-    {
-      "name": "drawDiffLayer",
-      "lines": 94,
-      "start": 9319,
-      "end": 9412,
-      "reviewIds": [
-        "detail-canvas",
-        "detail-diff-layer",
-        "toggle-diff-marks"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "activateDiff",
-        "adoptQueueCurrent",
-        "focusQueueItem",
-        "keepQueueCurrent",
-        "scheduleOverlayLayout",
-        "selectReviewBlock",
-        "setupViewerTools"
-      ],
-      "why": "被外壳/C 外函数调用：adoptQueueCurrent、keepQueueCurrent"
-    },
-    {
-      "name": "ensureBlockListed",
-      "lines": 9,
-      "start": 8558,
-      "end": 8566,
-      "reviewIds": [
-        "detail-blocks"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "activateDiff",
-        "drawDetailOverlay",
-        "restoreEditorFocus",
-        "structureAction"
-      ],
-      "why": "被外壳/C 外函数调用：restoreEditorFocus"
-    },
-    {
-      "name": "focusQueueBar",
-      "lines": 4,
-      "start": 9949,
-      "end": 9952,
-      "reviewIds": [
-        "diff-queue"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "adoptQueueCurrent",
-        "keepQueueCurrent",
-        "previousQueueItem"
-      ],
-      "why": "被外壳/C 外函数调用：adoptQueueCurrent、keepQueueCurrent、previousQueueItem"
-    },
-    {
-      "name": "focusSiblingBlock",
-      "lines": 8,
-      "start": 10889,
-      "end": 10896,
-      "reviewIds": [
-        "detail-blocks"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "blockCard"
-      ],
-      "why": "被外壳/C 外函数调用：blockCard"
-    },
-    {
-      "name": "loadPageDetail",
-      "lines": 27,
-      "start": 8139,
-      "end": 8165,
-      "reviewIds": [
-        "page-detail-error"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "adoptAllHighSuggestions",
-        "afterCleanupApplied",
-        "applySplitBatch",
-        "finishRunLayout",
-        "openPageDetail",
-        "patchBlock",
-        "pollTask",
-        "reloadDetailAfterRecognition",
-        "reloadProjectPages",
-        "runSuggestionApply",
-        "setupReviewAutoPass",
-        "structureAction",
-        "undoAutoApply"
-      ],
-      "why": "被外壳/C 外函数调用：adoptAllHighSuggestions、afterCleanupApplied、applySplitBatch、finishRunLayout、patchBlock、pollTask…"
-    },
-    {
-      "name": "normalizedPoint",
-      "lines": 9,
-      "start": 11267,
-      "end": 11275,
-      "reviewIds": [
-        "detail-image"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "onBoxMouseMove"
-      ],
-      "why": "被外壳/C 外函数调用：onBoxMouseMove"
-    },
-    {
-      "name": "openPageDetail",
-      "lines": 13,
-      "start": 8072,
-      "end": 8084,
-      "reviewIds": [
-        "page-detail-error"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "boot",
-        "buildTile",
-        "confirmCurrentPage",
-        "ensureReviewPage",
-        "finishStartReview",
-        "openOrthographyPanel",
-        "openTreeItem",
-        "renderReviewTree",
-        "renderTask",
-        "setupReviewPager",
-        "setupShell",
-        "stepPage"
-      ],
-      "why": "调 showView(\"review\") + savePosition → 外壳路由；模块经注入打开页"
-    },
-    {
-      "name": "pagerPages",
-      "lines": 9,
-      "start": 8223,
-      "end": 8231,
-      "reviewIds": [
-        "review-jump-filter"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "stepPage"
-      ],
-      "why": "被外壳/C 外函数调用：stepPage"
-    },
-    {
-      "name": "paintReviewMargin",
-      "lines": 22,
-      "start": 8432,
-      "end": 8453,
-      "reviewIds": [
-        "detail-canvas",
-        "detail-margin"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "refreshMarginState"
-      ],
-      "why": "被外壳/C 外函数调用：refreshMarginState"
-    },
-    {
-      "name": "recognizePage",
-      "lines": 28,
-      "start": 6937,
-      "end": 6964,
-      "reviewIds": [
-        "page-detail-error"
-      ],
-      "outsideIds": [
-        "pages-error"
-      ],
-      "calledByShell": [
-        "buildTile",
-        "setupLibrary"
-      ],
-      "why": "引用段外 id：pages-error"
-    },
-    {
-      "name": "renderDiffQueue",
-      "lines": 63,
-      "start": 9654,
-      "end": 9716,
-      "reviewIds": [
-        "diff-queue",
-        "diff-queue-dots",
-        "diff-queue-meta",
-        "diff-queue-note",
-        "diff-queue-position",
-        "diff-queue-text",
-        "diff-queue-toggle",
-        "queue-adopt",
-        "queue-keep",
-        "queue-prev"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "adoptQueueCurrent",
-        "keepQueueCurrent",
-        "openTreeItem",
-        "previousQueueItem",
-        "setQueueOpen",
-        "stepReviewDiff"
-      ],
-      "why": "被外壳/C 外函数调用：adoptQueueCurrent、keepQueueCurrent、openTreeItem、previousQueueItem、setQueueOpen、stepReviewDiff"
-    },
-    {
-      "name": "renderFinishPanel",
-      "lines": 135,
-      "start": 11676,
-      "end": 11810,
-      "reviewIds": [
-        "review-continuations"
-      ],
-      "outsideIds": [
-        "cleanup-continuation-review-open",
-        "cleanup-continuation-review-status",
-        "finish-auto-pass",
-        "finish-bottom-note",
-        "finish-check-engine",
-        "finish-confirm-layout",
-        "finish-confirm-pages",
-        "finish-engine-status",
-        "finish-engine-sub",
-        "finish-layout-status",
-        "finish-layout-sub",
-        "finish-margin-pages",
-        "finish-margin-status",
-        "finish-margin-sub",
-        "finish-open-pagenum",
-        "finish-page-type-status",
-        "finish-page-type-sub",
-        "finish-pagenum-status",
-        "finish-pagenum-sub",
-        "finish-project-name",
-        "finish-review-status",
-        "finish-review-sub",
-        "finish-start-review"
-      ],
-      "calledByShell": [
-        "finishRunAutoPass",
-        "loadFinishSummary",
-        "openFinishPanel"
-      ],
-      "why": "引用段外 id：cleanup-continuation-review-open、cleanup-continuation-review-status、finish-auto-pass、finish-bottom-note、finish-check-engine、finish-confirm-layout…"
-    },
-    {
-      "name": "renderHistoryButtons",
-      "lines": 8,
-      "start": 8713,
-      "end": 8720,
-      "reviewIds": [
-        "review-redo",
-        "review-undo"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "adoptQueueCurrent",
-        "keepQueueCurrent"
-      ],
-      "why": "被外壳/C 外函数调用：adoptQueueCurrent、keepQueueCurrent"
-    },
-    {
-      "name": "renderInkGapBar",
-      "lines": 14,
-      "start": 11414,
-      "end": 11427,
-      "reviewIds": [
-        "ink-gap-bar",
-        "ink-gap-text",
-        "ink-gap-toggle"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "loadInkGaps",
-        "setupBoxCreate"
-      ],
-      "why": "被外壳/C 外函数调用：loadInkGaps"
-    },
-    {
-      "name": "renderReviewBlocks",
-      "lines": 45,
-      "start": 10821,
-      "end": 10865,
-      "reviewIds": [
-        "detail-blocks"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "ensureBlockListed",
-        "refreshDetailSuggestions",
-        "setReviewBlockFilter"
-      ],
-      "why": "被外壳/C 外函数调用：setReviewBlockFilter"
-    },
-    {
-      "name": "renderReviewFilter",
-      "lines": 41,
-      "start": 8502,
-      "end": 8542,
-      "reviewIds": [
-        "review-filter",
-        "review-filter-note"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "refreshReviewFilterOnly",
-        "renderReviewBlocks"
-      ],
-      "why": "被外壳/C 外函数调用：refreshReviewFilterOnly"
-    },
-    {
-      "name": "renderReviewHeadline",
-      "lines": 27,
-      "start": 9603,
-      "end": 9629,
-      "reviewIds": [
-        "page-detail-meta"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "loadInkGaps",
-        "renderDiffQueue"
-      ],
-      "why": "被外壳/C 外函数调用：loadInkGaps"
-    },
-    {
-      "name": "renderReviewTree",
-      "lines": 177,
-      "start": 12634,
-      "end": 12810,
-      "reviewIds": [
-        "review-tree-list",
-        "review-tree-stats"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "syncReviewTreeToPage",
-        "toggleReviewTreeChapter",
-        "toggleReviewTreePage",
-        "updateReviewTreeAfterAck"
-      ],
-      "why": "被外壳/C 外函数调用：toggleReviewTreeChapter、toggleReviewTreePage、updateReviewTreeAfterAck"
-    },
-    {
-      "name": "selectReviewBlock",
-      "lines": 21,
-      "start": 10867,
-      "end": 10887,
-      "reviewIds": [
-        "block-position",
-        "detail-blocks",
-        "detail-overlay"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "activateDiff",
-        "blockCard",
-        "drawDetailOverlay",
-        "focusQueueItem"
-      ],
-      "why": "被外壳/C 外函数调用：blockCard"
-    },
-    {
-      "name": "setupAuxControls",
-      "lines": 6,
-      "start": 1620,
-      "end": 1625,
-      "reviewIds": [
-        "aux-close",
-        "aux-panel",
-        "aux-run"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "setupLibrary"
-      ],
-      "why": "被外壳/C 外函数调用：setupLibrary"
-    },
-    {
-      "name": "setupBoxCreate",
-      "lines": 17,
-      "start": 11503,
-      "end": 11519,
-      "reviewIds": [
-        "box-select-cancel",
-        "box-select-confirm",
-        "box-select-recognize",
-        "detail-box-create",
-        "detail-canvas",
-        "ink-gap-toggle"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "setupLibrary"
-      ],
-      "why": "被外壳/C 外函数调用：setupLibrary"
-    },
-    {
-      "name": "setupReviewAutoPass",
-      "lines": 42,
-      "start": 8366,
-      "end": 8407,
-      "reviewIds": [
-        "review-auto-pass",
-        "review-auto-revoke"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "boot"
-      ],
-      "why": "被外壳/C 外函数调用：boot"
-    },
+  "口径": {
+    "视图": "view-review",
+    "来源": "HEAD:backend/book2text/static/app.js + HEAD:docs/refactor/evidence/review/movers.json",
+    "app_sha256": "19a9a9df6bfd4c9383a10ed3b50112d0ca72c7415ef658f43d24ba4483e7b189",
+    "index_sha256": "9cd594fc6cc05ef1050f8d8912a9c7bd50feceec6ec79f97e7665c61bfbda9ac",
+    "movers_sha256": "ced9c4b08f9de8145a37a6ccd4a521e52f4233d67604b9460cdce9b4a63cb534",
+    "定义": "函数体里出现 view-review 子树 id 字面量、且该函数不在 movers 里（= 搬不走、但写着这个视图的 DOM）",
+    "计数口径": "literal_occurrences 是**字面量出现处数**，不是 id 个数、也不是函数个数",
+    "上一版": "40 个 / 1,557 行（按 movers 43 那版算，已作废）"
+  },
+  "对账": {
+    "函数数": 9,
+    "行数": 888,
+    "字面量处数": 32,
+    "按区": {
+      "stays": 2,
+      "external": 0,
+      "无": 7
+    }
+  },
+  "函数": [
     {
       "name": "setupReviewControls",
-      "lines": 136,
+      "zone": "无",
       "start": 13265,
       "end": 13400,
-      "reviewIds": [
+      "lines": 136,
+      "literal_occurrences": 19,
+      "ids": [
         "candidate-apply",
         "candidate-close",
         "candidate-decline",
         "candidate-open",
         "candidate-panel",
         "diff-queue-toggle",
+        "finish-open-review",
         "layout-confirm",
         "queue-adopt",
         "queue-keep",
@@ -583,214 +47,144 @@
         "review-undo",
         "suggestion-apply-all"
       ],
-      "outsideIds": [
-        "cleanup-continuation-review-open",
-        "cleanup-continuation-run",
-        "cleanup-furniture-run",
-        "cleanup-lines-run",
-        "cleanup-orthography-review",
-        "cleanup-orthography-run",
-        "cleanup-undo",
-        "continuation-close",
-        "continuation-continue",
-        "continuation-done",
-        "continuation-end",
-        "continuation-next",
-        "continuation-panel",
-        "continuation-prev",
-        "continuation-revert",
-        "continuation-zoom-fit",
-        "continuation-zoom-in",
-        "continuation-zoom-out",
-        "finish-auto-pass",
-        "finish-auto-resume",
-        "finish-auto-revoke",
-        "finish-auto-stop",
-        "finish-check-engine",
-        "finish-close",
-        "finish-confirm-layout",
-        "finish-confirm-pages",
-        "finish-export",
-        "finish-layout-resume",
-        "finish-layout-stop",
-        "finish-margin-pages",
-        "finish-open-pagenum",
-        "finish-refresh",
-        "finish-start-review",
-        "orthography-close",
-        "orthography-done"
-      ],
-      "calledByShell": [
-        "setupLibrary"
-      ],
-      "why": "引用段外 id：cleanup-continuation-review-open、cleanup-continuation-run、cleanup-furniture-run、cleanup-lines-run、cleanup-orthography-review、cleanup-orthography-run…"
+      "reviewIdsViaEl": [
+        "candidate-apply",
+        "candidate-close",
+        "candidate-decline",
+        "candidate-open",
+        "candidate-panel",
+        "detail-blocks",
+        "diff-queue-toggle",
+        "layout-confirm",
+        "queue-adopt",
+        "queue-keep",
+        "queue-prev",
+        "review-confirm",
+        "review-continuations",
+        "review-more",
+        "review-more-menu",
+        "review-redo",
+        "review-undo",
+        "suggestion-apply-all"
+      ]
     },
     {
-      "name": "setupReviewPager",
-      "lines": 15,
-      "start": 8410,
-      "end": 8424,
-      "reviewIds": [
-        "review-jump",
-        "review-jump-filter",
-        "review-next",
-        "review-prev"
+      "name": "applyPackageMode",
+      "zone": "无",
+      "start": 14372,
+      "end": 14432,
+      "lines": 61,
+      "literal_occurrences": 4,
+      "ids": [
+        "aux-run",
+        "detail-recognize",
+        "finish-open-review"
       ],
-      "outsideIds": [],
-      "calledByShell": [
-        "boot"
-      ],
-      "why": "被外壳/C 外函数调用：boot"
+      "reviewIdsViaEl": [
+        "aux-run",
+        "detail-recognize",
+        "finish-open-review"
+      ]
     },
     {
-      "name": "setupViewerTools",
-      "lines": 48,
-      "start": 8317,
-      "end": 8364,
-      "reviewIds": [
-        "detail-overlay",
-        "review-drawer-toggle",
-        "review-filter",
-        "review-footer-count",
-        "review-margin-toggle",
-        "review-tree",
-        "review-tree-filter",
-        "review-tree-rail",
-        "toggle-diff-marks",
-        "toggle-overlay",
-        "zoom-fit",
-        "zoom-in",
-        "zoom-out"
+      "name": "setupLibrary",
+      "zone": "无",
+      "start": 13496,
+      "end": 13644,
+      "lines": 149,
+      "literal_occurrences": 3,
+      "ids": [
+        "detail-close",
+        "detail-recognize",
+        "review-apply-all"
       ],
-      "outsideIds": [],
-      "calledByShell": [
-        "boot"
-      ],
-      "why": "被外壳/C 外函数调用：boot"
+      "reviewIdsViaEl": [
+        "detail-close",
+        "detail-recognize",
+        "review-apply-all"
+      ]
     },
     {
       "name": "showView",
-      "lines": 66,
+      "zone": "stays",
       "start": 210,
       "end": 275,
-      "reviewIds": [
+      "lines": 66,
+      "literal_occurrences": 1,
+      "ids": [
         "review-pager"
       ],
-      "outsideIds": [
-        "topbar-library",
-        "topbar-project"
-      ],
-      "calledByShell": [
-        "boot",
-        "closeProject",
-        "enterReviewStep",
-        "finishShowFallbackPages",
-        "finishStartReview",
-        "goToWorkflowStep",
-        "onResultFileChosen",
-        "openOrthographyPanel",
-        "openPageDetail",
-        "openPageSetup",
-        "pumpPageSuggestionQueue",
-        "renderProject",
-        "resumeLastPosition",
-        "setupShell"
-      ],
-      "why": "引用段外 id：topbar-library、topbar-project"
+      "reviewIdsViaEl": [
+        "review-pager"
+      ]
     },
     {
-      "name": "snapBox",
-      "lines": 30,
-      "start": 8784,
-      "end": 8813,
-      "reviewIds": [
-        "detail-image"
+      "name": "setupShell",
+      "zone": "无",
+      "start": 1325,
+      "end": 1367,
+      "lines": 43,
+      "literal_occurrences": 1,
+      "ids": [
+        "detail-close"
       ],
-      "outsideIds": [],
-      "calledByShell": [
-        "onBoxPointerMove"
-      ],
-      "why": "被外壳/C 外函数调用：onBoxPointerMove"
+      "reviewIdsViaEl": [
+        "detail-close"
+      ]
     },
     {
-      "name": "structureAction",
-      "lines": 63,
-      "start": 11039,
-      "end": 11101,
-      "reviewIds": [
+      "name": "recognizePage",
+      "zone": "无",
+      "start": 6937,
+      "end": 6964,
+      "lines": 28,
+      "literal_occurrences": 1,
+      "ids": [
         "page-detail-error"
       ],
-      "outsideIds": [],
-      "calledByShell": [
-        "blockCard"
-      ],
-      "why": "被外壳/C 外函数调用：blockCard"
-    },
-    {
-      "name": "syncDiffStrip",
-      "lines": 10,
-      "start": 9456,
-      "end": 9465,
-      "reviewIds": [
-        "detail-blocks"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "activateDiff",
-        "blockDivergenceSection",
-        "selectReviewBlock"
-      ],
-      "why": "被外壳/C 外函数调用：blockDivergenceSection"
-    },
-    {
-      "name": "syncReviewTreeToPage",
-      "lines": 41,
-      "start": 12841,
-      "end": 12881,
-      "reviewIds": [
-        "review-tree-scroll"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "openTreeItem",
-        "renderReviewTree",
-        "stepReviewDiff"
-      ],
-      "why": "被外壳/C 外函数调用：openTreeItem、stepReviewDiff"
-    },
-    {
-      "name": "undoAutoApply",
-      "lines": 18,
-      "start": 13804,
-      "end": 13821,
-      "reviewIds": [
+      "reviewIdsViaEl": [
         "page-detail-error"
-      ],
-      "outsideIds": [],
-      "calledByShell": [
-        "renderAutoApplyStatus",
-        "setupLibrary"
-      ],
-      "why": "被外壳/C 外函数调用：renderAutoApplyStatus、setupLibrary"
+      ]
     },
     {
-      "name": "updateDiffActive",
-      "lines": 17,
-      "start": 9467,
-      "end": 9483,
-      "reviewIds": [
-        "detail-blocks",
-        "detail-diff-layer"
+      "name": "updateFinishChips",
+      "zone": "无",
+      "start": 11620,
+      "end": 11633,
+      "lines": 14,
+      "literal_occurrences": 1,
+      "ids": [
+        "finish-open-review"
       ],
-      "outsideIds": [],
-      "calledByShell": [
-        "activateDiff",
-        "adoptQueueCurrent",
-        "focusQueueItem",
-        "keepQueueCurrent",
-        "selectReviewBlock"
+      "reviewIdsViaEl": []
+    },
+    {
+      "name": "renderFinishPanel",
+      "zone": "stays",
+      "start": 11676,
+      "end": 11810,
+      "lines": 135,
+      "literal_occurrences": 1,
+      "ids": [
+        "review-continuations"
       ],
-      "why": "被外壳/C 外函数调用：adoptQueueCurrent、keepQueueCurrent"
+      "reviewIdsViaEl": [
+        "review-continuations"
+      ]
+    },
+    {
+      "name": "boot",
+      "zone": "无",
+      "start": 15054,
+      "end": 15309,
+      "lines": 256,
+      "literal_occurrences": 1,
+      "ids": [
+        "review-margin-toggle"
+      ],
+      "reviewIdsViaEl": [
+        "review-margin-toggle"
+      ]
     }
   ]
 }
