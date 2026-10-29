@@ -56,3 +56,12 @@
 
 - `forwarders.md`（我第一版）作废：它的「无调用 20」是因为**排除掉 movers 间互调**，口径不对；
 - `forwarder-callers.md` 的「无调用 4」作废：值位置漏检；它的 12/47 分栏暂留（等 §④ 重算后定）。
+## ⑥ 写死这一句（今天第三次踩同一个坑）
+
+```
+调用点必须扫「值位置」：addEventListener(..., f) / requestAnimationFrame(f) / 回调参数 / ?. 调用
+只扫 `f(` 会把一整类调用漏掉 —— 今天三次栽在这里（review 闭包、pages 转发器、本表）
+```
+
+前两次：`review` 的闭包按「名字出现在括号里」算，漏掉事件处理器（6 个 / 105 行）；
+`33 个符号按前缀 grep`，漏掉 `project-list` / `create-progress`。**这次是第三类：值位置。**
