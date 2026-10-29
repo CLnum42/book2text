@@ -51,12 +51,25 @@ def sub_checked(text, pattern, rep):
 
 
 def forward(text, rules):
+    """按规则表替换名字（LIT 字面量 + IDENT 注入）。
+
+    装配代码（deps 字面量 `getX: () => X,` / `setX: (v) => { X = v; … }`）**整行跳过**：
+    那是外壳自己的闭包，读写的就是外壳状态，把它改成 `injected.getX()` / `injected.getX() = v`
+    会得到既错又过闸的产物（§9⑮）。实测：不排除时报「给 getter 赋值 27 处」。
+    """
     for lit, rep in getattr(rules, "LIT", []):
         text = sub_checked(text, re.escape(lit), rep)
-    for entry in getattr(rules, 'IDENT_FULL', rules.IDENT):   # (旧, 新) 或 (旧, 新, 形态)
-        old, new = entry[0], entry[1]
-        text = sub_checked(text, r'(?<![\w$.])' + re.escape(old) + r'\b', new)
-    return text
+    _lines = text.split("\n")
+    asm = assembly_lines(_lines)
+    out = []
+    for i, line in enumerate(_lines):
+        if i in asm:
+            out.append(line); continue
+        for entry in getattr(rules, 'IDENT_FULL', rules.IDENT):   # (旧, 新) 或 (旧, 新, 形态)
+            old, new = entry[0], entry[1]
+            line = sub_checked(line, r'(?<![\w$.])' + re.escape(old) + r'\b', new)
+        out.append(line)
+    return "\n".join(out)
 
 
 def declaration_bounds(lines, name):
@@ -74,11 +87,47 @@ def declaration_bounds(lines, name):
     return None
 
 
-#: 装配代码的标记：`init({ getX: () => …, setX: (v) => { X = v; return v; } })` 里的 get/set 键行。
-#: **这些行永远不进改写器**（HANDOFF §9⑮）。三次同型事故：多行块被当写点、重名把声明改成
-#: `function injected.X()`、这次 deps 里的 `setX: (value) => { X = value; … }` 被当成"改不动的写点"。
-#: 形态上的共同点：生成的产物又被自己的规则检了一遍——那不是健壮性，是在给自己制造假故障。
-DEPS_KEY_LINE = re.compile(r'^\s*(?:get|set)[A-Z][A-Za-z0-9_$]*\s*:\s*\(')
+#: 装配代码的边界：`<X>View?.init({ … });` 整块。**这些行永远不进改写器**（HANDOFF §9⑮）。
+#:
+#: 为什么按**块范围**判、不按键名判：deps 字面量有三种键形态——
+#:   ① `getX: () => X,`  ② `setX: (v) => { X = v; return v; },`  ③ `fn: (...args) => fn(...args),`
+#: 按「get/set 前缀」只能抓 ①②；③（转发键）会被 IDENT 替换成 `injected.apiJson: (…) => …`，
+#: 产物语法直接不成立（实测 `node --check` 报 `Unexpected token '.'`）。按块范围判才封闭。
+#:
+#: 三次同型事故：多行块被当写点、重名把声明改成 `function injected.X()`、deps 被当"改不动的写点"。
+#: 共同点：生成器把自己的产物当成输入——那不是健壮性，是在给自己制造假故障。
+INIT_CALL = re.compile(r"\.init\(\{")
+
+
+def assembly_lines(lines):
+    """返回属于装配代码的行号集合（`init({ … })` 整块，含首尾行）。"""
+    asm, i = set(), 0
+    while i < len(lines):
+        if INIT_CALL.search(lines[i]):
+            depth, j = 0, i
+            while j < len(lines):
+                depth += lines[j].count("(") + lines[j].count("[") + lines[j].count("{")
+                depth -= lines[j].count(")") + lines[j].count("]") + lines[j].count("}")
+                if depth <= 0:
+                    break
+                j += 1
+            asm.update(range(i, min(j, len(lines) - 1) + 1))
+            i = j + 1
+        else:
+            i += 1
+    return asm
+
+
+def blank_deps(text):
+    """把装配代码整块抹空（保留行数），供 residue / anti 这类「正文检查」使用。
+
+    为什么需要：deps 是**外壳自己**的闭包（`getX: () => X` / `setX: (v) => { X = v; }` /
+    `fn: (...a) => fn(...a)`），它读写外壳状态是**正确**的。正文检查若不排除它，就会把
+    正确的装配代码报成「判注入却裸引用」「给 getter 赋值」——那 27 条假警报正是这么来的。
+    """
+    lines = text.split("\n")
+    asm = assembly_lines(lines)
+    return "\n".join("" if i in asm else ln for i, ln in enumerate(lines))
 
 
 def apply_set_blocks(text, rules):
@@ -91,13 +140,14 @@ def apply_set_blocks(text, rules):
     2. 同一 match 出现 N 次就替换 N 次，临时名带序号：`__name1` / `__name2` …… 名字一眼看出对应哪个状态。
     """
     lines = text.split("\n")
+    asm = assembly_lines(lines)
     for block in getattr(rules, "SET_BLOCKS", []):
         base = re.search(r"__([A-Za-z_$][\w$]*)", block["head"])
         base_name = base.group(1) if base else "__tmp"
         # ① 先在原文上把所有匹配块的范围算完
         ranges = []
         for i, ln in enumerate(lines):
-            if block["match"] not in ln or DEPS_KEY_LINE.match(ln):
+            if block["match"] not in ln or i in asm:
                 continue
             depth, end = 0, None
             for j in range(i, len(lines)):
@@ -129,8 +179,10 @@ def rewrite_writes(text, rules):
     setters = dict(getattr(rules, "SETTERS", []))
     overrides = dict(getattr(rules, "SET_REWRITES", {}))
     out_lines, problems = [], []
-    for line in text.split("\n"):
-        if DEPS_KEY_LINE.match(line):                     # 装配代码：原样保留，不报、不改（§9⑮）
+    _lines = text.split("\n")
+    asm = assembly_lines(_lines)
+    for i, line in enumerate(_lines):
+        if i in asm:                                      # 装配代码：原样保留，不报、不改（§9⑮）
             out_lines.append(line); continue
         if line.strip() in overrides:                     # 缩进不参与匹配：同一个写点在不同层深
             indent = re.match(r"^(\s*)", line).group(1)
@@ -181,7 +233,7 @@ def count_checks(module_code, app_source, rules):
 def anti_checks(module_code, app_text, rules):
     """三个反证（都要求 0）。返回问题列表。"""
     problems = []
-    masked = mask_mod.strip_code(module_code)
+    masked = mask_mod.strip_code(blank_deps(module_code))   # §9⑮：装配代码不参与正文反证
     for name in getattr(rules, "MOVED_STATES", []):
         if re.search(r'(?m)^(?:const|let|var)\s+%s\s*=' % re.escape(name), app_text):
             problems.append(f"搬走的状态 {name} 在 app.js 里还有声明——两份状态")
@@ -337,7 +389,7 @@ def main():
 
     top_names = set(re.findall(r'(?m)^(?:async\s+)?function ([A-Za-z_$][\w$]*)', "\n".join(lines)))
     top_names |= set(re.findall(r'(?m)^(?:let|const|var) ([A-Za-z_$][\w$]*)', "\n".join(lines)))
-    code = mask_mod.strip_code(out)
+    code = mask_mod.strip_code(blank_deps(out))   # §9⑮：deps 行不算正文裸引用
     declared = set(re.findall(r'(?m)^(?:async\s+)?function ([A-Za-z_$][\w$]*)', code))
     declared |= set(re.findall(r'(?m)^(?:let|const|var) ([A-Za-z_$][\w$]*)', code))
     declared |= set(movers) | set(getattr(rules, "MOVED_STATES", [])) | set(getattr(rules, "RESIDUE_OK", [])) | {"el"}
