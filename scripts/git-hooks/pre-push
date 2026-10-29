@@ -63,6 +63,11 @@ run_node_gates() {
   WTROOT=$(mktemp -d "${TMPDIR:-/tmp}/b2t-push-node.XXXXXX") || {
     echo "✗ pre-push：建不了临时目录（node 闸）" >&2; return 1
   }
+  # **清理写在退出路径上**（2026-10-29 教训：只写在成功路径 → 推送失败/路径竞争时留残影）。
+  # 这条 worktree 是"要推的那棵树"的载体，任何退出路径都必须拆掉它，否则下一次
+  # `git status` / 钩子会读到意外的树。
+  trap 'git worktree remove --force "$WT" >/dev/null 2>&1; git worktree prune >/dev/null 2>&1; rm -rf "$WTROOT"; rm -f "${NOUT:-}"' EXIT INT TERM
+
   WT="$WTROOT/tree"
   if ! git worktree add -q --detach "$WT" "$LOCAL_SHA" 2>"$WTROOT/add.log"; then
     echo "✗ pre-push：导不出 $(echo "$LOCAL_SHA" | cut -c1-8) 的 worktree（node 闸）" >&2
