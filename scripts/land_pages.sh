@@ -79,13 +79,14 @@ grep -E "ℹ (pass|fail)" /tmp/b2t-land-node.out | tail -2
 # 5) 验收器
 if [ "$SKIP_ACCEPT" = 0 ]; then
   step "5) accept_pages（判据来自名单，不写死数）"
-  "$PY" scripts/accept_pages.py "${@:-}" >/tmp/b2t-land-accept.out 2>&1
+  "$PY" scripts/accept_pages.py "$@" >/tmp/b2t-land-accept.out 2>&1
   rc=$?
   tail -12 /tmp/b2t-land-accept.out
   case "$rc" in
     0) echo "✓ 验收全过" ;;
     2) die "验收器 exit 2（前置不满足：多半是第三消费者没给 --acid）" \
             "实机跑 acid：python3 scripts/accept_pages.py --acid /tmp/acid.json；没有这两个数就是未验" ;;
+    64) die "调用方式错（不是验收失败）" "只收 --acid / --expect-sha —— 修参数透传，别查产品" ;;
     *) die "验收器 exit 1（判据不过，原文见 /tmp/b2t-land-accept.out）" "按点名的条目改；改不动就回滚" ;;
   esac
 fi
