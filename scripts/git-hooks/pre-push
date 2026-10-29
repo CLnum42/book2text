@@ -50,9 +50,13 @@ check_one() {
   fi
 
   CHECKED=$((CHECKED + 1))
+  # venv 可能不在当前 worktree（临时 worktree / CI 里都没有），到主 worktree 找
+  COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir)
+  MAIN=$(dirname "$COMMON")
   PY="$REPO/.venv/bin/python"
+  [ -x "$PY" ] || PY="$MAIN/.venv/bin/python"
   if [ ! -x "$PY" ]; then
-    echo "✗ pre-push：push 里含代码改动，但找不到 $PY" >&2
+    echo "✗ pre-push：push 里含代码改动，但找不到 .venv/bin/python（当前与主 worktree 都找过）" >&2
     echo "  拒绝推送——跑不起来的闸不允许静默放过（fail closed）。" >&2
     echo "  确需绕过：git push --no-verify（不会留 PASS 记录，下一笔提交会被点名）" >&2
     FAILED=1
@@ -61,13 +65,22 @@ check_one() {
 
   echo "… pre-push：跑 pytest（推送范围含代码改动，约 82s）" >&2
   START=$(date +%s)
-  if ! ( cd "$REPO" && "$PY" -m pytest -q ) >"$REPO/.git/b2t-pytest.out" 2>&1; then
+  # **验要推送的那棵树，不验工作区**（与 pre-commit 同一条理由）：
+  # 多人共用一个工作区、或从临时 worktree 推送时，工作区与 local_sha 不是一回事。
+  TMPTREE=$(mktemp -d "${TMPDIR:-/tmp}/b2t-push.XXXXXX")
+  if ! git archive "$LOCAL_SHA" | tar -x -C "$TMPTREE"; then
+    echo "✗ pre-push：导出 $(echo "$LOCAL_SHA" | cut -c1-8) 的树失败" >&2
+    rm -rf "$TMPTREE"; FAILED=1; return 1
+  fi
+  if ! ( cd "$TMPTREE" && "$PY" -m pytest -q ) >"$REPO/.git/b2t-pytest.out" 2>&1; then
+    rm -rf "$TMPTREE"
     echo "✗ pre-push：pytest 红了（$(( $(date +%s) - START ))s）" >&2
     tail -n 30 "$REPO/.git/b2t-pytest.out" >&2
     echo "  日志：.git/b2t-pytest.out" >&2
     FAILED=1
     return 1
   fi
+  rm -rf "$TMPTREE"
   printf '%s\tPASS\t%s\t%s\n' "$LOCAL_SHA" "$(date '+%F %T')" "$(printf '%s\n' "$FILES" | wc -l | tr -d ' ') files" >>"$LOG" 2>/dev/null || true
   echo "✓ pre-push：pytest 全绿（$(( $(date +%s) - START ))s）" >&2
   return 0
