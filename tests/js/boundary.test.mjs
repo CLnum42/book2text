@@ -53,7 +53,9 @@ import {
   evaluateEdgeSources,
   moduleShowViewInSource,
 } from "./edge-ratchet.mjs";
-import { evaluateFeatureContract } from "./feature-contract.mjs";
+import {
+  evaluateFeatureContract, commitContractProblems, tableBlockRanges,
+} from "./feature-contract.mjs";
 // R9 专用：保留模板 `${…}` 插值的去注释版本（本文件另有一份旧的去注释实现，只抹代码不抹模板）
 import { stripPreservingTemplateExpressions } from "./static-scan.mjs";
 
@@ -264,9 +266,11 @@ function declaredNames(stripped) {
 
 // ---------------------------------------------------------------- R1
 
-test("R1：reading-view.js 不许引用 app.js 的顶层声明（模块先加载，引用即为时序隐患）", () => {
-  const appSource = readFileSync(APP_FILE, "utf8");
-  const viewSource = readFileSync(VIEW_FILE, "utf8");
+/**
+ * R1 的判定内核（纯函数，自检夹具直接喂合成源码）。
+ * @returns {string[]} 违规列表；空 = 合规
+ */
+function r1Problems(appSource, viewSource, fileName = "reading-view.js") {
   const appTop = topLevelDeclarations(appSource);
   const strippedView = stripCommentsAndStrings(viewSource);
   const viewOwn = declaredNames(strippedView);
@@ -288,12 +292,51 @@ test("R1：reading-view.js 不许引用 app.js 的顶层声明（模块先加载
     const nextChar = strippedView.slice(match.index + name.length).trimStart().slice(0, 1);
     if ((prevChar === "{" || prevChar === ",") && nextChar === ":") continue;
     violations.push(
-      `reading-view.js:${lineOf(strippedView, match.index)}:${columnOf(strippedView, match.index)} `
+      `${fileName}:${lineOf(strippedView, match.index)}:${columnOf(strippedView, match.index)} `
       + `用了 app.js:${appTop.get(name)} 的 ${name}`,
     );
   }
+  return violations;
+}
 
+test("R1：reading-view.js 不许引用 app.js 的顶层声明（模块先加载，引用即为时序隐患）", () => {
+  const appSource = readFileSync(APP_FILE, "utf8");
+  const viewSource = readFileSync(VIEW_FILE, "utf8");
+  const violations = r1Problems(appSource, viewSource);
   assert.deepEqual(violations, [], `reading-view.js 引用了 ${violations.length} 处 app.js 的顶层声明`);
+});
+
+/** R1 自检（§20.9 ⑬：闸必须能被样例喂红）。 */
+test("R1 自检：模块调 app.js 的裸函数必须红，属性访问 / 自己声明 / 对象 key 必须不红", () => {
+  const app = "function gotoNextUnreviewed() { return 1; }\nconst sharedState = { a: 1 };\n";
+  // 红：裸调用
+  assert.ok(
+    r1Problems(app, "function tick() { gotoNextUnreviewed(); }").length > 0,
+    "R1 自检失败：模块里裸调 app.js 顶层函数也放过",
+  );
+  // 红：裸地读 app.js 的顶层状态
+  assert.ok(
+    r1Problems(app, "function tick() { return sharedState; }").length > 0,
+    "R1 自检失败：模块里裸读 app.js 顶层状态也放过",
+  );
+  // 绿：属性访问（注入键 = 真函数名，这是生产写法）
+  assert.deepEqual(
+    r1Problems(app, "function tick() { injected.gotoNextUnreviewed(); }"),
+    [],
+    "R1 自检失败：injected.xxx 被误报成依赖",
+  );
+  // 绿：模块自己声明了同名符号
+  assert.deepEqual(
+    r1Problems(app, "function gotoNextUnreviewed() { return 2; }\nfunction tick() { gotoNextUnreviewed(); }"),
+    [],
+    "R1 自检失败：模块自己声明同名函数也被误报",
+  );
+  // 绿：对象字面量的 key
+  assert.deepEqual(
+    r1Problems(app, "const deps = { gotoNextUnreviewed: 1 };"),
+    [],
+    "R1 自检失败：对象 key 被误报成引用",
+  );
 });
 
 test("R1 例外表：为空，且不超过 3 条（每条要带 owner 与到期切片）", () => {
@@ -304,8 +347,7 @@ test("R1 例外表：为空，且不超过 3 条（每条要带 owner 与到期�
 // ---------------------------------------------------------------- R4
 
 /** 提取所有 `function NAME(...) { … }` 的定义：名字、文件、行号、函数体原文。 */
-function collectFunctionDefs(filePath) {
-  const source = readFileSync(filePath, "utf8");
+function collectFunctionDefsFromSource(filePath, source) {
   const stripped = stripCommentsAndStrings(source);
   const defs = [];
   const head = /(?:^|[^\w$.])(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g;
@@ -346,6 +388,11 @@ function collectFunctionDefs(filePath) {
   return defs;
 }
 
+/** 从磁盘收同名函数定义（自检夹具用不了文件，所以内核走 `...FromSource`）。 */
+function collectFunctionDefs(filePath) {
+  return collectFunctionDefsFromSource(filePath, readFileSync(filePath, "utf8"));
+}
+
 /**
  * 给一份函数定义分类：
  * - `stub`：≤6 行，且整段只有一个 ReadingView 转发调用 → 合法转发
@@ -371,11 +418,11 @@ function classify(def) {
   return { kind: "stub" };
 }
 
-test("R4-dup（真实现份数=1）：同名函数只许一份真实现，其余必须是 ≤6 行的薄转发", () => {
-  const files = readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js")).map((name) => join(STATIC_DIR, name));
+/** R4-dup 的判定内核（纯函数：`[{file, source}]` → 违规）。 */
+function r4dupProblems(fileSources) {
   const byName = new Map();
-  for (const file of files) {
-    for (const def of collectFunctionDefs(file)) {
+  for (const { file, source } of fileSources) {
+    for (const def of collectFunctionDefsFromSource(file, source)) {
       const list = byName.get(def.name) || [];
       list.push(def);
       byName.set(def.name, list);
@@ -402,7 +449,15 @@ test("R4-dup（真实现份数=1）：同名函数只许一份真实现，其余
       continue;
     }
   }
+  return problems;
+}
 
+test("R4-dup（真实现份数=1）：同名函数只许一份真实现，其余必须是 ≤6 行的薄转发", () => {
+  const problems = r4dupProblems(
+    readdirSync(STATIC_DIR)
+      .filter((name) => name.endsWith(".js"))
+      .map((name) => ({ file: join(STATIC_DIR, name), source: readFileSync(join(STATIC_DIR, name), "utf8") })),
+  );
   assert.deepEqual(problems, [], problems.join("；"));
 
   // R4-dup 延伸：**重开的唯一入口是模块的 reload()**（L1 第一笔 eb02997 之后）
@@ -459,6 +514,44 @@ test("R4-dup（真实现份数=1）：同名函数只许一份真实现，其余
  * 这个仓库的加载顺序靠"经典脚本 + `reading-view.js` 在 `app.js` 之前"撑住。
  * `type="module"` 默认 deferred，会改 boot 时序——这仓库一半 bug 是时序问题。
  */
+/** R7 的判定内核（纯函数，自检夹具喂合成 html）。 */
+function r7Problems(html) {
+  const problems = [];
+  const moduleTags = html.match(/<script[^>]*\btype\s*=\s*["']module["'][^>]*>/gi) || [];
+  if (moduleTags.length > 0) {
+    problems.push(`index.html 出现了 <script type="module">：会改 boot 时序，本项目禁用（${moduleTags.join("、")}）`);
+  }
+  const viewAt = html.indexOf("/static/reading-view.js");
+  const appAt = html.indexOf("/static/app.js");
+  if (viewAt === -1) problems.push("index.html 里没有 reading-view.js 的 <script>");
+  if (appAt === -1) problems.push("index.html 里没有 app.js 的 <script>");
+  if (viewAt !== -1 && appAt !== -1 && viewAt > appAt) {
+    problems.push(`reading-view.js 必须先在 app.js 之前加载（现在顺序反了：view=${viewAt} app=${appAt}）`);
+  }
+  return problems;
+}
+
+/** R4-dup 自检（§20.9 ⑬）。 */
+test("R4-dup 自检：两份真实现必须红，≤6 行转发必须绿，单文件同名不归它管", () => {
+  const red = r4dupProblems([
+    { file: "app.js", source: "function tick() {\n  return 1;\n}\n" },
+    { file: "x-view.js", source: "function tick() {\n  return 2;\n}\n" },
+  ]);
+  assert.ok(red.some((item) => item.includes("两份真实现")), `R4-dup 自检失败：两份真实现也放过——${red.join("；")}`);
+
+  // 注意：`classify()` 认的转发桩形态目前**只认 ReadingView**
+  // （`window.ReadingView.x(...)`）；别的模块的转发会被判成真实现。这是已知限制，
+  // 试点的做法是"第一个模块之外的转发不让存在"（切片时不切"调用方还在 app.js"的函数）。
+  const green = r4dupProblems([
+    { file: "app.js", source: "function tick() {\n  return window.ReadingView.tick();\n}\n" },
+    { file: "x-view.js", source: "function tick() {\n  return 2;\n}\n" },
+  ]);
+  assert.deepEqual(green, [], `R4-dup 自检失败：薄转发被误报——${green.join("；")}`);
+
+  const single = r4dupProblems([{ file: "x-view.js", source: "function tick() { return 1; }\nfunction tick() { return 2; }\n" }]);
+  assert.deepEqual(single, [], "R4-dup 自检失败：同一文件内的重名不归这条管（那是 R4b）");
+});
+
 test("R7：index.html 不许出现 type=module，且模块先于 app.js 加载", () => {
   const indexPath = join(STATIC_DIR, "index.html");
   let html;
@@ -468,19 +561,29 @@ test("R7：index.html 不许出现 type=module，且模块先于 app.js 加载",
     assert.fail(`找不到 ${indexPath}：B2T_STATIC_DIR 指向的目录必须包含 index.html`);
     return;
   }
-  const moduleTags = html.match(/<script[^>]*\btype\s*=\s*["']module["'][^>]*>/gi) || [];
-  assert.deepEqual(
-    moduleTags,
-    [],
-    "index.html 出现了 <script type=\"module\">：会改 boot 时序，本项目禁用",
-  );
-  const viewAt = html.indexOf("/static/reading-view.js");
-  const appAt = html.indexOf("/static/app.js");
-  assert.ok(viewAt !== -1, "index.html 里没有 reading-view.js 的 <script>");
-  assert.ok(appAt !== -1, "index.html 里没有 app.js 的 <script>");
+  const problems = r7Problems(html);
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+/** R7 自检（§20.9 ⑬）。 */
+test("R7 自检：type=module / 顺序反了 / 少了 script 都必须红，正常写法必须绿", () => {
+  const good = [
+    '<script src="/static/reading-view.js"></script>',
+    '<script src="/static/preview-view.js"></script>',
+    '<script src="/static/app.js"></script>',
+  ].join("\n");
+  assert.deepEqual(r7Problems(good), [], "R7 自检失败：正常写法被误报");
   assert.ok(
-    viewAt < appAt,
-    `reading-view.js 必须先在 app.js 之前加载（现在顺序反了：view=${viewAt} app=${appAt}）`,
+    r7Problems('<script type="module" src="/static/app.js"></script>\n<script src="/static/reading-view.js"></script>').length > 0,
+    "R7 自检失败：type=module 也放过",
+  );
+  assert.ok(
+    r7Problems('<script src="/static/app.js"></script>\n<script src="/static/reading-view.js"></script>').length > 0,
+    "R7 自检失败：app.js 先于 reading-view.js 也放过",
+  );
+  assert.ok(
+    r7Problems('<script src="/static/app.js"></script>').length > 0,
+    "R7 自检失败：少了 reading-view.js 的 script 也放过",
   );
 });
 
@@ -748,28 +851,22 @@ function topLevelDeclarationsByName(source) {
   return found;
 }
 
-test("R4b（同文件重名覆盖）：同一文件内同名真实现（后者覆盖前者，未申报即红）", () => {
-  // 例外表本身要合格：上限 3 条、每条带 owner 与到期点
+/** R4b 的判定内核（纯函数：`[{fileName, source}]` + 例外表 → 违规）。 */
+function r4bProblems(fileSources, exceptions, maxExceptions) {
+  const problems = [];
+  if (exceptions.length > maxExceptions) {
+    problems.push(`例外表 ${exceptions.length} 条，超过上限 ${maxExceptions}——超了要停下问 DevLead，不许扩`);
+  }
   const allowed = new Set();
-  const tableProblems = [];
-  for (const entry of SAME_FILE_DUP_EXCEPTIONS) {
-    if (!entry.owner) tableProblems.push(`例外 ${entry.name} 缺 owner`);
-    if (!entry.expires) tableProblems.push(`例外 ${entry.name} 缺到期点`);
+  for (const entry of exceptions) {
+    if (!entry.owner) problems.push(`例外 ${entry.name} 缺 owner`);
+    if (!entry.expires) problems.push(`例外 ${entry.name} 缺到期点`);
     allowed.add(`${entry.file}:${entry.name}`);
   }
-  assert.ok(
-    SAME_FILE_DUP_EXCEPTIONS.length <= SAME_FILE_DUP_EXCEPTION_MAX,
-    `例外表 ${SAME_FILE_DUP_EXCEPTIONS.length} 条，超过上限 ${SAME_FILE_DUP_EXCEPTION_MAX}——超了要停下问 DevLead，不许扩`,
-  );
-  assert.deepEqual(tableProblems, [], tableProblems.join("；"));
-
-  const problems = [];
-  const files = readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"));
   const seen = new Set();
-  for (const fileName of files) {
-    const source = readFileSync(join(STATIC_DIR, fileName), "utf8");
+  for (const { fileName, source } of fileSources) {
     for (const [name, lines] of topLevelDeclarationsByName(source)) {
-      const exception = SAME_FILE_DUP_EXCEPTIONS.find((item) => item.file === fileName && item.name === name);
+      const exception = exceptions.find((item) => item.file === fileName && item.name === name);
       if (lines.length < 2) {
         if (exception) {
           problems.push(
@@ -794,12 +891,45 @@ test("R4b（同文件重名覆盖）：同一文件内同名真实现（后者�
       }
     }
   }
-  for (const entry of SAME_FILE_DUP_EXCEPTIONS) {
+  // 例外表防过期：申报了但代码里没有这个重复
+  for (const entry of exceptions) {
     if (!seen.has(`${entry.file}:${entry.name}`)) {
-      problems.push(`例外表里的 ${entry.name} 在实际代码里没有重复了——到期请删除（到期点：${entry.expires}）`);
+      problems.push(`例外 ${entry.file}:${entry.name} 在代码里找不到对应的重复——表过期了，请删条目`);
     }
   }
-  assert.deepEqual(problems, [], problems.join("\n"));
+  return problems;
+}
+
+test("R4b（同文件重名覆盖）：同一文件内同名真实现（后者覆盖前者，未申报即红）", () => {
+  const fileSources = readdirSync(STATIC_DIR)
+    .filter((name) => name.endsWith(".js"))
+    .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") }));
+  const problems = r4bProblems(fileSources, SAME_FILE_DUP_EXCEPTIONS, SAME_FILE_DUP_EXCEPTION_MAX);
+  assert.deepEqual(problems, [], problems.join("；"));
+});
+
+/** R4b 自检（§20.9 ⑬）。 */
+test("R4b 自检：同文件两份真实现必须红，缩进 0 才算，例外表过期也要红", () => {
+  const red = r4bProblems(
+    [{ fileName: "app.js", source: "function tick() {\n  return 1;\n}\nfunction tick() {\n  return 2;\n}\n" }],
+    [],
+    0,
+  );
+  assert.ok(red.some((item) => item.includes("两份真实现")), `R4b 自检失败：同文件两份真实现也放过——${red.join("；")}`);
+
+  const indented = r4bProblems(
+    [{ fileName: "app.js", source: "function outer() {\n  const row = 1;\n  const row = 2;\n}\n" }],
+    [],
+    0,
+  );
+  assert.deepEqual(indented, [], `R4b 自检失败：函数内的局部重名被误报——${indented.join("；")}`);
+
+  const stale = r4bProblems(
+    [{ fileName: "app.js", source: "function tick() {\n  return 1;\n}\n" }],
+    [{ file: "app.js", name: "tick", count: 2, owner: "x", expires: "y" }],
+    1,
+  );
+  assert.ok(stale.some((item) => item.includes("表过期")), `R4b 自检失败：例外表过期也放过——${stale.join("；")}`);
 });
 
 test("R4b 例外表：上限 3 条，每条带 owner 与到期点", () => {
@@ -1110,18 +1240,26 @@ function domIdsIn(jsStripped) {
   return found;
 }
 
-test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子树的引用必须在豁免表里", () => {
-  const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
+/**
+ * R3 的判定内核（纯函数：合成 html + 合成源码就能喂）。
+ *
+ * @param {{html: string, appSource: string, viewSources: {fileName: string, source: string}[],
+ *          exemptions?: {id: string, owner?: string, expires?: string}[]}} input
+ * @returns {string[]}
+ */
+function r3Problems({ html, appSource, viewSources, exemptions = R3_EXEMPTIONS }) {
   const sections = parseViewSections(html);
-  assert.ok(sections.has("reading"), "index.html 里找不到 <section id=\"view-reading\">");
   const problems = [];
+  if (!sections.has("reading")) {
+    problems.push('index.html 里找不到 <section id="view-reading">');
+    return problems;
+  }
 
   // 模块文件：零豁免
-  for (const fileName of readdirSync(STATIC_DIR).filter((name) => name.endsWith("-view.js"))) {
+  for (const { fileName, source } of viewSources) {
     const viewName = fileName.replace(/-view\.js$/, "");
     const expected = sections.get(viewName) || new Set();
-    const stripped = stripCommentsOnly(readFileSync(join(STATIC_DIR, fileName), "utf8"));
-    for (const [id, occurrences] of domIdsIn(stripped)) {
+    for (const [id, occurrences] of domIdsIn(stripCommentsOnly(source))) {
       if (!expected.has(id)) {
         for (const line of occurrences) problems.push(`${fileName}:${line} 引用了不属于 view-${viewName} 的 id ${id}`);
       }
@@ -1129,17 +1267,13 @@ test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子�
   }
 
   // app.js：**审校块外**不许引用 reading 子树的 id（块内是搬运期合法状态，不占豁免名额）
-  const exempt = new Map(R3_EXEMPTIONS.map((item) => [item.id, item]));
+  const exempt = new Map(exemptions.map((item) => [item.id, item]));
   const readingIds = sections.get("reading");
-  const appSource = readFileSync(APP_FILE, "utf8");
-  const appStripped = stripCommentsOnly(appSource);
-  const appIds = domIdsIn(appStripped);
+  const appIds = domIdsIn(stripCommentsOnly(appSource));
   // L12：审校块已经 0 行（函数全搬走），`阅读审校（L 刀` 标记随之删除。
   // 所以"找不到块"是**结构达成后的正常状态**，不是红：此时 app.js 里任何对 reading 子树的引用
   // 都属于"块外"，按豁免表判。若将来有人又把审校代码写回 app.js，那些引用同样会被判越界。
   const block = readingBlockRange(appSource);
-  const inBlock = (line) => Boolean(block) && line >= block.start && line <= block.end;
-  // 判"这一行属于哪个顶层函数"，再看该函数是否整体落在审校块内（=归 reading）
   const functionRanges = topLevelFunctionRanges(stripCommentsAndStrings(appSource));
   const ownerOfLine = (line) => {
     const hit = functionRanges.filter((item) => item.start <= line && line <= item.end);
@@ -1166,20 +1300,93 @@ test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子�
       }
     }
   }
-  // 豁免表防过期：每条必须还在被引用；条目数必须等于 MAX（只降不升，删条目要同批收）
-  for (const item of R3_EXEMPTIONS) {
+  // 豁免表防过期：每条必须还在被引用
+  for (const item of exemptions) {
     if (!outsideIds.has(item.id)) {
       problems.push(`豁免 ${item.id} 已经不再被非 reading 代码引用——到期了请同批删除（到期点：${item.expires}）`);
     }
     if (!item.owner) problems.push(`豁免 ${item.id} 缺 owner`);
     if (!item.expires) problems.push(`豁免 ${item.id} 缺到期点`);
   }
+  return problems;
+}
+
+test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子树的引用必须在豁免表里", () => {
+  const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
+  const viewSources = readdirSync(STATIC_DIR)
+    .filter((name) => name.endsWith("-view.js"))
+    .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") }));
+  const problems = r3Problems({
+    html,
+    appSource: readFileSync(APP_FILE, "utf8"),
+    viewSources,
+  });
   assert.equal(
     R3_EXEMPTIONS.length,
     R3_MAX_EXEMPTIONS,
     `豁免 ${R3_EXEMPTIONS.length} 条，MAX=${R3_MAX_EXEMPTIONS}：删条目必须同批改 MAX（只降不升）`,
   );
   assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+/**
+ * R3 自检（§20.9 ⑬：闸必须能被样例喂红）。
+ * 四问：模块碰别的视图的 id → 红；app.js 块外碰 reading 的 id → 红；
+ * 审校块内的函数引用 → 绿（搬运期合法）；豁免表里那条 → 绿但不许过期。
+ */
+test("R3 自检：跨视图 id / 块外引用必须红，块内引用与豁免必须绿", () => {
+  const html = [
+    '<section id="view-reading">',
+    '  <div id="reading-stream"></div>',
+    '  <div id="reading-garbled-count"></div>',
+    '</section>',
+    '<section id="view-preview">',
+    '  <div id="preview-segs"></div>',
+    '</section>',
+  ].join("\n");
+  const exemptions = [{ id: "reading-garbled-count", owner: "app.js", expires: "测试夹具" }];
+
+  // 红：模块碰了别的视图的 id
+  const crossView = r3Problems({
+    html,
+    appSource: "",
+    viewSources: [{ fileName: "preview-view.js", source: 'el("reading-stream");' }],
+    exemptions: [],
+  });
+  assert.ok(crossView.some((item) => item.includes("reading-stream")), "R3 自检失败：模块跨视图引用 id 也放过");
+
+  // 红：app.js 里不归 reading 的函数碰 reading 子树的 id
+  const blockOutside = r3Problems({
+    html,
+    appSource: 'function probeOutside() {\n  return el("reading-stream");\n}\n',
+    viewSources: [],
+    exemptions: [],
+  });
+  assert.ok(blockOutside.some((item) => item.includes("reading-stream")), "R3 自检失败：块外引用也放过");
+
+  // 绿：同一处引用，但函数落在审校块里（搬运期合法状态）
+  const insideBlock = r3Problems({
+    html,
+    appSource: [
+      '// 阅读审校（L 刀）开始',
+      'function probeInside() {',
+      '  return el("reading-stream");',
+      '}',
+      'function boot() {}',
+    ].join("\n"),
+    viewSources: [],
+    exemptions: [],
+  });
+  assert.deepEqual(insideBlock, [], `R3 自检失败：审校块内的引用被误报——${insideBlock.join("；")}`);
+
+  // 绿：豁免表里那条（但条目必须真被引用，否则算过期）
+  const exempted = r3Problems({
+    html,
+    appSource: 'function probeBadge() {\n  return el("reading-garbled-count");\n}\n',
+    viewSources: [],
+    exemptions,
+  });
+  assert.deepEqual(exempted, [], `R3 自检失败：豁免条目被误报——${exempted.join("；")}`);
 });
 
 // ---------------------------------------------------------------- R5：一状态一 owner
@@ -1365,24 +1572,53 @@ function assignmentLines(stripped, name) {
   return lines;
 }
 
-test("R5：一状态一 owner——每个状态的赋值点只能出现在 owner 文件里", () => {
+/** R5 的判定内核（纯函数：`[{fileName, source}]` + OWNERS → 违规）。 */
+function r5Problems(fileSources, owners) {
   const problems = [];
-  const files = readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"));
-  for (const fileName of files) {
-    const stripped = stripCommentsAndStrings(readFileSync(join(STATIC_DIR, fileName), "utf8"));
-    for (const [state, owner] of Object.entries(OWNERS)) {
+  for (const { fileName, source } of fileSources) {
+    const stripped = stripCommentsAndStrings(source);
+    for (const [state, owner] of Object.entries(owners)) {
       if (owner !== fileName) {
         // 非 owner 文件里出现写点 = 违规（原地变更不在本版口径内）
         for (const line of assignmentLines(stripped, state)) {
           problems.push(`${state} 的 owner 是 ${owner}，${fileName}:${line} 写了它`);
         }
-        continue;
       }
-      // owner 文件里的写点不报，但只做一次"确实有写点"的记账（防止 owner 写错文件却没人发现）
-      assignmentLines(stripped, state);
     }
   }
+  return problems;
+}
+
+test("R5：一状态一 owner——每个状态的赋值点只能出现在 owner 文件里", () => {
+  const problems = r5Problems(
+    readdirSync(STATIC_DIR)
+      .filter((name) => name.endsWith(".js"))
+      .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") })),
+    OWNERS,
+  );
   assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+/** R5 自检（§20.9 ⑬）。 */
+test("R5 自检：非 owner 文件写状态必须红，owner 文件写必须绿，声明行不算赋值", () => {
+  const owners = { readingFilter: "reading-view.js" };
+  const red = r5Problems(
+    [{ fileName: "app.js", source: "function tick() {\n  readingFilter = \"chars\";\n}\n" }],
+    owners,
+  );
+  assert.ok(red.some((item) => item.includes("写了它")), `R5 自检失败：非 owner 写状态也放过——${red.join("；")}`);
+
+  const green = r5Problems(
+    [{ fileName: "reading-view.js", source: "function tick() {\n  readingFilter = \"chars\";\n}\n" }],
+    owners,
+  );
+  assert.deepEqual(green, [], `R5 自检失败：owner 自己写被误报——${green.join("；")}`);
+
+  const declaration = r5Problems(
+    [{ fileName: "app.js", source: "let readingFilter = \"all\";\n" }],
+    owners,
+  );
+  assert.deepEqual(declaration, [], "R5 自检失败：声明行被当成赋值");
 });
 
 /**
@@ -1567,6 +1803,176 @@ test("R12（闸 A）：特征测试契约 A1 / A1b / A3", () => {
  * 名单已清空；「写路径 emit 必须从公开对象上删掉」现在是常驻断言（不再 skip），
  * 谁把写路径加回来都会红。
  */
+/**
+ * R12 自检（§20.9 ⑬：闸必须能被样例喂红）。
+ * 合成提交喂进 `commitContractProblems`：五类形态各一条，全绿那条用来防误报。
+ */
+test("R12 自检：产品卷测试必须红、未登记/非 test-contract 删除必须红、三样齐全必须绿", () => {
+  const docText = [
+    "### 18.6 判据变更登记",
+    "| 日期 | 判据 | 变更 | 批准人 | 提交 |",
+    "|---|---|---|---|---|",
+    "| 2026-10-29 | X | 删：旧断言；补：更严的断言；变异：改坏一次红在目标行 | DevLead | abc1234 |",
+    "| 2026-10-29 | Y | 删：旧断言 | DevLead | def5678 |",
+  ].join("\n");
+
+  // ① 产品 + tests/js 同一笔 → A1
+  const mixed = commitContractProblems({
+    sha: "1111111", subject: "refactor(x): 顺手", files: ["backend/book2text/static/app.js", "tests/js/boundary.test.mjs"],
+    deletions: 0, docText,
+  });
+  assert.ok(mixed.problems.some((item) => item.startsWith("A1")), `R12 自检失败：产品卷测试也放过——${mixed.problems.join("；")}`);
+
+  // ② test-contract 删了旧断言但没登记 → A3
+  const unregistered = commitContractProblems({
+    sha: "2222222", subject: "test-contract: 改判据", files: ["tests/js/boundary.test.mjs"],
+    deletions: 3, docText,
+  });
+  assert.ok(
+    unregistered.problems.some((item) => item.includes("没登记在 §18.6")),
+    `R12 自检失败：未登记的 test-contract 删除也放过——${unregistered.problems.join("；")}`,
+  );
+  assert.equal(unregistered.exempt, false, "R12 自检失败：未登记的提交不该被豁免 A1b");
+
+  // ③ 登记了但缺「变异」→ A3
+  // def5678 那行只写了「删：…」，缺「补 / 变异」两样
+  const lacking = commitContractProblems({
+    sha: "def5678", subject: "test-contract: 只写了一半", files: ["tests/js/boundary.test.mjs"],
+    deletions: 2, docText,
+  });
+  assert.ok(
+    lacking.problems.some((item) => item.includes("登记缺")),
+    `R12 自检失败：登记缺「变异证明」也放过——${lacking.problems.join("；")}`,
+  );
+
+  // ④ 三样齐全 → 绿且豁免
+  const ok = commitContractProblems({
+    sha: "abc1234", subject: "test-contract: 合规", files: ["tests/js/boundary.test.mjs"],
+    deletions: 5, docText,
+  });
+  assert.deepEqual(ok.problems, [], `R12 自检失败：合规提交被误报——${ok.problems.join("；")}`);
+  assert.equal(ok.exempt, true, "R12 自检失败：合规的 test-contract 提交没有被豁免");
+
+  // ⑤ 非 test-contract 删了 tests/js 的行 → A3；删文件 → A1b
+  const productDeletes = commitContractProblems({
+    sha: "3333333", subject: "refactor(y): 顺手删两行", files: ["tests/js/boundary.test.mjs"],
+    deletions: 2, docText,
+  });
+  assert.ok(
+    productDeletes.problems.some((item) => item.includes("首行不是 test-contract:")),
+    `R12 自检失败：普通提交删测试行也放过——${productDeletes.problems.join("；")}`,
+  );
+  const fileGone = commitContractProblems({
+    sha: "4444444", subject: "test-contract: 删文件", files: ["tests/js/x.test.mjs"],
+    deletions: 1, deletedFiles: ["tests/js/x.test.mjs"], docText,
+  });
+  assert.ok(
+    fileGone.problems.some((item) => item.startsWith("A1b")),
+    `R12 自检失败：删 tests/js 的文件也放过——${fileGone.problems.join("；")}`,
+  );
+});
+
+/**
+ * `move:` 笔类自检（Chief 2026-10-29，三条缺一条这条收窄就是开天窗）。
+ * 夹具都走**真内核**：`tableBlockRanges` 从合成源码派生块边界，`moveScopeProblems` 判放行。
+ */
+test("move: 自检：三张表内改判绿、越界改 assert 判红、动 MAX 旋钮判红、缺一边判红", () => {
+  const tables = [
+    "const OWNERS = {",
+    '  alpha: "a-view.js",',
+    "};",
+    "const VIEW_STATE_PREFIXES = {",
+    '  "a-view.js": /^alpha/,',
+    "};",
+    "const VIEW_EXPORTS = {",
+    '  "a-view.js": { names: ["init"] },',
+    "};",
+    "const R5_MAX_EXCUSES = 0;",
+    "test(\"X\", () => { assert.equal(1, 1); });",
+  ].join("\n");
+  const docText = [
+    "### 18.6 判据变更登记",
+    "| 日期 | 判据 | 变更 | 批准人 | 提交 |",
+    "|---|---|---|---|---|",
+    "| 2026-10-29 | move | 删：旧 owner；补：新 owner 指向模块；变异：撤回本笔红点名 a-view.js | DevLead | mov1234 |",
+  ].join("\n");
+
+  // ① 只改三张表 + 产品代码 → 绿
+  const ok = commitContractProblems({
+    sha: "mov1234",
+    subject: "move(a): 搬 3 个函数 + 登记表",
+    files: ["backend/book2text/static/a-view.js", "tests/js/boundary.test.mjs"],
+    deletions: 1,
+    docText,
+    moveChanges: [{
+      path: "tests/js/boundary.test.mjs",
+      addedRanges: [[2, 2], [5, 5], [8, 8]],   // 三条登记行
+      deletedRanges: [],
+      parentSource: tables,
+      commitSource: tables,
+    }],
+  });
+  assert.deepEqual(ok.problems, [], `move: 自检失败：只改登记表也判红——${ok.problems.join("；")}`);
+
+  // ② 顺手改一句 assert（表外）→ 红
+  const sneaky = commitContractProblems({
+    sha: "mov2345",
+    subject: "move(a): 搬 3 个函数 + 登记表",
+    files: ["backend/book2text/static/a-view.js", "tests/js/boundary.test.mjs"],
+    deletions: 0,
+    docText,
+    moveChanges: [{
+      path: "tests/js/boundary.test.mjs",
+      addedRanges: [[2, 2], [12, 12]],          // 第 12 行是那句 assert（表外）
+      deletedRanges: [],
+      parentSource: tables,
+      commitSource: tables,
+    }],
+  });
+  assert.ok(
+    sneaky.problems.some((item) => item.includes(":12")),
+    `move: 自检失败：表外改 assert 也放行——${sneaky.problems.join("；")}`,
+  );
+
+  // ③ 动 R5_MAX_EXCUSES（削弱闸的旋钮）→ 红
+  const weaken = commitContractProblems({
+    sha: "mov3456",
+    subject: "move(a): 搬 3 个函数 + 登记表",
+    files: ["backend/book2text/static/a-view.js", "tests/js/boundary.test.mjs"],
+    deletions: 0,
+    docText,
+    moveChanges: [{
+      path: "tests/js/boundary.test.mjs",
+      addedRanges: [[10, 10]],                  // R5_MAX_EXCUSES 那行
+      deletedRanges: [],
+      parentSource: tables,
+      commitSource: tables,
+    }],
+  });
+  assert.ok(
+    weaken.problems.some((item) => item.includes("削弱闸的旋钮")),
+    `move: 自检失败：改 MAX 上限也放行——${weaken.problems.join("；")}`,
+  );
+
+  // ④ 空声明（只改产品，没碰 tests/js）→ 红
+  const fake = commitContractProblems({
+    sha: "mov4567",
+    subject: "move(a): 只搬代码",
+    files: ["backend/book2text/static/a-view.js"],
+    deletions: 0,
+    docText,
+    moveChanges: [],
+  });
+  assert.ok(
+    fake.problems.some((item) => item.includes("空声明的 move: 是伪装")),
+    `move: 自检失败：只改产品也放行——${fake.problems.join("；")}`,
+  );
+
+  // ⑤ 块边界从源码派生：表名对但括号不配对 → red（fail closed）
+  const broken = tableBlockRanges("const OWNERS = {\n  alpha: \"a\",\n");
+  assert.equal(broken.length, 0, "块边界解析在括号不配对时不该凭空造出一个块");
+});
+
 const STABLE = ["init", "enter", "getCurrent", "reload", "toggleFollow"];   // exit 已于 8b0cfc7 删除（§19 T4 裁决：enter 幂等，exit 没有要救的东西）
 const TEMPORARY = [];   // L6 收尾：splitPrefs/applySplit/saveSplit/resetSplit/setupSplit 已从公开对象删除
 const PENDING_REMOVAL = [];   // 写路径 emit 已于 26ac481 删除；名单清空，写路径不许再加回来
