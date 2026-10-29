@@ -66,3 +66,76 @@ comm -3 <(git diff -U0 -- backend/book2text/static/app.js | grep '^-' | grep -v 
 8 个装配函数本身不再进名单（各留一行 wire 调用）
 deps 新增：checkSelection / setPageZoom / startBatchRecognition（+ 各 wire 区域自身用到的）
 ```
+
+## ⑦ 判据换成 133 个 id 全集（2026-10-29 夜，DevLead 实测，量于快照 cc8552c7 / 14,398 行）
+
+### ⅰ 为什么「只数 view-pages 子树」会假绿
+
+实测 6 个面板的 id **不在 `view-pages` 子树里**（子树只有 127 个 id，19,095 字节）：
+
+```
+page-number-panel · assign-panel · backups-mask · word-boxes-panel · split-batch-panel · layout-detect-panel
+```
+
+它们挂在视图容器之外（modal 层）。后果有两个，都会让验收假绿：
+
+1. **R3 = 58 只数了子树内的引用**，而抽出的 wire 段会同时带着面板 id；
+2. 更硬的一条：**按子树 id 聚类时，只引面板 id 的那几行不会落进任何段**——实测 7 行
+   （`setupPageNumberPanel:5866,5869` · `setupCollabControls:13488` · `setupLibrary:12453,12454,12556,12557`）。
+   它们**看着像"已经不在段里"，其实没人管**。
+
+**判据（刀 2.5 起用）**：`133 = 视图子树 127 ∪ 面板 6`，**在「8 个装配函数 + wirePagesXxx」里逐个对集**。
+
+### ⅱ 22 段 → 16 可抽 / 6 留（待判那 1 段按"留"处置）
+
+| 函数 | 可抽段（当前树行号） | 留外壳段 |
+|---|---|---|
+| `setupPageMore` | 6894–6895 | — |
+| `setupPageNumberPanel` | 5864 · 5866 · 5869 · 5871 | — |
+| `setupExportPanel` | 2223 | — |
+| `setupShell` | — | 1261–1264 · 1274–1278 |
+| `setupCollabControls` | — | 13482–13488 |
+| `setupLibrary` | 12446–12448 · 12453–12454 · 12472–12473 · 12478–12482 · 12485–12508 · 12559–12562 · 12576–12578 | 12441 · 12523–12531 · 12548–12557 · 12567–12571 |
+| `boot` | 14026–14027 · 14258–14259 · 14294 · 14296 · 14361–14362 | — |
+
+`setupRecognitionSettings` 已由 Builder 拆完（`wirePagesRecognitionSettings`，3 处），不在上表。
+
+### ⅲ 留外壳清单（刀 2.5 的验收物之一：不留清单，「留」会变成「忘了」）
+
+| 段（当前树行号） | 为什么留（混了哪个别的视图的调用） | 处置 |
+|---|---|---|
+| `setupShell` 1261–1264 | `openModal` @1262（通用骨架）+ `loadSummary` @1263（项目摘要/workflow，属 shell/library） | 永久留 |
+| `setupShell` 1274–1278 | `openPageDetail` @1277（页详情，别的视图） | 等页详情视图拆走再抽 |
+| `setupCollabControls` 13482–13488 | `openAssignPanel` @13482 / `loadAssignments` @13486 / `closeModal("assign-panel")` @13488（分配协作视图） | 永久留（该函数不属 pages） |
+| `setupLibrary` 12441 | `openSuggestionApplyPanel` @12441（建议应用面板，别的视图） | 等该面板拆走再抽 |
+| `setupLibrary` 12523–12531 | `adoptAllHighSuggestions` @12527 → 调 `loadPageDetail`（别的视图） | 等页详情拆走再抽 |
+| `setupLibrary` 12548–12557 | `openWordBoxesDialog` @12550 · `openBackups` @12554 · `closeModal("backups-mask")` @12556,12557 | 词框/备份各归其视图，永久留 |
+| `setupLibrary` 12567–12571 | `openLayoutDetectDialog` @12570（版心检测面板，别的视图） | 等该面板拆走再抽 |
+
+### ⅳ 目标数（R3 不可能归零，因为 7 段留外壳）
+
+```
+133 个 id 的引用全集          66 处 = 子树类 55 + 面板类 11
+其中已由 Builder 拆走           3 处（wirePagesRecognitionSettings）
+16 段可抽走                    39 处
+────────────────────────────────────────
+a = 搬走后装配函数里剩          24 处   ← 刀 2 的 R3 目标改成这个数
+b = 7 段留外壳占其中            24 处   ← 留外壳的账，单独记，不算进"应该降到的目标"
+```
+
+（`a == b` 不是巧合：可抽段搬空之后，装配函数里剩下的就**全在**留外壳段里，没有第三种去处。）
+
+### ⅴ deps 名单草案（25 键 = 22 函数 + 2 getter + 1 通用工具）
+
+```
+函数（22）：patchRecognitionSetting · openPageNumberPanel · openPageNumberReview ·
+  setAutoApplySetting · checkSelection · renderPages · applyPageRangeInput · recognitionOf ·
+  recognizeSelection · selectionPages · startBatchRecognition · clearPageSelection ·
+  selectAllVisiblePages · confirmLayoutFromPanel · startAuxiliaryAll · toggleMarginView ·
+  togglePageBlocksOverlay · confirmAllMargins · setPageZoom · rerunAuxiliary ·
+  confirmAllUnconfirmed · confirmSelectedPages
+getter（2）：currentProject（全局状态）· selectedPages（pages 状态，外壳有写点）
+通用工具（1）：closeModal（面板关闭，被子树外 id 的接线用到）
+```
+
+**先不改 `rules.py`**：等 Builder 把 16 段抽完、行号稳定后一次写。
