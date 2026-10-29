@@ -1,5 +1,5 @@
 """library 后半：改写 app.js（干跑，只写 /tmp）。四条判据全过才允许 --write。"""
-import os, re, sys, importlib.util
+import os, re, sys, shutil, subprocess, importlib.util
 
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import rules
@@ -8,6 +8,7 @@ build = importlib.util.module_from_spec(spec); spec.loader.exec_module(build)
 
 ROOT = build.ROOT; APP = build.APP; OUT = build.OUT
 STATIC = os.path.dirname(APP)
+NODE = shutil.which("node") or "/opt/homebrew/bin/node"
 
 def bounds_of(lines, name):
     for i, ln in enumerate(lines):
@@ -70,6 +71,32 @@ def main(write=False):
            '}')
     txt = re.sub(r'async function loadLibrary\(\) \{.*?\n\}', fwd, txt, count=1, flags=re.S)
 
+    # ---- 3.5 boot 里补 LibraryView.init(deps)（键从模块正文的 injected.* 抽取）----
+    keys = sorted(set(re.findall(r"injected\.([A-Za-z_$][\w$]*)", mod)))
+    if not keys:
+        print("!! 模块里没有 injected.* 键"); return 1
+    deps = []
+    for k in keys:
+        if k == "navigate":
+            deps.append('    navigate: (name) => showView(name),')
+        elif k == "projectId":
+            deps.append('    projectId: projectId(),')
+        elif k == "lastViewLabels":
+            deps.append('    lastViewLabels: LAST_VIEW_LABELS,')   # 常量按值注入，不是函数
+        elif k.startswith("get") and len(k) > 3 and k[3].isupper():
+            state = k[3].lower() + k[4:]
+            deps.append('    %s: () => %s,' % (k, state))
+        elif k.startswith("set") and len(k) > 3 and k[3].isupper():
+            state = k[3].lower() + k[4:]
+            deps.append('    %s: (v) => { %s = v; return v; },' % (k, state))
+        else:
+            deps.append('    %s: (...args) => %s(...args),' % (k, k))
+    init_block = "  window.LibraryView?.init({\n" + "\n".join(deps) + "\n  });\n\n"
+    marker = "  window.PreviewView?.init({"
+    if marker not in txt:
+        print("!! boot 里找不到 PreviewView.init 插入点"); return 1
+    txt = txt.replace(marker, init_block + marker, 1)
+
     os.makedirs(OUT, exist_ok=True)
     open(os.path.join(OUT, "app.js"), "w", encoding="utf-8").write(txt)
     open(os.path.join(OUT, "library-view.js"), "w", encoding="utf-8").write(mod)
@@ -79,10 +106,30 @@ def main(write=False):
                       "library-empty", "library-path", "project-list"]}
     left = {k: v for k, v in left.items() if v}
     print("搬走 %d 个函数 / %d 行" % (len(rules.MOVERS), moved))
-    print("模块 %d 行 · 残余接缝 %d · notify 转换 %d 处" % (mod.count("\n"), len(residue), conv))
+    print("模块 %d 行 · 残余接缝 %d · notify 转换 %d 处 · 注入键 %d" % (
+        mod.count("\n"), len(residue), conv, len(keys)))
     print("app.js %d → %d 行（净减 %d）" % (len(lines), txt.count("\n"), len(lines) - txt.count("\n")))
     print("残留 id 字面量：%s" % (left or "0 处 ✅"))
-    return 0 if not left else 1
+
+    # 四条判据：模块生成 ∧ app.js 改写 ∧ 两个文件 node --check ∧ 残余接缝 0
+    ok = True
+    for label, path in (("app.js", os.path.join(OUT, "app.js")),
+                        ("library-view.js", os.path.join(OUT, "library-view.js"))):
+        r = subprocess.run([NODE, "--check", path], capture_output=True, text=True)
+        print("node --check %s：%s" % (label, "PASS" if r.returncode == 0 else "FAIL"))
+        if r.returncode != 0:
+            ok = False; print(r.stderr[-1200:])
+    if residue or left:
+        ok = False
+    if not ok:
+        print("!! 四条判据未全过，不落盘"); return 1
+    if write:
+        shutil.copyfile(os.path.join(OUT, "app.js"), APP)
+        shutil.copyfile(os.path.join(OUT, "library-view.js"), os.path.join(STATIC, "library-view.js"))
+        print("已落盘：app.js + library-view.js")
+    else:
+        print("（干跑，未落盘；加 --write 才写仓库）")
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main("--write" in sys.argv))
