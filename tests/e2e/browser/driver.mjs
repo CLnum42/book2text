@@ -3730,23 +3730,73 @@ async function reviewActionsProbe(page, args) {
   await ensureReading(page);
   const rounds = Number(args.rounds || 20);
   const panelSelector = "#reading-panel-host .reading-panel__actions button:nth-child(2)";
+  // panel/judge 归因：每轮从点击那一刻观察 `#reading-panel-host`，
+  // 把"开了面板但没判中"拆成「没开」/「开了又被清」/「开了但点击没生效」。
+  // 只用 DOM，不读任何私有状态（L-109）。
+  const armObserver = () =>
+    page.evaluate(() => {
+      const host = document.getElementById("reading-panel-host");
+      window.__roundMutations = [];
+      if (window.__roundObserver) window.__roundObserver.disconnect();
+      if (!host) return false;
+      const isPanel = (node) =>
+        node && node.nodeType === 1 &&
+        ((node.classList && node.classList.contains("reading-panel")) ||
+          (node.querySelector && node.querySelector(".reading-panel")));
+      window.__roundObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          const added = [...mutation.addedNodes].filter(isPanel).length;
+          const removed = [...mutation.removedNodes].filter(isPanel).length;
+          if (added || removed) {
+            window.__roundMutations.push({ t: Math.round(performance.now()), added, removed });
+          }
+        }
+      });
+      window.__roundObserver.observe(host, { childList: true, subtree: true });
+      return true;
+    });
+
+  const readRound = () =>
+    page.evaluate(() => ({
+      mutations: window.__roundMutations || [],
+      panelPresent: Boolean(document.querySelector("#reading-panel-host .reading-panel")),
+    }));
+
   const rows = [];
   for (let i = 1; i <= rounds; i += 1) {
     const startedAt = Date.now();
-    const jumped = await page
-      .click("#reading-next-unreviewed", { label: `下一处 ${i}` })
-      .then(() => true)
-      .catch(() => false);
-    const opened = jumped
-      ? await page
+    // 队列已经判满就别再点：改后「判决即前进」会让面板一直开着，
+    // 继续点只会把 judge 埋点刷成动作数（实测多出 91 次"无效判决"）。
+    const progressNow = await page.evaluate(
+      () => (document.getElementById("reading-progress-text") || {}).textContent || ""
+    );
+    const progressMatch = /已审\s*(\d+)\s*\/\s*(\d+)/.exec(progressNow);
+    if (progressMatch && Number(progressMatch[1]) >= Number(progressMatch[2])) {
+      rows.push({ i, stopped: "queue-finished", progress: progressNow, ms: Date.now() - startedAt });
+      break;
+    }
+    // `observe:false` 用于对照：装 observer 会多一次 evaluate，可能改变时序。
+    const observing = args.observe !== false;
+    if (observing) await armObserver();
+    // **按语义推进，不按固定点击序列**：改前「判完面板关掉」，改后「判决即前进、面板自动换下一条」。
+    // 两者都要"每次推进一步"，所以：面板已经在就直接判，不在才点「下一处未审」。
+    const panelWasOpen = await page.evaluate(() =>
+      Boolean(document.querySelector("#reading-panel-host .reading-panel"))
+    );
+    const jumped = panelWasOpen
+      ? false
+      : await page
+          .click("#reading-next-unreviewed", { label: `下一处 ${i}` })
+          .then(() => true)
+          .catch(() => false);
+    const opened = await page
           .waitForFunction(
             () => Boolean(document.querySelector("#reading-panel-host .reading-panel")),
             undefined,
             { timeout: args.openTimeout || 3000 }
           )
           .then(() => true)
-          .catch(() => false)
-      : false;
+          .catch(() => false);
     const projected = await page.evaluate(() => ({
       pageNo: (document.getElementById("reading-page-no") || {}).textContent || null,
       progress: (document.getElementById("reading-progress-text") || {}).textContent || null,
@@ -3760,10 +3810,21 @@ async function reviewActionsProbe(page, args) {
     let judged = false;
     let after = projected;
     if (opened) {
-      clickedKeep = await page
-        .click(panelSelector, { label: "保留原文" })
-        .then(() => true)
-        .catch(() => false);
+      // 按文案定位「保留原文」，再走 CDP 真实鼠标——改前/改后的按钮顺序可能不同。
+      const keepPoint = await page.evaluate(() => {
+        const buttons = [...document.querySelectorAll("#reading-panel-host .reading-panel__actions button")];
+        const keep = buttons.find((b) => (b.textContent || "").trim() === "保留原文");
+        if (!keep) return null;
+        const rect = keep.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      });
+      clickedKeep = keepPoint
+        ? await page.mouse
+            .click(keepPoint.x, keepPoint.y, { label: "保留原文" })
+            .then(() => true)
+            .catch(() => false)
+        : false;
       await page.waitForTimeout(180);
       after = await page.evaluate(() => ({
         pageNo: (document.getElementById("reading-page-no") || {}).textContent || null,
@@ -3779,6 +3840,18 @@ async function reviewActionsProbe(page, args) {
       const before = numberIn(projected.progress);
       const afterNumber = numberIn(after.progress);
       judged = before !== null && afterNumber !== null && afterNumber > before;
+    }
+    const round = observing ? await readRound() : { mutations: [], panelPresent: false };
+    const openedTimes = round.mutations.filter((m) => m.added).length;
+    const clearedTimes = round.mutations.filter((m) => m.removed).length;
+    // 归因只用 DOM：判中 = 进度涨了；否则看面板开/清的时序。
+    let attribution = null;
+    if (!judged) {
+      if (panelWasOpen && openedTimes === 0) attribution = "already-open-no-progress";
+      else if (openedTimes === 0) attribution = "never-opened";
+      else if (clearedTimes > 0 && !round.panelPresent) attribution = "opened-then-cleared";
+      else if (!opened) attribution = "cleared-before-click";
+      else attribution = "opened-but-click-missed";
     }
     // 队列判完时「下一处未审」不开面板。别干等 8 秒超时——那会把墙钟和 stall 都污染。
     const finished = /已审\s*(\d+)\s*\/\s*(\d+)/.exec(String(projected.progress || ""));
@@ -3800,6 +3873,10 @@ async function reviewActionsProbe(page, args) {
       progressAfter: after.progress,
       panelKey: projected.panelKey,
       panelKeyAfter: after.panelKey,
+      panelWasOpen,
+      openedTimes,
+      clearedTimes,
+      attribution,
       ms: Date.now() - startedAt,
     });
   }
@@ -3812,10 +3889,21 @@ async function reviewActionsProbe(page, args) {
     }
     return { live: window.__b2tStepTiming || null, snapshot };
   });
+  const attributionCounts = rows.reduce((acc, row) => {
+    const key = row.attribution || "judged";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const panelActions = rows.reduce((sum, row) => sum + (row.openedTimes || 0), 0);
   return {
     rounds,
     opened: rows.filter((row) => row.opened).length,
     judged: rows.filter((row) => row.judged).length,
+    panelActions,
+    panelPerJudge: rows.filter((row) => row.judged).length
+      ? Number((panelActions / rows.filter((row) => row.judged).length).toFixed(3))
+      : null,
+    attribution: attributionCounts,
     rows,
     timing,
   };
