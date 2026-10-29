@@ -328,13 +328,19 @@ def _pagesync_check(report: Report, step: str, label: str, result: dict[str, Any
         else:
             brief = [
                 {
+                    # failures 元素已经是摊平的诊断字段（index/page/panel/...），
+                    # 它**没有** snapshot 键。早先这里写 item.get("snapshot") 取字段，
+                    # 导致失败项除 index 外全是 null——两次 index 17 的现场就是这样丢的。
                     "index": item.get("index"),
-                    "label": (item.get("snapshot") or {}).get("label"),
-                    "panel": (item.get("snapshot") or {}).get("panelPage"),
-                    "dominant": (item.get("snapshot") or {}).get("tileDominant"),
-                    "panelVisible": (item.get("snapshot") or {}).get("panelVisible"),
-                    "highlight": (item.get("snapshot") or {}).get("highlight", {}).get("any"),
+                    "label": item.get("page"),
+                    "panel": item.get("panel"),
+                    "dominant": item.get("dominant"),
+                    "panelVisible": item.get("panelVisible"),
+                    "highlight": item.get("highlight"),
+                    "highlightKey": item.get("highlightKey"),
+                    "branch": item.get("branch"),
                     "reason": item.get("reason"),
+                    "blocks": item.get("blocks"),
                 }
                 for item in failures[:3]
             ]

@@ -112,6 +112,8 @@ export async function run(cfg) {
       return await gotoProbe(page, args);
     case "next20_probe":
       return await next20Probe(page, args);
+    case "next_entry_probe":
+      return await nextEntryProbe(page, args);
     case "quality_probe":
       return await qualityProbe(page, args);
     case "next_log":
@@ -122,6 +124,34 @@ export async function run(cfg) {
       return await measureImages(page, args);
     case "audit":
       return await auditMarks(page);
+    case "probe_globals":
+      // 探针自检：模块是 IIFE，内部 let/function 在 page.evaluate 里**看不到**。
+      // 这类探测失效后不报错、只返回 "undefined"，报告里看起来像"状态是空的"，
+      // 实际是"读不到"。跑一次把还活着的名字列出来，防止静默失效。
+      return await page.evaluate(() => {
+        const names = [
+          "readingData", "readingEntries", "readingMarks", "readingPageNo", "readingFilter",
+          "readingPendingPanelKey", "readingPendingPanelEntry", "readingJumpSettleKey",
+          "readingJumpSettleTicks", "readingUserScrollSeq", "readingProgramScrollSeq",
+          "readingSyncDriver", "readingSyncUntil", "readingRendered", "readingVisibleSegments",
+          "readingOptions", "readingKey", "readingMarksWindow", "logReadingNext",
+          "readingDraftStorageKey", "readingReloadAfterBatch", "readingEditingKey",
+        ];
+        const globals = {};
+        for (const name of names) {
+          try {
+            globals[name] = eval(`typeof ${name}`);
+          } catch (error) {
+            globals[name] = "THROW";
+          }
+        }
+        return {
+          globals,
+          readingViewKeys: window.ReadingView ? Object.keys(window.ReadingView) : null,
+          nextLogLen: (window.__b2tNextLog || []).length,
+          pageSync: Boolean(window.__b2tPageSync),
+        };
+      });
     case "inspect":
       return await page.evaluate(() => {
         const seg = document.querySelector('.reading-seg[data-seq="5"]');
@@ -3315,6 +3345,107 @@ async function next20Probe(page, args) {
   }
   const log = await page.evaluate(() => (window.__next20Log || []).slice(-30));
   return { rows, log };
+}
+
+/**
+ * 「下一处未审」逐次抓现场：这条 entry 的 key / page_no / 是否标点级 / 是否跨页段 / branch。
+ *
+ * 为什么单独一条：smoke 只报"第 N 次面板没开"，但"第 N 次"可能只是序号巧合。
+ * 要在两次不同构建里证明"落在同一条 entry 上"，必须记 key；要不猜"跨页段"，
+ * 必须拿 segment.pages。这两个量 panel 快照里都没有。
+ */
+async function nextEntryProbe(page, args) {
+  await ensureReading(page);
+  const times = Number(args.times || 20);
+  const read = () =>
+    page.evaluate(() => {
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const m = label.match(/(\d+)/);
+      const panel = document.querySelector(".reading-panel");
+      const head = document.querySelector(".reading-panel__head strong");
+      const log0 = (window.__b2tNextLog || [])[0] || null;
+      const entryKey = log0 ? log0.entryKey : null;
+      let entry = null;
+      let mark = null;
+      let level = null;
+      let entryPage = log0 ? log0.entryPage : null;
+      let segPages = null;
+      let crossPage = null;
+      if (entryKey && typeof readingKey === "function") {
+        // 两种来源都试：readingEntries 跟随窗口重建，失败那刻可能已被换掉；
+        // readingMarks 是 key→mark 的 Map，更稳。
+        if (typeof readingEntries !== "undefined") {
+          entry = readingEntries.find((item) => readingKey(item.block_id, item.line_index) === entryKey) || null;
+        }
+        if (typeof readingMarks !== "undefined" && readingMarks.get) mark = readingMarks.get(entryKey) || null;
+        level = (entry && entry.level) || (mark && mark.level) || null;
+        if (entry) entryPage = entry.page_no || entryPage;
+        else if (mark) entryPage = mark.page_no || entryPage;
+        const segments = (typeof readingData !== "undefined" && readingData && readingData.segments) || [];
+        const seq = entry ? entry.seq : null;
+        const seg = seq == null ? null : segments.find((s) => s.seq === seq) || null;
+        if (seg) {
+          segPages = (seg.pages || []).map((p) => p.page_no);
+          crossPage = segPages.length > 1;
+        }
+      }
+      const lineNode = entryKey
+        ? document.querySelector(`#reading-stream .reading-line[data-key="${entryKey}"]`)
+        : null;
+      const segNode = lineNode ? lineNode.closest(".reading-seg") : null;
+      const pv = panel ? panel.getBoundingClientRect() : null;
+      return {
+        at: Date.now(),
+        label: m ? Number(m[1]) : null,
+        panelPage: head ? Number(((head.textContent || "").match(/第\s*(\d+)\s*页/) || [0, 0])[1]) || null : null,
+        panelKey: panel ? panel.dataset.key || null : null,
+        panelVisible: Boolean(pv && pv.width > 0 && pv.height > 0 && pv.bottom > 0 && pv.top < window.innerHeight),
+        lineInDom: Boolean(lineNode),
+        lineLevel: lineNode ? lineNode.dataset.level || null : null,
+        linePage: lineNode ? Number(lineNode.dataset.page) : null,
+        segPagesAttr: segNode ? segNode.dataset.pages || null : null,
+        segCrossFromDom: segNode && segNode.dataset.pages
+          ? segNode.dataset.pages.trim().split(/\s+/).filter(Boolean).length > 1
+          : null,
+        entryKey,
+        entryPage,
+        entryLevel: level,
+        entrySeq: entry ? entry.seq : null,
+        entrySpanIndex: entry ? entry.span_index : null,
+        segPages,
+        crossPage,
+        pendingKey: typeof readingPendingPanelKey !== "undefined" ? readingPendingPanelKey : "UNDEF",
+        pendingEntry: typeof readingPendingPanelEntry !== "undefined"
+          ? (readingPendingPanelEntry
+              ? `${readingPendingPanelEntry.block_id}:${readingPendingPanelEntry.line_index}`
+              : null)
+          : "UNDEF",
+        logCount: (window.__b2tNextLog || []).length,
+        log0,
+      };
+    });
+
+  const rows = [];
+  for (let i = 1; i <= times; i += 1) {
+    await page.click("#reading-next-unreviewed", { label: `下一处 ${i}` }).catch(() => {});
+    await page.waitForTimeout(700);
+    let st = await read();
+    let reopened = null;
+    if (!st.panelVisible) {
+      await page.waitForTimeout(150); // 补开 = 晚一帧；一直不开 = 状态丢了
+      const again = await read();
+      reopened = {
+        panelVisible: again.panelVisible,
+        panelKey: again.panelKey,
+        lineInDom: again.lineInDom,
+        label: again.label,
+        pendingKey: again.pendingKey,
+      };
+      st = again;
+    }
+    rows.push({ i, ...st, reopened });
+  }
+  return { times, rows };
 }
 
 /** 目录确认：换清晰度档 → 按钮文案 + 可见页图 size 参数是否跟着换。 */
