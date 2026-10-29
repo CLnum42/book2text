@@ -315,8 +315,47 @@ IDENT_CROSS_SLICE = [
     ("trimMarginUndo", "injected.trimMarginUndo", "function"),   # 刀1 依赖（刀2-5 未搬）
 ]
 
-IDENT = IDENT + IDENT_CROSS_SLICE
-IDENT_FULL = IDENT_FULL + IDENT_CROSS_SLICE   # 生成器读的是 IDENT_FULL，这里必须一起加
+# ---- 刀 2.5 的注入：11 个 wirePagesXxx + 3 条 PageTile 引用、但住在外壳的名字 ----
+#: 形态判据（§IDENT_FULL 头那两行）：`function` → 值 `injected.NAME`；`const` → **值**（写 getter 是错的）；
+#: `let` → `injected.getX()`。这 33 个全部是「外壳持有、模块只读」，没有写点，所以不进 SETTERS。
+#: 数：31 个函数 + 2 个 const（`busyPages` / `token`）= 33。
+IDENT_WIRE2 = [
+    ('adoptAllHighSuggestions', "injected.adoptAllHighSuggestions", "function"),   # 刀2.5：wire/tile 引用
+    ('applyPageRangeInput', "injected.applyPageRangeInput", "function"),   # 刀2.5：wire/tile 引用
+    ('clearPageSelection', "injected.clearPageSelection", "function"),   # 刀2.5：wire/tile 引用
+    ('confirmAllMargins', "injected.confirmAllMargins", "function"),   # 刀2.5：wire/tile 引用
+    ('confirmAllUnconfirmed', "injected.confirmAllUnconfirmed", "function"),   # 刀2.5：wire/tile 引用
+    ('confirmLayoutFromPanel', "injected.confirmLayoutFromPanel", "function"),   # 刀2.5：wire/tile 引用
+    ('confirmSelectedPages', "injected.confirmSelectedPages", "function"),   # 刀2.5：wire/tile 引用
+    ('divergenceChip', "injected.divergenceChip", "function"),   # 刀2.5：wire/tile 引用
+    ('handleTileClick', "injected.handleTileClick", "function"),   # 刀2.5：wire/tile 引用
+    ('openPageDetail', "injected.openPageDetail", "function"),   # 刀2.5：wire/tile 引用
+    ('openPageNumberPanel', "injected.openPageNumberPanel", "function"),   # 刀2.5：wire/tile 引用
+    ('openPageNumberReview', "injected.openPageNumberReview", "function"),   # 刀2.5：wire/tile 引用
+    ('openSplitBatchPanel', "injected.openSplitBatchPanel", "function"),   # 刀2.5：wire/tile 引用
+    ('paintTileSuggestionMark', "injected.paintTileSuggestionMark", "function"),   # 刀2.5：wire/tile 引用
+    ('patchRecognitionSetting', "injected.patchRecognitionSetting", "function"),   # 刀2.5：wire/tile 引用
+    ('recognitionChip', "injected.recognitionChip", "function"),   # 刀2.5：wire/tile 引用
+    ('recognizePage', "injected.recognizePage", "function"),   # 刀2.5：wire/tile 引用
+    ('recognizeSelection', "injected.recognizeSelection", "function"),   # 刀2.5：wire/tile 引用
+    ('reviewBadge', "injected.reviewBadge", "function"),   # 刀2.5：wire/tile 引用
+    ('selectAllVisiblePages', "injected.selectAllVisiblePages", "function"),   # 刀2.5：wire/tile 引用
+    ('setMarginJudgementSetting', "injected.setMarginJudgementSetting", "function"),   # 刀2.5：wire/tile 引用
+    ('setPageZoom', "injected.setPageZoom", "function"),   # 刀2.5：wire/tile 引用
+    ('startAuxiliaryAll', "injected.startAuxiliaryAll", "function"),   # 刀2.5：wire/tile 引用
+    ('startBatchRecognition', "injected.startBatchRecognition", "function"),   # 刀2.5：wire/tile 引用
+    ('startTileMarginDrag', "injected.startTileMarginDrag", "function"),   # 刀2.5：wire/tile 引用
+    ('tileClassName', "injected.tileClassName", "function"),   # 刀2.5：wire/tile 引用
+    ('tileTitle', "injected.tileTitle", "function"),   # 刀2.5：wire/tile 引用
+    ('toggleMarginView', "injected.toggleMarginView", "function"),   # 刀2.5：wire/tile 引用
+    ('togglePageBlocksOverlay', "injected.togglePageBlocksOverlay", "function"),   # 刀2.5：wire/tile 引用
+    ('workflowChip', "injected.workflowChip", "function"),   # 刀2.5：wire/tile 引用
+    ('busyPages', "injected.busyPages", "const"),   # 刀2.5：wire/tile 引用（const → 值注入）
+    ('token', "injected.token", "const"),   # 刀2.5：wire/tile 引用（const → 值注入）
+]
+
+IDENT = IDENT + IDENT_CROSS_SLICE + IDENT_WIRE2
+IDENT_FULL = IDENT_FULL + IDENT_CROSS_SLICE + IDENT_WIRE2   # 生成器读的是 IDENT_FULL，这里必须一起加
 
 # ---- 刀 1 的 pages 私有数据：**模块自己持有**（注入 = 外壳一份、模块一份，libraryProjects 那次的起点）----
 #: **_pageBlockCache 不搬_**：外壳 app.js:1199 / 1221 有 `.clear()` 写点、index 在 7932 读它 →
@@ -330,7 +369,7 @@ EXPECTED_API_KEYS = ["init", "ensureMarginFitted", "loadLayoutBlocks", "loadSetu
                      "renderRecognitionStatus", "savePageMargin", "syncPageStates",
                      "undoMarginEdit", "updateMarginDetectProgress", "updatePageVisibility"]
 
-EXPECT_SEAMS = 92   # 95 − 3（applyTileState / buildTile / capturePageTileMetrics 进刀2 movers，不再注入）
+EXPECT_SEAMS = 124   # 92 + 32（刀 2.5：33 个里 `renderPages` 模块内已有声明，不注入）
 EXPECT_STATES = 45     # 状态/常量；46 = 45 + el（el 在 IDENT 里）
 EXPECT_TOTAL = 46      # 名单 states_and_consts 的条数
 

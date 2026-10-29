@@ -393,6 +393,12 @@ def main():
     declared = set(re.findall(r'(?m)^(?:async\s+)?function ([A-Za-z_$][\w$]*)', code))
     declared |= set(re.findall(r'(?m)^(?:let|const|var) ([A-Za-z_$][\w$]*)', code))
     declared |= set(movers) | set(getattr(rules, "MOVED_STATES", [])) | set(getattr(rules, "RESIDUE_OK", [])) | {"el"}
+    # **增量模式**：现模块里已声明的名字（刀 1 搬进去的）不算残余——生成器只产出这一刀的正文，
+    # 若只扫正文，每个「前几刀已搬走」的名字都会假报成缺口（刀2.5 实测：renderPages）。
+    if os.path.exists(module_path):
+        existing_decl = open(module_path, encoding="utf-8").read()
+        declared |= set(re.findall(r'(?m)^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)', existing_decl))
+        declared |= set(re.findall(r'(?m)^\s*(?:let|const|var)\s+([A-Za-z_$][\w$]*)', existing_decl))
     residue = sorted(n for n in top_names - declared
                      if re.search(r'(?<![\w$.])' + re.escape(n) + r'\b', code))
 
