@@ -9,15 +9,18 @@
  * - `ms` 是**墙钟**，只算 `enter` 到 `leave` 之间；同一时刻只有一步是 `current`；
  * - 重复 `enter` 同一步**不重复计时**（视图重绘会反复调，不能把重绘算成用户时间）；
  * - `totalMs` = 各步 `ms` 之和；
- * - **卡住 = 无进展**：一次动作后 500ms 内，进度键（`pageNo` / 已判条数 / 面板开合）没变化
- *   → `stalls + 1`；同一步连续 3 次 → `stuck: true`；`longestStallMs` 记最长的那次；
- * - `idleOver60s` / `longestIdleMs` **只作发现**（无动作间隔），**不参与"卡住"判定**。
+ * - `idleOver60s` / `longestIdleMs` 记**无动作间隔**（只作发现，不判好坏）；
+ * - ~~卡住 = 动作后 500ms 内进度键没变~~ **已删除（2026-10-29）**：`bump()` 先更新进度键、
+ *   再挂判定，判定基准取的是"动作之后"的键，500ms 后当然没变 —— 实测 253 次动作产生 252 次
+ *   `stall`，**恒等于动作数**，不可用作卡顿判据。死因见 `docs/known-limitations.md`（L-110）。
+ *   真要做，判据必须是**外部进展**（服务端队列变化 / 用户输入后无响应），不是"进度键没变"。
+ *   同批删掉：`stalls` / `stuck` / `consecutiveStalls` / `longestStallMs` 与那个 500ms 定时器。
  *
  * **进度键必须由接入点传进来**（Architect 2026-10-29）：模块只接收调用方递来的快照，
  * **不许自己去读别的模块状态**——否则它立刻变成第二个写点。
  *
- * **同一个 500ms 判定只能挂一个定时器**：每次动作先 `clearTimeout` 上一次，`leave` 清空。
- * 40 页审校动辄上百次动作，一次动作一个 timer 就是上百个隐形状态源，而且只在手快时出现。
+ * 定时器随 `stalls` 一起删掉了：它本来就是那条判据的载体，判据证伪，载体也不留
+ * （免得下一个人只看到 timer、以为还有个"卡住"指标在跑）。
  *
  * 不负责什么：不判"这一步该多久"、不判好坏、不上报、不落盘。它只产生数。
  */
@@ -25,8 +28,6 @@
   "use strict";
 
   const IDLE_MS = 60 * 1000;
-  const STALL_MS = 500;
-  const STUCK_AFTER = 3;
   const ACTIONS = ["page", "judge", "panel", "back"];
 
   let clock = () => Date.now();
@@ -34,7 +35,6 @@
   // 只读统计模块崩掉，比少一个指标坏得多。
   let setTimer = typeof setTimeout === "function" ? (fn, ms) => setTimeout(fn, ms) : () => null;
   let clearTimer = typeof clearTimeout === "function" ? (id) => clearTimeout(id) : () => {};
-  let stallTimer = null;
   let live = null;
 
   const now = () => {
@@ -61,11 +61,6 @@
       leftAt: null,
       lastActionAt: null,
       progressKey: "",
-      progressAt: null,
-      stalls: 0,
-      consecutiveStalls: 0,
-      stuck: false,
-      longestStallMs: 0,
       idleOver60s: 0,
       longestIdleMs: 0,
       actions: {},
@@ -75,38 +70,6 @@
   function recordOf(step) {
     if (!live.steps[step]) live.steps[step] = makeStep(step);
     return live.steps[step];
-  }
-
-  function cancelStall() {
-    if (stallTimer !== null) {
-      clearTimer(stallTimer);
-      stallTimer = null;
-    }
-  }
-
-  /**
-   * 挂上这一次的 500ms 判定。**先取消上一次**——同一个 500ms 判定同时只允许一个定时器。
-   * 触发时比对进度键：变了 = 有进展，不计；没变 = 一次"卡住"。
-   */
-  function armStall(record) {
-    cancelStall();
-    const keyAtArm = record.progressKey;
-    const stepName = record.name;
-    stallTimer = setTimer(() => {
-      stallTimer = null;
-      if (!live.current || live.current !== stepName) return;   // 已经切走：这一步的判定作废
-      const current = recordOf(stepName);
-      if (keyOf(live.progress) !== keyAtArm) {
-        current.consecutiveStalls = 0;                          // 有进展
-        return;
-      }
-      const at = now();
-      current.stalls += 1;
-      current.consecutiveStalls += 1;
-      const since = current.progressAt === null ? STALL_MS : Math.max(0, at - current.progressAt);
-      if (since > current.longestStallMs) current.longestStallMs = since;
-      if (current.consecutiveStalls >= STUCK_AFTER) current.stuck = true;
-    }, STALL_MS);
   }
 
   /** 进入某一步。已经在同一步里就什么都不做（重绘会反复调）。 */
@@ -119,7 +82,6 @@
     record.visits += 1;
     record.enteredAt = at;
     record.lastActionAt = at;
-    record.progressAt = at;
     record.progressKey = keyOf(live.progress);
     live.current = name;
     return name;
@@ -139,14 +101,13 @@
     live.totalMs += spent;
     if (live.current === name) {
       live.current = null;
-      if (stallTimer !== null) cancelStall();
     }
     return spent;
   }
 
   /**
    * 更新进度快照（被动输入，不是动作）：由接入点递进 `pageNo` / 已判条数 / 面板开合的当前值。
-   * 键变了 = 有进展 → 连续 stall 清零。**不取消**已经挂上的 500ms 判定（那一次仍要看结果）。
+   * 键变了 = 有进展（只更新快照，不再牵动任何"卡住"判定——那条判据已删）。
    */
   function timingProgress(progress) {
     const name = live.current;
@@ -156,8 +117,6 @@
     live.progress = progress;
     if (key !== record.progressKey) {
       record.progressKey = key;
-      record.progressAt = now();
-      record.consecutiveStalls = 0;
     }
     return record.progressKey;
   }
@@ -182,7 +141,6 @@
     record.actions[key] = (record.actions[key] || 0) + 1;
     record.lastActionAt = at;
     if (progress !== undefined) timingProgress(progress);
-    armStall(record);
     return name;
   }
 
@@ -218,7 +176,6 @@
    */
   function timingInit(deps) {
     const options = deps || {};
-    cancelStall();
     if (typeof options.now === "function") clock = options.now;
     if (typeof options.setTimeout === "function") setTimer = options.setTimeout;
     if (typeof options.clearTimeout === "function") clearTimer = options.clearTimeout;
