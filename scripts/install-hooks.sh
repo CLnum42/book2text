@@ -59,7 +59,7 @@ if $GITC commit -q -m "should be rejected" >/dev/null 2>&1; then
   echo "✗ 自检失败：套件红着，提交却成功了——这个闸不会拒红" >&2
   exit 1
 fi
-echo "✓ 自检 1/3：套件红 → 拒绝提交"
+echo "✓ 自检 1/4：套件红 → 拒绝提交"
 
 # 情形 2：索引绿、工作区脏 → 必须通过（验的是索引，不是盘上）
 printf 'process.exit(0);\n' > tests/js/run.mjs
@@ -70,7 +70,7 @@ if ! $GITC commit -q -m "green index, dirty worktree" >/dev/null 2>&1; then
   echo "  说明闸还在验工作区——那正是 2026-10-29 那个洞" >&2
   exit 1
 fi
-echo "✓ 自检 2/3：索引绿 + 工作区脏 → 放行（验索引）"
+echo "✓ 自检 2/4：索引绿 + 工作区脏 → 放行（验索引）"
 
 # 情形 3：索引红（坏文件已 add）→ 必须拒绝
 git add tests/js/run.mjs
@@ -80,7 +80,33 @@ if $GITC commit -q -m "should be rejected 2" >/dev/null 2>&1; then
   echo "✗ 自检失败：坏文件已 add 进索引，提交却成功了" >&2
   exit 1
 fi
-echo "✓ 自检 3/3：索引红 → 拒绝提交"
+echo "✓ 自检 3/4：索引红 → 拒绝提交"
+
+# ---- 自检 4：pre-push 的 pytest 真的读"那棵树"吗（变异）----
+# 2026-10-29：pytest 一开始读工作区（editable 安装让 STATIC_DIR 指向真实仓库），
+# 别人的在制品能把你拦住、你的红树也能全绿。修法是 PYTHONPATH + 断言。
+# 这条自检把"修好之后还咬不咬人"固化下来——**别靠人记得跑**。
+if [ -x "$REPO/.venv/bin/python" ] && [ -f "$REPO/backend/book2text/static/app.js" ]; then
+  # 归一化：macOS 的 /var → /private/var（同 §22 那条规矩，这里也栽了一次）
+  T4=$(cd "$(mktemp -d "${TMPDIR:-/tmp}/b2t-staticcheck.XXXXXX")" && pwd -P)
+  if git -C "$REPO" archive HEAD 2>/dev/null | tar -x -C "$T4" 2>/dev/null; then
+    SD_TREE=$( cd "$T4" && PYTHONPATH="$T4/backend" "$REPO/.venv/bin/python" \
+      -c 'from book2text import paths; print(paths.STATIC_DIR)' 2>/dev/null || echo "?" )
+    SD_RAW=$( cd "$T4" && "$REPO/.venv/bin/python" \
+      -c 'from book2text import paths; print(paths.STATIC_DIR)' 2>/dev/null || echo "?" )
+    case "$SD_TREE" in
+      "$T4"*) echo "✓ 自检 4/4：带 PYTHONPATH → STATIC_DIR 指在这棵树里" ;;
+      *) echo "✗ 自检 4/4 失败：带 PYTHONPATH 仍指向 $SD_TREE（应在这棵树 $T4 里）" >&2; rm -rf "$T4"; exit 1 ;;
+    esac
+    case "$SD_RAW" in
+      "$T4"*) echo "✗ 自检 4/4 失败：不带 PYTHONPATH 也指向这棵树——检查已失效（它必须指向真实工作区才说明会咬人）" >&2; rm -rf "$T4"; exit 1 ;;
+      *) echo "✓ 自检 4/4：不带 PYTHONPATH → STATIC_DIR 指到 $SD_RAW（真实工作区）→ 闸会红，检查有效" ;;
+    esac
+  fi
+  rm -rf "$T4"
+else
+  echo "… 自检 4/4 跳过（缺 .venv 或 app.js）"
+fi
 
 echo ""
 echo "✓ 闸已安装并自检通过：$(git -C "$REPO" config --get core.hooksPath)"
