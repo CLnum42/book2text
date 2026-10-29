@@ -6174,6 +6174,25 @@ function paintTaskChip(input) {
     chip.append(toggle, cancel);
   }
 
+  // 痕迹态（取消 / 失败 / 中断）也要能自己关掉：只给一个 ✕，别逼用户等 30 秒
+  const terminal = ["cancelled", "failed", "interrupted"].includes(input.status);
+  if (terminal) {
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "tpill__ctl";
+    dismiss.textContent = "✕";
+    dismiss.title = "关闭提示";
+    dismiss.setAttribute("aria-label", "关闭提示");
+    dismiss.dataset.state = "dismiss";
+    dismiss.addEventListener("click", (event) => {
+      event.stopPropagation();          // 别顺带把抽屉打开
+      clearChipAutoHide();
+      lastChipInput = null;
+      chip.hidden = true;               // 立即消失（不等 30s）
+    });
+    chip.append(dismiss);
+  }
+
   // 切窄/切宽那一刻立刻重绘（不等 0.9s 轮询）
   if (!chipResizeBound) {
     chipResizeBound = true;
