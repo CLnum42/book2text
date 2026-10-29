@@ -1145,7 +1145,10 @@ R 编号由 TestDev 在闸表里领，§2 的 R1–R8 不动。
 
 **判据**：输出里必须**逐条列出 13 条边的名字**且每条标 RED。少于 13 条 = 不许打 tag；也不许把证据降成 N/13 再宣布通过——那走 §18.6 登记到期点。
 
-**打 tag 那一笔的同批动作（过渡态不许活成终态）**：把 CI 里 `contract-registry --strict --allow-transitional-base` 的 `--allow-transitional-base` **删掉**。那面 flag 的存在是因为 tag 现在还打在 L0 上；真 base 一打出，它就成了「CI 永远放行 base 不合格」的常开开关。同批不删 = 这个 tag 不算切完。
+**打 tag 那一笔的同批动作（过渡态不许活成终态）**：
+1. 把 CI 里 `contract-registry --strict --allow-transitional-base` 的 `--allow-transitional-base` **删掉**。那面 flag 的存在是因为 tag 现在还打在 L0 上；真 base 一打出，它就成了「CI 永远放行 base 不合格」的常开开关。同批不删 = 这个 tag 不算切完。
+2. 把 `tests/js/replay-base-modules.txt` 更新成**该笔提交** `backend/book2text/static/` 下的 `*-view.js` 列表（真 base 打出时会是 **5 个**，含 `merge-view.js`）。**漏写 = 红，多写 = 红**（fail closed）——这是 base 自检两个方向的机检落点，别手改记录去凑绿：记录是「打 tag 时刻的事实」，不是期望值的旋钮。
+3. 上面两条做完，才允许把 13/13 四件证据的「SHA / 谁跑 / 命令 / 输出文件」填上实数。
 
 ### 18.4 闸 C：运行时注入面探针（一次运行，四条断言）
 
@@ -1212,6 +1215,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 **`contract-registry.mjs` 的统计范围现在是过渡范围**：它算的是 `ring-break-base..HEAD`（今天 172 笔），而当前 tag 打在 L0 上（见 §18.2），这个范围**不等于破环序列**。真 base 切出前，「0 笔不合格」只能当「这一段历史里没有未登记的 test-contract 提交」，**不许当「登记齐全」的结论用**；输出里的那句 `… 笔提交的 §18.6 登记齐全` 也要在 TestDev 下次动它时改成「过渡范围」措辞。
 
 | 2026-10-29 | registry 读数口径 + base 树自检 | 删：`0 笔（N 笔提交的 §18.6 登记齐全）`——base 不是回放基时这句会被读成结论。补：base 不合法时输出 `过渡范围 <base>..HEAD（N 笔）：… 不许当「登记齐全」用`；新增 `baseTreeGap()`——`<base>:static` 与 HEAD 的 `*-view.js` 集合必须相等，不等 fail closed（`--strict` 红），过渡期须显式 `--allow-transitional-base` 且输出注明；`--base <ref>` 可换基点。变异：base=`afe20fe`（只有 reading-view.js）→ 红并说明两种红会混；`--base HEAD` → 绿「HEAD..HEAD（0 笔）登记齐全」；`--strict` 配 tag → exit 1，配 HEAD → exit 0。**三条读数 DevLead 已复跑**：默认 exit 0（带过渡红字）、`--strict` exit 1、`--strict --base HEAD` exit 0 | DevLead | a78188d |
+| 2026-10-29 | base 自检改口径 | 删：`baseTreeGap` 用「tag 树 = 运行时 HEAD 的 `*-view.js` 集合」判回放基（merge 后 HEAD 合法长模块会误红）。补：expected 改为冻结记录 `tests/js/replay-base-modules.txt`，切 tag 同批更新；记录缺失/为空/多写 = 红（fail closed）；运行时不读 HEAD 集合。变异：`tag=afe20fe` → 红（`[reading-view.js]` ≠ 记录 4 个）、`--strict` exit 1；`--base HEAD` → 绿；删记录 → 红「base 判定不能猜」；多写 `merge-view.js` → 红。**四条 DevLead 已复跑**，外加第 5 条：临时 clone 里真造出 `merge-view.js` 使 HEAD 有 5 个模块、`--base HEAD~1`（4 个模块）→ 绿（实测输出 `0 笔不合格（HEAD~1..HEAD（1 笔）登记齐全）`） | DevLead | 68adf16 |
 只有 DevLead 能加行。没有登记行的放宽一律按违规算。
 
 ---
