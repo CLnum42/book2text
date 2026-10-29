@@ -23,7 +23,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const DOC_FILE = fileURLToPath(new URL("../../docs/refactor/reading-view-boundary.md", import.meta.url));
+// 覆盖三份：规格书 + 决策记录 + 已知限制。写死一份等于另外两份没有回合——
+// `docs/decisions.md` 里真实的 D-100 撞号就是 Doc 人工翻出来的。
+const DOC_FILES = [
+  "docs/refactor/reading-view-boundary.md",
+  "docs/decisions.md",
+  "docs/known-limitations.md",
+].map((rel) => fileURLToPath(new URL(`../../${rel}`, import.meta.url)));
 
 /** 抹掉围栏代码块（保留行号：只把内容清空，换行不动）。 */
 export function stripFencedBlocks(text) {
@@ -57,6 +63,19 @@ export function parseHeadings(text) {
     });
   });
   return headings;
+}
+
+/**
+ * 排序口径（2026-10-29 定，写死在这里免得以后两个人各读各的）：
+ * **字母后缀排在数字子节之前** —— `12.1 → 12.1b → 12.1.1`。
+ * 理由：`12.1b` 是"12.1 这个位置的插入修订"，而 `12.1.1` 是下一层；插入件必须在层之前，
+ * 否则"13.2b 必须排在 13.2 之后、13.3 之前"那条（§20.9 ⑫）就和它自相矛盾。
+ * 当前文档没有这种并存，`compareIds` 用缺段 = -1 恰好得到这个顺序——用夹具把它钉住。
+ */
+
+/** 行内代码（`` `…` ``）里的 `§` 不是引用，是示例；扫之前抹掉，避免"示例里的三级编号"被当成断链。 */
+export function stripInlineCode(line) {
+  return line.replace(/`[^`]*`/g, (chunk) => " ".repeat(chunk.length));
 }
 
 /** 解析 `13.2b` → `{ parts: [13, 2], suffix: "b" }`。 */
@@ -137,7 +156,9 @@ export function structureProblems(markdown) {
         );
       }
     }
-    lastAtDepth.set(depth, heading.id);
+    // 记账记**数字前缀**：`12.1b` 不是 `12.1.1` 的父节（父节是 `12.1`），
+    // 否则"三级 + 字母后缀"并存时会把合法的 `12.1b → 12.1.1` 判成跑出父节。
+    lastAtDepth.set(depth, parsed.parts.join("."));
     // 更深层的历史要清掉，否则 `13.2` 之后出现 `13.3` 还留着旧的 `13.2.x`
     for (const key of [...lastAtDepth.keys()]) {
       if (key > depth) lastAtDepth.delete(key);
@@ -148,30 +169,89 @@ export function structureProblems(markdown) {
 }
 
 /**
- * 断链：`§N` / `§N.M[后缀]` 的引用必须能在标题集合里找到。纯函数，方便喂合成样例。
+ * 断链：`§N` / `§N.M[后缀]`（**任意深度**）的引用必须能在标题集合里找到。
+ *
+ * - **全深度**：只认 `§N` / `§N.M` 的版本对 `§18.1.4` 只会去查 `§18.1`——那节存在，
+ *   于是悬空引用装闸也照样绿（Doc 实测）。口径必须与标题抽取同宽。
+ * - **跨文档并集**：`decisions.md` 里的 `§19` / `§21.8` 指的是规格书里的节，
+ *   按单文件判会把它们全判成断链（假红）。
+ * - **行号必须是真的**：格式承诺是 `文件:行:节号`，写死 0 等于"报错指不出位置"。
+ * - 行内代码里的 `§` 是示例，先抹掉。
+ *
+ * @param {string} markdown 待查文档
+ * @param {Set<string>} knownIds 三份文档的标题 id 并集
+ * @returns {string[]} `行:§id …` 形式的说明
  */
-export function danglingReferenceProblems(markdown) {
-  const clean = stripFencedBlocks(markdown);
-  const headings = parseHeadings(markdown);
-  const ids = new Set(headings.map((item) => item.id));
-  const chapters = new Set(headings.map((item) => item.id));
+export function danglingReferenceProblems(markdown, knownIds) {
   const problems = [];
-  const ref = /§\s*(\d+)(?:\.(\d+))?([a-z]*)/g;
-  let match;
-  while ((match = ref.exec(clean)) !== null) {
-    const [, n, m, suffix] = match;
-    const id = m === undefined ? n : `${Number(n)}.${Number(m)}${suffix || ""}`;
-    if (!chapters.has(id)) {
-      problems.push(`0:§${id} 悬空引用（文档里没有 §${id}）`);
+  stripFencedBlocks(markdown).split("\n").forEach((rawLine, index) => {
+    const line = stripInlineCode(rawLine);
+    for (const match of line.matchAll(/§\s*(\d+(?:\.\d+)*)([a-z]?)/g)) {
+      const id = `${match[1]}${match[2] || ""}`;
+      if (!knownIds.has(id)) {
+        problems.push(`${index + 1}:§${id} 悬空引用（三份文档里都没有 §${id}）`);
+      }
     }
-  }
+  });
   return [...new Set(problems)];
 }
 
+/**
+ * ID 型编号（`D-100` / `L-106`）的重复检测。
+ *
+ * **只对 decisions.md 开红**（2026-10-29 决定）：`known-limitations.md` 的 `L-106` 故意挂了 6 层
+ * （本体 + 递归版 + 第 3–6 层），那 6 层要不要收成一个号是 Architect 的事，**闸不替人决定**。
+ * 等 L 收干净了再加 L 规则——那时不需要例外表。
+ *
+ * **标记也算 ID**：`## D-004 修订` 抽出来是 `D-004修订`，与 `D-004` 不是同一个编号
+ * （decisions.md 真有这一行；不把"修订"算进 ID，第一天就红一条真没问题的）。
+ */
+const ID_HEADING = /^(#{2,3})\s+([A-Z]+-\d+[a-z]?)(\s*修订)?/;
+
+/** 抽到多少个 ID 型编号标题（解析自检用）。 */
+export function idHeadingCount(markdown) {
+  return stripFencedBlocks(markdown)
+    .split("\n")
+    .filter((line) => ID_HEADING.test(line)).length;
+}
+
+export function idHeadingProblems(markdown) {
+  const problems = [];
+  const seen = new Map();
+  stripFencedBlocks(markdown).split("\n").forEach((line, index) => {
+    const match = ID_HEADING.exec(line);
+    if (!match) return;
+    const id = `${match[2]}${(match[3] || "").replace(/\s+/g, "")}`;
+    if (seen.has(id)) {
+      problems.push(`${index + 1}:${id} 重复编号（第 ${seen.get(id)} 行已有同一个 ID）`);
+    } else {
+      seen.set(id, index + 1);
+    }
+  });
+  return problems;
+}
+
 /** 真实文档的一次完整判定（失败信息按行排序，一行一条）。 */
-export function documentProblems(markdown) {
-  return [...structureProblems(markdown), ...danglingReferenceProblems(markdown)]
-    .sort((a, b) => Number(a.split(":")[0]) - Number(b.split(":")[0]));
+export function docSetProblems(docs) {
+  const problems = [];
+  const knownIds = new Set();
+  for (const { file, markdown } of docs) {
+    for (const heading of parseHeadings(markdown)) knownIds.add(heading.id);
+  }
+  for (const { file, markdown, idRule } of docs) {
+    const label = file.split("/docs/").pop();
+    for (const item of structureProblems(markdown)) problems.push(`${label}:${item}`);
+    for (const item of danglingReferenceProblems(markdown, knownIds)) problems.push(`${label}:${item}`);
+    if (idRule === "decisions") {
+      for (const item of idHeadingProblems(markdown)) problems.push(`${label}:${item}`);
+    }
+  }
+  return problems.sort((a, b) => {
+    const [fileA, lineA] = a.split(":");
+    const [fileB, lineB] = b.split(":");
+    if (fileA !== fileB) return fileA < fileB ? -1 : 1;
+    return Number(lineA) - Number(lineB);
+  });
 }
 
 // ---------------------------------------------------------------- 自检夹具（⑬）
@@ -200,24 +280,87 @@ test("docs 自检④：两份相同 H1 判红", () => {
   assert.ok(structureProblems(twoH1).length > 0, "自检失败：两份相同 H1 也放过（只扫 N.M 的实现看不见它）");
 });
 
-test("docs 自检⑤：§X 指向不存在的节判红", () => {
+test("docs 自检⑤：§X 指向不存在的节判红，且报出**真实行号**", () => {
   const text = ["## 13. 一章", "### 13.2 子节", "见 §13.2 和 §13，也见 §13.9"].join("\n");
-  const problems = danglingReferenceProblems(text);
+  const known = new Set(parseHeadings(text).map((item) => item.id));
+  const problems = danglingReferenceProblems(text, known);
   assert.equal(problems.length, 1, `自检失败：应只报 §13.9 一处悬空，实际 ${problems.join("；")}`);
   assert.match(problems[0], /13\.9/);
+  // 格式承诺是 `文件:行:节号`：行号写死 0 等于报错指不出位置
+  const line = Number(problems[0].split(":")[0]);
+  assert.ok(line > 0, `自检失败：悬空引用报的行号是 ${line}——真红时人拿不到位置，只能全篇 grep`);
+  assert.equal(line, 3, `自检失败：行号对了但位置不对（应为第 3 行，实际 ${line}）`);
+});
+
+test("docs 自检⑥：三级引用只查前两级会假绿——§12.1.9 必须红（§12.1 存在）", () => {
+  const text = ["## 12. 一章", "### 12.1 子节", "见 §12.1.9"].join("\n");
+  const known = new Set(parseHeadings(text).map((item) => item.id));
+  const problems = danglingReferenceProblems(text, known);
+  assert.equal(problems.length, 1, `自检失败：三级引用的错字放过了——${problems.join("；") || "（零问题）"}`);
+  assert.match(problems[0], /12\.1\.9/);
+});
+
+test("docs 自检⑦：行内代码里的 § 是示例，不算引用", () => {
+  const text = ["## 12. 一章", "### 12.1 子节", "写法是 `§12.1.9` 这种（示例，不是引用）"].join("\n");
+  const known = new Set(parseHeadings(text).map((item) => item.id));
+  assert.deepEqual(danglingReferenceProblems(text, known), [], "自检失败：行内代码里的示例被当成断链");
+});
+
+test("docs 自检⑧：两个 ## D-100 判红，D-004 与 D-004 修订 不算重复", () => {
+  const red = idHeadingProblems(["## D-100 | 第一条", "## D-100 | 第二条"].join("\n"));
+  assert.ok(red.length > 0, "自检失败：两个 D-100 也放过——decisions.md 真的撞过号");
+  const fine = idHeadingProblems([
+    "## D-004 | 本体",
+    "## D-004 修订 | 改了一条",
+    "## D-111 | 另一个",
+  ].join("\n"));
+  assert.deepEqual(fine, [], `自检失败：修订版被当成撞号——${fine.join("；")}`);
+});
+
+test("docs 自检⑨：L-106 与 L-106b 是不同编号（后缀字母不并号）", () => {
+  const problems = idHeadingProblems(["### L-106 本体", "### L-106b 插入件"].join("\n"));
+  assert.deepEqual(problems, [], `自检失败：L-106 与 L-106b 被并成一个号——${problems.join("；")}`);
+});
+
+test("docs 自检⑩：排序口径——字母后缀在数字子节之前（12.1 → 12.1b → 12.1.1 判绿）", () => {
+  const text = ["## 12. 一章", "### 12.1 子节", "### 12.1b 插入件", "### 12.1.1 下一层"].join("\n");
+  assert.deepEqual(
+    structureProblems(text),
+    [],
+    "自检失败：`12.1b` 与 `12.1.1` 的先后口径变了（本节头写着：后缀在前、子节在后）",
+  );
 });
 
 // ---------------------------------------------------------------- 真实文档
 
-test("docs 结构：编号不重复、H1 不重复、不倒退、不跑出父节、无悬空引用", () => {
-  const markdown = readFileSync(DOC_FILE, "utf8");
-  const problems = documentProblems(markdown);
-  assert.deepEqual(
-    problems,
-    [],
-    `文档结构问题（一行一条，格式 文件:行:节号 —— ${DOC_FILE}）：\n`
-      + problems.map((item) => `${DOC_FILE}:${item}`).join("\n"),
-  );
+const DOC_SET = DOC_FILES.map((file) => ({
+  file,
+  markdown: readFileSync(file, "utf8"),
+  idRule: file.endsWith("decisions.md") ? "decisions" : null,
+}));
+
+test("docs 结构：三份文档的编号不重复、H1 不重复、不倒退、不跑出父节、无悬空引用", () => {
+  const problems = docSetProblems(DOC_SET);
+  assert.deepEqual(problems, [], `文档结构问题（一行一条）：\n${problems.join("\n")}`);
   // 解析自检：抽不到东西时上面那条会"零问题"假绿
-  assert.ok(parseHeadings(markdown).length > 0, "一个编号标题都没抽到——抽取口径失效了（这条闸会假绿）");
+  for (const { file, markdown } of DOC_SET) {
+    const numeric = parseHeadings(markdown).length;
+    const idCount = idHeadingCount(markdown);
+    // decisions.md 只用 ID 型编号（D-xxx），known-limitations 两种都有——按"任一抽到"判解析是否工作
+    assert.ok(
+      numeric + idCount > 0,
+      `${file} 数字编号与 ID 型编号都没抽到——抽取口径失效（这条闸会假绿）`,
+    );
+  }
+});
+
+test("docs 已知答案回归：decisions.md 里只有一个 D-100 标题（Doc 的 grep 口径曾数成两个）", () => {
+  const decisions = DOC_SET.find((item) => item.file.endsWith("decisions.md"));
+  const ids = parseHeadings(decisions.markdown).map((item) => item.id);
+  // 已知答案：D-100 撞号后，「后台重活」那条已改成 D-111，所以标题里只剩一个 D-100。
+  // 注意：正文里还有"原 D-100"这类说明文字——**按标题 ID 抽才对**，
+  // `grep -oE 'D-[0-9]+'` 会把说明文字也算进去，得出"D-100 没修"的错结论（Doc 踩过）。
+  assert.equal(ids.filter((id) => id === "D-100").length, 0,
+    "编号标题里不该有 D-100（decisions 的 D 系列走 ID 型标题，不进数字序列）");
+  assert.equal(idHeadingProblems(decisions.markdown).length, 0, "decisions.md 的 ID 型编号有重复");
 });
