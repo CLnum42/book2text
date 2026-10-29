@@ -529,6 +529,41 @@ def cmd_reading(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_panel_lifecycle(args: argparse.Namespace) -> int:
+    """L-107 新判据：面板**是否曾经出现过**——只看 DOM，不读私有状态。
+
+    每次点「下一处未审」从点击那一刻装 MutationObserver 到 `#reading-panel-host`：
+    - `opened-then-cleared`：开过又被清掉（重绘收尾 / closeReadingPanel）
+    - `never-opened`：addedCount=0（openReadingPanel 根本没跑 / 没 append）
+    这两条指向不同的代码路径，也是这条探针存在的唯一理由。
+    """
+    state = _require_state()
+    _browser.run(state, "prepare")
+    data = _browser.run(state, "panel_lifecycle_probe", {"times": args.times}, timeout=400.0)
+    raw_path = Path(state["run_dir"]) / "panel-lifecycle.json"
+    raw_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    rows = data.get("rows") or []
+    summary = data.get("summary") or {}
+    clean = summary.get("opened-still-there", 0)
+    print(f"面板生命周期：{clean}/{len(rows)} 次「开了且留在 DOM」")
+    print("分类：" + "、".join(f"{name} {count}" for name, count in sorted(summary.items())))
+    for row in rows:
+        if row.get("verdict") == "opened-still-there":
+            continue
+        logs = [(item.get("branch"), item.get("reason")) for item in row.get("logs") or []]
+        print(f"\n  第 {row['i']} 次 · 第 {row.get('label')} 页 · {row['verdict']}")
+        print(f"    add={row.get('addedCount')} remove={row.get('removedCount')} "
+              f"firstAdd={row.get('firstAddAt')} firstRemove={row.get('firstRemoveAt')}")
+        print(f"    最终 host 子节点={row.get('finalHostChildren')} hidden={row.get('finalHostHidden')} "
+              f"面板可见={row.get('finalPanelVisible')} 150ms 后补开={row.get('reopened')}")
+        print(f"    __b2tNextLog 本轮条目={json.dumps(logs, ensure_ascii=False)}")
+        print(f"    mutations={json.dumps(row.get('mutations'), ensure_ascii=False)}")
+    print(f"\n原始数据：{raw_path}")
+    return 0 if clean == len(rows) else 1
+
+
+
 # ---------------------------------------------------------------- 七步冒烟
 
 
@@ -1269,6 +1304,10 @@ def build_parser() -> argparse.ArgumentParser:
     reading = sub.add_parser("reading", help="读取正文审校界面状态与已渲染段落")
     reading.add_argument("--page", type=int, default=None)
     reading.set_defaults(func=cmd_reading)
+
+    lifecycle = sub.add_parser("panel_lifecycle", help="L-107：面板是否曾经出现过（只看 DOM）")
+    lifecycle.add_argument("--times", type=int, default=20, help="连按「下一处未审」的次数")
+    lifecycle.set_defaults(func=cmd_panel_lifecycle)
 
     sub.add_parser("smoke", help="七步冒烟（一键）").set_defaults(func=cmd_smoke)
     images = sub.add_parser("images", help="页图清晰度：审校第 1 屏 / 中间一屏 / 目录确认一屏")

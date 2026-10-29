@@ -1,0 +1,130 @@
+{
+  "note": "第一轮 20 连点中唯一失败轮次的完整输出转录。原始 panel-lifecycle.json 被后续 run 覆盖；同一探针之后连跑 20+20+40 次全过。",
+  "probe": "panel_lifecycle_probe times=20",
+  "head": "a70fa06（产品代码 = 51529b8）",
+  "row": {
+    "i": 19,
+    "label": 48,
+    "verdict": "opened-then-cleared",
+    "addedCount": 2,
+    "removedCount": 3,
+    "hadChildrenBeforeClick": 1,
+    "firstAddAt": 33055,
+    "firstRemoveAt": 33054,
+    "finalHostChildren": 0,
+    "finalHostHidden": true,
+    "finalPanelVisible": false,
+    "finalPanelKey": null,
+    "reopened": {
+      "panelVisible": false,
+      "hostChildren": 0
+    },
+    "mutations": [
+      {
+        "t": 33054,
+        "added": 0,
+        "removed": 1,
+        "hiddenChanged": false,
+        "hostChildren": 1,
+        "hostHidden": false
+      },
+      {
+        "t": 33054,
+        "added": 0,
+        "removed": 0,
+        "hiddenChanged": true,
+        "hostChildren": 1,
+        "hostHidden": false
+      },
+      {
+        "t": 33055,
+        "added": 0,
+        "removed": 0,
+        "hiddenChanged": true,
+        "hostChildren": 1,
+        "hostHidden": false
+      },
+      {
+        "t": 33055,
+        "added": 1,
+        "removed": 0,
+        "hiddenChanged": false,
+        "hostChildren": 1,
+        "hostHidden": false
+      },
+      {
+        "t": 33055,
+        "added": 0,
+        "removed": 0,
+        "hiddenChanged": true,
+        "hostChildren": 1,
+        "hostHidden": false
+      },
+      {
+        "t": 33065,
+        "added": 0,
+        "removed": 1,
+        "hiddenChanged": false,
+        "hostChildren": 1,
+        "hostHidden": false
+      },
+      {
+        "t": 33065,
+        "added": 0,
+        "removed": 0,
+        "hiddenChanged": true,
+        "hostChildren": 1,
+        "hostHidden": false
+      },
+      {
+        "t": 33065,
+        "added": 1,
+        "removed": 0,
+        "hiddenChanged": false,
+        "hostChildren": 1,
+        "hostHidden": false
+      },
+      {
+        "t": 33065,
+        "added": 0,
+        "removed": 0,
+        "hiddenChanged": true,
+        "hostChildren": 1,
+        "hostHidden": false
+      },
+      {
+        "t": 33088,
+        "added": 0,
+        "removed": 1,
+        "hiddenChanged": false,
+        "hostChildren": 0,
+        "hostHidden": true
+      },
+      {
+        "t": 33088,
+        "added": 0,
+        "removed": 0,
+        "hiddenChanged": true,
+        "hostChildren": 0,
+        "hostHidden": true
+      }
+    ],
+    "logs": [
+      {
+        "at": 1793239689207,
+        "entryKey": "01M60A76WCZ7VVF1RJVJNK0DT8:4",
+        "entryPage": 48,
+        "pageNo": 48,
+        "panelKey": "01M60A76WCZ7VVF1RJVJNK0DT8:4",
+        "panelOpened": true,
+        "lineFound": true,
+        "window": {
+          "page_from": 38,
+          "page_to": 58
+        },
+        "blocks": 0,
+        "branch": "next-lines"
+      }
+    ]
+  }
+}

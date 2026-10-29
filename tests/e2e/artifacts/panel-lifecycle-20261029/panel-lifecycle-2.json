@@ -1,0 +1,1384 @@
+{
+  "times": 20,
+  "rows": [
+    {
+      "i": 1,
+      "label": 50,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 50312,
+      "firstRemoveAt": 50312,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60A7H784BM6CF9MA7QD86D5:2",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 50312,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 50312,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 50312,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 50312,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239706453,
+          "entryKey": "01M60A7H784BM6CF9MA7QD86D5:2",
+          "entryPage": 50,
+          "pageNo": 50,
+          "panelKey": "01M60A7H784BM6CF9MA7QD86D5:2",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 40,
+            "page_to": 60
+          },
+          "blocks": 6,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 2,
+      "label": 53,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 51365,
+      "firstRemoveAt": 51365,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60A7Y9HMB1D9TS2TADYWSPX:0",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 51365,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 51365,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 51365,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 51365,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239707506,
+          "entryKey": "01M60A7Y9HMB1D9TS2TADYWSPX:0",
+          "entryPage": 53,
+          "pageNo": 53,
+          "panelKey": "01M60A7Y9HMB1D9TS2TADYWSPX:0",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 40,
+            "page_to": 60
+          },
+          "blocks": 0,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 3,
+      "label": 54,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 52399,
+      "firstRemoveAt": 52399,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60A83FGPV49BZCJ3QD0DGF3:0",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 52399,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 52399,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 52399,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 52399,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239708540,
+          "entryKey": "01M60A83FGPV49BZCJ3QD0DGF3:0",
+          "entryPage": 54,
+          "pageNo": 54,
+          "panelKey": "01M60A83FGPV49BZCJ3QD0DGF3:0",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 40,
+            "page_to": 60
+          },
+          "blocks": 0,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 4,
+      "label": 56,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 53387,
+      "firstRemoveAt": 53387,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60ADT5AJM8B89WPC0YEK2WD:0",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 53387,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 53387,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 53387,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 53387,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239709529,
+          "entryKey": "01M60ADT5AJM8B89WPC0YEK2WD:0",
+          "entryPage": 56,
+          "pageNo": 56,
+          "panelKey": "01M60ADT5AJM8B89WPC0YEK2WD:0",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 40,
+            "page_to": 60
+          },
+          "blocks": 10,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 5,
+      "label": 59,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 54497,
+      "firstRemoveAt": 54497,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AEA85AMWTG0JE1G0E7X86:4",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 54497,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 54497,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 54497,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 54497,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239710638,
+          "entryKey": "01M60AEA85AMWTG0JE1G0E7X86:4",
+          "entryPage": 59,
+          "pageNo": 59,
+          "panelKey": "01M60AEA85AMWTG0JE1G0E7X86:4",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 40,
+            "page_to": 60
+          },
+          "blocks": 0,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 6,
+      "label": 59,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 55557,
+      "firstRemoveAt": 55557,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AEA86KSEH4RX917B1TF6V:6",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 55557,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 55557,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 55557,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 55557,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239711699,
+          "entryKey": "01M60AEA86KSEH4RX917B1TF6V:6",
+          "entryPage": 59,
+          "pageNo": 59,
+          "panelKey": "01M60AEA86KSEH4RX917B1TF6V:6",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 40,
+            "page_to": 60
+          },
+          "blocks": 7,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 7,
+      "label": 64,
+      "verdict": "opened-still-there",
+      "addedCount": 2,
+      "removedCount": 2,
+      "firstAddAt": 56643,
+      "firstRemoveAt": 56643,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AF6PBKR293VJ9DH3F9B4A:4",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 56643,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 56643,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 56643,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 56643,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 56643,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 56659,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 56659,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 56659,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 56659,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239712800,
+          "entryKey": "01M60AF6PBKR293VJ9DH3F9B4A:4",
+          "entryPage": 64,
+          "pageNo": 64,
+          "panelKey": "01M60AF6PBKR293VJ9DH3F9B4A:4",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 54,
+            "page_to": 74
+          },
+          "blocks": 0,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 8,
+      "label": 64,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 57712,
+      "firstRemoveAt": 57712,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AF6PCYKH0J2KCCDS0SM5Y:5",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 57712,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 57712,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 57712,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 57712,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239713854,
+          "entryKey": "01M60AF6PCYKH0J2KCCDS0SM5Y:5",
+          "entryPage": 64,
+          "pageNo": 64,
+          "panelKey": "01M60AF6PCYKH0J2KCCDS0SM5Y:5",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 54,
+            "page_to": 74
+          },
+          "blocks": 4,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 9,
+      "label": 66,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 58816,
+      "firstRemoveAt": 58816,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AFFZ4K98WE9B2JK8X7WSV:0",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 58816,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 58816,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 58816,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 58816,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239714957,
+          "entryKey": "01M60AFFZ4K98WE9B2JK8X7WSV:0",
+          "entryPage": 66,
+          "pageNo": 66,
+          "panelKey": "01M60AFFZ4K98WE9B2JK8X7WSV:0",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 54,
+            "page_to": 74
+          },
+          "blocks": 5,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 10,
+      "label": 67,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 59927,
+      "firstRemoveAt": 59927,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AFMX725WR4SDE01ARQHJX:3",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 59927,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 59927,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 59927,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 59927,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239716068,
+          "entryKey": "01M60AFMX725WR4SDE01ARQHJX:3",
+          "entryPage": 67,
+          "pageNo": 67,
+          "panelKey": "01M60AFMX725WR4SDE01ARQHJX:3",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 54,
+            "page_to": 74
+          },
+          "blocks": 6,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 11,
+      "label": 70,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 61034,
+      "firstRemoveAt": 61034,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AG2DQZFRCXH9Z6TWCGC0C:0",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 61034,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 61034,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 61034,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 61034,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239717175,
+          "entryKey": "01M60AG2DQZFRCXH9Z6TWCGC0C:0",
+          "entryPage": 70,
+          "pageNo": 70,
+          "panelKey": "01M60AG2DQZFRCXH9Z6TWCGC0C:0",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 54,
+            "page_to": 74
+          },
+          "blocks": 0,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 12,
+      "label": 71,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 62193,
+      "firstRemoveAt": 62193,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AGABZRY6R7NG4W2231XAH:0",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 62193,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 62193,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 62193,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 62193,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239718334,
+          "entryKey": "01M60AGABZRY6R7NG4W2231XAH:0",
+          "entryPage": 71,
+          "pageNo": 71,
+          "panelKey": "01M60AGABZRY6R7NG4W2231XAH:0",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 54,
+            "page_to": 74
+          },
+          "blocks": 9,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 13,
+      "label": 73,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 63259,
+      "firstRemoveAt": 63259,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AGNMCXAEQDV16J8RDRGQ8:1",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 63259,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 63259,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 63259,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 63259,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239719401,
+          "entryKey": "01M60AGNMCXAEQDV16J8RDRGQ8:1",
+          "entryPage": 73,
+          "pageNo": 73,
+          "panelKey": "01M60AGNMCXAEQDV16J8RDRGQ8:1",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 54,
+            "page_to": 74
+          },
+          "blocks": 10,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 14,
+      "label": 88,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 64352,
+      "firstRemoveAt": 64340,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AKGX546W61KBZNAE07XFJ:0",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 64340,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 0,
+          "hostHidden": true
+        },
+        {
+          "t": 64340,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 0,
+          "hostHidden": true
+        },
+        {
+          "t": 64352,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 64352,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 64352,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239720493,
+          "entryKey": "01M60AKGX546W61KBZNAE07XFJ:0",
+          "entryPage": 88,
+          "pageNo": 88,
+          "panelKey": "01M60AKGX546W61KBZNAE07XFJ:0",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 78,
+            "page_to": 98
+          },
+          "blocks": 0,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 15,
+      "label": 91,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 65657,
+      "firstRemoveAt": 65372,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AKT2R0SXW8GJRSDEJA9SV:0",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 65372,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 0,
+          "hostHidden": true
+        },
+        {
+          "t": 65372,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 0,
+          "hostHidden": true
+        },
+        {
+          "t": 65657,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 65657,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 65657,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239721798,
+          "entryKey": "01M60AKT2R0SXW8GJRSDEJA9SV:0",
+          "entryPage": 91,
+          "pageNo": 91,
+          "panelKey": "01M60AKT2R0SXW8GJRSDEJA9SV:0",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 81,
+            "page_to": 101
+          },
+          "blocks": 8,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 16,
+      "label": 93,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 66497,
+      "firstRemoveAt": 66497,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AKZ82V1QJQF9NHG56G9DJ:0",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 66497,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 66497,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 66497,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 66497,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239722638,
+          "entryKey": "01M60AKZ82V1QJQF9NHG56G9DJ:0",
+          "entryPage": 93,
+          "pageNo": 93,
+          "panelKey": "01M60AKZ82V1QJQF9NHG56G9DJ:0",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 81,
+            "page_to": 101
+          },
+          "blocks": 0,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 17,
+      "label": 93,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 67579,
+      "firstRemoveAt": 67579,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AKZ82V1QJQF9NHG56G9DJ:7",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 67579,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 67579,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 67579,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 67579,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239723720,
+          "entryKey": "01M60AKZ82V1QJQF9NHG56G9DJ:7",
+          "entryPage": 93,
+          "pageNo": 93,
+          "panelKey": "01M60AKZ82V1QJQF9NHG56G9DJ:7",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 81,
+            "page_to": 101
+          },
+          "blocks": 6,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 18,
+      "label": 94,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 68646,
+      "firstRemoveAt": 68646,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AM1Q2N8Q32ZX80E1ZXA30:2",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 68646,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 68646,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 68646,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 68646,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239724787,
+          "entryKey": "01M60AM1Q2N8Q32ZX80E1ZXA30:2",
+          "entryPage": 94,
+          "pageNo": 94,
+          "panelKey": "01M60AM1Q2N8Q32ZX80E1ZXA30:2",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 81,
+            "page_to": 101
+          },
+          "blocks": 8,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 19,
+      "label": 94,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 69724,
+      "firstRemoveAt": 69724,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AM1Q2N8Q32ZX80E1ZXA30:4",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 69724,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 69724,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 69724,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 69724,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239725866,
+          "entryKey": "01M60AM1Q2N8Q32ZX80E1ZXA30:4",
+          "entryPage": 94,
+          "pageNo": 94,
+          "panelKey": "01M60AM1Q2N8Q32ZX80E1ZXA30:4",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 81,
+            "page_to": 101
+          },
+          "blocks": 8,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    },
+    {
+      "i": 20,
+      "label": 99,
+      "verdict": "opened-still-there",
+      "addedCount": 1,
+      "removedCount": 1,
+      "firstAddAt": 70809,
+      "firstRemoveAt": 70809,
+      "hadChildrenBeforeClick": 1,
+      "finalHostChildren": 1,
+      "finalHostHidden": false,
+      "finalPanelKey": "01M60AMDEN2GNYTRPK62YTQSQG:4",
+      "finalPanelVisible": true,
+      "mutations": [
+        {
+          "t": 70809,
+          "added": 0,
+          "removed": 1,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 70809,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 70809,
+          "added": 1,
+          "removed": 0,
+          "hiddenChanged": false,
+          "hostChildren": 1,
+          "hostHidden": false
+        },
+        {
+          "t": 70809,
+          "added": 0,
+          "removed": 0,
+          "hiddenChanged": true,
+          "hostChildren": 1,
+          "hostHidden": false
+        }
+      ],
+      "logs": [
+        {
+          "at": 1793239726950,
+          "entryKey": "01M60AMDEN2GNYTRPK62YTQSQG:4",
+          "entryPage": 99,
+          "pageNo": 99,
+          "panelKey": "01M60AMDEN2GNYTRPK62YTQSQG:4",
+          "panelOpened": true,
+          "lineFound": true,
+          "window": {
+            "page_from": 81,
+            "page_to": 101
+          },
+          "blocks": 0,
+          "branch": "next-lines"
+        }
+      ],
+      "reopened": null
+    }
+  ],
+  "summary": {
+    "opened-still-there": 20
+  }
+}

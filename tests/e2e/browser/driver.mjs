@@ -114,6 +114,8 @@ export async function run(cfg) {
       return await next20Probe(page, args);
     case "next_entry_probe":
       return await nextEntryProbe(page, args);
+    case "panel_lifecycle_probe":
+      return await panelLifecycleProbe(page, args);
     case "quality_probe":
       return await qualityProbe(page, args);
     case "next_log":
@@ -414,9 +416,9 @@ async function pageSyncSnapshot(page) {
         anchorPage,
         anchorKey,
         panelLineIn,
-        settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "n/a",
-        userSeq: typeof readingUserScrollSeq !== "undefined" ? readingUserScrollSeq : "n/a",
-        programSeq: typeof readingProgramScrollSeq !== "undefined" ? readingProgramScrollSeq : "n/a",
+        settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "unreadable:readingJumpSettleKey",
+        userSeq: typeof readingUserScrollSeq !== "undefined" ? readingUserScrollSeq : "unreadable:readingUserScrollSeq",
+        programSeq: typeof readingProgramScrollSeq !== "undefined" ? readingProgramScrollSeq : "unreadable:readingProgramScrollSeq",
         pin: pinNow ? { held: pinNow.held, escape: pinNow.escape } : null,
         panelPage,
         panelText: panelHead ? (panelHead.textContent || "").trim() : null,
@@ -599,9 +601,9 @@ async function clickMarkAt(page, label) {
         marks: document.querySelectorAll("#reading-stream .reading-mark").length,
         lines: document.querySelectorAll("#reading-stream .reading-line").length,
         segs: document.querySelectorAll("#reading-stream .reading-seg").length,
-        filter: typeof readingFilter !== "undefined" ? readingFilter : "n/a",
-        visibleSegments: typeof readingVisibleSegments === "function" ? readingVisibleSegments().length : "n/a",
-        entries: typeof readingEntries !== "undefined" ? readingEntries.length : "n/a",
+        filter: typeof readingFilter !== "undefined" ? readingFilter : "unreadable:readingFilter",
+        visibleSegments: typeof readingVisibleSegments === "function" ? readingVisibleSegments().length : "unreadable:readingVisibleSegments",
+        entries: typeof readingEntries !== "undefined" ? readingEntries.length : "unreadable:readingEntries",
         panelKey: (document.querySelector(".reading-panel") || {}).dataset
           ? document.querySelector(".reading-panel").dataset.key || null
           : null,
@@ -1460,7 +1462,7 @@ async function highlightProbe(page, maxJumps = 28) {
         targetExists: Boolean(target),
         targetCurrent: Boolean(target && target.classList.contains("is-current")),
         targetClass: target ? target.className : null,
-        readingRendered: typeof readingRendered !== "undefined" ? readingRendered : null,
+        readingRendered: typeof readingRendered !== "undefined" ? readingRendered : "unreadable:readingRendered",
         segCount,
         log0: (window.__b2tNextLog || [])[0] || null,
       };
@@ -1546,8 +1548,8 @@ async function pinGuard(page, args) {
       }
 
       const pin = window.__b2tPagePin || null;
-      const settleKey = typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "n/a";
-      const settleTicks = typeof readingJumpSettleTicks !== "undefined" ? readingJumpSettleTicks : "n/a";
+      const settleKey = typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "unreadable:readingJumpSettleKey";
+      const settleTicks = typeof readingJumpSettleTicks !== "undefined" ? readingJumpSettleTicks : "unreadable:readingJumpSettleTicks";
       return {
         scrollTop: Math.round(stream.scrollTop),
         maxScroll: Math.round(stream.scrollHeight - stream.clientHeight),
@@ -1737,7 +1739,7 @@ async function scrollFollow(page, args) {
         dominant,
         currentLines: document.querySelectorAll("#reading-stream .reading-line.is-current").length,
         pin: pin ? { held: pin.held, escape: pin.escape } : null,
-        settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "n/a",
+        settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "unreadable:readingJumpSettleKey",
       };
     });
 
@@ -1773,12 +1775,12 @@ async function reviewState(page) {
     const label = (document.getElementById("reading-page-no") || {}).textContent || "";
     return {
       label: label.replace(/\s+/g, ""),
-      filter: typeof readingFilter !== "undefined" ? readingFilter : "n/a",
-      marksMapSize: typeof readingMarks !== "undefined" ? readingMarks.size : "n/a",
+      filter: typeof readingFilter !== "undefined" ? readingFilter : "unreadable:readingFilter",
+      marksMapSize: typeof readingMarks !== "undefined" ? readingMarks.size : "unreadable:readingMarks",
       markPages: pages.length ? [Math.min(...pages), Math.max(...pages)] : null,
-      marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : "n/a",
-      entries: typeof readingEntries !== "undefined" ? readingEntries.length : "n/a",
-      visibleSegments: typeof readingVisibleSegments === "function" ? readingVisibleSegments().length : "n/a",
+      marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : "unreadable:readingMarksWindow",
+      entries: typeof readingEntries !== "undefined" ? readingEntries.length : "unreadable:readingEntries",
+      visibleSegments: typeof readingVisibleSegments === "function" ? readingVisibleSegments().length : "unreadable:readingVisibleSegments",
       segs: document.querySelectorAll("#reading-stream .reading-seg").length,
       lines: document.querySelectorAll("#reading-stream .reading-line").length,
       marksInDom: document.querySelectorAll("#reading-stream .reading-mark").length,
@@ -1810,13 +1812,13 @@ async function labelWatch(page) {
           value: String(value).replace(/\s+/g, ""),
           at: Date.now(),
           stack: (new Error().stack || "").split("\n").slice(1, 8).map((l) => l.trim()),
-          pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
-          driver: typeof readingSyncDriver !== "undefined" ? readingSyncDriver : null,
-          until: typeof readingSyncUntil !== "undefined" ? Math.round(readingSyncUntil) : null,
+          pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : "unreadable:readingPageNo",
+          driver: typeof readingSyncDriver !== "undefined" ? readingSyncDriver : "unreadable:readingSyncDriver",
+          until: typeof readingSyncUntil !== "undefined" ? Math.round(readingSyncUntil) : "unreadable:readingSyncUntil",
           now: Math.round(performance.now()),
-          settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : null,
-          userSeq: typeof readingUserScrollSeq !== "undefined" ? readingUserScrollSeq : null,
-          programSeq: typeof readingProgramScrollSeq !== "undefined" ? readingProgramScrollSeq : null,
+          settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "unreadable:readingJumpSettleKey",
+          userSeq: typeof readingUserScrollSeq !== "undefined" ? readingUserScrollSeq : "unreadable:readingUserScrollSeq",
+          programSeq: typeof readingProgramScrollSeq !== "undefined" ? readingProgramScrollSeq : "unreadable:readingProgramScrollSeq",
           pin: window.__b2tPagePin ? { held: window.__b2tPagePin.held, escape: window.__b2tPagePin.escape } : null,
           scrollTop: stream ? Math.round(stream.scrollTop) : null,
           scrollHeight: stream ? Math.round(stream.scrollHeight) : null,
@@ -1842,19 +1844,19 @@ async function resetDiag(page) {
     const label = (document.getElementById("reading-page-no") || {}).textContent || "";
     return {
       resetDiag: true,
-      readingProject: typeof readingProject !== "undefined" ? readingProject : "n/a",
+      readingProject: typeof readingProject !== "undefined" ? readingProject : "unreadable:readingProject",
       currentProjectId: typeof currentProject !== "undefined" && currentProject ? currentProject.project_id : "n/a",
-      readingAutoJumpDone: typeof readingAutoJumpDone !== "undefined" ? readingAutoJumpDone : "n/a",
+      readingAutoJumpDone: typeof readingAutoJumpDone !== "undefined" ? readingAutoJumpDone : "unreadable:readingAutoJumpDone",
       readingDataSegments: segs,
-      readingPanelKey: typeof readingPanelKey !== "undefined" ? readingPanelKey : "n/a",
-      readingPendingPanelKey: typeof readingPendingPanelKey !== "undefined" ? readingPendingPanelKey : "n/a",
+      readingPanelKey: typeof readingPanelKey !== "undefined" ? readingPanelKey : "unreadable:readingPanelKey",
+      readingPendingPanelKey: typeof readingPendingPanelKey !== "undefined" ? readingPendingPanelKey : "unreadable:readingPendingPanelKey",
       readingPendingPanelEntry: typeof readingPendingPanelEntry !== "undefined" && readingPendingPanelEntry
         ? readingPendingPanelEntry.block_id : "n/a",
       panelInHost: Boolean(document.querySelector("#reading-panel-host .reading-panel")),
       panelHead: (document.querySelector(".reading-panel__head strong") || {}).textContent || null,
       label: label.replace(/\s+/g, ""),
-      readingEntries: typeof readingEntries !== "undefined" ? readingEntries.length : "n/a",
-      marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : "n/a",
+      readingEntries: typeof readingEntries !== "undefined" ? readingEntries.length : "unreadable:readingEntries",
+      marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : "unreadable:readingMarksWindow",
       streamSegs: document.querySelectorAll("#reading-stream .reading-seg").length,
     };
   });
@@ -1911,9 +1913,9 @@ async function stressNext(page, args) {
         nextLogLen: (window.__b2tNextLog || []).length,
         nextLogAt: (window.__b2tNextLog || [])[0] ? window.__b2tNextLog[0].at : null,
         now: Math.round(performance.now()),
-        entries: typeof readingEntries !== "undefined" ? readingEntries.length : null,
-        marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : null,
-        settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : null,
+        entries: typeof readingEntries !== "undefined" ? readingEntries.length : "unreadable:readingEntries",
+        marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : "unreadable:readingMarksWindow",
+        settleKey: typeof readingJumpSettleKey !== "undefined" ? readingJumpSettleKey : "unreadable:readingJumpSettleKey",
       };
     });
 
@@ -2106,8 +2108,8 @@ async function dockSnapshotRaw() {
       text: editNode ? editNode.textContent : null,
     },
     currentLine: cur ? cur.dataset.key || null : null,
-    drafts: typeof readingDrafts !== "undefined" ? readingDrafts.size : null,
-    inlineEdits: typeof readingInlineEdits !== "undefined" ? readingInlineEdits.size : null,
+    drafts: typeof readingDrafts !== "undefined" ? readingDrafts.size : "unreadable:readingDrafts",
+    inlineEdits: typeof readingInlineEdits !== "undefined" ? readingInlineEdits.size : "unreadable:readingInlineEdits",
     entriesDone: typeof readingEntries !== "undefined"
       ? readingEntries.filter((e) => typeof readingEntryDone === "function" && readingEntryDone(e)).length
       : null,
@@ -2353,15 +2355,15 @@ async function punctProbe(page, args) {
         progress: progress.replace(/\s+/g, " ").trim(),
         hasProbeMarker: Boolean(data && data.__probeMarker),
         segments: data && data.segments ? data.segments.length : null,
-        marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : null,
+        marksWindow: typeof readingMarksWindow !== "undefined" ? readingMarksWindow : "unreadable:readingMarksWindow",
         marksSize: typeof readingMarks !== "undefined" && readingMarks.size !== undefined
           ? readingMarks.size : null,
-        project: typeof readingProject !== "undefined" ? readingProject : null,
+        project: typeof readingProject !== "undefined" ? readingProject : "unreadable:readingProject",
         badge: (document.getElementById("reading-punct-count") || {}).textContent || null,
         modalHidden: (document.getElementById("punct-groups-mask") || {}).hidden ?? null,
         groups: document.querySelectorAll("#punct-groups-list > *").length,
         adoptButtons: document.querySelectorAll("#punct-groups-list .btn--pri").length,
-        building: typeof readingBuilding !== "undefined" ? readingBuilding : null,
+        building: typeof readingBuilding !== "undefined" ? readingBuilding : "unreadable:readingBuilding",
       };
     });
 
@@ -2605,7 +2607,7 @@ async function clickSel(page, args) {
       const scroller = document.getElementById("reading-pdf-scroll");
       return {
         label: label.replace(/\s+/g, ""),
-        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : "unreadable:readingPageNo",
         scrollTop: scroller ? Math.round(scroller.scrollTop) : null,
         disabled: (document.querySelector(args_holder.selector) || {}).disabled ?? null,
       };
@@ -2619,7 +2621,7 @@ async function clickSel(page, args) {
       const node = document.querySelector(window.__clickSelArg);
       return {
         label: label.replace(/\s+/g, ""),
-        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : "unreadable:readingPageNo",
         scrollTop: scroller ? Math.round(scroller.scrollTop) : null,
         disabled: node ? node.disabled : null,
       };
@@ -2646,16 +2648,16 @@ async function interactionsProbe(page, args) {
       const chip = document.getElementById("reading-follow-chip");
       return {
         label: m ? Number(m[1]) : null,
-        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : "unreadable:readingPageNo",
         scrollTop: stream ? Math.round(stream.scrollTop) : null,
         pdfTop: scroller ? Math.round(scroller.scrollTop) : null,
         segs: stream ? stream.querySelectorAll(".reading-seg").length : 0,
-        entries: typeof readingEntries !== "undefined" ? readingEntries.length : null,
-        filter: typeof readingFilter !== "undefined" ? readingFilter : null,
-        drafts: typeof readingDrafts !== "undefined" ? readingDrafts.size : null,
-        inlineEdits: typeof readingInlineEdits !== "undefined" ? readingInlineEdits.size : null,
-        editing: typeof readingEditingKey !== "undefined" ? readingEditingKey : null,
-        follow: typeof readingFollow !== "undefined" ? readingFollow : null,
+        entries: typeof readingEntries !== "undefined" ? readingEntries.length : "unreadable:readingEntries",
+        filter: typeof readingFilter !== "undefined" ? readingFilter : "unreadable:readingFilter",
+        drafts: typeof readingDrafts !== "undefined" ? readingDrafts.size : "unreadable:readingDrafts",
+        inlineEdits: typeof readingInlineEdits !== "undefined" ? readingInlineEdits.size : "unreadable:readingInlineEdits",
+        editing: typeof readingEditingKey !== "undefined" ? readingEditingKey : "unreadable:readingEditingKey",
+        follow: typeof readingFollow !== "undefined" ? readingFollow : "unreadable:readingFollow",
         chipText: chip ? chip.textContent.replace(/\s+/g, "") : null,
         chipOn: chip ? chip.classList.contains("is-on") : null,
         hover: document.querySelectorAll("#reading-stream .reading-seg.is-hover").length,
@@ -2911,12 +2913,12 @@ async function l3Probe(page, args) {
       const data = typeof readingData !== "undefined" ? readingData : null;
       return {
         label: m ? Number(m[1]) : null,
-        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : "unreadable:readingPageNo",
         scrollTop: stream ? Math.round(stream.scrollTop) : null,
         segs: stream ? stream.querySelectorAll(".reading-seg").length : 0,
-        rendered: typeof readingRendered !== "undefined" ? readingRendered : null,
+        rendered: typeof readingRendered !== "undefined" ? readingRendered : "unreadable:readingRendered",
         segments: data && data.segments ? data.segments.length : null,
-        project: typeof readingProject !== "undefined" ? readingProject : null,
+        project: typeof readingProject !== "undefined" ? readingProject : "unreadable:readingProject",
         mut: window.__b2tStreamMut,
         reqCount: (window.__b2tReqLog || []).length,
       };
@@ -3019,13 +3021,13 @@ async function l4Probe(page, args) {
       }
       return {
         label: m ? Number(m[1]) : null,
-        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : "unreadable:readingPageNo",
         panelKey: (document.querySelector(".reading-panel") || {}).dataset
           ? document.querySelector(".reading-panel").dataset.key || null : null,
         progress: (document.getElementById("reading-progress-text") || {}).textContent || "",
         notice: (document.getElementById("auto-apply-notice-text") || {}).textContent || "",
-        drafts: typeof readingDrafts !== "undefined" ? readingDrafts.size : null,
-        inline: typeof readingInlineEdits !== "undefined" ? readingInlineEdits.size : null,
+        drafts: typeof readingDrafts !== "undefined" ? readingDrafts.size : "unreadable:readingDrafts",
+        inline: typeof readingInlineEdits !== "undefined" ? readingInlineEdits.size : "unreadable:readingInlineEdits",
         inlineMarks: document.querySelectorAll("#reading-stream .reading-line.is-inline-edited").length,
         segs: stream.querySelectorAll(".reading-seg").length,
         lineSample: rects.slice(0, 4),
@@ -3214,7 +3216,7 @@ async function gotoProbe(page, args) {
       const distinct = [...new Set(tops)];
       return {
         label: m ? Number(m[1]) : null,
-        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : null,
+        pageNo: typeof readingPageNo !== "undefined" ? readingPageNo : "unreadable:readingPageNo",
         panelKey: (document.querySelector(".reading-panel") || {}).dataset
           ? document.querySelector(".reading-panel").dataset.key || null : null,
         panelPage: (document.querySelector(".reading-panel__head strong") || {}).textContent || null,
@@ -3299,9 +3301,10 @@ async function next20Probe(page, args) {
         }
         if (best) dominant = best.page;
       }
-      const pendingKey = typeof readingPendingPanelKey !== "undefined" ? readingPendingPanelKey : "UNDEF";
+      const pendingKey = typeof readingPendingPanelKey !== "undefined" ? readingPendingPanelKey : "unreadable:readingPendingPanelKey";
       const pendingEntry = typeof readingPendingPanelEntry !== "undefined"
-        ? (readingPendingPanelEntry ? readingPendingPanelEntry.block_id : null) : "UNDEF";
+        ? (readingPendingPanelEntry ? readingPendingPanelEntry.block_id : null)
+        : "unreadable:readingPendingPanelEntry";
       const pv = panel ? panel.getBoundingClientRect() : null;
       return {
         label: m ? Number(m[1]) : null,
@@ -3311,7 +3314,7 @@ async function next20Probe(page, args) {
         dominant,
         pendingKey, pendingEntry,
         nextLog0: (window.__b2tNextLog || [])[0] || null,
-        editKey: typeof readingEditingKey !== "undefined" ? readingEditingKey : "UNDEF",
+        editKey: typeof readingEditingKey !== "undefined" ? readingEditingKey : "unreadable:readingEditingKey",
       };
     });
 
@@ -3414,12 +3417,12 @@ async function nextEntryProbe(page, args) {
         entrySpanIndex: entry ? entry.span_index : null,
         segPages,
         crossPage,
-        pendingKey: typeof readingPendingPanelKey !== "undefined" ? readingPendingPanelKey : "UNDEF",
+        pendingKey: typeof readingPendingPanelKey !== "undefined" ? readingPendingPanelKey : "unreadable:readingPendingPanelKey",
         pendingEntry: typeof readingPendingPanelEntry !== "undefined"
           ? (readingPendingPanelEntry
               ? `${readingPendingPanelEntry.block_id}:${readingPendingPanelEntry.line_index}`
               : null)
-          : "UNDEF",
+          : "unreadable:readingPendingPanelEntry",
         logCount: (window.__b2tNextLog || []).length,
         log0,
       };
@@ -3446,6 +3449,141 @@ async function nextEntryProbe(page, args) {
     rows.push({ i, ...st, reopened });
   }
   return { times, rows };
+}
+
+/**
+ * L-107 的新判据：面板**是否曾经出现过**——只用 DOM，不读任何私有状态。
+ *
+ * 为什么从"点击那一刻"开始记：事后查只能看到"现在没有面板"，分不清
+ *   ① `openReadingPanel` 根本没跑（从没有过）
+ *   ② 开了又被清掉（`closeReadingPanel` / 重绘的收尾守卫）
+ * 这两条指向完全不同的代码路径。
+ *
+ * `#reading-panel-host` 是 index.html 里的静态元素，不会被重建，
+ * 所以观测器装一次即可；每轮把 `current` 换掉来切段。
+ *
+ * 判读（`verdict`）：
+ * - `never-opened`        本轮 addedCount=0 → openReadingPanel 没跑 / 没 append
+ * - `opened-then-cleared` 加过又被移除，且最终 host 里没有 .reading-panel
+ * - `opened-still-there`  正常（面板还在）
+ * - `carried-over`        本轮没新增，但 host 里已有面板（沿用上一轮，连点同页时会遇到）
+ */
+async function panelLifecycleProbe(page, args) {
+  await ensureReading(page);
+  const times = Number(args.times || 20);
+
+  await page.evaluate(() => {
+    const host = document.getElementById("reading-panel-host");
+    if (!host) throw new Error("找不到 #reading-panel-host");
+    if (window.__panelLifecycleObs) window.__panelLifecycleObs.disconnect();
+    window.__panelLifecycle = { current: null };
+    const isPanelNode = (node) =>
+      node && node.nodeType === 1 &&
+      (node.classList && node.classList.contains("reading-panel") ||
+        (node.querySelector && node.querySelector(".reading-panel")));
+    const observer = new MutationObserver((mutations) => {
+      const cur = window.__panelLifecycle.current;
+      if (!cur) return;
+      for (const mutation of mutations) {
+        const added = [...mutation.addedNodes].filter(isPanelNode).length;
+        const removed = [...mutation.removedNodes].filter(isPanelNode).length;
+        const hiddenChanged = mutation.type === "attributes";
+        if (!added && !removed && !hiddenChanged) continue;
+        const t = Math.round(performance.now());
+        cur.mutations.push({
+          t,
+          added,
+          removed,
+          hiddenChanged,
+          hostChildren: host.children.length,
+          hostHidden: host.hidden,
+        });
+        if (added) {
+          cur.addedCount += added;
+          if (cur.firstAddAt == null) cur.firstAddAt = t;
+        }
+        if (removed) {
+          cur.removedCount += removed;
+          if (cur.firstRemoveAt == null) cur.firstRemoveAt = t;
+        }
+      }
+    });
+    observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
+    window.__panelLifecycleObs = observer;
+  });
+
+  const rows = [];
+  for (let i = 1; i <= times; i += 1) {
+    const epoch = await page.evaluate(() => {
+      const host = document.getElementById("reading-panel-host");
+      window.__panelLifecycle.current = {
+        at: Math.round(performance.now()),
+        hadChildrenBeforeClick: host ? host.children.length : null,
+        mutations: [],
+        addedCount: 0,
+        removedCount: 0,
+        firstAddAt: null,
+        firstRemoveAt: null,
+      };
+      return Date.now();
+    });
+    await page.click("#reading-next-unreviewed", { label: `下一处 ${i}` }).catch(() => {});
+    await page.waitForTimeout(700);
+    let state = await page.evaluate((clickEpoch) => {
+      const host = document.getElementById("reading-panel-host");
+      const panel = host ? host.querySelector(".reading-panel") : null;
+      const pv = panel ? panel.getBoundingClientRect() : null;
+      const cur = window.__panelLifecycle.current;
+      const label = (document.getElementById("reading-page-no") || {}).textContent || "";
+      const match = label.match(/(\d+)/);
+      const logs = (window.__b2tNextLog || []).filter((item) => Number(item.at) >= clickEpoch);
+      let verdict = "carried-over";
+      if (cur.addedCount > 0) {
+        verdict = panel ? "opened-still-there" : "opened-then-cleared";
+      } else if (!panel) {
+        verdict = "never-opened";
+      }
+      return {
+        label: match ? Number(match[1]) : null,
+        verdict,
+        addedCount: cur.addedCount,
+        removedCount: cur.removedCount,
+        firstAddAt: cur.firstAddAt,
+        firstRemoveAt: cur.firstRemoveAt,
+        hadChildrenBeforeClick: cur.hadChildrenBeforeClick,
+        finalHostChildren: host ? host.children.length : null,
+        finalHostHidden: host ? host.hidden : null,
+        finalPanelKey: panel ? panel.dataset.key || null : null,
+        finalPanelVisible: Boolean(pv && pv.width > 0 && pv.height > 0 && pv.bottom > 0 && pv.top < window.innerHeight),
+        mutations: cur.mutations,
+        logs,
+      };
+    }, epoch);
+
+    // 面板缺失时再看一帧：补开 = 晚一帧；一直不开 = 真的没开
+    let reopened = null;
+    if (!state.finalPanelVisible) {
+      await page.waitForTimeout(150);
+      const again = await page.evaluate(() => {
+        const host = document.getElementById("reading-panel-host");
+        const panel = host ? host.querySelector(".reading-panel") : null;
+        const pv = panel ? panel.getBoundingClientRect() : null;
+        return {
+          panelVisible: Boolean(pv && pv.width > 0 && pv.height > 0 && pv.bottom > 0 && pv.top < window.innerHeight),
+          hostChildren: host ? host.children.length : null,
+        };
+      });
+      reopened = again;
+      if (again.panelVisible) state = { ...state, verdict: state.addedCount > 0 ? "opened-then-reopened" : "reopened-without-add" };
+    }
+    rows.push({ i, ...state, reopened });
+  }
+
+  const summary = rows.reduce((acc, row) => {
+    acc[row.verdict] = (acc[row.verdict] || 0) + 1;
+    return acc;
+  }, {});
+  return { times, rows, summary };
 }
 
 /** 目录确认：换清晰度档 → 按钮文案 + 可见页图 size 参数是否跟着换。 */
