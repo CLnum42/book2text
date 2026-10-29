@@ -51,7 +51,7 @@ detail-image-status / detail-box-create / detail-close / detail-recognize / page
 否则在删除旧视图之前，它就没有页图了。所以抽屉不是"给别的视图加个功能"，**是"把 detail 从 review 里搬出来"**。
 搬完 `#view-review` 剩的是：左树 / 差异队列 / 候选面板 / 分页器——**那时才谈删。**
 
-## ③ "关得回来"的回归测试（这一条昨天差点变成能开不能关）
+## ③ "关得回来"的回归测试（五条断言：这一条昨天差点变成能开不能关）
 
 **要断言的三个量**（缺一个就会退化成"能开"）：
 
@@ -67,6 +67,13 @@ detail-image-status / detail-box-create / detail-close / detail-recognize / page
 ③ 连续开两页：抽屉内容替换而不是叠加（幂等）——防"抽屉里塞了两个 canvas"
 ④ 关抽屉**不能**触发 renderReading / renderPages（否则"关得回来"变成"关完重绘、位置丢了"）
 ```
+
+⑤ **开/关抽屉全程，不许写入任何 `"review"` 名的位置记录**（2026-10-29 抓到的"静默改数据"）：
+   现状 `openPageDetail` 末尾有 `savePosition("review", pageNo)`——抽屉化之后它把"瞄了一眼详情"记成
+   "我在旧审校里看到第 N 页"，下次从收尾面板"开始审校"就落到那一页。**不报错、不红、当场发现不了。**
+   判据（任选其一，能咬人即可）：
+   - 断言 `savePosition` 从未以 `"review"` 为参数被调用（桩函数记账）；
+   - 或开关抽屉前后，`last_view` / review 那份 `last_page_no` 不变。
 
 第 ④ 条是这条设计最容易翻车的地方：**抽屉关闭时如果顺手重绘宿主视图，位置就会丢**——这正是我们要躲开的反模式 #2（异步重绘吞状态）。
 
