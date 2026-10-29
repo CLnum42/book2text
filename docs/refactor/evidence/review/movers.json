@@ -1,1 +1,2516 @@
-["runAuxiliary", "renderAuxiliary", "setupAuxControls", "openPageDetail", "closePageDetail", "loadPageDetail", "pagerPages", "renderReviewPager", "fitWidth", "applyZoom", "setReviewOverlay", "setReviewMargin", "setupViewerTools", "setupReviewAutoPass", "setupReviewPager", "paintReviewMargin", "toggleReviewMargin", "renderReviewFilter", "ensureBlockListed", "renderPageDetail", "renderReviewWorkflowStatus", "renderReviewBanner", "renderHistoryButtons", "snapBox", "startBoxDrag", "findDiffMark", "drawDiffLayer", "scrollViewerTo", "scrollRowIntoList", "syncDiffStrip", "updateDiffActive", "activateDiff", "renderReviewHeadline", "renderQueueFooter", "renderDiffQueue", "applyQueueAckLocally", "focusQueueBar", "captureQueueSnapshot", "restoreQueueAfterUndo", "drawDetailOverlay", "drawDetailLines", "renderSuggestionTools", "renderLayoutPanel", "confirmPageLayout", "renderReviewBlocks", "selectReviewBlock", "focusSiblingBlock", "structureAction", "openCandidateCompare", "renderCandidate", "applyCandidateBlock", "setBoxCreateMode", "normalizedPoint", "onBoxMouseDown", "onBoxMouseUp", "drawBoxDraft", "createBlockFromBox", "renderInkGapBar", "drawInkGapMarks", "startRegionRecognition", "recognizeBoxRegion", "setupBoxCreate", "decideCandidate", "reviewAction", "confirmCurrentPage", "ensureReviewTree", "renderReviewTree", "setReviewTreeOnlyTodo", "syncReviewTreeToPage", "undoAutoApply"]
+{
+  "口径": {
+    "视图": "view-review",
+    "段内 id": "94（含视图根）/ 93（不含根）",
+    "种子": "函数体里出现 view-review 子树 id 字符串；壳根 boot/setupShell/setupLibrary 已剔除 → 75 个",
+    "闭包": "引用图（f 出现在非定义位置即一条边，值引用也算；只在可能搬的节点上继续扩）",
+    "闭包总数": "187 个 / 4326 行",
+    "壳根": "已剔除（boot / setupShell / setupLibrary）",
+    "基线": "9858db5",
+    "app.js 行数": 15311
+  },
+  "对账": {
+    "movers+stays+external = 闭包总数?": true,
+    "行数相加 = 闭包总行数?": true,
+    "三区两两不相交?": true,
+    "函数数": {
+      "movers": 120,
+      "stays": 50,
+      "external": 17,
+      "闭包": 187
+    },
+    "行数": {
+      "movers": 2974,
+      "stays": 884,
+      "external": 468,
+      "闭包": 4326
+    }
+  },
+  "states_and_consts": [
+    {
+      "name": "token",
+      "kind": "const",
+      "declaredAt": 14,
+      "writePoints": 12,
+      "writtenBy": [
+        "movers",
+        "shell",
+        "stays",
+        "声明"
+      ],
+      "usedByMovers": [
+        "renderPageDetail"
+      ]
+    },
+    {
+      "name": "auxData",
+      "kind": "let",
+      "declaredAt": 1541,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "closePageDetail",
+        "runAuxiliary"
+      ]
+    },
+    {
+      "name": "currentProject",
+      "kind": "let",
+      "declaredAt": 2325,
+      "writePoints": 3,
+      "writtenBy": [
+        "shell",
+        "声明"
+      ],
+      "usedByMovers": [
+        "applyCandidateBlock",
+        "confirmCurrentPage",
+        "confirmPageLayout",
+        "createBlockFromBox",
+        "decideCandidate",
+        "ensureReviewTree",
+        "loadPageDetail",
+        "openCandidateCompare",
+        "pagerPages",
+        "recognizeBoxRegion",
+        "renderLayoutPanel",
+        "renderPageDetail",
+        "renderReviewPager",
+        "reviewAction",
+        "runAuxiliary",
+        "setupReviewAutoPass",
+        "setupReviewPager",
+        "structureAction",
+        "undoAutoApply",
+        "loadReviewTreeItems",
+        "nextUnfinishedPage",
+        "loadInkGaps",
+        "refreshDetailSuggestions",
+        "autoMarginProvisional"
+      ]
+    },
+    {
+      "name": "PAGE_TYPE_LABELS",
+      "kind": "const",
+      "declaredAt": 2352,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "renderReviewHeadline"
+      ]
+    },
+    {
+      "name": "pageSuggestionCache",
+      "kind": "const",
+      "declaredAt": 3377,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "loadPageDetail"
+      ]
+    },
+    {
+      "name": "detailPageNo",
+      "kind": "let",
+      "declaredAt": 7984,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "applyCandidateBlock",
+        "captureQueueSnapshot",
+        "closePageDetail",
+        "confirmCurrentPage",
+        "confirmPageLayout",
+        "createBlockFromBox",
+        "decideCandidate",
+        "ensureReviewTree",
+        "loadPageDetail",
+        "openCandidateCompare",
+        "openPageDetail",
+        "recognizeBoxRegion",
+        "renderReviewPager",
+        "renderReviewTree",
+        "restoreQueueAfterUndo",
+        "reviewAction",
+        "runAuxiliary",
+        "setReviewMargin",
+        "setupReviewAutoPass",
+        "setupReviewPager",
+        "structureAction",
+        "undoAutoApply",
+        "initDiffQueue",
+        "loadReviewTreeItems",
+        "openTreeItem",
+        "runPageAux",
+        "stepPage",
+        "loadInkGaps",
+        "refreshDetailSuggestions"
+      ]
+    },
+    {
+      "name": "detailImagePageNo",
+      "kind": "let",
+      "declaredAt": 7985,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "renderPageDetail"
+      ]
+    },
+    {
+      "name": "reviewBlocks",
+      "kind": "let",
+      "declaredAt": 7986,
+      "writePoints": 4,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "activateDiff",
+        "applyCandidateBlock",
+        "decideCandidate",
+        "drawDiffLayer",
+        "ensureBlockListed",
+        "renderDiffQueue",
+        "renderLayoutPanel",
+        "renderPageDetail",
+        "renderReviewBlocks",
+        "renderReviewFilter",
+        "renderReviewWorkflowStatus",
+        "aggregateDivergence",
+        "loadReviewTreeItems",
+        "adoptLine",
+        "buildDiffQueue",
+        "refreshDetailSuggestions",
+        "refreshReviewFilterOnly"
+      ]
+    },
+    {
+      "name": "detailMargin",
+      "kind": "let",
+      "declaredAt": 7988,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "renderPageDetail",
+        "renderReviewFilter",
+        "renderReviewHeadline"
+      ]
+    },
+    {
+      "name": "detailLines",
+      "kind": "let",
+      "declaredAt": 7990,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "drawDetailLines",
+        "drawDetailOverlay",
+        "renderPageDetail",
+        "lineEdges"
+      ]
+    },
+    {
+      "name": "diffMarksMode",
+      "kind": "let",
+      "declaredAt": 7998,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "drawDiffLayer",
+        "setupViewerTools"
+      ]
+    },
+    {
+      "name": "activeDiff",
+      "kind": "let",
+      "declaredAt": 7999,
+      "writePoints": 6,
+      "writtenBy": [
+        "movers",
+        "shell",
+        "stays",
+        "声明"
+      ],
+      "usedByMovers": [
+        "activateDiff",
+        "drawDiffLayer",
+        "renderPageDetail",
+        "renderReviewTree",
+        "syncReviewTreeToPage",
+        "updateDiffActive"
+      ]
+    },
+    {
+      "name": "activeReviewBlockId",
+      "kind": "let",
+      "declaredAt": 8000,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "renderPageDetail",
+        "selectReviewBlock"
+      ]
+    },
+    {
+      "name": "diffStripOpen",
+      "kind": "const",
+      "declaredAt": 8001,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "activateDiff",
+        "renderPageDetail",
+        "selectReviewBlock",
+        "syncDiffStrip",
+        "blockDivergenceSection"
+      ]
+    },
+    {
+      "name": "diffQueue",
+      "kind": "let",
+      "declaredAt": 8003,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "captureQueueSnapshot",
+        "drawDiffLayer",
+        "renderDiffQueue",
+        "renderQueueFooter",
+        "restoreQueueAfterUndo",
+        "initDiffQueue",
+        "openTreeItem",
+        "queueDotFor",
+        "queueHasPendingItems",
+        "queueCounts"
+      ]
+    },
+    {
+      "name": "queueIndex",
+      "kind": "let",
+      "declaredAt": 8004,
+      "writePoints": 9,
+      "writtenBy": [
+        "movers",
+        "shell",
+        "声明"
+      ],
+      "usedByMovers": [
+        "captureQueueSnapshot",
+        "drawDiffLayer",
+        "renderDiffQueue",
+        "restoreQueueAfterUndo",
+        "initDiffQueue",
+        "openTreeItem",
+        "queueDotFor"
+      ]
+    },
+    {
+      "name": "pendingPageAux",
+      "kind": "let",
+      "declaredAt": 8006,
+      "writePoints": 5,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "closePageDetail",
+        "loadPageDetail",
+        "renderDiffQueue",
+        "runPageAux"
+      ]
+    },
+    {
+      "name": "queueOpen",
+      "kind": "let",
+      "declaredAt": 8007,
+      "writePoints": 6,
+      "writtenBy": [
+        "movers",
+        "shell",
+        "声明"
+      ],
+      "usedByMovers": [
+        "renderDiffQueue",
+        "restoreQueueAfterUndo",
+        "initDiffQueue",
+        "openTreeItem"
+      ]
+    },
+    {
+      "name": "queueDecisions",
+      "kind": "const",
+      "declaredAt": 8008,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "captureQueueSnapshot",
+        "renderDiffQueue",
+        "restoreQueueAfterUndo",
+        "initDiffQueue",
+        "queueDotFor",
+        "queueCounts"
+      ]
+    },
+    {
+      "name": "lastQueueDecisionKey",
+      "kind": "let",
+      "declaredAt": 8009,
+      "writePoints": 5,
+      "writtenBy": [
+        "movers",
+        "shell",
+        "声明"
+      ],
+      "usedByMovers": [
+        "captureQueueSnapshot",
+        "restoreQueueAfterUndo",
+        "initDiffQueue"
+      ]
+    },
+    {
+      "name": "queuePageNo",
+      "kind": "let",
+      "declaredAt": 8010,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "captureQueueSnapshot",
+        "renderDiffQueue",
+        "initDiffQueue"
+      ]
+    },
+    {
+      "name": "detailHistoryState",
+      "kind": "let",
+      "declaredAt": 8011,
+      "writePoints": 4,
+      "writtenBy": [
+        "movers",
+        "shell",
+        "声明"
+      ],
+      "usedByMovers": [
+        "renderHistoryButtons"
+      ]
+    },
+    {
+      "name": "reviewSaveTimer",
+      "kind": "let",
+      "declaredAt": 8030,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "stays",
+        "声明"
+      ],
+      "usedByMovers": [
+        "scheduleBlockSave"
+      ]
+    },
+    {
+      "name": "reviewPendingSave",
+      "kind": "let",
+      "declaredAt": 8031,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "stays",
+        "声明"
+      ],
+      "usedByMovers": [
+        "scheduleBlockSave"
+      ]
+    },
+    {
+      "name": "cursorByBlock",
+      "kind": "const",
+      "declaredAt": 8033,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "structureAction",
+        "blockCard"
+      ]
+    },
+    {
+      "name": "detailSuggestions",
+      "kind": "let",
+      "declaredAt": 8040,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "applyDetailSuggestions"
+      ]
+    },
+    {
+      "name": "detailSuggestionByBlock",
+      "kind": "let",
+      "declaredAt": 8041,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "drawDetailOverlay",
+        "blockCard",
+        "pageNumberSplitHint",
+        "applyDetailSuggestions"
+      ]
+    },
+    {
+      "name": "detailNumberHints",
+      "kind": "let",
+      "declaredAt": 8043,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "pageNumberSplitHint",
+        "applyDetailSuggestions"
+      ]
+    },
+    {
+      "name": "detailLayoutConfirmed",
+      "kind": "let",
+      "declaredAt": 8045,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "renderLayoutPanel",
+        "renderPageDetail",
+        "renderReviewHeadline",
+        "pendingPageReasons"
+      ]
+    },
+    {
+      "name": "detailWorkflow",
+      "kind": "let",
+      "declaredAt": 8047,
+      "writePoints": 5,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "closePageDetail",
+        "openPageDetail",
+        "renderPageDetail",
+        "renderReviewWorkflowStatus",
+        "setupReviewAutoPass"
+      ]
+    },
+    {
+      "name": "reviewMarginOn",
+      "kind": "let",
+      "declaredAt": 8052,
+      "writePoints": 4,
+      "writtenBy": [
+        "movers",
+        "shell",
+        "声明"
+      ],
+      "usedByMovers": [
+        "paintReviewMargin",
+        "renderPageDetail",
+        "setReviewMargin",
+        "toggleReviewMargin",
+        "saveReviewMarginPreference"
+      ]
+    },
+    {
+      "name": "reviewBlockFilter",
+      "kind": "let",
+      "declaredAt": 8054,
+      "writePoints": 5,
+      "writtenBy": [
+        "movers",
+        "shell",
+        "stays",
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureBlockListed",
+        "openPageDetail",
+        "effectiveReviewFilter"
+      ]
+    },
+    {
+      "name": "reviewFilterExplicit",
+      "kind": "let",
+      "declaredAt": 8056,
+      "writePoints": 4,
+      "writtenBy": [
+        "movers",
+        "stays",
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureBlockListed",
+        "openPageDetail",
+        "effectiveReviewFilter"
+      ]
+    },
+    {
+      "name": "BLOCK_TYPE_LABELS",
+      "kind": "const",
+      "declaredAt": 8058,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "renderSuggestionTools",
+        "blockCard",
+        "blockSuggestionBadge"
+      ]
+    },
+    {
+      "name": "TEXT_FREE_BLOCK_TYPES",
+      "kind": "const",
+      "declaredAt": 8064,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "drawDetailOverlay",
+        "blockCard"
+      ]
+    },
+    {
+      "name": "CHROME_BLOCK_TYPES",
+      "kind": "const",
+      "declaredAt": 8065,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "drawDetailOverlay",
+        "blockCard"
+      ]
+    },
+    {
+      "name": "NOTE_BLOCK_TYPES",
+      "kind": "const",
+      "declaredAt": 8067,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "blockCard"
+      ]
+    },
+    {
+      "name": "REVIEW_STATUS_LABELS",
+      "kind": "const",
+      "declaredAt": 8068,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "blockCard"
+      ]
+    },
+    {
+      "name": "zoomLevel",
+      "kind": "let",
+      "declaredAt": 8270,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "applyZoom",
+        "setupViewerTools",
+        "zoomBy"
+      ]
+    },
+    {
+      "name": "ZOOM_STEPS",
+      "kind": "const",
+      "declaredAt": 8271,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "zoomBy"
+      ]
+    },
+    {
+      "name": "HANDLE_CORNERS",
+      "kind": "const",
+      "declaredAt": 8729,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "drawDetailOverlay"
+      ]
+    },
+    {
+      "name": "DRAG_SNAP_PX",
+      "kind": "const",
+      "declaredAt": 8731,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "snapBox"
+      ]
+    },
+    {
+      "name": "MIN_BOX_SIDE",
+      "kind": "const",
+      "declaredAt": 8734,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "snapBox"
+      ]
+    },
+    {
+      "name": "boxDrag",
+      "kind": "let",
+      "declaredAt": 8736,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "shell",
+        "声明"
+      ],
+      "usedByMovers": [
+        "startBoxDrag"
+      ]
+    },
+    {
+      "name": "suppressBoxClick",
+      "kind": "let",
+      "declaredAt": 8737,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "shell",
+        "声明"
+      ],
+      "usedByMovers": [
+        "drawDetailOverlay"
+      ]
+    },
+    {
+      "name": "DIFF_LEVELS",
+      "kind": "const",
+      "declaredAt": 9185,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "drawDiffLayer",
+        "blockHasDrawableDiff",
+        "buildDiffQueue"
+      ]
+    },
+    {
+      "name": "MAX_DIVERGENCE_ROWS",
+      "kind": "const",
+      "declaredAt": 10576,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "blockDivergenceSection"
+      ]
+    },
+    {
+      "name": "candidateRunId",
+      "kind": "let",
+      "declaredAt": 11105,
+      "writePoints": 5,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "applyCandidateBlock",
+        "closePageDetail",
+        "decideCandidate",
+        "openCandidateCompare",
+        "renderPageDetail"
+      ]
+    },
+    {
+      "name": "boxCreateMode",
+      "kind": "let",
+      "declaredAt": 11245,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "closePageDetail",
+        "onBoxMouseDown",
+        "setBoxCreateMode",
+        "setupBoxCreate",
+        "startBoxDrag",
+        "startRegionRecognition"
+      ]
+    },
+    {
+      "name": "boxDraft",
+      "kind": "let",
+      "declaredAt": 11246,
+      "writePoints": 5,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "onBoxMouseDown",
+        "onBoxMouseUp",
+        "setBoxCreateMode",
+        "startRegionRecognition",
+        "boxDraftRect",
+        "onBoxMouseMove"
+      ]
+    },
+    {
+      "name": "BOX_MIN_WIDTH",
+      "kind": "const",
+      "declaredAt": 11249,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "onBoxMouseUp"
+      ]
+    },
+    {
+      "name": "BOX_MIN_HEIGHT",
+      "kind": "const",
+      "declaredAt": 11250,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "onBoxMouseUp"
+      ]
+    },
+    {
+      "name": "detailInkGaps",
+      "kind": "let",
+      "declaredAt": 11385,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "drawInkGapMarks",
+        "renderInkGapBar",
+        "renderReviewHeadline",
+        "pendingPageReasons",
+        "loadInkGaps"
+      ]
+    },
+    {
+      "name": "inkGapsShown",
+      "kind": "let",
+      "declaredAt": 11386,
+      "writePoints": 4,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "drawInkGapMarks",
+        "renderInkGapBar",
+        "setupBoxCreate",
+        "loadInkGaps"
+      ]
+    },
+    {
+      "name": "reviewTree",
+      "kind": "let",
+      "declaredAt": 12510,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureReviewTree",
+        "renderReviewTree",
+        "syncReviewTreeToPage",
+        "treeChapterOfPage",
+        "updateReviewTreeAfterAck"
+      ]
+    },
+    {
+      "name": "reviewTreeProjectId",
+      "kind": "let",
+      "declaredAt": 12511,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureReviewTree"
+      ]
+    },
+    {
+      "name": "reviewTreeLoading",
+      "kind": "let",
+      "declaredAt": 12512,
+      "writePoints": 3,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureReviewTree"
+      ]
+    },
+    {
+      "name": "reviewTreeOnlyTodo",
+      "kind": "let",
+      "declaredAt": 12513,
+      "writePoints": 2,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "renderReviewTree",
+        "setReviewTreeOnlyTodo",
+        "setupViewerTools",
+        "syncReviewTreeToPage",
+        "updateReviewTreeAfterAck"
+      ]
+    },
+    {
+      "name": "reviewTreeExpandedChapters",
+      "kind": "let",
+      "declaredAt": 12514,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureReviewTree",
+        "renderReviewTree",
+        "syncReviewTreeToPage",
+        "toggleReviewTreeChapter"
+      ]
+    },
+    {
+      "name": "reviewTreeExpandedPage",
+      "kind": "let",
+      "declaredAt": 12515,
+      "writePoints": 5,
+      "writtenBy": [
+        "movers",
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureReviewTree",
+        "renderReviewTree",
+        "syncReviewTreeToPage",
+        "toggleReviewTreePage"
+      ]
+    },
+    {
+      "name": "reviewTreeItems",
+      "kind": "let",
+      "declaredAt": 12516,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureReviewTree",
+        "renderPageDetail",
+        "renderReviewTree",
+        "loadReviewTreeItems",
+        "updateReviewTreeAfterAck"
+      ]
+    },
+    {
+      "name": "reviewTreePageRows",
+      "kind": "let",
+      "declaredAt": 12517,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureReviewTree",
+        "renderReviewTree",
+        "syncReviewTreeToPage",
+        "updateReviewTreeAfterAck"
+      ]
+    },
+    {
+      "name": "reviewTreeChapterRows",
+      "kind": "let",
+      "declaredAt": 12518,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureReviewTree",
+        "renderReviewTree",
+        "updateReviewTreeAfterAck"
+      ]
+    },
+    {
+      "name": "reviewTreeItemRows",
+      "kind": "let",
+      "declaredAt": 12519,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "ensureReviewTree",
+        "renderReviewTree",
+        "syncReviewTreeToPage",
+        "updateReviewTreeAfterAck"
+      ]
+    },
+    {
+      "name": "TREE_DIFF_LEVELS",
+      "kind": "const",
+      "declaredAt": 12520,
+      "writePoints": 1,
+      "writtenBy": [
+        "声明"
+      ],
+      "usedByMovers": [
+        "treeItemsFromBlocks"
+      ]
+    }
+  ],
+  "树函数": [
+    {
+      "name": "renderReviewTree",
+      "start": 12634,
+      "end": 12810,
+      "lines": 177,
+      "判定": "movers",
+      "实际落区": "movers",
+      "依据": "渲染 #review-tree-list / #review-tree-stats（review 子树），并绑条目点击"
+    },
+    {
+      "name": "loadReviewTreeItems",
+      "start": 12583,
+      "end": 12603,
+      "lines": 21,
+      "判定": "movers",
+      "实际落区": "movers",
+      "依据": "只填 reviewTreeItems（树的数据），不渲染其它视图"
+    },
+    {
+      "name": "treeItemSummary",
+      "start": 12606,
+      "end": 12621,
+      "lines": 16,
+      "判定": "movers",
+      "实际落区": "movers",
+      "依据": "只生成树条目摘要文本，纯树展示件"
+    },
+    {
+      "name": "toggleReviewTreeChapter",
+      "start": 12812,
+      "end": 12820,
+      "lines": 9,
+      "判定": "movers",
+      "实际落区": "movers",
+      "依据": "改树展开状态并调 renderReviewTree（review DOM）"
+    },
+    {
+      "name": "toggleReviewTreePage",
+      "start": 12822,
+      "end": 12829,
+      "lines": 8,
+      "判定": "movers",
+      "实际落区": "movers",
+      "依据": "改树页码展开状态并调 renderReviewTree（review DOM）"
+    },
+    {
+      "name": "treeLevelLabel",
+      "start": 12623,
+      "end": 12627,
+      "lines": 5,
+      "判定": "movers",
+      "实际落区": "movers",
+      "依据": "纯标签文本，只服务 review 树"
+    },
+    {
+      "name": "treeChapterOfPage",
+      "start": 12629,
+      "end": 12632,
+      "lines": 4,
+      "判定": "movers",
+      "实际落区": "movers",
+      "依据": "只读 reviewTree.pages，纯树数据辅助"
+    },
+    {
+      "name": "openTreeItem",
+      "start": 12941,
+      "end": 12960,
+      "lines": 20,
+      "判定": "stays",
+      "实际落区": "movers",
+      "依据": "不渲染任何 DOM；只做 openPageDetail / focusQueueItem / syncReviewTreeToPage 的流程推进"
+    }
+  ],
+  "警示": {
+    "引用 review id 却留在外壳的函数": [
+      {
+        "name": "renderFinishPanel",
+        "lines": 135,
+        "why": "引用段外 id：cleanup-continuation-review-open、cleanup-continuation-review-status、finish-auto-pass、finish-bottom-note、finish-check-engine、finish-confirm-layout…"
+      },
+      {
+        "name": "showView",
+        "lines": 66,
+        "why": "引用段外 id：topbar-library、topbar-project"
+      }
+    ],
+    "说明": "这些函数同时引用别视图的 id（或只有外壳调用者）。落盘前要么拆分 DOM 写点，要么作为接缝注入；不拆就搬会让 R3 红，不搬则 app.js 的 review 字面量无法归零。"
+  },
+  "自检": {
+    "① 每个名字恰好 1 处 function 声明": true,
+    "② movers+stays+external 行数 = 闭包行数": true,
+    "③ 判完是几就是几（不为了凑 106/113 改判）": true
+  },
+  "movers": [
+    {
+      "name": "activateDiff",
+      "start": 9489,
+      "end": 9521,
+      "lines": 33,
+      "why": "引用 view-review 的 id：detail-blocks"
+    },
+    {
+      "name": "applyCandidateBlock",
+      "start": 11202,
+      "end": 11240,
+      "lines": 39,
+      "why": "引用 view-review 的 id：page-detail-error"
+    },
+    {
+      "name": "applyQueueAckLocally",
+      "start": 9743,
+      "end": 9818,
+      "lines": 76,
+      "why": "引用 view-review 的 id：detail-blocks"
+    },
+    {
+      "name": "applyZoom",
+      "start": 8278,
+      "end": 8288,
+      "lines": 11,
+      "why": "引用 view-review 的 id：detail-canvas、detail-image、detail-overlay、zoom-fit"
+    },
+    {
+      "name": "captureQueueSnapshot",
+      "start": 9954,
+      "end": 9965,
+      "lines": 12,
+      "why": "引用 view-review 的 id：detail-blocks、viewer-scroll"
+    },
+    {
+      "name": "closePageDetail",
+      "start": 8107,
+      "end": 8116,
+      "lines": 10,
+      "why": "引用 view-review 的 id：aux-panel、candidate-panel"
+    },
+    {
+      "name": "confirmCurrentPage",
+      "start": 11574,
+      "end": 11599,
+      "lines": 26,
+      "why": "引用 view-review 的 id：page-detail-error"
+    },
+    {
+      "name": "confirmPageLayout",
+      "start": 10128,
+      "end": 10150,
+      "lines": 23,
+      "why": "引用 view-review 的 id：layout-confirm、page-detail-error"
+    },
+    {
+      "name": "createBlockFromBox",
+      "start": 11344,
+      "end": 11376,
+      "lines": 33,
+      "why": "引用 view-review 的 id：box-select-text、page-detail-error"
+    },
+    {
+      "name": "decideCandidate",
+      "start": 11521,
+      "end": 11549,
+      "lines": 29,
+      "why": "引用 view-review 的 id：candidate-panel、page-detail-error"
+    },
+    {
+      "name": "drawBoxDraft",
+      "start": 11330,
+      "end": 11342,
+      "lines": 13,
+      "why": "引用 view-review 的 id：box-select-rect"
+    },
+    {
+      "name": "drawDetailLines",
+      "start": 10052,
+      "end": 10070,
+      "lines": 19,
+      "why": "引用 view-review 的 id：detail-lines"
+    },
+    {
+      "name": "drawDetailOverlay",
+      "start": 9986,
+      "end": 10049,
+      "lines": 64,
+      "why": "引用 view-review 的 id：detail-overlay"
+    },
+    {
+      "name": "drawDiffLayer",
+      "start": 9319,
+      "end": 9412,
+      "lines": 94,
+      "why": "引用 view-review 的 id：detail-canvas、detail-diff-layer、toggle-diff-marks"
+    },
+    {
+      "name": "drawInkGapMarks",
+      "start": 11429,
+      "end": 11452,
+      "lines": 24,
+      "why": "引用 view-review 的 id：detail-ink-gaps"
+    },
+    {
+      "name": "ensureBlockListed",
+      "start": 8558,
+      "end": 8566,
+      "lines": 9,
+      "why": "引用 view-review 的 id：detail-blocks"
+    },
+    {
+      "name": "ensureReviewTree",
+      "start": 12522,
+      "end": 12557,
+      "lines": 36,
+      "why": "引用 view-review 的 id：page-detail-error"
+    },
+    {
+      "name": "findDiffMark",
+      "start": 9298,
+      "end": 9302,
+      "lines": 5,
+      "why": "引用 view-review 的 id：detail-diff-layer"
+    },
+    {
+      "name": "fitWidth",
+      "start": 8273,
+      "end": 8276,
+      "lines": 4,
+      "why": "引用 view-review 的 id：viewer-scroll"
+    },
+    {
+      "name": "focusQueueBar",
+      "start": 9949,
+      "end": 9952,
+      "lines": 4,
+      "why": "引用 view-review 的 id：diff-queue"
+    },
+    {
+      "name": "focusSiblingBlock",
+      "start": 10889,
+      "end": 10896,
+      "lines": 8,
+      "why": "引用 view-review 的 id：detail-blocks"
+    },
+    {
+      "name": "loadPageDetail",
+      "start": 8139,
+      "end": 8165,
+      "lines": 27,
+      "why": "引用 view-review 的 id：page-detail-error"
+    },
+    {
+      "name": "normalizedPoint",
+      "start": 11267,
+      "end": 11275,
+      "lines": 9,
+      "why": "引用 view-review 的 id：detail-image"
+    },
+    {
+      "name": "onBoxMouseDown",
+      "start": 11277,
+      "end": 11286,
+      "lines": 10,
+      "why": "引用 view-review 的 id：box-select-panel、box-select-status"
+    },
+    {
+      "name": "onBoxMouseUp",
+      "start": 11297,
+      "end": 11317,
+      "lines": 21,
+      "why": "引用 view-review 的 id：box-select-info、box-select-panel、box-select-rect、box-select-text"
+    },
+    {
+      "name": "openCandidateCompare",
+      "start": 11107,
+      "end": 11118,
+      "lines": 12,
+      "why": "引用 view-review 的 id：page-detail-error"
+    },
+    {
+      "name": "openPageDetail",
+      "start": 8072,
+      "end": 8084,
+      "lines": 13,
+      "why": "引用 view-review 的 id：page-detail-error"
+    },
+    {
+      "name": "pagerPages",
+      "start": 8223,
+      "end": 8231,
+      "lines": 9,
+      "why": "引用 view-review 的 id：review-jump-filter"
+    },
+    {
+      "name": "paintReviewMargin",
+      "start": 8432,
+      "end": 8453,
+      "lines": 22,
+      "why": "引用 view-review 的 id：detail-canvas、detail-margin"
+    },
+    {
+      "name": "recognizeBoxRegion",
+      "start": 11469,
+      "end": 11501,
+      "lines": 33,
+      "why": "引用 view-review 的 id：box-select-recognize、box-select-status、box-select-text、page-detail-error"
+    },
+    {
+      "name": "renderAuxiliary",
+      "start": 1568,
+      "end": 1618,
+      "lines": 51,
+      "why": "引用 view-review 的 id：aux-hint、aux-lines、aux-panel、aux-summary"
+    },
+    {
+      "name": "renderCandidate",
+      "start": 11120,
+      "end": 11133,
+      "lines": 14,
+      "why": "引用 view-review 的 id：candidate-current、candidate-meta、candidate-new、candidate-panel"
+    },
+    {
+      "name": "renderDiffQueue",
+      "start": 9654,
+      "end": 9716,
+      "lines": 63,
+      "why": "引用 view-review 的 id：diff-queue、diff-queue-dots、diff-queue-meta、diff-queue-note、diff-queue-position、diff-queue-text"
+    },
+    {
+      "name": "renderHistoryButtons",
+      "start": 8713,
+      "end": 8720,
+      "lines": 8,
+      "why": "引用 view-review 的 id：review-redo、review-undo"
+    },
+    {
+      "name": "renderInkGapBar",
+      "start": 11414,
+      "end": 11427,
+      "lines": 14,
+      "why": "引用 view-review 的 id：ink-gap-bar、ink-gap-text、ink-gap-toggle"
+    },
+    {
+      "name": "renderLayoutPanel",
+      "start": 10104,
+      "end": 10126,
+      "lines": 23,
+      "why": "引用 view-review 的 id：layout-confirm、layout-panel、layout-panel-status"
+    },
+    {
+      "name": "renderPageDetail",
+      "start": 8568,
+      "end": 8640,
+      "lines": 73,
+      "why": "引用 view-review 的 id：aux-run、candidate-open、candidate-panel、detail-canvas、detail-image、detail-image-status"
+    },
+    {
+      "name": "renderQueueFooter",
+      "start": 9642,
+      "end": 9651,
+      "lines": 10,
+      "why": "引用 view-review 的 id：review-footer-count"
+    },
+    {
+      "name": "renderReviewBanner",
+      "start": 8657,
+      "end": 8711,
+      "lines": 55,
+      "why": "引用 view-review 的 id：review-banner"
+    },
+    {
+      "name": "renderReviewBlocks",
+      "start": 10821,
+      "end": 10865,
+      "lines": 45,
+      "why": "引用 view-review 的 id：detail-blocks"
+    },
+    {
+      "name": "renderReviewFilter",
+      "start": 8502,
+      "end": 8542,
+      "lines": 41,
+      "why": "引用 view-review 的 id：review-filter、review-filter-note"
+    },
+    {
+      "name": "renderReviewHeadline",
+      "start": 9603,
+      "end": 9629,
+      "lines": 27,
+      "why": "引用 view-review 的 id：page-detail-meta"
+    },
+    {
+      "name": "renderReviewPager",
+      "start": 8234,
+      "end": 8257,
+      "lines": 24,
+      "why": "引用 view-review 的 id：review-next、review-page-no、review-prev"
+    },
+    {
+      "name": "renderReviewTree",
+      "start": 12634,
+      "end": 12810,
+      "lines": 177,
+      "why": "引用 view-review 的 id：review-tree-list、review-tree-stats"
+    },
+    {
+      "name": "renderReviewWorkflowStatus",
+      "start": 8643,
+      "end": 8651,
+      "lines": 9,
+      "why": "引用 view-review 的 id：review-auto-pass、review-auto-revoke"
+    },
+    {
+      "name": "renderSuggestionTools",
+      "start": 10081,
+      "end": 10101,
+      "lines": 21,
+      "why": "引用 view-review 的 id：suggestion-apply-all"
+    },
+    {
+      "name": "restoreQueueAfterUndo",
+      "start": 9968,
+      "end": 9985,
+      "lines": 18,
+      "why": "引用 view-review 的 id：detail-blocks、viewer-scroll"
+    },
+    {
+      "name": "reviewAction",
+      "start": 11551,
+      "end": 11572,
+      "lines": 22,
+      "why": "引用 view-review 的 id：page-detail-error"
+    },
+    {
+      "name": "runAuxiliary",
+      "start": 1543,
+      "end": 1566,
+      "lines": 24,
+      "why": "引用 view-review 的 id：page-detail-error"
+    },
+    {
+      "name": "scrollRowIntoList",
+      "start": 9432,
+      "end": 9439,
+      "lines": 8,
+      "why": "引用 view-review 的 id：detail-blocks"
+    },
+    {
+      "name": "scrollViewerTo",
+      "start": 9423,
+      "end": 9430,
+      "lines": 8,
+      "why": "引用 view-review 的 id：viewer-scroll"
+    },
+    {
+      "name": "selectReviewBlock",
+      "start": 10867,
+      "end": 10887,
+      "lines": 21,
+      "why": "引用 view-review 的 id：block-position、detail-blocks、detail-overlay"
+    },
+    {
+      "name": "setBoxCreateMode",
+      "start": 11252,
+      "end": 11264,
+      "lines": 13,
+      "why": "引用 view-review 的 id：box-select-panel、box-select-rect、box-select-status、detail-box-create、detail-canvas"
+    },
+    {
+      "name": "setReviewMargin",
+      "start": 8307,
+      "end": 8315,
+      "lines": 9,
+      "why": "引用 view-review 的 id：review-margin-toggle"
+    },
+    {
+      "name": "setReviewOverlay",
+      "start": 8298,
+      "end": 8305,
+      "lines": 8,
+      "why": "引用 view-review 的 id：detail-overlay、toggle-overlay"
+    },
+    {
+      "name": "setReviewTreeOnlyTodo",
+      "start": 12831,
+      "end": 12838,
+      "lines": 8,
+      "why": "引用 view-review 的 id：review-tree-filter"
+    },
+    {
+      "name": "setupAuxControls",
+      "start": 1620,
+      "end": 1625,
+      "lines": 6,
+      "why": "引用 view-review 的 id：aux-close、aux-panel、aux-run"
+    },
+    {
+      "name": "setupBoxCreate",
+      "start": 11503,
+      "end": 11519,
+      "lines": 17,
+      "why": "引用 view-review 的 id：box-select-cancel、box-select-confirm、box-select-recognize、detail-box-create、detail-canvas、ink-gap-toggle"
+    },
+    {
+      "name": "setupReviewAutoPass",
+      "start": 8366,
+      "end": 8407,
+      "lines": 42,
+      "why": "引用 view-review 的 id：review-auto-pass、review-auto-revoke"
+    },
+    {
+      "name": "setupReviewPager",
+      "start": 8410,
+      "end": 8424,
+      "lines": 15,
+      "why": "引用 view-review 的 id：review-jump、review-jump-filter、review-next、review-prev"
+    },
+    {
+      "name": "setupViewerTools",
+      "start": 8317,
+      "end": 8364,
+      "lines": 48,
+      "why": "引用 view-review 的 id：detail-overlay、review-drawer-toggle、review-filter、review-footer-count、review-margin-toggle、review-tree"
+    },
+    {
+      "name": "snapBox",
+      "start": 8784,
+      "end": 8813,
+      "lines": 30,
+      "why": "引用 view-review 的 id：detail-image"
+    },
+    {
+      "name": "startBoxDrag",
+      "start": 8816,
+      "end": 8837,
+      "lines": 22,
+      "why": "引用 view-review 的 id：detail-image、toggle-overlay"
+    },
+    {
+      "name": "startRegionRecognition",
+      "start": 11455,
+      "end": 11466,
+      "lines": 12,
+      "why": "引用 view-review 的 id：box-select-info、box-select-panel、box-select-text"
+    },
+    {
+      "name": "structureAction",
+      "start": 11039,
+      "end": 11101,
+      "lines": 63,
+      "why": "引用 view-review 的 id：page-detail-error"
+    },
+    {
+      "name": "syncDiffStrip",
+      "start": 9456,
+      "end": 9465,
+      "lines": 10,
+      "why": "引用 view-review 的 id：detail-blocks"
+    },
+    {
+      "name": "syncReviewTreeToPage",
+      "start": 12841,
+      "end": 12881,
+      "lines": 41,
+      "why": "引用 view-review 的 id：review-tree-scroll"
+    },
+    {
+      "name": "toggleReviewMargin",
+      "start": 8455,
+      "end": 8464,
+      "lines": 10,
+      "why": "引用 view-review 的 id：review-margin-toggle"
+    },
+    {
+      "name": "undoAutoApply",
+      "start": 13804,
+      "end": 13821,
+      "lines": 18,
+      "why": "引用 view-review 的 id：page-detail-error"
+    },
+    {
+      "name": "updateDiffActive",
+      "start": 9467,
+      "end": 9483,
+      "lines": 17,
+      "why": "引用 view-review 的 id：detail-blocks、detail-diff-layer"
+    },
+    {
+      "name": "aggregateDivergence",
+      "start": 9581,
+      "end": 9600,
+      "lines": 20,
+      "why": "不碰 id；只被搬走的函数调用：renderDiffQueue、renderReviewFilter、renderReviewHeadline"
+    },
+    {
+      "name": "bestShift",
+      "start": 8765,
+      "end": 8778,
+      "lines": 14,
+      "why": "不碰 id；只被搬走的函数调用：snapBox"
+    },
+    {
+      "name": "blockCard",
+      "start": 10287,
+      "end": 10571,
+      "lines": 285,
+      "why": "不碰 id；只被搬走的函数调用：renderReviewBlocks"
+    },
+    {
+      "name": "blockDivergenceSection",
+      "start": 10584,
+      "end": 10707,
+      "lines": 124,
+      "why": "不碰 id；只被搬走的函数调用：blockCard"
+    },
+    {
+      "name": "blockHasDrawableDiff",
+      "start": 9189,
+      "end": 9197,
+      "lines": 9,
+      "why": "不碰 id；只被搬走的函数调用：renderPageDetail"
+    },
+    {
+      "name": "blockSuggestionBadge",
+      "start": 10173,
+      "end": 10203,
+      "lines": 31,
+      "why": "不碰 id；只被搬走的函数调用：blockCard"
+    },
+    {
+      "name": "boxDraftRect",
+      "start": 11320,
+      "end": 11328,
+      "lines": 9,
+      "why": "不碰 id；只被搬走的函数调用：createBlockFromBox、drawBoxDraft、onBoxMouseUp、recognizeBoxRegion"
+    },
+    {
+      "name": "diffCompareLines",
+      "start": 10711,
+      "end": 10752,
+      "lines": 42,
+      "why": "不碰 id；只被搬走的函数调用：renderDiffQueue"
+    },
+    {
+      "name": "diffLevelLabel",
+      "start": 9291,
+      "end": 9296,
+      "lines": 6,
+      "why": "不碰 id；只被搬走的函数调用：applyQueueAckLocally、blockDivergenceSection、drawDiffLayer、renderDiffQueue"
+    },
+    {
+      "name": "diffRowFragment",
+      "start": 10754,
+      "end": 10786,
+      "lines": 33,
+      "why": "不碰 id；只被搬走的函数调用：blockDivergenceSection"
+    },
+    {
+      "name": "fillCandidateColumn",
+      "start": 11136,
+      "end": 11166,
+      "lines": 31,
+      "why": "不碰 id；只被搬走的函数调用：renderCandidate"
+    },
+    {
+      "name": "flashDiffElement",
+      "start": 9414,
+      "end": 9420,
+      "lines": 7,
+      "why": "不碰 id；只被搬走的函数调用：activateDiff"
+    },
+    {
+      "name": "initDiffQueue",
+      "start": 9731,
+      "end": 9740,
+      "lines": 10,
+      "why": "不碰 id；只被搬走的函数调用：renderPageDetail"
+    },
+    {
+      "name": "inkGapBarVisible",
+      "start": 11388,
+      "end": 11390,
+      "lines": 3,
+      "why": "不碰 id；只被搬走的函数调用：renderInkGapBar"
+    },
+    {
+      "name": "lineDiffSpanCount",
+      "start": 9306,
+      "end": 9311,
+      "lines": 6,
+      "why": "不碰 id；只被搬走的函数调用：drawDiffLayer"
+    },
+    {
+      "name": "lineEdges",
+      "start": 8739,
+      "end": 8748,
+      "lines": 10,
+      "why": "不碰 id；只被搬走的函数调用：snapBox"
+    },
+    {
+      "name": "loadReviewTreeItems",
+      "start": 12583,
+      "end": 12603,
+      "lines": 21,
+      "why": "不碰 id；只被搬走的函数调用：renderReviewTree"
+    },
+    {
+      "name": "nextUnfinishedPage",
+      "start": 11602,
+      "end": 11609,
+      "lines": 8,
+      "why": "不碰 id；只被搬走的函数调用：confirmCurrentPage"
+    },
+    {
+      "name": "onBoxMouseMove",
+      "start": 11288,
+      "end": 11295,
+      "lines": 8,
+      "why": "不碰 id；只被搬走的函数调用：setupBoxCreate"
+    },
+    {
+      "name": "openTreeItem",
+      "start": 12941,
+      "end": 12960,
+      "lines": 20,
+      "why": "不碰 id；只被搬走的函数调用：renderReviewTree"
+    },
+    {
+      "name": "pageNumberSplitHint",
+      "start": 11017,
+      "end": 11037,
+      "lines": 21,
+      "why": "不碰 id；只被搬走的函数调用：blockCard"
+    },
+    {
+      "name": "pendingPageReasons",
+      "start": 8482,
+      "end": 8490,
+      "lines": 9,
+      "why": "不碰 id；只被搬走的函数调用：renderReviewBlocks、renderReviewFilter"
+    },
+    {
+      "name": "queueDotFor",
+      "start": 9631,
+      "end": 9640,
+      "lines": 10,
+      "why": "不碰 id；只被搬走的函数调用：renderDiffQueue"
+    },
+    {
+      "name": "queueHasPendingItems",
+      "start": 8183,
+      "end": 8186,
+      "lines": 4,
+      "why": "不碰 id；只被搬走的函数调用：loadPageDetail"
+    },
+    {
+      "name": "runPageAux",
+      "start": 8189,
+      "end": 8195,
+      "lines": 7,
+      "why": "不碰 id；只被搬走的函数调用：loadPageDetail、renderDiffQueue"
+    },
+    {
+      "name": "saveReviewMarginPreference",
+      "start": 3092,
+      "end": 3098,
+      "lines": 7,
+      "why": "不碰 id；只被搬走的函数调用：toggleReviewMargin"
+    },
+    {
+      "name": "scheduleBlockSave",
+      "start": 10901,
+      "end": 10908,
+      "lines": 8,
+      "why": "不碰 id；只被搬走的函数调用：blockCard"
+    },
+    {
+      "name": "selectSpanInTextarea",
+      "start": 9442,
+      "end": 9453,
+      "lines": 12,
+      "why": "不碰 id；只被搬走的函数调用：activateDiff"
+    },
+    {
+      "name": "stepPage",
+      "start": 8259,
+      "end": 8265,
+      "lines": 7,
+      "why": "不碰 id；只被搬走的函数调用：setupReviewPager"
+    },
+    {
+      "name": "toggleReviewTreeChapter",
+      "start": 12812,
+      "end": 12820,
+      "lines": 9,
+      "why": "不碰 id；只被搬走的函数调用：renderReviewTree"
+    },
+    {
+      "name": "toggleReviewTreePage",
+      "start": 12822,
+      "end": 12829,
+      "lines": 8,
+      "why": "不碰 id；只被搬走的函数调用：renderReviewTree"
+    },
+    {
+      "name": "treeChapterOfPage",
+      "start": 12629,
+      "end": 12632,
+      "lines": 4,
+      "why": "不碰 id；只被搬走的函数调用：renderReviewTree、syncReviewTreeToPage"
+    },
+    {
+      "name": "treeItemSummary",
+      "start": 12606,
+      "end": 12621,
+      "lines": 16,
+      "why": "不碰 id；只被搬走的函数调用：renderReviewTree"
+    },
+    {
+      "name": "treeItemsFromBlocks",
+      "start": 12559,
+      "end": 12581,
+      "lines": 23,
+      "why": "不碰 id；只被搬走的函数调用：loadReviewTreeItems、renderPageDetail"
+    },
+    {
+      "name": "treeLevelLabel",
+      "start": 12623,
+      "end": 12627,
+      "lines": 5,
+      "why": "不碰 id；只被搬走的函数调用：renderReviewTree"
+    },
+    {
+      "name": "truncate",
+      "start": 10800,
+      "end": 10803,
+      "lines": 4,
+      "why": "不碰 id；只被搬走的函数调用：blockDivergenceSection、drawDiffLayer、treeItemSummary"
+    },
+    {
+      "name": "updateReviewTreeAfterAck",
+      "start": 12883,
+      "end": 12939,
+      "lines": 57,
+      "why": "不碰 id；只被搬走的函数调用：applyQueueAckLocally"
+    },
+    {
+      "name": "zoomBy",
+      "start": 8290,
+      "end": 8296,
+      "lines": 7,
+      "why": "不碰 id；只被搬走的函数调用：setupViewerTools"
+    },
+    {
+      "name": "adoptLine",
+      "start": 10927,
+      "end": 10944,
+      "lines": 18,
+      "why": "不碰 id；只被搬走的函数调用：blockDivergenceSection、renderAuxiliary"
+    },
+    {
+      "name": "autoSizeTextarea",
+      "start": 10810,
+      "end": 10819,
+      "lines": 10,
+      "why": "不碰 id；只被搬走的函数调用：applyQueueAckLocally、blockCard"
+    },
+    {
+      "name": "buildDiffQueue",
+      "start": 9533,
+      "end": 9558,
+      "lines": 26,
+      "why": "不碰 id；只被搬走的函数调用：initDiffQueue、restoreQueueAfterUndo"
+    },
+    {
+      "name": "candidateBlockActions",
+      "start": 11169,
+      "end": 11199,
+      "lines": 31,
+      "why": "不碰 id；只被搬走的函数调用：fillCandidateColumn"
+    },
+    {
+      "name": "loadInkGaps",
+      "start": 11392,
+      "end": 11412,
+      "lines": 21,
+      "why": "不碰 id；只被搬走的函数调用：runPageAux"
+    },
+    {
+      "name": "queueCounts",
+      "start": 9560,
+      "end": 9569,
+      "lines": 10,
+      "why": "不碰 id；只被搬走的函数调用：queueHasPendingItems、renderDiffQueue、renderQueueFooter"
+    },
+    {
+      "name": "refreshDetailSuggestions",
+      "start": 8198,
+      "end": 8218,
+      "lines": 21,
+      "why": "不碰 id；只被搬走的函数调用：applyCandidateBlock、decideCandidate、runPageAux"
+    },
+    {
+      "name": "refreshReviewFilterOnly",
+      "start": 8545,
+      "end": 8550,
+      "lines": 6,
+      "why": "不碰 id；只被搬走的函数调用：applyQueueAckLocally、loadInkGaps"
+    },
+    {
+      "name": "reviewMarginSplit",
+      "start": 3134,
+      "end": 3143,
+      "lines": 10,
+      "why": "不碰 id；只被搬走的函数调用：refreshReviewFilterOnly、renderReviewBlocks"
+    },
+    {
+      "name": "applyDetailSuggestions",
+      "start": 8167,
+      "end": 8180,
+      "lines": 14,
+      "why": "不碰 id；只被搬走的函数调用：applyCandidateBlock、decideCandidate、loadPageDetail、refreshDetailSuggestions"
+    },
+    {
+      "name": "effectiveReviewFilter",
+      "start": 3174,
+      "end": 3183,
+      "lines": 10,
+      "why": "不碰 id；只被搬走的函数调用：refreshReviewFilterOnly、renderReviewBlocks"
+    },
+    {
+      "name": "autoMarginProvisional",
+      "start": 3163,
+      "end": 3171,
+      "lines": 9,
+      "why": "不碰 id；只被搬走的函数调用：effectiveReviewFilter"
+    }
+  ],
+  "stays": [
+    {
+      "name": "adoptBlockSuggestion",
+      "start": 10206,
+      "end": 10219,
+      "lines": 14,
+      "why": "被外壳/C 外函数调用：renderLayoutBlocks",
+      "kind": "seam"
+    },
+    {
+      "name": "apiJson",
+      "start": 39,
+      "end": 58,
+      "lines": 20,
+      "why": "被外壳/C 外函数调用：ackQueueLine、activeAuxJob、adoptAllHighSuggestions、adoptPageNumberTemplate、applyHeaderFooter、applyPackageMode…",
+      "kind": "seam"
+    },
+    {
+      "name": "applyBoxElementRect",
+      "start": 8868,
+      "end": 8874,
+      "lines": 7,
+      "why": "被外壳/C 外函数调用：boot、onBoxPointerMove、renderPageBlocks",
+      "kind": "seam"
+    },
+    {
+      "name": "applyMarginRect",
+      "start": 5023,
+      "end": 5030,
+      "lines": 8,
+      "why": "被外壳/C 外函数调用：onMarginPointerMove、paintTileMargin",
+      "kind": "seam"
+    },
+    {
+      "name": "blockCountedInMargin",
+      "start": 3128,
+      "end": 3131,
+      "lines": 4,
+      "why": "被外壳/C 外函数调用：boot",
+      "kind": "seam"
+    },
+    {
+      "name": "blockInsideMargin",
+      "start": 3113,
+      "end": 3122,
+      "lines": 10,
+      "kind": "helper",
+      "why": "不碰 id；被搬走的函数与留外壳的函数共用"
+    },
+    {
+      "name": "blockNeedsReview",
+      "start": 8475,
+      "end": 8479,
+      "lines": 5,
+      "why": "被外壳/C 外函数调用：pendingBlockCount",
+      "kind": "seam"
+    },
+    {
+      "name": "boxTypeLabel",
+      "start": 8910,
+      "end": 8912,
+      "lines": 3,
+      "why": "被外壳/C 外函数调用：renderPageBlocks",
+      "kind": "seam"
+    },
+    {
+      "name": "buildBoxLabel",
+      "start": 8944,
+      "end": 9014,
+      "lines": 71,
+      "why": "被外壳/C 外函数调用：renderPageBlocks",
+      "kind": "seam"
+    },
+    {
+      "name": "buildBoxOrder",
+      "start": 8933,
+      "end": 8938,
+      "lines": 6,
+      "why": "被外壳/C 外函数调用：renderPageBlocks",
+      "kind": "seam"
+    },
+    {
+      "name": "buildContinuationPages",
+      "start": 12212,
+      "end": 12222,
+      "lines": 11,
+      "why": "引用段外 id：continuation-pages",
+      "kind": "other-view-dom"
+    },
+    {
+      "name": "centerContinuationJunction",
+      "start": 12235,
+      "end": 12267,
+      "lines": 33,
+      "why": "引用段外 id：continuation-pages、continuation-scroll",
+      "kind": "other-view-dom"
+    },
+    {
+      "name": "computeCharSpans",
+      "start": 9231,
+      "end": 9288,
+      "lines": 58,
+      "why": "被外壳/C 外函数调用：boot",
+      "kind": "seam"
+    },
+    {
+      "name": "continuationCurrent",
+      "start": 12173,
+      "end": 12177,
+      "lines": 5,
+      "kind": "helper",
+      "why": "不碰 id；被搬走的函数与留外壳的函数共用"
+    },
+    {
+      "name": "detailPageRecord",
+      "start": 3146,
+      "end": 3149,
+      "lines": 4,
+      "why": "被外壳/C 外函数调用：refreshMarginState",
+      "kind": "seam"
+    },
+    {
+      "name": "divergenceOf",
+      "start": 2433,
+      "end": 2439,
+      "lines": 7,
+      "why": "被外壳/C 外函数调用：divergenceChip",
+      "kind": "seam"
+    },
+    {
+      "name": "fetchPageSuggestions",
+      "start": 3449,
+      "end": 3467,
+      "lines": 19,
+      "why": "被外壳/C 外函数调用：loadLayoutBlocks、pumpPageSuggestionQueue",
+      "kind": "seam"
+    },
+    {
+      "name": "flushPendingSave",
+      "start": 10916,
+      "end": 10924,
+      "lines": 9,
+      "why": "被外壳/C 外函数调用：adoptAllHighSuggestions、adoptQueueCurrent、reloadDetailAfterRecognition",
+      "kind": "seam"
+    },
+    {
+      "name": "focusQueueItem",
+      "start": 9719,
+      "end": 9729,
+      "lines": 11,
+      "why": "被外壳/C 外函数调用：adoptQueueCurrent、keepQueueCurrent、previousQueueItem、stepReviewDiff",
+      "kind": "seam"
+    },
+    {
+      "name": "forgetAllPageSuggestions",
+      "start": 3406,
+      "end": 3413,
+      "lines": 8,
+      "why": "被外壳/C 外函数调用：applySplitBatch、pollTask",
+      "kind": "seam"
+    },
+    {
+      "name": "forgetPageBlocks",
+      "start": 4576,
+      "end": 4583,
+      "lines": 8,
+      "why": "被外壳/C 外函数调用：applySplitBatch、refreshRecognizedPages",
+      "kind": "seam"
+    },
+    {
+      "name": "forgetPageSuggestions",
+      "start": 3398,
+      "end": 3404,
+      "lines": 7,
+      "why": "被外壳/C 外函数调用：adoptAllHighSuggestions、applySetupSuggestion、patchSelectedPages",
+      "kind": "seam"
+    },
+    {
+      "name": "globalMarginIsAuto",
+      "start": 3152,
+      "end": 3154,
+      "lines": 3,
+      "why": "被外壳/C 外函数调用：marginSourceText",
+      "kind": "seam"
+    },
+    {
+      "name": "hideAutoApplyNotice",
+      "start": 13788,
+      "end": 13790,
+      "lines": 3,
+      "why": "引用段外 id：auto-apply-notice",
+      "kind": "other-view-dom"
+    },
+    {
+      "name": "isPackageProject",
+      "start": 2485,
+      "end": 2487,
+      "lines": 3,
+      "why": "被外壳/C 外函数调用：packageBlocksOnly",
+      "kind": "seam"
+    },
+    {
+      "name": "layoutOverlayAnnotations",
+      "start": 9101,
+      "end": 9143,
+      "lines": 43,
+      "why": "被外壳/C 外函数调用：renderPageBlocks",
+      "kind": "seam"
+    },
+    {
+      "name": "loadAutoApplyStatus",
+      "start": 13737,
+      "end": 13767,
+      "lines": 31,
+      "why": "被外壳/C 外函数调用：boot、pollTask",
+      "kind": "seam"
+    },
+    {
+      "name": "loadFinishSummary",
+      "start": 11643,
+      "end": 11674,
+      "lines": 32,
+      "why": "引用段外 id：pages-error",
+      "kind": "other-view-dom"
+    },
+    {
+      "name": "loadWorkflow",
+      "start": 7320,
+      "end": 7357,
+      "lines": 38,
+      "why": "被外壳/C 外函数调用：hydrateView、pollTask",
+      "kind": "seam"
+    },
+    {
+      "name": "marginBoxOfPage",
+      "start": 3048,
+      "end": 3053,
+      "lines": 6,
+      "why": "被外壳/C 外函数调用：firstUnfinishedPanel、paintTileMargin、renderMarginPanel、startTileMarginDrag、updateSelectionPanel",
+      "kind": "seam"
+    },
+    {
+      "name": "matchesTriage",
+      "start": 3627,
+      "end": 3647,
+      "lines": 21,
+      "why": "被外壳/C 外函数调用：visiblePages",
+      "kind": "seam"
+    },
+    {
+      "name": "nearestEdge",
+      "start": 8751,
+      "end": 8762,
+      "lines": 12,
+      "why": "被外壳/C 外函数调用：snapMarginBox",
+      "kind": "seam"
+    },
+    {
+      "name": "notifyApplied",
+      "start": 13824,
+      "end": 13828,
+      "lines": 5,
+      "why": "被外壳/C 外函数调用：runSuggestionApply、setAutoApplySetting",
+      "kind": "seam"
+    },
+    {
+      "name": "observeOverlaySize",
+      "start": 9168,
+      "end": 9181,
+      "lines": 14,
+      "why": "被外壳/C 外函数调用：renderPageBlocks",
+      "kind": "seam"
+    },
+    {
+      "name": "pageNumberHintChip",
+      "start": 10156,
+      "end": 10171,
+      "lines": 16,
+      "kind": "helper",
+      "why": "不碰 id；被搬走的函数与留外壳的函数共用"
+    },
+    {
+      "name": "patchBlock",
+      "start": 10946,
+      "end": 10980,
+      "lines": 35,
+      "why": "被外壳/C 外函数调用：onBoxPointerUp",
+      "kind": "seam"
+    },
+    {
+      "name": "project_id",
+      "start": 8653,
+      "end": 8655,
+      "lines": 3,
+      "why": "被外壳/C 外函数调用：cancelAssignment、downloadPackage、onResultFileChosen、rebuildPackage、revealPackage",
+      "kind": "seam"
+    },
+    {
+      "name": "recognitionOf",
+      "start": 2383,
+      "end": 2388,
+      "lines": 6,
+      "why": "被外壳/C 外函数调用：applyTileState、ensurePageSuggestion、firstUnfinishedPanel、packageBlocksOnly、pageRecognized、pumpPageBlockPrefetch…",
+      "kind": "seam"
+    },
+    {
+      "name": "refreshAfterTypeChanges",
+      "start": 13793,
+      "end": 13802,
+      "lines": 10,
+      "why": "被外壳/C 外函数调用：runSuggestionApply",
+      "kind": "seam"
+    },
+    {
+      "name": "refreshPageStates",
+      "start": 7286,
+      "end": 7298,
+      "lines": 13,
+      "why": "被外壳/C 外函数调用：adoptAllHighSuggestions、applySetupSuggestion、applySplitBatch、cancelAssignment、confirmLayoutFromPanel、createAssignment…",
+      "kind": "seam"
+    },
+    {
+      "name": "renderFinishPanel",
+      "start": 11676,
+      "end": 11810,
+      "lines": 135,
+      "why": "引用段外 id：cleanup-continuation-review-open、cleanup-continuation-review-status、finish-auto-pass、finish-bottom-note、finish-check-engine、finish-confirm-layout…",
+      "kind": "other-view-dom"
+    },
+    {
+      "name": "reviewMarginStorageKey",
+      "start": 3080,
+      "end": 3082,
+      "lines": 3,
+      "why": "被外壳/C 外函数调用：loadReviewMarginPreference",
+      "kind": "seam"
+    },
+    {
+      "name": "savePosition",
+      "start": 8119,
+      "end": 8129,
+      "lines": 11,
+      "why": "被外壳/C 外函数调用：enterReviewStep、goToWorkflowStep",
+      "kind": "seam"
+    },
+    {
+      "name": "scheduleOverlayLayout",
+      "start": 9146,
+      "end": 9158,
+      "lines": 13,
+      "why": "被外壳/C 外函数调用：renderPageBlocks",
+      "kind": "seam"
+    },
+    {
+      "name": "setReviewBlockFilter",
+      "start": 8467,
+      "end": 8472,
+      "lines": 6,
+      "why": "被外壳/C 外函数调用：boot",
+      "kind": "seam"
+    },
+    {
+      "name": "setSaveState",
+      "start": 8722,
+      "end": 8726,
+      "lines": 5,
+      "why": "引用段外 id：review-save-state",
+      "kind": "other-view-dom"
+    },
+    {
+      "name": "showError",
+      "start": 69,
+      "end": 79,
+      "lines": 11,
+      "why": "被外壳/C 外函数调用：adoptPageNumberTemplate、applyHeaderFooter、applySetupSuggestion、applySplitBatch、boot、cancelAssignment…",
+      "kind": "seam"
+    },
+    {
+      "name": "showView",
+      "start": 210,
+      "end": 275,
+      "lines": 66,
+      "why": "引用段外 id：topbar-library、topbar-project",
+      "kind": "other-view-dom"
+    },
+    {
+      "name": "stepContinuation",
+      "start": 12441,
+      "end": 12449,
+      "lines": 9,
+      "why": "被外壳/C 外函数调用：setupReviewControls",
+      "kind": "seam"
+    },
+    {
+      "name": "suggestionHighList",
+      "start": 10077,
+      "end": 10079,
+      "lines": 3,
+      "why": "被外壳/C 外函数调用：adoptAllHighSuggestions",
+      "kind": "seam"
+    }
+  ],
+  "external": [
+    {
+      "name": "advanceContinuation",
+      "why": "续页确认：前进",
+      "start": 12345,
+      "end": 12356,
+      "lines": 12
+    },
+    {
+      "name": "afterCleanupApplied",
+      "why": "清理流程：应用后",
+      "start": 12098,
+      "end": 12110,
+      "lines": 13
+    },
+    {
+      "name": "afterContinuationChange",
+      "why": "续页确认：变更后",
+      "start": 12452,
+      "end": 12456,
+      "lines": 5
+    },
+    {
+      "name": "closeFinishPanel",
+      "why": "收尾面板：关闭",
+      "start": 13000,
+      "end": 13003,
+      "lines": 4
+    },
+    {
+      "name": "continuationRemaining",
+      "why": "续页确认：剩余计数",
+      "start": 12179,
+      "end": 12183,
+      "lines": 5
+    },
+    {
+      "name": "finishRevokeAutoPass",
+      "why": "自动通过：撤销",
+      "start": 13224,
+      "end": 13245,
+      "lines": 22
+    },
+    {
+      "name": "finishRunAutoPass",
+      "why": "收尾面板：自动通过整本",
+      "start": 13118,
+      "end": 13208,
+      "lines": 91
+    },
+    {
+      "name": "finishRunLayout",
+      "why": "收尾面板：整本版面检测",
+      "start": 13025,
+      "end": 13101,
+      "lines": 77
+    },
+    {
+      "name": "loadContinuationReview",
+      "why": "续页确认：加载",
+      "start": 12149,
+      "end": 12171,
+      "lines": 23
+    },
+    {
+      "name": "loadLanguageSummary",
+      "why": "收尾面板：语言统计",
+      "start": 14646,
+      "end": 14664,
+      "lines": 19
+    },
+    {
+      "name": "markContinuation",
+      "why": "续页确认：标记",
+      "start": 12358,
+      "end": 12397,
+      "lines": 40
+    },
+    {
+      "name": "onContinuationKeydown",
+      "why": "续页确认：键盘",
+      "start": 12476,
+      "end": 12502,
+      "lines": 27
+    },
+    {
+      "name": "openFinishPanel",
+      "why": "收尾面板：打开",
+      "start": 12988,
+      "end": 12998,
+      "lines": 11
+    },
+    {
+      "name": "pausePageThumbnails",
+      "why": "页面缩略图：暂停（被续页流程引用）",
+      "start": 142,
+      "end": 149,
+      "lines": 8
+    },
+    {
+      "name": "renderContinuationPanel",
+      "why": "续页确认：渲染",
+      "start": 12294,
+      "end": 12342,
+      "lines": 49
+    },
+    {
+      "name": "revertContinuation",
+      "why": "续页确认：回退",
+      "start": 12399,
+      "end": 12439,
+      "lines": 41
+    },
+    {
+      "name": "undoLastCleanup",
+      "why": "清理撤销",
+      "start": 12112,
+      "end": 12132,
+      "lines": 21
+    }
+  ]
+}
