@@ -1123,9 +1123,9 @@
       "start": 12941,
       "end": 12960,
       "lines": 20,
-      "判定": "stays",
+      "判定": "movers",
       "实际落区": "movers",
-      "依据": "不渲染任何 DOM；只做 openPageDetail / focusQueueItem / syncReviewTreeToPage 的流程推进"
+      "依据": "绑 #review-tree-list 的条目点击（模块自己渲染的 DOM）；调用的 openPageDetail / focusQueueItem / syncReviewTreeToPage 属 stays，走注入"
     }
   ],
   "警示": {

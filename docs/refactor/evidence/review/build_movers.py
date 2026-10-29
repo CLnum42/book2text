@@ -193,7 +193,7 @@ def build():
         "toggleReviewTreePage": ("movers", "改树页码展开状态并调 renderReviewTree（review DOM）"),
         "treeLevelLabel": ("movers", "纯标签文本，只服务 review 树"),
         "treeChapterOfPage": ("movers", "只读 reviewTree.pages，纯树数据辅助"),
-        "openTreeItem": ("stays", "不渲染任何 DOM；只做 openPageDetail / focusQueueItem / syncReviewTreeToPage 的流程推进"),
+        "openTreeItem": ("movers", "绑 #review-tree-list 条目点击（模块渲染的 DOM）；openPageDetail / focusQueueItem / syncReviewTreeToPage 走注入"),
     }
     tree = []
     mover_names = {item["name"] for item in movers}
