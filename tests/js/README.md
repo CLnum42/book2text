@@ -138,6 +138,18 @@ B2T_STATIC_DIR=/tmp/rb-base/backend/book2text/static node tests/js/edge-ratchet.
 - 两条各带自检：喂合成的 `preview-view.js`（名字错 / 两个接口 / 引用 `window.ReadingView`）
   必须红，正例必须绿——闸必须能被样例喂红，否则"绿"只是"扫描器没看见"。
 
+**拆第二个视图模块时的两条硬规矩（preview 试点踩过）**
+
+- **A. 接口函数用箭头 `const` 定义，别再写 `function init(...)`。**
+  R4-dup 判"同名函数只许一份真实现"：`reading-view.js` 已有 `function init/enter/exit/getCurrent`，
+  `preview-view.js` 再写 `function init` 就是两份真实现 → 红。
+  `preview-view.js` 用 `const init = (deps) => {…}` 绕开了它。**这不是取巧，是模块契约**：
+  第二个模块起，接口函数一律 `const`（Architect 会写进 §20；本节先记一笔）。
+- **B. 每个视图拆完，R5 的 `OWNERS` 表要补该视图的状态。**
+  表里没登记的状态**不会被检查**——`preview` 的 27 个状态现在不在表内，所以 R5 是绿的，
+  但那不叫"合规"，叫"没覆盖"。整段搬完必须同批登记（owner = `preview-view.js`），
+  否则下一次「一状态两处写」它一声不响。
+
 **机检覆盖：11/11**
 （R1 R2 R3 R4 R5 R6 R7 R8 R9 R11 R12；**R10 是评审清单、不能机检，不计入分母**）
 

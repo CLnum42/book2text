@@ -1163,6 +1163,10 @@ def test_result_preview_reuses_page_renderers_and_follows_segments() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # Slice P1：预览的左右联动与右栏事件代理搬进 preview-view.js（app.js 里 0 处）。
+    # 这四处断言改成"两文件合查"——存在性不变，只是搬家了。
+    preview_script = (STATIC_DIR / "preview-view.js").read_text(encoding="utf-8")
+    preview_both = script + preview_script
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     # 左边不是裸图：页块里带版心 / 块框 / 命中层
@@ -1185,13 +1189,13 @@ def test_result_preview_reuses_page_renderers_and_follows_segments() -> None:
     assert "function scrollPreviewLeftToPage(" in script
 
     # 双向联动：右栏滚动驱动左边、左栏滚动驱动右边，但不同时反推
-    assert "function onPreviewScroll(" in script
-    assert "function onPreviewLeftScroll(" in script
+    assert "function onPreviewScroll(" in preview_both
+    assert "function onPreviewLeftScroll(" in preview_both
     assert "previewSyncDriver" in script and "markPreviewDriver" in script
 
     # 事件代理 + 一帧一次：不给 1139 段逐个挂监听
-    assert 'el("preview-segs").addEventListener("pointerover", onPreviewSegHover)' in script
-    assert 'el("preview-segs").addEventListener("click", onPreviewSegClick)' in script
+    assert 'el("preview-segs").addEventListener("pointerover", onPreviewSegHover)' in preview_both
+    assert 'el("preview-segs").addEventListener("click", onPreviewSegClick)' in preview_both
     builder = script[script.index("function buildPreviewSegment("):script.index("// ---------------------------------------------------------------- 联动：段 ↔ 页")]
     assert "addEventListener" not in builder
 

@@ -555,14 +555,30 @@ function windowHookProblems(fileName, source) {
     .map((match) => match[1]);
   const registered = new Set(WINDOW_HOOK_EXCEPTIONS.map((item) => item.name));
   const problems = [];
+  // 判据是"**出现即登记**"，不是"每个 view 文件都得有这 7 个埋点"。
+  // 一个文件里没有任何埋点完全合法（preview-view.js 就没有）；有就必须登记。
   for (const name of assigned) {
     if (name.startsWith("__b2t") && !registered.has(name)) {
       problems.push(`${fileName}: 未登记的 window 埋点 ${name} —— 新增埋点要进 WINDOW_HOOK_EXCEPTIONS（带 owner 与到期点）`);
     }
   }
+  return problems;
+}
+
+/**
+ * 例外表本身的两条（**跨所有 view 文件**判，不能按文件判）：
+ * 登记了但全仓库都没有 → 表过期；条目数必须等于 MAX（只降不升）。
+ */
+function hookTableProblems(allSources) {
+  const assigned = new Set(
+    allSources.flatMap(({ source }) => [...stripCommentsAndStrings(source)
+      .matchAll(/(?<![\w$.])window\s*\.\s*([A-Za-z_$][\w$]*)\s*=(?!=)/g)]
+      .map((match) => match[1])),
+  );
+  const problems = [];
   for (const item of WINDOW_HOOK_EXCEPTIONS) {
-    if (!assigned.includes(item.name)) {
-      problems.push(`${fileName}: 例外表挂着不存在的埋点 ${item.name} —— 删埋点请同批删表项`);
+    if (!assigned.has(item.name)) {
+      problems.push(`例外表挂着不存在的埋点 ${item.name} —— 删埋点请同批删表项`);
     }
   }
   if (WINDOW_HOOK_EXCEPTIONS.length !== WINDOW_HOOK_MAX) {
@@ -590,11 +606,15 @@ const VIEW_MODULES = readdirSync(STATIC_DIR).filter((name) => name.endsWith("-vi
 test("R6：每个视图模块恰好露一个 window.XxxView，名字由文件名决定", () => {
   assert.ok(VIEW_MODULES.length > 0, `static 目录里一个 *-view.js 都没有（${STATIC_DIR}）——这条闸会空转`);
   const problems = [];
-  for (const fileName of VIEW_MODULES) {
-    const source = readFileSync(join(STATIC_DIR, fileName), "utf8");
+  const allSources = VIEW_MODULES.map((fileName) => ({
+    fileName,
+    source: readFileSync(join(STATIC_DIR, fileName), "utf8"),
+  }));
+  for (const { fileName, source } of allSources) {
     problems.push(...windowInterfaceProblems(fileName, source));
     problems.push(...windowHookProblems(fileName, source));
   }
+  problems.push(...hookTableProblems(allSources));
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
@@ -637,6 +657,18 @@ test("R6/R2 自检：接口名字错、多露一个接口、跨视图引用，�
   assert.ok(
     windowHookProblems("preview-view.js", "window.__b2tNewThing = 1;").some((item) => item.includes("未登记")),
     "R6 自检失败：新增未登记的 __b2t 埋点也放过",
+  );
+  // R6：一个文件**没有任何埋点**必须合法（preview-view.js 就是这样）——
+  // 第一版按"每文件必须有 7 个"判，第二个模块一出现就假红 7 条。
+  assert.deepEqual(
+    windowHookProblems("preview-view.js", "window.PreviewView = { init };"),
+    [],
+    "R6 自检失败：没有埋点的合法模块被误报",
+  );
+  // R6：表过期要按**全仓库**判，不能按单个文件判
+  assert.ok(
+    hookTableProblems([{ fileName: "preview-view.js", source: "window.PreviewView = {};" }]).length > 0,
+    "R6 自检失败：所有 view 文件里都没有登记过的埋点，表过期却没红",
   );
 
   // R2：跨视图引用
