@@ -65,16 +65,49 @@
 **没有一条的名字是"library 私有"的。** 三个 `load*Preference` 尤其不能搬——搬进去就变成
 "目录页管着别的视图的偏好"。
 
-## 3. 要注入（28 个接缝）
+## 3. 要注入（28 个接缝函数 + 常量分两类）
 
-分三类，落盘时按类处理：
+### 3.1 接缝函数 → 注入键（落盘时按此写模块头）
 
-- **共享常量**：`BLOCK_TYPE_LABELS`、`PAGE_TYPE_*`、`RECOGNITION_*`、`WORKFLOW_FILTERS` …
-- **仍留 app.js 的叶子**：`showError`、`showNoticeBar`、`apiJson`、`openModal`/`closeModal`、
-  `loadTasks`、`loadFinishSummary`、`loadSetupSuggestions`、`applyProjectSettings`、`fillDefinitionList`、
-  `loadAutoApplyStatus`、`closePageDetail`、`closeTaskDrawer` …
-- **跨视图状态 setter**（只此一处）：`setPagesMarginOn` / `setPagesOverlayOn` / `setPageZoomTouched`
-  —— **这三个状态归 `pages`，library 只是写入方**（写进模块头，防止以后被认成 library 的）。
+```js
+// 外壳服务（调一次就走，无状态）
+apiJson(8 处调用)          goToWorkflowStep / showView(3)      showError(10)
+showNoticeBar?             closeModal(3) / openModal           setSaveState
+saveBlob                   queueAfterSteps                     syncWorkflowSteps
+refreshPageStates          schedulePageVisibility              refreshProject
+closeFinishPanel           updateFinishChips                   stopTaskPolling
+closePageDetail            closeTaskDrawer                     loadTasks
+loadSetupSuggestions       loadAutoApplyStatus                 loadFinishSummary
+applyProjectSettings       fillDefinitionList                  renderPages
+renderRecognitionSettings  pageMarginStorageKey / pageOverlayStorageKey / reviewMarginStorageKey
+```
+
+**高频的三个（说明它们是真·外壳服务，不是顺手）**：`showError(10)` / `apiJson(8)` / `closeModal(3)`。
+
+### 3.2 常量分两类（**别一律注入**）
+
+| 类 | 常量 | 处理 |
+|---|---|---|
+| **随模块搬走**（library 自己的状态） | `libraryProjects` · `lockConflictTarget` | 变模块内 `let`，不进 deps |
+| **注入（只读或 get/set）** | `currentProject` → `getProject()`；`workflowStep` · `workflowStepPinned` · `projectSummary` · `projectExports` · `workflowSummary` · `workflowConfirmationCounts` · `pendingPageNos` · `pendingPageCount` · `setupSuggestions` · `setupSuggestionsLoaded` · `marginSuggestion` · `finishSummary` · `finishSummaryProject` · `reviewMarginOn` · `reviewBlockFilter` · `pageZoomTouched` · `pagesMarginOn` · `pagesOverlayOn` · `marginFitTried` · `marginUndoStack` · `backupSelected` · `lastStepPanelKey` · `workflowByPageId` · `token` | 走 getter；有写点的成对给 setter |
+| **不进 deps** | `el` | 模块自带一行（§20.4） |
+
+**`pageZoomTouched` / `pagesMarginOn` / `pagesOverlayOn` 三个归 `pages`，library 只是写入方**（写进模块头）。
+
+## 3.3 `notify` 的五个调用点（落地当笔必须一次改齐）
+
+那 6 个"不属于 library"的函数里，**5 个会写提示元素**，它们要在同一笔里改成调 `LibraryView.notify`：
+
+```
+openPackageFile     → notify({kind:"error", text})
+applyPackageMode    → notify({kind:"error", text})
+loadPackageResults  → notify({kind:"error", text})
+restoreSelectedBackup → notify({kind:"warning", text})
+rerunAuxiliary      → notify({kind:"warning", text})
+```
+
+**为什么必须同笔**：模块一落盘，`app.js` 里就不许再出现 `library-*` 字面量（R3）——
+**留一处就是当场红**，而且红在"你刚搬完、以为完事"的时刻。
 
 ## 4. 不属于 library（6 个 / 176 行）
 
