@@ -2,25 +2,23 @@
 
 > **这张表只写“意图和阻塞”，不写会漂的数。**
 > 行数、SHA、ahead/behind、导出个数、id 引用数——一律用 `scripts/status.sh` 现算，**不抄进这张表**。
-> 理由：今晚出现过“三份文档三个数”和“三个 SHA 三个说法”，而**代码是唯一事实**；手工副本早晚要漂。
->
 > 规则：每行 40 字以内；**只有当这一行的事实变了才改它**；改完跟下一次提交一起走。
-> 时间：2026-10-29（17:30 更新）
+> 时间：2026-10-29（20:00 收尾更新）
 
 | 线 | 状态 | 在等谁 | 下一件 |
 |---|---|---|---|
 | `reading`/`index`/`preview`/`library`/`merge` | **5/7 已拆，各有验收脚本且 exit 0** | — | 不再动，除非变红 |
-| 回放基 tag（`ring-break-base`） | 仍指 `afe20fe`，**不是回放基**；merge 已落 = 可重切 | Architect | 重打 tag + 删 `--allow-transitional-base` + 更新 `replay-base-modules.txt`，三件同批 |
-| `page-tile.js` | 模块已写 + 单测，**尚未接入**（`index.html` 无 script） | Builder | 先接一个消费者，再接第二个 |
-| `step-timing.js` | 模块已写 + 单测，**尚未接入** | Builder | **接线优先于 UX 改动**——没有它就没有基线 |
-| `review` 正文审校 | 切片未开；`docs/ux/review-screen-ux-v3.md` 设计稿已出（三改一推荐） | DevLead | **先实现 UX V3（行为改动），暂不搬代码**——搬了会被重写 |
-| `pages` | 归属调查完成（能搬 101 函数 / 2,338 行；接缝 66 函数 / 183 边） | `page-tile` 接线 + 试用数据 | 定 1 个还是 5 个模块 |
-| `merge` 页面级验证 | 文件级验收过，**页面级未做** | QA / Builder | 用真项目进「合并审校」走一遍 |
-| 闸体系 | 提交（验索引 6s）· 推送（node 15–19s + pytest 82–85s）· 绕过记账 | — | 账本 1 条 `BYPASS` 是 `tmp-mut-a` 变异实验，非真绕过 |
+| `pages` | **未拆**；边界画错已查明，重画后是 ≈3,200 行 / 5 个语义操作 | Architect 出计划（已出：`pages-plan.md`） | 按 5 个操作逐刀做，每刀独立验收 + 回滚 |
+| `page-tile.js` | **已接入 index + preview**：同页取图 2→1、observer 11→6（单调度） | — | `pages` 落盘后跑第三消费者终考 |
+| `step-timing.js` | 已接入；`stalls` 已删（口径恒等于动作数，死因在 `known-limitations`） | — | 只保留 judge/panel/page/back/msSoFar |
+| `review` 正文审校 UX | **三改已落**（一条=一处差异 / 判决即前进 / 进度说人话），7 条用例 + 实机 20 条 | — | 用户复测：判 20 分钟 |
+| `view-review` 旧单页审校 | **结论：删**，但先做「详情抽屉」再删（13 个 `openPageDetail` 调用点要换宿主） | Architect 方案已出 | `pages` 绿后做抽屉 80–150 行 |
+| 回放基 tag | 已切到 `merge` 落盘后的检查点（5 模块），删了过渡放行 | — | `pages` 落盘后再切一次（6 模块） |
+| 闸体系 | 提交验索引 · 推送验要推的树 · 绕过/变异/重写分开记账 | — | 六处“验错树”已修，变异对照组已补 |
 | CI node 闸 | 已配置、**未验证**（Actions 起不来，Billing） | 用户（Billing） | 推一个含违规提交的分支，CI 必须报错；**验证前不许说「CI 挡住了」** |
 
 ## 不在这张表里的
 
 - **谁此刻在做什么**（会变，看群和对话，不需要板）；
-- **门禁的规则细节**（在 `reading-view-boundary.md` §20.9，一处正文）；
+- **门禁的规则细节**（`reading-view-boundary.md` §20.9，一处正文）；
 - **导出面、依赖集合、行数**（`scripts/status.sh` 现算，或各自权威源）。
