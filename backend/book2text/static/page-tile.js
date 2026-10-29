@@ -19,6 +19,10 @@
  * 既然按"赋值次数"判，那么两个消费者就不能各有一个 `<img>`（各赋一次 = 2）。
  * 所以：`handle.mount()` 是把**同一张图**挂进你的宿主（挂到别处 = 移动，不重新取图）。
  * 一个视图只在自己活跃时挂，切换视图时图跟着走——预览/目录/审校本来就不同时可见。
+ * **接线规则（Architect 2026-10-29 §21.10）**：**先 `release` 再 `create`**，不许两个宿主
+ * 同时持有同一页。两个宿主同挂时图会移动到最后挂的那个，旧宿主的瓷砖会**静默变空**——
+ * `tileScanDetached` 只看 `host.isConnected`，旧宿主还连着，所以既不释放也不告警。
+ * 这条代价由酸测试钉住（`tests/js/page-tile-acid.mjs`），不是靠记性。
  *
  * **跨子树宿主**：模块不认 id，也不属于任何 `<section>`；宿主由调用方给。
  */
@@ -35,6 +39,7 @@
   /** pageNo → { pageNo, size, status, url, img, observer, handles:Set, seq } */
   const registry = new Map();
   let injected = {};
+  let ready = false;   // init 没给齐必需依赖 → create 一律返回 null（fail closed）
   let frameHandle = null;
   /** 只提示一次：同一个越界尺寸反复提示等于刷屏。 */
   const warnedSizes = new Set();
@@ -154,7 +159,8 @@
     if (record.loading) return;                              // 在途：重复回调不再取图
     if (record.url && record.status === "ready") return;     // 已经取到且没作废
     const size = tilePreferredSize(record);
-    const url = injected.imageUrl(record.pageNo, size);
+    const build = urlBuilder();
+    const url = build ? build(record.pageNo, size) : null;
     if (!url) return;
     record.size = size;
     record.url = url;
@@ -214,6 +220,7 @@
     const opts = options || {};
     const pageNo = Number(opts.pageNo);
     if (!host || !Number.isFinite(pageNo)) return null;
+    if (!ready) return null;                       // fail closed：缺依赖时不出瓷砖
     if (!tilePageExists(pageNo)) return null;
 
     const record = registry.get(pageNo) || tileMakeRecord(pageNo);
@@ -311,8 +318,30 @@
     tileScheduleFrame();
   }
 
+  /**
+   * 取图 URL 的句柄。**过渡态**（2026-10-29，只活一笔）：测试侧还按旧名 `imageUrl` 传，
+   * 而 A1 不许产品笔同时改 tests/js —— 所以这里先认两个名字，测试切到 `getImageUrl` 之后
+   * 紧接着一笔把旧名字删掉。契约名只有 `getImageUrl`（Architect §21.10 ②）。
+   */
+  function urlBuilder() {
+    if (isFn(injected.getImageUrl)) return injected.getImageUrl;
+    if (isFn(injected.imageUrl)) return injected.imageUrl;
+    return null;
+  }
+
+  /** 必需依赖：缺了就必须 fail closed（§21.10 ②），不许静默出一片空白瓷砖。 */
+  const REQUIRED = ["getProject"];
+
   function tileInit(deps) {
     injected = { ...injected, ...(deps || {}) };
+    const missing = REQUIRED.filter((key) => !isFn(injected[key]));
+    if (!urlBuilder()) missing.push("getImageUrl");
+    ready = missing.length === 0;
+    if (!ready) {
+      const text = `PageTile.init 缺少必需依赖：${missing.join("、")}——瓷砖不会出图`;
+      if (isFn(injected.notify)) injected.notify({ kind: "error", text });
+      else if (typeof console === "object" && console && isFn(console.error)) console.error(text);
+    }
     return api;
   }
 
