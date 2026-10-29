@@ -27,6 +27,8 @@ def main(write=False):
         print("!! 残余接缝 %d：%s" % (len(residue), ", ".join(residue))); return 1
 
     # ---- 2. 删掉 17 个函数 + loadLibrary ----
+    # 只删 MOVERS；loadLibrary 不在此列——它要原地改成转发器（先插转发器再删实现，
+    # 2026-10-29 的顺序 bug：先删后替换 → 转发器根本没生成，外壳调用 → R9）。
     dels = []
     for n in rules.MOVERS + ["loadLibrary"]:
         b = bounds_of(lines, n)
@@ -48,11 +50,13 @@ def main(write=False):
         nonlocal conv; conv += 1
         return 'window.LibraryView?.notify({ kind: "warning", text: String(%s).trim() });' % m.group(2).strip()
     txt = warn_pat.sub(warn_rep, txt)
+    # 错误**不许降级成纯文本**：外壳的 showError 会写 `<code>错误编号 …</code>` 和 detail，
+    # 而 notify 的 text 只写 textContent。所以错误走 notify 的 `error` 分支，由模块回调
+    # injected.showError 渲染——同一段格式化代码，零行为变化。
     err_pat = re.compile(r'showError\(el\("library-error"\), (\w+)\)')
     def err_rep(m):
         nonlocal conv; conv += 1
-        return 'window.LibraryView?.notify({ kind: "error", text: String(%s && %s.message || %s) })' % (
-            m.group(1), m.group(1), m.group(1))
+        return 'window.LibraryView?.notify({ kind: "error", error: %s })' % m.group(1)
     txt = err_pat.sub(err_rep, txt)
 
 
@@ -62,25 +66,66 @@ def main(write=False):
     txt = txt.replace('showError(el("package-result-files") || el("library-error"), error);',
                       'const box = el("package-result-files");\n'
                       '    if (box) showError(box, error);\n'
-                      '    else window.LibraryView?.notify({ kind: "error", text: String(error && error.message || error) });')
+                      '    else window.LibraryView?.notify({ kind: "error", error: error });')
 
-    # ---- 4. loadLibrary 转发 + boot 里 init ----
-    fwd = ('async function loadLibrary() {\n'
-           '  // 任务 library 切片：实现在 library-view.js（enter 就是"取项目库并渲染"）。\n'
-           '  await window.LibraryView?.enter();\n'
-           '}')
-    txt = re.sub(r'async function loadLibrary\(\) \{.*?\n\}', fwd, txt, count=1, flags=re.S)
+    # ---- 4. loadLibrary：外壳不再保留同名转发 ----
+    # 为什么不留转发器：R4-dup 只认转发到 `ReadingView.*` 的形态（`(?:window\.)?ReadingView\.`），
+    # 留一个 `LibraryView.enter()` 的转发会被判成"两份真实现"。别处先例是外壳直接喊模块
+    # （`window.IndexView?.enter()` / `window.PreviewView?.enter()`），这里照同一个形态。
+    # 原实现（loadLibrary 的函数体）已经进模块，成为 enter 的内部函数。
+    txt, n_lib = re.subn(r'(?<![\w$.])loadLibrary\(\)', 'window.LibraryView?.enter()', txt)
+    print("外壳 loadLibrary() → LibraryView.enter()：%d 处" % n_lib)
+    if n_lib < 3:
+        print("!! 只替换到 %d 处 loadLibrary 调用，检查是不是已经变了" % n_lib); return 1
+
+    # ---- 3.4 外壳侧接线归模块（裁定 B）：setupLibrary 里的上传 change 处理器删掉 ----
+    picker_block = re.compile(
+        r'  const picker = el\("new-project-file"\);\n'
+        r'  picker\.addEventListener\("change", \(\) => \{\n'
+        r'    if \(picker\.files && picker\.files\[0\]\) createProjectFromFile\(picker\.files\[0\]\);\n'
+        r'    picker\.value = "";\n'
+        r'  \}\);\n')
+    txt, phits = picker_block.subn("", txt, count=1)
+    if phits != 1:
+        print("!! setupLibrary 里的上传接线没找到（命中 %d 次）" % phits); return 1
+
+    # ---- 3.45 外壳不再调 openProject（它随模块走），一律走第 4 个导出 open ----
+    txt, ohits = re.subn(r'(?<![\w$.])openProject\(', 'window.LibraryView?.open(', txt)
+    print("外壳 openProject → LibraryView.open：%d 处" % ohits)
 
     # ---- 3.5 boot 里补 LibraryView.init(deps)（键从模块正文的 injected.* 抽取）----
     keys = sorted(set(re.findall(r"injected\.([A-Za-z_$][\w$]*)", mod)))
     if not keys:
         print("!! 模块里没有 injected.* 键"); return 1
+    # 跨子树 DOM 句柄（§22.2 ④）：返回节点，不是状态 getter。
+    # 通用 `getXxx → getXxx: () => xxx` 规则会把它们错配成不存在的状态变量，所以显式列出。
+    NODE_DEPS = {
+        "getNewProjectPicker": "new-project-file",
+        "getNewProjectName": "new-project-name",
+        "getNewProjectError": "new-project-modal-error",
+        "getNewProjectMask": "new-project-mask",
+        "getExportIncludeNotes": "export-include-notes",
+        "getPagesOverlayToggle": "pages-overlay-toggle",
+        "getPagesMarginToggle": "pages-margin-toggle",
+        "getReviewMarginToggle": "review-margin-toggle",
+    }
     deps = []
     for k in keys:
-        if k == "navigate":
+        if k in NODE_DEPS:
+            deps.append('    %s: () => el("%s"),' % (k, NODE_DEPS[k]))
+        elif k == "navigate":
             deps.append('    navigate: (name) => showView(name),')
         elif k == "projectId":
             deps.append('    projectId: projectId(),')
+        elif k == "getProject":
+            # `currentProject` 的 getter 不是按名字拆出来的状态：通用规则会生成
+            # `getProject: () => project`，而 app.js 里没有 `project` 这个顶层变量
+            # ——2026-10-29 页面级验证抓到（静态门全绿：R9 只查"文件里声明过没有"，
+            # `project` 在别的函数里声明过，所以不红；`node --check` 也不查这个）。
+            deps.append('    getProject: () => currentProject,')
+        elif k == "token":
+            # 值注入，不是函数：`injected.token` 被当值用（请求头），包成函数会把函数源码发出去。
+            deps.append("    token: token,")
         elif k == "lastViewLabels":
             deps.append('    lastViewLabels: LAST_VIEW_LABELS,')   # 常量按值注入，不是函数
         elif k.startswith("get") and len(k) > 3 and k[3].isupper():

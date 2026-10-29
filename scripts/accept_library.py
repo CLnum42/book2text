@@ -5,9 +5,14 @@
 - `view-library` 子树 id 集合从 `index.html` 现场抽（9 个）；
 - `app.js` 对这些 id 的字面量 **24 处 → 0**（R3 判据）；
 - 其中 `library-error` / `library-warning` 的写点 **19 处 → 0**（13 + 6，必须改调 `notify`）；
-- `app.js` 行数 16,161 → ≈15,796（±20）；**减 < 300 判"复制不是搬"**；
-- 导出面恰好 `init` / `enter` / `notify` 三个；
-- 17 个搬走函数：`app.js` 里 0 处、`library-view.js` 里 1 处。
+- `app.js` 行数 16,161 → ≈15,870（±20）；**减 < 250 判"复制不是搬"**；
+- 导出面恰好 `init` / `enter` / `notify` / `open` 四个（D-100 完整形态）；
+- 12 个搬走函数：`app.js` 里 0 处、`library-view.js` 里 1 处。
+
+**2026-10-29 口径变更（Chief 裁定 B）**：`showLockConflict` + 4 个 lock 文案**留外壳**——
+它们画的是全局 modal（`#lock-conflict-*` 不属于任何 `<section>`），搬进模块必撞 R3；
+模块改调 `injected.showLockConflict`。所以 MOVERS 17 → **12**、搬走 371 → **311** 行、
+净减 358 → **291** 行（差 20 行 = `init` 注入块），导出 3 → **4**（加域操作 `open`）。
 
 退出码三态（这条是它作为"验收闸"的全部意义）：
 - **2** = 前置不满足（还没落盘 / `rules.py` 读不出来 / `index.html` 里没有 `view-library`）——
@@ -35,13 +40,15 @@ DRYRUN = REPO / "docs/refactor/evidence/library/DRYRUN.md"
 
 # 搬前读数（出处：DRYRUN.md §2/§3）。**只作为"对账值"**：数变了先看是不是又漂了。
 BASELINE_APP_LINES = 16161
-TARGET_APP_LINES = 15796
+TARGET_APP_LINES = 15870
 TARGET_TOLERANCE = 20
-MIN_SHRINK = 300
+# 12 函数 / 311 行搬走 → 净减 291（差 20 行 = init 注入块）。门槛仍远高于任何"复制"情形：
+# 复制不删正文，净减 ≈ 0，同时 ④ 会抓到 app.js 里残留同名定义。
+MIN_SHRINK = 250
 BASELINE_LITERALS = 24
 BASELINE_WRITE_POINTS = 19
 WRITE_POINT_IDS = ("library-error", "library-warning")
-EXPECTED_EXPORTS = {"init", "enter", "notify"}
+EXPECTED_EXPORTS = {"init", "enter", "notify", "open"}
 
 EXIT_PREREQ = 2
 EXIT_FAIL = 1
@@ -200,7 +207,7 @@ def main() -> int:
         for item in problems:
             print(f"    ✗ {item}")
         return EXIT_FAIL
-    print("[0] 验收通过：字面量 0 / 写点 0 / 导出 3 / 17 个函数各 1 处")
+    print("[0] 验收通过：字面量 0 / 写点 0 / 导出 4 / 12 个函数各 1 处")
     return EXIT_OK
 
 

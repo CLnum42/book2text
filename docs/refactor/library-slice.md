@@ -9,34 +9,38 @@
 
 | 栏 | 函数 | 行数 | 占比 |
 |---|---|---|---|
-| **能搬** | 17 | **371** | 58% |
-| **要留**（外壳拥有，只是被它调用） | 7 | **92** | 14% |
+| **能搬** | 17 → **12** | **371 → 311** | 58% → 49% |
+| **要留**（外壳拥有，只是被它调用） | 7 → **12** | **92 → 152** | 14% → 24% |
 | **要注入** | 28 个接缝 | — | — |
 | **不属于 library** | **6** | **176** | **28%** |
+
+> **2026-10-29 裁定 B（Chief）**：锁冲突整块（`showLockConflict` + 4 个 lock 文案，5 函数 / 60 行）
+> **留外壳**——它画的是全局 modal（`#lock-conflict-*` 不属于任何 `<section>`），搬进模块必撞 R3；
+> 模块改调 `injected.showLockConflict`。所以能搬 17→12、371→311；"要留"相应 7→12、92→152。
+> 闭包总数不变（30 函数 / 639 行 = 311 + 152 + 176）。详见 §11。
 
 **28% 的粘合剂是"同一个提示元素"**——`#library-error` / `#library-warning` 恰好在目录页的 DOM 里，
 六条任务包 / 备份 / 重跑流程因此被吸进了这个闭包。**DOM 挨着，不代表逻辑是一家。**
 
-## 1. 能搬（17 个 / 371 行）
+## 1. 能搬（原 17 个 / 371 行；裁定 B 后 **12 个 / 311 行**）
 
 | 函数 | 行 | 备注 |
 |---|---|---|
 | `renderProjectList` | 94 | 项目卡列表（含 `progressRow` / `timeAgo` 等） |
 | `openProject` | 70 | **唯一一个写跨视图状态的**：`pagesMarginOn` / `pagesOverlayOn` / `pageZoomTouched` → 走 setter 注入 |
-| `createProjectFromFile` | 43 | 上传建项目 + 进度条 |
-| `showLockConflict` | 32 | 项目锁冲突提示 |
+| `createProjectFromFile` | 43 | 上传建项目 + 进度条（上传接线随它进模块的 `init`） |
 | `deleteProject` | 27 | |
 | `progressRow` | 24 | |
 | `timeAgo` | 13 | 闭包里 0 个外部调用者 |
-| `lockStateText` | 11 | |
 | `recognitionExtra` / `reviewExtra` | 9 / 9 | 项目卡上的进度角标 |
-| `lockStampText` | 7 | |
 | `lastPositionText` | 7 | |
 | `progressPercent` | 6 | |
 | `currentProjectName` | 6 | |
-| `lockSourceText` | 6 | |
-| `lockSpanText` | 4 | |
 | `ratioText` | 3 | |
+
+**已移出本栏（裁定 B）**：`showLockConflict` 32 / `lockStateText` 11 / `lockStampText` 7 /
+`lockSourceText` 6 / `lockSpanText` 4 = **5 个 / 60 行 → 外壳**（画的是全局 modal；模块走注入）。
+下面"名字匹配会漏"的统计是按**原 17 个**算的，量的是闭包与名字的关系，不随这一刀的范围变。
 
 **注意：17 个里只有 4 个名字带 library/Project**（`renderProjectList` / `openProject` / `createProjectFromFile` / `deleteProject`），
 **另外 13 个名字里一个都没有**。
@@ -131,8 +135,15 @@ rerunAuxiliary      → notify({kind:"warning", text})
 ## 5. 接口（§20.8 / §20.6 已签）
 
 ```js
-window.LibraryView = { init, enter, notify };   // 3 个
+window.LibraryView = { init, enter, notify, open };   // 4 个（D-100 完整形态）
 ```
+
+- `open(projectId, options)` —— **域操作**：打开一个项目。外壳的锁冲突确认 / 任务包打开 /
+  备份还原都调它（`confirmLockConflict` / `openPackageFile` / `restoreSelectedBackup`），
+  外壳自己不再有 `openProject` 的实现或转发。
+- `init(deps)` —— 除了合注入面，还**接管上传接线**（`#new-project-file` 的 `change` →
+  `createProjectFromFile`）：上传建项目是目录页的域操作，外壳留着它就会因为写
+  `#create-progress` 撞 R3。
 
 - `notify({ kind, text })` —— 5 个外壳流程调（导入完成/失败、还原、重跑）；**写隐藏 DOM**；
   **`enter()` 不许清空 notice**（§22.8），只有 library 自己的操作能覆盖；
@@ -214,3 +225,62 @@ window.LibraryView = { init, enter, notify };   // 3 个
 而**没有任何闸会说它错**——它们合法、能跑、测试全绿。
 
 **这和第 6 条那个漏法是同一种**：行区间漏了 `git diff` 看得见，**闭包漏了没人看得出来**。
+
+## 11. 裁定 B 落地记录（2026-10-29，Chief）
+
+**裁定**：全局 modal（`#lock-conflict-*`）归外壳——`showLockConflict` / `confirmLockConflict` 留 `app.js`，
+模块走 `injected.showLockConflict`，`index.html` 的 modal 位置不动；`createProjectFromFile` 跟模块走，
+上传接线搬进模块 `init`；接口加第 4 个导出 `open`。
+
+### 11.1 落盘后与 §9 的关系（这条要先读，否则会以为 §9 被违反）
+
+§9 说"本刀不含锁冲突 + 回收站（105 行）"——**裁定 B 之后仍然成立**：
+`confirmLockConflict` / `closeLockConflict` / 回收站三个函数（`loadTrash` / `purgeTrashProject` /
+`restoreTrashProject` / `openTrashPanel`）**一个都没搬**；唯一变化是 `showLockConflict` + 4 个 lock 文案
+从"能搬"移到"要留"（外壳拥有、模块经注入调用）。§9 的"下一刀 = 锁冲突 + 回收站"**不再需要**，
+锁冲突已经在终态位置上。
+
+### 11.2 跨子树 DOM 句柄（模块零 id 字面量的代价）
+
+`createProjectFromFile` / `openProject` 会碰 8 个不在 `view-library` 子树里的 id（R3 对模块零豁免），
+一律改成注入的 getter 返回节点（§22.2 ④）：
+
+```
+getNewProjectPicker → #new-project-file      getNewProjectName  → #new-project-name
+getNewProjectError  → #new-project-modal-error  getNewProjectMask → #new-project-mask
+getExportIncludeNotes → #export-include-notes
+getPagesOverlayToggle → #pages-overlay-toggle   getPagesMarginToggle → #pages-margin-toggle
+getReviewMarginToggle → #review-margin-toggle
+```
+
+### 11.3 状态写点：11 个 setter，生成器必须"先写点后 IDENT"
+
+`openProject` 里有 11 处状态写点（`pagesOverlayOn` / `marginSuggestion` / `setupSuggestions` …）。
+生成器原来只处理 2 个，其余会生成 `injected.getX() = v` ——**那不是语法错误**：
+Node 26 的 `node --check` 对"赋值目标不可写"**不报**（实测 `a.b() = 1` 也 PASS），只在运行时炸。
+所以 `rules.SETTERS` 是**替换顺序**的一部分：先 setter，再 IDENT。
+
+### 11.4 两处 `notify` 语义必须与原来一致
+
+- **错误**：原来 `showError(el("library-error"), error)` 会写 `<code>错误编号 …</code>` 与 detail，
+  只传 `text` 会把这层信息丢掉 → `notify({ kind:"error", error })` 由模块回调 `injected.showError` 渲染同一段；
+- **收起**：原来 `el("library-error").hidden = true;` → `notify({ kind:"error", text: "" })`。
+
+### 11.5 落盘读数（`accept_library.py` exit 0）
+
+```
+view-library 子树 id 9 个 / app.js 字面量 24 → 0（写点 19 → 0）
+app.js 16,161 → 15,870（净减 291 = 311 搬走 − 20 注入块）
+library-view.js 386 行 · 导出 4（init / enter / notify / open）· 注入键 45
+12 个搬走函数：模块 1 处、app.js 0 处
+```
+
+### 11.6 这一刀暴露的两个闸洞（本刀修不了，报给闸的 owner）
+
+1. **`index.html` 少了 `<script src="/static/library-view.js">` 时全闸不红**：R7 只校验
+   `reading-view.js` 那一个 `<script>`。落盘后页面里 `window.LibraryView` 是 `undefined`，
+   `init` / `enter` 全是 `?.` 空转——**目录页永远空着，而静态门全绿**。本刀已补上 script 标签。
+   R7 应收敛为"每个 `*-view.js` 都必须在 app.js 之前有 `<script>`"。
+2. **R9 是"文件里声明过没有"，不是"这一处能不能看见"**：`init` 的 deps 里生成过
+   `getProject: () => project`（app.js 里没有 `project` 这个顶层变量），
+   `project` 在别的函数里声明过 → R9 绿。**只有页面级验证抓到了它**（`project is not defined`）。

@@ -2,6 +2,11 @@
 
 **状态**：生成器已跑通并全绿，**只剩落盘前的两处接线**。`/tmp` 的两个产物是可用的，不是半成品。
 
+> **2026-10-29 裁定 B（Chief）改了下文三处**：① 接口是 **4 个**导出（`init/enter/notify/open`），
+> 不是 3 个；② `showLockConflict` + 4 个 lock 文案**留外壳**，所以搬 12 个 / 311 行，不是 17 / 371；
+> ③ `createProjectFromFile` 的上传接线搬进模块 `init`，外壳不再调它。落地记录见
+> [`../../../library-slice.md`](../../../library-slice.md) §11。
+
 ## 1. 剩下的两步
 
 ### ① `boot` 里的 `LibraryView.init(deps)` 字面量（38 键）

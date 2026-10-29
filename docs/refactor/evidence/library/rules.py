@@ -64,16 +64,31 @@ IDENT = [
     ("openPageSetup", "injected.openPageSetup"),
     ("resumeLastPosition", "injected.resumeLastPosition"),
     ("bootingProject", "injected.getBootingProject()"),
+    # 裁定 B：锁冲突对话框留外壳，模块走注入（画的是全局 modal）
+    ("showLockConflict", "injected.showLockConflict"),
 ]
-# 状态写点（有写点的成对走 setter）
-LIT = [
-    ("libraryProjects = ", "injected.setLibraryProjects("),
-    ("lockConflictTarget = ", "injected.setLockConflictTarget("),
-]
+# 状态写点 → setter（**必须在 IDENT 替换之前跑**，否则会生成 `injected.getX() = v`：
+# 那不是语法错误、`node --check` 也照样 PASS（实测 Node 26 的 --check 不查赋值目标），
+# 只在运行时炸。2026-10-29 干跑抓到：openProject 里有 11 处）
+SETTERS = {
+    "libraryProjects": "injected.setLibraryProjects",
+    "bootingProject": "injected.setBootingProject",
+    "pagesOverlayOn": "injected.setPagesOverlayOn",
+    "pagesMarginOn": "injected.setPagesMarginOn",
+    "setupSuggestionsLoaded": "injected.setSetupSuggestionsLoaded",
+    "setupSuggestions": "injected.setSetupSuggestions",
+    "marginSuggestion": "injected.setMarginSuggestion",
+    "lastStepPanelKey": "injected.setLastStepPanelKey",
+    "pageZoomTouched": "injected.setPageZoomTouched",
+    "reviewMarginOn": "injected.setReviewMarginOn",
+    "reviewBlockFilter": "injected.setReviewBlockFilter",
+}
 
+# 2026-10-29 Chief 裁定 B：锁冲突整块（showLockConflict + 4 个 lock 文案）留外壳——
+# 它画的是全局 modal（#lock-conflict-*，不属于任何 <section>），搬进模块必撞 R3。
+# 模块改调 injected.showLockConflict。MOVERS 17 → 12（371 → 311 行）。
 MOVERS = [
     "progressPercent", "ratioText", "timeAgo", "renderProjectList", "deleteProject",
-    "lockStampText", "lockSourceText", "lockSpanText", "lockStateText", "showLockConflict",
     "lastPositionText", "recognitionExtra", "reviewExtra", "progressRow",
     "createProjectFromFile", "openProject", "currentProjectName",
 ]

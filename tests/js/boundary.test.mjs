@@ -1687,6 +1687,9 @@ const VIEW_STATE_PREFIXES = {
   "reading-view.js": /^(reading|READING_|wordBoxMappingStats$)/,
   "preview-view.js": /^preview/,
   "index-view.js": /^(index|INDEX_|IMAGE_QUALITY_LABELS$)/,
+  // library-view.js 是 IIFE 形态：顶层状态全在闭包里（列 2），模块自己不留状态——
+  // 状态一律走注入的 getter/setter（libraryProjects / lockConflictTarget 留在外壳）。
+  "library-view.js": /^(library|LIBRARY_)/,
 };
 
 test("R5 防漏检：每个视图模块的顶层状态都必须在 OWNERS 里，且 owner 指向自己", () => {
@@ -2086,6 +2089,9 @@ const VIEW_EXPORTS = {
   "reading-view.js": { names: STABLE },                                    // 6
   "preview-view.js": { names: ["init", "enter"] },                          // 2
   "index-view.js": { names: ["init", "enter", "refresh"] },                // 3（D-100 签字；exit 于 8b0cfc7 删除）
+  // 4：生命周期三件 + 一个域操作（D-100 完整形态；Chief 2026-10-29 裁定 B 签字）
+  // open = 打开一个项目，外壳的锁冲突确认 / 任务包打开 / 备份还原都调它
+  "library-view.js": { names: ["init", "enter", "notify", "open"] },
 };
 
 /** 在干净的 vm 里加载某个视图模块，读出它的接口对象的 key（不加载 app.js）。 */

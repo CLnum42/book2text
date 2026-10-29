@@ -2546,174 +2546,13 @@ function recognitionChip(page) {
   return chip;
 }
 
-async function loadLibrary() {
-  // 上一次加载失败的错误要在这里清掉：刷新成功之后还挂着旧错误，用户会以为项目库还是坏的。
-  // （其余四个操作 deleteProject / createProjectFromFile / openProject / openPackageFile 开头都清，只这里漏了）
-  el("library-error").hidden = true;
-  el("library-warning").hidden = true;
-  try {
-    const data = await apiJson("/api/projects");
-    el("library-path").textContent = data.library_dir;
-    libraryProjects = data.projects || [];
-    renderProjectList(data.projects);
-  } catch (error) {
-    showError(el("library-error"), error);
-  }
-}
 
-/** 进度条的百分比：分母为 0 时返回 0（还没纳入任何页）。 */
-function progressPercent(done, total) {
-  const top = Number(done || 0);
-  const bottom = Number(total || 0);
-  if (!bottom) return 0;
-  return Math.min(100, Math.round((top / bottom) * 100));
-}
 
-/** "12 / 300 页"这行数字：字段缺失时按 0 算，不显示 undefined。 */
-function ratioText(done, total) {
-  return `${Number(done || 0)} / ${Number(total || 0)} 页`;
-}
 
-/** 上次编辑时间的口语写法：刚刚 / N 分钟前 / N 小时前 / N 天前 / 日期。 */
-function timeAgo(stamp) {
-  if (!stamp) return "还没打开过";
-  const then = new Date(stamp);
-  if (Number.isNaN(then.getTime())) return stamp.slice(0, 10);
-  const minutes = Math.floor((Date.now() - then.getTime()) / 60000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} 天前`;
-  return stamp.slice(0, 10);
-}
 
-/** 项目库卡片（效果图 01）：封面、元信息、识别 / 审校两条进度、上次位置、继续 / 打开。 */
-function renderProjectList(projects) {
-  const list = el("project-list");
-  list.innerHTML = "";
-  el("library-empty").hidden = projects.length > 0;
-
-  projects.forEach((entry, index) => {
-    const card = document.createElement("li");
-    card.className = "pcard" + (entry.lock_held ? " pcard--locked" : "");
-    card.dataset.projectId = entry.project_id;
-
-    const cover = document.createElement("div");
-    cover.className = `pcard__cover v${index % 4}`;
-    cover.textContent = entry.name.slice(0, 12);
-
-    const body = document.createElement("div");
-    body.className = "pcard__body";
-
-    const title = document.createElement("div");
-    title.className = "pcard__title";
-    const name = document.createElement("span");
-    name.textContent = `《${entry.name}》`;
-    title.append(name);
-    if (entry.kind === "package") {
-      const chip = document.createElement("span");
-      chip.className = "chip chip--blue";
-      chip.textContent = "审校任务";
-      chip.title = "助手端项目：别人分派给你的审校任务包";
-      title.append(chip);
-    }
-    if (entry.lock_held) {
-      const chip = document.createElement("span");
-      chip.className = "chip chip--warn";
-      chip.textContent = entry.lock_expired ? "锁已过期" : "使用中";
-      chip.title = entry.lock_reason || "这个项目正被另一个窗口 / 另一台电脑打开";
-      title.append(chip);
-    }
-    if (entry.text_layer_hint) {
-      const chip = document.createElement("span");
-      chip.className = "chip chip--gray";
-      chip.textContent = "可能已含文本";
-      chip.title = `${entry.pages_with_text_layer} / ${entry.page_count} 页已有文本层，可能不需要识别`;
-      title.append(chip);
-    }
-
-    const meta = document.createElement("div");
-    meta.className = "pcard__meta";
-    meta.textContent =
-      `${entry.source_file_name} · 共 ${entry.page_count} 页 · 正文 ${entry.included_pages} 页` +
-      ` · 上次编辑：${timeAgo(entry.updated_at)}`;
-
-    body.append(title, meta, progressRow("识别", entry.recognized_pages, entry.included_pages, recognitionExtra(entry)));
-    body.append(progressRow("审校", entry.reviewed_pages, entry.included_pages, reviewExtra(entry)));
-
-    const loc = document.createElement("div");
-    loc.className = "pcard__loc";
-    loc.textContent = `⌖ 上次位置：${lastPositionText(entry)}`;
-    body.append(loc);
-
-    const actions = document.createElement("div");
-    actions.className = "pcard__actions";
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "btn btn--pri";
-    open.textContent = "打开";
-    open.addEventListener("click", () => openProject(entry.project_id));
-    actions.append(open);
-    if (entry.lock_held) {
-      const readOnly = document.createElement("button");
-      readOnly.type = "button";
-      readOnly.className = "btn";
-      readOnly.textContent = "只读打开";
-      readOnly.addEventListener("click", () => openProject(entry.project_id, { readOnly: true }));
-      const force = document.createElement("button");
-      force.type = "button";
-      force.className = "btn btn--danger";
-      force.textContent = entry.lock_expired ? "接管并打开" : "强制打开";
-      force.title = entry.lock_expired
-        ? "这把锁已经过期（持有者进程不在了），接管不会影响项目数据"
-        : "有让两台电脑同时写入同一数据库的风险";
-      force.addEventListener("click", () => openProject(entry.project_id, { force: true }));
-      actions.append(readOnly, force);
-    }
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "btn btn--danger";
-    remove.textContent = "删除";
-    remove.title = "移入废纸篓，可在废纸篓恢复";
-    remove.addEventListener("click", () => deleteProject(entry));
-    actions.append(remove);
-
-    card.append(cover, body, actions);
-    list.append(card);
-  });
-}
 
 // ---------------------------------------------------------------- 项目删除 / 废纸篓（任务 35）
 
-async function deleteProject(entry) {
-  if (
-    !window.confirm(
-      `确定删除《${entry.name}》？\n\n` +
-        "项目会移入废纸篓，数据仍在磁盘上，可随时恢复。"
-    )
-  ) {
-    return;
-  }
-  el("library-error").hidden = true;
-  try {
-    await apiJson(`/api/projects/${entry.project_id}?confirm=true`, { method: "DELETE" });
-    await loadLibrary();
-  } catch (error) {
-    // 被 `.lock` 挡住时不能只甩一句"正在使用中"：说清是谁、什么时候、锁是不是已经过期，
-    // 过期的锁给一个「强制删除」（后端 `?force=true` 只接受过期锁）。
-    if (
-      (error.code === "project_lock_expired" || error.code === "project_busy") &&
-      error.data &&
-      error.data.lock
-    ) {
-      showLockConflict(entry, error.data.lock, "delete");
-      return;
-    }
-    showError(el("library-error"), error);
-  }
-}
 
 // ---------------------------------------------------------------- 项目锁冲突（任务 60）
 //
@@ -2806,14 +2645,14 @@ async function confirmLockConflict() {
   try {
     if (target.action === "open") {
       closeModal("lock-conflict-mask");
-      await openProject(target.entry.project_id, { force: true });
+      await window.LibraryView?.open(target.entry.project_id, { force: true });
     } else {
       await apiJson(
         `/api/projects/${target.entry.project_id}?confirm=true&force=true`,
         { method: "DELETE" }
       );
       closeModal("lock-conflict-mask");
-      await loadLibrary();
+      await window.LibraryView?.enter();
     }
   } catch (error) {
     showError(el("lock-conflict-error"), error);
@@ -2882,7 +2721,7 @@ async function restoreTrashProject(entry) {
   try {
     await apiJson(`/api/trash/${entry.project_id}/restore`, { method: "POST" });
     await loadTrash();
-    await loadLibrary();
+    await window.LibraryView?.enter();
   } catch (error) {
     showError(el("trash-error"), error);
   }
@@ -2915,182 +2754,12 @@ const LAST_VIEW_LABELS = {
   export: "导出",
 };
 
-function lastPositionText(entry) {
-  if (!entry.last_view) return "还没有打开过";
-  const view = LAST_VIEW_LABELS[entry.last_view] || entry.last_view;
-  if (!entry.last_page_no) return view;
-  const printed = entry.last_page_label ? `（印 ${entry.last_page_label}）` : "";
-  return `${view} · 第 ${entry.last_page_no} 页${printed}`;
-}
 
-/** 识别进度右边那格：失败页数与文本层提示（都来自真实数据）。 */
-function recognitionExtra(entry) {
-  const parts = [];
-  const failed = Number(entry.failed_pages || 0);
-  if (failed) parts.push({ text: `⚠ 失败 ${failed}`, tone: "bad" });
-  if (entry.included_pages && entry.recognized_pages >= entry.included_pages) {
-    parts.push({ text: "已认完", tone: "ok" });
-  }
-  return parts;
-}
 
-function reviewExtra(entry) {
-  const parts = [];
-  const uncertain = Number(entry.uncertain_blocks || 0);
-  if (uncertain) parts.push({ text: `不确定 ${uncertain} 块`, tone: "warn" });
-  else if (entry.reviewed_pages && entry.reviewed_pages >= entry.included_pages) {
-    parts.push({ text: "已审完", tone: "ok" });
-  }
-  return parts;
-}
 
-function progressRow(label, done, total, extras) {
-  const row = document.createElement("div");
-  row.className = "pcard__row";
-  const lab = document.createElement("span");
-  lab.className = "lab";
-  lab.textContent = label;
-  const bar = document.createElement("div");
-  bar.className = "pbar" + (label === "审校" ? " pbar--ok" : "");
-  const fill = document.createElement("i");
-  fill.style.width = `${progressPercent(done, total)}%`;
-  bar.append(fill);
-  const num = document.createElement("span");
-  num.className = "num";
-  num.textContent = ratioText(done, total);
-  const extra = document.createElement("span");
-  extra.className = "extra";
-  const [first] = extras;
-  if (first) {
-    extra.textContent = first.text;
-    extra.style.color = { bad: "var(--bad-text)", ok: "var(--ok-text)", warn: "var(--warn-text)" }[first.tone];
-  }
-  row.append(lab, bar, num, extra);
-  return row;
-}
 
-async function createProjectFromFile(file) {
-  const name = el("new-project-name").value.trim();
-  el("library-error").hidden = true;
-  el("new-project-modal-error").hidden = true;
-  el("create-progress").hidden = false;
 
-  try {
-    const response = await fetch(
-      `/api/projects?name=${encodeURIComponent(name)}&filename=${encodeURIComponent(file.name)}`,
-      {
-        method: "POST",
-        headers: { "X-B2T-Token": token, "Content-Type": "application/pdf" },
-        body: file,
-      }
-    );
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const error = (payload && payload.error) || {};
-      throw new ApiError(error.message || `新建失败（HTTP ${response.status}）`,
-                         error.code, error.correlation_id, error.detail);
-    }
 
-    el("new-project-name").value = "";
-    closeModal("new-project-mask");
-    if (payload.text_layer_hint) {
-      const warning = el("library-warning");
-      warning.textContent =
-        `这本 PDF 有 ${payload.pages_with_text_layer} 页已经带文本层，` +
-        `可能不需要识别——建议先抽查几页再决定。`;
-      warning.hidden = false;
-    }
-    await loadLibrary();
-    await openProject(payload.project.project_id);
-    // 新建项目：先让用户确认页面类型，再谈识别（说明书 6.2）
-    await openPageSetup({ auto: true });
-  } catch (error) {
-    // 新建对话框开着就报在它里面，否则报在项目库上
-    if (!el("new-project-mask").hidden) showError(el("new-project-modal-error"), error);
-    else showError(el("library-error"), error);
-  } finally {
-    el("create-progress").hidden = true;
-  }
-}
-
-async function openProject(projectId, { force = false, readOnly = false } = {}) {
-  el("library-error").hidden = true;
-  el("library-warning").hidden = true;
-  bootingProject = true;
-
-  try {
-    const opened = await apiJson(
-      `/api/projects/${projectId}/open?force=${force}&read_only=${readOnly}`,
-      { method: "POST" }
-    );
-    // 打开项目的提示（强制接管了过期锁 / 覆盖了死锁 / 有任务被中断）先存着：
-    // 下面 `loadLibrary()` 会用 `hidden = true` 清掉提示条，必须等它跑完再显示。
-    const openWarning = opened.warning || "";
-    // 注释流是这次导出的选项，不是项目设置：每次打开项目回到"不导出"的默认。
-    // 必须在 refreshProject 之前复位——它会立刻发一次导出预检，用的是这个复选框的值。
-    el("export-include-notes").checked = false;
-    // 任务 62：步骤条的数字来自 finish-summary，它和项目载荷**并行**取，
-    // 不要排在后面（490 页的书光项目载荷就 1.2 s）。返回后 `syncWorkflowSteps` 会再画一次。
-    const finishPrefetch = loadFinishSummary({ silent: true });
-    await refreshProject(projectId);
-    // 任务 62：步骤条的数字只等 finish-summary。**先把它等到、把步骤条点亮**，
-    // 再去开「上次的视图」——审校视图要组装整本导出预览（490 页实测 7 s），
-    // 先跑它会把 finish-summary 饿在 CPU 后面，步骤条十几秒才亮。
-    await finishPrefetch;
-    applyProjectSettings();
-    syncWorkflowSteps();
-    await loadAutoApplyStatus();
-    pagesOverlayOn = loadPageOverlayPreference();
-    pagesMarginOn = loadPageMarginPreference();
-    setupSuggestionsLoaded = false;
-    setupSuggestions = [];
-    // 识别收尾 / 打开项目时服务端会算一次版心；项目载荷里直接带着最近一次建议，
-    // 不需要用户再点「推算版心」才知道建议是什么。
-    marginSuggestion = currentProject.margin_box_suggestion || null;
-    // 任务 36B：撤销栈与"已试过拟合"的页只对当前项目有意义。
-    marginUndoStack.length = 0;
-    marginFitTried.clear();
-    lastStepPanelKey = null;
-    pageZoomTouched = false;
-    renderRecognitionSettings();
-    reviewMarginOn = loadReviewMarginPreference();
-    reviewBlockFilter = "pending";
-    el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
-    el("pages-margin-toggle").classList.toggle("is-on", pagesMarginOn);
-    el("review-margin-toggle").classList.toggle("is-on", reviewMarginOn);
-    // refreshProject 可能已经渲染过页面视图；默认"开"是在那之后才读出来的。
-    // 任务 63：页面缩略图会立刻开始拉图（490 页要几十秒 CPU），所以也排到步骤条之后。
-    queueAfterSteps(() => schedulePageVisibility());
-    await loadLibrary();
-    if (openWarning) {
-      const warning = el("library-warning");
-      warning.textContent = openWarning;
-      warning.hidden = false;
-    }
-    // 说明书 7.2：打开项目默认回到上次的位置（上次在审校就回审校那一页）
-    await resumeLastPosition();
-    bootingProject = false;
-  } catch (error) {
-    bootingProject = false;
-    if (
-      (error.code === "project_lock_expired" || error.code === "project_busy") &&
-      error.data &&
-      error.data.lock
-    ) {
-      showLockConflict({ project_id: projectId, name: currentProjectName(projectId) }, error.data.lock, "open");
-      return;
-    }
-    showError(el("library-error"), error);
-  }
-}
-
-/** 错误对话框里要写项目名：项目列表已经加载过，查一下就行。 */
-function currentProjectName(projectId) {
-  const cached = (libraryProjects || []).find((item) => item.project_id === projectId);
-  if (cached) return cached.name;
-  if (currentProject && currentProject.project_id === projectId) return currentProject.name;
-  return projectId;
-}
 
 /** "继续"回到上次的视图与页面（说明书 7.2）。没有记录时落在页面视图。 */
 async function resumeLastPosition() {
@@ -13787,7 +13456,7 @@ async function closeProject() {
   try {
     await apiJson(`/api/projects/${currentProject.project_id}/close`, { method: "POST" });
   } catch (error) {
-    showError(el("library-error"), error);
+    window.LibraryView?.notify({ kind: "error", error: error });
     return;
   }
   currentProject = null;
@@ -13811,15 +13480,10 @@ async function closeProject() {
   el("task-chip").hidden = true;
   el("project-meta-section").hidden = true;
   showView("library");
-  await loadLibrary();
+  await window.LibraryView?.enter();
 }
 
 function setupLibrary() {
-  const picker = el("new-project-file");
-  picker.addEventListener("change", () => {
-    if (picker.files && picker.files[0]) createProjectFromFile(picker.files[0]);
-    picker.value = "";
-  });
   el("project-close").addEventListener("click", closeProject);
   el("trash-open").addEventListener("click", openTrashPanel);
   el("trash-close").addEventListener("click", () => closeModal("trash-panel"));
@@ -14670,7 +14334,7 @@ function setupPackageControls() {
 }
 
 async function openPackageFile(file) {
-  el("library-error").hidden = true;
+  window.LibraryView?.notify({ kind: "error", text: "" });
   setSaveState("正在打开任务包…");
   try {
     const response = await fetch(
@@ -14687,10 +14351,10 @@ async function openPackageFile(file) {
       throw new ApiError(error.message || `打开失败（HTTP ${response.status}）`, error.code, error.correlation_id, error.detail);
     }
     setSaveState("");
-    await loadLibrary();
-    await openProject(payload.project.project_id);
+    await window.LibraryView?.enter();
+    await window.LibraryView?.open(payload.project.project_id);
   } catch (error) {
-    showError(el("library-error"), error);
+    window.LibraryView?.notify({ kind: "error", error: error });
   }
 }
 
@@ -14753,7 +14417,7 @@ async function applyPackageMode() {
     el("package-result-meta").textContent = `${info.book_name} · 审校人 ${info.reviewer_name}`;
     await loadPackageResults(project.project_id);
   } catch (error) {
-    showError(el("library-error"), error);
+    window.LibraryView?.notify({ kind: "error", error: error });
   }
 }
 
@@ -14777,7 +14441,9 @@ async function loadPackageResults(projectId) {
       list.append(li);
     }
   } catch (error) {
-    showError(el("package-result-files") || el("library-error"), error);
+    const box = el("package-result-files");
+    if (box) showError(box, error);
+    else window.LibraryView?.notify({ kind: "error", error: error });
   }
 }
 
@@ -15539,10 +15205,8 @@ async function restoreSelectedBackup() {
       { method: "POST" }
     );
     closeModal("backups-mask");
-    await openProject(projectId);
-    const warning = el("library-warning");
-    warning.textContent = `已恢复备份 ${data.from}；恢复前的库另存为 ${data.safety_backup}`;
-    warning.hidden = false;
+    await window.LibraryView?.open(projectId);
+    window.LibraryView?.notify({ kind: "warning", text: String(`已恢复备份 ${data.from}；恢复前的库另存为 ${data.safety_backup}`).trim() });
   } catch (error) {
     showError(el("backups-error"), error);
   } finally {
@@ -15594,10 +15258,7 @@ async function rerunAuxiliary() {
     const data = await apiJson(`/api/projects/${currentProject.project_id}/aux/rerun`, {
       method: "POST",
     });
-    const warning = el("library-warning");
-    warning.textContent =
-      `已建复核任务（Vision · 按页语言）。备份：${data.backup_path}`;
-    warning.hidden = false;
+    window.LibraryView?.notify({ kind: "warning", text: String(`已建复核任务（Vision · 按页语言）。备份：${data.backup_path}`).trim() });
     await loadTasks();
   } catch (error) {
     showError(el("pages-error"), error);
@@ -16104,6 +15765,54 @@ function boot() {
     zoomScales: INDEX_ZOOM_SCALES,
     imageWindow: INDEX_IMAGE_WINDOW,
   });
+  window.LibraryView?.init({
+    apiJson: (...args) => apiJson(...args),
+    applyProjectSettings: (...args) => applyProjectSettings(...args),
+    closeModal: (...args) => closeModal(...args),
+    getExportIncludeNotes: () => el("export-include-notes"),
+    getLibraryProjects: () => libraryProjects,
+    getMarginFitTried: () => marginFitTried,
+    getMarginUndoStack: () => marginUndoStack,
+    getNewProjectError: () => el("new-project-modal-error"),
+    getNewProjectMask: () => el("new-project-mask"),
+    getNewProjectName: () => el("new-project-name"),
+    getNewProjectPicker: () => el("new-project-file"),
+    getPagesMarginOn: () => pagesMarginOn,
+    getPagesMarginToggle: () => el("pages-margin-toggle"),
+    getPagesOverlayOn: () => pagesOverlayOn,
+    getPagesOverlayToggle: () => el("pages-overlay-toggle"),
+    getProject: () => currentProject,
+    getReviewMarginOn: () => reviewMarginOn,
+    getReviewMarginToggle: () => el("review-margin-toggle"),
+    lastViewLabels: LAST_VIEW_LABELS,
+    loadAutoApplyStatus: (...args) => loadAutoApplyStatus(...args),
+    loadFinishSummary: (...args) => loadFinishSummary(...args),
+    loadPageMarginPreference: (...args) => loadPageMarginPreference(...args),
+    loadPageOverlayPreference: (...args) => loadPageOverlayPreference(...args),
+    loadReviewMarginPreference: (...args) => loadReviewMarginPreference(...args),
+    openPageSetup: (...args) => openPageSetup(...args),
+    queueAfterSteps: (...args) => queueAfterSteps(...args),
+    refreshProject: (...args) => refreshProject(...args),
+    renderRecognitionSettings: (...args) => renderRecognitionSettings(...args),
+    resumeLastPosition: (...args) => resumeLastPosition(...args),
+    schedulePageVisibility: (...args) => schedulePageVisibility(...args),
+    setBootingProject: (v) => { bootingProject = v; return v; },
+    setLastStepPanelKey: (v) => { lastStepPanelKey = v; return v; },
+    setLibraryProjects: (v) => { libraryProjects = v; return v; },
+    setMarginSuggestion: (v) => { marginSuggestion = v; return v; },
+    setPageZoomTouched: (v) => { pageZoomTouched = v; return v; },
+    setPagesMarginOn: (v) => { pagesMarginOn = v; return v; },
+    setPagesOverlayOn: (v) => { pagesOverlayOn = v; return v; },
+    setReviewBlockFilter: (v) => { reviewBlockFilter = v; return v; },
+    setReviewMarginOn: (v) => { reviewMarginOn = v; return v; },
+    setSetupSuggestions: (v) => { setupSuggestions = v; return v; },
+    setSetupSuggestionsLoaded: (v) => { setupSuggestionsLoaded = v; return v; },
+    showError: (...args) => showError(...args),
+    showLockConflict: (...args) => showLockConflict(...args),
+    syncWorkflowSteps: (...args) => syncWorkflowSteps(...args),
+    token: token,
+  });
+
   window.PreviewView?.init({
     // 状态 getter
     isActive: () => currentView === "preview",
@@ -16155,7 +15864,7 @@ function boot() {
   // 外壳把档位读出来之后喊它一声（原来那两行由 syncImageQualityUi 直接写，R3 不越界了）。
   window.IndexView?.refresh();
   loadAppInfo();
-  loadLibrary();
+  window.LibraryView?.enter();
 }
 
 boot();
