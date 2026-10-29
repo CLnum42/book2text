@@ -104,9 +104,9 @@ def run_stage(args, stage_n: int) -> int:
     base = baseline()
     app_lines = len(app_text.split("\n")) - (1 if app_text.endswith("\n") else 0)
     shrink = (base["app_lines"] or 0) - app_lines
-    floor = spec["lines"] // 2
+    floor = -(-spec["lines"] // 2)   # ceil(50%)：987 → 494（493 仍小于一半，必须红）
     print(f"   减量：app.js {base['app_lines']:,} → {app_lines:,}（净减 {shrink:,}；"
-          f"下界 {floor:,} = 计划行数的一半，计划原文「少于一半 = 复制不是搬，停」）")
+          f"下界 {floor:,} = ceil(计划 {spec['lines']:,} × 50%)，计划原文「少于一半 = 复制不是搬，停」）")
 
     problems: list[str] = []
     if shrink < floor:
