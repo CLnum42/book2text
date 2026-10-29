@@ -606,6 +606,70 @@ def cmd_library_notice(args: argparse.Namespace) -> int:
     return report.finish(report_path)
 
 
+def cmd_review_sequence(args: argparse.Namespace) -> int:
+    """审校**语义序列**回放：面板开着就判、没开才点「下一处」，直到队列判满。
+
+    为什么不能"每轮固定点一次「下一处」再点判决"：
+    - 改前判完会关面板，每条都要点「下一处」，那个点击本身会开一次面板；
+    - 改后是"判决即前进"，面板自动换下一条，再点「下一处」就是多余动作。
+    固定点击序列会让两种行为各自被刷出不同的假数——实测同一份改前代码，
+    墙钟 98 / 285 / 341 秒（3.5 倍），panel/judge 1.05~1.32。
+    **只有按语义推进，改前改后才是同一条路径。**
+
+    报三样（Chief 2026-10-29 定的验收线）：
+    - 每条用户动作数（目标 ≤1.05；改前 2.0 / 改后 1.0）
+    - 单条受控耗时 = msSoFar / judge
+    - 面板消失次数（`opened-then-cleared`，只证明本轮没撞上，不证明 L-107 修好）
+
+    `panel/judge` 仍打印，但**只作参考**：改前按真实序列就是 1.000，它不区分改前改后。
+    """
+    state = _require_state()
+    try:
+        _browser.run(state, "prepare")
+    except Exception as error:  # noqa: BLE001
+        print(f"准备失败：{error}")
+        return 2
+    started = time.time()
+    try:
+        data = _browser.run(state, "review_actions_probe", {"rounds": args.rounds}, timeout=1800.0)
+    except Exception as error:  # noqa: BLE001
+        print(f"回放失败：{error}")
+        return 2
+    timing = _browser.run(state, "step_timing", {})
+    wall = time.time() - started
+
+    raw_path = Path(state["run_dir"]) / "review-sequence.json"
+    raw_path.write_text(
+        json.dumps({"probe": data, "timing": timing, "wall_seconds": wall}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    review = (timing.get("snapshot") or {}).get("steps", {}).get("review", {})
+    rows = data.get("rows") or []
+    judged = int(data.get("judged") or 0)
+    jumps = len([row for row in rows if row.get("jumped")])
+    keeps = len([row for row in rows if row.get("clickedKeep")])
+    opened_cleared = len([row for row in rows if row.get("attribution") == "opened-then-cleared"])
+    actions = review.get("actions") or {}
+    panel = int(actions.get("panel") or 0)
+    judge_actions = int(actions.get("judge") or 0)
+    ms_so_far = int(review.get("msSoFar") or 0)
+    per_judge = round(ms_so_far / judged) if judged else None
+    per_action = round((jumps + keeps) / judged, 3) if judged else None
+    panel_per_judge = round(panel / judge_actions, 3) if judge_actions else None
+
+    print(f"项目：{state['project_id']}")
+    print(f"审校语义序列：判中 {judged} 条（动作：点下一处 {jumps} / 点保留原文 {keeps}）")
+    print(f"  ① 每条用户动作数   {per_action}   （目标 ≤1.05；改前 2.0 / 改后 1.0）")
+    print(f"  ② 单条受控耗时     {per_judge} ms   （msSoFar {ms_so_far} / judge {judged}）")
+    print(f"  ③ 面板消失         {opened_cleared} / {judged}   （只证明本轮没撞上，不证明 L-107 修好）")
+    print(f"  参考 panel/judge   {panel_per_judge}   （不区分改前改后，别当验收线）")
+    print(f"  归因               {json.dumps(data.get('attribution') or {}, ensure_ascii=False)}")
+    print(f"  总墙钟             {round(wall, 1)} s")
+    print(f"\n原始数据：{raw_path}")
+    return 0
+
+
 def cmd_panel_lifecycle(args: argparse.Namespace) -> int:
     """L-107 新判据：面板**是否曾经出现过**——只看 DOM，不读私有状态。
 
@@ -1381,6 +1445,10 @@ def build_parser() -> argparse.ArgumentParser:
     reading = sub.add_parser("reading", help="读取正文审校界面状态与已渲染段落")
     reading.add_argument("--page", type=int, default=None)
     reading.set_defaults(func=cmd_reading)
+
+    seq = sub.add_parser("review_sequence", help="审校语义序列回放（改前/改后同一条路径）")
+    seq.add_argument("--rounds", type=int, default=200, help="最多推进多少轮（队列判满会提前停）")
+    seq.set_defaults(func=cmd_review_sequence)
 
     lifecycle = sub.add_parser("panel_lifecycle", help="L-107：面板是否曾经出现过（只看 DOM）")
     lifecycle.add_argument("--times", type=int, default=20, help="连按「下一处未审」的次数")
