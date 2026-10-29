@@ -16,7 +16,10 @@ set -u
 REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 cd "$REPO" || exit 0
 
-LOG="$REPO/.git/b2t-pytest.log"
+COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir)
+MAIN=$(dirname "$COMMON")
+LOG="$COMMON/b2t-pytest.log"
+OUTLOG="$COMMON/b2t-pytest.out"
 ZERO=0000000000000000000000000000000000000000
 EMPTY_TREE=$(git hash-object -t tree /dev/null 2>/dev/null || echo "")
 
@@ -51,8 +54,6 @@ check_one() {
 
   CHECKED=$((CHECKED + 1))
   # venv 可能不在当前 worktree（临时 worktree / CI 里都没有），到主 worktree 找
-  COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir)
-  MAIN=$(dirname "$COMMON")
   PY="$REPO/.venv/bin/python"
   [ -x "$PY" ] || PY="$MAIN/.venv/bin/python"
   if [ ! -x "$PY" ]; then
@@ -72,15 +73,31 @@ check_one() {
     echo "✗ pre-push：导出 $(echo "$LOCAL_SHA" | cut -c1-8) 的树失败" >&2
     rm -rf "$TMPTREE"; FAILED=1; return 1
   fi
-  if ! ( cd "$TMPTREE" && "$PY" -m pytest -q ) >"$REPO/.git/b2t-pytest.out" 2>&1; then
-    rm -rf "$TMPTREE"
+  # 输出先落临时文件：**重定向失败必须算闸失败**，不能"写不出日志所以看起来通过"。
+  # （2026-10-29 真实事故：从 worktree 推送时 `$REPO/.git/...` 不是目录，
+  #   重定向失败却打印了"全绿"，pytest 一秒都没跑。）
+  PYOUT=$(mktemp "${TMPDIR:-/tmp}/b2t-pytest-out.XXXXXX") || {
+    echo "✗ pre-push：建不了临时输出文件" >&2; rm -rf "$TMPTREE"; FAILED=1; return 1
+  }
+  ( cd "$TMPTREE" && "$PY" -m pytest -q ) >"$PYOUT" 2>&1
+  PYRC=$?
+  rm -rf "$TMPTREE"
+  cp "$PYOUT" "$OUTLOG" 2>/dev/null || true
+  if [ "$PYRC" -ne 0 ]; then
     echo "✗ pre-push：pytest 红了（$(( $(date +%s) - START ))s）" >&2
-    tail -n 30 "$REPO/.git/b2t-pytest.out" >&2
-    echo "  日志：.git/b2t-pytest.out" >&2
+    tail -n 30 "$PYOUT" >&2
+    [ -f "$OUTLOG" ] && echo "  日志：$(basename "$OUTLOG")" >&2
+    rm -f "$PYOUT"
     FAILED=1
     return 1
   fi
-  rm -rf "$TMPTREE"
+  # 66 = 一个用例都没收集到：这不是绿，是没跑到
+  if [ "$PYRC" -eq 0 ] && ! grep -qE '[0-9]+ passed' "$PYOUT"; then
+    echo "✗ pre-push：pytest 退出码 0 但没有任何 'N passed' —— 视为没跑到，按失败处理" >&2
+    tail -n 20 "$PYOUT" >&2
+    rm -f "$PYOUT"; FAILED=1; return 1
+  fi
+  rm -f "$PYOUT"
   printf '%s\tPASS\t%s\t%s\n' "$LOCAL_SHA" "$(date '+%F %T')" "$(printf '%s\n' "$FILES" | wc -l | tr -d ' ') files" >>"$LOG" 2>/dev/null || true
   echo "✓ pre-push：pytest 全绿（$(( $(date +%s) - START ))s）" >&2
   return 0
