@@ -137,7 +137,7 @@ STATES = [
     ('panelAccordionProject', 'let', 1, 'movers', '注入 get（外壳仍引用）'),
     ('projectSummary', 'let', 2, 'shell', '注入 get（外壳持有）'),
     ('recStatusTimer', 'let', 1, 'movers', '注入 get（外壳仍引用）'),
-    ('selectedPages', 'const', 0, '—', '注入值'),
+    ('selectedPages', 'const', 0, '—', '注入 get（外壳持有）'),   # 刀3：wire 落盘后读 injected.getSelectedPages()（const Set 原样返回，不复制）
     ('selectionAnchor', 'let', 8, 'movers+shell', '注入 get/set（跨区）'),
     ('setupSuggestions', 'let', 4, 'movers+shell', '注入 get/set（跨区）'),
     ('setupSuggestionsLoaded', 'let', 2, 'movers+shell', '注入 get/set（跨区）'),
@@ -320,6 +320,13 @@ IDENT_CROSS_SLICE = [
 #: `let` → `injected.getX()`。这 33 个全部是「外壳持有、模块只读」，没有写点，所以不进 SETTERS。
 #: 数：31 个函数 + 2 个 const（`busyPages` / `token`）= 33。
 IDENT_WIRE2 = [
+    ('buildTile', "injected.buildTile", "function"),   # 刀3：PageTile 未落盘（acid 挪到刀3），模块经注入调
+    ('applyTileState', "injected.applyTileState", "function"),
+    ('capturePageTileMetrics', "injected.capturePageTileMetrics", "function"),
+    ('renderPages', "injected.renderPages", "function"),   # 刀3：wirePagesFilters 迁移后读（刀1 也在模块里声明，但这里按迁移后的代码形态注入）
+    ('checkSelection', "injected.checkSelection", "function"),   # 刀3：wirePagesSelectionCheck / CheckPending 落盘后读
+    ('setAutoApplySetting', "injected.setAutoApplySetting", "function"),   # 刀3：wirePagesAutoApplySuggestions 落盘后读
+
     ('adoptAllHighSuggestions', "injected.adoptAllHighSuggestions", "function"),   # 刀2.5：wire/tile 引用
     ('applyPageRangeInput', "injected.applyPageRangeInput", "function"),   # 刀2.5：wire/tile 引用
     ('clearPageSelection', "injected.clearPageSelection", "function"),   # 刀2.5：wire/tile 引用
@@ -369,7 +376,7 @@ EXPECTED_API_KEYS = ["init", "ensureMarginFitted", "loadLayoutBlocks", "loadSetu
                      "renderRecognitionStatus", "savePageMargin", "syncPageStates",
                      "undoMarginEdit", "updateMarginDetectProgress", "updatePageVisibility"]
 
-EXPECT_SEAMS = 124   # 92 + 32（刀 2.5：33 个里 `renderPages` 模块内已有声明，不注入）
+EXPECT_SEAMS = 130   # 92 + 32（刀2.5）+ 3（checkSelection / setAutoApplySetting / renderPages）+ 3（PageTile 未落盘，注入）
 EXPECT_STATES = 45     # 状态/常量；46 = 45 + el（el 在 IDENT 里）
 EXPECT_TOTAL = 46      # 名单 states_and_consts 的条数
 
