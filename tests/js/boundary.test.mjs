@@ -1266,6 +1266,19 @@ function r3Problems({ html, appSource, viewSources, exemptions = R3_EXEMPTIONS }
     }
   }
 
+  // **已落盘的视图，app.js 一个字面量都不许留**（R3 是"这一刀"的验收闸）。
+  // 为什么按"有没有模块文件"开关，而不是按视图名写死：写死会漏掉下一个视图；
+  // 有 `x-view.js` 就说明该视图的 DOM 归模块了，app.js 再 el("x-…") 就是旧字面量没清干净。
+  const shippedViews = new Map();
+  for (const { fileName } of viewSources) {
+    const viewName = fileName.replace(/-view\.js$/, "");
+    const ids = sections.get(viewName);
+    if (ids) shippedViews.set(viewName, ids);
+  }
+  const appAllIds = domIdsIn(stripCommentsOnly(appSource));
+  // reading 有"审校块内合法"的搬运期例外，其余视图零容忍
+  const readingOnly = new Set(["reading"]);
+
   // app.js：**审校块外**不许引用 reading 子树的 id（块内是搬运期合法状态，不占豁免名额）
   const exempt = new Map(exemptions.map((item) => [item.id, item]));
   const readingIds = sections.get("reading");
@@ -1300,6 +1313,20 @@ function r3Problems({ html, appSource, viewSources, exemptions = R3_EXEMPTIONS }
       }
     }
   }
+  // 其它已落盘视图：app.js 里零引用（没有 block、没有豁免——它们的 DOM 全归模块）
+  for (const [viewName, ids] of shippedViews) {
+    if (readingOnly.has(viewName)) continue;
+    for (const [id, occurrences] of appAllIds) {
+      if (!ids.has(id)) continue;
+      for (const line of occurrences) {
+        problems.push(
+          `app.js:${line} 还引用着 view-${viewName} 的 id ${id}——这个视图已经有 `
+          + `${viewName}-view.js，旧字面量必须收干净`,
+        );
+      }
+    }
+  }
+
   // 豁免表防过期：每条必须还在被引用
   for (const item of exemptions) {
     if (!outsideIds.has(item.id)) {
@@ -1378,6 +1405,33 @@ test("R3 自检：跨视图 id / 块外引用必须红，块内引用与豁免�
     exemptions: [],
   });
   assert.deepEqual(insideBlock, [], `R3 自检失败：审校块内的引用被误报——${insideBlock.join("；")}`);
+
+  // 红：library 落盘了，app.js 还留着 library 的字面量（library 那一刀的验收形态）
+  const libraryHtml = [
+    '<section id="view-library">',
+    '  <div id="library-empty"></div>',
+    '</section>',
+    '<section id="view-reading"><div id="reading-stream"></div></section>',
+  ].join("\n");
+  const libraryLeftover = r3Problems({
+    html: libraryHtml,
+    appSource: 'function probeLibrary() {\n  return el("library-empty");\n}\n',
+    viewSources: [{ fileName: "library-view.js", source: 'el("library-empty");' }],
+    exemptions: [],
+  });
+  assert.ok(
+    libraryLeftover.some((item) => item.includes("library-empty") && item.includes("旧字面量必须收干净")),
+    `R3 自检失败：library 落盘后 app.js 还留着字面量也放过——${libraryLeftover.join("；")}`,
+  );
+
+  // 绿：同一个 library 视图，app.js 收干净了
+  const libraryClean = r3Problems({
+    html: libraryHtml,
+    appSource: "function probeOther() { return 1; }\n",
+    viewSources: [{ fileName: "library-view.js", source: 'el("library-empty");' }],
+    exemptions: [],
+  });
+  assert.deepEqual(libraryClean, [], `R3 自检失败：收干净了还被误报——${libraryClean.join("；")}`);
 
   // 绿：豁免表里那条（但条目必须真被引用，否则算过期）
   const exempted = r3Problems({

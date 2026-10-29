@@ -186,6 +186,14 @@ index-view.js    IndexView    4  init enter exit refresh
   它们可以一路长成上帝对象而 R8 一直绿。
 - 模块加载失败（语法错 / 顶层就抛）会被报成一条可读的问题，不让整条测试炸在 vm 里。
 
+**R3 的作用域（2026-10-29 扩到"所有已落盘的视图"）**
+
+原来只判 `reading` 子树。改成：**只要有 `<view>-view.js`，`app.js` 里那个视图的 DOM 字面量就必须是 0**
+（`reading` 保留"审校块内合法 + 4 条豁免"的搬运期例外，其余零容忍）。
+开关是"有没有模块文件"，不是按视图名写死——写死会漏掉下一个视图。
+这条是每个视图那一刀的**验收闸**：`library` 落盘时，`app.js` 里那 18 个 `library-*` 字面量必须收干净。
+红夹具的形态就是"已落盘视图 + app.js 还留着字面量"，不是随便改坏一处。
+
 **文档结构闸（`docs-structure.test.mjs`，§20.9 ⑫）**
 
 `docs/refactor/reading-view-boundary.md` 的章节号必须可机检——**全层级**：
