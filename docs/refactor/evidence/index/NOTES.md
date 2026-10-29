@@ -112,6 +112,28 @@ qa.py smoke：43/45（K1 1 条、K2 0 条单列；其余 44 条：43 过 / 1 失
 **中途一次读数（41/45）说明**：那是 refresh 形态还没按 §20.6 修正前的版本，
 除了 K1 还撞上了 L-107 的第 17 次面板没开（1/20）。两条都是已登记问题，都不是本刀引入的。
 
+### 5.1 清晰度档的点击路径（`qa.py` 之外的探针，`8b61ba6` 由 QA 加）
+
+`qa.py` 没有通用 eval 口子，`click_sel` 是审校专用的，所以按钮点击这条由 QA 加了一个
+`quality_probe` 命令（`tests/e2e/browser/driver.mjs`），我用它跑了一轮：
+
+```
+mode=cycle（连点 3 次 #index-quality）
+  step1  按钮「清晰度：自动」  radio=auto     meta「正在生成页码索引…」
+  step2  按钮「清晰度：标准」  radio=standard meta「正在生成页码索引…」
+  step3  按钮「清晰度：高清」  radio=high     页图 size=zoom naturalWidth=2550 CSS宽=1076 ready=true
+                                            meta「662 页 · 1 页有印刷页码 · 661 页未识别页码」
+```
+
+**结论**：按钮文案、设置面板 radio、**页图档位（`size=` 真的从 view 变成 zoom）** 三者同步。
+换档后的重取走 `applyImageQuality() → refreshIndexImageProfiles()`，是真的生效，不是只改了字。
+
+**没验到的一条（说清楚）**：`mode=radio` 那次报「radio 不可见（设置面板没开）」——
+那三档 radio 在**审校视图**的「显示 ▾」下拉里（`#reading-display-menu`），探针没有"先切到审校、
+打开下拉、再点"的步骤。这条路径的代码是逐字节搬过来的（只有 `setImageQuality(` → `applyImageQuality(`），
+且 `applyImageQuality` 已被按钮路径证明；未验的是"radio 的 change 事件到模块"这一跳。
+**按未验记账，不按通过记账。**
+
 ## 6. 待 TestDev 同批做
 
 - `R5_OWNERS` 登记 24 条 index 状态（owner `index-view.js`）+ `VIEW_STATE_PREFIXES` 加一行；
