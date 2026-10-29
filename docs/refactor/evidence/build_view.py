@@ -59,8 +59,13 @@ def main():
     ap.add_argument("--write", action="store_true")
     a = ap.parse_args()
 
-    movers = [ln.strip() for ln in open(a.movers, encoding="utf-8")
-              if ln.strip() and not ln.strip().startswith("#")]
+    if a.movers.endswith(".json"):
+        data = json.load(open(a.movers, encoding="utf-8"))
+        mv = data["movers"] if isinstance(data, dict) else data
+        movers = [m if isinstance(m, str) else m.get("name") or m.get("fn") for m in mv]
+    else:
+        movers = [ln.strip() for ln in open(a.movers, encoding="utf-8")
+                  if ln.strip() and not ln.strip().startswith("#")]
     rules = load_rules(a.rules)
     lines = open(a.app, encoding="utf-8").read().split("\n")
 
