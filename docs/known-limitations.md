@@ -1459,6 +1459,8 @@ updateReadingPage → ensureReadingMarksWindow → loadReadingMarksWindow
 
 ## L-106 · 「错误不以红的形式出现」——今晚四起事故的同一形态（2026-10-28）
 
+> **判据查不到的东西，等于没有判据。**（Architect，2026-10-29）
+
 > **代码 bug 修一次就没了，判据 bug 会一直生 bug。**
 
 **这一条不是某个 bug，是一类 bug 的识别方法。** 四起互不相关的事故，失败方式完全同构：**错误不以 FAIL 出现，而以"看起来像别的东西"出现。**
