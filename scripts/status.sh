@@ -154,9 +154,10 @@ if [ -f "$BYPASS_LOG" ]; then
       else if (tag == "REWRITE") { rewrite++; last = $1 }
       else if (tag == "MUTATION") mutation++
       else if (tag == "REPLAY") replay++
+      else if (tag == "STALE") stale++
     }
     END {
-      printf "%d|%d|%d|%d|%d|%s\n", bypass + 0, withReason + 0, rewrite + 0, mutation + 0, replay + 0, (last == "" ? "-" : last)
+      printf "%d|%d|%d|%d|%d|%d|%s\n", bypass + 0, withReason + 0, rewrite + 0, mutation + 0, replay + 0, stale + 0, (last == "" ? "-" : last)
     }
   ' "$BYPASS_LOG" 2>/dev/null)
   # 用 `|` 分隔取字段：时间列本身含空格（`2026-10-29 10:48:36`），按空白取会被截成日期
@@ -165,11 +166,13 @@ if [ -f "$BYPASS_LOG" ]; then
   REWRITE_N=$(printf '%s' "$COUNTS" | cut -d'|' -f3)
   MUTATION_N=$(printf '%s' "$COUNTS" | cut -d'|' -f4)
   REPLAY_N=$(printf '%s' "$COUNTS" | cut -d'|' -f5)
-  REWRITE_LAST=$(printf '%s' "$COUNTS" | cut -d'|' -f6)
+  STALE_N=$(printf '%s' "$COUNTS" | cut -d'|' -f6)
+  REWRITE_LAST=$(printf '%s' "$COUNTS" | cut -d'|' -f7)
   TOTAL=$(( ${BYPASS_N:-0} + ${REASON_N:-0} ))
   printf '闸：绕过 %s 次（BYPASS %s / BYPASS-WITH-REASON %s）\n' "$TOTAL" "${BYPASS_N:-0}" "${REASON_N:-0}"
   if [ "${MUTATION_N:-0}" != "0" ]; then printf '    变异实验 %s 次（MUTATION，非绕过）\n' "$MUTATION_N"; fi
   if [ "${REPLAY_N:-0}" != "0" ]; then printf '    重放 %s 次（REPLAY，非绕过）\n' "$REPLAY_N"; fi
+  printf '    STALE %s 次（残留 MARK，不计入绕过）\n' "${STALE_N:-0}"
   if [ "${REWRITE_N:-0}" -gt 0 ]; then
     printf '    重写 %s 次（REWRITE，不计入绕过；最近一次 %s）\n' "$REWRITE_N" "$REWRITE_LAST"
   else

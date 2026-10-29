@@ -65,22 +65,29 @@ if [ "$IS_REWRITE" = 1 ]; then
   exit 0
 fi
 
-# ---- 通过了闸就不记 ----
+# ---- 通过 / STALE / BYPASS 三分支 ----
 if [ -n "$PASSED" ] && [ "$HEAD_TREE" = "$PASSED" ]; then
   exit 0
 fi
 
-# ---- 真绕过 ----
-if printf '%s' "$BODY" | grep -qi '^[[:space:]]*Bypass-Reason:'; then
+HAS_REASON=0
+if printf '%s' "$BODY" | grep -qi '^[[:space:]]*Bypass-Reason:'; then HAS_REASON=1; fi
+
+if [ "$HAS_REASON" = 1 ]; then
   REASON=$(printf '%s' "$BODY" | grep -i '^[[:space:]]*Bypass-Reason:' | head -n 1 | sed 's/^[[:space:]]*//')
   TAG="BYPASS-WITH-REASON"
+elif [ -n "$PASSED" ]; then
+  TAG="STALE"
+  REASON="MARK 残留：tree 不符（本笔无 Bypass-Reason）——上一次提交可能中止过"
 else
-  REASON="Bypass-Reason: (缺)"
   TAG="BYPASS"
+  REASON="MARK 缺失：本笔未经过提交闸（无 Bypass-Reason）"
 fi
 printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date '+%F %T')" "$SHA" "$TAG" "$WHERE" "$REASON" "$SUBJ" >>"$BYPASS_LOG" 2>/dev/null || true
+if [ "$TAG" != "BYPASS" ]; then :; fi
 echo "" >&2
-echo "⚠ post-commit：这笔提交绕过了 pre-commit 闸（$SHA $SUBJ）" >&2
-[ "$TAG" = "BYPASS" ] && echo "  没有 Bypass-Reason: ——已标 BYPASS。" >&2
+echo "⚠ post-commit：$TAG（$SHA $SUBJ）" >&2
 echo "  已留痕：$BYPASS_LOG" >&2
+exit 0
+
 exit 0
