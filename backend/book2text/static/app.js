@@ -2220,12 +2220,7 @@ function setupExportPanel() {
   el("export-margin-judgement").addEventListener("change", (event) =>
     setMarginJudgementSetting(event.target.checked)
   );
-  const recMargin = el("rec-margin-judgement");
-  if (recMargin) {
-    recMargin.addEventListener("change", (event) =>
-      setMarginJudgementSetting(event.target.checked)
-    );
-  }
+  wirePagesExportMarginJudgement();
   const marginNoticeOk = el("margin-judgement-notice-ok");
   if (marginNoticeOk) {
     marginNoticeOk.addEventListener("click", dismissMarginJudgementNotice);
@@ -2244,6 +2239,21 @@ function setupExportPanel() {
   el("export-reveal-btn").addEventListener("click", () => {
     if (lastExport) revealExport(lastExport.record.export_id);
   });
+}
+
+/**
+ * 导出面板里「识别版心判定」这个开关的接线（刀 2.5 从 `setupExportPanel` 原样搬出）。
+ *
+ * 只碰 `view-pages` 的 id：`rec-margin-judgement`。
+ * export 面板的其余 id（`export-*` / `compare-*`）在别的 section，留在 host 里不动。
+ */
+function wirePagesExportMarginJudgement() {
+  const recMargin = el("rec-margin-judgement");
+  if (recMargin) {
+    recMargin.addEventListener("change", (event) =>
+      setMarginJudgementSetting(event.target.checked)
+    );
+  }
 }
 
 // ---------------------------------------------------------------- 项目库
@@ -3244,6 +3254,17 @@ async function patchRecognitionSetting(key, value) {
 }
 
 function setupRecognitionSettings() {
+  wirePagesRecognitionSettings();
+}
+
+/**
+ * 页面视图的识别设置控件接线（刀 2.5 从 `setupRecognitionSettings` 原样搬出）。
+ *
+ * 只碰 `view-pages` 的 id：`rec-engine` / `rec-dpi` / `rec-language` / `rec-dual-strategy`；
+ * 读的都是 `patchRecognitionSetting`（住在 app.js），刀 2 进模块时经 `init(deps)` 取得。
+ * 原位仍由 `setupRecognitionSettings()` 调用，副作用顺序不变。
+ */
+function wirePagesRecognitionSettings() {
   el("rec-engine").addEventListener("change", (event) =>
     patchRecognitionSetting("recognition_engine", event.target.value)
   );
@@ -5850,20 +5871,34 @@ async function savePageNumberManual(pageNo, value) {
 }
 
 function setupPageNumberPanel() {
-  el("page-number-open").addEventListener("click", openPageNumberPanel);
+  wirePagesPageNumberPanel();
   el("page-number-close").addEventListener("click", () =>
     closeModal("page-number-panel")
   );
   el("page-number-done").addEventListener("click", () =>
     closeModal("page-number-panel")
   );
-  el("page-number-review-open").addEventListener("click", openPageNumberReview);
   el("page-number-review-close").addEventListener("click", () =>
     closeModal("page-number-review-panel")
   );
   el("page-number-review-done").addEventListener("click", () =>
     closeModal("page-number-review-panel")
   );
+}
+
+/**
+ * 页面视图「页码」两个入口按钮的接线（刀 2.5 从 `setupPageNumberPanel` 原样搬出）。
+ *
+ * 只碰 `view-pages` 的 id：`page-number-open` / `page-number-review-open`。
+ * 面板本体在 `view-merge`（`page-number-panel` / `page-number-review-panel` 及其关闭、完成按钮），
+ * 那 4 行**留在 host 里不动**——搬进来就成了跨视图引用。
+ *
+ * 这两行原被 merge 的 4 行隔开，搬走后它们相对提前；目标是 4 个**不同**元素，
+ * `addEventListener` 在各自元素上的注册先后不可观测，故不算行为变化。
+ */
+function wirePagesPageNumberPanel() {
+  el("page-number-open").addEventListener("click", openPageNumberPanel);
+  el("page-number-review-open").addEventListener("click", openPageNumberReview);
 }
 
 /**
@@ -6880,6 +6915,17 @@ async function loadIndexBlocks(pageNo) {
 
 /** 任务 39（E 刀）：工具条上的「⋯」——诊断（质量统计）/ 协作（任务包）。 */
 function setupPageMore() {
+  wirePagesPageMore();
+}
+
+/**
+ * 页面视图「更多」菜单的接线（刀 2.5 从 `setupPageMore` 原样搬出）。
+ *
+ * 只碰 `view-pages` 的 id：`page-more` / `page-more-menu`。
+ * **整段搬**，而不是只搬那两行 `el(...)`：`button` / `menu` 被后面的定位与点击收起共用，
+ * 只搬那两行就得改行（改成返回值出口），那就不再是「只搬行」。
+ */
+function wirePagesPageMore() {
   const button = el("page-more");
   const menu = el("page-more-menu");
   if (!button || !menu) return;
@@ -12422,6 +12468,120 @@ async function closeProject() {
   await window.LibraryView?.enter();
 }
 
+/**
+ * 筛选行（类型 / 识别 / 流程 / 待办 / 仅正文）（刀 2.5 从 `setupLibrary` 原样搬出）。
+ *
+ * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
+ */
+function wirePagesFilters() {
+  // 筛选与选择（说明书 6.2）
+  el("filter-type").addEventListener("change", renderPages);
+  el("filter-recognition").addEventListener("change", renderPages);
+  el("filter-workflow").addEventListener("change", renderPages);
+  el("filter-triage").addEventListener("change", renderPages);
+  el("pages-only-included").addEventListener("change", renderPages);
+}
+
+/**
+ * 页网格空白处点按取消选择（刀 2.5 从 `setupLibrary` 原样搬出）。
+ *
+ * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
+ */
+function wirePagesPageGrid() {
+  // 点页面网格的空白处取消选择：只认"不在任何页瓷砖里"的点击，
+  // 所以单击页 / 拖版心把手 / 页内按钮都不会误触发。
+  el("page-grid").addEventListener("click", (event) => {
+    if (!currentProject) return;
+    if (event.target.closest(".page-tile")) return;
+    if (event.target.closest(".page-margin__handle")) return;
+    clearPageSelection();
+  });
+}
+
+/**
+ * 页码区间输入（刀 2.5 从 `setupLibrary` 原样搬出）。
+ *
+ * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
+ */
+function wirePagesPageRange() {
+  el("page-range-select").addEventListener("click", applyPageRangeInput);
+  el("page-range").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") applyPageRangeInput();
+  });
+}
+
+/**
+ * 全选 / 反选 / 清空 / 选中识别（刀 2.5 从 `setupLibrary` 原样搬出）。
+ *
+ * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
+ */
+function wirePagesSelection() {
+  el("selection-all").addEventListener("click", selectAllVisiblePages);
+  el("selection-select-all").addEventListener("click", selectAllVisiblePages);
+  el("selection-clear").addEventListener("click", clearPageSelection);
+  el("selection-recognize").addEventListener("click", () => {
+    if (!selectedPages.size) {
+      startBatchRecognition("unrecognized");
+      return;
+    }
+    const body = selectionPages().filter((page) => page.include);
+    const pending = body.filter((page) => recognitionOf(page).status === "unrecognized");
+    recognizeSelection(body.length > 0 && pending.length === 0);
+  });
+}
+
+/**
+ * 「更多」下拉（选择区）（刀 2.5 从 `setupLibrary` 原样搬出）。
+ *
+ * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
+ */
+function wirePagesSelectionMore() {
+  const more = el("selection-more");
+  const moreMenu = el("selection-more-menu");
+  more.addEventListener("click", (event) => {
+    event.stopPropagation();
+    moreMenu.hidden = !moreMenu.hidden;
+  });
+  document.addEventListener("click", (event) => {
+    if (moreMenu.hidden) return;
+    if (moreMenu.contains(event.target) || event.target === more) return;
+    moreMenu.hidden = true;
+  });
+  for (const item of moreMenu.querySelectorAll("button")) {
+    item.addEventListener("click", () => {
+      moreMenu.hidden = true;
+    });
+  }
+}
+
+/**
+ * 缩放 / 块框 / 版心 / 布局 / 识别批量入口（刀 2.5 从 `setupLibrary` 原样搬出）。
+ *
+ * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
+ */
+function wirePagesPanes() {
+  el("pages-zoom-out").addEventListener("click", () => setPageZoom(-1));
+  el("pages-zoom-in").addEventListener("click", () => setPageZoom(1));
+  el("pages-overlay-toggle").addEventListener("click", togglePageBlocksOverlay);
+  el("pages-margin-toggle").addEventListener("click", toggleMarginView);
+  el("layout-block-apply-all").addEventListener("click", adoptAllHighSuggestions);
+  el("layout-block-confirm").addEventListener("click", confirmLayoutFromPanel);
+  el("margin-confirm-all").addEventListener("click", confirmAllMargins);
+  el("rec-start-all").addEventListener("click", () => startBatchRecognition("unrecognized"));
+  el("rec-aux-all").addEventListener("click", startAuxiliaryAll);
+}
+
+/**
+ * 确认页三件（选中 / 拆页号 / 全部）（刀 2.5 从 `setupLibrary` 原样搬出）。
+ *
+ * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
+ */
+function wirePagesSetup() {
+  el("setup-confirm-selected").addEventListener("click", confirmSelectedPages);
+  el("split-page-numbers").addEventListener("click", openSplitBatchPanel);
+  el("setup-confirm-all").addEventListener("click", confirmAllUnconfirmed);
+}
+
 function setupLibrary() {
   el("project-close").addEventListener("click", closeProject);
   el("trash-open").addEventListener("click", openTrashPanel);
@@ -12463,61 +12623,12 @@ function setupLibrary() {
   el("stats-refresh").addEventListener("click", loadSummary);
   setupTaskDrawer();
 
-  // 筛选与选择（说明书 6.2）
-  el("filter-type").addEventListener("change", renderPages);
-  el("filter-recognition").addEventListener("change", renderPages);
-  el("filter-workflow").addEventListener("change", renderPages);
-  el("filter-triage").addEventListener("change", renderPages);
-  el("pages-only-included").addEventListener("change", renderPages);
-  // 点页面网格的空白处取消选择：只认"不在任何页瓷砖里"的点击，
-  // 所以单击页 / 拖版心把手 / 页内按钮都不会误触发。
-  el("page-grid").addEventListener("click", (event) => {
-    if (!currentProject) return;
-    if (event.target.closest(".page-tile")) return;
-    if (event.target.closest(".page-margin__handle")) return;
-    clearPageSelection();
-  });
-  el("page-range-select").addEventListener("click", applyPageRangeInput);
-  el("page-range").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") applyPageRangeInput();
-  });
-  el("selection-all").addEventListener("click", selectAllVisiblePages);
-  el("selection-select-all").addEventListener("click", selectAllVisiblePages);
-  el("selection-clear").addEventListener("click", clearPageSelection);
-  el("selection-recognize").addEventListener("click", () => {
-    if (!selectedPages.size) {
-      startBatchRecognition("unrecognized");
-      return;
-    }
-    const body = selectionPages().filter((page) => page.include);
-    const pending = body.filter((page) => recognitionOf(page).status === "unrecognized");
-    recognizeSelection(body.length > 0 && pending.length === 0);
-  });
-  const more = el("selection-more");
-  const moreMenu = el("selection-more-menu");
-  more.addEventListener("click", (event) => {
-    event.stopPropagation();
-    moreMenu.hidden = !moreMenu.hidden;
-  });
-  document.addEventListener("click", (event) => {
-    if (moreMenu.hidden) return;
-    if (moreMenu.contains(event.target) || event.target === more) return;
-    moreMenu.hidden = true;
-  });
-  for (const item of moreMenu.querySelectorAll("button")) {
-    item.addEventListener("click", () => {
-      moreMenu.hidden = true;
-    });
-  }
-  el("pages-zoom-out").addEventListener("click", () => setPageZoom(-1));
-  el("pages-zoom-in").addEventListener("click", () => setPageZoom(1));
-  el("pages-overlay-toggle").addEventListener("click", togglePageBlocksOverlay);
-  el("pages-margin-toggle").addEventListener("click", toggleMarginView);
-  el("layout-block-apply-all").addEventListener("click", adoptAllHighSuggestions);
-  el("layout-block-confirm").addEventListener("click", confirmLayoutFromPanel);
-  el("margin-confirm-all").addEventListener("click", confirmAllMargins);
-  el("rec-start-all").addEventListener("click", () => startBatchRecognition("unrecognized"));
-  el("rec-aux-all").addEventListener("click", startAuxiliaryAll);
+  wirePagesFilters();
+  wirePagesPageGrid();
+  wirePagesPageRange();
+  wirePagesSelection();
+  wirePagesSelectionMore();
+  wirePagesPanes();
   el("aux-warning-skip").addEventListener("click", () => {
     auxWarningSkipped = true;
     closeModal("aux-warning-mask");
@@ -12562,9 +12673,7 @@ function setupLibrary() {
   el("layout-detect-cancel-x").addEventListener("click", () => closeModal("layout-detect-mask"));
   el("layout-detect-start").addEventListener("click", startLayoutDetectFromDialog);
   setupMarginDrag();
-  el("setup-confirm-selected").addEventListener("click", confirmSelectedPages);
-  el("split-page-numbers").addEventListener("click", openSplitBatchPanel);
-  el("setup-confirm-all").addEventListener("click", confirmAllUnconfirmed);
+  wirePagesSetup();
   el("detail-recognize").addEventListener("click", () => {
     if (detailPageNo === null) return;
     const page = currentProject.pages.find((item) => item.page_no === detailPageNo);
