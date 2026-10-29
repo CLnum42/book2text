@@ -135,6 +135,10 @@ export function registrationContent(sha, docText) {
  *   和"登记某个模块叫什么"是两回事。
  */
 const MOVE_TABLES = ["OWNERS", "VIEW_STATE_PREFIXES", "VIEW_EXPORTS"];
+/** 豁免表文件里**允许被 move: 笔改**的顶层常量（方向由 exemptionDeltaProblems 判，A1 只管位置）。 */
+const MOVE_EXEMPTION_BLOCKS = [
+  "PAGES_R3_EXEMPTIONS", "PAGES_R3_TOTAL_CAP", "PAGES_R3_STAGE", "PAGES_R3_PENDING", "PAGES_R3_BLOCKED_MAX",
+];
 const MOVE_FORBIDDEN = /(EXCUS|MAX)/;
 /** pages 的 R3 过渡豁免表（数据文件）。`move:` 笔**可以**改它，但只能往收紧的方向改。 */
 const EXEMPTION_FILE = "pages-r3-exemptions.mjs";
@@ -341,20 +345,23 @@ export function exemptionDeltaProblems({ sha, oldSource, newSource, keepListText
 }
 
 /** 从源码派生顶层 `const NAME = { … };` 的块范围（`allowed` / `forbidden` 见上）。 */
-export function tableBlockRanges(source) {
+export function tableBlockRanges(source, { exemptionFile = false } = {}) {
   const clean = stripCommentsAndStrings(source || "");
   const lines = clean.split("\n");
   const blocks = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const match = /^const\s+([A-Za-z_$][\w$]*)\s*=/.exec(lines[index]);
+    // `export const` 也要认：豁免表整份都是 export 出来的（早期只写 `^const`，导致该文件一块都解析不到，
+    // A1 于是报「找不到登记表块」——2026-10-29 由 DevLead 拿 9b48857 抓到）
+    const match = /^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=/.exec(lines[index]);
     if (!match) continue;
     const name = match[1];
-    const allowed = MOVE_TABLES.includes(name);
-    const forbidden = MOVE_FORBIDDEN.test(name);
+    // 豁免表里的常量只有**该文件**算 allowed；方向另由 exemptionDeltaProblems 判
+    const allowed = MOVE_TABLES.includes(name) || (exemptionFile && MOVE_EXEMPTION_BLOCKS.includes(name));
+    const forbidden = !allowed && MOVE_FORBIDDEN.test(name);
     if (!allowed && !forbidden) continue;
     // 单行常量（`const R5_MAX_EXCUSES = 0;`）没有 `{}`：上限/豁免就是这种形态，
     // 要单独记成 1 行块，否则"动旋钮"会被误报成"表外改动"，报错文案指错方向。
-    if (!/^const\s+[A-Za-z_$][\w$]*\s*=\s*\{/.test(lines[index])) {
+    if (!/^(?:export\s+)?const\s+[A-Za-z_$][\w$]*\s*=\s*[\[{]/.test(lines[index])) {
       // 单行常量（上限/豁免）没有块体
       blocks.push({ name, allowed, forbidden, start: index + 1, end: index + 1 });
       continue;
@@ -363,8 +370,8 @@ export function tableBlockRanges(source) {
     let end = -1;
     for (let cursor = index; cursor < lines.length; cursor += 1) {
       for (const ch of lines[cursor]) {
-        if (ch === "{") depth += 1;
-        else if (ch === "}") {
+        if (ch === "{" || ch === "[") depth += 1;
+        else if (ch === "}" || ch === "]") {
           depth -= 1;
           if (depth === 0) { end = cursor; break; }
         }
@@ -382,7 +389,7 @@ export function tableBlockRanges(source) {
  * @param {{sha: string, files: string[], changes: {path: string, addedRanges: number[][],
  *          deletedRanges: number[][], commitSource: string, parentSource: string}[]}} input
  */
-export function moveScopeProblems({ sha, files, changes, keepListText = null }) {
+export function moveScopeProblems({ sha, files, changes, keepListText = null, declaredPaths = [] }) {
   const short = sha.slice(0, 7);
   const problems = [];
   const touchesProduct = files.some((file) => file.startsWith("backend/book2text/static/"));
@@ -394,8 +401,12 @@ export function moveScopeProblems({ sha, files, changes, keepListText = null }) 
   }
 
   for (const change of changes) {
-    const commitBlocks = tableBlockRanges(change.commitSource);
-    const parentBlocks = tableBlockRanges(change.parentSource);
+    // **优先级：Move-Gate 声明 > A1 三张表块**——但只在 move: 笔、且**声明过**该路径时生效。
+    // 未声明时行为不变（仍按三张表块判 → 红）。`test-contract:` / 普通提交不走这条分支。
+    const exemptionFile = change.path.endsWith(EXEMPTION_FILE)
+      && declaredPaths.some((path) => path.endsWith(EXEMPTION_FILE));
+    const commitBlocks = tableBlockRanges(change.commitSource, { exemptionFile });
+    const parentBlocks = tableBlockRanges(change.parentSource, { exemptionFile });
     const check = (ranges, blocks, side) => {
       for (const [from, to] of ranges) {
         for (let line = from; line <= to; line += 1) {
@@ -503,7 +514,9 @@ export function commitContractProblems({
   // A1（形态）：普通提交不许同时碰产品与 tests/js；`move:` 笔是唯一例外，
   // 但它有更严的代价：tests/js 的每一行改动都必须落在三张登记表里（见 moveScopeProblems）。
   if (isMove) {
-    problems.push(...moveScopeProblems({ sha, files, changes: moveChanges || [] }));
+    problems.push(...moveScopeProblems({
+      sha, files, changes: moveChanges || [], declaredPaths: moveGateDeclaration(message) || [],
+    }));
     problems.push(...moveGateProblems({
       subject,
       message,

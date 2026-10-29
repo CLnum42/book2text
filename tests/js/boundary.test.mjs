@@ -61,7 +61,7 @@ import {
 } from "./edge-ratchet.mjs";
 import {
   evaluateFeatureContract, commitContractProblems, tableBlockRanges, isContractPath,
-  exemptionDeltaProblems, keepShellSegmentLabels, moveGateProblems,
+  exemptionDeltaProblems, keepShellSegmentLabels, moveGateProblems, moveScopeProblems,
 } from "./feature-contract.mjs";
 // R9 专用：保留模板 `${…}` 插值的去注释版本（本文件另有一份旧的去注释实现，只抹代码不抹模板）
 import { stripPreservingTemplateExpressions } from "./static-scan.mjs";
@@ -2010,6 +2010,35 @@ test("R3 自检（blocked 阻塞段）：stage=5 且段号可查判绿，其余�
   const raised = r3Problems({ ...base, pagesExemptions: eight, pagesBlockedCap: 8 });
   assert.ok(raised.some((m) => m.includes("受阻项上限被抬到 8")),
     `blocked 自检失败：把上限抬到 8 被放过——${raised.join("；")}`);
+});
+
+test("move: 自检（A1 认 Move-Gate 声明）：a 声明+收紧绿 / b 未声明红 / c 声明+放宽红 / e 块外改动红", () => {
+  const table = (cap, extra = "") => ["export const PAGES_R3_TOTAL_CAP = 193;",
+    "export const PAGES_R3_EXEMPTIONS = [", `  { id: "a", cap: ${cap}, stage: 2 },`, "];", extra].join("\n");
+  const cases = (afterLines, parentLines, added = [[3, 3]], deleted = [[3, 3]]) => [{
+    path: "tests/js/pages-r3-exemptions.mjs", addedRanges: added, deletedRanges: deleted,
+    commitSource: afterLines, parentSource: parentLines,
+  }];
+  const files = ["backend/book2text/static/app.js", "tests/js/pages-r3-exemptions.mjs"];
+  const run = (after, parent, declared, added, deleted) => moveScopeProblems({
+    sha: "mov1234", files, changes: cases(after, parent, added, deleted), declaredPaths: declared,
+  });
+  const parent = table(10);
+  // a：声明 + 只收紧 → 绿
+  assert.deepEqual(run(table(5), parent, ["tests/js/pages-r3-exemptions.mjs"]), [],
+    `A1 自检失败：声明 + 只收紧被判红——${run(table(5), parent, ["tests/js/pages-r3-exemptions.mjs"]).join("；")}`);
+  // b：未声明 → 仍按三张表块判 → 红
+  // 未声明时行为回到旧 A1：这个文件一块都解析不到 → 报「找不到登记表块」（同样是红）
+  assert.ok(run(table(5), parent, []).some((m) => m.includes("找不到登记表块") || m.includes("不在三张登记表内")),
+    `A1 自检失败：未声明改表被放过——${run(table(5), parent, []).join("；")}`);
+  // c：声明 + 放宽（cap 10 → 11）→ 方向判据红
+  assert.ok(run(table(11), parent, ["tests/js/pages-r3-exemptions.mjs"]).some((m) => m.includes("cap 合计")),
+    `A1 自检失败：声明后放宽被放过——${run(table(11), parent, ["tests/js/pages-r3-exemptions.mjs"]).join("；")}`);
+  // e：声明但改动落在块外（注释行）→ 仍红（口子只覆盖登记常量，不是整文件）
+  const outside = table(5, "// 块外注释");
+  assert.ok(run(outside, parent, ["tests/js/pages-r3-exemptions.mjs"], [[5, 5]], [[5, 5]])
+    .some((m) => m.includes("不在三张登记表内") || m.includes("找不到登记表块")),
+    `A1 自检失败：块外改动被放过——${run(outside, parent, ["tests/js/pages-r3-exemptions.mjs"]).join("；")}`);
 });
 
 test("Move-Gate 五条：未声明改 tests/js 红 / 空声明红 / 声明成立绿 / 删声明红 / cap 增大红", () => {
