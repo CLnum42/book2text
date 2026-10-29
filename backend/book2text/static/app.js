@@ -2547,6 +2547,9 @@ function recognitionChip(page) {
 }
 
 async function loadLibrary() {
+  // 上一次加载失败的错误要在这里清掉：刷新成功之后还挂着旧错误，用户会以为项目库还是坏的。
+  // （其余四个操作 deleteProject / createProjectFromFile / openProject / openPackageFile 开头都清，只这里漏了）
+  el("library-error").hidden = true;
   el("library-warning").hidden = true;
   try {
     const data = await apiJson("/api/projects");
