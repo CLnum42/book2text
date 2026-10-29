@@ -182,7 +182,10 @@ for c in "$(command -v node 2>/dev/null)" "$HOME/.local/bin/node" /opt/homebrew/
 done
 if [ -n "$NODE" ] && [ -f "$REPO/tests/js/contract-registry.mjs" ]; then
   REG=$("$NODE" "$REPO/tests/js/contract-registry.mjs" 2>/dev/null) || REG=""
-  printf '闸A登记  %s\n' "${REG:-?（读数失败，跑 node tests/js/contract-registry.mjs --strict 看详情）}"
+  printf '闸A登记  %s\n' "${REG:-?}"
+  case "${REG:-}" in
+    *红灯*|*✖*|*不合格*) printf '          修法：给点名那笔补 §18.6 登记（登记段规格见 §18.6 / §18.2.1）\n' ;;
+  esac
 else
   echo "闸A登记  ?（node 或 tests/js/contract-registry.mjs 缺失）"
 fi
