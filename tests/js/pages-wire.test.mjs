@@ -99,19 +99,40 @@ test("① 有 #view-pages：14 段接线真的挂上了监听", () => {
   console.log(`    绿①：page-grid 监听 ${countListeners(grid)} 个 / filter-type 监听 ${countListeners(filter)} 个`);
 });
 
-test("② 被请求过的 id 去重数 ≥ 30（防只绑一半）", () => {
+// 刀 2 落盘实测（2026-10-30）：38 个 id。**只许降**——降了就是某段没跑到；
+// 合法新增要显式改这一行（不写 === 38：那会把合法新增判红，逼下一个人放宽口径）。
+const EXPECTED_REQUESTED_IDS = 38;
+// 所有节点上的监听总数（同上，只降不升）
+const EXPECTED_LISTENERS = 35;  // 刀 2 落盘实测（2026-10-30）：35 个监听；只许降
+
+test("② 被请求过的 id 去重数 ≥ 实测值（防只绑一半）", () => {
   const { requested } = loadPagesModule({ hasPagesView: true, readyState: "complete" });
   const distinct = new Set(requested);
-  console.log(`    绿②：requested ids 去重 ${distinct.size} 个`);
+  console.log(`    绿②：requested ids 去重 ${distinct.size} 个（期望 ≥ ${EXPECTED_REQUESTED_IDS}）`);
   assert.ok(
-    distinct.size >= 30,
-    `只请求了 ${distinct.size} 个 id（<30）——有段落没跑到，别拿「部分绑定」当通过`,
+    distinct.size >= EXPECTED_REQUESTED_IDS,
+    `只请求了 ${distinct.size} 个 id（< ${EXPECTED_REQUESTED_IDS}）——有段落没跑到，别拿「部分绑定」当通过`,
   );
 });
 
-test("③ 没有 #view-pages：不抛，跳过计数 +1", () => {
+test("③ 监听总数 ≥ 实测值（14 段缺一段就掉下来）", () => {
+  const { elements } = loadPagesModule({ hasPagesView: true, readyState: "complete" });
+  let totalListeners = 0;
+  for (const node of elements.values()) totalListeners += countListeners(node);
+  console.log(`    绿③：total listeners ${totalListeners}（期望 ≥ ${EXPECTED_LISTENERS}）`);
+  assert.ok(
+    totalListeners >= EXPECTED_LISTENERS,
+    `总监听数 ${totalListeners} < ${EXPECTED_LISTENERS}——有 wirePagesXxx 没跑到`,
+  );
+});
+
+test("④ 没有 #view-pages：不抛，跳过计数 +1", () => {
   const { ctx } = loadPagesModule({ hasPagesView: false, readyState: "complete" });
-  assert.doesNotThrow(() => { /* init 已在 loadPagesModule 里跑过 */ });
+  assert.equal(
+    typeof ctx.window.PagesView?.init,
+    "function",
+    "跳过 wireAll 之后模块必须仍然正常导出 api（守卫只跳过接线，不该影响 init）",
+  );
   assert.equal(
     ctx.document.documentElement.dataset.pagesWireSkipped,
     "1",
