@@ -1435,8 +1435,10 @@ function pagesSeedRows() {
     const host = /^`([A-Za-z_$][\w$]*)`$/.exec(cells[1] || "");
     const stage = /^刀(\d)$/.exec(cells[4] || "");
     if (!host || !stage) continue;
-    const wire = (/`([A-Za-z_$][\w$]*)`/.exec(cells[5] || "") || [])[1] || "";
-    rows.push({ host: host[1], wire, stage: Number(stage[1]) });
+    // wire 列**一格可以挂多个名字**（一个宿主抽出多个接线函数，例如 setupLibrary 抽出 7 个）：
+    // 用 、 或 , 分隔的反引号名字全收，别只取第一个——只取第一个会让其余名字静默缺失。
+    const wires = [...(cells[5] || "").matchAll(/`([A-Za-z_$][\w$]*)`/g)].map((m) => m[1]);
+    rows.push({ host: host[1], wires, stage: Number(stage[1]) });
   }
   return rows;
 }
@@ -1446,7 +1448,9 @@ function pagesSeedStages(rows = pagesSeedRows()) {
   const map = new Map();
   for (const row of rows) {
     map.set(row.host, row.stage);
-    if (row.wire) map.set(row.wire, row.stage);
+    // 同一宿主的多个 wire 名，**都取宿主的刀号**；漏映一个，那个名字在到期刀 max 里就会被当成
+    // unmapped 而静默跳过（这条漏洞 2026-10-29 修过一次，别退回去）。
+    for (const wire of row.wires) map.set(wire, row.stage);
   }
   return map;
 }
@@ -1471,22 +1475,24 @@ function seedCoverageProblems(measured, rows) {
   const declared = new Set();
   for (const row of rows) {
     declared.add(row.host);
-    if (row.wire) declared.add(row.wire);
+    for (const wire of row.wires) declared.add(wire);
   }
   const onlyMeasured = [...measured].filter((name) => !declared.has(name));
   const onlySeed = rows
-    .filter((row) => !measured.has(row.host) && !(row.wire && measured.has(row.wire)))
-    .map((row) => (row.wire ? `${row.host}（wire ${row.wire} 也没出现）` : row.host));
+    .filter((row) => !measured.has(row.host) && !row.wires.some((wire) => measured.has(wire)))
+    .map((row) => (row.wires.length ? `${row.host}（wire ${row.wires.join("/")} 也没出现）` : row.host));
+  // **报错要能直接拿去修**：全部列出来，不截前 3 个。
+  // 今天已经两次栽在"只报总数、要人另外跑脚本才数得全"（A1b 的「合计 8 行」是同一形态）。
   if (onlyMeasured.length > 0) {
     problems.push(
-      `pages 的实测函数未在 seed 登记：${onlyMeasured.slice(0, 3).join("、")}`
-      + `（共 ${onlyMeasured.length} 个）——新函数要登记，旧名被取代要在 wire 列写清新的名字`,
+      `pages 的实测函数未在 seed 登记（${onlyMeasured.length} 个）：`
+      + `${onlyMeasured.join("、")}——新函数要登记，旧名被取代要在 wire 列写清新的名字`,
     );
   }
   if (onlySeed.length > 0) {
     problems.push(
-      `pages 的 seed 里有函数的自身名与 wire 名在实测里都不存在：${onlySeed.slice(0, 3).join("、")}`
-      + `（共 ${onlySeed.length} 个）——这是真丢函数，不是改名`,
+      `pages 的 seed 里有函数的自身名与 wire 名在实测里都不存在（${onlySeed.length} 个）：`
+      + `${onlySeed.join("、")}——这是真丢函数，不是改名`,
     );
   }
   return problems;
@@ -1744,7 +1750,7 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
     viewSources: [{ fileName: "pages-view.js", source: "" }],
     exemptions: [],
     pagesStage: 1, pagesTotalCap: 5, pagesPendingCap: 0,
-    pagesSeed: [{ host: "painter", wire: "", stage: 2 }, { host: "bumper", wire: "", stage: 5 }],
+    pagesSeed: [{ host: "painter", wires: [], stage: 2 }, { host: "bumper", wires: [], stage: 5 }],
   };
   const tuned = r3Problems({ ...tuneBase, pagesExemptions: [{ id: "a", cap: 2, stage: 2 }] });
   assert.ok(
@@ -1791,8 +1797,8 @@ test("R3 自检（到期判据存在性）：seed 必须解析出函数→刀号
  */
 test("R3 自检（seed wire 列）：坏的 wire 要红、多出的实测名要红、host+wire 并存要绿", () => {
   const rows = [
-    { host: "setupPageMore", wire: "wirePagesPageMore", stage: 2 },
-    { host: "setupCollabControls", wire: "", stage: 2 },
+    { host: "setupPageMore", wires: ["wirePagesPageMore"], stage: 2 },
+    { host: "setupCollabControls", wires: [], stage: 2 },
   ];
   // 搬迁后：实测只有 wire 名
   const moved = new Set(["wirePagesPageMore", "setupCollabControls"]);
@@ -1806,13 +1812,22 @@ test("R3 自检（seed wire 列）：坏的 wire 要红、多出的实测名要�
 
   // a：wire 写成不存在的名字，且自身也不在实测 → 必须是"真丢函数"
   const brokenWire = [
-    { host: "setupPageMore", wire: "wirePagesNope", stage: 2 },
-    { host: "setupCollabControls", wire: "", stage: 2 },
+    { host: "setupPageMore", wires: ["wirePagesNope"], stage: 2 },
+    { host: "setupCollabControls", wires: [], stage: 2 },
   ];
   const a = seedCoverageProblems(moved, brokenWire);
   assert.ok(
     a.some((item) => item.includes("setupPageMore（wire wirePagesNope 也没出现）")),
     `seed 自检失败：坏的 wire 列被放过——${a.join("；")}`,
+  );
+
+  // d：一格挂多个 wire（setupLibrary 抽出 7 个接线函数的真实形态）——任一命中即算"在"
+  const multi = [{ host: "setupLibrary", wires: ["wirePagesFilters", "wirePagesPageGrid"], stage: 2 }];
+  assert.deepEqual(seedCoverageProblems(new Set(["wirePagesPageGrid"]), multi), [],
+    "seed 自检失败：一格多 wire 时，只命中其中一个也被判丢");
+  assert.ok(
+    seedCoverageProblems(new Set(), multi)[0].includes("setupLibrary（wire wirePagesFilters/wirePagesPageGrid 也没出现）"),
+    "seed 自检失败：一格多 wire 全不命中时，报错没说清是哪几个 wire",
   );
 
   // b：实测里冒出一个没登记的新名字 → 必须红
