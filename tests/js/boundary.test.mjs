@@ -49,7 +49,7 @@ import vm from "node:vm";
 import { execFileSync } from "node:child_process";
 // pages 的 R3 过渡豁免表（数据，不是逻辑）：一行一个 id → { 上限处数, 到期刀 }
 import {
-  PAGES_R3_EXEMPTIONS, PAGES_R3_TOTAL_CAP, PAGES_STAGE, PAGES_R3_PENDING,
+  PAGES_R3_EXEMPTIONS, PAGES_R3_TOTAL_CAP, PAGES_STAGE, PAGES_R3_PENDING, PAGES_R3_BLOCKED_MAX,
 } from "./pages-r3-exemptions.mjs";
 import {
   BRIDGE_EXCEPTIONS,
@@ -61,6 +61,7 @@ import {
 } from "./edge-ratchet.mjs";
 import {
   evaluateFeatureContract, commitContractProblems, tableBlockRanges, isContractPath,
+  exemptionDeltaProblems, keepShellSegmentLabels,
 } from "./feature-contract.mjs";
 // R9 专用：保留模板 `${…}` 插值的去注释版本（本文件另有一份旧的去注释实现，只抹代码不抹模板）
 import { stripPreservingTemplateExpressions } from "./static-scan.mjs";
@@ -1438,21 +1439,86 @@ function pagesSeedRows() {
     // wire 列**一格可以挂多个名字**（一个宿主抽出多个接线函数，例如 setupLibrary 抽出 7 个）：
     // 用 、 或 , 分隔的反引号名字全收，别只取第一个——只取第一个会让其余名字静默缺失。
     const wires = [...(cells[5] || "").matchAll(/`([A-Za-z_$][\w$]*)`/g)].map((m) => m[1]);
-    rows.push({ host: host[1], wires, stage: Number(stage[1]) });
+    const ids = [...(cells[2] || "").matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+    // **同一宿主允许多行**（每行挂同刀的那组 id）：setupLibrary 剩下的 id 分属刀 3/4/5，
+    // 硬挤成一行就只能把刀 3/4 的项写成刀 5——那是悄悄放松棘轮，而且松的正好是没人看的项。
+    rows.push({ host: host[1], ids, wires, stage: Number(stage[1]) });
   }
   return rows;
 }
 
-/** 「函数名（含 wire 名）→ 刀号」：到期刀按 max 算，wire 名必须和 host 名映到同一刀。 */
-function pagesSeedStages(rows = pagesSeedRows()) {
-  const map = new Map();
+/**
+ * 「(函数名, id) → 刀号」：到期刀按 max 算。
+ *
+ * **必须连 id 一起查**：同一宿主可以有多行（每行挂同刀的一组 id），只按函数名查会在多行时
+ * 取到"最后一行"或"第一行"，两种都错。
+ * wire 名与 host 名等价（都映到所在行的刀号）——漏映一个，那个名字在到期刀 max 里就会被当成
+ * unmapped 而静默跳过（这条漏洞 2026-10-29 修过一次，别退回去）。
+ * id 列为空 = 通配（老的单行写法不吃亏）。
+ */
+export function seedStageOf(rows, fnName, id) {
   for (const row of rows) {
-    map.set(row.host, row.stage);
-    // 同一宿主的多个 wire 名，**都取宿主的刀号**；漏映一个，那个名字在到期刀 max 里就会被当成
-    // unmapped 而静默跳过（这条漏洞 2026-10-29 修过一次，别退回去）。
-    for (const wire of row.wires) map.set(wire, row.stage);
+    if (row.host !== fnName && !row.wires.includes(fnName)) continue;
+    const ids = row.ids || [];
+    if (ids.length > 0 && !ids.includes(id)) continue;
+    return row.stage;
   }
-  return map;
+  return null;
+}
+
+/**
+ * 同一宿主的**多行 id 集合必须不相交**：相交 = 同一个 id 被两个刀号认领，
+ * 「到期 = 引用它的函数里最大的刀号」这条就定不出来（也就没法判它该在哪一刀搬走）。
+ */
+export function seedHostOverlapProblems(rows) {
+  const problems = new Set();
+  const byHost = new Map();
+  for (const row of rows) {
+    const list = byHost.get(row.host) || [];
+    list.push(row);
+    byHost.set(row.host, list);
+  }
+  for (const [host, list] of byHost) {
+    if (list.length < 2) continue;
+    const claimed = new Map();   // id -> 刀号
+    for (const row of list) {
+      for (const id of (row.ids || [])) {
+        if (claimed.has(id)) {
+          problems.add(
+            `seed 里 ${host} 有 ${list.length} 行，但 id ${id} 被两行同时认领`
+            + `（刀 ${claimed.get(id)} 与 刀 ${row.stage}）——同一宿主的 id 集合必须不相交，`
+            + "否则「到期 = 引用它的函数的最大刀号」定不出来",
+          );
+        } else {
+          claimed.set(id, row.stage);
+        }
+      }
+    }
+  }
+  return [...problems];
+}
+
+/**
+ * 留外壳清单（`knife2.5-split-plan.md` §ⅲ）：段号 → 原样标签（`setupLibrary 12548–12557`）。
+ * 受阻项（带 `阻塞段:`）写的段号必须能在这里查到，否则"受阻"就是一句没人管的挡箭牌。
+ */
+function keepShellSegments() {
+  const file = fileURLToPath(new URL("../../docs/refactor/evidence/pages/knife2.5-split-plan.md", import.meta.url));
+  let text = "";
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    return new Set();
+  }
+  const labels = new Set();
+  for (const line of text.split("\n")) {
+    if (!line.startsWith("| `")) continue;
+    const cell = line.split("|")[1] || "";
+    const label = cell.replace(/[`*]/g, "").trim();
+    if (!/^[A-Za-z_$][\w$]*\s+[\d–\-·\s]+$/.test(label)) continue;
+    labels.add(label.replace(/\s+/g, " "));
+  }
+  return labels;
 }
 
 /**
@@ -1510,6 +1576,8 @@ function r3Problems({
   // pages 走**另一张表**：到期按刀、上限按 id，和 reading 那 4 条（R3_MAX_EXEMPTIONS）互不影响。
   pagesExemptions = PAGES_R3_EXEMPTIONS, pagesStage = PAGES_STAGE, pagesTotalCap = PAGES_R3_TOTAL_CAP,
   pagesPendingCap = PAGES_R3_PENDING,
+  // 受阻项（带 `阻塞段:`）条数上限；硬顶 7 = 留外壳段数，抬它就等于放松棘轮
+  pagesBlockedCap = PAGES_R3_BLOCKED_MAX,
   // seed 的**行**（host / wire / 刀）也要可注入：合成夹具（假 html / 假源码）里没有真函数名，
   // 不注入就会与真 seed 对不上，误报「seed 覆盖不到实测」。
   pagesSeed = pagesSeedRows(),
@@ -1615,7 +1683,8 @@ function r3Problems({
       }
     }
     const seedRows = pagesSeed;
-    const seedStages = pagesSeedStages(seedRows);
+    // 同一宿主多行时 id 集合必须不相交（否则到期刀 max 定不出来）
+    problems.push(...seedHostOverlapProblems(seedRows));
 
     // **函数集合两向覆盖**（见 `seedCoverageProblems` 的说明：不用严格相等，否则把
     // app.js 与 docs 两份文件绑成必须同一笔提交，分批落盘的中间态会被误判成实现坏了）。
@@ -1632,7 +1701,7 @@ function r3Problems({
 
     // **到期刀不许手调**：必须等于「引用它的所有函数在 seed 里的最大刀号」。
     // 没有这条，谁都能为了让它早点到期把刀号填小——表就变成可调参数了。
-    if (seedStages.size > 0) {
+    if (seedRows.length > 0) {
       for (const item of pagesExemptions) {
         if (item.stage === null) continue;
         const occurrences = appAllIds.get(item.id) || [];
@@ -1640,8 +1709,10 @@ function r3Problems({
         let unmapped = false;
         for (const line of occurrences) {
           const fn = ownerOfLine(line);
-          if (!fn || !seedStages.has(fn.name)) { unmapped = true; continue; }
-          stages.push(seedStages.get(fn.name));
+          // 连 id 一起查：同一宿主可能有多行（每行挂同刀的一组 id）
+          const stage = fn ? seedStageOf(seedRows, fn.name, item.id) : null;
+          if (stage === null) { unmapped = true; continue; }
+          stages.push(stage);
         }
         if (unmapped || stages.length === 0) continue;   // seed 漏函数 / 顶层引用：判不了，跳过
         const expected = Math.max(...stages);
@@ -1663,6 +1734,39 @@ function r3Problems({
     }
     if (pendingCount > pagesPendingCap) {
       problems.push(`待定项 ${pendingCount} > 上限 ${pagesPendingCap}——待定数只降不升（和导出棘轮同形）`);
+    }
+
+    // 受阻项（带 `阻塞段:`）：字段没人读 = 没写。三条一起判，缺一条这个字段就是注释。
+    const blockedItems = pagesExemptions.filter((item) => {
+      const value = item["阻塞段"];
+      return value !== undefined && value !== null && String(value).trim() !== "";
+    });
+    if (pagesBlockedCap > 7) {
+      problems.push(`受阻项上限被抬到 ${pagesBlockedCap}（硬顶 7 = 留外壳段数）——只降不升`);
+    }
+    if (blockedItems.length > pagesBlockedCap) {
+      problems.push(`受阻项 ${blockedItems.length} > 上限 ${pagesBlockedCap}——受阻只降不升`);
+    }
+    const segments = keepShellSegments();
+    for (const item of blockedItems) {
+      if (item.stage !== 5) {
+        problems.push(
+          `豁免 ${item.id} 带「阻塞段」但到期刀是 ${item.stage}——受阻项的到期刀必须写 5`
+          + `（它要靠留外壳段解释为什么这一刀搬不走）`,
+        );
+      }
+      const labels = String(item["阻塞段"]).split(/[、,，]/).map((one) => one.trim()).filter(Boolean);
+      if (labels.length === 0) {
+        problems.push(`豁免 ${item.id} 的「阻塞段」是空的——空字段等于没有理由`);
+      }
+      for (const label of labels) {
+        if (!segments.has(label.replace(/\s+/g, " "))) {
+          problems.push(
+            `豁免 ${item.id} 的阻塞段「${label}」在留外壳清单里查不到`
+            + `（knife2.5-split-plan.md §ⅲ，现有 ${segments.size} 段）——段号写错或清单漂了，判不了就是红`,
+          );
+        }
+      }
     }
   }
 
@@ -1750,7 +1854,8 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
     viewSources: [{ fileName: "pages-view.js", source: "" }],
     exemptions: [],
     pagesStage: 1, pagesTotalCap: 5, pagesPendingCap: 0,
-    pagesSeed: [{ host: "painter", wires: [], stage: 2 }, { host: "bumper", wires: [], stage: 5 }],
+    pagesSeed: [{ host: "painter", ids: [], wires: [], stage: 2 },
+      { host: "bumper", ids: [], wires: [], stage: 5 }],
   };
   const tuned = r3Problems({ ...tuneBase, pagesExemptions: [{ id: "a", cap: 2, stage: 2 }] });
   assert.ok(
@@ -1837,6 +1942,141 @@ test("R3 自检（seed wire 列）：坏的 wire 要红、多出的实测名要�
     b.some((item) => item.includes("brandNewWiring")),
     `seed 自检失败：没登记的新函数被放过——${b.join("；")}`,
   );
+});
+
+test("R3 自检（seed 同宿主多行）：id 不相交判绿、id 相交判红、同一 id 两行判红", () => {
+  const rows = [
+    { host: "setupLibrary", ids: ["a", "b"], wires: [], stage: 4 },
+    { host: "setupLibrary", ids: ["c"], wires: [], stage: 5 },
+  ];
+  assert.deepEqual(seedHostOverlapProblems(rows), [],
+    `seed 自检失败：同宿主两行、id 不相交也被判红——${seedHostOverlapProblems(rows).join("；")}`);
+  // 每行各查各的刀：只按函数名查会在多行时拿到同一个刀号（那就把刀 5 的项写成刀 4 了）
+  assert.equal(seedStageOf(rows, "setupLibrary", "b"), 4);
+  assert.equal(seedStageOf(rows, "setupLibrary", "c"), 5);
+
+  const overlap = [
+    { host: "setupLibrary", ids: ["a", "b"], wires: [], stage: 4 },
+    { host: "setupLibrary", ids: ["b"], wires: [], stage: 5 },
+  ];
+  assert.ok(seedHostOverlapProblems(overlap).some((m) => m.includes("id b 被两行同时认领")),
+    `seed 自检失败：id 相交被放过——${seedHostOverlapProblems(overlap).join("；")}`);
+
+  const twice = [
+    { host: "x", ids: ["a"], wires: [], stage: 2 },
+    { host: "x", ids: ["a", "b"], wires: [], stage: 5 },
+  ];
+  assert.ok(seedHostOverlapProblems(twice).some((m) => m.includes("id a 被两行同时认领")),
+    `seed 自检失败：同一 id 出现在两行被放过——${seedHostOverlapProblems(twice).join("；")}`);
+});
+
+test("R3 自检（blocked 阻塞段）：stage=5 且段号可查判绿，其余四条判红", () => {
+  const base = {
+    html: '<section id="view-reading"></section>'
+      + '<section id="view-pages"><div id="a"></div></section>',
+    appSource: 'function painter() {\n  el("a");\n}\n',
+    viewSources: [{ fileName: "pages-view.js", source: "" }],
+    exemptions: [],
+    pagesStage: 2, pagesTotalCap: 5, pagesPendingCap: 0, pagesSeed: [],
+  };
+  const segment = [...keepShellSegmentLabels()][0];
+  assert.ok(segment, "留外壳清单一段都读不出来——这条自检本身失效了");
+
+  const green = r3Problems({ ...base, pagesExemptions: [{ id: "a", cap: 1, stage: 5, 阻塞段: segment }] });
+  assert.deepEqual(green, [], `blocked 自检失败：合规受阻项被误报——${green.join("；")}`);
+
+  const badStage = r3Problems({ ...base, pagesExemptions: [{ id: "a", cap: 1, stage: 2, 阻塞段: segment }] });
+  assert.ok(badStage.some((m) => m.includes("受阻项的到期刀必须写 5")),
+    `blocked 自检失败：stage=2 带阻塞段被放过——${badStage.join("；")}`);
+
+  const badSegment = r3Problems({
+    ...base, pagesExemptions: [{ id: "a", cap: 1, stage: 5, 阻塞段: "setupLibrary 9999–10000" }],
+  });
+  assert.ok(badSegment.some((m) => m.includes("在留外壳清单里查不到")),
+    `blocked 自检失败：查不到的段号被放过——${badSegment.join("；")}`);
+
+  const emptySegment = r3Problems({ ...base, pagesExemptions: [{ id: "a", cap: 1, stage: 5, 阻塞段: " " }] });
+  assert.deepEqual(emptySegment.filter((m) => m.includes("受阻项的到期刀")), [],
+    "空白阻塞段不该被当成受阻项（它根本没写理由）");
+
+  const eight = Array.from({ length: 8 }, () => ({ id: "a", cap: 1, stage: 5, 阻塞段: segment }));
+  const over = r3Problems({ ...base, pagesExemptions: eight });
+  assert.ok(over.some((m) => m.includes("受阻项 8 > 上限 7")),
+    `blocked 自检失败：8 项受阻被放过——${over.join("；")}`);
+
+  const raised = r3Problems({ ...base, pagesExemptions: eight, pagesBlockedCap: 8 });
+  assert.ok(raised.some((m) => m.includes("受阻项上限被抬到 8")),
+    `blocked 自检失败：把上限抬到 8 被放过——${raised.join("；")}`);
+});
+
+test("move: 自检（豁免表按方向）：cap 分组增/新增项/提前释放/推迟缺段号都要红，收紧判绿", () => {
+  const table = (entries) => [
+    "export const PAGES_R3_TOTAL_CAP = 193;",
+    "export const PAGES_R3_EXEMPTIONS = [",
+    ...entries.map((one) => `  { id: "${one.id}", cap: ${one.cap}, stage: ${one.stage}${one.blocked ? `, 阻塞段: "${one.blocked}"` : ""} },`),
+    "];",
+  ].join("\n");
+  const segment = [...keepShellSegmentLabels()][0];
+  const before = table([
+    { id: "a", cap: 10, stage: 2 },
+    { id: "b", cap: 5, stage: 5 },
+    { id: "gone", cap: 2, stage: 2 },
+  ]);
+  const run = (afterSource) => exemptionDeltaProblems({
+    sha: "mov1234", oldSource: before, newSource: afterSource, keepListText: null,
+  });
+
+  // d 的正例：删一项 + 某项 2 → 5 带段号 + cap 分组不增 → 绿
+  const tightened = table([
+    { id: "a", cap: 5, stage: 2 },
+    { id: "b", cap: 5, stage: 5, blocked: segment },
+  ]);
+  assert.deepEqual(run(tightened), [], `move: 自检失败：合法收紧被判红——${run(tightened).join("；")}`);
+
+  // a：cap 某组 +1 → 红
+  const capped = table([
+    { id: "a", cap: 11, stage: 2 },
+    { id: "b", cap: 5, stage: 5 },
+    { id: "gone", cap: 2, stage: 2 },
+  ]);
+  assert.ok(run(capped).some((m) => m.includes("cap 合计（全表）") || m.includes("cap 合计 stage2:")),
+    `move: 自检失败：cap 分组增加被放过——${run(capped).join("；")}`);
+
+  // b：新增一项 → 红
+  const added = table([
+    { id: "a", cap: 10, stage: 2 },
+    { id: "b", cap: 5, stage: 5 },
+    { id: "gone", cap: 2, stage: 2 },
+    { id: "newbie", cap: 1, stage: 5, blocked: segment },
+  ]);
+  assert.ok(run(added).some((m) => m.includes("豁免表新增 1 项（newbie）")),
+    `move: 自检失败：新增豁免项被放过——${run(added).join("；")}`);
+
+  // c-1：5 → 2 提前释放 → 红
+  const early = table([
+    { id: "a", cap: 10, stage: 2 },
+    { id: "b", cap: 5, stage: 2 },
+    { id: "gone", cap: 2, stage: 5 },
+  ]);
+  assert.ok(run(early).some((m) => m.includes("提前释放")),
+    `move: 自检失败：提前释放被放过——${run(early).join("；")}`);
+
+  // c-2：2 → 5 但不带阻塞段 → 红
+  const noReason = table([
+    { id: "a", cap: 10, stage: 5 },
+    { id: "b", cap: 5, stage: 5 },
+  ]);
+  assert.ok(run(noReason).some((m) => m.includes("但没有「阻塞段")),
+    `move: 自检失败：推迟却不写阻塞段被放过——${run(noReason).join("；")}`);
+
+  // c-3：段号查不到 → 红
+  const badSegment = table([
+    { id: "a", cap: 10, stage: 5, blocked: "setupLibrary 9999–10000" },
+    { id: "b", cap: 5, stage: 5 },
+    { id: "gone", cap: 2, stage: 2 },
+  ]);
+  assert.ok(run(badSegment).some((m) => m.includes("不在留外壳清单里")),
+    `move: 自检失败：查不到的段号被放过——${run(badSegment).join("；")}`);
 });
 
 test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子树的引用必须在豁免表里", () => {

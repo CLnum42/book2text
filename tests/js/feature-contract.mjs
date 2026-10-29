@@ -136,6 +136,138 @@ export function registrationContent(sha, docText) {
  */
 const MOVE_TABLES = ["OWNERS", "VIEW_STATE_PREFIXES", "VIEW_EXPORTS"];
 const MOVE_FORBIDDEN = /(EXCUS|MAX)/;
+/** pages 的 R3 过渡豁免表（数据文件）。`move:` 笔**可以**改它，但只能往收紧的方向改。 */
+const EXEMPTION_FILE = "pages-r3-exemptions.mjs";
+const KEEP_LIST_REL = "docs/refactor/evidence/pages/knife2.5-split-plan.md";
+
+/** 从豁免表源码里读 `{ id, cap, stage, 阻塞段? }`（一格一条，逐行匹配，不吃注释格式变化）。 */
+export function parseExemptionEntries(source) {
+  const entries = new Map();
+  for (const match of String(source || "").matchAll(
+    /\{\s*id:\s*"([^"]+)",\s*cap:\s*(\d+),\s*stage:\s*(\d+|null)([^}]*)\}/g,
+  )) {
+    const extra = match[4] || "";
+    const blocked = (/(?:"阻塞段"|阻塞段)\s*:\s*"([^"]+)"/.exec(extra) || [])[1] || "";
+    entries.set(match[1], {
+      cap: Number(match[2]),
+      stage: match[3] === "null" ? null : Number(match[3]),
+      blocked,
+    });
+  }
+  return entries;
+}
+
+/** 留外壳清单的段号标签（`setupLibrary 12548–12557`），供「阻塞段」查得到。 */
+export function keepShellSegmentLabels(text = null) {
+  const source = text === null ? (() => {
+    try {
+      return readFileSync(`${REPO_ROOT}/${KEEP_LIST_REL}`, "utf8");
+    } catch {
+      return "";
+    }
+  })() : text;
+  const labels = new Set();
+  for (const line of source.split("\n")) {
+    if (!line.startsWith("| `")) continue;
+    const label = (line.split("|")[1] || "").replace(/[`*]/g, "").trim().replace(/\s+/g, " ");
+    if (/^[A-Za-z_$][\w$]*\s+[\d–\-·\s]+$/.test(label)) labels.add(label);
+  }
+  return labels;
+}
+
+/**
+ * `move:` 笔对**豁免表**的放行判定：允许收紧、禁止放宽。
+ *
+ * 对象是「旧树 vs 新树的两份豁免表」，不是行号——行号会漂，内容不会。
+ * ```
+ * ① cap 不增：**按 stage 分组**比合计（总 cap 不增但某组暴增 = 在某个到期点上挖洞）
+ * ② 表项数不增：按 id 集合，新增红、删除合法
+ * ③ stage 只许往后推，被推迟项必须带 `阻塞段: <段号>`，且段号能在留外壳清单里查到
+ * ```
+ * ④ 生效范围：只由 `move:` 分支调用；`test-contract:` 仍按原 A1，不放宽。
+ */
+export function exemptionDeltaProblems({ sha, oldSource, newSource, keepListText = null }) {
+  const short = String(sha).slice(0, 7);
+  const problems = [];
+  const before = parseExemptionEntries(oldSource);
+  const after = parseExemptionEntries(newSource);
+  if (before.size === 0 && after.size === 0) return problems;   // 这个文件里没有豁免表（例如别的数据文件）
+
+  // ① cap 只许收紧。两条都要：
+  //   a) **全表合计**不增；
+  //   b) **留在原 stage 的项**按 stage 分组不增。
+  //      注意不能拿「各 stage 分组原始合计」直接比：合法的「2 → 5 推迟」会把 cap 从 stage2 组
+  //      挪进 stage5 组，stage5 必然变大——那不是挖洞，是移动。分组只比"没动 stage 的项"，
+  //      "移动"由 ③（必须带可查的阻塞段）单独管。
+  const stageKey = (stage) => (stage === null ? "null" : String(stage));
+  const totalOf = (map) => [...map.values()].reduce((sum, entry) => sum + entry.cap, 0);
+  const oldTotal = totalOf(before);
+  const newTotal = totalOf(after);
+  if (newTotal > oldTotal) {
+    problems.push(
+      `cap 合计（全表）: ${oldTotal} → ${newTotal}（+${newTotal - oldTotal}）——move: 只许收紧`,
+    );
+  }
+  const stationaryByStage = (map, base) => {
+    const out = new Map();
+    for (const [id, entry] of map) {
+      const was = base.get(id);
+      if (!was || was.stage !== entry.stage) continue;   // 新增项由 ② 判、移动项由 ③ 判
+      const key = stageKey(entry.stage);
+      out.set(key, (out.get(key) || 0) + entry.cap);
+    }
+    return out;
+  };
+  const oldSums = stationaryByStage(before, before);
+  const newSums = stationaryByStage(after, before);
+  for (const key of new Set([...oldSums.keys(), ...newSums.keys()])) {
+    const was = oldSums.get(key) || 0;
+    const now = newSums.get(key) || 0;
+    if (now > was) {
+      problems.push(
+        `cap 合计 stage${key}: ${was} → ${now}（+${now - was}）——move: 只许收紧，`
+        + "按 stage 分组比（只比没动 stage 的项）：某组暴增等于在那个到期点上挖洞",
+      );
+    }
+  }
+
+  // ② 表项数不增（按 id 集合）
+  const added = [...after.keys()].filter((id) => !before.has(id));
+  if (added.length > 0) {
+    problems.push(`豁免表新增 ${added.length} 项（${added.join("/")}）——move: 只许删除或收紧，不许新增豁免`);
+  }
+
+  // ③ stage 只许往后推 + 推迟必须带可查的阻塞段
+  const labels = keepShellSegmentLabels(keepListText);
+  for (const [id, now] of after) {
+    const was = before.get(id);
+    if (!was) continue;                       // 新增已由 ② 判过
+    if (was.stage === now.stage) continue;
+    if (now.stage !== null && was.stage !== null && now.stage < was.stage) {
+      problems.push(
+        `豁免 ${id} 的到期刀 ${was.stage} → ${now.stage} 是**提前释放**——move: 只许往后推，`
+        + "提前放走等于给这一项开新豁免",
+      );
+      continue;
+    }
+    if (!now.blocked) {
+      problems.push(
+        `豁免 ${id} 的到期刀 ${was.stage} → ${now.stage} 但没有「阻塞段: <段号>」——`
+        + "推迟必须写明卡在哪一段，否则就是无限期拖延",
+      );
+      continue;
+    }
+    for (const label of now.blocked.split(/[、,，]/).map((one) => one.trim()).filter(Boolean)) {
+      if (!labels.has(label.replace(/\s+/g, " "))) {
+        problems.push(
+          `豁免 ${id} 的阻塞段「${label}」不在留外壳清单里（${KEEP_LIST_REL} §ⅲ，现有 ${labels.size} 段）`
+          + "——段号写错或清单漂了，判不了就是红",
+        );
+      }
+    }
+  }
+  return problems;
+}
 
 /** 从源码派生顶层 `const NAME = { … };` 的块范围（`allowed` / `forbidden` 见上）。 */
 export function tableBlockRanges(source) {
@@ -179,7 +311,7 @@ export function tableBlockRanges(source) {
  * @param {{sha: string, files: string[], changes: {path: string, addedRanges: number[][],
  *          deletedRanges: number[][], commitSource: string, parentSource: string}[]}} input
  */
-export function moveScopeProblems({ sha, files, changes }) {
+export function moveScopeProblems({ sha, files, changes, keepListText = null }) {
   const short = sha.slice(0, 7);
   const problems = [];
   const touchesProduct = files.some((file) => file.startsWith("backend/book2text/static/"));
@@ -199,6 +331,8 @@ export function moveScopeProblems({ sha, files, changes }) {
           const hit = blocks.find((item) => item.start <= line && line <= item.end);
           if (hit && hit.allowed) continue;
           if (hit && hit.forbidden) {
+            // 豁免表例外：它**可以**被 move: 笔改，但只能往收紧的方向改（由 exemptionDeltaProblems 判方向）
+            if (change.path.endsWith(EXEMPTION_FILE)) continue;
             problems.push(
               `A1: ${short} ${change.path}:${line} 落在 ${hit.name}（豁免表/上限）里——`
               + `move: 笔不许动削弱闸的旋钮`,
@@ -221,6 +355,14 @@ export function moveScopeProblems({ sha, files, changes }) {
     }
     check(change.addedRanges, commitBlocks, "新增");
     check(change.deletedRanges, parentBlocks, "删除");
+    if (change.path.endsWith(EXEMPTION_FILE)) {
+      problems.push(...exemptionDeltaProblems({
+        sha: short,
+        oldSource: change.parentSource,
+        newSource: change.commitSource,
+        keepListText,
+      }));
+    }
   }
   return problems;
 }

@@ -17,6 +17,7 @@
 export const PAGES_STAGE = 1;
 export const PAGES_R3_TOTAL_CAP = 193;
 export const PAGES_R3_PENDING = 0;
+export const PAGES_R3_BLOCKED_MAX = 7;
 
 //: stage = null 表示「待定（按搬它的刀）」；本期已归零。
 export const PAGES_R3_EXEMPTIONS = [
