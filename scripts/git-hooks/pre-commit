@@ -52,7 +52,11 @@ if git rev-parse --verify -q origin/main >/dev/null 2>&1 && [ -f "$STAMP" ]; the
   for sha in $(git log origin/main -n 20 --format='%H %ct' 2>/dev/null | awk -v s="$SINCE" '$2 >= s {print $1}'); do
     COVERED=0
     if [ -f "$PLOG" ]; then
-      for tip in $(awk -F'\t' '$1 == "RANGE" { print $2 } $2 == "PASS" { print $1 }' "$PLOG" 2>/dev/null); do
+      # **SKIP(md-only) 也算覆盖**（2026-10-30）：pre-push 对纯 md 推送按设计跳过 pytest 并记
+      # `sha\tSKIP\t时间\tmd-only`；不把这类算成覆盖，就会把"按设计跳过"报成"没有记录"——
+      # 假警报会把真正的 --no-verify 淹掉（数字从 1 涨到 14，全是文档推送）。
+      # 真绕过（--no-verify）不写任何行，照样算缺失。
+      for tip in $(awk -F'\t' '$1 == "RANGE" { print $2 } $2 == "PASS" { print $1 } $2 == "SKIP" { print $1 }' "$PLOG" 2>/dev/null); do
         if git merge-base --is-ancestor "$sha" "$tip" 2>/dev/null; then COVERED=1; break; fi
       done
     fi
