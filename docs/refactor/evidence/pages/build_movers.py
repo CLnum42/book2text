@@ -48,6 +48,15 @@ EXTERNAL = {
 
 FLOW_STAYS: dict[str, str] = {}
 
+# 接线类调用者（2026-10-29 Chief 定）：一次性接线，调用点随 init 一起进模块 → **不算接缝**。
+# 反例（逻辑类，算接缝）：别的视图的流程函数、showView 的路由链——外壳要持续调用它。
+WIRING_ROOTS = {"boot", "setupShell", "setupLibrary", "setupPages"}
+WIRING_PATTERN = re.compile(r"^setup[A-Z]")
+
+
+def is_wiring(name: str) -> bool:
+    return name in WIRING_ROOTS or bool(WIRING_PATTERN.match(name))
+
 
 def git_show(path: str) -> str:
     return subprocess.check_output(
@@ -125,7 +134,8 @@ def build():
         for name in list(closure):
             if outside(name) or name in FLOW_STAYS:
                 continue
-            if not callers[name] <= closure or (callers[name] & SHELL_ROOTS):
+            blocking = {c for c in callers[name] if not is_wiring(c)}
+            if not blocking <= closure:
                 continue
             for callee in edges[name]:
                 if callee in closure or callee in SHELL_ROOTS:
@@ -138,7 +148,9 @@ def build():
         if name in EXTERNAL:
             continue
         rec = fns[name]
-        leak = sorted({c for c in callers[name] if c not in closure or c in SHELL_ROOTS})
+        leak = sorted({c for c in callers[name]
+                       if not is_wiring(c) and c not in closure})
+        wiring = sorted({c for c in callers[name] if is_wiring(c)})
         outside_ids = sorted(outside(name))
         if outside_ids:
             why = "引用段外 id：" + "、".join(outside_ids[:6]) + ("…" if len(outside_ids) > 6 else "")
@@ -146,7 +158,9 @@ def build():
         elif name in FLOW_STAYS:
             stays.append({"name": name, **rec, "why": FLOW_STAYS[name], "kind": "flow"})
         elif leak:
-            why = "被外壳/C 外函数调用：" + "、".join(leak[:6]) + ("…" if len(leak) > 6 else "")
+            why = "被逻辑类调用者调用：" + "、".join(leak[:6]) + ("…" if len(leak) > 6 else "")
+            if wiring:
+                why += "（接线类另有：" + "、".join(wiring[:4]) + "，不计）"
             stays.append({"name": name, **rec, "why": why, "kind": "seam"})
         else:
             if touch[name]:
@@ -200,7 +214,14 @@ def build():
             "基线": baseline,
             "app.js 行数": len(lines) - (1 if lines and lines[-1] == "" else 0),
             "取源码": "git show HEAD:<path>（HEAD 树，不读工作区）",
-            "说明": "名单重新算过，不照抄 pages-attribution.md 的数（那份基线是 16,161 行的树）",
+            "阈值（2026-10-29 Chief 定）": {
+                "接线类调用者（不算接缝，函数可搬）": "boot / setupShell / setupLibrary / setupPages / setupXxx —— 一次性接线，调用点随 init 进模块。例：setupPages 调 buildTile 不构成接缝",
+                "逻辑类调用者（算接缝，函数留外壳）": "别的视图的流程函数（如 openProject → resumeLastPosition、导出流程）、showView 路由链 —— 外壳要在这个函数的生命周期里持续调用它",
+                "判据一句话": "外壳是否需要在该函数的生命周期里持续调用它：一次性接线是模块自己的事，持续调用才是接缝",
+            },
+            "旧数（作废，勿引）": "pages-attribution.md：能搬 2,338 行 / 接缝 66 个 817 行 —— 基线 16,161 行那棵树、算法不同，两个数都不能当基准；本文件的数是唯一基准",
+            "旧数为何不能混用": "接缝 66 个名字一致说明集合判对了，但行数是两种量法（整函数行 vs 被外壳调用那一侧）；这��以整函数行为准",
+            "说明": "名单按 HEAD 树重算，不照抄任何旧调查的数",
         },
         "对账": {
             "三区两两不相交?": disjoint,

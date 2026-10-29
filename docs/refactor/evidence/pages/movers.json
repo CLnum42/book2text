@@ -4,32 +4,39 @@
     "段内 id": "127（含视图根）/ 126（不含根）",
     "种子": "79 个（函数体里出现 view-pages 子树 id；壳根已剔除）",
     "闭包": "引用图（f 出现在非定义位置即一条边，值引用也算；只在可能搬的节点上继续扩）",
-    "闭包总数": "114 个 / 3074 行",
-    "基线": "6efeedb",
+    "闭包总数": "139 个 / 3438 行",
+    "基线": "119dfe4",
     "app.js 行数": 15311,
     "取源码": "git show HEAD:<path>（HEAD 树，不读工作区）",
-    "说明": "名单重新算过，不照抄 pages-attribution.md 的数（那份基线是 16,161 行的树）"
+    "阈值（2026-10-29 Chief 定）": {
+      "接线类调用者（不算接缝，函数可搬）": "boot / setupShell / setupLibrary / setupPages / setupXxx —— 一次性接线，调用点随 init 进模块。例：setupPages 调 buildTile 不构成接缝",
+      "逻辑类调用者（算接缝，函数留外壳）": "别的视图的流程函数（如 openProject → resumeLastPosition、导出流程）、showView 路由链 —— 外壳要在这个函数的生命周期里持续调用它",
+      "判据一句话": "外壳是否需要在该函数的生命周期里持续调用它：一次性接线是模块自己的事，持续调用才是接缝"
+    },
+    "旧数（作废，勿引）": "pages-attribution.md：能搬 2,338 行 / 接缝 66 个 817 行 —— 基线 16,161 行那棵树、算法不同，两个数都不能当基准；本文件的数是唯一基准",
+    "旧数为何不能混用": "接缝 66 个名字一致说明集合判对了，但行数是两种量法（整函数行 vs 被外壳调用那一侧）；这��以整函数行为准",
+    "说明": "名单按 HEAD 树重算，不照抄任何旧调查的数"
   },
   "对账": {
     "三区两两不相交?": true,
     "行数相加 = 闭包总行数?": true,
     "每个名字恰好 1 处 function 声明?": true,
     "函数数": {
-      "movers": 26,
-      "stays": 79,
+      "movers": 63,
+      "stays": 67,
       "external": 9,
-      "闭包": 114
+      "闭包": 139
     },
     "行数": {
-      "movers": 642,
-      "stays": 2253,
+      "movers": 1522,
+      "stays": 1737,
       "external": 179,
-      "闭包": 3074
+      "闭包": 3438
     }
   },
   "states_and_consts": {
     "说明": "闭包不含顶层状态/常量；这里单列 movers 引用到的那些，注入/随搬由落盘时逐条定",
-    "count": 29,
+    "count": 46,
     "entries": [
       {
         "name": "AUX_SECONDS_PER_PAGE",
@@ -40,32 +47,60 @@
         "refs_in_movers": 1
       },
       {
+        "name": "BLOCK_TYPE_LABELS",
+        "refs_in_movers": 2
+      },
+      {
+        "name": "PAGE_SUGGESTION_CONCURRENCY",
+        "refs_in_movers": 2
+      },
+      {
         "name": "PAGE_TYPE_LABELS",
-        "refs_in_movers": 4
+        "refs_in_movers": 6
       },
       {
         "name": "PAGE_TYPE_ORDER",
         "refs_in_movers": 1
       },
       {
-        "name": "currentProject",
-        "refs_in_movers": 25
-      },
-      {
-        "name": "currentView",
+        "name": "RECOGNITION_LABELS",
         "refs_in_movers": 1
       },
       {
+        "name": "currentProject",
+        "refs_in_movers": 69
+      },
+      {
+        "name": "currentView",
+        "refs_in_movers": 4
+      },
+      {
         "name": "el",
-        "refs_in_movers": 39
+        "refs_in_movers": 106
       },
       {
         "name": "finishSummary",
         "refs_in_movers": 2
       },
       {
+        "name": "finishSummaryProject",
+        "refs_in_movers": 1
+      },
+      {
         "name": "lastTaskData",
         "refs_in_movers": 3
+      },
+      {
+        "name": "layoutBlockLoading",
+        "refs_in_movers": 6
+      },
+      {
+        "name": "layoutBlockPage",
+        "refs_in_movers": 5
+      },
+      {
+        "name": "layoutBlockPayload",
+        "refs_in_movers": 14
       },
       {
         "name": "marginAuditLoading",
@@ -88,20 +123,32 @@
         "refs_in_movers": 3
       },
       {
+        "name": "overlayRenderQueue",
+        "refs_in_movers": 1
+      },
+      {
+        "name": "overlayRenderQueued",
+        "refs_in_movers": 1
+      },
+      {
+        "name": "pageSuggestionActive",
+        "refs_in_movers": 4
+      },
+      {
         "name": "pageSuggestionCache",
         "refs_in_movers": 1
       },
       {
         "name": "pageSuggestionFailed",
-        "refs_in_movers": 1
-      },
-      {
-        "name": "pageSuggestionPending",
         "refs_in_movers": 2
       },
       {
+        "name": "pageSuggestionPending",
+        "refs_in_movers": 3
+      },
+      {
         "name": "pageSuggestionQueue",
-        "refs_in_movers": 1
+        "refs_in_movers": 4
       },
       {
         "name": "pageTileMetrics",
@@ -110,6 +157,18 @@
       {
         "name": "pageZoomIndex",
         "refs_in_movers": 1
+      },
+      {
+        "name": "pagesMarginOn",
+        "refs_in_movers": 11
+      },
+      {
+        "name": "pagesOverlayOn",
+        "refs_in_movers": 5
+      },
+      {
+        "name": "panelAccordionProject",
+        "refs_in_movers": 2
       },
       {
         "name": "projectSummary",
@@ -121,19 +180,27 @@
       },
       {
         "name": "selectedPages",
-        "refs_in_movers": 3
+        "refs_in_movers": 8
+      },
+      {
+        "name": "selectionAnchor",
+        "refs_in_movers": 1
       },
       {
         "name": "setupSuggestions",
+        "refs_in_movers": 4
+      },
+      {
+        "name": "setupSuggestionsLoaded",
         "refs_in_movers": 1
       },
       {
         "name": "setupSuggestionsLoading",
-        "refs_in_movers": 1
+        "refs_in_movers": 3
       },
       {
         "name": "suggestionScanQueued",
-        "refs_in_movers": 1
+        "refs_in_movers": 3
       },
       {
         "name": "suggestionScanTimer",
@@ -146,10 +213,32 @@
       {
         "name": "taskJobId",
         "refs_in_movers": 1
+      },
+      {
+        "name": "visiblePageNos",
+        "refs_in_movers": 2
+      },
+      {
+        "name": "workflowStep",
+        "refs_in_movers": 2
       }
     ]
   },
   "movers": [
+    {
+      "name": "applyPageRangeInput",
+      "start": 3726,
+      "end": 3748,
+      "lines": 23,
+      "why": "引用 view-pages 的 id：page-range、pages-error"
+    },
+    {
+      "name": "applyRecognizedPages",
+      "start": 6990,
+      "end": 6997,
+      "lines": 8,
+      "why": "不碰 id；只被 C 内函数引用：checkSelection、recognizePage、recognizeSelection、startBatchRecognition"
+    },
     {
       "name": "applySetupSuggestion",
       "start": 4372,
@@ -172,11 +261,32 @@
       "why": "引用 view-pages 的 id：page-grid"
     },
     {
+      "name": "checkSelection",
+      "start": 7005,
+      "end": 7035,
+      "lines": 31,
+      "why": "引用 view-pages 的 id：pages-error、selection-skip-checked"
+    },
+    {
+      "name": "confirmLayoutFromPanel",
+      "start": 5685,
+      "end": 5707,
+      "lines": 23,
+      "why": "引用 view-pages 的 id：layout-block-confirm、pages-error"
+    },
+    {
       "name": "confirmPageIds",
       "start": 4396,
       "end": 4420,
       "lines": 25,
       "why": "引用 view-pages 的 id：pages-error"
+    },
+    {
+      "name": "confirmSelectedPages",
+      "start": 4422,
+      "end": 4431,
+      "lines": 10,
+      "why": "引用 view-pages 的 id：selection-hint"
     },
     {
       "name": "ensureMarginAudit",
@@ -200,6 +310,13 @@
       "why": "引用 view-pages 的 id：page-grid"
     },
     {
+      "name": "firstUnfinishedPanel",
+      "start": 4165,
+      "end": 4176,
+      "lines": 12,
+      "why": "不碰 id；只被 C 内函数引用：initPanelAccordion"
+    },
+    {
       "name": "hideMarginFitProgressSoon",
       "start": 811,
       "end": 816,
@@ -207,11 +324,81 @@
       "why": "引用 view-pages 的 id：margin-fit-progress"
     },
     {
+      "name": "highConfidenceCount",
+      "start": 5681,
+      "end": 5683,
+      "lines": 3,
+      "why": "不碰 id；只被 C 内函数引用：renderLayoutBlocks"
+    },
+    {
+      "name": "initPanelAccordion",
+      "start": 4179,
+      "end": 4212,
+      "lines": 34,
+      "why": "不碰 id；只被 C 内函数引用：renderPageSetup"
+    },
+    {
+      "name": "layoutBlockPageRecord",
+      "start": 5517,
+      "end": 5521,
+      "lines": 5,
+      "why": "不碰 id；只被 C 内函数引用：confirmLayoutFromPanel、renderLayoutBlocks、scheduleLayoutBlocks"
+    },
+    {
+      "name": "loadLanguageSummary",
+      "start": 14646,
+      "end": 14664,
+      "lines": 19,
+      "why": "引用 view-pages 的 id：rec-language-summary"
+    },
+    {
+      "name": "loadLayoutBlocks",
+      "start": 5538,
+      "end": 5577,
+      "lines": 40,
+      "why": "引用 view-pages 的 id：pages-error"
+    },
+    {
+      "name": "loadSetupSuggestions",
+      "start": 4226,
+      "end": 4244,
+      "lines": 19,
+      "why": "不碰 id；只被 C 内函数引用：applySetupSuggestion、confirmPageIds、openPageSetup、patchSelectedPages…"
+    },
+    {
       "name": "marginBasisForUndetermined",
       "start": 5326,
       "end": 5332,
       "lines": 7,
       "why": "不碰 id；只被 C 内函数引用：ensureMarginAudit、renderMarginPanel"
+    },
+    {
+      "name": "openPageSetup",
+      "start": 4215,
+      "end": 4224,
+      "lines": 10,
+      "why": "引用 view-pages 的 id：setup-panel"
+    },
+    {
+      "name": "pageLayoutLines",
+      "start": 668,
+      "end": 670,
+      "lines": 3,
+      "why": "不碰 id；只被 C 内函数引用：marginBasisForUndetermined、pageHasFitLines"
+    },
+    {
+      "name": "pageSetupStats",
+      "start": 4115,
+      "end": 4131,
+      "lines": 17,
+      "why": "不碰 id；只被 C 内函数引用：renderPageSetup、updateSelectionPanel"
+    },
+    {
+      "name": "pageTextLines",
+      "start": 673,
+      "end": 675,
+      "lines": 3,
+      "why": "不碰 id；只被 C 内函数引用：marginBasisForUndetermined、pageHasFitLines"
     },
     {
       "name": "patchRecognitionSetting",
@@ -226,6 +413,41 @@
       "end": 13427,
       "lines": 25,
       "why": "引用 view-pages 的 id：pages-error"
+    },
+    {
+      "name": "pausePageThumbnails",
+      "start": 142,
+      "end": 149,
+      "lines": 8,
+      "why": "引用 view-pages 的 id：page-grid"
+    },
+    {
+      "name": "pumpPageSuggestionQueue",
+      "start": 3491,
+      "end": 3521,
+      "lines": 31,
+      "why": "不碰 id；只被 C 内函数引用：ensurePageSuggestion、showView"
+    },
+    {
+      "name": "recognizeSelection",
+      "start": 13429,
+      "end": 13462,
+      "lines": 34,
+      "why": "引用 view-pages 的 id：pages-error、selection-skip-recognized"
+    },
+    {
+      "name": "renderLayoutBlocks",
+      "start": 5579,
+      "end": 5679,
+      "lines": 101,
+      "why": "引用 view-pages 的 id：layout-block-apply-all、layout-block-body、layout-block-confirm、layout-block-hint、layout-block-note、layout-block-status"
+    },
+    {
+      "name": "renderPageSetup",
+      "start": 4133,
+      "end": 4160,
+      "lines": 28,
+      "why": "引用 view-pages 的 id：page-setup-bar、setup-confirm-all、setup-confirm-selected、setup-panel、setup-progress、setup-summary"
     },
     {
       "name": "renderPageSummary",
@@ -256,6 +478,13 @@
       "why": "引用 view-pages 的 id：selection-type-state、selection-types"
     },
     {
+      "name": "rerunAuxiliary",
+      "start": 14672,
+      "end": 14692,
+      "lines": 21,
+      "why": "引用 view-pages 的 id：pages-error"
+    },
+    {
       "name": "resetMarginsToAuto",
       "start": 5988,
       "end": 6057,
@@ -263,11 +492,39 @@
       "why": "引用 view-pages 的 id：pages-error"
     },
     {
+      "name": "resetOverlayQueue",
+      "start": 4870,
+      "end": 4873,
+      "lines": 4,
+      "why": "不碰 id；只被 C 内函数引用：applyPageZoom、togglePageBlocksOverlay"
+    },
+    {
+      "name": "savePageMarginPreference",
+      "start": 3035,
+      "end": 3041,
+      "lines": 7,
+      "why": "不碰 id；只被 C 内函数引用：boot、toggleMarginView"
+    },
+    {
+      "name": "savePageOverlayPreference",
+      "start": 3009,
+      "end": 3015,
+      "lines": 7,
+      "why": "不碰 id；只被 C 内函数引用：boot、togglePageBlocksOverlay"
+    },
+    {
       "name": "scanVisiblePageSuggestions",
       "start": 3547,
       "end": 3585,
       "lines": 39,
       "why": "引用 view-pages 的 id：page-grid"
+    },
+    {
+      "name": "scheduleLayoutBlocks",
+      "start": 5523,
+      "end": 5536,
+      "lines": 14,
+      "why": "不碰 id；只被 C 内函数引用：renderStepPanels、updateSelectionPanel"
     },
     {
       "name": "scheduleSuggestionScan",
@@ -284,11 +541,39 @@
       "why": "不碰 id；只被 C 内函数引用：renderSuggestionPanel、suggestionPagesByType"
     },
     {
+      "name": "selectionPages",
+      "start": 3750,
+      "end": 3752,
+      "lines": 3,
+      "why": "不碰 id；只被 C 内函数引用：checkSelection、confirmSelectedPages、layoutBlockPageRecord、patchSelectedPages…"
+    },
+    {
+      "name": "setAutoApplySetting",
+      "start": 13830,
+      "end": 13861,
+      "lines": 32,
+      "why": "引用 view-pages 的 id：auto-apply-suggestions、selection-hint"
+    },
+    {
       "name": "setRecognitionStatus",
       "start": 3223,
       "end": 3235,
       "lines": 13,
       "why": "引用 view-pages 的 id：rec-status"
+    },
+    {
+      "name": "setupPageMore",
+      "start": 7953,
+      "end": 7980,
+      "lines": 28,
+      "why": "引用 view-pages 的 id：page-more、page-more-menu"
+    },
+    {
+      "name": "setupRecognitionSettings",
+      "start": 3319,
+      "end": 3336,
+      "lines": 18,
+      "why": "引用 view-pages 的 id：rec-dual-strategy、rec-engine、rec-language"
     },
     {
       "name": "showMarginDetectProgress",
@@ -305,6 +590,20 @@
       "why": "引用 view-pages 的 id：margin-fit-fill、margin-fit-progress、margin-fit-text"
     },
     {
+      "name": "startAuxiliaryAll",
+      "start": 5906,
+      "end": 5929,
+      "lines": 24,
+      "why": "引用 view-pages 的 id：rec-status"
+    },
+    {
+      "name": "startBatchRecognition",
+      "start": 6966,
+      "end": 6987,
+      "lines": 22,
+      "why": "引用 view-pages 的 id：pages-error"
+    },
+    {
       "name": "startLayoutDetection",
       "start": 7398,
       "end": 7421,
@@ -319,6 +618,13 @@
       "why": "不碰 id；只被 C 内函数引用：renderTypePicker"
     },
     {
+      "name": "syncStepToggles",
+      "start": 626,
+      "end": 657,
+      "lines": 32,
+      "why": "引用 view-pages 的 id：pages-margin-toggle"
+    },
+    {
       "name": "textLayerPages",
       "start": 5891,
       "end": 5894,
@@ -326,20 +632,56 @@
       "why": "不碰 id；只被 C 内函数引用：auxEstimateText、renderRecognitionVerdict"
     },
     {
+      "name": "toggleMarginView",
+      "start": 5073,
+      "end": 5088,
+      "lines": 16,
+      "why": "引用 view-pages 的 id：pages-margin-toggle"
+    },
+    {
+      "name": "togglePageBlocksOverlay",
+      "start": 4854,
+      "end": 4868,
+      "lines": 15,
+      "why": "引用 view-pages 的 id：page-grid、pages-overlay-toggle"
+    },
+    {
       "name": "trimMarginUndo",
       "start": 6059,
       "end": 6061,
       "lines": 3,
       "why": "不碰 id；只被 C 内函数引用：resetMarginsToAuto、savePageMargin"
+    },
+    {
+      "name": "updateSelectionPanel",
+      "start": 3754,
+      "end": 3920,
+      "lines": 167,
+      "why": "引用 view-pages 的 id：assign-open、check-pending、selection-all、selection-clear、selection-count、selection-hint"
+    },
+    {
+      "name": "warnUnconfirmed",
+      "start": 4451,
+      "end": 4458,
+      "lines": 8,
+      "why": "不碰 id；只被 C 内函数引用：recognizePage、recognizeSelection、startBatchRecognition"
     }
   ],
   "stays": [
+    {
+      "name": "adoptBlockSuggestion",
+      "start": 10206,
+      "end": 10219,
+      "lines": 14,
+      "why": "被逻辑类调用者调用：blockSuggestionBadge、buildBoxLabel",
+      "kind": "seam"
+    },
     {
       "name": "apiJson",
       "start": 39,
       "end": 58,
       "lines": 20,
-      "why": "被外壳/C 外函数调用：ackQueueLine、activeAuxJob、adoptAllHighSuggestions、adoptPageNumberTemplate、applyCandidateBlock、applyHeaderFooter…",
+      "why": "被逻辑类调用者调用：ackQueueLine、activeAuxJob、adoptAllHighSuggestions、adoptPageNumberTemplate、applyCandidateBlock、applyHeaderFooter…（接线类另有：boot、setupReviewAutoPass，不计）",
       "kind": "seam"
     },
     {
@@ -351,19 +693,11 @@
       "kind": "other-view-dom"
     },
     {
-      "name": "applyPageRangeInput",
-      "start": 3726,
-      "end": 3748,
-      "lines": 23,
-      "why": "被外壳/C 外函数调用：setupLibrary",
-      "kind": "seam"
-    },
-    {
       "name": "applyPageZoom",
       "start": 4784,
       "end": 4840,
       "lines": 57,
-      "why": "被外壳/C 外函数调用：goToWorkflowStep、setPageZoom、showView",
+      "why": "被逻辑类调用者调用：goToWorkflowStep、setPageZoom",
       "kind": "seam"
     },
     {
@@ -383,11 +717,19 @@
       "kind": "other-view-dom"
     },
     {
-      "name": "checkSelection",
-      "start": 7005,
-      "end": 7035,
-      "lines": 31,
-      "why": "被外壳/C 外函数调用：setupLibrary、setupReviewControls",
+      "name": "clearPageBlocks",
+      "start": 4994,
+      "end": 5002,
+      "lines": 9,
+      "why": "被逻辑类调用者调用：forgetAllPageBlocks（接线类另有：boot，不计）",
+      "kind": "seam"
+    },
+    {
+      "name": "clearTileMargin",
+      "start": 5063,
+      "end": 5071,
+      "lines": 9,
+      "why": "被逻辑类调用者调用：paintTileMargin（接线类另有：boot，不计）",
       "kind": "seam"
     },
     {
@@ -395,23 +737,7 @@
       "start": 4433,
       "end": 4445,
       "lines": 13,
-      "why": "被外壳/C 外函数调用：finishConfirmPages、setupLibrary",
-      "kind": "seam"
-    },
-    {
-      "name": "confirmLayoutFromPanel",
-      "start": 5685,
-      "end": 5707,
-      "lines": 23,
-      "why": "被外壳/C 外函数调用：setupLibrary",
-      "kind": "seam"
-    },
-    {
-      "name": "confirmSelectedPages",
-      "start": 4422,
-      "end": 4431,
-      "lines": 10,
-      "why": "被外壳/C 外函数调用：setupLibrary",
+      "why": "被逻辑类调用者调用：finishConfirmPages（接线类另有：setupLibrary，不计）",
       "kind": "seam"
     },
     {
@@ -419,7 +745,15 @@
       "start": 702,
       "end": 775,
       "lines": 74,
-      "why": "被外壳/C 外函数调用：confirmAllMargins、refreshMarginState、renderStepPanels",
+      "why": "被逻辑类调用者调用：confirmAllMargins、refreshMarginState",
+      "kind": "seam"
+    },
+    {
+      "name": "fetchPageSuggestions",
+      "start": 3449,
+      "end": 3467,
+      "lines": 19,
+      "why": "被逻辑类调用者调用：refreshDetailSuggestions",
       "kind": "seam"
     },
     {
@@ -427,7 +761,7 @@
       "start": 7649,
       "end": 7658,
       "lines": 10,
-      "why": "被外壳/C 外函数调用：reportLayoutDetectOutcome",
+      "why": "被逻辑类调用者调用：reportLayoutDetectOutcome",
       "kind": "seam"
     },
     {
@@ -443,7 +777,7 @@
       "start": 3398,
       "end": 3404,
       "lines": 7,
-      "why": "被外壳/C 外函数调用：adoptAllHighSuggestions、adoptBlockSuggestion、applyCandidateBlock、decideCandidate、forgetPageBlocks、patchBlock…",
+      "why": "被逻辑类调用者调用：adoptAllHighSuggestions、applyCandidateBlock、decideCandidate、forgetPageBlocks、patchBlock、refreshDetailSuggestions",
       "kind": "seam"
     },
     {
@@ -451,7 +785,7 @@
       "start": 7460,
       "end": 7466,
       "lines": 7,
-      "why": "被外壳/C 外函数调用：renderLayoutDetectPlan、renderWordBoxesPlan",
+      "why": "被逻辑类调用者调用：renderLayoutDetectPlan、renderWordBoxesPlan",
       "kind": "seam"
     },
     {
@@ -459,23 +793,7 @@
       "start": 11643,
       "end": 11674,
       "lines": 32,
-      "why": "被外壳/C 外函数调用：afterCleanupApplied、afterContinuationChange、boot、confirmCurrentPage、finishConfirmPages、finishRunAutoPass…",
-      "kind": "seam"
-    },
-    {
-      "name": "loadLanguageSummary",
-      "start": 14646,
-      "end": 14664,
-      "lines": 19,
-      "why": "被外壳/C 外函数调用：showView",
-      "kind": "seam"
-    },
-    {
-      "name": "loadLayoutBlocks",
-      "start": 5538,
-      "end": 5577,
-      "lines": 40,
-      "why": "被外壳/C 外函数调用：scheduleLayoutBlocks",
+      "why": "被逻辑类调用者调用：afterCleanupApplied、afterContinuationChange、confirmCurrentPage、finishConfirmPages、finishRunAutoPass、finishRunLayout…（接线类另有：boot、setupReviewControls，不计）",
       "kind": "seam"
     },
     {
@@ -483,15 +801,15 @@
       "start": 6227,
       "end": 6244,
       "lines": 18,
-      "why": "被外壳/C 外函数调用：adoptPageNumberTemplate、hydrateView、removePageNumberRange、savePageNumberManual",
+      "why": "被逻辑类调用者调用：adoptPageNumberTemplate、hydrateView、removePageNumberRange、savePageNumberManual",
       "kind": "seam"
     },
     {
-      "name": "loadSetupSuggestions",
-      "start": 4226,
-      "end": 4244,
+      "name": "loadTasks",
+      "start": 7111,
+      "end": 7129,
       "lines": 19,
-      "why": "被外壳/C 外函数调用：showView",
+      "why": "被逻辑类调用者调用：controlJob、pollTask、refreshProject（接线类另有：setupTaskDrawer，不计）",
       "kind": "seam"
     },
     {
@@ -499,15 +817,23 @@
       "start": 822,
       "end": 825,
       "lines": 4,
-      "why": "被外壳/C 外函数调用：marginStepVerdict",
+      "why": "被逻辑类调用者调用：marginStepVerdict",
       "kind": "seam"
     },
     {
-      "name": "openPageSetup",
-      "start": 4215,
-      "end": 4224,
-      "lines": 10,
-      "why": "被外壳/C 外函数调用：boot",
+      "name": "marginBoxOfPage",
+      "start": 3048,
+      "end": 3053,
+      "lines": 6,
+      "why": "被逻辑类调用者调用：blockInsideMargin、paintReviewMargin、paintTileMargin、reviewMarginSplit、startTileMarginDrag",
+      "kind": "seam"
+    },
+    {
+      "name": "notifyApplied",
+      "start": 13824,
+      "end": 13828,
+      "lines": 5,
+      "why": "被逻辑类调用者调用：runSuggestionApply、undoAutoApply",
       "kind": "seam"
     },
     {
@@ -519,11 +845,11 @@
       "kind": "other-view-dom"
     },
     {
-      "name": "pageLayoutLines",
-      "start": 668,
-      "end": 670,
+      "name": "pageHasFitLines",
+      "start": 678,
+      "end": 680,
       "lines": 3,
-      "why": "被外壳/C 外函数调用：pageHasFitLines",
+      "why": "被逻辑类调用者调用：marginStepVerdict、pageMarginSourceLabel",
       "kind": "seam"
     },
     {
@@ -531,7 +857,23 @@
       "start": 3056,
       "end": 3060,
       "lines": 5,
-      "why": "被外壳/C 外函数调用：pageMarginSourceLabel",
+      "why": "被逻辑类调用者调用：pageMarginSourceLabel",
+      "kind": "seam"
+    },
+    {
+      "name": "pageMarginStorageKey",
+      "start": 3023,
+      "end": 3025,
+      "lines": 3,
+      "why": "被逻辑类调用者调用：loadPageMarginPreference",
+      "kind": "seam"
+    },
+    {
+      "name": "pageOverlayStorageKey",
+      "start": 2996,
+      "end": 2998,
+      "lines": 3,
+      "why": "被逻辑类调用者调用：loadPageOverlayPreference",
       "kind": "seam"
     },
     {
@@ -539,23 +881,15 @@
       "start": 4590,
       "end": 4592,
       "lines": 3,
-      "why": "被外壳/C 外函数调用：ensurePageScrollListener",
+      "why": "被逻辑类调用者调用：ensurePageScrollListener",
       "kind": "seam"
     },
     {
-      "name": "pageTextLines",
-      "start": 673,
-      "end": 675,
-      "lines": 3,
-      "why": "被外壳/C 外函数调用：pageHasFitLines",
-      "kind": "seam"
-    },
-    {
-      "name": "pausePageThumbnails",
-      "start": 142,
-      "end": 149,
-      "lines": 8,
-      "why": "被外壳/C 外函数调用：showView",
+      "name": "parsePageRange",
+      "start": 3705,
+      "end": 3724,
+      "lines": 20,
+      "why": "被逻辑类调用者调用：exportOptions",
       "kind": "seam"
     },
     {
@@ -563,15 +897,7 @@
       "start": 4898,
       "end": 4930,
       "lines": 33,
-      "why": "被外壳/C 外函数调用：scheduleOverlayPump",
-      "kind": "seam"
-    },
-    {
-      "name": "pumpPageSuggestionQueue",
-      "start": 3491,
-      "end": 3521,
-      "lines": 31,
-      "why": "被外壳/C 外函数调用：showView",
+      "why": "被逻辑类调用者调用：scheduleOverlayPump",
       "kind": "seam"
     },
     {
@@ -579,7 +905,7 @@
       "start": 4876,
       "end": 4886,
       "lines": 11,
-      "why": "被外壳/C 外函数调用：fetchPageBlocks",
+      "why": "被逻辑类调用者调用：fetchPageBlocks",
       "kind": "seam"
     },
     {
@@ -587,7 +913,7 @@
       "start": 2383,
       "end": 2388,
       "lines": 6,
-      "why": "被外壳/C 外函数调用：applyTileState、firstUnfinishedPanel、packageBlocksOnly、pageRecognized、pagerPages、pendingPageReasons…",
+      "why": "被逻辑类调用者调用：applyTileState、packageBlocksOnly、pageRecognized、pagerPages、pendingPageReasons、pumpPageBlockPrefetch…（接线类另有：setupLibrary，不计）",
       "kind": "seam"
     },
     {
@@ -599,19 +925,11 @@
       "kind": "other-view-dom"
     },
     {
-      "name": "recognizeSelection",
-      "start": 13429,
-      "end": 13462,
-      "lines": 34,
-      "why": "被外壳/C 外函数调用：setupLibrary",
-      "kind": "seam"
-    },
-    {
       "name": "refreshLayoutDetectEntry",
       "start": 961,
       "end": 973,
       "lines": 13,
-      "why": "被外壳/C 外函数调用：renderLayoutStatus",
+      "why": "被逻辑类调用者调用：renderLayoutStatus",
       "kind": "seam"
     },
     {
@@ -619,7 +937,7 @@
       "start": 935,
       "end": 958,
       "lines": 24,
-      "why": "被外壳/C 外函数调用：renderLayoutStatus",
+      "why": "被逻辑类调用者调用：renderLayoutStatus",
       "kind": "seam"
     },
     {
@@ -627,7 +945,7 @@
       "start": 5214,
       "end": 5225,
       "lines": 12,
-      "why": "被外壳/C 外函数调用：refreshMarginState",
+      "why": "被逻辑类调用者调用：refreshMarginState",
       "kind": "seam"
     },
     {
@@ -635,7 +953,7 @@
       "start": 7286,
       "end": 7298,
       "lines": 13,
-      "why": "被外壳/C 外函数调用：adoptAllHighSuggestions、afterCleanupApplied、applyCandidateBlock、cancelAssignment、confirmCurrentPage、confirmPageLayout…",
+      "why": "被逻辑类调用者调用：adoptAllHighSuggestions、afterCleanupApplied、applyCandidateBlock、cancelAssignment、confirmCurrentPage、confirmPageLayout…（接线类另有：setupReviewAutoPass，不计）",
       "kind": "seam"
     },
     {
@@ -643,7 +961,7 @@
       "start": 7252,
       "end": 7276,
       "lines": 25,
-      "why": "被外壳/C 外函数调用：pollTask",
+      "why": "被逻辑类调用者调用：pollTask",
       "kind": "seam"
     },
     {
@@ -651,7 +969,7 @@
       "start": 7038,
       "end": 7050,
       "lines": 13,
-      "why": "被外壳/C 外函数调用：applyHeaderFooter、controlJob",
+      "why": "被逻辑类调用者调用：applyHeaderFooter、controlJob",
       "kind": "seam"
     },
     {
@@ -659,15 +977,7 @@
       "start": 13711,
       "end": 13735,
       "lines": 25,
-      "why": "被外壳/C 外函数调用：loadAutoApplyStatus",
-      "kind": "seam"
-    },
-    {
-      "name": "renderLayoutBlocks",
-      "start": 5579,
-      "end": 5679,
-      "lines": 101,
-      "why": "被外壳/C 外函数调用：renderStepPanels、scheduleLayoutBlocks",
+      "why": "被逻辑类调用者调用：loadAutoApplyStatus",
       "kind": "seam"
     },
     {
@@ -675,7 +985,7 @@
       "start": 5390,
       "end": 5505,
       "lines": 116,
-      "why": "被外壳/C 外函数调用：refreshMarginState、renderStepPanels",
+      "why": "被逻辑类调用者调用：refreshMarginState",
       "kind": "seam"
     },
     {
@@ -683,7 +993,7 @@
       "start": 866,
       "end": 921,
       "lines": 56,
-      "why": "被外壳/C 外函数调用：reportLayoutDetectOutcome",
+      "why": "被逻辑类调用者调用：reportLayoutDetectOutcome",
       "kind": "seam"
     },
     {
@@ -691,15 +1001,7 @@
       "start": 6164,
       "end": 6207,
       "lines": 44,
-      "why": "被外壳/C 外函数调用：loadPageNumberMetrics、refreshPageNumberAnalysis",
-      "kind": "seam"
-    },
-    {
-      "name": "renderPageSetup",
-      "start": 4133,
-      "end": 4160,
-      "lines": 28,
-      "why": "被外壳/C 外函数调用：showView",
+      "why": "被逻辑类调用者调用：loadPageNumberMetrics、refreshPageNumberAnalysis",
       "kind": "seam"
     },
     {
@@ -707,7 +1009,7 @@
       "start": 6862,
       "end": 6885,
       "lines": 24,
-      "why": "被外壳/C 外函数调用：clearPageSelection、finishShowFallbackPages、handleTileClick、renderProject、selectAllVisiblePages、selectNextPage…",
+      "why": "被逻辑类调用者调用：clearPageSelection、finishShowFallbackPages、handleTileClick、renderProject、selectAllVisiblePages、selectNextPage（接线类另有：setupLibrary，不计）",
       "kind": "seam"
     },
     {
@@ -723,7 +1025,7 @@
       "start": 3238,
       "end": 3292,
       "lines": 55,
-      "why": "被外壳/C 外函数调用：boot、loadAppInfo",
+      "why": "被逻辑类调用者调用：loadAppInfo（接线类另有：boot，不计）",
       "kind": "seam"
     },
     {
@@ -731,7 +1033,15 @@
       "start": 5714,
       "end": 5761,
       "lines": 48,
-      "why": "被外壳/C 外函数调用：renderStepPanels、waitForAuxThenReview",
+      "why": "被逻辑类调用者调用：waitForAuxThenReview",
+      "kind": "seam"
+    },
+    {
+      "name": "renderStepPanels",
+      "start": 558,
+      "end": 618,
+      "lines": 61,
+      "why": "被逻辑类调用者调用：syncWorkflowSteps",
       "kind": "seam"
     },
     {
@@ -747,15 +1057,7 @@
       "start": 7359,
       "end": 7389,
       "lines": 31,
-      "why": "被外壳/C 外函数调用：loadWorkflow",
-      "kind": "seam"
-    },
-    {
-      "name": "rerunAuxiliary",
-      "start": 14672,
-      "end": 14692,
-      "lines": 21,
-      "why": "被外壳/C 外函数调用：setupLibrary",
+      "why": "被逻辑类调用者调用：loadWorkflow",
       "kind": "seam"
     },
     {
@@ -763,23 +1065,15 @@
       "start": 5250,
       "end": 5285,
       "lines": 36,
-      "why": "被外壳/C 外函数调用：onMarginPointerUp",
+      "why": "被逻辑类调用者调用：onMarginPointerUp",
       "kind": "seam"
     },
     {
-      "name": "selectionPages",
-      "start": 3750,
-      "end": 3752,
-      "lines": 3,
-      "why": "被外壳/C 外函数调用：layoutBlockPageRecord、setupLibrary、setupShell",
-      "kind": "seam"
-    },
-    {
-      "name": "setAutoApplySetting",
-      "start": 13830,
-      "end": 13861,
-      "lines": 32,
-      "why": "被外壳/C 外函数调用：setupLibrary",
+      "name": "schedulePageVisibility",
+      "start": 4638,
+      "end": 4645,
+      "lines": 8,
+      "why": "被逻辑类调用者调用：ensurePageScrollListener、refreshAfterTypeChanges（接线类另有：boot，不计）",
       "kind": "seam"
     },
     {
@@ -795,7 +1089,7 @@
       "start": 5229,
       "end": 5241,
       "lines": 13,
-      "why": "被外壳/C 外函数调用：reportLayoutDetectOutcome",
+      "why": "被逻辑类调用者调用：reportLayoutDetectOutcome",
       "kind": "seam"
     },
     {
@@ -803,7 +1097,7 @@
       "start": 6147,
       "end": 6159,
       "lines": 13,
-      "why": "被外壳/C 外函数调用：adoptPageNumberTemplate、removePageNumberRange、savePageNumberManual",
+      "why": "被逻辑类调用者调用：adoptPageNumberTemplate、removePageNumberRange、savePageNumberManual",
       "kind": "seam"
     },
     {
@@ -823,14 +1117,6 @@
       "kind": "other-view-dom"
     },
     {
-      "name": "setupPageMore",
-      "start": 7953,
-      "end": 7980,
-      "lines": 28,
-      "why": "被外壳/C 外函数调用：boot",
-      "kind": "seam"
-    },
-    {
       "name": "setupPageNumberPanel",
       "start": 6829,
       "end": 6844,
@@ -839,36 +1125,20 @@
       "kind": "other-view-dom"
     },
     {
-      "name": "setupRecognitionSettings",
-      "start": 3319,
-      "end": 3336,
-      "lines": 18,
-      "why": "被外壳/C 外函数调用：boot",
-      "kind": "seam"
-    },
-    {
       "name": "showError",
       "start": 69,
       "end": 79,
       "lines": 11,
-      "why": "被外壳/C 外函数调用：adoptPageNumberTemplate、applyCandidateBlock、applyHeaderFooter、boot、cancelAssignment、confirmCurrentPage…",
+      "why": "被逻辑类调用者调用：adoptPageNumberTemplate、applyCandidateBlock、applyHeaderFooter、cancelAssignment、confirmCurrentPage、confirmLockConflict…（接线类另有：boot、setupExportPanel，不计）",
       "kind": "seam"
     },
     {
-      "name": "startAuxiliaryAll",
-      "start": 5906,
-      "end": 5929,
-      "lines": 24,
-      "why": "被外壳/C 外函数调用：setupLibrary",
-      "kind": "seam"
-    },
-    {
-      "name": "startBatchRecognition",
-      "start": 6966,
-      "end": 6987,
-      "lines": 22,
-      "why": "被外壳/C 外函数调用：setupLibrary",
-      "kind": "seam"
+      "name": "showView",
+      "start": 210,
+      "end": 275,
+      "lines": 66,
+      "why": "引用段外 id：review-pager、topbar-library、topbar-project",
+      "kind": "other-view-dom"
     },
     {
       "name": "startLayoutDetectFromDialog",
@@ -883,7 +1153,7 @@
       "start": 7131,
       "end": 7143,
       "lines": 13,
-      "why": "被外壳/C 外函数调用：controlJob、loadTasks、waitForAuxThenReview",
+      "why": "被逻辑类调用者调用：controlJob、waitForAuxThenReview",
       "kind": "seam"
     },
     {
@@ -891,31 +1161,7 @@
       "start": 6893,
       "end": 6913,
       "lines": 21,
-      "why": "被外壳/C 外函数调用：pollTask",
-      "kind": "seam"
-    },
-    {
-      "name": "syncStepToggles",
-      "start": 626,
-      "end": 657,
-      "lines": 32,
-      "why": "被外壳/C 外函数调用：renderStepPanels",
-      "kind": "seam"
-    },
-    {
-      "name": "toggleMarginView",
-      "start": 5073,
-      "end": 5088,
-      "lines": 16,
-      "why": "被外壳/C 外函数调用：boot、setupLibrary",
-      "kind": "seam"
-    },
-    {
-      "name": "togglePageBlocksOverlay",
-      "start": 4854,
-      "end": 4868,
-      "lines": 15,
-      "why": "被外壳/C 外函数调用：boot、setupLibrary",
+      "why": "被逻辑类调用者调用：pollTask",
       "kind": "seam"
     },
     {
@@ -923,7 +1169,7 @@
       "start": 6064,
       "end": 6104,
       "lines": 41,
-      "why": "被外壳/C 外函数调用：marginUndoButton",
+      "why": "被逻辑类调用者调用：marginUndoButton",
       "kind": "seam"
     },
     {
@@ -931,7 +1177,7 @@
       "start": 7550,
       "end": 7565,
       "lines": 16,
-      "why": "被外壳/C 外函数调用：pollTask",
+      "why": "被逻辑类调用者调用：pollTask",
       "kind": "seam"
     },
     {
@@ -939,7 +1185,7 @@
       "start": 4655,
       "end": 4756,
       "lines": 102,
-      "why": "被外壳/C 外函数调用：buildTile、schedulePageVisibility",
+      "why": "被逻辑类调用者调用：buildTile",
       "kind": "seam"
     },
     {
@@ -947,15 +1193,7 @@
       "start": 5932,
       "end": 5950,
       "lines": 19,
-      "why": "被外壳/C 外函数调用：pollTask",
-      "kind": "seam"
-    },
-    {
-      "name": "updateSelectionPanel",
-      "start": 3754,
-      "end": 3920,
-      "lines": 167,
-      "why": "被外壳/C 外函数调用：notifyApplied",
+      "why": "被逻辑类调用者调用：pollTask",
       "kind": "seam"
     },
     {
@@ -963,7 +1201,7 @@
       "start": 3592,
       "end": 3610,
       "lines": 19,
-      "why": "被外壳/C 外函数调用：selectAllVisiblePages、selectNextPage、selectRangeTo、setupShell",
+      "why": "被逻辑类调用者调用：selectAllVisiblePages、selectNextPage、selectRangeTo（接线类另有：setupShell，不计）",
       "kind": "seam"
     }
   ],
