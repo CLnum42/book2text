@@ -47,6 +47,10 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import vm from "node:vm";
 import { execFileSync } from "node:child_process";
+// pages 的 R3 过渡豁免表（数据，不是逻辑）：一行一个 id → { 上限处数, 到期刀 }
+import {
+  PAGES_R3_EXEMPTIONS, PAGES_R3_TOTAL_CAP, PAGES_STAGE, PAGES_R3_PENDING,
+} from "./pages-r3-exemptions.mjs";
 import {
   BRIDGE_EXCEPTIONS,
   BRIDGE_EXCEPTION_MAX,
@@ -578,7 +582,7 @@ test("R4-dup 自检：两份真实现必须红，≤6 行转发必须绿，单�
   // 改名转发 → 不许豁免（借转发外形放行第二份真实现）
   const renamed = r4dupProblems([
     { file: "app.js", source: "function foo() { return window.PagesView.bar.apply(window.PagesView, arguments); }\n" },
-    { file: "page-pages.js", source: "function foo() {\n  a();\n  b();\n  c();\n}\n" },
+    { file: "pages-view.js", source: "function foo() {\n  a();\n  b();\n  c();\n}\n" },
   ]);
   assert.ok(renamed.some((item) => item.includes("两份真实现") || item.includes("找不到真实现")),
     `R4-dup 自检失败：foo 转发给 bar 也放过了——同名条件没生效（${renamed.join("；")}）`);
@@ -586,7 +590,7 @@ test("R4-dup 自检：两份真实现必须红，≤6 行转发必须绿，单�
   // 函数体夹 if / 多条语句 → 不是薄转发
   const sneaky = r4dupProblems([
     { file: "app.js", source: "function foo() {\n  if (x) return window.PagesView.foo.apply(window.PagesView, arguments);\n  return 2;\n}\n" },
-    { file: "page-pages.js", source: "function foo() {\n  a();\n  b();\n}\n" },
+    { file: "pages-view.js", source: "function foo() {\n  a();\n  b();\n}\n" },
   ]);
   assert.ok(sneaky.some((item) => item.includes("两份真实现")),
     `R4-dup 自检失败：夹了 if 的伪转发器被当成薄转发（${sneaky.join("；")}）`);
@@ -594,7 +598,7 @@ test("R4-dup 自检：两份真实现必须红，≤6 行转发必须绿，单�
   // 转发器形态的词汇表：`window.PagesView.fn.apply(...)` 也必须认
   const applyShape = r4dupProblems([
     { file: "app.js", source: "function pausePageThumbnails() { return window.PagesView.pausePageThumbnails.apply(window.PagesView, arguments); }\n" },
-    { file: "page-pages.js", source: "function pausePageThumbnails() {\n  a();\n  b();\n  c();\n  d();\n  e();\n  f();\n}\n" },
+    { file: "pages-view.js", source: "function pausePageThumbnails() {\n  a();\n  b();\n  c();\n  d();\n  e();\n  f();\n}\n" },
   ]);
   assert.deepEqual(applyShape, [], `R4-dup 自检失败：PagesView 的 .apply 转发没被认成薄转发——${applyShape.join("；")}`);
 
@@ -1406,13 +1410,37 @@ function domIdsIn(jsStripped) {
 }
 
 /**
+ * `stage2-movers-seed.md` 的「函数 → 刀号」映射（到期刀的唯一权威来源）。
+ * 文件不在 → 空表（判不了就跳过，由「待定/到期」那几条另行兜底）。
+ */
+function pagesSeedStages() {
+  const file = fileURLToPath(new URL("../../docs/refactor/evidence/pages/stage2-movers-seed.md", import.meta.url));
+  let text = "";
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    return new Map();
+  }
+  const map = new Map();
+  for (const m of text.matchAll(/^\| `([A-Za-z_$][\w$]*)` \| \d+ \| [^|]+ \| 刀(\d) \|/gm)) {
+    map.set(m[1], Number(m[2]));
+  }
+  return map;
+}
+
+/**
  * R3 的判定内核（纯函数：合成 html + 合成源码就能喂）。
  *
  * @param {{html: string, appSource: string, viewSources: {fileName: string, source: string}[],
  *          exemptions?: {id: string, owner?: string, expires?: string}[]}} input
  * @returns {string[]}
  */
-function r3Problems({ html, appSource, viewSources, exemptions = R3_EXEMPTIONS }) {
+function r3Problems({
+  html, appSource, viewSources, exemptions = R3_EXEMPTIONS,
+  // pages 走**另一张表**：到期按刀、上限按 id，和 reading 那 4 条（R3_MAX_EXEMPTIONS）互不影响。
+  pagesExemptions = PAGES_R3_EXEMPTIONS, pagesStage = PAGES_STAGE, pagesTotalCap = PAGES_R3_TOTAL_CAP,
+  pagesPendingCap = PAGES_R3_PENDING,
+}) {
   const sections = parseViewSections(html);
   const problems = [];
   if (!sections.has("reading")) {
@@ -1478,17 +1506,97 @@ function r3Problems({ html, appSource, viewSources, exemptions = R3_EXEMPTIONS }
       }
     }
   }
-  // 其它已落盘视图：app.js 里零引用（没有 block、没有豁免——它们的 DOM 全归模块）
+  // 其它已落盘视图：app.js 里零引用（没有 block、没有豁免——它们的 DOM 全归模块）。
+  // **pages 例外**：它按「逐 id 处数上限 + 到期刀」的过渡表放行（§r3-exemption-spec.md），
+  // 表是数据不是逻辑；reading 那 4 条（R3_EXEMPTIONS / R3_MAX_EXEMPTIONS）语义不变，两张表互不影响。
+  const pagesTable = new Map(pagesExemptions.map((item) => [item.id, item]));
+  let pagesActualTotal = 0;
   for (const [viewName, ids] of shippedViews) {
     if (readingOnly.has(viewName)) continue;
+    const table = viewName === "pages" ? pagesTable : new Map();
     for (const [id, occurrences] of appAllIds) {
       if (!ids.has(id)) continue;
-      for (const line of occurrences) {
+      const entry = table.get(id);
+      const expired = Boolean(entry) && entry.stage !== null && entry.stage <= pagesStage;
+      const allowed = entry && !expired ? entry.cap : 0;
+      if (viewName === "pages") pagesActualTotal += Math.min(occurrences.length, allowed);
+      if (occurrences.length <= allowed) continue;
+      for (const line of occurrences.slice(allowed)) {
         problems.push(
           `app.js:${line} 还引用着 view-${viewName} 的 id ${id}——这个视图已经有 `
-          + `${viewName}-view.js，旧字面量必须收干净`,
+          + `${viewName}-view.js，旧字面量必须收干净`
+          + (entry ? `（登记上限 ${entry.cap} 处，实际 ${occurrences.length} 处）` : ""),
         );
       }
+    }
+  }
+  // pages 过渡表的三条自检口径：总量上限、到期不搬、条目必须真实存在
+  if (shippedViews.has("pages")) {
+    if (pagesActualTotal > pagesTotalCap) {
+      problems.push(`pages 的 R3 过渡豁免合计 ${pagesActualTotal} 处 > 上限 ${pagesTotalCap} 处——表或代码漂了`);
+    }
+    for (const item of pagesExemptions) {
+      const occurrences = appAllIds.get(item.id) || [];
+      if (item.stage !== null && item.stage <= pagesStage && occurrences.length > 0) {
+        problems.push(`豁免 ${item.id} 到期（刀 ${item.stage}）但 app.js 还引用着 ${occurrences.length} 处——到期不搬 = 红`);
+      }
+    }
+    const seedStages = pagesSeedStages();
+
+    // **函数集合对集**：seed 的 69 个函数 == 表里 id 的引用函数并集。
+    // 挡住「换了 seed 但表没重算」——那种漂不会红，只会让整张表偏早或偏晚。
+    if (seedStages.size > 0) {
+      const union = new Set();
+      for (const id of pagesTable.keys()) {
+        for (const line of appAllIds.get(id) || []) {
+          const fn = ownerOfLine(line);
+          if (fn) union.add(fn.name);
+        }
+      }
+      const onlySeed = [...seedStages.keys()].filter((name) => !union.has(name));
+      const onlyTable = [...union].filter((name) => !seedStages.has(name));
+      if (onlySeed.length > 0 || onlyTable.length > 0) {
+        problems.push(
+          `pages 的 seed 与实测函数集合不等（seed ${seedStages.size} 个 / 实测 ${union.size} 个）：`
+          + `只在 seed：${onlySeed.slice(0, 3).join("、") || "无"}；只在实测：${onlyTable.slice(0, 3).join("、") || "无"}`
+          + "——换了 seed 就要按 max 重算一遍到期刀",
+        );
+      }
+    }
+
+    // **到期刀不许手调**：必须等于「引用它的所有函数在 seed 里的最大刀号」。
+    // 没有这条，谁都能为了让它早点到期把刀号填小——表就变成可调参数了。
+    if (seedStages.size > 0) {
+      for (const item of pagesExemptions) {
+        if (item.stage === null) continue;
+        const occurrences = appAllIds.get(item.id) || [];
+        const stages = [];
+        let unmapped = false;
+        for (const line of occurrences) {
+          const fn = ownerOfLine(line);
+          if (!fn || !seedStages.has(fn.name)) { unmapped = true; continue; }
+          stages.push(seedStages.get(fn.name));
+        }
+        if (unmapped || stages.length === 0) continue;   // seed 漏函数 / 顶层引用：判不了，跳过
+        const expected = Math.max(...stages);
+        if (item.stage !== expected) {
+          problems.push(
+            `豁免 ${item.id} 的到期刀 ${item.stage} ≠ 现算的 max ${expected}`
+            + `（引用它的函数在 seed 里的最大刀号）——到期刀不许手调`,
+          );
+        }
+      }
+    }
+
+    // 待定项本身是"没有到期日"的项：刀 1 允许有（名单还没出），刀 2 起必须为 0——
+    // 定不出来就说明刀 2–5 的名单没出，那是真缺口，不许拿"待定"长期挂着。
+    const pendingCount = pagesExemptions.filter((item) => item.stage === null).length;
+    if (pagesStage >= 2 && pendingCount > 0) {
+      problems.push(`刀 ${pagesStage} 已落盘，但豁免表里还有 ${pendingCount} 项「待定」——`
+        + `刀 1 之后不许有待定（引用它的函数排进哪一刀，到期刀就是那一刀）`);
+    }
+    if (pendingCount > pagesPendingCap) {
+      problems.push(`待定项 ${pendingCount} > 上限 ${pagesPendingCap}——待定数只降不升（和导出棘轮同形）`);
     }
   }
 
@@ -1502,6 +1610,68 @@ function r3Problems({ html, appSource, viewSources, exemptions = R3_EXEMPTIONS }
   }
   return problems;
 }
+
+/**
+ * pages 的 R3 过渡豁免表自检（三条，缺一条这张表就成了白名单）：
+ * ① 去掉任意一个 id 的豁免 → 红；② 处数超上限 → 红；③ 到期（刀）之后仍有引用 → 红。
+ */
+test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未搬，都必须红", () => {
+  const html = '<section id="view-reading"></section>'
+    + '<section id="view-pages"><div id="a"></div><div id="b"></div></section>';
+  const appSource = 'el("a"); el("a"); el("b");';
+  const viewSources = [{ fileName: "pages-view.js", source: "" }];
+  const base = {
+    html, appSource, viewSources,
+    // reading 的 4 条豁免是另一个机制，这张合成夹具里不掺进来
+    exemptions: [],
+    pagesStage: 1, pagesTotalCap: 3, pagesPendingCap: 2,
+  };
+
+  const green = r3Problems({
+    ...base,
+    pagesExemptions: [{ id: "a", cap: 2, stage: null }, { id: "b", cap: 1, stage: null }],
+  });
+  assert.deepEqual(green, [], `R3 pages 自检失败：合规表被误报——${green.join("；")}`);
+
+  // ① 去掉 b 的豁免：b 还有 1 处引用 → 必须红
+  const dropped = r3Problems({ ...base, pagesExemptions: [{ id: "a", cap: 2, stage: null }] });
+  assert.ok(
+    dropped.some((item) => item.includes("id b")),
+    `R3 pages 自检失败：去掉一个 id 的豁免也放过——${dropped.join("；")}`,
+  );
+
+  // ② 处数超上限：a 实际 2 处，登记 1 处 → 必须红
+  const over = r3Problems({
+    ...base,
+    pagesExemptions: [{ id: "a", cap: 1, stage: null }, { id: "b", cap: 1, stage: null }],
+  });
+  assert.ok(
+    over.some((item) => item.includes("登记上限 1 处，实际 2 处")),
+    `R3 pages 自检失败：超上限也放过——${over.join("；")}`,
+  );
+
+  // ④ 刀 2 起不许有待定项（定不出来 = 刀 2–5 名单没出）
+  const pendingAtStage2 = r3Problems({
+    ...base,
+    pagesStage: 2,
+    pagesExemptions: [{ id: "a", cap: 2, stage: 2 }, { id: "b", cap: 1, stage: null }],
+  });
+  assert.ok(
+    pendingAtStage2.some((item) => item.includes("还有 1 项「待定」")),
+    `R3 pages 自检失败：刀 2 还有待定项也放过——${pendingAtStage2.join("；")}`,
+  );
+
+  // ③ 到期未搬：a 的到期刀 = 2，当前刀 = 2 → 必须红
+  const expired = r3Problems({
+    ...base,
+    pagesStage: 2,
+    pagesExemptions: [{ id: "a", cap: 2, stage: 2 }, { id: "b", cap: 1, stage: null }],
+  });
+  assert.ok(
+    expired.some((item) => item.includes("到期（刀 2）")),
+    `R3 pages 自检失败：到期不搬也放过——${expired.join("；")}`,
+  );
+});
 
 test("R3：模块文件只许碰自己 section 的 id；app.js 对 reading 子树的引用必须在豁免表里", () => {
   const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
@@ -1774,6 +1944,11 @@ const OWNERS = {
   readingIntentStats: "reading-view.js",
   readingFlushRaf: "reading-view.js",
   readingSplitState: "reading-view.js",
+  // pages 刀 1：**owner 只给 rules.py 的 MOVED_STATES**（权威来源，别手抄、别按上一轮的 10 项）。
+  // 其余状态仍归外壳：app.js 里的 setter lambda（`setPageBlockPending: (v) => { … }`）是合法写点，
+  // 它们本来就不在 OWNERS 里。
+  layoutBlockLoading: "pages-view.js",
+  setupSuggestionsLoading: "pages-view.js",
 };
 const R5_MAX_EXCUSES = 0;   // 现状零豁免；将来开口必须显式改这个数
 const R5_EXCUSES = [];      // { state, file, owner, expires }
@@ -1865,6 +2040,8 @@ const VIEW_STATE_PREFIXES = {
   "library-view.js": /^(library|LIBRARY_)/,
   // merge-view.js 也是 IIFE：mergeHandled / mergeDecisions / mergeActivePageId 全在闭包内
   "merge-view.js": /^(merge|MERGE_)/,
+  // pages-view.js：IIFE 形态，状态都在闭包里；模块级常量（若将来有）按 pages/PAGES_ 命名空间。
+  "pages-view.js": /^(pages|PAGES_)/,
 };
 
 test("R5 防漏检：每个视图模块的顶层状态都必须在 OWNERS 里，且 owner 指向自己", () => {
@@ -2393,6 +2570,17 @@ const VIEW_EXPORTS = {
   "library-view.js": { names: ["init", "enter", "notify", "open"] },
   // 2：init / enter（§20.10 定稿）；renderMergeView 不导出——外壳设 mergeState 后 showView 进
   "merge-view.js": { names: ["init", "enter"] },
+  // 刀 1 落盘时 20 个键（**权威来源 = docs/refactor/evidence/pages/rules.py 的 INTERFACE**，
+  // 不是按 app.js 现扫——回滚后的 app.js 里 `PagesView.` 是 0 个，扫出来是空的）。
+  // 收敛棘轮：本刀 20 → 终点 3（enter / render / refresh，刀 5 收敛到此），刀 2–5 每刀**严格下降**；
+  // 导出面必须**扁平**（api 直接挂函数，不许嵌套对象）——R6 只锁接口名，深度由本表 + 自检锁。
+  "pages-view.js": { names: [
+    "init", "ensureMarginFitted", "loadLayoutBlocks", "loadSetupSuggestions", "refreshRecognizedPages",
+    "reloadProjectPages", "renderLayoutBlocks", "renderMarginPanel", "renderPageSetup", "renderPages",
+    "renderRecognitionStatus", "renderRecognitionVerdict", "renderSuggestionPanel", "renderTypePicker",
+    "savePageMargin", "syncPageStates", "undoMarginEdit", "updateMarginDetectProgress",
+    "updatePageVisibility", "updateSelectionPanel",
+  ] },
 };
 
 /** 在干净的 vm 里加载某个视图模块，读出它的接口对象的 key（不加载 app.js）。 */

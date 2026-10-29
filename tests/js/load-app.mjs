@@ -11,10 +11,57 @@
 // 2. 需要 document / location 等浏览器对象的函数不能测。第一阶段只测**纯函数**：参数进、值出。
 // 3. 文件末尾那次 boot() 会被剥掉（见下）。这只是测试脚手架的一次性处理，不是改源码：
 //    app.js 本身、index.html、后端一律不碰。
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import vm from "node:vm";
 
 const DEFAULT_APP_PATH = new URL("../../backend/book2text/static/app.js", import.meta.url);
+
+const STATIC_DIR = fileURLToPath(new URL("../../backend/book2text/static/", import.meta.url));
+
+/** 从源码里的 `injected.X` 生成一份最小注入表（模块 init 只是存起来，不会在载入时调用它们）。 */
+function moduleDeps(ctx, source) {
+  const names = [...new Set([...source.matchAll(/injected\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]))];
+  const deps = {};
+  for (const name of names) {
+    deps[name] = name === "el"
+      ? (id) => ctx.document.getElementById(id)
+      : () => undefined;
+  }
+  return deps;
+}
+
+/**
+ * 在 app.js **之前**载入视图模块（index.html 的顺序：模块先、app.js 后）。
+ *
+ * **载的是真实模块**（不是替身/桩）：替身会把"模块少一个函数"变成绿——那正是这套夹具被撤回过的理由。
+ * 模块不存在时**不抛**：打印一行「<名字> 未载入，跳过加载」并记进报告，由用例自己决定 skip——
+ * **skip 要能被看见，不许静默当通过**。
+ */
+export function preloadModules(ctx, names, moduleDir = STATIC_DIR) {
+  const report = [];
+  for (const name of names) {
+    const file = join(moduleDir, name);
+    if (!existsSync(file)) {
+      console.log(`… ${name} 未载入，跳过加载（模块尚未落盘）`);
+      report.push({ name, loaded: false, reason: "missing" });
+      continue;
+    }
+    const source = readFileSync(file, "utf8");
+    vm.runInContext(source, ctx, { filename: file });
+    const apiName = Object.keys(ctx).find((key) => {
+      const value = ctx[key];
+      return value && typeof value === "object" && typeof value.init === "function";
+    });
+    if (!apiName) {
+      throw new Error(`preloadModules: 载入了 ${name}，但没找到 window.XxxView = { init() } 接口——模块结构变了`);
+    }
+    ctx[apiName].init(moduleDeps(ctx, source));
+    report.push({ name, loaded: true, api: apiName });
+  }
+  return report;
+}
 
 /** 文件末尾的 boot() 调用：必须在最后，且前面只有空白。 */
 const BOOT_CALL_TAIL = /\nboot\(\);[ \t]*\r?\n?[ \t]*$/;
@@ -101,6 +148,9 @@ export function loadApp(options = {}) {
   sandbox.globalThis = sandbox;
 
   const ctx = vm.createContext(sandbox);
+  // **顺序固定**：模块先、app.js 后（与 index.html 的 <script> 顺序一致）。
+  // 默认预载 pages-view.js：app.js 现在真的调 window.PagesView，不载就是 undefined.renderPageSetup。
+  ctx.__preloadedModules = preloadModules(ctx, options.modules || ["pages-view.js"], options.moduleDir || STATIC_DIR);
   vm.runInContext(src, ctx, { filename: String(appPath) });
 
   // 自检：本文件要用的函数必须真的存在，别让用例在 undefined 上做无意义的断言。
