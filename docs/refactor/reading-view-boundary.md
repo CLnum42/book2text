@@ -1126,7 +1126,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 
 | T6 | **建 SCC 快照机制**：脚本算环内边 → 写 `docs/refactor/scc-snapshot.json`；与上次 diff，新增边必须解释或修掉 | 破环阶段末；之后每次大重构末 | 未做 |
 | T5 | **导出棘轮按模块建**（`VIEW_EXPORTS`：`ReadingView` 6 / `PreviewView` 3 / `IndexView` 4，新 `*-view.js` 不登记即红） | 每拆一个视图都必须同批登记 | **已完成** `477beea`（D-100 条件 ③） |
-| T6 | **`loadLibrary()` 不隐藏 `#library-error`**（`app.js:2550` 只 `el("library-warning").hidden = true`）——上一次加载失败的错误会留在页面上，成功的刷新也不清。其余四个操作（`deleteProject` / `createProjectFromFile` / `openProject` / `openPackageFile`）都在开头 `el("library-error").hidden = true`，只有它没有 | **随 `library` 切片一起改**（那几行本来就要搬进模块）；改完 e2e 的 B 条可以从 `warning` 扩到 `error` | 未做（一行） |
+| T6 | **`loadLibrary()` 不隐藏 `#library-error`**——上一次加载失败的错误会留在页面上，成功的刷新也不清（其余四个操作开头都清，只有它没有） | 已单独一笔修（**不混进搬运**，否则逐字节证书作废） | **已完成** `032d7cb`（stash 对照：修前 `hidden=false` → 修后 `hidden=true`） |
 
 ### T4 裁决证据（2026-10-29，真浏览器实测）
 
