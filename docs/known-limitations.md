@@ -1661,6 +1661,37 @@ readingPendingPanelKey = null / readingPendingPanelEntry = null
 **判据**：如果三次以上都落在同一条 → 改判为「特定 entry 打不开面板」，与 L-107 分家写。
 如果换构建就漂到别的位置 → 回到竞态，按下面的抓法查。
 
+**机制找到了（2026-10-29，QA 的 DOM 量具抓到分类 + 读代码）**：
+
+QA 用纯 DOM（MutationObserver 守 `#reading-panel-host`）把 1/100 那次分成 `opened-then-cleared`：
+34ms 内开/清 3 轮，最后一次只清不挂。同一次点击的日志是 `panelOpened:true` / `branch:next-lines` / **无 retry**
+（retry 只在 `!settled` 时排），说明 `settlePanel` 当时判的是**成功**。
+
+四步，全部有代码位置：
+
+```
+① gotoReadingEntry → openReadingPanel(entry)     面板挂上，readingPanelKey = key
+② settlePanel(entry)                             查到面板在 → clearPendingPanel() → 返回 true
+                                                 → 此刻 pending 全空、key 非空
+③ 一次带 reset 的重绘                             readingPanelKey 被清成 null（reset 清的就是它）
+                                                 然后 refreshReadingCurrentHighlight()
+                                                 然后执行收尾：if (!key && !pendingEntry && !pendingKey) hideReadingPanelHost()
+                                                 → 三个都空 → host.innerHTML="" + hidden=true
+④ retryReadingPendingPanel()                     if (!pendingEntry && !key) 里去找 host 的 .reading-panel 当 stub
+                                                 → 但 ③ 已经把 host 清空 → stub 为空 → 直接 return
+```
+
+**"三个变量都空"被当成了"面板是旧的"，但 `readingPanelKey` 为空的原因恰恰是③刚把它清掉**——
+host 里那个面板可能还是**对的**。规则判错了对象：它判的是"变量空不空"，该判的是"host 里那个面板的
+`dataset.key` 还认不认得出来"。
+
+**为什么 1/100**：要求「① 之后、④ 之前」恰好插进一次带 reset 的重绘，且 ④ 执行时 host 已被清空。
+稀但不随机。
+
+**修法（单独一轮，本刀不动）**：把 ③ 的收尾改成"先从 host 的 `dataset.key` 反查条目"，
+查得到就**只恢复 `readingPanelKey`、不清 DOM**（`retryReadingPendingPanel` 本来就有这段逻辑，只是跑在 ③ 之后）；
+查不到才 `hideReadingPanelHost()`。要附：1/100 的复现脚本（`qa.py panel_lifecycle --times 200`）+ 修前修后对照。
+
 **下次怎么抓（要哪几个量）**：
 1. `panelPage` / `panelVisible` / `readingPanelKey`
 2. pending 两个值（**失败时是 null 还是 undefined——这两种指向不同断点**）
