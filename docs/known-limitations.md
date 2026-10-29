@@ -1593,6 +1593,18 @@ QA 复核 51529b8：连按 20 次 → 失败也落在 index 17
 2. 它的 `branch`（`__b2tNextLog`）在同一次运行里是 `next-lines` 还是别的；
 3. 换一台机器 / 换一次冷启，看它是否**仍然**落在第 18 条——若仍然，就是数据相关，不是竞态。
 
+**已排除的一条（2026-10-29，读代码 + 读探针）**：**不是"开晚了"**。
+`gotoReadingEntry` 里有一个 260ms 的自愈重试（`if (!document.querySelector("#reading-panel-host .reading-panel")) openReadingPanel(entry)`）；
+而 `nextProbe` 在**面板缺失**时，第一步 `waitForFunction`（面板页码 = 顶部页码）会先耗满 **3 秒超时**，
+再加 1.5 秒等行高亮、150ms 稳定窗 —— 快照至少落在点击后 **约 4.65 秒**，260ms 的重试早跑过了。
+所以"面板没开"是**重试之后仍然没开**，不是测早了。
+
+**读代码得到的三个候选**（都要靠 `__b2tNextLog.branch` 才能挑一个，别猜）：
+1. `branch: "missing"` —— `ensureReadingMarksWindow(target.page_no)` 回来后 `readingEntries` 里仍查不到这条（窗口没铺到）→ 直接 return，`gotoReadingEntry` 根本没跑；
+2. `branch: "retry"` —— `gotoReadingEntry` 跑了，但 `entry.seq` 不在 `readingVisibleSegments()` 里（`index < 0`）→ `jumpReadingTo` 不执行，面板开了又被 `settlePanel` / 重绘清掉；
+3. `openReadingPanel` 压根没被调用 —— `gotoReadingEntry` 里有 `if (!readingDrafts.has(key)) openReadingPanel(entry)`，
+   **这条 entry 若被判定为"已有草稿"，面板就不会开**（`gotoNextUnreviewed` 的 `usable` 过滤也按草稿排除，两处口径必须一致）。
+
 **判据**：如果三次以上都落在同一条 → 改判为「特定 entry 打不开面板」，与 L-107 分家写。
 如果换构建就漂到别的位置 → 回到竞态，按下面的抓法查。
 
