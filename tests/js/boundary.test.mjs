@@ -1737,6 +1737,8 @@ const VIEW_STATE_PREFIXES = {
   // library-view.js 是 IIFE 形态：顶层状态全在闭包里（列 2），模块自己不留状态——
   // 状态一律走注入的 getter/setter（libraryProjects / lockConflictTarget 留在外壳）。
   "library-view.js": /^(library|LIBRARY_)/,
+  // merge-view.js 也是 IIFE：mergeHandled / mergeDecisions / mergeActivePageId 全在闭包内
+  "merge-view.js": /^(merge|MERGE_)/,
 };
 
 test("R5 防漏检：每个视图模块的顶层状态都必须在 OWNERS 里，且 owner 指向自己", () => {
@@ -2201,6 +2203,8 @@ const VIEW_EXPORTS = {
   // 4：生命周期三件 + 一个域操作（D-100 完整形态；Chief 2026-10-29 裁定 B 签字）
   // open = 打开一个项目，外壳的锁冲突确认 / 任务包打开 / 备份还原都调它
   "library-view.js": { names: ["init", "enter", "notify", "open"] },
+  // 2：init / enter（§20.10 定稿）；renderMergeView 不导出——外壳设 mergeState 后 showView 进
+  "merge-view.js": { names: ["init", "enter"] },
 };
 
 /** 在干净的 vm 里加载某个视图模块，读出它的接口对象的 key（不加载 app.js）。 */
