@@ -414,7 +414,10 @@ function classify(def) {
     .join("\n")
     .replace(/;$/, "")
     .trim();
-  const forwards = /^(?:return\s+)?(?:window\.)?ReadingView\.[A-Za-z_$][\w$]*\s*\([\s\S]*\)$/.test(statement);
+  // 转发器形态：`window.<XxxView>.fn(...)`，允许 `.apply/.call` 转发参数
+  // （2026-10-29：pages 刀生成的转发是 `return window.PagesView.fn.apply(window.PagesView, arguments)`，
+  //  旧正则只认 `ReadingView.fn(`，于是 63 条薄转发被误判成"两份真实现"——闸的词汇表落后于实际形态）。
+  const forwards = /^(?:return\s+)?(?:window\.)?[A-Z][A-Za-z0-9]*View\.[A-Za-z_$][\w$]*(?:\.(?:apply|call))?\s*\([\s\S]*\)$/.test(statement);
   if (!forwards) return { kind: "real" };
   if (lines.length > 6) return { kind: "stubTooLong", why: `函数体 ${lines.length} 行（上限 6）` };
   return { kind: "stub" };
@@ -564,6 +567,13 @@ test("R4-dup 自检：两份真实现必须红，≤6 行转发必须绿，单�
   // 注意：`classify()` 认的转发桩形态目前**只认 ReadingView**
   // （`window.ReadingView.x(...)`）；别的模块的转发会被判成真实现。这是已知限制，
   // 试点的做法是"第一个模块之外的转发不让存在"（切片时不切"调用方还在 app.js"的函数）。
+  // 转发器形态的词汇表：`window.PagesView.fn.apply(...)` 也必须认
+  const applyShape = r4dupProblems([
+    { file: "app.js", source: "function pausePageThumbnails() { return window.PagesView.pausePageThumbnails.apply(window.PagesView, arguments); }\n" },
+    { file: "page-pages.js", source: "function pausePageThumbnails() {\n  a();\n  b();\n  c();\n  d();\n  e();\n  f();\n}\n" },
+  ]);
+  assert.deepEqual(applyShape, [], `R4-dup 自检失败：PagesView 的 .apply 转发没被认成薄转发——${applyShape.join("；")}`);
+
   const green = r4dupProblems([
     { file: "app.js", source: "function tick() {\n  return window.ReadingView.tick();\n}\n" },
     { file: "x-view.js", source: "function tick() {\n  return 2;\n}\n" },
