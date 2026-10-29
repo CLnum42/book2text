@@ -112,6 +112,8 @@ export async function run(cfg) {
       return await gotoProbe(page, args);
     case "next20_probe":
       return await next20Probe(page, args);
+    case "quality_probe":
+      return await qualityProbe(page, args);
     case "next_log":
       return await page.evaluate(() => window.__b2tNextLog || []);
     case "queue_end":
@@ -3313,6 +3315,80 @@ async function next20Probe(page, args) {
   }
   const log = await page.evaluate(() => (window.__next20Log || []).slice(-30));
   return { rows, log };
+}
+
+/** 目录确认：换清晰度档 → 按钮文案 + 可见页图 size 参数是否跟着换。 */
+async function qualityProbe(page, args) {
+  const mode = args.mode || "cycle";
+  await dismissMasks(page);
+  await page.click('button[data-workflow-step="index"]', { label: "进目录确认" });
+  await waitFor(page, () => {
+    const v = document.getElementById("view-index");
+    return Boolean(v && !v.hidden);
+  }, "目录确认视图可见", 60000);
+  await page.waitForTimeout(1200);
+
+  const read = () =>
+    page.evaluate(() => {
+      const btn = document.getElementById("index-quality");
+      const canvas = document.getElementById("index-canvas");
+      let imgs = [];
+      if (canvas) {
+        const cr = canvas.getBoundingClientRect();
+        imgs = [...document.querySelectorAll(".index-page img")]
+          .filter((img) => {
+            const r = img.getBoundingClientRect();
+            return r.bottom > cr.top && r.top < cr.bottom && r.width > 0;
+          })
+          .slice(0, 3)
+          .map((img) => {
+            const m = (img.currentSrc || img.src || "").match(/[?&]size=([a-z]+)/);
+            return {
+              page: Number((img.closest("[data-page-no]") || {}).dataset?.pageNo) || null,
+              size: m ? m[1] : null,
+              naturalWidth: img.naturalWidth,
+              cssWidth: Math.round(img.getBoundingClientRect().width),
+              ready: img.classList.contains("is-ready"),
+            };
+          });
+      }
+      return {
+        buttonText: btn ? btn.textContent.replace(/\s+/g, "") : null,
+        buttonTitle: btn ? btn.title : null,
+        checkedRadio: (document.querySelector('input[name="reading-quality"]:checked') || {}).value || null,
+        imgs,
+        meta: (document.getElementById("index-meta") || {}).textContent || "",
+        pageNo: (document.getElementById("index-page-no") || {}).textContent || "",
+        listCurrent: (document.querySelector("#index-list .is-current") || {}).textContent || null,
+      };
+    });
+
+  if (mode === "read") return { state: await read() };
+
+  const steps = [];
+  for (let i = 1; i <= 3; i += 1) {
+    await page.click("#index-quality", { label: `换清晰度 ${i}` });
+    await page.waitForTimeout(1800);
+    steps.push({ i, ...(await read()) });
+  }
+  let radioCheck = null;
+  if (mode === "radio") {
+    // 设置面板里的三档 radio：打开"显示 ▾"，点 high
+    const box = await page.evaluate(() => {
+      const r = document.querySelector('input[name="reading-quality"][value="high"]');
+      if (!r) return null;
+      const rect = r.getBoundingClientRect();
+      return { visible: rect.width > 0 && rect.height > 0, x: rect.x + 5, y: rect.y + rect.height / 2 };
+    });
+    if (box && box.visible) {
+      await page.mouse.click(box.x, box.y, { label: "设置面板选高清" });
+      await page.waitForTimeout(1500);
+      radioCheck = await read();
+    } else {
+      radioCheck = { error: "radio 不可见（设置面板没开）", box };
+    }
+  }
+  return { steps, radioCheck };
 }
 
 async function nextProbe(page) {
