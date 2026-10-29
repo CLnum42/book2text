@@ -65,6 +65,16 @@ export function registrationApprover(sha, docText) {
   return cell === undefined ? null : cell.trim();
 }
 
+/**
+ * `Approved-by:` trailer（§18.6 2026-10-29「签名走 trailer」）。
+ * 容忍 `Approved-by: DevLead` 与 `Approved-by:DevLead` 两种写法；返回 null = 没有这个 trailer。
+ */
+export function approvedByTrailer(message) {
+  if (typeof message !== "string") return null;
+  const match = /^[ \t]*Approved-by[ \t]*:[ \t]*(\S.*?)[ \t]*$/im.exec(message);
+  return match ? match[1].trim() : null;
+}
+
 /** 提交作者（显示名原样返回：可能含空格/中文，所以整串比，不切字段）。 */
 export function commitAuthor(sha) {
   try {
@@ -252,6 +262,7 @@ function registrationGap(sha, docText, kindLabel, author = null) {
  */
 export function commitContractProblems({
   sha, subject, files, deletions, deletedFiles = [], docText, moveChanges = null, author = null,
+  message = null,
 }) {
   const short = sha.slice(0, 7);
   const problems = [];            // 形态段：pre-commit 拦
@@ -283,9 +294,28 @@ export function commitContractProblems({
   const needsRegistration = isMove || (deletions > 0 && touchesTests && isContract);
   let exempt = false;
   if (needsRegistration) {
-    const gap = registrationGap(sha, docText, isMove ? "move: 笔" : "test-contract 提交", author);
-    if (gap) registryProblems.push(gap);
-    else exempt = true;
+    const kindLabel = isMove ? "move: 笔" : "test-contract 提交";
+    const trailer = approvedByTrailer(message);
+    if (trailer !== null) {
+      // 新笔：签名走 trailer。值是别人 = 已复核；等于作者 = 自己批自己。
+      if (author && trailer === author) {
+        registryProblems.push(
+          `A3: ${short} 的 Approved-by 是它自己的提交作者（${author}）——自己签自己不算第二人复核`,
+        );
+      } else {
+        exempt = true;
+      }
+    } else if (!registeredIn1886(sha, docText)) {
+      // 既没有 trailer、也没有表格登记行 → 缺签字（历史笔不在此列，它们有登记行）
+      registryProblems.push(
+        `A3: ${short} 是 ${kindLabel}，但提交信息里没有 Approved-by trailer（也没登记在 §18.6）`,
+      );
+    } else {
+      // 历史笔（trailer 规则之前）：回落到表格判定，两套并存，不一刀切。
+      const gap = registrationGap(sha, docText, kindLabel, author);
+      if (gap) registryProblems.push(gap);
+      else exempt = true;
+    }
   }
 
   // A1b：删 tests/js 的文件不算改断言。
@@ -417,6 +447,7 @@ export function evaluateFeatureContract({ baseTag = "ring-break-base", docPath =
         .split("\n").filter(Boolean),
       docText,
       author: commitAuthor(sha),
+      message: git(["show", "-s", "--format=%B", sha]),
       moveChanges: /^move[(:]/.test(subject) ? moveChangesFromGit(sha) : null,
     });
     problems.push(...verdict.problems);

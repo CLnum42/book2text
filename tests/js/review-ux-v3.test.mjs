@@ -67,6 +67,8 @@ function parseCompound(part) {
 function matchesCompound(node, compound) {
   if (compound.tag && node.tagName !== compound.tag.toUpperCase()) return false;
   if (compound.id && node.id !== compound.id) return false;
+  // 文本节点（nodeType 3）不参与 class / 属性选择器——真实 DOM 也是这样。
+  if (node.nodeType !== 1 || !node.classList) return false;
   if (!compound.classes.every((name) => node.classList.contains(name))) return false;
   if (compound.dataKey !== null && node.dataset.key !== compound.dataKey) return false;
   return true;
@@ -319,11 +321,20 @@ ctx.localStorage = {
   key(index) { return [...this._store.keys()][index] ?? null; },
   get length() { return this._store.size; },
 };
+// rAF 只入队、不立即执行：`renderReading({reset:true})` 结束时会把"待开面板"入队，
+// 立即执行会盖住我们要判的那段 reset 分支。要跑队列时显式 flushRaf()。
+const RAF_QUEUE = [];
 ctx.requestAnimationFrame = (callback) => {
-  callback(0);
-  return 1;
+  RAF_QUEUE.push(callback);
+  return RAF_QUEUE.length;
 };
 ctx.cancelAnimationFrame = () => {};
+const flushRaf = () => {
+  for (const callback of RAF_QUEUE.splice(0)) callback(0);
+};
+// 可控时钟：面板保护是「2.5s 内刚开的不当残留」，不能靠真实时间碰运气。
+let NOW = 1000;
+ctx.performance = { now: () => NOW };
 
 const NOTICES = [];
 let INITIALIZED = false;
@@ -365,6 +376,10 @@ function installDependencies() {
   ctx.drawReadingPdfBox = () => {};
   ctx.updateReadingPage = () => {};
   ctx.noteReadingAction = () => {};
+  // renderReading 的铺段链路：本文件只判面板保护，不判段落渲染。
+  // 段数固定 1（< READING_CHUNK=8）→ 不铺哨兵，避免把别的东西扯进来。
+  ctx.readingVisibleSegments = () => [{ seq: 1, text: "合成正文", line_spans: [], pages: [] }];
+  ctx.buildReadingSegment = () => document.createElement("div");
   return state;
 }
 
@@ -373,10 +388,14 @@ let STATE = installDependencies();
 /** 每条用例都从空状态出发。 */
 function reset() {
   document.reset();
+  RAF_QUEUE.length = 0;
+  NOW = 1000;
   NOTICES.length = 0;
   STATE = installDependencies();
   run(`readingPageNo = 1; readingPanelKey = null; readingEditingKey = null;
-       readingEntries = []; readingDrafts = new Map(); readingCursorEntry = null;`);
+       readingEntries = []; readingDrafts = new Map(); readingCursorEntry = null;
+       // 模块的 rAF 句柄也要归零：否则 queueReadingIntent 以为"已排过帧"，不再排新帧
+       readingFlushRaf = 0; readingIntents.clear();`);
 }
 
 /**
@@ -526,4 +545,72 @@ test("③ 默认焦点在「保留原文」：打开面板直接按 Enter 就生
   const drafts = draftList();
   assert.equal(drafts.length, 1, "焦点在「保留原文」时按 Enter 没有生效（没有记成裁决）");
   assert.equal(drafts[0].ack, "kept", "焦点在「保留原文」时按 Enter 记成了别的裁决");
+});
+
+// ---------------------------------------------------------------- ④ 重绘不能吃掉面板
+
+/**
+ * aac4568：判决即前进会「换页 + 重绘」，`renderReading({reset:true})` 会把 `readingPanelKey`
+ * 清成 null，而面板 DOM 在 `#reading-panel-host` 里、重绘碰不到它——旧代码把这种"宿主里还有面板"
+ * 一律当**残留**藏掉，于是用户刚判完一条，面板就没了。
+ *
+ * 判据：刚开（< 2500ms）的面板要**认回当前项**（还原 key、不藏宿主）；< 2500 改成 < 0 必须红。
+ */
+test("④ reset 晚到一步：刚开（2.5s 内）的面板不能被当残留藏掉", () => {
+  reset();
+  const entry = makeEntry("b1", 0, 1, { current: LINE_A, candidate: CAND_A });
+  openPanel(entry);
+  const host = document.getElementById("reading-panel-host");
+  run("readingData = { segments: [] };");
+
+  NOW = 1000; // 刚开 0ms：reset 晚到一步
+  run("renderReading({ reset: true })");
+
+  // 先判用户看得见的那个：面板还在不在。再判内部后果（key 丢了 → 下一条判决会落错）。
+  assert.equal(host.hidden, false,
+    "刚开（2.5s 内）的面板被 reset 当残留藏掉了——用户刚判完一条，面板就消失了");
+  assert.ok(host.querySelector(".reading-panel"), "面板 DOM 被清掉了（面板应该跨重绘存活）");
+  assert.equal(run("readingPanelKey"), "b1:0", "面板还在，但当前项的 key 被清了——下一条判决会落到错的地方");
+});
+
+/** 反面：真的很旧（> 2.5s）的残留面板必须被藏掉，否则正文回第 1 页、宿主还挂着第 368 页的面板。 */
+test("④ 过期的残留面板仍要藏掉（2.5s 保护不是永久豁免）", () => {
+  reset();
+  const entry = makeEntry("b1", 0, 1, { current: LINE_A, candidate: CAND_A });
+  openPanel(entry);
+  const host = document.getElementById("reading-panel-host");
+  run("readingData = { segments: [] };");
+
+  NOW = 1000 + 5000; // 明显过期
+  run("renderReading({ reset: true })");
+
+  assert.equal(host.hidden, true, "过期的残留面板没被藏掉——正文和面板会对不上页");
+  assert.equal(run("readingPanelKey"), null, "过期面板的 key 还被认成当前项");
+});
+
+/**
+ * aac4568 的另一半：`setPanel` 挂起的"待开面板"必须跨重绘，数据到达后由
+ * `retryReadingPendingPanel()` 补开。`retry` 直接 return 必须红。
+ */
+test("④ 重绘后待开面板必须补开：retryReadingPendingPanel 不许直接 return", () => {
+  reset();
+  const entry = makeEntry("b1", 0, 1, { current: LINE_A, candidate: CAND_A });
+  ctx.__entry = entry;
+  run(`readingData = { segments: [] };
+       readingPendingPanelEntry = __entry;
+       readingPendingPanelKey = "b1:0";
+       readingPanelKey = null;`);
+
+  run("renderReading({ reset: true })");   // 重绘：行节点被清掉，面板挂起中
+
+  // 数据到达：目标行重新挂上
+  const line = document.createElement("div");
+  line.className = "reading-line";
+  line.dataset.key = "b1:0";
+  document.getElementById("reading-stream").append(line);
+
+  flushRaf();   // 帧末消费 "panel" 意图 → retryReadingPendingPanel
+
+  assert.ok(panelNode(), "挂起的待开面板在重绘后没有补开——用户点了差异却看到空白");
+  assert.equal(run("readingPanelKey"), "b1:0", "补开面板之后当前项没有恢复");
 });

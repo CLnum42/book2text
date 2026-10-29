@@ -2047,6 +2047,44 @@ test("R12 自检：产品卷测试必须红、未登记/非 test-contract 删除
 });
 
 /**
+ * §18.6「签名走 trailer」自检（DevLead 2026-10-29）：合成提交各喂一条。
+ * 判据 1 缺 trailer → 红并点名字；2 等于作者 → 红（自己批自己）；3 是别人 → 绿（两种写法都认）。
+ */
+test("R12 自检：Approved-by trailer——缺 → 红 / 等于作者 → 红 / 别人 → 绿（含无空格写法）", () => {
+  const docText = [
+    "### 18.6 判据变更登记",
+    "| 日期 | 判据 | 变更 | 批准人 | 提交 |",
+    "|---|---|---|---|---|",
+  ].join("\n");
+  const base = {
+    sha: "abc9999", subject: "test-contract: 合成", files: ["tests/js/boundary.test.mjs"],
+    deletions: 2, docText, author: "CLnum42",
+  };
+  const body = "test-contract: 合成\n\n删：旧断言；补：更严的；变异：改坏一次红在目标行";
+
+  const missing = commitContractProblems({ ...base, message: body });
+  assert.ok(
+    missing.registryProblems.some((item) => item.includes("没有 Approved-by trailer") && item.includes("abc9999")),
+    `R12 自检失败：缺 Approved-by trailer 也放过——${missing.registryProblems.join("；")}`,
+  );
+
+  const selfSigned = commitContractProblems({ ...base, message: `${body}\n\nApproved-by: CLnum42` });
+  assert.ok(
+    selfSigned.registryProblems.some((item) => item.includes("自己签自己")),
+    `R12 自检失败：自己批自己（Approved-by == %an）也放过——${selfSigned.registryProblems.join("；")}`,
+  );
+
+  const other = commitContractProblems({ ...base, message: `${body}\n\nApproved-by: DevLead` });
+  assert.deepEqual(other.registryProblems, [],
+    `R12 自检失败：别人签的还报红——${other.registryProblems.join("；")}`);
+  assert.equal(other.exempt, true, "R12 自检失败：有签字的提交没被豁免 A1b");
+
+  const noSpace = commitContractProblems({ ...base, message: `${body}\n\nApproved-by:DevLead` });
+  assert.deepEqual(noSpace.registryProblems, [],
+    `R12 自检失败：无空格写法（Approved-by:DevLead）没认出来——${noSpace.registryProblems.join("；")}`);
+});
+
+/**
  * `move:` 笔类自检（Chief 2026-10-29，三条缺一条这条收窄就是开天窗）。
  * 夹具都走**真内核**：`tableBlockRanges` 从合成源码派生块边界，`moveScopeProblems` 判放行。
  */
