@@ -1233,6 +1233,7 @@ const deps = {
 | `PreviewView` | `init/enter`（2） | 2026-10-29 下调（原 3，删 `exit`） | 见 §19 T4 |
 | `IndexView` | `init/enter/refresh`（3） | 2026-10-29 批准 4 个，同日删 `exit` 降到 3 | 见下 + §19 T4 |
 | `LibraryView` | `init/enter/notify`（**3**） | **2026-10-30 批准**（§20.8） | 5 个真实调用点（任务包导入/备份还原/第二引擎重跑） |
+| `MergeView` | `init/enter`（**2**） | **2026-10-30 定稿**（§20.10，撤销早前对 `renderMergeView` 的签字） | `enter` 有 showView 分支调用；state 走注入 getter |
 
 **合计 10 个导出**（5+3+2）。**这张表和代码是同一份事实的两个副本，机检已经接上**：`tests/js/boundary.test.mjs` 的 `VIEW_EXPORTS` 登记每个 `*-view.js` 的导出名单——多一个 / 少一个 / 改名都红，**新 `*-view.js` 落盘不登记也红**。本表不会悄悄过期：和代码不一致时机检当场报，不用等下一个读注释的人。
 
