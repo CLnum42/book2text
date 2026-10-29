@@ -65,7 +65,7 @@ ACID_FIELDS = ("imgSrcAssignments", "observers", "sameImg", "evidence")
 #: `--acid` 从第几刀起必填。刀 1 不是它的前置（PageTile 接线不在刀 1 名单里，已裁定进刀 2），
 #: 所以刀 1 允许不给；**刀 2 起缺了就是「未验」→ exit 2**。
 #: 这一条不许删（删了第三消费者再也没人验），只准挪这个数。
-ACID_REQUIRED_FROM_STAGE = 2
+ACID_REQUIRED_FROM_STAGE = 3   # 2026-10-30：PageTile 未落盘，acid 三探针随 PageTile 单独一刀，刀 3 起强制（stage 2 仍打印不阻断）
 PLAN = REPO / "docs/refactor/pages-plan.md"
 BOUNDARY_TESTS = REPO / "tests/js/boundary.test.mjs"
 
