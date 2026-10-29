@@ -41,6 +41,7 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+APP_REL = "backend/book2text/static/app.js"
 REPO = SCRIPT_DIR.parent
 STATIC = REPO / "backend/book2text/static"
 APP = STATIC / "app.js"
@@ -333,9 +334,34 @@ def baseline() -> dict:
     top_raw = data.get("行数")
     top = _as_dict(top_raw)
     sc = _as_dict(data.get("states_and_consts"))
+    # 三种已知名单形态按顺序试；一条都不命中就**主动报错**，绝不许带着 None 往下走到格式化
+    # （2026-10-30：stage2-movers.json 用「基线.appLines」这第三种形态，老代码没认，
+    #   结果在 `{base['app_lines']:,}` 处抛 TypeError + exit 70——看起来像产品坏了，实际是读的人没跟上。）
+    tried = []
     app_lines = (data.get("口径", {}) or {}).get("app.js 行数")
+    tried.append('口径."app.js 行数"=' + repr(app_lines))
     if app_lines is None:
         app_lines = data.get("基线_app_js_行数")
+        tried.append("基线_app_js_行数=" + repr(app_lines))
+    if app_lines is None:
+        app_lines = (data.get("基线") or {}).get("appLines")
+        tried.append("基线.appLines=" + repr(app_lines))
+    if not isinstance(app_lines, int):
+        keys = sorted(data.keys())
+        sys.exit(f"✗ 名单里读不到基线 app.js 行数：试过 {len(tried)} 种形态都没命中\n"
+                 f"   试过的：{'; '.join(tried)}\n"
+                 f"   文件顶层键：{keys}\n"
+                 f"   → 名单换了新形态就必须在 baseline() 里加一支，且加完跑反证（正/负各一次）。")
+    # 交叉核对：名单自称的基线 head + appLines 必须与那棵树的真实行数一致（防「基线抄错」）
+    head = (data.get("基线") or {}).get("head")
+    if head:
+        got = subprocess.run(["git", "show", f"{head}:{APP_REL}"], cwd=REPO,
+                             capture_output=True, text=True)
+        if got.returncode == 0:
+            real = len(got.stdout.split("\n")) - (1 if got.stdout.endswith("\n") else 0)
+            if real != app_lines:
+                sys.exit(f"✗ 基线自称 appLines={app_lines}，但 `git show {head}:{APP_REL} | wc -l` 是 {real}"
+                         f"——基线抄错了，先查名单，别改判据")
     movers_lines = lines.get("movers", top.get("movers"))
     if movers_lines is None and isinstance(top_raw, int):
         movers_lines = top_raw          # 按刀名单把"这一刀的行数"直接写在顶层 `行数`
