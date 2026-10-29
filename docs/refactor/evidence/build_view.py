@@ -263,8 +263,9 @@ def main():
             if anchor is None:
                 print(f"!! INIT_ANCHOR 找不到：{rules.INIT_ANCHOR}"); return 2
             indent = re.match(r"^(\s*)", lines[anchor]).group(1)
-            init_lines = (f"{indent}window.{a.name}View.init({{\n" + deps_literal(rules) + f"\n{indent}}});").split("\n")
-            lines[anchor + 1:anchor + 1] = init_lines
+            init_lines = (f"{indent}if (window.{a.name}View) window.{a.name}View.init({{\n"
+                          + deps_literal(rules) + f"\n{indent}}});").split("\n")
+            lines[anchor:anchor] = init_lines          # 插在锚点**之前**：锚点用 `boot();`，插完就在顶层、boot 仍最后
 
     os.makedirs(a.out, exist_ok=True)
     open(os.path.join(a.out, "module.js"), "w", encoding="utf-8").write(module)

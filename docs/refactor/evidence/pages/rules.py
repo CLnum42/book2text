@@ -235,7 +235,7 @@ INTERFACE = """
 
 #: 让生成器把 app.js 里 63 个函数体换成转发（保住 async），并在 `setupLibrary();` 之后调 init 一次。
 FORWARDERS = True
-INIT_ANCHOR = "  setupLibrary();"
+INIT_ANCHOR = "boot();"
 
 EXPECT_SEAMS = 37      # 函数接缝（**不含 el**：el 是模块自建，见 MODULE_LOCAL）
 EXPECT_STATES = 45     # 状态/常量；46 = 45 + el（el 在 IDENT 里）
