@@ -124,6 +124,23 @@ B2T_STATIC_DIR=/tmp/rb-base/backend/book2text/static node tests/js/edge-ratchet.
 - 3 条 app.js 内部桥走例外表（`edge-ratchet.mjs` 的 `BRIDGE_EXCEPTIONS`）：带 owner + 到期点、
   上限 3、归零即过期。**总条数始终 13**——改总数等于悄悄放宽
 
+**视图模块的对外接口（R6 / R2）**
+
+- **R6**：每个 `static/*-view.js` 只许露**一个** `window.XxxYyy = …`，名字由文件名决定
+  （`preview-view.js` → `PreviewView`）。两个接口 = 调用方不知道该记哪个，导出面也没法守。
+  `window.__b2t*` 是调试/统计埋点，不算接口，但进例外表 `WINDOW_HOOK_EXCEPTIONS`：
+  带 owner + 到期点、`MAX` 只降不升、**条目必须真的还在源码里**（删埋点同批删表项）。
+  新增一个未登记的 `window.__b2tXxx` 也红——接口面就是这么被"顺手挂个调试对象"撑大的。
+- **R2**：`x-view.js` 里不许出现 `window.YView`（Y ≠ X）的任何引用，跨视图能力一律走 `init(deps)`。
+  直接摸对方的全局对象 = 把"模块先加载"的时序假设从 app.js 搬进模块之间，又变成运气。
+- 两条现在都只有一个模块可查（`reading-view.js` → `ReadingView`），R2 暂时空转；
+  **现在上闸的意义是：第二个模块出现时它已经在了**，不靠谁记得补。
+- 两条各带自检：喂合成的 `preview-view.js`（名字错 / 两个接口 / 引用 `window.ReadingView`）
+  必须红，正例必须绿——闸必须能被样例喂红，否则"绿"只是"扫描器没看见"。
+
+**机检覆盖：11/11**
+（R1 R2 R3 R4 R5 R6 R7 R8 R9 R11 R12；**R10 是评审清单、不能机检，不计入分母**）
+
 **闸 A · 特征测试契约**
 
 - 静态部分（A1/A1b/A3）在 `boundary.test.mjs` 的 R12：产品提交不许碰 `tests/js`；序列删除行 = 0；

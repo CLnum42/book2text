@@ -484,6 +484,179 @@ test("R7：index.html 不许出现 type=module，且模块先于 app.js 加载",
   );
 });
 
+// ---------------------------------------------------------------- R6 / R2：视图模块的对外接口
+
+/**
+ * **规格：docs/refactor/reading-view-boundary.md §20**
+ *
+ * - **R6（一个文件一个窗口接口对象）**：`static/*-view.js` 里对 `window.XxxYyy =` 的赋值必须**恰好 1 处**，
+ *   且名字由文件名决定（`preview-view.js` → `PreviewView`，`reading-view.js` → `ReadingView`）。
+ *   为什么：接口是模块唯一的对外面；两个接口对象 = 调用方不知道该记哪个，导出面也没法守（R8）。
+ * - **R2（视图间互引）**：`x-view.js` 里不许出现 `window.YView`（Y ≠ X）的任何引用。
+ *   跨视图能力一律走 `init(deps)` 注入——直接摸对方的全局对象，等于把"模块先加载"的时序假设
+ *   从 app.js 搬到模块之间，谁先加载谁后加载又变成运气。
+ *
+ * 两条都是**纯文本**判定（去注释/字符串后扫），喂合成样例就能红（见各自的"自检"用例）。
+ */
+function expectedInterfaceName(fileName) {
+  const base = fileName.replace(/\.js$/, "").replace(/-view$/, "");
+  return base.split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join("") + "View";
+}
+
+/**
+ * 例外表：**调试/统计埋点**（`window.__b2t*`）。它们不是"模块接口"，是给 QA 与单测看的旁路数据。
+ *
+ * 但也不许无限长：每条带 owner 与到期点，`MAX` 只降不升，**条目必须真的还在源码里**
+ * （删埋点要同批删表项——和 R4b/R3 的例外表同一条纪律：表不许变成墓地）。
+ * 新增一个 `window.__b2tXxx = …` 而不登记 = 红：接口面就是这么一点点被埋点撑大的。
+ */
+const WINDOW_HOOK_EXCEPTIONS = [
+  { name: "__b2tWordBoxStats", owner: "TestDev", expires: "字框映射问题关闭" },
+  { name: "__b2tPagePin", owner: "DevLead", expires: "页同步问题关闭" },
+  { name: "__b2tReadingMetrics", owner: "QA", expires: "审校性能验收完成" },
+  { name: "__b2tPageSync", owner: "QA", expires: "页同步验收完成" },
+  { name: "__b2tPageSyncLog", owner: "QA", expires: "页同步验收完成" },
+  { name: "__b2tNextLog", owner: "QA", expires: "队列验收完成" },
+  { name: "__b2tTextCheckFails", owner: "QA", expires: "文本核对验收完成" },
+];
+const WINDOW_HOOK_MAX = 7;   // 只降不升
+
+/** R6 的判定内核（独立出来，好让自检喂合成样例）。 */
+function windowInterfaceProblems(fileName, source) {
+  const text = stripCommentsAndStrings(source);
+  // 只认"整条 window.NAME = 值"（`window.addEventListener(…)` 是调用，不是赋值；
+  // `window.foo.bar = …` 是 foo 内部的事，也不算露接口）
+  const assigned = [...text.matchAll(/(?<![\w$.])window\s*\.\s*([A-Za-z_$][\w$]*)\s*=(?!=)/g)]
+    .map((match) => match[1]);
+  const hooks = new Set(WINDOW_HOOK_EXCEPTIONS.map((item) => item.name));
+  const interfaces = assigned.filter((name) => !hooks.has(name));
+  const expected = expectedInterfaceName(fileName);
+  const problems = [];
+  if (interfaces.length === 0) problems.push(`${fileName}: 没有 window.XxxYyy = … 接口对象——模块对外没有面`);
+  if (interfaces.length > 1) {
+    problems.push(`${fileName}: 露了 ${interfaces.length} 个 window 接口对象（${interfaces.join("、")}），一个文件只许 1 个`);
+  }
+  for (const name of interfaces) {
+    if (name !== expected) problems.push(`${fileName}: 接口对象叫 ${name}，按文件名应为 ${expected}`);
+  }
+  return problems;
+}
+
+/**
+ * 埋点三件事（只对**真实文件**跑；合成样例里没有那些埋点，跑它只会误报）：
+ * ① 新埋点必须登记；② 登记了但源码里没有 = 表过期；③ 条目数必须等于 MAX（只降不升）。
+ */
+function windowHookProblems(fileName, source) {
+  const text = stripCommentsAndStrings(source);
+  const assigned = [...text.matchAll(/(?<![\w$.])window\s*\.\s*([A-Za-z_$][\w$]*)\s*=(?!=)/g)]
+    .map((match) => match[1]);
+  const registered = new Set(WINDOW_HOOK_EXCEPTIONS.map((item) => item.name));
+  const problems = [];
+  for (const name of assigned) {
+    if (name.startsWith("__b2t") && !registered.has(name)) {
+      problems.push(`${fileName}: 未登记的 window 埋点 ${name} —— 新增埋点要进 WINDOW_HOOK_EXCEPTIONS（带 owner 与到期点）`);
+    }
+  }
+  for (const item of WINDOW_HOOK_EXCEPTIONS) {
+    if (!assigned.includes(item.name)) {
+      problems.push(`${fileName}: 例外表挂着不存在的埋点 ${item.name} —— 删埋点请同批删表项`);
+    }
+  }
+  if (WINDOW_HOOK_EXCEPTIONS.length !== WINDOW_HOOK_MAX) {
+    problems.push(`埋点例外 ${WINDOW_HOOK_EXCEPTIONS.length} 条，MAX=${WINDOW_HOOK_MAX}：删条目必须同批改 MAX（只降不升）`);
+  }
+  return problems;
+}
+
+/** R2 的判定内核（独立出来，好让自检喂合成样例）。 */
+function crossViewProblems(fileName, source) {
+  const own = expectedInterfaceName(fileName);
+  const text = stripCommentsAndStrings(source);
+  const problems = [];
+  for (const match of text.matchAll(/(?<![\w$.])window\s*\.\s*([A-Za-z_$][\w$]*View)\b/g)) {
+    if (match[1] === own) continue;                       // 自己的接口
+    problems.push(
+      `${fileName}: 引用了别的视图的接口 window.${match[1]}——跨视图能力必须走 init(deps) 注入`,
+    );
+  }
+  return problems;
+}
+
+const VIEW_MODULES = readdirSync(STATIC_DIR).filter((name) => name.endsWith("-view.js")).sort();
+
+test("R6：每个视图模块恰好露一个 window.XxxView，名字由文件名决定", () => {
+  assert.ok(VIEW_MODULES.length > 0, `static 目录里一个 *-view.js 都没有（${STATIC_DIR}）——这条闸会空转`);
+  const problems = [];
+  for (const fileName of VIEW_MODULES) {
+    const source = readFileSync(join(STATIC_DIR, fileName), "utf8");
+    problems.push(...windowInterfaceProblems(fileName, source));
+    problems.push(...windowHookProblems(fileName, source));
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("R2：视图模块之间不许直接引用对方的 window 接口", () => {
+  assert.ok(VIEW_MODULES.length > 0, `static 目录里一个 *-view.js 都没有（${STATIC_DIR}）——这条闸会空转`);
+  const problems = [];
+  for (const fileName of VIEW_MODULES) {
+    problems.push(...crossViewProblems(fileName, readFileSync(join(STATIC_DIR, fileName), "utf8")));
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+/**
+ * 两条的自检（L-106 第四层：闸必须能被样例喂红）。
+ * 合成样例 = 将来第二个模块最可能的两种错法：接口名字错、跨视图直接摸对方全局对象。
+ */
+test("R6/R2 自检：接口名字错、多露一个接口、跨视图引用，都必须红", () => {
+  // R6：名字错
+  assert.ok(
+    windowInterfaceProblems("preview-view.js", "window.ReadingView = { init };").length > 0,
+    "R6 自检失败：preview-view.js 露 ReadingView 也放过了——名字没按文件名校验",
+  );
+  // R6：没露接口
+  assert.ok(
+    windowInterfaceProblems("preview-view.js", "function init() {}").length > 0,
+    "R6 自检失败：模块一个接口对象都没有也放过",
+  );
+  // R6：露了两个
+  assert.ok(
+    windowInterfaceProblems("preview-view.js", "window.PreviewView = {};\nwindow.Helper = {};").length > 0,
+    "R6 自检失败：一个文件两个 window 接口对象也放过",
+  );
+  // R6：正例必须绿
+  assert.deepEqual(
+    windowInterfaceProblems("preview-view.js", "window.PreviewView = { init, enter };"),
+    [],
+    "R6 自检失败：正例被误报",
+  );
+  // R6：未登记的 window 埋点也必须红（否则接口面会被"顺手挂个调试对象"一点点撑大）
+  assert.ok(
+    windowHookProblems("preview-view.js", "window.__b2tNewThing = 1;").some((item) => item.includes("未登记")),
+    "R6 自检失败：新增未登记的 __b2t 埋点也放过",
+  );
+
+  // R2：跨视图引用
+  assert.ok(
+    crossViewProblems("preview-view.js", "window.ReadingView.reload();").length > 0,
+    "R2 自检失败：preview-view.js 里摸 window.ReadingView 也放过——这正是要挡的写法",
+  );
+  // R2：自己的接口、以及注释/字符串里的同名字样都不许误报
+  assert.deepEqual(
+    crossViewProblems("preview-view.js", "window.PreviewView.init();"),
+    [],
+    "R2 自检失败：引用自己的接口被误报",
+  );
+  assert.deepEqual(
+    crossViewProblems("reading-view.js", "// 这里说明 window.PreviewView 由 preview 模块提供\nwindow.ReadingView = {};"),
+    [],
+    "R2 自检失败：注释里提到别的视图也误报",
+  );
+});
+
 // ---------------------------------------------------------------- R4b：同文件同名真实现
 
 /**
