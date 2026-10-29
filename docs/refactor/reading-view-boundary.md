@@ -1123,6 +1123,7 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 | 回调边 | 9 | 每条：`caller` 函数体内 `callee` 出现 = 0 |
 
 **桥（4）**：`setupReading`、`openPageDetail`、`renderMergeView`、`submitMergeDecisions` —— 改走注入的 `navigate()`。
+**现状（2026-10-29，`cef331b` 之后）**：4 条里 3 条已 0——`setupReading` 随 L1 模块化归零、`renderMergeView` / `submitMergeDecisions` 随 merge 搬迁切到 `navigate()`（`edge-budget` 同笔记 0，桥例外上限 3→1）；只剩 `openPageDetail` 1 处（例外，到期点 = pages 搬进模块）。
 **回调边（9）**：`renderReading→ensureReadingMarksWindow`、`renderReading→retryReadingPendingPanel`、`renderReadingTree→ensureReadingMarksWindow`、`renderReadingTree→scrollReadingToPage`、`openReadingPanel→updateReadingPage`、`setReadingHover→ensureReadingBlocks`、`verifyReadingPageSync→updateReadingPage`、`gotoReadingEntry→jumpReadingTo`、`gotoReadingEntry→updateReadingPage`。
 
 **棘轮**：13 条合计预期 **0**，任何一条从 0 变 ≥1 = 红。**红/绿证据**：在**真 base**（merge 落地后打的 tag，见 §18.2 基点现状）上同一份检查必须红出 **13/13**（证明抓得到这些边），最终提交 0/13。**当前 tag `ring-break-base` = `afe20fe` 是 L0 树，暂停使用**；今天在它上面跑只会红在「模块没拆」，红的原因不对。模块里 `showView` 现在还挂在 R1 例外表上，破环后该行必须删、例外表回 0 行（上限 3 不动）。
@@ -1144,6 +1145,8 @@ R 编号由 TestDev 在闸表里领，§2 的 R1–R8 不动。
 | 输出文件 | `docs/refactor/evidence/edge-ratchet-<shortsha>.txt`，原样 stdout，随 tag 同批提交 |
 
 **判据**：输出里必须**逐条列出 13 条边的名字**且每条标 RED。少于 13 条 = 不许打 tag；也不许把证据降成 N/13 再宣布通过——那走 §18.6 登记到期点。
+
+> **⚠ 现状与这条判据冲突（2026-10-29 实测，待 Chief 裁决）**：真 base 会是 merge 之后那笔，而当前代码里 13 项已经 **6 RED / 7 GREEN**——`setupReading` 与 6 条回调边在 L1–L4 模块化 / merge 搬迁时归零（`edge-budget` 各自记 0），green 的 7 项在真 base 上不会再红。**旧 tag `afe20fe`（L0）仍是 13/13 红，但那不是回放基**。所以「13/13 红证据」在真 base 上不可能满足；替代口径要么是「6 RED + 7 GREEN（每条 GREEN 注明归零提交）」，要么是把证据拆成「6 条现役边的红 + 7 条各自切边提交的变异」。**两种都需要 Chief 点头，本行不改判据。**
 
 **打 tag 那一笔的同批动作（过渡态不许活成终态）**：
 1. 把 CI 里 `contract-registry --strict --allow-transitional-base` 的 `--allow-transitional-base` **删掉**。那面 flag 的存在是因为 tag 现在还打在 L0 上；真 base 一打出，它就成了「CI 永远放行 base 不合格」的常开开关。同批不删 = 这个 tag 不算切完。
@@ -1216,6 +1219,8 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 
 | 2026-10-29 | registry 读数口径 + base 树自检 | 删：`0 笔（N 笔提交的 §18.6 登记齐全）`——base 不是回放基时这句会被读成结论。补：base 不合法时输出 `过渡范围 <base>..HEAD（N 笔）：… 不许当「登记齐全」用`；新增 `baseTreeGap()`——`<base>:static` 与 HEAD 的 `*-view.js` 集合必须相等，不等 fail closed（`--strict` 红），过渡期须显式 `--allow-transitional-base` 且输出注明；`--base <ref>` 可换基点。变异：base=`afe20fe`（只有 reading-view.js）→ 红并说明两种红会混；`--base HEAD` → 绿「HEAD..HEAD（0 笔）登记齐全」；`--strict` 配 tag → exit 1，配 HEAD → exit 0。**三条读数 DevLead 已复跑**：默认 exit 0（带过渡红字）、`--strict` exit 1、`--strict --base HEAD` exit 0 | DevLead | a78188d |
 | 2026-10-29 | base 自检改口径 | 删：`baseTreeGap` 用「tag 树 = 运行时 HEAD 的 `*-view.js` 集合」判回放基（merge 后 HEAD 合法长模块会误红）。补：expected 改为冻结记录 `tests/js/replay-base-modules.txt`，切 tag 同批更新；记录缺失/为空/多写 = 红（fail closed）；运行时不读 HEAD 集合。变异：`tag=afe20fe` → 红（`[reading-view.js]` ≠ 记录 4 个）、`--strict` exit 1；`--base HEAD` → 绿；删记录 → 红「base 判定不能猜」；多写 `merge-view.js` → 红。**四条 DevLead 已复跑**，外加第 5 条：临时 clone 里真造出 `merge-view.js` 使 HEAD 有 5 个模块、`--base HEAD~1`（4 个模块）→ 绿（实测输出 `0 笔不合格（HEAD~1..HEAD（1 笔）登记齐全）`） | DevLead | 68adf16 |
+| 2026-10-29 | 桥例外退休（merge 搬迁） | 删：`BRIDGE_EXCEPTIONS` 里 `renderMergeView` / `submitMergeDecisions` 两条（到期点正是「merge 视图搬进模块时」）；补：`BRIDGE_EXCEPTION_MAX` 3→1；13 条仍全在（退休的是例外，不是边）。变异：搬迁后把两条例外加回去、计数已归零 → `桥例外 submitMergeDecisions 已经归零（切掉了），请同批删除例外`（本笔落地后第一次全量跑就红在这条消息上）；删掉例外 → 绿 | DevLead | 8e95b8e |
+| 2026-10-29 | move(merge) 落盘 | 删：`app.js` 14 函数（`charDiff`/`diffMiddle`/`mergeVisiblePages`/`renderMergeView`/`showMergePage`/`loadMergePageImage`/`drawMergeOverlay`/`mergeBlockItem`/`decideMergePage`/`mergePageRow`/`renderMergeListView`/`renderMergeFooter`/`submitMergeDecisions`/`acceptAllClean`）+ 3 处 merge 控件绑定 + 两处 `renderMergeView(payload)` 直调；补：`merge-view.js`（613 行、IIFE、2 导出 `init`/`enter`）+ `showView` 的 merge 分支 + boot 的 11 键注入 + 静态 `#merge-footer`（R3：模块不许引用 HTML 里没有的 id）。变异：删 script 标签 → R7「index.html 里没有 merge-view.js 的 `<script>`」；模块多一个导出 `refresh` → R8「多出未申报的导出」；外壳不传 `getMergeState` → R13「模块读了 injected.getMergeState（必读形态），但外壳注入表里没有这个键」 | DevLead | cef331b |
 只有 DevLead 能加行。没有登记行的放宽一律按违规算。
 
 ---
@@ -1347,7 +1352,7 @@ const deps = {
 | `PreviewView` | `init/enter`（2） | init **1** / enter **4** | — | 2026-10-29 下调（原 3，删 `exit`） |
 | `IndexView` | `init/enter/refresh`（3） | init **1** / enter **1** / refresh **6** | — | 2026-10-29 批准 4 个，同日删 `exit` 降到 3 |
 | `LibraryView` | `init/enter/notify`（3） | 未落盘；预计 1 / 1 / **5** | — | **2026-10-29 批准**（§20.8） |
-| `MergeView` | `init/enter`（**2**） | 未落盘；预计 1 / 1 | — | **2026-10-29 定稿**（§20.10） |
+| `MergeView` | `init/enter`（**2**） | **已落盘**（`cef331b`）：init 1 / enter 1（`showView` 的 merge 分支） | — | 2026-10-29 落盘；`renderMergeView` 不导出（§20.10），桥随之切到 `navigate()` |
 
 **关于 Merge 3 vs 2（必须写清，两个数不能同时成立）**：
 - **2026-10-29 签的是 3**（`init/enter/renderMergeView`），依据是"外壳有数据、视图负责画"、`renderMergeView` 有 2 个调用点。

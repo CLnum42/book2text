@@ -10,7 +10,7 @@
 | 线 | 状态 | 在等谁 | 下一件 |
 |---|---|---|---|
 | `library` 搬移 | 干跑就绪（`evidence/library/`） | DevLead 写 `build.py` | 一笔 `move(library):` 落地 |
-| `merge` 视图 | 未开 | `library` 之后 | 2 个导出：`init` / `enter` |
+| `merge` 视图 | 落盘（`cef331b`），**页面级验证未做** | QA / Builder（无浏览器/无基线项目） | 按 `merge-slice.md` §6 的五步验，通过后才推 |
 | `pages` 定形态 | 归属调查完成 | `PageTile` 落地 + 用户 40 页试用 | 定 1 个还是 5 个模块 |
 | `review` | 未量（1.9× 已作废） | `pages` 之后 | 先做同一份归属调查 |
 | `PageTile` / overlay | 契约定稿，模块未落 | DevLead（`library` 之后） | tile → overlay |
