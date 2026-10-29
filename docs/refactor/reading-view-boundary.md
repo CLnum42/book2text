@@ -1173,6 +1173,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | 2026-10-29 | 导出棘轮降档 | 删：`STABLE` 里的 `exit`、`VIEW_EXPORTS` 里 preview/index 的 `exit` 项；补：`MAX_EXPORTS 6→5`、`VIEW_EXPORTS` preview 2 / index 3 / reading 5（复用 STABLE），自检两条换键（`const index` 去掉 exit；改名用例改 `enter→leave`；"少一个"用例改 `["init"]`——原来的 `["init","enter"]` 正好等于新登记值，会假绿）；README 的"exit 待接"改成"已删"并附量法；变异：PreviewView 加回 `exit` / IndexView 删掉 `refresh`，逐条红在目标断言 | DevLead | 1a4ad0c |
 | 2026-10-29 | 文档结构闸 + 七条夹具 + move: 笔类 | 删：无（新增闸与夹具）；补：`docs-structure.test.mjs`（全层级章节号、五条自检、失败信息 `文件:行:节号`）、R1/R3/R4-dup/R4b/R5/R7/R12 的合成样例夹具（内核提成纯函数）、`move:` 笔类（三张登记表派生块边界、豁免/上限不放行、fail closed）、run.mjs 回读绕过留痕；顺带删掉文档第 1779 行的重复 H1（与第 1 行逐字节相同）；变异：各闸的合成违规样例逐条喂红、合规样例不红；`move:` 四条（表内绿/表外红/动 MAX 红/空声明红） | DevLead | 4fb0733 |
 | 2026-10-29 | R3 作用域扩展 | 删：R3 只判 `reading` 子树的旧口径；补：**只要有 `<view>-view.js`，app.js 里该视图的 DOM 字面量必须为 0**（reading 保留块内例外 + 4 条豁免），开关是"有没有模块文件"；红夹具按验收形态造（已落盘视图 + app.js 留字面量），另配"收干净必须绿"的对照；变异：在 app.js 副本里加 `el("index-empty")` → 红在「还引用着 view-index 的 id index-empty」 | DevLead | 63a469f |
+| 2026-10-29 | 文档结构闸扩三份 | 删：断链只认两级的旧正则（`§18.1.4` 只查 `§18.1` → 装闸也绿）、悬空引用写死行号 0；补：`DOC_FILES` 扩到 boundary/decisions/known-limitations 三份、断链全深度 + 跨文档并集 + 行内代码剔除、ID 型编号重复检测（只对 decisions 开红；`D-004 修订` 算独立号、`L-106`/`L-106b` 算两个号）、排序口径定死"字母后缀在数字子节之前"、已知答案回归（decisions 标题里只有一个 D-100）；变异：十条夹具逐条喂（含三级引用必红、行号必须 > 0、两个 D-100 必红、修订版与后缀版不算重复）；顺带修两处文档里指向不存在节的引用（1486 的示例写法、1290 的"设计稿 1.4 节"——原来写成带 § 的形式） | DevLead | 21fd027 |
 
 只有 DevLead 能加行。没有登记行的放宽一律按违规算。
 
