@@ -1519,6 +1519,7 @@ updateReadingPage → ensureReadingMarksWindow → loadReadingMarksWindow
 | 3 | "待删 52 行还在工作区" | 量的是删除**前**的树（工作区已删、未提交） |
 | 4 | "L1 注入 24 vs 23 差一个" | 两个对象：新 L1 出边 / 旧 8 函数名单 |
 | 5 | `retryReadingPendingPanel` 3 处 | 原文计数（含 2 行注释），去注释后是 1 处 |
+| 6 | "失败现场 `pendingKey = null`" | **探针读模块私有状态一律 `undefined`**（IIFE 外读不到，实测 22/22）；`null` 是被 `??`/等价断言抹平的"读不到"。见 L-109 |
 
 **0 次算错，5 次量错对象。** 这个分布本身就是结论：**纪律不是"算得更小心"，而是"报数前问三句"**：
 
@@ -1615,20 +1616,29 @@ readingPendingPanelKey = null / readingPendingPanelEntry = null
 - **不是边 9**：`updateReadingPage(entry.page_no, …)` 已是同步调用（reading-view.js:2162）
 - **不是跳转没执行**：`entry` 查得到、`gotoReadingEntry` 确实跑了、页码写对了
 - **不是晚一帧**：`readingPendingPanelKey/Entry` 都是 null，`retryReadingPendingPanel` 无从恢复
+  ——**这条要打折**：那两个值是由 `page.evaluate` 读模块私有变量得到的，IIFE 外读不到（实测 22/22 undefined），
+  所以"null"很可能是"读不到"。**要重新验**：要么读 `__b2t*` 埋点，要么看 DOM（`#reading-panel-host` 是否为空）。
 
-**新证据（2026-10-29，QA 两轮 smoke）——这条可能不是随机，先别看竞态**：
+**一条被推翻的线索（2026-10-29，留档防止再起）**：曾根据"两次 smoke 都落在 index 17"
+推测是"特定 entry 打不开面板"。**QA 实测推翻了它**：
 
 ```
-最终验收 c28f32d：连按 20 次 → 失败落在 index 17（0-based，= 第 18 次 = 页码 39）
-QA 复核 51529b8：连按 20 次 → 失败也落在 index 17
+同一条 entry（key 01M60A5PJBMD2S7J9THR3P1M23:0，page 39，汉字级，单页段）
+四次独立新环境观测：c28f32d 红 · 51529b8 红 · 今天 20 连点绿 · 今天 smoke next20 20/20 绿
+同一环境接着连点 60 次：0 失败
 ```
 
-**两次不同构建、同一个位置**。真实竞态不会这么巧（20 个位置里挑同一个），
-所以下一步**先按"这个位置/这条 entry 有问题"查，不要先按时序查**：
+**"同一位置"是同一条 entry 是因为队列顺序确定**，不是"这条必坏"；红绿交替说明仍是竞态。
+而且第 18 次不是固定 entry——继续走游标时它落在第 94 页另一条。
+按原定判据（三次以上都落在同一条）**不满足**，线索作废。
 
-1. 第 18 条 entry 的 `key` / `page_no` / 是不是标点级 / 它的段是不是**跨页段**；
-2. 它的 `branch`（`__b2tNextLog`）在同一次运行里是 `next-lines` 还是别的；
-3. 换一台机器 / 换一次冷启，看它是否**仍然**落在第 18 条——若仍然，就是数据相关，不是竞态。
+**量具的坑（这条比线索本身值钱）**：那两次"失败现场"的 `label/panel/dominant/panelVisible/highlight`
+**全是 null，不是观测到的空值**——`qa.py` 的 `brief` 从摊平的 failures 元素里取 `item["snapshot"]`，
+而那个键不存在，于是除 `index` 外全是 null。已修。
+
+所以**下面「已知排除」里引用 `readingPendingPanelKey = null / readingPendingEntry = null` 的那条要打折**：
+`reading-view.js` 是 IIFE，`page.evaluate(() => typeof readingPendingPanelKey)` 读到的是 `undefined`
+（模块私有作用域），那**不是"值真的是 null"，是"探针读不到"**。同类失效实测 22/22（见下方工具缺口）。
 
 **已排除的一条（2026-10-29，读代码 + 读探针）**：**不是"开晚了"**。
 `gotoReadingEntry` 里有一个 260ms 的自愈重试（`if (!document.querySelector("#reading-panel-host .reading-panel")) openReadingPanel(entry)`）；
@@ -1685,3 +1695,26 @@ QA 复核 51529b8：连按 20 次 → 失败也落在 index 17
 
 **将来真要动它**：给模块加回 `exit()`（有真实调用点：`showView`），断观察器，并附等价性证据
 （切走→切回后，可见页的装饰 / 图 / 高亮与不接 `exit` 时逐项相同）。
+
+---
+
+## L-109 · 探针读模块私有状态一律读到 `undefined`（2026-10-29，QA 发现）
+
+**现状**：`reading-view.js` / `preview-view.js` / `index-view.js` 都是 IIFE。`page.evaluate(() => typeof readingXxx)`
+在模块外读到的是 `undefined`，**22/22 全中**。`window.ReadingView` 只有 5 个键，没有状态出口。
+
+**受影响**（这些读数今天是"读不到"，不是"值是 null"）：
+`settleKey / userSeq / programSeq`（`pageSyncSnapshot`）、`pendingKey / pendingEntry / editKey`（`next20Probe`）、
+`marksMapSize / marksWindow / entries / visibleSegments / filter`、`readingRendered`。
+
+**为什么危险**：`undefined` 和 `null` 在断言里经常等价处理，于是"探针坏了"会被记成"状态是空的"——
+`23b0102` 报告里"pendingKey=None → 状态丢失"那条判据的基础因此变过。**这是 L-106 的同一家族：读不到 ≠ 值是空。**
+
+**裁决（DevLead，2026-10-29）**：**不给模块加公开导出**（R8 棘轮只降不升，测试不是消费者）。
+二选一，按顺序：
+1. **优先读已有埋点**：`window.__b2tNextLog` / `__b2tPageSync` / `__b2tWordBoxStats` 已经是 QA 口径，
+   缺什么就在模块里补一个 `__b2t*` 只读埋点（按 R6「出现即登记」进 `WINDOW_HOOK_EXCEPTIONS`，owner `QA`，
+   到期点 = 该视图验收完成）；
+2. 能用 DOM 判据的就用 DOM（面板在不在 = `#reading-panel-host` 有无子节点），**DOM 是用户真看到的东西**。
+
+**禁止**：driver 里继续写 `typeof readingXxx` 这类跨作用域读法——它**永远绿**（读到 undefined 不报错）。
