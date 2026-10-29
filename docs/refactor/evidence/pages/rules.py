@@ -70,7 +70,6 @@ IDENT = [
     ('applyProjectSettings', 'injected.applyProjectSettings', 'function'),
     ('clearPageBlocks', 'injected.clearPageBlocks', 'function'),
     ('clearTileMargin', 'injected.clearTileMargin', 'function'),
-    ('el', 'injected.el', 'function'),
     ('fetchPageSuggestions', 'injected.fetchPageSuggestions', 'function'),
     ('forgetPageSuggestions', 'injected.forgetPageSuggestions', 'function'),
     ('formatDuration', 'injected.formatDuration', 'function'),
@@ -154,7 +153,66 @@ STATES = [
     ('workflowStep', 'let', 5, 'shell', '注入 get（外壳持有）'),
 ]
 
-EXPECT_SEAMS = 38      # 函数接缝（含 el）
+
+# ---------------------------------------------------------------- 生成器输入（build_view.py 直接读本文件）
+
+#: `el` 是模块自建的（`const el = (id) => document.getElementById(id)`，与 app.js 第 28 行逐字相同），
+#: **不进注入面**——它不需要外壳提供任何东西。列在这里是为了挡住"怎么没注入 el"的疑问。
+MODULE_LOCAL = ["el"]
+
+#: 写点全在 movers 的状态：**声明搬进模块、app.js 删掉**。
+#: 判据是 app.js 里"声明消失"——两份状态比没搬更坏，而且没有任何静态门能发现。
+MOVED_STATES = [
+    "layoutBlockLoading",
+    "layoutBlockPage",
+    "layoutBlockPayload",
+    "marginAuditLoading",
+    "panelAccordionProject",
+    "recStatusTimer",
+    "setupSuggestionsLoading",
+    "suggestionScanQueued",
+    "suggestionScanTimer",
+    "suggestionScrollListening",
+]
+
+#: 写点跨区的状态：`x = v;` → `injected.setX(v);`
+SETTERS = [
+    ("marginAuditPage", "setMarginAuditPage"),
+    ("pageTileMetrics", "setPageTileMetrics"),
+    ("pagesMarginOn", "setPagesMarginOn"),
+    ("pagesOverlayOn", "setPagesOverlayOn"),
+    ("selectionAnchor", "setSelectionAnchor"),
+    ("setupSuggestions", "setSetupSuggestions"),
+    ("setupSuggestionsLoaded", "setSetupSuggestionsLoaded"),
+]
+
+#: 单行但自引用（`x = !x`）：setter 表达不了，逐行点名改。
+SET_REWRITES = {
+    "pagesMarginOn = !pagesMarginOn;": "injected.setPagesMarginOn(!injected.getPagesMarginOn());",
+    "pagesOverlayOn = !pagesOverlayOn;": "injected.setPagesOverlayOn(!injected.getPagesOverlayOn());",
+}
+
+#: 多行赋值：先算到局部，再 `injected.setX(局部);`
+SET_BLOCKS = [
+    {"match": "pageTileMetrics = tiles.map(", "head": "const __pageTileMetrics = tiles.map((tile) => {",
+     "after": "injected.setPageTileMetrics(__pageTileMetrics);"},
+]
+
+
+def _cap(name: str) -> str:
+    return name[0].upper() + name[1:]
+
+
+#: 生成器真正用的注入表 = 函数（IDENT）＋ 所有不搬走的状态。
+#: `const` → **值** `injected.NAME`（写成 getter 是错的：library 第一版就这么错过）；
+#: `let` → `injected.getX()`；写点跨区的另外还要 `SETTERS`（写在下面的表里）。
+IDENT_FULL = list(IDENT) + [
+    (name, "injected." + name if action.startswith("注入值") else "injected.get" + _cap(name) + "()")
+    for name, _kind, _writes, _by, action in STATES
+    if action != "搬进模块"
+]
+
+EXPECT_SEAMS = 37      # 函数接缝（**不含 el**：el 是模块自建，见 MODULE_LOCAL）
 EXPECT_STATES = 45     # 状态/常量；46 = 45 + el（el 在 IDENT 里）
 EXPECT_TOTAL = 46      # 名单 states_and_consts 的条数
 
@@ -228,7 +286,7 @@ def main() -> int:
 
     # ② 46 个 states_and_consts 一个不漏：45 状态 + el（在 IDENT 里）
     listed = {e["name"] for e in raw["states_and_consts"]["entries"]}
-    covered = {row[0] for row in STATES} | {name for name, _, _ in IDENT if name in listed}
+    covered = {row[0] for row in STATES} | {name for name, _, _ in IDENT if name in listed} | set(MODULE_LOCAL)
     if len(listed) != EXPECT_TOTAL:
         problems.append(f"② 名单 states_and_consts 是 {len(listed)} 条，不是 {EXPECT_TOTAL}——名单变了，规则表要重算")
     if listed != covered:

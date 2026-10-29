@@ -5,9 +5,18 @@
   python3 docs/refactor/evidence/build_view.py --movers <名单文件> --rules <规则.py> --name <ViewName> [--write]
 
 名单文件：一行一个函数名（# 开头为注释）。
-规则文件：Python 模块，需提供 IDENT（[(旧, 新)]）、LIT（可选）、FORWARDERS（可选 [(名字, 模板)]）、
-          INIT_ANCHOR（可选，插入 init(deps) 的锚点字符串）。
-自检：残余接缝 = 0 · node --check 两文件 · app.js 净减 >= MOVE*0.9（复制不是搬）
+规则文件：Python 模块，需提供
+  IDENT        [(旧, 新)]        标识符替换（读侧：状态 → injected.getX()、常量 → injected.NAME）
+  MOVED_STATES [名字]            写点全在 movers 的状态：**声明搬进模块、app.js 删掉**（否则两份状态）
+  SETTERS      [(名字, setter)]  写点跨区的状态：`x = v;` 改 `injected.setX(v);`
+  SET_REWRITES {旧行: 新行}      单行但是自引用（`x = !x`）的逐行点名单改
+  SET_BLOCKS   [{"match","head","after"}]  多行赋值：先算局部再 `injected.setX(局部);`
+  LIT / FORWARDERS / INIT_ANCHOR / INTERFACE 同前
+
+自检（任一不过就 exit 1 / 2，**不落盘**）：
+  ① 残余接缝 = 0（范围**含状态**，不只函数）；
+  ② 三个反证：搬走的状态在 app.js 里声明消失、注入的状态在模块正文里裸引用 = 0、被 set 的状态在模块里 `名字 =` = 0；
+  ③ SETTERS 里有改不动的行 → 原样报行号 + 原文，**不许猜**（上一轮就是死在"只替换括号内写法"）。
 """
 import argparse, importlib.util, os, re, subprocess, sys, json
 
@@ -44,9 +53,99 @@ def sub_checked(text, pattern, rep):
 def forward(text, rules):
     for lit, rep in getattr(rules, "LIT", []):
         text = sub_checked(text, re.escape(lit), rep)
-    for old, new in rules.IDENT:
+    for entry in getattr(rules, 'IDENT_FULL', rules.IDENT):   # (旧, 新) 或 (旧, 新, 形态)
+        old, new = entry[0], entry[1]
         text = sub_checked(text, r'(?<![\w$.])' + re.escape(old) + r'\b', new)
     return text
+
+
+def declaration_bounds(lines, name):
+    """顶层状态声明：返回 (起始行, 结束行, 原文)。单行声明返回同一行；多行（未闭合括号）向后收。"""
+    for i, line in enumerate(lines):
+        if not re.match(r'^(?:const|let|var)\s+%s\s*=' % re.escape(name), line):
+            continue
+        depth = line.count("(") + line.count("[") + line.count("{") - line.count(")") - line.count("]") - line.count("}")
+        end = i
+        while depth > 0 and end + 1 < len(lines):
+            end += 1
+            depth += lines[end].count("(") + lines[end].count("[") + lines[end].count("{")
+            depth -= lines[end].count(")") + lines[end].count("]") + lines[end].count("}")
+        return i, end, "\n".join(lines[i:end + 1])
+    return None
+
+
+def apply_set_blocks(text, rules):
+    """多行赋值：`x = f({ … });` → 先算到局部，再 `injected.setX(局部);`。
+
+    规则 `SET_BLOCKS = [{"match": 起始行片段, "head": 新的起始行, "after": 插入行}]`。
+    起始行到括号配对处为止整段换头，收尾行之后插入 `after`。**找不到配对就报错，不猜。**
+    """
+    lines = text.split("\n")
+    for block in getattr(rules, "SET_BLOCKS", []):
+        start = next((i for i, ln in enumerate(lines) if block["match"] in ln), None)
+        if start is None:
+            raise SystemExit(f"✗ SET_BLOCKS 找不到起始行：{block['match']}")
+        depth = 0
+        end = None
+        for i in range(start, len(lines)):
+            depth += lines[i].count("(") + lines[i].count("[") + lines[i].count("{")
+            depth -= lines[i].count(")") + lines[i].count("]") + lines[i].count("}")
+            if depth <= 0:
+                end = i; break
+        if end is None:
+            raise SystemExit(f"✗ SET_BLOCKS 的括号没配对：{block['match']}")
+        indent = re.match(r"^(\s*)", lines[start]).group(1)
+        lines[start] = indent + block["head"]
+        lines.insert(end + 1, indent + block["after"])
+    return "\n".join(lines)
+
+
+def rewrite_writes(text, rules):
+    """把 `状态名 = 值;` 改成 `injected.setX(值);`。
+
+    **改不动的行一律报出来**（返回 problems），不许静默漏：多行 RHS、`x = !x` 这种自引用、
+    复合赋值（`+=`/`++`）都算改不动——它们必须由 SET_REWRITES 逐行点名。
+    """
+    setters = dict(getattr(rules, "SETTERS", []))
+    overrides = dict(getattr(rules, "SET_REWRITES", {}))
+    out_lines, problems = [], []
+    for line in text.split("\n"):
+        if line.strip() in overrides:                     # 缩进不参与匹配：同一个写点在不同层深
+            indent = re.match(r"^(\s*)", line).group(1)
+            out_lines.append(indent + overrides[line.strip()]); continue
+        hit = None
+        for name in setters:
+            if re.search(r'(?<![\w$.])' + re.escape(name) + r'\s*=(?!=)', line):
+                hit = name; break
+        if hit is None:
+            out_lines.append(line); continue
+        simple = re.match(r'^(\s*)' + re.escape(hit) + r'\s*=\s*(.+?);\s*$', line)
+        if simple and not re.search(r'(?<![\w$.])' + re.escape(hit) + r'\b', simple.group(2)):
+            out_lines.append(f"{simple.group(1)}injected.{setters[hit]}({simple.group(2)});")
+        else:
+            problems.append(line.strip()[:100])
+            out_lines.append(line)
+    return "\n".join(out_lines), problems
+
+
+def anti_checks(module_code, app_text, rules):
+    """三个反证（都要求 0）。返回问题列表。"""
+    problems = []
+    masked = mask_mod.strip_code(module_code)
+    for name in getattr(rules, "MOVED_STATES", []):
+        if re.search(r'(?m)^(?:const|let|var)\s+%s\s*=' % re.escape(name), app_text):
+            problems.append(f"搬走的状态 {name} 在 app.js 里还有声明——两份状态")
+    for entry in getattr(rules, "IDENT_FULL", getattr(rules, "IDENT", [])):
+        name = entry[0]                       # 规则表允许 (旧, 新) 或 (旧, 新, 形态) 两种写法
+        if re.search(r'(?<![\w$.])' + re.escape(name) + r'\b', masked):
+            problems.append(f"{name} 判注入，但模块正文里仍裸引用它")
+    bad_assign = re.findall(r'injected\.get[A-Za-z0-9_$]*\(\)\s*=(?!=)', masked)
+    if bad_assign:
+        problems.append(f"给 getter 赋值 {len(bad_assign)} 处（{bad_assign[0]}）——写点没走 setter，这是 SETTERS 漏项")
+    for name, _setter in getattr(rules, "SETTERS", []):
+        if re.search(r'(?<![\w$.])' + re.escape(name) + r'\s*=(?!=)', masked):
+            problems.append(f"{name} 判走 setter，但模块正文里还有 `{name} =`——改写漏了")
+    return problems
 
 
 def main():
@@ -67,7 +166,8 @@ def main():
         movers = [ln.strip() for ln in open(a.movers, encoding="utf-8")
                   if ln.strip() and not ln.strip().startswith("#")]
     rules = load_rules(a.rules)
-    lines = open(a.app, encoding="utf-8").read().split("\n")
+    app_source = open(a.app, encoding="utf-8").read()
+    lines = app_source.split("\n")
 
     missing = [n for n in movers if not bounds_of(lines, n)]
     if missing:
@@ -80,14 +180,32 @@ def main():
         while top - 1 >= 0 and (lines[top-1].lstrip().startswith(("*", "/**", "//"))):
             top -= 1
         body.append("\n".join(lines[top:e+1])); moved += e - s + 1
-    out = forward("\n\n".join(body), rules)
+    # 搬走的状态：声明随搬（模块里声明，app.js 里删）——判据是"app.js 声明消失"
+    moved_states = []
+    for name in getattr(rules, "MOVED_STATES", []):
+        found = declaration_bounds(lines, name)
+        if not found:
+            print(f"!! MOVED_STATES 里的 {name} 在 app.js 找不到声明"); return 2
+        start, end, text = found
+        moved_states.append(text)
+        for i in range(start, end + 1):
+            lines[i] = ""
+    out = "\n\n".join(moved_states + ["\n\n".join(body)])
+    out = apply_set_blocks(out, rules)
+    out, tune_problems = rewrite_writes(out, rules)
+    if tune_problems:
+        print("!! 这些写点改不动（多行 RHS / 自引用 / 复合赋值），先用 SET_REWRITES 逐行点名再跑：")
+        for item in tune_problems:
+            print("   " + item)
+        return 2
+    out = forward(out, rules)
 
     top_names = set(re.findall(r'(?m)^(?:async\s+)?function ([A-Za-z_$][\w$]*)', "\n".join(lines)))
     top_names |= set(re.findall(r'(?m)^(?:let|const|var) ([A-Za-z_$][\w$]*)', "\n".join(lines)))
     code = mask_mod.strip_code(out)
     declared = set(re.findall(r'(?m)^(?:async\s+)?function ([A-Za-z_$][\w$]*)', code))
     declared |= set(re.findall(r'(?m)^(?:let|const|var) ([A-Za-z_$][\w$]*)', code))
-    declared |= set(movers) | set(getattr(rules, "RESIDUE_OK", [])) | {"el"}
+    declared |= set(movers) | set(getattr(rules, "MOVED_STATES", [])) | set(getattr(rules, "RESIDUE_OK", [])) | {"el"}
     residue = sorted(n for n in top_names - declared
                      if re.search(r'(?<![\w$.])' + re.escape(n) + r'\b', code))
 
@@ -98,10 +216,14 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     open(os.path.join(a.out, "module.js"), "w", encoding="utf-8").write(module)
 
-    print(json.dumps({"movers": len(movers), "moved_lines": moved, "module_lines": module.count("\n"),
-                      "residue": residue, "injected_keys": len(set(re.findall(r"injected\.([A-Za-z_$][\w$]*)", code)))},
+    lines_text = "\n".join(lines)
+    anti = anti_checks(module, lines_text, rules)
+    print(json.dumps({"movers": len(movers), "moved_lines": moved, "moved_states": len(moved_states),
+                      "module_lines": module.count("\n"),
+                      "residue": residue, "anti": anti,
+                      "injected_keys": len(set(re.findall(r"injected\.([A-Za-z_$][\w$]*)", code)))},
                      ensure_ascii=False, indent=1))
-    return 0 if not residue else 1
+    return 0 if not residue and not anti else 1
 
 
 if __name__ == "__main__":
