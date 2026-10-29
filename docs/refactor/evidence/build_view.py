@@ -148,6 +148,46 @@ def anti_checks(module_code, app_text, rules):
     return problems
 
 
+def deps_literal(rules):
+    """从规则表生成 `init({...})` 的依赖对象：getter / setter / 函数，键名与模块里的 `injected.xxx` 对齐。"""
+    keys = []
+    seen = set()
+    for entry in getattr(rules, "IDENT_FULL", getattr(rules, "IDENT", [])):
+        expr = entry[1]
+        hit = re.match(r"injected\.([A-Za-z_$][\w$]*)", expr)
+        if not hit:
+            continue
+        key = hit.group(1)
+        if key in seen:
+            continue
+        seen.add(key)
+        if expr == "injected." + key:                      # 函数 / 常量值
+            keys.append(f"    {key}: {entry[0]},")
+        elif expr == f"injected.get{key[3:]}()" or key.startswith("get"):
+            name = entry[0]
+            keys.append(f"    {key}: () => {name},")
+        elif key.startswith("set"):
+            name = entry[0]
+            keys.append(f"    {key}: (value) => {{ {name} = value; return value; }},")
+    for name, setter in getattr(rules, "SETTERS", []):
+        if setter not in seen:
+            seen.add(setter)
+            keys.append(f"    {setter}: (value) => {{ {name} = value; return value; }},")
+    return "\n".join(keys)
+
+
+def forwarders_of(movers, lines, name_of_module):
+    """把每个 mover 的函数体换成一转发行，返回 {函数名: 新函数源码}（保住 async）。"""
+    out = {}
+    for n in movers:
+        s, e = bounds_of(lines, n)
+        head = lines[s]
+        is_async = head.lstrip().startswith("async")
+        prefix = "async " if is_async else ""
+        out[n] = (s, e, f"{prefix}function {n}() {{ return window.{name_of_module}.{n}.apply(window.{name_of_module}, arguments); }}")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--movers", required=True)
@@ -168,6 +208,7 @@ def main():
     rules = load_rules(a.rules)
     app_source = open(a.app, encoding="utf-8").read()
     lines = app_source.split("\n")
+    app_lines_before = len(lines) - (1 if lines and lines[-1] == "" else 0)
 
     missing = [n for n in movers if not bounds_of(lines, n)]
     if missing:
@@ -213,8 +254,39 @@ def main():
               "  const el = (id) => document.getElementById(id);\n\n" + out + "\n" +
               getattr(rules, "INTERFACE", "") + "})();\n")
 
+    if getattr(rules, "FORWARDERS", False):
+        fw = forwarders_of(movers, lines, f"{a.name}View")
+        for n, (start, end, text) in sorted(fw.items(), key=lambda kv: -kv[1][0]):
+            lines[start:end + 1] = [text]
+        if getattr(rules, "INIT_ANCHOR", ""):
+            anchor = next((i for i, ln in enumerate(lines) if rules.INIT_ANCHOR in ln), None)
+            if anchor is None:
+                print(f"!! INIT_ANCHOR 找不到：{rules.INIT_ANCHOR}"); return 2
+            indent = re.match(r"^(\s*)", lines[anchor]).group(1)
+            init_lines = (f"{indent}window.{a.name}View.init({{\n" + deps_literal(rules) + f"\n{indent}}});").split("\n")
+            lines[anchor + 1:anchor + 1] = init_lines
+
     os.makedirs(a.out, exist_ok=True)
     open(os.path.join(a.out, "module.js"), "w", encoding="utf-8").write(module)
+
+    # --write：只有上面全部自检通过（残余 0、反证 0）才走到这里。落盘前再验一次语法，红就不写。
+    if a.write:
+        anti = anti_checks(module, "\n".join(lines), rules)      # 落盘前再跑一次反证（这里 anti 还没算）
+        if residue or anti:
+            print("✗ 自检没过，拒绝 --write（宁可不写，也不留一个带未定义标识符的 app.js）"); return 1
+        MODULE_OUT = os.path.join(ROOT, "backend/book2text/static", f"page-{a.name.lower()}.js")
+        for path, text in ((MODULE_OUT, module), (a.app, "\n".join(lines))):
+            tmp = path + ".tmp.js"   # 后缀必须是 .js：node --check 认扩展名
+            open(tmp, "w", encoding="utf-8").write(text)
+            check = subprocess.run(["node", "--check", tmp], capture_output=True, text=True)
+            if check.returncode != 0:
+                os.unlink(tmp)
+                print(f"✗ node --check 失败：{path}\n{check.stderr[:400]}"); return 1
+            os.replace(tmp, path)
+        app_lines_after = len(lines) - (1 if lines and lines[-1] == "" else 0)
+        print(json.dumps({"written": [os.path.relpath(MODULE_OUT, ROOT), os.path.relpath(a.app, ROOT)],
+                          "app_lines_after": app_lines_after, "app_lines_before": app_lines_before,
+                          "net": app_lines_before - app_lines_after}, ensure_ascii=False))
 
     lines_text = "\n".join(lines)
     anti = anti_checks(module, lines_text, rules)

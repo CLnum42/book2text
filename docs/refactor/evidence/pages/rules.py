@@ -212,6 +212,31 @@ IDENT_FULL = list(IDENT) + [
     if action != "搬进模块"
 ]
 
+# ---------------------------------------------------------------- 装配（生成器用）
+
+#: 模块对外接口：只有 init / enter（调用点：boot 的 `setupLibrary();` 之后 init 一次；
+#: 切回目录页时 `window.PagesView.enter()`）。**不加第三个**——导出棘轮只降不升，没有调用点的导出不许加（§20.1）。
+INTERFACE = """
+  function init(deps) {
+    injected = Object.assign({}, injected, deps || {});
+    return api;
+  }
+
+  /** 进入目录视图：按当前项目与筛选重画页列（重绘幂等，可反复调）。
+   *  `renderPages` 在 stays（被 clearPageSelection / handleTileClick 等外壳流程调用）→ 走注入。 */
+  function enter() {
+    injected.renderPages();
+    return true;
+  }
+
+  const api = { init, enter };
+  window.PagesView = api;
+"""
+
+#: 让生成器把 app.js 里 63 个函数体换成转发（保住 async），并在 `setupLibrary();` 之后调 init 一次。
+FORWARDERS = True
+INIT_ANCHOR = "  setupLibrary();"
+
 EXPECT_SEAMS = 37      # 函数接缝（**不含 el**：el 是模块自建，见 MODULE_LOCAL）
 EXPECT_STATES = 45     # 状态/常量；46 = 45 + el（el 在 IDENT 里）
 EXPECT_TOTAL = 46      # 名单 states_and_consts 的条数
