@@ -115,3 +115,24 @@
 - 冻结人：Architect（本文件 §1 的名单类证据）；
 - 唯一权威：`git show <冻结提交>:<路径>` 的 sha256，**不是"盘上那份"**；
 - 恢复只许单文件 `git restore <path>`（或 `git show <sha>:<path> > <path>`），**禁止 `checkout -- .`**。
+
+## 7. 待办：9 个死 id（`index.html` 有、代码 0 引用）
+
+**定性**：`app.js` 与 `pages-view.js` 各 0 次，只出现在 `index.html` → **死 id（界面在撒谎：用户看到的东西没人管）**。
+**不阻塞刀 2.5**，另开待办；从 R3 基数里剔除后：**基数 131 − 9 = 122**，守恒 `34+17+40+31 = 122 ✅`。
+
+| id | index.html 行 | 备注 |
+|---|---:|---|
+| `margin-panel` | 260 | |
+| `page-filters` | 84 | **在 `view-pages` 子树内**（80–426），不是跨 section 异常 |
+| `panel-margin-page` | 282 | |
+| `rec-language-note` | 370 | |
+| `rec-status-note` | 343 | |
+| `selection-panel` | 189 | |
+| `selection-summary` | 191 | |
+| `split-panel` | 224 | |
+| `suggestion-panel` | 230 | |
+
+**另两条未定性**：`page-number-panel` / `layout-detect-panel` 不在 `index.html` ——
+落盘时用 `document.querySelector` 实查：**动态建 还是 清单写错**。
+
