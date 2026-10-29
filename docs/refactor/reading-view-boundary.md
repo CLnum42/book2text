@@ -1102,6 +1102,7 @@ C4 不查深度：6 个 kind 每 kind 覆盖写，深度 ≤6 是构造出来的
 | 2026-10-29 | R6 / R2 上闸 | 删：无（新增两条闸）；补：R6 判"每个 *-view.js 恰一个 window.XxxView、名字由文件名决定"，加 7 条 `__b2t*` 埋点例外（owner + 到期点 + MAX 只降不升 + 条目必须存在）；R2 判"x-view.js 不得引用 window.YView（Y≠X）"，跨视图走 deps 注入；两条各带合成样例自检；变异：多露一个接口 / 接口改名 / 引用别视图接口，逐条红在目标断言；自检里名字错、零接口、未登记埋点、跨视图引用喂进去必须红，正例必须绿 | DevLead | f8e690a |
 | 2026-10-29 | R6 埋点判定 | 删：R6 里"每个 *-view.js 都必须有那 7 个埋点"的判法（第二个模块一出现就假红 7 条）；补：改成"出现即登记"（扫到的 `window.__b2tXxx` 不在表里才红；没有埋点完全合法），表本身的两条改成跨所有 view 文件判，自检加"无埋点合法"与"全仓库都没有则表过期"；同时把 preview 试点 4 处集成断言改 `script + preview-view.js` 合查；变异：preview 加未登记埋点 → 红「未登记的 window 埋点」；删 `__b2tNextLog` → 红「表挂着不存在的埋点」；模块里改名 `onPreviewScroll` → 集成红在 `preview_both` | DevLead | 03ea679 |
 | 2026-10-29 | R6 埋点 + preview 集成 | 删：R6 里"只滤已登记埋点"的过滤顺序（新埋点会被报成接口对象，文案带偏）；补：登记 `__b2tPreviewMetrics`/`__b2tPreviewTileTops`（`MAX 7→9`），改成先按 `__b2t` 命名分类再判接口数量，自检加"混合样例里接口检查零问题、埋点检查必须报"；preview 两个集成用例 13 处改合查、`builder` 切片从合查取、`pagesMarginOn` 拆成"模块调注入 + app setter 写状态"两条；变异：加未登记埋点 / 删已登记埋点 / 去掉 `setPagesMarginOn(true)` / setter 不写状态 / 切片里塞监听，逐条红在目标断言 | DevLead | 25f4787 |
+| 2026-10-29 | R5 状态登记 | 删：无；补：OWNERS 增加 preview 的 27 条（owner = `preview-view.js`，按源码声明核过）与 reading 一直漏登的 `readingIntents`/`readingIntentStats`/`readingFlushRaf`，总数 64 → 94；新增"R5 防漏检"：每个 `*-view.js` 的顶层状态必须全部在表里且 owner 指向自己，未登记前缀的新视图直接红（`VIEW_STATE_PREFIXES`）；变异：`previewData` owner 改回 app.js / 删掉该条目 / 造未登记前缀的 `probe-view.js`，三条各自红在目标断言 | DevLead | e4a02ab |
 
 只有 DevLead 能加行。没有登记行的放宽一律按违规算。
 
