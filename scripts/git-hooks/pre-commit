@@ -1,16 +1,24 @@
 #!/bin/sh
 # Book2Text pre-commit 闸（本机唯一自动回归：CI 已死，见 docs/refactor/reading-view-boundary.md §20.9 ⑬）
 #
-# 装法：git config core.hooksPath scripts/git-hooks
+# 装法：sh scripts/install-hooks.sh   （幂等，且自带"真拒绝"自检）
 # 卸法：git config --unset core.hooksPath
 #
-# 设计约束（三条都是实测逼出来的，别改）：
-#   1) 缺依赖 fail closed：找不到 node 就拒绝提交。绝不 `|| exit 0`——
-#      那是"装了一个永远不会红的闸"，比不装更坏（D-110）。
-#   2) hook 的 PATH 通常不含 ~/.local/bin（GUI / ssh / IDE 里更明显），所以显式补查。
-#   3) 只跑前端纯函数套件（tests/js/run.mjs，实测 5.6s）。不跑 pytest（要环境、分钟级）。
+# ── 四条设计约束，每条都是实测逼出来的 ──────────────────────────────────────
+# 1) **验索引，不验工作区**（2026-10-29 补，事故驱动）。
+#    早期版本直接跑 `node tests/js/run.mjs`，读的是盘上文件；随后却用 `git write-tree`
+#    宣称"这笔提交通过了闸"。四个 agent 共用一个工作区，盘上随时可能是别人未提交的半成品
+#    ——实测 10:32 那次：绿的来源是 TestDev 未提交的 tests/js（mtime 10:32、+175/-29），
+#    被提交的 62a532c 只含 docs/decisions.md，闸根本没看它。
+#    现在：`git checkout-index -a --prefix=$TMP/` 把**索引**导出到临时目录再跑。
+#    未 add 的文件天然不在里面，这正是想要的语义。
+# 2) 缺依赖 fail closed：找不到 node 就拒绝提交。绝不 `|| exit 0`
+#    ——那是"装了一个永远不会红的闸"，比不装更坏（D-110）。
+# 3) hook 的 PATH 通常不含 ~/.local/bin（GUI / ssh / IDE 更明显），显式补查。
+# 4) 闸里 `env -u B2T_APP_JS -u B2T_VIEW_JS -u B2T_STATIC_DIR`：
+#    它们是"对历史版本复跑"的口子，hook 一旦继承到就等于"验了别的版本"。
 #
-# 通过时记录 index 的 tree oid，供 post-commit 判断"这笔提交是不是绕过闸做的"。
+# 通过时记录索引的 tree oid，供 post-commit 判断"这笔提交是不是绕过闸做的"。
 
 set -u
 
@@ -33,11 +41,37 @@ if [ -z "$NODE" ]; then
   exit 1
 fi
 
-# ---- 跑套件 ----
+TREE=$(git write-tree) || {
+  echo "✗ pre-commit：git write-tree 失败（索引损坏？）" >&2
+  exit 1
+}
+
+# ---- 把索引导出到临时目录：**要验的是索引，不是工作区** ----
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/b2t-precommit.XXXXXX") || {
+  echo "✗ pre-commit：建不了临时目录" >&2
+  exit 1
+}
+cleanup() { rm -rf "$TMP"; }
+trap cleanup EXIT INT TERM
+
 LOG="$REPO/.git/b2t-precommit.log"
+if ! git checkout-index -a --prefix="$TMP/" 2>"$LOG"; then
+  echo "✗ pre-commit：索引导出失败（日志 $LOG）" >&2
+  exit 1
+fi
+
+# ---- 在导出目录里跑套件 ----
+# GIT_DIR 指向原仓库：R11 / 特征契约要 `git show <tag>:<path>` 读历史版本，
+# 临时目录没有 .git，不给它就会整条闸红。
 START=$(date +%s)
-if ! "$NODE" tests/js/run.mjs >"$LOG" 2>&1; then
-  echo "✗ pre-commit：node tests/js/run.mjs 红了（耗时 $(( $(date +%s) - START ))s）" >&2
+( cd "$TMP" && GIT_DIR="$REPO/.git" \
+    env -u B2T_APP_JS -u B2T_VIEW_JS -u B2T_STATIC_DIR \
+    "$NODE" tests/js/run.mjs ) >"$LOG" 2>&1
+RC=$?
+
+if [ "$RC" -ne 0 ]; then
+  echo "✗ pre-commit：索引里的 tests/js/run.mjs 红了（耗时 $(( $(date +%s) - START ))s）" >&2
+  echo "  注意：验的是 **已 add 的内容**（索引导出），不是你盘上未 add 的改动。" >&2
   echo "  日志：$LOG" >&2
   tail -n 40 "$LOG" >&2
   echo "" >&2
@@ -47,11 +81,11 @@ if ! "$NODE" tests/js/run.mjs >"$LOG" 2>&1; then
   exit 1
 fi
 
-# ---- 记录"这笔提交通过了闸" ----
-git write-tree >"$REPO/.git/b2t-gate-pass" 2>/dev/null || {
+# ---- 记录"这个 tree 通过了闸" ----
+printf '%s' "$TREE" >"$REPO/.git/b2t-gate-pass" || {
   echo "✗ pre-commit：套件绿了，但写不了 .git/b2t-gate-pass（权限？）" >&2
   exit 1
 }
 
-echo "✓ pre-commit：tests/js/run.mjs 全绿（$(( $(date +%s) - START ))s）" >&2
+echo "✓ pre-commit：索引版 tests/js/run.mjs 全绿（$(( $(date +%s) - START ))s，tree $(printf '%s' "$TREE" | cut -c1-8)）" >&2
 exit 0

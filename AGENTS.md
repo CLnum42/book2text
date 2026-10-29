@@ -53,3 +53,25 @@
 6. 控制实现复杂度与依赖数量；
 7. 高级自动化与视觉效果。
 
+
+### 1.5 本地提交闸（本仓库附加规则，不在说明书 V1.0 里）
+
+**打开本目录的第一个动作**：核一下闸在不在。
+
+```bash
+git config core.hooksPath     # 应当输出 scripts/git-hooks
+```
+
+- 不等于 `scripts/git-hooks`（新 clone、换机器、配置丢了）→ 跑 `sh scripts/install-hooks.sh`（幂等，装完自带"真拒绝"自检）。
+- 安装状态只存在于本克隆的 `.git/config`，**不会随仓库传下去**——这就是为什么要每次核。
+
+**提交的默认姿势**（多 agent 共用一个工作区，避免把别人已 add 的文件卷进自己的提交）：
+
+```bash
+git add <具体路径…>
+git commit -m "…" -- <同一批路径…>
+```
+
+**闸做了什么**：`pre-commit` 把**索引**导出到临时目录、跑 `node tests/js/run.mjs`（约 6 秒），红则拒绝提交；`post-commit` 记录绕过（`--no-verify` 时请加一行 `Bypass-Reason: <为什么>`）。
+
+**闸没做什么**：不跑 `pytest`。改动 `*.py` 时 `post-commit` 会提示"后端回归要自己跑 `pytest -q`"——那是提示，不是通过。

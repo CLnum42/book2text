@@ -535,150 +535,150 @@ Slice 1 实测（2026-10-28）：
 
 **L1（212 = 搬 160 + 删 52）→ 累计估算 212，app.js ≈ 20,853，注入 24（临时 21 + 永久 3）**
 
-- 函数清单见 §11 表；`setReviewOverlaysForReading`(18099–18116, 18 行) 留 app.js，不计入。
+- 函数清单见 §11 表；`setReviewOverlaysForReading`（18 行） 留 app.js，不计入。
 
 **L2（估算 342 行 / 11 函数）→ 累计估算 554，app.js ≈ 20,511，临时注入 30**
 
-- `markReadingUserMoved 18128–18139`
-- `startInlineEdit 18807–18835`
-- `setReadingFilter 19068–19073`
-- `setReadingHoverByBlock 20105–20133`
-- `onReadingPdfScroll 20288–20312`
-- `setReadingFollow 20404–20417`
-- `renderReadingPreflight 20427–20466`
-- `onReadingScroll 20511–20601`
-- `stepReadingPage 20602–20611`
-- `submitReadingDrafts 20747–20806`
-- `undoReadingSubmit 20807–20832`
+- `markReadingUserMoved`
+- `startInlineEdit`
+- `setReadingFilter`
+- `setReadingHoverByBlock`
+- `onReadingPdfScroll`
+- `setReadingFollow`
+- `renderReadingPreflight`
+- `onReadingScroll`
+- `stepReadingPage`
+- `submitReadingDrafts`
+- `undoReadingSubmit`
 
 **L3（估算 213 行 / 7 函数）→ 累计估算 767，app.js ≈ 20,298，临时注入 35**
 
-- `readingMovedSinceOpen 18140–18150`
-- `openReading 18159–18279`
-- `readingLineBox 18783–18796`
-- `markEditingLineBox 18797–18806`
-- `exitInlineEdit 18875–18898`
-- `onInlineKeydown 18899–18914`
-- `drawEditingLineBox 20480–20496`
+- `readingMovedSinceOpen`
+- `openReading`
+- `readingLineBox`
+- `markEditingLineBox`
+- `exitInlineEdit`
+- `onInlineKeydown`
+- `drawEditingLineBox`
 
 **L4（估算 139 行 / 7 函数）→ 累计估算 906，app.js ≈ 20,159，临时注入 33**
 
-- `loadReadingInlineEdits 18006–18025`
-- `restoreInlineEditsPrompt 18026–18039`
-- `loadReadingDrafts 18057–18071`
-- `onInlineInput 18836–18843`
-- `measureReadingTops 20276–20287`
-- `gotoNextUnreviewed 20629–20694`
-- `applyReadingSplit 20837–20840`
+- `loadReadingInlineEdits`
+- `restoreInlineEditsPrompt`
+- `loadReadingDrafts`
+- `onInlineInput`
+- `measureReadingTops`
+- `gotoNextUnreviewed`
+- `applyReadingSplit`
 
 **L5（估算 1,041 行 / 32 函数）→ 累计估算 1,947，app.js ≈ 19,118，临时注入 36**
 
-- `readingOptions 18086–18098`
-- `applyReadingMarksPayload 18280–18291`
-- `rebuildReadingEntries 18292–18316`
-- `readingWindowHas 18327–18342`
-- `ensureReadingMarksWindow 18343–18370`
-- `loadReadingMarksWindow 18371–18391`
-- `refreshReadingMarksPaint 18392–18443`
-- `ensureReadingLineRendered 18444–18470`
-- `renderReading 18509–18576`
-- `buildReadingSentinel 18577–18599`
-- `saveInlineEdit 18844–18861`
-- `centerReadingLinePair 19095–19122`
-- `openReadingPanel 19128–19201`
-- `renderReadingTree 19382–19493`
-- `scrollReadingToPage 19494–19520`
-- `markReadingTreeCurrent 19521–19548`
-- `jumpReadingTo 19549–19582`
-- `ensureReadingPages 19583–19590`
-- `buildReadingPages 19591–19637`
-- `observeReadingTiles 19645–19698`
-- `refreshReadingImageProfiles 19699–19719`
-- `observeReadingColumnResize 19738–19750`
-- `ensureReadingTile 19751–19755`
-- `retryReadingPendingPanel 19900–19919`
-- `ensureReadingBlocks 19920–19941`
-- `setReadingHover 20134–20166`
-- `markReadingCurrentTile 20167–20176`
-- `updateReadingPageFromLeftScroll 20198–20240`
-- `scrollStreamToPage 20254–20275`
-- `verifyReadingPageSync 20313–20374`
-- `updateReadingPage 20375–20403`
-- `gotoReadingEntry 20701–20746`
+- `readingOptions`
+- `applyReadingMarksPayload`
+- `rebuildReadingEntries`
+- `readingWindowHas`
+- `ensureReadingMarksWindow`
+- `loadReadingMarksWindow`
+- `refreshReadingMarksPaint`
+- `ensureReadingLineRendered`
+- `renderReading`
+- `buildReadingSentinel`
+- `saveInlineEdit`
+- `centerReadingLinePair`
+- `openReadingPanel`
+- `renderReadingTree`
+- `scrollReadingToPage`
+- `markReadingTreeCurrent`
+- `jumpReadingTo`
+- `ensureReadingPages`
+- `buildReadingPages`
+- `observeReadingTiles`
+- `refreshReadingImageProfiles`
+- `observeReadingColumnResize`
+- `ensureReadingTile`
+- `retryReadingPendingPanel`
+- `ensureReadingBlocks`
+- `setReadingHover`
+- `markReadingCurrentTile`
+- `updateReadingPageFromLeftScroll`
+- `scrollStreamToPage`
+- `verifyReadingPageSync`
+- `updateReadingPage`
+- `gotoReadingEntry`
 
 **L6（估算 428 行 / 24 函数）→ 累计估算 2,375，app.js ≈ 18,690，临时注入 20**
 
-- `saveReadingInlineEdits 18040–18056`
-- `readingFlowPages 18471–18478`
-- `readingEntryDone 18494–18498`
-- `removeReadingSentinel 18600–18612`
-- `buildReadingSegment 18663–18706`
-- `scrollScrollerToCenter 19074–19090`
-- `suppressReadingFollow 19091–19094`
-- `hideReadingPanelHost 19202–19210`
-- `startReadingEdit 19259–19279`
-- `buildReadingTreePreview 19338–19368`
-- `readingEntriesForPage 19369–19381`
-- `disconnectReadingObservers 19638–19644`
-- `warmSwapReadingImage 19720–19737`
-- `ensureReadingImage 19756–19771`
-- `pumpReadingImages 19781–19841`
-- `releaseReadingImage 19842–19861`
-- `markReadingImageFailed 19862–19899`
-- `clearReadingDecorations 19965–19972`
-- `scrollPdfColumnToPage 20177–20197`
-- `markReadingDriver 20241–20245`
-- `readingDriverActive 20246–20253`
-- `hideReadingPdfBox 20467–20479`
-- `drawReadingPdfBox 20497–20510`
-- `logReadingNext 20612–20628`
+- `saveReadingInlineEdits`
+- `readingFlowPages`
+- `readingEntryDone`
+- `removeReadingSentinel`
+- `buildReadingSegment`
+- `scrollScrollerToCenter`
+- `suppressReadingFollow`
+- `hideReadingPanelHost`
+- `startReadingEdit`
+- `buildReadingTreePreview`
+- `readingEntriesForPage`
+- `disconnectReadingObservers`
+- `warmSwapReadingImage`
+- `ensureReadingImage`
+- `pumpReadingImages`
+- `releaseReadingImage`
+- `markReadingImageFailed`
+- `clearReadingDecorations`
+- `scrollPdfColumnToPage`
+- `markReadingDriver`
+- `readingDriverActive`
+- `hideReadingPdfBox`
+- `drawReadingPdfBox`
+- `logReadingNext`
 
 **L7（估算 95 行 / 8 函数）→ 累计估算 2,470，app.js ≈ 18,595，临时注入 15**
 
-- `readingInlineStorageKey 18002–18005`
-- `readingMarkOrder 18317–18320`
-- `checkReadingSegmentText 18640–18662`
-- `span_at 18915–18918`
-- `draftReading 19280–19296`
-- `readingEntryLineText 19322–19337`
-- `showReadingPlaceholder 19772–19780`
-- `paintReadingTile 19942–19959`
+- `readingInlineStorageKey`
+- `readingMarkOrder`
+- `checkReadingSegmentText`
+- `span_at`
+- `draftReading`
+- `readingEntryLineText`
+- `showReadingPlaceholder`
+- `paintReadingTile`
 
 **L8（估算 112 行 / 7 函数）→ 累计估算 2,582，app.js ≈ 18,483，临时注入 10**
 
-- `saveReadingDrafts 18072–18085`
-- `textCheckEnabled 18631–18639`
-- `renderReadingProgress 19042–19067`
-- `closeReadingPanel 19211–19232`
-- `rerenderReadingLine 19297–19313`
-- `readingPageRecord 19960–19964`
-- `applyReadingLinked 19982–20000`
+- `saveReadingDrafts`
+- `textCheckEnabled`
+- `renderReadingProgress`
+- `closeReadingPanel`
+- `rerenderReadingLine`
+- `readingPageRecord`
+- `applyReadingLinked`
 
 **L9（估算 163 行 / 5 函数）→ 累计估算 2,745，app.js ≈ 18,320，临时注入 8**
 
-- `readingDraftStorageKey 17997–18001`
-- `buildReadingLine 18919–19030`
-- `readingProgressNumbers 19031–19041`
-- `refreshReadingCurrentHighlight 19233–19258`
-- `readingHoveredBlockIds 19973–19981`
+- `readingDraftStorageKey`
+- `buildReadingLine`
+- `readingProgressNumbers`
+- `refreshReadingCurrentHighlight`
+- `readingHoveredBlockIds`
 
 **L10（估算 166 行 / 6 函数）→ 累计估算 2,911，app.js ≈ 18,154，临时注入 3**
 
-- `readingVisibleSegments 18479–18493`
-- `expandToWordRange 18613–18630`
-- `readingLineText 18707–18717`
-- `paintInlineRevision 18718–18782`
-- `readingLineNode 19123–19127`
-- `paintReadingDiffBoxes 20053–20104`
+- `readingVisibleSegments`
+- `expandToWordRange`
+- `readingLineText`
+- `paintInlineRevision`
+- `readingLineNode`
+- `paintReadingDiffBoxes`
 
 **L11（估算 62 行 / 2 函数）→ 累计估算 2,973，app.js ≈ 18,092，临时注入 1**
 
-- `readingEntryVisible 18499–18508`
-- `readingDiffUnits 20001–20052`
+- `readingEntryVisible`
+- `readingDiffUnits`
 
 **L12（估算 4 行 / 1 函数）→ 累计估算 2,977，app.js ≈ 18,088，临时注入 0**
 
-- `readingKey 17993–17996`
+- `readingKey`
 
 ---
 
@@ -1511,6 +1511,47 @@ git config --unset core.hooksPath              # 卸
 
 **五条行为在 `/tmp/hooktest` 沙盒里实测过**：绿→通过且无日志；红→拒绝提交；`--no-verify` 无理由→`NO-REASON`；`--no-verify` 带 `Bypass-Reason:`→`WITH-REASON`；`node` 全部找不到→拒绝提交并打印查过哪些路径。
 
+**⑬-2 事故：闸验的是工作区，提交的是索引（2026-10-29，Chief 抓）**
+
+第一版 `pre-commit` 直接跑 `node tests/js/run.mjs`（读**盘上**文件），随后用 `git write-tree` 记录并宣称"这笔提交通过了闸"。**索引和盘上不是一回事**，而四个 agent 共用一个工作区，盘上随时可能是别人未提交的半成品。
+
+**已经真的错过一次**（证据链）：
+
+```
+tests/js/run.mjs                  mtime 10:32  +1 行（未提交）
+tests/js/boundary.test.mjs        mtime 10:32  +175/-29（未提交）
+tests/js/docs-structure.test.mjs  未跟踪
+.git/b2t-precommit.log            10:32  退出码 0
+62a532c                           10:32:27  只含 docs/decisions.md
+```
+
+**那次绿是给 TestDev 未提交的代码签的字；被提交的那份东西，闸根本没看。** 伤害为零（纯文档），但性质是"已经错过"，不是"可能出错"。
+
+**改法：验索引，不验工作区。**
+
+```sh
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+git checkout-index -a --prefix="$TMP/"        # 只导索引；未 add 的文件天然不在里面
+( cd "$TMP" && GIT_DIR="$REPO/.git" env -u B2T_APP_JS -u B2T_VIEW_JS -u B2T_STATIC_DIR \
+    node tests/js/run.mjs )
+```
+
+三条要点：
+
+- **`checkout-index` 的语义正好是要的那个**：没 add 的改动不进去，所以"我以为我改了"不会变成"闸替我背书"；
+- **必须带 `GIT_DIR`**：R11 与特征契约要 `git show <tag>:<path>` 读历史版本，临时目录没有 `.git`，不给就整条闸红；
+- **必须 `env -u B2T_APP_JS -u B2T_VIEW_JS -u B2T_STATIC_DIR`**：它们是"对历史版本复跑"的口子，hook 继承到就等于**验了别的版本**——和这个洞同一类错。
+
+**`git commit -- <paths>` 也成立**：给了 path 时 git 会让 hook 看到一个临时索引，`git write-tree` 记的正是将要提交的那棵树，所以"只提交我这一份"不会误报绕过（`/tmp/hpathspec` 实测：`x.txt`、`y.txt` 都已 add，`git commit -- x.txt` 只提交 x，无 bypass 记录）。**在四人共用工作区的现实下，这是默认提交姿势**——避免把别人已 add 的文件卷进自己的提交。
+
+**实测（索引导出）**：746 个文件、`67 pass / 0 fail / 2 skipped`、**5.9s**。
+
+**pytest 不在闸里，但必须"说出来"**：`post-commit` 检测到本次改了 `*.py` 就打印"闸里没有 pytest，后端回归要自己跑 `pytest -q`"。**沉默的未覆盖比红更坏**——红会有人看，沉默没人看。
+
+**安装自检（`scripts/install-hooks.sh`，幂等）**：装完在一次性仓库里跑三种情形——**红→必须拒绝**、**索引绿+工作区脏→必须放行**、**索引红→必须拒绝**。第二条就是本次事故的回归用例：**如果哪天有人把闸改回"验工作区"，它会当场红。**
+
+**残留（写在文档里，不假装没有）**：`core.hooksPath` 是克隆本地配置，新 clone 不会自动有。补法是 AGENTS.md 里一行"session 打开本目录先核 `git config core.hooksPath`"（AGENTS.md 进版本库、每个 session 都读，是唯一"每个 clone 都存在"的回合）。**但这仍是把记忆搬进一个被读的文件；无视 AGENTS.md 的 agent 照样能提交。这条残留已知、已写，不靠制度补。**
+
 
 **⑧ 状态归属**：视图数据由外壳持有，模块**通过注入 getter 现取，不缓存副本**（R5 一状态一 owner 的实例）。
 
@@ -1775,15 +1816,6 @@ window.PageTile = {
 > **`notify()` 写的是隐藏 DOM，`enter()` 不许清空 notice**——否则"用户在页面视图导入、切回目录页时提示已经不见了"。
 
 细节（5 个调用点、谁可覆盖、为什么 library 自己的函数不走 notify）见 §20.8，本节不重复。
-
-# 审校页（#view-reading）模块边界 — 权威版
-
-> **本版取代 `5ef9287` 的草案**（草案由 DevLead 主笔启动 Slice 1，权威版归 Architect）。
-> 基线：`main@5d7e0ef`（Slice 1 已落地：三栏宽度偏好 + 视图外壳迁入 `static/reading-view.js`；R1 已修）。
-> 复核对象：`backend/book2text/static/app.js` = **21,096 行**；审校区块 = **17,994–21,036 行（3,043 行）**；块内 **119 个顶层函数**、**66 个顶层状态**（62 `let` + 4 `const`）。
-> 所有行号按该 commit；变动超过 5 行后重新扫一遍，别按记忆改。
-
----
 
 
 ---
