@@ -37,6 +37,7 @@ import importlib.util
 import json
 import re
 import subprocess
+import os
 import sys
 from pathlib import Path
 
@@ -149,8 +150,13 @@ def run_stage(args, stage_n: int) -> int:
         problems.append(f"R3 豁免里出现 pages 的 id：{pages_exempt}——§2 明确「不批只搬接线类靠开豁免过闸」")
 
     if not args.expect_sha:
+        # 报错要能照着做：给出**可直接粘贴**的算法，而不是只说「没给」
+        # （2026-10-30：记档命令漏了这个参数，照着跑的人拿到假红去查产品）
+        rel = os.path.relpath(MANIFEST, REPO) if "MANIFEST" in globals() else args.movers
         print(f"[2] 前置不满足：第 {stage_n} 刀没给 --expect-sha——每刀必须用**该刀冻结版**名单的 sha，"
-              f"否则判的是另一份名单（exit 2 = 未验）")
+              f"否则判的是另一份名单（exit 2 = 未验）。\n"
+              f"    怎么给（直接粘贴）：\n"
+              f"      --expect-sha \"$(shasum -a 256 {rel} | cut -d' ' -f1)\"")
         return 2
     if args.acid:
         acid_problems = check_acid(args.acid)
