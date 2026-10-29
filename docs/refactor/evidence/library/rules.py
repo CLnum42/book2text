@@ -1,7 +1,6 @@
 """library 切片的替换口径（move(library) 那一笔）。"""
 # 标识符 → 注入调用（左边界挡属性访问）
 IDENT = [
-    ("currentProjectName", "injected.currentProjectName"),   # 同名会被下行覆盖，先显式排除
     ("apiJson", "injected.apiJson"),
     ("showError", "injected.showError"),
     ("showView", "injected.navigate"),
@@ -58,6 +57,13 @@ IDENT = [
     ("workflowByPageId", "injected.getWorkflowByPageId()"),
     ("LAST_VIEW_LABELS", "injected.lastViewLabels"),
     ("token", "injected.token"),
+    # 自检抓出来的 8 个（2026-10-29 第一次干跑：残余接缝 9 个）
+    ("loadPageMarginPreference", "injected.loadPageMarginPreference"),
+    ("loadPageOverlayPreference", "injected.loadPageOverlayPreference"),
+    ("loadReviewMarginPreference", "injected.loadReviewMarginPreference"),
+    ("openPageSetup", "injected.openPageSetup"),
+    ("resumeLastPosition", "injected.resumeLastPosition"),
+    ("bootingProject", "injected.getBootingProject()"),
 ]
 # 状态写点（有写点的成对走 setter）
 LIT = [
