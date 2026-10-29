@@ -229,6 +229,8 @@ code { font-size: 12px; background: var(--surface-3); padding: 0 4px; border-rad
 .tpill__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
 .tpill.is-failed .tpill__dot { background: var(--bad); }
 .tpill.is-active .tpill__dot { animation: pulse 1.4s ease-in-out infinite; }
+/* 空闲入口态：常驻的「任务」胶囊，点开抽屉看历史 */
+.tpill__dot--idle { background: var(--faint); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .tpill__mini { width: 54px; height: 4px; border-radius: 2px; background: rgba(37, 99, 235, .18); overflow: hidden; }
 .tpill__mini i { display: block; height: 100%; background: var(--accent); }

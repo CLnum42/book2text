@@ -6117,13 +6117,28 @@ function taskChipClass(status) {
   return "tpill";
 }
 
-/** 取消 / 失败后的短痕迹：留 30s 自动消失，点 ✕ 立即消失。 */
+/** 空闲胶囊：就是入口本身（两个字，无数字、无进度、无 %）。**不隐藏**。 */
+function paintIdleChip(title = "任务：点开看任务列表") {
+  const chip = el("task-chip");
+  if (!chip) return;
+  lastChipInput = null;
+  chip.hidden = false;
+  chip.className = "tpill";
+  chip.title = title;
+  chip.innerHTML = "";
+  const dot = document.createElement("span");
+  dot.className = "tpill__dot tpill__dot--idle";
+  const label = document.createElement("span");
+  label.className = "tpill__label";
+  label.textContent = "任务";
+  chip.append(dot, label);
+}
+
+/** 取消 / 失败后的短痕迹：留 30s，然后**回落成「任务」**（不是消失——入口必须常驻）。 */
 function armChipAutoHide(ms = CHIP_AUTO_HIDE_MS) {
   clearTimeout(chipAutoHideTimer);
   chipAutoHideTimer = setTimeout(() => {
-    const chip = el("task-chip");
-    if (chip) chip.hidden = true;
-    lastChipInput = null;
+    paintIdleChip();
   }, ms);
 }
 
@@ -6192,8 +6207,7 @@ function paintTaskChip(input) {
     dismiss.addEventListener("click", (event) => {
       event.stopPropagation();          // 别顺带把抽屉打开
       clearChipAutoHide();
-      lastChipInput = null;
-      chip.hidden = true;               // 立即消失（不等 30s）
+      paintIdleChip();                  // 立刻回落成「任务」（入口常驻，不隐藏）
     });
     chip.append(dismiss);
   }
@@ -6214,7 +6228,9 @@ async function loadTasks({ openDrawer = false } = {}) {
   try {
     data = await apiJson(`/api/projects/${currentProject.project_id}/jobs?limit=8`);
   } catch (error) {
-    return; // 任务列表读不到不该影响主流程
+    // 任务列表读不到不该影响主流程；但胶囊是入口，不能因为一次接口失败就消失
+    if (currentProject && !chipAutoHideTimer) paintIdleChip();
+    return;
   }
   if (openDrawer) openTaskDrawer();
 
@@ -6819,10 +6835,9 @@ function renderTask(data) {
       job,
     });
   } else if (job.status === "succeeded") {
-    // 正常完成：胶囊 hidden（不留空壳，也没有数字）
+    // 正常完成：回落成「任务」（常驻入口，不是隐藏）
     clearChipAutoHide();
-    lastChipInput = null;
-    el("task-chip").hidden = true;
+    paintIdleChip();
   } else {
     // 异常结束（取消 / 失败 / 中断）：留一句短痕迹，30s 后消失。
     // 只由**这一次跃迁**触发：本会话没见过它活跃（例如页面刚重载、历史列表里那条旧 job）→ 不画。
@@ -6831,10 +6846,10 @@ function renderTask(data) {
       chipTraceKeys.add(traceKey);
       const trace =
         job.status === "cancelled" ? "已取消"
-          : job.status === "failed" ? "有失败页"
+          : job.status === "failed" ? "失败"
           : "已中断";
       paintTaskChip({
-        text: `${taskProgressVerb(job)}${trace}`,
+        text: `任务 · ${trace}`,
         status: job.status,
         title: `${typeLabel}任务${trace} · 点开看详情`,
       });
@@ -6855,14 +6870,11 @@ function renderRecentTasks(jobs) {
       title: taskProgressTitle(latest, `${JOB_TYPE_LABELS[latest.job_type] || latest.job_type} · 点开看详情`),
       job: latest,
     });
-  } else if (latest) {
-    // 历史任务（含 cancelled/failed）**不往胶囊上画**：痕迹是「刚才发生的事」，不是「历史列表」。
-    // 否则每轮轮询都把同一条 cancelled 当新事件重画，30s 计时被无限续期，重载后还会再冒一次。
-    // 这里不清计时器：正在倒数的痕迹不该被列表刷新打断。
   } else {
-    clearChipAutoHide();
-    lastChipInput = null;
-    el("task-chip").hidden = true;   // 没有任务 → hidden（别变成常驻空壳）
+    // 历史任务（含 cancelled/failed）**不往胶囊上画**：痕迹是「刚才发生的事」，不是「历史列表」。
+    // 没有活跃任务时胶囊回落成常驻入口「任务」——不隐藏，也不显示历史痕迹。
+    // 正在倒数的痕迹不清计时器：列表刷新不该打断它。
+    if (!chipAutoHideTimer) paintIdleChip();
   }
 
   // 没有正在跑的任务：抽屉不摆半截进度条，改成说清"最近跑过什么"
