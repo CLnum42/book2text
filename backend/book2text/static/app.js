@@ -5917,6 +5917,23 @@ async function recognizePage(page) {
   if (!project || busyPages.has(page.page_no)) return;
   if (!warnUnconfirmed([page], `识别第 ${page.page_no} 页`)) return;
 
+  // 这一页有人工成果？先问，再让用户选「跳过」还是「仍要重识别」（后者 force，后端先备份整库）
+  let useForce = false;
+  const touched = await humanTouchedPages(project, [page]);
+  if (touched.length) {
+    const choice = await confirmAction({
+      title: `第 ${page.page_no} 页有人工改动`,
+      lead: "重识别这一页会丢掉你改过的字，跳过则保留。",
+      list: ["这一页之后的改动会丢", "原始输出与缓存不在备份里"],
+      detail: RESTORE_DETAIL_TEXT,
+      safeText: "跳过，不识别这一页",
+      dangerText: `仍要重识别第 ${page.page_no} 页`,
+    });
+    if (choice === null) return;        // Esc / 点遮罩：什么都不做（不建任务）
+    if (choice === "safe") return;      // 单页没有"剩下的页"可识别
+    useForce = true;
+  }
+
   el("pages-error").hidden = true;
   busyPages.add(page.page_no);
   renderPages();
@@ -5926,7 +5943,11 @@ async function recognizePage(page) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // 单页"识别"是明确要求认这一页：**不跳过**已识别的页（会走 R2）
-      body: JSON.stringify({ pages: [page.page_no], skip_recognized: false }),
+      body: JSON.stringify({
+        pages: [page.page_no],
+        skip_recognized: false,
+        ...(useForce ? { force: true } : {}),
+      }),
     });
     applyRecognizedPages(data.pages);
     openTaskDrawer();
