@@ -2711,15 +2711,24 @@ async function resumeLastPosition() {
 }
 async function refreshProject(projectId) {
   const data = await apiJson(`/api/projects/${projectId}`);
+  // **换项目必须清选择**：prune 只按 page_no 比，两个项目的页号会重号，
+  // 不清就会把项目 A 的「第 2、5 页」带成项目 B 的选中页（假选择比丢选择更糟）。
+  const switchedProject = Boolean(currentProject) && currentProject.project_id !== projectId;
   currentProject = { ...data.project, pages: data.pages, read_only: false };
+  if (switchedProject) {
+    selectedPages.clear();
+    selectionAnchor = null;
+  }
   // **保留选择**（2026-10-30，QA 实测：刷新项目会清掉用户刚选的页）：
   // 页面对象是重建的，所以按 page_no 重新映射，只丢弃已不存在的页——
   // 既不让旧对象残留，也不把用户的选择当垃圾扔掉。
   const alivePageNos = new Set((data.pages || []).map((item) => item.page_no));
-  for (const pageNo of [...selectedPages]) {
-    if (!alivePageNos.has(pageNo)) selectedPages.delete(pageNo);
+  if (!switchedProject) {
+    for (const pageNo of [...selectedPages]) {
+      if (!alivePageNos.has(pageNo)) selectedPages.delete(pageNo);
+    }
+    if (selectionAnchor !== null && !alivePageNos.has(selectionAnchor)) selectionAnchor = null;
   }
-  if (selectionAnchor !== null && !alivePageNos.has(selectionAnchor)) selectionAnchor = null;
   closePageDetail();
   structureCandidates = [];
   el("structure-result").hidden = true;
