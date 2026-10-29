@@ -65,6 +65,7 @@ const TEST_FILES = [
   ["compute-char-spans", () => import("./compute-char-spans.test.mjs")],
   ["reading-view-behavior", () => import("./reading-view-behavior.test.mjs")],
   ["index-view-behavior", () => import("./index-view-behavior.test.mjs")],
+  ["page-tile", () => import("./page-tile.test.mjs")],
   ["docs-structure", () => import("./docs-structure.test.mjs")],
   ["boundary", () => import("./boundary.test.mjs")],
 ];
