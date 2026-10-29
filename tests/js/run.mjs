@@ -72,6 +72,7 @@ const TEST_FILES = [
   ["docs-structure", () => import("./docs-structure.test.mjs")],
   ["boundary", () => import("./boundary.test.mjs")],
   ["pages-wire", () => import("./pages-wire.test.mjs")],
+  ["pages-poll-guard", () => import("./pages-poll-guard.test.mjs")],
 ];
 const selector = process.argv[2];
 const selected = TEST_FILES.filter(([name]) => !selector || name.includes(selector));
