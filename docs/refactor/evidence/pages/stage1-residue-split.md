@@ -34,3 +34,26 @@
 函数侧 15 个 + 私有调用者 6 个（去重后）= 21 条 / 1,159 行，**依赖 49 个别刀函数**。
 也就是说：**刀一是「渲染」+ 一条对 49 个能力的注入面**——它搬得动，但要先把那 49 个名字写进 IDENT，
 否则模块正文在运行时全是 ReferenceError。**这不是边界问题，是规则表的补齐问题。**
+
+## ⑤ `showView("pages")` 的调用点逐个核（Chief 要求：不许只在脑子里过）
+
+实测 **7 处**（不是 5 处）：
+
+| # | 位置 | 所在函数 | 上下文 | 是否「进 pages 就是为了进 pages」 |
+|---:|---|---|---|---|
+| 1 | `app.js:1255` | `goToWorkflowStep` | 工作流跳到某步 → 该步就是 pages | ✔ 是 |
+| 2 | `app.js:1352` | `setupShell` | `detail-close` 点击 → 关详情回页列 | ✔ 是（回退动作，目标就是 pages） |
+| 3 | `app.js:2787` | `resumeLastPosition` | 恢复上次所在视图 | ✔ 是 |
+| 4 | `app.js:2935` | `renderProject` | `currentView === "library" && !bootingProject` → 切到 pages | ✔ 是（项目渲染完的落点就是页列） |
+| 5 | `app.js:4217` | `openPageSetup` | 打开页设置前先切到 pages | ✘ **不是**：进 pages 是为了打开设置面板，是"前置动作" |
+| 6 | `app.js:13021` | `finishShowFallbackPages` | 兜底：内容缺失时回页列 | ✔ 是 |
+| 7 | `app.js:15059` | `boot` 里的对象属性 | `exit: () => showView("pages")` | ✔ 是（默认落点，不是调用点） |
+
+**结论：7 处里 6 处是「进 pages 就是目的」，第 5 处 `openPageSetup` 是「为了打开面板而先进 pages」。**
+
+→ 所以 `PagesView.enter()` 的语义必须同时容纳这一种：**"进入页列 + 打开页设置面板"**。
+   要么 `enter()` 带一个可选的 `openPanel` 参数，要么 `openPageSetup` 留在外壳、`enter()` 之后自己开面板（**后者更干净**：外壳保留"打开面板"这个知识，模块只管渲染）。
+
+→ 第 7 处是 `boot` 里给某对象挂的 `exit` 回调，**不是执行路径**，改成 `PagesView.enter()` 时它跟着走，不需要额外处理。
+
+**没有发现别视图反向依赖 pages**：这 7 处都发生在"当前视图要变成 pages"的场合，没有 `library`/`merge`/`preview` 依赖 pages 内部状态的情况。
