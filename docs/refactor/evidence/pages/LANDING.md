@@ -53,3 +53,25 @@ IntersectionObserver 构造数 ≤ 6     （不许回到 11）
 **没给数就是「未验」——报告里不许写「已达标」。**
 
 如果这两项不达标：**先回滚，再查 `pages` 有没有走 `PageTile`**（如果走了 `if (window.PageTile)` 的降级分支，取图会回到 2）。
+## 六、已知阻塞：转发器调不到模块内部函数（2026-10-29，落盘时实测）
+
+```
+TypeError: Cannot read properties of undefined (reading 'apply')
+```
+
+agent 侧写的是 `return window.PagesView.<fn>.apply(window.PagesView, arguments)`（63 条），
+但模块按 R8 **只导出 `{ init, enter }`**——那 63 个函数是 IIFE 内部的，
+`window.PagesView.renderPageSetup` 是 `undefined`，**生产环境同样会炸**。
+
+**注意：测试替身盖不住这个缺口**。替身让 `<fn>` 返回 no-op 函数，用例变绿，
+但线上仍然是 `undefined.apply` —— 这正是「替身掩盖真缺失」的形态，绝不能靠它过关。
+
+三条路（需要裁决）：
+
+| 方案 | 代价 | 风险 |
+|---|---|---|
+| **A. 模块加分发口** `call(name, args)`，转发器写 `window.PagesView.call("fn", arguments)` | 导出 2 → 3，要改 `VIEW_EXPORTS` 与 `MAX_EXPORTS`；R4-dup 要认这一形态 | 破「导出只降不升」一次，但只 +1 且入口唯一 |
+| B. 63 个函数全导出 | 直接违反 R8 | 不可接受 |
+| C. 把 `stays` 里 67 个调用点也搬进模块/改注入 | 等于第二刀，今天做不完 | 时间 |
+
+**未裁决前不许落盘**：A 之外的任何"让它先绿"的做法都是把缺口藏起来。
