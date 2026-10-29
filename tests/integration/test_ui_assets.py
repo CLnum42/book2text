@@ -1042,6 +1042,11 @@ def test_page_index_step_is_wired() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # Slice I1：目录确认整段搬进 index-view.js（app.js 里只剩 loadPageIndex /
+    # loadIndexBlocks / 图片质量那几条）。不在 app.js 里的断言改合查；
+    # 仍住在外壳里的那几个**不合查**——它们确实还在 app.js。
+    index_script = (STATIC_DIR / "index-view.js").read_text(encoding="utf-8")
+    index_both = script + index_script
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1067,26 +1072,26 @@ def test_page_index_step_is_wired() -> None:
     assert 'PAGE_WORKFLOW_STEPS = ["pages", "recognition", "margin", "index"]' in script
 
     # 生成 / 跳转 / 翻页 / 高亮 / 缺页码
-    assert "function openPageIndex(" in script
-    assert "function jumpToPrintedPage(" in script
-    assert "function stepIndexPage(" in script
-    assert "function highlightIndexRow(" in script
+    assert "function openPageIndex(" in index_both
+    assert "function jumpToPrintedPage(" in index_both
+    assert "function stepIndexPage(" in index_both
+    assert "function highlightIndexRow(" in index_both
     assert "INDEX_ZOOM_SCALES" in script
     assert "/page-index" in script
     # 完成判定读收尾面板的 index 字段，不在前端另算
     assert 'const ix = fs.index || {};' in script
     assert 'Boolean(ix.complete)' in script
-    assert "未识别页码" in script
+    assert "未识别页码" in index_both
     # 版心步的"下一步"按这一页的真实状态说，不按步骤顺序说
     assert "版心已按本页正文行生成；拖动四边调整，不改也算已定" in script
     # 兜底与"没有行"各有自己的说法，不许混成一句"已拟合"
     assert "版心是本页正文行的包围盒（兜底）" in script
     assert "这一页还没有可用的正文行（识别行 / 检测行都没有），版心暂时生成不了" in script
     # 只有 PDF 页序时：说明条 + 跳转停用 + 步骤条不绿（complete 由后端给）
-    assert "function indexIsPageOrderOnly(" in script
-    assert "尚未识别：下面只有 PDF 页序" in script
-    assert "function syncIndexJumpState(" in script
-    assert "is-page-order" in script
+    assert "function indexIsPageOrderOnly(" in index_both
+    assert "尚未识别：下面只有 PDF 页序" in index_both
+    assert "function syncIndexJumpState(" in index_both
+    assert "is-page-order" in index_both
     assert ".index-notice" in css
 
     assert ".index-row.is-current" in css
@@ -1480,6 +1485,11 @@ def test_index_view_reuses_page_rendering() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # Slice I1：目录确认整段搬进 index-view.js（app.js 里只剩 loadPageIndex /
+    # loadIndexBlocks / 图片质量那几条）。不在 app.js 里的断言改合查；
+    # 仍住在外壳里的那几个**不合查**——它们确实还在 app.js。
+    index_script = (STATIC_DIR / "index-view.js").read_text(encoding="utf-8")
+    index_both = script + index_script
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1490,18 +1500,22 @@ def test_index_view_reuses_page_rendering() -> None:
     ):
         assert f'id="{element_id}"' in page, element_id
 
-    assert "function paintIndexDecorations(" in script
+    assert "function paintIndexDecorations(" in index_both
     assert "paintTileMargin(tile, page)" in script
     assert "renderPageBlocks(tile, blocks" in script
     assert "function loadIndexBlocks(" in script
-    assert "function drawIndexFirstLine(" in script
-    assert "function toggleIndexOverlay(" in script
-    assert "function toggleIndexMargin(" in script
-    assert "syncIndexToggles()" in script
-    assert "pageZoomTouched = true;" in script
+    assert "function drawIndexFirstLine(" in index_both
+    assert "function toggleIndexOverlay(" in index_both
+    assert "function toggleIndexMargin(" in index_both
+    assert "syncIndexToggles()" in index_both
+    # 这三句现在是"模块调注入 + app 侧 setter 写状态"两半：只锁一半都会漏掉断链。
+    assert "injected.setPageZoomTouched(true)" in index_script
+    assert "setPageZoomTouched: (value) => { pageZoomTouched = value;" in script
     # 默认开：进入目录确认时打开版心与块框
-    assert "pagesMarginOn = true;" in script
-    assert "pagesOverlayOn = true;" in script
+    assert "injected.setPagesMarginOn(true)" in index_script
+    assert "setPagesMarginOn: (value) => { pagesMarginOn = value;" in script
+    assert "injected.setPagesOverlayOn(true)" in index_script
+    assert "setPagesOverlayOn: (value) => { pagesOverlayOn = value;" in script
     # 版心 / 块框两栏同一个状态变量
     assert "pagesMarginOn" in script and "pagesOverlayOn" in script
     assert ".index-page" in css and ".index-firstline" in css
@@ -1517,39 +1531,44 @@ def test_page_index_scrolls_continuously_with_lazy_pages() -> None:
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # Slice I1：目录确认整段搬进 index-view.js（app.js 里只剩 loadPageIndex /
+    # loadIndexBlocks / 图片质量那几条）。不在 app.js 里的断言改合查；
+    # 仍住在外壳里的那几个**不合查**——它们确实还在 app.js。
+    index_script = (STATIC_DIR / "index-view.js").read_text(encoding="utf-8")
+    index_both = script + index_script
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     assert 'id="index-pages"' in page
-    assert "function buildIndexPages(" in script
+    assert "function buildIndexPages(" in index_both
     assert "IntersectionObserver" in script
-    assert "rootMargin" in script and "INDEX_NEAR_MARGIN" in script
+    assert "rootMargin" in index_both and "INDEX_NEAR_MARGIN" in index_both
     # 只给附近页挂图 / 块，滚出去清掉，图有上限
-    assert "function loadIndexTile(" in script
-    assert "function clearIndexTile(" in script
-    assert "function trimIndexImages(" in script
-    assert "INDEX_IMAGE_LIMIT" in script
-    assert "function ensureIndexImage(" in script
-    assert "function ensureIndexBlocks(" in script
+    assert "function loadIndexTile(" in index_both
+    assert "function clearIndexTile(" in index_both
+    assert "function trimIndexImages(" in index_both
+    assert "INDEX_IMAGE_LIMIT" in index_both
+    assert "function ensureIndexImage(" in index_both
+    assert "function ensureIndexBlocks(" in index_both
     # 页列里的每一页都调用同一套渲染
-    assert "function paintIndexTile(" in script
+    assert "function paintIndexTile(" in index_both
     # 只有视口里的页画装饰：near 只取数据、visible 才画
-    assert "function observeIndexTiles(" in script
-    assert "indexVisibleObserver" in script
-    assert "function clearIndexDecorations(" in script
+    assert "function observeIndexTiles(" in index_both
+    assert "indexVisibleObserver" in index_both
+    assert "function clearIndexDecorations(" in index_both
     # 页图按距离排队、一次解一张，并有同时挂载上限
-    assert "function pumpIndexImages(" in script
-    assert "indexImageQueue" in script
-    assert "image.decode()" in script
+    assert "function pumpIndexImages(" in index_both
+    assert "indexImageQueue" in index_both
+    assert "image.decode()" in index_both
     # 右边滚 → 左边同步（当前行居中）
-    assert 'el("index-canvas").addEventListener("scroll", onIndexScroll' in script
-    assert "function updateIndexActiveFromScroll(" in script
-    assert "function ensureIndexRowVisible(" in script
-    assert "highlightIndexRow(true)" in script
+    assert 'el("index-canvas").addEventListener("scroll", onIndexScroll' in index_both
+    assert "function updateIndexActiveFromScroll(" in index_both
+    assert "function ensureIndexRowVisible(" in index_both
+    assert "highlightIndexRow(true)" in index_both
     # 点列表 = 滚过去，不是换一页
-    assert "function scrollIndexToPage(" in script
-    assert "openIndexPage(Number(row.dataset.pageNo)" in script
+    assert "function scrollIndexToPage(" in index_both
+    assert "openIndexPage(Number(row.dataset.pageNo)" in index_both
     # 缩放作用在整个页列上
-    assert "for (const tile of indexTiles.values()) tile.style.width" in script
+    assert "for (const tile of indexTiles.values()) tile.style.width" in index_both
     assert ".index-pages" in css and ".index-page" in css
 
 
@@ -1756,6 +1775,11 @@ def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
     """任务 61：目录确认的页图不许"永远是灰的"；当前审校项左右同款高亮。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # Slice I1：目录确认整段搬进 index-view.js（app.js 里只剩 loadPageIndex /
+    # loadIndexBlocks / 图片质量那几条）。不在 app.js 里的断言改合查；
+    # 仍住在外壳里的那几个**不合查**——它们确实还在 app.js。
+    index_script = (STATIC_DIR / "index-view.js").read_text(encoding="utf-8")
+    index_both = script + index_script
     module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
@@ -1764,11 +1788,11 @@ def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
     for element_id in ("index-image-status", "index-canvas"):
         assert f'id="{element_id}"' in page, element_id
     # 加载中不摘 src（摘了 onload/onerror 都不触发，泵会永久卡死）+ 超时 + 重试
-    assert "function waitForImageLoad(" in script
-    assert "image.dataset.cancelled" in script
-    assert "INDEX_IMAGE_TIMEOUT_MS" in script
-    assert "function markIndexImageFailed(" in script
-    assert "这一页的图像读不出来 · 点这里重试" in script
+    assert "function waitForImageLoad(" in index_both
+    assert "image.dataset.cancelled" in index_both
+    assert "INDEX_IMAGE_TIMEOUT_MS" in index_both
+    assert "function markIndexImageFailed(" in index_both
+    assert "这一页的图像读不出来 · 点这里重试" in index_both
     assert ".index-image-retry" in css
     assert ".index-image-status" in css
     # ② 当前审校项：文本流与页面同色同框型（琥珀），其余弱化、已审淡绿
@@ -1810,6 +1834,11 @@ def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
 def test_page_number_labels_know_toc_pages() -> None:
     """目录页也不印阿拉伯页码——不能算"未识别页码"（任务 61）。"""
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
-    assert 'missing_reason === "toc"' in script
-    assert "目录页 · 不印页码" in script
-    assert "stats.missing_toc" in script
+    # Slice I1：目录确认整段搬进 index-view.js（app.js 里只剩 loadPageIndex /
+    # loadIndexBlocks / 图片质量那几条）。不在 app.js 里的断言改合查；
+    # 仍住在外壳里的那几个**不合查**——它们确实还在 app.js。
+    index_script = (STATIC_DIR / "index-view.js").read_text(encoding="utf-8")
+    index_both = script + index_script
+    assert 'missing_reason === "toc"' in index_both
+    assert "目录页 · 不印页码" in index_both
+    assert "stats.missing_toc" in index_both

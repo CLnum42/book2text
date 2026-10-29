@@ -124,6 +124,16 @@ B2T_STATIC_DIR=/tmp/rb-base/backend/book2text/static node tests/js/edge-ratchet.
 - 3 条 app.js 内部桥走例外表（`edge-ratchet.mjs` 的 `BRIDGE_EXCEPTIONS`）：带 owner + 到期点、
   上限 3、归零即过期。**总条数始终 13**——改总数等于悄悄放宽
 
+**待办：三个视图模块的 `exit()` 都是零调用点的导出（2026-10-29 记）**
+
+`reading-view.js` / `preview-view.js` / `index-view.js` 都导出了 `exit`，但 **`showView` 从来没有调用过它**
+（`grep '\.exit()' app.js` = 0）。按 R8 的精神，"有导出没入口"本身就是要解释的东西。
+- 现状不红：R8 只锁"导出名单 ⊆ STABLE ∪ TEMPORARY 且总数只降"，不锁调用点。
+- **没去接它是刻意的**：`showView → exit()` 是改行为（退出时要不要断 IntersectionObserver、
+  要不要清草稿/面板），要单独一轮 + 证据，不能混在搬运里。
+- 谁要动它：先在 §19 待办登记，接的时候补"退出后观察器已断/状态已清"的行为断言，
+  否则又是一条"接上了但没人验证"的线。
+
 **视图模块的对外接口（R6 / R2）**
 
 - **R6**：每个 `static/*-view.js` 只许露**一个** `window.XxxYyy = …`，名字由文件名决定

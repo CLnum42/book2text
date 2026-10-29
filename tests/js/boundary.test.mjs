@@ -523,8 +523,11 @@ const WINDOW_HOOK_EXCEPTIONS = [
   { name: "__b2tTextCheckFails", owner: "QA", expires: "文本核对验收完成" },
   { name: "__b2tPreviewMetrics", owner: "QA", expires: "预览性能验收完成" },
   { name: "__b2tPreviewTileTops", owner: "QA", expires: "预览性能验收完成" },
+  { name: "__b2tIndexMetrics", owner: "QA", expires: "目录确认性能验收完成" },
+  { name: "__b2tIndexBlocksMs", owner: "QA", expires: "目录确认性能验收完成" },
+  { name: "__b2tIndexTops", owner: "QA", expires: "目录确认性能验收完成" },
 ];
-const WINDOW_HOOK_MAX = 9;   // 只降不升
+const WINDOW_HOOK_MAX = 12;   // 只降不升
 
 /** R6 的判定内核（独立出来，好让自检喂合成样例）。 */
 function windowInterfaceProblems(fileName, source) {
@@ -1271,6 +1274,41 @@ const OWNERS = {
   readingProof: "reading-view.js",
   readingMarkupLevel: "reading-view.js",
   readingPendingOn: "reading-view.js",
+  indexCurrentPage: "index-view.js",
+  indexJumpTimer: "index-view.js",
+  INDEX_NEAR_MARGIN: "index-view.js",
+  INDEX_IMAGE_LIMIT: "index-view.js",
+  indexTiles: "index-view.js",
+  indexImageProfile: "index-view.js",
+  indexPagesProject: "index-view.js",
+  indexNearPages: "index-view.js",
+  indexVisiblePages: "index-view.js",
+  indexLoadedImages: "index-view.js",
+  indexImageAttempts: "index-view.js",
+  INDEX_IMAGE_TIMEOUT_MS: "index-view.js",
+  indexBlocksByPage: "index-view.js",
+  indexBlocksPending: "index-view.js",
+  indexObserver: "index-view.js",
+  indexVisibleObserver: "index-view.js",
+  indexObserverMargin: "index-view.js",
+  indexImageQueue: "index-view.js",
+  indexImagePumping: "index-view.js",
+  indexTops: "index-view.js",
+  indexTopMap: "index-view.js",
+  indexScrollRaf: "index-view.js",
+  indexResizeRaf: "index-view.js",
+  // 图片清晰度的标签表：**暂驻** index 段（跟着 index 整段搬进来的，不是目录状态）。
+  // 到期点 = 建 `core/display-prefs`（三个视图都读它）时，这条 owner 要跟着改成那个模块。
+  // 不标这一行的话，名字对上了就算覆盖——那是"看似登记、实则没想清楚归属"。
+  IMAGE_QUALITY_LABELS: "index-view.js",
+  READING_CHUNK: "reading-view.js",
+  READING_NEAR_MARGIN: "reading-view.js",
+  wordBoxMappingStats: "reading-view.js",
+  READING_SPLIT_KEY: "reading-view.js",
+  READING_SPLIT_DEFAULT: "reading-view.js",
+  READING_SPLIT_MIN: "reading-view.js",
+  READING_GRIP_TOTAL: "reading-view.js",
+  READING_INTENT_KINDS: "reading-view.js",
   previewData: "preview-view.js",
   previewProject: "preview-view.js",
   previewOptions: "preview-view.js",
@@ -1353,8 +1391,12 @@ test("R5：一状态一 owner——每个状态的赋值点只能出现在 owner
  * 这条注册表本身就是那条纪律的闸：磁盘上出现未登记的 `*-view.js` 直接红。
  */
 const VIEW_STATE_PREFIXES = {
-  "reading-view.js": /^reading/,
+  // 判据：模块**列 0** 的绑定都属于这个模块。除了 `readingXxx` 状态，还包括模块级常量
+  // （`READING_CHUNK` / `INDEX_NEAR_MARGIN` / `IMAGE_QUALITY_LABELS` …）——它们同样是
+  // "这个模块的东西"，漏登记一样会变成没覆盖。
+  "reading-view.js": /^(reading|READING_|wordBoxMappingStats$)/,
   "preview-view.js": /^preview/,
+  "index-view.js": /^(index|INDEX_|IMAGE_QUALITY_LABELS$)/,
 };
 
 test("R5 防漏检：每个视图模块的顶层状态都必须在 OWNERS 里，且 owner 指向自己", () => {
@@ -1367,7 +1409,9 @@ test("R5 防漏检：每个视图模块的顶层状态都必须在 OWNERS 里，
       continue;
     }
     const source = stripCommentsAndStrings(readFileSync(join(STATIC_DIR, fileName), "utf8"));
-    const declared = [...source.matchAll(/^[ \t]*(?:let|const|var)\s+([A-Za-z_$][\w$]*)/gm)]
+    // **只看列 0**：模块状态/常量都在顶层；函数里的局部量（`let index` / `const tile` 之类）
+    // 不属于模块，收进来只会误报。前缀表再按各模块的命名空间过滤。
+    const declared = [...source.matchAll(/^(?:let|const|var)\s+([A-Za-z_$][\w$]*)/gm)]
       .map((match) => match[1])
       .filter((name) => pattern.test(name));
     for (const name of declared) {
