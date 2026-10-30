@@ -3579,7 +3579,71 @@ const VIEW_EXPORTS = {
     // app.js 里 window.PagesView.recognizePage 引用 = 0 且不在 api 表——
     // 今天两个调用者（buildTile / setupLibrary）都在外壳；刀 9 若还剩一个，这个键死不了。
     "recognizePage",               // 死亡刀号 = 刀9
-  ] },
+  ],
+    // ---- 三类键（Architect ratchet-two-kinds，docs/refactor/pages/export-ratchet.md）----
+    // L lifecycle 固定 3 个名字；T transitional 必须带死期（现留空，等 9a/9b 裁定）；
+    // C capability 不写死期，登记 effective callers + 理由（清册就是上限，不是数字）。
+    kinds: {
+      init: { kind: "L" },
+      ensureMarginFitted: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      loadLayoutBlocks: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      loadSetupSuggestions: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      refreshRecognizedPages: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      reloadProjectPages: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderLayoutBlocks: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderMarginPanel: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderPageSetup: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderPages: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderRecognitionStatus: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderRecognitionVerdict: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderSuggestionPanel: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderTypePicker: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      savePageMargin: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      syncPageStates: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      undoMarginEdit: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      updateMarginDetectProgress: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      updatePageVisibility: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      updateSelectionPanel: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      loadFinishSummary: { kind: "C", callers: ["afterCleanupApplied", "afterContinuationChange", "boot", "confirmCurrentPage", "finishConfirmPages", "finishRevokeAutoPass", "finishRunAutoPass", "finishRunLayout", "openFinishPanel", "pollTask", "refreshProject", "setupReviewControls", "waitForAuxThenReview", "library-view.js", "reading-view.js"], reason: "收尾状态被三个视图共用（13 个外壳函数 + library/reading 各调）" },
+      loadLanguageSummary: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      loadPageNumberSummary: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      refreshLayoutDetectEntry: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      refreshMarginDetectHint: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      refreshMarginTiles: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderAutoApplyStatus: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderMarginStepVerdict: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderPageNumberMetrics: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderRecognitionSettings: { kind: "C", callers: ["applyProjectSettings", "boot", "loadAppInfo", "library-view.js"], reason: "项目设置落在 pages 面板上" },
+      renderStepPanels: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderWorkflowFilter: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      updateRecognitionAuxProgress: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      applyPageZoom: { kind: "C", callers: ["fillDefinitionList", "goToWorkflowStep", "setPageZoom", "showView"], reason: "缩放三步共用（原按 T 记，Architect 转 C）" },
+      confirmAllUnconfirmed: { kind: "C", callers: ["finishConfirmPages"], reason: "收尾面板发起（原按 T 记，Architect 转 C）" },
+      checkSelection: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      finishMarginDetectBar: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      forgetAllPageBlocks: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      forgetAllPageSuggestions: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      openPageSetup: { kind: "C", callers: ["boot", "library-view.js"], reason: "首启 / 库页打开页面设置" },
+      pageScroller: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      pausePageThumbnails: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      pumpOverlayRender: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      queueOverlayRender: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      rerunAuxiliary: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      scanVisiblePageSuggestions: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      setMarginStatus: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      setPageNumberStatus: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      showMarginDetectProgress: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      startLayoutDetection: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "版心检测对话框发起（原按 T 记，Architect 转 C）" },
+      toggleMarginView: { kind: "C", callers: ["boot", "index-view.js", "preview-view.js"], reason: "三步共用的工具栏开关" },
+      togglePageBlocksOverlay: { kind: "C", callers: ["boot", "index-view.js", "preview-view.js"], reason: "同上" },
+      visiblePages: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      syncToolbarToggles: { kind: "C", callers: ["index-view.js", "library-view.js", "pages-view.js", "preview-view.js", "reading-view.js"], reason: "4 个视图模块 + boot 的 deps 行都要它 → 模块→模块，第一个此类键" },
+      showPagesError: { kind: "C", callers: ["finishRevokeAutoPass"], reason: "收尾面板的任务失败要显示在页面错误条" },
+      pagesErrorMessage: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "版心检测对话框读错误文案" },
+      setMarginJudgementCheckbox: { kind: "C", callers: ["setMarginJudgementSetting"], reason: "项目设置 → 导出面板勾选态" },
+      recognizePage: { kind: "C", callers: ["buildTile", "setupLibrary"], reason: "单页识别可从页面网格和审校面板发起（刀 7 新增，跨域编排）" },
+    },
+  },
 };
 
 /** 在干净的 vm 里加载某个视图模块，读出它的接口对象的 key（不加载 app.js）。 */
@@ -3711,6 +3775,97 @@ export function exportDeathProblems({ deaths, stage, appSource, apiKeys, expires
   }
   return problems;
 }
+
+/** 死期待定的 T 个数的上限（只降不升；填一个降一个）。 */
+const T_DEATH_PENDING_MAX = 44;
+
+/**
+ * **每个导出键的 kind 必填，且 T / C 字段互斥**（Architect `export-ratchet.md` §八 ①）。
+ *
+ * T transitional：只许 `{ kind: "T", death }`（`death: null` = 待定，但要显式写出来）；带 callers = 混填。
+ * C capability：只许 `{ kind: "C", callers, reason }`；**带 death = 混填**——C 永不死，
+ *   写死期就等于给一个还得用的功能定了死日（历史上「20 个活键都在刀 9 死」就是这么错的）。
+ * L lifecycle：不许带 death / callers。
+ */
+export function exportKindProblems({ names, kinds }) {
+  const problems = [];
+  const table = kinds || {};
+  const has = (entry, field) => Object.prototype.hasOwnProperty.call(entry, field);
+  for (const key of names) {
+    const entry = table[key];
+    if (!entry || !entry.kind) {
+      problems.push(`导出键 ${key} 没有登记 kind（L/T/C）——三类不清就判不了死期`);
+      continue;
+    }
+    if (entry.kind === "T") {
+      if (has(entry, "callers")) problems.push(`导出键 ${key} 是 T（过渡键），却登记了 callers——T/C 字段混填`);
+      if (!has(entry, "death")) {
+        problems.push(`导出键 ${key} 是 T，却没写 death（哪怕是 null 代表待定，也要显式写出来）`);
+      }
+    } else if (entry.kind === "C") {
+      if (has(entry, "death")) {
+        problems.push(`导出键 ${key} 是 C（能力面），却写了 death——C 不写死期，写了就等于给还得用的功能定死日`);
+      }
+      if (!Array.isArray(entry.callers) || entry.callers.length === 0) {
+        problems.push(`导出键 ${key} 是 C，必须登记非空 callers（清册就是上限，不是数字）`);
+      }
+      if (!entry.reason) problems.push(`导出键 ${key} 是 C，必须写 reason（为什么它是跨域能力）`);
+    } else if (entry.kind === "L") {
+      if (has(entry, "death") || has(entry, "callers")) {
+        problems.push(`导出键 ${key} 是 L（生命周期），不许带 death/callers`);
+      }
+    } else {
+      problems.push(`导出键 ${key} 的 kind=${entry.kind} 不认识（只许 L / T / C）`);
+    }
+  }
+  for (const key of Object.keys(table)) {
+    if (!names.includes(key)) problems.push(`kinds 里登记了 ${key}，但它不是这个模块的导出键——删掉`);
+  }
+  return problems;
+}
+
+test("R8（三类键）：每个导出键 kind 必填，T / C 字段互斥", () => {
+  const entry = VIEW_EXPORTS["pages-view.js"];
+  const problems = exportKindProblems({ names: entry.names, kinds: entry.kinds });
+  assert.deepEqual(problems, [], problems.join("\n"));
+  const pending = Object.values(entry.kinds).filter((item) => item.kind === "T" && item.death === null).length;
+  assert.ok(pending <= T_DEATH_PENDING_MAX,
+    `死期待定的 T 有 ${pending} 个，上限 ${T_DEATH_PENDING_MAX}——只许往下（填一个降一个）`);
+  if (pending > 0) {
+    console.log(`ℹ 死期待定的 T：${pending} 个（等 Architect 的 9a/9b 裁定；只许降）`);
+  }
+});
+
+test("R8（三类键）自检：缺 kind 红 / T 带 callers 红 / C 带 death 红 / 未知 kind 红 / 多余键红", () => {
+  const names = ["a", "b", "c"];
+  const ok = {
+    a: { kind: "L" },
+    b: { kind: "T", death: null },
+    c: { kind: "C", callers: ["x"], reason: "跨域" },
+  };
+  assert.deepEqual(exportKindProblems({ names, kinds: ok }), [],
+    `三类键自检失败：合规清册被误报——${exportKindProblems({ names, kinds: ok }).join("；")}`);
+
+  const noKind = exportKindProblems({ names, kinds: { ...ok, b: {} } });
+  assert.ok(noKind.some((m) => m.includes("没有登记 kind")),
+    `三类键自检失败：缺 kind 被放过——${noKind.join("；")}`);
+
+  const tWithCallers = exportKindProblems({ names, kinds: { ...ok, b: { kind: "T", death: null, callers: ["x"] } } });
+  assert.ok(tWithCallers.some((m) => m.includes("T/C 字段混填")),
+    `三类键自检失败：T 带 callers（混填）被放过——${tWithCallers.join("；")}`);
+
+  const cWithDeath = exportKindProblems({ names, kinds: { ...ok, c: { kind: "C", death: 9, callers: ["x"], reason: "r" } } });
+  assert.ok(cWithDeath.some((m) => m.includes("C") && m.includes("却写了 death")),
+    `三类键自检失败：C 带 death（混填）被放过——${cWithDeath.join("；")}`);
+
+  const badKind = exportKindProblems({ names, kinds: { ...ok, a: { kind: "X" } } });
+  assert.ok(badKind.some((m) => m.includes("不认识")),
+    `三类键自检失败：未知 kind 被放过——${badKind.join("；")}`);
+
+  const extra = exportKindProblems({ names, kinds: { ...ok, d: { kind: "T", death: null } } });
+  assert.ok(extra.some((m) => m.includes("不是这个模块的导出键")),
+    `三类键自检失败：kinds 里多出非导出键被放过——${extra.join("；")}`);
+});
 
 test("R8（到点未死）：死亡刀号 <= 当前刀的导出键，必须 app.js 引用 0 且不在 api 表", () => {
   const deaths = EXPORT_DEATH_KNIFE["pages-view.js"] || {};   // 表可能为空（到期点见 EXPORT_DEATH_EXPIRES）
@@ -3879,6 +4034,8 @@ const GATE_SWITCHES = [
   { name: "A5_MAX_EXCUSES", source: "手工上限，只降不升；现值见该行", check: "A5 例外条数上限" },
   { name: "R5_EXCUSES", source: "空表；{ state, file, owner, expires }", check: "R5 是否放过某处「模块写外壳状态」" },
   { name: "R5_MAX_EXCUSES", source: "手工上限，只降不升；现值见该行", check: "R5 例外条数上限" },
+  { name: "T_DEATH_PENDING_MAX", source: "Architect 的 9a/9b 裁定落地时点——每填一个 T 的死期就下调一次，"
+    + "永不上调；清零那天删掉这个常数", check: "还有多少 T 键的死期是 null（待定），超上限就红" },
   { name: "EXPORT_DEATH_EXPIRES", source: "Architect 的 kind 清册（docs/refactor/pages/export-ratchet.md）落地时点——"
     + "清册落地后死期表必须非空，这个数只在清册推迟时才会动", check: "死期表为空时是否已经到期（到期未填 = 红）" },
 ];
