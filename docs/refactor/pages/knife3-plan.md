@@ -173,3 +173,31 @@ python3 docs/refactor/evidence/build_view.py \
 ```
 
 这两条属于生成器/规则的补齐，**不影响本施工图的名单与验收数**；补完再让 Builder 跑。
+
+## ⑧ 45 vs 46 的解释（定稿：**以 dry run 的 45 为准**）
+
+第一版 dry run 报 `injected_keys: 46`，计划写 45。差的**不是 1 个名字，是 5 个重复注入**：
+
+```
+46（第一版）= 25 函数 + 15 getter（let 状态）+ 5 const 值 + 1 setter(setPagesMarginOn)
+其中 5 个是模块里**自己已经有声明**的：el · ensureMarginFitted · renderLayoutBlocks ·
+  renderMarginPanel · renderRecognitionStatus（el 是 pages-view.js 顶层 const，后 4 个是刀 1 搬进去的函数）
+```
+
+它们被注入就成两份实现，而模块内裸引用才是对的。**没有改计划迁就数字**，而是让
+`knife3-rules.py` 把「现模块声明」从 `IDENT` 里剔掉（与 anti/residue 同一口径）。
+
+最终 dry run（原文三行）：
+
+```
+"residue": []            ← 没有未定义标识符
+"anti": []
+"injected_keys": 45      ← 25 函数 + 15 getter + 4 const 值 + 1 setter
+```
+
+> 顺带：`setPagesMarginOn` 是本刀函数体唯一写状态的地方（`pagesMarginOn = …`），
+> 所以它是 45 里唯一的 setter；其余 8 个写点（finishSummary 一族 / stepsReady / currentView）走的是
+> **同名 setter 注入**，由 `SETTERS` 改写成 `injected.setX(…)`，不再是「给 getter 赋值」。
+
+**结论：验收写 45。** 以后任何"计划与 dry run 差 1"的情况，先把两边的**键名清单**打出来对集，
+不要用总数猜——今天的 393/394、123/126、32/29 都是总数对不上、名字没人对。

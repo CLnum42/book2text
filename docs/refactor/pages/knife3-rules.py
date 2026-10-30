@@ -32,7 +32,6 @@ _spec.loader.exec_module(_base)
 INTERFACE = _base.INTERFACE
 SET_BLOCKS = _base.SET_BLOCKS
 SET_REWRITES = getattr(_base, "SET_REWRITES", {})
-SETTERS = getattr(_base, "SETTERS", [])
 MOVED_STATES = getattr(_base, "MOVED_STATES", [])      # 刀 3 没有"搬状态"，保持继承值
 INIT_ANCHOR = _base.INIT_ANCHOR
 FORWARDERS = _base.FORWARDERS
@@ -97,10 +96,48 @@ _MOVERS = {
     )["movers"]
 }
 
-IDENT = [(old, new, *rest) for old, new, *rest in _base.IDENT if old not in _MOVERS] + [
-    entry for entry in IDENT_KNIFE3 if entry[0] not in _MOVERS
+
+#: **(b) 本刀函数体里的写点要补 SETTERS**（2026-10-30）：dry run 报「给 getter 赋值 9 处」，
+#: 那意味着搬过去的函数体会直接对 `injected.getX()` 赋值——写不到真实状态上（bodyPending 那类静默错）。
+#: 这 8 个名字（9 处）按 dry run 的错误串逐条取，不是手猜；setter 键名 = set + 驼峰。
+IDENT_KNIFE3 += [
+    ("setFinishSummary", "injected.setFinishSummary", "function"),
+    ("setFinishSummaryAgain", "injected.setFinishSummaryAgain", "function"),
+    ("setFinishSummaryLoading", "injected.setFinishSummaryLoading", "function"),
+    ("setFinishSummaryProject", "injected.setFinishSummaryProject", "function"),
+    ("setLastStepPanelKey", "injected.setLastStepPanelKey", "function"),
+    ("setLatestAutoApply", "injected.setLatestAutoApply", "function"),
+    ("setStepsReady", "injected.setStepsReady", "function"),
+    ("setCurrentView", "injected.setCurrentView", "function"),
+]
+
+SETTERS = list(getattr(_base, "SETTERS", [])) + [
+    ("finishSummary", "setFinishSummary"),
+    ("finishSummaryAgain", "setFinishSummaryAgain"),
+    ("finishSummaryLoading", "setFinishSummaryLoading"),
+    ("finishSummaryProject", "setFinishSummaryProject"),
+    ("lastStepPanelKey", "setLastStepPanelKey"),
+    ("latestAutoApply", "setLatestAutoApply"),
+    ("stepsReady", "setStepsReady"),
+    ("currentView", "setCurrentView"),
+]
+
+#: **模块里已经自己声明的名字不许再注入**（两份实现会打架）：`el` 与刀 1 搬进去的
+#: `ensureMarginFitted` / `renderLayoutBlocks` / `renderMarginPanel` / `renderRecognitionStatus`
+#: 在 pages-view.js 顶层有声明，模块内裸引用就是对的。
+#: 这 5 条是 dry run `injected_keys` 比计划多出来的全部来源——**不改计划去迁就它，而是把重复注入剔掉**。
+_MODULE_SRC = (_HERE.parents[3] / "backend" / "book2text" / "static" / "pages-view.js")
+_MODULE_DECLARED = set()
+if _MODULE_SRC.is_file():
+    _src = _MODULE_SRC.read_text(encoding="utf-8")
+    import re as _re
+    _MODULE_DECLARED = set(_re.findall(r"(?m)^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)", _src))
+    _MODULE_DECLARED |= set(_re.findall(r"(?m)^\s*(?:let|const|var)\s+([A-Za-z_$][\w$]*)", _src))
+
+IDENT = [(old, new, *rest) for old, new, *rest in _base.IDENT if old not in _MOVERS and old not in _MODULE_DECLARED] + [
+    entry for entry in IDENT_KNIFE3 if entry[0] not in _MOVERS and entry[0] not in _MODULE_DECLARED
 ]
 IDENT_FULL = [
-    (old, new, *rest) for old, new, *rest in _base.IDENT_FULL if old not in _MOVERS
-] + [entry for entry in IDENT_KNIFE3 if entry[0] not in _MOVERS]
+    (old, new, *rest) for old, new, *rest in _base.IDENT_FULL if old not in _MOVERS and old not in _MODULE_DECLARED
+] + [entry for entry in IDENT_KNIFE3 if entry[0] not in _MOVERS and entry[0] not in _MODULE_DECLARED]
 EXPECT_SEAMS = len(IDENT)

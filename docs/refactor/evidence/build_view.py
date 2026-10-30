@@ -230,7 +230,7 @@ def count_checks(module_code, app_source, rules):
     return problems
 
 
-def anti_checks(module_code, app_text, rules):
+def anti_checks(module_code, app_text, rules, module_declared=frozenset()):
     """三个反证（都要求 0）。返回问题列表。"""
     problems = []
     masked = mask_mod.strip_code(blank_deps(module_code))   # §9⑮：装配代码不参与正文反证
@@ -239,6 +239,10 @@ def anti_checks(module_code, app_text, rules):
             problems.append(f"搬走的状态 {name} 在 app.js 里还有声明——两份状态")
     for entry in getattr(rules, "IDENT_FULL", getattr(rules, "IDENT", [])):
         name = entry[0]                       # 规则表允许 (旧, 新) 或 (旧, 新, 形态) 两种写法
+        # **现模块里已有声明的名字不算漏注入**（与 residue 同一口径）：`el` 与刀 1 搬进去的函数
+        # 在模块内裸引用是对的，注入反而成两份。2026-10-30 刀 3 的六条误报就是这么来的。
+        if name in module_declared:
+            continue
         if re.search(r'(?<![\w$.])' + re.escape(name) + r'\b', masked):
             problems.append(f"{name} 判注入，但模块正文里仍裸引用它")
     bad_assign = re.findall(r'injected\.get[A-Za-z0-9_$]*\(\)\s*=(?!=)', masked)
@@ -395,10 +399,12 @@ def main():
     declared |= set(movers) | set(getattr(rules, "MOVED_STATES", [])) | set(getattr(rules, "RESIDUE_OK", [])) | {"el"}
     # **增量模式**：现模块里已声明的名字（刀 1 搬进去的）不算残余——生成器只产出这一刀的正文，
     # 若只扫正文，每个「前几刀已搬走」的名字都会假报成缺口（刀2.5 实测：renderPages）。
+    module_declared = set()
     if os.path.exists(module_path):
         existing_decl = open(module_path, encoding="utf-8").read()
-        declared |= set(re.findall(r'(?m)^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)', existing_decl))
-        declared |= set(re.findall(r'(?m)^\s*(?:let|const|var)\s+([A-Za-z_$][\w$]*)', existing_decl))
+        module_declared = set(re.findall(r'(?m)^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)', existing_decl))
+        module_declared |= set(re.findall(r'(?m)^\s*(?:let|const|var)\s+([A-Za-z_$][\w$]*)', existing_decl))
+        declared |= module_declared
     residue = sorted(n for n in top_names - declared
                      if re.search(r'(?<![\w$.])' + re.escape(n) + r'\b', code))
 
@@ -442,7 +448,7 @@ def main():
                           "net": app_lines_before - app_lines_after}, ensure_ascii=False))
 
     lines_text = "\n".join(lines)
-    anti = anti_checks(module, lines_text, rules) + count_checks(module, pre_rewrite, rules)
+    anti = anti_checks(module, lines_text, rules, module_declared) + count_checks(module, pre_rewrite, rules)
     print(json.dumps({"movers": len(movers), "moved_lines": moved, "moved_states": len(moved_states),
                       "module_lines": module.count("\n"),
                       "residue": residue, "anti": anti,
