@@ -176,6 +176,9 @@ export const MOVE_GATE_WHITELIST = [
   "tests/js/boundary.test.mjs",
   "tests/js/feature-contract.mjs",
   "tests/js/pages-r3-exemptions.mjs",
+  // 刀号登记表是**数据**不是判据代码：落盘那一刀要把它从 pending 改成 landed，
+  // 这是 move: 笔的正常动作；不登记的话会撞「偷改判据」（白名单外）或被迫不声明（「偷改」）。
+  "tests/js/knife-registry.mjs",
 ];
 
 /** 从提交信息里读 `Move-Gate: a, b, c`；没有这行 → null（不是 Move-Gate 笔）。 */

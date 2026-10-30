@@ -42,7 +42,8 @@
 // - R4 在下面三个变异上各红一次（矩阵见文件末尾「变异验证」）。
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import vm from "node:vm";
@@ -1521,15 +1522,34 @@ export function pagesStageFromSubjects(subjects) {
  * 为什么真值来自 git（2026-10-30 Chief/Architect 定）：提交首行是「代码真的动了」的唯一证据；
  * 账本推导会随推迟漂，而推迟本身是账本要记的东西。取不到 git 时**打印一行跳过**——不红、也不静默。
  */
-export function pagesStageFromGit() {
+export function pagesStageFromGit({ editMsgPath } = {}) {
+  let log = null;
   try {
-    const out = execFileSync("git", ["log", "--format=%s", "-n", "2000"], {
+    log = execFileSync("git", ["log", "--format=%s", "-n", "2000"], {
       encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
     });
-    return gitMaxKnifeFromLog(out);
   } catch {
-    return null;
+    return null;   // 没有 git（pre-commit 的导出树）——调用方打印跳过
   }
+  // **正在提交的那一笔也要算**（2026-10-30 刀 6 卡点）：pre-commit 时 HEAD 还是父提交，
+  // `git log` 里看不到正在提交的 `move(pages): 刀 6`，于是 PAGES_STAGE 写 5 或 6 都有一边红。
+  // git 先写消息再跑钩子，所以 `<git-dir>/COMMIT_EDITMSG` 里就是这一笔的提交信息。
+  // 取不到就只按历史判（行为同旧版），不静默、也不假装看见了这一笔。
+  let editMsg = "";
+  try {
+    editMsg = readFileSync(editMsgPath || commitEditMsgPath(), "utf8");
+  } catch {
+    editMsg = "";
+  }
+  return gitMaxKnifeFromLog(`${log}\n${editMsg}`);
+}
+
+/** `<git-dir>/COMMIT_EDITMSG`：worktree 要用 `--absolute-git-dir`（普通 `.git` 是文件）。 */
+function commitEditMsgPath() {
+  const dir = execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+    encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+  return join(dir, "COMMIT_EDITMSG");
 }
 
 /**
@@ -1936,7 +1956,7 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
     html, appSource, viewSources,
     // reading 的 4 条豁免是另一个机制，这张合成夹具里不掺进来
     exemptions: [],
-    pagesStage: 1, pagesTotalCap: 3, pagesPendingCap: 2,
+    pagesStage: 1, pagesTotalCap: 3, pagesPendingCap: 2, pagesBlockedCap: 7,
     // 合成夹具里没有真函数名：seed 给空表，否则会与真 seed 对不上（误报「集合不等」）
     pagesSeed: [],
   };
@@ -2258,6 +2278,9 @@ test("R3 自检（blocked 阻塞段）：stage > PAGES_STAGE 且段号可查判�
     viewSources: [{ fileName: "pages-view.js", source: "" }],
     exemptions: [],
     pagesStage: 2, pagesTotalCap: 1, pagesPendingCap: 0, pagesSeed: [],
+    // **夹具自带上限，不读线上常数**：刀 6 把 7 个受阻项全删、BLOCKED_MAX 7→0，
+    // 夹具若跟着线上常数走，"1 项受阻"的绿例会被判红——那是夹具依赖了被验的常数，不是判据坏了。
+    pagesBlockedCap: 7,
   };
   const segment = [...keepShellSegmentLabels()][0];
   assert.ok(segment, "留外壳清单一段都读不出来——这条自检本身失效了");
@@ -2336,6 +2359,35 @@ test("PAGES_STAGE 两个真值源交叉校验：git 与登记表不等、任一�
     "真值源自检失败：小数刀号被误判（是不是用了 parseInt？）");
   assert.equal(gitMaxKnifeFromLog("move(pages): 刀 2.5 装配接线\nmove(pages): 刀 5 x"), 5,
     "真值源自检失败：刀 2.5 解析错了（parseInt 会把 2.5 当 2）");
+});
+
+test("PAGES_STAGE 的 git 推导要算上「正在提交的这一笔」（pre-commit 时 HEAD 还在父提交）", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "b2t-editmsg-"));
+  try {
+    // ① 没有 COMMIT_EDITMSG → 行为同旧版：只看历史
+    const history = "move(pages): 刀 5 —— x\ndocs: y\n";
+    assert.equal(gitMaxKnifeFromLog(history), 5,
+      "自检失败：历史里只有刀 5 时推导不是 5");
+    // ② 正在提交的是 move(pages): 刀 6 → 推导必须是 6（否则这一笔自己就红）
+    const msg = join(tmp, "COMMIT_EDITMSG");
+    writeFileSync(msg, "move(pages): 刀 6 —— 片段抽取\n\nbody\n");
+    assert.equal(readFileSync(msg, "utf8").includes("move(pages): 刀 6"), true);
+    assert.equal(gitMaxKnifeFromLog(`${history}\n${readFileSync(msg, "utf8")}`), 6,
+      "自检失败：把 COMMIT_EDITMSG 里的刀 6 算进来后仍是 5——这一笔自己就会被判红");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("seed 取样读的是「跑这份代码的那棵树」（pre-commit = 索引导出树），不是工作区/HEAD", () => {
+  const seedFile = fileURLToPath(new URL("../../docs/refactor/evidence/pages/stage2-movers-seed.md", import.meta.url));
+  const treeRoot = fileURLToPath(new URL("../../", import.meta.url));
+  assert.ok(seedFile.startsWith(treeRoot),
+    `seed 路径不在这棵树里（${seedFile}）——pre-commit 会拿错树比`);
+  assert.ok(existsSync(seedFile), `seed 文件在这棵树里不存在：${seedFile}`);
+  // 同一棵树：app.js 与 seed 必须来自同一个根，否则「索引版 seed」会跟「工作区 app.js」比
+  assert.ok(APP_FILE.startsWith(treeRoot),
+    `app.js 路径不在这棵树里（${APP_FILE}）——两种模式（工作区/导出树）会各读一半`);
 });
 
 test("PAGES_STAGE 自检：漏跟红 / 超前抬红 / 相等绿 / 账本交叉校验不等红 / 表空只比 git", () => {
@@ -2429,6 +2481,20 @@ test("Move-Gate 五条：未声明改 tests/js 红 / 空声明红 / 声明成立
   // c：声明 + 只收紧 → 绿（c' 证明这个绿是声明换来的）
   assert.deepEqual(moveGateProblems({ ...base, message: declared }), [],
     `Move-Gate 自检失败：合法声明被判红——${moveGateProblems({ ...base, message: declared }).join("；")}`);
+
+  // f：刀号登记表是数据不是判据代码，落盘那刀要改它 → 声明后必须放行（否则每刀都撞「白名单外」）
+  const regBase = {
+    subject: "move(pages): 刀 6 片段抽取",
+    files: ["backend/book2text/static/app.js", "tests/js/knife-registry.mjs"],
+    exemptionTouched: false,
+    directionChecked: false,
+  };
+  const regDeclared = "move(pages): 刀 6 片段抽取\n\nMove-Gate: tests/js/knife-registry.mjs";
+  assert.deepEqual(moveGateProblems({ ...regBase, message: regDeclared }), [],
+    `Move-Gate 自检失败：登记表在白名单里却被判「白名单外」——${moveGateProblems({ ...regBase, message: regDeclared }).join("；")}`);
+  const regOutside = moveGateProblems({ ...regBase, message: "Move-Gate: tests/js/nope.mjs" });
+  assert.ok(regOutside.some((m) => m.includes("白名单外")),
+    `Move-Gate 自检失败：白名单外的路径被放过——${regOutside.join("；")}`);
 
   // c'：同 c 内容、删掉 Move-Gate: 行 → ④ 改动 ⊆ 声明 必须红
   const noDecl = moveGateProblems({ ...base, message: "move(pages): 刀 2.5 落盘" });
