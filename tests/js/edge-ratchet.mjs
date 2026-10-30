@@ -21,13 +21,16 @@ import { stripCommentsAndStrings, functionBody, countWord } from "./static-scan.
 /**
  * 桥例外表（Chief 2026-10-28）：3 条 app.js 内部的桥暂时切不掉——各自的视图还没搬进模块。
  * **总条数仍是 13**（改总数等于悄悄放宽）；例外只允许这 3 条，每条带 owner 与到期点。
- * 只降不升：MAX=3；某条例外归零了却还挂在表里 = 过期，红。
+ * 只降不升：上限真值只有下面 `BRIDGE_EXCEPTION_MAX` 一个（**当前 1**，不是初值 3）；某条例外归零了却还挂在表里 = 过期，红。
+ * 3 → 1 的来由：2026-10-29 merge 视图落盘（`8e95b8e`），`renderMergeView` / `submitMergeDecisions` 两条桥
+ * 随搬迁切到注入 `navigate()`，按到期点删行，上限跟着降——**降的是条目数，不是判据强度**。
  */
 export const BRIDGE_EXCEPTIONS = [
   { name: "openPageDetail", owner: "DevLead", expires: "pages 视图搬进模块时" },
 ];
-// 2026-10-29 merge 视图落盘：renderMergeView / submitMergeDecisions 两条桥随搬迁切到注入
-// navigate()，例外按到期点删除；上限 3 → 1（只降不升）。
+// 2026-10-29 merge 视图落盘（`8e95b8e`）：renderMergeView / submitMergeDecisions 两条桥随搬迁切到注入
+// navigate()，例外按到期点删除；上限 3 → 1（只降不升）。**改这个数字要同时改上面那段注释**——
+// 注释写 3、代码写 1 是最坏的一种漂：读注释的人会以为还能再挂两条。
 export const BRIDGE_EXCEPTION_MAX = 1;
 
 export const BRIDGES = [
