@@ -193,9 +193,9 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 ```
 今天            57 = 8 死T + 36 活T + 12 C + 1 L
 刀 7  （+1 C）   58 = 8 死T + 36 活T + 13 C + 1 L   recognizePage
-刀 8  （+3 C）   61 = 8 死T + 36 活T + 16 C + 1 L   setPackageModeChrome / syncProjectSettings / setSelectionHint  ← 现状
+刀 8  （+3 C）   61 = 8 死T + 36 活T + 16 C + 1 L   setPackageModeChrome / syncProjectSettings / setSelectionHint
 刀 9   （−5）     56 = 3 值位T + 36 活T + 16 C + 1 L   5 个真死的：删键 + 删转发器
-刀 9.1 （−4 +1）  53 = 3 + 32 + 16 C + 1 L + 1 L(enter)   showView / hydrateView 的 pages 段搬进 enter()
+刀 9.1 （−4 +1）  53 = 3 + 32 + 16 C + 1 L + 1 L(enter)   showView 的 pages 段搬进 enter()（hydrateView 的 loadPageNumberSummary 随 9.4）  ← 现状
 刀 9.2 （−5）     48 = 3 + 27 + 16 C + 2 L
 刀 9.3 （−12）    36 = 3 + 15 + 16 C + 2 L
 刀 9.4 （−3）     33 = 3 + 12 + 16 C + 2 L
@@ -377,7 +377,7 @@ git log --format=%s origin/main | grep -oE "^move\(pages\): 刀 [0-9.]+" | sort 
 | 子刀 | 内容 | 死期写这个号的 T 键 |
 |---|---|---|
 | **9** | 删 **5 个真死的** T（键 + 转发器）；20 个过期死期重判（6 转 C · 3 删 · 11 重算）；落 §八 ② | 5 个（§三） |
-| **9.1** | 视图切换：`showView` / `hydrateView` | 4：`loadSetupSuggestions` · `renderPageSetup` · `loadLanguageSummary` · `pausePageThumbnails` |
+| **9.1** | 视图切换：`showView` 的 pages 段进 `enter`（`hydrateView` 的 `loadPageNumberSummary` 随 9.4） | 4：`loadSetupSuggestions` · `renderPageSetup` · `loadLanguageSummary` · `pausePageThumbnails` |
 | **9.2** | 任务轮询与可见性：`pollTask` / `fetchPageBlocks` / `schedulePageVisibility` | 5：`refreshRecognizedPages` · `updateMarginDetectProgress` · `updateRecognitionAuxProgress` · `queueOverlayRender` · `updatePageVisibility` |
 | **9.3** | 版心一族（对话框 / 进度 / 瓷砖 / 拖动保存） | 12：`renderMarginStepVerdict`* · `setMarginStatus` · `showMarginDetectProgress` · `ensureMarginFitted` · `renderMarginPanel` · `refreshMarginTiles`* · `finishMarginDetectBar` · `refreshLayoutDetectEntry`* · `refreshMarginDetectHint`* · `loadLayoutBlocks` · `renderLayoutBlocks` · `savePageMargin` |
 | **9.4** | 页码一族（三个面板宿主 + 指标） | 3：`loadPageNumberSummary` · `setPageNumberStatus` · `renderPageNumberMetrics` |
