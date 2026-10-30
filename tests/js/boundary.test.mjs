@@ -3593,12 +3593,12 @@ const VIEW_EXPORTS = {
   // 收敛棘轮：本刀 20 → 终点 3（enter / render / refresh，刀 5 收敛到此），刀 2–5 每刀**严格下降**；
   // 导出面必须**扁平**（api 直接挂函数，不许嵌套对象）——R6 只锁接口名，深度由本表 + 自检锁。
   "pages-view.js": { names: [
-    "init", "ensureMarginFitted", "loadLayoutBlocks", "loadSetupSuggestions", "refreshRecognizedPages",
-    "reloadProjectPages", "renderLayoutBlocks", "renderMarginPanel", "renderPageSetup", "renderPages",
+    "init", "ensureMarginFitted", "loadLayoutBlocks", "refreshRecognizedPages",
+    "reloadProjectPages", "renderLayoutBlocks", "renderMarginPanel", "renderPages",
     "renderRecognitionStatus", "savePageMargin", "syncPageStates", "undoMarginEdit", "updateMarginDetectProgress",
     "updatePageVisibility", // 刀 3：14 个转发器对应的导出键（R8 表签字上限 34，见 docs/refactor/pages/knife3-plan.md §⑩；
     // 每键都带死亡刀号——刀 4 清 9 个、刀 5 清 5 个，之后严格下降）。
-    "loadFinishSummary", "loadLanguageSummary", "loadPageNumberSummary", "refreshLayoutDetectEntry",
+    "loadFinishSummary", "loadPageNumberSummary", "refreshLayoutDetectEntry",
     "refreshMarginDetectHint", "refreshMarginTiles", "renderAutoApplyStatus", "renderMarginStepVerdict",
     "renderPageNumberMetrics", "renderRecognitionSettings", "renderStepPanels",
     "renderWorkflowFilter", "updateRecognitionAuxProgress",
@@ -3613,7 +3613,7 @@ const VIEW_EXPORTS = {
     "forgetAllPageBlocks",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     "forgetAllPageSuggestions",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     "pageScroller",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
-    "pausePageThumbnails",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     "pumpOverlayRender",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     "queueOverlayRender",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
@@ -3641,20 +3641,20 @@ const VIEW_EXPORTS = {
     "setPackageModeChrome",        // C
     "syncProjectSettings",         // C
     "setSelectionHint",            // C
-  ],
+    // 刀 9.1：视图切换通知（L 类）。R8 净额 −4 +1
+    "enter",],
     // ---- 三类键（Architect ratchet-two-kinds，docs/refactor/pages/export-ratchet.md）----
     // L lifecycle 固定 3 个名字；T transitional 必须带死期（现留空，等 9a/9b 裁定）；
     // C capability 不写死期，登记 effective callers + 理由（清册就是上限，不是数字）。
     kinds: {
       init: { kind: "L" },
+      enter: { kind: "L" },   // 刀 9.1 新增（视图切换通知，生命周期键）
       ensureMarginFitted: { kind: "T", death: 9.3 },
       loadLayoutBlocks: { kind: "T", death: 9.3 },
-      loadSetupSuggestions: { kind: "T", death: 9.1 },
       refreshRecognizedPages: { kind: "T", death: 9.2 },
       reloadProjectPages: { kind: "T", death: 9.5 },
       renderLayoutBlocks: { kind: "T", death: 9.3 },
       renderMarginPanel: { kind: "T", death: 9.3 },
-      renderPageSetup: { kind: "T", death: 9.1 },
       renderPages: { kind: "T", death: 9.5 },
       renderRecognitionStatus: { kind: "T", death: 9.5 },
       savePageMargin: { kind: "T", death: 9.3 },
@@ -3663,7 +3663,6 @@ const VIEW_EXPORTS = {
       updateMarginDetectProgress: { kind: "T", death: 9.2 },
       updatePageVisibility: { kind: "T", death: 9.2 },
       loadFinishSummary: { kind: "C", callers: ["afterCleanupApplied", "afterContinuationChange", "boot", "confirmCurrentPage", "finishConfirmPages", "finishRevokeAutoPass", "finishRunAutoPass", "finishRunLayout", "openFinishPanel", "pollTask", "refreshProject", "setupReviewControls", "waitForAuxThenReview", "library-view.js", "reading-view.js"], reason: "收尾状态被三个视图共用（13 个外壳函数 + library/reading 各调）" },
-      loadLanguageSummary: { kind: "T", death: 9.1 },
       loadPageNumberSummary: { kind: "T", death: 9.4 },
       refreshLayoutDetectEntry: { kind: "T", death: 9.3 },
       refreshMarginDetectHint: { kind: "T", death: 9.3 },
@@ -3683,7 +3682,6 @@ const VIEW_EXPORTS = {
       forgetAllPageSuggestions: { kind: "T", death: 9.5 },
       openPageSetup: { kind: "C", callers: ["boot", "library-view.js"], reason: "首启 / 库页打开页面设置" },
       pageScroller: { kind: "T", death: 9.5 },
-      pausePageThumbnails: { kind: "T", death: 9.1 },
       pumpOverlayRender: { kind: "T", death: 10 },   // 10：队列子系统搬进模块（Architect 39eb012 改判；不是 C，只是"还没搬"）
       queueOverlayRender: { kind: "T", death: 9.2 },
       // 刀 9 已删 rerunAuxiliary（那 5 个键之一），别再回来 —— 冲突时取「新值 + 不复活已删键」

@@ -150,7 +150,6 @@ const marginUndoStack = [];
  * 一次按键要等几秒。图片清掉 src 后浏览器会取消排队中的请求，回来时
  * applyPageZoom() 会重新挂上（只加载视口附近的页）。
  */
-function pausePageThumbnails() { return window.PagesView.pausePageThumbnails.apply(window.PagesView, arguments); }
 
 /**
  * 视图专属数据的懒加载（任务 63）。
@@ -222,8 +221,10 @@ function showView(name) {
   el("topbar-library").hidden = target !== "library";
   el("topbar-project").hidden = target === "library";
   el("review-pager").hidden = target !== "review";
-  // 任务 43：不在页面视图就把网格缩略图停掉，审校 / 预览不跟后台渲染抢 CPU
-  if (target !== "pages" && currentProject) pausePageThumbnails();
+  // 任务 43：不在页面视图就把网格缩略图停掉，审校 / 预览不跟后台渲染抢 CPU。
+  // 刀 9.1：这条与下面"进 pages 的准备"是**同一个入口**（视图切换通知）——
+  // 别把两处合并到一处：合并会把 pages 的准备提前到 syncWorkflowSteps() / closePageDetail() 之前，顺序就变了。
+  if (target !== "pages" && currentProject) window.PagesView?.enter();
   // 换视图 = 当前步骤回落到该视图的默认步；用户点步骤条时才锁定。
   workflowStepPinned = false;
   syncWorkflowSteps();
@@ -239,13 +240,11 @@ function showView(name) {
   if (target === "pages" && currentProject) {
     // 这一视图的工作流角标 / 待处理页：进来才拉（骨架先显示，数字后到）
     queueAfterSteps(() => hydrateView("pages"));
-    queueAfterSteps(() => loadLanguageSummary());
+    // 刀 9.1：回到页面视图时 pages 侧的进入准备（延迟语言汇总 / 同步页面设置 / 条件加载建议）
+    // 全在模块的 enter() 里；本行位置不变，顺序与延迟性逐字保持。
+    window.PagesView?.enter();
     // 回到页面视图时以数据库为准重拉一次：确认进度与类型不在前端缓存里说了算
-    renderPageSetup();
     refreshPageStates();
-    if (!setupSuggestionsLoaded && currentProject.kind !== "package") {
-      loadSetupSuggestions();
-    }
     // 回到页面视图：瓷砖位置要重新量（在审校视图里它们全是 0），块框按需补画
     pageTileMetrics = null;
     schedulePageVisibility();
@@ -3524,7 +3523,6 @@ function pageSetupStats() {
   };
 }
 
-function renderPageSetup() { return window.PagesView.renderPageSetup.apply(window.PagesView, arguments); }
 
 let panelAccordionProject = null;
 
@@ -3547,7 +3545,6 @@ function firstUnfinishedPanel() {
 /** 打开确认界面：先回数据库拉一次页面，保证看到的进度不是前端缓存。 */
 async function openPageSetup() { return window.PagesView.openPageSetup.apply(window.PagesView, arguments); }
 
-async function loadSetupSuggestions() { return window.PagesView.loadSetupSuggestions.apply(window.PagesView, arguments); }
 
 /** 只看"选中的页"上的建议：建议区要贴着当前页，不常挂在最上面。 */
 function selectedSuggestions() {
@@ -12565,7 +12562,6 @@ async function restoreSelectedBackup() {
 
 // ---------------------------------------------------------------- 语言分布（任务 64）
 
-async function loadLanguageSummary() { return window.PagesView.loadLanguageSummary.apply(window.PagesView, arguments); }
 
 // ---------------------------------------------------------------- 重跑第二引擎（任务 64）
 //
@@ -13047,6 +13043,7 @@ function boot() {
     renderStepPanels: renderStepPanels,
     renderTask: renderTask,
     schedulePageVisibility: schedulePageVisibility,
+    queueAfterSteps: queueAfterSteps,      // 刀 9.1：enter() 里延迟 loadLanguageSummary 用它
     showError: showError,
     showView: showView,
     startTaskPolling: startTaskPolling,

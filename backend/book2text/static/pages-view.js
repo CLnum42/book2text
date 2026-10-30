@@ -2838,6 +2838,34 @@ function setSelectionHint(text) {
   hint.textContent = String(text);
 }
 
+/**
+ * 视图切换通知：**当前视图切到 `getCurrentView()` 时，pages 侧做进入 / 离开的准备**。
+ *
+ * 名字叫 enter，但它也会被"离开 pages"那条路调用——`pausePageThumbnails` 的宿主就是这个切换点
+ * （外壳 showView 里 `target !== "pages"` 那条）。**两处调用是同一件事（通知），别合并成一处**：
+ * 合并会把 pages 的准备整体提前到 `syncWorkflowSteps()` / `closePageDetail()` 之前，顺序就变了。
+ *
+ * 进入 pages 时做的事，逐条对应原来 showView 里那三行（顺序与延迟性都不变）：
+ *   ① `queueAfterSteps(() => loadLanguageSummary())` —— 仍延迟到步骤条之后
+ *   ② `renderPageSetup()` —— 同步
+ *   ③ `!setupSuggestionsLoaded && kind !== "package"` 时 `loadSetupSuggestions()`
+ * 不属于它的（`hydrateView("pages")` 的 loadWorkflow / refreshPageStates / pageTileMetrics /
+ * schedulePageVisibility / applyPageZoom（C 类）/ pumpPageSuggestionQueue）仍留外壳。
+ */
+function enter() {
+  if (injected.getCurrentView() !== "pages") {
+    // 离开 pages：停掉网格里在飞 / 排队的缩略图请求，别和审校、预览抢 CPU（任务 43）
+    pausePageThumbnails();
+    return;
+  }
+  injected.queueAfterSteps(() => loadLanguageSummary());
+  renderPageSetup();
+  const project = injected.getCurrentProject();
+  if (!injected.getSetupSuggestionsLoaded() && project && project.kind !== "package") {
+    loadSetupSuggestions();
+  }
+}
+
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
     // 刀 2：deps 已赋值，统一挂 17 段 pages 接线（**必须在 return api 之前**）。
@@ -2870,12 +2898,10 @@ function setSelectionHint(text) {
     init,
     ensureMarginFitted,
     loadLayoutBlocks,
-    loadSetupSuggestions,
     refreshRecognizedPages,
     reloadProjectPages,
     renderLayoutBlocks,
     renderMarginPanel,
-    renderPageSetup,
     renderPages,
     renderRecognitionStatus,
     savePageMargin,
@@ -2884,7 +2910,6 @@ function setSelectionHint(text) {
     updateMarginDetectProgress,
     updatePageVisibility,
     loadFinishSummary,
-    loadLanguageSummary,
     loadPageNumberSummary,
     refreshLayoutDetectEntry,
     refreshMarginDetectHint,
@@ -2904,7 +2929,6 @@ function setSelectionHint(text) {
     forgetAllPageSuggestions,
     openPageSetup,
     pageScroller,
-    pausePageThumbnails,
     pumpOverlayRender,
     queueOverlayRender,
     scanVisiblePageSuggestions,
@@ -2931,6 +2955,10 @@ function setSelectionHint(text) {
     setPackageModeChrome,        // C：包模式开/关时 pages 面板入口的显隐（10 个 id）
     syncProjectSettings,         // C：项目设置 → pages 面板两个勾选态
     setSelectionHint,            // C：拆分批量的选中提示
+    // 刀 9.1：视图切换通知（L 类，无死期）。它顶替的是"切到 pages 时 pages 侧的进入/离开准备"，
+    // 所以 R8 净额 −4 +1：死 loadSetupSuggestions / renderPageSetup / loadLanguageSummary /
+    // pausePageThumbnails，新增本键。
+    enter,                       // L：生命周期键（不写 death）
   };
 // ---------------------------------------------------------------- 刀 2：14 段 pages 接线
 /**
