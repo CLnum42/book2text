@@ -90,6 +90,13 @@ test("态2 none：body 全已识别且未选 → 「无可识别页」disabled",
   assert.equal(b.disabled, true);
 });
 
+test("态7 empty：没有正文页（body=[]）→ 「无可识别页」disabled；与 none 输入不同、输出相同", () => {
+  const { els } = makeCtx(baseDeps([], [], () => pendingStatus()));
+  const b = button(els);
+  assert.equal(b.textContent, "无可识别页");
+  assert.equal(b.disabled, true, "没有正文页时不许可点");
+});
+
 test("态3 selection：选中 2 页、其中 1 未识别 → 「识别所选 2 页」；include=false 的不计入", () => {
   const sel = [{ page_no: 1, include: true }, { page_no: 2, include: true }, { page_no: 3, include: false }];
   const { els } = makeCtx(baseDeps([1, 2, 3].map((n) => ({ page_no: n, include: true })), sel,

@@ -101,9 +101,9 @@ test("① 有 #view-pages：14 段接线真的挂上了监听", () => {
 
 // 刀 2 落盘实测（2026-10-30）：38 个 id。**只许降**——降了就是某段没跑到；
 // 合法新增要显式改这一行（不写 === 38：那会把合法新增判红，逼下一个人放宽口径）。
-const EXPECTED_REQUESTED_IDS = 38;
+const EXPECTED_REQUESTED_IDS = 37;   // -1：删掉了 #selection-recognize（步 3，2026-10-30）
 // 所有节点上的监听总数（同上，只降不升）
-const EXPECTED_LISTENERS = 35;  // 刀 2 落盘实测（2026-10-30）：35 个监听；只许降
+const EXPECTED_LISTENERS = 34;       // -1：删掉了 #selection-recognize（步 3，2026-10-30）  // 刀 2 落盘实测（2026-10-30）：35 个监听；只许降
 
 test("② 被请求过的 id 去重数 ≥ 实测值（防只绑一半）", () => {
   const { requested } = loadPagesModule({ hasPagesView: true, readyState: "complete" });
