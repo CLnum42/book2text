@@ -441,7 +441,7 @@ function renderRecognitionStatus() {
  * 识别主按钮的目标与文案（**唯一出处**）。
  *
  * 为什么要有这个函数（2026-10-30）：以前「文案」和「disabled」在两段分支里各算一遍
- * （`rec-start-all` 一段、`selection-recognize` 一段），改一处忘一处就会出现
+ * （主识别按钮一段、底部条一段），改一处忘一处就会出现
  * 「按钮说能点、实际禁用」。现在四种状态由这里一次算出，刷新与点击都读它。
  *
  * 四种状态（有选中时按选中算，无选中时按全书算）：
@@ -450,13 +450,18 @@ function renderRecognitionStatus() {
  *   force     有选择 + 全已识别 → 重新识别所选 N 页（危险色）
  *   none      全已识别          → 无可识别页（禁用）
  */
-function recognitionTarget() {
+/** 正文页里还没识别的页数——主按钮、状态行、提示语都只许从这里取。 */
+function bodyPending() {
   const body = injected.marginBodyPages();
-  const recognizedStatuses = ["recognized", "has_candidate"];
   const recognized = body.filter((page) =>
-    recognizedStatuses.includes(injected.recognitionOf(page).status)
+    ["recognized", "has_candidate"].includes(injected.recognitionOf(page).status)
   ).length;
-  const pending = Math.max(body.length - recognized, 0);
+  return Math.max(body.length - recognized, 0);
+}
+
+function recognitionTarget() {
+  const recognizedStatuses = ["recognized", "has_candidate"];
+  const pending = bodyPending();          // 唯一出处（与状态行 / 提示语同源）
 
   // 进行中两态也要从这里产出（否则按钮文案又变成第二处写）
   const activeJob = injected.getTaskJobId() && injected.getLastTaskData() && injected.getLastTaskData().job
@@ -476,7 +481,7 @@ function recognitionTarget() {
       danger: false,
     };
   }
-  if (!body.length) {
+  if (injected.marginBodyPages().length === 0) {
     return { mode: "empty", text: "无可识别页", disabled: true, danger: false };
   }
 
@@ -896,11 +901,6 @@ function updateSelectionPanel() {
   const pendingBody = bodySelected.filter(
     (page) => injected.recognitionOf(page).status === "unrecognized"
   );
-  const pendingAll = injected.getCurrentProject()
-    ? injected.getCurrentProject().pages.filter(
-        (page) => page.include && injected.recognitionOf(page).status === "unrecognized"
-      )
-    : [];
   const stats = injected.pageSetupStats();
 
   el("selection-count").textContent = count ? `已选 ${count} 页` : "未选择页面";
@@ -972,8 +972,8 @@ function updateSelectionPanel() {
   } else if (!count) {
     if (stats.unconfirmed > 0) {
       next.textContent = `${stats.unconfirmed} 页未确认 → 先确认页面类型`;
-    } else if (pendingAll.length) {
-      next.textContent = `${pendingAll.length} 页未识别 → 可以直接识别`;
+    } else if (bodyPending()) {
+      next.textContent = `${bodyPending()} 页未识别 → 可以直接识别`;
     } else {
       next.textContent = "页面都准备好了，可以审校或导出";
     }
@@ -995,31 +995,6 @@ function updateSelectionPanel() {
   renderSuggestionPanel();
   renderMarginPanel();
 
-  // 底部主操作条：只算正文页；未选择时是"识别全部未识别页"。
-  const primary = el("selection-recognize");
-  const note = el("selection-primary-note");
-  if (!count) {
-    primary.textContent = pendingAll.length
-      ? `识别全部未识别页（${pendingAll.length}）`
-      : "没有待识别的页";
-    primary.disabled = pendingAll.length === 0;
-    note.textContent = pendingAll.length
-      ? "全书动作；识别前可先排除封面 / 空白页"
-      : "所有正文页都已识别";
-  } else if (!bodySelected.length) {
-    primary.textContent = "所选页都不是正文";
-    primary.disabled = true;
-    note.textContent = "把类型改成「正文」后才会出现在这里";
-  } else {
-    primary.textContent = `识别所选正文 ${bodySelected.length} 页`;
-    primary.disabled = bodySelected.length === 0;
-    const skipped = count - bodySelected.length;
-    note.textContent = skipped
-      ? `另 ${skipped} 页不是正文，会跳过`
-      : pendingBody.length
-        ? `其中 ${pendingBody.length} 页未识别`
-        : "所选正文页都已识别；点击会重新识别";
-  }
   el("selection-more").disabled = false;
   const allVisible = injected.visiblePages();
   el("selection-all").textContent = `全选当前筛选结果（${allVisible.length}）`;
@@ -1429,15 +1404,6 @@ function wirePagesSelection() {
   el("selection-all").addEventListener("click", injected.selectAllVisiblePages);
   el("selection-select-all").addEventListener("click", injected.selectAllVisiblePages);
   el("selection-clear").addEventListener("click", injected.clearPageSelection);
-  el("selection-recognize").addEventListener("click", () => {
-    if (!injected.getSelectedPages().size) {
-      injected.startBatchRecognition("unrecognized");
-      return;
-    }
-    const body = injected.selectionPages().filter((page) => page.include);
-    const pending = body.filter((page) => injected.recognitionOf(page).status === "unrecognized");
-    injected.recognizeSelection(body.length > 0 && pending.length === 0);
-  });
 }
 /**
  * 「更多」下拉（选择区）（刀 2.5 从 `setupLibrary` 原样搬出）。

@@ -5965,7 +5965,7 @@ async function recognizePage(page) {
 // 发起中：从「点击」到 `startTaskPolling(job_id)` 之间按钮必须是禁用的。
 // 真风险：这窗口里 taskJobId 还是 null，再点一次会在后端建出**第二个 job**。
 let jobStartPending = false;
-const JOB_START_BUTTONS = ["rec-start-all", "selection-recognize", "selection-check", "check-pending"];
+const JOB_START_BUTTONS = ["rec-start-all", "selection-check", "check-pending"];
 
 function setJobStartBusy(busy) {
   for (const id of JOB_START_BUTTONS) {
@@ -13591,7 +13591,6 @@ async function applyPackageMode() {
     el("package-open").hidden = true;
     closeModal("package-result");
     el("structure-open").hidden = false;
-    el("selection-recognize").hidden = false;
     el("selection-actionbar").hidden = false;
     el("finish-open-review").hidden = false;
     el("selection-check").hidden = false;

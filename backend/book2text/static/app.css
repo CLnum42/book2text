@@ -1525,7 +1525,6 @@ body.diff-mode .page-overlay .box--active {
 }
 .selection-actionbar__note:empty { display: none; }
 .selection-actionbar__row { display: flex; gap: 6px; margin-top: 3px; }
-.selection-actionbar__row #selection-recognize { flex: 1; height: 32px; font-size: 12.5px; }
 .selection-actionbar__row #selection-more { width: 34px; height: 32px; padding: 0; font-size: 16px; line-height: 1; }
 .selection-more {
   position: absolute; right: 0; bottom: calc(100% + 4px);
@@ -1603,7 +1602,6 @@ body.diff-mode .page-overlay .box--active {
 .selection-actionbar { padding: 4px 0 5px; }
 .selection-actionbar__note { min-height: 12px; line-height: 1.2; }
 .selection-actionbar__row { margin-top: 2px; }
-.selection-actionbar__row #selection-recognize { height: 30px; }
 .selection-actionbar__row #selection-more { height: 30px; }
 #panel-page-settings .ptype { min-height: 26px; }
 #panel-page-settings .type-picker { gap: 4px; }
