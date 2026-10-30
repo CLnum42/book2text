@@ -155,13 +155,19 @@ seed 里还挂着名字自然全都显得"丢了"。表空 + 函数还挂着就�
 我在 `main@f450a44` 上模拟终态（表清空 + TOTAL_CAP=0 + registry 刀 8 landed）实测：
 
 ```
-50 条「app.js:NNN 还引用着 view-pages 的 id X——这个视图已经有 pages-view.js，旧字面量必须收干净」
-   = 25 个引用行 × 2（同一行被两条判据各报一次）· 涉及 14 种 id
-刀 7 落完后再模拟 = 23 行 × 2 = **46 条**（recognizePage 那 2 行随函数迁走）
+**25 条** problem：「app.js:NNN 还引用着 view-pages 的 id X——这个视图已经有 pages-view.js，旧字面量必须收干净」
+   25 = `r3.total`（14 种 id 的出现总数；主循环按 id，一个 id 一次、吐出它全部的 occurrences）
+   测试**输出里会出现 50 行**，不是判据条数：`assert.deepEqual(problems, [], problems.join("；"))`
+   会把同一份 problems 打印两遍——断言消息一遍（`AssertionError: …`）、deepEqual diff 一遍（带 `+`）
+刀 7 落完后再模拟：**23 条**（pages-error 2 处随 recognizePage 迁走，该 id 归零）→ 输出 46 行
 ```
 
-这 46–50 条**就是本刀的产品工作量本身**（applyPackageMode 20 + applyProjectSettings 2 +
-applySplitBatch 1 = 23 处引用落在这些行上）。验收时**必须归零**，不是"红着也过"。
+> 口径别混：**「数条纹」= 判据条数**（25 → 23），不是日志行数（50 → 46）。
+> 今天同一个地方已经栽过：R3 的 25 / 按字面出现数 27 / 日志行数 50 —— 三个数打架全是口径不同。
+
+这 23–25 条**就是本刀的产品工作量本身**（applyPackageMode 20 + applyProjectSettings 2 +
+applySplitBatch 1 = 23 处引用落在这些行上）。验收时**必须归零**，不是"红着也过"；
+**数条纹只用来判断"是不是同一批"，不当作通过条件**。
 
 ### 9.3 终态判据（四条一起看，缺一条都可能"绿着坏"）
 
