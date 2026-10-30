@@ -359,7 +359,7 @@
     "items": 54,
     "cap": 128,
     "blocked": 0,
-    "TOTAL_CAP": 25,
+    "TOTAL_CAP": 128,
     "实测合计处数": 25,
     "实活": {
      "items": 14,
@@ -368,8 +368,13 @@
     "说明": "删 10 项（本刀归零的 10 个 id，cap 27）。TOTAL_CAP 的上限口径是**实测处数**（闸：pagesActualTotal > pagesTotalCap 才红），不是 cap 之和 ⇒ 156 → 25 是跟着实测收紧"
    },
    "删项": 10,
-   "TOTAL_CAP": "155 → 25（口径 = 实测合计处数，只降不升）",
-   "BLOCKED_MAX": "7 → 0"
+   "TOTAL_CAP": "155 → 128（新闸 22a20a7 要求 TOTAL_CAP == Σ逐项 cap；删 10 项 cap 27 后 Σcap=128。25 是陈账清完 + cap 收到实测后的终态）",
+   "BLOCKED_MAX": "7 → 0",
+   "终态": {
+    "Σcap": 25,
+    "TOTAL_CAP": 25,
+    "r3_total": 25
+   }
   },
   "陈旧行另案": {
    "项数": 40,
@@ -377,9 +382,10 @@
    "说明": "这 40 项在 app.js 里 0 引用（id 只在 pages-view.js 里），表上只有'cap ≥ 实测'的上行判据、没有'0 引用就删项'的下行判据；清掉后 TOTAL_CAP 可到 60。建议单开一笔 + 一条机检：表里每项必须实测 ≥ 1 处"
   },
   "TOTAL_CAP 口径": {
-   "a": "闸判 Σ min(实测, cap) > TOTAL_CAP；无一项超 cap 时等于 r3.total（今天 50）",
+   "a": "闸判 Σ min(实测,cap) > TOTAL_CAP",
    "b": "冻结基线，只降不升，放宽要签字",
-   "c": "终态：Σitem.cap == TOTAL_CAP == r3.total"
+   "c": "TOTAL_CAP == Σ逐项 cap（22a20a7，双向判）",
+   "d": "终态 Σcap == TOTAL_CAP == r3.total"
   }
  },
  "提交形态": {

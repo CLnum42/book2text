@@ -119,16 +119,18 @@ setMarginJudgementCheckbox(on)← setMarginJudgementSetting：写 `#rec-margin-j
 | R8 | 53 | **57** | +4（syncToolbarToggles / showPagesError / pagesErrorMessage / setMarginJudgementCheckbox） |
 | PagesView deps | 211 | **218** | +7（4 个 open* + openStatsPanel + openAssignPanel + toggleAssignList） |
 | seed 行 | 14 | **4** | 删 10 行（刀 6 组全部：boot / setupCollabControls / setupLibrary×4 / setupShell / finishRevokeAutoPass / setMarginJudgementSetting / startLayoutDetectFromDialog）；剩 applyPackageMode · applyProjectSettings · applySplitBatch（刀 8）· recognizePage（刀 7） |
-| 豁免项 | 64 | **54** | 删 10 项（上表归零的 10 个 id，cap 27）；剩余声明 cap 之和 155 → 128（只是记账） |
-| `PAGES_R3_TOTAL_CAP` | 155 | **25** | 上限口径是**实测合计处数**（闸：`pagesActualTotal > pagesTotalCap` 才红），不是 cap 之和 ⇒ 跟着 R3 50→25 收紧 |
+| 豁免项 | 64 | **54** | 删 10 项（上表归零的 10 个 id，cap 27）；剩余声明 cap 之和 155 → 128（**不是记账**：新闸要求 TOTAL_CAP == Σcap，见下一行） |
+| `PAGES_R3_TOTAL_CAP` | 155 | **128** | 2026-10-30 新闸（`22a20a7`）要求 **TOTAL_CAP == Σ逐项 cap**；删 10 项（cap 27）后 Σcap = 128（存活 14 项 60 + 陈账 40 项 68）⇒ 本刀必须写成 128。**不是 25**——25 是「陈账清完 + 存活项 cap 收到实测」之后的终态（见 §⑨） |
 | 受阻项 | 7 | **0** | 7 个带「阻塞段」的项全在删除名单里 ⇒ `PAGES_R3_BLOCKED_MAX 7 → 0`，`knife2.5-split-plan.md` 的留外壳段对 pages 不再被引用 |
 
-`PAGES_R3_TOTAL_CAP` 的三条定义（Architect 2026-10-30 签字口径，别用第四条解释）：
+`PAGES_R3_TOTAL_CAP` 的四条定义（Architect 2026-10-30 签字口径 + 当天的 `22a20a7`，别用第五条解释）：
 
 ```
 a) 闸判的是 `Σ min(该项实测处数, 该项 cap) > TOTAL_CAP`——没有一项超 cap 时它就等于 r3.total（今天 50）
 b) TOTAL_CAP 是**冻结基线**，只降不升；放宽要签字
-c) 终态三者合一：清理陈账后 Σitem.cap == TOTAL_CAP == r3.total
+c) **TOTAL_CAP == Σ逐项 cap**（`22a20a7`，双向判：大了 = 给「未登记的引用」留空白，小了 = 表自相矛盾）
+   ⇒ 删一项 / 收一项的 cap，**必须同批改 TOTAL_CAP**，否则红了
+d) 终态三者合一：Σitem.cap == TOTAL_CAP == r3.total
    （今天 `pages-error` cap 26 / 实测 5 —— cap 是"允许留下多少"的回归预算，不是实测值）
 ```
 
@@ -152,7 +154,7 @@ applyPackageMode 20 · recognizePage 2 · applyProjectSettings 2 · applySplitBa
      `grep -l "PagesView.syncToolbarToggles" backend/book2text/static/*-view.js` == 4 个文件
      （reading / index / preview / library）——写成 "app.js ≥ 1" 会自相矛盾
 ④ deps == 218，新增 7 键逐个在 init 块里；删除的 4 个 deps 对在两模块 deps 块里 = 0
-⑤ seed 4 行 / 4 名；豁免 54 项（实活 14 项 / 声明 cap 60）、TOTAL_CAP 25、BLOCKED_MAX 0
+⑤ seed 4 行 / 4 名；豁免 54 项（实活 14 项 / 声明 cap 60）、TOTAL_CAP **128 == Σcap**、BLOCKED_MAX 0
 ⑥ 「显示 = 导出」三道锁照跑：连续切片结构 / `?checktext=1` / QA 的 A 条（本刀不改渲染，但改了 init 时序）
 ⑦ 真机一次：页面视图的 ⋯ 菜单四项、页面工具栏两个开关、统计 / 开始审校入口、批量指派、版心判定 checkbox
 ```
@@ -167,7 +169,7 @@ applyPackageMode 20 · recognizePage 2 · applyProjectSettings 2 · applySplitBa
 3. 再处理 boot 的 4 个 deps 对：四个消费者模块改调 PagesView.syncToolbarToggles()，
    然后删 app.js 里那 8 行 deps（**先改消费者再删 provider**，反了就是运行时 undefined）
 4. deps 块：加 7 个新键（每个键都能解析，R13 会查）
-5. 账本（**另开一笔 test-contract**，见 §⑦）：删 10 行 seed + 删 10 项豁免 + TOTAL_CAP 25 + BLOCKED_MAX 0
+5. 账本（**另开一笔 test-contract**，见 §⑦）：删 10 行 seed + 删 10 项豁免 + TOTAL_CAP 155→128 + BLOCKED_MAX 0
 6. 全闸 + 真机
 ```
 
@@ -185,7 +187,7 @@ Approved-by: DevLead
   ⑤ docs/refactor/pages/knife6-*
 
 第二笔（test-contract：账本，不与代码混）
-test-contract: 刀 6 账本 —— 删 10 行 seed + 删 10 项豁免 + TOTAL_CAP 155→25 + BLOCKED_MAX 7→0
+test-contract: 刀 6 账本 —— 删 10 行 seed + 删 10 项豁免 + TOTAL_CAP 155→128 + BLOCKED_MAX 7→0
 Approved-by: DevLead
   · 判据：删完 seed 4 行 / 4 名、豁免 54 项、R3 仍 25/14（账不跟着代码一起改，红了分不清是谁错）
 ```
@@ -223,8 +225,8 @@ Approved-by: DevLead
 位置（Architect 2026-10-30 定）：**刀 6 之后、刀 7 之前**。一笔里按顺序做完三件事，不分三笔：
 
 ```
-① 删 40 项（0 引用的陈账）
-② 把存活项的 cap 收到实测值（例如 pages-error cap 26 / 实测 5 —— cap 是回归预算，收不收要一次性决定）
-③ 再定 TOTAL_CAP：让 Σitem.cap == TOTAL_CAP == r3.total 三者合一（今天 50；本刀之后 25）
+① 删 40 项（0 引用的陈账，cap 68）
+② 存活 14 项的 cap 收到实测（声明 60 → 25；今天 pages-error cap 26 / 实测 5 —— cap 是回归预算）
+③ TOTAL_CAP 同批跟到 25（Σcap 128 → 25）：此时才满足终态 Σcap == TOTAL_CAP == r3.total
 附带一条下行机检：表里每一项都必须实测 ≥ 1 处（现在这条空缺 = 陈账只能涨不能消）
 ```
