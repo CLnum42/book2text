@@ -1,6 +1,6 @@
 {
  "刀": 4,
- "口径": "view-pages 子树 id 引用（el/getElementById/querySelector），与 R3 闸一致；行范围量于 18921de 之后的当前树",
+ "口径": "view-pages 子树 id 引用（el/getElementById/querySelector），与 R3 闸一致；行范围量于 dce41b8 之后的当前树。**12 → 8：4 个跨域函数推迟（见 推迟4）**",
  "基线": {
   "appLines": 14324,
   "r3Total": 123,
@@ -8,44 +8,6 @@
   "pagesViewLines": 2041
  },
  "movers": [
-  {
-   "name": "applyPackageMode",
-   "start": 13194,
-   "end": 13253,
-   "lines": 60,
-   "ids": [
-    "assign-list-toggle",
-    "assign-open",
-    "aux-run",
-    "check-pending",
-    "detail-recognize",
-    "finish-open-review",
-    "package-banner",
-    "package-open",
-    "package-result-meta",
-    "page-setup-bar",
-    "panel-pagenum-settings",
-    "panel-recognition-settings",
-    "selection-actionbar",
-    "selection-check",
-    "selection-skip-checked",
-    "setup-panel",
-    "structure-open"
-   ],
-   "refs": 20,
-   "callers": [
-    "refreshProject"
-   ],
-   "external_callers": [
-    "refreshProject"
-   ],
-   "needs_forwarder": true,
-   "deps": [
-    "closeFinishPanel",
-    "closeModal",
-    "loadPackageResults"
-   ]
-  },
   {
    "name": "applyPageRangeInput",
    "start": 3417,
@@ -97,31 +59,6 @@
    ]
   },
   {
-   "name": "applyProjectSettings",
-   "start": 12514,
-   "end": 12524,
-   "lines": 11,
-   "ids": [
-    "auto-apply-suggestions",
-    "export-margin-judgement",
-    "rec-margin-judgement"
-   ],
-   "refs": 2,
-   "callers": [
-    "setAutoApplySetting",
-    "setMarginJudgementSetting"
-   ],
-   "external_callers": [
-    "setAutoApplySetting",
-    "setMarginJudgementSetting"
-   ],
-   "needs_forwarder": true,
-   "deps": [
-    "marginJudgementOn",
-    "renderMarginJudgementNotice"
-   ]
-  },
-  {
    "name": "applySetupSuggestion",
    "start": 3752,
    "end": 3774,
@@ -134,30 +71,6 @@
    "external_callers": [],
    "needs_forwarder": false,
    "deps": []
-  },
-  {
-   "name": "applySplitBatch",
-   "start": 12867,
-   "end": 12901,
-   "lines": 35,
-   "ids": [
-    "selection-hint",
-    "split-batch-apply",
-    "split-batch-error"
-   ],
-   "refs": 1,
-   "callers": [
-    "setupLibrary"
-   ],
-   "external_callers": [
-    "setupLibrary"
-   ],
-   "needs_forwarder": true,
-   "deps": [
-    "closeModal",
-    "forgetAllPageSuggestions",
-    "splitBatchScope"
-   ]
   },
   {
    "name": "confirmAllUnconfirmed",
@@ -224,33 +137,6 @@
    "deps": []
   },
   {
-   "name": "recognizePage",
-   "start": 5588,
-   "end": 5636,
-   "lines": 49,
-   "ids": [
-    "page-detail-error",
-    "pages-error"
-   ],
-   "refs": 2,
-   "callers": [
-    "buildTile",
-    "setupLibrary"
-   ],
-   "external_callers": [
-    "buildTile",
-    "setupLibrary"
-   ],
-   "needs_forwarder": true,
-   "deps": [
-    "RESTORE_DETAIL_TEXT",
-    "applyRecognizedPages",
-    "confirmAction",
-    "humanTouchedPages",
-    "warnUnconfirmed"
-   ]
-  },
-  {
    "name": "recognizeSelection",
    "start": 12300,
    "end": 12361,
@@ -272,98 +158,172 @@
    ]
   }
  ],
+ "推迟4": {
+  "理由": "它们会写别的视图的 DOM（R3 模块侧零豁免：*-view.js 只许碰自己 section 的 id）",
+  "函数": [
+   {
+    "name": "applyPackageMode",
+    "start": 13194,
+    "end": 13253,
+    "lines": 60,
+    "refs": 20,
+    "跨视图写点": [
+     "package-banner×2",
+     "package-open×2",
+     "structure-open×2",
+     "finish-open-review×2",
+     "detail-recognize",
+     "aux-run",
+     "package-result-meta"
+    ]
+   },
+   {
+    "name": "applyProjectSettings",
+    "start": 12514,
+    "end": 12524,
+    "lines": 11,
+    "refs": 2,
+    "跨视图写点": [
+     "export-margin-judgement"
+    ]
+   },
+   {
+    "name": "applySplitBatch",
+    "start": 12867,
+    "end": 12901,
+    "lines": 35,
+    "refs": 1,
+    "跨视图写点": [
+     "split-batch-apply",
+     "split-batch-error"
+    ]
+   },
+   {
+    "name": "recognizePage",
+    "start": 5588,
+    "end": 5636,
+    "lines": 49,
+    "refs": 2,
+    "跨视图写点": [
+     "page-detail-error"
+    ]
+   }
+  ],
+  "交叉检查": "推迟 4 → 调用保留 8：0 处；保留 8 → 调用推迟 4：0 处；推迟 4 互相调用：0 处",
+  "归属": "这 15 处写点不是 pages 的债，是 package/export/review 的债 → 那一刀按视图命名（如 package/export 刀），不叫 pages 4.5",
+  "R8影响": "它们搬走时 +4 个转发键（34→36 之后 → 40）"
+ },
  "刀4验收": {
   "r3Total": {
    "before": 123,
-   "after": 76
+   "after": 101
   },
   "r3Ids": {
    "before": 44,
-   "after": 32
+   "after": 38
   },
   "归零id": [
-   "check-pending",
    "layout-block-confirm",
    "page-range",
-   "page-setup-bar",
    "pages-zoom-in",
    "pages-zoom-label",
    "pages-zoom-out",
-   "panel-pagenum-settings",
-   "panel-recognition-settings",
-   "selection-actionbar",
-   "selection-check",
    "selection-skip-recognized"
   ],
   "部分归零id": [
-   "assign-list-toggle",
-   "assign-open",
-   "auto-apply-suggestions",
    "page-grid",
    "pages-error",
    "pages-margin-toggle",
    "pages-overlay-toggle",
-   "rec-margin-judgement",
-   "selection-hint",
-   "selection-skip-checked",
-   "setup-panel"
+   "selection-hint"
   ],
+  "部分归零说明": "本刀减量但不归零：page-grid / pages-margin-toggle / pages-overlay-toggle 归零责任在刀5（boot / toggleMarginView / togglePageBlocksOverlay 还在外壳）；pages-error / selection-hint 由刀5 一批函数共同引用",
   "r8Exports": {
    "before": 34,
-   "after": 40,
+   "after": 36,
    "新增转发": [
-    "applyPackageMode",
     "applyPageZoom",
-    "applyProjectSettings",
-    "applySplitBatch",
-    "confirmAllUnconfirmed",
-    "recognizePage"
+    "confirmAllUnconfirmed"
    ],
    "本刀死亡": []
   },
   "appLines": {
    "before": 14324,
-   "after": 13950,
-   "口径": "-391 函数体 +6 转发器 +11 deps 块(-9 +20)，±20"
+   "after": 14095,
+   "口径": "-236 函数体 +2 转发器 ±deps 块，落盘实测 ±20"
   },
   "pagesViewLines": {
    "before": 2041,
-   "after": 2438,
-   "口径": "+391 函数体 +6 api 键，±20"
+   "after": 2287,
+   "口径": "+236 函数体 +2 api 键 + 函数间空行，落盘实测 ±20"
   },
   "deps": {
    "before": 208,
-   "after": 219,
-   "删": 9,
-   "加": 20
+   "after": 213,
+   "删": 7,
+   "加": 12,
+   "删键": [
+    "applyPageRangeInput",
+    "applyPageZoom",
+    "applySetupSuggestion",
+    "confirmAllUnconfirmed",
+    "confirmLayoutFromPanel",
+    "confirmSelectedPages",
+    "recognizeSelection"
+   ],
+   "加键": [
+    "PAGE_ZOOM_LEVELS",
+    "RESTORE_DETAIL_TEXT",
+    "applyRecognizedPages",
+    "confirmAction",
+    "ensurePageScrollListener",
+    "ensureSuggestionScrollListener",
+    "humanTouchedPages",
+    "pageImageUrl",
+    "pageZoomLevel",
+    "resetOverlayQueue",
+    "scheduleSuggestionScan",
+    "warnUnconfirmed"
+   ]
   },
   "seed": {
    "名字": {
     "before": 50,
-    "after": 38
+    "after": 42
    },
    "数据行": {
     "before": 53,
-    "after": 41
+    "after": 45
    }
   },
   "dryRun": {
    "residue": [],
    "anti": [],
-   "injected_keys": 47,
-   "deps_literal_keys": 47
+   "injected_keys": 33,
+   "deps_literal_keys": 33,
+   "movers": 8,
+   "moved_lines": 236,
+   "module_lines": 278
   }
  },
  "deps分栏": {
-  "函数_值": 38,
-  "getter": 6,
+  "函数_值": 26,
+  "getter": 5,
   "setter": 2,
-  "能力": 1,
-  "合计": 47,
-  "复用已有键": 27,
-  "新增键": 20,
-  "删除键": 9,
-  "最终deps": 219
+  "能力": 0,
+  "合计": 33,
+  "getter键": [
+   "getCurrentProject",
+   "getPageZoomIndex",
+   "getPagesMarginOn",
+   "getPagesOverlayOn",
+   "getSelectedPages"
+  ],
+  "setter键": [
+   "setPageTileMetrics",
+   "setSelectionAnchor"
+  ],
+  "说明": "分栏按声明形态；setMarginStatus 是真函数，记函数/值，不按名字前缀 set 记 setter"
  },
  "口径_调用者": "外壳调用者 = 排除装配块(init deps)、排除自身声明体、排除注释后的裸引用所在顶层函数",
  "口径_归零": "id 归零 = 引用该 id 的全部顶层函数都在本刀 movers 内（逐 id 判，不看总数）",
@@ -389,10 +349,15 @@
  ],
  "R8曲线": {
   "刀3": 34,
-  "刀4": 40,
+  "刀4": 36,
+  "推迟4搬走": 40,
   "刀5": 22,
   "收口刀": 3,
-  "说明": "刀4 +6 是 6 个临时转发键（applyPackageMode/applyPageZoom/applyProjectSettings/applySplitBatch/confirmAllUnconfirmed/recognizePage），死亡刀号=刀5"
+  "死亡刀号": {
+   "applyPageZoom": "刀5（showView 常驻外壳；goToWorkflowStep/setPageZoom 刀5）",
+   "confirmAllUnconfirmed": "刀5（finishConfirmPages 搬走）"
+  },
+  "判据": "每键登记死亡刀号；到点未死=红；曲线只许下调，上调需重签"
  },
  "R8判据": {
   "规则": [
@@ -401,5 +366,23 @@
    "曲线只许下调，上调需重新签字"
   ],
   "applySplitBatch复核": "12421 在 setupLibrary(12405-12490)，不在 applyPackageMode(13194-13253)；值引用（回调）也算引用 → 转发器必须留"
+ },
+ "测试账": {
+  "阻断": "tests/js 有 3 条红（不是搬错：探针挂在注入面上）",
+  "①": "reading-view-behavior.test.mjs:440 —— harness 没 init PagesView，模块 applyPageZoom 拿到 undefined deps → TypeError reading 'label'。修法：harness 里补 PagesView.init(deps)（与 installReadingDeps 同款自动桩），断言不变；**这笔在产品笔之前单独提交，改完在旧树上必须绿**",
+  "②": "recognition-target.test.mjs:154（2 条）—— 测试桩住 recognizeSelection 看分派；搬走后模块调自己的函数，桩不再被调用。修法：改成验最终 POST 体（mode=selection → skip_recognized=勾选值、无 force；mode=force → force:true），**判据是改完的测试在旧树上也绿**；做不到就走「放宽→产品→收紧」三笔，弱窗口标 Temp-Relax:",
+  "红线": "move: 笔只许改 OWNERS / VIEW_STATE_PREFIXES / VIEW_EXPORTS 三张表 → 这两个测试文件必须在产品笔之前单独 test-contract 提交"
+ },
+ "推迟两刀": {
+  "顺序": [
+   "knife-review",
+   "knife-package"
+  ],
+  "占位文件": [
+   "docs/refactor/pages/knife-review-plan.md",
+   "docs/refactor/pages/knife-package-plan.md"
+  ],
+  "knife-package硬判据": "applyPackageMode 体内 review 子树 id 引用 = 0，且 3 处是 review 具名入口调用",
+  "到期点": "knife-package 结束时这 3 个函数必须已搬走，或明确留外壳并写理由；不许长期悬空"
  }
 }
