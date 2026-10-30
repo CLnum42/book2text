@@ -444,14 +444,6 @@
   ],
   "更正": "Architect 说 LibraryView 是死 provider —— 实测不成立"
  },
- "新建函数": [
-  "openStatsPanel",
-  "toggleAssignList",
-  "syncToolbarToggles",
-  "showPagesError",
-  "pagesErrorMessage",
-  "setMarginJudgementCheckbox"
- ],
  "风险": [
   "window.PagesView?.syncToolbarToggles() 的 ?. 会静默跳过：init 末尾补一次 sync + 真机看四个视图的 is-on",
   "openStatsPanel / toggleAssignList 是新建函数（0 引用），落盘前先在 app.js 定义"
@@ -461,5 +453,18 @@
   "cap": 68,
   "顺序": "刀 6 之后、刀 7 之前，一笔做完：删 40 项 → 存活项 cap 收到实测 → TOTAL_CAP 三者合一",
   "机检": "表里每项必须实测 ≥ 1 处"
- }
+ },
+ "新建函数（app.js 侧）": {
+  "名单": [
+   "openStatsPanel",
+   "toggleAssignList"
+  ],
+  "说明": "今天 0 处引用；落地时先在 app.js 里定义（grep 不到不等于不需要），否则执行的人会在模块里直接写 openModal(\"stats-panel\") / openModal(\"assign-panel\")，正是要防的"
+ },
+ "新建模块函数（新增 api 键）": [
+  "syncToolbarToggles",
+  "showPagesError",
+  "pagesErrorMessage",
+  "setMarginJudgementCheckbox"
+ ]
 }
