@@ -146,7 +146,7 @@ def test_block_frames_work_in_all_zoom_levels_and_default_to_on() -> None:
     assert "PAGE_OVERLAY_FRAME_LIMIT = 3" in script
     assert "PAGE_BLOCK_FETCH_LIMIT = 6" in script
     assert "pageTileMetrics" in script
-    assert "function pumpOverlayRender(" in script
+    assert _function_body_any("pumpOverlayRender")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
 
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
     order_rule = css[css.index(".page-overlay .box__order {"):]
@@ -635,7 +635,7 @@ def test_margin_view_is_wired_to_the_page_view() -> None:
     assert "only_missing: true" in script
     # 拖动松手写一次库，并标 custom（自动拟合不会覆盖它）
     assert 'margin_box_mode: "custom"' in script
-    assert "function undoMarginEdit(" in script
+    assert _function_body_any("undoMarginEdit")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
     assert "page-margin__box" in styles
     assert ".margin-step__actions" in styles
 
@@ -875,10 +875,10 @@ def test_layout_detection_and_workflow_filter_are_wired() -> None:
     # 检测入口在「⋯」里：先看计划（几页 / 大概多久）再决定跑不跑
     assert "function openLayoutDetectDialog(" in script
     assert "/layout/plan" in script
-    assert "function refreshMarginDetectHint(" in script
+    assert _function_body_any("refreshMarginDetectHint")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
     assert "prepare: true" in script
     # 版面块确认搬到「页面确认」步（不再是版心分区里的折叠项）
-    assert "function renderLayoutBlocks(" in script
+    assert _function_body_any("renderLayoutBlocks")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
     # confirmLayoutFromPanel 刀 4 起住在模块里（外壳已经没有引用者，不留转发器）。
     assert "function confirmLayoutFromPanel(" in _script_with_view("pages-view.js")
     assert "/layout/confirm" in script
@@ -1098,7 +1098,7 @@ def test_workflow_steps_scope_the_right_panel() -> None:
         assert f'id="{element_id}"' in page, element_id
 
     # 按步显示分区的接线
-    assert "function renderStepPanels(" in script
+    assert _function_body_any("renderStepPanels")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
     for panel in (
         "panel-page-settings",
         "panel-layout-blocks",
@@ -1113,7 +1113,7 @@ def test_workflow_steps_scope_the_right_panel() -> None:
     assert 'data-workflow-step="pages"' in css
 
     # 版心步：进来自动拟合未定的页；只碰 auto 且没有框的页
-    assert "function ensureMarginFitted(" in script
+    assert _function_body_any("ensureMarginFitted")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
     assert "function marginUndeterminedPages(" in script
     assert "function marginPagesWithoutLines(" in script
     assert "function pageLayoutLines(" in script
@@ -1129,7 +1129,7 @@ def test_workflow_steps_scope_the_right_panel() -> None:
     assert "页还没有可用的正文行，版心未定" in script
     # 面板只剩三个动作（重置 / 撤销 / 下一页），模式卡片已经删除
     assert 'el("margin-page-actions")' in script + pages_script
-    assert "function undoMarginEdit(" in script
+    assert _function_body_any("undoMarginEdit")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
     assert "confirmLayoutFromPanel" in _script_with_view("pages-view.js")
 
     # 切步骤不动缩放：只有用户没手动改过缩放时，才在从别的视图进版心步时给整页档
@@ -1138,7 +1138,7 @@ def test_workflow_steps_scope_the_right_panel() -> None:
     assert "pageZoomTouched = true;" in script
 
     # 文字识别步只读：状态数字来自 finish-summary / summary，不在右栏做裁决
-    assert "function renderRecognitionStatus(" in script
+    assert _function_body_any("renderRecognitionStatus")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
     assert "finishSummary.engine" in script or "finishSummary && finishSummary.engine" in script
 
 
