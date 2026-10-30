@@ -427,9 +427,11 @@ def test_block_frames_refresh_as_pages_finish_and_prefetch_while_scrolling() -> 
 
     # 1) 先查清"块框不出现"的真因：瓷砖位置在隐藏视图里被量成 0，
     #    267 页全被判成可见。现在宁可量不出来就不记，等视图可见再量。
-    capture = _function_body("capturePageTileMetrics")
+    # capturePageTileMetrics 刀 5 起住在 pages-view.js（外壳无调用者，不留转发器）。
+    capture = _function_body_any("capturePageTileMetrics")
     assert "getBoundingClientRect().height <= 0" in capture
-    assert "pageTileMetrics = null" in capture
+    # 刀 5 搬进模块后，SET_BLOCKS 把 `pageTileMetrics = null` 改写成 setter 调用（先算局部再注入）。
+    assert "pageTileMetrics = null" in capture or "setPageTileMetrics(null)" in capture
     # 切回页面视图时强制重量
     show_view = _function_body("showView")
     assert "pageTileMetrics = null" in show_view
@@ -469,8 +471,9 @@ def test_block_frames_refresh_as_pages_finish_and_prefetch_while_scrolling() -> 
 
     # 4) 网格档滚动停下的扫描更快，且不再为 267 个瓷砖各量一次矩形
     assert "setTimeout(scanVisiblePageSuggestions, 60)" in script
-    scan = _function_body("scanVisiblePageSuggestions")
-    assert "pageTileMetrics" in scan
+    scan = _function_body_any("scanVisiblePageSuggestions")  # 刀 5 起实体在 pages-view.js，app.js 只剩转发桩
+    # 搬进模块后状态经注入读写：裸名是 `pageTileMetrics`，注入形态是 `getPageTileMetrics()`。
+    assert "pageTileMetrics" in scan or "PageTileMetrics" in scan
     assert "byTile" in scan
 
 
@@ -729,8 +732,9 @@ def test_right_panel_has_four_ordered_collapsible_sections() -> None:
     # 任务 64：手风琴一次只开一个，默认由 JS 选第一个未完成的分区；不写死 open。
     for name in order:
         assert f'id="{name}" open' not in page, name
-    assert "b2t.panel.accordion.v1." in script
-    assert "function initPanelAccordion(" in script
+    # 手风琴的存储键在 initPanelAccordion 体内，刀 5 已搬进 pages-view.js。
+    assert "b2t.panel.accordion.v1." in _script_with_view("pages-view.js")
+    assert "function initPanelAccordion(" in _script_with_view("pages-view.js")
     assert "function firstUnfinishedPanel(" in script
     # 页码（任务 55/64）有真实入口和"可跳过 / 未定位也能导出"说明
     pagenum = page[positions[2]:positions[3]]
@@ -763,7 +767,7 @@ def test_recognition_settings_are_wired_to_project_settings() -> None:
         assert f'name="rec-dpi" value="{dpi}"' in page, dpi
 
     # 设置写服务端；不可用引擎置灰（Windows 上 Apple Vision / 双引擎）
-    assert "function patchRecognitionSetting(" in script
+    assert "function patchRecognitionSetting(" in _script_with_view("pages-view.js")
     assert '"/settings"' in script or "}/settings`" in script
     assert "function renderRecognitionSettings(" in script
     # 引擎置灰的那行在 renderRecognitionSettings 体内，刀 3 已搬进 pages-view.js。
@@ -853,7 +857,7 @@ def test_layout_detection_and_workflow_filter_are_wired() -> None:
     ):
         assert f'id="{element_id}"' in page, element_id
 
-    assert "/jobs/layout" in script
+    assert "/jobs/layout" in _script_with_view("pages-view.js")
     assert "/workflow" in script
     assert "function loadWorkflow(" in script
     assert "function workflowChip(" in script
@@ -1476,8 +1480,8 @@ def test_review_pauses_page_grid_prefetch() -> None:
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
 
-    assert "function pausePageThumbnails(" in script
-    pause = script[script.index("function pausePageThumbnails(") :]
+    # pausePageThumbnails 刀 5 起住在模块里，外壳只剩一句转发桩（取值位仍要它）。
+    pause = _function_body_any("pausePageThumbnails")
     pause = pause[: pause.index("\n}\n")]
     assert 'removeAttribute("src")' in pause
 
