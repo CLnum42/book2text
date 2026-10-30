@@ -134,7 +134,8 @@ def test_block_frames_work_in_all_zoom_levels_and_default_to_on() -> None:
     assert "b2t.pagesOverlay.v2." in script
     assert 'return stored === null ? true : stored === "1"' in script
     # 四档都可用：不再用 zoom >= 2 挡住开关
-    assert 'el("pages-overlay-toggle").disabled = false' in script
+    # 块框开关的这段在 applyPageZoom 体内，刀 4 已搬进 pages-view.js —— 两份一起扫。
+    assert 'el("pages-overlay-toggle").disabled = false' in _script_with_view("pages-view.js")
     toggle = _function_body("togglePageBlocksOverlay")
     assert "pageZoomIndex" not in toggle
     # 网格 / 大网格只画色框；单列 / 单页才建顺序号
@@ -865,7 +866,8 @@ def test_layout_detection_and_workflow_filter_are_wired() -> None:
     assert "prepare: true" in script
     # 版面块确认搬到「页面确认」步（不再是版心分区里的折叠项）
     assert "function renderLayoutBlocks(" in script
-    assert "function confirmLayoutFromPanel(" in script
+    # confirmLayoutFromPanel 刀 4 起住在模块里（外壳已经没有引用者，不留转发器）。
+    assert "function confirmLayoutFromPanel(" in _script_with_view("pages-view.js")
     assert "/layout/confirm" in script
     # 工作流筛选有"已检测（未识别）"这一档
     assert 'value="detected"' in page
@@ -1115,7 +1117,7 @@ def test_workflow_steps_scope_the_right_panel() -> None:
     # 面板只剩三个动作（重置 / 撤销 / 下一页），模式卡片已经删除
     assert 'el("margin-page-actions")' in script + pages_script
     assert "function undoMarginEdit(" in script
-    assert "confirmLayoutFromPanel" in script
+    assert "confirmLayoutFromPanel" in _script_with_view("pages-view.js")
 
     # 切步骤不动缩放：只有用户没手动改过缩放时，才在从别的视图进版心步时给整页档
     assert "let pageZoomTouched = false;" in script
