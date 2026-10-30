@@ -325,7 +325,7 @@ function renderMarginPanel() {
   next.hidden = false;
   next.textContent = "下一页 ›";
   next.title = "版心不用逐页确认：不动就算已定，这里只是翻到下一页";
-  next.onclick = () => injected.selectNextPage(page.page_no);
+  next.onclick = () => selectNextPage(page.page_no);
 }
 
 function renderPageSetup() {
@@ -351,7 +351,7 @@ function renderPageSetup() {
   renderTypePicker();
   renderSuggestionPanel();
   initPanelAccordion();
-  injected.renderStepPanels();
+  renderStepPanels();
   if (injected.getFinishSummaryProject() !== injected.getCurrentProject().project_id) {
     injected.loadFinishSummary({ silent: true });
   }
@@ -1826,7 +1826,7 @@ function applyPageZoom() {
     injected.scheduleSuggestionScan();
   }
 
-  injected.ensurePageScrollListener();
+  ensurePageScrollListener();
   injected.setPageTileMetrics(null);
   capturePageTileMetrics();
   updatePageVisibility();
@@ -3094,9 +3094,174 @@ function onLayoutDetectStarted(totalPages) {
 }
 
 /** 工作流角标读完：版心的缺口提示与检测入口文案跟着变（原来是 renderLayoutStatus 的两行写点）。 */
-function onWorkflowLoaded() {
+function onWorkflowLoaded(counts = {}, summary = {}) {
+  // 刀 9.5：renderWorkflowFilter 并进来（外壳只给数据，不给"该调哪个函数"）
+  renderWorkflowFilter(counts || {}, summary || {});
   refreshMarginDetectHint();
   refreshLayoutDetectEntry();
+}
+
+// ---------------------------------------------------------------- 刀 9.5：选择 / 网格 / 滚动（从外壳搬入）
+
+function selectOnly(pageNo) {
+  const selected = injected.getSelectedPages();
+  selected.clear();
+  selected.add(pageNo);
+  injected.setSelectionAnchor(pageNo);
+}
+
+function toggleSelection(pageNo) {
+  const selected = injected.getSelectedPages();
+  if (selected.has(pageNo)) {
+    selected.delete(pageNo);
+  } else {
+    selected.add(pageNo);
+  }
+  injected.setSelectionAnchor(pageNo);
+}
+
+function selectRangeTo(pageNo) {
+  const pages = visiblePages();
+  const anchor = injected.getSelectionAnchor();
+  const anchorIndex = pages.findIndex((page) => page.page_no === anchor);
+  const index = pages.findIndex((page) => page.page_no === pageNo);
+  if (anchorIndex < 0 || index < 0) {
+    selectOnly(pageNo);
+    return;
+  }
+  const [from, to] = anchorIndex <= index ? [anchorIndex, index] : [index, anchorIndex];
+  const selected = injected.getSelectedPages();
+  for (let i = from; i <= to; i += 1) selected.add(pages[i].page_no);
+}
+
+/** 全选当前筛选（保留筛选外已选的页）。 */
+function selectAllVisiblePages() {
+  const pages = visiblePages();
+  if (!pages.length) return;
+  const selected = injected.getSelectedPages();
+  for (const page of pages) selected.add(page.page_no);
+  if (injected.getSelectionAnchor() === null) injected.setSelectionAnchor(pages[0].page_no);
+  renderPages();
+}
+
+/** 取消全选（当前筛选内外的选择一起清掉）。 */
+function clearPageSelection() {
+  const selected = injected.getSelectedPages();
+  if (!selected.size) return;
+  selected.clear();
+  injected.setSelectionAnchor(null);
+  renderPages();
+}
+
+function handleTileClick(page, event) {
+  if (event.shiftKey && injected.getSelectionAnchor() !== null) {
+    selectRangeTo(page.page_no);
+  } else if (event.metaKey || event.ctrlKey) {
+    toggleSelection(page.page_no);
+  } else {
+    selectOnly(page.page_no);
+  }
+  renderPages();
+}
+
+/** 点「下一页」：换到下一页（翻页本身不写库，版心不动就是已定）。 */
+function selectNextPage(pageNo) {
+  if (!injected.getCurrentProject()) return;
+  const pages = visiblePages();
+  const index = pages.findIndex((page) => page.page_no === pageNo);
+  const target = pages[index + 1] || pages[index] || null;
+  if (!target) return;
+  // 多选时「下一页」只翻页，不改选择（2026-10-30：选 3 页按一下下一页，3 页变 1 页）
+  const selected = injected.getSelectedPages();
+  if (selected.size <= 1) {
+    selected.clear();
+    selected.add(target.page_no);
+    injected.setSelectionAnchor(target.page_no);
+  }
+  renderPages();
+  const tile = document.querySelector(
+    `#page-grid .page-tile[data-page-no="${target.page_no}"]`
+  );
+  if (tile) tile.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+let pageScrollListening = false;
+
+function ensurePageScrollListener() {
+  if (pageScrollListening) return;
+  const scroller = pageScroller();
+  // 沙箱（node 闸的合成 DOM）没有 window.addEventListener；真实浏览器有，行为不变
+  (scroller || window).addEventListener?.("scroll", injected.schedulePageVisibility, { passive: true });
+  window.addEventListener?.("resize", () => {
+    injected.setPageTileMetrics(null);
+    injected.schedulePageVisibility();
+  });
+  pageScrollListening = true;
+}
+
+// ---- 八个事件能力（C 类，进清册、不写死期；外壳只知道"发生了什么"，重画什么由这里决定）----
+
+/** 页面列表改了（库卡片 / 目录兜底那两处）：整格重画。 */
+function onPageListChanged() {
+  renderPages();
+}
+
+/** 页面数据大面积变了（页眉页脚应用、任务控制之后）：重拉列表再重画。 */
+async function onProjectPagesReloaded() {
+  await reloadProjectPages();
+}
+
+/** 第二引擎复核收尾：识别步的状态文字要跟着变。 */
+function onAuxReviewFinished() {
+  renderRecognitionStatus();
+}
+
+/** 页面状态刷新了（轮询 / 壳的刷新）：就地把瓷砖状态同步掉。 */
+function onPageStatesRefreshed() {
+  syncPageStates();
+}
+
+/** 自动应用状态变了（任务结算后）：右栏角标重画。 */
+function onAutoApplyStatusChanged(run) {
+  renderAutoApplyStatus(run);
+}
+
+/** 步骤条重算了：按新步骤重排右栏分区。 */
+function onWorkflowStepChanged() {
+  renderStepPanels();
+}
+
+/** 块框缓存失效（只在"没有指定页"时全清；指定页的由外壳按页丢）。 */
+function onPageBlocksInvalidated() {
+  forgetAllPageBlocks();
+}
+
+/** 建议缓存失效（识别收尾 / 清理 / 类型变更 / 拆批之后）。 */
+function onPageSuggestionsInvalidated() {
+  forgetAllPageSuggestions();
+}
+
+/** Esc 清空选择 / Ctrl(⌘)+A 全选（9.5 从外壳的 keydown 搬入；对话框的 Esc 仍在 setupShell）。 */
+function wirePagesKeyboard() {
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.key === "Escape" &&
+      !injected.openMasks().length &&
+      injected.getCurrentProject() &&
+      injected.getSelectedPages().size
+    ) {
+      clearPageSelection();
+      return;
+    }
+    if (!injected.getCurrentProject() || document.body.dataset.view !== "pages" || injected.openMasks().length) return;
+    const active = document.activeElement || {};
+    const inEditor =
+      ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName) || active.isContentEditable;
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a" && !inEditor) {
+      event.preventDefault();
+      selectAllVisiblePages();
+    }
+  });
 }
 
 /**
@@ -3157,38 +3322,35 @@ function enter() {
   // 收敛棘轮：本刀 20 键 → 终点 3（enter / render / refresh），靠刀 2-5 把 41 个调用者搬进来逐刀降。
   const api = {
     init,
-    reloadProjectPages,
-    renderPages,
-    renderRecognitionStatus,
-    syncPageStates,
     undoMarginEdit,
     updatePageVisibility,
     loadFinishSummary,
-    renderAutoApplyStatus,
     renderRecognitionSettings,
-    renderStepPanels,
-    renderWorkflowFilter,
     applyPageZoom,
     confirmAllUnconfirmed,
     checkSelection,
-    forgetAllPageBlocks,
-    forgetAllPageSuggestions,
+    onPageBlocksInvalidated,
+    onPageListChanged,
     onPageNumberAnalysisReady,
     onPageNumberChanged,
+    onPageStatesRefreshed,
+    onPageSuggestionsInvalidated,
+    onProjectPagesReloaded,
     onRecognitionFinished,
     onTaskProgress,
+    onWorkflowStepChanged,
     onLayoutDetectStarted,
     onTaskFinished,
     onWorkflowLoaded,
+    onAuxReviewFinished,
+    onAutoApplyStatusChanged,
     openPageSetup,
-    pageScroller,
     pumpOverlayRender,
     queueOverlayRender,
     scanVisiblePageSuggestions,
     startLayoutDetection,
     toggleMarginView,
     togglePageBlocksOverlay,
-    visiblePages,
     // 刀 6：四处「外壳 → 模块」的操作入口（R8 53 → 57；逐键死亡刀号见 tests/js/boundary.test.mjs）
     // syncToolbarToggles 是**模块→模块**键（调用者是四个 view 模块），到点判据不能用「app.js 引用 = 0」。
     syncToolbarToggles,          // 死亡刀号 = 刀10（全仓引用 = 0 且不在 api 表）
@@ -3334,11 +3496,20 @@ function wirePagesPageGrid() {
   });
   // 点页面网格的空白处取消选择：只认"不在任何页瓷砖里"的点击，
   // 所以单击页 / 拖版心把手 / 页内按钮都不会误触发。
+  // 单击瓷砖的选中（刀 9.5：原来挂在 buildTile 的逐块 listener 上，改成委托；dblclick 不在这里）
+  el("page-grid").addEventListener("click", (event) => {
+    const tile = event.target.closest(".page-tile");
+    if (!tile) return;
+    const pageNo = Number(tile.dataset.pageNo);
+    const project = injected.getCurrentProject();
+    const page = project ? project.pages.find((item) => item.page_no === pageNo) : null;
+    if (page) handleTileClick(page, event);
+  });
   el("page-grid").addEventListener("click", (event) => {
     if (!injected.getCurrentProject()) return;
     if (event.target.closest(".page-tile")) return;
     if (event.target.closest(".page-margin__handle")) return;
-    injected.clearPageSelection();
+    clearPageSelection();
   });
   // 拖拽的窗口级监听（pointermove / pointerup / pointercancel）随拖拽簇一起搬进模块
   setupMarginDrag();
@@ -3360,9 +3531,9 @@ function wirePagesPageRange() {
  * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
  */
 function wirePagesSelection() {
-  el("selection-all").addEventListener("click", injected.selectAllVisiblePages);
-  el("selection-select-all").addEventListener("click", injected.selectAllVisiblePages);
-  el("selection-clear").addEventListener("click", injected.clearPageSelection);
+  el("selection-all").addEventListener("click", selectAllVisiblePages);
+  el("selection-select-all").addEventListener("click", selectAllVisiblePages);
+  el("selection-clear").addEventListener("click", clearPageSelection);
 }
 /**
  * 「更多」下拉（选择区）（刀 2.5 从 `setupLibrary` 原样搬出）。
@@ -3515,6 +3686,7 @@ function wireAll() {
   wirePagesPageMore();
   wirePagesFilters();
   wirePagesPageGrid();
+  wirePagesKeyboard();
   wirePagesPageRange();
   wirePagesSelection();
   wirePagesSelectionMore();

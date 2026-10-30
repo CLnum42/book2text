@@ -555,7 +555,7 @@ function syncWorkflowSteps() {
       current.textContent = `${index} ${step.label}`;
     }
   }
-  renderStepPanels();
+  window.PagesView?.onWorkflowStepChanged();
 }
 
 /**
@@ -567,7 +567,6 @@ function syncWorkflowSteps() {
  *
  * 分区本身还是原来那几块 DOM，只是按步显示；不改任何业务逻辑。
  */
-function renderStepPanels() { return window.PagesView.renderStepPanels.apply(window.PagesView, arguments); }
 
 /**
  * 底栏开关按步显示：版心步只要「版心」，页面确认 / 文字识别只要「块框」。
@@ -821,7 +820,7 @@ async function waitForAuxThenReview() {
   }
   if (token !== auxWarningWaitToken) return;
   await loadFinishSummary({ silent: true });
-  renderRecognitionStatus();
+  window.PagesView?.onAuxReviewFinished();
   closeModal("aux-warning-mask");
   enterReviewStep();
 }
@@ -1506,7 +1505,7 @@ async function applyHeaderFooter() {
     structureCandidates = [];
     el("structure-result").hidden = true;
     el("structure-apply-btn").disabled = true;
-    await reloadProjectPages();
+    await window.PagesView?.onProjectPagesReloaded();
     await refreshExportPreflight();
   } catch (error) {
     showError(el("structure-error"), error);
@@ -2678,7 +2677,7 @@ function renderProject() {
   el("project-title").textContent = `《${project.name}》`;
   el("package-chip").hidden = project.kind !== "package";
   renderProjectMeta();
-  renderPages();
+  window.PagesView?.onPageListChanged();
   // 任务 63：打开项目时**不要**先切到页面视图——那会把页面工作流 / 状态 / 建议
   // 三个重请求都拉起来，然后马上又被"上次的视图"切走。等 resumeLastPosition 决定。
   if (currentView === "library" && !bootingProject) showView("pages");
@@ -3047,7 +3046,6 @@ function forgetPageSuggestions(pageNo) {
   updateTileSuggestionMark(pageNo);
 }
 
-function forgetAllPageSuggestions() { return window.PagesView.forgetAllPageSuggestions.apply(window.PagesView, arguments); }
 
 /** 页面视图角标：只数 `high`（把握较大）；review 不标，免得整本书都是噪声。 */
 function paintTileSuggestionMark(tile, pageNo) {
@@ -3179,7 +3177,6 @@ let setupSuggestions = [];
 
 let setupSuggestionsLoaded = false;
 
-function visiblePages() { return window.PagesView.visiblePages.apply(window.PagesView, arguments); }
 
 /** 工作流筛选（任务 58）：状态只用于显示 / 筛选，不改变识别与导出。 */
 function matchesWorkflow(page, kind) {
@@ -3216,61 +3213,6 @@ function matchesTriage(page, recognition, kind) {
   if (kind === "divergence_chars") return (divergenceOf(page).chars || 0) > 0;
   if (kind === "divergence") return (divergenceOf(page).lines || 0) > 0;
   return true;
-}
-
-function selectOnly(pageNo) {
-  selectedPages.clear();
-  selectedPages.add(pageNo);
-  selectionAnchor = pageNo;
-}
-
-function toggleSelection(pageNo) {
-  if (selectedPages.has(pageNo)) {
-    selectedPages.delete(pageNo);
-  } else {
-    selectedPages.add(pageNo);
-  }
-  selectionAnchor = pageNo;
-}
-
-function selectRangeTo(pageNo) {
-  const pages = visiblePages();
-  const anchorIndex = pages.findIndex((page) => page.page_no === selectionAnchor);
-  const index = pages.findIndex((page) => page.page_no === pageNo);
-  if (anchorIndex < 0 || index < 0) {
-    selectOnly(pageNo);
-    return;
-  }
-  const [from, to] = anchorIndex <= index ? [anchorIndex, index] : [index, anchorIndex];
-  for (let i = from; i <= to; i += 1) selectedPages.add(pages[i].page_no);
-}
-
-/** 全选当前筛选（保留筛选外已选的页）。 */
-function selectAllVisiblePages() {
-  const pages = visiblePages();
-  if (!pages.length) return;
-  for (const page of pages) selectedPages.add(page.page_no);
-  if (selectionAnchor === null) selectionAnchor = pages[0].page_no;
-  renderPages();
-}
-
-/** 取消全选（当前筛选内外的选择一起清掉）。 */
-function clearPageSelection() {
-  if (!selectedPages.size) return;
-  selectedPages.clear();
-  selectionAnchor = null;
-  renderPages();
-}
-
-function handleTileClick(page, event) {
-  if (event.shiftKey && selectionAnchor !== null) {
-    selectRangeTo(page.page_no);
-  } else if (event.metaKey || event.ctrlKey) {
-    toggleSelection(page.page_no);
-  } else {
-    selectOnly(page.page_no);
-  }
-  renderPages();
 }
 
 /** 解析"1-12, 300-310"这样的页码范围（说明书 6.2）。 */
@@ -3423,7 +3365,6 @@ function buildTile(page, project) {
   meta.append(label, status);
 
   tile.append(thumb, meta);
-  tile.addEventListener("click", (event) => handleTileClick(page, event));
   tile.addEventListener("dblclick", (event) => {
     event.preventDefault();
     openPageDetail(page.page_no);
@@ -3684,7 +3625,6 @@ function rememberPageBlocks(key, blocks) {
  * 又把旧块写回缓存，用户就得等下一次刷新才能看到新的框。
  * 这一页的块类型建议也一起丢掉——块都变了，建议得重算。
  */
-function forgetAllPageBlocks() { return window.PagesView.forgetAllPageBlocks.apply(window.PagesView, arguments); }
 
 function forgetPageBlocks(pageNo) {
   const key = pageBlockKey(pageNo);
@@ -3695,24 +3635,11 @@ function forgetPageBlocks(pageNo) {
   forgetPageSuggestions(pageNo);
 }
 
-let pageScrollListening = false;
 let pageScrollScheduled = false;
 // 瓷砖在滚动内容里的位置：渲染 / 缩放时缓存一次，滚动时不再每帧量 267 个矩形。
 let pageTileMetrics = null;
 
-function pageScroller() { return window.PagesView.pageScroller.apply(window.PagesView, arguments); }
 
-
-function ensurePageScrollListener() {
-  if (pageScrollListening) return;
-  const scroller = pageScroller();
-  (scroller || window).addEventListener("scroll", schedulePageVisibility, { passive: true });
-  window.addEventListener("resize", () => {
-    pageTileMetrics = null;
-    schedulePageVisibility();
-  });
-  pageScrollListening = true;
-}
 
 function schedulePageVisibility() {
   if (pageScrollScheduled) return;
@@ -4046,7 +3973,6 @@ function highConfidenceCount(suggestions) {
 // 任务 36B：这一步只给数字（识别 / 第二引擎 / 差异），不在右栏做差异裁决；
 // 裁决在「正文审校」。识别设置保留在下面折叠，否则引擎 / DPI 没有入口。
 
-function renderRecognitionStatus() { return window.PagesView.renderRecognitionStatus.apply(window.PagesView, arguments); }
 
 /**
  * 识别步的"一句话 + 一个数字 + 一个主按钮"（任务 56 / 刀 2）。
@@ -4092,26 +4018,6 @@ function marginUndoButton() {
     : "还没有可撤销的版心改动";
   button.addEventListener("click", undoMarginEdit);
   return button;
-}
-
-/** 点「下一页」：换到下一页（翻页本身不写库，版心不动就是已定）。 */
-function selectNextPage(pageNo) {
-  if (!currentProject) return;
-  const pages = visiblePages();
-  const index = pages.findIndex((page) => page.page_no === pageNo);
-  const target = pages[index + 1] || pages[index] || null;
-  if (!target) return;
-  // 多选时「下一页」只翻页，不改选择（2026-10-30：选 3 页按一下下一页，3 页变 1 页）
-  if (selectedPages.size <= 1) {
-    selectedPages.clear();
-    selectedPages.add(target.page_no);
-    selectionAnchor = target.page_no;
-  }
-  renderPages();
-  const tile = document.querySelector(
-    `#page-grid .page-tile[data-page-no="${target.page_no}"]`
-  );
-  if (tile) tile.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
 /**
@@ -4791,7 +4697,6 @@ function setupPageNumberPanel() {
  * 轮询的就地刷新（syncPageStates）也能更新，不必为了一个数字重建整格。
  */
 
-function renderPages() { return window.PagesView.renderPages.apply(window.PagesView, arguments); }
 
 /**
  * 任务轮询时用：只更新已有瓷砖的状态，不重建 DOM。
@@ -4799,7 +4704,6 @@ function renderPages() { return window.PagesView.renderPages.apply(window.PagesV
  * 一本 400 页的书如果每 0.9 秒重建 400 个瓷砖，浏览器的滚动与图片都会被反复折腾；
  * 而任务进行时变的基本只有状态徽章。页面集合变了（筛选 / 增删页）才整格重建。
  */
-function syncPageStates() { return window.PagesView.syncPageStates.apply(window.PagesView, arguments); }
 
 // ---------------------------------------------------------------- 识别（项目）
 
@@ -4870,7 +4774,6 @@ function applyRecognizedPages(pages) {
 async function checkSelection() { return window.PagesView.checkSelection.apply(window.PagesView, arguments); }
 
 /** 重新拉一次页面列表（任务跑完、页面状态大面积变化时用）。 */
-async function reloadProjectPages() { return window.PagesView.reloadProjectPages.apply(window.PagesView, arguments); }
 
 // ---------------------------------------------------------------- 任务抽屉
 
@@ -5221,7 +5124,7 @@ async function pollTask() {
       // 刀 9.3：版心读回之后一次收尾——重画 tiles / panel / 条件拟合（ensureMarginFitted 会
       // POST fit-all 写盘，必须紧跟读回，不能挪到 loadTasks 之后），并给出检测结论。
       window.PagesView?.onTaskFinished(data);
-      if (currentView === "pages") syncPageStates();
+      if (currentView === "pages") window.PagesView?.onPageStatesRefreshed();
       await loadTasks();
       if (announceTaskFailure(data.job)) {
         renderTask(data);
@@ -5234,7 +5137,7 @@ async function pollTask() {
     // 收尾重画会先把这几页的旧块作废（模块内 refreshRecognizedPages）
     const donePages = collectNewlySucceededPages(data);
     // 识别完块变了：页面视图的建议角标不能拿旧数据
-    forgetAllPageSuggestions();
+    window.PagesView?.onPageSuggestionsInvalidated();
     await refreshPageStates();
     // 任务 58：识别完成后工作流会记「已识别①」，把角标读回来
     await loadWorkflow();
@@ -5319,7 +5222,7 @@ async function refreshPageStates() {
     return;
   }
   // 就地刷新：任务进行时变的基本只有状态徽章，没必要整格重建（400 页的书会很明显）
-  syncPageStates();
+  window.PagesView?.onPageStatesRefreshed();
   renderProjectMeta();
 }
 
@@ -5352,10 +5255,11 @@ async function loadWorkflow() {
     workflowConfirmationCounts = { human: 0, auto: 0, unknown: 0 };
     pendingPageNos = new Set();
     pendingPageCount = 0;
-    renderWorkflowFilter({}, {});
-    window.PagesView?.onWorkflowLoaded();
+      window.PagesView?.onWorkflowLoaded({}, {});
     return;
   }
+  let filterCounts = {};
+  let filterSummary = {};
   try {
     const [data, pending] = await Promise.all([
       apiJson(`/api/projects/${project.project_id}/workflow`),
@@ -5369,7 +5273,8 @@ async function loadWorkflow() {
     workflowConfirmationCounts = data.confirmation_counts || { human: 0, auto: 0, unknown: 0 };
     pendingPageNos = new Set((pending.pages || []).map((item) => item.page_no));
     pendingPageCount = pending.count || 0;
-    renderWorkflowFilter(data.counts || {}, data.summary || {});
+    filterCounts = data.counts || {};
+  filterSummary = data.summary || {};
   } catch {
     // 状态索引读不到时按"没有角标"处理，不影响识别 / 审校 / 导出
     workflowByPageId = new Map();
@@ -5377,12 +5282,10 @@ async function loadWorkflow() {
     workflowConfirmationCounts = { human: 0, auto: 0, unknown: 0 };
     pendingPageNos = new Set();
     pendingPageCount = 0;
-    renderWorkflowFilter({}, {});
-  }
-  window.PagesView?.onWorkflowLoaded();
+    }
+  window.PagesView?.onWorkflowLoaded(filterCounts, filterSummary);
 }
 
-function renderWorkflowFilter() { return window.PagesView.renderWorkflowFilter.apply(window.PagesView, arguments); }
 
 /** 版面检测入口：建任务 → 抽屉 + 轮询（任务 58）。 */
 async function startLayoutDetection() { return window.PagesView.startLayoutDetection.apply(window.PagesView, arguments); }
@@ -5756,7 +5659,7 @@ async function controlJob(action) {
       startTaskPolling(data.job.job_id);
     } else {
       stopTaskPolling();
-      await reloadProjectPages();
+      await window.PagesView?.onProjectPagesReloaded();
       await loadTasks();
     }
   } catch (error) {
@@ -9976,7 +9879,7 @@ async function afterCleanupApplied() {
   // 原先这里 `previewData = null; previewProject = null;`——先丢缓存，别让下面几次 await
   // 期间还有旧的预览数据可读（与搬走前同一时刻、同一语义）
   window.PreviewView?.enter({ invalidate: true });
-  forgetAllPageSuggestions();
+  window.PagesView?.onPageSuggestionsInvalidated();
   await refreshPageStates();
   await loadFinishSummary({ silent: true });
   if (detailPageNo !== null) {
@@ -10896,7 +10799,7 @@ function finishShowFallbackPages() {
   selectionAnchor = pages[0];
   closeFinishPanel();
   showView("pages");
-  renderPages();
+  window.PagesView?.onPageListChanged();
 }
 
 async function finishRunLayout() {
@@ -11476,7 +11379,6 @@ function autoApplyTypeText(byType) {
 }
 
 /** 右栏那行"上次自动应用：N 页 M 块（可撤销）"。 */
-function renderAutoApplyStatus() { return window.PagesView.renderAutoApplyStatus.apply(window.PagesView, arguments); }
 
 async function loadAutoApplyStatus({ announce = false, jobId = null } = {}) {
   if (!currentProject || currentProject.kind === "package") return;
@@ -11487,7 +11389,7 @@ async function loadAutoApplyStatus({ announce = false, jobId = null } = {}) {
     return;
   }
   const run = data.latest || null;
-  renderAutoApplyStatus(run);
+  window.PagesView?.onAutoApplyStatusChanged(run);
   if (!announce || !jobId) {
     if (run) autoApplyAnnouncedId = run.auto_apply_id;
     return;
@@ -11538,9 +11440,9 @@ function refreshAfterTypeChanges(pageNos) {
   if (pageNos && pageNos.length) {
     for (const pageNo of pageNos) forgetPageBlocks(pageNo);
   } else {
-    forgetAllPageBlocks();
+    window.PagesView?.onPageBlocksInvalidated();
   }
-  forgetAllPageSuggestions();
+  window.PagesView?.onPageSuggestionsInvalidated();
   refreshPageStates();
   schedulePageVisibility();
 }
@@ -11771,7 +11673,7 @@ async function applySplitBatch() {
     closeModal("split-batch-panel");
     // 块变了：这些页的块框缓存与建议角标都不能再用旧的
     for (const pageNo of data.pages_affected || []) forgetPageBlocks(pageNo);
-    forgetAllPageSuggestions();
+    window.PagesView?.onPageSuggestionsInvalidated();
     await refreshPageStates();
     schedulePageVisibility();
     // 刀 8：选中提示的写点收进 pages 模块（文案仍由外壳拼）
@@ -12774,21 +12676,6 @@ function boot() {
     savePageMarginPreference: (...args) => savePageMarginPreference(...args),
     savePageOverlayPreference: (...args) => savePageOverlayPreference(...args),
   });
-  // Esc 清空选择（说明书 6.2 的选择方式之外的顺手约定）；对话框的 Esc 在 setupShell 里
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !openMasks().length && currentProject && selectedPages.size) {
-      clearPageSelection();
-      return;
-    }
-    if (!currentProject || document.body.dataset.view !== "pages" || openMasks().length) return;
-    const active = document.activeElement || {};
-    const inEditor =
-      ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName) || active.isContentEditable;
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a" && !inEditor) {
-      event.preventDefault();
-      selectAllVisiblePages();
-    }
-  });
   if (!token) {
     const warning = el("platform-warning");
     warning.innerHTML = "缺少会话令牌。请使用启动时终端里打印的" +
@@ -12821,7 +12708,6 @@ function boot() {
     refreshPageStates: refreshPageStates,
     renderProjectMeta: renderProjectMeta,
     renderRecognitionSettings: renderRecognitionSettings,
-    renderStepPanels: renderStepPanels,
     renderTask: renderTask,
     schedulePageVisibility: schedulePageVisibility,
     queueAfterSteps: queueAfterSteps,      // 刀 9.1：enter() 里延迟 loadLanguageSummary 用它
@@ -12893,6 +12779,7 @@ function boot() {
     marginUndeterminedPages: marginUndeterminedPages,
     marginUndoButton: marginUndoButton,
     mergePageRecord: mergePageRecord,
+    openMasks: openMasks,
     pageBlockKey: pageBlockKey,
     pageMarginSourceLabel: pageMarginSourceLabel,
     pageSetupStats: pageSetupStats,
@@ -12903,7 +12790,6 @@ function boot() {
     renderPageBlocks: renderPageBlocks,
     repaintTileMargin: repaintTileMargin,
     scheduleOverlayPump: scheduleOverlayPump,
-    selectNextPage: selectNextPage,
     selectedSuggestions: selectedSuggestions,
     selectionPages: selectionPages,
     suggestionPagesByType: suggestionPagesByType,
@@ -12911,11 +12797,8 @@ function boot() {
     trimMarginUndo: trimMarginUndo,
     buildTile: buildTile,
     applyTileState: applyTileState,
-    renderPages: renderPages,
     adoptAllHighSuggestions: adoptAllHighSuggestions,
-    clearPageSelection: clearPageSelection,
     divergenceChip: divergenceChip,
-    handleTileClick: handleTileClick,
     openPageDetail: openPageDetail,
     openPageNumberPanel: openPageNumberPanel,
     openPageNumberReview: openPageNumberReview,
@@ -12935,7 +12818,6 @@ function boot() {
     // 这里换上新能力 showPageDetailError（写 #page-detail-error 的那一个动作）
     showPageDetailError: showPageDetailError,
     reviewBadge: reviewBadge,
-    selectAllVisiblePages: selectAllVisiblePages,
     setMarginJudgementSetting: setMarginJudgementSetting,
     setPageZoom: setPageZoom,
     tileClassName: tileClassName,
@@ -12990,7 +12872,6 @@ function boot() {
     RESTORE_DETAIL_TEXT: RESTORE_DETAIL_TEXT,
     applyRecognizedPages: applyRecognizedPages,
     confirmAction: confirmAction,
-    ensurePageScrollListener: ensurePageScrollListener,
     humanTouchedPages: humanTouchedPages,
     pageImageUrl: pageImageUrl,
     pageZoomLevel: pageZoomLevel,
