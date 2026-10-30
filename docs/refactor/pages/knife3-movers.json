@@ -1,0 +1,385 @@
+{
+ "刀": 3,
+ "口径": "view-pages 子树 id 引用（el/getElementById/querySelector），与 R3 闸一致",
+ "基线": {
+  "appLines": 14752,
+  "r3Total": 155,
+  "r3Ids": 64
+ },
+ "movers": [
+  {
+   "name": "loadFinishSummary",
+   "start": 10909,
+   "end": 10940,
+   "lines": 32,
+   "ids": [
+    "pages-error"
+   ],
+   "refs": 1,
+   "callers": [
+    "afterCleanupApplied",
+    "afterContinuationChange",
+    "boot",
+    "confirmCurrentPage",
+    "confirmLayoutFromPanel",
+    "finishConfirmPages",
+    "finishRevokeAutoPass",
+    "finishRunAutoPass",
+    "finishRunLayout",
+    "openFinishPanel",
+    "pollTask",
+    "refreshProject",
+    "setupReviewControls",
+    "waitForAuxThenReview"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "apiJson",
+    "currentProject",
+    "el",
+    "finishSummary",
+    "finishSummaryAgain",
+    "finishSummaryLoading",
+    "finishSummaryProject",
+    "flushBootQueue",
+    "renderFinishPanel",
+    "showError",
+    "stepsReady",
+    "syncWorkflowSteps",
+    "updateFinishChips"
+   ]
+  },
+  {
+   "name": "loadLanguageSummary",
+   "start": 13905,
+   "end": 13923,
+   "lines": 19,
+   "ids": [
+    "rec-language-summary"
+   ],
+   "refs": 1,
+   "callers": [
+    "showView"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "apiJson",
+    "currentProject",
+    "el"
+   ]
+  },
+  {
+   "name": "loadPageNumberSummary",
+   "start": 5274,
+   "end": 5291,
+   "lines": 18,
+   "ids": [
+    "page-number-summary"
+   ],
+   "refs": 1,
+   "callers": [
+    "adoptPageNumberTemplate",
+    "hydrateView",
+    "removePageNumberRange",
+    "savePageNumberManual"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "apiJson",
+    "currentProject",
+    "el",
+    "loadPageNumberMetrics"
+   ]
+  },
+  {
+   "name": "refreshLayoutDetectEntry",
+   "start": 888,
+   "end": 918,
+   "lines": 31,
+   "ids": [
+    "layout-detect-open"
+   ],
+   "refs": 1,
+   "callers": [
+    "boot",
+    "renderLayoutStatus"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "currentProject",
+    "el",
+    "marginUndeterminedPages",
+    "selectedPages",
+    "selectionPages"
+   ]
+  },
+  {
+   "name": "refreshMarginDetectHint",
+   "start": 862,
+   "end": 885,
+   "lines": 24,
+   "ids": [
+    "margin-detect-hint"
+   ],
+   "refs": 1,
+   "callers": [
+    "boot",
+    "renderLayoutStatus"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "currentProject",
+    "el",
+    "marginStepVerdict"
+   ]
+  },
+  {
+   "name": "refreshMarginTiles",
+   "start": 4748,
+   "end": 4759,
+   "lines": 12,
+   "ids": [
+    "page-grid"
+   ],
+   "refs": 1,
+   "callers": [
+    "boot",
+    "refreshMarginState",
+    "resetMarginsToAuto",
+    "syncStepToggles"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "clearTileMargin",
+    "currentProject",
+    "pagesMarginOn",
+    "paintTileMargin",
+    "visiblePageNos"
+   ]
+  },
+  {
+   "name": "renderAutoApplyStatus",
+   "start": 12971,
+   "end": 12995,
+   "lines": 25,
+   "ids": [
+    "auto-apply-status"
+   ],
+   "refs": 1,
+   "callers": [
+    "loadAutoApplyStatus"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "autoApplyTypeText",
+    "el",
+    "latestAutoApply",
+    "undoAutoApply"
+   ]
+  },
+  {
+   "name": "renderMarginStepVerdict",
+   "start": 793,
+   "end": 848,
+   "lines": 56,
+   "ids": [
+    "margin-confidence",
+    "margin-confirm-all",
+    "margin-verdict-line",
+    "margin-verdict-state"
+   ],
+   "refs": 4,
+   "callers": [
+    "boot",
+    "reportLayoutDetectOutcome",
+    "startLayoutDetectFromDialog"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "currentProject",
+    "el",
+    "layoutDetectActive",
+    "marginStepVerdict"
+   ]
+  },
+  {
+   "name": "renderPageNumberMetrics",
+   "start": 5211,
+   "end": 5254,
+   "lines": 44,
+   "ids": [
+    "page-number-metrics",
+    "page-number-review-open",
+    "page-number-summary"
+   ],
+   "refs": 3,
+   "callers": [
+    "loadPageNumberMetrics",
+    "loadPageNumberSummary",
+    "refreshPageNumberAnalysis"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "currentProject",
+    "el",
+    "pageNumberAnalysis"
+   ]
+  },
+  {
+   "name": "renderPageSummary",
+   "start": 5896,
+   "end": 5906,
+   "lines": 11,
+   "ids": [
+    "page-summary"
+   ],
+   "refs": 1,
+   "callers": [
+    "boot"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "currentProject",
+    "el",
+    "recognitionOf",
+    "visiblePages"
+   ]
+  },
+  {
+   "name": "renderRecognitionSettings",
+   "start": 3198,
+   "end": 3252,
+   "lines": 55,
+   "ids": [
+    "rec-dual-strategy",
+    "rec-engine",
+    "rec-engine-note",
+    "rec-language",
+    "rec-strategy-label",
+    "rec-strategy-note",
+    "rec-summary"
+   ],
+   "refs": 10,
+   "callers": [
+    "applyProjectSettings",
+    "boot",
+    "loadAppInfo",
+    "patchRecognitionSetting"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "RECOGNITION_ENGINE_LABELS",
+    "el",
+    "engineProbe",
+    "recognitionSetting"
+   ]
+  },
+  {
+   "name": "renderStepPanels",
+   "start": 558,
+   "end": 618,
+   "lines": 61,
+   "ids": [
+    "setup-panel"
+   ],
+   "refs": 1,
+   "callers": [
+    "boot",
+    "syncWorkflowSteps"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "currentProject",
+    "currentView",
+    "el",
+    "ensureMarginFitted",
+    "lastStepPanelKey",
+    "renderLayoutBlocks",
+    "renderMarginPanel",
+    "renderRecognitionStatus",
+    "scheduleLayoutBlocks",
+    "workflowStep"
+   ]
+  },
+  {
+   "name": "renderWorkflowFilter",
+   "start": 6608,
+   "end": 6638,
+   "lines": 31,
+   "ids": [
+    "filter-workflow"
+   ],
+   "refs": 1,
+   "callers": [
+    "loadWorkflow"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "WORKFLOW_FILTERS",
+    "el",
+    "pendingPageCount",
+    "workflowConfirmationCounts"
+   ]
+  },
+  {
+   "name": "syncStepToggles",
+   "start": 626,
+   "end": 657,
+   "lines": 32,
+   "ids": [
+    "page-grid",
+    "pages-margin-toggle"
+   ],
+   "refs": 2,
+   "callers": [
+    "renderStepPanels"
+   ],
+   "needs_forwarder": false,
+   "deps": [
+    "clearTileMargin",
+    "currentProject",
+    "currentView",
+    "el",
+    "pagesMarginOn"
+   ]
+  },
+  {
+   "name": "updateRecognitionAuxProgress",
+   "start": 5016,
+   "end": 5034,
+   "lines": 19,
+   "ids": [
+    "rec-aux-num",
+    "rec-status",
+    "rec-verdict-line"
+   ],
+   "refs": 3,
+   "callers": [
+    "pollTask"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "el",
+    "estimateRemainingSeconds",
+    "formatDuration"
+   ]
+  }
+ ],
+ "刀3验收": {
+  "r3Total": {
+   "before": 155,
+   "after": 123
+  },
+  "r3Ids": {
+   "before": 64,
+   "after": 44
+  },
+  "口径": "搬走后 app.js 里这些 id 的引用处数：155 − 32 = 123；搬走后引用归零的 id 20 个：64 − 20 = 44",
+  "导出": {
+   "before": 16,
+   "after": 16,
+   "说明": "这一刀没有删除导出面，只减少 app.js 里的 DOM 字面量"
+  }
+ },
+ "口径_调用者": "bare 名字在顶层函数体里出现即一条调用边；转发器由生成器按 movers 自动产出"
+}
