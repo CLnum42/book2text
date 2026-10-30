@@ -13,6 +13,10 @@
 | **T** transitional | 只因为"代码还没搬完"而存在的键：它唯一的调用形态是**同名薄转发器**，转发器的调用者是 pages 域、迟早搬进模块 | **必须带 `death: 刀N`**；到点后键与转发器都必须不存在 |
 | **C** capability | 触发者在**别的域**：别的 `*-view.js` 经 `injected` 调，或外壳的**永留编排函数**调 | **不写死期**；必须登记 `callers`（函数名 / 模块名清单）+ `Capability-Reason` |
 
+> **判据的顺序**：C 要按"**它想干什么**"判，**不按"今天是哪段代码在接"**判。
+> 后者会把所有"接线放错地方"的键都判成 C —— 而"接线放错地方"恰恰是刀 7/刀 8 一直在收的那类，
+> 判成 C 就等于把错位固化成接口。今天的样子不是归属的证据；"这个动作属于哪个域"才是。
+
 **C 的"数量上限"不用数字，用清册。** 数字管不住身份（换个名字就多一个），清册管得住：
 新增一个 C 键 = 往清册加一行并在提交信息里写理由，评审当场可见。上限就是"清册条数"，
 所以它天然有真值来源（代码里的调用者），不需要再拍一个 22。
@@ -56,19 +60,15 @@
      于是"只扫调用位"漏 3 个、`"不剥注释"`多算 1 个，两向都会错）
   - **3 个值位**：`undoMarginEdit` · `pumpOverlayRender` · `scanVisiblePageSuggestions`
 
-**裁定：A —— 让这 3 个键真死**（搬运排在 §十 的 **9.6**），不判 C、也不用"改箭头"绕过：
+**裁定：A —— 让这 3 个键真死**（不判 C、也不用"改箭头"绕过）。三条理由：
 
 ```
 ① 它们是模块**自己的渲染循环/接线**，而调度状态被放在外壳 —— 一份状态两边写、一边读：
-   overlayPumpScheduled（app.js:3021，外壳读 :3804）· suggestionScanTimer（:3170，外壳读/清）
+   overlayPumpScheduled（app.js:3021，外壳读 :3804）· suggestionScanTimer（:3170，外壳读/清）；
    模块通过 injected.setOverlayPumpScheduled / setSuggestionScanTimer 去写外壳的变量。
-   这正是刀 7/刀 8 一直在收的"边界弄反"，判 C 会把这份错位冻结成"合法接口"。
 ② C 的定义是"**别的域**需要这个操作"；外壳的 setTimeout / requestAnimationFrame 触发
-   不是跨域需求，是模块自己的调度被放在了外面。
-③ marginUndoButton()（app.js:4234）只是造一个 button 元素、零 id，读的是模块已在用的
-   marginUndoStack —— 搬进去零风险。
-④ 顺带删掉 3 个 deps 键（setOverlayPumpScheduled · setSuggestionScanTimer · getSuggestionScanTimer，
-   其中 getSuggestionScanTimer 今天就是 0 读）+ marginUndoButton ⇒ deps 218 → **214**。
+   不是跨域需求，是模块自己的调度被放在了外面。判 C 等于把这份错位冻成"合法接口"。
+③ marginUndoButton()（app.js:4234）只是造一个 button 元素、零 id；模块自己造按钮零风险。
 ```
 
 **为什么不采用 DevLead 的箭头改法**（`() => window.PagesView.undoMarginEdit()`）：
@@ -76,8 +76,57 @@
 ```
 · 键没有死：api 里还在，R8 还是 61；
 · `PagesView.<key>` 的引用也还在，「到点未死」判据照样看得见它；
-· 它把"删键后 TypeError"换成"看起来删了、其实没删"——更难发现，属于最坏的一种绿。
+· 它把"删键后 TypeError"换成"看起来删了、其实没删"——最难发现的一种绿。
 ```
+
+### 排期：三个键不在一刀（Builder 量出真规模之后改判）
+
+| 键 | 死在哪 | 依据 |
+|---|---|---|
+| `undoMarginEdit` | **9.6** | 纯 DOM 构造 + 绑模块自己的函数；三处 `actions.append`（pages-view :247/273/323）改用本地工厂。零行为风险 |
+| `pumpOverlayRender` | **10** | 队列入口是 `fetchPageBlocks`（外壳），队列状态（`pageBlockPending` / `pageBlockVersions` / `pageBlockPrefetchInFlight` + `overlayPumpScheduled`）也在外壳 ⇒ **只搬调度器不成立**：外壳 `.finally` 没有喊话对象，只能改喊 `window.PagesView.pumpOverlayRender()`，键死不了 |
+| `scanVisiblePageSuggestions` | **10** | 同上：`pumpPageSuggestionQueue().finally` 收尾调 `scheduleSuggestionScan`，而 `suggestionScanQueued` 是"外壳持有、模块写"的两向耦合 |
+
+**为什么不判 C**：C 的定义是"永不死"。这三个会死——死在"整条队列搬进模块"那一刀。
+判 C 等于承诺"队列子系统永远留在外壳"，而队列的入口是 pages 自己的块抓取（`fetchPageBlocks`），它该搬。
+
+**为什么不给 `death: null`**：那要抬 `T_DEATH_PENDING_MAX`（今天 0），而它是**手写常数**——
+抬它正是这半年一直在收的那类东西。能按期就给它一个号。
+
+**所以：登记 刀 10 = 队列子系统搬进模块**（原「刀 10 收口」顺延为 **刀 11**），两个泵 `death = 10`。
+到期没搬，判据自己红，不需要任何常数。
+
+刀 10 的边界与入场条件：
+
+```
+边界：overlay 侧 fetchPageBlocks 的队列 + pageBlockPending/Versions/PrefetchInFlight + overlayPumpScheduled
+     + queueOverlayRender / pumpOverlayRender / resetOverlayQueue；
+     suggestion 侧 pumpPageSuggestionQueue + suggestionScanQueued + suggestionScanTimer
+     + scanVisiblePageSuggestions + scheduleSuggestionScan
+⇒ R8 −2 · deps −5
+
+入场条件（Builder 三条风险，原样）：
+① 测试沙箱没有 requestAnimationFrame / setTimeout（vm 只给 window/document/localStorage）——
+   搬进去后走到 queueOverlayRender / scanVisiblePageSuggestions 的用例会抛；先给 harness 补桩。
+② 取消语义保持：resetOverlayQueue 不取消已排的帧；scheduleSuggestionScan 是唯一的 clearTimeout。
+   **不许顺手加 cancelAnimationFrame**。
+③ PAGE_BLOCK_FETCH_LIMIT 与 pump 的"放回队尾 + waiting"是一对，同进同出，否则空转或饿死。
+```
+
+**deps 逐键**（6 个键全部只被 pages-view 读过）：
+
+| deps 键 | 今天模块读 | 哪一刀删 |
+|---|---|---|
+| `marginUndoButton` | 3 处 | **9.6**（模块自建按钮；壳里 :4234 的工厂随之删除） |
+| `scheduleOverlayPump` | 3 处 | 10 |
+| `setOverlayPumpScheduled` | 1 处 | 10 |
+| `scheduleSuggestionScan` | 3 处 | 10 |
+| `getSuggestionScanTimer` | **0 处**（今天就是死的） | 10 |
+| `setSuggestionScanTimer` | 1 处 | 10 |
+
+⇒ 9.6：**218 → 217** · 刀 10：**217 → 212**。两个容易漏的来源：`scheduleOverlayPump` /
+`scheduleSuggestionScan` 本身也是 deps 键（:13134 / :13229），它们随调度器一起消失。
+
 - 39 个活 T 的宿主表见 §六（这就是 **9.1–9.5** 的施工依据：搬一个宿主，死它那一列键）。
 
 ## 四、C 清册（今日 9 个 + 刀 7/8 的 4 个；`init` 单列在 L）
@@ -135,12 +184,13 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 刀 9.3 （−12）    36 = 3 + 15 + 16 C + 2 L
 刀 9.4 （−3）     33 = 3 + 12 + 16 C + 2 L
 刀 9.5 （−12 +1） 22 = 3 +  0 + 16 C + 3 L(refresh)
-刀 9.6 （−3）     19 =            16 C + 3 L   渲染循环 / 版心撤销按钮的接线收回模块（§三 裁定 A）
-刀 10 （不变）    19 = 16 C + 3 L（init / enter / refresh）  冻结清册 + 落地 §八 的机检
+刀 9.6 （−1）     21 =            16 C + 3 L   只做 undoMarginEdit（deps −1）
+刀 10  （−2）     19 =            16 C + 3 L   队列子系统搬进模块（两个泵死在这，deps −5）
+刀 11 （不变）    19 = 16 C + 3 L（init / enter / refresh）  冻结清册 + 落地 §八 的机检
 ```
 
 每一步的"来历"只有三种动作：**删一个 0 引用的键**（刀 9 的 −5）、**搬 n 个调用点进模块**
-（9.1–9.6 的 −36）、**把模块自己的调度/接线收回模块**（9.6 的 −3，同时 deps −4）。
+（9.1–9.5 的 −36）、**把模块自己的接线/队列收回模块**（9.6 的 −1 + 刀 10 的 −2）。
 没有"拍一个数"。`enter` 建在 9.1、`refresh` 建在 9.5 是我按语义钉的；若该刀图把入口提前/推后，
 中间值 ±1，**终态 19 不变**。子刀怎么分、死期写哪个号，见 §十（闸不允许"一刀多笔"）。
 
@@ -316,11 +366,12 @@ git log --format=%s origin/main | grep -oE "^move\(pages\): 刀 [0-9.]+" | sort 
 | **9.3** | 版心一族（对话框 / 进度 / 瓷砖 / 拖动保存） | 12：`renderMarginStepVerdict`* · `setMarginStatus` · `showMarginDetectProgress` · `ensureMarginFitted` · `renderMarginPanel` · `refreshMarginTiles`* · `finishMarginDetectBar` · `refreshLayoutDetectEntry`* · `refreshMarginDetectHint`* · `loadLayoutBlocks` · `renderLayoutBlocks` · `savePageMargin` |
 | **9.4** | 页码一族（三个面板宿主 + 指标） | 3：`loadPageNumberSummary` · `setPageNumberStatus` · `renderPageNumberMetrics` |
 | **9.5** | 选择 / 网格 / 步骤 / 收尾 / 其它 | 12：`syncPageStates` · `forgetAllPageSuggestions` · `forgetAllPageBlocks` · `renderPages` · `visiblePages` · `reloadProjectPages` · `pageScroller` · `renderAutoApplyStatus` · `renderWorkflowFilter` · `checkSelection` · `renderStepPanels`* · `renderRecognitionStatus` |
-| **9.6** | 渲染循环与版心撤销按钮的接线收回模块（§三 裁定 A） | 3：`undoMarginEdit`（→ `marginUndoButton()` 一起搬）· `pumpOverlayRender`（→ `overlayPumpScheduled` 一起）· `scanVisiblePageSuggestions`（→ `suggestionScanTimer` 一起） |
+| **9.6** | 版心撤销按钮的接线收回模块（§三 改判） | 1：`undoMarginEdit`（→ 模块自建按钮 + `marginUndoButton` 工厂删除） |
+| **10** | 队列子系统搬进模块（overlay + suggestion；原「收口」顺延为刀 11） | 2：`pumpOverlayRender` · `scanVisiblePageSuggestions` |
 
-合计 **5 + 3 + 4 + 5 + 12 + 3 + 12 = 44 = 8 死 T（5 真死 + 3 值位）+ 36 活 T** ✓
-（9.6 与其它子刀的区别：那 3 个键的"死"不是删键，是**把调用点搬走**——它们今天有值位引用，
- 只删键会留下 ReferenceError；所以 9.6 先搬调度，再删键。）
+合计 **5 + 1 + 4 + 5 + 12 + 3 + 12 + 2 = 44 = 8 死 T（5 真死 + 3 值位）+ 36 活 T** ✓
+（刀 10 与其它子刀的区别：那两个键的"死"不是删键，是**把整条队列搬走**——它们今天有值位引用，
+ 只删键会留下 ReferenceError；而且是**队列先行、键后死**：只搬调度器，外壳的泵就没有喊话对象。）
 
 多宿主取 max 的两个例子：`loadPageNumberSummary` 的宿主是 `adopt/remove/save`（9.4）与 `hydrateView`（9.1）
 ⇒ 死期 **9.4**；`syncPageStates` 的宿主是 `pollTask`（9.2）与 `refreshPageStates`（9.5）⇒ 死期 **9.5**。
@@ -414,7 +465,8 @@ divergenceCandidatesOn  → 先判那条断言还有没有意义：它断的是*
   C  文档 16 vs 落盘 16 —— 只在文档：无 · 只在落盘：无
   （C 的 16 = §四 的 13 + 刀 8 的 setPackageModeChrome / syncProjectSettings / setSelectionHint）
 
-> 本快照之后（同日）复核出：`9:8` 里只有 5 个真死、3 个是值位引用 ⇒ 死期表要改成 `9:5 + 9.6:3`。
+> 本快照之后（同日）复核出：`9:8` 里只有 5 个真死、3 个是值位引用 ⇒ 死期表要改成
+> `9:5`（真死）· `9.6:1`（undoMarginEdit）· `10:2`（两个泵，随队列子系统搬）
 > 快照保留原样（它记的是那一刻的树），但别拿它当现表。
 
 记法坑验证（§四 的预登记）：app.js 里 `setPackageModeChrome` 是 **2 处**（applyPackageMode 的 if/else
@@ -446,5 +498,5 @@ token · setPageBlockPending
 ```
 到期点：刀 10（收口）与 §十一 的零引用函数一起清；清完再开「deps 多键 = 红」。
 注意：删 `renderPages` 这类键之前要确认模块里没有**同名本地实现**（pages-view 自己有 renderPages，
-      这个 deps 是自环）；`getSuggestionScanTimer` 已在 9.6 的清单里。
+      这个 deps 是自环）；`getSuggestionScanTimer` 已在刀 10 的清单里。
 ```
