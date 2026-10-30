@@ -75,7 +75,7 @@ split-batch-error     同上                                        applySplitBa
 | `el("export-margin-judgement").checked = …` | `chrome.setExportMarginJudgement(bool)` / `chrome.exportMarginJudgementOn()` | 导出面板 |
 | `el("split-batch-apply").disabled/textContent` | `chrome.setSplitBatchBusy(bool)` / `chrome.setSplitBatchActionText(text)` | 弹层 |
 | `showError(el("split-batch-error"), e)` | `chrome.showSplitBatchError(e)` | 弹层 |
-| review 的 3 处（`finish-open-review`×2 / `detail-recognize` / `aux-run`） | **不搬 id**：调 review 模块的具名入口（见 §五） | review |
+| review 的 3 处（`finish-open-review`×2 / `detail-recognize` / `aux-run`） | **不搬 id**：留外壳直写（review 未落盘，不进 R3；见 `docs/refactor/panel-ownership.md` 的「别给外壳函数造能力壳」） | review |
 
 ## 四、验收判据（一条集合判据，取代"review 子树 = 0"）
 
@@ -126,7 +126,7 @@ split-batch-error     同上                                        applySplitBa
 · knife-package 结束时 applyPackageMode / applyProjectSettings / applySplitBatch 必须已搬走，
   或按 §六 登记为"外壳/编排"并写明到期点；
 · 不许出现"跨视图函数长期悬空" —— 那和转发器债务是同一种东西。
-· knife-review 的 3 个 review 具名入口必须在本刀开工前就位。
+· （2026-10-30 作废）刀 7 **不产出** review 入口——review 未落盘、3 处写点留外壳直写，本刀开工前没有这个前置条件。
 ```
 
 ## 八、与刀 4 的账
@@ -163,7 +163,7 @@ applySplitBatch       12003–12037 · 不同 id  3 · 出现  3
 合计 23 种 / 37 处，按归属分三类：
 
   view-pages   13 种 / 23 处   ← **R3 要归零的就这一批**（10 种 ×2 + auto-apply-suggestions / rec-margin-judgement / selection-hint 各 1）
-  view-review   3 种           ← finish-open-review / detail-recognize / aux-run（刀 7 做具名入口就是为它）
+  view-review   3 种           ← finish-open-review / detail-recognize / aux-run（**留外壳直写**；刀 7 不建 review 入口）
   不属于任何 view section 7 种 ← package-open · package-banner · structure-open · package-result-meta
                                  · export-margin-judgement · split-batch-apply · split-batch-error
 ```
