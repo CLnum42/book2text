@@ -573,19 +573,20 @@
   },
   "appLines": {
    "before": 14101,
-   "after": 13466,
-   "口径": "-651 函数体 +18 转发器 -2（deps 块 -20 +18），±20"
+   "after": 13464,
+   "口径": "-651 函数体 +18 转发器 -3（deps 块 -21 +18）-1（删 renderPageSummary 旧转发器），±20"
   },
   "pagesViewLines": {
    "before": 2287,
-   "after": 2984,
-   "口径": "+651 源行 +31 空行 +15 api 键，±20"
+   "after": 2986,
+   "口径": "+651 源行 +31 空行 +18 api -1（删 renderPageSummary api 键），±20"
   },
   "deps": {
    "before": 213,
-   "after": 211,
-   "删": 20,
-   "加": 18
+   "after": 210,
+   "删": 21,
+   "加": 18,
+   "第21个删键": "renderPageSummary（模块内死注入 2 处 365/762 → 直呼；删 deps 键 app.js:13822 + api 键 pages-view.js:2038 + 旧转发器 app.js:5381）"
   },
   "seed": {
    "名字": {
@@ -596,7 +597,23 @@
     "before": 45,
     "after": 14
    }
-  }
+  },
+  "豁免表变动": [
+   {
+    "文件": "tests/js/pages-r3-exemptions.mjs",
+    "行": 72,
+    "id": "setup-panel",
+    "before": {
+     "cap": 5,
+     "stage": 5
+    },
+    "after": {
+     "cap": 5,
+     "stage": 4
+    },
+    "理由": "删 31 行 seed 后 setup-panel 现算 max=4（只剩 applyPackageMode 的刀4 行）；到期刀不许手调到比现算大，方向是收紧"
+   }
+  ]
  },
  "deps分栏": {
   "函数_值": 46,
@@ -767,5 +784,10 @@
   },
   "归零判据": "for n in <20 键>; do grep -c \"injected\\.$n\\b\" pages-view.js; done 全 0",
   "访问形态": "实测只有 injected.X（injected[\"X\"] / injected?.X 全 0 命中）"
- }
+ },
+ "入场条件": [
+  "第一笔 test-contract：loadApp 末尾重新 init 各模块（否则 showView('merge') → pausePageThumbnails → injected.visiblePageNos.clear() 红）；必须在旧树上先绿",
+  "第二：豁免表 setup-panel stage 5→4（随本刀 move 笔收紧）",
+  "第三：才落本刀 move 笔"
+ ]
 }

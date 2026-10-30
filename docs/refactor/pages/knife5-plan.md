@@ -13,9 +13,9 @@
 | R3 处数 | **101** | **50**（−51） | **0** |
 | R3 id 种数 | **38** | **24**（−14） | **0** |
 | R8 模块导出 | **36** | **53**（36 + 18 转发 − 1 死亡） | 22（要等**导出收口刀**，见 §⑧） |
-| init deps 键 | **213** | **211**（−20 +18） | — |
-| `app.js` 行数 | 14,101 | **≈13,466**（−651 +18 −2） | — |
-| `pages-view.js` 行数 | 2,287 | **≈2,987**（+651 源行 +31 空行 +18 api） | — |
+| init deps 键 | **213** | **210**（−21 +18；第 21 个删键是 `renderPageSummary` 自己） | — |
+| `app.js` 行数 | 14,101 | **≈13,464**（−651 +18 −21 +18，再 −1 删 renderPageSummary 的旧转发器） | — |
+| `pages-view.js` 行数 | 2,287 | **≈2,986**（+651 源行 +31 空行 +18 api −1 删 renderPageSummary api 键） | — |
 | R3 seed 名字 | 42（45 行） | **11**（14 行） | — |
 | dry run | — | `residue []` · `anti []` · `injected_keys 80` · `deps_literal_keys 80` | — |
 
@@ -192,12 +192,15 @@ done   # 每行都必须是 0
 ## ⑥ deps：减 20 加 18
 
 ```
-删（20 个：31 个 mover 里当前是 deps 键的）
+删（**21 个** = 20 个 mover 的 deps 键 + `renderPageSummary` 自己）
   capturePageTileMetrics · checkSelection · ensureMarginAudit · ensureSuggestionScrollListener
   hideMarginFitProgressSoon · initPanelAccordion · pageScroller · patchRecognitionSetting
   patchSelectedPages · queueOverlayRender · resetMarginsToAuto · setAutoApplySetting
   setMarginStatus · showMarginDetectProgress · showMarginFitProgress · startAuxiliaryAll
   startBatchRecognition · toggleMarginView · togglePageBlocksOverlay · visiblePages
+  renderPageSummary        ← **第 21 个**：它早就是模块函数（刀 3），但模块里还用 injected.renderPageSummary
+                              走注入（死注入 2 处：365、762）。本刀把它改直呼并删 deps 键 + 删 api 键 + 删旧转发器
+                              （app.js:5381，本来就没调用者）——这是本刀唯一能死的导出键（见 §⑧）
 
 加（18 个，dry run 原值）
   函数 6：firstUnfinishedPanel · matchesTriage · matchesWorkflow · savePageMarginPreference
@@ -209,7 +212,7 @@ done   # 每行都必须是 0
            setPageNumberStatusTimer · setRecStatusTimer（与同状态 getter 共用一个键位，不额外加键）
 
 四栏（按声明形态）：函数/值 46 + getter 19 + setter 13 + 能力 2 = 80 == injected_keys == deps_literal_keys
-总数：213 − 20 + 18 = 211；判据 = 按名对集，不用相加。
+总数：213 − 21 + 18 = **210**；判据 = 按名对集，不用相加。
 ```
 
 ## ⑦ 验收数
@@ -218,8 +221,8 @@ done   # 每行都必须是 0
 R3 处数   101 → 50（**只交 mover 部分**；片段抽取另开一笔，那 25 处不在本刀验收里）
 R3 id 种  38 → 24（本刀归零 14 个；剩 24 种里 7 种"部分归零"逐个列在下面）
 R8        36 → 53（+18 转发 −1 死亡，见 §⑧）
-app.js    14,101 → ≈13,466
-module    2,287 → ≈2,987
+app.js    14,101 → ≈13,464
+module    2,287 → ≈2,986
 seed      42 名（45 行）→ 11 名（14 行）
 ```
 
@@ -279,8 +282,23 @@ app.js:14006  renderRecognitionSettings → 改指 library-view
 
 ## ⑨ 执行顺序（六步）
 
+**入场条件（顺序写死，别从红文反推）**：
+```
+① harness 重 init 那笔 test-contract 先落 —— `loadApp` 末尾要"app.js 载入后重新 init 各模块"，
+   否则 `showView('merge') → pausePageThumbnails → injected.visiblePageNos.clear()` 会红
+   （loadApp 是"模块先、app.js 后"，模块 init 拿到的是 `() => undefined` 桩）。
+   这一笔单独提交，且必须在**旧树**上先绿。
+② 豁免表一处收紧也在这笔 move 里：`tests/js/pages-r3-exemptions.mjs:72`
+   `{ id: "setup-panel", cap: 5, stage: 5 }` → `stage: 4`。
+   原因：删 31 行 seed 后 `setup-panel` 现算 max = 4（只剩 `applyPackageMode` 那条刀4 行）；
+   到期刀不许手调到比现算大，也不许留大 —— 方向是**收紧**，`move:` 笔允许改豁免表。
+   （我上一版图写"本刀 0 项变动"，漏了这处。）
+③ 两笔都落了，才落本刀的 move 笔。
+```
+
 ```
 1. 无 test-contract 笔（本刀不改断言；若某条测试因"再搬一层"而红，停下报我，不许顺手校准）。
+   —— 例外：上面入场条件 ① 的那一笔是**前置**，不属本刀。
 2. dry run（不 --write）：
    python3 docs/refactor/evidence/build_view.py --movers docs/refactor/pages/knife5-movers.json \
      --rules docs/refactor/pages/knife5-rules.py --name Pages \
@@ -293,7 +311,9 @@ app.js:14006  renderRecognitionSettings → 改指 library-view
    所以"删键 + 直呼"是一个**单独的一遍**（按 §④ 表逐名），不要指望搬函数时顺手带上。
 4. 每搬完一批（5 个），跑一次 §④ 的逐名归零脚本：还没搬到的键允许非 0，已搬的必须 0。
 5. 收尾：核对 §⑦ 每个数；删 seed 31 行；跑 node 闸整套。
-6. `injected.renderPageSummary` → 直呼（**2 处：365、762**）+ 删 deps 键 + 删 api 键（本刀唯一能死的键）。
+6. `renderPageSummary` 收尾：模块内 2 处 `injected.renderPageSummary` → 直呼（365、762）
+   + 删 deps 键（app.js:13822）+ 删 api 键（pages-view.js:2038）+ 删旧转发器（app.js:5381，本来就没调用者）。
+   这是本刀唯一能死的导出键，也是 deps 的第 21 个删键。
 ```
 
 ## ⑩ 提交形态：一笔 `move(pages):`（片段抽取另开一笔）
@@ -323,7 +343,8 @@ Approved-by: DevLead
 ⑤（新）片段抽取的判据是"外壳函数里剩下 pages id 引用 = 0"，不是"我搬了那几行"；且它另开一笔；
 ⑥（新）删键必须逐名归零 §④ 的 36 处 injected.X（语法与 node 闸都看不出漏改）；
    且这 36 处都在**别的**函数里 —— "搬体处"与"直呼处"不是同一个地方，必须按清单单独一遍。
-⑦（新）访问形态实测只有 `injected.X` 一种：`injected["X"]` / `injected?.X` 全 0 命中（Builder 反查），
+⑦（新）豁免表的到期刀**跟着现算 max 走**：删 seed 行会让 max 变小 → 表要同批收紧，不许留在旧值；
+⑧（新）访问形态实测只有 `injected.X` 一种：`injected["X"]` / `injected?.X` 全 0 命中（Builder 反查），
    所以逐名 `grep -c "injected\.$n\b"` 的归零判据成立；将来若出现别形态，判据要同步扩。
 ```
 
