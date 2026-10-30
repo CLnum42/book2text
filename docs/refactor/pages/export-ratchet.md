@@ -21,6 +21,9 @@
 元素在 dialog / 外壳 chrome 里    → 模块**碰不到**它（R3 模块侧零豁免），只能收能力：
                                   如 #confirm-dialog 里的 layout-detect-start（:1641，字符位置在全部
                                   section 之后）⇒ 9.3 的 onLayoutDetectStarted 是**不得不**收的键
+                                  第二个实例（9.5）：#finish-check-engine（index.html:1721，字符位置
+                                  87,506，也在所有 view section 之后）⇒ checkSelection 的唯一天线
+                                  （setupReviewControls:11176）搬不动 ⇒ **T 换类成 C**，不是删键
 ```
 
 所以"能不能搬接线"不是偏好问题，是 DOM 归属问题——先查那个元素在哪个 section 里，再决定。
@@ -250,11 +253,12 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 刀 9.1 （−4 +1）  53 = T 35 + C 16 + L 2   showView 的 pages 段搬进 enter()（hydrateView 的 loadPageNumberSummary 随 9.4）  ← 现状
 刀 9.2 （−3 +2）  52 = T 32 + C 18 + L 2   pollTask 的三处收成 2 个能力（§三）
 刀 9.3 （−12 +3） 43 = T 20 + C 21 + L 2   版心 12 键全死；+3 键（onTaskFinished / onWorkflowLoaded / onLayoutDetectStarted）
-刀 9.4 （−3）     40 = T 17 + C 21 + L 2
-刀 9.5 （−12 +1） 29 = T  5 + C 21 + L 3   搬完 + 建 refresh()
-刀 9.6 （−1）     28 = T  4 + C 21 + L 3   只做 undoMarginEdit
-刀 10  （−4）     24 = T  0 + C 21 + L 3   队列子系统（两个泵 + queueOverlayRender + updatePageVisibility）
-刀 11 （不变）    24 = T  0 + C 21 + L 3   冻结清册 + 落地 §八 的机检
+刀 9.4 （−3）     42 = T 17 + C 23 + L 2   ← 已落盘（先前的 40 是预测值，作废）
+刀 9.5 （待形态定） 42 − 11 + N · C 23 → **24**   checkSelection 是**同一个键换类**（T→C），
+                                                不是"删一个再加一个"；N = 收成的能力数
+刀 9.6 （−1）      待 9.5 定后回填（只做 undoMarginEdit）
+刀 10  （−4）      待 9.5 定后回填（队列子系统：两个泵 + queueOverlayRender + updatePageVisibility）
+刀 11 （不变）     终态 = T 0 ∧ L 3 ∧ C 按清册（② 推导值随 C 变，**此处不预先写死**）
 ```
 
 **曲线以后按"这个键能不能搬"算，不按"这一刀有几个键"算**（今天三次同型）：每个 T 只有三种死法——
@@ -316,12 +320,12 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 | 概念 | 判据 | 现在 |
 |---|---|---|
 | **① 终态判据**（定义"收完"） | `T == 0` ∧ `L == 3`（init/enter/refresh）∧ `C == 清册`（两向机检） | 未达成（T 35） |
-| **② 推导值**（会变，**不是目标**） | `C 的条数 + 3` | **24 = C 21 + L 3** |
+| **② 推导值**（会变，**不是目标**） | `C 的条数 + 3` | **26 = C 23 + L 3**（9.5 起随 C 变，不再预先写死） |
 | **③ 防漂兜底**（只降不升） | `R8.total` 每刀 ≤ 上一刀；历史峰值 **61** | 现在 **53** |
 
 - ① 是**判据**，能被机检（T/L/C 三个计数）；② 是 ① 的算术后果——C 一变它就变，
   **它不许进任何"目标"句式**；③ 是防"收口反涨"的棘轮，不是"要做到多少"。
-- 谁在报告里写"终态 24"，必须同时说明那是 ②（推导值），不是 ①（判据），否则下一个人会拿它当目标去凑。
+- 谁在报告里写"终态 26"，必须同时说明那是 ②（推导值），不是 ①（判据），否则下一个人会拿它当目标去凑。
 
 ### 为什么 `3` 做不到（判据作废，理由是历史，留着防再犯）
 
