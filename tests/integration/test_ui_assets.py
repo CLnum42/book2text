@@ -1004,10 +1004,16 @@ def test_trash_select_all_and_margin_visual_are_wired() -> None:
     assert "无法恢复" in script
 
     # 全选 / 取消 / ⌘A / Esc / 点空白取消
-    assert "function selectAllVisiblePages(" in script
-    assert "function clearPageSelection(" in script
-    assert 'event.key.toLowerCase() === "a"' in script
-    assert 'event.key === "Escape"' in script
+    # 特征测试：三栏一起断言（模块函数存在 / 模块体内接线 / 行为本体）。
+    # 刀 9.5 把选择族与 keydown 搬进 pages-view.js，原来断 app.js 里那三行原文就假红了。
+    select_all = _function_body_any("selectAllVisiblePages")
+    clear_all = _function_body_any("clearPageSelection")
+    assert "renderPages" in select_all, "全选之后要重画网格"
+    assert "renderPages" in clear_all, "取消选择之后要重画网格"
+    both = _script_with_view()
+    assert 'event.key.toLowerCase() === "a"' in both, "⌘/Ctrl+A 全选的键位判据要在（模块 keydown 里）"
+    assert "selectAllVisiblePages()" in both, "⌘/Ctrl+A 分支要真的调全选"
+    assert 'event.key === "Escape"' in both, "Esc 清空选择的判据要在"
     assert 'event.target.closest(".page-tile")' in script + pages_script
     # 「不在当前筛选」的提示文案随页面瓷砖接线进了 pages-view.js（app.js 里 0 处）
     assert "不在当前筛选" in script + pages_script
