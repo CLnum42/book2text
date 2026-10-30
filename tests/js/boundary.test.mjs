@@ -2412,6 +2412,19 @@ test("两源交叉校验自检：delta 0/1 绿、delta ≥2 红、delta <0 红�
   assert.ok(empty.some((m) => m.includes("一刀都没标 landed")),
     `交叉校验自检失败：清空登记表被当成绿——${empty.join("；")}`);
 
+  // **子刀在途**（2026-10-30 Builder 撞出）：9.1 落在途时 delta = 0.1，
+  // 旧写法只认 `=== 0 || === 1`，0.1 会落进"落后"分支并报成负数（-0.0999…）。
+  assert.deepEqual(stageSourceProblems({ gitMax: 9, registryMax: 9.1 }), [],
+    "交叉校验自检失败：子刀在途（delta 0.1）被判红——9.1/9.2… 每一刀都会撞这条");
+  assert.deepEqual(stageSourceProblems({ gitMax: 9.1, registryMax: 9.2 }), [],
+    "交叉校验自检失败：子刀之间的在途（delta 0.1）被判红");
+  const overSub = stageSourceProblems({ gitMax: 9, registryMax: 10.5 });
+  assert.ok(overSub.some((m) => m.includes("登记表领先 1.5 刀")),
+    `交叉校验自检失败：子刀 + 领先超过一刀没红或数字不好看——${overSub.join("；")}`);
+  const behindSub = stageSourceProblems({ gitMax: 9.2, registryMax: 9 });
+  assert.ok(behindSub.some((m) => m.includes("登记表落后 git 0.2 刀")),
+    `交叉校验自检失败：子刀落后没红或数字不好看（浮点尾巴没格式化）——${behindSub.join("；")}`);
+
   // 小数刀号用 Number（parseInt("2.5") = 2 会把 2.5 悄悄当 2）
   assert.deepEqual(stageSourceProblems({ gitMax: 2.5, registryMax: 2.5 }), [],
     "交叉校验自检失败：小数刀号被误判（是不是用了 parseInt？）");

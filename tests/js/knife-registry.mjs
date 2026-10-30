@@ -104,12 +104,16 @@ export function stageSourceProblems({ gitMax, registryMax }) {
     ];
   }
   const delta = landed - Number(gitMax);
-  if (delta === 0 || delta === 1) return [];
-  if (delta >= 2) {
+  // **子刀（9.1–9.6）在途时 delta 是小数**（2026-10-30 Builder 撞出）：
+  // 「在途最多一刀」指的是"最多领先**下一刀**"，不是"最多 +1"——所以判据用区间 `[0, 1]`，
+  // 不是两个等值 `=== 0 || === 1`（9.1 在途时 delta = 0.1，会被判成"落后"，还打出 -0.0999… 那种浮点尾巴）。
+  // 同理"领先"必须是 `delta > 1`：delta = 1.5 也是领先，旧写法 `>= 2` 会把它说成"落后"。
+  if (delta >= 0 && delta <= 1) return [];
+  if (delta > 1) {
     return [
-      `登记表领先 ${delta} 刀，但 git 只到 ${gitMax}——只改登记表没落 move 笔`
-      + "（在途最多一刀：delta ≤ 1 才算「本笔正在落」）",
+      `登记表领先 ${Number(delta.toFixed(2))} 刀，但 git 只到 ${gitMax}——只改登记表没落 move 笔`
+      + "（在途最多一刀：0 ≤ delta ≤ 1 才算「本笔正在落」，子刀也算）",
     ];
   }
-  return [`登记表落后 git ${-delta} 刀——只落了笔没更新登记表`];
+  return [`登记表落后 git ${Number((-delta).toFixed(2))} 刀——只落了笔没更新登记表`];
 }
