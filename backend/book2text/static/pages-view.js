@@ -437,6 +437,54 @@ function renderRecognitionStatus() {
  * 数字看正文页：已识别 / 正文页数。识别**不读版心**，所以这一步先跑完，
  * 版心那一步才有行框可用；这句话只说事实，不写"下一步去…"。
  */
+/**
+ * 识别主按钮的目标与文案（**唯一出处**）。
+ *
+ * 为什么要有这个函数（2026-10-30）：以前「文案」和「disabled」在两段分支里各算一遍
+ * （`rec-start-all` 一段、`selection-recognize` 一段），改一处忘一处就会出现
+ * 「按钮说能点、实际禁用」。现在四种状态由这里一次算出，刷新与点击都读它。
+ *
+ * 四种状态（有选中时按选中算，无选中时按全书算）：
+ *   batch     无选择 + 有未识别 → 识别全部未识别页（N）
+ *   selection 有选择 + 有未识别 → 识别所选 N 页
+ *   force     有选择 + 全已识别 → 重新识别所选 N 页（危险色）
+ *   none      全已识别          → 无可识别页（禁用）
+ */
+function recognitionTarget() {
+  const body = injected.marginBodyPages();
+  const recognizedStatuses = ["recognized", "has_candidate"];
+  const recognized = body.filter((page) =>
+    recognizedStatuses.includes(injected.recognitionOf(page).status)
+  ).length;
+  const pending = Math.max(body.length - recognized, 0);
+
+  const selectedBody = injected.selectionPages().filter((page) => page.include);
+  const selectedPending = selectedBody.filter(
+    (page) => !recognizedStatuses.includes(injected.recognitionOf(page).status)
+  ).length;
+
+  if (selectedBody.length === 0) {
+    if (pending > 0) {
+      return { mode: "batch", text: `识别全部未识别页（${pending}）`, disabled: false, danger: false };
+    }
+    return { mode: "none", text: "无可识别页", disabled: true, danger: false };
+  }
+  if (selectedPending > 0) {
+    return {
+      mode: "selection",
+      text: `识别所选 ${selectedBody.length} 页`,
+      disabled: false,
+      danger: false,
+    };
+  }
+  return {
+    mode: "force",
+    text: `重新识别所选 ${selectedBody.length} 页`,
+    disabled: false,
+    danger: true,
+  };
+}
+
 function renderRecognitionVerdict() {
   if (!injected.getCurrentProject()) return;
   const body = injected.marginBodyPages();
@@ -541,15 +589,21 @@ function renderRecognitionVerdict() {
       ? `正文 ${body.length} 页都识别过了，这一步算完成；第二引擎还有 ${auxPending} 页没复核` +
         "（可选，只影响审校时看不看得到两路分歧）。"
       : `正文 ${body.length} 页都识别过了，第二引擎也复核完了；差异在「正文审校」里逐条看。`;
-    button.textContent = "全部已识别";
-    button.disabled = true;
+    // 全书都识别完：若用户选了已识别的页，「重新识别所选 N 页」仍然可用（危险色）
+    const target = recognitionTarget();
+    button.textContent = target.mode === "force" ? target.text : "无可识别页";
+    button.disabled = target.mode !== "force";
+    button.classList.toggle("btn--danger", target.mode === "force");
   } else {
+    // 有未识别页：目标按「有没有选中」算（recognitionTarget 是唯一出处）
+    const target = recognitionTarget();
     state.textContent = recognized ? "部分已识别" : "未开始";
     line.textContent =
       `正文 ${body.length} 页里还有 ${pending} 页没有识别。` +
       "识别不读版心，版心要等识别出行框之后才生成得了。";
-    button.textContent = `开始识别（${pending} 页）`;
-    button.disabled = false;
+    button.textContent = target.text;
+    button.disabled = target.disabled;
+    button.classList.toggle("btn--danger", target.danger);
   }
 }
 
@@ -1408,7 +1462,21 @@ function wirePagesPanes() {
   el("layout-block-apply-all").addEventListener("click", injected.adoptAllHighSuggestions);
   el("layout-block-confirm").addEventListener("click", injected.confirmLayoutFromPanel);
   el("margin-confirm-all").addEventListener("click", injected.confirmAllMargins);
-  el("rec-start-all").addEventListener("click", () => injected.startBatchRecognition("unrecognized"));
+  el("rec-start-all").addEventListener("click", () => {
+    // 目标由 recognitionTarget() 唯一决定（文案、禁用、点下去做什么，三处同源）
+    const target = recognitionTarget();
+    if (target.mode === "batch") {
+      injected.startBatchRecognition("unrecognized");
+      return;
+    }
+    if (target.mode === "selection") {
+      injected.recognizeSelection(false);
+      return;
+    }
+    if (target.mode === "force") {
+      injected.recognizeSelection(true);
+    }
+  });
   el("rec-aux-all").addEventListener("click", injected.startAuxiliaryAll);
 }
 /**
