@@ -132,12 +132,32 @@ split-batch-error     同上                                        applySplitBa
 
 ```
 ① 代码：applyPackageMode / applyProjectSettings / applySplitBatch 搬进 pages-view，
-        体内 23 处 pages id 引用归零（19 种 id → 0），R3 23 → 0
+        体内 **R3 的 13 种 / 23 处** pages id 引用归零，R3 23 → 0
 ② seed：4 行 → **0 行**（这 4 行就是这三个函数 + recognizePage 的，刀 7 已删 recognizePage 那行）
 ③ 豁免表：13 项 → **0 项**（整张表清空，R3 这一章结账）
 ④ TOTAL_CAP 23 → **0** · Σcap 23 → **0**（三者合一落到 0）· BLOCKED_MAX 0 不变
 ⑤ knife-registry：刀 8 标 landed
 ```
+
+**三个函数实际碰的 id 不是 13 种，是 23 种 / 37 处**（实测 `main@f450a44`，按 `index.html` 的
+`<section id="view-*">` 逐 id 归属）：
+
+```
+applyPackageMode      12330–12389 · 不同 id 17 · 出现 31
+applyProjectSettings  11683–11693 · 不同 id  3 · 出现  3
+applySplitBatch       12003–12037 · 不同 id  3 · 出现  3
+合计 23 种 / 37 处，按归属分三类：
+
+  view-pages   13 种 / 23 处   ← **R3 要归零的就这一批**（10 种 ×2 + auto-apply-suggestions / rec-margin-judgement / selection-hint 各 1）
+  view-review   3 种           ← finish-open-review / detail-recognize / aux-run（刀 7 做具名入口就是为它）
+  不属于任何 view section 7 种 ← package-open · package-banner · structure-open · package-result-meta
+                                 · export-margin-judgement · split-batch-apply · split-batch-error
+```
+
+后两类共 **10 种**不在 R3 计数里，但**受模块侧零豁免约束**（`boundary.test.mjs:1715`：
+`x-view.js` 里出现不属于自己 section 的 id 就红，模块侧没有表可挂）。三个函数一搬进 `pages-view.js`，
+这 10 条必红：3 个 review id 靠刀 7 的具名入口解掉，7 个外壳 chrome id 的归属**待 Architect 裁**
+（三条候选路：归外壳走注入 / 把 markup 搬进 view-pages / 新增一段所有权）。
 
 **别分两笔，也别"先清表"**：只清豁免表、seed 不动的中间态会红，原文
 
@@ -150,7 +170,7 @@ pages 的 seed 里有函数的自身名与 wire 名在实测里都不存在（1 
 seed 里还挂着名字自然全都显得"丢了"。表空 + 函数还挂着就是矛盾态。
 ⇒ **不修判据，改顺序**：一条命令里的中间态不落盘，所以一笔落完即可。
 
-### 9.2 预期红：50 条（刀 7 之后是 46 条），必须归零
+### 9.2 预期红：**25 条**（刀 7 之后 23 条），必须归零
 
 我在 `main@f450a44` 上模拟终态（表清空 + TOTAL_CAP=0 + registry 刀 8 landed）实测：
 
@@ -174,6 +194,8 @@ applySplitBatch 1 = 23 处引用落在这些行上）。验收时**必须归零*
 ```
 r3.total == 0   且   r3.ids == 0   且   豁免项数 == 0   且   Σcap == TOTAL_CAP == 0
 另加：seed 0 行 · BLOCKED_MAX 0 · registry 刀 8 landed · R8 = 58（本刀不新增导出键）
+再另加：**模块侧 10 条红必须同时归零**（3 个 review id + 7 个外壳 chrome id）
+        —— 这 10 条不是 R3 计数，是「`x-view.js` 只许碰自己 section」那条零豁免边界
 ```
 
 ### 9.4 风险：`TOTAL_CAP = 0` 是**第一次**出现"上限为零"
