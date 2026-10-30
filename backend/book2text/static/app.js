@@ -618,7 +618,6 @@ function marginPagesWithoutLines() {
  * - 一批 20 页一次请求，界面按批更新进度条（分批后不会假死）；
  * - 拟合失败的页记进 `marginFitTried`，本次会话不反复重试；任务结束 / 重新进这一步会清空。
  */
-async function ensureMarginFitted() { return window.PagesView.ensureMarginFitted.apply(window.PagesView, arguments); }
 
 /** 拟合结果的真实说法：只在**确实写出框**的页数上说"已拟合"。 */
 function marginFitSummaryText(fitted, fallback, undetermined, noText) {
@@ -692,24 +691,16 @@ function pageRecognized(page) {
 }
 
 /** 版心步的"一句话 + 一个数字 + 一个主按钮"。 */
-function renderMarginStepVerdict() { return window.PagesView.renderMarginStepVerdict.apply(window.PagesView, arguments); }
 
 /** 主按钮「全部确认」：把有行、还没框的页一次生成完，并报耗时。 */
-async function confirmAllMargins() {
-  if (!currentProject || marginFitRunning) return;
-  await ensureMarginFitted({ manual: true });
-}
-
 /**
  * 版心还差哪些页、为什么差。
  *
  * 这里只说**事实**（没有可用的正文行 → 拟合不出来），不说"下一步去识别"这类
  * 跟着步骤顺序变的话：检测入口在右上角「⋯ → 检测版面…」，不占这一步的主位。
  */
-function refreshMarginDetectHint() { return window.PagesView.refreshMarginDetectHint.apply(window.PagesView, arguments); }
 
 /** 「⋯」里的检测入口：名字里带上还差多少页，点开先看计划再决定跑不跑。 */
-function refreshLayoutDetectEntry() { return window.PagesView.refreshLayoutDetectEntry.apply(window.PagesView, arguments); }
 
 
 // ---------------------------------------------------------------- 第二引擎：可选，不挡流程
@@ -3386,9 +3377,6 @@ function buildTile(page, project) {
     handle.className = `page-margin__handle page-margin__handle--${edge}`;
     handle.dataset.edge = edge;
     handle.title = "拖动调整版心（会吸附到正文行边界）";
-    handle.addEventListener("pointerdown", (event) =>
-      startTileMarginDrag(event, page.page_no, marginBox, edge)
-    );
     marginBox.append(handle);
   }
   margin.append(marginBox);
@@ -3884,15 +3872,10 @@ function clearPageBlocks(tile) {
 // 所以先确认"正文在哪一块"，比每页改二三十个块省力。
 // 这一刀只做**看得见、调得动**：版心不影响组装 / 导出 / 识别 / 块类型。
 
-/** 拖动版心边时离文字行边界多近就吸附（像素，与块框同一口径）。 */
-const MARGIN_SNAP_PX = 8;
-/** 版心最短边（归一化）：再小就没有"正文区"的意义了。 */
-const MIN_MARGIN_SIDE = 0.02;
 const MARGIN_MODE_LABELS = {
   auto: "自动拟合", inherit: "沿用默认", custom: "本页自定义", none: "不适用",
 };
 
-let tileMarginDrag = null;
 let marginSuggestion = null;
 let marginAuditPage = null;
 let marginAuditLoading = false;
@@ -3949,112 +3932,6 @@ function clearTileMargin(tile) {
 
 function toggleMarginView() { return window.PagesView.toggleMarginView.apply(window.PagesView, arguments); }
 
-/** 这一页所有识别行的边界（吸附用）。块缓存里就带着 `lines`。 */
-function pageLineEdges(pageNo) {
-  const blocks = pageBlockCache.get(pageBlockKey(pageNo)) || [];
-  const xs = [];
-  const ys = [];
-  for (const block of blocks) {
-    for (const line of block.lines || []) {
-      if (!line.bbox) continue;
-      xs.push(line.bbox[0], line.bbox[2]);
-      ys.push(line.bbox[1], line.bbox[3]);
-    }
-  }
-  return { xs, ys };
-}
-
-function clampMarginBox(raw) {
-  let [x0, y0, x1, y1] = raw;
-  x0 = Math.min(Math.max(x0, 0), 1 - MIN_MARGIN_SIDE);
-  y0 = Math.min(Math.max(y0, 0), 1 - MIN_MARGIN_SIDE);
-  x1 = Math.min(1, Math.max(x1, x0 + MIN_MARGIN_SIDE));
-  y1 = Math.min(1, Math.max(y1, y0 + MIN_MARGIN_SIDE));
-  return [x0, y0, x1, y1];
-}
-
-/**
- * 拖版心时吸附到正文行边界。每条被拖的边单独吸（与块框的 `snapBox` 同一规则），
- * 先把边吸到行边界、再夹回页面内、最后保证最短边。
- */
-function snapMarginBox(raw, mode) {
-  const edges = tileMarginDrag ? pageLineEdges(tileMarginDrag.pageNo) : { xs: [], ys: [] };
-  const rect = tileMarginDrag ? tileMarginDrag.rect : null;
-  let [x0, y0, x1, y1] = raw;
-  if (rect && rect.width && rect.height && (edges.xs.length || edges.ys.length)) {
-    const toleranceX = MARGIN_SNAP_PX / rect.width;
-    const toleranceY = MARGIN_SNAP_PX / rect.height;
-    if (mode.includes("w")) x0 = nearestEdge(x0, edges.xs, toleranceX);
-    if (mode.includes("e")) x1 = nearestEdge(x1, edges.xs, toleranceX);
-    if (mode.includes("n")) y0 = nearestEdge(y0, edges.ys, toleranceY);
-    if (mode.includes("s")) y1 = nearestEdge(y1, edges.ys, toleranceY);
-  }
-  return clampMarginBox([x0, y0, x1, y1]);
-}
-
-function startTileMarginDrag(event, pageNo, boxEl, mode) {
-  if (!pagesMarginOn || !currentProject) return;
-  if (event.button !== undefined && event.button !== 0) return;
-  const page = currentProject.pages.find((item) => item.page_no === pageNo);
-  const box = page ? marginBoxOfPage(page) : null;
-  const thumb = boxEl ? boxEl.closest(".page-tile__thumb") : null;
-  if (!page || !box || !thumb) return;
-  const rect = thumb.getBoundingClientRect();
-  if (!rect.width || !rect.height) return;
-  event.preventDefault();
-  event.stopPropagation();
-  tileMarginDrag = {
-    pageNo,
-    boxEl,
-    mode,
-    startX: event.clientX,
-    startY: event.clientY,
-    startBox: [...box],
-    box: [...box],
-    rect,
-    moved: false,
-  };
-  boxEl.classList.add("is-dragging");
-  document.body.classList.add("margin-dragging");
-}
-
-function onMarginPointerMove(event) {
-  if (!tileMarginDrag) return;
-  const drag = tileMarginDrag;
-  const dx = (event.clientX - drag.startX) / drag.rect.width;
-  const dy = (event.clientY - drag.startY) / drag.rect.height;
-  if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 3) {
-    drag.moved = true;
-  }
-  const [sx0, sy0, sx1, sy1] = drag.startBox;
-  const raw = [
-    drag.mode.includes("w") ? sx0 + dx : sx0,
-    drag.mode.includes("n") ? sy0 + dy : sy0,
-    drag.mode.includes("e") ? sx1 + dx : sx1,
-    drag.mode.includes("s") ? sy1 + dy : sy1,
-  ];
-  const box = snapMarginBox(raw, drag.mode);
-  drag.box = box;
-  applyMarginRect(drag.boxEl, box);
-}
-
-function onMarginPointerUp() {
-  if (!tileMarginDrag) return;
-  const drag = tileMarginDrag;
-  tileMarginDrag = null;
-  drag.boxEl.classList.remove("is-dragging");
-  document.body.classList.remove("margin-dragging");
-  if (!drag.moved) return;
-  const box = drag.box.map((value) => Math.round(value * 1e6) / 1e6);
-  savePageMargin(drag.pageNo, box);
-}
-
-function setupMarginDrag() {
-  window.addEventListener("pointermove", onMarginPointerMove);
-  window.addEventListener("pointerup", onMarginPointerUp);
-  window.addEventListener("pointercancel", onMarginPointerUp);
-}
-
 /** 把接口返回的一页合并进本地列表（保留识别状态 / 审校进度等派生字段）。 */
 function mergePageRecord(updated) {
   if (!currentProject || !updated) return;
@@ -4073,11 +3950,9 @@ function repaintTileMargin(page) {
 }
 
 /** 全局版心变了：只重画可见页（267 页全扫一遍没必要，可见性循环会兜底）。 */
-function refreshMarginTiles() { return window.PagesView.refreshMarginTiles.apply(window.PagesView, arguments); }
 
 let marginStatusTimer = null;
 
-function setMarginStatus() { return window.PagesView.setMarginStatus.apply(window.PagesView, arguments); }
 
 /**
  * 拖动保存（任务 36B）：松手才写一次库，**一律标 `mode=custom`**。
@@ -4086,7 +3961,6 @@ function setMarginStatus() { return window.PagesView.setMarginStatus.apply(windo
  * 「自动拟合」时保住；只要 mode 还是 auto，重拟合就会把它冲掉。
  * 撤销走内存里的 `marginUndoStack`（一次拖动 = 一步）。
  */
-async function savePageMargin() { return window.PagesView.savePageMargin.apply(window.PagesView, arguments); }
 
 // ---------------------------------------------------------------- 版心右栏
 
@@ -4142,7 +4016,6 @@ function marginBasisForUndetermined(page) {
  * 只回答三件事：这一页现在的框是什么、怎么改回去、撤销。
  * 没有模式选择卡片，也没有折叠的「检测」按钮；进这一步时未定的页会自动拟合。
  */
-function renderMarginPanel() { return window.PagesView.renderMarginPanel.apply(window.PagesView, arguments); }
 
 // ---------------------------------------------------------------- 版面块（页面确认步）
 //
@@ -4160,24 +4033,7 @@ function layoutBlockPageRecord() {
   return selected.length === 1 ? selected[0] : null;
 }
 
-function scheduleLayoutBlocks(force = false) {
-  const page = layoutBlockPageRecord();
-  if (!page) {
-    layoutBlockPage = null;
-    layoutBlockPayload = null;
-    renderLayoutBlocks();
-    return;
-  }
-  if (!force && layoutBlockPage === page.page_no && layoutBlockPayload) {
-    renderLayoutBlocks();
-    return;
-  }
-  loadLayoutBlocks(page.page_no);
-}
 
-async function loadLayoutBlocks() { return window.PagesView.loadLayoutBlocks.apply(window.PagesView, arguments); }
-
-function renderLayoutBlocks() { return window.PagesView.renderLayoutBlocks.apply(window.PagesView, arguments); }
 
 function highConfidenceCount(suggestions) {
   return (suggestions || []).filter((item) => item.confidence === "high").length;
@@ -4292,9 +4148,8 @@ async function refreshMarginState() {
   }
   // 任务 36B：任务结束后再看一眼版心——刚补上检测行的页之前拟合失败过，允许再试一次。
   marginFitTried.clear();
-  refreshMarginTiles();
-  renderMarginPanel();
-  if (currentView === "pages" && workflowStep === "margin") ensureMarginFitted();
+  // 刀 9.3：tiles / panel / 条件拟合三处写点搬进 onTaskFinished（外壳在本函数 await 之后调一次），
+  // 顺序仍在"读回 margin-box"之后；paintReviewMargin / drawDetailOverlay 留壳。
   paintReviewMargin(detailPageRecord());
   // 版心外块的淡色样式要按新框重算（只改 class，不重建输入框之外的东西）
   if (detailPageNo !== null) drawDetailOverlay(reviewBlocks);
@@ -5359,15 +5214,20 @@ async function pollTask() {
 
   if (!["queued", "running", "paused"].includes(data.job.status)) {
     stopTaskPolling();
+    // 刀 9.3：任务结束这一刻判定文字要立刻离开"检测中"——onTaskFinished 里的
+    // renderMarginStepVerdict 经 marginStepVerdict(:679) 读 layoutDetectActive，晚一步就会画成"正在检测版面…"。
+    layoutDetectActive = false;
     // 版面检测不产生块：只刷新页面状态与工作流角标，不走识别那套"重载块"。
     if (data.job.job_type === "layout") {
       await refreshPageStates();
       await loadWorkflow();
       // 任务 59：检测收尾会自动用检测行推算一次版心，读回来让框 / 建议立刻出现
       await refreshMarginState();
+      // 刀 9.3：版心读回之后一次收尾——重画 tiles / panel / 条件拟合（ensureMarginFitted 会
+      // POST fit-all 写盘，必须紧跟读回，不能挪到 loadTasks 之后），并给出检测结论。
+      window.PagesView?.onTaskFinished(data);
       if (currentView === "pages") syncPageStates();
       await loadTasks();
-      reportLayoutDetectOutcome(data);
       if (announceTaskFailure(data.job)) {
         renderTask(data);
         openTaskDrawer();
@@ -5386,6 +5246,8 @@ async function pollTask() {
     // 任务 53：识别子进程在收尾时自动算了一次版心（写在数据库里）。
     // 这里把新版心 / 建议读回来，页面视图与审校视图都会跟着重画。
     await refreshMarginState();
+    // 刀 9.3：识别收尾同样走一次收尾能力（job_type != layout 时只重画版心、不碰检测结论）
+    window.PagesView?.onTaskFinished(data);
     await window.PagesView?.onRecognitionFinished(donePages, { reloadDetail: false });
     if (detailPageNo !== null && !donePages.includes(detailPageNo)) {
       await loadPageDetail(detailPageNo, { forceSuggestions: true });
@@ -5496,7 +5358,7 @@ async function loadWorkflow() {
     pendingPageNos = new Set();
     pendingPageCount = 0;
     renderWorkflowFilter({}, {});
-    renderLayoutStatus();
+    window.PagesView?.onWorkflowLoaded();
     return;
   }
   try {
@@ -5522,16 +5384,10 @@ async function loadWorkflow() {
     pendingPageCount = 0;
     renderWorkflowFilter({}, {});
   }
-  renderLayoutStatus();
+  window.PagesView?.onWorkflowLoaded();
 }
 
 function renderWorkflowFilter() { return window.PagesView.renderWorkflowFilter.apply(window.PagesView, arguments); }
-
-function renderLayoutStatus() {
-  // 检测入口在「⋯」里（PM：不占版心步的主位）；这里只更新它的文案与版心的缺口提示。
-  refreshMarginDetectHint();
-  refreshLayoutDetectEntry();
-}
 
 /** 版面检测入口：建任务 → 抽屉 + 轮询（任务 58）。 */
 async function startLayoutDetection() { return window.PagesView.startLayoutDetection.apply(window.PagesView, arguments); }
@@ -5667,14 +5523,10 @@ async function startLayoutDetectFromDialog() {
     return;
   }
   layoutDetectActive = true;
-  renderMarginStepVerdict();
+  // 刀 9.3：判定文字 / 进度条归零 / 状态行三处写点收成一次能力；三处只写版心面板，
+  // 与 closeModal 互不依赖，所以调用位放在 closeModal 之前（verdict 的位置与今天相同）。
+  window.PagesView?.onLayoutDetectStarted(data.job.total || pages.length);
   closeModal("layout-detect-mask");
-  showMarginDetectProgress(0, data.job.total || pages.length);
-  setMarginStatus(
-    `开始检测 ${data.job.total || pages.length} 页版面（只检测，不识别文字）…`,
-    false,
-    60000
-  );
 }
 
 /** 检测任务在跑：在版心分区里显示"做了多少 / 还要多久"。 */
@@ -5692,69 +5544,9 @@ function estimateRemainingSeconds(data) {
   return (elapsed / done) * remaining;
 }
 
-function showMarginDetectProgress() { return window.PagesView.showMarginDetectProgress.apply(window.PagesView, arguments); }
 
 /** 检测任务结算：把结果说清楚（成功多少、失败多少、版心补了多少、是不是崩了）。 */
-function reportLayoutDetectOutcome(data) {
-  const job = data && data.job;
-  if (!job || job.job_type !== "layout") return;
-  layoutDetectActive = false;
-  renderMarginStepVerdict();
-  const total = Number(job.total || 0);
-  const done = Number(job.done || 0);
-  const failed = Number(job.failed || 0);
-  const left = Math.max(total - done - failed, 0);
-  const head = [];
-  // **进程意外结束 ≠ 完成**：这时候说"检测完成"就是谎报（检测进程被页面内容崩掉时就是这样）
-  if (job.status === "interrupted") {
-    head.push(
-      `版面检测中断：检测进程意外结束了（已完成 ${done} / ${total} 页，还剩 ${left} 页）。` +
-        "失败页在任务抽屉里能看到页码；点「继续」只重做剩下的页。"
-    );
-    if (failed) {
-      head.push(
-        "如果每次都在同一页停下，是那一页让检测引擎崩了（不是你的操作问题），把页码记下来报给开发者。"
-      );
-    }
-    setMarginStatus(head.join(" "), true, 30000);
-    finishMarginDetectBar(done, total);
-    return;
-  }
-  if (job.status === "cancelled") {
-    setMarginStatus(
-      `版面检测已取消：完成 ${done} 页，剩下的 ${left} 页没做。已经检出的行和版心都保留。`,
-      false,
-      20000
-    );
-    finishMarginDetectBar(done, total);
-    return;
-  }
-  if (job.status === "failed" && !done) {
-    setMarginStatus(
-      "版面检测没有成功：原因见任务抽屉里的失败页。",
-      true,
-      30000
-    );
-    finishMarginDetectBar(done, total);
-    return;
-  }
-  // 拟合结果按**刷新后的真实状态**说：检出 0 行的页拟合出来仍是空的，不能写成"已补拟合"
-  const stillEmpty = marginPagesWithoutLines().length;
-  const tail = stillEmpty
-    ? `还有 ${stillEmpty} 页这次没检出正文行（空白页 / 插图页常见），这些页的版心仍是未定。`
-    : "版心已按检测行补拟合，回去看页面的四边。";
-  setMarginStatus(
-    (failed
-      ? `版面检测完成：${total} 页里 ${failed} 页失败（原因在任务抽屉，重试只重做失败页）。`
-      : `版面检测完成：${total} 页。`) + tail,
-    failed > 0,
-    30000
-  );
-  finishMarginDetectBar(done, total);
-}
-
 /** 检测结束时进度条停在真实进度上，过一会儿收起来（别留在界面上像个假进度）。 */
-function finishMarginDetectBar() { return window.PagesView.finishMarginDetectBar.apply(window.PagesView, arguments); }
 
 /**
  * 任务结束后是否要主动提示：**只有失败 / 中断**才提示，同一个任务只提示一次。
@@ -11615,7 +11407,6 @@ function setupLibrary() {
   el("layout-detect-cancel").addEventListener("click", () => closeModal("layout-detect-mask"));
   el("layout-detect-cancel-x").addEventListener("click", () => closeModal("layout-detect-mask"));
   el("layout-detect-start").addEventListener("click", startLayoutDetectFromDialog);
-  setupMarginDrag();
   el("detail-recognize").addEventListener("click", () => {
     if (detailPageNo === null) return;
     const page = currentProject.pages.find((item) => item.page_no === detailPageNo);
@@ -13032,7 +12823,6 @@ function boot() {
     pageOverlayStorageKey: pageOverlayStorageKey,
     parsePageRange: parsePageRange,
     recognitionOf: recognitionOf,
-    refreshMarginTiles: refreshMarginTiles,
     refreshPageStates: refreshPageStates,
     renderProjectMeta: renderProjectMeta,
     renderRecognitionSettings: renderRecognitionSettings,
@@ -13093,6 +12883,8 @@ function boot() {
     auxEstimateText: auxEstimateText,
     ensurePageSuggestion: ensurePageSuggestion,
     estimateRemainingSeconds: estimateRemainingSeconds,
+    applyMarginRect: applyMarginRect,
+    nearestEdge: nearestEdge,
     fetchPageBlocks: fetchPageBlocks,
     forgetPageBlocks: forgetPageBlocks,
     formatMarginBox: formatMarginBox,
@@ -13112,13 +12904,9 @@ function boot() {
     paintTileMargin: paintTileMargin,
     percentText: percentText,
     pumpPageBlockPrefetch: pumpPageBlockPrefetch,
-    refreshLayoutDetectEntry: refreshLayoutDetectEntry,
-    refreshMarginDetectHint: refreshMarginDetectHint,
     reloadDetailAfterRecognition: reloadDetailAfterRecognition,
-    renderMarginStepVerdict: renderMarginStepVerdict,
     renderPageBlocks: renderPageBlocks,
     repaintTileMargin: repaintTileMargin,
-    scheduleLayoutBlocks: scheduleLayoutBlocks,
     scheduleOverlayPump: scheduleOverlayPump,
     selectNextPage: selectNextPage,
     selectedSuggestions: selectedSuggestions,
@@ -13131,7 +12919,6 @@ function boot() {
     renderPages: renderPages,
     adoptAllHighSuggestions: adoptAllHighSuggestions,
     clearPageSelection: clearPageSelection,
-    confirmAllMargins: confirmAllMargins,
     divergenceChip: divergenceChip,
     handleTileClick: handleTileClick,
     openPageDetail: openPageDetail,
@@ -13156,7 +12943,6 @@ function boot() {
     selectAllVisiblePages: selectAllVisiblePages,
     setMarginJudgementSetting: setMarginJudgementSetting,
     setPageZoom: setPageZoom,
-    startTileMarginDrag: startTileMarginDrag,
     tileClassName: tileClassName,
     tileTitle: tileTitle,
     workflowChip: workflowChip,

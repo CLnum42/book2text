@@ -26,7 +26,7 @@ export const KNIVES = [
   // T 键的死期就是「搬它宿主的那一刀」，所以这些号必须在这里登记——否则死期表写 9.3 会「未登记」。
   { n: 9.1, status: "landed", scope: "视图切换：showView 的 pages 段进 enter（hydrateView 的 loadPageNumberSummary 随 9.4）" },
   { n: 9.2, status: "landed", scope: "任务轮询：pollTask 的三处 pages 写点收成 2 个能力（onTaskProgress / onRecognitionFinished）；fetchPageBlocks / schedulePageVisibility 随刀 10" },
-  { n: 9.3, status: "pending", scope: "版心一族（对话框 / 进度 / 瓷砖 / 拖动保存）" },
+  { n: 9.3, status: "landed", scope: "版心一族 12 键死：两个宿主搬入 + 三个事件能力（onTaskFinished / onLayoutDetectStarted / onWorkflowLoaded）+ 拖拽簇搬入（入口改事件委托）" },
   { n: 9.4, status: "pending", scope: "页码一族（三个面板宿主 + 指标）" },
   { n: 9.5, status: "pending", scope: "选择 / 网格 / 步骤 / 收尾 / 其它" },
   { n: 9.6, status: "pending", scope: "只做 undoMarginEdit——版心撤销按钮的接线收回模块（Architect 39eb012 改判）" },

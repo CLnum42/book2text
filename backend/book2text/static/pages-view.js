@@ -213,7 +213,7 @@ function renderLayoutBlocks() {
  */
 function renderMarginPanel() {
   if (!injected.getCurrentProject()) return;
-  injected.renderMarginStepVerdict();
+  renderMarginStepVerdict();
 
   // 默认版心只作一行说明：现在每页用自己的检测行拟合，默认框只在显式「沿用默认」的页上生效。
   const defaultNode = el("margin-default");
@@ -236,8 +236,8 @@ function renderMarginPanel() {
   next.hidden = true;
 
   const selected = injected.selectionPages();
-  injected.refreshMarginDetectHint();
-  injected.refreshLayoutDetectEntry();
+  refreshMarginDetectHint();
+  refreshLayoutDetectEntry();
 
   if (!selected.length) {
     state.textContent = "未选择页面";
@@ -1012,7 +1012,7 @@ function updateSelectionPanel() {
     ? `${selected.filter((page) => page.page_confirmed).length} 页已确认 · 全书 ${stats.confirmed} / ${stats.total}`
     : `${stats.confirmed} / ${stats.total} 已确认`;
   // 任务 36B：这两块跟着当前选择走（版面块只看单页；识别状态看全书）。
-  injected.scheduleLayoutBlocks();
+  scheduleLayoutBlocks();
   renderRecognitionStatus();
 
   const hint = el("selection-hint");
@@ -1041,7 +1041,7 @@ function updateSelectionPanel() {
  * - 拟合失败的页记进 `marginFitTried`，本次会话不反复重试；任务结束 / 重新进这一步会清空。
  */
 async function ensureMarginFitted({ manual = false } = {}) {
-  injected.refreshMarginDetectHint();
+  refreshMarginDetectHint();
   if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") return;
   if (injected.getMarginFitRunning()) return;
   // 主按钮「全部确认」是人工动作：上一轮试过但没成的页也要再试一次
@@ -1050,7 +1050,7 @@ async function ensureMarginFitted({ manual = false } = {}) {
     (page) => injected.pageHasFitLines(page) && !injected.marginFitTried.has(page.page_no)
   );
   if (!pending.length) {
-    injected.renderMarginStepVerdict();
+    renderMarginStepVerdict();
     if (manual) {
       setMarginStatus(
         injected.marginPagesWithoutLines().length
@@ -1064,7 +1064,7 @@ async function ensureMarginFitted({ manual = false } = {}) {
   }
   const startedAt = performance.now();
   injected.setMarginFitRunning(true);
-  injected.renderMarginStepVerdict();
+  renderMarginStepVerdict();
   for (const page of pending) injected.marginFitTried.add(page.page_no);
   showMarginFitProgress(0, pending.length);
   let attempted = 0;
@@ -1097,7 +1097,7 @@ async function ensureMarginFitted({ manual = false } = {}) {
       if (!updated || remaining === 0) break;
     }
     await injected.refreshPageStates();
-    injected.refreshMarginTiles();
+    refreshMarginTiles();
     renderMarginPanel();
     if (typeof injected.loadFinishSummary === "function") {
       await injected.loadFinishSummary({ silent: true });
@@ -1110,8 +1110,8 @@ async function ensureMarginFitted({ manual = false } = {}) {
   } finally {
     injected.setMarginFitRunning(false);
     hideMarginFitProgressSoon();
-    injected.refreshMarginDetectHint();
-    injected.renderMarginStepVerdict();
+    refreshMarginDetectHint();
+    renderMarginStepVerdict();
   }
 }
 
@@ -1208,7 +1208,7 @@ async function undoMarginEdit() {
       );
     }
     await injected.refreshPageStates();
-    injected.refreshMarginTiles();
+    refreshMarginTiles();
     renderMarginPanel();
     setMarginStatus(`已撤销第 ${entry.pageNo} 页的版心改动。`);
   } catch (error) {
@@ -1635,7 +1635,7 @@ function renderStepPanels() {
   }
   if (pageStep) {
     // 从审校视图改过块再回到页面确认：建议与版面状态要重读一次，不用旧缓存。
-    if (keyChanged) injected.scheduleLayoutBlocks(true);
+    if (keyChanged) scheduleLayoutBlocks(true);
     else renderLayoutBlocks();
   }
   if (recognitionStep) renderRecognitionStatus();
@@ -2850,6 +2850,238 @@ async function onRecognitionFinished(pageNos, { reloadDetail = true } = {}) {
   await refreshRecognizedPages(pageNos, { reloadDetail });
 }
 
+// ---------------------------------------------------------------- 刀 9.3：版心一族（从外壳搬入）
+
+/** 主按钮「全部确认」：把有行、还没框的页一次生成完，并报耗时。 */
+async function confirmAllMargins() {
+  if (!injected.getCurrentProject() || injected.getMarginFitRunning()) return;
+  await ensureMarginFitted({ manual: true });
+}
+
+/** 版面块面板的调度：先记「正在看哪一页」，再决定重画还是重新拉。 */
+function scheduleLayoutBlocks(force = false) {
+  const page = injected.layoutBlockPageRecord();
+  if (!page) {
+    injected.setLayoutBlockPage(null);
+    injected.setLayoutBlockPayload(null);
+    renderLayoutBlocks();
+    return;
+  }
+  if (!force && injected.getLayoutBlockPage() === page.page_no && injected.getLayoutBlockPayload()) {
+    renderLayoutBlocks();
+    return;
+  }
+  loadLayoutBlocks(page.page_no);
+}
+
+// ---- 版心拖拽（整簇）：入口监听改成 #page-grid 上的 pointerdown 委托，见 wirePagesPageGrid ----
+/** 拖动版心边时离文字行边界多近就吸附（像素，与块框同一口径）。 */
+const MARGIN_SNAP_PX = 8;
+/** 版心最短边（归一化）：再小就没有"正文区"的意义了。 */
+const MIN_MARGIN_SIDE = 0.02;
+
+let tileMarginDrag = null;
+
+function pageLineEdges(pageNo) {
+  const blocks = injected.getPageBlockCache().get(injected.pageBlockKey(pageNo)) || [];
+  const xs = [];
+  const ys = [];
+  for (const block of blocks) {
+    for (const line of block.lines || []) {
+      if (!line.bbox) continue;
+      xs.push(line.bbox[0], line.bbox[2]);
+      ys.push(line.bbox[1], line.bbox[3]);
+    }
+  }
+  return { xs, ys };
+}
+
+function clampMarginBox(raw) {
+  let [x0, y0, x1, y1] = raw;
+  x0 = Math.min(Math.max(x0, 0), 1 - MIN_MARGIN_SIDE);
+  y0 = Math.min(Math.max(y0, 0), 1 - MIN_MARGIN_SIDE);
+  x1 = Math.min(1, Math.max(x1, x0 + MIN_MARGIN_SIDE));
+  y1 = Math.min(1, Math.max(y1, y0 + MIN_MARGIN_SIDE));
+  return [x0, y0, x1, y1];
+}
+
+/**
+ * 拖版心时吸附到正文行边界。每条被拖的边单独吸（与块框的 `snapBox` 同一规则），
+ * 先把边吸到行边界、再夹回页面内、最后保证最短边。
+ */
+function snapMarginBox(raw, mode) {
+  const edges = tileMarginDrag ? pageLineEdges(tileMarginDrag.pageNo) : { xs: [], ys: [] };
+  const rect = tileMarginDrag ? tileMarginDrag.rect : null;
+  let [x0, y0, x1, y1] = raw;
+  if (rect && rect.width && rect.height && (edges.xs.length || edges.ys.length)) {
+    const toleranceX = MARGIN_SNAP_PX / rect.width;
+    const toleranceY = MARGIN_SNAP_PX / rect.height;
+    if (mode.includes("w")) x0 = injected.nearestEdge(x0, edges.xs, toleranceX);
+    if (mode.includes("e")) x1 = injected.nearestEdge(x1, edges.xs, toleranceX);
+    if (mode.includes("n")) y0 = injected.nearestEdge(y0, edges.ys, toleranceY);
+    if (mode.includes("s")) y1 = injected.nearestEdge(y1, edges.ys, toleranceY);
+  }
+  return clampMarginBox([x0, y0, x1, y1]);
+}
+
+function startTileMarginDrag(event, pageNo, boxEl, mode) {
+  if (!injected.getPagesMarginOn() || !injected.getCurrentProject()) return;
+  if (event.button !== undefined && event.button !== 0) return;
+  const project = injected.getCurrentProject();
+  const page = project.pages.find((item) => item.page_no === pageNo);
+  const box = page ? injected.marginBoxOfPage(page) : null;
+  const thumb = boxEl ? boxEl.closest(".page-tile__thumb") : null;
+  if (!page || !box || !thumb) return;
+  const rect = thumb.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  event.preventDefault();
+  event.stopPropagation();
+  tileMarginDrag = {
+    pageNo,
+    boxEl,
+    mode,
+    startX: event.clientX,
+    startY: event.clientY,
+    startBox: [...box],
+    box: [...box],
+    rect,
+    moved: false,
+  };
+  boxEl.classList.add("is-dragging");
+  document.body.classList.add("margin-dragging");
+}
+
+function onMarginPointerMove(event) {
+  if (!tileMarginDrag) return;
+  const drag = tileMarginDrag;
+  const dx = (event.clientX - drag.startX) / drag.rect.width;
+  const dy = (event.clientY - drag.startY) / drag.rect.height;
+  if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 3) {
+    drag.moved = true;
+  }
+  const [sx0, sy0, sx1, sy1] = drag.startBox;
+  const raw = [
+    drag.mode.includes("w") ? sx0 + dx : sx0,
+    drag.mode.includes("n") ? sy0 + dy : sy0,
+    drag.mode.includes("e") ? sx1 + dx : sx1,
+    drag.mode.includes("s") ? sy1 + dy : sy1,
+  ];
+  const box = snapMarginBox(raw, drag.mode);
+  drag.box = box;
+  injected.applyMarginRect(drag.boxEl, box);
+}
+
+function onMarginPointerUp() {
+  if (!tileMarginDrag) return;
+  const drag = tileMarginDrag;
+  tileMarginDrag = null;
+  drag.boxEl.classList.remove("is-dragging");
+  document.body.classList.remove("margin-dragging");
+  if (!drag.moved) return;
+  const box = drag.box.map((value) => Math.round(value * 1e6) / 1e6);
+  savePageMargin(drag.pageNo, box);
+}
+
+/**
+ * 拖拽的全局监听（pointerdown 走 #page-grid 的事件委托，不在这里挂）。
+ *
+ * 挂 `document` 而不是 `window`：指针事件一定发生在文档内、且会冒泡到 document，
+ * 行为等价；而 node 闸的合成 DOM 有 document.addEventListener、没有 window.addEventListener
+ * （那不是实现问题，是测试沙箱的最小面——不要去改那个沙箱）。
+ */
+function setupMarginDrag() {
+  document.addEventListener("pointermove", onMarginPointerMove);
+  document.addEventListener("pointerup", onMarginPointerUp);
+  document.addEventListener("pointercancel", onMarginPointerUp);
+}
+
+// ---- 三个「任务 / 工作流 / 检测开始」事件能力（C 类，进清册，不写死期）----
+
+/**
+ * 一次任务收尾：外壳只知道"这个 job 结束了"，pages 侧要重画什么由模块决定。
+ *
+ * 顺序与原来逐字一致（9.3 之前分散在 refreshMarginState 的写点与 reportLayoutDetectOutcome 整段里）：
+ *   ① 版心读回之后的重画：tiles → panel → 条件拟合（`ensureMarginFitted` 会 POST fit-all 写盘，
+ *      所以它必须在 `await refreshMarginState()` 之后、且不被 loadTasks 之类的前置成功挡住）
+ *   ② 版面检测的收尾结论：判定文字 / 进度条 / 四条分支（中断 / 取消 / 失败 / 完成）
+ *
+ * 只吃数据：`data` 是任务载荷（job_type / status / done / total / failed），没有"该调哪个函数"之类字段。
+ */
+function onTaskFinished(data) {
+  refreshMarginTiles();
+  renderMarginPanel();
+  if (injected.getCurrentView() === "pages" && injected.getWorkflowStep() === "margin") {
+    ensureMarginFitted();
+  }
+  const job = data && data.job;
+  if (!job || job.job_type !== "layout") return;
+  renderMarginStepVerdict();
+  const total = Number(job.total || 0);
+  const done = Number(job.done || 0);
+  const failed = Number(job.failed || 0);
+  const left = Math.max(total - done - failed, 0);
+  const head = [];
+  // **进程意外结束 ≠ 完成**：这时候说"检测完成"就是谎报（检测进程被页面内容崩掉时就是这样）
+  if (job.status === "interrupted") {
+    head.push(
+      `版面检测中断：检测进程意外结束了（已完成 ${done} / ${total} 页，还剩 ${left} 页）。` +
+        "失败页在任务抽屉里能看到页码；点「继续」只重做剩下的页。"
+    );
+    if (failed) {
+      head.push(
+        "如果每次都在同一页停下，是那一页让检测引擎崩了（不是你的操作问题），把页码记下来报给开发者。"
+      );
+    }
+    setMarginStatus(head.join(" "), true, 30000);
+    finishMarginDetectBar(done, total);
+    return;
+  }
+  if (job.status === "cancelled") {
+    setMarginStatus(
+      `版面检测已取消：完成 ${done} 页，剩下的 ${left} 页没做。已经检出的行和版心都保留。`,
+      false,
+      20000
+    );
+    finishMarginDetectBar(done, total);
+    return;
+  }
+  if (job.status === "failed" && !done) {
+    setMarginStatus(
+      "版面检测没有成功：原因见任务抽屉里的失败页。",
+      true,
+      30000
+    );
+    finishMarginDetectBar(done, total);
+    return;
+  }
+  // 拟合结果按**刷新后的真实状态**说：检出 0 行的页拟合出来仍是空的，不能写成"已补拟合"
+  const stillEmpty = injected.marginPagesWithoutLines().length;
+  const tail = stillEmpty
+    ? `还有 ${stillEmpty} 页这次没检出正文行（空白页 / 插图页常见），这些页的版心仍是未定。`
+    : "版心已按检测行补拟合，回去看页面的四边。";
+  setMarginStatus(
+    (failed
+      ? `版面检测完成：${total} 页里 ${failed} 页失败（原因在任务抽屉，重试只重做失败页）。`
+      : `版面检测完成：${total} 页。`) + tail,
+    failed > 0,
+    30000
+  );
+  finishMarginDetectBar(done, total);
+}
+
+/** 版面检测点了「开始检测」：判定文字 + 进度条归零 + 状态行（原来的三处写点收成一次）。 */
+function onLayoutDetectStarted(totalPages) {
+  renderMarginStepVerdict();
+  showMarginDetectProgress(0, totalPages);
+  setMarginStatus(`开始检测 ${totalPages} 页版面（只检测，不识别文字）…`, false, 60000);
+}
+
+/** 工作流角标读完：版心的缺口提示与检测入口文案跟着变（原来是 renderLayoutStatus 的两行写点）。 */
+function onWorkflowLoaded() {
+  refreshMarginDetectHint();
+  refreshLayoutDetectEntry();
+}
+
 /**
  * 视图切换通知：**当前视图切到 `getCurrentView()` 时，pages 侧做进入 / 离开的准备**。
  *
@@ -2908,24 +3140,15 @@ function enter() {
   // 收敛棘轮：本刀 20 键 → 终点 3（enter / render / refresh），靠刀 2-5 把 41 个调用者搬进来逐刀降。
   const api = {
     init,
-    ensureMarginFitted,
-    loadLayoutBlocks,
     reloadProjectPages,
-    renderLayoutBlocks,
-    renderMarginPanel,
     renderPages,
     renderRecognitionStatus,
-    savePageMargin,
     syncPageStates,
     undoMarginEdit,
     updatePageVisibility,
     loadFinishSummary,
     loadPageNumberSummary,
-    refreshLayoutDetectEntry,
-    refreshMarginDetectHint,
-    refreshMarginTiles,
     renderAutoApplyStatus,
-    renderMarginStepVerdict,
     renderPageNumberMetrics,
     renderRecognitionSettings,
     renderStepPanels,
@@ -2933,19 +3156,19 @@ function enter() {
     applyPageZoom,
     confirmAllUnconfirmed,
     checkSelection,
-    finishMarginDetectBar,
     forgetAllPageBlocks,
     forgetAllPageSuggestions,
     onRecognitionFinished,
     onTaskProgress,
+    onLayoutDetectStarted,
+    onTaskFinished,
+    onWorkflowLoaded,
     openPageSetup,
     pageScroller,
     pumpOverlayRender,
     queueOverlayRender,
     scanVisiblePageSuggestions,
-    setMarginStatus,
     setPageNumberStatus,
-    showMarginDetectProgress,
     startLayoutDetection,
     toggleMarginView,
     togglePageBlocksOverlay,
@@ -3079,6 +3302,20 @@ function wirePagesFilters() {
  * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
  */
 function wirePagesPageGrid() {
+  // 版心拖拽的入口：事件委托（刀 9.3）。把手由外壳的 buildTile 建，但拖拽状态与位移都在本模块，
+  // 所以监听必须挂在这里；新瓷砖自动覆盖，不需要逐块绑。
+  el("page-grid").addEventListener("pointerdown", (event) => {
+    const handle = event.target.closest(".page-margin__handle");
+    if (!handle) return;
+    const tile = handle.closest(".page-tile");
+    if (!tile) return;
+    startTileMarginDrag(
+      event,
+      Number(tile.dataset.pageNo),
+      handle.closest(".page-margin__box"),
+      handle.dataset.edge
+    );
+  });
   // 点页面网格的空白处取消选择：只认"不在任何页瓷砖里"的点击，
   // 所以单击页 / 拖版心把手 / 页内按钮都不会误触发。
   el("page-grid").addEventListener("click", (event) => {
@@ -3087,6 +3324,8 @@ function wirePagesPageGrid() {
     if (event.target.closest(".page-margin__handle")) return;
     injected.clearPageSelection();
   });
+  // 拖拽的窗口级监听（pointermove / pointerup / pointercancel）随拖拽簇一起搬进模块
+  setupMarginDrag();
 }
 /**
  * 页码区间输入（刀 2.5 从 `setupLibrary` 原样搬出）。
@@ -3144,7 +3383,7 @@ function wirePagesPanes() {
   el("pages-margin-toggle").addEventListener("click", toggleMarginView);
   el("layout-block-apply-all").addEventListener("click", injected.adoptAllHighSuggestions);
   el("layout-block-confirm").addEventListener("click", confirmLayoutFromPanel);
-  el("margin-confirm-all").addEventListener("click", injected.confirmAllMargins);
+  el("margin-confirm-all").addEventListener("click", confirmAllMargins);
   el("rec-start-all").addEventListener("click", () => {
     // 目标由 recognitionTarget() 唯一决定（文案、禁用、点下去做什么，三处同源）
     const target = recognitionTarget();
