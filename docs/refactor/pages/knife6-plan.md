@@ -1,7 +1,7 @@
 # 刀 6 施工图：片段抽取（7 个宿主 / 25 处 → R3 50→25）
 
-> 基线 **main@86b8d7a**（刀 5 已落）：`app.js` **13,465** 行 · R3 **50 处 / 24 种 id** ·
-> R8 **53** · PagesView deps **211** · seed **14 行 / 11 名** · 豁免表 **64 项 / cap 155 / 受阻 7**。
+> 基线 **main@ab7a23f**（刀 5 已落；TOTAL_CAP 已按新闸从 156 收到 155）：`app.js` **13,465** 行 · R3 **50 处 / 24 种 id** ·
+> R8 **53** · PagesView deps **211** · seed **14 行 / 11 名** · 豁免表 **64 项 / cap 155 / TOTAL_CAP 155 / 受阻 7**。
 > 机读名单：`docs/refactor/pages/knife6-movers.json`（25 条逐行：宿主 / app.js 行号 / id / 取值形态 / 抽到哪）。
 > 刀号见 `docs/refactor/pages/knife-numbering.md`（刀 6 = 片段抽取，原「刀 5b」）。
 
@@ -73,6 +73,18 @@ setMarginJudgementCheckbox(on)← setMarginJudgementSetting：写 `#rec-margin-j
 
 **曲线要重签**：`34 → 36 → 40 → 53 → **57** → 22 → 3`（+4 在本刀；刀 9 仍要死 31 键到 22）。
 
+**四个新键逐键带死亡刀号**（棘轮要求，缺一个就等于开了一张无限期）
+
+| 键 | 死亡刀 | 到点判据 |
+|---|---|---|
+| `showPagesError` | 刀 9 | 调用者 `finishRevokeAutoPass` 搬走/改写后，该键在 `app.js` 的引用 = 0 且不在 api 表 |
+| `pagesErrorMessage` | 刀 9 | 同上（调用者 `startLayoutDetectFromDialog`） |
+| `setMarginJudgementCheckbox` | 刀 9 | 同上（调用者 `setMarginJudgementSetting`） |
+| `syncToolbarToggles` | 刀 10 | 调用者是**四个 view 模块**、不是 app.js ⇒ 判据要换成「`window.PagesView.syncToolbarToggles` 在全仓引用 = 0 且不在 api 表」 |
+
+> 最后一条是本刀要新登记的口径：刀 5 的「到点必须死 = 该键在 app.js 的引用 = 0」对**模块间调用**不成立
+> （它一出生在 app.js 里就是 0 次）。别让这种键混在旧判据里——那等于"永远年轻、永远不会死"。
+
 ## ④ 数（都能对集）
 
 | 项 | 前 | 后 | 口径 |
@@ -83,7 +95,7 @@ setMarginJudgementCheckbox(on)← setMarginJudgementSetting：写 `#rec-margin-j
 | PagesView deps | 211 | **218** | +7（4 个 open* + openStatsPanel + openAssignPanel + toggleAssignList） |
 | seed 行 | 14 | **4** | 删 10 行（刀 6 组全部：boot / setupCollabControls / setupLibrary×4 / setupShell / finishRevokeAutoPass / setMarginJudgementSetting / startLayoutDetectFromDialog）；剩 applyPackageMode · applyProjectSettings · applySplitBatch（刀 8）· recognizePage（刀 7） |
 | 豁免项 | 64 | **54** | 删 10 项（上表归零的 10 个 id，cap 27）；剩余声明 cap 之和 155 → 128（只是记账） |
-| `PAGES_R3_TOTAL_CAP` | 156 | **25** | 上限口径是**实测合计处数**（闸：`pagesActualTotal > pagesTotalCap` 才红），不是 cap 之和 ⇒ 跟着 R3 50→25 收紧 |
+| `PAGES_R3_TOTAL_CAP` | 155 | **25** | 上限口径是**实测合计处数**（闸：`pagesActualTotal > pagesTotalCap` 才红），不是 cap 之和 ⇒ 跟着 R3 50→25 收紧 |
 | 受阻项 | 7 | **0** | 7 个带「阻塞段」的项全在删除名单里 ⇒ `PAGES_R3_BLOCKED_MAX 7 → 0`，`knife2.5-split-plan.md` 的留外壳段对 pages 不再被引用 |
 
 **剩下 25 处的归属**（本刀不动，别顺手改）：
@@ -116,20 +128,34 @@ applyPackageMode 20 · recognizePage 2 · applyProjectSettings 2 · applySplitBa
 3. 再处理 boot 的 4 个 deps 对：四个消费者模块改调 PagesView.syncToolbarToggles()，
    然后删 app.js 里那 8 行 deps（**先改消费者再删 provider**，反了就是运行时 undefined）
 4. deps 块：加 7 个新键（每个键都能解析，R13 会查）
-5. 账本：删 10 行 seed + 删 10 项豁免 + TOTAL_CAP 25 + BLOCKED_MAX 0
+5. 账本（**另开一笔 test-contract**，见 §⑦）：删 10 行 seed + 删 10 项豁免 + TOTAL_CAP 25 + BLOCKED_MAX 0
 6. 全闸 + 真机
 ```
 
-## ⑦ 提交形态
+## ⑦ 提交形态：**两笔**（代码与账本分开，Chief 2026-10-30 定）
 
 ```
+第一笔（本刀的主体，move: 单笔）
 move(pages): 刀 6 —— 7 个宿主的 25 处片段抽进 pages-view（R3 50→25）
 Move-Gate: tests/js/boundary.test.mjs
 Approved-by: DevLead
+  ① app.js：删 25 处片段 + 加 3 段 wire 调用 + 4 个入口调用点 + deps +7 / 删 4 个 deps 对
+  ② pages-view.js：+3 段接线 + 6 个函数（含 4 个 api 键）
+  ③ 四个 view 模块：getPagesMarginToggle/OverlayToggle → PagesView.syncToolbarToggles()
+  ④ tests/js/boundary.test.mjs：VIEW_EXPORTS pages 53 → 57（4 个新键逐条带死亡刀号，见 §③）
+  ⑤ docs/refactor/pages/knife6-*
+
+第二笔（test-contract：账本，不与代码混）
+test-contract: 刀 6 账本 —— 删 10 行 seed + 删 10 项豁免 + TOTAL_CAP 155→25 + BLOCKED_MAX 7→0
+Approved-by: DevLead
+  · 判据：删完 seed 4 行 / 4 名、豁免 54 项、R3 仍 25/14（账不跟着代码一起改，红了分不清是谁错）
 ```
 
-`tests/js` 的改动只有 `pages-r3-exemptions.mjs` 与 `boundary.test.mjs` 的登记值（其余两张表不动），
-所以 `Move-Gate` 要逐条声明实际改了哪几行——刀 5 那次漏声明过一次（提前释放的红）。
+**为什么分两笔**：Chief 2026-10-30 定的口径——**账不是片段**（`move:` 笔只搬行）。
+
+技术上 `move:` 笔**能**改豁免表（`MOVE_EXEMPTION_BLOCKS` 白名单里就有 `PAGES_R3_EXEMPTIONS` /
+`PAGES_R3_TOTAL_CAP`，方向判据管着只许收紧），但混在一笔里只有一个后果：红了分不清是
+"片段搬错"还是"账算错"。刀 5 就是靠 `e05a9ba` 单独对齐账本的。
 
 ## ⑧ 风险（每条都有前科）
 

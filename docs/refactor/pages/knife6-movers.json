@@ -2,7 +2,7 @@
  "刀号": 6,
  "名称": "片段抽取（原「5b」）",
  "基线": {
-  "树": "main@86b8d7a",
+  "树": "main@ab7a23f",
   "app.js": 13465,
   "R3": {
    "total": 50,
@@ -17,6 +17,7 @@
   "豁免": {
    "items": 64,
    "cap": 155,
+   "TOTAL_CAP": 155,
    "blocked": 7
   }
  },
@@ -344,7 +345,7 @@
     "items": 64,
     "cap": 155,
     "blocked": 7,
-    "TOTAL_CAP": 156,
+    "TOTAL_CAP": 155,
     "实测合计处数": 50
    },
    "后": {
@@ -360,7 +361,7 @@
     "说明": "删 10 项（本刀归零的 10 个 id，cap 27）。TOTAL_CAP 的上限口径是**实测处数**（闸：pagesActualTotal > pagesTotalCap 才红），不是 cap 之和 ⇒ 156 → 25 是跟着实测收紧"
    },
    "删项": 10,
-   "TOTAL_CAP": "156 → 25（口径 = 实测合计处数，只降不升）",
+   "TOTAL_CAP": "155 → 25（口径 = 实测合计处数，只降不升）",
    "BLOCKED_MAX": "7 → 0"
   },
   "陈旧行另案": {
@@ -370,13 +371,55 @@
   }
  },
  "提交形态": {
-  "类型": "move(pages):",
-  "Move-Gate": "tests/js/boundary.test.mjs",
-  "Approved-by": "DevLead"
+  "第一笔": {
+   "类型": "move(pages):",
+   "Move-Gate": "tests/js/boundary.test.mjs",
+   "Approved-by": "DevLead",
+   "内容": [
+    "app.js 25 处片段",
+    "pages-view 3 段接线 + 4 个 api 键",
+    "四个 view 模块改调 syncToolbarToggles",
+    "VIEW_EXPORTS 53→57",
+    "docs/refactor/pages/knife6-*"
+   ]
+  },
+  "第二笔": {
+   "类型": "test-contract:",
+   "Approved-by": "DevLead",
+   "内容": [
+    "seed 删 10 行",
+    "豁免删 10 项",
+    "TOTAL_CAP 155→25",
+    "BLOCKED_MAX 7→0"
+   ],
+   "理由": "move: 笔的 Move-Gate 不许碰豁免/上限（MOVE_FORBIDDEN）；账与代码分开，红了分得清"
+  }
  },
  "不碰": [
   "applyPackageMode / applyProjectSettings / applySplitBatch / recognizePage（刀 7 / 刀 8）",
   "showView / hydrateView",
   "任何产品渲染逻辑（只搬行与加注入）"
+ ],
+ "新增导出键": [
+  {
+   "键": "syncToolbarToggles",
+   "死亡刀": 10,
+   "到点判据": "全仓 window.PagesView.syncToolbarToggles 引用 = 0 且不在 api 表（模块间调用，app.js 引用恒为 0）"
+  },
+  {
+   "键": "showPagesError",
+   "死亡刀": 9,
+   "到点判据": "app.js 引用 = 0 且不在 api 表"
+  },
+  {
+   "键": "pagesErrorMessage",
+   "死亡刀": 9,
+   "到点判据": "app.js 引用 = 0 且不在 api 表"
+  },
+  {
+   "键": "setMarginJudgementCheckbox",
+   "死亡刀": 9,
+   "到点判据": "app.js 引用 = 0 且不在 api 表"
+  }
  ]
 }
