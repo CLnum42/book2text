@@ -106,8 +106,13 @@ R3 的 total 含 el / querySelector 两种形态（155 = 148 + 7）。
 ## ⑤ 施工顺序（照做，不要一次性搬完）
 
 ```
-1. test-contract: 一笔，只动 tests/js —— 把 pages-wire 的期望量按本刀搬完后的实际值校准
-   （先测后码：这一笔要能在旧产品上绿，否则就是"测试期望依赖未落的代码"）
+1. **步 1 跳过（本刀无 test 改动）**——结论与理由：
+   · 这 15 个函数搬进模块**不改变 wireAll 的段数与 id 数**，所以 pages-wire 的 37/34 不动；
+   · R3 豁免表的 cap 是**上限**，引用处数下降不需要改表（只在"引用归零"时才要删项，本刀归零的 20 个 id
+     **不在豁免表里**——它们属于"总账 155"，不是过渡豁免表的项）；
+   · 唯一会变的是 `r3_pages_count` 的 total（155→123）与 ids（64→44），这两个数**不在任何测试常数里**
+     （测试只断言"下降且不归零"这类形态）。
+   ⇒ 因此**没有 test-contract 笔**。若 Builder 在搬完后发现某个常数确实变了，停下报我，不要"顺手校准"。
 2. 生成器 dry run（不 --write）：确认 movers 重名 / 状态声明重复 / api 键集合 三条守卫全过，
    且 `injected_keys` 与 ③ 的 45 键对得上；对不上先查名单，不要改规则迁就
 3. 产品第一笔：只加装配 —— pages-view.js 里 15 个函数体的**空壳顺序** + deps 注入键骨架，
@@ -138,3 +143,33 @@ R3 的 total 含 el / querySelector 两种形态（155 = 148 + 7）。
   但它们在 seed 里归刀 4 —— 本刀不碰，避免和刀 4 的名单打架。
 · 本刀搬完，`pages-view.js` 到约 1,981 行；刀 4/5 之后仍需再收 exports 16 → 3。
 ```
+
+## ⑦ rules 路线（甲）：`docs/refactor/pages/knife3-rules.py`
+
+**不是复制一份，是扩展**：`importlib` 读入 `docs/refactor/evidence/pages/rules.py`，原样继承
+`INTERFACE`(16) / `SET_BLOCKS` / `MOVED_STATES` / `INIT_ANCHOR` / `FORWARDERS`，只做一件事——
+把这 15 个函数体引用、但仍住在外壳的 45 个名字（25 函数 + 15 `let` + 5 `const`）加进 `IDENT`，
+并按 `knife3-movers.json` 把**本刀搬走的函数**从 `IDENT` 里剔掉（否则撞 `movers ∩ IDENT` 守卫）。
+
+命令：
+
+```sh
+python3 docs/refactor/evidence/build_view.py \
+  --movers docs/refactor/pages/knife3-movers.json \
+  --rules  docs/refactor/pages/knife3-rules.py \
+  --name Pages --app backend/book2text/static/app.js --out /tmp/k3-dry
+```
+
+**dry run 目前的状态（Builder 照实看，别以为是配置错）**：`residue: []`、
+`injected_keys: 46`，但有两条**已知缺口**要补在 build_view 里，不是名单错：
+
+```
+(a) anti 报「renderPages / el / ensureMarginFitted / renderLayoutBlocks / renderMarginPanel /
+    renderRecognitionStatus 判注入，但模块正文里仍裸引用」——这些名字**模块里本来就有声明**
+    （el 与刀 1 搬进去的函数），裸引用是对的；anti 还没像 residue 那样把"现模块声明"算进去。
+    修法同 residue：anti 计算时把现有 pages-view.js 的声明并进白名单。
+(b) 「给 getter 赋值 9 处」——这些是本刀函数体里的写点（如 finishSummaryAgain = …），
+    要补 `SETTERS`。名单下一步从 dry run 的错误串里逐条取，别手猜。
+```
+
+这两条属于生成器/规则的补齐，**不影响本施工图的名单与验收数**；补完再让 Builder 跑。
