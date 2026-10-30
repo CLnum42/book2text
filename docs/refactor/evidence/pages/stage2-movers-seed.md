@@ -48,40 +48,9 @@
 
 | 函数 | 引用的 id | 行范围 | 到期刀 | wire |
 |---|---|---|---|---|
-| `capturePageTileMetrics` | `page-grid` | 4208–4238（32 行） | 刀5 |  |
-| `checkSelection` | `pages-error`、`selection-skip-checked` | 5985–6014（31 行） | 刀5 |  |
-| `ensureMarginAudit` | `margin-audit`、`margin-basis` | 4812–4859（49 行） | 刀5 |  |
-| `ensureSuggestionScrollListener` | `page-grid` | 3453–3460（9 行） | 刀5 |  |
-| `finishMarginDetectBar` | `margin-fit-fill`、`margin-fit-progress`、`margin-fit-text` | 6578–6586（10 行） | 刀5 |  |
 | `finishRevokeAutoPass` | `pages-error` | 12153–12173（22 行） | 刀5 |  |
-| `forgetAllPageBlocks` | `page-grid` | 4182–4187（7 行） | 刀5 |  |
-| `forgetAllPageSuggestions` | `page-grid` | 3333–3339（8 行） | 刀5 |  |
-| `hideMarginFitProgressSoon` | `margin-fit-progress` | 738–742（6 行） | 刀5 |  |
-| `initPanelAccordion` | `setup-panel` | 3913–3945（34 行） | 刀5 |  |
-| `openPageSetup` | `setup-panel` | 3949–3957（10 行） | 刀5 |  |
-| `pageScroller` | `page-grid` | 4204–4205（3 行） | 刀5 |  |
-| `patchRecognitionSetting` | `pages-error` | 3222–3243（23 行） | 刀5 |  |
-| `patchSelectedPages` | `pages-error` | 12332–12355（25 行） | 刀5 |  |
-| `pausePageThumbnails` | `page-grid` | 142–148（8 行） | 刀5 |  |
-| `pumpOverlayRender` | `page-grid` | 4411–4442（33 行） | 刀5 |  |
-| `queueOverlayRender` | `page-grid` | 4389–4398（11 行） | 刀5 |  |
-| `rerunAuxiliary` | `pages-error` | 13601–13620（21 行） | 刀5 |  |
-| `resetMarginsToAuto` | `pages-error` | 5051–5119（70 行） | 刀5 |  |
-| `scanVisiblePageSuggestions` | `page-grid` | 3474–3511（39 行） | 刀5 |  |
-| `setAutoApplySetting` | `auto-apply-suggestions`、`selection-hint` | 12759–12789（32 行） | 刀5 |  |
 | `setMarginJudgementSetting` | `rec-margin-judgement` | 12796–12813（19 行） | 刀5 |  |
-| `setMarginStatus` | `margin-status` | 4742–4753（13 行） | 刀5 |  |
-| `setPageNumberStatus` | `page-number-status` | 5170–5181（13 行） | 刀5 |  |
-| `setRecognitionStatus` | `rec-status` | 3150–3161（13 行） | 刀5 |  |
-| `showMarginDetectProgress` | `margin-fit-fill`、`margin-fit-progress`、`margin-fit-text` | 6509–6515（8 行） | 刀5 |  |
-| `showMarginFitProgress` | `margin-fit-fill`、`margin-fit-progress`、`margin-fit-text` | 726–735（11 行） | 刀5 |  |
-| `startAuxiliaryAll` | `rec-status` | 4969–4991（24 行） | 刀5 |  |
-| `startBatchRecognition` | `pages-error` | 5946–5966（22 行） | 刀5 |  |
 | `startLayoutDetectFromDialog` | `pages-error` | 6462–6490（30 行） | 刀5 |  |
-| `startLayoutDetection` | `pages-error` | 6342–6364（24 行） | 刀5 |  |
-| `toggleMarginView` | `page-grid`、`pages-margin-toggle` | 4586–4600（16 行） | 刀5 |  |
-| `togglePageBlocksOverlay` | `page-grid`、`pages-overlay-toggle` | 4367–4380（15 行） | 刀5 |  |
-| `visiblePages` | `filter-recognition`、`filter-triage`、`filter-type`、`filter-workflow`、`pages-only-included` | 3519–3536（19 行） | 刀5 |  |
 
 ## 不在 seed 里的 37 种（宽口径，另纸，不参与判据）
 

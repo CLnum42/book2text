@@ -85,7 +85,7 @@ async function refreshRecognizedPages(pageNos, { reloadDetail = true } = {}) {
       const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
       if (tile) injected.clearPageBlocks(tile);
       if (injected.visiblePageNos.has(pageNo)) {
-        injected.queueOverlayRender(pageNo);
+        queueOverlayRender(pageNo);
         // 新页有块了，页面视图的「建议 N」角标要跟上（仍然只为可见页算）
         injected.ensurePageSuggestion(pageNo);
       }
@@ -269,7 +269,7 @@ function renderMarginPanel() {
     reset.textContent = `重置为自动拟合（${targets.length}）`;
     reset.disabled = targets.length === 0;
     reset.title = "用每一页自己的检测行重新拟合；自定义 / 不适用不动";
-    reset.addEventListener("click", () => injected.resetMarginsToAuto(targets));
+    reset.addEventListener("click", () => resetMarginsToAuto(targets));
     actions.append(reset, injected.marginUndoButton());
     return;
   }
@@ -311,7 +311,7 @@ function renderMarginPanel() {
             ? "来源：本页所有检测行的包围盒（行太少时的兜底）"
             : "来源：本页检测行自动拟合（不用默认版心）";
 
-  injected.ensureMarginAudit(page);
+  ensureMarginAudit(page);
 
   const reset = document.createElement("button");
   reset.type = "button";
@@ -319,7 +319,7 @@ function renderMarginPanel() {
   reset.textContent = "重置为本页自动";
   reset.title = "丢掉这一页的自定义四边，用检测行重新拟合";
   reset.disabled = page.margin_box_mode === "auto" && Boolean(page.margin_box);
-  reset.addEventListener("click", () => injected.resetMarginsToAuto([page]));
+  reset.addEventListener("click", () => resetMarginsToAuto([page]));
   actions.append(reset, injected.marginUndoButton());
 
   next.hidden = false;
@@ -350,7 +350,7 @@ function renderPageSetup() {
   updateSelectionPanel();
   renderTypePicker();
   renderSuggestionPanel();
-  injected.initPanelAccordion();
+  initPanelAccordion();
   injected.renderStepPanels();
   if (injected.getFinishSummaryProject() !== injected.getCurrentProject().project_id) {
     injected.loadFinishSummary({ silent: true });
@@ -360,9 +360,9 @@ function renderPageSetup() {
 function renderPages() {
   const project = injected.getCurrentProject();
   if (!project) return;
-  const pages = injected.visiblePages();
+  const pages = visiblePages();
 
-  injected.renderPageSummary();
+  renderPageSummary();
 
   const grid = el("page-grid");
   grid.innerHTML = "";
@@ -731,7 +731,7 @@ function renderTypePicker() {
       mark.title = `建议第 ${suggested.get(type).join("、")} 页用这个类型`;
       button.append(mark);
     }
-    button.addEventListener("click", () => injected.patchSelectedPages({ page_type: type }));
+    button.addEventListener("click", () => patchSelectedPages({ page_type: type }));
     wrap.append(button);
   }
 }
@@ -744,7 +744,7 @@ function renderTypePicker() {
  */
 function syncPageStates() {
   const grid = el("page-grid");
-  const pages = injected.visiblePages();
+  const pages = visiblePages();
   const tiles = [...grid.querySelectorAll(".page-tile")];
 
   if (tiles.length !== pages.length) {
@@ -759,7 +759,7 @@ function syncPageStates() {
     }
     injected.applyTileState(tile, page);
   });
-  injected.renderPageSummary();
+  renderPageSummary();
   renderPageSetup();
   updateSelectionPanel();
 }
@@ -771,7 +771,7 @@ function updateMarginDetectProgress(data) {
   const active = ["queued", "running", "paused"].includes(job.status);
   if (!active) return;
   const done = job.done + job.failed;
-  injected.showMarginDetectProgress(done, job.total || 0);
+  showMarginDetectProgress(done, job.total || 0);
   const eta = injected.estimateRemainingSeconds(data);
   el("margin-fit-text").textContent =
     `正在检测版面… ${done} / ${job.total} 页` +
@@ -792,12 +792,12 @@ function updateMarginDetectProgress(data) {
  */
 function updatePageVisibility() {
   if (!injected.getCurrentProject()) return;
-  const scroller = injected.pageScroller();
+  const scroller = pageScroller();
   if (!scroller) return;
   const grid = el("page-grid");
   const tiles = grid.querySelectorAll(".page-tile");
   if (!injected.getPageTileMetrics() || injected.getPageTileMetrics().length !== tiles.length) {
-    injected.capturePageTileMetrics();
+    capturePageTileMetrics();
   }
   // 视图还没显示（openProject 里先渲染、再切视图）时量不出位置：等下一次。
   if (!injected.getPageTileMetrics()) return;
@@ -850,7 +850,7 @@ function updatePageVisibility() {
           injected.renderPageBlocks(item.tile, cached);
           drawnSynchronously += 1;
         } else {
-          injected.queueOverlayRender(pageNo);
+          queueOverlayRender(pageNo);
         }
       }
     } else {
@@ -920,7 +920,7 @@ function updateSelectionPanel() {
       : `第 ${numbers.slice(0, 6).join("、")}${numbers.length > 6 ? " 等" : ""}`;
   }
   if (numbers.length) {
-    const visibleNos = new Set(injected.visiblePages().map((page) => page.page_no));
+    const visibleNos = new Set(visiblePages().map((page) => page.page_no));
     const hidden = numbers.filter((no) => !visibleNos.has(no)).length;
     if (hidden) range.textContent += ` · 其中 ${hidden} 页不在当前筛选`;
   }
@@ -996,7 +996,7 @@ function updateSelectionPanel() {
   renderMarginPanel();
 
   el("selection-more").disabled = false;
-  const allVisible = injected.visiblePages();
+  const allVisible = visiblePages();
   el("selection-all").textContent = `全选当前筛选结果（${allVisible.length}）`;
 
   el("setup-confirm-selected").disabled = count === 0;
@@ -1052,7 +1052,7 @@ async function ensureMarginFitted({ manual = false } = {}) {
   if (!pending.length) {
     injected.renderMarginStepVerdict();
     if (manual) {
-      injected.setMarginStatus(
+      setMarginStatus(
         injected.marginPagesWithoutLines().length
           ? `没有可生成的页：还差 ${injected.marginPagesWithoutLines().length} 页没有正文行（要先识别）。`
           : "全书版心都已定，没有要生成的页。",
@@ -1066,7 +1066,7 @@ async function ensureMarginFitted({ manual = false } = {}) {
   injected.setMarginFitRunning(true);
   injected.renderMarginStepVerdict();
   for (const page of pending) injected.marginFitTried.add(page.page_no);
-  injected.showMarginFitProgress(0, pending.length);
+  showMarginFitProgress(0, pending.length);
   let attempted = 0;
   let fitted = 0;
   let fallback = 0;
@@ -1093,7 +1093,7 @@ async function ensureMarginFitted({ manual = false } = {}) {
       undetermined += Number(data.undetermined || 0);
       noText += Number(data.no_text || 0);
       const remaining = Number(data.remaining || 0);
-      injected.showMarginFitProgress(attempted, attempted + remaining);
+      showMarginFitProgress(attempted, attempted + remaining);
       if (!updated || remaining === 0) break;
     }
     await injected.refreshPageStates();
@@ -1104,12 +1104,12 @@ async function ensureMarginFitted({ manual = false } = {}) {
     }
     const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
     const summary = injected.marginFitSummaryText(fitted, fallback, undetermined, noText);
-    injected.setMarginStatus(manual ? `${summary} 耗时 ${elapsed} 秒。` : summary, false, 20000);
+    setMarginStatus(manual ? `${summary} 耗时 ${elapsed} 秒。` : summary, false, 20000);
   } catch (error) {
     injected.showError(el("pages-error"), error);
   } finally {
     injected.setMarginFitRunning(false);
-    injected.hideMarginFitProgressSoon();
+    hideMarginFitProgressSoon();
     injected.refreshMarginDetectHint();
     injected.renderMarginStepVerdict();
   }
@@ -1161,7 +1161,7 @@ async function savePageMargin(pageNo, box) {
     );
     injected.mergePageRecord(data.page);
     injected.repaintTileMargin(data.page);
-    injected.setMarginStatus(
+    setMarginStatus(
       `第 ${pageNo} 页的版心已保存（本页自定义）；` +
         (previousMode === "custom" ? "" : "自动拟合不会再覆盖它。")
     );
@@ -1210,7 +1210,7 @@ async function undoMarginEdit() {
     await injected.refreshPageStates();
     injected.refreshMarginTiles();
     renderMarginPanel();
-    injected.setMarginStatus(`已撤销第 ${entry.pageNo} 页的版心改动。`);
+    setMarginStatus(`已撤销第 ${entry.pageNo} 页的版心改动。`);
   } catch (error) {
     injected.marginUndoStack.push(entry);
     injected.showError(el("pages-error"), error);
@@ -1505,7 +1505,7 @@ function renderPageSummary() {
   const project = injected.getCurrentProject();
   if (!project) return;
   const all = project.pages;
-  const shown = injected.visiblePages().length;
+  const shown = visiblePages().length;
   el("page-summary").textContent =
     `共 ${all.length} 页 · 正文 ${all.filter((page) => page.include).length} 页` +
     ` · 已识别 ${all.filter((page) => injected.recognitionOf(page).status === "recognized").length} 页` +
@@ -1805,13 +1805,13 @@ function applyPageZoom() {
       if (image.getAttribute("src") !== gridSrc) image.src = gridSrc;
     }
     // 网格 / 大网格档的建议角标仍按"滚动停下再扫"的节奏
-    injected.ensureSuggestionScrollListener();
+    ensureSuggestionScrollListener();
     injected.scheduleSuggestionScan();
   }
 
   injected.ensurePageScrollListener();
   injected.setPageTileMetrics(null);
-  injected.capturePageTileMetrics();
+  capturePageTileMetrics();
   updatePageVisibility();
 }
 
@@ -1870,7 +1870,7 @@ async function confirmLayoutFromPanel() {
     await injected.refreshPageStates();
     await loadLayoutBlocks(page.page_no);
     await loadFinishSummary({ silent: true });
-    injected.setMarginStatus(`第 ${page.page_no} 页版面已确认。`);
+    setMarginStatus(`第 ${page.page_no} 页版面已确认。`);
   } catch (error) {
     button.disabled = false;
     injected.showError(el("pages-error"), error);
@@ -1977,6 +1977,727 @@ async function recognizeSelection(force = false) {
   }
 }
 
+/** 任务 43：离开页面视图时停掉网格里在飞 / 排队的缩略图请求。
+ *
+ * 394 页的网格一次会排上百个 `size=thumb`；切到审校后它们还在后台渲染，
+ * 一次按键要等几秒。图片清掉 src 后浏览器会取消排队中的请求，回来时
+ * applyPageZoom() 会重新挂上（只加载视口附近的页）。
+ */
+function pausePageThumbnails() {
+  const grid = el("page-grid");
+  if (!grid) return;
+  for (const image of grid.querySelectorAll("img[src]")) {
+    image.removeAttribute("src");
+  }
+  injected.visiblePageNos.clear();
+}
+
+function showMarginFitProgress(done, total) {
+  const wrap = el("margin-fit-progress");
+  if (!wrap) return;
+  wrap.hidden = false;
+  const percent = total ? Math.round((done / total) * 100) : 0;
+  el("margin-fit-fill").style.width = `${percent}%`;
+  el("margin-fit-text").textContent =
+    done >= total
+      ? `自动拟合完成：${total} 页`
+      : `正在为 ${total} 页自动拟合版心… ${done} / ${total}`;
+}
+
+function hideMarginFitProgressSoon() {
+  window.setTimeout(() => {
+    const wrap = el("margin-fit-progress");
+    if (wrap && !injected.getMarginFitRunning()) wrap.hidden = true;
+  }, 1600);
+}
+
+function setRecognitionStatus(text, isError = false) {
+  const node = el("rec-status");
+  if (!node) return;
+  node.textContent = text || "";
+  node.hidden = !text;
+  node.style.color = isError ? "var(--bad-fg)" : "";
+  if (injected.getRecStatusTimer()) clearTimeout(injected.getRecStatusTimer());
+  if (text) {
+    const __recStatusTimer1 = setTimeout(() => {
+      node.hidden = true;
+    }, 6000);
+    injected.setRecStatusTimer(__recStatusTimer1);
+  }
+}
+
+/** 改一项识别设置：先写服务端，成功再更新本地；失败回显原值。 */
+async function patchRecognitionSetting(key, value) {
+  if (!injected.getCurrentProject()) return;
+  try {
+    const data = await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/settings`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      }
+    );
+    injected.getCurrentProject().settings = data.settings || {
+      ...(injected.getCurrentProject().settings || {}),
+      [key]: value,
+    };
+    renderRecognitionSettings();
+    setRecognitionStatus("已保存，下一次识别按新设置执行");
+  } catch (error) {
+    renderRecognitionSettings(); // 回显服务端的真实值
+    setRecognitionStatus(error.message || "设置没保存成功", true);
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+function forgetAllPageSuggestions() {
+  injected.pageSuggestionCache.clear();
+  injected.pageSuggestionOrder.length = 0;
+  injected.pageSuggestionFailed.clear();
+  for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
+    injected.paintTileSuggestionMark(tile, Number(tile.dataset.pageNo));
+  }
+}
+
+function ensureSuggestionScrollListener() {
+  if (injected.getSuggestionScrollListening()) return;
+  const scroller = el("page-grid")?.closest(".split__main");
+  (scroller || window).addEventListener("scroll", injected.scheduleSuggestionScan, {
+    passive: true,
+  });
+  window.addEventListener("resize", injected.scheduleSuggestionScan);
+  injected.setSuggestionScrollListening(true);
+}
+
+function scanVisiblePageSuggestions() {
+  injected.setSuggestionScanTimer(null);
+  if (!injected.getCurrentProject() || injected.getCurrentView() !== "pages" || injected.getPageZoomIndex() >= 2) return;
+  const grid = el("page-grid");
+  if (!grid) return;
+  const scroller = pageScroller();
+  const metrics =
+    scroller && injected.getPageTileMetrics() && injected.getPageTileMetrics().length === grid.querySelectorAll(".page-tile").length
+      ? injected.getPageTileMetrics()
+      : null;
+  const scrollTop = scroller ? scroller.scrollTop : 0;
+  const viewport = scroller ? scroller.clientHeight : window.innerHeight;
+  /**
+   * 一页的竖直范围（相对视口）。有缓存的位置就用缓存：
+   * 滚动停止时不必为 267 个瓷砖各做一次 getBoundingClientRect。
+   */
+  const byTile = metrics ? new Map(metrics.map((entry) => [entry.tile, entry])) : null;
+  const boundsOf = (tile) => {
+    const item = byTile ? byTile.get(tile) : null;
+    if (!item) {
+      if (byTile) return null;
+      const rect = tile.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    }
+    return { top: item.top - scrollTop, bottom: item.top - scrollTop + item.height };
+  };
+  let budget = 12; // 一次最多算 12 页；还有没轮到的，队列空后会自动再扫一轮
+  for (const tile of grid.querySelectorAll(".page-tile")) {
+    if (budget <= 0) break;
+    const bounds = boundsOf(tile);
+    if (!bounds) continue;
+    if (bounds.bottom < -120 || bounds.top > viewport + 120) continue;
+    // 算过 / 排队中的页不占名额，否则上面几屏的缓存会把下面的可见页永远饿死
+    if (injected.ensurePageSuggestion(Number(tile.dataset.pageNo))) {
+      budget -= 1;
+      injected.setSuggestionScanQueued(injected.getSuggestionScanQueued() + 1);
+    }
+  }
+}
+
+function visiblePages() {
+  const project = injected.getCurrentProject();
+  if (!project) return [];
+  const typeFilter = el("filter-type").value;
+  const recognitionFilter = el("filter-recognition").value;
+  const workflowFilter = el("filter-workflow").value;
+  const triageFilter = el("filter-triage").value;
+  const onlyIncluded = el("pages-only-included").checked;
+
+  return project.pages.filter((page) => {
+    if (onlyIncluded && !page.include) return false;
+    if (typeFilter && page.page_type !== typeFilter) return false;
+    const recognition = injected.recognitionOf(page);
+    if (recognitionFilter && recognition.status !== recognitionFilter) return false;
+    if (workflowFilter && !injected.matchesWorkflow(page, workflowFilter)) return false;
+    if (triageFilter && !injected.matchesTriage(page, recognition, triageFilter)) return false;
+    return true;
+  });
+}
+
+/** 右栏手风琴：一次只开一个；折叠状态按项目记，默认落在第一个未完成的分区。 */
+function initPanelAccordion() {
+  if (!injected.getCurrentProject()) return;
+  const groups = [...document.querySelectorAll("#setup-panel details[data-panel]")];
+  if (!groups.length) return;
+  const key = `b2t.panel.accordion.v1.${injected.getCurrentProject().project_id}`;
+  if (injected.getPanelAccordionProject() !== injected.getCurrentProject().project_id) {
+    injected.setPanelAccordionProject(injected.getCurrentProject().project_id);
+    let saved = null;
+    try {
+      saved = localStorage.getItem(key);
+    } catch {
+      saved = null;
+    }
+    const open = groups.find((group) => group.dataset.panel === saved) ||
+      groups.find((group) => group.dataset.panel === injected.firstUnfinishedPanel()) ||
+      groups[0];
+    for (const group of groups) group.open = group === open;
+  }
+  for (const group of groups) {
+    if (group.dataset.accordionBound === "1") continue;
+    group.dataset.accordionBound = "1";
+    group.addEventListener("toggle", () => {
+      if (!group.open) return;
+      for (const other of groups) {
+        if (other !== group) other.open = false;
+      }
+      try {
+        localStorage.setItem(key, group.dataset.panel);
+      } catch {
+        // 存不了就只在本次会话里记住；不影响功能。
+      }
+    });
+  }
+}
+
+/** 打开确认界面：先回数据库拉一次页面，保证看到的进度不是前端缓存。 */
+async function openPageSetup({ auto = false } = {}) {
+  if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") return;
+  injected.showView("pages");
+  await injected.refreshPageStates();
+  renderPages();
+  await loadSetupSuggestions();
+  if (auto) {
+    el("setup-panel").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
+
+/**
+ * 丢掉一页的块缓存（识别刚完成、重新识别、块被换掉之后用）。
+ *
+ * 同时把这一页的"作废代次" +1：没有它，一个早发晚到的旧响应会在作废之后
+ * 又把旧块写回缓存，用户就得等下一次刷新才能看到新的框。
+ * 这一页的块类型建议也一起丢掉——块都变了，建议得重算。
+ */
+function forgetAllPageBlocks() {
+  injected.getPageBlockCache().clear();
+  injected.pageBlockCacheOrder.length = 0;
+  for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
+    injected.clearPageBlocks(tile);
+  }
+}
+
+function pageScroller() {
+  return el("page-grid")?.closest(".split__main") || null;
+}
+
+function capturePageTileMetrics() {
+  const scroller = pageScroller();
+  const grid = el("page-grid");
+  if (!scroller || !grid) {
+    injected.setPageTileMetrics(null);
+    return;
+  }
+  const tiles = [...grid.querySelectorAll(".page-tile")];
+  if (!tiles.length) {
+    injected.setPageTileMetrics(null);
+    return;
+  }
+  // 页面视图还没显示时（打开项目、从审校切过来之前）所有矩形都是 0：
+  // 那样量出来的"每一页都在视口里"会让 267 页同时排队请求块数据，
+  // 框画出来又被下一帧当成离屏清掉——用户看到的就是"块框迟迟不出来"。
+  // 宁可不记，等视图可见后的下一次可见性计算再量（见 updatePageVisibility）。
+  if (tiles[0].getBoundingClientRect().height <= 0) {
+    injected.setPageTileMetrics(null);
+    return;
+  }
+  const scrollerRect = scroller.getBoundingClientRect();
+  const scrollTop = scroller.scrollTop;
+  const __pageTileMetrics1 = tiles.map((tile) => {
+    const rect = tile.getBoundingClientRect();
+    return {
+      tile,
+      pageNo: Number(tile.dataset.pageNo),
+      top: rect.top - scrollerRect.top + scrollTop,
+      height: rect.height,
+    };
+  });
+  injected.setPageTileMetrics(__pageTileMetrics1);
+}
+
+function togglePageBlocksOverlay() {
+  injected.setPagesOverlayOn(!injected.getPagesOverlayOn());
+  injected.savePageOverlayPreference();
+  el("pages-overlay-toggle").classList.toggle("is-on", injected.getPagesOverlayOn());
+  if (injected.getPagesOverlayOn()) {
+    for (const pageNo of injected.visiblePageNos) queueOverlayRender(pageNo);
+    injected.schedulePageVisibility();
+  } else {
+    injected.resetOverlayQueue();
+    for (const tile of el("page-grid").querySelectorAll(".page-tile")) {
+      injected.clearPageBlocks(tile);
+    }
+  }
+  injected.indexRefresh?.();
+}
+
+/** 排队画一页的块框：已画过且缓存没变就跳过。 */
+function queueOverlayRender(pageNo) {
+  if (!injected.getCurrentProject() || !injected.getPagesOverlayOn() || !injected.visiblePageNos.has(pageNo)) return;
+  const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
+  const overlay = tile ? tile.querySelector(".page-overlay") : null;
+  const blocks = injected.getPageBlockCache().get(injected.pageBlockKey(pageNo));
+  if (blocks && overlay && overlay._renderedBlocks === blocks) return;
+  if (injected.overlayRenderQueued.has(pageNo)) return;
+  injected.overlayRenderQueued.add(pageNo);
+  injected.overlayRenderQueue.push(pageNo);
+  injected.scheduleOverlayPump();
+}
+
+/**
+ * 每帧最多真正画 3 页：网格档一屏可能有十几页、每页几十个块，
+ * 一次全画会卡；按页缓存 + 在途请求上限 3，滚过去的页立刻清。
+ */
+function pumpOverlayRender() {
+  injected.setOverlayPumpScheduled(false);
+  if (!injected.getCurrentProject() || !injected.getPagesOverlayOn()) return;
+  let drawn = 0;
+  let waiting = false;
+  while (drawn < injected.getPAGE_OVERLAY_FRAME_LIMIT() && injected.overlayRenderQueue.length) {
+    const pageNo = injected.overlayRenderQueue.shift();
+    injected.overlayRenderQueued.delete(pageNo);
+    if (!injected.visiblePageNos.has(pageNo)) continue;
+    const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
+    const overlay = tile ? tile.querySelector(".page-overlay") : null;
+    if (!tile || !overlay) continue;
+    const key = injected.pageBlockKey(pageNo);
+    const blocks = injected.getPageBlockCache().get(key);
+    if (blocks) {
+      if (overlay._renderedBlocks !== blocks) {
+        injected.renderPageBlocks(tile, blocks);
+        drawn += 1;
+      }
+      continue;
+    }
+    if (injected.getPageBlockPending().has(key)) continue;
+    if (injected.getPageBlockPending().size >= injected.PAGE_BLOCK_FETCH_LIMIT) {
+      // 在途请求满了：放回队尾，等某个请求完成后再继续（不空转）
+      injected.overlayRenderQueue.push(pageNo);
+      injected.overlayRenderQueued.add(pageNo);
+      waiting = true;
+      break;
+    }
+    injected.fetchPageBlocks(pageNo, key);
+  }
+  if (injected.overlayRenderQueue.length && !waiting) injected.scheduleOverlayPump();
+}
+
+function toggleMarginView() {
+  injected.setPagesMarginOn(!injected.getPagesMarginOn());
+  injected.savePageMarginPreference();
+  const button = el("pages-margin-toggle");
+  if (button) button.classList.toggle("is-on", injected.getPagesMarginOn());
+  if (!injected.getCurrentProject()) return;
+  if (injected.getPagesMarginOn()) {
+    injected.schedulePageVisibility();
+  } else {
+    for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
+      injected.clearTileMargin(tile);
+    }
+  }
+  injected.indexRefresh?.();
+  renderMarginPanel();
+}
+
+function setMarginStatus(text, isError = false, holdMs = 9000) {
+  const node = el("margin-status");
+  if (!node) return;
+  node.textContent = text || "";
+  node.hidden = !text;
+  node.style.color = isError ? "var(--bad-fg)" : "";
+  if (injected.getMarginStatusTimer()) clearTimeout(injected.getMarginStatusTimer());
+  if (text) {
+    const __marginStatusTimer1 = setTimeout(() => {
+      node.hidden = true;
+    }, holdMs);
+    injected.setMarginStatusTimer(__marginStatusTimer1);
+  }
+}
+
+async function ensureMarginAudit(page) {
+  const node = el("margin-audit");
+  if (!node || !injected.getCurrentProject() || !page) return;
+  if (injected.getMarginAuditPage() === page.page_no && !injected.getMarginAuditLoading()) return;
+  injected.setMarginAuditPage(page.page_no);
+  injected.setMarginAuditLoading(true);
+  node.hidden = true;
+  try {
+    const data = await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/${page.page_no}/margin-box/audit`
+    );
+    if (injected.getMarginAuditPage() !== page.page_no) return;
+    const basis = el("margin-basis");
+    const linesWord = data.lines_source === "layout" ? "检测行" : "识别行";
+    if (basis && page.margin_box_mode === "auto") {
+      const total = Number(data.total_lines || 0);
+      const method = injected.pageMarginMethod(page);
+      if (method === "undetermined") {
+        basis.textContent = injected.marginBasisForUndetermined(page);
+      } else if (method === "bbox") {
+        basis.textContent =
+          `来源：本页所有${linesWord}的包围盒（兜底） · ${total} 条正文长行`;
+      } else {
+        basis.textContent =
+          `来源：本页${linesWord}自动拟合 · 把握：${total >= 10 ? "较稳" : total >= 3 ? "偏少" : "不足"}` +
+          `（${total} 条正文长行）`;
+      }
+    }
+    const rescued = Number(data.rescued || 0);
+    const outside = Number(data.outside || 0);
+    if (rescued > 0) {
+      node.textContent =
+        `这页有 ${rescued} 块文字在版心框外（标题 / 章首等），已按"文字列里的字不删"保留；` +
+        "导出不会少，值得看一眼。";
+      node.hidden = false;
+    } else if (outside > 0) {
+      node.textContent =
+        `这页有 ${outside} 行正文落在本页版心之外，可能拟合不准；` +
+        "拖动版心核对一下。";
+      node.hidden = false;
+    } else {
+      node.hidden = true;
+    }
+  } catch {
+    node.hidden = true;
+  } finally {
+    injected.setMarginAuditLoading(false);
+  }
+}
+
+/** 第二引擎复核全书：只跑还没复核过的已识别正文页。 */
+async function startAuxiliaryAll() {
+  if (!injected.getCurrentProject()) return;
+  const status = el("rec-status");
+  if (status) status.hidden = true;
+  try {
+    const data = await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/jobs/auxiliary`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: "unchecked", skip_checked: true }),
+      }
+    );
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+  } catch (error) {
+    // 第二引擎不可用时必须当面说清（说明书 8.6：不假装还在比对）
+    if (status) {
+      status.textContent = `第二引擎没能开始：${error.message || "未知错误"}`;
+      status.style.color = "var(--bad-fg)";
+      status.hidden = false;
+    }
+  }
+}
+
+/**
+ * 重置为「本页自动」：先 PATCH 回 auto（丢掉自定义），再按检测行拟合。
+ * 只处理 auto / inherit / custom 的页；不适用不动。
+ */
+async function resetMarginsToAuto(pages) {
+  const targets = (pages || []).filter(
+    (page) => page.margin_box_mode !== "none" && page.margin_box_mode !== undefined
+  );
+  if (!injected.getCurrentProject() || !targets.length) return;
+  for (const page of targets) {
+    injected.marginUndoStack.push({
+      pageNo: page.page_no,
+      mode: page.margin_box_mode,
+      box: page.margin_box ? [...page.margin_box] : null,
+    });
+  }
+  injected.trimMarginUndo();
+  try {
+    if (targets.length === 1) {
+      const page = targets[0];
+      await injected.apiJson(
+        `/api/projects/${injected.getCurrentProject().project_id}/pages/${page.page_no}/margin-box`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ margin_box_mode: "auto", margin_box: null }),
+        }
+      );
+      const fitted = await injected.apiJson(
+        `/api/projects/${injected.getCurrentProject().project_id}/pages/${page.page_no}/margin-box/fit`,
+        { method: "POST" }
+      );
+      await injected.refreshPageStates();
+      refreshMarginTiles();
+      renderMarginPanel();
+      setMarginStatus(
+        fitted.undetermined
+          ? `第 ${page.page_no} 页还没有检测行，版心暂时未定。`
+          : `第 ${page.page_no} 页已按检测行重新拟合。`
+      );
+      return;
+    }
+    await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/margin-box/pages`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page_nos: targets.map((page) => page.page_no),
+          margin_box_mode: "auto",
+          margin_box: null,
+        }),
+      }
+    );
+    const fit = await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/margin-box/fit-all`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ only_missing: true }),
+      }
+    );
+    for (const page of targets) injected.marginFitTried.delete(page.page_no);
+    await injected.refreshPageStates();
+    refreshMarginTiles();
+    renderMarginPanel();
+    setMarginStatus(
+      `已把 ${targets.length} 页改回自动拟合：${fit.fitted || 0} 页拟合，` +
+        `${fit.fallback || 0} 页兜底，${fit.undetermined || 0} 页还没有检测行。`
+    );
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+function setPageNumberStatus(text, isError = false) {
+  const node = el("page-number-status");
+  if (!node) return;
+  node.textContent = text || "";
+  node.hidden = !text;
+  node.style.color = isError ? "var(--bad-fg)" : "";
+  if (injected.getPageNumberStatusTimer()) clearTimeout(injected.getPageNumberStatusTimer());
+  if (text) {
+    const __pageNumberStatusTimer1 = setTimeout(() => {
+      node.hidden = true;
+    }, 9000);
+    injected.setPageNumberStatusTimer(__pageNumberStatusTimer1);
+  }
+}
+
+async function startBatchRecognition(scope) {
+  const project = injected.getCurrentProject();
+  if (!project) return;
+  if (injected.getJobStartPending()) return;      // 连点/双击不会建第二个 job
+  injected.setJobStartPending(true);
+  injected.setJobStartBusy(true);
+  const pending = project.pages.filter(
+    (page) => page.include && injected.recognitionOf(page).status !== "recognized"
+  );
+  if (!injected.warnUnconfirmed(pending, "识别全部未识别页")) return;
+  el("pages-error").hidden = true;
+  try {
+    const data = await injected.apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope }),
+    });
+    injected.applyRecognizedPages(data.pages);
+    renderPages();
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  } finally {
+    injected.setJobStartPending(false);
+    injected.setJobStartBusy(false);          // 成功 / 失败 / 异常都恢复，不卡在 disabled
+  }
+}
+
+/**
+ * 第二引擎复核（说明书 8.5）：批量跑成后台任务，与识别共用任务抽屉。
+ *
+ * 与识别不同的两处都在提示里说清：**只有已识别的页**能复核（第二引擎读的是
+ * 第一引擎切出的行图），且默认跳过已复核的页。
+ */
+async function checkSelection(scope) {
+  const project = injected.getCurrentProject();
+  if (!project) return;
+  if (injected.getJobStartPending()) return;
+  injected.setJobStartPending(true);
+  injected.setJobStartBusy(true);
+  el("pages-error").hidden = true;
+
+  let body;
+  if (scope) {
+    // 全部已识别但还没复核过的页（说明书 8.5：可以随时补跑）
+    body = { scope };
+  } else {
+    const pages = injected.selectionPages().filter((page) => page.include);
+    if (!pages.length) return;
+    body = {
+      pages: pages.map((page) => page.page_no),
+      skip_checked: el("selection-skip-checked").checked,
+    };
+  }
+  try {
+    const data = await injected.apiJson(`/api/projects/${project.project_id}/jobs/auxiliary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    injected.applyRecognizedPages(data.pages);
+    renderPages();
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  } finally {
+    injected.setJobStartPending(false);
+    injected.setJobStartBusy(false);
+  }
+}
+
+/** 版面检测入口：建任务 → 抽屉 + 轮询（任务 58）。 */
+async function startLayoutDetection({ pages = null, scope = null, prepare = false }) {
+  if (!injected.getCurrentProject()) return;
+  el("pages-error").hidden = true;
+  const body = pages
+    ? { pages, skip_detected: false, prepare }
+    : { scope: scope || "body", prepare };
+  try {
+    const data = await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/jobs/layout`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    injected.renderTask(data);
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+    return data;
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+    return null;
+  }
+}
+
+function showMarginDetectProgress(done, total) {
+  const wrap = el("margin-fit-progress");
+  if (!wrap) return;
+  wrap.hidden = false;
+  const percent = total ? Math.round((done / total) * 100) : 0;
+  el("margin-fit-fill").style.width = `${percent}%`;
+  el("margin-fit-text").textContent = `正在检测版面… ${done} / ${total} 页`;
+}
+
+/** 检测结束时进度条停在真实进度上，过一会儿收起来（别留在界面上像个假进度）。 */
+function finishMarginDetectBar(done, total) {
+  const wrap = el("margin-fit-progress");
+  if (!wrap) return;
+  el("margin-fit-fill").style.width = `${total ? Math.round((done / total) * 100) : 0}%`;
+  el("margin-fit-text").textContent = `检测：${done} / ${total} 页`;
+  window.setTimeout(() => {
+    const node = el("margin-fit-progress");
+    if (node && !injected.getMarginFitRunning()) node.hidden = true;
+  }, 5000);
+}
+
+/** 批量改页面的类型（说明书 6.2 的批量操作，第 11 节的 PATCH /pages）。 */
+async function patchSelectedPages(patch) {
+  const project = injected.getCurrentProject();
+  const pages = injected.selectionPages();
+  if (!project || !pages.length || !("page_type" in patch)) return;
+
+  el("pages-error").hidden = true;
+  try {
+    const data = await injected.apiJson(`/api/projects/${project.project_id}/pages`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page_ids: pages.map((page) => page.page_id), ...patch }),
+    });
+    for (const updated of data.pages) {
+      const index = project.pages.findIndex((page) => page.page_id === updated.page_id);
+      if (index >= 0) project.pages[index] = updated;
+    }
+    // 类型变了，建议范围跟着变：这些页的旧建议与角标作废
+    for (const updated of data.pages) injected.forgetPageSuggestions(updated.page_no);
+    renderPages();
+    injected.renderProjectMeta();
+    await loadSetupSuggestions();
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+async function setAutoApplySetting(on) {
+  if (!injected.getCurrentProject()) return;
+  const checkbox = el("auto-apply-suggestions");
+  if (on) {
+    const ok = window.confirm(
+      "打开后，「之后完成」的识别任务会自动把「把握较大」的页眉 / 页脚 / 页码建议用上" +
+        "（只动 high：页码形态、跨页重复 ≥ 3 次的书眉页脚；标题与「需确认」不动）。\n\n" +
+        "每次自动应用都会在顶部提示，可一键整批撤销。现在打开吗？"
+    );
+    if (!ok) {
+      checkbox.checked = false;
+      return;
+    }
+  }
+  try {
+    const data = await injected.apiJson(`/api/projects/${injected.getCurrentProject().project_id}/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auto_apply_high_suggestions: Boolean(on) }),
+    });
+    injected.getCurrentProject().settings = data.settings;
+    injected.applyProjectSettings();
+    injected.notifyApplied(
+      on
+        ? "已打开：之后完成的识别任务会自动应用高把握建议（顶部有提示，可撤销）。"
+        : "已关闭：识别完成后只给建议，不改块类型。"
+    );
+  } catch (error) {
+    checkbox.checked = !on;
+    injected.showError(el("selection-hint"), error);
+  }
+}
+
+async function rerunAuxiliary() {
+  if (!injected.getCurrentProject()) return;
+  const ok = window.confirm(
+    "用 Apple Vision 重跑第二引擎？\n\n" +
+      "· 会先自动备份项目数据库\n" +
+      "· 只覆盖第二引擎结果与差异状态；正文、块、版心、块类型不动\n" +
+      "· 已裁决（保留/采用）的行会跳过\n" +
+      "· 按页判定语言（中文页 zh-Hans / 英文页 en-US）\n\n" +
+      "490 页大约 20–25 分钟，可以暂停 / 继续。"
+  );
+  if (!ok) return;
+  try {
+    const data = await injected.apiJson(`/api/projects/${injected.getCurrentProject().project_id}/aux/rerun`, {
+      method: "POST",
+    });
+    injected.libraryNotify?.({ kind: "warning", text: String(`已建复核任务（Vision · 按页语言）。备份：${data.backup_path}`).trim() });
+    await injected.loadTasks();
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
     // 刀 2：deps 已赋值，统一挂 14 段 pages 接线（**必须在 return api 之前**）。
@@ -2035,13 +2756,30 @@ async function recognizeSelection(force = false) {
     renderAutoApplyStatus,
     renderMarginStepVerdict,
     renderPageNumberMetrics,
-    renderPageSummary,
     renderRecognitionSettings,
     renderStepPanels,
     renderWorkflowFilter,
     updateRecognitionAuxProgress,
     applyPageZoom,
     confirmAllUnconfirmed,
+    checkSelection,
+    finishMarginDetectBar,
+    forgetAllPageBlocks,
+    forgetAllPageSuggestions,
+    openPageSetup,
+    pageScroller,
+    pausePageThumbnails,
+    pumpOverlayRender,
+    queueOverlayRender,
+    rerunAuxiliary,
+    scanVisiblePageSuggestions,
+    setMarginStatus,
+    setPageNumberStatus,
+    showMarginDetectProgress,
+    startLayoutDetection,
+    toggleMarginView,
+    togglePageBlocksOverlay,
+    visiblePages,
   };
 // ---------------------------------------------------------------- 刀 2：14 段 pages 接线
 /**
@@ -2067,20 +2805,20 @@ function wirePagesExportMarginJudgement() {
  */
 function wirePagesRecognitionSettings() {
   el("rec-engine").addEventListener("change", (event) =>
-    injected.patchRecognitionSetting("recognition_engine", event.target.value)
+    patchRecognitionSetting("recognition_engine", event.target.value)
   );
   for (const radio of document.querySelectorAll('#rec-dpi input[type="radio"]')) {
     radio.addEventListener("change", () => {
       if (radio.checked) {
-        injected.patchRecognitionSetting("recognition_dpi", Number(radio.value));
+        patchRecognitionSetting("recognition_dpi", Number(radio.value));
       }
     });
   }
   el("rec-language").addEventListener("change", (event) =>
-    injected.patchRecognitionSetting("recognition_language", event.target.value)
+    patchRecognitionSetting("recognition_language", event.target.value)
   );
   el("rec-dual-strategy").addEventListener("change", (event) =>
-    injected.patchRecognitionSetting("dual_engine_strategy", event.target.value)
+    patchRecognitionSetting("dual_engine_strategy", event.target.value)
   );
 }
 /**
@@ -2212,8 +2950,8 @@ function wirePagesSelectionMore() {
 function wirePagesPanes() {
   el("pages-zoom-out").addEventListener("click", () => injected.setPageZoom(-1));
   el("pages-zoom-in").addEventListener("click", () => injected.setPageZoom(1));
-  el("pages-overlay-toggle").addEventListener("click", injected.togglePageBlocksOverlay);
-  el("pages-margin-toggle").addEventListener("click", injected.toggleMarginView);
+  el("pages-overlay-toggle").addEventListener("click", togglePageBlocksOverlay);
+  el("pages-margin-toggle").addEventListener("click", toggleMarginView);
   el("layout-block-apply-all").addEventListener("click", injected.adoptAllHighSuggestions);
   el("layout-block-confirm").addEventListener("click", confirmLayoutFromPanel);
   el("margin-confirm-all").addEventListener("click", injected.confirmAllMargins);
@@ -2221,7 +2959,7 @@ function wirePagesPanes() {
     // 目标由 recognitionTarget() 唯一决定（文案、禁用、点下去做什么，三处同源）
     const target = recognitionTarget();
     if (target.mode === "batch") {
-      injected.startBatchRecognition("unrecognized");
+      startBatchRecognition("unrecognized");
       return;
     }
     if (target.mode === "selection") {
@@ -2232,7 +2970,7 @@ function wirePagesPanes() {
       recognizeSelection(true);
     }
   });
-  el("rec-aux-all").addEventListener("click", injected.startAuxiliaryAll);
+  el("rec-aux-all").addEventListener("click", startAuxiliaryAll);
 }
 /**
  * 确认页三件（选中 / 拆页号 / 全部）（刀 2.5 从 `setupLibrary` 原样搬出）。
@@ -2249,20 +2987,20 @@ function wirePagesSetup() {
  */
 function wirePagesAutoApplySuggestions() {
   el("auto-apply-suggestions").addEventListener("change", (event) =>
-    injected.setAutoApplySetting(event.target.checked)
+    setAutoApplySetting(event.target.checked)
   );
 }
 /**
  * 「检查选中」按钮的接线（刀 2.5 从 `setupLibrary` 原样搬出）。只碰 `view-pages` 的 id：`selection-check`。
  */
 function wirePagesSelectionCheck() {
-  el("selection-check").addEventListener("click", () => injected.checkSelection(null));
+  el("selection-check").addEventListener("click", () => checkSelection(null));
 }
 /**
  * 「检查未定」按钮的接线（刀 2.5 从 `setupLibrary` 原样搬出）。只碰 `view-pages` 的 id：`check-pending`。
  */
 function wirePagesCheckPending() {
-  el("check-pending").addEventListener("click", () => injected.checkSelection("unchecked"));
+  el("check-pending").addEventListener("click", () => checkSelection("unchecked"));
 }
 
 /** 刀 2：14 段接线在本模块初始化时统一挂载（顺序 = 它们在 app.js 里的原顺序）。 */

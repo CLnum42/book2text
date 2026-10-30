@@ -72,7 +72,19 @@ SETTERS = list(getattr(_k4, "SETTERS", [])) + [
     ('overlayPumpScheduled', "setOverlayPumpScheduled"),
     ('pageNumberStatusTimer', "setPageNumberStatusTimer"),
     ('recStatusTimer', "setRecStatusTimer"),
+    # 第 6 条（落地时补的）：`scanVisiblePageSuggestions` 体内有 `suggestionScanQueued += 1`。
+    # 复合赋值不会被 rewrite_writes 认成写点（它只认 `X = ...`），但 forward 会把 X 换成
+    # `injected.getSuggestionScanQueued()`，结果产出 `injected.getX() += 1` —— 语法检查与整套闸全绿，
+    # 真跑到就抛（赋给函数调用结果）。所以：① 加 setter；② 用 SET_REWRITES 逐行点名这一处。
+    ('suggestionScanQueued', "setSuggestionScanQueued"),
 ]
+
+SET_REWRITES = dict(getattr(_k4, "SET_REWRITES", {}))
+SET_REWRITES["suggestionScanQueued += 1;"] = (
+    # 值与 count_checks 的口径一致：它数的是**改写后**那一行（forward 之后），所以这里直接写注入形态，
+    # 不要再留裸名（裸名会被 forward 再换一次，导致"模块里 0 处"的假红）。
+    "injected.setSuggestionScanQueued(injected.getSuggestionScanQueued() + 1);"
+)
 
 #: 跨视图能力（R2）：31 个函数体里有两处跨视图调用
 CAPABILITIES = [

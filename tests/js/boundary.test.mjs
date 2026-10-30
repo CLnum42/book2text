@@ -3080,11 +3080,31 @@ const VIEW_EXPORTS = {
     // 每键都带死亡刀号——刀 4 清 9 个、刀 5 清 5 个，之后严格下降）。
     "loadFinishSummary", "loadLanguageSummary", "loadPageNumberSummary", "refreshLayoutDetectEntry",
     "refreshMarginDetectHint", "refreshMarginTiles", "renderAutoApplyStatus", "renderMarginStepVerdict",
-    "renderPageNumberMetrics", "renderPageSummary", "renderRecognitionSettings", "renderStepPanels",
+    "renderPageNumberMetrics", "renderRecognitionSettings", "renderStepPanels",
     "renderWorkflowFilter", "updateRecognitionAuxProgress",
     // 刀 4：2 个临时转发键，**死亡刀号 = 刀5**（§8.2：每键带死亡刀号，到点未死就红）。
     "applyPageZoom",         // 死亡刀号 = 刀5（showView / goToWorkflowStep / setPageZoom）
     "confirmAllUnconfirmed", // 死亡刀号 = 刀5（finishConfirmPages）
+    // 刀 5：18 个新转发键，**死亡刀号 = 刀6**（导出收口刀；53 − 22 = 31 = 13 候选 + 18 本刀）
+    // 本刀死 1 个：renderPageSummary（0 个外壳调用者，模块内已直改呼，deps 键与 api 键一并删）。
+    "checkSelection",   // 死亡刀号 = 刀6
+    "finishMarginDetectBar",   // 死亡刀号 = 刀6
+    "forgetAllPageBlocks",   // 死亡刀号 = 刀6
+    "forgetAllPageSuggestions",   // 死亡刀号 = 刀6
+    "pageScroller",   // 死亡刀号 = 刀6
+    "pausePageThumbnails",   // 死亡刀号 = 刀6
+    "pumpOverlayRender",   // 死亡刀号 = 刀6
+    "queueOverlayRender",   // 死亡刀号 = 刀6
+    "rerunAuxiliary",   // 死亡刀号 = 刀6
+    "scanVisiblePageSuggestions",   // 死亡刀号 = 刀6
+    "setMarginStatus",   // 死亡刀号 = 刀6
+    "setPageNumberStatus",   // 死亡刀号 = 刀6
+    "showMarginDetectProgress",   // 死亡刀号 = 刀6
+    "startLayoutDetection",   // 死亡刀号 = 刀6
+    "visiblePages",   // 死亡刀号 = 刀6
+    "openPageSetup",   // 死亡刀号 = 刀6
+    "toggleMarginView",   // 死亡刀号 = 刀6
+    "togglePageBlocksOverlay",   // 死亡刀号 = 刀6
   ] },
 };
 
