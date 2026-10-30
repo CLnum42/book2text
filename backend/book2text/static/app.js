@@ -13932,6 +13932,9 @@ function boot() {
   // 任务 94 Slice I1：目录确认视图模块初始化。deps 只给**句柄**（状态 getter/setter +
   // 仍留在 app.js 的纯数据服务），不注入值；模块不许把 getter 的返回值缓存到模块级变量（§13 / §20.4）。
   window.IndexView?.init({
+    // 提示条：index-view.js:468 / preview-view.js:212 都用 injected.showNoticeBar?.(text)；
+    // 缺这个键时可选调用不抛错，只是提示条静默不显示（2026-10-30 补）。
+    showNoticeBar: (text) => showNoticeBar(text),
     isActive: () => currentView === "index",
     getProject: () => currentProject,
     getDetailPageNo: () => detailPageNo,
@@ -14039,6 +14042,9 @@ function boot() {
   });
 
   window.PreviewView?.init({
+    // 提示条：index-view.js:468 / preview-view.js:212 都用 injected.showNoticeBar?.(text)；
+    // 缺这个键时可选调用不抛错，只是提示条静默不显示（2026-10-30 补）。
+    showNoticeBar: (text) => showNoticeBar(text),
     // 状态 getter
     isActive: () => currentView === "preview",
     getProject: () => currentProject,
