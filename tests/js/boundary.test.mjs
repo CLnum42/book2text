@@ -1429,6 +1429,11 @@ function pagesSeedRows() {
   } catch {
     return [];
   }
+  return parseSeedRows(text);
+}
+
+/** 纯解析：真 seed 与自检里的**合成 seed** 共用同一份解析器（两套解析 = 自检验的是另一份逻辑）。 */
+function parseSeedRows(text) {
   const rows = [];
   for (const line of text.split("\n")) {
     if (!line.startsWith("| `")) continue;
@@ -1445,6 +1450,29 @@ function pagesSeedRows() {
     rows.push({ host: host[1], ids, wires, stage: Number(stage[1]) });
   }
   return rows;
+}
+
+/**
+ * seed 原文里「到期刀」列的**上界**：所有 `| 刀N |` 格的 max，由文件现算。
+ *
+ * 为什么必须现算（2026-10-30）：上界原先是字面量 `1..5`，而刀 5 之后 seed 里会出现刀 6/7/8
+ * ——写死会把合法的新刀号判成「解析串位」，最后只能靠改这个数字让它绿，等于判据可被手调。
+ *
+ * 为什么**不能**改成 `max(rows.map(r => r.stage))`：上界取自被验数据本身，这条判据就恒真
+ * （任何值都 ≤ 自己的最大值，等于关掉），而它挡的正是「把行号/工数当刀号」的串位。
+ * 这里的取法与被验的行解析**相互独立**：行解析读第 5 列（`cells[4]`），这里扫原文的 `| 刀N |` 格。
+ */
+export function seedStageUpperBound(seedText) {
+  let max = 0;
+  for (const m of seedText.matchAll(/\|\s*刀(\d+)\s*\|/g)) max = Math.max(max, Number(m[1]));
+  return max;
+}
+
+/** 每行刀号必须落在 `1..maxStage`（上界由 `seedStageUpperBound` 现算）；越界 = 解析串位。 */
+export function seedStageRangeProblems(rows, maxStage) {
+  return rows
+    .filter((row) => !(Number.isInteger(row.stage) && row.stage >= 1 && row.stage <= maxStage))
+    .map((row) => `seed 里 ${row.host} 的刀号 ${row.stage} 不在 1..${maxStage}——解析串位了`);
 }
 
 /**
@@ -1749,10 +1777,15 @@ function r3Problems({
     }
     const segments = keepShellSegments();
     for (const item of blockedItems) {
-      if (item.stage !== 5) {
+      // **受阻项不写死某一刀**（2026-10-30）：条件是 `stage > PAGES_STAGE`——「还没到期」才有资格
+      // 叫「受阻」；到期了还挂着「阻塞段」，那就是「到期不搬」换了个说法。原先写死 `!== 5`，
+      // 而 5 只是当时那一刀的号：抬刀之后这条会逼着人把数字改回 5（判据变成可手调的参数），
+      // 或者反过来把真到期项当受阻放过。
+      if (!(Number.isInteger(item.stage) && item.stage > pagesStage)) {
         problems.push(
-          `豁免 ${item.id} 带「阻塞段」但到期刀是 ${item.stage}——受阻项的到期刀必须写 5`
-          + `（它要靠留外壳段解释为什么这一刀搬不走）`,
+          `豁免 ${item.id} 带「阻塞段」但到期刀是 ${item.stage}（PAGES_STAGE=${pagesStage}）——`
+          + `受阻项必须 stage > PAGES_STAGE：还没到期才有资格叫「受阻」，`
+          + `到期了还靠留外壳段挂着就是「到期不搬」换了个说法`,
         );
       }
       const raw = String(item["阻塞段"]).split(/[、,，+]|\s\+\s/).map((one) => one.trim()).filter(Boolean);
@@ -1865,6 +1898,32 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
     tuned.some((item) => item.includes("到期刀 2 ≠ 现算的 max 5")),
     `R3 pages 自检失败：到期刀手调也放过——${tuned.join("；")}`,
   );
+
+  // ⑥ 受阻项：到期刀**不再写死 5**，只要 stage > PAGES_STAGE 就合法（留外壳 = 有据可查地留）
+  const blockedOk = r3Problems({
+    ...base,
+    pagesStage: 2,
+    pagesExemptions: [
+      { id: "a", cap: 2, stage: 3, 阻塞段: "setupShell 1261–1264" },
+      { id: "b", cap: 1, stage: 3 },
+    ],
+  });
+  assert.deepEqual(blockedOk, [],
+    `R3 pages 自检失败：受阻项 stage 3 > PAGES_STAGE 2 也被拦——受阻项的刀号又写死了（${blockedOk.join("；")}）`);
+
+  // ⑦ 受阻项到期了还挂着：stage <= PAGES_STAGE → 必须红（「到期不搬」换个说法）
+  const blockedExpired = r3Problems({
+    ...base,
+    pagesStage: 2,
+    pagesExemptions: [
+      { id: "a", cap: 2, stage: 2, 阻塞段: "setupShell 1261–1264" },
+      { id: "b", cap: 1, stage: 3 },
+    ],
+  });
+  assert.ok(
+    blockedExpired.some((item) => item.includes("还没到期才有资格叫「受阻」")),
+    `R3 pages 自检失败：受阻项到期（stage 2 <= PAGES_STAGE 2）被放过——${blockedExpired.join("；")}`,
+  );
 });
 
 /**
@@ -1874,6 +1933,11 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
  * 都包在 `if (seedStages.size > 0)` 里——解析器一旦匹不到任何一行，**两条整块跳过**，
  * 闸照绿，表上 79 个到期日成了装饰。2026-10-29 真发生过：正则按「第 2 列是数字」写，
  * 而真 seed 第 2 列是 id 清单 → 匹配 0 行。这条自检让「判据存在」本身可被证伪。
+ *
+ * **上界（刀号范围）从 seed 原文现算，不写字面量**（2026-10-30）：原先写死 `1..5`，刀 5 之后
+ * seed 出现刀 6/7/8，这条自检就会把合法的新刀号判成「解析串位」——而修法只能是再改那个数字，
+ * 于是判据成了可手调的参数。上界现算见 `seedStageUpperBound`；自检里还带一条"写死就会红"的
+ * 反例（③），保证"改成现算"不是把问题挪个位置。
  */
 test("R3 自检（到期判据存在性）：seed 必须解析出函数→刀号，且与 seed 行数相等", () => {
   const file = fileURLToPath(new URL("../../docs/refactor/evidence/pages/stage2-movers-seed.md", import.meta.url));
@@ -1886,9 +1950,40 @@ test("R3 自检（到期判据存在性）：seed 必须解析出函数→刀号
     `seed 有 ${rows} 行函数表，只解析出 ${parsed.length} 个函数——解析又漂了，`
     + "「到期刀 == max」与「seed/实测覆盖」两条会整体空跑（闸绿、判据不存在）",
   );
-  for (const row of parsed) {
-    assert.ok(row.stage >= 1 && row.stage <= 5, `seed 里 ${row.host} 的刀号 ${row.stage} 不在 1..5——解析串位了`);
-  }
+  const maxStage = seedStageUpperBound(text);
+  assert.ok(
+    maxStage >= 1,
+    `seed 的「到期刀」列里一格刀号都没扫到（上界=${maxStage}）——这条上界判据会恒真，`
+    + "刀号写成行号、工数也照样绿（闸绿、判据不存在）",
+  );
+  const rangeProblems = seedStageRangeProblems(parsed, maxStage);
+  assert.deepEqual(rangeProblems, [], `seed 刀号越界——${rangeProblems.join("；")}`);
+
+  // ② 合成 seed（最大刀 8）：上界现算 = 8 → 1..8 不报串位（刀 5 之后 seed 真的会有刀 6/7/8）
+  const synthText = "| 函数 | 引用的 id | 行范围 | 到期刀 | wire |\n"
+    + "| `zzSynth` | `a` | 1–2（2 行） | 刀8 |  |\n";
+  const synthRows = parseSeedRows(synthText);
+  assert.equal(synthRows.length, 1, "合成 seed 没解析出那一行——解析器与自检输入不同源");
+  assert.equal(seedStageUpperBound(synthText), 8, "合成 seed 的上界没现算出 8——上界取法又写死了一处");
+  const synthOk = seedStageRangeProblems(synthRows, seedStageUpperBound(synthText));
+  assert.deepEqual(synthOk, [],
+    `上界现算成 8 却仍报串位——合法的新刀号被写死的 1..5 拦住：${synthOk.join("；")}`);
+
+  // ③ 喂红：把上界写死回 1..5（2026-10-30 之前的老写法）→ 同一份合成 seed 必须红且点名串位
+  const hardCoded = seedStageRangeProblems(synthRows, 5);
+  assert.ok(
+    hardCoded.some((item) => item.includes("解析串位") && item.includes("zzSynth")),
+    `上界写死成 1..5 却放过了刀 8——合法刀号夹带串位时这条判据就查不出来（${hardCoded.join("；") || "没报任何问题"}）`,
+  );
+
+  // ④ 串位形态：把行号当刀号（12608 = setupLibrary 的行范围起点）→ 超出上界 → 必须红
+  const shifted = seedStageRangeProblems(
+    [{ host: "setupLibrary", ids: [], wires: [], stage: 12608 }], maxStage,
+  );
+  assert.ok(
+    shifted.some((item) => item.includes("setupLibrary") && item.includes("解析串位")),
+    `行号当刀号被放过——上界判据没做工（${shifted.join("；") || "没报任何问题"}）`,
+  );
 });
 
 /**
@@ -1973,7 +2068,7 @@ test("R3 自检（seed 同宿主多行）：id 不相交判绿、id 相交判红
     `seed 自检失败：同一 id 出现在两行被放过——${seedHostOverlapProblems(twice).join("；")}`);
 });
 
-test("R3 自检（blocked 阻塞段）：stage=5 且段号可查判绿，其余四条判红", () => {
+test("R3 自检（blocked 阻塞段）：stage > PAGES_STAGE 且段号可查判绿，其余判红", () => {
   const base = {
     html: '<section id="view-reading"></section>'
       + '<section id="view-pages"><div id="a"></div></section>',
@@ -1988,8 +2083,15 @@ test("R3 自检（blocked 阻塞段）：stage=5 且段号可查判绿，其余�
   const green = r3Problems({ ...base, pagesExemptions: [{ id: "a", cap: 1, stage: 5, 阻塞段: segment }] });
   assert.deepEqual(green, [], `blocked 自检失败：合规受阻项被误报——${green.join("；")}`);
 
+  // 到期刀不再是写死的 5：同样的 5，只要 PAGES_STAGE 还没到 5 就绿（上面那条），到了就红（这条）
+  const atStage5 = r3Problems({
+    ...base, pagesStage: 5, pagesExemptions: [{ id: "a", cap: 1, stage: 5, 阻塞段: segment }],
+  });
+  assert.ok(atStage5.some((m) => m.includes("受阻项必须 stage > PAGES_STAGE")),
+    `blocked 自检失败：PAGES_STAGE=5 时 stage=5 的受阻项（已到期）被放过——${atStage5.join("；")}`);
+
   const badStage = r3Problems({ ...base, pagesExemptions: [{ id: "a", cap: 1, stage: 2, 阻塞段: segment }] });
-  assert.ok(badStage.some((m) => m.includes("受阻项的到期刀必须写 5")),
+  assert.ok(badStage.some((m) => m.includes("受阻项必须 stage > PAGES_STAGE")),
     `blocked 自检失败：stage=2 带阻塞段被放过——${badStage.join("；")}`);
 
   const badSegment = r3Problems({
@@ -1999,7 +2101,7 @@ test("R3 自检（blocked 阻塞段）：stage=5 且段号可查判绿，其余�
     `blocked 自检失败：查不到的段号被放过——${badSegment.join("；")}`);
 
   const emptySegment = r3Problems({ ...base, pagesExemptions: [{ id: "a", cap: 1, stage: 5, 阻塞段: " " }] });
-  assert.deepEqual(emptySegment.filter((m) => m.includes("受阻项的到期刀")), [],
+  assert.deepEqual(emptySegment.filter((m) => m.includes("受阻项必须 stage > PAGES_STAGE")), [],
     "空白阻塞段不该被当成受阻项（它根本没写理由）");
 
   const eight = Array.from({ length: 8 }, () => ({ id: "a", cap: 1, stage: 5, 阻塞段: segment }));
