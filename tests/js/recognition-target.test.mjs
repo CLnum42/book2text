@@ -21,7 +21,7 @@ function makeNode(id) {
       contains: (c) => classes.has(c),
       toggle: (c, on) => { if (on === undefined) { classes.has(c) ? classes.delete(c) : classes.add(c); } else if (on) classes.add(c); else classes.delete(c); return classes.has(c); },
     },
-    querySelector: () => null, querySelectorAll: () => [], appendChild() {}, closest: () => null,
+    querySelector: () => null, querySelectorAll: () => [], appendChild() {}, append() {}, closest: () => null,
     getBoundingClientRect: () => ({ top: 0, left: 0, width: 100, height: 100 }), focus() {},
     // :534 会读 state.parentElement 并往它身上 toggle is-ok/is-warn —— 父节点必须独立，不能是自己
     parentElement: null,
@@ -40,7 +40,10 @@ function makeCtx(deps) {
   };
   const ctx = {
     document: { readyState: "complete", documentElement: makeNode("html"), getElementById,
-      querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, body: makeNode("body") },
+      querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, body: makeNode("body"),
+      // renderRecognitionStatus 往指标列表里 append 一堆 dt/dd（`metrics.append(dt, dd)`）——
+      // 给它真节点，别用 Proxy：这条桩要跟着"渲染真的发生了"走，不是"别炸就行"
+      createElement: (tag) => Object.assign(makeNode(tag), { append() {} }) },
     console, setTimeout, clearTimeout, requestAnimationFrame: () => 0, cancelAnimationFrame() {},
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     addEventListener() {}, removeEventListener() {},
@@ -49,8 +52,10 @@ function makeCtx(deps) {
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx, { filename: "pages-view.js" });
   ctx.window.PagesView.init(Object.assign({}, deps));
-  // 状态是 renderRecognitionVerdict 写出来的：公共出口跑一次
-  ctx.window.PagesView.renderRecognitionVerdict();
+  // 状态是 renderRecognitionVerdict 写出来的。**刀 9 删掉了这个公共出口**（那是给外壳的临时转发键），
+  // 改调仍导出的 renderRecognitionStatus()——它的最后一行就是 renderRecognitionVerdict()（pages-view.js:430-431）。
+  // 它另外读 getProjectSummary / percentText，所以 baseDeps 里补了这两个桩。
+  ctx.window.PagesView.renderRecognitionStatus();
   return { ctx, els, getElementById };
 }
 
@@ -64,6 +69,8 @@ function baseDeps(body, selection, statusOf) {
     recognitionOf: statusOf,
     getCurrentProject: () => ({ project_id: "p1", kind: "book" }),
     getFinishSummary: () => null,
+    getProjectSummary: () => ({ pages: {}, divergence: {} }),   // renderRecognitionStatus 读它取 pages/divergence
+    percentText: () => "0%",                                    // 分歧率文案
     getTaskJobId: () => null,
     getLastTaskData: () => null,
     AUX_SECONDS_PER_PAGE: 1,
