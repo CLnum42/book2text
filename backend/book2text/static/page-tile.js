@@ -359,6 +359,16 @@
     if (!img || img.__renderErrorDetailBound) return;
     img.__renderErrorDetailBound = true;
     const getContainer = isFn(options.container) ? options.container : () => options.container;
+    const fallback = typeof options.fallback === "string" ? options.fallback : null;
+    // 图恢复成功（或换了 URL 重新取图）→ 把上一条 detail 清掉，
+    // 否则升档后旧档的数字会留在屏幕上（300dpi「44 百万」→ 350dpi「60 百万」）
+    const clearDetail = () => {
+      const host = getContainer();
+      const note = host && host.querySelector ? host.querySelector(".ptile__error") : null;
+      if (note) note.hidden = true;
+      if (isFn(options.write) && fallback) options.write(fallback);
+    };
+    img.addEventListener?.("load", clearDetail);
     const previous = img.onerror;
     img.onerror = (event) => {
       if (isFn(previous)) previous.call(img, event);

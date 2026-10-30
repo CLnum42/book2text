@@ -2104,6 +2104,7 @@ async function loadComparePage(pageNo) {
     // detail 迟到替换（同一个出口；取不到就保留上面那句）
     window.PageTile?.attachRenderErrorDetail?.(image, {
       write: (text) => { el("compare-image-status").textContent = text; },
+      fallback: "来源页渲染失败。",
     });
     image.src = wanted;
   }
@@ -7872,6 +7873,7 @@ function renderPageDetail(data) {
     };
     window.PageTile?.attachRenderErrorDetail?.(image, {
       write: (text) => { el("detail-image-status").textContent = text; },
+      fallback: "这一页渲染失败。",
     });
     image.src =
       `/api/projects/${project_id()}/pages/${pageNo}/image?size=view` +

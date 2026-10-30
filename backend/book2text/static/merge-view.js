@@ -329,8 +329,13 @@
         drawMergeOverlay(blocks, changed, added, removed);
       };
       image.onerror = () => {
-        status.textContent = "这一页渲染失败。";
+        status.textContent = "这一页渲染失败。";   // 先给固定文案：不留空白
       };
+      // detail 迟到替换（同一个出口；取不到就保留上面那句）
+      window.PageTile?.attachRenderErrorDetail?.(image, {
+        write: (text) => { status.textContent = text; },
+        fallback: "这一页渲染失败。",
+      });
       image.src = wanted;
     } else {
       status.hidden = true;
