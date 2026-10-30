@@ -109,13 +109,16 @@ split-batch-error     同上                                        applySplitBa
 **曲线以 `docs/refactor/pages/export-ratchet.md`（Architect 2026-10-30 裁定）为准**——键分 L / T / C 三类：
 
 ```
-今天 57 = 8 死T + 36 活T + 13 C
-刀7  58 = 8 死T + 36 活T + 14 C   （+1 C：recognizePage）          ← 已落盘
-刀8  61 = 8 死T + 36 活T + 17 C   （+3 C：setPackageModeChrome / syncProjectSettings / setSelectionHint）
-刀9a 53 =            36 活T + 17 C （删 8 个 0 调用点的死 T：键 + 转发器一起删）
-刀9b 19 =                    19 C  （搬 78 个调用点 / 41 个宿主 + 建 enter / refresh）
-刀10 19                            （冻结清册 + 四条机检）
+今天 57 = 8 死T + 36 活T + 12 C + 1 L
+刀7  58 = 8 死T + 36 活T + 13 C + 1 L   （+1 C：recognizePage）        ← 已落盘
+刀8  61 = 8 死T + 36 活T + 16 C + 1 L   （+3 C：setPackageModeChrome / syncProjectSettings / setSelectionHint）
+刀9  53 =            36 活T + 16 C + 1 L （删 8 个 0 调用点的死 T：键 + 转发器一起删）
+刀9.1–9.5                                （36 个活 T 按"搬它宿主的那一刀"分五段；合称「9b」——
+                                          首次出现时点明，之后一律用 9.1–9.5，别再写 9b）
+刀10 19 =                    16 C + 3 L  （终态：init / enter / refresh 是那 3 个 L；冻结清册 + 四条机检）
 ```
+
+`init` 归 **L**（lifecycle，固定 3 个名字），**不算 C**——所以 C 比旧账少 1、L 多 1。
 
 **22 和 3 都作废**：22 来自刀 5 图的减法（从没有"哪 22 个"的名单）；3 是口号
 （reading-view 终态其实是 5 键）。`39 = 61 − 22` 随之作废。
@@ -161,13 +164,13 @@ split-batch-error     同上                                        applySplitBa
 ⑥ knife-registry：刀 8 标 landed（同一笔里必须是 `move(pages): 刀 8` 首行，否则 delta 自检红）
 ```
 
-**三个函数实际碰的 id 不是 13 种，是 23 种 / 37 处**（实测 `main@f450a44`，按 `index.html` 的
+**三个函数实际碰的 id 不是 13 种，是 23 种 / 37 处**（实测 `main@6946d33`，按 `index.html` 的
 `<section id="view-*">` 逐 id 归属）：
 
 ```
-applyPackageMode      12330–12389 · 不同 id 17 · 出现 31
-applyProjectSettings  11683–11693 · 不同 id  3 · 出现  3
-applySplitBatch       12003–12037 · 不同 id  3 · 出现  3
+applyPackageMode      12306–12365 · 不同 id 17 · 出现 31
+applyProjectSettings  11659–11669 · 不同 id  3 · 出现  3
+applySplitBatch       11979–12013 · 不同 id  3 · 出现  3
 合计 23 种 / 37 处，按归属分三类：
 
   view-pages   13 种 / 23 处   ← **R3 要归零的就这一批**（10 种 ×2 + auto-apply-suggestions / rec-margin-judgement / selection-hint 各 1）
@@ -182,6 +185,21 @@ applySplitBatch       12003–12037 · 不同 id  3 · 出现  3
 > Architect 2026-10-30 的规则（判据来自代码形态）：**单视图动作 → 该模块；跨域编排 → 留外壳、各域写点收成能力**。
 > 这三个函数同时碰 pages（13）+ review（3）+ 外壳（7），搬进 pages 模块等于让 pages 去点顶栏和审校入口，
 > 边界弄反了。代价是 **3 个导出键**（不是 10 个能力）。
+
+### 9.1.1 三个新键的 kind 登记数据（TestDev 落 `VIEW_EXPORTS` 时**直接抄这三行**）
+
+| 键 | kind | callers（effective，折叠同名薄转发器） | reason（一句话答"为什么不是 T"） |
+|---|---|---|---|
+| `setPackageModeChrome` | **C** | `applyPackageMode` | 跨域编排：外壳函数里对 pages 面板的写点；调用者是永留外壳函数，键**不会因"调用者搬走"而消失** |
+| `syncProjectSettings` | **C** | `applyProjectSettings` | 项目设置落在 pages 面板上；同上（永留外壳） |
+| `setSelectionHint` | **C** | `applySplitBatch` | 拆分批量的选中提示在 pages 面板上；同上（永留外壳） |
+
+```
+① callers 写**函数名**（effective callers），不写文件
+② 必须登记成 C（不写死期）；登成 T + death 会被「到点未死」拦红——它们本来就不该死在刀 9
+③ **记法坑**：setPackageModeChrome 在 applyPackageMode 的 if/else 两臂里各调一次 ⇒ 落盘后
+   grep 会数到 **2 处**；但 C 清册记的是**函数名**、不是处数，别写成 cap: 2 或"3 键 4 处"
+```
 
 **别分两笔，也别"先清表"**：只清豁免表、seed 不动的中间态会红，原文
 
@@ -214,12 +232,16 @@ seed 里还挂着名字自然全都显得"丢了"。表空 + 函数还挂着就�
 > 记录口径：`assert.deepEqual(problems, [], problems.join("；"))` 会把同一份 problems 打两遍，
 > 所以**日志行数是判据条数的 2×**——这条口径在任何形态下都成立，别拿日志行数当判据条数。
 
-### 9.3 终态判据（四条一起看，缺一条都可能"绿着坏"）
+### 9.3 终态判据（**六条同时成立才算落完**；单独绿不算——刀 4 的曲线就是这么两次算错的）
 
 ```
-r3.total == 0   且   r3.ids == 0   且   豁免项数 == 0   且   Σcap == TOTAL_CAP == 0
-另加：seed 0 行 · BLOCKED_MAX 0 · registry 刀 8 landed
-R8 = **61**（本刀 +3 个能力键：setPackageModeChrome / syncProjectSettings / setSelectionHint）
+① r3.total  == 0
+② r3.ids    == 0
+③ 豁免项数  == 0
+④ Σcap == TOTAL_CAP == 0
+⑤ seed 0 行
+⑥ BLOCKED_MAX 0
+另加两条：registry 刀 8 landed · R8 = **61**（+3 个 C 键：setPackageModeChrome / syncProjectSettings / setSelectionHint）
 ```
 
 ### 9.4 风险：`TOTAL_CAP = 0` 是**第一次**出现"上限为零"
