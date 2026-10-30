@@ -158,6 +158,18 @@ export function loadApp(options = {}) {
   // （例如 7b803c5 有 computeCharSpans、还没有 readingDiffUnits）。
   // 默认只要 `computeCharSpans`：`readingDiffUnits` 已在 L11 搬进 reading-view.js，
   // 纯函数单测改从 `load-reading-view.mjs` 拿（模块只露 6 个导出，R8 不许为测试加口子）。
+  // **app.js 载入后重 init 一次模块**：模块先载、app.js 后跑，模块首次 init 拿到的 deps
+  // 是 () => undefined 的桩（那时 app.js 顶层绑定还不存在）。这里用 appModuleDeps 把真实顶层
+  // 绑定重做一遍注入——同一个 injected 状态源，不重建实例。所有走 loadApp 的测试统一生效，
+  // 不再让每条测试自己调（Builder 预演 showView('merge') 红在 injected.visiblePageNos 就是这原因）。
+  for (const entry of ctx.__preloadedModules || []) {
+    if (!entry || !entry.loaded) continue;
+    const dir = options.moduleDir || STATIC_DIR;
+    const moduleSource = readFileSync(join(dir, entry.name), "utf8");
+    const mod = ctx[entry.api];
+    if (mod && typeof mod.init === "function") mod.init(appModuleDeps(ctx, moduleSource));
+  }
+
   for (const name of options.require || ["computeCharSpans"]) {
     if (typeof ctx[name] !== "function") {
       throw new Error(`load-app: ctx.${name} 不是函数——加载假设失效了，先查 app.js 的开头/结尾结构`);
