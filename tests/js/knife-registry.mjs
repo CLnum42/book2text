@@ -31,7 +31,7 @@ export const KNIVES = [
   { n: 9.5, status: "pending", scope: "选择 / 网格 / 步骤 / 收尾 / 其它" },
   { n: 9.6, status: "pending", scope: "只做 undoMarginEdit——版心撤销按钮的接线收回模块（Architect 39eb012 改判）" },
   { n: 10, status: "pending", scope: "队列子系统搬进模块（overlay 队列 pumpOverlayRender + 建议扫描队列 scanVisiblePageSuggestions；原来叫「收口」）" },
-  { n: 11, status: "pending", scope: "收口：R8 21 → 3（init / enter / exit）" },
+  { n: 11, status: "pending", scope: "收口：R8 19 不变（冻结清册 + 落地 §八 四条机检）——终态 16 C + 3 L（init / enter / refresh）" },
 ];
 
 /** 刀号是否已登记（`刀5b` 这种带字母的本来就解析不出来，到不了这一步）。 */
