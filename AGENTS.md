@@ -120,3 +120,9 @@ scripts/commit.sh -m "…" -- <具体路径…>
 **推送绕过没有当场留痕的位置**（git 没有 post-push hook），所以 `pre-commit` 每次会点名"`origin/main` 最近哪些提交没有 pytest 记录"。**只报不拦**——推送已经发生了。
 
 **闸覆盖不到你盘上没 add 的改动**（它验索引）。所以"我本地跑绿了"和"这笔提交是绿的"是两件事。
+
+### 1.6 真机验收（本仓库附加规则，不在说明书 V1.0 里）
+
+**真机验收一律不在主树里跑。** 主树是四个人共用的集成树，工作区随时在变；而且 `.venv` 是 editable 安装，`.pth` 里写死绝对路径指向主树的 `backend`——"复制一份环境"并不构成隔离。
+
+跑法、隔离自检、失败注入与收尾清单见 [`docs/real-machine-verification.md`](docs/real-machine-verification.md)。
