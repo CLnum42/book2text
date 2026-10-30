@@ -34,7 +34,7 @@
 ```
 57 = 8 死 T（0 调用点，可立即删）
    + 39 活 T（78 个调用点 / 41 个宿主函数）
-   + 10 C
+   + 9 C + 1 L（`init`）
 ```
 
 - 复现口径：`api` 键取自 `pages-view.js` 的 `const api = {`；同名薄转发器 = app.js 顶层函数，
@@ -46,11 +46,14 @@
   ⇒ 删的是**键 + 转发器**；模块内部仍在用的函数保留。
 - 39 个活 T 的宿主表见 §六（这就是刀 9b 的施工依据：搬一个宿主，死它那一列键）。
 
-## 四、C 清册（今日 10 个 + 刀 7/8 的 4 个）
+## 四、C 清册（今日 9 个 + 刀 7/8 的 4 个；`init` 单列在 L）
+
+| L 键 | 触发者 | 为什么是 L |
+|---|---|---|
+| `init` | boot | 生命周期（不占 C 清册；落盘表里 `L:1`） |
 
 | C 键 | 触发者（effective callers） | 为什么是跨域 |
 |---|---|---|
-| `init` | boot | 生命周期 |
 | `syncToolbarToggles` | 4 个视图模块 + boot 的 4 行 deps | 模块→模块（第一个此类键） |
 | `loadFinishSummary` | 13 个外壳函数 + reading×2 / library×1 | 收尾状态被三个视图共用 |
 | `renderRecognitionSettings` | loadAppInfo / applyProjectSettings / boot + library×1 | 项目设置落在 pages 面板上 |
@@ -77,7 +80,11 @@ startLayoutDetection   ← startLayoutDetectFromDialog                          
 confirmAllUnconfirmed  ← finishConfirmPages                                        （收尾面板发起）
 ```
 
-⇒ C = 10 + 3 = **13**；T-to-die = 39 − 3 = **36**。
+⇒ C = 9 + 3 = **12**（另有 **L = 1**：`init`）；T-to-die = 39 − 3 = **36**。
+
+> **标签口径**（2026-10-30 与落盘数据对齐）：`init` 归 **L**，不占 C 的清册。
+> 落盘后的 `kinds` 表就是这么记的（`L:1 · T:44 · C:13`，58 键），所以本文后面
+> 凡写 C 的地方都不含 `init`；含它的时候会明说「C+L」。
 
 > `checkSelection`（← setupReviewControls）我先按 T 记：`setupReviewControls` 是 pages 工具栏的接线，
 > 该整段搬进模块（reading-view 就是这么做的）。若刀 9 的图判定这段接线留外壳，它就转 C，终态 +1。
@@ -85,12 +92,12 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 ## 五、曲线重推（每个数的来历）
 
 ```
-今天            57 = 8 死T + 36 活T + 13 C
-刀 7  （+1 C）   58 = 8 死T + 36 活T + 14 C     recognizePage
-刀 8  （+3 C）   61 = 8 死T + 36 活T + 17 C     setPackageModeChrome / syncProjectSettings / setSelectionHint
-刀 9   （−8 死T） 53 =            36 活T + 17 C   删键 + 删转发器（0 个调用点，纯删；今天就能做）
-刀 9.1–9.5（−36 +2） 19 =                  19 C   搬 78 个调用点（§六）+ 建 enter / refresh
-刀 10 （不变）   19                             冻结清册 + 落地 §八 的机检
+今天            57 = 8 死T + 36 活T + 12 C + 1 L
+刀 7  （+1 C）   58 = 8 死T + 36 活T + 13 C + 1 L   recognizePage   ← 现状（main 的 kinds 表就是这个）
+刀 8  （+3 C）   61 = 8 死T + 36 活T + 16 C + 1 L   setPackageModeChrome / syncProjectSettings / setSelectionHint
+刀 9   （−8 死T） 53 =            36 活T + 16 C + 1 L   删键 + 删转发器（0 个调用点，纯删）
+刀 9.1–9.5（−36 +2） 19 =                  16 C + 3 L   搬 78 个调用点（§六）+ 建 enter / refresh
+刀 10 （不变）   19 = 16 C + 3 L（init / enter / refresh）  冻结清册 + 落地 §八 的机检
 ```
 
 每一步的"来历"只有两种动作：**删一个 0 调用点的键**（−8），或**搬 n 个调用点进模块**（−36，+2）。
@@ -153,7 +160,7 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 ——**多处写同一份状态**（就是 `PAGES_STAGE` 那类账的代码版：谁都能 push 一个请求，没人知道它什么时候被消费）。
 所以我不为迁就旧曲线去改代码：**终态 19，不是 3。**
 
-> 注：19 = 17 C + enter + refresh（init 已在 17 里）。若 `checkSelection` 也判 C，则 20。
+> 注：19 = **16 C + 3 L**（init / enter / refresh）。若 `checkSelection` 也判 C，则 20。
 > 这两个值都在"清册"里逐键可查，不再是一个减法。
 
 ## 八、机检（四条，交 TestDev）
