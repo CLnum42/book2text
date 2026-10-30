@@ -16,7 +16,8 @@
 | `applySplitBatch` | 12867–12901 | 35 | 1 | `split-batch-apply` · `split-batch-error`（2 处） |
 
 调用者全在刀外（`refreshProject` / `boot` / `setAutoApplySetting` / `buildTile` / `setupLibrary`），
-现在留外壳**不需要转发键**；搬走时各 +1（R8 +3，另 1 个是 knife-review 的 `recognizePage`）。
+现在留外壳**不需要转发键**；改判后（2026-10-30）本刀**不搬函数**，把 pages 写点收成 **3 个能力键**
+（R8 +3：setPackageModeChrome / syncProjectSettings / setSelectionHint），另 1 个是刀 7 的 `recognizePage`。
 
 ## 二、甲被否的理由（比"改 HTML 麻烦"硬）
 
@@ -85,7 +86,8 @@ split-batch-error     同上                                        applySplitBa
    （用 index.html 的已知 id 集合对调用参数做正则扫描，命中即红）；
 ③ chrome 方法必须是具名方法：不许出现 `chrome.toggle("x")` / `chrome.show("x")` 这类"id 当参数"的形态
    —— 判据 ② 的扫描同时覆盖它（id 字面量出现在参数里就红）；
-④ R8：34 → 36（刀4）→ 40（本刀 +4）；VIEW_EXPORTS 逐键登记死亡刀号；
+④ R8：刀 7 之后 58（+1 = recognizePage），本刀 **58 → 61**（+3 个能力键）——曲线里的 61 就是终点；
+   VIEW_EXPORTS 逐键登记死亡刀号（活着的老键一律重算成刀 9，依据是曲线不是拍脑袋）；
 ⑤ 真机：导出审校结果包 / 导出面板的版心判定开关 / 拆分批次三条路行为不变。
 ```
 
@@ -102,7 +104,13 @@ split-batch-error     同上                                        applySplitBa
 ```
 
 代价（Architect 评估，我认同）：**最小的丙 = 量一遍 + 接一次注入 + 几个具名 shim，弹层逻辑一行不用重写**；
-真正成本在测量，不在改代码。R8 曲线不变：**34 → 36 → 40 → 22 → 3**。
+真正成本在测量，不在改代码。曲线（Architect 2026-10-30 重签）：
+
+```
+36(刀4) → 53(刀5) → 57(刀6) → 58(刀7) → 61(刀8) → 22(刀9) → 3(刀10)
+刀 9 要死 **39** 个键（= 61 − 22）——**逐键列名，不写总和**
+（原图写的 35 作废：那是"搬函数也 +3、再加 10 个能力键 = 71"那套算法的残留）
+```
 
 ## 六、乙的边界（写清，防止被当通行证）
 
@@ -131,12 +139,17 @@ split-batch-error     同上                                        applySplitBa
 ### 9.1 **一笔落完**：代码 + seed + 豁免表 + TOTAL_CAP + registry 同批
 
 ```
-① 代码：applyPackageMode / applyProjectSettings / applySplitBatch 搬进 pages-view，
-        体内 **R3 的 13 种 / 23 处** pages id 引用归零，R3 23 → 0
-② seed：4 行 → **0 行**（这 4 行就是这三个函数 + recognizePage 的，刀 7 已删 recognizePage 那行）
-③ 豁免表：13 项 → **0 项**（整张表清空，R3 这一章结账）
-④ TOTAL_CAP 23 → **0** · Σcap 23 → **0**（三者合一落到 0）· BLOCKED_MAX 0 不变
-⑤ knife-registry：刀 8 标 landed
+① 代码：**三个函数留在 app.js**（跨域编排不搬），把 pages 那批写点收成 **3 个能力**（pages-view.js 侧实现）：
+        `setPackageModeChrome(on)`    ← applyPackageMode 的 20 处 pages 写点
+        `syncProjectSettings(settings)` ← applyProjectSettings 的 2 处
+        `setSelectionHint(text)`      ← applySplitBatch 的 1 处
+        app.js 改调 `window.PagesView.<能力>(…)` ⇒ app.js 对 pages id 的引用 **23 → 0**，R3 23 → 0
+   ② 7 个 chrome id + 3 个 review id **仍由 app.js 直接写**（合法）：外壳 id 永不进 R3，
+      review 未落盘也不进 R3 ⇒ **不存在"模块侧 10 条红"**（旧版这条判据随形态改判作废）
+③ seed：3 行 → **0 行**（刀 7 已删 recognizePage 那行；剩的 3 行就是这三个函数）
+④ 豁免表：13 项 → **0 项**（整张表清空，R3 这一章结账）
+⑤ TOTAL_CAP 23 → **0** · Σcap 23 → **0**（三者合一落到 0）· BLOCKED_MAX 0 不变
+⑥ knife-registry：刀 8 标 landed（同一笔里必须是 `move(pages): 刀 8` 首行，否则 delta 自检红）
 ```
 
 **三个函数实际碰的 id 不是 13 种，是 23 种 / 37 处**（实测 `main@f450a44`，按 `index.html` 的
@@ -154,10 +167,12 @@ applySplitBatch       12003–12037 · 不同 id  3 · 出现  3
                                  · export-margin-judgement · split-batch-apply · split-batch-error
 ```
 
-后两类共 **10 种**不在 R3 计数里，但**受模块侧零豁免约束**（`boundary.test.mjs:1715`：
-`x-view.js` 里出现不属于自己 section 的 id 就红，模块侧没有表可挂）。三个函数一搬进 `pages-view.js`，
-这 10 条必红：3 个 review id 靠刀 7 的具名入口解掉，7 个外壳 chrome id 的归属**待 Architect 裁**
-（三条候选路：归外壳走注入 / 把 markup 搬进 view-pages / 新增一段所有权）。
+后两类共 **10 种不进任何模块**：函数留外壳之后它们仍由 app.js 写，所以既不进 R3，也不触发
+模块侧零豁免（`boundary.test.mjs:1715`）——**旧版「模块侧 10 条红必须同时归零」随形态改判作废**。
+
+> Architect 2026-10-30 的规则（判据来自代码形态）：**单视图动作 → 该模块；跨域编排 → 留外壳、各域写点收成能力**。
+> 这三个函数同时碰 pages（13）+ review（3）+ 外壳（7），搬进 pages 模块等于让 pages 去点顶栏和审校入口，
+> 边界弄反了。代价是 **3 个导出键**（不是 10 个能力）。
 
 **别分两笔，也别"先清表"**：只清豁免表、seed 不动的中间态会红，原文
 
@@ -170,32 +185,30 @@ pages 的 seed 里有函数的自身名与 wire 名在实测里都不存在（1 
 seed 里还挂着名字自然全都显得"丢了"。表空 + 函数还挂着就是矛盾态。
 ⇒ **不修判据，改顺序**：一条命令里的中间态不落盘，所以一笔落完即可。
 
-### 9.2 预期红：**25 条**（刀 7 之后 23 条），必须归零
+### 9.2 预期红：**0 条**（新形态下 R3 侧不再有「还引用着」）
 
-我在 `main@f450a44` 上模拟终态（表清空 + TOTAL_CAP=0 + registry 刀 8 landed）实测：
+新形态是**函数留外壳 + 收能力**，所以 app.js 里那 25 处 `el("…pages id…")` 是被**替换成能力调用**，
+不是随函数搬走——落完之后 app.js 对 pages id 的引用就是 0，那条循环自然一条都不吐。
+
+我在 `main@cf4ebb7` 上模拟过一遍端点（表清空 + `TOTAL_CAP=0` + seed 空 + registry 刀 8 landed +
+把那 25 处 `el("<id>")` 换成 `el()`），实测：
 
 ```
-**25 条** problem：「app.js:NNN 还引用着 view-pages 的 id X——这个视图已经有 pages-view.js，旧字面量必须收干净」
-   25 = `r3.total`（14 种 id 的出现总数；主循环按 id，一个 id 一次、吐出它全部的 occurrences）
-   测试**输出里会出现 50 行**，不是判据条数：`assert.deepEqual(problems, [], problems.join("；"))`
-   会把同一份 problems 打印两遍——断言消息一遍（`AssertionError: …`）、deepEqual diff 一遍（带 `+`）
-刀 7 落完后再模拟：**23 条**（pages-error 2 处随 recognizePage 迁走，该 id 归零）→ 输出 46 行
+「还引用着 view-pages 的 id」= **0 条**
+唯一那条红是「当前刀由两源现算：…delta=2」——因为模拟里没有真实的 `move(pages): 刀 8` 提交首行，
+  真落盘时那一笔就是 move 笔，delta = 0，这条不会红
 ```
 
-> 口径别混：**「数条纹」= 判据条数**（25 → 23），不是日志行数（50 → 46）。
-> 今天同一个地方已经栽过：R3 的 25 / 按字面出现数 27 / 日志行数 50 —— 三个数打架全是口径不同。
-
-这 23–25 条**就是本刀的产品工作量本身**（applyPackageMode 20 + applyProjectSettings 2 +
-applySplitBatch 1 = 23 处引用落在这些行上）。验收时**必须归零**，不是"红着也过"；
-**数条纹只用来判断"是不是同一批"，不当作通过条件**。
+> 旧数字作废：**25 条 / 23 条（输出 50 / 46 行）是"搬函数"那个形态下的数**，改判后不再适用。
+> 记录口径：`assert.deepEqual(problems, [], problems.join("；"))` 会把同一份 problems 打两遍，
+> 所以**日志行数是判据条数的 2×**——这条口径在任何形态下都成立，别拿日志行数当判据条数。
 
 ### 9.3 终态判据（四条一起看，缺一条都可能"绿着坏"）
 
 ```
 r3.total == 0   且   r3.ids == 0   且   豁免项数 == 0   且   Σcap == TOTAL_CAP == 0
-另加：seed 0 行 · BLOCKED_MAX 0 · registry 刀 8 landed · R8 = 58（本刀不新增导出键）
-再另加：**模块侧 10 条红必须同时归零**（3 个 review id + 7 个外壳 chrome id）
-        —— 这 10 条不是 R3 计数，是「`x-view.js` 只许碰自己 section」那条零豁免边界
+另加：seed 0 行 · BLOCKED_MAX 0 · registry 刀 8 landed
+R8 = **61**（本刀 +3 个能力键：setPackageModeChrome / syncProjectSettings / setSelectionHint）
 ```
 
 ### 9.4 风险：`TOTAL_CAP = 0` 是**第一次**出现"上限为零"
