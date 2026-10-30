@@ -28,6 +28,21 @@ REPO=$(git rev-parse --show-toplevel 2>/dev/null) || {
 }
 cd "$REPO" || exit 1
 
+# ---- 状态文件的位置（2026-10-30 修：worktree 里 `$REPO/.git` 是**文件**不是目录）----
+# linked worktree 的 `.git` 是一个指向 `.git/worktrees/<name>` 的文本文件，所以
+# `> "$REPO/.git/xxx"` 会直接 `Not a directory` —— 闸**在写日志那一步就崩**，
+# 于是 worktree 里所有人只能 `--no-verify`（工具坏了 → 绕过变常态 → 账本没人看）。
+# 口径与 post-commit / pre-push / status.sh 一致：**共同的记账文件一律放 git-common-dir**
+# （多 worktree 共用一本账）；临时导出目录里跑测试时给的 GIT_DIR 用本 worktree 的 git-dir。
+COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+GITDIR=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null || true)
+[ -n "$COMMON" ] || COMMON="$REPO/.git"
+[ -n "$GITDIR" ] || GITDIR="$COMMON"
+if [ ! -d "$COMMON" ]; then
+  echo "✗ pre-commit：git-common-dir 不是目录（$COMMON）——闸的记账文件没地方写，拒绝提交（fail closed）" >&2
+  exit 1
+fi
+
 # ---- 找 node：hook 的 PATH 不含 ~/.local/bin ----
 NODE=""
 for c in "$(command -v node 2>/dev/null)" "$HOME/.local/bin/node" /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do
@@ -44,8 +59,8 @@ fi
 # ---- 事后对账：已推提交里有没有没跑过 pytest 的 ----
 # git push --no-verify 会跳过 pre-push，而 git 没有 post-push hook —— 所以"推送绕过"的留痕
 # 只能靠这个必然会跑的回合（每次提交）。不是最理想，但它不依赖任何人记得。
-STAMP="$REPO/.git/b2t-hooks-installed"
-PLOG="$REPO/.git/b2t-pytest.log"
+STAMP="$COMMON/b2t-hooks-installed"
+PLOG="$COMMON/b2t-pytest.log"
 if git rev-parse --verify -q origin/main >/dev/null 2>&1 && [ -f "$STAMP" ]; then
   SINCE=$(cat "$STAMP" 2>/dev/null || echo 0)
   MISSING=0
@@ -81,7 +96,7 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/b2t-precommit.XXXXXX") || {
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT INT TERM
 
-LOG="$REPO/.git/b2t-precommit.log"
+LOG="$COMMON/b2t-precommit.log"
 if ! git checkout-index -a --prefix="$TMP/" 2>"$LOG"; then
   echo "✗ pre-commit：索引导出失败（日志 $LOG）" >&2
   exit 1
@@ -91,7 +106,7 @@ fi
 # GIT_DIR 指向原仓库：R11 / 特征契约要 `git show <tag>:<path>` 读历史版本，
 # 临时目录没有 .git，不给它就会整条闸红。
 START=$(date +%s)
-( cd "$TMP" && GIT_DIR="$REPO/.git" \
+( cd "$TMP" && GIT_DIR="$GITDIR" \
     env -u B2T_APP_JS -u B2T_VIEW_JS -u B2T_STATIC_DIR \
     "$NODE" tests/js/run.mjs ) >"$LOG" 2>&1
 RC=$?
@@ -109,8 +124,8 @@ if [ "$RC" -ne 0 ]; then
 fi
 
 # ---- 记录"这个 tree 通过了闸" ----
-printf '%s' "$TREE" >"$REPO/.git/b2t-gate-pass" || {
-  echo "✗ pre-commit：套件绿了，但写不了 .git/b2t-gate-pass（权限？）" >&2
+printf '%s' "$TREE" >"$COMMON/b2t-gate-pass" || {
+  echo "✗ pre-commit：套件绿了，但写不了 $COMMON/b2t-gate-pass（权限？）" >&2
   exit 1
 }
 

@@ -29,8 +29,12 @@ echo "✓ core.hooksPath = $CUR"
 
 # 记一个安装时间戳：pre-commit 用它只对"装机之后"的已推提交做 pytest 对账，
 # 免得把本 hook 出现之前的历史提交全报成"没跑过 pytest"。
-date +%s >"$REPO/.git/b2t-hooks-installed"
-echo "✓ 记账起点 .git/b2t-hooks-installed = $(cat "$REPO/.git/b2t-hooks-installed")"
+# worktree 里 `$REPO/.git` 是文件（2026-10-30 修）：记账起点与 pre-commit 同口径，放 git-common-dir
+COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+[ -n "$COMMON" ] || COMMON="$REPO/.git"
+[ -d "$COMMON" ] || { echo "✗ git-common-dir 不是目录（$COMMON）" >&2; exit 1; }
+date +%s >"$COMMON/b2t-hooks-installed"
+echo "✓ 记账起点 b2t-hooks-installed = $(cat "$COMMON/b2t-hooks-installed")"
 
 # ---------------- 真拒绝自检（一次性仓库，不碰真仓库） ----------------
 NODE=""

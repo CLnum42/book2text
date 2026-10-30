@@ -43,10 +43,18 @@ run_once() {
 # **后写覆盖先写** → 通过的那笔被记成 BYPASS。修法：把「pre-commit → commit → post-commit」
 # 整段用一把锁串起来。**注意：当前 git 由 index.lock 串行化提交，并发覆盖在本 git 行为下不会发生；
 # 这把锁是防御性的，不是某次事故的修复。** macOS 无 flock，用 mkdir 的原子性（可移植）。
-# linked worktree 里 $REPO/.git 是**文件**（gitdir 指针），mkdir 必 ENOTDIR；
-# 用 --absolute-git-dir 取真实 git dir（worktree 下是 .git/worktrees/<name>）。
-GITDIR=$(git rev-parse --absolute-git-dir 2>/dev/null) || GITDIR="$REPO/.git"
-LOCKDIR="$GITDIR/b2t-commit.lock"
+# 锁的位置：**git-common-dir**（2026-10-30 修）。
+# 原先是 `$REPO/.git/b2t-commit.lock`，而 linked worktree 的 `.git` 是**文件** →
+# `mkdir` 必然 ENOTDIR → 空等 120s 后报「提交锁等待超时」，worktree 里根本提交不了。
+# 为什么不放本 worktree 的 git-dir：锁要串行化的是「pre-commit 写 MARK → commit → post-commit 读 MARK」，
+# 而 MARK 在 common dir（多 worktree 共用一本账）——锁跟着 MARK 走，否则两个 worktree 仍会互相踩。
+COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+[ -n "$COMMON" ] || COMMON="$REPO/.git"
+if [ ! -d "$COMMON" ]; then
+  echo "✗ commit.sh：git-common-dir 不是目录（$COMMON）——放不了提交锁，直接退出（不空等）" >&2
+  exit 1
+fi
+LOCKDIR="$COMMON/b2t-commit.lock"
 n=0
 while ! mkdir "$LOCKDIR" 2>/dev/null; do
   n=$((n + 1))
