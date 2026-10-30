@@ -1,4 +1,7 @@
-# knife-review 施工图（占位）：把 review 入口从 pages 的跨视图写法里摘出来
+# knife-review 施工图（占位）：把 review 入口从 pages 的跨视图写法里摘出来（**刀 7**）
+
+> 刀号见 `docs/refactor/pages/knife-numbering.md`（旧记法「刀 6」= 本刀；刀号真值源是
+> `tests/js/knife-registry.mjs`）。
 
 > **状态**：占位（Architect 2026-10-30 裁定"两刀，review 先、package 后"）。**未做实测设计**：
 > 行范围与 refs 是当前树的只读量数，函数体怎么切、review 模块要开哪些具名入口，要等本刀开工前再出图。

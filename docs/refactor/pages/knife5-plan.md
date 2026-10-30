@@ -253,7 +253,7 @@ loadPageNumberSummary ← hydrateView（路由）
   要等 showView / hydrateView 改成调模块入口（enter）才算数。
 ```
 
-### 8.1 导出收口刀（刀 6）重出图：它要死 **31** 个键，不是 14 个
+### 8.1 导出收口刀（**刀 9**）重出图：它要死 **31** 个键，不是 14 个
 
 ```
 53 − 22 = 31 = 13 个候选键（16 − 1 已死 − 2 永留外壳）+ 18 个本刀新转发键
@@ -262,7 +262,7 @@ loadPageNumberSummary ← hydrateView（路由）
 **光靠"那 30 个调用者"不够**：18 个新转发键的调用者里有 6 个不在那 30 个里 ——
 `setupLibrary`(12236 rerunAuxiliary) · `showView`(222 pausePageThumbnails) · `pollTask`(5936) ·
 `applySplitBatch`(12651) · `startLayoutDetectFromDialog`(6236/6251/6252) · `setupReviewControls`(11981)。
-⇒ 刀 6 必须重出图（不是补一句），并且要连这三行 deps 一起改，否则键一死库页/阅读页预取就断：
+⇒ 刀 9 必须重出图（不是补一句），并且要连这三行 deps 一起改，否则键一死库页/阅读页预取就断：
 
 ```
 app.js:13640  loadFinishSummary        → 改指 reading-view（ReadingView 的 deps）
@@ -274,7 +274,7 @@ app.js:14006  renderRecognitionSettings → 改指 library-view
 
 ```
 34 → 36 → 40 → 53 → 22 → 3
-    刀4   推迟4   刀5   刀6   收口
+    刀4  推迟4(刀7/刀8)  刀5   刀9   刀10
 
 签字条件（Architect）：每个键带死亡刀号并逐条列名（18 个）；"到点必须死"的判据是
 **该键在 app.js 的引用 = 0**，不是"调用者搬走了"——本轮就有 3 个键的调用者住在别的模块里，永远搬不走。
@@ -288,12 +288,25 @@ app.js:14006  renderRecognitionSettings → 改指 library-view
    否则 `showView('merge') → pausePageThumbnails → injected.visiblePageNos.clear()` 会红
    （loadApp 是"模块先、app.js 后"，模块 init 拿到的是 `() => undefined` 桩）。
    这一笔单独提交，且必须在**旧树**上先绿。
-② 豁免表一处收紧也在这笔 move 里：`tests/js/pages-r3-exemptions.mjs:72`
-   `{ id: "setup-panel", cap: 5, stage: 5 }` → `stage: 4`。
-   原因：删 31 行 seed 后 `setup-panel` 现算 max = 4（只剩 `applyPackageMode` 那条刀4 行）；
-   到期刀不许手调到比现算大，也不许留大 —— 方向是**收紧**，`move:` 笔允许改豁免表。
-   （我上一版图写"本刀 0 项变动"，漏了这处。）
+② 豁免表按 **D** 走（刀号重排之后）：`PAGES_STAGE` 2 → **5**（登记表里 landed 的最大刀号），
+   于是「到期刀 ≤ 5 且仍有引用」的 **24 项**当场到期，必须同批推到真正搬走它们的刀：
+   ```
+   刀 6（片段抽取）10 项：page-more-menu · apply-high-suggestions · aux-rerun · backups-open
+       · selection-review-open · stats-open · word-boxes-open · pages-margin-toggle
+       · pages-overlay-toggle · layout-detect-open
+   刀 7（review）   1 项：pages-error
+   刀 8（package） 13 项：assign-list-toggle · assign-open · check-pending · selection-check
+       · page-setup-bar · panel-pagenum-settings · panel-recognition-settings · selection-actionbar
+       · rec-margin-judgement · auto-apply-suggestions · selection-hint · selection-skip-checked · setup-panel
+   ```
+   外加删 1 项 `selection-recognize`（引用归零）。逐项账与"为什么是 24 不是 14"见
+   `docs/refactor/pages/knife-numbering.md` §三。
+   —— 上一版图写的"`setup-panel` stage 5 → 4、本刀只动一处"**作废**：那是以 `PAGES_STAGE = 2` 为前提的账。
 ③ 两笔都落了，才落本刀的 move 笔。
+
+> 刀号的唯一真值源是 `tests/js/knife-registry.mjs`（人读版：`knife-numbering.md`）：
+> seed 里出现未登记的号 → 红；候选行解析不了 → 红（带行号 + 原文）；`PAGES_STAGE` 必须等于
+> `maxLandedKnife()`。**刀号不该手写**——和 `GATE_SWITCHES` 是一件事的两面。
 ```
 
 ```
@@ -325,11 +338,11 @@ Approved-by: DevLead
 
 ① app.js        −31 函数体（651）+18 转发器 +deps 块 −20 +18
 ② pages-view.js +31 函数体 +36 处 injected.X 直呼 +api +18
-③ tests/js/boundary.test.mjs  VIEW_EXPORTS pages 36 → 53（18 个新键逐条注释"死亡刀号 = 刀6"）
+③ tests/js/boundary.test.mjs  VIEW_EXPORTS pages 36 → 53（18 个新键逐条注释"死亡刀号 = 刀 9"）
 ④ docs/refactor/evidence/pages/stage2-movers-seed.md  −31 行（42 名 → 11 名；45 行 → 14 行）
 ⑤ docs/refactor/pages/knife5-*
 
-第二笔（另开）：move(pages): 刀 5b —— 7 处 pages 片段抽取（25 处）
+第二笔（另开）：move(pages): 刀 6 —— 7 处 pages 片段抽取（25 处）
    判据：抽完外壳函数里 pages id 引用 = 0；R3 101 →（本刀后）50 → 25
 ```
 
@@ -351,9 +364,9 @@ Approved-by: DevLead
 ## ⑫ 前置依赖
 
 ```
-· 本刀只把 R3 降到 50；剩下 50 = 片段抽取 25（刀 5b）+ 推迟 4 个 25（knife-review / knife-package）
-· R3 → 0 需要：knife-review + knife-package + 刀 5b 三笔都落
-· 导出收口刀（刀 6）要重出图：31 个键 + 6 个漏网的调用者 + 3 行 deps 改指
+· 本刀只把 R3 降到 50；剩下 50 = 片段抽取 25（刀 6）+ 推迟 4 个 25（knife-review 刀 7 / knife-package 刀 8）
+· R3 → 0 需要：刀 6（片段）+ 刀 7（review）+ 刀 8（package）三笔都落；死了哪些由 `knife-numbering.md` 的账管
+· 导出收口刀（刀 9）要重出图：31 个键 + 6 个漏网的调用者 + 3 行 deps 改指
 ```
 
 ## 附：生成器的一个真 bug（本刀第一次踩到，已修）
@@ -363,5 +376,5 @@ Approved-by: DevLead
 不是"永远绿"，是反着——这比永远绿更危险，因为它会逼人把正确的改写撤回去。
 
 修法：数改写后的行；并加一条反证"改写后的模块里旧行必须 0 次"。
-另一条陷阱（刀 6 会踩）：`want` 只在本刀的 mover 体里数（`pre_rewrite`），
+另一条陷阱（刀 9 会踩）：`want` 只在本刀的 mover 体里数（`pre_rewrite`），
 按整个 `app.js` 数会让"同一条旧行同时出现在要搬和不搬的函数里"变成不可满足的判据。

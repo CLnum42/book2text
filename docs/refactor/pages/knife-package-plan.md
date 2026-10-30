@@ -1,4 +1,7 @@
-# knife-package 施工图（占位 + 设计纲要）：包 / 导出 / 拆分弹层那 3 个函数
+# knife-package 施工图（占位 + 设计纲要）：包 / 导出 / 拆分弹层那 3 个函数（**刀 8**）
+
+> 刀号见 `docs/refactor/pages/knife-numbering.md`（旧记法「刀 7」= 本刀）。本刀开工前，刀 6
+> （片段抽取）与刀 7（review 入口）必须已落盘。
 
 > **状态**：占位。开工顺序 **knife-review 先、本刀后**。函数体怎么切、chrome 方法表具体几个，开工前再出图。
 > **2026-10-30 Architect 裁定：选丙（两种能力：`navigate` + `chrome.*`），甲否决**。本文件按丙写纲要，
