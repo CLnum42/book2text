@@ -147,6 +147,20 @@
       detailText: null,
       detailFetched: false,
     };
+    // 失败路径：先同步做状态与 tilePublish（onReady 同步契约），detail 由共享出口迟到补齐。
+    // 绑定只在创建时做一次；tileLoad 不再重绑，避免把共享出口的包装冲掉。
+    record.img.onerror = () => {
+      record.loading = false;
+      record.status = "missing";
+      record.img.dataset.status = "missing";
+      tilePublish(record);
+    };
+    attachRenderErrorDetail(record.img, {
+      container: () => {
+        const first = record.handles.values().next().value;
+        return first ? first.el : null;
+      },
+    });
     if (typeof IntersectionObserver === "function") {
       record.observer = new IntersectionObserver((entries) => {
         if (entries.some((entry) => entry.isIntersecting)) tileLoad(record);
@@ -176,28 +190,6 @@
       record.img.dataset.status = "ready";
       tilePublish(record);
     };
-    record.img.onerror = () => {
-      // 不抛，但**不许静默**：状态可读 + onReady 必须被调用（§21.7）
-      record.loading = false;
-      record.status = "missing";
-      record.img.dataset.status = "missing";
-      tilePublish(record);
-      // 只查一次：失败图常常是 400（例如「页面渲染尺寸过大」），后端给了人话就原样显示；
-      // 取不到（网络 / 404）就保持现在的「缺图」占位，绝不把报错变成空白。
-      if (!record.detailFetched && typeof fetch === "function") {
-        record.detailFetched = true;
-        fetch(url)
-          .then((response) => response.json())
-          .then((body) => {
-            const detail = body && body.error && (body.error.detail || body.error.message);
-            if (detail) {
-              record.detailText = String(detail);
-              tilePublish(record);
-            }
-          })
-          .catch(() => { /* 取不到就不写，保持「缺图」 */ });
-      }
-    };
     for (const handle of record.handles) handle.el.classList.remove("is-missing");
     record.loading = true;
     record.img.src = url;
@@ -211,22 +203,7 @@
       handle.url = record.url;
       handle.el.dataset.status = record.status;
       handle.el.classList.toggle("is-missing", record.status === "missing");
-      // 图区域内的可见文字（title 要悬停才看得到，等于没有）
-      if (record.status === "missing" && record.detailText) {
-        if (!handle.noteEl) {
-          handle.noteEl = document.createElement("span");
-          handle.noteEl.className = "ptile__error";
-          handle.noteEl.style.cssText =
-            "position:absolute;left:8px;right:8px;bottom:8px;padding:6px 8px;border-radius:6px;" +
-            "background:rgba(255,255,255,.92);color:#b91c1c;font-size:12px;line-height:1.4;text-align:left;";
-          handle.el.appendChild(handle.noteEl);
-        }
-        handle.noteEl.textContent = record.detailText;   // 原样，不重写不截断
-        handle.noteEl.hidden = false;
-        handle.noteEl.title = record.detailText;
-      } else if (handle.noteEl) {
-        handle.noteEl.hidden = true;
-      }
+
       if (isFn(injected.paintOverlays)) {
         try {
           injected.paintOverlays(handle.slot, { pageNo: handle.pageNo, overlays: handle.overlays, state: handle.state });
