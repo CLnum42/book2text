@@ -109,7 +109,36 @@ window.fetch = (input, init) => {
 | 收尾后 `git status` 还有别的改动 | 你在主树或别人的 worktree 里 | 立刻停，别提交 |
 | 界面上什么都不出现，但闸全绿 | 状态指向了**不可见的元素**——引用的节点还在，但被隐藏、或已不在当前 DOM 里 | 先打印状态指向的 id / 元素，查它的 `hidden` 与父链可见性。闸绿只证明逻辑走到了，**不证明人看得见** |
 
-## 4. 报告模板
+## 4. 样例：一次真机验收长什么样
+
+> 真实样例，不是示意：Builder 验「刀 7 · 识别失败时错误条写哪儿」时产出的表。
+
+### 4.1 判据表
+
+| # | 场景 | 前置状态（必须实测） | 动作 | 期望 DOM 变化 | 不期望的变化 | 失败注入计数 |
+|---|---|---|---|---|---|---|
+| A | 审校详情开着 | `detailPageNo` 非空 · 当前视图 `#view-review` | 点「⋯ → 重新识别」 | `#page-detail-error`：`hidden` true→false，`textContent` ""→错误文本 | `#pages-error` 保持 `hidden=true` | 0→1 |
+| B | 页面视图，没开过详情 | `detailPageNo === null` · `#view-pages` | 点页块「识别」 | `#pages-error`：`hidden` true→false，`display` none→block，`textContent`→错误文本 | `#page-detail-error` 保持 `hidden=true` | 0→1 |
+| C | stale：开过详情又离开审校 | 开详情到第 2 页 → 点步骤条「页面确认」→ 实测 `detailPageNo` 已 null、`lastDetailPageNo` 仍 2 | 点页块「识别」 | `#pages-error`：`hidden` true→false，`display` none→block | `#page-detail-error` **仍 `hidden=true`** | 0→1（本场景内） |
+| D | 伴生状态生效 | 开详情到第 2 页 → 回「页面确认」 | 点步骤条「目录确认」 | `#index-page-no` = 「第 2 页」 | — | 不涉及 |
+
+### 4.2 三件必须点出来的事
+
+**① 判"通过"看的是元素上的三个字段**——`hidden` / `display` / `textContent`，不是"界面上看起来有提示"。同一个元素可能 `hidden=false` 但父链不可见，也可能文本正确但写在另一个视图的错误条里。
+
+**② "对照修前"是这张表最值钱的一列。** C 场景在修复前是：`#pages-error` 保持 `hidden`，错误被写进另一个视图里隐藏的错误条 ⇒ **屏幕上什么都不出现**。所以——**只量"修后对了"证明不了修好，只能证明现在如此**。这条是通用要求：每条判据都要能回答"如果它坏了，我会看到什么"。
+
+**③ 前置状态必须实测**（A 要 `detailPageNo` 非空、B 要它为空、C 要它刚被清）。不实测就会**在错误的场景里验了一条通过的路径**——A 和 B 只差这一个变量，量错了，两行会同时"通过"。
+
+### 4.3 这次用的是
+
+```text
+脚本路径仅供复现，别人不必照抄：/tmp/ego-k7/round-50/51/52.mjs
+环境：PYTHONPATH=worktrees/<你的>/backend + 独立 --library /tmp/b2t-* + 固定 --token
+fixture：fixtures/pdf/synthetic-smoke-3pages.pdf；跑完 finish({ keep: [] }) 并删临时库
+```
+
+## 5. 报告模板
 
 ```text
 真机验收 <任务>：<结论>
