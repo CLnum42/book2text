@@ -40,10 +40,44 @@
 - 复现口径：`api` 键取自 `pages-view.js` 的 `const api = {`；同名薄转发器 = app.js 顶层函数，
   名字与键相同且 ≤6 行、函数体里出现 `window.PagesView.<键>`；"宿主"= 调用点所属的顶层函数
   （折叠同名转发器这一层）。
-- **8 个死 T**（app.js 里 0 个调用点、也没有别的模块用）：
-  `renderRecognitionVerdict` · `renderSuggestionPanel` · `renderTypePicker` · `undoMarginEdit` ·
-  `updateSelectionPanel` · `pumpOverlayRender` · `rerunAuxiliary` · `scanVisiblePageSuggestions`
-  ⇒ 删的是**键 + 转发器**；模块内部仍在用的函数保留。
+- **"0 调用点"的键有 8 个，但真死只有 5 个**（2026-10-30 复核，`main@e9ddc2a`）：
+  另外 3 个是**值位引用**——只扫调用位 `key(` 就会把它们当死的。
+  这是团队第三次栽在值位（前两次：R3 闭包漏 71 个值引用、pages 转发器"无调用 4"）：
+
+  ```
+  4244  button.addEventListener("click", undoMarginEdit);                    ← 值位
+  3806  requestAnimationFrame(pumpOverlayRender);                            ← 值位
+  3181  suggestionScanTimer = setTimeout(scanVisiblePageSuggestions, 60);    ← 值位
+  ```
+
+  - **5 个真死**（删键 + 转发器）：`renderRecognitionVerdict` · `renderSuggestionPanel` ·
+    `renderTypePicker` · `rerunAuxiliary` · `updateSelectionPanel`
+    （`updateSelectionPanel` 唯一那处是 **app.js:11794 的注释**——**不剥注释**会把它当成引用，
+     于是"只扫调用位"漏 3 个、`"不剥注释"`多算 1 个，两向都会错）
+  - **3 个值位**：`undoMarginEdit` · `pumpOverlayRender` · `scanVisiblePageSuggestions`
+
+**裁定：A —— 让这 3 个键真死**（搬运排在 §十 的 **9.6**），不判 C、也不用"改箭头"绕过：
+
+```
+① 它们是模块**自己的渲染循环/接线**，而调度状态被放在外壳 —— 一份状态两边写、一边读：
+   overlayPumpScheduled（app.js:3021，外壳读 :3804）· suggestionScanTimer（:3170，外壳读/清）
+   模块通过 injected.setOverlayPumpScheduled / setSuggestionScanTimer 去写外壳的变量。
+   这正是刀 7/刀 8 一直在收的"边界弄反"，判 C 会把这份错位冻结成"合法接口"。
+② C 的定义是"**别的域**需要这个操作"；外壳的 setTimeout / requestAnimationFrame 触发
+   不是跨域需求，是模块自己的调度被放在了外面。
+③ marginUndoButton()（app.js:4234）只是造一个 button 元素、零 id，读的是模块已在用的
+   marginUndoStack —— 搬进去零风险。
+④ 顺带删掉 3 个 deps 键（setOverlayPumpScheduled · setSuggestionScanTimer · getSuggestionScanTimer，
+   其中 getSuggestionScanTimer 今天就是 0 读）+ marginUndoButton ⇒ deps 218 → **214**。
+```
+
+**为什么不采用 DevLead 的箭头改法**（`() => window.PagesView.undoMarginEdit()`）：
+
+```
+· 键没有死：api 里还在，R8 还是 61；
+· `PagesView.<key>` 的引用也还在，「到点未死」判据照样看得见它；
+· 它把"删键后 TypeError"换成"看起来删了、其实没删"——更难发现，属于最坏的一种绿。
+```
 - 39 个活 T 的宿主表见 §六（这就是 **9.1–9.5** 的施工依据：搬一个宿主，死它那一列键）。
 
 ## 四、C 清册（今日 9 个 + 刀 7/8 的 4 个；`init` 单列在 L）
@@ -93,15 +127,22 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 
 ```
 今天            57 = 8 死T + 36 活T + 12 C + 1 L
-刀 7  （+1 C）   58 = 8 死T + 36 活T + 13 C + 1 L   recognizePage   ← 现状（main 的 kinds 表就是这个）
-刀 8  （+3 C）   61 = 8 死T + 36 活T + 16 C + 1 L   setPackageModeChrome / syncProjectSettings / setSelectionHint
-刀 9   （−8 死T） 53 =            36 活T + 16 C + 1 L   删键 + 删转发器（0 个调用点，纯删）
-刀 9.1–9.5（−36 +2） 19 =                  16 C + 3 L   搬 78 个调用点（§六）+ 建 enter / refresh
-刀 10 （不变）   19 = 16 C + 3 L（init / enter / refresh）  冻结清册 + 落地 §八 的机检
+刀 7  （+1 C）   58 = 8 死T + 36 活T + 13 C + 1 L   recognizePage
+刀 8  （+3 C）   61 = 8 死T + 36 活T + 16 C + 1 L   setPackageModeChrome / syncProjectSettings / setSelectionHint  ← 现状
+刀 9   （−5）     56 = 3 值位T + 36 活T + 16 C + 1 L   5 个真死的：删键 + 删转发器
+刀 9.1 （−4 +1）  53 = 3 + 32 + 16 C + 1 L + 1 L(enter)   showView / hydrateView 的 pages 段搬进 enter()
+刀 9.2 （−5）     48 = 3 + 27 + 16 C + 2 L
+刀 9.3 （−12）    36 = 3 + 15 + 16 C + 2 L
+刀 9.4 （−3）     33 = 3 + 12 + 16 C + 2 L
+刀 9.5 （−12 +1） 22 = 3 +  0 + 16 C + 3 L(refresh)
+刀 9.6 （−3）     19 =            16 C + 3 L   渲染循环 / 版心撤销按钮的接线收回模块（§三 裁定 A）
+刀 10 （不变）    19 = 16 C + 3 L（init / enter / refresh）  冻结清册 + 落地 §八 的机检
 ```
 
-每一步的"来历"只有两种动作：**删一个 0 调用点的键**（−8），或**搬 n 个调用点进模块**（−36，+2）。
-没有"拍一个数"。子刀怎么分、死期写哪个号，见 §十（闸不允许"一刀多笔"）。
+每一步的"来历"只有三种动作：**删一个 0 引用的键**（刀 9 的 −5）、**搬 n 个调用点进模块**
+（9.1–9.6 的 −36）、**把模块自己的调度/接线收回模块**（9.6 的 −3，同时 deps −4）。
+没有"拍一个数"。`enter` 建在 9.1、`refresh` 建在 9.5 是我按语义钉的；若该刀图把入口提前/推后，
+中间值 ±1，**终态 19 不变**。子刀怎么分、死期写哪个号，见 §十（闸不允许"一刀多笔"）。
 
 ## 六、刀 9.1–9.5 的施工依据：宿主 → 可一次杀掉的键（41 行）
 
@@ -170,8 +211,12 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
      T：必须带 death（刀号）· 不许带 callers
      C：必须带 callers（函数名/模块名清单）+ Capability-Reason · 不许带 death
      未分类 / 两类字段混填 → 红
-② T 到点未死 = 红：death <= stageNow() 且（键仍在 api ∪ 同名转发器仍在 app.js ∪
+② T 到点未死 = 红：death <= stageNow() 且（该键在 app.js 的**任何引用** > 0 ∪ 键仍在 api ∪
      模块里还有 `injected.<该键>` 的自环）→ 红
+     · **"任何引用"= 三栏**：裸标识符（**含值位**）· `PagesView.<键>` · `injected.<键>`；**先剥注释**
+     · ⚠ 现在的实现 `appCallsOfExportKey`（boundary.test.mjs:3746）只数 `(window.)?PagesView.<键>`，
+       对"转发器 + 值位"是**瞎的**：4244 / 3806 / 3181 三处它全看不见 ⇒ 删键当天绿、运行时 ReferenceError
+     · `updateSelectionPanel` 反过来证明"剥注释"这半也得有：它唯一的出现是 11794 的**注释**
      —— 这条同时修掉今天那 20 个「写着刀5/刀6 死期却还活着」的键：6 个转 C（删死期）、
         3 个是死键（刀 9 直接删）、11 个按 §十 的表重算到 9.1–9.5
 ③ C 清册两向：
@@ -265,14 +310,17 @@ git log --format=%s origin/main | grep -oE "^move\(pages\): 刀 [0-9.]+" | sort 
 
 | 子刀 | 内容 | 死期写这个号的 T 键 |
 |---|---|---|
-| **9** | 删 8 个死 T（键 + 转发器）；20 个过期死期重判（6 转 C · 3 删 · 11 重算）；落 §八 ② | 8 个（§三） |
+| **9** | 删 **5 个真死的** T（键 + 转发器）；20 个过期死期重判（6 转 C · 3 删 · 11 重算）；落 §八 ② | 5 个（§三） |
 | **9.1** | 视图切换：`showView` / `hydrateView` | 4：`loadSetupSuggestions` · `renderPageSetup` · `loadLanguageSummary` · `pausePageThumbnails` |
 | **9.2** | 任务轮询与可见性：`pollTask` / `fetchPageBlocks` / `schedulePageVisibility` | 5：`refreshRecognizedPages` · `updateMarginDetectProgress` · `updateRecognitionAuxProgress` · `queueOverlayRender` · `updatePageVisibility` |
 | **9.3** | 版心一族（对话框 / 进度 / 瓷砖 / 拖动保存） | 12：`renderMarginStepVerdict`* · `setMarginStatus` · `showMarginDetectProgress` · `ensureMarginFitted` · `renderMarginPanel` · `refreshMarginTiles`* · `finishMarginDetectBar` · `refreshLayoutDetectEntry`* · `refreshMarginDetectHint`* · `loadLayoutBlocks` · `renderLayoutBlocks` · `savePageMargin` |
 | **9.4** | 页码一族（三个面板宿主 + 指标） | 3：`loadPageNumberSummary` · `setPageNumberStatus` · `renderPageNumberMetrics` |
 | **9.5** | 选择 / 网格 / 步骤 / 收尾 / 其它 | 12：`syncPageStates` · `forgetAllPageSuggestions` · `forgetAllPageBlocks` · `renderPages` · `visiblePages` · `reloadProjectPages` · `pageScroller` · `renderAutoApplyStatus` · `renderWorkflowFilter` · `checkSelection` · `renderStepPanels`* · `renderRecognitionStatus` |
+| **9.6** | 渲染循环与版心撤销按钮的接线收回模块（§三 裁定 A） | 3：`undoMarginEdit`（→ `marginUndoButton()` 一起搬）· `pumpOverlayRender`（→ `overlayPumpScheduled` 一起）· `scanVisiblePageSuggestions`（→ `suggestionScanTimer` 一起） |
 
-合计 **8 + 4 + 5 + 12 + 3 + 12 = 44 = 8 死 T + 36 活 T** ✓
+合计 **5 + 3 + 4 + 5 + 12 + 3 + 12 = 44 = 8 死 T（5 真死 + 3 值位）+ 36 活 T** ✓
+（9.6 与其它子刀的区别：那 3 个键的"死"不是删键，是**把调用点搬走**——它们今天有值位引用，
+ 只删键会留下 ReferenceError；所以 9.6 先搬调度，再删键。）
 
 多宿主取 max 的两个例子：`loadPageNumberSummary` 的宿主是 `adopt/remove/save`（9.4）与 `hydrateView`（9.1）
 ⇒ 死期 **9.4**；`syncPageStates` 的宿主是 `pollTask`（9.2）与 `refreshPageStates`（9.5）⇒ 死期 **9.5**。
@@ -366,9 +414,37 @@ divergenceCandidatesOn  → 先判那条断言还有没有意义：它断的是*
   C  文档 16 vs 落盘 16 —— 只在文档：无 · 只在落盘：无
   （C 的 16 = §四 的 13 + 刀 8 的 setPackageModeChrome / syncProjectSettings / setSelectionHint）
 
+> 本快照之后（同日）复核出：`9:8` 里只有 5 个真死、3 个是值位引用 ⇒ 死期表要改成 `9:5 + 9.6:3`。
+> 快照保留原样（它记的是那一刻的树），但别拿它当现表。
+
 记法坑验证（§四 的预登记）：app.js 里 `setPackageModeChrome` 是 **2 处**（applyPackageMode 的 if/else
 两个分支），而 kinds 的 `callers` 是 `["applyPackageMode"]`——**函数名，不是处数**。落盘正确。
 
 旁证（刀 8 按裁定落，不是按旧图）：app.js **13,428 → 13,428**（一行没少），pages-view **3,194 → 3,243**（+49）。
 刀 8 是"把 pages 的 13 处写点换成 3 个能力调用"，不是"搬三个函数"——所以 app.js 行数不该降。
 若将来有人报"刀 8 搬走了 applyPackageMode"，与这个行数矛盾，一查就出来。
+
+## 十三、另案：deps 表里的死键（23 个，2026-10-30 实测）
+
+**口径**：`window.PagesView?.init({ … })` 里的每个键，在 `pages-view.js` 里搜 `injected.<键>`；
+0 次 = 模块从未读过（无解构、无 `injected["x"]`，已核）。
+
+```
+实测（main@e9ddc2a）：deps **218** 键，**23 个从未读**：
+
+pageMarginStorageKey · pageOverlayStorageKey · renderRecognitionSettings ·
+AUX_TEXT_LAYER_SECONDS_PER_PAGE · PAGE_SUGGESTION_CONCURRENCY · getPageSuggestionActive ·
+pageSuggestionPending · pageSuggestionQueue · getSelectionAnchor · getSetupSuggestions ·
+getSetupSuggestionsLoaded · getSuggestionScanTimer · renderPages · divergenceChip · handleTileClick ·
+recognitionChip · reviewBadge · startTileMarginDrag · tileClassName · tileTitle · workflowChip ·
+token · setPageBlockPending
+```
+
+**为什么它今天不会被发现**：R13 只查「缺键」（`injected.x` 必读形态而 deps 没这个键 → 红），
+**多出来一个键不红**。于是注入面只涨不消 —— 和「豁免表只涨不消」「0 引用函数没人删」是同一族。
+
+```
+到期点：刀 10（收口）与 §十一 的零引用函数一起清；清完再开「deps 多键 = 红」。
+注意：删 `renderPages` 这类键之前要确认模块里没有**同名本地实现**（pages-view 自己有 renderPages，
+      这个 deps 是自环）；`getSuggestionScanTimer` 已在 9.6 的清单里。
+```
