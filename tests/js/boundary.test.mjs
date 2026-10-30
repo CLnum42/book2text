@@ -3772,6 +3772,13 @@ export function exportDeathProblems({ deaths, stage, appSource, apiKeys, expires
     return problems;
   }
   for (const [key, death] of Object.entries(deaths || {})) {
+    // **死期非法也要红，不许 continue 掉**：`Number("9b")` = NaN，而 `NaN <= stage` 恒 false，
+    // 一行 continue 就让这个键永不判到点、且不报错（Architect 揪出的静默洞）。
+    if (!Number.isFinite(Number(death)) || Number(death) <= 0) {
+      problems.push(`导出键 ${key} 的死期 ${JSON.stringify(death)} 不是正数刀号——`
+        + "Number() 得 NaN，`NaN <= stage` 恒 false，这个键永不判到点");
+      continue;
+    }
     if (!(Number(death) <= Number(stage))) continue;
     const count = appCallsOfExportKey(appSource, key);
     const inApi = (apiKeys || []).includes(key);
@@ -3809,6 +3816,18 @@ export function exportKindProblems({ names, kinds }) {
       if (has(entry, "callers")) problems.push(`导出键 ${key} 是 T（过渡键），却登记了 callers——T/C 字段混填`);
       if (!has(entry, "death")) {
         problems.push(`导出键 ${key} 是 T，却没写 death（哪怕是 null 代表待定，也要显式写出来）`);
+      } else if (entry.death !== null) {
+        // **死期本身也要校验**（Architect 揪出的静默洞）：死期是手写数据，改一个字符（9.3 → 9.3b）
+        // 就让 `Number(death)` 变 NaN，而 `NaN <= stage` 恒 false ⇒ 这个键**永远不被判到点、还不报错**。
+        // 这和 `PAGES_STAGE=2` 是同一类病：从「手工常数控制判据生效」变成「手写数据控制判据生效」。
+        const death = entry.death;
+        if (!Number.isFinite(Number(death)) || Number(death) <= 0) {
+          problems.push(`导出键 ${key} 的死期 ${JSON.stringify(death)} 不是正数刀号——Number() 得 NaN，`
+            + "`NaN <= stage` 恒 false，这个键永不判到点（而且不报错）");
+        } else if (!isRegisteredKnife(Number(death))) {
+          problems.push(`导出键 ${key} 的死期 刀${death} 不在 knife-registry 里——刀号唯一真值源是登记表，`
+            + "写一个不存在的号（如 8.7）不会静默，但会让它「晚一刀到期」");
+        }
       }
     } else if (entry.kind === "C") {
       if (has(entry, "death")) {
@@ -3869,6 +3888,14 @@ test("R8（三类键）自检：缺 kind 红 / T 带 callers 红 / C 带 death �
   const badKind = exportKindProblems({ names, kinds: { ...ok, a: { kind: "X" } } });
   assert.ok(badKind.some((m) => m.includes("不认识")),
     `三类键自检失败：未知 kind 被放过——${badKind.join("；")}`);
+
+  // 死期本身的两条：不是正数刀号（NaN）/ 不在登记表里
+  const nanDeath = exportKindProblems({ names, kinds: { ...ok, b: { kind: "T", death: "9b" } } });
+  assert.ok(nanDeath.some((m) => m.includes("不是正数刀号") && m.includes("永不判到点")),
+    `三类键自检失败：死期写成 "9b"（NaN）被放过——${nanDeath.join("；")}`);
+  const unregisteredDeath = exportKindProblems({ names, kinds: { ...ok, b: { kind: "T", death: 8.7 } } });
+  assert.ok(unregisteredDeath.some((m) => m.includes("不在 knife-registry 里")),
+    `三类键自检失败：死期 8.7（未登记）被放过——${unregisteredDeath.join("；")}`);
 
   const extra = exportKindProblems({ names, kinds: { ...ok, d: { kind: "T", death: null } } });
   assert.ok(extra.some((m) => m.includes("不是这个模块的导出键")),
