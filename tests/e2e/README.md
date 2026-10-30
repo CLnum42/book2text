@@ -311,3 +311,42 @@ git worktree remove /tmp/b2t-base
 `docs/known-limitations.md` 写一行"原 stall 口径恒等于动作数（253 动作→252 stall），
 已删，勿复现"——删掉的指标也要留死因，否则半年后有人重新发明它。
 （这一步改的是产品代码 + docs，不归 QA 写，需 Builder 执行。）
+
+## 识别主按钮七态验收清单（2026-10-30 定稿）
+
+基线树：`58f1db3`（树 `26a821b4`，与 `582e8c7` 内容逐字相同）。读数前先核
+**静态文件 sha256 与 `HEAD:backend/book2text/static/*` 逐个一致**，否则读的是旧缓存。
+
+```
+A1 未选 + 有未识别   「识别全部未识别页（N）」可点   body {scope:"unrecognized"}
+A2 已选 N 页（含未识别）「识别所选 N 页」            body {pages:[…N 个], skip_recognized}
+A3 已选 N 页（全已识别）「重新识别所选 N 页」+btn--danger  body {pages, force:true}
+A4 有正文、全已识别  「无可识别页」disabled          点了不发请求
+A5 识别中            「正在识别…」disabled           点了不发请求
+A7 没有正文页        「无可识别页」disabled          旧实现在这一态是「开始识别」
+```
+
+判据一律取 **DOM（文本 / class / disabled）+ 真发出去的 body**，不靠 job total 反推单一形态。
+
+### A3 会连弹两层框（已记录，不是 bug 卡点）
+
+点 A3 之后按顺序出现：① 页内确认框（`#confirm-dialog`，标题「N 页有人工改动」，
+安全键「跳过并识别剩下的 N 页」/ 危险键「仍要重识别这 N 页」，**焦点在安全键**）；
+② 按危险键后再弹一个**原生 confirm**（「选中的 N 页正文都已识别。重新识别会替换自动结果…继续吗？」），
+应答后才发出 `force:true`。
+
+后果：**探针在 A3 上不处理这两层框会拿到 `bodies: []` 的假结论**（看起来"点了没反应"）。
+正确姿势是 `page.click('#confirm-dialog-danger')` → `page.acceptDialog()` → 再读 body。
+两层框是否合并由 Designer/PM 定，QA 只记录顺序与文案。
+
+### 删掉底部旧按钮后的三条
+
+```
+C1 document.getElementById("selection-recognize") === null（#selection-primary-note 同）
+C2 选 N 页时可见的识别按钮只有 1 个（rec-start-all），点它发 pages、不发 scope
+C3 取消选择 → 同一按钮回到「识别全部未识别页（N）」
+```
+
+`393 / 394` 那对口径已合并：旧按钮的 `pendingAll` 只数 strictly-`unrecognized`，
+主按钮把 `failed` 也算待识别——实测差的那 1 页是第 `102` 页（正文 / include / failed）。
+现在只剩主按钮一个数，例如 `386 = 384 unrecognized + 2 failed`。
