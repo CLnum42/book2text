@@ -6,6 +6,45 @@
 > 另一处：`FORWARDERS` 分支会在 `INIT_ANCHOR`（`  setupLibrary();`）后再插一次
 > `window.PagesView?.init({…})`，刀 3 之后就会**出现第二个 init 调用**——语法合法、运行时把 deps 覆盖成半套。
 
+
+## 零、为什么 `--write` 会毁掉模块（读 Builder 的拼法后补，字都是核过的）
+
+生成器（`build_view.py`）里组装模块只有一句：
+
+```python
+module = header + out + INTERFACE      # header = IIFE 头 + let injected + const el；out = 本刀函数体
+```
+
+它**从来没有读过现有 `pages-view.js`**——所以 `--write` 是「整份替换」：刀 3 跑一次，模块从
+1,511 行变成 550 行，刀 1/2.5 的 34 个导出与 `wireAll` 全部消失；而 `node --check` 只查语法，
+一个「结构完整但内容缺一半」的文件在它眼里完全合法。
+
+第二处更隐蔽：`FORWARDERS` 分支会在 `INIT_ANCHOR`（`  setupLibrary();`）之后再插一次
+`window.PagesView?.init({…})`。刀 1 当时模块里没有 init 调用（第一次），所以只有一处；
+现在 `boot()` 里已经有一处，再插就是**两个 init**：后一个的 deps 只带本刀的键，
+把前一份 `Object.assign` 出来的 deps 覆盖成半套——运行时表现为「有些页面功能突然 undefined」，
+而语法、单测、node 闸全绿。
+
+Builder 手工拼完的两个文件可以当基准（`/tmp/app-merged.js` / `/tmp/pages-view-merged.js`，2026-10-30 11:05）：
+
+```
+app-merged.js      14,323 行 · PagesView?.init( 出现 **1** 次 · init deps 键 **207**
+pages-view-merged  2,041 行 · function init(deps) **1** 次 · api 键 **34**（16 + 本刀 14 + 4？见下）
+```
+
+> `api 34` 与计划里「16 + 14 = 30」差 4：那 4 个是刀 2.5 之后、本刀之前新增过的导出（`a582baa` 一带）。
+> **对账时要按"当前模块里的 api 键集合"数，不要按历史数字加**——这正是"用算术凑"的另一面。
+
+**所以增量拼法的判据是"计数为 1 + 集合相等"，不是"看起来对"**：
+
+```
+· app.js 里 `PagesView?.init(` 恰好 1 次            ← 防第二个 init 覆盖 deps
+· 模块里 `function init(deps)` 恰好 1 次
+· api 键 = 旧 api 键集合 ∪ 本刀 14 个（集合相等，不是数字相加）
+· deps 键 = 旧 deps 键集合 ∪ 本刀 dry run 的 injected_keys（集合相等）
+· 模块行数 = 旧行数 + 本刀函数体行数（刀 3：1,511 + 470 ≈ 1,981；Builder 实际 2,041，差 60 是注释/空行，要说明）
+```
+
 ## 一、三段各自往哪去（照这个拼，不要整份替换）
 
 ```
