@@ -3564,7 +3564,9 @@ const A5_ORDER = /\b(order|seq|sequence|trace|callLog|callOrder|callStack)\b/;
 const A5_MOCK = /\b(mock|spy|stub|fake)\w*/i;
 /** 探针测试文件白名单：{ file, owner, expires }，上限见 A5_MAX_PROBE_FILES。 */
 const A5_PROBE_FILES = [];
-const A5_MAX_PROBE_FILES = 4;
+// 空表就该零名额：留几个空位等于给未来的探针预批豁免（和 SAME_FILE_DUP 那条同一个毛病）。
+// 要开必须先显式抬这个数并在提交里写明理由——"忘了解一下"不许靠预留名额解决。
+const A5_MAX_PROBE_FILES = 0;
 /** 例外表：{ file, statement, owner, expires }；statement 是归一化后的语句指纹。现状零豁免。 */
 const A5_EXCUSES = [];
 const A5_MAX_EXCUSES = 0;
@@ -3582,21 +3584,24 @@ const A5_TEST_DIR = fileURLToPath(new URL("./", import.meta.url));
 // seed 刀号上界 `1..5`、受阻项 `=== 5`。前两个到那时也没有任何机检。
 // 一条由手工常数控制是否生效的判据，等于一条能被静默停用的判据。
 // 「常数对不对」这条判不了；「这个常数有没有登记、有没有说清真值来源」判得了——这就是本段。
+// **source 只写「来源」，不抄「现值」**（2026-10-30 加的一层）：抄一份现值就多一个漂点——
+// 我在 BRIDGE_EXCEPTION_MAX 上抄了旧值 3（实际早已降成 1），落地几小时就对不上。
+// 现值永远看常数那一行，本表只回答「它是谁算出来的、什么时候会变」。机检见 `gateSwitchProblems`。
 const GATE_SWITCHES = [
   { name: "PAGES_STAGE", source: "git 里最大的 `move(pages): 刀 N` 首行（无 git 时打印跳过，pre-push 会跑）", check: "决定「到期不搬 = 红」「受阻项必须 stage > PAGES_STAGE」从哪一刀起生效" },
-  { name: "BRIDGE_EXCEPTION_MAX", source: "app.js 内部桥例外条数硬顶 3（edge-ratchet.mjs 的 BRIDGE_EXCEPTIONS），只降不升", check: "A2/边棘轮是否放过某条 app.js 内部桥" },
-  { name: "SAME_FILE_DUP_EXCEPTION_MAX", source: "同文件重名例外硬顶 0（SAME_FILE_DUP_EXCEPTIONS 空表）", check: "R4b 是否放过某个同文件重复定义" },
-  { name: "WINDOW_HOOK_MAX", source: "__b2t* 窗口钩子例外硬顶 12，只降不升", check: "R6 是否放过某个全局窗口钩子" },
-  { name: "PAGES_R3_BLOCKED_MAX", source: "留外壳清单段数（knife2.5-split-plan.md §ⅲ）7 段，只降不升", check: "R3 受阻项（带「阻塞段」的豁免）条数上限" },
-  { name: "R3_MAX_EXEMPTIONS", source: "pages 过渡豁免条数硬顶 4，只降不升（人工下调并写明原因）", check: "R3 豁免表最多能挂几项" },
+  { name: "BRIDGE_EXCEPTION_MAX", source: "edge-ratchet.mjs 里的上限常数，与同文件 BRIDGE_EXCEPTIONS 的条数绑定（只降不升）；现值见该行", check: "A2/边棘轮是否放过某条 app.js 内部桥" },
+  { name: "SAME_FILE_DUP_EXCEPTION_MAX", source: "与本文件 SAME_FILE_DUP_EXCEPTIONS 的条数绑定（空表 = 不给名额）；现值见该行", check: "R4b 是否放过某个同文件重复定义" },
+  { name: "WINDOW_HOOK_MAX", source: "与 R6 的 __b2t* 窗口钩子白名单条数绑定（只降不升）；现值见该行", check: "R6 是否放过某个全局窗口钩子" },
+  { name: "PAGES_R3_BLOCKED_MAX", source: "由留外壳清单的段数决定（knife2.5-split-plan.md §ⅲ，只降不升）；现值见该行", check: "R3 受阻项（带「阻塞段」的豁免）条数上限" },
+  { name: "R3_MAX_EXEMPTIONS", source: "人工下调并写明原因（只降不升）；现值见该行", check: "R3 豁免表最多能挂几项" },
   { name: "R9_WHITELIST", source: "浏览器全局白名单（document/window/…），人工追加", check: "R9 是否放过注入表达式里的某个未声明标识符" },
   { name: "MOVE_GATE_WHITELIST", source: "move: 笔允许改 tests/js 的登记表（feature-contract.mjs）", check: "move: 笔能否改动 tests/js 的某块" },
   { name: "A5_PROBE_FILES", source: "空表；登记项必须带 owner + YYYY-MM-DD 到期点（到期即红）", check: "A5 是否豁免某个探针测试文件" },
-  { name: "A5_MAX_PROBE_FILES", source: "手工上限 4，只降不升", check: "A5 探针豁免条数上限" },
+  { name: "A5_MAX_PROBE_FILES", source: "手工上限，只降不升；现值见该行", check: "A5 探针豁免条数上限" },
   { name: "A5_EXCUSES", source: "空表；每项带语句指纹 + owner + 到期点，指纹不再命中即红", check: "A5 是否放过某条断言" },
-  { name: "A5_MAX_EXCUSES", source: "手工上限 0，只降不升", check: "A5 例外条数上限" },
+  { name: "A5_MAX_EXCUSES", source: "手工上限，只降不升；现值见该行", check: "A5 例外条数上限" },
   { name: "R5_EXCUSES", source: "空表；{ state, file, owner, expires }", check: "R5 是否放过某处「模块写外壳状态」" },
-  { name: "R5_MAX_EXCUSES", source: "手工上限 0，只降不升", check: "R5 例外条数上限" },
+  { name: "R5_MAX_EXCUSES", source: "手工上限，只降不升；现值见该行", check: "R5 例外条数上限" },
 ];
 
 /** 「能让判据跳过/失效」的名字形态（Chief 2026-10-30 定，与登记表配套）。 */
@@ -3612,8 +3617,20 @@ export function gateSwitchNames(dir = A5_TEST_DIR) {
   return [...names].sort();
 }
 
-/** 未登记的开关名 / 登记了却没写来源 / 登记了但代码里已经没有 → 都是红。 */
-export function gateSwitchProblems({ names, registry = GATE_SWITCHES }) {
+/** 顶层数值常数的现值（只取 `const X = 数字;`），用来判 source 有没有抄现值。 */
+export function gateConstantValues(dir = A5_TEST_DIR) {
+  const values = new Map();
+  for (const file of readdirSync(dir).filter((name) => name.endsWith(".mjs"))) {
+    const text = readFileSync(join(dir, file), "utf8");
+    for (const m of text.matchAll(/^(?:export\s+)?const\s+([A-Z][A-Z0-9_]*)\s*=\s*(\d+(?:\.\d+)?)\s*;/gm)) {
+      values.set(m[1], m[2]);
+    }
+  }
+  return values;
+}
+
+/** 未登记的开关名 / 登记了却没写来源 / 登记了但代码里已经没有 / **source 里抄了现值** → 都是红。 */
+export function gateSwitchProblems({ names, registry = GATE_SWITCHES, values = gateConstantValues() }) {
   const problems = [];
   const registered = new Map(registry.map((item) => [item.name, item]));
   for (const name of names) {
@@ -3630,6 +3647,16 @@ export function gateSwitchProblems({ names, registry = GATE_SWITCHES }) {
     if (!names.includes(item.name)) {
       problems.push(`GATE_SWITCHES 里登记的 ${item.name} 在 tests/js 里已经不存在——删掉它（别把表变成墓地）`);
     }
+    // **source 里不许抄现值**（2026-10-30 第三层）：抄一份现值就多一个漂点——BRIDGE_EXCEPTION_MAX
+    // 我抄了旧值 3（代码早已降成 1），落地几小时就对不上。现值永远看常数那一行。
+    const value = values.get(item.name);
+    if (value !== undefined) {
+      const hit = new RegExp(`(^|[^\\d.])${value.replace(".", "\\.")}(?![\\d.])`).test(item.source || "");
+      if (hit) {
+        problems.push(`GATE_SWITCHES 里 ${item.name} 的 source 抄了现值 ${value}——只写来源，`
+          + "现值看常数那一行（抄一份现值就多一个漂点）");
+      }
+    }
   }
   return problems;
 }
@@ -3640,22 +3667,32 @@ test("GATE_SWITCHES：能让判据跳过/失效的顶层常数都必须登记真
 });
 
 // 自检：没有这一段，登记表就只是"写给人看的注释"——名字拼错、表项过期都不会有人发现。
-test("GATE_SWITCHES 自检：未登记红 / 缺 source 红 / 登记了但代码里没有红 / 合规绿", () => {
-  const reg = [{ name: "OK_MAX_X", source: "手工上限 0", check: "某段判据上限" }];
-  assert.deepEqual(gateSwitchProblems({ names: ["OK_MAX_X"], registry: reg }), [],
-    `GATE_SWITCHES 自检失败：合规登记被误报——${gateSwitchProblems({ names: ["OK_MAX_X"], registry: reg }).join("；")}`);
+test("GATE_SWITCHES 自检：未登记红 / 缺 source 红 / 已不存在红 / source 抄现值红 / 合规绿", () => {
+  const values = new Map([["OK_MAX_X", "0"]]);
+  const reg = [{ name: "OK_MAX_X", source: "手工上限，只降不升；现值见该行", check: "某段判据上限" }];
+  const run = (args) => gateSwitchProblems({ values, ...args });
+  assert.deepEqual(run({ names: ["OK_MAX_X"], registry: reg }), [],
+    `GATE_SWITCHES 自检失败：合规登记被误报——${run({ names: ["OK_MAX_X"], registry: reg }).join("；")}`);
 
-  const missing = gateSwitchProblems({ names: ["OK_MAX_X", "FOO_MAX"], registry: reg });
+  const missing = run({ names: ["OK_MAX_X", "FOO_MAX"], registry: reg });
   assert.ok(missing.some((m) => m.includes("FOO_MAX") && m.includes("没登记")),
     `GATE_SWITCHES 自检失败：没登记的开关被放过——${missing.join("；")}`);
 
-  const noSource = gateSwitchProblems({ names: ["BAR_STAGE"], registry: [{ name: "BAR_STAGE" }] });
+  const noSource = run({ names: ["BAR_STAGE"], registry: [{ name: "BAR_STAGE" }] });
   assert.ok(noSource.some((m) => m.includes("缺 source/check")),
     `GATE_SWITCHES 自检失败：登记了但没写来源也被放过——${noSource.join("；")}`);
 
-  const graveyard = gateSwitchProblems({ names: [], registry: reg });
+  const graveyard = run({ names: [], registry: reg });
   assert.ok(graveyard.some((m) => m.includes("已经不存在")),
     `GATE_SWITCHES 自检失败：登记了已不存在的常数被放过（表变成墓地）——${graveyard.join("；")}`);
+
+  // 第三层：source 里抄了现值 → 红。抄一份现值就多一个漂点（BRIDGE_EXCEPTION_MAX 抄成 3、实际 1）
+  const copied = run({
+    names: ["OK_MAX_X"],
+    registry: [{ name: "OK_MAX_X", source: "手工上限 0，只降不升", check: "某段判据上限" }],
+  });
+  assert.ok(copied.some((m) => m.includes("抄了现值") && m.includes("OK_MAX_X")),
+    `GATE_SWITCHES 自检失败：source 里抄了现值也放过——${copied.join("；")}`);
 });
 
 /** 取出源码里所有 `assert…(…)` 语句（跨行也算一条），文本已抹掉注释/字符串并压成一行。 */
@@ -3790,7 +3827,10 @@ function a5ProbeProblems({ files, entries = A5_PROBE_FILES, max = A5_MAX_PROBE_F
     }
   }
   if (entries.length > max) {
-    problems.push(`A5 探针 ${entries.length} 条，上限 ${max}——开口要显式加数字`);
+    problems.push(max === 0
+      ? `A5 探针 ${entries.length} 条，上限 0——没有免检名额：要开必须显式抬高 A5_MAX_PROBE_FILES，`
+        + "并在提交里写明理由（空表就该零名额，预留名额等于给未来的探针预批豁免）"
+      : `A5 探针 ${entries.length} 条，上限 ${max}——开口要显式加数字`);
   }
   return problems;
 }
@@ -3805,10 +3845,18 @@ test("A5 探针豁免：名字带 probe 必须登记；僵尸条目 / 到期已�
 test("A5 探针自检：未登记红 / 僵尸红 / 到点红 / 到期点不是日期红 / 白条红 / 合规绿", () => {
   const files = ["a.test.mjs", "b.probe.test.mjs"];
   const ok = [{ file: "b.probe.test.mjs", owner: "TestDev", expires: "2099-01-01" }];
-  assert.deepEqual(a5ProbeProblems({ files, entries: ok }), [],
-    `A5 探针自检失败：合规条目被误报——${a5ProbeProblems({ files, entries: ok }).join("；")}`);
+  // 合规条目要配名额才算合规（上限现在是 0：空表零名额）
+  assert.deepEqual(a5ProbeProblems({ files, entries: ok, max: 4 }), [],
+    `A5 探针自检失败：合规条目被误报——${a5ProbeProblems({ files, entries: ok, max: 4 }).join("；")}`);
 
   const run = (entries) => a5ProbeProblems({ files, entries });
+  // 空表就零名额：同一条合规探针，cap 4 时绿、cap 0 时红——证明是 cap 在管，不是别的判据在管
+  assert.deepEqual(a5ProbeProblems({ files, entries: ok, max: 4 }), [],
+    `A5 探针自检失败：有名额时合规探针被误报——${a5ProbeProblems({ files, entries: ok, max: 4 }).join("；")}`);
+  const noQuota = a5ProbeProblems({ files, entries: ok, max: 0 });
+  assert.ok(noQuota.some((m) => m.includes("没有免检名额")),
+    `A5 探针自检失败：空表 + cap 0 时加了一条探针也被放过——${noQuota.join("；")}`);
+
   assert.ok(run([]).some((m) => m.includes("没登记进 A5_PROBE_FILES")),
     `A5 探针自检失败：未登记的 probe 文件被放过——${run([]).join("；")}`);
   assert.ok(run([{ file: "gone.probe.test.mjs", owner: "x", expires: "2099-01-01" }])
