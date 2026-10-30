@@ -2070,6 +2070,11 @@ Builder 按 `29c2f2f` 实现时留了三处没自己定。**三处都批，各�
    必须 `PYTHONPATH=<那棵树>/backend`，并把解析出的路径**打出来 + 断言**（有断言才有"咬人"的能力）。
 
 13. **验收必须声明"验的是哪一棵树"**（2026-10-29，一天内三次栽在同一处）：
+14. **判"刀内/刀外"按「引用」不按「调用」**（2026-10-30 实证）：扫描三栏——**定义位 / 值位 / 调用位**。
+   只扫 `f(` 会漏一整类：`addEventListener("click", f)`、`requestAnimationFrame(f)`、回调参数、`?.` 后不带括号，
+   都是**值位引用**。实证：`applySplitBatch` 的刀外引用是 `app.js:12421 addEventListener(..., applySplitBatch)`（值位），
+   漏掉它就会**少算一个转发键** → `setupLibrary` 在 boot 里拿到未绑定标识符 → **ReferenceError，而语法与 node 闸全绿**。
+   **判据写法**：先取该名字的**全部非定义位出现**，再判每一处的所属函数是否在刀内。
 
 ```
 工作区（盘上） | 索引（git add 后） | HEAD 树 | 某个 tag / sha 的树
