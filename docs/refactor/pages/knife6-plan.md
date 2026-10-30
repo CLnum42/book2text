@@ -62,9 +62,13 @@ syncToolbarToggles()          ← boot 的 8 处（4 个 deps 对）
    **四个**消费者（不是三个：Architect 说 LibraryView 是死 provider，实测不成立）：
      reading-view.js:3563/3568（setReviewOverlaysForReading）· index-view.js:98/103（openPageIndex）
      · preview-view.js:482/487（openPreview）· library-view.js:298/299（openProject —— 打开任何项目都走这条）
-   它们现在拿 `injected.getPagesMarginToggle()?` 去 add("is-on") / toggle("is-on", state)。改成调 `window.PagesView.syncToolbarToggles()`，
+   它们现在拿 `injected.getPagesMarginToggle()?` 去 add("is-on") / toggle("is-on", state)。
+   改成调 **`injected.syncToolbarToggles?.()`**（**不是** `window.PagesView.syncToolbarToggles()`：
+   R2 禁止视图模块互相引用对方的 window 接口，Builder 实测已被拦下）；
    模块内按 `injected.getPagesMarginOn()` / `getPagesOverlayOn()` 刷两个按钮的 is-on（一次覆盖 4 处消费者）。
-   ⇒ 4 个 deps 对（8 行）从四个模块的 deps 块里删掉，app.js 对 pages 子树的引用 −8。
+   ⇒ 4 个 deps 对（8 行）从四个模块的 deps 块里删掉，**另在四个 init 的 deps 里各加一行**
+   `syncToolbarToggles: (...args) => window.PagesView?.syncToolbarToggles(...args)`（app.js 引用 window 接口是合法的）。
+   app.js 对 pages 子树的引用 −8，四个消费者模块各 +1 注入键（不计入 PagesView 自己的 211）。
 
 showPagesError(error)         ← finishRevokeAutoPass：`showError(el("pages-error"), error)` 收进模块
 pagesErrorMessage()           ← startLayoutDetectFromDialog：读 `#pages-error` 的文本兜底
@@ -150,9 +154,10 @@ applyPackageMode 20 · recognizePage 2 · applyProjectSettings 2 · applySplitBa
 ③ R8 == 57，新 4 键在 api 里；**两类键的判据不同**（Architect 2026-10-30）：
    · app.js 调用（showPagesError / pagesErrorMessage / setMarginJudgementCheckbox）：
      `grep -c "PagesView\.<键>" app.js` == 1，且该行**替换掉了**原来那处 pages id 引用（前后配对）
-   · 模块调用（syncToolbarToggles）：app.js 里**按设计 0 次**，判据换成
-     `grep -l "PagesView.syncToolbarToggles" backend/book2text/static/*-view.js` == 4 个文件
-     （reading / index / preview / library）——写成 "app.js ≥ 1" 会自相矛盾
+   · 模块调用（syncToolbarToggles）：app.js 里 `PagesView.syncToolbarToggles` **按设计 0 次**，判据换成
+     `grep -l "injected.syncToolbarToggles" backend/book2text/static/*-view.js` == **4** 个文件
+     （reading / index / preview / library），且 app.js 四个 init 的 deps 里各有 1 行 `syncToolbarToggles:` = 4 行
+     ——写成 "app.js ≥ 1" 会自相矛盾；写成 `PagesView.syncToolbarToggles` 会被 R2 拦（模块不许引用别的模块的 window 接口）
 ④ deps == 218，新增 7 键逐个在 init 块里；删除的 4 个 deps 对在两模块 deps 块里 = 0
 ⑤ seed 4 行 / 4 名；豁免 **14 项 / Σcap 25**（删 10 项 + 存活项 cap 收到新实测）、`TOTAL_CAP 25 == Σcap == r3.total`、BLOCKED_MAX 0
 ⑥ 「显示 = 导出」三道锁照跑：连续切片结构 / `?checktext=1` / QA 的 A 条（本刀不改渲染，但改了 init 时序）
@@ -207,7 +212,7 @@ Approved-by: DevLead
 · wireAll() 里加三段 = 接线时机从 setupLibrary 提前到 init：DOM 必须就绪（wireWhenReady 已管），
   但**回调依赖的 app.js 状态**要在调用时读，不许在接线时快照
 · 本刀改 init 时序 → 「显示 = 导出」三道锁照跑；QA 的 A 条断言对 pages 视图仍要绿
-· **`window.PagesView?.syncToolbarToggles()` 的 `?.` 会静默跳过**（Architect 抓到）：四个调用点
+· **`injected.syncToolbarToggles?.()` 的 `?.` 会静默跳过**（Architect 抓到）：四个调用点
   （`openPageIndex` / `setReviewOverlaysForReading` / `openPreview` / `openProject`）若在 PagesView.init
   之前执行，`?.` 直接吞掉 → 按钮永久不亮，而 node / pytest / R3 / R8 全绿。
   ⇒ 两条一起落：① `init()` 末尾（wireAll 之后）补一次 `syncToolbarToggles()` 兜底；

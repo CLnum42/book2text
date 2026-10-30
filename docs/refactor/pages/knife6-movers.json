@@ -268,7 +268,7 @@
     "boot"
    ],
    "refs": 8,
-   "说明": "4 个 deps 对（getPagesMarginToggle / getPagesOverlayToggle）从 reading/index/preview/library 四处删掉，改为调 PagesView.syncToolbarToggles()；模块内按注入的 getPagesMarginOn/getPagesOverlayOn 刷 is-on"
+   "说明": "4 个 deps 对（getPagesMarginToggle / getPagesOverlayToggle）从 reading/index/preview/library 四处删掉；四个消费者改调 injected.syncToolbarToggles?.()（R2 禁止模块互相引用 window 接口，不能用 window.PagesView.…）；app.js 在四个 init 的 deps 里各加一行注入"
   },
   {
    "名字": "showPagesError",
@@ -443,8 +443,9 @@
   "更正": "Architect 说 LibraryView 是死 provider —— 实测不成立"
  },
  "风险": [
-  "window.PagesView?.syncToolbarToggles() 的 ?. 会静默跳过：init 末尾补一次 sync + 真机看四个视图的 is-on",
-  "openStatsPanel / toggleAssignList 是新建函数（0 引用），落盘前先在 app.js 定义"
+  "injected.syncToolbarToggles?.() 的 ?. 会静默跳过：init 末尾补一次 sync + 真机看四个视图的 is-on",
+  "openStatsPanel / toggleAssignList 是新建函数（0 引用），落盘前先在 app.js 定义",
+  "消费者必须用 injected.syncToolbarToggles?.()，不许 window.PagesView.syncToolbarToggles()（R2）"
  ],
  "陈旧行另案": {
   "状态": "已完成（80e7a75）：删 40 项 · 存活项 cap 收到实测 · Σcap=TOTAL_CAP=50 · 加「0 引用就删项」下行机检"
