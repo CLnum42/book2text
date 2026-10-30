@@ -145,7 +145,8 @@ split-batch-error     同上                                        applySplitBa
         `setSelectionHint(text)`      ← applySplitBatch 的 1 处
         app.js 改调 `window.PagesView.<能力>(…)` ⇒ app.js 对 pages id 的引用 **23 → 0**，R3 23 → 0
    ② 7 个 chrome id + 3 个 review id **仍由 app.js 直接写**（合法）：外壳 id 永不进 R3，
-      review 未落盘也不进 R3 ⇒ **不存在"模块侧 10 条红"**（旧版这条判据随形态改判作废）
+      review 未落盘也不进 R3 ⇒ **不存在"模块侧 10 条红"**
+      （外壳直写的依据见 `docs/refactor/panel-ownership.md`：外壳写自己域里的东西不需要给自己包一层接口）
 ③ seed：3 行 → **0 行**（刀 7 已删 recognizePage 那行；剩的 3 行就是这三个函数）
 ④ 豁免表：13 项 → **0 项**（整张表清空，R3 这一章结账）
 ⑤ TOTAL_CAP 23 → **0** · Σcap 23 → **0**（三者合一落到 0）· BLOCKED_MAX 0 不变
@@ -187,8 +188,10 @@ seed 里还挂着名字自然全都显得"丢了"。表空 + 函数还挂着就�
 
 ### 9.2 预期红：**0 条**（新形态下 R3 侧不再有「还引用着」）
 
-新形态是**函数留外壳 + 收能力**，所以 app.js 里那 25 处 `el("…pages id…")` 是被**替换成能力调用**，
+新形态是**函数留外壳 + 收能力**，所以 app.js 里那批 `el("…pages id…")` 是被**替换成能力调用**，
 不是随函数搬走——落完之后 app.js 对 pages id 的引用就是 0，那条循环自然一条都不吐。
+本刀落盘前是 **23 处**（刀 7 已把 recognizePage 的 2 处 pages-error 带走）；我做模拟时是刀 7 之前，
+所以替换的是 25 处。两个数都对，看的是哪棵树。
 
 我在 `main@cf4ebb7` 上模拟过一遍端点（表清空 + `TOTAL_CAP=0` + seed 空 + registry 刀 8 landed +
 把那 25 处 `el("<id>")` 换成 `el()`），实测：
