@@ -902,6 +902,15 @@ function refreshLayoutDetectEntry() {
   }
   item.disabled = false;
   item.title = "";
+  if (selected.length) {
+    // 有选择：括号里的数字必须是"这次真的会跑的页数"（与对话框里那个数同源）
+    const selectedNos = new Set(selected.map((page) => page.page_no));
+    const runnable = marginUndeterminedPages().filter((page) => selectedNos.has(page.page_no)).length;
+    item.textContent = runnable
+      ? `检测版面…（所选 ${selected.length} 页里 ${runnable} 页还没检测）`
+      : `检测版面…（所选 ${selected.length} 页都已检测）`;
+    return;
+  }
   const undetermined = marginUndeterminedPages().length;
   item.textContent = undetermined
     ? `检测版面…（${undetermined} 页还没有版心）`
@@ -6700,7 +6709,9 @@ async function refreshLayoutDetectPlan() {
 
 /** 秒 → "约 2 分 10 秒"（粗一点，别给出假精度）。 */
 function formatDuration(seconds) {
-  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const raw = Number(seconds) || 0;
+  if (raw > 0 && raw < 1) return "不到 1 秒";
+  const total = Math.max(0, Math.round(raw));
   if (total < 60) return `约 ${total} 秒`;
   const minutes = Math.floor(total / 60);
   const rest = total % 60;
