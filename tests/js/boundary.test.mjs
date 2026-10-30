@@ -3585,58 +3585,58 @@ const VIEW_EXPORTS = {
     // C capability 不写死期，登记 effective callers + 理由（清册就是上限，不是数字）。
     kinds: {
       init: { kind: "L" },
-      ensureMarginFitted: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      loadLayoutBlocks: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      loadSetupSuggestions: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      refreshRecognizedPages: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      reloadProjectPages: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderLayoutBlocks: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderMarginPanel: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderPageSetup: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderPages: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderRecognitionStatus: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderRecognitionVerdict: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderSuggestionPanel: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderTypePicker: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      savePageMargin: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      syncPageStates: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      undoMarginEdit: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      updateMarginDetectProgress: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      updatePageVisibility: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      updateSelectionPanel: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      ensureMarginFitted: { kind: "T", death: 9.3 },
+      loadLayoutBlocks: { kind: "T", death: 9.3 },
+      loadSetupSuggestions: { kind: "T", death: 9.1 },
+      refreshRecognizedPages: { kind: "T", death: 9.2 },
+      reloadProjectPages: { kind: "T", death: 9.5 },
+      renderLayoutBlocks: { kind: "T", death: 9.3 },
+      renderMarginPanel: { kind: "T", death: 9.3 },
+      renderPageSetup: { kind: "T", death: 9.1 },
+      renderPages: { kind: "T", death: 9.5 },
+      renderRecognitionStatus: { kind: "T", death: 9.5 },
+      renderRecognitionVerdict: { kind: "T", death: 9 },
+      renderSuggestionPanel: { kind: "T", death: 9 },
+      renderTypePicker: { kind: "T", death: 9 },
+      savePageMargin: { kind: "T", death: 9.3 },
+      syncPageStates: { kind: "T", death: 9.5 },
+      undoMarginEdit: { kind: "T", death: 9 },
+      updateMarginDetectProgress: { kind: "T", death: 9.2 },
+      updatePageVisibility: { kind: "T", death: 9.2 },
+      updateSelectionPanel: { kind: "T", death: 9 },
       loadFinishSummary: { kind: "C", callers: ["afterCleanupApplied", "afterContinuationChange", "boot", "confirmCurrentPage", "finishConfirmPages", "finishRevokeAutoPass", "finishRunAutoPass", "finishRunLayout", "openFinishPanel", "pollTask", "refreshProject", "setupReviewControls", "waitForAuxThenReview", "library-view.js", "reading-view.js"], reason: "收尾状态被三个视图共用（13 个外壳函数 + library/reading 各调）" },
-      loadLanguageSummary: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      loadPageNumberSummary: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      refreshLayoutDetectEntry: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      refreshMarginDetectHint: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      refreshMarginTiles: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderAutoApplyStatus: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderMarginStepVerdict: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderPageNumberMetrics: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      loadLanguageSummary: { kind: "T", death: 9.1 },
+      loadPageNumberSummary: { kind: "T", death: 9.4 },
+      refreshLayoutDetectEntry: { kind: "T", death: 9.3 },
+      refreshMarginDetectHint: { kind: "T", death: 9.3 },
+      refreshMarginTiles: { kind: "T", death: 9.3 },
+      renderAutoApplyStatus: { kind: "T", death: 9.5 },
+      renderMarginStepVerdict: { kind: "T", death: 9.3 },
+      renderPageNumberMetrics: { kind: "T", death: 9.4 },
       renderRecognitionSettings: { kind: "C", callers: ["applyProjectSettings", "boot", "loadAppInfo", "library-view.js"], reason: "项目设置落在 pages 面板上" },
-      renderStepPanels: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      renderWorkflowFilter: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      updateRecognitionAuxProgress: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      renderStepPanels: { kind: "T", death: 9.5 },
+      renderWorkflowFilter: { kind: "T", death: 9.5 },
+      updateRecognitionAuxProgress: { kind: "T", death: 9.2 },
       applyPageZoom: { kind: "C", callers: ["fillDefinitionList", "goToWorkflowStep", "setPageZoom", "showView"], reason: "缩放三步共用（原按 T 记，Architect 转 C）" },
       confirmAllUnconfirmed: { kind: "C", callers: ["finishConfirmPages"], reason: "收尾面板发起（原按 T 记，Architect 转 C）" },
-      checkSelection: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      finishMarginDetectBar: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      forgetAllPageBlocks: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      forgetAllPageSuggestions: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      checkSelection: { kind: "T", death: 9.5 },
+      finishMarginDetectBar: { kind: "T", death: 9.3 },
+      forgetAllPageBlocks: { kind: "T", death: 9.5 },
+      forgetAllPageSuggestions: { kind: "T", death: 9.5 },
       openPageSetup: { kind: "C", callers: ["boot", "library-view.js"], reason: "首启 / 库页打开页面设置" },
-      pageScroller: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      pausePageThumbnails: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      pumpOverlayRender: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      queueOverlayRender: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      rerunAuxiliary: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      scanVisiblePageSuggestions: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      setMarginStatus: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      setPageNumberStatus: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
-      showMarginDetectProgress: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      pageScroller: { kind: "T", death: 9.5 },
+      pausePageThumbnails: { kind: "T", death: 9.1 },
+      pumpOverlayRender: { kind: "T", death: 9 },
+      queueOverlayRender: { kind: "T", death: 9.2 },
+      rerunAuxiliary: { kind: "T", death: 9 },
+      scanVisiblePageSuggestions: { kind: "T", death: 9 },
+      setMarginStatus: { kind: "T", death: 9.3 },
+      setPageNumberStatus: { kind: "T", death: 9.4 },
+      showMarginDetectProgress: { kind: "T", death: 9.3 },
       startLayoutDetection: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "版心检测对话框发起（原按 T 记，Architect 转 C）" },
       toggleMarginView: { kind: "C", callers: ["boot", "index-view.js", "preview-view.js"], reason: "三步共用的工具栏开关" },
       togglePageBlocksOverlay: { kind: "C", callers: ["boot", "index-view.js", "preview-view.js"], reason: "同上" },
-      visiblePages: { kind: "T", death: null },   // 死期待定（9a/9b 未定稿）
+      visiblePages: { kind: "T", death: 9.5 },
       syncToolbarToggles: { kind: "C", callers: ["index-view.js", "library-view.js", "pages-view.js", "preview-view.js", "reading-view.js"], reason: "4 个视图模块 + boot 的 deps 行都要它 → 模块→模块，第一个此类键" },
       showPagesError: { kind: "C", callers: ["finishRevokeAutoPass"], reason: "收尾面板的任务失败要显示在页面错误条" },
       pagesErrorMessage: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "版心检测对话框读错误文案" },
@@ -3719,16 +3719,17 @@ test("R8（按模块）：每个视图模块的导出名与数量都只许等于
  * setMarginJudgementCheckbox = 刀9，syncToolbarToggles = 刀10）。
  */
 const EXPORT_DEATH_KNIFE = {
-  // 2026-10-30 起**暂时为空**，并登记到期点（`EXPORT_DEATH_EXPIRES`）。
+  // **从 kind 清册派生，不另存一份**（2026-10-30）：死期只写在一个地方——
+  // `VIEW_EXPORTS["pages-view.js"].kinds[key].death`（T 才有）。抄第二份就是又开一个漂点。
   //
-  // 为什么空：Architect 的 ratchet-two-kinds（`docs/refactor/pages/export-ratchet.md`）把 57 个键分成
-  //   L lifecycle（init/enter/refresh）· T transitional（代码没搬完才存在 → **必须带死期**）
-  //   · C capability（触发者在别的域 → **不写死期**，改登记 callers + 理由）。
-  // 历史数据里「20 个活键都在刀 9 死」把两类混成一个数，两次改判后就被推翻——所以先清空，等清册。
-  // 有明确死期、且能确认是 T 的键，等 kind 清册落地后逐键填回这张表（注释里的「死亡刀号」只是副本）。
-  //
-  // 一条教训（2026-10-30 同日栽过两次）：**模拟态的中间数字不能当落盘后的验收基准**——
-  // 我在刀 7 的模拟里只删了 2 行、报出 app.js 13,460，真实落盘值是 **13,428**（recognizePage 整段 50 行搬走）。
+  // 44 个 T 的死期按 Architect `export-ratchet.md` §十：刀 9（8 个死 T）· 9.1（showView/hydrateView 4 个）
+  // · 9.2（pollTask/fetchPageBlocks/schedulePageVisibility 5 个）· 9.3（版心一族 12 个）
+  // · 9.4（页码一族 3 个）· 9.5（选择/网格/步骤/收尾 12 个）。语义与 R3 一致：**多宿主取 max**。
+  "pages-view.js": Object.fromEntries(
+    Object.entries(VIEW_EXPORTS["pages-view.js"].kinds)
+      .filter(([, entry]) => entry.kind === "T" && entry.death !== null)
+      .map(([key, entry]) => [key, entry.death]),
+  ),
 };
 /** 死期表必须非空的到期刀：kind 清册（L/T/C 逐键）落地时这张表就该填满。 */
 const EXPORT_DEATH_EXPIRES = 9;
@@ -3777,7 +3778,7 @@ export function exportDeathProblems({ deaths, stage, appSource, apiKeys, expires
 }
 
 /** 死期待定的 T 个数的上限（只降不升；填一个降一个）。 */
-const T_DEATH_PENDING_MAX = 44;
+const T_DEATH_PENDING_MAX = 0;   // 死期已按 Architect §十 全部填满（9 / 9.1–9.5），只许保持 0
 
 /**
  * **每个导出键的 kind 必填，且 T / C 字段互斥**（Architect `export-ratchet.md` §八 ①）。
