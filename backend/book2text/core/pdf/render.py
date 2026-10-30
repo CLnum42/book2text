@@ -192,7 +192,7 @@ def render_page_image(
 #: 编码格式：`view` / `zoom` 用 JPEG（扫描页的灰度噪点让 PNG 大一个数量级）。
 #: 2026-10-28 实测（447pt 宽页面，第 36 页）：view@150DPI 的 PNG 1.77 MB → JPEG(q=82) 0.42 MB；
 #: zoom@300DPI 的 PNG 约 7 MB → JPEG 1.3 MB。缩略图仍用 PNG（小图，边缘干净）。
-ENCODE_FORMAT = {"thumb": "PNG", "view": "JPEG", "zoom": "JPEG"}
+ENCODE_FORMAT = {"thumb": "PNG", "view": "JPEG", "zoom": "JPEG", "zoom2": "JPEG"}
 JPEG_QUALITY = 82
 
 
