@@ -1,0 +1,390 @@
+{
+ "刀": 4,
+ "口径": "view-pages 子树 id 引用（el/getElementById/querySelector），与 R3 闸一致；行范围量于 18921de 之后的当前树",
+ "基线": {
+  "appLines": 14324,
+  "r3Total": 123,
+  "r3Ids": 44,
+  "pagesViewLines": 2041
+ },
+ "movers": [
+  {
+   "name": "applyPackageMode",
+   "start": 13194,
+   "end": 13253,
+   "lines": 60,
+   "ids": [
+    "assign-list-toggle",
+    "assign-open",
+    "aux-run",
+    "check-pending",
+    "detail-recognize",
+    "finish-open-review",
+    "package-banner",
+    "package-open",
+    "package-result-meta",
+    "page-setup-bar",
+    "panel-pagenum-settings",
+    "panel-recognition-settings",
+    "selection-actionbar",
+    "selection-check",
+    "selection-skip-checked",
+    "setup-panel",
+    "structure-open"
+   ],
+   "refs": 20,
+   "callers": [
+    "refreshProject"
+   ],
+   "external_callers": [
+    "refreshProject"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "closeFinishPanel",
+    "closeModal",
+    "loadPackageResults"
+   ]
+  },
+  {
+   "name": "applyPageRangeInput",
+   "start": 3417,
+   "end": 3439,
+   "lines": 23,
+   "ids": [
+    "page-range",
+    "pages-error"
+   ],
+   "refs": 3,
+   "callers": [],
+   "external_callers": [],
+   "needs_forwarder": false,
+   "deps": []
+  },
+  {
+   "name": "applyPageZoom",
+   "start": 4064,
+   "end": 4120,
+   "lines": 57,
+   "ids": [
+    "page-grid",
+    "pages-margin-toggle",
+    "pages-overlay-toggle",
+    "pages-zoom-in",
+    "pages-zoom-label",
+    "pages-zoom-out"
+   ],
+   "refs": 8,
+   "callers": [
+    "goToWorkflowStep",
+    "setPageZoom",
+    "showView"
+   ],
+   "external_callers": [
+    "goToWorkflowStep",
+    "setPageZoom",
+    "showView"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "PAGE_ZOOM_LEVELS",
+    "ensurePageScrollListener",
+    "ensureSuggestionScrollListener",
+    "pageImageUrl",
+    "pageZoomLevel",
+    "resetOverlayQueue",
+    "scheduleSuggestionScan"
+   ]
+  },
+  {
+   "name": "applyProjectSettings",
+   "start": 12514,
+   "end": 12524,
+   "lines": 11,
+   "ids": [
+    "auto-apply-suggestions",
+    "export-margin-judgement",
+    "rec-margin-judgement"
+   ],
+   "refs": 2,
+   "callers": [
+    "setAutoApplySetting",
+    "setMarginJudgementSetting"
+   ],
+   "external_callers": [
+    "setAutoApplySetting",
+    "setMarginJudgementSetting"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "marginJudgementOn",
+    "renderMarginJudgementNotice"
+   ]
+  },
+  {
+   "name": "applySetupSuggestion",
+   "start": 3752,
+   "end": 3774,
+   "lines": 23,
+   "ids": [
+    "pages-error"
+   ],
+   "refs": 2,
+   "callers": [],
+   "external_callers": [],
+   "needs_forwarder": false,
+   "deps": []
+  },
+  {
+   "name": "applySplitBatch",
+   "start": 12867,
+   "end": 12901,
+   "lines": 35,
+   "ids": [
+    "selection-hint",
+    "split-batch-apply",
+    "split-batch-error"
+   ],
+   "refs": 1,
+   "callers": [
+    "setupLibrary"
+   ],
+   "external_callers": [
+    "setupLibrary"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "closeModal",
+    "forgetAllPageSuggestions",
+    "splitBatchScope"
+   ]
+  },
+  {
+   "name": "confirmAllUnconfirmed",
+   "start": 3813,
+   "end": 3825,
+   "lines": 13,
+   "ids": [
+    "selection-hint"
+   ],
+   "refs": 1,
+   "callers": [
+    "finishConfirmPages"
+   ],
+   "external_callers": [
+    "finishConfirmPages"
+   ],
+   "needs_forwarder": true,
+   "deps": []
+  },
+  {
+   "name": "confirmLayoutFromPanel",
+   "start": 4665,
+   "end": 4687,
+   "lines": 23,
+   "ids": [
+    "layout-block-confirm",
+    "pages-error"
+   ],
+   "refs": 2,
+   "callers": [],
+   "external_callers": [],
+   "needs_forwarder": false,
+   "deps": []
+  },
+  {
+   "name": "confirmPageIds",
+   "start": 3776,
+   "end": 3800,
+   "lines": 25,
+   "ids": [
+    "pages-error"
+   ],
+   "refs": 2,
+   "callers": [
+    "confirmAllUnconfirmed",
+    "confirmSelectedPages"
+   ],
+   "external_callers": [],
+   "needs_forwarder": false,
+   "deps": []
+  },
+  {
+   "name": "confirmSelectedPages",
+   "start": 3802,
+   "end": 3811,
+   "lines": 10,
+   "ids": [
+    "selection-hint"
+   ],
+   "refs": 1,
+   "callers": [],
+   "external_callers": [],
+   "needs_forwarder": false,
+   "deps": []
+  },
+  {
+   "name": "recognizePage",
+   "start": 5588,
+   "end": 5636,
+   "lines": 49,
+   "ids": [
+    "page-detail-error",
+    "pages-error"
+   ],
+   "refs": 2,
+   "callers": [
+    "buildTile",
+    "setupLibrary"
+   ],
+   "external_callers": [
+    "buildTile",
+    "setupLibrary"
+   ],
+   "needs_forwarder": true,
+   "deps": [
+    "RESTORE_DETAIL_TEXT",
+    "applyRecognizedPages",
+    "confirmAction",
+    "humanTouchedPages",
+    "warnUnconfirmed"
+   ]
+  },
+  {
+   "name": "recognizeSelection",
+   "start": 12300,
+   "end": 12361,
+   "lines": 62,
+   "ids": [
+    "pages-error",
+    "selection-skip-recognized"
+   ],
+   "refs": 3,
+   "callers": [],
+   "external_callers": [],
+   "needs_forwarder": false,
+   "deps": [
+    "RESTORE_DETAIL_TEXT",
+    "applyRecognizedPages",
+    "confirmAction",
+    "humanTouchedPages",
+    "warnUnconfirmed"
+   ]
+  }
+ ],
+ "刀4验收": {
+  "r3Total": {
+   "before": 123,
+   "after": 76
+  },
+  "r3Ids": {
+   "before": 44,
+   "after": 32
+  },
+  "归零id": [
+   "check-pending",
+   "layout-block-confirm",
+   "page-range",
+   "page-setup-bar",
+   "pages-zoom-in",
+   "pages-zoom-label",
+   "pages-zoom-out",
+   "panel-pagenum-settings",
+   "panel-recognition-settings",
+   "selection-actionbar",
+   "selection-check",
+   "selection-skip-recognized"
+  ],
+  "部分归零id": [
+   "assign-list-toggle",
+   "assign-open",
+   "auto-apply-suggestions",
+   "page-grid",
+   "pages-error",
+   "pages-margin-toggle",
+   "pages-overlay-toggle",
+   "rec-margin-judgement",
+   "selection-hint",
+   "selection-skip-checked",
+   "setup-panel"
+  ],
+  "r8Exports": {
+   "before": 34,
+   "after": 40,
+   "新增转发": [
+    "applyPackageMode",
+    "applyPageZoom",
+    "applyProjectSettings",
+    "applySplitBatch",
+    "confirmAllUnconfirmed",
+    "recognizePage"
+   ],
+   "本刀死亡": []
+  },
+  "appLines": {
+   "before": 14324,
+   "after": 13950,
+   "口径": "-391 函数体 +6 转发器 +11 deps 块(-9 +20)，±20"
+  },
+  "pagesViewLines": {
+   "before": 2041,
+   "after": 2438,
+   "口径": "+391 函数体 +6 api 键，±20"
+  },
+  "deps": {
+   "before": 208,
+   "after": 219,
+   "删": 9,
+   "加": 20
+  },
+  "seed": {
+   "名字": {
+    "before": 50,
+    "after": 38
+   },
+   "数据行": {
+    "before": 53,
+    "after": 41
+   }
+  },
+  "dryRun": {
+   "residue": [],
+   "anti": [],
+   "injected_keys": 47,
+   "deps_literal_keys": 47
+  }
+ },
+ "deps分栏": {
+  "函数_值": 38,
+  "getter": 6,
+  "setter": 2,
+  "能力": 1,
+  "合计": 47,
+  "复用已有键": 27,
+  "新增键": 20,
+  "删除键": 9,
+  "最终deps": 219
+ },
+ "口径_调用者": "外壳调用者 = 排除装配块(init deps)、排除自身声明体、排除注释后的裸引用所在顶层函数",
+ "口径_归零": "id 归零 = 引用该 id 的全部顶层函数都在本刀 movers 内（逐 id 判，不看总数）",
+ "提交形态": {
+  "类型": "move(pages):",
+  "Move-Gate": "tests/js/boundary.test.mjs",
+  "Approved-by": "DevLead"
+ },
+ "不碰": [
+  "boot",
+  "showView",
+  "hydrateView",
+  "setupLibrary",
+  "refreshProject",
+  "pollTask",
+  "setupReviewControls",
+  "27 个调用者",
+  "PAGES_R3_TOTAL_CAP",
+  "pages-r3-exemptions.mjs",
+  "MOVED_STATES",
+  "app.css",
+  "index.html"
+ ]
+}
