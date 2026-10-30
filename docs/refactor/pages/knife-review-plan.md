@@ -40,7 +40,7 @@ pages 走，也不能跟着 package 走——它们要么归 review 模块，要
 
 ```
 ① recognizePage 内不再引用 page-detail-error（体内该 id 出现 = 0）
-② recognizePage 搬走后 **pages 的 R3：25 → 23**（它体内 `pages-error` 2 处随函数迁走，5 → 3；ids 仍 14）
+② recognizePage 搬走后 **pages 的 R3：25 → 23**（`pages-error` **2 → 0**，它体内 2 处全部迁走；**ids 14 → 13**——该 id 归零后整类消失）
 ③ review-view.js 引用的 id ⊆ view-review 子树（R3 模块零豁免，天然判据）
 ④ 新增入口在 api 里登记，且 VIEW_EXPORTS 的 pages 侧不增键（本刀不动 pages 的导出面）；
    新增入口逐个带死亡刀号
@@ -67,16 +67,34 @@ pages 走，也不能跟着 package 走——它们要么归 review 模块，要
   「体内 review id 引用 = 0」这条判据。
 ```
 
-## R3 / R8 账（基 `main@a5dd595`）
+## R3 / R8 / 账本（基 `main@a5dd595`）
 
 ```
 本刀前：pages R3 **25 处 / 14 种 id** · R8 **57** · PagesView deps 218 · app.js 13,462
-本刀后：pages R3 **23 处 / 14 种**（recognizePage 的 pages-error ×2 迁走，5 → 3；id 数不变）
+        豁免表 **14 项 / Σcap 25 / TOTAL_CAP 25 / BLOCKED_MAX 0**
+本刀后：pages R3 **23 处 / 13 种 id**（recognizePage 体内 pages-error 2 → 0，该 id 整类归零）
 R8：**57 → 58**（recognizePage 仍被 app.js:3394 / 11657 调用 → +1 键），死亡刀号 = 刀 9
-    （「外壳调用」类，到点判据 = 该键在 app.js 的引用 = 0 且不在 api 表）
+        （「外壳调用」类，到点判据 = 该键在 app.js 的引用 = 0 且不在 api 表）
+账本（与代码**分两笔**，形态照抄刀 6）：
+        · 删豁免 1 项：`pages-error`（cap 2，引用归零 → 会撞「陈账，删项」那条下行机检）
+        · 存活 13 项的 cap **现在逐项都等于实测**（刀 6 账本笔刚收过），所以 Σcap 25 → **23** 是删项自然结果
+        · `TOTAL_CAP 25 → 23`（== Σcap == r3.total）
+        · `BLOCKED_MAX 0` 不变
 剩余 23 处全部属刀 8：applyPackageMode 20 + applyProjectSettings 2 + applySplitBatch 1
-    ⇒ **R3 到 0 在刀 8**，不是本刀
+        ⇒ **R3 到 0 在刀 8**，不是本刀
 ```
+
+## 刀 8 的账（同一形态，一次清空，先记在这别只写"到 0"）
+
+```
+R3    23 → **0**（applyPackageMode 20 + applyProjectSettings 2 + applySplitBatch 1）
+ids   13 → **0**（剩的这 13 种 id 全在这三个函数体内，没有一个有别的宿主）
+豁免表 13 项 → **0 项**（整表清空）
+Σcap 23 → 0 · TOTAL_CAP 23 → **0** · BLOCKED_MAX 0 不变
+       ⇒ 三者合一落到 0：Σcap == TOTAL_CAP == r3.total == 0，R3 这一章结账
+```
+
+**验收（本刀）**：`Σcap == TOTAL_CAP == r3.total == 23`，且 `r3.ids == 豁免项数 == 13`。
 
 刀 4 的验收（R3 101 / ids 38 / R8 36 / deps 213）是**历史账**，不含这 4 个函数；
 本刀只按上面这张当前基线结算。
