@@ -566,7 +566,8 @@
     "startLayoutDetection",
     "visiblePages"
    ],
-   "说明": "36 − 1 + 15 = 50；本轮**不是** 22（22 要等导出收口刀，见 刀6提议）"
+   "说明": "36 − 1 + 15 = 50；本轮**不是** 22（22 要等导出收口刀，见 刀6提议）",
+   "死亡说明": "renderPageSummary 是唯一能死的键：0 个外壳调用者；模块内死注入 2 处（pages-view.js:365、762）"
   },
   "appLines": {
    "before": 14095,
@@ -713,5 +714,56 @@
   "pages-r3-exemptions.mjs",
   "app.css",
   "index.html"
- ]
+ ],
+ "直呼清单": {
+  "总数": 36,
+  "口径": "删 20 个 deps 键 → 模块里对应 36 处 injected.X 必须改直呼",
+  "关键事实": "36 处全部在**早就搬进模块**的函数体里，本刀 31 个 mover 体内 0 处 ⇒ 必须按清单单独一遍，不能随搬体顺手改",
+  "宿主分布": {
+   "ensureMarginFitted": 5,
+   "wirePagesRecognitionSettings": 4,
+   "wirePagesPanes": 4,
+   "updatePageVisibility": 3,
+   "renderMarginPanel": 3,
+   "applyPageZoom": 2,
+   "updateSelectionPanel": 2,
+   "renderPageSummary": 1,
+   "renderPageSetup": 1,
+   "renderTypePicker": 1,
+   "refreshRecognizedPages": 1,
+   "renderPages": 1,
+   "syncPageStates": 1,
+   "updateMarginDetectProgress": 1,
+   "savePageMargin": 1,
+   "undoMarginEdit": 1,
+   "confirmLayoutFromPanel": 1,
+   "wirePagesSelectionCheck": 1,
+   "wirePagesCheckPending": 1,
+   "wirePagesAutoApplySuggestions": 1
+  },
+  "逐键处数": {
+   "setMarginStatus": 5,
+   "visiblePages": 5,
+   "patchRecognitionSetting": 4,
+   "capturePageTileMetrics": 2,
+   "checkSelection": 2,
+   "queueOverlayRender": 2,
+   "resetMarginsToAuto": 2,
+   "showMarginFitProgress": 2,
+   "ensureMarginAudit": 1,
+   "ensureSuggestionScrollListener": 1,
+   "hideMarginFitProgressSoon": 1,
+   "initPanelAccordion": 1,
+   "pageScroller": 1,
+   "patchSelectedPages": 1,
+   "setAutoApplySetting": 1,
+   "showMarginDetectProgress": 1,
+   "startAuxiliaryAll": 1,
+   "startBatchRecognition": 1,
+   "toggleMarginView": 1,
+   "togglePageBlocksOverlay": 1
+  },
+  "归零判据": "for n in <20 键>; do grep -c \"injected\\.$n\\b\" pages-view.js; done 全 0",
+  "访问形态": "实测只有 injected.X（injected[\"X\"] / injected?.X 全 0 命中）"
+ }
 }

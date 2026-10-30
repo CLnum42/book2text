@@ -222,17 +222,27 @@ def count_checks(module_code, app_source, rules):
         got = len(re.findall(r"const __" + base + r"\d+ =", module_code))
         if want != got:
             problems.append(f"SET_BLOCKS {name}：源里 {want} 处，模块里 {got} 次调用（数量不符 = 重复插入或漏改）")
+    # SET_REWRITES 的数量判据：**数改写后的那一行，不是旧行**。
+    # 旧实现在这里是**反的**（2026-10-30 Architect 指出，刀 5 第一次踩到）：它数旧行，
+    # 而 SET_REWRITES 的语义是"旧行 → 新行"，旧行改写后必然 0 次 ⇒
+    #   做对了 → 旧行 0 → 判红（拦下做对的）；没做 → 旧行还在 → 判绿（放过没做的）。
+    # 不是"永远绿"，是"恰好反着"——这比永远绿更危险，因为它会逼人把正确的改写撤回去。
+    #
+    # 另一条陷阱（刀 6 会踩）：want 只在**本刀的 mover 体**（调用方传入的 app_source = pre_rewrite）里数。
+    # 若同一条旧行同时出现在"要搬"和"不搬"的函数里，按整个 app.js 数会得到不可满足的判据。
     for old, new in [(k, v) for k, v in getattr(rules, "SET_REWRITES", {}).items()]:
         if old.strip() not in app_source:
             continue
-        # 数**改写后的那一行**，不是旧行：SET_REWRITES 的语义是"旧行 → 新行"（旧行必然消失），
-        # 数旧行永远是 0 —— 2026-10-30 刀 5 第一次踩到（前几刀的 mover 体里没有这类自引用写点）。
-        # 判定口径：旧行在源体里出现 N 次 → 新行在模块里必须出现 N 次。
         want = len(re.findall(re.escape(old.strip()), app_source))
         got = len(re.findall(re.escape(new.strip()), module_code))
         if got != want:
             problems.append(
-                f"SET_REWRITES「{old.strip()[:40]}」：源体 {want} 处，模块里改写后 {got} 处（应相等）"
+                f"SET_REWRITES「{old.strip()[:40]}」：mover 体里 {want} 处，模块里改写后 {got} 处（应相等）"
+            )
+        # 反证的另一半：改写后的模块里，旧行必须 0 次（改了却留着旧行 = 同一写点两份）
+        if re.search(r"(?m)^\s*" + re.escape(old.strip()), module_code):
+            problems.append(
+                f"SET_REWRITES「{old.strip()[:40]}」：模块里旧行仍在（应为 0 次）"
             )
     return problems
 
