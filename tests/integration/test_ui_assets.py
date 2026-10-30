@@ -101,9 +101,21 @@ def test_page_view_has_zoom_controls_and_readonly_block_overlay() -> None:
 
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
     assert "PAGE_ZOOM_LEVELS" in script
+    # 档位表必须覆盖：缩略图、标准、以及"最高渲染档"——最后这条按关系判，
+    # **不写某个具体字符串**（否则下次加档又红一次）。
+    # 实现：从 render.RENDER_PROFILES 取 DPI 最高的档名，再断言它就是档位表里的 image hint。
+    from book2text.core.pdf import render as render_module
+
     assert 'image: "thumb"' in script
     assert 'image: "view"' in script
-    assert 'image: "zoom"' in script
+    # PAGE_ZOOM_LEVELS 里出现过的 image hint（按出现顺序）
+    hints = re.findall(r'image: "(\w+)"', script)
+    assert hints, "PAGE_ZOOM_LEVELS 的 image hint 一个都没扫到"
+    top_profile = max(render_module.RENDER_PROFILES, key=lambda name: render_module.RENDER_PROFILES[name])
+    assert hints[-1] == top_profile, (
+        f"档位表最高档 hint 是 {hints[-1]!r}，但渲染档位里 DPI 最高的是 {top_profile!r}"
+        "（加档时要一起改；见 docs/refactor/test-contract-order.md）"
+    )
     assert "page-overlay--readonly" in script
 
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
