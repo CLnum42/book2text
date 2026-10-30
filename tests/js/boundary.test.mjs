@@ -52,7 +52,9 @@ import {
   PAGES_R3_EXEMPTIONS, PAGES_R3_TOTAL_CAP, PAGES_STAGE, PAGES_R3_PENDING, PAGES_R3_BLOCKED_MAX,
 } from "./pages-r3-exemptions.mjs";
 // 刀号登记表（刀号的唯一真值源）：seed 里出现未登记的号 → 红；PAGES_STAGE 必须等于 maxLandedKnife()
-import { KNIVES, isRegisteredKnife, maxLandedKnife } from "./knife-registry.mjs";
+import {
+  KNIVES, isRegisteredKnife, maxLandedKnife, gitMaxKnifeFromLog, stageSourceProblems,
+} from "./knife-registry.mjs";
 import {
   BRIDGE_EXCEPTIONS,
   BRIDGE_EXCEPTION_MAX,
@@ -1508,19 +1510,9 @@ export function seedStageRangeProblems(rows, maxStage) {
     .map((row) => `seed 里 ${row.host} 的刀号 ${row.stage} 不在 1..${maxStage}——解析串位了`);
 }
 
-/** `move(pages): 刀 N` 首行的刀号；页面的刀号来自提交首行，不是账本（账本会随推迟漂）。 */
-const PAGES_MOVE_SUBJECT = /^move\((?:pages)\):\s*刀\s*([0-9]+(?:\.[0-9]+)?)/;
-
-/** 一组提交首行 → 已落盘的最新 pages 刀号（没有一条 match 返回 null）。 */
+/** 一组提交首行 → 已落盘的最新 pages 刀号（解析器在 knife-registry，别抄第二份）。 */
 export function pagesStageFromSubjects(subjects) {
-  let max = null;
-  for (const subject of subjects || []) {
-    const m = PAGES_MOVE_SUBJECT.exec(String(subject).trim());
-    if (!m) continue;
-    const n = Number(m[1]);
-    max = max === null ? n : Math.max(max, n);
-  }
-  return max;
+  return gitMaxKnifeFromLog((subjects || []).join("\n"));
 }
 
 /**
@@ -1534,7 +1526,7 @@ export function pagesStageFromGit() {
     const out = execFileSync("git", ["log", "--format=%s", "-n", "2000"], {
       encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
     });
-    return pagesStageFromSubjects(out.split("\n"));
+    return gitMaxKnifeFromLog(out);
   } catch {
     return null;
   }
@@ -2312,7 +2304,38 @@ test("PAGES_STAGE 必须等于 git 里已落盘的最新 pages 刀（无 git 打
     return;
   }
   const problems = pagesStageProblems({ stage: PAGES_STAGE, gitMax, seedRows: pagesSeedRows() });
+  // **两个真值源交叉校验**（2026-10-30 Chief：不二选一）：git 侧与登记表侧任一单独改都要红
+  problems.push(...stageSourceProblems({
+    gitMax, registryMax: maxLandedKnife(), pagesStage: PAGES_STAGE,
+  }));
   assert.deepEqual(problems, [], problems.join("；"));
+});
+
+test("PAGES_STAGE 两个真值源交叉校验：git 与登记表不等、任一反向、一刀未落盘 都要红", () => {
+  // a) git 说 5、登记表说 4 → 红，红文必须两边都打出来
+  const a = stageSourceProblems({ gitMax: 5, registryMax: 4, pagesStage: 5 });
+  assert.ok(a.some((m) => m.includes("git 最大刀号=5") && m.includes("登记表 landed=4")),
+    `真值源自检失败：只改登记表没被红——${a.join("；")}`);
+
+  // b) 反向（git 4 / 登记表 5）也要红：不能只判「git 更大」
+  const b = stageSourceProblems({ gitMax: 4, registryMax: 5, pagesStage: 5 });
+  assert.ok(b.some((m) => m.includes("git 最大刀号=4") && m.includes("登记表 landed=5")),
+    `真值源自检失败：反向不一致被放过（只判了一个方向）——${b.join("；")}`);
+
+  // c) 两边都是 5 且 PAGES_STAGE=5 → 绿
+  assert.deepEqual(stageSourceProblems({ gitMax: 5, registryMax: 5, pagesStage: 5 }), [],
+    `真值源自检失败：两边一致也被判红——${stageSourceProblems({ gitMax: 5, registryMax: 5, pagesStage: 5 }).join("；")}`);
+
+  // d) 一刀都没标 landed → 红（不许把登记表清空当通行证）
+  const d = stageSourceProblems({ gitMax: 5, registryMax: 0, pagesStage: 5 });
+  assert.ok(d.some((m) => m.includes("一刀都没标 landed")),
+    `真值源自检失败：清空登记表被当成绿——${d.join("；")}`);
+
+  // 小数刀号：用 Number 而不是 parseInt（parseInt("2.5") = 2，会把 2.5 悄悄当 2）
+  assert.deepEqual(stageSourceProblems({ gitMax: 2.5, registryMax: 2.5, pagesStage: 2.5 }), [],
+    "真值源自检失败：小数刀号被误判（是不是用了 parseInt？）");
+  assert.equal(gitMaxKnifeFromLog("move(pages): 刀 2.5 装配接线\nmove(pages): 刀 5 x"), 5,
+    "真值源自检失败：刀 2.5 解析错了（parseInt 会把 2.5 当 2）");
 });
 
 test("PAGES_STAGE 自检：漏跟红 / 超前抬红 / 相等绿 / 账本交叉校验不等红 / 表空只比 git", () => {

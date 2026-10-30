@@ -39,3 +39,56 @@ export function maxLandedKnife() {
 export function knifeOf(n) {
   return KNIVES.find((knife) => knife.n === Number(n)) || null;
 }
+
+/**
+ * 一组 `git log --format=%s` 的输出 → 已落盘的最新 pages 刀号（一条都不匹配返回 null）。
+ *
+ * 刀号允许小数（`刀 2.5`），所以一律 `Number(...)`，**不许用 parseInt**：`parseInt("2.5")` = 2，
+ * 会把 2.5 悄悄当成 2 —— 和 `刀5b` 那类「解析串位」是同一个坑的另一半。
+ */
+export function gitMaxKnifeFromLog(text) {
+  let max = null;
+  for (const line of String(text || "").split("\n")) {
+    const m = /^move\(pages\):\s*刀\s*([0-9]+(?:\.[0-9]+)?)/.exec(line.trim());
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (!Number.isFinite(n)) continue;
+    max = max === null ? n : Math.max(max, n);
+  }
+  return max;
+}
+
+/**
+ * `PAGES_STAGE` 的**两个真值源交叉校验**（2026-10-30 Chief 裁定：不二选一）。
+ *
+ * 两个源都会漂，而且漂的方式不同：
+ *   · git 侧（`move(pages): 刀 N` 首行）= 代码真的动了的证据，但**改错了账本它不管**；
+ *   · 登记表（`KNIVES` 的 landed 标记）= 声明，但**不落笔也能标 landed**。
+ * 所以两条都留：任一侧单独改 → 红，且红文必须把两边的值同时打出来（否则读的人要回去翻文档）。
+ * `gitMax === null` 表示拿不到 git（pre-commit 的导出树）—— 调用方打印跳过，**不许静默变绿**。
+ */
+export function stageSourceProblems({ gitMax, registryMax, pagesStage }) {
+  const problems = [];
+  const landed = Number(registryMax);
+  const git = Number(gitMax);
+  if (!(landed >= 1)) {
+    problems.push(
+      `登记表里一刀都没标 landed（landed 最大=${registryMax}）——`
+      + "不许用「清空登记表」把这条交叉校验变成通行证",
+    );
+  } else if (git !== landed) {
+    problems.push(
+      `PAGES_STAGE 的两个真值源不一致：git 最大刀号=${gitMax}，登记表 landed=${registryMax}`
+      + "——有人只改登记表没落 move 笔，或只落笔没更新登记表",
+    );
+  }
+  if (pagesStage !== undefined && pagesStage !== null) {
+    if (git !== Number(pagesStage)) {
+      problems.push(`PAGES_STAGE=${pagesStage} ≠ git 最大刀号=${gitMax}——手工常数与提交证据不同步`);
+    }
+    if (landed >= 1 && landed !== Number(pagesStage)) {
+      problems.push(`PAGES_STAGE=${pagesStage} ≠ 登记表 landed=${registryMax}——手工常数与登记表不同步`);
+    }
+  }
+  return problems;
+}
