@@ -43,11 +43,14 @@ run_once() {
 # **后写覆盖先写** → 通过的那笔被记成 BYPASS。修法：把「pre-commit → commit → post-commit」
 # 整段用一把锁串起来。**注意：当前 git 由 index.lock 串行化提交，并发覆盖在本 git 行为下不会发生；
 # 这把锁是防御性的，不是某次事故的修复。** macOS 无 flock，用 mkdir 的原子性（可移植）。
-LOCKDIR="$REPO/.git/b2t-commit.lock"
+# linked worktree 里 $REPO/.git 是**文件**（gitdir 指针），mkdir 必 ENOTDIR；
+# 用 --absolute-git-dir 取真实 git dir（worktree 下是 .git/worktrees/<name>）。
+GITDIR=$(git rev-parse --absolute-git-dir 2>/dev/null) || GITDIR="$REPO/.git"
+LOCKDIR="$GITDIR/b2t-commit.lock"
 n=0
 while ! mkdir "$LOCKDIR" 2>/dev/null; do
   n=$((n + 1))
-  if [ "$n" -gt 600 ]; then echo "✗ 提交锁等待超时（.git/b2t-commit.lock 存在）" >&2; exit 1; fi
+  if [ "$n" -gt 600 ]; then echo "✗ 提交锁等待超时（$LOCKDIR 存在）" >&2; exit 1; fi
   sleep 0.2
 done
 trap 'rmdir "$LOCKDIR" 2>/dev/null' EXIT INT TERM
