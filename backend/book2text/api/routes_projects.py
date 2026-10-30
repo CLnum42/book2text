@@ -188,7 +188,7 @@ def pages_human_touched(
             raise _project_error(exc, status=400) from exc
         wanted = sorted({int(page.page_no) for page in selected})
         if not wanted:
-            return {"pages": [], "count": 0}
+            return {"pages": [], "count": 0, "total": 0}
     else:
         try:
             wanted = sorted({int(part) for part in raw})
@@ -210,7 +210,12 @@ def pages_human_touched(
 
     flags = recognition_module.human_touched_for_pages(project.directory, wanted)
     rows = [{"page_no": no, "human_touched": bool(flags.get(no, False))} for no in wanted]
-    return {"pages": rows, "count": sum(1 for row in rows if row["human_touched"])}
+    # total = 这个范围里一共多少页（前端要用它算「剩下 R 页」，不自己算 pending）
+    return {
+        "pages": rows,
+        "count": sum(1 for row in rows if row["human_touched"]),
+        "total": len(wanted),
+    }
 
 
 @router.post("/{project_id}/open")
