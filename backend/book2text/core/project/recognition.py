@@ -311,6 +311,7 @@ def create_ocr_job(
     pages: Sequence[int] | None = None,
     scope: str | None = None,
     skip_recognized: bool = True,
+    exclude_pages: Sequence[int] | None = None,
     dpi: int | None = None,
     language: str | None = None,
     engine: str | None = None,
@@ -356,6 +357,17 @@ def create_ocr_job(
         scope=scope,
         skip_recognized=skip_recognized,
     )
+    if exclude_pages:
+        in_range = {int(page.page_no) for page in selected}
+        outside = sorted({int(no) for no in exclude_pages} - in_range)
+        if outside:
+            # 前端是拿同一个 resolve 的结果去排除的：不匹配就是 bug，必须 fail loud
+            raise ProjectError(
+                f"要排除的页 {outside} 不在本次识别范围内——前端与后端的待识别集合不一致"
+            )
+        excluded = {int(no) for no in exclude_pages}
+        selected = [page for page in selected if int(page.page_no) not in excluded]
+
     if not selected:
         raise ProjectError(
             "没有需要识别的页面（已识别的页会跳过，排除的页不参与）"

@@ -165,6 +165,7 @@ def pages_human_touched(
     request: Request,
     project_id: str,
     pages: str = Query(default="", description="逗号分隔的页号，例如 1,2,3"),
+    scope: str | None = Query(default=None, description="或给范围：unrecognized / all"),
 ) -> dict[str, Any]:
     """**只读**：这些页里哪些已有人工成果（重新识别前先问它）。
 
@@ -172,14 +173,28 @@ def pages_human_touched(
     参数不合法一律 400（空 / 非数字 / 不属于本项目）——静默返回 count=0 会让前端误判"可以放心覆盖"。
     """
     raw = [part.strip() for part in (pages or "").split(",") if part.strip()]
-    if not raw:
-        raise AppError(400, "bad_pages", "pages 不能为空", detail="形如 ?pages=1,2,3")
-    try:
-        wanted = sorted({int(part) for part in raw})
-    except ValueError as exc:
-        raise AppError(400, "bad_pages", "pages 里有非数字", detail=str(exc)) from exc
+    if bool(raw) == bool(scope):
+        raise AppError(
+            400, "bad_pages", "pages 与 scope 必须给出且只给出一个",
+            detail="形如 ?pages=1,2,3 或 ?scope=unrecognized",
+        )
 
     library = _library(request)
+    if scope:
+        # 页集合的解析只有后端一份（resolve_pages）：前端自己算 pending 会和它漂
+        try:
+            selected = recognition_module.resolve_pages(project_id, library=library, scope=scope)
+        except project_library.ProjectError as exc:
+            raise _project_error(exc, status=400) from exc
+        wanted = sorted({int(page.page_no) for page in selected})
+        if not wanted:
+            return {"pages": [], "count": 0}
+    else:
+        try:
+            wanted = sorted({int(part) for part in raw})
+        except ValueError as exc:
+            raise AppError(400, "bad_pages", "pages 里有非数字", detail=str(exc)) from exc
+
     try:
         project = project_library.load_project(project_id, library=library)
     except project_library.ProjectError as exc:

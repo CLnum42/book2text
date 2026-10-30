@@ -66,6 +66,7 @@ class OcrJobRequest(BaseModel):
     language: str | None = Field(default=None, max_length=16)
     # 强制重识别：有人工成果的页也覆盖（建任务前会先备份整库，失败则不建任务）
     force: bool = False
+    exclude_pages: list[int] | None = Field(default=None, max_length=5000)
 
 
 class AuxiliaryJobRequest(BaseModel):
@@ -180,6 +181,7 @@ def start_ocr_job(request: Request, project_id: str, body: OcrJobRequest) -> dic
             dpi=body.dpi,
             language=body.language,
             force=body.force,
+            exclude_pages=body.exclude_pages,
         )
     except recognition.EngineUnavailable as exc:
         raise AppError(503, "ocr_engine_unavailable", "OCR 引擎不可用", detail=str(exc)) from exc
