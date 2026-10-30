@@ -18,6 +18,7 @@ from ..layout.adapters import RapidOcrDetAdapter
 from ..layout.base import LayoutEngine, LayoutEngineError, LayoutParams
 from ..pdf import render
 from ..project import jobs as jobs_module
+from ..project import library as project_library
 from ..project import lock as lock_module
 from ..project import workflow as workflow_module
 from ..storage import db as db_module
@@ -84,6 +85,8 @@ def resolve_layout_pages(
     if scope is not None and scope not in LAYOUT_SCOPES:
         raise ProjectError(f"未知的检测范围：{scope!r}（可选：{'、'.join(LAYOUT_SCOPES)}）")
 
+    # 参数名与下面的局部变量同名（都是 pages）：先存起来，否则会把 Page 对象当页号
+    requested = pages
     target_library = library if library is not None else default_library_dir()
     all_pages = list_pages(project_id, library=target_library)
     directory = project_dir(target_library, project_id)
@@ -258,7 +261,9 @@ def _seconds_per_page(directory: Path) -> tuple[float, str]:
     return round(median, 3), "history"
 
 
-def layout_plan(project_id: str, *, library: Path | None = None) -> dict[str, object]:
+def layout_plan(
+    project_id: str, *, library: Path | None = None, pages: list[int] | None = None
+) -> dict[str, object]:
     """这一本"检测版面"要做什么、大概多久。
 
     - `need_detection`：正文页里**还没有成功检测记录**的页号（检测要跑的正是这些）；
@@ -266,11 +271,23 @@ def layout_plan(project_id: str, *, library: Path | None = None) -> dict[str, ob
     - `seconds_per_page` / `estimated_seconds`：按本项目历史实测中位估算，
       没有历史时用 `DEFAULT_SECONDS_PER_PAGE`，并在 `estimate_source` 里说明来源。
     """
+    # 参数名与下面的局部变量同名（都是 pages）：先存起来，否则会把 Page 对象当页号
+    requested = pages
     target_library = library if library is not None else default_library_dir()
     directory = require_project_dir(project_id, library=target_library)
     pages = list_pages(project_id, library=target_library)
     summaries = workflow_module.layout_summaries(directory)
     body = [page for page in pages if page.include]
+    if requested is not None:
+        # 只在选中的正文页里算：用户看到的数和他实际要跑的事必须一致
+        wanted = {int(no) for no in requested}
+        by_no = {page.page_no: page for page in body}
+        outside = sorted(no for no in wanted if no not in by_no)
+        if outside:
+            raise project_library.ProjectError(
+                f"第 {outside[0]} 页不在正文页范围内，检测版面只对正文页生效"
+            )
+        body = [page for page in body if page.page_no in wanted]
     need_detection = [page.page_no for page in body if page.page_id not in summaries]
     need_fit = [
         page.page_no

@@ -893,6 +893,15 @@ function refreshLayoutDetectEntry() {
     return;
   }
   item.hidden = false;
+  const selected = selectionPages().filter((page) => page.include);
+  if (selectedPages.size && !selected.length) {
+    item.disabled = true;
+    item.title = "所选页都不是正文；检测版面只对正文页生效";
+    item.textContent = "检测版面…（所选页都不是正文）";
+    return;
+  }
+  item.disabled = false;
+  item.title = "";
   const undetermined = marginUndeterminedPages().length;
   item.textContent = undetermined
     ? `检测版面…（${undetermined} 页还没有版心）`
@@ -6666,9 +6675,19 @@ async function openLayoutDetectDialog() {
 
 async function refreshLayoutDetectPlan() {
   if (!currentProject) return;
+  // 有选择就只算选中的正文页（用户看到的数必须等于他实际要跑的事）；没选择一个字节都不改
+  const selected = selectionPages().filter((page) => page.include);
+  if (selectedPages.size && !selected.length) {
+    el("layout-detect-plan").textContent = "所选页都不是正文；检测版面只对正文页生效";
+    el("layout-detect-start").disabled = true;
+    return;
+  }
+  const query = selected.length
+    ? `?pages=${selected.map((page) => page.page_no).join(",")}`
+    : "";
   try {
     const plan = await apiJson(
-      `/api/projects/${currentProject.project_id}/layout/plan`
+      `/api/projects/${currentProject.project_id}/layout/plan${query}`
     );
     layoutPlanCache = plan;
     renderLayoutDetectPlan(plan);

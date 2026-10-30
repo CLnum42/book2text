@@ -106,10 +106,19 @@ def start_layout_job(
 
 
 @router.get("/{project_id}/layout/plan")
-def get_layout_plan(request: Request, project_id: str) -> dict[str, Any]:
-    """检测计划：哪些正文页还没检测、按本项目历史实测大概要多久。"""
+def get_layout_plan(
+    request: Request,
+    project_id: str,
+    pages: str = Query(default="", description="逗号分隔的页号，例如 4,5,6（只在这些正文页里算）"),
+) -> dict[str, Any]:
+    """检测计划：哪些正文页还没检测、按本项目历史实测大概要多久。
+
+    `pages` 收窄与 `/pages/human-touched` 同形（逗号分隔）：GET 上没有 body，
+    与 `/jobs` 的 JSON 数组无法共用；选它是因为前端已经在用这个形态，且空值=全书。
+    """
+    wanted = [int(part) for part in pages.split(",") if part.strip()] if pages.strip() else None
     try:
-        plan = layout_detection.layout_plan(project_id, library=_library(request))
+        plan = layout_detection.layout_plan(project_id, library=_library(request), pages=wanted)
     except project_library.ProjectError as exc:
         status = 404 if not project_library.project_exists(
             project_id, library=_library(request)
