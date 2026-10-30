@@ -11,6 +11,11 @@
 > R8 **57** · PagesView deps **218** · 豁免表 **14 项 / Σcap 25 / TOTAL_CAP 25**。
 > 复现：`node scripts/r3_pages_count.mjs --json`（R3）、`node tests/js/run.mjs`（四闸）。
 
+> **本刀已落盘**（`578a558 move(pages): 刀 7`，2026-10-30）。本文的数字是**落盘前**的基准
+> （`f9e1b63`）；落盘后 `main@a167fc6`：app.js **13,428** · pages-view **3,194** ·
+> R3 **23 处 / 13 种** · R8 **58**。下文「不变量」一节的**行号已按落盘后重量**，
+> 其余各节是历史基准，别再拿它们当判据。
+
 ## 为什么有这一刀
 
 加上刀 6 之后，pages 的 R3 还剩 25 处，其中 `recognizePage` 独占 2 处（`pages-error`）。
@@ -277,18 +282,19 @@ review 的 3 处 + 外壳的 4 处：**留在 app.js**（review 未落盘 ⇒ �
 
 **旧说法作废**：本文原写「离开审校时 detailPageNo 被置 null，见 app.js:6261」。这句是假的。
 
-**事实**（两个来源一致：源码 + Builder 真机）：
+**事实**（量于 `a167fc6`，刀 7 落盘之后；两个来源一致：源码 + Builder 真机）：
 
 ```
-· `detailPageNo = null` 只出现在两处：声明（app.js:6136）与 `closePageDetail()`（:6261）
+· `detailPageNo = null` 只出现在两处：声明（app.js:6098）与 `closePageDetail()`（:6223）
 · `closePageDetail()` 只有两个调用点：
-     refreshProject（:2534，换项目/刷新） · closeProject（:11572，回项目库）
-· `showView()`（:203-271）只切 <section> 的 hidden，**不清** detailPageNo
+     refreshProject（:2545，换项目/刷新） · closeProject（:11534，回项目库）
+· `showView()`（:214-279）只切 <section> 的 hidden，**不清** detailPageNo
 · `#view-review` 的四个入口全部紧跟一个 `openPageDetail()`：
-     openPageDetail 自身 :6230 · 错字面板「看原文」:10213 · 收尾面板「开始审校」:11381 ·
-     选择工具条「审校」（pages-view.js:3087）
+     openPageDetail 自身 :6192 · 错字面板「看原文」:10175 · 收尾面板「开始审校」:11343 ·
+     选择工具条「审校」（pages-view.js:3155）
    步骤条的「审校」步走 `enterReviewStep()` → `showView("reading")`，**不是这个视图**
-· `ensureReviewPage()`（:6244）**0 个调用点**——死代码，别拿它当"进 review 会自动挑页"的证据
+· `ensureReviewPage()`（:6206）**0 个调用点**——死代码，别拿它当"进 review 会自动挑页"的证据
+  （它是 587 个顶层函数里 9 个 0 引用之一，清理另立一笔，见 `export-ratchet.md` §十一）
 ```
 
 真机复现（Builder）：进审校 → 回「页面确认」→ 点页块「识别」并让它失败 →
@@ -298,7 +304,7 @@ review 的 3 处 + 外壳的 4 处：**留在 app.js**（review 未落盘 ⇒ �
 
 ```js
 let detailPageNo = null;       // 正在渲染的审校页：只在 #view-review 显示时非空（不变量）
-let lastDetailPageNo = null;   // 回忆：上次审校的页；离开审校后保留（:977 那行要用它）
+let lastDetailPageNo = null;   // 回忆：上次审校的页；离开审校后保留（:988 那行要用它）
 
 // openPageDetail：两个都写
 detailPageNo = pageNo;  lastDetailPageNo = pageNo;
@@ -306,7 +312,7 @@ detailPageNo = pageNo;  lastDetailPageNo = pageNo;
 // showView 末尾：离开 review 就关掉详情页
 if (target !== "review") closePageDetail();
 
-// :977 原来拿 detailPageNo 当"页面视图的位置"，改用 lastDetailPageNo（否则清空后会把位置写成 null）
+// :988 原来拿 detailPageNo 当"页面视图的位置"，改用 lastDetailPageNo（否则清空后会把位置写成 null）
 savePosition("pages", lastDetailPageNo);
 ```
 

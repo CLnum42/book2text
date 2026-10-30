@@ -256,3 +256,45 @@ refreshMarginTiles ×2 · refreshLayoutDetectEntry ×1 · renderStepPanels ×1
 新增 **9.1–9.5** 五行（每行一条 scope）；**刀 9 的原 scope 作废**——它写的是
 「导出收口：R8 53 → 22，要死 31 个键」，改成「删 8 个死键 + 重算过期死期 + 落 T 到点未死机检」。
 
+
+## 十一、另案：零引用代码（`ensureReviewPage` 不是孤例）
+
+**它和刀 9 那 8 个"死 T"是两件事**：那 8 个是**导出键**（占 R8 的账，删了曲线才动）；
+这些是 app.js 的**内部函数**（不占 R8、不占 R3，删了不会让任何闸变绿，也不会让任何数字动）。
+所以**不并在刀 9 里做**，但也别忘——留到最后会让"app.js 还有什么用"没法回答。
+
+**实测（`a167fc6`，口径与命令见下）**：
+
+```
+app.js 列 0 的 `function` 声明 **587** 个；全仓按**词边界**扫，扣掉
+  ① 定义位（`function <name>(`）
+  ② 属性位（`window.<name>` / `obj.<name>`；注意 `...<name>(` 是**展开调用**，不是属性位）
+⇒ 0 引用 **9** 个：
+
+ensureReviewPage(6206) · pendingBlockCount(6606) · textAdvance(7335) · queueKey(7647) ·
+textRows(8923) · handleDiffMarkClick · selectLineInTextarea · punctGroupByKey
+divergenceCandidatesOn(2189) —— **不能直接删**：tests/integration/test_ui_assets.py:778 断言
+                              `"function divergenceCandidatesOn(" in script`
+```
+
+口径的坑（我自己第一次扫错了一次，值得写下来）：只用 `(?<![\w$.])name` 会把
+`list.append(...statsRow(…))` 里的**展开调用**当成属性位漏掉（`statsRow` 明明是活的），
+于是报出 11 个"死函数"而不是 9 个。判据要三栏都扫：定义位 / 值位 / 调用位，属性位单列。
+另外 `statsRow` 这类名字是**别的活名字的子串**（`renderStatsRow…`），人肉 grep 也会骗人。
+
+**顺序：先删到 0，再开闸。** 现在开"0 引用函数 = 红"会红 9 条，其中 1 条还被测试断言撑着；
+先开闸等于又要一张豁免表（本项目已经在这上面栽过两次）。
+
+**到期点：刀 10（收口）**，逐个选，不是整批：
+
+```
+ensureReviewPage        → **接上或删**。它是"进 review 自动挑页"的唯一实现，而今天四个入口都走
+                          openPageDetail()（显式带页号）。将来若要"回到上次审校页"，接它比新写一个对
+其余 7 个               → 删（重构/改名后的残留，没有任何"将来会用到"的迹象）
+divergenceCandidatesOn  → 先判那条断言还有没有意义：它断的是**源码里有这个函数**，不是行为。
+                          行为（双引擎候选不自动采用）若已有真的落点，函数与断言一起删；
+                          若没有，说明这条行为其实没接上——那是另一个 bug，不是清理
+```
+
+清理完这 9 条，才把「0 引用顶层函数 = 红」开成闸（判据带上 §上面那三栏口径，
+并把 `tests/` 里的源码断言算进"引用"，否则永远多一条）。
