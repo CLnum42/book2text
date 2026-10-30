@@ -241,8 +241,25 @@ Builder 在 12-mover 版上撞到 3 条红，缩到 8 个后**仍然存在**（`
 
 ② recognition-target.test.mjs:154「点击分派：selection / force → 进入对应识别」（2 条）
    现象：测试桩住 deps.recognizeSelection 看分派；搬走后模块调自己的函数，桩不再被调用。
-   修法：改成验**最终 POST 体**——mode=selection → `skip_recognized` = 勾选值、无 `force`；
-        mode=force → `force: true`。断言强度不降（从"某函数被调"变成"请求形状对不对"）。
+   修法：**harness 升级到 app 级 + fetch 桩**，验最终 POST 体（不是模块级改断言，理由见下）。
+
+   为什么必须换 app 级 harness（TestDev 核过，这条决定了工作量）：
+     · pages-view.js:1974 的 handler 只调 `injected.recognizeSelection(false/true)` 或
+       `injected.startBatchRecognition("unrecognized")` —— **分派**在模块边界上；
+     · 但 **POST 体是在 app.js 的 recognizeSelection / startBatchRecognition 里拼的**，不在模块边界上；
+     · 而这两笔 test-contract 必须在**旧树**上先绿（那时函数还住 app.js）
+     ⇒ 模块级 harness 无论怎么改都做不到"旧树也绿"；只有 app.js + pages-view.js + fetch 桩 三者同在场才行。
+
+   断言（逐条，强度不降：从"某函数被调"变成"请求形状对不对"）：
+     selection → url 命中 `/jobs/ocr`，body.skip_recognized === true（测试把 #selection-skip-recognized 置勾选），
+                 且 body 里**没有** force 键
+     force     → body.skip_recognized === false，body.force === true
+     batch     → body.scope === "unrecognized"，且 body 里**没有** pages 键（顺带覆盖）
+   配套桩：`humanTouchedPages: async () => []`（否则会走确认框分支）、`warnUnconfirmed: () => true`、
+          `apiJson` 换成记录 (url, body) 的 fetch 桩。
+
+   **这不是"改两行"**：它是 harness 换代（app 级装配 + fetch 桩 + 三条断言的请求体口径），
+   Builder 排期与验收要按这个算，不要当小修。
 
 判据（两笔都必须满足）：**改完的测试在旧树上先绿**（产品代码没动时跑一次）。
 做不到 → 退回「放宽 → 产品 → 收紧」三笔，弱断言窗口标 `Temp-Relax:`，收紧后必须消失。

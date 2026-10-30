@@ -370,8 +370,9 @@
  "测试账": {
   "阻断": "tests/js 有 3 条红（不是搬错：探针挂在注入面上）",
   "①": "reading-view-behavior.test.mjs:440 —— harness 没 init PagesView，模块 applyPageZoom 拿到 undefined deps → TypeError reading 'label'。修法：harness 里补 PagesView.init(deps)（与 installReadingDeps 同款自动桩），断言不变；**这笔在产品笔之前单独提交，改完在旧树上必须绿**",
-  "②": "recognition-target.test.mjs:154（2 条）—— 测试桩住 recognizeSelection 看分派；搬走后模块调自己的函数，桩不再被调用。修法：改成验最终 POST 体（mode=selection → skip_recognized=勾选值、无 force；mode=force → force:true），**判据是改完的测试在旧树上也绿**；做不到就走「放宽→产品→收紧」三笔，弱窗口标 Temp-Relax:",
-  "红线": "move: 笔只许改 OWNERS / VIEW_STATE_PREFIXES / VIEW_EXPORTS 三张表 → 这两个测试文件必须在产品笔之前单独 test-contract 提交"
+  "②": "recognition-target.test.mjs:154（2 条）—— 测试桩住 recognizeSelection 看分派；搬走后模块调自己的函数，桩不再被调用。修法不是模块级改断言：POST 体是在 app.js 的 recognizeSelection/startBatchRecognition 里拼的，不在模块边界上，而这两笔 test-contract 必须在旧树上先绿 ⇒ 必须把 harness 升级到 app 级 + fetch 桩，断言 selection → body.skip_recognized===true 且无 force；force → skip_recognized===false 且 force===true；batch → body.scope===\"unrecognized\" 且无 pages。配套桩 humanTouchedPages: async()=>[] / warnUnconfirmed:()=>true。工作量口径：harness 换代，不是改两行。",
+  "红线": "move: 笔只许改 OWNERS / VIEW_STATE_PREFIXES / VIEW_EXPORTS 三张表 → 这两个测试文件必须在产品笔之前单独 test-contract 提交",
+  "batch口径": "startBatchRecognition 只发 {scope}（app.js 里 body: JSON.stringify({ scope })）"
  },
  "推迟两刀": {
   "顺序": [
