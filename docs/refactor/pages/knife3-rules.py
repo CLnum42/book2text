@@ -129,11 +129,18 @@ if _MODULE_SRC.is_file():
 
 
 #: **syncStepToggles 体内有两处 `window.IndexView?.refresh()`**（Architect 裁定②：本刀照搬，注入 indexRefresh）。
-#: 用 LIT 做字面量替换（不是 IDENT：它是表达式不是标识符），并把 indexRefresh 登记为注入能力。
+#: 用 LIT 做字面量替换（不是 IDENT：它是表达式不是标识符）。
 LIT = list(getattr(_base, "LIT", [])) + [
     ("window.IndexView?.refresh()", "injected.indexRefresh?.()"),
 ]
-IDENT_KNIFE3.append(("indexRefresh", "injected.indexRefresh", "function"))
+
+#: **跨视图能力必须有自己的出口**（R2）：CAPABILITIES 生成 `键: () => 表达式,`。
+#: 2026-10-30 真事故：把 `indexRefresh` 当 function 写进 IDENT_FULL，deps 生成
+#: `indexRefresh: indexRefresh,`（外壳没有这个声明）→ node --check 过、运行时才 TypeError；
+#: Builder 只好在产品里手写成闭包才通过。能力的唯一出口是本表，生成器有「能力不得进 IDENT」守卫。
+CAPABILITIES = [
+    ("indexRefresh", "window.IndexView?.refresh()"),
+]
 
 IDENT = [(old, new, *rest) for old, new, *rest in _base.IDENT if old not in _MOVERS and old not in _MODULE_DECLARED] + [
     entry for entry in IDENT_KNIFE3 if entry[0] not in _MOVERS and entry[0] not in _MODULE_DECLARED

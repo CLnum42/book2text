@@ -106,15 +106,20 @@ R3 的 total 含 el / querySelector 两种形态（155 = 148 + 7）。
 ## ⑤ 施工顺序（照做，不要一次性搬完）
 
 ```
-1. **步 1 跳过（本刀无 test 改动）**——结论与理由：
+1. **没有 test-contract 笔**，但 `tests/js` 会改**一张登记表**，落在同一笔 `move(pages):` 里：
    · 这 15 个函数搬进模块**不改变 wireAll 的段数与 id 数**，所以 pages-wire 的 37/34 不动；
    · R3 豁免表的 cap 是**上限**，引用处数下降不需要改表（只在"引用归零"时才要删项，本刀归零的 20 个 id
      **不在豁免表里**——它们属于"总账 155"，不是过渡豁免表的项）；
    · 唯一会变的是 `r3_pages_count` 的 total（155→123）与 ids（64→44），这两个数**不在任何测试常数里**
-     （测试只断言"下降且不归零"这类形态）。
-   ⇒ 因此**没有 test-contract 笔**。若 Builder 在搬完后发现某个常数确实变了，停下报我，不要"顺手校准"。
-2. 生成器 dry run（不 --write）：确认 movers 重名 / 状态声明重复 / api 键集合 三条守卫全过，
-   且 `injected_keys` 与 ③ 的 45 键对得上；对不上先查名单，不要改规则迁就
+     （测试只断言"下降且不归零"这类形态）；
+   · **但 R8（按模块导出棘轮）会红**：14 条转发器 = 模块多 14 个导出键，`VIEW_EXPORTS` 里 pages 那条
+     必须同批从 20 改成 **34**（逐键带死亡刀号注释，见 ⑩）——它属于"三张登记表"，`move:` 笔允许改，
+     **但必须在提交信息里写 `Move-Gate: tests/js/boundary.test.mjs`**；不写 = 判据照旧（A1 红，报"偷改判据"）。
+   ⇒ **没有 test-contract 笔**，但**确实有 tests/js 改动**，且只能落在 `VIEW_EXPORTS` 块内。
+   若 Builder 在搬完后发现别的常数确实变了，停下报我，不要"顺手校准"。
+2. 生成器 dry run（不 --write）：确认 movers 重名 / 状态声明重复 / api 键集合 / setter 不进 IDENT /
+   能力不进 IDENT 五条守卫全过，且 `injected_keys` 与 `deps_literal_keys` **相等且都等于 46**
+   （46 = 模块正文实际用到的键，**不是** ③ 那个 45 条声明）；对不上先查名单，不要改规则迁就
 3. 产品第一笔：只加装配 —— pages-view.js 里 15 个函数体的**空壳顺序** + deps 注入键骨架，
    app.js 里 14 条转发器；此时 node 闸必须仍绿（函数体还没搬，行为不变）
 4. 逐函数搬：按行范围从下往上搬（避免行号漂移），**每搬一个跑一次 node 闸**（不是 node --check），
@@ -129,12 +134,24 @@ R3 的 total 含 el / querySelector 两种形态（155 = 148 + 7）。
 
 
 
+**提交形态（单笔，不是「先 test-contract 后产品」）**：
+
 ```
-1. test-contract: 一笔，只动 tests/js（把 pages-wire 的量随函数搬迁校准）
-2. 产品一笔：app.js 少 15 个函数体 + 14 条转发器，pages-view.js 多 15 个函数 + wireAll 接线不变
-3. 每搬一处跑 node 闸（不是 node --check）
-4. 自检：movers 重名 / 声明重复 / api 键集合（生成器三条守卫）
+一笔 move(pages): … 内同时含：
+  ① backend/book2text/static/app.js         −15 个函数体 +14 条转发器 + 28 个新 deps 键
+  ② backend/book2text/static/pages-view.js  +15 个函数体（470 行）+ api 补 14 键 + init 里的能力键
+  ③ docs/refactor/evidence/pages/stage2-movers-seed.md  −15 行
+  ④ tests/js/boundary.test.mjs              VIEW_EXPORTS 的 pages：20 → 34（只许这块）
+  ⑤ docs/refactor/pages/knife3-rules.py + 本页文档
+
+提交信息（两条登记缺一不可）：
+  move(pages): <一句话>
+  Move-Gate: tests/js/boundary.test.mjs      ← ④ 的声明；不写 = A1 报"改 tests/js 却没声明"
+  Approved-by: DevLead                       ← move: 笔同样要留痕（9d2ac58 的先例）
 ```
+
+拆开任何一脚都会红：app.js 单提 → seed 缺名（R3）；seed 单提 → 索引里没有新函数；
+表单提 → R8 见到 34 个导出但登记 20 个。**只有一笔能过，所以它必须被审。**
 
 ## ⑥ 未决（需要复核人拍）
 
@@ -147,9 +164,12 @@ R3 的 total 含 el / querySelector 两种形态（155 = 148 + 7）。
 ## ⑦ rules 路线（甲）：`docs/refactor/pages/knife3-rules.py`
 
 **不是复制一份，是扩展**：`importlib` 读入 `docs/refactor/evidence/pages/rules.py`，原样继承
-`INTERFACE`(16) / `SET_BLOCKS` / `MOVED_STATES` / `INIT_ANCHOR` / `FORWARDERS`，只做一件事——
-把这 15 个函数体引用、但仍住在外壳的 45 个名字（25 函数 + 15 `let` + 5 `const`）加进 `IDENT`，
-并按 `knife3-movers.json` 把**本刀搬走的函数**从 `IDENT` 里剔掉（否则撞 `movers ∩ IDENT` 守卫）。
+`INTERFACE`(16) / `SET_BLOCKS` / `MOVED_STATES` / `INIT_ANCHOR` / `FORWARDERS`，另外加三段：
+① 把这 15 个函数体引用、但仍住在外壳的 45 个名字（25 函数 + 15 `let` + 5 `const`）加进 `IDENT`；
+② 8 条同名 setter 进 `SETTERS`（写点走 `injected.setX(…)`，不是给 getter 赋值）；
+③ 跨视图能力进 `CAPABILITIES`（`indexRefresh` → deps 生成 `indexRefresh: () => window.IndexView?.refresh(),`）。
+再按 `knife3-movers.json` 把**本刀搬走的函数**从 `IDENT` 里剔掉（否则撞 `movers ∩ IDENT` 守卫）。
+**setter 与能力都不许进 `IDENT`**——进了就生成 `键: 键` 自引用，语法过、运行时炸（生成器三条守卫）。
 
 命令：
 
@@ -160,59 +180,53 @@ python3 docs/refactor/evidence/build_view.py \
   --name Pages --app backend/book2text/static/app.js --out /tmp/k3-dry
 ```
 
-**dry run 目前的状态（Builder 照实看，别以为是配置错）**：`residue: []`、
-`injected_keys: 46`，但有两条**已知缺口**要补在 build_view 里，不是名单错：
+**dry run 目前的状态**：`residue: []`、`anti: []`、`injected_keys: 46`、`deps_literal_keys: 46`。
+文档里曾列的"两条已知缺口"（anti 不认模块已有声明 / 缺 SETTERS）**已按下面修完并在 dry run 上验过**：
 
 ```
-(a) anti 报「renderPages / el / ensureMarginFitted / renderLayoutBlocks / renderMarginPanel /
-    renderRecognitionStatus 判注入，但模块正文里仍裸引用」——这些名字**模块里本来就有声明**
-    （el 与刀 1 搬进去的函数），裸引用是对的；anti 还没像 residue 那样把"现模块声明"算进去。
-    修法同 residue：anti 计算时把现有 pages-view.js 的声明并进白名单。
-(b) 「给 getter 赋值 9 处」——这些是本刀函数体里的写点（如 finishSummaryAgain = …），
-    要补 `SETTERS`。名单下一步从 dry run 的错误串里逐条取，别手猜。
+(a) anti 与 residue 同口径：把现有 pages-view.js 的声明并进白名单
+    → 修前 6 条误报（renderPages / el / ensureMarginFitted / renderLayoutBlocks / renderMarginPanel /
+      renderRecognitionStatus），修后 anti []
+    → 反证：把白名单临时去掉，6 条必须回来（2026-10-30 已验）
+(b) SETTERS 8 条（9 处写点）从错误串逐条取；守卫「setter 不得进 IDENT」已加，
+    反证：把某个 setter 名塞回 IDENT → exit 2「deps 会生成自引用」
+(c) 能力（capability）出口：`CAPABILITIES` 段生成 `键: () => 表达式,`；
+    守卫「能力不得进 IDENT」+「同一键不得既 CAPABILITIES 又 SETTERS」+ anti「能力声明了但正文没用到 = 空声明」，
+    三条各喂过一次红（原文见提交说明 / docs/refactor/pages/incremental-write.md 零点五）
 ```
 
-这两条属于生成器/规则的补齐，**不影响本施工图的名单与验收数**；补完再让 Builder 跑。
+## ⑧ 四个数各是什么（45 / 40 / 46 / 208）——不要互相替代
 
-## ⑧ 45 vs 46 的解释（定稿：**以 dry run 的 45 为准**）
+| 数 | 是什么 | 量法 | 常见误用 |
+|---|---|---|---|
+| **45** | `knife3-rules.py` 里 `IDENT_KNIFE3` 的**声明条数**（25 函数 + 15 `let` + 5 `const`） | 数列表长 | 当成 deps 键数去验收 |
+| **40** | 真正进 `IDENT` 的条数：45 − 5 条"模块已声明"（`el` / `ensureMarginFitted` / `renderLayoutBlocks` / `renderMarginPanel` / `renderRecognitionStatus`）；`movers ∩ IDENT` 交叉剔除 **0** 条 | 生成器同一口径过滤 | 以为 45 全进了规则表 |
+| **46** | dry run 的 `injected_keys`：**模块正文实际出现**的 `injected.X` 键（40 条里用到 36 + SETTERS 用到 7 + 能力 1 + 基规则补 2：`getSelectedPages` / `setPagesMarginOn`） | `re.findall(r"injected\.(\w+)", strip_code(blank_deps(module)))` | 用"45 剔 5 个"算术凑 |
+| **208** | 最终 init deps 键总数 | HEAD 180 ∪ 46，重叠 18、新增 28 | 180 + 46 = 226（忘了重叠） |
 
-第一版 dry run 报 `injected_keys: 46`，计划写 45。差的**不是 1 个名字，是 5 个重复注入**：
+声明了但正文**没用到**、因此**不进 deps** 的 5 个：`getFinishSummary` / `getFinishSummaryProject`
+（HEAD 里本来就有，留着无害、不新增）/ `getLatestAutoApply` / `selectedPages` / `setCurrentView`。
+生成器的 `deps_literal(rules, used)` 现在只输出 `used` 里的键，所以它们不会变成死键。
 
-```
-46（第一版）= 25 函数 + 15 getter（let 状态）+ 5 const 值 + 1 setter(setPagesMarginOn)
-其中 5 个是模块里**自己已经有声明**的：el · ensureMarginFitted · renderLayoutBlocks ·
-  renderMarginPanel · renderRecognitionStatus（el 是 pages-view.js 顶层 const，后 4 个是刀 1 搬进去的函数）
-```
-
-它们被注入就成两份实现，而模块内裸引用才是对的。**没有改计划迁就数字**，而是让
-`knife3-rules.py` 把「现模块声明」从 `IDENT` 里剔掉（与 anti/residue 同一口径）。
-
-最终 dry run（原文三行）：
-
-```
-"residue": []            ← 没有未定义标识符
-"anti": []
-"injected_keys": 45      ← 25 函数 + 15 getter + 4 const 值 + 1 setter
-```
-
-> 顺带：`setPagesMarginOn` 是本刀函数体唯一写状态的地方（`pagesMarginOn = …`），
-> 所以它是 45 里唯一的 setter；其余 8 个写点（finishSummary 一族 / stepsReady / currentView）走的是
-> **同名 setter 注入**，由 `SETTERS` 改写成 `injected.setX(…)`，不再是「给 getter 赋值」。
-
-**结论：验收写 45。** 以后任何"计划与 dry run 差 1"的情况，先把两边的**键名清单**打出来对集，
-不要用总数猜——今天的 393/394、123/126、32/29 都是总数对不上、名字没人对。
+**结论：验收看 46（`injected_keys` == `deps_literal_keys`）与 208（init 键集合 = 180 ∪ 46）。**
+"45" 只作为名单条数存在，**不参与验收**。以后任何"计划与 dry run 差几"的情况，先把两边的
+**键名清单**打出来对集，不要用总数猜——今天的 393/394、123/126、32/29 都是总数对不上、名字没人对。
 
 ## ⑨ deps 最终数（**以 dry run 为准**，不写算术凑出来的数）
 
 dry run 原值：`injected_keys: 46`，四栏构成相加 = 46（不等就说明分类错了，停下查）：
 
 ```
-函数 / 值 25 + getter 13 + setter 8 = 46
+函数 / 值 24 + getter 13 + setter 8 + 能力 1（indexRefresh）= 46
 ```
 
-**上一版文档里 45 作废**：那是"46 剔 5 个重复注入"之前的口径；Architect 裁定②又要求
-`syncStepToggles` 体内的两处 `window.IndexView?.refresh()` 改成注入 `indexRefresh`（+1），
-故最终 46。规矩：**deps 数字永远抄 dry run 原值，并给出四栏构成；四栏相加必须等于总数。**
+（上一版写"25 + 13 + 8"是把能力键并进了"函数/值"一栏——**分栏错了**，总数只是碰巧对。
+本版按键名逐个归类，四栏相加 = 46，并单独留"能力"一栏。）
+
+最终 init deps 键总数 **208**：HEAD 的 180 键 ∪ 本刀 46 键，重叠 18 → 新增 28。
+`deps_literal_keys` 与 `injected_keys` **必须相等**（刀 3：46 = 46）；不等就是生成器又把整表倒出来了。
+
+规矩：**deps 数字永远抄 dry run 原值，并给出四栏构成；四栏相加必须等于总数；最终总数用集合相等判，不用相加。**
 
 ## ⑩ 刀 3 的 R8 表（14 个导出键，逐条 + 死亡刀号）
 
@@ -239,27 +253,45 @@ R8（导出棘轮）从 20 → 34。**34 是本刀上限，不是新基线**：�
 逐刀下降核法：刀 3 后 34 → 刀 4 清 9 个（表中"刀 4"）→ 25 → 刀 5 清 5 个（"刀 5"）→ 20，
 再往后的刀才处理"删转发器"那批。**每刀都要在 R8 表里重新签字，不能继承。**
 
-## ⑪ seed：本刀要删的 15 条（test-contract 规格）
+## ⑪ seed：本刀要删的 15 条（随 `move(pages):` 一笔落）
 
 搬到模块后 `app.js` 只剩单行转发器，R3 实测口径（`domIdsIn` 扫 app.js）不再认这 15 个名字，
 seed 里对应行必须删。
 
-**提交形态（2026-10-30 更正，我上一版写错了）**：不是「先 test-contract 后产品」，是**一笔 `move(pages):`**。
-依据（`tests/js/feature-contract.mjs`）：
+**提交形态（2026-10-30 更正，我上一版写过两次"tests/js 一行不动"，都错了）**：不是「先 test-contract 后产品」，
+是**一笔 `move(pages):`**，而且它**会**改 `tests/js` 的一张登记表。依据（`tests/js/feature-contract.mjs`）：
 
 ```
 :511  const isMove = /^move[(:]/.test(subject);
 :534  if (deletions > 0 && touchesTests && !isMove && !isContract) → A3 红
       ↑ move: 笔整支豁免 A3（不必先 test-contract，也不必拆两笔）
-:9    A3 的本意就是"改测试旧断言的笔要单独、且不含产品代码"——搬迁笔改的是**代码位置**，不是判据
+:137  const MOVE_TABLES = ["OWNERS", "VIEW_STATE_PREFIXES", "VIEW_EXPORTS"]
+:399  A1: move: 笔必须**同时**含 backend/book2text/static/ 与 tests/js/ 改动（空声明的 move: 是伪装）
+:175  Move-Gate 只认白名单：boundary.test.mjs / feature-contract.mjs / pages-r3-exemptions.mjs
+:218  声明了却没改 = 空声明（伪装）；:224 改了 tests/js 却没声明 = 偷改判据
 ```
 
-而 seed 文件在 `docs/refactor/evidence/pages/` 下，**不是 `tests/js`**，所以这一笔：
-`app.js`（−15 个函数体 +14 条转发器）+ `pages-view.js`（+470）+ seed（−15 行）+ `knife3-rules.py` + 本页文档，
-**tests/js 一行不动** → 既不触发 A1（move: 只许改三张登记表），也不需要 `Move-Gate:` 声明。
+所以这一笔的全部改动（缺一条都红）：
 
-只需一条登记：`Approved-by: DevLead`（或 §18.6 一行）——`move:` 笔同样要留痕，`9d2ac58` 就是这么过的。
-**若这一笔真碰了 `tests/js`（例如去改 pages-wire 的期望），那才需要 `Move-Gate:` 声明，且改动必须落在三张表内。**
+```
+① backend/book2text/static/app.js           −15 个函数体 + 14 条转发器 + 28 个新 deps 键
+② backend/book2text/static/pages-view.js    +15 个函数体（470 行）+ api 补 14 键 + init 里的 indexRefresh
+③ tests/js/boundary.test.mjs                VIEW_EXPORTS 的 pages：20 → 34（**只许这一块**，逐键带死亡刀号）
+④ docs/refactor/evidence/pages/stage2-movers-seed.md   −15 行
+⑤ docs/refactor/pages/knife3-rules.py + 本页文档
+
+提交信息（两条登记缺一不可）：
+  move(pages): <一句话>
+  Move-Gate: tests/js/boundary.test.mjs
+  Approved-by: DevLead
+```
+
+**为什么 ③ 跑不掉**：14 条转发器 = 模块多导出 14 个键，R8（按模块导出棘轮）要求
+`VIEW_EXPORTS` 里的名字与数量**等于**模块实际导出——不登记就红在"34 ≠ 20"。
+它属于三张登记表，`move:` 通道允许改；但 `Move-Gate` 是**声明**不是权限：声明了却没改、或改了没声明，两种都红。
+
+**这三张表不存在"seed 落在哪张"**：`OWNERS`（视图名 → 守卫函数）/ `VIEW_STATE_PREFIXES`（状态前缀归属）/
+`VIEW_EXPORTS`（每模块导出白名单）都在 `tests/js`，seed 是 `docs/` 下的 R3 数据文件，不在表内。
 
 逐条（seed 里各占 1 行）：
 

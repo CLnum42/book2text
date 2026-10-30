@@ -9,6 +9,7 @@
   IDENT        [(旧, 新)]        标识符替换（读侧：状态 → injected.getX()、常量 → injected.NAME）
   MOVED_STATES [名字]            写点全在 movers 的状态：**声明搬进模块、app.js 删掉**（否则两份状态）
   SETTERS      [(名字, setter)]  写点跨区的状态：`x = v;` 改 `injected.setX(v);`
+  CAPABILITIES [(键, 表达式)]    跨视图能力：deps 生成 `键: () => 表达式,`（**不是** `键: 键,` 自引用）
   SET_REWRITES {旧行: 新行}      单行但是自引用（`x = !x`）的逐行点名单改
   SET_BLOCKS   [{"match","head","after"}]  多行赋值：先算局部再 `injected.setX(局部);`
   LIT / FORWARDERS / INIT_ANCHOR / INTERFACE 同前
@@ -251,11 +252,22 @@ def anti_checks(module_code, app_text, rules, module_declared=frozenset()):
     for name, _setter in getattr(rules, "SETTERS", []):
         if re.search(r'(?<![\w$.])' + re.escape(name) + r'\s*=(?!=)', masked):
             problems.append(f"{name} 判走 setter，但模块正文里还有 `{name} =`——改写漏了")
+    for key, _expr in getattr(rules, "CAPABILITIES", []):
+        if not re.search(r'injected\.' + re.escape(key) + r'\b', masked):
+            problems.append(
+                f"CAPABILITIES 声明的 {key} 在模块正文里没有 injected.{key} 使用——"
+                "空声明会让 deps 多一个没人用的键（能力名也要靠 LIT 在正文里换成 injected.键）")
     return problems
 
 
-def deps_literal(rules):
-    """从规则表生成 `init({...})` 的依赖对象：getter / setter / 函数，键名与模块里的 `injected.xxx` 对齐。"""
+def deps_literal(rules, used=None):
+    """从规则表生成 `init({...})` 的依赖对象：getter / setter / 函数 / 能力，键名与模块里的 `injected.xxx` 对齐。
+
+    `used` = 模块正文里**真的出现**的 `injected.X` 键集合。给定时只生成这些键：
+    规则表里的 IDENT 是**跨刀累积**的（刀 1/2.5 的键也还在），整份倒进 init 会多出上百个没人用的键
+    （2026-10-30 实测：刀 3 全量 202 键、实际只用 46 键，新增 28 键）。增量拼装时"插入的键"
+    必须等于 used − 已有键，所以判据只能取 used，不能取整表。
+    """
     keys = []
     seen = set()
     for entry in getattr(rules, "IDENT_FULL", getattr(rules, "IDENT", [])):
@@ -279,6 +291,16 @@ def deps_literal(rules):
         if setter not in seen:
             seen.add(setter)
             keys.append(f"    {setter}: (value) => {{ {name} = value; return value; }},")
+    # 跨视图能力（R2）：出口在这里，生成的是闭包 `键: () => 表达式,`。
+    # 以前的写法是把能力名当 function 塞进 IDENT → deps 生成 `indexRefresh: indexRefresh`（自引用，
+    # 外壳没有这个声明），node --check 过、运行时才 TypeError（刀 3 真事故）。
+    for key, expr in getattr(rules, "CAPABILITIES", []):
+        if key in seen:
+            continue
+        seen.add(key)
+        keys.append(f"    {key}: () => {expr},")
+    if used is not None:
+        keys = [ln for ln in keys if re.match(r"\s*([A-Za-z_$][\w$]*)\s*:", ln).group(1) in used]
     return "\n".join(keys)
 
 
@@ -374,6 +396,27 @@ def main():
               "、".join(bad_ident), "—— 把它们只留在 SETTERS 里")
         return 2
 
+    # ⓪d **能力（capability）不许进 IDENT**（与 ⓪c 同族，2026-10-30 刀 3 真事故）：
+    # 把 `indexRefresh` 当 function 写进 IDENT，deps 生成 `indexRefresh: indexRefresh,`（自引用），
+    # 而外壳的真相是 `() => window.IndexView?.refresh()`。能力的唯一出口是 CAPABILITIES。
+    # 这条守卫不是"防手滑"，是防**生成器自己把错误形态再生成一遍**：rules 里有残留，重跑就复活。
+    cap_keys = {key for key, _expr in getattr(rules, "CAPABILITIES", [])}
+    cap_dup = sorted(key for key, _expr in getattr(rules, "CAPABILITIES", [])
+                     if list(k for k, _e in getattr(rules, "CAPABILITIES", [])).count(key) > 1)
+    if cap_dup:
+        print("✗ CAPABILITIES 里有重名（同一个能力两条出口）：", "、".join(sorted(set(cap_dup))))
+        return 2
+    cap_bad = sorted(cap_keys & ident_names)
+    if cap_bad:
+        print("✗ 能力出现在 IDENT 里（deps 会生成自引用，运行时 TypeError）：",
+              "、".join(cap_bad), "—— 能力的唯一出口是 CAPABILITIES（生成 `键: () => 表达式,`）")
+        return 2
+    cap_setter_clash = sorted(cap_keys & setter_keys)
+    if cap_setter_clash:
+        print("✗ 同一个键既是 CAPABILITIES 又是 SETTERS（读能力还是写状态，不能既读又写）：",
+              "、".join(cap_setter_clash))
+        return 2
+
     missing = [n for n in movers if not bounds_of(lines, n)]
     if missing:
         print("!! 名单里的函数在 app.js 找不到：", missing[:6]); return 2
@@ -436,8 +479,9 @@ def main():
             if anchor is None:
                 print(f"!! INIT_ANCHOR 找不到：{rules.INIT_ANCHOR}"); return 2
             indent = re.match(r"^(\s*)", lines[anchor]).group(1)
+            used_keys = set(re.findall(r"injected\.([A-Za-z_$][\w$]*)", code))
             init_lines = (f"{indent}window.{a.name}View?.init({{\n"
-                          + deps_literal(rules) + f"\n{indent}}});").split("\n")
+                          + deps_literal(rules, used_keys) + f"\n{indent}}});").split("\n")
             lines[anchor + 1:anchor + 1] = init_lines   # 插在锚点**之后**：锚点是 boot() 里的 `setupLibrary();`
 
     os.makedirs(a.out, exist_ok=True)
@@ -464,10 +508,13 @@ def main():
 
     lines_text = "\n".join(lines)
     anti = anti_checks(module, lines_text, rules, module_declared) + count_checks(module, pre_rewrite, rules)
+    used_keys = set(re.findall(r"injected\.([A-Za-z_$][\w$]*)", code))
+    deps_keys = [ln.strip() for ln in deps_literal(rules, used_keys).split("\n") if ln.strip()]
     print(json.dumps({"movers": len(movers), "moved_lines": moved, "moved_states": len(moved_states),
                       "module_lines": module.count("\n"),
                       "residue": residue, "anti": anti,
-                      "injected_keys": len(set(re.findall(r"injected\.([A-Za-z_$][\w$]*)", code)))},
+                      "injected_keys": len(used_keys),
+                      "deps_literal_keys": len(deps_keys)},
                      ensure_ascii=False, indent=1))
     return 0 if not residue and not anti else 1
 
