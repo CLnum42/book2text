@@ -1480,12 +1480,32 @@ def test_review_pauses_page_grid_prefetch() -> None:
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
 
-    # pausePageThumbnails 刀 5 起住在模块里，外壳只剩一句转发桩（取值位仍要它）。
+    # 特征测试：三栏一起断言（外壳调用点 / 模块体内 / 被调函数本体）。
+    # 只断言某一行的原文会在搬运时变成假红——刀 9.1 就把那行换成了 enter()。
+    # 具体地：`if (target !== "pages" && currentProject) pausePageThumbnails();`
+    # 换成了 `window.PagesView?.enter()`（暂停动作搬进模块 enter() 的离开分支），
+    # 那行原文不存在了，但「离开页面视图要清缩略图」这件事一点没变。
+    # 刀 5 起本体就住在模块里；刀 9.1 起外壳那句转发桩也没了，所以本体只能去模块里找。
     pause = _function_body_any("pausePageThumbnails")
     pause = pause[: pause.index("\n}\n")]
     assert 'removeAttribute("src")' in pause
 
-    assert 'if (target !== "pages" && currentProject) pausePageThumbnails();' in script
+    # 栏 1（外壳调用点）：离开页面视图那条路必须真的调到 pages 侧的视图切换入口。
+    # 认「同一行里既有 target !== "pages" 判断、又有 PagesView?.enter() 调用」，
+    # 不锁整行原文：缩进 / 条件里多一个 currentProject 这类无害改动不该报警。
+    show_view = _function_body_any("showView")
+    assert re.search(
+        r'if\s*\([^\n]*target\s*!==\s*"pages"[^\n]*\)[^\n]*window\.PagesView\?\.enter\(\)',
+        show_view,
+    ), "showView 里没有「离开页面视图 → window.PagesView?.enter()」这条接线"
+    # 栏 2（模块体内）：enter() 的离开分支要真的清缩略图，而不是只留一句空壳接线。
+    pages_enter = _function_body_any("enter", files=("pages-view.js", "app.js"))
+    assert re.search(r'getCurrentView\(\)\s*!==\s*"pages"', pages_enter), (
+        "enter() 里没有「当前视图不是 pages」这条离开分支"
+    )
+    assert "pausePageThumbnails()" in _strip_js_comments(pages_enter), (
+        "enter() 的离开分支没清缩略图：接线在、动作没了"
+    )
     # 回来时由 applyPageZoom 重新挂 src（页面视图分支里调用）
     assert "applyPageZoom();" in script
 
