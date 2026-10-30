@@ -1,0 +1,717 @@
+{
+ "刀": 5,
+ "口径": "view-pages 子树 id 引用（el/getElementById/querySelector，前缀锚 #id）；行范围量于 7caff23 树；口径_调用者/口径_归零同刀4",
+ "基线": {
+  "appLines": 14095,
+  "r3Total": 101,
+  "r3Ids": 38
+ },
+ "movers": [
+  {
+   "name": "pausePageThumbnails",
+   "start": 142,
+   "end": 149,
+   "lines": 8,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "page-grid"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "showMarginFitProgress",
+   "start": 634,
+   "end": 644,
+   "lines": 11,
+   "pagesRefs": 3,
+   "pagesIds": [
+    "margin-fit-fill",
+    "margin-fit-progress",
+    "margin-fit-text"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "margin-fit-fill",
+    "margin-fit-progress",
+    "margin-fit-text"
+   ],
+   "refs": 3
+  },
+  {
+   "name": "hideMarginFitProgressSoon",
+   "start": 646,
+   "end": 651,
+   "lines": 6,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "margin-fit-progress"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "margin-fit-progress"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "setRecognitionStatus",
+   "start": 2983,
+   "end": 2995,
+   "lines": 13,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "rec-status"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "rec-status"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "patchRecognitionSetting",
+   "start": 3001,
+   "end": 3023,
+   "lines": 23,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "pages-error"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "pages-error"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "forgetAllPageSuggestions",
+   "start": 3097,
+   "end": 3104,
+   "lines": 8,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "page-grid"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "ensureSuggestionScrollListener",
+   "start": 3217,
+   "end": 3225,
+   "lines": 9,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "page-grid"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "scanVisiblePageSuggestions",
+   "start": 3238,
+   "end": 3276,
+   "lines": 39,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "page-grid"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "visiblePages",
+   "start": 3283,
+   "end": 3301,
+   "lines": 19,
+   "pagesRefs": 5,
+   "pagesIds": [
+    "filter-recognition",
+    "filter-triage",
+    "filter-type",
+    "filter-workflow",
+    "pages-only-included"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "filter-recognition",
+    "filter-triage",
+    "filter-type",
+    "filter-workflow",
+    "pages-only-included"
+   ],
+   "refs": 5
+  },
+  {
+   "name": "initPanelAccordion",
+   "start": 3656,
+   "end": 3689,
+   "lines": 34,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "setup-panel"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "setup-panel"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "openPageSetup",
+   "start": 3692,
+   "end": 3701,
+   "lines": 10,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "setup-panel"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "setup-panel"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "forgetAllPageBlocks",
+   "start": 3856,
+   "end": 3862,
+   "lines": 7,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "page-grid"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "pageScroller",
+   "start": 3878,
+   "end": 3880,
+   "lines": 3,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "page-grid"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "capturePageTileMetrics",
+   "start": 3882,
+   "end": 3913,
+   "lines": 32,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "page-grid"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "togglePageBlocksOverlay",
+   "start": 3985,
+   "end": 3999,
+   "lines": 15,
+   "pagesRefs": 2,
+   "pagesIds": [
+    "page-grid",
+    "pages-overlay-toggle"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid",
+    "pages-overlay-toggle"
+   ],
+   "refs": 2
+  },
+  {
+   "name": "queueOverlayRender",
+   "start": 4007,
+   "end": 4017,
+   "lines": 11,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "page-grid"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "pumpOverlayRender",
+   "start": 4029,
+   "end": 4061,
+   "lines": 33,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "page-grid"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "toggleMarginView",
+   "start": 4204,
+   "end": 4219,
+   "lines": 16,
+   "pagesRefs": 2,
+   "pagesIds": [
+    "page-grid",
+    "pages-margin-toggle"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-grid",
+    "pages-margin-toggle"
+   ],
+   "refs": 2
+  },
+  {
+   "name": "setMarginStatus",
+   "start": 4349,
+   "end": 4361,
+   "lines": 13,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "margin-status"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "margin-status"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "ensureMarginAudit",
+   "start": 4419,
+   "end": 4467,
+   "lines": 49,
+   "pagesRefs": 2,
+   "pagesIds": [
+    "margin-audit",
+    "margin-basis"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "margin-audit",
+    "margin-basis"
+   ],
+   "refs": 2
+  },
+  {
+   "name": "startAuxiliaryAll",
+   "start": 4553,
+   "end": 4576,
+   "lines": 24,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "rec-status"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "rec-status"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "resetMarginsToAuto",
+   "start": 4620,
+   "end": 4689,
+   "lines": 70,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "pages-error"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "pages-error"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "setPageNumberStatus",
+   "start": 4739,
+   "end": 4751,
+   "lines": 13,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "page-number-status"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "page-number-status"
+   ],
+   "refs": 1
+  },
+  {
+   "name": "startBatchRecognition",
+   "start": 5492,
+   "end": 5519,
+   "lines": 28,
+   "pagesRefs": 2,
+   "pagesIds": [
+    "pages-error"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "pages-error"
+   ],
+   "refs": 2
+  },
+  {
+   "name": "checkSelection",
+   "start": 5537,
+   "end": 5573,
+   "lines": 37,
+   "pagesRefs": 3,
+   "pagesIds": [
+    "pages-error",
+    "selection-skip-checked"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "pages-error",
+    "selection-skip-checked"
+   ],
+   "refs": 3
+  },
+  {
+   "name": "startLayoutDetection",
+   "start": 6092,
+   "end": 6115,
+   "lines": 24,
+   "pagesRefs": 2,
+   "pagesIds": [
+    "pages-error"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "pages-error"
+   ],
+   "refs": 2
+  },
+  {
+   "name": "showMarginDetectProgress",
+   "start": 6275,
+   "end": 6282,
+   "lines": 8,
+   "pagesRefs": 3,
+   "pagesIds": [
+    "margin-fit-fill",
+    "margin-fit-progress",
+    "margin-fit-text"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "margin-fit-fill",
+    "margin-fit-progress",
+    "margin-fit-text"
+   ],
+   "refs": 3
+  },
+  {
+   "name": "finishMarginDetectBar",
+   "start": 6344,
+   "end": 6353,
+   "lines": 10,
+   "pagesRefs": 4,
+   "pagesIds": [
+    "margin-fit-fill",
+    "margin-fit-progress",
+    "margin-fit-text"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "margin-fit-fill",
+    "margin-fit-progress",
+    "margin-fit-text"
+   ],
+   "refs": 4
+  },
+  {
+   "name": "patchSelectedPages",
+   "start": 12083,
+   "end": 12107,
+   "lines": 25,
+   "pagesRefs": 2,
+   "pagesIds": [
+    "pages-error"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "pages-error"
+   ],
+   "refs": 2
+  },
+  {
+   "name": "setAutoApplySetting",
+   "start": 12418,
+   "end": 12449,
+   "lines": 32,
+   "pagesRefs": 2,
+   "pagesIds": [
+    "auto-apply-suggestions",
+    "selection-hint"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "auto-apply-suggestions",
+    "selection-hint"
+   ],
+   "refs": 2
+  },
+  {
+   "name": "rerunAuxiliary",
+   "start": 13241,
+   "end": 13261,
+   "lines": 21,
+   "pagesRefs": 1,
+   "pagesIds": [
+    "pages-error"
+   ],
+   "otherRefs": 0,
+   "ids": [
+    "pages-error"
+   ],
+   "refs": 1
+  }
+ ],
+ "刀5验收": {
+  "r3Total": {
+   "before": 101,
+   "after": 50,
+   "说明": "本刀只搬 31 个函数（−51）；剩下的 50 = 7 处片段抽取 25 + 推迟 4 个 25"
+  },
+  "r3Total最终": {
+   "target": 0,
+   "组成": "31 movers 51 + 片段抽取 25 + 推迟两刀 25 = 101"
+  },
+  "r3Ids": {
+   "before": 38,
+   "after": 24,
+   "归零14": [
+    "filter-recognition",
+    "filter-triage",
+    "filter-type",
+    "filter-workflow",
+    "margin-audit",
+    "margin-basis",
+    "margin-fit-fill",
+    "margin-fit-progress",
+    "margin-fit-text",
+    "margin-status",
+    "page-grid",
+    "page-number-status",
+    "pages-only-included",
+    "rec-status"
+   ],
+   "部分归零7": [
+    "auto-apply-suggestions",
+    "pages-error",
+    "pages-margin-toggle",
+    "pages-overlay-toggle",
+    "selection-hint",
+    "selection-skip-checked",
+    "setup-panel"
+   ]
+  },
+  "r8Exports": {
+   "before": 36,
+   "after": 50,
+   "新增转发": 15,
+   "死亡": [
+    "renderPageSummary"
+   ],
+   "新增转发名单": [
+    "checkSelection",
+    "finishMarginDetectBar",
+    "forgetAllPageBlocks",
+    "forgetAllPageSuggestions",
+    "pageScroller",
+    "pausePageThumbnails",
+    "pumpOverlayRender",
+    "queueOverlayRender",
+    "rerunAuxiliary",
+    "scanVisiblePageSuggestions",
+    "setMarginStatus",
+    "setPageNumberStatus",
+    "showMarginDetectProgress",
+    "startLayoutDetection",
+    "visiblePages"
+   ],
+   "说明": "36 − 1 + 15 = 50；本轮**不是** 22（22 要等导出收口刀，见 刀6提议）"
+  },
+  "appLines": {
+   "before": 14095,
+   "after": 13457,
+   "口径": "-651 函数体 +15 转发器 -2（deps 块 -20 +18），±20"
+  },
+  "pagesViewLines": {
+   "before": 2287,
+   "after": 2984,
+   "口径": "+651 源行 +31 空行 +15 api 键，±20"
+  },
+  "deps": {
+   "before": 213,
+   "after": 211,
+   "删": 20,
+   "加": 18
+  },
+  "seed": {
+   "名字": {
+    "before": 42,
+    "after": 11
+   },
+   "数据行": {
+    "before": 45,
+    "after": 14
+   }
+  }
+ },
+ "deps分栏": {
+  "函数_值": 46,
+  "getter": 19,
+  "setter": 13,
+  "能力": 2,
+  "合计": 80,
+  "说明": "分栏按声明形态；capability 两个 = indexRefresh（window.IndexView?.refresh()）与 libraryNotify（(...args)=>window.LibraryView?.notify(...args)）"
+ },
+ "片段抽取": [
+  {
+   "name": "boot",
+   "start": 13837,
+   "end": null,
+   "pagesRefs": 8,
+   "pagesIds": [
+    "pages-margin-toggle",
+    "pages-overlay-toggle"
+   ],
+   "otherRefs": 8,
+   "做法": "把 toggle 的接线与初始状态抽成模块函数（wirePageToggles/syncPageToggles），boot 只调用入口"
+  },
+  {
+   "name": "setupLibrary",
+   "pagesRefs": 9,
+   "pagesIds": [
+    "apply-high-suggestions",
+    "aux-rerun",
+    "backups-open",
+    "layout-detect-open",
+    "page-more-menu",
+    "word-boxes-open"
+   ],
+   "otherRefs": 46,
+   "做法": "把 pages 的绑定行整体抽成模块 wirePagesFromLibrary()"
+  },
+  {
+   "name": "setupShell",
+   "pagesRefs": 2,
+   "pagesIds": [
+    "selection-review-open",
+    "stats-open"
+   ],
+   "otherRefs": 12,
+   "做法": "抽成模块 wirePagesShellEntries()"
+  },
+  {
+   "name": "setupCollabControls",
+   "pagesRefs": 2,
+   "pagesIds": [
+    "assign-list-toggle",
+    "assign-open"
+   ],
+   "otherRefs": 7,
+   "做法": "assign-* 属别处；只把 pages 的两个开关读数抽成模块函数"
+  },
+  {
+   "name": "finishRevokeAutoPass",
+   "pagesRefs": 1,
+   "pagesIds": [
+    "pages-error"
+   ],
+   "otherRefs": 1,
+   "做法": "错误渲染改走模块入口（showPagesError）"
+  },
+  {
+   "name": "setMarginJudgementSetting",
+   "pagesRefs": 1,
+   "pagesIds": [
+    "rec-margin-judgement"
+   ],
+   "otherRefs": 2,
+   "做法": "checkbox 同步抽成模块函数"
+  },
+  {
+   "name": "startLayoutDetectFromDialog",
+   "pagesRefs": 2,
+   "pagesIds": [
+    "pages-error"
+   ],
+   "otherRefs": 6,
+   "做法": "错误渲染与进度条改走模块入口"
+  }
+ ],
+ "推迟4": {
+  "函数": [
+   "applyPackageMode",
+   "applyProjectSettings",
+   "applySplitBatch",
+   "recognizePage"
+  ],
+  "refs": 25,
+  "说明": "归 knife-review / knife-package 两刀；它们落地前 R3 到不了 0"
+ },
+ "刀6提议": {
+  "名称": "导出收口刀（R8 36→50→22）",
+  "范围": "16 个候选死亡键的 30 个调用者函数 / 1,124 行",
+  "永久外壳": [
+   "showView",
+   "hydrateView"
+  ],
+  "做法": "调用者搬走 + 路由经模块入口（enter），不做的话 loadLanguageSummary / loadPageNumberSummary 永远删不掉",
+  "理由": "本刀的 15 个新转发器 + 16 个候选键的调用者都不在本刀 31 个里 → 22 在刀5 不可达"
+ },
+ "提交形态": {
+  "类型": "move(pages):",
+  "Move-Gate": "tests/js/boundary.test.mjs",
+  "Approved-by": "DevLead"
+ },
+ "不碰": [
+  "showView",
+  "hydrateView",
+  "boot 主体",
+  "setupLibrary 主体",
+  "推迟4",
+  "PAGES_R3_TOTAL_CAP",
+  "pages-r3-exemptions.mjs",
+  "app.css",
+  "index.html"
+ ]
+}
