@@ -242,7 +242,24 @@ R8（导出棘轮）从 20 → 34。**34 是本刀上限，不是新基线**：�
 ## ⑪ seed：本刀要删的 15 条（test-contract 规格）
 
 搬到模块后 `app.js` 只剩单行转发器，R3 实测口径（`domIdsIn` 扫 app.js）不再认这 15 个名字，
-seed 里对应行必须删——**这与"步 1 跳过"冲突，以本条为准：本刀有 test-contract 笔。**
+seed 里对应行必须删。
+
+**提交形态（2026-10-30 更正，我上一版写错了）**：不是「先 test-contract 后产品」，是**一笔 `move(pages):`**。
+依据（`tests/js/feature-contract.mjs`）：
+
+```
+:511  const isMove = /^move[(:]/.test(subject);
+:534  if (deletions > 0 && touchesTests && !isMove && !isContract) → A3 红
+      ↑ move: 笔整支豁免 A3（不必先 test-contract，也不必拆两笔）
+:9    A3 的本意就是"改测试旧断言的笔要单独、且不含产品代码"——搬迁笔改的是**代码位置**，不是判据
+```
+
+而 seed 文件在 `docs/refactor/evidence/pages/` 下，**不是 `tests/js`**，所以这一笔：
+`app.js`（−15 个函数体 +14 条转发器）+ `pages-view.js`（+470）+ seed（−15 行）+ `knife3-rules.py` + 本页文档，
+**tests/js 一行不动** → 既不触发 A1（move: 只许改三张登记表），也不需要 `Move-Gate:` 声明。
+
+只需一条登记：`Approved-by: DevLead`（或 §18.6 一行）——`move:` 笔同样要留痕，`9d2ac58` 就是这么过的。
+**若这一笔真碰了 `tests/js`（例如去改 pages-wire 的期望），那才需要 `Move-Gate:` 声明，且改动必须落在三张表内。**
 
 逐条（seed 里各占 1 行）：
 
