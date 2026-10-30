@@ -3604,11 +3604,57 @@ function enclosingScopeNames(strippedApp, index) {
   return null;
 }
 
-/** R13 判定内核（纯函数，自检喂合成源码）。返回问题列表，空数组 = 绿。 */
-function r13InjectionProblems({ appSource, modules }) {
+/** 编辑距离：只用来在红文里点出「最接近的已声明键」（名字都很短，朴素的 DP 足够）。 */
+function r13EditDistance(a, b) {
+  const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const tmp = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = tmp;
+    }
+  }
+  return prev[b.length];
+}
+
+/**
+ * 缺键红文的**两条线索**（2026-10-30 Chief 要求）：只说"缺这个键"修的人不知道该删还是该改。
+ *   · 最接近的已声明键 → 拼错 / 改名；
+ *   · `app.js` 里有没有同名符号 → 有 = 漏注入（刀 4 形态：改了直呼没删 deps 的反方向），
+ *     没有 = 名字来源不明（刀 5 形态：删了 deps 没改直呼，名字可能是别人家的）。
+ */
+function r13MissingKeyHint({ name, passed, topLevel }) {
+  const near = [...passed]
+    .map((key) => [key, r13EditDistance(key, name)])
+    .sort((x, y) => x[1] - y[1])[0];
+  const clue = near && near[0] !== name && near[1] <= 3
+    ? `deps 里最接近的键是 ${near[0]}（编辑距离 ${near[1]}）——是拼错还是改名？`
+    : "deps 里没有名字相近的键——不是拼错，是真的没声明";
+  const where = topLevel.has(name)
+    ? `app.js 里有同名符号 ${name}——漏注入：deps 少写一行`
+    : `app.js 里也没有符号 ${name}——名字来源不明，先确认它本该从哪来`;
+  return `${clue}；${where}`;
+}
+
+/**
+ * R13 判定内核（纯函数，自检喂合成源码）。
+ *
+ * 返回 `{ problems, optional }`：
+ *   · `problems` = 必读形态缺键（红）；
+ *   · `optional` = 可选形态缺键（**不红**，只打印）：`injected.X?.(` / `injected.X || 兜底`。
+ *     理由（2026-10-30 Chief 裁定）：可选形态本来就允许缺键，判红会让既有代码库立刻红一片；
+ *     但完全不报，`showNoticeBar` 那种「提示条悄悄不显示」就永远藏着。红与报要分开。
+ */
+function r13InjectionScan({ appSource, modules }) {
   const problems = [];
+  const optional = [];
   if (!Array.isArray(modules) || modules.length === 0) {
-    return ["R13 拿不到 view 模块名单（static 目录里没有 *-view.js）——空名单会让这条闸空转，按红处理"];
+    return {
+      problems: ["R13 拿不到 view 模块名单（static 目录里没有 *-view.js）——空名单会让这条闸空转，按红处理"],
+      optional,
+    };
   }
   const app = stripCommentsAndStrings(appSource);
   const topLevel = new Set();
@@ -3664,13 +3710,31 @@ function r13InjectionProblems({ appSource, modules }) {
       }
     }
     const text = stripPreservingTemplateExpressions(source);
-    for (const m of text.matchAll(/injected\s*\.\s*([A-Za-z_$][\w$]*)\s*(?=[([.])/g)) {
-      if (!passed.has(m[1])) {
-        problems.push(`${file}: 模块读了 injected.${m[1]}（必读形态），但外壳注入表里没有这个键——运行时 TypeError`);
+    // **全量扫 `injected.X`，不要求后面跟 `( / [ / .`**（2026-10-30）：旧正则带
+    // `(?=[([.])`，只认调用位/属性位/下标位；而刀 4/刀 5 的「漏改一处直呼」多是**值位**
+    // （`const s = injected.storage;` / `foo(injected.limit)` / `injected.flag ? a : b`）——
+    // 整类看不见，闸照绿、运行时 undefined。这是 R13 旧口径的真实缺口，不是新加的花样。
+    for (const m of text.matchAll(/injected\s*\.\s*([A-Za-z_$][\w$]*)/g)) {
+      const name = m[1];
+      if (passed.has(name)) continue;
+      const after = text.slice(m.index + m[0].length);
+      const optionalCall = /^\s*\?\.\s*\(/.test(after);
+      const optionalFallback = /^\s*\|\|/.test(after);
+      const hint = r13MissingKeyHint({ name, passed, topLevel });
+      if (optionalCall || optionalFallback) {
+        optional.push(`${file}: injected.${name}（${optionalCall ? "?.(" : "|| 兜底"}）缺键——静默不生效。${hint}`);
+      } else {
+        problems.push(`${file}: 模块读了 injected.${name}（必读形态），但 init deps 里没有这个键`
+          + `——运行时是 undefined（读它的地方会炸或静默错值）。${hint}`);
       }
     }
   }
-  return problems;
+  return { problems, optional };
+}
+
+/** 只要红的那一半（绝大多数调用点用它）；可选形态清单用 `r13InjectionScan` 取。 */
+function r13InjectionProblems(args) {
+  return r13InjectionScan(args).problems;
 }
 
 test("R13：注入表每个键都能解析（顶层/工厂作用域/全局白名单），模块必读的键都传了", () => {
@@ -3681,8 +3745,10 @@ test("R13：注入表每个键都能解析（顶层/工厂作用域/全局白名
     .map((file) => ({ file, source: readFileSync(join(STATIC_DIR, file), "utf8") }));
   assert.ok(modules.length >= 2,
     `static 目录里只找到 ${modules.length} 个 *-view.js——目录指错了吧？空名单不能让这条闸变绿`);
-  const problems = r13InjectionProblems({ appSource, modules });
-  assert.deepEqual(problems, [], problems.join("\n"));
+  const scan = r13InjectionScan({ appSource, modules });
+  assert.deepEqual(scan.problems, [], scan.problems.join("\n"));
+  // 可选形态缺键**不红**，但必须打印出来：这类「静默不生效」既不抛错、也没人会发现
+  for (const line of scan.optional) console.log(`ℹ R13 可选注入缺键（不红，静默不生效）：${line}`);
 });
 
 // R13 自检（§20.9 ⑬：闸必须能被样例喂红）。变异样例就是 library 这次真实踩到的三种形态。
@@ -3743,6 +3809,43 @@ test("R13 自检：跨函数作用域的键 / 必读没传 / 解析失败 / 没�
   // ⑤ 空名单 = 空转，必须红
   assert.ok(r13InjectionProblems({ appSource: goodApp, modules: [] }).length > 0,
     "R13 自检失败：空模块名单被当成绿");
+
+  // ⑥ 可选形态（`?.(` / `|| 兜底`）缺键：**不红**，但要进「静默不生效」清单。
+  //    这是 2026-10-30 两级判据的另一半：可选形态本来就允许缺，全判红会让既有代码库立刻红一片；
+  //    可完全不报，`injected.showNoticeBar?.(...)` 那种「提示条悄悄不显示」就永远藏着。
+  const optionalScan = r13InjectionScan({
+    appSource: appWith("    getProject: () => currentProject,"),
+    modules: [moduleOf('  function f() { injected.ghostOpt?.(1); return injected.storage || window.localStorage; }')],
+  });
+  assert.deepEqual(optionalScan.problems, [],
+    `R13 自检失败：可选形态缺键被当成红——${optionalScan.problems.join("；")}`);
+  assert.ok(optionalScan.optional.some((line) => line.includes("ghostOpt") && line.includes("?.(")),
+    `R13 自检失败：可选调用缺键没进清单——${optionalScan.optional.join("；")}`);
+  assert.ok(optionalScan.optional.some((line) => line.includes("storage") && line.includes("|| 兜底")),
+    `R13 自检失败：|| 兜底缺键没进清单——${optionalScan.optional.join("；")}`);
+
+  // ⑦ 裸值位（后面既不是 ( 也不是 [ 也不是 .）缺键 → 必须红。
+  //    旧正则 `(?=[([.])` 对这三种形态**整类看不见**，而刀 4/刀 5 的漏改直呼多是这个形状。
+  const bareRed = r13InjectionProblems({
+    appSource: appWith("    getProject: () => currentProject,"),
+    modules: [moduleOf("  function f() { const x = injected.ghostBare; return x; }")],
+  });
+  assert.ok(bareRed.some((line) => line.includes("injected.ghostBare") && line.includes("必读形态")),
+    `R13 自检失败：裸值位缺键被放过（旧正则那个缺口）——${bareRed.join("；")}`);
+
+  // ⑧ 红文的两条线索：最接近的已声明键 / app.js 里有没有同名符号
+  const hintRed = r13InjectionProblems({
+    appSource: appWith("    lastViewLabels: LAST_VIEW_LABELS,", "const LAST_VIEW_LABELS = Object.freeze({});"),
+    modules: [moduleOf("  function f() { return injected.lastViewLabel; }")],
+  });
+  assert.ok(hintRed.some((line) => line.includes("最接近的键是 lastViewLabels")),
+    `R13 自检失败：红文没点出最接近的已声明键（修的人不知道该改名还是该补注入）——${hintRed.join("；")}`);
+  const typoRed = r13InjectionProblems({
+    appSource: appWith("    getProject: () => currentProject,"),
+    modules: [moduleOf("  function f() { return injected.ghostNoWhere; }")],
+  });
+  assert.ok(typoRed.some((line) => line.includes("app.js 里也没有符号 ghostNoWhere")),
+    `R13 自检失败：红文没说清「app.js 有没有同名符号」（漏注入 vs 拼错分不开）——${typoRed.join("；")}`);
 });
 
 // ---------------------------------------------------------------- 变异验证（写进文件头，避免只在交付说明里）
