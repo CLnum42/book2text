@@ -3309,7 +3309,6 @@ function selectionPages() {
   return currentProject.pages.filter((page) => selectedPages.has(page.page_no));
 }
 
-function updateSelectionPanel() { return window.PagesView.updateSelectionPanel.apply(window.PagesView, arguments); }
 // ---------------------------------------------------------------- 页面网格
 
 /** 页面上该显示的门牌（类型 / 印张 / 状态），构建与刷新共用。 */
@@ -3569,10 +3568,8 @@ function suggestionPagesByType() {
  * 页面类型常驻列表：当前类型高亮 + "当前"文字，建议类型加淡色圆点。
  * 颜色只是辅助，文字标签始终在。
  */
-function renderTypePicker() { return window.PagesView.renderTypePicker.apply(window.PagesView, arguments); }
 
 /** 建议区：只在选中页有建议时出现，条目就是"建议 vs 当前"的具体差别。 */
-function renderSuggestionPanel() { return window.PagesView.renderSuggestionPanel.apply(window.PagesView, arguments); }
 
 
 
@@ -4203,7 +4200,6 @@ function renderRecognitionStatus() { return window.PagesView.renderRecognitionSt
  * 数字看正文页：已识别 / 正文页数。识别**不读版心**，所以这一步先跑完，
  * 版心那一步才有行框可用；这句话只说事实，不写"下一步去…"。
  */
-function renderRecognitionVerdict() { return window.PagesView.renderRecognitionVerdict.apply(window.PagesView, arguments); }
 
 // 第二引擎单页耗时（本机实测：Apple Vision × 4.3–6.2 秒，取 5.7 秒/页；
 // 读文字层那条路在 490 页的书上实测 436 页 / 43 秒 = 0.10 秒/页，含写库与比对）
@@ -12577,7 +12573,6 @@ async function loadLanguageSummary() { return window.PagesView.loadLanguageSumma
 // 这里给一个"换掉"的动作：先备份（服务端做），只覆盖 aux_text / diff_status，
 // 已裁决的行不覆盖；分批可续（就是个普通的复核任务）。
 
-async function rerunAuxiliary() { return window.PagesView.rerunAuxiliary.apply(window.PagesView, arguments); }
 
 // ---------------------------------------------------------------- 标点差异 · 按模式批量（任务 61）
 //

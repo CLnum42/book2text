@@ -3582,10 +3582,8 @@ const VIEW_EXPORTS = {
   "pages-view.js": { names: [
     "init", "ensureMarginFitted", "loadLayoutBlocks", "loadSetupSuggestions", "refreshRecognizedPages",
     "reloadProjectPages", "renderLayoutBlocks", "renderMarginPanel", "renderPageSetup", "renderPages",
-    "renderRecognitionStatus", "renderRecognitionVerdict", "renderSuggestionPanel", "renderTypePicker",
-    "savePageMargin", "syncPageStates", "undoMarginEdit", "updateMarginDetectProgress",
-    "updatePageVisibility", "updateSelectionPanel",
-    // 刀 3：14 个转发器对应的导出键（R8 表签字上限 34，见 docs/refactor/pages/knife3-plan.md §⑩；
+    "renderRecognitionStatus", "savePageMargin", "syncPageStates", "undoMarginEdit", "updateMarginDetectProgress",
+    "updatePageVisibility", // 刀 3：14 个转发器对应的导出键（R8 表签字上限 34，见 docs/refactor/pages/knife3-plan.md §⑩；
     // 每键都带死亡刀号——刀 4 清 9 个、刀 5 清 5 个，之后严格下降）。
     "loadFinishSummary", "loadLanguageSummary", "loadPageNumberSummary", "refreshLayoutDetectEntry",
     "refreshMarginDetectHint", "refreshMarginTiles", "renderAutoApplyStatus", "renderMarginStepVerdict",
@@ -3605,7 +3603,7 @@ const VIEW_EXPORTS = {
     "pausePageThumbnails",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     "pumpOverlayRender",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     "queueOverlayRender",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
-    "rerunAuxiliary",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     "scanVisiblePageSuggestions",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     "setMarginStatus",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     "setPageNumberStatus",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
@@ -3646,15 +3644,11 @@ const VIEW_EXPORTS = {
       renderPageSetup: { kind: "T", death: 9.1 },
       renderPages: { kind: "T", death: 9.5 },
       renderRecognitionStatus: { kind: "T", death: 9.5 },
-      renderRecognitionVerdict: { kind: "T", death: 9 },
-      renderSuggestionPanel: { kind: "T", death: 9 },
-      renderTypePicker: { kind: "T", death: 9 },
       savePageMargin: { kind: "T", death: 9.3 },
       syncPageStates: { kind: "T", death: 9.5 },
       undoMarginEdit: { kind: "T", death: 9.6 },   // 9.6：接线收回模块（Architect 2026-10-30）
       updateMarginDetectProgress: { kind: "T", death: 9.2 },
       updatePageVisibility: { kind: "T", death: 9.2 },
-      updateSelectionPanel: { kind: "T", death: 9 },
       loadFinishSummary: { kind: "C", callers: ["afterCleanupApplied", "afterContinuationChange", "boot", "confirmCurrentPage", "finishConfirmPages", "finishRevokeAutoPass", "finishRunAutoPass", "finishRunLayout", "openFinishPanel", "pollTask", "refreshProject", "setupReviewControls", "waitForAuxThenReview", "library-view.js", "reading-view.js"], reason: "收尾状态被三个视图共用（13 个外壳函数 + library/reading 各调）" },
       loadLanguageSummary: { kind: "T", death: 9.1 },
       loadPageNumberSummary: { kind: "T", death: 9.4 },
@@ -3679,7 +3673,6 @@ const VIEW_EXPORTS = {
       pausePageThumbnails: { kind: "T", death: 9.1 },
       pumpOverlayRender: { kind: "T", death: 9.6 },   // 9.6：接线收回模块（Architect 2026-10-30）
       queueOverlayRender: { kind: "T", death: 9.2 },
-      rerunAuxiliary: { kind: "T", death: 9 },
       scanVisiblePageSuggestions: { kind: "T", death: 9.6 },   // 9.6：接线收回模块（Architect 2026-10-30）
       setMarginStatus: { kind: "T", death: 9.3 },
       setPageNumberStatus: { kind: "T", death: 9.4 },
