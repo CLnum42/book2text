@@ -50,11 +50,11 @@ import vm from "node:vm";
 import { execFileSync } from "node:child_process";
 // pages 的 R3 过渡豁免表（数据，不是逻辑）：一行一个 id → { 上限处数, 到期刀 }
 import {
-  PAGES_R3_EXEMPTIONS, PAGES_R3_TOTAL_CAP, PAGES_STAGE, PAGES_R3_PENDING, PAGES_R3_BLOCKED_MAX,
+  PAGES_R3_EXEMPTIONS, PAGES_R3_TOTAL_CAP, PAGES_R3_PENDING, PAGES_R3_BLOCKED_MAX,
 } from "./pages-r3-exemptions.mjs";
 // 刀号登记表（刀号的唯一真值源）：seed 里出现未登记的号 → 红；PAGES_STAGE 必须等于 maxLandedKnife()
 import {
-  KNIVES, isRegisteredKnife, maxLandedKnife, gitMaxKnifeFromLog, stageSourceProblems,
+  KNIVES, isRegisteredKnife, maxLandedKnife, gitMaxKnifeFromLog, stageSourceProblems, stageNow,
 } from "./knife-registry.mjs";
 import {
   BRIDGE_EXCEPTIONS,
@@ -66,7 +66,8 @@ import {
 } from "./edge-ratchet.mjs";
 import {
   evaluateFeatureContract, commitContractProblems, tableBlockRanges, isContractPath,
-  exemptionDeltaProblems, keepShellSegmentLabels, moveGateProblems, moveScopeProblems, MOVE_EXEMPTION_BLOCKS,
+  exemptionDeltaProblems, keepShellSegmentLabels, moveGateProblems, moveScopeProblems,
+  MOVE_EXEMPTION_BLOCKS, MOVE_EXEMPTION_BLOCKS_RETIRED,
 } from "./feature-contract.mjs";
 // R9 专用：保留模板 `${…}` 插值的去注释版本（本文件另有一份旧的去注释实现，只抹代码不抹模板）
 import { stripPreservingTemplateExpressions } from "./static-scan.mjs";
@@ -1522,62 +1523,47 @@ export function pagesStageFromSubjects(subjects) {
  * 为什么真值来自 git（2026-10-30 Chief/Architect 定）：提交首行是「代码真的动了」的唯一证据；
  * 账本推导会随推迟漂，而推迟本身是账本要记的东西。取不到 git 时**打印一行跳过**——不红、也不静默。
  */
-export function pagesStageFromGit({ editMsgPath } = {}) {
-  let log = null;
+export function pagesStageFromGit() {
   try {
-    log = execFileSync("git", ["log", "--format=%s", "-n", "2000"], {
+    const out = execFileSync("git", ["log", "--format=%s", "-n", "2000"], {
       encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
     });
+    return gitMaxKnifeFromLog(out);
   } catch {
     return null;   // 没有 git（pre-commit 的导出树）——调用方打印跳过
   }
-  // **正在提交的那一笔也要算**（2026-10-30 刀 6 卡点）：pre-commit 时 HEAD 还是父提交，
-  // `git log` 里看不到正在提交的 `move(pages): 刀 6`，于是 PAGES_STAGE 写 5 或 6 都有一边红。
-  // git 先写消息再跑钩子，所以 `<git-dir>/COMMIT_EDITMSG` 里就是这一笔的提交信息。
-  // 取不到就只按历史判（行为同旧版），不静默、也不假装看见了这一笔。
-  let editMsg = "";
-  try {
-    editMsg = readFileSync(editMsgPath || commitEditMsgPath(), "utf8");
-  } catch {
-    editMsg = "";
-  }
-  return gitMaxKnifeFromLog(`${log}\n${editMsg}`);
-}
-
-/** `<git-dir>/COMMIT_EDITMSG`：worktree 要用 `--absolute-git-dir`（普通 `.git` 是文件）。 */
-function commitEditMsgPath() {
-  const dir = execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
-    encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
-  }).trim();
-  return join(dir, "COMMIT_EDITMSG");
 }
 
 /**
- * `PAGES_STAGE` 的两条判据：**主 = git**（已落盘最新 pages 刀），**次 = 账本交叉校验**。
+ * 判据用的「当前刀」：`max(登记表 landed, git 最大刀号)`，**不读文件里的 `PAGES_STAGE` 常数**。
  *
- * 为什么需要它：`PAGES_STAGE=2` 停在刀 2，让「到期不搬 = 红」从刀 3 起**空转三刀**，
- * 而这期间所有闸都是绿的。一个由手工常数控制是否生效的判据，等于一条能被静默停用的判据。
- * 次判据只做交叉校验（表非空时 `PAGES_STAGE == min(剩余到期刀) − 1`），不做主判据：
- * 账本会随推迟漂，git 不会。表空时**不分支**（没有 `min(∅)` 的歧义，git 的 max 就是答案）。
+ * 为什么不再读 COMMIT_EDITMSG：git 文档 githooks(5) 明确 pre-commit 是在
+ * *before obtaining the proposed commit log message* 之前调用的——那时该文件要么不存在，
+ * 要么是**上一笔的残留**（残留一条 `move(pages): 刀 9` 就能让判据跳过九刀）。
+ * 「在途最多一刀」由 `stageSourceProblems` 的 delta ≤ 1 承担，不需要读任何文件。
  */
-export function pagesStageProblems({ stage, gitMax, seedRows }) {
+const STAGE_NOW = (() => {
+  const computed = stageNow({ gitMax: pagesStageFromGit(), registryMax: maxLandedKnife() });
+  return Number.isFinite(computed) ? computed : maxLandedKnife();   // 拿不到 git 时退回登记表（不再有手写常数）
+})();
+
+/**
+ * 账本侧的交叉校验：`当前刀 == min(seed 剩余到期刀) − 1`。
+ *
+ * **与 git / 登记表的比较不在这里**——那两条由 `stageSourceProblems` 的 delta 规则承担
+ * （在途一刀是合法的；直接比 `当前刀 == gitMax` 会把正在落的那一刀判红）。表空不分支：
+ * 没有 `min(∅)` 的歧义。
+ */
+export function pagesStageProblems({ stage, seedRows }) {
   const problems = [];
-  if (gitMax !== null && gitMax !== undefined && Number(stage) !== Number(gitMax)) {
-    problems.push(
-      `PAGES_STAGE=${stage}，但 git 里已落盘最新的 pages 刀=${gitMax}（差 ${Number(stage) - Number(gitMax)}）`
-      + "——手工常数与已落盘不同步：一段判据按它决定何时生效，所以要么「到期不搬」在空转，"
-      + "要么提前把还没搬的项判到期",
-    );
-  }
   const stages = (seedRows || []).map((row) => row.stage).filter((n) => Number.isFinite(n));
-  if (stages.length > 0) {
-    const earliest = Math.min(...stages);
-    if (Number(stage) !== earliest - 1) {
-      problems.push(
-        `PAGES_STAGE=${stage}，但账本剩余最早的到期刀是 ${earliest}（按 seed 应是 ${earliest - 1}）`
-        + "——账本与已落盘不一致",
-      );
-    }
+  if (stages.length === 0) return problems;
+  const earliest = Math.min(...stages);
+  if (Number(stage) !== earliest - 1) {
+    problems.push(
+      `当前刀=${stage}，但账本剩余最早的到期刀是 ${earliest}（按 seed 应是 ${earliest - 1}）`
+      + "——账本与已落盘不一致",
+    );
   }
   return problems;
 }
@@ -1709,7 +1695,7 @@ function seedCoverageProblems(measured, rows) {
 function r3Problems({
   html, appSource, viewSources, exemptions = R3_EXEMPTIONS,
   // pages 走**另一张表**：到期按刀、上限按 id，和 reading 那 4 条（R3_MAX_EXEMPTIONS）互不影响。
-  pagesExemptions = PAGES_R3_EXEMPTIONS, pagesStage = PAGES_STAGE, pagesTotalCap = PAGES_R3_TOTAL_CAP,
+  pagesExemptions = PAGES_R3_EXEMPTIONS, pagesStage = STAGE_NOW, pagesTotalCap = PAGES_R3_TOTAL_CAP,
   pagesPendingCap = PAGES_R3_PENDING,
   // 受阻项（带 `阻塞段:`）条数上限；硬顶 7 = 留外壳段数，抬它就等于放松棘轮
   pagesBlockedCap = PAGES_R3_BLOCKED_MAX,
@@ -2183,9 +2169,10 @@ test("刀号登记表自检：刀10 必须解析 / 解析不了必须红 / 未�
   // ④ PAGES_STAGE 不是一个可以手写的常数：必须等于登记表里标 landed 的最大刀号
   const landed = maxLandedKnife();
   assert.ok(KNIVES.some((knife) => knife.status === "landed"), "登记表里一刀都没标 landed——表被清空了？");
-  assert.equal(PAGES_STAGE, landed,
-    `PAGES_STAGE = ${PAGES_STAGE}，但登记表里已落盘的最大刀号是 ${landed}——`
-    + "到期判据的「当前刀」与账本不一致（常数不许手写：落盘那一笔要同批改登记表 + PAGES_STAGE）");
+  // 当前刀现在由 `stageNow()` 现算（登记表 landed 与 git 提交首行取 max），不再是手写常数
+  assert.equal(STAGE_NOW, landed,
+    `当前刀 = ${STAGE_NOW}，但登记表里已落盘的最大刀号是 ${landed}——`
+    + "要么登记表落后 git（只落笔没更新登记表），要么有人把常数改回来了");
 });
 
 /**
@@ -2319,64 +2306,55 @@ test("R3 自检（blocked 阻塞段）：stage > PAGES_STAGE 且段号可查判�
     `blocked 自检失败：把上限抬到 8 被放过——${raised.join("；")}`);
 });
 
-test("PAGES_STAGE 必须等于 git 里已落盘的最新 pages 刀（无 git 打印跳过，不红也不静默）", () => {
+test("当前刀由两源现算：两源交叉校验 + 账本核对（无 git 打印跳过，不红也不静默）", () => {
   const gitMax = pagesStageFromGit();
   if (gitMax === null) {
     // pre-commit 验的是 checkout-index 导出的临时树，那里没有自己的一份历史
-    console.log("ℹ gate-switch: 无 git 历史，跳过 PAGES_STAGE 推导（pre-push 会跑）");
+    console.log("ℹ gate-switch: 无 git 历史，跳过当前刀的两源推导（pre-push 会跑）");
     return;
   }
-  const problems = pagesStageProblems({ stage: PAGES_STAGE, gitMax, seedRows: pagesSeedRows() });
-  // **两个真值源交叉校验**（2026-10-30 Chief：不二选一）：git 侧与登记表侧任一单独改都要红
-  problems.push(...stageSourceProblems({
-    gitMax, registryMax: maxLandedKnife(), pagesStage: PAGES_STAGE,
-  }));
+  const registryMax = maxLandedKnife();
+  const stage = stageNow({ gitMax, registryMax });
+  const problems = [
+    // 真值源交叉校验：delta 0 / 1 绿（1 = 正在落这一刀），≥2 与 <0 红
+    ...stageSourceProblems({ gitMax, registryMax }),
+    // 账本核对：当前刀 == min(seed 剩余到期刀) − 1
+    ...pagesStageProblems({ stage, seedRows: pagesSeedRows() }),
+  ];
+  assert.ok(Number.isFinite(stage), `当前刀应是一个数（git=${gitMax} / 登记表=${registryMax}）`);
   assert.deepEqual(problems, [], problems.join("；"));
 });
 
-test("PAGES_STAGE 两个真值源交叉校验：git 与登记表不等、任一反向、一刀未落盘 都要红", () => {
-  // a) git 说 5、登记表说 4 → 红，红文必须两边都打出来
-  const a = stageSourceProblems({ gitMax: 5, registryMax: 4, pagesStage: 5 });
-  assert.ok(a.some((m) => m.includes("git 最大刀号=5") && m.includes("登记表 landed=4")),
-    `真值源自检失败：只改登记表没被红——${a.join("；")}`);
+test("两源交叉校验自检：delta 0/1 绿、delta ≥2 红、delta <0 红、一刀未落盘红", () => {
+  // delta = 0：两源一致 → 绿
+  assert.deepEqual(stageSourceProblems({ gitMax: 5, registryMax: 5 }), [],
+    "交叉校验自检失败：delta 0 被判红");
 
-  // b) 反向（git 4 / 登记表 5）也要红：不能只判「git 更大」
-  const b = stageSourceProblems({ gitMax: 4, registryMax: 5, pagesStage: 5 });
-  assert.ok(b.some((m) => m.includes("git 最大刀号=4") && m.includes("登记表 landed=5")),
-    `真值源自检失败：反向不一致被放过（只判了一个方向）——${b.join("；")}`);
+  // delta = 1：本笔正在落第 registryMax 刀，git 历史里还看不到它 → 绿（今天这一笔就是这个形态）
+  assert.deepEqual(stageSourceProblems({ gitMax: 5, registryMax: 6 }), [],
+    "交叉校验自检失败：delta 1（在途一刀）被判红——那样每一刀的提交都过不去");
 
-  // c) 两边都是 5 且 PAGES_STAGE=5 → 绿
-  assert.deepEqual(stageSourceProblems({ gitMax: 5, registryMax: 5, pagesStage: 5 }), [],
-    `真值源自检失败：两边一致也被判红——${stageSourceProblems({ gitMax: 5, registryMax: 5, pagesStage: 5 }).join("；")}`);
+  // delta = 2：只改登记表没落 move 笔 → 红
+  const ahead = stageSourceProblems({ gitMax: 5, registryMax: 7 });
+  assert.ok(ahead.some((m) => m.includes("登记表领先 2 刀") && m.includes("git 只到 5")),
+    `交叉校验自检失败：delta 2 被放过——${ahead.join("；")}`);
 
-  // d) 一刀都没标 landed → 红（不许把登记表清空当通行证）
-  const d = stageSourceProblems({ gitMax: 5, registryMax: 0, pagesStage: 5 });
-  assert.ok(d.some((m) => m.includes("一刀都没标 landed")),
-    `真值源自检失败：清空登记表被当成绿——${d.join("；")}`);
+  // delta = -1：只落了笔没更新登记表 → 红
+  const behind = stageSourceProblems({ gitMax: 6, registryMax: 5 });
+  assert.ok(behind.some((m) => m.includes("登记表落后 git 1 刀")),
+    `交叉校验自检失败：delta -1 被放过——${behind.join("；")}`);
 
-  // 小数刀号：用 Number 而不是 parseInt（parseInt("2.5") = 2，会把 2.5 悄悄当 2）
-  assert.deepEqual(stageSourceProblems({ gitMax: 2.5, registryMax: 2.5, pagesStage: 2.5 }), [],
-    "真值源自检失败：小数刀号被误判（是不是用了 parseInt？）");
-  assert.equal(gitMaxKnifeFromLog("move(pages): 刀 2.5 装配接线\nmove(pages): 刀 5 x"), 5,
-    "真值源自检失败：刀 2.5 解析错了（parseInt 会把 2.5 当 2）");
-});
+  // 一刀都没标 landed → 红（不许清空登记表当通行证）
+  const empty = stageSourceProblems({ gitMax: 5, registryMax: 0 });
+  assert.ok(empty.some((m) => m.includes("一刀都没标 landed")),
+    `交叉校验自检失败：清空登记表被当成绿——${empty.join("；")}`);
 
-test("PAGES_STAGE 的 git 推导要算上「正在提交的这一笔」（pre-commit 时 HEAD 还在父提交）", () => {
-  const tmp = mkdtempSync(join(tmpdir(), "b2t-editmsg-"));
-  try {
-    // ① 没有 COMMIT_EDITMSG → 行为同旧版：只看历史
-    const history = "move(pages): 刀 5 —— x\ndocs: y\n";
-    assert.equal(gitMaxKnifeFromLog(history), 5,
-      "自检失败：历史里只有刀 5 时推导不是 5");
-    // ② 正在提交的是 move(pages): 刀 6 → 推导必须是 6（否则这一笔自己就红）
-    const msg = join(tmp, "COMMIT_EDITMSG");
-    writeFileSync(msg, "move(pages): 刀 6 —— 片段抽取\n\nbody\n");
-    assert.equal(readFileSync(msg, "utf8").includes("move(pages): 刀 6"), true);
-    assert.equal(gitMaxKnifeFromLog(`${history}\n${readFileSync(msg, "utf8")}`), 6,
-      "自检失败：把 COMMIT_EDITMSG 里的刀 6 算进来后仍是 5——这一笔自己就会被判红");
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
+  // 小数刀号用 Number（parseInt("2.5") = 2 会把 2.5 悄悄当 2）
+  assert.deepEqual(stageSourceProblems({ gitMax: 2.5, registryMax: 2.5 }), [],
+    "交叉校验自检失败：小数刀号被误判（是不是用了 parseInt？）");
+  assert.equal(gitMaxKnifeFromLog("move(pages): 刀 2.5 装配\nmove(pages): 刀 5 x"), 5,
+    "交叉校验自检失败：刀 2.5 解析错了");
+  assert.equal(stageNow({ gitMax: 5, registryMax: 6 }), 6, "当前刀应取两源较大的那个");
 });
 
 test("seed 取样读的是「跑这份代码的那棵树」（pre-commit = 索引导出树），不是工作区/HEAD", () => {
@@ -2390,42 +2368,29 @@ test("seed 取样读的是「跑这份代码的那棵树」（pre-commit = 索�
     `app.js 路径不在这棵树里（${APP_FILE}）——两种模式（工作区/导出树）会各读一半`);
 });
 
-test("PAGES_STAGE 自检：漏跟红 / 超前抬红 / 相等绿 / 账本交叉校验不等红 / 表空只比 git", () => {
+test("账本核对自检：表非空且当前刀 ≠ min−1 → 红；表空不分支 → 绿", () => {
   const rows = [
     { host: "a", ids: [], wires: [], stage: 6 },
     { host: "b", ids: [], wires: [], stage: 8 },
   ];
-  assert.deepEqual(pagesStageProblems({ stage: 5, gitMax: 5, seedRows: rows }), [],
-    `PAGES_STAGE 自检失败：git 与账本都一致也被判红——${pagesStageProblems({ stage: 5, gitMax: 5, seedRows: rows }).join("；")}`);
+  assert.deepEqual(pagesStageProblems({ stage: 5, seedRows: rows }), [],
+    `账本核对自检失败：当前刀 5 = min(6)−1 也被判红——${pagesStageProblems({ stage: 5, seedRows: rows }).join("；")}`);
 
-  const lag = pagesStageProblems({ stage: 4, gitMax: 5, seedRows: rows });
-  assert.ok(lag.some((m) => m.includes("手工常数与已落盘不同步")),
-    `PAGES_STAGE 自检失败：漏跟一刀（stage=4 / git=5）被放过——${lag.join("；")}`);
+  const off = pagesStageProblems({ stage: 7, seedRows: rows });
+  assert.ok(off.some((m) => m.includes("账本与已落盘不一致")),
+    `账本核对自检失败：当前刀 7 与账本 min 6 不符也被放过——${off.join("；")}`);
 
-  const ahead = pagesStageProblems({ stage: 6, gitMax: 5, seedRows: [] });
-  assert.ok(ahead.some((m) => m.includes("手工常数与已落盘不同步")),
-    `PAGES_STAGE 自检失败：超前抬（stage=6 / git=5）被放过——${ahead.join("；")}`);
+  // 表空不分支：没有 min(∅) 的歧义
+  assert.deepEqual(pagesStageProblems({ stage: 99, seedRows: [] }), [],
+    "账本核对自检失败：表空时还在算 min(∅)");
 
-  // 表空不分支：没有 min(∅) 的歧义，git 的 max 就是答案
-  assert.deepEqual(pagesStageProblems({ stage: 6, gitMax: 6, seedRows: [] }), [],
-    "PAGES_STAGE 自检失败：表空时又走了一遍账本分支（会出 NaN === NaN 的假绿/假红）");
-
-  // 次级交叉校验：git 同意但账本不同意 → 红（说明账本与已落盘不一致）
-  const cross = pagesStageProblems({ stage: 7, gitMax: 7, seedRows: rows });
-  assert.ok(cross.some((m) => m.includes("账本与已落盘不一致")),
-    `PAGES_STAGE 自检失败：账本剩余最早刀 6、PAGES_STAGE=7 也被放过——${cross.join("；")}`);
-
-  // 首行解析：只认 move(pages)，其它 move(<视图>) 不算；小数刀号（刀 2.5）能解析
+  // 首行解析：只认 move(pages)，其它 move(<视图>) 不算；小数刀号能解析；没有就返回 null
   assert.equal(
     pagesStageFromSubjects(["move(pages): 刀 5 —— x", "move(pages): 刀 2.5 a", "move(index-tile): x"]), 5,
-    "PAGES_STAGE 自检失败：首行刀号解析错了（多认了别的视图或少认了小数刀）",
+    "首行刀号解析错了（多认了别的视图或少认了小数刀）",
   );
-  // 无 git（pre-commit 的导出树）：不许判红——调用方打印一行跳过；也不许把"跳过"做成静默绿
-  assert.deepEqual(pagesStageProblems({ stage: 5, gitMax: null, seedRows: [] }), [],
-    "PAGES_STAGE 自检失败：拿不到 git 时仍判红（pre-commit 验的导出树会整片红）");
-
   assert.equal(pagesStageFromSubjects(["docs: x", "fix(ui): y"]), null,
-    "PAGES_STAGE 自检失败：没有 move(pages) 首行时该返回 null（否则调用方不会打印跳过）");
+    "没有 move(pages) 首行时该返回 null");
 });
 
 test("A1 白名单存在性：MOVE_EXEMPTION_BLOCKS 里每个名字都必须是文件里真实存在的常量", () => {
@@ -2435,6 +2400,13 @@ test("A1 白名单存在性：MOVE_EXEMPTION_BLOCKS 里每个名字都必须是�
     assert.ok(
       new RegExp(`export const ${name}\\b`).test(table),
       `白名单里的 ${name} 在 pages-r3-exemptions.mjs 里不存在——写错名字等于静默失效（PAGES_R3_STAGE 那次就是这样）`,
+    );
+  }
+  // 墓碑：退役的登记块不许回到文件里（它被现算取代了，回来就是把手工常数放回去）
+  for (const name of MOVE_EXEMPTION_BLOCKS_RETIRED) {
+    assert.equal(
+      new RegExp(`export const ${name}\\b`).test(table), false,
+      `已退役的 ${name} 又回到了豁免表——它已被现算取代，回来就等于重新打开「手工常数静默停用」的口子`,
     );
   }
 });
@@ -3685,7 +3657,8 @@ const A5_TEST_DIR = fileURLToPath(new URL("./", import.meta.url));
 // 我在 BRIDGE_EXCEPTION_MAX 上抄了旧值 3（实际早已降成 1），落地几小时就对不上。
 // 现值永远看常数那一行，本表只回答「它是谁算出来的、什么时候会变」。机检见 `gateSwitchProblems`。
 const GATE_SWITCHES = [
-  { name: "PAGES_STAGE", source: "git 里最大的 `move(pages): 刀 N` 首行（无 git 时打印跳过，pre-push 会跑）", check: "决定「到期不搬 = 红」「受阻项必须 stage > PAGES_STAGE」从哪一刀起生效" },
+  // 曾经的 `PAGES_STAGE` 常数已删除：当前刀现在由 `stageNow()`（登记表 landed 与 git 提交首行取 max）
+  // 在她判据内部现算，不再是可以手调/静默停用的开关，所以这张表里没有它。
   { name: "BRIDGE_EXCEPTION_MAX", source: "edge-ratchet.mjs 里的上限常数，与同文件 BRIDGE_EXCEPTIONS 的条数绑定（只降不升）；现值见该行", check: "A2/边棘轮是否放过某条 app.js 内部桥" },
   { name: "SAME_FILE_DUP_EXCEPTION_MAX", source: "与本文件 SAME_FILE_DUP_EXCEPTIONS 的条数绑定（空表 = 不给名额）；现值见该行", check: "R4b 是否放过某个同文件重复定义" },
   { name: "WINDOW_HOOK_MAX", source: "与 R6 的 __b2t* 窗口钩子白名单条数绑定（只降不升）；现值见该行", check: "R6 是否放过某个全局窗口钩子" },

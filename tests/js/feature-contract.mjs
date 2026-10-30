@@ -137,8 +137,15 @@ export function registrationContent(sha, docText) {
 const MOVE_TABLES = ["OWNERS", "VIEW_STATE_PREFIXES", "VIEW_EXPORTS"];
 /** 豁免表文件里**允许被 move: 笔改**的顶层常量（方向由 exemptionDeltaProblems 判，A1 只管位置）。 */
 export const MOVE_EXEMPTION_BLOCKS = [
-  "PAGES_R3_EXEMPTIONS", "PAGES_R3_TOTAL_CAP", "PAGES_STAGE", "PAGES_R3_PENDING", "PAGES_R3_BLOCKED_MAX",
+  "PAGES_R3_EXEMPTIONS", "PAGES_R3_TOTAL_CAP", "PAGES_R3_PENDING", "PAGES_R3_BLOCKED_MAX",
 ];
+
+/**
+ * **已退役的登记块**：这些名字曾经是豁免表里的合法块，后来被现算取代（`PAGES_STAGE` 2026-10-30
+ * 被 `stageNow()` 取代）。历史提交动过它们，**不能因此翻旧账**——A1 只判「有没有越过登记表」，
+ * 不判「这个块还在不在」。但它们**不许再回到文件里**（见 boundary 的墓碑自检）。
+ */
+export const MOVE_EXEMPTION_BLOCKS_RETIRED = ["PAGES_STAGE"];
 const MOVE_FORBIDDEN = /(EXCUS|MAX)/;
 /** pages 的 R3 过渡豁免表（数据文件）。`move:` 笔**可以**改它，但只能往收紧的方向改。 */
 const EXEMPTION_FILE = "pages-r3-exemptions.mjs";
@@ -359,7 +366,9 @@ export function tableBlockRanges(source, { exemptionFile = false } = {}) {
     if (!match) continue;
     const name = match[1];
     // 豁免表里的常量只有**该文件**算 allowed；方向另由 exemptionDeltaProblems 判
-    const allowed = MOVE_TABLES.includes(name) || (exemptionFile && MOVE_EXEMPTION_BLOCKS.includes(name));
+    const allowed = MOVE_TABLES.includes(name)
+      || (exemptionFile && (MOVE_EXEMPTION_BLOCKS.includes(name)
+        || MOVE_EXEMPTION_BLOCKS_RETIRED.includes(name)));
     const forbidden = !allowed && MOVE_FORBIDDEN.test(name);
     if (!allowed && !forbidden) continue;
     // 单行常量（`const R5_MAX_EXCUSES = 0;`）没有 `{}`：上限/豁免就是这种形态，

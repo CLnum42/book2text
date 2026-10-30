@@ -59,36 +59,48 @@ export function gitMaxKnifeFromLog(text) {
 }
 
 /**
- * `PAGES_STAGE` 的**两个真值源交叉校验**（2026-10-30 Chief 裁定：不二选一）。
+ * 判据内部现算的「当前刀」= 两个真值源的最大值。
  *
- * 两个源都会漂，而且漂的方式不同：
- *   · git 侧（`move(pages): 刀 N` 首行）= 代码真的动了的证据，但**改错了账本它不管**；
- *   · 登记表（`KNIVES` 的 landed 标记）= 声明，但**不落笔也能标 landed**。
- * 所以两条都留：任一侧单独改 → 红，且红文必须把两边的值同时打出来（否则读的人要回去翻文档）。
- * `gitMax === null` 表示拿不到 git（pre-commit 的导出树）—— 调用方打印跳过，**不许静默变绿**。
+ * 为什么不读文件里的 `PAGES_STAGE` 常数（2026-10-30 定稿）：常数是人抄的，抄错/忘改就是一段判据
+ * 在空转（`PAGES_STAGE=2` 停过三刀）。现算的两个源各自都有独立证据，且两者的差本身有意义（见下）。
  */
-export function stageSourceProblems({ gitMax, registryMax, pagesStage }) {
-  const problems = [];
-  const landed = Number(registryMax);
+export function stageNow({ gitMax, registryMax }) {
   const git = Number(gitMax);
+  const landed = Number(registryMax);
+  if (!Number.isFinite(git)) return Number.isFinite(landed) ? landed : null;
+  if (!Number.isFinite(landed)) return git;
+  return Math.max(git, landed);
+}
+
+/**
+ * `PAGES_STAGE` 的**两个真值源交叉校验**（2026-10-30 Chief 定稿：不二选一，且允许在途一刀）。
+ *
+ * `delta = 登记表 landed − git 最大刀号`：
+ *   · `0`  → 绿：没有在途刀；
+ *   · `1`  → 绿：**本笔正在落第 registryMax 刀**，git 历史里还看不到它（pre-commit 时 HEAD 是父提交）；
+ *   · `>= 2` → 红：「登记表领先 N 刀，但 git 只到 M」——只改登记表没落 move 笔；
+ *   · `< 0`  → 红：「登记表落后 git N 刀」——只落了笔没更新登记表。
+ *
+ * 为什么不是「读 COMMIT_EDITMSG 看正在提交的消息」：git 文档（githooks(5)）写明 pre-commit
+ * 是 *before obtaining the proposed commit log message* 调用的，那时这个文件要么不存在、
+ * 要么是**上一笔的残留**——残留的 `move(pages): 刀 9` 能让判据直接跳过九刀。
+ * 「在途最多一刀」这个表述更本质，也不需要读任何文件。
+ */
+export function stageSourceProblems({ gitMax, registryMax }) {
+  const landed = Number(registryMax);
   if (!(landed >= 1)) {
-    problems.push(
+    return [
       `登记表里一刀都没标 landed（landed 最大=${registryMax}）——`
       + "不许用「清空登记表」把这条交叉校验变成通行证",
-    );
-  } else if (git !== landed) {
-    problems.push(
-      `PAGES_STAGE 的两个真值源不一致：git 最大刀号=${gitMax}，登记表 landed=${registryMax}`
-      + "——有人只改登记表没落 move 笔，或只落笔没更新登记表",
-    );
+    ];
   }
-  if (pagesStage !== undefined && pagesStage !== null) {
-    if (git !== Number(pagesStage)) {
-      problems.push(`PAGES_STAGE=${pagesStage} ≠ git 最大刀号=${gitMax}——手工常数与提交证据不同步`);
-    }
-    if (landed >= 1 && landed !== Number(pagesStage)) {
-      problems.push(`PAGES_STAGE=${pagesStage} ≠ 登记表 landed=${registryMax}——手工常数与登记表不同步`);
-    }
+  const delta = landed - Number(gitMax);
+  if (delta === 0 || delta === 1) return [];
+  if (delta >= 2) {
+    return [
+      `登记表领先 ${delta} 刀，但 git 只到 ${gitMax}——只改登记表没落 move 笔`
+      + "（在途最多一刀：delta ≤ 1 才算「本笔正在落」）",
+    ];
   }
-  return problems;
+  return [`登记表落后 git ${-delta} 刀——只落了笔没更新登记表`];
 }
