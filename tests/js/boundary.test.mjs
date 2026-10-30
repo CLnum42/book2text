@@ -1508,6 +1508,68 @@ export function seedStageRangeProblems(rows, maxStage) {
     .map((row) => `seed 里 ${row.host} 的刀号 ${row.stage} 不在 1..${maxStage}——解析串位了`);
 }
 
+/** `move(pages): 刀 N` 首行的刀号；页面的刀号来自提交首行，不是账本（账本会随推迟漂）。 */
+const PAGES_MOVE_SUBJECT = /^move\((?:pages)\):\s*刀\s*([0-9]+(?:\.[0-9]+)?)/;
+
+/** 一组提交首行 → 已落盘的最新 pages 刀号（没有一条 match 返回 null）。 */
+export function pagesStageFromSubjects(subjects) {
+  let max = null;
+  for (const subject of subjects || []) {
+    const m = PAGES_MOVE_SUBJECT.exec(String(subject).trim());
+    if (!m) continue;
+    const n = Number(m[1]);
+    max = max === null ? n : Math.max(max, n);
+  }
+  return max;
+}
+
+/**
+ * git 里已落盘的最新 pages 刀号；**拿不到 git（pre-commit 验的是导出树）返回 null**。
+ *
+ * 为什么真值来自 git（2026-10-30 Chief/Architect 定）：提交首行是「代码真的动了」的唯一证据；
+ * 账本推导会随推迟漂，而推迟本身是账本要记的东西。取不到 git 时**打印一行跳过**——不红、也不静默。
+ */
+export function pagesStageFromGit() {
+  try {
+    const out = execFileSync("git", ["log", "--format=%s", "-n", "2000"], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+    });
+    return pagesStageFromSubjects(out.split("\n"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `PAGES_STAGE` 的两条判据：**主 = git**（已落盘最新 pages 刀），**次 = 账本交叉校验**。
+ *
+ * 为什么需要它：`PAGES_STAGE=2` 停在刀 2，让「到期不搬 = 红」从刀 3 起**空转三刀**，
+ * 而这期间所有闸都是绿的。一个由手工常数控制是否生效的判据，等于一条能被静默停用的判据。
+ * 次判据只做交叉校验（表非空时 `PAGES_STAGE == min(剩余到期刀) − 1`），不做主判据：
+ * 账本会随推迟漂，git 不会。表空时**不分支**（没有 `min(∅)` 的歧义，git 的 max 就是答案）。
+ */
+export function pagesStageProblems({ stage, gitMax, seedRows }) {
+  const problems = [];
+  if (gitMax !== null && gitMax !== undefined && Number(stage) !== Number(gitMax)) {
+    problems.push(
+      `PAGES_STAGE=${stage}，但 git 里已落盘最新的 pages 刀=${gitMax}（差 ${Number(stage) - Number(gitMax)}）`
+      + "——手工常数与已落盘不同步：一段判据按它决定何时生效，所以要么「到期不搬」在空转，"
+      + "要么提前把还没搬的项判到期",
+    );
+  }
+  const stages = (seedRows || []).map((row) => row.stage).filter((n) => Number.isFinite(n));
+  if (stages.length > 0) {
+    const earliest = Math.min(...stages);
+    if (Number(stage) !== earliest - 1) {
+      problems.push(
+        `PAGES_STAGE=${stage}，但账本剩余最早的到期刀是 ${earliest}（按 seed 应是 ${earliest - 1}）`
+        + "——账本与已落盘不一致",
+      );
+    }
+  }
+  return problems;
+}
+
 /**
  * 「(函数名, id) → 刀号」：到期刀按 max 算。
  *
@@ -2232,6 +2294,55 @@ test("R3 自检（blocked 阻塞段）：stage > PAGES_STAGE 且段号可查判�
   const raised = r3Problems({ ...base, pagesExemptions: eight, pagesBlockedCap: 8 });
   assert.ok(raised.some((m) => m.includes("受阻项上限被抬到 8")),
     `blocked 自检失败：把上限抬到 8 被放过——${raised.join("；")}`);
+});
+
+test("PAGES_STAGE 必须等于 git 里已落盘的最新 pages 刀（无 git 打印跳过，不红也不静默）", () => {
+  const gitMax = pagesStageFromGit();
+  if (gitMax === null) {
+    // pre-commit 验的是 checkout-index 导出的临时树，那里没有自己的一份历史
+    console.log("ℹ gate-switch: 无 git 历史，跳过 PAGES_STAGE 推导（pre-push 会跑）");
+    return;
+  }
+  const problems = pagesStageProblems({ stage: PAGES_STAGE, gitMax, seedRows: pagesSeedRows() });
+  assert.deepEqual(problems, [], problems.join("；"));
+});
+
+test("PAGES_STAGE 自检：漏跟红 / 超前抬红 / 相等绿 / 账本交叉校验不等红 / 表空只比 git", () => {
+  const rows = [
+    { host: "a", ids: [], wires: [], stage: 6 },
+    { host: "b", ids: [], wires: [], stage: 8 },
+  ];
+  assert.deepEqual(pagesStageProblems({ stage: 5, gitMax: 5, seedRows: rows }), [],
+    `PAGES_STAGE 自检失败：git 与账本都一致也被判红——${pagesStageProblems({ stage: 5, gitMax: 5, seedRows: rows }).join("；")}`);
+
+  const lag = pagesStageProblems({ stage: 4, gitMax: 5, seedRows: rows });
+  assert.ok(lag.some((m) => m.includes("手工常数与已落盘不同步")),
+    `PAGES_STAGE 自检失败：漏跟一刀（stage=4 / git=5）被放过——${lag.join("；")}`);
+
+  const ahead = pagesStageProblems({ stage: 6, gitMax: 5, seedRows: [] });
+  assert.ok(ahead.some((m) => m.includes("手工常数与已落盘不同步")),
+    `PAGES_STAGE 自检失败：超前抬（stage=6 / git=5）被放过——${ahead.join("；")}`);
+
+  // 表空不分支：没有 min(∅) 的歧义，git 的 max 就是答案
+  assert.deepEqual(pagesStageProblems({ stage: 6, gitMax: 6, seedRows: [] }), [],
+    "PAGES_STAGE 自检失败：表空时又走了一遍账本分支（会出 NaN === NaN 的假绿/假红）");
+
+  // 次级交叉校验：git 同意但账本不同意 → 红（说明账本与已落盘不一致）
+  const cross = pagesStageProblems({ stage: 7, gitMax: 7, seedRows: rows });
+  assert.ok(cross.some((m) => m.includes("账本与已落盘不一致")),
+    `PAGES_STAGE 自检失败：账本剩余最早刀 6、PAGES_STAGE=7 也被放过——${cross.join("；")}`);
+
+  // 首行解析：只认 move(pages)，其它 move(<视图>) 不算；小数刀号（刀 2.5）能解析
+  assert.equal(
+    pagesStageFromSubjects(["move(pages): 刀 5 —— x", "move(pages): 刀 2.5 a", "move(index-tile): x"]), 5,
+    "PAGES_STAGE 自检失败：首行刀号解析错了（多认了别的视图或少认了小数刀）",
+  );
+  // 无 git（pre-commit 的导出树）：不许判红——调用方打印一行跳过；也不许把"跳过"做成静默绿
+  assert.deepEqual(pagesStageProblems({ stage: 5, gitMax: null, seedRows: [] }), [],
+    "PAGES_STAGE 自检失败：拿不到 git 时仍判红（pre-commit 验的导出树会整片红）");
+
+  assert.equal(pagesStageFromSubjects(["docs: x", "fix(ui): y"]), null,
+    "PAGES_STAGE 自检失败：没有 move(pages) 首行时该返回 null（否则调用方不会打印跳过）");
 });
 
 test("A1 白名单存在性：MOVE_EXEMPTION_BLOCKS 里每个名字都必须是文件里真实存在的常量", () => {
@@ -3459,6 +3570,93 @@ const A5_EXCUSES = [];
 const A5_MAX_EXCUSES = 0;
 
 const A5_TEST_DIR = fileURLToPath(new URL("./", import.meta.url));
+
+// ---------------------------------------------------------------- 元判据：闸开关登记表
+//
+// **每个能让一段判据「跳过 / 失效」的顶层常量，都必须在这里写清两件事**：
+//   · source：它的真值从哪来（谁算出来的、什么时候会变）；
+//   · check：它管的是哪一段判据。
+//
+// 为什么需要（2026-10-30）：一天里出现五个写死的数字让判据静默空转——
+// `PAGES_STAGE=2` 停了三刀（「到期不搬 = 红」整段空转）、`A5_PROBE_FILES` / `A5_EXCUSES` 两张空表、
+// seed 刀号上界 `1..5`、受阻项 `=== 5`。前两个到那时也没有任何机检。
+// 一条由手工常数控制是否生效的判据，等于一条能被静默停用的判据。
+// 「常数对不对」这条判不了；「这个常数有没有登记、有没有说清真值来源」判得了——这就是本段。
+const GATE_SWITCHES = [
+  { name: "PAGES_STAGE", source: "git 里最大的 `move(pages): 刀 N` 首行（无 git 时打印跳过，pre-push 会跑）", check: "决定「到期不搬 = 红」「受阻项必须 stage > PAGES_STAGE」从哪一刀起生效" },
+  { name: "BRIDGE_EXCEPTION_MAX", source: "app.js 内部桥例外条数硬顶 3（edge-ratchet.mjs 的 BRIDGE_EXCEPTIONS），只降不升", check: "A2/边棘轮是否放过某条 app.js 内部桥" },
+  { name: "SAME_FILE_DUP_EXCEPTION_MAX", source: "同文件重名例外硬顶 0（SAME_FILE_DUP_EXCEPTIONS 空表）", check: "R4b 是否放过某个同文件重复定义" },
+  { name: "WINDOW_HOOK_MAX", source: "__b2t* 窗口钩子例外硬顶 12，只降不升", check: "R6 是否放过某个全局窗口钩子" },
+  { name: "PAGES_R3_BLOCKED_MAX", source: "留外壳清单段数（knife2.5-split-plan.md §ⅲ）7 段，只降不升", check: "R3 受阻项（带「阻塞段」的豁免）条数上限" },
+  { name: "R3_MAX_EXEMPTIONS", source: "pages 过渡豁免条数硬顶 4，只降不升（人工下调并写明原因）", check: "R3 豁免表最多能挂几项" },
+  { name: "R9_WHITELIST", source: "浏览器全局白名单（document/window/…），人工追加", check: "R9 是否放过注入表达式里的某个未声明标识符" },
+  { name: "MOVE_GATE_WHITELIST", source: "move: 笔允许改 tests/js 的登记表（feature-contract.mjs）", check: "move: 笔能否改动 tests/js 的某块" },
+  { name: "A5_PROBE_FILES", source: "空表；登记项必须带 owner + YYYY-MM-DD 到期点（到期即红）", check: "A5 是否豁免某个探针测试文件" },
+  { name: "A5_MAX_PROBE_FILES", source: "手工上限 4，只降不升", check: "A5 探针豁免条数上限" },
+  { name: "A5_EXCUSES", source: "空表；每项带语句指纹 + owner + 到期点，指纹不再命中即红", check: "A5 是否放过某条断言" },
+  { name: "A5_MAX_EXCUSES", source: "手工上限 0，只降不升", check: "A5 例外条数上限" },
+  { name: "R5_EXCUSES", source: "空表；{ state, file, owner, expires }", check: "R5 是否放过某处「模块写外壳状态」" },
+  { name: "R5_MAX_EXCUSES", source: "手工上限 0，只降不升", check: "R5 例外条数上限" },
+];
+
+/** 「能让判据跳过/失效」的名字形态（Chief 2026-10-30 定，与登记表配套）。 */
+const GATE_SWITCH_NAME = /(_STAGE|_MAX(_[A-Z0-9_]+)?|_EXCUSES|_PROBE_FILES|_WHITELIST|_ALLOW|_SKIP|_BYPASS)$/;
+
+/** tests/js/** 顶层的大写常量名（`const X = ` / `export const X = `）。 */
+export function gateSwitchNames(dir = A5_TEST_DIR) {
+  const names = new Set();
+  for (const file of readdirSync(dir).filter((name) => name.endsWith(".mjs"))) {
+    const text = readFileSync(join(dir, file), "utf8");
+    for (const m of text.matchAll(/^(?:export\s+)?const\s+([A-Z][A-Z0-9_]*)\s*=/gm)) names.add(m[1]);
+  }
+  return [...names].sort();
+}
+
+/** 未登记的开关名 / 登记了却没写来源 / 登记了但代码里已经没有 → 都是红。 */
+export function gateSwitchProblems({ names, registry = GATE_SWITCHES }) {
+  const problems = [];
+  const registered = new Map(registry.map((item) => [item.name, item]));
+  for (const name of names) {
+    if (!GATE_SWITCH_NAME.test(name) || registered.has(name)) continue;
+    problems.push(
+      `${name} 能让一段判据跳过/失效，但没登记进 GATE_SWITCHES——`
+      + "先写清它的真值来源（谁算出来的、什么时候会变）和它管哪段判据",
+    );
+  }
+  for (const item of registry) {
+    if (!item.source || !item.check) {
+      problems.push(`GATE_SWITCHES 里的 ${item.name} 缺 source/check——登记就要写清真值来源与它管哪段判据`);
+    }
+    if (!names.includes(item.name)) {
+      problems.push(`GATE_SWITCHES 里登记的 ${item.name} 在 tests/js 里已经不存在——删掉它（别把表变成墓地）`);
+    }
+  }
+  return problems;
+}
+
+test("GATE_SWITCHES：能让判据跳过/失效的顶层常数都必须登记真值来源", () => {
+  const problems = gateSwitchProblems({ names: gateSwitchNames() });
+  assert.deepEqual(problems, [], problems.join("；"));
+});
+
+// 自检：没有这一段，登记表就只是"写给人看的注释"——名字拼错、表项过期都不会有人发现。
+test("GATE_SWITCHES 自检：未登记红 / 缺 source 红 / 登记了但代码里没有红 / 合规绿", () => {
+  const reg = [{ name: "OK_MAX_X", source: "手工上限 0", check: "某段判据上限" }];
+  assert.deepEqual(gateSwitchProblems({ names: ["OK_MAX_X"], registry: reg }), [],
+    `GATE_SWITCHES 自检失败：合规登记被误报——${gateSwitchProblems({ names: ["OK_MAX_X"], registry: reg }).join("；")}`);
+
+  const missing = gateSwitchProblems({ names: ["OK_MAX_X", "FOO_MAX"], registry: reg });
+  assert.ok(missing.some((m) => m.includes("FOO_MAX") && m.includes("没登记")),
+    `GATE_SWITCHES 自检失败：没登记的开关被放过——${missing.join("；")}`);
+
+  const noSource = gateSwitchProblems({ names: ["BAR_STAGE"], registry: [{ name: "BAR_STAGE" }] });
+  assert.ok(noSource.some((m) => m.includes("缺 source/check")),
+    `GATE_SWITCHES 自检失败：登记了但没写来源也被放过——${noSource.join("；")}`);
+
+  const graveyard = gateSwitchProblems({ names: [], registry: reg });
+  assert.ok(graveyard.some((m) => m.includes("已经不存在")),
+    `GATE_SWITCHES 自检失败：登记了已不存在的常数被放过（表变成墓地）——${graveyard.join("；")}`);
+});
 
 /** 取出源码里所有 `assert…(…)` 语句（跨行也算一条），文本已抹掉注释/字符串并压成一行。 */
 function assertStatements(source) {
