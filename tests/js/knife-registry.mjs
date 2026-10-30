@@ -29,6 +29,7 @@ export const KNIVES = [
   { n: 9.3, status: "pending", scope: "版心一族（对话框 / 进度 / 瓷砖 / 拖动保存）" },
   { n: 9.4, status: "pending", scope: "页码一族（三个面板宿主 + 指标）" },
   { n: 9.5, status: "pending", scope: "选择 / 网格 / 步骤 / 收尾 / 其它" },
+  { n: 9.6, status: "pending", scope: "渲染循环 / 版心撤销按钮的接线收回模块（Architect 2026-10-30 单独拆，不塞进 9.1）" },
   { n: 10, status: "pending", scope: "收口：R8 22 → 3（init / enter / exit）" },
 ];
 

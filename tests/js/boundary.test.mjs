@@ -3651,7 +3651,7 @@ const VIEW_EXPORTS = {
       renderTypePicker: { kind: "T", death: 9 },
       savePageMargin: { kind: "T", death: 9.3 },
       syncPageStates: { kind: "T", death: 9.5 },
-      undoMarginEdit: { kind: "T", death: 9 },
+      undoMarginEdit: { kind: "T", death: 9.6 },   // 9.6：接线收回模块（Architect 2026-10-30）
       updateMarginDetectProgress: { kind: "T", death: 9.2 },
       updatePageVisibility: { kind: "T", death: 9.2 },
       updateSelectionPanel: { kind: "T", death: 9 },
@@ -3677,10 +3677,10 @@ const VIEW_EXPORTS = {
       openPageSetup: { kind: "C", callers: ["boot", "library-view.js"], reason: "首启 / 库页打开页面设置" },
       pageScroller: { kind: "T", death: 9.5 },
       pausePageThumbnails: { kind: "T", death: 9.1 },
-      pumpOverlayRender: { kind: "T", death: 9 },
+      pumpOverlayRender: { kind: "T", death: 9.6 },   // 9.6：接线收回模块（Architect 2026-10-30）
       queueOverlayRender: { kind: "T", death: 9.2 },
       rerunAuxiliary: { kind: "T", death: 9 },
-      scanVisiblePageSuggestions: { kind: "T", death: 9 },
+      scanVisiblePageSuggestions: { kind: "T", death: 9.6 },   // 9.6：接线收回模块（Architect 2026-10-30）
       setMarginStatus: { kind: "T", death: 9.3 },
       setPageNumberStatus: { kind: "T", death: 9.4 },
       showMarginDetectProgress: { kind: "T", death: 9.3 },
@@ -3788,10 +3788,28 @@ const EXPORT_DEATH_KNIFE = {
 /** 死期表必须非空的到期刀：kind 清册（L/T/C 逐键）落地时这张表就该填满。 */
 const EXPORT_DEATH_EXPIRES = 9;
 
-/** app.js 里 `PagesView.<key>` 的引用数（外壳调模块的唯一形态）。 */
-function appCallsOfExportKey(appSource, key) {
-  const re = new RegExp(`(?:window\\.)?PagesView\\s*\\.\\s*${key}\\b`, "g");
-  return [...String(appSource).matchAll(re)].length;
+/**
+ * 一个导出键**还活着吗** —— 三栏扫（Architect 2026-10-30 裁定；旧实现只扫第 ② 栏所以是瞎的）：
+ *   ① 裸标识符（含**值位**）：`addEventListener("click", foo)` / `queueAfterSteps(foo)` —— 旧实现看不见；
+ *   ② `PagesView.<key>`：外壳经接口调用；
+ *   ③ 模块里的 `injected.<key>`：别的模块反过来调它（排除 pages-view 自己的自环——那不算"跨域还活着"，
+ *      但这里只用来判"还活着"，自环也算活着，宁可多报也不漏报）。
+ *
+ * **先剥注释**：`updateSelectionPanel` 在 app.js:11794 的**注释**里出现过，Architect 第一版没剥，
+ * 把注释算成引用、误报「4 个值位」（实际 3 个）。判据必须只认代码。
+ */
+export function exportKeyReferences({ key, appSource, modules = [] }) {
+  const app = stripCommentsOnly(String(appSource || ""));
+  const bareRe = new RegExp(`(?<![.\\w$])${key}\\b`, "g");          // 值位：前面不是 . / 标识符字符
+  const apiRe = new RegExp(`(?:window\\.)?PagesView\\s*\\.\\s*${key}\\b`, "g");
+  const bare = [...app.matchAll(bareRe)].length;
+  const viaApi = [...app.matchAll(apiRe)].length;
+  let viaModule = 0;
+  for (const { source } of modules || []) {
+    const code = stripCommentsOnly(String(source || ""));
+    viaModule += [...code.matchAll(new RegExp(`injected\\s*\\.\\s*${key}\\b`, "g"))].length;
+  }
+  return { bare, viaApi, viaModule, total: bare + viaApi + viaModule };
 }
 
 /**
@@ -3805,7 +3823,7 @@ function appCallsOfExportKey(appSource, key) {
  * **不能被静默停用**：今天绿是因为刀 9 还没到；到刀 9 那天它自己会红。判据只从表取死期，
  * 不从注释——注释漂了不会让判据空转。
  */
-export function exportDeathProblems({ deaths, stage, appSource, apiKeys, expires = EXPORT_DEATH_EXPIRES }) {
+export function exportDeathProblems({ deaths, stage, appSource, apiKeys, modules = [], expires = EXPORT_DEATH_EXPIRES }) {
   const problems = [];
   // **空表也是一种状态，必须带到期点**（否则就是「只能静默停用判据的常数」那个病：
   // 一行 INFO 没人看，刀 9 到了也不会有人想起表还是空的）。
@@ -3827,11 +3845,17 @@ export function exportDeathProblems({ deaths, stage, appSource, apiKeys, expires
       continue;
     }
     if (!(Number(death) <= Number(stage))) continue;
-    const count = appCallsOfExportKey(appSource, key);
+    const refs = exportKeyReferences({ key, appSource, modules });
     const inApi = (apiKeys || []).includes(key);
-    if (count === 0 && !inApi) continue;
+    if (refs.total === 0 && !inApi) continue;
     const why = [];
-    if (count > 0) why.push(`app.js 还有 ${count} 处 PagesView.${key} 引用`);
+    if (refs.total > 0) {
+      const parts = [];
+      if (refs.bare > 0) parts.push(`裸标识符 ${refs.bare} 处（值位也算）`);
+      if (refs.viaApi > 0) parts.push(`PagesView.${key} ${refs.viaApi} 处`);
+      if (refs.viaModule > 0) parts.push(`模块 injected.${key} ${refs.viaModule} 处`);
+      why.push(`还活着：${parts.join(" / ")}`);
+    }
     if (inApi) why.push("它仍在 api 表里");
     problems.push(`导出键 ${key} 的死亡刀号是 刀${death}，当前刀已到 刀${stage}——但 ${why.join("、")}：到点未死`);
   }
@@ -3961,10 +3985,39 @@ test("R8（到点未死）：死亡刀号 <= 当前刀的导出键，必须 app.
     console.log(`ℹ 死期表为空（到期刀 ${EXPORT_DEATH_EXPIRES}）：kind 清册落地后必须按 T/C 填 T 的死期，`
       + "到那刀表仍空就是红");
   }
+  const modules = readdirSync(STATIC_DIR).filter((name) => /-view\.js$/.test(name))
+    .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") }));
   const problems = exportDeathProblems({
-    deaths, stage: STAGE_NOW, appSource: readFileSync(APP_FILE, "utf8"), apiKeys,
+    deaths, stage: STAGE_NOW, appSource: readFileSync(APP_FILE, "utf8"), apiKeys, modules,
   });
   assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("R8（到点未死）三栏自检：只留转发器红 / 值位引用红 / 只有注释必须绿", () => {
+  const deaths = { foo: 9 };
+  const apiGone = [];   // api 键已删
+  const base = { deaths, stage: 9, apiKeys: apiGone, modules: [] };
+
+  // ① 只删了 api 键、转发器还在：`function foo() { return window.PagesView.foo.apply(...) }`
+  const forwarderOnly = exportDeathProblems({
+    ...base, appSource: "function foo() {\n  return window.PagesView.foo.apply(null, arguments);\n}\n",
+  });
+  assert.ok(forwarderOnly.some((m) => m.includes("foo") && m.includes("还活着") && m.includes("PagesView.foo")),
+    `三栏自检失败：只留转发器没红（旧实现只数 PagesView.<key>，这里应当照样抓到）——${forwarderOnly.join("；")}`);
+
+  // ② 值位引用：`addEventListener("click", foo)` —— 名字不在调用位，旧实现看不见
+  const valuePosition = exportDeathProblems({
+    ...base, appSource: 'el("btn").addEventListener("click", foo);\n',
+  });
+  assert.ok(valuePosition.some((m) => m.includes("裸标识符") && m.includes("值位也算")),
+    `三栏自检失败：值位引用没红——${valuePosition.join("；")}`);
+
+  // ③ 只有注释提到 → 必须绿（防"多报"；Architect 第一版就栽在这）
+  const commentOnly = exportDeathProblems({
+    ...base, appSource: "// 旧实现里这里调过 foo，后来改成直呼\nconst zz = 1;\n",
+  });
+  assert.deepEqual(commentOnly, [],
+    `三栏自检失败：注释里的名字被算成引用（这条判据必须剥注释）——${commentOnly.join("；")}`);
 });
 
 test("R8（死期表三态）：表空未到期绿 / 表空到期红 / 表非空照常判到点未死", () => {
