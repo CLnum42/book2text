@@ -437,13 +437,22 @@ def test_block_frames_refresh_as_pages_finish_and_prefetch_while_scrolling() -> 
     assert "pageTileMetrics = null" in show_view
 
     # 2) 识别完成 → 当场作废旧块并重画（页面视图）/ 重载（审校视图）
+    # 特征测试：三栏一起断言（外壳调用点 / 模块能力体内 / 被调函数本体）。
+    # 刀 9.2 把 pollTask 的三处写点收成一个能力（`onRecognitionFinished`），那行原文
+    # `refreshRecognizedPages(donePages)` 不存在了，但「两条分支都要重画刚认完的页」没变。
     poll = _function_body("pollTask")
     assert "collectNewlySucceededPages(data)" in poll
-    assert "refreshRecognizedPages(donePages)" in poll
+    call_lines = [ln for ln in poll.splitlines() if "onRecognitionFinished(donePages" in ln]
+    assert len(call_lines) == 2, "收尾 / 运行两条分支都必须重画刚认完的页"
+    assert any("Promise.all(" in ln for ln in call_lines), "运行分支仍要与 refreshPageStates 并行"
+    assert any("reloadDetail: false" in ln for ln in call_lines), "收尾分支显式不重载审校详情"
+    finished = _function_body_any("onRecognitionFinished")
+    assert "refreshRecognizedPages(pageNos, { reloadDetail })" in finished
+    assert "reloadDetail = true" in finished, "运行分支走默认值，默认必须是 true"
     collect = _function_body("collectNewlySucceededPages")
     assert 'item.status !== "succeeded"' in collect
     assert "taskRefreshedPages" in collect  # 每页只处理一次，轮询不重复重拉
-    refresh = _function_body_any("refreshRecognizedPages")  # 实体在 pages-view.js，app.js 只剩转发桩
+    refresh = _function_body_any("refreshRecognizedPages")  # 实体在 pages-view.js（app.js 已无转发器）
     assert "forgetPageBlocks(pageNo)" in refresh
     assert "queueOverlayRender(pageNo)" in refresh
     # 审校视图：正在看的那一页重新载入（先落库再重绘，别盖掉没存完的输入）
