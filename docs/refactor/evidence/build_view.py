@@ -359,6 +359,21 @@ def main():
             print(f"   - {n}")
         return 2
 
+    # ⓪c **setter 不许进 IDENT**（2026-10-30 刀 3 真事故）：把 `setX` 当 function 写进 IDENT，
+    # deps 会生成 `setX: setX,`（自引用，外壳没有这个声明）→ node --check 过、运行时才炸。
+    # setter 的唯一出口是 SETTERS（deps_literal 生成 `setX: (v) => { X = v; }`）。
+    setter_keys = {setter for _name, setter in getattr(rules, "SETTERS", [])}
+    # 只拦「同时在 SETTERS 里」的名字：`setAutoApplySetting` 之类是外壳真实存在的函数，
+    # 以 function 形态注入是对的；错的形态是「状态 X 的 setter 又被当函数注入一遍」。
+    bad_ident = sorted(
+        e[0] for e in getattr(rules, "IDENT_FULL", getattr(rules, "IDENT", []))
+        if e[0] in setter_keys
+    )
+    if bad_ident:
+        print("✗ setter 出现在 IDENT 里（deps 会生成自引用，运行时 TypeError）：",
+              "、".join(bad_ident), "—— 把它们只留在 SETTERS 里")
+        return 2
+
     missing = [n for n in movers if not bounds_of(lines, n)]
     if missing:
         print("!! 名单里的函数在 app.js 找不到：", missing[:6]); return 2

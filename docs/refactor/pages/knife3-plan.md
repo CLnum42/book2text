@@ -201,3 +201,61 @@ python3 docs/refactor/evidence/build_view.py \
 
 **结论：验收写 45。** 以后任何"计划与 dry run 差 1"的情况，先把两边的**键名清单**打出来对集，
 不要用总数猜——今天的 393/394、123/126、32/29 都是总数对不上、名字没人对。
+
+## ⑨ deps 最终数（**以 dry run 为准**，不写算术凑出来的数）
+
+dry run 原值：`injected_keys: 46`，四栏构成相加 = 46（不等就说明分类错了，停下查）：
+
+```
+函数 / 值 25 + getter 13 + setter 8 = 46
+```
+
+**上一版文档里 45 作废**：那是"46 剔 5 个重复注入"之前的口径；Architect 裁定②又要求
+`syncStepToggles` 体内的两处 `window.IndexView?.refresh()` 改成注入 `indexRefresh`（+1），
+故最终 46。规矩：**deps 数字永远抄 dry run 原值，并给出四栏构成；四栏相加必须等于总数。**
+
+## ⑩ 刀 3 的 R8 表（14 个导出键，逐条 + 死亡刀号）
+
+本刀搬进模块后，外壳为每个有外部调用者的 mover 留一条转发器 → 模块多导出 14 个键，
+R8（导出棘轮）从 20 → 34。**34 是本刀上限，不是新基线**：本刀之后任何新增键都要重新签字。
+
+| 导出键 | 死亡刀号 | 说明 |
+|---|---|---|
+| `loadFinishSummary` | 刀 4 | 调用者（afterCleanupApplied / pollTask / setupReviewControls …）在刀 4 搬 |
+| `loadLanguageSummary` | 刀 4 | 唯一调用者 `showView` 留在外壳（导航入口），到期即删转发器 |
+| `loadPageNumberSummary` | 刀 4 | 调用者在页码相关函数里，刀 4 一并搬 |
+| `refreshLayoutDetectEntry` | 刀 4 | boot / renderLayoutStatus 在刀 4/5 |
+| `refreshMarginDetectHint` | 刀 4 | 同上 |
+| `refreshMarginTiles` | 刀 4 | 调用者 refreshMarginState / resetMarginsToAuto 在刀 4 |
+| `renderAutoApplyStatus` | 刀 4 | 唯一调用者 `loadAutoApplyStatus` 在刀 4 |
+| `renderMarginStepVerdict` | 刀 4 | boot / reportLayoutDetectOutcome 在刀 4/5 |
+| `renderPageNumberMetrics` | 刀 4 | 页码三函数在刀 4 |
+| `renderPageSummary` | 刀 5 | 唯一调用者 `boot`（刀 5 收 boot）|
+| `renderRecognitionSettings` | 刀 5 | boot / loadAppInfo / patchRecognitionSetting（刀 4/5）|
+| `renderStepPanels` | 刀 5 | boot / syncWorkflowSteps（刀 5）|
+| `renderWorkflowFilter` | 刀 5 | 唯一调用者 `loadWorkflow`（刀 5）|
+| `updateRecognitionAuxProgress` | 刀 5 | 唯一调用者 `pollTask`（刀 5）|
+
+逐刀下降核法：刀 3 后 34 → 刀 4 清 9 个（表中"刀 4"）→ 25 → 刀 5 清 5 个（"刀 5"）→ 20，
+再往后的刀才处理"删转发器"那批。**每刀都要在 R8 表里重新签字，不能继承。**
+
+## ⑪ seed：本刀要删的 15 条（test-contract 规格）
+
+搬到模块后 `app.js` 只剩单行转发器，R3 实测口径（`domIdsIn` 扫 app.js）不再认这 15 个名字，
+seed 里对应行必须删——**这与"步 1 跳过"冲突，以本条为准：本刀有 test-contract 笔。**
+
+逐条（seed 里各占 1 行）：
+
+```
+loadFinishSummary · loadLanguageSummary · loadPageNumberSummary · refreshLayoutDetectEntry
+refreshMarginDetectHint · refreshMarginTiles · renderAutoApplyStatus · renderMarginStepVerdict
+renderPageNumberMetrics · renderPageSummary · renderRecognitionSettings · renderStepPanels
+renderWorkflowFilter · syncStepToggles · updateRecognitionAuxProgress
+```
+
+**删后两侧数**（量于当前树）：seed 唯一函数名 65 → **50**；实测函数并集 65 → **50**。
+（seed 数据行是 68，因为 `setupLibrary` 占了 4 行；**行数 ≠ 名字数**，对集用名字数。）
+
+**seed 与 caps 是两套东西**：seed 是"函数 → 引用 id → 到期刀"的映射；`PAGES_R3_TOTAL_CAP`
+是豁免表的处数上限。本刀只删 seed 行，**不动 `PAGES_R3_TOTAL_CAP`**（155 → 123 是总账下降，
+不是豁免表收紧；豁免表本刀 0 项变动）。

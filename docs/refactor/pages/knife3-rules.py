@@ -100,16 +100,9 @@ _MOVERS = {
 #: **(b) 本刀函数体里的写点要补 SETTERS**（2026-10-30）：dry run 报「给 getter 赋值 9 处」，
 #: 那意味着搬过去的函数体会直接对 `injected.getX()` 赋值——写不到真实状态上（bodyPending 那类静默错）。
 #: 这 8 个名字（9 处）按 dry run 的错误串逐条取，不是手猜；setter 键名 = set + 驼峰。
-IDENT_KNIFE3 += [
-    ("setFinishSummary", "injected.setFinishSummary", "function"),
-    ("setFinishSummaryAgain", "injected.setFinishSummaryAgain", "function"),
-    ("setFinishSummaryLoading", "injected.setFinishSummaryLoading", "function"),
-    ("setFinishSummaryProject", "injected.setFinishSummaryProject", "function"),
-    ("setLastStepPanelKey", "injected.setLastStepPanelKey", "function"),
-    ("setLatestAutoApply", "injected.setLatestAutoApply", "function"),
-    ("setStepsReady", "injected.setStepsReady", "function"),
-    ("setCurrentView", "injected.setCurrentView", "function"),
-]
+#: **setter 不许进 IDENT**（2026-10-30 修正）：把这 8 个 setter 名当 function 写进 IDENT，
+#: 会让 deps 生成成 `setFinishSummary: setFinishSummary`（自引用，app.js 里没有这个声明）→ 运行时才炸。
+#: setter 的唯一出口是 SETTERS（deps_literal 会生成 `setX: (v) => { X = v; }`）。生成器已加守卫。
 
 SETTERS = list(getattr(_base, "SETTERS", [])) + [
     ("finishSummary", "setFinishSummary"),
@@ -133,6 +126,14 @@ if _MODULE_SRC.is_file():
     import re as _re
     _MODULE_DECLARED = set(_re.findall(r"(?m)^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)", _src))
     _MODULE_DECLARED |= set(_re.findall(r"(?m)^\s*(?:let|const|var)\s+([A-Za-z_$][\w$]*)", _src))
+
+
+#: **syncStepToggles 体内有两处 `window.IndexView?.refresh()`**（Architect 裁定②：本刀照搬，注入 indexRefresh）。
+#: 用 LIT 做字面量替换（不是 IDENT：它是表达式不是标识符），并把 indexRefresh 登记为注入能力。
+LIT = list(getattr(_base, "LIT", [])) + [
+    ("window.IndexView?.refresh()", "injected.indexRefresh?.()"),
+]
+IDENT_KNIFE3.append(("indexRefresh", "injected.indexRefresh", "function"))
 
 IDENT = [(old, new, *rest) for old, new, *rest in _base.IDENT if old not in _MOVERS and old not in _MODULE_DECLARED] + [
     entry for entry in IDENT_KNIFE3 if entry[0] not in _MOVERS and entry[0] not in _MODULE_DECLARED
