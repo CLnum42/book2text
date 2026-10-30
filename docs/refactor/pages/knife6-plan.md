@@ -41,6 +41,7 @@ wirePagesMoreMenuEntries()    ← setupLibrary 的 9 处
 
 wirePagesShellEntries()       ← setupShell 的 2 处
    · stats-open：换成一个具名能力 injected.openStatsPanel()（= openModal("stats-panel") + loadSummary()）
+     ——**这个函数是新建的**（app.js 今天 0 处引用），落地时先在 app.js 里定义它，别去 grep（grep 不到）
      —— 不允许模块里出现 openModal("stats-panel")：那等于把"模块零豁免"换成"字符串豁免"
    · selection-review-open：模块自己实现（selectionPages()[0] || visiblePages()[0] → showView("review")
      → openPageDetail(page_no)），三个依赖全都已有
@@ -50,6 +51,7 @@ wirePagesCollabEntries()      ← setupCollabControls 的 2 处
    · assign-open：注入 openAssignPanel()
    · assign-list-toggle：**不能整段搬**——handler 里 `el("assign-panel")` 是全局 chrome id，
      模块碰不得 ⇒ 整个动作收成具名能力 injected.toggleAssignList()（翻转 hidden + loadAssignments）
+     ——**同样新建**（0 处引用）；不新建就会有人在模块里直接写 openModal("assign-panel")，正是要防的
    deps 新增：openAssignPanel · toggleAssignList（能力）
 ```
 
@@ -57,8 +59,10 @@ wirePagesCollabEntries()      ← setupCollabControls 的 2 处
 
 ```
 syncToolbarToggles()          ← boot 的 8 处（4 个 deps 对）
-   reading / index / preview / library 四个模块现在拿 `injected.getPagesMarginToggle()?` 去 add("is-on")
-   / toggle("is-on", state)。改成调 `window.PagesView.syncToolbarToggles()`，
+   **四个**消费者（不是三个：Architect 说 LibraryView 是死 provider，实测不成立）：
+     reading-view.js:3563/3568（setReviewOverlaysForReading）· index-view.js:98/103（openPageIndex）
+     · preview-view.js:482/487（openPreview）· library-view.js:298/299（openProject —— 打开任何项目都走这条）
+   它们现在拿 `injected.getPagesMarginToggle()?` 去 add("is-on") / toggle("is-on", state)。改成调 `window.PagesView.syncToolbarToggles()`，
    模块内按 `injected.getPagesMarginOn()` / `getPagesOverlayOn()` 刷两个按钮的 is-on（一次覆盖 4 处消费者）。
    ⇒ 4 个 deps 对（8 行）从四个模块的 deps 块里删掉，app.js 对 pages 子树的引用 −8。
 
@@ -71,7 +75,28 @@ setMarginJudgementCheckbox(on)← setMarginJudgementSetting：写 `#rec-margin-j
 必须有公开入口。合成一个 `pagesOp(op, arg)` 会退化成"把意图变成参数"，
 和 `chrome.toggle("package-mask")` 是同一类错误——宁可多三个键。
 
-**曲线要重签**：`34 → 36 → 40 → 53 → **57** → 22 → 3`（+4 在本刀；刀 9 仍要死 31 键到 22）。
+**曲线要重签**（Architect 2026-10-30 改）：
+
+```
+36(刀4) → 53(刀5) → 57(刀6) → 57+m(刀7) → 57+m+n(刀8) → 22(刀9) → 3(刀10)
+```
+
+原来的「40」是「review/package 先落、+4」那个旧顺序的残留点，两刀排到刀 7 / 刀 8 之后**这个点不存在**。
+
+**刀 9 要死 35 个键**（57 − 22 = 35），不许只写总和：
+
+```
+18 个刀 5 转发键：checkSelection finishMarginDetectBar forgetAllPageBlocks forgetAllPageSuggestions
+  pageScroller pausePageThumbnails pumpOverlayRender queueOverlayRender rerunAuxiliary
+  scanVisiblePageSuggestions setMarginStatus setPageNumberStatus showMarginDetectProgress
+  startLayoutDetection visiblePages openPageSetup toggleMarginView togglePageBlocksOverlay
+4 个刀 6 新键：syncToolbarToggles showPagesError pagesErrorMessage setMarginJudgementCheckbox
+13 个候选键：**本刀的账只到「13」这个数**——逐个列名属刀 9 的图，因为要点名必须先定「哪 30 个调用者
+  在刀 9 搬走」；刀 5 的图（§⑧）当时也只给到「16 个候选键」这个数，从没列过名字。
+  ⇒ 刀 6 不猜这 13 个，写进刀 9 的入场条件：**逐键列名 + 每键带「app.js 引用 = 0」的到点判据**。
+```
+
+**4 个新键逐键带死亡刀号**（棘轮要求，缺一个就等于开了一张无限期）
 
 **四个新键逐键带死亡刀号**（棘轮要求，缺一个就等于开了一张无限期）
 
@@ -98,6 +123,15 @@ setMarginJudgementCheckbox(on)← setMarginJudgementSetting：写 `#rec-margin-j
 | `PAGES_R3_TOTAL_CAP` | 155 | **25** | 上限口径是**实测合计处数**（闸：`pagesActualTotal > pagesTotalCap` 才红），不是 cap 之和 ⇒ 跟着 R3 50→25 收紧 |
 | 受阻项 | 7 | **0** | 7 个带「阻塞段」的项全在删除名单里 ⇒ `PAGES_R3_BLOCKED_MAX 7 → 0`，`knife2.5-split-plan.md` 的留外壳段对 pages 不再被引用 |
 
+`PAGES_R3_TOTAL_CAP` 的三条定义（Architect 2026-10-30 签字口径，别用第四条解释）：
+
+```
+a) 闸判的是 `Σ min(该项实测处数, 该项 cap) > TOTAL_CAP`——没有一项超 cap 时它就等于 r3.total（今天 50）
+b) TOTAL_CAP 是**冻结基线**，只降不升；放宽要签字
+c) 终态三者合一：清理陈账后 Σitem.cap == TOTAL_CAP == r3.total
+   （今天 `pages-error` cap 26 / 实测 5 —— cap 是"允许留下多少"的回归预算，不是实测值）
+```
+
 **剩下 25 处的归属**（本刀不动，别顺手改）：
 
 ```
@@ -111,7 +145,12 @@ applyPackageMode 20 · recognizePage 2 · applyProjectSettings 2 · applySplitBa
 ① 七个宿主里 pages id 引用 = 0（逐个函数的体扫，不是全文件）
    脚本：对 25 条 refs 的 (host, line) 逐条确认 `el("<id>")` 已不在该函数体里
 ② R3 == 25 处 / 14 种（按名对集：上面 10 个 id 不在实测集里；四个刀 7/刀 8 函数的 id 仍在）
-③ R8 == 57，新 4 键在 api 里、且 `grep -c "PagesView\.<键>" app.js` ≥ 1（没调用者的键就是死面）
+③ R8 == 57，新 4 键在 api 里；**两类键的判据不同**（Architect 2026-10-30）：
+   · app.js 调用（showPagesError / pagesErrorMessage / setMarginJudgementCheckbox）：
+     `grep -c "PagesView\.<键>" app.js` == 1，且该行**替换掉了**原来那处 pages id 引用（前后配对）
+   · 模块调用（syncToolbarToggles）：app.js 里**按设计 0 次**，判据换成
+     `grep -l "PagesView.syncToolbarToggles" backend/book2text/static/*-view.js` == 4 个文件
+     （reading / index / preview / library）——写成 "app.js ≥ 1" 会自相矛盾
 ④ deps == 218，新增 7 键逐个在 init 块里；删除的 4 个 deps 对在两模块 deps 块里 = 0
 ⑤ seed 4 行 / 4 名；豁免 54 项（实活 14 项 / 声明 cap 60）、TOTAL_CAP 25、BLOCKED_MAX 0
 ⑥ 「显示 = 导出」三道锁照跑：连续切片结构 / `?checktext=1` / QA 的 A 条（本刀不改渲染，但改了 init 时序）
@@ -166,6 +205,11 @@ Approved-by: DevLead
 · wireAll() 里加三段 = 接线时机从 setupLibrary 提前到 init：DOM 必须就绪（wireWhenReady 已管），
   但**回调依赖的 app.js 状态**要在调用时读，不许在接线时快照
 · 本刀改 init 时序 → 「显示 = 导出」三道锁照跑；QA 的 A 条断言对 pages 视图仍要绿
+· **`window.PagesView?.syncToolbarToggles()` 的 `?.` 会静默跳过**（Architect 抓到）：四个调用点
+  （`openPageIndex` / `setReviewOverlaysForReading` / `openPreview` / `openProject`）若在 PagesView.init
+  之前执行，`?.` 直接吞掉 → 按钮永久不亮，而 node / pytest / R3 / R8 全绿。
+  ⇒ 两条一起落：① `init()` 末尾（wireAll 之后）补一次 `syncToolbarToggles()` 兜底；
+     ② 真机逐个进这四个视图，看两个按钮的 `is-on`（不是看页面有没有报错）
 ```
 
 ## ⑨ 另案（不在本刀，但要有人认领）
@@ -175,9 +219,12 @@ Approved-by: DevLead
 表上只有「cap ≥ 实测」的上行判据，**没有「0 引用就删项」的下行判据**，于是 64 项里 40 项是陈账——
 本刀把实活项从 24 减到 14，陈账从 40 变成 40（不受影响）。
 
-建议单开一笔（**不要混进本刀的 move 笔**，否则红了分不清是搬行错还是账本错）：
+建议单开一笔（**不要混进本刀的 move 笔**，否则红了分不清是搬行错还是账本错）。
+位置（Architect 2026-10-30 定）：**刀 6 之后、刀 7 之前**。一笔里按顺序做完三件事，不分三笔：
 
 ```
-删 40 项 → 表 54 → 14 项、声明 cap 128 → 60（TOTAL_CAP 不变，仍是实测处数 25）
-附带一条机检：表里每一项都必须实测 ≥ 1 处（现在这条空缺 = 陈账只能涨不能消）
+① 删 40 项（0 引用的陈账）
+② 把存活项的 cap 收到实测值（例如 pages-error cap 26 / 实测 5 —— cap 是回归预算，收不收要一次性决定）
+③ 再定 TOTAL_CAP：让 Σitem.cap == TOTAL_CAP == r3.total 三者合一（今天 50；本刀之后 25）
+附带一条下行机检：表里每一项都必须实测 ≥ 1 处（现在这条空缺 = 陈账只能涨不能消）
 ```

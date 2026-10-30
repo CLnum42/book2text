@@ -322,7 +322,14 @@
    "前": 53,
    "后": 57,
    "增": 4,
-   "曲线": "34 → 36 → 40 → 53 → 57 → 22 → 3（需重签）"
+   "曲线": "36(刀4) → 53(刀5) → 57(刀6) → 57+m(刀7) → 57+m+n(刀8) → 22(刀9) → 3(刀10)",
+   "刀9要死": 35,
+   "35 的构成": {
+    "刀5转发键": 18,
+    "刀6新键": 4,
+    "候选键": 13,
+    "候选键说明": "只记数，逐键列名属刀 9 的图（要先定哪 30 个调用者搬走）；刀 5 的图当时也只给到 16 这个数"
+   }
   },
   "deps": {
    "前": 211,
@@ -368,6 +375,11 @@
    "项数": 40,
    "cap": 68,
    "说明": "这 40 项在 app.js 里 0 引用（id 只在 pages-view.js 里），表上只有'cap ≥ 实测'的上行判据、没有'0 引用就删项'的下行判据；清掉后 TOTAL_CAP 可到 60。建议单开一笔 + 一条机检：表里每项必须实测 ≥ 1 处"
+  },
+  "TOTAL_CAP 口径": {
+   "a": "闸判 Σ min(实测, cap) > TOTAL_CAP；无一项超 cap 时等于 r3.total（今天 50）",
+   "b": "冻结基线，只降不升，放宽要签字",
+   "c": "终态：Σitem.cap == TOTAL_CAP == r3.total"
   }
  },
  "提交形态": {
@@ -421,5 +433,33 @@
    "死亡刀": 9,
    "到点判据": "app.js 引用 = 0 且不在 api 表"
   }
- ]
+ ],
+ "消费者": {
+  "数量": 4,
+  "文件": [
+   "reading-view.js:3563/3568",
+   "index-view.js:98/103",
+   "preview-view.js:482/487",
+   "library-view.js:298/299（openProject，打开任何项目都走）"
+  ],
+  "更正": "Architect 说 LibraryView 是死 provider —— 实测不成立"
+ },
+ "新建函数": [
+  "openStatsPanel",
+  "toggleAssignList",
+  "syncToolbarToggles",
+  "showPagesError",
+  "pagesErrorMessage",
+  "setMarginJudgementCheckbox"
+ ],
+ "风险": [
+  "window.PagesView?.syncToolbarToggles() 的 ?. 会静默跳过：init 末尾补一次 sync + 真机看四个视图的 is-on",
+  "openStatsPanel / toggleAssignList 是新建函数（0 引用），落盘前先在 app.js 定义"
+ ],
+ "陈旧行另案": {
+  "项数": 40,
+  "cap": 68,
+  "顺序": "刀 6 之后、刀 7 之前，一笔做完：删 40 项 → 存活项 cap 收到实测 → TOTAL_CAP 三者合一",
+  "机检": "表里每项必须实测 ≥ 1 处"
+ }
 }
