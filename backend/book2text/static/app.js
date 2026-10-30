@@ -5992,63 +5992,18 @@ async function startBatchRecognition(scope) {
   const project = currentProject;
   if (!project) return;
   if (jobStartPending) return;      // 连点/双击不会建第二个 job
-
-  // 批量入口也要"先知道会跳过几页"：范围与页集合都由后端解析（不自己算 pending）
-  let excludePages = null;
-  let useForce = false;
-  let scopeTotal = 0;
-  try {
-    const touchedRes = await apiJson(
-      `/api/projects/${project.project_id}/pages/human-touched?scope=${encodeURIComponent(scope)}`
-    );
-    const touched = (touchedRes.pages || [])
-      .filter((row) => row.human_touched)
-      .map((row) => row.page_no);
-    scopeTotal = Number(touchedRes.total) || 0;
-    if (touched.length) {
-      const remaining = Math.max(scopeTotal - touched.length, 0);
-      const choice = await confirmAction({
-        title: `${touched.length} 页有人工改动`,
-        lead: `重识别这 ${touched.length} 页会丢掉你改过的字，跳过则保留。`,
-        list: [`那 ${touched.length} 页之后的改动会丢`, "原始输出与缓存不在备份里"],
-        detail: RESTORE_DETAIL_TEXT,
-        safeText: remaining > 0 ? `跳过并识别剩下的 ${remaining} 页` : "跳过，不识别",
-        dangerText: `仍要重识别这 ${touched.length} 页`,
-      });
-      if (choice === null) return;                 // Esc / 点遮罩：不建任务
-      if (choice === "safe") {
-        if (remaining <= 0) return;                // 全被跳过：不建任务
-        excludePages = touched;
-      } else {
-        useForce = true;
-      }
-    }
-  } catch (error) {
-    // 查不到人工痕迹：按旧路继续（不阻断），但下面 body 不带 exclude_pages / force
-    excludePages = null;
-    useForce = false;
-  }
-
   jobStartPending = true;
   setJobStartBusy(true);
   const pending = project.pages.filter(
     (page) => page.include && recognitionOf(page).status !== "recognized"
   );
-  if (!warnUnconfirmed(pending, "识别全部未识别页")) {
-    jobStartPending = false;
-    setJobStartBusy(false);
-    return;
-  }
+  if (!warnUnconfirmed(pending, "识别全部未识别页")) return;
   el("pages-error").hidden = true;
   try {
     const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scope,
-        ...(excludePages ? { exclude_pages: excludePages } : {}),
-        ...(useForce ? { force: true } : {}),
-      }),
+      body: JSON.stringify({ scope }),
     });
     applyRecognizedPages(data.pages);
     renderPages();
