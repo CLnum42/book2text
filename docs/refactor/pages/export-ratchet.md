@@ -25,6 +25,23 @@
 
 所以"能不能搬接线"不是偏好问题，是 DOM 归属问题——先查那个元素在哪个 section 里，再决定。
 
+**一个能力键不许兼两种语义**（2026-10-30 由 9.3 的真实缺陷定下）
+
+```
+反例：原先想用 onTaskProgress 兼两件事——每 tick 的进度、收尾后的重画。
+      两处的 payload 是**同一份 job 对象** ⇒ 模块无法判断"这次调用来自哪一点"；
+      若按 status 分派，收尾那一 tick 会在读回状态之前就先重画/拟合（写盘用了旧 state）。
+
+判据：一个 C 键的多个调用点，若 **payload 相同而语义不同** ⇒ 必须按语义拆成两个键。
+      payload 里不许塞"该调哪个函数"的字段来补救（那是 pagesOp(op,arg) 的变体）。
+
+边界：**按数据分派允许**——job_type / status 决定"画哪个面板"是模块自己的事；
+      **按数据猜调用点不允许**——同一份 payload 在两个时刻含义不同，就不许合并成一个键。
+
+落地（9.3）：最终是 `onTaskProgress`（每 tick）+ `onTaskFinished`（收尾）**两个键**，
+      没有做"扩语义 + 改名"。这条规则就是那次的产物。
+
+
 > **判据的顺序**：C 要按"**它想干什么**"判，**不按"今天是哪段代码在接"**判。
 > 后者会把所有"接线放错地方"的键都判成 C —— 而"接线放错地方"恰恰是刀 7/刀 8 一直在收的那类，
 > 判成 C 就等于把错位固化成接口。今天的样子不是归属的证据；"这个动作属于哪个域"才是。
@@ -150,7 +167,7 @@
         ⇒ 目标 **≤ 210**，但"≤"不是承诺，逐键清单才是
 ```
 
-### 9.3 的形态（2026-10-30 裁定，两份独立分类表逐字吻合）
+### 9.3 的形态（2026-10-30 落盘后回填，两份独立分类表逐字吻合）
 
 ```
 12 个键的调用点全部落在 7 个宿主里，没有一个漏在别处
@@ -160,14 +177,14 @@
 | 死法 | 键 | 处理 |
 |---|---|---|
 | **a（跟宿主搬）2** | `loadLayoutBlocks` · `renderLayoutBlocks` | 宿主 `scheduleLayoutBlocks` 只被模块调 |
-| **b（收能力 / 改直呼 / 搬接线）10** | 其余 10 个 | 6 处以 `onTaskEvent` 收（B1 的 12 个调用点）· 2 处接线：**版心拖动搬进模块**（window 级 pointer 监听 + handler 有 `tileMarginDrag` 守卫）、**`layout-detect-start` 搬不动**（在 `#confirm-dialog` 里，不属于任何 view section）→ 收能力 |
-| **+2 入口键** | `onLayoutDetectStarted(...)` · `onWorkflowRefreshed(...)` | 前者是搬不动的那处接线、后者是 `renderLayoutStatus` ← `loadWorkflow` |
+| **b（收能力 / 改直呼 / 搬接线）10** | 其余 10 个 | 6 处以事件能力收（B1 的 12 个调用点）· 2 处接线：**版心拖动搬进模块**（window 级 pointer 监听 + handler 有 `tileMarginDrag` 守卫）、**`layout-detect-start` 搬不动**（在 `#confirm-dialog` 里，不属于任何 view section）→ 收能力 |
+| **+3 入口键（实际落盘值）** | `onTaskFinished` · `onWorkflowLoaded` · `onLayoutDetectStarted` | 前两个是"收尾"与"工作流重载"两个**不同语义**（规则①：不许合进 `onTaskProgress`）、第三个是搬不动的那处接线 |
 
-⇒ **9.3 = 52 − 12 + 2 = 42** · C 18 → 20 · ② 推导值 21 → 23 · deps 219 → 213
+⇒ **9.3 = 52 − 12 + 3 = 43** · C 18 → 21 · ② 推导值 24 · deps 219 → 213
 （自环 −4 在"改直呼"那笔死、宿主 −2 跟 a 类键走，**两列分开记**）
 
-**`onTaskProgress` → `onTaskEvent` 的改名在 9.3 这一笔里顺带做**（9.2 已落盘，成本 8 处：
-函数名 1 · 调用点 2 · api 成员 1 · VIEW_EXPORTS 名单 1 · kinds 2 · 文档 2）——反正 9.3 要重写它的调用面。
+> `onTaskProgress` **没有改名**：扩语义的方案被 §一 的规则①否掉，改成新增 `onTaskFinished`。
+> 曾写过的 `onTaskEvent` 与 `onWorkflowRefreshed` 两个名字**作废**（前者是合并、后者与落盘名不符）。
 
 **别把口径 ② 的 210 当成"渲染循环归位"的证据**（DevLead 提的，很准）：刀 10 搬的是
 调度器与队列，**块缓存家族（`pageBlockVersions` / `pageBlockPending` / `pageBlockPrefetchInFlight`）
@@ -195,10 +212,11 @@
 | `setMarginJudgementCheckbox` | setMarginJudgementSetting | 项目设置 → 导出面板勾选态 |
 | **刀 7** `recognizePage` | buildTile / setupLibrary（review 的「重新识别」） | 单页识别可从页面网格和审校面板发起 |
 | **刀 8** `setPackageModeChrome` · `syncProjectSettings` · `setSelectionHint` | applyPackageMode / applyProjectSettings / applySplitBatch | 跨域编排 |
-| **9.2** `onTaskEvent(data)`（原名 onTaskProgress，9.3 扩语义时改名） | pollTask（每轮轮询，:5366-5367；9.3 起含收尾分支） | 外壳持有 job，模块只负责把进度画到版心/复核面板；job_type 的分派模块**本来就有**（pages-view:770 / :1718 自带守卫），外壳那两行 `if` 是重复分派 |
+| **9.2** `onTaskProgress(data)`（**不改名**——扩语义方案被 §一 规则①否掉） | pollTask（每轮轮询，:5366-5367） | 外壳持有 job，模块只负责把进度画到版心/复核面板；job_type 的分派模块**本来就有**（pages-view:770 / :1718 自带守卫），外壳那两行 `if` 是重复分派 |
 | **9.2** `onRecognitionFinished(donePages, opts)` | pollTask（收尾分支 :5398 / 运行分支 :5419） | 任务结束后的"作废旧块 + 重载"由外壳触发；两个调用点参数不同（`reloadDetail`） |
 | **9.3** `onLayoutDetectStarted(...)` | setupLibrary 的 `layout-detect-start` 接线（:1641，在 `#confirm-dialog` 里） | 该按钮不在任何 view section，模块碰不到 ⇒ 只能由外壳调用 |
-| **9.3** `onWorkflowRefreshed(...)` | loadWorkflow（经 renderLayoutStatus） | 工作流数据重载后，模块重画版心检测入口 |
+| **9.3** `onTaskFinished(...)` | pollTask（收尾分支） | 「收尾重画」与「每 tick 进度」payload 相同、语义不同 ⇒ 按规则①拆键，不并进 onTaskProgress |
+| **9.3** `onWorkflowLoaded(...)` | loadWorkflow（经 renderLayoutStatus） | 工作流数据重载后，模块重画版心检测入口 |
 
 > **口径修正（TestDev 必看）**：`knife9-key-ledger.md` 的「模块引用」列把 **pages-view 自己**的
 > `injected.<键>` 也算进去了（`refreshMarginDetectHint` 3 · `renderMarginStepVerdict` 4 ·
@@ -230,12 +248,12 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 刀 9   （−5）     56 = T 39 + C 16 + L 1   5 个真死的：删键 + 删转发器
 刀 9.1 （−4 +1）  53 = T 35 + C 16 + L 2   showView 的 pages 段搬进 enter()（hydrateView 的 loadPageNumberSummary 随 9.4）  ← 现状
 刀 9.2 （−3 +2）  52 = T 32 + C 18 + L 2   pollTask 的三处收成 2 个能力（§三）
-刀 9.3 （−12 +2） 42 = T 20 + C 20 + L 2   版心 12 键全死；+2 入口键（onLayoutDetectStarted / onWorkflowRefreshed）
-刀 9.4 （−3）     39 = T 17 + C 20 + L 2
-刀 9.5 （−12 +1） 28 = T  5 + C 20 + L 3   搬完 + 建 refresh()
-刀 9.6 （−1）     27 = T  4 + C 20 + L 3   只做 undoMarginEdit
-刀 10  （−4）     23 = T  0 + C 20 + L 3   队列子系统（两个泵 + queueOverlayRender + updatePageVisibility）
-刀 11 （不变）    23 = T  0 + C 20 + L 3   冻结清册 + 落地 §八 的机检
+刀 9.3 （−12 +3） 43 = T 20 + C 21 + L 2   版心 12 键全死；+3 键（onTaskFinished / onWorkflowLoaded / onLayoutDetectStarted）
+刀 9.4 （−3）     40 = T 17 + C 21 + L 2
+刀 9.5 （−12 +1） 29 = T  5 + C 21 + L 3   搬完 + 建 refresh()
+刀 9.6 （−1）     28 = T  4 + C 21 + L 3   只做 undoMarginEdit
+刀 10  （−4）     24 = T  0 + C 21 + L 3   队列子系统（两个泵 + queueOverlayRender + updatePageVisibility）
+刀 11 （不变）    24 = T  0 + C 21 + L 3   冻结清册 + 落地 §八 的机检
 ```
 
 **曲线以后按"这个键能不能搬"算，不按"这一刀有几个键"算**（今天三次同型）：每个 T 只有三种死法——
@@ -297,12 +315,12 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 | 概念 | 判据 | 现在 |
 |---|---|---|
 | **① 终态判据**（定义"收完"） | `T == 0` ∧ `L == 3`（init/enter/refresh）∧ `C == 清册`（两向机检） | 未达成（T 35） |
-| **② 推导值**（会变，**不是目标**） | `C 的条数 + 3` | **23 = C 20 + L 3** |
+| **② 推导值**（会变，**不是目标**） | `C 的条数 + 3` | **24 = C 21 + L 3** |
 | **③ 防漂兜底**（只降不升） | `R8.total` 每刀 ≤ 上一刀；历史峰值 **61** | 现在 **53** |
 
 - ① 是**判据**，能被机检（T/L/C 三个计数）；② 是 ① 的算术后果——C 一变它就变，
   **它不许进任何"目标"句式**；③ 是防"收口反涨"的棘轮，不是"要做到多少"。
-- 谁在报告里写"终态 23"，必须同时说明那是 ②（推导值），不是 ①（判据），否则下一个人会拿它当目标去凑。
+- 谁在报告里写"终态 24"，必须同时说明那是 ②（推导值），不是 ①（判据），否则下一个人会拿它当目标去凑。
 
 ### 为什么 `3` 做不到（判据作废，理由是历史，留着防再犯）
 
@@ -335,10 +353,10 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 **防漂的替代**（不留空档）：① `R8.total` **只降不升**（今天 61，往后每个数都不许回升）；
 ② 每加一个 C 键 = 改清册 + 写 `Capability-Reason`，两向机检（§八 ③）会拦"清册被随手放宽"。
 
-> 现阶段的**推导值**（预测，不是目标）：**23 = C 20 + L 3**。它比最初的 19 多 4：
-> 9.2 的 2 个（pollTask 那两个进度写点被判错类）+ 9.3 的 2 个（`onLayoutDetectStarted` /
-> `onWorkflowRefreshed`）——都是**诚实税**，不是设计变松。若 9.5 的图判定 `checkSelection`
-> 留外壳，它转 C，推导值 24。
+> 现阶段的**推导值**（预测，不是目标）：**24 = C 21 + L 3**。它比最初的 19 多 5：
+> 9.2 的 2 个（pollTask 那两个进度写点被判错类）+ 9.3 的 3 个（`onTaskFinished` /
+> `onWorkflowLoaded` / `onLayoutDetectStarted`）——都是**诚实税**，不是设计变松。
+> 若 9.5 的图判定 `checkSelection` 留外壳，它转 C，推导值 25。
 
 ## 八、机检（四条 + 一条配套的文档判据，交 TestDev）
 
@@ -449,7 +467,7 @@ git log --format=%s origin/main | grep -oE "^move\(pages\): 刀 [0-9.]+" | sort 
 | **9** | 删 **5 个真死的** T（键 + 转发器）；20 个过期死期重判（6 转 C · 3 删 · 11 重算）；落 §八 ② | 5 个（§三） |
 | **9.1** | 视图切换：`showView` 的 pages 段进 `enter`（`hydrateView` 的 `loadPageNumberSummary` 随 9.4） | 4：`loadSetupSuggestions` · `renderPageSetup` · `loadLanguageSummary` · `pausePageThumbnails` |
 | **9.2** | 任务轮询：`pollTask` 的 pages 写点收成 2 个能力（`fetchPageBlocks` / `schedulePageVisibility` 随刀 10） | 3：`refreshRecognizedPages` · `updateMarginDetectProgress` · `updateRecognitionAuxProgress`（收成 C，净 −1） |
-| **9.3** | 版心一族（对话框 / 进度 / 瓷砖 / 拖动保存）。**12 个键的调用点全部落在 7 个宿主里，没有一个漏在别处；这刀的风险不在键，在宿主——7 个宿主里 5 个是 b 类** | 12 全死：死法 **a 2**（`loadLayoutBlocks` · `renderLayoutBlocks`，宿主 `scheduleLayoutBlocks` 只被模块调）· **b 8**（其中 6 处以 `onTaskEvent` 收、2 处接线搬进模块）· **+1 个入口键** `onWorkflowRefreshed`（`renderLayoutStatus` ← `loadWorkflow`） |
+| **9.3** | 版心一族（对话框 / 进度 / 瓷砖 / 拖动保存）。**12 个键的调用点全部落在 7 个宿主里，没有一个漏在别处；这刀的风险不在键，在宿主——7 个宿主里 5 个是 b 类** | 12 全死：死法 **a 2**（`loadLayoutBlocks` · `renderLayoutBlocks`）· **b 10**（6 处以事件能力收、2 处接线搬进模块、其余并入上述入口）· **+3 个入口键**（落盘值）：`onTaskFinished` · `onWorkflowLoaded` · `onLayoutDetectStarted` |
 | **9.4** | 页码一族（三个面板宿主 + 指标） | 3：`loadPageNumberSummary` · `setPageNumberStatus` · `renderPageNumberMetrics` |
 | **9.5** | 选择 / 网格 / 步骤 / 收尾 / 其它 | 12：`syncPageStates` · `forgetAllPageSuggestions` · `forgetAllPageBlocks` · `renderPages` · `visiblePages` · `reloadProjectPages` · `pageScroller` · `renderAutoApplyStatus` · `renderWorkflowFilter` · `checkSelection` · `renderStepPanels`* · `renderRecognitionStatus` |
 | **9.6** | 版心撤销按钮的接线收回模块（§三 改判） | 1：`undoMarginEdit`（→ 模块自建按钮 + `marginUndoButton` 工厂删除） |
