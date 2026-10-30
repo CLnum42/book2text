@@ -78,6 +78,17 @@ function showError(element, error) {
   element.hidden = false;
 }
 
+/**
+ * 刀 7：把错误写到**审校面板**的错误条（`#page-detail-error`）上——一个动作一个名字。
+ *
+ * `#page-detail-error` 属 `view-review`；review 还没有模块（刀 7 裁定不建，见
+ * docs/refactor/pages/knife-review-plan.md 裁定一）⇒ 由外壳持有这个 id。
+ * review 落模块时只换这个函数体（`window.ReviewView.showError(error)`），pages 侧的调用点不动。
+ */
+function showPageDetailError(error) {
+  showError(el("page-detail-error"), error);
+}
+
 function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (ch) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -3391,7 +3402,8 @@ function buildTile(page, project) {
   recognizeButton.dataset.action = "recognize";
   recognizeButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    recognizePage(page);
+    // 刀 7：recognizePage 已搬进 pages 模块（外壳只留调用点）
+    window.PagesView.recognizePage(page);
   });
 
   const detailButton = document.createElement("button");
@@ -4961,56 +4973,6 @@ const JOB_TYPE_LABELS = {
   auxiliary: "第二引擎复核",
   layout: "版面检测",
 };
-
-async function recognizePage(page) {
-  const project = currentProject;
-  if (!project || busyPages.has(page.page_no)) return;
-  if (!warnUnconfirmed([page], `识别第 ${page.page_no} 页`)) return;
-
-  // 这一页有人工成果？先问，再让用户选「跳过」还是「仍要重识别」（后者 force，后端先备份整库）
-  let useForce = false;
-  const touched = await humanTouchedPages(project, [page]);
-  if (touched.length) {
-    const choice = await confirmAction({
-      title: `第 ${page.page_no} 页有人工改动`,
-      lead: "重识别这一页会丢掉你改过的字，跳过则保留。",
-      list: ["这一页之后的改动会丢", "原始输出与缓存不在备份里"],
-      detail: RESTORE_DETAIL_TEXT,
-      safeText: "跳过，不识别这一页",
-      dangerText: `仍要重识别第 ${page.page_no} 页`,
-    });
-    if (choice === null) return;        // Esc / 点遮罩：什么都不做（不建任务）
-    if (choice === "safe") return;      // 单页没有"剩下的页"可识别
-    useForce = true;
-  }
-
-  el("pages-error").hidden = true;
-  busyPages.add(page.page_no);
-  renderPages();
-
-  try {
-    const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      // 单页"识别"是明确要求认这一页：**不跳过**已识别的页（会走 R2）
-      body: JSON.stringify({
-        pages: [page.page_no],
-        skip_recognized: false,
-        ...(useForce ? { force: true } : {}),
-      }),
-    });
-    applyRecognizedPages(data.pages);
-    openTaskDrawer();
-    startTaskPolling(data.job.job_id);
-  } catch (error) {
-    // 审校视图开着时，错误显示在手边的那一块上（页面视图的错误条在网格上方，看不见）
-    if (detailPageNo !== null) showError(el("page-detail-error"), error);
-    else showError(el("pages-error"), error);
-  } finally {
-    busyPages.delete(page.page_no);
-    renderPages();
-  }
-}
 
 // 发起中：从「点击」到 `startTaskPolling(job_id)` 之间按钮必须是禁用的。
 // 真风险：这窗口里 taskJobId 还是 null，再点一次会在后端建出**第二个 job**。
@@ -11654,7 +11616,7 @@ function setupLibrary() {
   el("detail-recognize").addEventListener("click", () => {
     if (detailPageNo === null) return;
     const page = currentProject.pages.find((item) => item.page_no === detailPageNo);
-    if (page) recognizePage(page);
+    if (page) window.PagesView.recognizePage(page);
   });
 }
 
@@ -13199,7 +13161,9 @@ function boot() {
     toggleAssignList: toggleAssignList,
     paintTileSuggestionMark: paintTileSuggestionMark,
     recognitionChip: recognitionChip,
-    recognizePage: recognizePage,
+    // 刀 7：recognizePage 已搬进模块（外壳改调模块导出的同名键）；
+    // 这里换上新能力 showPageDetailError（写 #page-detail-error 的那一个动作）
+    showPageDetailError: showPageDetailError,
     reviewBadge: reviewBadge,
     selectAllVisiblePages: selectAllVisiblePages,
     setMarginJudgementSetting: setMarginJudgementSetting,

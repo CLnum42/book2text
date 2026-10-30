@@ -1977,6 +1977,68 @@ async function recognizeSelection(force = false) {
   }
 }
 
+/**
+ * 单页「识别」入口（刀 7 从 `app.js` 原样搬入，只改注入形态）。
+ *
+ * 同族的 `recognizeSelection`（:1917）/ `startBatchRecognition`（:2499）早就在本模块，
+ * 形态一致：先清自己的错误条 → POST 建 job → 抽屉 + 轮询。
+ * 体内唯一的跨域写点是 `catch` 里的审校面板错误条（`view-review` 的 id）⇒ 那个 id 不进模块，
+ * 改走外壳注入的能力（app.js 里"把错误写到审校错误条"的那一个函数）。**必读形态、不带 `?.`**：
+ * 写成可选调用会把错误静默吞掉，而 R13 只提示不红。
+ */
+async function recognizePage(page) {
+  const project = injected.getCurrentProject();
+  if (!project || injected.busyPages.has(page.page_no)) return;
+  if (!injected.warnUnconfirmed([page], `识别第 ${page.page_no} 页`)) return;
+
+  // 这一页有人工成果？先问，再让用户选「跳过」还是「仍要重识别」（后者 force，后端先备份整库）
+  let useForce = false;
+  const touched = await injected.humanTouchedPages(project, [page]);
+  if (touched.length) {
+    const choice = await injected.confirmAction({
+      title: `第 ${page.page_no} 页有人工改动`,
+      lead: "重识别这一页会丢掉你改过的字，跳过则保留。",
+      list: ["这一页之后的改动会丢", "原始输出与缓存不在备份里"],
+      detail: injected.RESTORE_DETAIL_TEXT,
+      safeText: "跳过，不识别这一页",
+      dangerText: `仍要重识别第 ${page.page_no} 页`,
+    });
+    if (choice === null) return;        // Esc / 点遮罩：什么都不做（不建任务）
+    if (choice === "safe") return;      // 单页没有"剩下的页"可识别
+    useForce = true;
+  }
+
+  el("pages-error").hidden = true;
+  injected.busyPages.add(page.page_no);
+  renderPages();
+
+  try {
+    const data = await injected.apiJson(
+      `/api/projects/${project.project_id}/jobs/ocr`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // 单页"识别"是明确要求认这一页：**不跳过**已识别的页（会走 R2）
+        body: JSON.stringify({
+          pages: [page.page_no],
+          skip_recognized: false,
+          ...(useForce ? { force: true } : {}),
+        }),
+      }
+    );
+    injected.applyRecognizedPages(data.pages);
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+  } catch (error) {
+    // 审校面板开着时错误显示在手边那一块；支路条件沿用 `refreshRecognizedPages` 的同一对 getter。
+    if (injected.getDetailPageNo() !== null) injected.showPageDetailError(error);
+    else showPagesError(error);          // 模块自己的错误条（刀 6 的既有入口）
+  } finally {
+    injected.busyPages.delete(page.page_no);
+    renderPages();
+  }
+}
+
 /** 任务 43：离开页面视图时停掉网格里在飞 / 排队的缩略图请求。
  *
  * 394 页的网格一次会排上百个 `size=thumb`；切到审校后它们还在后台渲染，
@@ -2703,7 +2765,9 @@ async function rerunAuxiliary() {
  *
  * 原来四个视图模块各自拿注入回来的 `getPagesMarginToggle()` 去 `classList.add("is-on")`——
  * 页面子树的 id 从四个模块的依赖里漏回 app.js（R3 8 处）。现在收成本模块一个入口：
- * 四个消费者调 `window.PagesView.syncToolbarToggles()`，模块按注入的开关状态刷这两个按钮。
+ * 四个模块经注入的能力调 `injected.syncToolbarToggles?.()`（app.js 在四个 init 里各给一行
+ * `syncToolbarToggles: () => window.PagesView.syncToolbarToggles()`——R2 不许模块直接引用
+ * 别的视图接口），模块按注入的开关状态刷这两个按钮。
  *
  * 调用者：reading-view / index-view / preview-view / library-view；四处都在 `PagesView.init` 之后执行。
  */
@@ -2819,6 +2883,10 @@ function setMarginJudgementCheckbox(on) {
     showPagesError,              // 死亡刀号 = 刀9（app.js 引用 = 0 且不在 api 表）
     pagesErrorMessage,           // 死亡刀号 = 刀9（同上）
     setMarginJudgementCheckbox,  // 死亡刀号 = 刀9（同上）
+    // 刀 7：recognizePage 搬进本模块（刀 5 的 31 个 mover 同族：外壳两处调用点改直调）
+    // 到点判据：`app.js` 里 `window.PagesView.recognizePage` 引用 = 0 且不在 api 表——
+    // 今天两个调用者（buildTile / setupLibrary）都在外壳；刀 9 若还剩一个，这个键就死不了。
+    recognizePage,               // 死亡刀号 = 刀9
   };
 // ---------------------------------------------------------------- 刀 2：14 段 pages 接线
 /**

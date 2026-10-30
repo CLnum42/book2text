@@ -3574,6 +3574,10 @@ const VIEW_EXPORTS = {
     "showPagesError",              // 死亡刀号 = 刀9（app.js 引用 = 0 且不在 api 表）
     "pagesErrorMessage",           // 死亡刀号 = 刀9（同上）
     "setMarginJudgementCheckbox",  // 死亡刀号 = 刀9（同上）
+    // 刀 7：recognizePage 搬进 pages 模块（R8 57 → 58）。到点判据：
+    // app.js 里 window.PagesView.recognizePage 引用 = 0 且不在 api 表——
+    // 今天两个调用者（buildTile / setupLibrary）都在外壳；刀 9 若还剩一个，这个键死不了。
+    "recognizePage",               // 死亡刀号 = 刀9
   ] },
 };
 
