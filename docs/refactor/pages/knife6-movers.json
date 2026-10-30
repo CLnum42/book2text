@@ -15,10 +15,11 @@
    "names": 11
   },
   "豁免": {
-   "items": 64,
-   "cap": 155,
-   "TOTAL_CAP": 155,
-   "blocked": 7
+   "items": 24,
+   "cap": 50,
+   "TOTAL_CAP": 50,
+   "blocked": 7,
+   "陈账": "40 项已清（80e7a75）"
   }
  },
  "refs": [
@@ -349,32 +350,23 @@
   },
   "豁免": {
    "前": {
-    "items": 64,
-    "cap": 155,
+    "items": 24,
+    "cap": 50,
     "blocked": 7,
-    "TOTAL_CAP": 155,
+    "TOTAL_CAP": 50,
     "实测合计处数": 50
    },
    "后": {
-    "items": 54,
-    "cap": 128,
+    "items": 14,
+    "cap": 25,
     "blocked": 0,
-    "TOTAL_CAP": 128,
+    "TOTAL_CAP": 25,
     "实测合计处数": 25,
-    "实活": {
-     "items": 14,
-     "cap": 60
-    },
-    "说明": "删 10 项（本刀归零的 10 个 id，cap 27）。TOTAL_CAP 的上限口径是**实测处数**（闸：pagesActualTotal > pagesTotalCap 才红），不是 cap 之和 ⇒ 156 → 25 是跟着实测收紧"
+    "说明": "删 10 项（cap 19）+ 存活 14 项 cap 收到新实测 ⇒ Σcap 25 == TOTAL_CAP == r3.total"
    },
    "删项": 10,
-   "TOTAL_CAP": "155 → 128（新闸 22a20a7 要求 TOTAL_CAP == Σ逐项 cap；删 10 项 cap 27 后 Σcap=128。25 是陈账清完 + cap 收到实测后的终态）",
-   "BLOCKED_MAX": "7 → 0",
-   "终态": {
-    "Σcap": 25,
-    "TOTAL_CAP": 25,
-    "r3_total": 25
-   }
+   "TOTAL_CAP": "50 → 25（Σcap 50→25，三者合一）",
+   "BLOCKED_MAX": "7 → 0"
   },
   "陈旧行另案": {
    "项数": 40,
@@ -455,10 +447,7 @@
   "openStatsPanel / toggleAssignList 是新建函数（0 引用），落盘前先在 app.js 定义"
  ],
  "陈旧行另案": {
-  "项数": 40,
-  "cap": 68,
-  "顺序": "刀 6 之后、刀 7 之前，一笔做完：删 40 项 → 存活项 cap 收到实测 → TOTAL_CAP 三者合一",
-  "机检": "表里每项必须实测 ≥ 1 处"
+  "状态": "已完成（80e7a75）：删 40 项 · 存活项 cap 收到实测 · Σcap=TOTAL_CAP=50 · 加「0 引用就删项」下行机检"
  },
  "新建函数（app.js 侧）": {
   "名单": [
