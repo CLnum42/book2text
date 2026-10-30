@@ -44,7 +44,7 @@
   `renderRecognitionVerdict` · `renderSuggestionPanel` · `renderTypePicker` · `undoMarginEdit` ·
   `updateSelectionPanel` · `pumpOverlayRender` · `rerunAuxiliary` · `scanVisiblePageSuggestions`
   ⇒ 删的是**键 + 转发器**；模块内部仍在用的函数保留。
-- 39 个活 T 的宿主表见 §六（这就是刀 9b 的施工依据：搬一个宿主，死它那一列键）。
+- 39 个活 T 的宿主表见 §六（这就是 **9.1–9.5** 的施工依据：搬一个宿主，死它那一列键）。
 
 ## 四、C 清册（今日 9 个 + 刀 7/8 的 4 个；`init` 单列在 L）
 
@@ -197,6 +197,9 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 
 ## 十、9 与 9.1–9.5 的死期怎么记（TestDev 可直接抄成数据）
 
+> **叫法**：子刀一律写 `9.1`–`9.5`；`9b` 只是这五刀的合称，**不许写进账本、不许写进死期**
+> （刀号的真值源是 `tests/js/knife-registry.mjs`，那里没有 `9b` 这个号）。
+
 **结论：拆子刀号、每个子刀一笔落完；T 的死期 = 搬它宿主的那一刀，多宿主取 max（与 R3 的
 「到期刀 = max(引用它的函数)」同一语义）。**
 
@@ -215,7 +218,7 @@ git log --format=%s origin/main | grep -oE "^move\(pages\): 刀 [0-9.]+" | sort 
 - 多笔共用一个号、每笔首行都写 `move(pages): 刀 9` → **第二笔就红**（git=9，登记表还没跟上）；
 - 第一笔就把登记表标 landed=9 → `stageNow` 立刻到 9，36 个 T 当场到期，而它们还没搬完 → **红一片**。
 
-⇒ **多笔共用一个刀号在当前闸下不可能。** 选项③（死期写 9 + 给 9b 的键开白名单）否掉：
+⇒ **多笔共用一个刀号在当前闸下不可能。** 选项③（死期写 9 + 给 9.1–9.5 那批键开白名单）否掉：
 给 36 个键开白名单，就是把豁免表再办一次。
 
 ### 子刀与死期（可直接抄成 `kind: "T", death: <号>`）
