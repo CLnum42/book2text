@@ -267,11 +267,62 @@ review 的 3 处 + 外壳的 4 处：**留在 app.js**（review 未落盘 ⇒ �
 ```
 1. `injected.showPageDetailError` 写成 `?.` → R13 只提示不红，错误被静默吞掉。
    本刀要求**必读形态**：`injected.showPageDetailError(error)`（验收 ④ 已给 grep）。
-2. 支路条件写成 `getCurrentView() === "review"` 再取反 → 与 `detailPageNo` 不同源
-   （离开审校时 detailPageNo 被置 null，见 app.js:6261）。照抄 refreshRecognizedPages 的写法。
+2. 支路条件 `detailPageNo !== null` 说的**不是**"审校面板开着"——**离开审校不会置 null**（实测，见下节）。
+   直接照抄条件会把错误写进隐藏视图里（Builder 已真机复现）。**先落「不变量」那一笔**，再照抄。
 3. 搬完忘了删 deps 里那个死键 `recognizePage` → 不会红（R13 只查缺键不查多键），
    但下一个人会以为模块还用着它。验收加：`grep -c "injected.recognizePage" pages-view.js` → 0。
 ```
+
+## 不变量：`detailPageNo !== null` ⇒ 当前视图是 `review`（2026-10-30 实测，推翻本文旧说法）
+
+**旧说法作废**：本文原写「离开审校时 detailPageNo 被置 null，见 app.js:6261」。这句是假的。
+
+**事实**（两个来源一致：源码 + Builder 真机）：
+
+```
+· `detailPageNo = null` 只出现在两处：声明（app.js:6136）与 `closePageDetail()`（:6261）
+· `closePageDetail()` 只有两个调用点：
+     refreshProject（:2534，换项目/刷新） · closeProject（:11572，回项目库）
+· `showView()`（:203-271）只切 <section> 的 hidden，**不清** detailPageNo
+· `#view-review` 的四个入口全部紧跟一个 `openPageDetail()`：
+     openPageDetail 自身 :6230 · 错字面板「看原文」:10213 · 收尾面板「开始审校」:11381 ·
+     选择工具条「审校」（pages-view.js:3087）
+   步骤条的「审校」步走 `enterReviewStep()` → `showView("reading")`，**不是这个视图**
+· `ensureReviewPage()`（:6244）**0 个调用点**——死代码，别拿它当"进 review 会自动挑页"的证据
+```
+
+真机复现（Builder）：进审校 → 回「页面确认」→ 点页块「识别」并让它失败 →
+错误写进 `#page-detail-error`（在隐藏的 `#view-review` 里），`#pages-error` 仍 hidden，**屏幕什么都不出现**。
+
+**修法：状态不许活过它的视图**（不要在调用点加双条件——双条件等于承认这份状态可以长期不一致）
+
+```js
+let detailPageNo = null;       // 正在渲染的审校页：只在 #view-review 显示时非空（不变量）
+let lastDetailPageNo = null;   // 回忆：上次审校的页；离开审校后保留（:977 那行要用它）
+
+// openPageDetail：两个都写
+detailPageNo = pageNo;  lastDetailPageNo = pageNo;
+
+// showView 末尾：离开 review 就关掉详情页
+if (target !== "review") closePageDetail();
+
+// :977 原来拿 detailPageNo 当"页面视图的位置"，改用 lastDetailPageNo（否则清空后会把位置写成 null）
+savePosition("pages", lastDetailPageNo);
+```
+
+**机检（两条，都不贵）**
+
+```
+① node 单测（用 tests/js/load-app.mjs 的桩 DOM）：
+   showView("pages") 之后 detailPageNo === null
+② 文本判据：showView 里 `target !== "review"` 分支必须调 closePageDetail()
+   （或：全仓 `detailPageNo = null` 的赋值点只许两处——声明与 closePageDetail）
+```
+
+不变量是**单向**的：`detailPageNo !== null ⇒ currentView === "review"`。反向不成立、也不该成立——
+三个入口是「先 showView("review") 再 openPageDetail()」，切过去的一瞬间 detailPageNo 还是 null。
+
+**这笔单独提交**（产品行为改动，不进刀 7 的 move 笔；可与刀 7 并行）。先落它，刀 7 的"原样条件"才是对的。
 
 ## 附一：R3 红文分两档（交 TestDev，**只改文案，不放宽判据**）
 
