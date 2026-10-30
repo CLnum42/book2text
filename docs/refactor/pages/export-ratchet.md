@@ -164,6 +164,8 @@
 | `setMarginJudgementCheckbox` | setMarginJudgementSetting | 项目设置 → 导出面板勾选态 |
 | **刀 7** `recognizePage` | buildTile / setupLibrary（review 的「重新识别」） | 单页识别可从页面网格和审校面板发起 |
 | **刀 8** `setPackageModeChrome` · `syncProjectSettings` · `setSelectionHint` | applyPackageMode / applyProjectSettings / applySplitBatch | 跨域编排 |
+| **9.2** `onTaskProgress(data)` | pollTask（每轮轮询，:5366-5367） | 外壳持有 job，模块只负责把进度画到版心/复核面板；job_type 的分派模块**本来就有**（pages-view:770 / :1718 自带守卫），外壳那两行 `if` 是重复分派 |
+| **9.2** `onRecognitionFinished(donePages, opts)` | pollTask（收尾分支 :5398 / 运行分支 :5419） | 任务结束后的"作废旧块 + 重载"由外壳触发；两个调用点参数不同（`reloadDetail`） |
 
 > **口径修正（TestDev 必看）**：`knife9-key-ledger.md` 的「模块引用」列把 **pages-view 自己**的
 > `injected.<键>` 也算进去了（`refreshMarginDetectHint` 3 · `renderMarginStepVerdict` 4 ·
@@ -191,24 +193,29 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 ## 五、曲线重推（每个数的来历）
 
 ```
-今天            57 = 8 死T + 36 活T + 12 C + 1 L
-刀 7  （+1 C）   58 = 8 死T + 36 活T + 13 C + 1 L   recognizePage
-刀 8  （+3 C）   61 = 8 死T + 36 活T + 16 C + 1 L   setPackageModeChrome / syncProjectSettings / setSelectionHint
-刀 9   （−5）     56 = 3 值位T + 36 活T + 16 C + 1 L   5 个真死的：删键 + 删转发器
-刀 9.1 （−4 +1）  53 = 3 + 32 + 16 C + 1 L + 1 L(enter)   showView 的 pages 段搬进 enter()（hydrateView 的 loadPageNumberSummary 随 9.4）  ← 现状
-刀 9.2 （−5）     48 = 3 + 27 + 16 C + 2 L
-刀 9.3 （−12）    36 = 3 + 15 + 16 C + 2 L
-刀 9.4 （−3）     33 = 3 + 12 + 16 C + 2 L
-刀 9.5 （−12 +1） 22 = 3 +  0 + 16 C + 3 L(refresh)
-刀 9.6 （−1）     21 =            16 C + 3 L   只做 undoMarginEdit（deps −1）
-刀 10  （−2）     19 =            16 C + 3 L   队列子系统搬进模块（两个泵死在这，deps −8）
-刀 11 （不变）    19 = 16 C + 3 L（init / enter / refresh）  冻结清册 + 落地 §八 的机检
+刀 8 （现状）    61 = T 44 + C 16 + L 1
+刀 9   （−5）     56 = T 39 + C 16 + L 1   5 个真死的：删键 + 删转发器
+刀 9.1 （−4 +1）  53 = T 35 + C 16 + L 2   showView 的 pages 段搬进 enter()（hydrateView 的 loadPageNumberSummary 随 9.4）  ← 现状
+刀 9.2 （−3 +2）  52 = T 32 + C 18 + L 2   pollTask 的三处收成 2 个能力（§三）
+刀 9.3 （−12）    40 = T 20 + C 18 + L 2
+刀 9.4 （−3）     37 = T 17 + C 18 + L 2
+刀 9.5 （−12 +1） 26 = T  5 + C 18 + L 3   搬完 + 建 refresh()
+刀 9.6 （−1）     25 = T  4 + C 18 + L 3   只做 undoMarginEdit
+刀 10  （−4）     21 = T  0 + C 18 + L 3   队列子系统（两个泵 + queueOverlayRender + updatePageVisibility）
+刀 11 （不变）    21 = T  0 + C 18 + L 3   冻结清册 + 落地 §八 的机检
 ```
 
-每一步的"来历"只有三种动作：**删一个 0 引用的键**（刀 9 的 −5）、**搬 n 个调用点进模块**
-（9.1–9.5 的 −36）、**把模块自己的接线/队列收回模块**（9.6 的 −1 + 刀 10 的 −2）。
-没有"拍一个数"。`enter` 建在 9.1、`refresh` 建在 9.5 是我按语义钉的；若该刀图把入口提前/推后，
-中间值 ±1，**终态 19 不变**。子刀怎么分、死期写哪个号，见 §十（闸不允许"一刀多笔"）。
+**曲线以后按"这个键能不能搬"算，不按"这一刀有几个键"算**（今天三次同型）：每个 T 只有三种死法——
+
+```
+① 宿主是单视图动作 → 宿主搬走，键死于那一刀（9.1 / 9.3 / 9.4 / 9.5）
+② 宿主是跨域编排（pollTask / 面板 / 别的视图）→ 键**本来就不是 T**：收成 C（9.2），或由 refresh 吸收
+③ 宿主属于"子系统"（队列 / 渲染域）→ 随子系统整体搬（刀 10）
+```
+
+没有第四种。所以"某刀 −5"这种数要先逐键过这三条才能写。`enter` 建在 9.1、`refresh` 建在 9.5
+是按语义钉的；若该刀图把入口提前/推后，中间值会动，但 **T 归零这一步不会**。
+子刀怎么分、死期写哪个号，见 §十（闸不允许"一刀多笔"）。
 
 ## 六、刀 9.1–9.5 的施工依据：宿主 → 可一次杀掉的键（41 行）
 
@@ -262,13 +269,27 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 入口要它：   recognizePage（审校面板的「重新识别」）
 ```
 
-要凑到 3，只有一条路：**把命令改成"注入状态 + 单一 render"**（比如「识别这一页」改成
-`setRecognizeRequests([pageNo])` 再 `refresh()`）。那等于重写交互模型，而且会撞本项目的头号反面模式
-——**多处写同一份状态**（就是 `PAGES_STAGE` 那类账的代码版：谁都能 push 一个请求，没人知道它什么时候被消费）。
-所以我不为迁就旧曲线去改代码：**终态 19，不是 3。**
+**终态判据改成「T 归零」，不再用「总数 X」**（2026-10-30 裁定，作废「导出到 3」与「终态 19」）：
 
-> 注：19 = **16 C + 3 L**（init / enter / refresh）。若 `checkSelection` 也判 C，则 20。
-> 这两个值都在"清册"里逐键可查，不再是一个减法。
+```
+终态 ≡ T == 0（外壳不再有任何函数级转发）
+     ∧ L == 3（init / enter / refresh）
+     ∧ C == 清册里那一批（每键 callers + Capability-Reason，两向机检）
+
+数字由设计决定，不由指标决定。C 多一个少一个，不改"收干净了没有"这个判断。
+```
+
+**为什么不是数字**：今晚三次同型（刀 8 的三个函数、9.6 的两个泵、9.2 的三个宿主）说明——
+宿主搬不动时，杀掉一个键就多一个能力键，总数只是换了个类；拿数字当目标会逼人为凑数做设计选择
+（我们差点为 3 凑一次）。而「T 归零」可判定，且正是 R8 的初心：外壳不许伸手进模块内部，
+只能按语义叫它。
+
+**防漂的替代**（不留空档）：① `R8.total` **只降不升**（今天 61，往后每个数都不许回升）；
+② 每加一个 C 键 = 改清册 + 写 `Capability-Reason`，两向机检（§八 ③）会拦"清册被随手放宽"。
+
+> 现阶段的**推导值**（预测，不是目标）：**21 = C 18 + L 3**。它比旧的 19 多 2，因为
+> pollTask 那两个进度写点是被判错了类（它们本来就是跨域能力，见 §三 9.2）——多出来的 2 个是
+> **诚实税**，不是设计变松。若 9.5 的图判定 `checkSelection` 留外壳，它转 C，推导值 22。
 
 ## 八、机检（四条 + 一条配套的文档判据，交 TestDev）
 
@@ -383,9 +404,9 @@ git log --format=%s origin/main | grep -oE "^move\(pages\): 刀 [0-9.]+" | sort 
 | **9.4** | 页码一族（三个面板宿主 + 指标） | 3：`loadPageNumberSummary` · `setPageNumberStatus` · `renderPageNumberMetrics` |
 | **9.5** | 选择 / 网格 / 步骤 / 收尾 / 其它 | 12：`syncPageStates` · `forgetAllPageSuggestions` · `forgetAllPageBlocks` · `renderPages` · `visiblePages` · `reloadProjectPages` · `pageScroller` · `renderAutoApplyStatus` · `renderWorkflowFilter` · `checkSelection` · `renderStepPanels`* · `renderRecognitionStatus` |
 | **9.6** | 版心撤销按钮的接线收回模块（§三 改判） | 1：`undoMarginEdit`（→ 模块自建按钮 + `marginUndoButton` 工厂删除） |
-| **10** | 队列子系统搬进模块（overlay + suggestion；原「收口」顺延为刀 11） | 2：`pumpOverlayRender` · `scanVisiblePageSuggestions` |
+| **10** | 队列子系统 + 渲染域：`fetchPageBlocks`（连三份缓存）+ `schedulePageVisibility` + 两个泵 | 4：`pumpOverlayRender` · `scanVisiblePageSuggestions` · `queueOverlayRender` · `updatePageVisibility` |
 
-合计 **5 + 1 + 4 + 5 + 12 + 3 + 12 + 2 = 44 = 8 死 T（5 真死 + 3 值位）+ 36 活 T** ✓
+合计 **5 + 4 + 3 + 12 + 3 + 12 + 1 + 4 = 44** ✓（刀 9 的 5 = 真死；9.2 的 3 收成 2 个 C，净 −1）
 （刀 10 与其它子刀的区别：那两个键的"死"不是删键，是**把整条队列搬走**——它们今天有值位引用，
  只删键会留下 ReferenceError；而且是**队列先行、键后死**：只搬调度器，外壳的泵就没有喊话对象。）
 
