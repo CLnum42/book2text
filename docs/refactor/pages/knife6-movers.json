@@ -1,0 +1,382 @@
+{
+ "刀号": 6,
+ "名称": "片段抽取（原「5b」）",
+ "基线": {
+  "树": "main@86b8d7a",
+  "app.js": 13465,
+  "R3": {
+   "total": 50,
+   "ids": 24
+  },
+  "R8": 53,
+  "deps": 211,
+  "seed": {
+   "rows": 14,
+   "names": 11
+  },
+  "豁免": {
+   "items": 64,
+   "cap": 155,
+   "blocked": 7
+  }
+ },
+ "refs": [
+  {
+   "host": "boot",
+   "line": 13021,
+   "id": "pages-margin-toggle",
+   "form": "el",
+   "target": "删 deps 对 + PagesView.syncToolbarToggles()"
+  },
+  {
+   "host": "boot",
+   "line": 13022,
+   "id": "pages-overlay-toggle",
+   "form": "el",
+   "target": "删 deps 对 + PagesView.syncToolbarToggles()"
+  },
+  {
+   "host": "boot",
+   "line": 13322,
+   "id": "pages-margin-toggle",
+   "form": "el",
+   "target": "删 deps 对 + PagesView.syncToolbarToggles()"
+  },
+  {
+   "host": "boot",
+   "line": 13323,
+   "id": "pages-overlay-toggle",
+   "form": "el",
+   "target": "删 deps 对 + PagesView.syncToolbarToggles()"
+  },
+  {
+   "host": "boot",
+   "line": 13358,
+   "id": "pages-margin-toggle",
+   "form": "el",
+   "target": "删 deps 对 + PagesView.syncToolbarToggles()"
+  },
+  {
+   "host": "boot",
+   "line": 13360,
+   "id": "pages-overlay-toggle",
+   "form": "el",
+   "target": "删 deps 对 + PagesView.syncToolbarToggles()"
+  },
+  {
+   "host": "boot",
+   "line": 13428,
+   "id": "pages-margin-toggle",
+   "form": "el",
+   "target": "删 deps 对 + PagesView.syncToolbarToggles()"
+  },
+  {
+   "host": "boot",
+   "line": 13429,
+   "id": "pages-overlay-toggle",
+   "form": "el",
+   "target": "删 deps 对 + PagesView.syncToolbarToggles()"
+  },
+  {
+   "host": "finishRevokeAutoPass",
+   "line": 11366,
+   "id": "pages-error",
+   "form": "el",
+   "target": "showPagesError(error)"
+  },
+  {
+   "host": "setMarginJudgementSetting",
+   "line": 11855,
+   "id": "rec-margin-judgement",
+   "form": "el",
+   "target": "setMarginJudgementCheckbox(on)"
+  },
+  {
+   "host": "setupCollabControls",
+   "line": 12515,
+   "id": "assign-open",
+   "form": "el",
+   "target": "wirePagesCollabEntries"
+  },
+  {
+   "host": "setupCollabControls",
+   "line": 12516,
+   "id": "assign-list-toggle",
+   "form": "el",
+   "target": "wirePagesCollabEntries"
+  },
+  {
+   "host": "setupLibrary",
+   "line": 11594,
+   "id": "apply-high-suggestions",
+   "form": "el",
+   "target": "wirePagesMoreMenuEntries"
+  },
+  {
+   "host": "setupLibrary",
+   "line": 11641,
+   "id": "word-boxes-open",
+   "form": "el",
+   "target": "wirePagesMoreMenuEntries"
+  },
+  {
+   "host": "setupLibrary",
+   "line": 11642,
+   "id": "page-more-menu",
+   "form": "el",
+   "target": "wirePagesMoreMenuEntries"
+  },
+  {
+   "host": "setupLibrary",
+   "line": 11645,
+   "id": "backups-open",
+   "form": "el",
+   "target": "wirePagesMoreMenuEntries"
+  },
+  {
+   "host": "setupLibrary",
+   "line": 11646,
+   "id": "page-more-menu",
+   "form": "el",
+   "target": "wirePagesMoreMenuEntries"
+  },
+  {
+   "host": "setupLibrary",
+   "line": 11652,
+   "id": "aux-rerun",
+   "form": "el",
+   "target": "wirePagesMoreMenuEntries"
+  },
+  {
+   "host": "setupLibrary",
+   "line": 11653,
+   "id": "page-more-menu",
+   "form": "el",
+   "target": "wirePagesMoreMenuEntries"
+  },
+  {
+   "host": "setupLibrary",
+   "line": 11660,
+   "id": "layout-detect-open",
+   "form": "el",
+   "target": "wirePagesMoreMenuEntries"
+  },
+  {
+   "host": "setupLibrary",
+   "line": 11662,
+   "id": "page-more-menu",
+   "form": "el",
+   "target": "wirePagesMoreMenuEntries"
+  },
+  {
+   "host": "setupShell",
+   "line": 1055,
+   "id": "stats-open",
+   "form": "el",
+   "target": "wirePagesShellEntries"
+  },
+  {
+   "host": "setupShell",
+   "line": 1068,
+   "id": "selection-review-open",
+   "form": "el",
+   "target": "wirePagesShellEntries"
+  },
+  {
+   "host": "startLayoutDetectFromDialog",
+   "line": 5701,
+   "id": "pages-error",
+   "form": "el",
+   "target": "pagesErrorMessage()"
+  },
+  {
+   "host": "startLayoutDetectFromDialog",
+   "line": 5701,
+   "id": "pages-error",
+   "form": "el",
+   "target": "pagesErrorMessage()"
+  }
+ ],
+ "refs总数": 25,
+ "按宿主": {
+  "setupLibrary": 9,
+  "boot": 8,
+  "setupShell": 2,
+  "setupCollabControls": 2,
+  "startLayoutDetectFromDialog": 2,
+  "finishRevokeAutoPass": 1,
+  "setMarginJudgementSetting": 1
+ },
+ "抽取单元": [
+  {
+   "名字": "wirePagesMoreMenuEntries",
+   "形态": "模块内函数，wireAll() 调用（不新增 api 键）",
+   "承接": [
+    "setupLibrary"
+   ],
+   "refs": 9,
+   "deps": {
+    "新增": [
+     "openSuggestionApplyPanel",
+     "openWordBoxesDialog",
+     "openBackups",
+     "openLayoutDetectDialog"
+    ],
+    "已有": [],
+    "模块内直呼": [
+     "rerunAuxiliary"
+    ]
+   }
+  },
+  {
+   "名字": "wirePagesShellEntries",
+   "形态": "模块内函数，wireAll() 调用（不新增 api 键）",
+   "承接": [
+    "setupShell"
+   ],
+   "refs": 2,
+   "deps": {
+    "新增": [
+     "openStatsPanel（能力：openModal('stats-panel') + loadSummary()）"
+    ],
+    "已有": [
+     "selectionPages",
+     "showView",
+     "openPageDetail"
+    ]
+   }
+  },
+  {
+   "名字": "wirePagesCollabEntries",
+   "形态": "模块内函数，wireAll() 调用（不新增 api 键）",
+   "承接": [
+    "setupCollabControls"
+   ],
+   "refs": 2,
+   "deps": {
+    "新增": [
+     "toggleAssignList（能力：el('assign-panel').hidden 翻转 + loadAssignments）"
+    ]
+   }
+  },
+  {
+   "名字": "syncToolbarToggles",
+   "形态": "api 键（+1）",
+   "承接": [
+    "boot"
+   ],
+   "refs": 8,
+   "说明": "4 个 deps 对（getPagesMarginToggle / getPagesOverlayToggle）从 reading/index/preview/library 四处删掉，改为调 PagesView.syncToolbarToggles()；模块内按注入的 getPagesMarginOn/getPagesOverlayOn 刷 is-on"
+  },
+  {
+   "名字": "showPagesError",
+   "形态": "api 键（+1）",
+   "承接": [
+    "finishRevokeAutoPass"
+   ],
+   "refs": 1
+  },
+  {
+   "名字": "pagesErrorMessage",
+   "形态": "api 键（+1）",
+   "承接": [
+    "startLayoutDetectFromDialog"
+   ],
+   "refs": 2
+  },
+  {
+   "名字": "setMarginJudgementCheckbox",
+   "形态": "api 键（+1）",
+   "承接": [
+    "setMarginJudgementSetting"
+   ],
+   "refs": 1
+  }
+ ],
+ "验收": {
+  "R3": {
+   "前": {
+    "total": 50,
+    "ids": 24
+   },
+   "后": {
+    "total": 25,
+    "ids": 14
+   },
+   "减": 25
+  },
+  "归零ids": [
+   "apply-high-suggestions",
+   "aux-rerun",
+   "backups-open",
+   "layout-detect-open",
+   "page-more-menu",
+   "pages-margin-toggle",
+   "pages-overlay-toggle",
+   "selection-review-open",
+   "stats-open",
+   "word-boxes-open"
+  ],
+  "R8": {
+   "前": 53,
+   "后": 57,
+   "增": 4,
+   "曲线": "34 → 36 → 40 → 53 → 57 → 22 → 3（需重签）"
+  },
+  "deps": {
+   "前": 211,
+   "后": 218,
+   "增": 7
+  },
+  "seed": {
+   "前": {
+    "rows": 14,
+    "names": 11
+   },
+   "后": {
+    "rows": 4,
+    "names": 4
+   },
+   "删行": 10
+  },
+  "豁免": {
+   "前": {
+    "items": 64,
+    "cap": 155,
+    "blocked": 7,
+    "TOTAL_CAP": 156,
+    "实测合计处数": 50
+   },
+   "后": {
+    "items": 54,
+    "cap": 128,
+    "blocked": 0,
+    "TOTAL_CAP": 25,
+    "实测合计处数": 25,
+    "实活": {
+     "items": 14,
+     "cap": 60
+    },
+    "说明": "删 10 项（本刀归零的 10 个 id，cap 27）。TOTAL_CAP 的上限口径是**实测处数**（闸：pagesActualTotal > pagesTotalCap 才红），不是 cap 之和 ⇒ 156 → 25 是跟着实测收紧"
+   },
+   "删项": 10,
+   "TOTAL_CAP": "156 → 25（口径 = 实测合计处数，只降不升）",
+   "BLOCKED_MAX": "7 → 0"
+  },
+  "陈旧行另案": {
+   "项数": 40,
+   "cap": 68,
+   "说明": "这 40 项在 app.js 里 0 引用（id 只在 pages-view.js 里），表上只有'cap ≥ 实测'的上行判据、没有'0 引用就删项'的下行判据；清掉后 TOTAL_CAP 可到 60。建议单开一笔 + 一条机检：表里每项必须实测 ≥ 1 处"
+  }
+ },
+ "提交形态": {
+  "类型": "move(pages):",
+  "Move-Gate": "tests/js/boundary.test.mjs",
+  "Approved-by": "DevLead"
+ },
+ "不碰": [
+  "applyPackageMode / applyProjectSettings / applySplitBatch / recognizePage（刀 7 / 刀 8）",
+  "showView / hydrateView",
+  "任何产品渲染逻辑（只搬行与加注入）"
+ ]
+}
