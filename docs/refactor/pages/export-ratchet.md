@@ -348,3 +348,27 @@ divergenceCandidatesOn  → 先判那条断言还有没有意义：它断的是*
 
 清理完这 9 条，才把「0 引用顶层函数 = 红」开成闸（判据带上 §上面那三栏口径，
 并把 `tests/` 里的源码断言算进"引用"，否则永远多一条）。
+
+## 十二、刀 8 落盘对集（快照，不是权威；权威 = §五 + 落盘 `kinds` 表）
+
+> 树：`main@64f5e3a`（刀 8 已落）。日期 2026-10-30。方法：**集合相减**，不数总数。
+
+```
+① R3          node scripts/r3_pages_count.mjs --json → total 0 · ids 0 · rows 0     ✅
+② 豁免表      0 项 · TOTAL_CAP 0 · Σcap 0 · PENDING 0 · BLOCKED_MAX 0               ✅
+③ seed        0 行（stage2-movers-seed.md 里 `| \`` 行计数 = 0）                     ✅
+④ R8          61 键（pages-view api 现扫）                                            ✅
+⑤ kinds       L 1 · T 44 · C 16 = 61                                                 ✅
+⑥ 死期分组    刀9:8 · 9.1:4 · 9.2:5 · 9.3:12 · 9.4:3 · 9.5:12 = 44（与 §十 逐键相等）✅
+
+集合对集（不是总数）：
+  T  文档 44 vs 落盘 44 —— 只在文档：无 · 只在落盘：无
+  C  文档 16 vs 落盘 16 —— 只在文档：无 · 只在落盘：无
+  （C 的 16 = §四 的 13 + 刀 8 的 setPackageModeChrome / syncProjectSettings / setSelectionHint）
+
+记法坑验证（§四 的预登记）：app.js 里 `setPackageModeChrome` 是 **2 处**（applyPackageMode 的 if/else
+两个分支），而 kinds 的 `callers` 是 `["applyPackageMode"]`——**函数名，不是处数**。落盘正确。
+
+旁证（刀 8 按裁定落，不是按旧图）：app.js **13,428 → 13,428**（一行没少），pages-view **3,194 → 3,243**（+49）。
+刀 8 是"把 pages 的 13 处写点换成 3 个能力调用"，不是"搬三个函数"——所以 app.js 行数不该降。
+若将来有人报"刀 8 搬走了 applyPackageMode"，与这个行数矛盾，一查就出来。
