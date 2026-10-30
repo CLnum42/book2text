@@ -15,7 +15,10 @@
 
 //: 当前落盘到第几刀——每刀落盘时改这一个数，到期判据随之生效。
 export const PAGES_STAGE = 5;
-export const PAGES_R3_TOTAL_CAP = 156;
+// **总上限必须等于下面逐项 cap 之和**（2026-10-30 起的机检，见 boundary.test.mjs 的 R3 段）：
+// 总上限比之和大的那部分，任何一项都认领不到 → 实际合计永远撞不到它 → 「合计上限」这条判据在空转。
+// 156 → 155：账本笔删掉了 `selection-recognize`（按钮已删，cap 1），总数没跟着下调，这里补上。
+export const PAGES_R3_TOTAL_CAP = 155;
 export const PAGES_R3_PENDING = 0;
 export const PAGES_R3_BLOCKED_MAX = 7;
 

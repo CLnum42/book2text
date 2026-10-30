@@ -1737,6 +1737,18 @@ function r3Problems({
     if (pagesActualTotal > pagesTotalCap) {
       problems.push(`pages 的 R3 过渡豁免合计 ${pagesActualTotal} 处 > 上限 ${pagesTotalCap} 处——表或代码漂了`);
     }
+    // **总上限必须等于逐项之和**（2026-10-30）：总上限比逐项之和大，就等于给「未登记的引用」
+    // 留了空白——每项各自合规，多出来的处数没人认领，而「合计上限」这条判据从此在空转。
+    const capSum = pagesExemptions.reduce((sum, item) => sum + (Number(item.cap) || 0), 0);
+    if (pagesTotalCap !== capSum) {
+      problems.push(
+        `PAGES_R3_TOTAL_CAP=${pagesTotalCap}，但逐项 cap 之和=${capSum}——`
+        + (pagesTotalCap > capSum
+          ? `总上限比逐项之和大 ${pagesTotalCap - capSum} 处：给「未登记的引用」留了空白，`
+            + "R3 的「合计上限」判据从此在空转（表上每项都合规，多出来的处数没人认领）"
+          : `总上限比逐项之和小 ${capSum - pagesTotalCap} 处：逐项登记相加已超上限，表自相矛盾`),
+      );
+    }
     for (const item of pagesExemptions) {
       const occurrences = appAllIds.get(item.id) || [];
       if (item.stage !== null && item.stage <= pagesStage && occurrences.length > 0) {
@@ -1956,6 +1968,28 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
     blockedExpired.some((item) => item.includes("还没到期才有资格叫「受阻」")),
     `R3 pages 自检失败：受阻项到期（stage 2 <= PAGES_STAGE 2）被放过——${blockedExpired.join("；")}`,
   );
+
+  // ⑧ 总上限 > 逐项之和：给「未登记的引用」留了空白 → 必须红（否则「合计上限」这条判据在空转）
+  const capSlack = r3Problems({
+    ...base,
+    pagesTotalCap: 4,   // 逐项 2 + 1 = 3
+    pagesExemptions: [{ id: "a", cap: 2, stage: null }, { id: "b", cap: 1, stage: null }],
+  });
+  assert.ok(
+    capSlack.some((item) => item.includes("给「未登记的引用」留了空白") && item.includes("空转")),
+    `R3 pages 自检失败：总上限比逐项之和大也放过——${capSlack.join("；")}`,
+  );
+
+  // ⑨ 总上限 < 逐项之和：表自相矛盾 → 必须红
+  const capShort = r3Problems({
+    ...base,
+    pagesTotalCap: 2,   // 逐项 2 + 1 = 3
+    pagesExemptions: [{ id: "a", cap: 2, stage: null }, { id: "b", cap: 1, stage: null }],
+  });
+  assert.ok(
+    capShort.some((item) => item.includes("逐项登记相加已超上限")),
+    `R3 pages 自检失败：总上限比逐项之和小也放过——${capShort.join("；")}`,
+  );
 });
 
 /**
@@ -2161,7 +2195,7 @@ test("R3 自检（blocked 阻塞段）：stage > PAGES_STAGE 且段号可查判�
     appSource: 'function painter() {\n  el("a");\n}\n',
     viewSources: [{ fileName: "pages-view.js", source: "" }],
     exemptions: [],
-    pagesStage: 2, pagesTotalCap: 5, pagesPendingCap: 0, pagesSeed: [],
+    pagesStage: 2, pagesTotalCap: 1, pagesPendingCap: 0, pagesSeed: [],
   };
   const segment = [...keepShellSegmentLabels()][0];
   assert.ok(segment, "留外壳清单一段都读不出来——这条自检本身失效了");
@@ -3500,19 +3534,97 @@ test("A5 配套：tests/js 下的每个测试文件都必须在 run.mjs 里注�
     `这些测试文件没在 run.mjs 的 TEST_FILES 里注册，写了也不会跑：${missing.join("、")}`);
 });
 
-test("A5 探针豁免：名字带 probe 的测试文件必须登记（防止用命名绕过）", () => {
-  const files = readdirSync(A5_TEST_DIR).filter((name) => name.endsWith(".test.mjs"));
-  const registered = new Set(A5_PROBE_FILES.map((item) => item.file));
-  const unregistered = files.filter((name) => /probe/i.test(name) && !registered.has(name));
-  assert.deepEqual(unregistered, [],
-    "文件名含 probe 但没登记进 A5_PROBE_FILES：豁免要走表，不许靠文件名自己开门");
-  const missing = A5_PROBE_FILES.filter((item) => !files.includes(item.file));
-  assert.deepEqual(missing.map((item) => item.file), [], "A5_PROBE_FILES 里登记了不存在的文件");
-  for (const item of A5_PROBE_FILES) {
-    assert.ok(item.owner && item.expires, `A5 探针 ${item.file} 缺 owner 或到期点`);
+const A5_EXPIRES_FORMAT = "YYYY-MM-DD";
+
+/** 到期点 → Date；不是 `YYYY-MM-DD`（或是不存在的日子，如 2026-02-31）返回 null。 */
+function a5ExpiryDate(text) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(text).trim());
+  if (!m) return null;
+  const date = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (date.getUTCMonth() !== Number(m[2]) - 1 || date.getUTCDate() !== Number(m[3])) return null;
+  return date;
+}
+
+function a5IsoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * 探针豁免表的判定内核（纯函数，自检喂合成条目）。返回问题列表，空数组 = 绿。
+ *
+ * 三条判据（2026-10-30 Chief 要求补后两条）：
+ *   ① 名字带 probe 却没登记 → 红（不许靠命名自己开门）；
+ *   ② **僵尸**：登记了但文件不存在 / 文件名里没有 probe（豁免没有命中物）→ 红；
+ *   ③ **到期点到点**：`expires` 必须是 `YYYY-MM-DD` 且未到期；里程碑文本没法机检 → 红。
+ *      这一条抄 `A5_EXCUSES` 的僵尸红：表项没有可判的终点，就等于永久豁免。
+ */
+function a5ProbeProblems({ files, entries = A5_PROBE_FILES, max = A5_MAX_PROBE_FILES, today = new Date() }) {
+  const problems = [];
+  const registered = new Set(entries.map((item) => item.file));
+  for (const file of files) {
+    if (/probe/i.test(file) && !registered.has(file)) {
+      problems.push(`文件名含 probe 但没登记进 A5_PROBE_FILES：${file}——豁免要走表，不许靠文件名自己开门`);
+    }
   }
-  assert.ok(A5_PROBE_FILES.length <= A5_MAX_PROBE_FILES,
-    `A5 探针 ${A5_PROBE_FILES.length} 条，上限 ${A5_MAX_PROBE_FILES}`);
+  for (const item of entries) {
+    if (!files.includes(item.file)) {
+      problems.push(`A5 探针 ${item.file} 登记了但文件不存在——僵尸条目（豁免没有命中物），`
+        + "删掉；别把表变成墓地");
+      continue;
+    }
+    if (!/probe/i.test(item.file)) {
+      problems.push(`A5 探针 ${item.file} 的文件名里没有 probe——这条豁免没有命中物`
+        + "（它豁免的是「含 probe 的探针文件」），是白条");
+    }
+    if (!item.owner || !item.expires) {
+      problems.push(`A5 探针 ${item.file} 缺 owner 或到期点`);
+      continue;
+    }
+    const due = a5ExpiryDate(item.expires);
+    if (due === null) {
+      problems.push(`A5 探针 ${item.file} 的到期点「${item.expires}」不是 ${A5_EXPIRES_FORMAT} 日期`
+        + "——里程碑文本没法机检，这条豁免等于永不到期（到期点必须能被程序比对）");
+      continue;
+    }
+    if (due.getTime() <= today.getTime()) {
+      problems.push(`A5 探针 ${item.file} 的到期点 ${item.expires} 已到（今天 ${a5IsoDate(today)}）`
+        + "——到期就该删条目或续期，别让它变成永久豁免");
+    }
+  }
+  if (entries.length > max) {
+    problems.push(`A5 探针 ${entries.length} 条，上限 ${max}——开口要显式加数字`);
+  }
+  return problems;
+}
+
+test("A5 探针豁免：名字带 probe 必须登记；僵尸条目 / 到期已过 / 到期点没法机检 都要红", () => {
+  const files = readdirSync(A5_TEST_DIR).filter((name) => name.endsWith(".test.mjs"));
+  const problems = a5ProbeProblems({ files });
+  assert.deepEqual(problems, [], problems.join("；"));
+});
+
+// 自检：没有这一条，探针表的四条判据全是"只在表为空时绿"的空转。
+test("A5 探针自检：未登记红 / 僵尸红 / 到点红 / 到期点不是日期红 / 白条红 / 合规绿", () => {
+  const files = ["a.test.mjs", "b.probe.test.mjs"];
+  const ok = [{ file: "b.probe.test.mjs", owner: "TestDev", expires: "2099-01-01" }];
+  assert.deepEqual(a5ProbeProblems({ files, entries: ok }), [],
+    `A5 探针自检失败：合规条目被误报——${a5ProbeProblems({ files, entries: ok }).join("；")}`);
+
+  const run = (entries) => a5ProbeProblems({ files, entries });
+  assert.ok(run([]).some((m) => m.includes("没登记进 A5_PROBE_FILES")),
+    `A5 探针自检失败：未登记的 probe 文件被放过——${run([]).join("；")}`);
+  assert.ok(run([{ file: "gone.probe.test.mjs", owner: "x", expires: "2099-01-01" }])
+    .some((m) => m.includes("僵尸条目")),
+  "A5 探针自检失败：登记了不存在的文件没报僵尸");
+  assert.ok(run([{ file: "b.probe.test.mjs", owner: "x", expires: "2020-01-01" }])
+    .some((m) => m.includes("已到")),
+  "A5 探针自检失败：到期点已过没红（这条是「永久豁免」的入口）");
+  assert.ok(run([{ file: "b.probe.test.mjs", owner: "x", expires: "验收完成" }])
+    .some((m) => m.includes("没法机检")),
+  "A5 探针自检失败：里程碑文本到期点被当成合格（等于永远不到期）");
+  assert.ok(run([{ file: "a.test.mjs", owner: "x", expires: "2099-01-01" }])
+    .some((m) => m.includes("没有命中物")),
+  "A5 探针自检失败：给非 probe 文件开豁免（白条）被放过");
 });
 
 // 自检：没有这一条，A5 就是"从来不红的闸"。合成样例必须红，合法断言必须绿。
