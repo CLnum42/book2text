@@ -108,6 +108,13 @@ app.js 里对它 id 的引用是**零容忍**的——只有 `reading`（审校�
 | `package-result-meta` | :1329 | `#package-result` mask | 外壳 | 不变 |
 | `finish-open-review` / `detail-recognize` / `aux-run` | :617 / :627 / :623 | `#view-review` | 外壳 | 改调 `ReviewView` 的 1 个能力 |
 
+> **351 个"不在任何 section 里"的 id（占 DOM 51.5%）的完整裁定见
+> `docs/refactor/panel-ownership.md`**：现在归外壳、不建归属表、不造能力壳；
+> 长期形态是 markup 派生的 `<section id="panel-X">` 宿主（第一个面板模块时才上，
+> 第一块砖 = `#export-panel` 的 33 个 id）。
+> 刀 8 落完时 `package-banner` / `package-open` 的答案：**app.js 里 `el(...).hidden = …`，
+> 没有任何 `*-view.js` 引用它们，也没有能力包装**。
+
 ## 接口定稿（刀 7）
 
 ### ① 新增：外壳能力 `showPageDetailError(error)`（新写，**不是搬来的**）
