@@ -52,7 +52,8 @@ import { execFileSync } from "node:child_process";
 import {
   PAGES_R3_EXEMPTIONS, PAGES_R3_TOTAL_CAP, PAGES_R3_PENDING, PAGES_R3_BLOCKED_MAX,
 } from "./pages-r3-exemptions.mjs";
-// 刀号登记表（刀号的唯一真值源）：seed 里出现未登记的号 → 红；PAGES_STAGE 必须等于 maxLandedKnife()
+// 刀号登记表（刀号的唯一真值源）：seed 里出现未登记的号 → 红；当前刀 = stageNow()；
+// 登记表与 git 只允许差在途一刀（delta ∈ {0,1}）——`PAGES_STAGE` 这个手写常数 2026-10-30 已删除
 import {
   KNIVES, isRegisteredKnife, maxLandedKnife, gitMaxKnifeFromLog, stageSourceProblems, stageNow,
 } from "./knife-registry.mjs";
@@ -2326,21 +2327,21 @@ test("当前刀由两源现算：两源交叉校验 + 账本核对（无 git 打
 });
 
 test("两源交叉校验自检：delta 0/1 绿、delta ≥2 红、delta <0 红、一刀未落盘红", () => {
-  // delta = 0：两源一致 → 绿
-  assert.deepEqual(stageSourceProblems({ gitMax: 5, registryMax: 5 }), [],
+  // 基准取今天的真值（刀 6 已落盘）：delta 0 = 6/6
+  assert.deepEqual(stageSourceProblems({ gitMax: 6, registryMax: 6 }), [],
     "交叉校验自检失败：delta 0 被判红");
 
-  // delta = 1：本笔正在落第 registryMax 刀，git 历史里还看不到它 → 绿（今天这一笔就是这个形态）
-  assert.deepEqual(stageSourceProblems({ gitMax: 5, registryMax: 6 }), [],
+  // delta = 1：本笔正在落第 registryMax 刀，git 历史里还看不到它 → 绿（刀 6 那一笔就是这个形态）
+  assert.deepEqual(stageSourceProblems({ gitMax: 6, registryMax: 7 }), [],
     "交叉校验自检失败：delta 1（在途一刀）被判红——那样每一刀的提交都过不去");
 
   // delta = 2：只改登记表没落 move 笔 → 红
-  const ahead = stageSourceProblems({ gitMax: 5, registryMax: 7 });
-  assert.ok(ahead.some((m) => m.includes("登记表领先 2 刀") && m.includes("git 只到 5")),
+  const ahead = stageSourceProblems({ gitMax: 6, registryMax: 8 });
+  assert.ok(ahead.some((m) => m.includes("登记表领先 2 刀") && m.includes("git 只到 6")),
     `交叉校验自检失败：delta 2 被放过——${ahead.join("；")}`);
 
   // delta = -1：只落了笔没更新登记表 → 红
-  const behind = stageSourceProblems({ gitMax: 6, registryMax: 5 });
+  const behind = stageSourceProblems({ gitMax: 7, registryMax: 6 });
   assert.ok(behind.some((m) => m.includes("登记表落后 git 1 刀")),
     `交叉校验自检失败：delta -1 被放过——${behind.join("；")}`);
 
@@ -2355,6 +2356,22 @@ test("两源交叉校验自检：delta 0/1 绿、delta ≥2 红、delta <0 红�
   assert.equal(gitMaxKnifeFromLog("move(pages): 刀 2.5 装配\nmove(pages): 刀 5 x"), 5,
     "交叉校验自检失败：刀 2.5 解析错了");
   assert.equal(stageNow({ gitMax: 5, registryMax: 6 }), 6, "当前刀应取两源较大的那个");
+});
+
+const RETIRED_EDIT_MSG = ["COMMIT", "EDITMSG"].join("_");   // 拆开拼：本测试的源码不该命中自己
+
+test(`已删除的那套不许有残留：去注释后的源码里不许再出现 ${RETIRED_EDIT_MSG}`, () => {
+  const needle = RETIRED_EDIT_MSG;
+  const files = ["boundary.test.mjs", "knife-registry.mjs", "feature-contract.mjs"];
+  const hits = [];
+  for (const file of files) {
+    // **只去注释、保留字符串**：`readFileSync(join(dir, <那个文件名>))` 这种才是真读它的形态
+    const code = stripCommentsOnly(readFileSync(join(A5_TEST_DIR, file), "utf8"));
+    if (code.includes(needle)) hits.push(file);
+  }
+  assert.deepEqual(hits, [],
+    `${hits.join("、")} 又出现 ${needle} 的**代码**引用：pre-commit 时那个文件是上一笔的残留消息，`
+    + "读它会让判据跳过若干刀（旧的「正在提交的这一笔」方案正是因此被撤）");
 });
 
 test("seed 取样读的是「跑这份代码的那棵树」（pre-commit = 索引导出树），不是工作区/HEAD", () => {
