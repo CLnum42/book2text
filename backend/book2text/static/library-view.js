@@ -295,8 +295,8 @@ async function openProject(projectId, { force = false, readOnly = false } = {}) 
     injected.renderRecognitionSettings();
     injected.setReviewMarginOn(injected.loadReviewMarginPreference());
     injected.setReviewBlockFilter("pending");
-    injected.getPagesOverlayToggle().classList.toggle("is-on", injected.getPagesOverlayOn());
-    injected.getPagesMarginToggle().classList.toggle("is-on", injected.getPagesMarginOn());
+    // 刀 6：页面工具栏两个开关的 is-on 归页面视图模块（这里不再碰 #pages-margin-toggle / #pages-overlay-toggle）
+    injected.syncToolbarToggles?.();
     injected.getReviewMarginToggle().classList.toggle("is-on", injected.getReviewMarginOn());
     // refreshProject 可能已经渲染过页面视图；默认"开"是在那之后才读出来的。
     // 任务 63：页面缩略图会立刻开始拉图（490 页要几十秒 CPU），所以也排到步骤条之后。

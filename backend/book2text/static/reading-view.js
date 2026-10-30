@@ -3560,13 +3560,13 @@ function setReviewOverlaysForReading() {
   if (!injected.getPagesMarginOn()) {
     injected.setPagesMarginOn( true);
     injected.savePageMarginPreference();
-    injected.getPagesMarginToggle()?.classList.add("is-on");
   }
   if (!injected.getPagesOverlayOn()) {
     injected.setPagesOverlayOn( true);
     injected.savePageOverlayPreference();
-    injected.getPagesOverlayToggle()?.classList.add("is-on");
   }
+  // 刀 6：两个开关按钮的 is-on 归页面视图模块（这里不再碰 #pages-margin-toggle / #pages-overlay-toggle）。
+  injected.syncToolbarToggles?.();
   // 已经画过的页要按新开关重画一遍（否则要等下一次滚动才出框）
   for (const pageNo of readingVisibleSet) paintReadingTile(pageNo);
 }

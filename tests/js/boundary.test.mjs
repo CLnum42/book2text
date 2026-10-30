@@ -3535,6 +3535,13 @@ const VIEW_EXPORTS = {
     "openPageSetup",   // 死亡刀号 = 刀6
     "toggleMarginView",   // 死亡刀号 = 刀6
     "togglePageBlocksOverlay",   // 死亡刀号 = 刀6
+    // 刀 6：4 个操作入口（R8 53 → 57；Architect 2026-10-30 重签，曲线 34→36→40→53→**57**→22→3）。
+    // `syncToolbarToggles` 是第一个**模块→模块**键：调用者是四个 view 模块，app.js 里恒 0 次——
+    // 它的"到点必须死"不能再用「app.js 引用 = 0」判（那一出生就成立），改成全仓引用。
+    "syncToolbarToggles",          // 死亡刀号 = 刀10（全仓 window.PagesView.syncToolbarToggles 引用 = 0 且不在 api 表）
+    "showPagesError",              // 死亡刀号 = 刀9（app.js 引用 = 0 且不在 api 表）
+    "pagesErrorMessage",           // 死亡刀号 = 刀9（同上）
+    "setMarginJudgementCheckbox",  // 死亡刀号 = 刀9（同上）
   ] },
 };
 

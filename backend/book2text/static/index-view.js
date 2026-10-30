@@ -95,13 +95,13 @@ async function openPageIndex() {
   if (!injected.getPagesMarginOn()) {
     injected.setPagesMarginOn(true);
     injected.savePageMarginPreference();
-    injected.getPagesMarginToggle()?.classList.add("is-on");
   }
   if (!injected.getPagesOverlayOn()) {
     injected.setPagesOverlayOn(true);
     injected.savePageOverlayPreference();
-    injected.getPagesOverlayToggle()?.classList.add("is-on");
   }
+  // 刀 6：两个开关按钮的 is-on 归页面视图模块（这里不再碰 #pages-margin-toggle / #pages-overlay-toggle）。
+  injected.syncToolbarToggles?.();
   syncIndexToggles();
   if (!injected.getPageIndexData() || injected.getPageIndexProject() !== injected.getProject().project_id) {
     // 加载期间的"正在生成 / 清空列表 / 藏起空态"原本长在 app.js 的 `loadPageIndex` 里，

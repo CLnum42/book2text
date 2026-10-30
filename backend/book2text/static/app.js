@@ -1052,10 +1052,7 @@ function setupShell() {
   });
   el("settings-open").addEventListener("click", () => openModal("settings-panel"));
   el("settings-close").addEventListener("click", () => closeModal("settings-panel"));
-  el("stats-open").addEventListener("click", () => {
-    openModal("stats-panel");
-    loadSummary();
-  });
+  // 刀 6：stats-open / selection-review-open 的接线搬进 pages-view.js 的 wirePagesShellEntries()
   el("stats-close").addEventListener("click", () => closeModal("stats-panel"));
   el("structure-open").addEventListener("click", () => openModal("structure-panel"));
   el("structure-close").addEventListener("click", () => closeModal("structure-panel"));
@@ -1065,11 +1062,6 @@ function setupShell() {
   el("export-cancel").addEventListener("click", () => closeModal("export-panel"));
   el("package-result-close").addEventListener("click", () => closeModal("package-result"));
   el("package-open").addEventListener("click", () => openModal("package-result"));
-  el("selection-review-open").addEventListener("click", () => {
-    const first = selectionPages()[0] || visiblePages()[0];
-    showView("review");
-    if (first) openPageDetail(first.page_no);
-  });
   el("detail-close").addEventListener("click", () => showView("pages"));
 
   // 点遮罩空白处 = 关闭（点对话框内部不关）
@@ -1085,6 +1077,17 @@ function setupShell() {
       closeModal(masks[masks.length - 1].id);
     }
   });
+}
+
+/**
+ * 刀 6：统计面板的**具名能力**（pages-view.js 的「统计」入口经注入调用）。
+ *
+ * 为什么不是把两行搬进模块：`stats-panel` 是全局 chrome id，模块碰它就是跨视图引用；
+ * 把 id 换成参数（`chrome.toggle("stats-panel")` 式）更坏——意图会变成参数。
+ */
+function openStatsPanel() {
+  openModal("stats-panel");
+  loadSummary();
 }
 
 // ---------------------------------------------------------------- 应用信息
@@ -5697,8 +5700,7 @@ async function startLayoutDetectFromDialog() {
     // 失败原因就地显示：以前错误写进 #pages-error，对话框一关就看不见了，
     // 用户的感觉是"点了没反应"——这正是 P1-3 要修的。
     const node = el("layout-detect-error");
-    node.textContent =
-      (el("pages-error") && el("pages-error").textContent) || "任务没建成，原因未知。";
+    node.textContent = window.PagesView.pagesErrorMessage() || "任务没建成，原因未知。";
     node.hidden = false;
     el("layout-detect-start").disabled = false;
     el("layout-detect-start").textContent = "重试";
@@ -11363,7 +11365,7 @@ async function finishRevokeAutoPass() {
     el("finish-auto-revoke").hidden = true;
     await loadFinishSummary({ silent: true });
   } catch (error) {
-    showError(el("pages-error"), error);
+    window.PagesView.showPagesError(error);
   }
 }
 
@@ -11591,7 +11593,7 @@ function setupLibrary() {
   el("trash-open").addEventListener("click", openTrashPanel);
   el("trash-close").addEventListener("click", () => closeModal("trash-panel"));
   setupCollabControls();
-  el("apply-high-suggestions").addEventListener("click", openSuggestionApplyPanel);
+  // 刀 6：⋯ 菜单的四个条目（含"点完先收起菜单"）搬进 pages-view.js 的 wirePagesMoreMenuEntries()
   el("review-apply-all").addEventListener("click", openSuggestionApplyPanel);
   el("suggestion-apply-close").addEventListener("click", () => closeModal("suggestion-apply-panel"));
   el("suggestion-apply-cancel").addEventListener("click", () => closeModal("suggestion-apply-panel"));
@@ -11638,30 +11640,13 @@ function setupLibrary() {
   el("lock-conflict-close").addEventListener("click", closeLockConflict);
   el("lock-conflict-cancel").addEventListener("click", closeLockConflict);
   el("lock-conflict-force").addEventListener("click", confirmLockConflict);
-  el("word-boxes-open").addEventListener("click", () => {
-    el("page-more-menu").hidden = true;
-    openWordBoxesDialog();
-  });
-  el("backups-open").addEventListener("click", () => {
-    el("page-more-menu").hidden = true;
-    openBackups();
-  });
   el("backups-close").addEventListener("click", () => closeModal("backups-mask"));
   el("backups-cancel").addEventListener("click", () => closeModal("backups-mask"));
   el("backups-restore").addEventListener("click", restoreSelectedBackup);
-  el("aux-rerun").addEventListener("click", () => {
-    el("page-more-menu").hidden = true;
-    rerunAuxiliary();
-  });
   el("word-boxes-cancel").addEventListener("click", () => closeModal("word-boxes-mask"));
   el("word-boxes-cancel-x").addEventListener("click", () => closeModal("word-boxes-mask"));
   el("word-boxes-start").addEventListener("click", startWordBoxesBackfill);
   el("word-boxes-clear").addEventListener("click", clearWordBoxes);
-  el("layout-detect-open").addEventListener("click", () => {
-    // 点 ⋯ 里的条目：先收起菜单，再开对话框（模板遮罩不能挂在菜单里）
-    el("page-more-menu").hidden = true;
-    openLayoutDetectDialog();
-  });
   el("layout-detect-cancel").addEventListener("click", () => closeModal("layout-detect-mask"));
   el("layout-detect-cancel-x").addEventListener("click", () => closeModal("layout-detect-mask"));
   el("layout-detect-start").addEventListener("click", startLayoutDetectFromDialog);
@@ -11852,8 +11837,7 @@ async function setMarginJudgementSetting(enabled) {
     await refreshExportPreflight();
   } catch (error) {
     checkbox.checked = !enabled;
-    const rec = el("rec-margin-judgement");
-    if (rec) rec.checked = !enabled;
+    window.PagesView.setMarginJudgementCheckbox(!enabled);
     showError(el("export-error"), error);
   }
 }
@@ -12512,12 +12496,8 @@ async function onResultFileChosen() {
 /** 字符级差异：把 before/after 渲染成"删除线 + 高亮"的片段（说明书 7.9.3）。 */
 
 function setupCollabControls() {
-  el("assign-open").addEventListener("click", openAssignPanel);
-  el("assign-list-toggle").addEventListener("click", async () => {
-    const panel = el("assign-panel");
-    panel.hidden = !panel.hidden;
-    if (!panel.hidden) await loadAssignments();
-  });
+  // 刀 6：assign-open / assign-list-toggle 的接线搬进 pages-view.js 的 wirePagesCollabEntries()
+  //（列表开关翻转的是全局 chrome id `assign-panel`，在那边收成 injected.toggleAssignList() 能力）
   el("assign-close").addEventListener("click", () => closeModal("assign-panel"));
   el("assign-reviewer").addEventListener("input", previewAssign);
   el("assign-context").addEventListener("change", previewAssign);
@@ -12531,6 +12511,17 @@ function setupCollabControls() {
   setupPackageControls();
 }
 
+/**
+ * 刀 6：批量指派列表开关的**具名能力**（pages-view.js 的入口经注入调用）。
+ *
+ * 翻转的是全局 chrome `assign-panel`（不在 view-pages 子树）⇒ 整个动作收在这里，
+ * 模块那边只调 `injected.toggleAssignList()`；handler 不许整段搬进模块。
+ */
+async function toggleAssignList() {
+  const panel = el("assign-panel");
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) await loadAssignments();
+}
 
 // ---------------------------------------------------------------- 恢复备份（任务 65）
 
@@ -13016,10 +13007,9 @@ function boot() {
     loadIndexBlocks: (...args) => loadIndexBlocks(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
     punctReviewSet: (...args) => punctReviewSet(...args),
+    // 刀 6：页面工具栏两个开关的 is-on 同步（跨视图能力走注入——R2 不许模块直接引用 window.PagesView）
+    syncToolbarToggles: () => window.PagesView?.syncToolbarToggles(),
     // 任务 94 L5：模块要读的常量
-    // R3：页面显示开关元素（模块不直接碰 pages 子树的 id）
-    getPagesMarginToggle: () => el("pages-margin-toggle"),
-    getPagesOverlayToggle: () => el("pages-overlay-toggle"),
     INDEX_IMAGE_WINDOW: INDEX_IMAGE_WINDOW,
     // L6 刀1：状态 getter
     // L6 刀1：状态 setter（有写点才给）
@@ -13198,6 +13188,15 @@ function boot() {
     openPageNumberPanel: openPageNumberPanel,
     openPageNumberReview: openPageNumberReview,
     openSplitBatchPanel: openSplitBatchPanel,
+    // 刀 6：三段片段的具名能力（⋯ 菜单四项 / 统计入口 / 批量指派两个入口）
+    // 模块只碰 view-pages 的 id；`stats-panel` / `assign-panel` 这类全局 chrome id 收在这三个能力里。
+    openSuggestionApplyPanel: openSuggestionApplyPanel,
+    openWordBoxesDialog: openWordBoxesDialog,
+    openBackups: openBackups,
+    openLayoutDetectDialog: openLayoutDetectDialog,
+    openStatsPanel: openStatsPanel,
+    openAssignPanel: openAssignPanel,
+    toggleAssignList: toggleAssignList,
     paintTileSuggestionMark: paintTileSuggestionMark,
     recognitionChip: recognitionChip,
     recognizePage: recognizePage,
@@ -13318,9 +13317,6 @@ function boot() {
     savePageOverlayPreference: (...args) => savePageOverlayPreference(...args),
     togglePageBlocksOverlay: (...args) => togglePageBlocksOverlay(...args),
     toggleMarginView: (...args) => toggleMarginView(...args),
-    // R3：页面视图的 DOM 句柄（模块不碰 #view-pages 的 id）
-    getPagesMarginToggle: () => el("pages-margin-toggle"),
-    getPagesOverlayToggle: () => el("pages-overlay-toggle"),
     // 页码索引缓存（预览也在读同一份）
     getPageIndexData: () => pageIndexData,
     getPageIndexProject: () => pageIndexProject,
@@ -13341,6 +13337,8 @@ function boot() {
     // 常量
     zoomScales: INDEX_ZOOM_SCALES,
     imageWindow: INDEX_IMAGE_WINDOW,
+    // 刀 6：页面工具栏两个开关的 is-on 同步（跨视图能力走注入——R2 不许模块直接引用 window.PagesView）
+    syncToolbarToggles: () => window.PagesView?.syncToolbarToggles(),
   });
   window.LibraryView?.init({
     apiJson: (...args) => apiJson(...args),
@@ -13355,13 +13353,13 @@ function boot() {
     getNewProjectName: () => el("new-project-name"),
     getNewProjectPicker: () => el("new-project-file"),
     getPagesMarginOn: () => pagesMarginOn,
-    getPagesMarginToggle: () => el("pages-margin-toggle"),
     getPagesOverlayOn: () => pagesOverlayOn,
-    getPagesOverlayToggle: () => el("pages-overlay-toggle"),
     getProject: () => currentProject,
     getReviewMarginOn: () => reviewMarginOn,
     getReviewMarginToggle: () => el("review-margin-toggle"),
     lastViewLabels: LAST_VIEW_LABELS,
+    // 刀 6：页面工具栏两个开关的 is-on 同步（跨视图能力走注入——R2 不许模块直接引用 window.PagesView）
+    syncToolbarToggles: () => window.PagesView?.syncToolbarToggles(),
     loadAutoApplyStatus: (...args) => loadAutoApplyStatus(...args),
     loadFinishSummary: (...args) => loadFinishSummary(...args),
     loadPageMarginPreference: (...args) => loadPageMarginPreference(...args),
@@ -13424,9 +13422,6 @@ function boot() {
     setPageZoomTouched: (value) => { pageZoomTouched = value; return value; },
     setPagesMarginOn: (value) => { pagesMarginOn = value; return value; },
     setPagesOverlayOn: (value) => { pagesOverlayOn = value; return value; },
-    // 页面视图的 DOM 句柄（模块不碰 #view-pages 的 id；R3）
-    getPagesMarginToggle: () => el("pages-margin-toggle"),
-    getPagesOverlayToggle: () => el("pages-overlay-toggle"),
     // 常量 / 共享服务
     zoomScales: INDEX_ZOOM_SCALES,
     blockTypeLabels: BLOCK_TYPE_LABELS,
@@ -13445,6 +13440,8 @@ function boot() {
     savePageMarginPreference: (...args) => savePageMarginPreference(...args),
     savePageOverlayPreference: (...args) => savePageOverlayPreference(...args),
     syncIndexToggles: () => window.IndexView?.refresh(),
+    // 刀 6：页面工具栏两个开关的 is-on 同步（跨视图能力走注入——R2 不许模块直接引用 window.PagesView）
+    syncToolbarToggles: () => window.PagesView?.syncToolbarToggles(),
     toggleMarginView: (...args) => toggleMarginView(...args),
     togglePageBlocksOverlay: (...args) => togglePageBlocksOverlay(...args),
   });

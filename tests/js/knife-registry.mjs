@@ -18,7 +18,7 @@ export const KNIVES = [
   { n: 3, status: "landed", scope: "15 个版心函数 / 470 行（docs/refactor/pages/knife3-plan.md）" },
   { n: 4, status: "landed", scope: "8 个选择/识别/缩放函数 / 236 行（docs/refactor/pages/knife4-plan.md）" },
   { n: 5, status: "landed", scope: "31 个函数 / 651 行（docs/refactor/pages/knife5-plan.md）" },
-  { n: 6, status: "pending", scope: "片段抽取 7 处 / 25 处写点（原「刀 5b」；knife5-plan.md §⑫）" },
+  { n: 6, status: "landed", scope: "片段抽取 7 处 / 25 处写点（原「刀 5b」；knife5-plan.md §⑫）" },
   { n: 7, status: "pending", scope: "knife-review：recognizePage + review 具名入口（docs/refactor/pages/knife-review-plan.md）" },
   { n: 8, status: "pending", scope: "knife-package：applyPackageMode / applyProjectSettings / applySplitBatch（docs/refactor/pages/knife-package-plan.md）" },
   { n: 9, status: "pending", scope: "导出收口：R8 53 → 22，要死 31 个键（docs/refactor/pages/knife5-plan.md §8.1）" },

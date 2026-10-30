@@ -2698,9 +2698,42 @@ async function rerunAuxiliary() {
   }
 }
 
+/**
+ * 刀 6：页面工具栏两个开关（版心 / 块框）的 `is-on` 同步。
+ *
+ * 原来四个视图模块各自拿注入回来的 `getPagesMarginToggle()` 去 `classList.add("is-on")`——
+ * 页面子树的 id 从四个模块的依赖里漏回 app.js（R3 8 处）。现在收成本模块一个入口：
+ * 四个消费者调 `window.PagesView.syncToolbarToggles()`，模块按注入的开关状态刷这两个按钮。
+ *
+ * 调用者：reading-view / index-view / preview-view / library-view；四处都在 `PagesView.init` 之后执行。
+ */
+function syncToolbarToggles() {
+  const margin = el("pages-margin-toggle");
+  if (margin) margin.classList.toggle("is-on", Boolean(injected.getPagesMarginOn()));
+  const overlay = el("pages-overlay-toggle");
+  if (overlay) overlay.classList.toggle("is-on", Boolean(injected.getPagesOverlayOn()));
+}
+
+/** 刀 6：把错误显示到页面视图的 `#pages-error`（原 `showError(el("pages-error"), error)`）。 */
+function showPagesError(error) {
+  injected.showError(el("pages-error"), error);
+}
+
+/** 刀 6：读 `#pages-error` 当前文本（版心检测对话框拿它做失败原因的兜底）。 */
+function pagesErrorMessage() {
+  const node = el("pages-error");
+  return (node && node.textContent) || "";
+}
+
+/** 刀 6：写导出面板里「按版心判定正文」那个 checkbox 的勾选态。 */
+function setMarginJudgementCheckbox(on) {
+  const node = el("rec-margin-judgement");
+  if (node) node.checked = Boolean(on);
+}
+
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
-    // 刀 2：deps 已赋值，统一挂 14 段 pages 接线（**必须在 return api 之前**）。
+    // 刀 2：deps 已赋值，统一挂 17 段 pages 接线（**必须在 return api 之前**）。
     // DOM 还没解析完时（单测的合成 DOM / 脚本先于 body 执行）推迟到 DOMContentLoaded：
     // 否则 el(...) 是 null，绑监听会抛 TypeError——而抛在 init 里会连累整个 boot。
     const wireWhenReady = () => {
@@ -2780,6 +2813,12 @@ async function rerunAuxiliary() {
     toggleMarginView,
     togglePageBlocksOverlay,
     visiblePages,
+    // 刀 6：四处「外壳 → 模块」的操作入口（R8 53 → 57；逐键死亡刀号见 tests/js/boundary.test.mjs）
+    // syncToolbarToggles 是**模块→模块**键（调用者是四个 view 模块），到点判据不能用「app.js 引用 = 0」。
+    syncToolbarToggles,          // 死亡刀号 = 刀10（全仓引用 = 0 且不在 api 表）
+    showPagesError,              // 死亡刀号 = 刀9（app.js 引用 = 0 且不在 api 表）
+    pagesErrorMessage,           // 死亡刀号 = 刀9（同上）
+    setMarginJudgementCheckbox,  // 死亡刀号 = 刀9（同上）
   };
 // ---------------------------------------------------------------- 刀 2：14 段 pages 接线
 /**
@@ -3003,7 +3042,66 @@ function wirePagesCheckPending() {
   el("check-pending").addEventListener("click", () => checkSelection("unchecked"));
 }
 
-/** 刀 2：14 段接线在本模块初始化时统一挂载（顺序 = 它们在 app.js 里的原顺序）。 */
+/**
+ * 「⋯」菜单条目的接线（刀 6 从 `setupLibrary` 抽出 9 处）。
+ *
+ * 只碰 `view-pages` 的 id：`apply-high-suggestions` / `word-boxes-open` / `page-more-menu` /
+ * `backups-open` / `aux-rerun` / `layout-detect-open`。
+ * 点 ⋯ 里的条目 = 先收起菜单、再开对话框（模板遮罩不能挂在菜单里）——原来这段写了 4 遍。
+ */
+function hidePageMoreMenu() {
+  const menu = el("page-more-menu");
+  if (menu) menu.hidden = true;
+}
+function wirePagesMoreMenuEntries() {
+  el("apply-high-suggestions").addEventListener("click", () => injected.openSuggestionApplyPanel());
+  el("word-boxes-open").addEventListener("click", () => {
+    hidePageMoreMenu();
+    injected.openWordBoxesDialog();
+  });
+  el("backups-open").addEventListener("click", () => {
+    hidePageMoreMenu();
+    injected.openBackups();
+  });
+  el("aux-rerun").addEventListener("click", () => {
+    hidePageMoreMenu();
+    rerunAuxiliary();
+  });
+  el("layout-detect-open").addEventListener("click", () => {
+    hidePageMoreMenu();
+    injected.openLayoutDetectDialog();
+  });
+}
+
+/**
+ * 外壳里「统计」与「开始审校」两个入口的接线（刀 6 从 `setupShell` 抽出 2 处）。
+ *
+ * 只碰 `view-pages` 的 id：`stats-open` / `selection-review-open`。
+ * 统计面板的开关是全局 chrome（`stats-panel` 不在 view-pages 子树）⇒ **收成具名能力**
+ * `injected.openStatsPanel()`；在模块里写 `openModal("stats-panel")` 等于把 id 豁免换成字符串豁免。
+ */
+function wirePagesShellEntries() {
+  el("stats-open").addEventListener("click", () => injected.openStatsPanel());
+  el("selection-review-open").addEventListener("click", () => {
+    const first = injected.selectionPages()[0] || visiblePages()[0];
+    injected.showView("review");
+    if (first) injected.openPageDetail(first.page_no);
+  });
+}
+
+/**
+ * 批量指派面板的两个入口（刀 6 从 `setupCollabControls` 抽出 2 处）。
+ *
+ * 只碰 `view-pages` 的 id：`assign-open` / `assign-list-toggle`。
+ * 「指派列表开关」翻转的是 `assign-panel`（全局 chrome id）⇒ 整个动作收成具名能力
+ * `injected.toggleAssignList()`，handler 不许整段搬进来。
+ */
+function wirePagesCollabEntries() {
+  el("assign-open").addEventListener("click", () => injected.openAssignPanel());
+  el("assign-list-toggle").addEventListener("click", () => injected.toggleAssignList());
+}
+
+/** 刀 2：17 段接线在本模块初始化时统一挂载（顺序 = 它们在 app.js 里的原顺序）。 */
 function wireAll() {
   wirePagesExportMarginJudgement();
   wirePagesRecognitionSettings();
@@ -3019,6 +3117,9 @@ function wireAll() {
   wirePagesAutoApplySuggestions();
   wirePagesSelectionCheck();
   wirePagesCheckPending();
+  wirePagesMoreMenuEntries();
+  wirePagesShellEntries();
+  wirePagesCollabEntries();
 }
 
   window.PagesView = api;

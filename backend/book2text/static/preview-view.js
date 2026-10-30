@@ -479,13 +479,13 @@ async function openPreview() {
   if (!injected.getPagesMarginOn()) {
     injected.setPagesMarginOn(true);
     injected.savePageMarginPreference();
-    injected.getPagesMarginToggle()?.classList.add("is-on");
   }
   if (!injected.getPagesOverlayOn()) {
     injected.setPagesOverlayOn(true);
     injected.savePageOverlayPreference();
-    injected.getPagesOverlayToggle()?.classList.add("is-on");
   }
+  // 刀 6：两个开关按钮的 is-on 归页面视图模块（这里不再碰 #pages-margin-toggle / #pages-overlay-toggle）。
+  injected.syncToolbarToggles?.();
   injected.syncIndexToggles();
   // 审校的差异层样式是 body 级的（body.diff-mode）；离开审校不一定会清掉，
   // 预览的块框别被它压成细线。
