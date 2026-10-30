@@ -76,3 +76,30 @@ seed 里出现未登记的号 → 红；解析不了的行 → 红（带行号�
 
 三条各自带合成样例喂红（`刀10` 必须能解析 / 解析不了必须红 / 未登记号必须红），
 因为这三条失效的形态都是「绿」，不喂红就分不清是判据在管还是空跑。
+
+## 五、规格（待 TestDev 落）：`PAGES_STAGE` 两个真值源交叉校验
+
+**背景**：`main@743f5bc` 起 `PAGES_STAGE` 改由 **git 推导**（最大 `move(pages): 刀 N` 首行）；
+`tests/js/knife-registry.mjs` 里另有一份 `landed` 标记。两源今天都是 5，但**没有任何东西比较它们**——
+只改一边不会红。Chief 2026-10-30 裁定：**做成交叉校验，不二选一**（二选一会让另一个变成摆设）。
+
+```
+① 算 gitMax    = git log 里 `move(pages): 刀 N` 首行的最大 N
+② 算 registryMax = KNIVES 里 status === "landed" 的最大 n
+③ 两者不等 → 红，红文必须同时打印两边值：
+   「PAGES_STAGE 的两个真值源不一致：git 最大刀号=5，登记表 landed=4——
+     有人只改登记表没落 move 笔，或只落笔没更新登记表」
+④ PAGES_STAGE 必须同时等于两者（保留现有 `PAGES_STAGE == maxLandedKnife()` 那条，作为"等于登记表"的证据）
+```
+
+**喂红四条**（合成，不依赖仓库状态）：
+
+```
+a) gitMax=5 / registryMax=4 → 红，且红文同时含「git 最大刀号=5」「登记表 landed=4」
+b) gitMax=4 / registryMax=5 → 红（反向也要红：不能只判"git 更大"）
+c) 两边都 5 → 绿
+d) registry 里一刀都没标 landed → 红（不许"清空登记表"变成通行证）
+```
+
+**口径**：刀号允许小数（`刀2.5`）→ 用 `Number`，不用 `parseInt`；git 不可用时（pre-push 的导出树没有 `.git`）
+→ 记 `SKIP` 并打印，**不许静默变绿**。
