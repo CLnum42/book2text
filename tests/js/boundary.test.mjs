@@ -86,6 +86,26 @@ const VIEW_FILE = process.env.B2T_VIEW_JS || join(STATIC_DIR, "reading-view.js")
 /** R1 例外表：必须为空；上限 3 条，每条要有 owner 与到期切片。 */
 const ALLOW = [];
 
+/**
+ * **例外条目必须带审计字段**：`owner` + 到期点（R1 的措辞是「到期切片」，R4b 是「到期点」）。
+ *
+ * 为什么要有这个纯函数（2026-10-30）：
+ *   · R4b 那条原来的校验写在 `for (const entry of SAME_FILE_DUP_EXCEPTIONS)` 里，而表是空表 ⇒
+ *     **循环体从来没执行过一次**，删掉那两行 assert 四闸照样绿（死代码）；
+ *   · R1 那条更糟：标题与注释都承诺「每条要带 owner 与到期切片」，代码里一个字段都没查（名不副实）。
+ * 抽出来之后：真树用它、自检喂假表用它——**「空表合法」与「校验真的发生」是两件事**。
+ */
+export function exceptionEntryProblems(entries, { label = "例外表" } = {}) {
+  const problems = [];
+  (entries || []).forEach((entry, index) => {
+    const name = (entry && (entry.id || entry.name)) || `#${index}`;
+    if (!entry || !entry.owner) problems.push(`${label} 里的 ${name} 缺 owner——破例要有人负责`);
+    const expires = entry && (entry.expires ?? entry.expiry ?? entry["到期切片"] ?? entry.slice);
+    if (!expires) problems.push(`${label} 里的 ${name} 缺到期点——没有终点就是永久豁免`);
+  });
+  return problems;
+}
+
 // ---------------------------------------------------------------- 文本工具
 
 /**
@@ -355,6 +375,10 @@ test("R1 自检：模块调 app.js 的裸函数必须红，属性访问 / 自己
 
 test("R1 例外表：为空，且不超过 3 条（每条要带 owner 与到期切片）", () => {
   assert.ok(ALLOW.length <= 3, `例外表 ${ALLOW.length} 条，超过上限 3`);
+  // 空表合法，但**校验要真的发生**：破例路径（注释里那句「先让 Architect 加 owner 与到期切片」）
+  // 必须真有审计字段检查，否则破例就变成"谁想加就加、没人查"。
+  const entryProblems = exceptionEntryProblems(ALLOW, { label: "R1 例外表" });
+  assert.deepEqual(entryProblems, [], entryProblems.join("；"));
   assert.deepEqual(ALLOW, [], "例外表必须为空；真要破例，先让 Architect 在切片验收时加 owner 与到期切片");
 });
 
@@ -1112,10 +1136,33 @@ test("R4b 自检：同文件两份真实现必须红，缩进 0 才算，例外�
 test("R4b 例外表：上限 3 条，每条带 owner 与到期点", () => {
   assert.ok(SAME_FILE_DUP_EXCEPTIONS.length <= SAME_FILE_DUP_EXCEPTION_MAX,
     `例外表 ${SAME_FILE_DUP_EXCEPTIONS.length} 条，超过上限 ${SAME_FILE_DUP_EXCEPTION_MAX}`);
-  for (const entry of SAME_FILE_DUP_EXCEPTIONS) {
-    assert.ok(entry.owner, `例外 ${entry.name} 缺 owner`);
-    assert.ok(entry.expires, `例外 ${entry.name} 缺到期点`);
-  }
+  // 原来是 `for (const entry of 空表) { assert.ok(entry.owner) … }` —— **循环体从未执行过**（死代码）。
+  const entryProblems = exceptionEntryProblems(SAME_FILE_DUP_EXCEPTIONS, { label: "R4b 例外表" });
+  assert.deepEqual(entryProblems, [], entryProblems.join("；"));
+});
+
+test("例外条目自检：缺 owner 点名 / 缺到期点点名 / 合规条目绿 / 空表绿（但校验照跑）", () => {
+  const ok = [{ name: "dup-a", owner: "DevLead", expires: "刀 10 收口" }];
+  assert.deepEqual(exceptionEntryProblems(ok, { label: "自检" }), [],
+    `例外条目自检失败：合规条目被误报——${exceptionEntryProblems(ok, { label: "自检" }).join("；")}`);
+
+  const noOwner = exceptionEntryProblems([{ name: "dup-b", expires: "刀 10" }], { label: "自检" });
+  assert.ok(noOwner.some((m) => m.includes("dup-b") && m.includes("缺 owner")),
+    `例外条目自检失败：缺 owner 没点名——${noOwner.join("；")}`);
+
+  const noExpiry = exceptionEntryProblems([{ name: "dup-c", owner: "QA" }], { label: "自检" });
+  assert.ok(noExpiry.some((m) => m.includes("dup-c") && m.includes("缺到期点")),
+    `例外条目自检失败：缺到期点没点名——${noExpiry.join("；")}`);
+
+  // R1 的措辞是「到期切片」——同一个函数必须认它（真破例时字段名不同，别让校验静默放过）
+  assert.deepEqual(
+    exceptionEntryProblems([{ id: "slice-a", owner: "DevLead", "到期切片": "切片验收时" }], { label: "自检" }), [],
+    "例外条目自检失败：「到期切片」这种写法被当成缺到期点",
+  );
+
+  // 空表：合法，但证明这里返回 [] 是"没有条目"，不是"没校验"
+  assert.deepEqual(exceptionEntryProblems([], { label: "自检" }), [],
+    "例外条目自检失败：空表不该报问题");
 });
 
 
