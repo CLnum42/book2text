@@ -2795,6 +2795,49 @@ function setMarginJudgementCheckbox(on) {
   if (node) node.checked = Boolean(on);
 }
 
+/**
+ * 刀 8：包模式（`applyPackageMode`）里"页面视图自己的入口"该藏还是该露。
+ *
+ * 那 10 个 id 都属 `view-pages`，但决定它们显隐的是外壳的**跨域编排**（任务包 vs 普通项目）。
+ * 所以外壳留着判断，只把"写哪些 id、怎么写"这一层收进来——
+ * 一个能力写它那个域里的多个 id 是允许的（同 `syncToolbarToggles`），不是把 id 豁免换成字符串豁免。
+ */
+function setPackageModeChrome(on) {
+  const hidden = Boolean(on);
+  el("selection-actionbar").hidden = hidden;
+  el("selection-check").hidden = hidden;
+  el("check-pending").hidden = hidden;
+  const skip = el("selection-skip-checked");
+  if (skip && skip.parentElement) skip.parentElement.hidden = hidden;
+  el("setup-panel").hidden = hidden;
+  el("panel-recognition-settings").hidden = hidden;
+  el("panel-pagenum-settings").hidden = hidden;
+  el("page-setup-bar").hidden = hidden;
+  el("assign-list-toggle").hidden = hidden;
+  el("assign-open").hidden = hidden;
+}
+
+/**
+ * 刀 8：项目设置落在 pages 面板上的两个勾选态（`applyProjectSettings` 调用）。
+ *
+ * 传进来的两个值由外壳算好（`auto_apply_high_suggestions` 的真值规则、`marginJudgementOn()`
+ * 的"未设置即默认开"），模块不复制那两条规则——复制就是第二个真源。
+ */
+function syncProjectSettings(settings) {
+  const values = settings || {};
+  el("auto-apply-suggestions").checked = Boolean(values.autoApply);
+  const recMargin = el("rec-margin-judgement");
+  if (recMargin) recMargin.checked = Boolean(values.marginJudgement);
+}
+
+/** 刀 8：拆分批量应用后的选中提示（`applySplitBatch` 调用）。文案由外壳拼，模块只负责写。 */
+function setSelectionHint(text) {
+  const hint = el("selection-hint");
+  if (!hint) return;
+  hint.hidden = false;
+  hint.textContent = String(text);
+}
+
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
     // 刀 2：deps 已赋值，统一挂 17 段 pages 接线（**必须在 return api 之前**）。
@@ -2887,6 +2930,12 @@ function setMarginJudgementCheckbox(on) {
     // 到点判据：`app.js` 里 `window.PagesView.recognizePage` 引用 = 0 且不在 api 表——
     // 今天两个调用者（buildTile / setupLibrary）都在外壳；刀 9 若还剩一个，这个键就死不了。
     recognizePage,               // 死亡刀号 = 刀9
+    // 刀 8：三个外壳函数（applyPackageMode / applyProjectSettings / applySplitBatch）留在外壳，
+    // 只把它们落在 pages 面板上的 23 处写点收成能力（R8 58 → 61）。三个都是 C：
+    // 调用者在外壳的跨域编排里，不会"到点死"，所以不写死期。
+    setPackageModeChrome,        // C：包模式开/关时 pages 面板入口的显隐（10 个 id）
+    syncProjectSettings,         // C：项目设置 → pages 面板两个勾选态
+    setSelectionHint,            // C：拆分批量的选中提示
   };
 // ---------------------------------------------------------------- 刀 2：14 段 pages 接线
 /**

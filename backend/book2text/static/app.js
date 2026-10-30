@@ -11658,11 +11658,13 @@ function marginJudgementOn() {
 
 function applyProjectSettings() {
   const settings = (currentProject && currentProject.settings) || {};
-  el("auto-apply-suggestions").checked = Boolean(settings.auto_apply_high_suggestions);
-  // 导出面板 / 识别设置里的同一个项目级开关（任务 51 / 34）：默认开
+  // 刀 8：pages 面板上的两个勾选态收成能力（值由外壳算：默认开这条规则不搬进模块）
+  window.PagesView.syncProjectSettings({
+    autoApply: Boolean(settings.auto_apply_high_suggestions),
+    marginJudgement: marginJudgementOn(),
+  });
+  // 导出面板 / 识别设置里的同一个项目级开关（任务 51 / 34）：默认开；这个 id 是外壳 chrome，留在这
   el("export-margin-judgement").checked = marginJudgementOn();
-  const recMargin = el("rec-margin-judgement");
-  if (recMargin) recMargin.checked = marginJudgementOn();
   // 识别设置（任务 54）：引擎 / DPI / 语言 / 双引擎策略
   renderRecognitionSettings();
   renderMarginJudgementNotice();
@@ -11997,11 +11999,11 @@ async function applySplitBatch() {
     forgetAllPageSuggestions();
     await refreshPageStates();
     schedulePageVisibility();
-    const hint = el("selection-hint");
-    hint.hidden = false;
-    hint.textContent =
+    // 刀 8：选中提示的写点收进 pages 模块（文案仍由外壳拼）
+    window.PagesView.setSelectionHint(
       `已拆分 ${data.blocks} 块（${(data.pages_affected || []).length} 页）。` +
-      "整批算一个操作：到「审校」视图点「撤销」可以一次回退。";
+        "整批算一个操作：到「审校」视图点「撤销」可以一次回退。"
+    );
     if (detailPageNo !== null && (data.pages_affected || []).includes(detailPageNo)) {
       await loadPageDetail(detailPageNo, { forceSuggestions: true });
     }
@@ -12311,35 +12313,19 @@ async function applyPackageMode() {
     el("package-open").hidden = true;
     closeModal("package-result");
     el("structure-open").hidden = false;
-    el("selection-actionbar").hidden = false;
-    el("finish-open-review").hidden = false;
-    el("selection-check").hidden = false;
-    el("check-pending").hidden = false;
-    el("selection-skip-checked").parentElement.hidden = false;
-    el("setup-panel").hidden = false;
-    el("panel-recognition-settings").hidden = false;
-    el("panel-pagenum-settings").hidden = false;
-    el("page-setup-bar").hidden = false;
-    el("assign-list-toggle").hidden = false;
-    el("assign-open").hidden = false;
+    el("finish-open-review").hidden = false;        // review 入口仍留外壳（刀 7 不建 review 模块）
+    // 刀 8：页面板上的 10 个入口收成能力
+    window.PagesView.setPackageModeChrome(false);
     syncWorkflowSteps();
     return;
   }
 
   el("package-open").hidden = false;        // 但能导出审校结果包
   el("structure-open").hidden = true;       // 也没有页眉页脚工具
-  el("assign-list-toggle").hidden = true;   // 助手不派活给别人
-  el("assign-open").hidden = true;
-  el("selection-actionbar").hidden = true;
-  el("finish-open-review").hidden = true;
+  el("finish-open-review").hidden = true;   // review 入口仍留外壳（刀 7 不建 review 模块）
   closeFinishPanel();
-  el("selection-check").hidden = true;
-  el("check-pending").hidden = true;
-  el("selection-skip-checked").parentElement.hidden = true;
-  el("setup-panel").hidden = true;
-  el("panel-recognition-settings").hidden = true;  // 任务包不做识别
-  el("panel-pagenum-settings").hidden = true;      // 任务包也不改页码映射
-  el("page-setup-bar").hidden = true;
+  // 刀 8：页面板上的 10 个入口收成能力（含 setup-panel / 两个设置面板 / 选择动作条 / 指派入口）
+  window.PagesView.setPackageModeChrome(true);
   syncWorkflowSteps();
   el("detail-recognize").hidden = true;
   el("aux-run").hidden = true;

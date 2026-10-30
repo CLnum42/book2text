@@ -3579,6 +3579,10 @@ const VIEW_EXPORTS = {
     // app.js 里 window.PagesView.recognizePage 引用 = 0 且不在 api 表——
     // 今天两个调用者（buildTile / setupLibrary）都在外壳；刀 9 若还剩一个，这个键死不了。
     "recognizePage",               // 死亡刀号 = 刀9
+    // 刀 8：三个 C 键（外壳的三个跨域编排留在 app.js，只把 pages 写点收成能力；R8 58 → 61）
+    "setPackageModeChrome",        // C
+    "syncProjectSettings",         // C
+    "setSelectionHint",            // C
   ],
     // ---- 三类键（Architect ratchet-two-kinds，docs/refactor/pages/export-ratchet.md）----
     // L lifecycle 固定 3 个名字；T transitional 必须带死期（现留空，等 9a/9b 裁定）；
@@ -3642,6 +3646,9 @@ const VIEW_EXPORTS = {
       pagesErrorMessage: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "版心检测对话框读错误文案" },
       setMarginJudgementCheckbox: { kind: "C", callers: ["setMarginJudgementSetting"], reason: "项目设置 → 导出面板勾选态" },
       recognizePage: { kind: "C", callers: ["buildTile", "setupLibrary"], reason: "单页识别可从页面网格和审校面板发起（刀 7 新增，跨域编排）" },
+      setPackageModeChrome: { kind: "C", callers: ["applyPackageMode"], reason: "包模式开关时 pages 面板 10 个入口的显隐（刀 8；外壳决定，模块写）" },
+      syncProjectSettings: { kind: "C", callers: ["applyProjectSettings"], reason: "项目设置落在 pages 面板上的两个勾选态（刀 8）" },
+      setSelectionHint: { kind: "C", callers: ["applySplitBatch"], reason: "拆分批量应用后的选中提示（刀 8）" },
     },
   },
 };

@@ -35,9 +35,6 @@
 
 | 函数 | 引用的 id | 行范围 | 到期刀 | wire |
 |---|---|---|---|---|
-| `applyPackageMode` | `assign-list-toggle`、`assign-open`、`check-pending`、`page-setup-bar`、`panel-pagenum-settings`、`panel-recognition-settings`、`selection-actionbar`、`selection-check`、`selection-recognize`、`selection-skip-checked`、`setup-panel` | 13301–13360（61 行） | 刀8 |  |
-| `applyProjectSettings` | `auto-apply-suggestions`、`rec-margin-judgement` | 12597–12606（11 行） | 刀8 |  |
-| `applySplitBatch` | `selection-hint` | 12974–13007（35 行） | 刀8 |  |
 
 ## 刀5（34 个函数 / 49 种 id）
 
