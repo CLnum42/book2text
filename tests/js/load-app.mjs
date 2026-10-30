@@ -182,3 +182,65 @@ export function loadApp(options = {}) {
 export function runInApp(ctx, code) {
   return vm.runInContext(code, ctx, { filename: "stub.js" });
 }
+
+/**
+ * **用 app.js 里的真实绑定**给视图模块重做一次 `init(deps)`。
+ *
+ * 为什么需要（刀 4 起）：模块经 `injected.X` 读 app.js 的顶层绑定，而 `loadApp` 是
+ * 「先载模块、后载 app.js」——`preloadModules` 里那次 init 拿到的是 `() => undefined` 桩。
+ * 函数搬进模块后，测试要观察真实行为，就得在 app.js 载入之后用真绑定再 init 一次。
+ *
+ * 与 `preloadModules` 的区别：**不重跑模块源码**（不新建第二个模块实例），只换 deps。
+ * 模块的 `init` 是 `Object.assign({}, injected, deps)`，所以不会出现「两份状态」。
+ *
+ * 取值顺序：同上下文里的同名顶层绑定 → 找不到就按 getter/setter 形态合成
+ * （`getX` → `() => X`、`setX` → 写 `x`）→ 仍不行就给 `() => undefined` 桩（与旧行为一致）。
+ */
+export function appModuleDeps(ctx, source) {
+  const names = [...new Set([...String(source).matchAll(/injected\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]))];
+  const read = (expr) => {
+    try {
+      return vm.runInContext(expr, ctx);
+    } catch {
+      return undefined;
+    }
+  };
+  const write = (state, value) => {
+    ctx.__b2tAppValue = value;
+    try {
+      vm.runInContext(`${state} = __b2tAppValue`, ctx);
+    } catch {
+      /* 该状态不在顶层（或不可写）：保持原值，不抛 */
+    }
+  };
+  const deps = {};
+  for (const name of names) {
+    if (name === "el") {
+      deps[name] = (id) => ctx.document.getElementById(id);
+      continue;
+    }
+    const value = read(name);
+    if (typeof value === "function") {
+      deps[name] = value;
+      continue;
+    }
+    if (value !== undefined && value !== null) {
+      deps[name] = value;
+      continue;
+    }
+    const rest = name.length > 3 ? name[3].toLowerCase() + name.slice(4) : "";
+    if (name.startsWith("get") && rest && read(`typeof ${rest}`) !== "undefined") {
+      deps[name] = () => read(rest);
+      continue;
+    }
+    if (name.startsWith("set") && rest && read(`typeof ${rest}`) !== "undefined") {
+      deps[name] = (next) => {
+        write(rest, next);
+        return next;
+      };
+      continue;
+    }
+    deps[name] = () => undefined;
+  }
+  return deps;
+}

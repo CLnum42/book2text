@@ -24,10 +24,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { loadApp, runInApp } from "./load-app.mjs";
+import { loadApp, runInApp, appModuleDeps } from "./load-app.mjs";
 
 const READING_VIEW_SRC = readFileSync(
   new URL("../../backend/book2text/static/reading-view.js", import.meta.url),
+  "utf8",
+);
+
+/** `pages-view.js` 的源码：给 `appModuleDeps` 扫 `injected.X` 用（不在这里执行它）。 */
+const PAGES_VIEW_SRC = readFileSync(
+  new URL("../../backend/book2text/static/pages-view.js", import.meta.url),
   "utf8",
 );
 
@@ -49,6 +55,13 @@ function installReadingView(target) {
 const ctx = loadApp({
   require: ["enterReviewStep"],
 });
+
+// **刀 4 起必须有这一步**：`loadApp` 是「先载模块、后载 app.js」，模块那次 init 拿到的
+// 是 `() => undefined` 桩。pages 的函数搬进 pages-view.js 后，模块经 `injected.X` 读 app.js
+// 的顶层绑定（例如 applyPageZoom 读 `injected.PAGE_ZOOM_LEVELS`），桩上读就是 undefined.label。
+// 这里在 app.js 载入之后用**真实绑定**重做一次 init：只换 deps，不重跑模块源码，
+// 所以模块仍是同一个实例、`injected` 仍是同一份对象（init 内是 Object.assign 合并）。
+ctx.PagesView.init(appModuleDeps(ctx, PAGES_VIEW_SRC));
 
 /**
  * L11/L12：`readingKey` / `readingEntryVisible` 搬进 reading-view.js 且没有公开导出（R8 只有 6 项）。
