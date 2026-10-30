@@ -58,17 +58,24 @@ function assignmentHits(source, name) {
   return hits;
 }
 
-test("① showView 的「非 review」分支必须调 closePageDetail()（否则状态活过它的视图）", () => {
-  const lines = readFileSync(APP_FILE, "utf8").split("\n");
+// ---------------------------------------------------------------- 三个判定内核（吃源码字符串）
+//
+// 为什么要抽成纯函数：判据必须**自己能被证伪**。真树那条读真 app.js 调内核；自检那条喂假源码调
+// **同一个内核**——否则有人把「恰好 1 处」放宽成「至少 1 处」，真树那条照样绿，没人发现。
+// **同一个内核 = 同一种数法**：不要在真树用 A 方法数、自检用 B 方法数，那样两个数会打架。
+
+/** ① 防的是「状态活过它的视图」——离开 review 没清 detailPageNo，错误会写进看不见的元素，四闸全绿。 */
+export function showViewClearProblems(source) {
+  const lines = String(source || "").split("\n");
   const range = topLevelFunctionRange(lines, "showView");
-  assert.ok(range, `app.js 里找不到顶层 function showView( —— 结构变了，先修这条判据（${APP_FILE}）`);
+  if (!range) {
+    return ["app.js 里找不到顶层 function showView( —— 定位失败就红（fail closed），"
+      + "不许因为「扫不到」而当它合规"];
+  }
   const body = lines.slice(range[0] - 1, range[1]);
-  // 不钉"函数末尾"：Builder 把清理放在 `if (target !== "review") { closeTaskDrawer(); closePageDetail(); }` 里。
-  // 判据只要求：**在"离开 review"这个分支的块里**出现 closePageDetail()。
   let found = false;
   body.forEach((line, index) => {
     if (!/if\s*\([^)]*!==\s*"review"/.test(line)) return;
-    // 取这个 if 的花括号块（同行 { 或下一行 {）
     let depth = 0;
     let sawBrace = false;
     for (let i = index; i < body.length; i += 1) {
@@ -80,41 +87,119 @@ test("① showView 的「非 review」分支必须调 closePageDetail()（否则
       if (sawBrace && depth <= 0) break;
     }
   });
-  assert.ok(found,
+  return found ? [] : [
     "showView 离开 review 时没清 detailPageNo——状态活过了它的视图，错误会写进看不见的元素"
-    + "（单向不变量：detailPageNo !== null ⇒ currentView === \"review\"）");
+    + "（单向不变量：detailPageNo !== null ⇒ currentView === \"review\"）",
+  ];
+}
+
+/** ② 防的是「谁负责清」有第二个答案——别的地方也清一遍，等于给这个状态开了两个入口。 */
+export function detailPageNullAssignmentProblems(source) {
+  const src = String(source || "");
+  const range = topLevelFunctionRange(src.split("\n"), "closePageDetail");
+  if (!range) {
+    return ["app.js 里找不到顶层 function closePageDetail( —— 定位失败就红（fail closed）"];
+  }
+  const hits = assignmentHits(src, "detailPageNo").filter((hit) => /=\s*null\b/.test(hit.code));
+  if (hits.length !== 1) {
+    return [`detailPageNo = null 的赋值点是 ${hits.length} 处（${hits.map((h) => h.line).join(" / ")}）——`
+      + "只许 closePageDetail 内那一处；别的地方清它，等于又给「谁负责清」开了第二个答案"];
+  }
+  if (hits[0].line < range[0] || hits[0].line > range[1]) {
+    return [`detailPageNo = null 出现在 ${hits[0].line} 行，不在 closePageDetail（${range[0]}–${range[1]}）里——`
+      + "清状态的唯一入口必须是 closePageDetail"];
+  }
+  return [];
+}
+
+/** ③ 防的是「回忆变成第二个真源」——lastDetailPageNo 只写一次，且只在 openPageDetail 里。 */
+export function lastDetailPageNoProblems(source) {
+  const src = String(source || "");
+  const range = topLevelFunctionRange(src.split("\n"), "openPageDetail");
+  if (!range) {
+    return ["app.js 里找不到顶层 function openPageDetail( —— 定位失败就红（fail closed）"];
+  }
+  const hits = assignmentHits(src, "lastDetailPageNo");
+  if (hits.length !== 1) {
+    return [`lastDetailPageNo 的赋值点是 ${hits.length} 处（${hits.map((h) => h.line).join(" / ")}）——`
+      + "它必须是只写一次的「回忆」，否则 detailPageNo 那个「两个真源」的问题会在这里重演"];
+  }
+  if (hits[0].line < range[0] || hits[0].line > range[1]) {
+    return [`lastDetailPageNo 在 ${hits[0].line} 行被赋值，不在 openPageDetail（${range[0]}–${range[1]}）里——`
+      + "它必须是只写一次的「回忆」，否则又变成第二个真源"];
+  }
+  return [];
+}
+
+// ---------------------------------------------------------------- 真树：三条形态判据
+
+test("① showView 的「非 review」分支必须调 closePageDetail()（实树）", () => {
+  const problems = showViewClearProblems(readFileSync(APP_FILE, "utf8"));
+  assert.deepEqual(problems, [], problems.join("\n"));
 });
 
-test("② `detailPageNo = null` 的赋值点只许两处：声明 + closePageDetail 内", () => {
-  const source = readFileSync(APP_FILE, "utf8");
-  const lines = source.split("\n");
-  const range = topLevelFunctionRange(lines, "closePageDetail");
-  assert.ok(range, "app.js 里找不到顶层 function closePageDetail( —— 结构变了，先修这条判据");
-  const hits = assignmentHits(source, "detailPageNo").filter((hit) => /=\s*null\b/.test(hit.code));
-  const inClose = hits.filter((hit) => hit.line >= range[0] && hit.line <= range[1]);
-  assert.equal(hits.length, 1,
-    `detailPageNo = null 的赋值点是 ${hits.length} 处（${hits.map((h) => h.line).join(" / ")}）——`
-    + "只许 closePageDetail 内那一处；别的地方清它，等于又给「谁负责清」开了第二个答案");
-  assert.equal(inClose.length, 1,
-    `detailPageNo = null 出现在 ${hits[0].line} 行，不在 closePageDetail（${range[0]}–${range[1]}）里——`
-    + "清状态的唯一入口必须是 closePageDetail");
+test("② detailPageNo = null 只许一处，且在 closePageDetail 里（实树）", () => {
+  const problems = detailPageNullAssignmentProblems(readFileSync(APP_FILE, "utf8"));
+  assert.deepEqual(problems, [], problems.join("\n"));
 });
 
-test("③ `lastDetailPageNo = ` 恰好 1 处，且只在 openPageDetail 里（数量 + 位置两个条件）", () => {
-  const source = readFileSync(APP_FILE, "utf8");
-  const lines = source.split("\n");
-  const range = topLevelFunctionRange(lines, "openPageDetail");
-  assert.ok(range, "app.js 里找不到顶层 function openPageDetail( —— 结构变了，先修这条判据");
-  const hits = assignmentHits(source, "lastDetailPageNo");
-  assert.equal(hits.length, 1,
-    `lastDetailPageNo 的赋值点是 ${hits.length} 处（${hits.map((h) => h.line).join(" / ")}）——`
-    + "它必须是只写一次的「回忆」，否则 detailPageNo 那个「两个真源」的问题会在这里重演");
-  assert.ok(hits[0].line >= range[0] && hits[0].line <= range[1],
-    `lastDetailPageNo 在 ${hits[0].line} 行被赋值，不在 openPageDetail（${range[0]}–${range[1]}）里——`
-    + "它必须是只写一次的「回忆」，否则又变成第二个真源");
+test("③ lastDetailPageNo 恰好一处，且只在 openPageDetail 里（实树）", () => {
+  const problems = lastDetailPageNoProblems(readFileSync(APP_FILE, "utf8"));
+  assert.deepEqual(problems, [], problems.join("\n"));
 });
 
-test("④ 运行时：showView(\"pages\") 之后 detailPageNo 必须为 null（行为判据）", () => {
+// ---------------------------------------------------------------- 自检：同一内核吃假源码，必须红
+
+test("①②③ 自检：假源码违规要点名、定位失败也要红（判据自己能被证伪）", () => {
+  const good = [
+    'function showView(name) {',
+    '  if (name !== "review") { closeTaskDrawer(); closePageDetail(); }',
+    '}',
+    'function openPageDetail(pageNo) {',
+    '  detailPageNo = pageNo;',
+    '  lastDetailPageNo = pageNo;',
+    '}',
+    'function closePageDetail() {',
+    '  detailPageNo = null;',
+    '}',
+  ].join("\n");
+  assert.deepEqual(showViewClearProblems(good), [], "自检失败：合规假源码被 ① 误报");
+  assert.deepEqual(detailPageNullAssignmentProblems(good), [], "自检失败：合规假源码被 ② 误报");
+  assert.deepEqual(lastDetailPageNoProblems(good), [], "自检失败：合规假源码被 ③ 误报");
+
+  // 违规①：非 review 分支里没有 closePageDetail
+  const noClear = good.replace("closeTaskDrawer(); closePageDetail();", "closeTaskDrawer();");
+  assert.ok(showViewClearProblems(noClear).some((m) => m.includes("离开 review 时没清 detailPageNo")),
+    `自检失败：注掉 closePageDetail 的假源码没被 ① 抓住——${showViewClearProblems(noClear).join("；")}`);
+
+  // 违规②：别处又清一次
+  const doubleNull = good.replace('  if (name !== "review") {', '  detailPageNo = null;\n  if (name !== "review") {');
+  assert.ok(detailPageNullAssignmentProblems(doubleNull).some((m) => m.includes("赋值点是 2 处")),
+    `自检失败：两处 detailPageNo = null 没被 ② 抓住——${detailPageNullAssignmentProblems(doubleNull).join("；")}`);
+
+  // 违规③：别处又写一次「回忆」
+  const doubleMemory = good.replace('  detailPageNo = pageNo;', '  detailPageNo = pageNo;\n  lastDetailPageNo = pageNo;');
+  assert.ok(lastDetailPageNoProblems(doubleMemory).some((m) => m.includes("赋值点是 2 处")),
+    `自检失败：两处 lastDetailPageNo 赋值没被 ③ 抓住——${lastDetailPageNoProblems(doubleMemory).join("；")}`);
+
+  // **定位失败**这一类：函数改名 / 被拆走 —— 必须红，不能静默当合规
+  const renamed = good.replace("function showView(name)", "function switchView(name)");
+  assert.ok(showViewClearProblems(renamed).some((m) => m.includes("找不到顶层 function showView(")),
+    `自检失败：showView 改名后 ① 反而绿了——${showViewClearProblems(renamed).join("；")}`);
+  const noClose = good.replace("function closePageDetail()", "function dismissDetail()");
+  assert.ok(detailPageNullAssignmentProblems(noClose).some((m) => m.includes("找不到顶层 function closePageDetail(")),
+    "自检失败：closePageDetail 改名后 ② 反而绿了");
+  const noOpen = good.replace("function openPageDetail(pageNo)", "function showDetail(pageNo)");
+  assert.ok(lastDetailPageNoProblems(noOpen).some((m) => m.includes("找不到顶层 function openPageDetail(")),
+    "自检失败：openPageDetail 改名后 ③ 反而绿了");
+});
+
+// ---------------------------------------------------------------- ④ 行为判据（**无假源码自检**）
+//
+// 说明：④ 要跑 vm 加载真 app.js，造不出"假源码版"的等价夹具——所以它只有**一次真实喂红**。
+// 复现方式：注掉 closePageDetail 里的 `detailPageNo = null;`（① 仍会绿），再跑本文件：
+//   showView("pages") 之后 detailPageNo = 1 ⇒ ④ 红。
+test("④ 运行时：showView(\"pages\") 之后 detailPageNo 必须为 null（行为判据，无假源码自检）", () => {
   const ctx = loadApp();
   // showView 第一行就 `el("view-x").hidden = …`，而 loadApp 的桩 document 返回 null —— 直接炸。
   // 这里装的是**最小可信桩**，不是「模拟 DOM」：它只保证「读属性不炸、写属性不存」，
@@ -130,7 +215,7 @@ test("④ 运行时：showView(\"pages\") 之后 detailPageNo 必须为 null（�
     document.getElementById = () => fakeEl;
     document.querySelector = () => fakeEl;
     document.querySelectorAll = () => [];
-    // 前置：模拟"详情开着"（读法见下：detailPageNo 是顶层 let，不挂全局对象，但 runInContext 能读词法绑定）
+    // 前置：模拟"详情开着"（detailPageNo 是顶层 let，不挂全局对象，但 runInContext 能读词法绑定）
     detailPageNo = 1;
   `, ctx);
   vm.runInContext('showView("pages");', ctx);
