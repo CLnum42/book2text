@@ -6710,7 +6710,7 @@ async function refreshLayoutDetectPlan() {
 /** 秒 → "约 2 分 10 秒"（粗一点，别给出假精度）。 */
 function formatDuration(seconds) {
   const raw = Number(seconds) || 0;
-  if (raw > 0 && raw < 1) return "不到 1 秒";
+  if (raw < 1) return "不到 1 秒";   // 含 0：页数 > 0 时永远不许出现「约 0 秒」
   const total = Math.max(0, Math.round(raw));
   if (total < 60) return `约 ${total} 秒`;
   const minutes = Math.floor(total / 60);
@@ -6736,10 +6736,14 @@ function renderLayoutDetectPlan(plan) {
       `<div class="layout-plan__row"><span>只补拟合版心</span><strong>${fit}</strong></div>`
     );
   }
-  if (detect) {
+  const needs = detect + fit;
+  if (needs) {
     const perPage = Number(plan.seconds_per_page || 0);
+    // 后端 estimated_seconds 是取整后的整数（0.387 会变成 0）：这里按页数×单页耗时兜底，
+    // 保证「这次要跑的页数 > 0」时不会显示 0 秒。
+    const estimated = Number(plan.estimated_seconds) || needs * perPage;
     rows.push(
-      `<div class="layout-plan__row"><span>预计耗时</span><strong>${formatDuration(plan.estimated_seconds)}</strong></div>`
+      `<div class="layout-plan__row"><span>预计耗时</span><strong>${formatDuration(estimated)}</strong></div>`
     );
     rows.push(
       `<div class="layout-plan__row layout-plan__row--muted"><span>单页约</span><span>${perPage.toFixed(2)} 秒</span></div>`
