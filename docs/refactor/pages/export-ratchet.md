@@ -103,7 +103,7 @@
      + queueOverlayRender / pumpOverlayRender / resetOverlayQueue；
      suggestion 侧 pumpPageSuggestionQueue + suggestionScanQueued + suggestionScanTimer
      + scanVisiblePageSuggestions + scheduleSuggestionScan
-⇒ R8 −2 · deps −5
+⇒ R8 −2（两个泵）· deps −8（逐键见下表；不是 −5）
 
 入场条件（Builder 三条风险，原样）：
 ① 测试沙箱没有 requestAnimationFrame / setTimeout（vm 只给 window/document/localStorage）——
@@ -201,7 +201,7 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 刀 9.4 （−3）     33 = 3 + 12 + 16 C + 2 L
 刀 9.5 （−12 +1） 22 = 3 +  0 + 16 C + 3 L(refresh)
 刀 9.6 （−1）     21 =            16 C + 3 L   只做 undoMarginEdit（deps −1）
-刀 10  （−2）     19 =            16 C + 3 L   队列子系统搬进模块（两个泵死在这，deps −5）
+刀 10  （−2）     19 =            16 C + 3 L   队列子系统搬进模块（两个泵死在这，deps −8）
 刀 11 （不变）    19 = 16 C + 3 L（init / enter / refresh）  冻结清册 + 落地 §八 的机检
 ```
 
