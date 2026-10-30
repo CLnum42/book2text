@@ -254,12 +254,23 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 刀 9.2 （−3 +2）  52 = T 32 + C 18 + L 2   pollTask 的三处收成 2 个能力（§三）
 刀 9.3 （−12 +3） 43 = T 20 + C 21 + L 2   版心 12 键全死；+3 键（onTaskFinished / onWorkflowLoaded / onLayoutDetectStarted）
 刀 9.4 （−3）     42 = T 17 + C 23 + L 2   ← 已落盘（先前的 40 是预测值，作废）
-刀 9.5 （待形态定） 42 − 11 + N · C 23 → **24**   checkSelection 是**同一个键换类**（T→C），
-                                                不是"删一个再加一个"；N = 收成的能力数
-刀 9.6 （−1）      待 9.5 定后回填（只做 undoMarginEdit）
+刀 9.5 （−11 +8） 39 = T 5 + C 32 + L 2   ← 已落盘（`b135d44`）
+          42 − 11(T 死) + 8(新能力) = 39；checkSelection 是**同一个键换类**（T −1 / C +1，总数不动）
+          · 11 个 T 死 · 8 个新能力（onPagesReloaded / onPagesRendered / onAuxStatusChanged /
+            onPageStatesChanged / onAutoApplyChanged / onWorkflowStepChanged /
+            onPageBlocksInvalidated / onPageSuggestionsInvalidated）· renderWorkflowFilter 并入 onWorkflowLoaded（0 新增）
+          · deps **208**（214 − 7 + 1 openMasks）· 行数 app.js 13,197 → **13,078**（−119）· pages-view 3,532 → **3,704**（+172）
+          · 转发器删 **11** 个（不是 12：:4774 是 checkSelection 的转发器，它判 C 后仍在 api）
+          · 选择族搬入 **75** 行（不是 62：另含 selectOnly 5 行 / toggleSelection 8 行，族内 3241/3269/3271 调它们）
+          · keydown 块 **12777–12791**（15 行含 1 行注释），12792 起是 platform-warning
+刀 9.6 （−1）      待形态定（只做 undoMarginEdit）
 刀 10  （−4）      待 9.5 定后回填（队列子系统：两个泵 + queueOverlayRender + updatePageVisibility）
 刀 11 （不变）     终态 = T 0 ∧ L 3 ∧ C 按清册（② 推导值随 C 变，**此处不预先写死**）
 ```
+
+> **`onWorkflowLoaded` 扩参的落法（9.5 实测）**：调用**留在 try/catch 之外**（今天的 5382 那一处 +
+> package 分支 5356，共 2 处调用位），参数用 try 前声明的变量带出；**别把调用挪进 try**——
+> 9.3 的 `refreshLayoutDetectEntry` 一抛错会被本 catch 抓住、再用 `{}` 调一次 ⇒ 双重调用 + 错参数。
 
 **曲线以后按"这个键能不能搬"算，不按"这一刀有几个键"算**（今天三次同型）：每个 T 只有三种死法——
 
@@ -320,12 +331,12 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 | 概念 | 判据 | 现在 |
 |---|---|---|
 | **① 终态判据**（定义"收完"） | `T == 0` ∧ `L == 3`（init/enter/refresh）∧ `C == 清册`（两向机检） | 未达成（T 35） |
-| **② 推导值**（会变，**不是目标**） | `C 的条数 + 3` | **26 = C 23 + L 3**（9.5 起随 C 变，不再预先写死） |
+| **② 推导值**（会变，**不是目标**） | `C 的条数 + 3` | **35 = C 32 + L 3**（9.5 实测；此后随 C 变，不预先写死） |
 | **③ 防漂兜底**（只降不升） | `R8.total` 每刀 ≤ 上一刀；历史峰值 **61** | 现在 **53** |
 
 - ① 是**判据**，能被机检（T/L/C 三个计数）；② 是 ① 的算术后果——C 一变它就变，
   **它不许进任何"目标"句式**；③ 是防"收口反涨"的棘轮，不是"要做到多少"。
-- 谁在报告里写"终态 26"，必须同时说明那是 ②（推导值），不是 ①（判据），否则下一个人会拿它当目标去凑。
+- 谁在报告里写"终态 35"，必须同时说明那是 ②（推导值），不是 ①（判据），否则下一个人会拿它当目标去凑。
 
 ### 为什么 `3` 做不到（判据作废，理由是历史，留着防再犯）
 
