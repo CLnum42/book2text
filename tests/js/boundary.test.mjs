@@ -2428,15 +2428,43 @@ test("move: 自检（A1 认 Move-Gate 声明）：a 声明+收紧绿 / b 未声�
     `A1 自检失败：声明 + 只收紧被判红——${run(table(5), parent, ["tests/js/pages-r3-exemptions.mjs"]).join("；")}`);
   // b：未声明 → 仍按三张表块判 → 红
   // 未声明时行为回到旧 A1：这个文件一块都解析不到 → 报「找不到登记表块」（同样是红）
-  assert.ok(run(table(5), parent, []).some((m) => m.includes("找不到登记表块") || m.includes("不在三张登记表内")),
+  assert.ok(run(table(5), parent, []).some((m) => m.includes("找不到登记表块") || m.includes("不在登记表内")),
     `A1 自检失败：未声明改表被放过——${run(table(5), parent, []).join("；")}`);
   // c：声明 + 放宽（cap 10 → 11）→ 方向判据红
   assert.ok(run(table(11), parent, ["tests/js/pages-r3-exemptions.mjs"]).some((m) => m.includes("cap 合计")),
     `A1 自检失败：声明后放宽被放过——${run(table(11), parent, ["tests/js/pages-r3-exemptions.mjs"]).join("；")}`);
+  // f：刀号登记表 KNIVES 是 A1 认的第四张表——块内（本刀 pending → landed）绿，块外仍红
+  const reg = (rows, extra = "") => [
+    "export const KNIVES = [",
+    ...rows,
+    "];",
+    "export function stageSourceProblems() {",
+    extra || "  return [];",
+    "}",
+  ].join("\n");
+  const regCases = (afterLines, parentLines, added, deleted) => [{
+    path: "tests/js/knife-registry.mjs", addedRanges: added, deletedRanges: deleted,
+    commitSource: afterLines, parentSource: parentLines,
+  }];
+  const regFiles = ["backend/book2text/static/app.js", "tests/js/knife-registry.mjs"];
+  const regDeclared = ["tests/js/knife-registry.mjs"];
+  const regRun = (after, parentSrc, added, deleted) => moveScopeProblems({
+    sha: "mov5678", files: regFiles, changes: regCases(after, parentSrc, added, deleted),
+    declaredPaths: regDeclared,
+  });
+  const regParent = reg(['  { n: 5, status: "landed" },']);
+  const regMoved = reg(['  { n: 6, status: "landed" },']);
+  assert.deepEqual(regRun(regMoved, regParent, [[2, 2]], [[2, 2]]), [],
+    `A1 自检失败：KNIVES 块内的落盘改动被判红——${regRun(regMoved, regParent, [[2, 2]], [[2, 2]]).join("；")}`);
+  const regOutsideBody = reg(['  { n: 5, status: "landed" },'], "  const zz = 1;");
+  const regOutsideProblems = regRun(regOutsideBody, regParent, [[5, 5]], [[5, 5]]);
+  assert.ok(regOutsideProblems.some((m) => m.includes("不在登记表内")),
+    `A1 自检失败：KNIVES 块外的改动被放过——放宽到 KNIVES 不等于放行整个文件（${regOutsideProblems.join("；") || "没报任何问题"}）`);
+
   // e：声明但改动落在块外（注释行）→ 仍红（口子只覆盖登记常量，不是整文件）
   const outside = table(5, "// 块外注释");
   assert.ok(run(outside, parent, ["tests/js/pages-r3-exemptions.mjs"], [[5, 5]], [[5, 5]])
-    .some((m) => m.includes("不在三张登记表内") || m.includes("找不到登记表块")),
+    .some((m) => m.includes("不在登记表内") || m.includes("找不到登记表块")),
     `A1 自检失败：块外改动被放过——${run(outside, parent, ["tests/js/pages-r3-exemptions.mjs"]).join("；")}`);
 });
 

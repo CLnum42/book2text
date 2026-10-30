@@ -120,21 +120,25 @@ export function registrationContent(sha, docText) {
 }
 
 /**
- * **`move:` 笔类（Chief 2026-10-29）**：搬运一个视图时，产品代码与三张登记表必须同批改，
+ * **`move:` 笔类（Chief 2026-10-29）**：搬运一个视图时，产品代码与登记表必须同批改，
  * 否则 A1 / A1b / A3 互相锁死（只落模块 → R5/R8 红；只改表 → R8 红；合成一笔 → A1 红）。
  *
  * 放行的判据不是"碰了哪张表"，而是"这笔改动是**必需的**"：
  * - 首行 `move(<视图>): …`；
  * - **必须同时**含 `backend/book2text/static/` 与 `tests/js/` 改动（空声明的 `move:` 是伪装）；
- * - `tests/js` 的**全部**变更行（增与删）必须落在三张登记表块内：
- *   `OWNERS` / `VIEW_STATE_PREFIXES` / `VIEW_EXPORTS`；
+ * - `tests/js` 的**全部**变更行（增与删）必须落在四张登记表块内：
+ *   `OWNERS` / `VIEW_STATE_PREFIXES` / `VIEW_EXPORTS` / `KNIVES`；
+ *   `KNIVES`（`tests/js/knife-registry.mjs` 的刀号登记表）也算登记表：`move:` 笔要靠它把本刀的
+ *   `pending` 改成 `landed`，这是正常动作。**放宽到 KNIVES 不等于放行整个文件**——KNIVES 块外
+ *   仍红。而且方向有另一道闸卡着：`registryMax − gitMax ∈ {0,1}`（见 `stageSourceProblems`），
+ *   一笔 move: 顺手把刀 10 也标 landed 就是 delta ≥ 2 → 红。**A1 只管位置，delta 管方向**；
  * - 块边界**从源码派生**（`const NAME = {` → 配对 `};`），**不手写行号**——
  *   手工行号正是"会漂的副本"，任何一次插入就失效；
  * - 找不到块 → **红（fail closed）**，不许"解析不了就放行"；越界 → 红并打印 `文件:行`；
  * - **豁免表与上限一律不放行**（顶层 `const` 名字带 `EXCUS` 或 `MAX`）：那是削弱闸的旋钮，
  *   和"登记某个模块叫什么"是两回事。
  */
-const MOVE_TABLES = ["OWNERS", "VIEW_STATE_PREFIXES", "VIEW_EXPORTS"];
+const MOVE_TABLES = ["OWNERS", "VIEW_STATE_PREFIXES", "VIEW_EXPORTS", "KNIVES"];
 /** 豁免表文件里**允许被 move: 笔改**的顶层常量（方向由 exemptionDeltaProblems 判，A1 只管位置）。 */
 export const MOVE_EXEMPTION_BLOCKS = [
   "PAGES_R3_EXEMPTIONS", "PAGES_R3_TOTAL_CAP", "PAGES_R3_PENDING", "PAGES_R3_BLOCKED_MAX",
@@ -434,7 +438,7 @@ export function moveScopeProblems({ sha, files, changes, keepListText = null, de
             continue;
           }
           problems.push(
-            `A1: ${short} ${change.path}:${line} 的${side}不在三张登记表内`
+            `A1: ${short} ${change.path}:${line} 的${side}不在登记表内`
             + `（${MOVE_TABLES.join(" / ")}）——move: 笔只许改登记表`,
           );
         }
@@ -524,7 +528,7 @@ export function commitContractProblems({
   const isContract = subject.startsWith("test-contract:");
 
   // A1（形态）：普通提交不许同时碰产品与 tests/js；`move:` 笔是唯一例外，
-  // 但它有更严的代价：tests/js 的每一行改动都必须落在三张登记表里（见 moveScopeProblems）。
+  // 但它有更严的代价：tests/js 的每一行改动都必须落在登记表里（见 moveScopeProblems）。
   if (isMove) {
     problems.push(...moveScopeProblems({
       sha, files, changes: moveChanges || [], declaredPaths: moveGateDeclaration(message) || [],
