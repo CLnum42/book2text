@@ -3545,28 +3545,29 @@ const VIEW_EXPORTS = {
     "renderPageNumberMetrics", "renderRecognitionSettings", "renderStepPanels",
     "renderWorkflowFilter", "updateRecognitionAuxProgress",
     // 刀 4：2 个临时转发键，**死亡刀号 = 刀5**（§8.2：每键带死亡刀号，到点未死就红）。
-    "applyPageZoom",         // 死亡刀号 = 刀5（showView / goToWorkflowStep / setPageZoom）
-    "confirmAllUnconfirmed", // 死亡刀号 = 刀5（finishConfirmPages）
-    // 刀 5：18 个新转发键，**死亡刀号 = 刀6**（导出收口刀；53 − 22 = 31 = 13 候选 + 18 本刀）
+    "applyPageZoom",         // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "confirmAllUnconfirmed", // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    // 刀 5：18 个新转发键；死亡刀号**待 Architect 裁 kind** 后再定（不能一律改刀9：
+    // 有些是永留的 capability）。机器的死期表是 EXPORT_DEATH_KNIFE，注释只是副本
     // 本刀死 1 个：renderPageSummary（0 个外壳调用者，模块内已直改呼，deps 键与 api 键一并删）。
-    "checkSelection",   // 死亡刀号 = 刀6
-    "finishMarginDetectBar",   // 死亡刀号 = 刀6
-    "forgetAllPageBlocks",   // 死亡刀号 = 刀6
-    "forgetAllPageSuggestions",   // 死亡刀号 = 刀6
-    "pageScroller",   // 死亡刀号 = 刀6
-    "pausePageThumbnails",   // 死亡刀号 = 刀6
-    "pumpOverlayRender",   // 死亡刀号 = 刀6
-    "queueOverlayRender",   // 死亡刀号 = 刀6
-    "rerunAuxiliary",   // 死亡刀号 = 刀6
-    "scanVisiblePageSuggestions",   // 死亡刀号 = 刀6
-    "setMarginStatus",   // 死亡刀号 = 刀6
-    "setPageNumberStatus",   // 死亡刀号 = 刀6
-    "showMarginDetectProgress",   // 死亡刀号 = 刀6
-    "startLayoutDetection",   // 死亡刀号 = 刀6
-    "visiblePages",   // 死亡刀号 = 刀6
-    "openPageSetup",   // 死亡刀号 = 刀6
-    "toggleMarginView",   // 死亡刀号 = 刀6
-    "togglePageBlocksOverlay",   // 死亡刀号 = 刀6
+    "checkSelection",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "finishMarginDetectBar",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "forgetAllPageBlocks",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "forgetAllPageSuggestions",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "pageScroller",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "pausePageThumbnails",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "pumpOverlayRender",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "queueOverlayRender",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "rerunAuxiliary",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "scanVisiblePageSuggestions",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "setMarginStatus",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "setPageNumberStatus",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "showMarginDetectProgress",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "startLayoutDetection",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "visiblePages",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "openPageSetup",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "toggleMarginView",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
+    "togglePageBlocksOverlay",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     // 刀 6：4 个操作入口（R8 53 → 57；Architect 2026-10-30 重签，曲线 34→36→40→53→**57**→22→3）。
     // `syncToolbarToggles` 是第一个**模块→模块**键：调用者是四个 view 模块，app.js 里恒 0 次——
     // 它的"到点必须死"不能再用「app.js 引用 = 0」判（那一出生就成立），改成全仓引用。
@@ -3640,6 +3641,141 @@ test("R8（按模块）：每个视图模块的导出名与数量都只许等于
     }
   }
   assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+/**
+ * **每个导出键的死亡刀号 —— 机器可读的唯一定义**（2026-10-30 Chief 裁定补机检）。
+ *
+ * 为什么要有它：`VIEW_EXPORTS` 里那句「// 死亡刀号 = 刀N」是**注释**，重编号之后没人更，
+ * 于是 24 个键里 20 个仍活着、死期还写着刀5/刀6——**「到点未死」没有任何机检**，死亡刀号只是记账。
+ * 现在：判据只认这张表，注释只是副本。
+ *
+ * 2026-10-30 重算：20 个仍活的键死期统一改 **刀 9（导出收口那一刀）**——依据是曲线 R8 61 → 22
+ * 就是砍它们，不是拍脑袋；4 个本来就写 刀9/刀10 的不动（showPagesError / pagesErrorMessage /
+ * setMarginJudgementCheckbox = 刀9，syncToolbarToggles = 刀10）。
+ */
+const EXPORT_DEATH_KNIFE = {
+  // 2026-10-30 起**暂时为空**，并登记到期点（`EXPORT_DEATH_EXPIRES`）。
+  //
+  // 为什么空：Architect 的 ratchet-two-kinds（`docs/refactor/pages/export-ratchet.md`）把 57 个键分成
+  //   L lifecycle（init/enter/refresh）· T transitional（代码没搬完才存在 → **必须带死期**）
+  //   · C capability（触发者在别的域 → **不写死期**，改登记 callers + 理由）。
+  // 历史数据里「20 个活键都在刀 9 死」把两类混成一个数，两次改判后就被推翻——所以先清空，等清册。
+  // 有明确死期、且能确认是 T 的键，等 kind 清册落地后逐键填回这张表（注释里的「死亡刀号」只是副本）。
+  //
+  // 一条教训（2026-10-30 同日栽过两次）：**模拟态的中间数字不能当落盘后的验收基准**——
+  // 我在刀 7 的模拟里只删了 2 行、报出 app.js 13,460，真实落盘值是 **13,428**（recognizePage 整段 50 行搬走）。
+};
+/** 死期表必须非空的到期刀：kind 清册（L/T/C 逐键）落地时这张表就该填满。 */
+const EXPORT_DEATH_EXPIRES = 9;
+
+/** app.js 里 `PagesView.<key>` 的引用数（外壳调模块的唯一形态）。 */
+function appCallsOfExportKey(appSource, key) {
+  const re = new RegExp(`(?:window\\.)?PagesView\\s*\\.\\s*${key}\\b`, "g");
+  return [...String(appSource).matchAll(re)].length;
+}
+
+/**
+ * 「到点未死」判定内核（纯函数，自检喂合成样例）。
+ *
+ * 对每个声明了死亡刀号的键：若 `死亡刀号 <= 当前刀`，则
+ *   · 它在 app.js 的引用必须 == 0；
+ *   · 它不许还在 api 表里。
+ * 两条有一条不满足就红，红文点名键 + 死亡刀号 + 当前刀 + 实际引用数。
+ *
+ * **不能被静默停用**：今天绿是因为刀 9 还没到；到刀 9 那天它自己会红。判据只从表取死期，
+ * 不从注释——注释漂了不会让判据空转。
+ */
+export function exportDeathProblems({ deaths, stage, appSource, apiKeys, expires = EXPORT_DEATH_EXPIRES }) {
+  const problems = [];
+  // **空表也是一种状态，必须带到期点**（否则就是「只能静默停用判据的常数」那个病：
+  // 一行 INFO 没人看，刀 9 到了也不会有人想起表还是空的）。
+  if (Object.keys(deaths || {}).length === 0) {
+    if (Number(stage) >= Number(expires)) {
+      problems.push(
+        `死期表为空，但当前刀已到 刀${stage}（到期刀 ${expires}）——kind 清册（L/T/C）应该已经落地，`
+        + "表必须非空：空表等于「到点未死」这条判据在空转",
+      );
+    }
+    return problems;
+  }
+  for (const [key, death] of Object.entries(deaths || {})) {
+    if (!(Number(death) <= Number(stage))) continue;
+    const count = appCallsOfExportKey(appSource, key);
+    const inApi = (apiKeys || []).includes(key);
+    if (count === 0 && !inApi) continue;
+    const why = [];
+    if (count > 0) why.push(`app.js 还有 ${count} 处 PagesView.${key} 引用`);
+    if (inApi) why.push("它仍在 api 表里");
+    problems.push(`导出键 ${key} 的死亡刀号是 刀${death}，当前刀已到 刀${stage}——但 ${why.join("、")}：到点未死`);
+  }
+  return problems;
+}
+
+test("R8（到点未死）：死亡刀号 <= 当前刀的导出键，必须 app.js 引用 0 且不在 api 表", () => {
+  const deaths = EXPORT_DEATH_KNIFE["pages-view.js"] || {};   // 表可能为空（到期点见 EXPORT_DEATH_EXPIRES）
+  // 表自检：死期表里的每个键都必须真的在 VIEW_EXPORTS 的导出名里——拼错就等于这条判据不判它
+  const declared = new Set(VIEW_EXPORTS["pages-view.js"].names);
+  const unknown = Object.keys(deaths).filter((key) => !declared.has(key));
+  assert.deepEqual(unknown, [],
+    `EXPORT_DEATH_KNIFE 里的 ${unknown.join("、")} 不在 VIEW_EXPORTS 的导出名里——拼错就等于静默不判`);
+  const { keys: apiKeys } = moduleExportKeys("pages-view.js");
+  if (Object.keys(deaths).length === 0 && Number(STAGE_NOW) < Number(EXPORT_DEATH_EXPIRES)) {
+    console.log(`ℹ 死期表为空（到期刀 ${EXPORT_DEATH_EXPIRES}）：kind 清册落地后必须按 T/C 填 T 的死期，`
+      + "到那刀表仍空就是红");
+  }
+  const problems = exportDeathProblems({
+    deaths, stage: STAGE_NOW, appSource: readFileSync(APP_FILE, "utf8"), apiKeys,
+  });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("R8（死期表三态）：表空未到期绿 / 表空到期红 / 表非空照常判到点未死", () => {
+  // ① 表空 + 未到到期刀 → 绿（合法中间态）
+  assert.deepEqual(
+    exportDeathProblems({ deaths: {}, expires: 9, stage: 8, appSource: "", apiKeys: [] }), [],
+    "死期表三态失败：表空且未到期被判红",
+  );
+  // ② 表空 + 已到到期刀 → 红「到期未填」
+  const due = exportDeathProblems({ deaths: {}, expires: 9, stage: 9, appSource: "", apiKeys: [] });
+  assert.ok(due.some((m) => m.includes("死期表为空") && m.includes("到期刀 9")),
+    `死期表三态失败：到期仍空表被放过——${due.join("；")}`);
+  // ③ 表非空 → 正常判「到点未死」（不受空表分支影响）
+  const alive = exportDeathProblems({
+    deaths: { applyPageZoom: 6 }, expires: 9, stage: 6,
+    appSource: "function f() { PagesView.applyPageZoom(1); }", apiKeys: ["applyPageZoom"],
+  });
+  assert.ok(alive.some((m) => m.includes("到点未死")),
+    `死期表三态失败：表非空时「到点未死」没判——${alive.join("；")}`);
+});
+
+test("R8（到点未死）自检：到点还活着红 / 没到点绿 / 到点但已死绿", () => {
+  const alive = "function f() { PagesView.applyPageZoom(2); }\n";
+  const red = exportDeathProblems({
+    deaths: { applyPageZoom: 6 }, stage: 6, appSource: alive, apiKeys: ["applyPageZoom"],
+  });
+  assert.ok(red.some((m) => m.includes("applyPageZoom") && m.includes("刀6") && m.includes("刀6")
+    && m.includes("到点未死") && m.includes("1 处")),
+  `到点未死自检失败：到点仍被引用却没红或红文缺数字——${red.join("；")}`);
+
+  // 还没到点：绿（这就是今天的真实状态：死期 刀9 > 当前刀 6）
+  assert.deepEqual(
+    exportDeathProblems({ deaths: { applyPageZoom: 9 }, stage: 6, appSource: alive, apiKeys: ["applyPageZoom"] }),
+    [], "到点未死自检失败：没到点就红了",
+  );
+
+  // 到点且已死（引用 0 + 不在 api）：绿
+  assert.deepEqual(
+    exportDeathProblems({ deaths: { applyPageZoom: 6 }, stage: 6, appSource: "function f() {}", apiKeys: [] }),
+    [], "到点未死自检失败：到点且已死也被判红",
+  );
+
+  // 只在 api 表里、app.js 没引用 → 仍然红（半死不算死）
+  const apiOnly = exportDeathProblems({
+    deaths: { applyPageZoom: 6 }, stage: 6, appSource: "function f() {}", apiKeys: ["applyPageZoom"],
+  });
+  assert.ok(apiOnly.some((m) => m.includes("api 表")),
+    `到点未死自检失败：只剩 api 键也被放过——${apiOnly.join("；")}`);
 });
 
 test("R8（按模块）自检：多一个 / 少一个 / 改名 / 未登记模块，都必须红", () => {
@@ -3743,6 +3879,8 @@ const GATE_SWITCHES = [
   { name: "A5_MAX_EXCUSES", source: "手工上限，只降不升；现值见该行", check: "A5 例外条数上限" },
   { name: "R5_EXCUSES", source: "空表；{ state, file, owner, expires }", check: "R5 是否放过某处「模块写外壳状态」" },
   { name: "R5_MAX_EXCUSES", source: "手工上限，只降不升；现值见该行", check: "R5 例外条数上限" },
+  { name: "EXPORT_DEATH_EXPIRES", source: "Architect 的 kind 清册（docs/refactor/pages/export-ratchet.md）落地时点——"
+    + "清册落地后死期表必须非空，这个数只在清册推迟时才会动", check: "死期表为空时是否已经到期（到期未填 = 红）" },
 ];
 
 /** 「能让判据跳过/失效」的名字形态（Chief 2026-10-30 定，与登记表配套）。 */
