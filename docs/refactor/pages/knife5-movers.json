@@ -2,9 +2,11 @@
  "刀": 5,
  "口径": "view-pages 子树 id 引用（el/getElementById/querySelector，前缀锚 #id）；行范围量于 7caff23 树；口径_调用者/口径_归零同刀4",
  "基线": {
-  "appLines": 14095,
+  "appLines": 14101,
   "r3Total": 101,
-  "r3Ids": 38
+  "r3Ids": 38,
+  "pagesViewLines": 2287,
+  "树": "c4e45f9"
  },
  "movers": [
   {
@@ -570,9 +572,9 @@
    "死亡说明": "renderPageSummary 是唯一能死的键：0 个外壳调用者；模块内死注入 2 处（pages-view.js:365、762）"
   },
   "appLines": {
-   "before": 14095,
-   "after": 13457,
-   "口径": "-651 函数体 +15 转发器 -2（deps 块 -20 +18），±20"
+   "before": 14101,
+   "after": 13466,
+   "口径": "-651 函数体 +18 转发器 -2（deps 块 -20 +18），±20"
   },
   "pagesViewLines": {
    "before": 2287,
