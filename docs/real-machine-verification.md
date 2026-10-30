@@ -33,14 +33,14 @@ git status --porcelain        # 应当看到你自己的改动 + ?? .venv
 ```bash
 PYTHONPATH="$PWD/backend" \
   /Users/chenlin/DeepSeek Bot/book2text/.venv/bin/python -c \
-  "from book2text.main import main; raise SystemExit(main(['--port','9501','--no-browser','--library','/tmp/b2t-<task>-lib','--token','qa-<task>']))"
+  "from book2text.main import main; raise SystemExit(main(['--port','9500','--no-browser','--library','/tmp/b2t-<task>-lib','--token','qa-<task>']))"
 ```
 
 三个参数的理由：
 
 - `--library /tmp/b2t-<task>-lib`：项目库写到 `/tmp`，**不碰真项目库**，验完整个删掉。
 - `--token qa-<task>`：默认令牌每次启动随机生成（`secrets.token_urlsafe(32)`）；固定成短令牌后可以直接拼 URL、重启复用同一个地址、脚本不用每次抓日志。
-- `--port 9501`：给一个 95 段的起始端口，各人错开。**端口被占会自动往后试**，所以实际端口以日志为准：
+- `--port 9500`：**端口可任选**（示例 9500，走 95 段，各人错开）；**被占会自动往后试**，所以实际端口**一律以日志为准**：
 
 ```text
 界面地址：http://127.0.0.1:<实际端口>/?token=qa-<task>
@@ -75,7 +75,8 @@ window.fetch = (input, init) => {
 };
 ```
 
-判据：**`__stubHits` 命中，且只命中目标端点**（其它端点计数不变）。
+判据：**同一次失败注入里，计数从 0 变成 1，且只命中目标端点**（其它端点计数不变）。
+计数器名字自定——示例叫 `__stubHits`，换成什么都行；**别依赖仓库里有这个变量**（它是验收的人当场装的）。
 
 反例：界面上出现红色错误条，**不能**证明走的是你要验的那条路——红可能来自别的端点、上一条缓存、或一个早就存在的 500。**红是"发生了错误"，计数器是"你拦的那次请求真的发生了"，两者不是一回事。**
 
@@ -87,7 +88,7 @@ window.fetch = (input, init) => {
 - [ ] `rm -rf /tmp/b2t-<task>-lib`
 - [ ] `ego-browser finish({ keep: [] })`——**保留页面是例外，必须在报告里写明理由**（团队漏过一次 9 个 space）
 - [ ] `git status --porcelain`：**只剩 `?? .venv`**（你的改动应已提交）；还有未提交改动就在报告里点名，别让它混进下一轮验收
-- [ ] 报告里贴：实际端口 / 静态自检计数 / `__stubHits` 的值 / `git status`
+- [ ] 报告里贴：实际端口 / 静态自检计数 / 失败注入的计数 / `git status`
 
 ### 2.6 主树只做集成与推送
 
@@ -110,6 +111,6 @@ window.fetch = (input, init) => {
 - 树：worktrees/<你的>（分支 wt/<你的>，HEAD <sha>）
 - 服务：实际端口 <port>，库 /tmp/b2t-<task>-lib
 - 隔离自检：/static/<file>.js 含 <符号> × <计数>
-- 失败注入：<端点> __stubHits = <n>
+- 失败注入：<端点> 计数 0→<n>
 - 收尾：服务已停 / tmp 库已删 / ego-browser 已 finish / git status 只剩 ?? .venv
 ```
