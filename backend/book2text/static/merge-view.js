@@ -591,7 +591,8 @@
   async function openMergeView(assignmentId) {
     const project = injected.getProject();
     if (!project) return;
-    injected.closeModal("assign-panel");   // 合并是整屏的视图，别让任务包对话框压在上面
+    // 合并是整屏的视图，别让任务包对话框压在上面（刀 7 前置：外壳 id 收成具名能力，不当字符串传给 closeModal）
+    injected.closeAssignPanel?.();
     try {
       const data = await injected.apiJson(
         `/api/projects/${projectId()}/assignments/${assignmentId}/merge`

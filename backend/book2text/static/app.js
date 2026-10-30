@@ -13343,7 +13343,8 @@ function boot() {
   window.LibraryView?.init({
     apiJson: (...args) => apiJson(...args),
     applyProjectSettings: (...args) => applyProjectSettings(...args),
-    closeModal: (...args) => closeModal(...args),
+    // 刀 7 前置：不再把外壳 id 当字符串递给 closeModal（能力粒度 = 归属域 × 语义动作）
+    closeNewProjectMask: () => closeModal("new-project-mask"),
     getExportIncludeNotes: () => el("export-include-notes"),
     getLibraryProjects: () => libraryProjects,
     getMarginFitTried: () => marginFitTried,
@@ -13390,7 +13391,8 @@ function boot() {
 
   window.MergeView?.init({
     apiJson: (...args) => apiJson(...args),
-    closeModal: (...args) => closeModal(...args),
+    // 刀 7 前置：assign-panel 是外壳 chrome，id 不进模块（能力 = 关闭任务包对话框）
+    closeAssignPanel: () => closeModal("assign-panel"),
     getAssignError: () => el("assign-error"),
     getMergeState: () => mergeState,
     getProject: () => currentProject,

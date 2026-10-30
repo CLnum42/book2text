@@ -232,7 +232,8 @@ async function createProjectFromFile(file) {
     }
 
     injected.getNewProjectName().value = "";
-    injected.closeModal("new-project-mask");
+    // 刀 7 前置：外壳 id 不许当字符串传给通用能力（module 零豁免的字符串版缺口）⇒ 收成具名能力
+    injected.closeNewProjectMask?.();
     if (payload.text_layer_hint) {
       const warning = el("library-warning");
       warning.textContent =
