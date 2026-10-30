@@ -374,6 +374,11 @@
         .then((body) => {
           const detail = body && body.error && (body.error.detail || body.error.message);
           if (!detail) return;
+          // 调用方可以自带"写到哪里"（对比视图 / 页详情图写成固定元素），默认写进容器里的可见文字
+          if (isFn(options.write)) {
+            options.write(String(detail));
+            return;
+          }
           const host = getContainer();
           if (!host) return;
           let note = host.querySelector(".ptile__error");

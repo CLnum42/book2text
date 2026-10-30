@@ -2099,8 +2099,12 @@ async function loadComparePage(pageNo) {
       el("compare-canvas").hidden = false;
     };
     image.onerror = () => {
-      el("compare-image-status").textContent = "来源页渲染失败。";
+      el("compare-image-status").textContent = "来源页渲染失败。";   // 先给固定文案：不留空白
     };
+    // detail 迟到替换（同一个出口；取不到就保留上面那句）
+    window.PageTile?.attachRenderErrorDetail?.(image, {
+      write: (text) => { el("compare-image-status").textContent = text; },
+    });
     image.src = wanted;
   }
   return comparePageBlocks.get(pageNo);
@@ -7864,8 +7868,11 @@ function renderPageDetail(data) {
       drawDiffLayer();
     };
     image.onerror = () => {
-      el("detail-image-status").textContent = "这一页渲染失败。";
+      el("detail-image-status").textContent = "这一页渲染失败。";   // 先给固定文案：不留空白
     };
+    window.PageTile?.attachRenderErrorDetail?.(image, {
+      write: (text) => { el("detail-image-status").textContent = text; },
+    });
     image.src =
       `/api/projects/${project_id()}/pages/${pageNo}/image?size=view` +
       `&token=${encodeURIComponent(token)}`;
