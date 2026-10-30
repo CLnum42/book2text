@@ -49,8 +49,9 @@ pages 走，也不能跟着 package 走——它们要么归 review 模块，要
 **原判据「app.js 里 page-detail-error 引用 = 0」做不到，已作废**（2026-10-30 实测）：
 
 ```
-`page-detail-error` 是 **view-review** 的 id，app.js 里共 **23 处**（宿主按顶层函数归属数出 15 个，
-另一个口径数 17 —— 这个数不参与判据）。搬走 recognizePage 只减它体内那 1 处 → **22**。
+`page-detail-error` 是 **view-review** 的 id，app.js 里共 **23 处 / 15 个宿主**
+（按顶层函数归属数出 15，TestDev 独立复核也是 15；名单见 `docs/refactor/evidence/pages/review-ids-ledger.md`）。
+搬走 recognizePage 只减它体内那 1 处 → **22**。
 而且这 22 处**不进 pages 的 R3**：R3 只数 `#view-pages` 子树的 id。
 ⇒ 「R3 到 0」**不需要**把 review 视图收干净：review 是**另一本账**
    （93 个 id / 89 个被 app.js 引用 / 267 处，见 `docs/refactor/evidence/pages/review-ids-ledger.md`，TestDev 出）。
