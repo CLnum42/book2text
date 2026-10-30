@@ -202,7 +202,8 @@ async function hydrateView(name) {
     await loadWorkflow();
   } else if (name === "index" && !viewHydrated.index) {
     viewHydrated.index = true;
-    loadPageNumberSummary();
+    // 刀 9.4：只重读摘要、不报状态（能力的 text 省略就是这个含义，见模块头注释）
+    window.PagesView?.onPageNumberChanged();
   } else if (name === "export" && !viewHydrated.export) {
     viewHydrated.export = true;
     await refreshExportPreflight();
@@ -4165,16 +4166,14 @@ async function refreshMarginState() {
 let pageNumberAnalysis = null;
 let pageNumberStatusTimer = null;
 
-function setPageNumberStatus() { return window.PagesView.setPageNumberStatus.apply(window.PagesView, arguments); }
 
 /** 右栏摘要：已采用的模板与已填页数（小接口，不跑聚类）。 */
 let pageNumberMetricsLoading = false;
 
-function renderPageNumberMetrics() { return window.PagesView.renderPageNumberMetrics.apply(window.PagesView, arguments); }
 
 async function loadPageNumberMetrics() {
   if (!currentProject || pageNumberAnalysis || pageNumberMetricsLoading) {
-    renderPageNumberMetrics();
+    window.PagesView?.onPageNumberAnalysisReady();
     return;
   }
   pageNumberMetricsLoading = true;
@@ -4182,15 +4181,14 @@ async function loadPageNumberMetrics() {
     pageNumberAnalysis = await apiJson(
       `/api/projects/${currentProject.project_id}/page-numbers`
     );
-    renderPageNumberMetrics();
+    window.PagesView?.onPageNumberAnalysisReady();
   } catch {
-    renderPageNumberMetrics();
+    window.PagesView?.onPageNumberAnalysisReady();
   } finally {
     pageNumberMetricsLoading = false;
   }
 }
 
-async function loadPageNumberSummary() { return window.PagesView.loadPageNumberSummary.apply(window.PagesView, arguments); }
 
 async function openPageNumberPanel() {
   if (!currentProject) return;
@@ -4220,7 +4218,7 @@ async function refreshPageNumberAnalysis() {
     return;
   }
   renderPageNumberAnalysis(pageNumberAnalysis);
-  renderPageNumberMetrics();
+  window.PagesView?.onPageNumberAnalysisReady();
 }
 
 function pageNumberReliableChip(template) {
@@ -4510,8 +4508,7 @@ async function adoptPageNumberTemplate(template, range = null) {
     pageNumberAnalysis = data;
     renderPageNumberAnalysis(data);
     if (!el("page-number-review-panel").hidden) renderPageNumberReview(data);
-    await loadPageNumberSummary();
-    setPageNumberStatus(
+    await window.PagesView?.onPageNumberChanged(
       `已按模板填充 ${data.applied?.filled ?? 0} 页` + (range ? `（${scope}）` : "")
     );
   } catch (error) {
@@ -4537,8 +4534,7 @@ async function removePageNumberRange(fromPage, toPage) {
     pageNumberAnalysis = data;
     renderPageNumberAnalysis(data);
     if (!el("page-number-review-panel").hidden) renderPageNumberReview(data);
-    await loadPageNumberSummary();
-    setPageNumberStatus(`已移除第 ${fromPage}–${toPage} 页的第二套模板`);
+    await window.PagesView?.onPageNumberChanged(`已移除第 ${fromPage}–${toPage} 页的第二套模板`);
   } catch (error) {
     showError(el("page-number-error"), error);
   }
@@ -4766,8 +4762,7 @@ async function savePageNumberManual(pageNo, value) {
     );
     pageNumberAnalysis = data;
     renderPageNumberReview(data, pageNo);
-    await loadPageNumberSummary();
-    setPageNumberStatus(`第 ${pageNo} 页已改为手动映射`);
+    await window.PagesView?.onPageNumberChanged(`第 ${pageNo} 页已改为手动映射`);
   } catch (error) {
     showError(el("page-number-review-error"), error);
     // 失败时把输入框恢复成服务端的值

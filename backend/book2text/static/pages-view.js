@@ -1289,6 +1289,23 @@ async function loadPageNumberSummary() {
   }
 }
 
+/**
+ * 页码数据变了（写库成功后）：重读摘要，再回一行状态。
+ *
+ * 契约：**`text` 省略 / 空串 = 只重读摘要、不报状态**（hydrateView 进目录确认那条就是这种调用）。
+ * 顺序与 9.3 之前逐字一致：先 `await loadPageNumberSummary()`（它自己 catch，不会抛），再 setPageNumberStatus。
+ * 摘要读失败也要报状态：`loadPageNumberSummary` 内部吞掉错误，所以这行一定会跑到。
+ */
+async function onPageNumberChanged(text = "") {
+  await loadPageNumberSummary();
+  if (text) setPageNumberStatus(text);
+}
+
+/** 页码分析数据到手（或已有缓存）：重画右栏指标（只读 pageNumberAnalysis，壳状态经注入读）。 */
+function onPageNumberAnalysisReady() {
+  renderPageNumberMetrics();
+}
+
 /** 「⋯」里的检测入口：名字里带上还差多少页，点开先看计划再决定跑不跑。 */
 function refreshLayoutDetectEntry() {
   const item = el("layout-detect-open");
@@ -3147,9 +3164,7 @@ function enter() {
     undoMarginEdit,
     updatePageVisibility,
     loadFinishSummary,
-    loadPageNumberSummary,
     renderAutoApplyStatus,
-    renderPageNumberMetrics,
     renderRecognitionSettings,
     renderStepPanels,
     renderWorkflowFilter,
@@ -3158,6 +3173,8 @@ function enter() {
     checkSelection,
     forgetAllPageBlocks,
     forgetAllPageSuggestions,
+    onPageNumberAnalysisReady,
+    onPageNumberChanged,
     onRecognitionFinished,
     onTaskProgress,
     onLayoutDetectStarted,
@@ -3168,7 +3185,6 @@ function enter() {
     pumpOverlayRender,
     queueOverlayRender,
     scanVisiblePageSuggestions,
-    setPageNumberStatus,
     startLayoutDetection,
     toggleMarginView,
     togglePageBlocksOverlay,
