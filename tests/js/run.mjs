@@ -64,6 +64,7 @@ const TEST_FILES = [
   ["reading-diff-units", () => import("./reading-diff-units.test.mjs")],
   ["compute-char-spans", () => import("./compute-char-spans.test.mjs")],
   ["reading-view-behavior", () => import("./reading-view-behavior.test.mjs")],
+  ["recognition-target", () => import("./recognition-target.test.mjs")],
   ["index-view-behavior", () => import("./index-view-behavior.test.mjs")],
   ["page-tile", () => import("./page-tile.test.mjs")],
   ["step-timing", () => import("./step-timing.test.mjs")],
