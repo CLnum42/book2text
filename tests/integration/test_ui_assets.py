@@ -219,7 +219,8 @@ def test_page_confirmation_type_picker_has_exactly_five_types_and_no_include_swi
         assert f'{key}: "{label}"' in script, key
     # 旧的十类不该再出现在前端类型表 / 排序里
     assert "PAGE_TYPE_ORDER = [\"front\", \"toc\", \"body\", \"body_excluded\", \"back\"]" in script
-    assert "混合" in script
+    # 「混合」住在 renderStepPanels 邻近的摘要函数里——刀 3 已搬进 pages-view.js，两处一起扫。
+    assert "混合" in _script_with_view("pages-view.js")
     # 没有"直接设 include"的界面入口
     assert "patchSelectedPages({ include:" not in script
 
@@ -764,7 +765,8 @@ def test_recognition_settings_are_wired_to_project_settings() -> None:
     assert "function patchRecognitionSetting(" in script
     assert '"/settings"' in script or "}/settings`" in script
     assert "function renderRecognitionSettings(" in script
-    assert "option.disabled = needsVision && !visionOk" in script
+    # 引擎置灰的那行在 renderRecognitionSettings 体内，刀 3 已搬进 pages-view.js。
+    assert "option.disabled = needsVision && !visionOk" in _script_with_view("pages-view.js")
     assert "function setupRecognitionSettings(" in script
     # 双引擎不自动采用、策略只影响显示
     assert "不会自动采用" in page
@@ -1089,9 +1091,9 @@ def test_workflow_steps_scope_the_right_panel() -> None:
         "panel-recognition-status",
         "panel-recognition-settings",
     ):
-        assert f'group("{panel}"' in script, panel
+        assert f'group("{panel}"' in _script_with_view("pages-view.js"), panel
     # body 上带步骤，CSS 据此只放本步的开关（块框 / 版心不同时出现）
-    assert "document.body.dataset.workflowStep" in script
+    assert "document.body.dataset.workflowStep" in _script_with_view("pages-view.js")
     assert 'data-workflow-step="margin"' in css
     assert 'data-workflow-step="pages"' in css
 
