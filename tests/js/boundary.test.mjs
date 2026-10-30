@@ -3076,6 +3076,12 @@ const VIEW_EXPORTS = {
     "renderRecognitionStatus", "renderRecognitionVerdict", "renderSuggestionPanel", "renderTypePicker",
     "savePageMargin", "syncPageStates", "undoMarginEdit", "updateMarginDetectProgress",
     "updatePageVisibility", "updateSelectionPanel",
+    // 刀 3：14 个转发器对应的导出键（R8 表签字上限 34，见 docs/refactor/pages/knife3-plan.md §⑩；
+    // 每键都带死亡刀号——刀 4 清 9 个、刀 5 清 5 个，之后严格下降）。
+    "loadFinishSummary", "loadLanguageSummary", "loadPageNumberSummary", "refreshLayoutDetectEntry",
+    "refreshMarginDetectHint", "refreshMarginTiles", "renderAutoApplyStatus", "renderMarginStepVerdict",
+    "renderPageNumberMetrics", "renderPageSummary", "renderRecognitionSettings", "renderStepPanels",
+    "renderWorkflowFilter", "updateRecognitionAuxProgress",
   ] },
 };
 

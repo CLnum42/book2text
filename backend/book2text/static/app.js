@@ -555,67 +555,7 @@ function syncWorkflowSteps() {
  *
  * 分区本身还是原来那几块 DOM，只是按步显示；不改任何业务逻辑。
  */
-function renderStepPanels() {
-  const onPages = Boolean(currentProject) && currentView === "pages";
-  const step = currentProject ? workflowStep || "" : "";
-  const pageStep = onPages && step === "pages";
-  const marginStep = onPages && step === "margin";
-  const recognitionStep = onPages && step === "recognition";
-  // 目录确认也带版心开关（任务 46）：这一步要沿袭页面视图的版心/块框
-  const indexStep = Boolean(currentProject) && currentView === "index";
-  document.body.dataset.workflowStep = step;
-
-  const group = (id, visible) => {
-    const node = el(id);
-    if (!node) return;
-    node.hidden = !visible;
-  };
-  group("panel-page-settings", pageStep);
-  group("panel-layout-blocks", pageStep);
-  group("panel-pagenum-settings", pageStep);
-  group("panel-margin-settings", marginStep);
-  group("panel-recognition-status", recognitionStep);
-  group("panel-recognition-settings", recognitionStep);
-  // 第二引擎复核留在后面的「功能归位」刀里；这一刀不摆出来。
-  group("panel-advanced", false);
-
-  // 换成另一个步骤时给一个默认展开的分区；同一步内的重画不抢用户手动收起的状态。
-  const key = `${step}|${onPages}`;
-  const primary = pageStep
-    ? "panel-page-settings"
-    : marginStep
-      ? "panel-margin-settings"
-      : recognitionStep
-        ? "panel-recognition-status"
-        : null;
-  const keyChanged = key !== lastStepPanelKey;
-  lastStepPanelKey = key;
-  if (primary) {
-    const node = el(primary);
-    // 手风琴会在打开项目时按 localStorage 展开"上次那个分区"，而它可能属于另一个步骤、
-    // 此刻是隐藏的——于是当前步骤一个分区都没展开。这种情况只修一次：可见分区全关着才动。
-    const visibleGroups = [
-      ...document.querySelectorAll("#setup-panel details[data-panel]"),
-    ].filter((group) => !group.hidden);
-    const anyVisibleOpen = visibleGroups.some((group) => group.open);
-    if (node && (keyChanged || !anyVisibleOpen)) {
-      for (const group of visibleGroups) group.open = group === node;
-      node.open = true;
-    }
-  }
-
-  syncStepToggles(marginStep || indexStep);
-  if (marginStep) {
-    renderMarginPanel();
-    ensureMarginFitted();
-  }
-  if (pageStep) {
-    // 从审校视图改过块再回到页面确认：建议与版面状态要重读一次，不用旧缓存。
-    if (keyChanged) scheduleLayoutBlocks(true);
-    else renderLayoutBlocks();
-  }
-  if (recognitionStep) renderRecognitionStatus();
-}
+function renderStepPanels() { return window.PagesView.renderStepPanels.apply(window.PagesView, arguments); }
 
 /**
  * 底栏开关按步显示：版心步只要「版心」，页面确认 / 文字识别只要「块框」。
@@ -623,38 +563,6 @@ function renderStepPanels() {
  * 开关本身按项目记住（`b2t.pagesMargin.v1.*`），但**显示**跟着步骤走：
  * 不是版心步就把压暗关掉，免得把版心框叠在页面确认的网格上（这一步没有这个开关可关）。
  */
-function syncStepToggles(marginStep) {
-  const button = el("pages-margin-toggle");
-  if (!currentProject) return;
-  // 结果预览有自己的版心开关（任务 47）：这里只同步底栏按钮状态，
-  // 不按"非版心步就关掉"的规则把用户刚关掉的版心又打开。
-  if (currentView === "preview") {
-    if (button) button.classList.toggle("is-on", pagesMarginOn);
-    return;
-  }
-  // 正文审校是读稿主界面：版心 + 块框默认开着（任务 57），**不按步骤把它们压暗**。
-  // 用户自己关掉也尊重——这里只同步底栏按钮状态。
-  if (currentView === "reading") {
-    if (button) button.classList.toggle("is-on", pagesMarginOn);
-    return;
-  }
-  if (marginStep) {
-    if (!pagesMarginOn) {
-      pagesMarginOn = true;
-      if (button) button.classList.add("is-on");
-      refreshMarginTiles();
-    }
-    window.IndexView?.refresh();
-    return;
-  }
-  if (!pagesMarginOn) return;
-  pagesMarginOn = false;
-  if (button) button.classList.remove("is-on");
-  for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
-    clearTileMargin(tile);
-  }
-  window.IndexView?.refresh();
-}
 
 /** auto 页里还没有拟合框的那些页（= 版心未定）。 */
 function marginUndeterminedPages() {
@@ -790,62 +698,7 @@ function pageRecognized(page) {
 }
 
 /** 版心步的"一句话 + 一个数字 + 一个主按钮"。 */
-function renderMarginStepVerdict() {
-  if (!currentProject) return;
-  const v = marginStepVerdict();
-  const state = el("margin-verdict-state");
-  const line = el("margin-verdict-line");
-  const button = el("margin-confirm-all");
-  el("margin-confidence").textContent = `${v.settled}/${v.body.length} 已定`;
-  if (!state || !line || !button) return;
-  const wrap = state.parentElement;
-  wrap.classList.toggle("is-warn", v.key === "partial");
-  wrap.classList.toggle("is-ok", v.key === "fitted");
-  button.hidden = false;
-  switch (v.key) {
-    case "unprepared":
-      state.textContent = "未准备";
-      line.textContent =
-        `还没有识别出正文行（正文 ${v.body.length} 页）。版心按识别出的行框生成：` +
-        "先在「文字识别」这一步跑识别，回来这里就自动出框。";
-      button.textContent = "全部确认（先识别）";
-      button.disabled = true;
-      break;
-    case "working":
-      state.textContent = layoutDetectActive ? "正在检测版面…" : "正在生成版心…";
-      line.textContent = `已定 ${v.settled} / ${v.body.length} 页；跑完会接着把剩下的生成掉。`;
-      button.textContent = "正在处理…";
-      button.disabled = true;
-      break;
-    case "fitted":
-      state.textContent = "已拟合";
-      line.textContent =
-        `正文 ${v.body.length} 页的版心都在了` +
-        (v.noText.length ? `；${v.noText.length} 页没有文字（插图 / 空白），跳过` : "") +
-        "。拖动单页四边可以微调，不改也算已定。";
-      button.textContent = "全书已定";
-      button.disabled = true;
-      break;
-    default:
-      state.textContent = "有未定页";
-      if (!v.needFit.length) {
-        // 只剩"没有行"的页：这里没有可生成的东西，别给一个点了没反应的按钮
-        line.textContent =
-          `还差 ${v.noLines.length} 页版心，这些页都还没有正文行：` +
-          "先跑完「文字识别」，识别出行的页回来会自动出框。";
-        button.textContent = "全部确认（先识别）";
-        button.disabled = true;
-        break;
-      }
-      line.textContent =
-        `还差 ${v.undetermined.length} 页：${v.needFit.length} 页有正文行、可以直接生成` +
-        (v.noLines.length ? `；${v.noLines.length} 页还没有正文行` : "") +
-        "。";
-      button.textContent = `全部确认（生成 ${v.needFit.length} 页）`;
-      button.disabled = false;
-      break;
-  }
-}
+function renderMarginStepVerdict() { return window.PagesView.renderMarginStepVerdict.apply(window.PagesView, arguments); }
 
 /** 主按钮「全部确认」：把有行、还没框的页一次生成完，并报耗时。 */
 async function confirmAllMargins() {
@@ -859,63 +712,10 @@ async function confirmAllMargins() {
  * 这里只说**事实**（没有可用的正文行 → 拟合不出来），不说"下一步去识别"这类
  * 跟着步骤顺序变的话：检测入口在右上角「⋯ → 检测版面…」，不占这一步的主位。
  */
-function refreshMarginDetectHint() {
-  const hint = el("margin-detect-hint");
-  if (!hint) return;
-  if (!currentProject || currentProject.kind === "package") {
-    hint.hidden = true;
-    return;
-  }
-  const verdict = marginStepVerdict();
-  const noLines = verdict.noLines.length;
-  const undetermined = verdict.undetermined.length;
-  if (!undetermined) {
-    hint.hidden = true;
-    return;
-  }
-  const bits = [`还有 ${undetermined} 页没有版心`];
-  if (noLines) {
-    bits.push(`其中 ${noLines} 页还没有正文行（识别行 / 检测行都没有）`);
-    bits.push("版心是从行框推出来的，这些页要等识别出字，或者去右上角「⋯ → 检测版面…」跑一次检测");
-  } else {
-    bits.push("这些页都有正文行，点「全部确认」就能生成");
-  }
-  hint.textContent = bits.join("；") + "。";
-  hint.hidden = false;
-}
+function refreshMarginDetectHint() { return window.PagesView.refreshMarginDetectHint.apply(window.PagesView, arguments); }
 
 /** 「⋯」里的检测入口：名字里带上还差多少页，点开先看计划再决定跑不跑。 */
-function refreshLayoutDetectEntry() {
-  const item = el("layout-detect-open");
-  if (!item) return;
-  if (!currentProject || currentProject.kind === "package") {
-    item.hidden = true;
-    return;
-  }
-  item.hidden = false;
-  const selected = selectionPages().filter((page) => page.include);
-  if (selectedPages.size && !selected.length) {
-    item.disabled = true;
-    item.title = "所选页都不是正文；检测版面只对正文页生效";
-    item.textContent = "检测版面…（所选页都不是正文）";
-    return;
-  }
-  item.disabled = false;
-  item.title = "";
-  if (selected.length) {
-    // 有选择：括号里的数字必须是"这次真的会跑的页数"（与对话框里那个数同源）
-    const selectedNos = new Set(selected.map((page) => page.page_no));
-    const runnable = marginUndeterminedPages().filter((page) => selectedNos.has(page.page_no)).length;
-    item.textContent = runnable
-      ? `检测版面…（所选 ${selected.length} 页里 ${runnable} 页还没检测）`
-      : `检测版面…（所选 ${selected.length} 页都已检测）`;
-    return;
-  }
-  const undetermined = marginUndeterminedPages().length;
-  item.textContent = undetermined
-    ? `检测版面…（${undetermined} 页还没有版心）`
-    : "检测版面…";
-}
+function refreshLayoutDetectEntry() { return window.PagesView.refreshLayoutDetectEntry.apply(window.PagesView, arguments); }
 
 
 // ---------------------------------------------------------------- 第二引擎：可选，不挡流程
@@ -3195,61 +2995,7 @@ function setRecognitionStatus(text, isError = false) {
 }
 
 /** 把当前项目设置画进识别设置控件；不可用的引擎置灰并说明原因。 */
-function renderRecognitionSettings() {
-  if (!el("rec-engine")) return;
-  const engine = String(recognitionSetting("recognition_engine"));
-  const dpi = Number(recognitionSetting("recognition_dpi"));
-  const language = String(recognitionSetting("recognition_language"));
-  const strategy = String(recognitionSetting("dual_engine_strategy"));
-
-  const vision = engineProbe("apple_vision");
-  const visionOk = Boolean(vision && vision.available);
-  const visionReason = vision ? vision.reason || "当前平台不可用" : "还没拿到引擎自检结果";
-
-  // 引擎：Apple Vision / 双引擎比对都需要第二引擎可用（Windows 上置灰）
-  const engineSelect = el("rec-engine");
-  engineSelect.value = engine;
-  for (const option of engineSelect.options) {
-    const needsVision = option.value === "apple_vision" || option.value === "dual";
-    option.disabled = needsVision && !visionOk;
-    option.title =
-      needsVision && !visionOk
-        ? `不可用：${visionReason}`
-        : option.value === "dual"
-          ? "第一路 RapidOCR，完成后自动用 Apple Vision 比对；耗时约为单引擎两倍"
-          : "";
-  }
-
-  for (const radio of document.querySelectorAll('#rec-dpi input[type="radio"]')) {
-    radio.checked = Number(radio.value) === dpi;
-  }
-  el("rec-language").value = language;
-  el("rec-dual-strategy").value = strategy;
-  el("rec-dual-strategy").disabled = engine !== "dual";
-  const strategyOn = engine === "dual";
-  el("rec-strategy-label").hidden = !strategyOn;
-  el("rec-dual-strategy").hidden = !strategyOn;
-  el("rec-strategy-note").hidden = !strategyOn;
-
-  let note = "";
-  if (engine === "apple_vision" && !visionOk) {
-    note = `这一项在当前平台不可用（${visionReason}）；识别会返回"引擎不可用"，请换一个引擎。`;
-  } else if (engine === "dual" && !visionOk) {
-    note = `双引擎比对需要 Apple Vision（${visionReason}）；识别会返回"引擎不可用"，请换一个引擎。`;
-  } else if (engine === "apple_vision") {
-    note = "Apple Vision 作为第一引擎直接识别（不是第二引擎复核）。";
-  } else if (engine === "dual") {
-    note = "第一路 RapidOCR，识别完成后自动用 Apple Vision 逐页比对标分歧；耗时约为单引擎的两倍。";
-  } else if (!visionOk) {
-    note = `RapidOCR 是默认第一引擎（离线内置）。第二引擎在当前平台不可用：${visionReason}。`;
-  } else {
-    note = "RapidOCR 是默认第一引擎（离线内置）；Apple Vision 也可作为第一引擎或双引擎的第二路。";
-  }
-  el("rec-engine-note").textContent = note;
-  el("rec-summary").textContent =
-    `${RECOGNITION_ENGINE_LABELS[engine] || engine} · ${dpi} DPI` +
-    (engine === "dual" ? ` · ${strategy === "candidates" ? "给候选" : "只标分歧"}` : "");
-}
+function renderRecognitionSettings() { return window.PagesView.renderRecognitionSettings.apply(window.PagesView, arguments); }
 
 /** 改一项识别设置：先写服务端，成功再更新本地；失败回显原值。 */
 async function patchRecognitionSetting(key, value) {
@@ -4745,18 +4491,7 @@ function repaintTileMargin(page) {
 }
 
 /** 全局版心变了：只重画可见页（267 页全扫一遍没必要，可见性循环会兜底）。 */
-function refreshMarginTiles() {
-  if (!currentProject) return;
-  const byPage = new Map(currentProject.pages.map((page) => [page.page_no, page]));
-  for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
-    const pageNo = Number(tile.dataset.pageNo);
-    if (pagesMarginOn && visiblePageNos.has(pageNo)) {
-      paintTileMargin(tile, byPage.get(pageNo));
-    } else {
-      clearTileMargin(tile);
-    }
-  }
-}
+function refreshMarginTiles() { return window.PagesView.refreshMarginTiles.apply(window.PagesView, arguments); }
 
 let marginStatusTimer = null;
 
@@ -5013,25 +4748,7 @@ async function startAuxiliaryAll() {
 }
 
 /** 复核任务在跑：在识别步里显示"做到哪、还要多久"。 */
-function updateRecognitionAuxProgress(data) {
-  const job = data && data.job;
-  if (!job || job.job_type !== "auxiliary") return;
-  if (!["queued", "running", "paused"].includes(job.status)) return;
-  const done = job.done + job.failed;
-  const auxNum = el("rec-aux-num");
-  if (auxNum) auxNum.textContent = `${done}/${job.total}`;
-  const line = el("rec-verdict-line");
-  const err = el("rec-status");
-  // 有错误提示时不要用进度把它盖掉
-  if (line && err && !err.hidden) return;
-  if (line) {
-    const eta = estimateRemainingSeconds(data);
-    line.textContent =
-      `第二引擎复核中：${done} / ${job.total} 页` +
-      (job.status === "paused" ? "（已暂停）" : eta > 0 ? ` · 还需${formatDuration(eta)}` : "") +
-      "。进度也在右侧任务抽屉里。";
-  }
-}
+function updateRecognitionAuxProgress() { return window.PagesView.updateRecognitionAuxProgress.apply(window.PagesView, arguments); }
 
 /** 撤销按钮：只撤销本次会话里的版心拖动 / 重置，一次一步。 */
 function marginUndoButton() {
@@ -5208,50 +4925,7 @@ function setPageNumberStatus(text, isError = false) {
 /** 右栏摘要：已采用的模板与已填页数（小接口，不跑聚类）。 */
 let pageNumberMetricsLoading = false;
 
-function renderPageNumberMetrics(summary = null) {
-  const summaryNode = el("page-number-summary");
-  const metrics = el("page-number-metrics");
-  const review = el("page-number-review-open");
-  if (!summaryNode || !metrics) return;
-  const data = summary || {};
-  const current = (pageNumberAnalysis && pageNumberAnalysis.current) || {};
-  const counts = current.counts || {};
-  const filled = current.filled ?? data.filled ?? 0;
-  const total = current.total ?? data.total ?? (currentProject ? currentProject.pages.length : 0);
-  const template = current.template || data.template || null;
-  const ranges = current.ranges || data.ranges || [];
-  const label = (template && (template.label || template.position)) || (ranges.length ? `${ranges.length} 段范围` : "");
-  const hasTemplate = Boolean(template || ranges.length);
-  const exceptions = hasTemplate
-    ? (counts.no_candidate || 0) +
-      (counts.ambiguous || 0) +
-      (counts.jump || 0) +
-      (counts.offset_break || 0) +
-      (counts.duplicate || 0)
-    : 0;
-  summaryNode.textContent = template || ranges.length
-    ? `${label}${filled ? ` · 已填 ${filled}` : ""}${exceptions ? ` · 异常 ${exceptions}` : ""}`
-    : "未定位 · 可跳过";
-  metrics.innerHTML = "";
-  const row = (name, value) => {
-    const dt = document.createElement("dt");
-    dt.textContent = name;
-    const dd = document.createElement("dd");
-    dd.textContent = value;
-    metrics.append(dt, dd);
-  };
-  row("模板", label || "未定位");
-  row("已填", `${filled} / ${total} 页`);
-  const detail = !hasTemplate
-    ? "未定位（可跳过）"
-    : exceptions
-      ? `${exceptions} 页（无候选 ${counts.no_candidate || 0} · ` +
-        `歧义 ${counts.ambiguous || 0} · 溢出 ${counts.jump || 0} · 重复 ${counts.duplicate || 0}）`
-      : "无";
-  row("异常", detail);
-  review.hidden = exceptions === 0;
-  review.textContent = exceptions ? `核对 ${exceptions} 页异常…` : "核对异常…";
-}
+function renderPageNumberMetrics() { return window.PagesView.renderPageNumberMetrics.apply(window.PagesView, arguments); }
 
 async function loadPageNumberMetrics() {
   if (!currentProject || pageNumberAnalysis || pageNumberMetricsLoading) {
@@ -5271,24 +4945,7 @@ async function loadPageNumberMetrics() {
   }
 }
 
-async function loadPageNumberSummary() {
-  if (!currentProject) return;
-  const node = el("page-number-summary");
-  if (!node) return;
-  if (!node.textContent || !node.children.length) {
-    node.textContent = "正在读取页码状态…";
-  }
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/page-numbers/summary`
-    );
-    renderPageNumberMetrics(data);
-    loadPageNumberMetrics();
-  } catch {
-    node.textContent = "未定位 · 可跳过";
-    renderPageNumberMetrics();
-  }
-}
+async function loadPageNumberSummary() { return window.PagesView.loadPageNumberSummary.apply(window.PagesView, arguments); }
 
 async function openPageNumberPanel() {
   if (!currentProject) return;
@@ -5893,17 +5550,7 @@ function setupPageNumberPanel() {
  * 顶部那行统计：任务进行中它每分钟都要变，所以单独成一个函数，
  * 轮询的就地刷新（syncPageStates）也能更新，不必为了一个数字重建整格。
  */
-function renderPageSummary() {
-  const project = currentProject;
-  if (!project) return;
-  const all = project.pages;
-  const shown = visiblePages().length;
-  el("page-summary").textContent =
-    `共 ${all.length} 页 · 正文 ${all.filter((page) => page.include).length} 页` +
-    ` · 已识别 ${all.filter((page) => recognitionOf(page).status === "recognized").length} 页` +
-    ` · 已确认 ${all.filter((page) => page.page_confirmed).length} 页` +
-    (shown !== all.length ? ` · 当前显示 ${shown} 页` : "");
-}
+function renderPageSummary() { return window.PagesView.renderPageSummary.apply(window.PagesView, arguments); }
 
 function renderPages() { return window.PagesView.renderPages.apply(window.PagesView, arguments); }
 
@@ -6605,37 +6252,7 @@ async function loadWorkflow() {
   renderLayoutStatus();
 }
 
-function renderWorkflowFilter(counts, summary) {
-  const select = el("filter-workflow");
-  if (!select) return;
-  const current = select.value;
-  select.innerHTML = "";
-  for (const item of WORKFLOW_FILTERS) {
-    const option = document.createElement("option");
-    option.value = item.value;
-    const number =
-      item.value === "pending"
-        ? pendingPageCount
-        : item.value === "auto_passed"
-        ? workflowConfirmationCounts.auto
-        : item.value === "human_confirmed"
-        ? workflowConfirmationCounts.human
-        : item.value === "failed"
-        ? summary.failed
-        : item.value === "unfinished"
-        ? summary.unfinished
-        : item.value === ""
-        ? summary.total
-        : counts[item.value];
-    option.textContent =
-      number === undefined || number === null
-        ? item.label
-        : `${item.label} ${number}`;
-    select.append(option);
-  }
-  select.value = current;
-  if (select.value !== current) select.value = "";
-}
+function renderWorkflowFilter() { return window.PagesView.renderWorkflowFilter.apply(window.PagesView, arguments); }
 
 function renderLayoutStatus() {
   // 检测入口在「⋯」里（PM：不占版心步的主位）；这里只更新它的文案与版心的缺口提示。
@@ -10906,38 +10523,7 @@ function finishIcon(id, state) {
   node.classList.toggle("is-warn", state === "warn");
 }
 
-async function loadFinishSummary({ silent = false } = {}) {
-  if (!currentProject) return;
-  if (finishSummaryLoading) {
-    // 已经有一次在跑：记下"跑完再来一次"，别把这一次（例如刚确认完跨页延续）
-    // 直接丢掉——丢掉就会在界面上留下旧计数。
-    finishSummaryAgain = true;
-    return;
-  }
-  finishSummaryLoading = true;
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/review/finish-summary`
-    );
-    finishSummary = data;
-    finishSummaryProject = currentProject.project_id;
-    if (!stepsReady) {
-      stepsReady = true;
-      flushBootQueue();
-    }
-    updateFinishChips();
-    renderFinishPanel();
-    syncWorkflowSteps();
-  } catch (error) {
-    if (!silent) showError(el("pages-error"), error);
-  } finally {
-    finishSummaryLoading = false;
-    if (finishSummaryAgain) {
-      finishSummaryAgain = false;
-      loadFinishSummary({ silent: true });
-    }
-  }
-}
+async function loadFinishSummary() { return window.PagesView.loadFinishSummary.apply(window.PagesView, arguments); }
 
 function renderFinishPanel() {
   if (!finishSummary) return;
@@ -12968,31 +12554,7 @@ function autoApplyTypeText(byType) {
 }
 
 /** 右栏那行"上次自动应用：N 页 M 块（可撤销）"。 */
-function renderAutoApplyStatus(run) {
-  latestAutoApply = run;
-  const node = el("auto-apply-status");
-  if (!run) {
-    node.hidden = true;
-    node.innerHTML = "";
-    return;
-  }
-  node.hidden = false;
-  node.innerHTML = "";
-  const when = (run.created_at || "").slice(5, 16).replace("T", " ");
-  const text = document.createElement("span");
-  text.textContent =
-    `上次自动应用：${run.pages} 页 ${run.blocks} 块（${autoApplyTypeText(run.by_type)}）` +
-    ` · ${when} · ${run.status === "undone" ? "已撤销" : "可撤销"}`;
-  node.append(text);
-  if (run.status === "applied") {
-    const undo = document.createElement("button");
-    undo.type = "button";
-    undo.className = "btn btn--sm btn--ghost";
-    undo.textContent = "撤销这次自动应用";
-    undo.addEventListener("click", () => undoAutoApply(run.auto_apply_id));
-    node.append(undo);
-  }
-}
+function renderAutoApplyStatus() { return window.PagesView.renderAutoApplyStatus.apply(window.PagesView, arguments); }
 
 async function loadAutoApplyStatus({ announce = false, jobId = null } = {}) {
   if (!currentProject || currentProject.kind === "package") return;
@@ -13902,25 +13464,7 @@ async function restoreSelectedBackup() {
 
 // ---------------------------------------------------------------- 语言分布（任务 64）
 
-async function loadLanguageSummary() {
-  const node = el("rec-language-summary");
-  if (!node || !currentProject) return;
-  try {
-    const data = await apiJson(`/api/projects/${currentProject.project_id}/aux/languages`);
-    const counts = data.counts || {};
-    const bits = [];
-    if (counts["en-US"]) bits.push(`en-US ${counts["en-US"]} 页`);
-    if (counts["zh-Hans"]) bits.push(`zh-Hans ${counts["zh-Hans"]} 页`);
-    if (counts.mixed) bits.push(`中英混合 ${counts.mixed} 页`);
-    node.hidden = false;
-    node.textContent =
-      bits.length
-        ? `第二引擎语言：${bits.join(" · ")}` + (data.unknown ? ` · 未判定 ${data.unknown} 页` : " · 未判定 0 页")
-        : "第二引擎语言：还没判定（识别 / 复核一次后自动判）";
-  } catch {
-    node.hidden = true;
-  }
-}
+async function loadLanguageSummary() { return window.PagesView.loadLanguageSummary.apply(window.PagesView, arguments); }
 
 // ---------------------------------------------------------------- 重跑第二引擎（任务 64）
 //
@@ -14577,6 +14121,34 @@ function boot() {
     setSelectionAnchor: (value) => { selectionAnchor = value; return value; },
     setSetupSuggestions: (value) => { setupSuggestions = value; return value; },
     setSetupSuggestionsLoaded: (value) => { setupSuggestionsLoaded = value; return value; },
+    RECOGNITION_ENGINE_LABELS: RECOGNITION_ENGINE_LABELS,
+    WORKFLOW_FILTERS: WORKFLOW_FILTERS,
+    autoApplyTypeText: autoApplyTypeText,
+    engineProbe: engineProbe,
+    flushBootQueue: flushBootQueue,
+    getFinishSummaryAgain: () => finishSummaryAgain,
+    getFinishSummaryLoading: () => finishSummaryLoading,
+    getLastStepPanelKey: () => lastStepPanelKey,
+    getLayoutDetectActive: () => layoutDetectActive,
+    getPageNumberAnalysis: () => pageNumberAnalysis,
+    getPendingPageCount: () => pendingPageCount,
+    getStepsReady: () => stepsReady,
+    getWorkflowConfirmationCounts: () => workflowConfirmationCounts,
+    indexRefresh: () => window.IndexView?.refresh(),   // 刀3：capability 注入（Architect 裁定②），不是顶层函数
+    loadPageNumberMetrics: loadPageNumberMetrics,
+    marginStepVerdict: marginStepVerdict,
+    recognitionSetting: recognitionSetting,
+    renderFinishPanel: renderFinishPanel,
+    setFinishSummary: (value) => { finishSummary = value; return value; },
+    setFinishSummaryAgain: (value) => { finishSummaryAgain = value; return value; },
+    setFinishSummaryLoading: (value) => { finishSummaryLoading = value; return value; },
+    setFinishSummaryProject: (value) => { finishSummaryProject = value; return value; },
+    setLastStepPanelKey: (value) => { lastStepPanelKey = value; return value; },
+    setLatestAutoApply: (value) => { latestAutoApply = value; return value; },
+    setStepsReady: (value) => { stepsReady = value; return value; },
+    syncWorkflowSteps: syncWorkflowSteps,
+    undoAutoApply: undoAutoApply,
+    updateFinishChips: updateFinishChips,
   });
   setupReviewPager();
   setupReviewAutoPass();

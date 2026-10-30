@@ -26,23 +26,11 @@
 
 ## 刀3（15 个函数 / 29 种 id）
 
+> 刀 3 已落盘：15 个函数搬进 `pages-view.js`（470 行），本段数据行随之删除；
+> 两侧数（seed 函数名 / 实测函数并集）= 65 → 50，见 `knife3-plan.md` §⑪。
+
 | 函数 | 引用的 id | 行范围 | 到期刀 | wire |
 |---|---|---|---|---|
-| `loadFinishSummary` | `pages-error` | 10572–10602（32 行） | 刀3 |  |
-| `loadLanguageSummary` | `rec-language-summary` | 13575–13592（19 行） | 刀3 |  |
-| `loadPageNumberSummary` | `page-number-summary` | 5250–5266（18 行） | 刀3 |  |
-| `refreshLayoutDetectEntry` | `layout-detect-open` | 888–899（13 行） | 刀3 |  |
-| `refreshMarginDetectHint` | `margin-detect-hint` | 862–884（24 行） | 刀3 |  |
-| `refreshMarginTiles` | `page-grid` | 4727–4737（12 行） | 刀3 |  |
-| `renderAutoApplyStatus` | `auto-apply-status` | 12640–12663（25 行） | 刀3 |  |
-| `renderMarginStepVerdict` | `margin-confidence`、`margin-confirm-all`、`margin-verdict-line`、`margin-verdict-state` | 793–847（56 行） | 刀3 |  |
-| `renderPageNumberMetrics` | `page-number-metrics`、`page-number-review-open`、`page-number-summary` | 5187–5229（44 行） | 刀3 |  |
-| `renderPageSummary` | `page-summary` | 5873–5882（11 行） | 刀3 |  |
-| `renderRecognitionSettings` | `rec-dual-strategy`、`rec-engine`、`rec-engine-note`、`rec-language`、`rec-strategy-label`、`rec-strategy-note`、`rec-summary` | 3165–3218（55 行） | 刀3 |  |
-| `renderStepPanels` | `setup-panel` | 558–617（61 行） | 刀3 |  |
-| `renderWorkflowFilter` | `filter-workflow` | 6303–6332（31 行） | 刀3 |  |
-| `syncStepToggles` | `page-grid`、`pages-margin-toggle` | 626–656（32 行） | 刀3 |  |
-| `updateRecognitionAuxProgress` | `rec-aux-num`、`rec-status`、`rec-verdict-line` | 4995–5012（19 行） | 刀3 |  |
 
 ## 刀4（12 个函数 / 31 种 id）
 
