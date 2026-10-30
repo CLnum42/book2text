@@ -373,8 +373,52 @@
     return api;
   }
 
+  /**
+   * 渲染失败时把后端那句人话显示出来（**唯一实现**：PageTile 内部与页面确认网格共用）。
+   * 只在失败路径 fetch 一次（每 img 去重）；fetch 不存在/失败 → 什么都不做，保持现有占位。
+   * container 缺省时由调用方在 onerror 里提供（PageTile 用 handle.el）。
+   */
+  function attachRenderErrorDetail(img, options = {}) {
+    if (!img || img.__renderErrorDetailBound) return;
+    img.__renderErrorDetailBound = true;
+    const getContainer = isFn(options.container) ? options.container : () => options.container;
+    const previous = img.onerror;
+    img.onerror = (event) => {
+      if (isFn(previous)) previous.call(img, event);
+      if (typeof fetch !== "function") return;
+      const url = img.currentSrc || img.src;
+      if (!url) return;
+      // 去重标记以「元素 + URL」为键（挂在 img 本身，不依赖 record）：
+      // 同一 img 重试同一 URL → 不重复 fetch；换了 URL（升档 / 换页）→ 允许再取一次。
+      if (img.__renderErrorDetailUrl === url) return;
+      img.__renderErrorDetailUrl = url;
+      fetch(url)
+        .then((response) => response.json())
+        .then((body) => {
+          const detail = body && body.error && (body.error.detail || body.error.message);
+          if (!detail) return;
+          const host = getContainer();
+          if (!host) return;
+          let note = host.querySelector(".ptile__error");
+          if (!note) {
+            note = document.createElement("span");
+            note.className = "ptile__error";
+            note.style.cssText =
+              "position:absolute;left:8px;right:8px;bottom:8px;padding:6px 8px;border-radius:6px;" +
+              "background:rgba(255,255,255,.92);color:#b91c1c;font-size:12px;line-height:1.4;text-align:left;";
+            host.appendChild(note);
+          }
+          note.textContent = String(detail);   // 原样，不重写不截断
+          note.hidden = false;
+          note.title = String(detail);
+        })
+        .catch(() => { /* 取不到就不写，保持「缺图」占位 */ });
+    };
+  }
+
   const api = {
     init: tileInit,
+    attachRenderErrorDetail,
     create: tileCreate,
     update: tileUpdate,
     invalidate: tileInvalidate,

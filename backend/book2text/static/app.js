@@ -3754,6 +3754,8 @@ function buildTile(page, project) {
   image.dataset.thumbSrc =
     `/api/projects/${project.project_id}/pages/${page.page_no}/image?size=thumb` +
     `&token=${encodeURIComponent(token)}`;
+  // 渲染失败时把后端那句人话显示出来（与 PageTile 同一套实现，不复制）
+  window.PageTile?.attachRenderErrorDetail?.(image, { container: tile });
   if (pageZoomIndex < 2) image.src = image.dataset.thumbSrc;
 
   // 版心框（默认隐藏）：框外压暗、8 个把手可拖。放在块框 overlay 之前，
