@@ -17,6 +17,8 @@
 
 第 2 条的解法是第 2.2 步的 `PYTHONPATH="$PWD/backend"`：PYTHONPATH 排在 `.pth` 之前，先命中你这棵树的包。第 2.3 步的静态自检就是这条解法的证据。
 
+**推论：不必复制 `.venv`。** 用主树的 venv 跑、靠 `PYTHONPATH` 把关，比复制一份更可靠——复制出来的那份 `.pth` 照样指向主树，只会让人误以为已经隔离。
+
 ## 2. 六个步骤
 
 ### 2.1 进自己的 worktree
@@ -36,7 +38,7 @@ PYTHONPATH="$PWD/backend" \
   "from book2text.main import main; raise SystemExit(main(['--port','9500','--no-browser','--library','/tmp/b2t-<task>-lib','--token','qa-<task>']))"
 ```
 
-三个参数的理由：
+参数的理由（`--no-browser` 字面即意：不自动打开浏览器）：
 
 - `--library /tmp/b2t-<task>-lib`：项目库写到 `/tmp`，**不碰真项目库**，验完整个删掉。
 - `--token qa-<task>`：默认令牌每次启动随机生成（`secrets.token_urlsafe(32)`）；固定成短令牌后可以直接拼 URL、重启复用同一个地址、脚本不用每次抓日志。
@@ -56,7 +58,7 @@ curl -s "http://127.0.0.1:<实际端口>/static/<你改动的文件>.js?token=qa
 
 为什么查"新增符号"而不是"文件能打开"：文件能打开只证明服务活着；**只有你刚写进这棵树、主树还没有的符号**，才能证明服务读的是你的树。返回 0 → 立刻停，先查 `PYTHONPATH` 和 `cd`——这时所有读数都不可信。
 
-> **待脚本化（到期点：刀 9 开工前）**：第 3 步将来做成 `scripts/verify_isolation.sh`（`curl | grep -c`，计数 0 就非 0 退出）。归 DevLead / Builder 定；到期没做就删掉这句，不留陈账。
+> **待脚本化（到期点：刀 9 开工前）**：第 2.3 步将来做成 `scripts/verify_isolation.sh`（`curl | grep -c`，计数 0 就非 0 退出）。归 DevLead / Builder 定；到期没做就删掉这句，不留陈账。
 
 ### 2.4 失败注入：用计数器，不用肉眼
 
@@ -89,7 +91,7 @@ window.fetch = (input, init) => {
 - [ ] 停服务（`Ctrl-C` / kill 进程；确认端口已释放）
 - [ ] `rm -rf /tmp/b2t-<task>-lib`
 - [ ] `ego-browser finish({ keep: [] })`——**保留页面是例外，必须在报告里写明理由**（团队漏过一次 9 个 space）
-- [ ] `git status --porcelain`：**只剩 `?? .venv`**（你的改动应已提交）；还有未提交改动就在报告里点名，别让它混进下一轮验收
+- [ ] `git status --porcelain`：**理想是只剩 `?? .venv`**（改动已提交）；如果故意留着未提交的改动继续验，在报告里点名它，别让它混进下一轮验收
 - [ ] 报告里贴：实际端口 / 静态自检计数 / 失败注入的计数 / `git status`
 
 ### 2.6 主树只做集成与推送
