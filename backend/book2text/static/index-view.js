@@ -136,7 +136,7 @@ async function openPageIndex() {
       injected.getProject().pages.some((item) => item.page_no === indexCurrentPage)
       ? indexCurrentPage
       : null) ||
-    (injected.getDetailPageNo() !== null ? injected.getDetailPageNo() : null) ||
+    injected.getLastDetailPageNo() ||   // 「上次审校哪页」：detailPageNo 离开审校即清空，不能当兜底
     injected.getPageIndexData().pages[0].page_no;
   openIndexPage(target, { scrollList: true });
   // 开页会清跳转提示；页序模式的"没有印刷页码"要在**开页之后**再摆一次

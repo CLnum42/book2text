@@ -227,7 +227,15 @@ function showView(name) {
   // 换视图 = 当前步骤回落到该视图的默认步；用户点步骤条时才锁定。
   workflowStepPinned = false;
   syncWorkflowSteps();
-  if (target !== "review") closeTaskDrawer();
+  if (target !== "review") {
+    closeTaskDrawer();
+    // 刀 7 后补：`detailPageNo` 不许活过 review 视图。
+    // 单向不变量：detailPageNo !== null ⇒ currentView === "review"（反向不要求：进 review 时
+    // 先 showView("review") 再 openPageDetail()，切过去那一瞬还是 null）。
+    // 不清它的话，页面视图里点「识别」失败会把错误写进另一个视图里看不见的错误条
+    // （真机实测：屏幕什么都不出现、四闸全绿）。「上次审校哪页」由 lastDetailPageNo 记着。
+    closePageDetail();
+  }
   if (target === "pages" && currentProject) {
     // 这一视图的工作流角标 / 待处理页：进来才拉（骨架先显示，数字后到）
     queueAfterSteps(() => hydrateView("pages"));
@@ -985,7 +993,7 @@ function goToWorkflowStep(id) {
     showView("preview");
   } else {
     showView("pages");
-    savePosition("pages", detailPageNo);
+    savePosition("pages", lastDetailPageNo);
   }
   // showView 会先把当前步回落到视图默认值；点步骤的意图在它之后锁定。
   workflowStep = id;
@@ -6096,6 +6104,11 @@ function setupPageMore() {
 // ---------------------------------------------------------------- 审校视图（本页）
 
 let detailPageNo = null;
+// 刀 7 后补：`detailPageNo` 只属于 review 视图——**离开就清空**（showView 末尾那条）。
+// 这个状态记「上次审校的页」，**只在 openPageDetail 里赋值、永不清空**，
+// 给三个离开审校后仍要读它的地方用：页面视图的位置、目录确认的起点、结果预览的起点。
+// 别处再给它赋值，它就变成第二个「当前页」真源。
+let lastDetailPageNo = null;
 let detailImagePageNo = null;
 let reviewBlocks = [];
 /** 任务 34：这一页的版心上下文（box / applied / 未定 / 版心外差异数），来自页详情。 */
@@ -6185,6 +6198,7 @@ const REVIEW_STATUS_LABELS = {
 
 async function openPageDetail(pageNo) {
   detailPageNo = pageNo;
+  lastDetailPageNo = pageNo;
   detailWorkflow = null;
   // 换页回到默认档位「待处理」：上一页切到「全部」不该带到下一页
   reviewBlockFilter = "pending";
@@ -13264,7 +13278,7 @@ function boot() {
     showNoticeBar: (text) => showNoticeBar(text),
     isActive: () => currentView === "index",
     getProject: () => currentProject,
-    getDetailPageNo: () => detailPageNo,
+    getLastDetailPageNo: () => lastDetailPageNo,
     // 图片清晰度档位：外壳持有（页面视图 / 审校 / 预览都读），模块只读 + 走外壳 setter 改
     getImageQualityMode: () => imageQualityMode,
     setImageQuality: (mode) => setImageQuality(mode),
@@ -13376,7 +13390,7 @@ function boot() {
     // 状态 getter
     isActive: () => currentView === "preview",
     getProject: () => currentProject,
-    getDetailPageNo: () => detailPageNo,
+    getLastDetailPageNo: () => lastDetailPageNo,
     getPageIndexData: () => pageIndexData,
     getPageIndexLoading: () => pageIndexLoading,
     getPageIndexProject: () => pageIndexProject,

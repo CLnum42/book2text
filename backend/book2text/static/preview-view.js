@@ -508,7 +508,8 @@ async function openPreview() {
 
 function previewTargetPage() {
   const total = injected.getProject() ? injected.getProject().pages.length : 0;
-  const candidates = [previewPageNo, injected.getDetailPageNo(), 1];
+  // 第三个候选是「上次审校哪页」：detailPageNo 离开审校即清空（刀 7 后补），所以读伴生状态
+  const candidates = [previewPageNo, injected.getLastDetailPageNo(), 1];
   for (const value of candidates) {
     if (value && value >= 1 && value <= total) return value;
   }
