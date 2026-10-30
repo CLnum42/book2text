@@ -51,6 +51,8 @@ import { execFileSync } from "node:child_process";
 import {
   PAGES_R3_EXEMPTIONS, PAGES_R3_TOTAL_CAP, PAGES_STAGE, PAGES_R3_PENDING, PAGES_R3_BLOCKED_MAX,
 } from "./pages-r3-exemptions.mjs";
+// 刀号登记表（刀号的唯一真值源）：seed 里出现未登记的号 → 红；PAGES_STAGE 必须等于 maxLandedKnife()
+import { KNIVES, isRegisteredKnife, maxLandedKnife } from "./knife-registry.mjs";
 import {
   BRIDGE_EXCEPTIONS,
   BRIDGE_EXCEPTION_MAX,
@@ -1420,58 +1422,89 @@ function domIdsIn(jsStripped) {
  * `wire` 列（可空）是给「host 名被 `wirePagesXxx` 取代」的搬迁期登记：
  * 一个 id 的接线从 `setupPageMore` 挪进 `wirePagesPageMore` 时，**显式写出来**，
  * 不许用「去掉 setup 前缀推 wire 名」那种启发式——推错的后果是红变绿。
+ *
+ * **候选行解析不了必须红，不许 `continue` 掉整行**（2026-10-30 Architect 抓到的坑）：
+ * 旧实现是 `if (!host || !stage) continue;` —— 一行 `刀5b` / `刀 5` / `刀10`（旧正则只吃单数字）
+ * 会让该 (函数, id) 变 unmapped，R3 的「到期刀 == 现算 max」就跳过它，
+ * **账本少一行、闸还是绿的**。静默跳过是今天最贵的形态，所以这里改成：
+ *   · 刀号格解析不了 → 红（带行号 + 原文）；
+ *   · 刀号不在 `knife-registry.mjs` 登记表里 → 红（未登记的刀号 = 没有到期点，fail closed）。
+ * 正则同时放宽到 `^刀(\d+(?:\.\d+)?)$`：小数（刀2.5）与多位数（刀10）都要能解析。
  */
-function pagesSeedRows() {
-  const file = fileURLToPath(new URL("../../docs/refactor/evidence/pages/stage2-movers-seed.md", import.meta.url));
-  let text = "";
-  try {
-    text = readFileSync(file, "utf8");
-  } catch {
-    return [];
-  }
-  return parseSeedRows(text);
-}
-
-/** 纯解析：真 seed 与自检里的**合成 seed** 共用同一份解析器（两套解析 = 自检验的是另一份逻辑）。 */
-function parseSeedRows(text) {
+export function parseSeedRows(text) {
   const rows = [];
-  for (const line of text.split("\n")) {
-    if (!line.startsWith("| `")) continue;
+  const problems = [];
+  const lines = String(text || "").split("\n");
+  lines.forEach((line, index) => {
+    if (!line.startsWith("| `")) return;
+    const lineNo = index + 1;
     const cells = line.split("|").map((cell) => cell.trim());   // ['', '`fn`', ids, range, '刀N', wire, '']
     const host = /^`([A-Za-z_$][\w$]*)`$/.exec(cells[1] || "");
-    const stage = /^刀(\d)$/.exec(cells[4] || "");
-    if (!host || !stage) continue;
+    const rawStage = cells[4] || "";
+    const stage = /^刀(\d+(?:\.\d+)?)$/.exec(rawStage);
+    if (!host || !stage) {
+      problems.push(
+        `seed 第 ${lineNo} 行「${rawStage}」解析不了——整行会被跳过，到期刀会少算这一项`
+        + `（原文：${line.trim()}）`,
+      );
+      return;
+    }
+    const n = Number(stage[1]);
+    if (!isRegisteredKnife(n)) {
+      problems.push(
+        `seed 第 ${lineNo} 行刀号「${rawStage}」不在登记表 tests/js/knife-registry.mjs 里——`
+        + "未登记的刀号等于没有到期点（原文：" + line.trim() + "）",
+      );
+      return;
+    }
     // wire 列**一格可以挂多个名字**（一个宿主抽出多个接线函数，例如 setupLibrary 抽出 7 个）：
     // 用 、 或 , 分隔的反引号名字全收，别只取第一个——只取第一个会让其余名字静默缺失。
     const wires = [...(cells[5] || "").matchAll(/`([A-Za-z_$][\w$]*)`/g)].map((m) => m[1]);
     const ids = [...(cells[2] || "").matchAll(/`([^`]+)`/g)].map((m) => m[1]);
     // **同一宿主允许多行**（每行挂同刀的那组 id）：setupLibrary 剩下的 id 分属刀 3/4/5，
     // 硬挤成一行就只能把刀 3/4 的项写成刀 5——那是悄悄放松棘轮，而且松的正好是没人看的项。
-    rows.push({ host: host[1], ids, wires, stage: Number(stage[1]) });
+    rows.push({ host: host[1], ids, wires, stage: n });
+  });
+  return { rows, problems };
+}
+
+function seedFileText() {
+  const file = fileURLToPath(new URL("../../docs/refactor/evidence/pages/stage2-movers-seed.md", import.meta.url));
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return "";
   }
-  return rows;
+}
+
+function pagesSeedRows() {
+  return parseSeedRows(seedFileText()).rows;
 }
 
 /**
- * seed 原文里「到期刀」列的**上界**：所有 `| 刀N |` 格的 max，由文件现算。
+ * seed 原文里「到期刀」列的**上界**：所有 `| 刀N |` 格的 max，由文件现算（TestDev f58484b）。
  *
- * 为什么必须现算（2026-10-30）：上界原先是字面量 `1..5`，而刀 5 之后 seed 里会出现刀 6/7/8
- * ——写死会把合法的新刀号判成「解析串位」，最后只能靠改这个数字让它绿，等于判据可被手调。
+ * 为什么必须现算：上界原先是字面量 `1..5`，而刀 5 之后 seed 里会出现刀 6/7/8/10——
+ * 写死会把合法的新刀号判成「解析串位」，最后只能靠改这个数字让它绿，等于判据可被手调。
  *
- * 为什么**不能**改成 `max(rows.map(r => r.stage))`：上界取自被验数据本身，这条判据就恒真
- * （任何值都 ≤ 自己的最大值，等于关掉），而它挡的正是「把行号/工数当刀号」的串位。
- * 这里的取法与被验的行解析**相互独立**：行解析读第 5 列（`cells[4]`），这里扫原文的 `| 刀N |` 格。
+ * 为什么**不能**改成 `max(rows.map(r => r.stage))`：上界取自被验数据本身，这条判据就恒真。
+ * 这里的取法与被验的行解析**相互独立**：行解析读第 5 列（`cells[4]`），这里扫原文的 `| 刀N |` 格
+ * ——所以「解析器读了别的列 / 多读一行 / 列顺序漂了」这类不进解析器的漂移仍会被抓到。
+ * 正则吃小数：`刀2.5` 是登记过的号（knife-registry.mjs）。
  */
 export function seedStageUpperBound(seedText) {
   let max = 0;
-  for (const m of seedText.matchAll(/\|\s*刀(\d+)\s*\|/g)) max = Math.max(max, Number(m[1]));
+  for (const m of String(seedText || "").matchAll(/\|\s*刀(\d+(?:\.\d+)?)\s*\|/g)) {
+    max = Math.max(max, Number(m[1]));
+  }
   return max;
 }
 
 /** 每行刀号必须落在 `1..maxStage`（上界由 `seedStageUpperBound` 现算）；越界 = 解析串位。 */
 export function seedStageRangeProblems(rows, maxStage) {
   return rows
-    .filter((row) => !(Number.isInteger(row.stage) && row.stage >= 1 && row.stage <= maxStage))
+    // 小数刀号（刀2.5）是登记过的号，不是串位：只要求"有限的、落在 1..上界"
+    .filter((row) => !(Number.isFinite(row.stage) && row.stage >= 1 && row.stage <= maxStage))
     .map((row) => `seed 里 ${row.host} 的刀号 ${row.stage} 不在 1..${maxStage}——解析串位了`);
 }
 
@@ -1777,15 +1810,14 @@ function r3Problems({
     }
     const segments = keepShellSegments();
     for (const item of blockedItems) {
-      // **受阻项不写死某一刀**（2026-10-30）：条件是 `stage > PAGES_STAGE`——「还没到期」才有资格
-      // 叫「受阻」；到期了还挂着「阻塞段」，那就是「到期不搬」换了个说法。原先写死 `!== 5`，
-      // 而 5 只是当时那一刀的号：抬刀之后这条会逼着人把数字改回 5（判据变成可手调的参数），
-      // 或者反过来把真到期项当受阻放过。
-      if (!(Number.isInteger(item.stage) && item.stage > pagesStage)) {
+      // **受阻项不写死某一刀**（TestDev f58484b）：条件是 `stage > pagesStage`——「还没到期」
+      // 才有资格叫「受阻」；到期了还挂着「阻塞段」，那就是「到期不搬」换了个说法。
+      // 原先写死 `!== 5`，而 5 只是当时那一刀的号：抬刀之后这条会逼人把数字改回去（判据变可手调）。
+      if (!(Number.isFinite(item.stage) && item.stage > pagesStage)) {
         problems.push(
           `豁免 ${item.id} 带「阻塞段」但到期刀是 ${item.stage}（PAGES_STAGE=${pagesStage}）——`
-          + `受阻项必须 stage > PAGES_STAGE：还没到期才有资格叫「受阻」，`
-          + `到期了还靠留外壳段挂着就是「到期不搬」换了个说法`,
+          + "受阻项必须 stage > PAGES_STAGE：还没到期才有资格叫「受阻」，"
+          + "到期了还靠留外壳段挂着就是「到期不搬」换了个说法",
         );
       }
       const raw = String(item["阻塞段"]).split(/[、,，+]|\s\+\s/).map((one) => one.trim()).filter(Boolean);
@@ -1933,44 +1965,50 @@ test("R3 自检（pages 过渡表）：去掉一个 id / 超上限 / 到期未�
  * 都包在 `if (seedStages.size > 0)` 里——解析器一旦匹不到任何一行，**两条整块跳过**，
  * 闸照绿，表上 79 个到期日成了装饰。2026-10-29 真发生过：正则按「第 2 列是数字」写，
  * 而真 seed 第 2 列是 id 清单 → 匹配 0 行。这条自检让「判据存在」本身可被证伪。
- *
- * **上界（刀号范围）从 seed 原文现算，不写字面量**（2026-10-30）：原先写死 `1..5`，刀 5 之后
- * seed 出现刀 6/7/8，这条自检就会把合法的新刀号判成「解析串位」——而修法只能是再改那个数字，
- * 于是判据成了可手调的参数。上界现算见 `seedStageUpperBound`；自检里还带一条"写死就会红"的
- * 反例（③），保证"改成现算"不是把问题挪个位置。
  */
 test("R3 自检（到期判据存在性）：seed 必须解析出函数→刀号，且与 seed 行数相等", () => {
   const file = fileURLToPath(new URL("../../docs/refactor/evidence/pages/stage2-movers-seed.md", import.meta.url));
   const text = readFileSync(file, "utf8");
   const rows = [...text.matchAll(/^\| `[A-Za-z_$][\w$]*` \|/gm)].length;
-  const parsed = pagesSeedRows();
+  const parsed = parseSeedRows(text);
+  assert.deepEqual(parsed.problems, [], parsed.problems.join("\n"));
   assert.ok(rows > 0, "seed 里一行函数表都没有——文件结构变了，先修这条自检");
   assert.equal(
-    parsed.length, rows,
-    `seed 有 ${rows} 行函数表，只解析出 ${parsed.length} 个函数——解析又漂了，`
+    parsed.rows.length, rows,
+    `seed 有 ${rows} 行函数表，只解析出 ${parsed.rows.length} 个函数——解析又漂了，`
     + "「到期刀 == max」与「seed/实测覆盖」两条会整体空跑（闸绿、判据不存在）",
   );
+  for (const row of parsed.rows) {
+    // 刀号范围**不写死 1..5**（写死会在每一次增刀时变成拦路石，而且改它是"改判据"）：
+    // 改为对照登记表——未登记的号在 parseSeedRows 里已经红过一次，这里只兜"解析串位"。
+    assert.ok(isRegisteredKnife(row.stage),
+      `seed 里 ${row.host} 的刀号 ${row.stage} 不在 knife-registry.mjs 登记表里——解析串位了`);
+  }
+
+  // 上界从 seed 原文现算（不写字面量）：与行解析是两个独立来源，抓"把行号/工数当刀号"的串位
   const maxStage = seedStageUpperBound(text);
   assert.ok(
     maxStage >= 1,
     `seed 的「到期刀」列里一格刀号都没扫到（上界=${maxStage}）——这条上界判据会恒真，`
     + "刀号写成行号、工数也照样绿（闸绿、判据不存在）",
   );
-  const rangeProblems = seedStageRangeProblems(parsed, maxStage);
+  const rangeProblems = seedStageRangeProblems(parsed.rows, maxStage);
   assert.deepEqual(rangeProblems, [], `seed 刀号越界——${rangeProblems.join("；")}`);
 
   // ② 合成 seed（最大刀 8）：上界现算 = 8 → 1..8 不报串位（刀 5 之后 seed 真的会有刀 6/7/8）
   const synthText = "| 函数 | 引用的 id | 行范围 | 到期刀 | wire |\n"
     + "| `zzSynth` | `a` | 1–2（2 行） | 刀8 |  |\n";
-  const synthRows = parseSeedRows(synthText);
-  assert.equal(synthRows.length, 1, "合成 seed 没解析出那一行——解析器与自检输入不同源");
+  const synth = parseSeedRows(synthText);
+  assert.deepEqual(synth.problems, [],
+    `合成 seed 本身不该有解析问题——有就说明自检走的不是真解析器：${synth.problems.join("；")}`);
+  assert.equal(synth.rows.length, 1, "合成 seed 没解析出那一行——解析器与自检输入不同源");
   assert.equal(seedStageUpperBound(synthText), 8, "合成 seed 的上界没现算出 8——上界取法又写死了一处");
-  const synthOk = seedStageRangeProblems(synthRows, seedStageUpperBound(synthText));
+  const synthOk = seedStageRangeProblems(synth.rows, seedStageUpperBound(synthText));
   assert.deepEqual(synthOk, [],
     `上界现算成 8 却仍报串位——合法的新刀号被写死的 1..5 拦住：${synthOk.join("；")}`);
 
   // ③ 喂红：把上界写死回 1..5（2026-10-30 之前的老写法）→ 同一份合成 seed 必须红且点名串位
-  const hardCoded = seedStageRangeProblems(synthRows, 5);
+  const hardCoded = seedStageRangeProblems(synth.rows, 5);
   assert.ok(
     hardCoded.some((item) => item.includes("解析串位") && item.includes("zzSynth")),
     `上界写死成 1..5 却放过了刀 8——合法刀号夹带串位时这条判据就查不出来（${hardCoded.join("；") || "没报任何问题"}）`,
@@ -1984,6 +2022,54 @@ test("R3 自检（到期判据存在性）：seed 必须解析出函数→刀号
     shifted.some((item) => item.includes("setupLibrary") && item.includes("解析串位")),
     `行号当刀号被放过——上界判据没做工（${shifted.join("；") || "没报任何问题"}）`,
   );
+
+  // ⑤ 小数刀号（刀2.5 在登记表里）不是串位：上界判据只要求"有限的、落在 1..上界"
+  const decimal = seedStageRangeProblems([{ host: "setupLibrary", ids: [], wires: [], stage: 2.5 }], 8);
+  assert.deepEqual(decimal, [], `刀2.5 是登记过的刀号，被当成串位——${decimal.join("；")}`);
+});
+
+/**
+ * 刀号登记表两条自检（2026-10-30 Chief 裁定：刀号不该手写，也不该在解析不了时静默跳过）。
+ *
+ * 旧形态的两个失效互为镜像，所以两条都要喂红：
+ * ```
+ * ① 解析不了的那行被 `continue` 掉 → 该 (函数,id) 变 unmapped → 到期刀少算 → 闸绿账本少一行
+ * ② 号本身没登记 → 到期点指向一个不存在的刀 → 一样绿
+ * ```
+ * 第三条是 Chief 点名的 `刀10`：旧正则 `/^刀(\d)$/` 只吃单数字，`刀10` 整行消失。
+ */
+test("刀号登记表自检：刀10 必须解析 / 解析不了必须红 / 未登记号必须红 / PAGES_STAGE 跟着 landed 走", () => {
+  const row = (host, stage) => `| \`${host}\` | \`some-id\` | 1–2（2 行） | ${stage} |  |\n`;
+  const header = "| 函数 | 引用的 id | 行范围 | 到期刀 | wire |\n|---|---|---|---|---|\n";
+
+  // ① 刀10（多位数）与 刀2.5（小数）都必须解析得出来 —— 旧正则两条都吃掉整行
+  const wide = parseSeedRows(header + row("boot", "刀10") + row("setupLibrary", "刀2.5"));
+  assert.deepEqual(wide.problems, [],
+    `刀10 / 刀2.5 不该解析失败——${wide.problems.join("；")}`);
+  assert.deepEqual(wide.rows.map((item) => item.stage), [10, 2.5],
+    "刀10 / 刀2.5 解析出的刀号不对（旧正则 `^刀(\\d)$` 会把这两行整行跳过）");
+
+  // ② 解析不了的**必须红**，且红文要带行号 + 原文（否则读红文的人不知道是哪一行）
+  const broken = parseSeedRows(header + row("boot", "刀5b") + row("setupLibrary", "刀 5"));
+  assert.equal(broken.rows.length, 0, "解析不了的行不许悄悄进 rows");
+  assert.equal(broken.problems.length, 2, `两行解析不了应报两条红——${broken.problems.join("；")}`);
+  assert.ok(broken.problems[0].includes("seed 第 3 行") && broken.problems[0].includes("刀5b")
+    && broken.problems[0].includes("整行会被跳过"),
+  `红文没带行号/原文——${broken.problems[0]}`);
+  assert.ok(broken.problems[1].includes("seed 第 4 行") && broken.problems[1].includes("刀 5"),
+    `带空格的「刀 5」也必须红——${broken.problems[1]}`);
+
+  // ③ 未登记的号必须红（不是"解析不了"，是"解析出来了但没有这一刀"）
+  const unregistered = parseSeedRows(header + row("boot", "刀99"));
+  assert.equal(unregistered.rows.length, 0, "未登记的刀号不许进 rows（fail closed）");
+  assert.ok(unregistered.problems[0].includes("不在登记表"), `未登记号没红——${unregistered.problems[0]}`);
+
+  // ④ PAGES_STAGE 不是一个可以手写的常数：必须等于登记表里标 landed 的最大刀号
+  const landed = maxLandedKnife();
+  assert.ok(KNIVES.some((knife) => knife.status === "landed"), "登记表里一刀都没标 landed——表被清空了？");
+  assert.equal(PAGES_STAGE, landed,
+    `PAGES_STAGE = ${PAGES_STAGE}，但登记表里已落盘的最大刀号是 ${landed}——`
+    + "到期判据的「当前刀」与账本不一致（常数不许手写：落盘那一笔要同批改登记表 + PAGES_STAGE）");
 });
 
 /**
