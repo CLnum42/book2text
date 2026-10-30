@@ -111,6 +111,29 @@ scripts/commit.sh -m "…" -- <具体路径…>
 `docs/refactor/reading-view-boundary.md` §22 第 13 条，**这里只放指针**——因为它是每个人的日常动作，
 不该只在切片验收时才读。
 
+**在 worktree 里跑 pytest 必须带 `PYTHONPATH`**（2026-10-30，第五次「验错树」的机器原因）：
+
+```bash
+PYTHONPATH="$PWD/backend" .venv/bin/python -m pytest -q
+```
+
+- 每个 worktree 的 `.venv` 都是**指向主仓库 `.venv` 的软链**，site-packages 里的 `.pth` 又写死主仓库
+  `backend` 的绝对路径。于是 `cd worktrees/<你的> && .venv/bin/python -m pytest` 读的是
+  **主树的** `backend/book2text/static`——测试文件取自你的 worktree，被测的 `app.js` / 视图模块却取自主树。
+- 症状不是报错，是**一套自洽的绿**：9.1 把 `showView` 里那行换成了 `enter()`，在 worktree 里跑 pytest
+  仍报 1035 passed——因为它读的主树 static 还是旧代码，而旧测试正好断言旧代码。这个数什么都证明不了。
+- `pre-push` 早就在防这条：把树导出到临时目录 + `PYTHONPATH="$TMPTREE/backend"` + **断言 `STATIC_DIR` 在树内**。
+  手跑漏了这一步，等于绕过那道保护（钩子防的是推送，防不住你报告里手跑的数）。
+- **自检一行，报四闸时附上**（比事后追查便宜得多）：
+
+  ```bash
+  PYTHONPATH="$PWD/backend" .venv/bin/python -c "from book2text import paths; print(paths.STATIC_DIR)"
+  # 必须打印你这棵 worktree 里的 backend/book2text/static。
+  # 打印出主仓库的路径 = 这次读数全部作废（不是红，是没验）。
+  ```
+
+- 真机验收起服务同理（`docs/real-machine-verification.md` §2.2）；那条讲的是起服务，本条讲的是跑测试，**同一个坑、同一个解法**。
+
 **闸做了什么**：`pre-commit` 把**索引**导出到临时目录、跑 `node tests/js/run.mjs`（约 6 秒），红则拒绝提交；`post-commit` 记录绕过（`--no-verify` 时请加一行 `Bypass-Reason: <为什么>`）。
 
 **推送时另有一个闸**：`pre-push` 现在跑 **node 闸（`tests/js/run.mjs` ≈ 11s + `contract-registry.mjs --strict --allow-transitional-base` ≈ 7s，实测 15–19s）**，然后跑 `pytest -q`（约 82–85s）。node 闸**纯文档推送也跑**；pytest 只在推送范围含非 `*.md` 改动时跑，纯文档推送记一行 `SKIP`。`.venv` 或 `node` 缺失都会拒绝推送（fail closed）。

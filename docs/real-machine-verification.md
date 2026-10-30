@@ -38,6 +38,15 @@ PYTHONPATH="$PWD/backend" \
   "from book2text.main import main; raise SystemExit(main(['--port','9500','--no-browser','--library','/tmp/b2t-<task>-lib','--token','qa-<task>']))"
 ```
 
+**同一件事也管 pytest**（2026-10-30，AGENTS.md §1.5 有完整条目）：worktree 里不带 `PYTHONPATH` 跑
+`pytest`，读的是主树的 `backend/book2text/static`——测试文件取你的树、被测前端代码取主树的，
+结果往往是一套**自洽的绿**而不是红。自检一行：
+
+```bash
+PYTHONPATH="$PWD/backend" .venv/bin/python -c "from book2text import paths; print(paths.STATIC_DIR)"
+# 必须打印你这棵 worktree 里的 backend/book2text/static
+```
+
 参数的理由（`--no-browser` 字面即意：不自动打开浏览器）：
 
 - `--library /tmp/b2t-<task>-lib`：项目库写到 `/tmp`，**不碰真项目库**，验完整个删掉。
