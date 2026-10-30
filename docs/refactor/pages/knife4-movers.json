@@ -386,5 +386,20 @@
   "MOVED_STATES",
   "app.css",
   "index.html"
- ]
+ ],
+ "R8曲线": {
+  "刀3": 34,
+  "刀4": 40,
+  "刀5": 22,
+  "收口刀": 3,
+  "说明": "刀4 +6 是 6 个临时转发键（applyPackageMode/applyPageZoom/applyProjectSettings/applySplitBatch/confirmAllUnconfirmed/recognizePage），死亡刀号=刀5"
+ },
+ "R8判据": {
+  "规则": [
+   "每键必须登记死于哪一刀",
+   "到点未死=红",
+   "曲线只许下调，上调需重新签字"
+  ],
+  "applySplitBatch复核": "12421 在 setupLibrary(12405-12490)，不在 applyPackageMode(13194-13253)；值引用（回调）也算引用 → 转发器必须留"
+ }
 }
