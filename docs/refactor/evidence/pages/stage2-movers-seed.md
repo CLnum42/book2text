@@ -34,20 +34,15 @@
 
 ## 刀4（12 个函数 / 31 种 id）
 
+> 刀 4 已落盘：8 个函数搬进 `pages-view.js`（236 行）；applyPackageMode / applyProjectSettings /
+> applySplitBatch / recognizePage 移出本刀（见 knife-review / knife-package 两刀占位）。
+
 | 函数 | 引用的 id | 行范围 | 到期刀 | wire |
 |---|---|---|---|---|
 | `applyPackageMode` | `assign-list-toggle`、`assign-open`、`check-pending`、`page-setup-bar`、`panel-pagenum-settings`、`panel-recognition-settings`、`selection-actionbar`、`selection-check`、`selection-recognize`、`selection-skip-checked`、`setup-panel` | 13301–13360（61 行） | 刀4 |  |
-| `applyPageRangeInput` | `page-range`、`pages-error` | 3653–3674（23 行） | 刀4 |  |
-| `applyPageZoom` | `page-grid`、`pages-margin-toggle`、`pages-overlay-toggle`、`pages-zoom-in`、`pages-zoom-label`、`pages-zoom-out` | 4297–4352（57 行） | 刀4 |  |
 | `applyProjectSettings` | `auto-apply-suggestions`、`rec-margin-judgement` | 12597–12606（11 行） | 刀4 |  |
-| `applySetupSuggestion` | `pages-error` | 3986–4007（23 行） | 刀4 |  |
 | `applySplitBatch` | `selection-hint` | 12974–13007（35 行） | 刀4 |  |
-| `confirmAllUnconfirmed` | `selection-hint` | 4047–4058（13 行） | 刀4 |  |
-| `confirmLayoutFromPanel` | `layout-block-confirm`、`pages-error` | 4909–4930（23 行） | 刀4 |  |
-| `confirmPageIds` | `pages-error` | 4010–4033（25 行） | 刀4 |  |
-| `confirmSelectedPages` | `selection-hint` | 4036–4044（10 行） | 刀4 |  |
 | `recognizePage` | `pages-error` | 5917–5943（28 行） | 刀4 |  |
-| `recognizeSelection` | `pages-error`、`selection-skip-recognized` | 12358–12390（34 行） | 刀4 |  |
 
 ## 刀5（34 个函数 / 49 种 id）
 

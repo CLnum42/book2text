@@ -3082,6 +3082,9 @@ const VIEW_EXPORTS = {
     "refreshMarginDetectHint", "refreshMarginTiles", "renderAutoApplyStatus", "renderMarginStepVerdict",
     "renderPageNumberMetrics", "renderPageSummary", "renderRecognitionSettings", "renderStepPanels",
     "renderWorkflowFilter", "updateRecognitionAuxProgress",
+    // 刀 4：2 个临时转发键，**死亡刀号 = 刀5**（§8.2：每键带死亡刀号，到点未死就红）。
+    "applyPageZoom",         // 死亡刀号 = 刀5（showView / goToWorkflowStep / setPageZoom）
+    "confirmAllUnconfirmed", // 死亡刀号 = 刀5（finishConfirmPages）
   ] },
 };
 

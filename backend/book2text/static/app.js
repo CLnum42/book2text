@@ -3414,29 +3414,6 @@ function parsePageRange(text) {
   return { numbers, invalid };
 }
 
-function applyPageRangeInput() {
-  const project = currentProject;
-  if (!project) return;
-  const { numbers, invalid } = parsePageRange(el("page-range").value);
-  const known = new Set(project.pages.map((page) => page.page_no));
-  const unknown = [...numbers].filter((pageNo) => !known.has(pageNo));
-
-  if (invalid.length || unknown.length) {
-    const error = el("pages-error");
-    error.textContent =
-      (invalid.length ? `看不懂这段：${invalid.join("、")}。` : "") +
-      (unknown.length ? `这些页码不存在：${unknown.slice(0, 8).join("、")}。` : "") +
-      "可以写成 1-12 或 3,5,8。";
-    error.hidden = false;
-    return;
-  }
-  el("pages-error").hidden = true;
-
-  selectedPages.clear();
-  for (const pageNo of numbers) selectedPages.add(pageNo);
-  selectionAnchor = numbers.size ? Math.min(...numbers) : null;
-  renderPages();
-}
 
 function selectionPages() {
   return currentProject.pages.filter((page) => selectedPages.has(page.page_no));
@@ -3749,80 +3726,10 @@ function renderTypePicker() { return window.PagesView.renderTypePicker.apply(win
 /** 建议区：只在选中页有建议时出现，条目就是"建议 vs 当前"的具体差别。 */
 function renderSuggestionPanel() { return window.PagesView.renderSuggestionPanel.apply(window.PagesView, arguments); }
 
-async function applySetupSuggestion(item, button) {
-  if (!currentProject) return;
-  button.disabled = true;
-  el("pages-error").hidden = true;
-  try {
-    await apiJson(
-      `/api/projects/${currentProject.project_id}/pages/${item.page_id}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page_type: item.suggested_type }),
-      }
-    );
-    // 页类型变了：这一页不再/开始属于"正文页建议范围"，旧建议与角标都要作废
-    forgetPageSuggestions(item.page_no);
-    await refreshPageStates();
-    renderPages();
-    await loadSetupSuggestions();
-  } catch (error) {
-    button.disabled = false;
-    showError(el("pages-error"), error);
-  }
-}
 
-async function confirmPageIds(pageIds) {
-  if (!currentProject || !pageIds.length) return;
-  el("pages-error").hidden = true;
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/pages/confirm`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page_ids: pageIds }),
-      }
-    );
-    for (const updated of data.pages) {
-      const index = currentProject.pages.findIndex(
-        (page) => page.page_id === updated.page_id
-      );
-      if (index >= 0) currentProject.pages[index] = updated;
-    }
-    renderPages();
-    renderProjectMeta();
-    await loadSetupSuggestions();
-  } catch (error) {
-    showError(el("pages-error"), error);
-  }
-}
 
-function confirmSelectedPages() {
-  const ids = selectionPages().map((page) => page.page_id);
-  if (!ids.length) {
-    const hint = el("selection-hint");
-    hint.textContent = "先在左边网格里选几页，或点「全书… 确认全部未确认页」。";
-    hint.hidden = false;
-    return;
-  }
-  return confirmPageIds(ids);
-}
 
-function confirmAllUnconfirmed() {
-  if (!currentProject) return;
-  const ids = currentProject.pages
-    .filter((page) => !page.page_confirmed)
-    .map((page) => page.page_id);
-  if (!ids.length) {
-    const hint = el("selection-hint");
-    hint.textContent = "所有页面都已确认。";
-    hint.hidden = false;
-    return;
-  }
-  return confirmPageIds(ids);
-}
+function confirmAllUnconfirmed() { return window.PagesView.confirmAllUnconfirmed.apply(window.PagesView, arguments); }
 
 /**
  * 识别前的提醒：未确认不拦人，只问一次。
@@ -4061,63 +3968,7 @@ function pumpPageBlockPrefetch(candidates) {
   }
 }
 
-function applyPageZoom() {
-  const grid = el("page-grid");
-  if (!grid) return;
-  const level = pageZoomLevel();
-  grid.classList.remove("page-grid--cols-3", "page-grid--single", "page-grid--page");
-  if (pageZoomIndex === 1) grid.classList.add("page-grid--cols-3");
-  if (pageZoomIndex === 2) grid.classList.add("page-grid--single");
-  if (pageZoomIndex === 3) grid.classList.add("page-grid--page");
-
-  el("pages-zoom-label").textContent = `${pageZoomIndex + 1}/${PAGE_ZOOM_LEVELS.length} · ${level.label}`;
-  el("pages-zoom-out").disabled = pageZoomIndex === 0;
-  el("pages-zoom-in").disabled = pageZoomIndex === PAGE_ZOOM_LEVELS.length - 1;
-  // 块框四档都可用：网格档只画色框（不画顺序号），单列 / 单页才带顺序号
-  el("pages-overlay-toggle").disabled = false;
-  el("pages-overlay-toggle").classList.toggle("is-on", pagesOverlayOn);
-  // 版心视图四档都能看；单列 / 单页拖动更顺手
-  el("pages-margin-toggle").disabled = false;
-  el("pages-margin-toggle").classList.toggle("is-on", pagesMarginOn);
-
-  const tiles = [...grid.querySelectorAll(".page-tile")];
-  const byPage = new Map(currentProject.pages.map((page) => [page.page_no, page]));
-  visiblePageNos.clear();
-  resetOverlayQueue();
-
-  if (pageZoomIndex >= 2) {
-    for (const tile of tiles) {
-      clearPageBlocks(tile);
-      const pageNo = Number(tile.dataset.pageNo);
-      const image = tile.querySelector("img");
-      if (!image) continue;
-      image.loading = "eager";
-      image.dataset.largeSrc = pageImageUrl(pageNo, level.image);
-      image.removeAttribute("src");
-    }
-  } else {
-    for (const tile of tiles) {
-      clearPageBlocks(tile);
-      const pageNo = Number(tile.dataset.pageNo);
-      const page = byPage.get(pageNo);
-      const image = tile.querySelector("img");
-      if (!image || !page) continue;
-      image.loading = "lazy";
-      delete image.dataset.largeSrc;
-      // 大网格用 view（150 DPI），网格用 thumb（40 DPI）：别把 40 DPI 的图拉大
-      const gridSrc = pageImageUrl(pageNo, level.image);
-      if (image.getAttribute("src") !== gridSrc) image.src = gridSrc;
-    }
-    // 网格 / 大网格档的建议角标仍按"滚动停下再扫"的节奏
-    ensureSuggestionScrollListener();
-    scheduleSuggestionScan();
-  }
-
-  ensurePageScrollListener();
-  pageTileMetrics = null;
-  capturePageTileMetrics();
-  updatePageVisibility();
-}
+function applyPageZoom() { return window.PagesView.applyPageZoom.apply(window.PagesView, arguments); }
 
 function setPageZoom(delta) {
   const next = Math.min(
@@ -4662,29 +4513,6 @@ function highConfidenceCount(suggestions) {
   return (suggestions || []).filter((item) => item.confidence === "high").length;
 }
 
-async function confirmLayoutFromPanel() {
-  const page = layoutBlockPageRecord();
-  if (!page || !currentProject) return;
-  const button = el("layout-block-confirm");
-  button.disabled = true;
-  try {
-    await apiJson(
-      `/api/projects/${currentProject.project_id}/pages/${page.page_no}/layout/confirm`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page_numbers: [page.page_no] }),
-      }
-    );
-    await refreshPageStates();
-    await loadLayoutBlocks(page.page_no);
-    await loadFinishSummary({ silent: true });
-    setMarginStatus(`第 ${page.page_no} 页版面已确认。`);
-  } catch (error) {
-    button.disabled = false;
-    showError(el("pages-error"), error);
-  }
-}
 
 // ---------------------------------------------------------------- 文字识别（只读状态）
 //
@@ -12297,68 +12125,6 @@ async function humanTouchedPages(project, pages) {
   }
 }
 
-async function recognizeSelection(force = false) {
-  const project = currentProject;
-  const pages = selectionPages().filter((page) => page.include);
-  if (!project || !pages.length) return;
-
-  // 有人工成果的页：先问，再让用户选「跳过」还是「仍要重识别」（后者会先备份整库）
-  let targetPages = pages;
-  let useForce = force;
-  const touched = await humanTouchedPages(project, pages);
-  if (touched.length) {
-    const remaining = pages.length - touched.length;
-    const choice = await confirmAction({
-      title: `${touched.length} 页有人工改动`,
-      lead:
-        remaining > 0
-          ? `重识别这 ${touched.length} 页会丢掉你改过的字，跳过则保留。`
-          : `这 ${touched.length} 页都有人工改动，跳过则保留。`,
-      list: [`那 ${touched.length} 页之后的改动会丢`, "原始输出与缓存不在备份里"],
-      detail: RESTORE_DETAIL_TEXT,
-      safeText: remaining > 0 ? `跳过并识别剩下的 ${remaining} 页` : "跳过，不识别",
-      dangerText: `仍要重识别这 ${touched.length} 页`,
-    });
-    if (choice === null) return;                 // Esc / 点遮罩：什么都不做
-    if (choice === "safe") {
-      targetPages = pages.filter((page) => !touched.includes(page.page_no));
-      if (!targetPages.length) return;           // 全被跳过：不建任务
-    } else {
-      useForce = true;                           // 危险键：force=true（后端会先备份）
-    }
-  }
-
-  if (!warnUnconfirmed(targetPages, "识别所选页")) return;
-  if (
-    force &&
-    !window.confirm(
-      `选中的 ${pages.length} 页正文都已识别。重新识别会替换自动结果；` +
-        "人工改过的块不会自动覆盖（沿用 R2 规则）。继续吗？"
-    )
-  ) {
-    return;
-  }
-
-  el("pages-error").hidden = true;
-  const skip = force ? false : el("selection-skip-recognized").checked;
-  try {
-    const data = await apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pages: targetPages.map((page) => page.page_no),
-        skip_recognized: skip,
-        ...(useForce ? { force: true } : {}),
-      }),
-    });
-    applyRecognizedPages(data.pages);
-    renderPages();
-    openTaskDrawer();
-    startTaskPolling(data.job.job_id);
-  } catch (error) {
-    showError(el("pages-error"), error);
-  }
-}
 
 async function closeProject() {
   if (!currentProject) return;
@@ -14022,8 +13788,6 @@ function boot() {
     getPageBlockPending: () => pageBlockPending,
     getPageBlockCache: () => pageBlockCache,
     getDetailPageNo: () => detailPageNo,
-    applyPageZoom: applyPageZoom,
-    applySetupSuggestion: applySetupSuggestion,
     auxEstimateText: auxEstimateText,
     ensureMarginAudit: ensureMarginAudit,
     ensurePageSuggestion: ensurePageSuggestion,
@@ -14075,12 +13839,8 @@ function boot() {
     checkSelection: checkSelection,
     setAutoApplySetting: setAutoApplySetting,
     adoptAllHighSuggestions: adoptAllHighSuggestions,
-    applyPageRangeInput: applyPageRangeInput,
     clearPageSelection: clearPageSelection,
     confirmAllMargins: confirmAllMargins,
-    confirmAllUnconfirmed: confirmAllUnconfirmed,
-    confirmLayoutFromPanel: confirmLayoutFromPanel,
-    confirmSelectedPages: confirmSelectedPages,
     divergenceChip: divergenceChip,
     handleTileClick: handleTileClick,
     openPageDetail: openPageDetail,
@@ -14091,7 +13851,6 @@ function boot() {
     patchRecognitionSetting: patchRecognitionSetting,
     recognitionChip: recognitionChip,
     recognizePage: recognizePage,
-    recognizeSelection: recognizeSelection,
     reviewBadge: reviewBadge,
     selectAllVisiblePages: selectAllVisiblePages,
     setMarginJudgementSetting: setMarginJudgementSetting,
@@ -14149,6 +13908,18 @@ function boot() {
     syncWorkflowSteps: syncWorkflowSteps,
     undoAutoApply: undoAutoApply,
     updateFinishChips: updateFinishChips,
+    PAGE_ZOOM_LEVELS: PAGE_ZOOM_LEVELS,
+    RESTORE_DETAIL_TEXT: RESTORE_DETAIL_TEXT,
+    applyRecognizedPages: applyRecognizedPages,
+    confirmAction: confirmAction,
+    ensurePageScrollListener: ensurePageScrollListener,
+    ensureSuggestionScrollListener: ensureSuggestionScrollListener,
+    humanTouchedPages: humanTouchedPages,
+    pageImageUrl: pageImageUrl,
+    pageZoomLevel: pageZoomLevel,
+    resetOverlayQueue: resetOverlayQueue,
+    scheduleSuggestionScan: scheduleSuggestionScan,
+    warnUnconfirmed: warnUnconfirmed,
   });
   setupReviewPager();
   setupReviewAutoPass();

@@ -377,7 +377,7 @@ function renderPages() {
     empty.textContent = "当前筛选下没有页面。";
     grid.append(empty);
   }
-  injected.applyPageZoom();
+  applyPageZoom();
   renderPageSetup();
   updateSelectionPanel();
 }
@@ -668,7 +668,7 @@ function renderSuggestionPanel() {
       apply.type = "button";
       apply.className = "btn btn--sm";
       apply.textContent = "采用";
-      apply.addEventListener("click", () => injected.applySetupSuggestion(item, apply));
+      apply.addEventListener("click", () => applySetupSuggestion(item, apply));
       head.append(apply);
     } else {
       const ok = document.createElement("span");
@@ -1733,6 +1733,250 @@ function updateRecognitionAuxProgress(data) {
   }
 }
 
+function applyPageRangeInput() {
+  const project = injected.getCurrentProject();
+  if (!project) return;
+  const { numbers, invalid } = injected.parsePageRange(el("page-range").value);
+  const known = new Set(project.pages.map((page) => page.page_no));
+  const unknown = [...numbers].filter((pageNo) => !known.has(pageNo));
+
+  if (invalid.length || unknown.length) {
+    const error = el("pages-error");
+    error.textContent =
+      (invalid.length ? `看不懂这段：${invalid.join("、")}。` : "") +
+      (unknown.length ? `这些页码不存在：${unknown.slice(0, 8).join("、")}。` : "") +
+      "可以写成 1-12 或 3,5,8。";
+    error.hidden = false;
+    return;
+  }
+  el("pages-error").hidden = true;
+
+  injected.getSelectedPages().clear();
+  for (const pageNo of numbers) injected.getSelectedPages().add(pageNo);
+  injected.setSelectionAnchor(numbers.size ? Math.min(...numbers) : null);
+  renderPages();
+}
+
+function applyPageZoom() {
+  const grid = el("page-grid");
+  if (!grid) return;
+  const level = injected.pageZoomLevel();
+  grid.classList.remove("page-grid--cols-3", "page-grid--single", "page-grid--page");
+  if (injected.getPageZoomIndex() === 1) grid.classList.add("page-grid--cols-3");
+  if (injected.getPageZoomIndex() === 2) grid.classList.add("page-grid--single");
+  if (injected.getPageZoomIndex() === 3) grid.classList.add("page-grid--page");
+
+  el("pages-zoom-label").textContent = `${injected.getPageZoomIndex() + 1}/${injected.PAGE_ZOOM_LEVELS.length} · ${level.label}`;
+  el("pages-zoom-out").disabled = injected.getPageZoomIndex() === 0;
+  el("pages-zoom-in").disabled = injected.getPageZoomIndex() === injected.PAGE_ZOOM_LEVELS.length - 1;
+  // 块框四档都可用：网格档只画色框（不画顺序号），单列 / 单页才带顺序号
+  el("pages-overlay-toggle").disabled = false;
+  el("pages-overlay-toggle").classList.toggle("is-on", injected.getPagesOverlayOn());
+  // 版心视图四档都能看；单列 / 单页拖动更顺手
+  el("pages-margin-toggle").disabled = false;
+  el("pages-margin-toggle").classList.toggle("is-on", injected.getPagesMarginOn());
+
+  const tiles = [...grid.querySelectorAll(".page-tile")];
+  const byPage = new Map(injected.getCurrentProject().pages.map((page) => [page.page_no, page]));
+  injected.visiblePageNos.clear();
+  injected.resetOverlayQueue();
+
+  if (injected.getPageZoomIndex() >= 2) {
+    for (const tile of tiles) {
+      injected.clearPageBlocks(tile);
+      const pageNo = Number(tile.dataset.pageNo);
+      const image = tile.querySelector("img");
+      if (!image) continue;
+      image.loading = "eager";
+      image.dataset.largeSrc = injected.pageImageUrl(pageNo, level.image);
+      image.removeAttribute("src");
+    }
+  } else {
+    for (const tile of tiles) {
+      injected.clearPageBlocks(tile);
+      const pageNo = Number(tile.dataset.pageNo);
+      const page = byPage.get(pageNo);
+      const image = tile.querySelector("img");
+      if (!image || !page) continue;
+      image.loading = "lazy";
+      delete image.dataset.largeSrc;
+      // 大网格用 view（150 DPI），网格用 thumb（40 DPI）：别把 40 DPI 的图拉大
+      const gridSrc = injected.pageImageUrl(pageNo, level.image);
+      if (image.getAttribute("src") !== gridSrc) image.src = gridSrc;
+    }
+    // 网格 / 大网格档的建议角标仍按"滚动停下再扫"的节奏
+    injected.ensureSuggestionScrollListener();
+    injected.scheduleSuggestionScan();
+  }
+
+  injected.ensurePageScrollListener();
+  injected.setPageTileMetrics(null);
+  injected.capturePageTileMetrics();
+  updatePageVisibility();
+}
+
+async function applySetupSuggestion(item, button) {
+  if (!injected.getCurrentProject()) return;
+  button.disabled = true;
+  el("pages-error").hidden = true;
+  try {
+    await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/${item.page_id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_type: item.suggested_type }),
+      }
+    );
+    // 页类型变了：这一页不再/开始属于"正文页建议范围"，旧建议与角标都要作废
+    injected.forgetPageSuggestions(item.page_no);
+    await injected.refreshPageStates();
+    renderPages();
+    await loadSetupSuggestions();
+  } catch (error) {
+    button.disabled = false;
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+function confirmAllUnconfirmed() {
+  if (!injected.getCurrentProject()) return;
+  const ids = injected.getCurrentProject().pages
+    .filter((page) => !page.page_confirmed)
+    .map((page) => page.page_id);
+  if (!ids.length) {
+    const hint = el("selection-hint");
+    hint.textContent = "所有页面都已确认。";
+    hint.hidden = false;
+    return;
+  }
+  return confirmPageIds(ids);
+}
+
+async function confirmLayoutFromPanel() {
+  const page = injected.layoutBlockPageRecord();
+  if (!page || !injected.getCurrentProject()) return;
+  const button = el("layout-block-confirm");
+  button.disabled = true;
+  try {
+    await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/${page.page_no}/layout/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_numbers: [page.page_no] }),
+      }
+    );
+    await injected.refreshPageStates();
+    await loadLayoutBlocks(page.page_no);
+    await loadFinishSummary({ silent: true });
+    injected.setMarginStatus(`第 ${page.page_no} 页版面已确认。`);
+  } catch (error) {
+    button.disabled = false;
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+async function confirmPageIds(pageIds) {
+  if (!injected.getCurrentProject() || !pageIds.length) return;
+  el("pages-error").hidden = true;
+  try {
+    const data = await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_ids: pageIds }),
+      }
+    );
+    for (const updated of data.pages) {
+      const index = injected.getCurrentProject().pages.findIndex(
+        (page) => page.page_id === updated.page_id
+      );
+      if (index >= 0) injected.getCurrentProject().pages[index] = updated;
+    }
+    renderPages();
+    injected.renderProjectMeta();
+    await loadSetupSuggestions();
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
+function confirmSelectedPages() {
+  const ids = injected.selectionPages().map((page) => page.page_id);
+  if (!ids.length) {
+    const hint = el("selection-hint");
+    hint.textContent = "先在左边网格里选几页，或点「全书… 确认全部未确认页」。";
+    hint.hidden = false;
+    return;
+  }
+  return confirmPageIds(ids);
+}
+
+async function recognizeSelection(force = false) {
+  const project = injected.getCurrentProject();
+  const pages = injected.selectionPages().filter((page) => page.include);
+  if (!project || !pages.length) return;
+
+  // 有人工成果的页：先问，再让用户选「跳过」还是「仍要重识别」（后者会先备份整库）
+  let targetPages = pages;
+  let useForce = force;
+  const touched = await injected.humanTouchedPages(project, pages);
+  if (touched.length) {
+    const remaining = pages.length - touched.length;
+    const choice = await injected.confirmAction({
+      title: `${touched.length} 页有人工改动`,
+      lead:
+        remaining > 0
+          ? `重识别这 ${touched.length} 页会丢掉你改过的字，跳过则保留。`
+          : `这 ${touched.length} 页都有人工改动，跳过则保留。`,
+      list: [`那 ${touched.length} 页之后的改动会丢`, "原始输出与缓存不在备份里"],
+      detail: injected.RESTORE_DETAIL_TEXT,
+      safeText: remaining > 0 ? `跳过并识别剩下的 ${remaining} 页` : "跳过，不识别",
+      dangerText: `仍要重识别这 ${touched.length} 页`,
+    });
+    if (choice === null) return;                 // Esc / 点遮罩：什么都不做
+    if (choice === "safe") {
+      targetPages = pages.filter((page) => !touched.includes(page.page_no));
+      if (!targetPages.length) return;           // 全被跳过：不建任务
+    } else {
+      useForce = true;                           // 危险键：force=true（后端会先备份）
+    }
+  }
+
+  if (!injected.warnUnconfirmed(targetPages, "识别所选页")) return;
+  if (
+    force &&
+    !window.confirm(
+      `选中的 ${pages.length} 页正文都已识别。重新识别会替换自动结果；` +
+        "人工改过的块不会自动覆盖（沿用 R2 规则）。继续吗？"
+    )
+  ) {
+    return;
+  }
+
+  el("pages-error").hidden = true;
+  const skip = force ? false : el("selection-skip-recognized").checked;
+  try {
+    const data = await injected.apiJson(`/api/projects/${project.project_id}/jobs/ocr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pages: targetPages.map((page) => page.page_no),
+        skip_recognized: skip,
+        ...(useForce ? { force: true } : {}),
+      }),
+    });
+    injected.applyRecognizedPages(data.pages);
+    renderPages();
+    injected.openTaskDrawer();
+    injected.startTaskPolling(data.job.job_id);
+  } catch (error) {
+    injected.showError(el("pages-error"), error);
+  }
+}
+
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
     // 刀 2：deps 已赋值，统一挂 14 段 pages 接线（**必须在 return api 之前**）。
@@ -1796,6 +2040,8 @@ function updateRecognitionAuxProgress(data) {
     renderStepPanels,
     renderWorkflowFilter,
     updateRecognitionAuxProgress,
+    applyPageZoom,
+    confirmAllUnconfirmed,
   };
 // ---------------------------------------------------------------- 刀 2：14 段 pages 接线
 /**
@@ -1920,9 +2166,9 @@ function wirePagesPageGrid() {
  * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
  */
 function wirePagesPageRange() {
-  el("page-range-select").addEventListener("click", injected.applyPageRangeInput);
+  el("page-range-select").addEventListener("click", applyPageRangeInput);
   el("page-range").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") injected.applyPageRangeInput();
+    if (event.key === "Enter") applyPageRangeInput();
   });
 }
 /**
@@ -1969,7 +2215,7 @@ function wirePagesPanes() {
   el("pages-overlay-toggle").addEventListener("click", injected.togglePageBlocksOverlay);
   el("pages-margin-toggle").addEventListener("click", injected.toggleMarginView);
   el("layout-block-apply-all").addEventListener("click", injected.adoptAllHighSuggestions);
-  el("layout-block-confirm").addEventListener("click", injected.confirmLayoutFromPanel);
+  el("layout-block-confirm").addEventListener("click", confirmLayoutFromPanel);
   el("margin-confirm-all").addEventListener("click", injected.confirmAllMargins);
   el("rec-start-all").addEventListener("click", () => {
     // 目标由 recognitionTarget() 唯一决定（文案、禁用、点下去做什么，三处同源）
@@ -1979,11 +2225,11 @@ function wirePagesPanes() {
       return;
     }
     if (target.mode === "selection") {
-      injected.recognizeSelection(false);
+      recognizeSelection(false);
       return;
     }
     if (target.mode === "force") {
-      injected.recognizeSelection(true);
+      recognizeSelection(true);
     }
   });
   el("rec-aux-all").addEventListener("click", injected.startAuxiliaryAll);
@@ -1994,9 +2240,9 @@ function wirePagesPanes() {
  * 这一段只碰 `view-pages` 的 id，抽出来时行序未动。
  */
 function wirePagesSetup() {
-  el("setup-confirm-selected").addEventListener("click", injected.confirmSelectedPages);
+  el("setup-confirm-selected").addEventListener("click", confirmSelectedPages);
   el("split-page-numbers").addEventListener("click", injected.openSplitBatchPanel);
-  el("setup-confirm-all").addEventListener("click", injected.confirmAllUnconfirmed);
+  el("setup-confirm-all").addEventListener("click", confirmAllUnconfirmed);
 }
 /**
  * 「高建议自动采用」开关的接线（刀 2.5 从 `setupLibrary` 原样搬出）。只碰 `view-pages` 的 id：`auto-apply-suggestions`。
