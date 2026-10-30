@@ -262,9 +262,16 @@ def anti_checks(module_code, app_text, rules, module_declared=frozenset()):
             continue
         if re.search(r'(?<![\w$.])' + re.escape(name) + r'\b', masked):
             problems.append(f"{name} 判注入，但模块正文里仍裸引用它")
-    bad_assign = re.findall(r'injected\.get[A-Za-z0-9_$]*\(\)\s*=(?!=)', masked)
+    # 给 getter 赋值：`injected.getX() = v` **以及复合赋值** `+=` `-=` `*=` `/=` `%=`。
+    # 旧正则只匹配裸 `=`，于是 `injected.getX() += 1` 一路绿到落盘（2026-10-30 刀 5 真事故：
+    # `suggestionScanQueued += 1` → 赋给函数调用结果，语法/闸/pytest 全绿、真跑才抛）。
+    bad_assign = re.findall(r'injected\.(get[A-Za-z0-9_$]*)\(\)\s*([+\-*/%]?=)(?!=)', masked)
     if bad_assign:
-        problems.append(f"给 getter 赋值 {len(bad_assign)} 处（{bad_assign[0]}）——写点没走 setter，这是 SETTERS 漏项")
+        first = bad_assign[0]
+        problems.append(
+            f"给注入 getter 赋值 {len(bad_assign)} 处（injected.{first[0]}() {first[1]}）"
+            "——getter 是函数，赋给它的返回值会抛；应走 setter"
+        )
     for name, _setter in getattr(rules, "SETTERS", []):
         if re.search(r'(?<![\w$.])' + re.escape(name) + r'\s*=(?!=)', masked):
             problems.append(f"{name} 判走 setter，但模块正文里还有 `{name} =`——改写漏了")
