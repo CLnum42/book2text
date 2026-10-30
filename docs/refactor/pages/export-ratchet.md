@@ -130,18 +130,18 @@
 **三个口径必须分开写，别混成一个数**（今天三次打架都是这么来的）：
 
 ```
-口径 ① 最小删（只删"直接死"的）          218 → 217   只有 9.6a 的 marginUndoButton
-口径 ② 整条队列（9 个里除 button 的 8 个） 217 → 209   210 是"218 − 8"，不含 button；含它就是 209
+口径 ① 最小删（只删"直接死"的）          **219 → 218**   只有 9.6a 的 marginUndoButton
+口径 ② 整条队列（9 个里除 button 的 8 个） **218 → 210**   211 是"219 − 8"（不含 button）；含它就是 210
 口径 ③ 连缓存族一起搬（下面这族若也进模块，deps 还要再减，**落盘时按逐键清单核，不按预估**）
         pageBlockPending / pageBlockVersions / pageBlockPrefetchInFlight
         + suggestionScanQueued 之外的队列计数器（若还有）
-        ⇒ 目标 **≤ 209**，但"≤"不是承诺，逐键清单才是
+        ⇒ 目标 **≤ 210**，但"≤"不是承诺，逐键清单才是
 ```
 
-**别把口径 ② 的 209 当成"渲染循环归位"的证据**（DevLead 提的，很准）：刀 10 搬的是
+**别把口径 ② 的 210 当成"渲染循环归位"的证据**（DevLead 提的，很准）：刀 10 搬的是
 调度器与队列，**块缓存家族（`pageBlockVersions` / `pageBlockPending` / `pageBlockPrefetchInFlight`）
 是否同批搬由该刀图定**。它们留在壳里的话，只能说"调度归位"，不能说"循环归位"——
-这句话必须写在刀 10 的图里，否则下一个人会拿 209 当"已经搬完"的依据。
+这句话必须写在刀 10 的图里，否则下一个人会拿 210 当"已经搬完"的依据。
 
 - 39 个活 T 的宿主表见 §六（这就是 **9.1–9.5** 的施工依据：搬一个宿主，死它那一列键）。
 
@@ -519,7 +519,7 @@ divergenceCandidatesOn  → 先判那条断言还有没有意义：它断的是*
 0 次 = 模块从未读过（无解构、无 `injected["x"]`，已核）。
 
 ```
-实测（main@e9ddc2a）：deps **218** 键，**23 个从未读**：
+实测（`b1c22e4`）：deps **219** 键，**22 个从未读**（`main@e9ddc2a` 时是 218 / 23——9.1 加了 `queueAfterSteps`，它被读，所以未读数反而少 1）：
 
 pageMarginStorageKey · pageOverlayStorageKey · renderRecognitionSettings ·
 AUX_TEXT_LAYER_SECONDS_PER_PAGE · PAGE_SUGGESTION_CONCURRENCY · getPageSuggestionActive ·
