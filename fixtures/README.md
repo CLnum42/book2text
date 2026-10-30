@@ -8,12 +8,23 @@
 |---|---|---|
 | `synthetic-smoke-3pages.pdf` | 3 页 A4 英文文本，用于验证"能上传、能渲染" | reportlab 临时环境生成（`uv run --with reportlab`） |
 | `rotated-page-90.pdf` | 1 页，横向内容竖着存 + 声明 `/Rotate=90`，用于验证旋转页的坐标归一化 | `scripts/make_test_fixtures.py` |
+| `synthetic-split-3pages.pdf` | 3 页 A4@200dpi，每页两行正文 + 页脚 `Book2Text 1/2/3`；**专供「拆分书眉页码」**：识别后每页 `['paragraph','paragraph','page_number']`，「拆页号」面板能列出 3 条并真的落库成 `page_number` 块（刀 8 的 UI 路径验收用它） | `scripts/make_split_batch_fixture.py`（只依赖 Pillow） |
 
 **重新生成旋转页夹具：**
 
 ```bash
 uv run --with reportlab --with pypdf python scripts/make_test_fixtures.py
 ```
+
+**重新生成可分块页码夹具：**
+
+```bash
+.venv/bin/python scripts/make_split_batch_fixture.py
+```
+
+> 与旋转页那条不同：这份**字节不可复现**（PDF 里有创建时间戳），两次运行得到的文件不同。
+> 判据只认**结构等价**：3 页、每页识别后 3 块、页脚页码 1/2/3 可拆成独立 `page_number` 块。
+> 别在文档里承诺"跑脚本得到同一份文件"。
 
 **制作旋转页夹具时踩过的坑（务必沿用上面的脚本，不要自己造）：**
 
