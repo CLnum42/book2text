@@ -31,7 +31,7 @@
 
   /** 合法尺寸档：从模糊到清晰。越界降级到 `view` 并提示一次（§21.7）。 */
   const SIZES = ["thumb", "view", "mid", "zoom", "zoom2"];
-  const RANK = { thumb: 0, view: 1, mid: 2, zoom: 3 };
+  const RANK = { thumb: 0, view: 1, mid: 2, zoom: 3, zoom2: 4 };   // 顺序必须与 SIZES 一致，缺键会让共享 img 永远选不到更高档
   const FALLBACK_SIZE = "view";
   /** 视口外多远开始取图。与三个视图原来的 `rootMargin` 同一量级，别改大（会抢带宽）。 */
   const ROOT_MARGIN = "200px";

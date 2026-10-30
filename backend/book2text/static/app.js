@@ -2935,7 +2935,7 @@ const PAGE_ZOOM_LEVELS = [
   { label: "网格", cols: "auto", image: "thumb" },
   { label: "大网格", cols: 3, image: "view" },
   { label: "单列", cols: 1, image: "view" },
-  { label: "单页", cols: 1, image: "zoom" },
+  { label: "单页", cols: 1, image: "zoom2" },
 ];
 let pageZoomIndex = 0;
 let pagesOverlayOn = false;
