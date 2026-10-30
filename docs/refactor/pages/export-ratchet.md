@@ -180,7 +180,8 @@
 | **b（收能力 / 改直呼 / 搬接线）10** | 其余 10 个 | 6 处以事件能力收（B1 的 12 个调用点）· 2 处接线：**版心拖动搬进模块**（window 级 pointer 监听 + handler 有 `tileMarginDrag` 守卫）、**`layout-detect-start` 搬不动**（在 `#confirm-dialog` 里，不属于任何 view section）→ 收能力 |
 | **+3 入口键（实际落盘值）** | `onTaskFinished` · `onWorkflowLoaded` · `onLayoutDetectStarted` | 前两个是"收尾"与"工作流重载"两个**不同语义**（规则①：不许合进 `onTaskProgress`）、第三个是搬不动的那处接线 |
 
-⇒ **9.3 = 52 − 12 + 3 = 43** · C 18 → 21 · ② 推导值 24 · deps 219 → 213
+⇒ **9.3 = 52 − 12 + 3 = 43** · C 18 → 21 · ② 推导值 24 · deps **219 → 214**
+（逐笔核过：−4 自环 · −2 宿主 · −1 死键 `startTileMarginDrag` · +2 拖拽簇共用的 helper `applyMarginRect` / `nearestEdge`。**213 是 9.3 中途那一版的数，作废**——那时还没有这两处 helper）
 （自环 −4 在"改直呼"那笔死、宿主 −2 跟 a 类键走，**两列分开记**）
 
 > `onTaskProgress` **没有改名**：扩语义的方案被 §一 的规则①否掉，改成新增 `onTaskFinished`。
