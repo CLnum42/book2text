@@ -2075,7 +2075,22 @@ test("R3 自检（到期判据存在性）：seed 必须解析出函数→刀号
   const rows = [...text.matchAll(/^\| `[A-Za-z_$][\w$]*` \|/gm)].length;
   const parsed = parseSeedRows(text);
   assert.deepEqual(parsed.problems, [], parsed.problems.join("\n"));
-  assert.ok(rows > 0, "seed 里一行函数表都没有——文件结构变了，先修这条自检");
+  // **seed 空：只在「豁免表也空」时才算落完整**（刀 8 的终态就是两边都空）。
+  // 这条自检原本的立意是「解析器匹不到任何行 → 两条判据整块跳过 → 闸绿、判据变装饰」，
+  // 所以两条都要判：seed 空但表还在 = seed 被误清空；表空但 seed 还有行 = 只清了表。
+  if (rows === 0) {
+    assert.equal(
+      PAGES_R3_EXEMPTIONS.length, 0,
+      `seed 里一行函数表都没有，但豁免表还挂着 ${PAGES_R3_EXEMPTIONS.length} 项——`
+      + "这是「seed 被误清空」，不是落完整（落完整时表与 seed 同批清空）",
+    );
+    return;   // 两边都空：终态。下面所有以 seed 为准的判据都没有对象可判
+  }
+  assert.ok(
+    PAGES_R3_EXEMPTIONS.length > 0,
+    `豁免表是空的，但 seed 里还有 ${rows} 行函数——「表空了但 seed 还有行」是矛盾态：`
+    + "先清表后清 seed 的中间态不该出现（落盘必须同批）",
+  );
   assert.equal(
     parsed.rows.length, rows,
     `seed 有 ${rows} 行函数表，只解析出 ${parsed.rows.length} 个函数——解析又漂了，`
