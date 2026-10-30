@@ -220,3 +220,12 @@ script 标签在 </body> 前、boot() 之后执行 → init 时 DOM 已在树里
 deps：23 个 pages 流程函数 + 2 个 getter（currentProject / selectedPages）
 留外壳的只剩：boot 那 8 处 toggle 句柄（跨视图 init deps）+ setupLibrary 的混杂段
 ```
+
+## 推迟清单（刀 5 落盘时补：到期刀跟着推迟决定走，不是手调）
+
+| 函数 + 行范围 | 到期刀 |
+|---|---|
+| `applyPackageMode 12346–12405` | 刀8 |
+| `applyProjectSettings 11698–11708` | 刀8 |
+| `applySplitBatch 12019–12053` | 刀8 |
+| `recognizePage 4962–5010` | 刀7 |

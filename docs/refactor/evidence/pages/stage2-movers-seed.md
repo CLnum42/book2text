@@ -16,13 +16,13 @@
 
 | 函数 | 引用的 id | 行范围 | 到期刀 | wire |
 |---|---|---|---|---|
-| `boot` | `pages-margin-toggle`、`pages-overlay-toggle` | 13983–14384（403 行） | 刀5 |  |
-| `setupCollabControls` | `assign-list-toggle`、`assign-open` | 13470–13487（19 行） | 刀4 |  |
-| `setupLibrary` | `check-pending` | 12608–12703（96 行） | 刀4 |  |
-| `setupLibrary` | `layout-detect-open` | 12608–12703（96 行） | 刀3 |  |
-| `setupLibrary` | `apply-high-suggestions`、`aux-rerun`、`backups-open`、`page-more-menu`、`word-boxes-open` | 12608–12703（96 行） | 刀5 |  |
-| `setupLibrary` | `layout-block-apply-all`、`page-more`、`page-number-open`、`page-range-select`、`rec-aux-all`、`rec-start-all`、`selection-all`、`selection-clear`、`selection-more`、`selection-more-menu`、`selection-select-all`、`setup-confirm-all`、`setup-confirm-selected`、`split-page-numbers` | 12608–12703（96 行） | 刀2 |  |
-| `setupShell` | `selection-review-open`、`stats-open` | 1252–1293（43 行） | 刀5 |  |
+| `boot` | `pages-margin-toggle`、`pages-overlay-toggle` | 13983–14384（403 行） | 刀6 |  |
+| `setupCollabControls` | `assign-list-toggle`、`assign-open` | 13470–13487（19 行） | 刀6 |  |
+| `setupLibrary` | `check-pending` | 12608–12703（96 行） | 刀6 |  |
+| `setupLibrary` | `layout-detect-open` | 12608–12703（96 行） | 刀6 |  |
+| `setupLibrary` | `apply-high-suggestions`、`aux-rerun`、`backups-open`、`page-more-menu`、`word-boxes-open` | 12608–12703（96 行） | 刀6 |  |
+| `setupLibrary` | `layout-block-apply-all`、`page-more`、`page-number-open`、`page-range-select`、`rec-aux-all`、`rec-start-all`、`selection-all`、`selection-clear`、`selection-more`、`selection-more-menu`、`selection-select-all`、`setup-confirm-all`、`setup-confirm-selected`、`split-page-numbers` | 12608–12703（96 行） | 刀6 |  |
+| `setupShell` | `selection-review-open`、`stats-open` | 1252–1293（43 行） | 刀6 |  |
 
 ## 刀3（15 个函数 / 29 种 id）
 
@@ -39,18 +39,18 @@
 
 | 函数 | 引用的 id | 行范围 | 到期刀 | wire |
 |---|---|---|---|---|
-| `applyPackageMode` | `assign-list-toggle`、`assign-open`、`check-pending`、`page-setup-bar`、`panel-pagenum-settings`、`panel-recognition-settings`、`selection-actionbar`、`selection-check`、`selection-recognize`、`selection-skip-checked`、`setup-panel` | 13301–13360（61 行） | 刀4 |  |
-| `applyProjectSettings` | `auto-apply-suggestions`、`rec-margin-judgement` | 12597–12606（11 行） | 刀4 |  |
-| `applySplitBatch` | `selection-hint` | 12974–13007（35 行） | 刀4 |  |
-| `recognizePage` | `pages-error` | 5917–5943（28 行） | 刀4 |  |
+| `applyPackageMode` | `assign-list-toggle`、`assign-open`、`check-pending`、`page-setup-bar`、`panel-pagenum-settings`、`panel-recognition-settings`、`selection-actionbar`、`selection-check`、`selection-recognize`、`selection-skip-checked`、`setup-panel` | 13301–13360（61 行） | 刀8 |  |
+| `applyProjectSettings` | `auto-apply-suggestions`、`rec-margin-judgement` | 12597–12606（11 行） | 刀8 |  |
+| `applySplitBatch` | `selection-hint` | 12974–13007（35 行） | 刀8 |  |
+| `recognizePage` | `pages-error` | 5917–5943（28 行） | 刀7 |  |
 
 ## 刀5（34 个函数 / 49 种 id）
 
 | 函数 | 引用的 id | 行范围 | 到期刀 | wire |
 |---|---|---|---|---|
-| `finishRevokeAutoPass` | `pages-error` | 12153–12173（22 行） | 刀5 |  |
-| `setMarginJudgementSetting` | `rec-margin-judgement` | 12796–12813（19 行） | 刀5 |  |
-| `startLayoutDetectFromDialog` | `pages-error` | 6462–6490（30 行） | 刀5 |  |
+| `finishRevokeAutoPass` | `pages-error` | 12153–12173（22 行） | 刀6 |  |
+| `setMarginJudgementSetting` | `rec-margin-judgement` | 12796–12813（19 行） | 刀6 |  |
+| `startLayoutDetectFromDialog` | `pages-error` | 6462–6490（30 行） | 刀6 |  |
 
 ## 不在 seed 里的 37 种（宽口径，另纸，不参与判据）
 
