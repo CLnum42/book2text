@@ -138,6 +138,25 @@
         ⇒ 目标 **≤ 210**，但"≤"不是承诺，逐键清单才是
 ```
 
+### 9.3 的形态（2026-10-30 裁定，两份独立分类表逐字吻合）
+
+```
+12 个键的调用点全部落在 7 个宿主里，没有一个漏在别处
+⇒ 这刀的风险不在键，在宿主：7 个宿主里 5 个是 b 类（跨域编排），只有 2 个是 a 类（单视图动作）
+```
+
+| 死法 | 键 | 处理 |
+|---|---|---|
+| **a（跟宿主搬）2** | `loadLayoutBlocks` · `renderLayoutBlocks` | 宿主 `scheduleLayoutBlocks` 只被模块调 |
+| **b（收能力 / 改直呼 / 搬接线）10** | 其余 10 个 | 6 处以 `onTaskEvent` 收（B1 的 12 个调用点）· 2 处接线：**版心拖动搬进模块**（window 级 pointer 监听 + handler 有 `tileMarginDrag` 守卫）、**`layout-detect-start` 搬不动**（在 `#confirm-dialog` 里，不属于任何 view section）→ 收能力 |
+| **+2 入口键** | `onLayoutDetectStarted(...)` · `onWorkflowRefreshed(...)` | 前者是搬不动的那处接线、后者是 `renderLayoutStatus` ← `loadWorkflow` |
+
+⇒ **9.3 = 52 − 12 + 2 = 42** · C 18 → 20 · ② 推导值 21 → 23 · deps 219 → 213
+（自环 −4 在"改直呼"那笔死、宿主 −2 跟 a 类键走，**两列分开记**）
+
+**`onTaskProgress` → `onTaskEvent` 的改名在 9.3 这一笔里顺带做**（9.2 已落盘，成本 8 处：
+函数名 1 · 调用点 2 · api 成员 1 · VIEW_EXPORTS 名单 1 · kinds 2 · 文档 2）——反正 9.3 要重写它的调用面。
+
 **别把口径 ② 的 210 当成"渲染循环归位"的证据**（DevLead 提的，很准）：刀 10 搬的是
 调度器与队列，**块缓存家族（`pageBlockVersions` / `pageBlockPending` / `pageBlockPrefetchInFlight`）
 是否同批搬由该刀图定**。它们留在壳里的话，只能说"调度归位"，不能说"循环归位"——
@@ -164,8 +183,10 @@
 | `setMarginJudgementCheckbox` | setMarginJudgementSetting | 项目设置 → 导出面板勾选态 |
 | **刀 7** `recognizePage` | buildTile / setupLibrary（review 的「重新识别」） | 单页识别可从页面网格和审校面板发起 |
 | **刀 8** `setPackageModeChrome` · `syncProjectSettings` · `setSelectionHint` | applyPackageMode / applyProjectSettings / applySplitBatch | 跨域编排 |
-| **9.2** `onTaskProgress(data)` | pollTask（每轮轮询，:5366-5367） | 外壳持有 job，模块只负责把进度画到版心/复核面板；job_type 的分派模块**本来就有**（pages-view:770 / :1718 自带守卫），外壳那两行 `if` 是重复分派 |
+| **9.2** `onTaskEvent(data)`（原名 onTaskProgress，9.3 扩语义时改名） | pollTask（每轮轮询，:5366-5367；9.3 起含收尾分支） | 外壳持有 job，模块只负责把进度画到版心/复核面板；job_type 的分派模块**本来就有**（pages-view:770 / :1718 自带守卫），外壳那两行 `if` 是重复分派 |
 | **9.2** `onRecognitionFinished(donePages, opts)` | pollTask（收尾分支 :5398 / 运行分支 :5419） | 任务结束后的"作废旧块 + 重载"由外壳触发；两个调用点参数不同（`reloadDetail`） |
+| **9.3** `onLayoutDetectStarted(...)` | setupLibrary 的 `layout-detect-start` 接线（:1641，在 `#confirm-dialog` 里） | 该按钮不在任何 view section，模块碰不到 ⇒ 只能由外壳调用 |
+| **9.3** `onWorkflowRefreshed(...)` | loadWorkflow（经 renderLayoutStatus） | 工作流数据重载后，模块重画版心检测入口 |
 
 > **口径修正（TestDev 必看）**：`knife9-key-ledger.md` 的「模块引用」列把 **pages-view 自己**的
 > `injected.<键>` 也算进去了（`refreshMarginDetectHint` 3 · `renderMarginStepVerdict` 4 ·
@@ -197,12 +218,12 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 刀 9   （−5）     56 = T 39 + C 16 + L 1   5 个真死的：删键 + 删转发器
 刀 9.1 （−4 +1）  53 = T 35 + C 16 + L 2   showView 的 pages 段搬进 enter()（hydrateView 的 loadPageNumberSummary 随 9.4）  ← 现状
 刀 9.2 （−3 +2）  52 = T 32 + C 18 + L 2   pollTask 的三处收成 2 个能力（§三）
-刀 9.3 （−12）    40 = T 20 + C 18 + L 2
-刀 9.4 （−3）     37 = T 17 + C 18 + L 2
-刀 9.5 （−12 +1） 26 = T  5 + C 18 + L 3   搬完 + 建 refresh()
-刀 9.6 （−1）     25 = T  4 + C 18 + L 3   只做 undoMarginEdit
-刀 10  （−4）     21 = T  0 + C 18 + L 3   队列子系统（两个泵 + queueOverlayRender + updatePageVisibility）
-刀 11 （不变）    21 = T  0 + C 18 + L 3   冻结清册 + 落地 §八 的机检
+刀 9.3 （−12 +2） 42 = T 20 + C 20 + L 2   版心 12 键全死；+2 入口键（onLayoutDetectStarted / onWorkflowRefreshed）
+刀 9.4 （−3）     39 = T 17 + C 20 + L 2
+刀 9.5 （−12 +1） 28 = T  5 + C 20 + L 3   搬完 + 建 refresh()
+刀 9.6 （−1）     27 = T  4 + C 20 + L 3   只做 undoMarginEdit
+刀 10  （−4）     23 = T  0 + C 20 + L 3   队列子系统（两个泵 + queueOverlayRender + updatePageVisibility）
+刀 11 （不变）    23 = T  0 + C 20 + L 3   冻结清册 + 落地 §八 的机检
 ```
 
 **曲线以后按"这个键能不能搬"算，不按"这一刀有几个键"算**（今天三次同型）：每个 T 只有三种死法——
@@ -264,12 +285,12 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 | 概念 | 判据 | 现在 |
 |---|---|---|
 | **① 终态判据**（定义"收完"） | `T == 0` ∧ `L == 3`（init/enter/refresh）∧ `C == 清册`（两向机检） | 未达成（T 35） |
-| **② 推导值**（会变，**不是目标**） | `C 的条数 + 3` | **21 = C 18 + L 3** |
+| **② 推导值**（会变，**不是目标**） | `C 的条数 + 3` | **23 = C 20 + L 3** |
 | **③ 防漂兜底**（只降不升） | `R8.total` 每刀 ≤ 上一刀；历史峰值 **61** | 现在 **53** |
 
 - ① 是**判据**，能被机检（T/L/C 三个计数）；② 是 ① 的算术后果——C 一变它就变，
   **它不许进任何"目标"句式**；③ 是防"收口反涨"的棘轮，不是"要做到多少"。
-- 谁在报告里写"终态 21"，必须同时说明那是 ②（推导值），不是 ①（判据），否则下一个人会拿它当目标去凑。
+- 谁在报告里写"终态 23"，必须同时说明那是 ②（推导值），不是 ①（判据），否则下一个人会拿它当目标去凑。
 
 ### 为什么 `3` 做不到（判据作废，理由是历史，留着防再犯）
 
@@ -302,9 +323,10 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 **防漂的替代**（不留空档）：① `R8.total` **只降不升**（今天 61，往后每个数都不许回升）；
 ② 每加一个 C 键 = 改清册 + 写 `Capability-Reason`，两向机检（§八 ③）会拦"清册被随手放宽"。
 
-> 现阶段的**推导值**（预测，不是目标）：**21 = C 18 + L 3**。它比旧的 19 多 2，因为
-> pollTask 那两个进度写点是被判错了类（它们本来就是跨域能力，见 §三 9.2）——多出来的 2 个是
-> **诚实税**，不是设计变松。若 9.5 的图判定 `checkSelection` 留外壳，它转 C，推导值 22。
+> 现阶段的**推导值**（预测，不是目标）：**23 = C 20 + L 3**。它比最初的 19 多 4：
+> 9.2 的 2 个（pollTask 那两个进度写点被判错类）+ 9.3 的 2 个（`onLayoutDetectStarted` /
+> `onWorkflowRefreshed`）——都是**诚实税**，不是设计变松。若 9.5 的图判定 `checkSelection`
+> 留外壳，它转 C，推导值 24。
 
 ## 八、机检（四条 + 一条配套的文档判据，交 TestDev）
 
@@ -415,7 +437,7 @@ git log --format=%s origin/main | grep -oE "^move\(pages\): 刀 [0-9.]+" | sort 
 | **9** | 删 **5 个真死的** T（键 + 转发器）；20 个过期死期重判（6 转 C · 3 删 · 11 重算）；落 §八 ② | 5 个（§三） |
 | **9.1** | 视图切换：`showView` 的 pages 段进 `enter`（`hydrateView` 的 `loadPageNumberSummary` 随 9.4） | 4：`loadSetupSuggestions` · `renderPageSetup` · `loadLanguageSummary` · `pausePageThumbnails` |
 | **9.2** | 任务轮询：`pollTask` 的 pages 写点收成 2 个能力（`fetchPageBlocks` / `schedulePageVisibility` 随刀 10） | 3：`refreshRecognizedPages` · `updateMarginDetectProgress` · `updateRecognitionAuxProgress`（收成 C，净 −1） |
-| **9.3** | 版心一族（对话框 / 进度 / 瓷砖 / 拖动保存） | 12：`renderMarginStepVerdict`* · `setMarginStatus` · `showMarginDetectProgress` · `ensureMarginFitted` · `renderMarginPanel` · `refreshMarginTiles`* · `finishMarginDetectBar` · `refreshLayoutDetectEntry`* · `refreshMarginDetectHint`* · `loadLayoutBlocks` · `renderLayoutBlocks` · `savePageMargin` |
+| **9.3** | 版心一族（对话框 / 进度 / 瓷砖 / 拖动保存）。**12 个键的调用点全部落在 7 个宿主里，没有一个漏在别处；这刀的风险不在键，在宿主——7 个宿主里 5 个是 b 类** | 12 全死：死法 **a 2**（`loadLayoutBlocks` · `renderLayoutBlocks`，宿主 `scheduleLayoutBlocks` 只被模块调）· **b 8**（其中 6 处以 `onTaskEvent` 收、2 处接线搬进模块）· **+1 个入口键** `onWorkflowRefreshed`（`renderLayoutStatus` ← `loadWorkflow`） |
 | **9.4** | 页码一族（三个面板宿主 + 指标） | 3：`loadPageNumberSummary` · `setPageNumberStatus` · `renderPageNumberMetrics` |
 | **9.5** | 选择 / 网格 / 步骤 / 收尾 / 其它 | 12：`syncPageStates` · `forgetAllPageSuggestions` · `forgetAllPageBlocks` · `renderPages` · `visiblePages` · `reloadProjectPages` · `pageScroller` · `renderAutoApplyStatus` · `renderWorkflowFilter` · `checkSelection` · `renderStepPanels`* · `renderRecognitionStatus` |
 | **9.6** | 版心撤销按钮的接线收回模块（§三 改判） | 1：`undoMarginEdit`（→ 模块自建按钮 + `marginUndoButton` 工厂删除） |
