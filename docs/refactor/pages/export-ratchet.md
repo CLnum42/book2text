@@ -399,7 +399,7 @@ git log --format=%s origin/main | grep -oE "^move\(pages\): 刀 [0-9.]+" | sort 
 |---|---|---|
 | **9** | 删 **5 个真死的** T（键 + 转发器）；20 个过期死期重判（6 转 C · 3 删 · 11 重算）；落 §八 ② | 5 个（§三） |
 | **9.1** | 视图切换：`showView` 的 pages 段进 `enter`（`hydrateView` 的 `loadPageNumberSummary` 随 9.4） | 4：`loadSetupSuggestions` · `renderPageSetup` · `loadLanguageSummary` · `pausePageThumbnails` |
-| **9.2** | 任务轮询与可见性：`pollTask` / `fetchPageBlocks` / `schedulePageVisibility` | 5：`refreshRecognizedPages` · `updateMarginDetectProgress` · `updateRecognitionAuxProgress` · `queueOverlayRender` · `updatePageVisibility` |
+| **9.2** | 任务轮询：`pollTask` 的 pages 写点收成 2 个能力（`fetchPageBlocks` / `schedulePageVisibility` 随刀 10） | 3：`refreshRecognizedPages` · `updateMarginDetectProgress` · `updateRecognitionAuxProgress`（收成 C，净 −1） |
 | **9.3** | 版心一族（对话框 / 进度 / 瓷砖 / 拖动保存） | 12：`renderMarginStepVerdict`* · `setMarginStatus` · `showMarginDetectProgress` · `ensureMarginFitted` · `renderMarginPanel` · `refreshMarginTiles`* · `finishMarginDetectBar` · `refreshLayoutDetectEntry`* · `refreshMarginDetectHint`* · `loadLayoutBlocks` · `renderLayoutBlocks` · `savePageMargin` |
 | **9.4** | 页码一族（三个面板宿主 + 指标） | 3：`loadPageNumberSummary` · `setPageNumberStatus` · `renderPageNumberMetrics` |
 | **9.5** | 选择 / 网格 / 步骤 / 收尾 / 其它 | 12：`syncPageStates` · `forgetAllPageSuggestions` · `forgetAllPageBlocks` · `renderPages` · `visiblePages` · `reloadProjectPages` · `pageScroller` · `renderAutoApplyStatus` · `renderWorkflowFilter` · `checkSelection` · `renderStepPanels`* · `renderRecognitionStatus` |
