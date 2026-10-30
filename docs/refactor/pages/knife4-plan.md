@@ -326,11 +326,14 @@ knife-package（后）
     （如 ReviewView.showFinishPanelEntry() / openDetail() / runAux()），**不是把 review 的 id 一起搬过去**；
     否则跨视图问题只是从 pages 换到 package。
   验收判据：**applyPackageMode 体内 review 子树 id 引用 = 0**，且那 3 处是具名入口调用。
-  再加一条同样要过的：它另外 10 处写点落在 **topbar / 弹层**，而弹层不在任何 view-* section 里
-    （R3 模块零豁免 ⇒ 任何 *-view.js 都不能引用它们）。所以 knife-package 的入场条件二选一：
-      (a) 把这几个 .mask 弹层移进归属的 view section（改 index.html，属结构变更），或
-      (b) 明确让 applyPackageMode 留在外壳，并写下理由（它操作的是外壳级顶栏与弹层，不是某个视图的 DOM）。
-    这条要在 knife-package 开工前由 Architect 拍。
+  它另外 10 处写点落在 **topbar / 弹层**，且这些 id 不在任何 view-* section 里。**Architect 已裁：丙**——
+    给模块两种能力：`navigate(toView, payload)`（只切视图 + 最小上下文，不带 DOM 意图）
+    与 `chrome.<具名方法>()`（顶栏 / 弹层 / banner 的语义化操作）；**不许把 id 当参数传**
+    （`chrome.toggle("package-mask")` 等于把零豁免换成字符串豁免）。
+    甲（把弹层搬进 view section）被否：那是 chrome 元素，搬进去会改它们的隐藏生命周期，还会变 #view-pages 的 id 集合。
+    乙只允许**个别函数**留外壳（不是 applyPackageMode 整体），且必须登记"归属层 = 外壳/编排 + 到期点"。
+    验收判据换成集合判据：**模块内 id 字面量集合 ⊆ 自身 view section（差集为空）；`chrome.*` / `navigate(*)` 的参数里不许出现 id 字面量**。
+    细则与 chrome 方法表见 `knife-package-plan.md`。
   到期点：knife-package 结束时 applyPackageMode 必须已搬走，或**明确留外壳并写理由**；
           不许出现"跨视图函数长期悬空"（那和转发器债务是同一种东西）。
 ```
