@@ -84,8 +84,24 @@ R3 的 total 含 el / querySelector 两种形态（155 = 148 + 7）。
 本刀搬走的 32 处 = el 29 + querySelector 3，故 155 − 32 = 123。
 若按 el-only 数得 29（→126），那是分子分母不同口径，验收时会与闸的实际输出差 3。
 ```
-**规矩**：以后写任何 R3 验收数，先把 `r3_pages_count.mjs --json` 的形态分解贴出来；
-分子（搬走多少）与分母（基线）必须同一个形态集合，否则数字必然对不上。
+**29 从哪来的（Architect 的根因，比"只数 el"更准确）**：它用的模式是
+`querySelector(?:All)?\(\s*["']#([a-z0-9-]+)["']` —— **要求引号紧跟 id**；
+而这三处 id 后面还有后代选择器，被它整条漏掉：
+
+```
+4751  querySelectorAll("#setup-panel details[data-panel]")     ← 本刀 renderStepPanels 内
+598   querySelectorAll("#page-grid .page-tile")                 ← 本刀 refreshMarginTiles 内
+653   querySelectorAll("#page-grid .page-tile")                 ← 本刀 syncStepToggles 内
+```
+
+验收器（`domIdsIn` / `r3_pages_count.mjs`）按 `#id` **前缀**匹配，所以含这三处 → 分子 32、分母 155。
+**若有人用"精确匹配"重算，会得到 29，然后以为验收器错了**——所以这 3 行必须写在这里。
+
+**规矩（两条）**：
+
+1. 报任何 R3 计数前，先声明**分子与分母各含哪些形态**（el / getElementById / querySelector）;
+2. 还要声明**模式锚在哪**：`"#id"` **精确匹配** 还是 `"#id…"` **前缀匹配**——只说"同口径"不够，
+   今天这个 3 的差就是锚点不同造成的。
 
 ## ⑤ 施工顺序（照做，不要一次性搬完）
 
