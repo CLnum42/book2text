@@ -4221,7 +4221,6 @@ function auxEstimateText(pages) {
 /** 第二引擎复核全书：只跑还没复核过的已识别正文页。 */
 
 /** 复核任务在跑：在识别步里显示"做到哪、还要多久"。 */
-function updateRecognitionAuxProgress() { return window.PagesView.updateRecognitionAuxProgress.apply(window.PagesView, arguments); }
 
 /** 撤销按钮：只撤销本次会话里的版心拖动 / 重置，一次一步。 */
 function marginUndoButton() {
@@ -5355,9 +5354,8 @@ async function pollTask() {
   }
   // 轮询只刷新抽屉 / 顶栏 pill 的内容：用户关掉抽屉之后，任务还在跑也不许自己弹回来。
   renderTask(data);
-  // 检测任务在版心分区里也留一行进度（"做了多少 / 还要多久"），别让人只盯着抽屉
-  if (data.job.job_type === "layout") updateMarginDetectProgress(data);
-  if (data.job.job_type === "auxiliary") updateRecognitionAuxProgress(data);
+  // 检测 / 复核任务在版心分区与识别步里也留一行进度（"做了多少 / 还要多久"），别让人只盯着抽屉
+  window.PagesView?.onTaskProgress(data);
 
   if (!["queued", "running", "paused"].includes(data.job.status)) {
     stopTaskPolling();
@@ -5378,7 +5376,7 @@ async function pollTask() {
     }
     // 收尾：最后一个框也是"刚认完的页"。整格重建 267 个瓷砖要一秒多，
     // 而这里真正变的只有页面状态与刚认完那几页的块：就地刷新 + 按增量补框。
-    // refreshRecognizedPages 会先把这几页的旧块作废
+    // 收尾重画会先把这几页的旧块作废（模块内 refreshRecognizedPages）
     const donePages = collectNewlySucceededPages(data);
     // 识别完块变了：页面视图的建议角标不能拿旧数据
     forgetAllPageSuggestions();
@@ -5388,7 +5386,7 @@ async function pollTask() {
     // 任务 53：识别子进程在收尾时自动算了一次版心（写在数据库里）。
     // 这里把新版心 / 建议读回来，页面视图与审校视图都会跟着重画。
     await refreshMarginState();
-    await refreshRecognizedPages(donePages, { reloadDetail: false });
+    await window.PagesView?.onRecognitionFinished(donePages, { reloadDetail: false });
     if (detailPageNo !== null && !donePages.includes(detailPageNo)) {
       await loadPageDetail(detailPageNo, { forceSuggestions: true });
     }
@@ -5409,7 +5407,7 @@ async function pollTask() {
     // 进度在变，页面状态也在变：不重拉图，只刷状态。
     // 两件事互不依赖（页面状态 vs 块数据），并行发，别让块框多等一个往返。
     const donePages = collectNewlySucceededPages(data);
-    await Promise.all([refreshPageStates(), refreshRecognizedPages(donePages)]);
+    await Promise.all([refreshPageStates(), window.PagesView?.onRecognitionFinished(donePages)]);
   }
 }
 
@@ -5445,7 +5443,6 @@ function collectNewlySucceededPages(data) {
  * 审校视图里：正在看的那一页重新载入块列表——先把没落库的输入存掉，
  * 免得刷新把用户刚打的字盖掉。
  */
-async function refreshRecognizedPages() { return window.PagesView.refreshRecognizedPages.apply(window.PagesView, arguments); }
 
 async function reloadDetailAfterRecognition(pageNo) {
   if (detailPageNo !== pageNo) return;
@@ -5681,7 +5678,6 @@ async function startLayoutDetectFromDialog() {
 }
 
 /** 检测任务在跑：在版心分区里显示"做了多少 / 还要多久"。 */
-function updateMarginDetectProgress() { return window.PagesView.updateMarginDetectProgress.apply(window.PagesView, arguments); }
 
 /** 按已经跑出来的速度估剩余时间；样本太少时不给假精度。 */
 function estimateRemainingSeconds(data) {

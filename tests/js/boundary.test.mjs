@@ -3593,15 +3593,15 @@ const VIEW_EXPORTS = {
   // 收敛棘轮：本刀 20 → 终点 3（enter / render / refresh，刀 5 收敛到此），刀 2–5 每刀**严格下降**；
   // 导出面必须**扁平**（api 直接挂函数，不许嵌套对象）——R6 只锁接口名，深度由本表 + 自检锁。
   "pages-view.js": { names: [
-    "init", "ensureMarginFitted", "loadLayoutBlocks", "refreshRecognizedPages",
+    "init", "ensureMarginFitted", "loadLayoutBlocks",
     "reloadProjectPages", "renderLayoutBlocks", "renderMarginPanel", "renderPages",
-    "renderRecognitionStatus", "savePageMargin", "syncPageStates", "undoMarginEdit", "updateMarginDetectProgress",
+    "renderRecognitionStatus", "savePageMargin", "syncPageStates", "undoMarginEdit",
     "updatePageVisibility", // 刀 3：14 个转发器对应的导出键（R8 表签字上限 34，见 docs/refactor/pages/knife3-plan.md §⑩；
     // 每键都带死亡刀号——刀 4 清 9 个、刀 5 清 5 个，之后严格下降）。
     "loadFinishSummary", "loadPageNumberSummary", "refreshLayoutDetectEntry",
     "refreshMarginDetectHint", "refreshMarginTiles", "renderAutoApplyStatus", "renderMarginStepVerdict",
     "renderPageNumberMetrics", "renderRecognitionSettings", "renderStepPanels",
-    "renderWorkflowFilter", "updateRecognitionAuxProgress",
+    "renderWorkflowFilter",
     // 刀 4：2 个临时转发键，**死亡刀号 = 刀5**（§8.2：每键带死亡刀号，到点未死就红）。
     "applyPageZoom",         // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     "confirmAllUnconfirmed", // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
@@ -3642,7 +3642,10 @@ const VIEW_EXPORTS = {
     "syncProjectSettings",         // C
     "setSelectionHint",            // C
     // 刀 9.1：视图切换通知（L 类）。R8 净额 −4 +1
-    "enter",],
+    "enter",
+    // 刀 9.2：任务轮询的三个写点收成两个能力（C 类）。R8 53 − 3 + 2 = 52
+    // 外壳只知道"任务在跑 / 刚结束"，job_type 分派与重画范围都归模块 ⇒ 永远有外壳调用者，不写死期。
+    "onTaskProgress", "onRecognitionFinished",],
     // ---- 三类键（Architect ratchet-two-kinds，docs/refactor/pages/export-ratchet.md）----
     // L lifecycle 固定 3 个名字；T transitional 必须带死期（现留空，等 9a/9b 裁定）；
     // C capability 不写死期，登记 effective callers + 理由（清册就是上限，不是数字）。
@@ -3651,7 +3654,6 @@ const VIEW_EXPORTS = {
       enter: { kind: "L" },   // 刀 9.1 新增（视图切换通知，生命周期键）
       ensureMarginFitted: { kind: "T", death: 9.3 },
       loadLayoutBlocks: { kind: "T", death: 9.3 },
-      refreshRecognizedPages: { kind: "T", death: 9.2 },
       reloadProjectPages: { kind: "T", death: 9.5 },
       renderLayoutBlocks: { kind: "T", death: 9.3 },
       renderMarginPanel: { kind: "T", death: 9.3 },
@@ -3660,8 +3662,7 @@ const VIEW_EXPORTS = {
       savePageMargin: { kind: "T", death: 9.3 },
       syncPageStates: { kind: "T", death: 9.5 },
       undoMarginEdit: { kind: "T", death: 9.6 },   // 9.6：接线收回模块（Architect 2026-10-30）
-      updateMarginDetectProgress: { kind: "T", death: 9.2 },
-      updatePageVisibility: { kind: "T", death: 9.2 },
+      updatePageVisibility: { kind: "T", death: 10 },
       loadFinishSummary: { kind: "C", callers: ["afterCleanupApplied", "afterContinuationChange", "boot", "confirmCurrentPage", "finishConfirmPages", "finishRevokeAutoPass", "finishRunAutoPass", "finishRunLayout", "openFinishPanel", "pollTask", "refreshProject", "setupReviewControls", "waitForAuxThenReview", "library-view.js", "reading-view.js"], reason: "收尾状态被三个视图共用（13 个外壳函数 + library/reading 各调）" },
       loadPageNumberSummary: { kind: "T", death: 9.4 },
       refreshLayoutDetectEntry: { kind: "T", death: 9.3 },
@@ -3673,17 +3674,18 @@ const VIEW_EXPORTS = {
       renderRecognitionSettings: { kind: "C", callers: ["applyProjectSettings", "boot", "loadAppInfo", "library-view.js"], reason: "项目设置落在 pages 面板上" },
       renderStepPanels: { kind: "T", death: 9.5 },
       renderWorkflowFilter: { kind: "T", death: 9.5 },
-      updateRecognitionAuxProgress: { kind: "T", death: 9.2 },
       applyPageZoom: { kind: "C", callers: ["fillDefinitionList", "goToWorkflowStep", "setPageZoom", "showView"], reason: "缩放三步共用（原按 T 记，Architect 转 C）" },
       confirmAllUnconfirmed: { kind: "C", callers: ["finishConfirmPages"], reason: "收尾面板发起（原按 T 记，Architect 转 C）" },
       checkSelection: { kind: "T", death: 9.5 },
       finishMarginDetectBar: { kind: "T", death: 9.3 },
       forgetAllPageBlocks: { kind: "T", death: 9.5 },
       forgetAllPageSuggestions: { kind: "T", death: 9.5 },
+      onRecognitionFinished: { kind: "C", callers: ["pollTask"], reason: "外壳只知「这几页刚认完」，重画什么由模块决定（收成能力后外壳仍是调用者）" },
+      onTaskProgress: { kind: "C", callers: ["pollTask"], reason: "外壳只知「任务在跑」，job_type 分派交给模块里的两个进度函数各自守卫" },
       openPageSetup: { kind: "C", callers: ["boot", "library-view.js"], reason: "首启 / 库页打开页面设置" },
       pageScroller: { kind: "T", death: 9.5 },
       pumpOverlayRender: { kind: "T", death: 10 },   // 10：队列子系统搬进模块（Architect 39eb012 改判；不是 C，只是"还没搬"）
-      queueOverlayRender: { kind: "T", death: 9.2 },
+      queueOverlayRender: { kind: "T", death: 10 },
       // 刀 9 已删 rerunAuxiliary（那 5 个键之一），别再回来 —— 冲突时取「新值 + 不复活已删键」
       scanVisiblePageSuggestions: { kind: "T", death: 10 },   // 10：队列子系统搬进模块（Architect 39eb012 改判；不是 C，只是"还没搬"）
       setMarginStatus: { kind: "T", death: 9.3 },

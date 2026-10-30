@@ -2838,6 +2838,18 @@ function setSelectionHint(text) {
   hint.textContent = String(text);
 }
 
+// 刀 9.2：外壳只知道"任务在跑 / 刚结束"，pages 里要重画什么由模块自己决定。
+// 两个进度函数各自按 job_type 早返回（margin 只认 layout、aux 只认 auxiliary），所以两行都调、不分派。
+function onTaskProgress(data) {
+  updateMarginDetectProgress(data);
+  updateRecognitionAuxProgress(data);
+}
+
+// 两处调用只差这个参数：收尾重画不重载审校详情页，运行中按默认值。
+async function onRecognitionFinished(pageNos, { reloadDetail = true } = {}) {
+  await refreshRecognizedPages(pageNos, { reloadDetail });
+}
+
 /**
  * 视图切换通知：**当前视图切到 `getCurrentView()` 时，pages 侧做进入 / 离开的准备**。
  *
@@ -2898,7 +2910,6 @@ function enter() {
     init,
     ensureMarginFitted,
     loadLayoutBlocks,
-    refreshRecognizedPages,
     reloadProjectPages,
     renderLayoutBlocks,
     renderMarginPanel,
@@ -2907,7 +2918,6 @@ function enter() {
     savePageMargin,
     syncPageStates,
     undoMarginEdit,
-    updateMarginDetectProgress,
     updatePageVisibility,
     loadFinishSummary,
     loadPageNumberSummary,
@@ -2920,13 +2930,14 @@ function enter() {
     renderRecognitionSettings,
     renderStepPanels,
     renderWorkflowFilter,
-    updateRecognitionAuxProgress,
     applyPageZoom,
     confirmAllUnconfirmed,
     checkSelection,
     finishMarginDetectBar,
     forgetAllPageBlocks,
     forgetAllPageSuggestions,
+    onRecognitionFinished,
+    onTaskProgress,
     openPageSetup,
     pageScroller,
     pumpOverlayRender,
