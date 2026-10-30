@@ -1813,6 +1813,14 @@ function r3Problems({
     }
     for (const item of pagesExemptions) {
       const occurrences = appAllIds.get(item.id) || [];
+      // **下行判据：0 引用就删项**（2026-10-30）。表上只许挂 app.js 里真的还有引用的 id——
+      // 只判「cap ≥ 实测」是单边的：一项随搬迁归零后不会被发现，就变成永久陈账
+      // （实测：64 项里 40 项在 app.js 里 0 引用，id 早已只住在 pages-view.js），账本只涨不消。
+      if (occurrences.length === 0) {
+        problems.push(
+          `豁免 ${item.id} 在 app.js 里有 0 处引用——陈账，删项（表上只许挂真的还有引用的 id）`,
+        );
+      }
       if (item.stage !== null && item.stage <= pagesStage && occurrences.length > 0) {
         problems.push(`豁免 ${item.id} 到期（刀 ${item.stage}）但 app.js 还引用着 ${occurrences.length} 处——到期不搬 = 红`);
       }
