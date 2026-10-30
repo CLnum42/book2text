@@ -30,7 +30,7 @@
   "use strict";
 
   /** 合法尺寸档：从模糊到清晰。越界降级到 `view` 并提示一次（§21.7）。 */
-  const SIZES = ["thumb", "view", "mid", "zoom"];
+  const SIZES = ["thumb", "view", "mid", "zoom", "zoom2"];
   const RANK = { thumb: 0, view: 1, mid: 2, zoom: 3 };
   const FALLBACK_SIZE = "view";
   /** 视口外多远开始取图。与三个视图原来的 `rootMargin` 同一量级，别改大（会抢带宽）。 */

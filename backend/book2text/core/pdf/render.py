@@ -60,6 +60,7 @@ RENDER_PROFILES: dict[str, int] = {
     # × dpr 2"这一档——用户报糊的正是这一档。
     "mid": 220,
     "zoom": 300,   # 放大查看 / 高清
+    "zoom2": 350,  # 最大缩放（0.861）之后补的一档；**现有四档的值一个都不许动**（缓存 key 按旧值）
 }
 
 DEFAULT_PROFILE = "view"

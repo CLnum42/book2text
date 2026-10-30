@@ -4099,10 +4099,10 @@ function pageZoomLevel() {
  * 体积靠 JPEG q=82 压下来（view 0.22 MB / zoom 0.62 MB，PNG 分别要 1.77 MB / 约 7 MB）。
  */
 /** 页图档位 → DPI；启动时用 `/api/app/info` 的值覆盖（前后端只留一份真值）。 */
-let renderProfiles = { thumb: 40, view: 150, mid: 220, zoom: 300 };
+let renderProfiles = { thumb: 40, view: 150, mid: 220, zoom: 300, zoom2: 350 };
 /** 清晰度：auto = 按实际需要的像素选档；standard / high = 用户手动钉住。 */
 let imageQualityMode = "auto";
-const IMAGE_PROFILE_ORDER = ["view", "mid", "zoom"];
+const IMAGE_PROFILE_ORDER = ["view", "mid", "zoom", "zoom2"];
 
 /** 某一档在一页上渲染出来的**像素宽度**（页面宽度 pt → px）。 */
 function profileWidthPx(profile, widthPt) {
@@ -4134,7 +4134,8 @@ function detailImageProfile(cssWidth, widthPt) {
   for (const profile of IMAGE_PROFILE_ORDER) {
     if (profileWidthPx(profile, widthPt) >= need) return profile;
   }
-  return "zoom";
+  // 都不够时给最高档（不再写死 "zoom"：加档后最高档变了，写死会让 350 这一档永远拿不到）
+  return IMAGE_PROFILE_ORDER[IMAGE_PROFILE_ORDER.length - 1];
 }
 
 /** 对一个页块取档：量它的 CSS 宽，配这一页的 pt 宽。 */
