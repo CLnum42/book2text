@@ -29,8 +29,9 @@ export const KNIVES = [
   { n: 9.3, status: "pending", scope: "版心一族（对话框 / 进度 / 瓷砖 / 拖动保存）" },
   { n: 9.4, status: "pending", scope: "页码一族（三个面板宿主 + 指标）" },
   { n: 9.5, status: "pending", scope: "选择 / 网格 / 步骤 / 收尾 / 其它" },
-  { n: 9.6, status: "pending", scope: "渲染循环 / 版心撤销按钮的接线收回模块（export-ratchet.md §三 裁定 A、§十 9.6 行）。\n    注：Builder 实测两个泵的队列本身在外壳（fetchPageBlocks/pumpPageSuggestionQueue 的 .finally 都在外壳），\n    「搬调度器」不成立，9.6 的真实形态可能只剩 undoMarginEdit 一个键——已请 Architect 改判" },
-  { n: 10, status: "pending", scope: "收口：R8 22 → 3（init / enter / exit）" },
+  { n: 9.6, status: "pending", scope: "只做 undoMarginEdit——版心撤销按钮的接线收回模块（Architect 39eb012 改判）" },
+  { n: 10, status: "pending", scope: "队列子系统搬进模块（overlay 队列 pumpOverlayRender + 建议扫描队列 scanVisiblePageSuggestions；原来叫「收口」）" },
+  { n: 11, status: "pending", scope: "收口：R8 21 → 3（init / enter / exit）" },
 ];
 
 /** 刀号是否已登记（`刀5b` 这种带字母的本来就解析不出来，到不了这一步）。 */

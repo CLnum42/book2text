@@ -3671,9 +3671,10 @@ const VIEW_EXPORTS = {
       openPageSetup: { kind: "C", callers: ["boot", "library-view.js"], reason: "首启 / 库页打开页面设置" },
       pageScroller: { kind: "T", death: 9.5 },
       pausePageThumbnails: { kind: "T", death: 9.1 },
-      pumpOverlayRender: { kind: "T", death: 9.6 },   // 9.6：接线收回模块（Architect 2026-10-30）
+      pumpOverlayRender: { kind: "T", death: 10 },   // 10：队列子系统搬进模块（Architect 39eb012 改判；不是 C，只是"还没搬"）
       queueOverlayRender: { kind: "T", death: 9.2 },
-      scanVisiblePageSuggestions: { kind: "T", death: 9.6 },   // 9.6：接线收回模块（Architect 2026-10-30）
+      // 刀 9 已删 rerunAuxiliary（那 5 个键之一），别再回来 —— 冲突时取「新值 + 不复活已删键」
+      scanVisiblePageSuggestions: { kind: "T", death: 10 },   // 10：队列子系统搬进模块（Architect 39eb012 改判；不是 C，只是"还没搬"）
       setMarginStatus: { kind: "T", death: 9.3 },
       setPageNumberStatus: { kind: "T", death: 9.4 },
       showMarginDetectProgress: { kind: "T", death: 9.3 },
