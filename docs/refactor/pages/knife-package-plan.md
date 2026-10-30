@@ -125,3 +125,59 @@ split-batch-error     同上                                        applySplitBa
 
 刀 4 的验收（R3 101 / ids 38 / R8 36 / deps 213）**不含**这 3 个函数；它们的 25 处 refs、
 10 处非本视图写点、以及 `libraryNotify` 能力，全部记在本刀账上。
+
+## 九、施工顺序与终态（TestDev 2026-10-30 把终态先造出来验过，Chief 复核）
+
+### 9.1 **一笔落完**：代码 + seed + 豁免表 + TOTAL_CAP + registry 同批
+
+```
+① 代码：applyPackageMode / applyProjectSettings / applySplitBatch 搬进 pages-view，
+        体内 23 处 pages id 引用归零（19 种 id → 0），R3 23 → 0
+② seed：4 行 → **0 行**（这 4 行就是这三个函数 + recognizePage 的，刀 7 已删 recognizePage 那行）
+③ 豁免表：13 项 → **0 项**（整张表清空，R3 这一章结账）
+④ TOTAL_CAP 23 → **0** · Σcap 23 → **0**（三者合一落到 0）· BLOCKED_MAX 0 不变
+⑤ knife-registry：刀 8 标 landed
+```
+
+**别分两笔，也别"先清表"**：只清豁免表、seed 不动的中间态会红，原文
+
+```
+pages 的 seed 里有函数的自身名与 wire 名在实测里都不存在（1 个）：recognizePage
+——这是真丢函数，不是改名
+```
+
+这条**判得对**：那条判据拿「豁免表里的 id 所属的函数」当实测集合，表一清空就是空集，
+seed 里还挂着名字自然全都显得"丢了"。表空 + 函数还挂着就是矛盾态。
+⇒ **不修判据，改顺序**：一条命令里的中间态不落盘，所以一笔落完即可。
+
+### 9.2 预期红：50 条（刀 7 之后是 46 条），必须归零
+
+我在 `main@f450a44` 上模拟终态（表清空 + TOTAL_CAP=0 + registry 刀 8 landed）实测：
+
+```
+50 条「app.js:NNN 还引用着 view-pages 的 id X——这个视图已经有 pages-view.js，旧字面量必须收干净」
+   = 25 个引用行 × 2（同一行被两条判据各报一次）· 涉及 14 种 id
+刀 7 落完后再模拟 = 23 行 × 2 = **46 条**（recognizePage 那 2 行随函数迁走）
+```
+
+这 46–50 条**就是本刀的产品工作量本身**（applyPackageMode 20 + applyProjectSettings 2 +
+applySplitBatch 1 = 23 处引用落在这些行上）。验收时**必须归零**，不是"红着也过"。
+
+### 9.3 终态判据（四条一起看，缺一条都可能"绿着坏"）
+
+```
+r3.total == 0   且   r3.ids == 0   且   豁免项数 == 0   且   Σcap == TOTAL_CAP == 0
+另加：seed 0 行 · BLOCKED_MAX 0 · registry 刀 8 landed · R8 = 58（本刀不新增导出键）
+```
+
+### 9.4 风险：`TOTAL_CAP = 0` 是**第一次**出现"上限为零"
+
+要确认没有别的判据把 0 当成"未设置"。TestDev 已验过：
+
+```
+· boundary.test.mjs:2078  assert.ok(rows > 0, "seed 里一行函数表都没有…")  ← 唯一会被空 seed 触发的，
+  正在修：seed 空且表也空 → 绿；seed 空但表非空 → 红（seed 被误清空）；seed 非空 → 原判据照旧
+· seed 的两条判据、豁免表逐项遍历：空集时整体跳过是合理的，没有静默变绿
+```
+
+修完之后这条自检要能喂红：**只把 seed 清空、表留着** → 必须红；**两边都空** → 绿。
