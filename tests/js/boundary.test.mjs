@@ -4104,6 +4104,98 @@ function enclosingScopeNames(strippedApp, index) {
 }
 
 /** 编辑距离：只用来在红文里点出「最接近的已声明键」（名字都很短，朴素的 DP 足够）。 */
+/**
+ * **R3 第四形态：字符串 id 偷渡**（Architect 2026-10-30 定稿）。
+ *
+ * 模块把别域的 id 当**字符串**递给通用能力：`injected.closeModal("new-project-mask")`。
+ * R3 的三种形态（`el()` / `getElementById` / `querySelector`）都看不见这种写法——
+ * 字符串里没有任何 DOM 取法，闸照绿，而模块实际上在操作别的视图/外壳的 DOM。
+ *
+ * 扫描输入必须是 `stripCommentsOnly`（**剥注释、保留字符串**）：
+ *   · 剥注释：`pages-view.js` 里有 6 处 `el()` 只存在于注释里，不剥就会红在说明文字上；
+ *   · 保留字符串：要抓的正是字符串，顺手把字符串剥了这条判据就没有对象。
+ *
+ * 两档红文分开（合成一句会把修的人带偏）：
+ *   · 别的视图的 id → 跨域必须走注入能力；
+ *   · 外壳 chrome（不在任何 section）→ 模块不许碰。
+ */
+function idOwnership(html) {
+  const sections = parseViewSections(html);
+  const owner = new Map();
+  for (const [view, ids] of sections) for (const id of ids) owner.set(id, view);
+  for (const m of html.matchAll(/\bid="([^"]+)"/g)) {
+    if (!owner.has(m[1])) owner.set(m[1], null);   // null = 外壳 chrome（不在任何 view section 里）
+  }
+  return owner;
+}
+
+export function stringIdSmuggleProblems({ html, modules }) {
+  const owner = idOwnership(html);
+  const problems = [];
+  for (const { fileName, source } of modules) {
+    const viewName = fileName.replace(/-view\.js$/, "");
+    stripCommentsOnly(source).split("\n").forEach((line, index) => {
+      for (const m of line.matchAll(/"([^"\n]*)"|'([^'\n]*)'|`([^`\n]*)`/g)) {
+        const literal = m[1] ?? m[2] ?? m[3];
+        if (!literal || !owner.has(literal)) continue;
+        const where = owner.get(literal);
+        if (where === viewName) continue;
+        if (where === null) {
+          problems.push(`${fileName}:${index + 1} 把外壳 chrome 的 id "${literal}" 当字符串传`
+            + "——外壳元素模块不许碰，要走注入的语义能力");
+        } else {
+          problems.push(`${fileName}:${index + 1} 把 view-${where} 的 id "${literal}" 当字符串传`
+            + "——跨域必须走注入能力");
+        }
+      }
+    });
+  }
+  return problems;
+}
+
+test("R3 第四形态（字符串 id 偷渡）：剥注释取字符串字面量，跨视图 / 外壳 chrome 都必须红", () => {
+  const html = '<section id="view-pages"><div id="pages-error"></div></section>'
+    + '<section id="view-review"><div id="page-detail-error"></div></section>'
+    + '<div class="mask" id="package-result-meta"></div>';
+  const scan = (source) => stringIdSmuggleProblems({
+    html, modules: [{ fileName: "pages-view.js", source }],
+  });
+
+  // 本视图自己的 id 当字符串传：允许（还没收成语义能力之前，本域不算偷渡）
+  assert.deepEqual(scan('injected.reportError("pages-error");'), [],
+    `第四形态自检失败：本视图 id 被误判——${scan('injected.reportError("pages-error");').join("；")}`);
+
+  // 别的视图的 id → 跨域档
+  const cross = scan('injected.closeModal("page-detail-error");');
+  assert.ok(cross.some((m) => m.includes("page-detail-error") && m.includes("view-review")
+    && m.includes("跨域必须走注入能力")),
+  `第四形态自检失败：跨视图字符串 id 没红或红文不对——${cross.join("；")}`);
+
+  // 外壳 chrome 的 id → 另一档（不许合成一句）
+  const chrome = scan('injected.closeModal("package-result-meta");');
+  assert.ok(chrome.some((m) => m.includes("package-result-meta") && m.includes("外壳 chrome")
+    && m.includes("模块不许碰")),
+  `第四形态自检失败：外壳 chrome 字符串 id 没红或红文不对——${chrome.join("；")}`);
+
+  // **注释里的不算**：扫描输入是 stripCommentsOnly（保留字符串）
+  assert.deepEqual(scan('// injected.closeModal("page-detail-error")'), [],
+    "第四形态自检失败：注释里的字符串被当真了（这条判据必须剥注释，否则会红在说明文字上）");
+
+  // 不是 index.html 里任何 id 的字符串：不管（普通文案）
+  assert.deepEqual(scan('const zz = "hello world";'), [],
+    "第四形态自检失败：普通字符串被误判成 id");
+});
+
+test("R3 第四形态（实树）：模块里不许把别域 id 当字符串传", () => {
+  const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
+  const modules = readdirSync(STATIC_DIR)
+    .filter((name) => /-view\.js$/.test(name))
+    .sort()
+    .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") }));
+  const problems = stringIdSmuggleProblems({ html, modules });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
 function r13EditDistance(a, b) {
   const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i += 1) {
