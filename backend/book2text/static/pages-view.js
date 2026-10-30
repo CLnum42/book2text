@@ -458,6 +458,28 @@ function recognitionTarget() {
   ).length;
   const pending = Math.max(body.length - recognized, 0);
 
+  // 进行中两态也要从这里产出（否则按钮文案又变成第二处写）
+  const activeJob = injected.getTaskJobId() && injected.getLastTaskData() && injected.getLastTaskData().job
+    ? injected.getLastTaskData().job
+    : null;
+  const activeJobRunning = Boolean(
+    activeJob && ["queued", "running", "paused"].includes(activeJob.status)
+  );
+  if (activeJobRunning && activeJob.job_type === "ocr") {
+    return { mode: "busy", text: "正在识别…", disabled: true, danger: false };
+  }
+  if (activeJobRunning && activeJob.job_type === "auxiliary") {
+    return {
+      mode: "aux",
+      text: pending ? `开始识别（${pending} 页）` : "全部已识别",
+      disabled: !pending,
+      danger: false,
+    };
+  }
+  if (!body.length) {
+    return { mode: "empty", text: "无可识别页", disabled: true, danger: false };
+  }
+
   const selectedBody = injected.selectionPages().filter((page) => page.include);
   const selectedPending = selectedBody.filter(
     (page) => !recognizedStatuses.includes(injected.recognitionOf(page).status)
@@ -571,40 +593,31 @@ function renderRecognitionVerdict() {
   if (ocrRunning) {
     state.textContent = "正在识别…";
     line.textContent = "主引擎在后台逐页跑，进度在右侧任务抽屉里；可以先去做别的。";
-    button.textContent = "正在识别…";
-    button.disabled = true;
   } else if (auxRunning) {
     state.textContent = "正在复核…";
     line.textContent = "第二引擎在后台逐页复核（只标分歧、不改字），进度在右侧任务抽屉里。";
-    button.textContent = pending ? `开始识别（${pending} 页）` : "全部已识别";
-    button.disabled = !pending;
   } else if (!body.length) {
     state.textContent = "未准备";
     line.textContent = "还没有确认过正文页：先在第 1 步把页面类型确认好。";
-    button.textContent = "开始识别";
-    button.disabled = true;
   } else if (!pending) {
     state.textContent = auxPending ? "主引擎已完成" : "已识别";
     line.textContent = auxPending
       ? `正文 ${body.length} 页都识别过了，这一步算完成；第二引擎还有 ${auxPending} 页没复核` +
         "（可选，只影响审校时看不看得到两路分歧）。"
       : `正文 ${body.length} 页都识别过了，第二引擎也复核完了；差异在「正文审校」里逐条看。`;
-    // 全书都识别完：若用户选了已识别的页，「重新识别所选 N 页」仍然可用（危险色）
-    const target = recognitionTarget();
-    button.textContent = target.mode === "force" ? target.text : "无可识别页";
-    button.disabled = target.mode !== "force";
-    button.classList.toggle("btn--danger", target.mode === "force");
   } else {
     // 有未识别页：目标按「有没有选中」算（recognitionTarget 是唯一出处）
-    const target = recognitionTarget();
     state.textContent = recognized ? "部分已识别" : "未开始";
     line.textContent =
       `正文 ${body.length} 页里还有 ${pending} 页没有识别。` +
       "识别不读版心，版心要等识别出行框之后才生成得了。";
-    button.textContent = target.text;
-    button.disabled = target.disabled;
-    button.classList.toggle("btn--danger", target.danger);
   }
+
+  // 按钮三样只由 recognitionTarget() 产出（文案 / 禁用 / 危险色同源）
+  const target = recognitionTarget();
+  button.textContent = target.text;
+  button.disabled = target.disabled;
+  button.classList.toggle("btn--danger", target.danger);
 }
 
 /** 建议区：只在选中页有建议时出现，条目就是"建议 vs 当前"的具体差别。 */
