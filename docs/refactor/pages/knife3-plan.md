@@ -34,35 +34,47 @@
 **只有 14 条**（每个有外部调用者的函数一条，形如 `function X(){ return window.PagesView.X.apply(window.PagesView, arguments); }`）；
 `syncStepToggles` 的唯一调用者 `renderStepPanels` 也在本刀内搬走 → **不需要转发器**。
 
-## ③ deps 新增清单（45 个名字，按类型分）
+## ③ deps 新增清单（45 个名字：**25 函数 + 20 状态/常量**）
 
-跨刀仍住在 `app.js`、被搬走的函数体引用的名字（生成器会按 IDENT 生成 deps 键）：
+跨刀仍住在 `app.js`、被搬走的函数体引用的名字（生成器按 IDENT 生成 deps 键）：
 
-```
-函数（22）：apiJson · autoApplyTypeText · clearTileMargin · ensureMarginFitted · estimateRemainingSeconds ·
-  finishSummaryAgain · flushBootQueue · formatDuration · loadPageNumberMetrics · marginUndeterminedPages ·
-  paintTileMargin · recognitionOf · renderFinishPanel · renderLayoutBlocks · renderMarginPanel ·
-  renderRecognitionStatus · scheduleLayoutBlocks · selectionPages · showError · syncWorkflowSteps ·
-  undoAutoApply · updateFinishChips · visiblePages
-状态/常量（23）：RECOGNITION_ENGINE_LABELS · WORKFLOW_FILTERS · currentProject · currentView · engineProbe ·
-  finishSummary · finishSummaryLoading · finishSummaryProject · lastStepPanelKey · latestAutoApply ·
-  layoutDetectActive · marginStepVerdict · pageNumberAnalysis · pagesMarginOn · pendingPageCount ·
-  recognitionSetting · selectedPages · showMarginFitProgress?* · stepsReady · visiblePageNos ·
-  workflowConfirmationCounts · workflowStep
-```
+**函数（25）**：`apiJson` · `autoApplyTypeText` · `clearTileMargin` · `engineProbe` · `ensureMarginFitted` ·
+`estimateRemainingSeconds` · `flushBootQueue` · `formatDuration` · `loadPageNumberMetrics` · `marginStepVerdict` ·
+`marginUndeterminedPages` · `paintTileMargin` · `recognitionOf` · `recognitionSetting` · `renderFinishPanel` ·
+`renderLayoutBlocks` · `renderMarginPanel` · `renderRecognitionStatus` · `scheduleLayoutBlocks` · `selectionPages` ·
+`showError` · `syncWorkflowSteps` · `undoAutoApply` · `updateFinishChips` · `visiblePages`
 
-`*` 已在本刀内搬走的函数不计入 deps（如 `showMarginFitProgress` 之类若同时出现在 movers 里，由生成器的
-`movers ∩ IDENT 必须为空` 守卫拦下）。**最终键名以生成器 dry run 的 `injected_keys` 与 R13 为准，不以这份手写清单为准。**
+**状态 / 常量（20）**：`RECOGNITION_ENGINE_LABELS` · `WORKFLOW_FILTERS` · `currentProject` · `currentView` · `el` ·
+`finishSummary` · `finishSummaryAgain` · `finishSummaryLoading` · `finishSummaryProject` · `lastStepPanelKey` ·
+`latestAutoApply` · `layoutDetectActive` · `pageNumberAnalysis` · `pagesMarginOn` · `pendingPageCount` ·
+`selectedPages` · `stepsReady` · `visiblePageNos` · `workflowConfirmationCounts` · `workflowStep`
+
+（分类由脚本按「`^function` / `^let|const`」判定，不是手分——总数 45 对但分栏反了正是"函数与状态混一栏"的老亏。）
+最终键名以生成器 dry run 的 `injected_keys` 与 R13 为准。
 
 ## ④ 验收判据（具体数，不是"会下降"）
 
 ```
-· R3 total：155 → 123（减 32 = 15 个函数在 app.js 里的 id 引用总处数）
-· R3 ids：  64 → 44（搬走后引用归零的 id 20 个）
-· 导出面：  16 → 16（本刀不删导出，只减 app.js 里的 DOM 字面量；导出下降留到"删转发器"那一刀）
+· R3 total：155 → 123
+  算式：155 − 32（15 个 mover 在 app.js 里的 id 引用处数）
+  形态分解：基线 155 = el 148 + querySelector 7；mover 32 = el 29 + querySelector 3
+  **口径必须在两端一致**：若按 el-only 数 mover 得 29 → 会算成 126，但基线 155 含 querySelector，
+  那样就变成「分子漏 3 处」的假数——验收时 R3 会显示 123，写 126 的人会以为漏搬了函数。
+· R3 ids：64 → 44（本刀触及 25 个 id：20 个归零 + 5 个只部分归零）
+  部分归零（**本刀不归零，责任在刀 4**）：page-grid · pages-margin-toggle · pages-overlay-toggle ·
+  pages-zoom-in · pages-zoom-label（applyPageZoom / toggleMarginView / togglePageBlocksOverlay 也引用它们）
+· 导出面：16 → 16（本刀不删导出，只减 app.js 里的 DOM 字面量）
 · app.js 行数：14,752 → 约 14,282（−470）
 · pages-view.js：1,511 → 约 1,981（+470）
-· 硬判据：node 闸 152 pass / 0 fail；R13「模块必读键都在注入表里」为 0；accept `--stage 2` 仍 exit 0
+· 硬判据：node 闸 152 pass / 0 fail · R13「模块必读键都在注入表里」= 0 · accept --stage 2 exit 0
+```
+
+## ④b 口径两条（写进名单，避免再算错）
+
+```
+(a) refs 是**函数级**的，不是 id 级：多 id 的 mover 按 id 累加会把同一处算两次
+    （Architect 第一次这么算出 inside=118 > total=77）。
+(b) page-grid / pages-margin-toggle 本刀**不归零**，归零责任在刀 4。
 ```
 
 ## ⑤ 施工顺序（先测后码）

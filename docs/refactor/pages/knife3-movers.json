@@ -368,18 +368,96 @@
  "刀3验收": {
   "r3Total": {
    "before": 155,
-   "after": 123
+   "after": 123,
+   "算式": "155 − 32（15 个 mover 的 id 引用处数，含 3 处 querySelector）",
+   "注": "若按 el-only 计 mover 处数为 29 → 会得 126；但基线 155 本身含 querySelector 7 处，两端口径必须一致，故取 123"
   },
   "r3Ids": {
    "before": 64,
-   "after": 44
+   "after": 44,
+   "说明": "本刀触及 25 个 id：其中 20 个引用归零、5 个只部分归零"
   },
-  "口径": "搬走后 app.js 里这些 id 的引用处数：155 − 32 = 123；搬走后引用归零的 id 20 个：64 − 20 = 44",
+  "r3Ids部分归零": [
+   "page-grid",
+   "pages-margin-toggle",
+   "pages-overlay-toggle",
+   "pages-zoom-in",
+   "pages-zoom-label"
+  ],
   "导出": {
    "before": 16,
    "after": 16,
-   "说明": "这一刀没有删除导出面，只减少 app.js 里的 DOM 字面量"
-  }
+   "说明": "本刀不删导出面；导出下降留到「删转发器」那一刀"
+  },
+  "appLines": {
+   "before": 14752,
+   "after": 14282
+  },
+  "硬判据": [
+   "node 闸 152 pass / 0 fail",
+   "R13「模块必读键都在注入表里」= 0",
+   "accept --stage 2 exit 0"
+  ]
  },
- "口径_调用者": "bare 名字在顶层函数体里出现即一条调用边；转发器由生成器按 movers 自动产出"
+ "口径_调用者": "bare 名字在顶层函数体里出现即一条调用边；转发器由生成器按 movers 自动产出",
+ "口径_refs": "**函数级**：refs = 该函数体在 app.js 里的 id 引用处数（el/getElementById/querySelector 三种形态都算，与 R3 闸 domIdsIn 逐字一致）。多 id 的 mover 按处累加不重复计（按 id 逐个累加会把同一处算两次）。",
+ "口径_形态分解": {
+  "el": 148,
+  "querySelector": 7,
+  "total": 155,
+  "说明": "基线 155 = el 148 + querySelector 7；15 个 mover 内 32 = el 29 + querySelector 3"
+ },
+ "口径_归零责任": "page-grid / pages-margin-toggle 本刀**不归零**：applyPageZoom / toggleMarginView / togglePageBlocksOverlay（刀 4）也引用它们。本刀只减处数，归零责任在刀 4。",
+ "deps分栏": {
+  "函数": [
+   "apiJson",
+   "autoApplyTypeText",
+   "clearTileMargin",
+   "engineProbe",
+   "ensureMarginFitted",
+   "estimateRemainingSeconds",
+   "flushBootQueue",
+   "formatDuration",
+   "loadPageNumberMetrics",
+   "marginStepVerdict",
+   "marginUndeterminedPages",
+   "paintTileMargin",
+   "recognitionOf",
+   "recognitionSetting",
+   "renderFinishPanel",
+   "renderLayoutBlocks",
+   "renderMarginPanel",
+   "renderRecognitionStatus",
+   "scheduleLayoutBlocks",
+   "selectionPages",
+   "showError",
+   "syncWorkflowSteps",
+   "undoAutoApply",
+   "updateFinishChips",
+   "visiblePages"
+  ],
+  "状态常量": [
+   "RECOGNITION_ENGINE_LABELS",
+   "WORKFLOW_FILTERS",
+   "currentProject",
+   "currentView",
+   "el",
+   "finishSummary",
+   "finishSummaryAgain",
+   "finishSummaryLoading",
+   "finishSummaryProject",
+   "lastStepPanelKey",
+   "latestAutoApply",
+   "layoutDetectActive",
+   "pageNumberAnalysis",
+   "pagesMarginOn",
+   "pendingPageCount",
+   "selectedPages",
+   "stepsReady",
+   "visiblePageNos",
+   "workflowConfirmationCounts",
+   "workflowStep"
+  ],
+  "合计": 45
+ }
 }
