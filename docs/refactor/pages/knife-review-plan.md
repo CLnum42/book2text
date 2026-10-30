@@ -22,15 +22,16 @@ page-detail-error       （在 recognizePage 体内）
 R3 模块侧**零豁免**：`*-view.js` 只许引用自己 view section 的 id。所以这些写点既不能跟着
 pages 走，也不能跟着 package 走——它们要么归 review 模块，要么改成调 review 的**具名入口**。
 
-## 范围（实测于 `main@7ffd78a`）
+## 范围（实测于 `main@a5dd595`，刀 6 落盘之后）
 
 | 项 | 数据 |
 |---|---|
-| `recognizePage` | **4962–5010（49 行）**，函数体内 `el(` **3 处**：`pages-error`×2（view-pages）+ `page-detail-error`×1（view-review） |
+| `recognizePage` | **4965–5013（49 行）**，函数体内 `el(` **3 处**：4987 `pages-error`、5007 `page-detail-error`、5008 `pages-error`（即 `pages-error` 2 处 + `page-detail-error` 1 处） |
+| 调用点 | `app.js:3394`、`app.js:11657`（仍在外壳，所以本刀要给 pages 模块 +1 个导出键） |
 | `applyPackageMode` 的 3 处 review 写点 | `finish-open-review`×2、`detail-recognize`、`aux-run` —— **属 package 那一刀**，本刀只负责**先把 review 的入口做出来** |
 
-> 计划原写 5588–5636 / refs 2 —— 是 `dce41b8` 树的旧值；刀 3–刀 5 之后整体右移 **626 行**，
-> 且当初只数了 refs（id 种类）没数 `el(` 次数（3 处，`pages-error` 占两处）。
+> 行号每刀都要重量（刀 6 之后 app.js 13,462 / pages-view 3,126；本表是这一版）。
+> 上一版写 4962–5010 是 `743f5bc` 前后的数，被刀 6 挪了 +3。
 
 本刀的产出：`review-view.js` 上新增的**具名入口**（初拟 `showFinishPanelEntry()` / `openDetail()` / `runAux()`，
 名字待 Architect 定），它们自己持有那 3 个 id；`applyPackageMode` 之后只调用入口，不再碰 id。
@@ -39,7 +40,7 @@ pages 走，也不能跟着 package 走——它们要么归 review 模块，要
 
 ```
 ① recognizePage 内不再引用 page-detail-error（体内该 id 出现 = 0）
-② recognizePage 搬走后 **pages 的 R3：25 → 23**（它体内 pages-error 2 处随函数迁走；总数口径见 §R3 账）
+② recognizePage 搬走后 **pages 的 R3：25 → 23**（它体内 `pages-error` 2 处随函数迁走，5 → 3；ids 仍 14）
 ③ review-view.js 引用的 id ⊆ view-review 子树（R3 模块零豁免，天然判据）
 ④ 新增入口在 api 里登记，且 VIEW_EXPORTS 的 pages 侧不增键（本刀不动 pages 的导出面）；
    新增入口逐个带死亡刀号
@@ -66,16 +67,16 @@ pages 走，也不能跟着 package 走——它们要么归 review 模块，要
   「体内 review id 引用 = 0」这条判据。
 ```
 
-## R3 / R8 账（基线 `main@7ffd78a`）
+## R3 / R8 账（基 `main@a5dd595`）
 
 ```
-本刀前：pages R3 **25 处 / 14 种 id** · R8 **53** · deps 211
-本刀后：pages R3 **23 处 / 14 种**（recognizePage 的 pages-error ×2 迁走，id 数不变——pages-error 仍被
-        finishRevokeAutoPass / startLayoutDetectFromDialog 引用）
-R8：recognizePage 搬进 pages 模块要 +1 个 api 键（外壳仍调它）→ 53 → 54，死亡刀号 = 刀 9
-        （「外壳调用」类，判据 = app.js 引用 = 0；两个调用点是 app.js:3391 与 app.js:11672）
-剩余 23 处全部属刀 8（applyPackageMode 20 + applyProjectSettings 2 + applySplitBatch 1）⇒ R3 到 0 在刀 8
+本刀前：pages R3 **25 处 / 14 种 id** · R8 **57** · PagesView deps 218 · app.js 13,462
+本刀后：pages R3 **23 处 / 14 种**（recognizePage 的 pages-error ×2 迁走，5 → 3；id 数不变）
+R8：**57 → 58**（recognizePage 仍被 app.js:3394 / 11657 调用 → +1 键），死亡刀号 = 刀 9
+    （「外壳调用」类，到点判据 = 该键在 app.js 的引用 = 0 且不在 api 表）
+剩余 23 处全部属刀 8：applyPackageMode 20 + applyProjectSettings 2 + applySplitBatch 1
+    ⇒ **R3 到 0 在刀 8**，不是本刀
 ```
 
 刀 4 的验收（R3 101 / ids 38 / R8 36 / deps 213）是**历史账**，不含这 4 个函数；
-本刀不动它，只按上面这张当前基线结算。
+本刀只按上面这张当前基线结算。
