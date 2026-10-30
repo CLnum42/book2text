@@ -113,19 +113,35 @@
 ③ PAGE_BLOCK_FETCH_LIMIT 与 pump 的"放回队尾 + waiting"是一对，同进同出，否则空转或饿死。
 ```
 
-**deps 逐键**（6 个键全部只被 pages-view 读过）：
+**deps 逐键**（9 个键全部只被 pages-view 读过；读次数实测）：
 
-| deps 键 | 今天模块读 | 哪一刀删 |
-|---|---|---|
-| `marginUndoButton` | 3 处 | **9.6**（模块自建按钮；壳里 :4234 的工厂随之删除） |
-| `scheduleOverlayPump` | 3 处 | 10 |
-| `setOverlayPumpScheduled` | 1 处 | 10 |
-| `scheduleSuggestionScan` | 3 处 | 10 |
-| `getSuggestionScanTimer` | **0 处**（今天就是死的） | 10 |
-| `setSuggestionScanTimer` | 1 处 | 10 |
+| deps 键 | 模块读 | app.js 定义位 | 哪一刀删 |
+|---|---|---|---|
+| `marginUndoButton` | 3 | :13119 | **9.6**（模块自建按钮；壳里 :4234 的工厂随之删除） |
+| `scheduleOverlayPump` | 3 | :13134 | 10 |
+| `setOverlayPumpScheduled` | 1 | :13246 | 10 |
+| `resetOverlayQueue` | 2 | :13228 | 10 |
+| `scheduleSuggestionScan` | 3 | :13229 | 10 |
+| `getSuggestionScanTimer` | **0**（今天就是死的） | :13096 | 10 |
+| `setSuggestionScanTimer` | 1 | :13179 | 10 |
+| `getSuggestionScanQueued` | 1 | :13095 | 10 |
+| `setSuggestionScanQueued` | 1 | :13249 | 10 |
 
-⇒ 9.6：**218 → 217** · 刀 10：**217 → 212**。两个容易漏的来源：`scheduleOverlayPump` /
-`scheduleSuggestionScan` 本身也是 deps 键（:13134 / :13229），它们随调度器一起消失。
+**三个口径必须分开写，别混成一个数**（今天三次打架都是这么来的）：
+
+```
+口径 ① 最小删（只删"直接死"的）          218 → 217   只有 9.6a 的 marginUndoButton
+口径 ② 整条队列（9 个里除 button 的 8 个） 217 → 209   210 是"218 − 8"，不含 button；含它就是 209
+口径 ③ 连缓存族一起搬（下面这族若也进模块，deps 还要再减，**落盘时按逐键清单核，不按预估**）
+        pageBlockPending / pageBlockVersions / pageBlockPrefetchInFlight
+        + suggestionScanQueued 之外的队列计数器（若还有）
+        ⇒ 目标 **≤ 209**，但"≤"不是承诺，逐键清单才是
+```
+
+**别把口径 ② 的 209 当成"渲染循环归位"的证据**（DevLead 提的，很准）：刀 10 搬的是
+调度器与队列，**块缓存家族（`pageBlockVersions` / `pageBlockPending` / `pageBlockPrefetchInFlight`）
+是否同批搬由该刀图定**。它们留在壳里的话，只能说"调度归位"，不能说"循环归位"——
+这句话必须写在刀 10 的图里，否则下一个人会拿 209 当"已经搬完"的依据。
 
 - 39 个活 T 的宿主表见 §六（这就是 **9.1–9.5** 的施工依据：搬一个宿主，死它那一列键）。
 
