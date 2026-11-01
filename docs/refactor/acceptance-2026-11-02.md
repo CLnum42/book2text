@@ -275,9 +275,10 @@ app.js 11,743 → 10,910（−833）
   focusSiblingBlock scheduleBlockSave flushPendingSave adoptLine patchBlock captureEditorFocus
   restoreEditorFocus reviewAction
 page-detail-editor.js 989 = 875 代码 + 50 注释 + 64 空行
-模块 DOM 面（剥注释）：el( 0 · document.getElementById 0 · document.querySelector 0
+模块 DOM 面（**已剥注释**）：el( 0 · document.getElementById 0 · document.querySelector 0
   （裸 grep 的 2 个 `el(` 是 `Label(`/`Panel(` 的子串，不是调用）
-  root.querySelector / querySelectorAll 共 2 处（:27 part()、:388 菜单清理）；
+  **root 级查询 2 处**（:27 part()、:388 菜单清理）——Chief 先前报 3 处是把 :6 注释里那句
+  「只 root.querySelector」也数进去了；去注释后是 2 处（这条就是"数之前先剥注释"的实例）
   另有 4 处**元素级** querySelector（:369/:786/:792/:795/:891，都在已取到的子树节点上）
 3 份状态跟随搬：detailSuggestions / reviewPendingSave / reviewSaveTimer 在 app.js 各 0 次
 deps 173 不变 · index.html:1811（模块）在 :1812（app.js）之前
@@ -301,16 +302,24 @@ node 232 / 230 pass / 0 fail / 2 skipped · pytest 1034（121.88s，STATIC_DIR �
 原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
 ```
 
-### 待裁决（不改代码，记在案）：`root.querySelector` 的"唯一例外"已经不唯一
+### 裁决（Chief 2026-11-02）：登记 + 具名白名单 + 完整性检查
 
 ```
-事实：page-detail-editor.js 是**第二个**用 root 宿主的服务模块（root = #view-review，:27 part()），
-  但它**没有登记进 DOMAIN_MODULES** ⇒ 域模块闸根本没查过它；
-  它在 el( / getElementById / document.querySelector 三取法上仍是 0（靠 S1 自己那条闸查的）。
-后果：书 §7（first-batch.md）写的"全仓唯一例外只给 structure-tools.js"**已经不准确**，
-  而机检的"allowQuerySelector ≤1 个"也挡不住这种"不登记就不算例外"的走法。
-建议（等 Chief 拍）：把 page-detail-editor.js 登记进 DOMAIN_MODULES + allowQuerySelector: true，
-  把"≤1 个"改成"具名白名单恰好是这两个文件"——这样第三个模块想用就必须显式改闸，而不是不登记。
+事实：page-detail-editor.js 是第二个 root 宿主型服务模块（root = #view-review），
+  但它没登记进 DOMAIN_MODULES ⇒ 域模块闸根本没查过它（三取法 0 靠 S1 自己那条闸）。
+  这比"例外太多"更严重：**不登记就逃过闸**。
+
+裁决（三条，TestDev 落 `tests/js/boundary.test.mjs`）：
+  ① 登记：{ file: "page-detail-editor.js", exposes: "PageDetailEditor", allowQuerySelector: true }
+  ② 把"allowQuerySelector ≤1 个"换成**具名白名单恰好两个文件**：
+     structure-tools.js / page-detail-editor.js，双向对集（带标记却不在白名单 → 红；
+     白名单里有空壳 → 红）。第三个要 root ⇒ 必须同时改白名单与书。
+  ③ **新增完整性检查**：static/*.js 里凡是声明 `window.X = api` 的文件，必须在 DOMAIN_MODULES
+     或 NON_DOMAIN_MODULES 之一，缺一个就红并报文件名（`*-view.js` 按后缀排除）。
+     NON_DOMAIN_MODULES 逐条写理由：page-tile.js（组件，无 init(root)）、step-timing.js（纯计时，0 DOM）。
+     ⇒ "新写一个模块忘了登记"不再能悄悄发生。
+  自检三条：删登记 ⇒ 红并点名；白名单加第三个 ⇒ 红；static/ 里造 fake-module.js ⇒ 红并报它。
+状态：已派 TestDev（wt/testdev）；sha 回来我复跑三条变异后写进本表。
 ```
 
 ## 六、结论

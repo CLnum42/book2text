@@ -361,17 +361,22 @@ openTaskDrawer() 只有 3 行（4589），一个函数、一个 id（#task-drawe
 **模块 DOM 面的登记例外（2026-11-02 裁定，写死）**
 
 ```
-DOMAIN_MODULES 里只有 structure-tools.js 登记 allowQuerySelector: true：
-  · 放行 root.querySelector —— 17 个 structure-* 全在 #structure-panel 一棵子树里，逐个传太笨
-  · document.querySelector / document.getElementById / el( 在例外模块里仍然红（闸里是分支，不是跳过）
-  · 例外只给这一个文件。**第二个模块要它 ⇒ 改这一节的规则并重审，不许往 DOMAIN_MODULES 里加名字**
+**具名白名单，恰好两个文件**（2026-11-02 裁定；"≤1 个"的计数判据已作废）：
+  ALLOW_QUERY_SELECTOR_WHITELIST = ["structure-tools.js", "page-detail-editor.js"]
+  · structure-tools.js：17 个 structure-* 全在 #structure-panel 一棵子树里，逐个传太笨
+  · page-detail-editor.js：24 个 review id 全在 #view-review 子树里（S1 落地后补登）
+  · 两者都仍须满足 `el(` / `document.getElementById` / `document.querySelector` 各 0 次
+    （闸里是分支，不是跳过）
+  · **第三个模块要 root ⇒ 必须同时改白名单与这一节**，做到"顺手加个名字"不可能
 理由：§1② 本来就允许"在 root 子树内 querySelector"，闸此前比书更严；例外是把闸对齐书，不是新开口子。
-机检（b2a6bbb 已补）：DOMAIN_MODULES.filter(m => m.allowQuerySelector).length <= 1，超了红并点名。
+机检：双向对集——带 allowQuerySelector 却没进白名单 ⇒ 红并点名；白名单里有空壳 ⇒ 红。
 
-⚠ 2026-11-02 追加（S1 落地后的事实）：① 主刀的 page-detail-editor.js 也是 root 宿主型模块
-（root = #view-review，:27 part()），但它**没登记进 DOMAIN_MODULES**，所以域模块闸没查过它；
-它的三取法 0 是靠 S1 自己那条闸查的。⇒ 上面"唯一"应读作"登记在案的那一个"，
-**"不登记就不算例外"是个洞**。建议（待 Chief 拍）：把它登记进来、把"≤1 个"改成"具名白名单恰好这两个文件"。
+**完整性检查（关掉"不登记就逃过闸"这个洞，2026-11-02 Chief 裁定）**：
+`static/*.js` 里凡是声明 `window.X = api` 的文件，必须出现在 `DOMAIN_MODULES` 或
+`NON_DOMAIN_MODULES` 之一，缺一个就红并报文件名（`*-view.js` 按后缀排除，视图不归这张表）。
+NON_DOMAIN_MODULES 逐条写理由，现为两条：`page-tile.js`（组件，没有 init(root)，自己 createElement
+出瓷砖，生命周期由 pages/preview 持有）、`step-timing.js`（纯计时工具，0 DOM、0 请求）。
+自检：喂一个不在任何表里的假模块名 ⇒ 必红且报名字；同一文件同时进两张表 ⇒ 必红。
 ```
 
 **扫引用的口径（这条吃过亏，写死）**：三栏各扫一遍——定义位 / 值位（`addEventListener(..., f)`、
