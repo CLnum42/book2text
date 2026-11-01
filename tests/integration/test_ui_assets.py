@@ -164,6 +164,9 @@ def test_block_frame_default_has_no_type_text_and_hover_card_is_placed_outside()
     `findOrderSpot` / `findLabelSpot` 按块框与行框找空位，不是写死 top/left。
     """
     script = _script()
+    # 片 2：findOrderSpot / findLabelSpot 的"避让数学"整段搬进 overlay-registry.js
+    # （app.js 只留 ≤6 行的转发器给还没迁完的 reading / index），所以这里合查两份。
+    overlay = _overlay_script()
     for name in (
         "buildBoxOrder",
         "buildBoxLabel",
@@ -172,7 +175,7 @@ def test_block_frame_default_has_no_type_text_and_hover_card_is_placed_outside()
         "layoutOverlayAnnotations",
         "scheduleOverlayLayout",
     ):
-        assert f"function {name}(" in script, name
+        assert f"function {name}(" in script or f"function {name}(" in overlay, name
 
     # 默认顺序号只有数字；类型文字只进悬停卡片
     assert "order.textContent = String(index + 1)" in script
@@ -280,6 +283,15 @@ def _editor_script() -> str:
     这类「某字符串在文件里」的断言改合查：模块还没落盘时返回空串，旧断言照旧查 app.js。
     """
     path = STATIC_DIR / "page-detail-editor.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def _overlay_script() -> str:
+    """片 2 之后块框的挂载与避让排布住在 `overlay-registry.js`（非视图服务模块）。
+
+    与 `_editor_script()` 同一套合查口径：模块没落盘时返回空串，旧断言照旧只查 app.js。
+    """
+    path = STATIC_DIR / "overlay-registry.js"
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
