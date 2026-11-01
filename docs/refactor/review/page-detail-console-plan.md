@@ -1,4 +1,4 @@
-# ① 主刀施工书 v1：page-detail 编辑面板模块
+# ① 主刀施工书 v1.1：page-detail-editor 模块（编辑面板）
 
 > 来源：QA 2026-11-01 真机走查（Chief 转述）。量数树 `main@4676772`（app.js **12,755** / **505** 顶层函数 / deps **173**）。
 > **状态：草案，等 Chief/Architect 批；本文件不改代码。**
@@ -8,14 +8,16 @@
 ## 0. 形态：非视图服务模块，不是 `*-view.js`
 
 ```
-文件   backend/book2text/static/page-detail.js
-接口   window.PageDetail        （R7b 自动要求 <script> 在 app.js 之前）
+文件   backend/book2text/static/page-detail-editor.js
+接口   window.PageDetailEditor        （R7b 自动要求 <script> 在 app.js 之前）
 root   init({ root: el("view-review"), … })
 ```
 
 **为什么不是 `*-view.js`**：R3 对 `*-view.js` 零豁免——只要挂上这个后缀，`#view-review` 的 90 个 id 就全归模块，
 树（325 行）· 收尾面板 · 清洗/延续弹窗 · 确认并下一页 · `setupReviewControls`（136 行）都得一起搬，
 正好是 QA 否掉的「整体切约 2,000 行」。走非视图服务模块：模块只碰 §2 表里「归模块」的 id，外壳继续持有其余 id。
+**命名（Chief 2026-11-01 裁决）**：核心抽屉留壳 ⇒ 本刀叫 `page-detail-editor.js`；将来抽屉单独一刀叫
+`page-detail-drawer.js`。两个 owner 用两个名字写明白，别让人去 editor 里找抽屉。
 
 **代价与对策**：一个 section 两个 owner。必须同批加一条**新闸**（§2 表可机检）：
 
@@ -34,6 +36,32 @@ root   init({ root: el("view-review"), … })
 | S3 | **版面确认** | 3 | **67** | `renderLayoutPanel`23 · `confirmPageLayout`23 · `renderSuggestionTools`21 |
 | S4 | **第二引擎复核** | 6 | **170** | `waitForAuxThenReview`60 · `renderAuxiliary`51 · `runAuxiliary`24 · `openAuxWarning`18 · `activeAuxJob`11 · `setupAuxControls`6 |
 | 合计 | | **48** | **1,332** | （`applyDetailSuggestions` 在 S1/S4 复用，只算一次） |
+
+### 1.1 三格对账（Chief 2026-11-01 要求：三格合计 == 这条线的总行数）
+
+口径：**review 代码块内的全部顶层函数**（`5466–9030` 审校视图…框选/漏行 ＋ `9893–10924` 左树/收尾邻接
+＋ `1272–1359` 第二引擎复核 ＋ `706–827` 第二引擎可选；按当前树 `4231b03` 的段头，函数按起始行归属）。
+合计 **178 个函数 / 4,259 行**，三格互斥、无遗漏：
+
+| 格 | 函数数 | 行数 | 内容 |
+|---|---:|---:|---|
+| 搬进模块（本刀） | 48 | **1,332** | S1 块编辑 855 · S2 框选 240 · S3 版面 67 · S4 二引擎 170 |
+| 留壳 | 45 | **902** | 块框拖动/缩放 348 · 收尾/清洗/候选的辅助（computeCharSpans 58 · aggregateDivergence 20 …） · 接线 `setupReviewControls` 136 · `setupLibrary` 68 · `closeProject` 31 · 其它小函数 |
+| 别的域 | 85 | **2,025** | 抽屉域 32/729 · 清洗/删 19/459 · 收尾域 20/349 · 树→index 13/425 · 结构域 1/63 |
+
+**与 `review-ledger.md` 的 A′ 59 / 1,341 对账（对不上，三处）：**
+
+```
+① ledger 的 A（72 / 1,955）可以精确复现：= 碰 review id 的函数（三取法+字符串）− 5 个 B 类
+   （boot 426 · setupShell 35 · setupLibrary 68 · applyPackageMode 44 · renderFinishPanel 135 = 708）
+   − blockCard 285。⇒ **blockCard（285 行）从来没进过 ledger 的 A**（它的 id 藏在字符串/展开调用里）。
+② A′ = A − 13 个非 review 名。但那 13 个逐名相加是 **446**，1,955 − 446 = **1,509**，不是 1,341
+   ⇒ ledger 的 A′ 行数自身差 **168 行**（名单与行数不是同一次量的）。以 1,509 为准。
+③ 本刀的 1,332 是**能力闭包**（含 blockCard 285 + 块内差异渲染 199，不含抽屉 729 / 清洗 459），
+   与 A′（含抽屉、不含 blockCard）量的是两批东西 ⇒ 两个数接近是巧合，不是同一集合。
+```
+
+**这条线的真实规模**：4,259 行里，本刀搬 1,332（31%），留壳 902（21%），别的域 2,025（48%）。
 
 **不进口的四块**（各有归属，别硬塞）：
 
@@ -124,6 +152,9 @@ S4 第二引擎复核（170） aux 面板 + 逐行 + 收尾后刷新
 ⑥ QA 复验（同一套走查）：块编辑 / 框选新增块 / 版面确认 / 第二引擎复核 四件逐条；外加
    「块列表数字 == 实际可点块数」「面板关闭再开不丢状态」
 ⑦ 真机一条变异：把 `detail-blocks` 的写点留一句在 app.js → 新闸②必须红
+⑧ **神入口判据**：模块源码里出现的 app.js 顶层函数名 ⊆ 接口面 T ∪ 注入键——扫出来凡不在集合里的，
+   就是"谁都能喊一下"的入口（不是行数问题）；再加无环证据：编辑 → 重画只许经 `onPageDetailChanged` 一处
+
 ```
 
 ## 7. 不做什么
@@ -149,9 +180,14 @@ S4 第二引擎复核（170） aux 面板 + 逐行 + 收尾后刷新
 
 ⇒ **"跳页失效"不成立**；真正的缺陷在下面：没有章节归属的页根本不出现在树上，点不到。
 
-**缺陷**（QA 实测 + 代码核实）：`renderReviewTree` 只在 `chapter === page.chapter` 时把页挂进树；
-`page.chapter` 匹配不到任何 `chapter.id` 的页（29 页，其中 21 页背着全部 90 处待审）**永远没有行**，
-而头部「N 处待审」取自全部页 ⇒ **数字和点得到的东西对不上**。
+**定性更正（Chief 2026-11-01）**：不是"一处都点不到"——`#review-tree-filter`「只看未完成」打开后走
+`:10152` 那支（`pages.filter(unacked > 0)` 平铺，不按章节），90 处**按一次就能点到**。所以缺陷是：
+
+**同一棵树的两种模式对同一份数据给出不同的可达集合**——默认模式（filter=false）静默丢掉无章节页，
+还把 7 个回目记成「✓ 完成」；过滤模式能列全。头部数字取自全部页，跟默认可点集合不是同一个集合。
+
+**缺陷**（代码核实）：`renderReviewTree` 只在 `chapter === page.chapter` 时把页挂进树；
+`page.chapter` 匹配不到任何 `chapter.id` 的页（29 页，其中 21 页背着全部 90 处待审）**永远没有行**。
 
 **形态**：分组算成纯函数，渲染只拿结果。
 
@@ -163,8 +199,14 @@ renderReviewTree：删掉内联的 filter/continue（≈−25 行），改成 fo
 净：+1 个顶层函数 / app.js 净 ±5～10 行（实测对账）；deps 不变 173
 ```
 
-**判据（可红）**：`sum(树上可达页的 unacked) == 头部 unacked 总数`，四组夹具（全有章 / 全无章 / 混合 / chapters 空）；
-变异：删掉「未归章」分支 → 合计断言红。真机：点「未归章」里的页 → `openPageDetail` 生效。
+**判据（可红，两条都要）**：
+
+```
+① 必须在**默认模式**（reviewTreeOnlyTodo=false）下成立——否则测试会被过滤模式那支顺带满足，等于没验
+② 比**集合**不比合计：树上出现的 page_no 集合 == 数据里 unacked>0 的页集合；另外总和也要比（两条都断言）
+③ 模式二（filter=true）再跑一组，防回归
+夹具四组：全有章节 / 全无章节 / 混合 / chapters 空。变异：删掉「未归章」分支 → 集合与合计断言都红。
+真机：点「未归章」里的页 → openPageDetail 生效。
 分工：TestDev 出测试笔（`Approved-by: DevLead`，红证据写提交正文：修前可达 0 / 头部 90），Builder 落产品笔。
 另记一条事实（不修）：490 页只归出 7 章、29 页无归属，可能是章节检测的问题，不在这一笔里碰。
 
@@ -172,7 +214,11 @@ renderReviewTree：删掉内联的 filter/continue（≈−25 行），改成 fo
 
 ```
 T0（树修复）→ 清洗刀（差异队列/候选/4 个零引用 id）→ S1 → S2 → S3 → S4
-每一刀落完重贴 app.js 顶层函数数与 deps 实测值；本文件的 505 / 173 只在 4676772 上成立。
+基线（**刀 A 已在 T0 之前落**，113a552 + 4231b03）：
+  T0 开工树 = 501 函数 / app.js 12,658 / deps 173  ⇒ T0 之后预计 502 函数、12,653～12,668、deps 173
+  纯函数 reviewTreeGroups：函数体 14 行 + 注释 5 行 ≈ 19 行；renderReviewTree 净 ≈ −15 ⇒ app.js 净 ±5～10
+  ① 主刀的 48 函数 / 1,332 行是**函数集合**，不随 501/502 变；开工时按当时树重贴 app.js 函数数
+每一刀落完重贴实测值；本文件的 505 / 12,755 只在 4676772 上成立；刀 A 落完是 501 / 12,658（删 106 + 加 9 = 净 −97）。
 ```
 
 ## 10. 复现命令
