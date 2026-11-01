@@ -24,7 +24,7 @@ index 的迁移面很小（§4：1 处容器 + 1 处调用 + 2 个 deps 键）�
 | 消费者 | 容器谁建 | 调用点 | styles 差异 | 交互 | 数据源 |
 |---|---|---|---|---|---|
 | preview（片 1 已迁） | registry | — | `details:true` | 只读（`--readonly`） | `previewTileBlocks` |
-| **pages** | app.js `buildTile`（2723–2818，容器在 **2734**） | pages-view **885**（另有 86/893/926/1869/1879/2425/2477 的 `clearPageBlocks`） | `details = pageZoomIndex >= 2`（默认参数） | **可 hover**：`page-overlay--labeled` ⇒ `app.css:901` 让 `.box` 吃指针，出 `.box__label` 卡片；**点击不绑盒**（选页是 #page-grid 委托，`app.css:901` 注释写明"点击仍冒泡到 tile"） | `pageBlockCache`（经 `pageBlockKey`） |
+| **pages** | app.js `buildTile`（2723–2818，容器在 **2734**） | pages-view **885**（另有 **7 处** `clearPageBlocks`：86/893/926/1869/1879/2425/2477） | `details = pageZoomIndex >= 2`（默认参数） | **可 hover**：`page-overlay--labeled` ⇒ `app.css:901` 让 `.box` 吃指针，出 `.box__label` 卡片；**点击不绑盒**（选页是 #page-grid 委托，`app.css:901` 注释写明"点击仍冒泡到 tile"） | `pageBlockCache`（经 `pageBlockKey`） |
 | **reading** | reading-view **2028** | reading-view **3544**（`details:false`；清屏 2579/3547） | `details:false` | 只读；**另有 `is-linked` 装饰**：3529 事后在 `.box` 上 toggle 类，604/2178 全清 | `readingPageBlocks` |
 | **index** | index-view **337** | index-view **826**（`details:true`） | `details:true` | 只读 | `indexBlocksByPage` |
 
@@ -50,7 +50,7 @@ styles = { details: boolean,      // 有没有顺序号 / 卡片
 ```
 
 `page-overlay--margin` 今天是 **`paintTileMargin`（3126）里 `overlay.classList.add`（3138）**、
-**`clearTileMargin`（3154）里 `classList.remove`（3160）**——两个函数都靠 `tile.querySelector(".page-overlay")`
+**`clearTileMargin`（3156 起；`classList.remove` 在 3160）**——两个函数都靠 `tile.querySelector(".page-overlay")`
 捞容器再改 class。registry 接管容器之后，这两处就是**对别人家节点的写**（跨 owner）。
 
 **本片把它收成 styles 的一项**：`paintTileMargin` / `clearTileMargin` 删掉那两行 class 操作，
@@ -72,7 +72,7 @@ styles = { details: boolean,      // 有没有顺序号 / 卡片
 ### 2.2 `.box__label` 由**注入的纯构建器**生成，不搬进 registry
 
 `buildBoxLabel`（5850–5920，71 行）**不能搬进 registry**：它最后一段调
-`window.PageDetailEditor?.pageNumberHintChip(suggestion)`（5910）——那是**模块→模块**引用，registry 拿不了。
+`window.PageDetailEditor?.pageNumberHintChip(suggestion)`（5909 是 `if (suggestion)`，调用在 **5911**）——那是**模块→模块**引用，registry 拿不了。
 
 ```
 init({ buildLabel })            // 外壳注入 buildBoxLabel（纯构建器：吃 block/index/suggestion，返回 Element）
@@ -134,6 +134,15 @@ deps   app.js:10152 / 10155 两个键（clearPageBlocks / renderPageBlocks）⇒
 
 ### 3.1 先拆 `drawDiffLayer`（顺序不能反）
 
+**顺带修一个真实的多余重画（Chief ④，事实我核过并按实际写）**：`scheduleOverlayLayout` 成功那帧调
+`drawDiffLayer()`（6059），而 `scheduleOverlayLayout` 的两个主人里有一个是**网格瓦片**（`renderPageBlocks:3089`）
+⇒ **tile 每画一页，都在重画审校视图的差异层**。拆完之后这条副作用消失，这不是纯搬家。
+
+⚠ 一处事实更正（Chief 原文说 `observeOverlaySize` 只被 `renderPageBlocks` 调）：它在当前树上有**两个**调用点——
+`3086`（网格瓦片，`renderPageBlocks` 尾部）与 **`6512`（审校 `drawDetailBlocks` 尾部）**。
+所以"每画一页重画差异层"的成本来自 `scheduleOverlayLayout`（3089），不是来自 `observeOverlaySize` 的调用面；
+结论不变（拆完省掉的是瓦片那次多余的 `drawDiffLayer`），但别把两个函数混着说。
+
 ```
 现状：scheduleOverlayLayout(6052–6064) 成功那一帧调 drawDiffLayer()（6059）；
       而 scheduleOverlayLayout 有两个主人——块框 overlay（3089）与审校的 #detail-overlay（5215/5232/5257）。
@@ -157,7 +166,10 @@ deps   app.js:10152 / 10155 两个键（clearPageBlocks / renderPageBlocks）⇒
 | `layoutOverlayAnnotations` | 6007–6049 | 43 | 摆号 + 摆卡片（读 `box._bbox`） |
 | `scheduleOverlayLayout` | 6052–6064 | 13 | 90 帧重试（**拆掉 drawDiffLayer 之后**只剩布局） |
 | `observeOverlaySize` | 6074–6087 | 14 | ResizeObserver |
-| **合计** | | **143** | 契约里记的就是这个数 |
+| `pxRect` | 5820–5827 | 8 | 只有这条链用（6016/6019/6024） |
+| `rectsOverlap` | 5829–5836 | 8 | 只有这条链用（5942/5994） |
+| `BOX_ORDER_WIDTH` / `BOX_ORDER_HEIGHT` | 5811 / 5812 | 2 | 只有 `findOrderSpot` 与 `layoutOverlayAnnotations` 用 |
+| **合计** | | **161** | 五个函数 143 + 四个"只被这条链用"的东西 18（契约里记的 143 只算了函数） |
 
 迁移要点：
 ```
@@ -168,13 +180,31 @@ deps   app.js:10152 / 10155 两个键（clearPageBlocks / renderPageBlocks）⇒
 · 调度仍是 registry 那一个 rAF：避让只是"帧内多一趟"，不许再开第二个 rAF
 ```
 
+### 3.3 新导出 `layout(container, { lineBboxes })`（Chief 2026-11-02 批）
+
+**为什么需要**：审校的 `#detail-overlay` 不是 registry handle（它是审查视图自己画的差异层容器），
+但审校的调度器要用 `layoutOverlayAnnotations`。不给口子，那 161 行就得在 app.js 留一份 = 两套算法。
+
+```
+API: layout(container, { lineBboxes })
+  · 只做"摆现有 DOM"：不画、不登记 rAF、不碰 version、不改 data、不加 class（除摆位用的 inline style）
+  · 幂等：同一容器同参数调两次，元素位置不变
+  · 障碍物**只从参数来**（lineBboxes），不许读别人的私有属性（今天 layoutOverlayAnnotations 读 box._bbox，
+    那段搬进 registry 时改成内部 Map；外部容器走 lineBboxes 这个显式参数）
+  · 判据：`scheduleDetailOverlayLayout` 调 layout 之后，`#detail-overlay` 里的 `.box__order` 位置与改前一致
+
+笔 B（2.2）落完之后：**"避让数学"全仓只许存在于 overlay-registry.js**
+  app.js 里 findOrderSpot / findLabelSpot / layoutOverlayAnnotations / pxRect / rectsOverlap 定义 **0 次**
+  （转发器 ≤6 行，且 2.2 末必须删掉）；判据：`grep -c "^function (findOrderSpot|findLabelSpot|layoutOverlayAnnotations|pxRect|rectsOverlap)"` = 0
+```
+
 ## 4. 改动面预算
 
 | 文件 | 动作 | 预算 |
 |---|---|---|
-| `overlay-registry.js` | + 容器 class 由 styles 决定（2.1）· + buildLabel 注入（2.2）· + 避让链 143 行（3.2）· + `_bbox` 改内部 Map | **264 → ≤ 470**（+143 避让 + ~40 class/label + ~20 观察器） |
+| `overlay-registry.js` | + 容器 class 由 styles 决定（2.1）· + buildLabel 注入（2.2）· + 避让链 **161 行**（3.2，含 pxRect/rectsOverlap/两个常量）· + 新导出 `layout(...)`（3.3）· + `_bbox` 改内部 Map | **264 → ≤ 480**（+161 避让全套 + ~40 class/label + ~20 观察器；契约记的 143 漏了 `pxRect`/`rectsOverlap`/两个常量） |
 | `app.js` | 删 `renderPageBlocks`(36) / `clearPageBlocks`(9)；`buildTile` 里容器创建那 3 行（2734 一带）删掉、改 mount；`scheduleOverlayLayout`/`observeOverlaySize`/`layoutOverlayAnnotations`/`findOrderSpot`/`findLabelSpot` 搬走（143）；`paintTileMargin`(3138) / `clearTileMargin`(3160) 里两行 class 操作删掉、改 styles | **−190 ~ −200**（renderPageBlocks 会留到 2c 末才整段删，见 §0） |
-| `pages-view.js` | 885 改 registry paint；8 处 `clearPageBlocks` 改 `paint(active:[])`；882/2489/2522 的 `_renderedBlocks` 判重删掉（版本归 registry） | **−15 ~ −25** |
+| `pages-view.js` | 885 改 registry paint；**7 处** `clearPageBlocks`（86/893/926/1869/1879/2425/2477）改 `paint(active:[])`；882/2489/2522 的 `_renderedBlocks` 判重删掉（版本归 registry） | **−15 ~ −25** |
 | `reading-view.js` | 3544/3547/2579 改 registry；2028 容器删；`is-linked` 三处保留（2.3） | **−10 ~ −15** |
 | `index-view.js` | 337 容器删；826 改 registry；`drawIndexFirstLine` 不动 | **−8 ~ −12** |
 | `app.js` deps | pages / reading / index 三块里的 `renderPageBlocks` / `clearPageBlocks` 六个键删掉（preview 那两个也顺手删——片 1 遗留） | **−8 键**（deps 173 → 基线条数 −8；**这是本片唯一允许动的 deps**，写进提交说明） |
