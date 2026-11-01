@@ -77,6 +77,7 @@ const TEST_FILES = [
   ["pages-visibility", () => import("./pages-visibility.test.mjs")],
   ["margin-progress", () => import("./margin-progress.test.mjs")],
   ["overlay-registry-acid", () => import("./overlay-registry-acid.mjs")],
+  ["review-tree", () => import("./review-tree.test.mjs")],
   ["detail-visibility", () => import("./detail-visibility.test.mjs")],
 ];
 const selector = process.argv[2];
