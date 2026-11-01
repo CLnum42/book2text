@@ -32,7 +32,7 @@
     }[ch]));
   }
 
-  /** page-detail-error 的唯一写入口（外壳经 `showError(error)` 调它）。 */
+  /** page-detail-error 的唯一写入口（外壳经导出的 showError 调它）。 */
   function showEditorError(error) {
     const node = part("page-detail-error");
     if (!node) return;
@@ -385,7 +385,7 @@ function blockCard(block, index, blocksCount) {
     event.stopPropagation();
     // 同时只开一个菜单（先记下要不要开，再统一设状态——反着写会把刚打开的又关掉）
     const willOpen = menu.hidden;
-    for (const other of document.querySelectorAll("#detail-blocks .review-menu")) {
+    for (const other of root.querySelectorAll("#detail-blocks .review-menu")) {
       other.hidden = true;
     }
     menu.hidden = !willOpen;
