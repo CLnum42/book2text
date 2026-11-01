@@ -1,0 +1,532 @@
+{
+  "at": "2026-11-02T02:15:06",
+  "project": "b2t_T7JH61",
+  "base": "http://127.0.0.1:8873",
+  "baseline": {
+    "blocks": 1233,
+    "by_type": {
+      "paragraph": 1233
+    }
+  },
+  "preview_before": {
+    "pages_scanned": 487,
+    "by_type": {
+      "page_number": 45,
+      "header": 75,
+      "footer": 1
+    },
+    "candidates": 121,
+    "high_confidence": 112
+  },
+  "apply_requested": 112,
+  "apply_result": {
+    "changed": 112,
+    "by_type": {
+      "page_number": 45,
+      "header": 67
+    },
+    "pages": 88,
+    "history": {
+      "undo": 1,
+      "redo": 0
+    }
+  },
+  "undo_result": {
+    "direction": "undo",
+    "changed_blocks": 112,
+    "pages": [
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      31,
+      32,
+      33,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      49,
+      50,
+      51,
+      53,
+      55,
+      56,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      86,
+      87,
+      88,
+      89,
+      90,
+      91,
+      92,
+      93,
+      94,
+      95,
+      96,
+      97,
+      98,
+      99,
+      100,
+      101,
+      103,
+      105
+    ],
+    "history": {
+      "undo": 0,
+      "redo": 1
+    }
+  },
+  "after_undo_compare": {
+    "applied": 112,
+    "restored": 112,
+    "not_restored": 0,
+    "not_restored_missing_from_db": 0,
+    "not_restored_wrong_type": 0,
+    "not_restored_sample": []
+  },
+  "preview_after": {
+    "pages_scanned": 487,
+    "by_type": {
+      "page_number": 45,
+      "header": 75,
+      "footer": 1
+    },
+    "candidates": 121,
+    "detail": [
+      {
+        "block_id": "01M647RBQPBS35QFVS4CGVG116",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RD4VME11FZCX58303HTE",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ5GPRV348QFGK4GZ3H",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ5GPRV348QFGK4GZ3P",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ5GPRV348QFGK4GZ3V",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ6ZFVEQK8W94CS8QBR",
+        "proposed": "header",
+        "confidence": "review",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ6ZFVEQK8W94CS8QBY",
+        "proposed": "header",
+        "confidence": "review",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ7A8NJAEDQ9V02F1Z6",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RG8JQ5YYYZSMJ9BR70Q9",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RJGWZ9A33MP1YWQWP0AG",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RMTY0NNHAK1RKDJ8EDZ0",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RQ6JAKP5WG4262CB5ZCB",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RRFF8YHYGXR5BMF6X3GQ",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RTQ8DV43V1XRN19AGP3Z",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RWMED5BPME85H9QDZ2SS",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RYW2MTMA75CAC2APNBC7",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647S0ASM394HG1G70Q56PVN",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647S2EEBAJA0H2D0EAF7GBY",
+        "proposed": "header",
+        "confidence": "review",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647S2EG4VAZDREJZ5JZVP94",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647S3DRXPHK7M922KXH5NNA",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647S4ZC31RGHD6WQK0JQ5R9",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647S74NQ2XF141Q84P91AGN",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647S99KBKZ8Z0JXMA82X7JJ",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647SB665JRF49FDWB24EPKJ",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647SD3TJACBF0S511VH5ATQ",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647SEZTNQZ4GG2M7DF93CCG",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647SGST315F6ZEFP8J7X5GM",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647SJN91H2YG8NBFWBTMM7Y",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647SKPCTB2WVPD3E8JEP258",
+        "proposed": "header",
+        "confidence": "review",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647SNPVV6EA8CAGKJRMJY3A",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647SQR8SRNQWSXH4C4K7ZS6",
+        "proposed": "header",
+        "confidence": "review",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647SQRA1W6QP3RRF0P5M0RZ",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647ZVXDQK7NWPTGBFB9AGXE",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647ZVXF3X2CBHTQAM72HPXP",
+        "proposed": "header",
+        "confidence": "review",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647ZZAW5DDA0N2BQW7KTJNM",
+        "proposed": "header",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M64800RCHM3KBT62YXHFZYA7",
+        "proposed": "header",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M64802PQRTBT29W5NKSFGGXM",
+        "proposed": "header",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M64803WQXEY2K1QGWAH32FMM",
+        "proposed": "header",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M648BC1ZWN1BY8FVE39P2YPF",
+        "proposed": "header",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M648BDJ7F8P30534M6QY0FCW",
+        "proposed": "header",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      }
+    ]
+  },
+  "verdict": {
+    "candidates_after_undo": 121,
+    "candidates_that_were_paragraph_before": 40,
+    "judgement": "缺陷（有应用前是 paragraph 的块仍出现在候选里）",
+    "bad_sample": [
+      {
+        "block_id": "01M647RBQPBS35QFVS4CGVG116",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RD4VME11FZCX58303HTE",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ5GPRV348QFGK4GZ3H",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ5GPRV348QFGK4GZ3P",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ5GPRV348QFGK4GZ3V",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ6ZFVEQK8W94CS8QBR",
+        "proposed": "header",
+        "confidence": "review",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ6ZFVEQK8W94CS8QBY",
+        "proposed": "header",
+        "confidence": "review",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647REQ7A8NJAEDQ9V02F1Z6",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RG8JQ5YYYZSMJ9BR70Q9",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      },
+      {
+        "block_id": "01M647RJGWZ9A33MP1YWQWP0AG",
+        "proposed": "page_number",
+        "confidence": "high",
+        "baseline_type": "paragraph",
+        "type_after_undo": "paragraph"
+      }
+    ]
+  },
+  "verdict_corrected": {
+    "note": "原先脚本里的 judgement 口径写反了：结构工具的候选本来就是「当前是 paragraph、按位置像页眉/页脚/页码」的块；撤销完整时它们会原样重新出现，属正常。判据应是『应用过的块是否全部回到基线类型』+『撤销后再预览是否等于应用前』。",
+    "applied_blocks": 112,
+    "restored_to_baseline": 112,
+    "not_restored": 0,
+    "preview_before": {
+      "candidates": 121,
+      "by_type": {
+        "page_number": 45,
+        "header": 75,
+        "footer": 1
+      }
+    },
+    "preview_after_undo": {
+      "candidates": 121,
+      "by_type": {
+        "page_number": 45,
+        "header": 75,
+        "footer": 1
+      }
+    },
+    "judgement": "撤销完整：112/112 块回到基线类型；撤销后再预览与应用前逐项相同（121 = 121，45/75/1）",
+    "builder_8_vs_380": "本副本项目复现不出来（本项目候选 121、high 112）；Builder 那组 380/372/8 应是另一本项目的数据，需在他那本上按同一判法复核"
+  }
+}
