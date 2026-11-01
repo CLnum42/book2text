@@ -464,8 +464,12 @@ def test_block_frames_refresh_as_pages_finish_and_prefetch_while_scrolling() -> 
     assert "pageBlockVersions" in script
     fetch = _function_body_any("fetchPageBlocks")  # 刀 10a：实体已搬进 pages-view.js
     assert "get(key) || 0) !== version" in fetch, "作废代次要按 key 比：早发晚到的旧响应会被丢掉"
-    assert ("pageBlockVersions.get(key)" in fetch or "PageBlockVersions().get(key)" in fetch), (
-        "代次状态仍要可读：外壳持有 pageBlockVersions（forgetPageBlocks 要 +1），模块经句柄读"
+    # 刀 10a 之后只剩一种形态：模块经注入句柄读外壳的 `pageBlockVersions`
+    # （`injected.getPageBlockVersions()`）。原来这里认两种写法（`pageBlockVersions.get(key)` 或
+    # `PageBlockVersions().get(key)`）—— 那是搬家中途的双活分支（§18.2.2），搬完就该收紧成一个，
+    # 否则下次改注入名它照样绿。
+    assert "getPageBlockVersions().get(key)" in fetch, (
+        "代次状态仍要可读：外壳持有 pageBlockVersions（forgetPageBlocks 要 +1），模块经注入句柄 getPageBlockVersions() 读"
     )
 
     # 3) 提前预取 + 并发 / 缓存上限（刀 10a：上限常量随调度器搬进 pages-view.js）

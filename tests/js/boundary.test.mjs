@@ -3779,8 +3779,13 @@ const EXPORT_DEATH_KNIFE = {
       .map(([key, entry]) => [key, entry.death]),
   ),
 };
-/** 死期表必须非空的到期刀：kind 清册（L/T/C 逐键）落地时这张表就该填满。 */
-const EXPORT_DEATH_EXPIRES = 9;
+// **死期表「空」不再是一个到期点，而是一个终态**（2026-11-01 翻面，刀 10.2）：
+// 以前是「到刀 9 表还空 ⇒ 红」（清册没落地），刀 10.2 之后 T 全部死光，空表**合法**。
+// 于是判据不再看刀号（`EXPORT_DEATH_EXPIRES` 已删），改看清册自己：
+//   T == 0            → 绿（终态：没有过渡键，就没有死期可填）
+//   T > 0 且表空      → 红（不管当前哪一刀 —— 空表意味着「到点未死」在空转）
+// 为什么不能留一个「到期刀」常数：翻面后它不再影响任何一条分支，却还挂在 `GATE_SWITCHES` 里
+// 写着「死期表为空时是否已经到期」——那是**看着在管、实际不管**的手工常数，正是这半年在收的东西。
 
 /**
  * 一个导出键**还活着吗** —— 三栏扫（Architect 2026-10-30 裁定；旧实现只扫第 ② 栏所以是瞎的）：
@@ -3814,23 +3819,46 @@ export function exportKeyReferences({ key, appSource, modules = [] }) {
  *   · 它不许还在 api 表里。
  * 两条有一条不满足就红，红文点名键 + 死亡刀号 + 当前刀 + 实际引用数。
  *
- * **不能被静默停用**：今天绿是因为刀 9 还没到；到刀 9 那天它自己会红。判据只从表取死期，
- * 不从注释——注释漂了不会让判据空转。
+ * **不能被静默停用**：判据只从表取死期，不从注释——注释漂了不会让判据空转。
+ *
+ * `tCount` / `tPending` 由调用方**从 kinds 现数**传进来（不在函数里读文件，才能被自检喂假数）。
+ * 空表是唯一「没有主体可遍历」的状态：那种状态下判不出东西，所以必须靠清册自报的 T 条数
+ * 分辨「T 全死光了（终态）」和「表空了但还有 T（判据在空转）」——分不清就红，不许默认绿。
  */
-export function exportDeathProblems({ deaths, stage, appSource, apiKeys, modules = [], expires = EXPORT_DEATH_EXPIRES }) {
+export function exportDeathProblems({ deaths, stage, appSource, apiKeys, modules = [], tCount = null, tPending = null }) {
   const problems = [];
-  // **空表也是一种状态，必须带到期点**（否则就是「只能静默停用判据的常数」那个病：
-  // 一行 INFO 没人看，刀 9 到了也不会有人想起表还是空的）。
-  if (Object.keys(deaths || {}).length === 0) {
-    if (Number(stage) >= Number(expires)) {
+  const deathEntries = Object.entries(deaths || {});
+  if (deathEntries.length === 0) {
+    // 空表：**不再看刀号**（T==0 是终态，与当前哪一刀无关）。看的是清册自己说不说得通。
+    if (tCount === null || tCount === undefined) {
       problems.push(
-        `死期表为空，但当前刀已到 刀${stage}（到期刀 ${expires}）——kind 清册（L/T/C）应该已经落地，`
-        + "表必须非空：空表等于「到点未死」这条判据在空转",
+        "死期表为空，但调用方没传 tCount——这条判据分不清「T 已全部死光（终态）」与"
+        + "「表空了但清册里还有 T（判据在空转）」，两种都不吭声就是默认让它空转",
+      );
+      return problems;
+    }
+    if (Number(tCount) === 0) return problems;   // 终态：没有过渡键，就没有死期可填
+    if (Number(tPending) === 0) {
+      problems.push(
+        `死期表为空，但 kinds 里有 ${tCount} 个 T 且没有一个待定（pending 0）——自相矛盾：`
+        + "EXPORT_DEATH_KNIFE 是从 kinds 现算的，有死期的 T 不可能是 0 条；空表只能说明派生被改坏了",
+      );
+    } else {
+      problems.push(
+        `死期表为空，但 kinds 里还有 ${tCount} 个 T（其中 ${tPending} 个待定）——`
+        + "「到点未死」此刻在空转：表里没有主体，这条判据一条也判不到",
       );
     }
     return problems;
   }
-  for (const [key, death] of Object.entries(deaths || {})) {
+  // **表的条数必须与清册对得上**（遍历主体不能只选表）：派生少了一条，那个键就静默不受判。
+  if (tCount !== null && tPending !== null && Number(tCount) - Number(tPending) !== deathEntries.length) {
+    problems.push(
+      `死期表里有 ${deathEntries.length} 个键，但 kinds 里有 ${tCount} 个 T、其中 ${tPending} 个待定`
+      + `（应为 ${Number(tCount) - Number(tPending)} 个）——派生漏了或多算，漏掉的那个键在这里不受判`,
+    );
+  }
+  for (const [key, death] of deathEntries) {
     // **死期非法也要红，不许 continue 掉**：`Number("9b")` = NaN，而 `NaN <= stage` 恒 false，
     // 一行 continue 就让这个键永不判到点、且不报错（Architect 揪出的静默洞）。
     if (!Number.isFinite(Number(death)) || Number(death) <= 0) {
@@ -3968,29 +3996,49 @@ test("R8（三类键）自检：缺 kind 红 / T 带 callers 红 / C 带 death �
 });
 
 test("R8（到点未死）：死亡刀号 <= 当前刀的导出键，必须 app.js 引用 0 且不在 api 表", () => {
-  const deaths = EXPORT_DEATH_KNIFE["pages-view.js"] || {};   // 表可能为空（到期点见 EXPORT_DEATH_EXPIRES）
+  const deaths = EXPORT_DEATH_KNIFE["pages-view.js"] || {};   // T 全死后为空（终态，见 exportDeathProblems 注释）
   // 表自检：死期表里的每个键都必须真的在 VIEW_EXPORTS 的导出名里——拼错就等于这条判据不判它
   const declared = new Set(VIEW_EXPORTS["pages-view.js"].names);
   const unknown = Object.keys(deaths).filter((key) => !declared.has(key));
   assert.deepEqual(unknown, [],
     `EXPORT_DEATH_KNIFE 里的 ${unknown.join("、")} 不在 VIEW_EXPORTS 的导出名里——拼错就等于静默不判`);
   const { keys: apiKeys } = moduleExportKeys("pages-view.js");
-  if (Object.keys(deaths).length === 0 && Number(STAGE_NOW) < Number(EXPORT_DEATH_EXPIRES)) {
-    console.log(`ℹ 死期表为空（到期刀 ${EXPORT_DEATH_EXPIRES}）：kind 清册落地后必须按 T/C 填 T 的死期，`
-      + "到那刀表仍空就是红");
-  }
+  // T 的条数**现数**（空表时要靠它分辨「终态」与「在空转」，见内核注释）
+  const kinds = VIEW_EXPORTS["pages-view.js"].kinds || {};
+  const tEntries = Object.values(kinds).filter((item) => item && item.kind === "T");
+  const tCount = tEntries.length;
+  const tPending = tEntries.filter((item) => item.death === null).length;
   const modules = readdirSync(STATIC_DIR).filter((name) => /-view\.js$/.test(name))
     .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") }));
   const problems = exportDeathProblems({
-    deaths, stage: STAGE_NOW, appSource: readFileSync(APP_FILE, "utf8"), apiKeys, modules,
+    deaths, stage: STAGE_NOW, appSource: readFileSync(APP_FILE, "utf8"), apiKeys, modules, tCount, tPending,
   });
   assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("R8（死期终态）：有 death 字段的键只能是 T；T 全部死光后，kinds 里不许再留任何 death", () => {
+  const kinds = VIEW_EXPORTS["pages-view.js"].kinds || {};
+  const withDeath = Object.entries(kinds)
+    .filter(([, entry]) => entry && Object.prototype.hasOwnProperty.call(entry, "death"))
+    .map(([key]) => key);
+  const notT = withDeath.filter((key) => kinds[key].kind !== "T");
+  assert.deepEqual(notT, [],
+    `${notT.join("、")} 带了 death 字段但不是 T——死期只属于过渡键（C 永不死、L 是生命周期）`);
+  const tCount = Object.values(kinds).filter((item) => item && item.kind === "T").length;
+  if (tCount === 0) {
+    // **终态断言**：T 全部死光之后，清册里一个 death 字段都不该留下——
+    // 留下就等于「表格还在描述一件已经结束的事」，下一个人会以为还有过渡键没搬。
+    assert.deepEqual(withDeath, [],
+      `T 已经没有（终态），但 ${withDeath.join("、")} 上还留着 death 字段——清册该收干净`);
+    return;
+  }
+  console.log(`ℹ 还有 ${tCount} 个 T 未死（刀 10.2 落盘前正常）：${Object.keys(kinds).filter((k) => kinds[k].kind === "T").join("、")}`);
 });
 
 test("R8（到点未死）三栏自检：只留转发器红 / 值位引用红 / 只有注释必须绿", () => {
   const deaths = { foo: 9 };
   const apiGone = [];   // api 键已删
-  const base = { deaths, stage: 9, apiKeys: apiGone, modules: [] };
+  const base = { deaths, stage: 9, apiKeys: apiGone, modules: [], tCount: 1, tPending: 0 };
 
   // ① 只删了 api 键、转发器还在：`function foo() { return window.PagesView.foo.apply(...) }`
   const forwarderOnly = exportDeathProblems({
@@ -4014,23 +4062,49 @@ test("R8（到点未死）三栏自检：只留转发器红 / 值位引用红 / 
     `三栏自检失败：注释里的名字被算成引用（这条判据必须剥注释）——${commentOnly.join("；")}`);
 });
 
-test("R8（死期表三态）：表空未到期绿 / 表空到期红 / 表非空照常判到点未死", () => {
-  // ① 表空 + 未到到期刀 → 绿（合法中间态）
+test("R8（死期表翻面）：T==0 空表绿（终态）/ T>0 空表红（待定与自相矛盾分开说）/ 表非空照常判到点未死", () => {
+  const base = { appSource: "", apiKeys: [] };
+
+  // ① 终态：清册里已经没有 T，死期表必然空 → 绿。**与当前哪一刀无关**（旧的「到期刀」判据已删）
   assert.deepEqual(
-    exportDeathProblems({ deaths: {}, expires: 9, stage: 8, appSource: "", apiKeys: [] }), [],
-    "死期表三态失败：表空且未到期被判红",
+    exportDeathProblems({ ...base, deaths: {}, stage: 9, tCount: 0, tPending: 0 }), [],
+    "死期表翻面失败：T==0 的终态空表被判红",
   );
-  // ② 表空 + 已到到期刀 → 红「到期未填」
-  const due = exportDeathProblems({ deaths: {}, expires: 9, stage: 9, appSource: "", apiKeys: [] });
-  assert.ok(due.some((m) => m.includes("死期表为空") && m.includes("到期刀 9")),
-    `死期表三态失败：到期仍空表被放过——${due.join("；")}`);
-  // ③ 表非空 → 正常判「到点未死」（不受空表分支影响）
+  assert.deepEqual(
+    exportDeathProblems({ ...base, deaths: {}, stage: 10.2, tCount: 0, tPending: 0 }), [],
+    "死期表翻面失败：终态应与刀号无关，刀 10.2 上仍绿",
+  );
+
+  // ② T 还有、死期待定 → 红「在空转」（带条数）
+  const pendingOnly = exportDeathProblems({ ...base, deaths: {}, stage: 10, tCount: 2, tPending: 2 });
+  assert.ok(pendingOnly.some((m) => m.includes("死期表为空") && m.includes("2 个 T") && m.includes("空转")),
+    `死期表翻面失败：T>0 的空表被放过——${pendingOnly.join("；")}`);
+
+  // ③ T 还有、却一个都不待定 → 自相矛盾（派生断了）：这个形态只有派生被改坏才可能出现
+  const contradiction = exportDeathProblems({ ...base, deaths: {}, stage: 10, tCount: 1, tPending: 0 });
+  assert.ok(contradiction.some((m) => m.includes("自相矛盾") && m.includes("派生被改坏")),
+    `死期表翻面失败：T>0 + pending 0 + 空表（派生断了）被放过——${contradiction.join("；")}`);
+
+  // ④ 调用方根本没传 tCount → 红（分不清终态与空转，默认绿就等于允许它空转）
+  const unknown = exportDeathProblems({ ...base, deaths: {}, stage: 10 });
+  assert.ok(unknown.some((m) => m.includes("没传 tCount")),
+    `死期表翻面失败：空表 + 没传 tCount 被静默放过——${unknown.join("；")}`);
+
+  // ⑤ 表非空 → 照常判「到点未死」（这刀不许把它顺手放松）
   const alive = exportDeathProblems({
-    deaths: { applyPageZoom: 6 }, expires: 9, stage: 6,
+    deaths: { applyPageZoom: 6 }, stage: 6, tCount: 1, tPending: 0,
     appSource: "function f() { PagesView.applyPageZoom(1); }", apiKeys: ["applyPageZoom"],
   });
   assert.ok(alive.some((m) => m.includes("到点未死")),
-    `死期表三态失败：表非空时「到点未死」没判——${alive.join("；")}`);
+    `死期表翻面失败：表非空时「到点未死」没判——${alive.join("；")}`);
+
+  // ⑥ 表条数与清册对不上（派生漏了一条）→ 红：漏掉的那个键在这里根本不受判
+  const missing = exportDeathProblems({
+    deaths: { applyPageZoom: 6 }, stage: 6, tCount: 2, tPending: 0,
+    appSource: "function f() {}", apiKeys: [],
+  });
+  assert.ok(missing.some((m) => m.includes("派生漏了或多算")),
+    `死期表翻面失败：表比清册少一条被放过（那个键静默不受判）——${missing.join("；")}`);
 });
 
 test("R8（到点未死）自检：到点还活着红 / 没到点绿 / 到点但已死绿", () => {
@@ -4165,8 +4239,8 @@ const GATE_SWITCHES = [
   { name: "R5_MAX_EXCUSES", source: "手工上限，只降不升；现值见该行", check: "R5 例外条数上限" },
   { name: "T_DEATH_PENDING_MAX", source: "Architect 的 9a/9b 裁定落地时点——每填一个 T 的死期就下调一次，"
     + "永不上调；清零那天删掉这个常数", check: "还有多少 T 键的死期是 null（待定），超上限就红" },
-  { name: "EXPORT_DEATH_EXPIRES", source: "Architect 的 kind 清册（docs/refactor/pages/export-ratchet.md）落地时点——"
-    + "清册落地后死期表必须非空，这个数只在清册推迟时才会动", check: "死期表为空时是否已经到期（到期未填 = 红）" },
+  // `EXPORT_DEATH_EXPIRES` 已删（2026-11-01，刀 10.2 翻面）：死期表判据不再看刀号，
+  // T==0 是终态 —— 留着这个常数就是「看着在管、实际不管」的手工常数。
 ];
 
 /** 「能让判据跳过/失效」的名字形态（Chief 2026-10-30 定，与登记表配套）。 */
