@@ -130,16 +130,64 @@ C  0 个                           别的视图模块不直接用本模块；pag
                                  loadPageDetail / showPageDetailError 仍由外壳持有（核心抽屉没搬）
 ```
 
+### 3.1 外壳喊模块 = 接口面（R8/R7 管这一边，6 个名字）
+
+```
+renderBlocks · setFilter · setPackageModeChrome · showError · openBoxCreate · cancelBoxCreate
+```
+
+### 3.2 模块喊外壳 = **注入**（不进接口面，**不许和 3.1 混成一张清单**）
+
+口径：S1 的 24 个函数体里**以调用位出现**的 app.js 顶层函数（不含 S1 自己那 24 个、不含 DOM/浏览器 API）。
+实测 2026-11-02：**27 个函数 + 6 个常量表**（Chief 报 29，差在是否把 `apiJson`/`showError` 这类服务算作"函数"
+——两个数都别当判据，**名单才是**）。
+
+```
+函数 27：divergenceOf · blockInsideMargin · detailPageRecord · pageNumberSplitHint · structureAction ·
+        diffLevelLabel · syncDiffStrip · activateDiff · apiJson · forgetPageSuggestions · refreshPageStates ·
+        loadPageDetail · setSaveState · reviewMarginSplit · effectiveReviewFilter · pendingPageReasons ·
+        renderReviewFilter · computeCharSpans · showError · forgetPageBlocks · fetchPageSuggestions ·
+        renderSuggestionTools · renderLayoutPanel · ensureBlockListed · drawDiffLayer · scrollViewerTo ·
+        updateDiffActive
+常量表 6：BLOCK_TYPE_LABELS · TEXT_FREE_BLOCK_TYPES · CHROME_BLOCK_TYPES · NOTE_BLOCK_TYPES ·
+        REVIEW_STATUS_LABELS · MAX_DIVERGENCE_ROWS
+```
+
+**为什么必须分开**：接口面是"外壳按语义叫模块"，有 R8 的 kinds 表与 T 的死期管着；
+注入是"模块按签名叫外壳"，**没有死期、也不该有**——把两者写成一张清单，下一个人就会问
+"`apiJson` 的死期是哪一刀"。§6 ⑧ 的"神入口判据"用的是**两表的并集**，但两张表本身要分开写。
+
 **不新增「谁都能喊重画」的入口**：`renderBlocks` 是唯一重画口，外壳只在 `renderPageDetail` 末尾调一次；
 块内改类型/换第二路/加备注全部走模块内部的动作，不再回头喊外壳。
 
-## 4. 依赖面（顶层状态：跟随搬 / 留壳注入）
+## 4. 依赖面：顶层状态分三类（S1 实测 + 裁决 A，2026-11-02）
 
-| 跟随搬（review 私有派生量） | 留壳注入（别的域也在读写） |
-|---|---|
-| `activeReviewBlockId` · `cursorByBlock` · `detailSuggestionByBlock`（读写） · `detailLayoutConfirmed`（读写） · `boxCreateMode` · `boxDraft` · `detailInkGaps`/`inkGapsShown` · `auxData` · `auxWarningWaitToken` | `detailPageNo`（读写，外壳 30+ 函数用） · `reviewBlocks`（读写） · `reviewBlockFilter`/`reviewFilterExplicit`（读写） · `currentProject` · `pageSuggestionCache` · `token` · `PAGE_TYPE_LABELS`/`BLOCK_TYPE_LABELS`/`REVIEW_STATUS_LABELS`/`TEXT_FREE_*`/`CHROME_*`/`NOTE_*` |
+Builder 按 S1 的 24 个函数体逐个体扫过（不是估计）。**S1 实际只碰这 8 份状态，其中 3 份纯私有、5 份借用**：
 
-注入形态照 `pages-view`：getter 只读、有写点的给 setter，`apiJson`/`showError`/`notify` 按动作给。
+| 类 | 状态 | 谁在用（证据） | 处理 |
+|---|---|---|---|
+| **跟随搬（3）** | `detailSuggestions` · `reviewPendingSave` · `reviewSaveTimer` | 只在被搬的 24 个函数里读写 | 搬进模块，模块内 `let` |
+| **借用（5）** | `activeReviewBlockId`（`renderPageDetail:5714` 复位）· `diffStripOpen`（`:5716` 复位、`6570`/`6607` activateDiff）· `detailSuggestionByBlock`（`:6712` 外壳画角标）· `detailNumberHints`（`:7703` 外壳页码拆分提示）· `cursorByBlock`（`:7769` drawDetailOverlay 外壳清空） | 模块要用，**外壳也在读写它** | **留在 app.js、名字不变**；`init` 拿 `getX`/`setX`（5 份 × 2 = **10 个注入键，不进 deps 表**，deps 仍 173）；**模块里不许缓存副本**，每处读写都走注入 |
+
+**裁决 A 的理由**（与刀 C 的页面块缓存、刀 D 的同构）：**状态属于"谁还在用它"的那个域，不属于"哪个函数先动"**。
+核心抽屉在 S1 里留在外壳 ⇒ 这五份**随抽屉走**，等抽屉单独成模块（`page-detail-drawer.js`）时再一起搬。
+若现在搬进 editor，就会出现"editor 持有抽屉的状态"，下一个问题必然是"谁拥有它"。
+
+**"借用不许留副本"要能红**（判据，不是口号）：
+
+```
+测试形态（模块单测，假壳）：
+ ① 模块选一个块 → 断言 injected.getActiveReviewBlockId() === 那个块的 id（写回外壳了）
+ ② 外壳复位（走 renderPageDetail 的 5714 路径）→ 断言模块读到的也是 null（没有拿本地旧值覆盖）
+变异：把模块里那处 `injected.setActiveReviewBlockId(x)` 改成只赋值给模块内 `let activeReviewBlockId`
+ ⇒ ① 立刻红（外壳读到 null）。这条变异证明"副本"存在时判据抓得住。
+```
+
+**其余状态不在 S1 里**（别照抄旧表）：`detailLayoutConfirmed` · `boxCreateMode` · `boxDraft` ·
+`detailInkGaps`/`inkGapsShown` · `auxData` · `auxWarningWaitToken` 属于 S2/S3/S4（框选 / 版面确认 / 二引擎），
+**各自开工前按同样口径重测一遍**，不许沿用今天这张表的归类——今天它就是这么错的（把 8 份写成 9 份、且一半不是 S1 的）。
+
+注入形态照 `pages-view`：getter 只读、有写点的给 setter，`apiJson`/`showError`/`notify` 按动作给（见 §3.2）。
 
 ## 5. 切片（每片独立绿，不并刀）
 
@@ -166,7 +214,9 @@ S4 第二引擎复核（170） aux 面板 + 逐行 + 收尾后刷新
 ⑥ QA 复验（同一套走查）：块编辑 / 框选新增块 / 版面确认 / 第二引擎复核 四件逐条；外加
    「块列表数字 == 实际可点块数」「面板关闭再开不丢状态」
 ⑦ 真机一条变异：把 `detail-blocks` 的写点留一句在 app.js → 新闸②必须红
-⑧ **神入口判据**：模块源码里出现的 app.js 顶层函数名 ⊆ 接口面 T ∪ 注入键——扫出来凡不在集合里的，
+⑧ **借用状态不留副本**：见 §4 的两步测试（选块 → 外壳读到的 id 变了；外壳复位 → 模块读到 null）；
+   变异"模块绕过 setter 只改本地" ⇒ 必红
+⑨ **神入口判据**：模块源码里出现的 app.js 顶层函数名 ⊆ 接口面 T ∪ 注入键——扫出来凡不在集合里的，
    就是"谁都能喊一下"的入口（不是行数问题）；再加无环证据：编辑 → 重画只许经 `onPageDetailChanged` 一处
 
 ```
