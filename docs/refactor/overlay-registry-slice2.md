@@ -1,0 +1,187 @@
+# Overlay registry 第二片施工书：pages × reading × index 的块框迁移 + 还债
+
+> **状态：草案，等 Chief 批（§0 有一处扩围要他点头）；批了由 Builder 落盘。**
+> 上位：`overlay-registry-contract.md`（契约）· `overlay-registry-slice1.md`（片 1，已落 `98a492d`）。
+> **基线 = 开工时那棵树的实测值**，不从本文抄。本文写于 `059955c`：app.js **10,402** · pages-view **3,952** ·
+> reading-view **3,686** · index-view 见 §1 · overlay-registry.js **264** · preview-view **1,112**。
+
+## 0. 范围：三处扩围说明（第一处要 Chief 点头）
+
+```
+片 2a  registry 长出"块框全套"：盒子 + 顺序号 + 判重（版本）+ 143 行避让排布；pages 迁进来
+片 2b  reading 迁进来 + 把它的 is-linked 装饰收成白名单
+片 2c  **index 也迁进来**（★需确认）→ 然后才能删掉 app.js 的 renderPageBlocks / clearPageBlocks
+```
+
+**★ 为什么 index 必须进本片（不是贪大）**：143 行避让排布现在只服务 `renderPageBlocks`（app.js:3089 → 3150 一带）。
+`renderPageBlocks` 今天还有 **4 个消费者**：reading、pages、index、preview（preview 已在片 1 换道）。
+只要 index 还在用旧渲染器，避让链就**不能整体搬走**——搬走则 index 的顺序号没人摆，留一份则**同一套算法两份并存**
+（契约 §1 明令禁止的"两套路径"，也正是片 1 否掉 A 方案的理由）。
+index 的迁移面很小（§4：1 处容器 + 1 处调用 + 2 个 deps 键），比"两份算法"便宜得多。
+
+## 1. 实测：四个消费者的块框路径（按名字定位，行号只作对照）
+
+| 消费者 | 容器谁建 | 调用点 | styles 差异 | 交互 | 数据源 |
+|---|---|---|---|---|---|
+| preview（片 1 已迁） | registry | — | `details:true` | 只读（`--readonly`） | `previewTileBlocks` |
+| **pages** | app.js `buildTile`（2723–2818，容器在 **2734**） | pages-view **885**（另有 86/893/926/1869/1879/2425/2477 的 `clearPageBlocks`） | `details = pageZoomIndex >= 2`（默认参数） | **可 hover**：`page-overlay--labeled` ⇒ `app.css:901` 让 `.box` 吃指针，出 `.box__label` 卡片；**点击不绑盒**（选页是 #page-grid 委托，`app.css:901` 注释写明"点击仍冒泡到 tile"） | `pageBlockCache`（经 `pageBlockKey`） |
+| **reading** | reading-view **2028** | reading-view **3544**（`details:false`；清屏 2579/3547） | `details:false` | 只读；**另有 `is-linked` 装饰**：3529 事后在 `.box` 上 toggle 类，604/2178 全清 | `readingPageBlocks` |
+| **index** | index-view **337** | index-view **826**（`details:true`） | `details:true` | 只读 | `indexBlocksByPage` |
+
+三个消费者**都用 `.page-overlay` 找容器 + `overlay._renderedBlocks !== blocks` 判重**——这正是契约 §1 说的
+"同一份版本缓存散在多个文件"（片 1 之后仍剩 app.js:3059/3096/3099 · index-view:826 · pages-view:882/2489/2522 ·
+reading:3544 共 8 处）。
+
+## 2. 三条形态决策（本片新增，逐条给理由）
+
+### 2.1 容器 class 由 `styles` 决定，不由消费者自己拼
+
+现状三种写法：pages `page-overlay page-overlay--readonly page-overlay--labeled`（2734）·
+reading `page-overlay page-overlay--readonly`（2028）· preview（registry）`overlay-layer page-overlay page-overlay--readonly`。
+片 1 的 registry 把 class 写死在 `overlay-registry.js:129`，接 pages 就必须能加 `--labeled`：
+
+```
+paint(handle, { data, active, styles })
+styles = { details: boolean,      // 有没有顺序号 / 卡片
+           labeled: boolean,      // 加 page-overlay--labeled（.box 吃指针、hover 出卡片）
+           marginMode: boolean }  // 加 page-overlay--margin（app.css:903：容器与 .box 都不吃指针）
+容器 class = "overlay-layer page-overlay page-overlay--readonly" + (labeled ? " page-overlay--labeled" : "")
+             + (marginMode ? " page-overlay--margin" : "")
+```
+
+`page-overlay--margin` 今天是 **`paintTileMargin`（3126）里 `overlay.classList.add`（3138）**、
+**`clearTileMargin`（3154）里 `classList.remove`（3160）**——两个函数都靠 `tile.querySelector(".page-overlay")`
+捞容器再改 class。registry 接管容器之后，这两处就是**对别人家节点的写**（跨 owner）。
+
+**本片把它收成 styles 的一项**：`paintTileMargin` / `clearTileMargin` 删掉那两行 class 操作，
+容器 class 由 `paint(handle, {styles:{marginMode}})` 一处决定；视图在"版心开关变化 / 每帧重画"时带上这个字段。
+理由：registry 拥有容器 ⇒ 容器的 class 只能有一个写点（否则又回到"多处写同一份状态"）。
+代价：styles 里多一个布尔，指纹随之变——版心开关是低频操作，重画一页的块框可以接受。
+
+### 2.2 `.box__label` 由**注入的纯构建器**生成，不搬进 registry
+
+`buildBoxLabel`（5850–5920，71 行）**不能搬进 registry**：它最后一段调
+`window.PageDetailEditor?.pageNumberHintChip(suggestion)`（5910）——那是**模块→模块**引用，registry 拿不了。
+
+```
+init({ buildLabel })            // 外壳注入 buildBoxLabel（纯构建器：吃 block/index/suggestion，返回 Element）
+render(item, style)：当 style.details 时，label 用 injected.buildLabel(item, style) 生成
+```
+
+**这是 §5.5「render 只许读两个参数」的唯一例外**，写清楚边界：允许的是**无状态纯构建器**
+（不读时间、不读全局、不读 currentView）；一旦它开始读变化的状态，指纹就抓不到 → 必须改成 data/styles 的字段。
+判据：`buildLabel` 的注入是 init 一次、产品路径不替换；registry 里除它之外不许出现第二个 `injected.` 调用。
+
+### 2.3 reading 的 `is-linked` 是**声明式装饰例外**，不触发重画
+
+hover 联动今天是这样：`applyReadingLinked`（3525–3531）对 `tile.querySelectorAll(".box[data-block-id]")` 逐个
+`classList.toggle("is-linked", …)`，另有 604/2178 两处全清。
+
+```
+为什么不用 styles 重画：hover 是瞬态、每秒可能十几次；重画会重建节点 ⇒ 节点身份变、CSS 过渡断、
+   hover 目标丢失（片 1 的幂等判据正是盯节点身份的）。而且指纹会因 hover 抖动，版本失去意义。
+裁定：is-linked 允许由视图在**绘制之后**直接 toggle，但只许这一个类名、只许在 registry 生成的 .box 上。
+闸（可机检）：除 registry 外，任何模块对 `.box` 的 classList 写入只许是 "is-linked"；
+              出现第二个类名 / 出现 style 写入 / 出现 innerHTML 写入 ⇒ 红。
+```
+
+**这是唯一的例外**，写进契约 §23.6 的"不负责"旁边：hover 装饰不归 registry，但也**不许变成第二个画家**。
+
+## 3. 还债：143 行避让排布 + 拆掉 `drawDiffLayer` 耦合
+
+### 3.1 先拆 `drawDiffLayer`（顺序不能反）
+
+```
+现状：scheduleOverlayLayout(6052–6064) 成功那一帧调 drawDiffLayer()（6059）；
+      而 scheduleOverlayLayout 有两个主人——块框 overlay（3089）与审校的 #detail-overlay（5215/5232/5257）。
+⇒ 直接搬进 registry = 把审校视图的副作用一起搬进共享模块（Chief ② 的原话）。
+做法：先单独一笔把 #detail-overlay 的"摆号 + 重画差异"收成本地调度器（review 侧自己排帧、自己调 drawDiffLayer），
+      让 scheduleOverlayLayout 只剩块框 overlay 一个主人；下一笔再把它搬进 registry。
+判据：拆完那一笔，`drawDiffLayer` 的调用点里不再有"由 overlay 布局触发"这条路径；
+      review 侧仍有等价行为（真机：审校页滚动后差异层与顺序号同帧更新）。
+```
+
+### 3.2 避让链搬家（逐函数实测，`059955c`）
+
+| 函数 | 行 | 行数 | 说明 |
+|---|---|---|---|
+| `findOrderSpot` | 5923–5946 | 24 | 顺序号找空位（框外） |
+| `findLabelSpot` | 5953–6001 | 49 | 卡片找空位 |
+| `layoutOverlayAnnotations` | 6007–6049 | 43 | 摆号 + 摆卡片（读 `box._bbox`） |
+| `scheduleOverlayLayout` | 6052–6064 | 13 | 90 帧重试（**拆掉 drawDiffLayer 之后**只剩布局） |
+| `observeOverlaySize` | 6074–6087 | 14 | ResizeObserver |
+| **合计** | | **143** | 契约里记的就是这个数 |
+
+迁移要点：
+```
+· `overlayResizeObserver` 是单例、按元素 observe：搬进 registry 后改成"一个观察器 + Map(元素→handle)"，
+  卸载时 unobserve（否则 400 个 tile 重建成 400 个死引用——片 1 的 unmount 已经埋了这个坑，本片补上）
+· `layoutOverlayAnnotations` 用 `box._bbox` / `box.dataset.blockId`：`_bbox` 是私有挂载，搬的时候改成
+  `box.dataset` 或 handle 内部 Map —— **不许再往 DOM 上挂对象属性**（那正是"第二份状态"）
+· 调度仍是 registry 那一个 rAF：避让只是"帧内多一趟"，不许再开第二个 rAF
+```
+
+## 4. 改动面预算
+
+| 文件 | 动作 | 预算 |
+|---|---|---|
+| `overlay-registry.js` | + 容器 class 由 styles 决定（2.1）· + buildLabel 注入（2.2）· + 避让链 143 行（3.2）· + `_bbox` 改内部 Map | **264 → ≤ 470**（+143 避让 + ~40 class/label + ~20 观察器） |
+| `app.js` | 删 `renderPageBlocks`(36) / `clearPageBlocks`(9)；`buildTile` 里容器创建那 3 行（2734 一带）删掉、改 mount；`scheduleOverlayLayout`/`observeOverlaySize`/`layoutOverlayAnnotations`/`findOrderSpot`/`findLabelSpot` 搬走（143）；`paintTileMargin`(3138) / `clearTileMargin`(3160) 里两行 class 操作删掉、改 styles | **−190 ~ −200**（renderPageBlocks 会留到 2c 末才整段删，见 §0） |
+| `pages-view.js` | 885 改 registry paint；8 处 `clearPageBlocks` 改 `paint(active:[])`；882/2489/2522 的 `_renderedBlocks` 判重删掉（版本归 registry） | **−15 ~ −25** |
+| `reading-view.js` | 3544/3547/2579 改 registry；2028 容器删；`is-linked` 三处保留（2.3） | **−10 ~ −15** |
+| `index-view.js` | 337 容器删；826 改 registry；`drawIndexFirstLine` 不动 | **−8 ~ −12** |
+| `app.js` deps | pages / reading / index 三块里的 `renderPageBlocks` / `clearPageBlocks` 六个键删掉（preview 那两个也顺手删——片 1 遗留） | **−8 键**（deps 173 → 基线条数 −8；**这是本片唯一允许动的 deps**，写进提交说明） |
+| `index.html` / `app.css` | **不动**（class 全复用现有规则） | 0 |
+
+## 5. 酸测试（在片 1 五条之上加四条）
+
+片 1 的五条（版本/幂等/数量/旧路径归零/img Δ）**全部保留**，把消费者从 preview 扩到 pages/reading/index。新增：
+
+| # | 断言 | 变异（必红） |
+|---|---|---|
+| ⑥ **避让生效** | 同页 8 个框、位置故意重叠：帧后相邻两个 `.box__order` 的 `left/top` **不相等**（都摆开了） | 让 `findOrderSpot` 恒返回原点 ⇒ ⑥ 红 |
+| ⑦ **框外摆放（片 1 的债）** | `details:true` 时，`.box__order` 至少有 1 个的 `left` < 0 或 `top` < 0（即"框外"），且 order 的 `position` 计算值不是 static | 把 order 改成"框内右上角"（片 1 的临时做法）⇒ ⑦ 红 |
+| ⑧ **marginMode 只走 styles** | `paint(..., {styles:{marginMode:true}})` 后容器有 `page-overlay--margin`；`styles.marginMode:false` 后没了 | 在 shell 里直接 `classList.add` ⇒ 闸（容器 class 唯一写点）红 |
+| ⑨ **装饰白名单** | reading 路径：除 registry 外对 `.box` 的 classList 写入只出现 `is-linked`（静态扫 + 运行时 spy） | 在 reading 里给 `.box` 加第二个类 ⇒ ⑨ 红 |
+
+## 6. 真机判据：把"块框"与"序号摆放"分开验（Chief ③）
+
+片 1 只验了前者，序号摆放被推迟 —— 本片两组都要，而且**不许合并成一句"看起来一样"**：
+
+```
+A 组（片 1 已验，本片扩到三个视图，回归用）
+  A1 位置：同一本书同一页，块框的 left/top/width/height 与改前逐框相等（读 DOM 的 style，不截图）
+  A2 类型色：heading #4338ca / paragraph #2563eb / figure #15803d 与改前一致（getComputedStyle 的 border-color）
+  A3 数量：`stats(pageNo).counts.blocks` == 有 bbox 的块数
+  A4 hits 层级：`.preview-page__hits` 仍在块框之上（preview）；reading 的 `#reading-diff-layer` 不受影响
+
+B 组（片 1 欠的债，本片首次验）
+  B1 框外摆放：zoom≥2 时顺序号在框**外**（有 left/top < 0 的实例），与改前同页逐号位置差 ≤ 2px
+  B2 hover 卡片：pages 上悬停某块 → `.box__label` 出现且**不被其它号覆盖**（findLabelSpot 生效）
+  B3 hover 联动：reading 悬停 → 对应 `.box.is-linked` 出现，移开消失（片 1 之后这条路径没动过，回归用）
+```
+
+## 7. 不许顺手改
+
+```
+① 不动 `.box` / `.box__order` / `.box__label` 的 CSS（app.css 本片 0 行改动）
+② 不动 reading 的 `#reading-diff-layer`（差异色块是另一条链，paintReadingDiffBoxes 不归本片）
+③ 不把 `buildBoxLabel` 搬进 registry（它调 PageDetailEditor，模块→模块）
+④ 不把 `is-linked` 改成 styles 重画（hover 抖版本、重建节点）
+⑤ 不删 `previewTileBlocks` / `readingPageBlocks` / `indexBlocksByPage` / `pageBlockCache`（数据源仍归各视图/外壳，
+   registry 只吃 paint 传进来的 data）
+⑥ 本片不实现 `invalidate` / `hitTest`（仍无调用点）
+```
+
+## 8. 顺序与谁做
+
+```
+建议两笔落，各自可独立验收：
+  2.1  拆 drawDiffLayer 耦合（§3.1）+ registry 长避让链 + pages 迁入
+  2.2  reading + index 迁入 + 删 renderPageBlocks/clearPageBlocks + 六个 deps 键
+（两笔都在 2.1 绿之后才动 2.2；2.2 落完 `_renderedBlocks` 应全仓 0 次）
+
+做：Builder。我不写产品代码。
+撞车：本片动 app.js（deps 六键 + 删函数）与 pages/reading/index 三个模块 ⇒ 与别的刀不可并行；
+     index.html 与 app.css 不动。
+```
