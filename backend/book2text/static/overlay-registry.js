@@ -94,10 +94,256 @@
     if (!block.include) box.classList.add("box--excluded");
     if (block.review_status === "uncertain") box.classList.add("box--uncertain");
     applyRect(box, block.bbox);
+    bboxByBox.set(box, block.bbox);
     if (block.block_id) box.dataset.blockId = block.block_id;
     box.title = `${BLOCK_TYPE_LABELS[block.block_type] || block.block_type} · 第 ${block.order_index + 1} 块`;
-    if (style.details !== false) box.append(buildOrderBadge(block.order_index));
+    if (style.details !== false) {
+      box.append(buildOrderBadge(block.order_index));
+      // 卡片只在"可交互"的视图里建（labeled = 能 hover）：preview 是只读缩略图，
+      // 只画顺序号、不留一层永远看不见的卡片节点。
+      if (style.labeled && typeof injected.buildLabel === "function") {
+        box.append(injected.buildLabel(block, block.order_index));
+      }
+    }
     return box;
+  }
+
+  // ---------------------------------------------------------------- 块框的几何：避让排布（片 2）
+  //
+  // 整条避让链从 app.js 搬来（findOrderSpot / findLabelSpot / layout / schedule / 观察器 +
+  // pxRect / rectsOverlap 与两个尺寸常数，实测 161 行）：契约 §1 不许"同一套算法两份"。
+  //
+  // 两个导出的分工（契约 §API · 书 §3.3）：
+  //   layout(container, { lineBboxes, bboxOf })   一次摆：幂等、不画、不登记 rAF、不碰 version
+  //   schedule(container, { …, onLaidOut })       排到可测为止（token + rAF + 90 帧）；成功后回调一次
+  // `bboxOf` 是外部容器（审校 #detail-overlay）交出块框的唯一口子——registry 不读别人的私有属性；
+  // 自己画的盒子走内部 WeakMap，卸载即随节点回收。
+
+  const BOX_ORDER_WIDTH = 22;
+  const BOX_ORDER_HEIGHT = 16;
+  const BOX_ORDER_GAP = 3;
+  const BOX_LABEL_GAP = 6;
+
+  /** box 元素 → 归一化 bbox（只登记 registry 自己画的盒子；不往 DOM 上挂对象属性）。 */
+  const bboxByBox = new WeakMap();
+  /** 容器 → 当前调度 token：同一容器只许一个调度在跑（重复 schedule 取消前一次）。 */
+  const layoutTokens = new WeakMap();
+  /** 容器 → 观察参数（ResizeObserver 重摆时要用同一份 bboxOf / lineBboxes）。 */
+  const layoutOptions = new WeakMap();
+  /** 已 observe 的容器（unmount 时 unobserve，别留死引用）。 */
+  const observedContainers = new Set();
+  let resizeObserver = null;
+
+  function pxRect(bbox, width, height) {
+    return {
+      x0: bbox[0] * width,
+      y0: bbox[1] * height,
+      x1: bbox[2] * width,
+      y1: bbox[3] * height,
+    };
+  }
+
+  function rectsOverlap(a, b, pad = 0) {
+    return a.x0 < b.x1 + pad && a.x1 > b.x0 - pad && a.y0 < b.y1 + pad && a.y1 > b.y0 - pad;
+  }
+
+  /** 顺序号的位置：先找框边空位；密集页没有缝隙时退到页边留白（像行号）。 */
+  function findOrderSpot(own, obstacles, width, height) {
+    const w = BOX_ORDER_WIDTH;
+    const h = BOX_ORDER_HEIGHT;
+    const gap = BOX_ORDER_GAP;
+    const preferLeft = (own.x0 + own.x1) / 2 <= width / 2;
+    const marginCandidates = preferLeft
+      ? [[2, own.y0], [width - w - 2, own.y0]]
+      : [[width - w - 2, own.y0], [2, own.y0]];
+    const candidates = [
+      [own.x1 - w, own.y0 - gap - h], // 右上（框外）
+      [own.x0 - gap - w, own.y0], // 左上（框外）
+      [own.x1 + gap, own.y0], // 右侧
+      [own.x1 - w, own.y1 + gap], // 右下
+      [own.x0 - gap - w, own.y1 + gap], // 左下
+      ...marginCandidates, // 页边留白：密集页里唯一保证不压字的位置
+    ];
+    for (const [x, y] of candidates) {
+      const rect = { x0: x, y0: y, x1: x + w, y1: y + h };
+      if (x < 0 || y < 0 || rect.x1 > width || rect.y1 > height) continue;
+      if (obstacles.some((obstacle) => rectsOverlap(rect, obstacle, 1))) continue;
+      return rect;
+    }
+    return null;
+  }
+
+  /** 悬停卡片：优先贴框的上 / 右 / 左 / 下；密集页退到"本行旁边最宽的那条留白"。 */
+  function findLabelSpot(own, size, obstacles, width, height) {
+    const gap = BOX_LABEL_GAP;
+    const fitX = (x) => Math.min(Math.max(x, 0), Math.max(0, width - size.width));
+    const fitY = (y) => Math.min(Math.max(y, 0), Math.max(0, height - size.height));
+
+    const bandY = Math.min(
+      Math.max(own.y0 + (own.y1 - own.y0) / 2 - size.height / 2, 0),
+      Math.max(0, height - size.height)
+    );
+    const band = obstacles.filter((obstacle) => obstacle.y0 < bandY + size.height && obstacle.y1 > bandY);
+    const bandRight = band.length ? Math.max(...band.map((item) => item.x1)) : own.x1;
+    const bandLeft = band.length ? Math.min(...band.map((item) => item.x0)) : own.x0;
+
+    const candidates = [
+      { x0: fitX(own.x0), y0: own.y0 - gap - size.height },
+      { x0: own.x1 + gap, y0: fitY(own.y0) },
+      { x0: own.x0 - gap - size.width, y0: fitY(own.y0) },
+      { x0: fitX(own.x0), y0: own.y1 + gap },
+      { x0: bandRight + gap, y0: bandY },
+      { x0: bandLeft - gap - size.width, y0: bandY },
+      { x0: 4, y0: 4 },
+      { x0: width - size.width - 4, y0: 4 },
+      { x0: (width - size.width) / 2, y0: 4 },
+      { x0: 4, y0: height - size.height - 4 },
+      { x0: width - size.width - 4, y0: height - size.height - 4 },
+      { x0: 4, y0: fitY((height - size.height) / 2) },
+      { x0: width - size.width - 4, y0: fitY((height - size.height) / 2) },
+    ];
+    for (const candidate of candidates) {
+      const rect = {
+        x0: candidate.x0,
+        y0: candidate.y0,
+        x1: candidate.x0 + size.width,
+        y1: candidate.y0 + size.height,
+      };
+      if (rect.x0 < 0 || rect.y0 < 0 || rect.x1 > width || rect.y1 > height) continue;
+      if (obstacles.some((obstacle) => rectsOverlap(rect, obstacle, 2))) continue;
+      return rect;
+    }
+    // 实在没有空白：退到框下方（可能压到下一块，但至少不挡正在看的这一行）
+    const x = fitX(own.x1 - size.width);
+    const y = Math.min(Math.max(own.y1 + gap, 0), Math.max(0, height - size.height));
+    return { x0: x, y0: y, x1: x + size.width, y1: y + size.height };
+  }
+
+  /**
+   * 给一个容器的所有 `.box` 摆好顺序号与卡片（**一次摆，幂等**）。
+   *
+   * 只读两个参数：容器自己的矩形 + 调用方给的 bbox 来源；不画、不改 data、不碰 version、不排帧。
+   * 图还没布局好（宽高 < 60）时返回 false，调用方在下一帧重试。
+   */
+  function layout(container, options = {}) {
+    if (!container || !container.isConnected || container.hidden) return false;
+    const rect = container.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    if (width < 60 || height < 60) return false;
+
+    const bboxOf = typeof options.bboxOf === "function" ? options.bboxOf : (box) => bboxByBox.get(box);
+    const boxes = boxesIn(container);
+    const obstacles = [];
+    for (const box of boxes) {
+      const bbox = bboxOf(box);
+      if (bbox) obstacles.push(pxRect(bbox, width, height));
+    }
+    for (const bbox of options.lineBboxes || []) {
+      if (bbox) obstacles.push(pxRect(bbox, width, height));
+    }
+
+    for (const box of boxes) {
+      const bbox = bboxOf(box);
+      if (!bbox) continue;
+      const own = pxRect(bbox, width, height);
+      const offsetX = box.clientLeft || 0;
+      const offsetY = box.clientTop || 0;
+
+      const order = firstChildWithClass(box, "box__order");
+      if (order) {
+        const spot = findOrderSpot(own, obstacles, width, height);
+        order.classList.toggle("box__order--inside", !spot);
+        const at = spot || { x0: own.x1 - BOX_ORDER_WIDTH - 2, y0: own.y0 + 2 };
+        order.style.left = `${at.x0 - own.x0 - offsetX}px`;
+        order.style.top = `${at.y0 - own.y0 - offsetY}px`;
+        // 后面的号也不许压到前面已经摆好的号
+        obstacles.push({
+          x0: at.x0, y0: at.y0, x1: at.x0 + BOX_ORDER_WIDTH, y1: at.y0 + BOX_ORDER_HEIGHT,
+        });
+      }
+
+      const label = firstChildWithClass(box, "box__label");
+      if (label) {
+        const size = { width: label.offsetWidth, height: label.offsetHeight };
+        if (!size.width || !size.height) continue;
+        const spot = findLabelSpot(own, size, obstacles, width, height);
+        label.style.left = `${spot.x0 - own.x0 - offsetX}px`;
+        label.style.top = `${spot.y0 - own.y0 - offsetY}px`;
+      }
+    }
+    return true;
+  }
+
+  /** 记住这份参数并确保容器被观察（尺寸变了用同一份参数重摆）。 */
+  function rememberLayout(container, options) {
+    layoutOptions.set(container, options);
+    if (typeof ResizeObserver === "undefined") return;
+    if (!resizeObserver) {
+      resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.target.isConnected) continue;
+          schedule(entry.target, layoutOptions.get(entry.target) || {});
+        }
+      });
+    }
+    if (!observedContainers.has(container)) {
+      resizeObserver.observe(container);
+      observedContainers.add(container);
+    }
+  }
+
+  /**
+   * 排到容器可测为止（**唯一的重试循环**）：token 让同一容器只保留最后一次调度。
+   * 成功后调一次 `onLaidOut`（审校拿它重画差异层）；它只作通知，不接绘制以外的东西。
+   */
+  function schedule(container, options = {}) {
+    if (!container || container.hidden) return;
+    const token = (layoutTokens.get(container) || 0) + 1;
+    layoutTokens.set(container, token);
+    rememberLayout(container, options);
+    stepSchedule(container, token, options, 0);
+  }
+
+  function stepSchedule(container, token, options, attempt) {
+    requestAnimationFrame(() => {
+      if (layoutTokens.get(container) !== token || !container.isConnected) return;
+      if (layout(container, options)) {
+        if (typeof options.onLaidOut === "function") options.onLaidOut();
+        return;
+      }
+      if (attempt < 90) stepSchedule(container, token, options, attempt + 1);
+    });
+  }
+
+  /** 容器里的块框（registry 自己画的是「type 包装 → .box」，审校容器是直接的 .box）。 */
+  function boxesIn(container) {
+    const found = [];
+    const visit = (node) => {
+      for (const child of Array.from(node.children || [])) {
+        if (!child.classList) continue;
+        if (child.classList.contains("box")) found.push(child);
+        else if (child.classList.contains("overlay-layer__type")) visit(child);
+      }
+    };
+    visit(container);
+    return found;
+  }
+
+  /** 某个盒子里按类名找唯一子元素（只认 .box__order / .box__label，不做选择器解析）。 */
+  function firstChildWithClass(node, className) {
+    for (const child of Array.from(node.children || [])) {
+      if (child.classList && child.classList.contains(className)) return child;
+    }
+    return null;
+  }
+
+  /** 容器 class 由 styles 决定（唯一写点；壳里不再 classList.add/remove）。 */
+  function layerClassName(styles = {}) {
+    let className = "overlay-layer page-overlay page-overlay--readonly";
+    if (styles.labeled) className += " page-overlay--labeled";
+    if (styles.marginMode) className += " page-overlay--margin";
+    return className;
   }
 
   // ---------------------------------------------------------------- 接口
@@ -126,7 +372,7 @@
     const existing = handles.get(no);
     if (existing) unmount(existing);
     const layer = document.createElement("div");
-    layer.className = "overlay-layer page-overlay page-overlay--readonly";
+    layer.className = layerClassName();
     layer.dataset.pageNo = String(no);
     layer.hidden = true;
     hostEl.appendChild(layer);
@@ -154,6 +400,9 @@
     handle.pending = null;
     dirty.delete(handle);
     if (handles.get(handle.pageNo) === handle) handles.delete(handle.pageNo);
+    if (resizeObserver && observedContainers.delete(handle.layer)) resizeObserver.unobserve(handle.layer);
+    layoutTokens.delete(handle.layer);
+    layoutOptions.delete(handle.layer);
     if (handle.layer.parentNode) handle.layer.parentNode.removeChild(handle.layer);
     handle.types.clear();
     handle.painted.clear();
@@ -171,10 +420,10 @@
       styles: styles || {},
     };
     dirty.add(handle);
-    schedule();
+    scheduleFlush();
   }
 
-  function schedule() {
+  function scheduleFlush() {
     if (rafId) return;
     rafId = requestAnimationFrame(flush);
   }
@@ -247,9 +496,12 @@
       handle.counts[type] = 0;
     }
 
+    handle.layer.className = layerClassName(styles);
     handle.layer.hidden = visible === 0;
     handle.version = version;
     handle.geomHash = fnv1a(stableJSON(bboxes));
+    // 只有可交互视图（labeled）才需要"框外避让"：只读缩略图的号固定在框内右上角。
+    if (styles.labeled && styles.details !== false && visible > 0) schedule(handle.layer, {});
   }
 
   /** 只读诊断：版本、每类画了几个、几何指纹（不许有副作用）。 */
@@ -259,6 +511,6 @@
     return { version: handle.version, counts: Object.assign({}, handle.counts), geomHash: handle.geomHash };
   }
 
-  const api = { init, register, mount, unmount, paint, stats };
+  const api = { init, register, mount, unmount, paint, stats, layout, schedule };
   window.OverlayLayer = api;
 })();

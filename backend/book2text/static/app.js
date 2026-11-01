@@ -2730,10 +2730,6 @@ function buildTile(page, project) {
   // 与页面真实显示比例一致：overlay 用百分比定位，固定 1:1.414 会让非 A4 页错位
   thumb.style.aspectRatio = `${page.width_pt} / ${page.height_pt}`;
 
-  const overlay = document.createElement("div");
-  overlay.className = "page-overlay page-overlay--readonly page-overlay--labeled";
-  overlay.hidden = true;
-
   const check = document.createElement("div");
   check.className = "page-tile__check";
   check.textContent = "✓";
@@ -2799,7 +2795,7 @@ function buildTile(page, project) {
   });
 
   actions.append(recognizeButton, detailButton);
-  thumb.append(image, margin, overlay, check, suggestMark, actions);
+  thumb.append(image, margin, check, suggestMark, actions);
 
   const meta = document.createElement("div");
   meta.className = "page-tile__meta";
@@ -3083,7 +3079,6 @@ function renderPageBlocks(tile, blocks, { details = pageZoomIndex >= 2 } = {}) {
   }
   overlay.hidden = count === 0;
   if (!showDetails || !count) return;
-  observeOverlaySize(overlay);
   // 同步摆一次，别等 rAF：块框刚画出来时可能正赶上滚动 / 缩放，晚一帧就会看到没摆好的号
   layoutOverlayAnnotations(overlay);
   scheduleOverlayLayout(overlay);
@@ -3133,9 +3128,6 @@ function paintTileMargin(tile, page) {
   const box = marginBoxOfPage(page);
   margin.classList.toggle("page-margin--custom", page.margin_box_mode === "custom");
   margin.classList.toggle("page-margin--inherit", page.margin_box_mode !== "custom");
-  // 版心开着时块框只作参考（悬停卡片让位给拖拽把手）
-  const overlay = tile.querySelector(".page-overlay");
-  if (overlay) overlay.classList.add("page-overlay--margin");
   if (!box) {
     margin.hidden = true;
     margin._box = null;
@@ -3156,8 +3148,6 @@ function paintTileMargin(tile, page) {
 function clearTileMargin(tile) {
   const margin = tile ? tile.querySelector(".page-margin") : null;
   if (!margin) return;
-  const overlay = tile.querySelector(".page-overlay");
-  if (overlay) overlay.classList.remove("page-overlay--margin");
   if (margin.hidden && !margin._box) return;
   margin.hidden = true;
   margin._box = null;
@@ -5808,31 +5798,9 @@ function setupBoxDrag() {
 //   · 同一时刻只显示一张卡片（CSS :hover + 选中块互斥）。
 // 位置按像素算、随缩放重算；用相对块框的 px 偏移，不写百分比。
 
-const BOX_ORDER_WIDTH = 22;
-const BOX_ORDER_HEIGHT = 16;
-const BOX_ORDER_GAP = 3;
-const BOX_LABEL_GAP = 6;
 
 function boxTypeLabel(block) {
   return BLOCK_TYPE_LABELS[block.block_type] || block.block_type;
-}
-
-function pxRect(bbox, width, height) {
-  return {
-    x0: bbox[0] * width,
-    y0: bbox[1] * height,
-    x1: bbox[2] * width,
-    y1: bbox[3] * height,
-  };
-}
-
-function rectsOverlap(a, b, pad = 0) {
-  return (
-    a.x0 < b.x1 + pad &&
-    a.x1 > b.x0 - pad &&
-    a.y0 < b.y1 + pad &&
-    a.y1 > b.y0 - pad
-  );
 }
 
 /** 默认态的小顺序号；类型文字不在图上常驻（右侧块列表里有）。 */
@@ -5919,195 +5887,29 @@ function buildBoxLabel(block, index, suggestion) {
   return label;
 }
 
-/** 顺序号的位置：先找框边空位；密集页没有缝隙时退到页边留白（像行号）。 */
-function findOrderSpot(own, obstacles, width, height) {
-  const w = BOX_ORDER_WIDTH;
-  const h = BOX_ORDER_HEIGHT;
-  const gap = BOX_ORDER_GAP;
-  const preferLeft = (own.x0 + own.x1) / 2 <= width / 2;
-  const marginCandidates = preferLeft
-    ? [[2, own.y0], [width - w - 2, own.y0]]
-    : [[width - w - 2, own.y0], [2, own.y0]];
-  const candidates = [
-    [own.x1 - w, own.y0 - gap - h], // 右上（框外）
-    [own.x0 - gap - w, own.y0], // 左上（框外）
-    [own.x1 + gap, own.y0], // 右侧
-    [own.x1 - w, own.y1 + gap], // 右下
-    [own.x0 - gap - w, own.y1 + gap], // 左下
-    ...marginCandidates, // 页边留白：密集页里唯一保证不压字的位置
-  ];
-  for (const [x, y] of candidates) {
-    const rect = { x0: x, y0: y, x1: x + w, y1: y + h };
-    if (x < 0 || y < 0 || rect.x1 > width || rect.y1 > height) continue;
-    if (obstacles.some((obstacle) => rectsOverlap(rect, obstacle, 1))) continue;
-    return rect;
-  }
-  return null;
-}
-
 /**
- * 悬停卡片的位置：优先贴着框的上 / 右 / 左 / 下；密集页这些位置都会压到
- * 相邻行，于是退到"本行旁边最宽的那条留白"（左右页边），再不行才去整页留白。
- * **任何候选都要避开所有行框**，所以卡片不会遮正文。
- */
-function findLabelSpot(own, size, obstacles, width, height) {
-  const gap = BOX_LABEL_GAP;
-  const fitX = (x) => Math.min(Math.max(x, 0), Math.max(0, width - size.width));
-  const fitY = (y) => Math.min(Math.max(y, 0), Math.max(0, height - size.height));
-
-  // 本行留白：卡片纵向居中于本块，横向放到"与它同一横带的所有行"之外
-  const bandY = Math.min(
-    Math.max(own.y0 + (own.y1 - own.y0) / 2 - size.height / 2, 0),
-    Math.max(0, height - size.height)
-  );
-  const band = obstacles.filter(
-    (obstacle) => obstacle.y0 < bandY + size.height && obstacle.y1 > bandY
-  );
-  const bandRight = band.length ? Math.max(...band.map((item) => item.x1)) : own.x1;
-  const bandLeft = band.length ? Math.min(...band.map((item) => item.x0)) : own.x0;
-
-  const candidates = [
-    { x0: fitX(own.x0), y0: own.y0 - gap - size.height },
-    { x0: own.x1 + gap, y0: fitY(own.y0) },
-    { x0: own.x0 - gap - size.width, y0: fitY(own.y0) },
-    { x0: fitX(own.x0), y0: own.y1 + gap },
-    // 本行旁边的页边（密集页：右边通常比左边宽）
-    { x0: bandRight + gap, y0: bandY },
-    { x0: bandLeft - gap - size.width, y0: bandY },
-    // 整页留白（避开所有块框 / 行框）：顶部 → 底部 → 两侧
-    { x0: 4, y0: 4 },
-    { x0: width - size.width - 4, y0: 4 },
-    { x0: (width - size.width) / 2, y0: 4 },
-    { x0: 4, y0: height - size.height - 4 },
-    { x0: width - size.width - 4, y0: height - size.height - 4 },
-    { x0: 4, y0: fitY((height - size.height) / 2) },
-    { x0: width - size.width - 4, y0: fitY((height - size.height) / 2) },
-  ];
-  for (const candidate of candidates) {
-    const rect = {
-      x0: candidate.x0,
-      y0: candidate.y0,
-      x1: candidate.x0 + size.width,
-      y1: candidate.y0 + size.height,
-    };
-    if (rect.x0 < 0 || rect.y0 < 0 || rect.x1 > width || rect.y1 > height) continue;
-    if (obstacles.some((obstacle) => rectsOverlap(rect, obstacle, 2))) continue;
-    return rect;
-  }
-  // 实在没有空白：退到框下方（可能压到下一块，但至少不挡正在看的这一行）
-  const x = fitX(own.x1 - size.width);
-  const y = Math.min(Math.max(own.y1 + gap, 0), Math.max(0, height - size.height));
-  return { x0: x, y0: y, x1: x + size.width, y1: y + size.height };
-}
-
-/**
- * 给一个 overlay 里的所有块框摆好顺序号与悬停卡片。
- * 图还没布局好（宽高为 0）时返回 false，调用方会在下一帧重试。
+ * 片 2：避让数学（顺序号找空位 / 卡片找空位 / 摆位 / 90 帧重试 / 尺寸观察）已经整体搬进
+ * `overlay-registry.js`（唯一实现，契约 §1 不许两套）。这里只留薄转发，给还没迁完的
+ * reading / index（仍走 `renderPageBlocks`）与审校的 `#detail-overlay` 用；
+ * 2.2 把 reading / index 迁进 registry 之后，这三个转发器一起删。
  */
 function layoutOverlayAnnotations(overlay) {
-  if (!overlay || !overlay.isConnected || overlay.hidden) return false;
-  const rect = overlay.getBoundingClientRect();
-  const width = rect.width;
-  const height = rect.height;
-  if (width < 60 || height < 60) return false;
-
-  const obstacles = [];
-  for (const box of overlay.querySelectorAll(".box")) {
-    if (box._bbox) obstacles.push(pxRect(box._bbox, width, height));
-  }
-  for (const bbox of overlay._lineBboxes || []) {
-    if (bbox) obstacles.push(pxRect(bbox, width, height));
-  }
-
-  for (const box of overlay.querySelectorAll(".box")) {
-    if (!box._bbox) continue;
-    const own = pxRect(box._bbox, width, height);
-    const offsetX = box.clientLeft || 0;
-    const offsetY = box.clientTop || 0;
-
-    const order = box.querySelector(".box__order");
-    if (order) {
-      const spot = findOrderSpot(own, obstacles, width, height);
-      order.classList.toggle("box__order--inside", !spot);
-      const at = spot || { x0: own.x1 - BOX_ORDER_WIDTH - 2, y0: own.y0 + 2 };
-      order.style.left = `${at.x0 - own.x0 - offsetX}px`;
-      order.style.top = `${at.y0 - own.y0 - offsetY}px`;
-      // 后面的顺序号也不许压到前面已经摆好的号
-      obstacles.push({ x0: at.x0, y0: at.y0, x1: at.x0 + BOX_ORDER_WIDTH, y1: at.y0 + BOX_ORDER_HEIGHT });
-    }
-
-    const label = box.querySelector(".box__label");
-    if (label) {
-      const size = { width: label.offsetWidth, height: label.offsetHeight };
-      if (!size.width || !size.height) continue;
-      const spot = findLabelSpot(own, size, obstacles, width, height);
-      label.style.left = `${spot.x0 - own.x0 - offsetX}px`;
-      label.style.top = `${spot.y0 - own.y0 - offsetY}px`;
-    }
-  }
-  return true;
+  return window.OverlayLayer?.layout(overlay, { bboxOf: (box) => box._bbox, lineBboxes: overlay._lineBboxes });
 }
 
-/** 图还没出来时等它：每帧重试，直到 overlay 有尺寸（最多约 1.5 秒）。 */
-function scheduleOverlayLayout(overlay, attempt = 0) {
-  if (!overlay || overlay.hidden) return;
-  const token = (overlay._layoutToken = (overlay._layoutToken || 0) + 1);
-  requestAnimationFrame(() => {
-    if (overlay._layoutToken !== token || !overlay.isConnected) return;
-    if (layoutOverlayAnnotations(overlay)) return;
-    if (attempt < 90) scheduleOverlayLayout(overlay, attempt + 1);
+function scheduleOverlayLayout(overlay) {
+  window.OverlayLayer?.schedule(overlay, { bboxOf: (box) => box._bbox, lineBboxes: overlay._lineBboxes });
+}
+
+/** 审校侧：摆完号在同一帧重画差异层（排帧与尺寸观察都归 registry 的 schedule）。 */
+function scheduleDetailOverlayLayout(overlay) {
+  window.OverlayLayer?.schedule(overlay, {
+    bboxOf: (box) => box._bbox,
+    lineBboxes: overlay._lineBboxes,
+    onLaidOut: () => drawDiffLayer(),
   });
 }
 
-/**
- * 审校侧的本地调度：摆完号之后，在**同一个 rAF** 里重画差异层。
- *
- * 为什么要拆成两条（片 2 §3.1）：`scheduleOverlayLayout` 有两个主人——块框（renderPageBlocks）
- * 与审校的 #detail-overlay。差异层是审校独有的副作用，挂在共享调度器上会让"页面视图画一页块框"
- * 也去重画审校的差异层；拆开之后共享调度器只剩布局，审校这条自带 drawDiffLayer。
- * 两条共用同一个 `_layoutToken`：同一容器永远只有一个调度在跑。
- */
-function scheduleDetailOverlayLayout(overlay, attempt = 0) {
-  if (!overlay || overlay.hidden) return;
-  const token = (overlay._layoutToken = (overlay._layoutToken || 0) + 1);
-  requestAnimationFrame(() => {
-    if (overlay._layoutToken !== token || !overlay.isConnected) return;
-    if (layoutOverlayAnnotations(overlay)) {
-      // 差异标记与顺序号在**同一个 rAF** 里重算，滚动 / 缩放时不会各走一帧。
-      drawDiffLayer();
-      return;
-    }
-    if (attempt < 90) scheduleDetailOverlayLayout(overlay, attempt + 1);
-  });
-}
-
-/**
- * 尺寸变了就重新找空位（缩放、窗口变化）。
- *
- * 只靠 applyZoom 里排一帧不够：样式刚改完的那一帧，overlay 的矩形偶尔还是旧宽度，
- * 顺序号会按旧尺寸摆一次就不再重算（实测 4/4 档第一次放大有 3 个号压块）。
- */
-let overlayResizeObserver = null;
-// 同一个观察器服务两种层级（块框 / 审校），但"摆完还要不要重画差异层"只有审校要 ⇒ 按目标分派。
-// 片 2 §3.1 的拆分如果漏了这条，窗口缩放时差异层不会重画（它的位置是 px，按 canvas 宽度算的）。
-const overlayScheduleByTarget = new WeakMap();
-
-function observeOverlaySize(overlay, schedule = scheduleOverlayLayout) {
-  if (!overlay || typeof ResizeObserver === "undefined") return;
-  if (!overlayResizeObserver) {
-    overlayResizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (!entry.target.isConnected) continue;
-        (overlayScheduleByTarget.get(entry.target) || scheduleOverlayLayout)(entry.target);
-      }
-    });
-  }
-  overlayScheduleByTarget.set(overlay, schedule);
-  if (!overlay._resizeObserved) {
-    overlayResizeObserver.observe(overlay);
-    overlay._resizeObserved = true;
-  }
-}
 
 // ---------------------------------------------------------------- 差异联动（任务 63）
 
@@ -6532,7 +6334,6 @@ function drawDetailOverlay(blocks) {
     });
     overlay.append(box);
   });
-  observeOverlaySize(overlay, scheduleDetailOverlayLayout);
   // 先同步摆一次（getBoundingClientRect 会强制布局），再等下一帧处理"图还没出来"的情况
   layoutOverlayAnnotations(overlay);
   scheduleDetailOverlayLayout(overlay);
@@ -9955,7 +9756,6 @@ function boot() {
     adoptBlockSuggestion: (...args) => window.PageDetailEditor?.adoptBlockSuggestion(...args),
     apiJson: apiJson,
     applyProjectSettings: applyProjectSettings,
-    clearPageBlocks: clearPageBlocks,
     clearTileMargin: clearTileMargin,
     fetchPageSuggestions: fetchPageSuggestions,
     forgetPageSuggestions: forgetPageSuggestions,
@@ -10036,7 +9836,6 @@ function boot() {
     percentText: (...args) => window.QualityStats.percentText(...args),
     reloadDetailAfterRecognition: reloadDetailAfterRecognition,
     rememberPageBlocks: rememberPageBlocks,
-    renderPageBlocks: renderPageBlocks,
     repaintTileMargin: repaintTileMargin,
     selectedSuggestions: (...args) => window.PageConfirm.selectedSuggestions(...args),
     selectionPages: selectionPages,

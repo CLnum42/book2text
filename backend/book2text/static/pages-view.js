@@ -83,7 +83,7 @@ async function refreshRecognizedPages(pageNos, { reloadDetail = true } = {}) {
   if (injected.getCurrentView() === "pages") {
     for (const pageNo of pageNos) {
       const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
-      if (tile) injected.clearPageBlocks(tile);
+      if (tile) hidePageBlocks(tile);
       if (injected.visiblePageNos.has(pageNo)) {
         queueOverlayRender(pageNo);
         // 新页有块了，页面视图的「建议 N」角标要跟上（仍然只为可见页算）
@@ -802,6 +802,49 @@ let overlayPumpScheduled = false;
 let pageScrollScheduled = false;
 let pageBlockPrefetchInFlight = 0;
 
+// ---- 块框绘制：registry（片 2 起页面视图是它的第二个消费者）----
+//
+// 容器由 registry 建（不再由 buildTile 拼 class），版本判重也在 registry；
+// 这里只负责"这一页该显示哪份数据 + 什么形态"。
+
+/** 一页的图层句柄：句柄挂在 tile 上（不按 class 找 DOM）。 */
+function overlayHandleFor(tile) {
+  const api = window.OverlayLayer;
+  const pageNo = Number(tile && tile.dataset ? tile.dataset.pageNo : NaN);
+  if (!api || !Number.isFinite(pageNo)) return null;
+  if (!tile.__overlayHandle) {
+    const thumb = tile.querySelector(".page-tile__thumb");
+    if (!thumb) return null;
+    tile.__overlayHandle = api.mount(thumb, { pageNo });
+  }
+  return tile.__overlayHandle;
+}
+
+/** 容器 class（labeled / margin）由 styles 决定——页面视图里没有第二处写这个 class。 */
+function pageBlockStyles() {
+  return {
+    details: injected.getPageZoomIndex() >= 2,
+    labeled: true,
+    marginMode: injected.getPagesMarginOn(),
+  };
+}
+
+function paintPageBlocks(tile, blocks) {
+  const api = window.OverlayLayer;
+  const handle = overlayHandleFor(tile);
+  if (!api || !handle) return;
+  api.paint(handle, {
+    data: injected.getPagesOverlayOn() ? blocks || [] : [],
+    active: ["blocks"],
+    styles: pageBlockStyles(),
+  });
+}
+
+/** 与原来的 clearPageBlocks 同义：图层自己收起。 */
+function hidePageBlocks(tile) {
+  paintPageBlocks(tile, []);
+}
+
 function resetOverlayQueue() {
   overlayRenderQueue.length = 0;
   overlayRenderQueued.clear();
@@ -875,14 +918,8 @@ function updatePageVisibility() {
         // 仍然限量（每帧最多 PAGE_OVERLAY_FRAME_LIMIT 页），密集网格不会爆。
         const key = injected.pageBlockKey(pageNo);
         const cached = injected.getPageBlockCache().get(key);
-        const overlay = item.tile.querySelector(".page-overlay");
-        if (
-          cached &&
-          overlay &&
-          overlay._renderedBlocks !== cached &&
-          drawnSynchronously < PAGE_OVERLAY_FRAME_LIMIT
-        ) {
-          injected.renderPageBlocks(item.tile, cached);
+        if (cached && drawnSynchronously < PAGE_OVERLAY_FRAME_LIMIT) {
+          paintPageBlocks(item.tile, cached);
           drawnSynchronously += 1;
         } else {
           queueOverlayRender(pageNo);
@@ -890,7 +927,7 @@ function updatePageVisibility() {
       }
     } else {
       injected.visiblePageNos.delete(pageNo);
-      injected.clearPageBlocks(item.tile);
+      hidePageBlocks(item.tile);
       injected.clearTileMargin(item.tile);
     }
 
@@ -923,7 +960,7 @@ function updatePageVisibility() {
     injected.visiblePageNos.delete(item.pageNo);
     const image = item.tile.querySelector("img");
     if (image) image.removeAttribute("src");
-    injected.clearPageBlocks(item.tile);
+    hidePageBlocks(item.tile);
     injected.clearTileMargin(item.tile);
   }
 }
@@ -1447,6 +1484,9 @@ function refreshMarginTiles() {
     } else {
       injected.clearTileMargin(tile);
     }
+    // 容器 class 由 styles 决定：版心开关变了就按新 styles 重画一次（数据没变，registry 会重算 class）
+    const cachedBlocks = injected.getPageBlockCache().get(injected.pageBlockKey(pageNo));
+    if (cachedBlocks) paintPageBlocks(tile, cachedBlocks);
   }
 }
 
@@ -1789,9 +1829,7 @@ function syncStepToggles(marginStep) {
   if (!injected.getPagesMarginOn()) return;
   injected.setPagesMarginOn(false);
   if (button) button.classList.remove("is-on");
-  for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
-    injected.clearTileMargin(tile);
-  }
+  refreshMarginTiles();
   injected.indexRefresh?.();
 }
 
@@ -1866,7 +1904,7 @@ function applyPageZoom() {
 
   if (injected.getPageZoomIndex() >= 2) {
     for (const tile of tiles) {
-      injected.clearPageBlocks(tile);
+      hidePageBlocks(tile);
       const pageNo = Number(tile.dataset.pageNo);
       const image = tile.querySelector("img");
       if (!image) continue;
@@ -1876,7 +1914,7 @@ function applyPageZoom() {
     }
   } else {
     for (const tile of tiles) {
-      injected.clearPageBlocks(tile);
+      hidePageBlocks(tile);
       const pageNo = Number(tile.dataset.pageNo);
       const page = byPage.get(pageNo);
       const image = tile.querySelector("img");
@@ -2422,7 +2460,7 @@ function forgetAllPageBlocks() {
   injected.getPageBlockCache().clear();
   injected.pageBlockCacheOrder.length = 0;
   for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
-    injected.clearPageBlocks(tile);
+    hidePageBlocks(tile);
   }
 }
 
@@ -2474,7 +2512,7 @@ function togglePageBlocksOverlay() {
   } else {
     resetOverlayQueue();
     for (const tile of el("page-grid").querySelectorAll(".page-tile")) {
-      injected.clearPageBlocks(tile);
+      hidePageBlocks(tile);
     }
   }
   injected.indexRefresh?.();
@@ -2483,10 +2521,7 @@ function togglePageBlocksOverlay() {
 /** 排队画一页的块框：已画过且缓存没变就跳过。 */
 function queueOverlayRender(pageNo) {
   if (!injected.getCurrentProject() || !injected.getPagesOverlayOn() || !injected.visiblePageNos.has(pageNo)) return;
-  const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
-  const overlay = tile ? tile.querySelector(".page-overlay") : null;
-  const blocks = injected.getPageBlockCache().get(injected.pageBlockKey(pageNo));
-  if (blocks && overlay && overlay._renderedBlocks === blocks) return;
+  // 没有缓存也要排队：泵负责去取（原来那个"没缓存就返回"会把预取整条路掐断）
   if (overlayRenderQueued.has(pageNo)) return;
   overlayRenderQueued.add(pageNo);
   overlayRenderQueue.push(pageNo);
@@ -2514,15 +2549,12 @@ function pumpOverlayRender() {
     overlayRenderQueued.delete(pageNo);
     if (!injected.visiblePageNos.has(pageNo)) continue;
     const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
-    const overlay = tile ? tile.querySelector(".page-overlay") : null;
-    if (!tile || !overlay) continue;
+    if (!tile) continue;
     const key = injected.pageBlockKey(pageNo);
     const blocks = injected.getPageBlockCache().get(key);
     if (blocks) {
-      if (overlay._renderedBlocks !== blocks) {
-        injected.renderPageBlocks(tile, blocks);
-        drawn += 1;
-      }
+      paintPageBlocks(tile, blocks);
+      drawn += 1;
       continue;
     }
     if (injected.pageBlockPending.has(key)) continue;
