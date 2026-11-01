@@ -3269,7 +3269,7 @@ function pageZoomLevel() {
 /** 页图档位 → DPI；启动时用 `/api/app/info` 的值覆盖（前后端只留一份真值）。 */
 let renderProfiles = { thumb: 40, view: 150, mid: 220, zoom: 300, zoom2: 350 };
 /** 清晰度：auto = 按实际需要的像素选档；standard / high = 用户手动钉住。 */
-let imageQualityMode = "auto";
+
 const IMAGE_PROFILE_ORDER = ["view", "mid", "zoom", "zoom2"];
 
 /** 某一档在一页上渲染出来的**像素宽度**（页面宽度 pt → px）。 */
@@ -3294,8 +3294,10 @@ function pageWidthPt(pageNo) {
  * 现在按比例选：需要 1660 → 取 `mid`（1870px），比例 1.13。
  */
 function detailImageProfile(cssWidth, widthPt) {
-  if (imageQualityMode === "standard") return "view";
-  if (imageQualityMode === "high") return "zoom";
+  // 刀 C：档位状态搬进 page-index.js；这里每次现读（模块未载入时退回 auto，与搬走前默认值一致）
+  const quality = window.PageIndexService?.getImageQuality() || "auto";
+  if (quality === "standard") return "view";
+  if (quality === "high") return "zoom";
   const dpr = Number(window.devicePixelRatio || 1);
   const need = Math.max(0, Number(cssWidth) || 0) * dpr;
   if (!need) return "view";
@@ -5309,87 +5311,20 @@ function setupTaskDrawer() {
 // ---------------------------------------------------------------- 目录确认（页码跳转索引，任务 37 / 任务 48 / 任务 94 · Slice I1）
 //
 // 目录视图的 41 个函数 + 23 个状态已整段搬进 `index-view.js`（任务 94 · Slice I1）。
-// 这里只剩**别人也在用的那一小撮**：页码索引缓存（预览在读）+ 三个纯数据服务
-// （`loadPageIndex` / `loadIndexBlocks` / `clearImagePlaceholder`，都不碰 DOM）
-// + 图片清晰度档位（页面视图 / 审校 / 预览都读 `imageQualityMode`）。
+// 刀 C：页码索引的状态与 6 个服务函数（`loadPageIndex` / `loadIndexBlocks` /
+// `clearImagePlaceholder` / `loadImageQuality` / `setImageQuality` / `syncImageQualityUi`）
+// 已整体搬进 `page-index.js`（`window.PageIndexService`）——状态也一起搬，本文件里
+// 四份状态（页码索引三份 + 清晰度档）一个都不剩。
+// 这里只留仍按常量注入给视图的两个面板参数（缩放四档 / 页图窗口）。
 // 接缝：showView → `IndexView.enter()`；`IndexView.refresh()` 5 处（页面视图切版心 / 块框 ×4、
 // boot 档位初始化后 ×1，另有预览 deps 里的一个 lambda 由外壳顺带调）；boot → `IndexView.init(deps)`。
 // `refresh()` **不收参数**（§20.6）、**不做数据加载**（Chief 条件 ①）；换清晰度档走模块内
 // `applyImageQuality()`（要取图），两个入口都在本模块里。
 // 设计说明与函数实现见该文件头部。
 
-let pageIndexData = null;
-let pageIndexProject = null;
-let pageIndexLoading = false;
 const INDEX_ZOOM_SCALES = [0.55, 0.7, 0.85, 1];
 /** 内存里保留当前页 ±N 页的图（任务 62：翻回去不用再等）。 */
 const INDEX_IMAGE_WINDOW = 10;
-async function loadPageIndex() {
-  if (!currentProject || pageIndexLoading) return { status: "busy" };
-  pageIndexLoading = true;
-  pageIndexData = null;
-  pageIndexProject = null;
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/page-index`
-    );
-    pageIndexData = data;
-    pageIndexProject = currentProject.project_id;
-    return { status: "ok" };
-  } catch (error) {
-    return { status: "error", message: error.message || "未知错误" };
-  } finally {
-    pageIndexLoading = false;
-  }
-}
-/**
- * 摘掉占位状态。**`is-placeholder` 这个类必须一起摘**——它带着 `filter: blur(1.5px)`，
- * 只删 `dataset.placeholder` 会把模糊永久留在最后的清晰图上（用户看到的就是"糊"，
- * 而 `naturalWidth ÷ (CSS 宽 × dpr)` 却是 1.66，量比例永远查不出来）。
- */
-function clearImagePlaceholder(image) {
-  if (!image) return;
-  delete image.dataset.placeholder;
-  image.classList.remove("is-placeholder");
-}
-function loadImageQuality() {
-  const saved = localStorage.getItem("b2t.imageQuality");
-  imageQualityMode = ["auto", "standard", "high"].includes(saved) ? saved : "auto";
-}
-
-function setImageQuality(mode) {
-  if (!["auto", "standard", "high"].includes(mode)) return;
-  imageQualityMode = mode;
-  localStorage.setItem("b2t.imageQuality", mode);
-  syncImageQualityUi();
-  // 档位变了：把已经取过的页图作废，按新档重取（标准 → 高清时才会真的重取）。
-  // 页图缓存与两个档位入口（`#index-quality` 按钮 / 设置面板 radio）都归目录视图模块，
-  // 由它的 `applyImageQuality()` 负责"作废已取页图并按新档重取"。这里只是状态与设置面板。
-  // 其它视图（页面视图 / 审校左栏）下次取图时会读到新的档位。
-}
-
-function syncImageQualityUi() {
-  // `#index-quality` 按钮的文字归目录视图模块（它自己在 refresh() 里同步，R3 不越界）；
-  // 这里只管设置面板里的三档 radio——那是外壳的 DOM。
-  for (const radio of document.querySelectorAll('input[name="reading-quality"]')) {
-    radio.checked = radio.value === imageQualityMode;
-  }
-}
-/** 取一页的块（带页面视图的块缓存；预览也复用这一份）。 */
-async function loadIndexBlocks(pageNo) {
-  const key = pageBlockKey(pageNo);
-  if (pageBlockCache.has(key)) return pageBlockCache.get(key);
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/pages/${pageNo}/blocks`
-    );
-    const blocks = data.blocks || [];
-    rememberPageBlocks(key, blocks);
-    return blocks;
-  } catch {
-    return [];
-  }
-}
 
 // ---------------------------------------------------------------- 结果预览（任务 38 / 任务 47）
 //
@@ -12218,7 +12153,7 @@ function boot() {
     getCurrentView: () => currentView,
     // 任务 94 L5：审校环里仍留在 app.js 的叶子函数（模块经注入调用）
     exportOptions: (...args) => exportOptions(...args),
-    loadIndexBlocks: (...args) => loadIndexBlocks(...args),
+    loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
     punctReviewSet: (...args) => punctReviewSet(...args),
     // 刀 6：页面工具栏两个开关的 is-on 同步（跨视图能力走注入——R2 不许模块直接引用 window.PagesView）
@@ -12228,7 +12163,7 @@ function boot() {
     // L6 刀1：状态 getter
     // L6 刀1：状态 setter（有写点才给）
     // L6 刀1：仍留在 app.js 的叶子函数
-    clearImagePlaceholder: (...args) => clearImagePlaceholder(...args),
+    clearImagePlaceholder: (...args) => window.PageIndexService?.clearImagePlaceholder(...args),
     clearPageBlocks: (...args) => clearPageBlocks(...args),
     clearTileMargin: (...args) => clearTileMargin(...args),
     pageImageUrl: (...args) => pageImageUrl(...args),
@@ -12458,8 +12393,8 @@ function boot() {
     getProject: () => currentProject,
     getLastDetailPageNo: () => lastDetailPageNo,
     // 图片清晰度档位：外壳持有（页面视图 / 审校 / 预览都读），模块只读 + 走外壳 setter 改
-    getImageQualityMode: () => imageQualityMode,
-    setImageQuality: (mode) => setImageQuality(mode),
+    getImageQualityMode: () => window.PageIndexService?.getImageQuality() || "auto",
+    setImageQuality: (mode) => window.PageIndexService?.setImageQuality(mode),
     // 缩放四档（三步共用）
     getPageZoomIndex: () => pageZoomIndex,
     setPageZoomIndex: (value) => { pageZoomIndex = value; return value; },
@@ -12474,10 +12409,10 @@ function boot() {
     togglePageBlocksOverlay: (...args) => togglePageBlocksOverlay(...args),
     toggleMarginView: (...args) => toggleMarginView(...args),
     // 页码索引缓存（预览也在读同一份）
-    getPageIndexData: () => pageIndexData,
-    getPageIndexProject: () => pageIndexProject,
-    getPageIndexLoading: () => pageIndexLoading,
-    loadPageIndex: (...args) => loadPageIndex(...args),
+    getPageIndexData: () => window.PageIndexService?.getData(),
+    getPageIndexProject: () => window.PageIndexService?.getProject(),
+    getPageIndexLoading: () => window.PageIndexService?.isLoading(),
+    loadPageIndex: (...args) => window.PageIndexService?.loadIndex(...args),
     // 页面渲染的共用叶子函数（页面视图、预览、目录三处一套）
     pageImageUrl: (...args) => pageImageUrl(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
@@ -12486,8 +12421,8 @@ function boot() {
     clearTileMargin: (...args) => clearTileMargin(...args),
     paintTileMargin: (...args) => paintTileMargin(...args),
     renderPageBlocks: (...args) => renderPageBlocks(...args),
-    loadIndexBlocks: (...args) => loadIndexBlocks(...args),
-    clearImagePlaceholder: (...args) => clearImagePlaceholder(...args),
+    loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
+    clearImagePlaceholder: (...args) => window.PageIndexService?.clearImagePlaceholder(...args),
     // 导航
     goToWorkflowStep: (...args) => goToWorkflowStep(...args),
     // 常量
@@ -12570,9 +12505,9 @@ function boot() {
     isActive: () => currentView === "preview",
     getProject: () => currentProject,
     getLastDetailPageNo: () => lastDetailPageNo,
-    getPageIndexData: () => pageIndexData,
-    getPageIndexLoading: () => pageIndexLoading,
-    getPageIndexProject: () => pageIndexProject,
+    getPageIndexData: () => window.PageIndexService?.getData(),
+    getPageIndexLoading: () => window.PageIndexService?.isLoading(),
+    getPageIndexProject: () => window.PageIndexService?.getProject(),
     getPageZoomIndex: () => pageZoomIndex,
     getPagesMarginOn: () => pagesMarginOn,
     getPagesOverlayOn: () => pagesOverlayOn,
@@ -12592,8 +12527,8 @@ function boot() {
     clearTileMargin: (...args) => clearTileMargin(...args),
     paintTileMargin: (...args) => paintTileMargin(...args),
     renderPageBlocks: (...args) => renderPageBlocks(...args),
-    loadIndexBlocks: (...args) => loadIndexBlocks(...args),
-    loadPageIndex: (...args) => loadPageIndex(...args),
+    loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
+    loadPageIndex: (...args) => window.PageIndexService?.loadIndex(...args),
     pageImageUrl: (...args) => pageImageUrl(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
     savePageMarginPreference: (...args) => savePageMarginPreference(...args),
@@ -12621,13 +12556,24 @@ function boot() {
     getSelectedPages: () => selectedPages,
     getSetupSuggestions: () => setupSuggestions,
   });
+  // 刀 C：页码索引 + 清晰度档（状态在模块里；块缓存仍在外壳，借三个回调读写同一份）
+  window.PageIndexService?.init({
+    apiJson: (...args) => apiJson(...args),
+    getCurrentProject: () => currentProject,
+    // 三档 radio 由外壳查好给模块（模块自己不碰 DOM ⇒ 域模块闸零豁免）。
+    // 这里按 name 查、不点 section 的 id：与搬走前 syncImageQualityUi 的取法逐字相同（R3 不新增引用）。
+    getQualityRadios: () => document.querySelectorAll('input[name="reading-quality"]'),
+    blocksKey: (pageNo) => pageBlockKey(pageNo),
+    blocksGet: (key) => pageBlockCache.get(key),
+    blocksRemember: (key, blocks) => rememberPageBlocks(key, blocks),
+  });
   // 三栏拖动由 reading-view.js 的 init() 负责（任务 94），这里不再重复绑定
   setupPageMore();
   setupExportPanel();
   setupStructurePanel();
   showView("library");
-  loadImageQuality();
-  syncImageQualityUi();
+  window.PageIndexService?.loadImageQuality();
+  window.PageIndexService?.syncImageQualityUi();
   // 任务 94 Slice I1：#index-quality 的按钮文字归目录视图模块，
   // 外壳把档位读出来之后喊它一声（原来那两行由 syncImageQualityUi 直接写，R3 不越界了）。
   window.IndexView?.refresh();
