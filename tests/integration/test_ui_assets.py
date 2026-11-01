@@ -903,51 +903,6 @@ def test_layout_detection_and_workflow_filter_are_wired() -> None:
     assert "loadWorkflow" in poll
 
 
-def test_review_diff_queue_is_wired_for_local_adoption() -> None:
-    """任务 65：页内差异队列、键位、局部更新、页头收敛都真的接上。
-
-    静态约定测试：队列 DOM / 快捷键 / "采纳不整页重载"的实现方式 / 队列模式隐藏差异条。
-    """
-    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
-    styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
-
-    for element_id in (
-        "diff-queue",
-        "diff-queue-toggle",
-        "diff-queue-position",
-        "diff-queue-meta",
-        "diff-queue-text",
-        "diff-queue-dots",
-        "queue-adopt",
-        "queue-keep",
-        "queue-prev",
-        "review-footer-count",
-        "review-more-menu",
-    ):
-        assert f'id="{element_id}"' in page, element_id
-
-    assert "function initDiffQueue(" in script
-    assert "function adoptQueueCurrent(" in script
-    assert "function applyQueueAckLocally(" in script
-    assert "/diff-ack" in script
-    assert "function ackQueueLine(" in script
-    assert 'ackQueueLine(block, item.lineIndex, "kept")' in script
-    assert "function renderReviewHeadline(" in script
-    # 采纳路径不能调用整页重载（否则滚动位置与列表都会丢）
-    start = script.index("async function adoptQueueCurrent(")
-    end = script.index("function keepQueueCurrent(", start)
-    adopt_body = script[start:end]
-    assert "loadPageDetail(" not in adopt_body
-    assert "renderReviewBlocks(" not in adopt_body
-    # 键位：Enter / Space 采纳，⌫ 保留，← 回上一处
-    assert 'event.key === "Enter" || event.key === " "' in script
-    assert 'event.key === "Backspace"' in script
-    assert 'event.key === "ArrowLeft"' in script
-    # 队列打开时块内差异条隐藏
-    assert "body.queue-mode .diff-strip" in styles
-
-
 def test_finish_panel_and_batch_actions_are_wired() -> None:
     """任务 66：收尾面板六状态、两个批量动作、入口与真实进度都接上。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
@@ -1049,7 +1004,6 @@ def test_workflow_step_shell_is_wired() -> None:
     for element_id in (
         "workflow-steps",
         "workflow-current",
-        "review-toolbar",
         "review-pager",
         "review-prev",
         "review-next",
@@ -1551,16 +1505,11 @@ def test_review_pauses_page_grid_prefetch() -> None:
     block = script[start : script.index("\n}\n", start)]
     assert "loadPageDetail(detailPageNo" in block
 
-    # 页面打开不等建议 / 漏行：先渲染，队列处理完再补算（否则按键和全库统计抢 CPU）
+    # 页面打开不等建议 / 漏行：先渲染，建议随后补算（清洗刀之后不再有"队列处理完再补算"这条分支）
     start = script.index("async function loadPageDetail(")
     block = script[start : script.index("\n}\n", start)]
-    assert "queueHasPendingItems()" in block
-    assert "pendingPageAux = pageNo" in block
-    assert "function queueHasPendingItems(" in script
     assert "function runPageAux(" in script
-    start = script.index("function renderDiffQueue(")
-    block = script[start : script.index("\n}\n", start)]
-    assert "pendingPageAux === queuePageNo" in block
+    assert "runPageAux(pageNo)" in block or "runPageAux(" in block
 
 
 def test_review_workspace_v2_is_wired() -> None:
@@ -1569,8 +1518,11 @@ def test_review_workspace_v2_is_wired() -> None:
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
+    # 清洗刀：原本挂在「页内差异队列」测试里的这条断言挪到这里——
+    # renderReviewHeadline 留在核心抽屉，不随队列删（整段删测试会把它一起带走）。
+    assert "function renderReviewHeadline(" in script
+
     for element_id in (
-        "review-split",
         "review-tree",
         "review-tree-list",
         "review-tree-scroll",
