@@ -5635,6 +5635,140 @@ test("域模块（刀 D）：structure-tools.js 七个函数已从 app.js 迁出
   }
 });
 
+// ---------------------------------------------------------------- ① S1：一个 section 两个 owner
+
+/** 归模块（S1 只搬块编辑；这张表是书 §2 的可机检形态）。 */
+const EDITOR_IDS = [
+  "detail-blocks", "block-position", "page-detail-error", "review-filter", "review-filter-note",
+  "box-select-panel", "box-select-info", "box-select-text", "box-select-recognize",
+  "box-select-confirm", "box-select-cancel", "box-select-status",
+  "review-undo", "review-redo", "layout-panel", "layout-panel-status", "suggestion-apply-all",
+  "aux-panel", "aux-summary", "aux-close", "aux-hint", "aux-lines", "aux-run", "detail-recognize",
+];
+
+/** 归外壳：同 subtree 里剩下的（S1 不搬）。两集必须不交、并集 == subtree 全部 id。 */
+const SHELL_IDS = [
+  "review-pager", "review-prev", "review-page-no", "review-next", "review-jump", "review-jump-filter",
+  "review-continuations", "review-banner", "review-tree", "review-tree-rail", "review-tree-stats",
+  "review-tree-filter", "review-tree-scroll", "review-tree-list", "ink-gap-bar", "ink-gap-text",
+  "ink-gap-toggle", "viewer-scroll", "detail-canvas", "detail-image", "detail-margin", "detail-lines",
+  "detail-overlay", "detail-diff-layer", "box-select-rect", "detail-ink-gaps", "detail-image-status",
+  "zoom-out", "zoom-in", "zoom-fit", "toggle-overlay", "toggle-diff-marks", "review-margin-toggle",
+  "page-detail-title", "page-detail-meta", "finish-open-review", "review-drawer-toggle", "review-more",
+  "review-more-menu", "review-apply-all", "detail-box-create", "review-auto-pass", "review-auto-revoke",
+  "layout-confirm", "review-footer-count", "detail-close", "review-confirm",
+];
+
+/** 模块源码里按 id 取 DOM 的地方（part("x") 或 querySelector("#x")）。 */
+function editorIdRefs(source) {
+  const found = new Set();
+  for (const m of source.matchAll(/part\("([^"]+)"\)/g)) found.add(m[1]);
+  for (const m of source.matchAll(/querySelector\("#([^"]+)"\)/g)) found.add(m[1]);
+  return [...found];
+}
+
+/** 三支判据（纯函数，便于自检喂坏样本）。 */
+function idOwnershipProblems({ moduleSource, moduleIds, shellIds, subtreeIds }) {
+  const problems = [];
+  const moduleSet = new Set(moduleIds);
+  const shellSet = new Set(shellIds);
+  for (const id of editorIdRefs(moduleSource)) {
+    if (!moduleSet.has(id)) problems.push(`模块按 id 取了 ${id}，但它不在「归模块」表里`);
+  }
+  for (const id of moduleIds) {
+    if (shellSet.has(id)) problems.push(`${id} 同时出现在「归模块」和「归外壳」`);
+  }
+  const union = new Set([...moduleSet, ...shellSet]);
+  for (const id of subtreeIds) {
+    if (!union.has(id)) problems.push(`subtree 里的 ${id} 没有归属（两个 owner 都不认）`);
+  }
+  for (const id of union) {
+    if (!subtreeIds.includes(id)) problems.push(`归属表里的 ${id} 不在 view-review subtree 里`);
+  }
+  return problems;
+}
+
+test("① S1：一个 section 两个 owner——模块 id ⊆ 归属表 · 两集不交 · 并集 == subtree", () => {
+  const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
+  const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
+  const start = html.indexOf('id="view-review"');
+  const end = html.indexOf('id="view-reading"', start);
+  const subtree = [...html.slice(start, end).matchAll(/id="([^"]+)"/g)]
+    .map((m) => m[1])
+    .filter((id) => id !== "view-review");
+  assert.deepEqual(
+    idOwnershipProblems({ moduleSource, moduleIds: EDITOR_IDS, shellIds: SHELL_IDS, subtreeIds: subtree }),
+    [],
+    "id 归属三支有一支不成立",
+  );
+  // 模块里 el( / document.getElementById 仍须为 0（root.querySelector 是唯一取法）
+  const stripped = stripCommentsForGates(moduleSource);
+  assert.equal((stripped.match(/\bel\s*\(/g) || []).length, 0, "page-detail-editor.js 里出现 el(");
+  assert.equal((stripped.match(/document\.getElementById/g) || []).length, 0, "出现 document.getElementById");
+  assert.equal((stripped.match(/document\.querySelector/g) || []).length, 0, "出现 document.querySelector");
+});
+
+test("① S1 自检：外壳 id 写进模块 / 归属表漏一个 id，都必须红", () => {
+  const base = { moduleIds: ["detail-blocks"], shellIds: ["detail-overlay"], subtreeIds: ["detail-blocks", "detail-overlay"] };
+  assert.deepEqual(idOwnershipProblems({ ...base, moduleSource: 'part("detail-blocks");' }), []);
+  assert.equal(
+    idOwnershipProblems({ ...base, moduleSource: 'part("detail-overlay");' }).length,
+    1,
+    "把外壳 id 写进模块必须红",
+  );
+  assert.equal(
+    idOwnershipProblems({ ...base, moduleSource: "", moduleIds: ["detail-blocks", "detail-overlay"] }).length,
+    1,
+    "同一个 id 落在两集必须红",
+  );
+  assert.equal(
+    idOwnershipProblems({ ...base, moduleSource: "", moduleIds: [], shellIds: ["detail-overlay"] }).length,
+    1,
+    "subtree 里有 id 没有归属必须红",
+  );
+});
+
+/** 模块喊外壳的名字必须是注入键：裸写一个 app.js 顶层函数名就是"谁都能喊一下"的入口。 */
+function godDoorProblems({ moduleSource, appSource, injectedKeys }) {
+  const stripped = stripCommentsForGates(moduleSource).replace(/\binjected\.[A-Za-z_$][\w$]*/g, "injected.X");
+  const topLevel = new Set([...stripCommentsForGates(appSource).matchAll(/^(?:async )?function ([A-Za-z_$][\w$]*)/gm)].map((m) => m[1]));
+  const problems = [];
+  for (const name of topLevel) {
+    if (new RegExp(`(?:^|[^\\w.$])${name}\\s*\\(`, "m").test(stripped)) {
+      problems.push(`模块里裸调了外壳函数 ${name}——要么注入，要么搬进来`);
+    }
+  }
+  const declared = new Set(injectedKeys);
+  for (const m of stripCommentsForGates(moduleSource).matchAll(/injected\.([A-Za-z_$][\w$]*)/g)) {
+    if (!declared.has(m[1])) problems.push(`模块用了 injected.${m[1]}，但 boot 没注入`);
+  }
+  // loadPageDetail 是"已有动作"（patchBlock / reviewAction 用它刷新本页），允许；
+  // 抽屉的 renderPageDetail 与块列表的 renderReviewBlocks 不许反向喊——否则编辑→重画多出第二条路。
+  for (const forbidden of ["renderPageDetail", "renderReviewBlocks"]) {
+    if (new RegExp(`injected\\.${forbidden}\\b`).test(moduleSource)) {
+      problems.push(`模块反向调了 injected.${forbidden}——编辑→重画只许经 renderBlocks / 已有动作`);
+    }
+  }
+  return problems;
+}
+
+test("① S1：模块喊外壳的名字 ⊆ 注入键（神入口判据）", () => {
+  const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
+  const appSource = readFileSync(APP_FILE, "utf8");
+  const boot = appSource.slice(appSource.indexOf("window.PageDetailEditor?.init({"));
+  const injectedKeys = [...boot.slice(0, boot.indexOf("\n  });")).matchAll(/^    ([A-Za-z_$][\w$]*)[:,]/gm)].map((m) => m[1]);
+  assert.ok(injectedKeys.length > 0, "boot 里没找到 PageDetailEditor 的 init 块");
+  assert.deepEqual(godDoorProblems({ moduleSource, appSource, injectedKeys }), [], "模块里出现了不在注入面里的外壳名字");
+});
+
+test("① S1 自检：裸调外壳函数 / 用未注入的键 / 反向重画，都必须红", () => {
+  const appSource = "function renderReviewBlocks() {}\nfunction loadPageDetail() {}\n";
+  assert.deepEqual(godDoorProblems({ moduleSource: 'injected.renderLayoutPanel();', appSource, injectedKeys: ["renderLayoutPanel"] }), []);
+  assert.equal(godDoorProblems({ moduleSource: 'renderReviewBlocks();', appSource, injectedKeys: [] }).length >= 1, true, "裸调必须红");
+  assert.equal(godDoorProblems({ moduleSource: 'injected.noSuchKey();', appSource, injectedKeys: [] }).length, 1, "未注入必须红");
+  assert.equal(godDoorProblems({ moduleSource: 'injected.renderPageDetail();', appSource, injectedKeys: ["renderPageDetail"] }).length, 1, "反向重画必须红");
+});
+
 // ---------------------------------------------------------------- 清洗刀：退役 id/状态归零
 
 /** 清洗刀退役名单（书 §5 ②）：页内差异队列 + 块级候选对比 + 4 个零引用 id。 */
