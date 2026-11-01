@@ -79,6 +79,7 @@ const TEST_FILES = [
   ["overlay-registry-acid", () => import("./overlay-registry-acid.mjs")],
   ["page-index", () => import("./page-index.test.mjs")],
   ["structure-tools", () => import("./structure-tools.test.mjs")],
+  ["page-detail-editor-state", () => import("./page-detail-editor-state.test.mjs")],
   ["review-tree", () => import("./review-tree.test.mjs")],
   ["detail-visibility", () => import("./detail-visibility.test.mjs")],
 ];
