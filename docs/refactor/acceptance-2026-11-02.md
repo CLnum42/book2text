@@ -106,8 +106,9 @@ structure-tools.js 271 = 220 代码 + 27 注释 + 24 空行
 模块 DOM 面（剥注释）：el( 0 · document.getElementById 0 · document.querySelector 0；
   只有 root.querySelector（:39 part()、:253 li.querySelector 读候选勾选态）
 17 个 structure-* 被模块引用（value 7 + part 7 + bind 4，apply-btn 重复计数 1）
-  #structure-panel 子树共 20 个 ⇒ 剩下 panel/close/cancel 与入口 structure-open 属外壳接缝，
-  app.js 里共 5 处（:1023 / :1063–1065 / :11339 / :11348 / :12406），都是开合与 root 传递
+  #structure-panel 子树共 20 个 ⇒ 剩下 4 个 id 属外壳接缝：
+  structure-panel / structure-close / structure-cancel / 入口 structure-open，
+  app.js 里 4 个 id / 7 处引用（:1023、:1063、:1064、:1065、:11339、:11348、:12406），全是开合与 root 传递
 reset 有 2 个真调用点：app.js:1023（closeModal）、app.js:2365（refreshProject）⇒ 收进接口面
 index.html:1860（structure-tools.js）在 index.html:1861（app.js）之前
 deps 173（window.PagesView?.init({ 的 4 空格 key 行；我的独立数法，与闸的分列无关）
@@ -148,19 +149,42 @@ deps 173（window.PagesView?.init({ 的 4 空格 key 行；我的独立数法，
 ③ 闸缺口：刀 A / 刀 B 各有一条「N 名已从 app.js 迁出 + api 恰好」的常驻断言，刀 D 没有
    （只有通用域模块闸 + 行为测试）⇒ 补一条（moved 7 名 + api 恰好 6 个），
    变异：7 名之一加回 app.js ⇒ 必须红；从 api 删 reset ⇒ 必须红。
-功能风险说明：afterApply 的时序不只是单元缺口——真机「应用后第 3 页块回到 paragraph」要靠 pages 重拉
-  （afterApply 的第一件事），Builder 的 CDP 跑通了；但单元层确实没锁住"有没有 await"。
+功能风险说明：afterApply 的时序不只是单元缺口——「应用后块真的改了、撤销能回去」要靠 pages 重拉
+  （afterApply 的第一件事），这一条已由 QA 的接口路径四步留档覆盖（见下）；但单元层确实没锁住"有没有 await"。
 ```
 
-### 真机：未验（Builder 自测有读数，但未留档）
+### 撤销完整性：通过（接口路径，两本项目，QA 留档）
 
 ```
-Builder 用 Chrome headless + CDP 跑了：打开面板 / 预览 380 候选 / 应用 372 块 /
-  撤销后抽查第 3 页 24 块回到 paragraph；并留一个未追完的观察：撤销后再预览只剩 8 个候选。
-判定：按 2026-11-02 的规矩「证据必须留档（命令 + 输出/截图路径进提交或 docs/evidence/），
-  只在对话里说跑过 = 未验」，`24c8ea5` 内没有对应证据文件 ⇒ 记未验。
-QA 复验请带这个问题：「8 个是不是应用前本来就不是 paragraph 的块」——
-  取应用前 page_types=body 的候选集合，与撤销后再预览的 8 个对集（同 id 即同一批，不是丢失）。
+判据 = **逐块对基线**，不是候选数（候选数会被"应用态"误导，见下）。
+证据：tests/e2e/artifacts/2026-11-02-structure-undo/（b2t_T7JH61，提交 b58616b）
+      tests/e2e/artifacts/2026-11-02-structure-undo-brrbr0/（b2t_BRRBR0，提交 e373d6e）
+方法：库整份复制到 /tmp + 独立端口跑；原件库只读，事后逐项相同。四步全 HTTP：
+      基线(block_id→block_type) → preview → apply(只 high) → review/undo → 再 preview → 逐块对基线
+
+b2t_T7JH61  基线 1233 全 paragraph
+  preview 121（pn 45 / hdr 75 / ftr 1；high 112）→ apply 112（88 页）
+  → undo 112/112 回基线（missing 0 / wrong_type 0）→ 再 preview 121（45/75/1，与 N0 逐项相同）
+b2t_BRRBR0  基线 1780 全 paragraph
+  N0 380（hdr 235 / ftr 2 / pn 143；high 372 / review 8）→ apply 372（241 页）
+  → N1（应用后立刻预览）8 → undo 372 → N2 380（与 N0 逐项相同）
+  → 逐块对基线：applied 372 / restored 372 / not_restored 0
+
+「撤销后只剩 8 个候选」的定性：**读了应用态，不是缺陷**。
+  380 − 372 = 8，正是未勾选的 review 级候选；应用后那 372 块已不是 paragraph，自然不再是候选。
+  根因在测试方法：扫按钮取首个含「撤销」的（点到了 #review-undo）、sleep 2500ms 即读 ⇒ 读到应用态。
+  （流程问题另记 L-114：同屏两个「撤销」，按文字找会点错。）
+注：T7JH61 的 result.json 里还留着一条口径写反的旧 verdict（"候选里又出现 paragraph 块 = 缺陷"），
+  随即被同文件的 verdict_corrected 改正——留旧值是有意的，对照时看 verdict_corrected。
+```
+
+### 真机 UI 路径：未验（ego-browser 无响应）
+
+```
+Builder 的 CDP 读数（打开面板 / 预览 380 / 应用 372 / 抽查第 3 页 24 块回 paragraph）无留档 ⇒ 未验；
+  留档的只有上面那组接口路径读数（QA）。
+未验：真机上点「应用标注」→ 点面板内「撤销」→ 类型色与块框回到原样。
+原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
 ```
 
 ## 四、结论
@@ -168,6 +192,7 @@ QA 复验请带这个问题：「8 个是不是应用前本来就不是 paragrap
 ```
 片 1：代码层通过；真机部分通过、5 项未验（ego 阻塞）
 刀 C：代码层通过；真机 3 项未验（ego 阻塞）
-刀 D：代码层通过（含唯一例外裁决）；真机未验（无留档）；三条文档/测试真实性待补（已派 Builder）
+刀 D：代码层通过（含唯一例外裁决）；撤销完整性通过（接口路径、两本项目）；
+      真机 UI 路径未验（ego 阻塞）；三条文档/测试真实性待补（已派 Builder）
 三把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
 ```
