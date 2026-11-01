@@ -5479,6 +5479,8 @@ test("刀 11 闸③：不建 refresh 导出、C 键里没有 scope:/op: 载荷",
 const DOMAIN_MODULES = [
   { file: "quality-stats.js", exposes: "QualityStats" },
   { file: "page-confirm.js", exposes: "PageConfirm" },
+  // 片 1：图层容器由 registry 自己 createElement，宿主由视图 mount 时给 ⇒ 零豁免过这条闸
+  { file: "overlay-registry.js", exposes: "OverlayLayer" },
 ];
 
 function domainDomProblems({ file, source }) {
