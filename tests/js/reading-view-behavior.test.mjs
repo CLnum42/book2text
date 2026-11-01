@@ -62,6 +62,8 @@ const ctx = loadApp({
 // 这里在 app.js 载入之后用**真实绑定**重做一次 init：只换 deps，不重跑模块源码，
 // 所以模块仍是同一个实例、`injected` 仍是同一份对象（init 内是 Object.assign 合并）。
 ctx.PagesView.init(appModuleDeps(ctx, PAGES_VIEW_SRC));
+// 刀 B：page-confirm 也是"先载模块、后载 app.js"，同样要用真实绑定补一次 init
+ctx.PageConfirm?.init(appModuleDeps(ctx, readFileSync(new URL("../../backend/book2text/static/page-confirm.js", import.meta.url), "utf8")));
 
 /**
  * L11/L12：`readingKey` / `readingEntryVisible` 搬进 reading-view.js 且没有公开导出（R8 只有 6 项）。

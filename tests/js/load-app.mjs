@@ -50,12 +50,12 @@ export function preloadModules(ctx, names, moduleDir = STATIC_DIR) {
     }
     const source = readFileSync(file, "utf8");
     vm.runInContext(source, ctx, { filename: file });
-    const apiName = Object.keys(ctx).find((key) => {
-      const value = ctx[key];
-      return value && typeof value === "object" && typeof value.init === "function";
-    });
-    if (!apiName) {
-      throw new Error(`preloadModules: 载入了 ${name}，但没找到 window.XxxView = { init() } 接口——模块结构变了`);
+    // api 名从源码里取 `window.X = api`：**不能**用"第一个带 init 的对象"猜——
+    // 先载 PagesView 之后，第二个模块会被认成 PagesView，于是把它的 deps 又 init 到 PagesView 上。
+    const declared = /window\.([A-Za-z_$][\w$]*)\s*=\s*api\b/.exec(source);
+    const apiName = declared ? declared[1] : null;
+    if (!apiName || !ctx[apiName] || typeof ctx[apiName].init !== "function") {
+      throw new Error(`preloadModules: 载入了 ${name}，但没找到 window.Xxx = { init() } 接口——模块结构变了`);
     }
     ctx[apiName].init(moduleDeps(ctx, source));
     report.push({ name, loaded: true, api: apiName });
@@ -150,7 +150,13 @@ export function loadApp(options = {}) {
   const ctx = vm.createContext(sandbox);
   // **顺序固定**：模块先、app.js 后（与 index.html 的 <script> 顺序一致）。
   // 默认预载 pages-view.js：app.js 现在真的调 window.PagesView，不载就是 undefined.renderPageSetup。
-  ctx.__preloadedModules = preloadModules(ctx, options.modules || ["pages-view.js"], options.moduleDir || STATIC_DIR);
+  // 刀 B 起 page-confirm.js 也要预载：pages 经 app.js 的转发器调 `injected.pageSetupStats()`，
+  // 不载这个模块，转发器会返回 undefined（renderPageSetup 读 stats.body 直接 TypeError）。
+  ctx.__preloadedModules = preloadModules(
+    ctx,
+    options.modules || ["pages-view.js", "page-confirm.js"],
+    options.moduleDir || STATIC_DIR,
+  );
   vm.runInContext(src, ctx, { filename: String(appPath) });
 
   // 自检：本文件要用的函数必须真的存在，别让用例在 undefined 上做无意义的断言。
@@ -238,6 +244,15 @@ export function appModuleDeps(ctx, source) {
     }
     if (value !== undefined && value !== null) {
       deps[name] = value;
+      continue;
+    }
+    // 刀 A/B 起：有些键的真身已搬进服务模块（app.js 只在 deps 里留转发器）。这里按服务模块接口面再找一次，
+    // 找不到才给 `() => undefined` 桩——否则 pages-view 会对着 undefined 崩（renderPageSetup 读 stats.body）。
+    const serviceApi = ["PageConfirm", "QualityStats"].find(
+      (api) => ctx[api] && typeof ctx[api][name] === "function",
+    );
+    if (serviceApi) {
+      deps[name] = (...args) => ctx[serviceApi][name](...args);
       continue;
     }
     const rest = name.length > 3 ? name[3].toLowerCase() + name.slice(4) : "";
