@@ -5781,12 +5781,13 @@ test("域模块（刀 D）：structure-tools.js 七个函数已从 app.js 迁出
 
 // ---------------------------------------------------------------- ① S1：一个 section 两个 owner
 
-/** 归模块（S1 只搬块编辑；这张表是书 §2 的可机检形态）。 */
+/** 归模块（S1 块编辑 / S2 框选新增块 / S3 版面确认；这张表是书 §2 的可机检形态）。 */
 const EDITOR_IDS = [
   "detail-blocks", "block-position", "page-detail-error", "review-filter", "review-filter-note",
   "box-select-panel", "box-select-info", "box-select-text", "box-select-recognize",
   "box-select-confirm", "box-select-cancel", "box-select-status",
-  "review-undo", "review-redo", "layout-panel", "layout-panel-status", "suggestion-apply-all",
+  "review-undo", "review-redo", "layout-panel", "layout-panel-status", "layout-confirm",
+  "suggestion-apply-all",
   "aux-panel", "aux-summary", "aux-close", "aux-hint", "aux-lines", "aux-run", "detail-recognize",
   "ink-gap-bar", "ink-gap-text", "ink-gap-toggle", "box-select-rect", "detail-box-create",
 ];
@@ -5801,7 +5802,7 @@ const SHELL_IDS = [
   "zoom-out", "zoom-in", "zoom-fit", "toggle-overlay", "toggle-diff-marks", "review-margin-toggle",
   "page-detail-title", "page-detail-meta", "finish-open-review", "review-drawer-toggle", "review-more",
   "review-more-menu", "review-apply-all", "review-auto-pass", "review-auto-revoke",
-  "layout-confirm", "review-footer-count", "detail-close", "review-confirm",
+  "review-footer-count", "detail-close", "review-confirm",
 ];
 
 /** 模块源码里按 id 取 DOM 的地方（part("x") 或 querySelector("#x")）。 */
