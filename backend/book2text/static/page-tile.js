@@ -204,13 +204,6 @@
       handle.el.dataset.status = record.status;
       handle.el.classList.toggle("is-missing", record.status === "missing");
 
-      if (isFn(injected.paintOverlays)) {
-        try {
-          injected.paintOverlays(handle.slot, { pageNo: handle.pageNo, overlays: handle.overlays, state: handle.state });
-        } catch (error) {
-          if (isFn(injected.notify)) injected.notify({ kind: "error", text: String((error && error.message) || error) });
-        }
-      }
       tileNotify(handle, { status: handle.status, pageNo: handle.pageNo, size: handle.size, url: handle.url });
     }
   }
@@ -253,8 +246,6 @@
       size: tileClampSize(opts.size === "auto" || opts.size === undefined ? "auto" : opts.size, pageNo),
       status: record.status,
       url: record.url,
-      overlays: opts.overlays || null,
-      state: null,
       onReady: opts.onReady || null,
       dead: false,
     };
@@ -268,13 +259,11 @@
     return handle;
   }
 
-  /** `patch`: size / overlays / state。尺寸档变化只可能让这一页**升档**，不会各取一份。 */
+  /** `patch`: size（尺寸档）。尺寸档变化只可能让这一页**升档**，不会各取一份。 */
   function tileUpdate(handle, patch) {
     if (!handle || handle.dead) return null;   // 已出组的 handle 不自动复活（§21.5）
     const changes = patch || {};
     if ("size" in changes) handle.size = tileClampSize(changes.size, handle.pageNo);
-    if ("overlays" in changes) handle.overlays = changes.overlays;
-    if ("state" in changes) handle.state = changes.state;
     const record = registry.get(handle.pageNo);
     if (!record) return handle;
     const next = tilePreferredSize(record);

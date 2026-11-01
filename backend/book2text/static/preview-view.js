@@ -10,7 +10,8 @@
  * 把返回的 segments 直接铺开：段边界、跨页段、版心外排掉了多少，都在这一页上。
  *
  * 任务 47（J 刀）：左边从"单页裸图"换成**连续页条**。
- * - 每页直接复用页面视图 / 目录确认的 `paintTileMargin()` / `renderPageBlocks()`；
+ * - 版心仍复用页面视图 / 目录确认的 `paintTileMargin()`；块框改由 overlay registry
+ *   （`window.OverlayLayer`）画——容器、幂等与重画调度都归它，本视图只给宿主与数据；
  *   版心 / 块框开关与缩放沿用 `pagesMarginOn` / `pagesOverlayOn` / `pageZoomIndex` 同一份状态。
  * - 悬停右栏一段 → 右栏这一段浅绿，左边这一段命中的块（跨页段是两页的块）标浅绿。
  *   浅绿用青绿（teal），和审校的淡红 / 淡绿 / 淡蓝三色区分开。
@@ -149,6 +150,11 @@ function buildPreviewPages() {
       if (tile.__previewTile) window.PageTile.release(tile.__previewTile);
     }
   }
+  if (window.OverlayLayer) {
+    for (const tile of previewTiles.values()) {
+      if (tile.__overlayHandle) window.OverlayLayer.unmount(tile.__overlayHandle);
+    }
+  }
   wrap.innerHTML = "";
   previewTiles.clear();
   previewTileTops = [];
@@ -178,17 +184,15 @@ function buildPreviewPages() {
     marginBox.className = "page-margin__box";
     margin.append(marginBox);
 
-    // 和页面视图 / 目录确认同一套块框（--readonly：只画，不给拖 / 选）
-    const overlay = document.createElement("div");
-    overlay.className = "page-overlay page-overlay--readonly";
-    overlay.hidden = true;
-
     // 当前段落的块命中的浅绿层：在块框之上、不接鼠标
     const hits = document.createElement("div");
     hits.className = "preview-page__hits";
     hits.hidden = true;
 
-    tile.append(image, margin, overlay, hits);
+    // 块框图层由 overlay registry 自己建、自己管（mount 时 append 这个 tile 本身，§2.1）。
+    // 建页块时就挂上（空、hidden）：图层存在性是页面块的结构事实，不跟着"轮到哪几页"变。
+    tile.append(image, margin, hits);
+    previewOverlayHandle(tile, page.page_no);
     previewTiles.set(page.page_no, tile);
     fragment.append(tile);
   }
@@ -354,22 +358,39 @@ function ensurePreviewBlocks(pageNo) {
   return promise;
 }
 
-/** 画一页的版心 + 块框（同一套渲染，不另写）。 */
-function paintPreviewTile(pageNo, { repaint = false } = {}) {
+/** 块框图层的样式输入：只读视图固定带顺序号；样式进指纹，改样式必须重画。 */
+const PREVIEW_BLOCK_STYLES = { details: true };
+
+/** 这一页的图层句柄：registry 自己建容器，句柄挂在 tile 上（不按 class 找 DOM）。 */
+function previewOverlayHandle(tile, pageNo) {
+  const api = window.OverlayLayer;
+  if (!api || !tile) return null;
+  api.init({
+    notify: (info) => {
+      const text = info && (info.text || info.message) ? info.text || info.message : String(info);
+      injected.showNoticeBar?.(text);
+    },
+  });
+  if (!tile.__overlayHandle) tile.__overlayHandle = api.mount(tile, { pageNo });
+  return tile.__overlayHandle;
+}
+
+/** 把一页的块框交给 registry；开关关掉时传空数据（图层自己收起来）。 */
+function paintPreviewBlocks(tile, pageNo) {
+  const api = window.OverlayLayer;
+  const handle = previewOverlayHandle(tile, pageNo);
+  if (!api || !handle) return;
+  const blocks = injected.getPagesOverlayOn() ? previewTileBlocks.get(pageNo) || [] : [];
+  api.paint(handle, { data: blocks, active: ["blocks"], styles: PREVIEW_BLOCK_STYLES });
+}
+
+/** 画一页的版心 + 块框（版心仍走外壳的 paintTileMargin，块框归 registry）。 */
+function paintPreviewTile(pageNo) {
   const tile = previewTiles.get(pageNo);
   const page = previewPageRecord(pageNo);
   if (!tile || !page) return;
   injected.paintTileMargin(tile, page);
-  const overlay = tile.querySelector(".page-overlay");
-  if (!overlay) return;
-  if (!injected.getPagesOverlayOn()) {
-    injected.clearPageBlocks(tile);
-    return;
-  }
-  const blocks = previewTileBlocks.get(pageNo);
-  if (!blocks || !blocks.length) return;
-  if (!repaint && overlay._renderedBlocks === blocks) return;
-  injected.renderPageBlocks(tile, blocks, { details: true });
+  paintPreviewBlocks(tile, pageNo);
 }
 
 /** 只给当前页 ±1 画图 / 块框；离屏的页立刻清干净，393 页不会一起渲染。 */
@@ -391,7 +412,10 @@ function syncPreviewWindow({ repaint = false } = {}) {
   }
   for (const [pageNo, tile] of previewTiles) {
     if (want.has(pageNo)) continue;
-    injected.clearPageBlocks(tile);
+    // 只收已经挂过图层的页：离屏的页不必为"清空"先建一个图层
+    if (window.OverlayLayer && tile.__overlayHandle) {
+      window.OverlayLayer.paint(tile.__overlayHandle, { data: [], active: ["blocks"], styles: PREVIEW_BLOCK_STYLES });
+    }
     injected.clearTileMargin(tile);
   }
   for (const pageNo of want) {
