@@ -225,7 +225,7 @@ API: layout(container, { lineBboxes })
 | `pages-view.js` | 885 改 registry paint；**7 处** `clearPageBlocks`（86/893/926/1869/1879/2425/2477）改 `paint(active:[])`；882/2489/2522 的 `_renderedBlocks` 判重删掉（版本归 registry） | **−15 ~ −25** |
 | `reading-view.js` | 3544/3547/2579 改 registry；2028 容器删；`is-linked` 三处保留（2.3） | **−10 ~ −15** |
 | `index-view.js` | 337 容器删；826 改 registry；`drawIndexFirstLine` 不动 | **−8 ~ −12** |
-| `app.js` deps | pages / reading / index 三块里的 `renderPageBlocks` / `clearPageBlocks` 六个键删掉（preview 那两个也顺手删——片 1 遗留） | **−8 键**（deps 173 → 基线条数 −8；**这是本片唯一允许动的 deps**，写进提交说明） |
+| `app.js` deps | ReadingView / PagesView / IndexView / PreviewView 四个注入块里的 `renderPageBlocks` / `clearPageBlocks`，共 **8 个键**删掉（preview 那两个是片 1 遗留） | **删 8 个键，但 `deps 173 → 171`（−2）**：173 的口径只数 `window.PagesView?.init({…})` 那一个块，8 个里只有 pages 那 2 个在里面；另外 6 个在 ReadingView(34) / IndexView(34) / PreviewView(33) 的块里，**不改变 173 这个数**。写进提交说明，别让验收入拿 173−8=165 去对 |
 | `index.html` / `app.css` | **不动**（class 全复用现有规则） | 0 |
 
 ## 5. 酸测试（在片 1 五条之上加四条）
@@ -297,6 +297,8 @@ B 组（片 1 欠的债，本片首次验）
       判据 = 四个视图**逐号同类**
    降级的适用范围写死：**只对"读不到 680px"的视图降级**，其余视图仍走 680px 的 px 对集；
    降级项要在验收记录里点名（哪几个视图降了、为什么），不许整条判据一起降级。
+   **边界（Chief 补）**：降级视图 **≥2 个** ⇒ "剩下三个视图比 px"就落空了 ⇒ **本判据作废**，
+   先解决尺寸统一再验；不许 QA 现场各写各的（回头对不上账）。
 
 判据：① 全部逐字相等；② 在 680px 下的三个视图逐项 ≤2px，降级视图落位分类一致。
 变异：把 layout 的"框外优先"改成"恒框内" ⇒ ② 的落位分类立刻不一致 ⇒ 红。
