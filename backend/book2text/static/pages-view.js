@@ -770,11 +770,15 @@ function updateMarginDetectProgress(data) {
   if (!job || job.job_type !== "layout") return;
   const active = ["queued", "running", "paused"].includes(job.status);
   if (!active) return;
-  const done = job.done + job.failed;
-  showMarginDetectProgress(done, job.total || 0);
+  // 只为显示兜底（不改进度语义：失败页算进 done 仍照旧）：
+  //   字段缺失 → 0（原来会印 undefined / NaN）
+  //   done 超 total → 夹到 total（原来 width 会到 150%）
+  const total = Math.max(0, Number(job.total) || 0);
+  const done = Math.min(total, Math.max(0, (Number(job.done) || 0) + (Number(job.failed) || 0)));
+  showMarginDetectProgress(done, total);
   const eta = injected.estimateRemainingSeconds(data);
   el("margin-fit-text").textContent =
-    `正在检测版面… ${done} / ${job.total} 页` +
+    `正在检测版面… ${done} / ${total} 页` +
     (job.status === "paused"
       ? "（已暂停）"
       : eta > 0
@@ -2860,21 +2864,30 @@ async function startLayoutDetection({ pages = null, scope = null, prepare = fals
   }
 }
 
+/** 进度条唯一的写入口：数值先用安全值收一次（0 ≤ done ≤ total，percent 0–100）。 */
+function safeDetectCounts(done, total) {
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const safeDone = Math.min(safeTotal, Math.max(0, Number(done) || 0));
+  return { done: safeDone, total: safeTotal, percent: safeTotal ? Math.min(100, Math.round((safeDone / safeTotal) * 100)) : 0 };
+}
+
 function showMarginDetectProgress(done, total) {
   const wrap = el("margin-fit-progress");
   if (!wrap) return;
   wrap.hidden = false;
-  const percent = total ? Math.round((done / total) * 100) : 0;
-  el("margin-fit-fill").style.width = `${percent}%`;
-  el("margin-fit-text").textContent = `正在检测版面… ${done} / ${total} 页`;
+  const safe = safeDetectCounts(done, total);
+  el("margin-fit-fill").style.width = `${safe.percent}%`;
+  el("margin-fit-text").textContent = `正在检测版面… ${safe.done} / ${safe.total} 页`;
 }
 
 /** 检测结束时进度条停在真实进度上，过一会儿收起来（别留在界面上像个假进度）。 */
 function finishMarginDetectBar(done, total) {
   const wrap = el("margin-fit-progress");
   if (!wrap) return;
-  el("margin-fit-fill").style.width = `${total ? Math.round((done / total) * 100) : 0}%`;
-  el("margin-fit-text").textContent = `检测：${done} / ${total} 页`;
+  // 同族兜底：收尾这条也吃同一份安全值（否则 5 / undefined、150% 一样会出现）
+  const safe = safeDetectCounts(done, total);
+  el("margin-fit-fill").style.width = `${safe.percent}%`;
+  el("margin-fit-text").textContent = `检测：${safe.done} / ${safe.total} 页`;
   window.setTimeout(() => {
     const node = el("margin-fit-progress");
     if (node && !injected.getMarginFitRunning()) node.hidden = true;
