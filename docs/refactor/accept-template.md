@@ -74,6 +74,20 @@ git cherry -v origin/main <你的sha>
 **只差被测文件一个变量**；7 条用例在全量套件里跑，旧树 6/1 红、两处都改 7/7 绿。
 ```
 
+## 0.8 cherry-pick 之后怎么 rebase（2026-11-02，TestDev 踩到）
+
+在 cherry-pick 集成下，`git rebase origin/main` 会**重放你已经合入的提交**（sha 变了但内容在，
+git 不认识它），于是在 `run.mjs` / `index.html` 这种多人都改的文件上撞冲突。正确姿势：
+
+```bash
+# 先按 §0.6 用 git diff --stat 确认哪些已进主线，取「最后一个已合入的 sha」作起点
+git rebase --onto origin/main <最后一个已合入的 sha>
+# 例：git rebase --onto origin/main d4c45c9
+```
+
+这是 §0.6 的直接后果：判法改了（按内容判进没进主线），重放姿势也得跟着改，否则每个人都会在同一批
+共享文件上各撞一次。
+
 ## 1. 不变的部分（每刀都一样，别改判据）
 
 | 项 | 判据 | 为什么是它 |
