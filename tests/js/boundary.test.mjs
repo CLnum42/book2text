@@ -5484,17 +5484,30 @@ const DOMAIN_MODULES = [
   { file: "overlay-registry.js", exposes: "OverlayLayer" },
   // 刀 C：radio 由外壳在自己的 root 子树里查好传进来 ⇒ 模块连 querySelector 都是 0 次
   { file: "page-index.js", exposes: "PageIndexService" },
+  // 刀 D：17 个 structure-* 全在 #structure-panel 子树里，逐个传太笨 ⇒ 唯一允许 root.querySelector 的模块
+  // （document.querySelector / getElementById / el( 仍然各 0 次，见下面 allowQuerySelector 的分支）
+  { file: "structure-tools.js", exposes: "StructureTools", allowQuerySelector: true },
 ];
 
-function domainDomProblems({ file, source }) {
+function domainDomProblems({ file, source, allowQuerySelector = false }) {
   const stripped = stripCommentsForGates(source || "");
   const problems = [];
   const checks = [
     ["el(", /\bel\s*\(/g, "init() 直接收下要写的元素，模块里不按 id 找 DOM"],
     ["document.getElementById(", /document\.getElementById\s*\(/g, "同上"],
-    // v1.1（Chief 2026-11-01）：连 querySelector( 也归零——"拿根宿主再自己找"同样是按结构找 DOM
-    [".querySelector(", /\.querySelector(?:All)?\s*\(/g, "根宿主/子树查询一律不要：元素由 init 传进来"],
   ];
+  if (allowQuerySelector) {
+    // 刀 D 的唯一例外：元素太多、又全在同一个 root 子树里（17 个 structure-*）⇒ 允许 root.querySelector，
+    // 但 document 级的查询仍然一次都不许出现（那等于按 id 找全局 DOM）。
+    checks.push([
+      "document.querySelector(",
+      /document\.querySelector(?:All)?\s*\(/g,
+      "root 子树内可以查，document 全局查不行：宿主由 init 给",
+    ]);
+  } else {
+    // v1.1（Chief 2026-11-01）：连 querySelector( 也归零——"拿根宿主再自己找"同样是按结构找 DOM
+    checks.push([".querySelector(", /\.querySelector(?:All)?\s*\(/g, "根宿主/子树查询一律不要：元素由 init 传进来"]);
+  }
   for (const [label, re, why] of checks) {
     const hits = (stripped.match(re) || []).length;
     if (hits) problems.push(`${file} 里出现 ${hits} 次 ${label}——${why}`);
@@ -5505,7 +5518,7 @@ function domainDomProblems({ file, source }) {
 test("域模块（刀 A）：quality-stats.js 不按 id 找 DOM，四个函数已从 app.js 迁出", () => {
   for (const mod of DOMAIN_MODULES) {
     const source = readFileSync(join(STATIC_DIR, mod.file), "utf8");
-    const problems = domainDomProblems({ file: mod.file, source });
+    const problems = domainDomProblems({ file: mod.file, source, allowQuerySelector: Boolean(mod.allowQuerySelector) });
     assert.deepEqual(problems, [], problems.join("\n"));
     assert.ok(
       source.includes(`window.${mod.exposes} = api`),
@@ -5592,5 +5605,21 @@ test("域模块自检：el( / getElementById / querySelector( 喂进坏样本必
     domainDomProblems({ file: "x.js", source: 'const a = root.querySelector("#x");' }).length,
     1,
     "querySelector 也必须红（v1.1：元素由 init 传进来，不要根宿主再自己找）",
+  );
+  // 刀 D 的例外：登记了 allowQuerySelector 的模块允许 root.querySelector，但 document 级仍然红
+  assert.deepEqual(
+    domainDomProblems({ file: "x.js", source: 'const a = root.querySelector("#x");', allowQuerySelector: true }),
+    [],
+    "登记了例外的模块，root.querySelector 必须绿（否则 17 个 structure-* 逐个传就成了摆设）",
+  );
+  assert.equal(
+    domainDomProblems({ file: "x.js", source: 'const a = document.querySelector("#x");', allowQuerySelector: true }).length,
+    1,
+    "例外只放 root——document.querySelector 在例外模块里也必须红",
+  );
+  assert.equal(
+    domainDomProblems({ file: "x.js", source: 'const a = el("x");', allowQuerySelector: true }).length,
+    1,
+    "例外不放 el(：有例外也必须按 root 查，不许按 id 找全局",
   );
 });
