@@ -4203,6 +4203,79 @@ export function exportKindProblems({ names, kinds }) {
   return problems;
 }
 
+/**
+ * **终态五条之一：`L ⊇ {init, enter}`**（Architect 在刀 11 文档里留的最后一处缺口）。
+ *
+ * 为什么要有闸：这条以前是**数据事实，靠人看**——文档写着「必须机检」，而判据里没有一条
+ * 只靠人眼的规则。它的过期形态很安静：某个视图模块的 `enter` 被改成 C（或从 names 里删掉），
+ * 生命周期就断了，但 R8 只数条数、R6 只数接口名，两边都看不出来。
+ *
+ * 两条一起判：
+ *   ① **names 里必须有 init 与 enter** —— L 键必须真的露在导出面上（没露出来就谈不上生命周期）；
+ *   ② **登记了 kinds 的模块，这两个的 kind 必须是 L** —— C 永不死、T 有死期，都不是「生命周期」。
+ * ②只对登记了 kinds 的模块生效（今天只有 pages-view.js），所以另加一条：一个都没登记就是空转红。
+ */
+export function lifeCycleProblems({ modules }) {
+  const problems = [];
+  if (!modules || modules.length === 0) {
+    problems.push("一个视图模块都没扫到——这条判据在空转");
+    return problems;
+  }
+  for (const { fileName, names = [], kinds = null } of modules) {
+    for (const key of ["init", "enter"]) {
+      if (!names.includes(key)) {
+        problems.push(`${fileName} 的导出面里没有 ${key}——生命周期键必须露出来，否则它连"被调用"都做不到`);
+        continue;
+      }
+      if (!kinds) continue;
+      const entry = kinds[key];
+      if (!entry) {
+        problems.push(`${fileName} 登记了 kinds，但 ${key} 没登记 kind——不登记 = 不判`);
+      } else if (entry.kind !== "L") {
+        problems.push(`${fileName} 的 ${key} 是 ${entry.kind}，生命周期键必须是 L（C 永不死、T 有死期，都不该占着 init/enter）`);
+      }
+    }
+  }
+  if (!modules.some((module) => module && module.kinds)) {
+    problems.push("没有任何视图模块登记 kinds——「init/enter 必须是 L」这一支一条都没判（名字那支判了，kind 那支空转）");
+  }
+  return problems;
+}
+
+test("R8（终态 L 键）：每个视图模块露 init/enter；登记了 kinds 的模块里这两个必须是 L", () => {
+  const modules = Object.entries(VIEW_EXPORTS)
+    .map(([fileName, entry]) => ({ fileName, names: entry.names || [], kinds: entry.kinds || null }));
+  const problems = lifeCycleProblems({ modules });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("R8（终态 L 键）自检：缺 enter 红 / enter 被改成 C 红 / 登记 kinds 却没登记 kind 红 / 空模块红 / 无人登记 kinds 红", () => {
+  const L = { init: { kind: "L" }, enter: { kind: "L" } };
+  const ok = [{ fileName: "a-view.js", names: ["init", "enter"], kinds: L }];
+  assert.deepEqual(lifeCycleProblems({ modules: ok }), [], "L 键自检失败：合规模块被误报");
+
+  const missing = lifeCycleProblems({ modules: [{ fileName: "a-view.js", names: ["init"], kinds: { init: { kind: "L" } } }] });
+  assert.ok(missing.some((m) => m.includes("没有 enter")),
+    `L 键自检失败：enter 从 names 删掉被放过——${missing.join("；")}`);
+
+  const asC = lifeCycleProblems({
+    modules: [{ fileName: "a-view.js", names: ["init", "enter"], kinds: { init: { kind: "L" }, enter: { kind: "C", callers: ["x"], reason: "y" } } }],
+  });
+  assert.ok(asC.some((m) => m.includes("enter 是 C") && m.includes("必须是 L")),
+    `L 键自检失败：enter 被改成 C 被放过——${asC.join("；")}`);
+
+  const noKind = lifeCycleProblems({ modules: [{ fileName: "a-view.js", names: ["init", "enter"], kinds: { enter: { kind: "L" } } }] });
+  assert.ok(noKind.some((m) => m.includes("init 没登记 kind")),
+    `L 键自检失败：登记了 kinds 却漏登记 init 被放过——${noKind.join("；")}`);
+
+  assert.ok(lifeCycleProblems({ modules: [] }).some((m) => m.includes("一个视图模块都没扫到")),
+    "L 键自检失败：空模块列表被放过");
+
+  const noTable = lifeCycleProblems({ modules: [{ fileName: "a-view.js", names: ["init", "enter"] }] });
+  assert.ok(noTable.some((m) => m.includes("kind 那支空转")),
+    `L 键自检失败：没有任何模块登记 kinds 时 kind 那支空转被放过——${noTable.join("；")}`);
+});
+
 test("R8（三类键）：每个导出键 kind 必填，T / C 字段互斥", () => {
   const entry = VIEW_EXPORTS["pages-view.js"];
   const problems = exportKindProblems({ names: entry.names, kinds: entry.kinds });
