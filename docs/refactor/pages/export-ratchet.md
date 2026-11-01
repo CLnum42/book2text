@@ -263,8 +263,14 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
           · 转发器删 **11** 个（不是 12：:4774 是 checkSelection 的转发器，它判 C 后仍在 api）
           · 选择族搬入 **75** 行（不是 62：另含 selectOnly 5 行 / toggleSelection 8 行，族内 3241/3269/3271 调它们）
           · keydown 块 **12777–12791**（15 行含 1 行注释），12792 起是 platform-warning
-刀 9.6 （−1）      待形态定（只做 undoMarginEdit）
-刀 10  （−4）      待 9.5 定后回填（队列子系统：两个泵 + queueOverlayRender + updatePageVisibility）
+刀 9.6 （−1 +0）  38 = T 4 + C 32 + L 2   ← 已落盘（`834b8a1`）
+          undoMarginEdit 接线收回模块（撤销按钮由模块自建）；② 推导值仍是 35（C 未变）
+          · deps 208 → **206**：只删 `marginUndoButton` / `trimMarginUndo` 两条
+          · **`getMarginUndoStack` 不属 9.6**：它在 **LibraryView** 的 init 块（app.js:12933–12982），
+            library-view.js:292 用它清撤销栈 ⇒ 不是 pages 块的字死注入，别下一刀再判一次
+          · 行数 app.js 13,078 → **13,054** · pages-view 3,704 → **3,723**
+刀 10  （−4）      待形态定（队列子系统：两个泵 + queueOverlayRender + updatePageVisibility）
+          ⇒ 落盘后这一列写成 **T 0 / C 3x / L 2**（T 归零是判据，C 的条数由清册决定）
 刀 11 （不变）     终态 = T 0 ∧ L 3 ∧ C 按清册（② 推导值随 C 变，**此处不预先写死**）
 ```
 
