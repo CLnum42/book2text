@@ -69,7 +69,7 @@
 
 | 文件 | 动作 | 预算 | 判据 |
 |---|---|---|---|
-| `overlay-registry.js`（新） | 骨架 + 一个渲染器 + 指纹 + 诊断 | **≤ 240 行**（骨架 90 / blocks 渲染 60 / 指纹与稳定序列化 30 / stats 与 unmount 30） | `wc -l`；超 240 要写明多在哪 |
+| `overlay-registry.js`（新） | 骨架 + 一个渲染器 + 指纹 + 诊断 | **≤ 240 代码行**（不含注释与空行；骨架 90 / blocks 渲染 60 / 指纹与稳定序列化 30 / stats 与 unmount 30）。口径：`wc -l` 264 = **194 代码 + 46 整行注释 + 24 空行**（2026-11-02 实测 `20264a4`） | 数**代码行**；用 `wc -l` 前先剥注释/空行。超代码预算要写明多在哪——**别看总行数 264 就以为偷搬了避让链**：`findOrderSpot` / `layoutLabel` / `drawDiffLayer` 在模块里各 0 次（本片不搬，见 v1.5） |
 | 同上 | **那 60 行"blocks 渲染"里不含避让排布**（v1.5） | 避让排布 **不搬**：`findOrderSpot`(6426,24) · `findLabelSpot`(6456,49) · `layoutOverlayAnnotations`(6510,43) · `scheduleOverlayLayout`(6555,13) · `observeOverlaySize`(6577,14) = **函数体 143 行**（连其间注释约 165 行） | 若发现 registry 超 240 行且超在"摆号"上 ⇒ 说明有人把避让排布偷搬了一半 |
 | `preview-view.js` | 删自建 `.page-overlay`（181–184）；`tile.append` 去掉 overlay（191）；`paintPreviewTile` 改走 registry（363–372）；清屏路径改 `paint(active:[])`（394） | **净 −8 ~ −12 行** | `wc -l` 前后差；`page-overlay` 在该文件 0 次 |
 | `preview-view.js` **`mount` 的位置（写死，v1.4）** | **在 `buildPreviewPages()` 的建块循环里**：181–184 那三行的位置改成 `tile.__overlayLayer = window.OverlayLayer.mount(tile, { pageNo })`。**每 tile 一个**（今天也是每 tile 一个 `.page-overlay`） | +1 行（替换掉 3 行） | 真机⑤ 依赖这条：每个 `.preview-page` 都该有 `.overlay-layer` |
