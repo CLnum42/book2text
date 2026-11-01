@@ -5635,6 +5635,89 @@ test("域模块（刀 D）：structure-tools.js 七个函数已从 app.js 迁出
   }
 });
 
+// ---------------------------------------------------------------- 清洗刀：退役 id/状态归零
+
+/** 清洗刀退役名单（书 §5 ②）：页内差异队列 + 块级候选对比 + 4 个零引用 id。 */
+const DEAD_REVIEW_NAMES = [
+  "diff-queue", "queue-adopt", "queue-keep", "queue-prev", "queue-mode", "diff-queue-toggle",
+  "diff-queue-position", "diff-queue-meta", "diff-queue-text", "diff-queue-dots", "diff-queue-note",
+  "candidate-panel", "candidate-meta", "candidate-apply", "candidate-decline", "candidate-close",
+  "candidate-current", "candidate-new", "candidate-open", "candidateRunId", "applyQueueAckLocally",
+];
+/**
+ * 这四个只是**退役的 id 属性**，元素 / class 都还在用（书 §1.3 / §4）：
+ * `review-toolbar` 的 div 与 `.workspace-toolbar`、`review-split` 的 `.review-split` 布局、
+ * `layout-info` 的 `.info-dot` 提示、`page-detail-warning` 整个空元素。
+ * 所以判的是"还有没有人按这个 id 找它"，不是"这几个字还在不在文件里"。
+ */
+const DEAD_ID_ATTRIBUTES = ["review-toolbar", "review-split", "layout-info", "page-detail-warning"];
+
+/** 静态文本里出现退役名就红（按词边界；`structure-candidates` 之类不算 `candidate-*`）。 */
+function deadReviewProblems({ sources, names = DEAD_REVIEW_NAMES }) {
+  const problems = [];
+  for (const [file, source] of sources) {
+    for (const name of names) {
+      const hits = (source.match(new RegExp(`(?:^|[^\\w-])${name}(?:$|[^\\w-])`, "g")) || []).length;
+      if (hits) problems.push(`${file} 里还有 ${hits} 次退役名 ${name}`);
+    }
+  }
+  return problems;
+}
+
+test("清洗刀：退役的 review id / 状态在全仓 0 次（含 queue-mode 三处单独判）", () => {
+  const staticFiles = readdirSync(STATIC_DIR)
+    .filter((name) => name.endsWith(".js") || name === "index.html" || name === "app.css");
+  const sources = staticFiles.map((name) => [name, readFileSync(join(STATIC_DIR, name), "utf8")]);
+  assert.deepEqual(deadReviewProblems({ sources }), [], "退役名还有残留——删队列要删干净（书 §5 ②）");
+  for (const name of DEAD_ID_ATTRIBUTES) {
+    for (const [file, source] of sources) {
+      const byId =
+        (source.match(new RegExp(`id="${name}"`, "g")) || []).length +
+        (source.match(new RegExp(`(?:el|getElementById|querySelector)\\("#?${name}"`, "g")) || []).length;
+      assert.equal(byId, 0, `${file} 里还有按 id 找 ${name} 的地方——这个 id 已退役（元素/class 保留）`);
+    }
+  }
+
+  // queue-mode 是 setQueueOpen 现加现删的类名，只删 CSS 不够：三个文件各判一次
+  for (const name of ["app.js", "index.html", "app.css"]) {
+    const source = readFileSync(join(STATIC_DIR, name), "utf8");
+    assert.equal(
+      (source.match(/queue-mode/g) || []).length,
+      0,
+      `${name} 里还有 queue-mode——它只由已删除的 setQueueOpen 现加现删，必须三处归零`,
+    );
+  }
+
+  // 保留项仍在（书 §4 的"逐个点名"）：删错成"整段删 CSS"会在这里红
+  const css = readFileSync(join(STATIC_DIR, "app.css"), "utf8");
+  for (const token of [".alert--warn", ".info-dot", ".workspace-toolbar", ".review-split", ".diff-strip", ".review-footer-count"]) {
+    assert.ok(css.includes(token), `app.css 里 ${token} 被顺手删掉了——它还有别的使用者（书 §4）`);
+  }
+  const page = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
+  assert.ok(page.includes('class="review-split"'), "review-split 只删 id 属性，class 布局必须保留");
+  assert.ok(page.includes('class="workspace-toolbar"'), "review-toolbar 只删 id 属性，class 必须保留");
+  assert.ok(page.includes('class="info-dot"'), "layout-info 只删 id 属性，元素（提示）必须保留");
+  assert.ok(!page.includes("page-detail-warning"), "page-detail-warning 是整元素删（从未被写过）");
+});
+
+test("清洗刀自检：喂回一句 el(\"diff-queue\") 必须红；queue-mode 塞回 CSS 必须红", () => {
+  assert.equal(
+    deadReviewProblems({ sources: [["x.js", 'const node = el("diff-queue");']] }).length,
+    1,
+    "退役名塞回去必须红（否则这条闸是装饰）",
+  );
+  assert.deepEqual(
+    deadReviewProblems({ sources: [["x.js", 'const node = el("structure-candidates");']] }),
+    [],
+    "structure-candidates / reading-panel__candidate 不是退役名，不许误伤",
+  );
+  assert.equal(
+    deadReviewProblems({ sources: [["app.css", "body.queue-mode .diff-strip { display: none; }"]] }).length,
+    1,
+    "queue-mode 单独判也要能红",
+  );
+});
+
 test("域模块自检：el( / getElementById / querySelector( 喂进坏样本必须红；纯数据模块算绿", () => {
   assert.deepEqual(
     domainDomProblems({ file: "x.js", source: 'function render(data) { return data.x; }' }),
