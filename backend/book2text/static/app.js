@@ -5212,7 +5212,7 @@ function applyZoom() {
   canvas.style.width = `${width}px`;
   el("zoom-fit").classList.toggle("is-on", zoomLevel === null);
   // 顺序号 / 悬停卡片是像素定位的：宽度变了要重新找空位
-  scheduleOverlayLayout(el("detail-overlay"));
+  scheduleDetailOverlayLayout(el("detail-overlay"));
 }
 
 function zoomBy(delta) {
@@ -5229,7 +5229,7 @@ function setReviewOverlay(on) {
   button.classList.toggle("is-on", Boolean(on));
   el("detail-overlay").hidden = !on;
   button.textContent = on ? "显示块框" : "块框已隐藏";
-  if (on) scheduleOverlayLayout(el("detail-overlay"));
+  if (on) scheduleDetailOverlayLayout(el("detail-overlay"));
 }
 
 function setReviewMargin(on) {
@@ -5254,7 +5254,7 @@ function setupViewerTools() {
     el("toggle-overlay").classList.toggle("is-on", on);
     el("detail-overlay").hidden = !on;
     el("toggle-overlay").textContent = on ? "显示块框" : "块框已隐藏";
-    if (on) scheduleOverlayLayout(el("detail-overlay"));
+    if (on) scheduleDetailOverlayLayout(el("detail-overlay"));
   });
   el("toggle-diff-marks").addEventListener("click", () => {
     // 三态：未审+已审 → 仅未审 → 关（任务 45 / H 刀）
@@ -6054,12 +6054,30 @@ function scheduleOverlayLayout(overlay, attempt = 0) {
   const token = (overlay._layoutToken = (overlay._layoutToken || 0) + 1);
   requestAnimationFrame(() => {
     if (overlay._layoutToken !== token || !overlay.isConnected) return;
+    if (layoutOverlayAnnotations(overlay)) return;
+    if (attempt < 90) scheduleOverlayLayout(overlay, attempt + 1);
+  });
+}
+
+/**
+ * 审校侧的本地调度：摆完号之后，在**同一个 rAF** 里重画差异层。
+ *
+ * 为什么要拆成两条（片 2 §3.1）：`scheduleOverlayLayout` 有两个主人——块框（renderPageBlocks）
+ * 与审校的 #detail-overlay。差异层是审校独有的副作用，挂在共享调度器上会让"页面视图画一页块框"
+ * 也去重画审校的差异层；拆开之后共享调度器只剩布局，审校这条自带 drawDiffLayer。
+ * 两条共用同一个 `_layoutToken`：同一容器永远只有一个调度在跑。
+ */
+function scheduleDetailOverlayLayout(overlay, attempt = 0) {
+  if (!overlay || overlay.hidden) return;
+  const token = (overlay._layoutToken = (overlay._layoutToken || 0) + 1);
+  requestAnimationFrame(() => {
+    if (overlay._layoutToken !== token || !overlay.isConnected) return;
     if (layoutOverlayAnnotations(overlay)) {
       // 差异标记与顺序号在**同一个 rAF** 里重算，滚动 / 缩放时不会各走一帧。
       drawDiffLayer();
       return;
     }
-    if (attempt < 90) scheduleOverlayLayout(overlay, attempt + 1);
+    if (attempt < 90) scheduleDetailOverlayLayout(overlay, attempt + 1);
   });
 }
 
@@ -6070,16 +6088,21 @@ function scheduleOverlayLayout(overlay, attempt = 0) {
  * 顺序号会按旧尺寸摆一次就不再重算（实测 4/4 档第一次放大有 3 个号压块）。
  */
 let overlayResizeObserver = null;
+// 同一个观察器服务两种层级（块框 / 审校），但"摆完还要不要重画差异层"只有审校要 ⇒ 按目标分派。
+// 片 2 §3.1 的拆分如果漏了这条，窗口缩放时差异层不会重画（它的位置是 px，按 canvas 宽度算的）。
+const overlayScheduleByTarget = new WeakMap();
 
-function observeOverlaySize(overlay) {
+function observeOverlaySize(overlay, schedule = scheduleOverlayLayout) {
   if (!overlay || typeof ResizeObserver === "undefined") return;
   if (!overlayResizeObserver) {
     overlayResizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        if (entry.target.isConnected) scheduleOverlayLayout(entry.target);
+        if (!entry.target.isConnected) continue;
+        (overlayScheduleByTarget.get(entry.target) || scheduleOverlayLayout)(entry.target);
       }
     });
   }
+  overlayScheduleByTarget.set(overlay, schedule);
   if (!overlay._resizeObserved) {
     overlayResizeObserver.observe(overlay);
     overlay._resizeObserved = true;
@@ -6509,10 +6532,10 @@ function drawDetailOverlay(blocks) {
     });
     overlay.append(box);
   });
-  observeOverlaySize(overlay);
+  observeOverlaySize(overlay, scheduleDetailOverlayLayout);
   // 先同步摆一次（getBoundingClientRect 会强制布局），再等下一帧处理"图还没出来"的情况
   layoutOverlayAnnotations(overlay);
-  scheduleOverlayLayout(overlay);
+  scheduleDetailOverlayLayout(overlay);
 }
 
 /** 未归属 / 冲突的行：灰色 / 黄色虚线画在原图上，一条都不丢。 */
