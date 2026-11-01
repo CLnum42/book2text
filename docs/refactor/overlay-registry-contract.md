@@ -52,15 +52,28 @@ PageTile                        拥有：那张 <img>、尺寸档、取图与释
 
 ## 3. ② API 草案（逐个：签名 / 谁调 / 何时）
 
+**十项**——**登记面 10 项，今天实现 6 项**，这个差不是笔误（`window.OverlayLayer` 现在只挂
+`init` / `register` / `mount` / `unmount` / `paint` / `stats`，片 1 实测）：
+
+```
+已实现 6：init · register · mount · unmount · paint · stats
+未实现 4：unregister（只给单测） · invalidate（无调用点） · layout · schedule（片 2 要加）
+          ——「没有调用点不导出」是刀 A 定下的规矩，所以未实现的四项不写空壳
+```
+
+片 2 之后应为 **8 项**（+`layout` +`schedule`）。
+
 ```js
 window.OverlayLayer = {
-  init(deps),                                       // deps = { getVersion(scopeKey), notify(info) }
+  init(deps),                                       // deps = { buildLabel, notify }（片 2 起；getVersion 归内部指纹）
   register({ type, z, scaling, render, hitTest }),   // 全局一次：一种视觉元素一个渲染器
-  unregister(type),                                  // 只给单测/清场，产品路径不许调
+  unregister(type),                                  // 只给单测/清场，产品路径不许调（未实现）
   mount(hostEl, { pageNo }),                         // → handle
   unmount(handle),
   paint(handle, { data, active, styles }),           // 视图：数据到了就叫，可按帧合并
-  invalidate(handle, types),                         // 任何人：只置脏，不立即画
+  invalidate(handle, types),                         // 任何人：只置脏，不立即画（未实现）
+  layout(container, { lineBboxes }),                 // 一次摆：幂等、不画、不碰 version、不排帧（片 2 新增）
+  schedule(container, { onLaidOut }),                // 排到可测为止：token + rAF + 90 帧重试，成功回调（片 2 新增）
   stats(pageNo),                                     // 只读诊断：{ version, counts, geomHash }
 };
 ```
@@ -74,6 +87,26 @@ window.OverlayLayer = {
 | `paint` | 视图 | 数据到达 / `invalidate` 之后 | **不立即画**：登记到 registry 唯一的 rAF，帧末统一消费 |
 | `invalidate` | 视图、协作层（写盘回调） | 一处数据变了 | 不碰 DOM，只置脏 |
 | `stats` | e2e / 诊断 | 任意 | 只读，不许有任何副作用 |
+| `layout` | 视图 / 审校详情（`#detail-overlay` 不是 handle） | 数据到了、容器里的节点已存在时 | **一次摆**：幂等、不画、不碰 version、不排帧；障碍物只从 `lineBboxes` 参数来，**不许读别人的私有属性** |
+| `schedule` | 视图 / 审校详情 | 内容刚建、图可能还没出来时 | **排到可测为止**：token 取消前一次 + rAF + 90 帧重试；成功后调 `onLaidOut`。同一容器只许一个调度 |
+
+**`layout` / `schedule` 的分工（别以为是冗余）**：
+
+```
+layout   = 一次摆（"现在就摆一下"）：幂等、无调度、无重试；给"节点已经在 DOM 里、尺寸已经可测"的场合
+schedule = 排到可测为止（"以后摆，摆到测得出为止"）：token + rAF + 90 帧；给"刚建好、图/字体还没落"的场合
+两者都只做**定位**，不做绘制；paint 内部就用 schedule ⇒ **重试循环全仓只有一份**。
+```
+
+**为什么必须导出（不是临时口子）**：
+
+```
+· 审校的 #detail-overlay 不是 registry handle（review 自己画那个容器），但它的顺序号/卡片同样要避让排布
+  ⇒ 没有 layout/schedule，那 161 行就得在 app.js 留一份 = 两套算法（契约 §1 否掉 A 的同一个理由）
+· 过渡期内 reading / index 仍走旧的 renderPageBlocks，也需要同一套"排到可测"；
+  若转发器自己再写一遍 90 帧重试，同样变成两份
+· 片 2 之后审校那条路径**长期**需要它 ⇒ 按 STABLE 登记、不写死期
+```
 
 **`render(item, style) → Element` 必须无状态**（只吃 item + style，不读全局，不读 `currentView`）；
 **`hitTest(item, pagePoint) → boolean|null`** 只回答"命中谁"，点击做什么归视图（§23.6）。
@@ -82,6 +115,17 @@ window.OverlayLayer = {
 那条**不成立**：`queueReadingIntent` 是 reading 视图的私有调度器，共享模块去依赖它 = R2 违规（模块依赖某个视图）。
 改成：**registry 内部恰好一个 rAF 循环**，帧末对"已置脏的 handle × type"各画一次。
 "不许有第二套调度器"的本意是**同一页的重画不许有第二个调度点**——这条不变：视图自己不许再排 rAF。
+
+**同一容器只许一个调度（片 2 明确）**：`schedule(container, …)` 用容器上的 token 取消前一次——
+重复调用不是叠加，是"后一次取代前一次"。判据（可机检）：对同一容器连调 `schedule` 三次，
+`onLaidOut` 只被调 **1** 次（前两次被 token 作废）。
+
+**重试循环全仓只有一份（可机检）**：
+
+```
+判据：app.js 里 `attempt < 90` 命中 **0** 次；`attempt` 这个参数名只出现在 overlay-registry.js
+      （片 2 落完之后；过渡期内允许 app.js 有转发器，但转发器 ≤6 行且不许自己写重试）
+```
 
 ## 4. ③ dataVersion：内容指纹
 
