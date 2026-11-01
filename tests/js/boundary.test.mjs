@@ -5470,3 +5470,80 @@ test("刀 11 闸③：不建 refresh 导出、C 键里没有 scope:/op: 载荷",
     "合规的 C 键必须绿",
   );
 });
+
+// ---------------------------------------------------------------- 域模块（服务模块）：不按 id 找 DOM
+//
+// 形态见 `docs/refactor/appjs-domains/first-batch.md` §1：这些域不是视图，文件不叫 `*-view.js`，
+// 也不许按 id 找 DOM（`el(` / `document.getElementById` 各 0 次）；`init()` 拿一个根宿主，
+// 之后只在子树里 `querySelector`。四刀（A 质量统计 / B 页面确认 / C 目录确认 / D 结构工具）共用这条。
+const DOMAIN_MODULES = [
+  { file: "quality-stats.js", exposes: "QualityStats" },
+];
+
+function domainDomProblems({ file, source }) {
+  const stripped = stripCommentsForGates(source || "");
+  const problems = [];
+  const checks = [
+    ["el(", /\bel\s*\(/g, "init() 直接收下要写的元素，模块里不按 id 找 DOM"],
+    ["document.getElementById(", /document\.getElementById\s*\(/g, "同上"],
+    // v1.1（Chief 2026-11-01）：连 querySelector( 也归零——"拿根宿主再自己找"同样是按结构找 DOM
+    [".querySelector(", /\.querySelector(?:All)?\s*\(/g, "根宿主/子树查询一律不要：元素由 init 传进来"],
+  ];
+  for (const [label, re, why] of checks) {
+    const hits = (stripped.match(re) || []).length;
+    if (hits) problems.push(`${file} 里出现 ${hits} 次 ${label}——${why}`);
+  }
+  return problems;
+}
+
+test("域模块（刀 A）：quality-stats.js 不按 id 找 DOM，四个函数已从 app.js 迁出", () => {
+  for (const mod of DOMAIN_MODULES) {
+    const source = readFileSync(join(STATIC_DIR, mod.file), "utf8");
+    const problems = domainDomProblems({ file: mod.file, source });
+    assert.deepEqual(problems, [], problems.join("\n"));
+    assert.ok(
+      source.includes(`window.${mod.exposes} = api`),
+      `${mod.file} 必须挂 window.${mod.exposes}（服务模块的唯一出口，R7b 会查它的 <script> 在 app.js 之前）`,
+    );
+  }
+  const appSource = stripCommentsForGates(readFileSync(APP_FILE, "utf8"));
+  for (const name of ["statsRow", "percentText", "loadSummary", "renderSummary"]) {
+    const stillDefined = new RegExp("^(?:async )?function " + name + "\\s*\\(", "m").test(appSource);
+    assert.ok(!stillDefined, `app.js 里还定义着 ${name}——刀 A 之后它应在 quality-stats.js`);
+  }
+  const moduleSource = readFileSync(join(STATIC_DIR, "quality-stats.js"), "utf8");
+  for (const name of ["statsRow", "percentText", "load", "render"]) {
+    assert.ok(new RegExp("function " + name + "\\s*\\(").test(moduleSource), `quality-stats.js 里缺 ${name}`);
+  }
+  // 接口面只许有真调用者的三个：`render` 没有外部调用点（book §2 + Chief 第⑤条），不许导出
+  const apiLine = /const api = \{([^}]*)\};/.exec(moduleSource);
+  assert.ok(apiLine, "quality-stats.js 没找到 api 对象");
+  assert.deepEqual(
+    apiLine[1].split(",").map((x) => x.trim()).filter(Boolean),
+    ["init", "load", "percentText"],
+    "模块接口面多了/少了：render 没有真调用点就不许导出",
+  );
+});
+
+test("域模块自检：el( / getElementById / querySelector( 喂进坏样本必须红；纯数据模块算绿", () => {
+  assert.deepEqual(
+    domainDomProblems({ file: "x.js", source: 'function render(data) { return data.x; }' }),
+    [],
+    "完全不碰 DOM 的域模块必须绿",
+  );
+  assert.equal(
+    domainDomProblems({ file: "x.js", source: 'const a = el("x");' }).length,
+    1,
+    "el( 必须红（刀 A 的变异判据：在模块里加一句 el(\"stats-list\") 就该红）",
+  );
+  assert.equal(
+    domainDomProblems({ file: "x.js", source: 'const a = document.getElementById("x");' }).length,
+    1,
+    "document.getElementById 必须红",
+  );
+  assert.equal(
+    domainDomProblems({ file: "x.js", source: 'const a = root.querySelector("#x");' }).length,
+    1,
+    "querySelector 也必须红（v1.1：元素由 init 传进来，不要根宿主再自己找）",
+  );
+});
