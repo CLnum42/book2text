@@ -271,6 +271,15 @@ def _script() -> str:
     return (STATIC_DIR / "app.js").read_text(encoding="utf-8")
 
 
+def _editor_script() -> str:
+    """S1 之后块列表编辑住在 `page-detail-editor.js`（非视图服务模块）。
+
+    这类「某字符串在文件里」的断言改合查：模块还没落盘时返回空串，旧断言照旧查 app.js。
+    """
+    path = STATIC_DIR / "page-detail-editor.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _view_script(name: str = "pages-view.js") -> str:
     """已落盘视图模块的源码（`pages-view.js` / `library-view.js` / `index-view.js` …）。"""
     return (STATIC_DIR / name).read_text(encoding="utf-8")
@@ -356,15 +365,15 @@ def test_block_type_suggestions_are_wired_to_the_existing_patch() -> None:
     script = _script()
     assert "/block-suggestions" in script
     assert "detailSuggestionByBlock" in script
-    assert "blockSuggestionBadge" in script
+    assert "blockSuggestionBadge" in script + _editor_script()
     assert "adoptBlockSuggestion" in script
     assert "adoptAllHighSuggestions" in script
     # 批量采用只拿 high；review 必须逐条点
     assert 'suggestionHighList()' in script
     assert 'item.confidence === "high"' in script
     # 书眉里的页码只展示，不自动拆块 / 改文本
-    assert "含页码" in script
-    assert "review-suggest__pagenum" in script
+    assert "含页码" in script + _editor_script()
+    assert "review-suggest__pagenum" in script + _editor_script()
 
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
     assert ".review-suggest" in css
@@ -514,7 +523,7 @@ def test_split_page_number_and_batch_split_are_wired() -> None:
     script = _script()
     # 单块：菜单项只在"这块真的贴着块首 / 块尾有页码候选"时出现，点了才拆
     assert "function pageNumberSplitHint(" in script
-    assert '`把页码 ${numberHint.text} 拆出去`' in script
+    assert '`把页码 ${numberHint.text} 拆出去`' in script + _editor_script()
     assert "/split-page-number" in script
     # 批量：先 dry_run 预览、再 dry_run: false 执行；范围是选中页 / 全部正文页
     assert "function openSplitBatchPanel(" in script
@@ -699,7 +708,7 @@ def test_review_view_shows_margin_and_filters_blocks() -> None:
 
     # 任务 61：默认「待处理」；开关按项目记住且默认开
     assert 'let reviewBlockFilter = "pending";' in script
-    assert "function blockNeedsReview(" in script
+    assert "function blockNeedsReview(" in script + _editor_script()
     assert "function pendingPageReasons(" in script
     assert "/review/pending" in script
     assert "review-auto-pass" in page_html
@@ -1552,8 +1561,8 @@ def test_review_workspace_v2_is_wired() -> None:
     assert "blockCountedInMargin(block, pageRecord)" in script
     assert "bbox[1] * rect.height" in script
     assert "markPixelRange(" not in script  # 旧的字符级估算已删
-    assert "function diffCompareLines(" in script
-    assert "diff-char" in script
+    assert "function diffCompareLines(" in script + _editor_script()
+    assert "diff-char" in script + _editor_script()
     assert "diff-mark--done" in script
     assert "diff-mark__end" in script
     assert 'diffMarksMode = "all"' in script
