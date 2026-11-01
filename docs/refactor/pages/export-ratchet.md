@@ -1,17 +1,21 @@
 # 导出棘轮：两类键 + 生命周期类（Architect 裁定）
 
+> **当前状态（2026-11-01，`b61634d`）**：导出面 36 键 = **T 0 / C 34 / L 2**，`death:` 字段全表消失，
+> names 与 kinds 两向相等 ⇒ §七 的终态判据**已达成**。刀 11 只做"只涨不消"的两笔清理与开闸，不再动导出面。
+>
 > 裁定 2026-10-30。回答 `docs/refactor/pages/knife9-key-ledger.md` §三 的 a/b/c。
 > 量数树：`6d4492f`（app.js 13,462 行 · pages-view.js 3,126 行 · api **57** 键）。
-> 一句话：**两类的划分成立，但"能力面"必须是一份逐键清册（不是数字上限）；
-> `22` 是减法算出来的、`3` 做不到，可达终态 ≈ 19。**
+> 一句话（当日）：**两类的划分成立，但"能力面"必须是一份逐键清册（不是数字上限）；
+> `22` 是减法算出来的、`3` 做不到。** ← 后半句"可达终态 ≈ 19"已于 2026-11-01 作废：
+> 终态不是一个数，是 §七 那五条判据；实际落在 36（② 推导值，不是目标）。
 
 ## 一、三类，不是两类
 
 | 类 | 定义 | 判据（机检） |
 |---|---|---|
-| **L** lifecycle | `init` / `enter` / `refresh(scope)`——进出视图、状态变化后重画 | 固定 3 个名字，不许改名（刀 9 建 enter/refresh） |
-| **T** transitional | 只因为"代码还没搬完"而存在的键：它唯一的调用形态是**同名薄转发器**，转发器的调用者是 pages 域、迟早搬进模块 | **必须带 `death: 刀N`**；到点后键与转发器都必须不存在 |
-| **C** capability | 触发者在**别的域**：别的 `*-view.js` 经 `injected` 调，或外壳的**永留编排函数**调 | **不写死期**；必须登记 `callers`（函数名 / 模块名清单）+ `Capability-Reason` |
+| **L** lifecycle | `init` / `enter` 必备——进出视图；**`refresh` 不是 L 的固定成员**（刀 11 裁定，见 §七） | `{init, enter}` 必须齐；额外 L 键只在**点名表**里合法（今天空表）。`refresh` 只在 `index-view.js` 有，且是**业务方法**不是生命周期键 |
+| **T** transitional | 只因为"代码还没搬完"而存在的键：它唯一的调用形态是**同名薄转发器**，转发器的调用者是 pages 域、迟早搬进模块 | **必须带 `death: 刀N`**；到点后键与转发器都必须不存在。**终态实测形态：T 归零后 `death:` 这个字段整张表一个都不剩**（不是留空数组、不是留 `death: null`）——机检据此判「还没有死期残留」 |
+| **C** capability | 触发者在**别的域**：别的 `*-view.js` 经 `injected` 调，或外壳的**永留编排函数**调 | **不写死期**；必须登记 `callers`（函数名 / 模块名清单，**非空**）+ `Capability-Reason` |
 
 **接线算不算能力，看被挂载的元素归谁**（2026-10-30 由 9.3 实测定下，比"9.6 有先例"更根本）：
 
@@ -269,9 +273,17 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
           · **`getMarginUndoStack` 不属 9.6**：它在 **LibraryView** 的 init 块（app.js:12933–12982），
             library-view.js:292 用它清撤销栈 ⇒ 不是 pages 块的字死注入，别下一刀再判一次
           · 行数 app.js 13,078 → **13,054** · pages-view 3,704 → **3,723**
-刀 10  （−4）      待形态定（队列子系统：两个泵 + queueOverlayRender + updatePageVisibility）
-          ⇒ 落盘后这一列写成 **T 0 / C 3x / L 2**（T 归零是判据，C 的条数由清册决定）
-刀 11 （不变）     终态 = T 0 ∧ L 3 ∧ C 按清册（② 推导值随 C 变，**此处不预先写死**）
+刀 10.1（−3 +1） 36 = T 1 + C 33 + L 2   ← 已落盘（`c210bd0`，拆刀见 `09087db`）
+           块框队列与可见性调度搬进模块：3 键死（updatePageVisibility / pumpOverlayRender / queueOverlayRender），
+           新能力 `onPagesNeedReflow`（callers 4：refreshAfterTypeChanges · applySplitBatch · showView · library-view）
+刀 10.2（−1 +1） 36 = T 0 + C 34 + L 2   ← 已落盘（`b61634d`）**T 归零**
+           建议扫描队列搬进模块：`scanVisiblePageSuggestions` 死 + `pumpPageSuggestionQueue` /
+           `ensurePageSuggestion` / `scheduleSuggestionScan` 与七份队列状态搬入，新能力 `onPagesShown`
+           · 实测对集（我复算，非抄）：**names 36 == kinds 36**，两向无孤儿（36 键全有 kind、无 kind 不在 names）
+           · 全表 `death:` **0 个**（不是空数组）· `init` 的 callers 缺省、34 个 C 的 callers 全非空
+           · deps **186** · app.js 13,054 → **12,866**（−188）· pages-view 3,723 → **3,907**（+184）
+刀 11 （−0 +0）  36 = T 0 + C 34 + L 2   ← **导出面判据已达成**（§七 新①）；刀 11 不再是"补一个到达终态的键"，
+          而是**只涨不消的两笔**（deps 死键 13 个 / 顶层 0 引用函数）+ 开闸（清到 0 再开「多键=红」）
 ```
 
 > **`onWorkflowLoaded` 扩参的落法（9.5 实测）**：调用**留在 try/catch 之外**（今天的 5382 那一处 +
@@ -282,12 +294,15 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 
 ```
 ① 宿主是单视图动作 → 宿主搬走，键死于那一刀（9.1 / 9.3 / 9.4 / 9.5）
-② 宿主是跨域编排（pollTask / 面板 / 别的视图）→ 键**本来就不是 T**：收成 C（9.2），或由 refresh 吸收
-③ 宿主属于"子系统"（队列 / 渲染域）→ 随子系统整体搬（刀 10）
+② 宿主是跨域编排（pollTask / 面板 / 别的视图）→ 键**本来就不是 T**：收成 C（9.2），
+   或由"宿主搬走 + 元素归属"判出的接线搬入吃掉（9.6 / 10.1）
+   ~~「由 refresh 吸收」~~——**这条路 9.5 之后作废**：`refresh` 从未建成，也不该建（§七 刀 11 裁定）
+③ 宿主属于"子系统"（队列 / 渲染域）→ 随子系统整体搬（刀 10.1 / 10.2）
 ```
 
-没有第四种。所以"某刀 −5"这种数要先逐键过这三条才能写。`enter` 建在 9.1、`refresh` 建在 9.5
-是按语义钉的；若该刀图把入口提前/推后，中间值会动，但 **T 归零这一步不会**。
+没有第四种。所以"某刀 −5"这种数要先逐键过这三条才能写。`enter` 建在 9.1 是按语义钉的；
+`refresh` 曾在 9.5 的图里被当成第三个 L 键，实际 9.5 落盘时 **L 仍是 2**（`b135d44` 实测 `init/enter`），
+刀 11 已把「`refresh` 要存在」这条假设正式作废 —— 中间值会动，但 **T 归零这一步不会**。
 子刀怎么分、死期写哪个号，见 §十（闸不允许"一刀多笔"）。
 
 ## 六、刀 9.1–9.5 的施工依据：宿主 → 可一次杀掉的键（41 行）
@@ -328,21 +343,65 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 | `syncWorkflowSteps` | `renderStepPanels` |
 | `waitForAuxThenReview` | `renderRecognitionStatus` |
 
-（连同 8 个死 T 一起，本章的 36 个 T 全部有归属，没有一个键"没人负责死"。）
+（连同 8 个死 T 一起，本章的 36 个 T 全部有归属，没有一个键"没人负责死"。
+**2026-11-01 更新**：这 36 个已全部死完（刀 10.2 `b61634d` 起 T = 0），本节留作逐刀的施工依据与快照。）
 
 ## 七、终态的**三个概念**：别混成一个数字（`3` 因此作废）
 
-今天出过「22 / 19 / 21」三个数打架，根子就是把下面三件事混在一个数字里讲。以后分开说：
+2026-10-30 那天出过「22 / 19 / 21」三个数打架，根子就是把下面三件事混在一个数字里讲。以后分开说：
 
-| 概念 | 判据 | 现在 |
+| 概念 | 判据 | 现在（`b61634d` 实测） |
 |---|---|---|
-| **① 终态判据**（定义"收完"） | `T == 0` ∧ `L == 3`（init/enter/refresh）∧ `C == 清册`（两向机检） | 未达成（T 35） |
-| **② 推导值**（会变，**不是目标**） | `C 的条数 + 3` | **35 = C 32 + L 3**（9.5 实测；此后随 C 变，不预先写死） |
-| **③ 防漂兜底**（只降不升） | `R8.total` 每刀 ≤ 上一刀；历史峰值 **61** | 现在 **53** |
+| **① 终态判据**（定义"收完"） | `T == 0` ∧ `L ⊇ {init, enter}`（额外 L 键须在点名表，今天空）∧ `kinds` 与 `names` **两向相等** ∧ 每个 C 的 `callers` 非空 ∧ 表里 `death:` 字段 0 个 | **已达成**（T 0 / L 2 / C 34 / names 36 两向无孤儿 / death 0） |
+| **② 推导值**（会变，**不是目标**） | `C 的条数 + L 的条数` | **36 = C 34 + L 2**（`b61634d` 实测；此后随 C 变，不预先写死） |
+| **③ 防漂兜底**（只降不升） | `R8.total` 每刀 ≤ 上一刀；历史峰值 **61** | 现在 **36**（9.3 的 43 是中途高点，此后 42 → 39 → 38 → 36 → 36 一路降） |
 
-- ① 是**判据**，能被机检（T/L/C 三个计数）；② 是 ① 的算术后果——C 一变它就变，
+- ① 是**判据**，能被机检（五个条件各自可数）；② 是 ① 的算术后果——C 一变它就变，
   **它不许进任何"目标"句式**；③ 是防"收口反涨"的棘轮，不是"要做到多少"。
-- 谁在报告里写"终态 35"，必须同时说明那是 ②（推导值），不是 ①（判据），否则下一个人会拿它当目标去凑。
+- 谁在报告里写"终态 36"，必须同时说明那是 ②（推导值），不是 ①（判据），否则下一个人会拿它当目标去凑。
+
+### 刀 11 裁定：`L == 3` 作废，判据改成 `L ⊇ {init, enter}`（2026-11-01）
+
+原判据里那句 `L == 3（init / enter / refresh）` 是我 2026-10-30 定的，当时假定 views 都该有第三个
+生命周期键 `refresh`。**`refresh` 从来没建成**（9.5 落盘实测 L 仍是 2），刀 11 要决定的是要不要为凑
+这个数去建它。裁定：**不建**，判据改 `L ⊇ {init, enter}`，理由是四条**代码里的事实**，不是偏好：
+
+```
+① 项目已经否决过这个形态。index-view.js:34–35 写着「**没有参数包**……（§20.6 明确否决
+   `refresh({toggles:false})` 这类配置项化入口）」。刀 11 的 A 形态 `refresh({pages:true})`
+   正是把被否决的那个入口换个字段名复活。
+② `refresh` 在本项目里有**写死的窄语义**：index-view.js:36–37「`refresh()` 只重画装饰与开关态，
+   **不做数据加载、不做全量重建**；换清晰度档要取图，所以走 `applyImageQuality()`，不走 `refresh()`」。
+   而候选键里 `onProjectPagesReloaded`（pages-view.js:3396–3398）就是 `await reloadProjectPages()`——
+   **一次数据加载**。并进去 = 同一个词在两个模块里两个意思 ⇒ 又造一个"同一概念两个口径"（D-106 那族）。
+③ 那几个键各自绑一个**单一动作**，不是"重画"的粒度：
+   `onPageStatesRefreshed→syncPageStates`(3406) · `onWorkflowStepChanged→renderStepPanels`(3416) ·
+   `onPageBlocksInvalidated→forgetAllPageBlocks`(3421) · `onPageSuggestionsInvalidated→forgetAllPageSuggestions`(3426) ·
+   `onPagesNeedReflow→schedulePageVisibility`(3436) · `onPagesShown→pumpPageSuggestionQueue`(3446) ·
+   `onAuxReviewFinished→renderRecognitionStatus`(3401)。
+   合成 `refresh(scope)` 后模块内部仍是一条 if 链——**调用点失去语义**，§八 ③ 的"每键 callers"清册
+   塌成一条大名单，两向机检失去分辨率（"把 T 改标 C 必须逐个写调用者"这条防线随之失效）。
+④ 数字收益是假的：A 形态的 24 只是把 14 个身份藏进一个 `scope` 字段。
+   导出面按"身份"算一个都没少，只是变得不可机检——与规则①（`export-ratchet.md` §一
+   「一个能力键不许兼两种语义」）同一条：**不许靠字段猜调用点**。
+```
+
+**判据应描述事实，不该反过来逼事实。** C 是"为判据加键"（C 形态 `refresh()` 无参全量重画 = 纯数字达标、
+不吸收任何 C、还多一个语义含糊的键），所以不走。
+
+```
+终态（2026-11-01 版）≡ T == 0（外壳不再有任何函数级转发）
+     ∧ L ⊇ {init, enter}，额外 L 键必须点名（今天空表）
+     ∧ kinds 与 names 两向相等（36 == 36，无孤儿键、无未分类）
+     ∧ 每个 C 的 callers 非空
+     ∧ kinds 表里 `death:` 字段 0 个（T 归零的机检形态：字段整个消失，不是留空数组）
+
+数字由设计决定，不由指标决定。C 多一个少一个，不改"收干净了没有"这个判断。
+```
+
+**`refresh` 的合法复活路径**（写下来挡住"下次又有一个人想加"）：某个视图真需要"状态变了、重画一下"
+的入口时，它进**点名表**（`额外 L 键`）+ 写清三件事——为什么现有的 C 键吃不下、payload 是什么、
+callers 是谁；过不了这三关就不加。今天点名表是**空表**。
 
 ### 为什么 `3` 做不到（判据作废，理由是历史，留着防再犯）
 
@@ -357,28 +416,21 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 入口要它：   recognizePage（审校面板的「重新识别」）
 ```
 
-**终态判据改成「T 归零」，不再用「总数 X」**（2026-10-30 裁定，作废「导出到 3」与「终态 19」）：
-
-```
-终态 ≡ T == 0（外壳不再有任何函数级转发）
-     ∧ L == 3（init / enter / refresh）
-     ∧ C == 清册里那一批（每键 callers + Capability-Reason，两向机检）
-
-数字由设计决定，不由指标决定。C 多一个少一个，不改"收干净了没有"这个判断。
-```
+**「T 归零」这条判据是 2026-10-30 定下的**（作废「导出到 3」与「终态 19」），
+`L == 3` 那一半由 2026-11-01 的刀 11 裁定改成 `L ⊇ {init, enter}`（见上）；完整版只剩上面那一处，
+**本节不再有第二份抄本**（同一判据写两遍就是下一个漂点）。
 
 **为什么不是数字**：今晚三次同型（刀 8 的三个函数、9.6 的两个泵、9.2 的三个宿主）说明——
 宿主搬不动时，杀掉一个键就多一个能力键，总数只是换了个类；拿数字当目标会逼人为凑数做设计选择
 （我们差点为 3 凑一次）。而「T 归零」可判定，且正是 R8 的初心：外壳不许伸手进模块内部，
 只能按语义叫它。
 
-**防漂的替代**（不留空档）：① `R8.total` **只降不升**（今天 61，往后每个数都不许回升）；
+**防漂的替代**（不留空档）：① `R8.total` **只降不升**（峰值 61，今天 36，往后每个数都不许回升）；
 ② 每加一个 C 键 = 改清册 + 写 `Capability-Reason`，两向机检（§八 ③）会拦"清册被随手放宽"。
 
-> 现阶段的**推导值**（预测，不是目标）：**24 = C 21 + L 3**。它比最初的 19 多 5：
-> 9.2 的 2 个（pollTask 那两个进度写点被判错类）+ 9.3 的 3 个（`onTaskFinished` /
-> `onWorkflowLoaded` / `onLayoutDetectStarted`）——都是**诚实税**，不是设计变松。
-> 若 9.5 的图判定 `checkSelection` 留外壳，它转 C，推导值 25。
+> **推导值的正确读法**（别再抄成目标）：`b61634d` 实测 **36 = C 34 + L 2**。
+> 历史上它被写成 19 / 21 / 22 / 24 / 25 / 35 都只是各刀当时的算术后果，逐一作废。
+> 它随 C 变，所以**任何一句"终态 N"都必须紧跟一句"这是②不是①"**。
 
 ## 八、机检（四条 + 一条配套的文档判据，交 TestDev）
 
@@ -399,9 +451,11 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
      a) 每个 C 键的 effective callers ⊆ 清册的 callers（多一个没登记的调用者 → 红）
      b) 清册里的每个 caller 必须真的调用它（虚报 → 红）
      —— 这样"把 T 改标成 C"就必须把调用者逐个写进清单，评审能看见，不会悄悄发生
-④ refresh 的 scope 枚举：PAGES_REFRESH_SCOPES 登记（≤6 个），只许是"数据变化域"
-     （pages / setup / margin / recognition / page-number / jobs）
-     出现操作型 scope（delete / apply / run / recognize）→ 红（那是 pagesOp(op,arg) 的变体）
+④ ~~refresh 的 scope 枚举：PAGES_REFRESH_SCOPES 登记（≤6 个）~~
+     **作废（2026-11-01 刀 11 裁定）**：`refresh` 不建 ⇒ 没有 scope 可枚举。
+     但这条的**意图**保留成一条反向闸：`pages-view.js` 的导出名里若出现 `refresh`、
+     或任何 C 键出现 `scope:` / `kind:` / `op:` 这类"该走哪条路"的字段 → 红。
+     （它防的正是被否掉的两种形态：`refresh({pages:true})` 与 `pagesOp(op,arg)`）
 ```
 
 **为什么 ② 必须现在就做**：死亡刀号今天只是注释，没有任何闸；20 个键已经过了自己写的死期还活着
@@ -538,19 +592,17 @@ refreshMarginTiles ×2 · refreshLayoutDetectEntry ×1 · renderStepPanels ×1
 这些是 app.js 的**内部函数**（不占 R8、不占 R3，删了不会让任何闸变绿，也不会让任何数字动）。
 所以**不并在刀 9 里做**，但也别忘——留到最后会让"app.js 还有什么用"没法回答。
 
-**实测（`a167fc6`，口径与命令见下）**：
+**复测（`b61634d`，app.js 12,866 行；三栏口径同上）**：顶层 `function` 声明去重 **381** 个，
+**production 代码 0 引用 8 个 + 1 个只被测试源码断言撑着 = 9 条，一条没少**（只是行号全移了）：
 
 ```
-app.js 列 0 的 `function` 声明 **587** 个；全仓按**词边界**扫，扣掉
-  ① 定义位（`function <name>(`）
-  ② 属性位（`window.<name>` / `obj.<name>`；注意 `...<name>(` 是**展开调用**，不是属性位）
-⇒ 0 引用 **9** 个：
-
-ensureReviewPage(6206) · pendingBlockCount(6606) · textAdvance(7335) · queueKey(7647) ·
-textRows(8923) · handleDiffMarkClick · selectLineInTextarea · punctGroupByKey
-divergenceCandidatesOn(2189) —— **不能直接删**：tests/integration/test_ui_assets.py:778 断言
-                              `"function divergenceCandidatesOn(" in script`
+ensureReviewPage(5708) · pendingBlockCount(6108) · textAdvance(6837) · handleDiffMarkClick(7143) ·
+queueKey(7149) · selectLineInTextarea(8409) · textRows(8425) · punctGroupByKey(12102)
+divergenceCandidatesOn(2187) —— 只被 tests/integration/test_ui_assets.py:797 的源码断言撑着
 ```
+
+**口径提醒**：把 `tests/` 算进"引用"时，`divergenceCandidatesOn` 就不是 0 引用；把它算进"待清理"时，
+它就是 0 引用。**同一个名字两个数，取决于你数哪棵树**——所以清理账要两列并列写，别只写一个数。
 
 口径的坑（我自己第一次扫错了一次，值得写下来）：只用 `(?<![\w$.])name` 会把
 `list.append(...statsRow(…))` 里的**展开调用**当成属性位漏掉（`statsRow` 明明是活的），
@@ -602,27 +654,31 @@ divergenceCandidatesOn  → 先判那条断言还有没有意义：它断的是*
 刀 8 是"把 pages 的 13 处写点换成 3 个能力调用"，不是"搬三个函数"——所以 app.js 行数不该降。
 若将来有人报"刀 8 搬走了 applyPackageMode"，与这个行数矛盾，一查就出来。
 
-## 十三、另案：deps 表里的死键（23 个，2026-10-30 实测）
+## 十三、另案：deps 表里的死键（**13 个**，2026-11-01 复测）
 
-**口径**：`window.PagesView?.init({ … })` 里的每个键，在 `pages-view.js` 里搜 `injected.<键>`；
-0 次 = 模块从未读过（无解构、无 `injected["x"]`，已核）。
+**口径**：`window.PagesView?.init({ … })` 里的每个键，在 `pages-view.js` 里搜 `injected.<键>` /
+`injected["<键>"]`；0 次 = 模块从未读过。
 
 ```
-实测（`b1c22e4`）：deps **219** 键，**22 个从未读**（`main@e9ddc2a` 时是 218 / 23——9.1 加了 `queueAfterSteps`，它被读，所以未读数反而少 1）：
+实测（`b61634d`）：deps **186** 键，**13 个从未读**：
 
-pageMarginStorageKey · pageOverlayStorageKey · renderRecognitionSettings ·
-AUX_TEXT_LAYER_SECONDS_PER_PAGE · PAGE_SUGGESTION_CONCURRENCY · getPageSuggestionActive ·
-pageSuggestionPending · pageSuggestionQueue · getSelectionAnchor · getSetupSuggestions ·
-getSetupSuggestionsLoaded · getSuggestionScanTimer · renderPages · divergenceChip · handleTileClick ·
-recognitionChip · reviewBadge · startTileMarginDrag · tileClassName · tileTitle · workflowChip ·
-token · setPageBlockPending
+pageMarginStorageKey · pageOverlayStorageKey · renderRecognitionSettings · AUX_TEXT_LAYER_SECONDS_PER_PAGE ·
+getSetupSuggestions · divergenceChip · recognitionChip · reviewBadge · tileClassName · tileTitle ·
+workflowChip · token · setPageBlockPending
 ```
+
+历史（**别照抄旧名单**，每刀都在掉键）：`b1c22e4` 是 219 / 22，`e9ddc2a` 是 218 / 23。刀 9.4–10.2
+搬走队列与渲染子系统时，`PAGE_SUGGESTION_CONCURRENCY` / `getPageSuggestionActive` / `pageSuggestionPending` /
+`pageSuggestionQueue` / `getSuggestionScanTimer` / `renderPages` / `handleTileClick` / `startTileMarginDrag` /
+`getSelectionAnchor` / `getSetupSuggestionsLoaded` 这 10 条**跟着一起没了**——不是被单独删掉的，
+是搬家时注入表整段重写带走的。**所以清理账每次都要重扫，不能按旧清单减。**
 
 **为什么它今天不会被发现**：R13 只查「缺键」（`injected.x` 必读形态而 deps 没这个键 → 红），
 **多出来一个键不红**。于是注入面只涨不消 —— 和「豁免表只涨不消」「0 引用函数没人删」是同一族。
 
 ```
-到期点：刀 10（收口）与 §十一 的零引用函数一起清；清完再开「deps 多键 = 红」。
-注意：删 `renderPages` 这类键之前要确认模块里没有**同名本地实现**（pages-view 自己有 renderPages，
-      这个 deps 是自环）；`getSuggestionScanTimer` 已在刀 10 的清单里。
+到期点：刀 11（收口后清理，与 §十一 的 9 条零引用函数同批）；清到 0 再开「deps 多键 = 红」。
+注意：删键前先确认模块里没有**同名本地实现**（历史上 `renderPages` 就是这种自环，已在 10.2 带走）。
+      这 13 条today 全是"注入面残留"，不是自环（复测时已按 `injected.<键>` 逐条核过）。
 ```
+
