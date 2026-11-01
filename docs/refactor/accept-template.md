@@ -19,6 +19,44 @@
 
 ---
 
+## 0.5 施工与推送纪律（2026-11-02 起，硬规则）
+
+这两条不是建议，是**事故换来的**（当天 QA 直接推 `d7c44fc` 到 origin，Chief 的推送被 GitHub 拒；
+两个 agent 在主树 `git add` + `commit.sh`，撞 `index.lock` 十几分钟，杀了三条卡死的提交链才解开）。
+
+```
+① 任何改动在**自己的 worktree** 里做，提交也在自己的 worktree 里做。
+   **不许直接改主树、不许在主树 git add / commit**——主树是集成树（多人共用），
+   在主树提交会撞 index.lock，还会把别人未提交的改动卷进自己那一笔。
+   要清自己的状态只许 `git stash push -- <自己的路径>`；
+   `git reset --hard` / `git checkout -- .` / `git clean -fd` / `commit --amend` 一律禁用。
+② **push 只有 Chief 做**。需要进 main 的，把 **sha 或路径清单**交给 Chief，由它做集成与推送。
+   任何 Bot（含 DevLead / Builder / TestDev / QA）不得 `git push`、不得 `git push --no-verify`。
+```
+
+违反这两条的提交，即使内容对，也按**未交付**处理：没人知道它进了哪棵树、有没有经过集成闸。
+
+## 0.6 「我的活进主线没有」怎么判（2026-11-02 更正，替代 merge-base）
+
+**不要用** `git merge-base --is-ancestor <sha> origin/main`——我们的集成方式是 **cherry-pick**，sha 会被重写
+（同一笔 `5e2a995` 进 main 后是 `223932d`：同 subject、同 tree、**sha 不同**）。这条在工作流里**必然假阴**，
+会让人以为自己没进主线，然后重复提交/重复推送。
+
+正确判法（两条，任选，都要先 `git fetch -q origin`）：
+
+```bash
+git fetch -q origin
+
+# ① 内容比对：输出为空 = 你改的那几个文件的内容已在主线（sha 可以不同）
+git diff --stat <你的sha> origin/main -- <你改过的文件…>
+
+# ② 补丁比对：没有以 "+" 开头的行 = 这笔补丁已进主线
+git cherry -v origin/main <你的sha>
+```
+
+判据写进报告时用：**「文件内容 diff 为空」+ 比了哪几个文件**；不要写「sha 在主线里」。
+两条结论不一致时以 `git diff --stat` 的文件内容为准（它比的是内容），并列出文件清单。
+
 ## 1. 不变的部分（每刀都一样，别改判据）
 
 | 项 | 判据 | 为什么是它 |
