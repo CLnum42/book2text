@@ -2178,17 +2178,6 @@ const DIVERGENCE_LEVEL_LABELS = {
   format_only_differs: "仅格式差异",
 };
 
-/**
- * 双引擎策略（任务 54）：`mark` 只标分歧（默认）/ `candidates` 分歧行给候选（原行为）。
- *
- * 这只影响**审校界面怎么显示**：数据里的 `aux_text` / `diff_status` 始终照写，
- * 换成候选的接口也一直在。两种策略都不会自动采用任何一方（实测第二引擎更弱）。
- */
-function divergenceCandidatesOn() {
-  const settings = (currentProject && currentProject.settings) || {};
-  return settings.dual_engine_strategy === "candidates";
-}
-
 /** 把分歧概况说成一句人话；没有分歧时返回空串。 */
 function divergenceSummary(divergence) {
   const parts = [];
@@ -3831,15 +3820,6 @@ function auxEstimateText(pages) {
     textPages * AUX_TEXT_LAYER_SECONDS_PER_PAGE + enginePages * AUX_SECONDS_PER_PAGE;
   return formatDuration(seconds);
 }
-
-/** 第二引擎复核全书：只跑还没复核过的已识别正文页。 */
-
-/** 复核任务在跑：在识别步里显示"做到哪、还要多久"。 */
-
-/**
- * 重置为「本页自动」：先 PATCH 回 auto（丢掉自定义），再按检测行拟合。
- * 只处理 auto / inherit / custom 的页；不适用不动。
- */
 
 /**
  * 任务收尾 / 页面重新打开时从服务端重读版心状态（自动推算写在识别子进程里）。
@@ -5699,27 +5679,6 @@ async function openPageDetail(pageNo) {
   savePosition("review", pageNo);
 }
 
-/**
- * 进审校视图时先挑一页：上次那一页 → 第一个还没审完的页 → 第一页。
- *
- * 挑选顺序与"继续"一致（说明书 7.2 / 7.4）：用户从项目库点进来，
- * 落在最可能还要干活的那一页上。
- */
-function ensureReviewPage() {
-  if (!currentProject || detailPageNo !== null) return;
-  const pages = currentProject.pages.filter((page) => page.include);
-  if (!pages.length) return;
-  const last = currentProject.last_page_no;
-  const target =
-    (last && pages.find((page) => page.page_no === last)) ||
-    pages.find((page) => {
-      const review = page.review || {};
-      return (review.unreviewed || 0) > 0 || (review.uncertain || 0) > 0;
-    }) ||
-    pages[0];
-  openPageDetail(target.page_no);
-}
-
 function closePageDetail() {
   pendingPageAux = null;
   detailPageNo = null;
@@ -6103,10 +6062,6 @@ function pendingPageReasons() {
   const recognition = page ? recognitionOf(page) : null;
   if (recognition && recognition.status === "failed") reasons.push("识别失败");
   return reasons;
-}
-
-function pendingBlockCount(blocks) {
-  return blocks.filter(blockNeedsReview).length;
 }
 
 /**
@@ -6834,14 +6789,6 @@ function charAdvance(ch) {
   return 0.60;
 }
 
-function textAdvance(text, start = 0, end = null) {
-  const value = String(text || "");
-  const stop = end === null || end === undefined ? value.length : Math.min(end, value.length);
-  let total = 0;
-  for (let i = Math.max(0, start); i < stop; i += 1) total += charAdvance(value[i]);
-  return total;
-}
-
 /**
  * 单行 LCS，返回 A 上需要标记的字符区间。
  *
@@ -7140,15 +7087,7 @@ function activateDiff(blockId, lineIndex, spanIndex = 0, options = {}) {
   }
 }
 
-function handleDiffMarkClick(blockId, lineIndex, spanIndex) {
-  activateDiff(blockId, lineIndex, spanIndex);
-}
-
 // ---------------------------------------------------------------- 页内差异队列（任务 65）
-
-function queueKey(item) {
-  return `${item.blockId}::${item.lineIndex}`;
-}
 
 function buildDiffQueue() {
   const items = [];
@@ -8405,25 +8344,10 @@ function diffRowFragment(mark) {
   return fragment;
 }
 
-/** 在编辑框里选中某一行——用浏览器原生的选中当"高亮"，不另做一套。 */
-function selectLineInTextarea(textarea, lineIndex) {
-  const lines = textarea.value.split("\n");
-  if (lineIndex < 0 || lineIndex >= lines.length) return;
-  let start = 0;
-  for (let i = 0; i < lineIndex; i += 1) start += lines[i].length + 1;
-  textarea.focus();
-  textarea.setSelectionRange(start, start + lines[lineIndex].length);
-  textarea.scrollIntoView({ block: "center", behavior: "smooth" });
-}
-
 /** 长文本截断（只在界面上截，标题里带全文）。 */
 function truncate(text, limit) {
   const value = String(text);
   return value.length > limit ? `${value.slice(0, limit)}…` : value;
-}
-
-function textRows(text) {
-  return Math.min(Math.max(String(text).split("\n").length, 2), 14);
 }
 
 /** 编辑框自适应高度：3–20 行；超过 20 行内部滚动（design 3.3）。 */
@@ -12099,10 +12023,6 @@ function savePunctReviewSet(set) {
   }
 }
 
-function punctGroupByKey(key) {
-  return (punctGroupsData?.groups || []).find((group) => group.key === key) || null;
-}
-
 // ── 整行乱码（2026-10-28）────────────────────────────────────────────────
 //
 // 识别有时把一整行打散成字母碎片（`phind,  n ons o ns a n onad`），候选是完整句子。
@@ -12510,20 +12430,16 @@ function boot() {
     openTaskDrawer: openTaskDrawer,
     pageHasFitLines: pageHasFitLines,
     pageMarginMethod: pageMarginMethod,
-    pageMarginStorageKey: pageMarginStorageKey,
-    pageOverlayStorageKey: pageOverlayStorageKey,
     parsePageRange: parsePageRange,
     recognitionOf: recognitionOf,
     refreshPageStates: refreshPageStates,
     renderProjectMeta: renderProjectMeta,
-    renderRecognitionSettings: renderRecognitionSettings,
     renderTask: renderTask,
     queueAfterSteps: queueAfterSteps,      // 刀 9.1：enter() 里延迟 loadLanguageSummary 用它
     showError: showError,
     showView: showView,
     startTaskPolling: startTaskPolling,
     AUX_SECONDS_PER_PAGE: AUX_SECONDS_PER_PAGE,
-    AUX_TEXT_LAYER_SECONDS_PER_PAGE: AUX_TEXT_LAYER_SECONDS_PER_PAGE,
     BLOCK_TYPE_LABELS: BLOCK_TYPE_LABELS,
     PAGE_TYPE_LABELS: PAGE_TYPE_LABELS,
     PAGE_TYPE_ORDER: PAGE_TYPE_ORDER,
@@ -12551,7 +12467,6 @@ function boot() {
     getRecStatusTimer: () => recStatusTimer,
     getSelectedPages: () => selectedPages,
     getSelectionAnchor: () => selectionAnchor,
-    getSetupSuggestions: () => setupSuggestions,
     getSetupSuggestionsLoaded: () => setupSuggestionsLoaded,
     getTaskJobId: () => taskJobId,
     visiblePageNos: visiblePageNos,
@@ -12592,7 +12507,6 @@ function boot() {
     buildTile: buildTile,
     applyTileState: applyTileState,
     adoptAllHighSuggestions: adoptAllHighSuggestions,
-    divergenceChip: divergenceChip,
     openPageDetail: openPageDetail,
     openPageNumberPanel: openPageNumberPanel,
     openPageNumberReview: openPageNumberReview,
@@ -12607,19 +12521,12 @@ function boot() {
     openAssignPanel: openAssignPanel,
     toggleAssignList: toggleAssignList,
     paintTileSuggestionMark: paintTileSuggestionMark,
-    recognitionChip: recognitionChip,
     // 刀 7：recognizePage 已搬进模块（外壳改调模块导出的同名键）；
     // 这里换上新能力 showPageDetailError（写 #page-detail-error 的那一个动作）
     showPageDetailError: showPageDetailError,
-    reviewBadge: reviewBadge,
     setMarginJudgementSetting: setMarginJudgementSetting,
     setPageZoom: setPageZoom,
-    tileClassName: tileClassName,
-    tileTitle: tileTitle,
-    workflowChip: workflowChip,
     busyPages: busyPages,
-    token: token,
-    setPageBlockPending: (value) => { pageBlockPending = value; return value; },
     setPanelAccordionProject: (value) => { panelAccordionProject = value; return value; },
     setMarginAuditLoading: (value) => { marginAuditLoading = value; return value; },
     setLayoutBlockPayload: (value) => { layoutBlockPayload = value; return value; },
