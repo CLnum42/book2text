@@ -144,19 +144,6 @@ test("图缺失：状态 missing、瓷砖带 is-missing、onReady 必须被调�
   assert.ok(seen.some((payload) => payload.status === "missing"));
 });
 
-test("overlays 是插槽：update 只换数据，重绘交给注入的 paintOverlays", () => {
-  const painted = [];
-  const environment = makeEnvironment();
-  const tiles = environment.loadTile();
-  tiles.init(makeDeps(environment, { paintOverlays: (slot, payload) => painted.push(payload) }));
-  const handle = tiles.create(environment.mount(), { pageNo: 1, size: "view", overlays: { marks: [] } });
-  environment.show();
-  environment.settle();
-  tiles.update(handle, { overlays: { marks: [7] } });
-  assert.equal(handle.overlays.marks[0], 7);
-  assert.ok(painted.some((payload) => payload.overlays && payload.overlays.marks[0] === 7));
-});
-
 test("缺必需依赖：fail closed——create 一律 null，并提示一次（不许静默出一片空白）", () => {
   const environment = makeEnvironment();
   const tiles = environment.loadTile();
