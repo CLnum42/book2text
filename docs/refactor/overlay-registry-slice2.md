@@ -132,32 +132,50 @@ deps   app.js:10152 / 10155 两个键（clearPageBlocks / renderPageBlocks）⇒
 
 ## 3. 还债：143 行避让排布 + 拆掉 `drawDiffLayer` 耦合
 
-### 3.1 先拆 `drawDiffLayer`（顺序不能反）
+### 3.1 拆 `drawDiffLayer` 耦合（**笔 A 已落**：`2df2cd0` 实现 + `eec53b9` 闸）
 
-**顺带修一个真实的多余重画（Chief ④，事实我核过并按实际写）**：`scheduleOverlayLayout` 成功那帧调
-`drawDiffLayer()`（6059），而 `scheduleOverlayLayout` 的两个主人里有一个是**网格瓦片**（`renderPageBlocks:3089`）
-⇒ **tile 每画一页，都在重画审校视图的差异层**。拆完之后这条副作用消失，这不是纯搬家。
+**为什么必须先拆**：`scheduleOverlayLayout` 有两个主人——块框 overlay（`renderPageBlocks:3089`）与审校的
+`#detail-overlay`；它成功那帧调 `drawDiffLayer()`。直接搬进 registry = 把审校视图的副作用搬进共享模块。
 
-⚠ 一处事实更正（Chief 原文说 `observeOverlaySize` 只被 `renderPageBlocks` 调）：它在当前树上有**两个**调用点——
-`3086`（网格瓦片，`renderPageBlocks` 尾部）与 **`6512`（审校 `drawDetailBlocks` 尾部）**。
-所以"每画一页重画差异层"的成本来自 `scheduleOverlayLayout`（3089），不是来自 `observeOverlaySize` 的调用面；
-结论不变（拆完省掉的是瓦片那次多余的 `drawDiffLayer`），但别把两个函数混着说。
+**落成什么形状**（Builder 实际实现，我核过）：
 
 ```
-现状：scheduleOverlayLayout(6052–6064) 成功那一帧调 drawDiffLayer()（6059）；
-      而 scheduleOverlayLayout 有两个主人——块框 overlay（3089）与审校的 #detail-overlay（5215/5232/5257）。
-⇒ 直接搬进 registry = 把审校视图的副作用一起搬进共享模块（Chief ② 的原话）。
-做法：先单独一笔把 #detail-overlay 的"摆号 + 重画差异"收成本地调度器（review 侧自己排帧、自己调 drawDiffLayer），
-      让 scheduleOverlayLayout 只剩块框 overlay 一个主人；下一笔再把它搬进 registry。
-判据：拆完那一笔，`drawDiffLayer` 的调用点里不再有"由 overlay 布局触发"这条路径；
-      review 侧仍有等价行为（真机：审校页滚动后差异层与顺序号同帧更新）。
-
-**拆完必须先跑一次机检（Chief ⑤）**：审校视图的差异层仍正常——`#detail-overlay` 上的顺序号会摆、
-差异层会重画；跑法用现成的 review 侧测试（若没有就补一条最小断言：`scheduleDetailOverlayLayout` 后
-`drawDiffLayer` 被调用 1 次）。**这一步放在"搬 143 行"之前单独绿**，否则剪断联动时没人知道是哪一刀剪的。
+scheduleOverlayLayout(overlay)          共享调度器（**6052**），拆完只剩"摆号"——`drawDiffLayer()` 已从它体内移出
+scheduleDetailOverlayLayout(overlay)    审校本地调度器，摆完在**同一个 rAF** 里调 drawDiffLayer()
+                                       两条共用 `overlay._layoutToken` ⇒ 同一容器永远只有一个调度在跑
+observeOverlaySize(overlay, schedule)   第二参数 + `overlayScheduleByTarget` WeakMap 按目标分派
+                                       ⇒ "同一个观察器服务两种层级"是**显式**的，不靠猜
 ```
 
-### 3.2 避让链搬家（逐函数实测，`059955c`）
+**审校侧的调用面（实测 `eec53b9`：四处显式 + 一处观察器分派）**：
+
+```
+5215  scheduleDetailOverlayLayout(el("detail-overlay"))      进入审校视图
+5232  scheduleDetailOverlayLayout(el("detail-overlay"))      版心开关 on
+5257  scheduleDetailOverlayLayout(el("detail-overlay"))      块框开关 on
+6535  observeOverlaySize(overlay, scheduleDetailOverlayLayout)   观察器按目标分派
+6538  scheduleDetailOverlayLayout(overlay)                   drawDetailBlocks 尾部（切页后重画差异层）
+```
+
+**⚠ 漏改的后果是静默失效，不是红**：只改前三处，**切页（6538）与缩放（6535）两条路径不会重画差异层**——
+差异标记是 px 定位、按 canvas 宽度算的，不重画就停在旧位置，而且**没有任何断言会红**。
+这句话比清单本身重要，复核时按行号逐个点。
+
+**顺带修掉一个真实的多余重画（Chief ④）**：拆之前，tile 每画一页 → `scheduleOverlayLayout` 成功那帧 →
+`drawDiffLayer()`（重画**审校**的差异层）。拆完这条副作用消失 ⇒ 这不是纯搬家，是修 bug。
+（事实更正：`observeOverlaySize` 本来就有两个调用点——`3086` 网格瓦片与 `6535` 审校 `drawDetailBlocks`；
+成本来自 `scheduleOverlayLayout`，不是来自观察器的调用面。）
+
+**拆完必须先跑一次机检（Chief ⑤）**：审校的差异层仍正常。现在有闸了——`eec53b9` 断言三件事：
+共享调度器里 `drawDiffLayer` **0 次**、审校本地调度器 **1 次**、调用点只走 `scheduleDetailOverlayLayout` 版本。
+补一条最小行为断言即可：`scheduleDetailOverlayLayout` 后 `drawDiffLayer` 被调 1 次。
+
+**笔 B 还剩的**：把 `scheduleOverlayLayout` / `observeOverlaySize` / `layoutOverlayAnnotations` / `findOrderSpot` /
+`findLabelSpot` / `pxRect` / `rectsOverlap` / 两个常量（共 161 行）搬进 registry，并按契约 §3 导出
+`layout(container, {lineBboxes})` 与 `schedule(container, {onLaidOut})`；审校侧改为
+`OverlayLayer.schedule(el("detail-overlay"), { onLaidOut: drawDiffLayer })`——**`onLaidOut` 这个参数就是为本处设计的**。
+
+### 3.2 避让链搬家（逐函数实测；笔 B 开工前按当时树复核一遍）
 
 | 函数 | 行 | 行数 | 说明 |
 |---|---|---|---|
