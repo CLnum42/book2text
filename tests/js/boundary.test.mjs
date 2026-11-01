@@ -3920,7 +3920,8 @@ const VIEW_EXPORTS = {
       checkSelection: { kind: "C", callers: ["setupReviewControls"], reason: "按钮 #finish-check-engine 在 index.html:1721（chrome，view section 之外）⇒ 模块引用越 R3，收成能力" },
       onRecognitionFinished: { kind: "C", callers: ["pollTask"], reason: "外壳只知「这几页刚认完」，重画什么由模块决定（收成能力后外壳仍是调用者）" },
       onPageListChanged: { kind: "C", callers: ["renderProject", "finishShowFallbackPages"], reason: "页面列表改了：整格重画" },
-      onProjectPagesReloaded: { kind: "C", callers: ["applyHeaderFooter", "controlJob"], reason: "页面数据大面积变了：重拉列表再重画" },
+      // 刀 D：applyHeaderFooter 搬进 structure-tools.js，壳侧的调用者变成 boot 里那条 afterApply 闭包
+      onProjectPagesReloaded: { kind: "C", callers: ["boot", "controlJob"], reason: "页面数据大面积变了：重拉列表再重画" },
       onAuxReviewFinished: { kind: "C", callers: ["waitForAuxThenReview"], reason: "复核收尾：识别步状态要跟着变" },
       onPageStatesRefreshed: { kind: "C", callers: ["pollTask", "refreshPageStates"], reason: "页面状态刷新了：就地同步瓷砖状态" },
       onAutoApplyStatusChanged: { kind: "C", callers: ["loadAutoApplyStatus"], reason: "自动应用状态变了：右栏角标重画" },
