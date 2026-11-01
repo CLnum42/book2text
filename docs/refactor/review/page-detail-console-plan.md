@@ -203,12 +203,22 @@ S4 第二引擎复核（170） aux 面板 + 逐行 + 收尾后刷新
 **形态**：分组算成纯函数，渲染只拿结果。
 
 ```
-function reviewTreeGroups(pages, chapters)   // 函数体 14 行 + 注释 5 行 ≈ 19 行
+function reviewTreeGroups(pages, chapters)   // 函数体 14 行 + 注释
   · chapters 空 → [{ id:null, title:null, pages }]（平铺）
   · 否则：每个章一组（空章跳过）+ 末尾「未归章」一组（page.chapter 不在 chapters 里）
-renderReviewTree：删掉内联的 filter/continue（≈−25 行），改成 for (group of reviewTreeGroups(...))（+10）
-净：+1 个顶层函数 / app.js 净 ±5～10 行（实测对账）；deps 不变 173
+renderReviewTree：分组交给纯函数，自己只渲染
 ```
+
+**预测 vs 实测**（落盘 `5e2a995` / 合入 `223932d`；预测是写书时的估，不是验收数）：
+
+| 项 | 预测（写书时） | 实测 | 差在哪 |
+|---|---|---|---|
+| 顶层函数 | 501 → 502（+1） | **496 → 496** | +`reviewTreeGroups`，−`treeChapterOfPage`（分组函数接管后它 0 引用；留着会撞刀 11 闸②「0 引用顶层函数 = 红」） |
+| app.js 行数 | ±5～10 | **12,606 → 12,636（+30）** | 函数替换 +16 · `renderReviewTree` +9 · `syncReviewTreeToPage` +2 · `updateReviewTreeAfterAck` +3 |
+| `renderReviewTree` | ≈ −15 | **+9** | 书的 −25 是拿「删内联 filter/continue」估的；实际能删的只有 `chapterPages` 两行与 chapters 空支两行，章头/页行/条目行本来就该留在 render 里 |
+| deps | 173 | **173** | — |
+
+⇒ **账按 diff 记，不按清单记**：函数数看差集（`+reviewTreeGroups, −treeChapterOfPage`），不看总数；行数看 `git diff`，不看估。
 
 **判据（可红，两条都要）**：
 
@@ -225,10 +235,11 @@ renderReviewTree：删掉内联的 filter/continue（≈−25 行），改成 fo
 
 ```
 T0（树修复）→ 清洗刀（差异队列/候选/4 个零引用 id）→ S1 → S2 → S3 → S4
-基线（**刀 A 已在 T0 之前落**，113a552 + 4231b03）：
-  T0 开工树 = 501 函数 / app.js 12,658 / deps 173  ⇒ T0 之后预计 502 函数、12,653～12,668、deps 173
-  纯函数 reviewTreeGroups：函数体 14 行 + 注释 5 行 ≈ 19 行；renderReviewTree 净 ≈ −15 ⇒ app.js 净 ±5～10
-  ① 主刀的 48 函数 / 1,332 行是**函数集合**，不随 501/502 变；开工时按当时树重贴 app.js 函数数
+基线链（按实际落盘顺序，不按写书时的预测）：
+  刀 A（113a552 + 4231b03）：505 → 501 / app.js 12,658 / deps 173
+  刀 B（1c9fb42 + fd3c392）：501 → 496 / app.js 12,606 / deps 173
+  T0（5e2a995，合 223932d）：496 → 496 / app.js 12,636 / deps 173（预测 502 作废，见 §8 两栏表）
+  ① 主刀的 48 函数 / 1,332 行是**函数集合**，不随 496/501 变；开工时按当时树重贴 app.js 函数数
 每一刀落完重贴实测值；本文件的 505 / 12,755 只在 4676772 上成立；刀 A 落完是 501 / 12,658（删 106 + 加 9 = 净 −97）。
 ```
 
