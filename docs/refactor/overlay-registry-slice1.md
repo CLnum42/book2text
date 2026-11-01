@@ -1,5 +1,13 @@
 # Overlay registry 第一片施工书（preview × blocks）
 
+> **版本 v1.2（2026-11-02）**：v1.1 → v1.2 两处更正（DevLead 独立核出、Chief 在 `13987ce` 复核）——
+> ① `page-tile.js` 的钩子是 **7 行不是 3 行**（catch/notify 是给它专用的），净删 **−11** 不是 −7；
+> ② 酸测试⑤ 的 `srcCount == 1` **判不出来**（fixture 不建 PageTile 时是 0），改成判 **Δ**。
+> 另外补三条 CSS 事实（`app.css:899–901`）⇒ 容器必须挂在 `.preview-page` 子树里（§2.1）。
+> **已独立核对（DevLead，`13987ce`）**：`preview-view.js` 的 183/191/363/366/371/372/394 与
+> `page-tile.js` 的 243/256/257/276/277 行号全对；CSS 结论（容器带 `page-overlay page-overlay--readonly`
+> 且挂在 `.preview-page` 子树 ⇒ `app.css` 0 行改动）成立；结构判据（只 append、不 querySelector）成立。
+>
 > **版本 v1.1（2026-11-01）**：Chief 批了，附四条条件；v1.1 已全部吃进来——① 酸测试①从"自己跟自己比"改成三条真断言 + 变异跟到能红的那条；② Ⅱ 的变异改成"删同版本早退"；③ 指纹成本开工先量；④ **容器 class 必须照旧带 `page-overlay page-overlay--readonly`**（v1 那条只加 `.overlay-layer` 会掉类型色/边框/只画不可点，见 §2.1）。
 > **状态：已批准，等 Builder 落盘**（§8 ⑤）。
 > 上位契约：`docs/refactor/overlay-registry-contract.md`（2026-11-01 批准）。**本片只做它 §6 的"片 1"**。
@@ -40,8 +48,9 @@
 |---|---|---|---|
 | `overlay-registry.js`（新） | 骨架 + 一个渲染器 + 指纹 + 诊断 | **≤ 240 行**（骨架 90 / blocks 渲染 60 / 指纹与稳定序列化 30 / stats 与 unmount 30） | `wc -l`；超 240 要写明多在哪 |
 | `preview-view.js` | 删自建 `.page-overlay`（181–184）；`tile.append` 去掉 overlay（191）；`paintPreviewTile` 改走 registry（363–372）；清屏路径改 `unmount`/`paint(active:[])`（394） | **净 −8 ~ −12 行** | `wc -l` 前后差；`page-overlay` 在该文件 0 次 |
-| `page-tile.js` | 删 `injected.paintOverlays` 钩子（**207–209**） | **−3 行**（必删） | 全仓 `paintOverlays` 0 次 |
+| `page-tile.js` | 删 `injected.paintOverlays` 钩子——**整个 if 块 207–213（7 行）**：`:207` if · `:208` try · `:209` 调用 · `:210` catch · `:211` notify · `:212` `}` · `:213` `}`。**catch/notify 是给这个钩子专用的，没有别的 try 可挂，必须一起删** | **−7 行**（必删） | 全仓 `paintOverlays` 0 次 |
 | `page-tile.js` | 顺带删随钩子一起死的字段：`overlays: opts.overlays`（**256**）· `state: null`（**257**）· `"overlays" in changes`（**276**）· `"state" in changes`（**277**） | **−4 行**（建议同批） | 不删 = 留下一条没人读的死数据（本项目的"只涨不消"） |
+| `page-tile.js` **合计** | 钩子 7 + 死字段 4 | **−11 行** | 净行数按 `wc -l` 前后差 |
 | `index.html` | 在 **page-tile.js 之后、step-timing.js 之前**加一行 | **+1 行** | 顺序见 §8 撞车规则 |
 | `app.css` | **不改**（v1 说加一条 `.overlay-layer` 规则——**错的**，见 §2.1） | **0 行** | 容器 class 照旧 `page-overlay page-overlay--readonly`，现有规则全部生效 |
 
@@ -53,9 +62,19 @@ v1 让 registry 建一个 `div.overlay-layer` 再配一条新 CSS 规则——**
 app.css:786      .page-overlay { position:absolute; inset:0; z-index:2 }
 app.css:788      .page-overlay .box { … }                      ← 边框/背景基类
 app.css:794–804  .page-overlay .box--type-heading/paragraph/figure…   ← 按类型的框色
+app.css:899      .page-overlay--readonly { pointer-events:none; z-index:1 }        ← 只读变体的基准
+app.css:900      .page-overlay--readonly .box { pointer-events:none; … }
+app.css:901      .page-overlay--readonly.page-overlay--labeled .box { pointer-events:auto }
+app.css:1956     .preview-page .page-overlay { z-index:2 }     ← preview 把只读容器的 z 从 1 抬到 2
 app.css:1957     .preview-page .page-overlay--readonly .box { pointer-events:none }  ← "只画不可点"
 app.css:1958     .preview-page__hits { z-index:3 }              ← hits 在块框之上
 ```
+
+**两条一起成立才算对**：
+1. 容器 class = `overlay-layer page-overlay page-overlay--readonly`；
+2. 容器 **挂在 `.preview-page`（tile）子树里**——`1956`（z-index 2）与 `1957`（只画不可点）都是
+   `.preview-page` 的**后代**选择器，挂在子树外就退回到 `899` 的 `z-index:1`、也丢掉只读规则。
+   片 1 的 `mount(hostEl)` 传的就是 tile 本身，天然满足；**这一条要点名写进 review**，因为"传错一个元素"不会红。
 
 ⇒ **registry 建的容器 = `div.overlay-layer page-overlay page-overlay--readonly`**（`overlay-layer` 只作标识/诊断钩子，不承担样式）；
 **不新增**任何抢 z-index 的规则——`.preview-page .page-overlay{z-index:2}`（:1956）已经对。
@@ -91,7 +110,7 @@ children/dataset/classList`）；**本模块不依赖 `insertBefore` / `replaceC
 | ② 幂等（不重复画） | 同数据连续 paint 两次，帧后 `const first = container.lastChild.firstChild;` 再 paint → `container.lastChild.firstChild === first`（**节点身份**，不是数量） | **删掉同版本早退分支** ⇒ ② 红（v1 的变异走不到：同版本早退时交换那段根本不执行） |
 | ③ 数量 | `stats(12).counts.blocks === blocks.filter(b => b.bbox).length`（**没有 bbox 的块不画**，与今天 renderPageBlocks 一致） | 去掉 `.filter(b => b.bbox)` → ③ 红 |
 | ④ 旧路径归零（Chief 要求点名行） | `preview-view.js` 里 `page-overlay` **0 次**、`_renderedBlocks` **0 次**、`injected.renderPageBlocks` **0 次**；被删的三处原位置（`183` 容器创建 / `371` 缓存比较 / `372` 注入调用）在落盘后的文件里**各 0 次命中** | 把 `injected.renderPageBlocks` 留一句注释调用 → ④ 红（剥注释后仍能命中才算数：改成留一行真调用更直接） |
-| ⑤ 图不受影响 | 同页同档 `img.src` 赋值次数 === **1**（`environment.srcWrites` 里 `size=...` 的条数；**不数网络**——`max-age=300` 会让重复请求命中缓存，按网络数会漏判） | 让 registry 自己建 `<img>` → ⑤ 红 |
+| ⑤ 图不受影响（v1.2：判 **Δ**，不再判绝对值） | **基线**：建一个 `PageTile(size="view")` + show/settle 一次 → `srcCount("view") === 1`；**再**挂 registry + 同数据 paint 两次 → `srcCount("view")` **仍 === 1**（即 **Δ == 0**）。仍然**不数网络**（`max-age=300` 会让重复请求命中缓存，按网络数会漏判） | registry 自己建 `<img>` → **Δ == 1** ⇒ 红 |
 
 ### 4.6 指纹成本：开工先量一个数（Chief 条件 c）
 
@@ -150,12 +169,12 @@ review 清单：提交前把 render 函数体逐行过一遍，出现函数外�
 | 基线 | `git rev-parse --short HEAD` + 现数 app / preview / page-tile 行数（**不抄本文的数**） |
 | app.js | **0 行改动**（本片不碰它） |
 | preview-view.js | 净减（预算 −8 ~ −12）；`page-overlay` / `_renderedBlocks` / `renderPageBlocks` 各 0 次 |
-| page-tile.js | −7 行（钩子 3 + 死字段 4）；全仓 `paintOverlays` 0 次 |
+| page-tile.js | **−11 行**（钩子 **7** 行 207–213 + 死字段 4 行）；全仓 `paintOverlays` 0 次 |
 | deps | **本片不动**（preview 的两个键留到最后一个消费者搬走那一刀删，见 §6②） |
 | 域模块闸 | `DOMAIN_MODULES` 加 `overlay-registry.js` 后零豁免通过（含 `.querySelector(` 为 0） |
 | 酸测试 | 5 条全绿 + 5 条变异各自红（变异要跑一次给人看，不写"应该会红"） |
 | 四闸 | node + pytest 全绿；R3 pages total 0 不变 |
-| 真机 | ① 块框位置与数量与改前一致（同一本书同一页，截图对比）；② **按类型的框色与改前一致**（heading 靛 `#4338ca` / paragraph 蓝 `#2563eb` / figure 绿 `#15803d`）；③ **hits 浅绿层仍在块框之上**；④ `--readonly` 只画不可点（点块框不跳转） |
+| 真机 | ① 块框位置与数量与改前一致（同一本书同一页，截图对比）；② **按类型的框色与改前一致**（heading 靛 `#4338ca` / paragraph 蓝 `#2563eb` / figure 绿 `#15803d`）；③ **hits 浅绿层仍在块框之上**；④ `--readonly` 只画不可点（点块框不跳转）；⑤ **点块框空白处仍能选页**（`app.css:899/900` 的 `pointer-events:none` 生效的前提） |
 
 ## 8. 谁做、怎么让（⑤ 的答案）
 
