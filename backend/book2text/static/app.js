@@ -248,7 +248,7 @@ function showView(name) {
     refreshPageStates();
     // 回到页面视图：瓷砖位置要重新量（在审校视图里它们全是 0），块框按需补画
     pageTileMetrics = null;
-    schedulePageVisibility();
+    window.PagesView?.onPagesNeedReflow();
     // 缩放是三步共用的：可能在目录确认步里改过，回来要按当前档位重排网格。
     applyPageZoom();
     // 任务 43：审校期间暂停的建议预取，回到页面视图再接着排。
@@ -2998,17 +2998,6 @@ const pageBlockCacheOrder = [];
 const pageBlockVersions = new Map();
 const pageBlockPending = new Set();
 const PAGE_BLOCK_CACHE_LIMIT = 80;
-// 网格档可见页多：每帧最多真正画 3 页；离屏立刻清。
-const PAGE_OVERLAY_FRAME_LIMIT = 3;
-// 同时在途的块请求上限（只读、按页独立）。预取只能占其中一部分，
-// 否则滚过去的页会把视口里真正要看的页的请求挤在后面。
-const PAGE_BLOCK_FETCH_LIMIT = 6;
-const PAGE_BLOCK_PREFETCH_LIMIT = 4;
-const PAGE_BLOCK_PREFETCH_BURST = 8;
-let pageBlockPrefetchInFlight = 0;
-const overlayRenderQueue = [];
-const overlayRenderQueued = new Set();
-let overlayPumpScheduled = false;
 
 // ---------------------------------------------------------------- 块类型建议（只读）
 //
@@ -3635,56 +3624,8 @@ function forgetPageBlocks(pageNo) {
   forgetPageSuggestions(pageNo);
 }
 
-let pageScrollScheduled = false;
 // 瓷砖在滚动内容里的位置：渲染 / 缩放时缓存一次，滚动时不再每帧量 267 个矩形。
 let pageTileMetrics = null;
-
-
-
-function schedulePageVisibility() {
-  if (pageScrollScheduled) return;
-  pageScrollScheduled = true;
-  requestAnimationFrame(() => {
-    pageScrollScheduled = false;
-    updatePageVisibility();
-  });
-}
-
-/**
- * 只给"离视口不远"的页设置大图 src；离屏的页清掉 src 与块框。
- *
- * 为什么不用 IntersectionObserver：真机 267 页用 scrollIntoView 跳页时，
- * observer 在部分滚动路径上不回调（同一页反复进出后只剩第一页的图）。
- * 这里用滚动事件 + requestAnimationFrame 兜底：每帧只做 267 次 getBoundingClientRect，
- * 换来确定的行为——滚动到哪一页就加载哪一页，离屏就释放。
- */
-function updatePageVisibility() { return window.PagesView.updatePageVisibility.apply(window.PagesView, arguments); }
-
-/**
- * 滚动中提前拉块数据：只挑**已识别**的页，按离视口由近到远，
- * 一次最多排 PAGE_BLOCK_PREFETCH_BURST 页；视口内的页优先（distance = 0）。
- */
-function pumpPageBlockPrefetch(candidates) {
-  if (!currentProject || currentView !== "pages" || !pagesOverlayOn || !candidates.length) return;
-  if (pageBlockPending.size >= PAGE_BLOCK_FETCH_LIMIT) return;
-  if (pageBlockPrefetchInFlight >= PAGE_BLOCK_PREFETCH_LIMIT) return;
-  candidates.sort((a, b) => a.distance - b.distance);
-  let byPage = null;
-  let started = 0;
-  for (const candidate of candidates) {
-    if (started >= PAGE_BLOCK_PREFETCH_BURST) break;
-    if (pageBlockPrefetchInFlight >= PAGE_BLOCK_PREFETCH_LIMIT) break;
-    if (pageBlockPending.size >= PAGE_BLOCK_FETCH_LIMIT) break;
-    const key = pageBlockKey(candidate.pageNo);
-    if (pageBlockCache.has(key) || pageBlockPending.has(key)) continue;
-    if (!byPage) byPage = new Map(currentProject.pages.map((page) => [page.page_no, page]));
-    const page = byPage.get(candidate.pageNo);
-    // 没识别过的页没有块：不为它们发请求，否则掠过整本书就是一串空响应
-    if (!page || recognitionOf(page).status !== "recognized") continue;
-    started += 1;
-    fetchPageBlocks(candidate.pageNo, key, { prefetch: true });
-  }
-}
 
 function applyPageZoom() { return window.PagesView.applyPageZoom.apply(window.PagesView, arguments); }
 
@@ -3702,49 +3643,15 @@ function setPageZoom(delta) {
 
 function togglePageBlocksOverlay() { return window.PagesView.togglePageBlocksOverlay.apply(window.PagesView, arguments); }
 
-function resetOverlayQueue() {
-  overlayRenderQueue.length = 0;
-  overlayRenderQueued.clear();
-}
 
 /** 排队画一页的块框：已画过且缓存没变就跳过。 */
-function queueOverlayRender() { return window.PagesView.queueOverlayRender.apply(window.PagesView, arguments); }
 
-function scheduleOverlayPump() {
-  if (overlayPumpScheduled) return;
-  overlayPumpScheduled = true;
-  requestAnimationFrame(pumpOverlayRender);
-}
 
 /**
  * 每帧最多真正画 3 页：网格档一屏可能有十几页、每页几十个块，
  * 一次全画会卡；按页缓存 + 在途请求上限 3，滚过去的页立刻清。
  */
-function pumpOverlayRender() { return window.PagesView.pumpOverlayRender.apply(window.PagesView, arguments); }
 
-function fetchPageBlocks(pageNo, key, { prefetch = false } = {}) {
-  pageBlockPending.add(key);
-  if (prefetch) pageBlockPrefetchInFlight += 1;
-  const version = pageBlockVersions.get(key) || 0;
-  apiJson(`/api/projects/${currentProject.project_id}/pages/${pageNo}/blocks`)
-    .then((data) => {
-      // 请求在途期间这一页被作废了（识别刚完成、重新识别）：结果是旧的，丢掉重拉
-      if ((pageBlockVersions.get(key) || 0) !== version) {
-        if (pagesOverlayOn && visiblePageNos.has(pageNo)) queueOverlayRender(pageNo);
-        return;
-      }
-      rememberPageBlocks(key, data.blocks || []);
-      if (pagesOverlayOn && visiblePageNos.has(pageNo)) queueOverlayRender(pageNo);
-    })
-    .catch(() => {
-      // 块框是辅助信息，读不到不该打断翻页
-    })
-    .finally(() => {
-      pageBlockPending.delete(key);
-      if (prefetch) pageBlockPrefetchInFlight = Math.max(0, pageBlockPrefetchInFlight - 1);
-      if (pagesOverlayOn) scheduleOverlayPump();
-    });
-}
 
 
 function renderPageBlocks(tile, blocks, { details = pageZoomIndex >= 2 } = {}) {
@@ -11422,7 +11329,7 @@ function refreshAfterTypeChanges(pageNos) {
   }
   window.PagesView?.onPageSuggestionsInvalidated();
   refreshPageStates();
-  schedulePageVisibility();
+  window.PagesView?.onPagesNeedReflow();
 }
 
 async function undoAutoApply(autoApplyId) {
@@ -11653,7 +11560,7 @@ async function applySplitBatch() {
     for (const pageNo of data.pages_affected || []) forgetPageBlocks(pageNo);
     window.PagesView?.onPageSuggestionsInvalidated();
     await refreshPageStates();
-    schedulePageVisibility();
+    window.PagesView?.onPagesNeedReflow();
     // 刀 8：选中提示的写点收进 pages 模块（文案仍由外壳拼）
     window.PagesView.setSelectionHint(
       `已拆分 ${data.blocks} 块（${(data.pages_affected || []).length} 页）。` +
@@ -12687,7 +12594,6 @@ function boot() {
     renderProjectMeta: renderProjectMeta,
     renderRecognitionSettings: renderRecognitionSettings,
     renderTask: renderTask,
-    schedulePageVisibility: schedulePageVisibility,
     queueAfterSteps: queueAfterSteps,      // 刀 9.1：enter() 里延迟 loadLanguageSummary 用它
     showError: showError,
     showView: showView,
@@ -12711,8 +12617,6 @@ function boot() {
     getMarginFitRunning: () => marginFitRunning,
     marginFitTried: marginFitTried,
     marginUndoStack: marginUndoStack,
-    overlayRenderQueue: overlayRenderQueue,
-    overlayRenderQueued: overlayRenderQueued,
     getPageSuggestionActive: () => pageSuggestionActive,
     pageSuggestionCache: pageSuggestionCache,
     pageSuggestionFailed: pageSuggestionFailed,
@@ -12735,8 +12639,8 @@ function boot() {
     getTaskJobId: () => taskJobId,
     visiblePageNos: visiblePageNos,
     getWorkflowStep: () => workflowStep,
-    getPAGE_OVERLAY_FRAME_LIMIT: () => PAGE_OVERLAY_FRAME_LIMIT,
-    getPageBlockPending: () => pageBlockPending,
+    pageBlockPending: pageBlockPending,
+    getPageBlockVersions: () => pageBlockVersions,
     getPageBlockCache: () => pageBlockCache,
     getDetailPageNo: () => detailPageNo,
     auxEstimateText: auxEstimateText,
@@ -12744,7 +12648,6 @@ function boot() {
     estimateRemainingSeconds: estimateRemainingSeconds,
     applyMarginRect: applyMarginRect,
     nearestEdge: nearestEdge,
-    fetchPageBlocks: fetchPageBlocks,
     forgetPageBlocks: forgetPageBlocks,
     formatMarginBox: formatMarginBox,
     highConfidenceCount: highConfidenceCount,
@@ -12762,11 +12665,10 @@ function boot() {
     pageSetupStats: pageSetupStats,
     paintTileMargin: paintTileMargin,
     percentText: percentText,
-    pumpPageBlockPrefetch: pumpPageBlockPrefetch,
     reloadDetailAfterRecognition: reloadDetailAfterRecognition,
+    rememberPageBlocks: rememberPageBlocks,
     renderPageBlocks: renderPageBlocks,
     repaintTileMargin: repaintTileMargin,
-    scheduleOverlayPump: scheduleOverlayPump,
     selectedSuggestions: selectedSuggestions,
     selectionPages: selectionPages,
     suggestionPagesByType: suggestionPagesByType,
@@ -12851,10 +12753,8 @@ function boot() {
     humanTouchedPages: humanTouchedPages,
     pageImageUrl: pageImageUrl,
     pageZoomLevel: pageZoomLevel,
-    resetOverlayQueue: resetOverlayQueue,
     scheduleSuggestionScan: scheduleSuggestionScan,
     warnUnconfirmed: warnUnconfirmed,
-    PAGE_BLOCK_FETCH_LIMIT: PAGE_BLOCK_FETCH_LIMIT,
     firstUnfinishedPanel: firstUnfinishedPanel,
     getJobStartPending: () => jobStartPending,
     getMarginStatusTimer: () => marginStatusTimer,
@@ -12869,7 +12769,6 @@ function boot() {
     setJobStartBusy: setJobStartBusy,
     setJobStartPending: (value) => { jobStartPending = value; return value; },
     setMarginStatusTimer: (value) => { marginStatusTimer = value; return value; },
-    setOverlayPumpScheduled: (value) => { overlayPumpScheduled = value; return value; },
     setPageNumberStatusTimer: (value) => { pageNumberStatusTimer = value; return value; },
     setRecStatusTimer: (value) => { recStatusTimer = value; return value; },
     setSuggestionScanQueued: (value) => { suggestionScanQueued = value; return value; },
@@ -12961,7 +12860,8 @@ function boot() {
     refreshProject: (...args) => refreshProject(...args),
     renderRecognitionSettings: (...args) => renderRecognitionSettings(...args),
     resumeLastPosition: (...args) => resumeLastPosition(...args),
-    schedulePageVisibility: (...args) => schedulePageVisibility(...args),
+    // 刀 10a：调度器已搬进 pages 模块，这里只把事件转过去（键名保持，library 侧不改）
+    schedulePageVisibility: () => window.PagesView?.onPagesNeedReflow(),
     setBootingProject: (v) => { bootingProject = v; return v; },
     setLastStepPanelKey: (v) => { lastStepPanelKey = v; return v; },
     setLibraryProjects: (v) => { libraryProjects = v; return v; },

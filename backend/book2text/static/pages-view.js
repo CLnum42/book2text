@@ -90,7 +90,7 @@ async function refreshRecognizedPages(pageNos, { reloadDetail = true } = {}) {
         injected.ensurePageSuggestion(pageNo);
       }
     }
-    injected.scheduleOverlayPump();
+    scheduleOverlayPump();
     return;
   }
   if (
@@ -782,6 +782,36 @@ function updateMarginDetectProgress(data) {
         : "");
 }
 
+// ---- 块框队列与可见性调度（刀 10a：调度器与调度状态从外壳搬进模块）----
+//
+// 为什么必须搬：滚动 / 缩放 / 排队本来就是 pages 自己的渲染循环，而调度状态原先留在外壳，
+// 变成"一份状态两边写、一边读"（Architect 2026-10-30）。搬齐之后外壳只知道"布局可能要重排"。
+// 上限常数一起搬：它们只被这里的两支循环读，留在外壳只能靠 getter 注入。
+const PAGE_OVERLAY_FRAME_LIMIT = 3;
+const PAGE_BLOCK_FETCH_LIMIT = 6;
+const PAGE_BLOCK_PREFETCH_LIMIT = 4;
+const PAGE_BLOCK_PREFETCH_BURST = 8;
+const overlayRenderQueue = [];
+const overlayRenderQueued = new Set();
+let overlayPumpScheduled = false;
+let pageScrollScheduled = false;
+let pageBlockPrefetchInFlight = 0;
+
+function resetOverlayQueue() {
+  overlayRenderQueue.length = 0;
+  overlayRenderQueued.clear();
+}
+
+/** 滚动的下一帧重算一次可见性（同一帧内多次滚动只排一次）。 */
+function schedulePageVisibility() {
+  if (pageScrollScheduled) return;
+  pageScrollScheduled = true;
+  requestAnimationFrame(() => {
+    pageScrollScheduled = false;
+    updatePageVisibility();
+  });
+}
+
 /**
  * 只给"离视口不远"的页设置大图 src；离屏的页清掉 src 与块框。
  *
@@ -830,8 +860,8 @@ function updatePageVisibility() {
         // 网格档一屏十几页，不为"可能拖一下"给整屏发请求；有块缓存时照样吸附。
         if (large && page && injected.recognitionOf(page).status === "recognized") {
           const key = injected.pageBlockKey(pageNo);
-          if (!injected.getPageBlockCache().has(key) && !injected.getPageBlockPending().has(key)) {
-            injected.fetchPageBlocks(pageNo, key);
+          if (!injected.getPageBlockCache().has(key) && !injected.pageBlockPending.has(key)) {
+            fetchPageBlocks(pageNo, key);
           }
         }
       }
@@ -845,7 +875,7 @@ function updatePageVisibility() {
           cached &&
           overlay &&
           overlay._renderedBlocks !== cached &&
-          drawnSynchronously < injected.getPAGE_OVERLAY_FRAME_LIMIT()
+          drawnSynchronously < PAGE_OVERLAY_FRAME_LIMIT
         ) {
           injected.renderPageBlocks(item.tile, cached);
           drawnSynchronously += 1;
@@ -879,7 +909,7 @@ function updatePageVisibility() {
     }
   }
 
-  injected.pumpPageBlockPrefetch(prefetchCandidates);
+  pumpPageBlockPrefetch(prefetchCandidates);
 
   if (!large) return;
   // 大图档：离视口很远的页释放大图，也清掉块框
@@ -1816,7 +1846,7 @@ function applyPageZoom() {
   const tiles = [...grid.querySelectorAll(".page-tile")];
   const byPage = new Map(injected.getCurrentProject().pages.map((page) => [page.page_no, page]));
   injected.visiblePageNos.clear();
-  injected.resetOverlayQueue();
+  resetOverlayQueue();
 
   if (injected.getPageZoomIndex() >= 2) {
     for (const tile of tiles) {
@@ -2336,9 +2366,9 @@ function togglePageBlocksOverlay() {
   el("pages-overlay-toggle").classList.toggle("is-on", injected.getPagesOverlayOn());
   if (injected.getPagesOverlayOn()) {
     for (const pageNo of injected.visiblePageNos) queueOverlayRender(pageNo);
-    injected.schedulePageVisibility();
+    schedulePageVisibility();
   } else {
-    injected.resetOverlayQueue();
+    resetOverlayQueue();
     for (const tile of el("page-grid").querySelectorAll(".page-tile")) {
       injected.clearPageBlocks(tile);
     }
@@ -2353,10 +2383,17 @@ function queueOverlayRender(pageNo) {
   const overlay = tile ? tile.querySelector(".page-overlay") : null;
   const blocks = injected.getPageBlockCache().get(injected.pageBlockKey(pageNo));
   if (blocks && overlay && overlay._renderedBlocks === blocks) return;
-  if (injected.overlayRenderQueued.has(pageNo)) return;
-  injected.overlayRenderQueued.add(pageNo);
-  injected.overlayRenderQueue.push(pageNo);
-  injected.scheduleOverlayPump();
+  if (overlayRenderQueued.has(pageNo)) return;
+  overlayRenderQueued.add(pageNo);
+  overlayRenderQueue.push(pageNo);
+  scheduleOverlayPump();
+}
+
+/** 滚动下一帧画块框（同一帧内多次排队只排一次）。 */
+function scheduleOverlayPump() {
+  if (overlayPumpScheduled) return;
+  overlayPumpScheduled = true;
+  requestAnimationFrame(pumpOverlayRender);
 }
 
 /**
@@ -2364,13 +2401,13 @@ function queueOverlayRender(pageNo) {
  * 一次全画会卡；按页缓存 + 在途请求上限 3，滚过去的页立刻清。
  */
 function pumpOverlayRender() {
-  injected.setOverlayPumpScheduled(false);
+  overlayPumpScheduled = false;
   if (!injected.getCurrentProject() || !injected.getPagesOverlayOn()) return;
   let drawn = 0;
   let waiting = false;
-  while (drawn < injected.getPAGE_OVERLAY_FRAME_LIMIT() && injected.overlayRenderQueue.length) {
-    const pageNo = injected.overlayRenderQueue.shift();
-    injected.overlayRenderQueued.delete(pageNo);
+  while (drawn < PAGE_OVERLAY_FRAME_LIMIT && overlayRenderQueue.length) {
+    const pageNo = overlayRenderQueue.shift();
+    overlayRenderQueued.delete(pageNo);
     if (!injected.visiblePageNos.has(pageNo)) continue;
     const tile = el("page-grid").querySelector(`.page-tile[data-page-no="${pageNo}"]`);
     const overlay = tile ? tile.querySelector(".page-overlay") : null;
@@ -2384,17 +2421,74 @@ function pumpOverlayRender() {
       }
       continue;
     }
-    if (injected.getPageBlockPending().has(key)) continue;
-    if (injected.getPageBlockPending().size >= injected.PAGE_BLOCK_FETCH_LIMIT) {
+    if (injected.pageBlockPending.has(key)) continue;
+    if (injected.pageBlockPending.size >= PAGE_BLOCK_FETCH_LIMIT) {
       // 在途请求满了：放回队尾，等某个请求完成后再继续（不空转）
-      injected.overlayRenderQueue.push(pageNo);
-      injected.overlayRenderQueued.add(pageNo);
+      overlayRenderQueue.push(pageNo);
+      overlayRenderQueued.add(pageNo);
       waiting = true;
       break;
     }
-    injected.fetchPageBlocks(pageNo, key);
+    fetchPageBlocks(pageNo, key);
   }
-  if (injected.overlayRenderQueue.length && !waiting) injected.scheduleOverlayPump();
+  if (overlayRenderQueue.length && !waiting) scheduleOverlayPump();
+}
+
+/**
+ * 拉一页的块数据（刀 10a 从外壳搬入）。
+ *
+ * 两层防错缺一不可：在途去重（`pageBlockPending`）挡住重复请求；
+ * 作废代次（壳里的 `pageBlockVersions`）挡住"早发晚到"的旧响应——
+ * 少了代次校验，识别刚完成时一个早发的空结果会盖掉新块。
+ */
+function fetchPageBlocks(pageNo, key, { prefetch = false } = {}) {
+  injected.pageBlockPending.add(key);
+  if (prefetch) pageBlockPrefetchInFlight += 1;
+  const version = injected.getPageBlockVersions().get(key) || 0;
+  injected.apiJson(`/api/projects/${injected.getCurrentProject().project_id}/pages/${pageNo}/blocks`)
+    .then((data) => {
+      // 请求在途期间这一页被作废了（识别刚完成、重新识别）：结果是旧的，丢掉重拉
+      if ((injected.getPageBlockVersions().get(key) || 0) !== version) {
+        if (injected.getPagesOverlayOn() && injected.visiblePageNos.has(pageNo)) queueOverlayRender(pageNo);
+        return;
+      }
+      injected.rememberPageBlocks(key, data.blocks || []);
+      if (injected.getPagesOverlayOn() && injected.visiblePageNos.has(pageNo)) queueOverlayRender(pageNo);
+    })
+    .catch(() => {
+      // 块框是辅助信息，读不到不该打断翻页
+    })
+    .finally(() => {
+      injected.pageBlockPending.delete(key);
+      if (prefetch) pageBlockPrefetchInFlight = Math.max(0, pageBlockPrefetchInFlight - 1);
+      if (injected.getPagesOverlayOn()) scheduleOverlayPump();
+    });
+}
+
+/**
+ * 滚动中提前拉块数据（刀 10a 从外壳搬入）：只挑**已识别**的页，按离视口由近到远，
+ * 一次最多排 PAGE_BLOCK_PREFETCH_BURST 页；视口内的页优先（distance = 0）。
+ */
+function pumpPageBlockPrefetch(candidates) {
+  if (!injected.getCurrentProject() || injected.getCurrentView() !== "pages" || !injected.getPagesOverlayOn() || !candidates.length) return;
+  if (injected.pageBlockPending.size >= PAGE_BLOCK_FETCH_LIMIT) return;
+  if (pageBlockPrefetchInFlight >= PAGE_BLOCK_PREFETCH_LIMIT) return;
+  candidates.sort((a, b) => a.distance - b.distance);
+  let byPage = null;
+  let started = 0;
+  for (const candidate of candidates) {
+    if (started >= PAGE_BLOCK_PREFETCH_BURST) break;
+    if (pageBlockPrefetchInFlight >= PAGE_BLOCK_PREFETCH_LIMIT) break;
+    if (injected.pageBlockPending.size >= PAGE_BLOCK_FETCH_LIMIT) break;
+    const key = injected.pageBlockKey(candidate.pageNo);
+    if (injected.getPageBlockCache().has(key) || injected.pageBlockPending.has(key)) continue;
+    if (!byPage) byPage = new Map(injected.getCurrentProject().pages.map((page) => [page.page_no, page]));
+    const page = byPage.get(candidate.pageNo);
+    // 没识别过的页没有块：不为它们发请求，否则掠过整本书就是一串空响应
+    if (!page || injected.recognitionOf(page).status !== "recognized") continue;
+    started += 1;
+    fetchPageBlocks(candidate.pageNo, key, { prefetch: true });
+  }
 }
 
 function toggleMarginView() {
@@ -2404,7 +2498,7 @@ function toggleMarginView() {
   if (button) button.classList.toggle("is-on", injected.getPagesMarginOn());
   if (!injected.getCurrentProject()) return;
   if (injected.getPagesMarginOn()) {
-    injected.schedulePageVisibility();
+    schedulePageVisibility();
   } else {
     for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
       injected.clearTileMargin(tile);
@@ -3211,10 +3305,10 @@ function ensurePageScrollListener() {
   if (pageScrollListening) return;
   const scroller = pageScroller();
   // 沙箱（node 闸的合成 DOM）没有 window.addEventListener；真实浏览器有，行为不变
-  (scroller || window).addEventListener?.("scroll", injected.schedulePageVisibility, { passive: true });
+  (scroller || window).addEventListener?.("scroll", schedulePageVisibility, { passive: true });
   window.addEventListener?.("resize", () => {
     injected.setPageTileMetrics(null);
-    injected.schedulePageVisibility();
+    schedulePageVisibility();
   });
   pageScrollListening = true;
 }
@@ -3259,6 +3353,16 @@ function onPageBlocksInvalidated() {
 /** 建议缓存失效（识别收尾 / 清理 / 类型变更 / 拆批之后）。 */
 function onPageSuggestionsInvalidated() {
   forgetAllPageSuggestions();
+}
+
+/**
+ * 布局可能要重排（刀 10a）：切回页面视图（瓷砖位置要重量）/ 块类型变了 / 拆分批量 / 打开项目之后。
+ *
+ * 外壳只知道"该重算了"，不再持有 `pageScrollScheduled` 那类调度状态；
+ * 重算范围（只算视口附近的页）与"同帧只排一次"都在模块里。
+ */
+function onPagesNeedReflow() {
+  schedulePageVisibility();
 }
 
 /** Esc 清空选择 / Ctrl(⌘)+A 全选（9.5 从外壳的 keydown 搬入；对话框的 Esc 仍在 setupShell）。 */
@@ -3342,7 +3446,6 @@ function enter() {
   // 收敛棘轮：本刀 20 键 → 终点 3（enter / render / refresh），靠刀 2-5 把 41 个调用者搬进来逐刀降。
   const api = {
     init,
-    updatePageVisibility,
     loadFinishSummary,
     renderRecognitionSettings,
     applyPageZoom,
@@ -3354,6 +3457,7 @@ function enter() {
     onPageNumberChanged,
     onPageStatesRefreshed,
     onPageSuggestionsInvalidated,
+    onPagesNeedReflow,
     onProjectPagesReloaded,
     onRecognitionFinished,
     onTaskProgress,
@@ -3364,8 +3468,6 @@ function enter() {
     onAuxReviewFinished,
     onAutoApplyStatusChanged,
     openPageSetup,
-    pumpOverlayRender,
-    queueOverlayRender,
     scanVisiblePageSuggestions,
     startLayoutDetection,
     toggleMarginView,
