@@ -143,8 +143,9 @@ def test_block_frames_work_in_all_zoom_levels_and_default_to_on() -> None:
     assert "details = pageZoomIndex >= 2" in render, "目录确认可以强制显示序号"
     assert "if (showDetails)" in render
     # 每帧 3 页 + 在途请求上限（第 46 号任务从 3 提到 6）；滚动位置缓存，不再每帧量 267 个矩形
-    assert "PAGE_OVERLAY_FRAME_LIMIT = 3" in script
-    assert "PAGE_BLOCK_FETCH_LIMIT = 6" in script
+    both = _script_with_view()  # 刀 10a：块框/可见性的上限与调度器都搬进 pages-view.js
+    assert "PAGE_OVERLAY_FRAME_LIMIT = 3" in both
+    assert "PAGE_BLOCK_FETCH_LIMIT = 6" in both
     assert "pageTileMetrics" in script
     assert _function_body_any("pumpOverlayRender")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
 
@@ -461,19 +462,23 @@ def test_block_frames_refresh_as_pages_finish_and_prefetch_while_scrolling() -> 
     assert "loadPageDetail(pageNo, { forceSuggestions: true })" in reload_detail
     # 在途请求晚到也不能把旧块写回缓存
     assert "pageBlockVersions" in script
-    fetch = _function_body("fetchPageBlocks")
-    assert "pageBlockVersions.get(key) || 0) !== version" in fetch
+    fetch = _function_body_any("fetchPageBlocks")  # 刀 10a：实体已搬进 pages-view.js
+    assert "get(key) || 0) !== version" in fetch, "作废代次要按 key 比：早发晚到的旧响应会被丢掉"
+    assert ("pageBlockVersions.get(key)" in fetch or "PageBlockVersions().get(key)" in fetch), (
+        "代次状态仍要可读：外壳持有 pageBlockVersions（forgetPageBlocks 要 +1），模块经句柄读"
+    )
 
-    # 3) 提前预取 + 并发 / 缓存上限
+    # 3) 提前预取 + 并发 / 缓存上限（刀 10a：上限常量随调度器搬进 pages-view.js）
+    both = _script_with_view()
     assert "PAGE_BLOCK_CACHE_LIMIT = 80" in script
-    assert "PAGE_BLOCK_PREFETCH_LIMIT = 4" in script
-    assert "PAGE_BLOCK_PREFETCH_BURST = 8" in script
-    assert "function pumpPageBlockPrefetch(" in script
+    assert "PAGE_BLOCK_PREFETCH_LIMIT = 4" in both
+    assert "PAGE_BLOCK_PREFETCH_BURST = 8" in both
+    assert _function_body_any("pumpPageBlockPrefetch")  # 刀 10a：函数已搬进模块
     visibility = _function_body_any("updatePageVisibility")  # 同上：实体在模块里
     assert "prefetchBand" in visibility
     assert "pumpPageBlockPrefetch(prefetchCandidates)" in visibility
     # 只为已识别的页预取，不为整本未识别页发空请求
-    prefetch = _function_body("pumpPageBlockPrefetch")
+    prefetch = _function_body_any("pumpPageBlockPrefetch")
     assert 'recognitionOf(page).status !== "recognized"' in prefetch
     # 有缓存就这一帧画，不等下一个 rAF
     assert "drawnSynchronously" in visibility
@@ -1524,10 +1529,12 @@ def test_review_pauses_page_grid_prefetch() -> None:
     # 回来时由 applyPageZoom 重新挂 src（页面视图分支里调用）
     assert "applyPageZoom();" in script
 
+    both = _script_with_view()  # 刀 10a：pumpPageBlockPrefetch 已搬进模块
     for name in ("function pumpPageSuggestionQueue(", "function pumpPageBlockPrefetch("):
-        start = script.index(name)
-        block = script[start : script.index("\n}\n", start)]
-        assert 'currentView !== "pages"' in block, name
+        start = both.index(name)
+        block = both[start : both.index("\n}\n", start)]
+        # 刀 10a：外壳直接读 currentView，模块经 injected.getCurrentView() 读——守的是同一条
+        assert 'currentView !== "pages"' in block or 'getCurrentView() !== "pages"' in block, name
 
     # 批量确认版面后，已经打开的审校页页头要跟着刷新
     start = script.index("async function finishRunLayout(")
@@ -1677,7 +1684,8 @@ def test_page_index_scrolls_continuously_with_lazy_pages() -> None:
 
     assert 'id="index-pages"' in page
     assert "function buildIndexPages(" in index_both
-    assert "IntersectionObserver" in script
+    # 刀 10a：updatePageVisibility 搬进 pages-view.js，"为什么不用 IntersectionObserver" 的说明也跟着搬
+    assert "IntersectionObserver" in _script_with_view()
     # 2026-10-29：可见性调度从「index 自建 near/visible 两个 IntersectionObserver」
     # 改成「滚动几何 + PageTile 单调度」（两套调度并存会各推各的）。
     # 这条仍守同一件事：只给附近页取数据、只有视口里的页画装饰。

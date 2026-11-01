@@ -153,6 +153,18 @@ def collect_asserts() -> list[dict]:
                 best = (start, name, doc)
         return (best[1], best[2]) if best else ("(模块级)", "")
 
+    # 断言目标是 `_function_body_any(...)` / `_function_body(...)` 的返回值时，正文可能已经搬进模块：
+    # 这时"app.js 里找不到"不等于假红，得在所有源码里找。记下变量名 → helper，判的时候分开处理。
+    body_targets: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+            func = node.value.func
+            helper = getattr(func, "id", None) or getattr(func, "attr", None)
+            if helper in ("_function_body_any", "_function_body"):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        body_targets[target.id] = helper
+
     rows: list[dict] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assert) or not isinstance(node.test, ast.Compare):
@@ -190,6 +202,7 @@ def collect_asserts() -> list[dict]:
             "line": node.lineno,
             "op": "in" if isinstance(compare.ops[0], ast.In) else "not in",
             "target": name,
+            "body_target": body_targets.get(name),
             "literals": literals,
             "test": test_name,
             "doc": doc,
@@ -230,6 +243,24 @@ def judge(rows: list[dict], sources: dict[str, str], movable: dict[str, float]) 
             continue
         if row["target"] in CSS_TARGETS or row["target"] in HTML_TARGETS:
             record["risk"], record["why"] = "不会", "断言查 CSS / HTML（app.css、index.html），不随 JS 搬运变红"
+            out.append(record)
+            continue
+        if row.get("body_target") == "_function_body_any":
+            # 正文可能已搬进某个视图模块（`_function_body_any` 就是按"app.js + 各模块"取的）：
+            # 只要这段源码在**任一**源码文件里还在，搬运之后断言照样命中；全仓都找不到才是真红。
+            hosts: set[str] = set()
+            missing = False
+            for literal in snippets:
+                found = occurrences(literal)
+                if not found:
+                    missing = True
+                    continue
+                hosts |= {host for _, _, host in found if host != "(顶层)"}
+            record["hosts"] = sorted(hosts)
+            if missing:
+                record["risk"], record["why"] = "会", "全仓已找不到这段源码——现在就该红"
+            else:
+                record["risk"], record["why"] = "不会", "断言目标是 _function_body_any（可能已搬进模块），这段源码在全仓仍命中"
             out.append(record)
             continue
         app_text = sources.get("app.js", "")
