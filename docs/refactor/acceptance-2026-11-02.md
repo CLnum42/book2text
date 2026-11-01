@@ -475,14 +475,26 @@ pytest 1034（138.91s，STATIC_DIR 在树内）
 原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
 ```
 
-### 本轮附带发现：闸的剥注释器有缺陷（已派 TestDev，记 L-115）
+### 本轮附带发现：闸的剥注释器有缺陷 → 已修（`41173cf`，TestDev 原 sha `210ee0f`）
 
 ```
-stripCommentsForGates（字符状态机）不认识正则字面量：`/[&<>"']/g` 里的引号让它误进字符串态，
-之后的 // 注释不被剥掉。实测：app.js 547 行注释残留 183 行、page-detail-editor.js 60 行残留 59 行。
-**能造假绿**（已实证）：把 app.js:877 唯一的 openAuxWarning() 调用改成注释，导出面闸仍然绿。
-⇒ 不是 known-limitation 能盖住的问题（"必须出现"类判据会被注释满足），已派一刀统一到 R3 那把
-（带正则识别），换完跑全量闸、新红逐条报，不许为了变绿改期望。
+问题：stripCommentsForGates（字符状态机）不认识正则字面量：/[&<>"']/g 里的引号让它误进字符串态，
+     之后的 // 注释不被剥掉。实测：app.js 547 行注释残留 183、page-detail-editor.js 60 行残留 59、
+     structure-tools.js 3 行残留 3。
+     **能造假绿**（我实证）：把 app.js:877 唯一的 openAuxWarning() 调用改成注释，导出面闸仍然绿。
+判为"必须修"而不是 known-limitation：这不只是偏严，是"必须出现"类判据可以被注释满足。
+
+修法（41173cf，只动 tests/js/）：把 codeOnly 收进 tests/js/static-scan.mjs（认正则起点 + 字符类 +
+转义，只剥注释、保留字符串），boundary 里两个本地实现（14 + 12 处调用）全部改用 codeOnly，旧名残留 0；
+scripts/ 零改动（R3 那把本来是对的，是别处跟它统一）。
+我在独立 worktree 复跑的四件：
+ · node 245 / 243 pass / 0 fail / 2 skipped（基线 244/242；+1 = 剥离口径自检）
+ · codeOnly 后三个文件的注释行残留 547→0 / 60→0 / 3→0
+ · 反向变异：把 codeOnly 的 looksLikeRegex 改成恒 false ⇒ 自检红
+   「正则字面量后面的注释没被剥——后面的判据全都读得到注释」
+ · 评论化复现：app.js:877 的 openAuxWarning() 改成注释 ⇒ 导出面闸**红**（修前是假绿）
+附带：godDoorProblems 补扫 window.X 跨模块直呼（只认调用/取值位、排掉模块自己的 window.X = api;）——
+ 我在模块里插一行 window.PagesView?.onAuxReviewFinished() ⇒ 神入口闸红。
 ```
 
 ## 九、结论
