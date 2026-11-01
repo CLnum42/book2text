@@ -5516,6 +5516,14 @@ function domainDomProblems({ file, source, allowQuerySelector = false }) {
 }
 
 test("域模块（刀 A）：quality-stats.js 不按 id 找 DOM，四个函数已从 app.js 迁出", () => {
+  // 例外清单只许有 1 条：第二个模块要 root.querySelector 时，改的是规则本身（书 §7），
+  // 不是往这张表里加名字——能扩容的例外就是豁免表。
+  const exceptions = DOMAIN_MODULES.filter((mod) => mod.allowQuerySelector);
+  assert.ok(
+    exceptions.length <= 1,
+    `allowQuerySelector 只许有 1 个模块（现在 ${exceptions.length} 个：${exceptions.map((mod) => mod.file).join("、")}）`
+      + "——第二个模块要这个例外时，先改书里的规则，再改闸",
+  );
   for (const mod of DOMAIN_MODULES) {
     const source = readFileSync(join(STATIC_DIR, mod.file), "utf8");
     const problems = domainDomProblems({ file: mod.file, source, allowQuerySelector: Boolean(mod.allowQuerySelector) });
@@ -5578,6 +5586,48 @@ test("域模块（刀 B）：page-confirm.js 五个函数已从 app.js 迁出，
     Object.keys(api).sort(),
     ["firstUnfinishedPanel", "init", "pageSetupStats", "selectedSuggestions", "suggestionPagesByType", "warnUnconfirmed"].sort(),
     "page-confirm.js 接口面必须恰好是 init + 这五个函数（这五个都被 pages 注入调用）",
+  );
+  for (const [name, fn] of Object.entries(api)) {
+    if (name === "init") continue;
+    assert.equal(typeof fn, "function", `api.${name} 不是函数——改名/漏挂会在这里红`);
+  }
+});
+
+test("域模块（刀 D）：structure-tools.js 七个函数已从 app.js 迁出，接口面逐条对", () => {
+  const appSource = stripCommentsForGates(readFileSync(APP_FILE, "utf8"));
+  const moved = [
+    "structureRules", "previewHeaderFooter", "renderStructurePreview", "updateStructureApplyState",
+    "applyHeaderFooter", "setupStructurePanel", "setAllStructureKeeps",
+  ];
+  for (const name of moved) {
+    assert.ok(
+      !new RegExp("^(?:async )?function " + name + "\\s*\\(", "m").test(appSource),
+      `app.js 里还定义着 ${name}——刀 D 之后它应在 structure-tools.js`,
+    );
+  }
+  // reset() 有两个真调用点（closeModal 关面板 / refreshProject 换项目）：它们是"这刀不是多余导出"的证据，
+  // 谁把 reset 删了或把调用点搬走，这条会红。
+  const resetCalls = (appSource.match(/window\.StructureTools\?\.reset\(\)/g) || []).length;
+  assert.ok(resetCalls >= 2, `app.js 里 window.StructureTools?.reset() 只剩 ${resetCalls} 处——reset 的调用点不许悄悄消失`);
+
+  // 接口面**执行一遍**再断言（只读文本会漏"函数改名后 api 里挂了个 undefined"）
+  const moduleSource = readFileSync(join(STATIC_DIR, "structure-tools.js"), "utf8");
+  const sandbox = {
+    console,
+    window: {},
+    document: { getElementById: () => null, createElement: () => ({}) },
+  };
+  sandbox.globalThis = sandbox;
+  assert.doesNotThrow(
+    () => vm.runInNewContext(moduleSource, sandbox, { filename: "structure-tools.js" }),
+    "structure-tools.js 在自己的沙箱里执行就抛（改名的函数会让 api 对象里出现未定义标识符）",
+  );
+  const api = sandbox.window.StructureTools;
+  assert.ok(api && typeof api.init === "function", "structure-tools.js 没挂 window.StructureTools.init");
+  assert.deepEqual(
+    Object.keys(api).sort(),
+    ["init", "setup", "preview", "apply", "setAllKeeps", "reset"].sort(),
+    "接口面必须恰好是 init + setup/preview/apply/setAllKeeps/reset（reset 有真调用点，不是预留）",
   );
   for (const [name, fn] of Object.entries(api)) {
     if (name === "init") continue;

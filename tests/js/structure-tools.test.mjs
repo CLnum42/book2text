@@ -70,7 +70,7 @@ function makePanel({ posts = [] } = {}) {
   const root = makeNode("section");
   root.querySelector = (selector) => (selector.startsWith("#") ? byId.get(selector.slice(1)) || null : null);
 
-  const calls = { afterApply: 0 };
+  let afterApplied = false;
   const sandbox = {
     document: { createElement: (tag) => makeNode(tag) },
     console,
@@ -96,10 +96,12 @@ function makePanel({ posts = [] } = {}) {
       return { changed: 1, pages: [1], by_type: { header: 1 } };
     },
     getCurrentProject: () => ({ project_id: "b2t_TEST" }),
-    afterApply: async () => { calls.afterApply += 1; },
+    // 宏任务留一个 tick：模块里少了 `await` 时标志在 apply() 返回前仍是 false——
+    // 同步的 fake 会让"有没有 await"变得测不出来（DevLead 实测：去掉 await 仍 4/4 绿）。
+    afterApply: async () => { await new Promise((r) => setTimeout(r, 0)); afterApplied = true; },
   });
   api.setup();
-  return { api, root, byId, calls, posts };
+  return { api, root, byId, posts, hasAfterApplied: () => afterApplied };
 }
 
 test("① 预览请求体与搬走前逐字段相同（规则从 root 控件读）", async () => {
@@ -114,7 +116,7 @@ test("① 预览请求体与搬走前逐字段相同（规则从 root 控件读�
 });
 
 test("② 应用请求体只带勾选的候选；应用后提示与按钮状态跟着变", async () => {
-  const { api, posts, byId } = makePanel();
+  const { api, posts, byId, hasAfterApplied } = makePanel();
   await api.preview();
   // 默认只勾"有把握"的那个（b1）；把 b2 也勾上 → items 两个
   api.setAllKeeps(true);
@@ -127,6 +129,7 @@ test("② 应用请求体只带勾选的候选；应用后提示与按钮状态�
       { block_id: "b2", block_type: "page_number" },
     ],
   });
+  assert.equal(hasAfterApplied(), true, "应用后必须等 afterApply 完成（页面重拉 + 导出预检）");
   assert.match(byId.get("structure-note").textContent, /已标注 1 个块/);
   assert.equal(byId.get("structure-result").hidden, true, "应用后结果区要收起");
   assert.equal(byId.get("structure-apply-btn").disabled, true, "应用后按钮要禁用");
