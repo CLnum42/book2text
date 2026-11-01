@@ -375,14 +375,15 @@ def test_block_type_suggestions_are_wired_to_the_existing_patch() -> None:
 def test_page_view_suggestion_mark_only_counts_high_and_only_seen_pages() -> None:
     """页面视图角标：只在算过的可见页出现、只数 high，且不为 267 页一次性拉取。"""
     script = _script()
+    both = _script_with_view()  # 刀 10.2：建议队列整条搬进 pages-view.js
     assert "page-tile__suggest" in script
-    assert "ensurePageSuggestion" in script
-    assert "PAGE_SUGGESTION_CONCURRENCY" in script
-    assert "PAGE_SUGGESTION_CACHE_LIMIT" in script
+    assert "ensurePageSuggestion" in both
+    assert "PAGE_SUGGESTION_CONCURRENCY" in both
+    assert "PAGE_SUGGESTION_CACHE_LIMIT" in script, "缓存上限随 rememberPageSuggestions 留在外壳"
     assert "建议 ${high.length}" in script
     # 网格档滚动停下来才扫；大图档在可见性循环里扫
-    assert "scheduleSuggestionScan" in script
-    assert "scanVisiblePageSuggestions" in script
+    assert "scheduleSuggestionScan" in both
+    assert "scanVisiblePageSuggestions" in both
 
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
     assert ".page-tile__suggest" in css
@@ -488,7 +489,7 @@ def test_block_frames_refresh_as_pages_finish_and_prefetch_while_scrolling() -> 
     assert "drawnSynchronously" in visibility
 
     # 4) 网格档滚动停下的扫描更快，且不再为 267 个瓷砖各量一次矩形
-    assert "setTimeout(scanVisiblePageSuggestions, 60)" in script
+    assert "setTimeout(scanVisiblePageSuggestions, 60)" in _script_with_view()  # 刀 10.2：debounce 随扫描器搬进模块
     scan = _function_body_any("scanVisiblePageSuggestions")  # 刀 5 起实体在 pages-view.js，app.js 只剩转发桩
     # 搬进模块后状态经注入读写：裸名是 `pageTileMetrics`，注入形态是 `getPageTileMetrics()`。
     assert "pageTileMetrics" in scan or "PageTileMetrics" in scan
