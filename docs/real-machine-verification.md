@@ -158,3 +158,127 @@ fixture：fixtures/pdf/synthetic-smoke-3pages.pdf；跑完 finish({ keep: [] }) 
 - 对照：修前 <症状> / 修后 <字段变化>（有对照才写）
 - 收尾：服务已停 / tmp 库已删 / ego-browser 已 finish / git status 只剩 ?? .venv
 ```
+
+
+## 6. 版心检测进度条（真机验收 runbook + 2026-11-01 实测）
+
+要验的东西：布局检测任务（`job_type = "layout"`）运行时，`#margin-fit-progress` /
+`#margin-fit-fill` / `#margin-fit-text` 三个元素要**跟着 `job.done` 真增长**。
+
+> **前提更正（2026-11-01 实测）**：`GET /api/app/info` 里
+> `engines.by_role.layout` 的两项（`rapid_layout` / `pp_doclayout`）本机都是 `available: false`，
+> 但**这条链路不走它们**：生产引擎是 `default_layout_engine()` = `RapidOcrDetAdapter`
+> （`params.engine_id = "rapidocr_det"`，来自已装的 rapidocr）。
+> 本机实测 `POST /jobs/layout` → HTTP 200 建任务、`succeeded 1/1`、页拿到 `layout_lines 44` 与版心框。
+> **所以这条在本机可验**，不需要先装那两个可选包。
+
+### 6.1 怎么做（入口 + 采样）
+
+```text
+① 先造够大的范围（M ≥ 20，否则几百毫秒跑完采不到中间态）：
+   页面确认 → 范围输入（例如 134-173）→ 选中 40 页
+② 版心确认步 → 右上角「⋯」→「检测版面…」(#layout-detect-open)
+   → 对话框 #layout-detect-plan 应显示「正文页 40 / 这次要检测 40 / 预计耗时 约 15 秒」
+   → 点 #layout-detect-start「开始检测（40 页）」
+③ 每 1 秒采一次（同一 tick 里读 DOM + 拉一次 jobs，别分两次读）：
+   #margin-fit-progress.hidden / #margin-fit-fill.style.width / #margin-fit-text.textContent
+   GET /api/projects/<id>/jobs?limit=1 → 那条 layout 的 done / failed / total / status
+```
+
+### 6.2 判据（每条都能红）
+
+```text
+J1 起跑：文本 ==「正在检测版面… 0 / M 页」，#margin-fit-progress hidden=false
+J2 单调：文本里的 N 不回退
+J3 同步：同一 tick 里 N 与 job.done(+failed) 一致（允许 ±2：前端按 1 秒轮询，DOM 会晚一拍）
+J4 增长：M ≥ 20 时至少采到 3 个不同的 N
+J5 宽度：style.width == round(N / M * 100)%（允许 ±1 取整）
+J6 收尾：任务结束后文本变「检测：M / M 页」，5 秒后 #margin-fit-progress hidden=true
+        （cancelled / interrupted 时是「检测：done / total 页」）
+J7 暂停：暂停 → 文本含「（已暂停）」、N 冻结、job.status=paused；继续后恢复增长
+J8 单一写者（**新增，2026-11-01 实测发现必须加**）：
+    检测任务运行期间，同一元素只能出现检测文案；出现「正在为 M 页自动拟合版心…」即判红。
+    自动拟合的分母在运行中必须不变；百分比不得回跳。
+```
+
+**反例（任一出现即判红，不是"看起来在涨"就算过）**：
+`job.done` 涨而 N 不动 / 同一采样点 N 与 done 差得越来越多 / N 回退 /
+任务在跑而进度条 hidden / 结束后 5 秒仍在 / 检测与拟合两组文案在同一元素上来回翻。
+
+### 6.3 证据格式（能复算，不靠"我看见了"）
+
+```text
+t(s)  #margin-fit-text                            文本N  done  failed  status     fill%  hidden
+1     正在检测版面… 0 / 40 页                       0      0     0       running    0%     false
+2     正在检测版面… 13 / 40 页 · 还需约 17 秒       13     13    0       running    33%    false
+...（结束时）
+26    检测：40 / 40 页                             40     40    0       succeeded  100%   false → 5s 后 true
+```
+
+同时贴原始 JSON（不要只贴界面文本），并配 3 张截图（0/M、中间、结束后）：
+
+```bash
+curl -s "$BASE/api/projects/<id>/jobs?limit=3" -H "X-B2T-Token: $TOKEN" | python3 -m json.tool
+curl -s "$BASE/api/projects/<id>/layout/plan"  -H "X-B2T-Token: $TOKEN" | python3 -m json.tool
+```
+
+### 6.4 在什么环境下这一条才算过
+
+```text
+过：任意能跑 detection 的环境（本机即可，引擎 = rapidocr_det）；
+    按 6.1 起一个 M ≥ 20 的检测任务，J1–J8 全绿，按 6.3 贴采样表。
+不过：J8 不绿时不要写"进度条可用"——用户在检测期间会看到另一组数字。
+```
+
+### 6.5 2026-11-01 本机实测（M=40，采样 23 次）
+
+```text
+通过：J1（0 / 40 页）· J2（检测侧 N 单调）· J3（13/13、26/26、28/28、39/39，差 1 是轮询晚一拍）
+      J4（0→1→13→14→26→28→39 共 6 个不同值）· J5（13→33%、14→35%、26→65%、28→70%、39→98%）
+不通过：J6 与 J8
+```
+
+**不通过现场（J8，两个写者抢同一元素）**：23 次采样里 8 次显示检测文案、15 次被自动拟合文案覆盖：
+
+```text
+t=3s   正在为 376 页自动拟合版心… 40 / 376
+t=4s   正在为 473 页自动拟合版心… 140 / 473
+t=10s  正在为 1042 页自动拟合版心… 720 / 1042
+t=17s  正在为 1689 页自动拟合版心… 1380 / 1689
+t=23s  正在为 2238 页自动拟合版心… 1940 / 2238
+```
+
+分母 376 → 473 → 571 → 669 → 767 → 1042 → … → 3078 **在运行中一路变大**，
+进度条宽度也跟着回跳（85% → 87% → 65% → 70%）。代码事实：
+`ensureMarginFitted` 每批 20 页后调 `showMarginFitProgress(attempted, attempted + remaining)`，
+而 `remaining` 是"全书还缺框的页数"，检测还在产出新行时会继续增加，于是
+`total = attempted + remaining` 越算越大。
+
+**不通过现场（J6，收尾文案看不到）**：检测 `succeeded 40/40` 后 6 秒，
+`#margin-fit-text` 仍是「正在为 3078 页自动拟合版心… 2780 / 3078」，
+没有出现「检测：40 / 40 页」——被拟合进度覆盖。（`#margin-status` 的
+「版面检测完成：40 页。还有 317 页这次没检出正文行…」是对的。）
+
+### 6.6 别和「自动拟合版心」混淆
+
+同一组元素被两处写（这就是 J8 的由来）：
+
+```text
+检测任务（job_type=layout）  运行时「正在检测版面… N / M 页」      结束「检测：N / M 页」
+自动拟合（marginFitRunning） 运行时「正在为 M 页自动拟合版心… N / M」 结束「自动拟合完成：M 页」
+```
+
+判 J1–J7 前先确认 `job_type=layout` 且文案是检测那种；出现拟合文案就按 J8 记。
+`N = job.done + job.failed`——失败页也计入，所以一页 40MP 超限失败时 N 会跳一格而 total 不变，属预期。
+
+### 6.7 现有用例有没有假定进度条可用（2026-11-01 核）
+
+```text
+tests/integration/test_ui_assets.py:619   只断言页面里有 id="margin-fit-progress"（静态存在性）
+tests/e2e/browser/driver.mjs:1225         只把 #margin-fit-text 收进 DOM 快照文本，无断言
+tests/e2e/qa.py（margin 相关）            读"版心已定 / 未定"汇总，不看进度条
+⇒ 没有用例假定它"会增长"：0 红、0 skip（test_ui_assets.py 实测 47 passed / 0 skipped）
+```
+
+所以这条**目前没有任何自动防线**，而且实测已经查出 J6/J8 两处不通过。
+建议把 J1/J3/J5/J8 固化成脚本（读 job + 读三个元素 + 断言文案形态，不需要截图）。
