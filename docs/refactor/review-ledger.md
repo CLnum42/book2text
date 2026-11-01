@@ -106,9 +106,11 @@ S1 组成：loadPageDetail(27) renderPageDetail(77) renderReviewPager(24) render
 ## 六、未决（写在这里，避免下一个人重判）
 
 ```
-① 用户三选一未定：QA 真机走一遍（看 review 现在还有哪些功能可达）· 只拆「页详情 + 差异层」500–800 行
-   · 按原计划整体切（约 2,000 行）。Builder 量出的事实：enterReviewStep() 现在进的是 reading 视图，
+① 用户三选一**还没选**（2026-11-01 22:55 更新）：QA 真机走一遍（看 review 现在还有哪些功能可达）
+   · 只拆「页详情 + 差异层」500–800 行 · 按原计划整体切（约 2,000 行）。
+   Builder 量出的事实：enterReviewStep() 现在进的是 reading 视图，
    #view-review 只剩 3 个入口、已降级成"页详情查看器" ⇒ 三条路的代价差三倍。
+   **别把这条读成"已经定了只拆页详情"——在用户回话前，①的形态是未知。**
 ② view-review 本体那 1 处（:5927）：清掉（改 closest(".view--review")）还是进 R3 豁免（带到期刀），未定。
 ③ openPageDetail 归详情抽屉域、左树 262 行归 index 域 —— 两条已定，等形态定了再排刀。
 ```
