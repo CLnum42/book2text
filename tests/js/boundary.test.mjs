@@ -6090,19 +6090,11 @@ function detailSplitProblems({ code }) {
   if (sharedCalls !== 0) problems.push(`还有 ${sharedCalls} 处审校调用点挂在共享调度器上`);
   const drawDetail = functionBody(code, "drawDetailOverlay");
   if (!drawDetail) problems.push("app.js 里没有 drawDetailOverlay");
-  else {
-    if (!/scheduleDetailOverlayLayout\(overlay\)/.test(drawDetail)) {
-      problems.push("drawDetailOverlay 尾部还在用共享调度器——切页后差异层不会重画");
-    }
-    if (!/observeOverlaySize\(overlay,\s*scheduleDetailOverlayLayout\)/.test(drawDetail)) {
-      problems.push("审校容器的 ResizeObserver 没按目标分派——窗口缩放后差异层不会重画（它是 px 定位）");
-    }
+  else if (!/scheduleDetailOverlayLayout\(overlay\)/.test(drawDetail)) {
+    problems.push("drawDetailOverlay 尾部还在用共享调度器——切页后差异层不会重画");
   }
-  const observer = functionBody(code, "observeOverlaySize");
-  if (!observer) problems.push("app.js 里没有 observeOverlaySize");
-  else if (!/overlayScheduleByTarget\.get\(entry\.target\)/.test(observer)) {
-    problems.push("观察器回调没有按目标分派调度器");
-  }
+  // 观察器那一路不在这里判：片 2 笔 B 把 ResizeObserver 收进 registry 的 schedule（自观察），
+  // 迁移期间本文件里两种形态都合法。笔 B 的闸在下面按 registry 侧单独判。
   return problems;
 }
 
@@ -6116,8 +6108,7 @@ test("片 2 笔 A 自检：放回共享版 / 删掉审校版那行 / 审校调�
     const sharedDiff = opts.sharedDiff ? "drawDiffLayer();" : "";
     const detailDiff = opts.detailDiff === false ? "" : "drawDiffLayer();";
     const third = opts.thirdShared ? 'scheduleOverlayLayout(el("detail-overlay"));' : 'scheduleDetailOverlayLayout(el("detail-overlay"));';
-    const observe = opts.noDispatch ? "" : "overlayScheduleByTarget.get(entry.target);";
-    const drawObserve = opts.drawUsesShared ? "observeOverlaySize(overlay);" : "observeOverlaySize(overlay, scheduleDetailOverlayLayout);";
+    const drawTail = opts.drawUsesShared ? "scheduleOverlayLayout(overlay);" : "scheduleDetailOverlayLayout(overlay);";
     return `
 function scheduleOverlayLayout(overlay, attempt = 0) {
   requestAnimationFrame(() => { if (layoutOverlayAnnotations(overlay)) { ${sharedDiff} return; } });
@@ -6128,8 +6119,7 @@ function scheduleDetailOverlayLayout(overlay, attempt = 0) {
 scheduleDetailOverlayLayout(el("detail-overlay"));
 scheduleDetailOverlayLayout(el("detail-overlay"));
 ${third}
-function drawDetailOverlay(blocks) { ${drawObserve} scheduleDetailOverlayLayout(overlay); }
-function observeOverlaySize(overlay, schedule = scheduleOverlayLayout) { ${observe} }
+function drawDetailOverlay(blocks) { ${drawTail} }
 `;
   };
   assert.deepEqual(detailSplitProblems({ code: sample() }), [], "合规样本被判红");
@@ -6137,8 +6127,7 @@ function observeOverlaySize(overlay, schedule = scheduleOverlayLayout) { ${obser
     [{ sharedDiff: true }, "共享调度器调 drawDiffLayer 必须红"],
     [{ detailDiff: false }, "审校调度器不调 drawDiffLayer 必须红"],
     [{ thirdShared: true }, "审校调用点留在共享版必须红"],
-    [{ noDispatch: true }, "观察器不分派必须红"],
-    [{ drawUsesShared: true }, "drawDetailOverlay 用共享版观察必须红"],
+    [{ drawUsesShared: true }, "drawDetailOverlay 尾部用共享版必须红"],
   ]) {
     assert.ok(detailSplitProblems({ code: sample(opts) }).length >= 1, why);
   }
