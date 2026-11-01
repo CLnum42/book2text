@@ -754,7 +754,8 @@ def test_right_panel_has_four_ordered_collapsible_sections() -> None:
     # 手风琴的存储键在 initPanelAccordion 体内，刀 5 已搬进 pages-view.js。
     assert "b2t.panel.accordion.v1." in _script_with_view("pages-view.js")
     assert "function initPanelAccordion(" in _script_with_view("pages-view.js")
-    assert "function firstUnfinishedPanel(" in script
+    # 刀 B：首个未完成面板的判定搬进域模块 page-confirm.js（服务模块；合查口径 = app.js + 该文件）
+    assert "function firstUnfinishedPanel(" in _script_with_view("page-confirm.js")
     # 页码（任务 55/64）有真实入口和"可跳过 / 未定位也能导出"说明
     pagenum = page[positions[2]:positions[3]]
     assert 'id="page-number-open"' in pagenum

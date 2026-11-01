@@ -5478,6 +5478,7 @@ test("刀 11 闸③：不建 refresh 导出、C 键里没有 scope:/op: 载荷",
 // 之后只在子树里 `querySelector`。四刀（A 质量统计 / B 页面确认 / C 目录确认 / D 结构工具）共用这条。
 const DOMAIN_MODULES = [
   { file: "quality-stats.js", exposes: "QualityStats" },
+  { file: "page-confirm.js", exposes: "PageConfirm" },
 ];
 
 function domainDomProblems({ file, source }) {
@@ -5523,6 +5524,47 @@ test("域模块（刀 A）：quality-stats.js 不按 id 找 DOM，四个函数�
     ["init", "load", "percentText"],
     "模块接口面多了/少了：render 没有真调用点就不许导出",
   );
+});
+
+test("域模块（刀 B）：page-confirm.js 五个函数已从 app.js 迁出，接口面逐条对", () => {
+  const appSource = stripCommentsForGates(readFileSync(APP_FILE, "utf8"));
+  const moved = ["pageSetupStats", "firstUnfinishedPanel", "selectedSuggestions", "suggestionPagesByType", "warnUnconfirmed"];
+  for (const name of moved) {
+    assert.ok(
+      !new RegExp("^(?:async )?function " + name + "\\s*\\(", "m").test(appSource),
+      `app.js 里还定义着 ${name}——刀 B 之后它应在 page-confirm.js`,
+    );
+  }
+  // 不进本刀的两个转发器与版面块的两个函数：必须还在 app.js
+  for (const name of ["openPageSetup", "confirmAllUnconfirmed", "layoutBlockPageRecord", "highConfidenceCount"]) {
+    assert.ok(
+      new RegExp("^(?:async )?function " + name + "\\s*\\(", "m").test(appSource),
+      `${name} 不在刀 B 的搬运范围（按归属判，不按段名）——它不该消失`,
+    );
+  }
+  // 接口面**执行一遍**再断言（只读文本会漏"函数改名后 api 里挂了个 undefined"那种坏样本）
+  const moduleSource = readFileSync(join(STATIC_DIR, "page-confirm.js"), "utf8");
+  const sandbox = {
+    console,
+    window: {},
+    document: { getElementById: () => null, createElement: () => ({}) },
+  };
+  sandbox.globalThis = sandbox;
+  assert.doesNotThrow(
+    () => vm.runInNewContext(moduleSource, sandbox, { filename: "page-confirm.js" }),
+    "page-confirm.js 在自己的沙箱里执行就抛（改名的函数会让 api 对象里出现未定义标识符）",
+  );
+  const api = sandbox.window.PageConfirm;
+  assert.ok(api && typeof api.init === "function", "page-confirm.js 没挂 window.PageConfirm.init");
+  assert.deepEqual(
+    Object.keys(api).sort(),
+    ["firstUnfinishedPanel", "init", "pageSetupStats", "selectedSuggestions", "suggestionPagesByType", "warnUnconfirmed"].sort(),
+    "page-confirm.js 接口面必须恰好是 init + 这五个函数（这五个都被 pages 注入调用）",
+  );
+  for (const [name, fn] of Object.entries(api)) {
+    if (name === "init") continue;
+    assert.equal(typeof fn, "function", `api.${name} 不是函数——改名/漏挂会在这里红`);
+  }
 });
 
 test("域模块自检：el( / getElementById / querySelector( 喂进坏样本必须红；纯数据模块算绿", () => {
