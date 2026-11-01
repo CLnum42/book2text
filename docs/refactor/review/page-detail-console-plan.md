@@ -49,17 +49,28 @@ root   init({ root: el("view-review"), … })
 | 留壳 | 45 | **902** | 块框拖动/缩放 348 · 收尾/清洗/候选的辅助（computeCharSpans 58 · aggregateDivergence 20 …） · 接线 `setupReviewControls` 136 · `setupLibrary` 68 · `closeProject` 31 · 其它小函数 |
 | 别的域 | 85 | **2,025** | 抽屉域 32/729 · 清洗/删 19/459 · 收尾域 20/349 · 树→index 13/425 · 结构域 1/63 |
 
-**与 `review-ledger.md` 的 A′ 59 / 1,341 对账（对不上，三处）：**
+**与 `review-ledger.md` 的 A′ 59 / 1,341 对账（2026-11-01 重量，已可复算）：**
 
 ```
-① ledger 的 A（72 / 1,955）可以精确复现：= 碰 review id 的函数（三取法+字符串）− 5 个 B 类
-   （boot 426 · setupShell 35 · setupLibrary 68 · applyPackageMode 44 · renderFinishPanel 135 = 708）
-   − blockCard 285。⇒ **blockCard（285 行）从来没进过 ledger 的 A**（它的 id 藏在字符串/展开调用里）。
-② A′ = A − 13 个非 review 名。但那 13 个逐名相加是 **446**，1,955 − 446 = **1,509**，不是 1,341
-   ⇒ ledger 的 A′ 行数自身差 **168 行**（名单与行数不是同一次量的）。以 1,509 为准。
-③ 本刀的 1,332 是**能力闭包**（含 blockCard 285 + 块内差异渲染 199，不含抽屉 729 / 清洗 459），
-   与 A′（含抽屉、不含 blockCard）量的是两批东西 ⇒ 两个数接近是巧合，不是同一集合。
+A（只碰 review id 的函数，含字符串/展开调用）    78 / 2,957
+  − 5 个 B 类（boot/setupShell/setupLibrary/applyPackageMode/renderFinishPanel）  −717
+  − blockCard（285）——它的 id 藏在字符串/展开里，三取法扫不到                −285
+= A（ledger 口径）                              72 / 1,955   ✓ 与 ledger 一致
+  − 9 个非 review（showView/runAuxiliary/renderAuxiliary/setupAuxControls/confirmCurrentPage/
+    applyQueueAckLocally/structureAction/undoAutoApply/openPageDetail）        −352
+  − 4 个树（ensureReviewTree/renderReviewTree/setReviewTreeOnlyTodo/syncReviewTreeToPage） −262
+= A′                                            59 / 1,341   ✓ 与 ledger 一致
 ```
+
+⇒ **ledger 的 A′ 1,341 是对的**；我上一版说的「A′ 自身差 168、应为 1,509」是错的（忘了 blockCard 已先出局、
+也漏了 4 个树名），已撤回。59 个逐名 + 行范围见 `review-ledger.md` §二·补；
+复算脚本 `scripts/review_a_prime.mjs`。
+
+本刀的 1,332 与 A′ 仍是**两批东西**：1,332 是能力闭包（含 blockCard 285 + 块内差异 199，不含抽屉 729 / 清洗 459）；
+A′ 是「碰 review id 的函数全集 − 非 review − 树」，含抽屉、不含 blockCard。两个数接近是巧合。
+
+**逐函数三格表**：`docs/refactor/review/three-column-attribution.md`（178 行，名字/起/止/行数/格/备注），
+复算脚本 `scripts/review_three_columns.mjs`。
 
 **这条线的真实规模**：4,259 行里，本刀搬 1,332（31%），留壳 902（21%），别的域 2,025（48%）。
 

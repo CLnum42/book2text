@@ -64,6 +64,84 @@ openPageDetail(14)                             详情抽屉域：10 个调用点
 
 > 名单逐名 20 个（此前口头说"18 个"是漏数，以本表为准）；它们合计约 700 行。
 
+### 二·补 A′ 59 个函数逐名（可复算；实测于 `4231b03`，行号随树漂移）
+
+口径（与 §二 同）：A = 顶层函数里**只碰 `#view-review` id** 的那些（三取法 + 字符串字面量，剥注释；碰任一其它
+view section 的 id 即出局）；A′ = A − 9 个「碰了 review id 但不为 review 存在」− 4 个树函数。
+
+```
+A（只碰 review id）        = 72 个 / 1,955 行
+  − 9 个非 review（在 A 里）= 352 行：showView · runAuxiliary · renderAuxiliary · setupAuxControls
+                                · confirmCurrentPage · applyQueueAckLocally · structureAction · undoAutoApply · openPageDetail
+  − 4 个树（归 index）      = 262 行：ensureReviewTree · renderReviewTree · setReviewTreeOnlyTodo · syncReviewTreeToPage
+= A′                       = **59 个 / 1,341 行**（1,955 − 352 − 262 = 1,341）
+```
+
+> 注：`blockCard`（285 行）**不在 A 里**——它的 review id 都藏在字符串/展开调用里，按三取法扫不到。
+> 所以 A′ 不含它；这与「A′ 1,341、主刀闭包 1,332」是两批东西不矛盾（见 ① 书 §1.1）。
+
+| 函数 | 行范围（4231b03） | 行数 |
+|---|---|---:|
+| showPageDetailError | 88–90 | 3 |
+| closePageDetail | 5576–5585 | 10 |
+| loadPageDetail | 5608–5634 | 27 |
+| pagerPages | 5692–5700 | 9 |
+| renderReviewPager | 5703–5726 | 24 |
+| fitWidth | 5742–5745 | 4 |
+| applyZoom | 5747–5757 | 11 |
+| setReviewOverlay | 5767–5774 | 8 |
+| setReviewMargin | 5776–5784 | 9 |
+| setupViewerTools | 5786–5833 | 48 |
+| setupReviewAutoPass | 5835–5876 | 42 |
+| setupReviewPager | 5879–5893 | 15 |
+| paintReviewMargin | 5901–5922 | 22 |
+| toggleReviewMargin | 5924–5933 | 10 |
+| renderReviewFilter | 5967–6007 | 41 |
+| ensureBlockListed | 6023–6031 | 9 |
+| renderPageDetail | 6033–6109 | 77 |
+| renderReviewWorkflowStatus | 6112–6120 | 9 |
+| renderReviewBanner | 6126–6180 | 55 |
+| renderHistoryButtons | 6182–6189 | 8 |
+| snapBox | 6253–6282 | 30 |
+| startBoxDrag | 6285–6306 | 22 |
+| findDiffMark | 6741–6745 | 5 |
+| drawDiffLayer | 6762–6855 | 94 |
+| scrollViewerTo | 6866–6873 | 8 |
+| scrollRowIntoList | 6875–6882 | 8 |
+| syncDiffStrip | 6899–6908 | 10 |
+| updateDiffActive | 6910–6926 | 17 |
+| activateDiff | 6932–6964 | 33 |
+| renderReviewHeadline | 7038–7064 | 27 |
+| renderQueueFooter | 7077–7086 | 10 |
+| renderDiffQueue | 7089–7151 | 63 |
+| focusQueueBar | 7384–7387 | 4 |
+| captureQueueSnapshot | 7389–7400 | 12 |
+| restoreQueueAfterUndo | 7403–7420 | 18 |
+| drawDetailOverlay | 7421–7484 | 64 |
+| drawDetailLines | 7487–7505 | 19 |
+| renderSuggestionTools | 7516–7536 | 21 |
+| renderLayoutPanel | 7539–7561 | 23 |
+| confirmPageLayout | 7563–7585 | 23 |
+| renderReviewBlocks | 8241–8285 | 45 |
+| selectReviewBlock | 8287–8307 | 21 |
+| focusSiblingBlock | 8309–8316 | 8 |
+| openCandidateCompare | 8527–8538 | 12 |
+| renderCandidate | 8540–8553 | 14 |
+| applyCandidateBlock | 8622–8660 | 39 |
+| setBoxCreateMode | 8672–8684 | 13 |
+| normalizedPoint | 8687–8695 | 9 |
+| onBoxMouseDown | 8697–8706 | 10 |
+| onBoxMouseUp | 8717–8737 | 21 |
+| drawBoxDraft | 8750–8762 | 13 |
+| createBlockFromBox | 8764–8796 | 33 |
+| renderInkGapBar | 8834–8847 | 14 |
+| drawInkGapMarks | 8849–8872 | 24 |
+| startRegionRecognition | 8875–8886 | 12 |
+| recognizeBoxRegion | 8889–8921 | 33 |
+| setupBoxCreate | 8923–8939 | 17 |
+| decideCandidate | 8941–8969 | 29 |
+| reviewAction | 8971–8992 | 22 |
+
 ## 三、接口面：外部引用 43 条 → C 5 / T 34（去假阳性后 review 自己的 C = 2~4）
 
 ```
