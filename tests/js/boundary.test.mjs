@@ -5644,18 +5644,19 @@ const EDITOR_IDS = [
   "box-select-confirm", "box-select-cancel", "box-select-status",
   "review-undo", "review-redo", "layout-panel", "layout-panel-status", "suggestion-apply-all",
   "aux-panel", "aux-summary", "aux-close", "aux-hint", "aux-lines", "aux-run", "detail-recognize",
+  "ink-gap-bar", "ink-gap-text", "ink-gap-toggle", "box-select-rect", "detail-box-create",
 ];
 
 /** 归外壳：同 subtree 里剩下的（S1 不搬）。两集必须不交、并集 == subtree 全部 id。 */
 const SHELL_IDS = [
   "review-pager", "review-prev", "review-page-no", "review-next", "review-jump", "review-jump-filter",
   "review-continuations", "review-banner", "review-tree", "review-tree-rail", "review-tree-stats",
-  "review-tree-filter", "review-tree-scroll", "review-tree-list", "ink-gap-bar", "ink-gap-text",
-  "ink-gap-toggle", "viewer-scroll", "detail-canvas", "detail-image", "detail-margin", "detail-lines",
-  "detail-overlay", "detail-diff-layer", "box-select-rect", "detail-ink-gaps", "detail-image-status",
+  "review-tree-filter", "review-tree-scroll", "review-tree-list",
+  "viewer-scroll", "detail-canvas", "detail-image", "detail-margin", "detail-lines",
+  "detail-overlay", "detail-diff-layer", "detail-ink-gaps", "detail-image-status",
   "zoom-out", "zoom-in", "zoom-fit", "toggle-overlay", "toggle-diff-marks", "review-margin-toggle",
   "page-detail-title", "page-detail-meta", "finish-open-review", "review-drawer-toggle", "review-more",
-  "review-more-menu", "review-apply-all", "detail-box-create", "review-auto-pass", "review-auto-revoke",
+  "review-more-menu", "review-apply-all", "review-auto-pass", "review-auto-revoke",
   "layout-confirm", "review-footer-count", "detail-close", "review-confirm",
 ];
 

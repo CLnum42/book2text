@@ -51,9 +51,11 @@ function makeModule() {
     ["block-position", makeNode()],
     ["page-detail-error", makeNode()],
   ]);
-  const root = { querySelector: (sel) => byId.get(sel.replace(/^#/, "")) || null, querySelectorAll: () => [] };
-  const sandbox = { window: {}, document: { createElement: () => makeNode(), activeElement: null }, console, setTimeout, clearTimeout };
+  const root = { querySelector: (sel) => byId.get(sel.replace(/^#/, "")) || makeNode(), querySelectorAll: () => [] };
+  const sandbox = { window: { addEventListener() {}, removeEventListener() {} }, document: { createElement: () => makeNode(), activeElement: null, addEventListener() {} }, console, setTimeout, clearTimeout };
   sandbox.window = sandbox;
+  sandbox.addEventListener = () => {};
+  sandbox.removeEventListener = () => {};
   vm.createContext(sandbox);
   vm.runInContext(readFileSync(MODULE_URL, "utf8"), sandbox, { filename: "page-detail-editor.js" });
   const api = sandbox.PageDetailEditor;
@@ -65,6 +67,20 @@ function makeModule() {
     getDetailPageNo: () => 1,
     getReviewBlocks: () => [],
     getDetailOverlay: () => ({ children: overlay }),
+    // S2 起 init 会接线框选（canvas / 按钮 / 空格键），这些入口给最小桩
+    getDetailCanvas: () => makeNode(),
+    getDetailImage: () => makeNode(),
+    getDetailInkGaps: () => makeNode(),
+    getBoxCreateMode: () => false,
+    setBoxCreateMode: () => false,
+    getDetailInkGapsState: () => [],
+    setDetailInkGapsState: () => [],
+    refreshReviewFilterOnly: () => {},
+    renderReviewHeadline: () => {},
+    loadInkGaps: () => {},
+    ensureBlockListed: () => {},
+    refreshPageStates: () => {},
+    setSaveState: () => {},
     getActiveReviewBlockId: () => state.activeReviewBlockId,
     setActiveReviewBlockId: (value) => { state.activeReviewBlockId = value; return value; },
     getDiffStripOpen: () => state.diffStripOpen,

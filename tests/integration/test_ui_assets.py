@@ -590,13 +590,18 @@ def test_ink_gap_hint_and_region_recognition_are_wired() -> None:
         assert f'id="{element_id}"' in page, element_id
 
     script = _script()
-    assert "loadInkGaps" in script and "/ink-gaps" in script
-    assert "startRegionRecognition" in script
-    assert "recognizeBoxRegion" in script and "/recognize-region" in script
+    both = script + _editor_script()
+    assert "loadInkGaps" in both and "/ink-gaps" in both
+    assert "startRegionRecognition" in both
+    assert "recognizeBoxRegion" in both and "/recognize-region" in both
     # 识别结果进"框选新增块"的输入框：不直接落库，用户确认后才创建
-    assert 'el("box-select-text").value = data.text' in script
+    # （S2 之后这段在模块里，取元素从 el( 变成 part(）
+    assert (
+        'el("box-select-text").value = data.text' in script
+        or 'part("box-select-text").value = data.text' in both
+    )
     # 进审校页就会查一次漏行
-    assert "loadInkGaps(pageNo)" in script
+    assert "loadInkGaps(pageNo)" in both
 
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
     assert ".ink-gap-bar" in css
