@@ -75,6 +75,7 @@ const TEST_FILES = [
   ["pages-wire", () => import("./pages-wire.test.mjs")],
   ["pages-poll-guard", () => import("./pages-poll-guard.test.mjs")],
   ["pages-visibility", () => import("./pages-visibility.test.mjs")],
+  ["margin-progress", () => import("./margin-progress.test.mjs")],
   ["detail-visibility", () => import("./detail-visibility.test.mjs")],
 ];
 const selector = process.argv[2];
