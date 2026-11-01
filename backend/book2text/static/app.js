@@ -9955,9 +9955,25 @@ function treeLevelLabel(level) {
   return "?";
 }
 
-function treeChapterOfPage(pageNo) {
-  const page = (reviewTree?.pages || []).find((item) => item.page_no === pageNo);
-  return page ? page.chapter : null;
+/**
+ * 审校左树的分组（纯函数）：默认模式按章分组，没有章归属的页放末尾「未归章」。
+ * 修前这些页根本不进树（永远点不到），而头部「N 处待审」算着它们——见计划书 §8 T0。
+ * · chapters 空 → 一组平铺（id / title 皆 null）
+ * · 否则：每个有页的章一组（空章跳过），末尾「未归章」一组（page.chapter 不在 chapters 里）
+ */
+function reviewTreeGroups(pages, chapters) {
+  const pageList = pages || [];
+  const chapterList = chapters || [];
+  if (!chapterList.length) return [{ id: null, title: null, pages: pageList.slice() }];
+  const known = new Set(chapterList.map((chapter) => chapter.id));
+  const groups = [];
+  for (const chapter of chapterList) {
+    const chapterPages = pageList.filter((page) => page.chapter === chapter.id);
+    if (chapterPages.length) groups.push({ id: chapter.id, title: chapter.title, pages: chapterPages });
+  }
+  const orphans = pageList.filter((page) => !known.has(page.chapter));
+  if (orphans.length) groups.push({ id: null, title: "未归章", pages: orphans });
+  return groups;
 }
 
 function renderReviewTree() {
@@ -9970,13 +9986,16 @@ function renderReviewTree() {
   const pages = reviewTree.pages || [];
   const chapters = reviewTree.chapters || [];
   const byNo = new Map(pages.map((page) => [page.page_no, page]));
+  const groups = reviewTreeOnlyTodo ? [] : reviewTreeGroups(pages, chapters);
   const currentNo = detailPageNo;
-  const currentChapter = currentNo ? treeChapterOfPage(currentNo) : null;
-  if (currentChapter && !reviewTreeOnlyTodo) {
-    // 默认只展开当前回目；翻页时旧回目自动折叠
-    if (!reviewTreeExpandedChapters.has(currentChapter)) {
+  const currentGroup = groups.find((group) =>
+    group.pages.some((page) => page.page_no === currentNo)
+  );
+  if (currentGroup && currentGroup.title && !reviewTreeOnlyTodo) {
+    // 默认只展开当前页所在的一组（含「未归章」）；翻页时旧组自动折叠
+    if (!reviewTreeExpandedChapters.has(currentGroup.id)) {
       reviewTreeExpandedChapters.clear();
-      reviewTreeExpandedChapters.add(currentChapter);
+      reviewTreeExpandedChapters.add(currentGroup.id);
     }
   }
   const totalUnacked = pages.reduce((sum, page) => sum + page.unacked, 0);
@@ -10098,23 +10117,25 @@ function renderReviewTree() {
       list.append(empty);
     }
     for (const page of todo) list.append(appendPage(page, list));
-  } else if (!chapters.length) {
-    for (const page of pages) list.append(appendPage(page, list));
   } else {
-    for (const chapter of chapters) {
-      const chapterPages = pages.filter((page) => page.chapter === chapter.id);
-      if (!chapterPages.length) continue;
-      const remaining = chapterPages.reduce((sum, page) => sum + page.unacked, 0);
+    for (const group of groups) {
+      if (!group.pages.length) continue;
+      if (!group.title) {
+        // chapters 空：平铺，没有章头
+        for (const page of group.pages) list.append(appendPage(page, list));
+        continue;
+      }
+      const remaining = group.pages.reduce((sum, page) => sum + page.unacked, 0);
       const li = document.createElement("li");
       li.className = "review-tree__chapter";
       const row = document.createElement("div");
       row.className = "review-tree__row review-tree__row--chapter";
       const caret = document.createElement("span");
       caret.className = "caret";
-      caret.textContent = reviewTreeExpandedChapters.has(chapter.id) ? "▾" : "▸";
+      caret.textContent = reviewTreeExpandedChapters.has(group.id) ? "▾" : "▸";
       const title = document.createElement("span");
       title.className = "tree-title";
-      title.textContent = chapter.title;
+      title.textContent = group.title;
       const spacer = document.createElement("span");
       spacer.className = "spacer";
       const count = document.createElement("span");
@@ -10126,13 +10147,17 @@ function renderReviewTree() {
         count.classList.add("is-done");
       }
       row.append(caret, title, spacer, count);
-      row.addEventListener("click", () => toggleReviewTreeChapter(chapter.id));
+      row.addEventListener("click", () => toggleReviewTreeChapter(group.id));
       li.append(row);
-      if (reviewTreeExpandedChapters.has(chapter.id)) {
-        for (const page of chapterPages) li.append(appendPage(page, li));
+      if (reviewTreeExpandedChapters.has(group.id)) {
+        for (const page of group.pages) li.append(appendPage(page, li));
       }
       list.append(li);
-      reviewTreeChapterRows.set(chapter.id, { count, li, chapter });
+      reviewTreeChapterRows.set(group.id, {
+        count,
+        li,
+        chapter: chapters.find((chapter) => chapter.id === group.id) || null,
+      });
     }
   }
   syncReviewTreeToPage(currentNo, { scroll: true });
@@ -10169,10 +10194,12 @@ function setReviewTreeOnlyTodo(only) {
 /** 当前页 / 当前条目在树里定位：展开 + 高亮 + 滚到约 40%。 */
 function syncReviewTreeToPage(pageNo, { scroll = false } = {}) {
   if (!reviewTree || !pageNo) return;
-  const chapter = treeChapterOfPage(pageNo);
-  if (chapter && !reviewTreeExpandedChapters.has(chapter) && !reviewTreeOnlyTodo) {
+  const group = reviewTreeGroups(reviewTree.pages || [], reviewTree.chapters || []).find((item) =>
+    item.pages.some((page) => page.page_no === pageNo)
+  );
+  if (group && group.title && !reviewTreeExpandedChapters.has(group.id) && !reviewTreeOnlyTodo) {
     reviewTreeExpandedChapters.clear();
-    reviewTreeExpandedChapters.add(chapter);
+    reviewTreeExpandedChapters.add(group.id);
     renderReviewTree();
     return;
   }
@@ -10226,11 +10253,14 @@ function updateReviewTreeAfterAck(block, item, ack) {
     }
     pageRow.row.title = `第 ${pageData.page_no} 页 · ${pageData.unacked} 处待审`;
   }
-  const chapterEntry = pageData ? reviewTreeChapterRows.get(pageData.chapter) : null;
+  const group = pageData
+    ? reviewTreeGroups(reviewTree.pages || [], reviewTree.chapters || []).find((item) =>
+        item.pages.some((page) => page.page_no === pageData.page_no)
+      )
+    : null;
+  const chapterEntry = group ? reviewTreeChapterRows.get(group.id) : null;
   if (chapterEntry) {
-    const remaining = (reviewTree.pages || [])
-      .filter((page) => page.chapter === pageData.chapter)
-      .reduce((sum, page) => sum + page.unacked, 0);
+    const remaining = group.pages.reduce((sum, page) => sum + page.unacked, 0);
     if (remaining > 0) {
       chapterEntry.count.textContent = `${remaining} 处`;
       chapterEntry.count.classList.remove("is-done");
