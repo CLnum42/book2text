@@ -71,7 +71,7 @@ import {
   MOVE_EXEMPTION_BLOCKS, MOVE_EXEMPTION_BLOCKS_RETIRED,
 } from "./feature-contract.mjs";
 // R9 专用：保留模板 `${…}` 插值的去注释版本（本文件另有一份旧的去注释实现，只抹代码不抹模板）
-import { codeOnly, stripPreservingTemplateExpressions } from "./static-scan.mjs";
+import { codeOnly, functionBody, stripPreservingTemplateExpressions } from "./static-scan.mjs";
 
 // B2T_STATIC_DIR：把整个 static 目录指到别处（迁移复跑 / 变异验证用），默认仓库里的
 const STATIC_DIR = process.env.B2T_STATIC_DIR
@@ -5997,23 +5997,8 @@ const AUX_OUTSIDE_IDS = [
   "aux-warning-wait", "aux-warning-error",
 ];
 
-/**
- * 只删「块注释 + 整行注释」的简化口径。
- *
- * 不用 `codeOnly`：它按字符扫，遇到正则字面量里的引号（`/[&<>"']/g`）会错进
- * 字符串状态，导致**后面的整行注释整段留下**——对"死名归零 / 注释里提到不算"这类断言，
- * 那是假红（本书 S4 实测：模块里 `// auxData 是死状态` 被当成代码）。
- */
-function stripCommentLines(source) {
-  return String(source || "")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("//"))
-    .join("\n");
-}
-
 function outsideIdProblems({ moduleSource, ids = AUX_OUTSIDE_IDS }) {
-  const stripped = stripCommentLines(moduleSource);
+  const stripped = codeOnly(moduleSource);
   return ids
     .filter((id) => stripped.includes(id))
     .map((id) => `模块里出现了子树外的 id ${id}——它只能经注入拿节点`);
@@ -6034,8 +6019,8 @@ test("S4：第二引擎复核 6 函数已不在 app.js；遮罩 id 不进模块�
   const idProblems = outsideIdProblems({ moduleSource });
   assert.deepEqual(idProblems, [], idProblems.join("\n"));
   // 死状态：auxData 两处写在 S4 一并删掉，两个文件都不许再有（零读的"状态"是噪音）
-  const appCode = stripCommentLines(appSource);
-  const moduleCode = stripCommentLines(moduleSource);
+  const appCode = codeOnly(appSource);
+  const moduleCode = codeOnly(moduleSource);
   assert.equal(/\bauxData\b/.test(appCode), false, "app.js 里还有 auxData——死状态该删");
   assert.equal(/\bauxData\b/.test(moduleCode), false, "模块里不许接一份 auxData");
   // auxWarningWaitToken 搬家：外壳 0 次、模块里仍是模块级 let（不是"顺手弄丢了"）
@@ -6069,6 +6054,94 @@ test("S4 自检：遮罩 id 写进模块必须红；注释里提到不算；无�
   );
   const app = "window.PageDetailEditor?.init({});\nwindow.PageDetailEditor?.a();\n";
   assert.equal(exportCallSiteProblems({ apiKeys: ["a", "b"], appSource: app }).length, 1);
+});
+
+// ---------------------------------------------------------------- 片 2 笔 A：审校差异层与布局调度器解耦
+
+/**
+ * **笔 A 的判据**：共享调度器（块框用）不许再碰审校的差异层；审校那条自带 `drawDiffLayer`。
+ *
+ * 为什么不再只是"代码好看"：`scheduleOverlayLayout` 成功帧里那句 `drawDiffLayer()` 让
+ * **页面视图每画一页瓦片的块框**都去重画一次审校的差异层（书 §3.1，Architect 更正过：多余重画
+ * 来自这条链，不是 `observeOverlaySize` 的调用面——它有两个调用点，瓦片与审校各一）。
+ */
+function detailSplitProblems({ code }) {
+  const problems = [];
+  const shared = functionBody(code, "scheduleOverlayLayout");
+  const detail = functionBody(code, "scheduleDetailOverlayLayout");
+  if (!shared) problems.push("app.js 里没有 scheduleOverlayLayout");
+  if (!detail) {
+    problems.push("app.js 里没有 scheduleDetailOverlayLayout——审校那条路径没人排帧了");
+    return problems;
+  }
+  const diffIn = (body) => (body.match(/drawDiffLayer\s*\(/g) || []).length;
+  if (shared && diffIn(shared) !== 0) {
+    problems.push("共享调度器还在调 drawDiffLayer——瓦片布局又会去重画审校差异层");
+  }
+  if (diffIn(detail) !== 1) {
+    problems.push(`审校调度器成功帧必须调一次 drawDiffLayer（现在 ${diffIn(detail)} 次）——漏了差异层不重画`);
+  }
+  const onDetail = (name) => (code.match(new RegExp(`${name}\\(\\s*el\\("detail-overlay"\\)\\s*\\)`, "g")) || []).length;
+  const detailCalls = onDetail("scheduleDetailOverlayLayout");
+  const sharedCalls = onDetail("scheduleOverlayLayout");
+  if (detailCalls !== 3) {
+    problems.push(`审校三处显式调用（applyZoom / setReviewOverlay / toggle-overlay）应各有 1 处 detail 版，现在 ${detailCalls} 处`);
+  }
+  if (sharedCalls !== 0) problems.push(`还有 ${sharedCalls} 处审校调用点挂在共享调度器上`);
+  const drawDetail = functionBody(code, "drawDetailOverlay");
+  if (!drawDetail) problems.push("app.js 里没有 drawDetailOverlay");
+  else {
+    if (!/scheduleDetailOverlayLayout\(overlay\)/.test(drawDetail)) {
+      problems.push("drawDetailOverlay 尾部还在用共享调度器——切页后差异层不会重画");
+    }
+    if (!/observeOverlaySize\(overlay,\s*scheduleDetailOverlayLayout\)/.test(drawDetail)) {
+      problems.push("审校容器的 ResizeObserver 没按目标分派——窗口缩放后差异层不会重画（它是 px 定位）");
+    }
+  }
+  const observer = functionBody(code, "observeOverlaySize");
+  if (!observer) problems.push("app.js 里没有 observeOverlaySize");
+  else if (!/overlayScheduleByTarget\.get\(entry\.target\)/.test(observer)) {
+    problems.push("观察器回调没有按目标分派调度器");
+  }
+  return problems;
+}
+
+test("片 2 笔 A：共享调度器 0 次 drawDiffLayer · 审校调度器 1 次 · 审校调用点全走 detail 版", () => {
+  const problems = detailSplitProblems({ code: codeOnly(readFileSync(APP_FILE, "utf8")) });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("片 2 笔 A 自检：放回共享版 / 删掉审校版那行 / 审校调用点留在共享版 / 观察器不分派，都必须红", () => {
+  const sample = (opts = {}) => {
+    const sharedDiff = opts.sharedDiff ? "drawDiffLayer();" : "";
+    const detailDiff = opts.detailDiff === false ? "" : "drawDiffLayer();";
+    const third = opts.thirdShared ? 'scheduleOverlayLayout(el("detail-overlay"));' : 'scheduleDetailOverlayLayout(el("detail-overlay"));';
+    const observe = opts.noDispatch ? "" : "overlayScheduleByTarget.get(entry.target);";
+    const drawObserve = opts.drawUsesShared ? "observeOverlaySize(overlay);" : "observeOverlaySize(overlay, scheduleDetailOverlayLayout);";
+    return `
+function scheduleOverlayLayout(overlay, attempt = 0) {
+  requestAnimationFrame(() => { if (layoutOverlayAnnotations(overlay)) { ${sharedDiff} return; } });
+}
+function scheduleDetailOverlayLayout(overlay, attempt = 0) {
+  requestAnimationFrame(() => { if (layoutOverlayAnnotations(overlay)) { ${detailDiff} return; } });
+}
+scheduleDetailOverlayLayout(el("detail-overlay"));
+scheduleDetailOverlayLayout(el("detail-overlay"));
+${third}
+function drawDetailOverlay(blocks) { ${drawObserve} scheduleDetailOverlayLayout(overlay); }
+function observeOverlaySize(overlay, schedule = scheduleOverlayLayout) { ${observe} }
+`;
+  };
+  assert.deepEqual(detailSplitProblems({ code: sample() }), [], "合规样本被判红");
+  for (const [opts, why] of [
+    [{ sharedDiff: true }, "共享调度器调 drawDiffLayer 必须红"],
+    [{ detailDiff: false }, "审校调度器不调 drawDiffLayer 必须红"],
+    [{ thirdShared: true }, "审校调用点留在共享版必须红"],
+    [{ noDispatch: true }, "观察器不分派必须红"],
+    [{ drawUsesShared: true }, "drawDetailOverlay 用共享版观察必须红"],
+  ]) {
+    assert.ok(detailSplitProblems({ code: sample(opts) }).length >= 1, why);
+  }
 });
 
 // ---------------------------------------------------------------- 清洗刀：退役 id/状态归零
