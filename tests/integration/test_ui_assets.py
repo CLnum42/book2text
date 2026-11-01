@@ -242,8 +242,11 @@ def test_page_layout_panel_and_filter_are_present() -> None:
     assert 'id="suggestion-apply-all"' in page
 
     script = _script()
-    assert "function renderLayoutPanel(" in script
-    assert "function confirmPageLayout(" in script
+    # S3：版面确认那三个函数搬进 page-detail-editor.js（非视图服务模块）⇒ 合查两份；
+    # 模块还没落盘时 _editor_script() 是空串，旧断言照旧只查 app.js。
+    both = script + _editor_script()
+    assert "function renderLayoutPanel(" in both
+    assert "function confirmPageLayout(" in both
     assert "layout_unconfirmed" in script
     assert 'margin_note: "旁批"' in script
 
@@ -369,7 +372,8 @@ def test_block_type_suggestions_are_wired_to_the_existing_patch() -> None:
     assert "adoptBlockSuggestion" in script
     assert "adoptAllHighSuggestions" in script
     # 批量采用只拿 high；review 必须逐条点
-    assert 'suggestionHighList()' in script
+    # S3：`suggestionHighList()` 的两处调用随 renderSuggestionTools / renderLayoutPanel 进了模块
+    assert 'suggestionHighList()' in script + _editor_script()
     assert 'item.confidence === "high"' in script
     # 书眉里的页码只展示，不自动拆块 / 改文本
     assert "含页码" in script + _editor_script()
