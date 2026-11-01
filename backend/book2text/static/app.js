@@ -6771,24 +6771,6 @@ function blockHasDrawableDiff(block) {
   );
 }
 
-/** 字符推进宽度（em）：CJK / 全角 1.0，ASCII 字母数字 0.52，ASCII 标点 0.30，空格 0.26。 */
-function charAdvance(ch) {
-  if (!ch) return 0;
-  if (/\s/.test(ch)) return 0.26;
-  const code = ch.codePointAt(0);
-  if (
-    (code >= 0x2e80 && code <= 0x9fff) ||
-    (code >= 0xf900 && code <= 0xfaff) ||
-    (code >= 0xff00 && code <= 0xffef) ||
-    (code >= 0x3000 && code <= 0x303f)
-  ) {
-    return 1.0;
-  }
-  if (/[A-Za-z0-9]/.test(ch)) return 0.52;
-  if (code < 128) return 0.30;
-  return 0.60;
-}
-
 /**
  * 单行 LCS，返回 A 上需要标记的字符区间。
  *
