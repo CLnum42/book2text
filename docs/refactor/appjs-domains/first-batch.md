@@ -36,6 +36,22 @@ v1.1 起，每刀的引用清单必须**逐条标出它属于哪一栏**，不�
 「505 / 173 / 186」这组数白跑过几轮，根子都是把某一时刻的读数当成了常数。
 （`4676772` 时的实测 505 / 12,755 留在 §0.1 与本节只作历史参照；**它变过，不算错**。）
 
+## 0.2 三次同类分歧：按字面判会错的地方（2026-11-01/02，同一晚三见）
+
+```
+实例                    按"字面/所在段"判会得到            按归属判才是对的
+openPageSetup           "页面确认段里的函数，属于本域"        它是 1 行 PagesView 转发器 ⇒ 属跨视图能力
+confirmAllUnconfirmed   同上                                  同上
+layoutBlockPageRecord   "段名叫『页面确认步』，属于本域"        它服务版面块/建议 ⇒ 不属页面类型确认
+highConfidenceCount     同上                                  同上
+页面块缓存簇            "loadIndexBlocks 在用，一起搬走"       缓存是 pages/preview/阅读三方共用，
+                                                              属"页面块"域 ⇒ 留在外壳、只给三个句柄
+```
+
+共同形状：**一段代码住在谁的段落里，和它归谁所有，是两件事**。
+判归属问三个问题：谁共用它？谁的生命周期跟它一起结束？搬走之后它还需要读多少别人的状态？
+三问都指向同一个答案才动；只凭"它在这一段里"就动，今晚已经错了三次。
+
 ## 0. 范围与顺序
 
 ```
@@ -221,11 +237,34 @@ pageIndexData · pageIndexProject · pageIndexLoading  +  imageQualityMode
    从 (() => pageIndexData) 换成 (() => window.PageIndexService?.getData())，**键名与条数都不变**
 ```
 
+**页面块缓存簇：不搬（Chief 裁决 A，2026-11-02）**
+
+```
+事实：loadIndexBlocks（14 行）依赖 app.js 的页面块缓存簇——
+  pageBlockCache(2873) · pageBlockCacheOrder(2874) · pageBlockVersions(2881) · pageBlockPending(2882) ·
+  PAGE_BLOCK_CACHE_LIMIT(2883) · pageBlockKey(3342) · rememberPageBlocks(3346) · forgetPageBlocks(3365)，≈40 行；
+  pages / preview / 阅读三方经 7 个 deps 键共用。它住在目录确认那一段里，但**归属是"页面块"域**。
+
+裁决 A：缓存簇留在 app.js。page-index.js 的 init 多收三个小块回调作访问器：
+  blocksKey(pageNo) → key · blocksGet(key) → blocks|null · blocksRemember(key, blocks) → void
+  模块里 loadBlocks 只做"取数据 + 走这三个口子"，**不存第二份**；
+  三个句柄**不进 deps 表**（deps 仍 173，7 个键一字不动）；
+  pageBlockPending **不传也不搬**——它是 pages-view 自己的在途去重集合，搬进"目录确认"就是跨域寄存。
+
+为什么不是 B（整簇搬进 page-index.js、7 个键改转发）：§1 那句"搬进模块后外壳经注入读、别复制一份缓存"
+的本意是**只有一份缓存**——A 满足它；B 会让三方共用的缓存住进一个窄域模块，
+制造下一个"谁拥有它"的问题（和 pageBlockPending 归谁同一个形状）。
+
+⇒ 本刀要搬的"状态"仍然只有四个：pageIndexData / pageIndexProject / pageIndexLoading / imageQualityMode。
+   缓存簇是**第五份状态，但它不搬**——书里数状态的时候别把它算进搬走的那一栏。
+```
+
 **新模块 API**
 
 ```js
 window.PageIndexService = {
-  init({ apiJson, getCurrentProject, getSettingsRoot }),   // getSettingsRoot → 三档 radio 的容器
+  init({ apiJson, getCurrentProject, getSettingsRoot,
+         blocksKey, blocksGet, blocksRemember }),        // v1.1：页面块缓存三句柄（不进 deps 表）
   loadIndex(),            // 原 loadPageIndex：返回 {status} 语义不变（"busy" 要保留）
   loadBlocks(pageNo),
   clearImagePlaceholder(image),
@@ -245,6 +284,11 @@ window.PageIndexService = {
 ④ radio 只在 root 子树里查：模块里 `document.querySelectorAll` 0 次，
    改成 `root.querySelectorAll('input[name="reading-quality"]')`
 ⑤ 变异：在 app.js 里留一句 `pageIndexData = null` → 判据 ① 必须红
+⑥ **缓存真的被复用**：同一页调两次 `loadBlocks(pageNo)` ⇒ 该页 blocks 请求数 = **1**
+   （一次单测：注入的 apiJson 计数器；不数网络——同一个理由）
+   变异：让 `loadBlocks` 跳过 `blocksGet` 直接取数 ⇒ ⑥ 必红
+⑦ 7 个 deps 键一字不动（pageBlockCache 那批仍在 app.js 的 init 块里），且 `pageBlockPending` 没出现在
+   `page-index.js` 里（它不归本域）
 ```
 
 ## 5. 刀 D：结构工具 → `structure-tools.js`
