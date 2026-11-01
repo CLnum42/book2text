@@ -2486,22 +2486,58 @@ test("账本核对自检：表非空且当前刀 ≠ min−1 → 红；表空不
     "没有 move(pages) 首行时该返回 null");
 });
 
+/**
+ * A1 白名单存在性判定内核（纯函数，自检喂假表）。
+ *
+ * 防的是：白名单里写了一个**不存在的名字** —— 判据看起来在点名，实际那个名字从来没被用过，
+ * 对应的等级静默失效（`PAGES_R3_STAGE` 那次就是这么丢的）。
+ * 空名单也红：**空表的循环体一次都不跑**，等于这条判据不存在（R4b 同型）。
+ */
+export function blockNameProblems({ names, tableSource, retired = [] }) {
+  const problems = [];
+  const table = String(tableSource || "");
+  if (!names || names.length === 0) {
+    problems.push("白名单为空——空表的循环体一次都不跑，这条判据等于不存在");
+  }
+  for (const name of names || []) {
+    if (!new RegExp(`export const ${name}\\b`).test(table)) {
+      problems.push(`白名单里的 ${name} 在豁免表里不存在——写错名字等于静默失效`);
+    }
+  }
+  for (const name of retired || []) {
+    if (new RegExp(`export const ${name}\\b`).test(table)) {
+      problems.push(`已退役的 ${name} 又回到了豁免表——它已被现算取代，回来就等于重新打开「手工常数静默停用」的口子`);
+    }
+  }
+  return problems;
+}
+
 test("A1 白名单存在性：MOVE_EXEMPTION_BLOCKS 里每个名字都必须是文件里真实存在的常量", () => {
   const tablePath = fileURLToPath(new URL("./pages-r3-exemptions.mjs", import.meta.url));
-  const table = readFileSync(tablePath, "utf8");
-  for (const name of MOVE_EXEMPTION_BLOCKS) {
-    assert.ok(
-      new RegExp(`export const ${name}\\b`).test(table),
-      `白名单里的 ${name} 在 pages-r3-exemptions.mjs 里不存在——写错名字等于静默失效（PAGES_R3_STAGE 那次就是这样）`,
-    );
-  }
-  // 墓碑：退役的登记块不许回到文件里（它被现算取代了，回来就是把手工常数放回去）
-  for (const name of MOVE_EXEMPTION_BLOCKS_RETIRED) {
-    assert.equal(
-      new RegExp(`export const ${name}\\b`).test(table), false,
-      `已退役的 ${name} 又回到了豁免表——它已被现算取代，回来就等于重新打开「手工常数静默停用」的口子`,
-    );
-  }
+  const problems = blockNameProblems({
+    names: MOVE_EXEMPTION_BLOCKS,
+    retired: MOVE_EXEMPTION_BLOCKS_RETIRED,
+    tableSource: readFileSync(tablePath, "utf8"),
+  });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("A1 白名单存在性自检：不存在点名红 / 退役名字回来红 / 空名单红 / 合规绿", () => {
+  const table = "export const PAGES_R3_TOTAL_CAP = 193;\nexport const PAGES_R3_EXEMPTIONS = [];\n";
+  assert.deepEqual(blockNameProblems({ names: ["PAGES_R3_TOTAL_CAP"], tableSource: table }), [],
+    "A1 自检失败：合规白名单被误报");
+
+  const missing = blockNameProblems({ names: ["PAGES_R3_STAGE"], tableSource: table });
+  assert.ok(missing.some((m) => m.includes("PAGES_R3_STAGE") && m.includes("不存在")),
+    `A1 自检失败：点名一个不存在的常量被放过——${missing.join("；")}`);
+
+  const back = blockNameProblems({ names: [], retired: ["PAGES_R3_STAGE"], tableSource: "export const PAGES_R3_STAGE = 2;\n" });
+  assert.ok(back.some((m) => m.includes("已退役")),
+    `A1 自检失败：退役的常量回到表里被放过——${back.join("；")}`);
+
+  const empty = blockNameProblems({ names: [], tableSource: table });
+  assert.ok(empty.some((m) => m.includes("白名单为空")),
+    `A1 自检失败：空白名单被放过（循环体一次都不跑）——${empty.join("；")}`);
 });
 
 test("move: 自检（A1 认 Move-Gate 声明）：a 声明+收紧绿 / b 未声明红 / c 声明+放宽红 / e 块外改动红", () => {
@@ -3043,6 +3079,88 @@ test("R5 自检：非 owner 文件写状态必须红，owner 文件写必须绿�
 });
 
 /**
+ * R5 防漏检判定内核（纯函数，自检喂假模块源码）。
+ *
+ * 防的是：**这个模块根本没被检查，而闸是绿的**。两种形态：
+ *   ① 模块的顶层声明一个都没命中前缀（前缀写坏 / 模块改成 IIFE 却没登记）⇒ 循环体不跑；
+ *   ② 模块登记成 IIFE，但文件已经不是 IIFE 了（被摊平成平铺模块）⇒ 照样一条不判。
+ * 空模块列表同样红：一个模块都没扫到时的绿，是最坏的一种绿。
+ *
+ * IIFE 模块的闭包内状态是**模块私有**的（不跨文件写），所以不进 OWNERS——但这条豁免必须是
+ * **显式登记**的，不能靠「反正扫不到」默认成立。
+ */
+export function r5CoverageProblems({ modules, owners, prefixes, iifeModules = [] }) {
+  const problems = [];
+  if (!modules || modules.length === 0) {
+    problems.push("一个视图模块都没扫到——这条判据在空转");
+    return problems;
+  }
+  const iife = new Set(iifeModules);
+  for (const { fileName, source } of modules) {
+    const code = stripCommentsOnly(String(source || ""));
+    const pattern = prefixes[fileName];
+    if (!pattern) {
+      problems.push(`${fileName}: 没有登记状态前缀——新视图落盘必须同批加 OWNERS 与 VIEW_STATE_PREFIXES 一行`);
+      continue;
+    }
+    // **只看列 0**：模块状态/常量都在顶层；函数里的局部量不属于模块。前缀表再按各模块的命名空间过滤。
+    const declared = [...code.matchAll(/^(?:let|const|var)\s+([A-Za-z_$][\w$]*)/gm)].map((match) => match[1]);
+    const matched = declared.filter((name) => pattern.test(name));
+    const isIife = /^\s*\(\s*function\b/.test(code);
+    if (isIife && iife.has(fileName) && matched.length === 0) continue;   // 显式登记：闭包私有 + 命名空间零命中
+    if (isIife && !iife.has(fileName) && matched.length === 0) {
+      problems.push(`${fileName} 是 IIFE，但列 0 声明一个都没命中状态前缀，且没登记进 IIFE 名单——`
+        + "这条判据对它一条都不判，要先说清楚它的状态归谁管");
+      continue;
+    }
+    if (!isIife && iife.has(fileName)) {
+      problems.push(`${fileName} 登记成「IIFE 不扫」，但它已经不是 IIFE 了——这条判据对它是空转的`);
+    }
+    if (declared.length > 0 && matched.length === 0) {
+      problems.push(`${fileName}: 顶层有 ${declared.length} 个声明，但状态前缀一个都没命中——定位失败，这条判据对它是空转的`);
+      continue;
+    }
+    for (const name of matched) {
+      if (!(name in owners)) {
+        problems.push(`${fileName}: 状态 ${name} 声明在模块里，但 OWNERS 里没有——不登记 = 不检查，绿是假的`);
+      } else if (owners[name] !== fileName) {
+        problems.push(`${name} 的 owner 是 ${owners[name]}，但它声明在 ${fileName}`);
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * R5 防表过期判定内核（纯函数，自检喂假源码）。
+ *
+ * 防的是：OWNERS 里登记了一个**源码里已经没有**的状态 —— 表变成墓地，下一个人照着表找代码会扑空，
+ * 而「一状态一 owner」这条判据对那个名字永远是绿（它已经不在了，当然没人违规写它）。
+ * OWNERS 为空同样红：没有登记项时，上面的豁免与归属全部无处可依。
+ */
+export function r5StaleProblems({ sources, owners }) {
+  const problems = [];
+  const entries = Object.keys(owners || {});
+  if (entries.length === 0) {
+    problems.push("OWNERS 是空的——空表让「一状态一 owner」无处可依，等于这条判据不存在");
+    return problems;
+  }
+  const declared = new Set();
+  for (const source of sources || []) {
+    const code = stripCommentsAndStrings(String(source || ""));
+    for (const match of code.matchAll(/(?:^|[^\w$])(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) {
+      declared.add(match[1]);
+    }
+  }
+  for (const state of entries) {
+    if (!declared.has(state)) {
+      problems.push(`OWNERS 里的状态 ${state} 在源码里不存在了——删状态请同批删表项，别把表变成墓地`);
+    }
+  }
+  return problems;
+}
+
+/**
  * 每个视图模块的**状态前缀**。新增一个视图（`index-view.js` …）必须同批在这里加一行、
  * 并把它的状态登记进 OWNERS——否则它整段都不在检查范围内，R5 绿 = 没覆盖（这是最坏的一种绿）。
  * 这条注册表本身就是那条纪律的闸：磁盘上出现未登记的 `*-view.js` 直接红。
@@ -3063,46 +3181,186 @@ const VIEW_STATE_PREFIXES = {
   "pages-view.js": /^(pages|PAGES_)/,
 };
 
+/**
+ * **「列 0 扫不到状态」的 IIFE 模块**：闭包内状态是模块私有的（不跨文件写），不进 OWNERS。
+ *
+ * 这份名单是**显式豁免**，不是「反正扫不到」：登记在册但文件已经不是 IIFE ⇒ 红。
+ *
+ * **已知缺口（2026-11-01 实测，不粉饰）**：`pages-view.js` 的列 0 声明有 22 个
+ * （`layoutBlockLoading` / `overlayRenderQueue` / `PAGE_OVERLAY_FRAME_LIMIT` …），
+ * 而它的状态前缀 `/^(pages|PAGES_)/` **一个都没命中**——也就是说这条判据到今天为止
+ * 对 pages-view 一条都没判过，一直是空转绿。这次把它从「静默不判」改成「显式登记不判」，
+ * 并加了「登记成 IIFE 但已摊平 ⇒ 红」。真正的覆盖要先统一 pages-view 的命名空间或缩进，
+ * 那是收口（刀 11）之后的事，别在这笔里顺手改一张共享表的语义。
+ */
+const VIEW_STATE_IIFE = ["library-view.js", "merge-view.js", "pages-view.js"];
+
 test("R5 防漏检：每个视图模块的顶层状态都必须在 OWNERS 里，且 owner 指向自己", () => {
-  const problems = [];
-  const modules = readdirSync(STATIC_DIR).filter((name) => name.endsWith("-view.js")).sort();
-  for (const fileName of modules) {
-    const pattern = VIEW_STATE_PREFIXES[fileName];
-    if (!pattern) {
-      problems.push(`${fileName}: 没有登记状态前缀——新视图落盘必须同批加 OWNERS 与 VIEW_STATE_PREFIXES 一行`);
-      continue;
-    }
-    const source = stripCommentsAndStrings(readFileSync(join(STATIC_DIR, fileName), "utf8"));
-    // **只看列 0**：模块状态/常量都在顶层；函数里的局部量（`let index` / `const tile` 之类）
-    // 不属于模块，收进来只会误报。前缀表再按各模块的命名空间过滤。
-    const declared = [...source.matchAll(/^(?:let|const|var)\s+([A-Za-z_$][\w$]*)/gm)]
-      .map((match) => match[1])
-      .filter((name) => pattern.test(name));
-    for (const name of declared) {
-      if (!(name in OWNERS)) {
-        problems.push(`${fileName}: 状态 ${name} 声明在模块里，但 OWNERS 里没有——不登记 = 不检查，绿是假的`);
-      } else if (OWNERS[name] !== fileName) {
-        problems.push(`${name} 的 owner 是 ${OWNERS[name]}，但它声明在 ${fileName}`);
-      }
-    }
-  }
+  const modules = readdirSync(STATIC_DIR)
+    .filter((name) => name.endsWith("-view.js"))
+    .sort()
+    .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") }));
+  const problems = r5CoverageProblems({
+    modules, owners: OWNERS, prefixes: VIEW_STATE_PREFIXES, iifeModules: VIEW_STATE_IIFE,
+  });
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
+test("R5 防漏检自检：未登记状态红 / owner 指错红 / 前缀一个都没命中红 / IIFE 登记对不上红 / 空模块红", () => {
+  const prefixes = { "a-view.js": /^alpha/, "b-view.js": /^beta/ };
+  const owners = { alphaOne: "a-view.js" };
+  const mod = (fileName, source) => [{ fileName, source }];
+  const run = (modules, own = owners, iife = []) => r5CoverageProblems({ modules, owners: own, prefixes, iifeModules: iife });
+
+  assert.deepEqual(run(mod("a-view.js", "let alphaOne = 1;\n")), [],
+    "R5 防漏检自检失败：合规模块被误报");
+
+  const missing = run(mod("a-view.js", "let alphaOne = 1;\nlet alphaTwo = 2;\n"));
+  assert.ok(missing.some((m) => m.includes("alphaTwo") && m.includes("OWNERS 里没有")),
+    `R5 防漏检自检失败：声明了没登记的状态被放过——${missing.join("；")}`);
+
+  const wrongOwner = run(mod("a-view.js", "let alphaOne = 1;\n"), { alphaOne: "b-view.js" });
+  assert.ok(wrongOwner.some((m) => m.includes("owner 是 b-view.js")),
+    `R5 防漏检自检失败：owner 指向别的文件被放过——${wrongOwner.join("；")}`);
+
+  // **定位失败**：模块里明明有顶层声明，前缀却一个都没命中 → 循环体不跑，必须红
+  const localed = run(mod("a-view.js", "let otherThing = 1;\n"));
+  assert.ok(localed.some((m) => m.includes("一个都没命中") && m.includes("空转")),
+    `R5 防漏检自检失败：前缀一个都没命中却绿（判据在空转）——${localed.join("；")}`);
+
+  // IIFE 两种对不上：没登记 / 登记了但已经不是 IIFE
+  const unlistedIife = run(mod("a-view.js", "(function () {\n  let x = 1;\n})();\n"));
+  assert.ok(unlistedIife.some((m) => m.includes("是 IIFE") && m.includes("没登记进 IIFE 名单")),
+    `R5 防漏检自检失败：IIFE 模块没登记也被放过——${unlistedIife.join("；")}`);
+  const flattened = run(mod("a-view.js", "let alphaOne = 1;\n"), owners, ["a-view.js"]);
+  assert.ok(flattened.some((m) => m.includes("已经不是 IIFE")),
+    `R5 防漏检自检失败：登记成 IIFE 却已摊平（判据空转）被放过——${flattened.join("；")}`);
+
+  const none = run([]);
+  assert.ok(none.some((m) => m.includes("一个视图模块都没扫到")),
+    `R5 防漏检自检失败：空模块列表被放过——${none.join("；")}`);
+});
+
 test("R5 防表过期：OWNERS 里的状态必须还存在（删了状态要同批删表项）", () => {
-  const files = readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"));
-  const declared = new Set();
-  for (const fileName of files) {
-    const stripped = stripCommentsAndStrings(readFileSync(join(STATIC_DIR, fileName), "utf8"));
-    for (const match of stripped.matchAll(/(?:^|[^\w$])(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g)) {
-      declared.add(match[1]);
-    }
-  }
-  const missing = Object.keys(OWNERS).filter((state) => !declared.has(state));
-  assert.deepEqual(missing, [],
-    `OWNERS 里的状态在源码里不存在了：${missing.join("、")}——删状态请同批删表项，别把表变成墓地`);
+  const sources = readdirSync(STATIC_DIR)
+    .filter((name) => name.endsWith(".js"))
+    .map((fileName) => readFileSync(join(STATIC_DIR, fileName), "utf8"));
+  const problems = r5StaleProblems({ sources, owners: OWNERS });
+  assert.deepEqual(problems, [], problems.join("\n"));
   assert.ok(R5_EXCUSES.length <= R5_MAX_EXCUSES,
     `R5 豁免 ${R5_EXCUSES.length} 条，上限 ${R5_MAX_EXCUSES}——开口要显式加数字`);
+});
+
+test("R5 防表过期自检：状态没了红 / 都还在绿 / 注释里出现不算还在 / 空 OWNERS 红", () => {
+  const owners = { readingFilter: "reading-view.js", readingTops: "reading-view.js" };
+  assert.deepEqual(
+    r5StaleProblems({ sources: ["let readingFilter = 1;\nlet readingTops = {};\n"], owners }), [],
+    "R5 防表过期自检失败：都还在也被判红",
+  );
+
+  const gone = r5StaleProblems({ sources: ["let readingFilter = 1;\n"], owners });
+  assert.ok(gone.some((m) => m.includes("readingTops") && m.includes("不存在了")),
+    `R5 防表过期自检失败：状态已删、表项还在被放过——${gone.join("；")}`);
+
+  // 只剩注释里提到 → 仍然算过期（剥注释，别把「提过」当「还在」）
+  const commentOnly = r5StaleProblems({ sources: ["let readingFilter = 1;\n// let readingTops = {};\n"], owners });
+  assert.ok(commentOnly.some((m) => m.includes("readingTops")),
+    `R5 防表过期自检失败：注释里的名字被当成还在——${commentOnly.join("；")}`);
+
+  const empty = r5StaleProblems({ sources: ["let x = 1;\n"], owners: {} });
+  assert.ok(empty.some((m) => m.includes("OWNERS 是空的")),
+    `R5 防表过期自检失败：空 OWNERS 被放过——${empty.join("；")}`);
+});
+
+// ---------------------------------------------------------------- 文档刀号（C 方案）
+
+/**
+ * **C 方案：带字母的刀号必须「看得见是名字」**（Architect `export-ratchet.md` §五 裁定）。
+ *
+ * 为什么单列一条：刀号登记表只认数字（`刀 9.1` 解析 9.1），带字母的旧名（`刀 5b`）
+ * 在登记表里**不是刀号，是一句话里的名字**。裸写会让下一个读文档的人以为库里真有个 5b，
+ * 而 seed 的解析器 `^刀(\d)$` 遇到它只会把整行跳过——静默少算一项。
+ *
+ * 判据形态：**剥掉引号/反引号里的内容**，剩下的正文里再扫 `刀 <数字>[字母]`；
+ * 命中即红。这样「`刀 5b`」「「刀 5b」」两种「名字」写法都合规，裸写不合规。
+ *
+ * 只扫三份账本文件（`KNIFE_LEDGER_DOCS`）：全仓库扫会把代码里的正则示例也扫进来。
+ */
+export function stripQuotedSpans(text) {
+  return String(text || "").replace(
+    /(`[^`\n]*`|「[^」\n]*」|『[^』\n]*』|"[^"\n]*"|'[^'\n]*')/g,
+    (span) => span.replace(/[^\n]/g, " "),   // 换成等长空格：行号一个都不许漂
+  );
+}
+
+export function knifeLetterProblems({ docs }) {
+  const problems = [];
+  if (!docs || docs.length === 0) {
+    problems.push("没有扫任何账本文件——空列表的循环体一次都不跑，这条判据等于不存在");
+    return problems;
+  }
+  for (const { fileName, text } of docs) {
+    if (typeof text !== "string" || text.length === 0) {
+      problems.push(`${fileName}: 读不到内容——这条判据对它没判就绿了`);
+      continue;
+    }
+    const bare = stripQuotedSpans(text).split("\n");
+    bare.forEach((line, index) => {
+      const hit = /刀\s*\d+(?:\.\d+)?[a-z]/.exec(line);
+      if (!hit) return;
+      problems.push(`${fileName}:${index + 1} 带字母的刀号「${hit[0].trim()}」写在引号外——`
+        + "它是旧名不是刀号，请写成 `刀 5b` 或「刀 5b」，否则下一个人会以为库里真有这个号");
+    });
+  }
+  return problems;
+}
+
+/** C 方案只扫这三份账本：刀号登记、切片计划、导出棘轮裁定。 */
+const KNIFE_LEDGER_DOCS = [
+  "docs/refactor/pages/knife-numbering.md",
+  "docs/refactor/pages/knife6-plan.md",
+  "docs/refactor/pages/export-ratchet.md",
+];
+
+test("文档刀号（C 方案）：带字母的刀号只许在引号/反引号里出现", () => {
+  const repo = fileURLToPath(new URL("../..", import.meta.url));
+  const docs = KNIFE_LEDGER_DOCS.map((fileName) => {
+    try {
+      return { fileName, text: readFileSync(join(repo, fileName), "utf8") };
+    } catch {
+      return { fileName, text: "" };
+    }
+  });
+  const problems = knifeLetterProblems({ docs });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("文档刀号自检：裸写红 / 反引号绿 / 中文引号绿 / 行号不漂 / 读不到内容红 / 空列表红", () => {
+  const red = knifeLetterProblems({ docs: [{ fileName: "a.md", text: "第一行\n刀 5b（片段抽取） → 刀 6\n" }] });
+  assert.ok(red.some((m) => m.includes("a.md:2") && m.includes("刀 5b")),
+    `文档刀号自检失败：裸写的带字母刀号被放过——${red.join("；")}`);
+
+  const codeRed = knifeLetterProblems({ docs: [{ fileName: "a.md", text: "```\n刀 5b → 刀 6\n```\n" }] });
+  assert.ok(codeRed.some((m) => m.includes("刀 5b")),
+    `文档刀号自检失败：代码块里的裸写被放过——${codeRed.join("；")}`);
+
+  assert.deepEqual(
+    knifeLetterProblems({ docs: [{ fileName: "a.md", text: "「刀 5b」和 `刀 5b` 都算名字\n" }] }), [],
+    "文档刀号自检失败：引号/反引号里的旧名被判红（那是合规写法）",
+  );
+
+  // 行号不漂：前一行有跨行引号时，命中的行号必须还是第 3 行
+  const drift = knifeLetterProblems({ docs: [{ fileName: "a.md", text: "`多行\n引用`\n刀 5b 裸写\n" }] });
+  assert.ok(drift.some((m) => m.includes("a.md:3")),
+    `文档刀号自检失败：剥引号后行号漂了——${drift.join("；")}`);
+
+  const blank = knifeLetterProblems({ docs: [{ fileName: "a.md", text: "" }] });
+  assert.ok(blank.some((m) => m.includes("读不到内容")),
+    `文档刀号自检失败：读不到内容的文件被静默放过——${blank.join("；")}`);
+
+  const none = knifeLetterProblems({ docs: [] });
+  assert.ok(none.some((m) => m.includes("没有扫任何账本文件")),
+    `文档刀号自检失败：空列表被放过——${none.join("；")}`);
 });
 
 // ---------------------------------------------------------------- R11：闸 B（静态边棘轮）
