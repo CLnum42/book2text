@@ -1,4 +1,4 @@
-# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）
+# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）+ 清洗刀
 
 > 规则（2026-11-02 定）：**通过 / 未验分开写**；未验必须写阻塞原因与证据位置。
 > 只在对话里说“我跑过”按**未验**计；环境起不来同理。
@@ -187,12 +187,67 @@ Builder 的 CDP 读数（打开面板 / 预览 380 / 应用 372 / 抽查第 3 �
 原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
 ```
 
-## 四、结论
+## 四、清洗刀：删页内差异队列 / 块级候选对比 / 4 个零引用 id（`02213d8`）
+
+提交链：`ea8b80c`（测试侧先挪 headline 断言、再删已退役用例）→ `e26382a`（补两条随删除退役的静态断言）
+→ `ed50580`（产品）→ `02213d8`（闸：退役 id / queue-mode 三处归零 + 保留项仍在）。
+
+### 通过（代码层，DevLead 独立核）
+
+```
+基线 b2a6bbb → 02213d8
+app.js 12,426 → 11,743（−683）
+顶层函数 483 → 458（−25），新增 0 —— 差集逐个对上：
+  队列 19：queueHasPendingItems / buildDiffQueue / queueCounts / nextPendingQueueIndex / queueDotFor /
+           renderQueueFooter / renderDiffQueue / focusQueueItem / initDiffQueue / applyQueueAckLocally /
+           ackQueueLine / adoptQueueCurrent / keepQueueCurrent / previousQueueItem / setQueueOpen /
+           focusQueueBar / captureQueueSnapshot / restoreQueueAfterUndo / stepReviewDiff
+  候选 6：openCandidateCompare / renderCandidate / fillCandidateColumn / candidateBlockActions /
+          applyCandidateBlock / decideCandidate
+index.html 1,863 → 1,813（−50）· app.css 2,818 → 2,773（−45）
+queue-mode：app.js 0 / index.html 0 / app.css 0（三处单独判）
+reading-view.js：git diff b2a6bbb 02213d8 为空（未动）
+renderReviewHeadline 仍在（3 处命中，队列判断已随删消失）
+R3 review：90 种 / 223 处 → **71 种 / 181 处**（与书里原写的 68/194 不符 —— **期望值错，不是实现错**，
+  已在书 §5① 写明口径：4 个零引用 id 本来就不进 R3 计数，种数只消失 19；处数 −42 ≠ −29，
+  因为删掉的函数内部对同一 id 有多处引用）
+deps 173 不变 · R3 pages 0/0 · registry 0 笔不合格
+node 228 / 226 pass / 0 fail / 2 skipped · pytest 1034（119.52s，STATIC_DIR 在树内）
+  （1035 → 1034 就是删掉的那条队列测试，不是回归）
+audit_ui_asset_literals：会因搬运假红的源码字面量 0
+被删的 25 个名字在新树全仓残留 0；被删的 8 个 id 在 static JS 里残留 0
+```
+
+### 通过（附带：清洗刀影响面的复核，供 S1 使用）
+
+```
+函数体被改过的**非删除**函数共 9 个（Chief 的清单是 8 个，漏了 setupViewerTools 48→42）：
+  setupViewerTools 48→42 · setupReviewControls 136→100 · drawDiffLayer 94→92 · renderPageDetail 77→70
+  loadPageDetail 27→23 · reviewAction 22→18 · closePageDetail 10→7 · openTreeItem 20→8 · runPageAux 7→5
+落在 S1 的 24 个里只有 reviewAction（22→18，去掉的全是队列内部调用）⇒ S1 的接口面（T 键）不跟着减。
+S1 重贴见 docs/refactor/review/page-detail-console-plan.md §11（24 个函数逐个起止行，合计 851）。
+```
+
+### 未验（真机，ego-browser 无响应）
+
+```
+· 页头不再有「差异 N」按钮
+· 块内差异条仍可采纳 / 保留
+· ⋯ 菜单不再有「对比新结果」
+· 「重新识别」仍在
+· 左树点击仍跳页
+· reading 键盘裁决仍可用（Enter=保留 / Space=采用候选；review 侧 ⌫ / ← / [ ] 已随删消失，另记 known-limitations）
+原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
+```
+
+## 五、结论
 
 ```
 片 1：代码层通过；真机部分通过、5 项未验（ego 阻塞）
 刀 C：代码层通过；真机 3 项未验（ego 阻塞）
-刀 D：代码层通过（含唯一例外裁决）；撤销完整性通过（接口路径、两本项目）；
-      真机 UI 路径未验（ego 阻塞）；三条文档/测试真实性待补（已派 Builder）
-三把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
+刀 D：代码层通过（含唯一例外裁决 + 例外唯一性的机检）· 撤销完整性通过（接口路径、两本项目）·
+      三条文档/测试真实性已补（abbab59 + b2a6bbb），三条断言我都做过"喂坏样本必须红"的复跑；
+      真机 UI 路径未验（ego 阻塞）
+清洗刀：代码层通过（含 R3 期望值更正与影响面复核）；真机 5 项未验（ego 阻塞）
+四把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
 ```

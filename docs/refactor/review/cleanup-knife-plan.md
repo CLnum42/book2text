@@ -8,7 +8,8 @@
 ## 0. 一句话
 
 三块死代码：页内差异队列（**19 函数 / 409 行** + 10 id）· 块级候选对比（**6 函数 / 156 行** + 8 id）·
-4 个零引用 id（2 个被测试断言，test-contract 同批改）。删完 app.js −≈600 行，R3 review 口径 90/223 → **68/194**。
+4 个零引用 id（2 个被测试断言，test-contract 同批改）。删完 app.js 12,426 → **11,743**（−683），
+R3 review 口径 90/223 → **71/181**（**期望值更正 2026-11-02**：原写 68/194，见 §5 的口径更正）。
 
 ## 1. 硬要求：先证明「没有活的功能依赖它」，并写清删后用户走哪条路
 
@@ -135,8 +136,14 @@ diff-queue 块        637–655（19 行；含 position/meta/text/dots/note + qu
 
 ```
 ① R3 review（新脚本 scripts/r3_review_count.mjs，逐字口径）
-   删前：90 种 / 223 处；删后：**68 种 / 194 处**
-   （队列 −10 种/16 处 · 候选 −8 种/13 处 · 零引用 −4 种/0 处）
+   **实测（02213d8）：90 种 / 223 处 → 71 种 / 181 处**
+   ⚠ 期望值更正（2026-11-02，原写 68/194 —— 期望错，不是实现错）：
+     · **零引用 id 不进 R3 计数**：那 4 个只活在被删的 `id=` 属性里，R3 从未数过它们 ⇒ 种数消失 19，不是 23
+       （队列 10 种 + 候选 8 种 + review-footer-count 1 种）
+     · 处数 −42 ≠ −29：删掉的函数内部对同一个 id 有多处引用（例如 `detail-canvas` 在一个函数里被取 3 次），
+       所以"删 N 个 id"和"少 M 处引用"没有 1:1 关系
+     · 以后判这条只看脚本实测（`node scripts/r3_review_count.mjs`），不要按 id 个数反推期望值
+```
 ② 退役 id/状态归零（新闸 deadReviewIdProblems）：
    在 static/*.js + index.html + app.css 里 grep 退役名单：
    diff-queue / queue-adopt / queue-keep / queue-prev / queue-mode / diff-queue-toggle / diff-queue-position
@@ -170,10 +177,10 @@ diff-queue 块        637–655（19 行；含 position/meta/text/dots/note + qu
 ## 7. 行数预算
 
 ```
-app.js      25 函数 565 行 + 状态/调用点/键盘 ≈ **−600**（12,658 → 约 12,060；实测对账）
-index.html  ≈ −45（candidate 25 + diff-queue 19 + 两行按钮 + 零引用 1）
-app.css     ≈ −46（diff-queue 33 + candidate 12 + 1 行拆分）
-R3 review   90/223 → 68/194
+app.js      25 函数 565 行 + 状态/调用点/键盘   **实测 −683**（12,426 → 11,743；顶层函数 483 → 458）
+index.html  **实测 −50**（1,863 → 1,813）
+app.css     **实测 −45**（2,818 → 2,773）
+R3 review   **实测 90/223 → 71/181**（期望已更正，见 §5①）
 ```
 
 ## 8. 不做什么
@@ -197,7 +204,7 @@ node scripts/r3_review_count.mjs --json
 grep -n "diff-queue\|candidate-panel\|candidate-open\|candidateRunId" backend/book2text/static/app.js
 
 # 删后对账
-node scripts/r3_review_count.mjs --json          # 68 / 194
+node scripts/r3_review_count.mjs --json          # 71 / 181（实测；原期望 68/194 已更正）
 grep -rc "diff-queue\|queue-mode\|candidate-panel\|candidateRunId\|applyQueueAckLocally" \
   backend/book2text/static/*.js backend/book2text/static/index.html   # 每条 0
 node tests/js/run.mjs

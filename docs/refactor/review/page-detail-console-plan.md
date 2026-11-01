@@ -31,11 +31,14 @@ root   init({ root: el("view-review"), … })
 
 | 片 | 能力 | 函数数 | 行数 | 组成（逐函数行数） |
 |---|---|---:|---:|---|
-| S1 | **块列表编辑** | 24 | **855** | `blockCard`285 · `blockDivergenceSection`124 · `adoptAllHighSuggestions`61 · `renderReviewBlocks`45 · `diffCompareLines`42 · `patchBlock`35 · `diffRowFragment`33 · `blockSuggestionBadge`31 · `reviewAction`22 · `refreshDetailSuggestions`21 · `adoptLine`18 · `pageNumberHintChip`16 · `applyDetailSuggestions`14 · `adoptBlockSuggestion`14 · `captureEditorFocus`13 · `restoreEditorFocus`13 · `autoSizeTextarea`10 · `flushPendingSave`9 · `selectReviewBlock`21 · `focusSiblingBlock`8 · `scheduleBlockSave`8 · `blockNeedsReview`5 · `truncate`4 · `suggestionHighList`3 |
+| S1 | **块列表编辑** | 24 | **851**（原 855） | `blockCard`285 · `blockDivergenceSection`124 · `adoptAllHighSuggestions`61 · `renderReviewBlocks`45 · `diffCompareLines`42 · `patchBlock`35 · `diffRowFragment`33 · `blockSuggestionBadge`31 · `reviewAction`**18**（清洗刀 −4）· `refreshDetailSuggestions`21 · `adoptLine`18 · `pageNumberHintChip`16 · `applyDetailSuggestions`14 · `adoptBlockSuggestion`14 · `captureEditorFocus`13 · `restoreEditorFocus`13 · `autoSizeTextarea`10 · `flushPendingSave`9 · `selectReviewBlock`21 · `focusSiblingBlock`8 · `scheduleBlockSave`8 · `blockNeedsReview`5 · `truncate`4 · `suggestionHighList`3 |
 | S2 | **框选新增块** | 15 | **240** | `createBlockFromBox`33 · `recognizeBoxRegion`33 · `drawInkGapMarks`24 · `onBoxMouseUp`21 · `loadInkGaps`21 · `setupBoxCreate`17 · `renderInkGapBar`14 · `setBoxCreateMode`13 · `drawBoxDraft`13 · `startRegionRecognition`12 · `onBoxMouseDown`10 · `normalizedPoint`9 · `boxDraftRect`9 · `onBoxMouseMove`8 · `inkGapBarVisible`3 |
 | S3 | **版面确认** | 3 | **67** | `renderLayoutPanel`23 · `confirmPageLayout`23 · `renderSuggestionTools`21 |
 | S4 | **第二引擎复核** | 6 | **170** | `waitForAuxThenReview`60 · `renderAuxiliary`51 · `runAuxiliary`24 · `openAuxWarning`18 · `activeAuxJob`11 · `setupAuxControls`6 |
-| 合计 | | **48** | **1,332** | （`applyDetailSuggestions` 在 S1/S4 复用，只算一次） |
+| 合计 | | **48** | **1,328**（原 1,332） | （`applyDetailSuggestions` 在 S1/S4 复用，只算一次） |
+
+> 本表是 `4676772` 的读数；**清洗刀（`02213d8`）之后只有 S1 的 `reviewAction` 变了（22 → 18）**，
+> 全刀合计 1,332 → **1,328**。逐函数的起止行见 **§11（清洗后重贴）**，开工按那张表。
 
 ### 1.1 三格对账（Chief 2026-11-01 要求：三格合计 == 这条线的总行数）
 
@@ -45,7 +48,7 @@ root   init({ root: el("view-review"), … })
 
 | 格 | 函数数 | 行数 | 内容 |
 |---|---:|---:|---|
-| 搬进模块（本刀） | 48 | **1,332** | S1 块编辑 855 · S2 框选 240 · S3 版面 67 · S4 二引擎 170 |
+| 搬进模块（本刀） | 48 | **1,332** → 清洗后 **1,328** | S1 块编辑 855 → **851** · S2 框选 240 · S3 版面 67 · S4 二引擎 170 |
 | 留壳 | 45 | **902** | 块框拖动/缩放 348 · 收尾/清洗/候选的辅助（computeCharSpans 58 · aggregateDivergence 20 …） · 接线 `setupReviewControls` 136 · `setupLibrary` 68 · `closeProject` 31 · 其它小函数 |
 | 别的域 | 85 | **2,025** | 抽屉域 32/729 · 清洗/删 19/459 · 收尾域 20/349 · 树→index 13/425 · 结构域 1/63 |
 
@@ -273,3 +276,65 @@ node /tmp/state-owners.mjs
 grep -cE "^(async )?function [A-Za-z_]" backend/book2text/static/app.js    # 505
 node scripts/r3_pages_count.mjs --json
 ```
+
+## 11. 清洗后重贴：S1 的 24 个函数逐名 + 行范围（基线 `02213d8`，DevLead 实测）
+
+**这张表是 S1 开工的唯一依据**（§1 的表是 `4676772` 的读数）。基线：
+
+```
+app.js 11,743 · 顶层函数 458（335 function + 123 async function）· deps 173 · R3 review 71/181
+```
+
+口径：`^(async )?function NAME(` 的定义行 = 起；从该行起做花括号配平，**第一个列 0 的 `}`** = 止；
+行数 = 止 − 起 + 1。三个切片 S2/S3/S4 在同一棵树上重算后与 §1 完全一致（240 / 67 / 170），
+说明**切片边界没有挪动，变的只有 `reviewAction`**。
+
+| # | 函数 | 起 | 止 | 行数 |
+|---:|---|---:|---:|---:|
+| 1 | `applyDetailSuggestions` | 5326 | 5339 | 14 |
+| 2 | `refreshDetailSuggestions` | 5349 | 5369 | 21 |
+| 3 | `blockNeedsReview` | 5620 | 5624 | 5 |
+| 4 | `suggestionHighList` | 6776 | 6778 | 3 |
+| 5 | `pageNumberHintChip` | 6855 | 6870 | 16 |
+| 6 | `blockSuggestionBadge` | 6872 | 6902 | 31 |
+| 7 | `adoptBlockSuggestion` | 6905 | 6918 | 14 |
+| 8 | `adoptAllHighSuggestions` | 6924 | 6984 | 61 |
+| 9 | `blockCard` | 6986 | 7270 | 285 |
+| 10 | `blockDivergenceSection` | 7283 | 7406 | 124 |
+| 11 | `diffCompareLines` | 7410 | 7451 | 42 |
+| 12 | `diffRowFragment` | 7453 | 7485 | 33 |
+| 13 | `truncate` | 7488 | 7491 | 4 |
+| 14 | `autoSizeTextarea` | 7494 | 7503 | 10 |
+| 15 | `renderReviewBlocks` | 7505 | 7549 | 45 |
+| 16 | `selectReviewBlock` | 7551 | 7571 | 21 |
+| 17 | `focusSiblingBlock` | 7573 | 7580 | 8 |
+| 18 | `scheduleBlockSave` | 7585 | 7592 | 8 |
+| 19 | `flushPendingSave` | 7600 | 7608 | 9 |
+| 20 | `adoptLine` | 7611 | 7628 | 18 |
+| 21 | `patchBlock` | 7630 | 7664 | 35 |
+| 22 | `captureEditorFocus` | 7667 | 7679 | 13 |
+| 23 | `restoreEditorFocus` | 7682 | 7694 | 13 |
+| 24 | `reviewAction` | 8072 | 8089 | **18**（清洗前 22） |
+| | **合计** | | | **851**（清洗前 855） |
+
+### 11.1 清洗刀对 S1 的影响：只有 `reviewAction`，接口面不变
+
+```
+清洗刀删 25 个函数（队列 19 + 候选 6），与 S1 的 24 个**交集为空**；
+但函数体被改过的**非删除**函数共 9 个（Chief 的清单是 8 个，漏了 setupViewerTools 48→42）：
+  setupViewerTools 48→42 · setupReviewControls 136→100 · drawDiffLayer 94→92 · renderPageDetail 77→70
+  loadPageDetail 27→23 · reviewAction 22→18 · closePageDetail 10→7 · openTreeItem 20→8 · runPageAux 7→5
+其中落在 S1 的只有 reviewAction（−4）：
+  × const queueSnapshot = path === "undo" ? captureQueueSnapshot() : null;
+  × if (queueSnapshot) restoreQueueAfterUndo(queueSnapshot);    ×2
+  ⇒ 去掉的都是**队列内部**的调用，reviewAction 的外部依赖一个没少：
+     currentProject / apiJson / setSaveState / forgetPageBlocks / detailPageNo / loadPageDetail /
+     refreshPageStates / showError / el("page-detail-error")
+  ⇒ **S1 的接口面（T 键）不跟着减**。其余 8 个改过的函数属核心抽屉 / 左树，不进口 ① 主刀。
+另：新树全仓对被删的 25 个名字**残留 0**（含 S1 的 24 个函数体），被删的 8 个 id 也是 0。
+```
+
+### 11.2 `renderReviewHeadline` 不进 S1
+
+清洗后它只剩核心抽屉那一份（3 处），队列判断已随删消失。**S1 是块列表编辑，不许顺手把 headline 带进来**——
+它属于抽屉域，留在 S1 之外。
