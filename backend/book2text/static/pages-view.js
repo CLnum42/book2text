@@ -775,6 +775,7 @@ function updateMarginDetectProgress(data) {
   //   done 超 total → 夹到 total（原来 width 会到 150%）
   const total = Math.max(0, Number(job.total) || 0);
   const done = Math.min(total, Math.max(0, (Number(job.done) || 0) + (Number(job.failed) || 0)));
+  marginProgressOwner = "detect"; // 检测优先：拟合照跑，但不写这组元素
   showMarginDetectProgress(done, total);
   const eta = injected.estimateRemainingSeconds(data);
   el("margin-fit-text").textContent =
@@ -1078,6 +1079,9 @@ async function ensureMarginFitted({ manual = false } = {}) {
   refreshMarginDetectHint();
   if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") return;
   if (injected.getMarginFitRunning()) return;
+  // 检测在跑时不开新的拟合：它按"当前行"写盘，检测还在产出新行时拟出来的是半成品的框，
+  // 而且 marginUndeterminedPages 只挑没框的页 ⇒ 半成品的框会被钉死。检测收尾会再调一次。
+  if (injected.getLayoutDetectActive()) return;
   // 主按钮「全部确认」是人工动作：上一轮试过但没成的页也要再试一次
   if (manual) injected.marginFitTried.clear();
   const pending = injected.marginUndeterminedPages().filter(
@@ -1100,18 +1104,25 @@ async function ensureMarginFitted({ manual = false } = {}) {
   injected.setMarginFitRunning(true);
   renderMarginStepVerdict();
   for (const page of pending) injected.marginFitTried.add(page.page_no);
-  showMarginFitProgress(0, pending.length);
+  marginFitDisplayTotal = pending.length; // 显示分母冻结：服务端 remaining 在检测期间会一直涨
+  showMarginFitProgress(0, marginFitDisplayTotal);
   let attempted = 0;
   let fitted = 0;
   let fallback = 0;
   let undetermined = 0;
   let noText = 0;
+  let stoppedForDetect = false;
   try {
     // **按后端返回的 remaining 收尾**，不按前端这份 pending 清单收尾：
     // 后端一批处理的是"所有缺框页"（含没有行的页），比 pending 多；
     // 拿 processed >= pending.length 当终点会提前停，留下一批有行却没生成的页
     // （TTBVW3 实测：267 页第一次点了只生成 219 页，剩 23 页）。
     while (true) {
+      // 检测开始了：在**下一批之前**停手（不是只停显示）——见入口那段注释
+      if (injected.getLayoutDetectActive()) {
+        stoppedForDetect = true;
+        break;
+      }
       const data = await injected.apiJson(
         `/api/projects/${injected.getCurrentProject().project_id}/margin-box/fit-all`,
         {
@@ -1127,7 +1138,7 @@ async function ensureMarginFitted({ manual = false } = {}) {
       undetermined += Number(data.undetermined || 0);
       noText += Number(data.no_text || 0);
       const remaining = Number(data.remaining || 0);
-      showMarginFitProgress(attempted, attempted + remaining);
+      showMarginFitProgress(attempted, marginFitDisplayTotal, remaining);
       if (!updated || remaining === 0) break;
     }
     await injected.refreshPageStates();
@@ -1138,7 +1149,8 @@ async function ensureMarginFitted({ manual = false } = {}) {
     }
     const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
     const summary = injected.marginFitSummaryText(fitted, fallback, undetermined, noText);
-    setMarginStatus(manual ? `${summary} 耗时 ${elapsed} 秒。` : summary, false, 20000);
+    // 半路给检测让位：不写"拟合了多少"的收尾话（检测收尾还会再拟一次）
+    if (!stoppedForDetect) setMarginStatus(manual ? `${summary} 耗时 ${elapsed} 秒。` : summary, false, 20000);
   } catch (error) {
     injected.showError(el("pages-error"), error);
   } finally {
@@ -2125,20 +2137,36 @@ function pausePageThumbnails() {
   injected.visiblePageNos.clear();
 }
 
-function showMarginFitProgress(done, total) {
+/**
+ * 版心进度位的**归属**：检测与自动拟合共用同一组元素（#margin-fit-progress/-fill/-text）。
+ *
+ * 为什么需要它：两个写者都在跑时后写者覆盖前者——QA 实测 23 次采样里 15 次是拟合文案，
+ * 检测的「完成」文案被下一批拟合盖掉。规则：**检测优先**（拟合照跑，只是不写显示）；
+ * 检测收尾那 5 秒里仍归检测，之后按"谁还在跑"交回。
+ */
+let marginProgressOwner = null; // "detect" | "fit" | null
+
+/** 拟合进度的显示分母（冻结值）：检测期间服务端的 remaining 会一直涨，夹值会让宽度来回跳。 */
+let marginFitDisplayTotal = 0;
+
+function showMarginFitProgress(done, total, remaining = 0) {
   const wrap = el("margin-fit-progress");
   if (!wrap) return;
+  if (marginProgressOwner === "detect") return; // 检测在写这组元素：拟合照跑，不抢显示
+  marginProgressOwner = "fit";
   wrap.hidden = false;
-  const percent = total ? Math.round((done / total) * 100) : 0;
+  const percent = total ? Math.min(100, Math.max(0, Math.round((done / total) * 100))) : 0;
   el("margin-fit-fill").style.width = `${percent}%`;
+  const tail = remaining > total ? `（还剩 ${remaining} 页待拟合）` : "";
   el("margin-fit-text").textContent =
     done >= total
       ? `自动拟合完成：${total} 页`
-      : `正在为 ${total} 页自动拟合版心… ${done} / ${total}`;
+      : `正在为 ${total} 页自动拟合版心… ${done} / ${total}${tail}`;
 }
 
 function hideMarginFitProgressSoon() {
   window.setTimeout(() => {
+    if (marginProgressOwner === "detect") return; // 检测正在用这块位置
     const wrap = el("margin-fit-progress");
     if (wrap && !injected.getMarginFitRunning()) wrap.hidden = true;
   }, 1600);
@@ -2882,6 +2910,7 @@ function showMarginDetectProgress(done, total) {
 
 /** 检测结束时进度条停在真实进度上，过一会儿收起来（别留在界面上像个假进度）。 */
 function finishMarginDetectBar(done, total) {
+  marginProgressOwner = "detect"; // 四条收尾分支都走这里：先占住，5 秒后再交回
   const wrap = el("margin-fit-progress");
   if (!wrap) return;
   // 同族兜底：收尾这条也吃同一份安全值（否则 5 / undefined、150% 一样会出现）
@@ -2889,6 +2918,8 @@ function finishMarginDetectBar(done, total) {
   el("margin-fit-fill").style.width = `${safe.percent}%`;
   el("margin-fit-text").textContent = `检测：${safe.done} / ${safe.total} 页`;
   window.setTimeout(() => {
+    // 5 秒窗口留给检测的收尾文案（J6）；之后再按"谁还在跑"把这组元素交回去
+    marginProgressOwner = injected.getMarginFitRunning() ? "fit" : null;
     const node = el("margin-fit-progress");
     if (node && !injected.getMarginFitRunning()) node.hidden = true;
   }, 5000);
@@ -3288,6 +3319,7 @@ function onTaskFinished(data) {
 /** 版面检测点了「开始检测」：判定文字 + 进度条归零 + 状态行（原来的三处写点收成一次）。 */
 function onLayoutDetectStarted(totalPages) {
   renderMarginStepVerdict();
+  marginProgressOwner = "detect";
   showMarginDetectProgress(0, totalPages);
   setMarginStatus(`开始检测 ${totalPages} 页版面（只检测，不识别文字）…`, false, 60000);
 }
