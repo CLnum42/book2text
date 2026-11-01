@@ -1,4 +1,4 @@
-# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）+ 清洗刀 + S1 + S2
+# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）+ 清洗刀 + S1 + S2 + S3
 
 > 规则（2026-11-02 定）：**通过 / 未验分开写**；未验必须写阻塞原因与证据位置。
 > 只在对话里说“我跑过”按**未验**计；环境起不来同理。
@@ -321,10 +321,15 @@ node 232 / 230 pass / 0 fail / 2 skipped · pytest 1034（121.88s，STATIC_DIR �
   自检三条：删登记 ⇒ 红并点名；白名单加第三个 ⇒ 红；static/ 里造 fake-module.js ⇒ 红并报它。
 ```
 
-### 已落：`b34384f`（TestDev，只动 `tests/js/boundary.test.mjs`，+154 −10；DevLead 在独立 worktree 复跑）
+### 已落：`b34384f`（TestDev；进 main 时合为 `60fe297`，只动 `tests/js/boundary.test.mjs`，+154 −10）
 
 ```
-node 235 / 233 pass / 0 fail / 2 skipped（基线 232/230/0/2；+3 = 白名单双向对集 / 登记完整性 / 登记完整性自检）
+做的是两件事（比原来"allowQuerySelector ≤1 个"强的地方：加第三个必须显式改名单和书）：
+ ① 具名白名单 ALLOW_QUERY_SELECTOR_WHITELIST = structure-tools.js / page-detail-editor.js，**双向对集**
+ ② 登记完整性：static 下每个挂 window.X = api 的文件必须在 DOMAIN_MODULES 或 NON_DOMAIN_MODULES 之一
+    （*-view.js 按后缀排除）；NON_DOMAIN_MODULES 两条带理由（page-tile.js / step-timing.js）
+ 四条自检：删登记 ⇒ 红并点名 · 白名单加第三个 ⇒ 红 · 制造假模块文件 ⇒ 红并报文件名 · 两张表互斥 ⇒ 红
+node 235 / 233 pass / 0 fail / 2 skipped（基线 232/230/0/2；+3 条测试，自检挂在既有 test 里不额外计数）
 三条变异我自己重跑，不是转述：
  (a) 删掉 page-detail-editor.js 的登记 ⇒ 红 2 条：
      「白名单里的 page-detail-editor.js 不是已登记的域模块——白名单不许留空壳」
@@ -377,7 +382,52 @@ node 234 / 232 pass / 0 fail / 2 skipped · pytest 1034（125.09s，STATIC_DIR �
 原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
 ```
 
-## 七、结论
+## 七、S3：版面确认 + 建议工具 → 同一个 `page-detail-editor.js`（`9e38260`）
+
+提交链：`e64f7fd`（id 表挪一件）→ `9a6beee`（pytest 三条断言合查模块）→ `ff7ba30`（产品）→
+`d502797`（`suggestionHighList` 移出导出面）→ `9e38260`（三道闸）。**`60fe297` 是域模块闸那笔（TestDev 的
+`b34384f`）**，与 S3 同批进 main。
+
+### 通过（代码层，DevLead 在独立 worktree 独立核）
+
+```
+基线 33e5261 → 9e38260
+app.js 10,660 → 10,572（−88）
+顶层函数 419 → 416：移出恰 3 个（confirmPageLayout / renderLayoutPanel / renderSuggestionTools）、新增 0
+模块 1,265 → 1,345 = 1,186 代码 + 72 注释 + 87 空行
+三取法（剥注释）：el( 0 · document.getElementById 0 · document.querySelector 0
+  root.querySelector 2 处 · part( 43 处
+deps 173 不变
+导出面 **20 个**（沙箱执行 Object.keys），我逐个核过：**每个都有 app.js 调用点**（闸也这么判）
+  删掉的 5 个：showError / openBoxCreate / cancelBoxCreate / setupBoxCreate / suggestionHighList
+  （后两个分别是我在 S2 复核时抓的"无外部调用点"与"搬完就没人喊"）
+注入：init 传 53 个键、模块实读 53 个 —— **两个死注入已清**（getActiveReviewBlockId / PAGE_TYPE_LABELS）
+init 幂等：`if (wired) return api; wired = true;` 之后才是 setupBoxCreate + 全部 bind（这条做成了闸）
+R3 review 58/134 → **54/127**（−4 种 / −7 处）· pages 0/0 · registry 0 笔（490 笔）· audit 假红 0
+node **241 / 239 pass / 0 fail / 2 skipped**（合了 60fe297 之后的数；Builder 报的 238/236 是它自己分支
+  未含 TestDev 那 3 条闸时的读数）
+pytest 1034（142.15s，STATIC_DIR 在树内）
+```
+
+### 三道闸的变异我实跑（不是转述）
+
+```
+① 把 suggestionHighList 塞回 api          ⇒ 红：「api.suggestionHighList 在 app.js 里一次都没被调用」
+② 在 PageDetailEditor 的 init 块塞 getActiveReviewBlockId ⇒ 红：「boot 注入了 … 模块一次都没读——死注入」
+③ 把 bind("early", …) 挪到 wired 守卫之前 ⇒ 红：「init 的接线跑在 wired 守卫之前」
+三支还原后各自转绿；我第一版把 ② 的变异插进了 PagesView 的 init 块（红的是刀 11 那条），
+说明"变异插错块 = 测错对象"，已按 PageDetailEditor 的块重做。
+```
+
+### 未验（真机，ego-browser 无响应）
+
+```
+· 版面确认面板：确认动作 / 建议一键采纳
+· 建议工具（rendering tools）在面板里的显示与交互
+原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
+```
+
+## 八、结论
 
 ```
 片 1：代码层通过；真机部分通过、5 项未验（ego 阻塞）
@@ -389,5 +439,7 @@ node 234 / 232 pass / 0 fail / 2 skipped · pytest 1034（125.09s，STATIC_DIR �
 S1：代码层通过（24 函数差集逐个对、模块 989、接口面 20、注入 48→读 46）；真机 4 件未验（ego 阻塞）
 S2：代码层通过（15 函数差集逐个对、模块 1,265=1,119+63+83、接口面 23 但 setupBoxCreate 无外部调用点、
     2 个死注入未清）；真机 3 件未验（ego 阻塞）
-六把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
+S3：代码层通过（3 函数差集、模块 1,345=1,186+72+87、导出面 20 且每个有调用点、注入 53=53、
+    wired 守卫在、R3 54/127）；三条闸我都实跑变异；真机 2 件未验（ego 阻塞）
+七把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
 ```

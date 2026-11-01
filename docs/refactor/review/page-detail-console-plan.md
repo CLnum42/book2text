@@ -131,46 +131,56 @@ C  0 个                           别的视图模块不直接用本模块；pag
                                  loadPageDetail / showPageDetailError 仍由外壳持有（核心抽屉没搬）
 ```
 
-### 3.1 外壳喊模块 = 接口面（R8/R7 管这一边，**实测 20 个名字**）
+### 3.1 外壳喊模块 = 接口面（R8/R7 管这一边，**S3 定稿 20 个**）
 
 ```
-init（L）+ 写书时列的 6 个 T：renderBlocks · setFilter · setPackageModeChrome · showError ·
-  openBoxCreate · cancelBoxCreate
-+ 落盘后新增的 13 个（每个都有真调用点，行号见下）：
-  applyDetailSuggestions 5307 · refreshDetailSuggestions 5327 · blockNeedsReview 5601 ·
-  suggestionHighList 6730/6760 · pageNumberHintChip 6092 · adoptBlockSuggestion 6071/10461 ·
-  adoptAllHighSuggestions 10553 · truncate 6453/6454/8215 · selectReviewBlock 5721/6560/6688 ·
-  flushPendingSave 4666 · adoptLine 1342 · patchBlock 5974 · reviewAction 8952/8955
+init（L）
+renderBlocks 5657/5718 · setFilter 5574 · setPackageModeChrome 5678/9441 · setBoxCreateMode 5273
+loadInkGaps 5326 · renderSuggestionTools 5723 · renderLayoutPanel 5724
+applyDetailSuggestions 5307 · refreshDetailSuggestions 5327 · blockNeedsReview 5601
+pageNumberHintChip 6092 · adoptBlockSuggestion 6071/10117 · adoptAllHighSuggestions 10209
+truncate 6453/6454/7873 · selectReviewBlock 5721/6560/6688 · flushPendingSave 4666
+adoptLine 1342 · patchBlock 5974 · reviewAction 8609/8612
+```
+（行号是 `9e38260` 的实测；每个名字都在 app.js 里有真实调用点，闸 S3 直接执行模块拿 `Object.keys` 逐个核。）
+
+**5 个曾出现、但 S3 按 §1 ⑦ 删掉的导出**（别以为少了，也别再加回来）：
+
+```
+showError          模块自己实现 showEditorError 写 #page-detail-error；外壳不需要"喊模块报错"
+openBoxCreate      菜单项 → 模块 init 里自己 bind("detail-box-create")，外壳不再调
+cancelBoxCreate    同上：bind("box-select-cancel")
+setupBoxCreate     唯一调用在模块 init 的 wired 守卫里（S2 复核时被我抓出来，S3 删）
+suggestionHighList 它的两处调用原本在被搬走的两个函数体内 ⇒ 搬完后外壳 0 调用（S3 的导出面闸当场抓到）
 ```
 
-**为什么是 20 不是 6**：书按"语义上该由模块对外提供什么"列了 6 个；落盘时按 §1 ⑦「每个导出都要能指出谁在
-哪调」逐个核，上面 13 个在 app.js 里都有真实调用点 ⇒ 成立（模块实测 `Object.keys` 恰好 20 个）。
-**下一个人别按 6 判红**：判据是"每个导出都有调用点"，不是"导出数等于某个数"；要加导出，先加调用点。
+**判据**：导出面 = "每个导出都能指出谁在哪调"，**不是**"导出数等于某个数"。要加导出，先加调用点；
+S3 的闸会执行模块取真实 api 键，再逐个在 app.js 里找 `PageDetailEditor?.<key>(`。
 
 ### 3.2 模块喊外壳 = **注入**（不进接口面，**不许和 3.1 混成一张清单**）
 
-口径：模块源码里**实际读**的 `injected.X`（不含 S1 自己那 24 个、不含 DOM/浏览器 API）。
-实测 2026-11-02（落盘后）：**46 个键 = 26 个函数 + 7 个常量表 + 13 个状态访问器**
-（写书时按裸扫报的是 27 函数 + 6 常量；差别在把状态访问器单列、并把 `PAGE_TYPE_LABELS` 算进常量表，
-且 `showError` 这类外壳助手不再算"模块喊外壳的函数"——它由模块自己实现一份，只保留同名导出）。
+口径：模块源码里**实际读**的 `injected.X`。S3 定稿实测（`9e38260`）：
+**53 个键 = 26 个外壳函数 + 6 个常量表 + 20 个状态/元素访问器 + root**，且**传入 53 / 读出 53，两个方向都对得上**
+（S3 的闸双向判：传了没人读 = 死注入；读了没传 = 漏注入）。
 
 ```
-函数 26：divergenceOf · blockInsideMargin · detailPageRecord · pageNumberSplitHint · structureAction ·
-        diffLevelLabel · syncDiffStrip · activateDiff · apiJson · forgetPageSuggestions · refreshPageStates ·
-        loadPageDetail · setSaveState · reviewMarginSplit · effectiveReviewFilter · pendingPageReasons ·
-        renderReviewFilter · computeCharSpans · forgetPageBlocks · fetchPageSuggestions ·
-        renderSuggestionTools · renderLayoutPanel · ensureBlockListed · drawDiffLayer · scrollViewerTo ·
-        updateDiffActive
-常量表 7：BLOCK_TYPE_LABELS · TEXT_FREE_BLOCK_TYPES · CHROME_BLOCK_TYPES · NOTE_BLOCK_TYPES ·
-        REVIEW_STATUS_LABELS · PAGE_TYPE_LABELS · MAX_DIVERGENCE_ROWS
-状态访问器 13：getDetailPageNo · getReviewBlocks · getActiveReviewBlockId · setActiveReviewBlockId ·
-        getDetailSuggestionByBlock · setDetailSuggestionByBlock · setDetailNumberHints · getCursorByBlock ·
-        getDiffStripOpen · getDetailOverlay · setReviewBlockFilter · setReviewFilterExplicit · setBoxCreateMode
+函数 26：activateDiff · apiJson · blockInsideMargin · computeCharSpans · detailPageRecord · diffLevelLabel ·
+        divergenceOf · drawDiffLayer · effectiveReviewFilter · ensureBlockListed · fetchPageSuggestions ·
+        forgetPageBlocks · forgetPageSuggestions · loadPageDetail · pageNumberSplitHint · pendingPageReasons ·
+        refreshPageStates · refreshReviewFilterOnly · renderReviewFilter · renderReviewHeadline ·
+        reviewMarginSplit · scrollViewerTo · setSaveState · structureAction · syncDiffStrip · updateDiffActive
+常量表 6：BLOCK_TYPE_LABELS · TEXT_FREE_BLOCK_TYPES · CHROME_BLOCK_TYPES · NOTE_BLOCK_TYPES ·
+        REVIEW_STATUS_LABELS · MAX_DIVERGENCE_ROWS
+状态/元素访问器 20：getCurrentProject · getDetailPageNo · getReviewBlocks · getCursorByBlock ·
+        getDetailSuggestionByBlock · setDetailSuggestionByBlock · setDetailNumberHints · setActiveReviewBlockId ·
+        getDiffStripOpen · getDetailOverlay · getDetailCanvas · getDetailImage · getDetailInkGaps ·
+        getDetailInkGapsState · setDetailInkGapsState · getDetailLayoutConfirmed · getBoxCreateMode ·
+        setBoxCreateMode · setReviewBlockFilter · setReviewFilterExplicit
+宿主 1：root（= #view-review）
 ```
 
-**两个死注入（2026-11-02 实测，待删）**：`init()` 实际传了 **48** 个键，模块只读 46 个 ——
-`getActiveReviewBlockId` 与 `PAGE_TYPE_LABELS` 传了但 0 读（R13 只查"模块读了必须有"，不查"传了没人读"）。
-删这两行前先确认没有下一切片要用；S1 范围内它们是死的。
+**两个曾经死掉的注入已清（S3）**：`getActiveReviewBlockId`、`PAGE_TYPE_LABELS` —— S1/S2 期间它们传了但 0 读；
+S3 把"死注入"做成闸（双向判），顺手删掉这两行。**以后加注入键必须同时能指出模块哪一行读它**。
 
 **为什么必须分开**：接口面是"外壳按语义叫模块"，有 R8 的 kinds 表与 T 的死期管着；
 注入是"模块按签名叫外壳"，**没有死期、也不该有**——把两者写成一张清单，下一个人就会问
@@ -407,3 +417,79 @@ app.js 11,743 · 顶层函数 458（335 function + 123 async function）· deps 
 
 清洗后它只剩核心抽屉那一份（3 处），队列判断已随删消失。**S1 是块列表编辑，不许顺手把 headline 带进来**——
 它属于抽屉域，留在 S1 之外。
+
+## 12. S4 施工书：第二引擎复核（6 函数 / 170 行，基线 `9e38260`）
+
+落进**同一个** `page-detail-editor.js`（一个 section 一个 owner，S2/S3 已按这条走）。
+
+**搬什么**（行号是 `9e38260` 实测；函数体行数合计 170）
+
+```
+activeAuxJob          735-745   11
+openAuxWarning        747-764   18
+waitForAuxThenReview  767-826   60
+runAuxiliary         1273-1296  24
+renderAuxiliary      1298-1348  51
+setupAuxControls     1350-1355   6
+```
+
+### 12.1 状态归属（逐个核过读写点，不沿用旧归类）
+
+```
+auxData                 写 2：runAuxiliary:1283、closePageDetail:5274；**读 0**
+                        ⇒ 死状态（全仓 3 处命中，没有一处是读）。本刀删：
+                          模块里不留、closePageDetail 那行（5274）也删。
+                          这是 S1 两个死注入之后同型的第三例——写点看着像"状态"，其实没人用。
+auxWarningWaitToken     只被 waitForAuxThenReview 读写（:768 自增、:799/:821 比较）
+                        ⇒ 随函数搬进模块（模块级变量），**不做外壳注入**。
+currentProject          外壳状态 ⇒ 借（注入 getCurrentProject）
+detailPageNo            外壳状态 ⇒ 借（注入 getDetailPageNo）
+token                   局部变量
+```
+
+### 12.2 外部依赖：11 个外壳函数 + 2 处跨模块调用
+
+```
+外壳函数 11：apiJson · showError · setSaveState · loadPageDetail · engineState · openModal · closeModal ·
+            openTaskDrawer · startTaskPolling · loadFinishSummary · enterReviewStep
+跨模块 2 处（搬进模块后**必须转注入**，模块里不许直呼 window.X——那是 R6/R7 的那条线）：
+  · waitForAuxThenReview:823  window.PagesView?.onAuxReviewFinished()
+  · renderAuxiliary:1342     window.PageDetailEditor?.adoptLine(block, line_index, aux_text)（「采用这一路」按钮）
+```
+
+### 12.3 DOM 面：6 个 id 在子树内，5 个在子树外（这条决定形态）
+
+```
+在 #view-review 子树里（模块可 root.querySelector）：
+  aux-panel · aux-run · aux-close · aux-lines · aux-summary · aux-hint
+不在子树里（index.html:1521–1542 的 modal）：
+  aux-warning-mask · aux-warning-title · aux-warning-text · aux-warning-wait · aux-warning-error
+⇒ 这 5 个**必须由 init 注入**（一个 `getAuxWarningEls()` 返回这 5 个节点，照 getDetailCanvas 的形态）；
+  模块里**不许出现这 5 个 id 字符串**，否则 S1/S3 的 id 归属闸会红（它们不在 EDITOR_IDS 里）。
+  别选"把 modal 挪进 #view-review"：它是全屏遮罩，挪位置会改 z-index 栈。
+```
+
+### 12.4 接口面（预测，落盘时以导出面闸实测为准）
+
+```
+导出：openAuxWarning（showView 的 review 入口 :971 调它）
+不导出：runAuxiliary / renderAuxiliary / activeAuxJob（只在模块内被调用）
+        setupAuxControls / waitForAuxThenReview —— **前提是把 bind 搬进模块 init**：
+          aux-run / aux-close 在子树内可直接 part() 绑；aux-warning-wait 等用注入的节点绑
+  若图表决定"模态框的绑定留在外壳"，则这两者要导出；推荐前者（模块自洽，外壳不再摸 aux 逻辑）。
+```
+
+### 12.5 判据
+
+```
+函数差集   419 → 413（恰这 6 个，新增 0）；app.js 10,572 → 实测（预算 −190 上下，按实际）
+deps       173 不变
+模块       1,345 → 实测；三取法仍 0（root.querySelector 只许维持现状，不许新增 document 级）
+R3 review  54/127 → 预期 **−5 种 / −10 处**：
+             aux-summary / aux-hint / aux-lines / aux-run / aux-close 在别处不再出现；
+             aux-panel 仍有 1 处、page-detail-error 仍有 11 处 ⇒ 这两个 id 不掉。
+             以 `node scripts/r3_review_count.mjs` 实测为准（写书不算数）。
+闸         导出面每个都有调用点 · 注入双向对（传=读）· init 接线在 wired 守卫之后
+真机       第二引擎面板：运行 → 逐行分歧 → 采用这一路（可撤销）→ 关闭 ·
+           未跑完时的警告：等它跑完再进 / 跳过 / 取消（ego 恢复后补）
+```
