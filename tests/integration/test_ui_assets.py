@@ -1545,8 +1545,8 @@ def test_review_workspace_v2_is_wired() -> None:
     assert "function setReviewTreeOnlyTodo(" in script
     assert "function syncReviewTreeToPage(" in script
     assert "function openTreeItem(" in script
-    assert "function stepReviewDiff(" in script
-    assert 'event.key === "["' in script
+    # 清洗刀：stepReviewDiff（[ ] 跨块跳差异）与它的键位随页内差异队列一起删除；
+    # 跨块跳差异的能力净损失，记在 docs/known-limitations.md，不在这条静态断言里留痕。
 
     # 页面上是整行色块（用 block_line.bbox），不是字符盒；逐字对比在右栏
     assert "blockCountedInMargin(block, pageRecord)" in script
