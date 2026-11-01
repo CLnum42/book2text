@@ -1206,11 +1206,9 @@ def test_page_index_step_is_wired() -> None:
     assert "function stepIndexPage(" in index_both
     assert "function highlightIndexRow(" in index_both
     assert "INDEX_ZOOM_SCALES" in script
-    # 刀 C：页码索引服务搬进 page-index.js（同名服务模块），URL 与函数都在那边。
-    # 放宽期（产品笔落盘前）模块还不存在：先合查，收紧笔改成只查模块。
-    page_index_path = STATIC_DIR / "page-index.js"
-    page_index = page_index_path.read_text(encoding="utf-8") if page_index_path.exists() else ""
-    assert "/page-index" in (script + page_index)
+    # 刀 C：页码索引服务搬进 page-index.js（同名服务模块），URL 与函数都在那边
+    page_index = _view_script("page-index.js")
+    assert "/page-index" in page_index
     # 完成判定读收尾面板的 index 字段，不在前端另算
     assert 'const ix = fs.index || {};' in script
     assert 'Boolean(ix.complete)' in script
@@ -1660,7 +1658,7 @@ def test_index_view_reuses_page_rendering() -> None:
     assert "paintTileMargin(tile, page)" in script
     assert "renderPageBlocks(tile, blocks" in script
     # 刀 C：loadIndexBlocks → page-index.js 的 loadBlocks（块缓存仍在外壳，模块借三个回调读写）
-    assert "function loadIndexBlocks(" in script or "function loadBlocks(" in page_index
+    assert "function loadBlocks(" in _view_script("page-index.js")
     assert "function drawIndexFirstLine(" in index_both
     assert "function toggleIndexOverlay(" in index_both
     assert "function toggleIndexMargin(" in index_both

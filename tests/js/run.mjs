@@ -77,6 +77,7 @@ const TEST_FILES = [
   ["pages-visibility", () => import("./pages-visibility.test.mjs")],
   ["margin-progress", () => import("./margin-progress.test.mjs")],
   ["overlay-registry-acid", () => import("./overlay-registry-acid.mjs")],
+  ["page-index", () => import("./page-index.test.mjs")],
   ["review-tree", () => import("./review-tree.test.mjs")],
   ["detail-visibility", () => import("./detail-visibility.test.mjs")],
 ];

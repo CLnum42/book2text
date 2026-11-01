@@ -5481,6 +5481,8 @@ const DOMAIN_MODULES = [
   { file: "page-confirm.js", exposes: "PageConfirm" },
   // 片 1：图层容器由 registry 自己 createElement，宿主由视图 mount 时给 ⇒ 零豁免过这条闸
   { file: "overlay-registry.js", exposes: "OverlayLayer" },
+  // 刀 C：radio 由外壳在自己的 root 子树里查好传进来 ⇒ 模块连 querySelector 都是 0 次
+  { file: "page-index.js", exposes: "PageIndexService" },
 ];
 
 function domainDomProblems({ file, source }) {
