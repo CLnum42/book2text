@@ -4005,32 +4005,10 @@ function auxEstimateText(pages) {
 
 /** 复核任务在跑：在识别步里显示"做到哪、还要多久"。 */
 
-/** 撤销按钮：只撤销本次会话里的版心拖动 / 重置，一次一步。 */
-function marginUndoButton() {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "btn";
-  const entry = marginUndoStack[marginUndoStack.length - 1] || null;
-  button.textContent = "撤销";
-  button.disabled = !entry;
-  button.title = entry
-    ? `撤销第 ${entry.pageNo} 页的版心改动`
-    : "还没有可撤销的版心改动";
-  button.addEventListener("click", undoMarginEdit);
-  return button;
-}
-
 /**
  * 重置为「本页自动」：先 PATCH 回 auto（丢掉自定义），再按检测行拟合。
  * 只处理 auto / inherit / custom 的页；不适用不动。
  */
-
-function trimMarginUndo() {
-  while (marginUndoStack.length > 20) marginUndoStack.shift();
-}
-
-/** 撤销一次版心改动：auto 页重拟合，其它页写回原来的四边。 */
-async function undoMarginEdit() { return window.PagesView.undoMarginEdit.apply(window.PagesView, arguments); }
 
 /**
  * 任务收尾 / 页面重新打开时从服务端重读版心状态（自动推算写在识别子进程里）。
@@ -5255,7 +5233,7 @@ async function loadWorkflow() {
     workflowConfirmationCounts = { human: 0, auto: 0, unknown: 0 };
     pendingPageNos = new Set();
     pendingPageCount = 0;
-      window.PagesView?.onWorkflowLoaded({}, {});
+    window.PagesView?.onWorkflowLoaded({}, {});
     return;
   }
   let filterCounts = {};
@@ -5274,7 +5252,7 @@ async function loadWorkflow() {
     pendingPageNos = new Set((pending.pages || []).map((item) => item.page_no));
     pendingPageCount = pending.count || 0;
     filterCounts = data.counts || {};
-  filterSummary = data.summary || {};
+    filterSummary = data.summary || {};
   } catch {
     // 状态索引读不到时按"没有角标"处理，不影响识别 / 审校 / 导出
     workflowByPageId = new Map();
@@ -5282,7 +5260,7 @@ async function loadWorkflow() {
     workflowConfirmationCounts = { human: 0, auto: 0, unknown: 0 };
     pendingPageNos = new Set();
     pendingPageCount = 0;
-    }
+  }
   window.PagesView?.onWorkflowLoaded(filterCounts, filterSummary);
 }
 
@@ -12777,7 +12755,6 @@ function boot() {
     marginPagesWithoutLines: marginPagesWithoutLines,
     marginSourceText: marginSourceText,
     marginUndeterminedPages: marginUndeterminedPages,
-    marginUndoButton: marginUndoButton,
     mergePageRecord: mergePageRecord,
     openMasks: openMasks,
     pageBlockKey: pageBlockKey,
@@ -12794,7 +12771,6 @@ function boot() {
     selectionPages: selectionPages,
     suggestionPagesByType: suggestionPagesByType,
     textLayerPages: textLayerPages,
-    trimMarginUndo: trimMarginUndo,
     buildTile: buildTile,
     applyTileState: applyTileState,
     adoptAllHighSuggestions: adoptAllHighSuggestions,

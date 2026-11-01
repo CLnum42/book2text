@@ -29,7 +29,7 @@ export const KNIVES = [
   { n: 9.3, status: "landed", scope: "版心一族 12 键死：两个宿主搬入 + 三个事件能力（onTaskFinished / onLayoutDetectStarted / onWorkflowLoaded）+ 拖拽簇搬入（入口改事件委托）" },
   { n: 9.4, status: "landed", scope: "页码一族 3 键死：收成 onPageNumberChanged / onPageNumberAnalysisReady 两个能力（宿主全留壳）" },
   { n: 9.5, status: "landed", scope: "选择/网格/步骤/收尾 11 键死：族与滚动监听搬入 + 8 个事件能力（renderWorkflowFilter 并入 onWorkflowLoaded，checkSelection 转 C）" },
-  { n: 9.6, status: "pending", scope: "只做 undoMarginEdit——版心撤销按钮的接线收回模块（Architect 39eb012 改判）" },
+  { n: 9.6, status: "landed", scope: "undoMarginEdit 死：版心撤销按钮工厂与 trimMarginUndo 搬进模块，接线收回（R8 39 → 38，deps 208 → 206）" },
   { n: 10, status: "pending", scope: "队列子系统搬进模块（overlay 队列 pumpOverlayRender + 建议扫描队列 scanVisiblePageSuggestions；原来叫「收口」）" },
   { n: 11, status: "pending", scope: "收口：R8 19 不变（冻结清册 + 落地 §八 四条机检）——终态 16 C + 3 L（init / enter / refresh）" },
 ];

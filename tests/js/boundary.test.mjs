@@ -3593,7 +3593,7 @@ const VIEW_EXPORTS = {
   // 收敛棘轮：本刀 20 → 终点 3（enter / render / refresh，刀 5 收敛到此），刀 2–5 每刀**严格下降**；
   // 导出面必须**扁平**（api 直接挂函数，不许嵌套对象）——R6 只锁接口名，深度由本表 + 自检锁。
   "pages-view.js": { names: [
-    "init", "undoMarginEdit",
+    "init",
     "updatePageVisibility", // 刀 3：14 个转发器对应的导出键（R8 表签字上限 34，见 docs/refactor/pages/knife3-plan.md §⑩；
     // 每键都带死亡刀号——刀 4 清 9 个、刀 5 清 5 个，之后严格下降）。
     "loadFinishSummary", "renderRecognitionSettings", // 刀 4：2 个临时转发键，**死亡刀号 = 刀5**（§8.2：每键带死亡刀号，到点未死就红）。
@@ -3653,7 +3653,8 @@ const VIEW_EXPORTS = {
     kinds: {
       init: { kind: "L" },
       enter: { kind: "L" },   // 刀 9.1 新增（视图切换通知，生命周期键）
-      undoMarginEdit: { kind: "T", death: 9.6 },   // 9.6：接线收回模块（Architect 2026-10-30）
+      // 刀 9.6：undoMarginEdit 死（T 5 → 4）——版心撤销按钮的工厂搬进模块，click 直呼模块自己的 undoMarginEdit。
+      // R8 39 − 1 + 0 = 38：它唯一的调用点是工厂里的 addEventListener（值位），按钮 DOM 归 #view-pages，接线归模块。
       updatePageVisibility: { kind: "T", death: 10 },
       loadFinishSummary: { kind: "C", callers: ["afterCleanupApplied", "afterContinuationChange", "boot", "confirmCurrentPage", "finishConfirmPages", "finishRevokeAutoPass", "finishRunAutoPass", "finishRunLayout", "openFinishPanel", "pollTask", "refreshProject", "setupReviewControls", "waitForAuxThenReview", "library-view.js", "reading-view.js"], reason: "收尾状态被三个视图共用（13 个外壳函数 + library/reading 各调）" },
       renderRecognitionSettings: { kind: "C", callers: ["applyProjectSettings", "boot", "loadAppInfo", "library-view.js"], reason: "项目设置落在 pages 面板上" },

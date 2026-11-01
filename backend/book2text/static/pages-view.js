@@ -244,7 +244,7 @@ function renderMarginPanel() {
     edges.textContent = "在左边点一页：版心框会画在页面上，四边 / 四角可以直接拖。";
     basis.textContent = "";
     el("margin-audit").hidden = true;
-    actions.append(injected.marginUndoButton());
+    actions.append(marginUndoButton());
     return;
   }
 
@@ -270,7 +270,7 @@ function renderMarginPanel() {
     reset.disabled = targets.length === 0;
     reset.title = "用每一页自己的检测行重新拟合；自定义 / 不适用不动";
     reset.addEventListener("click", () => resetMarginsToAuto(targets));
-    actions.append(reset, injected.marginUndoButton());
+    actions.append(reset, marginUndoButton());
     return;
   }
 
@@ -320,7 +320,7 @@ function renderMarginPanel() {
   reset.title = "丢掉这一页的自定义四边，用检测行重新拟合";
   reset.disabled = page.margin_box_mode === "auto" && Boolean(page.margin_box);
   reset.addEventListener("click", () => resetMarginsToAuto([page]));
-  actions.append(reset, injected.marginUndoButton());
+  actions.append(reset, marginUndoButton());
 
   next.hidden = false;
   next.textContent = "下一页 ›";
@@ -1149,7 +1149,7 @@ async function savePageMargin(pageNo, box) {
     mode: previousMode,
     box: page.margin_box ? [...page.margin_box] : null,
   });
-  injected.trimMarginUndo();
+  trimMarginUndo();
   try {
     const data = await injected.apiJson(
       `/api/projects/${injected.getCurrentProject().project_id}/pages/${pageNo}/margin-box`,
@@ -1215,6 +1215,26 @@ async function undoMarginEdit() {
     injected.marginUndoStack.push(entry);
     injected.showError(el("pages-error"), error);
   }
+}
+
+/** 撤销按钮：只撤销本次会话里的版心拖动 / 重置，一次一步。 */
+function marginUndoButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn";
+  const entry = injected.marginUndoStack[injected.marginUndoStack.length - 1] || null;
+  button.textContent = "撤销";
+  button.disabled = !entry;
+  button.title = entry
+    ? `撤销第 ${entry.pageNo} 页的版心改动`
+    : "还没有可撤销的版心改动";
+  button.addEventListener("click", undoMarginEdit);
+  return button;
+}
+
+/** 撤销栈只留最近 20 步（一次拖动 / 一次重置 = 一步）。 */
+function trimMarginUndo() {
+  while (injected.marginUndoStack.length > 20) injected.marginUndoStack.shift();
 }
 
 async function loadFinishSummary({ silent = false } = {}) {
@@ -2501,7 +2521,7 @@ async function resetMarginsToAuto(pages) {
       box: page.margin_box ? [...page.margin_box] : null,
     });
   }
-  injected.trimMarginUndo();
+  trimMarginUndo();
   try {
     if (targets.length === 1) {
       const page = targets[0];
@@ -3322,7 +3342,6 @@ function enter() {
   // 收敛棘轮：本刀 20 键 → 终点 3（enter / render / refresh），靠刀 2-5 把 41 个调用者搬进来逐刀降。
   const api = {
     init,
-    undoMarginEdit,
     updatePageVisibility,
     loadFinishSummary,
     renderRecognitionSettings,
