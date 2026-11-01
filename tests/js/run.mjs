@@ -74,6 +74,7 @@ const TEST_FILES = [
   ["boundary", () => import("./boundary.test.mjs")],
   ["pages-wire", () => import("./pages-wire.test.mjs")],
   ["pages-poll-guard", () => import("./pages-poll-guard.test.mjs")],
+  ["pages-visibility", () => import("./pages-visibility.test.mjs")],
   ["detail-visibility", () => import("./detail-visibility.test.mjs")],
 ];
 const selector = process.argv[2];
