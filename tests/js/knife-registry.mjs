@@ -33,7 +33,7 @@ export const KNIVES = [
   // 队列子系统按入口拆两半（Chief 2026-11-01 裁定）：overlay/可见性一入口、建议扫描一入口，
   // 触发集互不相干，各自一笔各自绿；子刀沿用 9.1–9.6 的小数编号。
   { n: 10.1, status: "landed", scope: "10a：块框队列与可见性调度搬进模块——3 键死（updatePageVisibility / pumpOverlayRender / queueOverlayRender），新能力 onPagesNeedReflow（R8 38 → 36，deps 206 → 198）" },
-  { n: 10.2, status: "pending", scope: "10b：建议扫描队列搬进模块——scanVisiblePageSuggestions 死 + pumpPageSuggestionQueue / ensurePageSuggestion / scheduleSuggestionScan 搬入，新能力 onPagesShown" },
+  { n: 10.2, status: "landed", scope: "10b（最后一刀）：建议扫描队列搬进模块——scanVisiblePageSuggestions 死 + pumpPageSuggestionQueue / ensurePageSuggestion / scheduleSuggestionScan 与七份队列状态搬入，新能力 onPagesShown（R8 36 → 36，deps 198 → 186，T 归零）" },
   { n: 11, status: "pending", scope: "收口：R8 19 不变（冻结清册 + 落地 §八 四条机检）——终态 16 C + 3 L（init / enter / refresh）" },
 ];
 

@@ -3608,7 +3608,6 @@ const VIEW_EXPORTS = {
     // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
-    "scanVisiblePageSuggestions",   // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
     // 死亡刀号 = 待裁定（Architect ratchet-two-kinds：transition 才有死期）
@@ -3645,7 +3644,9 @@ const VIEW_EXPORTS = {
     "onPageListChanged", "onProjectPagesReloaded", "onAuxReviewFinished", "onPageStatesRefreshed",
     "onAutoApplyStatusChanged", "onWorkflowStepChanged", "onPageBlocksInvalidated", "onPageSuggestionsInvalidated",
     // 刀 10a：块框队列/可见性调度搬进模块，3 个 T 死，换 1 个能力（C 类）。R8 39 − 3 + 1 = 36
-    "onPagesNeedReflow",],
+    "onPagesNeedReflow",
+    // 刀 10.2（最后一刀）：建议扫描队列搬进模块，最后一个 T 死，换 1 个能力（C 类）。R8 36 − 1 + 1 = 36；**T 归零**
+    "onPagesShown",],
     // ---- 三类键（Architect ratchet-two-kinds，docs/refactor/pages/export-ratchet.md）----
     // L lifecycle 固定 3 个名字；T transitional 必须带死期（现留空，等 9a/9b 裁定）；
     // C capability 不写死期，登记 effective callers + 理由（清册就是上限，不是数字）。
@@ -3669,6 +3670,7 @@ const VIEW_EXPORTS = {
       onPageBlocksInvalidated: { kind: "C", callers: ["refreshAfterTypeChanges"], reason: "块框缓存失效（只在没有指定页时全清）" },
       onPageSuggestionsInvalidated: { kind: "C", callers: ["pollTask", "afterCleanupApplied", "refreshAfterTypeChanges", "applySplitBatch"], reason: "建议缓存失效（识别收尾 / 清理 / 类型变更 / 拆批）" },
       onPagesNeedReflow: { kind: "C", callers: ["showView", "refreshAfterTypeChanges", "applySplitBatch", "library-view.js"], reason: "布局可能要重排：切回页面视图 / 块类型变了 / 拆分批量 / 打开项目——调度状态在模块里" },
+      onPagesShown: { kind: "C", callers: ["showView"], reason: "页面视图变成可见（回页面视图恢复建议预取）——不是\"队列排完\"，队列排完是模块内部行为" },
       onPageNumberAnalysisReady: { kind: "C", callers: ["loadPageNumberMetrics", "refreshPageNumberAnalysis"], reason: "页码分析到手后重画右栏指标（只读 pageNumberAnalysis）" },
       onPageNumberChanged: { kind: "C", callers: ["adoptPageNumberTemplate", "removePageNumberRange", "savePageNumberManual", "hydrateView"], reason: "页码写库成功后重读摘要并回一行状态（text 省略=只重读不报状态）" },
       onLayoutDetectStarted: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "开始检测：判定文字 / 进度条归零 / 状态行三处写点收成一次（按钮在 #confirm-dialog，模块挂不了监听）" },
@@ -3678,7 +3680,6 @@ const VIEW_EXPORTS = {
       openPageSetup: { kind: "C", callers: ["boot", "library-view.js"], reason: "首启 / 库页打开页面设置" },
       // 刀 9 已删 rerunAuxiliary（那 5 个键之一），别再回来 —— 冲突时取「新值 + 不复活已删键」
       // 10b：队列子系统剩下的一半——建议扫描队列搬进模块之后它就死（Architect 39eb012 改判；不是 C）
-      scanVisiblePageSuggestions: { kind: "T", death: 10.2 },
       startLayoutDetection: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "版心检测对话框发起（原按 T 记，Architect 转 C）" },
       toggleMarginView: { kind: "C", callers: ["boot", "index-view.js", "preview-view.js"], reason: "三步共用的工具栏开关" },
       togglePageBlocksOverlay: { kind: "C", callers: ["boot", "index-view.js", "preview-view.js"], reason: "同上" },

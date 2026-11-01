@@ -252,7 +252,7 @@ function showView(name) {
     // 缩放是三步共用的：可能在目录确认步里改过，回来要按当前档位重排网格。
     applyPageZoom();
     // 任务 43：审校期间暂停的建议预取，回到页面视图再接着排。
-    pumpPageSuggestionQueue();
+    window.PagesView?.onPagesShown();
   }
   if (target === "reading" && currentProject) {
     // 任务 94 Slice 2：进入审校只有一条路——ReadingView.enter()（§4 第 1 组）
@@ -3008,12 +3008,8 @@ const PAGE_BLOCK_CACHE_LIMIT = 80;
 
 const pageSuggestionCache = new Map(); // page_no → {suggestions, note}
 const pageSuggestionOrder = [];
-const pageSuggestionQueue = [];
-const pageSuggestionPending = new Set();
 const pageSuggestionFailed = new Set();
-let pageSuggestionActive = 0;
 const PAGE_SUGGESTION_CACHE_LIMIT = 200;
-const PAGE_SUGGESTION_CONCURRENCY = 2;
 
 function rememberPageSuggestions(pageNo, payload) {
   const existing = pageSuggestionOrder.indexOf(pageNo);
@@ -3090,78 +3086,6 @@ async function fetchPageSuggestions(pageNo, { force = false } = {}) {
   return payload;
 }
 
-/** 排队算一页的建议；返回 true 表示这次真的排了新活（用于限量与续扫）。 */
-function ensurePageSuggestion(pageNo) {
-  const project = currentProject;
-  if (!project || project.kind === "package") return false;
-  if (
-    pageSuggestionCache.has(pageNo) ||
-    pageSuggestionPending.has(pageNo) ||
-    pageSuggestionFailed.has(pageNo)
-  ) {
-    return false;
-  }
-  const page = project.pages.find((item) => item.page_no === pageNo);
-  if (!page || !page.include || page.page_type !== "body") return false;
-  if (recognitionOf(page).status !== "recognized") return false;
-  pageSuggestionPending.add(pageNo);
-  pageSuggestionQueue.push(pageNo);
-  pumpPageSuggestionQueue();
-  return true;
-}
-
-let suggestionScanQueued = 0;
-
-function pumpPageSuggestionQueue() {
-  // 任务 43：角标建议只有页面视图用得到。审校 / 预览里不再发起新请求——
-  // 否则正在审校时后台还在逐页跑 block-suggestions，一次按键要等几秒。
-  // 已经在飞的请求（最多 PAGE_SUGGESTION_CONCURRENCY 个）会自己结束；
-  // 回到页面视图时 showView 再把它接上。
-  if (currentView !== "pages") return;
-  while (
-    pageSuggestionActive < PAGE_SUGGESTION_CONCURRENCY &&
-    pageSuggestionQueue.length
-  ) {
-    const pageNo = pageSuggestionQueue.shift();
-    pageSuggestionActive += 1;
-    fetchPageSuggestions(pageNo)
-      .catch(() => {
-        // 建议是辅助信息：读不到就不标，不打断翻页；本次会话不再反复重试这一页
-        pageSuggestionFailed.add(pageNo);
-      })
-      .finally(() => {
-        pageSuggestionActive -= 1;
-        pageSuggestionPending.delete(pageNo);
-        if (pageSuggestionActive === 0 && !pageSuggestionQueue.length) {
-          // 这一轮排过队、可能还有可见页没轮到（一次最多 12 页）：再扫一轮
-          if (suggestionScanQueued > 0) {
-            suggestionScanQueued = 0;
-            scheduleSuggestionScan();
-          }
-        }
-        pumpPageSuggestionQueue();
-      });
-  }
-}
-
-let suggestionScrollListening = false;
-let suggestionScanTimer = null;
-
-
-/**
- * 网格档滚动时不必每帧算 267 个矩形：停下来 60ms 后扫一次可见页。
- *
- * 原来是 140ms：滚动停下到角标出现之间有肉眼可见的空档；改成 60ms，
- * 仍只扫一次（不是每帧），267 个瓷砖的位置也走 pageTileMetrics 缓存。
- */
-function scheduleSuggestionScan() {
-  if (suggestionScanTimer) clearTimeout(suggestionScanTimer);
-  suggestionScanTimer = setTimeout(scanVisiblePageSuggestions, 60);
-}
-
-function scanVisiblePageSuggestions() { return window.PagesView.scanVisiblePageSuggestions.apply(window.PagesView, arguments); }
-
-/** 页面确认模式：汇总、建议与「确认所选」都在这个模式里出现。 */
 let setupSuggestions = [];
 
 let setupSuggestionsLoaded = false;
@@ -12601,7 +12525,6 @@ function boot() {
     AUX_SECONDS_PER_PAGE: AUX_SECONDS_PER_PAGE,
     AUX_TEXT_LAYER_SECONDS_PER_PAGE: AUX_TEXT_LAYER_SECONDS_PER_PAGE,
     BLOCK_TYPE_LABELS: BLOCK_TYPE_LABELS,
-    PAGE_SUGGESTION_CONCURRENCY: PAGE_SUGGESTION_CONCURRENCY,
     PAGE_TYPE_LABELS: PAGE_TYPE_LABELS,
     PAGE_TYPE_ORDER: PAGE_TYPE_ORDER,
     RECOGNITION_LABELS: RECOGNITION_LABELS,
@@ -12617,11 +12540,8 @@ function boot() {
     getMarginFitRunning: () => marginFitRunning,
     marginFitTried: marginFitTried,
     marginUndoStack: marginUndoStack,
-    getPageSuggestionActive: () => pageSuggestionActive,
     pageSuggestionCache: pageSuggestionCache,
     pageSuggestionFailed: pageSuggestionFailed,
-    pageSuggestionPending: pageSuggestionPending,
-    pageSuggestionQueue: pageSuggestionQueue,
     getPageTileMetrics: () => pageTileMetrics,
     getPageZoomIndex: () => pageZoomIndex,
     getPagesMarginOn: () => pagesMarginOn,
@@ -12633,9 +12553,6 @@ function boot() {
     getSelectionAnchor: () => selectionAnchor,
     getSetupSuggestions: () => setupSuggestions,
     getSetupSuggestionsLoaded: () => setupSuggestionsLoaded,
-    getSuggestionScanQueued: () => suggestionScanQueued,
-    getSuggestionScanTimer: () => suggestionScanTimer,
-    getSuggestionScrollListening: () => suggestionScrollListening,
     getTaskJobId: () => taskJobId,
     visiblePageNos: visiblePageNos,
     getWorkflowStep: () => workflowStep,
@@ -12644,7 +12561,6 @@ function boot() {
     getPageBlockCache: () => pageBlockCache,
     getDetailPageNo: () => detailPageNo,
     auxEstimateText: auxEstimateText,
-    ensurePageSuggestion: ensurePageSuggestion,
     estimateRemainingSeconds: estimateRemainingSeconds,
     applyMarginRect: applyMarginRect,
     nearestEdge: nearestEdge,
@@ -12704,8 +12620,6 @@ function boot() {
     busyPages: busyPages,
     token: token,
     setPageBlockPending: (value) => { pageBlockPending = value; return value; },
-    setSuggestionScrollListening: (value) => { suggestionScrollListening = value; return value; },
-    setSuggestionScanTimer: (value) => { suggestionScanTimer = value; return value; },
     setPanelAccordionProject: (value) => { panelAccordionProject = value; return value; },
     setMarginAuditLoading: (value) => { marginAuditLoading = value; return value; },
     setLayoutBlockPayload: (value) => { layoutBlockPayload = value; return value; },
@@ -12753,7 +12667,6 @@ function boot() {
     humanTouchedPages: humanTouchedPages,
     pageImageUrl: pageImageUrl,
     pageZoomLevel: pageZoomLevel,
-    scheduleSuggestionScan: scheduleSuggestionScan,
     warnUnconfirmed: warnUnconfirmed,
     firstUnfinishedPanel: firstUnfinishedPanel,
     getJobStartPending: () => jobStartPending,
@@ -12771,7 +12684,6 @@ function boot() {
     setMarginStatusTimer: (value) => { marginStatusTimer = value; return value; },
     setPageNumberStatusTimer: (value) => { pageNumberStatusTimer = value; return value; },
     setRecStatusTimer: (value) => { recStatusTimer = value; return value; },
-    setSuggestionScanQueued: (value) => { suggestionScanQueued = value; return value; },
   });
   setupReviewPager();
   setupReviewAutoPass();

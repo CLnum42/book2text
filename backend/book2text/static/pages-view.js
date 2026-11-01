@@ -87,7 +87,7 @@ async function refreshRecognizedPages(pageNos, { reloadDetail = true } = {}) {
       if (injected.visiblePageNos.has(pageNo)) {
         queueOverlayRender(pageNo);
         // 新页有块了，页面视图的「建议 N」角标要跟上（仍然只为可见页算）
-        injected.ensurePageSuggestion(pageNo);
+        ensurePageSuggestion(pageNo);
       }
     }
     scheduleOverlayPump();
@@ -852,7 +852,7 @@ function updatePageVisibility() {
     if (isVisible) {
       injected.visiblePageNos.add(pageNo);
       // 建议角标只为可见页算；大图档在可见性循环里算，网格档走 debounce 的 scan
-      if (large) injected.ensurePageSuggestion(pageNo);
+      if (large) ensurePageSuggestion(pageNo);
       if (injected.getPagesMarginOn()) {
         const page = byPage.get(pageNo);
         injected.paintTileMargin(item.tile, page);
@@ -1873,7 +1873,7 @@ function applyPageZoom() {
     }
     // 网格 / 大网格档的建议角标仍按"滚动停下再扫"的节奏
     ensureSuggestionScrollListener();
-    injected.scheduleSuggestionScan();
+    scheduleSuggestionScan();
   }
 
   ensurePageScrollListener();
@@ -2189,18 +2189,90 @@ function forgetAllPageSuggestions() {
   }
 }
 
+// ---- 建议角标队列（刀 10.2：整条建议队列从外壳搬进模块）----
+//
+// 搬的是"排队算哪几页"的调度；建议的**数据**（cache / order / failed）与取数仍在外壳——
+// 审校详情（app.js 的 :5896 那一支）读同一份缓存，两份状态会比搬错更坏。
+const PAGE_SUGGESTION_CONCURRENCY = 2;
+const pageSuggestionQueue = [];
+const pageSuggestionPending = new Set();
+let pageSuggestionActive = 0;
+let suggestionScanQueued = 0;
+let suggestionScanTimer = null;
+let suggestionScrollListening = false;
+
+/** 排队算一页的建议；返回 true 表示这次真的排了新活（用于限量与续扫）。 */
+function ensurePageSuggestion(pageNo) {
+  const project = injected.getCurrentProject();
+  if (!project || project.kind === "package") return false;
+  if (
+    injected.pageSuggestionCache.has(pageNo) ||
+    pageSuggestionPending.has(pageNo) ||
+    injected.pageSuggestionFailed.has(pageNo)
+  ) {
+    return false;
+  }
+  const page = project.pages.find((item) => item.page_no === pageNo);
+  if (!page || !page.include || page.page_type !== "body") return false;
+  if (injected.recognitionOf(page).status !== "recognized") return false;
+  pageSuggestionPending.add(pageNo);
+  pageSuggestionQueue.push(pageNo);
+  pumpPageSuggestionQueue();
+  return true;
+}
+
+function pumpPageSuggestionQueue() {
+  // 任务 43：角标建议只有页面视图用得到。审校 / 预览里不再发起新请求——
+  // 否则正在审校时后台还在逐页跑 block-suggestions，一次按键要等几秒。
+  // 已经在飞的请求（最多 PAGE_SUGGESTION_CONCURRENCY 个）会自己结束；
+  // 回到页面视图时由外壳喊 onPagesShown() 把它接上。
+  if (injected.getCurrentView() !== "pages") return;
+  while (pageSuggestionActive < PAGE_SUGGESTION_CONCURRENCY && pageSuggestionQueue.length) {
+    const pageNo = pageSuggestionQueue.shift();
+    pageSuggestionActive += 1;
+    injected.fetchPageSuggestions(pageNo)
+      .catch(() => {
+        // 建议是辅助信息：读不到就不标，不打断翻页；本次会话不再反复重试这一页
+        injected.pageSuggestionFailed.add(pageNo);
+      })
+      .finally(() => {
+        pageSuggestionActive -= 1;
+        pageSuggestionPending.delete(pageNo);
+        // 收尾闭环（三条件逐字保留）：这一轮排过队、可能还有可见页没轮到（一次最多 12 页）⇒ 再扫一轮
+        if (pageSuggestionActive === 0 && !pageSuggestionQueue.length) {
+          if (suggestionScanQueued > 0) {
+            suggestionScanQueued = 0;
+            scheduleSuggestionScan();
+          }
+        }
+        pumpPageSuggestionQueue();
+      });
+  }
+}
+
+/**
+ * 网格档滚动时不必每帧算 267 个矩形：停下来 60ms 后扫一次可见页。
+ *
+ * 原来是 140ms：滚动停下到角标出现之间有肉眼可见的空档；改成 60ms，
+ * 仍只扫一次（不是每帧），267 个瓷砖的位置也走 pageTileMetrics 缓存。
+ */
+function scheduleSuggestionScan() {
+  if (suggestionScanTimer) clearTimeout(suggestionScanTimer);
+  suggestionScanTimer = setTimeout(scanVisiblePageSuggestions, 60);
+}
+
 function ensureSuggestionScrollListener() {
-  if (injected.getSuggestionScrollListening()) return;
+  if (suggestionScrollListening) return;
   const scroller = el("page-grid")?.closest(".split__main");
-  (scroller || window).addEventListener("scroll", injected.scheduleSuggestionScan, {
+  (scroller || window).addEventListener("scroll", scheduleSuggestionScan, {
     passive: true,
   });
-  window.addEventListener("resize", injected.scheduleSuggestionScan);
-  injected.setSuggestionScrollListening(true);
+  window.addEventListener("resize", scheduleSuggestionScan);
+  suggestionScrollListening = true;
 }
 
 function scanVisiblePageSuggestions() {
-  injected.setSuggestionScanTimer(null);
+  suggestionScanTimer = null;
   if (!injected.getCurrentProject() || injected.getCurrentView() !== "pages" || injected.getPageZoomIndex() >= 2) return;
   const grid = el("page-grid");
   if (!grid) return;
@@ -2232,9 +2304,9 @@ function scanVisiblePageSuggestions() {
     if (!bounds) continue;
     if (bounds.bottom < -120 || bounds.top > viewport + 120) continue;
     // 算过 / 排队中的页不占名额，否则上面几屏的缓存会把下面的可见页永远饿死
-    if (injected.ensurePageSuggestion(Number(tile.dataset.pageNo))) {
+    if (ensurePageSuggestion(Number(tile.dataset.pageNo))) {
       budget -= 1;
-      injected.setSuggestionScanQueued(injected.getSuggestionScanQueued() + 1);
+      suggestionScanQueued += 1;
     }
   }
 }
@@ -3365,6 +3437,16 @@ function onPagesNeedReflow() {
   schedulePageVisibility();
 }
 
+/**
+ * 页面视图变成可见（刀 10.2）：回页面视图时把建议预取接上。
+ *
+ * 外壳只知道"视图刚显示"，不知道"队列排到哪"——那是模块自己的调度状态。
+ * 语义是**视图可见**，不是"队列排完"：别把 ensurePageSuggestion 的入口并进来。
+ */
+function onPagesShown() {
+  pumpPageSuggestionQueue();
+}
+
 /** Esc 清空选择 / Ctrl(⌘)+A 全选（9.5 从外壳的 keydown 搬入；对话框的 Esc 仍在 setupShell）。 */
 function wirePagesKeyboard() {
   document.addEventListener("keydown", (event) => {
@@ -3458,6 +3540,7 @@ function enter() {
     onPageStatesRefreshed,
     onPageSuggestionsInvalidated,
     onPagesNeedReflow,
+    onPagesShown,
     onProjectPagesReloaded,
     onRecognitionFinished,
     onTaskProgress,
@@ -3468,7 +3551,6 @@ function enter() {
     onAuxReviewFinished,
     onAutoApplyStatusChanged,
     openPageSetup,
-    scanVisiblePageSuggestions,
     startLayoutDetection,
     toggleMarginView,
     togglePageBlocksOverlay,
