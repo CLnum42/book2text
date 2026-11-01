@@ -16,7 +16,7 @@
 // 环境：node + vm + 最小假 DOM，不依赖真浏览器（渲染仍由 QA 的端到端验收兜底）。
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import vm from "node:vm";
 import { loadApp, runInApp } from "./load-app.mjs";
 
@@ -27,7 +27,11 @@ const INDEX_SRC = readFileSync(
   "utf8",
 );
 
-const ctx = loadApp({ require: ["loadPageIndex"] });
+// 放宽期（刀 C 的产品笔落盘前）这个文件还不存在：用 existsSync 兜住，收紧笔改成必须存在
+const PAGE_INDEX_PATH = new URL("../../backend/book2text/static/page-index.js", import.meta.url);
+const PAGE_INDEX_SRC = existsSync(PAGE_INDEX_PATH) ? readFileSync(PAGE_INDEX_PATH, "utf8") : "";
+
+const ctx = loadApp({ require: [] });
 
 // ---------------------------------------------------------------- 最小假 DOM
 
@@ -155,6 +159,19 @@ function installStubs() {
   };
 }
 
+/** 刀 C：page-index.js 的状态在它自己的闭包里；重跑源码就是"换一份干净实例"。 */
+function installPageIndexModule() {
+  vm.runInContext(PAGE_INDEX_SRC, ctx, { filename: "page-index.js" });
+  ctx.PageIndexService.init({
+    apiJson: (url) => ctx.apiJson(url),
+    getCurrentProject: () => runInApp(ctx, "currentProject"),
+    getQualityRadios: () => [],
+    blocksKey: (pageNo) => runInApp(ctx, "pageBlockKey")(pageNo),
+    blocksGet: () => undefined,
+    blocksRemember: () => {},
+  });
+}
+
 /** 把模块骨架载进 app 上下文（模拟 index.html 的加载顺序：模块先于 app.js 的调用）。 */
 function installIndexView() {
   vm.runInContext(INDEX_SRC, ctx, { filename: "index-view.js" });
@@ -170,13 +187,13 @@ function installIndexDeps() {
   const special = {
     el: (id) => el(id),
     apiJson: (url) => ctx.apiJson(url),
-    loadPageIndex: () => ctx.loadPageIndex(),
+    loadPageIndex: () => loadIndexForTest(),
     loadIndexBlocks: () => Promise.resolve([]),
     clearImagePlaceholder: () => {},
     getProject: () => app("currentProject"),
-    getPageIndexData: () => app("pageIndexData"),
-    getPageIndexProject: () => app("pageIndexProject"),
-    getPageIndexLoading: () => app("pageIndexLoading"),
+    getPageIndexData: () => pageIndexDataOf(),
+    getPageIndexProject: () => pageIndexProjectOf(),
+    getPageIndexLoading: () => pageIndexLoadingOf(),
     getPagesMarginOn: () => app("pagesMarginOn"),
     setPagesMarginOn: (value) => app(`pagesMarginOn = ${Boolean(value)};`),
     savePageMarginPreference: () => {},
@@ -262,9 +279,12 @@ function resetState() {
        { page_no: 2, page_id: "pg2", width_pt: 612, height_pt: 792 },
        { page_no: 3, page_id: "pg3", width_pt: 612, height_pt: 792 },
      ] };
-     pageIndexData = null; pageIndexProject = null; pageIndexLoading = false;
+
      pagesMarginOn = false; pagesOverlayOn = false;`,
   );
+  // 刀 C：页码索引的状态在 page-index.js 里，重跑一次模块源码 = 拿到一份全新实例
+  if (PAGE_INDEX_SRC) installPageIndexModule();
+  else runInApp(ctx, "pageIndexData = null; pageIndexProject = null; pageIndexLoading = false;");
   apiRouter = (url) => {
     if (url.includes("/page-index")) {
       return { pages: PAGES, stats: { total: 3, numbered: 2 } };
@@ -272,6 +292,19 @@ function resetState() {
     return null;
   };
 }
+
+// ── 刀 C 放宽垫片：page-index.js 落盘前走 app.js，落盘后走服务模块。
+// 收紧笔会把这一整段删掉、改成只调模块（见该笔提交说明）。
+const pageIndexService = () => ctx.PageIndexService || null;
+function loadIndexForTest() {
+  return pageIndexService() ? pageIndexService().loadIndex() : ctx.loadPageIndex();
+}
+const pageIndexDataOf = () =>
+  pageIndexService() ? pageIndexService().getData() : runInApp(ctx, "pageIndexData");
+const pageIndexProjectOf = () =>
+  pageIndexService() ? pageIndexService().getProject() : runInApp(ctx, "pageIndexProject");
+const pageIndexLoadingOf = () =>
+  pageIndexService() ? pageIndexService().isLoading() : runInApp(ctx, "pageIndexLoading");
 
 /** 目录页当前的"指纹"：meta 文字 + 列表被 append 的次数。 */
 function indexDomFingerprint() {
@@ -295,8 +328,8 @@ test("loadPageIndex 只取数：预览那条路径调它，目录 DOM 一个字�
     el("index-list").appended = 0;
     el("index-list").htmlWrites = 0;
 
-    // 预览刷新印刷页码标签时做的就是这一行（preview-view.js:775 的 injected.loadPageIndex()）
-    const result = await ctx.loadPageIndex();
+    // 预览刷新印刷页码标签时做的就是这一行（preview-view.js 的 injected.loadPageIndex()）
+    const result = await loadIndexForTest();
 
     // 跨 realm：vm 里造的对象原型不同，deepStrictEqual 会判不等——只比 status 字符串
     assert.equal(result.status, "ok", "loadPageIndex 的返回值不是纯状态对象");
@@ -314,8 +347,7 @@ test("回目录时确实渲染：openPageIndex 等完数据后列表不空、met
   installIndexDeps();
   return (async () => {
     await ctx.window.IndexView.enter();
-    // 清缓存，让这次进入真的走"加载 → 渲染"那条路
-    runInApp(ctx, "pageIndexData = null; pageIndexProject = null;");
+    // resetState() 已换了一份新的 page-index 实例（无缓存），这次进入会真的走"加载 → 渲染"
     el("index-meta").textContent = "";
     el("index-list").appended = 0;
     el("index-list").htmlWrites = 0;
@@ -331,17 +363,20 @@ test("busy 分支：加载在飞时再调一次，一个字不写且返回 busy�
   resetState();
   installIndexDeps();
   return (async () => {
-    runInApp(ctx, "pageIndexLoading = true;");
+    // 刀 C 之后状态在模块闭包里 ⇒ 用"并发两次"制造在飞；放宽期（模块未落盘）写老状态变量
+    const inflight = pageIndexService() ? pageIndexService().loadIndex() : null;
+    if (!pageIndexService()) runInApp(ctx, "pageIndexLoading = true;");
     el("index-meta").textContent = "SENTINEL-META";
     el("index-list").appended = 0;
     el("index-list").htmlWrites = 0;
 
-    const result = await ctx.loadPageIndex();
+    const result = await loadIndexForTest();
 
     assert.equal(result.status, "busy", "busy 分支现在返回的不是 busy");
     assert.equal(el("index-meta").textContent, "SENTINEL-META", "busy 时写了 meta——原行为是早退什么都不写");
     assert.equal(el("index-list").appended, 0, "busy 时重画了列表");
     assert.equal(el("index-list").htmlWrites, 0, "busy 时清空/重写了列表");
+    if (inflight) await inflight;   // 收尾：让第一次加载自己结束
   })();
 });
 

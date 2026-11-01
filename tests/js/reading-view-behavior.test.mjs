@@ -350,9 +350,20 @@ function installReadingDeps() {
     setReadingVisibleObserver: (value) => {
       visibleObserver = value;
     },
-    // 块数据：loadIndexBlocks 仍住在 app.js（注入侧有转发），转发给它比重造一份假数据更真。
+    // 块数据：刀 C 把 loadIndexBlocks 搬进了 page-index.js（注入侧转发到模块的 loadBlocks）。
+    // 这里直接用同一份 apiJson 取块，等价于模块里的"未命中缓存就请求"那条路，
+    // 又不依赖模块自己的缓存键（用例只关心"块能不能到"）。
     // 通用兜底返回 undefined 会让 `ensureReadingBlocks` 里的 `.then` 直接炸。
-    loadIndexBlocks: (pageNo) => ctx.loadIndexBlocks(pageNo),
+    loadIndexBlocks: async (pageNo) => {
+      // 取不到块返回空数组（与模块 loadBlocks 的失败分支一致：读不到块不算错）
+      try {
+        const project = get("currentProject");
+        const data = await ctx.apiJson(`/api/projects/${project.project_id}/pages/${pageNo}/blocks`);
+        return data.blocks || [];
+      } catch {
+        return [];
+      }
+    },
     apiJson: (url, options) => ctx.apiJson(url, options),
     readingOptions: () => ({ page_types: ["body"], confirmed_only: false, page_numbers: null }),
     getProject: () => get("currentProject"),
