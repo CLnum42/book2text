@@ -319,7 +319,22 @@ node 232 / 230 pass / 0 fail / 2 skipped · pytest 1034（121.88s，STATIC_DIR �
      NON_DOMAIN_MODULES 逐条写理由：page-tile.js（组件，无 init(root)）、step-timing.js（纯计时，0 DOM）。
      ⇒ "新写一个模块忘了登记"不再能悄悄发生。
   自检三条：删登记 ⇒ 红并点名；白名单加第三个 ⇒ 红；static/ 里造 fake-module.js ⇒ 红并报它。
-状态：已派 TestDev（wt/testdev）；sha 回来我复跑三条变异后写进本表。
+```
+
+### 已落：`b34384f`（TestDev，只动 `tests/js/boundary.test.mjs`，+154 −10；DevLead 在独立 worktree 复跑）
+
+```
+node 235 / 233 pass / 0 fail / 2 skipped（基线 232/230/0/2；+3 = 白名单双向对集 / 登记完整性 / 登记完整性自检）
+三条变异我自己重跑，不是转述：
+ (a) 删掉 page-detail-editor.js 的登记 ⇒ 红 2 条：
+     「白名单里的 page-detail-editor.js 不是已登记的域模块——白名单不许留空壳」
+     「…既不在 DOMAIN_MODULES 也不在 NON_DOMAIN_MODULES——没登记就不受域模块闸检查，绿是假的」
+ (b) 白名单加第三个 tool-x.js ⇒ 红 1 条，点名 tool-x.js
+ (c) 造 static/fake-module.js（window.Fake = api）⇒ 红 2 条：R7b 报它没进 index.html +
+     登记完整性报它的文件名（两条独立咬住）
+实现细节两条（我核过）：① "空列表 ⇒ 红"排在"两张表互斥"之后，否则 files:[] 永远到不了互斥那支；
+② ALLOW_QUERY_SELECTOR_WHITELIST 带 _WHITELIST 后缀，自动进 GATE_SWITCHES，source 只写来源、没抄现值。
+还原后 git status 干净；产品代码零差异。
 ```
 
 ## 六、结论
