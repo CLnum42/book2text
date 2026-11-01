@@ -1,4 +1,4 @@
-# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）+ 清洗刀
+# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）+ 清洗刀 + S1
 
 > 规则（2026-11-02 定）：**通过 / 未验分开写**；未验必须写阻塞原因与证据位置。
 > 只在对话里说“我跑过”按**未验**计；环境起不来同理。
@@ -133,25 +133,43 @@ deps 173（window.PagesView?.init({ 的 4 空格 key 行；我的独立数法，
 两条限制已写进书 §7：
   ① 例外只给 structure-tools.js 这一个文件；
   ② 第二个模块要它 ⇒ 改书的规则并重审，**不许往 DOMAIN_MODULES 里加 allowQuerySelector 名字**。
-缺口（记录，不在本轮做）：闸目前没有"allowQuerySelector 的模块 ≤1 个"的机检，唯一性靠书 + 评审。
-  要机检只是一行：DOMAIN_MODULES.filter(m => m.allowQuerySelector).length === 1。
+机检（`b2a6bbb` 补上，原先的缺口已闭）：`DOMAIN_MODULES.filter(m => m.allowQuerySelector).length <= 1`，
+  超了红并点名（我实测：给 page-index 也开例外 ⇒ 红「只许有 1 个模块（现在 2 个：page-index.js、structure-tools.js）」）。
 ```
 
-### 待补（已派 Builder，补完即结案；不影响产品代码正确性）
+### 三条真实性问题：已补，且变异双向成立（`abbab59` + `b2a6bbb`，DevLead 在落地树上复跑）
 
 ```
-① A5 那个"二选一"，实际两条都没做：structure-tools.test.mjs:5 仍声称「应用后 afterApply 必须被等一次」，
-   但全文件没有这条断言；calls（:73 建 / :99 自增 / :102 返回）是死变量，没有 assert 用它。
-   已派：默认选 (a) 补不数调用的观察（let afterApplied = false ⇒ assert.equal(afterApplied, true)，
-   A5 的 calls?/order|seq|trace/mock|spy|stub|fake 三类正则都不命中）；
-   否则选 (b) 删 calls + 改第 5 行 + 缺口补进本表。
-② structure-tools.js:6 头注释的 deps 里写着 notify，但全文件 0 读、app.js 也没注入 ⇒ 删这半句。
-③ 闸缺口：刀 A / 刀 B 各有一条「N 名已从 app.js 迁出 + api 恰好」的常驻断言，刀 D 没有
-   （只有通用域模块闸 + 行为测试）⇒ 补一条（moved 7 名 + api 恰好 6 个），
-   变异：7 名之一加回 app.js ⇒ 必须红；从 api 删 reset ⇒ 必须红。
-功能风险说明：afterApply 的时序不只是单元缺口——「应用后块真的改了、撤销能回去」要靠 pages 重拉
-  （afterApply 的第一件事），这一条已由 QA 的接口路径四步留档覆盖（见下）；但单元层确实没锁住"有没有 await"。
+① afterApply 的观察——**先假绿、后真绿**，这一段是本轮最值钱的判据
+  原状：structure-tools.test.mjs:5 声称「应用后 afterApply 必须被等一次」，但无断言；
+        calls（:73/:99/:102）是死变量。
+  第一版补法（Builder 的 4700074）：let afterApplied = false + 同步 fake ⇒ assert equal。
+  我在独立 worktree 上实测：**把模块里的 await 去掉，4/4 仍全绿** —— 同步 fake 下"调没调 await"测不出来，
+  断言话术与文件头都高于实际覆盖 ⇒ 退回。
+  落地版（b2a6bbb）：fake 跨一个宏任务
+      afterApply: async () => { await new Promise((r) => setTimeout(r, 0)); afterApplied = true; }
+  我在 b2a6bbb 的工作树副本上复跑：
+      正树                              4/4 绿
+      变异（模块去掉 await injected.afterApply()）3 绿 1 红，红的正是 ②「应用后必须等 afterApply 完成」
+      还原后                            4/4 绿、git diff 空
+  ⇒ 这一条现在真的锁"等完成"；文件头第 5 行「必须被等一次」成立（话术没放宽）。
+② structure-tools.js:6 头注释的 notify ⇒ 已删（abbab59：产品文件仅此 1 行注释改动）。
+③ 闸缺口 ⇒ 已补（b2a6bbb，照刀 B 的形态：沙箱执行后对 api 集，不读文本）：
+   · moved 7 名逐个断言 app.js 里不再定义
+   · api 恰好 6 个（含 reset），并断言 app.js 里 window.StructureTools?.reset() ≥ 2 处
+   · 额外补了「allowQuerySelector 的模块 ≤1 个」（超出我的要求，原是我列在例外裁决里的缺口）
+   我的复跑变异（都在 b2a6bbb 的副本上，还原后 diff 空）：
+     app.js 末尾加 function previewHeaderFooter(){}   ⇒ 红 1 条「app.js 里还定义着 previewHeaderFooter」
+     api 里删掉 reset                                  ⇒ 红 1 条「接口面必须恰好是 …」
+     DOMAIN_MODULES 里给 page-index 也开 allowQuerySelector ⇒ 红 1 条「只许有 1 个模块（现在 2 个：…）」
+四闸（b2a6bbb，独立 worktree，STATIC_DIR 在树内）：node 226 / 224 pass / 0 fail / 2 skipped ·
+  pytest 1034 passed（129.08s）· 产品代码在这些笔里零差异（abbab59 只动 1 行注释，b2a6bbb 只动 tests/js）
+注：pytest 从 1035 降到 1034 是清洗刀的测试侧 `ea8b80c` 删掉一条已退役能力的用例，不是回归。
 ```
+
+> 记账（2026-11-02 04:0x）：这一节在 `87135b7` 写完，Chief 合 `38caf8d` 时只 pick 了后者，
+> 于是 main 上一度同时存在「结论说已补」与「小节说待补」两句矛盾的话；本笔按 `87135b7` 的原文补回。
+> 教训：**报待集成时要把自己所有未合的 sha 列全**——我当时只写了 `38caf8d`，漏了 `87135b7`。
 
 ### 撤销完整性：通过（接口路径，两本项目，QA 留档）
 
@@ -240,7 +258,62 @@ S1 重贴见 docs/refactor/review/page-detail-console-plan.md §11（24 个函�
 原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
 ```
 
-## 五、结论
+## 五、S1：块列表编辑 → `page-detail-editor.js`（`80f3a2b`）
+
+提交链：`dafd9f0`（测试侧放宽：块编辑断言合查 app.js + 新模块）→ `0429e72`（产品）→
+`fc1ed6a`（两处收口：子树查询走 root、注释不再写 showError(error)）→ `80f3a2b`（两道闸）。
+
+### 通过（代码层，DevLead 独立核）
+
+```
+基线 02213d8 → 80f3a2b
+app.js 11,743 → 10,910（−833）
+顶层函数 458 → 434：移出恰 24 个（与书 §11 的表逐名相同）、新增 0
+  applyDetailSuggestions refreshDetailSuggestions blockNeedsReview suggestionHighList pageNumberHintChip
+  blockSuggestionBadge adoptBlockSuggestion adoptAllHighSuggestions blockCard blockDivergenceSection
+  diffCompareLines diffRowFragment truncate autoSizeTextarea renderReviewBlocks selectReviewBlock
+  focusSiblingBlock scheduleBlockSave flushPendingSave adoptLine patchBlock captureEditorFocus
+  restoreEditorFocus reviewAction
+page-detail-editor.js 989 = 875 代码 + 50 注释 + 64 空行
+模块 DOM 面（剥注释）：el( 0 · document.getElementById 0 · document.querySelector 0
+  （裸 grep 的 2 个 `el(` 是 `Label(`/`Panel(` 的子串，不是调用）
+  root.querySelector / querySelectorAll 共 2 处（:27 part()、:388 菜单清理）；
+  另有 4 处**元素级** querySelector（:369/:786/:792/:795/:891，都在已取到的子树节点上）
+3 份状态跟随搬：detailSuggestions / reviewPendingSave / reviewSaveTimer 在 app.js 各 0 次
+deps 173 不变 · index.html:1811（模块）在 :1812（app.js）之前
+接口面 20 个（沙箱执行后 Object.keys 实测）：init · renderBlocks · setFilter · setPackageModeChrome ·
+  showError · openBoxCreate · cancelBoxCreate + 13 个有真调用点的（行号见书 §3.1）
+注入：init 传 48 个键，模块实际读 46 个 = 26 函数 + 7 常量表 + 13 状态访问器；
+  **2 个死注入**：getActiveReviewBlockId / PAGE_TYPE_LABELS（传了 0 读，R13 反向查不到）
+R3 review：71/181 → **69/165**（期望值已写进本表：2 个 id、16 处引用随 24 个函数进模块；
+  这是"随函数搬家"的预期变化，不是新增引用）
+R3 pages 0/0 · registry 0 笔不合格（481 笔）
+node 232 / 230 pass / 0 fail / 2 skipped · pytest 1034（121.88s，STATIC_DIR 在树内）
+```
+
+### 未验（真机，ego-browser 无响应）
+
+```
+· 块列表编辑（点块 → 改文字 → 保存 → 重开还在）
+· 框选新增块（框选 → 草稿 → 识别 → 新块出现）
+· 版面确认（确认动作 / 建议一键采纳）
+· 第二引擎复核（aux 面板逐行 / 收尾后刷新）
+原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
+```
+
+### 待裁决（不改代码，记在案）：`root.querySelector` 的"唯一例外"已经不唯一
+
+```
+事实：page-detail-editor.js 是**第二个**用 root 宿主的服务模块（root = #view-review，:27 part()），
+  但它**没有登记进 DOMAIN_MODULES** ⇒ 域模块闸根本没查过它；
+  它在 el( / getElementById / document.querySelector 三取法上仍是 0（靠 S1 自己那条闸查的）。
+后果：书 §7（first-batch.md）写的"全仓唯一例外只给 structure-tools.js"**已经不准确**，
+  而机检的"allowQuerySelector ≤1 个"也挡不住这种"不登记就不算例外"的走法。
+建议（等 Chief 拍）：把 page-detail-editor.js 登记进 DOMAIN_MODULES + allowQuerySelector: true，
+  把"≤1 个"改成"具名白名单恰好是这两个文件"——这样第三个模块想用就必须显式改闸，而不是不登记。
+```
+
+## 六、结论
 
 ```
 片 1：代码层通过；真机部分通过、5 项未验（ego 阻塞）
@@ -249,5 +322,7 @@ S1 重贴见 docs/refactor/review/page-detail-console-plan.md §11（24 个函�
       三条文档/测试真实性已补（abbab59 + b2a6bbb），三条断言我都做过"喂坏样本必须红"的复跑；
       真机 UI 路径未验（ego 阻塞）
 清洗刀：代码层通过（含 R3 期望值更正与影响面复核）；真机 5 项未验（ego 阻塞）
-四把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
+S1：代码层通过（24 函数差集逐个对、模块 989、接口面 20、注入 48→读 46）；真机 4 件未验（ego 阻塞）；
+    DOM 取法规则出现第二个 root 宿主模块，待裁决
+五把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
 ```

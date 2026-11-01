@@ -130,28 +130,46 @@ C  0 个                           别的视图模块不直接用本模块；pag
                                  loadPageDetail / showPageDetailError 仍由外壳持有（核心抽屉没搬）
 ```
 
-### 3.1 外壳喊模块 = 接口面（R8/R7 管这一边，6 个名字）
+### 3.1 外壳喊模块 = 接口面（R8/R7 管这一边，**实测 20 个名字**）
 
 ```
-renderBlocks · setFilter · setPackageModeChrome · showError · openBoxCreate · cancelBoxCreate
+init（L）+ 写书时列的 6 个 T：renderBlocks · setFilter · setPackageModeChrome · showError ·
+  openBoxCreate · cancelBoxCreate
++ 落盘后新增的 13 个（每个都有真调用点，行号见下）：
+  applyDetailSuggestions 5307 · refreshDetailSuggestions 5327 · blockNeedsReview 5601 ·
+  suggestionHighList 6730/6760 · pageNumberHintChip 6092 · adoptBlockSuggestion 6071/10461 ·
+  adoptAllHighSuggestions 10553 · truncate 6453/6454/8215 · selectReviewBlock 5721/6560/6688 ·
+  flushPendingSave 4666 · adoptLine 1342 · patchBlock 5974 · reviewAction 8952/8955
 ```
+
+**为什么是 20 不是 6**：书按"语义上该由模块对外提供什么"列了 6 个；落盘时按 §1 ⑦「每个导出都要能指出谁在
+哪调」逐个核，上面 13 个在 app.js 里都有真实调用点 ⇒ 成立（模块实测 `Object.keys` 恰好 20 个）。
+**下一个人别按 6 判红**：判据是"每个导出都有调用点"，不是"导出数等于某个数"；要加导出，先加调用点。
 
 ### 3.2 模块喊外壳 = **注入**（不进接口面，**不许和 3.1 混成一张清单**）
 
-口径：S1 的 24 个函数体里**以调用位出现**的 app.js 顶层函数（不含 S1 自己那 24 个、不含 DOM/浏览器 API）。
-实测 2026-11-02：**27 个函数 + 6 个常量表**（Chief 报 29，差在是否把 `apiJson`/`showError` 这类服务算作"函数"
-——两个数都别当判据，**名单才是**）。
+口径：模块源码里**实际读**的 `injected.X`（不含 S1 自己那 24 个、不含 DOM/浏览器 API）。
+实测 2026-11-02（落盘后）：**46 个键 = 26 个函数 + 7 个常量表 + 13 个状态访问器**
+（写书时按裸扫报的是 27 函数 + 6 常量；差别在把状态访问器单列、并把 `PAGE_TYPE_LABELS` 算进常量表，
+且 `showError` 这类外壳助手不再算"模块喊外壳的函数"——它由模块自己实现一份，只保留同名导出）。
 
 ```
-函数 27：divergenceOf · blockInsideMargin · detailPageRecord · pageNumberSplitHint · structureAction ·
+函数 26：divergenceOf · blockInsideMargin · detailPageRecord · pageNumberSplitHint · structureAction ·
         diffLevelLabel · syncDiffStrip · activateDiff · apiJson · forgetPageSuggestions · refreshPageStates ·
         loadPageDetail · setSaveState · reviewMarginSplit · effectiveReviewFilter · pendingPageReasons ·
-        renderReviewFilter · computeCharSpans · showError · forgetPageBlocks · fetchPageSuggestions ·
+        renderReviewFilter · computeCharSpans · forgetPageBlocks · fetchPageSuggestions ·
         renderSuggestionTools · renderLayoutPanel · ensureBlockListed · drawDiffLayer · scrollViewerTo ·
         updateDiffActive
-常量表 6：BLOCK_TYPE_LABELS · TEXT_FREE_BLOCK_TYPES · CHROME_BLOCK_TYPES · NOTE_BLOCK_TYPES ·
-        REVIEW_STATUS_LABELS · MAX_DIVERGENCE_ROWS
+常量表 7：BLOCK_TYPE_LABELS · TEXT_FREE_BLOCK_TYPES · CHROME_BLOCK_TYPES · NOTE_BLOCK_TYPES ·
+        REVIEW_STATUS_LABELS · PAGE_TYPE_LABELS · MAX_DIVERGENCE_ROWS
+状态访问器 13：getDetailPageNo · getReviewBlocks · getActiveReviewBlockId · setActiveReviewBlockId ·
+        getDetailSuggestionByBlock · setDetailSuggestionByBlock · setDetailNumberHints · getCursorByBlock ·
+        getDiffStripOpen · getDetailOverlay · setReviewBlockFilter · setReviewFilterExplicit · setBoxCreateMode
 ```
+
+**两个死注入（2026-11-02 实测，待删）**：`init()` 实际传了 **48** 个键，模块只读 46 个 ——
+`getActiveReviewBlockId` 与 `PAGE_TYPE_LABELS` 传了但 0 读（R13 只查"模块读了必须有"，不查"传了没人读"）。
+删这两行前先确认没有下一切片要用；S1 范围内它们是死的。
 
 **为什么必须分开**：接口面是"外壳按语义叫模块"，有 R8 的 kinds 表与 T 的死期管着；
 注入是"模块按签名叫外壳"，**没有死期、也不该有**——把两者写成一张清单，下一个人就会问

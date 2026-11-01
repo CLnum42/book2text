@@ -355,9 +355,10 @@ openTaskDrawer() 只有 3 行（4589），一个函数、一个 id（#task-drawe
 | R3 | pages total 0 / ids 0 | `node scripts/r3_pages_count.mjs --json` |
 | 四闸 | node + pytest 全绿 | `node tests/js/run.mjs` / `PYTHONPATH="$PWD/backend" .venv/bin/python -m pytest -q` |
 | 模块 DOM 面 | `el(` / `document.getElementById` 各 0 次 | 静态 grep（**先剥注释**，口径同 R3） |
-| 模块 DOM 面（**要有闸**） | 本刀模块里 `el(` / `getElementById(` 0 次；`querySelector(` 也 0 次——**全仓唯一例外见下** | `tests/js/boundary.test.mjs` 的 `domainDomProblems(source)` + 三分支喂坏样本自检；**不接受人工 grep** |
+| 模块 DOM 面（**要有闸**） | 本刀模块里 `el(` / `getElementById(` 0 次；`querySelector(` 也 0 次——**登记在案的例外见下** | `tests/js/boundary.test.mjs` 的 `domainDomProblems(source)` + 三分支喂坏样本自检；**不接受人工 grep** |
+| 变异 | 每刀一条"喂坏样本必须红" | 落在 tests/js 里，跟着该刀的闸一起提交 |
 
-**模块 DOM 面的唯一例外（2026-11-02 裁定，写死）**
+**模块 DOM 面的登记例外（2026-11-02 裁定，写死）**
 
 ```
 DOMAIN_MODULES 里只有 structure-tools.js 登记 allowQuerySelector: true：
@@ -365,9 +366,13 @@ DOMAIN_MODULES 里只有 structure-tools.js 登记 allowQuerySelector: true：
   · document.querySelector / document.getElementById / el( 在例外模块里仍然红（闸里是分支，不是跳过）
   · 例外只给这一个文件。**第二个模块要它 ⇒ 改这一节的规则并重审，不许往 DOMAIN_MODULES 里加名字**
 理由：§1② 本来就允许"在 root 子树内 querySelector"，闸此前比书更严；例外是把闸对齐书，不是新开口子。
-待补的机检：目前没有"allowQuerySelector 的模块 ≤1 个"的断言，唯一性靠本节 + 评审。
+机检（b2a6bbb 已补）：DOMAIN_MODULES.filter(m => m.allowQuerySelector).length <= 1，超了红并点名。
+
+⚠ 2026-11-02 追加（S1 落地后的事实）：① 主刀的 page-detail-editor.js 也是 root 宿主型模块
+（root = #view-review，:27 part()），但它**没登记进 DOMAIN_MODULES**，所以域模块闸没查过它；
+它的三取法 0 是靠 S1 自己那条闸查的。⇒ 上面"唯一"应读作"登记在案的那一个"，
+**"不登记就不算例外"是个洞**。建议（待 Chief 拍）：把它登记进来、把"≤1 个"改成"具名白名单恰好这两个文件"。
 ```
-| 变异 | 每刀一条"喂坏样本必须红" | 落在 tests/js 里，跟着该刀的闸一起提交 |
 
 **扫引用的口径（这条吃过亏，写死）**：三栏各扫一遍——定义位 / 值位（`addEventListener(..., f)`、
 `requestAnimationFrame(f)`、回调参数、`?.`、**展开调用 `...f(...)`**）/ 调用位。
