@@ -1,5 +1,14 @@
 # Overlay registry 第一片施工书（preview × blocks）
 
+> **版本 v1.3（2026-11-02）**：v1.2 新加的两处不成立（DevLead 核出）——
+> ① 真机判据⑤「点块框空白处仍能选页」在 preview 上**恒真**（`.preview-page` 没有 click 监听，
+> 页号由滚动驱动），是空转判据；改成 `getComputedStyle(容器).zIndex === "2"`，这条才抓得到"挂错宿主"。
+> ② §2.1 那句「子树外也丢掉只读规则」**不准**：`app.css:899/900` 是全局 `.page-overlay--readonly` 规则，
+> 子树外丢的是 **z-index（2 → 1）**，只读与 `.box` 的 pointer-events 仍由 899/900 保证。
+> ③ 顺着 ① 我也查出**真机判据④同样是空转**：preview 里没有任何 `.box` / `hits` 的点击处理器
+> （`preview-view.js` 的 click 只有工具栏与分段条，:1008–1017），"点块框不跳转"永远不会失败。
+> 改成 `getComputedStyle(任一 .box).pointerEvents === "none"`——测的是 readonly 真的生效。
+>
 > **版本 v1.2（2026-11-02）**：v1.1 → v1.2 两处更正（DevLead 独立核出、Chief 在 `13987ce` 复核）——
 > ① `page-tile.js` 的钩子是 **7 行不是 3 行**（catch/notify 是给它专用的），净删 **−11** 不是 −7；
 > ② 酸测试⑤ 的 `srcCount == 1` **判不出来**（fixture 不建 PageTile 时是 0），改成判 **Δ**。
@@ -72,9 +81,12 @@ app.css:1958     .preview-page__hits { z-index:3 }              ← hits 在块�
 
 **两条一起成立才算对**：
 1. 容器 class = `overlay-layer page-overlay page-overlay--readonly`；
-2. 容器 **挂在 `.preview-page`（tile）子树里**——`1956`（z-index 2）与 `1957`（只画不可点）都是
-   `.preview-page` 的**后代**选择器，挂在子树外就退回到 `899` 的 `z-index:1`、也丢掉只读规则。
-   片 1 的 `mount(hostEl)` 传的就是 tile 本身，天然满足；**这一条要点名写进 review**，因为"传错一个元素"不会红。
+2. 容器 **挂在 `.preview-page`（tile）子树里**——需要子树的是 **z-index 那一条**：
+   `1956 .preview-page .page-overlay{z-index:2}` 是后代选择器，挂在子树外就没有它，容器退回 `899` 的
+   `z-index:1`（**会落到 hits 之下或被其它层盖住**）。**只读与"块框不吃点击"不受影响**——
+   `899/900` 是全局 `.page-overlay--readonly` 规则，与子树无关（`1957` 只是同规则的更高特异性重复）。
+   片 1 的 `mount(hostEl)` 传的就是 tile 本身，天然满足；**这一条要点名写进 review**，因为"传错一个元素"不会红
+   ——真机那条 `zIndex === "2"` 是它的兜底。
 
 ⇒ **registry 建的容器 = `div.overlay-layer page-overlay page-overlay--readonly`**（`overlay-layer` 只作标识/诊断钩子，不承担样式）；
 **不新增**任何抢 z-index 的规则——`.preview-page .page-overlay{z-index:2}`（:1956）已经对。
@@ -174,7 +186,7 @@ review 清单：提交前把 render 函数体逐行过一遍，出现函数外�
 | 域模块闸 | `DOMAIN_MODULES` 加 `overlay-registry.js` 后零豁免通过（含 `.querySelector(` 为 0） |
 | 酸测试 | 5 条全绿 + 5 条变异各自红（变异要跑一次给人看，不写"应该会红"） |
 | 四闸 | node + pytest 全绿；R3 pages total 0 不变 |
-| 真机 | ① 块框位置与数量与改前一致（同一本书同一页，截图对比）；② **按类型的框色与改前一致**（heading 靛 `#4338ca` / paragraph 蓝 `#2563eb` / figure 绿 `#15803d`）；③ **hits 浅绿层仍在块框之上**；④ `--readonly` 只画不可点（点块框不跳转）；⑤ **点块框空白处仍能选页**（`app.css:899/900` 的 `pointer-events:none` 生效的前提） |
+| 真机 | ① 块框位置与数量与改前一致（同一本书同一页，截图对比）；② **按类型的框色与改前一致**（heading 靛 `#4338ca` / paragraph 蓝 `#2563eb` / figure 绿 `#15803d`）；③ **hits 浅绿层仍在块框之上**；④ **`getComputedStyle(任一 .box).pointerEvents === "none"`**（readonly 真的生效；原写法"点块框不跳转"在 preview 上是空转——没有任何 box 点击处理器）；⑤ **层级与归属**：真机 console 跑一段（不依赖任何交互）——`document.querySelectorAll(".preview-page").forEach(p => { const layer = p.querySelector(".overlay-layer"); 断言 layer 存在 && layer.classList.contains("page-overlay--readonly") && getComputedStyle(layer).zIndex === "2"; })`。挂在 `.preview-page` 子树外 ⇒ `1956` 不命中 ⇒ 退回 `899` 的 `1`，这条立刻红 |
 
 ## 8. 谁做、怎么让（⑤ 的答案）
 
