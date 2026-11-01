@@ -1,5 +1,12 @@
 # Overlay registry 第一片施工书（preview × blocks）
 
+> **版本 v1.4（2026-11-02）**：v1.3 缺一条**书里没写死的前提**（DevLead 核出）——
+> **`mount` 在哪调**。选 (a)：**在 `buildPreviewPages` 的建块循环里 mount**（就是替换 181–184 那个容器创建，
+> 每 tile 一个），因为今天的 DOM 就是每 tile 一个 `.page-overlay`，faithful port 没有第二种解释；
+> 配套把 **`unmount` 写在重建/清空那一笔里**（`previewTiles.clear()` 之前，与 PageTile 的 release 同一处），
+> 否则 registry 会留着指向旧 DOM 的句柄。若改成懒建 (b)，真机⑤ 要换成"只查已存在的层"，两边必须一致。
+> 另补 ④ 的前提：**先打开块框开关并等块画出来**（没有 `.box` 时取不到 computed style）。
+>
 > **版本 v1.3（2026-11-02）**：v1.2 新加的两处不成立（DevLead 核出）——
 > ① 真机判据⑤「点块框空白处仍能选页」在 preview 上**恒真**（`.preview-page` 没有 click 监听，
 > 页号由滚动驱动），是空转判据；改成 `getComputedStyle(容器).zIndex === "2"`，这条才抓得到"挂错宿主"。
@@ -56,7 +63,9 @@
 | 文件 | 动作 | 预算 | 判据 |
 |---|---|---|---|
 | `overlay-registry.js`（新） | 骨架 + 一个渲染器 + 指纹 + 诊断 | **≤ 240 行**（骨架 90 / blocks 渲染 60 / 指纹与稳定序列化 30 / stats 与 unmount 30） | `wc -l`；超 240 要写明多在哪 |
-| `preview-view.js` | 删自建 `.page-overlay`（181–184）；`tile.append` 去掉 overlay（191）；`paintPreviewTile` 改走 registry（363–372）；清屏路径改 `unmount`/`paint(active:[])`（394） | **净 −8 ~ −12 行** | `wc -l` 前后差；`page-overlay` 在该文件 0 次 |
+| `preview-view.js` | 删自建 `.page-overlay`（181–184）；`tile.append` 去掉 overlay（191）；`paintPreviewTile` 改走 registry（363–372）；清屏路径改 `paint(active:[])`（394） | **净 −8 ~ −12 行** | `wc -l` 前后差；`page-overlay` 在该文件 0 次 |
+| `preview-view.js` **`mount` 的位置（写死，v1.4）** | **在 `buildPreviewPages()` 的建块循环里**：181–184 那三行的位置改成 `tile.__overlayLayer = window.OverlayLayer.mount(tile, { pageNo })`。**每 tile 一个**（今天也是每 tile 一个 `.page-overlay`） | +1 行（替换掉 3 行） | 真机⑤ 依赖这条：每个 `.preview-page` 都该有 `.overlay-layer` |
+| `preview-view.js` **`unmount` 的位置（写死，v1.4）** | **重建/清空那一笔**：`previewTiles.clear()` 之前遍历 `tile.__overlayLayer` 逐个 `unmount`（与 148–152 释放 PageTile 句柄同一处、同一理由） | +4~6 行 | 不 unmount ⇒ 注册表留着指向旧 DOM 的句柄——PageTile 148 那条注释说的正是这件事 |
 | `page-tile.js` | 删 `injected.paintOverlays` 钩子——**整个 if 块 207–213（7 行）**：`:207` if · `:208` try · `:209` 调用 · `:210` catch · `:211` notify · `:212` `}` · `:213` `}`。**catch/notify 是给这个钩子专用的，没有别的 try 可挂，必须一起删** | **−7 行**（必删） | 全仓 `paintOverlays` 0 次 |
 | `page-tile.js` | 顺带删随钩子一起死的字段：`overlays: opts.overlays`（**256**）· `state: null`（**257**）· `"overlays" in changes`（**276**）· `"state" in changes`（**277**） | **−4 行**（建议同批） | 不删 = 留下一条没人读的死数据（本项目的"只涨不消"） |
 | `page-tile.js` **合计** | 钩子 7 + 死字段 4 | **−11 行** | 净行数按 `wc -l` 前后差 |
@@ -186,7 +195,7 @@ review 清单：提交前把 render 函数体逐行过一遍，出现函数外�
 | 域模块闸 | `DOMAIN_MODULES` 加 `overlay-registry.js` 后零豁免通过（含 `.querySelector(` 为 0） |
 | 酸测试 | 5 条全绿 + 5 条变异各自红（变异要跑一次给人看，不写"应该会红"） |
 | 四闸 | node + pytest 全绿；R3 pages total 0 不变 |
-| 真机 | ① 块框位置与数量与改前一致（同一本书同一页，截图对比）；② **按类型的框色与改前一致**（heading 靛 `#4338ca` / paragraph 蓝 `#2563eb` / figure 绿 `#15803d`）；③ **hits 浅绿层仍在块框之上**；④ **`getComputedStyle(任一 .box).pointerEvents === "none"`**（readonly 真的生效；原写法"点块框不跳转"在 preview 上是空转——没有任何 box 点击处理器）；⑤ **层级与归属**：真机 console 跑一段（不依赖任何交互）——`document.querySelectorAll(".preview-page").forEach(p => { const layer = p.querySelector(".overlay-layer"); 断言 layer 存在 && layer.classList.contains("page-overlay--readonly") && getComputedStyle(layer).zIndex === "2"; })`。挂在 `.preview-page` 子树外 ⇒ `1956` 不命中 ⇒ 退回 `899` 的 `1`，这条立刻红 |
+| 真机 | ① 块框位置与数量与改前一致（同一本书同一页，截图对比）；② **按类型的框色与改前一致**（heading 靛 `#4338ca` / paragraph 蓝 `#2563eb` / figure 绿 `#15803d`）；③ **hits 浅绿层仍在块框之上**；④ **`getComputedStyle(任一 .box).pointerEvents === "none"`**（readonly 真的生效；原写法"点块框不跳转"在 preview 上是空转——没有任何 box 点击处理器）。**前提：先打开块框开关并等块画出来**，没有 `.box` 时取不到 computed style；⑤ **层级与归属**：真机 console 跑一段（不依赖任何交互）——`document.querySelectorAll(".preview-page").forEach(p => { const layer = p.querySelector(".overlay-layer"); 断言 layer 存在 && layer.classList.contains("page-overlay--readonly") && getComputedStyle(layer).zIndex === "2"; })`。挂在 `.preview-page` 子树外 ⇒ `1956` 不命中 ⇒ 退回 `899` 的 `1`，这条立刻红 |
 
 ## 8. 谁做、怎么让（⑤ 的答案）
 
