@@ -72,7 +72,7 @@ styles = { details: boolean,      // 有没有顺序号 / 卡片
 ### 2.2 `.box__label` 由**注入的纯构建器**生成，不搬进 registry
 
 `buildBoxLabel`（5850–5920，71 行）**不能搬进 registry**：它最后一段调
-`window.PageDetailEditor?.pageNumberHintChip(suggestion)`（5909 是 `if (suggestion)`，调用在 **5911**）——那是**模块→模块**引用，registry 拿不了。
+`window.PageDetailEditor?.pageNumberHintChip(suggestion)`（**5908 是 `if (suggestion)`，调用在 5909**；原版写的 5910 与我们改的 5911 都不对）——那是**模块→模块**引用，registry 拿不了。
 
 ```
 init({ buildLabel })            // 外壳注入 buildBoxLabel（纯构建器：吃 block/index/suggestion，返回 Element）
@@ -202,7 +202,7 @@ API: layout(container, { lineBboxes })
 
 | 文件 | 动作 | 预算 |
 |---|---|---|
-| `overlay-registry.js` | + 容器 class 由 styles 决定（2.1）· + buildLabel 注入（2.2）· + 避让链 **161 行**（3.2，含 pxRect/rectsOverlap/两个常量）· + 新导出 `layout(...)`（3.3）· + `_bbox` 改内部 Map | **264 → ≤ 480**（+161 避让全套 + ~40 class/label + ~20 观察器；契约记的 143 漏了 `pxRect`/`rectsOverlap`/两个常量） |
+| `overlay-registry.js` | + 容器 class 由 styles 决定（2.1）· + buildLabel 注入（2.2）· + 避让链 **161 行**（3.2，含 pxRect/rectsOverlap/两个常量）· + 新导出 `layout(...)`（3.3）· + `_bbox` 改内部 Map | **264 → ≤ 490**（264 + 161 避让全套 + 40 class/label + 20 观察器 = **485**；上限 490，**别去压分项——三项都是实测值**。契约记的 143 漏了 `pxRect`/`rectsOverlap`/两个常量） |
 | `app.js` | 删 `renderPageBlocks`(36) / `clearPageBlocks`(9)；`buildTile` 里容器创建那 3 行（2734 一带）删掉、改 mount；`scheduleOverlayLayout`/`observeOverlaySize`/`layoutOverlayAnnotations`/`findOrderSpot`/`findLabelSpot` 搬走（143）；`paintTileMargin`(3138) / `clearTileMargin`(3160) 里两行 class 操作删掉、改 styles | **−190 ~ −200**（renderPageBlocks 会留到 2c 末才整段删，见 §0） |
 | `pages-view.js` | 885 改 registry paint；**7 处** `clearPageBlocks`（86/893/926/1869/1879/2425/2477）改 `paint(active:[])`；882/2489/2522 的 `_renderedBlocks` 判重删掉（版本归 registry） | **−15 ~ −25** |
 | `reading-view.js` | 3544/3547/2579 改 registry；2028 容器删；`is-linked` 三处保留（2.3） | **−10 ~ −15** |
@@ -238,21 +238,40 @@ B 组（片 1 欠的债，本片首次验）
   B3 hover 联动：reading 悬停 → 对应 `.box.is-linked` 出现，移开消失（片 1 之后这条路径没动过，回归用）
 ```
 
-### 6.1 整体判据：同页四视图逐框对集（Chief 补，最有价值的一条）
+### 6.1 整体判据：同页四视图逐框对集（Chief 补，v1.1 按可执行性重写）
 
-四个视图共用同一个渲染器，所以**必须有一次跨视图对集**：
+四个视图共用同一个渲染器，所以要有一次跨视图对集。但**原来的写法（"坐标逐项一致 ≤1px"）不可执行**，
+两个原因（Chief 自纠）：
 
 ```
-同一本书同一页（选一页 12+ 块的密页），分别在 preview / pages / reading / index 打开，逐项比：
-  ① 坐标：每个 box 的 left/top/width/height（读 inline style，不截图）
-  ② 类型色：getComputedStyle(box).borderColor 逐框
-  ③ 数量：容器里 .box 的个数
-  ④ 序号位置：每个 .box__order 的 left/top（B 组首次验的正是这条）
-判据：四项逐项一致（坐标允许 ≤1px 的取整差）；任何一项不一致 ⇒ 说明"共用渲染器"是假的。
-变异：给 pages 的 styles 多塞一个 details:false ⇒ ④ 立刻不一致 ⇒ 这条判据红。
+① .box 的 inline style 是百分比 ⇒ 跨视图可比；
+   但 .box__order / .box__label 的 left/top 是 **px**，由 pxRect 用**容器宽高**乘出来。
+   四个视图容器宽度各不相同（pages 的 tile 是 min(680px,100%) · reading/index 各自列宽 · preview 又不同）
+   ⇒ 同一份数据、同一个渲染器，四处的序号 px **必然不同** ⇒ "逐项一致"是假红。
+② 更深一层：避让算法**尺度相关**——容器窄的时候框外放不下，序号会退回框内。
+   ⇒ "同一渲染器 ⇒ 同一位号"本来就不成立；跨尺寸比 px 是错的判据。
 ```
 
-**它比任何单视图回归都值钱**：单视图只能证明"没坏"，这一条证明"真的是同一个渲染器"。
+**改成两条可执行的**：
+
+```
+① 箱体几何（跨视图直接比）：读每个 .box 的 **inline style 百分比字符串**
+   （`left/top/width/height` 形如 "12.345%"），四个视图**逐字相等**；不读 computed px。
+   变异：给 pages 的 styles 多塞一个 items 少 1 条 ⇒ 数量与字符串集合立刻不一致 ⇒ 红
+
+② 序号/卡片（要先统一尺度）：把四个视图的容器宽度**统一到同一个值（680px）**再比
+   —— 读 `.box__order` / `.box__label` 的 inline `left/top` px，逐项差 ≤ **2px**（浮点与取整容差）。
+   若某视图无法统一宽度（例如 preview 的列宽由外层布局约束）：**降级为"落位分类一致"**——
+   只比每个号相对框的位置（框内 / 框外，框外再看方向：上/下/左/右），分类必须相同。
+   降级的适用范围写死：**只对无法统一宽度的那个视图降级，其余三个仍走 680px 的 px 对集**；
+   降级项要在验收记录里点名（哪几个视图降了、为什么），不许整条判据一起降级。
+
+判据：① 全部逐字相等；② 在 680px 下的三个视图逐项 ≤2px，降级视图落位分类一致。
+变异：把 layout 的"框外优先"改成"恒框内" ⇒ ② 的落位分类立刻不一致 ⇒ 红。
+```
+
+**它比任何单视图回归都值钱**：单视图只能证明"没坏"，这一条证明"真的是同一个渲染器"——
+而且**判据本身必须尊重"尺度相关"这个事实**，否则它只会红一次然后被关掉。
 
 ## 7. 不许顺手改
 
