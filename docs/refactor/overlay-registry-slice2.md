@@ -58,6 +58,17 @@ styles = { details: boolean,      // 有没有顺序号 / 卡片
 理由：registry 拥有容器 ⇒ 容器的 class 只能有一个写点（否则又回到"多处写同一份状态"）。
 代价：styles 里多一个布尔，指纹随之变——版心开关是低频操作，重画一页的块框可以接受。
 
+**两条机检（Chief ①）**：
+
+```
+(a) 容器 class 唯一写点：静态扫全部模块 + app.js，凡对 registry 容器的 class 写入逐个点名；
+    `paintTileMargin:3138` / `clearTileMargin:3160` 两行必须消失（删掉它们是在本片预算里）。
+    判据形态：`grep -n "page-overlay--margin\|classList.*page-overlay" *.js` 只剩 overlay-registry.js 一处。
+(b) styles 直通容器：同页同数据、只把 styles.details 由 true 改 false ⇒ 容器的 class 必须跟着变
+    （`--labeled` 随 labeled 变、`--margin` 随 marginMode 变），且 `stats(pageNo).version` 必须变（styles 进指纹）。
+    变异：把 style→class 的同步删掉 ⇒ (b) 红。
+```
+
 ### 2.2 `.box__label` 由**注入的纯构建器**生成，不搬进 registry
 
 `buildBoxLabel`（5850–5920，71 行）**不能搬进 registry**：它最后一段调
@@ -70,7 +81,19 @@ render(item, style)：当 style.details 时，label 用 injected.buildLabel(item
 
 **这是 §5.5「render 只许读两个参数」的唯一例外**，写清楚边界：允许的是**无状态纯构建器**
 （不读时间、不读全局、不读 currentView）；一旦它开始读变化的状态，指纹就抓不到 → 必须改成 data/styles 的字段。
-判据：`buildLabel` 的注入是 init 一次、产品路径不替换；registry 里除它之外不许出现第二个 `injected.` 调用。
+**边界要写成可判的（Chief ②）**：
+
+```
+· 纯函数：只吃 (block, index, styles)；不读 window、不读模块状态、不缓存
+· init 一次、之后不许替换（替换 = 允许运行期换渲染器，那是另一个设计）
+· 闸：模块源码里出现 window.PageDetailEditor / window.PagesView 等模块名 → 红
+```
+
+**⚠ 这条闸今天不存在**（我核过 `boundary.test.mjs:5878–5890`）：`godDoorProblems` 只查两件事——
+① 模块里裸调 app.js 顶层函数；② 模块用了 `injected.X` 而 boot 没注入。**它不查 `window.X`**。
+所以本片的 test-contract 那一笔要补 3 行：非视图服务模块源码里出现 `window.<已知模块名>`
+（PagesView / ReadingView / PreviewView / IndexView / LibraryView / MergeView / PageDetailEditor / PageTile / OverlayLayer）
+⇒ 红，并带一条喂坏样本自检。补完 `godDoor` 才真的"管到这里"。
 
 ### 2.3 reading 的 `is-linked` 是**声明式装饰例外**，不触发重画
 
@@ -85,7 +108,27 @@ hover 联动今天是这样：`applyReadingLinked`（3525–3531）对 `tile.que
               出现第二个类名 / 出现 style 写入 / 出现 innerHTML 写入 ⇒ 红。
 ```
 
+**两条判据（Chief ③）**：toggle 之后必须同时成立——
+
+```
+(a) `stats(pageNo).version` 不变（装饰不进指纹，否则 hover 每次都变版本）
+(b) `container.lastChild.firstChild` 身份不变（没有重画：装饰不是第二次 render）
+变异：把 is-linked 改成走 styles 重画 ⇒ (a)(b) 同时红。这两条一起才证明"它只是装饰"。
+```
+
 **这是唯一的例外**，写进契约 §23.6 的"不负责"旁边：hover 装饰不归 registry，但也**不许变成第二个画家**。
+
+### 2.4 index 的迁移面（Chief 要求写进本节）
+
+```
+容器   index-view.js:337 `overlay.className = "page-overlay page-overlay--readonly page-overlay--labeled"`
+       ⇒ 删；改成 tile 建好后 `window.OverlayLayer.mount(tile, { pageNo })`
+调用   index-view.js:826 `if (!overlay || overlay._renderedBlocks !== blocks) injected.renderPageBlocks(...)`
+       ⇒ `paint(handle, { data:{blocks}, active: getPagesOverlayOn() ? ["blocks"] : [], styles:{ details:true, labeled:true } })`
+deps   app.js:10152 / 10155 两个键（clearPageBlocks / renderPageBlocks）⇒ 删
+不动   `drawIndexFirstLine(tile, blocks, page)`（首行提示，另一条链）与 `indexBlocksByPage`（数据源仍归 index-view）
+收益   与 preview 同形（details:true / labeled:true / 只读），所以它是四个消费者里最便宜的一个
+```
 
 ## 3. 还债：143 行避让排布 + 拆掉 `drawDiffLayer` 耦合
 
@@ -99,6 +142,10 @@ hover 联动今天是这样：`applyReadingLinked`（3525–3531）对 `tile.que
       让 scheduleOverlayLayout 只剩块框 overlay 一个主人；下一笔再把它搬进 registry。
 判据：拆完那一笔，`drawDiffLayer` 的调用点里不再有"由 overlay 布局触发"这条路径；
       review 侧仍有等价行为（真机：审校页滚动后差异层与顺序号同帧更新）。
+
+**拆完必须先跑一次机检（Chief ⑤）**：审校视图的差异层仍正常——`#detail-overlay` 上的顺序号会摆、
+差异层会重画；跑法用现成的 review 侧测试（若没有就补一条最小断言：`scheduleDetailOverlayLayout` 后
+`drawDiffLayer` 被调用 1 次）。**这一步放在"搬 143 行"之前单独绿**，否则剪断联动时没人知道是哪一刀剪的。
 ```
 
 ### 3.2 避让链搬家（逐函数实测，`059955c`）
@@ -160,6 +207,22 @@ B 组（片 1 欠的债，本片首次验）
   B2 hover 卡片：pages 上悬停某块 → `.box__label` 出现且**不被其它号覆盖**（findLabelSpot 生效）
   B3 hover 联动：reading 悬停 → 对应 `.box.is-linked` 出现，移开消失（片 1 之后这条路径没动过，回归用）
 ```
+
+### 6.1 整体判据：同页四视图逐框对集（Chief 补，最有价值的一条）
+
+四个视图共用同一个渲染器，所以**必须有一次跨视图对集**：
+
+```
+同一本书同一页（选一页 12+ 块的密页），分别在 preview / pages / reading / index 打开，逐项比：
+  ① 坐标：每个 box 的 left/top/width/height（读 inline style，不截图）
+  ② 类型色：getComputedStyle(box).borderColor 逐框
+  ③ 数量：容器里 .box 的个数
+  ④ 序号位置：每个 .box__order 的 left/top（B 组首次验的正是这条）
+判据：四项逐项一致（坐标允许 ≤1px 的取整差）；任何一项不一致 ⇒ 说明"共用渲染器"是假的。
+变异：给 pages 的 styles 多塞一个 details:false ⇒ ④ 立刻不一致 ⇒ 这条判据红。
+```
+
+**它比任何单视图回归都值钱**：单视图只能证明"没坏"，这一条证明"真的是同一个渲染器"。
 
 ## 7. 不许顺手改
 
