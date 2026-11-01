@@ -3,7 +3,7 @@
  *
  * 书：`docs/refactor/appjs-domains/first-batch.md` §5（刀 D，第一批最重的一刀）。
  *
- * **它拿什么**：`init({ root, apiJson, getCurrentProject, notify, afterApply })`
+ * **它拿什么**：`init({ root, apiJson, getCurrentProject, afterApply })`
  * —— root = `#structure-panel`（17 个 `structure-*` 全在它子树里），模块只在 root 内
  * `root.querySelector("#structure-xxx")`，不碰 document（`el(` / `getElementById` 各 0 次）。
  *
