@@ -794,7 +794,10 @@ def test_recognition_settings_are_wired_to_project_settings() -> None:
     assert "function setupRecognitionSettings(" in script
     # 双引擎不自动采用、策略只影响显示
     assert "不会自动采用" in page
-    assert 'dual_engine_strategy === "candidates"' in script
+    # 刀 11：这条原来锁的是死函数 divergenceCandidatesOn 体内的
+    # `dual_engine_strategy === "candidates"`，随函数一起删；策略的唯一读点在模块里
+    # （渲染识别设置时读 recognitionSetting("dual_engine_strategy")），口径不变：策略只影响显示。
+    assert 'recognitionSetting("dual_engine_strategy")' in _script_with_view()
 
 
 def test_page_number_panel_is_wired() -> None:
