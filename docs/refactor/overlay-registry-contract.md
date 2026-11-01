@@ -152,8 +152,11 @@ else → 重画该 type，写完把 painted[type] 设成新值，并把 dataVers
 | ① | **版本一致** | 帧末 `stats(pageNo).version === getVersion("blocks:"+pageNo)`，且**每个**已绘元素 `dataset.version` 相同 | 防"旧 overlay 挂在新数据上"（§23.5 第 3 条） |
 | ② | **不重复画（幂等）** | 同数据连续 paint 两次：元素数不变 **且 `firstChild` 是同一个节点**（节点身份） | 证明没有"清空再 append" |
 | ③ | **数量** | `stats(pageNo).counts.blocks === data.filter(b => b.bbox).length` | 证明"数据是唯一真源" |
-| ④ | **不回落旧路径** | preview 路径上 `.page-overlay` 的 `innerHTML = ""` 调用次数 = **0** | 证明真的换了实现，不是又包一层 |
+| ④ | **不回落旧路径**（Chief 补：必须点名删的是哪一行） | preview 路径上 `.page-overlay` 的 `innerHTML = ""` 调用次数 = **0**；且下面三行在落盘后的源码里各 **0 次命中**：`preview-view.js:183`（自建 `.page-overlay` 容器）· `:371`（`overlay._renderedBlocks === blocks` 的缓存比较）· `:372`（`injected.renderPageBlocks` 的调用）；`_renderedBlocks` 在 `preview-view.js` 里 0 次 | "次数 = 0" 可能只是换了个写法（比如改成 `replaceChildren()`）；**点名行号 + 点名字段**才排除这种 |
 | ⑤ | **图不受影响** | `img.src` 赋值次数仍 = 1（**不数网络**：`max-age=300` 会掩盖重复取图） | 证明两条缝没互相踩 |
+
+**提交要求（活证据，不是自述）**：片 1 的提交说明里必须有一行「删掉的旧路径」，逐行写
+`文件:行 → 删了什么`，并与判据 ④ 的清单一一对应。验收人只看这一行与 `git show`，不看描述。
 
 **反例注入（每条判据都要能红，否则它是装饰）**：
 
