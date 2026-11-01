@@ -282,3 +282,20 @@ tests/e2e/qa.py（margin 相关）            读"版心已定 / 未定"汇总�
 
 所以这条**目前没有任何自动防线**，而且实测已经查出 J6/J8 两处不通过。
 建议把 J1/J3/J5/J8 固化成脚本（读 job + 读三个元素 + 断言文案形态，不需要截图）。
+
+### 6.8 探针（一条命令复算，2026-11-01 落地）
+
+```bash
+# 探针只读（读 DOM + GET /jobs）：不建任务、不点按钮、不留临时文件
+{ echo 'globalThis.OVERRIDE={base:"http://127.0.0.1:8871",token:"qa4",project:"b2t_T7JH61",maxPages:40,intervalMs:1000,spaceName:"b2t-qa-mp"}'; \
+  cat tests/e2e/margin_progress.mjs; } | ego-browser nodejs
+```
+
+- 文件：`tests/e2e/margin_progress.mjs`（独立，不接 `qa.py`、不改 `driver.mjs`）
+- 配置走 `globalThis.OVERRIDE`（ego 的 `nodejs` 既不传 `argv` 也不传环境变量，这是唯一通道）
+- **起任务要另起一个动作脚本，且与本探针共用同一个 `spaceName`**（两个进程连同一个 space 可以并存，实测可行）：动作脚本负责开项目 → 选 ≥20 页 → 版心步 →「⋯ → 检测版面… → 开始检测」；探针只读，能采到 `0 / M` 起跑那一格。
+- 输出：`t(s) / 文本 / N / done / failed / status / fill% / hidden` 表格 + J1–J8 逐条过/不过 + J8 的样本级证据（被覆盖的样本与拟合分母序列）
+- 退出码：`0` 全过 · `1` J6 或 J8 不过（可直接当回归闸）· `2` 用法/前置不满足（没配置、等不到任务）
+- **已知红基线**（2026-11-01，修复前，M=40）：`J1–J5 过 / J6 不过 / J8 不过`，退出码 1；
+  19 个运行期样本里 11 个被拟合文案覆盖，拟合分母 `311 → 464 → … → 1558` 一路变大。
+  修复落地后重跑应变成 `J1–J8 全过、退出码 0`；如果 J1 变红，多半是探针没跟动作脚本共用 space、错过了起跑那一格。
