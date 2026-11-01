@@ -1,4 +1,4 @@
-# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）+ 清洗刀 + S1 + S2 + S3
+# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）+ 清洗刀 + S1 + S2 + S3 + S4
 
 > 规则（2026-11-02 定）：**通过 / 未验分开写**；未验必须写阻塞原因与证据位置。
 > 只在对话里说“我跑过”按**未验**计；环境起不来同理。
@@ -427,7 +427,65 @@ pytest 1034（142.15s，STATIC_DIR 在树内）
 原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
 ```
 
-## 八、结论
+## 八、S4：第二引擎复核 → `page-detail-editor.js`（`059955c`）
+
+提交链：`00739e8`（测试侧放宽：模块 init 多接线 aux 面板，补 `getAuxWarningEls` 桩）→ `90dd002`（产品）
+→ `059955c`（三条收口判据：遮罩 id 不进模块 / 死状态归零 / 导出面只多一个）。
+
+### 通过（代码层，DevLead 独立核）
+
+```
+基线 9e38260 → 059955c
+app.js 10,572 → 10,402（−170）
+顶层函数 416 → 410：移出恰 6 个（activeAuxJob / openAuxWarning / waitForAuxThenReview /
+  runAuxiliary / renderAuxiliary / setupAuxControls）、新增 0
+模块 1,345 → 1,549 = 1,367 代码 + 83 注释 + 99 空行
+三取法（剥注释）0：el( 0 · document.getElementById 0 · document.querySelector 0
+  root.querySelector 2 处 · part( 51 处
+deps 173 不变
+导出面 **20 个**（净变化 = +openAuxWarning −adoptLine）：adoptLine 唯一的外壳调用点在 renderAuxiliary 里，
+  随它搬进模块 ⇒ 外壳不再需要它（不是"少导了"）。20 个每个都有调用点（我逐个核，闸也判）
+注入：init 传 60 个键、模块实读 60 个（双向对得上）：S3 的 53 + getAuxWarningEls / onAuxReviewFinished /
+  enterReviewStep / engineState / loadFinishSummary / startTaskPolling / openTaskDrawer
+跨模块直呼 0：模块里没有 window.PagesView / window.PageDetailEditor 的调用（只留 window.PageDetailEditor = api 的出口）
+  · 「采用这一路」→ 模块自己的 adoptLine（:1472）
+  · 收尾通知 → injected.onAuxReviewFinished()（:1396）
+auxData：app.js 0 处（含注释 0）、模块里只剩 1 条注释说明 —— 死状态已删
+aux-warning-*：模块里 0 个 id 字符串（只剩 1 条注释）—— 遮罩节点全部经 getAuxWarningEls() 注入
+R3 review 54/127 → **49/117**（−5 种 / −10 处）：消失的 5 个 id 是 aux-close / aux-hint / aux-lines /
+  aux-run / aux-summary（各 1 处）；另有 page-detail-error 11 → 8、aux-panel 3 → 1（这两个 id 不掉）
+R3 pages 0/0 · registry 0 笔（498 笔）· node 244 / 242 pass / 0 fail / 2 skipped
+pytest 1034（138.91s，STATIC_DIR 在树内）
+```
+
+### 与施工书 §12 的三处偏差（实作为准，书已回填）
+
+```
+① §12.2 列的 openModal / closeModal 没用上：模块直接改 els.mask.hidden（我核过外壳那两个函数
+   就是 hidden 开关 + structure-panel/export-panel 特判，对 aux-warning-mask 等价，无行为差）
+② §12.4 预测"导出面 +openAuxWarning"；实际同时 −adoptLine（净 20）——原因见上
+③ §12.5 的旧基线两处错：419→413 应为 416→410；page-detail-error"仍有 11 处"是 S3 的数，S4 后是 8
+```
+
+### 未验（真机，ego-browser 无响应）
+
+```
+· 第二引擎面板：运行 → 逐行分歧 → 「采用这一路」→ 关闭
+· 未跑完时的警告：等它跑完再进 / 跳过 / 取消（三个键）
+原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
+```
+
+### 本轮附带发现：闸的剥注释器有缺陷（已派 TestDev，记 L-115）
+
+```
+stripCommentsForGates（字符状态机）不认识正则字面量：`/[&<>"']/g` 里的引号让它误进字符串态，
+之后的 // 注释不被剥掉。实测：app.js 547 行注释残留 183 行、page-detail-editor.js 60 行残留 59 行。
+**能造假绿**（已实证）：把 app.js:877 唯一的 openAuxWarning() 调用改成注释，导出面闸仍然绿。
+⇒ 不是 known-limitation 能盖住的问题（"必须出现"类判据会被注释满足），已派一刀统一到 R3 那把
+（带正则识别），换完跑全量闸、新红逐条报，不许为了变绿改期望。
+```
+
+## 九、结论
 
 ```
 片 1：代码层通过；真机部分通过、5 项未验（ego 阻塞）
@@ -441,5 +499,8 @@ S2：代码层通过（15 函数差集逐个对、模块 1,265=1,119+63+83、接
     2 个死注入未清）；真机 3 件未验（ego 阻塞）
 S3：代码层通过（3 函数差集、模块 1,345=1,186+72+87、导出面 20 且每个有调用点、注入 53=53、
     wired 守卫在、R3 54/127）；三条闸我都实跑变异；真机 2 件未验（ego 阻塞）
-七把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
+S4：代码层通过（6 函数差集、app.js 10,402、模块 1,549=1,367+83+99、导出面 20（+openAuxWarning −adoptLine）、
+    注入 60=60、auxData 死状态已删、5 个遮罩 id 零字符串、跨模块直呼 0、R3 49/117）；真机 2 件未验（ego 阻塞）
+    ⚠ 附带发现：闸的剥注释器不认识正则字面量，可造假绿（已派 TestDev 统一，记 L-115）
+八把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
 ```
