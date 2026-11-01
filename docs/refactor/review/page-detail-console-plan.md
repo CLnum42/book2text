@@ -136,7 +136,18 @@ S4 第二引擎复核（170） aux 面板 + 逐行 + 收尾后刷新
 · 不在本刀修「章节检测只归出 7 章、29 页无归属」（记账，另开）
 ```
 
-## 8. 前置 T0：树可达性修复（单独一小笔，先于本刀）
+## 8. 前置 T0：树可达性修复（单独一小笔，先于本刀；不进口 ① 主刀，也不进清洗刀）
+
+**点击语义（先核 DOM，回答 QA 的「疑为展开」）**——逐行读 `renderReviewTree`：
+
+```
+回目行 .review-tree__row--chapter   → toggleReviewTreeChapter（只展开/折叠，不跳页）   ← "条目是展开钮"只对这一行成立
+页行   .review-tree__row--page      → openPageDetail(page.page_no)（跳页）
+页行内 ▸/▾ 小按钮 .review-tree__caret → 只展开该页的差异条目（stopPropagation）
+条目行 .review-tree__row--item      → openTreeItem（跳页并定位到该条）
+```
+
+⇒ **"跳页失效"不成立**；真正的缺陷在下面：没有章节归属的页根本不出现在树上，点不到。
 
 **缺陷**（QA 实测 + 代码核实）：`renderReviewTree` 只在 `chapter === page.chapter` 时把页挂进树；
 `page.chapter` 匹配不到任何 `chapter.id` 的页（29 页，其中 21 页背着全部 90 处待审）**永远没有行**，
@@ -154,6 +165,8 @@ renderReviewTree：删掉内联的 filter/continue（≈−25 行），改成 fo
 
 **判据（可红）**：`sum(树上可达页的 unacked) == 头部 unacked 总数`，四组夹具（全有章 / 全无章 / 混合 / chapters 空）；
 变异：删掉「未归章」分支 → 合计断言红。真机：点「未归章」里的页 → `openPageDetail` 生效。
+分工：TestDev 出测试笔（`Approved-by: DevLead`，红证据写提交正文：修前可达 0 / 头部 90），Builder 落产品笔。
+另记一条事实（不修）：490 页只归出 7 章、29 页无归属，可能是章节检测的问题，不在这一笔里碰。
 
 ## 9. 顺序与基线（Chief 点名的三样）
 
