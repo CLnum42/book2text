@@ -1325,14 +1325,12 @@ function inkGapBarVisible(count) {
     renderSuggestionTools,
     renderLayoutPanel,
     // 下面这批是"外壳仍有真调用点"的成员（§1 ⑦：每导出一个成员就要能指出谁在哪调它）。
-    // 书 §3 的 T 清单是预测；这 13 个在 app.js 里有 27 处调用，不导出就得在外壳复制实现。
-    // showError / openBoxCreate / cancelBoxCreate / setupBoxCreate 都不在这里：它们只有模块内部
-    // 调用（错误写 page-detail-error、两个入口由 init 自己接线、框选接线在 wired 守卫里），
-    // 外壳一次都没喊——留下就是"预留导出"，§1 ⑦ 不成立。
+    // 书 §3 的 T 清单是预测；不导出就得在外壳复制实现，所以这里只留 app.js 真喊得到的名字。
+    // 移出导出面的（只剩模块内部调用）：showError · openBoxCreate · cancelBoxCreate ·
+    // setupBoxCreate · suggestionHighList（S3 之后 app.js 那两处调用都随函数进了模块）。
     applyDetailSuggestions,
     refreshDetailSuggestions,
     blockNeedsReview,
-    suggestionHighList,
     pageNumberHintChip,
     adoptBlockSuggestion,
     adoptAllHighSuggestions,
