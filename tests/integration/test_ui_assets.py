@@ -116,7 +116,8 @@ def test_page_view_has_zoom_controls_and_readonly_block_overlay() -> None:
         f"档位表最高档 hint 是 {hints[-1]!r}，但渲染档位里 DPI 最高的是 {top_profile!r}"
         "（加档时要一起改；见 docs/refactor/test-contract-order.md）"
     )
-    assert "page-overlay--readonly" in script
+    # 片 2：容器 class 的拼法搬进 overlay-registry.js（`layerClassName`，唯一写点），合查两份
+    assert "page-overlay--readonly" in script + _overlay_script()
 
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
     assert ".page-grid--page" in css
