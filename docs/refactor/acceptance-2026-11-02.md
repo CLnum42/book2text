@@ -1,4 +1,4 @@
-# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）+ 清洗刀 + S1
+# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）+ 清洗刀 + S1 + S2
 
 > 规则（2026-11-02 定）：**通过 / 未验分开写**；未验必须写阻塞原因与证据位置。
 > 只在对话里说“我跑过”按**未验**计；环境起不来同理。
@@ -337,7 +337,47 @@ node 235 / 233 pass / 0 fail / 2 skipped（基线 232/230/0/2；+3 = 白名单�
 还原后 git status 干净；产品代码零差异。
 ```
 
-## 六、结论
+## 六、S2：框选新增块 + 漏行条 → 同一个 `page-detail-editor.js`（`33e5261`）
+
+提交链：`e45eae9`（补合 S1 借用状态判据）→ `5ce7850`（测试侧：框选/漏行断言合查模块；id 归属表按 S2 挪三件）
+→ `33e5261`（产品）。
+
+### 通过（代码层，DevLead 在独立 worktree 独立核）
+
+```
+基线 80f3a2b → 33e5261
+app.js 10,910 → 10,660（−250）
+顶层函数 434 → 419：移出恰 15 个（与书 §1 的 S2 清单逐名相同）、新增 0
+  setBoxCreateMode normalizedPoint onBoxMouseDown onBoxMouseMove onBoxMouseUp boxDraftRect drawBoxDraft
+  createBlockFromBox inkGapBarVisible loadInkGaps renderInkGapBar drawInkGapMarks startRegionRecognition
+  recognizeBoxRegion setupBoxCreate
+模块 page-detail-editor.js 989 → 1,265 = 1,119 代码 + 63 注释 + 83 空行
+15 个函数在模块里的函数体合计 238 行（书原写 240；−2 是 setupBoxCreate 17 → 15，
+  canvas 改走 injected.getDetailCanvas() 注入，不再是 el("detail-canvas")）
+三取法（剥注释）：el( 0 · document.getElementById 0 · document.querySelector 0
+  root.querySelector 2 处 · 元素级 querySelector 8 处
+canvas：模块里 2 处 injected.getDetailCanvas()（:1071 / :1104），外壳 app.js:10589 给的是 () => el("detail-canvas")
+wired 幂等守卫在 :1214（let wired = false）/ :1221（if (!wired)）：重复 init 不重复绑
+deps 173 不变
+接口面 23 个（沙箱执行 Object.keys 实测）= S1 的 20 + setBoxCreateMode / loadInkGaps / setupBoxCreate
+  ⚠ 其中 setupBoxCreate **没有外部调用点**（只有模块内部 :1223 调），按 §1 ⑦ 应删（已告 Builder 并在 S3 顺手删）
+注入：init 传 56 个键，模块实读 54 个 —— **S1 那两个死注入仍未清**：
+  getActiveReviewBlockId / PAGE_TYPE_LABELS（传了 0 读；已第二次提醒 Builder 在 S3 一起删）
+R3 review：69/165 → **58/134**（−11 种 / −31 处，随 15 个函数进模块；书里没写 S2 的期望值，本表补上）
+R3 pages total 0 / ids 0 · registry 0 笔不合格（485 笔）
+node 234 / 232 pass / 0 fail / 2 skipped · pytest 1034（125.09s，STATIC_DIR 在树内）
+```
+
+### 未验（真机，ego-browser 无响应）
+
+```
+· 框选新增块：框选 → 草稿 → 确认 → 「识别这块」→ 新块出现且类型正确
+· 漏行条（ink-gap）：开关、按页渲染、点「识别」后新块出现
+· 框选模式下拖动与取消（Esc / 取消按钮）
+原因：ego-browser 服务无响应，等用户重启；不重启共享 GUI。
+```
+
+## 七、结论
 
 ```
 片 1：代码层通过；真机部分通过、5 项未验（ego 阻塞）
@@ -346,7 +386,8 @@ node 235 / 233 pass / 0 fail / 2 skipped（基线 232/230/0/2；+3 = 白名单�
       三条文档/测试真实性已补（abbab59 + b2a6bbb），三条断言我都做过"喂坏样本必须红"的复跑；
       真机 UI 路径未验（ego 阻塞）
 清洗刀：代码层通过（含 R3 期望值更正与影响面复核）；真机 5 项未验（ego 阻塞）
-S1：代码层通过（24 函数差集逐个对、模块 989、接口面 20、注入 48→读 46）；真机 4 件未验（ego 阻塞）；
-    DOM 取法规则出现第二个 root 宿主模块，待裁决
-五把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
+S1：代码层通过（24 函数差集逐个对、模块 989、接口面 20、注入 48→读 46）；真机 4 件未验（ego 阻塞）
+S2：代码层通过（15 函数差集逐个对、模块 1,265=1,119+63+83、接口面 23 但 setupBoxCreate 无外部调用点、
+    2 个死注入未清）；真机 3 件未验（ego 阻塞）
+六把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
 ```

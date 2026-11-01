@@ -32,13 +32,14 @@ root   init({ root: el("view-review"), … })
 | 片 | 能力 | 函数数 | 行数 | 组成（逐函数行数） |
 |---|---|---:|---:|---|
 | S1 | **块列表编辑** | 24 | **851**（原 855） | `blockCard`285 · `blockDivergenceSection`124 · `adoptAllHighSuggestions`61 · `renderReviewBlocks`45 · `diffCompareLines`42 · `patchBlock`35 · `diffRowFragment`33 · `blockSuggestionBadge`31 · `reviewAction`**18**（清洗刀 −4）· `refreshDetailSuggestions`21 · `adoptLine`18 · `pageNumberHintChip`16 · `applyDetailSuggestions`14 · `adoptBlockSuggestion`14 · `captureEditorFocus`13 · `restoreEditorFocus`13 · `autoSizeTextarea`10 · `flushPendingSave`9 · `selectReviewBlock`21 · `focusSiblingBlock`8 · `scheduleBlockSave`8 · `blockNeedsReview`5 · `truncate`4 · `suggestionHighList`3 |
-| S2 | **框选新增块** | 15 | **240** | `createBlockFromBox`33 · `recognizeBoxRegion`33 · `drawInkGapMarks`24 · `onBoxMouseUp`21 · `loadInkGaps`21 · `setupBoxCreate`17 · `renderInkGapBar`14 · `setBoxCreateMode`13 · `drawBoxDraft`13 · `startRegionRecognition`12 · `onBoxMouseDown`10 · `normalizedPoint`9 · `boxDraftRect`9 · `onBoxMouseMove`8 · `inkGapBarVisible`3 |
+| S2 | **框选新增块** | 15 | **238**（原 240） | `createBlockFromBox`33 · `recognizeBoxRegion`33 · `drawInkGapMarks`24 · `onBoxMouseUp`21 · `loadInkGaps`21 · `setupBoxCreate`**15**（搬进模块后 −2：canvas 改走 `getDetailCanvas` 注入）· `renderInkGapBar`14 · `setBoxCreateMode`13 · `drawBoxDraft`13 · `startRegionRecognition`12 · `onBoxMouseDown`10 · `normalizedPoint`9 · `boxDraftRect`9 · `onBoxMouseMove`8 · `inkGapBarVisible`3 |
 | S3 | **版面确认** | 3 | **67** | `renderLayoutPanel`23 · `confirmPageLayout`23 · `renderSuggestionTools`21 |
 | S4 | **第二引擎复核** | 6 | **170** | `waitForAuxThenReview`60 · `renderAuxiliary`51 · `runAuxiliary`24 · `openAuxWarning`18 · `activeAuxJob`11 · `setupAuxControls`6 |
-| 合计 | | **48** | **1,328**（原 1,332） | （`applyDetailSuggestions` 在 S1/S4 复用，只算一次） |
+| 合计 | | **48** | **1,326**（原 1,332） | （`applyDetailSuggestions` 在 S1/S4 复用，只算一次） |
 
-> 本表是 `4676772` 的读数；**清洗刀（`02213d8`）之后只有 S1 的 `reviewAction` 变了（22 → 18）**，
-> 全刀合计 1,332 → **1,328**。逐函数的起止行见 **§11（清洗后重贴）**，开工按那张表。
+> 本表是 `4676772` 的读数。两次落盘后的修正：清洗刀（`02213d8`）使 S1 的 `reviewAction` 22 → 18；
+> S2 落盘（`33e5261`）时 `setupBoxCreate` 17 → 15（canvas 改走 `getDetailCanvas` 注入）。
+> 全刀合计 1,332 → **1,326**。S1 的逐函数起止行见 **§11（清洗后重贴）**，开工按那张表。
 
 ### 1.1 三格对账（Chief 2026-11-01 要求：三格合计 == 这条线的总行数）
 
