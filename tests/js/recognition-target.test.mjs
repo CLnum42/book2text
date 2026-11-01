@@ -52,13 +52,10 @@ function makeCtx(deps) {
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx, { filename: "pages-view.js" });
   ctx.window.PagesView.init(Object.assign({}, deps));
-  // 状态是 renderRecognitionVerdict 写出来的。刀 9 删了那个公共出口；刀 9.5 又删了 renderRecognitionStatus
-  // （11 键之一），改由能力 onAuxReviewFinished() 接住（它的最后一行同样是 renderRecognitionVerdict）。
-  // **过渡写法**：`onAuxReviewFinished || renderRecognitionStatus` 让这笔在刀 9.5 落盘前后都绿；
-  // 9.5 落盘后应改成直接调 onAuxReviewFinished()（TestDev 清掉这条 fallback）。
-  // 它另外读 getProjectSummary / percentText，所以 baseDeps 里补了这两个桩。
-  const render = ctx.window.PagesView.onAuxReviewFinished || ctx.window.PagesView.renderRecognitionStatus;
-  render.call(ctx.window.PagesView);
+  // 状态是 renderRecognitionVerdict 写出来的。两个临时公共出口先后随刀 9 / 刀 9.5 删掉，
+  // 现在由**能力** onAuxReviewFinished() 接住（它的最后一行同样是 renderRecognitionVerdict）。
+  // 它读 getProjectSummary / percentText，所以 baseDeps 里给了这两个桩。
+  ctx.window.PagesView.onAuxReviewFinished();
   return { ctx, els, getElementById };
 }
 
