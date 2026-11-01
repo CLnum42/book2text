@@ -1020,10 +1020,7 @@ function closeModal(id) {
   if (!node) return;
   node.hidden = true;
   // 结构工具的候选勾选、导出对照这类"临时状态"随手收起来，下次打开是干净的
-  if (id === "structure-panel") {
-    structureCandidates = [];
-    el("structure-result").hidden = true;
-  }
+  if (id === "structure-panel") window.StructureTools?.reset();
   if (id === "export-panel") {
     el("export-compare").hidden = true;
     // 关掉导出面板 ≠ 还站在「文件导出」这一步：回到当前视图的默认步。
@@ -1359,177 +1356,11 @@ function setupAuxControls() {
 
 // ---------------------------------------------------------------- 结构工具（页眉 / 页脚 / 页码）
 
-let structureCandidates = [];      // 预览结果（含用户逐个取消的状态）
+// 刀 D：结构工具（页眉 / 页脚 / 页码）的 7 个函数与预览候选状态已整体搬进
+// `structure-tools.js`（window.StructureTools）。本文件只剩三处外壳接缝：
+// `el("structure-panel")` 作为 root 交给模块、`closeModal` 收起临时状态、boot 调 setup()。
 
-function structureRules() {
-  return {
-    top_ratio: Number(el("structure-top").value || 0) / 100,
-    bottom_ratio: Number(el("structure-bottom").value || 0) / 100,
-    left_ratio: Number(el("structure-left").value || 0) / 100,
-    right_ratio: Number(el("structure-right").value || 0) / 100,
-    max_chars: el("structure-max-chars").value === "" ? null : Number(el("structure-max-chars").value),
-    page_types: el("structure-body-only").checked
-      ? ["body"]
-      : ["body", "body_excluded", "toc", "front", "back"],
-    detect_page_numbers: el("structure-numbers").checked,
-  };
-}
 
-async function previewHeaderFooter() {
-  if (!currentProject) return;
-  el("structure-error").hidden = true;
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/structure/header-footer/preview`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(structureRules()),
-      }
-    );
-    renderStructurePreview(data);
-  } catch (error) {
-    showError(el("structure-error"), error);
-  }
-}
-
-const STRUCTURE_TYPE_LABELS = {
-  header: "页眉", footer: "页脚", page_number: "页码",
-  caption: "图注", footnote: "脚注", heading: "标题", other: "其他", paragraph: "段落",
-};
-
-function renderStructurePreview(data) {
-  // 默认只勾"有把握"的（页码形态或跨页重复）；只出现一两次的留给人工判断——
-  // 标错一个页脚，正文就会从导出里消失
-  structureCandidates = (data.candidates || []).map((item) => ({
-    ...item,
-    keep: item.confidence === "high",
-  }));
-
-  el("structure-result").hidden = false;
-  el("structure-meta").textContent = `${data.pages_scanned} 页在作用范围内`;
-  const byType = Object.entries(data.by_type || {})
-    .map(([type, count]) => `${STRUCTURE_TYPE_LABELS[type] || type} ${count}`)
-    .join(" · ");
-  el("structure-summary").textContent = data.candidate_count
-    ? `找到 ${data.candidate_count} 个（默认勾选 ${data.high_confidence_count} 个有把握的）：${byType}`
-    : "按当前规则没有需要标注的块";
-
-  const list = el("structure-candidates");
-  list.innerHTML = "";
-  structureCandidates.forEach((item, index) => {
-    const li = document.createElement("li");
-    li.dataset.index = String(index);
-    if (!item.keep) li.classList.add("is-off");
-
-    const check = document.createElement("input");
-    check.type = "checkbox";
-    check.checked = item.keep;
-    check.title =
-      item.confidence === "high"
-        ? "取消勾选 = 这次不标它"
-        : "只在这一页出现，可能是正文的最后一行——确认它确实是页眉 / 页脚再勾";
-    check.addEventListener("change", () => {
-      structureCandidates[index].keep = check.checked;
-      li.classList.toggle("is-off", !check.checked);
-      updateStructureApplyState();
-    });
-
-    const meta = document.createElement("span");
-    meta.className = "meta";
-    meta.textContent =
-      `第 ${item.page_no} 页 · ${STRUCTURE_TYPE_LABELS[item.current_type] || item.current_type}` +
-      ` → ${STRUCTURE_TYPE_LABELS[item.proposed_type] || item.proposed_type}` +
-      (item.confidence === "high" ? " · 有把握" : " · 需确认");
-
-    const text = document.createElement("span");
-    text.className = "text";
-    text.textContent = item.text.slice(0, 60);
-
-    li.append(check, meta, text);
-    list.append(li);
-  });
-
-  // 被跳过的块（含原因）也如实列出来，免得用户以为漏了
-  const note = el("structure-note");
-  const notes = [];
-  if (data.skipped_count) {
-    const sample = (data.skipped || [])
-      .slice(0, 3)
-      .map((item) => `第 ${item.page_no} 页「${item.text.slice(0, 12)}」${item.reason}`)
-      .join("；");
-    notes.push(`有 ${data.skipped_count} 个块在区域内但没有动它：${sample}${data.skipped_count > 3 ? " 等" : ""}`);
-  }
-  if (!data.candidate_count) {
-    notes.push("如果没有找到，试着把区域高度调大一点，或把「只作用于正文页」去掉。");
-  }
-  note.textContent = notes.join(" ");
-  note.hidden = notes.length === 0;
-
-  updateStructureApplyState();
-}
-
-function updateStructureApplyState() {
-  const kept = structureCandidates.filter((item) => item.keep);
-  const button = el("structure-apply-btn");
-  button.disabled = kept.length === 0;
-  button.textContent = kept.length ? `应用标注（${kept.length} 个块）` : "应用标注";
-}
-
-async function applyHeaderFooter() {
-  if (!currentProject) return;
-  const kept = structureCandidates.filter((item) => item.keep);
-  if (!kept.length) return;
-  el("structure-error").hidden = true;
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/structure/header-footer/apply`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: kept.map((item) => ({
-            block_id: item.block_id,
-            block_type: item.proposed_type,
-          })),
-        }),
-      }
-    );
-    const byType = Object.entries(data.by_type || {})
-      .map(([type, count]) => `${STRUCTURE_TYPE_LABELS[type] || type} ${count}`)
-      .join(" · ");
-    el("structure-note").textContent =
-      `已标注 ${data.changed} 个块（${byType}），涉及 ${data.pages.length} 页。` +
-      "这是一次批量操作，可以用「撤销」整体退回去。";
-    el("structure-note").hidden = false;
-    structureCandidates = [];
-    el("structure-result").hidden = true;
-    el("structure-apply-btn").disabled = true;
-    await window.PagesView?.onProjectPagesReloaded();
-    await refreshExportPreflight();
-  } catch (error) {
-    showError(el("structure-error"), error);
-  }
-}
-
-function setupStructurePanel() {
-  el("structure-preview-btn").addEventListener("click", previewHeaderFooter);
-  el("structure-apply-btn").addEventListener("click", applyHeaderFooter);
-  el("structure-all").addEventListener("click", () => setAllStructureKeeps(true));
-  el("structure-none").addEventListener("click", () => setAllStructureKeeps(false));
-}
-
-function setAllStructureKeeps(keep) {
-  structureCandidates = structureCandidates.map((item) => ({ ...item, keep }));
-  for (const li of el("structure-candidates").children) {
-    const index = Number(li.dataset.index);
-    li.querySelector("input").checked = structureCandidates[index].keep;
-    li.classList.toggle("is-off", !structureCandidates[index].keep);
-  }
-  updateStructureApplyState();
-}
-
-// ---------------------------------------------------------------- 导出（项目）
 
 let lastExport = null;      // 最近一次生成的导出（含记录与 manifest）
 let exportPreviewTimer = null;
@@ -2530,8 +2361,8 @@ async function refreshProject(projectId) {
     if (selectionAnchor !== null && !alivePageNos.has(selectionAnchor)) selectionAnchor = null;
   }
   closePageDetail();
-  structureCandidates = [];
-  el("structure-result").hidden = true;
+  // 换项目 = 结构工具的预览候选作废（状态在 structure-tools.js 里）
+  window.StructureTools?.reset();
   // 任务 63：页面工作流角标、导出预检、导出记录都只属于某个视图，
   // 这里不再开机就拉（490 页实测这三样 6 s+，把步骤条饿到十几秒）。
   // 它们由 `hydrateView()` 在真正切到那个视图时加载。
@@ -12570,7 +12401,18 @@ function boot() {
   // 三栏拖动由 reading-view.js 的 init() 负责（任务 94），这里不再重复绑定
   setupPageMore();
   setupExportPanel();
-  setupStructurePanel();
+  // 刀 D：结构工具（17 个 structure-* 全在 #structure-panel 子树里，root 交给模块）
+  window.StructureTools?.init({
+    root: el("structure-panel"),
+    apiJson: (...args) => apiJson(...args),
+    getCurrentProject: () => currentProject,
+    // apply() 之后的两件事由外壳给：页面数据重拉 + 导出预检；顺序在模块里（请求 → 读回 → 后处理）
+    afterApply: async () => {
+      await window.PagesView?.onProjectPagesReloaded();
+      await refreshExportPreflight();
+    },
+  });
+  window.StructureTools?.setup();
   showView("library");
   window.PageIndexService?.loadImageQuality();
   window.PageIndexService?.syncImageQualityUi();
