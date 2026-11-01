@@ -1,5 +1,12 @@
 # Overlay registry 第一片施工书（preview × blocks）
 
+> **版本 v1.5（2026-11-02）**：记一条 Builder 落盘时撞出来的量，Chief 裁 **B 方案**——
+> preview 今天调 `renderPageBlocks(..., {details:true})`，每个框里的 `.box__label` 是**死 DOM**
+> （preview 的 `.box` 是 `pointer-events:none`，永远 hover 不到；`app.css:854/866–867` 的 label 只在 hover/active 出现），
+> 而 `.box__order` 今天走**避让排布**（框外摆放，躲开彼此的号）。
+> **裁决：本片不搬避让排布**——registry 只画盒 + 顺序号**固定框内右上角**（复用 `app.css:847 .box__order--inside`），
+> 不建 label。视觉唯一差异是序号位置。**片 2 必须把避让排布一并搬并恢复框外摆放**（见 §6 第 ⑥ 条）。
+>
 > **版本 v1.4（2026-11-02）**：v1.3 缺一条**书里没写死的前提**（DevLead 核出）——
 > **`mount` 在哪调**。选 (a)：**在 `buildPreviewPages` 的建块循环里 mount**（就是替换 181–184 那个容器创建，
 > 每 tile 一个），因为今天的 DOM 就是每 tile 一个 `.page-overlay`，faithful port 没有第二种解释；
@@ -63,6 +70,7 @@
 | 文件 | 动作 | 预算 | 判据 |
 |---|---|---|---|
 | `overlay-registry.js`（新） | 骨架 + 一个渲染器 + 指纹 + 诊断 | **≤ 240 行**（骨架 90 / blocks 渲染 60 / 指纹与稳定序列化 30 / stats 与 unmount 30） | `wc -l`；超 240 要写明多在哪 |
+| 同上 | **那 60 行"blocks 渲染"里不含避让排布**（v1.5） | 避让排布 **不搬**：`findOrderSpot`(6426,24) · `findLabelSpot`(6456,49) · `layoutOverlayAnnotations`(6510,43) · `scheduleOverlayLayout`(6555,13) · `observeOverlaySize`(6577,14) = **函数体 143 行**（连其间注释约 165 行） | 若发现 registry 超 240 行且超在"摆号"上 ⇒ 说明有人把避让排布偷搬了一半 |
 | `preview-view.js` | 删自建 `.page-overlay`（181–184）；`tile.append` 去掉 overlay（191）；`paintPreviewTile` 改走 registry（363–372）；清屏路径改 `paint(active:[])`（394） | **净 −8 ~ −12 行** | `wc -l` 前后差；`page-overlay` 在该文件 0 次 |
 | `preview-view.js` **`mount` 的位置（写死，v1.4）** | **在 `buildPreviewPages()` 的建块循环里**：181–184 那三行的位置改成 `tile.__overlayLayer = window.OverlayLayer.mount(tile, { pageNo })`。**每 tile 一个**（今天也是每 tile 一个 `.page-overlay`） | +1 行（替换掉 3 行） | 真机⑤ 依赖这条：每个 `.preview-page` 都该有 `.overlay-layer` |
 | `preview-view.js` **`unmount` 的位置（写死，v1.4）** | **重建/清空那一笔**：`previewTiles.clear()` 之前遍历 `tile.__overlayLayer` 逐个 `unmount`（与 148–152 释放 PageTile 句柄同一处、同一理由） | +4~6 行 | 不 unmount ⇒ 注册表留着指向旧 DOM 的句柄——PageTile 148 那条注释说的正是这件事 |
@@ -173,6 +181,20 @@ review 清单：提交前把 render 函数体逐行过一遍，出现函数外�
 反例形态：`if (currentStep === "review") box.classList.add("hot")` —— 指纹不变，画面该变却不变。
 ```
 
+## 5.8 本片对渲染的简化：序号固定框内右上角（B 方案，Chief 裁决 2026-11-02）
+
+```
+本片画什么：盒子（位置/尺寸/类型色）+ 顺序号，号固定在框内右上角（复用 app.css:847 .box__order--inside）
+本片不画：.box__label（类型卡片）——它在 preview 里今天就是死 DOM（.box 是 pointer-events:none，hover 不到）
+本片不搬：避让排布（143 行函数体）——它自带第二个调度器（scheduleOverlayLayout 的 90 帧重试 + ResizeObserver），
+         且成功帧里会调 drawDiffLayer()（审校视图的副作用）⇒ 违反"registry 内部恰好一个 rAF"
+为什么不用 A（同一套算法两份并存到片 2）：契约 §1 禁的正是"两套路径"
+为什么不用"注入 app.js 的 layoutOverlayAnnotations"：带进第二个调度器 + 夹带审校副作用，两条都越界
+```
+
+**视觉差异只有一处**：序号从框外（避让后）变成框内右上角。真机上要确认"框色/数量/位置/hits 层级"四条不变——
+序号位置变了**不算回归**（它是有意简化），但要写进片 1 的提交说明，别让人以为是错位 bug。
+
 ## 6. 不许顺手改（本片清单）
 
 ```
@@ -181,6 +203,9 @@ review 清单：提交前把 render 函数体逐行过一遍，出现函数外�
 ③ 不改 `.page-overlay` 的现有 CSS（preview 不再用它，但 pages / index 还在用）
 ④ 不给 registry 加 hitTest / invalidate / 数据加载（没有调用点）
 ⑤ 不动 page-tile.js 的 `ptile__overlays` 槽（留待用它的视图出现）
+⑥ **片 2（pages / reading 迁进 registry）必须一并搬那 143 行避让排布，并把序号的框外摆放恢复**——
+   否则片 1 这个简化会变成永久技术债：preview 的号永远在框内，pages 的号在框外，同一页在两个视图里长得不一样。
+   判据写在片 2 的书里：`drawDiffLayer` 的调用点必须在迁移时重新安置（它是审校视图的副作用，不许跟着调度器进 registry）。
 ```
 
 ## 7. 验收对集（落盘时逐行填，基线从开工树现数）
