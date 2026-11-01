@@ -24,13 +24,26 @@ const SRC = readFileSync(PATH, "utf8");
 /** 一页瓷砖：位置由 metrics 给定；`_renderedBlocks` 由注入的 renderPageBlocks 回写（真实渲染器也这么做）。 */
 function makeTile(pageNo, top, height = 300) {
   const overlay = { _renderedBlocks: null };
+  // 片 2：容器归 overlay registry（它 mount 到 .page-tile__thumb 里），
+  // 测试用最小 thumb 节点；`__seedDataGetter` 让"已经画过同一份块"这个前置状态能传给假 registry。
+  const thumb = {
+    dataset: {}, children: [],
+    appendChild(child) { this.children.push(child); return child; },
+    append() {}, querySelector: () => null, querySelectorAll: () => [],
+    __seedDataGetter: () => overlay._renderedBlocks,
+  };
   return {
     dataset: { pageNo: String(pageNo) },
     _overlay: overlay,
+    _thumb: thumb,
     textContent: "", hidden: false, style: {},
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
     getBoundingClientRect: () => ({ top, bottom: top + height, height, left: 0, width: 100 }),
-    querySelector: (selector) => (selector === ".page-overlay" ? overlay : null),
+    querySelector: (selector) => {
+      if (selector === ".page-overlay") return overlay;
+      if (selector === ".page-tile__thumb") return thumb;
+      return null;
+    },
     querySelectorAll: () => [],
     addEventListener() {}, removeEventListener() {}, appendChild() {}, append() {}, closest: () => null,
   };
@@ -138,6 +151,25 @@ function makeHarness({ tileCount = 3, viewport = 500, zoomIndex = 0, overlayOn =
     innerHeight: viewport,
   };
   ctx.window = ctx;
+  // 片 2：页面视图的块框交给 overlay registry。假 registry 只模拟两条被判据依赖的语义：
+  // ① 同数据不重画（版本判重）；② 空数据只收起、不算"画了一次"。
+  let overlayHandleSeq = 0;
+  ctx.window.OverlayLayer = {
+    init() {},
+    mount(host, { pageNo } = {}) {
+      overlayHandleSeq += 1;
+      const seed = host && typeof host.__seedDataGetter === "function" ? host.__seedDataGetter() : null;
+      return { pageNo: Number(pageNo), host, seq: overlayHandleSeq, lastData: seed === null ? undefined : seed };
+    },
+    paint(handle, { data } = {}) {
+      if (!handle) return;
+      const next = data || [];
+      if (handle.lastData !== undefined && JSON.stringify(next) === JSON.stringify(handle.lastData)) return;
+      handle.lastData = next;
+      if (next.length) state.painted.push(handle.pageNo);
+    },
+    unmount() {},
+  };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx, { filename: "pages-view.js" });
   ctx.window.PagesView.init(deps);
@@ -204,8 +236,10 @@ test("可见页（④ 量不出来时不改集合）：metrics 为 null ⇒ 直�
 
 // ── 块框重画 ─────────────────────────────────────────────────────────────
 
+// 缓存形状与生产一致：`rememberPageBlocks(key, data.blocks || [])` 存的是**块数组**
+// （片 2 之后块框走 overlay registry，paint 的 data 必须是数组）。
 const cacheBlocks = (harness, pageNos) => {
-  for (const pageNo of pageNos) harness.state.cache.set(`v${pageNo}`, { blocks: [`b${pageNo}`] });
+  for (const pageNo of pageNos) harness.state.cache.set(`v${pageNo}`, [`b${pageNo}`]);
 };
 
 test("块框（① 幂等）：同数据不重画——已画过同一份块的页，这一帧一次都不画", () => {
