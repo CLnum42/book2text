@@ -4570,6 +4570,9 @@ const GATE_SWITCHES = [
   { name: "A5_MAX_EXCUSES", source: "手工上限，只降不升；现值见该行", check: "A5 例外条数上限" },
   { name: "R5_EXCUSES", source: "空表；{ state, file, owner, expires }", check: "R5 是否放过某处「模块写外壳状态」" },
   { name: "R5_MAX_EXCUSES", source: "手工上限，只降不升；现值见该行", check: "R5 例外条数上限" },
+  { name: "ALLOW_QUERY_SELECTOR_WHITELIST", source: "域模块里允许 root.querySelector 的具名名单；"
+    + "与 DOMAIN_MODULES 的 allowQuerySelector 双向对集，加一个名字要同时改登记表与书（first-batch.md §1）",
+    check: "域模块能不能拿根宿主自己查子树（最宽的一条 DOM 豁免）" },
   { name: "T_DEATH_PENDING_MAX", source: "Architect 的 9a/9b 裁定落地时点——每填一个 T 的死期就下调一次，"
     + "永不上调；清零那天删掉这个常数", check: "还有多少 T 键的死期是 null（待定），超上限就红" },
   // `EXPORT_DEATH_EXPIRES` 已删（2026-11-01，刀 10.2 翻面）：死期表判据不再看刀号，
@@ -5484,10 +5487,88 @@ const DOMAIN_MODULES = [
   { file: "overlay-registry.js", exposes: "OverlayLayer" },
   // 刀 C：radio 由外壳在自己的 root 子树里查好传进来 ⇒ 模块连 querySelector 都是 0 次
   { file: "page-index.js", exposes: "PageIndexService" },
-  // 刀 D：17 个 structure-* 全在 #structure-panel 子树里，逐个传太笨 ⇒ 唯一允许 root.querySelector 的模块
-  // （document.querySelector / getElementById / el( 仍然各 0 次，见下面 allowQuerySelector 的分支）
+  // 刀 D：17 个 structure-* 全在 #structure-panel 子树里，逐个传太笨 ⇒ 允许 root.querySelector，
+  // 但 document.querySelector / getElementById / el( 仍然各 0 次（见下面 allowQuerySelector 的分支）
   { file: "structure-tools.js", exposes: "StructureTools", allowQuerySelector: true },
+  // S1：root = #view-review，24 个归模块的 id 全在这棵子树里（§2 表），元素多到逐个传不现实。
+  // 现状：剥注释后 el( / document.getElementById / document.querySelector 各 0 次；
+  // root.querySelector 2 处（part() 与 querySelectorAll）+ 4 处元素级查询 ⇒ 走 allowQuerySelector 分支恰好合规。
+  // **它此前根本没登记在这张表里** ⇒ 域模块闸从没查过它 —— 这正是下面「登记完整性」要关掉的洞。
+  { file: "page-detail-editor.js", exposes: "PageDetailEditor", allowQuerySelector: true },
 ];
+
+/**
+ * **允许 `root.querySelector` 的模块 —— 具名白名单**（Chief 2026-11-02 裁定）。
+ *
+ * 原来是「`allowQuerySelector` 的模块 ≤ 1 个」：那是个能扩容的上限，第二个模块只要把 1 改成 2
+ * 就悄悄过了。现在改成双向对集：登记了这个能力却不在名单里 ⇒ 红；名单里有名字却没登记这个能力 ⇒ 红。
+ * 第三个模块要 root 时，必须同时改这里、改登记表、改书（`first-batch.md` §1）——做不到「顺手加个名字」。
+ */
+const ALLOW_QUERY_SELECTOR_WHITELIST = ["structure-tools.js", "page-detail-editor.js"];
+
+function querySelectorWhitelistProblems({ modules, whitelist }) {
+  const problems = [];
+  const named = new Set(whitelist || []);
+  const byFile = new Map((modules || []).map((mod) => [mod.file, mod]));
+  if (!whitelist || whitelist.length === 0) {
+    problems.push("root.querySelector 白名单是空的——空表让「谁能查 root」无从判定");
+  }
+  for (const mod of modules || []) {
+    if (mod.allowQuerySelector && !named.has(mod.file)) {
+      problems.push(`${mod.file} 登记了 allowQuerySelector: true，但不在白名单里——要 root.querySelector 必须显式进名单（连带改书），不能登记时顺手写个 true`);
+    }
+  }
+  for (const name of whitelist || []) {
+    const mod = byFile.get(name);
+    if (!mod) {
+      problems.push(`白名单里的 ${name} 不是已登记的域模块——白名单不许留空壳`);
+    } else if (!mod.allowQuerySelector) {
+      problems.push(`白名单里的 ${name} 没有 allowQuerySelector: true——白名单与登记表不一致，两边必须对得上`);
+    }
+  }
+  return problems;
+}
+
+/**
+ * **不是域的服务模块**：同样挂 `window.X = api`，但形态不同、不归域模块闸管。
+ * 每一行都要写清"为什么它不是域"——这条表就是"没登记就逃过闸"那层判据的合法出口。
+ */
+const NON_DOMAIN_MODULES = [
+  { file: "page-tile.js", why: "组件不是域：没有 init(root)，自己 createElement 出瓷砖，生命周期由 pages/preview 持有" },
+  { file: "step-timing.js", why: "纯计时工具：0 DOM、0 请求，只写只读全局对象 window.__b2tStepTiming" },
+];
+
+/**
+ * **登记完整性：挂了 `window.X = api` 的 static 文件必须登记在两张表之一**（Chief 2026-11-02 裁定）。
+ *
+ * 防的是：一个服务模块落了盘、却没人把它加进 `DOMAIN_MODULES` —— 于是域模块闸对它是**静默不查**，
+ * 而闸天天绿。`page-detail-editor.js` 在 S1 落地后就是这样过了整整一刀：不是"例外太多"，
+ * 是**"不登记就逃过闸"**。`*-view.js` 按后缀排除（视图归 R2/R3/R6/R7，不归这张表）。
+ */
+function moduleRegistrationProblems({ files, domainModules, nonDomainModules }) {
+  const problems = [];
+  const domain = new Set((domainModules || []).map((mod) => mod.file));
+  const nonDomain = new Set((nonDomainModules || []).map((mod) => mod.file));
+  for (const file of domain) {
+    if (nonDomain.has(file)) {
+      problems.push(`${file} 同时登记在 DOMAIN_MODULES 与 NON_DOMAIN_MODULES——两张表互斥，选一张并写清理由`);
+    }
+  }
+  // 空列表放到互斥判定之后：否则 files:[] 会提前 return，上面那一支永远判不到（顺序本身也是判据）
+  if (!files || files.length === 0) {
+    problems.push("static 下一个 .js 都没扫到——这条判据在空转");
+    return problems;
+  }
+  for (const { fileName, source } of files) {
+    if (/-view\.js$/.test(String(fileName || ""))) continue;
+    const code = stripCommentsForGates(source || "");
+    if (!/window\.[A-Za-z_$][\w$]*\s*=\s*api\b/.test(code)) continue;
+    if (domain.has(fileName) || nonDomain.has(fileName)) continue;
+    problems.push(`${fileName} 挂了 window.X = api（服务模块出口），但既不在 DOMAIN_MODULES 也不在 NON_DOMAIN_MODULES——`
+      + "没登记就不受域模块闸检查，绿是假的");
+  }
+  return problems;
+}
 
 function domainDomProblems({ file, source, allowQuerySelector = false }) {
   const stripped = stripCommentsForGates(source || "");
@@ -5516,14 +5597,11 @@ function domainDomProblems({ file, source, allowQuerySelector = false }) {
 }
 
 test("域模块（刀 A）：quality-stats.js 不按 id 找 DOM，四个函数已从 app.js 迁出", () => {
-  // 例外清单只许有 1 条：第二个模块要 root.querySelector 时，改的是规则本身（书 §7），
-  // 不是往这张表里加名字——能扩容的例外就是豁免表。
-  const exceptions = DOMAIN_MODULES.filter((mod) => mod.allowQuerySelector);
-  assert.ok(
-    exceptions.length <= 1,
-    `allowQuerySelector 只许有 1 个模块（现在 ${exceptions.length} 个：${exceptions.map((mod) => mod.file).join("、")}）`
-      + "——第二个模块要这个例外时，先改书里的规则，再改闸",
-  );
+  // 「谁能查 root」用**具名白名单**双向对集，不再用一个能扩容的上限（`<= 1` 改个数字就过）。
+  const whitelistProblems = querySelectorWhitelistProblems({
+    modules: DOMAIN_MODULES, whitelist: ALLOW_QUERY_SELECTOR_WHITELIST,
+  });
+  assert.deepEqual(whitelistProblems, [], whitelistProblems.join("\n"));
   for (const mod of DOMAIN_MODULES) {
     const source = readFileSync(join(STATIC_DIR, mod.file), "utf8");
     const problems = domainDomProblems({ file: mod.file, source, allowQuerySelector: Boolean(mod.allowQuerySelector) });
@@ -5550,6 +5628,72 @@ test("域模块（刀 A）：quality-stats.js 不按 id 找 DOM，四个函数�
     ["init", "load", "percentText"],
     "模块接口面多了/少了：render 没有真调用点就不许导出",
   );
+});
+
+test("域模块自检：有 allowQuerySelector 却不在白名单 ⇒ 红 / 白名单有名字却没这能力 ⇒ 红 / 空名单红", () => {
+  const modules = [
+    { file: "a.js" },
+    { file: "b.js", allowQuerySelector: true },
+  ];
+  assert.deepEqual(
+    querySelectorWhitelistProblems({ modules, whitelist: ["b.js"] }), [],
+    "域模块白名单自检失败：合规的白名单被误报",
+  );
+
+  const smuggled = querySelectorWhitelistProblems({ modules, whitelist: [] });
+  assert.ok(smuggled.some((m) => m.includes("b.js") && m.includes("不在白名单里")),
+    `域模块白名单自检失败：登记了能力却没进白名单被放过——${smuggled.join("；")}`);
+
+  const ghost = querySelectorWhitelistProblems({ modules, whitelist: ["b.js", "tool-x.js"] });
+  assert.ok(ghost.some((m) => m.includes("tool-x.js") && m.includes("不是已登记的域模块")),
+    `域模块白名单自检失败：白名单留了空壳名字被放过——${ghost.join("；")}`);
+
+  const mismatch = querySelectorWhitelistProblems({ modules, whitelist: ["a.js", "b.js"] });
+  assert.ok(mismatch.some((m) => m.includes("a.js") && m.includes("没有 allowQuerySelector")),
+    `域模块白名单自检失败：白名单里的模块其实没这个能力被放过——${mismatch.join("；")}`);
+
+  assert.ok(querySelectorWhitelistProblems({ modules, whitelist: [] }).some((m) => m.includes("空")),
+    "域模块白名单自检失败：空名单被放过");
+});
+
+test("域模块登记完整性：挂了 window.X = api 的 static 文件必须登记在两张表之一", () => {
+  const files = readdirSync(STATIC_DIR)
+    .filter((name) => name.endsWith(".js"))
+    .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") }));
+  const problems = moduleRegistrationProblems({ files, domainModules: DOMAIN_MODULES, nonDomainModules: NON_DOMAIN_MODULES });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("域模块登记完整性自检：没登记的模块红并点名 / 两张表同时登记红 / 视图按后缀排除 / 空列表红", () => {
+  // 两张表各管各的：域模块进 DOMAIN，组件/工具进 NON_DOMAIN —— 这是合规的样子
+  const domain = [{ file: "a.js" }];
+  const nonDomain = [{ file: "b.js" }];
+  const mod = (fileName, body) => [{ fileName, source: body }];
+
+  assert.deepEqual(
+    moduleRegistrationProblems({ files: mod("a.js", "window.A = api;\n"), domainModules: domain, nonDomainModules: nonDomain }), [],
+    "登记完整性自检失败：两张表各登记一个的合规形态被误报",
+  );
+
+  const fake = moduleRegistrationProblems({
+    files: mod("fake-module.js", "const api = {};\nwindow.Fake = api;\n"), domainModules: domain, nonDomainModules: nonDomain,
+  });
+  assert.ok(fake.some((m) => m.includes("fake-module.js") && m.includes("既不")),
+    `登记完整性自检失败：没登记的模块被放过——${fake.join("；")}`);
+
+  const both = moduleRegistrationProblems({
+    files: [], domainModules: [{ file: "x.js" }], nonDomainModules: [{ file: "x.js" }],
+  });
+  assert.ok(both.some((m) => m.includes("x.js") && m.includes("互斥")),
+    `登记完整性自检失败：同一模块在两张表里被放过——${both.join("；")}`);
+
+  assert.deepEqual(
+    moduleRegistrationProblems({ files: mod("pages-view.js", "window.PagesView = api;\n"), domainModules: [], nonDomainModules: [] }),
+    [], "登记完整性自检失败：*-view.js 被算进这张表（视图归 R2/R3/R6/R7）",
+  );
+
+  const empty = moduleRegistrationProblems({ files: [], domainModules: domain, nonDomainModules: nonDomain });
+  assert.ok(empty.some((m) => m.includes("空转")), "登记完整性自检失败：空列表被放过");
 });
 
 test("域模块（刀 B）：page-confirm.js 五个函数已从 app.js 迁出，接口面逐条对", () => {
