@@ -1880,3 +1880,23 @@ QA 用接口路径四步留档证明撤销本身完整（`e373d6e` / `b58616b`�
 
 （编号说明：这一条口头上被叫作「L-34」，但文件里 L-34 已被「新界面与效果图的四处有意偏差」占用；
 按本文件单调递增取 **L-114**，避免两个 L-34 并存。）
+
+## L-115 · review 页内差异队列下线：四个键位随删（2026-11-02，清洗刀）
+
+**事实**：页内差异队列整体退役（19 函数 / 409 行 + 10 个 id + `.diff-queue`/`.queue-toggle` CSS）。
+队列专用的四个键位一起消失：
+
+```
+Enter / Space  采纳（adoptQueueCurrent）
+⌫ Backspace    保留（keepQueueCurrent）
+← ArrowLeft    回上一处（previousQueueItem）
+[ / ]          跨块跳上一处 / 下一处差异（stepReviewDiff）
+```
+
+**还在的那条路**：每块展开后的差异条（`blockDivergenceSection`，逐行「采纳第二路 / 保留原文」，
+调 `adoptLine`）仍能逐行裁决；跨页连续流的差异队列在 **reading 视图**，它自己的键位
+（`Enter` = 保留、`Space` = 采用候选，`reading-view.js`）**不受本刀影响**。
+
+- **损失**：`⌫` / `←` / `[` `]` 在 review 视图没有替代（reading 有 Enter/Space，但语义不同）——
+  这是净损失，不是"删重复"。
+- **将来做法**：若用户反馈需要，优先在 reading 视图补键位，别把页内队列复活。
