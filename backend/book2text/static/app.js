@@ -710,7 +710,6 @@ function pageRecognized(page) {
 
 /** 这一轮已经选了"先开始审校"就不再拦（第二引擎跑完 / 切项目时重置）。 */
 let auxWarningSkipped = false;
-let auxWarningWaitToken = 0;
 
 function engineState() {
   return (finishSummary && finishSummary.engine) || {};
@@ -730,99 +729,6 @@ function enterReviewStep() {
   showView("reading");
   const where = window.ReadingView ? window.ReadingView.getCurrent() : null;
   if (where && where.pageNo) savePosition("review", where.pageNo);
-}
-
-async function activeAuxJob() {
-  if (!currentProject) return null;
-  try {
-    const data = await apiJson(`/api/projects/${currentProject.project_id}/jobs`);
-    const active = data.active || null;
-    if (active && active.job_type === "auxiliary") return active;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function openAuxWarning() {
-  const engine = engineState();
-  const done = Number(engine.checked || 0);
-  const total = Number(engine.total || 0);
-  const job = await activeAuxJob();
-  const running = Boolean(job);
-  el("aux-warning-title").textContent = running ? "还在跑" : "还没跑完";
-  el("aux-warning-text").textContent = running
-    ? `第二引擎复核还在跑（${done} / ${total} 页）。它跑完之前，审校队列的差异条数还会变，` +
-      "建议等它跑完再开始审。"
-    : `第二引擎复核还没跑完（${done} / ${total} 页）。现在开始审校，差异队列之后还会变` +
-      "（它只会标出两路对不上的行，不改字）。";
-  const wait = el("aux-warning-wait");
-  wait.disabled = false;
-  wait.textContent = running ? "等它跑完再进" : "跑第二引擎，跑完再进";
-  el("aux-warning-error").hidden = true;
-  openModal("aux-warning-mask");
-}
-
-/** 等第二引擎跑完（没在跑就先起一个），然后进审校。 */
-async function waitForAuxThenReview() {
-  const token = ++auxWarningWaitToken;
-  const button = el("aux-warning-wait");
-  const error = el("aux-warning-error");
-  error.hidden = true;
-  button.disabled = true;
-  button.textContent = "正在准备…";
-  let job = await activeAuxJob();
-  try {
-    if (!job) {
-      const data = await apiJson(
-        `/api/projects/${currentProject.project_id}/jobs/auxiliary`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scope: "unchecked", skip_checked: true }),
-        }
-      );
-      job = data.job;
-      openTaskDrawer();
-      startTaskPolling(job.job_id);
-    }
-  } catch (exc) {
-    error.textContent = `第二引擎没能开始：${exc.message || "未知错误"}`;
-    error.hidden = false;
-    button.disabled = false;
-    button.textContent = "重试";
-    return;
-  }
-  button.textContent = "等待第二引擎…";
-  // 自己轮询这个任务（不依赖抽屉），跑完再进审校
-  for (let i = 0; i < 720; i += 1) {
-    if (token !== auxWarningWaitToken) return;
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    let data;
-    try {
-      data = await apiJson(
-        `/api/projects/${currentProject.project_id}/jobs/${job.job_id}`
-      );
-    } catch {
-      continue;
-    }
-    const j = data.job || {};
-    button.textContent = `等待第二引擎… ${j.done || 0}/${j.total || 0}`;
-    if (["succeeded", "failed", "cancelled", "interrupted"].includes(j.status)) {
-      if (j.status !== "succeeded" && j.failed) {
-        error.textContent =
-          `第二引擎结束了（${j.done} 页成功、${j.failed} 页失败）。` +
-          "可以先开始审校，失败的页之后在「文字识别」里重试。";
-        error.hidden = false;
-      }
-      break;
-    }
-  }
-  if (token !== auxWarningWaitToken) return;
-  await loadFinishSummary({ silent: true });
-  window.PagesView?.onAuxReviewFinished();
-  closeModal("aux-warning-mask");
-  enterReviewStep();
 }
 
 // ---------------------------------------------------------------- 字框回填（任务 59）
@@ -968,7 +874,7 @@ function goToWorkflowStep(id) {
   if (id === "review") {
     // 第二引擎没跑完时先警告（它只影响队列稳定，不阻塞流程，但要让人知情）
     if (auxNeedsWarning()) {
-      openAuxWarning();
+      window.PageDetailEditor?.openAuxWarning();
       return;
     }
     enterReviewStep();
@@ -1264,94 +1170,6 @@ async function exportDiagnostics() {
   } finally {
     button.disabled = false;
   }
-}
-
-// ---------------------------------------------------------------- 第二引擎复核（说明书 8.5）
-
-let auxData = null;
-
-async function runAuxiliary() {
-  if (!currentProject || detailPageNo === null) return;
-  const pageNo = detailPageNo;
-  el("page-detail-error").hidden = true;
-  setSaveState("第二引擎复核中…");
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/pages/${pageNo}/auxiliary`,
-      { method: "POST" }
-    );
-    auxData = data;
-    setSaveState("复核完成");
-    renderAuxiliary(data);
-    await loadPageDetail(pageNo);
-  } catch (error) {
-    if (error.code === "secondary_engine_unavailable") {
-      showError(el("page-detail-error"), error);
-      setSaveState("第二引擎不可用", true);
-      return;
-    }
-    showError(el("page-detail-error"), error);
-    setSaveState("复核失败", true);
-  }
-}
-
-function renderAuxiliary(data) {
-  el("aux-panel").hidden = false;
-  el("aux-summary").textContent =
-    `${data.engine_id} ${data.engine_version} · ${data.line_count} 行 · ` +
-    `一致 ${data.identical} / 仅格式 ${data.format_only_differs} / 有分歧 ${data.differs} · ` +
-    `${data.elapsed_seconds} 秒`;
-  el("aux-hint").textContent =
-    "第二引擎按第一引擎切出的行图逐行复核。实测它比第一引擎弱" +
-    "（中文正文 CER 2.16% vs 1.08%），候选只作参考——" +
-    "块里已按等级逐行标出（汉字级 / 标点级），点「换成这一路」把那一行换过去（可撤销）。";
-
-  const list = el("aux-lines");
-  list.innerHTML = "";
-  const differing = (data.differences || []).filter((item) => item.diff_status === "differs");
-  if (!differing.length) {
-    const empty = document.createElement("li");
-    empty.className = "muted";
-    empty.textContent =
-      data.differences && data.differences.length
-        ? "没有实质分歧（只有格式差异）。"
-        : "这一页两路完全一致。";
-    list.append(empty);
-    return;
-  }
-  for (const item of differing) {
-    const li = document.createElement("li");
-    const pair = document.createElement("div");
-    pair.className = "aux-pair";
-    const a = document.createElement("div");
-    a.className = "aux-a";
-    a.textContent = `第一引擎：${item.text || "（空）"}`;
-    const b = document.createElement("div");
-    b.className = "aux-b";
-    b.textContent = `第二引擎：${item.aux_text || "（没读出来）"}`;
-    pair.append(a, b);
-
-    const actions = document.createElement("div");
-    actions.className = "aux-actions";
-    const adopt = document.createElement("button");
-    adopt.type = "button";
-    adopt.className = "btn btn--ghost";
-    adopt.textContent = "采用这一路";
-    adopt.title = "把这一行换成第二引擎的文本（一次普通编辑，可撤销）";
-    const block = (data.blocks || []).find((item2) => item2.block_id === item.block_id);
-    adopt.addEventListener("click", () => window.PageDetailEditor?.adoptLine(block, item.line_index, item.aux_text));
-    actions.append(adopt);
-
-    li.append(pair, actions);
-    list.append(li);
-  }
-}
-
-function setupAuxControls() {
-  el("aux-run").addEventListener("click", runAuxiliary);
-  el("aux-close").addEventListener("click", () => {
-    el("aux-panel").hidden = true;
-  });
 }
 
 // ---------------------------------------------------------------- 结构工具（页眉 / 页脚 / 页码）
@@ -5271,7 +5089,6 @@ function closePageDetail() {
   detailPageNo = null;
   detailWorkflow = null;
   if (boxCreateMode) window.PageDetailEditor?.setBoxCreateMode(false);
-  auxData = null;
   el("aux-panel").hidden = true;
 }
 
@@ -8709,7 +8526,6 @@ function setupLibrary() {
   el("diagnostics-export").addEventListener("click", exportDiagnostics);
   el("detail-close").addEventListener("click", closePageDetail);
   setupReviewControls();
-  setupAuxControls();
   el("stats-refresh").addEventListener("click", () => window.QualityStats?.load());
   setupTaskDrawer();
 
@@ -8719,7 +8535,6 @@ function setupLibrary() {
     enterReviewStep();
   });
   el("aux-warning-cancel").addEventListener("click", () => closeModal("aux-warning-mask"));
-  el("aux-warning-wait").addEventListener("click", waitForAuxThenReview);
   el("garbled-close").addEventListener("click", closeGarbledPanel);
   el("garbled-adopt").addEventListener("click", () => decideGarbledLines("adopted"));
   el("garbled-keep").addEventListener("click", () => decideGarbledLines("kept"));
@@ -10512,7 +10327,7 @@ function boot() {
     renderReviewHeadline: (...args) => renderReviewHeadline(...args),
     setReviewBlockFilter: (mode) => { reviewBlockFilter = mode; return mode; },
     setReviewFilterExplicit: (value) => { reviewFilterExplicit = value; return value; },
-    // 模块喊外壳的动作（23 个）
+    // 模块喊外壳的动作（30 个，S4 起含第二引擎复核那一组）
     activateDiff: (...args) => activateDiff(...args),
     blockInsideMargin: (...args) => blockInsideMargin(...args),
     computeCharSpans: (...args) => computeCharSpans(...args),
@@ -10522,9 +10337,24 @@ function boot() {
     drawDiffLayer: (...args) => drawDiffLayer(...args),
     effectiveReviewFilter: (...args) => effectiveReviewFilter(...args),
     ensureBlockListed: (...args) => ensureBlockListed(...args),
+    // S4：第二引擎复核（警告框 → 等它跑完 → 回审校）
+    engineState: (...args) => engineState(...args),
+    enterReviewStep: (...args) => enterReviewStep(...args),
+    // aux-warning-* 五个节点在 #view-review 子树外（全屏遮罩）⇒ 只给句柄，模块里不出现 id
+    getAuxWarningEls: () => ({
+      mask: el("aux-warning-mask"),
+      title: el("aux-warning-title"),
+      text: el("aux-warning-text"),
+      wait: el("aux-warning-wait"),
+      error: el("aux-warning-error"),
+    }),
+    openTaskDrawer: (...args) => openTaskDrawer(...args),
+    startTaskPolling: (...args) => startTaskPolling(...args),
+    onAuxReviewFinished: (...args) => window.PagesView?.onAuxReviewFinished(...args),
     fetchPageSuggestions: (...args) => fetchPageSuggestions(...args),
     forgetPageBlocks: (...args) => forgetPageBlocks(...args),
     forgetPageSuggestions: (...args) => forgetPageSuggestions(...args),
+    loadFinishSummary: (...args) => loadFinishSummary(...args),
     loadPageDetail: (...args) => loadPageDetail(...args),
     pageNumberSplitHint: (...args) => pageNumberSplitHint(...args),
     pendingPageReasons: (...args) => pendingPageReasons(...args),

@@ -1291,6 +1291,207 @@ function inkGapBarVisible(count) {
     }
   }
 
+  // ---------------------------------------------------------------- S4：第二引擎复核
+  //
+  // `auxWarningWaitToken` 只被 waitForAuxThenReview 读写 ⇒ 随函数搬（不做注入）。
+  // `auxData` 是死状态（全仓只有两处写、零处读）⇒ 本刀删掉，模块里也不留。
+  // aux-warning-* 五个节点在 #view-review 子树外（index.html 的全屏遮罩，挪位置会改 z-index 栈）
+  // ⇒ 只能经 `getAuxWarningEls()` 注入；模块里不许出现那五个 id 字符串。
+
+  let auxWarningWaitToken = 0;
+
+  const auxWarningEls = () => injected.getAuxWarningEls() || {};
+
+  async function activeAuxJob() {
+    const project = injected.getCurrentProject();
+    if (!project) return null;
+    try {
+      const data = await injected.apiJson(`/api/projects/${project.project_id}/jobs`);
+      const active = data.active || null;
+      if (active && active.job_type === "auxiliary") return active;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function openAuxWarning() {
+    const engine = injected.engineState();
+    const done = Number(engine.checked || 0);
+    const total = Number(engine.total || 0);
+    const job = await activeAuxJob();
+    const running = Boolean(job);
+    const els = auxWarningEls();
+    els.title.textContent = running ? "还在跑" : "还没跑完";
+    els.text.textContent = running
+      ? `第二引擎复核还在跑（${done} / ${total} 页）。它跑完之前，审校队列的差异条数还会变，` +
+        "建议等它跑完再开始审。"
+      : `第二引擎复核还没跑完（${done} / ${total} 页）。现在开始审校，差异队列之后还会变` +
+        "（它只会标出两路对不上的行，不改字）。";
+    els.wait.disabled = false;
+    els.wait.textContent = running ? "等它跑完再进" : "跑第二引擎，跑完再进";
+    els.error.hidden = true;
+    els.mask.hidden = false;
+  }
+
+  /** 等第二引擎跑完（没在跑就先起一个），然后进审校。 */
+  async function waitForAuxThenReview() {
+    const project = injected.getCurrentProject();
+    const token = ++auxWarningWaitToken;
+    const els = auxWarningEls();
+    const button = els.wait;
+    const error = els.error;
+    error.hidden = true;
+    button.disabled = true;
+    button.textContent = "正在准备…";
+    let job = await activeAuxJob();
+    try {
+      if (!job) {
+        const data = await injected.apiJson(
+          `/api/projects/${project.project_id}/jobs/auxiliary`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scope: "unchecked", skip_checked: true }),
+          }
+        );
+        job = data.job;
+        injected.openTaskDrawer();
+        injected.startTaskPolling(job.job_id);
+      }
+    } catch (exc) {
+      error.textContent = `第二引擎没能开始：${exc.message || "未知错误"}`;
+      error.hidden = false;
+      button.disabled = false;
+      button.textContent = "重试";
+      return;
+    }
+    button.textContent = "等待第二引擎…";
+    // 自己轮询这个任务（不依赖抽屉），跑完再进审校
+    for (let i = 0; i < 720; i += 1) {
+      if (token !== auxWarningWaitToken) return;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      let data;
+      try {
+        data = await injected.apiJson(
+          `/api/projects/${project.project_id}/jobs/${job.job_id}`
+        );
+      } catch {
+        continue;
+      }
+      const j = data.job || {};
+      button.textContent = `等待第二引擎… ${j.done || 0}/${j.total || 0}`;
+      if (["succeeded", "failed", "cancelled", "interrupted"].includes(j.status)) {
+        if (j.status !== "succeeded" && j.failed) {
+          error.textContent =
+            `第二引擎结束了（${j.done} 页成功、${j.failed} 页失败）。` +
+            "可以先开始审校，失败的页之后在「文字识别」里重试。";
+          error.hidden = false;
+        }
+        break;
+      }
+    }
+    if (token !== auxWarningWaitToken) return;
+    await injected.loadFinishSummary({ silent: true });
+    injected.onAuxReviewFinished();
+    els.mask.hidden = true;
+    injected.enterReviewStep();
+  }
+
+  async function runAuxiliary() {
+    const project = injected.getCurrentProject();
+    const pageNo = injected.getDetailPageNo();
+    if (!project || pageNo === null) return;
+    const errorNode = part("page-detail-error");
+    if (errorNode) errorNode.hidden = true;
+    injected.setSaveState("第二引擎复核中…");
+    try {
+      const data = await injected.apiJson(
+        `/api/projects/${project.project_id}/pages/${pageNo}/auxiliary`,
+        { method: "POST" }
+      );
+      injected.setSaveState("复核完成");
+      renderAuxiliary(data);
+      await injected.loadPageDetail(pageNo);
+    } catch (error) {
+      if (error.code === "secondary_engine_unavailable") {
+        showEditorError(error);
+        injected.setSaveState("第二引擎不可用", true);
+        return;
+      }
+      showEditorError(error);
+      injected.setSaveState("复核失败", true);
+    }
+  }
+
+  function renderAuxiliary(data) {
+    const panel = part("aux-panel");
+    if (panel) panel.hidden = false;
+    part("aux-summary").textContent =
+      `${data.engine_id} ${data.engine_version} · ${data.line_count} 行 · ` +
+      `一致 ${data.identical} / 仅格式 ${data.format_only_differs} / 有分歧 ${data.differs} · ` +
+      `${data.elapsed_seconds} 秒`;
+    part("aux-hint").textContent =
+      "第二引擎按第一引擎切出的行图逐行复核。实测它比第一引擎弱" +
+      "（中文正文 CER 2.16% vs 1.08%），候选只作参考——" +
+      "块里已按等级逐行标出（汉字级 / 标点级），点「换成这一路」把那一行换过去（可撤销）。";
+
+    const list = part("aux-lines");
+    list.innerHTML = "";
+    const differing = (data.differences || []).filter((item) => item.diff_status === "differs");
+    if (!differing.length) {
+      const empty = document.createElement("li");
+      empty.className = "muted";
+      empty.textContent =
+        data.differences && data.differences.length
+          ? "没有实质分歧（只有格式差异）。"
+          : "这一页两路完全一致。";
+      list.append(empty);
+      return;
+    }
+    for (const item of differing) {
+      const li = document.createElement("li");
+      const pair = document.createElement("div");
+      pair.className = "aux-pair";
+      const a = document.createElement("div");
+      a.className = "aux-a";
+      a.textContent = `第一引擎：${item.text || "（空）"}`;
+      const b = document.createElement("div");
+      b.className = "aux-b";
+      b.textContent = `第二引擎：${item.aux_text || "（没读出来）"}`;
+      pair.append(a, b);
+
+      const actions = document.createElement("div");
+      actions.className = "aux-actions";
+      const adopt = document.createElement("button");
+      adopt.type = "button";
+      adopt.className = "btn btn--ghost";
+      adopt.textContent = "采用这一路";
+      adopt.title = "把这一行换成第二引擎的文本（一次普通编辑，可撤销）";
+      const block = (data.blocks || []).find((item2) => item2.block_id === item.block_id);
+      adopt.addEventListener("click", () => adoptLine(block, item.line_index, item.aux_text));
+      actions.append(adopt);
+
+      li.append(pair, actions);
+      list.append(li);
+    }
+  }
+
+  /** aux 面板与警告框的接线（面板内用 part，遮罩用注入的节点）。 */
+  function setupAuxControls() {
+    const run = part("aux-run");
+    if (run) run.addEventListener("click", runAuxiliary);
+    const close = part("aux-close");
+    if (close) {
+      close.addEventListener("click", () => {
+        const panel = part("aux-panel");
+        if (panel) panel.hidden = true;
+      });
+    }
+    const els = auxWarningEls();
+    if (els.wait) els.wait.addEventListener("click", waitForAuxThenReview);
+  }
+
   let wired = false;
 
   function init(deps) {
@@ -1301,6 +1502,7 @@ function inkGapBarVisible(count) {
     if (wired) return api;
     wired = true;
     setupBoxCreate();
+    setupAuxControls();
     const bind = (id, handler) => {
       const node = part(id);
       if (node) node.addEventListener("click", handler);
@@ -1324,10 +1526,13 @@ function inkGapBarVisible(count) {
     // S3：面板自己的两个渲染入口（外壳在 renderPageDetail 里画完核心抽屉后喊它们）
     renderSuggestionTools,
     renderLayoutPanel,
+    // S4：goToWorkflowStep 的 review 入口（第二引擎没跑完时先开警告框）
+    openAuxWarning,
     // 下面这批是"外壳仍有真调用点"的成员（§1 ⑦：每导出一个成员就要能指出谁在哪调它）。
     // 书 §3 的 T 清单是预测；不导出就得在外壳复制实现，所以这里只留 app.js 真喊得到的名字。
     // 移出导出面的（只剩模块内部调用）：showError · openBoxCreate · cancelBoxCreate ·
-    // setupBoxCreate · suggestionHighList（S3 之后 app.js 那两处调用都随函数进了模块）。
+    // setupBoxCreate · suggestionHighList（S3 之后 app.js 那两处调用都随函数进了模块）·
+    // adoptLine（S4：「采用这一路」按钮随 renderAuxiliary 进来，唯一调用点成了模块自己）。
     applyDetailSuggestions,
     refreshDetailSuggestions,
     blockNeedsReview,
@@ -1337,7 +1542,6 @@ function inkGapBarVisible(count) {
     truncate,
     selectReviewBlock,
     flushPendingSave,
-    adoptLine,
     patchBlock,
     reviewAction,
   };
