@@ -236,6 +236,12 @@ renderReviewTree：分组交给纯函数，自己只渲染
 修法一行：`group && group.id !== null && group.title && …`（Builder 修，TestDev 补一条「修前必红」，QA 修后复验三件）。
 验收只要求：未归章组出现、页可点、可达页集合与头部总数对得上；**不要求**进页时自动展开未归章。
 
+**T0 结案（2026-11-02）**：修法**两处**——`:9994 renderReviewTree` 与 `:10202 syncReviewTreeToPage`
+都改成 `group.id !== null`；只改一处会 **6 绿 1 红**（TestDev 三树对照 `d4c45c9`，红的是「点回目行后展开集合被复原成 [null]」）。
+测试 212 / 210 pass / 0 fail / 2 skipped；QA 真机三项 + 未归章第 20 页跳转全过；
+证据 `tests/e2e/artifacts/2026-11-02-review-tree-fix/`（README + result.json + 2 张 JPEG）。
+唯一遗留：当前页在有章节的组里时该组收不起来 ⇒ 记 `known-limitations.md` L-33（T0 前既有，另刀修）。
+
 ## 9. 顺序与基线（Chief 点名的三样）
 
 ```
