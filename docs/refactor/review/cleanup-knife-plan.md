@@ -24,7 +24,7 @@
 | `queueHasPendingItems` | `loadPageDetail` 里「有队列就等处理完再补算建议」 | 删分支 ⇒ **总是立即 `runPageAux`**（行为变化：不再延后建议，符合删队列后的语义） |
 | `pendingPageAux` 状态 | 延后补算的页号 | 随删 |
 | `openTreeItem` | 跳页后打开队列并定位到该条 | 改成只 `openPageDetail(pageNo)`；定位靠块内差异条 / 树高亮 |
-| 键盘 `Enter/Space/⌫/←`（队列）· `[` `]`（`stepReviewDiff`） | 队列推进 / 跨块跳差异 | 一并删；替代 = 点块内差异条、点树条目 |
+| 键盘 `Enter`/`Space`（采纳）· `⌫`（保留）· `←`（回上一处）· `[` `]`（`stepReviewDiff` 跨块跳差异） | 队列推进 / 跨块跳差异 | 一并删；**逐个说替代/损失**：reading 有 `Enter`=保留、`Space`=采用候选（`reading-view.js:503–516`），但没有 `⌫`/`←`/`[` `]` ⇒ 后四个键是**净损失**，记 known-limitations |
 | `body.queue-mode` | 队列展开时隐藏块内差异条 | 只由 `setQueueOpen` 加 ⇒ 随删 |
 
 **用户操作路径（删前 → 删后）**：
@@ -143,22 +143,27 @@ diff-queue 块        637–655（19 行；含 position/meta/text/dots/note + qu
    / candidate-panel / candidate-meta / candidate-apply / candidate-decline / candidate-close
    / candidate-current / candidate-new / candidate-open / candidateRunId / applyQueueAckLocally
    ↑ 每一条都必须是 0；喂坏样本（塞回一句 el("diff-queue")）必须红
+   **`queue-mode` 单独再断言一次：app.js / index.html / app.css 各 0 次**（它只由 setQueueOpen 现加现删，
+   只删 CSS 不够；test-contract 那笔同时删 :947 的断言）
 ③ 保留项仍在：.alert--warn / .info-dot / .workspace-toolbar / .review-split / .diff-strip / .review-footer-count
 ④ 四闸 + audit：node / pytest / accept [0] / registry / audit 会假红 0
 ⑤ 真机（QA 同一套走查）：页头不再有「差异 N」按钮；块内差异条仍可采纳/保留；⋯ 菜单不再有「对比新结果」；
-   「重新识别」仍在；左树点击仍跳页
+   「重新识别」仍在；左树点击仍跳页；**reading 的键盘裁决仍可用**（Enter=保留 / Space=采用候选，
+   见 reading-view.js:503–516）——否则就是净损失能力，不是删重复
 ```
 
 ## 6. 顺序（三笔，每笔各自绿）
 
 ```
-1) test-contract：删会红的断言——
-   · test_review_diff_queue_is_wired_for_local_adoption 整个测试（911–948）
+1) test-contract（A1，单独一笔，正文写「删的是已退役能力的断言，不是为了让闸变绿」）：
+   · **先挪** `assert "function renderReviewHeadline(" in script`（:935）到 `test_review_workspace_v2_is_wired`
+     —— renderReviewHeadline 留在核心抽屉，本刀不删；整段删测试会把它一起带走
+   · 再删 test_review_diff_queue_is_wired_for_local_adoption 的其余（911–948，含 :947 的 queue-mode 断言）
    · test_workflow_step_shell_is_wired 里 "review-toolbar"（:1051）
    · test_review_workspace_v2_is_wired 里 "review-split"（:1570）
    · test_review_workspace_v2_is_wired 里 loadPageDetail 的 queueHasPendingItems/pendingPageAux/renderDiffQueue 三条（:1553–1562）
-2) 产品笔：HTML 块 + JS 25 函数/状态/调用点 + CSS（§2–§4 一次落）
-3) 开闸笔：deadReviewIdProblems + 变异；R3 review 脚本进仓库（scripts/r3_review_count.mjs）
+2) 产品笔（A2）：HTML 块 + JS 25 函数/状态/调用点 + CSS（§2–§4 一次落）
+3) 开闸笔（A3）：deadReviewIdProblems + queue-mode 归零 + 变异；R3 review 脚本进仓库（scripts/r3_review_count.mjs）
 ```
 
 ## 7. 行数预算
@@ -176,6 +181,8 @@ R3 review   90/223 → 68/194
 · 不修队列的显示 bug（删了，不修）
 · 不动 reading 的差异队列（它才是跨页连续流的那一份）
 · 不删后端 /diff-ack（后端路由有 pytest 覆盖；本刀只删前端调用点，后端另账。块内 adoptLine 走的是 patchBlock 文本编辑，不经它）
+· **记 known-limitations**：review 页内差异队列的 `⌫`（保留）/`←`（回上一处）/`[` `]`（跨块跳差异）四个键随删消失；
+  Enter/Space 在 reading 仍在（Enter=保留、Space=采用候选），但语义与 review 队列不同
 · 不动 pages 的 has_candidate chip（记 known-limitations，另开）
 · 不修章节检测（T0 账）
 · 不为「以后可能有用」保留候选面板（0 页数据 + 旧副本，旧判决已推翻）
