@@ -282,8 +282,18 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
            · 实测对集（我复算，非抄）：**names 36 == kinds 36**，两向无孤儿（36 键全有 kind、无 kind 不在 names）
            · 全表 `death:` **0 个**（不是空数组）· `init` 的 callers 缺省、34 个 C 的 callers 全非空
            · deps **186** · app.js 13,054 → **12,866**（−188）· pages-view 3,723 → **3,907**（+184）
-刀 11 （−0 +0）  36 = T 0 + C 34 + L 2   ← **导出面判据已达成**（§七 新①）；刀 11 不再是"补一个到达终态的键"，
-          而是**只涨不消的两笔**（deps 死键 13 个 / 顶层 0 引用函数）+ 开闸（清到 0 再开「多键=红」）
+刀 11 （−0 +0）  36 = T 0 + C 34 + L 2   ← 已落盘（`20049f9`，5 笔）。清理刀 + 开闸：
+           · deps 186 → **173**（13 条"模块 0 读"的死注入）
+           · 顶层 0 引用函数删 **10 个**：原名单 9 个 + `charAdvance`（`textAdvance` 删掉后它成了新叶子，
+             被本刀新开的「0 引用顶层函数 = 红」闸在实树上抓到 ⇒ 级联补删）
+           · 三处孤儿注释（"重置为「本页自动」""第二引擎复核全书"等，实现都在模块里）
+           · 行数 app.js 12,866 → **12,755**（−111），pages-view **3,907** 不变
+           · 开闸三条：deps 多键 = 红 · 0 引用顶层函数 = 红 · 反向闸（导出 `refresh` 或 C 键带
+             `scope:`/`kind:`/`op:` 字段 = 红，替代已作废的 `PAGES_REFRESH_SCOPES`）
+           · 实际提交形态是 **两笔 test-contract + 一笔产品清理 + 一笔级联**，比计划多一笔：
+             `divergenceCandidatesOn` 下面那条 `dual_engine_strategy` 断言锁的源码也只存在于该函数体内
+
+> 记录更正：`92ddc4e`（刀 10.1）提交说明里写「② 推导值 37」，实际是 **36 = C33 + 3**。不改历史，在此更正。
 ```
 
 > **`onWorkflowLoaded` 扩参的落法（9.5 实测）**：调用**留在 try/catch 之外**（今天的 5382 那一处 +
@@ -591,6 +601,13 @@ refreshMarginTiles ×2 · refreshLayoutDetectEntry ×1 · renderStepPanels ×1
 **它和刀 9 那 8 个"死 T"是两件事**：那 8 个是**导出键**（占 R8 的账，删了曲线才动）；
 这些是 app.js 的**内部函数**（不占 R8、不占 R3，删了不会让任何闸变绿，也不会让任何数字动）。
 所以**不并在刀 9 里做**，但也别忘——留到最后会让"app.js 还有什么用"没法回答。
+
+**已于刀 11（`20049f9`）全部删除**：实际删了 **10 个**——原名单 9 个之外还有 `charAdvance`
+（`textAdvance` 删掉后它成了新叶子，被「0 引用顶层函数 = 红」闸在实树上抓出来，不是人眼找的）。
+测试侧同批改两处：`divergenceCandidatesOn` 的存在性断言，以及它下面那条锁
+`dual_engine_strategy === "candidates"` 源码的断言（改成查模块里的读点
+`recognitionSetting("dual_engine_strategy")`，语义不变）。
+
 
 **复测（`b61634d`，app.js 12,866 行；三栏口径同上）**：顶层 `function` 声明去重 **381** 个，
 **production 代码 0 引用 8 个 + 1 个只被测试源码断言撑着 = 9 条，一条没少**（只是行号全移了）：
