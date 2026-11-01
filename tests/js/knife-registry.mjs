@@ -34,7 +34,8 @@ export const KNIVES = [
   // 触发集互不相干，各自一笔各自绿；子刀沿用 9.1–9.6 的小数编号。
   { n: 10.1, status: "landed", scope: "10a：块框队列与可见性调度搬进模块——3 键死（updatePageVisibility / pumpOverlayRender / queueOverlayRender），新能力 onPagesNeedReflow（R8 38 → 36，deps 206 → 198）" },
   { n: 10.2, status: "landed", scope: "10b（最后一刀）：建议扫描队列搬进模块——scanVisiblePageSuggestions 死 + pumpPageSuggestionQueue / ensurePageSuggestion / scheduleSuggestionScan 与七份队列状态搬入，新能力 onPagesShown（R8 36 → 36，deps 198 → 186，T 归零）" },
-  { n: 11, status: "pending", scope: "收口：R8 19 不变（冻结清册 + 落地 §八 四条机检）——终态 16 C + 3 L（init / enter / refresh）" },
+  // 刀 11 = 清理 + 收口（Architect 2026-11-01 裁定：`L==3` 作废、不建 refresh；终态 = T0 / L⊇{init,enter} / C34）
+  { n: 11, status: "landed", scope: "清理刀：13 条死 dep + 10 个 0 引用顶层函数（含级联的 charAdvance）+ 3 处孤儿注释；开闸三条（deps 多键 / 0 引用函数 / 不建 refresh 导出）各带变异自检（deps 186 → 173，R8 36）" },
 ];
 
 /** 刀号是否已登记（`刀5b` 这种带字母的本来就解析不出来，到不了这一步）。 */

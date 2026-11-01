@@ -5234,3 +5234,166 @@ test("R13 自检：跨函数作用域的键 / 必读没传 / 解析失败 / 没�
 // 一个与本规则无关的既有发现（没在本测试里管，R4 只查**跨文件**同名）：
 // 历史：app.js 曾有两份同名真实现 `adoptBlockSuggestion` 与 `adoptAllHighSuggestions`
 // （后声明的覆盖前者），2026-10-28 已删除前置那份；`rerenderReadingLine` 的一对仍在冻结期。
+
+// ---------------------------------------------------------------- 刀 11 开闸：页面视图收口三条机检
+//
+// 三条都站在"清完之后应该恒绿"的位置上，每条都带**喂坏样本必须红**的自检
+// （判据自己能被证伪；只绿不红的判据等于空转）。
+//
+// ① deps 多键：PagesView 的 deps 里出现「模块 injected 读 0」的键 → 红。
+//    **剥注释口径**：注释里提到 dep 名不算"模块读过"（否则一句说明就能把闸打绿/打红）。
+// ② 0 引用顶层函数：app.js 顶层 function 在 app.js（剥注释）/ 各 *-view.js / tests 里全 0 引用 → 红。
+// ③ 反向闸：导出名出现 `refresh`，或任一 C 键定义里出现 `scope:` / `op:` 字段 → 红。
+//    （`refresh` 不建：它是"配置项化入口"，且在本项目已有写死的窄语义；C 键各绑单一动作，
+//      一旦长出 scope/op 就等于把"调哪个函数"塞进载荷。）
+
+/**
+ * 只去注释、**保住字符串**的剥离器（本段专用）。
+ *
+ * 为什么不用本文件里的 `stripCommentsOnly`：它为了识别正则字面量做得更激进，
+ * 在 pages-view.js 上会把大段代码一起抹掉 —— 本段要判"`injected.x` 到底还读不读"，
+ * 抹掉代码就会把活的 dep 误判成死注入。这里只认 `'` / `"` / `` ` `` 三种字符串，
+ * 注释换成空格、保留换行（行号不乱）。
+ */
+function stripCommentsForGates(source) {
+  const out = String(source || "").split("");
+  const n = out.length;
+  let i = 0;
+  let quote = null;
+  while (i < n) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === "\\") { i += 2; continue; }
+      if (ch === quote) quote = null;
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { quote = ch; i += 1; continue; }
+    if (ch === "/" && source[i + 1] === "/") {
+      let j = i;
+      while (j < n && source[j] !== "\n") { out[j] = " "; j += 1; }
+      i = j;
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "*") {
+      let j = i + 2;
+      while (j < n && !(source[j] === "*" && source[j + 1] === "/")) j += 1;
+      const stop = Math.min(j + 2, n);
+      for (let k = i; k < stop; k += 1) if (out[k] !== "\n") out[k] = " ";
+      i = stop;
+      continue;
+    }
+    i += 1;
+  }
+  return out.join("");
+}
+
+/** 取出 `window.PagesView?.init({ … })` 这一段 deps 块的键名（按 `    name:` 行首缩进识别）。 */
+function pagesDepsKeys(appSource) {
+  const start = appSource.indexOf("window.PagesView?.init({");
+  if (start < 0) return [];
+  const end = appSource.indexOf("window.IndexView?.init({", start);
+  const block = appSource.slice(start, end < 0 ? appSource.length : end);
+  const keys = [];
+  for (const line of block.split("\n")) {
+    const m = /^ {4}([A-Za-z_][A-Za-z0-9_]*):/.exec(line);
+    if (m) keys.push(m[1]);
+  }
+  return keys;
+}
+
+/** ① 的判据：deps 里"模块 0 读"的键（剥注释后按 `injected.<键>` 全文匹配）。 */
+export function deadPagesDepProblems({ appSource, moduleSource }) {
+  const stripped = stripCommentsForGates(moduleSource || "");
+  const dead = pagesDepsKeys(appSource).filter(
+    (key) => !new RegExp(`injected\\.${key}\\b`).test(stripped),
+  );
+  return dead.map((key) => `pages-view 的 deps 里 \`${key}\` 模块 0 读——死注入，删掉（模块要读的键才注入）`);
+}
+
+/** ② 的判据：app.js 顶层 function 在 app / 各视图模块 / tests 里全 0 引用（除定义行本身）。 */
+export function zeroRefFunctionProblems({ appSource, moduleSources = [], testsSource = "" }) {
+  const stripped = stripCommentsForGates(appSource || "");
+  const names = [...stripped.matchAll(/^(?:async )?function ([A-Za-z_][A-Za-z0-9_]*)\s*\(/gm)].map((m) => m[1]);
+  const count = (text, name) => {
+    const re = new RegExp(`\\b${name}\\b`, "g");
+    return (String(text || "").match(re) || []).length;
+  };
+  const moduleText = moduleSources.join("\n");
+  const problems = [];
+  for (const name of names) {
+    const inApp = count(stripped, name);
+    const inViews = count(moduleText, name);
+    const inTests = count(testsSource, name);
+    if (inApp <= 1 && inViews === 0 && inTests === 0) {
+      problems.push(`app.js 顶层函数 \`${name}\` 0 引用（app 只剩定义行、模块与 tests 都没有）——死代码，删掉或接上调用`);
+    }
+  }
+  return problems;
+}
+
+/** ③ 的判据：导出名不许有 `refresh`；C 键定义里不许出现 scope:/op:（"调哪个函数"的载荷）。 */
+export function terminalExportProblems({ names = [], kindsText = "" }) {
+  const problems = [];
+  if (names.includes("refresh")) {
+    problems.push("导出名出现 `refresh`——刀 11 裁定不建它（配置项化入口 + 同词两义），改名或删掉");
+  }
+  const block = stripCommentsForGates(kindsText || "");
+  for (const m of block.matchAll(/([A-Za-z_][A-Za-z0-9_]*):\s*\{\s*kind:\s*"C"([^}]*)\}/g)) {
+    const [, name, rest] = m;
+    if (/\bscope\s*:/.test(rest)) problems.push(`C 键 \`${name}\` 里出现 scope: 字段——"调哪个函数"不许塞进载荷`);
+    if (/\bop\s*:/.test(rest)) problems.push(`C 键 \`${name}\` 里出现 op: 字段——同上`);
+  }
+  return problems;
+}
+
+test("刀 11 闸①：PagesView deps 里没有「模块 0 读」的死注入键（剥注释口径）", () => {
+  const appSource = readFileSync(APP_FILE, "utf8");
+  // 注意：VIEW_FILE 默认是 reading-view.js（R1 用），这里的闸查的是 **pages-view.js**
+  const moduleSource = readFileSync(join(STATIC_DIR, "pages-view.js"), "utf8");
+  assert.deepEqual(deadPagesDepProblems({ appSource, moduleSource }), []);
+  // 自检：真 `injected.x` 算读过（绿）；只在注释里提到**不算**（红）——这正是剥注释口径的要点
+  const fakeApp = "  window.PagesView?.init({\n    onlyInComment: onlyInComment,\n    reallyRead: reallyRead,\n  });\n  window.IndexView?.init({});\n";
+  const realRead = "// onlyInComment 只在注释里出现\nconst v = injected.reallyRead();\n";
+  assert.deepEqual(deadPagesDepProblems({ appSource: fakeApp, moduleSource: realRead }), [
+    "pages-view 的 deps 里 `onlyInComment` 模块 0 读——死注入，删掉（模块要读的键才注入）",
+  ], "只在注释里提到的 dep 必须判红（剥注释口径）");
+  const bothRead = "// 说明\nconst a = injected.onlyInComment();\nconst b = injected.reallyRead();\n";
+  assert.deepEqual(deadPagesDepProblems({ appSource: fakeApp, moduleSource: bothRead }), [], "真读过的两个键必须绿");
+});
+
+test("刀 11 闸②：app.js 顶层函数没有 0 引用的死代码", () => {
+  const appSource = readFileSync(APP_FILE, "utf8");
+  const moduleSources = readdirSync(STATIC_DIR)
+    .filter((name) => /-view\.js$/.test(name))
+    .map((name) => readFileSync(join(STATIC_DIR, name), "utf8"));
+  // 测试源要覆盖**全部**测试（js + py）：只看 boundary 自己会把"只被其它测试引用"的函数误判成死代码
+  const testsDir = fileURLToPath(new URL("..", import.meta.url));
+  const collectTests = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === "__pycache__" ? [] : collectTests(full);
+    return /\.(mjs|py)$/.test(entry.name) ? [readFileSync(full, "utf8")] : [];
+  });
+  const testsSource = collectTests(testsDir).join("\n");
+  assert.deepEqual(zeroRefFunctionProblems({ appSource, moduleSources, testsSource }), []);
+  // 自检：只定义不引用 → 红；被同文件调用 → 绿；只被 tests 引用 → 绿（不算全 0）
+  // 夹具里必须留一个"从测试进来的根"，否则连根一起判死，验不出"叶子 vs 被引用"的区别
+  const fake = "function orphanFn() {\n  return 1;\n}\nfunction calledFn() {\n  return 2;\n}\nfunction rootFn() {\n  return calledFn();\n}\nfunction testedFn() {\n  return 3;\n}\n";
+  const problems = zeroRefFunctionProblems({ appSource: fake, moduleSources: ["x"], testsSource: "testedFn rootFn" });
+  assert.equal(problems.length, 1, `只该报 orphanFn 一条——实际：${problems.join("；")}`);
+  assert.ok(problems[0].includes("orphanFn"), problems[0]);
+  assert.deepEqual(zeroRefFunctionProblems({ appSource: "function loopy() {\n  loopy();\n}\n" }), [], "自递归算有引用");
+});
+
+test("刀 11 闸③：不建 refresh 导出、C 键里没有 scope:/op: 载荷", () => {
+  assert.deepEqual(terminalExportProblems({ names: VIEW_EXPORTS["pages-view.js"].names, kindsText: "" }), []);
+  // 自检：三组坏样本各自红
+  assert.equal(terminalExportProblems({ names: ["init", "refresh"], kindsText: "" }).length, 1, "refresh 导出必须红");
+  assert.equal(terminalExportProblems({ names: ["init"], kindsText: 'a: { kind: "C", callers: ["x"], scope: 3 },' }).length, 1, "C 键里 scope: 必须红");
+  assert.equal(terminalExportProblems({ names: ["init"], kindsText: 'a: { kind: "C", callers: ["x"], op: "paint" },' }).length, 1, "C 键里 op: 必须红");
+  assert.deepEqual(
+    terminalExportProblems({ names: ["init", "enter"], kindsText: 'a: { kind: "C", callers: ["x"], reason: "r" },' }),
+    [],
+    "合规的 C 键必须绿",
+  );
+});
