@@ -3,6 +3,74 @@
 // 只做三件事：去注释与字符串（正则字面量要单独认，否则 `/["']/` 会吞掉后半个文件）、
 // 取函数体（花括号配对）、数某个标识符在文本里出现几次。
 
+/**
+ * **三个剥离器，各自适用什么**（别再加第四把尺子）：
+ *
+ * - `stripCommentsAndStrings`：注释 + 字符串 + 正则**全抹掉**。用于"按标识符判依赖/引用"的判据
+ *   （R1/R9 那类：只关心代码里的标识符，字符串里的同一串文字不算引用）。
+ * - `stripPreservingTemplateExpressions`：同上，但**保留模板字符串 `${…}` 里的表达式**。
+ *   用于"模板里拼的调用点也要看得见"的判据（R11 边棘轮的 `showView(\`…\`)`）。
+ * - `codeOnly`（本函数）：**只剥注释**，字符串原样保留、正则字面量按语法跳过并抹成空格。
+ *   用于"某个 id / 某个注入键在代码里到底出不出现"的判据（R3 的 id 归属、域模块闸的 `el(`、
+ *   注入键是否被读）。这类判据两个方向都会被注释骗：注释里写一句禁用 id ⇒ 假红；
+ *   注释里写一句 `injected.deadKey` ⇒ **假绿**（一个真死注入被一句注释混过闸）。
+ *
+ * 为什么不能只做"字符串状态机"（2026-11-02 修的真 bug）：遇到正则字面量里的引号
+ * （`/[&<>"']/g`）会错进字符串状态，后面的整行注释就不再被剥——于是上面两个方向同时出错。
+ * 正则必须先按语法认出来（前一个有效字符是 `([{=,:;!&|?+-*%~^<>` 之类才算字面量），
+ * 再连字符类 `[…]` 一起跳到收尾的 `/`。
+ */
+export function codeOnly(source) {
+  const text = String(source || "");
+  const out = text.split("");
+  const n = text.length;
+  let i = 0;
+  const blank = (from, to) => {
+    for (let k = from; k < to; k += 1) if (out[k] !== "\n") out[k] = " ";
+  };
+  const REGEX_PRECEDERS = "([{=,:;!&|?+-*%~^<>";
+  const looksLikeRegex = (at) => {
+    let k = at - 1;
+    while (k >= 0 && /\s/.test(text[k])) k -= 1;
+    if (k < 0) return true;
+    return REGEX_PRECEDERS.includes(text[k]);
+  };
+  while (i < n) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === "/" && next === "/") {
+      const end = text.indexOf("\n", i);
+      const stop = end === -1 ? n : end;
+      blank(i, stop); i = stop;
+    } else if (ch === "/" && next === "*") {
+      const end = text.indexOf("*/", i + 2);
+      const stop = end === -1 ? n : end + 2;
+      blank(i, stop); i = stop;
+    } else if (ch === "/" && looksLikeRegex(i)) {
+      let k = i + 1; let inClass = false;
+      while (k < n) {
+        const cur = text[k];
+        if (cur === "\\") { k += 2; continue; }
+        if (cur === "[") inClass = true;
+        else if (cur === "]") inClass = false;
+        else if (cur === "/" && !inClass) { k += 1; break; }
+        else if (cur === "\n") break;
+        k += 1;
+      }
+      blank(i, k); i = k;
+    } else if (ch === "'" || ch === '"' || ch === "`") {
+      const quote = ch; let k = i + 1;
+      while (k < n) {
+        if (text[k] === "\\") { k += 2; continue; }
+        if (text[k] === quote) { k += 1; break; }
+        k += 1;
+      }
+      i = k;   // 字符串保留
+    } else i += 1;
+  }
+  return out.join("");
+}
+
 /** 把注释、字符串、正则字面量抹成空格；保持长度与换行，行号列号仍然准。 */
 export function stripCommentsAndStrings(source) {
   const out = source.split("");

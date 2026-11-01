@@ -71,7 +71,7 @@ import {
   MOVE_EXEMPTION_BLOCKS, MOVE_EXEMPTION_BLOCKS_RETIRED,
 } from "./feature-contract.mjs";
 // R9 专用：保留模板 `${…}` 插值的去注释版本（本文件另有一份旧的去注释实现，只抹代码不抹模板）
-import { stripPreservingTemplateExpressions } from "./static-scan.mjs";
+import { codeOnly, stripPreservingTemplateExpressions } from "./static-scan.mjs";
 
 // B2T_STATIC_DIR：把整个 static 目录指到别处（迁移复跑 / 变异验证用），默认仓库里的
 const STATIC_DIR = process.env.B2T_STATIC_DIR
@@ -204,59 +204,6 @@ function columnOf(source, index) {
   return index - lineStart + 1;
 }
 
-/**
- * 只去注释与正则字面量，**保留字符串**——提取 `el("id")` / `querySelector("#id")` 要用到字符串。
- * 正则字面量同样要识别，否则 `/["']/` 会把后面的字符串当成未闭合字符串吞掉。
- */
-function stripCommentsOnly(source) {
-  const out = source.split("");
-  const n = source.length;
-  let i = 0;
-  const blank = (from, to) => {
-    for (let k = from; k < to; k += 1) if (out[k] !== "\n") out[k] = " ";
-  };
-  const REGEX_PRECEDERS = "([{=,:;!&|?+-*%~^<>";
-  const looksLikeRegex = (at) => {
-    let k = at - 1;
-    while (k >= 0 && /\s/.test(source[k])) k -= 1;
-    if (k < 0) return true;
-    return REGEX_PRECEDERS.includes(source[k]);
-  };
-  while (i < n) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (ch === "/" && next === "/") {
-      const end = source.indexOf("\n", i);
-      const stop = end === -1 ? n : end;
-      blank(i, stop); i = stop;
-    } else if (ch === "/" && next === "*") {
-      const end = source.indexOf("*/", i + 2);
-      const stop = end === -1 ? n : end + 2;
-      blank(i, stop); i = stop;
-    } else if (ch === "/" && looksLikeRegex(i)) {
-      let k = i + 1; let inClass = false;
-      while (k < n) {
-        const cur = source[k];
-        if (cur === "\\") { k += 2; continue; }
-        if (cur === "[") inClass = true;
-        else if (cur === "]") inClass = false;
-        else if (cur === "/" && !inClass) { k += 1; break; }
-        else if (cur === "\n") break;
-        k += 1;
-      }
-      blank(i, k); i = k;
-    } else if (ch === "'" || ch === '"' || ch === "`") {
-      const quote = ch; let k = i + 1;
-      while (k < n) {
-        if (source[k] === "\\") { k += 2; continue; }
-        if (source[k] === quote) { k += 1; break; }
-        k += 1;
-      }
-      i = k;   // 字符串保留
-    } else i += 1;
-  }
-  return out.join("");
-}
 
 /** app.js 顶层声明名 → 首次声明行。`^function` / `^async function` / `^(let|const|var)`，逗号拆多声明。 */
 function topLevelDeclarations(source) {
@@ -530,8 +477,8 @@ test("R4-dup（真实现份数=1）：同名函数只许一份真实现，其余
   // 这条是纯静态接线检查，抓的是"搬完之后 setter 链路断了"这类回归。
   // 注意：viewCode 是**去字符串**后的文本，`el("reading-filter")` 的字符串已被抹空。
   // 断言里要匹配字符串字面量，必须用只去注释的版本。
-  const viewText = stripCommentsOnly(readFileSync(VIEW_FILE, "utf8"));
-  const appText = stripCommentsOnly(readFileSync(APP_FILE, "utf8"));
+  const viewText = codeOnly(readFileSync(VIEW_FILE, "utf8"));
+  const appText = codeOnly(readFileSync(APP_FILE, "utf8"));
   assert.ok(
     /el\("reading-filter"\)\.addEventListener\("change"/.test(viewText),
     "reading-view.js 里找不到 reading-filter 的 change 监听",
@@ -1762,7 +1709,7 @@ function r3Problems({
   for (const { fileName, source } of viewSources) {
     const viewName = fileName.replace(/-view\.js$/, "");
     const expected = sections.get(viewName) || new Set();
-    for (const [id, occurrences] of domIdsIn(stripCommentsOnly(source))) {
+    for (const [id, occurrences] of domIdsIn(codeOnly(source))) {
       if (!expected.has(id)) {
         for (const line of occurrences) problems.push(`${fileName}:${line} 引用了不属于 view-${viewName} 的 id ${id}`);
       }
@@ -1778,14 +1725,14 @@ function r3Problems({
     const ids = sections.get(viewName);
     if (ids) shippedViews.set(viewName, ids);
   }
-  const appAllIds = domIdsIn(stripCommentsOnly(appSource));
+  const appAllIds = domIdsIn(codeOnly(appSource));
   // reading 有"审校块内合法"的搬运期例外，其余视图零容忍
   const readingOnly = new Set(["reading"]);
 
   // app.js：**审校块外**不许引用 reading 子树的 id（块内是搬运期合法状态，不占豁免名额）
   const exempt = new Map(exemptions.map((item) => [item.id, item]));
   const readingIds = sections.get("reading");
-  const appIds = domIdsIn(stripCommentsOnly(appSource));
+  const appIds = domIdsIn(codeOnly(appSource));
   // L12：审校块已经 0 行（函数全搬走），`阅读审校（L 刀` 标记随之删除。
   // 所以"找不到块"是**结构达成后的正常状态**，不是红：此时 app.js 里任何对 reading 子树的引用
   // 都属于"块外"，按豁免表判。若将来有人又把审校代码写回 app.js，那些引用同样会被判越界。
@@ -2442,7 +2389,7 @@ test(`已删除的那套不许有残留：去注释后的源码里不许再出�
   const hits = [];
   for (const file of files) {
     // **只去注释、保留字符串**：`readFileSync(join(dir, <那个文件名>))` 这种才是真读它的形态
-    const code = stripCommentsOnly(readFileSync(join(A5_TEST_DIR, file), "utf8"));
+    const code = codeOnly(readFileSync(join(A5_TEST_DIR, file), "utf8"));
     if (code.includes(needle)) hits.push(file);
   }
   assert.deepEqual(hits, [],
@@ -3097,7 +3044,7 @@ export function r5CoverageProblems({ modules, owners, prefixes, iifeModules = []
   }
   const iife = new Set(iifeModules);
   for (const { fileName, source } of modules) {
-    const code = stripCommentsOnly(String(source || ""));
+    const code = codeOnly(String(source || ""));
     const pattern = prefixes[fileName];
     if (!pattern) {
       problems.push(`${fileName}: 没有登记状态前缀——新视图落盘必须同批加 OWNERS 与 VIEW_STATE_PREFIXES 一行`);
@@ -4058,14 +4005,14 @@ const EXPORT_DEATH_KNIFE = {
  * 把注释算成引用、误报「4 个值位」（实际 3 个）。判据必须只认代码。
  */
 export function exportKeyReferences({ key, appSource, modules = [] }) {
-  const app = stripCommentsOnly(String(appSource || ""));
+  const app = codeOnly(String(appSource || ""));
   const bareRe = new RegExp(`(?<![.\\w$])${key}\\b`, "g");          // 值位：前面不是 . / 标识符字符
   const apiRe = new RegExp(`(?:window\\.)?PagesView\\s*\\.\\s*${key}\\b`, "g");
   const bare = [...app.matchAll(bareRe)].length;
   const viaApi = [...app.matchAll(apiRe)].length;
   let viaModule = 0;
   for (const { source } of modules || []) {
-    const code = stripCommentsOnly(String(source || ""));
+    const code = codeOnly(String(source || ""));
     viaModule += [...code.matchAll(new RegExp(`injected\\s*\\.\\s*${key}\\b`, "g"))].length;
   }
   return { bare, viaApi, viaModule, total: bare + viaApi + viaModule };
@@ -4945,7 +4892,7 @@ function enclosingScopeNames(strippedApp, index) {
  * R3 的三种形态（`el()` / `getElementById` / `querySelector`）都看不见这种写法——
  * 字符串里没有任何 DOM 取法，闸照绿，而模块实际上在操作别的视图/外壳的 DOM。
  *
- * 扫描输入必须是 `stripCommentsOnly`（**剥注释、保留字符串**）：
+ * 扫描输入必须是 `codeOnly`（**剥注释、保留字符串**）：
  *   · 剥注释：`pages-view.js` 里有 6 处 `el()` 只存在于注释里，不剥就会红在说明文字上；
  *   · 保留字符串：要抓的正是字符串，顺手把字符串剥了这条判据就没有对象。
  *
@@ -4968,7 +4915,7 @@ export function stringIdSmuggleProblems({ html, modules }) {
   const problems = [];
   for (const { fileName, source } of modules) {
     const viewName = fileName.replace(/-view\.js$/, "");
-    stripCommentsOnly(source).split("\n").forEach((line, index) => {
+    codeOnly(source).split("\n").forEach((line, index) => {
       for (const m of line.matchAll(/"([^"\n]*)"|'([^'\n]*)'|`([^`\n]*)`/g)) {
         const literal = m[1] ?? m[2] ?? m[3];
         if (!literal || !owner.has(literal)) continue;
@@ -5011,7 +4958,7 @@ test("R3 第四形态（字符串 id 偷渡）：剥注释取字符串字面量�
     && m.includes("模块不许碰")),
   `第四形态自检失败：外壳 chrome 字符串 id 没红或红文不对——${chrome.join("；")}`);
 
-  // **注释里的不算**：扫描输入是 stripCommentsOnly（保留字符串）
+  // **注释里的不算**：扫描输入是 codeOnly（保留字符串）
   assert.deepEqual(scan('// injected.closeModal("page-detail-error")'), [],
     "第四形态自检失败：注释里的字符串被当真了（这条判据必须剥注释，否则会红在说明文字上）");
 
@@ -5324,46 +5271,6 @@ test("R13 自检：跨函数作用域的键 / 必读没传 / 解析失败 / 没�
 //    （`refresh` 不建：它是"配置项化入口"，且在本项目已有写死的窄语义；C 键各绑单一动作，
 //      一旦长出 scope/op 就等于把"调哪个函数"塞进载荷。）
 
-/**
- * 只去注释、**保住字符串**的剥离器（本段专用）。
- *
- * 为什么不用本文件里的 `stripCommentsOnly`：它为了识别正则字面量做得更激进，
- * 在 pages-view.js 上会把大段代码一起抹掉 —— 本段要判"`injected.x` 到底还读不读"，
- * 抹掉代码就会把活的 dep 误判成死注入。这里只认 `'` / `"` / `` ` `` 三种字符串，
- * 注释换成空格、保留换行（行号不乱）。
- */
-function stripCommentsForGates(source) {
-  const out = String(source || "").split("");
-  const n = out.length;
-  let i = 0;
-  let quote = null;
-  while (i < n) {
-    const ch = source[i];
-    if (quote) {
-      if (ch === "\\") { i += 2; continue; }
-      if (ch === quote) quote = null;
-      i += 1;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") { quote = ch; i += 1; continue; }
-    if (ch === "/" && source[i + 1] === "/") {
-      let j = i;
-      while (j < n && source[j] !== "\n") { out[j] = " "; j += 1; }
-      i = j;
-      continue;
-    }
-    if (ch === "/" && source[i + 1] === "*") {
-      let j = i + 2;
-      while (j < n && !(source[j] === "*" && source[j + 1] === "/")) j += 1;
-      const stop = Math.min(j + 2, n);
-      for (let k = i; k < stop; k += 1) if (out[k] !== "\n") out[k] = " ";
-      i = stop;
-      continue;
-    }
-    i += 1;
-  }
-  return out.join("");
-}
 
 /** 取出 `window.PagesView?.init({ … })` 这一段 deps 块的键名（按 `    name:` 行首缩进识别）。 */
 function pagesDepsKeys(appSource) {
@@ -5381,7 +5288,7 @@ function pagesDepsKeys(appSource) {
 
 /** ① 的判据：deps 里"模块 0 读"的键（剥注释后按 `injected.<键>` 全文匹配）。 */
 export function deadPagesDepProblems({ appSource, moduleSource }) {
-  const stripped = stripCommentsForGates(moduleSource || "");
+  const stripped = codeOnly(moduleSource || "");
   const dead = pagesDepsKeys(appSource).filter(
     (key) => !new RegExp(`injected\\.${key}\\b`).test(stripped),
   );
@@ -5390,7 +5297,7 @@ export function deadPagesDepProblems({ appSource, moduleSource }) {
 
 /** ② 的判据：app.js 顶层 function 在 app / 各视图模块 / tests 里全 0 引用（除定义行本身）。 */
 export function zeroRefFunctionProblems({ appSource, moduleSources = [], testsSource = "" }) {
-  const stripped = stripCommentsForGates(appSource || "");
+  const stripped = codeOnly(appSource || "");
   const names = [...stripped.matchAll(/^(?:async )?function ([A-Za-z_][A-Za-z0-9_]*)\s*\(/gm)].map((m) => m[1]);
   const count = (text, name) => {
     const re = new RegExp(`\\b${name}\\b`, "g");
@@ -5415,7 +5322,7 @@ export function terminalExportProblems({ names = [], kindsText = "" }) {
   if (names.includes("refresh")) {
     problems.push("导出名出现 `refresh`——刀 11 裁定不建它（配置项化入口 + 同词两义），改名或删掉");
   }
-  const block = stripCommentsForGates(kindsText || "");
+  const block = codeOnly(kindsText || "");
   for (const m of block.matchAll(/([A-Za-z_][A-Za-z0-9_]*):\s*\{\s*kind:\s*"C"([^}]*)\}/g)) {
     const [, name, rest] = m;
     if (/\bscope\s*:/.test(rest)) problems.push(`C 键 \`${name}\` 里出现 scope: 字段——"调哪个函数"不许塞进载荷`);
@@ -5561,7 +5468,7 @@ function moduleRegistrationProblems({ files, domainModules, nonDomainModules }) 
   }
   for (const { fileName, source } of files) {
     if (/-view\.js$/.test(String(fileName || ""))) continue;
-    const code = stripCommentsForGates(source || "");
+    const code = codeOnly(source || "");
     if (!/window\.[A-Za-z_$][\w$]*\s*=\s*api\b/.test(code)) continue;
     if (domain.has(fileName) || nonDomain.has(fileName)) continue;
     problems.push(`${fileName} 挂了 window.X = api（服务模块出口），但既不在 DOMAIN_MODULES 也不在 NON_DOMAIN_MODULES——`
@@ -5571,7 +5478,7 @@ function moduleRegistrationProblems({ files, domainModules, nonDomainModules }) 
 }
 
 function domainDomProblems({ file, source, allowQuerySelector = false }) {
-  const stripped = stripCommentsForGates(source || "");
+  const stripped = codeOnly(source || "");
   const problems = [];
   const checks = [
     ["el(", /\bel\s*\(/g, "init() 直接收下要写的元素，模块里不按 id 找 DOM"],
@@ -5611,7 +5518,7 @@ test("域模块（刀 A）：quality-stats.js 不按 id 找 DOM，四个函数�
       `${mod.file} 必须挂 window.${mod.exposes}（服务模块的唯一出口，R7b 会查它的 <script> 在 app.js 之前）`,
     );
   }
-  const appSource = stripCommentsForGates(readFileSync(APP_FILE, "utf8"));
+  const appSource = codeOnly(readFileSync(APP_FILE, "utf8"));
   for (const name of ["statsRow", "percentText", "loadSummary", "renderSummary"]) {
     const stillDefined = new RegExp("^(?:async )?function " + name + "\\s*\\(", "m").test(appSource);
     assert.ok(!stillDefined, `app.js 里还定义着 ${name}——刀 A 之后它应在 quality-stats.js`);
@@ -5697,7 +5604,7 @@ test("域模块登记完整性自检：没登记的模块红并点名 / 两张�
 });
 
 test("域模块（刀 B）：page-confirm.js 五个函数已从 app.js 迁出，接口面逐条对", () => {
-  const appSource = stripCommentsForGates(readFileSync(APP_FILE, "utf8"));
+  const appSource = codeOnly(readFileSync(APP_FILE, "utf8"));
   const moved = ["pageSetupStats", "firstUnfinishedPanel", "selectedSuggestions", "suggestionPagesByType", "warnUnconfirmed"];
   for (const name of moved) {
     assert.ok(
@@ -5738,7 +5645,7 @@ test("域模块（刀 B）：page-confirm.js 五个函数已从 app.js 迁出，
 });
 
 test("域模块（刀 D）：structure-tools.js 七个函数已从 app.js 迁出，接口面逐条对", () => {
-  const appSource = stripCommentsForGates(readFileSync(APP_FILE, "utf8"));
+  const appSource = codeOnly(readFileSync(APP_FILE, "utf8"));
   const moved = [
     "structureRules", "previewHeaderFooter", "renderStructurePreview", "updateStructureApplyState",
     "applyHeaderFooter", "setupStructurePanel", "setAllStructureKeeps",
@@ -5848,7 +5755,7 @@ test("① S1：一个 section 两个 owner——模块 id ⊆ 归属表 · 两�
     "id 归属三支有一支不成立",
   );
   // 模块里 el( / document.getElementById 仍须为 0（root.querySelector 是唯一取法）
-  const stripped = stripCommentsForGates(moduleSource);
+  const stripped = codeOnly(moduleSource);
   assert.equal((stripped.match(/\bel\s*\(/g) || []).length, 0, "page-detail-editor.js 里出现 el(");
   assert.equal((stripped.match(/document\.getElementById/g) || []).length, 0, "出现 document.getElementById");
   assert.equal((stripped.match(/document\.querySelector/g) || []).length, 0, "出现 document.querySelector");
@@ -5875,9 +5782,9 @@ test("① S1 自检：外壳 id 写进模块 / 归属表漏一个 id，都必须
 });
 
 /** 模块喊外壳的名字必须是注入键：裸写一个 app.js 顶层函数名就是"谁都能喊一下"的入口。 */
-function godDoorProblems({ moduleSource, appSource, injectedKeys }) {
-  const stripped = stripCommentsForGates(moduleSource).replace(/\binjected\.[A-Za-z_$][\w$]*/g, "injected.X");
-  const topLevel = new Set([...stripCommentsForGates(appSource).matchAll(/^(?:async )?function ([A-Za-z_$][\w$]*)/gm)].map((m) => m[1]));
+function godDoorProblems({ moduleSource, appSource, injectedKeys, ownExposes = null }) {
+  const stripped = codeOnly(moduleSource).replace(/\binjected\.[A-Za-z_$][\w$]*/g, "injected.X");
+  const topLevel = new Set([...codeOnly(appSource).matchAll(/^(?:async )?function ([A-Za-z_$][\w$]*)/gm)].map((m) => m[1]));
   const problems = [];
   for (const name of topLevel) {
     if (new RegExp(`(?:^|[^\\w.$])${name}\\s*\\(`, "m").test(stripped)) {
@@ -5885,8 +5792,16 @@ function godDoorProblems({ moduleSource, appSource, injectedKeys }) {
     }
   }
   const declared = new Set(injectedKeys);
-  for (const m of stripCommentsForGates(moduleSource).matchAll(/injected\.([A-Za-z_$][\w$]*)/g)) {
+  for (const m of codeOnly(moduleSource).matchAll(/injected\.([A-Za-z_$][\w$]*)/g)) {
     if (!declared.has(m[1])) problems.push(`模块用了 injected.${m[1]}，但 boot 没注入`);
+  }
+  // **跨模块直呼也是神入口**（Architect 2026-11-02 自核发现）：原来只查"裸调外壳函数"与"injected 未注入"，
+  // 所以模块里写 `window.PagesView?.onAuxReviewFinished()` 这一类既不算裸调、也不在注入面上，闸看不见。
+  // 片 2 的 buildLabel 注入边界要拿这条当判据。
+  // 只认**调用/取值位**（`window.X?.` / `window.X.`），并且排掉模块自己的 `window.<自己的名字> = api;`
+  for (const hit of codeOnly(moduleSource).matchAll(/window\.([A-Z][A-Za-z0-9_$]*)\s*(?:\?\.|\.)/g)) {
+    if (ownExposes && hit[1] === ownExposes) continue;
+    problems.push(`模块里直接喊了 window.${hit[1]}——跨模块调用必须走注入，不许绕开外壳`);
   }
   // loadPageDetail 是"已有动作"（patchBlock / reviewAction 用它刷新本页），允许；
   // 抽屉的 renderPageDetail 与块列表的 renderReviewBlocks 不许反向喊——否则编辑→重画多出第二条路。
@@ -5904,7 +5819,10 @@ test("① S1：模块喊外壳的名字 ⊆ 注入键（神入口判据）", () 
   const boot = appSource.slice(appSource.indexOf("window.PageDetailEditor?.init({"));
   const injectedKeys = [...boot.slice(0, boot.indexOf("\n  });")).matchAll(/^    ([A-Za-z_$][\w$]*)[:,]/gm)].map((m) => m[1]);
   assert.ok(injectedKeys.length > 0, "boot 里没找到 PageDetailEditor 的 init 块");
-  assert.deepEqual(godDoorProblems({ moduleSource, appSource, injectedKeys }), [], "模块里出现了不在注入面里的外壳名字");
+  assert.deepEqual(
+    godDoorProblems({ moduleSource, appSource, injectedKeys, ownExposes: "PageDetailEditor" }), [],
+    "模块里出现了不在注入面里的外壳名字",
+  );
 });
 
 test("① S1 自检：裸调外壳函数 / 用未注入的键 / 反向重画，都必须红", () => {
@@ -5913,6 +5831,10 @@ test("① S1 自检：裸调外壳函数 / 用未注入的键 / 反向重画，�
   assert.equal(godDoorProblems({ moduleSource: 'renderReviewBlocks();', appSource, injectedKeys: [] }).length >= 1, true, "裸调必须红");
   assert.equal(godDoorProblems({ moduleSource: 'injected.noSuchKey();', appSource, injectedKeys: [] }).length, 1, "未注入必须红");
   assert.equal(godDoorProblems({ moduleSource: 'injected.renderPageDetail();', appSource, injectedKeys: ["renderPageDetail"] }).length, 1, "反向重画必须红");
+  // 跨模块直呼：既不是裸调外壳函数、也不在注入面 ⇒ 旧判据完全看不见
+  const crossModule = godDoorProblems({ moduleSource: 'window.PagesView?.onAuxReviewFinished();', appSource, injectedKeys: [] });
+  assert.ok(crossModule.some((m) => m.includes("window.PagesView") && m.includes("跨模块")),
+    `跨模块直呼 window.PagesView 没被抓住——${crossModule.join("；")}`);
 });
 
 // ---------------------------------------------------------------- ① S3：导出面 + 注入面收口
@@ -5926,7 +5848,7 @@ test("① S1 自检：裸调外壳函数 / 用未注入的键 / 反向重画，�
  */
 function exportCallSiteProblems({ apiKeys, appSource }) {
   const problems = [];
-  const src = stripCommentsForGates(appSource);
+  const src = codeOnly(appSource);
   for (const key of apiKeys) {
     if (!new RegExp(`PageDetailEditor\\?\\.${key}\\s*\\(`).test(src)) {
       problems.push(`api.${key} 在 app.js 里一次都没被调用——没有调用点的导出就是"预留"（§1 ⑦）`);
@@ -5937,7 +5859,7 @@ function exportCallSiteProblems({ apiKeys, appSource }) {
 
 /** boot 注入了、模块却一次都没读的键：死注入（传了没人用，读代码的人会被它骗）。 */
 function deadInjectionProblems({ moduleSource, injectedKeys }) {
-  const stripped = stripCommentsForGates(moduleSource);
+  const stripped = codeOnly(moduleSource);
   const problems = [];
   for (const key of injectedKeys) {
     if (!new RegExp(`injected\\.${key}\\b`).test(stripped)) {
@@ -6005,6 +5927,39 @@ test("S3：boot 注入的每个键模块都真的读（死注入 = 传了没人�
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
+test("剥离口径自检：正则字面量后面的注释必须被剥，注释不许顶替代码，字符串里的 // 不算注释", () => {
+  // 2026-11-02 修的真 bug：`/[&<>"']/g` 里的 `"` 让"只认字符串"的状态机进了字符串态，
+  // 它后面的整行 `//` 注释就不再被剥。两个方向同时出错：
+  //   "必须为 0" 的判据 → 注释里提一句就假红；"必须出现" 的判据 → 注释里写一句就假绿（更危险）。
+  const tricky = 'const re = /[&<>"\']/g; // fake() 只是注释\nconst keep = 1;\n';
+
+  // ① 正则字面量后面的注释必须剥掉，代码必须留着
+  const stripped = codeOnly(tricky);
+  assert.ok(!stripped.includes("fake()"), "正则字面量后面的注释没被剥——后面的判据全都读得到注释");
+  assert.ok(stripped.includes("const keep = 1;"), "代码被误删——剥多了会让活引用变成死引用（假红）");
+
+  // ② 注释里写调用点 ⇒ 不许满足"每个导出都有调用点"
+  const commentedCall = exportCallSiteProblems({
+    apiKeys: ["openAuxWarning"],
+    appSource: 'const re = /[&<>"\']/g; // window.PageDetailEditor?.openAuxWarning();\n',
+  });
+  assert.equal(commentedCall.length, 1,
+    "注释里的调用点被当成真调用点——没人喊的导出会因此静默过关");
+
+  // ③ 注释里写注入键 ⇒ 不许满足"注入键被读过"
+  const commentedRead = deadInjectionProblems({
+    moduleSource: 'const re = /[&<>"\']/g; // injected.deadKey 只是注释\nfunction f() { return 1; }\n',
+    injectedKeys: ["deadKey"],
+  });
+  assert.equal(commentedRead.length, 1, "注释里的 injected.deadKey 被当成读过了——真死注入一句注释就能混过闸");
+
+  // ④ 字符串里的 // 不是注释，字符串内容必须原样保留
+  const url = codeOnly('const url = "https://example.com/x"; // 真注释\nconst after = 2;\n');
+  assert.ok(url.includes('"https://example.com/x"'), "字符串里的 // 被当成注释截断了——调用文本会丢");
+  assert.ok(!url.includes("真注释"), "行尾的真注释没被剥掉");
+  assert.ok(url.includes("const after = 2;"), "剥注释时吃掉了下一行");
+});
+
 test("S3：init 的接线都在 wired 守卫之后（重复 init 不重复绑）", () => {
   const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
   assert.deepEqual(initWiringProblems({ moduleSource }), []);
@@ -6045,7 +6000,7 @@ const AUX_OUTSIDE_IDS = [
 /**
  * 只删「块注释 + 整行注释」的简化口径。
  *
- * 不用 `stripCommentsForGates`：它按字符扫，遇到正则字面量里的引号（`/[&<>"']/g`）会错进
+ * 不用 `codeOnly`：它按字符扫，遇到正则字面量里的引号（`/[&<>"']/g`）会错进
  * 字符串状态，导致**后面的整行注释整段留下**——对"死名归零 / 注释里提到不算"这类断言，
  * 那是假红（本书 S4 实测：模块里 `// auxData 是死状态` 被当成代码）。
  */
