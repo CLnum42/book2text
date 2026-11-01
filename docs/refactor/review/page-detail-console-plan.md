@@ -156,11 +156,11 @@ S4 第二引擎复核（170） aux 面板 + 逐行 + 收尾后刷新
 **形态**：分组算成纯函数，渲染只拿结果。
 
 ```
-function reviewTreeGroups(pages, chapters)   // ≈18 行
+function reviewTreeGroups(pages, chapters)   // 函数体 14 行 + 注释 5 行 ≈ 19 行
   · chapters 空 → [{ id:null, title:null, pages }]（平铺）
   · 否则：每个章一组（空章跳过）+ 末尾「未归章」一组（page.chapter 不在 chapters 里）
 renderReviewTree：删掉内联的 filter/continue（≈−25 行），改成 for (group of reviewTreeGroups(...))（+10）
-净：+1 个顶层函数 / app.js ±10 行（实测对账）；deps 不变 173
+净：+1 个顶层函数 / app.js 净 ±5～10 行（实测对账）；deps 不变 173
 ```
 
 **判据（可红）**：`sum(树上可达页的 unacked) == 头部 unacked 总数`，四组夹具（全有章 / 全无章 / 混合 / chapters 空）；
