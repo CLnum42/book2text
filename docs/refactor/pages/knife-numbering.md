@@ -23,11 +23,12 @@ seed 里出现未登记的号 → 红；解析不了的行 → 红（带行号�
 | 3 | 版心 | 已落 | 15 个函数 / 470 行 | `knife3-plan.md` |
 | 4 | 选择/识别/缩放 | 已落 | 8 个函数 / 236 行 | `knife4-plan.md` |
 | 5 | 函数搬迁收尾 | 已落 | 31 个函数 / 651 行 | `knife5-plan.md` |
-| 6 | 片段抽取 | 待落 | 7 处 / 25 处写点（原「刀 5b」） | `knife5-plan.md` §⑫ |
-| 7 | knife-review | 待落 | `recognizePage` + review 具名入口 | `knife-review-plan.md` |
-| 8 | knife-package | 待落 | `applyPackageMode` / `applyProjectSettings` / `applySplitBatch` | `knife-package-plan.md` |
-| 9 | 导出收口 | 待落 | 死 31 个导出键（R8 53 → 22） | `knife5-plan.md` §8.1 |
-| 10 | 收口 | 待落 | R8 22 → 3（`init` / `enter` / `exit`） | 待出图 |
+| 6 | 片段抽取 | 已落 | 7 处 / 25 处写点（原「刀 5b」） | `knife5-plan.md` §⑫ |
+| 7 | knife-review | 已落 | `recognizePage` + review 具名入口（R3 25 → 23） | `knife-review-plan.md` |
+| 8 | knife-package | 已落 | `applyPackageMode` / `applyProjectSettings` / `applySplitBatch`（R3 23 → 0） | `knife-package-plan.md` |
+| 9 | 导出收口 | 已落（9.1–9.6） | 导出键收口；最终 **R8 36**、**T 0**（原「53 → 22」是旧计划，作废） | `export-ratchet.md` |
+| 10 | 收口 | 已落（10.1–10.2） | 队列子系统搬进模块 + 收口；**T 归零**（原「22 → 3」作废） | `export-ratchet.md` |
+| 11 | 清理刀 | 已落（`20049f9`） | 13 条死 dep + 10 个 0 引用函数 + 3 处孤儿注释（deps 186 → 173） | `export-ratchet.md` |
 
 **旧 → 新**（只有这三处变了，其余号不动）：
 
@@ -120,6 +121,11 @@ d) registry 里一刀都没标 landed → 红（不许"清空登记表"变成通
 `.replace(/\/\*[\s\S]*?\*\//g, "")`，**连块注释里的换行一起删掉了**——
 计数（23 种 / 37 处 / 13+3+7）完全正确，行号却整体偏移约 **377 行**，当成原始行号报出去。
 计数对、行号错，是最容易过关的一种错：读的人只会去改错地方，闸还照样绿。
+
+**④ 能写符号就不写行号**（2026-11-01 补）：代码位置优先写「文件 + 符号名」（如 `pages-view.js` 的
+`marginUndoButton`）；必须给行号时，同句标「实测于 <sha>」。理由：2026-11-01 复核 `export-ratchet.md`
+的 14 处行号，**一次切片后 6 处失效**（三个符号整段搬出了 `app.js`），而按符号写的引用一处没坏。
+规则见 `docs/refactor/reading-view-boundary.md` §15.1。
 
 ## 七、每刀必带：改动面预算（2026-10-30，Chief 定）
 

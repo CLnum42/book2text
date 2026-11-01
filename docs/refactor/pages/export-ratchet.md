@@ -96,7 +96,7 @@
 
   - **5 个真死**（删键 + 转发器）：`renderRecognitionVerdict` · `renderSuggestionPanel` ·
     `renderTypePicker` · `rerunAuxiliary` · `updateSelectionPanel`
-    （`updateSelectionPanel` 唯一那处是 **app.js:11794 的注释**——**不剥注释**会把它当成引用，
+    （`updateSelectionPanel` 唯一那处是 **app.js 里 `updateSelectionPanel` 旁的一条注释**——**不剥注释**会把它当成引用，
      于是"只扫调用位"漏 3 个、`"不剥注释"`多算 1 个，两向都会错）
   - **3 个值位**：`undoMarginEdit` · `pumpOverlayRender` · `scanVisiblePageSuggestions`
 
@@ -104,11 +104,11 @@
 
 ```
 ① 它们是模块**自己的渲染循环/接线**，而调度状态被放在外壳 —— 一份状态两边写、一边读：
-   overlayPumpScheduled（app.js:3021，外壳读 :3804）· suggestionScanTimer（:3170，外壳读/清）；
-   模块通过 injected.setOverlayPumpScheduled / setSuggestionScanTimer 去写外壳的变量。
+   overlayPumpScheduled · suggestionScanTimer（写作时在外壳；刀 10 之后已搬进 `pages-view.js` 的模块侧，
+   同名符号）；当时模块通过 injected.setOverlayPumpScheduled / setSuggestionScanTimer 去写外壳的变量。
 ② C 的定义是"**别的域**需要这个操作"；外壳的 setTimeout / requestAnimationFrame 触发
    不是跨域需求，是模块自己的调度被放在了外面。判 C 等于把这份错位冻成"合法接口"。
-③ marginUndoButton()（app.js:4234）只是造一个 button 元素、零 id；模块自己造按钮零风险。
+③ marginUndoButton()（现在在 `pages-view.js`）只是造一个 button 元素、零 id；模块自己造按钮零风险。
 ```
 
 **为什么不采用 DevLead 的箭头改法**（`() => window.PagesView.undoMarginEdit()`）：
@@ -274,7 +274,7 @@ confirmAllUnconfirmed  ← finishConfirmPages                                   
 刀 9.6 （−1 +0）  38 = T 4 + C 32 + L 2   ← 已落盘（`834b8a1`）
           undoMarginEdit 接线收回模块（撤销按钮由模块自建）；② 推导值仍是 35（C 未变）
           · deps 208 → **206**：只删 `marginUndoButton` / `trimMarginUndo` 两条
-          · **`getMarginUndoStack` 不属 9.6**：它在 **LibraryView** 的 init 块（app.js:12933–12982），
+          · **`getMarginUndoStack` 不属 9.6**：它在 **LibraryView** 的 init 注入块（`getMarginUndoStack` 这个键），
             library-view.js:292 用它清撤销栈 ⇒ 不是 pages 块的字死注入，别下一刀再判一次
           · 行数 app.js 13,078 → **13,054** · pages-view 3,704 → **3,723**
 刀 10.1（−3 +1） 36 = T 1 + C 33 + L 2   ← 已落盘（`c210bd0`，拆刀见 `09087db`）
@@ -489,9 +489,10 @@ callers 是谁；过不了这三关就不加。今天点名表是**空表**。
 ② T 到点未死 = 红：death <= stageNow() 且（该键在 app.js 的**任何引用** > 0 ∪ 键仍在 api ∪
      模块里还有 `injected.<该键>` 的自环）→ 红
      · **"任何引用"= 三栏**：裸标识符（**含值位**）· `PagesView.<键>` · `injected.<键>`；**先剥注释**
-     · ⚠ 现在的实现 `appCallsOfExportKey`（boundary.test.mjs:3746）只数 `(window.)?PagesView.<键>`，
-       对"转发器 + 值位"是**瞎的**：4244 / 3806 / 3181 三处它全看不见 ⇒ 删键当天绿、运行时 ReferenceError
-     · `updateSelectionPanel` 反过来证明"剥注释"这半也得有：它唯一的出现是 11794 的**注释**
+     · **三栏扫描已落地**：`exportDeathProblems`（`tests/js/boundary.test.mjs`）同时扫裸标识符（含值位）/
+       `PagesView.<键>` / `injected.<键>`，且**先剥注释**；自检在「R8（到点未死）三栏自检」那条。
+       原句「旧实现 `appCallsOfExportKey` 只数 `PagesView.<键>`、对转发器与值位是瞎的」已作废——它就是这次修掉的毛病
+     · `updateSelectionPanel` 反过来证明"剥注释"这半也得有：它唯一的出现是**一条提到它的注释**
      —— 这条同时修掉今天那 20 个「写着刀5/刀6 死期却还活着」的键：6 个转 C（删死期）、
         3 个是死键（刀 9 直接删）、11 个按 §十 的表重算到 9.1–9.5
 ③ C 清册两向：
@@ -606,7 +607,7 @@ git log --format=%s origin/main | grep -oE "^move\(pages\): 刀 [0-9.]+" | sort 
 ### 带 `*` 的 5 个键还欠一刀：**模块调自己的导出键（自环）**
 
 实测 `pages-view.js` 里有 **14 处** `injected.<自己的 api 键>`，绕道外壳再回到自己
-（`injected.refreshMarginDetectHint()` → app.js:691 转发器 → `window.PagesView.refreshMarginDetectHint()`）：
+（`injected.refreshMarginDetectHint()` → `pages-view.js` 的 `refreshMarginDetectHint()`）：
 
 ```
 renderMarginStepVerdict ×4 · refreshMarginDetectHint ×3 · loadFinishSummary ×3(C)
