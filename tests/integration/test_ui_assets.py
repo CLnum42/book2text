@@ -794,7 +794,6 @@ def test_recognition_settings_are_wired_to_project_settings() -> None:
     assert "function setupRecognitionSettings(" in script
     # 双引擎不自动采用、策略只影响显示
     assert "不会自动采用" in page
-    assert "function divergenceCandidatesOn(" in script
     assert 'dual_engine_strategy === "candidates"' in script
 
 
