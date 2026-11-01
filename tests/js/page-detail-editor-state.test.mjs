@@ -75,13 +75,16 @@ function makeModule() {
     setBoxCreateMode: () => false,
     getDetailInkGapsState: () => [],
     setDetailInkGapsState: () => [],
+    // S4：init 现在会接线 aux 面板；警告框那 5 个节点在 #view-review 之外，模块只经注入拿
+    getAuxWarningEls: () => ({
+      mask: makeNode(), title: makeNode(), text: makeNode(), wait: makeNode(), error: makeNode(),
+    }),
     refreshReviewFilterOnly: () => {},
     renderReviewHeadline: () => {},
     loadInkGaps: () => {},
     ensureBlockListed: () => {},
     refreshPageStates: () => {},
     setSaveState: () => {},
-    getActiveReviewBlockId: () => state.activeReviewBlockId,
     setActiveReviewBlockId: (value) => { state.activeReviewBlockId = value; return value; },
     getDiffStripOpen: () => state.diffStripOpen,
     getDetailSuggestionByBlock: () => state.detailSuggestionByBlock,
