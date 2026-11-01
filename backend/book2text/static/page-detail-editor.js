@@ -918,6 +918,271 @@ async function reviewAction(path) {
   }
 }
 
+
+  // ---------------------------------------------------------------- S2：框选新增块（15 函数 / 238 行）
+  //
+  // 搬进来的私有状态（外壳没有读点）：boxDraft · inkGapsShown · BOX_MIN_WIDTH / BOX_MIN_HEIGHT。
+  // 借用的两份：boxCreateMode（外壳 closePageDetail / drawDetailOverlay 读）· detailInkGaps
+  // （外壳 pendingPageReasons / renderReviewHeadline 读）——都走注入，模块不留副本。
+
+  let boxDraft = null; // 归一化坐标 {x0, y0, x1, y1}，拖拽中不断更新
+  let inkGapsShown = false;
+  const BOX_MIN_WIDTH = 0.02;
+  const BOX_MIN_HEIGHT = 0.01;
+
+async function createBlockFromBox() {
+  const box = boxDraftRect();
+  if (!injected.getCurrentProject() || injected.getDetailPageNo() === null || !box) return;
+  part("page-detail-error").hidden = true;
+  try {
+    const data = await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/${injected.getDetailPageNo()}/blocks`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: part("box-select-text").value, bbox: box }),
+      }
+    );
+    injected.setSaveState("已新增块（可撤销）");
+    const created = data.created;
+    part("box-select-text").value = "";
+    setBoxCreateMode(false);
+    // 与"在此块后新增"走同一条刷新路径（新建接口的响应里没有整页载荷）
+    await injected.loadPageDetail(injected.getDetailPageNo());
+    await injected.refreshPageStates();
+    if (created) {
+      // 框选出来的块可能落在版心外（比如补一个书眉）：自动切到「全部」，
+      // 别让用户以为"创建成功但列表里什么都没有"。
+      const item = injected.ensureBlockListed(created.block_id);
+      if (item) {
+        item.querySelector("textarea").focus();
+        item.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    }
+  } catch (error) {
+    showEditorError(error);
+  }
+}
+
+async function recognizeBoxRegion() {
+  const box = boxDraftRect();
+  if (!injected.getCurrentProject() || injected.getDetailPageNo() === null || !box) return;
+  const button = part("box-select-recognize");
+  const status = part("box-select-status");
+  const pageNo = injected.getDetailPageNo();
+  button.disabled = true;
+  status.textContent = "识别中…";
+  try {
+    const data = await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/${pageNo}/recognize-region`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bbox: box }),
+      }
+    );
+    if (injected.getDetailPageNo() !== pageNo) return;
+    if (data.text) {
+      part("box-select-text").value = data.text;
+      part("box-select-text").focus();
+      status.textContent =
+        `认出 ${data.lines.length} 行（${data.elapsed_seconds}s）· 可以改，再点「创建这一块」`;
+    } else {
+      status.textContent = "这块里没认出文字；可以直接打字，或换个框";
+    }
+  } catch (error) {
+    status.textContent = error.message || "识别失败";
+    showEditorError(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function drawInkGapMarks() {
+  const layer = injected.getDetailInkGaps();
+  layer.innerHTML = "";
+  layer.hidden = !inkGapsShown || !injected.getDetailInkGapsState().length;
+  if (layer.hidden) return;
+  injected.getDetailInkGapsState().forEach((item, index) => {
+    const [x0, y0, x1, y1] = item.bbox;
+    const rect = document.createElement("button");
+    rect.type = "button";
+    rect.className = "ink-gap";
+    rect.style.left = `${x0 * 100}%`;
+    rect.style.top = `${y0 * 100}%`;
+    rect.style.width = `${(x1 - x0) * 100}%`;
+    rect.style.height = `${(y1 - y0) * 100}%`;
+    rect.title =
+      `可能漏了这一行（墨迹占页宽 ${(item.ink_ratio * 100).toFixed(1)}%）：` +
+      "点一下把它框起来，用「识别这块」认字";
+    rect.addEventListener("click", (event) => {
+      event.stopPropagation();
+      startRegionRecognition(item.bbox);
+    });
+    layer.append(rect);
+  });
+}
+
+function onBoxMouseUp(event) {
+  if (!boxDraft) return;
+  const point = normalizedPoint(event);
+  if (point) {
+    boxDraft.x1 = point.x;
+    boxDraft.y1 = point.y;
+  }
+  const box = boxDraftRect();
+  if (!box || box[2] - box[0] < BOX_MIN_WIDTH || box[3] - box[1] < BOX_MIN_HEIGHT) {
+    // 太小（多半是误点）：撤掉，不弹面板
+    boxDraft = null;
+    part("box-select-rect").hidden = true;
+    return;
+  }
+  drawBoxDraft(); // 定住最后的样子，等用户填文字
+  part("box-select-info").textContent =
+    `已框选：横向 ${(box[0] * 100).toFixed(0)}–${(box[2] * 100).toFixed(0)}%、` +
+    `纵向 ${(box[1] * 100).toFixed(0)}–${(box[3] * 100).toFixed(0)}%（相对这一页）`;
+  part("box-select-panel").hidden = false;
+  part("box-select-text").focus();
+}
+
+async function loadInkGaps(pageNo) {
+  injected.setDetailInkGapsState([]);
+  inkGapsShown = false;
+  renderInkGapBar();
+  if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") return;
+  try {
+    const data = await injected.apiJson(
+      `/api/projects/${injected.getCurrentProject().project_id}/pages/${pageNo}/ink-gaps`
+    );
+    if (injected.getDetailPageNo() !== pageNo) return;
+    injected.setDetailInkGapsState((data.candidates || []).filter(
+      (item) => Array.isArray(item.bbox) && item.bbox.length === 4
+    ));
+    renderInkGapBar();
+    // 漏行是页面级的待处理理由：过滤条与页头结论要跟着变，但不重建正在编辑的列表
+    injected.refreshReviewFilterOnly();
+    injected.renderReviewHeadline();
+  } catch {
+    // 辅助信息：读不到不打断审校
+  }
+}
+
+function setupBoxCreate() {
+  const canvas = injected.getDetailCanvas();
+  canvas.addEventListener("mousedown", onBoxMouseDown);
+  window.addEventListener("mousemove", onBoxMouseMove);
+  window.addEventListener("mouseup", onBoxMouseUp);
+  part("box-select-confirm").addEventListener("click", createBlockFromBox);
+  part("box-select-recognize").addEventListener("click", recognizeBoxRegion);
+  part("ink-gap-toggle").addEventListener("click", () => {
+    inkGapsShown = !inkGapsShown;
+    renderInkGapBar();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && injected.getBoxCreateMode()) setBoxCreateMode(false);
+  });
+}
+
+function renderInkGapBar() {
+  const bar = part("ink-gap-bar");
+  if (!inkGapBarVisible(injected.getDetailInkGapsState().length)) {
+    bar.hidden = true;
+    inkGapsShown = false;
+    drawInkGapMarks();
+    return;
+  }
+  bar.hidden = false;
+  part("ink-gap-text").textContent =
+    `可能漏了 ${injected.getDetailInkGapsState().length} 处：这几行有字，但没有任何块框住`;
+  part("ink-gap-toggle").textContent = inkGapsShown ? "收起标记" : "在图上标出";
+  drawInkGapMarks();
+}
+
+function setBoxCreateMode(on) {
+  injected.setBoxCreateMode(on);
+  part("detail-box-create").classList.toggle("btn--primary", on);
+  injected.getDetailCanvas().classList.toggle("page-canvas--selecting", on);
+  if (!on) {
+    boxDraft = null;
+    part("box-select-rect").hidden = true;
+    part("box-select-panel").hidden = true;
+    part("box-select-status").textContent = "";
+  } else {
+    injected.setSaveState("在页面上拖出要新增的区域（Esc 取消）");
+  }
+}
+
+function drawBoxDraft() {
+  const box = boxDraftRect();
+  const rect = part("box-select-rect");
+  if (!box) {
+    rect.hidden = true;
+    return;
+  }
+  rect.hidden = false;
+  rect.style.left = `${box[0] * 100}%`;
+  rect.style.top = `${box[1] * 100}%`;
+  rect.style.width = `${(box[2] - box[0]) * 100}%`;
+  rect.style.height = `${(box[3] - box[1]) * 100}%`;
+}
+
+function startRegionRecognition(bbox) {
+  if (!injected.getBoxCreateMode()) setBoxCreateMode(true);
+  boxDraft = { x0: bbox[0], y0: bbox[1], x1: bbox[2], y1: bbox[3] };
+  drawBoxDraft();
+  part("box-select-panel").hidden = false;
+  part("box-select-info").textContent =
+    `已框选：横向 ${(bbox[0] * 100).toFixed(0)}–${(bbox[2] * 100).toFixed(0)}%、` +
+    `纵向 ${(bbox[1] * 100).toFixed(0)}–${(bbox[3] * 100).toFixed(0)}%（来自漏行标记）`;
+  part("box-select-text").value = "";
+  part("box-select-text").focus();
+  recognizeBoxRegion();
+}
+
+function onBoxMouseDown(event) {
+  if (!injected.getBoxCreateMode() || event.button !== 0) return;
+  const point = normalizedPoint(event);
+  if (!point) return;
+  event.preventDefault();
+  boxDraft = { x0: point.x, y0: point.y, x1: point.x, y1: point.y };
+  part("box-select-panel").hidden = true;
+  part("box-select-status").textContent = "";
+  drawBoxDraft();
+}
+
+function normalizedPoint(event) {
+  const image = injected.getDetailImage();
+  const rect = image.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1),
+    y: Math.min(Math.max((event.clientY - rect.top) / rect.height, 0), 1),
+  };
+}
+
+function boxDraftRect() {
+  if (!boxDraft) return null;
+  return [
+    Math.min(boxDraft.x0, boxDraft.x1),
+    Math.min(boxDraft.y0, boxDraft.y1),
+    Math.max(boxDraft.x0, boxDraft.x1),
+    Math.max(boxDraft.y0, boxDraft.y1),
+  ];
+}
+
+function onBoxMouseMove(event) {
+  if (!boxDraft) return;
+  const point = normalizedPoint(event);
+  if (!point) return;
+  boxDraft.x1 = point.x;
+  boxDraft.y1 = point.y;
+  drawBoxDraft();
+}
+
+function inkGapBarVisible(count) {
+  return count > 0;
+}
+
   // ---------------------------------------------------------------- 接线 + 接口
 
   function openBoxCreate() {
@@ -946,9 +1211,17 @@ async function reviewAction(path) {
     if (auxRun) auxRun.hidden = Boolean(on);
   }
 
+  let wired = false;
+
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
     root = injected.root || null;
+    // canvas 在整个页详情生命周期里是同一个元素（换页只重绘、不换 DOM）⇒ 接线只做一次；
+    // 即便被重复 init，也不许重复绑（否则一次拖动触发两次）。
+    if (!wired) {
+      wired = true;
+      setupBoxCreate();
+    }
     const bind = (id, handler) => {
       const node = part(id);
       if (node) node.addEventListener("click", handler);
@@ -969,6 +1242,9 @@ async function reviewAction(path) {
     showError: showEditorError,
     openBoxCreate,
     cancelBoxCreate,
+    setBoxCreateMode,
+    loadInkGaps,
+    setupBoxCreate,
     // 下面这批是"外壳仍有真调用点"的成员（§1 ⑦：每导出一个成员就要能指出谁在哪调它）。
     // 书 §3 的 T 清单是预测；这 13 个在 app.js 里有 27 处调用，不导出就得在外壳复制实现。
     applyDetailSuggestions,
