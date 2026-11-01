@@ -3913,7 +3913,7 @@ const VIEW_EXPORTS = {
       enter: { kind: "L" },   // 刀 9.1 新增（视图切换通知，生命周期键）
       // 刀 9.6：undoMarginEdit 死（T 5 → 4）——版心撤销按钮的工厂搬进模块，click 直呼模块自己的 undoMarginEdit。
       // R8 39 − 1 + 0 = 38：它唯一的调用点是工厂里的 addEventListener（值位），按钮 DOM 归 #view-pages，接线归模块。
-      loadFinishSummary: { kind: "C", callers: ["afterCleanupApplied", "afterContinuationChange", "boot", "confirmCurrentPage", "finishConfirmPages", "finishRevokeAutoPass", "finishRunAutoPass", "finishRunLayout", "openFinishPanel", "pollTask", "refreshProject", "setupReviewControls", "waitForAuxThenReview", "library-view.js", "reading-view.js"], reason: "收尾状态被三个视图共用（13 个外壳函数 + library/reading 各调）" },
+      loadFinishSummary: { kind: "C", callers: ["afterCleanupApplied", "afterContinuationChange", "boot", "confirmCurrentPage", "finishConfirmPages", "finishRevokeAutoPass", "finishRunAutoPass", "finishRunLayout", "openFinishPanel", "pollTask", "refreshProject", "setupReviewControls", "page-detail-editor.js", "library-view.js", "reading-view.js"], reason: "收尾状态被三个视图共用（13 个外壳函数 + library/reading 各调）" },
       renderRecognitionSettings: { kind: "C", callers: ["applyProjectSettings", "boot", "loadAppInfo", "library-view.js"], reason: "项目设置落在 pages 面板上" },
       applyPageZoom: { kind: "C", callers: ["fillDefinitionList", "goToWorkflowStep", "setPageZoom", "showView"], reason: "缩放三步共用（原按 T 记，Architect 转 C）" },
       confirmAllUnconfirmed: { kind: "C", callers: ["finishConfirmPages"], reason: "收尾面板发起（原按 T 记，Architect 转 C）" },
@@ -3922,7 +3922,7 @@ const VIEW_EXPORTS = {
       onPageListChanged: { kind: "C", callers: ["renderProject", "finishShowFallbackPages"], reason: "页面列表改了：整格重画" },
       // 刀 D：applyHeaderFooter 搬进 structure-tools.js，壳侧的调用者变成 boot 里那条 afterApply 闭包
       onProjectPagesReloaded: { kind: "C", callers: ["boot", "controlJob"], reason: "页面数据大面积变了：重拉列表再重画" },
-      onAuxReviewFinished: { kind: "C", callers: ["waitForAuxThenReview"], reason: "复核收尾：识别步状态要跟着变" },
+      onAuxReviewFinished: { kind: "C", callers: ["page-detail-editor.js"], reason: "复核收尾：识别步状态要跟着变（S4 之后调用者是编辑面板模块）" },
       onPageStatesRefreshed: { kind: "C", callers: ["pollTask", "refreshPageStates"], reason: "页面状态刷新了：就地同步瓷砖状态" },
       onAutoApplyStatusChanged: { kind: "C", callers: ["loadAutoApplyStatus"], reason: "自动应用状态变了：右栏角标重画" },
       onWorkflowStepChanged: { kind: "C", callers: ["syncWorkflowSteps"], reason: "步骤条重算了：按新步骤重排右栏分区" },
@@ -6027,6 +6027,93 @@ test("S3 自检：无人喊的导出 / 死注入 / 守卫外接线，都必须�
   assert.equal(initWiringProblems({ moduleSource: bad }).length, 1, "守卫外的接线必须红");
   const noGuard = "function init(deps) { bind('x', f); }\nconst api = { init };\n";
   assert.equal(initWiringProblems({ moduleSource: noGuard }).length, 2, "没有守卫必须红（接线位置 + 缺守卫）");
+});
+
+// ---------------------------------------------------------------- ① S4：第二引擎复核收口
+
+/**
+ * **子树外的 id 只许经注入拿节点**（书 §12.3）。
+ *
+ * `aux-warning-*` 五个在 `#view-review` 之外的模态框里（全屏遮罩，挪进子树会改 z-index 栈）。
+ * 模块里出现这五个字符串就等于"又按 id 找 DOM"，而 id 归属闸只认得子树里的 id，看不见它们。
+ */
+const AUX_OUTSIDE_IDS = [
+  "aux-warning-mask", "aux-warning-title", "aux-warning-text",
+  "aux-warning-wait", "aux-warning-error",
+];
+
+/**
+ * 只删「块注释 + 整行注释」的简化口径。
+ *
+ * 不用 `stripCommentsForGates`：它按字符扫，遇到正则字面量里的引号（`/[&<>"']/g`）会错进
+ * 字符串状态，导致**后面的整行注释整段留下**——对"死名归零 / 注释里提到不算"这类断言，
+ * 那是假红（本书 S4 实测：模块里 `// auxData 是死状态` 被当成代码）。
+ */
+function stripCommentLines(source) {
+  return String(source || "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//"))
+    .join("\n");
+}
+
+function outsideIdProblems({ moduleSource, ids = AUX_OUTSIDE_IDS }) {
+  const stripped = stripCommentLines(moduleSource);
+  return ids
+    .filter((id) => stripped.includes(id))
+    .map((id) => `模块里出现了子树外的 id ${id}——它只能经注入拿节点`);
+}
+
+test("S4：第二引擎复核 6 函数已不在 app.js；遮罩 id 不进模块；死状态 auxData 已删", () => {
+  const appSource = readFileSync(APP_FILE, "utf8");
+  const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
+  for (const name of [
+    "activeAuxJob", "openAuxWarning", "waitForAuxThenReview",
+    "runAuxiliary", "renderAuxiliary", "setupAuxControls",
+  ]) {
+    assert.ok(
+      !new RegExp(`^(?:async )?function ${name}\\s*\\(`, "m").test(appSource),
+      `app.js 里还定义着 ${name}——S4 之后它应在 page-detail-editor.js`,
+    );
+  }
+  const idProblems = outsideIdProblems({ moduleSource });
+  assert.deepEqual(idProblems, [], idProblems.join("\n"));
+  // 死状态：auxData 两处写在 S4 一并删掉，两个文件都不许再有（零读的"状态"是噪音）
+  const appCode = stripCommentLines(appSource);
+  const moduleCode = stripCommentLines(moduleSource);
+  assert.equal(/\bauxData\b/.test(appCode), false, "app.js 里还有 auxData——死状态该删");
+  assert.equal(/\bauxData\b/.test(moduleCode), false, "模块里不许接一份 auxData");
+  // auxWarningWaitToken 搬家：外壳 0 次、模块里仍是模块级 let（不是"顺手弄丢了"）
+  assert.equal(/\bauxWarningWaitToken\b/.test(appCode), false, "app.js 里还有 auxWarningWaitToken");
+  assert.ok(
+    /let auxWarningWaitToken = 0;/.test(moduleCode),
+    "模块里没有 auxWarningWaitToken 的声明——它该随 waitForAuxThenReview 搬进来",
+  );
+});
+
+test("S4：导出面只多一个 openAuxWarning，其余五个与 adoptLine 都私有", () => {
+  const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
+  const appSource = readFileSync(APP_FILE, "utf8");
+  const apiKeys = editorApiKeys(moduleSource);
+  assert.ok(apiKeys.includes("openAuxWarning"), "goToWorkflowStep 喊不到 openAuxWarning");
+  for (const name of [
+    "runAuxiliary", "renderAuxiliary", "activeAuxJob",
+    "setupAuxControls", "waitForAuxThenReview", "adoptLine",
+  ]) {
+    assert.ok(!apiKeys.includes(name), `${name} 没有外壳调用点，不该在导出面（§1 ⑦）`);
+  }
+  assert.deepEqual(exportCallSiteProblems({ apiKeys, appSource }), []);
+});
+
+test("S4 自检：遮罩 id 写进模块必须红；注释里提到不算；无调用点的导出必须红", () => {
+  assert.deepEqual(outsideIdProblems({ moduleSource: "const x = injected.getAuxWarningEls();" }), []);
+  assert.equal(outsideIdProblems({ moduleSource: 'part("aux-warning-text");' }).length, 1, "子树外 id 必须红");
+  assert.equal(
+    outsideIdProblems({ moduleSource: "// aux-warning-mask 只是注释里提到" }).length, 0,
+    "剥注释口径：注释里提到不算按 id 找 DOM",
+  );
+  const app = "window.PageDetailEditor?.init({});\nwindow.PageDetailEditor?.a();\n";
+  assert.equal(exportCallSiteProblems({ apiKeys: ["a", "b"], appSource: app }).length, 1);
 });
 
 // ---------------------------------------------------------------- 清洗刀：退役 id/状态归零
