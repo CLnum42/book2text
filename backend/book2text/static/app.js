@@ -9991,8 +9991,10 @@ function renderReviewTree() {
   const currentGroup = groups.find((group) =>
     group.pages.some((page) => page.page_no === currentNo)
   );
-  if (currentGroup && currentGroup.title && !reviewTreeOnlyTodo) {
-    // 默认只展开当前页所在的一组（含「未归章」）；翻页时旧组自动折叠
+  if (currentGroup && currentGroup.id !== null && !reviewTreeOnlyTodo) {
+    // 默认只展开当前页所在的那一章；翻页时旧章自动折叠。
+    // 「未归章」组不参与这条自动展开（id 为 null）：它一参与，每次 render 都会把展开集合清成
+    // {null}，用户点任何回目都活不过一帧（QA 2026-11-02 真机复验的回归）。
     if (!reviewTreeExpandedChapters.has(currentGroup.id)) {
       reviewTreeExpandedChapters.clear();
       reviewTreeExpandedChapters.add(currentGroup.id);
@@ -10197,7 +10199,7 @@ function syncReviewTreeToPage(pageNo, { scroll = false } = {}) {
   const group = reviewTreeGroups(reviewTree.pages || [], reviewTree.chapters || []).find((item) =>
     item.pages.some((page) => page.page_no === pageNo)
   );
-  if (group && group.title && !reviewTreeExpandedChapters.has(group.id) && !reviewTreeOnlyTodo) {
+  if (group && group.id !== null && !reviewTreeExpandedChapters.has(group.id) && !reviewTreeOnlyTodo) {
     reviewTreeExpandedChapters.clear();
     reviewTreeExpandedChapters.add(group.id);
     renderReviewTree();
