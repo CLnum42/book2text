@@ -2207,12 +2207,13 @@ test("刀号登记表自检：刀10 必须解析 / 解析不了必须红 / 未�
   const row = (host, stage) => `| \`${host}\` | \`some-id\` | 1–2（2 行） | ${stage} |  |\n`;
   const header = "| 函数 | 引用的 id | 行范围 | 到期刀 | wire |\n|---|---|---|---|---|\n";
 
-  // ① 刀10（多位数）与 刀2.5（小数）都必须解析得出来 —— 旧正则两条都吃掉整行
-  const wide = parseSeedRows(header + row("boot", "刀10") + row("setupLibrary", "刀2.5"));
+  // ① 多位数 × 小数（刀10.1）与纯小数（刀2.5）都必须解析得出来 —— 旧正则两条都吃掉整行
+  //    2026-11-01：刀 10 拆成 10.1/10.2 两个子刀，"多位数"这条改用 10.1 验（同时覆盖多位数与小数）
+  const wide = parseSeedRows(header + row("boot", "刀10.1") + row("setupLibrary", "刀2.5"));
   assert.deepEqual(wide.problems, [],
-    `刀10 / 刀2.5 不该解析失败——${wide.problems.join("；")}`);
-  assert.deepEqual(wide.rows.map((item) => item.stage), [10, 2.5],
-    "刀10 / 刀2.5 解析出的刀号不对（旧正则 `^刀(\\d)$` 会把这两行整行跳过）");
+    `刀10.1 / 刀2.5 不该解析失败——${wide.problems.join("；")}`);
+  assert.deepEqual(wide.rows.map((item) => item.stage), [10.1, 2.5],
+    "刀10.1 / 刀2.5 解析出的刀号不对（旧正则 `^刀(\\d)$` 会把这两行整行跳过）");
 
   // ② 解析不了的**必须红**，且红文要带行号 + 原文（否则读红文的人不知道是哪一行）
   const broken = parseSeedRows(header + row("boot", "刀5b") + row("setupLibrary", "刀 5"));
@@ -3676,7 +3677,8 @@ const VIEW_EXPORTS = {
       onTaskProgress: { kind: "C", callers: ["pollTask"], reason: "外壳只知「任务在跑」，job_type 分派交给模块里的两个进度函数各自守卫" },
       openPageSetup: { kind: "C", callers: ["boot", "library-view.js"], reason: "首启 / 库页打开页面设置" },
       // 刀 9 已删 rerunAuxiliary（那 5 个键之一），别再回来 —— 冲突时取「新值 + 不复活已删键」
-      scanVisiblePageSuggestions: { kind: "T", death: 10 },   // 10：队列子系统搬进模块（Architect 39eb012 改判；不是 C，只是"还没搬"）
+      // 10b：队列子系统剩下的一半——建议扫描队列搬进模块之后它就死（Architect 39eb012 改判；不是 C）
+      scanVisiblePageSuggestions: { kind: "T", death: 10.2 },
       startLayoutDetection: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "版心检测对话框发起（原按 T 记，Architect 转 C）" },
       toggleMarginView: { kind: "C", callers: ["boot", "index-view.js", "preview-view.js"], reason: "三步共用的工具栏开关" },
       togglePageBlocksOverlay: { kind: "C", callers: ["boot", "index-view.js", "preview-view.js"], reason: "同上" },
