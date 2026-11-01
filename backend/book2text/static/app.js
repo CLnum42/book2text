@@ -5720,8 +5720,8 @@ function renderPageDetail(data) {
   const firstDiffBlock = (data.blocks || []).find((block) => blockHasDrawableDiff(block));
   if (firstDiffBlock) window.PageDetailEditor?.selectReviewBlock(firstDiffBlock.block_id, { scroll: false });
   renderReviewHeadline();
-  renderSuggestionTools();
-  renderLayoutPanel(data);
+  window.PageDetailEditor?.renderSuggestionTools();
+  window.PageDetailEditor?.renderLayoutPanel(data);
   renderReviewWorkflowStatus();
   // 任务 45：当前页自动展开、当前条目滚到约 40%（条目用刚渲染的块重建，别拿上一页的）
   reviewTreeItems.set(pageNo, treeItemsFromBlocks(reviewBlocks));
@@ -6719,91 +6719,6 @@ function drawDetailLines() {
   }
 }
 
-// ---------------------------------------------------------------- 块类型建议（审校视图）
-//
-// 徽章只说"建议 + 把握"，不是待办：有建议的块仍然是"未审"，要人点「采用」
-// 才走 PATCH block_type（进事件表、可撤销）；review 只能一条一条点。
-
-function renderSuggestionTools() {
-  const button = el("suggestion-apply-all");
-  if (!button) return;
-  const high = window.PageDetailEditor?.suggestionHighList();
-  if (!high.length) {
-    button.hidden = true;
-    button.textContent = "";
-    button.removeAttribute("title");
-    return;
-  }
-  const labels = [
-    ...new Set(
-      high.map((item) => BLOCK_TYPE_LABELS[item.suggested_type] || item.suggested_type)
-    ),
-  ];
-  button.hidden = false;
-  button.textContent = `采用全部高把握建议（${high.length}）`;
-  button.title =
-    `本页有 ${high.length} 条把握较大的建议（${labels.join(" / ")}）：` +
-    "一次改成对应类型，只改类型、不改审校状态；每一块都能单独撤销。";
-}
-
-/** 版面面板：页面确认（这页算不算正文）与版面确认（这页里哪些块算正文）分开说。 */
-function renderLayoutPanel(data = null) {
-  const panel = el("layout-panel");
-  if (!panel) return;
-  if (!currentProject || currentProject.kind === "package") {
-    panel.hidden = true;
-    return;
-  }
-  const blockCount =
-    (data && data.review && data.review.block_count) ||
-    (data && data.blocks ? data.blocks.length : reviewBlocks.length);
-  const high = window.PageDetailEditor?.suggestionHighList().length;
-  const confirmed = data && data.page
-    ? Boolean(data.page.layout_confirmed)
-    : detailLayoutConfirmed;
-  panel.hidden = false;
-  const status = el("layout-panel-status");
-  status.textContent =
-    `本页版面：${blockCount} 块 · 高把握建议 ${high} · ${confirmed ? "✓ 已确认" : "未确认"}`;
-  status.classList.toggle("is-ok", confirmed);
-  const button = el("layout-confirm");
-  button.textContent = confirmed ? "✓ 版面已确认" : "确认本页版面";
-  button.disabled = confirmed;
-}
-
-async function confirmPageLayout() {
-  if (!currentProject || detailPageNo === null) return;
-  const pageNo = detailPageNo;
-  const button = el("layout-confirm");
-  button.disabled = true;
-  setSaveState("正在确认版面…");
-  try {
-    await apiJson(
-      `/api/projects/${currentProject.project_id}/pages/${pageNo}/layout/confirm`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page_numbers: [pageNo] }),
-      }
-    );
-    setSaveState("版面已确认 ✓");
-    await loadPageDetail(pageNo);
-    await refreshPageStates();
-  } catch (error) {
-    setSaveState(error.message || "版面确认失败", true);
-    showError(el("page-detail-error"), error);
-  }
-}
-
-/**
- * 书眉 / 页脚里夹着的页码：**只展示**。
- * 不自动拆块、不改文本；导出时 meta.json 会再按同一套规则抽一次。
- */
-/** 采用一条建议：走现有 PATCH block_type，重拉本页建议后徽章自然消失。 */
-/**
- * 本页全部采用：**只对 high**（review 必须逐条点，避免把弱建议批量套上）。
- * 逐块 PATCH 同一个接口；中途失败不会静默，最后如实说改了几条。
- */
 // ---------------------------------------------------------------- 分歧标记（说明书 8.5）
 
 /** 一块里最多逐条列出几行分歧；再多就交给「第二引擎复核」面板。 */
@@ -8611,7 +8526,6 @@ function setupReviewControls() {
     }
   });
   el("review-confirm").addEventListener("click", confirmCurrentPage);
-  el("layout-confirm").addEventListener("click", confirmPageLayout);
   for (const id of ["finish-open", "finish-open-review"]) {
     el(id).addEventListener("click", openFinishPanel);
   }
@@ -10575,10 +10489,10 @@ function boot() {
     root: el("view-review"),
     apiJson: (...args) => apiJson(...args),
     getCurrentProject: () => currentProject,
-    // 外壳仍在读写的 5 份状态（不搬、不存副本，每处读写都走这里）
+    // 外壳仍在读写的状态（S1 的 5 份 + S2 的 2 份 + S3 的 detailLayoutConfirmed；
+    // 不搬、不存副本，每处读写都走这里）
     getDetailPageNo: () => detailPageNo,
     getReviewBlocks: () => reviewBlocks,
-    getActiveReviewBlockId: () => activeReviewBlockId,
     setActiveReviewBlockId: (value) => { activeReviewBlockId = value; return value; },
     getDetailSuggestionByBlock: () => detailSuggestionByBlock,
     setDetailSuggestionByBlock: (value) => { detailSuggestionByBlock = value; return value; },
@@ -10593,11 +10507,12 @@ function boot() {
     setBoxCreateMode: (on) => { boxCreateMode = Boolean(on); return boxCreateMode; },
     getDetailInkGapsState: () => detailInkGaps,
     setDetailInkGapsState: (value) => { detailInkGaps = value; return value; },
+    getDetailLayoutConfirmed: () => detailLayoutConfirmed,
     refreshReviewFilterOnly: (...args) => refreshReviewFilterOnly(...args),
     renderReviewHeadline: (...args) => renderReviewHeadline(...args),
     setReviewBlockFilter: (mode) => { reviewBlockFilter = mode; return mode; },
     setReviewFilterExplicit: (value) => { reviewFilterExplicit = value; return value; },
-    // 模块喊外壳的动作（29 个）
+    // 模块喊外壳的动作（23 个）
     activateDiff: (...args) => activateDiff(...args),
     blockInsideMargin: (...args) => blockInsideMargin(...args),
     computeCharSpans: (...args) => computeCharSpans(...args),
@@ -10614,9 +10529,7 @@ function boot() {
     pageNumberSplitHint: (...args) => pageNumberSplitHint(...args),
     pendingPageReasons: (...args) => pendingPageReasons(...args),
     refreshPageStates: (...args) => refreshPageStates(...args),
-    renderLayoutPanel: (...args) => renderLayoutPanel(...args),
     renderReviewFilter: (...args) => renderReviewFilter(...args),
-    renderSuggestionTools: (...args) => renderSuggestionTools(...args),
     reviewMarginSplit: (...args) => reviewMarginSplit(...args),
     scrollViewerTo: (...args) => scrollViewerTo(...args),
     setSaveState: (...args) => setSaveState(...args),
@@ -10629,7 +10542,6 @@ function boot() {
     CHROME_BLOCK_TYPES,
     NOTE_BLOCK_TYPES,
     REVIEW_STATUS_LABELS,
-    PAGE_TYPE_LABELS,
     MAX_DIVERGENCE_ROWS,
   });
   // 三栏拖动由 reading-view.js 的 init() 负责（任务 94），这里不再重复绑定

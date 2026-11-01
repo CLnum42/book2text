@@ -5,13 +5,14 @@
  * **非视图服务模块**：核心抽屉（load/render/pager/viewer/diff）仍由外壳画，画完调
  * `renderBlocks(blocks)` 交块列表；模块只碰 §2 表里归模块的 id（root = `#view-review`，只 root.querySelector）。
  *
- * 状态归属（Chief 2026-11-02 裁决 A）：**3 份纯私有跟随搬**（detailSuggestions /
- * reviewPendingSave / reviewSaveTimer），**5 份外壳仍在读写的走注入**
+ * 状态归属（Chief 2026-11-02 裁决 A）：**纯私有状态跟随搬**（detailSuggestions /
+ * reviewPendingSave / reviewSaveTimer / boxDraft / inkGapsShown），外壳仍在读写的走注入
  * （detailPageNo / reviewBlocks / currentProject / activeReviewBlockId / detailSuggestionByBlock /
- * detailNumberHints / cursorByBlock / diffStripOpen）——每处读写都经注入，模块里不存副本。
+ * detailNumberHints / cursorByBlock / diffStripOpen / boxCreateMode / detailInkGaps /
+ * detailLayoutConfirmed）——每处读写都经注入，模块里不存副本。
  *
- * 接口面（T）：renderBlocks · setFilter · setPackageModeChrome · showError · openBoxCreate · cancelBoxCreate
- * 模块喊外壳的一律走 init 注入（29 个动作 + 7 个常量表 + 上面的状态访问器），两者不混。
+ * 接口面（T）：见文件末尾 api 对象；导出只留"外壳有真调用点"的成员（§1 ⑦）。
+ * 模块喊外壳的一律走 init 注入，两者不混。
  */
 (function () {
   "use strict";
@@ -70,14 +71,14 @@ async function refreshDetailSuggestions({ force = false } = {}) {
   }
   if (injected.getDetailPageNo() !== pageNo || !injected.getCurrentProject()) return;
   applyDetailSuggestions(payload);
-  injected.renderSuggestionTools();
+  renderSuggestionTools();
   // 建议是异步补算的：用户正在编辑框里打字时不要重建块列表（那会顶掉光标）。
   // 徽章等下一次渲染再出现，数据已经更新。
   const active = document.activeElement;
   const editing =
     active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT");
   if (!editing) renderReviewBlocks(injected.getReviewBlocks());
-  injected.renderLayoutPanel();
+  renderLayoutPanel();
 }
 
 function blockNeedsReview(block) {
@@ -1211,17 +1212,95 @@ function inkGapBarVisible(count) {
     if (auxRun) auxRun.hidden = Boolean(on);
   }
 
+  // ---------------------------------------------------------------- S3：建议工具 + 版面确认
+  //
+  // 「采用全部高把握建议」按钮与版面面板都在 #view-review 子树里，和块列表同一个 owner。
+  // `detailLayoutConfirmed` 是外壳状态（renderPageDetail 写），模块只读、走注入。
+
+  function renderSuggestionTools() {
+    const button = part("suggestion-apply-all");
+    if (!button) return;
+    const high = suggestionHighList();
+    if (!high.length) {
+      button.hidden = true;
+      button.textContent = "";
+      button.removeAttribute("title");
+      return;
+    }
+    const labels = [
+      ...new Set(
+        high.map((item) => injected.BLOCK_TYPE_LABELS[item.suggested_type] || item.suggested_type)
+      ),
+    ];
+    button.hidden = false;
+    button.textContent = `采用全部高把握建议（${high.length}）`;
+    button.title =
+      `本页有 ${high.length} 条把握较大的建议（${labels.join(" / ")}）：` +
+      "一次改成对应类型，只改类型、不改审校状态；每一块都能单独撤销。";
+  }
+
+  /** 版面面板：页面确认（这页算不算正文）与版面确认（这页里哪些块算正文）分开说。 */
+  function renderLayoutPanel(data = null) {
+    const panel = part("layout-panel");
+    if (!panel) return;
+    const project = injected.getCurrentProject();
+    if (!project || project.kind === "package") {
+      panel.hidden = true;
+      return;
+    }
+    const reviewBlocks = injected.getReviewBlocks();
+    const blockCount =
+      (data && data.review && data.review.block_count) ||
+      (data && data.blocks ? data.blocks.length : reviewBlocks.length);
+    const high = suggestionHighList().length;
+    const confirmed = data && data.page
+      ? Boolean(data.page.layout_confirmed)
+      : injected.getDetailLayoutConfirmed();
+    panel.hidden = false;
+    const status = part("layout-panel-status");
+    status.textContent =
+      `本页版面：${blockCount} 块 · 高把握建议 ${high} · ${confirmed ? "✓ 已确认" : "未确认"}`;
+    status.classList.toggle("is-ok", confirmed);
+    const button = part("layout-confirm");
+    button.textContent = confirmed ? "✓ 版面已确认" : "确认本页版面";
+    button.disabled = confirmed;
+  }
+
+  async function confirmPageLayout() {
+    const project = injected.getCurrentProject();
+    const pageNo = injected.getDetailPageNo();
+    if (!project || pageNo === null) return;
+    const button = part("layout-confirm");
+    button.disabled = true;
+    injected.setSaveState("正在确认版面…");
+    try {
+      await injected.apiJson(
+        `/api/projects/${project.project_id}/pages/${pageNo}/layout/confirm`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ page_numbers: [pageNo] }),
+        }
+      );
+      injected.setSaveState("版面已确认 ✓");
+      await injected.loadPageDetail(pageNo);
+      await injected.refreshPageStates();
+    } catch (error) {
+      injected.setSaveState(error.message || "版面确认失败", true);
+      showEditorError(error);
+    }
+  }
+
   let wired = false;
 
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
     root = injected.root || null;
-    // canvas 在整个页详情生命周期里是同一个元素（换页只重绘、不换 DOM）⇒ 接线只做一次；
-    // 即便被重复 init，也不许重复绑（否则一次拖动触发两次）。
-    if (!wired) {
-      wired = true;
-      setupBoxCreate();
-    }
+    // 这块面板的元素在整个生命周期里都是同一批（换页只重绘、不换 DOM）⇒ 接线只做一次；
+    // 即便被重复 init，也不许重复绑（否则一次点击/拖动触发两次）。
+    if (wired) return api;
+    wired = true;
+    setupBoxCreate();
     const bind = (id, handler) => {
       const node = part(id);
       if (node) node.addEventListener("click", handler);
@@ -1231,6 +1310,7 @@ function inkGapBarVisible(count) {
     bind("suggestion-apply-all", () => adoptAllHighSuggestions());
     bind("detail-box-create", () => openBoxCreate());
     bind("box-select-cancel", () => cancelBoxCreate());
+    bind("layout-confirm", () => confirmPageLayout());
     return api;
   }
 
@@ -1239,14 +1319,16 @@ function inkGapBarVisible(count) {
     renderBlocks: renderReviewBlocks,
     setFilter,
     setPackageModeChrome: applyPackageChrome,
-    showError: showEditorError,
-    openBoxCreate,
-    cancelBoxCreate,
     setBoxCreateMode,
     loadInkGaps,
-    setupBoxCreate,
+    // S3：面板自己的两个渲染入口（外壳在 renderPageDetail 里画完核心抽屉后喊它们）
+    renderSuggestionTools,
+    renderLayoutPanel,
     // 下面这批是"外壳仍有真调用点"的成员（§1 ⑦：每导出一个成员就要能指出谁在哪调它）。
     // 书 §3 的 T 清单是预测；这 13 个在 app.js 里有 27 处调用，不导出就得在外壳复制实现。
+    // showError / openBoxCreate / cancelBoxCreate / setupBoxCreate 都不在这里：它们只有模块内部
+    // 调用（错误写 page-detail-error、两个入口由 init 自己接线、框选接线在 wired 守卫里），
+    // 外壳一次都没喊——留下就是"预留导出"，§1 ⑦ 不成立。
     applyDetailSuggestions,
     refreshDetailSuggestions,
     blockNeedsReview,
