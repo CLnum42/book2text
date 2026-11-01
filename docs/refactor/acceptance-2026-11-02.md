@@ -1,4 +1,4 @@
-# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）
+# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）
 
 > 规则（2026-11-02 定）：**通过 / 未验分开写**；未验必须写阻塞原因与证据位置。
 > 只在对话里说“我跑过”按**未验**计；环境起不来同理。
@@ -87,10 +87,87 @@ resetState 重跑模块源码拿干净实例；新增 page-index.test.mjs 补三
 处理：已并入 QA 正在跑的同一轮；结论回来后在“真机”一节追加，未回前按未验。
 ```
 
-## 三、结论
+## 三、刀 D：结构工具 → `structure-tools.js`（`24c8ea5`）
+
+提交链：`b3105ba`（放宽笔：C 键 `onProjectPagesReloaded` 的 effective callers 先改登记）→
+`e0a6dfb`（产品）→ `24c8ea5`（收紧笔：域模块闸的唯一例外 + 请求体对集 4 条）。
+
+### 通过（代码层，DevLead 独立核）
+
+```
+基线 b050063 → 24c8ea5
+app.js 12,584 → 12,426（−158）
+顶层函数 490 → 483：差集恰 7 个、新增 0（口径：^(async )?function 名集合相减，行号为 b050063 的定义行）
+  structureRules@1364 · previewHeaderFooter@1378 · renderStructurePreview@1401 ·
+  updateStructureApplyState@1472 · applyHeaderFooter@1479 · setupStructurePanel@1515 · setAllStructureKeeps@1522
+structureCandidates 在 app.js 0 次
+structure-tools.js 271 = 220 代码 + 27 注释 + 24 空行
+  （提交说明写 275，实测 271——以 wc -l + 三分解为准，275 作废）
+模块 DOM 面（剥注释）：el( 0 · document.getElementById 0 · document.querySelector 0；
+  只有 root.querySelector（:39 part()、:253 li.querySelector 读候选勾选态）
+17 个 structure-* 被模块引用（value 7 + part 7 + bind 4，apply-btn 重复计数 1）
+  #structure-panel 子树共 20 个 ⇒ 剩下 panel/close/cancel 与入口 structure-open 属外壳接缝，
+  app.js 里共 5 处（:1023 / :1063–1065 / :11339 / :11348 / :12406），都是开合与 root 传递
+reset 有 2 个真调用点：app.js:1023（closeModal）、app.js:2365（refreshProject）⇒ 收进接口面
+index.html:1860（structure-tools.js）在 index.html:1861（app.js）之前
+deps 173（window.PagesView?.init({ 的 4 空格 key 行；我的独立数法，与闸的分列无关）
+四闸：node 225 / 223 pass / 0 fail / 2 skipped（45.6s）· pytest 1035 passed（123.27s，
+  STATIC_DIR 打印为本 worktree 内）· R3 review 90 种 / 223 处（与 b050063 逐字相同）·
+  contract-registry 465 笔 0 不合格 · audit_ui_asset_literals 会因搬运假红 0 ·
+  Temp-Relax 代码 0（5 处全在 docs）
+接口面 6 个：init / setup / preview / apply / setAllKeeps / reset
+变异复跑：把 part() 的 root.querySelector 换成 document.getElementById ⇒ 只红域模块闸 1 条，
+  报错原文「structure-tools.js 里出现 1 次 document.getElementById(——同上」；还原后 git diff 为空
+```
+
+### 例外裁决：`allowQuerySelector`（收，附两条限制）
+
+```
+闸里的唯一例外：{ structure-tools.js → StructureTools, allowQuerySelector: true }
+  · 放行 root.querySelector（模块里 3 处，全在 #structure-panel 子树）
+  · document.querySelector / document.getElementById / el( 在例外模块里仍然红
+  · 三分支自检已带：root 绿 / document 红 / el( 红（boundary.test.mjs:5609 起）
+裁决：**收**。书 §1② 本来就允许"在 root 子树内 querySelector"，闸此前比书更严；
+  例外是把闸对齐书，不是给模块开后门。
+两条限制已写进书 §7：
+  ① 例外只给 structure-tools.js 这一个文件；
+  ② 第二个模块要它 ⇒ 改书的规则并重审，**不许往 DOMAIN_MODULES 里加 allowQuerySelector 名字**。
+缺口（记录，不在本轮做）：闸目前没有"allowQuerySelector 的模块 ≤1 个"的机检，唯一性靠书 + 评审。
+  要机检只是一行：DOMAIN_MODULES.filter(m => m.allowQuerySelector).length === 1。
+```
+
+### 待补（已派 Builder，补完即结案；不影响产品代码正确性）
+
+```
+① A5 那个"二选一"，实际两条都没做：structure-tools.test.mjs:5 仍声称「应用后 afterApply 必须被等一次」，
+   但全文件没有这条断言；calls（:73 建 / :99 自增 / :102 返回）是死变量，没有 assert 用它。
+   已派：默认选 (a) 补不数调用的观察（let afterApplied = false ⇒ assert.equal(afterApplied, true)，
+   A5 的 calls?/order|seq|trace/mock|spy|stub|fake 三类正则都不命中）；
+   否则选 (b) 删 calls + 改第 5 行 + 缺口补进本表。
+② structure-tools.js:6 头注释的 deps 里写着 notify，但全文件 0 读、app.js 也没注入 ⇒ 删这半句。
+③ 闸缺口：刀 A / 刀 B 各有一条「N 名已从 app.js 迁出 + api 恰好」的常驻断言，刀 D 没有
+   （只有通用域模块闸 + 行为测试）⇒ 补一条（moved 7 名 + api 恰好 6 个），
+   变异：7 名之一加回 app.js ⇒ 必须红；从 api 删 reset ⇒ 必须红。
+功能风险说明：afterApply 的时序不只是单元缺口——真机「应用后第 3 页块回到 paragraph」要靠 pages 重拉
+  （afterApply 的第一件事），Builder 的 CDP 跑通了；但单元层确实没锁住"有没有 await"。
+```
+
+### 真机：未验（Builder 自测有读数，但未留档）
+
+```
+Builder 用 Chrome headless + CDP 跑了：打开面板 / 预览 380 候选 / 应用 372 块 /
+  撤销后抽查第 3 页 24 块回到 paragraph；并留一个未追完的观察：撤销后再预览只剩 8 个候选。
+判定：按 2026-11-02 的规矩「证据必须留档（命令 + 输出/截图路径进提交或 docs/evidence/），
+  只在对话里说跑过 = 未验」，`24c8ea5` 内没有对应证据文件 ⇒ 记未验。
+QA 复验请带这个问题：「8 个是不是应用前本来就不是 paragraph 的块」——
+  取应用前 page_types=body 的候选集合，与撤销后再预览的 8 个对集（同 id 即同一批，不是丢失）。
+```
+
+## 四、结论
 
 ```
 片 1：代码层通过；真机部分通过、5 项未验（ego 阻塞）
 刀 C：代码层通过；真机 3 项未验（ego 阻塞）
-两把刀都“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
+刀 D：代码层通过（含唯一例外裁决）；真机未验（无留档）；三条文档/测试真实性待补（已派 Builder）
+三把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
 ```

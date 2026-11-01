@@ -301,13 +301,20 @@ window.PageIndexService = {
 
 ```js
 window.StructureTools = {
-  init({ root, apiJson, getCurrentProject, notify }),
+  init({ root, apiJson, getCurrentProject, afterApply }),
   setup(),                     // 原 setupStructurePanel：在 root 内部绑 4 个按钮
   preview(),                   // POST /structure/preview → renderStructurePreview
   apply(),                     // POST /structure/apply（写盘！可撤销）
   setAllKeeps(keep),
+  reset(),                     // 关面板 / 换项目：候选清空、结果区收起
 };
 ```
+
+**接口面 6 个，只放有真调用点的成员**：`reset` 是落盘时才发现的——原 `closeModal` 与 `refreshProject`
+各自直接写 `structureCandidates`，搬进模块后变成两处 `window.StructureTools?.reset()`；
+不导出它，外壳就只能摸模块的私有状态。**别把 `reset` 当"多余导出"删掉。**
+`afterApply` 由外壳提供（页面数据重拉 + 导出预检两件事），**顺序在模块里**：`apply()` 请求 → 读回 →
+写提示 / 收起结果 → `await afterApply()`。书早期版本写的 `notify` 从未实现（模块 0 读、app.js 不注入），已删。
 
 **写盘两处必须按"动作"命名**（`knife-numbering.md` §七：调用位不许挂在无关请求之后）：
 `preview()` 与 `apply()` 各自"请求 → 读回 → 重画"在模块内部连起来，外壳不参与顺序编排。
@@ -317,6 +324,9 @@ window.StructureTools = {
 ```
 ① app.js 里 7 个函数名 0 次；structure-tools.js 里 `el(` / `getElementById` 各 0 次，
    17 个 structure-* id 只在 index.html 与模块的 root.querySelector 里出现
+   （**17 = 模块实际引用的 id 数**：value 7 + part 7 + bind 4，apply-btn 重复算 1。
+    `#structure-panel` 子树里共 20 个 ⇒ 剩下的 `panel` / `close` / `cancel` 与入口 `structure-open`
+    属外壳接缝，留在 app.js，2026-11-02 实测 5 处）
 ② deps **173** 不变（本刀不新增注入键：root 与 apiJson 由 init 传，不进 deps 表）
 ③ 写盘等价：一次预览 + 一次应用，请求体与改前逐字段相同（抓一份请求体对集）
 ④ 撤销仍在：应用后调 `undoAutoApply` 的路径不变（它不归本刀，但要在真机上验一次能撤）
@@ -345,7 +355,18 @@ openTaskDrawer() 只有 3 行（4589），一个函数、一个 id（#task-drawe
 | R3 | pages total 0 / ids 0 | `node scripts/r3_pages_count.mjs --json` |
 | 四闸 | node + pytest 全绿 | `node tests/js/run.mjs` / `PYTHONPATH="$PWD/backend" .venv/bin/python -m pytest -q` |
 | 模块 DOM 面 | `el(` / `document.getElementById` 各 0 次 | 静态 grep（**先剥注释**，口径同 R3） |
-| 模块 DOM 面（**要有闸**） | 本刀模块里 `el(` / `getElementById(` 0 次（刀 D 另允许 `root.querySelector(`） | `tests/js/boundary.test.mjs` 的 `moduleDomProblems(source)` + 一条喂坏样本自检；**不接受人工 grep** |
+| 模块 DOM 面（**要有闸**） | 本刀模块里 `el(` / `getElementById(` 0 次；`querySelector(` 也 0 次——**全仓唯一例外见下** | `tests/js/boundary.test.mjs` 的 `domainDomProblems(source)` + 三分支喂坏样本自检；**不接受人工 grep** |
+
+**模块 DOM 面的唯一例外（2026-11-02 裁定，写死）**
+
+```
+DOMAIN_MODULES 里只有 structure-tools.js 登记 allowQuerySelector: true：
+  · 放行 root.querySelector —— 17 个 structure-* 全在 #structure-panel 一棵子树里，逐个传太笨
+  · document.querySelector / document.getElementById / el( 在例外模块里仍然红（闸里是分支，不是跳过）
+  · 例外只给这一个文件。**第二个模块要它 ⇒ 改这一节的规则并重审，不许往 DOMAIN_MODULES 里加名字**
+理由：§1② 本来就允许"在 root 子树内 querySelector"，闸此前比书更严；例外是把闸对齐书，不是新开口子。
+待补的机检：目前没有"allowQuerySelector 的模块 ≤1 个"的断言，唯一性靠本节 + 评审。
+```
 | 变异 | 每刀一条"喂坏样本必须红" | 落在 tests/js 里，跟着该刀的闸一起提交 |
 
 **扫引用的口径（这条吃过亏，写死）**：三栏各扫一遍——定义位 / 值位（`addEventListener(..., f)`、
