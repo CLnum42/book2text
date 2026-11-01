@@ -5909,10 +5909,124 @@ test("① S1：模块喊外壳的名字 ⊆ 注入键（神入口判据）", () 
 
 test("① S1 自检：裸调外壳函数 / 用未注入的键 / 反向重画，都必须红", () => {
   const appSource = "function renderReviewBlocks() {}\nfunction loadPageDetail() {}\n";
-  assert.deepEqual(godDoorProblems({ moduleSource: 'injected.renderLayoutPanel();', appSource, injectedKeys: ["renderLayoutPanel"] }), []);
+  assert.deepEqual(godDoorProblems({ moduleSource: 'injected.loadPageDetail();', appSource, injectedKeys: ["loadPageDetail"] }), []);
   assert.equal(godDoorProblems({ moduleSource: 'renderReviewBlocks();', appSource, injectedKeys: [] }).length >= 1, true, "裸调必须红");
   assert.equal(godDoorProblems({ moduleSource: 'injected.noSuchKey();', appSource, injectedKeys: [] }).length, 1, "未注入必须红");
   assert.equal(godDoorProblems({ moduleSource: 'injected.renderPageDetail();', appSource, injectedKeys: ["renderPageDetail"] }).length, 1, "反向重画必须红");
+});
+
+// ---------------------------------------------------------------- ① S3：导出面 + 注入面收口
+
+/**
+ * **导出的每个成员都必须有外壳调用点**（§1 ⑦：导出 = 有人喊）。
+ *
+ * 这条是从两次实际缺陷倒推出来的：S2 的 `setupBoxCreate`（只有 init 自己在 wired 守卫里调）、
+ * S1 的 `showError` / `openBoxCreate` / `cancelBoxCreate`（只有模块内部用）都挂在了导出面上，
+ * 而"没有调用点的导出"按定义就是**预留**——没有判据盯着，就会越挂越多。
+ */
+function exportCallSiteProblems({ apiKeys, appSource }) {
+  const problems = [];
+  const src = stripCommentsForGates(appSource);
+  for (const key of apiKeys) {
+    if (!new RegExp(`PageDetailEditor\\?\\.${key}\\s*\\(`).test(src)) {
+      problems.push(`api.${key} 在 app.js 里一次都没被调用——没有调用点的导出就是"预留"（§1 ⑦）`);
+    }
+  }
+  return problems;
+}
+
+/** boot 注入了、模块却一次都没读的键：死注入（传了没人用，读代码的人会被它骗）。 */
+function deadInjectionProblems({ moduleSource, injectedKeys }) {
+  const stripped = stripCommentsForGates(moduleSource);
+  const problems = [];
+  for (const key of injectedKeys) {
+    if (!new RegExp(`injected\\.${key}\\b`).test(stripped)) {
+      problems.push(`boot 注入了 ${key}，模块一次都没读——死注入`);
+    }
+  }
+  return problems;
+}
+
+/** init 里的接线必须全在 `if (wired) return api;` 之后（重复 init 不许重复绑）。 */
+function initWiringProblems({ moduleSource }) {
+  const problems = [];
+  const start = moduleSource.indexOf("function init(deps)");
+  const end = moduleSource.indexOf("const api = {");
+  if (start < 0 || end < 0 || end <= start) return ["找不到 init 与 api 的边界，这条判据在空转"];
+  const body = moduleSource.slice(start, end);
+  const guard = body.indexOf("if (wired) return api;");
+  if (guard < 0) problems.push("init 里没有 wired 守卫——重复 init 会重复绑监听");
+  const firstBind = body.search(/\bbind\(/);
+  if (firstBind >= 0 && (guard < 0 || firstBind < guard)) {
+    problems.push("init 的接线跑在 wired 守卫之前——重复 init 会重复绑");
+  }
+  return problems;
+}
+
+/** 沙箱里执行一遍模块拿真实导出面（只读文本会漏"函数改名后 api 里挂了个 undefined"）。 */
+function editorApiKeys(moduleSource) {
+  const sandbox = { console, window: {}, document: { createElement: () => ({}) } };
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(moduleSource, sandbox, { filename: "page-detail-editor.js" });
+  const api = sandbox.window.PageDetailEditor;
+  assert.ok(api && typeof api.init === "function", "page-detail-editor.js 没挂 window.PageDetailEditor.init");
+  return Object.keys(api);
+}
+
+test("S3：三个函数已不在 app.js；模块导出面每个都有外壳调用点（§1 ⑦）", () => {
+  const appSource = readFileSync(APP_FILE, "utf8");
+  const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
+  for (const name of ["renderSuggestionTools", "renderLayoutPanel", "confirmPageLayout"]) {
+    assert.ok(
+      !new RegExp(`^(?:async )?function ${name}\\s*\\(`, "m").test(appSource),
+      `app.js 里还定义着 ${name}——S3 之后它应在 page-detail-editor.js`,
+    );
+  }
+  const apiKeys = editorApiKeys(moduleSource);
+  for (const name of ["renderSuggestionTools", "renderLayoutPanel"]) {
+    assert.ok(apiKeys.includes(name), `S3 的渲染入口 ${name} 没导出（renderPageDetail 喊不到它）`);
+  }
+  // confirmPageLayout 的唯一调用点是模块 init 自己接的 `layout-confirm` 按钮 ⇒ 私有，不进导出面
+  assert.ok(!apiKeys.includes("confirmPageLayout"), "confirmPageLayout 不许导出——它的唯一调用点在模块内部");
+  for (const name of ["setupBoxCreate", "showError", "openBoxCreate", "cancelBoxCreate"]) {
+    assert.ok(!apiKeys.includes(name), `${name} 没有外壳调用点，不该挂在导出面上（§1 ⑦）`);
+  }
+  const problems = exportCallSiteProblems({ apiKeys, appSource });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("S3：boot 注入的每个键模块都真的读（死注入 = 传了没人用）", () => {
+  const appSource = readFileSync(APP_FILE, "utf8");
+  const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
+  const boot = appSource.slice(appSource.indexOf("window.PageDetailEditor?.init({"));
+  const injectedKeys = [...boot.slice(0, boot.indexOf("\n  });")).matchAll(/^    ([A-Za-z_$][\w$]*)[:,]/gm)].map((m) => m[1]);
+  assert.ok(injectedKeys.length > 0, "boot 里没找到 PageDetailEditor 的 init 块");
+  const problems = deadInjectionProblems({ moduleSource, injectedKeys });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("S3：init 的接线都在 wired 守卫之后（重复 init 不重复绑）", () => {
+  const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
+  assert.deepEqual(initWiringProblems({ moduleSource }), []);
+});
+
+test("S3 自检：无人喊的导出 / 死注入 / 守卫外接线，都必须红", () => {
+  const app = "window.PageDetailEditor?.init({});\nwindow.PageDetailEditor?.a();\n";
+  assert.deepEqual(exportCallSiteProblems({ apiKeys: ["init", "a"], appSource: app }), []);
+  assert.equal(exportCallSiteProblems({ apiKeys: ["a", "b"], appSource: app }).length, 1, "没人喊的导出必须红");
+  assert.equal(exportCallSiteProblems({ apiKeys: ["a"], appSource: "// PageDetailEditor?.a()\n" }).length, 1,
+    "只有注释里出现不算调用点");
+
+  const mod = "function f() { injected.used(); }\n";
+  assert.deepEqual(deadInjectionProblems({ moduleSource: mod, injectedKeys: ["used"] }), []);
+  assert.equal(deadInjectionProblems({ moduleSource: mod, injectedKeys: ["unused"] }).length, 1, "死注入必须红");
+
+  const good = "function init(deps) { if (wired) return api; bind('x', f); }\nconst api = { init };\n";
+  assert.deepEqual(initWiringProblems({ moduleSource: good }), []);
+  const bad = "function init(deps) { bind('x', f); if (wired) return api; }\nconst api = { init };\n";
+  assert.equal(initWiringProblems({ moduleSource: bad }).length, 1, "守卫外的接线必须红");
+  const noGuard = "function init(deps) { bind('x', f); }\nconst api = { init };\n";
+  assert.equal(initWiringProblems({ moduleSource: noGuard }).length, 2, "没有守卫必须红（接线位置 + 缺守卫）");
 });
 
 // ---------------------------------------------------------------- 清洗刀：退役 id/状态归零
