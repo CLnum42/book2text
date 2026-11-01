@@ -1,0 +1,513 @@
+{
+  "base": "http://127.0.0.1:8871",
+  "project": "b2t_T7JH61",
+  "at": "2026-11-01T16:15:50.495Z",
+  "default": {
+    "groups": [
+      {
+        "cls": "review-tree__chapter",
+        "head": "▸ 第八十一回 ✓ 完成",
+        "rows": 0
+      },
+      {
+        "cls": "review-tree__chapter",
+        "head": "▸ 第八十五回 ✓ 完成",
+        "rows": 0
+      },
+      {
+        "cls": "review-tree__chapter",
+        "head": "▸ 第九十回 ✓ 完成",
+        "rows": 0
+      },
+      {
+        "cls": "review-tree__chapter",
+        "head": "▸ 第九十五回 ✓ 完成",
+        "rows": 0
+      },
+      {
+        "cls": "review-tree__chapter",
+        "head": "▸ 第八十一回 ✓ 完成",
+        "rows": 0
+      },
+      {
+        "cls": "review-tree__chapter",
+        "head": "▸ 第八十二回 ✓ 完成",
+        "rows": 0
+      },
+      {
+        "cls": "review-tree__chapter",
+        "head": "▸ 第八十三回 ✓ 完成",
+        "rows": 0
+      },
+      {
+        "cls": "review-tree__chapter",
+        "head": "▾ 未归章 90 处 第 1 页 第 2 页 第 3 页 ▾",
+        "rows": 29
+      }
+    ],
+    "pageRows": 29,
+    "carets": [
+      "▸",
+      "▸",
+      "▸",
+      "▸",
+      "▸",
+      "▸",
+      "▸",
+      "▾"
+    ],
+    "stats": "90 处待审",
+    "last_group": {
+      "cls": "review-tree__chapter",
+      "head": "▾ 未归章 90 处 第 1 页 第 2 页 第 3 页 ▾",
+      "rows": 29
+    }
+  },
+  "jump": {
+    "before": {
+      "page": "第 4 页（印 D）",
+      "blocks": {
+        "n": 3,
+        "text": "标题 段落 页眉 页脚 页码 脚注 图注 插图 装饰 旁批 其他 已修改 未审 💬 加备注 ✓ 确认 ? 不确定 排除"
+      }
+    },
+    "clicked": true,
+    "after": {
+      "page": "第 20 页（印 T）",
+      "blocks": {
+        "n": 3,
+        "text": "标题 段落 页眉 页脚 页码 脚注 图注 插图 装饰 旁批 其他 未审 💬 加备注 ✓ 确认 ? 不确定 排除 ↪ 延"
+      }
+    }
+  },
+  "toggle_current_group": {
+    "before": {
+      "groups": [
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十一回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十五回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第九十回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第九十五回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十一回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十二回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十三回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▾ 未归章 90 处 第 1 页 第 2 页 第 3 页 ▸",
+          "rows": 29
+        }
+      ],
+      "pageRows": 29,
+      "carets": [
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▾"
+      ],
+      "stats": "90 处待审"
+    },
+    "clicked": true,
+    "after": {
+      "groups": [
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十一回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十五回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第九十回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第九十五回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十一回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十二回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十三回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▾ 未归章 90 处 第 1 页 第 2 页 第 3 页 ▸",
+          "rows": 29
+        }
+      ],
+      "pageRows": 29,
+      "carets": [
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▾"
+      ],
+      "stats": "90 处待审"
+    }
+  },
+  "toggle_other_group": {
+    "before": {
+      "groups": [
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十一回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十五回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第九十回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第九十五回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十一回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十二回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十三回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▾ 未归章 90 处 第 1 页 第 2 页 第 3 页 ▸",
+          "rows": 29
+        }
+      ],
+      "pageRows": 29,
+      "carets": [
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▾"
+      ],
+      "stats": "90 处待审"
+    },
+    "clicked": true,
+    "after": {
+      "groups": [
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十一回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十五回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第九十回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第九十五回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十一回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十二回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▸ 第八十三回 ✓ 完成",
+          "rows": 0
+        },
+        {
+          "cls": "review-tree__chapter",
+          "head": "▾ 未归章 90 处 第 1 页 第 2 页 第 3 页 ▸",
+          "rows": 29
+        }
+      ],
+      "pageRows": 29,
+      "carets": [
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▸",
+        "▾"
+      ],
+      "stats": "90 处待审"
+    }
+  },
+  "todo": {
+    "groups": [
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 4 页 3 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 5 页 3 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 6 页 2 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 8 页 2 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 9 页 5 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 10 页 4 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 11 页 2 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 12 页 5 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 13 页 5 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 14 页 4 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 15 页 5 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 16 页 5 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 17 页 8 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 18 页 6 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 19 页 3 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▾ 第 20 页 3 处 L1 标 …ght →∅... L",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 21 页 2 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 22 页 1 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 23 页 5 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 24 页 4 处",
+        "rows": 1
+      },
+      {
+        "cls": "review-tree__page",
+        "head": "▸ 第 25 页 13 处",
+        "rows": 1
+      }
+    ],
+    "pageRows": 21,
+    "carets": [],
+    "stats": "90 处待审"
+  },
+  "api": {
+    "chapters": 7,
+    "nochap": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29
+    ],
+    "pend": [
+      4,
+      5,
+      6,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25
+    ],
+    "total_unacked": 90
+  },
+  "todo_page_nos": [
+    4,
+    5,
+    6,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25
+  ],
+  "todo_compare": {
+    "rows": 21,
+    "api": 21,
+    "missing": [],
+    "extra": []
+  },
+  "console_errors": []
+}
