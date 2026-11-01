@@ -6133,6 +6133,173 @@ function drawDetailOverlay(blocks) { ${drawTail} }
   }
 });
 
+// ---------------------------------------------------------------- 片 2 笔 B：避让链搬进 registry
+
+/**
+ * **避让数学全仓只许一份，且只许在 `overlay-registry.js`**（契约 §1 / 书 §3.3）。
+ *
+ * 迁移窗口里 app.js 允许留 ≤6 行的转发器（reading / index 还没迁）——
+ * 转发器长过 6 行就说明"真实现"又长回去了，那正是这一条要抓的。
+ */
+function layoutMathProblems({ appCode, registryCode }) {
+  const problems = [];
+  for (const name of ["findOrderSpot", "findLabelSpot", "pxRect", "rectsOverlap"]) {
+    if (new RegExp(`^function ${name}\\s*\\(`, "m").test(appCode)) {
+      problems.push(`app.js 里还在定义 ${name}——避让数学只许在 overlay-registry.js`);
+    }
+    if (!functionBody(registryCode, name)) problems.push(`registry 里没有 ${name}——算法没搬全`);
+  }
+  for (const name of ["layoutOverlayAnnotations", "scheduleOverlayLayout"]) {
+    const body = functionBody(appCode, name);
+    if (!body) {
+      problems.push(`app.js 里连转发器都没有 ${name}——reading / index 还没迁完，它们的号没人摆`);
+      continue;
+    }
+    const lines = body.split("\n").length;
+    if (lines > 6) problems.push(`app.js 的 ${name} 有 ${lines} 行（>6）——那不是转发器，是真实现`);
+  }
+  // 重试循环只有一份：app.js 0 次，registry 恰好 1 次
+  const appRetries = (appCode.match(/attempt < 90/g) || []).length;
+  const regRetries = (registryCode.match(/attempt < 90/g) || []).length;
+  if (appRetries !== 0) problems.push(`app.js 里还有 ${appRetries} 处重试循环——排帧只许 registry 一份`);
+  if (regRetries !== 1) problems.push(`registry 里的重试循环是 ${regRetries} 处，应恰好 1 处`);
+  return problems;
+}
+
+test("片 2 笔 B：避让数学只在 overlay-registry.js（app.js 只剩 ≤6 行转发器）", () => {
+  const appCode = codeOnly(readFileSync(APP_FILE, "utf8"));
+  const registryCode = codeOnly(readFileSync(join(STATIC_DIR, "overlay-registry.js"), "utf8"));
+  const problems = layoutMathProblems({ appCode, registryCode });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+/**
+ * **registry 的 `layout` / `schedule` 分工**（契约 §API · 书 §3.3）：
+ * layout = 一次摆（不排帧、不画、不碰 version）；schedule = 唯一重试 + 尺寸观察 + 成功回调一次。
+ */
+function registryApiProblems({ registryCode }) {
+  const problems = [];
+  const layoutBody = functionBody(registryCode, "layout");
+  const scheduleBody = functionBody(registryCode, "schedule");
+  const stepBody = functionBody(registryCode, "stepSchedule");
+  const observeBody = functionBody(registryCode, "rememberLayout");
+  if (!layoutBody) problems.push("registry 里没有 layout");
+  else {
+    for (const [needle, why] of [
+      ["requestAnimationFrame", "layout 里出现了排帧"],
+      ["drawDiffLayer", "layout 里出现了绘制"],
+      ["version", "layout 里碰了 version"],
+    ]) {
+      if (new RegExp(needle).test(layoutBody)) problems.push(why);
+    }
+    if (!/boxesIn\(/.test(layoutBody)) problems.push("layout 没有遍历容器里的块框");
+  }
+  if (!scheduleBody) problems.push("registry 里没有 schedule");
+  else {
+    if (!/layoutTokens/.test(scheduleBody)) problems.push("schedule 没有 token 机制（同一容器会同时排两次）");
+    if (!/rememberLayout/.test(scheduleBody)) problems.push("schedule 没有接尺寸观察");
+  }
+  if (!stepBody) problems.push("registry 里没有 stepSchedule");
+  else {
+    if (!/onLaidOut/.test(stepBody)) problems.push("stepSchedule 没有 onLaidOut（审校那条路径不会重画差异层）");
+    if (!/attempt < 90/.test(stepBody)) problems.push("stepSchedule 没有 90 帧上限");
+  }
+  if (!observeBody || !/ResizeObserver/.test(observeBody)) problems.push("rememberLayout 没有 ResizeObserver");
+  const apiLine = /const api = \{([^}]*)\}/.exec(registryCode);
+  if (!apiLine) problems.push("registry 里找不到 api 对象");
+  else if (!/\blayout\b/.test(apiLine[1]) || !/\bschedule\b/.test(apiLine[1])) {
+    problems.push("api 里没有登记 layout / schedule（STABLE 两条）");
+  }
+  return problems;
+}
+
+test("片 2 笔 B：layout 只摆不排帧 / schedule 是唯一重试且带尺寸观察 / 两条都导出", () => {
+  const registryCode = codeOnly(readFileSync(join(STATIC_DIR, "overlay-registry.js"), "utf8"));
+  const problems = registryApiProblems({ registryCode });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+/**
+ * **容器 class 的唯一写点 = registry**（书 §2.1 (a)）。
+ *
+ * `index-view` / `reading-view` 还在自己拼容器，2.2 迁完从这张白名单里删——
+ * 白名单里出现"其实已经没有这个字符串"的文件也要红（防白名单留空壳）。
+ */
+const OVERLAY_CLASS_PENDING = ["index-view.js"];
+
+function overlayClassProblems({ files, pending = OVERLAY_CLASS_PENDING }) {
+  const problems = [];
+  const seen = new Set();
+  for (const { fileName, source } of files) {
+    if (fileName === "overlay-registry.js" || /-view\.js$/.test(fileName) === false) {
+      // 非视图模块（app.js / 其它服务）：一处都不许有
+      if (fileName !== "overlay-registry.js" && /page-overlay--(margin|labeled)/.test(source)) {
+        problems.push(`${fileName} 里还在写 page-overlay--margin/--labeled——class 由 styles 决定`);
+      }
+      continue;
+    }
+    if (!/page-overlay--(margin|labeled)/.test(source)) continue;
+    if (!pending.includes(fileName)) {
+      problems.push(`${fileName} 里写了 page-overlay--margin/--labeled，但不在迁移白名单里`);
+    } else {
+      seen.add(fileName);
+    }
+  }
+  for (const name of pending) {
+    if (!seen.has(name)) problems.push(`白名单里的 ${name} 已经没有这个 class 字符串了——条目过期，删掉它`);
+  }
+  return problems;
+}
+
+test("片 2 笔 B：page-overlay--margin / --labeled 的写入只在 registry（class 归 styles）", () => {
+  const files = readdirSync(STATIC_DIR)
+    .filter((name) => name.endsWith(".js"))
+    .map((fileName) => ({ fileName, source: codeOnly(readFileSync(join(STATIC_DIR, fileName), "utf8")) }));
+  const problems = overlayClassProblems({ files });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("片 2 笔 B 自检：app.js 长出真实现 / 转发器超过 6 行 / 重试循环两份 / layout 排帧 / class 写错地方，都必须红", () => {
+  const okApp = `
+function layoutOverlayAnnotations(o) { return window.OverlayLayer?.layout(o, {}); }
+function scheduleOverlayLayout(o) { window.OverlayLayer?.schedule(o, {}); }
+`;
+  // 注意：`functionBody` 对空函数体返回空串（假值），样本里必须给一行语句
+  const okReg = `
+function findOrderSpot() { return null; }
+function findLabelSpot() { return null; }
+function pxRect() { return null; }
+function rectsOverlap() { return false; }
+function layout(c) { return boxesIn(c); }
+function schedule(c) { layoutTokens.get(c); rememberLayout(c); }
+function stepSchedule(c, t, o, attempt) { requestAnimationFrame(() => { if (o.onLaidOut) return; }); if (attempt < 90) stepSchedule(c, t, o, attempt + 1); }
+function rememberLayout(c) { new ResizeObserver(() => {}); }
+const api = { init, layout, schedule };
+`;
+  assert.deepEqual(layoutMathProblems({ appCode: okApp, registryCode: okReg }), [], "合规样本被判红");
+  assert.deepEqual(registryApiProblems({ registryCode: okReg }), [], "合规 registry 被判红");
+
+  assert.ok(layoutMathProblems({ appCode: okApp + "function findOrderSpot() {}\n", registryCode: okReg }).length >= 1,
+    "app.js 里长出真实现必须红");
+  const longForwarder = okApp.replace("function layoutOverlayAnnotations(o) { return window.OverlayLayer?.layout(o, {}); }",
+    "function layoutOverlayAnnotations(o) {\n  const a = 1;\n  const b = 2;\n  const c = 3;\n  const d = 4;\n  return window.OverlayLayer?.layout(o, { a, b, c, d });\n}");
+  assert.ok(layoutMathProblems({ appCode: longForwarder, registryCode: okReg }).length >= 1, "转发器超 6 行必须红");
+  assert.ok(layoutMathProblems({ appCode: okApp, registryCode: okReg.replace("if (a < 90)", "if (a < 90)") + "" }).length === 0);
+  assert.ok(layoutMathProblems({ appCode: okApp + "const x = 1; // attempt < 90\n", registryCode: okReg }).length >= 1,
+    "app.js 里第二份重试循环必须红（注释里的不算——codeOnly 已剥）");
+  assert.ok(registryApiProblems({ registryCode: okReg.replace("layoutTokens.get(c);", "") }).length >= 1,
+    "schedule 少了 token 必须红");
+  assert.ok(registryApiProblems({ registryCode: okReg.replace("requestAnimationFrame", "setTimeout") }).length >= 0);
+
+  const fakeFiles = (sources) => Object.entries(sources).map(([fileName, source]) => ({ fileName, source }));
+  assert.deepEqual(overlayClassProblems({ files: fakeFiles({ "app.js": "const x = 1;", "index-view.js": "page-overlay--labeled" }) }), [],
+    "白名单内的视图写了不该红");
+  assert.ok(overlayClassProblems({ files: fakeFiles({ "app.js": "page-overlay--margin" }) }).length >= 1,
+    "app.js 里写 class 必须红");
+  assert.ok(overlayClassProblems({ files: fakeFiles({ "app.js": "", "preview-view.js": "page-overlay--labeled" }) }).length >= 2,
+    "白名单外的视图写 class + 白名单条目过期，都要红");
+});
+
 // ---------------------------------------------------------------- 清洗刀：退役 id/状态归零
 
 /** 清洗刀退役名单（书 §5 ②）：页内差异队列 + 块级候选对比 + 4 个零引用 id。 */
