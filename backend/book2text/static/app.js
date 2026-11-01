@@ -3231,61 +3231,14 @@ function applyTileState(tile, page) {
 
 // ---------------------------------------------------------------- 页面确认（说明书 6.2）
 
-function pageSetupStats() {
-  const pages = currentProject ? currentProject.pages : [];
-  const counts = { body: 0, body_excluded: 0, toc: 0, front: 0, back: 0 };
-  for (const page of pages) {
-    if (page.page_type in counts) counts[page.page_type] += 1;
-  }
-  return {
-    total: pages.length,
-    body: counts.body,
-    bodyExcluded: counts.body_excluded,
-    toc: counts.toc,
-    front: counts.front,
-    back: counts.back,
-    confirmed: pages.filter((page) => page.page_confirmed).length,
-    unconfirmed: pages.filter((page) => !page.page_confirmed).length,
-  };
-}
-
 
 let panelAccordionProject = null;
-
-/** 默认展开"第一个未完成"的分区：未确认 → 版心 → 识别；都完成就留在页面类型。 */
-function firstUnfinishedPanel() {
-  const pages = currentProject ? currentProject.pages : [];
-  if (pages.some((page) => !page.page_confirmed)) return "page-type";
-  const bodyPages = pages.filter((page) => page.include);
-  if (bodyPages.some((page) => page.margin_box_mode !== "none" && !marginBoxOfPage(page))) {
-    return "margin";
-  }
-  if (bodyPages.some((page) => recognitionOf(page).status === "unrecognized")) {
-    return "recognition";
-  }
-  return "page-type";
-}
 
 /** 右栏手风琴：一次只开一个；折叠状态按项目记，默认落在第一个未完成的分区。 */
 
 /** 打开确认界面：先回数据库拉一次页面，保证看到的进度不是前端缓存。 */
 async function openPageSetup() { return window.PagesView.openPageSetup.apply(window.PagesView, arguments); }
 
-
-/** 只看"选中的页"上的建议：建议区要贴着当前页，不常挂在最上面。 */
-function selectedSuggestions() {
-  if (!selectedPages.size) return [];
-  return setupSuggestions.filter((item) => selectedPages.has(item.page_no));
-}
-
-function suggestionPagesByType() {
-  const byType = new Map();
-  for (const item of selectedSuggestions()) {
-    if (!byType.has(item.suggested_type)) byType.set(item.suggested_type, []);
-    byType.get(item.suggested_type).push(item.page_no);
-  }
-  return byType;
-}
 
 /**
  * 页面类型常驻列表：当前类型高亮 + "当前"文字，建议类型加淡色圆点。
@@ -3298,19 +3251,6 @@ function suggestionPagesByType() {
 
 
 function confirmAllUnconfirmed() { return window.PagesView.confirmAllUnconfirmed.apply(window.PagesView, arguments); }
-
-/**
- * 识别前的提醒：未确认不拦人，只问一次。
- * 返回 false 表示用户点了取消。
- */
-function warnUnconfirmed(pages, action) {
-  const unconfirmed = pages.filter((page) => !page.page_confirmed);
-  if (!unconfirmed.length) return true;
-  return window.confirm(
-    `还有 ${unconfirmed.length} 页没有确认页面类型（正文 / 正文排除 / 目录 / 前置 / 后置）。` +
-      `${action}仍会按现在的设置继续（只有「正文」进识别）——未确认不拦人。要现在继续吗？`
-  );
-}
 
 // ---------------------------------------------------------------- 页面视图缩放与块框
 
@@ -12369,16 +12309,16 @@ function boot() {
     openMasks: openMasks,
     pageBlockKey: pageBlockKey,
     pageMarginSourceLabel: pageMarginSourceLabel,
-    pageSetupStats: pageSetupStats,
+    pageSetupStats: (...args) => window.PageConfirm.pageSetupStats(...args),
     paintTileMargin: paintTileMargin,
     percentText: (...args) => window.QualityStats.percentText(...args),
     reloadDetailAfterRecognition: reloadDetailAfterRecognition,
     rememberPageBlocks: rememberPageBlocks,
     renderPageBlocks: renderPageBlocks,
     repaintTileMargin: repaintTileMargin,
-    selectedSuggestions: selectedSuggestions,
+    selectedSuggestions: (...args) => window.PageConfirm.selectedSuggestions(...args),
     selectionPages: selectionPages,
-    suggestionPagesByType: suggestionPagesByType,
+    suggestionPagesByType: (...args) => window.PageConfirm.suggestionPagesByType(...args),
     textLayerPages: textLayerPages,
     buildTile: buildTile,
     applyTileState: applyTileState,
@@ -12450,8 +12390,8 @@ function boot() {
     humanTouchedPages: humanTouchedPages,
     pageImageUrl: pageImageUrl,
     pageZoomLevel: pageZoomLevel,
-    warnUnconfirmed: warnUnconfirmed,
-    firstUnfinishedPanel: firstUnfinishedPanel,
+    warnUnconfirmed: (...args) => window.PageConfirm.warnUnconfirmed(...args),
+    firstUnfinishedPanel: (...args) => window.PageConfirm.firstUnfinishedPanel(...args),
     getJobStartPending: () => jobStartPending,
     getMarginStatusTimer: () => marginStatusTimer,
     getPageNumberStatusTimer: () => pageNumberStatusTimer,
@@ -12640,6 +12580,14 @@ function boot() {
     getCurrentProject: () => currentProject,
     setProjectSummary: (value) => { projectSummary = value; return value; },
     syncWorkflowSteps: (...args) => syncWorkflowSteps(...args),
+  });
+  // 刀 B：页面确认域模块（纯数据；状态仍归外壳，模块只拿只读访问器）
+  window.PageConfirm?.init({
+    getCurrentProject: () => currentProject,
+    marginBoxOfPage: (...args) => marginBoxOfPage(...args),
+    recognitionOf: (...args) => recognitionOf(...args),
+    getSelectedPages: () => selectedPages,
+    getSetupSuggestions: () => setupSuggestions,
   });
   // 三栏拖动由 reading-view.js 的 init() 负责（任务 94），这里不再重复绑定
   setupPageMore();
