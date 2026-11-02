@@ -1496,7 +1496,6 @@ function refreshMarginTiles() {
 
 /** 右栏那行"上次自动应用：N 页 M 块（可撤销）"。 */
 function renderAutoApplyStatus(run) {
-  injected.setLatestAutoApply(run);
   const node = el("auto-apply-status");
   if (!run) {
     node.hidden = true;

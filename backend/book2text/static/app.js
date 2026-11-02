@@ -3862,7 +3862,7 @@ async function pollTask() {
     // 任务一结束必须重算一次，否则步骤条会一直停在快照上。
     await loadFinishSummary({ silent: true });
     // 自动应用由识别子进程在结算后写入：这里等一轮再查，新出现的那一条会弹提示
-    await loadAutoApplyStatus({ announce: true, jobId: data.job.job_id });
+    await window.SuggestionFlow?.announceAutoApplyAfterJob({ jobId: data.job.job_id });
   } else {
     // 进度在变，页面状态也在变：不重拉图，只刷状态。
     // 两件事互不依赖（页面状态 vs 块数据），并行发，别让块框多等一个往返。
@@ -7754,14 +7754,8 @@ function setupLibrary() {
   el("trash-close").addEventListener("click", () => closeModal("trash-panel"));
   setupCollabControls();
   // 刀 6：⋯ 菜单的四个条目（含"点完先收起菜单"）搬进 pages-view.js 的 wirePagesMoreMenuEntries()
-  el("review-apply-all").addEventListener("click", openSuggestionApplyPanel);
-  el("suggestion-apply-close").addEventListener("click", () => closeModal("suggestion-apply-panel"));
-  el("suggestion-apply-cancel").addEventListener("click", () => closeModal("suggestion-apply-panel"));
-  el("suggestion-apply-run").addEventListener("click", runSuggestionApply);
-  el("auto-apply-undo").addEventListener("click", () =>
-    undoAutoApply(el("auto-apply-notice").dataset.autoApplyId)
-  );
-  el("auto-apply-dismiss").addEventListener("click", hideAutoApplyNotice);
+  // 「全库采用 / 自动应用提示条 / 建议面板」那 6 处接线已搬进 suggestion-flow.js 的 init()
+  // （按钮 DOM 归各自视图 / chrome，接线归跨视图服务）
   el("split-batch-close").addEventListener("click", () => closeModal("split-batch-panel"));
   el("split-batch-cancel").addEventListener("click", () => closeModal("split-batch-panel"));
   el("split-batch-apply").addEventListener("click", applySplitBatch);
@@ -7817,277 +7811,9 @@ function setupLibrary() {
 
 // ---------------------------------------------------------------- 全库采用高把握建议
 //
-// 用户的原话是"有没有办法自动识别页眉页脚？而不是我每一页手动改？"
-// 建议其实已经算出来了（只读），这里给它一个"一次全用上"的入口：
-// 先扫描（dry_run，不写库）看影响多少页 / 块，确认后整批应用（一个 batch，可整体撤销）。
-// 另有项目级开关"识别完成后自动应用"：由**识别子进程**在任务收尾时执行，
-// 每次记一条 auto_apply_run，界面顶部有提示条 + 一键撤销（见 D-064）。
-
-let suggestionApplyPlan = null;
-/** 最近一次自动应用（GET /auto-apply 的结果）。 */
-let latestAutoApply = null;
-/** 已经提示过的自动应用 id：同一个不重复弹。 */
-let autoApplyAnnouncedId = null;
-
-/** 任务 34：按版心判定正文默认开；只有显式存了 false 才是关。 */
-function marginJudgementOn() {
-  const settings = (currentProject && currentProject.settings) || {};
-  const value = settings.margin_box_judgement;
-  return value === undefined || value === null ? true : Boolean(value);
-}
-
-function applyProjectSettings() {
-  const settings = (currentProject && currentProject.settings) || {};
-  // 刀 8：pages 面板上的两个勾选态收成能力（值由外壳算：默认开这条规则不搬进模块）
-  window.PagesView.syncProjectSettings({
-    autoApply: Boolean(settings.auto_apply_high_suggestions),
-    marginJudgement: marginJudgementOn(),
-  });
-  // 导出面板里那个同名的项目级开关（任务 51 / 34）：节点在 #export-panel 子树里 ⇒
-  // 「谁拥有节点谁渲染」——这里不写别人的节点；导出模块每次预检都会按真实设置同步它自己的勾选态
-  // （`setMarginJudgementSetting` 成功后会喊一声 `refreshPreflight()`）。
-  // 识别设置（任务 54）：引擎 / DPI / 语言 / 双引擎策略
-  renderRecognitionSettings();
-  renderMarginJudgementNotice();
-}
-
-/** 任务 34：默认打开「按版心判定」后，老项目第一次打开给一句说明。 */
-function renderMarginJudgementNotice() {
-  const bar = el("margin-judgement-notice");
-  if (!bar) return;
-  const settings = (currentProject && currentProject.settings) || {};
-  bar.hidden = Boolean(settings.margin_judgement_notice) || !marginJudgementOn();
-}
-
-async function dismissMarginJudgementNotice() {
-  el("margin-judgement-notice").hidden = true;
-  if (!currentProject) return;
-  try {
-    const data = await apiJson(`/api/projects/${currentProject.project_id}/settings`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ margin_judgement_notice: true }),
-    });
-    currentProject.settings = data.settings;
-  } catch {
-    /* 提示关不掉不该影响使用 */
-  }
-}
-
-function autoApplyTypeText(byType) {
-  const labels = { header: "页眉", footer: "页脚", page_number: "页码", margin_note: "旁批" };
-  return Object.entries(byType || {})
-    .map(([type, count]) => `${labels[type] || type} ${count}`)
-    .join(" / ");
-}
-
-/** 右栏那行"上次自动应用：N 页 M 块（可撤销）"。 */
-
-async function loadAutoApplyStatus({ announce = false, jobId = null } = {}) {
-  if (!currentProject || currentProject.kind === "package") return;
-  let data;
-  try {
-    data = await apiJson(`/api/projects/${currentProject.project_id}/auto-apply`);
-  } catch {
-    return;
-  }
-  const run = data.latest || null;
-  window.PagesView?.onAutoApplyStatusChanged(run);
-  if (!announce || !jobId) {
-    if (run) autoApplyAnnouncedId = run.auto_apply_id;
-    return;
-  }
-  if (run && run.job_id === jobId && run.status === "applied") {
-    if (autoApplyAnnouncedId !== run.auto_apply_id) {
-      autoApplyAnnouncedId = run.auto_apply_id;
-      showAutoApplyNotice(run);
-      // 块类型变了：页面视图的框与建议角标不能再用旧的
-      refreshAfterTypeChanges([]);
-    }
-    return;
-  }
-  // 子进程是在任务结算**之后**才写自动应用记录的：再等一轮
-  const key = `announced:${jobId}`;
-  const attempts = Number(sessionStorage.getItem(key) || "0");
-  if (attempts < 3) {
-    sessionStorage.setItem(key, String(attempts + 1));
-    setTimeout(() => loadAutoApplyStatus({ announce, jobId }), 900);
-  }
-}
-
-/**
- * 顶部提示条。`undoId` 有值时显示「撤销这次自动应用」按钮
- * （手工整批应用的撤销在审校视图的撤销栈里，所以不显示这个按钮）。
- */
-function showNoticeBar(text, { undoId = null } = {}) {
-  el("auto-apply-notice-text").textContent = text;
-  el("auto-apply-notice").hidden = false;
-  el("auto-apply-notice").dataset.autoApplyId = undoId || "";
-  el("auto-apply-undo").hidden = !undoId;
-}
-
-function showAutoApplyNotice(run) {
-  showNoticeBar(
-    `识别完成后自动应用了 ${run.pages} 页 ${run.blocks} 块（${autoApplyTypeText(run.by_type)}）。` +
-      "不满意可以整批撤销。",
-    { undoId: run.auto_apply_id }
-  );
-}
-
-function hideAutoApplyNotice() {
-  el("auto-apply-notice").hidden = true;
-}
-
-/** 类型变了之后统一收尾：丢块框缓存 / 建议缓存，就地刷新状态。 */
-function refreshAfterTypeChanges(pageNos) {
-  if (pageNos && pageNos.length) {
-    for (const pageNo of pageNos) forgetPageBlocks(pageNo);
-  } else {
-    window.PagesView?.onPageBlocksInvalidated();
-  }
-  window.PagesView?.onPageSuggestionsInvalidated();
-  refreshPageStates();
-  window.PagesView?.onPagesNeedReflow();
-}
-
-async function undoAutoApply(autoApplyId) {
-  if (!currentProject || !autoApplyId) return;
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/auto-apply/${autoApplyId}/undo`,
-      { method: "POST" }
-    );
-    hideAutoApplyNotice();
-    refreshAfterTypeChanges(data.pages_affected || []);
-    if (detailPageNo !== null) await loadPageDetail(detailPageNo, { forceSuggestions: true });
-    await loadAutoApplyStatus();
-    notifyApplied(
-      `已撤销这次自动应用（${data.pages} 页 ${data.blocks} 块），块类型回到自动应用之前。`
-    );
-  } catch (error) {
-    showError(el("page-detail-error"), error);
-  }
-}
-
-/** 结果提示：页面视图用右栏的提示条，审校视图用顶栏的保存状态。 */
-function notifyApplied(text) {
-  // 顶部提示条比右栏的临时提示更持久（右栏那行会被 updateSelectionPanel 重画）
-  showNoticeBar(text);
-  setSaveState(text);
-}
-
-
-/**
- * 项目级「按版心判定正文」（任务 51 / 34）。**默认开**；显式关掉才按块类型判定，
- * 行为与升级前一致。切换后立刻重跑导出预检；正文 / 元数据的形状由服务端按同一设置算。
- *
- * **返回结果、不写别人的 DOM**（Chief 2026-11-02 裁定）：成功 `{ ok: true }`，
- * 失败 `{ ok: false, error }`。节点在导出面板（`#export-margin-judgement`）和页面视图
- * （`#rec-margin-judgement`）各自子树里 ⇒ 勾选态回滚与错误渲染由**拥有节点的那个模块**做；
- * 本动作只回答「设置改没改成」。理由：让动作回写别人的节点，会把「谁拥有这块 UI」变成
- * 一个说不清的问题，并把失败渲染复制到每个调用点。
- */
-async function setMarginJudgementSetting(enabled) {
-  if (!currentProject) return { ok: false, error: null };
-  try {
-    const data = await apiJson(`/api/projects/${currentProject.project_id}/settings`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ margin_box_judgement: Boolean(enabled) }),
-    });
-    currentProject.settings = data.settings;
-    applyProjectSettings();
-    await window.ExportPanel?.refreshPreflight();
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error };
-  }
-}
-
-async function openSuggestionApplyPanel() {
-  if (!currentProject) return;
-  el("suggestion-apply-error").hidden = true;
-  el("suggestion-apply-summary").textContent = "正在扫描全部正文页…";
-  el("suggestion-apply-types").innerHTML = "";
-  el("suggestion-apply-samples").innerHTML = "";
-  el("suggestion-apply-run").disabled = true;
-  el("suggestion-apply-run").textContent = "应用";
-  openModal("suggestion-apply-panel");
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/suggestions/apply`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dry_run: true }),
-      }
-    );
-    renderSuggestionApplyPreview(data);
-  } catch (error) {
-    el("suggestion-apply-summary").textContent = "扫描失败";
-    showError(el("suggestion-apply-error"), error);
-  }
-}
-
-function renderSuggestionApplyPreview(data) {
-  suggestionApplyPlan = data;
-  const blocks = data.blocks || 0;
-  const pages = data.pages || 0;
-  el("suggestion-apply-summary").textContent = blocks
-    ? `扫描了 ${data.pages_scanned} 页 / ${data.blocks_scanned} 块：会改 ${pages} 页 · ${blocks} 块`
-    : `扫描了 ${data.pages_scanned} 页 / ${data.blocks_scanned} 块：没有需要改的块（已经都是对的，或者都还"需确认"）`;
-  const types = el("suggestion-apply-types");
-  types.innerHTML = "";
-  for (const [type, count] of Object.entries(data.by_type || {})) {
-    const pill = document.createElement("span");
-    pill.className = `suggestion-type suggestion-type--${type}`;
-    pill.textContent = `${BLOCK_TYPE_LABELS[type] || type} ${count}`;
-    types.append(pill);
-  }
-  const list = el("suggestion-apply-samples");
-  list.innerHTML = "";
-  for (const item of data.samples || []) {
-    const li = document.createElement("li");
-    li.textContent =
-      `第 ${item.page_no} 页 · ${BLOCK_TYPE_LABELS[item.current_type] || item.current_type}` +
-      ` → ${BLOCK_TYPE_LABELS[item.suggested_type] || item.suggested_type}：${item.text}`;
-    list.append(li);
-  }
-  const run = el("suggestion-apply-run");
-  run.disabled = blocks === 0;
-  run.textContent = blocks ? `应用（${blocks} 块）` : "没有可应用的";
-}
-
-async function runSuggestionApply() {
-  if (!currentProject) return;
-  const button = el("suggestion-apply-run");
-  button.disabled = true;
-  button.textContent = "正在应用…";
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/suggestions/apply`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dry_run: false }),
-      }
-    );
-    closeModal("suggestion-apply-panel");
-    refreshAfterTypeChanges(data.pages_affected || []);
-    if (detailPageNo !== null && (data.pages_affected || []).includes(detailPageNo)) {
-      await loadPageDetail(detailPageNo, { forceSuggestions: true });
-    }
-    notifyApplied(
-      `已采用 ${data.blocks} 块高把握建议（${data.pages} 页，第 ${data.history.undo} 个可撤销操作）。` +
-        "整批可撤销：审校视图点「撤销」。"
-    );
-  } catch (error) {
-    showError(el("suggestion-apply-error"), error);
-    button.disabled = false;
-    button.textContent = "重试应用";
-  }
-}
-
+// 已搬进 `suggestion-flow.js`（`window.SuggestionFlow`）：通知条 / 自动应用状态 / 全库采用建议 /
+// 版心判定开关。它是**跨 5 个视图的流程**，不是某一个 section 的服务；root 只认
+// `#suggestion-apply-panel`，chrome 通知条与审校页的按钮经 init 注入。
 // ---------------------------------------------------------------- 批量拆分书眉页码
 //
 // 书眉 / 页脚和页码被 OCR 成一个块（`2谁是巴赫金?11`）时，逐块拆太慢。
@@ -8892,7 +8618,7 @@ async function decideGarbledLines(ack) {
     // 裁决落到行上：marks / 计数 / 进度都要重拉（走既有的"整批之后重开阅读流"）
     await window.ReadingView.reload();
     await refreshGarbledLines();
-    showNoticeBar(
+    window.SuggestionFlow?.showNotice(
       ack === "adopted"
         ? `已采用候选 ${result.applied} 行${result.skipped ? `（跳过 ${result.skipped}）` : ""}`
         : `已标记保留原文 ${result.applied} 行`
@@ -9117,6 +8843,47 @@ async function undoPunctBatch() {
 // 最小宽度卡住，别拖到正文没字、或 PDF 看不见；窄屏（<1120）不显示手柄（CSS 管）。
 
 function boot() {
+  // ③ 第二批：跨视图服务（建议流程）**先装**——导出模块在它之后 init，要它的两个导出
+  // （`marginJudgementEnabled` / `setMarginJudgement`）；本模块反过来要导出的预检，
+  // 用惰性箭头给（调用时才解引用），所以 init 顺序是单向的、没有环。
+  window.SuggestionFlow?.init({
+    // 自己的 root：#suggestion-apply-panel（顶层 mask，5 个 id 全在子树里）
+    root: el("suggestion-apply-panel"),
+    // chrome 通知条 6 个节点在 body 顶层（四个兄弟 noticebar，没有共同 id 祖先）
+    // ⇒ 一组节点注入，模块里不出现这些 id（给它们包一层 div 会改布局，不做）
+    getNoticeEls: () => ({
+      autoApply: el("auto-apply-notice"),
+      text: el("auto-apply-notice-text"),
+      undo: el("auto-apply-undo"),
+      dismiss: el("auto-apply-dismiss"),
+      margin: el("margin-judgement-notice"),
+      marginOk: el("margin-judgement-notice-ok"),
+    }),
+    // 审校页的「全库采用」按钮在 #view-review 子树里：节点归视图，接线归跨视图服务
+    getReviewApplyAll: () => el("review-apply-all"),
+    getCurrentProject: () => currentProject,
+    getDetailPageNo: () => detailPageNo,
+    apiJson: (...args) => apiJson(...args),
+    showError: (node, error) => showError(node, error),
+    // #page-detail-error 的唯一写入口在 page-detail-editor.js（刀 7 裁定），本模块经注入调它
+    showPageDetailError: (error) => showPageDetailError(error),
+    openModal: (...args) => openModal(...args),
+    closeModal: (...args) => closeModal(...args),
+    renderRecognitionSettings: (...args) => renderRecognitionSettings(...args),
+    forgetPageBlocks: (...args) => forgetPageBlocks(...args),
+    refreshPageStates: (...args) => refreshPageStates(...args),
+    loadPageDetail: (...args) => loadPageDetail(...args),
+    setSaveState: (...args) => setSaveState(...args),
+    // 页面视图的五个能力（块框 / 建议缓存 / 重排 / 设置同步 / 自动应用角标）
+    syncPagesProjectSettings: (...args) => window.PagesView?.syncProjectSettings(...args),
+    onAutoApplyStatusChanged: (...args) => window.PagesView?.onAutoApplyStatusChanged(...args),
+    onPageBlocksInvalidated: (...args) => window.PagesView?.onPageBlocksInvalidated(...args),
+    onPageSuggestionsInvalidated: (...args) => window.PagesView?.onPageSuggestionsInvalidated(...args),
+    onPagesNeedReflow: (...args) => window.PagesView?.onPagesNeedReflow(...args),
+    // 惰性：导出模块在本块之后才 init
+    refreshExportPreflight: () => window.ExportPanel?.refreshPreflight(),
+    BLOCK_TYPE_LABELS,
+  });
   // 任务 94 Slice 1：审校视图模块初始化（依赖由此注入，模块内部不直接碰这些全局）
   window.ReadingView?.init({
     el,
@@ -9138,7 +8905,7 @@ function boot() {
     refreshPunctGroups: () => refreshPunctGroups(),
     refreshGarbledLines: () => refreshGarbledLines(),
     // 任务 94 L4：队列 / 草稿加载 / 视口处理搬进模块后的句柄
-    showNoticeBar: (text) => showNoticeBar(text),
+    showNoticeBar: (text) => window.SuggestionFlow?.showNotice(text),
     // 任务 94 L5：审校环搬进模块后的状态句柄（状态仍归 app.js，get+set 成对）
     getCurrentView: () => currentView,
     // 任务 94 L5：审校环里仍留在 app.js 的叶子函数（模块经注入调用）
@@ -9187,7 +8954,7 @@ function boot() {
   window.PagesView?.init({
     adoptBlockSuggestion: (...args) => window.PageDetailEditor?.adoptBlockSuggestion(...args),
     apiJson: apiJson,
-    applyProjectSettings: applyProjectSettings,
+    applyProjectSettings: (...args) => window.SuggestionFlow?.projectSettingsApplied(...args),
     clearTileMargin: clearTileMargin,
     fetchPageSuggestions: fetchPageSuggestions,
     forgetPageSuggestions: forgetPageSuggestions,
@@ -9196,7 +8963,7 @@ function boot() {
     loadTasks: loadTasks,
     marginBodyPages: marginBodyPages,
     marginBoxOfPage: marginBoxOfPage,
-    notifyApplied: notifyApplied,
+    notifyApplied: (...args) => window.SuggestionFlow?.notifyApplied(...args),
     openTaskDrawer: openTaskDrawer,
     pageHasFitLines: pageHasFitLines,
     pageMarginMethod: pageMarginMethod,
@@ -9282,7 +9049,7 @@ function boot() {
     openSplitBatchPanel: openSplitBatchPanel,
     // 刀 6：三段片段的具名能力（⋯ 菜单四项 / 统计入口 / 批量指派两个入口）
     // 模块只碰 view-pages 的 id；`stats-panel` / `assign-panel` 这类全局 chrome id 收在这三个能力里。
-    openSuggestionApplyPanel: openSuggestionApplyPanel,
+    openSuggestionApplyPanel: (...args) => window.SuggestionFlow?.openApplyPanel(...args),
     openWordBoxesDialog: openWordBoxesDialog,
     openBackups: openBackups,
     openLayoutDetectDialog: openLayoutDetectDialog,
@@ -9293,7 +9060,7 @@ function boot() {
     // 刀 7：recognizePage 已搬进模块（外壳改调模块导出的同名键）；
     // 这里换上新能力 showPageDetailError（写 #page-detail-error 的那一个动作）
     showPageDetailError: showPageDetailError,
-    setMarginJudgementSetting: setMarginJudgementSetting,
+    setMarginJudgementSetting: (...args) => window.SuggestionFlow?.setMarginJudgement(...args),
     setPageZoom: setPageZoom,
     busyPages: busyPages,
     setPanelAccordionProject: (value) => { panelAccordionProject = value; return value; },
@@ -9310,7 +9077,7 @@ function boot() {
     setSetupSuggestionsLoaded: (value) => { setupSuggestionsLoaded = value; return value; },
     RECOGNITION_ENGINE_LABELS: RECOGNITION_ENGINE_LABELS,
     WORKFLOW_FILTERS: WORKFLOW_FILTERS,
-    autoApplyTypeText: autoApplyTypeText,
+    autoApplyTypeText: (...args) => window.SuggestionFlow?.formatAutoApplyTypes(...args),
     engineProbe: engineProbe,
     flushBootQueue: flushBootQueue,
     getFinishSummaryAgain: () => finishSummaryAgain,
@@ -9331,10 +9098,9 @@ function boot() {
     setFinishSummaryLoading: (value) => { finishSummaryLoading = value; return value; },
     setFinishSummaryProject: (value) => { finishSummaryProject = value; return value; },
     setLastStepPanelKey: (value) => { lastStepPanelKey = value; return value; },
-    setLatestAutoApply: (value) => { latestAutoApply = value; return value; },
     setStepsReady: (value) => { stepsReady = value; return value; },
     syncWorkflowSteps: syncWorkflowSteps,
-    undoAutoApply: undoAutoApply,
+    undoAutoApply: (...args) => window.SuggestionFlow?.undoAutoApply(...args),
     updateFinishChips: updateFinishChips,
     PAGE_ZOOM_LEVELS: PAGE_ZOOM_LEVELS,
     RESTORE_DETAIL_TEXT: RESTORE_DETAIL_TEXT,
@@ -9374,7 +9140,7 @@ function boot() {
   window.IndexView?.init({
     // 提示条：index-view.js:468 / preview-view.js:212 都用 injected.showNoticeBar?.(text)；
     // 缺这个键时可选调用不抛错，只是提示条静默不显示（2026-10-30 补）。
-    showNoticeBar: (text) => showNoticeBar(text),
+    showNoticeBar: (text) => window.SuggestionFlow?.showNotice(text),
     isActive: () => currentView === "index",
     getProject: () => currentProject,
     getLastDetailPageNo: () => lastDetailPageNo,
@@ -9417,7 +9183,7 @@ function boot() {
   });
   window.LibraryView?.init({
     apiJson: (...args) => apiJson(...args),
-    applyProjectSettings: (...args) => applyProjectSettings(...args),
+    applyProjectSettings: (...args) => window.SuggestionFlow?.projectSettingsApplied(...args),
     // 刀 7 前置：不再把外壳 id 当字符串递给 closeModal（能力粒度 = 归属域 × 语义动作）
     closeNewProjectMask: () => closeModal("new-project-mask"),
     getExportIncludeNotes: () => el("export-include-notes"),
@@ -9436,7 +9202,7 @@ function boot() {
     lastViewLabels: LAST_VIEW_LABELS,
     // 刀 6：页面工具栏两个开关的 is-on 同步（跨视图能力走注入——R2 不许模块直接引用 window.PagesView）
     syncToolbarToggles: () => window.PagesView?.syncToolbarToggles(),
-    loadAutoApplyStatus: (...args) => loadAutoApplyStatus(...args),
+    loadAutoApplyStatus: (...args) => window.SuggestionFlow?.refreshAutoApplyStatus(...args),
     loadFinishSummary: (...args) => loadFinishSummary(...args),
     loadPageMarginPreference: (...args) => loadPageMarginPreference(...args),
     loadPageOverlayPreference: (...args) => loadPageOverlayPreference(...args),
@@ -9484,7 +9250,7 @@ function boot() {
   window.PreviewView?.init({
     // 提示条：index-view.js:468 / preview-view.js:212 都用 injected.showNoticeBar?.(text)；
     // 缺这个键时可选调用不抛错，只是提示条静默不显示（2026-10-30 补）。
-    showNoticeBar: (text) => showNoticeBar(text),
+    showNoticeBar: (text) => window.SuggestionFlow?.showNotice(text),
     // 状态 getter
     isActive: () => currentView === "preview",
     getProject: () => currentProject,
@@ -9642,12 +9408,12 @@ function boot() {
     fillDefinitionList: (node, rows) => fillDefinitionList(node, rows),
     syncWorkflowSteps: (...args) => syncWorkflowSteps(...args),
     parsePageRange: (...args) => parsePageRange(...args),
-    // 临时注入（死期 = 跨视图服务那刀）：那三件搬出去之后改指模块导出
-    marginJudgementOn: (...args) => marginJudgementOn(...args),
-    setMarginJudgementSetting: (...args) => setMarginJudgementSetting(...args),
-    dismissMarginJudgementNotice: (...args) => dismissMarginJudgementNotice(...args),
+    // 跨视图服务已搬进 suggestion-flow.js：这两件改指模块导出（本刀之前是临时注入）。
+    // dismissMarginJudgementNotice / getMarginJudgementOk 已删——chrome 那个按钮的接线
+    // 搬进 suggestion-flow.js 的 init（节点由它注入），导出模块不再碰 chrome 的节点。
+    marginJudgementOn: (...args) => window.SuggestionFlow?.marginJudgementEnabled(...args),
+    setMarginJudgementSetting: (...args) => window.SuggestionFlow?.setMarginJudgement(...args),
     attachRenderErrorDetail: (...args) => window.PageTile?.attachRenderErrorDetail?.(...args),
-    getMarginJudgementOk: () => el("margin-judgement-notice-ok"),
     BLOCK_TYPE_LABELS,
     ApiError,
   });

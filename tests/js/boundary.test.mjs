@@ -5459,6 +5459,9 @@ const DOMAIN_MODULES = [
   { file: "page-detail-editor.js", exposes: "PageDetailEditor", allowQuerySelector: true },
   // ③ 导出：root = #export-panel（顶层 modal，30 个导出 id 全在它子树里）；10 个 checkbox 逐个传不现实
   { file: "export-panel.js", exposes: "ExportPanel", allowQuerySelector: true },
+  // ③ 跨视图服务：root = #suggestion-apply-panel（5 个 id 在子树里，part() 要 root.querySelector）；
+  // chrome 通知条 6 个节点与审校页那个按钮都在 root 外 ⇒ 走 init 注入，模块里不出现那些 id。
+  { file: "suggestion-flow.js", exposes: "SuggestionFlow", allowQuerySelector: true },
 ];
 
 /**
@@ -5472,6 +5475,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "structure-tools.js",
   "page-detail-editor.js",
   "export-panel.js",
+  "suggestion-flow.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {

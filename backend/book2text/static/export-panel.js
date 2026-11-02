@@ -557,11 +557,8 @@ function setupPanel() {
     syncMarginJudgement();
     injected.showError(part("export-error"), result.error);
   });
-  // 这个节点在 chrome（#export-panel 子树外）⇒ 只能注入
-  const marginNoticeOk = injected.getMarginJudgementOk();
-  if (marginNoticeOk) {
-    marginNoticeOk.addEventListener("click", injected.dismissMarginJudgementNotice);
-  }
+  // chrome 那个「知道了」按钮的接线已搬进 suggestion-flow.js 的 init（它是通知条的主人），
+  // 本模块不再碰 #export-panel 子树外的节点。
   part("export-btn").addEventListener("click", runExport);
   part("export-preview-btn").addEventListener("click", async () => {
     try {
