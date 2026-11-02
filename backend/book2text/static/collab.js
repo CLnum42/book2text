@@ -431,6 +431,8 @@
           "用下面的「下载」把它发给负责人。"
       );
       await loadPackageResults(current.project_id);
+      // 成功分支也要写终态：每个设了"进行中"文案的动作，成功与失败都要落到终态
+      resultPart("package-result-meta").textContent = `已生成 ${data.file_name}，可在下面下载`;
     } catch (error) {
       injected.showError(resultPart("package-result-meta"), error);
     }
@@ -490,6 +492,8 @@
       await loadAssignments();
     } catch (error) {
       injected.showError(assignPart("assign-error"), error);
+      // 失败分支也要落终态：不然顶栏一直停在「正在导入结果包…」
+      injected.setSaveState(`导入失败：${(error && error.message) || "未知错误"}`, true);
     } finally {
       packagePending = null;
     }
