@@ -209,3 +209,33 @@ test("⑤ 挂图层并重复 paint 不新增取图（Δ == 0，不数网络）",
 //   ③ 去掉 renderHandle 里的 `!item.bbox` 过滤 → ③ 红
 //   ④ 往 preview 副本里加一行 injected.renderPageBlocks(...) → ④ 红
 //   ⑤ 让 renderBlock 自己建一个 <img> 并赋 src（size=view） → ⑤ 红
+
+// ⑨-b/⑨-c（笔 C，QA 回归）：句柄按宿主唯一 + 死句柄自愈
+test("⑨-b 句柄按宿主唯一：两个宿主 mount 同一页，两层都活着（preview 会一次 mount 全部页）", () => {
+  const environment = makeEnvironment();
+  const hostA = environment.mount();
+  const hostB = environment.mount();
+  const module = loadRegistry(environment.document);
+  module.api.init({});
+  const a = module.api.mount(hostA, { pageNo: 7 });
+  const b = module.api.mount(hostB, { pageNo: 7 });
+  assert.notEqual(a, b, "同一页在两个宿主上应当是两份句柄");
+  assert.equal(a.dead, false, "后 mount 的把先前的句柄弄死了（按 pageNo 唯一的老实现会这样）");
+  assert.ok(containerOf(hostA), "先 mount 的图层被摘掉了");
+  module.api.paint(a, { data: BLOCKS, active: ["blocks"], styles: { details: true } });
+  module.settle();
+  assert.equal(a.counts.blocks, 3, "回到先 mount 的宿主后画不出来");
+});
+
+test("⑨-c 死句柄自愈：unmount 之后再 paint，重挂一层并画出来（不静默 no-op）", () => {
+  const { host, module, handle } = makePage({ pageNo: 8 });
+  module.api.paint(handle, { data: BLOCKS, active: ["blocks"], styles: { details: true } });
+  module.settle();
+  module.api.unmount(handle);
+  assert.equal(handle.dead, true, "unmount 之后句柄应当死");
+  module.api.paint(handle, { data: BLOCKS, active: ["blocks"], styles: { details: true } });
+  module.settle();
+  assert.equal(handle.dead, false, "paint 没有自愈死句柄");
+  assert.ok(containerOf(host), "自愈后图层不在宿主里");
+  assert.equal(handle.counts.blocks, 3, "自愈后没画出来");
+});

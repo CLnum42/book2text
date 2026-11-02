@@ -6152,10 +6152,9 @@ function layoutMathProblems({ appCode, registryCode }) {
     if (!functionBody(registryCode, name)) problems.push(`registry 里没有 ${name}——算法没搬全`);
   }
   for (const name of ["layoutOverlayAnnotations", "scheduleOverlayLayout"]) {
-    const body = functionBody(appCode, name);
-    // 迁移窗口里允许留 ≤6 行转发器；2.2 把 reading / index 迁完之后应当彻底消失。
-    if (body && body.split("\n").length > 6) {
-      problems.push(`app.js 的 ${name} 有 ${body.split("\n").length} 行（>6）——那不是转发器，是真实现`);
+    // 2.2 落完之后这两个转发器必须彻底消失：reading / index 都走 registry 了，留着就是第二条路。
+    if (functionBody(appCode, name)) {
+      problems.push(`app.js 里还有 ${name} 的转发器——2.2 之后它该整段消失`);
     }
   }
   // 重试循环只有一份：app.js 0 次，registry 恰好 1 次
@@ -6225,7 +6224,7 @@ test("片 2 笔 B：layout 只摆不排帧 / schedule 是唯一重试且带尺�
  * `index-view` / `reading-view` 还在自己拼容器，2.2 迁完从这张白名单里删——
  * 白名单里出现"其实已经没有这个字符串"的文件也要红（防白名单留空壳）。
  */
-const OVERLAY_CLASS_PENDING = ["index-view.js"];
+const OVERLAY_CLASS_PENDING = [];
 
 function overlayClassProblems({ files, pending = OVERLAY_CLASS_PENDING }) {
   const problems = [];
@@ -6257,10 +6256,10 @@ test("片 2 笔 B：page-overlay--margin / --labeled 的写入只在 registry（
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
-test("片 2 笔 B 自检：app.js 长出真实现 / 转发器超过 6 行 / 重试循环两份 / layout 排帧 / class 写错地方，都必须红", () => {
+test("片 2 笔 B 自检：app.js 长出真实现 / 转发器复活 / 重试循环两份 / layout 排帧 / class 写错地方，都必须红", () => {
+  // 2.2 落完：app.js 里没有转发器了
   const okApp = `
-function layoutOverlayAnnotations(o) { return window.OverlayLayer?.layout(o, {}); }
-function scheduleOverlayLayout(o) { window.OverlayLayer?.schedule(o, {}); }
+const unrelated = 1;
 `;
   // 注意：`functionBody` 对空函数体返回空串（假值），样本里必须给一行语句
   const okReg = `
@@ -6279,9 +6278,8 @@ const api = { init, layout, schedule };
 
   assert.ok(layoutMathProblems({ appCode: okApp + "function findOrderSpot() {}\n", registryCode: okReg }).length >= 1,
     "app.js 里长出真实现必须红");
-  const longForwarder = okApp.replace("function layoutOverlayAnnotations(o) { return window.OverlayLayer?.layout(o, {}); }",
-    "function layoutOverlayAnnotations(o) {\n  const a = 1;\n  const b = 2;\n  const c = 3;\n  const d = 4;\n  return window.OverlayLayer?.layout(o, { a, b, c, d });\n}");
-  assert.ok(layoutMathProblems({ appCode: longForwarder, registryCode: okReg }).length >= 1, "转发器超 6 行必须红");
+  const backForwarder = okApp + "function layoutOverlayAnnotations(o) { return window.OverlayLayer?.layout(o, {}); }\n";
+  assert.ok(layoutMathProblems({ appCode: backForwarder, registryCode: okReg }).length >= 1, "转发器复活必须红");
   assert.ok(layoutMathProblems({ appCode: okApp, registryCode: okReg.replace("if (a < 90)", "if (a < 90)") + "" }).length === 0);
   assert.ok(layoutMathProblems({ appCode: okApp + "const x = 1; // attempt < 90\n", registryCode: okReg }).length >= 1,
     "app.js 里第二份重试循环必须红（注释里的不算——codeOnly 已剥）");
@@ -6290,12 +6288,62 @@ const api = { init, layout, schedule };
   assert.ok(registryApiProblems({ registryCode: okReg.replace("requestAnimationFrame", "setTimeout") }).length >= 0);
 
   const fakeFiles = (sources) => Object.entries(sources).map(([fileName, source]) => ({ fileName, source }));
-  assert.deepEqual(overlayClassProblems({ files: fakeFiles({ "app.js": "const x = 1;", "index-view.js": "page-overlay--labeled" }) }), [],
-    "白名单内的视图写了不该红");
+  // 2.2 之后没有白名单：任何视图自己拼容器 class 都红
+  assert.equal(overlayClassProblems({ files: fakeFiles({ "app.js": "const x = 1;", "index-view.js": "page-overlay--labeled" }) }).length, 1,
+    "视图自己拼容器 class 必须红（index 已迁入 registry）");
   assert.ok(overlayClassProblems({ files: fakeFiles({ "app.js": "page-overlay--margin" }) }).length >= 1,
     "app.js 里写 class 必须红");
   assert.equal(overlayClassProblems({ files: fakeFiles({ "app.js": "", "preview-view.js": "page-overlay--labeled" }) }).length, 1,
     "白名单外的视图写 class 必须红（条目过期不再单独判：2.2 收紧笔会把条目删掉）");
+});
+
+// ---------------------------------------------------------------- 片 2 笔 C：旧渲染器归零 + 解耦
+
+test("片 2 笔 C：renderPageBlocks / clearPageBlocks / _renderedBlocks 全仓归零", () => {
+  const problems = [];
+  for (const fileName of readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"))) {
+    const code = codeOnly(readFileSync(join(STATIC_DIR, fileName), "utf8"));
+    for (const needle of ["renderPageBlocks", "clearPageBlocks", "_renderedBlocks"]) {
+      if (code.includes(needle)) problems.push(`${fileName} 里还有 ${needle}`);
+    }
+    if (fileName !== "overlay-registry.js" && /page-overlay--(readonly|labeled|margin)/.test(code)) {
+      problems.push(`${fileName} 里还在拼容器 class——class 唯一写点是 registry`);
+    }
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("片 2 笔 C：避让跟 details 走、卡片跟 labeled 走（解耦不许被绑回去）", () => {
+  const registryCode = codeOnly(readFileSync(join(STATIC_DIR, "overlay-registry.js"), "utf8"));
+  const handle = functionBody(registryCode, "renderHandle");
+  assert.ok(handle, "registry 里没有 renderHandle");
+  assert.ok(/styles\.details !== false && visible > 0/.test(handle),
+    "renderHandle 没有按 details 安排避让——preview 的号又会永远贴框内");
+  assert.equal(/styles\.labeled &&/.test(handle), false, "避让又被绑回 labeled 了（两件事必须分开）");
+  const renderBlockBody = functionBody(registryCode, "renderBlock");
+  assert.ok(/style\.labeled && typeof injected\.buildLabel/.test(renderBlockBody),
+    "卡片没有跟 labeled 走");
+});
+
+test("片 2 笔 C 自检：旧渲染器挪回视图 / 自己拼容器 / 避让绑回 labeled，都必须红", () => {
+  const files = (sources) => Object.entries(sources).map(([fileName, source]) => ({ fileName, source }));
+  const clean = { "app.js": "const a = 1;", "overlay-registry.js": "page-overlay--readonly" };
+  const problemsOf = (sources) => {
+    const out = [];
+    for (const { fileName, source } of files(sources)) {
+      for (const needle of ["renderPageBlocks", "clearPageBlocks", "_renderedBlocks"]) {
+        if (source.includes(needle)) out.push(`${fileName}: ${needle}`);
+      }
+      if (fileName !== "overlay-registry.js" && /page-overlay--(readonly|labeled|margin)/.test(source)) {
+        out.push(`${fileName}: class`);
+      }
+    }
+    return out;
+  };
+  assert.deepEqual(problemsOf(clean), [], "合规样本被判红");
+  assert.equal(problemsOf({ ...clean, "reading-view.js": "injected.renderPageBlocks(tile, blocks);" }).length, 1);
+  assert.equal(problemsOf({ ...clean, "index-view.js": "overlay._renderedBlocks = blocks;" }).length, 1);
+  assert.equal(problemsOf({ ...clean, "preview-view.js": 'overlay.className = "page-overlay--readonly";' }).length, 1);
 });
 
 // ---------------------------------------------------------------- 清洗刀：退役 id/状态归零
