@@ -67,6 +67,7 @@ import {
 } from "./edge-ratchet.mjs";
 import {
   evaluateFeatureContract, commitContractProblems, tableBlockRanges, isContractPath,
+  newModuleRegistrationProblems, registrationTableRanges, REGISTRATION_TABLES,
   exemptionDeltaProblems, keepShellSegmentLabels, moveGateProblems, moveScopeProblems,
   MOVE_EXEMPTION_BLOCKS, MOVE_EXEMPTION_BLOCKS_RETIRED,
 } from "./feature-contract.mjs";
@@ -3571,6 +3572,60 @@ test("R12 自检：产品卷测试必须红、未登记/非 test-contract 删除
  * §18.6「签名走 trailer」自检（DevLead 2026-10-29）：合成提交各喂一条。
  * 判据 1 缺 trailer → 红并点名字；2 等于作者 → 红（自己批自己）；3 是别人 → 绿（两种写法都认）。
  */
+test("R12（A1 例外）：新服务模块 + 只改三张登记表 ⇒ 绿；越出登记表块 ⇒ 红", () => {
+  // 死锁形态：只落模块 ⇒ 登记完整性红；先加登记 ⇒ 表里 readFileSync 一个不存在的文件直接抛；
+  // 合成一笔 ⇒ A1 红。开口子按**范围**：只许动三张表的数组字面量，而且要真的把新模块登记进去。
+  const boundarySource = [
+    "const DOMAIN_MODULES = [",
+    '  { file: "quality-stats.js", exposes: "QualityStats" },',
+    '  { file: "brand-new.js", exposes: "BrandNew" },',
+    "];",
+    "const NON_DOMAIN_MODULES = [",
+    '  { file: "page-tile.js", why: "组件不是域" },',
+    "];",
+    "const ALLOW_QUERY_SELECTOR_WHITELIST = [",
+    '  "structure-tools.js",',
+    "];",
+    "test(\"x\", () => { assert.equal(1, 1); });",
+  ].join("\n");
+  const ranges = registrationTableRanges(boundarySource);
+  assert.equal(ranges.length, 3, `三张登记表只解析到 ${ranges.length} 张——块边界必须从源码派生`);
+
+  const module = { path: "backend/book2text/static/brand-new.js", source: "window.BrandNew = api;\n" };
+  // 只在 DOMAIN_MODULES 里加一行（第 2 行之后）
+  const inside = [{ path: "tests/js/boundary.test.mjs", addedRanges: [[3, 3]], deletedRanges: [], commitSource: boundarySource }];
+  assert.deepEqual(
+    newModuleRegistrationProblems({ addedModules: [module], testsChanges: inside }), [],
+    "新模块 + 只改登记表被判红——这个口子不成立就会退回三方死锁",
+  );
+
+  // 同一笔顺手改一条断言（第最后一行，块外）⇒ 红并点名"越出登记表块"
+  const outside = [{ path: "tests/js/boundary.test.mjs", addedRanges: [[12, 12]], deletedRanges: [], commitSource: boundarySource }];
+  const bad = newModuleRegistrationProblems({ addedModules: [module], testsChanges: outside });
+  assert.ok(bad.some((m) => m.includes("越出登记表块")),
+    `顺手改断言被放过——${bad.join("；")}`);
+
+  // 改了别的测试文件（哪怕一行）⇒ 红
+  const otherFile = [
+    { path: "tests/js/boundary.test.mjs", addedRanges: [[3, 3]], deletedRanges: [], commitSource: boundarySource },
+    { path: "tests/js/review-tree.test.mjs", addedRanges: [[1, 1]], deletedRanges: [], commitSource: "x" },
+  ];
+  assert.ok(newModuleRegistrationProblems({ addedModules: [module], testsChanges: otherFile })
+    .some((m) => m.includes("review-tree.test.mjs") && m.includes("越出登记表块")),
+  "改了别的测试文件也被放行");
+
+  // 没新增 window.X = api 模块 ⇒ 例外不成立（普通"产品 + tests"同笔仍然红）
+  const notModule = { path: "backend/book2text/static/app.js", source: "const x = 1;\n" };
+  assert.ok(newModuleRegistrationProblems({ addedModules: [notModule], testsChanges: inside })
+    .some((m) => m.includes("例外不成立")), "没有新模块也给这个口子");
+
+  // 新模块没被登记进去（只改了个空行）⇒ 红：口子要的是"落文件 + 登记"，不是"没越界就行"
+  const blank = [{ path: "tests/js/boundary.test.mjs", addedRanges: [[12, 12]], deletedRanges: [], commitSource: boundarySource }];
+  const missing = newModuleRegistrationProblems({ addedModules: [module], testsChanges: blank });
+  assert.ok(missing.some((m) => m.includes("越出登记表块") || m.includes("没有出现在三张登记表里")),
+    `新模块没登记也被放行——${missing.join("；")}`);
+});
+
 test("R12 自检：Approved-by trailer——缺 → 红 / 等于作者 → 红 / 别人 → 绿（含无空格写法）", () => {
   const docText = [
     "### 18.6 判据变更登记",

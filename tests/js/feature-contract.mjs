@@ -358,6 +358,92 @@ export function exemptionDeltaProblems({ sha, oldSource, newSource, keepListText
   return problems;
 }
 
+/**
+ * **三张登记表**（Chief 2026-11-02 口径）：新服务模块落盘时，允许同一笔改这三张表的**数组字面量**。
+ * 范围按名字限定，不按"哪个文件"——越出这三处一行就红。
+ */
+export const REGISTRATION_TABLES = ["DOMAIN_MODULES", "NON_DOMAIN_MODULES", "ALLOW_QUERY_SELECTOR_WHITELIST"];
+
+/** 派生这三张表的**数组字面量**行范围（口径同 `tableBlockRanges`：从源码算，不手写行号）。 */
+export function registrationTableRanges(source) {
+  const clean = stripCommentsAndStrings(String(source || ""));
+  const lines = clean.split("\n");
+  const blocks = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = /^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*\[/.exec(lines[index]);
+    if (!match || !REGISTRATION_TABLES.includes(match[1])) continue;
+    let depth = 0;
+    let end = -1;
+    for (let cursor = index; cursor < lines.length; cursor += 1) {
+      for (const ch of lines[cursor]) {
+        if (ch === "{" || ch === "[") depth += 1;
+        else if (ch === "}" || ch === "]") {
+          depth -= 1;
+          if (depth === 0) { end = cursor; break; }
+        }
+      }
+      if (end !== -1) break;
+    }
+    if (end !== -1) blocks.push({ name: match[1], start: index + 1, end: end + 1 });
+  }
+  return blocks;
+}
+
+/**
+ * **A1 的唯一例外**（Chief 2026-11-02 裁定）：新服务模块"落文件 + 登记"必须同笔做，否则三方死锁——
+ *   只落模块 ⇒ 登记完整性红；先加登记 ⇒ 表里 readFileSync 一个不存在的文件直接抛；
+ *   合成一笔 ⇒ A1 红（产品 + tests/js 不许同笔）。
+ *
+ * 开口子按**范围**、不按提交类型：当这一笔**新增**了 `static/*.js` 且该文件暴露 `window.X = api` 时，
+ * 允许同一笔改 tests/js，但每一行改动都必须落在三张登记表的数组字面量里，而且新模块的名字
+ * 必须真的出现在其中一张表里（"加了登记"是正向要求，不是"没越界就行"）。
+ *
+ * 判据只看**文件与行范围**（调用方从 git diff 刨好喂进来），不看提交信息里写了什么。
+ */
+export function newModuleRegistrationProblems({ addedModules, testsChanges }) {
+  const modules = (addedModules || []).filter((mod) => /window\.[A-Za-z_$][\w$]*\s*=\s*api\b/.test(String(mod.source || "")));
+  if (modules.length === 0) {
+    return ["A1: 同时改了产品代码与 tests/js，但没有「新增的 window.X = api 服务模块」——例外不成立"];
+  }
+  const changes = testsChanges || [];
+  if (changes.length === 0) {
+    return ["A1: 说是「新模块 + 登记」同笔，但读不到 tests/js 的改动范围——判不了就是红"];
+  }
+  const boundary = changes.find((change) => String(change.path || "").endsWith("tests/js/boundary.test.mjs"));
+  if (!boundary) {
+    return [`A1: ${changes.map((change) => change.path).join("、")} 越出登记表块——`
+      + `新模块那一笔只许改 tests/js/boundary.test.mjs 里的 ${REGISTRATION_TABLES.join(" / ")}`];
+  }
+  const blocks = registrationTableRanges(boundary.commitSource);
+  if (blocks.length === 0) {
+    return [`A1: 三张登记表（${REGISTRATION_TABLES.join(" / ")}）一张都没解析到——块边界解析失败就判红，不许放行`];
+  }
+  const problems = [];
+  for (const change of changes) {
+    if (change === boundary) {
+      for (const range of [...(change.addedRanges || []), ...(change.deletedRanges || [])]) {
+        for (let line = range[0]; line <= range[1]; line += 1) {
+          if (blocks.some((block) => block.start <= line && line <= block.end)) continue;
+          problems.push(`A1: ${change.path}:${line} 越出登记表块（${REGISTRATION_TABLES.join(" / ")}）——`
+            + "新模块那一笔只许改这三张表的数组字面量");
+        }
+      }
+      continue;
+    }
+    problems.push(`A1: ${change.path} 越出登记表块——新模块那一笔只许改三张登记表，别的测试改动要单开一笔`);
+  }
+  const rawLines = String(boundary.commitSource || "").split("\n");
+  for (const mod of modules) {
+    const base = String(mod.path || "").split("/").pop();
+    const registered = blocks.some((block) => rawLines.slice(block.start - 1, block.end).join("\n").includes(base));
+    if (!registered) {
+      problems.push(`A1: 新增模块 ${base} 没有出现在三张登记表里——「落文件 + 登记」必须同笔完成，`
+        + "否则登记完整性闸会认为它逃了闸");
+    }
+  }
+  return problems;
+}
+
 /** 从源码派生顶层 `const NAME = { … };` 的块范围（`allowed` / `forbidden` 见上）。 */
 export function tableBlockRanges(source, { exemptionFile = false } = {}) {
   const clean = stripCommentsAndStrings(source || "");
@@ -517,7 +603,7 @@ function registrationGap(sha, docText, kindLabel, author = null) {
  */
 export function commitContractProblems({
   sha, subject, files, deletions, deletedFiles = [], docText, moveChanges = null, author = null,
-  message = null,
+  message = null, addedStaticModules = [], testsChanges = [],
 }) {
   const short = sha.slice(0, 7);
   const problems = [];            // 形态段：pre-commit 拦
@@ -543,7 +629,10 @@ export function commitContractProblems({
       directionChecked: files.some((file) => file.endsWith(EXEMPTION_FILE)),
     }));
   } else if (touchesProduct && touchesTests) {
-    problems.push(`A1: ${short} 同时改了产品代码与 tests/js（${subject}）`);
+    // 唯一例外：新增 window.X = api 的服务模块，且 tests/js 的改动全落在三张登记表的数组字面量里
+    // （按范围开口子，不按提交类型；判据只看文件与行范围，不看提交信息说了什么）。
+    const exception = newModuleRegistrationProblems({ addedModules: addedStaticModules, testsChanges });
+    if (exception.length) problems.push(...exception);
   }
 
   // A3 形态：改了契约路径的旧断言（有删除行）→ 首行必须是 test-contract:（单人可判）
@@ -706,10 +795,26 @@ export function evaluateFeatureContract({ baseTag = "ring-break-base", docPath =
       .filter(Boolean);
     const deletions = numstat.reduce((sum, line) => sum + (Number(line.split("\t")[1]) || 0), 0);
     const subject = git(["show", "-s", "--format=%s", sha]);
+    const changedFiles = git(["show", "--name-only", "--format=", sha]).split("\n").filter(Boolean);
+    const touchesProduct = changedFiles.some((file) => file.startsWith("backend/book2text/static/"));
+    const touchesTests = changedFiles.some(isContractPath);
+    // 例外判据要的两种输入：① 本笔**新增**的 static 模块（含内容，判断它有没有暴露 window.X = api）；
+    // ② tests/js 的改动行范围（只看范围，不看信息）。只在"产品 + tests/js 同笔"时去取，别给每笔加成本。
+    let addedStaticModules = [];
+    let testsChanges = [];
+    if (touchesProduct && touchesTests) {
+      addedStaticModules = git(["show", "--name-status", "--diff-filter=A", "--format=", sha, "--", "backend/book2text/static/"])
+        .split("\n").filter(Boolean)
+        .map((line) => line.split("\t").pop())
+        .map((path) => ({ path, source: (() => { try { return git(["show", `${sha}:${path}`]); } catch { return ""; } })() }));
+      testsChanges = moveChangesFromGit(sha);
+    }
     const verdict = commitContractProblems({
       sha,
       subject,
-      files: git(["show", "--name-only", "--format=", sha]).split("\n").filter(Boolean),
+      files: changedFiles,
+      addedStaticModules,
+      testsChanges,
       deletions,
       deletedFiles: git(["show", "--name-status", "--diff-filter=D", "--format=", sha, "--", ...CONTRACT_SCOPE])
         .split("\n").filter(Boolean),
