@@ -3882,7 +3882,6 @@ const VIEW_EXPORTS = {
     "syncToolbarToggles",          // 死亡刀号 = 刀10（全仓 window.PagesView.syncToolbarToggles 引用 = 0 且不在 api 表）
     "showPagesError",              // 死亡刀号 = 刀9（app.js 引用 = 0 且不在 api 表）
     "pagesErrorMessage",           // 死亡刀号 = 刀9（同上）
-    "setMarginJudgementCheckbox",  // 死亡刀号 = 刀9（同上）
     // 刀 7：recognizePage 搬进 pages 模块（R8 57 → 58）。到点判据：
     // app.js 里 window.PagesView.recognizePage 引用 = 0 且不在 api 表——
     // 今天两个调用者（buildTile / setupLibrary）都在外壳；刀 9 若还剩一个，这个键死不了。
@@ -3947,7 +3946,6 @@ const VIEW_EXPORTS = {
       syncToolbarToggles: { kind: "C", callers: ["index-view.js", "library-view.js", "pages-view.js", "preview-view.js", "reading-view.js"], reason: "4 个视图模块 + boot 的 deps 行都要它 → 模块→模块，第一个此类键" },
       showPagesError: { kind: "C", callers: ["finishRevokeAutoPass"], reason: "收尾面板的任务失败要显示在页面错误条" },
       pagesErrorMessage: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "版心检测对话框读错误文案" },
-      setMarginJudgementCheckbox: { kind: "C", callers: ["setMarginJudgementSetting"], reason: "项目设置 → 导出面板勾选态" },
       recognizePage: { kind: "C", callers: ["buildTile", "setupLibrary"], reason: "单页识别可从页面网格和审校面板发起（刀 7 新增，跨域编排）" },
       setPackageModeChrome: { kind: "C", callers: ["applyPackageMode"], reason: "包模式开关时 pages 面板 10 个入口的显隐（刀 8；外壳决定，模块写）" },
       syncProjectSettings: { kind: "C", callers: ["applyProjectSettings"], reason: "项目设置落在 pages 面板上的两个勾选态（刀 8）" },
@@ -3971,16 +3969,6 @@ function moduleExportKeys(fileName) {
 }
 
 /** 判定内核（独立出来，好让自检喂合成样例）。 */
-/**
- * **Temp-Relax: `setMarginJudgementCheckbox` 允许缺失**（本组三笔内收紧，只放行这一个具名键）。
- *
- * 背景：它的失败回滚改由页面视图自己写 `el("rec-margin-judgement")`，于是 0 调用点；
- * 产品笔删 `pages-view.js` 的函数与导出表那一行。按「放宽 → 产品 → 收紧」，先让清册容忍它**缺失**。
- * 收紧条件 = 第 3 笔把它从 `VIEW_EXPORTS` / `kinds` / 死期那句注释里彻底移除，并删掉这张表。
- * **不是**把整条 missing 判据放宽：别的导出名缺失照样红（自检里有两条正反用例）。
- */
-const TEMP_RELAX_ALLOW_MISSING = ["setMarginJudgementCheckbox"];
-
 function exportRatchetProblems(fileName, keys) {
   const entry = VIEW_EXPORTS[fileName];
   if (!entry) {
@@ -3990,11 +3978,6 @@ function exportRatchetProblems(fileName, keys) {
   const actual = [...keys].sort();
   const added = actual.filter((key) => !expected.includes(key));
   const missing = expected.filter((key) => !actual.includes(key));
-  // Temp-Relax: 原地剔掉豁免键（改的是数组内容，不是判据本身；下面 missing / 数量两条判据自动生效）
-  for (const key of TEMP_RELAX_ALLOW_MISSING) {
-    const at = missing.indexOf(key);
-    if (at >= 0) missing.splice(at, 1);
-  }
   const problems = [];
   if (added.length > 0) {
     problems.push(`${fileName}: 多出未申报的导出 ${added.join("、")}——改大要 Architect 签字，不是往表里加一行`);
@@ -4040,8 +4023,8 @@ test("R8（按模块）：每个视图模块的导出名与数量都只许等于
  * 现在：判据只认这张表，注释只是副本。
  *
  * 2026-10-30 重算：20 个仍活的键死期统一改 **刀 9（导出收口那一刀）**——依据是曲线 R8 61 → 22
- * 就是砍它们，不是拍脑袋；4 个本来就写 刀9/刀10 的不动（showPagesError / pagesErrorMessage /
- * setMarginJudgementCheckbox = 刀9，syncToolbarToggles = 刀10）。
+ * 就是砍它们，不是拍脑袋；本来就写 刀9/刀10 的不动（showPagesError / pagesErrorMessage = 刀9，
+ * syncToolbarToggles = 刀10；setMarginJudgementCheckbox 已在清理笔里删除，不在这套账里）。
  */
 const EXPORT_DEATH_KNIFE = {
   // **从 kind 清册派生，不另存一份**（2026-10-30）：死期只写在一个地方——
@@ -4509,17 +4492,17 @@ test("R8（按模块）自检：多一个 / 少一个 / 改名 / 未登记模块
     [],
     "R8 自检失败：正例被误报",
   );
-  // Temp-Relax 的正反用例：只放行那一个具名键，别的键缺失照样红
-  const pagesNames = [...VIEW_EXPORTS["pages-view.js"].names];
-  assert.deepEqual(
-    exportRatchetProblems("pages-view.js", pagesNames.filter((n) => n !== "setMarginJudgementCheckbox")),
-    [],
-    "Temp-Relax 自检失败：豁免键（setMarginJudgementCheckbox）缺失被误报——放宽笔没生效",
-  );
-  assert.ok(
-    exportRatchetProblems("pages-view.js", pagesNames.filter((n) => n !== "init")).length > 0,
-    "Temp-Relax 自检失败：删掉 init 也放过——放宽范围被写成了「整条 missing 判据」",
-  );
+});
+
+test("R8（清理）：已删的 setMarginJudgementCheckbox 不许回到 pages-view.js 或清册里", () => {
+  const source = codeOnly(readFileSync(join(STATIC_DIR, "pages-view.js"), "utf8"));
+  assert.equal(source.includes("setMarginJudgementCheckbox"), false,
+    "它已 0 调用点并被删（清理对第 3 笔）——注释可以留一句，代码里不许回来");
+  const entry = VIEW_EXPORTS["pages-view.js"];
+  assert.equal(entry.names.includes("setMarginJudgementCheckbox"), false,
+    "VIEW_EXPORTS 里还列着它——收紧没做完");
+  assert.equal(Object.prototype.hasOwnProperty.call(entry.kinds, "setMarginJudgementCheckbox"), false,
+    "kinds 里还登记着它——收紧没做完");
 });
 
 test("R8（导出棘轮）：写路径 emit 不得再出现在公开对象上（事件只出不进）", () => {
