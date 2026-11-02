@@ -295,6 +295,15 @@ def _export_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _suggestion_script() -> str:
+    """③ 第二批：跨视图的建议流程（通知条 / 自动应用状态 / 建议应用）住在 `suggestion-flow.js`。
+
+    与 `_editor_script()` / `_export_script()` 同一套合查口径：模块没落盘时返回空串。
+    """
+    path = STATIC_DIR / "suggestion-flow.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _overlay_script() -> str:
     """片 2 之后块框的挂载与避让排布住在 `overlay-registry.js`（非视图服务模块）。
 
@@ -582,18 +591,24 @@ def test_full_library_suggestion_apply_and_auto_apply_switch_are_wired() -> None
         assert f'id="{element_id}"' in page, element_id
 
     script = _script()
+    # 跨视图服务搬进 suggestion-flow.js 之后，这一簇的东西在模块里；还没落盘时模块返回空串
+    flow = script + _suggestion_script()
     # 先扫描（dry_run）再应用；两个视图都能打开同一个对话框
-    assert "/suggestions/apply" in script
-    assert "dry_run: true" in script and "dry_run: false" in script
-    assert 'el("review-apply-all").addEventListener' in script
+    assert "/suggestions/apply" in flow
+    assert "dry_run: true" in flow and "dry_run: false" in flow
+    # 「全库采用」两个按钮：审校页那个（#review-apply-all）DOM 归视图、接线归服务模块 ⇒ 只查名字在场
+    assert "review-apply-all" in flow
     # 项目级设置与自动应用记录
-    assert "/settings" in script
-    assert "auto_apply_high_suggestions" in script
-    assert "/auto-apply" in script
-    assert "undoAutoApply" in script
-    # 任务收尾时查"这一趟有没有新的自动应用"
+    assert "/settings" in flow
+    assert "auto_apply_high_suggestions" in flow
+    assert "/auto-apply" in flow
+    assert "undoAutoApply" in flow
+    # 任务收尾时查"这一趟有没有新的自动应用"（拆掉语义布尔后叫 announceAutoApplyAfterJob）
     poll = _function_body("pollTask")
-    assert "loadAutoApplyStatus({ announce: true, jobId: data.job.job_id })" in poll
+    assert (
+        "loadAutoApplyStatus({ announce: true, jobId: data.job.job_id })" in poll
+        or "announceAutoApplyAfterJob" in poll
+    )
 
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
     assert ".suggestion-type" in css
@@ -699,8 +714,9 @@ def test_export_margin_judgement_and_optional_notes_are_wired() -> None:
     assert "按版心判定正文" in page_html
     assert "同时导出注释" in page_html
 
-    # 设置项与导出选项都要进请求；预检要显示版心两层的数字
-    assert "margin_box_judgement" in script
+    # 设置项与导出选项都要进请求；预检要显示版心两层的数字。
+    # 版心判定那两个动作（读设置 / 写设置）已搬进 suggestion-flow.js ⇒ 合查。
+    assert "margin_box_judgement" in script + _suggestion_script()
     export_script = _export_script()
     assert "include_notes" in script or "include_notes" in export_script
     assert "margin_judgement" in script or "margin_judgement" in export_script
@@ -828,7 +844,7 @@ def test_recognition_settings_are_wired_to_project_settings() -> None:
 
     # 设置写服务端；不可用引擎置灰（Windows 上 Apple Vision / 双引擎）
     assert "function patchRecognitionSetting(" in _script_with_view("pages-view.js")
-    assert '"/settings"' in script or "}/settings`" in script
+    assert '"/settings"' in script + _suggestion_script() or "}/settings`" in script + _suggestion_script()
     assert "function renderRecognitionSettings(" in script
     # 引擎置灰的那行在 renderRecognitionSettings 体内，刀 3 已搬进 pages-view.js。
     assert "option.disabled = needsVision && !visionOk" in _script_with_view("pages-view.js")
