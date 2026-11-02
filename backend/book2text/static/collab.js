@@ -438,7 +438,7 @@
 
   async function downloadResultPackage(projectId, fileName) {
     const response = await fetch(
-      `/api/projects/${projectId}/package/result/${encodeURIComponent(fileName)}` +
+      `/api/projects/${projectId}/package/results/${encodeURIComponent(fileName)}` +
         `?token=${encodeURIComponent(injected.getToken())}`,
       { headers: { "X-B2T-Token": injected.getToken() } }
     );
