@@ -17,7 +17,8 @@
 ```
 ① 导出只有一个宿主（root = `#export-panel`；30 个被引用的 id 全在它子树里，1 个在 chrome）：先做它，
    验证"merge 视图的服务模块"长什么样，代价最低、纠错最便宜。
-② 跨视图服务是**多宿主**（7 merge + 4 chrome + 1 review，11 个入口横跨 5 个视图）：
+② 跨视图服务是**多宿主**（宿主见 §1.3 实测表：merge **0** · chrome **6** · review **1** ·
+   #export-panel **2** · #suggestion-apply-panel **5** = 14 个 id；入口 **12 个**跨 5 个视图）：
    它在第二刀，把"多宿主 + 按事件命名"这条形态定下来；协作随后照着做，不用再发明一次。
 ③ 协作最贵（多宿主 + **13 处写盘**）：放最后，因为"请求→读回→重画"闭环要在前两刀验证过的注入表上做，
    而不是边搬边发明接口。13 处写盘是本批唯一真正练"能力键 vs 状态访问器"的地方。
@@ -175,7 +176,11 @@ el( 57 次 / 25 个 id —— **旧书"20 在 #view-merge"作废**，实测宿�
 外来状态 2：currentProject · detailPageNo
 外部函数 10：apiJson · showError · openModal · closeModal · refreshExportPreflight ·
   renderRecognitionSettings · forgetPageBlocks · refreshPageStates · loadPageDetail · setSaveState
-el( 引用 12 个 id（宿主见下表）
+id 的三个数各有口径，**并排写、别只留一个**：
+  宿主表 **14** 个（6 chrome + 1 review + 2 export + 5 suggestion = 该域"看得见的 id"全集）
+  · `el(` 直接引用 **12** 个（4 chrome + 1 review + 2 export + 5 suggestion）
+  · 落盘后模块经 `part()` 只引 **5** 个（`suggestion-apply-*`），另三组走注入节点
+  （三个数差在"域里有哪些 id" / "代码直接 el 了哪些" / "模块里还能看见哪些"——**别拿一个去对另一个**）
 写盘 6：采用状态 / 摘要 / 全库采用 / 撤销 / 版心判定设置
 ```
 
@@ -233,8 +238,18 @@ chrome（body 顶层 4 个兄弟 noticebar，**无共同 id 祖先**）：
 
 ```
 用法（TestDev 已接）：node scripts/id-host-map.mjs <id...>      → 每个 id 的宿主（子树名 / chrome）与行号
-落盘前自检：本书里每一处"在 #X 子树里"的断言，都能在脚本输出里找到对应行；找不到就是没量
+落盘前自检（**v1.1 扩到"每一处带数字的断言"**）：
+  ① 本书里每一处"在 #X 子树里"的断言，都能在脚本输出里找到对应行；找不到就是没量
+  ② 每一处**带数字**的断言（含 §0 的顺序理由段、各节标题下第一行）都必须与实测表**同口径**，
+     或**标明口径名**（例：宿主表 14 / el( 引用 12 / 模块里只剩 5——三个数并排写，不许只留一个）
+  ③ 叙述与表冲突时，**以表为准并同笔改叙述**；"表改了、叙述没改"是最常见的漏法
 ```
+
+**法医级反例（比"我们错了三次"有用）**：旧书那组"7 merge + 4 chrome + 1 review"里的 **7**，
+很可能就是 `#view-merge` 的**直接子 id 数 7**（TestDev 脚本当前输出：`#view-merge` 直接子 id **7** ·
+`#view-review` **30** · `#export-panel` **25** · `#assign-panel` **15**）——
+**数没抄错，问的是错问题**："看起来在哪个视图里" ≠ "祖先是谁"。
+所以 §1.9 的第一性判据不是"数字对不对"，而是**"这个数回答的是哪个问题"**。
 
 **⚠ 现状**：脚本还不在 main（截至 `79804b1` 我查过 `git log --all -- scripts/id-host-map.mjs` 为空）。
 TestDev 落地之前，本批的宿主表用**行号 + 字符偏移各量一遍**替代，并在书里标注是用哪种方式量的；
