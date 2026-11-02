@@ -64,10 +64,38 @@ el( 50 次 / 31 个 id：**30 个在 #view-merge**，1 个在 chrome（margin-ju
 视图入口 2：exportOptions ← preview-view.js · reading-view.js（注意：是**被视图调**，不是调视图）
 ```
 
-**形态**：`export-panel.js`（`window.ExportPanel`），`init({ root: #view-merge, … })`；
-那个 chrome 里的 `margin-judgement-notice-ok` 与 `currentProject` 一样走注入（一个节点 + 一个访问器）。
+**形态**：`export-panel.js`（`window.ExportPanel`），`init({ root: #export-panel, … })`
+——**不是 `#view-merge`**（Builder 按 index.html 真实嵌套量出来的，我复核过）：
+
+```
+#view-merge 的 span = 43525–45414（1900 字符），里面只放合并视图的静态内容
+30 个导出 id 与 #export-panel 本体全在顶层 mask `<div class="mask" id="export-panel">` 56502–62971
+⇒ 在 #view-merge 子树里的导出 id = **0 个**（按旧书写法建归属表，并集会立刻是空集）
+root = #export-panel（modal 本身）⇒ 30 个 id 全在它子树里，并集 == 子树，归属表可建
+chrome 里只剩 1 个：margin-judgement-notice-ok ⇒ 注入节点（与 currentProject 一样走注入）
+```
+
+**通则（写进三批共用，别每刀现议）**：
+
+> **服务模块的 root 是它真正拥有的那块 DOM，不是它看起来所属的视图。**
+> 判据：那个 root 的子树里，模块要写的 id **并集 == 子树被引用的 id 全集**（能建归属表）；
+> 若某视图子树里"看起来该归它"的 id 实际是 0 个，说明它根本不是那个视图的东西。
+
+同形先例：`structure-tools.js` 的 root 也是 mask（`#structure-panel`），不是 `#view-pages`。
+两处都是"挂在某个视图概念下、实际住在顶层 mask 里"——**别按名字猜归属，按 index.html 的嵌套量**。
 **难点**：`renderPreflight` 166 行（全仓最大的单函数之一）——它同时写 12 个 id 与 2 段状态，
 搬之前先问"它是不是两个函数"（预检结果 vs 规则说明），别整块搬进去再拆。
+
+> **已拆（`ed2e724`，`wt/builder`，行为零变化；合入前以 main 为准）**——DevLead 的判定：
+> **`renderPreflight` 是一个纯装配 + 一个薄写手**：
+> ```
+> preflightRows(data)    67 行  纯：算出那 12 行预检行（不碰 DOM）
+> preflightNotes(data)   99 行  纯：算出提醒文案（不碰 DOM）
+> renderPreflight(data)   7 行  薄写手：fillDefinitionList + 挂提醒
+> ⇒ 166 → 7 + 67 + 99（三个签名与 return 让总行数比原来多一点，属正常）
+> ```
+> 所以 1.1 那条"别整块搬进去再拆"的顾虑消失了：**按三个函数搬**，
+> 两个纯函数可以直接单测（这也正是拆的理由——166 行的函数没法喂数据进去验）。
 
 ### 1.2 协作（22 函数 / 426 行；span 8720–9182）
 
@@ -134,6 +162,10 @@ chrome 的通知条容器、`#view-review` 的 `page-detail-error`；其余 11 �
 导出 export-panel.js
   L init · T setupExportPanel（boot 调）· T refreshExportPreflight（外壳 3 处调：onProjectPagesReloaded /
     afterCleanupApplied / 收尾）· T exportOptions（preview/reading 注入调用）· T revealExport?（看调用点）
+  **新增 T `reloadPanel()`（Chief 2026-11-02 批）**：外壳今天有两句连排 `refreshExportPreflight(); loadExports();`
+    ⇒ 收成一个模块动作（内部**先预检、后历史**），外壳只喊一次。
+    理由：**外壳不许编排模块内的出图顺序**（第二批书 §1.2 那条硬要求的同一句话）。
+    外壳的调用点变成 `exportPanel.reloadPanel()` 一处；两句的顺序与并发细节归模块。
   C 0（不调别的模块）
   注入：root · getCurrentProject · apiJson · showError · syncWorkflowSteps · parsePageRange ·
         fillDefinitionList · marginJudgementOn（来自外壳；跨视图服务搬完后改指模块导出）·
@@ -155,11 +187,24 @@ chrome 的通知条容器、`#view-review` 的 `page-detail-error`；其余 11 �
         getCurrentProject · getDetailPageNo · BLOCK_TYPE_LABELS · 12 个节点（3 组）
 ```
 
+**接口面通则（Chief 2026-11-02 定，三批共用）**：
+
+```
+① 动作名按**语义**取，不许用"语义布尔"让模块猜调用点：
+   ❌ refreshPreflight({ withPreview: true/false })
+   ✅ refreshPreflight()  /  refreshPreflightWithPreview()     ← 两个具名动作
+   理由：参数里出现"该走哪条路"的布尔，就是规则①（一个能力键不许兼两种语义）的变体——
+        模块只能靠参数猜调用点，而调用点一旦挪了位置，参数不会跟着变。
+② 外壳不许编排模块内的出图顺序：像 `refreshExportPreflight(); loadExports();` 这种连排，
+   收成模块动作（见上面 `reloadPanel()`）；外壳只表达"发生了什么"，不表达"先做什么后做什么"。
+```
+
 ## 3. 闸（沿用 + 新增两条）
 
 ```
 沿用（三批共用，缺一不可）：
   · 模块 DOM 面：el( / document.getElementById / document.querySelector 各 0；root.querySelector 走白名单
+    **白名单现有三个模块**：`structure-tools.js` · `page-detail-editor.js` · **`export-panel.js`（本批新增）**
   · 导出面：沙箱执行 Object.keys，逐个要求在 app.js 有调用点（无调用点 = 预留 = 红）
   · 注入双向：boot 传的键必须被模块读；模块读的必须传（死注入 / 漏注入）
   · 跨模块直呼：模块里出现 window.<其它模块> ⇒ 红（godDoorProblems 已补这条）
@@ -170,6 +215,17 @@ chrome 的通知条容器、`#view-review` 的 `page-detail-error`；其余 11 �
  ② **写盘动作命名**：每个含 apiJson(POST/PUT/DELETE) 的导出成员，必须在模块里有
     "请求 → 读回 → 重画"三段的顺序（静态判：动作函数体里出现 await apiJson，且之后至少一次写 DOM/状态）；
     外壳侧不许出现"先调模块动作、再调另一个模块重画"的编排（扫 app.js 的调用点）。
+```
+
+**白名单第三个模块的登记规矩（三处同批，缺一处就红）**：
+
+```
+加一个模块进 ALLOW_QUERY_SELECTOR_WHITELIST ⇒ 必须同时改【白名单】【DOMAIN_MODULES】【书】三处，
+并在书里写明："为什么它需要 root 能力 + 这三处分别是哪几行 + querySelectorAll 只许 root 作用域（不许 document）"
+
+export-panel.js 的用例：`exportOptions` 与 `setupExportPanel` 里有 **3 处 querySelectorAll**，
+  要找 10 个 checkbox（导出规则那一组）——逐个注入不现实，所以要 root 能力。
+  约束：3 处都必须是 `root.querySelectorAll(...)`，**不许 document.querySelectorAll**（白名单只放 root 作用域）。
 ```
 
 ## 4. 预算（预估，开工现量）
