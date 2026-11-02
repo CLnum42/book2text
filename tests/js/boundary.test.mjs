@@ -5777,73 +5777,187 @@ const SHELL_IDS = [
   "review-footer-count", "detail-close", "review-confirm",
 ];
 
-/** 模块源码里按 id 取 DOM 的地方（part("x") 或 querySelector("#x")）。 */
-function editorIdRefs(source) {
-  const found = new Set();
-  for (const m of source.matchAll(/part\("([^"]+)"\)/g)) found.add(m[1]);
-  for (const m of source.matchAll(/querySelector\("#([^"]+)"\)/g)) found.add(m[1]);
-  return [...found];
-}
-
-/** 三支判据（纯函数，便于自检喂坏样本）。 */
-function idOwnershipProblems({ moduleSource, moduleIds, shellIds, subtreeIds }) {
+/**
+ * **一个 section 有 n 个 owner**（Chief 2026-11-02；抽屉那刀会把 #view-review 变成三个）。
+ *
+ * 旧判据写死了「两个 owner」：两集不交 + 并集 == 子树。三个 owner 时那套不成立，所以改成通用形式。
+ * 五条判据（每支只红自己那条）：
+ *   ① 两两不交——同一个 id 不许落在两个 owner 里；
+ *   ② 并集 == 子树被引用 id 全集（两个方向都判：漏一个 / 多一个）；
+ *   ③ 每个 owner 的文件里按 id 取的（part/el/querySelector/getElementById）⊆ **它自己**那张表；
+ *   ④ 跨 owner class 写：模块不许 classList 改**别的 owner** 声明过的 class 前缀
+ *      （要改就由 owner 自己提供 toggleCollapsed() 之类的方法）；
+ *   ⑤ 落在子树里取 id 的文件，必须登记成某个 owner —— 多一个 owner 必须显式加，不能默认放行。
+ *
+ * `integrator: true` 的 owner（外壳 app.js）是**移交方**：它把元素交给模块、并清理自己的 DOM，
+ * 所以 ③ 对它不成立（今天它引用 8 个 EDITOR id 正是移交点）。这条是数据里写明的性质，不是隐式豁免。
+ */
+export function sectionOwnerProblems({ owners, subtreeIds, modules }) {
   const problems = [];
-  const moduleSet = new Set(moduleIds);
-  const shellSet = new Set(shellIds);
-  for (const id of editorIdRefs(moduleSource)) {
-    if (!moduleSet.has(id)) problems.push(`模块按 id 取了 ${id}，但它不在「归模块」表里`);
+  if (!owners || owners.length === 0) {
+    problems.push("section 一个 owner 都没登记——空表让所有判据空转");
+    return problems;
   }
-  for (const id of moduleIds) {
-    if (shellSet.has(id)) problems.push(`${id} 同时出现在「归模块」和「归外壳」`);
+  // ① 两两不交
+  for (let i = 0; i < owners.length; i += 1) {
+    for (let j = i + 1; j < owners.length; j += 1) {
+      const right = new Set(owners[j].ids || []);
+      for (const id of owners[i].ids || []) {
+        if (right.has(id)) problems.push(`${id} 同时归属 ${owners[i].name} 与 ${owners[j].name}——一个 id 只能有一个 owner`);
+      }
+    }
   }
-  const union = new Set([...moduleSet, ...shellSet]);
-  for (const id of subtreeIds) {
-    if (!union.has(id)) problems.push(`subtree 里的 ${id} 没有归属（两个 owner 都不认）`);
+  // ② 并集 == 子树（两个方向）
+  const union = new Set(owners.flatMap((owner) => owner.ids || []));
+  for (const id of subtreeIds || []) {
+    if (!union.has(id)) problems.push(`subtree 里的 ${id} 没有归属（${owners.length} 个 owner 都不认）`);
   }
   for (const id of union) {
-    if (!subtreeIds.includes(id)) problems.push(`归属表里的 ${id} 不在 view-review subtree 里`);
+    if (!(subtreeIds || []).includes(id)) problems.push(`归属表里的 ${id} 不在这个 section 的 subtree 里`);
+  }
+  // ③ 每个 owner 的文件里取 id ⊆ 自己的表
+  const byFile = new Map((modules || []).map((mod) => [mod.fileName, mod.source]));
+  for (const owner of owners) {
+    if (owner.integrator) continue;   // 移交方：它把元素交给 owner，见函数头注释
+    for (const fileName of owner.files || []) {
+      const source = byFile.get(fileName);
+      if (source === undefined) {
+        problems.push(`${owner.name} 登记的文件 ${fileName} 读不到——这条判据对它空转`);
+        continue;
+      }
+      for (const id of idRefsIn(source)) {
+        if (!(subtreeIds || []).includes(id)) continue;   // 只判这个 section 的 id
+        if ((owner.ids || []).includes(id)) continue;
+        const other = owners.find((item) => item !== owner && (item.ids || []).includes(id));
+        problems.push(`${fileName} 按 id 取了 ${id}，但它归 ${other ? other.name : "别的 owner"}——跨 owner 取 DOM 必须由 owner 提供方法`);
+      }
+    }
+  }
+  // ④ 跨 owner class 写
+  for (const owner of owners) {
+    if (owner.integrator) continue;
+    for (const fileName of owner.files || []) {
+      const source = byFile.get(fileName) || "";
+      for (const token of classListTokens(source)) {
+        const other = owners.find((item) => item !== owner
+          && (item.classes || []).some((prefix) => token.startsWith(prefix)));
+        if (other) {
+          problems.push(`${fileName} 里 classList 改了 ${token}，那是 ${other.name} 的容器——`
+            + "跨 owner 改 class 等于替别人管状态，应由 owner 自己提供 toggle 方法");
+        }
+      }
+    }
+  }
+  // ⑤ 落在子树里取 id 的文件必须登记成 owner（多一个 owner 要显式加）
+  const declaredFiles = new Set(owners.flatMap((owner) => owner.files || []));
+  for (const { fileName, source } of modules || []) {
+    const hits = idRefsIn(source || "").filter((id) => (subtreeIds || []).includes(id));
+    if (hits.length === 0) continue;
+    if (declaredFiles.has(fileName)) continue;
+    problems.push(`${fileName} 取了这个 section 的 ${hits.length} 个 id（如 ${hits[0]}），但它不是已登记的 owner——`
+      + "多一个 owner 必须显式加进归属表，不能默认放行");
   }
   return problems;
 }
 
-test("① S1：一个 section 两个 owner——模块 id ⊆ 归属表 · 两集不交 · 并集 == subtree", () => {
-  const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
+/** 源码里按 id 取 DOM 的四种写法：part("x") / el("x") / getElementById("x") / querySelector("#x")。 */
+export function idRefsIn(source) {
+  const found = new Set();
+  for (const m of String(source || "").matchAll(/(?:part|el|getElementById)\("([^"]+)"\)/g)) found.add(m[1]);
+  for (const m of String(source || "").matchAll(/querySelector\("#([^"]+)"\)/g)) found.add(m[1]);
+  return [...found];
+}
+
+/** 源码里 classList.add/remove/toggle("token") 的 token 集合。 */
+export function classListTokens(source) {
+  const found = new Set();
+  for (const m of String(source || "").matchAll(/classList\.(?:add|remove|toggle)\(\s*"([^"]+)"/g)) found.add(m[1]);
+  return [...found];
+}
+
+/**
+ * `#view-review` 的归属登记。**n 个 owner**：今天 2 个（EDITOR / SHELL），抽屉那刀落地后加第 3 个（DRAWER）。
+ * 加 owner 必须在这张表里加一项——⑤ 会抓"有文件在碰这个 section 但没登记"。
+ */
+const SECTION_OWNERS = [
+  {
+    name: "EDITOR",
+    ids: EDITOR_IDS,
+    files: ["page-detail-editor.js"],
+    // 这个 owner 的容器 class 前缀：别的模块 classList 改到它们 → ④ 红
+    classes: ["review-block", "box--", "ink-gap"],
+  },
+  {
+    name: "SHELL",
+    ids: SHELL_IDS,
+    files: ["app.js"],
+    // 外壳是**移交方**：boot 里把元素交给模块、并清理自己的 DOM（今天它引用 8 个 EDITOR id 正是移交点）
+    integrator: true,
+    classes: [],
+  },
+];
+
+test("① S1：一个 section 有 n 个 owner——两两不交 · 并集 == subtree · 各自 id ⊆ 自己那张表 · 不漏登记", () => {
   const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
   const start = html.indexOf('id="view-review"');
   const end = html.indexOf('id="view-reading"', start);
   const subtree = [...html.slice(start, end).matchAll(/id="([^"]+)"/g)]
     .map((m) => m[1])
     .filter((id) => id !== "view-review");
-  assert.deepEqual(
-    idOwnershipProblems({ moduleSource, moduleIds: EDITOR_IDS, shellIds: SHELL_IDS, subtreeIds: subtree }),
-    [],
-    "id 归属三支有一支不成立",
-  );
+  const modules = readdirSync(STATIC_DIR)
+    .filter((name) => name.endsWith(".js"))
+    .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") }));
+  const problems = sectionOwnerProblems({ owners: SECTION_OWNERS, subtreeIds: subtree, modules });
+  assert.deepEqual(problems, [], problems.join("\n"));
+  // 表本身自洽：owner 数 == 登记数（加 owner 必须改这张表，不能靠"没人查"）
+  assert.equal(SECTION_OWNERS.length, 2,
+    `#view-review 现在按 ${SECTION_OWNERS.length} 个 owner 判；抽屉那刀落地时要同步加 DRAWER 这一项`);
+
   // 模块里 el( / document.getElementById 仍须为 0（root.querySelector 是唯一取法）
+  const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
   const stripped = codeOnly(moduleSource);
   assert.equal((stripped.match(/\bel\s*\(/g) || []).length, 0, "page-detail-editor.js 里出现 el(");
   assert.equal((stripped.match(/document\.getElementById/g) || []).length, 0, "出现 document.getElementById");
   assert.equal((stripped.match(/document\.querySelector/g) || []).length, 0, "出现 document.querySelector");
 });
 
-test("① S1 自检：外壳 id 写进模块 / 归属表漏一个 id，都必须红", () => {
-  const base = { moduleIds: ["detail-blocks"], shellIds: ["detail-overlay"], subtreeIds: ["detail-blocks", "detail-overlay"] };
-  assert.deepEqual(idOwnershipProblems({ ...base, moduleSource: 'part("detail-blocks");' }), []);
-  assert.equal(
-    idOwnershipProblems({ ...base, moduleSource: 'part("detail-overlay");' }).length,
-    1,
-    "把外壳 id 写进模块必须红",
-  );
-  assert.equal(
-    idOwnershipProblems({ ...base, moduleSource: "", moduleIds: ["detail-blocks", "detail-overlay"] }).length,
-    1,
-    "同一个 id 落在两集必须红",
-  );
-  assert.equal(
-    idOwnershipProblems({ ...base, moduleSource: "", moduleIds: [], shellIds: ["detail-overlay"] }).length,
-    1,
-    "subtree 里有 id 没有归属必须红",
-  );
+test("① S1 自检（n=3）：挪 id 红① / 删 shell id 红② / 反向取 DOM 红③ / 改别人 class 红④ / 未登记模块红⑤", () => {
+  const subtree = ["a", "b", "c", "d"];
+  const owners = [
+    { name: "EDITOR", ids: ["a", "b"], files: ["editor.js"], classes: ["editor-"] },
+    { name: "DRAWER", ids: ["c"], files: ["drawer.js"], classes: ["drawer-"] },
+    { name: "SHELL", ids: ["d"], files: ["app.js"], integrator: true, classes: [] },
+  ];
+  const modules = [
+    { fileName: "editor.js", source: 'part("a");' },
+    { fileName: "drawer.js", source: 'part("c");' },
+    { fileName: "app.js", source: 'el("d");' },
+  ];
+  const run = (own = owners, mods = modules, ids = subtree) => sectionOwnerProblems({ owners: own, subtreeIds: ids, modules: mods });
+  assert.deepEqual(run(), [], `三 owner 的合规形态被误报——${run().join("；")}`);
+
+  // ① 同一个 id 落两个 owner
+  assert.ok(run([owners[0], { ...owners[1], ids: ["c", "b"] }, owners[2]])
+    .some((m) => m.includes("同时归属")), "同一 id 落两个 owner 没红");
+
+  // ② 删掉一个 shell id ⇒ 并集 != 子树
+  assert.ok(run([owners[0], owners[1], { ...owners[2], ids: [] }])
+    .some((m) => m.includes("没有归属")), "subtree 里的 id 没人认没红");
+
+  // ③ editor 反向取 drawer 的 id
+  assert.ok(run(owners, modules.map((m) => (m.fileName === "editor.js" ? { ...m, source: 'part("c");' } : m)))
+    .some((m) => m.includes("归 DRAWER")), "editor 取了 drawer 的 id 没红");
+
+  // ④ editor 改 drawer 的容器 class
+  assert.ok(run(owners, modules.map((m) => (m.fileName === "editor.js" ? { ...m, source: 'el.classList.toggle("drawer-collapsed", on);' } : m)))
+    .some((m) => m.includes("drawer-collapsed")), "跨 owner 改 class 没红");
+
+  // ⑤ 多一个模块碰这个 section 却没登记
+  assert.ok(run(owners, [...modules, { fileName: "sneaky.js", source: 'part("a");' }])
+    .some((m) => m.includes("sneaky.js")), "未登记 owner 没红");
+
+  // 空 owner 表：判据不能空转
+  assert.ok(run([], modules).some((m) => m.includes("空转")), "空 owner 表被放过");
 });
 
 /** 模块喊外壳的名字必须是注入键：裸写一个 app.js 顶层函数名就是"谁都能喊一下"的入口。 */
@@ -6450,8 +6564,14 @@ test("③ 导出：一个 section 两个 owner（模块 30 / 外壳 4 · 并集 
   const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
   const subtree = exportMaskIds(html);
   assert.equal(subtree.length, 34, `#export-panel 子树里应有 34 个 id，实测 ${subtree.length}`);
-  const problems = idOwnershipProblems({
-    moduleSource, moduleIds: EXPORT_IDS, shellIds: EXPORT_SHELL_IDS, subtreeIds: subtree,
+  const problems = sectionOwnerProblems({
+    owners: [
+      { name: "EXPORT", ids: EXPORT_IDS, files: ["export-panel.js"], classes: ["export-"] },
+      { name: "SHELL", ids: EXPORT_SHELL_IDS, files: ["app.js"], integrator: true, classes: [] },
+    ],
+    subtreeIds: subtree,
+    modules: readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"))
+      .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") })),
   });
   assert.deepEqual(problems, [], problems.join("\n"));
 });
@@ -6498,11 +6618,17 @@ test("③ 导出自检：模块写外壳 id / 导出面留空 / 注入少一个�
   const moduleIds = ["export-scope"];
   const shellIds = ["export-close"];
   const subtree = ["export-scope", "export-close"];
-  assert.deepEqual(idOwnershipProblems({ moduleSource: 'part("export-scope");', moduleIds, shellIds, subtreeIds: subtree }), []);
-  assert.equal(idOwnershipProblems({ moduleSource: 'part("export-close");', moduleIds, shellIds, subtreeIds: subtree }).length, 1,
-    "模块取外壳 id 必须红");
-  assert.equal(idOwnershipProblems({ moduleSource: "", moduleIds, shellIds: [], subtreeIds: subtree }).length, 1,
-    "subtree 有 id 没归属必须红");
+  const owners = [
+    { name: "EXPORT", ids: moduleIds, files: ["export-panel.js"], classes: ["export-"] },
+    { name: "SHELL", ids: shellIds, files: ["app.js"], integrator: true, classes: [] },
+  ];
+  const run = (moduleSource, own = owners) => sectionOwnerProblems({
+    owners: own, subtreeIds: subtree,
+    modules: [{ fileName: "export-panel.js", source: moduleSource }, { fileName: "app.js", source: "" }],
+  });
+  assert.deepEqual(run('part("export-scope");'), []);
+  assert.equal(run('part("export-close");').length, 1, "模块取外壳 id 必须红");
+  assert.equal(run("", [owners[0], { ...owners[1], ids: [] }]).length, 1, "subtree 有 id 没归属必须红");
   // 导出面 / 注入双向的纯判定：用合成样本各喂一次
   const app = "window.ExportPanel?.a();\nwindow.ExportPanel?.init({\n    x: 1,\n  });\n";
   assert.match(app, /ExportPanel\?\.a\s*\(/);
