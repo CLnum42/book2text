@@ -171,22 +171,18 @@ def test_block_frame_default_has_no_type_text_and_hover_card_is_placed_outside()
     # 片 2：findOrderSpot / findLabelSpot 的"避让数学"整段搬进 overlay-registry.js
     # （app.js 只留 ≤6 行的转发器给还没迁完的 reading / index），所以这里合查两份。
     overlay = _overlay_script()
-    for name in (
-        "buildBoxOrder",
-        "buildBoxLabel",
-        "findOrderSpot",
-        "findLabelSpot",
-        "layoutOverlayAnnotations",
-        "scheduleOverlayLayout",
-    ):
+    for name in ("buildBoxOrder", "buildBoxLabel", "findOrderSpot", "findLabelSpot"):
         assert f"function {name}(" in script or f"function {name}(" in overlay, name
+    # 片 2 笔 C：摆位/调度的入口改名成 registry 的 layout / schedule（转发器已删）
+    for name in ("layout", "schedule"):
+        assert f"function {name}(" in overlay, name
 
     # 默认顺序号只有数字；类型文字只进悬停卡片
     assert "order.textContent = String(index + 1)" in script
     assert "box.append(buildBoxOrder(index));" in script
     assert "box.append(buildBoxLabel(block, index, suggestion));" in script
-    # 审校视图与页面视图共用同一套
-    assert "box.append(buildBoxLabel(block, index, null));" in script
+    # 审校视图与页面视图共用同一套（页面视图经 registry 注入的 buildLabel 调它，不再自己 append）
+    assert "buildBoxLabel(block, index, null)" in script
     # 页码提示只在卡片里
     assert "pageNumber.classList.add(\"box__label-hint\")" in script
     # 「采用」按钮阻止拖动 / 冒泡，避免点按钮时挪框
