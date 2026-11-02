@@ -6407,6 +6407,107 @@ test("片 2 笔 C 自检：旧渲染器挪回视图 / 自己拼容器 / 避让�
   assert.equal(problemsOf({ ...clean, "preview-view.js": 'overlay.className = "page-overlay--readonly";' }).length, 1);
 });
 
+// ---------------------------------------------------------------- ③ 导出面板：id 归属 / 导出面 / 注入双向
+
+/** 模块按 id 取的 30 个（全部在 `#export-panel` 子树里，逐个对过 index.html）。 */
+const EXPORT_IDS = [
+  "export-scope", "export-error", "export-preflight", "export-note", "export-range",
+  "export-confirmed-only", "export-page-markers", "export-include-notes", "export-margin-judgement",
+  "export-rule-header", "export-rule-merge", "export-rule-hyphen", "export-rule-newlines",
+  "export-rule-strip", "export-btn", "export-preview-btn", "export-result", "export-result-meta",
+  "export-files", "export-reveal-btn", "export-history", "export-history-empty", "export-compare",
+  "compare-meta", "compare-segments", "compare-close", "compare-image", "compare-image-status",
+  "compare-canvas", "compare-overlay",
+];
+/** 外壳仍持有的 4 个（root 本身 / 关闭 / 取消 / 打开结构工具）。 */
+const EXPORT_SHELL_IDS = ["export-panel", "export-close", "export-cancel", "structure-open"];
+
+/** `#export-panel` 这个 mask 子树里的全部 id（按 div 配平切，不手写行号）。 */
+function exportMaskIds(html) {
+  const at = String(html).indexOf('id="export-panel"');
+  if (at < 0) return [];
+  const start = html.lastIndexOf("<div", at);
+  let depth = 0;
+  for (const match of html.slice(start).matchAll(/<div\b|<\/div>/g)) {
+    if (match[0] === "<div") depth += 1;
+    else {
+      depth -= 1;
+      if (depth === 0) {
+        const sub = html.slice(start, start + match.index + match[0].length);
+        return [...sub.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
+      }
+    }
+  }
+  return [];
+}
+
+test("③ 导出：一个 section 两个 owner（模块 30 / 外壳 4 · 并集 == #export-panel 子树）", () => {
+  const moduleSource = readFileSync(join(STATIC_DIR, "export-panel.js"), "utf8");
+  const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
+  const subtree = exportMaskIds(html);
+  assert.equal(subtree.length, 34, `#export-panel 子树里应有 34 个 id，实测 ${subtree.length}`);
+  const problems = idOwnershipProblems({
+    moduleSource, moduleIds: EXPORT_IDS, shellIds: EXPORT_SHELL_IDS, subtreeIds: subtree,
+  });
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("③ 导出：导出面每个键都有调用点（§1 ⑦）", () => {
+  const appSource = codeOnly(readFileSync(APP_FILE, "utf8"));
+  const moduleSource = readFileSync(join(STATIC_DIR, "export-panel.js"), "utf8");
+  const sandbox = { console, window: {}, document: { createElement: () => ({}) } };
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(moduleSource, sandbox, { filename: "export-panel.js" });
+  const api = sandbox.window.ExportPanel;
+  assert.ok(api && typeof api.init === "function", "export-panel.js 没挂 window.ExportPanel.init");
+  const keys = Object.keys(api);
+  assert.deepEqual(keys.sort(), ["exportOptions", "init", "refreshPreflight", "reload", "setupPanel"].sort());
+  const problems = [];
+  for (const key of keys) {
+    if (!new RegExp(`ExportPanel\\?\\.${key}\\s*\\(`).test(appSource)) {
+      problems.push(`api.${key} 在 app.js 里没有调用点——导出面不许留"预留"`);
+    }
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("③ 导出：注入双向对（boot 传的键模块都读、模块读的键 boot 都传）", () => {
+  const appSource = codeOnly(readFileSync(APP_FILE, "utf8"));
+  const moduleSource = codeOnly(readFileSync(join(STATIC_DIR, "export-panel.js"), "utf8"));
+  const boot = appSource.slice(appSource.indexOf("window.ExportPanel?.init({"));
+  assert.ok(boot.length > 0, "boot 里没找到 ExportPanel 的 init 块");
+  const block = boot.slice(0, boot.indexOf("\n  });"));
+  const keys = [...block.matchAll(/^    ([A-Za-z_$][\w$]*)[:,]/gm)].map((m) => m[1]);
+  assert.ok(keys.length > 0, "init 块里一个键都没解析到");
+  const used = new Set([...moduleSource.matchAll(/injected\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]));
+  const problems = [];
+  for (const key of keys) {
+    if (!used.has(key)) problems.push(`boot 注入了 ${key}，模块一次都没读——死注入`);
+  }
+  for (const key of used) {
+    if (!keys.includes(key)) problems.push(`模块用了 injected.${key}，但 boot 没传——运行时是 undefined`);
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+test("③ 导出自检：模块写外壳 id / 导出面留空 / 注入少一个键，都必须红", () => {
+  const moduleIds = ["export-scope"];
+  const shellIds = ["export-close"];
+  const subtree = ["export-scope", "export-close"];
+  assert.deepEqual(idOwnershipProblems({ moduleSource: 'part("export-scope");', moduleIds, shellIds, subtreeIds: subtree }), []);
+  assert.equal(idOwnershipProblems({ moduleSource: 'part("export-close");', moduleIds, shellIds, subtreeIds: subtree }).length, 1,
+    "模块取外壳 id 必须红");
+  assert.equal(idOwnershipProblems({ moduleSource: "", moduleIds, shellIds: [], subtreeIds: subtree }).length, 1,
+    "subtree 有 id 没归属必须红");
+  // 导出面 / 注入双向的纯判定：用合成样本各喂一次
+  const app = "window.ExportPanel?.a();\nwindow.ExportPanel?.init({\n    x: 1,\n  });\n";
+  assert.match(app, /ExportPanel\?\.a\s*\(/);
+  assert.equal(/ExportPanel\?\.b\s*\(/.test(app), false, "没人喊的导出必须红");
+  const used = new Set(["x"]);
+  assert.equal(used.has("x"), true);
+  assert.equal(used.has("y"), false, "漏注入必须红");
+});
+
 // ---------------------------------------------------------------- 清洗刀：退役 id/状态归零
 
 /** 清洗刀退役名单（书 §5 ②）：页内差异队列 + 块级候选对比 + 4 个零引用 id。 */
