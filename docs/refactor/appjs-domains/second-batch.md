@@ -223,12 +223,19 @@ chrome 的通知条容器、`#view-review` 的 `page-detail-error`；其余 11 �
   · 注入双向：boot 传的键必须被模块读；模块读的必须传（死注入 / 漏注入）
   · 跨模块直呼：模块里出现 window.<其它模块> ⇒ 红（godDoorProblems 已补这条）
   · id 归属三支：模块 id ⊆ 归属表 · 两集不交 · 并集 == 该 view 子树的 id 全集
-新增两条（本批特有）：
+新增三条（本批特有；第三条是首刀用事故换来的）：
  ① **多宿主模块的 id 归属**：一个模块用多个 view 的 id 时，归属表要按"宿主"分组，
     且每组的并集要等于对应子树（否则"壳里多了一个没人认的 id"不会红）。
  ② **写盘动作命名**：每个含 apiJson(POST/PUT/DELETE) 的导出成员，必须在模块里有
     "请求 → 读回 → 重画"三段的顺序（静态判：动作函数体里出现 await apiJson，且之后至少一次写 DOM/状态）；
     外壳侧不许出现"先调模块动作、再调另一个模块重画"的编排（扫 app.js 的调用点）。
+③ **拆笔必须有对集测试**（导出刀踩到，`de5a509`）：把一个大函数拆成几个时，"行为零变化"不能靠
+   node/pytest 变绿来证明——`renderPreflight` 拆成 7 + 67 + 99 后，`preflightNotes` 漏带
+   `mapping` / `noteStream` / `includeNotes` / `undeterminedMargins` / `workflowStatus` 五个局部派生，
+   整块 `ReferenceError`，被 `refreshPreflight` 的 try/catch 吞成"只有行、没有提醒"；
+   而当时 **node/pytest 全绿，因为没有任何测试跑 DOM**。
+   ⇒ 判据：拆笔落地时，**同一份 data 的旧/新输出逐字对集**（含空数据版），锁在测试里；
+   green 只证明语法对，不证明行为对。
 ```
 
 **白名单第三个模块的登记规矩（三处同批，缺一处就红）**：
