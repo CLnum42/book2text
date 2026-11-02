@@ -5466,7 +5466,10 @@ const DOMAIN_MODULES = [
  * 就悄悄过了。现在改成双向对集：登记了这个能力却不在名单里 ⇒ 红；名单里有名字却没登记这个能力 ⇒ 红。
  * 第三个模块要 root 时，必须同时改这里、改登记表、改书（`first-batch.md` §1）——做不到「顺手加个名字」。
  */
-const ALLOW_QUERY_SELECTOR_WHITELIST = ["structure-tools.js", "page-detail-editor.js"];
+const ALLOW_QUERY_SELECTOR_WHITELIST = [
+  "structure-tools.js",
+  "page-detail-editor.js",
+];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {
   const problems = [];
