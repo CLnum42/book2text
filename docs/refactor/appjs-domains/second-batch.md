@@ -73,7 +73,21 @@ el( 50 次 / 31 个 id：**30 个在 #view-merge**，1 个在 chrome（margin-ju
 ⇒ 在 #view-merge 子树里的导出 id = **0 个**（按旧书写法建归属表，并集会立刻是空集）
 root = #export-panel（modal 本身）⇒ 30 个 id 全在它子树里，并集 == 子树，归属表可建
 chrome 里只剩 1 个：margin-judgement-notice-ok ⇒ 注入节点（与 currentProject 一样走注入）
+
+**三个数别混（我按两种口径各量一遍，行号法与字符偏移法结果一致）**：
+
 ```
+子树规模      #export-panel 行 1054–1174（字符 56502–62971）共 **34** 个 id
+              = 26 个 export-* + 8 个无前缀（structure-open + 7 个 compare-*）
+本刀引用      **30** 个在该子树里 = **23** 个 export-* + **7** 个 compare-*
+              （另有 1 个在 chrome：margin-judgement-notice-ok）⇒ 引用总数 31
+不引用的 4 个  export-panel（mask 本体 = root 自己，不按 id 取）· export-close · export-cancel · structure-open
+              —— structure-open 是「结构工具…」入口，**在子树里但不归本刀**（归 structure-tools/外壳）
+```
+
+**所以"30 个在 root 子树里"指的是"本刀引用的 30 个"，不是"子树只有 30 个"**；
+数到 26 个 `export-*` 也不算少——被引用的 export-* 是 23 个，另外 3 个里有两个是关闭/取消按钮（别处接线）、
+一个是 mask 本体。写归属表时按 **30 个被引用的**建，别按子树全集建（否则并集会多 4 个）。
 
 **通则（写进三批共用，别每刀现议）**：
 
