@@ -3633,7 +3633,7 @@ function enter() {
     syncToolbarToggles,          // 死亡刀号 = 刀10（全仓引用 = 0 且不在 api 表）
     showPagesError,              // 死亡刀号 = 刀9（app.js 引用 = 0 且不在 api 表）
     pagesErrorMessage,           // 死亡刀号 = 刀9（同上）
-    // 刀 9 清理：`setMarginJudgementCheckbox` 已删（0 调用点；失败回滚改由本模块的
+    // 刀 9 清理：版心开关那个「写勾选态」的导出已删（0 调用点；失败回滚改由本模块的
     // wirePagesExportMarginJudgement 自己写 el("rec-margin-judgement")）
     // 刀 7：recognizePage 搬进本模块（刀 5 的 31 个 mover 同族：外壳两处调用点改直调）
     // 到点判据：`app.js` 里 `window.PagesView.recognizePage` 引用 = 0 且不在 api 表——
