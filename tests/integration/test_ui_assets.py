@@ -286,6 +286,15 @@ def _editor_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _export_script() -> str:
+    """③ 之后导出面板住在 `export-panel.js`（root = #export-panel 那个顶层 modal）。
+
+    与 `_editor_script()` / `_overlay_script()` 同一套合查口径：模块没落盘时返回空串。
+    """
+    path = STATIC_DIR / "export-panel.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _overlay_script() -> str:
     """片 2 之后块框的挂载与避让排布住在 `overlay-registry.js`（非视图服务模块）。
 
@@ -692,10 +701,11 @@ def test_export_margin_judgement_and_optional_notes_are_wired() -> None:
 
     # 设置项与导出选项都要进请求；预检要显示版心两层的数字
     assert "margin_box_judgement" in script
-    assert "include_notes" in script
-    assert "margin_judgement" in script
-    assert "margin_blocks" in script
-    assert "margin_notes" in script
+    export_script = _export_script()
+    assert "include_notes" in script or "include_notes" in export_script
+    assert "margin_judgement" in script or "margin_judgement" in export_script
+    assert "margin_blocks" in script or "margin_blocks" in export_script
+    assert "margin_notes" in script or "margin_notes" in export_script
 
 
 def test_page_suggestion_badge_counts_only_high_confidence() -> None:
@@ -1263,8 +1273,8 @@ def test_result_preview_step_is_wired_to_export_assembly() -> None:
     preview_script = (STATIC_DIR / "preview-view.js").read_text(encoding="utf-8")
     preview_both = script + preview_script
     assert "function openPreview(" in preview_both
-    assert "/export/preview" in script
-    assert "exportOptions()" in script
+    assert "/export/preview" in script or "/export/preview" in _export_script()
+    assert "exportOptions()" in script or "exportOptions()" in _export_script()
     # 段边界 / 跨页段 / 排掉了什么
     assert "function buildPreviewSegment(" in preview_both
     assert "跨页续" in preview_both
@@ -1308,7 +1318,7 @@ def test_result_preview_reuses_page_renderers_and_follows_segments() -> None:
     assert "INDEX_ZOOM_SCALES" in script
 
     # 段 → 块：用现成的 block_ids + bbox，不猜字符位置
-    assert "segment.block_ids" in script
+    assert "segment.block_ids" in script or "segment.block_ids" in _export_script()
     assert "function highlightPreviewSegment(" in preview_both
     assert "function drawPreviewHits(" in preview_both
     assert "function scrollPreviewLeftToSegment(" in preview_both
