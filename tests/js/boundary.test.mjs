@@ -5462,6 +5462,9 @@ const DOMAIN_MODULES = [
   // ③ 跨视图服务：root = #suggestion-apply-panel（5 个 id 在子树里，part() 要 root.querySelector）；
   // chrome 通知条 6 个节点与审校页那个按钮都在 root 外 ⇒ 走 init 注入，模块里不出现那些 id。
   { file: "suggestion-flow.js", exposes: "SuggestionFlow", allowQuerySelector: true },
+  // ③ 协作：**两个 root**按宿分组——#assign-panel（16 个 id）· #package-result（3 个 id）；
+  // chrome 4 个节点（顶栏 3 + 通知条 1）走注入，模块里不出现那 4 个 id。
+  { file: "collab.js", exposes: "Collab", allowQuerySelector: true },
 ];
 
 /**
@@ -5476,6 +5479,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "page-detail-editor.js",
   "export-panel.js",
   "suggestion-flow.js",
+  "collab.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {

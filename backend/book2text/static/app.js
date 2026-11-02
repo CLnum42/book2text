@@ -1678,8 +1678,14 @@ async function refreshProject(projectId) {
   // 步骤条需要收尾面板与导出记录；这里补一次，避免只在页面视图里才加载
   await loadFinishSummary({ silent: true });
   syncWorkflowSteps();
-  // 审校包项目（助手端）：横幅、隐藏不该有的功能、显示"导出审校结果"
-  await applyPackageMode();
+  // 审校包项目（助手端）：横幅、隐藏不该有的功能、显示"导出审校结果"。
+  // `structure-open`（#export-panel 子树）与 `finish-open-review`（#view-review 子树）不归协作模块、
+  // 也不注入给它 ⇒ 动作只回答"是不是包模式"，这两个节点的显隐由拥有它们的外壳写。
+  const packageMode = await window.Collab?.applyPackageMode();
+  if (packageMode && packageMode.ok) {
+    el("structure-open").hidden = Boolean(packageMode.packageMode);
+    el("finish-open-review").hidden = Boolean(packageMode.packageMode);
+  }
 }
 
 // ---------------------------------------------------------------- 项目头与项目信息（质量统计已迁到 quality-stats.js）
@@ -7752,7 +7758,7 @@ function setupLibrary() {
   el("project-close").addEventListener("click", closeProject);
   el("trash-open").addEventListener("click", openTrashPanel);
   el("trash-close").addEventListener("click", () => closeModal("trash-panel"));
-  setupCollabControls();
+  // 「分派任务包 / 任务包 / 导入结果」的 8 处接线已搬进 collab.js 的 setupCollabControls()
   // 刀 6：⋯ 菜单的四个条目（含"点完先收起菜单"）搬进 pages-view.js 的 wirePagesMoreMenuEntries()
   // 「全库采用 / 自动应用提示条 / 建议面板」那 6 处接线已搬进 suggestion-flow.js 的 init()
   // （按钮 DOM 归各自视图 / chrome，接线归跨视图服务）
@@ -7925,476 +7931,17 @@ async function applySplitBatch() {
 }
 
 // ---------------------------------------------------------------- 协作：分派任务包（负责人）
+//
+// 已搬进 `collab.js`（`window.Collab`）：**两个 root 按宿分组**——`#assign-panel`（16 个 id）与
+// `#package-result`（3 个 id）；chrome 4 个节点（顶栏 3 + 通知条 1）走 init 注入。
+// 13 处写盘全在模块内闭环；`structure-open` / `finish-open-review` 两个节点的显隐归外壳
+// （`applyPackageMode()` 返回 `{ ok, packageMode }`，由唯一调用点写那两个节点）。
+// 死状态 `assignPreviewData`（写 1 读 0）随本刀删除。
+// `mergeState` **留在外壳**：合并视图模块经外壳取（getMergeState），协作模块经注入的
+// setMergeState 写——两边都不复制一份，这是 S1 裁决 A（外壳仍在读写的状态走注入）。
 
-let assignPreviewData = null;
-let currentAssignments = [];
+/** 合并审阅状态（导入结果包之后由协作模块写入，合并视图模块经外壳读）。 */
 let mergeState = null;
-
-function assignRequestBody() {
-  return {
-    pages: [...selectedPages].sort((left, right) => left - right),
-    reviewer_name: el("assign-reviewer").value.trim(),
-    with_context: el("assign-context").checked,
-  };
-}
-
-async function openAssignPanel() {
-  if (!currentProject) return;
-  el("assign-panel").hidden = false;
-  el("assign-error").hidden = true;
-  const pages = assignRequestBody().pages;
-  el("assign-meta").textContent = pages.length
-    ? `选中的第 ${pages[0]}–${pages[pages.length - 1]} 页（${pages.length} 页）`
-    : "先在页面网格里选中要分派的页面";
-  await previewAssign();
-  await loadAssignments();
-}
-
-async function previewAssign() {
-  if (!currentProject) return;
-  const body = assignRequestBody();
-  if (!body.pages.length) {
-    el("assign-preview").textContent = "还没有选中页面。";
-    return;
-  }
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/assignments/preview`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    );
-    assignPreviewData = data;
-    renderAssignPreview(data);
-  } catch (error) {
-    showError(el("assign-error"), error);
-  }
-}
-
-function renderAssignPreview(data) {
-  const list = el("assign-reviewer-names");
-  list.innerHTML = "";
-  for (const name of data.known_reviewers || []) {
-    const option = document.createElement("option");
-    option.value = name;
-    list.append(option);
-  }
-
-  const box = el("assign-preview");
-  box.innerHTML = "";
-  const summary = document.createElement("div");
-  summary.textContent =
-    `可派 ${data.page_count} 页` +
-    (data.context_pages.length ? ` ＋ 只读上下文 ${data.context_pages.length} 页` : "") +
-    `；任务包约 ${(data.estimated_bytes / (1024 * 1024)).toFixed(1)} MB`;
-  box.append(summary);
-  if (data.skipped && data.skipped.length) {
-    const skipped = document.createElement("div");
-    skipped.className = "assign-preview__skipped";
-    skipped.textContent =
-      "会跳过：" +
-      data.skipped.map((item) => `第 ${item.page_no} 页（${item.reason}）`).join("、");
-    box.append(skipped);
-  }
-  el("assign-create").disabled = !data.page_count || !el("assign-reviewer").value.trim();
-}
-
-async function createAssignment() {
-  if (!currentProject) return;
-  el("assign-error").hidden = true;
-  const body = {
-    ...assignRequestBody(),
-    note: el("assign-note").value,
-    due_date: el("assign-due").value || null,
-  };
-  try {
-    const data = await apiJson(`/api/projects/${currentProject.project_id}/assignments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    setSaveState(`任务包已生成：${data.package_name}`);
-    el("assign-download").hidden = false;
-    el("assign-reveal").hidden = false;
-    el("assign-download").dataset.assignmentId = data.assignment.assignment_id;
-    el("assign-reveal").dataset.assignmentId = data.assignment.assignment_id;
-    await loadAssignments();
-    await refreshPageStates();
-  } catch (error) {
-    showError(el("assign-error"), error);
-  }
-}
-
-async function loadAssignments() {
-  if (!currentProject) return;
-  try {
-    const data = await apiJson(`/api/projects/${currentProject.project_id}/assignments`);
-    currentAssignments = data.assignments || [];
-    renderAssignments(data.known_reviewers || []);
-  } catch (error) {
-    showError(el("assign-error"), error);
-  }
-}
-
-function renderAssignments(knownReviewers) {
-  const list = el("assign-list");
-  list.innerHTML = "";
-  el("assign-list-empty").hidden = currentAssignments.length > 0;
-  const names = el("assign-reviewer-names");
-  if (names.options.length === 0) {
-    for (const name of knownReviewers) {
-      const option = document.createElement("option");
-      option.value = name;
-      names.append(option);
-    }
-  }
-
-  for (const assignment of currentAssignments) {
-    const item = document.createElement("li");
-    const head = document.createElement("span");
-    head.textContent =
-      `${assignment.reviewer_name} · 第 ${assignment.page_nos.join("、")} 页` +
-      ` · ${assignment.status_label}` +
-      (assignment.imported_seq ? ` · 已导入第 ${assignment.imported_seq} 次结果` : "");
-    if (assignment.due_date) head.textContent += ` · 截止 ${assignment.due_date}`;
-    if (assignment.note) head.title = assignment.note;
-    const spacer = document.createElement("span");
-    spacer.className = "spacer";
-
-    const actions = document.createElement("span");
-    const button = (label, title, onClick, disabled = false) => {
-      const node = document.createElement("button");
-      node.type = "button";
-      node.className = "btn btn--ghost";
-      node.textContent = label;
-      node.title = title;
-      node.disabled = disabled;
-      node.addEventListener("click", onClick);
-      actions.append(node);
-    };
-    const id = assignment.assignment_id;
-    button("下载任务包", "保存 .b2tpkg，发给助手", () => downloadPackage(id));
-    if (assignment.status !== "cancelled") {
-      button("重新导出", "用分派时的快照重新生成一份", () => rebuildPackage(id));
-      // 可以多次导入（助手分几次发进度）；序号与作废的校验在后端
-      button(
-        "导入结果",
-        "选助手回传的 .b2tres 结果包，进入合并审阅",
-        () => pickResultFile(id)
-      );
-      button("作废", "页面恢复为未分派；之后收到的结果需要明确确认才能导入", () =>
-        cancelAssignment(id)
-      );
-      if (assignment.imported_seq > 0) {
-        button("查看差异", "打开合并审阅视图", () => window.MergeView?.enter(id));
-      }
-    } else {
-      button(
-        "导入结果",
-        "任务包已作废：确认要导入的话，导入时会再问一次",
-        () => pickResultFile(id, { allowCancelled: true })
-      );
-    }
-    item.append(head, spacer, actions);
-    list.append(item);
-  }
-}
-
-async function downloadPackage(assignmentId) {
-  const response = await fetch(
-    `/api/projects/${project_id()}/assignments/${assignmentId}/package?token=${encodeURIComponent(token)}`,
-    { headers: { "X-B2T-Token": token } }
-  );
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    showError(el("assign-error"), new ApiError(
-      (payload && payload.error && payload.error.message) || `下载失败（HTTP ${response.status}）`
-    ));
-    return;
-  }
-  const blob = await response.blob();
-  const disposition = response.headers.get("Content-Disposition") || "";
-  const match = disposition.match(/filename\*?=(?:utf-8'')?"?([^";]+)"?/i);
-  saveBlob(blob, match ? decodeURIComponent(match[1]) : "任务包.b2tpkg");
-  setSaveState("任务包已下载");
-}
-
-async function rebuildPackage(assignmentId) {
-  el("assign-error").hidden = true;
-  try {
-    const data = await apiJson(
-      `/api/projects/${project_id()}/assignments/${assignmentId}/rebuild`,
-      { method: "POST" }
-    );
-    setSaveState(`已重新导出：${data.package_name}`);
-  } catch (error) {
-    showError(el("assign-error"), error);
-  }
-}
-
-async function revealPackage(assignmentId) {
-  try {
-    const data = await apiJson(
-      `/api/projects/${project_id()}/assignments/${assignmentId}/reveal`,
-      { method: "POST" }
-    );
-    if (!data.revealed) setSaveState(data.reason || "打不开文件夹", true);
-  } catch (error) {
-    showError(el("assign-error"), error);
-  }
-}
-
-async function cancelAssignment(assignmentId) {
-  if (!window.confirm("作废这个任务包？页面会恢复为未分派；之后收到的结果需要明确确认才能导入。")) {
-    return;
-  }
-  el("assign-error").hidden = true;
-  try {
-    await apiJson(`/api/projects/${project_id()}/assignments/${assignmentId}/cancel`, {
-      method: "POST",
-    });
-    setSaveState("任务包已作废");
-    await loadAssignments();
-    await refreshPageStates();
-  } catch (error) {
-    showError(el("assign-error"), error);
-  }
-}
-
-function saveBlob(blob, fileName) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-// ---------------------------------------------------------------- 协作：助手端
-
-let packagePending = null; // 等待上传的结果包给哪个任务包（导入时用）
-
-function setupPackageControls() {
-  const picker = el("open-package-file");
-  el("open-package").addEventListener("click", () => picker.click());
-  picker.addEventListener("change", () => {
-    if (picker.files && picker.files[0]) openPackageFile(picker.files[0]);
-    picker.value = "";
-  });
-  el("package-export-btn").addEventListener("click", exportResultPackage);
-  el("result-file-input").addEventListener("change", onResultFileChosen);
-}
-
-async function openPackageFile(file) {
-  window.LibraryView?.notify({ kind: "error", text: "" });
-  setSaveState("正在打开任务包…");
-  try {
-    const response = await fetch(
-      `/api/packages/open?filename=${encodeURIComponent(file.name)}`,
-      {
-        method: "POST",
-        headers: { "X-B2T-Token": token, "Content-Type": "application/zip" },
-        body: file,
-      }
-    );
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const error = (payload && payload.error) || {};
-      throw new ApiError(error.message || `打开失败（HTTP ${response.status}）`, error.code, error.correlation_id, error.detail);
-    }
-    setSaveState("");
-    await window.LibraryView?.enter();
-    await window.LibraryView?.open(payload.project.project_id);
-  } catch (error) {
-    window.LibraryView?.notify({ kind: "error", error: error });
-  }
-}
-
-/** 审校包项目：显示任务横幅、藏掉不该有的功能、显示"导出审校结果"。 */
-async function applyPackageMode() {
-  const project = currentProject;
-  if (!project) return;
-  if (project.kind !== "package") {
-    el("package-banner").hidden = true;
-    el("package-open").hidden = true;
-    closeModal("package-result");
-    el("structure-open").hidden = false;
-    el("finish-open-review").hidden = false;        // review 入口仍留外壳（刀 7 不建 review 模块）
-    // 刀 8：页面板上的 10 个入口收成能力
-    window.PagesView.setPackageModeChrome(false);
-    syncWorkflowSteps();
-    return;
-  }
-
-  el("package-open").hidden = false;        // 但能导出审校结果包
-  el("structure-open").hidden = true;       // 也没有页眉页脚工具
-  el("finish-open-review").hidden = true;   // review 入口仍留外壳（刀 7 不建 review 模块）
-  closeFinishPanel();
-  // 刀 8：页面板上的 10 个入口收成能力（含 setup-panel / 两个设置面板 / 选择动作条 / 指派入口）
-  window.PagesView.setPackageModeChrome(true);
-  syncWorkflowSteps();
-  window.PageDetailEditor?.setPackageModeChrome(true);
-
-  try {
-    const data = await apiJson(`/api/projects/${project.project_id}/package`);
-    const info = data.package;
-    const banner = el("package-banner");
-    banner.hidden = false;
-    banner.textContent =
-      `审校任务：第 ${info.page_nos.join("、")} 页` +
-      (info.context_page_nos.length
-        ? `（另附只读上下文第 ${info.context_page_nos.join("、")} 页）`
-        : "") +
-      ` · 来自 ${info.owner_name || "负责人"}` +
-      (info.due_date ? ` · 截止 ${info.due_date}` : "") +
-      (info.note ? ` · 说明：${info.note}` : "");
-    el("package-result-meta").textContent = `${info.book_name} · 审校人 ${info.reviewer_name}`;
-    await loadPackageResults(project.project_id);
-  } catch (error) {
-    window.LibraryView?.notify({ kind: "error", error: error });
-  }
-}
-
-async function loadPackageResults(projectId) {
-  try {
-    const data = await apiJson(`/api/projects/${projectId}/package/results`);
-    const list = el("package-result-files");
-    list.innerHTML = "";
-    for (const item of data.results || []) {
-      const li = document.createElement("li");
-      const name = document.createElement("span");
-      name.textContent = `${item.name}（${(item.size / 1024).toFixed(0)} KB）`;
-      const spacer = document.createElement("span");
-      spacer.className = "spacer";
-      const download = document.createElement("button");
-      download.type = "button";
-      download.className = "btn btn--ghost";
-      download.textContent = "下载";
-      download.addEventListener("click", () => downloadResultPackage(projectId, item.name));
-      li.append(name, spacer, download);
-      list.append(li);
-    }
-  } catch (error) {
-    const box = el("package-result-files");
-    if (box) showError(box, error);
-    else window.LibraryView?.notify({ kind: "error", error: error });
-  }
-}
-
-async function exportResultPackage() {
-  if (!currentProject) return;
-  el("package-result-meta").textContent = "导出中…";
-  try {
-    const data = await apiJson(`/api/projects/${currentProject.project_id}/package/result`, {
-      method: "POST",
-    });
-    const summary = data.summary;
-    const lines = [
-      `已完成 ${summary.page_count - summary.unfinished_pages.length} 页` +
-        `，未完成 ${summary.unfinished_pages.length} 页`,
-      `不确定 ${summary.uncertain} 块`,
-      `备注 ${summary.commented} 条`,
-      `改过的块 ${summary.modified}`,
-    ];
-    window.alert(
-      `结果包已生成：${data.file_name}\n\n${lines.join("\n")}\n\n` +
-        "用下面的「下载」把它发给负责人。"
-    );
-    await loadPackageResults(currentProject.project_id);
-  } catch (error) {
-    showError(el("package-result-meta"), error);
-  }
-}
-
-async function downloadResultPackage(projectId, fileName) {
-  const response = await fetch(
-    `/api/projects/${projectId}/package/results/${encodeURIComponent(fileName)}?token=${encodeURIComponent(token)}`,
-    { headers: { "X-B2T-Token": token } }
-  );
-  if (!response.ok) {
-    setSaveState("下载失败", true);
-    return;
-  }
-  saveBlob(await response.blob(), fileName);
-}
-
-// ---------------------------------------------------------------- 协作：导入结果与合并审阅
-
-function pickResultFile(assignmentId, { allowCancelled = false } = {}) {
-  packagePending = { assignmentId, allowCancelled };
-  el("result-file-input").click();
-}
-
-async function onResultFileChosen() {
-  const input = el("result-file-input");
-  const file = input.files && input.files[0];
-  input.value = "";
-  if (!file || !packagePending) return;
-  const { allowCancelled } = packagePending;
-  el("assign-error").hidden = true;
-  setSaveState("正在导入结果包…");
-  try {
-    const response = await fetch(
-      `/api/projects/${project_id()}/results?filename=${encodeURIComponent(file.name)}` +
-        (allowCancelled ? "&allow_cancelled=true" : ""),
-      {
-        method: "POST",
-        headers: { "X-B2T-Token": token, "Content-Type": "application/zip" },
-        body: file,
-      }
-    );
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const error = (payload && payload.error) || {};
-      throw new ApiError(error.message || `导入失败（HTTP ${response.status}）`, error.code, error.correlation_id, error.detail);
-    }
-    setSaveState(`已导入第 ${payload.seq} 次结果`);
-    mergeState = payload;
-    showView("merge");   // 模块内 enter() 现取 state 重画（§20.10）
-    await loadAssignments();
-  } catch (error) {
-    showError(el("assign-error"), error);
-  } finally {
-    packagePending = null;
-  }
-}
-
-
-/** 字符级差异：把 before/after 渲染成"删除线 + 高亮"的片段（说明书 7.9.3）。 */
-
-function setupCollabControls() {
-  // 刀 6：assign-open / assign-list-toggle 的接线搬进 pages-view.js 的 wirePagesCollabEntries()
-  //（列表开关翻转的是全局 chrome id `assign-panel`，在那边收成 injected.toggleAssignList() 能力）
-  el("assign-close").addEventListener("click", () => closeModal("assign-panel"));
-  el("assign-reviewer").addEventListener("input", previewAssign);
-  el("assign-context").addEventListener("change", previewAssign);
-  el("assign-create").addEventListener("click", createAssignment);
-  el("assign-download").addEventListener("click", (event) =>
-    downloadPackage(event.target.dataset.assignmentId)
-  );
-  el("assign-reveal").addEventListener("click", (event) =>
-    revealPackage(event.target.dataset.assignmentId)
-  );
-  setupPackageControls();
-}
-
-/**
- * 刀 6：批量指派列表开关的**具名能力**（pages-view.js 的入口经注入调用）。
- *
- * 翻转的是全局 chrome `assign-panel`（不在 view-pages 子树）⇒ 整个动作收在这里，
- * 模块那边只调 `injected.toggleAssignList()`；handler 不许整段搬进模块。
- */
-async function toggleAssignList() {
-  const panel = el("assign-panel");
-  panel.hidden = !panel.hidden;
-  if (!panel.hidden) await loadAssignments();
-}
-
-// ---------------------------------------------------------------- 恢复备份（任务 65）
 
 let backupsData = null;
 let backupSelected = null;
@@ -8884,6 +8431,40 @@ function boot() {
     refreshExportPreflight: () => window.ExportPanel?.refreshPreflight(),
     BLOCK_TYPE_LABELS,
   });
+  // ③ 协作（任务包 / 分派）：**两个 root 按宿分组**——#assign-panel / #package-result 都是顶层 mask，
+  // 都是它真正拥有的 DOM；chrome 那 4 个节点（顶栏 3 + 通知条 1）没有共同根 ⇒ 一组节点注入。
+  window.Collab?.init({
+    roots: [el("assign-panel"), el("package-result")],
+    getChromeEls: () => ({
+      openPackage: el("open-package"),
+      openPackageFile: el("open-package-file"),
+      packageOpen: el("package-open"),
+      banner: el("package-banner"),
+    }),
+    getCurrentProject: () => currentProject,
+    getProjectId: () => project_id(),
+    getSelectedPages: () => selectedPages,
+    getToken: () => token,
+    apiJson: (...args) => apiJson(...args),
+    showError: (node, error) => showError(node, error),
+    showView: (...args) => showView(...args),
+    syncWorkflowSteps: (...args) => syncWorkflowSteps(...args),
+    closeModal: (...args) => closeModal(...args),
+    refreshPageStates: (...args) => refreshPageStates(...args),
+    setSaveState: (...args) => setSaveState(...args),
+    closeFinishPanel: (...args) => closeFinishPanel(...args),
+    // mergeState 归外壳（合并视图经外壳取）⇒ 模块只经这个 setter 写，不留副本
+    setMergeState: (value) => { mergeState = value; return value; },
+    // 跨模块六个动作，按语义命名（不许合成万能键）
+    libraryNotify: (payload) => window.LibraryView?.notify(payload),
+    libraryEnter: () => window.LibraryView?.enter(),
+    libraryOpen: (projectId) => window.LibraryView?.open(projectId),
+    mergeEnter: (assignmentId) => window.MergeView?.enter(assignmentId),
+    pagesPackageModeChrome: (on) => window.PagesView?.setPackageModeChrome(on),
+    editorPackageModeChrome: (on) => window.PageDetailEditor?.setPackageModeChrome(on),
+    ApiError,
+  });
+  window.Collab?.setupCollabControls();
   // 任务 94 Slice 1：审校视图模块初始化（依赖由此注入，模块内部不直接碰这些全局）
   window.ReadingView?.init({
     el,
@@ -9054,8 +8635,8 @@ function boot() {
     openBackups: openBackups,
     openLayoutDetectDialog: openLayoutDetectDialog,
     openStatsPanel: openStatsPanel,
-    openAssignPanel: openAssignPanel,
-    toggleAssignList: toggleAssignList,
+    openAssignPanel: (...args) => window.Collab?.openAssignPanel(...args),
+    toggleAssignList: (...args) => window.Collab?.toggleAssignList(...args),
     paintTileSuggestionMark: paintTileSuggestionMark,
     // 刀 7：recognizePage 已搬进模块（外壳改调模块导出的同名键）；
     // 这里换上新能力 showPageDetailError（写 #page-detail-error 的那一个动作）
@@ -9238,7 +8819,7 @@ function boot() {
     getAssignError: () => el("assign-error"),
     getMergeState: () => mergeState,
     getProject: () => currentProject,
-    loadAssignments: (...args) => loadAssignments(...args),
+    loadAssignments: (...args) => window.Collab?.loadAssignments(...args),
     navigate: (...args) => showView(...args),
     refreshProject: (...args) => refreshProject(...args),
     setMergeState: (value) => { mergeState = value; return value; },
