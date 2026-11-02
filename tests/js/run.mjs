@@ -78,6 +78,7 @@ const TEST_FILES = [
   ["margin-progress", () => import("./margin-progress.test.mjs")],
   ["overlay-registry-acid", () => import("./overlay-registry-acid.mjs")],
   ["export-panel", () => import("./export-panel.test.mjs")],
+  ["suggestion-flow", () => import("./suggestion-flow.test.mjs")],
   ["page-index", () => import("./page-index.test.mjs")],
   ["structure-tools", () => import("./structure-tools.test.mjs")],
   ["page-detail-editor-state", () => import("./page-detail-editor-state.test.mjs")],
