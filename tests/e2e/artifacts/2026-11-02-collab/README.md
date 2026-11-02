@@ -58,3 +58,10 @@ margin 已定（margin_box_mode/box 有值）· 无未处理 divergence · sugge
 - `assign-panel.jpg`（分派面板：3 条分派 + 预览 + 坏包报错）、`package-mode.jpg`（任务包项目：横幅 + chip + 4 页）
 - `result.json`（机读结论；含 `post_fix`）
 - 原始明细读数（9 个探针 JSON、task.b2tpkg 等）在 `/tmp/b2t-qa/2026-11-02-collab/`
+
+## 结案（DevLead，2026-11-03）
+
+代码层：四闸全绿（node 291/289/0/2 · pytest 1034 · R3 49/115 · registry --strict 0 笔不合格）。
+代码层读数：函数 370→348（差集 22、新增 0）· app.js 9,024 · collab.js 542 = 461 代码 + 49 注释 + 32 空行 · deps 170 · 导出 6 个逐个有调用点 · 注入 22 传 / 22 读 · 双 root 归属 15（`#assign-panel`）+ 4（`#package-result`）。
+真机：7 过 / 1 回归已修（/package/results 复数，`1ac6ec4` + 断言 `0e3b171`）/ 1 缺样本（撤销自动通过）。
+其余未验（不算通过）：助手回传 `.b2tres` 成功导入 · 包模式其余 ~10 个入口单独显隐 · 结果包内容正确性 · 导出四选项分支。
