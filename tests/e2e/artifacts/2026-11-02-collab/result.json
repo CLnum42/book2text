@@ -1,0 +1,85 @@
+{
+  "round": "2026-11-02 协作刀真机",
+  "baseline": "e0dce3d",
+  "env": {
+    "worktree": "/tmp/b2t-wt-collab (detached e0dce3d)",
+    "service": "http://127.0.0.1:8871",
+    "library": "/tmp/b2t-qa4/lib",
+    "viewport": "1423x900 @2x"
+  },
+  "verdicts": {
+    "1_assign_panel": {
+      "verdict": "pass",
+      "open": {"meta": "选中的第 9–10 页（2 页）", "preview": "可派 2 页 ＋ 只读上下文 2 页；任务包约 0.4 MB"},
+      "create": {"list_before": 1, "list_after": 2, "save": "任务包已生成：识别进度测试_p11-12_QA协作刀2_20261102.b2tpkg"},
+      "task_download": {"download_event": true, "path": "/Users/chenlin/.ego-browser/state/downloads/…", "bytes": 413760, "zip_entries": ["package.json", "data.json", "source/subset.pdf"]},
+      "rebuild": {"save": "已重新导出：识别进度测试_p9-10_QA协作刀_20261102.b2tpkg", "list_unchanged": true},
+      "cancel": {"item": "QA协作刀 · 第 9、10 页 · 已作废", "buttons": ["下载任务包", "导入结果"], "save": "任务包已作废", "page_badges_cleared": [9, 10]}
+    },
+    "2_package_mode": {
+      "verdict": "pass (export/list); download fails see item 4",
+      "project": "b2t_C2MQ9A",
+      "banner": "审校任务：第 11、12 页（另附只读上下文第 10、13 页） · 来自 QA · 说明：协作刀导入用",
+      "chip_visible": true,
+      "package_open_visible": true,
+      "structure_open_hidden": true,
+      "structure_open_parent": "export-panel",
+      "finish_open_review_hidden": true,
+      "finish_open_review_parent": "view-review",
+      "pages": 4, "page_nos": [10, 11, 12, 13], "context_chips": 2,
+      "result_exports": [{"seq": 1, "name": "识别进度测试_11–12_QA协作刀2_结果1_20261102.b2tres", "kb": 4}, {"seq": 2, "name": "…_结果2_…b2tres", "kb": 4, "duplicate": false}],
+      "meta_after_export": "导出中… (stuck, minor bug)"
+    },
+    "3_package_import": {
+      "verdict": "pass",
+      "via": "#open-package-file + setInputFiles(task.b2tpkg)",
+      "new_project": {"id": "b2t_C2MQ9A", "kind": "package", "pages": 4},
+      "library_list_contains_new_project": true
+    },
+    "4_result_package_download": {
+      "verdict": "fail",
+      "symptom": "click 下载 → POST? GET /api/projects/b2t_C2MQ9A/package/result/<name> (singular) → 404; save state '下载失败'; no download event; no file",
+      "root_cause": "collab.js:441 uses /package/result/{name}; backend route is /package/results/{name} (routes_packages.py:108); pre-move 62868c7 app.js:8584 used /package/results/",
+      "re_export_no_duplicate": true
+    },
+    "5_console": {"verdict": "pass", "errors": 0, "unhandled_rejections": 0, "probes": 9},
+    "A_mask_close_paths": {
+      "verdict": "pass",
+      "assign_panel": {"esc": {"hidden": true, "masks": []}, "backdrop": {"hidden": true, "masks": []}, "x": {"hidden": true, "masks": []}},
+      "package_result": {"esc": {"hidden": true, "masks": []}, "backdrop": {"hidden": true, "masks": []}, "x": {"hidden": true, "masks": []}},
+      "side_effect": "Esc on assign-panel also clears page selection (已选 2 页 → 未选择页面; #assign-open disabled); backdrop/X do not"
+    },
+    "B_bad_import": {
+      "verdict": "pass",
+      "bad_extension": {"panel_error": "这不是结果包 错误编号 347eb0902f73 结果包的扩展名是 .b2tres", "list_before": 3, "list_after": 3},
+      "bad_zip": {"panel_error": "结果包导入失败 错误编号 4b60fe60dd1c 这不是一个结果包（zip 读不开）", "list_before": 3, "list_after": 3},
+      "side_effect": "save state stuck at 正在导入结果包… after failure"
+    },
+    "C_package_mode_cycles": {
+      "verdict": "pass",
+      "cycles": [
+        {"step": "normal-1", "structure_hidden": false, "finish_hidden": false},
+        {"step": "package-1", "structure_hidden": true, "finish_hidden": true},
+        {"step": "normal-2", "structure_hidden": false, "finish_hidden": false},
+        {"step": "package-2", "structure_hidden": true, "finish_hidden": true}
+      ]
+    },
+    "D_cancel_and_autopass": {
+      "verdict": "cancel=pass; autopass_revoke=untested",
+      "cancel": {"list_item": "已作废", "badges_removed": [9, 10]},
+      "autopass": {"eligible_pages_in_library": 0, "page7_reasons": ["layout_unconfirmed", "margin_unconfirmed"], "page100_after_layout_and_aux": ["divergence"]}
+    }
+  },
+  "side_effects": {
+    "assignments_created_on_b2t_T7JH61": ["QA协作刀 p9-10 (cancelled)", "QA协作刀2 p11-12 (issued)"],
+    "page_100_modified": "layout confirmed + second engine run (still not auto-pass eligible)",
+    "new_package_project": "b2t_C2MQ9A (4 pages, kind=package)",
+    "result_packages": ["结果1 (4 KB)", "结果2 (4 KB)"]
+  },
+  "untested": [
+    "auto-pass revoke → badge sync (no eligible page; see D)",
+    "successful result-package import (.b2tres from assistant → merge view)",
+    "other package-mode hidden entries (pages panel ~10, review panel 2) besides structure-open/finish-open-review",
+    "content correctness of exported .b2tres"
+  ]
+}
