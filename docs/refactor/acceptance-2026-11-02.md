@@ -1,4 +1,4 @@
-# 验收记录 2026-11-02：片 1（overlay registry）+ 刀 C（page-index）+ 刀 D（structure-tools）+ 清洗刀 + S1 + S2 + S3 + S4
+# 验收记录 2026-11-02：片 1 + 刀 C + 刀 D + 清洗刀 + S1–S4 + ② 片 2
 
 > 规则（2026-11-02 定）：**通过 / 未验分开写**；未验必须写阻塞原因与证据位置。
 > 只在对话里说“我跑过”按**未验**计；环境起不来同理。
@@ -497,7 +497,68 @@ scripts/ 零改动（R3 那把本来是对的，是别处跟它统一）。
  我在模块里插一行 window.PagesView?.onAuxReviewFinished() ⇒ 神入口闸红。
 ```
 
-## 九、结论
+## 九、② 片 2：overlay registry 第二片（pages / reading / index 迁入 + 还债）
+
+提交链：笔 A（`059955c` 之前）→ 笔 B（`efa52fd` 产品 / `eaedeab` 闸）→ 笔 C（`bcd4445` 产品 /
+`76ca9ff` 契约改唯一性）→ ⑨ 修复（`1b1d100` ⑨-a/c + 版心重画 · `b85323d` ⑨-b 句柄按宿主）→
+`3080f55`（笔 C 的闸 + ⑨-b/c 回归）→ `f886718`（契约补 stats 两个签名）→ `dde778d`（QA 真机证据）。
+
+### 通过（代码层，DevLead 独立核）
+
+```
+app.js 10,402 → 10,169（−233）· deps 171（PagesView 那块；仍留 forgetPageBlocks / rememberPageBlocks
+  两个**缓存**键，与本片无关）
+旧渲染器 + 避让链九个名字在 app.js 定义 0：renderPageBlocks / clearPageBlocks / findOrderSpot /
+  findLabelSpot / layoutOverlayAnnotations / scheduleOverlayLayout / observeOverlaySize / pxRect / rectsOverlap
+_renderedBlocks 全仓 **0 次**（八个判重点全清）
+overlay-registry.js 264 → 551 = 416 代码 + 90 注释 + 45 空行
+  ⚠ **超预算**：书上限 ≤490，实际 551（+61）。三个分项（161 避让 + 40 class/label + 20 观察器）没错，
+  超的是"句柄生命周期"那一层（handlesByHost / mount 28 / unmount 17 / revive 20 / renderHandle 65），
+  书没给这部分预算。记账，不追认"预算内"。
+API 8 个（沙箱 Object.keys）：init · register · mount · unmount · paint · stats · layout · schedule
+  —— 与契约"片 2 之后应为 8 项"一致
+class 唯一写点：`page-overlay--labeled` / `--margin` 只在 overlay-registry.js:350/351 拼；
+  paintTileMargin / clearTileMargin 已不再写容器 class
+⑨-a 的修法：`OverlayLayer.init({...})` 在 app.js:10066（boot 一次注册渲染器）——不再靠某个视图顺手 init
+⑨-b 的修法：`handlesByHost = new WeakMap()`（overlay-registry.js:36）——句柄按**宿主元素**唯一，不按 pageNo
+R3 review 49/117（与片 1 后相同 · 本片没动 review 子树 id）· R3 pages 0/0 · registry 0 笔（528）
+node 256 / 254 pass / 0 fail / 2 skipped · pytest 1034（165.96s，STATIC_DIR 在树内）
+```
+
+### 通过（真机，QA 五项；证据 `tests/e2e/artifacts/2026-11-02-bladeB-compare/`，564 KB）
+
+```
+① pages 页 1–6 框数 9/5/19/6/8/10，与旧树 f722096 逐个相同（修前恒 0）
+② 预览→回 pages：grid_layers 490（旧 bug 0）· boxes 242 · handle dead=false；滚动/开关均 242
+③ 版心：开 490/490 带 --margin、auto 框 0；关后 443ms 落定、scrollTop 0→0、页 1 回 --labeled/auto
+④ preview 逐框与旧树 0 处字段差异，唯一差异是无 box__label（只读预览的设计）；序号框外/框内分布与旧逐个相同
+   ⇒ 片 1 那笔"号固定框内"的债确认还清
+⑤ reading 第 4 页 7 层 57 框 + is-linked 双向；index 页 1 9 框 + 悬停卡片、滚到页 2 离屏清理正常；console 0
+```
+
+**口径写明（Chief 要求）**：③ 的"关版心后重画"是 **rAF 落地（443ms 后落定），不是同一帧**；
+判据取"**不滚动也会更新**"（旧实现要等滚动触发）。不许把它写成"同帧更新"。
+
+### ⑨ 回归结案（笔 B 引入；两个独立根因，QA 旧树对照证明）
+
+```
+现象：新树 pages 页 1–6 框数 0/0/0/0/0/0；旧树同项目同页 9/5/19/6/8/10。
+判据：手工补 OverlayLayer.init({}) 后新树立刻画出 242 框、页 1–6 与旧树逐个相同 ⇒ 不是"没数据"。
+根因一（⑨-a）：pages 路径从不调 OverlayLayer.init ⇒ 注册表里没有 blocks 渲染器 ⇒ paint 收到数据也不画。
+根因二（⑨-b）：preview 一次 mount 490 页；registry 按 pageNo 唯一 ⇒ mount 会把同号的 pages 句柄 unmount，
+  回 pages 后 tile.__overlayHandle 是 dead 句柄 ⇒ paint 静默 no-op（490 层 → 0）。
+两轮证据：旧树 8872 对照 + 新树手工补 init 的对照，都留在上面那个目录（README + result/fix-result.json + 截图）。
+```
+
+### 未验 / 记账
+
+```
+· stats(handle) 签名改造未落（Builder 在办；契约 f886718 已定"判据只许 stats(handle)"，stats(pageNo) 降级为诊断）
+· 换页 / 缩放时块框标记不动（块框关着时缩放 915→1098 标记不动）——QA ⑪ 记录，**旧树同**，既有问题，不是本片引入
+· 真机仍只在 macOS + Chrome；Windows / Safari / 窄屏未验（同 L-33）
+```
+
+## 十、结论
 
 ```
 片 1：代码层通过；真机部分通过、5 项未验（ego 阻塞）
@@ -513,6 +574,9 @@ S3：代码层通过（3 函数差集、模块 1,345=1,186+72+87、导出面 20 
     wired 守卫在、R3 54/127）；三条闸我都实跑变异；真机 2 件未验（ego 阻塞）
 S4：代码层通过（6 函数差集、app.js 10,402、模块 1,549=1,367+83+99、导出面 20（+openAuxWarning −adoptLine）、
     注入 60=60、auxData 死状态已删、5 个遮罩 id 零字符串、跨模块直呼 0、R3 49/117）；真机 2 件未验（ego 阻塞）
-    ⚠ 附带发现：闸的剥注释器不认识正则字面量，可造假绿（已派 TestDev 统一，记 L-115）
-八把刀都是“代码可结、真机未结”——验收表按此口径引用，不得写成“全部通过”。
+    ⚠ 附带发现：闸的剥注释器不认识正则字面量，可造假绿（已修 `41173cf`，记 L-116）
+② 片 2：代码层通过（app.js 10,169 / deps 171 / 九个旧名字定义 0 / _renderedBlocks 0 / API 8 / class 单一写点）
+    · 真机五项通过（QA 旧树对照）· ⑨ 回归已由两个独立根因定位并修（boot 一次 init / 句柄按宿主）
+    · 记账：registry 551 行超书里 490 的预算 61 行（超的是句柄生命周期那一层，书没给预算）
+九把刀都是“代码可结、真机未结”（片 2 真机已过）——验收表按此口径引用，不得写成“全部通过”。
 ```
