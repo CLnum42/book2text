@@ -3971,6 +3971,16 @@ function moduleExportKeys(fileName) {
 }
 
 /** 判定内核（独立出来，好让自检喂合成样例）。 */
+/**
+ * **Temp-Relax: `setMarginJudgementCheckbox` 允许缺失**（本组三笔内收紧，只放行这一个具名键）。
+ *
+ * 背景：它的失败回滚改由页面视图自己写 `el("rec-margin-judgement")`，于是 0 调用点；
+ * 产品笔删 `pages-view.js` 的函数与导出表那一行。按「放宽 → 产品 → 收紧」，先让清册容忍它**缺失**。
+ * 收紧条件 = 第 3 笔把它从 `VIEW_EXPORTS` / `kinds` / 死期那句注释里彻底移除，并删掉这张表。
+ * **不是**把整条 missing 判据放宽：别的导出名缺失照样红（自检里有两条正反用例）。
+ */
+const TEMP_RELAX_ALLOW_MISSING = ["setMarginJudgementCheckbox"];
+
 function exportRatchetProblems(fileName, keys) {
   const entry = VIEW_EXPORTS[fileName];
   if (!entry) {
@@ -3980,6 +3990,11 @@ function exportRatchetProblems(fileName, keys) {
   const actual = [...keys].sort();
   const added = actual.filter((key) => !expected.includes(key));
   const missing = expected.filter((key) => !actual.includes(key));
+  // Temp-Relax: 原地剔掉豁免键（改的是数组内容，不是判据本身；下面 missing / 数量两条判据自动生效）
+  for (const key of TEMP_RELAX_ALLOW_MISSING) {
+    const at = missing.indexOf(key);
+    if (at >= 0) missing.splice(at, 1);
+  }
   const problems = [];
   if (added.length > 0) {
     problems.push(`${fileName}: 多出未申报的导出 ${added.join("、")}——改大要 Architect 签字，不是往表里加一行`);
@@ -4493,6 +4508,17 @@ test("R8（按模块）自检：多一个 / 少一个 / 改名 / 未登记模块
     exportRatchetProblems("index-view.js", index),
     [],
     "R8 自检失败：正例被误报",
+  );
+  // Temp-Relax 的正反用例：只放行那一个具名键，别的键缺失照样红
+  const pagesNames = [...VIEW_EXPORTS["pages-view.js"].names];
+  assert.deepEqual(
+    exportRatchetProblems("pages-view.js", pagesNames.filter((n) => n !== "setMarginJudgementCheckbox")),
+    [],
+    "Temp-Relax 自检失败：豁免键（setMarginJudgementCheckbox）缺失被误报——放宽笔没生效",
+  );
+  assert.ok(
+    exportRatchetProblems("pages-view.js", pagesNames.filter((n) => n !== "init")).length > 0,
+    "Temp-Relax 自检失败：删掉 init 也放过——放宽范围被写成了「整条 missing 判据」",
   );
 });
 
