@@ -553,7 +553,9 @@ node 256 / 254 pass / 0 fail / 2 skipped · pytest 1034（165.96s，STATIC_DIR �
 ### 未验 / 记账
 
 ```
-· stats(handle) 签名改造未落（Builder 在办；契约 f886718 已定"判据只许 stats(handle)"，stats(pageNo) 降级为诊断）
+· stats(handle) 已落（`627a188` + `a0f16e1`）：registry 收 handle，pageNo 形式降级为诊断——
+  多宿主时 console.warn 一次并返回"最近 mount 那层"；酸测试 9 处调用全改 stats(handle)（5 条断言）。
+  验收口径按契约 f886718：判据只许 stats(handle)，stats(pageNo) 仅诊断。
 · 换页 / 缩放时块框标记不动（块框关着时缩放 915→1098 标记不动）——QA ⑪ 记录，**旧树同**，既有问题，不是本片引入
 · 真机仍只在 macOS + Chrome；Windows / Safari / 窄屏未验（同 L-33）
 ```

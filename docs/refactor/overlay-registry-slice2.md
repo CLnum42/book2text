@@ -240,6 +240,11 @@ API: layout(container, { lineBboxes })
 | `app.js` deps | ReadingView / PagesView / IndexView / PreviewView 四个注入块里的 `renderPageBlocks` / `clearPageBlocks`，共 **8 个键**删掉（preview 那两个是片 1 遗留） | **删 8 个键，但 `deps 173 → 171`（−2）**：173 的口径只数 `window.PagesView?.init({…})` 那一个块，8 个里只有 pages 那 2 个在里面；另外 6 个在 ReadingView(34) / IndexView(34) / PreviewView(33) 的块里，**不改变 173 这个数**。写进提交说明，别让验收入拿 173−8=165 去对 |
 | `index.html` / `app.css` | **不动**（class 全复用现有规则） | 0 |
 
+**落盘后实测（`dde778d`，DevLead 核）：551 行 = 416 代码 + 90 注释 + 45 空行 —— 超本表 ≤490 的 61 行。**
+超的是**句柄生命周期这一层**：`handlesByHost`（WeakMap）· `mount` 28 · `unmount` 17 · `revive` 20 ·
+`renderHandle` 65。这层当初**没进本表的预算**（只算了 161 避让 + 40 class/label + 20 观察器）。
+⇒ 复查时按 **551 认**，别拿 490 判"偷搬"；要压也只能压句柄那层的重复（先量后压）。
+
 ## 5. 酸测试（在片 1 五条之上加四条）
 
 片 1 的五条（版本/幂等/数量/旧路径归零/img Δ）**全部保留**，把消费者从 preview 扩到 pages/reading/index。新增：
