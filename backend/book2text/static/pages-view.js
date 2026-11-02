@@ -812,11 +812,15 @@ function overlayHandleFor(tile) {
   const api = window.OverlayLayer;
   const pageNo = Number(tile && tile.dataset ? tile.dataset.pageNo : NaN);
   if (!api || !Number.isFinite(pageNo)) return null;
-  if (!tile.__overlayHandle) {
-    const thumb = tile.querySelector(".page-tile__thumb");
-    if (!thumb) return null;
-    tile.__overlayHandle = api.mount(thumb, { pageNo });
-  }
+  // 渲染器必须先注册（幂等）：只靠 preview 的 init 的话，pages 里 stats.counts 恒空、数据到了也不画
+  api.init({});
+  const cached = tile.__overlayHandle;
+  if (cached && !cached.dead && cached.layer && cached.layer.isConnected) return cached;
+  // 死句柄/宿主被替换：丢掉缓存重新挂一次（否则 paint 静默 no-op，滚回来也不恢复）
+  tile.__overlayHandle = null;
+  const thumb = tile.querySelector(".page-tile__thumb");
+  if (!thumb) return null;
+  tile.__overlayHandle = api.mount(thumb, { pageNo });
   return tile.__overlayHandle;
 }
 
@@ -2636,9 +2640,9 @@ function toggleMarginView() {
   if (injected.getPagesMarginOn()) {
     schedulePageVisibility();
   } else {
-    for (const tile of document.querySelectorAll("#page-grid .page-tile")) {
-      injected.clearTileMargin(tile);
-    }
+    // 版心关掉：除了清版心框，还要按新 styles 重画一次块框——
+    // `--margin` 类是 styles 给的，不重画就会一直停在"不吃指针"，要等下一次滚动
+    refreshMarginTiles();
   }
   injected.indexRefresh?.();
   renderMarginPanel();

@@ -816,7 +816,11 @@ function indexOverlayHandle(tile) {
   const api = window.OverlayLayer;
   const pageNo = Number(tile && tile.dataset ? tile.dataset.pageNo : NaN);
   if (!api || !Number.isFinite(pageNo)) return null;
-  if (!tile.__overlayHandle) tile.__overlayHandle = api.mount(tile, { pageNo });
+  api.init({});
+  const cached = tile.__overlayHandle;
+  if (cached && !cached.dead && cached.layer && cached.layer.isConnected) return cached;
+  tile.__overlayHandle = null;
+  tile.__overlayHandle = api.mount(tile, { pageNo });
   return tile.__overlayHandle;
 }
 
@@ -828,7 +832,7 @@ function paintIndexBlocks(tile, blocks) {
   api.paint(handle, {
     data: injected.getPagesOverlayOn() ? blocks || [] : [],
     active: ["blocks"],
-    styles: { details: true, labeled: true },
+    styles: { details: true, labeled: true, marginMode: injected.getPagesMarginOn() },
   });
 }
 
