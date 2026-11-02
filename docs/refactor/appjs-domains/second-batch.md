@@ -15,7 +15,7 @@
 理由（按"宿主形态的复杂度"，不按行数）：
 
 ```
-① 导出只有一个宿主（31 个 id 里 30 个在 #view-merge，1 个在 chrome）：先做它，
+① 导出只有一个宿主（root = `#export-panel`；30 个被引用的 id 全在它子树里，1 个在 chrome）：先做它，
    验证"merge 视图的服务模块"长什么样，代价最低、纠错最便宜。
 ② 跨视图服务是**多宿主**（7 merge + 4 chrome + 1 review，11 个入口横跨 5 个视图）：
    它在第二刀，把"多宿主 + 按事件命名"这条形态定下来；协作随后照着做，不用再发明一次。
@@ -59,7 +59,7 @@
 外来状态 2：projectExports · currentProject
 外部函数 7：apiJson · showError · fillDefinitionList · syncWorkflowSteps · parsePageRange ·
   marginJudgementOn · setMarginJudgementSetting
-el( 50 次 / 31 个 id：**30 个在 #view-merge**，1 个在 chrome（margin-judgement-notice-ok）
+el( 50 次 / 31 个 id：**30 个在 #export-panel 子树**，1 个在 chrome（margin-judgement-notice-ok）
 写盘 6：preflight / export / history / compare-page
 视图入口 2：exportOptions ← preview-view.js · reading-view.js（注意：是**被视图调**，不是调视图）
 ```
@@ -111,7 +111,10 @@ chrome 里只剩 1 个：margin-judgement-notice-ok ⇒ 注入节点（与 curre
 > 所以 1.1 那条"别整块搬进去再拆"的顾虑消失了：**按三个函数搬**，
 > 两个纯函数可以直接单测（这也正是拆的理由——166 行的函数没法喂数据进去验）。
 
-### 1.2 协作（22 函数 / 426 行；span 8720–9182）
+### 1.2 协作（22 函数 / 426 行；span **7927–8400**，473 行）
+
+> **行号更正（2026-11-02）**：旧书 8720–9182 是老位置；实测 22 个函数体 7933–8395，
+> 连同 4 份状态声明与段尾注释，本域 span = **7927–8400**（473 行）。
 
 ```
 函数：assignRequestBody 7 · openAssignPanel 11 · previewAssign 22 · renderAssignPreview 27 ·
@@ -121,10 +124,21 @@ chrome 里只剩 1 个：margin-judgement-notice-ok ⇒ 注入节点（与 curre
   pickResultFile 4 · onResultFileChosen 33 · setupCollabControls 15 · toggleAssignList 5
 自己状态 4：assignPreviewData(8716) · currentAssignments(8717) · mergeState(8718) · packagePending(8966)
 外来状态 1：currentProject（`project_id` 是属性、`setSaveState` 是动作，都不算状态——别混）
-外部函数 8：apiJson · showError · showView · syncWorkflowSteps · closeModal · refreshPageStates ·
-  setSaveState · closeFinishPanel
-el( 57 次 / 25 个 id：**20 在 #view-merge · 5 在 chrome/review**
-  （open-package · open-package-file · package-banner · package-open · finish-open-review）
+外部函数 10：apiJson · showError · showView · syncWorkflowSteps · closeModal · refreshPageStates ·
+  setSaveState · closeFinishPanel · **ApiError** · **el**
+外部模块 4（旧书一个字没提）：**MergeView ×1 · LibraryView ×6 · PagesView ×2 · PageDetailEditor ×1**
+  —— LibraryView 那 6 处**不是一件事，是三个动作**（8193/8210 = notify + 清错 · 8211 = open(projectId) ·
+  8210 前的 enter · 8213/8258/8284 = notify(error)）⇒ 键名写死：
+  **`libraryNotify` / `libraryEnter` / `libraryOpen(projectId)`**（壳里 9117 已有
+  `libraryNotify: () => (...args) => window.LibraryView?.notify(...args)` 这个先例，照它写）
+  PagesView ×2 = `setPackageModeChrome(false/true)`（8228/8238）；PageDetailEditor ×1 = 同名的 true
+el( 57 次 / 25 个 id —— **旧书"20 在 #view-merge"作废**，实测宿主：
+  `#assign-panel`（顶层 mask，1224）**16 个** · `#package-result`（顶层 mask）**3 个**
+  （package-result-meta / -files / package-export-btn）· chrome **4 个**
+  （open-package(16) / open-package-file(22) / package-open(35) / package-banner(42)）·
+  `#view-review` **1 个**（finish-open-review，588 · 已裁定归外壳）·
+  `#export-panel` **1 个**（structure-open，1104 · 已裁定归外壳）
+  ⇒ 25 = 16 + 3 + 4 + 2
 写盘 **13**（全仓第二多）：分派预览 / 建分派 / 列表 / 任务包下载 · 重建 · 取消 / 结果包导入 · 导出 · 下载
 视图入口 3：openAssignPanel ← pages-view.js · loadAssignments ← merge-view.js · toggleAssignList ← pages-view.js
 ```
@@ -137,8 +151,13 @@ el( 57 次 / 25 个 id：**20 在 #view-merge · 5 在 chrome/review**
 ② 三个子簇（分派 assign / 任务包 package / 导入 result）共享 mergeState 与 packagePending；
    先按子簇列名单（§1.2 的行号），再决定是"一个模块三个子域"还是"两个模块"——
    **默认一个**：拆两个会出现两份 mergeState 读取（两套路径），正是契约 §1 禁止的。
-③ 5 个 chrome id 分散在工具栏与 finish 面板 ⇒ 多宿主：root=#view-merge + 注入 5 个节点
-   （照 getAuxWarningEls 的形态，**模块里不许出现这 5 个 id 字符串**，否则 id 归属闸红）。
+③ **多宿主形态定下来（两处）**：模块声明 `roots: ["#assign-panel", "#package-result"]`，
+   归属表**按宿分组**（16 / 3），不要为了"一个 root"去搬 DOM。
+   chrome 那 4 个 id（open-package · open-package-file · package-open · package-banner）走注入节点组
+   （`getChromeEls` 形态，S4 的 `getAuxWarningEls` 先例），**模块里 0 个 id 字符串**，否则 id 归属闸红。
+④ `structure-open` 与 `finish-open-review` **都不归本刀、也不归导出模块，归外壳**（见 §2 裁决④）：
+   `structure-open` 的 click 绑在 app.js:967，写它只有 8225/8234；`finish-open-review` 写它只有 5983/7599/8226/8235，
+   全在壳里。本刀改成**返回结果**，壳在唯一调用点（app.js:1682）渲染这两个节点。
 ```
 
 ### 1.3 跨视图服务（16 函数 / 223 行；span **7826–8086**）
@@ -204,6 +223,23 @@ chrome（body 顶层 4 个兄弟 noticebar，**无共同 id 祖先**）：
 若量下来发现"通知条 / 自动应用状态 / 建议面板"三簇之间只共享 1–2 个状态，就拆成两个模块（通知条 + 建议流程），
 **但同一簇内不许两份实现**。
 
+## 1.9 宿主表必须贴脚本输出（Chief 2026-11-02 定；这条是治病的）
+
+> **任何"某组 id 在某个子树里"的断言，必须贴 `scripts/id-host-map.mjs` 的输出，手写不算。**
+
+理由：本书 §1.3 写过「视图的 span 不是宿主；先量子树，再定 root」，而**同一个文件里 §1.2 那句还是错的**
+——规则写在纸上治不住，得有个脚本吐数。两刀在同一句话上各错一次（导出刀 `#view-merge` 0 个、协作刀同样），
+说明缺的是**量法**，不是数据。
+
+```
+用法（TestDev 已接）：node scripts/id-host-map.mjs <id...>      → 每个 id 的宿主（子树名 / chrome）与行号
+落盘前自检：本书里每一处"在 #X 子树里"的断言，都能在脚本输出里找到对应行；找不到就是没量
+```
+
+**⚠ 现状**：脚本还不在 main（截至 `79804b1` 我查过 `git log --all -- scripts/id-host-map.mjs` 为空）。
+TestDev 落地之前，本批的宿主表用**行号 + 字符偏移各量一遍**替代，并在书里标注是用哪种方式量的；
+落地之后一律改贴脚本输出。
+
 ## 2. 接口面与注入（预测；落盘时以闸实测为准）
 
 ```
@@ -248,6 +284,18 @@ chrome（body 顶层 4 个兄弟 noticebar，**无共同 id 祖先**）：
      所有权与渲染点一致，边界才干净。
 落法：本刀删掉对 export-error / export-margin-judgement 的两处写入；导出模块的 reloadPanel() 负责把
      `{ok:false,error}` 画到自己的 #export-error；版心判定那一侧的提示由调用它的视图自己画。
+```
+
+**裁决④：动作返回结果，谁拥有节点谁渲染（Chief 2026-11-02 定；通则，不只在协作刀用）**：
+
+```
+问题：`applyPackageMode()`（8218）在 package 模式下要改 `structure-open`(8225/8234 写) 与
+     `finish-open-review`(8226/8235 写)——但这两个 id 都归**外壳**（click 绑在 app.js:967；写点全在壳里）。
+教训：让导出模块去写 `structure-open`，等于让 A 写 B 的节点，比注入更坏——它还会把导出面从 5 顶到 6。
+裁决：形态改成 **`applyPackageMode()` 返回 `{ ok, packageMode }`**，壳在唯一调用点（app.js:1682）
+     拿返回值渲染自己那两个节点。
+与跨视图刀同形：`setMarginJudgement(enabled)` → `{ok} | {ok:false, error}`。
+通则：**动作返回结果，谁拥有节点谁渲染**——注入别人的节点是"借 DOM 所有权"，借了要还，还要记得还。
 ```
 
 **接口面通则（Chief 2026-11-02 定，三批共用）**：
