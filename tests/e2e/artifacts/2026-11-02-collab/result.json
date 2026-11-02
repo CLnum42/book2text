@@ -211,9 +211,44 @@
     "other package-mode hidden entries (pages panel ~10, review panel 2) besides structure-open/finish-open-review",
     "content correctness of exported .b2tres"
   ],
-  "known_issues_pre_existing": [
-    "#package-result-meta stays '导出中…' after a successful export (old 8559 also never reset it)",
-    "save state stays '正在导入结果包…' after a failed import (old finally only cleared packagePending)",
-    "Esc closing #assign-panel also clears the page selection (shell + pages-view Escape handlers both existed before)"
-  ]
+  "post_fix": {
+    "tree": "3a7d7ba",
+    "origin_main": "3a7d7ba (pushed)",
+    "verified_at": "2026-11-03",
+    "download_success": {
+      "url": "/api/projects/b2t_C2MQ9A/package/results/<name> (plural)",
+      "status": 200,
+      "download_event": true,
+      "bytes": 4348,
+      "zip_entries": [
+        "result.json",
+        "events.json",
+        "summary.json"
+      ],
+      "save_text": "",
+      "note": "success branch still does not write a save-state message"
+    },
+    "download_failure": {
+      "setup": "temporarily renamed the first result file on disk (simulates a nonexistent result name), restored afterwards",
+      "status": 404,
+      "save_text": "下载失败",
+      "inline_style_color": "var(--bad-fg)",
+      "computed_color": "rgb(185, 28, 28)",
+      "restored": true
+    },
+    "export_meta": "已生成 识别进度测试_11–12_QA协作刀2_结果4_20261103.b2tres，可在下面下载",
+    "export_meta_substituted": true,
+    "bad_import_save": {
+      "text": "导入失败：结果包导入失败",
+      "inline_style_color": "var(--bad-fg)",
+      "computed_color": "rgb(185, 28, 28)",
+      "panel_error": "结果包导入失败 错误编号 97f6350f5f61 这不是一个结果包（zip 读不开）"
+    },
+    "console_errors": 0,
+    "untested_spec_auto_pass": [
+      "至少 2 页同时满足：include=正文 · recognized（非 failed/unrecognized）· layout_confirmed=true · margin 已定 · 无未处理 divergence · suggestion_count=0 · 无 ink_gap · aux_checked=true · 未 auto_pass_excluded",
+      "一页用于「自动通过→撤销」看徽标 自动通过（未经人工）→ 待处理；另一页作对照",
+      "现库 0 页满足：page 7 只差 layout+margin 且无文字行；page 100 确认版面+第二引擎后出现 divergence"
+    ]
+  }
 }
