@@ -134,6 +134,19 @@ function preflightRows(data) {
 }
 
 function preflightNotes(data) {
+  // 拆出来的纯函数：所有局部量从同一个 data 重算（不依赖另一个阶段的中间产物）
+  const streams = data.streams || {};
+  const noteStream = streams.notes || { notes: data.notes_count || 0, chars: data.notes_char_count || 0 };
+  const meta = streams.meta || { pages: 0, printed_page_found: 0, printed_page_missing: [] };
+  const mapping = data.page_number_mapping || {
+    found: meta.printed_page_found || 0,
+    total: meta.pages || 0,
+    missing_pages: meta.printed_page_missing || [],
+  };
+  const includeNotes = Boolean((data.rules || {}).include_notes);
+  const workflowStatus = data.workflow_status || {};
+  const preflightMarginPages = data.margin_pages || {};
+  const undeterminedMargins = preflightMarginPages.undetermined || [];
 
   const notes = [];
   if (!data.segment_count && !(noteStream.notes || 0)) {
