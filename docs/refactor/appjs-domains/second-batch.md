@@ -141,7 +141,10 @@ el( 57 次 / 25 个 id：**20 在 #view-merge · 5 在 chrome/review**
    （照 getAuxWarningEls 的形态，**模块里不许出现这 5 个 id 字符串**，否则 id 归属闸红）。
 ```
 
-### 1.3 跨视图服务（16 函数 / 223 行；span 8351–8602）
+### 1.3 跨视图服务（16 函数 / 223 行；span **7826–8086**）
+
+> **行号更正（2026-11-02）**：旧书写 8351–8602，是导出刀之前的老位置；实测 16 个函数体 **7833–8084**，
+> 连同它们的 3 份状态声明（7826–7828）与段尾注释，本域 span = **7826–8086**。
 
 ```
 函数：marginJudgementOn 5 · applyProjectSettings 13 · renderMarginJudgementNotice 6 ·
@@ -149,24 +152,57 @@ el( 57 次 / 25 个 id：**20 在 #view-merge · 5 在 chrome/review**
   showAutoApplyNotice 7 · hideAutoApplyNotice 3 · refreshAfterTypeChanges 10 · undoAutoApply 18 ·
   notifyApplied 5 · setMarginJudgementSetting 18 · openSuggestionApplyPanel 24 ·
   renderSuggestionApplyPreview 28 · runSuggestionApply 29
-自己状态 3：suggestionApplyPlan(8344) · latestAutoApply(8346) · autoApplyAnnouncedId(8348)
-外来状态 2：currentProject · detailPageNo（`el` 是 DOM 助手、`BLOCK_TYPE_LABELS` 是常量表，
-  都不算状态；常量按值注入，DOM 由模块自己在 root 子树里取）
+自己状态 3：suggestionApplyPlan(7826) · latestAutoApply(7828) · autoApplyAnnouncedId(7830)
+外来状态 2：currentProject · detailPageNo
 外部函数 10：apiJson · showError · openModal · closeModal · refreshExportPreflight ·
   renderRecognitionSettings · forgetPageBlocks · refreshPageStates · loadPageDetail · setSaveState
-el( 25 次 / 12 个 id：**7 在 #view-merge · 4 在 chrome · 1 在 #view-review**
-  （margin-judgement-notice · auto-apply-notice(-text) · auto-apply-undo · page-detail-error）
+el( 引用 12 个 id（宿主见下表）
 写盘 6：采用状态 / 摘要 / 全库采用 / 撤销 / 版心判定设置
-视图入口 **11 个**（5 个视图）：applyProjectSettings(library/pages) · autoApplyTypeText(pages) ·
-  loadAutoApplyStatus(library) · showNoticeBar(index/preview/reading) · undoAutoApply(pages) ·
-  notifyApplied(pages) · setMarginJudgementSetting(pages) · openSuggestionApplyPanel(pages)
 ```
 
-**形态（本批唯一需要新设计的一块）**：它不是"一个 section 的服务"，是**跨 5 个视图的流程**。
-建议 `suggestion-flow.js`（`window.SuggestionFlow`），只拿 3 个宿主：`#view-merge`（建议面板）、
-chrome 的通知条容器、`#view-review` 的 `page-detail-error`；其余 11 个入口按**事件**命名，
-**不许**变成"谁都能喊一下刷新"（§6 ⑧ 神入口判据）。若量下来发现"通知条 / 自动应用状态 / 建议面板"
-三簇之间只共享 1–2 个状态，就拆成两个模块（通知条 + 建议流程），**但同一簇内不许两份实现**。
+**宿主实测（行号 + 字符偏移各量一遍；旧的"#view-merge"整句作废）**：
+
+```
+chrome（body 顶层 4 个兄弟 noticebar，**无共同 id 祖先**）：
+  auto-apply-notice(行 43) · auto-apply-notice-text(44) · auto-apply-undo(46) · auto-apply-dismiss(47)
+  margin-judgement-notice(49) · margin-judgement-notice-ok(52)
+#view-review：page-detail-error(508)
+  —— 已有裁定归 page-detail-editor；本刀走注入的 showError，**不新增所有权**
+#export-panel：export-margin-judgement(1093) · export-error(1126)
+  —— 在导出模块的 root 子树里；**本刀不拥有它们**（见 §2 的裁决③）
+#suggestion-apply-panel：suggestion-apply-summary(1185) · error(1186) · types(1187) · samples(1190) · run(1196)
+  —— 子树 1177–1199 共 8 个 id：本刀引用 5 个内容 id；root 自身 + close + cancel 归外壳的 openModal/closeModal 接线
+⇒ **本刀只能拥有 #suggestion-apply-panel 一个 root（5 个内容 id）**；chrome 那 6 个走注入节点
+  （margin-judgement-notice-ok 已有 `getMarginJudgementOk` 注入；auto-apply-dismiss 在 7764 的接线里）
+```
+
+**通则（这一条比上面的表重要）**：
+
+> **视图的 span 不是宿主；按真实嵌套量（行号 + 字符偏移各一遍），量出来是 0 个就写 0 个。**
+> 导出刀已经踩过一次（`#view-merge` 子树里 0 个导出 id），这次又踩（同一句“在 #view-merge 子树里”）。
+> 说明书里缺的不是数据，而是这条量法：**先量子树，再定 root；别按“它看起来属于哪个视图”写。**
+
+**入口 12 个（去重后；两处语义布尔必须拆）**：
+
+```
+原来 11 个（5 个视图：library / pages / index / preview / reading），去重并拆开后 12 个：
+  applyProjectSettings(library/pages) · autoApplyTypeText(pages) · undoAutoApply(pages) ·
+  notifyApplied(pages) · setMarginJudgementSetting(pages) · openSuggestionApplyPanel(pages) ·
+  refreshAutoApplyStatus()            ← 原 loadAutoApplyStatus({announce,jobId}) 的"只刷新状态"那一半
+  announceAutoApplyAfterJob({jobId})  ← 原 loadAutoApplyStatus({announce:true,…}) 的"任务结束后播报"那一半
+  showNotice(text)                    ← 原 showNoticeBar(text,{undoId}) 的"普通提示"那一半
+  showUndoableNotice(text, undoId)    ← 同上，"给撤销按钮"那一半
+  （另两处按落盘时闸实测补：视图调用点去重后以 grep 结果为准）
+
+⇒ **动作名按语义取，不许用语义布尔让模块猜调用点**（§2 通则①）：
+   `{announce:true}` / `{undoId}` 都是"该走哪条路"的布尔，调用点一挪参数不会跟着变。
+```
+
+**形态**：`suggestion-flow.js`（`window.SuggestionFlow`）——它不是"一个 section 的服务"，
+是**跨 5 个视图的流程**。只拿 1 个 root（`#suggestion-apply-panel`）+ 6 个 chrome 注入节点 +
+`page-detail-error` 走注入的 `showError`。其余入口按**事件**命名，不许变成"谁都能喊一下刷新"（§6 ⑧ 神入口判据）。
+若量下来发现"通知条 / 自动应用状态 / 建议面板"三簇之间只共享 1–2 个状态，就拆成两个模块（通知条 + 建议流程），
+**但同一簇内不许两份实现**。
 
 ## 2. 接口面与注入（预测；落盘时以闸实测为准）
 
@@ -199,6 +235,19 @@ chrome 的通知条容器、`#view-review` 的 `page-detail-error`；其余 11 �
   注入：apiJson · showError · openModal/closeModal · refreshExportPreflight · renderRecognitionSettings ·
         forgetPageBlocks · refreshPageStates · loadPageDetail · setSaveState ·
         getCurrentProject · getDetailPageNo · BLOCK_TYPE_LABELS · 12 个节点（3 组）
+```
+
+**裁决③：动作不写不属于它的 DOM（Chief 2026-11-02 定，跨视图刀专用）**：
+
+```
+问题：导出域的 export-margin-judgement(1093) / export-error(1126) 在 #export-panel 子树里，
+     但写它们的是跨视图动作（setMarginJudgementSetting 的 7985 / 7998 两行）。
+裁决：**动作不写不属于它的 DOM**——`setMarginJudgement(enabled)` 改成返回 `{ok}` | `{ok:false, error}`，
+     谁拥有节点谁渲染：export-panel 渲染自己的 #export-error，pages 渲染自己的错误位。
+理由：注入别人的节点是"借 DOM 所有权"（借了就要还，还要记得还）；返回结果让每个视图渲染自己的节点，
+     所有权与渲染点一致，边界才干净。
+落法：本刀删掉对 export-error / export-margin-judgement 的两处写入；导出模块的 reloadPanel() 负责把
+     `{ok:false,error}` 画到自己的 #export-error；版心判定那一侧的提示由调用它的视图自己画。
 ```
 
 **接口面通则（Chief 2026-11-02 定，三批共用）**：
@@ -256,6 +305,17 @@ export-panel.js 的用例：`exportOptions` 与 `setupExportPanel` 里有 **3 �
 协作：426 + 40 + 60（多宿主） → ≈ 530；app.js −约 530（22 函数全走）
 跨视图：223 + 40 + 40 → ≈ 300；app.js −约 300（16 函数全走）
 deps：不改（三块都不新增注入键到 PagesView 那块；各模块的 deps 是新表，不进 171）
+```
+
+## 4.5 本刀顺手清（死状态三件，与 `auxData` 同型）
+
+```
+suggestionApplyPlan(7826)   只写不读（唯一写点 runSuggestionApply 8028）
+latestAutoApply(7828)       只写不读（唯一写点：注入键 setLatestAutoApply(9329) ← pages-view:1499）
+setLatestAutoApply          注入键本身 + pages:1499 那一行，一起删
+判据：删完之后 `grep -c "suggestionApplyPlan\|latestAutoApply\|setLatestAutoApply"` 全仓 = 0；
+      deps 计数按该视图块实量（pages 块 −1，注意别拿总数减，口径见 first-batch §7）
+同型先例：`auxData`——只写不读的状态不会报错，只会让下一个人以为它在用。
 ```
 
 ## 5. 不许顺手改
