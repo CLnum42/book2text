@@ -108,17 +108,17 @@ test("① 版本是内容指纹：同内容不变、改一个 bbox 就变、元�
   const { host, module, handle, pageNo } = makePage();
   module.api.paint(handle, { data: BLOCKS, active: ["blocks"], styles: { details: true } });
   module.settle();
-  const first = module.api.stats(pageNo).version;
+  const first = module.api.stats(handle).version;
   assert.match(first, /^[0-9a-f]{8}$/, "版本应当是 8 位十六进制指纹");
 
   module.api.paint(handle, { data: BLOCKS.map((block) => ({ ...block })), active: ["blocks"], styles: { details: true } });
   module.settle();
-  assert.equal(module.api.stats(pageNo).version, first, "(a) 同内容再 paint 一次，版本必须不变");
+  assert.equal(module.api.stats(handle).version, first, "(a) 同内容再 paint 一次，版本必须不变");
 
   const moved = BLOCKS.map((block, index) => (index === 1 ? { ...block, bbox: [0.1, 0.2, 0.9, 0.4] } : block));
   module.api.paint(handle, { data: moved, active: ["blocks"], styles: { details: true } });
   module.settle();
-  const second = module.api.stats(pageNo).version;
+  const second = module.api.stats(handle).version;
   assert.notEqual(second, first, "(b) 改了一个块的 bbox，版本必须变——否则旧图层会挂在新数据上");
 
   const nodes = paintedNodes(host);
@@ -153,12 +153,12 @@ test("③ counts.blocks 等于有 bbox 的块数，容器里的元素数与它�
   module.api.paint(handle, { data: BLOCKS, active: ["blocks"], styles: { details: true } });
   module.settle();
   const expected = BLOCKS.filter((block) => block.bbox).length;
-  assert.equal(module.api.stats(pageNo).counts.blocks, expected, "stats 的块数必须等于有 bbox 的块数");
+  assert.equal(module.api.stats(handle).counts.blocks, expected, "stats(handle) 的块数必须等于有 bbox 的块数");
   assert.equal(paintedNodes(host).length, expected, "容器里真的画了这么多");
 
   module.api.paint(handle, { data: [], active: ["blocks"], styles: { details: true } });
   module.settle();
-  assert.equal(module.api.stats(pageNo).counts.blocks, 0, "空数据要收起图层");
+  assert.equal(module.api.stats(handle).counts.blocks, 0, "空数据要收起图层");
   assert.equal(containerOf(host).hidden, true, "没有块时容器 hidden");
 });
 
@@ -238,4 +238,25 @@ test("⑨-c 死句柄自愈：unmount 之后再 paint，重挂一层并画出来
   assert.equal(handle.dead, false, "paint 没有自愈死句柄");
   assert.ok(containerOf(host), "自愈后图层不在宿主里");
   assert.equal(handle.counts.blocks, 3, "自愈后没画出来");
+});
+
+// stats 的两个签名（Chief 2026-11-02 裁定）：判据只许用 stats(handle)；stats(pageNo) 只作诊断
+test("stats(handle) 是判据形式；多宿主时 stats(pageNo) 返回最近 mount 的那一层", () => {
+  const environment = makeEnvironment();
+  const hostA = environment.mount();
+  const hostB = environment.mount();
+  const module = loadRegistry(environment.document);
+  module.api.init({});
+  const a = module.api.mount(hostA, { pageNo: 9 });
+  module.api.paint(a, { data: BLOCKS, active: ["blocks"], styles: { details: true } });
+  module.settle();
+  const b = module.api.mount(hostB, { pageNo: 9 });
+  module.api.paint(b, { data: BLOCKS.slice(0, 1), active: ["blocks"], styles: { details: true } });
+  module.settle();
+
+  assert.equal(module.api.stats(a).counts.blocks, 3, "stats(handleA) 必须报 A 自己的层");
+  assert.equal(module.api.stats(b).counts.blocks, 1, "stats(handleB) 必须报 B 自己的层");
+  assert.notEqual(module.api.stats(a).version, module.api.stats(b).version, "两层版本应当不同");
+  // pageNo 形式：最近 mount 的是 B
+  assert.equal(module.api.stats(9).counts.blocks, 1, "stats(pageNo) 多宿主时应报最近 mount 的那层（只作诊断）");
 });
