@@ -321,6 +321,25 @@ B 组（片 1 欠的债，本片首次验）
 **它比任何单视图回归都值钱**：单视图只能证明"没坏"，这一条证明"真的是同一个渲染器"——
 而且**判据本身必须尊重"尺度相关"这个事实**，否则它只会红一次然后被关掉。
 
+### 6.2 指针两态（⑩，Chief 2026-11-02 判）
+
+**写成两态，别写"带 labeled 与 margin 就能吃"**：
+
+```
+① 有 --labeled 且**没有** --margin  ⇒ .box 吃指针   getComputedStyle(box).pointerEvents === "auto"
+② 有 --margin                      ⇒ .box 不吃      === "none"（容器也是 none）
+```
+
+**为什么必须分两态**：`app.css:901`（`--readonly.--labeled .box { pointer-events:auto }`）与
+`app.css:903`（`.page-overlay.--margin, .page-overlay.--margin .box { pointer-events:none }`）是两条规则，
+**特异度相同（各 3 个类）、903 在后 ⇒ 两者同时命中时 903 胜**。写成"两个类都有就能吃"会得出反的结论。
+
+```
+判据：① 在 pages（labeled、无 margin）上取 .box 的 computed pointerEvents === "auto"
+     ② 切到版心视图（marginMode:true）后，同一个 .box === "none"，容器也是 "none"
+变异：把 styles.marginMode 写死 false ⇒ ② 红（版心期间块框还吃指针，会挡住拖拽把手）
+```
+
 ## 7. 不许顺手改
 
 ```

@@ -7,7 +7,7 @@
 
 ## 0. 一句话
 
-**一个全局 registry（渲染器按"视觉元素类型"注册一次）+ 每页一个图层句柄（host 由视图给）；
+**一个全局 registry（渲染器按"视觉元素类型"注册一次）+ **每个宿主**一个图层句柄（host 由视图给）；
 版本是内容指纹（纯函数），重画是"先建后换"，重画调度只有 registry 里那一个 rAF。**
 
 ## 1. 为什么现在做（实测，不是判断）
@@ -42,13 +42,26 @@
 **所有权三层，写清楚，别混**：
 
 ```
-registry（window.OverlayLayer）  拥有：类型注册表、z 序、每页图层的 DOM、重画调度、版本比较
+registry（window.OverlayLayer）  拥有：类型注册表、z 序、**每个宿主的**图层 DOM、重画调度、版本比较
 视图                            拥有：① 窗口内是哪几页 ② 这一步 active 哪些 type ③ 每种 type 的数据
 PageTile                        拥有：那张 <img>、尺寸档、取图与释放（与本模块无引用关系）
 ```
 
 **视图不拥有图层的 DOM**：视图只给一个宿主元素 + pageNo，`mount()` 之后图层 DOM 归 registry；
 视图要清就 `unmount`，不许自己 `innerHTML = ""`。
+
+**唯一性是"一个宿主一个图层"，不是"一页一个图层"（2026-11-02 真机证伪后改）**：
+
+```
+正确不变量：hostEl → handle，一对一；同一页可以有**多个宿主**（每个视图各一份），互不影响
+错误假设（已作废）：pageNo → handle。原实现 `Map<pageNo, handle>` + "同页再 mount 就 unmount 旧的"
+实测后果：preview 的 buildPreviewPages 给 490 页每页都 mount ⇒ 把同号的 pages 句柄全部顶掉（unmount）
+          ⇒ 回到 pages 时 `grid_layers 490 → 0`、`tile.__overlayHandle` 成死句柄、paint 静默 no-op
+⇒ pageNo 降级为**元数据**（进 stats / 诊断 / dataset），**不做唯一键**；唯一键是 hostEl 的引用
+```
+
+**为什么这条错得隐蔽**：四个视图各自 mount 同一批页号时，单视图测试全绿（每次 mount 都建立在"别人没挂"的前提下）；
+只有"两个视图同时挂着"才会露出——而 preview 一次性挂满 490 页，正好构造了这个场景。
 
 ## 3. ② API 草案（逐个：签名 / 谁调 / 何时）
 
@@ -82,8 +95,8 @@ window.OverlayLayer = {
 |---|---|---|---|
 | `init` | **app.js 的 `boot()` 一次** | boot 最末、视图 init 之前 | 幂等；`getVersion` 只能有一份（多消费者各传一份 = 三个版本的开始） |
 | `register` | boot 一次（模块自己登记内置类型） | `init` 之后、第一次 `paint` 之前 | `type` 全局唯一；重复注册 = 红 |
-| `mount` | 视图 | `tile.create()` 之后（图不必到） | 宿主由视图给；**registry 不许按 class/id 找 DOM**（§21 同一条） |
-| `unmount` | 视图 | `tile.release()` **之前** | 顺序硬约束；`paint` 遇到已脱离文档的宿主 = no-op + 一次 warn（§23.5c） |
+| `mount` | 视图 | `tile.create()` 之后（图不必到） | 宿主由视图给；**registry 不许按 class/id 找 DOM**（§21 同一条）；**唯一键 = hostEl，`pageNo` 只是元数据**（同页多宿主合法） |
+| `unmount` | 视图 | `tile.release()` **之前** | 顺序硬约束；宿主从 DOM 消失 = no-op + 一次 warn（§23.5c）；**但句柄还在、只是 layer 掉了 = 自愈重挂**（见下方不变量） |
 | `paint` | 视图 | 数据到达 / `invalidate` 之后 | **不立即画**：登记到 registry 唯一的 rAF，帧末统一消费 |
 | `invalidate` | 视图、协作层（写盘回调） | 一处数据变了 | 不碰 DOM，只置脏 |
 | `stats` | e2e / 诊断 | 任意 | 只读，不许有任何副作用 |
@@ -106,6 +119,20 @@ schedule = 排到可测为止（"以后摆，摆到测得出为止"）：token +
 · 过渡期内 reading / index 仍走旧的 renderPageBlocks，也需要同一套"排到可测"；
   若转发器自己再写一遍 90 帧重试，同样变成两份
 · 片 2 之后审校那条路径**长期**需要它 ⇒ 按 STABLE 登记、不写死期
+```
+
+**死句柄自愈（2026-11-02 新增不变量）**：`paint(handle)` 时若 `handle.layer` 已脱离文档
+（宿主被替换 / 视图重建了瓷砖但没 unmount / 句柄被顶掉后又被复用），**registry 必须就地重新 mount**——
+在新宿主上重建 layer 并把 `handle.layer` 指过去，然后照常画。**不许静默 no-op**。
+
+```
+为什么：静默 no-op 的失败是"画不出来但也不报错"，四闸全绿、真机上是一片空白。
+今天 §23.5c 写的是"遇到脱离文档的宿主 → no-op + warn"——那条是给"视图忘了先 unmount 就 release"留的兜底，
+  但它把"句柄还活着、宿主换了"这种情况也一起吞了。两者必须分开：
+  · 视图忘了 unmount 且宿主从 DOM 消失（tile 被删）→ no-op + warn（保持 §23.5c）
+  · 句柄还在、宿主换了/被复用（layer 不在文档里）→ **重新 mount**（自愈），不 warn 不静默
+判据：把 handle.layer 从 DOM 摘掉（或整体替换宿主节点的子节点），再 paint 一次 ⇒
+      layer 回到宿主里、counts 与 version 正常；不许"没报错但也没画"。
 ```
 
 **`render(item, style) → Element` 必须无状态**（只吃 item + style，不读全局，不读 `currentView`）；
@@ -154,7 +181,9 @@ else → 重画该 type，写完把 painted[type] 设成新值，并把 dataVers
 ```
 两个模块，谁也不引谁（§23.3 已定，本文不改）
   PageTile 只认宿主元素；OverlayLayer 也只认宿主元素 + pageNo
-  一个 pageNo 在某一时刻只有一个"当前视图"持有它（§21.10 先 release 再 create 的同一族约束）
+  **两者对"同页多宿主"的答案相反，别混**：
+    PageTile 的图是"一页一张"——同页两个宿主会**移动**那张 img（§21.10：先 release 再 create）；
+    OverlayLayer 的图层是"一个宿主一份"——同页 490 个宿主就是 490 个图层，互不影响（本条 2026-11-02 改）
 ```
 
 **裁定：删掉 `injected.paintOverlays` 钩子**（page-tile.js:207–209）。理由三条：
@@ -197,6 +226,7 @@ else → 重画该 type，写完把 painted[type] 设成新值，并把 dataVers
 | ② | **不重复画（幂等）** | 同数据连续 paint 两次：元素数不变 **且 `firstChild` 是同一个节点**（节点身份） | 证明没有"清空再 append" |
 | ③ | **数量** | `stats(pageNo).counts.blocks === data.filter(b => b.bbox).length` | 证明"数据是唯一真源" |
 | ④ | **不回落旧路径**（Chief 补：必须点名删的是哪一行） | preview 路径上 `.page-overlay` 的 `innerHTML = ""` 调用次数 = **0**；且下面三行在落盘后的源码里各 **0 次命中**：`preview-view.js:183`（自建 `.page-overlay` 容器）· `:371`（`overlay._renderedBlocks === blocks` 的缓存比较）· `:372`（`injected.renderPageBlocks` 的调用）；`_renderedBlocks` 在 `preview-view.js` 里 0 次 | "次数 = 0" 可能只是换了个写法（比如改成 `replaceChildren()`）；**点名行号 + 点名字段**才排除这种 |
+| ④b | **同页多宿主（2026-11-02 新增）** | 同一 `pageNo` 在两个宿主上各 `mount` → 得两个 handle；`paint(A)` 不影响 B 的 layer；`unmount(A)` 后 B 仍在、`stats` 仍能报 B | 证明唯一键是 **hostEl** 不是 pageNo——这条错就是 preview 490 页把 pages 句柄顶掉、`grid_layers 490 → 0` 的根因 |
 | ⑤ | **图不受影响** | `img.src` 赋值次数仍 = 1（**不数网络**：`max-age=300` 会掩盖重复取图） | 证明两条缝没互相踩 |
 
 **提交要求（活证据，不是自述）**：片 1 的提交说明里必须有一行「删掉的旧路径」，逐行写
