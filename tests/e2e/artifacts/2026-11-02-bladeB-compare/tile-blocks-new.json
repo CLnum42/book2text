@@ -1,0 +1,942 @@
+{
+  "tag": "new",
+  "base": "http://127.0.0.1:8871",
+  "at": "2026-11-02T07:31:08.441Z",
+  "fetch_log": [
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/2/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 253
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/1/blocks",
+      "status": 200,
+      "blocks": 9,
+      "ms": 254
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/3/blocks",
+      "status": 200,
+      "blocks": 19,
+      "ms": 305
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/4/blocks",
+      "status": 200,
+      "blocks": 6,
+      "ms": 406
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/8/blocks",
+      "status": 200,
+      "blocks": 8,
+      "ms": 219
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/6/blocks",
+      "status": 200,
+      "blocks": 10,
+      "ms": 292
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/7/blocks",
+      "status": 200,
+      "blocks": 0,
+      "ms": 325
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/5/blocks",
+      "status": 200,
+      "blocks": 8,
+      "ms": 358
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/9/blocks",
+      "status": 200,
+      "blocks": 22,
+      "ms": 92
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/10/blocks",
+      "status": 200,
+      "blocks": 26,
+      "ms": 97
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/11/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 133
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/12/blocks",
+      "status": 200,
+      "blocks": 8,
+      "ms": 165
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/13/blocks",
+      "status": 200,
+      "blocks": 6,
+      "ms": 88
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/14/blocks",
+      "status": 200,
+      "blocks": 6,
+      "ms": 89
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/15/blocks",
+      "status": 200,
+      "blocks": 21,
+      "ms": 200
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/16/blocks",
+      "status": 200,
+      "blocks": 11,
+      "ms": 226
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/17/blocks",
+      "status": 200,
+      "blocks": 18,
+      "ms": 240
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/18/blocks",
+      "status": 200,
+      "blocks": 14,
+      "ms": 340
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/23/blocks",
+      "status": 200,
+      "blocks": 8,
+      "ms": 88
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/25/blocks",
+      "status": 200,
+      "blocks": 12,
+      "ms": 90
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/24/blocks",
+      "status": 200,
+      "blocks": 6,
+      "ms": 92
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/22/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 93
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/21/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 49
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/19/blocks",
+      "status": 200,
+      "blocks": 22,
+      "ms": 54
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/20/blocks",
+      "status": 200,
+      "blocks": 13,
+      "ms": 56
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/38/blocks",
+      "status": 200,
+      "blocks": 17,
+      "ms": 201
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/37/blocks",
+      "status": 200,
+      "blocks": 4,
+      "ms": 203
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/36/blocks",
+      "status": 200,
+      "blocks": 17,
+      "ms": 204
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/39/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 204
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/29/blocks",
+      "status": 200,
+      "blocks": 9,
+      "ms": 162
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/30/blocks",
+      "status": 200,
+      "blocks": 21,
+      "ms": 286
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/32/blocks",
+      "status": 200,
+      "blocks": 23,
+      "ms": 430
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/31/blocks",
+      "status": 200,
+      "blocks": 19,
+      "ms": 440
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/33/blocks",
+      "status": 200,
+      "blocks": 22,
+      "ms": 441
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/34/blocks",
+      "status": 200,
+      "blocks": 1,
+      "ms": 441
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/71/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 233
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/72/blocks",
+      "status": 200,
+      "blocks": 21,
+      "ms": 251
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/74/blocks",
+      "status": 200,
+      "blocks": 22,
+      "ms": 284
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/73/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 286
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/64/blocks",
+      "status": 200,
+      "blocks": 24,
+      "ms": 195
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/65/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 191
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/66/blocks",
+      "status": 200,
+      "blocks": 17,
+      "ms": 304
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/67/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 311
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/69/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 405
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/68/blocks",
+      "status": 200,
+      "blocks": 18,
+      "ms": 467
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/77/blocks",
+      "status": 200,
+      "blocks": 6,
+      "ms": 354
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/79/blocks",
+      "status": 200,
+      "blocks": 4,
+      "ms": 367
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/80/blocks",
+      "status": 200,
+      "blocks": 21,
+      "ms": 369
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/75/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 381
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/76/blocks",
+      "status": 200,
+      "blocks": 21,
+      "ms": 386
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/78/blocks",
+      "status": 200,
+      "blocks": 23,
+      "ms": 444
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/84/blocks",
+      "status": 200,
+      "blocks": 8,
+      "ms": 273
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/83/blocks",
+      "status": 200,
+      "blocks": 3,
+      "ms": 282
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/85/blocks",
+      "status": 200,
+      "blocks": 5,
+      "ms": 284
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/82/blocks",
+      "status": 200,
+      "blocks": 22,
+      "ms": 289
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/86/blocks",
+      "status": 200,
+      "blocks": 21,
+      "ms": 290
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/87/blocks",
+      "status": 200,
+      "blocks": 6,
+      "ms": 342
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/70/blocks",
+      "status": 200,
+      "blocks": 17,
+      "ms": 90
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/91/blocks",
+      "status": 200,
+      "blocks": 6,
+      "ms": 95
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/89/blocks",
+      "status": 200,
+      "blocks": 6,
+      "ms": 97
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/90/blocks",
+      "status": 200,
+      "blocks": 25,
+      "ms": 97
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/81/blocks",
+      "status": 200,
+      "blocks": 6,
+      "ms": 32
+    },
+    {
+      "url": "/api/projects/b2t_T7JH61/pages/88/blocks",
+      "status": 200,
+      "blocks": 21,
+      "ms": 38
+    }
+  ],
+  "before_toggle": {
+    "view": [
+      "pages"
+    ],
+    "toggle": {
+      "is_on": true,
+      "text": "块框"
+    },
+    "tiles": 490,
+    "tiles_with_layer": 490,
+    "layers": 490,
+    "boxes": 0,
+    "layers_with_children": 0,
+    "scroller": {
+      "scrollTop": 0,
+      "scrollH": 17679,
+      "clientH": 710
+    },
+    "vis": [
+      {
+        "page_no": "1",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "2",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "3",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "4",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "5",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "6",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "7",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "8",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "9",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "10",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "11",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "12",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      }
+    ],
+    "overlayStats": {
+      "1": {
+        "version": "48931d9f",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "2": {
+        "version": "bf699725",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "3": {
+        "version": "71ab9fde",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "4": {
+        "version": "b3b29bfe",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "5": {
+        "version": "982c9f0e",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "6": {
+        "version": "46332726",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "7": {
+        "version": "fc0e2f77",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "8": {
+        "version": "ac4b8e9d",
+        "counts": {},
+        "geomHash": "741638a5"
+      }
+    }
+  },
+  "toggled": "on→off→on（强制重跑渲染路径）",
+  "boxes_appeared": false,
+  "after_toggle": {
+    "view": [
+      "pages"
+    ],
+    "toggle": {
+      "is_on": true,
+      "text": "块框"
+    },
+    "tiles": 490,
+    "tiles_with_layer": 490,
+    "layers": 490,
+    "boxes": 0,
+    "layers_with_children": 0,
+    "scroller": {
+      "scrollTop": 0,
+      "scrollH": 17679,
+      "clientH": 710
+    },
+    "vis": [
+      {
+        "page_no": "1",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "2",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "3",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "4",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "5",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "6",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "7",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "8",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "9",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "10",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "11",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "12",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      }
+    ],
+    "overlayStats": {
+      "1": {
+        "version": "48931d9f",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "2": {
+        "version": "bf699725",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "3": {
+        "version": "71ab9fde",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "4": {
+        "version": "b3b29bfe",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "5": {
+        "version": "982c9f0e",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "6": {
+        "version": "46332726",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "7": {
+        "version": "fc0e2f77",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "8": {
+        "version": "ac4b8e9d",
+        "counts": {},
+        "geomHash": "741638a5"
+      }
+    }
+  },
+  "scroll": {
+    "scrollTop": 2400
+  },
+  "boxes_after_scroll": false,
+  "after_scroll": {
+    "view": [
+      "pages"
+    ],
+    "toggle": {
+      "is_on": true,
+      "text": "块框"
+    },
+    "tiles": 490,
+    "tiles_with_layer": 490,
+    "layers": 490,
+    "boxes": 0,
+    "layers_with_children": 0,
+    "scroller": {
+      "scrollTop": 2400,
+      "scrollH": 17679,
+      "clientH": 710
+    },
+    "vis": [
+      {
+        "page_no": "57",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "58",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "59",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "60",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "61",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "62",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "63",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "64",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "65",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "66",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "67",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      },
+      {
+        "page_no": "68",
+        "layer": true,
+        "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+        "layer_hidden": true,
+        "layer_children": 0,
+        "boxes": 0,
+        "img_src_size": "thumb",
+        "img_ready": false
+      }
+    ],
+    "overlayStats": {
+      "57": {
+        "version": "fc0e2f77",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "58": {
+        "version": "fc0e2f77",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "59": {
+        "version": "fc0e2f77",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "60": {
+        "version": "fc0e2f77",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "61": {
+        "version": "fc0e2f77",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "62": {
+        "version": "fc0e2f77",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "63": {
+        "version": "fc0e2f77",
+        "counts": {},
+        "geomHash": "741638a5"
+      },
+      "64": {
+        "version": "712f901e",
+        "counts": {},
+        "geomHash": "741638a5"
+      }
+    }
+  },
+  "console_errors": [],
+  "overlay_layer_present": true
+}

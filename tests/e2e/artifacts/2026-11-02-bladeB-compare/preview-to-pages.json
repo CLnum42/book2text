@@ -1,0 +1,47 @@
+{
+  "after_open": {
+    "view": [
+      "pages"
+    ],
+    "tiles": 490,
+    "layers": 490,
+    "boxes": 0,
+    "toggle_on": true,
+    "grid_h": 27401
+  },
+  "in_preview": {
+    "preview_boxes": 14,
+    "preview_pages": 490
+  },
+  "back_pages_1": {
+    "view": [
+      "pages"
+    ],
+    "tiles": 490,
+    "layers": 0,
+    "boxes": 0,
+    "toggle_on": true,
+    "grid_h": 27401
+  },
+  "back_pages_after_scroll": {
+    "view": [
+      "pages"
+    ],
+    "tiles": 490,
+    "layers": 0,
+    "boxes": 0,
+    "toggle_on": true,
+    "grid_h": 27401
+  },
+  "back_pages_after_toggle": {
+    "view": [
+      "pages"
+    ],
+    "tiles": 490,
+    "layers": 0,
+    "boxes": 0,
+    "toggle_on": true,
+    "grid_h": 27401
+  },
+  "console_errors": []
+}

@@ -1,0 +1,63 @@
+{
+  "boxes_appeared": true,
+  "baseline": {
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+    "with_margin": 0,
+    "layers": 490,
+    "boxes": 183,
+    "box_pes": [
+      "auto"
+    ],
+    "margin_on": false,
+    "toggle_on": true,
+    "scrollTop": 0
+  },
+  "margin_on": {
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled page-overlay--margin",
+    "with_margin": 486,
+    "layers": 490,
+    "boxes": 242,
+    "box_pes": [
+      "none",
+      "auto"
+    ],
+    "margin_on": true,
+    "toggle_on": true,
+    "scrollTop": 0
+  },
+  "margin_off_immediate": {
+    "sync_after_click": true,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled page-overlay--margin",
+    "box_pes": [
+      "none",
+      "auto"
+    ],
+    "margin_on": false
+  },
+  "margin_off_120ms": {
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+    "with_margin": 465,
+    "layers": 490,
+    "boxes": 273,
+    "box_pes": [
+      "auto"
+    ],
+    "margin_on": false,
+    "toggle_on": true,
+    "scrollTop": 0
+  },
+  "margin_off_500ms": {
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+    "with_margin": 465,
+    "layers": 490,
+    "boxes": 273,
+    "box_pes": [
+      "auto"
+    ],
+    "margin_on": false,
+    "toggle_on": true,
+    "scrollTop": 0
+  },
+  "scroll_untouched": 0,
+  "console_errors": []
+}

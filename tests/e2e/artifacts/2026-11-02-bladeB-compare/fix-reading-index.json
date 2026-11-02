@@ -1,0 +1,195 @@
+{
+  "reading_boxes_appeared": true,
+  "reading": {
+    "view": [
+      "reading"
+    ],
+    "page_no": "第 4 页",
+    "reading_pages": 490,
+    "layers": 7,
+    "boxes": 57,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly",
+    "box_pes": [
+      "auto"
+    ],
+    "children": [
+      ""
+    ],
+    "per_page": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "layers": 1
+      },
+      {
+        "no": "2",
+        "boxes": 5,
+        "layers": 1
+      },
+      {
+        "no": "3",
+        "boxes": 19,
+        "layers": 1
+      },
+      {
+        "no": "4",
+        "boxes": 6,
+        "layers": 1
+      },
+      {
+        "no": "5",
+        "boxes": 8,
+        "layers": 1
+      },
+      {
+        "no": "6",
+        "boxes": 10,
+        "layers": 1
+      },
+      {
+        "no": "7",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "8",
+        "boxes": 0,
+        "layers": 0
+      }
+    ],
+    "linked_boxes": 1,
+    "hovered_segs": 1,
+    "diff_marks": 5,
+    "toggle_on": true
+  },
+  "reading_hover": {
+    "x": 758,
+    "y": 229,
+    "text": "译者简介/About the Translators Dav",
+    "seq": "1"
+  },
+  "reading_after_hover": {
+    "view": [
+      "reading"
+    ],
+    "page_no": "第 4 页",
+    "reading_pages": 490,
+    "layers": 7,
+    "boxes": 57,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly",
+    "box_pes": [
+      "auto"
+    ],
+    "children": [
+      ""
+    ],
+    "per_page": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "layers": 1
+      },
+      {
+        "no": "2",
+        "boxes": 5,
+        "layers": 1
+      },
+      {
+        "no": "3",
+        "boxes": 19,
+        "layers": 1
+      },
+      {
+        "no": "4",
+        "boxes": 6,
+        "layers": 1
+      },
+      {
+        "no": "5",
+        "boxes": 8,
+        "layers": 1
+      },
+      {
+        "no": "6",
+        "boxes": 10,
+        "layers": 1
+      },
+      {
+        "no": "7",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "8",
+        "boxes": 0,
+        "layers": 0
+      }
+    ],
+    "linked_boxes": 1,
+    "hovered_segs": 1,
+    "diff_marks": 5,
+    "toggle_on": true
+  },
+  "index_boxes_appeared": true,
+  "index": {
+    "view": [
+      "index"
+    ],
+    "index_pages": 490,
+    "index_rows": 497,
+    "layers": 1,
+    "boxes": 9,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled page-overlay--margin",
+    "box_pes": [
+      "none"
+    ],
+    "children": [
+      "box__order|box__label"
+    ],
+    "per_page": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "layers": 1
+      },
+      {
+        "no": "2",
+        "boxes": 0,
+        "layers": 0
+      },
+      {
+        "no": "3",
+        "boxes": 0,
+        "layers": 0
+      },
+      {
+        "no": "4",
+        "boxes": 0,
+        "layers": 0
+      },
+      {
+        "no": "5",
+        "boxes": 0,
+        "layers": 0
+      },
+      {
+        "no": "6",
+        "boxes": 0,
+        "layers": 0
+      },
+      {
+        "no": "7",
+        "boxes": 0,
+        "layers": 0
+      },
+      {
+        "no": "8",
+        "boxes": 0,
+        "layers": 0
+      }
+    ],
+    "overlay_on": true,
+    "firstlines": 1
+  },
+  "console_errors": []
+}

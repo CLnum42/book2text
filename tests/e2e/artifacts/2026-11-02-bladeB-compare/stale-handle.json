@@ -1,0 +1,58 @@
+{
+  "after_open": {
+    "grid_layers": 490,
+    "grid_boxes": 0,
+    "preview_layers": 0,
+    "preview_boxes": 0
+  },
+  "in_preview": {
+    "grid_layers": 0,
+    "grid_boxes": 0,
+    "preview_layers": 490,
+    "preview_boxes": 14
+  },
+  "back_pages": {
+    "grid_layers": 0,
+    "grid_boxes": 0,
+    "preview_layers": 490,
+    "preview_boxes": 14
+  },
+  "handle_state": {
+    "has": true,
+    "dead": true,
+    "layer_connected": false,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+    "layer_parent": null,
+    "host_connected": true,
+    "stats1": {
+      "version": "31ff1b93",
+      "counts": {
+        "blocks": 9
+      },
+      "geomHash": "741638a5"
+    },
+    "registered_ok": "init-called"
+  },
+  "remount": {
+    "cleared": 490
+  },
+  "after_remount": {
+    "grid_layers": 490,
+    "grid_boxes": 159,
+    "preview_layers": 0,
+    "preview_boxes": 0
+  },
+  "after_remount_handles": {
+    "has": true,
+    "dead": false,
+    "layer_connected": true,
+    "stats1": {
+      "version": "48931d9f",
+      "counts": {
+        "blocks": 9
+      },
+      "geomHash": "02e79f37"
+    }
+  },
+  "console_errors": []
+}

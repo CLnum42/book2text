@@ -1,0 +1,48 @@
+{
+  "round": "2026-11-02 片2修复复验",
+  "new_tree": {"sha": "3080f55", "base": "http://127.0.0.1:8871"},
+  "old_tree": {"sha": "f722096", "base": "http://127.0.0.1:8872", "worktree": "/tmp/b2t-wt-slice1"},
+  "library": "/tmp/b2t-qa4/lib",
+  "project": "b2t_T7JH61",
+  "fix_commits": ["bcd4445", "1b1d100", "b85323d", "3080f55"],
+  "verdicts": {
+    "1_pages_tile_blocks": {
+      "verdict": "pass",
+      "new": {"page_1_to_6": [9, 5, 19, 6, 8, 10], "layers": 490, "layers_with_children": 490, "stats_counts_ok": true, "boxes_before_toggle": 197, "boxes_after_toggle": 87},
+      "old": {"page_1_to_6": [9, 5, 19, 6, 8, 10]},
+      "console_errors": 0
+    },
+    "2_preview_to_pages": {
+      "verdict": "pass",
+      "in_preview": {"grid_layers": 490, "preview_layers": 490, "preview_boxes": 14},
+      "back_pages": {"grid_layers": 490, "grid_boxes": 242, "page_1_to_8": [9, 5, 19, 6, 8, 10, 0, 8], "handle_dead": false, "layer_connected": true},
+      "after_scroll": {"grid_boxes": 242},
+      "after_toggle": {"grid_boxes": 242},
+      "note": "page 7 = 0 是 API 本来就 0 块"
+    },
+    "3_margin": {
+      "verdict": "pass (no scroll required; settle 443ms worst, 120ms another run; paint is rAF-based so not same-tick)",
+      "baseline": {"page1_cls": "readonly+labeled", "pointer": "auto", "with_margin": 0},
+      "on_settled": {"with_margin": "490/490", "boxes_auto": 0, "page1_pointer": "none"},
+      "off": {"settle_ms": 443, "scroll_top": [0, 0], "page1_cls": "readonly+labeled", "page1_pointer": "auto", "stale_layers": 465, "stale_layers_with_boxes": 0}
+    },
+    "4_preview_boxes": {
+      "verdict": "pass",
+      "counts": {"page_1": 9, "page_2": 5, "page_4": 6, "page_5": 8, "page_6": 10},
+      "identical_fields": ["cls", "title", "block_id", "px"],
+      "children_old": "box__order (page1: 6 outside, 3 inside fallback) + box__label",
+      "children_new": "box__order (same outside/inside distribution as old); no box__label",
+      "note": "label 缺省是只读预览的既有设计；号避让已按 7828683 决策落地"
+    },
+    "5_reading_index": {
+      "verdict": "pass",
+      "reading": {"layers": 7, "boxes": 57, "page_1_to_7": [9, 5, 19, 6, 8, 10, 0], "layer_cls": "overlay-layer page-overlay page-overlay--readonly", "pointer": "auto", "is_linked_hover": 1, "is_linked_idle": 0},
+      "index": {"index_rows": 497, "page_1_boxes": 9, "pointer": "auto", "hover_card": "#1 段落", "page_2_after_scroll": 5}
+    }
+  },
+  "not_verified": [
+    "③ 同一帧内回落（实现走 rAF，判定为下一帧起生效，实测落定 120–443ms 且不滚动）",
+    "② 没有重新构造'先坏'路径；旧 bug 复现见上一轮 stale-handle.json",
+    "⑤ 只看了 reading 可见 7 页与 index 页 1→2，未全量遍历"
+  ]
+}

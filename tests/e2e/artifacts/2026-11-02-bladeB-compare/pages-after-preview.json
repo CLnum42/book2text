@@ -1,0 +1,71 @@
+{
+  "preview_boxes": 0,
+  "overlay_layer": true,
+  "pages": {
+    "toggle_on": true,
+    "tiles": 490,
+    "layers": 0,
+    "boxes": 0,
+    "layers_with_children": 0,
+    "first_tiles": [
+      {
+        "no": "1",
+        "boxes": 0
+      },
+      {
+        "no": "2",
+        "boxes": 0
+      },
+      {
+        "no": "3",
+        "boxes": 0
+      },
+      {
+        "no": "4",
+        "boxes": 0
+      },
+      {
+        "no": "5",
+        "boxes": 0
+      },
+      {
+        "no": "6",
+        "boxes": 0
+      }
+    ],
+    "stats": [
+      {
+        "version": "",
+        "counts": {},
+        "geomHash": ""
+      },
+      {
+        "version": "",
+        "counts": {},
+        "geomHash": ""
+      },
+      {
+        "version": "",
+        "counts": {},
+        "geomHash": ""
+      },
+      {
+        "version": "",
+        "counts": {},
+        "geomHash": ""
+      },
+      {
+        "version": "",
+        "counts": {},
+        "geomHash": ""
+      },
+      {
+        "version": "",
+        "counts": {},
+        "geomHash": ""
+      }
+    ]
+  },
+  "console_errors": [],
+  "shot": "/tmp/b2t-qa/2026-11-02-bladeB-compare/pages-new-after-preview.png"
+}

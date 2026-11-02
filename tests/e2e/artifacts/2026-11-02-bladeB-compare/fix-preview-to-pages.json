@@ -1,0 +1,282 @@
+{
+  "after_open": {
+    "view": [
+      "pages"
+    ],
+    "grid_layers": 490,
+    "grid_boxes": 39,
+    "preview_layers": 0,
+    "preview_boxes": 0,
+    "handle": {
+      "dead": false,
+      "layer_connected": true,
+      "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled"
+    },
+    "stats1": {
+      "version": "48931d9f",
+      "counts": {
+        "blocks": 9
+      },
+      "geomHash": "741638a5"
+    },
+    "vis": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "layers": 1
+      },
+      {
+        "no": "2",
+        "boxes": 5,
+        "layers": 1
+      },
+      {
+        "no": "3",
+        "boxes": 19,
+        "layers": 1
+      },
+      {
+        "no": "4",
+        "boxes": 6,
+        "layers": 1
+      },
+      {
+        "no": "5",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "6",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "7",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "8",
+        "boxes": 0,
+        "layers": 1
+      }
+    ],
+    "toggle_on": true
+  },
+  "in_preview": {
+    "view": [
+      "preview"
+    ],
+    "grid_layers": 490,
+    "grid_boxes": 39,
+    "preview_layers": 490,
+    "preview_boxes": 14,
+    "handle": {
+      "dead": false,
+      "layer_connected": true,
+      "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled"
+    },
+    "stats1": {
+      "version": "31ff1b93",
+      "counts": {
+        "blocks": 9
+      },
+      "geomHash": "741638a5"
+    },
+    "vis": [],
+    "toggle_on": true
+  },
+  "back_pages": {
+    "view": [
+      "pages"
+    ],
+    "grid_layers": 490,
+    "grid_boxes": 242,
+    "preview_layers": 490,
+    "preview_boxes": 14,
+    "handle": {
+      "dead": false,
+      "layer_connected": true,
+      "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled"
+    },
+    "stats1": {
+      "version": "31ff1b93",
+      "counts": {
+        "blocks": 9
+      },
+      "geomHash": "741638a5"
+    },
+    "vis": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "layers": 1
+      },
+      {
+        "no": "2",
+        "boxes": 5,
+        "layers": 1
+      },
+      {
+        "no": "3",
+        "boxes": 19,
+        "layers": 1
+      },
+      {
+        "no": "4",
+        "boxes": 6,
+        "layers": 1
+      },
+      {
+        "no": "5",
+        "boxes": 8,
+        "layers": 1
+      },
+      {
+        "no": "6",
+        "boxes": 10,
+        "layers": 1
+      },
+      {
+        "no": "7",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "8",
+        "boxes": 8,
+        "layers": 1
+      }
+    ],
+    "toggle_on": true
+  },
+  "after_scroll": {
+    "view": [
+      "pages"
+    ],
+    "grid_layers": 490,
+    "grid_boxes": 242,
+    "preview_layers": 490,
+    "preview_boxes": 14,
+    "handle": {
+      "dead": false,
+      "layer_connected": true,
+      "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled"
+    },
+    "stats1": {
+      "version": "31ff1b93",
+      "counts": {
+        "blocks": 9
+      },
+      "geomHash": "741638a5"
+    },
+    "vis": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "layers": 1
+      },
+      {
+        "no": "2",
+        "boxes": 5,
+        "layers": 1
+      },
+      {
+        "no": "3",
+        "boxes": 19,
+        "layers": 1
+      },
+      {
+        "no": "4",
+        "boxes": 6,
+        "layers": 1
+      },
+      {
+        "no": "5",
+        "boxes": 8,
+        "layers": 1
+      },
+      {
+        "no": "6",
+        "boxes": 10,
+        "layers": 1
+      },
+      {
+        "no": "7",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "8",
+        "boxes": 8,
+        "layers": 1
+      }
+    ],
+    "toggle_on": true
+  },
+  "after_toggle": {
+    "view": [
+      "pages"
+    ],
+    "grid_layers": 490,
+    "grid_boxes": 242,
+    "preview_layers": 490,
+    "preview_boxes": 14,
+    "handle": {
+      "dead": false,
+      "layer_connected": true,
+      "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled"
+    },
+    "stats1": {
+      "version": "31ff1b93",
+      "counts": {
+        "blocks": 9
+      },
+      "geomHash": "741638a5"
+    },
+    "vis": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "layers": 1
+      },
+      {
+        "no": "2",
+        "boxes": 5,
+        "layers": 1
+      },
+      {
+        "no": "3",
+        "boxes": 19,
+        "layers": 1
+      },
+      {
+        "no": "4",
+        "boxes": 6,
+        "layers": 1
+      },
+      {
+        "no": "5",
+        "boxes": 8,
+        "layers": 1
+      },
+      {
+        "no": "6",
+        "boxes": 10,
+        "layers": 1
+      },
+      {
+        "no": "7",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "8",
+        "boxes": 8,
+        "layers": 1
+      }
+    ],
+    "toggle_on": true
+  },
+  "console_errors": []
+}

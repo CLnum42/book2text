@@ -1,0 +1,342 @@
+{
+  "margin_off_before_reading": {
+    "margin_btn": false,
+    "storage": [
+      [
+        "b2t.pagesMargin.v1.b2t_3E9D7M",
+        "1"
+      ],
+      [
+        "b2t.pagesMargin.v1.b2t_T7JH61",
+        "1"
+      ],
+      [
+        "b2t.pagesMargin.v1.b2t_6W23DH",
+        "1"
+      ]
+    ]
+  },
+  "reading_idle": {
+    "page_no": "第 4 页",
+    "layers": 7,
+    "boxes": 57,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly",
+    "box_pes": [
+      "auto"
+    ],
+    "children": [
+      ""
+    ],
+    "linked": 1,
+    "hovered": 1,
+    "per_page": [
+      {
+        "no": "1",
+        "boxes": 9
+      },
+      {
+        "no": "2",
+        "boxes": 5
+      },
+      {
+        "no": "3",
+        "boxes": 19
+      },
+      {
+        "no": "4",
+        "boxes": 6
+      },
+      {
+        "no": "5",
+        "boxes": 8
+      },
+      {
+        "no": "6",
+        "boxes": 10
+      },
+      {
+        "no": "7",
+        "boxes": 0
+      },
+      {
+        "no": "8",
+        "boxes": 0
+      }
+    ]
+  },
+  "seg": {
+    "x": 778,
+    "y": 229,
+    "text": "译者简介/About the Translators Dav",
+    "seq": "1"
+  },
+  "reading_hover": {
+    "page_no": "第 4 页",
+    "layers": 7,
+    "boxes": 57,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly",
+    "box_pes": [
+      "auto"
+    ],
+    "children": [
+      ""
+    ],
+    "linked": 1,
+    "hovered": 1,
+    "per_page": [
+      {
+        "no": "1",
+        "boxes": 9
+      },
+      {
+        "no": "2",
+        "boxes": 5
+      },
+      {
+        "no": "3",
+        "boxes": 19
+      },
+      {
+        "no": "4",
+        "boxes": 6
+      },
+      {
+        "no": "5",
+        "boxes": 8
+      },
+      {
+        "no": "6",
+        "boxes": 10
+      },
+      {
+        "no": "7",
+        "boxes": 0
+      },
+      {
+        "no": "8",
+        "boxes": 0
+      }
+    ]
+  },
+  "reading_idle_again": {
+    "page_no": "第 4 页",
+    "layers": 7,
+    "boxes": 57,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly",
+    "box_pes": [
+      "auto"
+    ],
+    "children": [
+      ""
+    ],
+    "linked": 0,
+    "hovered": 0,
+    "per_page": [
+      {
+        "no": "1",
+        "boxes": 9
+      },
+      {
+        "no": "2",
+        "boxes": 5
+      },
+      {
+        "no": "3",
+        "boxes": 19
+      },
+      {
+        "no": "4",
+        "boxes": 6
+      },
+      {
+        "no": "5",
+        "boxes": 8
+      },
+      {
+        "no": "6",
+        "boxes": 10
+      },
+      {
+        "no": "7",
+        "boxes": 0
+      },
+      {
+        "no": "8",
+        "boxes": 0
+      }
+    ]
+  },
+  "index_boxes_appeared": true,
+  "index_initial": {
+    "index_pages": 490,
+    "layers": 490,
+    "boxes": 9,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+    "box_pes": [
+      "auto"
+    ],
+    "children": [
+      "box__order|box__label"
+    ],
+    "per_page": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "layers": 1
+      },
+      {
+        "no": "2",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "3",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "4",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "5",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "6",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "7",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "8",
+        "boxes": 0,
+        "layers": 1
+      }
+    ],
+    "overlay_on": true,
+    "margin_on": false,
+    "hover_card": null
+  },
+  "index_hover": {
+    "index_pages": 490,
+    "layers": 490,
+    "boxes": 9,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+    "box_pes": [
+      "auto"
+    ],
+    "children": [
+      "box__order|box__label"
+    ],
+    "per_page": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "layers": 1
+      },
+      {
+        "no": "2",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "3",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "4",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "5",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "6",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "7",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "8",
+        "boxes": 0,
+        "layers": 1
+      }
+    ],
+    "overlay_on": true,
+    "margin_on": false,
+    "hover_card": "#1 段落"
+  },
+  "index_after_scroll": {
+    "index_pages": 490,
+    "layers": 490,
+    "boxes": 5,
+    "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled",
+    "box_pes": [
+      "auto"
+    ],
+    "children": [
+      "box__order|box__label"
+    ],
+    "per_page": [
+      {
+        "no": "1",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "2",
+        "boxes": 5,
+        "layers": 1
+      },
+      {
+        "no": "3",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "4",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "5",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "6",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "7",
+        "boxes": 0,
+        "layers": 1
+      },
+      {
+        "no": "8",
+        "boxes": 0,
+        "layers": 1
+      }
+    ],
+    "overlay_on": true,
+    "margin_on": false,
+    "hover_card": null
+  },
+  "console_errors": []
+}

@@ -1,0 +1,42 @@
+{
+  "round": "2026-11-02 片2笔B 对照复验",
+  "new_tree": {"sha": "7828683", "base": "http://127.0.0.1:8871"},
+  "old_tree": {"sha": "f722096", "base": "http://127.0.0.1:8872", "worktree": "/tmp/b2t-wt-slice1"},
+  "library": "/tmp/b2t-qa4/lib",
+  "project": "b2t_T7JH61",
+  "section_0_6": {
+    "diff_stat_f722096_7828683": {"preview-view.js": "+64", "pages-view.js": "+88", "app.css": "+49", "reading-view.js": "0"}
+  },
+  "verdicts": {
+    "9_pages_tile_blocks": {
+      "verdict": "regression (two independent blockers)",
+      "old_tree": {"page_1_to_6_boxes": [9,5,19,6,8,10], "boxes_before_toggle": 224, "boxes_after_toggle": 57},
+      "new_tree": {"page_1_to_6_boxes": [0,0,0,0,0,0], "layers": 490, "layers_with_children": 0, "fetch_blocks_ok": true, "paint_received_data": [10,6,18,11,21,14,13,5,22]},
+      "root_cause_a_missing_init": {"proof": "OverlayLayer.init({}) + repaint -> 242 boxes, page1-6 = 9/5/19/6/8/10", "init_call_sites": {"preview-view.js:365": true, "pages-view.js:811": false}},
+      "root_cause_b_stale_handle_after_preview": {"proof": "preview mounts 490 handles -> grid layers 490->0; tile.__overlayHandle.dead=true; delete 490 stale handles + repaint -> 159 boxes", "symptom": "after visiting preview, pages boxes stay 0 even after scroll/toggle"}
+    },
+    "10_pages_box_class_and_pointer": {
+      "verdict": "product path untestable (blocked by #9); with manual init: class ok, labeled pointer auto, hover card ok; --margin => pointer none (criterion mismatch); margin-off leaves stale --margin/pointer none until repaint",
+      "with_manual_init": {"boxes": 9, "layer_cls": "overlay-layer page-overlay page-overlay--readonly page-overlay--labeled", "pointerEvents": "auto", "children": "box__order|box__label", "hover_label_visible": true},
+      "margin_on": {"layer_cls_adds": "--margin", "pointerEvents": "none", "css": "app.css:903"},
+      "margin_off_immediate": {"layer_cls": "still --margin", "pointerEvents": "none"},
+      "margin_off_after_scroll": {"layer_cls": "--margin removed", "pointerEvents": "auto"}
+    },
+    "11_review_diff_layer": {
+      "verdict": "not broken by blade A; old/new readings identical; one pre-existing defect (zoom while overlay hidden does not rescale marks)",
+      "page_switch": {"from": 9, "to": 10, "marks": [5,4], "redrawn": true},
+      "toggle_overlay": {"marks_before": 4, "marks_after": 4, "rect_unchanged": true},
+      "zoom_overlay_on": {"canvas": [732,915], "mark_x": [89,111], "mark_w": [551,689], "same_frame_as_order": true},
+      "zoom_overlay_off": {"canvas": [915,1098], "mark_x": [111,111], "mark_w": [689,689], "stale": true, "old_tree_same": true}
+    },
+    "5_preview_boxes": {
+      "verdict": "identical count/class/title/block_id/px; only children differ",
+      "pages": {"1": 9, "2": 5, "4": 6, "5": 8, "6": 10},
+      "children_old": "box__order (6/9 outside on page 1) + box__label",
+      "children_new": "box__order box__order--inside only",
+      "note": "7828683 says preview order badge should go back outside, but that commit is docs-only; code still ties avoidance to labeled"
+    },
+    "D_preview_enter": {"verdict": "pre-existing/by design, not a regression", "both_trees": {"visible_after_enter": ["pages"], "preview_pages": 490, "preview_boxes": 0}}
+  },
+  "not_verified": ["⑩ hover card on product path (blocked by #9)", "② heading/figure colors (no sample in library)", "⑪ scroll as a redraw trigger (marks are absolute in canvas; scroll moves them 1:1)"]
+}

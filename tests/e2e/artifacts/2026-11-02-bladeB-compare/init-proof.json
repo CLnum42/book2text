@@ -1,0 +1,69 @@
+{
+  "before": {
+    "boxes": 0,
+    "layers": 490,
+    "stats1": {
+      "version": "48931d9f",
+      "counts": {},
+      "geomHash": "741638a5"
+    },
+    "stats3": {
+      "version": "71ab9fde",
+      "counts": {},
+      "geomHash": "741638a5"
+    }
+  },
+  "init_ret": "ok",
+  "after_init_repaint": {
+    "boxes": 242,
+    "layers": 490,
+    "layers_with_children": 490,
+    "first": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "hidden": false
+      },
+      {
+        "no": "2",
+        "boxes": 5,
+        "hidden": false
+      },
+      {
+        "no": "3",
+        "boxes": 19,
+        "hidden": false
+      },
+      {
+        "no": "4",
+        "boxes": 6,
+        "hidden": false
+      },
+      {
+        "no": "5",
+        "boxes": 8,
+        "hidden": false
+      },
+      {
+        "no": "6",
+        "boxes": 10,
+        "hidden": false
+      }
+    ],
+    "stats1": {
+      "version": "48931d9f",
+      "counts": {
+        "blocks": 9
+      },
+      "geomHash": "02e79f37"
+    },
+    "stats3": {
+      "version": "71ab9fde",
+      "counts": {
+        "blocks": 19
+      },
+      "geomHash": "fab93283"
+    }
+  },
+  "console_errors": []
+}
