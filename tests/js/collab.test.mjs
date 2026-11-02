@@ -251,3 +251,47 @@ test("③ 协作：死状态 assignPreviewData 全仓 0 次", () => {
       `${name} 里还有 assignPreviewData——死状态不许回来`);
   }
 });
+
+test("③ 协作：结果包下载的 URL 是 /package/results/<name>（复数——写成单数是 404 回归）", async () => {
+  const urls = [];
+  const mod = makeModule({
+    current: { project_id: "p2", kind: "package" },
+    apiJson: async (path) => {
+      if (path.endsWith("/package")) {
+        return {
+          package: {
+            page_nos: [1], context_page_nos: [], owner_name: "甲",
+            due_date: null, note: null, book_name: "书", reviewer_name: "乙",
+          },
+        };
+      }
+      if (path.endsWith("/package/results")) return { results: [{ name: "r1.b2tres", size: 1024 }] };
+      return {};
+    },
+  });
+  // 结果列表里那个「下载」按钮要能点：给沙箱换一个会记录 handler 的 createElement，
+  // 并捕获 fetch 打出的 URL（都在测试内替换，不改测试台架本身）
+  mod.sandbox.document.createElement = () => {
+    const node = mk();
+    const handlers = [];
+    node.addEventListener = (type, fn) => { if (type === "click") handlers.push(fn); };
+    node.click = () => { for (const fn of handlers) fn({ target: node }); };
+    return node;
+  };
+  mod.sandbox.fetch = async (url) => {
+    urls.push(String(url));
+    return { ok: true, blob: async () => ({}) };
+  };
+  await mod.api.applyPackageMode();
+  const list = mod.byId.get("package-result-files");
+  assert.ok(list && list.children.length === 1, "结果列表没渲染出那一行");
+  const downloadButton = list.children[0].children.at(-1);
+  downloadButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(
+    urls.at(-1),
+    "/api/projects/p2/package/results/r1.b2tres?token=t0k",
+    "下载 URL 必须是 /package/results/<name>（复数，后端 routes_packages.py:108）；"
+    + "写成单数 /package/result/ 会 404（62868c7 的 app.js:8584 本来就是复数）",
+  );
+});
