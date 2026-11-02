@@ -1,0 +1,266 @@
+{
+  "entry": "window.showView(\"preview\")（UI 无入口）",
+  "initial": {
+    "page_no": "第 1 页",
+    "zoom": "55%",
+    "pages": 490,
+    "layers": 490,
+    "boxes": 14,
+    "hits": 1,
+    "hit_pages": [
+      "4"
+    ],
+    "visible": [
+      {
+        "no": "1",
+        "boxes": 9,
+        "hits": 0,
+        "w": 336
+      },
+      {
+        "no": "2",
+        "boxes": 5,
+        "hits": 0,
+        "w": 336
+      }
+    ],
+    "hit_rects": [
+      {
+        "page": "4",
+        "rel": {
+          "x": 0.1343,
+          "y": 0.6302,
+          "w": 0.7361,
+          "h": 0.0982
+        }
+      }
+    ]
+  },
+  "seg": {
+    "x": 1031,
+    "y": 209,
+    "text": "§1第 4 页译者简介/About the Translat",
+    "seq": "1"
+  },
+  "after_seg": {
+    "page_no": "第 4 页",
+    "zoom": "55%",
+    "pages": 490,
+    "layers": 490,
+    "boxes": 33,
+    "hits": 1,
+    "hit_pages": [
+      "4"
+    ],
+    "visible": [
+      {
+        "no": "3",
+        "boxes": 19,
+        "hits": 0,
+        "w": 336
+      },
+      {
+        "no": "4",
+        "boxes": 6,
+        "hits": 1,
+        "w": 336
+      },
+      {
+        "no": "5",
+        "boxes": 8,
+        "hits": 0,
+        "w": 336
+      }
+    ],
+    "hit_rects": [
+      {
+        "page": "4",
+        "rel": {
+          "x": 0.136,
+          "y": 0.0421,
+          "w": 0.7377,
+          "h": 0.1772
+        }
+      }
+    ]
+  },
+  "after_seg_align": [
+    {
+      "page": 4,
+      "max_dev": 0,
+      "bbox": [
+        0.135961,
+        0.042156,
+        0.873693,
+        0.219317
+      ],
+      "dom": [
+        0.136,
+        0.0421,
+        0.8737,
+        0.2193
+      ]
+    }
+  ],
+  "after_flip": {
+    "page_no": "第 5 页",
+    "zoom": "55%",
+    "pages": 490,
+    "layers": 490,
+    "boxes": 24,
+    "hits": 1,
+    "hit_pages": [
+      "5"
+    ],
+    "visible": [
+      {
+        "no": "4",
+        "boxes": 6,
+        "hits": 0,
+        "w": 336
+      },
+      {
+        "no": "5",
+        "boxes": 8,
+        "hits": 1,
+        "w": 336
+      },
+      {
+        "no": "6",
+        "boxes": 10,
+        "hits": 0,
+        "w": 336
+      }
+    ],
+    "hit_rects": [
+      {
+        "page": "5",
+        "rel": {
+          "x": 0.1351,
+          "y": 0.0534,
+          "w": 0.3668,
+          "h": 0.1302
+        }
+      }
+    ]
+  },
+  "after_flip_align": [
+    {
+      "page": 5,
+      "max_dev": 0,
+      "bbox": [
+        0.135157,
+        0.053362,
+        0.502011,
+        0.183565
+      ],
+      "dom": [
+        0.1351,
+        0.0534,
+        0.502,
+        0.1835
+      ]
+    }
+  ],
+  "flip": {
+    "before": "第 4 页",
+    "after": "第 5 页"
+  },
+  "after_zoom": {
+    "page_no": "第 5 页",
+    "zoom": "70%",
+    "pages": 490,
+    "layers": 490,
+    "boxes": 24,
+    "hits": 1,
+    "hit_pages": [
+      "5"
+    ],
+    "visible": [
+      {
+        "no": "4",
+        "boxes": 6,
+        "hits": 0,
+        "w": 427
+      },
+      {
+        "no": "5",
+        "boxes": 8,
+        "hits": 1,
+        "w": 427
+      }
+    ],
+    "hit_rects": [
+      {
+        "page": "5",
+        "rel": {
+          "x": 0.1352,
+          "y": 0.0534,
+          "w": 0.3668,
+          "h": 0.1302
+        }
+      }
+    ]
+  },
+  "after_zoom_align": [
+    {
+      "page": 5,
+      "max_dev": 0,
+      "bbox": [
+        0.135157,
+        0.053362,
+        0.502011,
+        0.183565
+      ],
+      "dom": [
+        0.1352,
+        0.0534,
+        0.502,
+        0.1835
+      ]
+    }
+  ],
+  "after_zoom_back": {
+    "page_no": "第 5 页",
+    "zoom": "55%",
+    "pages": 490,
+    "layers": 490,
+    "boxes": 24,
+    "hits": 1,
+    "hit_pages": [
+      "5"
+    ],
+    "visible": [
+      {
+        "no": "4",
+        "boxes": 6,
+        "hits": 0,
+        "w": 336
+      },
+      {
+        "no": "5",
+        "boxes": 8,
+        "hits": 1,
+        "w": 336
+      },
+      {
+        "no": "6",
+        "boxes": 10,
+        "hits": 0,
+        "w": 336
+      }
+    ],
+    "hit_rects": [
+      {
+        "page": "5",
+        "rel": {
+          "x": 0.1351,
+          "y": 0.0534,
+          "w": 0.3668,
+          "h": 0.1302
+        }
+      }
+    ]
+  },
+  "console_errors": []
+}

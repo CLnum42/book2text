@@ -1,0 +1,66 @@
+{
+  "before": {
+    "result_hidden": true,
+    "result_meta": "",
+    "files": [],
+    "reveal": {
+      "visible": false,
+      "disabled": false,
+      "text": "在文件夹中显示"
+    },
+    "history": [],
+    "history_empty_hidden": false,
+    "error_hidden": true,
+    "error_text": "",
+    "latest_marked": 0
+  },
+  "after_export": {
+    "result_hidden": false,
+    "result_meta": "20261102-1018_txt · 1068 段 · 161264 字 · 未审 1068 段 · 2026-11-02 10:18",
+    "files": [
+      "body.txt下载",
+      "meta.json下载",
+      "manifest.json下载"
+    ],
+    "reveal": {
+      "visible": true,
+      "disabled": false,
+      "text": "在文件夹中显示"
+    },
+    "history": [
+      "2026-11-02 10:18 · txt · 1068 段 · 161264 字 · 未审 1068 段查看"
+    ],
+    "history_empty_hidden": true,
+    "error_hidden": true,
+    "error_text": "",
+    "latest_marked": 1
+  },
+  "after_reveal": {
+    "result_hidden": false,
+    "result_meta": "20261102-1018_txt · 1068 段 · 161264 字 · 未审 1068 段 · 2026-11-02 10:18",
+    "files": [
+      "body.txt下载",
+      "meta.json下载",
+      "manifest.json下载"
+    ],
+    "reveal": {
+      "visible": true,
+      "disabled": false,
+      "text": "在文件夹中显示"
+    },
+    "history": [
+      "2026-11-02 10:18 · txt · 1068 段 · 161264 字 · 未审 1068 段查看"
+    ],
+    "history_empty_hidden": true,
+    "error_hidden": true,
+    "error_text": "",
+    "latest_marked": 1
+  },
+  "reveal_calls": [
+    {
+      "url": "/api/projects/b2t_T7JH61/exports/20261102-1018_txt/reveal",
+      "status": 200
+    }
+  ],
+  "console_errors": []
+}

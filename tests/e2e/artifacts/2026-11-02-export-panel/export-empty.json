@@ -1,0 +1,151 @@
+{
+  "panel": {
+    "panel_hidden": false,
+    "rows": 15,
+    "row_pairs": [
+      {
+        "k": "导出页数",
+        "v": "0 页"
+      },
+      {
+        "k": "正文段数",
+        "v": "0 段"
+      },
+      {
+        "k": "正文字数",
+        "v": "0 字"
+      },
+      {
+        "k": "注释条数",
+        "v": "0 条（未导出）"
+      },
+      {
+        "k": "注释字数",
+        "v": "0 字"
+      },
+      {
+        "k": "元数据页数",
+        "v": "0 页"
+      },
+      {
+        "k": "页码映射",
+        "v": "0 / 0 页"
+      },
+      {
+        "k": "跨块合并的段",
+        "v": "0 段"
+      }
+    ],
+    "note_hidden": false,
+    "note_text": "按当前设置没有内容可以导出——检查页面类型、范围与「仅已确认」。 注释流默认不导出；勾选「同时导出注释」才会生成 notes.txt / notes.jsonl。 按版心判定已开启：版心外 0 块不进正文，书眉不写进 meta.json。 按当前类型 / 范围过滤掉 3 页。",
+    "error_hidden": true,
+    "error_text": "",
+    "compare_hidden": true,
+    "compare_meta": "",
+    "segments": [],
+    "result_hidden": true,
+    "result_meta": "",
+    "history": []
+  },
+  "preview": {
+    "panel_hidden": false,
+    "rows": 15,
+    "row_pairs": [
+      {
+        "k": "导出页数",
+        "v": "0 页"
+      },
+      {
+        "k": "正文段数",
+        "v": "0 段"
+      },
+      {
+        "k": "正文字数",
+        "v": "0 字"
+      },
+      {
+        "k": "注释条数",
+        "v": "0 条（未导出）"
+      },
+      {
+        "k": "注释字数",
+        "v": "0 字"
+      },
+      {
+        "k": "元数据页数",
+        "v": "0 页"
+      },
+      {
+        "k": "页码映射",
+        "v": "0 / 0 页"
+      },
+      {
+        "k": "跨块合并的段",
+        "v": "0 段"
+      }
+    ],
+    "note_hidden": false,
+    "note_text": "按当前设置没有内容可以导出——检查页面类型、范围与「仅已确认」。 注释流默认不导出；勾选「同时导出注释」才会生成 notes.txt / notes.jsonl。 按版心判定已开启：版心外 0 块不进正文，书眉不写进 meta.json。 按当前类型 / 范围过滤掉 3 页。",
+    "error_hidden": true,
+    "error_text": "",
+    "compare_hidden": false,
+    "compare_meta": "0 段 · 0 字 · 0 页（按当前导出设置）",
+    "segments": [
+      "按当前导出设置没有内容可以导出。"
+    ],
+    "result_hidden": true,
+    "result_meta": "",
+    "history": []
+  },
+  "after_export": {
+    "panel_hidden": false,
+    "rows": 15,
+    "row_pairs": [
+      {
+        "k": "导出页数",
+        "v": "0 页"
+      },
+      {
+        "k": "正文段数",
+        "v": "0 段"
+      },
+      {
+        "k": "正文字数",
+        "v": "0 字"
+      },
+      {
+        "k": "注释条数",
+        "v": "0 条（未导出）"
+      },
+      {
+        "k": "注释字数",
+        "v": "0 字"
+      },
+      {
+        "k": "元数据页数",
+        "v": "0 页"
+      },
+      {
+        "k": "页码映射",
+        "v": "0 / 0 页"
+      },
+      {
+        "k": "跨块合并的段",
+        "v": "0 段"
+      }
+    ],
+    "note_hidden": false,
+    "note_text": "按当前设置没有内容可以导出——检查页面类型、范围与「仅已确认」。 注释流默认不导出；勾选「同时导出注释」才会生成 notes.txt / notes.jsonl。 按版心判定已开启：版心外 0 块不进正文，书眉不写进 meta.json。 按当前类型 / 范围过滤掉 3 页。",
+    "error_hidden": false,
+    "error_text": "导出没有完成 错误编号 2fcd10d1a242 按照当前设置没有任何内容可以导出：块可能全被排除、页面类型不在导出范围内，或「仅已确认」下没有已确认的块",
+    "compare_hidden": false,
+    "compare_meta": "0 段 · 0 字 · 0 页（按当前导出设置）",
+    "segments": [
+      "按当前导出设置没有内容可以导出。"
+    ],
+    "result_hidden": true,
+    "result_meta": "",
+    "history": []
+  },
+  "console_errors": []
+}

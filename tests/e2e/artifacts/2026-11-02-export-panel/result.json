@@ -1,0 +1,67 @@
+{
+  "round": "2026-11-02 导出面板真机",
+  "baseline": {"sha": "62868c7", "origin": "62868c7", "static_changed": {"app.js": "-553 lines", "export-panel.js": "+585 new", "index.html": "+1", "overlay-registry.js": "+88"}},
+  "env": {"library": "/tmp/b2t-qa4/lib", "project": "b2t_T7JH61", "viewport": "1423x900 @2x", "service": "http://127.0.0.1:8871"},
+  "side_effects": {
+    "export_record_created": "20261102-1018_txt (body.txt 223335 B / meta.json 381969 B / manifest.json 19349 B)",
+    "project_settings_changed": {"b2t_T7JH61": {"margin_judgement_notice": true}, "reason": "④ dismissed notice"}
+  },
+  "verdicts": {
+    "1_preflight_rows_and_notes": {
+      "verdict": "pass",
+      "rows": 17,
+      "rows_sample": {"导出页数": "487 页", "正文段数": "1068 段", "正文字数": "161264 字", "页码映射": "32 / 487 页", "未审校的段": "1068 段", "版心未定": "237 页", "版心外被排除": "132 块"},
+      "note_hidden": false,
+      "note_len": 763,
+      "note_height_px": 360,
+      "error_hidden": true,
+      "note_topics": ["455 页无印刷页码", "注释流默认不导出", "237 页版心未定", "按版心判定已开启", "默认版心未确认", "238 页无生效版心", "386 页未识别", "485 页版面未确认", "1068 段未审校", "79 页单引擎"]
+    },
+    "2_compare_follows": {
+      "verdict": "pass",
+      "export_compare": {
+        "segments": 1068,
+        "initial": {"page": 4, "image_px": [206, 311], "boxes": 6, "source_boxes": 1, "max_dev": 0},
+        "flip_to_segment_6": {"page": 5, "boxes": 8, "source_boxes": 1, "max_dev": 0},
+        "window_resize_1423_to_760": {"image_px": [275, 415], "boxes": 8, "max_dev": 0},
+        "restore_1423": {"image_px": [206, 311], "max_dev": 0}
+      },
+      "preview_view_programmatic": {
+        "entry": "window.showView('preview') (UI has no preview step)",
+        "flip": {"from": 4, "to": 5, "hits_page": [4, 5], "max_dev": 0},
+        "zoom": {"from": "55%", "to": "70%", "page_w": [336, 427], "max_dev": 0}
+      }
+    },
+    "3_export_and_reveal": {
+      "verdict": "pass",
+      "record": {"export_id": "20261102-1018_txt", "segments": 1068, "chars": 161264, "unreviewed": 1068},
+      "files": ["body.txt", "meta.json", "manifest.json"],
+      "disk_bytes": {"body.txt": 223335, "meta.json": 381969, "manifest.json": 19349},
+      "history": {"items": 1, "latest_marked": 1, "empty_hidden": true},
+      "reveal": {"visible": true, "disabled": false, "api": "POST /exports/20261102-1018_txt/reveal", "status": 200}
+    },
+    "4_margin_notice": {
+      "verdict": "pass",
+      "before": {"hidden": false, "text_len": 83},
+      "after_click": {"hidden": true},
+      "settings": {"margin_judgement_notice": true},
+      "in_export_panel": {"hidden": true},
+      "after_close": {"hidden": true},
+      "after_reload": {"hidden": true}
+    },
+    "5_empty_data": {
+      "verdict": "pass",
+      "project": "b2t_RDBXG4",
+      "preflight": {"rows": 15, "all_zero": true, "note": "按当前设置没有内容可以导出——检查页面类型、范围与「仅已确认」…过滤掉 3 页"},
+      "preview": {"meta": "0 段 · 0 字 · 0 页", "empty_message": "按当前导出设置没有内容可以导出。"},
+      "export": {"rejected": true, "error_code": "2fcd10d1a242", "message": "导出没有完成 … 按照当前设置没有任何内容可以导出…", "history_added": 0}
+    },
+    "6_console": {"verdict": "pass", "errors": 0, "unhandled_rejections": 0}
+  },
+  "notes": [
+    "export compare has no zoom control; 缩放 verified by window resize 1423→760 (responsive reflow <900px)",
+    "preview view has no UI entry; used window.showView('preview') programmatically",
+    "hidden fallback text quirk: #compare-image-status.hidden=true but textContent='来源页渲染失败。' after a successful load (attachRenderErrorDetail load branch writes fallback); not user-visible",
+    "not tested: JSONL / confirmed-only / page-range / notes toggles; not tested export text vs source content"
+  ]
+}

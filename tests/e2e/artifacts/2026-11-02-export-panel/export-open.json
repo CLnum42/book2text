@@ -1,0 +1,72 @@
+{
+  "notice_before": {
+    "hidden": false,
+    "text": "导出已默认「按版心判定正文」：只收版心内的段落 / 标题，版心外的书眉 / 页码 / 装饰默认排除。可以在导出面板或识别设置里关闭。\n      \n      "
+  },
+  "settings_before": {},
+  "panel": {
+    "panel_hidden": false,
+    "rows": 17,
+    "row_pairs": [
+      {
+        "k": "导出页数",
+        "v": "487 页"
+      },
+      {
+        "k": "正文段数",
+        "v": "1068 段"
+      },
+      {
+        "k": "正文字数",
+        "v": "161264 字"
+      },
+      {
+        "k": "注释条数",
+        "v": "0 条（未导出）"
+      },
+      {
+        "k": "注释字数",
+        "v": "0 字"
+      },
+      {
+        "k": "元数据页数",
+        "v": "487 页"
+      },
+      {
+        "k": "页码映射",
+        "v": "32 / 487 页"
+      },
+      {
+        "k": "跨块合并的段",
+        "v": "0 段"
+      },
+      {
+        "k": "断词还原",
+        "v": "19 处"
+      },
+      {
+        "k": "未审校的段",
+        "v": "1068 段"
+      },
+      {
+        "k": "不确定的段",
+        "v": "0 段"
+      },
+      {
+        "k": "正文不收的块类型",
+        "v": "caption、decoration、figure、footer、footnote、header、margin_note、other、page_number"
+      }
+    ],
+    "note_hidden": false,
+    "note_text": "有 455 页抽不到印刷页码（4、5、6、7、30、34、35、36、37、38、39、40 等）——meta.json 里这些页的 printed_page 是 null，不拿 PDF 页号冒充。 注释流默认不导出；勾选「同时导出注释」才会生成 notes.txt / notes.jsonl。 有 237 页版心未定（254、255、256、257、258、259、260、261、262、263、264、265 等）——这些页还没有可用的拟合框，按版心判定时会跳过、不拿默认版心顶替。先跑「检测并定版心」再导出更稳妥。 按版心判定已开启：版心外 132 块不进正文，书眉不写进 meta.json。 默认版心是自动推算、还没确认：只有显式「沿用全局」的页会用到它；「每页自动拟合」的页读自己的框。想固定全局版心，在页面视图点「采用为默认版心」。 有 238 页没有生效版心（7、254、255、",
+    "note_len": 763,
+    "note_rect_h": 360,
+    "error_hidden": true,
+    "error_text": "",
+    "scope": "TXT · 全书 · 按版心判定正文",
+    "notice_hidden": false,
+    "notice_text": "导出已默认「按版心判定正文」：只收版心内的段落 / 标题，版心外的书眉 / 页码 / 装饰默认排除。可以在导出面板或识别设置里关闭。\n      \n      "
+  },
+  "shot_panel": "/tmp/b2t-qa/2026-11-02-export-panel/export-panel-open.png",
+  "error": "ElementResolutionError: page.click timed out after 3003ms: Selector #margin-judgement-notice-ok matched 1 elements, but none can receive input; <div id=\"export-panel\"> intercepts pointer events\n    at #retryElementAction (file:////[eval1]:20052:27)\n    at async #services.gate.withPage.sessionTimeoutMs.sessionTimeoutMs (file:////[eval1]:20144:29)\n    at async file:////[eval1]:17463:28"
+}

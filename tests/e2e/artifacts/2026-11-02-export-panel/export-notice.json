@@ -1,0 +1,50 @@
+{
+  "before": {
+    "hidden": false,
+    "text_len": 83,
+    "btn": {
+      "text": "知道了",
+      "visible": true
+    }
+  },
+  "settings_before": {},
+  "after_click": {
+    "hidden": true,
+    "text_len": 83,
+    "btn": {
+      "text": "知道了",
+      "visible": false
+    }
+  },
+  "settings_after": {
+    "margin_judgement_notice": true
+  },
+  "in_export": {
+    "hidden": true,
+    "text_len": 83,
+    "btn": {
+      "text": "知道了",
+      "visible": false
+    }
+  },
+  "after_close": {
+    "hidden": true,
+    "text_len": 83,
+    "btn": {
+      "text": "知道了",
+      "visible": false
+    }
+  },
+  "after_reload": {
+    "hidden": true,
+    "text_len": 83,
+    "btn": {
+      "text": "知道了",
+      "visible": false
+    }
+  },
+  "settings_after_reload": {
+    "margin_judgement_notice": true
+  },
+  "console_errors": []
+}
