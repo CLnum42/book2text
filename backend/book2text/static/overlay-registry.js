@@ -7,6 +7,10 @@
  * tile 元素本身）。拿到 host 之后**只 append，不查询**：图层容器是它自己 `createElement` 出来的，
  * 句柄里一直握着那个节点；换内容靠"先建新子树、再摘旧子树"，不清空重画。
  *
+ * **句柄按宿主元素唯一，不按 pageNo 唯一**（笔 C 修，QA 回归 ⑨-b）：preview 会一次性给 490 页
+ * 各 mount 一份，pages 也各有自己那份；同一页在两个视图里各有一层是**正常**的。按 pageNo 唯一
+ * 会让后 mount 的那个把先前的整层 unmount 掉（回到 pages 时 tile 上是个死句柄，数据到了也不画）。
+ *
  * **容器 class = `overlay-layer page-overlay page-overlay--readonly`**：`overlay-layer` 只作标识 /
  * 诊断钩子，样式全靠 `.page-overlay` 那条作用域（`app.css` 本片 0 行改动）。容器必须挂在
  * `.preview-page` 子树里——`.preview-page .page-overlay{ z-index:2 }` 与
@@ -28,8 +32,10 @@
   let injected = {};
   /** type → { z, render(item, style) → Element }；一种视觉元素只注册一次。 */
   const registered = new Map();
-  /** pageNo → handle（同一页只允许一个图层；诊断 stats 也走它）。 */
-  const handles = new Map();
+  /** hostEl → handle：句柄按宿主元素唯一（同一页在不同视图里各一份是正常的）。 */
+  const handlesByHost = new WeakMap();
+  /** pageNo → 最近一次 mount 的句柄：只给 `stats()` 诊断用，不参与唯一性。 */
+  const lastByPage = new Map();
   /** 帧末待消费的 handle。 */
   const dirty = new Set();
   let rafId = 0;
@@ -369,7 +375,7 @@
   function mount(hostEl, { pageNo } = {}) {
     const no = Number(pageNo);
     if (!hostEl || !hostEl.appendChild || !Number.isFinite(no)) return null;
-    const existing = handles.get(no);
+    const existing = handlesByHost.get(hostEl);
     if (existing) unmount(existing);
     const layer = document.createElement("div");
     layer.className = layerClassName();
@@ -390,7 +396,8 @@
       pending: null,
       dead: false,
     };
-    handles.set(no, handle);
+    handlesByHost.set(hostEl, handle);
+    lastByPage.set(no, handle);
     return handle;
   }
 
@@ -399,7 +406,8 @@
     handle.dead = true;
     handle.pending = null;
     dirty.delete(handle);
-    if (handles.get(handle.pageNo) === handle) handles.delete(handle.pageNo);
+    if (handlesByHost.get(handle.host) === handle) handlesByHost.delete(handle.host);
+    if (lastByPage.get(handle.pageNo) === handle) lastByPage.delete(handle.pageNo);
     if (resizeObserver && observedContainers.delete(handle.layer)) resizeObserver.unobserve(handle.layer);
     layoutTokens.delete(handle.layer);
     layoutOptions.delete(handle.layer);
@@ -411,15 +419,42 @@
     handle.geomHash = "";
   }
 
+  /**
+   * 死句柄自愈（⑨-c）：图层被替换 / 宿主换过 / 之前被 unmount 过时，**在同一个 host 上重挂一次**，
+   * 并把新图层的字段并回老句柄对象——调用方（tile.__overlayHandle）缓存的老引用继续可用。
+   */
+  function revive(handle) {
+    if (!handle) return null;
+    if (!handle.dead && handle.layer && handle.layer.isConnected) return handle;
+    if (!handle.host || typeof handle.host.appendChild !== "function") return null;
+    const fresh = mount(handle.host, { pageNo: handle.pageNo });
+    if (!fresh) return null;
+    if (fresh !== handle) {
+      handle.dead = false;
+      handle.layer = fresh.layer;
+      handle.types = fresh.types;
+      handle.painted = fresh.painted;
+      handle.counts = fresh.counts;
+      handle.pending = null;
+      handle.version = "";
+      handle.geomHash = "";
+      handlesByHost.set(handle.host, handle);
+      lastByPage.set(handle.pageNo, handle);
+    }
+    return handle;
+  }
+
   /** 视图：数据到了 / 变了就叫一声；不立即画，登记到本模块唯一的 rAF，帧末消费。 */
   function paint(handle, { data, active, styles } = {}) {
-    if (!handle || handle.dead) return;
-    handle.pending = {
+    if (!handle) return;
+    const live = revive(handle);
+    if (!live) return;
+    live.pending = {
       data: Array.isArray(data) ? data : [],
       active: Array.isArray(active) ? active : [],
       styles: styles || {},
     };
-    dirty.add(handle);
+    dirty.add(live);
     scheduleFlush();
   }
 
@@ -506,7 +541,7 @@
 
   /** 只读诊断：版本、每类画了几个、几何指纹（不许有副作用）。 */
   function stats(pageNo) {
-    const handle = handles.get(Number(pageNo));
+    const handle = lastByPage.get(Number(pageNo));
     if (!handle) return { version: "", counts: {}, geomHash: "" };
     return { version: handle.version, counts: Object.assign({}, handle.counts), geomHash: handle.geomHash };
   }
