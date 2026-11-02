@@ -840,7 +840,7 @@ function paintPageBlocks(tile, blocks) {
   });
 }
 
-/** 与原来的 clearPageBlocks 同义：图层自己收起。 */
+/** 收起这一页的块框（图层自己 hidden，数据清空）。 */
 function hidePageBlocks(tile) {
   paintPageBlocks(tile, []);
 }

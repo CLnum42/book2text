@@ -123,7 +123,7 @@ const readingTreeOpen = new Set();
 // 滚动，而不是只有右边文字可以上下滚动，左边不能滚动。"
 //
 // 做法与目录确认 / 结果预览同一套：页块是空壳（先占住真实比例），图和块只给视口
-// 附近 ±3 页挂上；版心 + 块框复用 `paintTileMargin` / `renderPageBlocks`。
+// 附近 ±3 页挂上；版心复用 `paintTileMargin`，块框交给 overlay registry。
 // 跟随开着时右栏滚到哪一页、左边滚到哪一页；关掉后左边自己滚，互不打扰。
 
 let readingTiles = new Map();
@@ -2024,10 +2024,8 @@ function buildReadingPages() {
     const marginBox = document.createElement("div");
     marginBox.className = "page-margin__box";
     margin.append(marginBox);
-    const overlay = document.createElement("div");
-    overlay.className = "page-overlay page-overlay--readonly";
-    overlay.hidden = true;
-    tile.append(image, margin, overlay);
+    // 片 2：块框容器归 overlay registry（mount 到 tile），这里不再自己拼 class
+    tile.append(image, margin);
     readingTiles.set(page.page_no, tile);
     fragment.append(tile);
   }
@@ -2576,7 +2574,7 @@ function markReadingImageFailed(pageNo) {
 function clearReadingDecorations(pageNo) {
   const tile = readingTiles.get(pageNo);
   if (!tile) return;
-  injected.clearPageBlocks(tile);
+  paintReadingBlocks(tile, []);
   injected.clearTileMargin(tile);
 }
 
@@ -3531,6 +3529,27 @@ function applyReadingLinked(pageNo) {
   }
 }
 
+/** 这一页的图层句柄：registry 自己建容器，句柄挂在 tile 上（不按 class 找 DOM）。 */
+function readingOverlayHandle(tile) {
+  const api = window.OverlayLayer;
+  const pageNo = Number(tile && tile.dataset ? tile.dataset.pageNo : NaN);
+  if (!api || !Number.isFinite(pageNo)) return null;
+  if (!tile.__overlayHandle) tile.__overlayHandle = api.mount(tile, { pageNo });
+  return tile.__overlayHandle;
+}
+
+/** 正文审校只画色框、不建顺序号（details:false）。 */
+function paintReadingBlocks(tile, blocks) {
+  const api = window.OverlayLayer;
+  const handle = readingOverlayHandle(tile);
+  if (!api || !handle) return;
+  api.paint(handle, {
+    data: injected.getPagesOverlayOn() ? blocks || [] : [],
+    active: ["blocks"],
+    styles: { details: false },
+  });
+}
+
 /** 画一页的版心 + 块框（复用页面视图那套渲染，不另写）。 */
 function paintReadingTile(pageNo) {
   const tile = readingTiles.get(pageNo);
@@ -3538,13 +3557,10 @@ function paintReadingTile(pageNo) {
   if (!tile || !page) return;
   injected.paintTileMargin(tile, page);
   const blocks = readingPageBlocks.get(pageNo) || [];
-  const overlay = tile.querySelector(".page-overlay");
-  if (!overlay) return;
+  paintReadingBlocks(tile, blocks);
   if (injected.getPagesOverlayOn() && blocks.length) {
-    if (overlay._renderedBlocks !== blocks) injected.renderPageBlocks(tile, blocks, { details: false });
-    applyReadingLinked(pageNo);
-  } else {
-    injected.clearPageBlocks(tile);
+    // paint 在 registry 的 rAF 里落地：装饰必须等节点真的建出来（下一拍再套 is-linked）
+    requestAnimationFrame(() => applyReadingLinked(pageNo));
   }
   // 当前页：顺便把差异字 / 词画成色块（只画差异，相同字不画）
   if (pageNo === readingPageNo) paintReadingDiffBoxes(pageNo);

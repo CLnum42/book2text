@@ -3048,52 +3048,6 @@ function togglePageBlocksOverlay() { return window.PagesView.togglePageBlocksOve
 
 
 
-function renderPageBlocks(tile, blocks, { details = pageZoomIndex >= 2 } = {}) {
-  const overlay = tile.querySelector(".page-overlay");
-  if (!overlay) return;
-  overlay.innerHTML = "";
-  overlay._renderedBlocks = blocks;
-  overlay._lineBboxes = [];
-  // 网格 / 大网格：只画色框。缩略图上 11px 的顺序号看不清，画了只是噪声。
-  const showDetails = details;
-  let count = 0;
-  for (const block of blocks) {
-    if (!block.bbox) continue;
-    const box = document.createElement("div");
-    box.className = `box box--type-${block.block_type}`;
-    if (!block.include) box.classList.add("box--excluded");
-    if (block.review_status === "uncertain") box.classList.add("box--uncertain");
-    box._bbox = block.bbox;
-    // 任务 57：悬停联动靠它把"这一段的行"映射到"左边的块框"
-    if (block.block_id) box.dataset.blockId = block.block_id;
-    applyBoxElementRect(box, block.bbox);
-    const index = block.order_index;
-    box.title = `${boxTypeLabel(block)} · 第 ${index + 1} 块`;
-    if (showDetails) {
-      // 与审校视图同一套规则：颜色 + 顺序号，悬停才出类型卡片
-      box.append(buildBoxOrder(index));
-      box.append(buildBoxLabel(block, index, null));
-    }
-    overlay.append(box);
-    count += 1;
-  }
-  overlay.hidden = count === 0;
-  if (!showDetails || !count) return;
-  // 同步摆一次，别等 rAF：块框刚画出来时可能正赶上滚动 / 缩放，晚一帧就会看到没摆好的号
-  layoutOverlayAnnotations(overlay);
-  scheduleOverlayLayout(overlay);
-}
-
-function clearPageBlocks(tile) {
-  const overlay = tile.querySelector(".page-overlay");
-  if (!overlay) return;
-  // 离屏清理每帧都会调用：本来就空就别再写 DOM
-  if (!overlay._renderedBlocks && overlay.hidden) return;
-  overlay.innerHTML = "";
-  overlay.hidden = true;
-  overlay._renderedBlocks = null;
-}
-
 // ---------------------------------------------------------------- 版心视图
 //
 // 用户的设计（2026-10-23）：大多数书的正文都在版心里，页眉 / 页脚 / 页码在版心外。
@@ -5496,7 +5450,7 @@ function renderPageDetail(data) {
       el("detail-image-status").hidden = true;
       el("detail-canvas").hidden = false;
       applyZoom();
-      // 块框默认关着，没有 scheduleOverlayLayout 来顺手重画差异层：图出来自己画
+      // 块框默认关着，没有布局调度来顺手重画差异层：图出来自己画
       drawDiffLayer();
     };
     image.onerror = () => {
@@ -5890,17 +5844,9 @@ function buildBoxLabel(block, index, suggestion) {
 /**
  * 片 2：避让数学（顺序号找空位 / 卡片找空位 / 摆位 / 90 帧重试 / 尺寸观察）已经整体搬进
  * `overlay-registry.js`（唯一实现，契约 §1 不许两套）。这里只留薄转发，给还没迁完的
- * reading / index（仍走 `renderPageBlocks`）与审校的 `#detail-overlay` 用；
+ * 审校的 `#detail-overlay` 用；
  * 2.2 把 reading / index 迁进 registry 之后，这三个转发器一起删。
  */
-function layoutOverlayAnnotations(overlay) {
-  return window.OverlayLayer?.layout(overlay, { bboxOf: (box) => box._bbox, lineBboxes: overlay._lineBboxes });
-}
-
-function scheduleOverlayLayout(overlay) {
-  window.OverlayLayer?.schedule(overlay, { bboxOf: (box) => box._bbox, lineBboxes: overlay._lineBboxes });
-}
-
 /** 审校侧：摆完号在同一帧重画差异层（排帧与尺寸观察都归 registry 的 schedule）。 */
 function scheduleDetailOverlayLayout(overlay) {
   window.OverlayLayer?.schedule(overlay, {
@@ -6335,7 +6281,8 @@ function drawDetailOverlay(blocks) {
     overlay.append(box);
   });
   // 先同步摆一次（getBoundingClientRect 会强制布局），再等下一帧处理"图还没出来"的情况
-  layoutOverlayAnnotations(overlay);
+  // 先同步摆一次（getBoundingClientRect 会强制布局），再等下一帧处理"图还没出来"的情况
+  window.OverlayLayer?.layout(overlay, { bboxOf: (box) => box._bbox, lineBboxes: overlay._lineBboxes });
   scheduleDetailOverlayLayout(overlay);
 }
 
@@ -9720,7 +9667,6 @@ function boot() {
     // L6 刀1：状态 setter（有写点才给）
     // L6 刀1：仍留在 app.js 的叶子函数
     clearImagePlaceholder: (...args) => window.PageIndexService?.clearImagePlaceholder(...args),
-    clearPageBlocks: (...args) => clearPageBlocks(...args),
     clearTileMargin: (...args) => clearTileMargin(...args),
     pageImageUrl: (...args) => pageImageUrl(...args),
     // L6 刀2：仍留在 app.js 的叶子函数
@@ -9740,7 +9686,6 @@ function boot() {
     setPagesOverlayOn: (value) => { pagesOverlayOn = value; return value; },
     // L6 刀12：仍留在 app.js 的叶子函数
     paintTileMargin: (...args) => paintTileMargin(...args),
-    renderPageBlocks: (...args) => renderPageBlocks(...args),
     savePageMarginPreference: (...args) => savePageMarginPreference(...args),
     savePageOverlayPreference: (...args) => savePageOverlayPreference(...args),
   });
@@ -9971,10 +9916,8 @@ function boot() {
     pageImageUrl: (...args) => pageImageUrl(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
     blockCountedInMargin: (...args) => blockCountedInMargin(...args),
-    clearPageBlocks: (...args) => clearPageBlocks(...args),
     clearTileMargin: (...args) => clearTileMargin(...args),
     paintTileMargin: (...args) => paintTileMargin(...args),
-    renderPageBlocks: (...args) => renderPageBlocks(...args),
     loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
     clearImagePlaceholder: (...args) => window.PageIndexService?.clearImagePlaceholder(...args),
     // 导航
@@ -10077,10 +10020,8 @@ function boot() {
     apiJson: (path, options) => apiJson(path, options),
     // 仍留在 app.js 的页面视图叶子函数
     applyBoxElementRect: (...args) => applyBoxElementRect(...args),
-    clearPageBlocks: (...args) => clearPageBlocks(...args),
     clearTileMargin: (...args) => clearTileMargin(...args),
     paintTileMargin: (...args) => paintTileMargin(...args),
-    renderPageBlocks: (...args) => renderPageBlocks(...args),
     loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
     loadPageIndex: (...args) => window.PageIndexService?.loadIndex(...args),
     pageImageUrl: (...args) => pageImageUrl(...args),
@@ -10120,6 +10061,10 @@ function boot() {
     blocksKey: (pageNo) => pageBlockKey(pageNo),
     blocksGet: (key) => pageBlockCache.get(key),
     blocksRemember: (key, blocks) => rememberPageBlocks(key, blocks),
+  });
+  // 片 2：块框的卡片构建器（纯函数，只吃 block/index；registry 在 labeled 时才会调它）
+  window.OverlayLayer?.init({
+    buildLabel: (block, index) => buildBoxLabel(block, index, null),
   });
   // ① S1：页详情编辑面板（root = #view-review；核心抽屉仍在外壳画，画完喊 renderBlocks）
   window.PageDetailEditor?.init({

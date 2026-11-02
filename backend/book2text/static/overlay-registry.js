@@ -500,8 +500,8 @@
     handle.layer.hidden = visible === 0;
     handle.version = version;
     handle.geomHash = fnv1a(stableJSON(bboxes));
-    // 只有可交互视图（labeled）才需要"框外避让"：只读缩略图的号固定在框内右上角。
-    if (styles.labeled && styles.details !== false && visible > 0) schedule(handle.layer, {});
+    // 避让跟 details 走、卡片跟 labeled 走（笔 C 解耦）：只读视图（preview）也有号，号照样出框。
+    if (styles.details !== false && visible > 0) schedule(handle.layer, {});
   }
 
   /** 只读诊断：版本、每类画了几个、几何指纹（不许有副作用）。 */

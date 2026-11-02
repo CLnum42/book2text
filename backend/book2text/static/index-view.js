@@ -8,7 +8,7 @@
  * 用户要的是"394 页扫描件一眼看过去，能确认页码排得对不对"。所以这一屏是**连续页列**：
  * 页块只是固定宽高比的占位空壳（滚动高度靠它），图和块数据只给视口附近加载，
  * 滚出去的页立刻清掉版心 / 块框 / 首行框，离得远的页再把 img 的 src 摘掉。
- * 版心 / 块框 / 首行框与页面视图、预览共用同一套画法（`paintTileMargin` / `renderPageBlocks`），
+ * 版心 / 块框 / 首行框与页面视图、预览共用同一套画法（`paintTileMargin` / overlay registry），
  * 缩放四档也共用 `pageZoomIndex`——**一份状态，三个视图**，不许各写一套。
  *
  * **Slice I1（2026-10-29）**：41 个函数 + 23 个状态整段从 app.js 迁入，函数体**逐字节未改**，
@@ -333,15 +333,12 @@ function buildIndexPages() {
     marginBox.className = "page-margin__box";
     margin.append(marginBox);
 
-    const overlay = document.createElement("div");
-    overlay.className = "page-overlay page-overlay--readonly page-overlay--labeled";
-    overlay.hidden = true;
-
+    // 片 2：块框容器归 overlay registry（mount 到 tile），这里不再自己拼 class
     const firstline = document.createElement("div");
     firstline.className = "index-firstline";
     firstline.hidden = true;
 
-    tile.append(image, margin, overlay, firstline);
+    tile.append(image, margin, firstline);
     indexTiles.set(page.page_no, tile);
     fragment.append(tile);
   }
@@ -801,7 +798,7 @@ async function loadIndexTile(pageNo, { image = true } = {}) {
 function clearIndexDecorations(pageNo) {
   const tile = indexTiles.get(pageNo);
   if (!tile) return;
-  injected.clearPageBlocks(tile);
+  paintIndexBlocks(tile, []);
   injected.clearTileMargin(tile);
   const first = tile.querySelector(".index-firstline");
   if (first) first.hidden = true;
@@ -814,6 +811,27 @@ function clearIndexTile(pageNo) {
   reportIndexMetrics();
 }
 
+/** 这一页的图层句柄：registry 自己建容器，句柄挂在 tile 上（不按 class 找 DOM）。 */
+function indexOverlayHandle(tile) {
+  const api = window.OverlayLayer;
+  const pageNo = Number(tile && tile.dataset ? tile.dataset.pageNo : NaN);
+  if (!api || !Number.isFinite(pageNo)) return null;
+  if (!tile.__overlayHandle) tile.__overlayHandle = api.mount(tile, { pageNo });
+  return tile.__overlayHandle;
+}
+
+/** 目录确认要顺序号 + 悬停卡片（details + labeled）。 */
+function paintIndexBlocks(tile, blocks) {
+  const api = window.OverlayLayer;
+  const handle = indexOverlayHandle(tile);
+  if (!api || !handle) return;
+  api.paint(handle, {
+    data: injected.getPagesOverlayOn() ? blocks || [] : [],
+    active: ["blocks"],
+    styles: { details: true, labeled: true },
+  });
+}
+
 /** 版心 + 块框 + 首行标记：和页面视图调用同一套渲染函数。 */
 function paintIndexTile(pageNo) {
   const tile = indexTiles.get(pageNo);
@@ -821,14 +839,7 @@ function paintIndexTile(pageNo) {
   if (!tile || !page) return;
   injected.paintTileMargin(tile, page);
   const blocks = indexBlocksByPage.get(pageNo) || [];
-  const overlay = tile.querySelector(".page-overlay");
-  if (injected.getPagesOverlayOn() && blocks.length) {
-    if (!overlay || overlay._renderedBlocks !== blocks) {
-      injected.renderPageBlocks(tile, blocks, { details: true });
-    }
-  } else {
-    injected.clearPageBlocks(tile);
-  }
+  paintIndexBlocks(tile, blocks);
   drawIndexFirstLine(tile, blocks, page);
 }
 
