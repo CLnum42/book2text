@@ -42,8 +42,8 @@ reading `page-overlay page-overlay--readonly`（2028）· preview（registry）`
 
 ```
 paint(handle, { data, active, styles })
-styles = { details: boolean,      // 有没有顺序号 / 卡片
-           labeled: boolean,      // 加 page-overlay--labeled（.box 吃指针、hover 出卡片）
+styles = { details: boolean,      // 画顺序号 **并排避让**（框外有空位就框外，没有才退回框内）
+           labeled: boolean,      // **只**决定要不要建悬停卡片（并加 --labeled，让 .box 吃指针）
            marginMode: boolean }  // 加 page-overlay--margin（app.css:903：容器与 .box 都不吃指针）
 容器 class = "overlay-layer page-overlay page-overlay--readonly" + (labeled ? " page-overlay--labeled" : "")
              + (marginMode ? " page-overlay--margin" : "")
@@ -55,6 +55,18 @@ styles = { details: boolean,      // 有没有顺序号 / 卡片
 
 **本片把它收成 styles 的一项**：`paintTileMargin` / `clearTileMargin` 删掉那两行 class 操作，
 容器 class 由 `paint(handle, {styles:{marginMode}})` 一处决定；视图在"版心开关变化 / 每帧重画"时带上这个字段。
+
+**两个字段的职责不能串（Chief 2026-11-02 裁决）**：
+
+```
+details ⇒ 画顺序号 + 排避让   （框外有空位就框外，没有才退回框内）
+labeled ⇒ 额外建悬停卡片      （以及 --labeled 让 .box 吃指针）
+preview = { details: true, labeled: false } ⇒ 号照样避让，只是没有卡片
+```
+
+**为什么必须分开**：实现里曾把"避让排版"绑在 `labeled` 上（`labeled ⇒ 排避让 + 建卡片`），
+而 preview 只传 `details` ⇒ 它的号永远 inside ⇒ §6.1 ③「四视图逐号同类」稳定红。
+分开之后 preview 与 pages/reading/index 在"号怎么摆"这件事上完全同类，差异只剩"有没有卡片"。
 理由：registry 拥有容器 ⇒ 容器的 class 只能有一个写点（否则又回到"多处写同一份状态"）。
 代价：styles 里多一个布尔，指纹随之变——版心开关是低频操作，重画一页的块框可以接受。
 
@@ -288,8 +300,10 @@ B 组（片 1 欠的债，本片首次验）
    · **比什么**：统一宽度后**高度也会变**（tile 的 aspect-ratio 来自图片，preview / pages 的图档不同时
      自然高度不同）⇒ 只比**"序号相对它所属 box 的偏移"**（`order.left - box.left` 这类），
      **不比绝对 left/top**。逐项差 ≤ **2px**（浮点与取整容差）。
-   若某视图无法统一宽度（例如 preview 的列宽由外层布局约束）：**降级为"落位分类一致"**，
-   分类**给死定义**（否则不可判）：
+   **四视图同等适用（Chief 2026-11-02 裁决）**：不再有"preview 的号恒 inside"这种例外——
+   片 2 把避让恢复之后，`details:true` 的四个视图都会"框外有空位就框外、没有才退回框内"，
+   所以同一页在四个视图里**逐号同类**是成立的判据（前提是尺寸已统一到 680px）。
+   只有当某视图**读不到 680px**（不是"它的号天生不同"）才降级，分类**给死定义**（否则不可判）：
 
       分类 = { top, right, bottom, left, inside }   五类
         top/right/bottom/left = 号在框外的哪一侧（按号中心相对 box 边的方向）
@@ -300,7 +314,7 @@ B 组（片 1 欠的债，本片首次验）
    **边界（Chief 补）**：降级视图 **≥2 个** ⇒ "剩下三个视图比 px"就落空了 ⇒ **本判据作废**，
    先解决尺寸统一再验；不许 QA 现场各写各的（回头对不上账）。
 
-判据：① 全部逐字相等；② 在 680px 下的三个视图逐项 ≤2px，降级视图落位分类一致。
+判据：① 全部逐字相等；② 在 680px 下的**四个视图**逐项 ≤2px，降级视图落位分类一致。
 变异：把 layout 的"框外优先"改成"恒框内" ⇒ ② 的落位分类立刻不一致 ⇒ 红。
 ```
 
