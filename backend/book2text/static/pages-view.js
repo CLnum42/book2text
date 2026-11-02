@@ -3665,11 +3665,15 @@ function enter() {
  */
 function wirePagesExportMarginJudgement() {
   const recMargin = el("rec-margin-judgement");
-  if (recMargin) {
-    recMargin.addEventListener("change", (event) =>
-      injected.setMarginJudgementSetting(event.target.checked)
-    );
-  }
+  if (!recMargin) return;
+  // 设置写入返回结果（不写别人的 DOM）：失败时页面视图回滚自己的勾选态、写自己的错误条
+  recMargin.addEventListener("change", async (event) => {
+    const checkbox = event.target;
+    const result = await injected.setMarginJudgementSetting(checkbox.checked);
+    if (!result || result.ok) return;
+    checkbox.checked = !checkbox.checked;
+    showPagesError(result.error);
+  });
 }
 /**
  * 页面视图的识别设置控件接线（刀 2.5 从 `setupRecognitionSettings` 原样搬出）。

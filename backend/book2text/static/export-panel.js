@@ -255,6 +255,9 @@ function renderPreflight(data) {
 }
 
 async function refreshPreflight() {
+  // 勾选态先按真实设置同步一次：这个节点在本模块 root 里，只有本模块写它
+  // （外壳与页面视图改完项目设置不直接写别人的节点，只喊一声预检重算）
+  syncMarginJudgement();
   if (!project()) return;
   let options;
   try {
@@ -275,6 +278,16 @@ async function refreshPreflight() {
   } catch (error) {
     injected.showError(part("export-error"), error);
   }
+}
+
+/**
+ * 项目级「按版心判定正文」这个开关的**勾选态同步**：节点在 `#export-panel` 子树里 ⇒
+ * 只有本模块写它（外壳与页面视图改完设置只喊这一声，不直接写别人的节点）。
+ * 真值规则仍由注入的 `marginJudgementOn()` 算（「未设置即默认开」那份规则只有一处）。
+ */
+function syncMarginJudgement() {
+  const checkbox = part("export-margin-judgement");
+  if (checkbox) checkbox.checked = Boolean(injected.marginJudgementOn());
 }
 
 function exportScopeText(options) {
@@ -537,9 +550,13 @@ function setupPanel() {
     input.addEventListener("change", schedulePreflight);
   }
   part("export-range").addEventListener("input", schedulePreflight);
-  part("export-margin-judgement").addEventListener("change", (event) =>
-    injected.setMarginJudgementSetting(event.target.checked)
-  );
+  // 设置写入返回结果（不写别人的 DOM）：失败时本模块回滚自己的勾选态、并写进自己的 #export-error
+  part("export-margin-judgement").addEventListener("change", async (event) => {
+    const result = await injected.setMarginJudgementSetting(event.target.checked);
+    if (!result || result.ok) return;
+    syncMarginJudgement();
+    injected.showError(part("export-error"), result.error);
+  });
   // 这个节点在 chrome（#export-panel 子树外）⇒ 只能注入
   const marginNoticeOk = injected.getMarginJudgementOk();
   if (marginNoticeOk) {

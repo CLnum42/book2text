@@ -7843,8 +7843,9 @@ function applyProjectSettings() {
     autoApply: Boolean(settings.auto_apply_high_suggestions),
     marginJudgement: marginJudgementOn(),
   });
-  // 导出面板 / 识别设置里的同一个项目级开关（任务 51 / 34）：默认开；这个 id 是外壳 chrome，留在这
-  el("export-margin-judgement").checked = marginJudgementOn();
+  // 导出面板里那个同名的项目级开关（任务 51 / 34）：节点在 #export-panel 子树里 ⇒
+  // 「谁拥有节点谁渲染」——这里不写别人的节点；导出模块每次预检都会按真实设置同步它自己的勾选态
+  // （`setMarginJudgementSetting` 成功后会喊一声 `refreshPreflight()`）。
   // 识别设置（任务 54）：引擎 / DPI / 语言 / 双引擎策略
   renderRecognitionSettings();
   renderMarginJudgementNotice();
@@ -7979,10 +7980,15 @@ function notifyApplied(text) {
 /**
  * 项目级「按版心判定正文」（任务 51 / 34）。**默认开**；显式关掉才按块类型判定，
  * 行为与升级前一致。切换后立刻重跑导出预检；正文 / 元数据的形状由服务端按同一设置算。
+ *
+ * **返回结果、不写别人的 DOM**（Chief 2026-11-02 裁定）：成功 `{ ok: true }`，
+ * 失败 `{ ok: false, error }`。节点在导出面板（`#export-margin-judgement`）和页面视图
+ * （`#rec-margin-judgement`）各自子树里 ⇒ 勾选态回滚与错误渲染由**拥有节点的那个模块**做；
+ * 本动作只回答「设置改没改成」。理由：让动作回写别人的节点，会把「谁拥有这块 UI」变成
+ * 一个说不清的问题，并把失败渲染复制到每个调用点。
  */
 async function setMarginJudgementSetting(enabled) {
-  if (!currentProject) return;
-  const checkbox = el("export-margin-judgement");
+  if (!currentProject) return { ok: false, error: null };
   try {
     const data = await apiJson(`/api/projects/${currentProject.project_id}/settings`, {
       method: "PATCH",
@@ -7992,10 +7998,9 @@ async function setMarginJudgementSetting(enabled) {
     currentProject.settings = data.settings;
     applyProjectSettings();
     await window.ExportPanel?.refreshPreflight();
+    return { ok: true };
   } catch (error) {
-    checkbox.checked = !enabled;
-    window.PagesView.setMarginJudgementCheckbox(!enabled);
-    showError(el("export-error"), error);
+    return { ok: false, error };
   }
 }
 
