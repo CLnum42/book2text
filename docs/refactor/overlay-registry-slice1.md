@@ -120,7 +120,8 @@ window.OverlayLayer = {
   mount(hostEl, { pageNo }),                         // → handle；容器由本模块 create
   unmount(handle),
   paint(handle, { data, active, styles }),           // 登记到唯一 rAF，帧末消费
-  stats(pageNo),                                     // { version, counts:{blocks:n}, geomHash }
+  stats(handle),                                     // { version, counts:{blocks:n}, geomHash }（判据用这个）
+  stats(pageNo),                                     // 诊断专用：多宿主时歧义，见契约 §3.1
 };
 ```
 

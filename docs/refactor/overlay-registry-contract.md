@@ -87,7 +87,8 @@ window.OverlayLayer = {
   invalidate(handle, types),                         // 任何人：只置脏，不立即画（未实现）
   layout(container, { lineBboxes }),                 // 一次摆：幂等、不画、不碰 version、不排帧（片 2 新增）
   schedule(container, { onLaidOut }),                // 排到可测为止：token + rAF + 90 帧重试，成功回调（片 2 新增）
-  stats(pageNo),                                     // 只读诊断：{ version, counts, geomHash }
+  stats(handle),                                     // ★ 判据唯一可用形式：{ version, counts, geomHash }
+  stats(pageNo),                                     // ⚠ 诊断专用（多宿主时有歧义，见 §3.1）
 };
 ```
 
@@ -99,7 +100,8 @@ window.OverlayLayer = {
 | `unmount` | 视图 | `tile.release()` **之前** | 顺序硬约束；宿主从 DOM 消失 = no-op + 一次 warn（§23.5c）；**但句柄还在、只是 layer 掉了 = 自愈重挂**（见下方不变量） |
 | `paint` | 视图 | 数据到达 / `invalidate` 之后 | **不立即画**：登记到 registry 唯一的 rAF，帧末统一消费 |
 | `invalidate` | 视图、协作层（写盘回调） | 一处数据变了 | 不碰 DOM，只置脏 |
-| `stats` | e2e / 诊断 | 任意 | 只读，不许有任何副作用 |
+| `stats(handle)` | **判据（酸测试 / e2e 断言）** | 帧末之后 | 只读，不许有任何副作用；**同页多宿主时唯一无歧义的形式** |
+| `stats(pageNo)` | **诊断（人看一眼）** | 任意 | 只读；**判据不许用它**（多宿主时语义歧义，见 §3.1） |
 | `layout` | 视图 / 审校详情（`#detail-overlay` 不是 handle） | 数据到了、容器里的节点已存在时 | **一次摆**：幂等、不画、不碰 version、不排帧；障碍物只从 `lineBboxes` 参数来，**不许读别人的私有属性** |
 | `schedule` | 视图 / 审校详情 | 内容刚建、图可能还没出来时 | **排到可测为止**：token 取消前一次 + rAF + 90 帧重试；成功后调 `onLaidOut`。同一容器只许一个调度 |
 
@@ -120,6 +122,39 @@ schedule = 排到可测为止（"以后摆，摆到测得出为止"）：token +
   若转发器自己再写一遍 90 帧重试，同样变成两份
 · 片 2 之后审校那条路径**长期**需要它 ⇒ 按 STABLE 登记、不写死期
 ```
+
+### 3.1 `stats` 的两个签名：判据用 handle，诊断用 pageNo（Chief 2026-11-02 定）
+
+```
+stats(handle)   ← 唯一可用于判据的形式。同页多宿主时唯一无歧义（handle 就是那一层）
+stats(pageNo)   ← 保留，但只作诊断：多宿主时返回**最近 mount 的那一层**（lastByPage）
+                  文档与代码注释都必须写「判据不许用它」
+```
+
+**(a) 为什么留两个**：同页多宿主是**合法状态**（preview 与 pages 可以同时挂着同一页 490 个句柄），
+`stats(pageNo)` 在这种状态下语义天然歧义——留着当判据就是给下一个人埋坑。
+但直接删会破坏既有酸测试与诊断脚本，所以降级为"看一眼用"。
+
+**(b) 多宿主时 `stats(pageNo)` 的具体行为**：
+
+```
+· 返回 `lastByPage.get(pageNo)` 那一层（即该页**最近一次 mount** 的句柄的 stats）
+· **不 warn、不抛**——它是诊断口，噪音只会让人不敢用
+· 该页一层都没挂着 → 返回 null（与"有层但 counts 为 0"必须可分辨）
+```
+
+**(c) 与 ④b 判据的关系**：④b（同页两宿主互不影响）**必须用 handle 形式写**：
+
+```
+✅ 正确：const a = mount(hostA,{pageNo:12}); const b = mount(hostB,{pageNo:12});
+        paint(a, …); 断言 stats(a).counts.blocks > 0 && stats(b).counts.blocks === 0
+        unmount(a);  断言 stats(b) 仍是 b 那一层（version/counts 不变）
+❌ 错误：unmount(a) 后去断言 stats(12) —— 那时它返回的是 b（lastByPage 仍指向 b），
+        这条断言在"两个 handle 互相影响"的实现下也可能绿 ⇒ 判不出 ④b 要判的东西
+```
+
+**判据的通用规则**（写进 §6 抬头）：**凡断言"某一层"的状态，一律 `stats(handle)`；
+`stats(pageNo)` 只允许出现在"人看一眼"的诊断输出里**——出现即视为判据写错。
 
 **死句柄自愈（2026-11-02 新增不变量）**：`paint(handle)` 时若 `handle.layer` 已脱离文档
 （宿主被替换 / 视图重建了瓷砖但没 unmount / 句柄被顶掉后又被复用），**registry 必须就地重新 mount**——
@@ -222,11 +257,11 @@ else → 重画该 type，写完把 painted[type] 设成新值，并把 dataVers
 
 | # | 判据 | 怎么数（可用口径） | 为什么它证明模块必要 |
 |---|---|---|---|
-| ① | **版本一致** | 帧末 `stats(pageNo).version === getVersion("blocks:"+pageNo)`，且**每个**已绘元素 `dataset.version` 相同 | 防"旧 overlay 挂在新数据上"（§23.5 第 3 条） |
+| ① | **版本一致** | 帧末 `stats(handle).version === getVersion("blocks:"+pageNo)`，且**每个**已绘元素 `dataset.version` 相同 | 防"旧 overlay 挂在新数据上"（§23.5 第 3 条） |
 | ② | **不重复画（幂等）** | 同数据连续 paint 两次：元素数不变 **且 `firstChild` 是同一个节点**（节点身份） | 证明没有"清空再 append" |
-| ③ | **数量** | `stats(pageNo).counts.blocks === data.filter(b => b.bbox).length` | 证明"数据是唯一真源" |
+| ③ | **数量** | `stats(handle).counts.blocks === data.filter(b => b.bbox).length` | 证明"数据是唯一真源" |
 | ④ | **不回落旧路径**（Chief 补：必须点名删的是哪一行） | preview 路径上 `.page-overlay` 的 `innerHTML = ""` 调用次数 = **0**；且下面三行在落盘后的源码里各 **0 次命中**：`preview-view.js:183`（自建 `.page-overlay` 容器）· `:371`（`overlay._renderedBlocks === blocks` 的缓存比较）· `:372`（`injected.renderPageBlocks` 的调用）；`_renderedBlocks` 在 `preview-view.js` 里 0 次 | "次数 = 0" 可能只是换了个写法（比如改成 `replaceChildren()`）；**点名行号 + 点名字段**才排除这种 |
-| ④b | **同页多宿主（2026-11-02 新增）** | 同一 `pageNo` 在两个宿主上各 `mount` → 得两个 handle；`paint(A)` 不影响 B 的 layer；`unmount(A)` 后 B 仍在、`stats` 仍能报 B | 证明唯一键是 **hostEl** 不是 pageNo——这条错就是 preview 490 页把 pages 句柄顶掉、`grid_layers 490 → 0` 的根因 |
+| ④b | **同页多宿主（2026-11-02 新增）** | 同一 `pageNo` 在两个宿主上各 `mount` → 得两个 handle；`paint(A)` 不影响 B 的 layer；`unmount(A)` 后 B 仍在、`stats(b)` 仍报 B（**用 handle，不用 pageNo**） | 证明唯一键是 **hostEl** 不是 pageNo——这条错就是 preview 490 页把 pages 句柄顶掉、`grid_layers 490 → 0` 的根因 |
 | ⑤ | **图不受影响** | `img.src` 赋值次数仍 = 1（**不数网络**：`max-age=300` 会掩盖重复取图） | 证明两条缝没互相踩 |
 
 **提交要求（活证据，不是自述）**：片 1 的提交说明里必须有一行「删掉的旧路径」，逐行写

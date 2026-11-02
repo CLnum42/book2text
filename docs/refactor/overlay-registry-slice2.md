@@ -77,7 +77,7 @@ preview = { details: true, labeled: false } ⇒ 号照样避让，只是没有�
     `paintTileMargin:3138` / `clearTileMargin:3160` 两行必须消失（删掉它们是在本片预算里）。
     判据形态：`grep -n "page-overlay--margin\|classList.*page-overlay" *.js` 只剩 overlay-registry.js 一处。
 (b) styles 直通容器：同页同数据、只把 styles.details 由 true 改 false ⇒ 容器的 class 必须跟着变
-    （`--labeled` 随 labeled 变、`--margin` 随 marginMode 变），且 `stats(pageNo).version` 必须变（styles 进指纹）。
+    （`--labeled` 随 labeled 变、`--margin` 随 marginMode 变），且 `stats(handle).version` 必须变（styles 进指纹）。
     变异：把 style→class 的同步删掉 ⇒ (b) 红。
 ```
 
@@ -123,7 +123,7 @@ hover 联动今天是这样：`applyReadingLinked`（3525–3531）对 `tile.que
 **两条判据（Chief ③）**：toggle 之后必须同时成立——
 
 ```
-(a) `stats(pageNo).version` 不变（装饰不进指纹，否则 hover 每次都变版本）
+(a) `stats(handle).version` 不变（装饰不进指纹，否则 hover 每次都变版本）
 (b) `container.lastChild.firstChild` 身份不变（没有重画：装饰不是第二次 render）
 变异：把 is-linked 改成走 styles 重画 ⇒ (a)(b) 同时红。这两条一起才证明"它只是装饰"。
 ```
@@ -259,7 +259,7 @@ API: layout(container, { lineBboxes })
 A 组（片 1 已验，本片扩到三个视图，回归用）
   A1 位置：同一本书同一页，块框的 left/top/width/height 与改前逐框相等（读 DOM 的 style，不截图）
   A2 类型色：heading #4338ca / paragraph #2563eb / figure #15803d 与改前一致（getComputedStyle 的 border-color）
-  A3 数量：`stats(pageNo).counts.blocks` == 有 bbox 的块数
+  A3 数量：`stats(handle).counts.blocks` == 有 bbox 的块数（**多宿主时只有 handle 形式无歧义**，见契约 §3.1）
   A4 hits 层级：`.preview-page__hits` 仍在块框之上（preview）；reading 的 `#reading-diff-layer` 不受影响
 
 B 组（片 1 欠的债，本片首次验）
