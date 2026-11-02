@@ -3,10 +3,6 @@
 环境：QA 库 `/tmp/b2t-qa4/lib`，独立 worktree 起服务（不在主树），视口 1423×900。
 两棵树：原始验收 `e0dce3d`；下载/终态复验 `3a7d7ba`（origin/main 已推，等于本地 main tip）。
 
-> **DevLead 结案（2026-11-03）**：**代码层通过** —— 函数 370→348（差集 22、新增 0）；app.js 9,024；collab.js 542 = 461 代码 + 49 注释 + 32 空行；deps 170（搬函数不改键数）；R3 review 49 种/115 处、pages 0/0；导出 6 个逐个有调用点；注入 22 传 / 22 读；双 root 归属 15（`#assign-panel`）+ 4（`#package-result`，其中 3 归模块、`package-result-close` 归外壳）。**真机通过** —— ①②③（③ 包模式两轮 normal/package/normal/package）、④ 取消分派（列表「已作废」+ 页 9/10 徽标同步消失）、结果包下载成功（复数 URL `/package/results/` → 200、download 事件、落盘 4,348 B 合法 zip）、下载失败分支（404 + 红字 +「下载失败」）、导出 meta 终态（`已生成 <真文件名>，可在下面下载`）、坏包导入终态（`导入失败：结果包导入失败` + 红字）、console 0。**未验（不算通过）**：撤销自动通过（库内 0 页 eligible，缺样本条件见下）、助手回传 `.b2tres` 成功导入、包模式下其余 ~10 个入口单独显隐（只验了两个外壳 id 与 package-open/横幅/chip）、结果包内容正确性（只验列表/命名/下载）、导出四选项分支。
->
-> 一处本刀回归已修并留痕：下载 URL 搬进 `collab.js` 时写成单数（`collab.js:441`），点下载 404；搬前 `62868c7` 的 `app.js:8584` 本是复数，后端 `api/routes_packages.py:108` 也是复数。修在 `1ac6ec4`，断言 `0e3b171` 锁的是路径段精确相等（写单数必红）。
-
 ## 结论（e0dce3d）
 
 | # | 判据 | 结果 | 关键读数 |
@@ -65,3 +61,5 @@ margin 已定（margin_box_mode/box 有值）· 无未处理 divergence · sugge
 代码层读数：函数 370→348（差集 22、新增 0）· app.js 9,024 · collab.js 542 = 461 代码 + 49 注释 + 32 空行 · deps 170 · 导出 6 个逐个有调用点 · 注入 22 传 / 22 读 · 双 root 归属 15（`#assign-panel`）+ 4（`#package-result`）。
 真机：7 过 / 1 回归已修（/package/results 复数，`1ac6ec4` + 断言 `0e3b171`）/ 1 缺样本（撤销自动通过）。
 其余未验（不算通过）：助手回传 `.b2tres` 成功导入 · 包模式其余 ~10 个入口单独显隐 · 结果包内容正确性 · 导出四选项分支。
+
+回归留痕：下载 URL 搬进 `collab.js` 时写成单数（`collab.js:441`），点下载 404；搬前 `62868c7` 的 `app.js:8584` 本来就是复数，后端 `routes_packages.py:108` 也是复数。修在 `1ac6ec4`，断言 `0e3b171` 锁的是路径段精确相等（不是"有个请求"）。
