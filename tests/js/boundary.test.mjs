@@ -6067,9 +6067,10 @@ test("S4 自检：遮罩 id 写进模块必须红；注释里提到不算；无�
  */
 function detailSplitProblems({ code }) {
   const problems = [];
+  // 迁移窗口里共享调度器还在 app.js（只许 0 次 drawDiffLayer）；2.2 之后它整段消失，
+  // 排帧全归 registry 的 schedule —— 两种形态都合法，但审校那条细节必须是 1 次。
   const shared = functionBody(code, "scheduleOverlayLayout");
   const detail = functionBody(code, "scheduleDetailOverlayLayout");
-  if (!shared) problems.push("app.js 里没有 scheduleOverlayLayout");
   if (!detail) {
     problems.push("app.js 里没有 scheduleDetailOverlayLayout——审校那条路径没人排帧了");
     return problems;
@@ -6078,6 +6079,7 @@ function detailSplitProblems({ code }) {
   if (shared && diffIn(shared) !== 0) {
     problems.push("共享调度器还在调 drawDiffLayer——瓦片布局又会去重画审校差异层");
   }
+
   if (diffIn(detail) !== 1) {
     problems.push(`审校调度器成功帧必须调一次 drawDiffLayer（现在 ${diffIn(detail)} 次）——漏了差异层不重画`);
   }
