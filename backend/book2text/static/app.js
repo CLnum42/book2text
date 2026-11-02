@@ -1217,7 +1217,7 @@ function exportOptions() {
   };
 }
 
-function renderPreflight(data) {
+function preflightRows(data) {
   const streams = data.streams || {};
   const body = streams.body || { segments: data.segment_count || 0, chars: data.char_count || 0 };
   const noteStream = streams.notes || { notes: data.notes_count || 0, chars: data.notes_char_count || 0 };
@@ -1282,7 +1282,10 @@ function renderPreflight(data) {
       `${marginBlocks.excluded || 0} 块` + (excludedText ? `（${excludedText}）` : ""),
     ]);
   }
-  fillDefinitionList(el("export-preflight"), rows);
+  return rows;
+}
+
+function preflightNotes(data) {
 
   const notes = [];
   if (!data.segment_count && !(noteStream.notes || 0)) {
@@ -1379,6 +1382,12 @@ function renderPreflight(data) {
       `有 ${workflowStatus.single_engine} 页只有单引擎结果、没跑第二引擎复核。`
     );
   }
+  return notes;
+}
+
+function renderPreflight(data) {
+  fillDefinitionList(el("export-preflight"), preflightRows(data));
+  const notes = preflightNotes(data);
   const warning = el("export-note");
   warning.textContent = notes.join(" ");
   warning.hidden = notes.length === 0;
