@@ -34,8 +34,10 @@
   const registered = new Map();
   /** hostEl → handle：句柄按宿主元素唯一（同一页在不同视图里各一份是正常的）。 */
   const handlesByHost = new WeakMap();
-  /** pageNo → 最近一次 mount 的句柄：只给 `stats()` 诊断用，不参与唯一性。 */
+  /** pageNo → 最近一次 mount 的句柄：只给 `stats(pageNo)` 诊断用，不参与唯一性。 */
   const lastByPage = new Map();
+  /** pageNo → 当前活着的图层数：只给"多宿主"告警用。 */
+  const handleCountByPage = new Map();
   /** 帧末待消费的 handle。 */
   const dirty = new Set();
   let rafId = 0;
@@ -377,12 +379,21 @@
     if (!hostEl || !hostEl.appendChild || !Number.isFinite(no)) return null;
     const existing = handlesByHost.get(hostEl);
     if (existing) unmount(existing);
+    const handle = createHandle(hostEl, no);
+    if (!handle) return null;
+    registerHandle(handle);
+    return handle;
+  }
+
+  /** 建一个图层句柄并挂到宿主上（不登记映射/计数；mount 与 revive 共用）。 */
+  function createHandle(hostEl, no) {
+    if (!hostEl || !hostEl.appendChild || !Number.isFinite(no)) return null;
     const layer = document.createElement("div");
     layer.className = layerClassName();
     layer.dataset.pageNo = String(no);
     layer.hidden = true;
     hostEl.appendChild(layer);
-    const handle = {
+    return {
       pageNo: no,
       host: hostEl,
       layer,
@@ -396,9 +407,20 @@
       pending: null,
       dead: false,
     };
-    handlesByHost.set(hostEl, handle);
-    lastByPage.set(no, handle);
-    return handle;
+  }
+
+  function registerHandle(handle) {
+    handlesByHost.set(handle.host, handle);
+    lastByPage.set(handle.pageNo, handle);
+    handleCountByPage.set(handle.pageNo, (handleCountByPage.get(handle.pageNo) || 0) + 1);
+  }
+
+  function unregisterHandle(handle) {
+    if (handlesByHost.get(handle.host) === handle) handlesByHost.delete(handle.host);
+    if (lastByPage.get(handle.pageNo) === handle) lastByPage.delete(handle.pageNo);
+    const count = handleCountByPage.get(handle.pageNo) || 0;
+    if (count <= 1) handleCountByPage.delete(handle.pageNo);
+    else handleCountByPage.set(handle.pageNo, count - 1);
   }
 
   function unmount(handle) {
@@ -406,8 +428,7 @@
     handle.dead = true;
     handle.pending = null;
     dirty.delete(handle);
-    if (handlesByHost.get(handle.host) === handle) handlesByHost.delete(handle.host);
-    if (lastByPage.get(handle.pageNo) === handle) lastByPage.delete(handle.pageNo);
+    unregisterHandle(handle);
     if (resizeObserver && observedContainers.delete(handle.layer)) resizeObserver.unobserve(handle.layer);
     layoutTokens.delete(handle.layer);
     layoutOptions.delete(handle.layer);
@@ -427,17 +448,19 @@
     if (!handle) return null;
     if (!handle.dead && handle.layer && handle.layer.isConnected) return handle;
     if (!handle.host || typeof handle.host.appendChild !== "function") return null;
-    const fresh = mount(handle.host, { pageNo: handle.pageNo });
+    const wasDead = handle.dead;
+    const fresh = createHandle(handle.host, handle.pageNo);
     if (!fresh) return null;
-    if (fresh !== handle) {
-      handle.dead = false;
-      handle.layer = fresh.layer;
-      handle.types = fresh.types;
-      handle.painted = fresh.painted;
-      handle.counts = fresh.counts;
-      handle.pending = null;
-      handle.version = "";
-      handle.geomHash = "";
+    handle.dead = false;
+    handle.layer = fresh.layer;
+    handle.types = fresh.types;
+    handle.painted = fresh.painted;
+    handle.counts = fresh.counts;
+    handle.pending = null;
+    handle.version = "";
+    handle.geomHash = "";
+    if (wasDead) registerHandle(handle);
+    else {
       handlesByHost.set(handle.host, handle);
       lastByPage.set(handle.pageNo, handle);
     }
@@ -539,10 +562,35 @@
     if (styles.details !== false && visible > 0) schedule(handle.layer, {});
   }
 
-  /** 只读诊断：版本、每类画了几个、几何指纹（不许有副作用）。 */
-  function stats(pageNo) {
-    const handle = lastByPage.get(Number(pageNo));
+  /**
+   * 只读诊断：版本、每类画了几个、几何指纹。
+   *
+   * - `stats(handle)`：**唯一可用于判据的形式**——同一页在 pages 与 preview 里各有一层时无歧义。
+   * - `stats(pageNo)`：只作"看一眼"的诊断。多宿主时返回**最近 mount 的那一层**，判据不许用它
+   *   （第一次遇到多宿主会 console.warn 一次，避免有人拿它写断言）。
+   */
+  let pageStatsWarned = false;
+
+  function stats(target) {
+    if (target && typeof target === "object") {
+      if (target.dead || !target.layer || !target.layer.isConnected) {
+        return { version: "", counts: {}, geomHash: "" };
+      }
+      return {
+        version: target.version,
+        counts: Object.assign({}, target.counts),
+        geomHash: target.geomHash,
+      };
+    }
+    const pageNo = Number(target);
+    const handle = lastByPage.get(pageNo);
     if (!handle) return { version: "", counts: {}, geomHash: "" };
+    if ((handleCountByPage.get(pageNo) || 0) > 1 && !pageStatsWarned) {
+      pageStatsWarned = true;
+      if (typeof console !== "undefined" && typeof console.warn === "function") {
+        console.warn("OverlayLayer.stats(pageNo)：这一页有多个图层宿主，返回的只是\"最近 mount 的那一层\"；判据请用 stats(handle)。");
+      }
+    }
     return { version: handle.version, counts: Object.assign({}, handle.counts), geomHash: handle.geomHash };
   }
 
