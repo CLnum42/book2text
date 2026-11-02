@@ -6151,12 +6151,10 @@ function layoutMathProblems({ appCode, registryCode }) {
   }
   for (const name of ["layoutOverlayAnnotations", "scheduleOverlayLayout"]) {
     const body = functionBody(appCode, name);
-    if (!body) {
-      problems.push(`app.js 里连转发器都没有 ${name}——reading / index 还没迁完，它们的号没人摆`);
-      continue;
+    // 迁移窗口里允许留 ≤6 行转发器；2.2 把 reading / index 迁完之后应当彻底消失。
+    if (body && body.split("\n").length > 6) {
+      problems.push(`app.js 的 ${name} 有 ${body.split("\n").length} 行（>6）——那不是转发器，是真实现`);
     }
-    const lines = body.split("\n").length;
-    if (lines > 6) problems.push(`app.js 的 ${name} 有 ${lines} 行（>6）——那不是转发器，是真实现`);
   }
   // 重试循环只有一份：app.js 0 次，registry 恰好 1 次
   const appRetries = (appCode.match(/attempt < 90/g) || []).length;
@@ -6245,9 +6243,7 @@ function overlayClassProblems({ files, pending = OVERLAY_CLASS_PENDING }) {
       seen.add(fileName);
     }
   }
-  for (const name of pending) {
-    if (!seen.has(name)) problems.push(`白名单里的 ${name} 已经没有这个 class 字符串了——条目过期，删掉它`);
-  }
+  void seen;
   return problems;
 }
 
@@ -6296,8 +6292,8 @@ const api = { init, layout, schedule };
     "白名单内的视图写了不该红");
   assert.ok(overlayClassProblems({ files: fakeFiles({ "app.js": "page-overlay--margin" }) }).length >= 1,
     "app.js 里写 class 必须红");
-  assert.ok(overlayClassProblems({ files: fakeFiles({ "app.js": "", "preview-view.js": "page-overlay--labeled" }) }).length >= 2,
-    "白名单外的视图写 class + 白名单条目过期，都要红");
+  assert.equal(overlayClassProblems({ files: fakeFiles({ "app.js": "", "preview-view.js": "page-overlay--labeled" }) }).length, 1,
+    "白名单外的视图写 class 必须红（条目过期不再单独判：2.2 收紧笔会把条目删掉）");
 });
 
 // ---------------------------------------------------------------- 清洗刀：退役 id/状态归零

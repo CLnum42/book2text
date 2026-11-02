@@ -139,10 +139,13 @@ def test_block_frames_work_in_all_zoom_levels_and_default_to_on() -> None:
     assert 'el("pages-overlay-toggle").disabled = false' in _script_with_view("pages-view.js")
     toggle = _function_body("togglePageBlocksOverlay")
     assert "pageZoomIndex" not in toggle
-    # 网格 / 大网格只画色框；单列 / 单页才建顺序号
-    render = _function_body("renderPageBlocks")
-    assert "details = pageZoomIndex >= 2" in render, "目录确认可以强制显示序号"
-    assert "if (showDetails)" in render
+    # 网格 / 大网格只画色框；单列 / 单页才建顺序号。
+    # 片 2 之后渲染器在 overlay-registry.js：details 由各视图给（pages 按档位、index 强制 true、
+    # reading 强制 false），registry 只认 style.details —— 三处 + registry 一起锁。
+    assert "details: injected.getPageZoomIndex() >= 2" in _view_script("pages-view.js"), "页面视图按档位决定序号"
+    assert "details: true" in _view_script("index-view.js"), "目录确认可以强制显示序号"
+    assert "details: false" in _view_script("reading-view.js"), "正文审校不建序号"
+    assert "style.details !== false" in _overlay_script(), "registry 只认 style.details"
     # 每帧 3 页 + 在途请求上限（第 46 号任务从 3 提到 6）；滚动位置缓存，不再每帧量 267 个矩形
     both = _script_with_view()  # 刀 10a：块框/可见性的上限与调度器都搬进 pages-view.js
     assert "PAGE_OVERLAY_FRAME_LIMIT = 3" in both
@@ -1301,7 +1304,7 @@ def test_result_preview_reuses_page_renderers_and_follows_segments() -> None:
     # 复用同一套渲染函数与同一份开关 / 缩放状态
     assert "function paintPreviewTile(" in preview_both
     assert "paintTileMargin(tile, page)" in script
-    assert "renderPageBlocks(tile, blocks" in script
+    assert "renderPageBlocks(tile, blocks" in script or "api.paint(handle" in preview_script
     # 开关这里**不是**简单合查：整段 preview 搬走后，"预览打开时把开关置 true" 变成了
     # 模块调注入回调 + app.js 的 setter 真正写状态，两半都得在，缺任一半链路就断了。
     assert "injected.setPagesMarginOn(true)" in preview_script
@@ -1639,7 +1642,7 @@ def test_index_view_reuses_page_rendering() -> None:
 
     assert "function paintIndexDecorations(" in index_both
     assert "paintTileMargin(tile, page)" in script
-    assert "renderPageBlocks(tile, blocks" in script
+    assert "renderPageBlocks(tile, blocks" in script or "api.paint(handle" in index_script
     # 刀 C：loadIndexBlocks → page-index.js 的 loadBlocks（块缓存仍在外壳，模块借三个回调读写）
     assert "function loadBlocks(" in _view_script("page-index.js")
     assert "function drawIndexFirstLine(" in index_both
