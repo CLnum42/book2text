@@ -43,7 +43,7 @@ backend         GET /projects/{id}/package/results/{name}                       
 实测：点「下载」→ 404，save「下载失败」；结果列表本身由 `/package/results` 正常返回
 ```
 
-## 其它小问题（不升级为阻断）
+## 其它小问题（62868c7 即存在，非本刀引入；DevLead 已核源码）
 
 ```
 · `#package-result-meta` 导出成功后停在「导出中…」（成功路径没有复位文案；重开面板才恢复）
