@@ -5457,6 +5457,8 @@ const DOMAIN_MODULES = [
   // root.querySelector 2 处（part() 与 querySelectorAll）+ 4 处元素级查询 ⇒ 走 allowQuerySelector 分支恰好合规。
   // **它此前根本没登记在这张表里** ⇒ 域模块闸从没查过它 —— 这正是下面「登记完整性」要关掉的洞。
   { file: "page-detail-editor.js", exposes: "PageDetailEditor", allowQuerySelector: true },
+  // ③ 导出：root = #export-panel（顶层 modal，30 个导出 id 全在它子树里）；10 个 checkbox 逐个传不现实
+  { file: "export-panel.js", exposes: "ExportPanel", allowQuerySelector: true },
 ];
 
 /**
@@ -5469,6 +5471,7 @@ const DOMAIN_MODULES = [
 const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "structure-tools.js",
   "page-detail-editor.js",
+  "export-panel.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {
