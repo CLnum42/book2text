@@ -1,4 +1,4 @@
-# 验收记录 2026-11-02：片 1 + 刀 C + 刀 D + 清洗刀 + S1–S4 + ② 片 2 + ③ 导出刀
+# 验收记录 2026-11-02：片 1 + 刀 C/D + 清洗刀 + S1–S4 + ② 片 2 + ③ 导出刀 / 跨视图刀
 
 > 规则（2026-11-02 定）：**通过 / 未验分开写**；未验必须写阻塞原因与证据位置。
 > 只在对话里说“我跑过”按**未验**计；环境起不来同理。
@@ -622,7 +622,60 @@ registry 0 笔（544 笔）· audit 会因搬运假红 0
   「来源页渲染失败。」（attachRenderErrorDetail 的 load 分支写了 fallback）——不影响界面，记账。
 ```
 
-## 十一、结论
+## 十一、③ 第二批 · 跨视图刀（`79804b1`）
+
+提交链：`b897e2b`（版心判定开关改成"动作返回结果"——谁拥有节点谁渲染）→ `3886402`（产品：16 函数搬进
+`suggestion-flow.js`，两份死状态删除）→ `79804b1`（闸 + 11 条行为测试 + pytest 收紧）。
+
+### 通过（代码层，DevLead 独立核）
+
+```
+基线 61d4920 → 79804b1
+函数 386 → 370：移出恰 16 个、新增 0
+  marginJudgementOn applyProjectSettings renderMarginJudgementNotice dismissMarginJudgementNotice
+  autoApplyTypeText loadAutoApplyStatus showNoticeBar showAutoApplyNotice hideAutoApplyNotice
+  refreshAfterTypeChanges undoAutoApply notifyApplied setMarginJudgementSetting
+  openSuggestionApplyPanel renderSuggestionApplyPreview runSuggestionApply
+app.js 9,672 → 9,443（−229）· suggestion-flow.js 392 = 292 代码 + 76 注释 + 24 空行
+deps **171 → 170**（删掉死注入键 setLatestAutoApply 后 PagesView 少一个键——**这是允许的例外**，
+  见下"口径"）
+R3 review 49/116（page-detail-error 8 → 7）· pages 0/0
+DOM 面（剥注释）：el( 0 · document.getElementById 0 · document.querySelector 0
+  root.querySelector 1 处 + part( 16 处（多宿主，3 个宿主各一组 id）
+导出 11 个（沙箱 Object.keys）：marginJudgementEnabled · setMarginJudgement · projectSettingsApplied ·
+  refreshAutoApplyStatus · announceAutoApplyAfterJob · undoAutoApply · notifyApplied ·
+  formatAutoApplyTypes · showNotice · openApplyPanel —— 逐个有外部调用点
+注入：init 传 22 / 模块读 22（双向对上）
+死状态三件：suggestionApplyPlan / latestAutoApply / setLatestAutoApply —— **代码 0 次**
+  （模块头注释里留了名字说明"为什么删"，所以 grep 全仓还能看到 3 行注释；判据是代码 0）
+模块里 `window.` 4 处命中 = 3 条注释 + 自己那行 `window.SuggestionFlow = api` —— **真引用 0**
+node 277 / 275 pass / 0 fail / 2 skipped · pytest 1034（140.81s，STATIC_DIR 在树内）
+registry 0 笔（554 笔）· audit 会因搬运假红 0
+```
+
+### 口径：`deps 171 → 170` 是允许的（写进记录，防下次误判）
+
+```
+原口径"deps 不变"指的是**搬函数不改注入键数**。删**死注入键**是例外：
+  setLatestAutoApply 只有一个写点（pages-view:1499），模块里 0 读 ⇒ 删的是"传了没人用"的键。
+  ⇒ 判据改成：搬家函数时 deps 不变；删死键时 deps 允许 −1，但必须在提交说明里点名删的是哪个键、为什么死。
+```
+
+### 两处语义布尔已拆成四个具名动作（与 §19 的教训一致）
+
+```
+原：marginJudgementOn / setMarginJudgementSetting / loadAutoApplyStatus / notifyApplied 这类"一个函数兼两种语义"
+现：marginJudgementEnabled（读）· setMarginJudgement（写）· refreshAutoApplyStatus（状态刷新）·
+    announceAutoApplyAfterJob（任务后公告）——按语义各给一个键，不靠调用点猜。
+```
+
+### 未验
+
+```
+真机：通知条（3 个视图）· 自动应用状态/撤销 · 建议面板（预览 + 运行）· 版心判定开关与提示
+```
+
+## 十二、结论
 
 ```
 片 1：代码层通过；真机部分通过、5 项未验（ego 阻塞）
@@ -644,5 +697,7 @@ S4：代码层通过（6 函数差集、app.js 10,402、模块 1,549=1,367+83+99
     · 记账：registry 551 行超书里 490 的预算 61 行（超的是句柄生命周期那一层，书没给预算）
 ③ 导出刀：代码层通过（402→386 / 10,178→9,672 / 模块 585=524+25+36 / deps 171 / R3 49/117 /
     root 级 4 处（1+3）/ 四闸绿）；真机六条通过，**四个选项分支 + 正文一致性未验**
-九把刀 + 导出一刀都是“代码可结、真机未结”（片 2 真机已过）——验收表按此口径引用，不得写成“全部通过”。
+跨视图刀：代码层通过（386→370 / 9,443 / 模块 392=292+76+24 / deps 171→170 死键例外 / R3 49/116 /
+    导出 11 个逐个有调用点 / 注入 22=22 / 死状态三件代码 0 / window 真引用 0）；真机未验
+③ 两刀（导出、跨视图）代码可结；跨视刀真机未验——验收表按此口径引用，不得写成“全部通过”。
 ```
