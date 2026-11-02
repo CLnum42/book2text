@@ -295,3 +295,86 @@ test("③ 协作：结果包下载的 URL 是 /package/results/<name>（复数�
     + "写成单数 /package/result/ 会 404（62868c7 的 app.js:8584 本来就是复数）",
   );
 });
+
+/** 可触发事件的假节点（测试内用，不改 mk）：记录 handler 并暴露 fire()。 */
+const mkEmitter = () => {
+  const node = mk();
+  const handlers = {};
+  node.addEventListener = (type, fn) => { (handlers[type] ||= []).push(fn); };
+  node.fire = (type, event = { target: node }) => { for (const fn of handlers[type] || []) fn(event); };
+  node.click = () => node.fire("click");
+  return node;
+};
+
+test("③ 协作：导出结果包成功后 #package-result-meta 落终态（不停在「导出中…」）", async () => {
+  const mod = makeModule({
+    current: { project_id: "p3", kind: "package" },
+    apiJson: async (path) => {
+      if (path.endsWith("/package")) {
+        return {
+          package: {
+            page_nos: [1], context_page_nos: [], owner_name: "甲",
+            due_date: null, note: null, book_name: "书", reviewer_name: "乙",
+          },
+        };
+      }
+      if (path.endsWith("/package/results")) return { results: [] };
+      if (path.endsWith("/package/result")) {
+        return {
+          file_name: "r1.b2tres",
+          summary: { page_count: 2, unfinished_pages: [], uncertain: 0, commented: 0, modified: 0 },
+        };
+      }
+      return {};
+    },
+  });
+  mod.sandbox.alert = () => {};
+  const button = mkEmitter();
+  mod.byId.set("package-export-btn", button);
+  mod.api.setupCollabControls();
+  await mod.api.applyPackageMode();
+  button.fire("click");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const meta = mod.byId.get("package-result-meta");
+  assert.notEqual(meta.textContent, "导出中…", "成功路径没写终态：停在「导出中…」");
+  assert.ok(String(meta.textContent).includes("已生成"), `终态文案不对：${meta.textContent}`);
+});
+
+test("③ 协作：导入结果包失败后顶栏 save 状态落错误终态", async () => {
+  const saves = [];
+  const mod = makeModule({
+    current: { project_id: "p4", kind: "project" },
+    apiJson: async (path) => {
+      if (path.endsWith("/assignments")) {
+        return {
+          assignments: [{
+            assignment_id: "a1", reviewer_name: "甲", page_nos: [1], status: "pending",
+            status_label: "已分派", imported_seq: 0, due_date: null, note: null,
+          }],
+          known_reviewers: ["甲"],
+        };
+      }
+      return {};
+    },
+  });
+  mod.api.init({ setSaveState: (text, isError) => saves.push([text, isError === true]) });
+  mod.sandbox.fetch = async () => ({ ok: false, json: async () => ({ error: { message: "包已作废" } }) });
+  const input = mkEmitter();
+  input.files = [{ name: "r1.b2tres" }];
+  mod.byId.set("result-file-input", input);
+  mod.api.setupCollabControls();
+  // 列表里的按钮是 createElement 造的：换成会记 handler 的节点，否则 click 绑不上
+  mod.sandbox.document.createElement = () => mkEmitter();
+  await mod.api.loadAssignments();
+  // 列表里那一行的「导入结果」按钮 → pickResultFile（记下 packagePending）
+  const list = mod.byId.get("assign-list");
+  const importButton = list.children[0].children.at(-1).children.find((n) => n.textContent === "导入结果");
+  assert.ok(importButton, "列表里没有「导入结果」按钮");
+  importButton.click();
+  input.fire("change");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const last = saves.at(-1);
+  assert.ok(last, "失败后一次 save 状态都没写——顶栏会停在「正在导入结果包…」");
+  assert.equal(last[1], true, "失败要写错误态（setSaveState 第二个参数 true）");
+  assert.ok(String(last[0]).includes("导入失败"), `失败文案不对：${last[0]}`);
+});
