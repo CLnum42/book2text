@@ -1453,6 +1453,10 @@ def _split_base_estimate(
             return _round_rect((x0, y0, cut, y1)), _round_rect((cut, y0, x1, y1))
         line_top = round(y0 + (y1 - y0) * (split_line / total), 6)
         line_bottom = round(y0 + (y1 - y0) * ((split_line + 1) / total), 6)
+        # 切在最后一行时 line_bottom 必然等于 y1 ⇒ 会产出一头零高。两条分支都要留最小边，
+        # 不然「退化成一个点」只是换一行代码复现（与下面无 split_line 的分支对称）。
+        line_top = min(max(line_top, y0 + SPLIT_MIN_SIDE), y1 - SPLIT_MIN_SIDE)
+        line_bottom = min(max(line_bottom, y0 + SPLIT_MIN_SIDE), y1 - SPLIT_MIN_SIDE)
         if value > 0.5:
             return _round_rect((x0, y0, x1, line_bottom)), _round_rect((x0, line_bottom, x1, y1))
         return _round_rect((x0, y0, x1, line_top)), _round_rect((x0, line_top, x1, y1))
@@ -1486,8 +1490,21 @@ def _estimate_split_rects(
         cut = _cut_x(source, ratio)
 
     value = 0.5 if ratio is None else min(max(float(ratio), 0.0), 1.0)
-    # 只有被切开的那一行：横切一个矩形就够了（书眉 + 页码就是这种，两块只在边界相接）。
-    single_line = split_line is not None and sum(1 for rect in line_rects if rect) <= 1
+    # 被切开的那一行之后没有整行可归属（它就是最后一行，或后面只剩空行）：
+    # 横切这一行就够了（书眉 + 页码就是这种，两块只在边界相接）。
+    #
+    # 旧判据只认「全块只有一行」，于是「多行块、切在最后一行」会走进下面 value > 0.5 的
+    # 「整行算给前块」分支 ⇒ 后块一行都没有 ⇒ 退回 _split_base_estimate ⇒ 页码块零高
+    # （真书 p.1：tail = [0.045052, 0.170758, 0.659694, 0.170758]）。
+    cut_line = (
+        line_rects[split_line]
+        if split_line is not None and 0 <= split_line < len(line_rects)
+        else None
+    )
+    single_line = split_line is not None and (
+        sum(1 for rect in line_rects if rect) <= 1
+        or (cut_line is not None and not any(line_rects[split_line + 1 :]))
+    )
 
     head_rects = []
     tail_rects = []
