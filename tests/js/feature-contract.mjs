@@ -38,19 +38,42 @@ function git(args) {
   return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
 }
 
-/** §18.6 登记表里是否出现过这个 sha（短或长都认）。 */
-function registeredIn1886(sha, docText) {
-  const short = sha.slice(0, 7);
+/**
+ * cherry-pick 换 sha 之后，这笔补丁在 `git cherry-pick -x` 正文里留下的**原 sha**。
+ *
+ * 为什么要认它（2026-11-03，Chief 裁定）：§18.6 登记行只认集成后的 sha，而 cherry-pick
+ * 一换 sha 登记就当场过期 —— 今天为此重签了两次（`32917c0` / `a0bba4a`），每次多一个来回。
+ * 原 sha 与集成后的 sha 是**同一个补丁的两个名字**，所以登记行两种值都接受。
+ *
+ * 口径收得很窄：只有提交正文里带 cherry-pick 落款时才产生别名，**不是「正文里出现任何 sha」**——
+ * 否则随手抄一个 sha 就能把未登记混过闸（那正是这条判据要防的形态）。
+ * 返回数组（同一笔被多次 cherry-pick 时会有多个原 sha）。
+ */
+export function cherryPickOriginShas(message) {
+  if (typeof message !== "string") return [];
+  const out = [];
+  for (const match of message.matchAll(/cherry picked from commit ([0-9a-f]{7,40})\b/gi)) {
+    if (!out.includes(match[1])) out.push(match[1]);
+  }
+  return out;
+}
+
+/** 一行的「提交」格是否指向这笔提交：集成后的 sha 或它的 cherry-pick 原 sha（短或长）都算。 */
+function rowNamesCommit(row, shas) {
+  return shas.some((value) => Boolean(value) && (row.includes(value.slice(0, 7)) || row.includes(value)));
+}
+
+/** §18.6 登记表里是否出现过这个 sha（短或长都认；cherry-pick 原 sha 也算）。 */
+function registeredIn1886(sha, docText, aliases = []) {
   const table = docText.slice(docText.indexOf("### 18.6"));
-  return table.includes(short) || table.includes(sha);
+  return rowNamesCommit(table, [sha, ...aliases]);
 }
 
 /**
  * 登记行的**批准人**（§18.6 第五列）。按表头定位列，不写死列号——表宽变了不会静默错位。
  * 返回 null = 找不到该 sha 的登记行 / 表头没有「批准人」列。
  */
-export function registrationApprover(sha, docText) {
-  const short = sha.slice(0, 7);
+export function registrationApprover(sha, docText, aliases = []) {
   const table = docText.slice(docText.indexOf("### 18.6"));
   const rows = table.split("\n").filter((line) => line.trimStart().startsWith("|"));
   // 表头必须**整格**等于「批准人」：§18.6 上面还有个判据小表，里面也出现「批准人」字样，
@@ -59,19 +82,25 @@ export function registrationApprover(sha, docText) {
   if (!header) return null;
   const column = header.split("|").map((cell) => cell.trim()).indexOf("批准人");
   if (column < 0) return null;
-  const row = rows.find((line) => line.includes(short) || line.includes(sha));
+  const row = rows.find((line) => rowNamesCommit(line, [sha, ...aliases]));
   if (!row) return null;
   const cell = row.split("|")[column];
   return cell === undefined ? null : cell.trim();
 }
 
 /**
- * §18.6（2026-10-29）「批准人 ∈ 授权签署人」：**当前只有 DevLead**。
+ * §18.6「批准人 ∈ 授权签署人」：**DevLead / Chief**（2026-11-03 加 Chief）。
  * 为什么需要它：本仓库所有 Bot 共用一个提交账号（`CLnum42`），所以「批准人 ≠ %an」只能拦
  * "照抄作者字符串"；真实出事形态是 `Builder | aac4568`——干活的人给自己签字，那条规则判绿。
- * 新增授权人要改这里，并按 §18.6 登记。
+ *
+ * 为什么加 Chief（Chief 2026-11-03 裁定）：登记原来只认 DevLead 一个人，所有 test-contract
+ * 登记都串行等同一个人的回合并签名，每笔多一个来回。Chief 是**集成方**——每笔进 main 前都在
+ * 他手里过一遍，他做第二双眼睛是有意义的分离，不是同一个人的两个签名。
+ *
+ * **不变的那条铁律：作者不能签自己那笔**（见下面 `commitContractProblems` 的 trailer 分支
+ * 与 `registrationGap` 的「批准人 == 作者」判定）。它才是防作弊的关键；授权名单加人不动它。
  */
-export const AUTHORIZED_SIGNERS = ["DevLead"];
+export const AUTHORIZED_SIGNERS = ["DevLead", "Chief"];
 
 /** 签名人不在授权名单 → 一句人话；否则 null。 */
 function unauthorizedSigner(sha, signer) {
@@ -104,12 +133,11 @@ export function commitAuthor(sha) {
  * `删：…`（删了哪些断言）、`补：…`（换成了什么更严的）、`变异：…`（各改坏一次，红在哪）。
  * 理由：「删了几行」是替代指标，「改完还会不会咬人」才是根因。
  */
-export function registrationContent(sha, docText) {
-  const short = sha.slice(0, 7);
+export function registrationContent(sha, docText, aliases = []) {
   const table = docText.slice(docText.indexOf("### 18.6"));
   const row = table
     .split("\n")
-    .find((line) => line.trimStart().startsWith("|") && (line.includes(short) || line.includes(sha)));
+    .find((line) => line.trimStart().startsWith("|") && rowNamesCommit(line, [sha, ...aliases]));
   if (!row) return null;
   return {
     row,
@@ -552,13 +580,14 @@ export function moveScopeProblems({ sha, files, changes, keepListText = null, de
 }
 
 /** §18.6 登记判定：合格返回 null，否则返回一句人话（两段式里的「登记段」）。 */
-function registrationGap(sha, docText, kindLabel, author = null) {
+function registrationGap(sha, docText, kindLabel, author = null, aliases = []) {
   const short = sha.slice(0, 7);
-  if (!registeredIn1886(sha, docText)) {
-    return `A3: ${short} 是 ${kindLabel}，但没登记在 §18.6`;
+  if (!registeredIn1886(sha, docText, aliases)) {
+    return `A3: ${short} 是 ${kindLabel}，但没登记在 §18.6`
+      + "（登记行的「提交」格写集成后的 sha 或 cherry-pick 正文里的原 sha 都可以）";
   }
   // 判不了就是红：行在、列读不出（表头被改名/换表）→ 不能静默放行。
-  const approver = registrationApprover(sha, docText);
+  const approver = registrationApprover(sha, docText, aliases);
   if (approver === null) {
     return `A3: ${short} 的 §18.6 登记行读不出「批准人」列——判不了就是红（表头是不是改了？）`;
   }
@@ -569,7 +598,7 @@ function registrationGap(sha, docText, kindLabel, author = null) {
   if (author && approver === author) {
     return `A3: ${short} 的 §18.6 登记「批准人」是它自己的提交作者（${author}）——自己签自己不算第二人复核`;
   }
-  const reg = registrationContent(sha, docText);
+  const reg = registrationContent(sha, docText, aliases);
   if (!reg) {
     return `A3: ${short} 出现在 §18.6 里但不是表格登记行——只出现在正文里不算登记`;
   }
@@ -647,6 +676,9 @@ export function commitContractProblems({
   // 登记段：需要登记的提交 = 所有 `move:` 笔（登记义务与删行无关）+
   // 有删除行的 test-contract 提交。**判定放这里，不放形态段**。
   const needsRegistration = isMove || (deletions > 0 && touchesTests && isContract);
+  // cherry-pick 会换 sha（`-x` 在正文留 `cherry picked from commit <原 sha>`）：
+  // 登记行写原 sha 也算登记，否则集成一次就要重签一次（2026-11-03 为此重签两次）。
+  const aliases = cherryPickOriginShas(message);
   let exempt = false;
   if (needsRegistration) {
     const kindLabel = isMove ? "move: 笔" : "test-contract 提交";
@@ -662,14 +694,15 @@ export function commitContractProblems({
         if (unauthorized) registryProblems.push(unauthorized);
         else exempt = true;
       }
-    } else if (!registeredIn1886(sha, docText)) {
+    } else if (!registeredIn1886(sha, docText, aliases)) {
       // 既没有 trailer、也没有表格登记行 → 缺签字（历史笔不在此列，它们有登记行）
       registryProblems.push(
-        `A3: ${short} 是 ${kindLabel}，但提交信息里没有 Approved-by trailer（也没登记在 §18.6）`,
+        `A3: ${short} 是 ${kindLabel}，但提交信息里没有 Approved-by trailer（也没登记在 §18.6）`
+        + "——登记行的「提交」格写集成后的 sha 或 cherry-pick 正文里的原 sha 都可以",
       );
     } else {
       // 历史笔（trailer 规则之前）：回落到表格判定，两套并存，不一刀切。
-      const gap = registrationGap(sha, docText, kindLabel, author);
+      const gap = registrationGap(sha, docText, kindLabel, author, aliases);
       if (gap) registryProblems.push(gap);
       else exempt = true;
     }
