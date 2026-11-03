@@ -5876,8 +5876,6 @@ export function sectionOwnerProblems({ owners, subtreeIds, modules }) {
     for (const fileName of owner.files || []) {
       const source = byFile.get(fileName);
       if (source === undefined) {
-        // Temp-Relax: owner 标了 optional（模块还没落盘）时 ③ 跳过；笔 2 收紧后不许再有 optional
-        if (owner.optional) continue;
         problems.push(`${owner.name} 登记的文件 ${fileName} 读不到——这条判据对它空转`);
         continue;
       }
@@ -5951,9 +5949,6 @@ const SECTION_OWNERS = [
     ids: DRAWER_IDS,
     files: ["page-detail-drawer.js"],
     classes: ["box__handle", "diff-mark", "line-box"],
-    // Temp-Relax: 抽屉模块落盘前，这个 owner 只有表没有文件（③④ 跳过）。
-    // 收紧条件 = 抽屉刀笔 2 把 optional 去掉（那时模块一定在）。
-    optional: true,
   },
   {
     name: "SHELL",
@@ -6312,6 +6307,33 @@ test("S4 自检：遮罩 id 写进模块必须红；注释里提到不算；无�
  * **页面视图每画一页瓦片的块框**都去重画一次审校的差异层（书 §3.1，Architect 更正过：多余重画
  * 来自这条链，不是 `observeOverlaySize` 的调用面——它有两个调用点，瓦片与审校各一）。
  */
+test("① 抽屉回路唯一：onPageDetailChanged 全仓恰好 1 处调用 · 导出面没有 renderBlocks · editor 不反向调", () => {
+  const drawer = codeOnly(readFileSync(join(STATIC_DIR, "page-detail-drawer.js"), "utf8"));
+  const editor = codeOnly(readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8"));
+  const app = codeOnly(readFileSync(APP_FILE, "utf8"));
+  const problems = [];
+  // 回路四条精确判据（数"出现几次"会被注入行的一行两命中骗到，所以逐条查）
+  const decl = (app.match(/^function onPageDetailChanged\(/gm) || []).length;
+  const wire = (app.match(/^\s+onPageDetailChanged: \(data\) => onPageDetailChanged\(data\),/gm) || []).length;
+  const call = (drawer.match(/await injected\.onPageDetailChanged\(data\)/g) || []).length;
+  if (decl !== 1) problems.push(`外壳里 onPageDetailChanged 的声明是 ${decl} 处（应为 1）`);
+  if (wire !== 1) problems.push(`外壳递给模块的那行接线是 ${wire} 处（应为 1）`);
+  if (call !== 1) problems.push(`抽屉里那一次回路调用是 ${call} 处（应为 1）——多一处就会互相触发`);
+  if (/injected\.onPageDetailChanged/.test(app) || /injected\.onPageDetailChanged/.test(editor)) {
+    problems.push("外壳或 editor 里也调了 injected.onPageDetailChanged——那就是第二条调用点");
+  }
+  if (!/await injected\.onPageDetailChanged\(data\)/.test(drawer)) {
+    problems.push("抽屉里没有那一次 await injected.onPageDetailChanged(data)——blocks 交不出去");
+  }
+  if (/injected\.(renderBlocks|renderPageDetail)\b/.test(drawer)) {
+    problems.push("抽屉里出现 renderBlocks / renderPageDetail——它只许喊 onPageDetailChanged");
+  }
+  if (/injected\.onPageDetailChanged|injected\.renderPageDetail/.test(editor)) {
+    problems.push("editor 里出现反向入口（onPageDetailChanged / renderPageDetail）——会形成第二条回路");
+  }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
 function detailSplitProblems({ code }) {
   const problems = [];
   // 迁移窗口里共享调度器还在 app.js（只许 0 次 drawDiffLayer）；2.2 之后它整段消失，
@@ -6348,8 +6370,8 @@ function detailSplitProblems({ code }) {
 }
 
 test("片 2 笔 A：共享调度器 0 次 drawDiffLayer · 审校调度器 1 次 · 审校调用点全走 detail 版", () => {
-  // Temp-Relax: 审校那三处 drawDiffLayer 调用随 applyZoom / setReviewOverlay / toggle-overlay 搬进抽屉
-  // ⇒ 合查 app.js + 抽屉模块（旧树模块不在时与原来完全一样）。笔 2 收紧到"只在抽屉里"。
+  // 常态：审校那三处 drawDiffLayer 调用在抽屉模块里、共享/审校调度器定义在 registry，
+  // 一条判据要同时看两个文件 ⇒ 合查（不是放宽：判据强度不变，只换取源）。
   const drawerPath = join(STATIC_DIR, "page-detail-drawer.js");
   let code = codeOnly(readFileSync(APP_FILE, "utf8"));
   try {

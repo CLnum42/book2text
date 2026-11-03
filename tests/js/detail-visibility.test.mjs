@@ -27,10 +27,8 @@ const APP_FILE = process.env.B2T_APP_JS
 /**
  * `app.js` + 核心抽屉模块（`page-detail-drawer.js`）合查。
  *
- * Temp-Relax: 抽屉那刀把 `openPageDetail` / `closePageDetail` 搬进模块；这两条判据原来的
- * 定位口径是"在 app.js 里找顶层函数"，搬走后必然定位失败。改成合查后：
- * 旧树（模块还没落盘）只有 app.js ⇒ 判据与原来完全一样；新树两条函数在模块里 ⇒ 仍能定位。
- * 收紧条件 = 抽屉刀笔 2 把这两条改成"只在抽屉模块里找"。
+ * 常态合查：`openPageDetail` / `closePageDetail` 已在 `page-detail-drawer.js` 里，
+ * 而 ① 的 `showView` 仍在 app.js ⇒ 一条判据要跨两个文件，所以合查（判据强度不变）。
  */
 function sourceWithDrawer() {
   const app = readFileSync(APP_FILE, "utf8");
@@ -137,10 +135,8 @@ export function lastDetailPageNoProblems(source) {
   if (!range) {
     return ["app.js 里找不到顶层 function openPageDetail( —— 定位失败就红（fail closed）"];
   }
-  // Temp-Relax: 抽屉那刀把 openPageDetail 搬进模块，写法变成 `S.lastDetailPageNo = pageNo`
-  // （S 是注入访问器的薄封装），外壳侧还有 `setLastDetailPageNo` 的 setter 一行。
-  // 两者都不是"第二个真源"，只是同一个状态的两条通道 ⇒ 判据只数**真源赋值**。
-  // 收紧条件 = 抽屉刀笔 2 把这两条判据改成"状态只在外壳声明一次 + 模块里 0 个同名 let"。
+  // 常态：抽屉里写成 `S.lastDetailPageNo = pageNo`（S 是注入访问器的薄封装），外壳侧还有
+  // `setLastDetailPageNo` 的 setter 一行——两者都不是"第二个真源"，判据只数**真源赋值**。
   const hits = assignmentHits(src, "lastDetailPageNo")
     .filter((hit) => !/setLastDetailPageNo/.test(hit.code));
   if (hits.length !== 1) {
@@ -224,10 +220,9 @@ test("①②③ 自检：假源码违规要点名、定位失败也要红（判�
 //   showView("pages") 之后 detailPageNo = 1 ⇒ ④ 红。
 test("④ 运行时：showView(\"pages\") 之后 detailPageNo 必须为 null（行为判据，无假源码自检）", (t) => {
   const ctx = loadApp();
-  // Temp-Relax: 抽屉那刀把 closePageDetail 搬进模块；外壳调 window.PageDetailDrawer?.closePageDetail()。
-  // 模块搬走后，这条判据要能"经模块"把状态清掉，而台架的注入是空函数（`() => undefined`），
-  // 读不到外壳的 let ⇒ 现在只能**显式 skip**（skip 会打出来，不静默当通过）。
-  // 收紧条件 = 抽屉刀笔 2 给 loadApp 接上状态桥（injected.setDetailPageNo 写回 ctx 的词法绑定）。
+  // 已知台架限制（不是放宽判据）：`closePageDetail` 搬进模块后，这条要"经模块"把状态清掉，
+  // 而 `loadApp` 的注入是空函数（`() => undefined`），读写不到外壳的 let ⇒ 模块在时**显式 skip**
+  // （skip 会打出来，不静默当通过）。补状态桥是台架的活，不在本刀的产品范围里。
   const report = preloadModules(ctx, ["page-detail-drawer.js"]);
   if (report.some((item) => item.loaded)) {
     t.skip("抽屉已在模块里：④ 的状态桥还没接进台架（见抽屉刀笔 2）");
