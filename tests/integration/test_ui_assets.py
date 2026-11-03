@@ -325,6 +325,12 @@ def _page_number_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _page_grid_script() -> str:
+    """片 3a：页面网格的瓦片生产与块缓存住在 `page-grid.js`（服务模块，无 root）。"""
+    path = STATIC_DIR / "page-grid.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _drawer_script() -> str:
     """① 主刀收尾：核心抽屉住在 `page-detail-drawer.js`（root = #view-review）。
 
@@ -685,8 +691,9 @@ def test_margin_view_is_wired_to_the_page_view() -> None:
     没有模式选择卡片，也没有折叠的「检测」按钮，进这一步自动拟合未定的页。
     """
     page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    # 版心面板的接线随 pages 刀 1 搬进 pages-view.js：文案类断言两份合查（命中任一即可）
-    script = _script_with_view("pages-view.js")
+    # 版心面板的接线随 pages 刀 1 搬进 pages-view.js、瓦片生产随片 3a 搬进 page-grid.js：
+    # 文案类断言多份合查（命中任一即可）
+    script = _script_with_view("pages-view.js") + _page_grid_script()
     styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -731,6 +738,49 @@ def test_margin_view_is_wired_to_the_page_view() -> None:
     assert _function_body_any("undoMarginEdit")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
     assert "page-margin__box" in styles
     assert ".margin-step__actions" in styles
+
+
+def test_page_grid_owns_tile_builders_and_block_cache() -> None:
+    """片 3a：瓦片生产（buildTile / applyTileState / 两个门牌）与块缓存归 `page-grid.js`。
+
+    生产侧契约（`.page-margin` + 8 个把手）也在这里；消费侧契约在 `margin-data.js` 文件头，
+    两边对不上时这里先红。
+    """
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module = _page_grid_script()
+    assert module, "page-grid.js 没落盘——片 3a 的瓦片生产还没搬"
+
+    # 7 个函数：模块里有、外壳里不留
+    for name in (
+        "tileTitle",
+        "tileClassName",
+        "buildTile",
+        "applyTileState",
+        "pageBlockKey",
+        "rememberPageBlocks",
+        "forgetPageBlocks",
+    ):
+        assert f"function {name}(" in module, f"{name} 不在 page-grid.js"
+        assert f"function {name}(" not in app, f"{name} 还留在 app.js"
+
+    # 模块出口唯一，且脚本必须在 app.js 之前（否则 boot 里 init 不到）
+    assert "window.PageGrid = api" in module
+    assert page_html.index("/static/page-grid.js") < page_html.index("/static/app.js")
+
+    # 生产侧契约：版心容器 + 8 个把手 + 缩略图属性（与 margin-data.js 头注释对应）
+    assert "page-margin__handle--${edge}" in module
+    assert '"nw", "ne", "sw", "se"' in module
+    assert "page-margin__box" in module
+    assert "data-thumb-src" in module or "dataset.thumbSrc" in module
+    assert "aspectRatio" in module
+
+    # 外壳只剩接线：7 个旧调用点变成 window.PageGrid 转发，不再直呼
+    assert "window.PageGrid?.buildTile" in app
+    assert "window.PageGrid?.applyTileState" in app
+    assert "window.PageGrid?.forgetPageBlocks" in app
+    assert app.count("forgetPageBlocks(detailPageNo)") == 1
+    assert "window.PageGrid?.forgetPageBlocks(detailPageNo)" in app
 
 
 def test_export_margin_judgement_and_optional_notes_are_wired() -> None:
