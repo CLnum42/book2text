@@ -36,6 +36,11 @@ export const KNIVES = [
   { n: 10.2, status: "landed", scope: "10b（最后一刀）：建议扫描队列搬进模块——scanVisiblePageSuggestions 死 + pumpPageSuggestionQueue / ensurePageSuggestion / scheduleSuggestionScan 与七份队列状态搬入，新能力 onPagesShown（R8 36 → 36，deps 198 → 186，T 归零）" },
   // 刀 11 = 清理 + 收口（Architect 2026-11-01 裁定：`L==3` 作废、不建 refresh；终态 = T0 / L⊇{init,enter} / C34）
   { n: 11, status: "landed", scope: "清理刀：13 条死 dep + 10 个 0 引用顶层函数（含级联的 charAdvance）+ 3 处孤儿注释；开闸三条（deps 多键 / 0 引用函数 / 不建 refresh 导出）各带变异自检（deps 186 → 173，R8 36）" },
+  // 评审面板三 owner 之后的新号段（2026-11-03 起）。刀 12 是"到期点"，不是"要做的事"：
+  // 片 1a 把 `box--` 排除出 class 归属判据（editor 与 drawer 都会写这一族），
+  // 按登记表口径"没登记刀号 = 没有到期点"，所以必须在这里有一个号，否则那条排除永远没有到点。
+  { n: 12, status: "pending", scope: "块框选中态归抽屉：drawer 造框（box--type-*），editor 仍 toggle(\"box--active\") 的跨写；"
+    + "到期动作 = 选中态改由抽屉的具名动作写，判据收回 box--" },
 ];
 
 /** 刀号是否已登记（`刀5b` 这种带字母的本来就解析不出来，到不了这一步）。 */
