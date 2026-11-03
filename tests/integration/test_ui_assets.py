@@ -307,6 +307,12 @@ def _suggestion_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _page_number_script() -> str:
+    """片 1a：页码面板住在 `page-number-panel.js`（两个根都是顶层 mask）。"""
+    path = STATIC_DIR / "page-number-panel.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _drawer_script() -> str:
     """① 主刀收尾：核心抽屉住在 `page-detail-drawer.js`（root = #view-review）。
 
@@ -870,7 +876,8 @@ def test_recognition_settings_are_wired_to_project_settings() -> None:
 def test_page_number_panel_is_wired() -> None:
     """任务 55：页码模板入口、候选列表、采用、异常分组都必须真的接上。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 片 1a：页码面板那 19 个函数搬进 page-number-panel.js ⇒ 按合查读（判据强度不变）
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8") + _page_number_script()
     styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -904,7 +911,8 @@ def test_page_number_panel_is_wired() -> None:
 def test_page_number_review_and_range_templates_are_wired() -> None:
     """任务 56：页码审校对话框、逐页手动映射、第二套页码范围都要真的接上。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 片 1a：同一个模块 ⇒ 合查（判据强度不变）
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8") + _page_number_script()
     styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -926,7 +934,9 @@ def test_page_number_review_and_range_templates_are_wired() -> None:
     assert 'body: JSON.stringify({ template, range })' in script
     assert "function renderPageNumberReview(" in script
     assert "PN_ANOMALY_LABELS" in script and "duplicate" in script
-    assert "page-number-review-table li[data-page-no=" in script
+    # 模块在 reviewRoot 子树里查，选择器不再带根 id（语义不变：还是按 data-page-no 定位那一行）
+    assert ("page-number-review-table li[data-page-no=" in script
+            or "li[data-page-no=" in script)
     assert ".pn-table" in styles and ".pn-issue-list" in styles
 
 
