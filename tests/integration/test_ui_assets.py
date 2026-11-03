@@ -351,6 +351,12 @@ def _continuation_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _punct_script() -> str:
+    """片 6：标点批量 + 整行乱码住在 `punct-batch.js`（两个根：punct-groups / garbled）。"""
+    path = STATIC_DIR / "punct-batch.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _drawer_script() -> str:
     """① 主刀收尾：核心抽屉住在 `page-detail-drawer.js`（root = #view-review）。
 
@@ -1777,6 +1783,54 @@ def test_continuation_review_owns_the_panel_and_ack_count_refresh() -> None:
     assert "/review/tree" not in reading.split("noteReviewAcks")[1][:400], "ack 之后不许重取树"
 
 
+def test_punct_batch_owns_both_panels_and_reading_badges_are_injected() -> None:
+    """片 6：标点批量 + 整行乱码 15 函数归 `punct-batch.js`；两个根、角标走注入。"""
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module = _punct_script()
+    assert module, "punct-batch.js 没落盘——片 6 的面板还没搬"
+
+    for name in (
+        "punctReviewStorageKey",
+        "punctReviewSet",
+        "savePunctReviewSet",
+        "refreshGarbledLines",
+        "renderGarbledBadge",
+        "renderGarbledList",
+        "openGarbledPanel",
+        "closeGarbledPanel",
+        "decideGarbledLines",
+        "refreshPunctGroups",
+        "renderPunctGroupBadge",
+        "openPunctGroups",
+        "renderPunctGroups",
+        "decidePunctGroup",
+        "undoPunctBatch",
+    ):
+        assert f"function {name}(" in module, f"{name} 不在 punct-batch.js"
+        assert f"function {name}(" not in app, f"{name} 还留在 app.js"
+
+    # 两个根 + 角标节点归阅读视图（模块里不许出现那 4 个 id）
+    assert 'punctRoot: el("punct-groups-mask")' in app
+    assert 'garbledRoot: el("garbled-mask")' in app
+    for foreign in ("reading-punct-count", "reading-punct-open", "reading-garbled-count", "reading-garbled-open"):
+        assert foreign not in module, f"{foreign} 是阅读视图的节点，只能注入"
+    assert "getReadingBadges" in module
+    assert page_html.index("/static/punct-batch.js") < page_html.index("/static/app.js")
+
+    # 状态随迁；入口/刷新由外壳转发
+    for token in ("let punctGroupsData", "let garbledData", "let punctLastBatch", "let punctBusy"):
+        assert token not in app, f"{token} 还留在 app.js"
+    for forward in (
+        "window.PunctBatch?.openPunctGroups()",
+        "window.PunctBatch?.openGarbledPanel()",
+        "window.PunctBatch?.refreshPunctGroups()",
+        "window.PunctBatch?.refreshGarbledLines()",
+        "window.PunctBatch?.renderPunctGroupBadge()",
+    ):
+        assert forward in app, f"外壳缺转发：{forward}"
+
+
 def test_confirm_page_refreshes_finish_counts() -> None:
     """任务 42 走查：确认一页之后，收尾面板 / 步骤条的计数必须跟着动。
 
@@ -2291,10 +2345,14 @@ def test_index_image_recovery_and_current_diff_highlight_are_wired() -> None:
         "punct-groups-undo",
     ):
         assert f'id="{element_id}"' in page, element_id
-    assert "/review/punct-groups" in script
-    assert "/review/punct-groups/decide" in script
-    assert "function decidePunctGroup(" in script
-    assert "全部采用候选" in script and "全部保留原文" in script and "逐条看" in script
+    # 片 6：标点/乱码整簇搬进 punct-batch.js ⇒ 这四行按 app + 模块合查
+    punct_script = _punct_script()
+    assert "/review/punct-groups" in script + punct_script
+    assert "/review/punct-groups/decide" in script + punct_script
+    assert "function decidePunctGroup(" in punct_script
+    assert "全部采用候选" in script + punct_script + page
+    assert "全部保留原文" in script + punct_script + page
+    assert "逐条看" in script + punct_script
     # L5：标点差异的"未看过的 pattern 才计数"这条判据随 renderPunctGroupBadge 搬进模块
     # （app.js 里 0 处）。判据同前：模块恰 1 处 + 合查存在。
     assert module_script.count('mark.level === "differs_punct" && !punctWatch.has(mark.pattern_key)') == 1
