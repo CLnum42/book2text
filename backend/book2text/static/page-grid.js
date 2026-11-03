@@ -20,6 +20,12 @@
  * - `applyTileState()` 只改这棵树里已有的节点（轮询时用，不重建 DOM）；
  * - 本模块**不查全局 DOM**：tile 由调用方给、页面记录由调用方给（同 page-tile.js 的组件形态）。
  *
+ * ## 到期点
+ *
+ * **片 3d（块缓存归属）**：`pageBlockCache` / `pageBlockCacheOrder` / `pageBlockVersions` /
+ * `PAGE_BLOCK_CACHE_LIMIT` 现在留在外壳、以活对象注入（搬走要一次加三个 get/clear 导出，
+ * 接口面 5→8，本刀不做）。到期动作 = 三个导出加齐，`PagesView` 与 `PageIndexService` 改用转发。
+ *
  * ## 状态
  *
  * `currentProject` / `selectedPages` / `busyPages` / `pageZoomIndex` 归外壳 ⇒ 注入访问器；
