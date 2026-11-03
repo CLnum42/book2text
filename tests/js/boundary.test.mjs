@@ -5504,6 +5504,8 @@ const DOMAIN_MODULES = [
   { file: "recovery-panels.js", exposes: "RecoveryPanels", allowQuerySelector: true },
   // 片 8：字框回填——root = #word-boxes-mask（顶层 mask）
   { file: "word-boxes.js", exposes: "WordBoxes", allowQuerySelector: true },
+  // 片 9：字符规范化——root = #orthography-panel（顶层 mask）
+  { file: "orthography.js", exposes: "Orthography", allowQuerySelector: true },
 ];
 
 /**
@@ -5529,6 +5531,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "punct-batch.js",
   "recovery-panels.js",
   "word-boxes.js",
+  "orthography.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {
