@@ -5946,12 +5946,15 @@ const SECTION_OWNERS = [
     // `box--` **不在这张表里**：块框（`box--type-*` / `box--active`）由抽屉 createElement，
     // 而 editor 的选中高亮仍会 toggle `box--active`（既有跨写，本刀不重排）。
     // 两边都声明会让 ④ 互相误报 ⇒ 本刀把 `box--` 排除在 class 归属判据之外（不是放宽，是划清范围）。
+    // **到期点 = 刀 12**（`tests/js/knife-registry.mjs`）：块框选中态改由抽屉的具名动作写之后，
+    // 这一行连同上面的排除一起删，判据收回 `box--`。
     classes: ["review-block", "ink-gap"],
   },
   {
     name: "DRAWER",
     ids: DRAWER_IDS,
     files: ["page-detail-drawer.js"],
+    // `box--` 暂不入表（跨写选中态）：到期点 = 刀 12，见下面 classes 那段说明
     classes: ["box__handle", "diff-mark", "line-box"],
   },
   {
