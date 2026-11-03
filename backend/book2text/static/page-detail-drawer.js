@@ -211,6 +211,11 @@ function applyZoom() {
   const base = fitWidth();
   const width = S.zoomLevel === null ? base : Math.round(base * S.zoomLevel);
   canvas.style.width = `${width}px`;
+  // **图必须跟 canvas 同宽**：`max-width: 100%` 只封上限，封的是 canvas 宽；但图片自身不会
+  // 被放大到超过 naturalWidth ⇒ 一旦 canvas 比 natural 宽（>100% 的档位），图就停在 natural，
+  // 而块框是按 overlay 的百分比定位（overlay 撑满 canvas）⇒ 横向整体偏移。
+  // 显式给图同一个宽，三者（canvas / image / overlay）才等比。
+  image.style.width = `${width}px`;
   part("zoom-fit").classList.toggle("is-on", S.zoomLevel === null);
   // 顺序号 / 悬停卡片是像素定位的：宽度变了要重新找空位
   injected.scheduleDetailOverlayLayout(part("detail-overlay"));
