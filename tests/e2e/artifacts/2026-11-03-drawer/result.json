@@ -1,0 +1,47 @@
+{
+  "round": "2026-11-03 抽屉刀真机验收",
+  "baseline": {
+    "local_main_tip": "f77c657",
+    "static_same_as": "e3377c9",
+    "origin_main_at_test": "c558a07 (not pushed)"
+  },
+  "verdict": "blocked: app fails to boot",
+  "blockers": [
+    {
+      "id": "boot-crash",
+      "severity": "fatal",
+      "error": "TypeError: Cannot read properties of null (reading 'addEventListener') at setupReviewPager (page-detail-drawer.js:191) from boot (app.js:8202)",
+      "root_cause": "window.PageDetailDrawer?.setupReviewPager() is called at app.js:8202, before PageDetailDrawer.init({root}) at app.js:8470; module part() needs root (null) => null.addEventListener",
+      "impact": "boot aborts; project list renders 0 cards; all views unusable"
+    },
+    {
+      "id": "render-abort",
+      "severity": "blocking (exposed on diagnostic copy with only the boot call deferred)",
+      "error": "window.PageDetailEditor?.setEditorPackageModeChrome is not a function (app.js:8557) from renderPageDetail (page-detail-drawer.js:141)",
+      "root_cause": "editor exports setPackageModeChrome, not setEditorPackageModeChrome",
+      "impact": "drawer view opens with title/page number, but image, blocks and overlay are empty"
+    },
+    {
+      "id": "error-writer-broken",
+      "severity": "blocking (masks original errors)",
+      "error": "window.PageDetailEditor?.showPageDetailError is not a function (app.js:8558) from loadPageDetail catch (page-detail-drawer.js:120)",
+      "root_cause": "editor has internal showEditorError, not exported as showPageDetailError",
+      "impact": "second TypeError is unhandled; #page-detail-error stays hidden; original error swallowed"
+    }
+  ],
+  "static_wiring_check": {
+    "missing_editor_exports_used_by_app": ["setEditorPackageModeChrome", "showPageDetailError"],
+    "missing_drawer_exports_used_by_app": []
+  },
+  "items": {
+    "1_open": "untested (blocked)",
+    "2_flip": "untested (blocked)",
+    "3_zoom": "untested (blocked)",
+    "4_toggles": "untested (blocked)",
+    "5_margin": "untested (blocked)",
+    "6_collapse": "untested (blocked); code has PageDetailEditor.toggleCollapsed returning classList.toggle('is-collapsed')",
+    "7_close": "untested (blocked); code only wires #detail-close (app.js:975 + 7271); no Esc/backdrop handler for the drawer; closePageDetail closes aux panel but does not clear #page-detail-error"
+  },
+  "console": {"app_errors": 1, "note": "chrome-extension inject.js error is environment noise"},
+  "evidence": ["boot-crash.json", "boot-crash.jpg", "render-abort.json", "drawer-blank.jpg"]
+}
