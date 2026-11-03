@@ -1555,7 +1555,7 @@ async function loadTrash() {
       meta.textContent =
         `${entry.page_count} 页` +
         (entry.source_file_name ? ` · ${entry.source_file_name}` : "") +
-        ` · 删除于 ${formatMarginTime(entry.deleted_at) || "未知时间"}` +
+        ` · 删除于 ${window.MarginData?.formatMarginTime(entry.deleted_at) || "未知时间"}` +
         (entry.deleted_by ? ` · ${entry.deleted_by}` : "");
       main.append(name, meta);
 
@@ -1788,128 +1788,25 @@ function savePageOverlayPreference() {
  * 任务 53 起默认**开**：版心会随识别自动算出来，用户要求"页面视图与审校视图都应该显示"，
  * 再让每次打开都先点一下开关就本末倒置了。用户关过一次就记住"关"（显式存 "0"）。
  */
-function pageMarginStorageKey() {
-  return currentProject ? `b2t.pagesMargin.v1.${currentProject.project_id}` : "";
-}
-
-function loadPageMarginPreference() {
-  try {
-    return localStorage.getItem(pageMarginStorageKey()) !== "0";
-  } catch {
-    return true;
-  }
-}
-
-function savePageMarginPreference() {
-  try {
-    localStorage.setItem(pageMarginStorageKey(), pagesMarginOn ? "1" : "0");
-  } catch {
-    /* 隐私模式等写不进去：不影响本次会话 */
-  }
-}
-
 /**
  * 一页实际生效的版心（与后端 `effective_margin_box` 同一口径）：
  * `none` → 无；`custom` → 本页；`auto` → **本页落库的框**（没有就是未定，
  * 绝不拿项目默认框顶替，任务 33）；`inherit` → 项目默认。
  */
-function marginBoxOfPage(page) {
-  if (!page || page.margin_box_mode === "none") return null;
-  if (page.margin_box_mode === "custom") return page.margin_box || null;
-  if (page.margin_box_mode === "auto") return page.margin_box || null;
-  return (currentProject && currentProject.margin_box) || null;
-}
-
 /** auto 页的框是哪来的：fit（迭代拟合）/ bbox（本页包围盒兜底）/ 未定。 */
-function pageMarginMethod(page) {
-  if (!page || page.margin_box_mode !== "auto") return null;
-  if (!page.margin_box) return "undetermined";
-  return page.margin_box_method || "fit";
-}
-
-function pageMarginSourceLabel(page) {
-  if (!page) return "";
-  if (page.margin_box_mode === "none") return "不适用";
-  if (page.margin_box_mode === "custom") return "本页自定义";
-  if (page.margin_box_mode === "auto") {
-    const method = pageMarginMethod(page);
-    if (method === "undetermined") {
-      return pageHasFitLines(page)
-        ? "未定（有正文行，还没拟合）"
-        : "未定（没有可用的正文行）";
-    }
-    if (method === "bbox") return "本页包围盒（兜底）";
-    return "自动拟合";
-  }
-  return "沿用默认版心";
-}
-
 /** 审校视图的版心开关也按项目记住；默认开（任务 53：自动算出来就该直接显示）。 */
-function reviewMarginStorageKey() {
-  return currentProject ? `b2t.reviewMargin.v1.${currentProject.project_id}` : "";
-}
-
-function loadReviewMarginPreference() {
-  try {
-    return localStorage.getItem(reviewMarginStorageKey()) !== "0";
-  } catch {
-    return true;
-  }
-}
-
-function saveReviewMarginPreference() {
-  try {
-    localStorage.setItem(reviewMarginStorageKey(), reviewMarginOn ? "1" : "0");
-  } catch {
-    /* 隐私模式等写不进去：不影响本次会话 */
-  }
-}
-
 /** 块的几何中心（与导出 `block_center` 同口径）；没有框返回 null。 */
-function blockCenter(block) {
-  const bbox = block && block.bbox;
-  if (!bbox || bbox.length !== 4) return null;
-  return [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2];
-}
-
 /**
  * 块的中心点是否在版心内（任务 53 的审校过滤）。
  *
  * 与导出第一层**同一规则**：看中心点，不看"框完全包含"；没有 bbox 的块按版心内处理
  * （宁可多审一块，也不把文字藏起来）；没有生效版心时全部算"版心内"（不隐藏任何块）。
  */
-function blockInsideMargin(block, page) {
-  const box = marginBoxOfPage(page);
-  if (!box) return true;
-  const center = blockCenter(block);
-  if (!center) return true;
-  return (
-    center[0] >= box[0] && center[0] <= box[2] &&
-    center[1] >= box[1] && center[1] <= box[3]
-  );
-}
-
 /**
  * 任务 34：这一块是否计入审校口径（默认只审版心内）。
  * 后端页详情已经按同一函数算好 `margin_inside`；老响应没有这个字段时退回本地判断。
  */
-function blockCountedInMargin(block, page) {
-  if (block && typeof block.margin_inside === "boolean") return block.margin_inside;
-  return blockInsideMargin(block, page || detailPageRecord());
-}
-
 /** 一页的块按版心内外分组（保持原有顺序；没有版心时全是"内"）。 */
-function reviewMarginSplit(page, blocks) {
-  const box = marginBoxOfPage(page);
-  const inside = [];
-  const outside = [];
-  if (!box) return { box: null, inside: [...blocks], outside };
-  for (const block of blocks) {
-    (blockCountedInMargin(block, page) ? inside : outside).push(block);
-  }
-  return { box, inside, outside };
-}
-
 /** 当前审校页的项目记录（版心三态在 `currentProject.pages` 上）。 */
 function detailPageRecord() {
   if (!currentProject || detailPageNo === null) return null;
@@ -2183,7 +2080,7 @@ function tileTitle(page) {
   const workflowNote = workflow
     ? `\n工作流：${workflow.stage_label}${workflow.layout ? ` · ${workflow.layout.line_count} 行` : ""}`
     : "";
-  const marginNote = `\n版心：${pageMarginSourceLabel(page)}`;
+  const marginNote = `\n版心：${window.MarginData?.pageMarginSourceLabel(page)}`;
   return (
     `第 ${page.page_no} 页 · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}` +
     ` · ${page.width_pt}×${page.height_pt} pt` +
@@ -2550,70 +2447,10 @@ let marginSuggestion = null;
 let marginAuditPage = null;
 let marginAuditLoading = false;
 
-function applyMarginRect(boxEl, box) {
-  if (!boxEl) return;
-  const [x0, y0, x1, y1] = box;
-  boxEl.style.left = `${x0 * 100}%`;
-  boxEl.style.top = `${y0 * 100}%`;
-  boxEl.style.width = `${(x1 - x0) * 100}%`;
-  boxEl.style.height = `${(y1 - y0) * 100}%`;
-}
-
 /** 画一页的版心框；没有生效版心（不适用 / 未设置）就收起来。 */
-function paintTileMargin(tile, page) {
-  const margin = tile ? tile.querySelector(".page-margin") : null;
-  if (!margin) return;
-  if (!pagesMarginOn || !page) {
-    clearTileMargin(tile);
-    return;
-  }
-  const box = marginBoxOfPage(page);
-  margin.classList.toggle("page-margin--custom", page.margin_box_mode === "custom");
-  margin.classList.toggle("page-margin--inherit", page.margin_box_mode !== "custom");
-  if (!box) {
-    margin.hidden = true;
-    margin._box = null;
-    return;
-  }
-  // 滚动时每帧都会走到这里：框没变就别再写样式（267 页滚动时不值得为同样的值刷 DOM）
-  const same =
-    margin._box &&
-    box.length === margin._box.length &&
-    box.every((value, index) => Math.abs(value - margin._box[index]) < 1e-6);
-  margin._box = box;
-  margin._pageNo = page.page_no;
-  if (same && !margin.hidden) return;
-  applyMarginRect(margin.querySelector(".page-margin__box"), box);
-  margin.hidden = false;
-}
-
-function clearTileMargin(tile) {
-  const margin = tile ? tile.querySelector(".page-margin") : null;
-  if (!margin) return;
-  if (margin.hidden && !margin._box) return;
-  margin.hidden = true;
-  margin._box = null;
-}
-
 function toggleMarginView() { return window.PagesView.toggleMarginView.apply(window.PagesView, arguments); }
 
 /** 把接口返回的一页合并进本地列表（保留识别状态 / 审校进度等派生字段）。 */
-function mergePageRecord(updated) {
-  if (!currentProject || !updated) return;
-  const index = currentProject.pages.findIndex((page) => page.page_id === updated.page_id);
-  if (index >= 0) {
-    currentProject.pages[index] = { ...currentProject.pages[index], ...updated };
-  }
-}
-
-function repaintTileMargin(page) {
-  if (!page || !currentProject) return;
-  const tile = document.querySelector(
-    `#page-grid .page-tile[data-page-no="${page.page_no}"]`
-  );
-  if (tile) paintTileMargin(tile, page);
-}
-
 /** 全局版心变了：只重画可见页（267 页全扫一遍没必要，可见性循环会兜底）。 */
 
 let marginStatusTimer = null;
@@ -2629,52 +2466,13 @@ let marginStatusTimer = null;
 
 // ---------------------------------------------------------------- 版心右栏
 
-function percentOf(value) {
-  return `${(Number(value) * 100).toFixed(1)}%`;
-}
-
-function formatMarginBox(box) {
-  if (!box) return "未设置";
-  return `左 ${percentOf(box[0])} · 上 ${percentOf(box[1])} · 右 ${percentOf(box[2])} · 下 ${percentOf(box[3])}`;
-}
-
 /** 时间戳 → "10-23 08:04"（本地时区）；解析不了就原样显示。 */
-function formatMarginTime(raw) {
-  if (!raw) return "";
-  const when = new Date(raw);
-  if (Number.isNaN(when.getTime())) return raw;
-  return when.toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 /** 全局版心的来源说明（自动推算 / 手动设置），显示在右栏。 */
 /** 默认版心的来源说明（只给显式「沿用默认」的页看，一行就够）。 */
-function marginSourceText() {
-  if (!currentProject || !currentProject.margin_box) return "";
-  if (globalMarginIsAuto()) {
-    const when = formatMarginTime(currentProject.margin_box_set_at);
-    return `自动推算${when ? ` · ${when}` : ""}`;
-  }
-  return "手动设置";
-}
-
 /**
  * 版心未定的依据说明：**这一页到底有没有行**，说清楚。
  * 两处（面板首屏 / 审计回包）共用一句，免得后到的审计把首屏的实话盖回去。
  */
-function marginBasisForUndetermined(page) {
-  const lines = pageLayoutLines(page) + pageTextLines(page);
-  if (lines > 0) {
-    return `未定：这一页有 ${lines} 行正文，但还没有拟合出四边（「重置为本页自动」可重算）`;
-  }
-  return "未定：这一页还没有可用的正文行（检测行 / 识别行框都没有），拟合不出版心";
-}
-
-
 /**
  * 版心右栏（任务 36B 重写）。
  *
@@ -4078,7 +3876,7 @@ function renderReviewFilter(split, mode) {
 function refreshReviewFilterOnly() {
   if (!reviewBlocks || !reviewBlocks.length) return;
   const page = detailPageRecord();
-  const split = reviewMarginSplit(page, reviewBlocks);
+  const split = window.MarginData?.reviewMarginSplit(page, reviewBlocks);
   renderReviewFilter(split, effectiveReviewFilter(page));
 }
 
@@ -4661,7 +4459,7 @@ function aggregateDivergence() {
   for (const block of reviewBlocks || []) {
     const divergence = divergenceOf(block);
     if (divergence.stale) continue;
-    const bucket = blockCountedInMargin(block, page) ? inside : outside;
+    const bucket = window.MarginData?.blockCountedInMargin(block, page) ? inside : outside;
     bucket.acked += Number(divergence.acked || 0);
     for (const mark of divergence.marks || []) {
       if (mark.ack) continue;
@@ -5780,7 +5578,7 @@ function treeItemsFromBlocks(blocks) {
   (blocks || []).forEach((block, blockIndex) => {
     const divergence = divergenceOf(block);
     if (divergence.stale) return;
-    if (!blockCountedInMargin(block, null)) return;
+    if (!window.MarginData?.blockCountedInMargin(block, null)) return;
     for (const mark of divergence.marks || []) {
       if (!TREE_DIFF_LEVELS.has(mark.level)) continue;
       const line = (block.lines || [])[mark.line_index];
@@ -6863,7 +6661,7 @@ async function loadBackups() {
     const main = document.createElement("div");
     main.className = "backup-row__main";
     const title = document.createElement("div");
-    title.textContent = `${formatMarginTime(item.created_at) || item.name} · ${humanBytes(item.size)}`;
+    title.textContent = `${window.MarginData?.formatMarginTime(item.created_at) || item.name} · ${humanBytes(item.size)}`;
     const note = document.createElement("div");
     note.className = "muted";
     note.textContent = `${item.note} · ${item.name}`;
@@ -7384,7 +7182,7 @@ function boot() {
     // L6 刀1：状态 setter（有写点才给）
     // L6 刀1：仍留在 app.js 的叶子函数
     clearImagePlaceholder: (...args) => window.PageIndexService?.clearImagePlaceholder(...args),
-    clearTileMargin: (...args) => clearTileMargin(...args),
+    clearTileMargin: (...args) => window.MarginData?.clearTileMargin(...args),
     pageImageUrl: (...args) => pageImageUrl(...args),
     // L6 刀2：仍留在 app.js 的叶子函数
     computeCharSpans: (...args) => computeCharSpans(...args),
@@ -7402,8 +7200,8 @@ function boot() {
     setPagesMarginOn: (value) => { pagesMarginOn = value; return value; },
     setPagesOverlayOn: (value) => { pagesOverlayOn = value; return value; },
     // L6 刀12：仍留在 app.js 的叶子函数
-    paintTileMargin: (...args) => paintTileMargin(...args),
-    savePageMarginPreference: (...args) => savePageMarginPreference(...args),
+    paintTileMargin: (...args) => window.MarginData?.paintTileMargin(...args),
+    savePageMarginPreference: (...args) => window.MarginData?.savePageMarginPreference(...args),
     savePageOverlayPreference: (...args) => savePageOverlayPreference(...args),
   });
   if (!token) {
@@ -7430,22 +7228,31 @@ function boot() {
     onPageNumberChanged: (text) => window.PagesView?.onPageNumberChanged(text),
   });
   window.PageNumberPanel?.setupPageNumberPanel();
+  // 版心数据（服务模块）：四个视图各自把 tile 传进来，模块不自建 DOM。
+  window.MarginData?.init({
+    getCurrentProject: () => currentProject,
+    getPagesMarginOn: () => pagesMarginOn,
+    setPagesMarginOn: (value) => { pagesMarginOn = value; return value; },
+    getReviewMarginOn: () => reviewMarginOn,
+    setReviewMarginOn: (value) => { reviewMarginOn = value; return value; },
+    getTileByPageNo: (pageNo) => document.querySelector(`#page-grid .page-tile[data-page-no="${pageNo}"]`),
+  });
   window.PagesView?.init({
     adoptBlockSuggestion: (...args) => window.PageDetailEditor?.adoptBlockSuggestion(...args),
     apiJson: apiJson,
     applyProjectSettings: (...args) => window.SuggestionFlow?.projectSettingsApplied(...args),
-    clearTileMargin: clearTileMargin,
+    clearTileMargin: (...args) => window.MarginData?.clearTileMargin(...args),
     fetchPageSuggestions: fetchPageSuggestions,
     forgetPageSuggestions: forgetPageSuggestions,
     formatDuration: formatDuration,
     loadFinishSummary: loadFinishSummary,
     loadTasks: loadTasks,
     marginBodyPages: marginBodyPages,
-    marginBoxOfPage: marginBoxOfPage,
+    marginBoxOfPage: (...args) => window.MarginData?.marginBoxOfPage(...args),
     notifyApplied: (...args) => window.SuggestionFlow?.notifyApplied(...args),
     openTaskDrawer: openTaskDrawer,
     pageHasFitLines: pageHasFitLines,
-    pageMarginMethod: pageMarginMethod,
+    pageMarginMethod: (...args) => window.MarginData?.pageMarginMethod(...args),
     parsePageRange: parsePageRange,
     recognitionOf: recognitionOf,
     refreshPageStates: refreshPageStates,
@@ -7493,28 +7300,28 @@ function boot() {
     getDetailPageNo: () => detailPageNo,
     auxEstimateText: auxEstimateText,
     estimateRemainingSeconds: estimateRemainingSeconds,
-    applyMarginRect: applyMarginRect,
+    applyMarginRect: (...args) => window.MarginData?.applyMarginRect(...args),
     nearestEdge: nearestEdge,
     forgetPageBlocks: forgetPageBlocks,
-    formatMarginBox: formatMarginBox,
+    formatMarginBox: (...args) => window.MarginData?.formatMarginBox(...args),
     highConfidenceCount: highConfidenceCount,
     layoutBlockPageRecord: layoutBlockPageRecord,
     loadPageDetail: (...args) => window.PageDetailDrawer?.loadPageDetail(...args),
-    marginBasisForUndetermined: marginBasisForUndetermined,
+    marginBasisForUndetermined: (...args) => window.MarginData?.marginBasisForUndetermined(...args),
     marginFitSummaryText: marginFitSummaryText,
     marginPagesWithoutLines: marginPagesWithoutLines,
-    marginSourceText: marginSourceText,
+    marginSourceText: (...args) => window.MarginData?.marginSourceText(...args),
     marginUndeterminedPages: marginUndeterminedPages,
-    mergePageRecord: mergePageRecord,
+    mergePageRecord: (...args) => window.MarginData?.mergePageRecord(...args),
     openMasks: openMasks,
     pageBlockKey: pageBlockKey,
-    pageMarginSourceLabel: pageMarginSourceLabel,
+    pageMarginSourceLabel: (...args) => window.MarginData?.pageMarginSourceLabel(...args),
     pageSetupStats: (...args) => window.PageConfirm.pageSetupStats(...args),
-    paintTileMargin: paintTileMargin,
+    paintTileMargin: (...args) => window.MarginData?.paintTileMargin(...args),
     percentText: (...args) => window.QualityStats.percentText(...args),
     reloadDetailAfterRecognition: reloadDetailAfterRecognition,
     rememberPageBlocks: rememberPageBlocks,
-    repaintTileMargin: repaintTileMargin,
+    repaintTileMargin: (...args) => window.MarginData?.repaintTileMargin(...args),
     selectedSuggestions: (...args) => window.PageConfirm.selectedSuggestions(...args),
     selectionPages: selectionPages,
     suggestionPagesByType: (...args) => window.PageConfirm.suggestionPagesByType(...args),
@@ -7598,7 +7405,7 @@ function boot() {
     matchesWorkflow: matchesWorkflow,
     pageBlockCacheOrder: pageBlockCacheOrder,
     pageSuggestionOrder: pageSuggestionOrder,
-    savePageMarginPreference: savePageMarginPreference,
+    savePageMarginPreference: (...args) => window.MarginData?.savePageMarginPreference(...args),
     savePageOverlayPreference: savePageOverlayPreference,
     setJobStartBusy: setJobStartBusy,
     setJobStartPending: (value) => { jobStartPending = value; return value; },
@@ -7633,7 +7440,7 @@ function boot() {
     setPagesMarginOn: (value) => { pagesMarginOn = value; return value; },
     getPagesOverlayOn: () => pagesOverlayOn,
     setPagesOverlayOn: (value) => { pagesOverlayOn = value; return value; },
-    savePageMarginPreference: (...args) => savePageMarginPreference(...args),
+    savePageMarginPreference: (...args) => window.MarginData?.savePageMarginPreference(...args),
     savePageOverlayPreference: (...args) => savePageOverlayPreference(...args),
     togglePageBlocksOverlay: (...args) => togglePageBlocksOverlay(...args),
     toggleMarginView: (...args) => toggleMarginView(...args),
@@ -7645,9 +7452,9 @@ function boot() {
     // 页面渲染的共用叶子函数（页面视图、预览、目录三处一套）
     pageImageUrl: (...args) => pageImageUrl(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
-    blockCountedInMargin: (...args) => blockCountedInMargin(...args),
-    clearTileMargin: (...args) => clearTileMargin(...args),
-    paintTileMargin: (...args) => paintTileMargin(...args),
+    blockCountedInMargin: (...args) => window.MarginData?.blockCountedInMargin(...args),
+    clearTileMargin: (...args) => window.MarginData?.clearTileMargin(...args),
+    paintTileMargin: (...args) => window.MarginData?.paintTileMargin(...args),
     loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
     clearImagePlaceholder: (...args) => window.PageIndexService?.clearImagePlaceholder(...args),
     // 导航
@@ -7681,9 +7488,9 @@ function boot() {
     syncToolbarToggles: () => window.PagesView?.syncToolbarToggles(),
     loadAutoApplyStatus: (...args) => window.SuggestionFlow?.refreshAutoApplyStatus(...args),
     loadFinishSummary: (...args) => loadFinishSummary(...args),
-    loadPageMarginPreference: (...args) => loadPageMarginPreference(...args),
+    loadPageMarginPreference: (...args) => window.MarginData?.loadPageMarginPreference(...args),
     loadPageOverlayPreference: (...args) => loadPageOverlayPreference(...args),
-    loadReviewMarginPreference: (...args) => loadReviewMarginPreference(...args),
+    loadReviewMarginPreference: (...args) => window.MarginData?.loadReviewMarginPreference(...args),
     openPageSetup: (...args) => openPageSetup(...args),
     queueAfterSteps: (...args) => queueAfterSteps(...args),
     refreshProject: (...args) => refreshProject(...args),
@@ -7750,13 +7557,13 @@ function boot() {
     apiJson: (path, options) => apiJson(path, options),
     // 仍留在 app.js 的页面视图叶子函数
     applyBoxElementRect: (...args) => applyBoxElementRect(...args),
-    clearTileMargin: (...args) => clearTileMargin(...args),
-    paintTileMargin: (...args) => paintTileMargin(...args),
+    clearTileMargin: (...args) => window.MarginData?.clearTileMargin(...args),
+    paintTileMargin: (...args) => window.MarginData?.paintTileMargin(...args),
     loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
     loadPageIndex: (...args) => window.PageIndexService?.loadIndex(...args),
     pageImageUrl: (...args) => pageImageUrl(...args),
     pageProfileFor: (...args) => pageProfileFor(...args),
-    savePageMarginPreference: (...args) => savePageMarginPreference(...args),
+    savePageMarginPreference: (...args) => window.MarginData?.savePageMarginPreference(...args),
     savePageOverlayPreference: (...args) => savePageOverlayPreference(...args),
     syncIndexToggles: () => window.IndexView?.refresh(),
     // 刀 6：页面工具栏两个开关的 is-on 同步（跨视图能力走注入——R2 不许模块直接引用 window.PagesView）
@@ -7776,7 +7583,7 @@ function boot() {
   // 刀 B：页面确认域模块（纯数据；状态仍归外壳，模块只拿只读访问器）
   window.PageConfirm?.init({
     getCurrentProject: () => currentProject,
-    marginBoxOfPage: (...args) => marginBoxOfPage(...args),
+    marginBoxOfPage: (...args) => window.MarginData?.marginBoxOfPage(...args),
     recognitionOf: (...args) => recognitionOf(...args),
     getSelectedPages: () => selectedPages,
     getSetupSuggestions: () => setupSuggestions,
@@ -7826,7 +7633,7 @@ function boot() {
     setReviewFilterExplicit: (value) => { reviewFilterExplicit = value; return value; },
     // 模块喊外壳的动作（30 个，S4 起含第二引擎复核那一组）
     activateDiff: (...args) => activateDiff(...args),
-    blockInsideMargin: (...args) => blockInsideMargin(...args),
+    blockInsideMargin: (...args) => window.MarginData?.blockInsideMargin(...args),
     computeCharSpans: (...args) => computeCharSpans(...args),
     detailPageRecord: (...args) => detailPageRecord(...args),
     diffLevelLabel: (...args) => diffLevelLabel(...args),
@@ -7857,7 +7664,7 @@ function boot() {
     pendingPageReasons: (...args) => pendingPageReasons(...args),
     refreshPageStates: (...args) => refreshPageStates(...args),
     renderReviewFilter: (...args) => renderReviewFilter(...args),
-    reviewMarginSplit: (...args) => reviewMarginSplit(...args),
+    reviewMarginSplit: (...args) => window.MarginData?.reviewMarginSplit(...args),
     scrollViewerTo: (...args) => window.PageDetailDrawer?.scrollViewerTo(...args),
     setSaveState: (...args) => setSaveState(...args),
     structureAction: (...args) => structureAction(...args),
@@ -7917,10 +7724,10 @@ function boot() {
     aggregateDivergence: (...args) => aggregateDivergence(...args),
     apiJson: (...args) => apiJson(...args),
     applyBoxElementRect: (...args) => applyBoxElementRect(...args),
-    applyMarginRect: (...args) => applyMarginRect(...args),
+    applyMarginRect: (...args) => window.MarginData?.applyMarginRect(...args),
     attachRenderErrorDetail: (...args) => window.PageTile?.attachRenderErrorDetail?.(...args),
-    blockCountedInMargin: (...args) => blockCountedInMargin(...args),
-    blockInsideMargin: (...args) => blockInsideMargin(...args),
+    blockCountedInMargin: (...args) => window.MarginData?.blockCountedInMargin(...args),
+    blockInsideMargin: (...args) => window.MarginData?.blockInsideMargin(...args),
     boxTypeLabel: (...args) => boxTypeLabel(...args),
     buildBoxLabel: (...args) => buildBoxLabel(...args),
     buildBoxOrder: (...args) => buildBoxOrder(...args),
@@ -7931,7 +7738,7 @@ function boot() {
     globalMarginIsAuto: (...args) => globalMarginIsAuto(...args),
     layoutOverlay: (...args) => window.OverlayLayer?.layout?.(...args),
     lineDiffSpanCount: (...args) => lineDiffSpanCount(...args),
-    marginBoxOfPage: (...args) => marginBoxOfPage(...args),
+    marginBoxOfPage: (...args) => window.MarginData?.marginBoxOfPage(...args),
     matchesTriage: (...args) => matchesTriage(...args),
     recognitionOf: (...args) => recognitionOf(...args),
     renderHistoryButtons: (...args) => renderHistoryButtons(...args),
@@ -7939,7 +7746,7 @@ function boot() {
     renderReviewWorkflowStatus: (...args) => renderReviewWorkflowStatus(...args),
     runPageAux: (...args) => runPageAux(...args),
     savePosition: (...args) => savePosition(...args),
-    saveReviewMarginPreference: (...args) => saveReviewMarginPreference(...args),
+    saveReviewMarginPreference: (...args) => window.MarginData?.saveReviewMarginPreference(...args),
     scheduleDetailOverlayLayout: (...args) => scheduleDetailOverlayLayout(...args),
     setReviewBlockFilter: (value) => { reviewBlockFilter = value; return value; },
     setReviewBlocks: (value) => { reviewBlocks = value; return value; },

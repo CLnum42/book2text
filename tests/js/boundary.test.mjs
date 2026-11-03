@@ -5480,6 +5480,10 @@ const DOMAIN_MODULES = [
   // 片 1a：页码面板——**两个根**（#page-number-panel 9+3 个子 id / #page-number-review-panel 9 个），
   // 都是 body 直下的顶层 mask ⇒ 允许 root.querySelector。
   { file: "page-number-panel.js", exposes: "PageNumberPanel", allowQuerySelector: true },
+  // 片 2：版心数据——**服务模块**（0 组自建 DOM、被四个视图消费）；tile 由调用方传进来，
+  // 它只在**那个 tile 元素**里查 `.page-margin` / `.page-margin__box`（3 处元素级查询）
+  // ⇒ 走 allowQuerySelector 分支（document 级查询仍然 0）。
+  { file: "margin-data.js", exposes: "MarginData", allowQuerySelector: true },
 ];
 
 /**
@@ -5497,6 +5501,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "collab.js",
   "page-detail-drawer.js",
   "page-number-panel.js",
+  "margin-data.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {
