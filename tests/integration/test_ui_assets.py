@@ -179,8 +179,11 @@ def test_block_frame_default_has_no_type_text_and_hover_card_is_placed_outside()
 
     # 默认顺序号只有数字；类型文字只进悬停卡片
     assert "order.textContent = String(index + 1)" in script
-    assert "box.append(buildBoxOrder(index));" in script
-    assert "box.append(buildBoxLabel(block, index, suggestion));" in script
+    # 抽屉那刀把它搬进模块（经 injected 调）；两边合查
+    assert ("box.append(buildBoxOrder(index));" in script
+            or "box.append(injected.buildBoxOrder(index));" in _drawer_script())
+    assert ("box.append(buildBoxLabel(block, index, suggestion));" in script
+            or "box.append(injected.buildBoxLabel(block, index, suggestion));" in _drawer_script())
     # 审校视图与页面视图共用同一套（页面视图经 registry 注入的 buildLabel 调它，不再自己 append）
     assert "buildBoxLabel(block, index, null)" in script
     # 页码提示只在卡片里
@@ -301,6 +304,15 @@ def _suggestion_script() -> str:
     与 `_editor_script()` / `_export_script()` 同一套合查口径：模块没落盘时返回空串。
     """
     path = STATIC_DIR / "suggestion-flow.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def _drawer_script() -> str:
+    """① 主刀收尾：核心抽屉住在 `page-detail-drawer.js`（root = #view-review）。
+
+    与 `_editor_script()` / `_export_script()` 同一套合查口径。
+    """
+    path = STATIC_DIR / "page-detail-drawer.js"
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
@@ -1545,7 +1557,7 @@ def test_review_pauses_page_grid_prefetch() -> None:
         "enter() 的离开分支没清缩略图：接线在、动作没了"
     )
     # 回来时由 applyPageZoom 重新挂 src（页面视图分支里调用）
-    assert "applyPageZoom();" in script
+    assert "applyPageZoom();" in script or "applyPageZoom();" in _drawer_script()
 
     both = _script_with_view()  # 刀 10a：pumpPageBlockPrefetch 已搬进模块
     for name in ("function pumpPageSuggestionQueue(", "function pumpPageBlockPrefetch("):
@@ -1557,11 +1569,14 @@ def test_review_pauses_page_grid_prefetch() -> None:
     # 批量确认版面后，已经打开的审校页页头要跟着刷新
     start = script.index("async function finishRunLayout(")
     block = script[start : script.index("\n}\n", start)]
-    assert "loadPageDetail(detailPageNo" in block
+    assert ("loadPageDetail(detailPageNo" in block
+            or "PageDetailDrawer?.loadPageDetail(detailPageNo" in block)
 
     # 页面打开不等建议 / 漏行：先渲染，建议随后补算（清洗刀之后不再有"队列处理完再补算"这条分支）
-    start = script.index("async function loadPageDetail(")
-    block = script[start : script.index("\n}\n", start)]
+    drawer = _drawer_script()
+    src_all = script + "\n" + drawer
+    start = src_all.index("async function loadPageDetail(")
+    block = src_all[start : src_all.index("\n}\n", start)]
     assert "function runPageAux(" in script
     assert "runPageAux(pageNo)" in block or "runPageAux(" in block
 
@@ -1569,12 +1584,13 @@ def test_review_pauses_page_grid_prefetch() -> None:
 def test_review_workspace_v2_is_wired() -> None:
     """任务 45（H 刀）：左树、三色整行差异、逐字文本面板、三档三栏、默认关版心/块框。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 抽屉那刀把审校视图的看图 / 差异层搬进 page-detail-drawer.js ⇒ 本测试按合查读
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8") + _drawer_script()
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     # 清洗刀：原本挂在「页内差异队列」测试里的这条断言挪到这里——
     # renderReviewHeadline 留在核心抽屉，不随队列删（整段删测试会把它一起带走）。
-    assert "function renderReviewHeadline(" in script
+    assert "function renderReviewHeadline(" in script or "function renderReviewHeadline(" in _drawer_script()
 
     for element_id in (
         "review-tree",
@@ -1603,12 +1619,13 @@ def test_review_workspace_v2_is_wired() -> None:
     # 跨块跳差异的能力净损失，记在 docs/known-limitations.md，不在这条静态断言里留痕。
 
     # 页面上是整行色块（用 block_line.bbox），不是字符盒；逐字对比在右栏
-    assert "blockCountedInMargin(block, pageRecord)" in script
-    assert "bbox[1] * rect.height" in script
+    assert ("blockCountedInMargin(block, pageRecord)" in script
+            or "injected.blockCountedInMargin(block, pageRecord)" in _drawer_script())
+    assert "bbox[1] * rect.height" in script or "bbox[1] * rect.height" in _drawer_script()
     assert "markPixelRange(" not in script  # 旧的字符级估算已删
     assert "function diffCompareLines(" in script + _editor_script()
     assert "diff-char" in script + _editor_script()
-    assert "diff-mark--done" in script
+    assert "diff-mark--done" in script or "diff-mark--done" in _drawer_script()
     assert "diff-mark__end" in script
     assert 'diffMarksMode = "all"' in script
 
@@ -1869,7 +1886,7 @@ def test_reading_view_is_wired_for_merge() -> None:
     assert (script + module_script).count("function setReadingHover(") >= 1
     assert module_script.count("function setReviewOverlaysForReading(") == 1
     assert (script + module_script).count("function setReviewOverlaysForReading(") >= 1
-    assert "box.dataset.blockId" in script
+    assert "box.dataset.blockId" in script or "box.dataset.blockId" in _drawer_script()
     # L1 第二笔：reading-pdf-scroll 的 scroll 监听随 setupReading 搬进模块（app.js 里是 0）。
     # 判据改成"两个文件合起来只许绑一处"：搬走后仍能确认它存在，且不允许多绑一份。
     scroll_listener = 'el("reading-pdf-scroll").addEventListener("scroll"'
