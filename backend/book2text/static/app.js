@@ -1419,7 +1419,7 @@ function recognitionChip(page) {
 
 // ---------------------------------------------------------------- 项目锁冲突（任务 60）
 //
-// 用户 2026-10-27 在删除项目时看到"该项目正被另一台电脑使用：MacBook-Air-2.local"，
+// 用户 2026-10-27 在删除项目时看到"该项目正被另一台电脑使用：<本机的旧主机名>"，
 // 而那台"电脑"就是本机改了名、锁是应用被强杀后留下的死锁。所以这里不再只说"被占用"：
 //
 //   来源 —— 本机 / 本机以前的名字 / 另一台电脑
@@ -8199,7 +8199,6 @@ function boot() {
     setPageNumberStatusTimer: (value) => { pageNumberStatusTimer = value; return value; },
     setRecStatusTimer: (value) => { recStatusTimer = value; return value; },
   });
-  window.PageDetailDrawer?.setupReviewPager();
   setupReviewAutoPass();
   setupViewerTools();
   setupRecognitionSettings();
@@ -8553,12 +8552,14 @@ function boot() {
     highlightActiveDiff: (...args) => window.PageDetailEditor?.highlightActiveDiff(...args),
     selectReviewBlock: (...args) => window.PageDetailEditor?.selectReviewBlock(...args),
     setEditorBoxCreateMode: (...args) => window.PageDetailEditor?.setBoxCreateMode(...args),
-    setEditorPackageModeChrome: (...args) => window.PageDetailEditor?.setEditorPackageModeChrome(...args),
+    setEditorPackageModeChrome: (...args) => window.PageDetailEditor?.setPackageModeChrome(...args),
     showPageDetailError: (...args) => window.PageDetailEditor?.showPageDetailError(...args),
     truncate: (...args) => window.PageDetailEditor?.truncate(...args),
     // 单一回路：抽屉画完喊这一声，由外壳把 blocks 交给编辑器
     onPageDetailChanged: (data) => onPageDetailChanged(data),
   });
+  // 接线必须在 init 之后：模块的 part() 要 root 已经交进去（在 init 之前调 = null.addEventListener）
+  window.PageDetailDrawer?.setupReviewPager();
 
 /**
  * 抽屉画完自己的 DOM 之后喊这一次：由外壳把 blocks 交给编辑器（**单一回路**）。

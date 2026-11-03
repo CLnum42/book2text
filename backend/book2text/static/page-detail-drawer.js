@@ -93,8 +93,9 @@ function closePageDetail() {
   S.detailPageNo = null;
   S.detailWorkflow = null;
   if (S.boxCreateMode) injected.setEditorBoxCreateMode(false);
-  // aux-panel 在 editor 的表里 ⇒ 关它由 editor 自己的动作做
+  // aux-panel 与 page-detail-error 都在 editor 的表里 ⇒ 关它们由 editor 自己的动作做
   injected.closeAuxPanel();
+  injected.clearPageDetailError();
 }
 
 async function loadPageDetail(pageNo, { forceSuggestions = false } = {}) {

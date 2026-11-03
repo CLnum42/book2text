@@ -1553,6 +1553,8 @@ function inkGapBarVisible(count) {
 
   const api = {
     init,
+    // 抽屉那边注入键就叫 showPageDetailError（语义 = 显示详情错误）；内部实现是 showEditorError
+    showPageDetailError: showEditorError,
     toggleCollapsed,
     highlightActiveDiff,
     closeAuxPanel,
