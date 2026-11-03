@@ -11,6 +11,11 @@
 //   ② 根变量 → 根 id：从 app.js 里该模块的 `init({ … root: el("page-number-panel"), reviewRoot: el(…) })` 取；
 //   ③ id 集合**从 index.html 的真实嵌套算**（复用 scripts/id-host-map.mjs 的解析器，不另写一套）；
 //   ④ 任何 `helper("x")` 的 x 不在对应子树里 ⇒ 红，点名 file:line 与两边。
+//   ⑤ x **必须是根的后代**：x 等于根自己的 id 也红——「在子树里查某个 id」与「那个 id 就是子树根」
+//      是两件事（2026-11-03 第 4 次同族事故），一句话：**归属对 ≠ 取法对**——
+//      `page-number-review-panel` 确实归 root②（它就是 root②），归属那关是绿的，取的时候照样炸。
+//      `root.querySelector("#自己")` 恒为 null
+//      （只找后代），真机上 `.hidden` 抛 TypeError；上一版把根算进子树，所以这条是盲区。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -104,6 +109,17 @@ export function rootScopeProblems({ modules, bootRoots, entries }) {
       for (const match of code.matchAll(new RegExp(`\\b${helper}\\s*\\(\\s*"([^"]+)"`, "g"))) {
         const id = match[1];
         scanned += 1;
+        // 「在子树里查某个 id」与「那个 id 就是子树根」是两件事（2026-11-03，第 4 次同族事故）：
+        // `root.querySelector("#自己的 id")` **恒为 null** —— querySelector 只找后代，不匹配根自己。
+        // 上一版把根自己算进子树（`subtreeOf` 含根），于是 reviewPart("page-number-review-panel")
+        // 过闸，真机上 `.hidden` 抛 TypeError ⇒ 跳过 onPageNumberChanged ⇒ 侧栏数字不更新。
+        if (id === rootId) {
+          problems.push(`${file}:${lineOf(match.index)} ${helper}("${id}")——`
+            + `这个 id 就是根 #${rootId} 自身；root.querySelector("#自己") 恒为 null`
+            + "（querySelector 只在后代里找，不匹配根自己），拿到 null 再 .hidden / .addEventListener 就抛。"
+            + "要判根自己，用 root 属性/变量，不要走 querySelector");
+          continue;
+        }
         if (allowed.has(id)) continue;
         const owner = byId.get(id);
         problems.push(`${file}:${lineOf(match.index)} ${helper}("${id}")——这个 id 不在 ${helper} 用的根 `
@@ -175,6 +191,16 @@ test("跨根取 DOM 自检（合成夹具）：part 取 root② 的 id ⇒ 红�
   assert.ok(bad.problems.some((one) => one.includes("它归 #root-two")),
     `红文没说清这个 id 归哪个根：${bad.problems.join("；")}`);
 
+  // 坏：id 就是根自己 ⇒ querySelector 恒为 null（今天这次真实回归的形状）
+  const selfRoot = run('part("root-one"); reviewPart("root-two");');
+  assert.equal(selfRoot.problems.length, 2, `根自己应各红一条，实际：${selfRoot.problems.join("；") || "(无)"}`);
+  assert.ok(selfRoot.problems[0].includes('part("root-one")') && selfRoot.problems[0].includes("就是根 #root-one 自身"),
+    `根自己的红文没说清是根自身：${selfRoot.problems[0]}`);
+  assert.ok(selfRoot.problems[0].includes("恒为 null") && selfRoot.problems[0].includes("不要走 querySelector"),
+    `根自己的红文没给出解法：${selfRoot.problems[0]}`);
+  assert.ok(selfRoot.problems[1].includes("就是根 #root-two 自身"),
+    `reviewPart 取 reviewRoot 自己没红：${selfRoot.problems[1]}`);
+
   // 好：同一个 id 走 reviewPart 就合法；part 查自己子树的 id 也合法
   assert.deepEqual(run('reviewPart("two-a"); part("one-a");').problems, [],
     "合规写法被误报——判据会把整条闸变成假红源");
@@ -193,4 +219,20 @@ test("跨根取 DOM 自检（真历史代码，可选）：934cfe8^ 红 / 934cfe
     `修前那版没红：${bad.problems.join("；") || "(一条不匹配都没有)"}`);
   const good = rootScopeProblems(loadTree(goodDir));
   assert.deepEqual(good.problems, [], good.problems.join("\n"));
+});
+
+test("跨根取 DOM 自检（真代码，可选）：根自己那处必须红（934cfe8 / ca82b0f 的 :386/:412）", (t) => {
+  const dir = process.env.B2T_ROOT_SCOPE_SELF;
+  if (!dir) {
+    console.log("… 跳过：未设 B2T_ROOT_SCOPE_SELF（指向有「reviewPart(根自己)」那版 static 目录）");
+    t.skip("未提供目录");
+    return;
+  }
+  const { problems } = rootScopeProblems(loadTree(dir));
+  for (const line of [386, 412]) {
+    assert.ok(
+      problems.some((one) => one.includes(`page-number-panel.js:${line}`) && one.includes("就是根")),
+      `page-number-panel.js:${line} 那处「reviewPart(根自己)」没红：${problems.join("；") || "(一条都没有)"}`,
+    );
+  }
 });
