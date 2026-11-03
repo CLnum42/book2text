@@ -263,7 +263,7 @@ function showView(name) {
       window.PageDetailDrawer?.setReviewOverlay(false);
       window.PageDetailDrawer?.setReviewMargin(false);
     }
-    ensureReviewTree();
+    window.ReviewTree?.ensureReviewTree();
   }
   if (target === "index" && currentProject) {
     // 任务 94 Slice I1：进目录确认只有一条路（§20.1）——模块内的 openPageIndex 由 enter 负责
@@ -3388,7 +3388,7 @@ const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 function setupViewerTools() {
   // owner = 审校左树（目录域）：过滤"只看未审"与展开左树 —— 树那刀搬走时一并带走
   el("review-tree-filter").addEventListener("click", () =>
-    setReviewTreeOnlyTodo(!reviewTreeOnlyTodo)
+    window.ReviewTree?.setReviewTreeOnlyTodo(!window.ReviewTree?.getReviewTreeOnlyTodo())
   );
   el("review-tree-rail").addEventListener("click", () =>
     el("review-tree").classList.add("is-open")
@@ -5169,481 +5169,9 @@ function onContinuationKeydown(event) {
 
 // ---------------------------------------------------------------- 审校左栏目录树（任务 45 / H 刀）
 //
-// 一棵树：回目 → 页 → 条目。页行只显示"几处"（无差异页只留页码），条目懒加载。
-// 数据来自 GET /review/tree（每页 unacked/acked）；条目明细仍走 pages/{n}/blocks。
-// 每次裁决只改本行与页行计数，不重建整棵树——按键手感不能退。
+// 已搬进 `review-tree.js`（`window.ReviewTree`，第四个 owner TREE：#review-tree 子树 6 个 id）。
+// 9 个 reviewTree* 状态与 TREE_DIFF_LEVELS 一并随迁；死函数 updateReviewTreeAfterAck（0 引用）删除。
 
-let reviewTree = null;
-let reviewTreeProjectId = null;
-let reviewTreeLoading = false;
-let reviewTreeOnlyTodo = false;
-let reviewTreeExpandedChapters = new Set();
-let reviewTreeExpandedPage = null;
-let reviewTreeItems = new Map(); // pageNo -> [item]
-let reviewTreePageRows = new Map(); // pageNo -> {row, count, state, page}
-let reviewTreeChapterRows = new Map(); // chapterId -> {count, li}
-let reviewTreeItemRows = new Map(); // `${blockId}:${lineIndex}` -> {row, dot, item}
-const TREE_DIFF_LEVELS = new Set(["differs_chars", "differs_punct", "no_candidate"]);
-
-async function ensureReviewTree() {
-  if (!currentProject) return;
-  if (reviewTree && reviewTreeProjectId === currentProject.project_id) {
-    syncReviewTreeToPage(detailPageNo, { scroll: false });
-    return;
-  }
-  if (reviewTreeLoading) return;
-  reviewTreeLoading = true;
-  const t0 = performance.now();
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/review/tree`
-    );
-    reviewTree = data;
-    reviewTreeProjectId = currentProject.project_id;
-    reviewTreeItems.clear();
-    reviewTreePageRows.clear();
-    reviewTreeChapterRows.clear();
-    reviewTreeItemRows.clear();
-    reviewTreeExpandedChapters.clear();
-    reviewTreeExpandedPage = null;
-    const fetchMs = performance.now() - t0;
-    const b0 = performance.now();
-    renderReviewTree();
-    window.__b2tTreeMetrics = {
-      fetchMs: Math.round(fetchMs),
-      buildMs: Math.round(performance.now() - b0),
-      pages: (data.pages || []).length,
-      chapters: (data.chapters || []).length,
-    };
-  } catch (error) {
-    showError(el("page-detail-error"), error);
-  } finally {
-    reviewTreeLoading = false;
-  }
-}
-
-function treeItemsFromBlocks(blocks) {
-  const items = [];
-  (blocks || []).forEach((block, blockIndex) => {
-    const divergence = divergenceOf(block);
-    if (divergence.stale) return;
-    if (!window.MarginData?.blockCountedInMargin(block, null)) return;
-    for (const mark of divergence.marks || []) {
-      if (!TREE_DIFF_LEVELS.has(mark.level)) continue;
-      const line = (block.lines || [])[mark.line_index];
-      items.push({
-        blockId: block.block_id,
-        blockIndex,
-        lineIndex: mark.line_index,
-        level: mark.level,
-        ack: mark.ack || null,
-        current: String(mark.current || ""),
-        candidate: String(mark.candidate || ""),
-        lineText: String((line && line.text) || mark.current || ""),
-      });
-    }
-  });
-  return items;
-}
-
-async function loadReviewTreeItems(pageNo) {
-  if (reviewTreeItems.has(pageNo)) return;
-  // 当前页正在打开时 reviewBlocks 可能还是上一页的：只认块自己也属于这一页的数据
-  const blocks = reviewBlocks || [];
-  if (
-    pageNo === detailPageNo &&
-    blocks.length &&
-    blocks.every((block) => block.page_no === pageNo)
-  ) {
-    reviewTreeItems.set(pageNo, treeItemsFromBlocks(blocks));
-    return;
-  }
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/pages/${pageNo}/blocks`
-    );
-    reviewTreeItems.set(pageNo, treeItemsFromBlocks(data.blocks));
-  } catch {
-    reviewTreeItems.set(pageNo, []);
-  }
-}
-
-/** 条目摘要：只取差异片段两侧各 3 字（文本层面，不碰坐标）。 */
-function treeItemSummary(item) {
-  const a = String(item.current || "");
-  const b = String(item.candidate || "");
-  const spans = computeCharSpans(a, b).filter(
-    (span) => span.aEnd > span.aStart || span.bEnd > span.bStart
-  );
-  if (!spans.length) return window.PageDetailEditor?.truncate(item.lineText || a, 22);
-  const span = spans[0];
-  const prefix = a.slice(Math.max(0, span.aStart - 3), span.aStart);
-  const suffix = a.slice(span.aEnd, span.aEnd + 3);
-  const left = a.slice(span.aStart, span.aEnd) || "∅";
-  const right = b.slice(span.bStart, span.bEnd) || "∅";
-  return `${span.aStart > 3 ? "…" : ""}${prefix}${left}→${right}${suffix}${
-    span.aEnd < a.length - 3 ? "…" : ""
-  }`;
-}
-
-function treeLevelLabel(level) {
-  if (level === "differs_chars") return "汉";
-  if (level === "differs_punct") return "标";
-  return "?";
-}
-
-/**
- * 审校左树的分组（纯函数）：默认模式按章分组，没有章归属的页放末尾「未归章」。
- * 修前这些页根本不进树（永远点不到），而头部「N 处待审」算着它们——见计划书 §8 T0。
- * · chapters 空 → 一组平铺（id / title 皆 null）
- * · 否则：每个有页的章一组（空章跳过），末尾「未归章」一组（page.chapter 不在 chapters 里）
- */
-function reviewTreeGroups(pages, chapters) {
-  const pageList = pages || [];
-  const chapterList = chapters || [];
-  if (!chapterList.length) return [{ id: null, title: null, pages: pageList.slice() }];
-  const known = new Set(chapterList.map((chapter) => chapter.id));
-  const groups = [];
-  for (const chapter of chapterList) {
-    const chapterPages = pageList.filter((page) => page.chapter === chapter.id);
-    if (chapterPages.length) groups.push({ id: chapter.id, title: chapter.title, pages: chapterPages });
-  }
-  const orphans = pageList.filter((page) => !known.has(page.chapter));
-  if (orphans.length) groups.push({ id: null, title: "未归章", pages: orphans });
-  return groups;
-}
-
-function renderReviewTree() {
-  const list = el("review-tree-list");
-  if (!list || !reviewTree) return;
-  list.innerHTML = "";
-  reviewTreePageRows.clear();
-  reviewTreeChapterRows.clear();
-  reviewTreeItemRows.clear();
-  const pages = reviewTree.pages || [];
-  const chapters = reviewTree.chapters || [];
-  const byNo = new Map(pages.map((page) => [page.page_no, page]));
-  const groups = reviewTreeOnlyTodo ? [] : reviewTreeGroups(pages, chapters);
-  const currentNo = detailPageNo;
-  const currentGroup = groups.find((group) =>
-    group.pages.some((page) => page.page_no === currentNo)
-  );
-  if (currentGroup && currentGroup.id !== null && !reviewTreeOnlyTodo) {
-    // 默认只展开当前页所在的那一章；翻页时旧章自动折叠。
-    // 「未归章」组不参与这条自动展开（id 为 null）：它一参与，每次 render 都会把展开集合清成
-    // {null}，用户点任何回目都活不过一帧（QA 2026-11-02 真机复验的回归）。
-    if (!reviewTreeExpandedChapters.has(currentGroup.id)) {
-      reviewTreeExpandedChapters.clear();
-      reviewTreeExpandedChapters.add(currentGroup.id);
-    }
-  }
-  const totalUnacked = pages.reduce((sum, page) => sum + page.unacked, 0);
-  el("review-tree-stats").textContent = `${totalUnacked} 处待审`;
-
-  const appendPage = (page, parent) => {
-    const li = document.createElement("li");
-    li.className = "review-tree__page";
-    const row = document.createElement("div");
-    row.className = "review-tree__row review-tree__row--page";
-    if (page.page_no === currentNo) row.classList.add("is-current");
-    row.title = `第 ${page.page_no} 页 · ${page.unacked} 处待审`;
-    const caret = document.createElement("button");
-    caret.type = "button";
-    caret.className = "review-tree__caret";
-    caret.textContent = reviewTreeExpandedPage === page.page_no ? "▾" : "▸";
-    if (page.unacked + page.acked === 0) caret.classList.add("is-empty");
-    caret.addEventListener("click", (event) => {
-      event.stopPropagation();
-      toggleReviewTreePage(page.page_no);
-    });
-    const pageNo = document.createElement("span");
-    pageNo.className = "tree-page-no";
-    pageNo.textContent = `第 ${page.page_no} 页`;
-    const state = document.createElement("span");
-    state.className = "tree-state";
-    const count = document.createElement("span");
-    count.className = "tree-count";
-    if (page.unacked > 0) {
-      count.textContent = `${page.unacked} 处`;
-    } else if (page.acked > 0) {
-      count.textContent = "✓";
-      count.classList.add("is-done");
-    }
-    const spacer = document.createElement("span");
-    spacer.className = "spacer";
-    row.append(caret, pageNo, spacer, state, count);
-    row.addEventListener("click", () => {
-      window.PageDetailDrawer?.openPageDetail(page.page_no);
-    });
-    li.append(row);
-    reviewTreePageRows.set(page.page_no, { row, count, state, page });
-
-    if (reviewTreeExpandedPage === page.page_no) {
-      const cached = reviewTreeItems.get(page.page_no);
-      if (!cached) {
-        const loading = document.createElement("div");
-        loading.className = "review-tree__empty";
-        loading.textContent = "正在加载条目…";
-        li.append(loading);
-        loadReviewTreeItems(page.page_no).then(() => {
-          if (reviewTreeExpandedPage === page.page_no) renderReviewTree();
-        });
-        return li;
-      }
-      const itemsOl = document.createElement("ol");
-      itemsOl.className = "review-tree__items";
-      for (const item of cached) {
-        const itemLi = document.createElement("li");
-        const itemRow = document.createElement("div");
-        itemRow.className = "review-tree__row review-tree__row--item";
-        if (
-          activeDiff &&
-          activeDiff.blockId === item.blockId &&
-          activeDiff.lineIndex === item.lineIndex
-        ) {
-          itemRow.classList.add("is-current");
-        }
-        if (item.ack) itemRow.classList.add("is-done");
-        const dot = document.createElement("span");
-        dot.className = "tree-dot";
-        if (item.ack) dot.classList.add("is-done");
-        if (
-          activeDiff &&
-          activeDiff.blockId === item.blockId &&
-          activeDiff.lineIndex === item.lineIndex
-        ) {
-          dot.classList.add("is-current");
-        }
-        const lineNo = document.createElement("span");
-        lineNo.className = "tree-line";
-        lineNo.textContent = `L${item.lineIndex + 1}`;
-        const level = document.createElement("span");
-        level.className = "tree-level";
-        level.textContent = treeLevelLabel(item.level);
-        const summary = document.createElement("span");
-        summary.className = "tree-summary";
-        summary.textContent = treeItemSummary(item);
-        if (item.ack === "kept") summary.textContent += " ✓已保留";
-        itemRow.append(dot, lineNo, level, summary);
-        itemRow.title = `${item.lineText}\n原：${item.current}\n候选：${item.candidate}`;
-        itemRow.addEventListener("click", () => openTreeItem(page.page_no, item));
-        itemLi.append(itemRow);
-        itemsOl.append(itemLi);
-        reviewTreeItemRows.set(`${item.blockId}:${item.lineIndex}`, {
-          row: itemRow,
-          dot,
-          item,
-          pageNo: page.page_no,
-        });
-      }
-      if (!cached.length) {
-        const empty = document.createElement("div");
-        empty.className = "review-tree__empty";
-        empty.textContent = "这一页没有可处理的差异";
-        itemsOl.append(empty);
-      }
-      li.append(itemsOl);
-    }
-    return li;
-  };
-
-  if (reviewTreeOnlyTodo) {
-    const todo = pages.filter((page) => page.unacked > 0);
-    if (!todo.length) {
-      const empty = document.createElement("li");
-      empty.className = "review-tree__empty";
-      empty.textContent = "全部页都没有待处理的差异了。";
-      list.append(empty);
-    }
-    for (const page of todo) list.append(appendPage(page, list));
-  } else {
-    for (const group of groups) {
-      if (!group.pages.length) continue;
-      if (!group.title) {
-        // chapters 空：平铺，没有章头
-        for (const page of group.pages) list.append(appendPage(page, list));
-        continue;
-      }
-      const remaining = group.pages.reduce((sum, page) => sum + page.unacked, 0);
-      const li = document.createElement("li");
-      li.className = "review-tree__chapter";
-      const row = document.createElement("div");
-      row.className = "review-tree__row review-tree__row--chapter";
-      const caret = document.createElement("span");
-      caret.className = "caret";
-      caret.textContent = reviewTreeExpandedChapters.has(group.id) ? "▾" : "▸";
-      const title = document.createElement("span");
-      title.className = "tree-title";
-      title.textContent = group.title;
-      const spacer = document.createElement("span");
-      spacer.className = "spacer";
-      const count = document.createElement("span");
-      count.className = "tree-count";
-      if (remaining > 0) {
-        count.textContent = `${remaining} 处`;
-      } else {
-        count.textContent = "✓ 完成";
-        count.classList.add("is-done");
-      }
-      row.append(caret, title, spacer, count);
-      row.addEventListener("click", () => toggleReviewTreeChapter(group.id));
-      li.append(row);
-      if (reviewTreeExpandedChapters.has(group.id)) {
-        for (const page of group.pages) li.append(appendPage(page, li));
-      }
-      list.append(li);
-      reviewTreeChapterRows.set(group.id, {
-        count,
-        li,
-        chapter: chapters.find((chapter) => chapter.id === group.id) || null,
-      });
-    }
-  }
-  syncReviewTreeToPage(currentNo, { scroll: true });
-}
-
-function toggleReviewTreeChapter(chapterId) {
-  if (reviewTreeExpandedChapters.has(chapterId)) {
-    reviewTreeExpandedChapters.delete(chapterId);
-  } else {
-    reviewTreeExpandedChapters.clear();
-    reviewTreeExpandedChapters.add(chapterId);
-  }
-  renderReviewTree();
-}
-
-function toggleReviewTreePage(pageNo) {
-  if (reviewTreeExpandedPage === pageNo) {
-    reviewTreeExpandedPage = null;
-  } else {
-    reviewTreeExpandedPage = pageNo;
-  }
-  renderReviewTree();
-}
-
-function setReviewTreeOnlyTodo(only) {
-  reviewTreeOnlyTodo = Boolean(only);
-  el("review-tree-filter").textContent = reviewTreeOnlyTodo
-    ? "显示全部页"
-    : "只看未完成";
-  el("review-tree-filter").classList.toggle("is-on", reviewTreeOnlyTodo);
-  renderReviewTree();
-}
-
-/** 当前页 / 当前条目在树里定位：展开 + 高亮 + 滚到约 40%。 */
-function syncReviewTreeToPage(pageNo, { scroll = false } = {}) {
-  if (!reviewTree || !pageNo) return;
-  const group = reviewTreeGroups(reviewTree.pages || [], reviewTree.chapters || []).find((item) =>
-    item.pages.some((page) => page.page_no === pageNo)
-  );
-  if (group && group.id !== null && !reviewTreeExpandedChapters.has(group.id) && !reviewTreeOnlyTodo) {
-    reviewTreeExpandedChapters.clear();
-    reviewTreeExpandedChapters.add(group.id);
-    renderReviewTree();
-    return;
-  }
-  if (reviewTreeExpandedPage !== pageNo && !reviewTreeOnlyTodo) {
-    reviewTreeExpandedPage = pageNo;
-    renderReviewTree();
-    return;
-  }
-  const pageRow = reviewTreePageRows.get(pageNo);
-  for (const [, entry] of reviewTreePageRows) {
-    entry.row.classList.toggle("is-current", entry.page.page_no === pageNo);
-  }
-  const activeKey = activeDiff ? `${activeDiff.blockId}:${activeDiff.lineIndex}` : null;
-  const activeRow = activeKey ? reviewTreeItemRows.get(activeKey) : null;
-  const firstUnacked = [...reviewTreeItemRows.values()].find(
-    (entry) => entry.pageNo === pageNo && !entry.item.ack
-  );
-  const target = activeRow || firstUnacked;
-  for (const [, entry] of reviewTreeItemRows) {
-    const isCurrent =
-      activeDiff &&
-      entry.item.blockId === activeDiff.blockId &&
-      entry.item.lineIndex === activeDiff.lineIndex;
-    entry.row.classList.toggle("is-current", Boolean(isCurrent));
-    entry.dot.classList.toggle("is-current", Boolean(isCurrent));
-  }
-  if (scroll) {
-    const scroller = el("review-tree-scroll");
-    const anchor = target ? target.row : pageRow ? pageRow.row : null;
-    if (scroller && anchor) {
-      const top = anchor.offsetTop - scroller.clientHeight * 0.4;
-      scroller.scrollTop = Math.max(0, top);
-    }
-  }
-}
-
-function updateReviewTreeAfterAck(block, item, ack) {
-  if (!reviewTree) return;
-  const key = `${block.block_id}:${item.lineIndex}`;
-  const pageRow = reviewTreePageRows.get(block.page_no);
-  const pageData = (reviewTree.pages || []).find((page) => page.page_no === block.page_no);
-  if (pageData && pageData.unacked > 0) pageData.unacked -= 1;
-  if (pageData) pageData.acked += 1;
-  if (pageRow && pageData) {
-    if (pageData.unacked > 0) {
-      pageRow.count.textContent = `${pageData.unacked} 处`;
-      pageRow.count.classList.remove("is-done");
-    } else {
-      pageRow.count.textContent = "✓";
-      pageRow.count.classList.add("is-done");
-    }
-    pageRow.row.title = `第 ${pageData.page_no} 页 · ${pageData.unacked} 处待审`;
-  }
-  const group = pageData
-    ? reviewTreeGroups(reviewTree.pages || [], reviewTree.chapters || []).find((item) =>
-        item.pages.some((page) => page.page_no === pageData.page_no)
-      )
-    : null;
-  const chapterEntry = group ? reviewTreeChapterRows.get(group.id) : null;
-  if (chapterEntry) {
-    const remaining = group.pages.reduce((sum, page) => sum + page.unacked, 0);
-    if (remaining > 0) {
-      chapterEntry.count.textContent = `${remaining} 处`;
-      chapterEntry.count.classList.remove("is-done");
-    } else {
-      chapterEntry.count.textContent = "✓ 完成";
-      chapterEntry.count.classList.add("is-done");
-    }
-  }
-  const entry = reviewTreeItemRows.get(key);
-  if (entry) {
-    entry.item.ack = ack;
-    if (ack === "adopted") {
-      entry.row.remove();
-      reviewTreeItemRows.delete(key);
-      const cached = reviewTreeItems.get(block.page_no) || [];
-      reviewTreeItems.set(
-        block.page_no,
-        cached.filter(
-          (cachedItem) =>
-            !(cachedItem.blockId === block.block_id && cachedItem.lineIndex === item.lineIndex)
-        )
-      );
-    } else {
-      entry.row.classList.add("is-done");
-      entry.dot.classList.add("is-done");
-      const summary = entry.row.querySelector(".tree-summary");
-      if (summary && !summary.textContent.includes("✓已保留")) {
-        summary.textContent += " ✓已保留";
-      }
-    }
-  }
-  if (reviewTreeOnlyTodo && pageData && pageData.unacked === 0) {
-    renderReviewTree();
-  }
-}
-
-async function openTreeItem(pageNo, item) {
-  if (detailPageNo !== pageNo) {
-    await window.PageDetailDrawer?.openPageDetail(pageNo);
-  }
-  // 清洗刀：页内差异队列删掉之后，条目定位直接靠块内差异条（activateDiff）
-  activateDiff(item.blockId, item.lineIndex, 0);
-  syncReviewTreeToPage(pageNo, { scroll: true });
-}
 
 function openFinishPanel() {
   if (!currentProject || currentProject.kind === "package") return;
@@ -6814,6 +6342,22 @@ function boot() {
     paintReviewMargin: (...args) => window.PageDetailDrawer?.paintReviewMargin(...args),
     drawDetailOverlay: (...args) => window.PageDetailDrawer?.drawDetailOverlay(...args),
   });
+  // 片 4：审校左栏目录树（root = #review-tree，第四个 owner）；9 个 reviewTree* 状态随迁
+  window.ReviewTree?.init({
+    root: el("review-tree"),
+    getCurrentProject: () => currentProject,
+    getDetailPageNo: () => detailPageNo,
+    getReviewBlocks: () => reviewBlocks,
+    getActiveDiff: () => activeDiff,
+    apiJson: (...args) => apiJson(...args),
+    showPageDetailError: (...args) => window.PageDetailEditor?.showPageDetailError(...args),
+    blockCountedInMargin: (...args) => window.MarginData?.blockCountedInMargin(...args),
+    truncate: (...args) => window.PageDetailEditor?.truncate(...args),
+    openPageDetail: (...args) => window.PageDetailDrawer?.openPageDetail(...args),
+    activateDiff: (...args) => activateDiff(...args),
+    computeCharSpans: (...args) => computeCharSpans(...args),
+    divergenceOf: (...args) => divergenceOf(...args),
+  });
   // 片 3b：缩放档位 / 图档选择 / 宽度测量（状态在模块里；外壳只给项目、token、dpr、视口宽）
   window.PageMedia?.init({
     getCurrentProject: () => currentProject,
@@ -7314,7 +6858,7 @@ function boot() {
     getReviewBlocks: () => reviewBlocks,
     getReviewFilterExplicit: () => reviewFilterExplicit,
     getReviewMarginOn: () => reviewMarginOn,
-    getReviewTreeItems: () => reviewTreeItems,
+    getReviewTreeItems: () => window.ReviewTree?.getReviewTreeItems(),
     getSuppressBoxClick: () => suppressBoxClick,
     getToken: () => token,
     getZoomLevel: () => zoomLevel,
@@ -7368,8 +6912,8 @@ function boot() {
     showView: (...args) => showView(...args),
     startBoxDrag: (...args) => startBoxDrag(...args),
     stepPage: (...args) => stepPage(...args),
-    syncReviewTreeToPage: (...args) => syncReviewTreeToPage(...args),
-    treeItemsFromBlocks: (...args) => treeItemsFromBlocks(...args),
+    syncReviewTreeToPage: (...args) => window.ReviewTree?.syncReviewTreeToPage(...args),
+    treeItemsFromBlocks: (...args) => window.ReviewTree?.treeItemsFromBlocks(...args),
     // editor 的能力（模块→模块一律经外壳接线，不直呼 window.PageDetailEditor）
     applyDetailSuggestions: (...args) => window.PageDetailEditor?.applyDetailSuggestions(...args),
     clearPageDetailError: (...args) => window.PageDetailEditor?.clearPageDetailError(...args),
