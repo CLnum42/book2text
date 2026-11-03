@@ -76,6 +76,7 @@ const TEST_FILES = [
   ["pages-poll-guard", () => import("./pages-poll-guard.test.mjs")],
   ["pages-visibility", () => import("./pages-visibility.test.mjs")],
   ["margin-progress", () => import("./margin-progress.test.mjs")],
+  ["margin-data", () => import("./margin-data.test.mjs")],
   ["overlay-registry-acid", () => import("./overlay-registry-acid.mjs")],
   ["export-panel", () => import("./export-panel.test.mjs")],
   ["suggestion-flow", () => import("./suggestion-flow.test.mjs")],
