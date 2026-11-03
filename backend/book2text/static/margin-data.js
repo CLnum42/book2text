@@ -9,7 +9,9 @@
  * - tile 内必须有 `.page-margin`（带 `hidden` 与两个悬挂属性 `_box` / `_pageNo`）；
  * - `.page-margin` 内必须有 `.page-margin__box`（`applyMarginRect` 往它写百分比 left/top/width/height）；
  * - `page` 是页记录；box = `[x0,y0,x1,y1]` 归一化 0..1，来自 `marginBoxOfPage(page)`；无 box ⇒ hidden；
- * - **缺字段静默返回**（tile 为 null、找不到 `.page-margin`），不抛错——现状如此；
+ * - **缺字段静默返回**（tile 为 null、找不到 `.page-margin`、box 不是有限 4 元数），不抛错。
+ *   这是**设计选择，不是遗漏**：滚动每帧都会走到这里，日志会把控制台淹掉。坏数据一律等同
+ *   「无 box」（hidden + 不写样式），绝不把 `NaN%` / `undefined%` 写进 style；
  * - **缓存必须挂在那一个 margin 元素上**（`_box` + `_pageNo`）：滚动每帧都会走到，
  *   值没变就不写样式。不许改成模块内 Map——换视图会破缓存。
  *
@@ -48,11 +50,25 @@ function savePageMarginPreference() {
   }
 }
 
+/**
+ * 版心框只认「有限 4 元数」。缺项、字符串、NaN、Infinity 一律等同「无 box」：
+ * 这样脏数据不会变成 `NaN%` 写进 style（paint 与导出的 applyMarginRect 都靠它兜底）。
+ */
+function isValidMarginBox(box) {
+  return (
+    Array.isArray(box) &&
+    box.length === 4 &&
+    box.every((value) => typeof value === "number" && Number.isFinite(value))
+  );
+}
+
 function marginBoxOfPage(page) {
   if (!page || page.margin_box_mode === "none") return null;
-  if (page.margin_box_mode === "custom") return page.margin_box || null;
-  if (page.margin_box_mode === "auto") return page.margin_box || null;
-  return (injected.getCurrentProject() && injected.getCurrentProject().margin_box) || null;
+  if (page.margin_box_mode === "custom" || page.margin_box_mode === "auto") {
+    return isValidMarginBox(page.margin_box) ? page.margin_box : null;
+  }
+  const project = injected.getCurrentProject();
+  return project && isValidMarginBox(project.margin_box) ? project.margin_box : null;
 }
 
 function pageMarginMethod(page) {
@@ -132,7 +148,7 @@ function reviewMarginSplit(page, blocks) {
 }
 
 function applyMarginRect(boxEl, box) {
-  if (!boxEl) return;
+  if (!boxEl || !isValidMarginBox(box)) return;
   const [x0, y0, x1, y1] = box;
   boxEl.style.left = `${x0 * 100}%`;
   boxEl.style.top = `${y0 * 100}%`;
@@ -195,7 +211,8 @@ function percentOf(value) {
 }
 
 function formatMarginBox(box) {
-  if (!box) return "未设置";
+  // 脏 box 按「未设置」显示：否则面板里会出现「左 NaN% · 上 undefined%」这种读数
+  if (!isValidMarginBox(box)) return "未设置";
   return `左 ${percentOf(box[0])} · 上 ${percentOf(box[1])} · 右 ${percentOf(box[2])} · 下 ${percentOf(box[3])}`;
 }
 
