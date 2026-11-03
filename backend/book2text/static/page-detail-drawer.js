@@ -608,7 +608,8 @@ function updateDiffActive() {
     findDiffMark,
     scrollViewerTo,
     updateDiffActive,
-    applyZoom,
+    // applyZoom 摘掉：全仓没有外部调用点（缩放按钮的接线在模块自己的 setupViewerControls 里），
+    // 内部照用。导出面只留"有人在外壳/别的模块喊"的成员。
     setupReviewPager,
   };
   window.PageDetailDrawer = api;

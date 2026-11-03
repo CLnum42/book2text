@@ -5477,6 +5477,9 @@ const DOMAIN_MODULES = [
   // ① 主刀收尾：核心抽屉（root = #view-review，与 editor 同一 root，靠 id 表分家；
   // 21 个抽屉 id 全在子树里 ⇒ 允许 root.querySelector）
   { file: "page-detail-drawer.js", exposes: "PageDetailDrawer", allowQuerySelector: true },
+  // 片 1a：页码面板——**两个根**（#page-number-panel 9+3 个子 id / #page-number-review-panel 9 个），
+  // 都是 body 直下的顶层 mask ⇒ 允许 root.querySelector。
+  { file: "page-number-panel.js", exposes: "PageNumberPanel", allowQuerySelector: true },
 ];
 
 /**
@@ -5493,6 +5496,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "suggestion-flow.js",
   "collab.js",
   "page-detail-drawer.js",
+  "page-number-panel.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {
