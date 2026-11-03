@@ -383,7 +383,7 @@ async function adoptPageNumberTemplate(template, range = null) {
     );
     S.pageNumberAnalysis = data;
     renderPageNumberAnalysis(data);
-    if (!part("page-number-review-panel").hidden) renderPageNumberReview(data);
+    if (!reviewPart("page-number-review-panel").hidden) renderPageNumberReview(data);
     await injected.onPageNumberChanged(
       `已按模板填充 ${data.applied?.filled ?? 0} 页` + (range ? `（${scope}）` : "")
     );
@@ -409,7 +409,7 @@ async function removePageNumberRange(fromPage, toPage) {
     );
     S.pageNumberAnalysis = data;
     renderPageNumberAnalysis(data);
-    if (!part("page-number-review-panel").hidden) renderPageNumberReview(data);
+    if (!reviewPart("page-number-review-panel").hidden) renderPageNumberReview(data);
     await injected.onPageNumberChanged(`已移除第 ${fromPage}–${toPage} 页的第二套模板`);
   } catch (error) {
     injected.showError(part("page-number-error"), error);
@@ -443,10 +443,10 @@ function pageNumberIssueEntries(current) {
 async function openPageNumberReview() {
   if (!injected.getCurrentProject()) return;
   injected.openModal("page-number-review-panel");
-  part("page-number-review-error").hidden = true;
-  part("page-number-review-meta").textContent = "";
-  part("page-number-review-issues").innerHTML = "";
-  part("page-number-review-table").innerHTML = "";
+  reviewPart("page-number-review-error").hidden = true;
+  reviewPart("page-number-review-meta").textContent = "";
+  reviewPart("page-number-review-issues").innerHTML = "";
+  reviewPart("page-number-review-table").innerHTML = "";
   await refreshPageNumberReview();
 }
 
@@ -459,7 +459,7 @@ async function refreshPageNumberReview() {
     S.pageNumberAnalysis = data;
     renderPageNumberReview(data);
   } catch (error) {
-    injected.showError(part("page-number-review-error"), error);
+    injected.showError(reviewPart("page-number-review-error"), error);
   }
 }
 
@@ -474,7 +474,7 @@ function scrollToPageNumberRow(pageNo) {
 }
 
 function renderPageNumberFilters(current, entries) {
-  const box = part("page-number-review-filters");
+  const box = reviewPart("page-number-review-filters");
   box.innerHTML = "";
   const counts = { all: entries.length };
   for (const type of [...PN_ANOMALY_ORDER, "not_recognized"]) {
@@ -500,7 +500,7 @@ function renderPageNumberFilters(current, entries) {
 }
 
 function renderPageNumberIssues(entries) {
-  const list = part("page-number-review-issues");
+  const list = reviewPart("page-number-review-issues");
   list.innerHTML = "";
   const filtered =
     pageNumberReviewFilter === "all"
@@ -524,12 +524,12 @@ function renderPageNumberIssues(entries) {
 
 function renderPageNumberReview(data, focusPage = null) {
   const current = data.current || {};
-  const table = part("page-number-review-table");
+  const table = reviewPart("page-number-review-table");
   const scrollTop = table.scrollTop;
   const entries = pageNumberIssueEntries(current);
   renderPageNumberFilters(current, entries);
   renderPageNumberIssues(entries);
-  renderPageNumberAssignments(part("page-number-review-assignments"), current);
+  renderPageNumberAssignments(reviewPart("page-number-review-assignments"), current);
 
   const mapping = new Map(
     (current.mapping || []).map((row) => [row.page_no, row])
@@ -546,10 +546,10 @@ function renderPageNumberReview(data, focusPage = null) {
     (current.not_recognized && current.not_recognized.pages) || []
   );
   const counts = current.counts || {};
-  part("page-number-review-meta").textContent =
+  reviewPart("page-number-review-meta").textContent =
     `已填 ${counts.filled || 0} / ${counts.total || 0} 页` +
     (counts.manual ? ` · 手动 ${counts.manual} 页` : "");
-  part("page-number-review-footnote").textContent =
+  reviewPart("page-number-review-footnote").textContent =
     entries.length
       ? `共 ${entries.length} 个问题条目；左边只列异常 / 未识别页，正常的页不用点。`
       : "没有异常页。";
@@ -610,7 +610,7 @@ function renderPageNumberReview(data, focusPage = null) {
 
 async function savePageNumberManual(pageNo, value) {
   if (!injected.getCurrentProject()) return;
-  part("page-number-review-error").hidden = true;
+  reviewPart("page-number-review-error").hidden = true;
   try {
     const data = await injected.apiJson(
       `/api/projects/${injected.getCurrentProject().project_id}/page-numbers/manual`,
@@ -624,23 +624,24 @@ async function savePageNumberManual(pageNo, value) {
     renderPageNumberReview(data, pageNo);
     await injected.onPageNumberChanged(`第 ${pageNo} 页已改为手动映射`);
   } catch (error) {
-    injected.showError(part("page-number-review-error"), error);
+    injected.showError(reviewPart("page-number-review-error"), error);
     // 失败时把输入框恢复成服务端的值
     if (S.pageNumberAnalysis) renderPageNumberReview(S.pageNumberAnalysis);
   }
 }
 
 function setupPageNumberPanel() {
-  part("page-number-close").addEventListener("click", () =>
+  // 两个根各自的关闭按钮：`page-number-*` 在根 ①，`page-number-review-*` 在根 ②
+  part("page-number-close")?.addEventListener("click", () =>
     injected.closeModal("page-number-panel")
   );
-  part("page-number-done").addEventListener("click", () =>
+  part("page-number-done")?.addEventListener("click", () =>
     injected.closeModal("page-number-panel")
   );
-  part("page-number-review-close").addEventListener("click", () =>
+  reviewPart("page-number-review-close")?.addEventListener("click", () =>
     injected.closeModal("page-number-review-panel")
   );
-  part("page-number-review-done").addEventListener("click", () =>
+  reviewPart("page-number-review-done")?.addEventListener("click", () =>
     injected.closeModal("page-number-review-panel")
   );
 }
