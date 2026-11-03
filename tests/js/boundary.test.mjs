@@ -5486,6 +5486,11 @@ const DOMAIN_MODULES = [
   { file: "margin-data.js", exposes: "MarginData", allowQuerySelector: true },
   // 片 1b：批量拆分面板——root = #split-batch-panel（body 直下的 mask，8 个子 id）
   { file: "split-batch-panel.js", exposes: "SplitBatchPanel", allowQuerySelector: true },
+  // 片 3a：页面网格——**瓦片工厂 + 块缓存**（服务模块，无 root）：页面记录由调用方给，
+  // 它只在自己造出来的那个 tile 里查 label / status / 按钮（3 处元素级查询）
+  // ⇒ 走 allowQuerySelector 分支（document 级查询仍然 0）。生产侧契约见文件头，
+  // 与 margin-data.js 的消费侧契约对应。
+  { file: "page-grid.js", exposes: "PageGrid", allowQuerySelector: true },
 ];
 
 /**
@@ -5505,6 +5510,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "page-number-panel.js",
   "margin-data.js",
   "split-batch-panel.js",
+  "page-grid.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {

@@ -2073,191 +2073,9 @@ function selectionPages() {
 }
 
 // ---------------------------------------------------------------- 页面网格
-
-/** 页面上该显示的门牌（类型 / 印张 / 状态），构建与刷新共用。 */
-function tileTitle(page) {
-  const workflow = workflowOf(page);
-  const workflowNote = workflow
-    ? `\n工作流：${workflow.stage_label}${workflow.layout ? ` · ${workflow.layout.line_count} 行` : ""}`
-    : "";
-  const marginNote = `\n版心：${window.MarginData?.pageMarginSourceLabel(page)}`;
-  return (
-    `第 ${page.page_no} 页 · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}` +
-    ` · ${page.width_pt}×${page.height_pt} pt` +
-    (page.rotation ? ` · 旋转 ${page.rotation}°` : "") +
-    workflowNote +
-    marginNote +
-    "\n单击选中（Shift 选一段、⌘/Ctrl 加减一页），双击看识别结果"
-  );
-}
-
-function tileClassName(page) {
-  const recognition = recognitionOf(page);
-  return (
-    "page-tile" +
-    ` page-tile--ptype-${page.page_type}` +
-    (page.include ? "" : " page-tile--excluded") +
-    (page.has_text_layer ? " page-tile--textlayer" : "") +
-    (busyPages.has(page.page_no) ? " page-tile--busy" : "") +
-    (recognition.status === "failed" ? " page-tile--failed" : "") +
-    (!page.page_confirmed && currentProject.kind !== "package" ? " page-tile--unconfirmed" : "") +
-    (selectedPages.has(page.page_no) ? " page-tile--selected" : "")
-  );
-}
-
-function buildTile(page, project) {
-  const tile = document.createElement("div");
-  tile.dataset.pageId = page.page_id;
-  tile.dataset.pageNo = String(page.page_no);
-
-  const thumb = document.createElement("div");
-  thumb.className = "page-tile__thumb";
-  // 与页面真实显示比例一致：overlay 用百分比定位，固定 1:1.414 会让非 A4 页错位
-  thumb.style.aspectRatio = `${page.width_pt} / ${page.height_pt}`;
-
-  const check = document.createElement("div");
-  check.className = "page-tile__check";
-  check.textContent = "✓";
-
-  const image = document.createElement("img");
-  // 说明书 6.1 要求缩略图由后台 Job 生成并缓存；缩略图任务还没做，
-  // 这里按需渲染（不写缓存），浏览器侧靠 Cache-Control 复用。
-  // 大图档由滚动 + requestAnimationFrame（updatePageVisibility）决定何时设置 src，
-  // 离屏会清掉以释放解码内存。
-  image.loading = "lazy";
-  image.decoding = "async";
-  image.alt = `第 ${page.page_no} 页`;
-  image.dataset.thumbSrc =
-    `/api/projects/${project.project_id}/pages/${page.page_no}/image?size=thumb` +
-    `&token=${encodeURIComponent(token)}`;
-  // 渲染失败时把后端那句人话显示出来（与 PageTile 同一套实现，不复制）
-  window.PageTile?.attachRenderErrorDetail?.(image, { container: tile });
-  if (pageZoomIndex < 2) image.src = image.dataset.thumbSrc;
-
-  // 版心框（默认隐藏）：框外压暗、8 个把手可拖。放在块框 overlay 之前，
-  // 这样打开块框时色框画在压暗层上面，两者可以同时看。
-  const margin = document.createElement("div");
-  margin.className = "page-margin";
-  margin.hidden = true;
-  const marginBox = document.createElement("div");
-  marginBox.className = "page-margin__box";
-  for (const edge of ["n", "s", "w", "e", "nw", "ne", "sw", "se"]) {
-    const handle = document.createElement("span");
-    handle.className = `page-margin__handle page-margin__handle--${edge}`;
-    handle.dataset.edge = edge;
-    handle.title = "拖动调整版心（会吸附到正文行边界）";
-    marginBox.append(handle);
-  }
-  margin.append(marginBox);
-
-  const actions = document.createElement("div");
-  actions.className = "page-tile__actions";
-
-  // 块类型建议角标（只在算过的可见页出现，只数 high）：右上角，和左上角的
-  // 选中勾、左缘的类型色条、橙色未确认虚线都不冲突；"建议 N"不靠颜色也能读。
-  const suggestMark = document.createElement("span");
-  suggestMark.className = "page-tile__suggest";
-  suggestMark.hidden = true;
-
-  const recognizeButton = document.createElement("button");
-  recognizeButton.type = "button";
-  recognizeButton.className = "btn";
-  recognizeButton.dataset.action = "recognize";
-  recognizeButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    // 刀 7：recognizePage 已搬进 pages 模块（外壳只留调用点）
-    window.PagesView.recognizePage(page);
-  });
-
-  const detailButton = document.createElement("button");
-  detailButton.type = "button";
-  detailButton.className = "btn";
-  detailButton.textContent = "审校";
-  detailButton.title = "看这一页的识别结果并开始审校";
-  detailButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    window.PageDetailDrawer?.openPageDetail(page.page_no);
-  });
-
-  actions.append(recognizeButton, detailButton);
-  thumb.append(image, margin, check, suggestMark, actions);
-
-  const meta = document.createElement("div");
-  meta.className = "page-tile__meta";
-  const label = document.createElement("div");
-  label.className = "page-tile__label";
-  const status = document.createElement("div");
-  status.className = "page-tile__status";
-  meta.append(label, status);
-
-  tile.append(thumb, meta);
-  tile.addEventListener("dblclick", (event) => {
-    event.preventDefault();
-    window.PageDetailDrawer?.openPageDetail(page.page_no);
-  });
-  return tile;
-}
-
-/** 就地刷新一个瓷砖的状态（轮询时用，不重建 DOM）。 */
-function applyTileState(tile, page) {
-  const recognition = recognitionOf(page);
-  tile.className = tileClassName(page);
-  tile.title = tileTitle(page);
-  paintTileSuggestionMark(tile, page.page_no);
-
-  // 门牌：`p.87 · 正文`，印张页码进 tooltip（列宽只有一百多像素）
-  const label = tile.querySelector(".page-tile__label");
-  label.textContent = `p.${page.page_no}`;
-  const kind = document.createElement("span");
-  kind.textContent = ` · ${PAGE_TYPE_LABELS[page.page_type] || page.page_type}`;
-  label.append(kind);
-
-  const status = tile.querySelector(".page-tile__status");
-  status.innerHTML = "";
-  status.append(recognitionChip(page));
-  const workflow = workflowChip(page);
-  if (workflow) status.append(workflow);
-  const reviewChip = reviewBadge(page);
-  if (reviewChip) status.append(reviewChip);
-  const divergence = divergenceChip(page);
-  if (divergence) status.append(divergence);
-  if (page.is_context) {
-    // 审校包里的只读上下文页（说明书 6.7.2）：助手的项目里也要一眼看出来
-    const chip = document.createElement("span");
-    chip.className = "status status--muted";
-    chip.textContent = "只读上下文";
-    chip.title = "任务包附带的只读上下文页，用来判断跨页段落，不能编辑";
-    status.append(chip);
-  } else if (page.assignment) {
-    // 主项目里"已分派给谁"（说明书 6.7.6）
-    const chip = document.createElement("span");
-    chip.className = "status status--muted";
-    chip.textContent = `${page.assignment.reviewer_name} · 审校中`;
-    chip.title =
-      `已分派给 ${page.assignment.reviewer_name}（${page.assignment.status_label}）：` +
-      "现在改这一页会在合并时产生冲突";
-    status.append(chip);
-  }
-  if (page.page_confirmed) {
-    const chip = document.createElement("span");
-    chip.className = "status status--ok";
-    chip.textContent = "✓ 已确认";
-    chip.title = "这一页的类型已人工确认";
-    status.append(chip);
-  }
-
-  const isBusy = busyPages.has(page.page_no);
-  const button = tile.querySelector('button[data-action="recognize"]');
-  button.textContent = isBusy ? "识别中…" : "识别";
-  button.disabled = isBusy || !page.include;
-  if (!page.include) {
-    button.title = "不是「正文」类型，不参与识别。要把这一页纳入识别，把类型改成「正文」。";
-  } else if (recognition.status === "recognized") {
-    button.title = "重新识别这一页（不会覆盖，这次结果先不采用）";
-  } else {
-    button.title = "识别这一页（在后台任务里跑，进度看右下角）";
-  }
-}
+//
+// 瓦片生产（buildTile / applyTileState）与块缓存（pageBlockKey / remember / forget）
+// 已搬进 page-grid.js（片 3a）。生产侧契约写在该文件头，消费侧在 margin-data.js 的头注释。
 
 // ---------------------------------------------------------------- 页面确认（说明书 6.2）
 
@@ -2369,38 +2187,6 @@ function pageImageUrl(pageNo, size) {
     `/api/projects/${currentProject.project_id}/pages/${pageNo}/image?size=${size}` +
     `&token=${encodeURIComponent(token)}`
   );
-}
-
-function pageBlockKey(pageNo) {
-  return `${currentProject.project_id}:${pageNo}`;
-}
-
-function rememberPageBlocks(key, blocks) {
-  const existing = pageBlockCacheOrder.indexOf(key);
-  if (existing >= 0) pageBlockCacheOrder.splice(existing, 1);
-  pageBlockCache.set(key, blocks);
-  pageBlockCacheOrder.push(key);
-  while (pageBlockCacheOrder.length > PAGE_BLOCK_CACHE_LIMIT) {
-    const oldest = pageBlockCacheOrder.shift();
-    pageBlockCache.delete(oldest);
-  }
-}
-
-/**
- * 丢掉一页的块缓存（识别刚完成、重新识别、块被换掉之后用）。
- *
- * 同时把这一页的"作废代次" +1：没有它，一个早发晚到的旧响应会在作废之后
- * 又把旧块写回缓存，用户就得等下一次刷新才能看到新的框。
- * 这一页的块类型建议也一起丢掉——块都变了，建议得重算。
- */
-
-function forgetPageBlocks(pageNo) {
-  const key = pageBlockKey(pageNo);
-  pageBlockVersions.set(key, (pageBlockVersions.get(key) || 0) + 1);
-  pageBlockCache.delete(key);
-  const index = pageBlockCacheOrder.indexOf(key);
-  if (index >= 0) pageBlockCacheOrder.splice(index, 1);
-  forgetPageSuggestions(pageNo);
 }
 
 // 瓷砖在滚动内容里的位置：渲染 / 缩放时缓存一次，滚动时不再每帧量 267 个矩形。
@@ -4579,7 +4365,7 @@ async function structureAction(block, operation, payload = {}) {
     setSaveState(operation === "split-page-number" ? "页码已拆出，可撤销" : "已保存 ✓");
     // 块的结构 / 顺序变了：本页的块框缓存与本页建议都作废
     // （页面视图那边不能继续显示拆分前的旧框）
-    forgetPageBlocks(detailPageNo);
+    window.PageGrid?.forgetPageBlocks(detailPageNo);
     await window.PageDetailDrawer?.loadPageDetail(detailPageNo);
     await refreshPageStates();
     // 新增的块直接聚焦，省一次点击（落在版心外就自动切到「全部」）
@@ -6997,7 +6783,7 @@ function boot() {
     openModal: (...args) => openModal(...args),
     closeModal: (...args) => closeModal(...args),
     renderRecognitionSettings: (...args) => renderRecognitionSettings(...args),
-    forgetPageBlocks: (...args) => forgetPageBlocks(...args),
+    forgetPageBlocks: (...args) => window.PageGrid?.forgetPageBlocks(...args),
     refreshPageStates: (...args) => refreshPageStates(...args),
     loadPageDetail: (...args) => window.PageDetailDrawer?.loadPageDetail(...args),
     setSaveState: (...args) => setSaveState(...args),
@@ -7138,7 +6924,7 @@ function boot() {
     openModal: (...args) => openModal(...args),
     closeModal: (...args) => closeModal(...args),
     showError: (node, error) => showError(node, error),
-    forgetPageBlocks: (...args) => forgetPageBlocks(...args),
+    forgetPageBlocks: (...args) => window.PageGrid?.forgetPageBlocks(...args),
     refreshPageStates: (...args) => refreshPageStates(...args),
     onPageSuggestionsInvalidated: (...args) => window.PagesView?.onPageSuggestionsInvalidated(...args),
     onPagesNeedReflow: (...args) => window.PagesView?.onPagesNeedReflow(...args),
@@ -7154,6 +6940,32 @@ function boot() {
     getReviewMarginOn: () => reviewMarginOn,
     setReviewMarginOn: (value) => { reviewMarginOn = value; return value; },
     getTileByPageNo: (pageNo) => document.querySelector(`#page-grid .page-tile[data-page-no="${pageNo}"]`),
+  });
+  // 片 3a：页面网格的瓦片生产 + 块缓存（服务模块，无 root）。buildTile 造的就是
+  // margin-data.js 消费侧契约的那棵树，两边改一处必须同时改。
+  window.PageGrid?.init({
+    getCurrentProject: () => currentProject,
+    getSelectedPages: () => selectedPages,
+    getBusyPages: () => busyPages,
+    getPageZoomIndex: () => pageZoomIndex,
+    getToken: () => token,
+    PAGE_TYPE_LABELS,
+    pageBlockCache,
+    pageBlockCacheOrder,
+    pageBlockVersions,
+    PAGE_BLOCK_CACHE_LIMIT,
+    workflowOf: (...args) => workflowOf(...args),
+    recognitionOf: (...args) => recognitionOf(...args),
+    paintTileSuggestionMark: (...args) => paintTileSuggestionMark(...args),
+    recognitionChip: (...args) => recognitionChip(...args),
+    workflowChip: (...args) => workflowChip(...args),
+    reviewBadge: (...args) => reviewBadge(...args),
+    divergenceChip: (...args) => divergenceChip(...args),
+    forgetPageSuggestions: (...args) => forgetPageSuggestions(...args),
+    pageMarginSourceLabel: (...args) => window.MarginData?.pageMarginSourceLabel(...args),
+    attachRenderErrorDetail: (...args) => window.PageTile?.attachRenderErrorDetail?.(...args),
+    recognizePage: (...args) => window.PagesView?.recognizePage(...args),
+    openPageDetail: (...args) => window.PageDetailDrawer?.openPageDetail(...args),
   });
   window.PagesView?.init({
     adoptBlockSuggestion: (...args) => window.PageDetailEditor?.adoptBlockSuggestion(...args),
@@ -7220,7 +7032,7 @@ function boot() {
     estimateRemainingSeconds: estimateRemainingSeconds,
     applyMarginRect: (...args) => window.MarginData?.applyMarginRect(...args),
     nearestEdge: nearestEdge,
-    forgetPageBlocks: forgetPageBlocks,
+    forgetPageBlocks: (...args) => window.PageGrid?.forgetPageBlocks(...args),
     formatMarginBox: (...args) => window.MarginData?.formatMarginBox(...args),
     highConfidenceCount: highConfidenceCount,
     layoutBlockPageRecord: layoutBlockPageRecord,
@@ -7232,20 +7044,20 @@ function boot() {
     marginUndeterminedPages: marginUndeterminedPages,
     mergePageRecord: (...args) => window.MarginData?.mergePageRecord(...args),
     openMasks: openMasks,
-    pageBlockKey: pageBlockKey,
+    pageBlockKey: (...args) => window.PageGrid?.pageBlockKey(...args),
     pageMarginSourceLabel: (...args) => window.MarginData?.pageMarginSourceLabel(...args),
     pageSetupStats: (...args) => window.PageConfirm.pageSetupStats(...args),
     paintTileMargin: (...args) => window.MarginData?.paintTileMargin(...args),
     percentText: (...args) => window.QualityStats.percentText(...args),
     reloadDetailAfterRecognition: reloadDetailAfterRecognition,
-    rememberPageBlocks: rememberPageBlocks,
+    rememberPageBlocks: (...args) => window.PageGrid?.rememberPageBlocks(...args),
     repaintTileMargin: (...args) => window.MarginData?.repaintTileMargin(...args),
     selectedSuggestions: (...args) => window.PageConfirm.selectedSuggestions(...args),
     selectionPages: selectionPages,
     suggestionPagesByType: (...args) => window.PageConfirm.suggestionPagesByType(...args),
     textLayerPages: textLayerPages,
-    buildTile: buildTile,
-    applyTileState: applyTileState,
+    buildTile: (...args) => window.PageGrid?.buildTile(...args),
+    applyTileState: (...args) => window.PageGrid?.applyTileState(...args),
     adoptAllHighSuggestions: (...args) => window.PageDetailEditor?.adoptAllHighSuggestions(...args),
     openPageDetail: (...args) => window.PageDetailDrawer?.openPageDetail(...args),
     openPageNumberPanel: (...args) => window.PageNumberPanel?.openPageNumberPanel(...args),
@@ -7513,9 +7325,9 @@ function boot() {
     // 三档 radio 由外壳查好给模块（模块自己不碰 DOM ⇒ 域模块闸零豁免）。
     // 这里按 name 查、不点 section 的 id：与搬走前 syncImageQualityUi 的取法逐字相同（R3 不新增引用）。
     getQualityRadios: () => document.querySelectorAll('input[name="reading-quality"]'),
-    blocksKey: (pageNo) => pageBlockKey(pageNo),
+    blocksKey: (pageNo) => window.PageGrid?.pageBlockKey(pageNo),
     blocksGet: (key) => pageBlockCache.get(key),
-    blocksRemember: (key, blocks) => rememberPageBlocks(key, blocks),
+    blocksRemember: (key, blocks) => window.PageGrid?.rememberPageBlocks(key, blocks),
   });
   // 片 2：块框的卡片构建器（纯函数，只吃 block/index；registry 在 labeled 时才会调它）
   window.OverlayLayer?.init({
@@ -7574,7 +7386,7 @@ function boot() {
     startTaskPolling: (...args) => startTaskPolling(...args),
     onAuxReviewFinished: (...args) => window.PagesView?.onAuxReviewFinished(...args),
     fetchPageSuggestions: (...args) => fetchPageSuggestions(...args),
-    forgetPageBlocks: (...args) => forgetPageBlocks(...args),
+    forgetPageBlocks: (...args) => window.PageGrid?.forgetPageBlocks(...args),
     forgetPageSuggestions: (...args) => forgetPageSuggestions(...args),
     loadFinishSummary: (...args) => loadFinishSummary(...args),
     loadPageDetail: (...args) => window.PageDetailDrawer?.loadPageDetail(...args),
