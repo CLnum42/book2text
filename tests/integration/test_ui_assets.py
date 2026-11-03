@@ -357,6 +357,12 @@ def _punct_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _recovery_script() -> str:
+    """片 7：锁冲突 / 废纸篓 / 项目备份住在 `recovery-panels.js`（三个根）。"""
+    path = STATIC_DIR / "recovery-panels.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _drawer_script() -> str:
     """① 主刀收尾：核心抽屉住在 `page-detail-drawer.js`（root = #view-review）。
 
@@ -1230,7 +1236,8 @@ def test_finish_panel_and_batch_actions_are_wired() -> None:
 def test_trash_select_all_and_margin_visual_are_wired() -> None:
     """任务 35：废纸篓、全选 / 取消全选 / 点空白取消、版心视觉都真的接上。"""
     page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 片 7：废纸篓整簇搬进 recovery-panels.js ⇒ 本测试按两份合查读
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8") + _recovery_script()
     pages_script = _view_script("pages-view.js")
     styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
@@ -1831,6 +1838,57 @@ def test_punct_batch_owns_both_panels_and_reading_badges_are_injected() -> None:
         assert forward in app, f"外壳缺转发：{forward}"
 
 
+def test_recovery_panels_own_lock_trash_and_backups() -> None:
+    """片 7：锁冲突 / 废纸篓 / 项目备份 14 函数归 `recovery-panels.js`；三个根。"""
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module = _recovery_script()
+    assert module, "recovery-panels.js 没落盘——片 7 的三个面板还没搬"
+
+    for name in (
+        "lockStampText",
+        "lockSourceText",
+        "lockSpanText",
+        "lockStateText",
+        "showLockConflict",
+        "confirmLockConflict",
+        "closeLockConflict",
+        "openTrashPanel",
+        "loadTrash",
+        "restoreTrashProject",
+        "purgeTrashProject",
+        "openBackups",
+        "loadBackups",
+        "restoreSelectedBackup",
+    ):
+        assert f"function {name}(" in module, f"{name} 不在 recovery-panels.js"
+        assert f"function {name}(" not in app, f"{name} 还留在 app.js"
+
+    # 三个根 + 入口转发
+    for root in (
+        'lockRoot: el("lock-conflict-mask")',
+        'trashRoot: el("trash-panel")',
+        'backupsRoot: el("backups-mask")',
+    ):
+        assert root in app, f"外壳没传根：{root}"
+    assert "window.RecoveryPanels?.showLockConflict(...args)" in app
+    assert "window.RecoveryPanels?.openBackups(...args)" in app
+    assert "window.RecoveryPanels?.openTrashPanel()" in app
+    assert page_html.index("/static/recovery-panels.js") < page_html.index("/static/app.js")
+
+    # 状态随迁；写盘 URL 逐字不变
+    for token in ("let lockConflictTarget", "let backupsData", "let backupSelected"):
+        assert token not in app, f"{token} 还留在 app.js"
+    for url in (
+        "/api/trash",
+        "/restore",
+        "confirm=true",
+        "/backups",
+        "/close",
+    ):
+        assert url in module, f"模块缺 URL 片段：{url}"
+
+
 def test_confirm_page_refreshes_finish_counts() -> None:
     """任务 42 走查：确认一页之后，收尾面板 / 步骤条的计数必须跟着动。
 
@@ -2259,7 +2317,8 @@ def test_project_lock_conflict_dialog_is_wired() -> None:
     卡片上有"锁已过期"标记、错误里的结构化 `data.lock` 真的被读。
     """
     page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 片 7：锁冲突对话框整簇搬进 recovery-panels.js ⇒ 合查
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8") + _recovery_script()
 
     for element_id in (
         "lock-conflict-mask",
