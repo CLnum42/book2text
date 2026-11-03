@@ -2215,36 +2215,6 @@ function auxEstimateText(pages) {
   return formatDuration(seconds);
 }
 
-/**
- * 任务收尾 / 页面重新打开时从服务端重读版心状态（自动推算写在识别子进程里）。
- *
- * 只在任务**结束后**调用一次：轮询中途不重读，免得把用户正在拖的框改回去。
- * 返回是否有变化这件事不重要——界面统一重画一遍，成本很低。
- */
-async function refreshMarginState() {
-  if (!currentProject) return;
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/margin-box`
-    );
-    currentProject.margin_box = data.margin_box || null;
-    currentProject.margin_box_source = data.source || null;
-    currentProject.margin_box_set_at = data.set_at || null;
-    currentProject.margin_box_suggestion = data.suggestion || null;
-    marginSuggestion = data.suggestion || null;
-    marginAuditPage = null;
-  } catch {
-    return;
-  }
-  // 任务 36B：任务结束后再看一眼版心——刚补上检测行的页之前拟合失败过，允许再试一次。
-  marginFitTried.clear();
-  // 刀 9.3：tiles / panel / 条件拟合三处写点搬进 onTaskFinished（外壳在本函数 await 之后调一次），
-  // 顺序仍在"读回 margin-box"之后；paintReviewMargin / drawDetailOverlay 留壳。
-  window.PageDetailDrawer?.paintReviewMargin(detailPageRecord());
-  // 版心外块的淡色样式要按新框重算（只改 class，不重建输入框之外的东西）
-  if (detailPageNo !== null) window.PageDetailDrawer?.drawDetailOverlay(reviewBlocks);
-}
-
 /** 全部改为每页自动拟合：inherit / auto 参与，custom / none 不动。 */
 /** 把一页的自定义版心写进项目默认，并把这一页改回「沿用默认」。 */
 // ---------------------------------------------------------------- 页码设置（任务 55）
@@ -2694,7 +2664,7 @@ async function pollTask() {
       await refreshPageStates();
       await loadWorkflow();
       // 任务 59：检测收尾会自动用检测行推算一次版心，读回来让框 / 建议立刻出现
-      await refreshMarginState();
+      await window.MarginData?.refreshMarginState();
       // 刀 9.3：版心读回之后一次收尾——重画 tiles / panel / 条件拟合（ensureMarginFitted 会
       // POST fit-all 写盘，必须紧跟读回，不能挪到 loadTasks 之后），并给出检测结论。
       window.PagesView?.onTaskFinished(data);
@@ -2717,7 +2687,7 @@ async function pollTask() {
     await loadWorkflow();
     // 任务 53：识别子进程在收尾时自动算了一次版心（写在数据库里）。
     // 这里把新版心 / 建议读回来，页面视图与审校视图都会跟着重画。
-    await refreshMarginState();
+    await window.MarginData?.refreshMarginState();
     // 刀 9.3：识别收尾同样走一次收尾能力（job_type != layout 时只重画版心、不碰检测结论）
     window.PagesView?.onTaskFinished(data);
     await window.PagesView?.onRecognitionFinished(donePages, { reloadDetail: false });
@@ -6833,6 +6803,16 @@ function boot() {
     getReviewMarginOn: () => reviewMarginOn,
     setReviewMarginOn: (value) => { reviewMarginOn = value; return value; },
     getTileByPageNo: (pageNo) => document.querySelector(`#page-grid .page-tile[data-page-no="${pageNo}"]`),
+    // 片 2d：任务收尾的版心重读搬进模块——读写状态走访问器，两个画法归抽屉（注入）
+    apiJson: (...args) => apiJson(...args),
+    detailPageRecord: (...args) => detailPageRecord(...args),
+    getDetailPageNo: () => detailPageNo,
+    getReviewBlocks: () => reviewBlocks,
+    setMarginSuggestion: (value) => { marginSuggestion = value; return value; },
+    setMarginAuditPage: (value) => { marginAuditPage = value; return value; },
+    getMarginFitTried: () => marginFitTried,
+    paintReviewMargin: (...args) => window.PageDetailDrawer?.paintReviewMargin(...args),
+    drawDetailOverlay: (...args) => window.PageDetailDrawer?.drawDetailOverlay(...args),
   });
   // 片 3b：缩放档位 / 图档选择 / 宽度测量（状态在模块里；外壳只给项目、token、dpr、视口宽）
   window.PageMedia?.init({

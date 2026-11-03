@@ -133,7 +133,7 @@ function blockInsideMargin(block, page) {
 
 function blockCountedInMargin(block, page) {
   if (block && typeof block.margin_inside === "boolean") return block.margin_inside;
-  return blockInsideMargin(block, page || detailPageRecord());
+  return blockInsideMargin(block, page || injected.detailPageRecord());
 }
 
 function reviewMarginSplit(page, blocks) {
@@ -245,6 +245,35 @@ function marginBasisForUndetermined(page) {
   return "未定：这一页还没有可用的正文行（检测行 / 识别行框都没有），拟合不出版心";
 }
 
+  /**
+   * 任务收尾 / 页面重新打开时从服务端重读版心状态（自动推算写在识别子进程里）。
+   *
+   * 只在任务**结束后**调用一次：轮询中途不重读，免得把用户正在拖的框改回去。
+   * 返回是否有变化这件事不重要——界面统一重画一遍，成本很低。
+   */
+  async function refreshMarginState() {
+    const project = injected.getCurrentProject();
+    if (!project) return;
+    try {
+      const data = await injected.apiJson(`/api/projects/${project.project_id}/margin-box`);
+      project.margin_box = data.margin_box || null;
+      project.margin_box_source = data.source || null;
+      project.margin_box_set_at = data.set_at || null;
+      project.margin_box_suggestion = data.suggestion || null;
+      injected.setMarginSuggestion(data.suggestion || null);
+      injected.setMarginAuditPage(null);
+    } catch {
+      return;
+    }
+    // 任务 36B：任务结束后再看一眼版心——刚补上检测行的页之前拟合失败过，允许再试一次。
+    injected.getMarginFitTried().clear();
+    // 刀 9.3：tiles / panel / 条件拟合三处写点搬进 onTaskFinished（外壳在本函数 await 之后调一次），
+    // 顺序仍在"读回 margin-box"之后；两个画法归抽屉，本模块只经注入喊它们。
+    injected.paintReviewMargin(injected.detailPageRecord());
+    // 版心外块的淡色样式要按新框重算（只改 class，不重建输入框之外的东西）
+    if (injected.getDetailPageNo() !== null) injected.drawDetailOverlay(injected.getReviewBlocks());
+  }
+
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
     return api;
@@ -271,6 +300,7 @@ function marginBasisForUndetermined(page) {
     loadPageMarginPreference,
     loadReviewMarginPreference,
     saveReviewMarginPreference,
+    refreshMarginState,
   };
   window.MarginData = api;
 })();
