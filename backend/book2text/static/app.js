@@ -90,7 +90,7 @@ function showPageDetailError(error) {
 }
 
 function escapeHtml(text) {
-  return String(text).replace(new RegExp("[&<>\"']", "g"), (ch) => ({
+  return String(text).replace(/[&<>"']/g, (ch) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[ch]));
 }
@@ -1426,185 +1426,7 @@ function recognitionChip(page) {
 //
 // 过期 → 可以强制删除（或强制打开）；真占用 → 不给强制，先说清要先关掉谁。
 
-let lockConflictTarget = null;
-
-function lockStampText(value) {
-  if (!value) return "时间未知";
-  const then = new Date(value);
-  if (Number.isNaN(then.getTime())) return value.slice(0, 16);
-  const pad = (number) => String(number).padStart(2, "0");
-  return `${pad(then.getMonth() + 1)}-${pad(then.getDate())} ${pad(then.getHours())}:${pad(then.getMinutes())}`;
-}
-
-function lockSourceText(lock) {
-  const host = lock.hostname || "未知主机";
-  if (lock.host_note === "本机") return `${host}（本机）`;
-  if (lock.host_note === "本机以前的名字") return `${host}（本机以前的名字）`;
-  return `${host}（另一台电脑）`;
-}
-
-/** "12 天前" → "12 天"（写进"已经 N 天没有心跳"这种句子时不能带"前"）。 */
-function lockSpanText(lock) {
-  const text = String(lock.age_text || "").replace(/前$/, "");
-  return text || "很久";
-}
-
-function lockStateText(lock) {
-  if (!lock.expired) {
-    return lock.host_note === "另一台电脑"
-      ? "另一台电脑的心跳正常，它还在写这个项目"
-      : `进程 ${lock.pid} 还在写这个项目`;
-  }
-  if (lock.host_note === "另一台电脑") {
-    return `已经 ${lockSpanText(lock)}没有心跳，这把锁已过期`;
-  }
-  return `进程 ${lock.pid} 已不存在，这把锁已过期`;
-}
-
-/** 画"锁挡住操作"的对话框。`action` 是 "delete" 或 "open"。 */
-function showLockConflict(entry, lock, action) {
-  lockConflictTarget = { entry, lock, action };
-  const expired = Boolean(lock && lock.expired);
-  const force = el("lock-conflict-force");
-  el("lock-conflict-error").hidden = true;
-  el("lock-conflict-title").textContent = expired
-    ? "这把锁已过期，可以直接接管"
-    : "项目正被另一个窗口使用";
-  el("lock-conflict-text").textContent = expired
-    ? "锁的持有进程已经不在了，留着它只会一直挡住你。接管这把锁不会动项目里的任何数据。"
-    : "同一个项目同时被两处写入可能损坏数据库，所以这里不能替你决定。";
-  fillDefinitionList(el("lock-conflict-facts"), [
-    ["项目", `《${entry.name}》`],
-    ["来源", lockSourceText(lock)],
-    ["时间", `${lockStampText(lock.last_seen_at)}${lock.age_text ? `（${lock.age_text}）` : ""}`],
-    ["状态", lockStateText(lock)],
-  ]);
-  const advice = el("lock-conflict-advice");
-  if (action === "delete") {
-    advice.textContent = expired
-      ? "删除只是把项目移入废纸篓，数据仍在磁盘上，可以随时恢复。"
-      : "先在那个窗口里关闭项目（或退出应用），再回来删除。";
-  } else {
-    advice.textContent = expired
-      ? "确认那台电脑已经不再打开这个项目，再接管；接管后会以本机的锁继续。"
-      : "如果那个窗口确实是你自己开的，请回那个窗口继续，别同时开两个。";
-  }
-  // 删除只对"过期锁"给强制；真占用一律不给。打开这条路本来就有「强制打开」。
-  force.hidden = action === "open" ? false : !expired;
-  force.textContent = action === "open" ? "强制打开" : "强制删除";
-  openModal("lock-conflict-mask");
-}
-
-async function confirmLockConflict() {
-  const target = lockConflictTarget;
-  if (!target) return;
-  const button = el("lock-conflict-force");
-  const label = button.textContent;
-  button.disabled = true;
-  button.textContent = target.action === "open" ? "正在打开…" : "正在删除…";
-  el("lock-conflict-error").hidden = true;
-  try {
-    if (target.action === "open") {
-      closeModal("lock-conflict-mask");
-      await window.LibraryView?.open(target.entry.project_id, { force: true });
-    } else {
-      await apiJson(
-        `/api/projects/${target.entry.project_id}?confirm=true&force=true`,
-        { method: "DELETE" }
-      );
-      closeModal("lock-conflict-mask");
-      await window.LibraryView?.enter();
-    }
-  } catch (error) {
-    showError(el("lock-conflict-error"), error);
-  } finally {
-    button.disabled = false;
-    button.textContent = label;
-  }
-}
-
-function closeLockConflict() {
-  lockConflictTarget = null;
-  closeModal("lock-conflict-mask");
-}
-
-async function openTrashPanel() {
-  el("trash-error").hidden = true;
-  openModal("trash-panel");
-  await loadTrash();
-}
-
-async function loadTrash() {
-  const list = el("trash-list");
-  list.innerHTML = "";
-  try {
-    const data = await apiJson("/api/trash");
-    el("trash-empty").hidden = data.projects.length > 0;
-    for (const entry of data.projects) {
-      const row = document.createElement("li");
-      row.className = "trash-row";
-      const main = document.createElement("div");
-      main.className = "trash-row__main";
-      const name = document.createElement("div");
-      name.className = "trash-row__name";
-      name.textContent = `《${entry.name}》`;
-      const meta = document.createElement("div");
-      meta.className = "trash-row__meta";
-      meta.textContent =
-        `${entry.page_count} 页` +
-        (entry.source_file_name ? ` · ${entry.source_file_name}` : "") +
-        ` · 删除于 ${window.MarginData?.formatMarginTime(entry.deleted_at) || "未知时间"}` +
-        (entry.deleted_by ? ` · ${entry.deleted_by}` : "");
-      main.append(name, meta);
-
-      const restore = document.createElement("button");
-      restore.type = "button";
-      restore.className = "btn";
-      restore.textContent = "恢复";
-      restore.addEventListener("click", () => restoreTrashProject(entry));
-
-      const purge = document.createElement("button");
-      purge.type = "button";
-      purge.className = "btn btn--danger";
-      purge.textContent = "彻底删除";
-      purge.addEventListener("click", () => purgeTrashProject(entry));
-
-      row.append(main, restore, purge);
-      list.append(row);
-    }
-  } catch (error) {
-    showError(el("trash-error"), error);
-  }
-}
-
-async function restoreTrashProject(entry) {
-  el("trash-error").hidden = true;
-  try {
-    await apiJson(`/api/trash/${entry.project_id}/restore`, { method: "POST" });
-    await loadTrash();
-    await window.LibraryView?.enter();
-  } catch (error) {
-    showError(el("trash-error"), error);
-  }
-}
-
-async function purgeTrashProject(entry) {
-  if (
-    !window.confirm(
-      `彻底删除《${entry.name}》？\n\n` +
-        "项目文件夹会被真正删除，无法恢复。确认继续吗？"
-    )
-  ) {
-    return;
-  }
-  el("trash-error").hidden = true;
-  try {
-    await apiJson(`/api/trash/${entry.project_id}?confirm=true`, { method: "DELETE" });
-    await loadTrash();
-  } catch (error) {
-    showError(el("trash-error"), error);
-  }
-}
+// 锁冲突 / 废纸篓 / 项目备份：已搬进 recovery-panels.js（window.RecoveryPanels，三个 mask 三个根）。
 
 /** "上次位置"的人话：审校 · 第 87 页（印 71）（说明书 7.2）。 */
 const LAST_VIEW_LABELS = {
@@ -5237,8 +5059,7 @@ async function closeProject() {
 
 function setupLibrary() {
   el("project-close").addEventListener("click", closeProject);
-  el("trash-open").addEventListener("click", openTrashPanel);
-  el("trash-close").addEventListener("click", () => closeModal("trash-panel"));
+  el("trash-open").addEventListener("click", () => window.RecoveryPanels?.openTrashPanel());
   // 「分派任务包 / 任务包 / 导入结果」的 8 处接线已搬进 collab.js 的 setupCollabControls()
   // 刀 6：⋯ 菜单的四个条目（含"点完先收起菜单"）搬进 pages-view.js 的 wirePagesMoreMenuEntries()
   // 「全库采用 / 自动应用提示条 / 建议面板」那 6 处接线已搬进 suggestion-flow.js 的 init()
@@ -5267,12 +5088,6 @@ function setupLibrary() {
     enterReviewStep();
   });
   el("aux-warning-cancel").addEventListener("click", () => closeModal("aux-warning-mask"));
-  el("lock-conflict-close").addEventListener("click", closeLockConflict);
-  el("lock-conflict-cancel").addEventListener("click", closeLockConflict);
-  el("lock-conflict-force").addEventListener("click", confirmLockConflict);
-  el("backups-close").addEventListener("click", () => closeModal("backups-mask"));
-  el("backups-cancel").addEventListener("click", () => closeModal("backups-mask"));
-  el("backups-restore").addEventListener("click", restoreSelectedBackup);
   el("word-boxes-cancel").addEventListener("click", () => closeModal("word-boxes-mask"));
   el("word-boxes-cancel-x").addEventListener("click", () => closeModal("word-boxes-mask"));
   el("word-boxes-start").addEventListener("click", startWordBoxesBackfill);
@@ -5318,85 +5133,7 @@ function setupLibrary() {
 /** 合并审阅状态（导入结果包之后由协作模块写入，合并视图模块经外壳读）。 */
 let mergeState = null;
 
-let backupsData = null;
-let backupSelected = null;
-
-async function openBackups() {
-  backupSelected = null;
-  el("backups-error").hidden = true;
-  openModal("backups-mask");
-  await loadBackups();
-}
-
-async function loadBackups() {
-  const list = el("backups-list");
-  list.innerHTML = "";
-  try {
-    const data = await apiJson(`/api/projects/${currentProject.project_id}/backups`);
-    backupsData = data.backups || [];
-  } catch (error) {
-    showError(el("backups-error"), error);
-    return;
-  }
-  el("backups-foot").textContent = backupsData.length
-    ? `共 ${backupsData.length} 份`
-    : "这个项目还没有备份";
-  el("backups-restore").disabled = true;
-  for (const item of backupsData) {
-    const row = document.createElement("li");
-    row.className = "backup-row";
-    const radio = document.createElement("input");
-    radio.type = "radio";
-    radio.name = "backup-pick";
-    radio.value = item.name;
-    radio.addEventListener("change", () => {
-      backupSelected = item;
-      el("backups-restore").disabled = false;
-    });
-    const main = document.createElement("div");
-    main.className = "backup-row__main";
-    const title = document.createElement("div");
-    title.textContent = `${window.MarginData?.formatMarginTime(item.created_at) || item.name} · ${humanBytes(item.size)}`;
-    const note = document.createElement("div");
-    note.className = "muted";
-    note.textContent = `${item.note} · ${item.name}`;
-    main.append(title, note);
-    row.append(radio, main);
-    list.append(row);
-  }
-}
-
-async function restoreSelectedBackup() {
-  if (!backupSelected || !currentProject) return;
-  const projectId = currentProject.project_id;
-  const ok = window.confirm(
-    `用「${backupSelected.name}」覆盖当前项目库？\n\n` +
-      "· 会丢掉这份备份之后的所有改动\n" +
-      "· 恢复前会把当前库再备份一份（「恢复前的安全备份」）\n" +
-      "· 恢复后会自动重新打开项目"
-  );
-  if (!ok) return;
-  el("backups-error").hidden = true;
-  const button = el("backups-restore");
-  button.disabled = true;
-  button.textContent = "正在恢复…";
-  try {
-    // 恢复要求没有写入方：先关项目
-    await apiJson(`/api/projects/${projectId}/close`, { method: "POST" }).catch(() => null);
-    const data = await apiJson(
-      `/api/projects/${projectId}/backups/${encodeURIComponent(backupSelected.name)}/restore?confirm=true`,
-      { method: "POST" }
-    );
-    closeModal("backups-mask");
-    await window.LibraryView?.open(projectId);
-    window.LibraryView?.notify({ kind: "warning", text: String(`已恢复备份 ${data.from}；恢复前的库另存为 ${data.safety_backup}`).trim() });
-  } catch (error) {
-    showError(el("backups-error"), error);
-  } finally {
-    button.disabled = false;
-    button.textContent = "恢复选中的备份";
-  }
-}
+// 项目备份：已搬进 recovery-panels.js（window.RecoveryPanels）。
 
 // ---------------------------------------------------------------- 语言分布（任务 64）
 
@@ -5630,6 +5367,23 @@ function boot() {
     paintReviewMargin: (...args) => window.PageDetailDrawer?.paintReviewMargin(...args),
     drawDetailOverlay: (...args) => window.PageDetailDrawer?.drawDetailOverlay(...args),
   });
+  // 片 7：锁冲突 / 废纸篓 / 项目备份（三个顶层 mask 三个根）；入口在库顶栏与 ⋯ 菜单
+  window.RecoveryPanels?.init({
+    lockRoot: el("lock-conflict-mask"),
+    trashRoot: el("trash-panel"),
+    backupsRoot: el("backups-mask"),
+    getCurrentProject: () => currentProject,
+    apiJson: (...args) => apiJson(...args),
+    showError: (node, error) => showError(node, error),
+    openModal: (...args) => openModal(...args),
+    closeModal: (...args) => closeModal(...args),
+    fillDefinitionList: (...args) => fillDefinitionList(...args),
+    humanBytes: (...args) => humanBytes(...args),
+    formatMarginTime: (...args) => window.MarginData?.formatMarginTime(...args),
+    libraryOpen: (...args) => window.LibraryView?.open(...args),
+    libraryEnter: (...args) => window.LibraryView?.enter(...args),
+    libraryNotify: (...args) => window.LibraryView?.notify(...args),
+  });
   // 片 6：标点批量 + 整行乱码（两个顶层 mask 两个根；角标节点归阅读视图，经注入给句柄）
   window.PunctBatch?.init({
     punctRoot: el("punct-groups-mask"),
@@ -5815,7 +5569,7 @@ function boot() {
     // 模块只碰 view-pages 的 id；`stats-panel` / `assign-panel` 这类全局 chrome id 收在这三个能力里。
     openSuggestionApplyPanel: (...args) => window.SuggestionFlow?.openApplyPanel(...args),
     openWordBoxesDialog: openWordBoxesDialog,
-    openBackups: openBackups,
+    openBackups: (...args) => window.RecoveryPanels?.openBackups(...args),
     openLayoutDetectDialog: openLayoutDetectDialog,
     openStatsPanel: openStatsPanel,
     openAssignPanel: (...args) => window.Collab?.openAssignPanel(...args),
@@ -5988,7 +5742,7 @@ function boot() {
     setSetupSuggestions: (v) => { setupSuggestions = v; return v; },
     setSetupSuggestionsLoaded: (v) => { setupSuggestionsLoaded = v; return v; },
     showError: (...args) => showError(...args),
-    showLockConflict: (...args) => showLockConflict(...args),
+    showLockConflict: (...args) => window.RecoveryPanels?.showLockConflict(...args),
     syncWorkflowSteps: (...args) => syncWorkflowSteps(...args),
     token: token,
   });

@@ -5500,6 +5500,8 @@ const DOMAIN_MODULES = [
   { file: "continuation-review.js", exposes: "ContinuationReview", allowQuerySelector: true },
   // 片 6：标点批量 + 整行乱码——两个顶层 mask 两个根（#punct-groups-mask / #garbled-mask）
   { file: "punct-batch.js", exposes: "PunctBatch", allowQuerySelector: true },
+  // 片 7：锁冲突 / 废纸篓 / 项目备份——三个顶层 mask 三个根
+  { file: "recovery-panels.js", exposes: "RecoveryPanels", allowQuerySelector: true },
 ];
 
 /**
@@ -5523,6 +5525,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "review-tree.js",
   "continuation-review.js",
   "punct-batch.js",
+  "recovery-panels.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {
