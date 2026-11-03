@@ -1,0 +1,114 @@
+{
+  "round": "2026-11-03 片 1a 页码面板真机 + 缩放修复独立复核",
+  "baseline": {
+    "tested_sha": "ca82b0f",
+    "ref": "origin/main",
+    "contents": "片 1a 三笔 + 缩放修复 + 刀 12 两笔 + 跨根闸 + 注释刀号闸；片 1b 未推",
+    "static_checks": {
+      "page-number-panel.js": "present, 664 lines, HTTP 200",
+      "app.js_lines": 8028,
+      "zoom_fix": "page-detail-drawer.js contains image.style.width",
+      "isolated_static_dir": "/private/tmp/b2t-wt-p1a/backend/book2text/static"
+    },
+    "service": { "worktree": "/tmp/b2t-wt-p1a", "port": 8871, "token": "qa4", "library": "/tmp/b2t-qa4/lib" },
+    "project": "b2t_T7JH61 (490 pages)",
+    "viewport": "1469x738"
+  },
+  "verdict": {
+    "zoom_fix": "pass",
+    "page_number_three_actions": "A/B/C 本身通过，但 A/B 写盘后带 P1 回归（错误条 + 侧栏数字不刷新）",
+    "blocking_bug": "page-number-panel.js:387/:411 reviewPart(\"page-number-review-panel\") 恒为 null → TypeError，onPageNumberChanged 被跳过"
+  },
+  "zoom": {
+    "page": 6,
+    "boxes": 10,
+    "levels": [
+      { "level": "fit", "image_w": 778.0, "canvas_w": 778.0, "overlay_w": 778.0, "box": "…2AQT", "bbox_x": 0.3258, "exp_x": 253.49, "got_x": 253.48, "offset_x": -0.01, "max_dev": 0.01, "baseline_pre_fix": 0.01 },
+      { "level": "125%", "image_w": 973.0, "canvas_w": 973.0, "overlay_w": 973.0, "box": "…2AQM", "bbox_x": 0.2277, "exp_x": 221.53, "got_x": 221.52, "offset_x": 0.0, "max_dev": 0.01, "baseline_pre_fix": 33.34 },
+      { "level": "150%", "image_w": 1167.0, "canvas_w": 1167.0, "overlay_w": 1167.0, "box": "…2AQR", "bbox_x": 0.2719, "exp_x": 317.33, "got_x": 317.33, "offset_x": -0.01, "max_dev": 0.01, "baseline_pre_fix": 191.13 },
+      { "level": "200%", "image_w": 1556.0, "canvas_w": 1556.0, "overlay_w": 1556.0, "box": "…2AQJ", "bbox_x": 0.395, "exp_x": 614.64, "got_x": 614.63, "offset_x": -0.01, "max_dev": 0.01, "baseline_pre_fix": 507.53 }
+    ],
+    "criteria": { "three_widths_equal": true, "fit_le_0_5": true, "others_le_2": true, "result": "pass" }
+  },
+  "page_number": {
+    "entry": {
+      "pages_view": "#page-number-open（折叠在 页面类型 → 页码（可跳过），仅 workflowStep=pages 时可见）",
+      "review": "#page-number-review-open（有异常时可见：核对 55/60 页异常…）",
+      "panel_open_load": { "loading_text": "正在从已识别页里收集页码候选…", "seconds_to_templates": "2.5–4", "templates": 2, "stuck_loading": false }
+    },
+    "A_template": {
+      "action": "模板1（底部外侧 · 奇右偶左，444 页）设为整本默认",
+      "network": "POST /page-numbers/apply 200",
+      "panel_before": { "meta": "已填 0 / 490 页", "assignments": [] },
+      "panel_after": { "meta": "已填 60 / 490 页", "assignments": ["第 1–490 页 · 底部外侧 · 奇右偶左（默认）"], "mapping_rows": 41, "anomalies": "无候选 33 / 歧义 11 / 溢出 2 / 重复 4" },
+      "reopen_persist": { "meta": "已填 60 / 490 页", "assignment": "第 1–490 页 · 底部外侧 · 奇右偶左（默认）", "result": "pass" },
+      "post_write_defect": { "error_bar_visible": true, "error_text": "Cannot read properties of null (reading 'hidden')", "side_panel_refreshed": false }
+    },
+    "B_ranges": {
+      "add": { "range": "36–42 with 模板2（右侧）", "network": "POST /page-numbers/apply 200", "assignments": ["1–35 默认", "36–42 右侧（第二套，带移除）", "43–490 默认"], "panel_filled": 55, "server_filled": 55 },
+      "remove": { "network": "POST /page-numbers/ranges/remove 200", "server_ranges": 0, "server_assignments": ["1–490:default"], "server_filled": 60, "panel_after": { "meta": "已填 60 / 490 页", "rows": ["第 1–490 页 · 底部外侧 · 奇右偶左（默认）"] }, "result": "回到默认模板 ✓" },
+      "post_write_defect": { "error_bar_visible": true, "error_text": "Cannot read properties of null (reading 'hidden')", "side_panel_refreshed": false }
+    },
+    "C_manual": {
+      "entry": "#page-number-review-open",
+      "open_blank_seconds": "4–9（无 loading 提示）",
+      "review_loaded": { "meta": "已填 60 / 490 页 · 手动 1 页", "rows": 490, "filters": 7, "issues": 441 },
+      "action": "第 36 页输入 444 → blur",
+      "network": "POST /page-numbers/manual 200",
+      "row_after": { "cells": ["第 36 页", "", "手动", "页码不连续 / 偏移突变"], "input": "444" },
+      "scroll": { "scroll_top_before": 0, "scroll_top_after": 961.5, "row_top": 0 },
+      "meta_after": "已填 60 / 490 页 · 手动 1 页",
+      "result": "pass（此路径不触发 reviewPart 回归）"
+    },
+    "error_500": { "stub": "POST /page-numbers/apply → 500", "hits": 1, "error_bar": { "hidden": false, "text": "请求失败（HTTP 500）" }, "panel_alive": true, "console_errors": 0, "result": "pass" },
+    "side_panel_mismatch": [
+      { "when": "加范围后", "server_filled": 55, "panel": 55, "side_summary": "底部外侧 · 奇右偶左 · 已填 60 · 异常 56" },
+      { "when": "移除范围后", "server_filled": 60, "panel": 60, "side_summary": "底部外侧 · 奇右偶左 · 已填 55 · 异常 60" },
+      { "when": "冷启动进入项目", "server_filled": 60, "panel": null, "side_summary": "未定位 · 可跳过", "note": "全程无 GET /page-numbers/summary" }
+    ]
+  },
+  "p1_regression": {
+    "what": "写盘成功后错误条 TypeError，且 onPageNumberChanged 被跳过（侧栏/页卡不刷新）",
+    "where": "backend/book2text/static/page-number-panel.js:387 与 :411",
+    "code": "if (!reviewPart(\"page-number-review-panel\").hidden) renderPageNumberReview(data);",
+    "root_cause": "reviewPart = reviewRoot.querySelector('#'+id)；reviewRoot 就是 #page-number-review-panel（app.js:7421），根元素自己不在自己的子树里 ⇒ null ⇒ null.hidden 抛 TypeError ⇒ catch 走 showError，紧随的 onPageNumberChanged 不执行",
+    "regression": true,
+    "pre_fix_code": "3d7151d app.js:3122 / :3148 使用 el(\"page-number-review-panel\")（document 级 getElementById，能找到 mask 本身）",
+    "introduced_by": "05cc494 fix(page-number): 审校面板的 15 处 part() 改成 reviewPart()",
+    "gate_gap": "4bba5e6 的跨根闸只校验 id 落在各自根子树里，根元素自身不在子树 ⇒ 这类调用不被拦",
+    "fix_hint": "改回 el(\"page-number-review-panel\")，或 if (!reviewRoot.hidden)；并给闸加一条「reviewPart 的 id 不能等于 root 自身」",
+    "affects": ["A 整本 apply", "B 加/移范围", "侧栏页码数字与入口", "核对异常入口文案"]
+  },
+  "split_header_sample": {
+    "single_page": { "page": 9, "result": "没有找到需要拆的块（扫了 1 页）" },
+    "whole_book": {
+      "scope": "选中的 490 页",
+      "summary": "会影响 4 页 · 4 块",
+      "items": [
+        "第 1 页 · 段落：THE STORY OF THE STONE 4 → 拆出页码 4（块尾）",
+        "第 32 页 · 段落：228 送果品小郎惊叵测 Chapter 90 → 拆出页码 228（块首）",
+        "第 60 页 · 段落：27 1 → 拆出页码 1（块尾）",
+        "第 88 页 · 段落：55 1 → 拆出页码 1（块尾）"
+      ],
+      "apply_button": { "text": "执行拆分（4 块）", "disabled": false },
+      "executed": false
+    }
+  },
+  "side_effects": {
+    "library": "/tmp/b2t-qa4/lib",
+    "project": "b2t_T7JH61",
+    "page_number_default_template": "底部外侧 · 奇右偶左（验收前无模板）",
+    "filled": "60 / 490",
+    "manual": "第 36 页 = 444",
+    "ranges": "已移除（0 段）",
+    "blocks": "未改（未执行拆分）"
+  },
+  "untested": [
+    "执行拆分（4 块）的结果与审校视图整批撤销",
+    ">490 页书的候选收集耗时",
+    "核对面板 4–9 秒空白期无 loading 提示（按最终渲染算过，但建议补 loading 态）",
+    "侧栏冷启动不加载 summary（疑既有，待定性）",
+    "500 注入后再走一次成功路径的恢复行为"
+  ],
+  "console": { "pageerror": 0, "unhandledrejection": 0, "app_console_errors": 0, "note": "P1 回归的 TypeError 走的是面板内错误条，不在 console" }
+}
