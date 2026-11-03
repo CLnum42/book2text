@@ -1139,7 +1139,7 @@ R1 依赖方向 / R2 视图互引 / R3 DOM 归属 / R4 真实现份数（含同�
 **A4 的对象固定死在 base 树上**（Architect）：切完队列后 9 条边的效果都挪到帧末 flush，在切后代码上插 `throw` 也会红，但那时红的是「队列还在跑」，证明不了同一条边。所以只认 base 树上的红。
 **只锁用户可感知的结果**（面板开了、页码对上、树高亮）：新增测试里**不许断言调用次数、调用顺序、注入面调用**（C1–C4 探针除外）。锁了顺序的测试切完队列必红，会被误判成「切错了」；而顺手在切边提交里改测试会立刻撞 A1（删除行 0），只能走 A3 单开提交。这条由 TestDev 做成静态检查，与八道闸并列领 R 编号。
 
-**权限**：只有 DevLead 能登记 A3 并移动 `ring-break-base`；Builder 不可。A4 的插 `throw` 小脚本归 TestDev（插一行、跑一条、2 秒级）。
+**权限**：登记 A3 的授权签署人是 DevLead 与 Chief（2026-11-03 扩，理由：集成方做第二双眼睛、减少串行等待）；**作者不能签自己那笔**这条不变，Builder 不可签。移动 `ring-break-base` 仍只由 DevLead 做。A4 的插 `throw` 小脚本归 TestDev（插一行、跑一条、2 秒级）。
 
 **基点的现状（2026-10-29，Chief 核出）**：`ring-break-base` = `afe20fe`，打在 **L0** 上——`git show ring-break-base:backend/book2text/static/app.js | wc -l` = 20,275（HEAD 15,870），`ls-tree` 的 `static/` 下只有 `reading-view.js` 一个模块。**它不是回放基，A2 / A4 现在暂停使用**：在它上面跑新测试，红的原因是「`init` 注入不存在、模块没拆」，会把「测试锁错对象」和「实现错了」混成同一个红。
 **真 base 判据（2026-10-29 更新）**：`ring-break-base` 已切到 **merge 落盘后的检查点**（`static/` 下 5 个 `*-view.js`：index / library / merge / preview / reading）。打 tag 同批三件已全部落地：删 `--allow-transitional-base`、更新 `tests/js/replay-base-modules.txt`、§18.3 的 13 条证据。**
