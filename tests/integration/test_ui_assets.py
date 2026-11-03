@@ -100,16 +100,18 @@ def test_page_view_has_zoom_controls_and_readonly_block_overlay() -> None:
         assert f'id="{element_id}"' in page, element_id
 
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
-    assert "PAGE_ZOOM_LEVELS" in script
+    # 片 3b：缩放档位表搬进 page-media.js ⇒ 档位断言读模块
+    zoom_script = _page_media_script()
+    assert "PAGE_ZOOM_LEVELS" in zoom_script
     # 档位表必须覆盖：缩略图、标准、以及"最高渲染档"——最后这条按关系判，
     # **不写某个具体字符串**（否则下次加档又红一次）。
     # 实现：从 render.RENDER_PROFILES 取 DPI 最高的档名，再断言它就是档位表里的 image hint。
     from book2text.core.pdf import render as render_module
 
-    assert 'image: "thumb"' in script
-    assert 'image: "view"' in script
+    assert 'image: "thumb"' in zoom_script
+    assert 'image: "view"' in zoom_script
     # PAGE_ZOOM_LEVELS 里出现过的 image hint（按出现顺序）
-    hints = re.findall(r'image: "(\w+)"', script)
+    hints = re.findall(r'image: "(\w+)"', zoom_script)
     assert hints, "PAGE_ZOOM_LEVELS 的 image hint 一个都没扫到"
     top_profile = max(render_module.RENDER_PROFILES, key=lambda name: render_module.RENDER_PROFILES[name])
     assert hints[-1] == top_profile, (
@@ -328,6 +330,12 @@ def _page_number_script() -> str:
 def _page_grid_script() -> str:
     """片 3a：页面网格的瓦片生产与块缓存住在 `page-grid.js`（服务模块，无 root）。"""
     path = STATIC_DIR / "page-grid.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def _page_media_script() -> str:
+    """片 3b：缩放档位 / 图档选择 / 宽度测量住在 `page-media.js`（服务模块，无 root）。"""
+    path = STATIC_DIR / "page-media.js"
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
@@ -781,6 +789,57 @@ def test_page_grid_owns_tile_builders_and_block_cache() -> None:
     assert "window.PageGrid?.forgetPageBlocks" in app
     assert app.count("forgetPageBlocks(detailPageNo)") == 1
     assert "window.PageGrid?.forgetPageBlocks(detailPageNo)" in app
+
+
+def test_page_media_owns_zoom_state_and_image_profiles() -> None:
+    """片 3b：缩放档位 / 状态 / 图档选择归 `page-media.js`，外壳只留转发。
+
+    四档与图档的对应、页图 URL 的拼法都在这里锁住——这条红一次，四个视图的图会一起错。
+    """
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module = _page_media_script()
+    assert module, "page-media.js 没落盘——片 3b 的缩放与图档还没搬"
+
+    for name in (
+        "pageZoomLevel",
+        "profileWidthPx",
+        "pageWidthPt",
+        "detailImageProfile",
+        "pageProfileFor",
+        "measureCssWidth",
+        "pageImageUrl",
+        "setPageZoom",
+    ):
+        assert f"function {name}(" in module, f"{name} 不在 page-media.js"
+        assert f"function {name}(" not in app, f"{name} 还留在 app.js"
+
+    # 状态归模块：外壳里 0 次
+    for token in ("pageZoomIndex", "pageZoomTouched", "renderProfiles", "IMAGE_PROFILE_ORDER"):
+        assert token not in app, f"{token} 还留在 app.js"
+    assert "let pageZoomIndex = 0;" in module
+    assert "let pageZoomTouched = false;" in module
+    assert "window.PageMedia = api" in module
+    assert page_html.index("/static/page-media.js") < page_html.index("/static/app.js")
+
+    # 四档的图档提示（最高档按关系判，见上面那条档位表断言）
+    for hint in ('image: "thumb"', 'image: "view"', 'image: "mid"', 'image: "zoom2"'):
+        assert hint in module
+    # 页图 URL 逐字不变
+    assert "/pages/${pageNo}/image?size=${size}" in module
+    assert "&token=${encodeURIComponent(injected.getToken())}" in module
+
+    # 外壳的注入全部改成转发（视图侧键名不变）
+    for forward in (
+        "window.PageMedia?.getPageZoomIndex()",
+        "window.PageMedia?.setPageZoomIndex(value)",
+        "window.PageMedia?.setPageZoomTouched(value)",
+        "window.PageMedia?.pageImageUrl(...args)",
+        "window.PageMedia?.pageProfileFor(...args)",
+        "window.PageMedia?.setPageZoom(...args)",
+        "window.PageMedia?.pageZoomLevel(...args)",
+    ):
+        assert forward in app, f"外壳缺转发：{forward}"
 
 
 def test_export_margin_judgement_and_optional_notes_are_wired() -> None:
@@ -1251,9 +1310,12 @@ def test_workflow_steps_scope_the_right_panel() -> None:
     assert "confirmLayoutFromPanel" in _script_with_view("pages-view.js")
 
     # 切步骤不动缩放：只有用户没手动改过缩放时，才在从别的视图进版心步时给整页档
-    assert "let pageZoomTouched = false;" in script
-    assert 'if (!pageZoomTouched && id === "margin"' in script
-    assert "pageZoomTouched = true;" in script
+    # 片 3b：缩放状态归 page-media.js，外壳只按"用户改过没有"判断
+    zoom_script = _page_media_script()
+    assert "let pageZoomTouched = false;" in zoom_script
+    assert 'if (!window.PageMedia?.getPageZoomTouched() && id === "margin"' in script
+    assert "window.PageMedia?.setPageZoomIndex(3);" in script
+    assert "pageZoomTouched = true;" in zoom_script
 
     # 文字识别步只读：状态数字来自 finish-summary / summary，不在右栏做裁决
     assert _function_body_any("renderRecognitionStatus")   # 函数可能已搬进视图模块（原来只认 app.js → 搬一次假红一次）
@@ -1767,7 +1829,9 @@ def test_index_view_reuses_page_rendering() -> None:
     assert "syncIndexToggles()" in index_both
     # 这三句现在是"模块调注入 + app 侧 setter 写状态"两半：只锁一半都会漏掉断链。
     assert "injected.setPageZoomTouched(true)" in index_script
-    assert "setPageZoomTouched: (value) => { pageZoomTouched = value;" in script
+    # 片 3b：真身搬进 page-media.js，外壳注入改成转发（两半都要在）
+    assert "setPageZoomTouched: (value) => window.PageMedia?.setPageZoomTouched(value)," in script
+    assert "let pageZoomTouched = false;" in _page_media_script()
     # 默认开：进入目录确认时打开版心与块框
     assert "injected.setPagesMarginOn(true)" in index_script
     assert "setPagesMarginOn: (value) => { pagesMarginOn = value;" in script

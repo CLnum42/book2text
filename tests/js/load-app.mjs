@@ -155,9 +155,11 @@ export function loadApp(options = {}) {
   // 默认预载 pages-view.js：app.js 现在真的调 window.PagesView，不载就是 undefined.renderPageSetup。
   // 刀 B 起 page-confirm.js 也要预载：pages 经 app.js 的转发器调 `injected.pageSetupStats()`，
   // 不载这个模块，转发器会返回 undefined（renderPageSetup 读 stats.body 直接 TypeError）。
+  // 片 3b 起 page-media.js 也要预载：缩放档位状态归模块，pages-view 读
+  // `injected.pageZoomLevel()` / `injected.PAGE_ZOOM_LEVELS`，不载就是 undefined.label。
   ctx.__preloadedModules = preloadModules(
     ctx,
-    options.modules || ["pages-view.js", "page-confirm.js"],
+    options.modules || ["page-media.js", "pages-view.js", "page-confirm.js"],
     options.moduleDir || STATIC_DIR,
   );
   vm.runInContext(src, ctx, { filename: String(appPath) });
@@ -251,11 +253,17 @@ export function appModuleDeps(ctx, source) {
     }
     // 刀 A/B 起：有些键的真身已搬进服务模块（app.js 只在 deps 里留转发器）。这里按服务模块接口面再找一次，
     // 找不到才给 `() => undefined` 桩——否则 pages-view 会对着 undefined 崩（renderPageSetup 读 stats.body）。
-    const serviceApi = ["PageConfirm", "QualityStats"].find(
+    // 片 3a/3b 起瓦片与缩放状态也在服务模块里（PageGrid / PageMedia），一并按接口面找。
+    const serviceApi = ["PageConfirm", "QualityStats", "PageMedia", "PageGrid"].find(
       (api) => ctx[api] && typeof ctx[api][name] === "function",
     );
     if (serviceApi) {
       deps[name] = (...args) => ctx[serviceApi][name](...args);
+      continue;
+    }
+    // 常量键：视图读 `injected.PAGE_ZOOM_LEVELS`，模块那边的属性名是 `zoomLevels`（片 3b）
+    if (name === "PAGE_ZOOM_LEVELS" && ctx.PageMedia) {
+      deps[name] = ctx.PageMedia.zoomLevels;
       continue;
     }
     const rest = name.length > 3 ? name[3].toLowerCase() + name.slice(4) : "";
