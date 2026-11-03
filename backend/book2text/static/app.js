@@ -733,132 +733,8 @@ function enterReviewStep() {
 // 只补 block_line.word_boxes：文本 / 第二引擎 / 分歧裁决 / 跨页延续 / 版心都不动。
 // 分批同步调用（每批 2 页，约 9 秒）；关掉对话框 = 停在当前批，再点就从没字框的行继续。
 
-let wordBoxesPlan = null;
-let wordBoxesRunning = false;
+// 字框回填：已搬进 word-boxes.js（window.WordBoxes，root = #word-boxes-mask）。
 
-async function openWordBoxesDialog() {
-  if (!currentProject) return;
-  wordBoxesPlan = null;
-  el("word-boxes-error").hidden = true;
-  el("word-boxes-note").hidden = true;
-  el("word-boxes-progress").hidden = true;
-  el("word-boxes-plan").textContent = "正在读取回填计划…";
-  el("word-boxes-start").disabled = true;
-  openModal("word-boxes-mask");
-  await refreshWordBoxesPlan();
-}
-
-async function refreshWordBoxesPlan() {
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/word-boxes`
-    );
-    wordBoxesPlan = data;
-    renderWordBoxesPlan(data);
-  } catch (error) {
-    el("word-boxes-plan").textContent = `回填计划读取失败：${error.message || "未知错误"}`;
-    el("word-boxes-start").disabled = true;
-  }
-}
-
-function renderWordBoxesPlan(plan) {
-  const cov = plan.coverage || {};
-  const pages = Number(plan.pages || 0);
-  const rows = [];
-  rows.push(
-    `<div class="layout-plan__row"><span>字框覆盖率</span><strong>${((cov.coverage || 0) * 100).toFixed(1)}%</strong></div>`
-  );
-  rows.push(
-    `<div class="layout-plan__row"><span>还没有字框</span><strong>${pages} 页 · ${plan.lines || 0} 行</strong></div>`
-  );
-  if (pages) {
-    rows.push(
-      `<div class="layout-plan__row"><span>文字层取 / 要识别</span><strong>${plan.text_layer_pages || 0} / ${plan.ocr_pages || 0} 页</strong></div>`
-    );
-    rows.push(
-      `<div class="layout-plan__row"><span>预计耗时</span><strong>${formatDuration(plan.estimated_seconds)}</strong></div>`
-    );
-  }
-  el("word-boxes-plan").innerHTML = rows.join("");
-  const note = el("word-boxes-note");
-  note.textContent = pages
-    ? "回填只写字框，不改任何文字与判定；中途关掉没关系，再点会从没字框的行继续。" +
-      (plan.ocr_pages ? "需要识别的页会真的跑一遍识别（只取字框，不落库）。" : "")
-    : "全书都有字框了。";
-  note.hidden = false;
-  const button = el("word-boxes-start");
-  button.disabled = pages === 0 || wordBoxesRunning;
-  button.textContent = pages ? `开始回填（${pages} 页）` : "没有要回填的行";
-}
-
-async function startWordBoxesBackfill() {
-  if (!currentProject || wordBoxesRunning) return;
-  wordBoxesRunning = true;
-  el("word-boxes-error").hidden = true;
-  el("word-boxes-progress").hidden = false;
-  el("word-boxes-start").disabled = true;
-  const button = el("word-boxes-start");
-  button.textContent = "正在回填…";
-  let donePages = 0;
-  let matched = 0;
-  let unmatched = 0;
-  const totalPages = Number(wordBoxesPlan?.pages || 0);
-  const startedAt = performance.now();
-  try {
-    while (true) {
-      const data = await apiJson(
-        `/api/projects/${currentProject.project_id}/word-boxes/backfill`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ limit: 2 }),
-        }
-      );
-      donePages += Number(data.updated_pages || 0);
-      matched += Number(data.lines_matched || 0);
-      unmatched += Number(data.lines_unmatched || 0);
-      const percent = totalPages ? Math.round((donePages / totalPages) * 100) : 0;
-      el("word-boxes-fill").style.width = `${percent}%`;
-      el("word-boxes-text").textContent =
-        `已回填 ${donePages} / ${totalPages} 页 · 已配对 ${matched} 行 · 未配对 ${unmatched} 行`;
-      if (!data.updated_pages) break;
-      if (Number(data.remaining_pages || 0) === 0) break;
-    }
-    const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
-    el("word-boxes-text").textContent =
-      `回填完成：${donePages} 页 · 配对 ${matched} 行 · 未配对 ${unmatched} 行 · ${seconds} 秒`;
-    await refreshWordBoxesPlan();
-    // 字框变了：让审校流下次打开时重新取块
-    if (typeof pageBlockCache !== "undefined") pageBlockCache.clear();
-  } catch (error) {
-    el("word-boxes-error").textContent = `回填中断：${error.message || "未知错误"}`;
-    el("word-boxes-error").hidden = false;
-  } finally {
-    wordBoxesRunning = false;
-    button.textContent = "继续回填";
-  }
-}
-
-async function clearWordBoxes() {
-  if (!currentProject) return;
-  const button = el("word-boxes-clear");
-  button.disabled = true;
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/word-boxes/clear`,
-      { method: "POST" }
-    );
-    el("word-boxes-note").textContent = `已撤销：清掉 ${data.cleared_lines || 0} 行的字框（其它字段没动过）。`;
-    el("word-boxes-note").hidden = false;
-    await refreshWordBoxesPlan();
-    if (typeof pageBlockCache !== "undefined") pageBlockCache.clear();
-  } catch (error) {
-    el("word-boxes-error").textContent = `撤销失败：${error.message || "未知错误"}`;
-    el("word-boxes-error").hidden = false;
-  } finally {
-    button.disabled = false;
-  }
-}
 
 function goToWorkflowStep(id) {
   if (!currentProject) return;
@@ -5088,10 +4964,6 @@ function setupLibrary() {
     enterReviewStep();
   });
   el("aux-warning-cancel").addEventListener("click", () => closeModal("aux-warning-mask"));
-  el("word-boxes-cancel").addEventListener("click", () => closeModal("word-boxes-mask"));
-  el("word-boxes-cancel-x").addEventListener("click", () => closeModal("word-boxes-mask"));
-  el("word-boxes-start").addEventListener("click", startWordBoxesBackfill);
-  el("word-boxes-clear").addEventListener("click", clearWordBoxes);
   el("layout-detect-cancel").addEventListener("click", () => closeModal("layout-detect-mask"));
   el("layout-detect-cancel-x").addEventListener("click", () => closeModal("layout-detect-mask"));
   el("layout-detect-start").addEventListener("click", startLayoutDetectFromDialog);
@@ -5367,6 +5239,16 @@ function boot() {
     paintReviewMargin: (...args) => window.PageDetailDrawer?.paintReviewMargin(...args),
     drawDetailOverlay: (...args) => window.PageDetailDrawer?.drawDetailOverlay(...args),
   });
+  // 片 8：字框回填（root = #word-boxes-mask）；入口 #word-boxes-open 在页面视图 ⋯ 菜单
+  window.WordBoxes?.init({
+    root: el("word-boxes-mask"),
+    getCurrentProject: () => currentProject,
+    apiJson: (...args) => apiJson(...args),
+    openModal: (...args) => openModal(...args),
+    closeModal: (...args) => closeModal(...args),
+    formatDuration: (...args) => formatDuration(...args),
+    clearPageBlockCache: () => pageBlockCache.clear(),
+  });
   // 片 7：锁冲突 / 废纸篓 / 项目备份（三个顶层 mask 三个根）；入口在库顶栏与 ⋯ 菜单
   window.RecoveryPanels?.init({
     lockRoot: el("lock-conflict-mask"),
@@ -5568,7 +5450,7 @@ function boot() {
     // 刀 6：三段片段的具名能力（⋯ 菜单四项 / 统计入口 / 批量指派两个入口）
     // 模块只碰 view-pages 的 id；`stats-panel` / `assign-panel` 这类全局 chrome id 收在这三个能力里。
     openSuggestionApplyPanel: (...args) => window.SuggestionFlow?.openApplyPanel(...args),
-    openWordBoxesDialog: openWordBoxesDialog,
+    openWordBoxesDialog: (...args) => window.WordBoxes?.openWordBoxesDialog(...args),
     openBackups: (...args) => window.RecoveryPanels?.openBackups(...args),
     openLayoutDetectDialog: openLayoutDetectDialog,
     openStatsPanel: openStatsPanel,

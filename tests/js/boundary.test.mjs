@@ -5502,6 +5502,8 @@ const DOMAIN_MODULES = [
   { file: "punct-batch.js", exposes: "PunctBatch", allowQuerySelector: true },
   // 片 7：锁冲突 / 废纸篓 / 项目备份——三个顶层 mask 三个根
   { file: "recovery-panels.js", exposes: "RecoveryPanels", allowQuerySelector: true },
+  // 片 8：字框回填——root = #word-boxes-mask（顶层 mask）
+  { file: "word-boxes.js", exposes: "WordBoxes", allowQuerySelector: true },
 ];
 
 /**
@@ -5526,6 +5528,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "continuation-review.js",
   "punct-batch.js",
   "recovery-panels.js",
+  "word-boxes.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {
