@@ -87,6 +87,7 @@ const TEST_FILES = [
   ["route-contract", () => import("./route-contract.test.mjs")],
   ["module-wiring", () => import("./module-wiring.test.mjs")],
   ["dom-root-scope", () => import("./dom-root-scope.test.mjs")],
+  ["knife-comment-refs", () => import("./knife-comment-refs.test.mjs")],
   ["detail-visibility", () => import("./detail-visibility.test.mjs")],
 ];
 const selector = process.argv[2];
