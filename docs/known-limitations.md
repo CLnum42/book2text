@@ -1934,3 +1934,17 @@ structure-tools.js      3 行注释 → 残留 3
   2026-11-02 之前落过的判据是在旧口径下变绿的（这次全量重跑没有新红，说明当时没被喂绿，但这属于运气）。
 - **将来做法**：任何新闸**必须用同一把**（`tests/js/static-scan.mjs` 的 `codeOnly`），不许自己写；
   已写进验收模板的「0.10 新闸必须复用同一把剥离器」一节。
+
+## L-117 · 结果预览视图没有 UI 入口，是 L 刀之后的残留（2026-11-03，DevLead 定性）
+
+**事实**：`WORKFLOW_STEPS` 现在是 6 步（pages / recognition / margin / index / review / export），
+注释里写着「L 刀：正文审校吸收结果预览（连续正文流），步骤 7 → 6」。`showView("preview")`
+只剩 `enterWorkflowStep` 里那个 `id === "preview"` 分支，而没有任何步骤的 id 是 preview ⇒ **死分支**。
+`preview-view.js`（1,112 行）仍随 `index.html` 加载，模块本身工作正常。
+
+**用户可见影响**：无——没有入口，用户走不到这个视图。**定性：死 UI，不是缺陷**，
+不要每轮 QA 再当发现项报一次。
+
+**将来做法**：删除单独一刀（`preview-view.js` + `enterWorkflowStep` 的那个死分支 + `index.html` 那行
+`<script src="/static/preview-view.js">`），排在第三批切片之后；删之前不要顺手改它的行为，
+也不要因为它"还能渲染"就给它补入口。
