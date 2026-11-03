@@ -84,6 +84,7 @@ const TEST_FILES = [
   ["structure-tools", () => import("./structure-tools.test.mjs")],
   ["page-detail-editor-state", () => import("./page-detail-editor-state.test.mjs")],
   ["review-tree", () => import("./review-tree.test.mjs")],
+  ["route-contract", () => import("./route-contract.test.mjs")],
   ["detail-visibility", () => import("./detail-visibility.test.mjs")],
 ];
 const selector = process.argv[2];
