@@ -14,9 +14,60 @@
 // ③ 四组夹具：全有章节 / 全无章节 / 混合（就是这本书的形状）/ chapters 为空数组。
 // ④ 防回归：filter=true 那支跑一组，行为不许变。
 
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadApp, runInApp } from "./load-app.mjs";
+import vm from "node:vm";
+import { stripModuleWrapper } from "./load-reading-view.mjs";
+
+const TREE_SRC = readFileSync(
+  new URL("../../backend/book2text/static/review-tree.js", import.meta.url),
+  "utf8"
+);
+
+/**
+ * 片 4：树内核搬进 `review-tree.js`（IIFE）⇒ 用例改成在模块体里跑。
+ * 与 `load-reading-view` 同一条口径：剥掉 IIFE、在模块自己的词法作用域里 eval，
+ * 这样 `reviewTreeGroups` / `renderReviewTree` / 那几个状态既不用为测试加导出，也不改产品代码。
+ */
+function loadTreeModule() {
+  const body = stripModuleWrapper(TREE_SRC);
+  const state = { detailPageNo: null };
+  const nodes = new Map();
+  const noop = () => {};
+  const sandbox = {
+    console,
+    performance: { now: () => 0 },
+    __state: state,
+    document: {
+      getElementById: (id) => nodes.get(id) || null,
+      createElement: (tag) => domNode(tag),
+    },
+  };
+  sandbox.window = sandbox;
+  const ctx = vm.createContext(sandbox);
+  vm.runInContext(body + "\n;globalThis.__eval = (code) => eval(code);\n", ctx, {
+    filename: "review-tree.js",
+  });
+  ctx.ReviewTree.init({
+    getRootEl: () => ({ querySelector: (sel) => nodes.get(String(sel).replace(/^#/, "")) || null }),
+    getCurrentProject: () => ({ project_id: "p" }),
+    getDetailPageNo: () => state.detailPageNo,
+    getReviewBlocks: () => [],
+    getActiveDiff: () => null,
+    apiJson: async () => ({}),
+    showPageDetailError: noop,
+    blockCountedInMargin: () => true,
+    truncate: (text) => text,
+    openPageDetail: async () => {},
+    activateDiff: noop,
+    computeCharSpans: () => [],
+    divergenceOf: () => [],
+  });
+  return { ctx, nodes };
+}
+
+const moduleEval = (ctx, code) => ctx.__eval(code);
 
 const CHAPTERS_7 = Array.from({ length: 7 }, (_, index) => ({
   id: `c${index}`, title: `第${index + 1}回`, page_from: index * 60 + 1, page_to: index * 60 + 60,
@@ -60,7 +111,7 @@ const NO_CHAPTERS = {
 
 /** 在 app 上下文里调内核；函数不存在时红，并说清是"产品笔还没落"而不是"测试写错"。 */
 function groupsOf(ctx, { pages, chapters }) {
-  return runInApp(ctx, `reviewTreeGroups(${JSON.stringify(pages)}, ${JSON.stringify(chapters)})`);
+  return moduleEval(ctx, `reviewTreeGroups(${JSON.stringify(pages)}, ${JSON.stringify(chapters)})`);
 }
 
 const unionOfPages = (groups) => groups.flatMap((group) => (group.pages || []).map((page) => page.page_no));
@@ -93,16 +144,11 @@ function domNode(tag) {
 
 /** 起一个能走 DOM 的树环境：list 收渲染结果，其余 id 给空节点。 */
 function treeEnv(tree) {
-  const ctx = loadApp({ require: ["renderReviewTree"] });
-  const nodes = new Map();
+  const { ctx, nodes } = loadTreeModule();
   const list = domNode("ul");
-  ctx.document.createElement = (tag) => domNode(tag);
-  ctx.document.getElementById = (id) => {
-    if (id === "review-tree-list") return list;
-    if (!nodes.has(id)) nodes.set(id, domNode("div"));
-    return nodes.get(id);
-  };
-  runInApp(ctx, `reviewTree = ${JSON.stringify(tree)};`);
+  nodes.set("review-tree-list", list);
+  nodes.set("review-tree-stats", domNode("span"));
+  moduleEval(ctx, `reviewTree = ${JSON.stringify(tree)};`);
   return { ctx, list };
 }
 
@@ -126,7 +172,7 @@ function pageRows(list) {
 /** 把树渲染一次，返回树上页行的页码（按默认/过滤两支分别跑）。 */
 function renderedPageNos({ tree, onlyTodo }) {
   const { ctx, list } = treeEnv(tree);
-  runInApp(ctx, `
+  moduleEval(ctx, `
     reviewTreeOnlyTodo = ${onlyTodo ? "true" : "false"};
     reviewTreeExpandedChapters.clear();
     for (const chapter of reviewTree.chapters) reviewTreeExpandedChapters.add(chapter.id);
@@ -135,7 +181,7 @@ function renderedPageNos({ tree, onlyTodo }) {
     if (typeof reviewTreeGroups === "function") {
       for (const group of reviewTreeGroups(reviewTree.pages, reviewTree.chapters)) reviewTreeExpandedChapters.add(group.id);
     }
-    detailPageNo = null;
+    __state.detailPageNo = null;
     renderReviewTree();
   `);
   return pageRows(list);
@@ -144,7 +190,7 @@ function renderedPageNos({ tree, onlyTodo }) {
 // ── 模型层：分组不丢页 ───────────────────────────────────────────────────
 
 test("T0 模型（混合·这本书的形状）：7 章 + 1 个「未归章」组，29 页一页不少，且它在最后", () => {
-  const ctx = loadApp({ require: ["computeCharSpans"] });
+  const { ctx } = loadTreeModule();
   const book = bookShape();
   assert.equal(typeof ctx.reviewTreeGroups, "function",
     "reviewTreeGroups 不存在——T0 的产品笔还没落（这是「产品没做到」，不是「测试写错」）");
@@ -170,7 +216,7 @@ test("T0 模型（混合·这本书的形状）：7 章 + 1 个「未归章」�
 });
 
 test("T0 模型（全有章节）：只有章节组，不出「未归章」组", () => {
-  const ctx = loadApp({ require: ["computeCharSpans"] });
+  const { ctx } = loadTreeModule();
   const groups = groupsOf(ctx, ALL_CHAPTERED);
   assert.equal(groups.length, 2, "全有章节时分组数应等于章节数");
   assert.ok(!groups.some((group) => group.id === null), "没人无归属，却多出一个「未归章」组");
@@ -178,7 +224,7 @@ test("T0 模型（全有章节）：只有章节组，不出「未归章」组",
 });
 
 test("T0 模型（全无章节）：章节都空 ⇒ 只剩「未归章」一组，页一页不少", () => {
-  const ctx = loadApp({ require: ["computeCharSpans"] });
+  const { ctx } = loadTreeModule();
   const groups = groupsOf(ctx, NO_CHAPTER_MATCH);
   assert.equal(groups.length, 1, "章节全空时应只剩「未归章」一组（空章跳过）");
   assert.equal(groups[0].id, null, "这一组的 id 应为 null");
@@ -186,7 +232,7 @@ test("T0 模型（全无章节）：章节都空 ⇒ 只剩「未归章」一组
 });
 
 test("T0 模型（chapters 为空数组）：平铺一组，不造假分组", () => {
-  const ctx = loadApp({ require: ["computeCharSpans"] });
+  const { ctx } = loadTreeModule();
   const groups = groupsOf(ctx, NO_CHAPTERS);
   assert.equal(groups.length, 1, "chapters 为空时应当平铺成一组");
   assert.equal(groups[0].id, null, "平铺组的 id 应为 null");
@@ -218,15 +264,15 @@ test("T0 渲染（回归·QA 真机）：当前页落在「未归章」组时，
   const book = bookShape();
   const orphanPageNo = book.pages.find((page) => page.chapter === null).page_no;
   const { ctx, list } = treeEnv(book);
-  runInApp(ctx, `
+  moduleEval(ctx, `
     reviewTreeOnlyTodo = false;
     reviewTreeExpandedChapters.clear();
-    detailPageNo = ${orphanPageNo};
+    __state.detailPageNo = ${orphanPageNo};
     renderReviewTree();                 // 第一帧：当前页在「未归章」组
     toggleReviewTreeChapter("c2");      // 用户点第 3 回（这个函数末尾自己会再 render 一次）
   `);
 
-  const expanded = runInApp(ctx, "[...reviewTreeExpandedChapters]");
+  const expanded = moduleEval(ctx, "[...reviewTreeExpandedChapters]");
   assert.ok(expanded.includes("c2"),
     `点完回目行的下一帧，展开集合被复原成 ${JSON.stringify(expanded)}——`
     + "当前页在「未归章」组时每一帧都把集合清成 {null}，用户点的章立刻折叠（树点不动）");

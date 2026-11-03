@@ -339,6 +339,12 @@ def _page_media_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _tree_script() -> str:
+    """片 4：审校左栏目录树住在 `review-tree.js`（root = #review-tree，第四个 owner TREE）。"""
+    path = STATIC_DIR / "review-tree.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _drawer_script() -> str:
     """① 主刀收尾：核心抽屉住在 `page-detail-drawer.js`（root = #view-review）。
 
@@ -789,6 +795,71 @@ def test_page_grid_owns_tile_builders_and_block_cache() -> None:
     assert "window.PageGrid?.forgetPageBlocks" in app
     assert app.count("forgetPageBlocks(detailPageNo)") == 1
     assert "window.PageGrid?.forgetPageBlocks(detailPageNo)" in app
+
+
+def test_review_tree_owns_the_tree_and_its_state() -> None:
+    """片 4：左树 12 函数与 9 个 reviewTree* 状态归 `review-tree.js`；外壳只留转发。
+
+    死函数 updateReviewTreeAfterAck（0 引用）在这里锁"删掉后不许回来"。
+    """
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module = _tree_script()
+    assert module, "review-tree.js 没落盘——片 4 的左树还没搬"
+
+    for name in (
+        "ensureReviewTree",
+        "treeItemsFromBlocks",
+        "loadReviewTreeItems",
+        "treeItemSummary",
+        "treeLevelLabel",
+        "reviewTreeGroups",
+        "renderReviewTree",
+        "toggleReviewTreeChapter",
+        "toggleReviewTreePage",
+        "setReviewTreeOnlyTodo",
+        "syncReviewTreeToPage",
+        "openTreeItem",
+    ):
+        assert f"function {name}(" in module, f"{name} 不在 review-tree.js"
+        assert f"function {name}(" not in app, f"{name} 还留在 app.js"
+
+    # 死函数：两个文件都不许再有它的定义
+    assert "function updateReviewTreeAfterAck(" not in module
+    assert "function updateReviewTreeAfterAck(" not in app
+
+    # 9 个状态随迁：外壳里 0 次
+    for token in (
+        "reviewTree = null",
+        "reviewTreeProjectId",
+        "reviewTreeLoading",
+        "reviewTreeExpandedChapters",
+        "reviewTreeExpandedPage",
+        "reviewTreeItems",
+        "reviewTreePageRows",
+        "reviewTreeChapterRows",
+        "reviewTreeItemRows",
+        "reviewTreeOnlyTodo",
+    ):
+        assert token not in app, f"{token} 还留在 app.js"
+    assert "let reviewTreeExpandedChapters = new Set();" in module
+    assert "window.ReviewTree = api" in module
+    assert page_html.index("/static/review-tree.js") < page_html.index("/static/app.js")
+
+    # 接口面 4 个能力各有调用点（外壳转发）
+    for forward in (
+        "window.ReviewTree?.ensureReviewTree()",
+        "window.ReviewTree?.setReviewTreeOnlyTodo(!window.ReviewTree?.getReviewTreeOnlyTodo())",
+        "window.ReviewTree?.syncReviewTreeToPage(...args)",
+        "window.ReviewTree?.treeItemsFromBlocks(...args)",
+    ):
+        assert forward in app, f"外壳缺转发：{forward}"
+
+    # 宿主：root = #review-tree；埋点字段名不动；写盘只有一条 GET /review/tree
+    assert 'root: el("review-tree")' in app
+    assert "window.__b2tTreeMetrics" in module
+    assert "/review/tree" in module
+    assert "/margin-box" not in module
 
 
 def test_page_media_owns_zoom_state_and_image_profiles() -> None:
@@ -1725,8 +1796,13 @@ def test_review_pauses_page_grid_prefetch() -> None:
 def test_review_workspace_v2_is_wired() -> None:
     """任务 45（H 刀）：左树、三色整行差异、逐字文本面板、三档三栏、默认关版心/块框。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    # 抽屉那刀把审校视图的看图 / 差异层搬进 page-detail-drawer.js ⇒ 本测试按合查读
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8") + _drawer_script()
+    # 抽屉那刀把审校视图的看图 / 差异层搬进 page-detail-drawer.js；片 4 把左树搬进
+    # review-tree.js ⇒ 本测试按三份合查读
+    script = (
+        (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        + _drawer_script()
+        + _tree_script()
+    )
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     # 清洗刀：原本挂在「页内差异队列」测试里的这条断言挪到这里——
@@ -1752,7 +1828,9 @@ def test_review_workspace_v2_is_wired() -> None:
     assert "function ensureReviewTree(" in script
     assert "/review/tree" in script
     assert "function renderReviewTree(" in script
-    assert "function updateReviewTreeAfterAck(" in script
+    # 片 4：updateReviewTreeAfterAck 是 0 引用死函数（清洗刀删掉页内差异队列后没人调），已删除；
+    # 「ack 后更新树计数」这个行为随之消失——登记为缺陷，见提交正文，不在这条断言里留痕。
+    assert "function updateReviewTreeAfterAck(" not in script
     assert "function setReviewTreeOnlyTodo(" in script
     assert "function syncReviewTreeToPage(" in script
     assert "function openTreeItem(" in script

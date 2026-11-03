@@ -5811,12 +5811,6 @@ const SHELL_IDS = [
   "review-pager",
   "review-continuations",
   "review-banner",
-  "review-tree",
-  "review-tree-rail",
-  "review-tree-stats",
-  "review-tree-filter",
-  "review-tree-scroll",
-  "review-tree-list",
   "detail-ink-gaps",
   "finish-open-review",
   "review-drawer-toggle",
@@ -5828,6 +5822,16 @@ const SHELL_IDS = [
   "review-footer-count",
   "detail-close",
   "review-confirm",
+];
+
+/** 归目录树（`review-tree.js`）：6 个，root = #review-tree，子树全归它（片 4）。 */
+const TREE_IDS = [
+  "review-tree",
+  "review-tree-rail",
+  "review-tree-stats",
+  "review-tree-filter",
+  "review-tree-scroll",
+  "review-tree-list",
 ];
 
 /** 归核心抽屉（`page-detail-drawer.js`）：21 个，按「谁写它」划，不按它在谁的 div 里。 */
@@ -5978,6 +5982,12 @@ const SECTION_OWNERS = [
     classes: ["box__handle", "diff-mark", "line-box"],
   },
   {
+    name: "TREE",
+    ids: TREE_IDS,
+    files: ["review-tree.js"],
+    classes: ["review-tree__"],
+  },
+  {
     name: "SHELL",
     ids: SHELL_IDS,
     files: ["app.js"],
@@ -6000,8 +6010,8 @@ test("① S1：一个 section 有 n 个 owner——两两不交 · 并集 == sub
   const problems = sectionOwnerProblems({ owners: SECTION_OWNERS, subtreeIds: subtree, modules });
   assert.deepEqual(problems, [], problems.join("\n"));
   // 表本身自洽：owner 数 == 登记数（加 owner 必须改这张表，不能靠"没人查"）
-  assert.equal(SECTION_OWNERS.length, 3,
-    `#view-review 现在按 ${SECTION_OWNERS.length} 个 owner 判（editor / drawer / shell）；少一张就是空表墓地`);
+  assert.equal(SECTION_OWNERS.length, 4,
+    `#view-review 现在按 ${SECTION_OWNERS.length} 个 owner 判（editor / drawer / tree / shell）；少一张就是空表墓地`);
 
   // 模块里 el( / document.getElementById 仍须为 0（root.querySelector 是唯一取法）
   const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
