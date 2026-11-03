@@ -345,6 +345,12 @@ def _tree_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _continuation_script() -> str:
+    """片 5：跨页延续面板住在 `continuation-review.js`（root = #continuation-panel）。"""
+    path = STATIC_DIR / "continuation-review.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _drawer_script() -> str:
     """① 主刀收尾：核心抽屉住在 `page-detail-drawer.js`（root = #view-review）。
 
@@ -1652,7 +1658,9 @@ def test_cleanup_actions_are_wired_into_the_finish_panel() -> None:
 def test_continuation_review_entry_and_panel_are_wired() -> None:
     """任务 42 / 43（G 刀）：第三桶有入口；面板左右分栏、键盘优先、判完自动跳。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 片 5：面板整簇搬进 continuation-review.js ⇒ 本测试按两份合查读
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    script = app + _continuation_script()
     styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -1716,6 +1724,57 @@ def test_continuation_review_entry_and_panel_are_wired() -> None:
     assert ".continuation-side" in styles
     assert ".continuation-line" in styles
     assert "overflow: auto" in styles
+
+
+def test_continuation_review_owns_the_panel_and_ack_count_refresh() -> None:
+    """片 5：跨页延续 19 函数归 `continuation-review.js`；ack 之后只刷树行、不重取。"""
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module = _continuation_script()
+    reading = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
+    tree = _tree_script()
+    assert module, "continuation-review.js 没落盘——片 5 的面板还没搬"
+
+    for name in (
+        "openContinuationReview",
+        "loadContinuationReview",
+        "continuationCurrent",
+        "continuationRemaining",
+        "continuationPageBlock",
+        "buildContinuationPages",
+        "applyContinuationZoom",
+        "centerContinuationJunction",
+        "prefetchContinuationPages",
+        "continuationEvidenceRow",
+        "renderContinuationPanel",
+        "advanceContinuation",
+        "markContinuation",
+        "revertContinuation",
+        "stepContinuation",
+        "afterContinuationChange",
+        "stepContinuationZoom",
+        "resetContinuationZoom",
+        "onContinuationKeydown",
+    ):
+        assert f"function {name}(" in module, f"{name} 不在 continuation-review.js"
+        assert f"function {name}(" not in app, f"{name} 还留在 app.js"
+
+    # continuationEvidenceRow 不是死函数：renderContinuationPanel 里有两处调用
+    assert module.count("continuationEvidenceRow(") >= 3
+
+    # 状态随迁；外壳只留两个入口转发
+    assert "let continuationState = null;" in module
+    assert "let continuationZoom = 1;" in module
+    assert "let continuationState" not in app
+    assert "window.ContinuationReview?.openContinuationReview()" in app
+    assert page_html.index("/static/continuation-review.js") < page_html.index("/static/app.js")
+
+    # ack 计数：树给窄接口，审校提交成功后按页汇总调一次（不重取树）
+    assert "function noteAcks(entries)" in tree
+    assert "noteAcks," in tree
+    assert "noteReviewAcks" in reading
+    assert "noteReviewAcks: (entries) => window.ReviewTree?.noteAcks(entries)" in app
+    assert "/review/tree" not in reading.split("noteReviewAcks")[1][:400], "ack 之后不许重取树"
 
 
 def test_confirm_page_refreshes_finish_counts() -> None:
