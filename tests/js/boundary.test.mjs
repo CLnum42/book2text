@@ -5474,6 +5474,9 @@ const DOMAIN_MODULES = [
   // ③ 协作：**两个 root**按宿分组——#assign-panel（16 个 id）· #package-result（3 个 id）；
   // chrome 4 个节点（顶栏 3 + 通知条 1）走注入，模块里不出现那 4 个 id。
   { file: "collab.js", exposes: "Collab", allowQuerySelector: true },
+  // ① 主刀收尾：核心抽屉（root = #view-review，与 editor 同一 root，靠 id 表分家；
+  // 21 个抽屉 id 全在子树里 ⇒ 允许 root.querySelector）
+  { file: "page-detail-drawer.js", exposes: "PageDetailDrawer", allowQuerySelector: true },
 ];
 
 /**
@@ -5489,6 +5492,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "export-panel.js",
   "suggestion-flow.js",
   "collab.js",
+  "page-detail-drawer.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {

@@ -223,7 +223,7 @@ function showView(name) {
   el("review-pager").hidden = target !== "review";
   // 任务 43：不在页面视图就把网格缩略图停掉，审校 / 预览不跟后台渲染抢 CPU。
   // 刀 9.1：这条与下面"进 pages 的准备"是**同一个入口**（视图切换通知）——
-  // 别把两处合并到一处：合并会把 pages 的准备提前到 syncWorkflowSteps() / closePageDetail() 之前，顺序就变了。
+  // 别把两处合并到一处：合并会把 pages 的准备提前到 syncWorkflowSteps() / window.PageDetailDrawer?.closePageDetail() 之前，顺序就变了。
   if (target !== "pages" && currentProject) window.PagesView?.enter();
   // 换视图 = 当前步骤回落到该视图的默认步；用户点步骤条时才锁定。
   workflowStepPinned = false;
@@ -232,10 +232,10 @@ function showView(name) {
     closeTaskDrawer();
     // 刀 7 后补：`detailPageNo` 不许活过 review 视图。
     // 单向不变量：detailPageNo !== null ⇒ currentView === "review"（反向不要求：进 review 时
-    // 先 showView("review") 再 openPageDetail()，切过去那一瞬还是 null）。
+    // 先 showView("review") 再 window.PageDetailDrawer?.openPageDetail()，切过去那一瞬还是 null）。
     // 不清它的话，页面视图里点「识别」失败会把错误写进另一个视图里看不见的错误条
     // （真机实测：屏幕什么都不出现、四闸全绿）。「上次审校哪页」由 lastDetailPageNo 记着。
-    closePageDetail();
+    window.PageDetailDrawer?.closePageDetail();
   }
   if (target === "pages" && currentProject) {
     // 这一视图的工作流角标 / 待处理页：进来才拉（骨架先显示，数字后到）
@@ -262,8 +262,8 @@ function showView(name) {
   if (target === "review" && currentProject) {
     // 任务 45：审校步默认只留差异层——版心与块框关掉，避免五套彩色打架
     if (!wasReview) {
-      setReviewOverlay(false);
-      setReviewMargin(false);
+      window.PageDetailDrawer?.setReviewOverlay(false);
+      window.PageDetailDrawer?.setReviewMargin(false);
     }
     ensureReviewTree();
   }
@@ -1660,7 +1660,7 @@ async function refreshProject(projectId) {
     }
     if (selectionAnchor !== null && !alivePageNos.has(selectionAnchor)) selectionAnchor = null;
   }
-  closePageDetail();
+  window.PageDetailDrawer?.closePageDetail();
   // 换项目 = 结构工具的预览候选作废（状态在 structure-tools.js 里）
   window.StructureTools?.reset();
   // 任务 63：页面工作流角标、导出预检、导出记录都只属于某个视图，
@@ -2279,7 +2279,7 @@ function buildTile(page, project) {
   detailButton.title = "看这一页的识别结果并开始审校";
   detailButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    openPageDetail(page.page_no);
+    window.PageDetailDrawer?.openPageDetail(page.page_no);
   });
 
   actions.append(recognizeButton, detailButton);
@@ -2296,7 +2296,7 @@ function buildTile(page, project) {
   tile.append(thumb, meta);
   tile.addEventListener("dblclick", (event) => {
     event.preventDefault();
-    openPageDetail(page.page_no);
+    window.PageDetailDrawer?.openPageDetail(page.page_no);
   });
   return tile;
 }
@@ -2763,9 +2763,9 @@ async function refreshMarginState() {
   marginFitTried.clear();
   // 刀 9.3：tiles / panel / 条件拟合三处写点搬进 onTaskFinished（外壳在本函数 await 之后调一次），
   // 顺序仍在"读回 margin-box"之后；paintReviewMargin / drawDetailOverlay 留壳。
-  paintReviewMargin(detailPageRecord());
+  window.PageDetailDrawer?.paintReviewMargin(detailPageRecord());
   // 版心外块的淡色样式要按新框重算（只改 class，不重建输入框之外的东西）
-  if (detailPageNo !== null) drawDetailOverlay(reviewBlocks);
+  if (detailPageNo !== null) window.PageDetailDrawer?.drawDetailOverlay(reviewBlocks);
 }
 
 /** 全部改为每页自动拟合：inherit / auto 参与，custom / none 不动。 */
@@ -3854,7 +3854,7 @@ async function pollTask() {
     window.PagesView?.onTaskFinished(data);
     await window.PagesView?.onRecognitionFinished(donePages, { reloadDetail: false });
     if (detailPageNo !== null && !donePages.includes(detailPageNo)) {
-      await loadPageDetail(detailPageNo, { forceSuggestions: true });
+      await window.PageDetailDrawer?.loadPageDetail(detailPageNo, { forceSuggestions: true });
     }
     await loadTasks();
     // loadTasks 在没有活动任务时会把抽屉内容换成"最近任务"。失败时把这次任务的
@@ -3915,7 +3915,7 @@ async function reloadDetailAfterRecognition(pageNo) {
   // 正在输入：先把这一块存掉，再用识别结果重绘（顺序反过来会丢掉刚打的字）
   await window.PageDetailEditor?.flushPendingSave();
   if (detailPageNo !== pageNo) return;
-  await loadPageDetail(pageNo, { forceSuggestions: true });
+  await window.PageDetailDrawer?.loadPageDetail(pageNo, { forceSuggestions: true });
 }
 
 async function refreshPageStates() {
@@ -4242,7 +4242,7 @@ function renderTask(data) {
     li.title = "点一下：跳到这一页";
     li.addEventListener("click", () => {
       const page = currentProject.pages.find((p) => p.page_no === item.page_no);
-      if (page) openPageDetail(page.page_no);
+      if (page) window.PageDetailDrawer?.openPageDetail(page.page_no);
     });
     failures.append(li);
   }
@@ -4502,28 +4502,6 @@ const REVIEW_STATUS_LABELS = {
   unreviewed: "未审", confirmed: "已确认", uncertain: "不确定",
 };
 
-async function openPageDetail(pageNo) {
-  detailPageNo = pageNo;
-  lastDetailPageNo = pageNo;
-  detailWorkflow = null;
-  // 换页回到默认档位「待处理」：上一页切到「全部」不该带到下一页
-  reviewBlockFilter = "pending";
-  reviewFilterExplicit = false;
-  showView("review");
-  el("page-detail-error").hidden = true;
-  renderReviewPager();
-  // 进页面就拉一次建议（不以缓存为准：别的页面改过类型后可能影响重复统计）
-  await loadPageDetail(pageNo, { forceSuggestions: true });
-  savePosition("review", pageNo);
-}
-
-function closePageDetail() {
-  detailPageNo = null;
-  detailWorkflow = null;
-  if (boxCreateMode) window.PageDetailEditor?.setBoxCreateMode(false);
-  el("aux-panel").hidden = true;
-}
-
 /** 把"上次位置"写回项目（说明书 7.2 的"继续"）。写不进去也不影响当前操作。 */
 function savePosition(view, pageNo) {
   if (!currentProject) return;
@@ -4536,39 +4514,6 @@ function savePosition(view, pageNo) {
     /* 位置只是"下次继续"的便利信息，记不上不该打断审校 */
   });
 }
-
-/**
- * 载入一页：块 + 这一页的块类型建议（只读）。
- *
- * 建议与块一起取回、一次渲染：徽章不会晚一步才冒出来，也不会因为异步到达
- * 把正在编辑的块重渲染一遍（那会顶掉光标）。
- * `forceSuggestions` 用于"刚进页面 / 改过类型或结构 / 撤销重做"——
- * 接口只返回差异，采用后重拉一次徽章就自然消失。
- */
-async function loadPageDetail(pageNo, { forceSuggestions = false } = {}) {
-  const project = currentProject;
-  if (!project) return;
-  // 任务 43：先用缓存里的建议把页面画出来，**不再为建议 / 漏行等一次全库重复统计**——
-  // 它们会和逐条裁决抢 CPU：第 370 页实测，一边算建议一边按键，单键从 56 ms 涨到 300–470 ms。
-  // 清洗刀之后没有"等队列处理完再补算"这条分支了：页面一打开就立即补算。
-  const cachedSuggestions =
-    project.kind === "package" ? null : pageSuggestionCache.get(pageNo);
-  window.PageDetailEditor?.applyDetailSuggestions(
-    cachedSuggestions || { suggestions: [], page_numbers: [], note: null }
-  );
-  try {
-    const data = await apiJson(
-      `/api/projects/${project.project_id}/pages/${pageNo}/blocks`
-    );
-    if (detailPageNo !== null && detailPageNo !== pageNo) return;
-    renderPageDetail(data);
-    // 清洗刀：页内差异队列删掉之后没有"等队列处理完再补算"这条分支，总是立即补算
-    runPageAux(pageNo, { forceSuggestions });
-  } catch (error) {
-    showError(el("page-detail-error"), error);
-  }
-}
-
 /** 补算建议 / 漏行（不 await：辅助信息晚一点出来不影响审校）。 */
 function runPageAux(pageNo, { forceSuggestions = false } = {}) {
   if (detailPageNo !== pageNo) return;
@@ -4580,48 +4525,13 @@ function runPageAux(pageNo, { forceSuggestions = false } = {}) {
 // ---------------------------------------------------------------- 翻页（审校视图顶栏）
 
 /** 翻页时在哪一类页面之间走：默认全部正文页，也可以只看"还没审完"这类。 */
-function pagerPages() {
-  if (!currentProject) return [];
-  const kind = el("review-jump-filter").value;
-  return currentProject.pages.filter((page) => {
-    if (!page.include) return false;
-    if (!kind) return true;
-    return matchesTriage(page, recognitionOf(page), kind);
-  });
-}
-
 /** 顶栏的翻页控件：第 N 页（印 M）+ 上一页 / 下一页（说明书 7.4）。 */
-function renderReviewPager() {
-  const node = el("review-page-no");
-  node.textContent = "";
-  const page =
-    currentProject && detailPageNo !== null
-      ? currentProject.pages.find((item) => item.page_no === detailPageNo)
-      : null;
-  if (!page) {
-    node.textContent = "—";
-    el("review-prev").disabled = true;
-    el("review-next").disabled = true;
-    return;
-  }
-  node.append(`第 ${page.page_no} 页`);
-  if (page.page_label) {
-    const printed = document.createElement("span");
-    printed.textContent = `（印 ${page.page_label}）`;
-    node.append(printed);
-  }
-  const pages = pagerPages();
-  const index = pages.findIndex((item) => item.page_no === page.page_no);
-  el("review-prev").disabled = index <= 0;
-  el("review-next").disabled = index < 0 || index >= pages.length - 1;
-}
-
 function stepPage(delta) {
-  const pages = pagerPages();
+  const pages = window.PageDetailDrawer?.pagerPages();
   if (!pages.length || detailPageNo === null) return;
   const index = pages.findIndex((item) => item.page_no === detailPageNo);
   const target = index < 0 ? pages[0] : pages[index + delta];
-  if (target) openPageDetail(target.page_no);
+  if (target) window.PageDetailDrawer?.openPageDetail(target.page_no);
 }
 
 // ---------------------------------------------------------------- 原图缩放与块框
@@ -4630,91 +4540,31 @@ function stepPage(delta) {
 let zoomLevel = null;
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 
-function fitWidth() {
-  const scroll = el("viewer-scroll");
-  return Math.max(280, scroll.clientWidth - 44);
-}
-
-function applyZoom() {
-  const canvas = el("detail-canvas");
-  const image = el("detail-image");
-  if (!image || !image.naturalWidth) return;
-  const base = fitWidth();
-  const width = zoomLevel === null ? base : Math.round(base * zoomLevel);
-  canvas.style.width = `${width}px`;
-  el("zoom-fit").classList.toggle("is-on", zoomLevel === null);
-  // 顺序号 / 悬停卡片是像素定位的：宽度变了要重新找空位
-  scheduleDetailOverlayLayout(el("detail-overlay"));
-}
-
-function zoomBy(delta) {
-  const current = zoomLevel ?? 1;
-  const at = ZOOM_STEPS.findIndex((value) => value >= current - 0.001);
-  const index = Math.min(ZOOM_STEPS.length - 1, Math.max(0, (at < 0 ? 2 : at) + delta));
-  zoomLevel = ZOOM_STEPS[index] === 1 ? null : ZOOM_STEPS[index];
-  applyZoom();
-}
-
-function setReviewOverlay(on) {
-  const button = el("toggle-overlay");
-  if (!button) return;
-  button.classList.toggle("is-on", Boolean(on));
-  el("detail-overlay").hidden = !on;
-  button.textContent = on ? "显示块框" : "块框已隐藏";
-  if (on) scheduleDetailOverlayLayout(el("detail-overlay"));
-}
-
-function setReviewMargin(on) {
-  reviewMarginOn = Boolean(on);
-  const button = el("review-margin-toggle");
-  if (button) {
-    button.classList.toggle("is-on", reviewMarginOn);
-    button.textContent = reviewMarginOn ? "显示版心" : "版心已隐藏";
-  }
-  if (detailPageNo !== null) paintReviewMargin(detailPageRecord() || null);
-}
-
+/**
+ * 接线拆分（范例：一个函数写四个 owner 的 DOM，按 owner 切四份）。
+ *
+ * 原来这 42 行一次绑九件事。抽屉那六件（zoom-in / zoom-out / zoom-fit / toggle-overlay /
+ * toggle-diff-marks / review-margin-toggle）与窗口 resize **已搬进 `page-detail-drawer.js`**；
+ * 这里只剩三份，各自标了 owner 与死期。
+ */
 function setupViewerTools() {
-  el("zoom-in").addEventListener("click", () => zoomBy(1));
-  el("zoom-out").addEventListener("click", () => zoomBy(-1));
-  el("zoom-fit").addEventListener("click", () => {
-    zoomLevel = null;
-    applyZoom();
-  });
-  el("toggle-overlay").addEventListener("click", () => {
-    const on = !el("toggle-overlay").classList.contains("is-on");
-    el("toggle-overlay").classList.toggle("is-on", on);
-    el("detail-overlay").hidden = !on;
-    el("toggle-overlay").textContent = on ? "显示块框" : "块框已隐藏";
-    if (on) scheduleDetailOverlayLayout(el("detail-overlay"));
-  });
-  el("toggle-diff-marks").addEventListener("click", () => {
-    // 三态：未审+已审 → 仅未审 → 关（任务 45 / H 刀）
-    diffMarksMode =
-      diffMarksMode === "all" ? "todo" : diffMarksMode === "todo" ? "off" : "all";
-    drawDiffLayer();
-  });
-  // 任务 53：审校视图也显示版心，默认开；关掉只影响显示。
-  el("review-margin-toggle").addEventListener("click", toggleReviewMargin);
+  // owner = 审校左树（目录域）：过滤"只看未审"与展开左树 —— 树那刀搬走时一并带走
   el("review-tree-filter").addEventListener("click", () =>
     setReviewTreeOnlyTodo(!reviewTreeOnlyTodo)
   );
   el("review-tree-rail").addEventListener("click", () =>
     el("review-tree").classList.add("is-open")
   );
+  // owner = editor：折叠 `.editor` 是它自己容器的 class，由它自己的动作写（不开例外）
   el("review-drawer-toggle").addEventListener("click", () => {
-    el("review-drawer-toggle").textContent = el("view-review")
-      .querySelector(".editor")
-      .classList.toggle("is-collapsed")
+    el("review-drawer-toggle").textContent = window.PageDetailEditor?.toggleCollapsed()
       ? "▴"
       : "▾";
   });
+  // owner = editor：块列表的版心过滤按钮
   for (const button of el("review-filter").querySelectorAll("[data-margin-filter]")) {
     button.addEventListener("click", () => setReviewBlockFilter(button.dataset.marginFilter));
   }
-  window.addEventListener("resize", () => {
-    if (zoomLevel === null) applyZoom();
-  });
 }
 
 function setupReviewAutoPass() {
@@ -4733,7 +4583,7 @@ function setupReviewAutoPass() {
         confirm_mode: "auto",
         stage_label: result.stage_label || "自动通过（未经人工）",
       };
-      await loadPageDetail(pageNo);
+      await window.PageDetailDrawer?.loadPageDetail(pageNo);
       await refreshPageStates();
       await loadWorkflow();
     } catch (error) {
@@ -4751,7 +4601,7 @@ function setupReviewAutoPass() {
         { method: "POST" }
       );
       setSaveState("已撤销自动通过，回到待处理");
-      await loadPageDetail(pageNo, { forceSuggestions: true });
+      await window.PageDetailDrawer?.loadPageDetail(pageNo, { forceSuggestions: true });
       await refreshPageStates();
       await loadWorkflow();
     } catch (error) {
@@ -4761,62 +4611,12 @@ function setupReviewAutoPass() {
 }
 
 
-function setupReviewPager() {
-  el("review-prev").addEventListener("click", () => stepPage(-1));
-  el("review-next").addEventListener("click", () => stepPage(1));
-  el("review-jump-filter").addEventListener("change", renderReviewPager);
-  el("review-jump").addEventListener("click", () => {
-    const answer = window.prompt("跳到第几页？", detailPageNo ? String(detailPageNo) : "");
-    if (!answer) return;
-    const pageNo = Number(answer.trim());
-    if (!Number.isInteger(pageNo) || !currentProject.pages.some((p) => p.page_no === pageNo)) {
-      setSaveState(`没有第 ${answer.trim()} 页`, true);
-      return;
-    }
-    openPageDetail(pageNo);
-  });
-}
-
 // ---------------------------------------------------------------- 审校视图的版心（任务 53）
 //
 // 用户 2026-10-23：「版心计算的结果，应同步到审校页面，审校内容，默认只审校版心内部的内容」。
 // 这里画框 + 过滤列表；**不写库、不影响导出**（自动框只做显示，导出见 `export_margin_box`）。
 
 /** 画 / 收起审校原图上的版心。只读：没有任何把手。 */
-function paintReviewMargin(page) {
-  const layer = el("detail-margin");
-  const canvas = el("detail-canvas");
-  if (!layer || !canvas) return;
-  const box = reviewMarginOn && page ? marginBoxOfPage(page) : null;
-  const show = Boolean(box);
-  layer.hidden = !show;
-  canvas.classList.toggle("has-margin", show);
-  if (!show) {
-    layer._box = null;
-    return;
-  }
-  const mode = page.margin_box_mode;
-  layer.classList.toggle("page-margin--custom", mode === "custom");
-  layer.classList.toggle(
-    "page-margin--auto",
-    mode !== "custom" &&
-      !(mode === "auto" && page.margin_box) &&
-      globalMarginIsAuto()
-  );
-  applyMarginRect(layer.querySelector(".page-margin__box"), box);
-}
-
-function toggleReviewMargin() {
-  reviewMarginOn = !reviewMarginOn;
-  saveReviewMarginPreference();
-  const button = el("review-margin-toggle");
-  if (button) {
-    button.classList.toggle("is-on", reviewMarginOn);
-    button.textContent = reviewMarginOn ? "显示版心" : "版心已隐藏";
-  }
-  paintReviewMargin(detailPageRecord());
-}
-
 /** 切换块列表的过滤档位（只重画列表，不动原图 / 编辑状态之外的东西）。 */
 function setReviewBlockFilter(mode) {
   // 写点收成模块能力（reviewBlockFilter / reviewFilterExplicit 仍在壳里，模块经注入写）
@@ -4905,76 +4705,6 @@ function ensureBlockListed(blockId) {
   reviewFilterExplicit = true;
   window.PageDetailEditor?.renderBlocks(reviewBlocks);
   return el("detail-blocks").querySelector(`li[data-block-id="${blockId}"]`);
-}
-
-function renderPageDetail(data) {
-  const pageNo = data.page.page_no;
-  reviewBlocks = data.blocks;
-  detailMargin = data.margin || null;
-  detailLines = (data.blocks || []).flatMap((block) => block.lines || []);
-  activeReviewBlockId = null;
-  activeDiff = null;
-  diffStripOpen.clear();
-
-  const recognition = recognitionOf(data.page);
-  el("page-detail-title").textContent = `第 ${pageNo} 页`;
-  el("page-detail-meta").title = data.active_run
-    ? `本页识别来自 ${data.active_run.engine_id} ${data.active_run.engine_version}`
-    : "";
-
-  renderReviewBanner(data, recognition);
-  renderHistoryButtons(data.history);
-  window.PageDetailEditor?.setPackageModeChrome(currentProject.kind === "package");
-  renderReviewPager();
-
-  // 图像按 view 档渲染；同一页重复打开时不重新拉图
-  if (detailImagePageNo !== pageNo) {
-    detailImagePageNo = pageNo;
-    el("detail-image-status").textContent = "正在渲染…";
-    el("detail-image-status").hidden = false;
-    el("detail-canvas").hidden = true;
-    const image = el("detail-image");
-    image.onload = () => {
-      el("detail-image-status").hidden = true;
-      el("detail-canvas").hidden = false;
-      applyZoom();
-      // 块框默认关着，没有布局调度来顺手重画差异层：图出来自己画
-      drawDiffLayer();
-    };
-    image.onerror = () => {
-      el("detail-image-status").textContent = "这一页渲染失败。";   // 先给固定文案：不留空白
-    };
-    window.PageTile?.attachRenderErrorDetail?.(image, {
-      write: (text) => { el("detail-image-status").textContent = text; },
-      fallback: "这一页渲染失败。",
-    });
-    image.src =
-      `/api/projects/${project_id()}/pages/${pageNo}/image?size=view` +
-      `&token=${encodeURIComponent(token)}`;
-  } else {
-    applyZoom();
-    drawDiffLayer();
-  }
-
-  detailLayoutConfirmed = Boolean(data.page && data.page.layout_confirmed);
-  detailWorkflow = data.workflow || null;
-  // 版心要在块框之前画：块框的"版心外"淡色样式取决于画布上的 has-margin 类
-  paintReviewMargin(detailPageRecord() || data.page);
-  el("review-margin-toggle").classList.toggle("is-on", reviewMarginOn);
-  el("review-margin-toggle").textContent = reviewMarginOn ? "显示版心" : "版心已隐藏";
-  drawDetailLines();
-  drawDetailOverlay(data.blocks);
-  window.PageDetailEditor?.renderBlocks(data.blocks);
-  // 默认把第一个有差异的块设为当前块（展开差异条，但不抢滚动位置）。
-  const firstDiffBlock = (data.blocks || []).find((block) => blockHasDrawableDiff(block));
-  if (firstDiffBlock) window.PageDetailEditor?.selectReviewBlock(firstDiffBlock.block_id, { scroll: false });
-  renderReviewHeadline();
-  window.PageDetailEditor?.renderSuggestionTools();
-  window.PageDetailEditor?.renderLayoutPanel(data);
-  renderReviewWorkflowStatus();
-  // 任务 45：当前页自动展开、当前条目滚到约 40%（条目用刚渲染的块重建，别拿上一页的）
-  reviewTreeItems.set(pageNo, treeItemsFromBlocks(reviewBlocks));
-  syncReviewTreeToPage(pageNo, { scroll: true });
 }
 
 /** 审校顶栏的自动通过 / 撤销按钮：只切按钮，不改任何块。 */
@@ -5340,7 +5070,7 @@ function scheduleDetailOverlayLayout(overlay) {
   window.OverlayLayer?.schedule(overlay, {
     bboxOf: (box) => box._bbox,
     lineBboxes: overlay._lineBboxes,
-    onLaidOut: () => drawDiffLayer(),
+    onLaidOut: () => window.PageDetailDrawer?.drawDiffLayer(),
   });
 }
 
@@ -5434,12 +5164,6 @@ function diffLevelLabel(level) {
   return "仅格式差异";
 }
 
-function findDiffMark(blockId, lineIndex, spanIndex) {
-  return el("detail-diff-layer").querySelector(
-    `.diff-mark[data-block-id="${blockId}"][data-line-index="${lineIndex}"][data-span="${spanIndex}"]`
-  );
-}
-
 /** 在页面上画所有可画的差异标记；整页 / 当前块两种模式。 */
 /** 这一行有几段差异（用于行尾角标；只算文本，不碰坐标）。 */
 function lineDiffSpanCount(mark) {
@@ -5455,99 +5179,6 @@ function lineDiffSpanCount(mark) {
  * 所以不用"行宽/字数"去切字符——那会盖到空白或隔壁字。逐字差异放在
  * 右栏文本面板（DOM span）里看。行尾加「n 处」角标。
  */
-function drawDiffLayer(attempt = 0) {
-  const layer = el("detail-diff-layer");
-  if (!layer) return;
-  const canvas = el("detail-canvas");
-  const toggle = el("toggle-diff-marks");
-  if (!canvas || canvas.hidden) {
-    layer.innerHTML = "";
-    document.body.classList.remove("diff-mode");
-    if (toggle) toggle.disabled = true;
-    return;
-  }
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width < 60 || rect.height < 60) {
-    if (attempt < 30) requestAnimationFrame(() => drawDiffLayer(attempt + 1));
-    return;
-  }
-  layer.innerHTML = "";
-  layer.classList.toggle("is-narrow", rect.width < 480);
-  let total = 0;
-  let drawn = 0;
-  const pageRecord = detailPageRecord();
-  for (const block of reviewBlocks) {
-    const divergence = divergenceOf(block);
-    if (divergence.stale || !(divergence.marks || []).length) continue;
-    // 任务 34：版心外的差异不进审校口径（书眉 / 页码），别在页面上画
-    if (!blockCountedInMargin(block, pageRecord)) continue;
-    for (const mark of divergence.marks) {
-      if (!DIFF_LEVELS.has(mark.level)) continue;
-      if (diffMarksMode === "off") continue;
-      if (diffMarksMode === "todo" && mark.ack) continue;
-      total += 1;
-      const line = (block.lines || [])[mark.line_index];
-      if (!line || !line.bbox) continue;
-      if (line.layout_status === "conflict" || line.layout_status === "unassigned") continue;
-      const bbox = line.bbox;
-      const left = Math.max(0, bbox[0] * rect.width - 1);
-      const top = bbox[1] * rect.height + 1;
-      const width = Math.max(4, (bbox[2] - bbox[0]) * rect.width + 2);
-      const height = Math.max(6, (bbox[3] - bbox[1]) * rect.height - 2);
-      const node = document.createElement("div");
-      node.className = "diff-mark";
-      if (mark.level === "differs_punct") node.classList.add("diff-mark--punct");
-      if (mark.ack) node.classList.add("diff-mark--done");
-      const isActive =
-        activeDiff &&
-        activeDiff.blockId === block.block_id &&
-        activeDiff.lineIndex === mark.line_index;
-      if (isActive) node.classList.add("is-active");
-      node.dataset.blockId = block.block_id;
-      node.dataset.lineIndex = String(mark.line_index);
-      node.dataset.span = "0";
-      node.style.left = `${left}px`;
-      node.style.top = `${top}px`;
-      node.style.width = `${width}px`;
-      node.style.height = `${height}px`;
-      const count = lineDiffSpanCount(mark);
-      const end = document.createElement("span");
-      end.className = "diff-mark__end";
-      if (isActive) {
-        end.classList.add("is-current");
-        end.textContent = `${count} 处`;
-      } else if (mark.ack) {
-        end.classList.add("is-done");
-        end.textContent = "已保留";
-      } else {
-        end.textContent = `${count} 处`;
-      }
-      node.append(end);
-      node.title =
-        `第 ${mark.line_index + 1} 行 · ${diffLevelLabel(mark.level)} · ` +
-        (mark.ack ? "已保留原文（仍是差异）" : `${count} 处差异`) +
-        `\n第一路：${window.PageDetailEditor?.truncate(mark.current, 60)}` +
-        `\n第二路：${window.PageDetailEditor?.truncate(mark.candidate || "（没读出）", 60)}`;
-      node.setAttribute("role", "button");
-      node.setAttribute("aria-hidden", "true");
-      node.addEventListener("click", (event) => {
-        event.stopPropagation();
-        activateDiff(block.block_id, mark.line_index, 0);
-      });
-      layer.append(node);
-      drawn += 1;
-    }
-  }
-  document.body.classList.toggle("diff-mode", drawn > 0);
-  if (toggle) {
-    toggle.disabled = total === 0 && diffMarksMode !== "off";
-    toggle.textContent = `差异：${
-      diffMarksMode === "all" ? "未审+已审" : diffMarksMode === "todo" ? "仅未审" : "关"
-    }`;
-    toggle.classList.toggle("is-on", drawn > 0);
-  }
-}
-
 function flashDiffElement(node) {
   if (!node || typeof node.animate !== "function") return;
   node.animate(
@@ -5557,15 +5188,6 @@ function flashDiffElement(node) {
 }
 
 /** 只滚 #viewer-scroll，不动整页（design 4.2：不要用 scrollIntoView）。 */
-function scrollViewerTo(node) {
-  if (!node) return;
-  const scroll = el("viewer-scroll");
-  const sr = scroll.getBoundingClientRect();
-  const nr = node.getBoundingClientRect();
-  const top = scroll.scrollTop + (nr.top - sr.top) - scroll.clientHeight * 0.4;
-  scroll.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
-}
-
 function scrollRowIntoList(row) {
   if (!row) return;
   const list = el("detail-blocks");
@@ -5601,24 +5223,6 @@ function syncDiffStrip(blockId) {
   if (toggle) toggle.textContent = open ? "收起 ⌃" : "展开 ⌄";
 }
 
-function updateDiffActive() {
-  for (const row of el("detail-blocks").querySelectorAll(".diff-row")) {
-    const active =
-      activeDiff &&
-      row.dataset.blockId === activeDiff.blockId &&
-      Number(row.dataset.lineIndex) === activeDiff.lineIndex;
-    row.classList.toggle("is-active", Boolean(active));
-  }
-  for (const mark of el("detail-diff-layer").querySelectorAll(".diff-mark")) {
-    const active =
-      activeDiff &&
-      mark.dataset.blockId === activeDiff.blockId &&
-      Number(mark.dataset.lineIndex) === activeDiff.lineIndex &&
-      (activeDiff.spanIndex === null || Number(mark.dataset.span) === activeDiff.spanIndex);
-    mark.classList.toggle("is-active", Boolean(active));
-  }
-}
-
 /**
  * 选中一处差异：左右两侧共用一个状态。
  * 只滚 #viewer-scroll；右栏滚它自己的列表。
@@ -5636,12 +5240,12 @@ function activateDiff(blockId, lineIndex, spanIndex = 0, options = {}) {
   window.PageDetailEditor?.selectReviewBlock(blockId, { scroll: false });
   activeDiff = { blockId, lineIndex, spanIndex: spanIndex ?? 0 };
   syncDiffStrip(blockId);
-  updateDiffActive();
-  drawDiffLayer();
+  window.PageDetailDrawer?.updateDiffActive();
+  window.PageDetailDrawer?.drawDiffLayer();
   requestAnimationFrame(() => {
-    const node = findDiffMark(blockId, lineIndex, activeDiff.spanIndex);
+    const node = window.PageDetailDrawer?.findDiffMark(blockId, lineIndex, activeDiff.spanIndex);
     if (node) {
-      scrollViewerTo(node);
+      window.PageDetailDrawer?.scrollViewerTo(node);
       flashDiffElement(node);
     }
     const row = el("detail-blocks").querySelector(
@@ -5681,120 +5285,7 @@ function aggregateDivergence() {
 }
 
 /** 页头一行结论：类型 + 版心内差异 + 版心外未计入 + 版面 / 漏行。 */
-function renderReviewHeadline() {
-  const page = detailPageRecord();
-  if (!page) return;
-  const counts = aggregateDivergence();
-  const outside = counts.outside || { lines: 0 };
-  const margin = detailMargin;
-  const bits = [PAGE_TYPE_LABELS[page.page_type] || page.page_type];
-  if (counts.lines) {
-    bits.push(
-      `${counts.lines} 处待处理差异（汉字 ${counts.chars} · 标点 ${counts.punct}）` +
-        (counts.acked ? ` · 已确认 ${counts.acked}` : "")
-    );
-  } else if (counts.acked) {
-    bits.push(`无待处理差异 · 已确认 ${counts.acked}`);
-  } else if (outside.lines) {
-    bits.push("无版心内差异");
-  } else {
-    bits.push("无差异");
-  }
-  // 任务 34：版心外的书眉 / 页码差异不进队列，但要在页头如实写出来。
-  if (outside.lines) bits.push(`版心外 ${outside.lines} 处未计入`);
-  if (margin && margin.none) bits.push("整页计入（不适用版心）");
-  else if (margin && margin.undetermined) bits.push("整页计入（版心未定）");
-  if (!detailLayoutConfirmed) bits.push("版面未确认");
-  if (detailInkGaps.length) bits.push(`漏行 ${detailInkGaps.length}`);
-  el("page-detail-meta").textContent = bits.join(" · ");
-}
-
-function drawDetailOverlay(blocks) {
-  const overlay = el("detail-overlay");
-  overlay.innerHTML = "";
-  // 行框也当作障碍：顺序号 / 卡片不许压到任何一行（含未归属 / 冲突行）
-  overlay._lineBboxes = (detailLines || [])
-    .map((line) => line.bbox)
-    .filter(Boolean);
-  const page = detailPageRecord();
-  blocks.forEach((block, index) => {
-    if (!block.bbox) return;
-    const box = document.createElement("div");
-    box.className = "box";
-    box.classList.add(`box--type-${block.block_type}`);
-    // 任务 53：按块中心点标出"版心外"；样式只在版心显示时生效（见 app.css）
-    if (!blockInsideMargin(block, page)) box.classList.add("box--outside-margin");
-    if (!block.include) box.classList.add("box--excluded");
-    if (CHROME_BLOCK_TYPES.has(block.block_type)) box.classList.add("box--chrome");
-    if (TEXT_FREE_BLOCK_TYPES.has(block.block_type)) box.classList.add("box--textfree");
-    if (block.review_status === "uncertain") box.classList.add("box--uncertain");
-    box.dataset.blockId = block.block_id;
-    box.dataset.type = block.block_type;
-    box._bbox = block.bbox;
-    applyBoxElementRect(box, block.bbox);
-    box.title =
-      `${boxTypeLabel(block)} · 第 ${index + 1} 块 · 拖动移位、拖角缩放`;
-
-    // 默认只给顺序号；类型 / 把握 / 采用 / 页码在悬停（或选中）卡片里
-    const suggestion = detailSuggestionByBlock.get(block.block_id);
-    box.append(buildBoxOrder(index));
-    box.append(buildBoxLabel(block, index, suggestion));
-
-    // 四个角是缩放手柄；手柄吃掉 pointerdown，免得同时触发整框拖动
-    for (const corner of HANDLE_CORNERS) {
-      const handle = document.createElement("span");
-      handle.className = `box__handle box__handle--${corner}`;
-      handle.title = "拖这个角缩放（会吸附到文字行边界）";
-      handle.addEventListener("pointerdown", (event) =>
-        startBoxDrag(event, block, box, corner)
-      );
-      box.append(handle);
-    }
-
-    box.addEventListener("pointerdown", (event) => startBoxDrag(event, block, box, "move"));
-    box.addEventListener("click", (event) => {
-      if (suppressBoxClick) {
-        suppressBoxClick = false;
-        return;
-      }
-      event.stopPropagation();
-      // 点到一个被"版心内"过滤挡住的块：先切到「全部」，让它出现在列表里
-      const item = ensureBlockListed(block.block_id);
-      if (item) {
-        window.PageDetailEditor?.selectReviewBlock(block.block_id);
-        item.querySelector("textarea").focus();
-        item.scrollIntoView({ block: "center", behavior: "smooth" });
-      }
-    });
-    overlay.append(box);
-  });
-  // 先同步摆一次（getBoundingClientRect 会强制布局），再等下一帧处理"图还没出来"的情况
-  // 先同步摆一次（getBoundingClientRect 会强制布局），再等下一帧处理"图还没出来"的情况
-  window.OverlayLayer?.layout(overlay, { bboxOf: (box) => box._bbox, lineBboxes: overlay._lineBboxes });
-  scheduleDetailOverlayLayout(overlay);
-}
-
 /** 未归属 / 冲突的行：灰色 / 黄色虚线画在原图上，一条都不丢。 */
-function drawDetailLines() {
-  const layer = el("detail-lines");
-  layer.innerHTML = "";
-  for (const line of detailLines) {
-    if (!line.bbox) continue;
-    if (line.layout_status !== "unassigned" && line.layout_status !== "conflict") continue;
-    const [x0, y0, x1, y1] = line.bbox;
-    const mark = document.createElement("div");
-    mark.className = `line-box line-box--${line.layout_status}`;
-    mark.style.left = `${x0 * 100}%`;
-    mark.style.top = `${y0 * 100}%`;
-    mark.style.width = `${(x1 - x0) * 100}%`;
-    mark.style.height = `${(y1 - y0) * 100}%`;
-    mark.title =
-      (line.layout_status === "conflict" ? "冲突行" : "未归属行") +
-      `：${line.text || "（这一行没有文本）"}`;
-    layer.append(mark);
-  }
-}
-
 // ---------------------------------------------------------------- 分歧标记（说明书 8.5）
 
 /** 一块里最多逐条列出几行分歧；再多就交给「第二引擎复核」面板。 */
@@ -5900,7 +5391,7 @@ async function structureAction(block, operation, payload = {}) {
     // 块的结构 / 顺序变了：本页的块框缓存与本页建议都作废
     // （页面视图那边不能继续显示拆分前的旧框）
     forgetPageBlocks(detailPageNo);
-    await loadPageDetail(detailPageNo);
+    await window.PageDetailDrawer?.loadPageDetail(detailPageNo);
     await refreshPageStates();
     // 新增的块直接聚焦，省一次点击（落在版心外就自动切到「全部」）
     if (operation === "create" && data && data.created) {
@@ -5959,7 +5450,7 @@ async function confirmCurrentPage() {
     loadFinishSummary({ silent: true });
     // 说明书 7.4："确认本页后默认跳到下一个未完成的正文页"
     const next = nextUnfinishedPage(pageNo);
-    if (next) await openPageDetail(next);
+    if (next) await window.PageDetailDrawer?.openPageDetail(next);
     else setSaveState("整本书都审完了 🎉");
   } catch (error) {
     showError(el("page-detail-error"), error);
@@ -6423,7 +5914,7 @@ async function openOrthographyPanel() {
     open.addEventListener("click", () => {
       closeModal("orthography-panel");
       showView("review");
-      openPageDetail(entry.page_no);
+      window.PageDetailDrawer?.openPageDetail(entry.page_no);
     });
     row.append(where, kind, snippet, open);
     fragment.append(row);
@@ -6440,7 +5931,7 @@ async function afterCleanupApplied() {
   await refreshPageStates();
   await loadFinishSummary({ silent: true });
   if (detailPageNo !== null) {
-    await loadPageDetail(detailPageNo, { forceSuggestions: true });
+    await window.PageDetailDrawer?.loadPageDetail(detailPageNo, { forceSuggestions: true });
   }
   // 数据变了：丢预览缓存；还停在预览视图就按新数据重开（不在就只丢缓存，模块内部判）
   await window.PreviewView?.enter({ force: true });
@@ -7044,7 +6535,7 @@ function renderReviewTree() {
     spacer.className = "spacer";
     row.append(caret, pageNo, spacer, state, count);
     row.addEventListener("click", () => {
-      openPageDetail(page.page_no);
+      window.PageDetailDrawer?.openPageDetail(page.page_no);
     });
     li.append(row);
     reviewTreePageRows.set(page.page_no, { row, count, state, page });
@@ -7309,7 +6800,7 @@ function updateReviewTreeAfterAck(block, item, ack) {
 
 async function openTreeItem(pageNo, item) {
   if (detailPageNo !== pageNo) {
-    await openPageDetail(pageNo);
+    await window.PageDetailDrawer?.openPageDetail(pageNo);
   }
   // 清洗刀：页内差异队列删掉之后，条目定位直接靠块内差异条（activateDiff）
   activateDiff(item.blockId, item.lineIndex, 0);
@@ -7427,7 +6918,7 @@ async function finishRunLayout() {
   // 任务 43：批量确认改了「版面未确认」这个页头状态。已经打开着的那一页
   // 要重载一次页详情（否则页头一直写着没确认，用户以为没生效）。
   if (detailPageNo !== null && !finishLayoutRemaining.includes(detailPageNo)) {
-    await loadPageDetail(detailPageNo, { forceSuggestions: false });
+    await window.PageDetailDrawer?.loadPageDetail(detailPageNo, { forceSuggestions: false });
   }
 }
 
@@ -7585,7 +7076,7 @@ function finishStartReview() {
   const target = finishSummary.review.needs_human_pages[0] || 1;
   closeFinishPanel();
   showView("review");
-  openPageDetail(target);
+  window.PageDetailDrawer?.openPageDetail(target);
 }
 
 function finishOpenExport() {
@@ -7735,7 +7226,7 @@ async function closeProject() {
   workflowConfirmationCounts = { human: 0, auto: 0, unknown: 0 };
   pendingPageNos = new Set();
   pendingPageCount = 0;
-  closePageDetail();
+  window.PageDetailDrawer?.closePageDetail();
   closeTaskDrawer();
   stopTaskPolling();
   el("task-chip").hidden = true;
@@ -7777,7 +7268,7 @@ function setupLibrary() {
     }
   });
   el("diagnostics-export").addEventListener("click", exportDiagnostics);
-  el("detail-close").addEventListener("click", closePageDetail);
+  el("detail-close").addEventListener("click", () => window.PageDetailDrawer?.closePageDetail());
   setupReviewControls();
   el("stats-refresh").addEventListener("click", () => window.QualityStats?.load());
   setupTaskDrawer();
@@ -7921,7 +7412,7 @@ async function applySplitBatch() {
         "整批算一个操作：到「审校」视图点「撤销」可以一次回退。"
     );
     if (detailPageNo !== null && (data.pages_affected || []).includes(detailPageNo)) {
-      await loadPageDetail(detailPageNo, { forceSuggestions: true });
+      await window.PageDetailDrawer?.loadPageDetail(detailPageNo, { forceSuggestions: true });
     }
   } catch (error) {
     showError(el("split-batch-error"), error);
@@ -8419,7 +7910,7 @@ function boot() {
     renderRecognitionSettings: (...args) => renderRecognitionSettings(...args),
     forgetPageBlocks: (...args) => forgetPageBlocks(...args),
     refreshPageStates: (...args) => refreshPageStates(...args),
-    loadPageDetail: (...args) => loadPageDetail(...args),
+    loadPageDetail: (...args) => window.PageDetailDrawer?.loadPageDetail(...args),
     setSaveState: (...args) => setSaveState(...args),
     // 页面视图的五个能力（块框 / 建议缓存 / 重排 / 设置同步 / 自动应用角标）
     syncPagesProjectSettings: (...args) => window.PagesView?.syncProjectSettings(...args),
@@ -8477,7 +7968,7 @@ function boot() {
     // 任务 94 Slice 2（第二笔）：setupReading 的依赖——只注入句柄与 getter/setter，不注入值
     isReadingActive: () => currentView === "reading",
     navigate: (name) => showView(name),
-    openPageDetail: (pageNo) => openPageDetail(pageNo),
+    openPageDetail: (pageNo) => window.PageDetailDrawer?.openPageDetail(pageNo),
     // 任务 94 L2：10 个交互函数搬进模块后的状态句柄与回调（只注入句柄 / getter-setter，不注入值）
     getProject: () => currentProject,
     apiJson: (path, options) => apiJson(path, options),
@@ -8601,7 +8092,7 @@ function boot() {
     formatMarginBox: formatMarginBox,
     highConfidenceCount: highConfidenceCount,
     layoutBlockPageRecord: layoutBlockPageRecord,
-    loadPageDetail: loadPageDetail,
+    loadPageDetail: (...args) => window.PageDetailDrawer?.loadPageDetail(...args),
     marginBasisForUndetermined: marginBasisForUndetermined,
     marginFitSummaryText: marginFitSummaryText,
     marginPagesWithoutLines: marginPagesWithoutLines,
@@ -8624,7 +8115,7 @@ function boot() {
     buildTile: buildTile,
     applyTileState: applyTileState,
     adoptAllHighSuggestions: (...args) => window.PageDetailEditor?.adoptAllHighSuggestions(...args),
-    openPageDetail: openPageDetail,
+    openPageDetail: (...args) => window.PageDetailDrawer?.openPageDetail(...args),
     openPageNumberPanel: openPageNumberPanel,
     openPageNumberReview: openPageNumberReview,
     openSplitBatchPanel: openSplitBatchPanel,
@@ -8708,7 +8199,7 @@ function boot() {
     setPageNumberStatusTimer: (value) => { pageNumberStatusTimer = value; return value; },
     setRecStatusTimer: (value) => { recStatusTimer = value; return value; },
   });
-  setupReviewPager();
+  window.PageDetailDrawer?.setupReviewPager();
   setupReviewAutoPass();
   setupViewerTools();
   setupRecognitionSettings();
@@ -8925,7 +8416,7 @@ function boot() {
     setDetailInkGapsState: (value) => { detailInkGaps = value; return value; },
     getDetailLayoutConfirmed: () => detailLayoutConfirmed,
     refreshReviewFilterOnly: (...args) => refreshReviewFilterOnly(...args),
-    renderReviewHeadline: (...args) => renderReviewHeadline(...args),
+    renderReviewHeadline: (...args) => window.PageDetailDrawer?.renderReviewHeadline(...args),
     setReviewBlockFilter: (mode) => { reviewBlockFilter = mode; return mode; },
     setReviewFilterExplicit: (value) => { reviewFilterExplicit = value; return value; },
     // 模块喊外壳的动作（30 个，S4 起含第二引擎复核那一组）
@@ -8935,7 +8426,7 @@ function boot() {
     detailPageRecord: (...args) => detailPageRecord(...args),
     diffLevelLabel: (...args) => diffLevelLabel(...args),
     divergenceOf: (...args) => divergenceOf(...args),
-    drawDiffLayer: (...args) => drawDiffLayer(...args),
+    drawDiffLayer: (...args) => window.PageDetailDrawer?.drawDiffLayer(...args),
     effectiveReviewFilter: (...args) => effectiveReviewFilter(...args),
     ensureBlockListed: (...args) => ensureBlockListed(...args),
     // S4：第二引擎复核（警告框 → 等它跑完 → 回审校）
@@ -8956,17 +8447,17 @@ function boot() {
     forgetPageBlocks: (...args) => forgetPageBlocks(...args),
     forgetPageSuggestions: (...args) => forgetPageSuggestions(...args),
     loadFinishSummary: (...args) => loadFinishSummary(...args),
-    loadPageDetail: (...args) => loadPageDetail(...args),
+    loadPageDetail: (...args) => window.PageDetailDrawer?.loadPageDetail(...args),
     pageNumberSplitHint: (...args) => pageNumberSplitHint(...args),
     pendingPageReasons: (...args) => pendingPageReasons(...args),
     refreshPageStates: (...args) => refreshPageStates(...args),
     renderReviewFilter: (...args) => renderReviewFilter(...args),
     reviewMarginSplit: (...args) => reviewMarginSplit(...args),
-    scrollViewerTo: (...args) => scrollViewerTo(...args),
+    scrollViewerTo: (...args) => window.PageDetailDrawer?.scrollViewerTo(...args),
     setSaveState: (...args) => setSaveState(...args),
     structureAction: (...args) => structureAction(...args),
     syncDiffStrip: (...args) => syncDiffStrip(...args),
-    updateDiffActive: (...args) => updateDiffActive(...args),
+    updateDiffActive: (...args) => window.PageDetailDrawer?.updateDiffActive(...args),
     // 常量按值注入（不包一层函数）
     BLOCK_TYPE_LABELS,
     TEXT_FREE_BLOCK_TYPES,
@@ -8975,6 +8466,112 @@ function boot() {
     REVIEW_STATUS_LABELS,
     MAX_DIVERGENCE_ROWS,
   });
+  // ① 主刀收尾：核心抽屉（root = #view-review，与 editor 同一 root，靠 id 表分家）
+  window.PageDetailDrawer?.init({
+    root: el("view-review"),
+    // 共享状态（外壳声明、外壳也在读写）⇒ 访问器注入，模块不留副本
+    getActiveDiff: () => activeDiff,
+    getActiveReviewBlockId: () => activeReviewBlockId,
+    getBoxCreateMode: () => boxCreateMode,
+    getCurrentProject: () => currentProject,
+    getDetailInkGaps: () => detailInkGaps,
+    getDetailLayoutConfirmed: () => detailLayoutConfirmed,
+    getDetailLines: () => detailLines,
+    getDetailMargin: () => detailMargin,
+    getDetailPageNo: () => detailPageNo,
+    getDetailSuggestionByBlock: () => detailSuggestionByBlock,
+    getDetailWorkflow: () => detailWorkflow,
+    getDiffMarksMode: () => diffMarksMode,
+    getDiffStripOpen: () => diffStripOpen,
+    getLastDetailPageNo: () => lastDetailPageNo,
+    getPageSuggestionCache: () => pageSuggestionCache,
+    getProjectId: () => project_id(),
+    getReviewBlockFilter: () => reviewBlockFilter,
+    getReviewBlocks: () => reviewBlocks,
+    getReviewFilterExplicit: () => reviewFilterExplicit,
+    getReviewMarginOn: () => reviewMarginOn,
+    getReviewTreeItems: () => reviewTreeItems,
+    getSuppressBoxClick: () => suppressBoxClick,
+    getToken: () => token,
+    getZoomLevel: () => zoomLevel,
+    setActiveDiff: (value) => { activeDiff = value; return value; },
+    setActiveReviewBlockId: (value) => { activeReviewBlockId = value; return value; },
+    setDetailLayoutConfirmed: (value) => { detailLayoutConfirmed = value; return value; },
+    setDetailLines: (value) => { detailLines = value; return value; },
+    setDetailMargin: (value) => { detailMargin = value; return value; },
+    setDetailPageNo: (value) => { detailPageNo = value; return value; },
+    setDetailWorkflow: (value) => { detailWorkflow = value; return value; },
+    setDiffMarksMode: (value) => { diffMarksMode = value; return value; },
+    setLastDetailPageNo: (value) => { lastDetailPageNo = value; return value; },
+    setSuppressBoxClick: (value) => { suppressBoxClick = value; return value; },
+    setZoomLevel: (value) => { zoomLevel = value; return value; },
+    // 常量按值注入（不包一层函数）
+    CHROME_BLOCK_TYPES, DIFF_LEVELS, HANDLE_CORNERS, PAGE_TYPE_LABELS, TEXT_FREE_BLOCK_TYPES, ZOOM_STEPS,
+    // 仍留在外壳的叶子函数 / 能力
+    activateDiff: (...args) => activateDiff(...args),
+    aggregateDivergence: (...args) => aggregateDivergence(...args),
+    apiJson: (...args) => apiJson(...args),
+    applyBoxElementRect: (...args) => applyBoxElementRect(...args),
+    applyMarginRect: (...args) => applyMarginRect(...args),
+    attachRenderErrorDetail: (...args) => window.PageTile?.attachRenderErrorDetail?.(...args),
+    blockCountedInMargin: (...args) => blockCountedInMargin(...args),
+    blockInsideMargin: (...args) => blockInsideMargin(...args),
+    boxTypeLabel: (...args) => boxTypeLabel(...args),
+    buildBoxLabel: (...args) => buildBoxLabel(...args),
+    buildBoxOrder: (...args) => buildBoxOrder(...args),
+    detailPageRecord: (...args) => detailPageRecord(...args),
+    diffLevelLabel: (...args) => diffLevelLabel(...args),
+    divergenceOf: (...args) => divergenceOf(...args),
+    ensureBlockListed: (...args) => ensureBlockListed(...args),
+    globalMarginIsAuto: (...args) => globalMarginIsAuto(...args),
+    layoutOverlay: (...args) => window.OverlayLayer?.layout?.(...args),
+    lineDiffSpanCount: (...args) => lineDiffSpanCount(...args),
+    marginBoxOfPage: (...args) => marginBoxOfPage(...args),
+    matchesTriage: (...args) => matchesTriage(...args),
+    recognitionOf: (...args) => recognitionOf(...args),
+    renderHistoryButtons: (...args) => renderHistoryButtons(...args),
+    renderReviewBanner: (...args) => renderReviewBanner(...args),
+    renderReviewWorkflowStatus: (...args) => renderReviewWorkflowStatus(...args),
+    runPageAux: (...args) => runPageAux(...args),
+    savePosition: (...args) => savePosition(...args),
+    saveReviewMarginPreference: (...args) => saveReviewMarginPreference(...args),
+    scheduleDetailOverlayLayout: (...args) => scheduleDetailOverlayLayout(...args),
+    setReviewBlockFilter: (value) => { reviewBlockFilter = value; return value; },
+    setReviewBlocks: (value) => { reviewBlocks = value; return value; },
+    setReviewFilterExplicit: (value) => { reviewFilterExplicit = value; return value; },
+    setReviewMarginOn: (value) => { reviewMarginOn = value; return value; },
+    setSaveState: (...args) => setSaveState(...args),
+    showView: (...args) => showView(...args),
+    startBoxDrag: (...args) => startBoxDrag(...args),
+    stepPage: (...args) => stepPage(...args),
+    syncReviewTreeToPage: (...args) => syncReviewTreeToPage(...args),
+    treeItemsFromBlocks: (...args) => treeItemsFromBlocks(...args),
+    // editor 的能力（模块→模块一律经外壳接线，不直呼 window.PageDetailEditor）
+    applyDetailSuggestions: (...args) => window.PageDetailEditor?.applyDetailSuggestions(...args),
+    clearPageDetailError: (...args) => window.PageDetailEditor?.clearPageDetailError(...args),
+    closeAuxPanel: (...args) => window.PageDetailEditor?.closeAuxPanel(...args),
+    highlightActiveDiff: (...args) => window.PageDetailEditor?.highlightActiveDiff(...args),
+    selectReviewBlock: (...args) => window.PageDetailEditor?.selectReviewBlock(...args),
+    setEditorBoxCreateMode: (...args) => window.PageDetailEditor?.setBoxCreateMode(...args),
+    setEditorPackageModeChrome: (...args) => window.PageDetailEditor?.setEditorPackageModeChrome(...args),
+    showPageDetailError: (...args) => window.PageDetailEditor?.showPageDetailError(...args),
+    truncate: (...args) => window.PageDetailEditor?.truncate(...args),
+    // 单一回路：抽屉画完喊这一声，由外壳把 blocks 交给编辑器
+    onPageDetailChanged: (data) => onPageDetailChanged(data),
+  });
+
+/**
+ * 抽屉画完自己的 DOM 之后喊这一次：由外壳把 blocks 交给编辑器（**单一回路**）。
+ * 全仓 `onPageDetailChanged(` 的调用点恰好一处（抽屉里）；这里只做接线，不加第二处调用。
+ */
+function onPageDetailChanged(data) {
+  window.PageDetailEditor?.renderBlocks(data.blocks);
+  // 默认把第一个有差异的块设为当前块（展开差异条，但不抢滚动位置）
+  const firstDiffBlock = (data.blocks || []).find((block) => blockHasDrawableDiff(block));
+  if (firstDiffBlock) window.PageDetailEditor?.selectReviewBlock(firstDiffBlock.block_id, { scroll: false });
+  window.PageDetailEditor?.renderSuggestionTools();
+  window.PageDetailEditor?.renderLayoutPanel(data);
+}
   // 三栏拖动由 reading-view.js 的 init() 负责（任务 94），这里不再重复绑定
   setupPageMore();
   // ③ 导出面板（root = #export-panel 那个顶层 modal；模块不碰 document 级查询）

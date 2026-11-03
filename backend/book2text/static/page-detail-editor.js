@@ -1516,8 +1516,47 @@ function inkGapBarVisible(count) {
     return api;
   }
 
+  /**
+   * 折叠 / 展开 `.editor`（**owner 写自己的容器**）。
+   *
+   * 原来这段在外壳的 `setupViewerTools` 里：外壳把 `.editor` 的 class 当自己的写。
+   * 按「动作不写不属于它的 DOM」这条，折叠归本模块；外壳只拿返回值换按钮上的三角。
+   */
+  function toggleCollapsed() {
+    const editor = root ? root.querySelector(".editor") : null;
+    if (!editor) return false;
+    return editor.classList.toggle("is-collapsed");
+  }
+
+  /** 块列表里"当前差异行"的高亮（`#detail-blocks` 归本模块，抽屉只喊这一声）。 */
+  function highlightActiveDiff(activeDiff) {
+    for (const row of (root ? root.querySelectorAll(".diff-row") : [])) {
+      const active =
+        activeDiff &&
+        row.dataset.blockId === activeDiff.blockId &&
+        Number(row.dataset.lineIndex) === activeDiff.lineIndex;
+      row.classList.toggle("is-active", Boolean(active));
+    }
+  }
+
+  /** 关掉第二引擎警告框（`aux-panel` 归本模块）。 */
+  function closeAuxPanel() {
+    const node = part("aux-panel");
+    if (node) node.hidden = true;
+  }
+
+  /** 清掉审校面板的错误条（`page-detail-error` 归本模块）。 */
+  function clearPageDetailError() {
+    const node = part("page-detail-error");
+    if (node) node.hidden = true;
+  }
+
   const api = {
     init,
+    toggleCollapsed,
+    highlightActiveDiff,
+    closeAuxPanel,
+    clearPageDetailError,
     renderBlocks: renderReviewBlocks,
     setFilter,
     setPackageModeChrome: applyPackageChrome,
