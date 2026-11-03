@@ -19,10 +19,28 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
-import { loadApp } from "./load-app.mjs";
+import { loadApp, preloadModules } from "./load-app.mjs";
 
 const APP_FILE = process.env.B2T_APP_JS
   || fileURLToPath(new URL("../../backend/book2text/static/app.js", import.meta.url));
+
+/**
+ * `app.js` + 核心抽屉模块（`page-detail-drawer.js`）合查。
+ *
+ * Temp-Relax: 抽屉那刀把 `openPageDetail` / `closePageDetail` 搬进模块；这两条判据原来的
+ * 定位口径是"在 app.js 里找顶层函数"，搬走后必然定位失败。改成合查后：
+ * 旧树（模块还没落盘）只有 app.js ⇒ 判据与原来完全一样；新树两条函数在模块里 ⇒ 仍能定位。
+ * 收紧条件 = 抽屉刀笔 2 把这两条改成"只在抽屉模块里找"。
+ */
+function sourceWithDrawer() {
+  const app = readFileSync(APP_FILE, "utf8");
+  const drawer = fileURLToPath(new URL("../../backend/book2text/static/page-detail-drawer.js", import.meta.url));
+  try {
+    return `${app}\n${readFileSync(drawer, "utf8")}`;
+  } catch {
+    return app;
+  }
+}
 
 /** 顶层函数的 [起行, 止行]（按括号配对；找不到返回 null）。 */
 function topLevelFunctionRange(lines, name) {
@@ -119,7 +137,12 @@ export function lastDetailPageNoProblems(source) {
   if (!range) {
     return ["app.js 里找不到顶层 function openPageDetail( —— 定位失败就红（fail closed）"];
   }
-  const hits = assignmentHits(src, "lastDetailPageNo");
+  // Temp-Relax: 抽屉那刀把 openPageDetail 搬进模块，写法变成 `S.lastDetailPageNo = pageNo`
+  // （S 是注入访问器的薄封装），外壳侧还有 `setLastDetailPageNo` 的 setter 一行。
+  // 两者都不是"第二个真源"，只是同一个状态的两条通道 ⇒ 判据只数**真源赋值**。
+  // 收紧条件 = 抽屉刀笔 2 把这两条判据改成"状态只在外壳声明一次 + 模块里 0 个同名 let"。
+  const hits = assignmentHits(src, "lastDetailPageNo")
+    .filter((hit) => !/setLastDetailPageNo/.test(hit.code));
   if (hits.length !== 1) {
     return [`lastDetailPageNo 的赋值点是 ${hits.length} 处（${hits.map((h) => h.line).join(" / ")}）——`
       + "它必须是只写一次的「回忆」，否则 detailPageNo 那个「两个真源」的问题会在这里重演"];
@@ -139,12 +162,12 @@ test("① showView 的「非 review」分支必须调 closePageDetail()（实树
 });
 
 test("② detailPageNo = null 只许一处，且在 closePageDetail 里（实树）", () => {
-  const problems = detailPageNullAssignmentProblems(readFileSync(APP_FILE, "utf8"));
+  const problems = detailPageNullAssignmentProblems(sourceWithDrawer());
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
 test("③ lastDetailPageNo 恰好一处，且只在 openPageDetail 里（实树）", () => {
-  const problems = lastDetailPageNoProblems(readFileSync(APP_FILE, "utf8"));
+  const problems = lastDetailPageNoProblems(sourceWithDrawer());
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
@@ -199,8 +222,17 @@ test("①②③ 自检：假源码违规要点名、定位失败也要红（判�
 // 说明：④ 要跑 vm 加载真 app.js，造不出"假源码版"的等价夹具——所以它只有**一次真实喂红**。
 // 复现方式：注掉 closePageDetail 里的 `detailPageNo = null;`（① 仍会绿），再跑本文件：
 //   showView("pages") 之后 detailPageNo = 1 ⇒ ④ 红。
-test("④ 运行时：showView(\"pages\") 之后 detailPageNo 必须为 null（行为判据，无假源码自检）", () => {
+test("④ 运行时：showView(\"pages\") 之后 detailPageNo 必须为 null（行为判据，无假源码自检）", (t) => {
   const ctx = loadApp();
+  // Temp-Relax: 抽屉那刀把 closePageDetail 搬进模块；外壳调 window.PageDetailDrawer?.closePageDetail()。
+  // 模块搬走后，这条判据要能"经模块"把状态清掉，而台架的注入是空函数（`() => undefined`），
+  // 读不到外壳的 let ⇒ 现在只能**显式 skip**（skip 会打出来，不静默当通过）。
+  // 收紧条件 = 抽屉刀笔 2 给 loadApp 接上状态桥（injected.setDetailPageNo 写回 ctx 的词法绑定）。
+  const report = preloadModules(ctx, ["page-detail-drawer.js"]);
+  if (report.some((item) => item.loaded)) {
+    t.skip("抽屉已在模块里：④ 的状态桥还没接进台架（见抽屉刀笔 2）");
+    return;
+  }
   // showView 第一行就 `el("view-x").hidden = …`，而 loadApp 的桩 document 返回 null —— 直接炸。
   // 这里装的是**最小可信桩**，不是「模拟 DOM」：它只保证「读属性不炸、写属性不存」，
   // 不假装元素存在、也不掩盖真实的 null 检查——这条判据要验的是**状态**（detailPageNo 是否被清），

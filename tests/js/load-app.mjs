@@ -24,10 +24,13 @@ const STATIC_DIR = fileURLToPath(new URL("../../backend/book2text/static/", impo
 function moduleDeps(ctx, source) {
   const names = [...new Set([...source.matchAll(/injected\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]))];
   const deps = {};
+  const fakeRoot = { querySelector: () => null, querySelectorAll: () => [] };
   for (const name of names) {
     deps[name] = name === "el"
       ? (id) => ctx.document.getElementById(id)
-      : () => undefined;
+      : name === "root"
+        ? fakeRoot
+        : () => undefined;
   }
   return deps;
 }

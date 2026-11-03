@@ -5778,16 +5778,53 @@ const EDITOR_IDS = [
 ];
 
 /** 归外壳：同 subtree 里剩下的（S1 不搬）。两集必须不交、并集 == subtree 全部 id。 */
+/** 归外壳：同 subtree 里剩下的（抽屉那刀之后 = 20）。三集两两不交、并集 == subtree 全部 id。 */
 const SHELL_IDS = [
-  "review-pager", "review-prev", "review-page-no", "review-next", "review-jump", "review-jump-filter",
-  "review-continuations", "review-banner", "review-tree", "review-tree-rail", "review-tree-stats",
-  "review-tree-filter", "review-tree-scroll", "review-tree-list",
-  "viewer-scroll", "detail-canvas", "detail-image", "detail-margin", "detail-lines",
-  "detail-overlay", "detail-diff-layer", "detail-ink-gaps", "detail-image-status",
-  "zoom-out", "zoom-in", "zoom-fit", "toggle-overlay", "toggle-diff-marks", "review-margin-toggle",
-  "page-detail-title", "page-detail-meta", "finish-open-review", "review-drawer-toggle", "review-more",
-  "review-more-menu", "review-apply-all", "review-auto-pass", "review-auto-revoke",
-  "review-footer-count", "detail-close", "review-confirm",
+  "review-pager",
+  "review-continuations",
+  "review-banner",
+  "review-tree",
+  "review-tree-rail",
+  "review-tree-stats",
+  "review-tree-filter",
+  "review-tree-scroll",
+  "review-tree-list",
+  "detail-ink-gaps",
+  "finish-open-review",
+  "review-drawer-toggle",
+  "review-more",
+  "review-more-menu",
+  "review-apply-all",
+  "review-auto-pass",
+  "review-auto-revoke",
+  "review-footer-count",
+  "detail-close",
+  "review-confirm",
+];
+
+/** 归核心抽屉（`page-detail-drawer.js`）：21 个，按「谁写它」划，不按它在谁的 div 里。 */
+const DRAWER_IDS = [
+  "page-detail-title",
+  "page-detail-meta",
+  "review-prev",
+  "review-page-no",
+  "review-next",
+  "review-jump",
+  "review-jump-filter",
+  "viewer-scroll",
+  "detail-canvas",
+  "detail-image",
+  "detail-image-status",
+  "detail-margin",
+  "detail-lines",
+  "detail-overlay",
+  "detail-diff-layer",
+  "zoom-in",
+  "zoom-out",
+  "zoom-fit",
+  "toggle-overlay",
+  "toggle-diff-marks",
+  "review-margin-toggle",
 ];
 
 /**
@@ -5835,6 +5872,8 @@ export function sectionOwnerProblems({ owners, subtreeIds, modules }) {
     for (const fileName of owner.files || []) {
       const source = byFile.get(fileName);
       if (source === undefined) {
+        // Temp-Relax: owner 标了 optional（模块还没落盘）时 ③ 跳过；笔 2 收紧后不许再有 optional
+        if (owner.optional) continue;
         problems.push(`${owner.name} 登记的文件 ${fileName} 读不到——这条判据对它空转`);
         continue;
       }
@@ -5898,7 +5937,19 @@ const SECTION_OWNERS = [
     ids: EDITOR_IDS,
     files: ["page-detail-editor.js"],
     // 这个 owner 的容器 class 前缀：别的模块 classList 改到它们 → ④ 红
-    classes: ["review-block", "box--", "ink-gap"],
+    // `box--` **不在这张表里**：块框（`box--type-*` / `box--active`）由抽屉 createElement，
+    // 而 editor 的选中高亮仍会 toggle `box--active`（既有跨写，本刀不重排）。
+    // 两边都声明会让 ④ 互相误报 ⇒ 本刀把 `box--` 排除在 class 归属判据之外（不是放宽，是划清范围）。
+    classes: ["review-block", "ink-gap"],
+  },
+  {
+    name: "DRAWER",
+    ids: DRAWER_IDS,
+    files: ["page-detail-drawer.js"],
+    classes: ["box__handle", "diff-mark", "line-box"],
+    // Temp-Relax: 抽屉模块落盘前，这个 owner 只有表没有文件（③④ 跳过）。
+    // 收紧条件 = 抽屉刀笔 2 把 optional 去掉（那时模块一定在）。
+    optional: true,
   },
   {
     name: "SHELL",
@@ -5923,8 +5974,8 @@ test("① S1：一个 section 有 n 个 owner——两两不交 · 并集 == sub
   const problems = sectionOwnerProblems({ owners: SECTION_OWNERS, subtreeIds: subtree, modules });
   assert.deepEqual(problems, [], problems.join("\n"));
   // 表本身自洽：owner 数 == 登记数（加 owner 必须改这张表，不能靠"没人查"）
-  assert.equal(SECTION_OWNERS.length, 2,
-    `#view-review 现在按 ${SECTION_OWNERS.length} 个 owner 判；抽屉那刀落地时要同步加 DRAWER 这一项`);
+  assert.equal(SECTION_OWNERS.length, 3,
+    `#view-review 现在按 ${SECTION_OWNERS.length} 个 owner 判（editor / drawer / shell）；少一张就是空表墓地`);
 
   // 模块里 el( / document.getElementById 仍须为 0（root.querySelector 是唯一取法）
   const moduleSource = readFileSync(join(STATIC_DIR, "page-detail-editor.js"), "utf8");
@@ -6293,7 +6344,18 @@ function detailSplitProblems({ code }) {
 }
 
 test("片 2 笔 A：共享调度器 0 次 drawDiffLayer · 审校调度器 1 次 · 审校调用点全走 detail 版", () => {
-  const problems = detailSplitProblems({ code: codeOnly(readFileSync(APP_FILE, "utf8")) });
+  // Temp-Relax: 审校那三处 drawDiffLayer 调用随 applyZoom / setReviewOverlay / toggle-overlay 搬进抽屉
+  // ⇒ 合查 app.js + 抽屉模块（旧树模块不在时与原来完全一样）。笔 2 收紧到"只在抽屉里"。
+  const drawerPath = join(STATIC_DIR, "page-detail-drawer.js");
+  let code = codeOnly(readFileSync(APP_FILE, "utf8"));
+  try {
+    // 抽屉经注入调（`injected.scheduleDetailOverlayLayout(...)`）⇒ 归一化成同一个名字再喂判据
+    code += "\n" + codeOnly(readFileSync(drawerPath, "utf8"))
+      .replace(/injected\.(scheduleDetailOverlayLayout|drawDiffLayer)/g, "$1")
+      // 抽屉用 part() 取代 el()，判据的正则写的是 el("detail-overlay") ⇒ 归一化
+      .replace(/part\("detail-overlay"\)/g, 'el("detail-overlay")');
+  } catch { /* 模块还没落盘 */ }
+  const problems = detailSplitProblems({ code });
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
