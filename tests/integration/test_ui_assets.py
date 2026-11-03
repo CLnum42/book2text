@@ -307,6 +307,12 @@ def _suggestion_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _split_batch_script() -> str:
+    """片 1b：批量拆分面板住在 `split-batch-panel.js`（root = #split-batch-panel）。"""
+    path = STATIC_DIR / "split-batch-panel.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _margin_data_script() -> str:
     """片 2：版心数据住在 `margin-data.js`（服务模块，被四个视图消费）。"""
     path = STATIC_DIR / "margin-data.js"
@@ -578,7 +584,8 @@ def test_split_page_number_and_batch_split_are_wired() -> None:
     ):
         assert f'id="{element_id}"' in page, element_id
 
-    script = _script()
+    # 片 1b：4 个函数搬进 split-batch-panel.js ⇒ 按合查读（判据强度不变）
+    script = _script() + _split_batch_script()
     # 单块：菜单项只在"这块真的贴着块首 / 块尾有页码候选"时出现，点了才拆
     assert "function pageNumberSplitHint(" in script
     assert '`把页码 ${numberHint.text} 拆出去`' in script + _editor_script()
