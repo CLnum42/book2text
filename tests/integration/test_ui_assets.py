@@ -363,6 +363,12 @@ def _recovery_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _word_boxes_script() -> str:
+    """片 8：字框回填住在 `word-boxes.js`（root = #word-boxes-mask）。"""
+    path = STATIC_DIR / "word-boxes.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _drawer_script() -> str:
     """① 主刀收尾：核心抽屉住在 `page-detail-drawer.js`（root = #view-review）。
 
@@ -1889,6 +1895,37 @@ def test_recovery_panels_own_lock_trash_and_backups() -> None:
         assert url in module, f"模块缺 URL 片段：{url}"
 
 
+def test_word_boxes_own_the_backfill_dialog() -> None:
+    """片 8：字框回填 5 函数归 `word-boxes.js`；写盘 3 条，回填后清块缓存。"""
+    page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module = _word_boxes_script()
+    assert module, "word-boxes.js 没落盘——片 8 的回填对话框还没搬"
+
+    for name in (
+        "openWordBoxesDialog",
+        "refreshWordBoxesPlan",
+        "renderWordBoxesPlan",
+        "startWordBoxesBackfill",
+        "clearWordBoxes",
+    ):
+        assert f"function {name}(" in module, f"{name} 不在 word-boxes.js"
+        assert f"function {name}(" not in app, f"{name} 还留在 app.js"
+
+    # 状态随迁；入口经注入转发
+    for token in ("let wordBoxesPlan", "let wordBoxesRunning"):
+        assert token not in app, f"{token} 还留在 app.js"
+    assert "window.WordBoxes?.openWordBoxesDialog(...args)" in app
+    assert page_html.index("/static/word-boxes.js") < page_html.index("/static/app.js")
+
+    # 写盘清单：计划 / 回填（每批 2 页）/ 撤销；回填与撤销之后清块缓存并重读计划
+    for url in ("/word-boxes`", "/word-boxes/backfill", "/word-boxes/clear"):
+        assert url in module, f"模块缺 URL：{url}"
+    assert "limit: 2" in module
+    assert module.count("injected.clearPageBlockCache()") == 2
+    assert module.count("refreshWordBoxesPlan()") >= 2
+
+
 def test_confirm_page_refreshes_finish_counts() -> None:
     """任务 42 走查：确认一页之后，收尾面板 / 步骤条的计数必须跟着动。
 
@@ -2301,8 +2338,10 @@ def test_reading_view_is_wired_for_merge() -> None:
     # 字框回填入口与对话框
     for element_id in ("word-boxes-open", "word-boxes-mask", "word-boxes-start"):
         assert f'id="{element_id}"' in page, element_id
-    assert "/word-boxes/backfill" in script
-    assert "function startWordBoxesBackfill(" in script
+    # 片 8：字框回填整簇搬进 word-boxes.js ⇒ 合查
+    boxes_script = _word_boxes_script()
+    assert "/word-boxes/backfill" in script + boxes_script
+    assert "function startWordBoxesBackfill(" in boxes_script
     assert "下一处未审" in page
     assert "window.confirm(" in script
     assert ".reading-mark" in css and ".reading-panel" in css
