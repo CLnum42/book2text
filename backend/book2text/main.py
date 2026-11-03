@@ -134,7 +134,7 @@ def _clean_previous_locks(library: Path) -> None:
     """启动时清掉**本机**残留的死锁（应用被强杀 / 重启后留下的）。
 
     用户 2026-10-27 撞上的就是这个：库里 11 个项目的锁，PID 全是死的，其中一批
-    还带着这台机器以前的主机名（`MacBook-Air-2` → `MacBook-Air-3`）。只清"本机 +
+    还带着这台机器以前的主机名。只清"同机（machine_id）+
     进程已不存在"的，别的电脑的锁不动（那是"可疑"，要用户确认）。
     """
     cleaned = lock_module.clean_stale_locks(library)

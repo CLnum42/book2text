@@ -1,33 +1,38 @@
 """项目锁（说明书 7.6）。
 
-打开项目时在项目文件夹写入 `.lock`（主机名、进程号、机器指纹、时间、心跳）。
+打开项目时在项目文件夹写入 `.lock`（schema 版本、机器 id、主机名、进程号、时间、心跳）。
 **用途是防止网盘同步的文件夹被两台电脑同时编辑**，不是权限系统。
 
 ## 为什么要有"判死"
 
-2026-10-27 用户删项目时被挡住，报"该项目正被另一台电脑使用：MacBook-Air-2.local"，
-可那台"电脑"就是本机——系统改名成了 `MacBook-Air-3.local`。库里 11 个项目的锁全是
+2026-10-27 用户删项目时被挡住，报"该项目正被另一台电脑使用：<本机的旧主机名>"，
+可那台"电脑"就是本机——系统给它改了名。库里 11 个项目的锁全是
 被强杀 / 重启后留下的死锁（PID 早就不在了），旧代码只看"锁文件存在 + 主机名不同"，
 于是同一台机器的旧锁变成了永远解不开的"另一台电脑"。
 
 现在的判定分层，越往下越保守：
 
-============  ==========================================  ==========================
-情况          判据                                       结果
-============  ==========================================  ==========================
-没有锁 / 损坏  —                                           free（可打开；损坏文件会被清）
-同一台机器    机器指纹相同，或主机名相同                  看进程：活着 → held，死了 → 过期
-本机旧名字    hostname 只是"MacBook-Air-2 → -3"这种变化    看进程：活着 → held，死了 → 过期
-另一台电脑    以上都不成立                                看心跳：10 分钟内 → held，更久 → 过期
-============  ==========================================  ==========================
+==============  ========================================  ==========================
+情况            判据                                      结果
+==============  ========================================  ==========================
+没有锁 / 损坏    —                                         free（可打开；损坏文件会被清）
+同一台机器      **machine_id 相同**（与主机名无关）       看进程：活着 → held，死了 → 过期
+另一台电脑      id 不同                                  看心跳：10 分钟内 → held，更久 → 过期
+未知机器        锁文件没有 machine_id（老版本写的）        只走心跳；过期也**不自动接管**
+==============  ========================================  ==========================
 
 "过期"不等于"没锁"：同机过期可以**直接接管**（进程都没了，没什么可保护的）；
-跨机器过期只是"可疑"（心跳可能只是网盘没同步过来），**要用户确认一次**才接管。
+跨机器 / 未知机器的过期只是"可疑"（心跳可能只是网盘没同步过来），**要用户确认一次**才接管。
 
-保守方向的选择理由：说明书 1.4 的决策优先级里"不丢失用户数据"排第一。
-误判为"被占用"只是多问一句，误判为"空闲"则可能让两台电脑同时写入同一个数据库。
-所以唯一放宽的是"能证明是本机、且那个进程确实不在了"——这条证据链不依赖主机名
-（主机名会变），而是靠机器指纹 + 进程是否存活。
+## 机器身份为什么是持久 UUID
+
+2026-11 之前判"同机"用的是**主机名前缀启发式**（去掉名字末尾的 `-2 / -3` 再比），
+那是把开发机的历史写进了产品判据：换一台机器就判错，CI runner 上必然红。
+硬件指纹（IOPlatformUUID / MachineGuid）也不行——CI runner 每台都不同，同样不是"同一台机器"。
+
+现在：首次运行时生成一个 uuid4，存在项目库根目录的 `.machine_id`（跟着现有的数据目录走，
+不新增位置），**独立随机、与主机名和硬件无关**。判"同机"只比这个 id；
+主机名只用来显示（"该项目正被另一台电脑使用：xxx.local"）。
 
 ## 心跳
 
@@ -46,19 +51,21 @@
 from __future__ import annotations
 
 import atexit
-import hashlib
 import json
 import os
-import platform as platform_module
-import re
-import subprocess
 import threading
+import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from functools import lru_cache
 from pathlib import Path
 
 LOCK_FILE_NAME = ".lock"
+
+MACHINE_ID_FILE_NAME = ".machine_id"
+"""机器身份文件：项目库根目录下，内容是首次运行生成的 uuid4（纯随机，与主机名/硬件无关）。"""
+
+LOCK_SCHEMA_VERSION = 2
+"""锁文件结构版本。1 = 老版本（只有主机名，没有 machine_id）。"""
 
 HEARTBEAT_INTERVAL_SECONDS = 60
 """持锁期间多久刷一次心跳（秒）。"""
@@ -80,11 +87,14 @@ class LockInfo:
     acquired_at: str
     heartbeat_at: str = ""
     machine_id: str = ""
-    """机器指纹（macOS IOPlatformUUID / Windows MachineGuid / Linux machine-id 的
-    哈希）。**主机名会变，这个不会**；老锁没有这个字段，只能退回主机名判断。"""
+    """上锁那台机器的**持久 UUID**（项目库根 `.machine_id` 的内容）。
+    空 = 老版本写的锁（未知机器）：只走心跳/超时，绝不自动接管。"""
+    schema: int = 1
+    """锁文件结构版本；1 = 老版本（没有 machine_id）。"""
 
     def to_dict(self) -> dict[str, object]:
         return {
+            "schema": self.schema,
             "hostname": self.hostname,
             "pid": self.pid,
             "acquired_at": self.acquired_at,
@@ -107,9 +117,9 @@ class LockStatus:
     mine: bool = False
     """是不是**本进程**自己上的锁。"""
     same_machine: bool = False
-    """是否确认是本机（机器指纹相同，或主机名相同）。"""
-    previous_hostname: bool = False
-    """主机名不同、但看着是本机以前的名字（老锁没有机器指纹时才用得上）。"""
+    """是否确认是本机（machine_id 相同；主机名不参与判定）。"""
+    machine_known: bool = True
+    """锁文件里有没有可信的机器身份。False = 老锁（没有 machine_id）⇒ 未知机器，不自动接管。"""
     process_alive: bool | None = None
     """本机进程是否还在（只对"同机 / 本机旧名字"有意义）。"""
     age_seconds: float | None = None
@@ -151,10 +161,10 @@ class LockStatus:
         when_text = f"{when}，{age}" if when and age else (when or age or "时间未知")
 
         if self.state == STATE_HELD:
-            if self.previous_hostname:
+            if not self.machine_known:
                 return (
                     f"该项目正被另一个 Book2Text 窗口使用"
-                    f"（主机名 {info.hostname}，本机以前的名字；进程 {info.pid}，{when_text}）"
+                    f"（锁文件来自老版本，没有机器标识；进程 {info.pid}，{when_text}）"
                 )
             if self.same_machine:
                 return (
@@ -164,10 +174,7 @@ class LockStatus:
             return f"该项目正被另一台电脑使用：{info.hostname}（{when_text}）"
 
         if self.state == STATE_EXPIRED_SAME_MACHINE:
-            if self.previous_hostname:
-                origin = f"这把锁来自本机以前的主机名 {info.hostname}，"
-            else:
-                origin = "本机，"
+            origin = "本机，"
             return (
                 f"锁已过期：{origin}进程 {info.pid} 已经不存在"
                 f"（{when_text}），可以直接接管"
@@ -191,8 +198,8 @@ class LockStatus:
         info = self.info
         if info is None:
             return {"state": self.state}
-        if self.previous_hostname:
-            host_note = "本机以前的名字"
+        if not self.machine_known:
+            host_note = "老版本锁（没有机器标识）"
         elif self.same_machine:
             host_note = "本机"
         else:
@@ -234,56 +241,30 @@ def _hostname() -> str:
     return name or "unknown"
 
 
-def _host_stem(name: str) -> str:
-    """主机名的"人类可辨前缀"：`MacBook-Air-2.local` → `macbook-air`。
+def machine_id_for(library_root: Path) -> str:
+    """本机的机器身份（持久 UUID）。
 
-    只用于**老锁**（没有机器指纹）找"本机以前的名字"：系统会给重名机器加
-    `-2 / -3`，同一台机器改名后前缀不变。
+    首次运行在**项目库根目录**写 `.machine_id`（跟着现有的数据目录走，不新增位置），
+    之后每次读同一个值。**纯随机 uuid4**：与主机名、MAC、硬件指纹都无关——
+    从任何一台机器能推出来的东西都不能当"同一台机器"的判据（改名会假换机，
+    CI runner 会真换机）。
+
+    读不出来（权限 / 只读盘）就返回空串：那种情况下判"同机"一律不成立（保守方向）。
     """
-    value = (name or "").strip().lower()
-    value = value.split(".")[0]
-    return re.sub(r"-\d+$", "", value)
-
-
-@lru_cache(maxsize=1)
-def _machine_fingerprint() -> str:
-    """本机指纹（哈希后只留 16 位，够区分、也不把硬件 UUID 明文写进锁文件）。"""
-    raw = _raw_machine_id()
-    if not raw:
-        return ""
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-
-
-def _raw_machine_id() -> str:
-    system = platform_module.system()
+    path = library_root / MACHINE_ID_FILE_NAME
     try:
-        if system == "Darwin":
-            completed = subprocess.run(
-                ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-            found = re.search(r'"IOPlatformUUID"\s*=\s*"([^"]+)"', completed.stdout)
-            return found.group(1) if found else ""
-        if system == "Windows":
-            import winreg  # noqa: PLC0415 - 只在 Windows 上需要
-
-            with winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography"
-            ) as key:
-                value, _ = winreg.QueryValueEx(key, "MachineGuid")
-            return str(value or "")
-        for candidate in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
-            path = Path(candidate)
-            if path.is_file():
-                text = path.read_text(encoding="utf-8", errors="ignore").strip()
-                if text:
-                    return text
-    except (OSError, subprocess.SubprocessError, ImportError, ValueError):
+        existing = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        existing = ""
+    if existing:
+        return existing
+    generated = str(uuid.uuid4())
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(generated, encoding="utf-8")
+    except OSError:
         return ""
-    return ""
+    return generated
 
 
 def _process_alive(pid: int) -> bool:
@@ -396,6 +377,7 @@ def read_lock(project_dir: Path) -> LockInfo | None:
         return None
     try:
         return LockInfo(
+            schema=int(payload.get("schema") or 1),
             hostname=str(payload["hostname"]),
             pid=int(payload["pid"]),
             acquired_at=str(payload.get("acquired_at") or ""),
@@ -414,24 +396,14 @@ def _write_lock(path: Path, info: LockInfo) -> None:
     os.replace(temp, path)
 
 
-def _is_same_machine(info: LockInfo) -> bool:
-    fingerprint = _machine_fingerprint()
-    if info.machine_id and fingerprint:
-        return info.machine_id == fingerprint
-    return info.hostname == _hostname()
+def _is_same_machine(info: LockInfo, local_machine_id: str) -> bool:
+    """判"同机"：**只比 machine_id**。主机名只用于显示，不参与判定。
 
-
-def _looks_like_previous_name(info: LockInfo) -> bool:
-    """主机名不同、但是不是"本机以前的名字"。
-
-    只在**老锁没有机器指纹**时启用：有指纹就直接比指纹了（更可靠）。
+    锁里没有 machine_id（老版本）⇒ 一律不算同机（未知机器，走心跳）。
     """
-    if info.hostname == _hostname():
+    if not info.machine_id or not local_machine_id:
         return False
-    if info.machine_id and _machine_fingerprint():
-        return info.machine_id == _machine_fingerprint()
-    stem = _host_stem(info.hostname)
-    return bool(stem) and stem == _host_stem(_hostname())
+    return info.machine_id == local_machine_id
 
 
 def status(project_dir: Path) -> LockStatus:
@@ -441,9 +413,10 @@ def status(project_dir: Path) -> LockStatus:
     if info is None:
         return LockStatus(state=STATE_FREE)
 
-    same_machine = _is_same_machine(info)
-    previous_hostname = False if same_machine else _looks_like_previous_name(info)
-    local_process = same_machine or previous_hostname
+    local_machine_id = machine_id_for(project_dir.parent)
+    machine_known = bool(info.machine_id)
+    same_machine = _is_same_machine(info, local_machine_id)
+    local_process = same_machine
     alive = _process_alive(info.pid) if local_process else None
     age = _lock_age_seconds(info, path)
 
@@ -454,7 +427,7 @@ def status(project_dir: Path) -> LockStatus:
                 info=info,
                 mine=same_machine and info.pid == os.getpid(),
                 same_machine=same_machine,
-                previous_hostname=previous_hostname,
+                machine_known=machine_known,
                 process_alive=True,
                 age_seconds=age,
             )
@@ -462,7 +435,7 @@ def status(project_dir: Path) -> LockStatus:
             state=STATE_EXPIRED_SAME_MACHINE,
             info=info,
             same_machine=same_machine,
-            previous_hostname=previous_hostname,
+            machine_known=machine_known,
             process_alive=False,
             age_seconds=age,
         )
@@ -473,6 +446,7 @@ def status(project_dir: Path) -> LockStatus:
             state=STATE_HELD,
             info=info,
             same_machine=False,
+            machine_known=machine_known,
             process_alive=None,
             age_seconds=age,
         )
@@ -480,6 +454,7 @@ def status(project_dir: Path) -> LockStatus:
         state=STATE_EXPIRED_OTHER_MACHINE,
         info=info,
         same_machine=False,
+        machine_known=machine_known,
         process_alive=None,
         age_seconds=age,
     )
@@ -532,11 +507,12 @@ def acquire(project_dir: Path) -> LockInfo:
     """写入锁文件（并开始刷新心跳）。调用方应先检查 `status()`。"""
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     info = LockInfo(
+        schema=LOCK_SCHEMA_VERSION,
         hostname=_hostname(),
         pid=os.getpid(),
         acquired_at=now,
         heartbeat_at=now,
-        machine_id=_machine_fingerprint(),
+        machine_id=machine_id_for(project_dir.parent),
     )
     path = lock_path(project_dir)
     _write_lock(path, info)
@@ -602,7 +578,7 @@ atexit.register(release_all)
 def clean_stale_locks(library: Path) -> dict[str, list[str]]:
     """清掉本机残留的死锁（应用启动时调一次）。
 
-    只清两类：**本机（含本机旧主机名）+ 进程不存在**，以及**损坏到读不出来的锁**。
+    只清两类：**同机（machine_id 相同）+ 进程不存在**，以及**损坏到读不出来的锁**。
     别的机器的锁不管新旧都不碰——那是"可疑"，要用户确认。
     """
     removed: list[str] = []
