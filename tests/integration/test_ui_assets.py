@@ -307,6 +307,12 @@ def _suggestion_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _margin_data_script() -> str:
+    """片 2：版心数据住在 `margin-data.js`（服务模块，被四个视图消费）。"""
+    path = STATIC_DIR / "margin-data.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _page_number_script() -> str:
     """片 1a：页码面板住在 `page-number-panel.js`（两个根都是顶层 mask）。"""
     path = STATIC_DIR / "page-number-panel.js"
@@ -754,7 +760,12 @@ def test_review_view_shows_margin_and_filters_blocks() -> None:
     真实几何 / 过滤在真浏览器验收里；这里防止"加了个按钮但没接上"。
     """
     page_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 片 2：版心几何搬进 margin-data.js、审校抽屉在 page-detail-drawer.js ⇒ 本测试按合查读
+    script = "\n".join([
+        (STATIC_DIR / "app.js").read_text(encoding="utf-8"),
+        _margin_data_script(),
+        _drawer_script(),
+    ])
     styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
@@ -778,11 +789,12 @@ def test_review_view_shows_margin_and_filters_blocks() -> None:
     assert "review-auto-revoke" in page_html
     assert "/auto-pass" in script
     assert "/auto-pass/revoke" in script
-    assert "b2t.reviewMargin.v1." in script
-    assert '!== "0"' in script
+    assert "b2t.reviewMargin.v1." in script + _margin_data_script()
+    assert '!== "0"' in script + _margin_data_script()
 
     # 判定与过滤用中心点（与导出的第一层同口径）；没有版心时不隐藏任何块
-    assert "function blockInsideMargin(" in script
+    assert ("function blockInsideMargin(" in script
+            or "function blockInsideMargin(" in _margin_data_script())
     assert "function reviewMarginSplit(" in script
     assert "if (!box) return true;" in script
 
@@ -1345,7 +1357,7 @@ def test_result_preview_reuses_page_renderers_and_follows_segments() -> None:
 
     # 复用同一套渲染函数与同一份开关 / 缩放状态
     assert "function paintPreviewTile(" in preview_both
-    assert "paintTileMargin(tile, page)" in script
+    assert "paintTileMargin(tile, page)" in script + _margin_data_script()
     assert "renderPageBlocks(tile, blocks" in script or "api.paint(handle" in preview_script
     # 开关这里**不是**简单合查：整段 preview 搬走后，"预览打开时把开关置 true" 变成了
     # 模块调注入回调 + app.js 的 setter 真正写状态，两半都得在，缺任一半链路就断了。
@@ -1688,7 +1700,7 @@ def test_index_view_reuses_page_rendering() -> None:
         assert f'id="{element_id}"' in page, element_id
 
     assert "function paintIndexDecorations(" in index_both
-    assert "paintTileMargin(tile, page)" in script
+    assert "paintTileMargin(tile, page)" in script + _margin_data_script()
     assert "renderPageBlocks(tile, blocks" in script or "api.paint(handle" in index_script
     # 刀 C：loadIndexBlocks → page-index.js 的 loadBlocks（块缓存仍在外壳，模块借三个回调读写）
     assert "function loadBlocks(" in _view_script("page-index.js")
