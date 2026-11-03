@@ -257,3 +257,12 @@ PYTHONPATH="$PWD/backend" /Users/chenlin/DeepSeek\ Bot/book2text/.venv/bin/pytho
 全程 `pageerror` / `unhandledrejection` 0。
 
 证据：`verify-c8b2573-collapse.jpg`（本树窄视口折叠态）。
+
+## 结案（DevLead，2026-11-03）
+
+代码层：`app.js` 9,024 → **8,622** · 函数 348 → **328**（移出 21 / 新增 1 `onPageDetailChanged`）· `page-detail-drawer.js` **615 = 518 代码 + 61 注释 + 36 空行** · 三 owner EDITOR 30 / DRAWER 21 / SHELL 20（并集 71、交集 0）· node **302/299/0/3** · pytest **1036 passed / 0 skipped**（173s）· R3 review **32/57**、pages 0/0 · registry `--strict` **0 笔（591）**。
+真机（`c8b2573` 整跑）：**0 首屏 11 卡 / ① 抽屉 / ② 翻页 / ③ 缩放对齐（fit max_dev 0.01px）/ ④ 块框与差异开关 / ⑤ 版心 / ⑥ 折叠两轮 / ⑦ 关闭 —— 全过**，`pageerror` + `unhandledrejection` 0。
+事故留痕：**提交四闸全绿但打开即白屏**（boot 顺序 `setupReviewPager` 早于 `init` + 两处转发名不存在），QA 20 分钟抓到，热修 `963498d`（main `500e2c0`），防复发闸 #25/#26 已进主线（`c6d0fc7`）。
+既有缺陷（非本刀，旧树 `9227d0c` 对照）：缩放 >100% 块框横向错位 —— fit **0.01px** → 125% **33.34px** → 150% **191.13px**（旧树 21.1 / 176.5，同根因略重）；根因 `applyZoom` 只设 `detail-canvas` 宽、页图被自然宽封顶 ⇒ 覆盖层与图层比例不同步。已排期：片 1a 之后、片 2 之前小修。
+未验（不算通过）：包模式下审校/导出正流程 · ⑦ 右侧文本面板独立重画次数 · 撤销自动通过（缺样本）。
+欠账（结案后清）：`applyZoom` 是唯一 0 外部调用点的导出 · `box--` 需补归属表「两侧共有」+ 已登记的到期刀号。
