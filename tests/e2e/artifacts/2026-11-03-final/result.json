@@ -1,0 +1,56 @@
+{
+  "round": "2026-11-03 最终批量真机验收（重构收尾）",
+  "baseline": { "sha": "d2d214a", "ref": "origin/main", "app_js_lines": 5691, "static_files": 31 },
+  "panels": {
+    "index_tree": { "pages": 490, "rows": 497, "chapters": 7, "images_visible_loaded": "2/2" },
+    "continuation": { "meta": "已确认 0 / 4", "entries": 3, "state": "第 17 → 18 页", "close": "✕ 被收尾抽屉遮挡，Esc 可用" },
+    "punct_batch": { "groups": 15, "summary": "28 行 / 15 种模式", "badge": "28 行 · 15 组", "close": "完成 ✓" },
+    "garbled": { "rows": 7, "share": "0.97% / 5 页", "badge": "7", "close": "✕ ✓" },
+    "lock_conflict": { "title": "项目正被另一个窗口使用", "facts": "MacBook-Air-3.local（本机）· 进程 79892 还在写", "buttons": ["取消", "强制打开"], "cancel": "✓", "force_clicked": false },
+    "backups": { "rows": 10, "close": "✓", "restore_clicked": false },
+    "trash": { "rows": 0, "state": "空态", "close": "✓" },
+    "word_boxes": { "coverage": "100.0%", "note": "全书都有字框了", "start_disabled": true, "close": "✓" },
+    "layout_detect": { "plan": "正文 487 / 已有 250 / 本次 237 / 约 1 分 47 秒", "start_enabled": true, "executed": false, "close": "取消 ✓" },
+    "orthography": { "rows": 31, "meta": "31 处 · 21 页 · 1 处优先看", "close": "✕ 被收尾抽屉遮挡，Esc 可用" }
+  },
+  "pageerror": 0,
+  "findings": [
+    {
+      "id": "F1",
+      "title": "收尾抽屉 z-index 90 盖住顶层 mask 60，部分面板 ✕/完成 点不到",
+      "affects": ["continuation", "orthography", "garbled"],
+      "evidence": "elementFromPoint 命中 .finish-row-page-type / .finish-main；Esc 可关",
+      "regression": false,
+      "note": "66bab13（切片 8-10 前）同为 90/60"
+    }
+  ],
+  "package_mode": {
+    "task_page_error_bar_hidden": true,
+    "context_page_readonly_note": true,
+    "context_page_controls_disabled": true,
+    "forced_patch": { "status": 403, "select_rolled_back": true, "notice": "这次改动没有保存，控件已回滚。", "error_bar": "hidden" },
+    "pager": ["11", "12", "13", "12", "11", "10", "11"],
+    "pager_bounds": { "next_disabled_at": 13, "prev_disabled_at": 10 },
+    "pageerror": 0
+  },
+  "skeleton": {
+    "pages_tiles": 490,
+    "drawer": { "page": 6, "image_natural_width": 932, "blocks": 2, "boxes": 10, "diff": 2 },
+    "paging": ["6", "7", "6"],
+    "zoom": { "canvas": 973, "image": 973, "overlay": 973, "boxes": 10 },
+    "back_to_pages": { "tiles": 490 },
+    "reading": { "chars": 2286 },
+    "index": { "pages": 490, "rows": 497, "chapters": 7 },
+    "preview": { "images": 490, "visible_margins": 2 },
+    "after_service_restart": { "cards": 11, "tiles": 490, "drawer": "ok" },
+    "no_refresh_needed_in_flow": true,
+    "pageerror": 0,
+    "verdict": "pass"
+  },
+  "untested": [
+    "字框回填执行（全书已有字框，无样本）",
+    "检测版面 237 页实跑（约 1 分 47 秒长任务）",
+    "备份恢复 / 废纸篓清空 / 强制打开（写库动作）",
+    "跨页延续 / 标点 / 乱码 的逐条确认写库"
+  ]
+}
