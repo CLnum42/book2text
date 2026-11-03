@@ -383,7 +383,8 @@ async function adoptPageNumberTemplate(template, range = null) {
     );
     S.pageNumberAnalysis = data;
     renderPageNumberAnalysis(data);
-    if (!reviewPart("page-number-review-panel").hidden) renderPageNumberReview(data);
+    // 审校面板的根就是这块 mask ⇒ 判断"开着吗"直接用根元素本身（querySelector 不匹配根自己）
+    if (reviewRoot && !reviewRoot.hidden) renderPageNumberReview(data);
     await injected.onPageNumberChanged(
       `已按模板填充 ${data.applied?.filled ?? 0} 页` + (range ? `（${scope}）` : "")
     );
@@ -409,7 +410,8 @@ async function removePageNumberRange(fromPage, toPage) {
     );
     S.pageNumberAnalysis = data;
     renderPageNumberAnalysis(data);
-    if (!reviewPart("page-number-review-panel").hidden) renderPageNumberReview(data);
+    // 审校面板的根就是这块 mask ⇒ 判断"开着吗"直接用根元素本身（querySelector 不匹配根自己）
+    if (reviewRoot && !reviewRoot.hidden) renderPageNumberReview(data);
     await injected.onPageNumberChanged(`已移除第 ${fromPage}–${toPage} 页的第二套模板`);
   } catch (error) {
     injected.showError(part("page-number-error"), error);
