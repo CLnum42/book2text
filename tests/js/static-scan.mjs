@@ -20,6 +20,22 @@
  * 正则必须先按语法认出来（前一个有效字符是 `([{=,:;!&|?+-*%~^<>` 之类才算字面量），
  * 再连字符类 `[…]` 一起跳到收尾的 `/`。
  */
+/**
+ * 正则字面量的**旗标**（`/x/g` 的 `g`）。2026-11-03 修的真 bug：扫描器在收尾的 `/` 处停下，
+ * 旗标原样留在"代码"里 ⇒ R9 把一个根本不存在的标识符 `g` 报成未定义变量。
+ *
+ * 为什么以前没炸：被搬走的那片代码里恰好有个形参叫 `g`，于是这个假标识符被"定义"掩盖了；
+ * 片 6 一搬走就冒出来（Builder 撞上）。**底座误判要按底座修**，别让产品改写法规避。
+ */
+const REGEX_FLAGS = "dgimsuvy";
+
+/** 从正则收尾的 `/` 之后收旗标，返回旗标之后的位置（`/x/g.test` 里的 `.` 不前移）。 */
+function skipRegexFlags(text, at) {
+  let k = at;
+  while (k < text.length && REGEX_FLAGS.includes(text[k])) k += 1;
+  return k;
+}
+
 export function codeOnly(source) {
   const text = String(source || "");
   const out = text.split("");
@@ -53,7 +69,7 @@ export function codeOnly(source) {
         if (cur === "\\") { k += 2; continue; }
         if (cur === "[") inClass = true;
         else if (cur === "]") inClass = false;
-        else if (cur === "/" && !inClass) { k += 1; break; }
+        else if (cur === "/" && !inClass) { k = skipRegexFlags(text, k + 1); break; }
         else if (cur === "\n") break;
         k += 1;
       }
@@ -113,7 +129,7 @@ export function stripCommentsAndStrings(source) {
         if (cur === "[") inClass = true;
         else if (cur === "]") inClass = false;
         else if (cur === "/" && !inClass) {
-          k += 1;
+          k = skipRegexFlags(source, k + 1);
           break;
         } else if (cur === "\n") break;
         k += 1;
@@ -220,7 +236,7 @@ export function stripPreservingTemplateExpressions(source) {
       if (cur === "\\") { k += 2; continue; }
       if (cur === "[") inClass = true;
       else if (cur === "]") inClass = false;
-      else if (cur === "/" && !inClass) return k + 1;
+      else if (cur === "/" && !inClass) return skipRegexFlags(source, k + 1);
       else if (cur === "\n") return k;
       k += 1;
     }

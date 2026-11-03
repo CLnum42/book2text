@@ -92,6 +92,7 @@ const TEST_FILES = [
   ["knife-comment-refs", () => import("./knife-comment-refs.test.mjs")],
   ["registration-alias", () => import("./registration-alias.test.mjs")],
   ["zero-ref-functions", () => import("./zero-ref-functions.test.mjs")],
+  ["static-scan-regex", () => import("./static-scan-regex.test.mjs")],
   ["detail-visibility", () => import("./detail-visibility.test.mjs")],
 ];
 const selector = process.argv[2];
