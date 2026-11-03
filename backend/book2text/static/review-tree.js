@@ -450,6 +450,54 @@ async function openTreeItem(pageNo, item) {
   syncReviewTreeToPage(pageNo, { scroll: true });
 }
 
+  /**
+   * 审校里 ack 掉几条差异之后，只刷受影响页那一行的计数——不重取树（490 页重取会卡）。
+   *
+   * `entries` = [{ page_no, count }]，由审校那边提交成功后给出（它知道每条草稿属于哪一页）。
+   * 计数按单元测试同口径：unacked 减 count、acked 加 count；章节行 = 组内各页 unacked 之和。
+   */
+  function noteAcks(entries) {
+    if (!reviewTree || !Array.isArray(entries) || !entries.length) return;
+    const touchedGroups = new Set();
+    for (const entry of entries) {
+      const pageNo = Number(entry && entry.page_no);
+      const count = Math.max(0, Number(entry && entry.count) || 0);
+      if (!pageNo || !count) continue;
+      const pageData = (reviewTree.pages || []).find((page) => page.page_no === pageNo);
+      if (!pageData) continue;
+      pageData.unacked = Math.max(0, Number(pageData.unacked || 0) - count);
+      pageData.acked = Number(pageData.acked || 0) + count;
+      const pageRow = reviewTreePageRows.get(pageNo);
+      if (pageRow) {
+        if (pageData.unacked > 0) {
+          pageRow.count.textContent = `${pageData.unacked} 处`;
+          pageRow.count.classList.remove("is-done");
+        } else {
+          pageRow.count.textContent = "✓";
+          pageRow.count.classList.add("is-done");
+        }
+        pageRow.row.title = `第 ${pageNo} 页 · ${pageData.unacked} 处待审`;
+      }
+      const group = reviewTreeGroups(reviewTree.pages || [], reviewTree.chapters || []).find((item) =>
+        item.pages.some((page) => page.page_no === pageNo)
+      );
+      if (group) touchedGroups.add(group);
+    }
+    for (const group of touchedGroups) {
+      const chapterEntry = reviewTreeChapterRows.get(group.id);
+      if (!chapterEntry) continue;
+      const remaining = group.pages.reduce((sum, page) => sum + Number(page.unacked || 0), 0);
+      if (remaining > 0) {
+        chapterEntry.count.textContent = `${remaining} 处`;
+        chapterEntry.count.classList.remove("is-done");
+      } else {
+        chapterEntry.count.textContent = "✓ 完成";
+        chapterEntry.count.classList.add("is-done");
+      }
+    }
+    if (reviewTreeOnlyTodo) renderReviewTree();
+  }
+
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
     root = injected.root || (injected.getRootEl ? injected.getRootEl() : null);
@@ -462,6 +510,7 @@ async function openTreeItem(pageNo, item) {
     treeItemsFromBlocks,
     syncReviewTreeToPage,
     setReviewTreeOnlyTodo,
+    noteAcks,
     getReviewTreeItems: () => reviewTreeItems,
     getReviewTreeOnlyTodo: () => reviewTreeOnlyTodo,
   };

@@ -789,8 +789,23 @@ async function submitReadingDrafts() {
         .filter((item) => item.ok)
         .map((item) => readingKey(item.block_id, item.line_index))
     );
+    // 片 5：ack 之后左栏那一行要立刻变（旧逻辑随清洗刀丢了）。
+    // 只汇总本次成功、且带 ack 的草稿；按页给计数，树那边只刷行、不重取。
+    const ackedByPage = new Map();
+    for (const draft of readingDrafts.values()) {
+      if (!draft || !draft.ack) continue;
+      if (!okKeys.has(readingKey(draft.block_id, draft.line_index))) continue;
+      const pageNo = Number(draft.page_no);
+      if (!pageNo) continue;
+      ackedByPage.set(pageNo, (ackedByPage.get(pageNo) || 0) + 1);
+    }
     for (const key of okKeys) readingDrafts.delete(key);
     saveReadingDrafts();
+    if (ackedByPage.size) {
+      injected.noteReviewAcks?.(
+        [...ackedByPage.entries()].map(([page_no, count]) => ({ page_no, count }))
+      );
+    }
     for (const key of okKeys) readingInlineEdits.delete(key);
     saveReadingInlineEdits();
     if (failed.length) {

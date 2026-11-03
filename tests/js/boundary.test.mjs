@@ -5496,6 +5496,8 @@ const DOMAIN_MODULES = [
   { file: "page-media.js", exposes: "PageMedia" },
   // 片 4：审校左栏目录树——root = #review-tree（第四个 owner TREE，6 个 id 全在子树里）
   { file: "review-tree.js", exposes: "ReviewTree", allowQuerySelector: true },
+  // 片 5：跨页延续面板——root = #continuation-panel（顶层 mask，14 个 id 全在子树里）
+  { file: "continuation-review.js", exposes: "ContinuationReview", allowQuerySelector: true },
 ];
 
 /**
@@ -5517,6 +5519,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "split-batch-panel.js",
   "page-grid.js",
   "review-tree.js",
+  "continuation-review.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {
