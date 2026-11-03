@@ -94,6 +94,7 @@ const TEST_FILES = [
   ["zero-ref-functions", () => import("./zero-ref-functions.test.mjs")],
   ["static-scan-regex", () => import("./static-scan-regex.test.mjs")],
   ["page-detail-editor-readonly", () => import("./page-detail-editor-readonly.test.mjs")],
+  ["final-ledger", () => import("./final-ledger.test.mjs")],
   ["detail-visibility", () => import("./detail-visibility.test.mjs")],
 ];
 const selector = process.argv[2];
