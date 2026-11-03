@@ -5506,6 +5506,8 @@ const DOMAIN_MODULES = [
   { file: "word-boxes.js", exposes: "WordBoxes", allowQuerySelector: true },
   // 片 9：字符规范化——root = #orthography-panel（顶层 mask）
   { file: "orthography.js", exposes: "Orthography", allowQuerySelector: true },
+  // 片 10：检测版面外壳——root = #layout-detect-mask（顶层 mask）
+  { file: "layout-detect.js", exposes: "LayoutDetect", allowQuerySelector: true },
 ];
 
 /**
@@ -5532,6 +5534,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "recovery-panels.js",
   "word-boxes.js",
   "orthography.js",
+  "layout-detect.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {

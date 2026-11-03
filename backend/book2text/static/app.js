@@ -2538,45 +2538,10 @@ async function startLayoutDetection() { return window.PagesView.startLayoutDetec
 // 所以入口在右上角「⋯ → 检测版面…」，点开先看计划（几页 / 大概多久）再决定跑不跑。
 // 后端用 `prepare` 模式：有检测行的页只补拟合，没有的才真检测。
 
-let layoutPlanCache = null;
+// 检测版面：计划缓存与四个函数已搬进 layout-detect.js（window.LayoutDetect）。
 
 /** 打开检测对话框：先取计划，再让用户决定。 */
-async function openLayoutDetectDialog() {
-  if (!currentProject) return;
-  layoutPlanCache = null;
-  el("layout-detect-error").hidden = true;
-  el("layout-detect-note").hidden = true;
-  el("layout-detect-plan").textContent = "正在读取检测计划…";
-  el("layout-detect-start").disabled = true;
-  el("layout-detect-start").textContent = "开始检测";
-  openModal("layout-detect-mask");
-  await refreshLayoutDetectPlan();
-}
 
-async function refreshLayoutDetectPlan() {
-  if (!currentProject) return;
-  // 有选择就只算选中的正文页（用户看到的数必须等于他实际要跑的事）；没选择一个字节都不改
-  const selected = selectionPages().filter((page) => page.include);
-  if (selectedPages.size && !selected.length) {
-    el("layout-detect-plan").textContent = "所选页都不是正文；检测版面只对正文页生效";
-    el("layout-detect-start").disabled = true;
-    return;
-  }
-  const query = selected.length
-    ? `?pages=${selected.map((page) => page.page_no).join(",")}`
-    : "";
-  try {
-    const plan = await apiJson(
-      `/api/projects/${currentProject.project_id}/layout/plan${query}`
-    );
-    layoutPlanCache = plan;
-    renderLayoutDetectPlan(plan);
-  } catch (error) {
-    el("layout-detect-plan").textContent =
-      `检测计划读取失败：${error.message || "未知错误"}`;
-    el("layout-detect-start").disabled = true;
-  }
-}
 
 /** 秒 → "约 2 分 10 秒"（粗一点，别给出假精度）。 */
 function formatDuration(seconds) {
@@ -2589,85 +2554,7 @@ function formatDuration(seconds) {
   return rest ? `约 ${minutes} 分 ${rest} 秒` : `约 ${minutes} 分钟`;
 }
 
-function renderLayoutDetectPlan(plan) {
-  const detect = (plan.need_detection || []).length;
-  const fit = (plan.need_fit || []).length;
-  const rows = [];
-  rows.push(
-    `<div class="layout-plan__row"><span>正文页</span><strong>${plan.body_pages || 0}</strong></div>`
-  );
-  rows.push(
-    `<div class="layout-plan__row"><span>已有检测结果</span><strong>${plan.detected || 0}</strong></div>`
-  );
-  rows.push(
-    `<div class="layout-plan__row"><span>这次要检测</span><strong>${detect}</strong></div>`
-  );
-  if (fit) {
-    rows.push(
-      `<div class="layout-plan__row"><span>只补拟合版心</span><strong>${fit}</strong></div>`
-    );
-  }
-  const needs = detect + fit;
-  if (needs) {
-    const perPage = Number(plan.seconds_per_page || 0);
-    // 后端 estimated_seconds 是取整后的整数（0.387 会变成 0）：这里按页数×单页耗时兜底，
-    // 保证「这次要跑的页数 > 0」时不会显示 0 秒。
-    const estimated = Number(plan.estimated_seconds) || needs * perPage;
-    rows.push(
-      `<div class="layout-plan__row"><span>预计耗时</span><strong>${formatDuration(estimated)}</strong></div>`
-    );
-    rows.push(
-      `<div class="layout-plan__row layout-plan__row--muted"><span>单页约</span><span>${perPage.toFixed(2)} 秒</span></div>`
-    );
-  }
-  el("layout-detect-plan").innerHTML = rows.join("");
 
-  const note = el("layout-detect-note");
-  const bits = [];
-  if (detect) {
-    bits.push(
-      plan.estimate_source === "history"
-        ? "耗时按这本书已经跑过的检测实测中位数估算"
-        : "这本书还没跑过检测，耗时按本机实测速度估算"
-    );
-    bits.push("跑的过程中可以暂停 / 取消，进度在右侧任务抽屉里");
-  } else {
-    bits.push("正文页都有检测行了，不需要再检测");
-  }
-  if (fit) bits.push(`另有 ${fit} 页已有检测行，只补拟合版心，不会重检测`);
-  note.textContent = bits.join("；") + "。";
-  note.hidden = false;
-
-  const start = el("layout-detect-start");
-  start.disabled = detect + fit === 0;
-  start.textContent = detect ? `开始检测（${detect} 页）` : fit ? `只补拟合（${fit} 页）` : "没有要做的";
-}
-
-async function startLayoutDetectFromDialog() {
-  if (!currentProject || !layoutPlanCache) return;
-  const plan = layoutPlanCache;
-  const pages = [...(plan.need_detection || []), ...(plan.need_fit || [])];
-  if (!pages.length) return;
-  el("layout-detect-error").hidden = true;
-  el("layout-detect-start").disabled = true;
-  el("layout-detect-start").textContent = "正在建任务…";
-  const data = await startLayoutDetection({ pages, prepare: true });
-  if (!data || !data.job) {
-    // 失败原因就地显示：以前错误写进 #pages-error，对话框一关就看不见了，
-    // 用户的感觉是"点了没反应"——这正是 P1-3 要修的。
-    const node = el("layout-detect-error");
-    node.textContent = window.PagesView.pagesErrorMessage() || "任务没建成，原因未知。";
-    node.hidden = false;
-    el("layout-detect-start").disabled = false;
-    el("layout-detect-start").textContent = "重试";
-    return;
-  }
-  layoutDetectActive = true;
-  // 刀 9.3：判定文字 / 进度条归零 / 状态行三处写点收成一次能力；三处只写版心面板，
-  // 与 closeModal 互不依赖，所以调用位放在 closeModal 之前（verdict 的位置与今天相同）。
-  window.PagesView?.onLayoutDetectStarted(data.job.total || pages.length);
-  closeModal("layout-detect-mask");
-}
 
 /** 检测任务在跑：在版心分区里显示"做了多少 / 还要多久"。 */
 
@@ -4790,9 +4677,6 @@ function setupLibrary() {
     enterReviewStep();
   });
   el("aux-warning-cancel").addEventListener("click", () => closeModal("aux-warning-mask"));
-  el("layout-detect-cancel").addEventListener("click", () => closeModal("layout-detect-mask"));
-  el("layout-detect-cancel-x").addEventListener("click", () => closeModal("layout-detect-mask"));
-  el("layout-detect-start").addEventListener("click", startLayoutDetectFromDialog);
   el("detail-recognize").addEventListener("click", () => {
     if (detailPageNo === null) return;
     const page = currentProject.pages.find((item) => item.page_no === detailPageNo);
@@ -5071,6 +4955,21 @@ function boot() {
     paintReviewMargin: (...args) => window.PageDetailDrawer?.paintReviewMargin(...args),
     drawDetailOverlay: (...args) => window.PageDetailDrawer?.drawDetailOverlay(...args),
   });
+  // 片 10：检测版面的外壳（root = #layout-detect-mask）；layoutDetectActive 仍归外壳
+  window.LayoutDetect?.init({
+    root: el("layout-detect-mask"),
+    getCurrentProject: () => currentProject,
+    apiJson: (...args) => apiJson(...args),
+    openModal: (...args) => openModal(...args),
+    closeModal: (...args) => closeModal(...args),
+    selectionPages: (...args) => selectionPages(...args),
+    getSelectedPages: () => selectedPages,
+    formatDuration: (...args) => formatDuration(...args),
+    startLayoutDetection: (...args) => startLayoutDetection(...args),
+    pagesErrorMessage: (...args) => window.PagesView?.pagesErrorMessage(...args),
+    onLayoutDetectStarted: (...args) => window.PagesView?.onLayoutDetectStarted(...args),
+    setLayoutDetectActive: (value) => { layoutDetectActive = value; return value; },
+  });
   // 片 9：字符规范化（root = #orthography-panel）；两个入口在清理面板里，留外壳转发
   window.Orthography?.init({
     root: el("orthography-panel"),
@@ -5295,7 +5194,7 @@ function boot() {
     openSuggestionApplyPanel: (...args) => window.SuggestionFlow?.openApplyPanel(...args),
     openWordBoxesDialog: (...args) => window.WordBoxes?.openWordBoxesDialog(...args),
     openBackups: (...args) => window.RecoveryPanels?.openBackups(...args),
-    openLayoutDetectDialog: openLayoutDetectDialog,
+    openLayoutDetectDialog: (...args) => window.LayoutDetect?.openLayoutDetectDialog(...args),
     openStatsPanel: openStatsPanel,
     openAssignPanel: (...args) => window.Collab?.openAssignPanel(...args),
     toggleAssignList: (...args) => window.Collab?.toggleAssignList(...args),
