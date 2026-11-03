@@ -90,7 +90,7 @@ function showPageDetailError(error) {
 }
 
 function escapeHtml(text) {
-  return String(text).replace(/[&<>"']/g, (ch) => ({
+  return String(text).replace(new RegExp("[&<>\"']", "g"), (ch) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[ch]));
 }
@@ -5267,12 +5267,6 @@ function setupLibrary() {
     enterReviewStep();
   });
   el("aux-warning-cancel").addEventListener("click", () => closeModal("aux-warning-mask"));
-  el("garbled-close").addEventListener("click", closeGarbledPanel);
-  el("garbled-adopt").addEventListener("click", () => decideGarbledLines("adopted"));
-  el("garbled-keep").addEventListener("click", () => decideGarbledLines("kept"));
-  el("punct-groups-close").addEventListener("click", () => closeModal("punct-groups-mask"));
-  el("punct-groups-done").addEventListener("click", () => closeModal("punct-groups-mask"));
-  el("punct-groups-undo").addEventListener("click", undoPunctBatch);
   el("lock-conflict-close").addEventListener("click", closeLockConflict);
   el("lock-conflict-cancel").addEventListener("click", closeLockConflict);
   el("lock-conflict-force").addEventListener("click", confirmLockConflict);
@@ -5423,342 +5417,10 @@ async function restoreSelectedBackup() {
 // 主队列（左树 / 进度 / 下一处未审）只放含汉字差异的行；这里按模式判，
 // 判完写的是**行级 diff_ack**（和逐条审同一份数据），所以队列数字、导出、撤销全同步。
 
-let punctGroupsData = null;
-let punctGroupsProject = null;
-let punctLastBatch = null;
-let punctBusy = false;
-
-function punctReviewStorageKey() {
-  return currentProject ? `b2t.punctPerLine.${currentProject.project_id}` : "";
-}
-
-/** 被用户点了「逐条看」的模式：这些行回到主队列，逐条审。 */
-function punctReviewSet() {
-  try {
-    const raw = localStorage.getItem(punctReviewStorageKey());
-    return new Set(raw ? JSON.parse(raw) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function savePunctReviewSet(set) {
-  try {
-    localStorage.setItem(punctReviewStorageKey(), JSON.stringify([...set]));
-  } catch {
-    /* 存不下不影响功能：只是下次打开又要选一次 */
-  }
-}
-
-// ── 整行乱码（2026-10-28）────────────────────────────────────────────────
+// ---------------------------------------------------------------- 标点批量 / 整行乱码
 //
-// 识别有时把一整行打散成字母碎片（`phind,  n ons o ns a n onad`），候选是完整句子。
-// 这类行会直接进语料，比个别错字严重，所以单独一类、支持批量采用候选。
+// 已搬进 `punct-batch.js`（`window.PunctBatch`，两个根：#punct-groups-mask / #garbled-mask）。
 
-let garbledData = null;
-let garbledProject = "";
-
-async function refreshGarbledLines() {
-  if (!currentProject) return null;
-  const projectId = currentProject.project_id;
-  try {
-    const data = await apiJson(`/api/projects/${projectId}/review/garbled-lines`);
-    garbledData = data;
-    garbledProject = projectId;
-  } catch (error) {
-    garbledData = null;
-  }
-  renderGarbledBadge();
-  return garbledData;
-}
-
-function renderGarbledBadge() {
-  const badge = el("reading-garbled-count");
-  if (!badge) return;
-  const lines = Number(garbledData?.totals?.lines || 0);
-  badge.textContent = String(lines);
-  const button = el("reading-garbled-open");
-  if (button) button.hidden = lines === 0;
-}
-
-function renderGarbledList() {
-  const list = el("garbled-list");
-  const summary = el("garbled-summary");
-  if (!list) return;
-  list.innerHTML = "";
-  const totals = garbledData?.totals || { lines: 0, candidates: 0, pages: 0 };
-  const items = garbledData?.items || [];
-  if (summary) {
-    const pct = totals.candidates
-      ? ((totals.lines / totals.candidates) * 100).toFixed(2)
-      : "0.00";
-    summary.textContent =
-      `疑似 ${totals.lines} 行（占 ${totals.candidates} 行有候选的 ${pct}%），分布在 ${totals.pages} 页。` +
-      (items.length < totals.lines ? `下面只列前 ${items.length} 行。` : "");
-  }
-  for (const item of items) {
-    const li = document.createElement("li");
-    li.className = "garbled-row";
-    const head = document.createElement("div");
-    head.className = "garbled-row__head";
-    head.textContent = `第 ${item.page_no} 页 · 第 ${item.line_index + 1} 行 · 长度比 ${item.length_ratio}`;
-    const cur = document.createElement("div");
-    cur.className = "garbled-row__cur";
-    cur.textContent = item.text;
-    const cand = document.createElement("div");
-    cand.className = "garbled-row__cand";
-    cand.textContent = item.candidate;
-    li.append(head, cur, cand);
-    list.append(li);
-  }
-  const foot = el("garbled-foot");
-  if (foot) foot.textContent = `共 ${totals.lines} 行，一次全判；可撤销`;
-}
-
-function openGarbledPanel() {
-  if (!garbledData) return;
-  const mask = el("garbled-mask");
-  if (!mask) return;
-  const box = el("garbled-error");
-  if (box) box.hidden = true;
-  renderGarbledList();
-  mask.hidden = false;
-}
-
-function closeGarbledPanel() {
-  const mask = el("garbled-mask");
-  if (mask) mask.hidden = true;
-}
-
-async function decideGarbledLines(ack) {
-  if (!currentProject) return;
-  const box = el("garbled-error");
-  try {
-    const result = await apiJson(
-      `/api/projects/${currentProject.project_id}/review/garbled-lines/decide`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ack }),
-      }
-    );
-    closeGarbledPanel();
-    // 裁决落到行上：marks / 计数 / 进度都要重拉（走既有的"整批之后重开阅读流"）
-    await window.ReadingView.reload();
-    await refreshGarbledLines();
-    window.SuggestionFlow?.showNotice(
-      ack === "adopted"
-        ? `已采用候选 ${result.applied} 行${result.skipped ? `（跳过 ${result.skipped}）` : ""}`
-        : `已标记保留原文 ${result.applied} 行`
-    );
-  } catch (error) {
-    if (box) showError(box, error);
-  }
-}
-
-async function refreshPunctGroups() {
-  if (!currentProject) return null;
-  const projectId = currentProject.project_id;
-  try {
-    const data = await apiJson(`/api/projects/${projectId}/review/punct-groups`);
-    punctGroupsData = data;
-    punctGroupsProject = projectId;
-  } catch (error) {
-    punctGroupsData = { groups: [], totals: { groups: 0, lines: 0, undecided_lines: 0, undecided_groups: 0 } };
-    const box = el("punct-groups-error");
-    if (box) showError(box, error);
-  }
-  renderPunctGroupBadge();
-  return punctGroupsData;
-}
-
-/** 顶栏按钮上的数字：还剩多少行没判（判完就只剩模式数）。 */
-function renderPunctGroupBadge() {
-  const counts = punctGroupsData?.totals || { undecided_lines: 0, undecided_groups: 0 };
-  const set = punctReviewSet();
-  const perLine = (punctGroupsData?.groups || [])
-    .filter((group) => set.has(group.key))
-    .reduce((sum, group) => sum + group.undecided, 0);
-  const badge = el("reading-punct-count");
-  if (badge) {
-    badge.textContent = perLine
-      ? `${counts.undecided_lines} 行`
-      : counts.undecided_groups
-        ? `${counts.undecided_lines} 行 · ${counts.undecided_groups} 组`
-        : "已判完";
-  }
-  const button = el("reading-punct-open");
-  if (button) {
-    button.classList.toggle("is-on", Boolean(counts.undecided_groups));
-    button.title = counts.undecided_groups
-      ? `还有 ${counts.undecided_groups} 种标点模式没判（${counts.undecided_lines} 行）`
-      : "标点差异都已裁决";
-  }
-}
-
-async function openPunctGroups() {
-  el("punct-groups-error").hidden = true;
-  openModal("punct-groups-mask");
-  if (punctGroupsProject !== (currentProject && currentProject.project_id) || !punctGroupsData) {
-    await refreshPunctGroups();
-  }
-  renderPunctGroups();
-}
-
-function renderPunctGroups() {
-  const list = el("punct-groups-list");
-  if (!list) return;
-  list.innerHTML = "";
-  const data = punctGroupsData;
-  if (!data) return;
-  const set = punctReviewSet();
-  const totals = data.totals || {};
-  const pending = (data.groups || []).filter((group) => group.undecided && !set.has(group.key));
-  el("punct-groups-summary").textContent =
-    `${totals.lines || 0} 行纯标点 / 空格差异 · ${totals.groups || 0} 种模式 · ` +
-    (pending.length
-      ? `还有 ${pending.length} 种没判（${pending.reduce((sum, g) => sum + g.undecided, 0)} 行）`
-      : "全部判完了");
-  el("punct-groups-foot").textContent = punctLastBatch
-    ? `最近一次：${punctLastBatch.label}`
-    : "";
-  el("punct-groups-undo").disabled = !punctLastBatch;
-
-  if (!(data.groups || []).length) {
-    const empty = document.createElement("li");
-    empty.className = "muted";
-    empty.textContent = "这本书没有纯标点 / 空格差异。";
-    list.append(empty);
-    return;
-  }
-  for (const group of data.groups) {
-    const perLine = set.has(group.key);
-    const row = document.createElement("li");
-    row.className = "punct-group" + (group.undecided && !perLine ? "" : " is-done");
-
-    const head = document.createElement("div");
-    head.className = "punct-group__head";
-    const pattern = document.createElement("code");
-    pattern.className = "punct-group__pattern";
-    pattern.textContent = group.pattern;
-    const count = document.createElement("span");
-    count.className = "punct-group__count";
-    count.textContent = `${group.count} 行`;
-    const state = document.createElement("span");
-    state.className = "chip chip--gray";
-    if (perLine) {
-      state.textContent = "已转为逐条";
-    } else if (!group.undecided) {
-      state.textContent = group.adopted ? `已采用 ${group.adopted} 行` : `已保留 ${group.kept} 行`;
-      state.className = "chip chip--green";
-    } else if (group.adopted || group.kept) {
-      state.textContent = `已判 ${group.adopted + group.kept} / ${group.count}`;
-      state.className = "chip chip--warn";
-    } else {
-      state.textContent = "未判";
-      state.className = "chip chip--warn";
-    }
-    head.append(pattern, count, state);
-    if (group.hint) {
-      const hint = document.createElement("span");
-      hint.className = "chip chip--warn";
-      hint.textContent = group.hint;
-      hint.title = "这条是系统给的判断依据，不是硬约束；逐条看可以自己定";
-      head.append(hint);
-    }
-
-    const samples = document.createElement("ul");
-    samples.className = "punct-group__samples";
-    for (const sample of group.samples || []) {
-      const item = document.createElement("li");
-      const page = document.createElement("span");
-      page.className = "punct-group__page";
-      page.textContent = `第 ${sample.page_no} 页`;
-      const text = document.createElement("span");
-      text.className = "punct-group__text";
-      text.textContent = sample.text.length > 60 ? `${sample.text.slice(0, 60)}…` : sample.text;
-      item.append(page, text);
-      item.title = `原文：${sample.text}\n候选：${sample.candidate_text}`;
-      samples.append(item);
-    }
-
-    const actions = document.createElement("div");
-    actions.className = "punct-group__actions";
-    const adopt = document.createElement("button");
-    adopt.type = "button";
-    adopt.className = "btn btn--sm btn--pri";
-    adopt.textContent = "全部采用候选";
-    adopt.disabled = Boolean(perLine) || punctBusy;
-    adopt.addEventListener("click", () => decidePunctGroup(group, "adopted"));
-    const keep = document.createElement("button");
-    keep.type = "button";
-    keep.className = "btn btn--sm";
-    keep.textContent = "全部保留原文";
-    keep.disabled = Boolean(perLine) || punctBusy;
-    keep.addEventListener("click", () => decidePunctGroup(group, "kept"));
-    const oneByOne = document.createElement("button");
-    oneByOne.type = "button";
-    oneByOne.className = "btn btn--sm";
-    oneByOne.textContent = perLine ? "收回主队列" : "逐条看";
-    oneByOne.title = "把这几种模式的行放回主队列，逐条审";
-    oneByOne.addEventListener("click", () => {
-      const next = punctReviewSet();
-      if (perLine) next.delete(group.key);
-      else next.add(group.key);
-      savePunctReviewSet(next);
-      renderPunctGroups();
-      window.ReadingView.reload();
-    });
-    actions.append(adopt, keep, oneByOne);
-
-    row.append(head, samples, actions);
-    list.append(row);
-  }
-}
-
-async function decidePunctGroup(group, ack) {
-  if (punctBusy || !currentProject) return;
-  punctBusy = true;
-  el("punct-groups-error").hidden = true;
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/review/punct-groups/decide`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: group.key, ack }),
-      }
-    );
-    punctLastBatch = {
-      label: `${group.pattern} ${ack === "adopted" ? "全部采用" : "全部保留"} ${data.applied} 行`,
-      batchId: data.batch_id,
-    };
-    await refreshPunctGroups();
-    renderPunctGroups();
-    await window.ReadingView.reload();
-  } catch (error) {
-    showError(el("punct-groups-error"), error);
-  } finally {
-    punctBusy = false;
-  }
-}
-
-async function undoPunctBatch() {
-  if (!currentProject || punctBusy) return;
-  punctBusy = true;
-  el("punct-groups-error").hidden = true;
-  try {
-    await apiJson(`/api/projects/${currentProject.project_id}/undo`, { method: "POST" });
-    punctLastBatch = null;
-    await refreshPunctGroups();
-    renderPunctGroups();
-    await window.ReadingView.reload();
-  } catch (error) {
-    showError(el("punct-groups-error"), error);
-  } finally {
-    punctBusy = false;
-  }
-}
 
 /** 批量裁决改了正文：整条阅读流重开一次（marks / 树 / 进度都跟着变）。 */
 
@@ -5851,10 +5513,10 @@ function boot() {
     el,
     getProjectId: () => (currentProject ? currentProject.project_id : null),
     exit: () => showView("pages"),
-    onPunctGroups: () => openPunctGroups(),
-    onGarbledPanel: () => openGarbledPanel(),
+    onPunctGroups: () => window.PunctBatch?.openPunctGroups(),
+    onGarbledPanel: () => window.PunctBatch?.openGarbledPanel(),
     // 任务 94 Slice 2（第一笔）：readingReloadAfterBatch 搬进模块后要读写的审校状态 / 回调
-    renderPunctGroupBadge: () => renderPunctGroupBadge(),
+    renderPunctGroupBadge: () => window.PunctBatch?.renderPunctGroupBadge(),
     // 任务 94 Slice 2（第二笔）：setupReading 的依赖——只注入句柄与 getter/setter，不注入值
     isReadingActive: () => currentView === "reading",
     navigate: (name) => showView(name),
@@ -5866,8 +5528,8 @@ function boot() {
     // 片 5：ack 之后让左树那一行立刻变（不重取树）
     noteReviewAcks: (entries) => window.ReviewTree?.noteAcks(entries),
     // 任务 94 L3：openReading / 行编辑辅助搬进模块后的状态句柄与回调
-    refreshPunctGroups: () => refreshPunctGroups(),
-    refreshGarbledLines: () => refreshGarbledLines(),
+    refreshPunctGroups: () => window.PunctBatch?.refreshPunctGroups(),
+    refreshGarbledLines: () => window.PunctBatch?.refreshGarbledLines(),
     // 任务 94 L4：队列 / 草稿加载 / 视口处理搬进模块后的句柄
     showNoticeBar: (text) => window.SuggestionFlow?.showNotice(text),
     // 任务 94 L5：审校环搬进模块后的状态句柄（状态仍归 app.js，get+set 成对）
@@ -5876,7 +5538,7 @@ function boot() {
     exportOptions: () => window.ExportPanel?.exportOptions(),
     loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
     pageProfileFor: (...args) => window.PageMedia?.pageProfileFor(...args),
-    punctReviewSet: (...args) => punctReviewSet(...args),
+    punctReviewSet: () => window.PunctBatch?.punctReviewSet(),
     // 刀 6：页面工具栏两个开关的 is-on 同步（跨视图能力走注入——R2 不许模块直接引用 window.PagesView）
     syncToolbarToggles: () => window.PagesView?.syncToolbarToggles(),
     // 任务 94 L5：模块要读的常量
@@ -5967,6 +5629,24 @@ function boot() {
     getMarginFitTried: () => marginFitTried,
     paintReviewMargin: (...args) => window.PageDetailDrawer?.paintReviewMargin(...args),
     drawDetailOverlay: (...args) => window.PageDetailDrawer?.drawDetailOverlay(...args),
+  });
+  // 片 6：标点批量 + 整行乱码（两个顶层 mask 两个根；角标节点归阅读视图，经注入给句柄）
+  window.PunctBatch?.init({
+    punctRoot: el("punct-groups-mask"),
+    garbledRoot: el("garbled-mask"),
+    getCurrentProject: () => currentProject,
+    apiJson: (...args) => apiJson(...args),
+    showError: (node, error) => showError(node, error),
+    openModal: (...args) => openModal(...args),
+    closeModal: (...args) => closeModal(...args),
+    getReadingBadges: () => ({
+      punctCount: el("reading-punct-count"),
+      punctOpen: el("reading-punct-open"),
+      garbledCount: el("reading-garbled-count"),
+      garbledOpen: el("reading-garbled-open"),
+    }),
+    reloadReading: () => window.ReadingView.reload(),
+    showNotice: (...args) => window.SuggestionFlow?.showNotice(...args),
   });
   // 片 5：跨页延续面板（root = #continuation-panel，顶层 mask）；状态与接线都归模块
   window.ContinuationReview?.init({

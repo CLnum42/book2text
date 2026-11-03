@@ -5498,6 +5498,8 @@ const DOMAIN_MODULES = [
   { file: "review-tree.js", exposes: "ReviewTree", allowQuerySelector: true },
   // 片 5：跨页延续面板——root = #continuation-panel（顶层 mask，14 个 id 全在子树里）
   { file: "continuation-review.js", exposes: "ContinuationReview", allowQuerySelector: true },
+  // 片 6：标点批量 + 整行乱码——两个顶层 mask 两个根（#punct-groups-mask / #garbled-mask）
+  { file: "punct-batch.js", exposes: "PunctBatch", allowQuerySelector: true },
 ];
 
 /**
@@ -5520,6 +5522,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "page-grid.js",
   "review-tree.js",
   "continuation-review.js",
+  "punct-batch.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {
