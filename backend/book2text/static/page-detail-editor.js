@@ -24,6 +24,9 @@
   let detailSuggestions = [];
   let reviewPendingSave = null; // {block, text}：还没发出去的自动保存
   let reviewSaveTimer = null;
+  // 上一次渲染块列表的页号：只有"打开 / 切页"才复位错误条与保存标签，
+  // 保存成功后同页重渲染不能把「已保存 ✓」立刻抹掉。
+  let lastRenderedPageNo = null;
 
   const part = (id) => (root ? root.querySelector(`#${id}`) : null);
 
@@ -721,8 +724,61 @@ function autoSizeTextarea(textarea) {
   textarea.style.height = `${height}px`;
 }
 
+/** 这一页是不是包项目里的只读上下文页（后端 guard 之外的前端第一道）。 */
+function contextPageReadOnly() {
+  const page = injected.detailPageRecord();
+  return Boolean(page && page.is_context);
+}
+
+/** PATCH 失败 / 被只读拦下：把控件退回操作前的值（下拉回 block_type、文本框回 block.text）。 */
+function rollbackPatchControl(block, patch) {
+  const list = part("detail-blocks");
+  if (!list) return;
+  const item = list.querySelector(`li[data-block-id="${block.block_id}"]`);
+  if (!item) return;
+  if ("block_type" in patch) {
+    const select = item.querySelector("select.review-block__type");
+    if (select) select.value = block.block_type;
+  }
+  if ("text" in patch) {
+    const textarea = item.querySelector("textarea.review-block__text");
+    if (textarea) textarea.value = block.text;
+  }
+}
+
+/** 上下文页：块列表顶部一条只读标识，所有可编辑控件 disabled（状态不是错误）。 */
+function applyReadOnlyNotice(list) {
+  if (!contextPageReadOnly() || !list) return;
+  const note = document.createElement("li");
+  note.className = "review-block review-block--readonly";
+  note.dataset.readonlyNote = "1";
+  note.textContent = "只读上下文页：这一页随任务包附带，用来判断跨页段落；控件已禁用，改动不会保存。";
+  list.prepend(note);
+  for (const node of list.querySelectorAll("select, textarea, input, button")) {
+    node.disabled = true;
+  }
+}
+
+/** 强制改动被拦下时改一次提示文案（不写 page-detail-error，也不污染保存标签）。 */
+function flashReadOnlyNotice() {
+  const list = part("detail-blocks");
+  const note = list && list.querySelector('[data-readonly-note="1"]');
+  if (note) note.textContent = "只读上下文页：这次改动没有保存，控件已回滚。";
+}
+
 function renderReviewBlocks(blocks) {
   const list = part("detail-blocks");
+  // 按页复位：打开 / 切页时清上一条错误、保存标签回初始值（上下文页不是错误）。
+  const pageNow = injected.getDetailPageNo();
+  if (pageNow !== lastRenderedPageNo) {
+    lastRenderedPageNo = pageNow;
+    const errorNode = part("page-detail-error");
+    if (errorNode) {
+      errorNode.hidden = true;
+      errorNode.textContent = "";
+    }
+    injected.setSaveState("");
+  }
   list.innerHTML = "";
   const page = injected.detailPageRecord();
   // 任务 53：默认只列版心内的块；版心外 / 全部可切换。过滤只影响"显示哪些卡片"，
@@ -760,11 +816,13 @@ function renderReviewBlocks(blocks) {
           : "切到「全部」可以查看所有块。");
     }
     list.append(empty);
+    applyReadOnlyNotice(list);
     return;
   }
   visible.forEach((block, index) =>
     list.append(blockCard(block, index, visible.length))
   );
+  applyReadOnlyNotice(list);
 }
 
 function selectReviewBlock(blockId, options = {}) {
@@ -838,6 +896,12 @@ async function adoptLine(block, lineIndex, candidate) {
 
 async function patchBlock(block, patch) {
   if (!injected.getCurrentProject()) return;
+  // 上下文页是「只读状态」不是错误：不发请求、不写错误条，回滚控件并给一次提示。
+  if (contextPageReadOnly()) {
+    rollbackPatchControl(block, patch);
+    flashReadOnlyNotice();
+    return;
+  }
   injected.setSaveState("保存中…");
   // 保存完会整页重渲染：先把"正在改哪一块、光标在哪"记下来，回来再接上。
   // 不这么做的话，打字打到一半自动保存就会把光标顶掉。
@@ -868,6 +932,8 @@ async function patchBlock(block, patch) {
       await injected.loadPageDetail(injected.getDetailPageNo());
       return;
     }
+    // 任何 PATCH 失败（含后端 403）都先回滚控件，再报一次错——别让下拉停在没保存的值上。
+    rollbackPatchControl(block, patch);
     injected.setSaveState(error.message || "保存失败", true);
   }
 }

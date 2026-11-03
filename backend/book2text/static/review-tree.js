@@ -42,8 +42,18 @@ let reviewTreeItemRows = new Map(); // `${blockId}:${lineIndex}` -> {row, dot, i
 const TREE_DIFF_LEVELS = new Set(["differs_chars", "differs_punct", "no_candidate"]);
 
 async function ensureReviewTree() {
-  if (!injected.getCurrentProject()) return;
-  if (reviewTree && reviewTreeProjectId === injected.getCurrentProject().project_id) {
+  const project = injected.getCurrentProject();
+  if (!project) return;
+  // 包项目没有章节导航：树是主项目的回目/页导航，包里只有 2 任务页 + 2 上下文页。
+  // 树请求带 require_main_project（routes_review_status.py:106-109）⇒ 包里必然 403，
+  // 以前会把「审校任务里不能做这个操作」写进 page-detail-error（打开任何页都弹）。
+  // 不给后端开口子，这里直接不发请求，并把自己的根收起来（root 归本模块，TREE owner）。
+  if (project.kind === "package") {
+    if (root) root.hidden = true;
+    return;
+  }
+  if (root) root.hidden = false;
+  if (reviewTree && reviewTreeProjectId === project.project_id) {
     syncReviewTreeToPage(injected.getDetailPageNo(), { scroll: false });
     return;
   }
