@@ -1687,6 +1687,38 @@ def test_cleanup_actions_are_wired_into_the_finish_panel() -> None:
     assert "整批可撤销" in script or "可撤销" in script
 
 
+def test_modal_panels_always_sit_above_the_finish_drawer() -> None:
+    """收尾抽屉不许压住模态面板：面板的 ✕ / 完成 必须点得到。
+
+    2026-11-03 QA 总验收：`.finish-drawer` 曾是 z-index 90、`.mask` 是 60。
+    从「收尾 → 数据清理」打开跨页延续 / 引号清单，或在阅读视图打开乱码时，
+    面板右侧的 ✕ / 完成 落进抽屉覆盖区（elementFromPoint 命中的是 .finish-main /
+    .finish-row-page-type），点不到、只能按 Esc。现在抽屉降到 mask 之下。
+    """
+    styles = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    def z_index(selector: str) -> int:
+        start = styles.index(f"{selector} {{")
+        body = styles[start:styles.index("}", start)]
+        match = re.search(r"z-index:\s*(\d+)", body)
+        assert match, f"{selector} 没写 z-index"
+        return int(match.group(1))
+
+    mask_z = z_index(".mask")
+    drawer_z = z_index(".finish-drawer")
+    assert drawer_z < mask_z, (
+        f"收尾抽屉 z-index {drawer_z} 必须低于 .mask {mask_z}，"
+        "否则从抽屉里打开的面板，✕ / 完成 被抽屉盖住"
+    )
+
+    # 三个面板都是 .mask 根：抽屉降层之后它们天然压在抽屉之上
+    for element_id in ("continuation-panel", "orthography-panel", "garbled-mask"):
+        index = page.index(f'id="{element_id}"')
+        tag = page[page.rindex("<div", 0, index):index]
+        assert 'class="mask"' in tag, f"#{element_id} 不是 .mask 根，抽屉降层保证不了它在上层"
+
+
 def test_continuation_review_entry_and_panel_are_wired() -> None:
     """任务 42 / 43（G 刀）：第三桶有入口；面板左右分栏、键盘优先、判完自动跳。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")

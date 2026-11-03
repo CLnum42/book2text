@@ -1631,8 +1631,14 @@ body.diff-mode .page-overlay .box--active {
 .finish-chip.is-done { color: var(--ok-text); border-color: #b7dfc6; background: var(--ok-soft); }
 .phead .finish-chip { height: 26px; padding: 0 8px; font-size: 11px; }
 
+/* 层级：必须低于 `.mask`（60），不能压在任何模态面板之上。
+   收尾抽屉里能打开跨页延续 / 引号清单，阅读角标能打开乱码，三者都是 `.mask`；
+   抽屉一旦在它们之上，面板右侧的 ✕ / 完成 就落进抽屉覆盖区（elementFromPoint 命中的是
+   .finish-main 或 .finish-row-page-type），点不到、只能按 Esc（QA 2026-11-03 总验收）。
+   规矩：所有模态面板永远在抽屉之上 ⇒ 抽屉降到 mask 之下，而不是给面板挨个提层。
+   55 仍高于任务抽屉 `.drawer`（40）与页面内浮层（30），低于 `.mask`（60）。 */
 .finish-drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 90;
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 55;
   width: 480px; max-width: 92vw; background: var(--surface);
   border-left: 1px solid var(--line); box-shadow: -12px 0 30px rgba(16, 24, 40, .16);
   display: flex; flex-direction: column;
