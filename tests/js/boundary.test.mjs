@@ -5491,6 +5491,9 @@ const DOMAIN_MODULES = [
   // ⇒ 走 allowQuerySelector 分支（document 级查询仍然 0）。生产侧契约见文件头，
   // 与 margin-data.js 的消费侧契约对应。
   { file: "page-grid.js", exposes: "PageGrid", allowQuerySelector: true },
+  // 片 3b：页面图像——缩放档位 / 图档选择 / 宽度测量（服务模块，无 root、不自建 DOM）：
+  // element 由调用方给，模块只量宽 + 拼 URL ⇒ 连 querySelector 都是 0 次。
+  { file: "page-media.js", exposes: "PageMedia" },
 ];
 
 /**

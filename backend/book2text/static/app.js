@@ -139,8 +139,6 @@ let lastStepPanelKey = null;
 let marginFitRunning = false;
 /** 本次会话里已经尝试拟合过的页：拟合不出来（没有检测行）的页不要反复重试。 */
 const marginFitTried = new Set();
-/** 页面视图缩放是否被用户手动改过：改过之后切步骤一律不动缩放。 */
-let pageZoomTouched = false;
 /** 版心编辑的撤销栈（前端内存，最多 20 步）：拖动只写一次库，撤销也是写一次。 */
 const marginUndoStack = [];
 
@@ -879,12 +877,12 @@ function goToWorkflowStep(id) {
     enterReviewStep();
   } else if (id === "index") {
     // 目录确认是单页预览：没手动改过缩放时给 100%（与页面视图的"单页"同一档）。
-    if (!pageZoomTouched && pageZoomIndex < 3) pageZoomIndex = 3;
+    if (!window.PageMedia?.getPageZoomTouched() && window.PageMedia?.getPageZoomIndex() < 3) window.PageMedia?.setPageZoomIndex(3);
     showView("index");
   } else if (id === "preview") {
     // 结果预览是逐页读正文：没手动改过缩放时给 100%（与目录确认同一档），
-    // 缩放仍然是 `pageZoomIndex` 同一份状态。
-    if (!pageZoomTouched && pageZoomIndex < 3) pageZoomIndex = 3;
+    // 缩放仍然是 page-media.js 里那同一份档位状态。
+    if (!window.PageMedia?.getPageZoomTouched() && window.PageMedia?.getPageZoomIndex() < 3) window.PageMedia?.setPageZoomIndex(3);
     showView("preview");
   } else {
     showView("pages");
@@ -895,8 +893,8 @@ function goToWorkflowStep(id) {
   workflowStepPinned = true;
   // 进「版心确认」时给一个整页档（网格缩略图看不清四边，也不方便拖）；
   // 用户自己动过缩放就一律不动——切步骤不能把缩放跳回去。
-  if (!pageZoomTouched && id === "margin" && pageZoomIndex === 0) {
-    pageZoomIndex = 3;
+  if (!window.PageMedia?.getPageZoomTouched() && id === "margin" && window.PageMedia?.getPageZoomIndex() === 0) {
+    window.PageMedia?.setPageZoomIndex(3);
     applyPageZoom();
   }
   syncWorkflowSteps();
@@ -1013,7 +1011,7 @@ async function loadAppInfo() {
 
   // 任务 72：页图档位表由服务端给（40/150/220/300），别在前端再写一份
   if (info.render_profiles && typeof info.render_profiles === "object") {
-    renderProfiles = { ...renderProfiles, ...info.render_profiles };
+    window.PageMedia?.applyRenderProfiles(info.render_profiles);
   }
   el("stage-tag").textContent = info.app.stage;
   el("version-label").textContent = `版本 ${info.app.version}`;
@@ -1742,15 +1740,6 @@ function renderProjectMeta() {
 const selectedPages = new Set();
 let selectionAnchor = null;
 
-// 页面视图的缩放档位（第 38 号任务）：
-// 网格 / 大网格 用 thumb 或 view，单列用 view，单页用 zoom；大图档才允许开块框。
-const PAGE_ZOOM_LEVELS = [
-  { label: "网格", cols: "auto", image: "thumb" },
-  { label: "大网格", cols: 3, image: "view" },
-  { label: "单列", cols: 1, image: "mid" },
-  { label: "单页", cols: 1, image: "zoom2" },
-];
-let pageZoomIndex = 0;
 let pagesOverlayOn = false;
 /** 版心视图开关（默认关，按项目记住）。打开后压暗版心外、画出版心框。 */
 let pagesMarginOn = false;
@@ -2101,110 +2090,14 @@ async function openPageSetup() { return window.PagesView.openPageSetup.apply(win
 function confirmAllUnconfirmed() { return window.PagesView.confirmAllUnconfirmed.apply(window.PagesView, arguments); }
 
 // ---------------------------------------------------------------- 页面视图缩放与块框
-
-function pageZoomLevel() {
-  return PAGE_ZOOM_LEVELS[pageZoomIndex];
-}
-
-/**
- * 页图档位（任务 62）。
- *
- * 审校 / 目录确认的页图原来是固定 150 DPI（`view`）：447pt 宽的页渲染成约 931 px，
- * 而 Retina 屏上这一页显示约 880 CSS px = **1760 设备像素**，等于放大 2 倍，所以糊。
- * 现在按设备像素比选档：Retina + 够宽的窗口用 `zoom`（300 DPI），否则还是 `view`。
- * 体积靠 JPEG q=82 压下来（view 0.22 MB / zoom 0.62 MB，PNG 分别要 1.77 MB / 约 7 MB）。
- */
-/** 页图档位 → DPI；启动时用 `/api/app/info` 的值覆盖（前后端只留一份真值）。 */
-let renderProfiles = { thumb: 40, view: 150, mid: 220, zoom: 300, zoom2: 350 };
-/** 清晰度：auto = 按实际需要的像素选档；standard / high = 用户手动钉住。 */
-
-const IMAGE_PROFILE_ORDER = ["view", "mid", "zoom", "zoom2"];
-
-/** 某一档在一页上渲染出来的**像素宽度**（页面宽度 pt → px）。 */
-function profileWidthPx(profile, widthPt) {
-  const dpi = Number(renderProfiles[profile] || 150);
-  return Math.round(((Number(widthPt) || 612) / 72) * dpi);
-}
-
-function pageWidthPt(pageNo) {
-  const page = currentProject
-    ? (currentProject.pages || []).find((item) => item.page_no === pageNo)
-    : null;
-  return page ? Number(page.width_pt) || 612 : 612;
-}
-
-/**
- * 按"这张图实际要显示多少设备像素"选档（任务 72）。
- *
- * **上一版用窗口宽度判断是错的**：真正决定清晰度的是容器 CSS 宽度 × devicePixelRatio。
- * 实测（612pt 页、dpr 2、目录确认）：940px 窗口 + 140% 缩放时容器 830 CSS px、
- * 需要 1660 设备像素，而规则给了 `view`（1275px）→ **比例 0.77，被拉大 1.3 倍**。
- * 现在按比例选：需要 1660 → 取 `mid`（1870px），比例 1.13。
- */
-function detailImageProfile(cssWidth, widthPt) {
-  // 刀 C：档位状态搬进 page-index.js；这里每次现读（模块未载入时退回 auto，与搬走前默认值一致）
-  const quality = window.PageIndexService?.getImageQuality() || "auto";
-  if (quality === "standard") return "view";
-  if (quality === "high") return "zoom";
-  const dpr = Number(window.devicePixelRatio || 1);
-  const need = Math.max(0, Number(cssWidth) || 0) * dpr;
-  if (!need) return "view";
-  for (const profile of IMAGE_PROFILE_ORDER) {
-    if (profileWidthPx(profile, widthPt) >= need) return profile;
-  }
-  // 都不够时给最高档（不再写死 "zoom"：加档后最高档变了，写死会让 350 这一档永远拿不到）
-  return IMAGE_PROFILE_ORDER[IMAGE_PROFILE_ORDER.length - 1];
-}
-
-/** 对一个页块取档：量它的 CSS 宽，配这一页的 pt 宽。 */
-function pageProfileFor(element, pageNo) {
-  const cssWidth = measureCssWidth(element);
-  return detailImageProfile(cssWidth, pageWidthPt(pageNo));
-}
-
-/**
- * 量一个元素"将来会显示成多宽"（CSS px）。
- *
- * 优先 `getBoundingClientRect`；隐藏 / 还没布局时退回 `offsetWidth`、父元素宽度，
- * 最后按视口估一个（宁可给高一档，也不要因为量到 0 而拿到最模糊的图）。
- */
-function measureCssWidth(element) {
-  if (!element) return 0;
-  const rect = element.getBoundingClientRect();
-  if (rect.width > 1) return rect.width;
-  const offset = element.offsetWidth || 0;
-  if (offset > 1) return offset;
-  const parent = element.parentElement;
-  if (parent) {
-    const parentRect = parent.getBoundingClientRect();
-    if (parentRect.width > 1) return parentRect.width;
-  }
-  return Math.max(320, Number(window.innerWidth || 0) * 0.5);
-}
-
-function pageImageUrl(pageNo, size) {
-  return (
-    `/api/projects/${currentProject.project_id}/pages/${pageNo}/image?size=${size}` +
-    `&token=${encodeURIComponent(token)}`
-  );
-}
+//
+// 缩放档位 / 图档选择 / 宽度测量已搬进 page-media.js（片 3b）。外壳只留
+// `applyPageZoom()` 这层转发与页面视图自己的控件接线。
 
 // 瓷砖在滚动内容里的位置：渲染 / 缩放时缓存一次，滚动时不再每帧量 267 个矩形。
 let pageTileMetrics = null;
 
 function applyPageZoom() { return window.PagesView.applyPageZoom.apply(window.PagesView, arguments); }
-
-function setPageZoom(delta) {
-  const next = Math.min(
-    PAGE_ZOOM_LEVELS.length - 1,
-    Math.max(0, pageZoomIndex + delta)
-  );
-  if (next === pageZoomIndex) return;
-  // 用户自己改过缩放之后，切步骤不再按"每步默认缩放"动它（任务 36B）。
-  pageZoomTouched = true;
-  pageZoomIndex = next;
-  applyPageZoom();
-}
 
 function togglePageBlocksOverlay() { return window.PagesView.togglePageBlocksOverlay.apply(window.PagesView, arguments); }
 
@@ -4993,7 +4886,7 @@ function continuationPageBlock(pageNo, bbox, tagText) {
   if (page) wrap.style.aspectRatio = `${page.width_pt} / ${page.height_pt}`;
   const image = document.createElement("img");
   image.alt = `第 ${pageNo} 页`;
-  image.src = pageImageUrl(pageNo, detailImageProfile(wrap.clientWidth || 600, page.width_pt));
+  image.src = window.PageMedia?.pageImageUrl(pageNo, window.PageMedia?.detailImageProfile(wrap.clientWidth || 600, page.width_pt));
   wrap.append(image);
   if (Array.isArray(bbox) && bbox.length === 4) {
     const mark = document.createElement("div");
@@ -5074,7 +4967,7 @@ function prefetchContinuationPages(entry) {
   // 下一张卡片的两页先拉进缓存，翻条不用等
   for (const pageNo of [entry.page_no, entry.next_page_no]) {
     const image = new Image();
-    image.src = pageImageUrl(pageNo, detailImageProfile(600, pageWidthPt(pageNo)));
+    image.src = window.PageMedia?.pageImageUrl(pageNo, window.PageMedia?.detailImageProfile(600, window.PageMedia?.pageWidthPt(pageNo)));
   }
 }
 
@@ -6858,7 +6751,7 @@ function boot() {
     // 任务 94 L5：审校环里仍留在 app.js 的叶子函数（模块经注入调用）
     exportOptions: () => window.ExportPanel?.exportOptions(),
     loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
-    pageProfileFor: (...args) => pageProfileFor(...args),
+    pageProfileFor: (...args) => window.PageMedia?.pageProfileFor(...args),
     punctReviewSet: (...args) => punctReviewSet(...args),
     // 刀 6：页面工具栏两个开关的 is-on 同步（跨视图能力走注入——R2 不许模块直接引用 window.PagesView）
     syncToolbarToggles: () => window.PagesView?.syncToolbarToggles(),
@@ -6869,7 +6762,7 @@ function boot() {
     // L6 刀1：仍留在 app.js 的叶子函数
     clearImagePlaceholder: (...args) => window.PageIndexService?.clearImagePlaceholder(...args),
     clearTileMargin: (...args) => window.MarginData?.clearTileMargin(...args),
-    pageImageUrl: (...args) => pageImageUrl(...args),
+    pageImageUrl: (...args) => window.PageMedia?.pageImageUrl(...args),
     // L6 刀2：仍留在 app.js 的叶子函数
     computeCharSpans: (...args) => computeCharSpans(...args),
     // L6 刀3：状态 getter
@@ -6941,13 +6834,22 @@ function boot() {
     setReviewMarginOn: (value) => { reviewMarginOn = value; return value; },
     getTileByPageNo: (pageNo) => document.querySelector(`#page-grid .page-tile[data-page-no="${pageNo}"]`),
   });
+  // 片 3b：缩放档位 / 图档选择 / 宽度测量（状态在模块里；外壳只给项目、token、dpr、视口宽）
+  window.PageMedia?.init({
+    getCurrentProject: () => currentProject,
+    getToken: () => token,
+    getImageQuality: () => window.PageIndexService?.getImageQuality() || "auto",
+    getDevicePixelRatio: () => Number(window.devicePixelRatio || 1),
+    getViewportWidth: () => Number(window.innerWidth || 0),
+    applyPageZoom: () => window.PagesView?.applyPageZoom(),
+  });
   // 片 3a：页面网格的瓦片生产 + 块缓存（服务模块，无 root）。buildTile 造的就是
   // margin-data.js 消费侧契约的那棵树，两边改一处必须同时改。
   window.PageGrid?.init({
     getCurrentProject: () => currentProject,
     getSelectedPages: () => selectedPages,
     getBusyPages: () => busyPages,
-    getPageZoomIndex: () => pageZoomIndex,
+    getPageZoomIndex: () => window.PageMedia?.getPageZoomIndex(),
     getToken: () => token,
     PAGE_TYPE_LABELS,
     pageBlockCache,
@@ -7012,7 +6914,7 @@ function boot() {
     pageSuggestionCache: pageSuggestionCache,
     pageSuggestionFailed: pageSuggestionFailed,
     getPageTileMetrics: () => pageTileMetrics,
-    getPageZoomIndex: () => pageZoomIndex,
+    getPageZoomIndex: () => window.PageMedia?.getPageZoomIndex(),
     getPagesMarginOn: () => pagesMarginOn,
     getPagesOverlayOn: () => pagesOverlayOn,
     getPanelAccordionProject: () => panelAccordionProject,
@@ -7077,7 +6979,7 @@ function boot() {
     // 这里换上新能力 showPageDetailError（写 #page-detail-error 的那一个动作）
     showPageDetailError: showPageDetailError,
     setMarginJudgementSetting: (...args) => window.SuggestionFlow?.setMarginJudgement(...args),
-    setPageZoom: setPageZoom,
+    setPageZoom: (...args) => window.PageMedia?.setPageZoom(...args),
     busyPages: busyPages,
     setPanelAccordionProject: (value) => { panelAccordionProject = value; return value; },
     setMarginAuditLoading: (value) => { marginAuditLoading = value; return value; },
@@ -7118,13 +7020,13 @@ function boot() {
     syncWorkflowSteps: syncWorkflowSteps,
     undoAutoApply: (...args) => window.SuggestionFlow?.undoAutoApply(...args),
     updateFinishChips: updateFinishChips,
-    PAGE_ZOOM_LEVELS: PAGE_ZOOM_LEVELS,
+    PAGE_ZOOM_LEVELS: window.PageMedia?.zoomLevels,
     RESTORE_DETAIL_TEXT: RESTORE_DETAIL_TEXT,
     applyRecognizedPages: applyRecognizedPages,
     confirmAction: confirmAction,
     humanTouchedPages: humanTouchedPages,
-    pageImageUrl: pageImageUrl,
-    pageZoomLevel: pageZoomLevel,
+    pageImageUrl: (...args) => window.PageMedia?.pageImageUrl(...args),
+    pageZoomLevel: (...args) => window.PageMedia?.pageZoomLevel(...args),
     warnUnconfirmed: (...args) => window.PageConfirm.warnUnconfirmed(...args),
     firstUnfinishedPanel: (...args) => window.PageConfirm.firstUnfinishedPanel(...args),
     getJobStartPending: () => jobStartPending,
@@ -7162,9 +7064,9 @@ function boot() {
     getImageQualityMode: () => window.PageIndexService?.getImageQuality() || "auto",
     setImageQuality: (mode) => window.PageIndexService?.setImageQuality(mode),
     // 缩放四档（三步共用）
-    getPageZoomIndex: () => pageZoomIndex,
-    setPageZoomIndex: (value) => { pageZoomIndex = value; return value; },
-    setPageZoomTouched: (value) => { pageZoomTouched = value; return value; },
+    getPageZoomIndex: () => window.PageMedia?.getPageZoomIndex(),
+    setPageZoomIndex: (value) => window.PageMedia?.setPageZoomIndex(value),
+    setPageZoomTouched: (value) => window.PageMedia?.setPageZoomTouched(value),
     // 版心 / 块框开关（三步共用）
     getPagesMarginOn: () => pagesMarginOn,
     setPagesMarginOn: (value) => { pagesMarginOn = value; return value; },
@@ -7180,8 +7082,8 @@ function boot() {
     getPageIndexLoading: () => window.PageIndexService?.isLoading(),
     loadPageIndex: (...args) => window.PageIndexService?.loadIndex(...args),
     // 页面渲染的共用叶子函数（页面视图、预览、目录三处一套）
-    pageImageUrl: (...args) => pageImageUrl(...args),
-    pageProfileFor: (...args) => pageProfileFor(...args),
+    pageImageUrl: (...args) => window.PageMedia?.pageImageUrl(...args),
+    pageProfileFor: (...args) => window.PageMedia?.pageProfileFor(...args),
     blockCountedInMargin: (...args) => window.MarginData?.blockCountedInMargin(...args),
     clearTileMargin: (...args) => window.MarginData?.clearTileMargin(...args),
     paintTileMargin: (...args) => window.MarginData?.paintTileMargin(...args),
@@ -7232,7 +7134,7 @@ function boot() {
     setLastStepPanelKey: (v) => { lastStepPanelKey = v; return v; },
     setLibraryProjects: (v) => { libraryProjects = v; return v; },
     setMarginSuggestion: (v) => { marginSuggestion = v; return v; },
-    setPageZoomTouched: (v) => { pageZoomTouched = v; return v; },
+    setPageZoomTouched: (v) => window.PageMedia?.setPageZoomTouched(v),
     setPagesMarginOn: (v) => { pagesMarginOn = v; return v; },
     setPagesOverlayOn: (v) => { pagesOverlayOn = v; return v; },
     setReviewBlockFilter: (v) => { reviewBlockFilter = v; return v; },
@@ -7272,12 +7174,12 @@ function boot() {
     getPageIndexData: () => window.PageIndexService?.getData(),
     getPageIndexLoading: () => window.PageIndexService?.isLoading(),
     getPageIndexProject: () => window.PageIndexService?.getProject(),
-    getPageZoomIndex: () => pageZoomIndex,
+    getPageZoomIndex: () => window.PageMedia?.getPageZoomIndex(),
     getPagesMarginOn: () => pagesMarginOn,
     getPagesOverlayOn: () => pagesOverlayOn,
     // 状态 setter（只有确实有写点的 4 个）
-    setPageZoomIndex: (value) => { pageZoomIndex = value; return value; },
-    setPageZoomTouched: (value) => { pageZoomTouched = value; return value; },
+    setPageZoomIndex: (value) => window.PageMedia?.setPageZoomIndex(value),
+    setPageZoomTouched: (value) => window.PageMedia?.setPageZoomTouched(value),
     setPagesMarginOn: (value) => { pagesMarginOn = value; return value; },
     setPagesOverlayOn: (value) => { pagesOverlayOn = value; return value; },
     // 常量 / 共享服务
@@ -7291,8 +7193,8 @@ function boot() {
     paintTileMargin: (...args) => window.MarginData?.paintTileMargin(...args),
     loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
     loadPageIndex: (...args) => window.PageIndexService?.loadIndex(...args),
-    pageImageUrl: (...args) => pageImageUrl(...args),
-    pageProfileFor: (...args) => pageProfileFor(...args),
+    pageImageUrl: (...args) => window.PageMedia?.pageImageUrl(...args),
+    pageProfileFor: (...args) => window.PageMedia?.pageProfileFor(...args),
     savePageMarginPreference: (...args) => window.MarginData?.savePageMarginPreference(...args),
     savePageOverlayPreference: (...args) => savePageOverlayPreference(...args),
     syncIndexToggles: () => window.IndexView?.refresh(),
