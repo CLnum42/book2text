@@ -1,12 +1,14 @@
 """项目锁的生命周期（任务 60）：判死、心跳、接管、启动清理。
 
-2026-10-27 用户删项目被"另一台电脑 MacBook-Air-2.local"挡住，而那台电脑就是本机
-改了名（→ MacBook-Air-3.local）、锁是应用被强杀后留下的死锁。这一组用例把那张
-判定表逐行钉住，重点是三件事：
+2026-10-27 用户删项目被"另一台电脑"挡住，而那台电脑就是本机改了名、锁是应用被强杀后
+留下的死锁。这一组用例把那张判定表逐行钉住，重点是三件事：
 
-1. 同机 + 进程已死 → 过期，可以直接接管（不能再问用户）；
+1. 同机（**machine_id 相同**，与主机名无关）+ 进程已死 → 过期，可以直接接管；
 2. 跨机 + 心跳停了 → 过期，但**要用户确认**；心跳正常 → 真占用；
 3. 真占用（另一个活进程）**不接受强制**——那是两台电脑同时写一个 SQLite 的前置条件。
+
+机器身份是**持久化 UUID**（首次运行生成、存在库根），不是主机名、也不是硬件指纹：
+主机名会改，硬件指纹在 CI runner 上每台都不同——两者都不能当"同一台机器"的判据。
 """
 
 from __future__ import annotations
@@ -48,9 +50,17 @@ def write_lock(
     pid: int,
     acquired_at: str = "2026-01-01T00:00:00+00:00",
     heartbeat_at: str = "",
-    machine_id: str = "",
+    machine_id: str | None = None,
 ) -> None:
+    """造一把锁。
+
+    `machine_id=None`（默认）⇒ 写成**本机**的 id（"造一把本机锁"，绝大多数用例要这个）；
+    显式传 `""` ⇒ 真的没有 machine_id（老版本写的锁 ⇒ 未知机器）。
+    """
+    if machine_id is None:
+        machine_id = lock.machine_id_for(project_dir.parent)
     payload = {
+        "schema": 2 if machine_id else 1,
         "hostname": hostname,
         "pid": pid,
         "acquired_at": acquired_at,
@@ -106,29 +116,68 @@ def test_own_pid_is_mine(project_dir: Path) -> None:
     assert status.mine is True
 
 
-def test_old_hostname_of_this_machine_counts_as_stale(project_dir: Path) -> None:
-    """本机改名（MacBook-Air-2 → -3）后，老锁不能被当成"另一台电脑"。"""
-    write_lock(project_dir, hostname="MacBook-Air-2.local", pid=999_998)
+MACHINE_A = "11111111-1111-4111-8111-111111111111"
+MACHINE_B = "22222222-2222-4222-8222-222222222222"
+
+
+def _pin_machine_id(library_root: Path, machine_id: str) -> None:
+    """把"本机 id"钉成测试想要的值（产品读同一个文件）。"""
+    (library_root / lock.MACHINE_ID_FILE_NAME).write_text(machine_id, encoding="utf-8")
+
+
+def test_same_machine_id_counts_as_stale_even_if_hostname_changed(
+    project_dir: Path,
+) -> None:
+    """同 id + 主机名不同 ⇒ 本机旧锁，直接接管（判据只看 id，不看名字）。"""
+    _pin_machine_id(project_dir.parent, MACHINE_A)
+    write_lock(
+        project_dir,
+        hostname="Old-Name.local",
+        pid=999_998,
+        machine_id=MACHINE_A,
+    )
 
     status = lock.status(project_dir)
 
     assert status.state == lock.STATE_EXPIRED_SAME_MACHINE
-    assert status.previous_hostname is True
-    assert "本机以前的主机名" in status.describe()
+    assert status.same_machine is True
+    assert status.can_take_over is True
 
 
-def test_old_hostname_with_living_process_is_held(
-    project_dir: Path, live_process: int
-) -> None:
-    """同名前缀 + 进程还活着 → 保守当占用（可能是另一台同前缀的机器）。"""
-    write_lock(project_dir, hostname="MacBook-Air-2.local", pid=live_process)
+def test_different_machine_id_is_other_machine(project_dir: Path) -> None:
+    """异 id ⇒ 另一台电脑：心跳老了才算过期，且要用户确认（不是本机死锁）。"""
+    _pin_machine_id(project_dir.parent, MACHINE_A)
+    write_lock(
+        project_dir,
+        hostname=lock._hostname(),
+        pid=999_998,
+        machine_id=MACHINE_B,
+    )
 
     status = lock.status(project_dir)
 
-    if lock._host_stem(lock._hostname()) == "macbook-air":
-        assert status.state == lock.STATE_HELD
-    else:  # 跑在别的机器名上时这条前缀判定不成立
-        assert status.state in (lock.STATE_HELD, lock.STATE_EXPIRED_OTHER_MACHINE)
+    assert status.state == lock.STATE_EXPIRED_OTHER_MACHINE
+    assert status.same_machine is False
+    assert status.stale is False
+    assert status.machine_known is True
+
+
+def test_legacy_lock_without_machine_id_is_unknown_machine(project_dir: Path) -> None:
+    """老锁没有 machine_id ⇒ **未知机器**：只走心跳/超时，绝不自动接管。
+
+    主机名一样也不算本机——名字是显示的，不是判据（改名 / CI runner 上会骗人）。
+    """
+    _pin_machine_id(project_dir.parent, MACHINE_A)
+    write_lock(project_dir, hostname=lock._hostname(), pid=999_998, machine_id="")  # 老锁
+
+    status = lock.status(project_dir)
+
+    assert status.machine_known is False
+    assert status.same_machine is False
+    assert status.stale is False, "老锁不许被当成「本机死锁」直接清掉"
+    # 心跳过期 ⇒ 仍走"过期"这条路（要用户确认），不是永久 held
+    assert status.state == lock.STATE_EXPIRED_OTHER_MACHINE
+    assert status.can_take_over is True
 
 
 # ---------------------------------------------------------------- 跨机
@@ -136,7 +185,7 @@ def test_old_hostname_with_living_process_is_held(
 def test_foreign_lock_with_fresh_heartbeat_is_held(project_dir: Path) -> None:
     write_lock(
         project_dir,
-        hostname="Old-PC.local",
+        hostname="Old-PC.local", machine_id=MACHINE_B,
         pid=44729,
         acquired_at=now_iso(120),
         heartbeat_at=now_iso(30),
@@ -152,7 +201,7 @@ def test_foreign_lock_with_fresh_heartbeat_is_held(project_dir: Path) -> None:
 def test_foreign_lock_with_old_heartbeat_is_expired(project_dir: Path) -> None:
     write_lock(
         project_dir,
-        hostname="Old-PC.local",
+        hostname="Old-PC.local", machine_id=MACHINE_B,
         pid=44729,
         acquired_at=now_iso(12 * 86400),
         heartbeat_at=now_iso(12 * 86400),
@@ -172,7 +221,7 @@ def test_heartbeat_at_wins_over_file_mtime(project_dir: Path) -> None:
     """网盘同步会把 mtime 刷成"现在"，判死必须看 `heartbeat_at`。"""
     write_lock(
         project_dir,
-        hostname="Old-PC.local",
+        hostname="Old-PC.local", machine_id=MACHINE_B,
         pid=44729,
         acquired_at=now_iso(12 * 86400),
         heartbeat_at=now_iso(12 * 86400),
@@ -186,7 +235,7 @@ def test_heartbeat_at_wins_over_file_mtime(project_dir: Path) -> None:
 
 def test_lock_without_heartbeat_falls_back_to_acquired_at(project_dir: Path) -> None:
     write_lock(
-        project_dir, hostname="Old-PC.local", pid=44729, acquired_at=now_iso(3600)
+        project_dir, hostname="Old-PC.local", machine_id=MACHINE_B, pid=44729, acquired_at=now_iso(3600)
     )
 
     status = lock.status(project_dir)
@@ -261,7 +310,7 @@ def test_clean_stale_locks_removes_local_dead_and_corrupt(tmp_path: Path) -> Non
     lock.lock_path(corrupt).write_text("{ 半个 json", encoding="utf-8")
     write_lock(
         foreign,
-        hostname="Old-PC.local",
+        hostname="Old-PC.local", machine_id=MACHINE_B,
         pid=44729,
         acquired_at=now_iso(12 * 86400),
         heartbeat_at=now_iso(12 * 86400),
@@ -288,7 +337,7 @@ def test_status_of_missing_or_corrupt_lock_is_free(project_dir: Path) -> None:
 def test_detail_payload_is_machine_readable(project_dir: Path) -> None:
     write_lock(
         project_dir,
-        hostname="Old-PC.local",
+        hostname="Old-PC.local", machine_id=MACHINE_B,
         pid=44729,
         acquired_at=now_iso(12 * 86400),
         heartbeat_at=now_iso(12 * 86400),

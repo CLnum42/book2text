@@ -26,6 +26,9 @@ from tests.fakes import FakeOcrEngine
 from .test_trash_api import create_project, project_ids
 
 
+FOREIGN_MACHINE = "22222222-2222-4222-8222-222222222222"
+
+
 def write_lock(
     directory: Path,
     *,
@@ -33,14 +36,20 @@ def write_lock(
     pid: int,
     acquired_at: str,
     heartbeat_at: str = "",
+    machine_id: str | None = None,
 ) -> None:
+    """`machine_id=None` ⇒ 本机 id；显式 `""` ⇒ 老版本锁（未知机器）。"""
+    if machine_id is None:
+        machine_id = lock_module.machine_id_for(directory.parent)
     lock_module.lock_path(directory).write_text(
         json.dumps(
             {
+                "schema": 2 if machine_id else 1,
                 "hostname": hostname,
                 "pid": pid,
                 "acquired_at": acquired_at,
                 "heartbeat_at": heartbeat_at,
+                "machine_id": machine_id,
             },
             ensure_ascii=False,
         ),
@@ -104,25 +113,30 @@ def test_stale_local_lock_is_taken_over_on_open(
     assert stored is not None and stored.pid == os.getpid()
 
 
-def test_old_hostname_of_this_machine_does_not_block_delete(
+def test_same_machine_lock_does_not_block_delete(
     client: TestClient,
     auth_headers: dict[str, str],
     library_dir: Path,
     sample_pdf: Path,
     inprocess_jobs: FakeOcrEngine,
 ) -> None:
-    """本机改名后留下的锁（MacBook-Air-2 → -3）不能被当成"另一台电脑"。"""
+    """同 machine_id 的旧锁（进程早没了）不能挡删除——判据只看 id，不看主机名。
+
+    这条以前按"主机名前缀一样"判，在 CI runner 上必然 skip（而 tests.yml 把 skipped
+    当失败）⇒ 等于这条用例在别的机器上不存在。现在把本机 id 钉成固定值来造锁。
+    """
     project_id = create_project(client, auth_headers, sample_pdf)
+    machine_id = lock_module.machine_id_for(library_dir)
     write_lock(
         library_dir / project_id,
-        hostname="MacBook-Air-2.local",
+        hostname="Old-Name.local",
         pid=72172,
         acquired_at="2026-10-27T08:11:00+00:00",
+        machine_id=machine_id,
     )
 
     opened = client.post(f"/api/projects/{project_id}/open", headers=auth_headers)
-    if opened.status_code != 200:  # 机器名前缀不同（CI/别的机器）时这条不成立
-        pytest.skip("当前主机名与本机旧名不是同一前缀，这条用例不适用")
+    assert opened.status_code == 200, opened.text
     client.post(f"/api/projects/{project_id}/close", headers=auth_headers)
 
     deleted = client.delete(
@@ -130,6 +144,32 @@ def test_old_hostname_of_this_machine_does_not_block_delete(
     )
 
     assert deleted.status_code == 200, deleted.text
+
+
+def test_legacy_lock_without_machine_id_is_not_auto_taken(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    library_dir: Path,
+    sample_pdf: Path,
+    inprocess_jobs: FakeOcrEngine,
+) -> None:
+    """老锁没有 machine_id ⇒ 未知机器：不自动接管，要先问用户。"""
+    project_id = create_project(client, auth_headers, sample_pdf)
+    write_lock(
+        library_dir / project_id,
+        hostname=lock_module._hostname(),
+        pid=72172,
+        acquired_at="2026-10-27T08:11:00+00:00",
+        machine_id="",
+    )
+
+    deleted = client.delete(
+        f"/api/projects/{project_id}?confirm=true", headers=auth_headers
+    )
+
+    assert deleted.status_code != 200, "未知机器的老锁被自动接管了——宁可多问一句"
+    detail = deleted.json().get("detail") or deleted.json()
+    assert "锁" in json.dumps(detail, ensure_ascii=False)
 
 
 def test_expired_foreign_lock_asks_before_delete(
@@ -142,7 +182,7 @@ def test_expired_foreign_lock_asks_before_delete(
     project_id = create_project(client, auth_headers, sample_pdf)
     write_lock(
         library_dir / project_id,
-        hostname="Old-PC.local",
+        hostname="Old-PC.local", machine_id=FOREIGN_MACHINE,
         pid=44729,
         acquired_at="2026-10-15T05:32:00+00:00",
         heartbeat_at="2026-10-15T05:32:00+00:00",
@@ -181,7 +221,7 @@ def test_expired_foreign_lock_on_open_reports_expired(
     project_id = create_project(client, auth_headers, sample_pdf)
     write_lock(
         library_dir / project_id,
-        hostname="Old-PC.local",
+        hostname="Old-PC.local", machine_id=FOREIGN_MACHINE,
         pid=44729,
         acquired_at="2026-10-15T05:32:00+00:00",
         heartbeat_at="2026-10-15T05:32:00+00:00",
@@ -241,7 +281,7 @@ def test_project_list_marks_expired_lock(
     project_id = create_project(client, auth_headers, sample_pdf)
     write_lock(
         library_dir / project_id,
-        hostname="Old-PC.local",
+        hostname="Old-PC.local", machine_id=FOREIGN_MACHINE,
         pid=44729,
         acquired_at="2026-10-15T05:32:00+00:00",
         heartbeat_at="2026-10-15T05:32:00+00:00",

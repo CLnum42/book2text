@@ -1920,7 +1920,7 @@ def test_reading_view_is_wired_for_merge() -> None:
 def test_project_lock_conflict_dialog_is_wired() -> None:
     """任务 60：锁挡住删除 / 打开时，界面要说清"谁、什么时候、是否过期"。
 
-    用户 2026-10-27 只看到"该项目正被另一台电脑使用：MacBook-Air-2.local"，而那就是
+    用户 2026-10-27 只看到"该项目正被另一台电脑使用：<本机的旧主机名>"，而那就是
     本机改名前的自己。所以这里钉住四件事：确认框存在、强制按钮只对过期锁出现、
     卡片上有"锁已过期"标记、错误里的结构化 `data.lock` 真的被读。
     """
