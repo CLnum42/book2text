@@ -5484,6 +5484,8 @@ const DOMAIN_MODULES = [
   // 它只在**那个 tile 元素**里查 `.page-margin` / `.page-margin__box`（3 处元素级查询）
   // ⇒ 走 allowQuerySelector 分支（document 级查询仍然 0）。
   { file: "margin-data.js", exposes: "MarginData", allowQuerySelector: true },
+  // 片 1b：批量拆分面板——root = #split-batch-panel（body 直下的 mask，8 个子 id）
+  { file: "split-batch-panel.js", exposes: "SplitBatchPanel", allowQuerySelector: true },
 ];
 
 /**
@@ -5502,6 +5504,7 @@ const ALLOW_QUERY_SELECTOR_WHITELIST = [
   "page-detail-drawer.js",
   "page-number-panel.js",
   "margin-data.js",
+  "split-batch-panel.js",
 ];
 
 function querySelectorWhitelistProblems({ modules, whitelist }) {

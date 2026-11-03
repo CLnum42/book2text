@@ -6442,9 +6442,7 @@ function setupLibrary() {
   // 刀 6：⋯ 菜单的四个条目（含"点完先收起菜单"）搬进 pages-view.js 的 wirePagesMoreMenuEntries()
   // 「全库采用 / 自动应用提示条 / 建议面板」那 6 处接线已搬进 suggestion-flow.js 的 init()
   // （按钮 DOM 归各自视图 / chrome，接线归跨视图服务）
-  el("split-batch-close").addEventListener("click", () => closeModal("split-batch-panel"));
-  el("split-batch-cancel").addEventListener("click", () => closeModal("split-batch-panel"));
-  el("split-batch-apply").addEventListener("click", applySplitBatch);
+  // 「批量拆分」面板的 close / cancel / apply 三处接线已搬进 split-batch-panel.js 的 init()
   el("settings-save").addEventListener("click", saveSettingsName);
   el("first-run-save").addEventListener("click", async () => {
     el("settings-name").value = el("first-run-name").value;
@@ -6507,108 +6505,10 @@ function setupLibrary() {
 // 整批共用一条 batch（服务端），所以在审校视图点一次「撤销」就整批回退。
 
 /** 批量范围：选了页就只做这些页，没选就是全部正文页。 */
-function splitBatchScope() {
-  const selected = [...selectedPages].sort((left, right) => left - right);
-  if (selected.length) {
-    return { pages: selected, label: `选中的 ${selected.length} 页` };
-  }
-  const body = currentProject.pages.filter((page) => page.include).map((page) => page.page_no);
-  return { pages: body, label: `全部正文页（${body.length} 页）` };
-}
-
-async function openSplitBatchPanel() {
-  if (!currentProject) return;
-  const scope = splitBatchScope();
-  if (!scope.pages.length) return;
-  el("split-batch-error").hidden = true;
-  el("split-batch-note").hidden = true;
-  el("split-batch-list").innerHTML = "";
-  el("split-batch-summary").textContent = "正在计算…";
-  el("split-batch-scope").textContent = `范围：${scope.label}`;
-  el("split-batch-apply").disabled = true;
-  el("split-batch-apply").textContent = "执行拆分";
-  openModal("split-batch-panel");
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/split-page-numbers`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page_numbers: scope.pages, dry_run: true }),
-      }
-    );
-    renderSplitBatchPreview(data);
-  } catch (error) {
-    el("split-batch-summary").textContent = "算不出来";
-    showError(el("split-batch-error"), error);
-  }
-}
-
-/** 预览：影响多少页 / 块 + 前几条（用户点执行之前必须看到范围）。 */
-function renderSplitBatchPreview(data) {
-  const blocks = data.blocks || 0;
-  const pages = data.pages || 0;
-  el("split-batch-summary").textContent = blocks
-    ? `会影响 ${pages} 页 · ${blocks} 块（下面按页序列出前 ${Math.min(8, blocks)} 条）`
-    : `没有找到需要拆的块（扫了 ${data.pages_considered || 0} 页）`;
-  const list = el("split-batch-list");
-  list.innerHTML = "";
-  for (const item of data.items || []) {
-    const li = document.createElement("li");
-    const typeLabel = BLOCK_TYPE_LABELS[item.block_type] || item.block_type;
-    const where = item.position === "start" ? "块首" : "块尾";
-    li.textContent =
-      `第 ${item.page_no} 页 · ${typeLabel}：${item.text} → 拆出页码 ${item.number}（${where}）`;
-    li.title =
-      `拆分后：${BLOCK_TYPE_LABELS[item.head_type] || item.head_type} + ` +
-      `${BLOCK_TYPE_LABELS[item.tail_type] || item.tail_type}`;
-    list.append(li);
-  }
-  const apply = el("split-batch-apply");
-  apply.disabled = blocks === 0;
-  apply.textContent = blocks ? `执行拆分（${blocks} 块）` : "没有可拆的块";
-  const skipped = data.skipped_context_pages || [];
-  if (skipped.length) {
-    el("split-batch-note").textContent = `跳过了 ${skipped.length} 页只读上下文页`;
-    el("split-batch-note").hidden = false;
-  }
-}
-
-async function applySplitBatch() {
-  if (!currentProject) return;
-  const scope = splitBatchScope();
-  const button = el("split-batch-apply");
-  button.disabled = true;
-  button.textContent = "正在拆分…";
-  try {
-    const data = await apiJson(
-      `/api/projects/${currentProject.project_id}/split-page-numbers`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page_numbers: scope.pages, dry_run: false }),
-      }
-    );
-    closeModal("split-batch-panel");
-    // 块变了：这些页的块框缓存与建议角标都不能再用旧的
-    for (const pageNo of data.pages_affected || []) forgetPageBlocks(pageNo);
-    window.PagesView?.onPageSuggestionsInvalidated();
-    await refreshPageStates();
-    window.PagesView?.onPagesNeedReflow();
-    // 刀 8：选中提示的写点收进 pages 模块（文案仍由外壳拼）
-    window.PagesView.setSelectionHint(
-      `已拆分 ${data.blocks} 块（${(data.pages_affected || []).length} 页）。` +
-        "整批算一个操作：到「审校」视图点「撤销」可以一次回退。"
-    );
-    if (detailPageNo !== null && (data.pages_affected || []).includes(detailPageNo)) {
-      await window.PageDetailDrawer?.loadPageDetail(detailPageNo, { forceSuggestions: true });
-    }
-  } catch (error) {
-    showError(el("split-batch-error"), error);
-    button.disabled = false;
-    button.textContent = "重试执行";
-  }
-}
+// ---------------------------------------------------------------- 批量拆分书眉页码
+//
+// 已搬进 `split-batch-panel.js`（`window.SplitBatchPanel`）：root = #split-batch-panel，
+// 4 个函数 / 1 个导出；2 处写盘在模块内闭环。入口按钮 #split-page-numbers 归外壳（pages-view.js）。
 
 // ---------------------------------------------------------------- 协作：分派任务包（负责人）
 //
@@ -7228,6 +7128,24 @@ function boot() {
     onPageNumberChanged: (text) => window.PagesView?.onPageNumberChanged(text),
   });
   window.PageNumberPanel?.setupPageNumberPanel();
+  // 批量拆分面板：root = #split-batch-panel（body 直下的 mask）。init 必须在这段的第一句。
+  window.SplitBatchPanel?.init({
+    root: el("split-batch-panel"),
+    getCurrentProject: () => currentProject,
+    getSelectedPages: () => selectedPages,
+    getDetailPageNo: () => detailPageNo,
+    apiJson: (...args) => apiJson(...args),
+    openModal: (...args) => openModal(...args),
+    closeModal: (...args) => closeModal(...args),
+    showError: (node, error) => showError(node, error),
+    forgetPageBlocks: (...args) => forgetPageBlocks(...args),
+    refreshPageStates: (...args) => refreshPageStates(...args),
+    onPageSuggestionsInvalidated: (...args) => window.PagesView?.onPageSuggestionsInvalidated(...args),
+    onPagesNeedReflow: (...args) => window.PagesView?.onPagesNeedReflow(...args),
+    setSelectionHint: (...args) => window.PagesView?.setSelectionHint(...args),
+    loadPageDetail: (...args) => window.PageDetailDrawer?.loadPageDetail(...args),
+    BLOCK_TYPE_LABELS,
+  });
   // 版心数据（服务模块）：四个视图各自把 tile 传进来，模块不自建 DOM。
   window.MarginData?.init({
     getCurrentProject: () => currentProject,
@@ -7332,7 +7250,7 @@ function boot() {
     openPageDetail: (...args) => window.PageDetailDrawer?.openPageDetail(...args),
     openPageNumberPanel: (...args) => window.PageNumberPanel?.openPageNumberPanel(...args),
     openPageNumberReview: (...args) => window.PageNumberPanel?.openPageNumberReview(...args),
-    openSplitBatchPanel: openSplitBatchPanel,
+    openSplitBatchPanel: (...args) => window.SplitBatchPanel?.openSplitBatchPanel(...args),
     // 刀 6：三段片段的具名能力（⋯ 菜单四项 / 统计入口 / 批量指派两个入口）
     // 模块只碰 view-pages 的 id；`stats-panel` / `assign-panel` 这类全局 chrome id 收在这三个能力里。
     openSuggestionApplyPanel: (...args) => window.SuggestionFlow?.openApplyPanel(...args),
