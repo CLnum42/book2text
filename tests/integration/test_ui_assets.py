@@ -369,6 +369,12 @@ def _word_boxes_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _orthography_script() -> str:
+    """片 9：字符规范化住在 `orthography.js`（root = #orthography-panel）。"""
+    path = STATIC_DIR / "orthography.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _drawer_script() -> str:
     """① 主刀收尾：核心抽屉住在 `page-detail-drawer.js`（root = #view-review）。
 
@@ -1926,6 +1932,27 @@ def test_word_boxes_own_the_backfill_dialog() -> None:
     assert module.count("refreshWordBoxesPlan()") >= 2
 
 
+def test_orthography_owns_the_panel_and_review_entry() -> None:
+    """片 9：字符规范化 3 函数归 `orthography.js`；写盘三组 URL、清单「看原文」走注入。"""
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module = _orthography_script()
+    assert module, "orthography.js 没落盘——片 9 的面板还没搬"
+
+    for name in ("runOrthographyCleanup", "runLinesCleanup", "openOrthographyPanel"):
+        assert f"function {name}(" in module, f"{name} 不在 orthography.js"
+        assert f"function {name}(" not in app, f"{name} 还留在 app.js"
+
+    for url in ("/cleanup/orthography`", "/cleanup/orthography/lines`", "/cleanup/orthography/unbalanced`"):
+        assert url in module, f"模块缺 URL：{url}"
+    assert "window.Orthography?.runOrthographyCleanup()" in app
+    assert "window.Orthography?.openOrthographyPanel()" in app
+    assert "window.Orthography?.runLinesCleanup()" in app
+    # 「看原文」= 进审校 + 开抽屉，收成外壳的一个动作
+    assert "openReviewPage" in module
+    assert "function openOrthographyReviewPage(" in app
+    assert "openReviewPage: (pageNo) => openOrthographyReviewPage(pageNo)" in app
+
+
 def test_confirm_page_refreshes_finish_counts() -> None:
     """任务 42 走查：确认一页之后，收尾面板 / 步骤条的计数必须跟着动。
 
@@ -2193,7 +2220,8 @@ def test_orthography_cleanup_is_wired() -> None:
     另有独立的「引号不配平」清单，不混进普通差异队列。
     """
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 片 9：字符规范化整簇搬进 orthography.js ⇒ 合查
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8") + _orthography_script()
     css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
 
     for element_id in (
