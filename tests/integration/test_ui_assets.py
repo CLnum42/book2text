@@ -375,6 +375,12 @@ def _orthography_script() -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _layout_detect_script() -> str:
+    """片 10：检测版面的外壳住在 `layout-detect.js`（root = #layout-detect-mask）。"""
+    path = STATIC_DIR / "layout-detect.js"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
 def _drawer_script() -> str:
     """① 主刀收尾：核心抽屉住在 `page-detail-drawer.js`（root = #view-review）。
 
@@ -1172,7 +1178,8 @@ def test_page_number_review_and_range_templates_are_wired() -> None:
 def test_layout_detection_and_workflow_filter_are_wired() -> None:
     """任务 58：版面检测入口、工作流筛选与角标都要真的接上（静态约定）。"""
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    # 片 10：检测版面外壳搬进 layout-detect.js ⇒ 合查
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8") + _layout_detect_script()
 
     for element_id in (
         "filter-workflow",
@@ -1951,6 +1958,34 @@ def test_orthography_owns_the_panel_and_review_entry() -> None:
     assert "openReviewPage" in module
     assert "function openOrthographyReviewPage(" in app
     assert "openReviewPage: (pageNo) => openOrthographyReviewPage(pageNo)" in app
+
+
+def test_layout_detect_owns_the_shell_and_plan_cache() -> None:
+    """片 10：检测版面 4 函数归 `layout-detect.js`；layoutDetectActive 仍归外壳（注入 set）。"""
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module = _layout_detect_script()
+    assert module, "layout-detect.js 没落盘——片 10 的外壳还没搬"
+
+    for name in (
+        "openLayoutDetectDialog",
+        "refreshLayoutDetectPlan",
+        "renderLayoutDetectPlan",
+        "startLayoutDetectFromDialog",
+    ):
+        assert f"function {name}(" in module, f"{name} 不在 layout-detect.js"
+        assert f"function {name}(" not in app, f"{name} 还留在 app.js"
+
+    # 计划缓存随迁；layoutDetectActive 仍在壳里（版心状态键要读）
+    assert "let layoutPlanCache" in module
+    assert "let layoutPlanCache" not in app
+    assert "let layoutDetectActive = false;" in app
+    assert "setLayoutDetectActive: (value) => { layoutDetectActive = value; return value; }" in app
+
+    # 写盘：计划（带 pages 过滤）与开始检测（建任务）
+    assert "/layout/plan" in module
+    assert "startLayoutDetection" in module
+    assert "?pages=" in module
+    assert "window.LayoutDetect?.openLayoutDetectDialog(...args)" in app
 
 
 def test_confirm_page_refreshes_finish_counts() -> None:
