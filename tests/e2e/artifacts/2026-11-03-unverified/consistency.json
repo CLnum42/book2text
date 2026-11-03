@@ -1,0 +1,322 @@
+{
+ "total": 1068,
+ "sample": 50,
+ "matched": 50,
+ "exact": 29,
+ "norm_equal": 48,
+ "diffs": 2,
+ "rows": [
+  {
+   "seq": 1,
+   "page": 4,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 2,
+   "page": 4,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 3,
+   "page": 4,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 4,
+   "page": 4,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 5,
+   "page": 4,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 6,
+   "page": 4,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 7,
+   "page": 5,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 8,
+   "page": 5,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 9,
+   "page": 5,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 10,
+   "page": 5,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 11,
+   "page": 5,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 12,
+   "page": 5,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 13,
+   "page": 5,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 14,
+   "page": 5,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 15,
+   "page": 6,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 16,
+   "page": 6,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 17,
+   "page": 6,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 18,
+   "page": 6,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 19,
+   "page": 6,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 20,
+   "page": 6,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 21,
+   "page": 6,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 22,
+   "page": 6,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 23,
+   "page": 6,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 24,
+   "page": 6,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 25,
+   "page": 8,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 26,
+   "page": 8,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 27,
+   "page": 8,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 28,
+   "page": 8,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 29,
+   "page": 8,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 30,
+   "page": 8,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 31,
+   "page": 8,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 32,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 33,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 34,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 35,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 36,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 37,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 38,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 39,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 40,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 41,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 42,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 43,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 44,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 45,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 46,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 47,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 48,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 49,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  },
+  {
+   "seq": 50,
+   "page": 9,
+   "found": true,
+   "type": "paragraph"
+  }
+ ],
+ "diff_examples": [
+  {
+   "seq": 1,
+   "export": "译者简介/About the Translators David Hawkes was born in 1923. He studied at Oxford and Peking Universities. From 1958 to 1971 he was Professor of Chinese at Oxford. Subsequently he was made a Research Fel",
+   "review": "译者简介/About the Translators\nDavid Hawkes was born in 1923. He studied at Oxford and Peking\nUniversities. From 1958 to 1971 he was Professor of Chinese at Oxford. Subse-\nquently he was made a Research F"
+  },
+  {
+   "seq": 6,
+   "export": "Fan Shengyu was born in 1976.He studied at Fujian Normal University and at Beijing Normal University, where he wrote a dissertation on the translation of The Story of the Stone. He is currently Lectur",
+   "review": "Fan Shengyu was born in 1976.He studied at Fujian Normal University\nand at Beijing Normal University, where he wrote a dissertation on the transla-\ntion of The Story of the Stone. He is currently Lect"
+  }
+ ]
+}

@@ -1,0 +1,46 @@
+{
+  "round": "2026-11-03 剩余未验项（四组）",
+  "baseline": "origin/main 66bab13",
+  "env": { "worktree": "/tmp/b2t-wt-unverified", "port": 8871, "library": "/tmp/b2t-qa4/lib" },
+  "package_context": {
+    "project": "b2t_C2MQ9A",
+    "banner": "审校任务：第 11、12 页（另附只读上下文第 10、13 页）",
+    "review_tree_403_every_open": true,
+    "error_bar_visible": true,
+    "context_pages_skipped_in_pager": false,
+    "pager_path": ["11", "12", "13"],
+    "context_page_patch": 403,
+    "task_page_patch": 200,
+    "readonly_label_sticky": true,
+    "verdict": "只读服务端生效；跳过没做；标签粘住"
+  },
+  "split_close_paths": {
+    "cancel": { "masks": 0, "panel_hidden": true },
+    "escape": { "masks": 0, "panel_hidden": true },
+    "backdrop": { "masks": 0, "panel_hidden": true },
+    "verdict": "三条都收干净"
+  },
+  "export_options": {
+    "jsonl": { "record": "20261103-0801_both", "body_jsonl_lines": 1068, "body_jsonl_bytes": 889284, "schema": "book2text.segment.v1", "format": "both" },
+    "confirmed_only": { "rejected": true, "error_code": "3edef48d3b4e", "history_unchanged": true },
+    "page_range": { "record": "20261103-0801_txt", "body_txt_segments": 24, "page_numbers": [4, 5, 6], "scope_pages": 3 },
+    "include_notes": { "rules_include_notes": true, "notes_file_bytes": 0, "sample_missing": "库里 comment 非空的块 = 0" }
+  },
+  "export_consistency": {
+    "source": "20261103-0801_both/body.jsonl",
+    "total_segments": 1068,
+    "sample": 50,
+    "matched": 50,
+    "exact_equal": 29,
+    "whitespace_normalized_equal": 48,
+    "diff_count": 2,
+    "diffs": ["Subse-quently -> Subsequently", "transla-tion -> translation"],
+    "verdict": "差异全部来自导出规则的断词合并"
+  },
+  "untested": [
+    "注释内容（无注释样本）",
+    "仅已确认的有内容分支（无已审块）",
+    "package 只读上下文跳过语义（等口径）",
+    "片 5–9 五块面板（待切片落完）"
+  ]
+}
