@@ -174,3 +174,66 @@ TypeError ⇒ 被 catch 送进 `showError(#page-number-error)`，**并且**跳�
 **副作用**（共享库 `/tmp/b2t-qa4/lib`，已尽量复原）：项目 `b2t_T7JH61` 的页码状态被本次验收改过——
 默认模板 = 「底部外侧 · 奇右偶左」（本来没有模板）、`filled 60/490`、第 36 页手动映射 `444`、第二套范围已移除；
 块数据未改（未执行拆分）；项目位置记录随打开更新。
+
+---
+
+## ⑧ 片 2 · 版心数据（`margin-data.js`，23 函数 / 0 写盘）
+
+**测的树**：`origin/main` = `d0157af`（含片 2 与片 1b）。`margin-data.js` 259 行，`app.js` 里 39 处 `MarginData` 引用；
+worktree `/tmp/b2t-wt-margin`，端口 8871，项目 `b2t_T7JH61`，视口 1469×738。
+
+**口径先说清**：四个视图里 `.page-margin` 层都是**全量 490 个**（每页一层，常驻 DOM，靠 `hidden` 控制）；
+「可见」= `hidden=false` 的层数，取决于该视图当前视口与页码档位。Builder 自验的 pages 3 / index 4 / preview 5 / reading 5
+在本机复不出来（我这里是 6 / 1 / 2 / 6），**两组数不是同一口径**，请 DevLead 定哪个算基准。
+
+### pages 视图
+
+| 状态 | `.page-margin` 总数 | 可见 | `#pages-margin-toggle.is-on` |
+|---|---|---|---|
+| 网格档（tile 367px）开 | 490 | 6（页 1–6） | true |
+| 关 | 490 | 0 | false |
+| 再开 | 490 | 6（页 1–6） | true |
+| 单页档（tile 1130px）开 | 490 | 1（页 1） | true |
+| 关 → 再开 | 490 | 0 → 1 | false → true |
+
+重开后有 **0.4–1.3 秒**的延迟才画出（`schedulePageVisibility()` 的异步重画），不是不画；判据按「最终出现」算过。
+
+**滚动一屏（缓存命中 / 不重画）**：给 490 个 margin 层与 490 个 tile 打标记后滚 500→1000→回 0，
+`aliveMargin 490/490`、`aliveTiles 490/490`（**同节点，无重建**）；周期内 margin 相关请求 **0 次**；
+`style` 变更 **0 次**，只有 `hidden` 属性变了 3 + 10 + 11 次（进/出视口切换可见性）⇒ 滚动不重算几何。
+
+### index 视图（目录确认）
+
+| 状态 | 总数 | 可见 | `#index-margin-toggle.is-on` |
+|---|---|---|---|
+| 开 | 490 | 1（页 1，canvas 1165px） | true |
+| 关 | 490 | 0 | false |
+| 再开 | 490 | 1 | true |
+
+### preview 视图（结果预览）
+
+| 状态 | 总数 | 可见 | `#preview-margin-toggle.is-on` |
+|---|---|---|---|
+| 开 | 490 | 2（页 1–2） | true |
+| 关 | 490 | 0 | false |
+| 再开 | 490 | 2 | true |
+
+**入口问题（非本刀、需确认）**：本项目的步骤条只有 6 步（pages / recognition / margin / index / review / export），没有 `preview`；
+`showView("preview")` 全仓只有步骤处理器那一处调用点，所以**结果预览视图在 UI 里没有可达入口**。
+本次用 app 自己的 `showView("preview")` 进入（与步骤处理器同一条路径），读数仍来自真实 DOM。
+
+### reading 视图（正文审校）
+
+| 状态 | 总数 | 可见 | 开关 |
+|---|---|---|---|
+| 进入时 | 490 | 6（页 1–6） | `#pages-margin-toggle.is-on = true` |
+| 在页面视图关掉版心后再进 | 490 | **仍 6** | 被强制回 true |
+
+阅读视图**没有自己的版心开关**：`#pages-margin-toggle` 在阅读视图里 `display:none` / 0 宽，`#pages-margin-toggle`、
+`#pages-overlay-toggle` 的 `is-on` 由 pages-view 同步（reading-view.js:3588 注释：不再碰这两个 id）。
+进阅读后版心被强制打开（任务 57：读稿主界面默认开），用户关不掉——这是设计还是缺陷，请 DevLead 定。
+
+### 未验
+
+- 脏数据注入（把某页 `margin_box` 改成退化值再看四个视图）：**没做**。理由：需要改项目数据，本轮不动 `margin_box`（备份也没做，因为没动）。
+- 版心重画延迟在慢机 / 大库上的上限（本机 0.4–1.3s）。
