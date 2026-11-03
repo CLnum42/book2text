@@ -1,0 +1,139 @@
+{
+  "round": "2026-11-03 抽屉刀真机验收（热修复验 + 七条）",
+  "baseline": {
+    "tested_sha": "81aab9c",
+    "tested_sha_note": "f77c657 + 热修 cherry-pick；内容等同 963498d（diff md5 85f4b6007421c956fc229c6af6530cb7）",
+    "origin_main_at_finish": "c8b2573",
+    "origin_main_log": [
+      "c8b2573 fix(lock): 机器身份改成持久 UUID",
+      "bab1aa8 test-contract: 锁的\"同机\"判据改成 machine_id",
+      "500e2c0 fix: 抽屉启动顺序与两处转发名（真机起不来的热修）"
+    ],
+    "static_diff_to_origin": "0 files（lock.py / main.py / lock tests 不在 static）",
+    "smoke_on_origin_tip": {
+      "sha": "c8b2573",
+      "worktree": "/tmp/b2t-wt-final",
+      "boot_cards": 11,
+      "drawer_p6": { "title": "第 6 页", "img_natural_width": 932, "boxes": 10, "diff_marks": 2, "error_hidden": true, "console_errors": 0 }
+    },
+    "service": {
+      "worktree": "/tmp/b2t-wt-drawer-fix",
+      "port": 8871,
+      "token": "qa4",
+      "library": "/tmp/b2t-qa4/lib",
+      "static_dir": "/private/tmp/b2t-wt-drawer-fix/backend/book2text/static",
+      "isolation_self_check": { "clearPageDetailError": 2, "showPageDetailError_export": 1, "setupReviewPager_after_init": true }
+    }
+  },
+  "verdict": "热修生效，抽屉可用；七条 6 通过 / 1 不通过（Esc 不关抽屉）；另有 1 条既有缺陷（缩放错位）单列",
+  "items": {
+    "0_boot": { "result": "pass", "cards": 11, "library_error_hidden": true, "pageerror": 0, "unhandledrejection": 0 },
+    "1_open": {
+      "result": "pass",
+      "samples": [
+        { "page": 4, "title": "第 4 页", "page_no": "第 4 页（印 D）", "meta": "正文 · 3 处待处理差异（汉字 2 · 标点 1） · 版面未确认", "img_src": "/api/projects/b2t_T7JH61/pages/4/image?size=view&token=qa4", "boxes": 6, "list_items": 3, "filter": "待处理 3 / 版心内 6 / 全部 10", "error_hidden": true },
+        { "page": 6, "title": "第 6 页", "boxes": 10, "diff_marks": 2 },
+        { "page": 11, "project": "b2t_C2MQ9A", "title": "第 11 页", "page_no": "第 11 页（印 K）", "boxes": 0, "list_items": 0, "error_visible": true }
+      ]
+    },
+    "2_close": {
+      "x_button": { "result": "pass", "view_after": "view-pages", "view_review_hidden": true, "aux_hidden": true, "masks_open": 0, "error_hidden": true },
+      "escape": { "result": "fail", "view_after": "view-review", "page_no": "第 6 页（印 F）", "reason": "无 Esc 关抽屉处理器；旧树 9227d0c 同样没有", "regression": false },
+      "view_switch": { "result": "pass", "action": "button[data-workflow-step=margin]/pages", "view_review_hidden": true, "error_hidden": true, "aux_hidden": true, "masks_open": 0 },
+      "error_bar_cleared_on_close": { "result": "pass", "injection": "GET /pages/7/blocks -> 500", "stub_hits": 1, "error_text": "请求失败（HTTP 500）", "hidden_before": false, "hidden_after_close": true, "note": "只 hidden，innerHTML 未清空" }
+    },
+    "3_paging": {
+      "result": "pass",
+      "next": { "from": 4, "to": 5, "page_no": "第 5 页（印 E）", "boxes": 8, "diff_marks": 3 },
+      "prev": { "from": 5, "to": 4, "boxes": 6, "diff_marks": 3 },
+      "jump": { "prompt": "跳到第几页？", "to": 6, "page_no": "第 6 页（印 F）", "boxes": 10, "diff_marks": 2, "note": "差异 3→2，差异层随页重画" }
+    },
+    "4_zoom_overlay": {
+      "result": "pass_with_existing_defect",
+      "zoom_in": [778, 973, 1167],
+      "zoom_fit": 778,
+      "max_dev_at_fit": 0.01,
+      "max_dev_at_zoom": { "125%": 33.3, "150%": 191.1 },
+      "control_pre_blade_9227d0c": { "fit": 0.01, "125%": 21.14, "150%": 176.49 },
+      "defect_verdict": "pre-existing（旧树同路径错位），非本刀引入",
+      "overlay_toggle": { "hidden_cycle": [true, false], "boxes_constant": 10, "node_identity_kept": "14/14" },
+      "diff_toggle": { "type": "三态循环", "states": ["未审+已审", "仅未审", "关"], "marks": [2, 2, 0], "layer_hidden_always_false": true, "pointer_events": "none" }
+    },
+    "5_margin": {
+      "result": "pass",
+      "on": { "hidden": false, "display": "block", "box": "658x932", "canvas_has_margin": true },
+      "off": { "hidden": true, "display": "none", "canvas_has_margin": false, "outside_margin_boxes": 0, "residual": false }
+    },
+    "6_single_loop": {
+      "result": "pass",
+      "change": "page 6 block 01M650731GZCTC3Y5YQP6B2AQY paragraph->heading->paragraph",
+      "full_redraw_count": 1,
+      "renderBlocks_calls": 1,
+      "renderBlocks_stack": "onPageDetailChanged(app.js:8569) <- renderPageDetail(page-detail-drawer.js:183) <- loadPageDetail(drawer:115)",
+      "list_redraw_count": 2,
+      "list_redraw_sources": ["renderBlocks(onPageDetailChanged)", "refreshDetailSuggestions -> renderReviewBlocks (editor 内部)"],
+      "drawer_paints_blocks": false,
+      "data_consistent": true
+    },
+    "6b_collapse": {
+      "result": "pass",
+      "viewport": "1000x820（<1120 才生效）",
+      "initial": { "class": "editor", "height": 279, "btn": "▾" },
+      "collapsed": { "class": "editor is-collapsed", "height": 48, "btn": "▴", "children_hidden": ["layout-panel", "review-filter", "blks", "efoot"], "blocks_visible": false },
+      "expanded_again": { "height": 279, "btn": "▾" },
+      "two_rounds_consistent": true,
+      "wide_viewport": "按钮 display:none、class 翻转无视觉变化（设计）"
+    },
+    "7_console": {
+      "result": "pass",
+      "app_console_errors": 0,
+      "pageerror": 0,
+      "unhandledrejection": 0,
+      "cdp_log_errors": 6,
+      "cdp_log_breakdown": {
+        "chrome_extension": 2,
+        "package_mode_403": ["/review/tree x2", "/review/finish-summary", "/export/preview?segments_only=1"]
+      }
+    }
+  },
+  "package_mode": {
+    "project": "b2t_C2MQ9A",
+    "banner": "审校任务：第 11、12 页（另附只读上下文第 10、13 页） · 来自 QA · 说明：协作刀导入用",
+    "structure_open_hidden": true,
+    "finish_open_review_hidden": true,
+    "package_open_visible": true,
+    "drawer_page_11": { "img_src_set": true, "boxes": 0, "filter": "待处理 0 / 版心内 5 / 全部 5", "error_text": "审校任务里不能做这个操作 … 只能审校块并导出审校结果包", "network": "GET /review/tree 403", "tree_stats_stale": "97 处待审" },
+    "control_9227d0c_same_path": { "error": "same 403 message", "boxes": 0, "tree_stats": "97 处待审" },
+    "verdict": "既有行为（包模式禁用 review/tree），非本刀引入",
+    "toggle_twice": { "enter_pkg": "hidden/hidden", "back_normal": "inline-flex/block", "enter_pkg_2": "hidden/hidden", "back_normal_2": "inline-flex/block", "result": "pass" }
+  },
+  "untested": [
+    "包模式下实际审校 + 导出结果包正流程（待处理 0，未验证切「全部」后能否编辑导出）",
+    "⑥ 右侧文本面板独立重画次数未单独计数",
+    "撤销自动通过 → 徽标同步（缺样本，沿用上一轮）"
+  ],
+  "existing_findings": [
+    "缩放 >100% 块框横向错位（125% 33.3px / 150% 191.1px；旧树 21.1 / 176.5）",
+    "pages 视图块框盖住页卡「识别/审校」按钮（elementFromPoint 命中 .box），需先关块框",
+    "#page-detail-error 只 hidden 不清文本",
+    "进「正文审校」步骤弹「第二引擎复核还没跑完」遮罩（设计）",
+    "宽屏折叠按钮 display:none（设计）"
+  ],
+  "side_effects": {
+    "library": "/tmp/b2t-qa4/lib",
+    "page6_block_01M650731GZCTC3Y5YQP6B2AQY": "block_type 往返 heading->paragraph，revision 1->5，review_status unreviewed",
+    "page6_pending": "3 -> 2",
+    "b2t_C2MQ9A": "打开过抽屉，未改数据",
+    "restored": true
+  },
+  "evidence": {
+    "dir": "/tmp/b2t-qa/2026-11-03-drawer/",
+    "files": [
+      { "name": "hotfix-drawer-page6.jpg", "bytes": 149873 },
+      { "name": "hotfix-collapse-narrow.jpg", "bytes": 102460 },
+      { "name": "hotfix-zoom150-misalign.jpg", "bytes": 149636 },
+      { "name": "hotfix-boot-library.jpg", "bytes": 74738 },
+      { "name": "boot-crash.json / boot-crash.jpg / drawer-blank.jpg", "note": "上一轮 f77c657 崩溃证据" }
+    ]
+  }
+}
