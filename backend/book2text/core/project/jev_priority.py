@@ -500,3 +500,68 @@ def _outcome(directory: Path, job_id: str) -> recognition_module.JobOutcome:
         job=jobs_module.get_job(directory, job_id),
         items=tuple(jobs_module.list_job_items(directory, job_id)),
     )
+
+
+# ---------------------------------------------------------------- 排序（查询侧 opt-in）
+
+
+def line_scores(project_id: str, *, library: Path | None = None) -> dict[tuple[str, int], float]:
+    """`(block_id, line_index) → jev_score`（只含有分数的行）。"""
+    directory = library_module.require_project_dir(project_id, library=library)
+    with db_module.open_database(directory, apply_migrations=False) as conn:
+        rows = conn.execute(
+            "SELECT block_id, line_index, jev_score FROM block_line WHERE jev_score IS NOT NULL"
+        ).fetchall()
+    return {
+        (str(row["block_id"]), int(row["line_index"])): float(row["jev_score"]) for row in rows
+    }
+
+
+def latest_job_status(project_id: str, *, library: Path | None = None) -> str | None:
+    """最近一次 Jev 打分任务的状态（队列排序只在它 succeeded 时才允许开启）。"""
+    directory = library_module.require_project_dir(project_id, library=library)
+    try:
+        found = jobs_module.list_jobs(directory, limit=50)
+    except jobs_module.JobError:
+        return None
+    for job in found:
+        if job.job_type == JOB_TYPE_JEV:
+            return job.status
+    return None
+
+
+def sort_ready(project_id: str, *, library: Path | None = None) -> tuple[bool, str]:
+    """现在能不能按 Jev 排序：**跑一半失败时不排**（队列退回原顺序）。
+
+    分数在失败时会保留（下一轮续跑不用重算），但"队列被我改过顺序"这件事
+    必须以"这一轮跑完了"为前提，否则用户看到的是一个半成品顺序。
+    """
+    status = latest_job_status(project_id, library=library)
+    if status == jobs_module.STATUS_SUCCEEDED:
+        return True, ""
+    if status is None:
+        return False, "还没有跑过 Jev 打分"
+    return False, f"最近一次 Jev 打分没有跑完（{status}）"
+
+
+def tier_key(
+    score: float | None,
+    *,
+    page_no: int,
+    block_order: int,
+    line_index: int,
+    threshold: float = DEFAULT_THRESHOLD,
+) -> tuple[int, int, int, int]:
+    """三档排序键：可疑（有分数且 ≤ 阈值）> 其余分歧行 > 无分歧，同档内按文流顺序。
+
+    分数**只用于分档**，不参与档内排序（配方：同档按 页码 → 块序 → 行序）。
+    「无分歧」这一档在审校队列里通常不出现（队列本身只收分歧行），保留它是为了让
+    这个键在别的列表上也能用，语义不随调用点变。
+    """
+    if score is None:
+        tier = 1  # 有分歧但没打分（旧数据 / 只跑了一半）
+    elif score <= threshold:
+        tier = 0
+    else:
+        tier = 1
+    return (tier, page_no, block_order, line_index)

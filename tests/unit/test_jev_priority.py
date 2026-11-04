@@ -170,3 +170,35 @@ def test_probe_lists_missing_model_files(tmp_path: Path) -> None:
     assert any("模型文件缺失" in item for item in problems)
     assert any("字体缺失" in item for item in problems)
     assert any("打分服务" in item for item in problems)
+
+
+def test_tier_key_puts_suspicious_first_then_document_order() -> None:
+    """三档：可疑（分数 ≤ 阈值）> 其余分歧行；同档内按文流顺序，**不按分数排**。"""
+    suspicious = jev.tier_key(0.001, page_no=9, block_order=1, line_index=0)
+    also_suspicious = jev.tier_key(0.04, page_no=1, block_order=0, line_index=3)
+    unscored = jev.tier_key(None, page_no=2, block_order=0, line_index=0)
+    clear = jev.tier_key(0.9, page_no=3, block_order=0, line_index=0)
+
+    assert suspicious[0] == also_suspicious[0] == 0
+    assert unscored[0] == clear[0] == 1
+    # 同档按页码→块序→行序：第 1 页那条排在（更可疑的）第 9 页那条前面
+    assert also_suspicious < suspicious
+    assert unscored < clear
+
+
+def test_sort_ready_requires_a_finished_job(project_with_diffs: Path) -> None:
+    ready, reason = jev.sort_ready("b2t_TESTS1", library=project_with_diffs.parent)
+    assert ready is False and "还没有跑过" in reason
+
+    job = jobs_module.create_job(
+        project_with_diffs, pages=[("page1", 1)], params={}, job_type=jev.JOB_TYPE_JEV
+    )
+    jobs_module.set_status(project_with_diffs, job.job_id, jobs_module.STATUS_FAILED)
+    ready, reason = jev.sort_ready("b2t_TESTS1", library=project_with_diffs.parent)
+    assert ready is False and "没有跑完" in reason
+
+    jobs_module.set_status(
+        project_with_diffs, job.job_id, jobs_module.STATUS_SUCCEEDED, expect=(jobs_module.STATUS_FAILED,)
+    )
+    ready, reason = jev.sort_ready("b2t_TESTS1", library=project_with_diffs.parent)
+    assert ready is True and reason == ""
