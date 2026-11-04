@@ -644,6 +644,12 @@
 
       <!-- ─────────────────────────── 视图：阅读审校（连续正文流，L 刀） ─────────────────────────── -->
       <section class="view view--reading" id="view-reading" hidden>
+        <!-- 2026-11-05：Jev 可疑度排序的提示条（只在开启排序且有分数时显示） -->
+        <div class="jev-banner" id="jev-banner" hidden>
+          <span id="jev-banner-text"></span>
+          <button type="button" id="jev-restore" class="btn btn--sm">恢复原顺序</button>
+          <button type="button" id="jev-banner-close" class="icon-btn" title="关闭提示">✕</button>
+        </div>
         <div class="reading-toolbar">
           <!-- 任务 66：11 个平铺控件 → 5 组：导航 / 进度 / 下一处 / 筛选与显示 / 动作 -->
           <div class="rt-group rt-group--nav">
@@ -674,6 +680,13 @@
             下一处未审 <kbd id="reading-next-hint">⏎</kbd>
           </button>
           <span class="spacer"></span>
+          <label class="check check--line" id="jev-only-wrap" hidden title="只看 Jev 打分最低的那一档">
+            <input type="checkbox" id="jev-only-suspicious"> 只看 Jev 可疑
+          </label>
+          <button type="button" id="jev-run" class="btn btn--sm"
+                  title="只给两引擎分歧的行打分（越低越可疑）；默认不影响队列顺序">Jev 打分…</button>
+          <button type="button" id="jev-clear" class="btn btn--sm" hidden
+                  title="清掉全部分数，队列回到原来的正文流顺序">清除 Jev 分数</button>
           <select id="reading-filter" class="select" title="筛选差异（中文按字 / 英文按词）">
             <option value="all">全部差异</option>
             <option value="chars">只看汉字级</option>

@@ -2683,3 +2683,12 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 }
 .reading-panel-host[hidden] { display: none; }
 .reading-panel { margin: 0 0 8px; }
+
+/* ── Jev 可疑度排序提示条（2026-11-05） ── */
+.jev-banner {
+  display: flex; align-items: center; gap: 10px; flex: none;
+  padding: 6px 14px; font-size: 12px;
+  background: var(--accent-soft); color: var(--accent-text);
+  border-bottom: 1px solid var(--line);
+}
+.jev-banner .icon-btn { margin-left: auto; }

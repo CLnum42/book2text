@@ -332,11 +332,141 @@ function setupReadingSplit() {
   });
 }
 
+// ---------------------------------------------------------------- Jev 可疑度排序（2026-11-05）
+//
+// **默认关**：不点「Jev 打分…」、不开「只看 Jev 可疑」时，队列请求与改动前逐字相同
+// （`jevQuerySuffix()` 返回空串）。排序是否真的生效由服务端判定：只有最近一次打分任务
+// succeeded 才排，跑一半失败会回 `enabled: false`，队列保持原顺序。
+
+let jevSorted = false;
+let jevOnlySuspicious = false;
+let jevScored = 0;
+let jevPollTimer = null;
+
+function jevQuerySuffix() {
+  const parts = [];
+  if (jevSorted) parts.push("jev_sorted=1");
+  if (jevOnlySuspicious) parts.push("jev_suspicious_only=1");
+  return parts.length ? `?${parts.join("&")}` : "";
+}
+
+function renderJevUi() {
+  const banner = el("jev-banner");
+  if (banner) {
+    banner.hidden = !(jevSorted && jevScored > 0);
+    const text = el("jev-banner-text");
+    if (text) text.textContent = `当前顺序按 Jev 可疑度重排（${jevScored} 行有分数）`;
+  }
+  const clear = el("jev-clear");
+  if (clear) clear.hidden = jevScored === 0;
+  const wrap = el("jev-only-wrap");
+  if (wrap) wrap.hidden = jevScored === 0;
+  const filter = el("jev-only-suspicious");
+  if (filter) filter.checked = jevOnlySuspicious;
+  const run = el("jev-run");
+  if (run) {
+    run.disabled = Boolean(jevPollTimer);
+    run.textContent = jevPollTimer ? "Jev 打分中…" : "Jev 打分…";
+  }
+}
+
+async function refreshJevUi() {
+  if (typeof injected.getProject !== "function" || !injected.getProject()) return;
+  try {
+    const status = await injected.apiJson?.(
+      `/api/projects/${injected.getProject().project_id}/jev-priority`
+    );
+    jevScored = Number(status?.scored || 0);
+    if (!jevScored) { jevSorted = false; jevOnlySuspicious = false; }
+  } catch (error) {
+    jevScored = 0;
+  }
+  renderJevUi();
+}
+
+function stopJevPolling() {
+  if (jevPollTimer) { clearInterval(jevPollTimer); jevPollTimer = null; }
+}
+
+function pollJevJob() {
+  stopJevPolling();
+  jevPollTimer = setInterval(async () => {
+    try {
+      const status = await injected.apiJson?.(
+        `/api/projects/${injected.getProject().project_id}/jev-priority`
+      );
+      const job = status?.latest_job;
+      jevScored = Number(status?.scored || 0);
+      if (job && ["succeeded", "failed", "cancelled", "interrupted", "succeeded_with_skips"].includes(job.status)) {
+        stopJevPolling();
+        jevSorted = job.status === "succeeded" || job.status === "succeeded_with_skips";
+        if (job.status === "failed") {
+          injected.showNoticeBar?.("Jev 打分没跑完：已算出的分数保留，队列保持原顺序");
+        }
+        renderJevUi();
+      }
+    } catch (error) {
+      stopJevPolling();
+      renderJevUi();
+    }
+  }, 2000);
+}
+
+async function startJevJob() {
+  try {
+    await injected.apiJson?.(`/api/projects/${injected.getProject().project_id}/jev-priority/start`, {
+      method: "POST",
+    });
+    injected.showNoticeBar?.("Jev 打分已开始：只给两引擎分歧的行打分，跑完自动按可疑度排");
+    jevPollTimer = setInterval(() => {}, 60000); // 占位，下面立刻换成真轮询
+    stopJevPolling();
+    renderJevUi();
+    pollJevJob();
+  } catch (error) {
+    injected.showNoticeBar?.(`Jev 打分没开始：${error.message || "未知错误"}`);
+  }
+}
+
+async function clearJevScores() {
+  try {
+    await injected.apiJson?.(`/api/projects/${injected.getProject().project_id}/jev-priority/clear`, {
+      method: "POST",
+    });
+    jevSorted = false;
+    jevOnlySuspicious = false;
+    jevScored = 0;
+    renderJevUi();
+    injected.showNoticeBar?.("已清除 Jev 分数：队列回到正文流顺序");
+  } catch (error) {
+    injected.showNoticeBar?.(`清除失败：${error.message || "未知错误"}`);
+  }
+}
+
+function setupJevUi() {
+  el("jev-run")?.addEventListener("click", startJevJob);
+  el("jev-clear")?.addEventListener("click", clearJevScores);
+  const restore = () => {
+    jevSorted = false;
+    jevOnlySuspicious = false;
+    renderJevUi();
+  };
+  el("jev-restore")?.addEventListener("click", restore);
+  el("jev-banner-close")?.addEventListener("click", restore);
+  el("jev-only-suspicious")?.addEventListener("change", (event) => {
+    jevOnlySuspicious = Boolean(event.target.checked);
+    renderJevUi();
+  });
+  // 台架里 injected 是桩（没有 getProject / apiJson）：读不到就按"没有分数"渲染，
+  // 不许把 Promise 甩到测试结束后变成 unhandledRejection。
+  refreshJevUi().catch(() => {});
+}
+
   // ---------------------------------------------------------------- 审校外壳（任务 94 · Slice 2）
   // 从 app.js 原样搬入；依赖全部由 init() 注入，模块本身不碰 app.js 的顶层符号。
 
 function setupReading() {
   el("reading-next-unreviewed").addEventListener("click", gotoNextUnreviewed);
+  setupJevUi();
   const closeReadingMenus = () => {
     el("reading-display-menu").hidden = true;
     el("reading-more-menu").hidden = true;
@@ -1145,7 +1275,7 @@ async function gotoNextUnreviewed() {
   // 都在流内，none 是补 marks 窗口的竞态，由 ensureReadingMarksWindow 共享在飞请求修掉。
   let payload;
   try {
-    payload = await injected.apiJson?.(`/api/projects/${injected.getProject().project_id}/review/next-lines`, {
+    payload = await injected.apiJson?.(`/api/projects/${injected.getProject().project_id}/review/next-lines${jevQuerySuffix()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(readingOptions()),
