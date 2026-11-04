@@ -159,6 +159,9 @@ class RapidOcrAdapter:
         # 2026-11-04 起用**缩放**而不是补白：补白会压低内容在画布里的占比，det 因此
         # 漏行（p17 的「近日都中…」整行消失）；缩放后引擎内部的 resize 是同尺寸 no-op。
         processed, (width, height) = resize_to_multiple(pil_image)
+        # 归一化按处理后尺寸，但 OcrResult 报的 image_width/height 必须是**原图**尺寸：
+        # 版心 / 行裁图 / 回渲染都按它算像素（2026-11-04 pytest 抓到这条）。
+        image_width, image_height = pil_image.size
         try:
             # return_word_box：中文给逐字四点框、英文给词级框（任务 59）。
             # 实测耗时 2.82s → 2.77s，可以忽略。
@@ -217,8 +220,8 @@ class RapidOcrAdapter:
             engine_id=ENGINE_ID,
             engine_version=self.version(),
             lines=tuple(lines),
-            image_width=width,
-            image_height=height,
+            image_width=image_width,
+            image_height=image_height,
             elapsed_seconds=elapsed,
             raw=raw,
         )
