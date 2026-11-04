@@ -27,7 +27,7 @@ from ..base import (
     OcrResult,
     OcrWord,
     normalize_quad,
-    pad_to_multiple,
+    resize_to_multiple,
 )
 
 ENGINE_ID = "rapidocr"
@@ -65,7 +65,7 @@ def _module_present(name: str) -> bool:
 def _parse_words(units, width: int, height: int) -> tuple[OcrWord, ...]:
     """把引擎的 `word_results[i]` 转成 OcrWord：`(词/字, 置信度, 四点框)`。
 
-    坐标按**原图**宽高归一化（padding 只在右下补白，内容坐标不变）。
+    坐标按**处理后**宽高归一化（缩放是线性映射，除出来就是原图比例）。
     任何一项解析失败就跳过那一项——字框是增强信息，不能让它把整页识别带崩。
     """
     parsed: list[OcrWord] = []
@@ -155,13 +155,14 @@ class RapidOcrAdapter:
         engine = self._ensure_engine()
 
         started = time.perf_counter()
-        # 宽高不补到 32 的倍数会在原生层 SIGSEGV（真机 1069×1762 稳定复现）。
-        # 补白只在右 / 下边，所以内容像素坐标不变——下面仍按**原图**宽高归一化。
-        padded = pad_to_multiple(pil_image)
+        # 宽高不是 32 的倍数会在原生层 SIGSEGV（真机 1069×1762 稳定复现）。
+        # 2026-11-04 起用**缩放**而不是补白：补白会压低内容在画布里的占比，det 因此
+        # 漏行（p17 的「近日都中…」整行消失）；缩放后引擎内部的 resize 是同尺寸 no-op。
+        processed, (width, height) = resize_to_multiple(pil_image)
         try:
             # return_word_box：中文给逐字四点框、英文给词级框（任务 59）。
             # 实测耗时 2.82s → 2.77s，可以忽略。
-            output = engine(padded, return_word_box=True)
+            output = engine(processed, return_word_box=True)
         except Exception as exc:
             raise OcrEngineError(f"RapidOCR 识别失败：{exc}") from exc
         elapsed = time.perf_counter() - started
@@ -171,7 +172,7 @@ class RapidOcrAdapter:
         scores = list(getattr(output, "scores", None) or [])
         word_results = list(getattr(output, "word_results", None) or [])
 
-        width, height = pil_image.size
+        # 归一化按**处理后**尺寸：缩放是线性映射，除出来就是原图上的比例
         lines: list[OcrLine] = []
 
         if boxes is not None and len(boxes) == len(texts):

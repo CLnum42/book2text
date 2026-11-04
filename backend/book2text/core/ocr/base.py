@@ -151,12 +151,40 @@ class OcrEngineError(Exception):
 PAD_MULTIPLE = 32
 
 
+def resize_to_multiple(
+    image: Image.Image, multiple: int = PAD_MULTIPLE
+) -> tuple[Image.Image, tuple[int, int]]:
+    """把图**缩放**到宽高都是 ``multiple`` 的倍数，返回 `(处理后的图, 处理后尺寸)`。
+
+    为什么不是补白（2026-11-04，CER 首测 p17）：补白会让内容在画布里的占比变小
+    （1243×1874 补到 1248×1888 只降 0.4% 宽 / 0.75% 高），但 RapidOCR 的 det
+    对**占比**敏感——p17 那行「雨村因问：近日都中可有新闻没有？」的 det 得分因此
+    掉到阈值下，整行消失。换成缩放：内容铺满画布、占比不变，而引擎内部那次
+    resize 到 32 倍数就变成**同尺寸 no-op**，防崩性质不变（Extractor 实测 80 次
+    独立进程 0 崩溃）。
+
+    **归一化必须按返回的处理后尺寸算**：缩放是线性的，`x / 处理宽` 得到的就是
+    原图上的比例；按原图宽高去除会整体缩水一点。
+    尺寸已经是倍数时原样返回，不做重采样。
+    """
+    width, height = image.size
+    target_width = ((width + multiple - 1) // multiple) * multiple
+    target_height = ((height + multiple - 1) // multiple) * multiple
+    if target_width == width and target_height == height:
+        return image, (width, height)
+    resized = image.resize((target_width, target_height), Image.LANCZOS)
+    return resized, (target_width, target_height)
+
+
 def pad_to_multiple(image: Image.Image, multiple: int = PAD_MULTIPLE) -> Image.Image:
     """把图补到宽高都是 ``multiple`` 的倍数：**只在右边 / 下边补纸色白**，内容不平移。
 
     补白在右边 / 下边意味着**像素坐标不变**：引擎返回的框不需要平移，
     只要按**原图**宽高归一化（见适配器里的注释）。
     尺寸已经是倍数时原样返回（不复制图像，省一次内存）。
+
+    **OCR 主链路已不用它**（见 `resize_to_multiple`：补白会丢行）；
+    版心检测的 det 适配器仍在用，行为未改。
     """
     width, height = image.size
     target_width = ((width + multiple - 1) // multiple) * multiple
