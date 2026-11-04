@@ -111,8 +111,8 @@ function fillDefinitionList(node, pairs) {
 // 界面是"单窗口应用"（说明书第 7 节的效果图）：顶栏 + 四个视图（项目库 / 页面 /
 // 审校 / 合并审阅）+ 若干对话框。视图之间只切换 hidden，各视图内部状态各自保留。
 
-// 2026-11-04：`preview` 从视图表里删掉（L-117 死 UI）。`#view-preview` 的 DOM 与 CSS 还在，
-// 但没有任何入口、`showView("preview")` 也不再是合法视图——它永远是 hidden 的。
+// 2026-11-04：`preview` 视图已整块删除（L-117）：`VIEWS` 里没有它、`#view-preview` 的 DOM 与
+// `.preview-*` 样式也一并删了；`showView("preview")` 不再是合法视图（会直接 return）。
 const VIEWS = ["library", "pages", "index", "review", "reading", "merge"];
 
 let currentView = "library";

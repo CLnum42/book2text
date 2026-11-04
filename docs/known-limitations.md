@@ -1946,15 +1946,22 @@ structure-tools.js      3 行注释 → 残留 3
 
 **用户可见影响**：无——没有入口，用户走不到这个视图。**定性：死 UI，不是缺陷。**
 
-**已删内容（2026-11-04，一笔）**：
-`preview-view.js` 整文件 · `index.html` 的 `<script src="/static/preview-view.js">` 那一行 ·
-`app.js` 里 `VIEWS` 的 `preview`、`showView` 的 enter 分支、`stepProgress` 死分支、
-`autoWorkflowStep` 的 preview 分支、包模式步骤过滤里的 preview 项、`PreviewView.init` 整块 deps ·
-`continuation-review.js` 的 `previewEnter` 注入调用 · `boundary.test.mjs` 的
-OWNERS / VIEW_STATE_PREFIXES / VIEW_EXPORTS 三张表里 29 条 preview 登记 ·
-`test_ui_assets.py` 两条 preview 用例 · overlay acid ④ 的 preview 断言 · e2e driver 的 preview 探针。
+**已删内容（2026-11-04，两笔）**：
 
-**仍留在树上的（不影响行为）**：`index.html` 里 `#view-preview` 的 44 行 DOM 与 `app.css` 里
-约 88 行 `.preview-*` 样式。它们没有任何引用、`showView("preview")` 也不再是合法视图，
-所以永远是 hidden。要一起删是另一笔，判据是"删完四闸全绿、页面仍不出现空视图"。
+1. `06fdf4e`（模块与接线）：`preview-view.js` 整文件 · `index.html` 的
+   `<script src="/static/preview-view.js">` 那一行 · `app.js` 里 `VIEWS` 的 `preview`、
+   `showView` 的 enter 分支、`stepProgress` 死分支、`autoWorkflowStep` 的 preview 分支、
+   包模式步骤过滤里的 preview 项、`PreviewView.init` 整块 deps · `continuation-review.js` 的
+   `previewEnter` 注入调用 · `boundary.test.mjs` 的 OWNERS / VIEW_STATE_PREFIXES / VIEW_EXPORTS
+   三张表里 29 条 preview 登记 · `test_ui_assets.py` 两条 preview 用例 · overlay acid ④ 的
+   preview 断言 · e2e driver 的 preview 探针。
+2. 本笔（残留 DOM 与样式）：`index.html` 的 `#view-preview` 整段（46 行，含注释与空行）·
+   `app.css` 的 `.preview-*` / `.view--preview` / `#preview-*` 全部规则（95 行，含注释与空行，
+   类名清单见 commit 正文）· `app.css` 的 `--preview-hit-bg` / `--preview-hit-line` 两个变量
+   （只被上述规则用到）。
+
+**现在的状态**：树里没有 `preview-view.js`、没有 `#view-preview`、没有 `.preview-*` 规则；
+`grep preview app.css` 只剩 `.assign-preview`（协作分配预览）与 `.reading-tree__preview`
+（阅读树预览）这两组**同名前缀但不同功能**的类，`index.html` 只剩
+`structure-preview-btn` / `export-preview-btn` 两个按钮 id 里的子串。
 

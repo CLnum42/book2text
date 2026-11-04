@@ -730,52 +730,6 @@
         </div>
       </section>
 
-      <!-- ─────────────────────────── 视图：结果预览（与导出同一份 segments） ─────────────────────────── -->
-      <section class="view view--preview" id="view-preview" hidden>
-        <div class="preview-split">
-          <div class="preview-pdf">
-            <div class="preview-pdf__bar">
-              <button type="button" id="preview-prev" class="btn btn--sm" title="上一页">◀</button>
-              <span class="pager__no" id="preview-page-no">—</span>
-              <button type="button" id="preview-next" class="btn btn--sm" title="下一页">▶</button>
-              <span class="muted" id="preview-page-printed"></span>
-              <span class="muted" id="preview-follow"></span>
-              <span class="spacer"></span>
-              <button type="button" id="preview-margin-toggle" class="btn btn--sm"
-                      title="与页面视图同一个开关：版心边框 + 版心外压暗">版心</button>
-              <button type="button" id="preview-overlay-toggle" class="btn btn--sm"
-                      title="与页面视图同一个开关：块框（类型配色 + 序号）">块框</button>
-              <div class="zoombar" title="与页面视图共用缩放状态">
-                <button type="button" id="preview-zoom-out" class="btn btn--sm">－</button>
-                <span class="muted" id="preview-zoom-label">100%</span>
-                <button type="button" id="preview-zoom-in" class="btn btn--sm">＋</button>
-              </div>
-            </div>
-            <!-- 任务 47（J 刀）：左边是连续页条，不是单张裸图——每页都复用页面视图 /
-                 目录确认那套版心 + 块框渲染；悬停右栏一段时，这一段的块标浅绿。 -->
-            <div class="preview-pdf__scroll" id="preview-pdf-scroll">
-              <div class="preview-pages" id="preview-pages">
-                <div class="preview-junction" id="preview-junction" hidden></div>
-              </div>
-              <p class="muted" id="preview-image-status">正在渲染…</p>
-            </div>
-          </div>
-          <div class="preview-body">
-            <div class="preview-toolbar">
-              <span id="preview-meta">正在按导出设置组装正文…</span>
-              <span class="spacer"></span>
-              <label class="check check--line">
-                <input type="checkbox" id="preview-only-span"> 只看跨页段
-              </label>
-            </div>
-            <p class="hint preview-note" id="preview-note" hidden></p>
-            <div class="preview-scroll" id="preview-scroll">
-              <ol class="preview-segs" id="preview-segs"></ol>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <!-- ─────────────────────────── 视图：合并审阅 ─────────────────────────── -->
       <section class="view view--merge" id="view-merge" hidden>
         <div class="mergebar" id="merge-panel">

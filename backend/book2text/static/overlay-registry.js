@@ -1,21 +1,22 @@
 /**
- * Overlay 图层 registry（片 1：type "blocks"，唯一消费者 = preview 视图）
+ * Overlay 图层 registry（片 1：type "blocks"；消费者 = 页面网格 / 目录确认 / 阅读）
  *
  * 契约：`docs/refactor/overlay-registry-contract.md`；施工书：`docs/refactor/overlay-registry-slice1.md`。
+ * 2026-11-04：result preview 视图已按 L-117 删除，它曾是本模块的第一个消费者；现在剩三个。
  *
- * **它拿什么**：`mount(hostEl, { pageNo })` —— host 由视图给（preview 给的是 `.preview-page` 那个
- * tile 元素本身）。拿到 host 之后**只 append，不查询**：图层容器是它自己 `createElement` 出来的，
+ * **它拿什么**：`mount(hostEl, { pageNo })` —— host 由视图给（页面网格 / 目录确认 / 阅读各自的
+ * 页元素）。拿到 host 之后**只 append，不查询**：图层容器是它自己 `createElement` 出来的，
  * 句柄里一直握着那个节点；换内容靠"先建新子树、再摘旧子树"，不清空重画。
  *
- * **句柄按宿主元素唯一，不按 pageNo 唯一**（笔 C 修，QA 回归 ⑨-b）：preview 会一次性给 490 页
- * 各 mount 一份，pages 也各有自己那份；同一页在两个视图里各有一层是**正常**的。按 pageNo 唯一
- * 会让后 mount 的那个把先前的整层 unmount 掉（回到 pages 时 tile 上是个死句柄，数据到了也不画）。
+ * **句柄按宿主元素唯一，不按 pageNo 唯一**（笔 C 修，QA 回归 ⑨-b）：目录确认会一次性给 490 页
+ * 各 mount 一份，页面网格也有自己那份；同一页在两个视图里各有一层是**正常**的。按 pageNo 唯一
+ * 会让后 mount 的那个把先前的整层 unmount 掉（回到页面视图时 tile 上是个死句柄，数据到了也不画）。
  *
  * **容器 class = `overlay-layer page-overlay page-overlay--readonly`**：`overlay-layer` 只作标识 /
- * 诊断钩子，样式全靠 `.page-overlay` 那条作用域（`app.css` 本片 0 行改动）。容器必须挂在
- * `.preview-page` 子树里——`.preview-page .page-overlay{ z-index:2 }` 与
- * `.preview-page .page-overlay--readonly .box{ pointer-events:none }` 都是后代选择器，
- * 挂到子树外只会退回到 `--readonly` 的 `z-index:1`（只读规则本身是全局的，不丢）。
+ * 诊断钩子，样式全靠 `.page-overlay` 那条作用域。`--readonly` 全局是 `z-index:1` +
+ * `pointer-events:none`，所以容器必须挂在**视图的页元素子树**里，让视图自己的作用域规则
+ * （`.index-page .page-overlay{ z-index:2 }` / `.reading-page .page-overlay{ z-index:2 }`）
+ * 把它抬回图层之上；挂到子树外就只剩全局那条 `--readonly` 的 `z-index:1`。
  *
  * **版本是内容指纹，不是人工 bump**：`fingerprint(data, styles) = FNV-1a(stableJSON({data, styles}))`，
  * 同签名直接跳过（幂等）。输入正好是"即将绘制的那份数据"，所以不存在第二个版本来源。
