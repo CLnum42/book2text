@@ -731,3 +731,37 @@ def test_migration_0024_adds_null_jev_score(conn: sqlite3.Connection) -> None:
     assert conn.execute("SELECT jev_score FROM block_line WHERE line_id = 'l1'").fetchone()["jev_score"] == 0.0123
     conn.execute("UPDATE block_line SET jev_score = NULL WHERE line_id = 'l1'")
     assert conn.execute("SELECT jev_score FROM block_line WHERE line_id = 'l1'").fetchone()["jev_score"] is None
+
+
+# ---------------------------------------------------------------- 迁移 0025：project.margin_fit_at
+
+
+def test_migration_0025_marks_margin_fit_as_never_started(conn: sqlite3.Connection) -> None:
+    """老项目 margin_fit_at 必须是 NULL = 「从没生成过版心」这一态，不能写成时间。
+
+    界面用它区分「未开始」与「跑过但没拟出来」（`marginStepVerdict` 的第四态）；
+    写成非 NULL 会让所有老项目一升级就显示成"跑过"。
+    """
+    migrate(conn, MIGRATIONS[:24])
+    conn.execute(
+        "INSERT INTO project (project_id, name, source_file_name, source_sha256,"
+        " page_count, created_at, updated_at, schema_version)"
+        " VALUES ('p1', '老项目', 'a.pdf', 'x', 1, '2026-01-01', '2026-01-01', 24)"
+    )
+    conn.commit()
+
+    migrate(conn, MIGRATIONS)
+
+    assert current_version(conn) == LATEST_VERSION
+    row = conn.execute("SELECT margin_fit_at FROM project WHERE project_id = 'p1'").fetchone()
+    assert row["margin_fit_at"] is None
+    # 可写时间、可再次读到（不是只加一列没人用）
+    conn.execute(
+        "UPDATE project SET margin_fit_at = '2026-11-05T10:00:00+00:00' WHERE project_id = 'p1'"
+    )
+    assert (
+        conn.execute("SELECT margin_fit_at FROM project WHERE project_id = 'p1'").fetchone()[
+            "margin_fit_at"
+        ]
+        == "2026-11-05T10:00:00+00:00"
+    )

@@ -49,6 +49,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..storage import db as db_module
+from ..storage.ulid import new_ulid
 from . import blocks as blocks_module
 from ..export import header_cleanup
 from . import library as library_module
@@ -1111,12 +1112,52 @@ def _page_fit_lines(
     return [], "none", has_text, recognized
 
 
+def _record_custom_override(conn, page, box, *, now: str) -> None:
+    """手工页的框被自动生成覆盖时留一条 event（旧框 / 新框 / 页号 / 原因）。
+
+    为什么必须留痕：`custom` 的框是用户一格格拖出来的，覆盖是不可逆的（没有撤销栈
+    存到库里）。事后要能回答"我手调的框没了，是哪一次、被什么替了"。
+    """
+    before = {
+        "page_no": page.page_no,
+        "margin_box": list(page.margin_box) if page.margin_box else None,
+        "margin_box_mode": page.margin_box_mode,
+    }
+    after = {
+        "page_no": page.page_no,
+        "margin_box": list(box) if box else None,
+        "margin_box_mode": page.margin_box_mode,
+        "reason": "识别版心含手工页",
+    }
+    conn.execute(
+        """
+        INSERT INTO event (event_id, batch_id, entity_type, entity_id, action,
+                           before_json, after_json, actor, actor_name, package_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            new_ulid(),
+            new_ulid(),
+            "page",
+            page.page_id,
+            "margin_fit_override",
+            json.dumps(before, ensure_ascii=False),
+            json.dumps(after, ensure_ascii=False),
+            "user",
+            None,
+            None,
+            now,
+        ),
+    )
+
+
 def fit_page_margin(
     project_id: str,
     page_no: int,
     *,
     library: Path | None = None,
     only_auto: bool = True,
+    allow_custom: bool = False,
 ) -> dict[str, object]:
     """用这一页的**行框**拟合版心，写回 `page.margin_box` + `margin_box_method`。
 
@@ -1126,7 +1167,10 @@ def fit_page_margin(
     - 拟合不出（有效长行 < 3）→ 退**本页所有行的包围盒**（method=`bbox`）；
     - 一条行都没有 → `margin_box = NULL` + method=NULL（**未定**），
       读取时**不回退全局框**，也不参与版心判定；本页连文字都没有时另报 `no_text`；
-    - 重检测 / 重新拟合时覆盖上一次的结果（界面、导出、审计读同一份）。
+    - 重检测 / 重新拟合时覆盖上一次的结果（界面、导出、审计读同一份）；
+    - ``allow_custom=True``（2026-11-05，界面勾了「包括手工调整的页」）：**只改框**，
+      `margin_box_mode` 仍是 `custom`——用户手调过的页在自动生成之后不能被当成
+      "自动拟合"的页（否则下次看会以为是机器定的）。覆盖前后写一条 event 留痕。
     """
     target_library = library if library is not None else library_module.default_library_dir()
     directory = library_module.require_project_dir(project_id, library=target_library)
@@ -1134,9 +1178,12 @@ def fit_page_margin(
     page = next((item for item in pages if item.page_no == page_no), None)
     if page is None:
         raise library_module.ProjectError(f"没有第 {page_no} 页")
-    if page.margin_box_mode in (MODE_CUSTOM, MODE_NONE):
+    if page.margin_box_mode == MODE_NONE or (
+        page.margin_box_mode == MODE_CUSTOM and not allow_custom
+    ):
         return {"page_no": page_no, "updated": False, "reason": "custom_or_none"}
-    if only_auto and page.margin_box_mode != MODE_AUTO:
+    override_custom = allow_custom and page.margin_box_mode == MODE_CUSTOM
+    if only_auto and page.margin_box_mode != MODE_AUTO and not override_custom:
         return {"page_no": page_no, "updated": False, "reason": "not_auto"}
     boxes, source, has_text, recognized = _page_fit_lines(
         directory, project_id, page, library=target_library
@@ -1146,13 +1193,25 @@ def fit_page_margin(
     # 「无文字」不等于「还没识别」（刀 1）：识别跑过、结果整页没有字（插图 / 空白）才算
     # 无文字，跳过；从没识别过的页是未定，不能拿"无文字"把它放过去。
     no_text = bool(fitted.undetermined and not has_text and recognized)
+    now = _now()
     with db_module.open_database(directory) as conn:
+        if override_custom:
+            conn.execute(
+                "UPDATE page SET margin_box = ?, margin_box_method = ? WHERE page_id = ?",
+                (serialize_margin_box(fitted.box), method, page.page_id),
+            )
+            _record_custom_override(conn, page, fitted.box, now=now)
+        else:
+            conn.execute(
+                "UPDATE page SET margin_box = ?, margin_box_method = ?"
+                " WHERE page_id = ? AND margin_box_mode IN ('auto','inherit')",
+                (serialize_margin_box(fitted.box), method, page.page_id),
+            )
+        # 迁移 0025：记下"这本书真的生成过版心"。没有它，"从没开始"与"跑过但全失败"
+        # 在数据上都是"没有框"，界面只能靠猜（见 marginStepVerdict 的「未开始」）。
         conn.execute(
-            "UPDATE page SET margin_box = ?, margin_box_method = ?"
-            " WHERE page_id = ? AND margin_box_mode IN ('auto','inherit')",
-            (serialize_margin_box(fitted.box), method, page.page_id),
+            "UPDATE project SET margin_fit_at = ?, updated_at = ?", (now, now)
         )
-        conn.execute("UPDATE project SET updated_at = ?", (_now(),))
         conn.commit()
     return {
         "page_no": page_no,
@@ -1175,6 +1234,8 @@ def fit_all_pages(
     only_missing: bool = False,
     limit: int | None = None,
     body_only: bool = False,
+    page_nos: Sequence[int] | None = None,
+    include_custom: bool = False,
 ) -> dict[str, object]:
     """把 inherit / auto 的页全部改为每页自动拟合；custom / none 不动。
 
@@ -1188,15 +1249,21 @@ def fit_all_pages(
       界面据此分批调用并显示真实进度。
     - ``body_only=True``（2026-11-05，界面「重新识别」）：只处理正文页。重跑全书时
       非正文页（封面 / 目录 / 空白）不该跟着重算——它们的框不进任何判定。
+    - ``page_nos``（2026-11-05，选中若干页后重跑）：只处理这些页；空 / None = 全书。
+    - ``include_custom=True``（界面勾了「包括手工调整的页」）：``custom`` 页也重新生成，
+      但**只改框**，``margin_box_mode`` 仍是 ``custom``；每次覆盖写一条 event 留痕。
     """
     target_library = library if library is not None else library_module.default_library_dir()
     directory = library_module.require_project_dir(project_id, library=target_library)
     pages = library_module.list_pages(project_id, library=target_library)
+    selected = set(page_nos) if page_nos else None
     skipped_custom = skipped_none = skipped_inherit = skipped_fitted = 0
     skipped_not_body = 0
     targets: list[library_module.Page] = []
     for page in pages:
-        if page.margin_box_mode == MODE_CUSTOM:
+        if selected is not None and page.page_no not in selected:
+            continue
+        if page.margin_box_mode == MODE_CUSTOM and not include_custom:
             skipped_custom += 1
             continue
         if page.margin_box_mode == MODE_NONE:
@@ -1227,7 +1294,12 @@ def fit_all_pages(
                     (page.page_id,),
                 )
                 conn.commit()
-        result = fit_page_margin(project_id, page.page_no, library=target_library)
+        result = fit_page_margin(
+            project_id,
+            page.page_no,
+            library=target_library,
+            allow_custom=include_custom,
+        )
         if result.get("updated"):
             updated += 1
             if result.get("no_text"):

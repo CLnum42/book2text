@@ -153,6 +153,9 @@ class Project:
     margin_box_source: str | None = None
     # 当前全局版心最后一次写入的时间（ISO 8601），与 `updated_at` 分开。
     margin_box_set_at: str | None = None
+    # 迁移 0025：**页级**版心最后一次成功生成的时间；None = 这本书从没生成过版心。
+    # 界面「未开始 / 有未定页」的区分只读它（不能靠"没有框"来暗示，见 marginStepVerdict）。
+    margin_fit_at: str | None = None
     # 最近一次自动推算的完整结果（JSON 解析后的 dict，见 margin_box.SUGGESTION_SCHEMA）。
     margin_box_suggestion: dict[str, object] | None = None
     # 用户确认采用的页码位置模板（任务 55）；没确认过是 None。
@@ -178,6 +181,7 @@ class Project:
             "margin_box": list(self.margin_box) if self.margin_box else None,
             "margin_box_source": self.margin_box_source,
             "margin_box_set_at": self.margin_box_set_at,
+            "margin_fit_at": self.margin_fit_at,
             "margin_box_suggestion": (
                 dict(self.margin_box_suggestion) if self.margin_box_suggestion else None
             ),
@@ -522,6 +526,7 @@ def _row_to_project(row, directory: Path) -> Project:
         margin_box=_parse_margin_box(_column(row, "margin_box")),
         margin_box_source=_column(row, "margin_box_source"),
         margin_box_set_at=_column(row, "margin_box_set_at"),
+        margin_fit_at=_column(row, "margin_fit_at"),
         margin_box_suggestion=_parse_json_object(_column(row, "margin_box_suggestion")),
         page_number_template=_parse_json_object(_column(row, "page_number_template")),
         page_number_ranges=_parse_json_array(_column(row, "page_number_ranges")),

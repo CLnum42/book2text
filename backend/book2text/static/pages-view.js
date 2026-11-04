@@ -1115,13 +1115,22 @@ function updateSelectionPanel() {
  *
  * - `scope="missing"`（默认，也是检测收尾用的）：只碰 `mode=auto` 且还没有框的页，
  *   `.custom` 绝不覆盖，`.none` / `.inherit` 也不动；
- * - `scope="all"`（主按钮「重新识别」）：重新生成所有正文页（custom / none 仍跳过）；
+ * - `scope="all"`（主按钮「重新识别」）：重新生成所有正文页（custom / none 仍跳过，
+ *   除非 `includeCustom`）；
+ * - `scope="pages"`（选中若干页后重跑）：只碰 `pageNos` 里的页，其余页一个字段都不动；
+ * - `includeCustom`：用户勾了「包括手工调整的页」。`custom` 页只改框、不改 mode，
+ *   每页后端写一条 event（旧框 / 新框 / 原因）；
  * - **不预先按"有没有行"筛页**：后端会回退识别行拟合（刀 1），无文字的页单独报
  *   `no_text`，不该由前端猜；猜错就会把整本没检测过的书误判成"没有行"；
  * - 一批 20 页一次请求，界面按批更新进度条（分批后不会假死）；
  * - 拟合失败的页记进 `marginFitTried`，本次会话不反复重试；任务结束 / 重新进这一步会清空。
  */
-async function ensureMarginFitted({ manual = false, scope = "missing" } = {}) {
+async function ensureMarginFitted({
+  manual = false,
+  scope = "missing",
+  pageNos = null,
+  includeCustom = false,
+} = {}) {
   refreshMarginDetectHint();
   if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") return;
   if (injected.getMarginFitRunning()) return;
@@ -1130,23 +1139,32 @@ async function ensureMarginFitted({ manual = false, scope = "missing" } = {}) {
   if (injected.getLayoutDetectActive()) return;
   // 主按钮是人工动作：上一轮试过但没成的页也要再试一次
   if (manual) injected.marginFitTried.clear();
+  const projectPages = injected.getCurrentProject().pages;
+  const wanted = pageNos ? new Set(pageNos) : null;
   const pending =
-    scope === "all"
-      ? injected
-          .marginBodyPages()
-          .filter((page) => page.margin_box_mode !== "custom" && page.margin_box_mode !== "none")
-      : injected.marginUndeterminedPages().filter(
+    scope === "missing"
+      ? injected.marginUndeterminedPages().filter(
           (page) => injected.pageHasFitLines(page) && !injected.marginFitTried.has(page.page_no)
+        )
+      : (wanted
+          ? projectPages.filter((page) => wanted.has(page.page_no))
+          : injected.marginBodyPages()
+        ).filter(
+          (page) =>
+            page.margin_box_mode !== "none" &&
+            (includeCustom || page.margin_box_mode !== "custom")
         );
   if (!pending.length) {
     renderMarginStepVerdict();
     if (manual) {
       setMarginStatus(
-        scope === "all"
-          ? "没有可重新生成的页：正文页都是手工调整或不用版心。"
-          : injected.marginPagesWithoutLines().length
+        scope === "missing"
+          ? injected.marginPagesWithoutLines().length
             ? `没有可生成的页：还差 ${injected.marginPagesWithoutLines().length} 页没有正文行（要先识别）。`
-            : "全书版心都已定，没有要生成的页。",
+            : "全书版心都已定，没有要生成的页。"
+          : scope === "pages"
+            ? "选中的页没有可生成的（不是正文页，或都是手工调整没勾选覆盖）。"
+            : "没有可重新生成的页：正文页都是手工调整或不用版心。",
         false,
         12000
       );
@@ -1165,8 +1183,18 @@ async function ensureMarginFitted({ manual = false, scope = "missing" } = {}) {
   let undetermined = 0;
   let noText = 0;
   let stoppedForDetect = false;
+  // 非 missing 的两个作用域**必须由前端分批**（不能用后端 remaining 收尾）：
+  // only_missing=false 时后端每次都会把同一批页当目标，remaining 永远 = total - limit，
+  // 拿它当终点会来回重拟同一批 20 页、永不结束。这里把 pending 切好，一批只请求自己的页。
+  const batches = [];
+  if (scope !== "missing") {
+    for (let index = 0; index < pending.length; index += 20) {
+      batches.push(pending.slice(index, index + 20).map((page) => page.page_no));
+    }
+  }
+  let batchIndex = 0;
   try {
-    // **按后端返回的 remaining 收尾**，不按前端这份 pending 清单收尾：
+    // missing 作用域**按后端返回的 remaining 收尾**，不按前端这份 pending 清单收尾：
     // 后端一批处理的是"所有缺框页"（含没有行的页），比 pending 多；
     // 拿 processed >= pending.length 当终点会提前停，留下一批有行却没生成的页
     // （TTBVW3 实测：267 页第一次点了只生成 219 页，剩 23 页）。
@@ -1176,16 +1204,21 @@ async function ensureMarginFitted({ manual = false, scope = "missing" } = {}) {
         stoppedForDetect = true;
         break;
       }
+      const payload =
+        scope === "missing"
+          ? { only_missing: true, limit: 20 }
+          : {
+              only_missing: false,
+              limit: 20,
+              pages: batches[batchIndex],
+              include_custom: includeCustom,
+            };
       const data = await injected.apiJson(
         `/api/projects/${injected.getCurrentProject().project_id}/margin-box/fit-all`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            scope === "all"
-              ? { only_missing: false, body_only: true, limit: 20 }
-              : { only_missing: true, limit: 20 }
-          ),
+          body: JSON.stringify(payload),
         }
       );
       const updated = Number(data.updated || 0);
@@ -1196,7 +1229,12 @@ async function ensureMarginFitted({ manual = false, scope = "missing" } = {}) {
       noText += Number(data.no_text || 0);
       const remaining = Number(data.remaining || 0);
       showMarginFitProgress(attempted, marginFitDisplayTotal, remaining);
-      if (!updated || remaining === 0) break;
+      if (scope === "missing") {
+        if (!updated || remaining === 0) break;
+        continue;
+      }
+      batchIndex += 1;
+      if (batchIndex >= batches.length || !updated) break;
     }
     await injected.refreshPageStates();
     refreshMarginTiles();
@@ -1553,6 +1591,26 @@ function renderMarginStepVerdict() {
   // 否则是重新识别（重跑已经定好的页）。点过一次之后数据自然就变成后者。
   const generateLabel = v.needFit.length ? "全局识别" : "重新识别";
   switch (v.key) {
+    case "unstarted":
+      // 第四态（2026-11-05）：进这一步不再自动拟合，"从没开始"要和"跑过但没拟出来"
+      // 分开说。它**不阻塞**任何后续步骤，只是把状态说清楚。
+      state.textContent = "未开始";
+      if (!v.withLines.length) {
+        line.textContent =
+          `还没有生成过版心，正文 ${v.body.length} 页也还没有识别出正文行：` +
+          "先在「文字识别」这一步跑识别，回来才能生成。";
+        button.textContent = "全局识别";
+        button.disabled = true;
+        break;
+      }
+      line.textContent =
+        `版心还没生成过：点「全局识别」，按每页正文行生成` +
+        `（${v.needFit.length} 页可生成` +
+        (v.noLines.length ? `，${v.noLines.length} 页还没有正文行会跳过` : "") +
+        "）。";
+      button.textContent = "全局识别";
+      button.disabled = false;
+      break;
     case "unprepared":
       state.textContent = "未准备";
       line.textContent =
@@ -3147,20 +3205,35 @@ async function onRecognitionFinished(pageNos, { reloadDetail = true } = {}) {
 /**
  * 主按钮的计划：按钮文案、确认窗文案、请求参数三者同源（都从这一份数据推）。
  *
- * - 「全局识别」= 还有"有正文行、还没框"的页 ⇒ 只补这些页；
- * - 「重新识别」= 没有待补的页 ⇒ 按当前行框重跑所有正文页（custom / none 仍跳过）；
- * - 手工调整的页本轮一律跳过，确认窗里把页数说出来（0 页时整条不显示）。
+ * - 有选中页 ⇒ 只重生成选中的页（`scope="pages"`），其余页一个字段都不动；
+ * - 没选中 + 还有"有正文行、还没框"的页 ⇒「全局识别」，只补这些页；
+ * - 没选中 + 都框好了 ⇒「重新识别」，按当前行框重跑全书正文页。
+ * 手工调整（custom）的页默认跳过；要覆盖必须在确认窗里显式勾选（默认不勾）。
  */
 function marginFitPlan() {
   const v = injected.marginStepVerdict();
+  const bodyByNo = new Map(v.body.map((page) => [page.page_no, page]));
+  const picked = [...injected.getSelectedPages()].sort((left, right) => left - right);
+  const selected = picked.filter((no) => bodyByNo.has(no));
+  const customInScope = selected.length
+    ? selected.filter((no) => bodyByNo.get(no).margin_box_mode === "custom").length
+    : v.body.filter((page) => page.margin_box_mode === "custom").length;
   return {
     verdict: v,
-    scope: v.needFit.length ? "missing" : "all",
+    selected,
+    ignoredSelected: picked.length - selected.length,
+    scope: selected.length ? "pages" : v.needFit.length ? "missing" : "all",
     missing: v.needFit.length,
     noLines: v.noLines.length,
-    custom: v.body.filter((page) => page.margin_box_mode === "custom").length,
-    total: v.body.length,
+    custom: customInScope,
+    total: selected.length || v.body.length,
   };
+}
+
+/** 选中的页码写成一行人话（最多列 8 个，多的用"等"收尾）。 */
+function marginPageListText(pageNos) {
+  const shown = pageNos.slice(0, 8).join("、");
+  return pageNos.length > 8 ? `第 ${shown} 等 ${pageNos.length} 页` : `第 ${shown} 页`;
 }
 
 /** 主按钮：先弹确认窗（Esc / 点遮罩 = 不发任何请求），确认后才跑。 */
@@ -3171,26 +3244,54 @@ async function requestMarginFit() {
     return;
   }
   const plan = marginFitPlan();
-  if (!plan.verdict.withLines.length) {
+  if (!plan.verdict.withLines.length && plan.scope !== "pages") {
     setMarginStatus("还没有识别出正文行：先跑「文字识别」，版心才有行框可用。", false, 12000);
     return;
   }
-  const lead =
-    plan.scope === "missing"
-      ? `将生成全书版心：共 ${plan.missing} 页可生成` +
-        (plan.noLines ? `，${plan.noLines} 页还没有正文行会被跳过` : "") +
-        "。"
-      : `将重新生成全书 ${plan.total - plan.custom} 页的版心。`;
+  if (plan.scope === "pages" && !plan.selected.length) {
+    setMarginStatus("选中的页都不是正文页：版心只对正文页生成。", false, 12000);
+    return;
+  }
+  let lead;
   const list = [];
+  if (plan.scope === "pages") {
+    // C 版：作用域写清，并明说"其余页不会变"——用户点之前要看到后果，不是开关名。
+    lead = `将重新生成选中的 ${plan.selected.length} 页的版心。`;
+    list.push(`选中的页：${marginPageListText(plan.selected)}`);
+    list.push("其余页的版心不会变化");
+  } else if (plan.scope === "missing") {
+    // A 版
+    lead =
+      `将生成全书版心：共 ${plan.missing} 页可生成` +
+      (plan.noLines ? `，${plan.noLines} 页还没有正文行会被跳过` : "") +
+      "。";
+  } else {
+    // B 版：全部已拟合，重跑；custom 页数写进副行
+    lead = `将重新生成全书 ${plan.total - plan.custom} 页的版心。`;
+  }
   if (plan.custom) list.push(`已手工调整的 ${plan.custom} 页会跳过，不会覆盖`);
+  const checkbox = plan.custom
+    ? { label: `包括手工调整的 ${plan.custom} 页（会覆盖这些页的框）`, checked: false }
+    : null;
   const choice = await injected.confirmAction({
     title: "识别版心",
     lead,
     list,
-    safeText: plan.scope === "missing" ? "生成全书版心" : "重新生成全书版心",
+    checkbox,
+    safeText:
+      plan.scope === "missing"
+        ? "生成全书版心"
+        : plan.scope === "pages"
+          ? `重新生成这 ${plan.selected.length} 页的版心`
+          : "重新生成全书版心",
   });
   if (choice === null) return;   // Esc / 点遮罩：什么都不做（不发起请求）
-  await ensureMarginFitted({ manual: true, scope: plan.scope });
+  await ensureMarginFitted({
+    manual: true,
+    scope: plan.scope,
+    pageNos: plan.scope === "pages" ? plan.selected : null,
+    includeCustom: Boolean(checkbox && checkbox.checked),
+  });
 }
 
 /** 版面块面板的调度：先记「正在看哪一页」，再决定重画还是重新拉。 */

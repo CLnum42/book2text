@@ -331,7 +331,13 @@ function stepProgress(id) {
       const m = fs.margin || {};
       done = Boolean(m.complete) && Number(m.undetermined || 0) === 0;
       count = `${m.set || 0}/${m.total || 0}`;
+      // 2026-11-05：进这一步不再自动拟合，「未开始」必须说出来（迁移 0025 的
+      // margin.fit_started）。它不挡进入下一步——这里只是状态，不是闸门。
+      // **老项目例外**：升级前生成的框没有时间戳（fit_started=false 但已有 set 页），
+      // 那时说"还没开始生成 · 已定 230/230"是自相矛盾，所以只在"一页都没定时"才这么写。
+      const neverStarted = m.fit_started === false && Number(m.with_box || 0) === 0;
       detail =
+        (neverStarted ? "还没开始生成 · " : "") +
         `正文页版心已定 ${count}` +
         (m.fallback ? ` · ${m.fallback} 页本页包围盒兜底` : "") +
         (m.no_text ? ` · ${m.no_text} 页无文字跳过` : "") +
@@ -642,10 +648,16 @@ function marginBodyPages() {
 }
 
 /**
- * 版心这一步的**四态**（任务 56 / 刀 2）：未准备 / 生成中 / 已拟合 / 有未定页。
+ * 版心这一步的**四态**（任务 56 / 刀 2，2026-11-05 改第四态为「未开始」）：
+ * 未开始 / 生成中 / 已拟合 / 有未定页。
  *
  * 判据只用真实数据：页上的 `margin_box`（已落库的框）、`text_lines` / `layout_lines`
- * （有没有可拟合的行）、以及正在跑的任务。**没有框就不许说"已定"**。
+ * （有没有可拟合的行）、正在跑的任务，以及**收尾面板的 `margin.fit_started`**
+ * （迁移 0025：这本书有没有真的生成过版心）。**没有框就不许说"已定"**。
+ *
+ * 为什么「未开始」要单独一态：进这一步不再自动拟合（2026-11-05 产品改动），
+ * 于是"从没开始"与"跑过但一页也没拟出来"在页数据上都是"没有框"，靠数据分不出来。
+ * 这两件事要告诉用户的话不一样，所以必须有自己的状态，不能靠"没有框"暗示。
  */
 function marginStepVerdict() {
   const body = marginBodyPages();
@@ -663,13 +675,21 @@ function marginStepVerdict() {
   const noLines = undetermined.filter((page) => !pageHasFitLines(page));
   const withLines = body.filter(pageHasFitLines);
   const settled = body.length - undetermined.length;
+  // `fit_started` 来自收尾面板（后端 review_status 的 margin.fit_started）。
+  // 收尾面板还没读到时按"没有这个信息"处理：不谎报未开始，落回有未定页。
+  const marginSummary = finishSummary && finishSummary.margin;
+  const fitStarted = marginSummary ? marginSummary.fit_started !== false : true;
+  // 「一个框都没有」只读收尾面板的 with_box（正文页有框的页数）：custom 页也算已定，
+  // 用 settled 判会把「只有手工框」误判成没开始。
+  const anyBox = marginSummary ? Number(marginSummary.with_box || 0) > 0 : body.some((page) => page.margin_box);
   let key = "partial";
   if (layoutDetectActive || marginFitRunning) key = "working";
+  else if (!fitStarted && !anyBox) key = "unstarted";
   else if (!withLines.length) key = "unprepared";
   else if (!undetermined.length) key = "fitted";
   return {
     key, body, undetermined, undeterminedAll, needFit, noLines, noText,
-    settled, withLines,
+    settled, withLines, fitStarted,
   };
 }
 
@@ -2036,7 +2056,15 @@ function openTaskDrawer() {
 // 单键形态（不传 dangerText）禁止承载危险动作。
 let confirmPending = null;
 
-function confirmAction({ title, lead, list = [], detail = "", safeText, dangerText = "" }) {
+/**
+ * 通用确认框。`checkbox` 是 2026-11-05 加的可选槽位（不传就整行 hidden）：
+ * 形如 `{label, checked}`，关闭时把勾选状态写回传入对象（`checkbox.checked`），
+ * 调用方 `await` 之后读它。返回值和以前一样（"safe" / "danger" / null），
+ * 其余确认框的调用一个都不用改。
+ */
+function confirmAction({
+  title, lead, list = [], detail = "", safeText, dangerText = "", checkbox = null,
+}) {
   const mask = el("confirm-dialog-mask");
   if (!mask) return Promise.resolve(null);
   if (confirmPending) { confirmPending.close(null); }   // 单实例：连续触发不叠加
@@ -2060,6 +2088,16 @@ function confirmAction({ title, lead, list = [], detail = "", safeText, dangerTe
   toggle.textContent = "详情";
   toggle.onclick = () => { detailNode.hidden = !detailNode.hidden; };
 
+  const checkRow = el("confirm-dialog-check");
+  const checkInput = el("confirm-dialog-check-input");
+  const checkLabel = el("confirm-dialog-check-label");
+  const hasCheck = Boolean(checkbox && checkRow && checkInput && checkLabel);
+  if (hasCheck) {
+    checkLabel.textContent = checkbox.label || "";
+    checkInput.checked = Boolean(checkbox.checked);
+  }
+  checkRow.hidden = !hasCheck;
+
   const safe = el("confirm-dialog-safe");
   const danger = el("confirm-dialog-danger");
   safe.textContent = safeText;
@@ -2079,6 +2117,9 @@ function confirmAction({ title, lead, list = [], detail = "", safeText, dangerTe
       danger.onclick = null;
       mask.onclick = null;
       document.removeEventListener("keydown", onKey);
+      // 勾选状态在关闭时就写回调用方的对象：连 Esc 关闭也写（表示"这次没生效"，
+      // 调用方看到 null 结果自然不用它），下次打开由调用方重新给初始值。
+      if (hasCheck) checkbox.checked = Boolean(checkInput.checked);
       confirmPending = null;
       resolve(result);
     };

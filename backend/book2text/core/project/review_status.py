@@ -972,6 +972,13 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
         "margin": {
             "set": margin_settled,
             "total": margin_total,
+            # 迁移 0025：这本书有没有真的生成过版心。「未开始」不能靠"没有框"推——
+            # 从没开始与"跑过但一页也没拟出来"在页数据上长得一样。
+            "fit_started": bool(getattr(project, "margin_fit_at", None)),
+            "fit_at": getattr(project, "margin_fit_at", None),
+            # 正文页里有框的页数（任何 mode）。界面用它判「未开始」：
+            # fit_started=false 且一个框都没有 ⇒ 还没生成过；有框就是历史数据。
+            "with_box": sum(1 for page in body_pages if page.margin_box is not None),
             "fallback": len(fallback_pages),
             "fallback_pages": fallback_pages,
             "no_text": len(no_text_pages),

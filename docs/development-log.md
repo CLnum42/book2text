@@ -5,6 +5,49 @@
 模板字段：任务目标 / 当前状态 / 实施计划 / 实现与验证 / 用户操作说明 / 下一步建议。
 未在真实环境运行过的测试一律注明，不得把未运行的测试写成通过。
 
+## 2026-11-05 凌晨 — 版心确认改成「人工触发 + 选中范围」（产品改动）
+
+**任务目标：** 进「版心确认」不再自动拟合；主按钮按真实数据在「全局识别 / 重新识别」之间切换；
+点按钮先弹确认窗（Esc = 什么都不做）；有选中页时只重生成选中的页；手工调整（custom）的页
+默认不覆盖，确认窗里勾选后才覆盖并留痕。
+
+**用户可见（真机读数，项目副本 `/tmp/b2t-margin/lib/b2t_H6GXVG`，40 页 / 3 页 custom）：**
+
+| 场景 | 结果 |
+|---|---|
+| 进版心确认 | 状态「未开始」；`fit-all` 请求 **0 次**；库零变化 |
+| 点「全局识别」→ 确认窗 | 「将生成全书版心：共 37 页可生成。」+「已手工调整的 3 页会跳过，不会覆盖」 |
+| 确认后 | 2 批（20+17）跑完；状态「已拟合」、40/40、按钮变「重新识别」 |
+| 取消（Esc） | 确认框关闭，`fit-all` 请求数 **2 → 2**（没有新增） |
+| 选中 3 页（12/13/40）重跑 | 确认窗写「将重新生成选中的 3 页的版心」+「其余页的版心不会变化」；请求体 `pages:[12,13,40]`；**逐字段 CSV diff 只有这 3 行变**，其余 37 行逐字节相同（page 表没有 updated_at 列，只能对 margin_box / mode / method） |
+| 选 3 页 custom 不勾选 | 确认窗列「已手工调整的 3 页会跳过」；请求 **0 次**（前端 pending 为空），库不变 |
+| 勾「包括手工调整的 3 页」 | 请求 `include_custom:true`；3 页写出框、`margin_box_mode` 仍是 `custom`；`event` 表 3 条 `margin_fit_override`（旧框/新框/页号/原因） |
+| 「重新识别」全书 | 37 页拆 2 批（20+17），能收尾；不存在"同一批反复重拟"的死循环 |
+
+**内部改动：**
+
+- `pages-view.js`：删掉进步骤时的 `ensureMarginFitted()`（保留检测收尾那一次）；
+  主按钮换成 `#margin-fit-button`（原 `#margin-confirm-all` 删除，避免两个按钮做同一件事）；
+  `ensureMarginFitted` 增 `scope` / `pageNos` / `includeCustom`，非 `missing` 作用域由**前端分批**
+  （`only_missing=false` 时后端 `remaining` 恒 > 0，拿它收尾会死循环）。
+- 后端 `fit_all_pages` 增 `body_only` / `page_nos` / `include_custom`；`fit_page_margin` 增
+  `allow_custom`：**只改框不改 mode**，覆盖前写 `event`。
+- 迁移 **0025** `project.margin_fit_at`：区分「从没开始」与「跑过但没拟出来」。
+  收尾面板多 `margin.fit_started` / `margin.with_box` 两个字段；「未开始」只在
+  `fit_started=false 且 with_box=0` 时显示——**老项目升级后已有框但没有时间戳**，
+  不这么判会出现「还没开始生成 · 已定 230/230」的自相矛盾。
+- 通用确认框加一个**可选** checkbox 槽位（不传时整行 hidden，其余调用零改动）；
+  勾选状态在关闭时写回调用方对象（返回值仍是 `"safe"/"danger"/null`，不破坏既有调用）。
+
+**未验证 / 已知取舍：**
+
+- 勾了「包括手工调整的页」时，确认键仍是**单键**（动作名「重新生成这 3 页的版心」），
+  不是危险色的「仍要覆盖」。后果写在勾选框文案里（「会覆盖这些页的框」），但不符合
+  `docs/ux/confirm-dialog-spec.md` §2 对"不可逆动作必须双键 + 仍要"的字面要求——需要拍板。
+- 只在 macOS + Chrome 156 headless 里点过；Windows / Safari 未验证。
+- `page` 表没有 `updated_at`，"其余页不变"的判据是 `margin_box / margin_box_mode / margin_box_method`
+  逐字段对比（`project.updated_at` 会变，这是设计如此）。
+
 ## 2026-10-30 夜 — 人工成果保护 / force 通道 / human-touched 接口（三批后端）
 
 ### 1. 人工成果保护：不该被识别覆盖的页

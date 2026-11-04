@@ -265,9 +265,11 @@
                 <summary><strong>版心</strong><span class="muted" id="margin-confidence"></span></summary>
                 <div class="panel__body">
                   <!-- 任务 56（刀 2）：这一步只留一句话 + 一个主按钮 + 一个数字。
-                       四态：未准备 / 生成中 / 已拟合 / 有未定页。单页四边折进下面。 -->
+                       四态（2026-11-05 起）：未开始 / 生成中 / 已拟合 / 有未定页。
+                       「未开始」读 project.margin_fit_at（迁移 0025），不能靠"没有框"暗示。
+                       单页四边折进下面。 -->
                   <div class="step-verdict">
-                    <strong id="margin-verdict-state">未准备</strong>
+                    <strong id="margin-verdict-state">未开始</strong>
                     <p class="hint" id="margin-verdict-line"></p>
                   </div>
                   <!-- 2026-11-05：进这一步**不再自动拟合**。主按钮是唯一入口，文案按真实数据变：
@@ -1281,6 +1283,12 @@
         <ul id="confirm-dialog-list" hidden></ul>
         <button type="button" id="confirm-dialog-detail-toggle" hidden></button>
         <p id="confirm-dialog-detail" hidden></p>
+        <!-- 可选槽位（2026-11-05「识别版心含手工页」）：不传 checkbox 时整行 hidden，
+             其余确认框的 DOM 与行为一字不变。 -->
+        <label class="check check--line" id="confirm-dialog-check" hidden>
+          <input type="checkbox" id="confirm-dialog-check-input">
+          <span id="confirm-dialog-check-label"></span>
+        </label>
         <div class="modal-actions">
           <button type="button" id="confirm-dialog-safe" class="btn"></button>
           <button type="button" id="confirm-dialog-danger" class="btn btn--danger" hidden></button>
