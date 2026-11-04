@@ -1,0 +1,70 @@
+{
+  "schema": "book2text.cer-gold.v1",
+  "project": {
+    "id": "b2t_H6GXVG",
+    "name": "红楼梦第一卷_正文前40页_图像版",
+    "source_file_name": "红楼梦第一卷_正文前40页_图像版.pdf"
+  },
+  "export": {
+    "id": "20261029-0413_txt",
+    "exported_at": "2026-10-29T04:13:12+00:00",
+    "pages": 40,
+    "rules": {
+      "format": "txt",
+      "exclude_header_footer": true,
+      "page_types": [
+        "body"
+      ],
+      "margin_judgement": true
+    }
+  },
+  "gold": {
+    "file": "红楼梦第一卷_正文前40页_金标准文本.txt",
+    "sha256": "9df3d88aacf3e45518ae1768976e79d063eaed11f394bc2c352ea7ac597b0ab7",
+    "chars": 20123
+  },
+  "cer": 0.01491943505072608,
+  "reference_chars": 20108,
+  "hypothesis_chars": 20132,
+  "distance": 300,
+  "edit_ops": {
+    "substitutions": 65,
+    "deletions": 106,
+    "insertions": 130,
+    "sum": 301,
+    "minimal_distance": 300
+  },
+  "ignore_whitespace": {
+    "cer": 0.0098965585836483,
+    "reference_chars": 20108,
+    "distance": 199,
+    "note": "对照列：删掉全部空白再算（含中文/拉丁边界空格），不是判据"
+  },
+  "per_chapter": [
+    {
+      "chapter": "第1回",
+      "gold_chars": 6443,
+      "reference_chars": 6443,
+      "hypothesis_chars": 6467,
+      "distance": 81,
+      "cer": 0.012571783330746546
+    },
+    {
+      "chapter": "第2回",
+      "gold_chars": 5723,
+      "reference_chars": 5723,
+      "hypothesis_chars": 5684,
+      "distance": 117,
+      "cer": 0.02044382316966626
+    },
+    {
+      "chapter": "第3回",
+      "gold_chars": 7942,
+      "reference_chars": 7942,
+      "hypothesis_chars": 7979,
+      "distance": 100,
+      "cer": 0.012591286829513977
+    }
+  ],
+  "method": "normalize_for_comparison(keep_newlines=False) + 单位代价 Levenshtein（numpy 与 compare.py 对拍）"
+}
