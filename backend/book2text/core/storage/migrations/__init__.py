@@ -27,6 +27,7 @@ from . import (
     migration_0021_line_word_boxes,
     migration_0022_page_ocr_language,
     migration_0023_job_item_skipped,
+    migration_0024_jev_priority,
 )
 
 MIGRATIONS: list[Migration] = [
@@ -53,6 +54,7 @@ MIGRATIONS: list[Migration] = [
     migration_0021_line_word_boxes.MIGRATION,
     migration_0022_page_ocr_language.MIGRATION,
     migration_0023_job_item_skipped.MIGRATION,
+    migration_0024_jev_priority.MIGRATION,
 ]
 
 LATEST_VERSION = max(migration.version for migration in MIGRATIONS)

@@ -692,3 +692,42 @@ def test_migration_0023_allows_succeeded_with_skips_job_status(conn: sqlite3.Con
     )
     row = conn.execute("SELECT status FROM job WHERE job_id = 'j1'").fetchone()
     assert row["status"] == "succeeded_with_skips"
+
+
+# ---------------------------------------------------------------- 迁移 0024：block_line.jev_score
+
+
+def test_migration_0024_adds_null_jev_score(conn: sqlite3.Connection) -> None:
+    """只加列：老行 jev_score 必须是 NULL（= 没跑过），不能悄悄写成 0（0 分 = 极可疑）。"""
+    migrate(conn, MIGRATIONS[:23])
+    conn.execute(
+        "INSERT INTO project (project_id, name, source_file_name, source_sha256,"
+        " page_count, created_at, updated_at, schema_version)"
+        " VALUES ('p1', '老项目', 'a.pdf', 'x', 1, '2026-01-01', '2026-01-01', 23)"
+    )
+    conn.execute(
+        "INSERT INTO page (page_id, page_no, width_pt, height_pt)"
+        " VALUES ('pg1', 1, 595.0, 842.0)"
+    )
+    conn.execute(
+        "INSERT INTO block (block_id, page_id, origin, order_index, bbox, block_type,"
+        " ocr_text, text, include, continues_to_next, created_at, updated_at)"
+        " VALUES ('b1', 'pg1', 'ocr', 0, '[0.1,0.1,0.9,0.2]', 'paragraph',"
+        " '旧', '旧', 1, 0, '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
+    )
+    conn.execute(
+        "INSERT INTO block_line (line_id, block_id, line_index, bbox, text)"
+        " VALUES ('l1', 'b1', 0, '[0.1,0.1,0.9,0.2]', '旧行')"
+    )
+    conn.commit()
+
+    migrate(conn, MIGRATIONS)
+
+    assert current_version(conn) == LATEST_VERSION
+    row = conn.execute("SELECT jev_score FROM block_line WHERE line_id = 'l1'").fetchone()
+    assert row["jev_score"] is None
+    # 可写分数、可清零
+    conn.execute("UPDATE block_line SET jev_score = 0.0123 WHERE line_id = 'l1'")
+    assert conn.execute("SELECT jev_score FROM block_line WHERE line_id = 'l1'").fetchone()["jev_score"] == 0.0123
+    conn.execute("UPDATE block_line SET jev_score = NULL WHERE line_id = 'l1'")
+    assert conn.execute("SELECT jev_score FROM block_line WHERE line_id = 'l1'").fetchone()["jev_score"] is None
