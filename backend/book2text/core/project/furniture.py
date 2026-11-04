@@ -117,7 +117,8 @@ def _is_furniture_line(text: str) -> bool:
     value = (text or "").strip()
     if not value:
         return True
-    if value.isdigit() and len(value) <= MAX_PAGE_NUMBER_DIGITS:
+    # '②'.isdigit() 是 True 但 int('②') 抛 ValueError（2026-11-05，P0）
+    if value.isdecimal() and len(value) <= MAX_PAGE_NUMBER_DIGITS:
         return True
     if "红楼梦" in value:
         rest = value.replace("红楼梦", "").strip()

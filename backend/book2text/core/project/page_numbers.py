@@ -368,7 +368,8 @@ def _text_layer_candidates(
                 kind = "text_layer_bare"
             if match is None:
                 continue
-            value = str(int(match.group(1))) if match.group(1).isdigit() else match.group(1)
+            # '②'.isdigit() 是 True 但 int('②') 抛 ValueError（2026-11-05，P0）
+            value = str(int(match.group(1))) if match.group(1).isdecimal() else match.group(1)
             if (value, kind) in seen:
                 continue
             seen.add((value, kind))

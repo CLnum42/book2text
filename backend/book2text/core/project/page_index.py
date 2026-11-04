@@ -84,7 +84,11 @@ def build_page_index(project_id: str, *, library: Path | None = None) -> dict:
     # 兜底：页码候选只收"版心外"的纯数字行；这本书有 14 页的页脚被并进了正文块、
     # 落在版心内，候选收不到。这里补看**下边带的数字行**（不看版心），但只接受
     # 与全书规律吻合的值（printed = ratio × 页序 + offset），不猜。
-    for page_no, value in _bottom_line_numbers(directory).items():
+    try:
+        bottom_numbers = _bottom_line_numbers(directory)
+    except Exception:  # noqa: BLE001 - 下边带只是兜底信号，坏了不许打死整个索引
+        bottom_numbers = {}
+    for page_no, value in bottom_numbers.items():
         if page_no in one_number:
             continue
         if value == ratio * page_no + offset:
@@ -244,7 +248,8 @@ def _bottom_numbers(candidates) -> list[tuple[int, float]]:
     numbers: list[tuple[int, float]] = []
     for candidate in candidates:
         value = str(candidate.value or "").strip()
-        if not value.isdigit():
+        # '②'.isdigit() 是 True 但 int('②') 抛 ValueError —— 必须用 isdecimal
+        if not value.isdecimal():
             continue
         if candidate.y < BOTTOM_BAND:
             continue
@@ -327,7 +332,8 @@ def _bottom_line_numbers(directory: Path) -> dict[int, int]:
     found: dict[int, tuple[int, float]] = {}
     for page_no, text, raw_bbox in rows:
         value = (text or "").strip()
-        if not value.isdigit() or len(value) > 4:
+        # 同上：'②' 不是十进制数字，isdigit() 会放过它
+        if not value.isdecimal() or len(value) > 4:
             continue
         try:
             bbox = json.loads(raw_bbox) if raw_bbox else None
@@ -338,9 +344,15 @@ def _bottom_line_numbers(directory: Path) -> dict[int, int]:
         y = (float(bbox[1]) + float(bbox[3])) / 2
         if y < BOTTOM_BAND:
             continue
-        current = found.get(int(page_no))
+        try:
+            number = int(value)
+            page_key = int(page_no)
+        except (TypeError, ValueError):
+            # 一类坏数据不该打死整页索引：跳过这一行，其余页照常
+            continue
+        current = found.get(page_key)
         if current is None or y > current[1]:
-            found[int(page_no)] = (int(value), y)
+            found[page_key] = (number, y)
     return {page_no: value for page_no, (value, _) in found.items()}
 
 
