@@ -1174,17 +1174,20 @@ def fit_all_pages(
     library: Path | None = None,
     only_missing: bool = False,
     limit: int | None = None,
+    body_only: bool = False,
 ) -> dict[str, object]:
     """把 inherit / auto 的页全部改为每页自动拟合；custom / none 不动。
 
     任务 36B 追加两个只影响"做多少"的参数，默认值保持旧行为：
 
     - ``only_missing=True``：只处理 ``mode=auto`` 且 ``margin_box`` 仍是 NULL 的页
-      （界面进「版心确认」时自动补拟合）。``inherit`` 是用户显式选择沿用默认框，
+      （界面「全局识别」）。``inherit`` 是用户显式选择沿用默认框，
       这一类也不碰——自动补拟合不该改变它。非正文页（``include=False``）也不在
       自动补拟合的范围里：它们不参与版心判定，算进分母会让步骤条永远绿不了。
     - ``limit``：这一轮最多处理多少页；``remaining`` 回传还有多少页没轮到，
       界面据此分批调用并显示真实进度。
+    - ``body_only=True``（2026-11-05，界面「重新识别」）：只处理正文页。重跑全书时
+      非正文页（封面 / 目录 / 空白）不该跟着重算——它们的框不进任何判定。
     """
     target_library = library if library is not None else library_module.default_library_dir()
     directory = library_module.require_project_dir(project_id, library=target_library)
@@ -1198,6 +1201,9 @@ def fit_all_pages(
             continue
         if page.margin_box_mode == MODE_NONE:
             skipped_none += 1
+            continue
+        if body_only and not page.include:
+            skipped_not_body += 1
             continue
         if only_missing:
             if page.margin_box_mode != MODE_AUTO:

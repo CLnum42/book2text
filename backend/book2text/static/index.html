@@ -270,7 +270,9 @@
                     <strong id="margin-verdict-state">未准备</strong>
                     <p class="hint" id="margin-verdict-line"></p>
                   </div>
-                  <button type="button" id="margin-confirm-all" class="btn btn--pri btn--block">全部确认</button>
+                  <!-- 2026-11-05：进这一步**不再自动拟合**。主按钮是唯一入口，文案按真实数据变：
+                       还有没框的页 ⇒「全局识别」；都框好了 ⇒「重新识别」（可以重跑）。 -->
+                  <button type="button" id="margin-fit-button" class="btn btn--pri btn--block">全局识别</button>
 
                   <div class="margin-fit" id="margin-fit-progress" hidden>
                     <div class="progress__bar"><div class="progress__fill" id="margin-fit-fill"></div></div>

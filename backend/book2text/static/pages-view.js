@@ -1108,33 +1108,45 @@ function updateSelectionPanel() {
 }
 
 /**
- * 进「版心确认」时自动拟合未定的页。
+ * 生成版心（**只在两个时机跑**：用户点主按钮、版面检测收尾补一次）。
  *
- * - 只碰 `mode=auto` 且还没有框的页：`.custom` 绝不覆盖，`.none` / `.inherit` 也不动；
+ * 2026-11-05 起**进这一步不再自动拟合**：以前一进版心确认就偷偷 POST fit-all 写盘，
+ * 用户还没决定"要不要生成"就先把库改了。现在进步骤只画状态，动库必须由人点。
+ *
+ * - `scope="missing"`（默认，也是检测收尾用的）：只碰 `mode=auto` 且还没有框的页，
+ *   `.custom` 绝不覆盖，`.none` / `.inherit` 也不动；
+ * - `scope="all"`（主按钮「重新识别」）：重新生成所有正文页（custom / none 仍跳过）；
  * - **不预先按"有没有行"筛页**：后端会回退识别行拟合（刀 1），无文字的页单独报
  *   `no_text`，不该由前端猜；猜错就会把整本没检测过的书误判成"没有行"；
  * - 一批 20 页一次请求，界面按批更新进度条（分批后不会假死）；
  * - 拟合失败的页记进 `marginFitTried`，本次会话不反复重试；任务结束 / 重新进这一步会清空。
  */
-async function ensureMarginFitted({ manual = false } = {}) {
+async function ensureMarginFitted({ manual = false, scope = "missing" } = {}) {
   refreshMarginDetectHint();
   if (!injected.getCurrentProject() || injected.getCurrentProject().kind === "package") return;
   if (injected.getMarginFitRunning()) return;
   // 检测在跑时不开新的拟合：它按"当前行"写盘，检测还在产出新行时拟出来的是半成品的框，
   // 而且 marginUndeterminedPages 只挑没框的页 ⇒ 半成品的框会被钉死。检测收尾会再调一次。
   if (injected.getLayoutDetectActive()) return;
-  // 主按钮「全部确认」是人工动作：上一轮试过但没成的页也要再试一次
+  // 主按钮是人工动作：上一轮试过但没成的页也要再试一次
   if (manual) injected.marginFitTried.clear();
-  const pending = injected.marginUndeterminedPages().filter(
-    (page) => injected.pageHasFitLines(page) && !injected.marginFitTried.has(page.page_no)
-  );
+  const pending =
+    scope === "all"
+      ? injected
+          .marginBodyPages()
+          .filter((page) => page.margin_box_mode !== "custom" && page.margin_box_mode !== "none")
+      : injected.marginUndeterminedPages().filter(
+          (page) => injected.pageHasFitLines(page) && !injected.marginFitTried.has(page.page_no)
+        );
   if (!pending.length) {
     renderMarginStepVerdict();
     if (manual) {
       setMarginStatus(
-        injected.marginPagesWithoutLines().length
-          ? `没有可生成的页：还差 ${injected.marginPagesWithoutLines().length} 页没有正文行（要先识别）。`
-          : "全书版心都已定，没有要生成的页。",
+        scope === "all"
+          ? "没有可重新生成的页：正文页都是手工调整或不用版心。"
+          : injected.marginPagesWithoutLines().length
+            ? `没有可生成的页：还差 ${injected.marginPagesWithoutLines().length} 页没有正文行（要先识别）。`
+            : "全书版心都已定，没有要生成的页。",
         false,
         12000
       );
@@ -1169,7 +1181,11 @@ async function ensureMarginFitted({ manual = false } = {}) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ only_missing: true, limit: 20 }),
+          body: JSON.stringify(
+            scope === "all"
+              ? { only_missing: false, body_only: true, limit: 20 }
+              : { only_missing: true, limit: 20 }
+          ),
         }
       );
       const updated = Number(data.updated || 0);
@@ -1471,7 +1487,7 @@ function refreshMarginDetectHint() {
     bits.push(`其中 ${noLines} 页还没有正文行（识别行 / 检测行都没有）`);
     bits.push("版心是从行框推出来的，这些页要等识别出字，或者去右上角「⋯ → 检测版面…」跑一次检测");
   } else {
-    bits.push("这些页都有正文行，点「全部确认」就能生成");
+    bits.push("这些页都有正文行，点「全局识别」就能生成");
   }
   hint.textContent = bits.join("；") + "。";
   hint.hidden = false;
@@ -1520,26 +1536,29 @@ function renderAutoApplyStatus(run) {
   }
 }
 
-/** 版心步的"一句话 + 一个数字 + 一个主按钮"。 */
+/** 版心步的"一句话 + 一个数字 + 一个主按钮"。按钮文案与作用域都从真实数据推。 */
 function renderMarginStepVerdict() {
   if (!injected.getCurrentProject()) return;
   const v = injected.marginStepVerdict();
   const state = el("margin-verdict-state");
   const line = el("margin-verdict-line");
-  const button = el("margin-confirm-all");
+  const button = el("margin-fit-button");
   el("margin-confidence").textContent = `${v.settled}/${v.body.length} 已定`;
   if (!state || !line || !button) return;
   const wrap = state.parentElement;
   wrap.classList.toggle("is-warn", v.key === "partial");
   wrap.classList.toggle("is-ok", v.key === "fitted");
   button.hidden = false;
+  // 文案判据是**真实数据**，不是"点过没点过"：还有没框、且有正文行可生成的页 ⇒ 全局识别，
+  // 否则是重新识别（重跑已经定好的页）。点过一次之后数据自然就变成后者。
+  const generateLabel = v.needFit.length ? "全局识别" : "重新识别";
   switch (v.key) {
     case "unprepared":
       state.textContent = "未准备";
       line.textContent =
         `还没有识别出正文行（正文 ${v.body.length} 页）。版心按识别出的行框生成：` +
-        "先在「文字识别」这一步跑识别，回来这里就自动出框。";
-      button.textContent = "全部确认（先识别）";
+        "先在「文字识别」这一步跑识别，回来这里才能生成。";
+      button.textContent = "全局识别";
       button.disabled = true;
       break;
     case "working":
@@ -1553,26 +1572,27 @@ function renderMarginStepVerdict() {
       line.textContent =
         `正文 ${v.body.length} 页的版心都在了` +
         (v.noText.length ? `；${v.noText.length} 页没有文字（插图 / 空白），跳过` : "") +
-        "。拖动单页四边可以微调，不改也算已定。";
-      button.textContent = "全书已定";
-      button.disabled = true;
+        "。拖动单页四边可以微调；要按当前的行框重跑，点「重新识别」。";
+      button.textContent = "重新识别";
+      button.disabled = false;
       break;
     default:
       state.textContent = "有未定页";
       if (!v.needFit.length) {
-        // 只剩"没有行"的页：这里没有可生成的东西，别给一个点了没反应的按钮
+        // 只剩"没有行"的页：没有新页可生成，但已定的页还能重跑（按钮不是死的）
         line.textContent =
           `还差 ${v.noLines.length} 页版心，这些页都还没有正文行：` +
-          "先跑完「文字识别」，识别出行的页回来会自动出框。";
-        button.textContent = "全部确认（先识别）";
-        button.disabled = true;
+          "先跑完「文字识别」，识别出行了才能生成。" +
+          (v.settled ? "已定的页可以点「重新识别」重跑。" : "");
+        button.textContent = "重新识别";
+        button.disabled = !v.settled;
         break;
       }
       line.textContent =
-        `还差 ${v.undetermined.length} 页：${v.needFit.length} 页有正文行、可以直接生成` +
-        (v.noLines.length ? `；${v.noLines.length} 页还没有正文行` : "") +
-        "。";
-      button.textContent = `全部确认（生成 ${v.needFit.length} 页）`;
+        `还差 ${v.undetermined.length} 页：${v.needFit.length} 页有正文行、可以生成` +
+        (v.noLines.length ? `；${v.noLines.length} 页还没有正文行会跳过` : "") +
+        "。点「全局识别」开始。";
+      button.textContent = generateLabel;
       button.disabled = false;
       break;
   }
@@ -1756,8 +1776,10 @@ function renderStepPanels() {
 
   syncStepToggles(marginStep || indexStep);
   if (marginStep) {
+    // 2026-11-05 起**不再自动拟合**：进这一步只画状态，写盘必须由人点主按钮。
+    // （版面检测收尾那一次补拟合仍在 onTaskFinished 里，它跑的是"刚检出的行"，
+    //  不是"用户一进页面就先改库"。）
     renderMarginPanel();
-    ensureMarginFitted();
   }
   if (pageStep) {
     // 从审校视图改过块再回到页面确认：建议与版面状态要重读一次，不用旧缓存。
@@ -3122,10 +3144,53 @@ async function onRecognitionFinished(pageNos, { reloadDetail = true } = {}) {
 
 // ---------------------------------------------------------------- 刀 9.3：版心一族（从外壳搬入）
 
-/** 主按钮「全部确认」：把有行、还没框的页一次生成完，并报耗时。 */
-async function confirmAllMargins() {
+/**
+ * 主按钮的计划：按钮文案、确认窗文案、请求参数三者同源（都从这一份数据推）。
+ *
+ * - 「全局识别」= 还有"有正文行、还没框"的页 ⇒ 只补这些页；
+ * - 「重新识别」= 没有待补的页 ⇒ 按当前行框重跑所有正文页（custom / none 仍跳过）；
+ * - 手工调整的页本轮一律跳过，确认窗里把页数说出来（0 页时整条不显示）。
+ */
+function marginFitPlan() {
+  const v = injected.marginStepVerdict();
+  return {
+    verdict: v,
+    scope: v.needFit.length ? "missing" : "all",
+    missing: v.needFit.length,
+    noLines: v.noLines.length,
+    custom: v.body.filter((page) => page.margin_box_mode === "custom").length,
+    total: v.body.length,
+  };
+}
+
+/** 主按钮：先弹确认窗（Esc / 点遮罩 = 不发任何请求），确认后才跑。 */
+async function requestMarginFit() {
   if (!injected.getCurrentProject() || injected.getMarginFitRunning()) return;
-  await ensureMarginFitted({ manual: true });
+  if (injected.getLayoutDetectActive()) {
+    setMarginStatus("版面检测正在跑：等它收尾后会自动补一次版心。", false, 12000);
+    return;
+  }
+  const plan = marginFitPlan();
+  if (!plan.verdict.withLines.length) {
+    setMarginStatus("还没有识别出正文行：先跑「文字识别」，版心才有行框可用。", false, 12000);
+    return;
+  }
+  const lead =
+    plan.scope === "missing"
+      ? `将生成全书版心：共 ${plan.missing} 页可生成` +
+        (plan.noLines ? `，${plan.noLines} 页还没有正文行会被跳过` : "") +
+        "。"
+      : `将重新生成全书 ${plan.total - plan.custom} 页的版心。`;
+  const list = [];
+  if (plan.custom) list.push(`已手工调整的 ${plan.custom} 页会跳过，不会覆盖`);
+  const choice = await injected.confirmAction({
+    title: "识别版心",
+    lead,
+    list,
+    safeText: plan.scope === "missing" ? "生成全书版心" : "重新生成全书版心",
+  });
+  if (choice === null) return;   // Esc / 点遮罩：什么都不做（不发起请求）
+  await ensureMarginFitted({ manual: true, scope: plan.scope });
 }
 
 /** 版面块面板的调度：先记「正在看哪一页」，再决定重画还是重新拉。 */
@@ -3846,7 +3911,7 @@ function wirePagesPanes() {
   el("pages-margin-toggle").addEventListener("click", toggleMarginView);
   el("layout-block-apply-all").addEventListener("click", injected.adoptAllHighSuggestions);
   el("layout-block-confirm").addEventListener("click", confirmLayoutFromPanel);
-  el("margin-confirm-all").addEventListener("click", confirmAllMargins);
+  el("margin-fit-button").addEventListener("click", requestMarginFit);
   el("rec-start-all").addEventListener("click", () => {
     // 目标由 recognitionTarget() 唯一决定（文案、禁用、点下去做什么，三处同源）
     const target = recognitionTarget();
