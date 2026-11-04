@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
 
@@ -83,9 +84,43 @@ def wait_for_job(
     else:
         raise AssertionError(f"任务在 {timeout}s 内没有结束：{data['job']['status']}")
 
-    exit_deadline = time.monotonic() + 20
-    while data["alive"] and time.monotonic() < exit_deadline:
-        time.sleep(0.5)
+    return wait_until_child_exits(client, headers, project_id, job_id)
+
+
+def wait_until_child_exits(
+    client: TestClient,
+    headers: dict[str, str],
+    project_id: str,
+    job_id: str,
+    *,
+    timeout: float = 60.0,
+    interval: float = 0.2,
+) -> dict:
+    """等子进程**真的**退出（`alive` 变 False），带诊断的有界等待。
+
+    为什么要单独等：任务状态先落库、进程再退出（收尾要几十毫秒，机器忙时更久）。
+    **立即断言 `alive is False` 会偶发失败**——2026-11-04 全量跑（268 s 那轮）就红过一次，
+    单独跑同一个文件却 5 passed：不是产品回归，是判据没等够。
+
+    超时**不许**抛一个裸 assert：把 pid、实际等了多久、`poll()` 的返回码、任务状态都打出来，
+    否则读红的人只能看到"alive is False 失败"，分不清是"进程卡死"还是"等得不够"。
+    也**不许**用"重试 3 次"代替等待——重试会把真正卡死的进程藏起来。
+    """
+    started = time.monotonic()
+    data = get_job(client, headers, project_id, job_id)
+    while data["alive"]:
+        elapsed = time.monotonic() - started
+        if elapsed >= timeout:
+            supervisor = getattr(client.app.state, "job_supervisor", None)
+            child = getattr(supervisor, "_children", {}).get(job_id)  # noqa: SLF001 - 只为诊断
+            polled = child.process.poll() if child is not None else None
+            raise AssertionError(
+                f"子进程在 {timeout:.0f}s 内没有退出：pid={data.get('process_id')} · "
+                f"已等待 {elapsed:.1f}s · 轮询 {interval:g}s/次 · poll()={polled} · "
+                f"任务状态={data['job']['status']} · done={data['job']['done']}/{data['job']['total']}"
+                f" · failed={data['job']['failed']}"
+            )
+        time.sleep(interval)
         data = get_job(client, headers, project_id, job_id)
     return data
 
@@ -135,6 +170,79 @@ def test_batch_job_runs_in_a_subprocess(
     sample_text = content["blocks"][0]["text"][:8]
     assert sample_text and sample_text not in log_text, "日志里不该出现识别出的文本"
 
+
+
+# 子进程包装器：识别进程退出后**先写 ready、再等 release** 才退出。
+# 用来复现"任务已结算但进程还没退出"的窗口——那次偶发失败就是这个窗口没等够。
+SLOW_EXIT_WRAPPER = """
+import os, subprocess, sys, time
+ready, release = sys.argv[1], sys.argv[2]
+code = subprocess.call(sys.argv[3:])
+open(ready, "w", encoding="utf-8").close()
+deadline = time.monotonic() + 10
+while time.monotonic() < deadline and not os.path.exists(release):
+    time.sleep(0.02)
+sys.exit(code)
+"""
+
+
+def test_wait_for_job_tolerates_a_slow_exiting_worker(
+    client: TestClient, auth_headers: dict[str, str], scan_sample_pdf: Path, library_dir: Path
+) -> None:
+    """证明 `alive is False` 必须**有界等待**，而不是"结算了就该已经退出"。
+
+    做法：给子进程套一层包装器——识别进程退出后写 ready 文件，然后**阻塞等 release**
+    才真正退出。于是"任务已结算"的那一刻，进程一定还活着：
+      · 立即断言 `alive is False` ⇒ 必红（就是 2026-11-04 全量那次的形态）；
+      · `wait_until_child_exits` ⇒ 放行之后很快变绿（证明修的是等待，不是放宽判据）。
+    """
+    supervisor = client.app.state.job_supervisor
+    original_builder = supervisor._command_builder  # noqa: SLF001 - 只为注入慢退出
+    ready = library_dir / "slow-exit-ready.flag"
+    release = library_dir / "slow-exit-release.flag"
+    ready.unlink(missing_ok=True)
+    release.unlink(missing_ok=True)
+
+    def slow_builder(directory: Path, job_id: str) -> list[str]:
+        return [
+            sys.executable,
+            "-c",
+            SLOW_EXIT_WRAPPER,
+            str(ready),
+            str(release),
+            *original_builder(directory, job_id),
+        ]
+
+    supervisor._command_builder = slow_builder  # noqa: SLF001
+    try:
+        project_id = create_project(client, auth_headers, scan_sample_pdf)
+        started = start_job(client, auth_headers, project_id, [1])
+        job_id = started["job"]["job_id"]
+
+        deadline = time.monotonic() + 300
+        while True:
+            data = get_job(client, auth_headers, project_id, job_id)
+            if data["job"]["status"] in TERMINAL and ready.exists():
+                break
+            if time.monotonic() > deadline:  # pragma: no cover - 引擎坏到起不来
+                raise AssertionError(f"任务没有在 300s 内结算：{data['job']['status']}")
+            time.sleep(0.02)
+
+        assert data["job"]["status"] == "succeeded", data["failed_items"]
+        # 关键证据：结算的这一刻进程还活着 ⇒ 立即断言必红
+        assert data["alive"] is True, (
+            "任务已结算而子进程还活着时，这条断言必须成立——否则本用例证明不了「立即断言会红」"
+        )
+        time.sleep(0.5)  # 故意让"慢退出"持续半秒（Chief 要求的注入）
+        assert get_job(client, auth_headers, project_id, job_id)["alive"] is True
+
+        # 有界等待：放行之后必须变绿
+        release.write_text("release", encoding="utf-8")
+        final = wait_until_child_exits(client, auth_headers, project_id, job_id, timeout=20)
+        assert final["alive"] is False, "有界等待超时仍没看到进程退出"
+    finally:
+        release.write_text("release", encoding="utf-8")  # 别把包装器卡在 10s 上限里
+        supervisor._command_builder = original_builder  # noqa: SLF001
 
 # ---------------------------------------------------------------- 中断
 
