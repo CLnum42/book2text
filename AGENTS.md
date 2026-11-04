@@ -40,6 +40,7 @@
 - 不引入未解释的大型依赖；新增依赖需说明用途、许可证、跨平台可用性。
 - 数据库结构变化必须有迁移脚本和迁移测试。
 - 失败时先定位原因，不连续做无依据的修改。
+- 闸报「产品代码里有裸标识符/未声明变量」时先怀疑扫描器（R9 去注释/字符串器），不要改产品代码迁就闸；确认是闸的洞就报 TestDev，修好后回退绕法。
 
 ### 1.4 决策优先级
 
@@ -137,6 +138,7 @@ PYTHONPATH="$PWD/backend" .venv/bin/python -m pytest -q
 **闸做了什么**：`pre-commit` 把**索引**导出到临时目录、跑 `node tests/js/run.mjs`（约 6 秒），红则拒绝提交；`post-commit` 记录绕过（`--no-verify` 时请加一行 `Bypass-Reason: <为什么>`）。
 
 **推送时另有一个闸**：`pre-push` 现在跑 **node 闸（`tests/js/run.mjs` ≈ 11s + `contract-registry.mjs --strict --allow-transitional-base` ≈ 7s，实测 15–19s）**，然后跑 `pytest -q`（约 82–85s）。node 闸**纯文档推送也跑**；pytest 只在推送范围含非 `*.md` 改动时跑，纯文档推送记一行 `SKIP`。`.venv` 或 `node` 缺失都会拒绝推送（fail closed）。
+**搬家笔按「台架笔在前、产品笔在后」排**（片 5–10 实测可行，全程无需 bypass）：先把新模块的预载/合查写进 tests/js（红），产品笔落地即绿。只有台架与搬家互相依赖（如片 4）才需要绕过，那笔正文最后一段必须原样写 `Bypass-Reason: 搬家中间树不绿——产品笔单独跑必有 N 条旧断言红，台架笔紧随其后`；post-commit 只认这个前缀。
 
 **这层能补什么**：`git commit --no-verify` 跳过 pre-commit，但正常 `git push` 仍会跑 pre-push；只有 `git push --no-verify` 能整层绕过（git 没有 post-push hook，只能靠 pre-commit 事后点名）。**它不是 CI**——Actions 仍起不来，CI 一行不动。
 
