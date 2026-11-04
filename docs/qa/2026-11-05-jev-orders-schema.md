@@ -10,7 +10,10 @@
   "schema": "book2text.jev-orders.v2",
   "project_id": "b2t_H6GXVG",
   "threshold": 0.05,          // 「可疑」档的阈值（越低越可疑；≤ 阈值进第一档）
-  "queue_lines": 64,          // 队列口径的行数（正文块 + 分歧行 + **未裁决**；与 next-lines 一致）
+  "include_acked": false,      // 默认只导未裁决（= 用户队列里真正看到的行）
+  "total": 250,                // = review_status.queue_items 的 total（正文块 + 分歧行 + 版心内）
+  "unacked": 64, "acked": 186, // total 的拆分
+  "queue_lines": 64,           // 本次导出行数：默认 = unacked；--include-acked 时 = total
   "gold": { "file": "….txt", "is_error_method": "normalized_substring" } | null,
   "baseline":   [ <row>, … ], // 正文流原顺序（未跑 Jev 时用户看到的顺序）
   "jev_sorted": [ <row>, … ]  // 按 Jev 排序后（可疑档 → 其余分歧行；同档按 页码→块序→行序）
@@ -30,6 +33,7 @@
 | `aux_text` | string | 第二引擎文本（B 路） |
 | `is_error` | bool \| null | 是否真错；`null` = 没给 `--gold`，由验收方自己填 |
 | `is_error_method` | string \| null | 目前只有 `"normalized_substring"`：把该行文本按 compare.py 归一化后，**不是金标准的子串** ⇒ 真错 |
+| `acked` | bool | 这一行是否已裁决（`block_line.diff_ack` 非空）。默认导出会跳过它们；`--include-acked` 时保留并标 true |
 
 ## 怎么算命中率
 
