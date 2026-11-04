@@ -150,15 +150,20 @@ def score(reference: str, hypothesis: str) -> dict[str, object]:
     }
 
 
-def edit_ops(reference: str, hypothesis: str) -> dict[str, object]:
+def diff_opcodes(reference: str, hypothesis: str) -> list[tuple[str, int, int, int, int]]:
+    """difflib 的匹配块（分段与分项共用一次对齐，避免跑两遍）。"""
+    matcher = SequenceMatcher(None, reference, hypothesis, autojunk=False)
+    return matcher.get_opcodes()
+
+
+def edit_ops(opcodes: list[tuple[str, int, int, int, int]]) -> dict[str, object]:
     """删除 / 替换 / 插入分项（difflib 的匹配块对齐，不是最小编辑脚本）。
 
     **它不是 CER 的来源**：CER 用上面的 Levenshtein。difflib 找的是最长匹配块，
     分项之和可能比最小距离大；输出里同时给 `sum` 与 `minimal_distance`，差值即口径差。
     """
     sub = dele = ins = 0
-    matcher = SequenceMatcher(None, reference, hypothesis, autojunk=False)
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+    for tag, i1, i2, j1, j2 in opcodes:
         if tag == "equal":
             continue
         if tag == "replace":
@@ -172,6 +177,89 @@ def edit_ops(reference: str, hypothesis: str) -> dict[str, object]:
         else:  # insert
             ins += j2 - j1
     return {"substitutions": sub, "deletions": dele, "insertions": ins, "sum": sub + dele + ins}
+
+
+# ---------------------------------------------------------------- 分段的 95% 上界（bootstrap）
+
+#: 分段目标长度（字）：一段约一页正文的量级；切点落在 difflib 的等长匹配块里，两侧一起切
+SEGMENT_CHARS = 400
+
+
+def paired_segments(
+    reference: str,
+    hypothesis: str,
+    opcodes: list[tuple[str, int, int, int, int]],
+    *,
+    segment_chars: int = SEGMENT_CHARS,
+) -> list[tuple[str, str]]:
+    """把两侧文本**按同一组切点**切成段，用于分段自助（bootstrap）。
+
+    切点只在 `equal` 匹配块内部落刀：`ref` 的第 P 个字符与 `hyp` 的第 P - i1 + j1 个字符
+    是同一个字符，所以两侧的段是可比的（不是按字数硬切）。
+    目标位置落在非 equal 区时，前移到下一段 equal 的起点——宁可段长不齐，也不切错位。
+    """
+    length = len(reference)
+    if length == 0:
+        return []
+    count = max(4, round(length / segment_chars))
+    targets = [round(length * index / count) for index in range(1, count)]
+    equals = [(i1, i2, j1, j2) for tag, i1, i2, j1, j2 in opcodes if tag == "equal" and i2 > i1]
+
+    cuts: list[tuple[int, int]] = []
+    for target in targets:
+        for i1, i2, j1, _j2 in equals:
+            if target < i1:
+                cuts.append((i1, j1))
+                break
+            if i1 < target < i2:
+                cuts.append((target, j1 + (target - i1)))
+                break
+        else:
+            continue
+
+    bounds: list[tuple[int, int]] = [(0, 0)]
+    for ref_cut, hyp_cut in cuts:
+        if ref_cut > bounds[-1][0]:
+            bounds.append((ref_cut, hyp_cut))
+    bounds.append((length, len(hypothesis)))
+
+    return [
+        (reference[ref_start:ref_end], hypothesis[hyp_start:hyp_end])
+        for (ref_start, hyp_start), (ref_end, hyp_end) in zip(bounds, bounds[1:])
+    ]
+
+
+def bootstrap_upper(
+    segments: list[tuple[str, str]],
+    *,
+    n: int,
+    seed: int,
+) -> dict[str, object]:
+    """按段重采样：CER* = Σ距离 / Σ参考字数，取 95 分位作上界。
+
+    抽样单位 = **对齐后的连续文本段**（每段约 400 字，切在等长匹配块里）。
+    为什么不是按页：金标准是不分页的整本拼接版，页边界只能靠猜；按段是能站住的口径
+    （段内错误相关、段间近似独立，标准的 block bootstrap 假设）。
+    固定 seed ⇒ 同一份数据两次结果一致（`--self-test` 锁这一条）。
+    """
+    stats = [(len(ref), distance(ref, hyp)) for ref, hyp in segments if ref]
+    if not stats or n <= 0:
+        return {"n": 0, "seed": seed, "segments": len(stats), "upper_95": None}
+    ref_lens = np.array([item[0] for item in stats], dtype=np.int64)
+    dists = np.array([item[1] for item in stats], dtype=np.int64)
+    rng = np.random.default_rng(seed)
+    samples = np.empty(n, dtype=np.float64)
+    for index in range(n):
+        pick = rng.integers(0, len(stats), size=len(stats))
+        samples[index] = dists[pick].sum() / ref_lens[pick].sum()
+    return {
+        "n": n,
+        "seed": seed,
+        "segments": len(stats),
+        "unit": f"按段（对齐后每段约 {SEGMENT_CHARS} 字，切点在等长匹配块内）",
+        "upper_95": float(np.percentile(samples, 95)),
+        "mean": float(samples.mean()),
+    }
 
 
 # ---------------------------------------------------------------- 导出 / 金标准
@@ -296,7 +384,15 @@ def per_chapter(gold: str, hyp: str) -> list[dict[str, object]]:
 # ---------------------------------------------------------------- 主流程
 
 
-def measure(project: str, gold_path: Path, library: str | None, export: str | None) -> dict[str, object]:
+def measure(
+    project: str,
+    gold_path: Path,
+    library: str | None,
+    export: str | None,
+    *,
+    bootstrap_n: int = 2000,
+    seed: int = 20261104,
+) -> dict[str, object]:
     project_dir = resolve_project(project, library)
     export_dir, manifest, body = load_export(project_dir, export)
     gold = load_gold(gold_path)
@@ -309,8 +405,10 @@ def measure(project: str, gold_path: Path, library: str | None, export: str | No
     ws_hyp = compare.normalize_whitespace_insensitive(hyp)
     ignore_ws = score(ws_ref, ws_hyp)
 
-    ops = edit_ops(ref, hyp)
+    opcodes = diff_opcodes(ref, hyp)
+    ops = edit_ops(opcodes)
     ops["minimal_distance"] = main["distance"]
+    boot = bootstrap_upper(paired_segments(ref, hyp, opcodes), n=bootstrap_n, seed=seed)
 
     return {
         "schema": "book2text.cer-gold.v1",
@@ -339,6 +437,8 @@ def measure(project: str, gold_path: Path, library: str | None, export: str | No
         "hypothesis_chars": main["hypothesis_chars"],
         "distance": main["distance"],
         "edit_ops": ops,
+        "upper_95": boot.get("upper_95"),
+        "bootstrap": boot,
         "ignore_whitespace": {
             "cer": ignore_ws["cer"],
             "reference_chars": ignore_ws["reference_chars"],
@@ -354,7 +454,7 @@ def measure(project: str, gold_path: Path, library: str | None, export: str | No
 
 
 def self_test() -> int:
-    """三条判据：① 相同文本 CER 0 ② 3 处替换 = 3/len ③ 归一化三项各自断言。"""
+    """四条判据：① 相同文本 CER 0 ② 3 处替换 = 3/len ③ 归一化三项各自断言 ④ 分段自助可复现。"""
     failures: list[str] = []
 
     def check(label: str, condition: bool, detail: str = "") -> None:
@@ -411,11 +511,27 @@ def self_test() -> int:
             leaked = True
     check("③c 导出含书眉/页码/页脚（exclude_header_footer=false）时拒绝测量", leaked)
 
+    # ④ 分段自助：切点两侧可比、固定 seed 可复现、上界不低于点估计
+    base = "却说那女娲氏炼石补天之时，于大荒山无稽崖炼成高十二丈、见方二十四丈大的顽石三万六千五百零一块"
+    with_errors = base[:16] + "错" + base[17:34] + "漏" + base[35:]
+    opcodes = diff_opcodes(base, with_errors)
+    segments = paired_segments(base, with_errors, opcodes)
+    parts_ok = "".join(ref for ref, _ in segments) == base
+    check("④a 分段切点不丢字（段按序拼回 == 参考文本）", parts_ok, f"{len(segments)} 段")
+    first = bootstrap_upper(segments, n=200, seed=7)
+    second = bootstrap_upper(segments, n=200, seed=7)
+    check("④b 同 seed 两次自助结果完全一致", first == second and first["upper_95"] is not None)
+    check(
+        "④c 95% 上界 ≥ 点估计",
+        first["upper_95"] is not None and first["upper_95"] >= score(base, with_errors)["cer"],
+        f"{first['upper_95']:.6f} vs {score(base, with_errors)['cer']:.6f}",
+    )
+
     print()
     if failures:
         print(f"自检红：{len(failures)} 条（{'、'.join(failures)}）")
         return 1
-    print("自检全绿：3 组判据（含 numpy 对拍）")
+    print("自检全绿：4 组判据（含 numpy 对拍与分段自助）")
     return 0
 
 
@@ -430,6 +546,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--export", help="指定导出目录（默认取最新一次 txt 导出）")
     parser.add_argument("--gold", default=str(DEFAULT_GOLD), help="金标准整本拼接版路径")
     parser.add_argument("--out", help="输出 JSON 路径")
+    parser.add_argument("--bootstrap", type=int, default=2000, help="分段自助次数（默认 2000，0 = 不算上界）")
+    parser.add_argument("--seed", type=int, default=20261104, help="自助重采样的固定种子（默认 20261104）")
     args = parser.parse_args(argv)
 
     if args.self_test:
@@ -438,7 +556,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("需要 --project 与 --out（或用 --self-test）")
 
     try:
-        result = measure(args.project, Path(args.gold).expanduser(), args.library, args.export)
+        result = measure(
+            args.project,
+            Path(args.gold).expanduser(),
+            args.library,
+            args.export,
+            bootstrap_n=args.bootstrap,
+            seed=args.seed,
+        )
     except MeasureError as error:
         print(f"✖ {error}", file=sys.stderr)
         return 2
@@ -448,6 +573,9 @@ def main(argv: list[str] | None = None) -> int:
     out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"CER = {result['cer']:.6f}（距离 {result['distance']} / 金标准 {result['reference_chars']} 字）")
     print(f"  删除/替换/插入 = {result['edit_ops']['deletions']} / {result['edit_ops']['substitutions']} / {result['edit_ops']['insertions']}")
+    upper = result.get("upper_95")
+    if upper is not None:
+        print(f"  95% 上界（分段自助 n={result['bootstrap']['n']}，seed={result['bootstrap']['seed']}）= {upper:.6f}")
     print(f"  忽略空白对照 = {result['ignore_whitespace']['cer']:.6f}（仅对照，不是判据）")
     print(f"  按回 {len(result['per_chapter'])} 段 → {out}")
     return 0
