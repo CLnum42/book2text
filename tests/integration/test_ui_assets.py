@@ -270,7 +270,6 @@ def test_page_layout_panel_and_filter_are_present() -> None:
 VIEW_MODULE_FILES = (
     "reading-view.js",
     "index-view.js",
-    "preview-view.js",
     "library-view.js",
     "merge-view.js",
     "pages-view.js",
@@ -1497,130 +1496,6 @@ def test_page_index_step_is_wired() -> None:
 
     assert ".index-row.is-current" in css
     assert ".index-split" in css
-
-
-def test_result_preview_step_is_wired_to_export_assembly() -> None:
-    """任务 38（D 刀）：结果预览 = 导出结果的实时副本，且没有完成态。
-
-    静态约定：第 6 步在审校与导出之间、用同一份 /export/preview、段/跨页/排除
-    三类信息都有落点；步骤样式是 plain（不绿不灰），完成判定里没有它。
-    """
-    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
-    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
-    # 同文件先例（L1/L2）：存在性断言合查 app.js + 模块
-    module_script = (STATIC_DIR / "reading-view.js").read_text(encoding="utf-8")
-
-    for element_id in (
-        "view-preview",
-        "preview-pages",
-        "preview-page-no",
-        "preview-page-printed",
-        "preview-prev",
-        "preview-next",
-        "preview-meta",
-        "preview-segs",
-        "preview-scroll",
-        "preview-only-span",
-        "preview-note",
-        # 任务 47（J 刀）：版心 / 块框 / 缩放与页面视图、目录确认共用同一份状态
-        "preview-margin-toggle",
-        "preview-overlay-toggle",
-        "preview-zoom-out",
-        "preview-zoom-in",
-        "preview-zoom-label",
-    ):
-        assert f'id="{element_id}"' in page, element_id
-
-    # L 刀：正文审校吸收结果预览，步骤 7 → 6（预览不再是一个步骤）
-    assert '{ id: "review", label: "正文审校", short: "审校" }' in script
-    assert '{ id: "preview", label: "结果预览"' not in script
-    assert 'const WORKFLOW_STEPS = [' in script
-    assert 'const VIEWS = ["library", "pages", "index", "review", "reading", "preview", "merge"];' in script
-    # 连续正文流视图（阅读审校）存在
-    assert 'id="view-reading"' in page
-    # L3：openReading 搬进模块（app.js 定义数 0）。模块里恰好 1 处；合查仍存在。
-    # 若将来 app.js 保留 ≤6 行转发（R4-dup 允许），这条要退回合查形态。
-    assert module_script.count("function openReading(") == 1
-    assert (script + module_script).count("function openReading(") >= 1
-
-    # 与导出共用同一份组装：只调 /export/preview，不另写合并逻辑
-    # 整段 preview 已搬进 preview-view.js（app.js 里 0 处）→ 这些断言改成两文件合查。
-    preview_script = (STATIC_DIR / "preview-view.js").read_text(encoding="utf-8")
-    preview_both = script + preview_script
-    assert "function openPreview(" in preview_both
-    assert "/export/preview" in script or "/export/preview" in _export_script()
-    assert "exportOptions()" in script or "exportOptions()" in _export_script()
-    # 段边界 / 跨页段 / 排掉了什么
-    assert "function buildPreviewSegment(" in preview_both
-    assert "跨页续" in preview_both
-    assert "版心外排除" in preview_both
-    assert "previewVisibleSegments" in preview_both
-    # 没有完成态：预览不在页面步里，也没有 is-done 判定
-    assert 'PAGE_WORKFLOW_STEPS = ["pages", "recognition", "margin", "index"]' in script
-    assert "结果预览不设完成态" in script
-
-
-def test_result_preview_reuses_page_renderers_and_follows_segments() -> None:
-    """任务 47（J 刀）：预览左边复用版心 / 块框渲染，段落与页面双向联动。
-
-    静态约定：
-    - 左边连续页条调用 `paintTileMargin` / `renderPageBlocks`（不另写一套画框）；
-    - 开关与缩放沿用 `pagesMarginOn` / `pagesOverlayOn` / `pageZoomIndex`；
-    - 段落 → 块用 `block_ids` + 后端块框 bbox，跨页段两页都标；
-    - 右栏 1139 段不逐段挂监听（事件代理 + rAF 节流）。
-    """
-    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
-    # Slice P1：预览的左右联动与右栏事件代理搬进 preview-view.js（app.js 里 0 处）。
-    # 这四处断言改成"两文件合查"——存在性不变，只是搬家了。
-    preview_script = (STATIC_DIR / "preview-view.js").read_text(encoding="utf-8")
-    preview_both = script + preview_script
-    css = (STATIC_DIR / "app.css").read_text(encoding="utf-8")
-
-    # 左边不是裸图：页块里带版心 / 块框 / 命中层
-    assert 'class="preview-pages" id="preview-pages"' in page
-    assert "preview-margin-toggle" in page and "preview-overlay-toggle" in page
-    assert "preview-page__hits" in preview_both
-
-    # 复用同一套渲染函数与同一份开关 / 缩放状态
-    assert "function paintPreviewTile(" in preview_both
-    assert "paintTileMargin(tile, page)" in script + _margin_data_script()
-    assert "renderPageBlocks(tile, blocks" in script or "api.paint(handle" in preview_script
-    # 开关这里**不是**简单合查：整段 preview 搬走后，"预览打开时把开关置 true" 变成了
-    # 模块调注入回调 + app.js 的 setter 真正写状态，两半都得在，缺任一半链路就断了。
-    assert "injected.setPagesMarginOn(true)" in preview_script
-    assert "setPagesMarginOn: (value) => { pagesMarginOn = value;" in script
-    assert "INDEX_ZOOM_SCALES" in script
-
-    # 段 → 块：用现成的 block_ids + bbox，不猜字符位置
-    assert "segment.block_ids" in script or "segment.block_ids" in _export_script()
-    assert "function highlightPreviewSegment(" in preview_both
-    assert "function drawPreviewHits(" in preview_both
-    assert "function scrollPreviewLeftToSegment(" in preview_both
-    assert "function scrollPreviewLeftToPage(" in preview_both
-
-    # 双向联动：右栏滚动驱动左边、左栏滚动驱动右边，但不同时反推
-    assert "function onPreviewScroll(" in preview_both
-    assert "function onPreviewLeftScroll(" in preview_both
-    assert "previewSyncDriver" in preview_both and "markPreviewDriver" in preview_both
-
-    # 事件代理 + 一帧一次：不给 1139 段逐个挂监听
-    assert 'el("preview-segs").addEventListener("pointerover", onPreviewSegHover)' in preview_both
-    assert 'el("preview-segs").addEventListener("click", onPreviewSegClick)' in preview_both
-    # 切片从**合查**取：函数已搬进模块，app.js 里 index() 会抛 ValueError。
-    # 切片终点是模块里那段分隔注释（原注释随函数一起搬走）。
-    builder = preview_both[
-        preview_both.index("function buildPreviewSegment("):
-        preview_both.index("// ---------------------------------------------------------------- 联动：段 ↔ 页")
-    ]
-    assert "addEventListener" not in builder
-
-    # 浅绿用青绿，不是审校那三色
-    assert "--preview-hit-line" in css and "--preview-hit-bg" in css
-    assert ".preview-seg.is-current" in css
-    assert ".preview-page__hit" in css
-    assert ".preview-junction" in css
 
 
 def test_toolbar_filters_and_tools_are_placed_per_step() -> None:

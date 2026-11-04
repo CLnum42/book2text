@@ -1214,7 +1214,7 @@ async function stepsSnapshot(page) {
       count: (button.querySelector(".workflow-step__count") || {}).textContent || "",
     }));
     const view =
-      ["library", "pages", "index", "review", "reading", "preview", "merge"].find((name) => {
+      ["library", "pages", "index", "review", "reading", "merge"].find((name) => {
         const node = document.getElementById(`view-${name}`);
         return node && !node.hidden;
       }) || null;
@@ -3748,7 +3748,8 @@ async function mergeProbe(page, cfg, args) {
  * 判据（四条，全过才算第三消费者接上了）：
  *   ① 同页同档 `img.src` 赋值 = 1（不是 2）
  *   ② `IntersectionObserver` 构造 ≤ 6（不是回到 11）
- *   ③ 三个 consumer（pages / index / preview）的 handle 指向**同一张 <img>**（sameImg）
+ *   ③ 两个 consumer（pages / index）的 handle 指向**同一张 <img>**（sameImg）
+ *      （2026-11-04：preview 视图已删 L-117，第三个消费者不再存在）
  *   ④ 切走再切回：不重新取图（该页该档 src 赋值 +0）
  *
  * **模块没落盘时必须是"模块缺失"的明确失败**，不许绿：没有对象就没有"一次取图"。
@@ -3833,18 +3834,13 @@ async function pagesThirdConsumerProbe(page, args) {
   const target = (firstImg && /\/pages\/([0-9]+)\/image/.exec(firstImg)) ? Number(/\/pages\/([0-9]+)\/image/.exec(firstImg)[1]) : pageNo;
   const writesFirst = await writesFor(target);
 
-  // ③ 同一张图：把 pages 的 img 记下来，切 index / preview 看是不是同一个节点
+  // ③ 同一张图：把 pages 的 img 记下来，切 index 看是不是同一个节点
+  // （2026-11-04 L-117：preview 视图已删，第三个消费者不再存在，判据退成两个消费者）
   await imageFor(target);
   await page.evaluate(() => { window.showView("index"); });
   await page.waitForTimeout(1200);
   const indexSame = await page.evaluate((n) => {
     const img = window.__probeImgFor ? window.__probeImgFor("index", n) : null;
-    return Boolean(img && window.__probeImg && img === window.__probeImg);
-  }, target);
-  await page.evaluate(() => { window.showView("preview"); });
-  await page.waitForTimeout(1200);
-  const previewSame = await page.evaluate((n) => {
-    const img = window.__probeImgFor ? window.__probeImgFor("preview", n) : null;
     return Boolean(img && window.__probeImg && img === window.__probeImg);
   }, target);
 
@@ -3860,8 +3856,8 @@ async function pagesThirdConsumerProbe(page, args) {
     writes: writesFirst,
     io,
     indexSame,
-    previewSame,
-    sameImg: indexSame && previewSame,
+    previewSame: null,
+    sameImg: indexSame,
     backWrites: afterBack - beforeBack,
     handlers: await page.evaluate(() => ({
       pages: Boolean(window.PagesView),

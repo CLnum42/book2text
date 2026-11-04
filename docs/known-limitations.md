@@ -1935,16 +1935,26 @@ structure-tools.js      3 行注释 → 残留 3
 - **将来做法**：任何新闸**必须用同一把**（`tests/js/static-scan.mjs` 的 `codeOnly`），不许自己写；
   已写进验收模板的「0.10 新闸必须复用同一把剥离器」一节。
 
-## L-117 · 结果预览视图没有 UI 入口，是 L 刀之后的残留（2026-11-03，DevLead 定性）
+## L-117 · 结果预览视图没有 UI 入口，是 L 刀之后的残留（2026-11-03 定性 · 2026-11-04 已删）
 
-**事实**：`WORKFLOW_STEPS` 现在是 6 步（pages / recognition / margin / index / review / export），
+**状态：已删（2026-11-04）。** 本条的处置与删除范围如下，留作历史记录。
+
+**当时的事实（2026-11-03）**：`WORKFLOW_STEPS` 是 6 步（pages / recognition / margin / index / review / export），
 注释里写着「L 刀：正文审校吸收结果预览（连续正文流），步骤 7 → 6」。`showView("preview")`
 只剩 `enterWorkflowStep` 里那个 `id === "preview"` 分支，而没有任何步骤的 id 是 preview ⇒ **死分支**。
 `preview-view.js`（1,112 行）仍随 `index.html` 加载，模块本身工作正常。
 
-**用户可见影响**：无——没有入口，用户走不到这个视图。**定性：死 UI，不是缺陷**，
-不要每轮 QA 再当发现项报一次。
+**用户可见影响**：无——没有入口，用户走不到这个视图。**定性：死 UI，不是缺陷。**
 
-**将来做法**：删除单独一刀（`preview-view.js` + `enterWorkflowStep` 的那个死分支 + `index.html` 那行
-`<script src="/static/preview-view.js">`），排在第三批切片之后；删之前不要顺手改它的行为，
-也不要因为它"还能渲染"就给它补入口。
+**已删内容（2026-11-04，一笔）**：
+`preview-view.js` 整文件 · `index.html` 的 `<script src="/static/preview-view.js">` 那一行 ·
+`app.js` 里 `VIEWS` 的 `preview`、`showView` 的 enter 分支、`stepProgress` 死分支、
+`autoWorkflowStep` 的 preview 分支、包模式步骤过滤里的 preview 项、`PreviewView.init` 整块 deps ·
+`continuation-review.js` 的 `previewEnter` 注入调用 · `boundary.test.mjs` 的
+OWNERS / VIEW_STATE_PREFIXES / VIEW_EXPORTS 三张表里 29 条 preview 登记 ·
+`test_ui_assets.py` 两条 preview 用例 · overlay acid ④ 的 preview 断言 · e2e driver 的 preview 探针。
+
+**仍留在树上的（不影响行为）**：`index.html` 里 `#view-preview` 的 44 行 DOM 与 `app.css` 里
+约 88 行 `.preview-*` 样式。它们没有任何引用、`showView("preview")` 也不再是合法视图，
+所以永远是 hidden。要一起删是另一笔，判据是"删完四闸全绿、页面仍不出现空视图"。
+

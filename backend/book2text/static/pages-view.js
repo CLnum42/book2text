@@ -812,7 +812,7 @@ function overlayHandleFor(tile) {
   const api = window.OverlayLayer;
   const pageNo = Number(tile && tile.dataset ? tile.dataset.pageNo : NaN);
   if (!api || !Number.isFinite(pageNo)) return null;
-  // 渲染器必须先注册（幂等）：只靠 preview 的 init 的话，pages 里 stats.counts 恒空、数据到了也不画
+  // 渲染器必须先注册（幂等）：不注册的话，pages 里 stats.counts 恒空、数据到了也不画
   api.init({});
   const cached = tile.__overlayHandle;
   if (cached && !cached.dead && cached.layer && cached.layer.isConnected) return cached;
@@ -1808,12 +1808,6 @@ function renderWorkflowFilter(counts, summary) {
 function syncStepToggles(marginStep) {
   const button = el("pages-margin-toggle");
   if (!injected.getCurrentProject()) return;
-  // 结果预览有自己的版心开关（任务 47）：这里只同步底栏按钮状态，
-  // 不按"非版心步就关掉"的规则把用户刚关掉的版心又打开。
-  if (injected.getCurrentView() === "preview") {
-    if (button) button.classList.toggle("is-on", injected.getPagesMarginOn());
-    return;
-  }
   // 正文审校是读稿主界面：版心 + 块框默认开着（任务 57），**不按步骤把它们压暗**。
   // 用户自己关掉也尊重——这里只同步底栏按钮状态。
   if (injected.getCurrentView() === "reading") {
@@ -3051,7 +3045,7 @@ async function rerunAuxiliary() {
  * `syncToolbarToggles: () => window.PagesView.syncToolbarToggles()`——R2 不许模块直接引用
  * 别的视图接口），模块按注入的开关状态刷这两个按钮。
  *
- * 调用者：reading-view / index-view / preview-view / library-view；四处都在 `PagesView.init` 之后执行。
+ * 调用者：reading-view / index-view / library-view；三处都在 `PagesView.init` 之后执行。
  */
 function syncToolbarToggles() {
   const margin = el("pages-margin-toggle");

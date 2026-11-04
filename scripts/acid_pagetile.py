@@ -31,7 +31,7 @@ REPO = Path(__file__).resolve().parent.parent
 STATIC = REPO / "backend" / "book2text" / "static"
 MODULE = STATIC / "page-tile.js"
 HARNESS = REPO / "tests" / "js" / "page-tile-acid.mjs"
-CONSUMERS = ["index-view.js", "preview-view.js", "reading-view.js"]
+CONSUMERS = ["index-view.js", "reading-view.js"]
 
 
 def node_binary() -> str | None:

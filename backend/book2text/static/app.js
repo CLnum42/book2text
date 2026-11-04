@@ -111,7 +111,9 @@ function fillDefinitionList(node, pairs) {
 // 界面是"单窗口应用"（说明书第 7 节的效果图）：顶栏 + 四个视图（项目库 / 页面 /
 // 审校 / 合并审阅）+ 若干对话框。视图之间只切换 hidden，各视图内部状态各自保留。
 
-const VIEWS = ["library", "pages", "index", "review", "reading", "preview", "merge"];
+// 2026-11-04：`preview` 从视图表里删掉（L-117 死 UI）。`#view-preview` 的 DOM 与 CSS 还在，
+// 但没有任何入口、`showView("preview")` 也不再是合法视图——它永远是 hidden 的。
+const VIEWS = ["library", "pages", "index", "review", "reading", "merge"];
 
 let currentView = "library";
 
@@ -270,10 +272,6 @@ function showView(name) {
     queueAfterSteps(() => hydrateView("index"));
     window.IndexView?.enter();
   }
-  if (target === "preview" && currentProject) {
-    // 任务 94 Slice P2：进预览只有一条路（§20.1）——模块内的 openPreview 由 enter 负责
-    window.PreviewView?.enter();
-  }
   if (target === "merge" && currentProject) {
     // 任务 94 / §20.10：进合并视图只有一条路，数据由外壳设进 mergeState
     window.MergeView?.enter();
@@ -425,11 +423,6 @@ function stepProgress(id) {
         ` · 待人工 ${needs} 页 · 版面未确认 ${layoutLeft} 页` +
         (continuation ? ` · 跨页延续待确认 ${continuation} 处` : "");
     }
-  } else if (id === "preview") {
-    // 用户明确要求：结果预览不设完成态——它永远不是"已完成"，也不算失败。
-    done = false;
-    count = "";
-    detail = "导出结果的实时副本；没有完成态，随时可以看";
   } else if (id === "export") {
     const succeeded = (projectExports || []).filter(
       (record) => record.status === "succeeded"
@@ -450,7 +443,6 @@ function autoWorkflowStep() {
   if (exportOpen) return "export";
   if (currentView === "review" || currentView === "reading") return "review";
   if (currentView === "index") return "index";
-  if (currentView === "preview") return "preview";
   if (currentView !== "pages") return "review";
   for (const id of PAGE_WORKFLOW_STEPS) {
     if (!stepProgress(id).done) return id;
@@ -484,7 +476,7 @@ function syncWorkflowSteps() {
   nav.innerHTML = "";
   const isPackage = currentProject.kind === "package";
   const visible = WORKFLOW_STEPS.filter(
-    (step) => !(isPackage && (step.id === "export" || step.id === "preview"))
+    (step) => !(isPackage && step.id === "export")
   );
   visible.forEach((step) => {
     const index = WORKFLOW_STEPS.findIndex((item) => item.id === step.id);
@@ -755,11 +747,6 @@ function goToWorkflowStep(id) {
     // 目录确认是单页预览：没手动改过缩放时给 100%（与页面视图的"单页"同一档）。
     if (!window.PageMedia?.getPageZoomTouched() && window.PageMedia?.getPageZoomIndex() < 3) window.PageMedia?.setPageZoomIndex(3);
     showView("index");
-  } else if (id === "preview") {
-    // 结果预览是逐页读正文：没手动改过缩放时给 100%（与目录确认同一档），
-    // 缩放仍然是 page-media.js 里那同一份档位状态。
-    if (!window.PageMedia?.getPageZoomTouched() && window.PageMedia?.getPageZoomIndex() < 3) window.PageMedia?.setPageZoomIndex(3);
-    showView("preview");
   } else {
     showView("pages");
     savePosition("pages", lastDetailPageNo);
@@ -2830,12 +2817,10 @@ const INDEX_ZOOM_SCALES = [0.55, 0.7, 0.85, 1];
 /** 内存里保留当前页 ±N 页的图（任务 62：翻回去不用再等）。 */
 const INDEX_IMAGE_WINDOW = 10;
 
-// ---------------------------------------------------------------- 结果预览（任务 38 / 任务 47）
+// ---------------------------------------------------------------- 工具条的「⋯」菜单
 //
-// 预览的 43 个函数、27 个状态已整段搬进 `preview-view.js`（任务 94 · Slice P2）。
-// 这里只剩**工具条的「⋯」菜单**（`setupPageMore`，它是外壳不是预览，故原地不动）。
-// 接缝 4 处：showView → `PreviewView.enter()`；收尾 / 跨页 → `enter({ force | invalidate })`；
-// boot → `PreviewView.init(deps)`。设计说明与函数实现见该文件头部。
+// 结果预览（任务 38 / 47）已于 2026-11-04 按 L-117 删除（`preview-view.js` 与视图表登记一起走）。
+// 这里只剩工具条的「⋯」菜单（`setupPageMore`，它是外壳不是预览，故原地不动）。
 
 /** 任务 39（E 刀）：工具条上的「⋯」——诊断（质量统计）/ 协作（任务包）。 */
 function setupPageMore() {
@@ -4173,19 +4158,14 @@ async function runFurnitureCleanup() {
 
 /** 引号不配平清单：只读，逐条跳到审校页自己判断。 */
 
-/** 批量写完：刷新收尾状态 / 页面状态，丢掉预览与建议缓存（数据变了）。 */
+/** 批量写完：刷新收尾状态 / 页面状态，丢掉建议缓存（数据变了）。 */
 async function afterCleanupApplied() {
-  // 原先这里 `previewData = null; previewProject = null;`——先丢缓存，别让下面几次 await
-  // 期间还有旧的预览数据可读（与搬走前同一时刻、同一语义）
-  window.PreviewView?.enter({ invalidate: true });
   window.PagesView?.onPageSuggestionsInvalidated();
   await refreshPageStates();
   await loadFinishSummary({ silent: true });
   if (detailPageNo !== null) {
     await window.PageDetailDrawer?.loadPageDetail(detailPageNo, { forceSuggestions: true });
   }
-  // 数据变了：丢预览缓存；还停在预览视图就按新数据重开（不在就只丢缓存，模块内部判）
-  await window.PreviewView?.enter({ force: true });
 }
 
 async function undoLastCleanup() {
@@ -5038,7 +5018,6 @@ function boot() {
     pageImageUrl: (...args) => window.PageMedia?.pageImageUrl(...args),
     detailImageProfile: (...args) => window.PageMedia?.detailImageProfile(...args),
     pageWidthPt: (...args) => window.PageMedia?.pageWidthPt(...args),
-    previewEnter: (...args) => window.PreviewView?.enter(...args),
     onKeydown: (handler) => document.addEventListener("keydown", handler),
     onResize: (handler) => window.addEventListener("resize", handler),
   });
@@ -5278,7 +5257,7 @@ function boot() {
   // 任务 94 Slice I1：目录确认视图模块初始化。deps 只给**句柄**（状态 getter/setter +
   // 仍留在 app.js 的纯数据服务），不注入值；模块不许把 getter 的返回值缓存到模块级变量（§13 / §20.4）。
   window.IndexView?.init({
-    // 提示条：index-view.js:468 / preview-view.js:212 都用 injected.showNoticeBar?.(text)；
+    // 提示条：index-view.js:468 用 injected.showNoticeBar?.(text)；
     // 缺这个键时可选调用不抛错，只是提示条静默不显示（2026-10-30 补）。
     showNoticeBar: (text) => window.SuggestionFlow?.showNotice(text),
     isActive: () => currentView === "index",
@@ -5387,46 +5366,6 @@ function boot() {
     token: token,
   });
 
-  window.PreviewView?.init({
-    // 提示条：index-view.js:468 / preview-view.js:212 都用 injected.showNoticeBar?.(text)；
-    // 缺这个键时可选调用不抛错，只是提示条静默不显示（2026-10-30 补）。
-    showNoticeBar: (text) => window.SuggestionFlow?.showNotice(text),
-    // 状态 getter
-    isActive: () => currentView === "preview",
-    getProject: () => currentProject,
-    getLastDetailPageNo: () => lastDetailPageNo,
-    getPageIndexData: () => window.PageIndexService?.getData(),
-    getPageIndexLoading: () => window.PageIndexService?.isLoading(),
-    getPageIndexProject: () => window.PageIndexService?.getProject(),
-    getPageZoomIndex: () => window.PageMedia?.getPageZoomIndex(),
-    getPagesMarginOn: () => pagesMarginOn,
-    getPagesOverlayOn: () => pagesOverlayOn,
-    // 状态 setter（只有确实有写点的 4 个）
-    setPageZoomIndex: (value) => window.PageMedia?.setPageZoomIndex(value),
-    setPageZoomTouched: (value) => window.PageMedia?.setPageZoomTouched(value),
-    setPagesMarginOn: (value) => { pagesMarginOn = value; return value; },
-    setPagesOverlayOn: (value) => { pagesOverlayOn = value; return value; },
-    // 常量 / 共享服务
-    zoomScales: INDEX_ZOOM_SCALES,
-    blockTypeLabels: BLOCK_TYPE_LABELS,
-    exportOptions: () => window.ExportPanel?.exportOptions(),
-    apiJson: (path, options) => apiJson(path, options),
-    // 仍留在 app.js 的页面视图叶子函数
-    applyBoxElementRect: (...args) => applyBoxElementRect(...args),
-    clearTileMargin: (...args) => window.MarginData?.clearTileMargin(...args),
-    paintTileMargin: (...args) => window.MarginData?.paintTileMargin(...args),
-    loadIndexBlocks: (...args) => window.PageIndexService?.loadBlocks(...args),
-    loadPageIndex: (...args) => window.PageIndexService?.loadIndex(...args),
-    pageImageUrl: (...args) => window.PageMedia?.pageImageUrl(...args),
-    pageProfileFor: (...args) => window.PageMedia?.pageProfileFor(...args),
-    savePageMarginPreference: (...args) => window.MarginData?.savePageMarginPreference(...args),
-    savePageOverlayPreference: (...args) => savePageOverlayPreference(...args),
-    syncIndexToggles: () => window.IndexView?.refresh(),
-    // 刀 6：页面工具栏两个开关的 is-on 同步（跨视图能力走注入——R2 不许模块直接引用 window.PagesView）
-    syncToolbarToggles: () => window.PagesView?.syncToolbarToggles(),
-    toggleMarginView: (...args) => toggleMarginView(...args),
-    togglePageBlocksOverlay: (...args) => togglePageBlocksOverlay(...args),
-  });
   // 刀 A：质量统计域模块（服务模块；遮罩开关仍留在本壳的 openStatsPanel 里）
   window.QualityStats?.init({
     list: el("stats-list"),

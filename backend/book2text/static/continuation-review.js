@@ -332,10 +332,10 @@ function stepContinuation(delta) {
   renderContinuationPanel({ scroll: true });
 }
 
-/** 改过跨页边界：导出的段落结构变了，刷新收尾状态与预览缓存（后台，不挡翻条）。 */
+/** 改过跨页边界：导出的段落结构变了，刷新收尾状态（后台，不挡翻条）。 */
 function afterContinuationChange() {
-  // 导出段落结构变了：只丢预览缓存、不重开（用户还在页面上，别拖一份 1.1 MB 的预览）
-  injected.previewEnter({ invalidate: true });
+  // 2026-11-04：预览视图已删（L-117），原先这里 `injected.previewEnter({ invalidate: true })`
+  // 只是丢预览缓存；现在没有消费者，去掉即可。
   loadFinishSummary({ silent: true });
 }
 
