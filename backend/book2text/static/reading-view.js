@@ -433,7 +433,10 @@ async function startJevJob() {
     renderJevUi();
     pollJevJob();
   } catch (error) {
-    injected.showNoticeBar?.(`Jev 打分没开始：${error.message || "未知错误"}`);
+    // `detail` 里才是"缺模型目录 / 缺打分服务 / 缺字体"这类具体原因；
+    // 只说"不能开始"等于没提示（2026-11-05 真机反馈）。
+    const detail = error?.detail ? `（${error.detail}）` : "";
+    injected.showNoticeBar?.(`Jev 打分没开始：${error.message || "未知错误"}${detail}`);
   }
 }
 
