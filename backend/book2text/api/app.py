@@ -30,6 +30,7 @@ from . import (
     routes_backups,
     routes_exports,
     routes_jobs,
+    routes_jev,
     routes_layout,
     routes_margin,
     routes_page_numbers,
@@ -142,6 +143,7 @@ def create_app(
     app.include_router(routes_page_numbers.router, dependencies=guarded)
     app.include_router(routes_word_boxes.router, dependencies=guarded)
     app.include_router(routes_jobs.router, dependencies=guarded)
+    app.include_router(routes_jev.router, dependencies=guarded)
     app.include_router(routes_layout.router, dependencies=guarded)
     app.include_router(routes_review.router, dependencies=guarded)
     app.include_router(routes_review_status.router, dependencies=guarded)
