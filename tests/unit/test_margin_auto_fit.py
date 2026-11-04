@@ -318,3 +318,54 @@ def test_fit_reaches_chapter_end_line_across_a_larger_gap() -> None:
     assert result is not None
     assert result[1] < 0.13  # 章末对句被收回
     assert result[1] > 0.06  # 页码没被拉进来
+
+
+def test_bbox_fallback_ignores_short_edge_lines(monkeypatch) -> None:
+    """p36 的形态：兜底包围盒不许被竖排书眉 / 页码拉宽（2026-11-04，CER 首测 ⑤）。
+
+    书眉块宽 0.035、页码块宽 0.035；正文长行宽 0.50。兜底只用长行时 x0 应为正文左边界
+    减去 AUTO_PADDING（0.08 左右），而不是被拉到 0.01 量级。
+    """
+    body = [[0.10, 0.07 + index * 0.03, 0.60, 0.09 + index * 0.03] for index in range(5)]
+    header = [[0.035, 0.56, 0.070, 0.989]]
+    monkeypatch.setattr(margin_box, "fit_box_from_lines", lambda lines: None)
+
+    fitted = margin_box.fit_page_margin_box(header + body)
+
+    assert fitted.method == "bbox"
+    assert fitted.box is not None
+    assert fitted.box[0] > 0.05, f"书眉把包围盒左边界拉到 {fitted.box[0]}"
+
+
+def test_bbox_fallback_still_uses_all_lines_when_no_long_lines(monkeypatch) -> None:
+    """没有长行的页（诗页 / 图页）行为不变：还是所有行的包围盒。"""
+    lines = [
+        [0.03, 0.10, 0.07, 0.30],
+        [0.03, 0.32, 0.07, 0.52],
+        [0.03, 0.54, 0.07, 0.74],
+    ]
+    monkeypatch.setattr(margin_box, "fit_box_from_lines", lambda lines: None)
+
+    fitted = margin_box.fit_page_margin_box(lines)
+
+    assert fitted.method == "bbox"
+    assert fitted.box is not None
+    assert fitted.box[0] < 0.05, "没有长行时不该改变原来的兜底口径"
+
+
+def test_bbox_fallback_uses_page_relative_long_lines(monkeypatch) -> None:
+    """p36 的真实宽度：正文列 0.42、书眉 0.032 —— 固定 0.45 会把正文判成短行。
+
+    （这本书正文列只有 0.42 宽；AUTO_LONG_LINE=0.45 对它是错的，所以按"本页最宽行的
+    比例"判长行。夹具取 p36 实测的宽度量级。）
+    """
+    body = [[0.139, 0.07 + index * 0.03, 0.565, 0.095 + index * 0.03] for index in range(6)]
+    header = [[0.038, 0.56, 0.070, 0.66]]
+    footer = [[0.035, 0.97, 0.070, 0.999]]
+    monkeypatch.setattr(margin_box, "fit_box_from_lines", lambda lines: None)
+
+    fitted = margin_box.fit_page_margin_box(header + footer + body)
+
+    assert fitted.method == "bbox"
+    assert fitted.box is not None
+    assert fitted.box[0] > 0.10, f"书眉把包围盒左边界拉到 {fitted.box[0]}（应为正文 0.139 - padding）"

@@ -22,14 +22,16 @@ PP-OCR 只返回**行**，不返回块；块由本模块按**行距、缩进、�
 from __future__ import annotations
 
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Sequence
 
 from ..ocr.base import BBox, OcrLine
 
-# 块类型。说明书 5.3 的取值里，本模块现阶段只会产出 PARAGRAPH——
-# 其余取值需要版面组件建议或人工标注。
+# 块类型。说明书 5.3 的取值里，本模块只会产出 PARAGRAPH，外加一条**几何判据**产出的
+# FIGURE（见 `_figure_groups`）：短行组落在本页正文栏之外时，它不是正文（插图题字 /
+# 竖排书眉）。这条不是"猜页眉页脚"，是"这一组短行不在正文栏里"的可复算判据。
 BLOCK_TYPE_PARAGRAPH = "paragraph"
+BLOCK_TYPE_FIGURE = "figure"
 
 # ---------------------------------------------------------------- 规则参数
 #
@@ -187,12 +189,56 @@ def group_lines(
             )
             order += 1
 
+    blocks = _figure_groups(blocks, usable)
     return PageLayout(
         blocks=tuple(blocks),
         column_count=len(columns),
         reading_order_uncertain=len(columns) > 1,
         notes=tuple(notes),
     )
+
+
+#: ③ 短行组判据（2026-11-04，CER 首测 p14）：块内每行 ≤6 字、≥2 行、
+#: 块中心落在本页正文栏外 ⇒ 非正文块。40 页实测命中 32 块（31 个竖排书眉 + p14 题字），
+#: 正文栏内 0 块。字形高度不可用（题字与正文字高一样），所以用"短行 + 栏外"这两条。
+SHORT_LINE_MAX_CHARS = 6
+SHORT_GROUP_MIN_LINES = 2
+#: 正文栏用**长行**估：≥12 字的行才算正文，至少 3 行才认为这一页有稳定的正文栏
+BODY_COLUMN_MIN_CHARS = 12
+BODY_COLUMN_MIN_LINES = 3
+
+
+def _figure_groups(blocks: Sequence[Block], lines: Sequence[OcrLine]) -> list[Block]:
+    """把"短行组且整块在本页正文栏外"的块标成 figure。
+
+    正文栏取**长行（≥12 字）**的横向范围；短行（书眉 / 题字 / 页码）本来就不该
+    参与定栏。没有足够长行时（诗页、图页、区域分组）不判——宁可不标，不误伤。
+    多栏页上长行横跨两栏 ⇒ 栏范围被拉宽，短行组只要在范围内就不标，天然安全。
+    """
+    body = [
+        line
+        for line in lines
+        if line.bbox is not None and len(line.text.strip()) >= BODY_COLUMN_MIN_CHARS
+    ]
+    if len(body) < BODY_COLUMN_MIN_LINES:
+        return list(blocks)
+    column_x0 = min(line.bbox.x0 for line in body)
+    column_x1 = max(line.bbox.x1 for line in body)
+
+    result: list[Block] = []
+    for block in blocks:
+        texts = [line.text.strip() for line in block.lines if line.text.strip()]
+        short_group = (
+            len(texts) >= SHORT_GROUP_MIN_LINES
+            and all(len(text) <= SHORT_LINE_MAX_CHARS for text in texts)
+        )
+        if short_group and block.bbox is not None:
+            center = (block.bbox.x0 + block.bbox.x1) / 2
+            if center < column_x0 or center > column_x1:
+                result.append(replace(block, block_type=BLOCK_TYPE_FIGURE))
+                continue
+        result.append(block)
+    return result
 
 
 def _union_bbox(boxes: Sequence[BBox]) -> BBox:

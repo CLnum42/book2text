@@ -273,3 +273,54 @@ def test_real_chinese_two_column_page() -> None:
     # 章回标题"第二十七回"应当独立成块，且排在正文之前
     first_texts = [block.text for block in layout.blocks[:3]]
     assert any("第二十七回" in text for text in first_texts), first_texts
+
+
+# ---------------------------------------------------------------- 短行组判据（2026-11-04）
+
+
+def _long_body(start_y: float, count: int = 6, *, x0: float = 0.52, x1: float = 0.98) -> list[OcrLine]:
+    """正文长行（≥12 字），用来估"本页正文栏"。"""
+    text = "这是一行很长的正文文字内容共二十个字"
+    return [line(text, start_y + index * PITCH, x0=x0, x1=x1) for index in range(count)]
+
+
+def test_short_group_outside_body_column_becomes_figure() -> None:
+    """p14 的形态：3 行 ×3 字的木刻题字，在正文栏左侧 ⇒ figure（不是正文）。"""
+    body = _long_body(0.10)
+    art = [line("揚環賣", 0.55 + index * PITCH, x0=0.11, x1=0.21) for index in range(3)]
+
+    layout = grouping.group_lines(body + art)
+
+    figures = [block for block in layout.blocks if block.block_type == grouping.BLOCK_TYPE_FIGURE]
+    assert len(figures) == 1, f"应当恰好 1 个 figure 块，实际 {[b.block_type for b in layout.blocks]}"
+    assert figures[0].line_count == 3
+    assert "揚環賣" in figures[0].text
+
+
+def test_short_group_inside_body_column_stays_paragraph() -> None:
+    """短行组落在正文栏内 ⇒ 不动（宁可不标）：它不是"栏外的东西"。"""
+    body = _long_body(0.10)
+    inner = [line("揚環賣", 0.55 + index * PITCH, x0=0.62, x1=0.70) for index in range(3)]
+
+    layout = grouping.group_lines(body + inner)
+
+    assert all(block.block_type == grouping.BLOCK_TYPE_PARAGRAPH for block in layout.blocks)
+
+
+def test_page_without_long_lines_never_marks_figure() -> None:
+    """没有足够长行（诗页 / 图页 / 区域分组）⇒ 不判，别拿短行去估栏。"""
+    only_short = [line("揚環賣", 0.10 + index * PITCH, x0=0.11, x1=0.21) for index in range(3)]
+
+    layout = grouping.group_lines(only_short)
+
+    assert all(block.block_type == grouping.BLOCK_TYPE_PARAGRAPH for block in layout.blocks)
+
+
+def test_single_short_line_is_not_a_group() -> None:
+    """一行短字不算"短行组"（单行可能是正文里的短句）。"""
+    body = _long_body(0.10)
+    single = [line("好。", 0.55, x0=0.11, x1=0.15)]
+
+    layout = grouping.group_lines(body + single)
+
+    assert all(block.block_type == grouping.BLOCK_TYPE_PARAGRAPH for block in layout.blocks)

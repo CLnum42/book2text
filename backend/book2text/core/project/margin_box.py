@@ -1001,9 +1001,18 @@ def fit_page_margin_box(lines: Sequence[Sequence[float]]) -> FittedMargin:
     usable = [box for box in parsed if _is_line_like(box)]
     if not usable:
         return FittedMargin(None, FIT_METHOD_UNDETERMINED, len(parsed), len(long_lines))
+    # 2026-11-04（CER 首测 p36）：兜底取"本页所有行"会把竖排书眉（宽 0.035）与页码算进
+    # 包围盒，x0 被拉到 0.0347（同书拟合页在 0.13–0.26）。
+    # "长行"按**本页最宽行的比例**判：这本书正文列只有 0.42 宽，固定 0.45（AUTO_LONG_LINE）
+    # 会把正文也判成短行；书眉/页码只有 0.03，与正文差一个量级。有 ≥3 条长行时只用长行
+    # 定框；长行不够（诗页 / 图页）就退回原来的"所有行"，行为不变。
+    widest = max(box[2] - box[0] for box in usable)
+    long_threshold = max(AUTO_LONG_LINE * 0.4, widest * 0.45)
+    wide = [box for box in usable if box[2] - box[0] >= long_threshold]
+    chosen = wide if len(wide) >= 3 else usable
     try:
         box = normalize_margin_box(
-            _union_boxes([_expand_line(line, AUTO_PADDING) for line in usable])
+            _union_boxes([_expand_line(line, AUTO_PADDING) for line in chosen])
         )
     except (ValueError, MarginBoxError):
         return FittedMargin(None, FIT_METHOD_UNDETERMINED, len(parsed), len(long_lines))
