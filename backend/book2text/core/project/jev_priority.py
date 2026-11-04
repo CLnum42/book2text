@@ -139,6 +139,7 @@ def runnable(config: JevConfig) -> tuple[bool, list[str]]:
 @dataclass(frozen=True)
 class TargetLine:
     line_id: str
+    block_id: str
     page_no: int
     page_index: int
     block_order: int
@@ -186,6 +187,7 @@ def target_lines(project_id: str, *, library: Path | None = None) -> list[Target
                 rows.append(
                     TargetLine(
                         line_id=line.line_id,
+                        block_id=block.block_id,
                         page_no=page.page_no,
                         page_index=int(page_index),
                         block_order=int(block.order_index),
