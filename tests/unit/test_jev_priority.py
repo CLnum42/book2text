@@ -23,10 +23,10 @@ def _add_page_lines(directory: Path, page_no: int, page_id: str) -> None:
             """
             INSERT INTO block (block_id, page_id, origin, order_index, bbox, block_type,
                                ocr_text, text, include, continues_to_next, created_at, updated_at)
-            VALUES (?, ?, 'ocr', 0, '[0.1,0.1,0.9,0.2]', 'paragraph', '甲', '甲', 1, 0,
+            VALUES (?, ?, 'ocr', 0, '[0.1,0.1,0.9,0.2]', 'paragraph', ?, ?, 1, 0,
                     '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')
             """,
-            (f"block{page_no}", page_id),
+            (f"block{page_no}", page_id, "甲甲甲\n丙丙丙\n丁丁丁", "甲甲甲\n丙丙丙\n丁丁丁"),
         )
         rows = [
             (f"line{page_no}a", 0, "甲甲甲", "乙乙乙", "differs"),   # 汉字级分歧

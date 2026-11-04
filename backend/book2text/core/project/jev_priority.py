@@ -44,6 +44,7 @@ from . import blocks as blocks_module
 from . import jobs as jobs_module
 from . import library as library_module
 from . import recognition as recognition_module
+from . import review_status
 
 JOB_TYPE_JEV = "jev_priority"
 JOB_LABEL = "Jev 可疑度打分"
@@ -149,53 +150,56 @@ class TargetLine:
 
 
 def target_lines(project_id: str, *, library: Path | None = None) -> list[TargetLine]:
-    """所有"该打分"的行：分歧行 + 有第二引擎文本 + 有行框。
+    """队列里的行：**与 `review_status.queue_items` 同一判据、同一份 marks**。
 
-    没有 aux 文本的行（第二引擎没跑）不会被选中——建任务前会据此拒绝并提示。
+    2026-11-05 实测对账：早先按 `block_line.text` 自己扫，比队列多 1 行——
+    那一行块的**当前文本**已经被人工改成与第二引擎一致（mark 消失），
+    而行记录还是旧文本。所以这里改用 `divergence_index` 的 marks：
+    块 include / 块类型 / 页 include / 版心内 / 整行页码噪声，全部与队列同源；
+    `text` 取 mark 的当前文本（用户看到的），不是行记录的旧文本。
     """
     target_library = library if library is not None else library_module.default_library_dir()
+    index = blocks_module.divergence_index(project_id, library=target_library)
     pages = library_module.list_pages(project_id, library=target_library)
-    page_by_no = {page.page_no: page for page in pages}
+    page_by_id = {page.page_id: page for page in pages}
     rows: list[TargetLine] = []
-    for page in pages:
-        if not page.include:
+    for block in index.blocks:
+        if not block.include:
             continue
-        for block in blocks_module.list_blocks(project_id, library=target_library, page_no=page.page_no):
-            if block.block_type not in ("paragraph", "heading"):
+        if block.block_type not in review_status.QUEUE_BLOCK_TYPES:
+            continue
+        page = page_by_id.get(block.page_id)
+        if page is None or not page.include:
+            continue
+        divergence = index.by_block.get(block.block_id)
+        if divergence is None:
+            continue
+        line_by_index = {
+            line.line_index: line for line in index.lines_by_block.get(block.block_id, [])
+        }
+        for mark in divergence.marks:
+            if mark.level not in SCORED_STATUSES:
                 continue
-            for line in blocks_module.list_block_lines(
-                project_id, library=target_library, page_no=page.page_no
-            ):
-                if line.block_id != block.block_id:
-                    continue
-                if line.diff_status != compare_module.DIFFERS:
-                    continue
-                if not (line.aux_text or "").strip():
-                    continue
-                if line.bbox is None or not (line.text or "").strip():
-                    continue
-                # `diff_status` 列只存三态；汉字级 / 标点级是**现算**的（说明书 8.7 的注释）。
-                grade = compare_module.grade_line(line.text, line.aux_text)
-                if grade not in SCORED_STATUSES:
-                    continue
-                # 与审校队列同一口径：整行就是页码的差异是噪声，不打分
-                if header_cleanup.is_page_number_noise(
-                    line.text, line.bbox, first_line=line.line_index == 0
-                ):
-                    continue
-                page_index = page.pdf_page_index if page.pdf_page_index is not None else page.page_no - 1
-                rows.append(
-                    TargetLine(
-                        line_id=line.line_id,
-                        block_id=block.block_id,
-                        page_no=page.page_no,
-                        page_index=int(page_index),
-                        block_order=int(block.order_index),
-                        line_index=int(line.line_index),
-                        bbox=tuple(float(value) for value in line.bbox),
-                        text=line.text,
-                    )
+            if review_status._is_page_number_mark(mark, line_by_index):
+                continue
+            if not index.inside(block):
+                continue
+            line = line_by_index.get(mark.line_index)
+            if line is None or line.bbox is None:
+                continue
+            page_index = page.pdf_page_index if page.pdf_page_index is not None else page.page_no - 1
+            rows.append(
+                TargetLine(
+                    line_id=line.line_id,
+                    block_id=block.block_id,
+                    page_no=page.page_no,
+                    page_index=int(page_index),
+                    block_order=int(block.order_index),
+                    line_index=int(mark.line_index),
+                    bbox=tuple(float(value) for value in line.bbox),
+                    text=mark.current,
                 )
+            )
     rows.sort(key=lambda item: (item.page_no, item.block_order, item.line_index))
     return rows
 
