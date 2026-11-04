@@ -1174,6 +1174,13 @@ def run_job(
         return _run_auxiliary_job(
             directory, job, engine=engine, should_continue=should_continue, log=log
         )
+    if job.job_type == jobs_module.JOB_TYPE_JEV:
+        # Jev 打分：同样是"按页一个单元"的任务，复用暂停 / 取消 / 进度机制。
+        from . import jev_priority as jev_module
+
+        return jev_module.run_job(
+            directory, job, should_continue=should_continue, log=log
+        )
     if job.job_type == jobs_module.JOB_TYPE_LAYOUT:
         # 版面检测在独立模块里，复用同一套任务表 / 控制信号（任务 58）。
         from ..layout import detection as layout_detection

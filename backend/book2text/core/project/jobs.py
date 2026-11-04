@@ -36,13 +36,18 @@ JOB_TYPE_AUXILIARY = "auxiliary"
 # 任务形状与识别完全一样（按页一个单元），共用暂停 / 继续 / 取消 / 重试。
 JOB_TYPE_LAYOUT = "layout"
 
-JOB_TYPES = (JOB_TYPE_OCR, JOB_TYPE_AUXILIARY, JOB_TYPE_LAYOUT)
+# Jev 可疑度打分（2026-11-05）：按页一个单元，只给"两引擎分歧行"打分。
+# 默认关、用户手动触发；不进识别链路，也不改变识别 / 导出的任何行为。
+JOB_TYPE_JEV = "jev_priority"
+
+JOB_TYPES = (JOB_TYPE_OCR, JOB_TYPE_AUXILIARY, JOB_TYPE_LAYOUT, JOB_TYPE_JEV)
 
 # 任务类型的人话名字（界面与日志共用）
 JOB_TYPE_LABELS = {
     JOB_TYPE_OCR: "识别",
     JOB_TYPE_AUXILIARY: "第二引擎复核",
     JOB_TYPE_LAYOUT: "版面检测",
+    JOB_TYPE_JEV: "Jev 可疑度打分",
 }
 
 STATUS_QUEUED = "queued"
