@@ -1,4 +1,4 @@
-// Overlay registry 酸测试（片 1：`type: "blocks"` + preview 一个消费者）
+// Overlay registry 酸测试（片 1：`type: "blocks"` + 页面网格 / 目录 / 阅读三个消费者）
 //
 // **模块存在理由的证明，不是行为单测**（形态照 `page-tile-acid.mjs`）。五条判据各自对应
 // 一个"错的实现也能让别的闸绿"的盲区；每条都能被一个变异打红（变异怎么跑见文件末尾注释）。
@@ -14,7 +14,6 @@ import { makeDeps, makeEnvironment } from "./tile-harness.mjs";
 const STATIC = new URL("../../backend/book2text/static/", import.meta.url);
 /** 变异测试用：把被测文件指到副本，产品代码一个字不动。 */
 const MODULE_URL = process.env.B2T_OVERLAY_MODULE || new URL("overlay-registry.js", STATIC);
-const PREVIEW_URL = process.env.B2T_PREVIEW_VIEW || new URL("preview-view.js", STATIC);
 
 const BLOCKS = [
   { block_id: "b1", order_index: 0, block_type: "heading", bbox: [0.1, 0.1, 0.9, 0.16], include: true, review_status: "confirmed" },
@@ -163,16 +162,9 @@ test("③ counts.blocks 等于有 bbox 的块数，容器里的元素数与它�
 });
 
 // ④ 旧路径归零：点名字段（剥注释后仍 0 次），不只数次数
-test("④ preview-view 不再自建 .page-overlay、不再比 _renderedBlocks、不再调 renderPageBlocks", () => {
-  const stripped = stripComments(readFileSync(PREVIEW_URL, "utf8"));
-  for (const [label, pattern] of [
-    [".page-overlay", /page-overlay/g],
-    ["_renderedBlocks", /_renderedBlocks/g],
-    ["injected.renderPageBlocks", /injected\.renderPageBlocks/g],
-  ]) {
-    const hits = (stripped.match(pattern) || []).length;
-    assert.equal(hits, 0, `preview-view.js 剥注释后仍有 ${hits} 次 ${label}——旧路径没删净`);
-  }
+// 2026-11-04：preview-view.js 已按 L-117 删除，原先"它不自建 .page-overlay / 不比
+// _renderedBlocks / 不调 inject.renderPageBlocks"三条随之作废（文件不在了，判据没有对象）。
+test("④ 旧路径归零：page-tile.js 的 paintOverlays 死钩子必须删；overlay-registry 先于 app.js", () => {
   const tileSource = stripComments(readFileSync(new URL("page-tile.js", STATIC), "utf8"));
   assert.equal((tileSource.match(/paintOverlays/g) || []).length, 0, "page-tile.js 的 paintOverlays 死钩子必须删");
 

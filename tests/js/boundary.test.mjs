@@ -773,13 +773,11 @@ const WINDOW_HOOK_EXCEPTIONS = [
   { name: "__b2tPageSyncLog", owner: "QA", expires: "页同步验收完成" },
   { name: "__b2tNextLog", owner: "QA", expires: "队列验收完成" },
   { name: "__b2tTextCheckFails", owner: "QA", expires: "文本核对验收完成" },
-  { name: "__b2tPreviewMetrics", owner: "QA", expires: "预览性能验收完成" },
-  { name: "__b2tPreviewTileTops", owner: "QA", expires: "预览性能验收完成" },
   { name: "__b2tIndexMetrics", owner: "QA", expires: "目录确认性能验收完成" },
   { name: "__b2tIndexBlocksMs", owner: "QA", expires: "目录确认性能验收完成" },
   { name: "__b2tIndexTops", owner: "QA", expires: "目录确认性能验收完成" },
 ];
-const WINDOW_HOOK_MAX = 12;   // 只降不升
+const WINDOW_HOOK_MAX = 10;   // 只降不升（2026-11-04：preview-view.js 删掉，__b2tPreviewMetrics / __b2tPreviewTileTops 无源码 ⇒ 12 → 10）
 
 /** R6 的判定内核（独立出来，好让自检喂合成样例）。 */
 function windowInterfaceProblems(fileName, source) {
@@ -2916,33 +2914,6 @@ const OWNERS = {
   READING_SPLIT_MIN: "reading-view.js",
   READING_GRIP_TOTAL: "reading-view.js",
   READING_INTENT_KINDS: "reading-view.js",
-  previewData: "preview-view.js",
-  previewProject: "preview-view.js",
-  previewOptions: "preview-view.js",
-  previewOptionsSignature: "preview-view.js",
-  previewLoading: "preview-view.js",
-  previewPageNo: "preview-view.js",
-  previewActiveSeq: "preview-view.js",
-  previewOnlySpan: "preview-view.js",
-  previewSegmentNodes: "preview-view.js",
-  previewSegmentsBySeq: "preview-view.js",
-  previewFirstSeqByPage: "preview-view.js",
-  previewTiles: "preview-view.js",
-  previewTileTops: "preview-view.js",
-  previewTileTopMap: "preview-view.js",
-  previewPagesProject: "preview-view.js",
-  previewLoadedPages: "preview-view.js",
-  previewTileBlocks: "preview-view.js",
-  previewBlocksPending: "preview-view.js",
-  previewActiveBlocks: "preview-view.js",
-  previewHitTiles: "preview-view.js",
-  previewHitToken: "preview-view.js",
-  previewRightRaf: "preview-view.js",
-  previewLeftRaf: "preview-view.js",
-  previewPendingHover: "preview-view.js",
-  previewSyncDriver: "preview-view.js",
-  previewSyncUntil: "preview-view.js",
-  previewImageStartedAt: "preview-view.js",
   readingIntents: "reading-view.js",
   readingIntentStats: "reading-view.js",
   readingFlushRaf: "reading-view.js",
@@ -3118,7 +3089,6 @@ const VIEW_STATE_PREFIXES = {
   // （`READING_CHUNK` / `INDEX_NEAR_MARGIN` / `IMAGE_QUALITY_LABELS` …）——它们同样是
   // "这个模块的东西"，漏登记一样会变成没覆盖。
   "reading-view.js": /^(reading|READING_|wordBoxMappingStats$)/,
-  "preview-view.js": /^preview/,
   "index-view.js": /^(index|INDEX_|IMAGE_QUALITY_LABELS$)/,
   // library-view.js 是 IIFE 形态：顶层状态全在闭包里（列 2），模块自己不留状态——
   // 状态一律走注入的 getter/setter（libraryProjects / lockConflictTarget 留在外壳）。
@@ -3842,7 +3812,6 @@ test("R8（导出棘轮）：临时导出不超过 5 条（防止往 TEMPORARY �
  */
 const VIEW_EXPORTS = {
   "reading-view.js": { names: STABLE },                                    // 6
-  "preview-view.js": { names: ["init", "enter"] },                          // 2
   "index-view.js": { names: ["init", "enter", "refresh"] },                // 3（D-100 签字；exit 于 8b0cfc7 删除）
   // 4：生命周期三件 + 一个域操作（D-100 完整形态；Chief 2026-10-29 裁定 B 签字）
   // open = 打开一个项目，外壳的锁冲突确认 / 任务包打开 / 备份还原都调它
@@ -3941,9 +3910,9 @@ const VIEW_EXPORTS = {
       // 刀 9 已删 rerunAuxiliary（那 5 个键之一），别再回来 —— 冲突时取「新值 + 不复活已删键」
       // 10b：队列子系统剩下的一半——建议扫描队列搬进模块之后它就死（Architect 39eb012 改判；不是 C）
       startLayoutDetection: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "版心检测对话框发起（原按 T 记，Architect 转 C）" },
-      toggleMarginView: { kind: "C", callers: ["boot", "index-view.js", "preview-view.js"], reason: "三步共用的工具栏开关" },
-      togglePageBlocksOverlay: { kind: "C", callers: ["boot", "index-view.js", "preview-view.js"], reason: "同上" },
-      syncToolbarToggles: { kind: "C", callers: ["index-view.js", "library-view.js", "pages-view.js", "preview-view.js", "reading-view.js"], reason: "4 个视图模块 + boot 的 deps 行都要它 → 模块→模块，第一个此类键" },
+      toggleMarginView: { kind: "C", callers: ["boot", "index-view.js"], reason: "三步共用的工具栏开关" },
+      togglePageBlocksOverlay: { kind: "C", callers: ["boot", "index-view.js"], reason: "同上" },
+      syncToolbarToggles: { kind: "C", callers: ["index-view.js", "library-view.js", "pages-view.js", "reading-view.js"], reason: "3 个视图模块 + boot 的 deps 行都要它 → 模块→模块，第一个此类键" },
       showPagesError: { kind: "C", callers: ["finishRevokeAutoPass"], reason: "收尾面板的任务失败要显示在页面错误条" },
       pagesErrorMessage: { kind: "C", callers: ["startLayoutDetectFromDialog"], reason: "版心检测对话框读错误文案" },
       recognizePage: { kind: "C", callers: ["buildTile", "setupLibrary"], reason: "单页识别可从页面网格和审校面板发起（刀 7 新增，跨域编排）" },
