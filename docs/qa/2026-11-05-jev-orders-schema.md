@@ -10,10 +10,10 @@
   "schema": "book2text.jev-orders.v2",
   "project_id": "b2t_H6GXVG",
   "threshold": 0.05,          // 「可疑」档的阈值（越低越可疑；≤ 阈值进第一档）
-  "include_acked": false,      // 默认只导未裁决（= 用户队列里真正看到的行）
+  "unacked_only": false,       // 契约 A：默认导出**全队列**（250 行），每行带 acked
   "total": 250,                // = review_status.queue_items 的 total（正文块 + 分歧行 + 版心内）
   "unacked": 64, "acked": 186, // total 的拆分
-  "queue_lines": 64,           // 本次导出行数：默认 = unacked；--include-acked 时 = total
+  "queue_lines": 250,          // 本次实际导出的行数（默认 = total；--unacked-only 时 = unacked）
   "gold": { "file": "….txt", "is_error_method": "normalized_substring" } | null,
   "baseline":   [ <row>, … ], // 正文流原顺序（未跑 Jev 时用户看到的顺序）
   "jev_sorted": [ <row>, … ]  // 按 Jev 排序后（可疑档 → 其余分歧行；同档按 页码→块序→行序）

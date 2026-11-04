@@ -340,6 +340,7 @@ function setupReadingSplit() {
 
 let jevSorted = false;
 let jevOnlySuspicious = false;
+let jevOptOut = false;   // 用户点过「恢复原顺序」：本次会话别再自动开排序
 let jevScored = 0;
 let jevPollTimer = null;
 
@@ -355,7 +356,11 @@ function renderJevUi() {
   if (banner) {
     banner.hidden = !(jevSorted && jevScored > 0);
     const text = el("jev-banner-text");
-    if (text) text.textContent = `当前顺序按 Jev 可疑度重排（${jevScored} 行有分数）`;
+    if (text) {
+      text.textContent =
+        `当前顺序按 Jev 可疑度重排（${jevScored} 行有分数）` +
+        " · 可疑行按页码排，不按分数排";
+    }
   }
   const clear = el("jev-clear");
   if (clear) clear.hidden = jevScored === 0;
@@ -377,6 +382,10 @@ async function refreshJevUi() {
       `/api/projects/${injected.getProject().project_id}/jev-priority`
     );
     jevScored = Number(status?.scored || 0);
+    // 排序是否真的生效由服务端判定（最近一次打分任务 succeeded）。有分数但任务没跑完时
+    // 不显示"已重排"提示条，也不让前端以为在排序。
+    // 跑完且用户没主动关过 ⇒ 自动开（提示条正是"当前顺序按…"的意思）
+    jevSorted = Boolean(status?.sort_ready) && jevScored > 0 && !jevOptOut;
     if (!jevScored) { jevSorted = false; jevOnlySuspicious = false; }
   } catch (error) {
     jevScored = 0;
@@ -399,7 +408,7 @@ function pollJevJob() {
       jevScored = Number(status?.scored || 0);
       if (job && ["succeeded", "failed", "cancelled", "interrupted", "succeeded_with_skips"].includes(job.status)) {
         stopJevPolling();
-        jevSorted = job.status === "succeeded" || job.status === "succeeded_with_skips";
+        jevSorted = Boolean(status?.sort_ready);
         if (job.status === "failed") {
           injected.showNoticeBar?.("Jev 打分没跑完：已算出的分数保留，队列保持原顺序");
         }
@@ -417,6 +426,7 @@ async function startJevJob() {
     await injected.apiJson?.(`/api/projects/${injected.getProject().project_id}/jev-priority/start`, {
       method: "POST",
     });
+    jevOptOut = false;
     injected.showNoticeBar?.("Jev 打分已开始：只给两引擎分歧的行打分，跑完自动按可疑度排");
     jevPollTimer = setInterval(() => {}, 60000); // 占位，下面立刻换成真轮询
     stopJevPolling();
@@ -434,6 +444,7 @@ async function clearJevScores() {
     });
     jevSorted = false;
     jevOnlySuspicious = false;
+    jevOptOut = true;
     jevScored = 0;
     renderJevUi();
     injected.showNoticeBar?.("已清除 Jev 分数：队列回到正文流顺序");
@@ -448,6 +459,7 @@ function setupJevUi() {
   const restore = () => {
     jevSorted = false;
     jevOnlySuspicious = false;
+    jevOptOut = true;
     renderJevUi();
   };
   el("jev-restore")?.addEventListener("click", restore);
@@ -3819,6 +3831,8 @@ function paintReadingDiffBoxes(pageNo) {
     clearReadingIntents(true);
     setReviewOverlaysForReading();
     openReading();
+    // 进视图时才读 Jev 状态（boot 时还没有当前项目；读不到就当没有分数）
+    refreshJevUi().catch(() => {});
   }
 
   // 任务 94（2026-10-29 裁决）：**不导出 `exit`**。原来这里是

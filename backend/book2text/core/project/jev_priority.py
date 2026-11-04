@@ -435,8 +435,9 @@ def scored_counts(project_id: str, *, library: Path | None = None) -> dict[str, 
         scored = conn.execute(
             "SELECT COUNT(*) AS n FROM block_line WHERE jev_score IS NOT NULL"
         ).fetchone()["n"]
+        # 列里只有三态（differs）；chars/punct 是现算的（见模块头）。
         diffs = conn.execute(
-            "SELECT COUNT(*) AS n FROM block_line WHERE diff_status IN ('differs_chars', 'differs_punct')"
+            "SELECT COUNT(*) AS n FROM block_line WHERE diff_status = 'differs'"
         ).fetchone()["n"]
     return {"scored": int(scored), "diffs": int(diffs)}
 

@@ -66,7 +66,8 @@ def jev_status(request: Request, project_id: str) -> dict[str, Any]:
         if job.job_type == jobs_module.JOB_TYPE_JEV:
             latest = _job_payload(request, project_id, job)["job"]
             break
-    return {"latest_job": latest, **counts}
+    ready, reason = jev_module.sort_ready(project_id, library=_library(request))
+    return {"latest_job": latest, "sort_ready": ready, "sort_reason": reason, **counts}
 
 
 @router.post("/{project_id}/jev-priority/clear")

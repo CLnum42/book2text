@@ -70,12 +70,12 @@ def dump_orders(
     out: Path,
     gold: Path | None = None,
     *,
-    include_acked: bool = False,
+    unacked_only: bool = False,
 ) -> int:
     all_rows = jev.target_lines(project_id, library=library)
     acked = _acked(project_id, library)
     acked_in_rows = {row.line_id for row in all_rows if row.line_id in acked}
-    rows = all_rows if include_acked else [row for row in all_rows if row.line_id not in acked_in_rows]
+    rows = [row for row in all_rows if row.line_id not in acked_in_rows] if unacked_only else all_rows
     scores = jev.line_scores(project_id, library=library)
     texts = _line_texts(project_id, library)
     gold_norm = _gold_text(gold)
@@ -86,10 +86,10 @@ def dump_orders(
         # is_error / is_error_method
         "project_id": project_id,
         "threshold": jev.DEFAULT_THRESHOLD,
-        "include_acked": include_acked,
-        # **口径**：`total` = 这本产品队列的全部分歧行（= review_status.queue_items 的 total，
-        # 250）；`unacked/acked` 是它的拆分；`queue_lines` = 这一次导出的行数
-        # （默认只含未裁决 = unacked；--include-acked 时 = total）。
+        "unacked_only": unacked_only,
+        # **口径（2026-11-05 契约 A）**：默认导出**全队列**（= review_status.queue_items 的 total，
+        # 250 行），每行带 `acked` 布尔；`--unacked-only` 才只出未裁决（64 行）。
+        # `total/unacked/acked` 是拆分，`queue_lines` = 本次实际导出的行数。
         "total": len(all_rows),
         "unacked": len(all_rows) - len(acked_in_rows),
         "acked": len(acked_in_rows),
@@ -197,8 +197,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true", help="只探测环境")
     parser.add_argument("--run", action="store_true", help="建并跑一次打分任务")
     parser.add_argument("--dump-out", help="把两种顺序写成 JSON")
-    parser.add_argument("--include-acked", action="store_true",
-                        help="连已裁决的行一起导出（默认只出队列：未裁决的行）")
+    parser.add_argument("--unacked-only", action="store_true",
+                        help="只导未裁决的行（默认导全队列：total，每行带 acked）")
     parser.add_argument("--gold", help="可选：金标准整本拼接版，用来给每行标 is_error")
     parser.add_argument("--score-url", help="覆盖 B2T_JEV_SCORE_URL（打分服务基址）")
     parser.add_argument("--engine-url", help="覆盖 B2T_JEV_ENGINE_URL（llama.cpp 基址）")
@@ -226,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
                 project_id,
                 Path(args.dump_out).expanduser(),
                 Path(args.gold).expanduser() if args.gold else None,
-                include_acked=args.include_acked,
+                unacked_only=args.unacked_only,
             ),
         )
     if not (args.check or args.run or args.dump_out):
