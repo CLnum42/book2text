@@ -47,6 +47,42 @@ def is_labeled_page_line(text: str) -> bool:
     return bool(PAGE_LINE.match(" ".join((text or "").split())))
 
 
+#: 家具块里"噪声行"允许的最大长度（「红楼梦画」4 字；超过就不当噪声，宁可留着）
+FURNITURE_LINE_MAX = 8
+#: 句读标点：行里出现任何一个就说明它是正文，不是书眉
+_SENTENCE_PUNCT = set("，。！？；：、（）《》「」『』【】…—“”‘’")
+
+
+def is_furniture_block(lines: list[str]) -> bool:
+    """整块是不是「书眉 + 页码」被 OCR 并成了一个正文块。
+
+    现象（2026-11-04，红楼梦 40 页 p36）：竖排书眉「红楼梦 第三回」与页脚页码「72」
+    被识别成一个 paragraph 块，导出正文里出现「红楼梦画\\n72」。其余 37 页同样的块靠
+    "版心外"被排掉；p36 的版心拟合把左侧竖排栏包进了版心，只能靠这条形状判据兜底。
+
+    判据（窄，只看形状不看书名）：
+    - 至少两行（单行页码块已由 ``is_labeled_page_line`` 那条规则处理）；
+    - 至少一行是整行页码（``Page 28`` / 裸数字）；
+    - 其余每一行都是「短、无句读」的噪声行。
+
+    反例（必须放行）：正文里含《红楼梦》的长段（有句读、行太长）；
+    标题块「红楼梦 / 第三回」（没有页码行）——它们都不满足"至少一行页码"。
+    """
+    texts = [" ".join(line.split()) for line in lines if line and line.strip()]
+    if len(texts) < 2:
+        return False
+    if not any(is_page_line(text) for text in texts):
+        return False
+    return all(is_page_line(text) or _is_short_noise(text) for text in texts)
+
+
+def _is_short_noise(text: str) -> bool:
+    """短且没有句读——书眉 / OCR 噪声的形状（「红楼梦画」「揚環賣」）。"""
+    if len(text) > FURNITURE_LINE_MAX:
+        return False
+    return not any(char in _SENTENCE_PUNCT for char in text)
+
+
 def strip_leading_header_line(lines: list[str]) -> list[str]:
     """摘掉首行页眉（只处理第一行；不是页眉就原样返回）。
 

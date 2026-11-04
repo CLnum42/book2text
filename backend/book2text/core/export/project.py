@@ -257,6 +257,10 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
     first_block_of_page: dict[int, str] = {}
     for block in sorted(page_blocks, key=lambda item: (item.page_no, item.order_index)):
         first_block_of_page.setdefault(block.page_no, block.block_id)
+    #: 每页**最后一个块**：书眉/页脚被并进正文时，它们也可能并到页尾那一块上
+    last_block_of_page: dict[int, str] = {}
+    for block in sorted(page_blocks, key=lambda item: (item.page_no, item.order_index)):
+        last_block_of_page[block.page_no] = block.block_id
 
     sources: list[segments_module.SegmentSource] = []
     for block in page_blocks:
@@ -285,6 +289,19 @@ def _prepare(project_id: str, *, library: Path | None, options: ExportOptions) -
             if not raw_lines:
                 # 整块就是一行页码：这一块不进正文
                 continue
+        # 2026-11-04（CER 首测 p36）：竖排书眉与页脚页码被 OCR 并成一个 paragraph 块时
+        # （「红楼梦画\n72」），它既不是 header/footer 类型、也可能落在版心内 ⇒ 上面两条
+        # 规则都拦不住。放行条件是"页首或页尾块 + 整块都是书眉/页码形状"，很窄：
+        # 正文段（有句读、行太长）与标题块（没有页码行）都不满足。
+        if (
+            body_like
+            and header_cleanup.is_furniture_block(raw_lines)
+            and (
+                first_block_of_page.get(block.page_no) == block.block_id
+                or last_block_of_page.get(block.page_no) == block.block_id
+            )
+        ):
+            continue
         text, hyphenations, line_spans = _join_block(raw_lines, rules)
         sources.append(
             segments_module.SegmentSource(

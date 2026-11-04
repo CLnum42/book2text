@@ -390,6 +390,26 @@ def test_edited_text_is_what_gets_exported(
     assert "人工改过的第三页开头。" in text
 
 
+def test_furniture_shaped_block_never_reaches_the_export_body(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, project_ready: str
+) -> None:
+    """书眉+页码并成正文块（p36 的「红楼梦画\\n72」）不得进 body.txt（2026-11-04 CER 首测）。
+
+    夹具是真实块文本（b2t_H6GXVG p36 首块），不是编的形态：块类型是 paragraph、
+    页首位置。负向锚同日另一块「第二段第一行。」必须仍在正文里——证明规则只吃家具形状。
+    """
+    set_blocks(library_dir, project_ready, 1, text="红楼梦画\n72")
+
+    record = export(client, auth_headers, project_ready).json()["record"]
+    text = (
+        library_dir / project_ready / "exports" / record["export_id"] / "body.txt"
+    ).read_text(encoding="utf-8")
+
+    assert "红楼梦" not in text, "书眉块进了导出正文"
+    assert "72" not in text.splitlines(), "页码行被当成正文行导出了"
+    assert "第二段第一行。" in text, "同页的正常块被连带删掉了"
+
+
 def test_empty_export_is_refused_with_a_reason(
     client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, inprocess_jobs
 ) -> None:
