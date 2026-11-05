@@ -276,6 +276,10 @@ B: 还在 marks 里 = True ack = None
 C: kept '他二人跪下，都一溜跪下。宝玉也忙跪y'
 ```
 
+API 级复核（2026-11-05，临时测试 2 例 0.49s，跑完即删，不进树）：用 `tests/integration/test_review_next_lines_api.py` 的 `book_with_marks` fixture——
+- `submit-drafts` 带 `ack=null + new_line_text` → `next-lines` 的 `lines` 里**仍有**这个 `(block_id,line_index)`；
+- `ack=kept + new_line_text` → `block.text` **未变**，且这条退出 `lines`（错记成保留原文的形态）。
+
 修法两条，语义不同（**必须二选一，不能不管**）：
 
 | | F1 复用 `kept`（C 的顺序） | F2 新增 `edited`（Chief 提议） |
