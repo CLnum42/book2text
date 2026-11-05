@@ -302,3 +302,45 @@ def test_furniture_zone_drops_a_broken_header_by_position() -> None:
     assert wide in margin_box.drop_furniture_zone_lines([wide], parity="odd", bands=bands)
     # 没有位置带（没有候选）：原样返回
     assert margin_box.drop_furniture_zone_lines([header, *body], parity="odd", bands=None) == [header, *body]
+
+
+# ---------------------------------------------------------------- 双栏 / 双页合一取界（2026-11-05）
+
+
+def test_dual_column_box_covers_both_columns() -> None:
+    """真机 H6GXVG p14：长行只在右栏，旧取界 x0≈0.51 把左栏整块扔掉（回目因此进不了正文）。
+
+    有内部栏缝 ⇒ 左右界取两侧最外沿；没有 ⇒ 单栏，行为不变。
+    """
+    left = [(0.10, 0.12 + i * 0.03, 0.42, 0.14 + i * 0.03) for i in range(6)]
+    right = [(0.52, 0.10 + i * 0.03, 0.98, 0.12 + i * 0.03) for i in range(8)]
+    assert margin_box.column_gutter(left + right) == (0.42, 0.52)
+
+    dual = margin_box.fit_box_from_lines(left + right)
+    assert dual is not None
+    assert dual[0] < 0.10 and dual[2] > 0.97, f"左栏没被包进来：{dual}"
+
+    single = margin_box.fit_box_from_lines(right)
+    assert single is not None
+    assert single[0] > 0.45, f"单栏页被撑宽了：{single}"
+
+
+def test_gutter_must_be_computed_after_furniture_removal() -> None:
+    """顺序判据（真机 p1 / p14）：书眉横跨栏缝时，**剔前没有栏缝、剔后才有**。
+
+    先剔再算这一步没生效的话，双页合一会判成单栏、只框右半。
+    """
+    header = (0.28, 0.05, 0.72, 0.08)          # 居中书眉，横跨栏缝
+    left = [(0.10, 0.15 + i * 0.03, 0.42, 0.17 + i * 0.03) for i in range(6)]
+    right = [(0.52, 0.15 + i * 0.03, 0.98, 0.17 + i * 0.03) for i in range(6)]
+    assert margin_box.column_gutter([header, *left, *right]) is None
+    assert margin_box.column_gutter([*left, *right]) == (0.42, 0.52)
+
+
+def test_single_column_page_keeps_quantile_edges() -> None:
+    """单栏论文（YR5EJ0 全本 0/230 误判）：没有 8% 内部空带的页不许被当成双栏。"""
+    lines = [(0.11, 0.10 + i * 0.03, 0.89, 0.12 + i * 0.03) for i in range(12)]
+    assert margin_box.column_gutter(lines) is None
+    box = margin_box.fit_box_from_lines(lines)
+    assert box is not None
+    assert 0.07 < box[0] < 0.13 and 0.87 < box[2] < 0.93

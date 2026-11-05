@@ -802,6 +802,44 @@ def _union_boxes(boxes: Sequence[BBox]) -> BBox:
     )
 
 
+#: 双栏 / 双页合一的**栏缝**最小宽度（归一化页宽）。预验（2026-11-05，两本书全本）：
+#: YR5EJ0 单栏论文 230 页 → 0 页被判成双栏；H6GXVG 双页合一 40 页 → 27 页双栏 / 13 页单栏
+#: （那 13 页是"只有左半有内容"的真实单栏页）。
+COLUMN_GUTTER_MIN = 0.08
+
+
+def column_gutter(boxes: Sequence[Sequence[float]]) -> tuple[float, float] | None:
+    """这一页的栏缝 `(左栏右沿, 右栏左沿)`；没有 ≥ ``COLUMN_GUTTER_MIN`` 的内部空带 ⇒ None。
+
+    判据是**栏缝不是行数**：把行框投影到 x 轴、合并覆盖区间，找"左右两侧都有行"的空带，
+    取最宽的一条。竖排页的行框极窄但横向连续（没有 8% 的竖向空带），自然落在单栏。
+
+    **调用前提**：传入的必须是**已经剔掉页边重复行**的行框。顺序反了会出两种错：
+    书眉（x 0.008–0.055）被当成"左栏有内容"、栏缝右移；或者"书眉 + 一栏正文"之间
+    出现 ≥8% 的空带，整页被判成双栏、把书眉又盖回框里。`fit_box_from_lines` 收到的
+    本来就是剔过的行（见 `fit_page_margin`），这里再按"像一行字"滤一次，挡住竖排旁批。
+    """
+    parsed = [
+        box
+        for box in (_parse_box(raw) for raw in boxes)
+        if box is not None and _looks_like_text_line(box)
+    ]
+    if len(parsed) < 2:
+        return None
+    merged: list[list[float]] = []
+    for box in sorted(parsed, key=lambda item: item[0]):
+        if merged and box[0] <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], box[2])
+        else:
+            merged.append([box[0], box[2]])
+    best: tuple[float, float, float] | None = None
+    for left, right in zip(merged, merged[1:]):
+        width = right[0] - left[1]
+        if width >= COLUMN_GUTTER_MIN and (best is None or width > best[2]):
+            best = (left[1], right[0], width)
+    return None if best is None else (best[0], best[1])
+
+
 def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
     """用一页的检测行拟合版心（纯函数；**只管拟合，不做兜底**）。
 
@@ -813,6 +851,10 @@ def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
       有横向重叠的非家具行**的并集——居中小标题、诗行、段末短行因此自然进框，不再依赖
       "逐行够得着"（它对隔得远但同属一栏的短行无解，真机 p61 因此把标题扔在框外）。
       竖排旁批 / 横线 / 装饰框（行高 > 6%、极薄或宽高比 < 1.5）不参与。
+    - **双栏 / 双页合一**（2026-11-05）：长行只落在右栏时，上面的横向分位会只框右栏
+      （真机 H6GXVG p14 把左栏的回目扔出版心）。所以先用 `column_gutter` 判栏缝：
+      内部有 ≥8% 页宽的空带 ⇒ 双栏，左右界取两侧最外沿；没有 ⇒ 单栏，行为不变。
+      **必须在剔完页边重复行之后再判**（书眉会伪造"左栏有内容"，或把栏缝桥掉）。
     - 有效长行 < 3 或结果不合法 → None（调用方改走本页包围盒兜底，**不用全局框**）。
 
     返回的四边是**纳入行框的并集**（每行先外扩 2%），不再保留 5%/95% 的余量。
@@ -890,17 +932,32 @@ def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
         if cy > box[3]:
             box[3] = line[3]
 
+    bodies = [
+        _expand_line(line, AUTO_PADDING)
+        for line in parsed
+        if _looks_like_text_line(line)
+    ]
+
+    # 双栏 / 双页合一（2026-11-05）：长行只落在右栏时，横向 5%/95% 分位会把左栏整个丢掉
+    # （真机 H6GXVG p14：框 x0≈0.51，左栏的回目被判在版心外、导出里消失）。
+    # 判据用**栏缝**（见 column_gutter）+ 两侧最外沿；单栏页走不到这里，行为不变。
+    gutter = column_gutter(parsed)
+    if gutter is not None:
+        split = (gutter[0] + gutter[1]) / 2
+        left_edges = [line[0] for line in bodies if (line[0] + line[2]) / 2 < split]
+        right_edges = [line[2] for line in bodies if (line[0] + line[2]) / 2 >= split]
+        if left_edges and right_edges:
+            box[0] = min(left_edges)
+            box[2] = max(right_edges)
+
     # 纵向取界（2026-11-05，真机 p61）：**同一栏内的所有非家具行都并进来**。
     # 原来靠"逐行够得着"扩张，对"隔得远但同属一栏"的短行天然无解：p61 的「小结」标题
     # 与第一行长行隔了 1.7 个行高，够不着 ⇒ 框从第一行长行才开始（y0=0.2285），
     # 标题被扔到版心外。修之前是页眉把框顶上去、顺带盖住了标题，所以没暴露。
-    # 栏 = 上面长行（valid）的 x 范围；页眉 / 页脚在拟合前已按页边重复剔掉，
-    # 竖排旁批不算"像一行字"（_looks_like_text_line），都不会被并进来。
+    # 栏 = 上面长行（valid）的 x 范围（双栏页已被栏缝拓宽成"两栏都包"）；
+    # 页眉 / 页脚在拟合前已按页边重复剔掉，竖排旁批不算"像一行字"，都不会被并进来。
     in_column: list[BBox] = []
-    for raw in parsed:
-        if not _looks_like_text_line(raw):
-            continue
-        line = _expand_line(raw, AUTO_PADDING)
+    for line in bodies:
         if min(line[2], box[2]) - max(line[0], box[0]) <= 0:
             continue          # 与栏没有横向重叠：旁批 / 页边注 / 另一个栏
         in_column.append(line)
