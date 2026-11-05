@@ -12,6 +12,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+// 追加 import 而不改既有那两行：非 test-contract 提交删 tests/js 的行会触发 A1b，
+// 纯新增是唯一合规形态（同模块重复 import 在 ESM 里合法）。
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import {
   evaluateRemoval,
   evaluateCommit,
@@ -35,6 +39,15 @@ function diffOf({ file = "backend/book2text/static/index.html", removed = [], ad
   for (const line of added) lines.push(`+${line}`);
   return lines.join("\n") + "\n";
 }
+
+test("主入口判定：用带 `..` 的路径调用也必须真的跑（否则闸静默 exit 0 = 假绿）", () => {
+  // 2026-11-05 实测的假绿：commit-msg 用 `$HOOKDIR/../ui-removal-ledger.mjs` 调进来，
+  // 未归一化的 argv[1] 与 import.meta.url 不相等 ⇒ main() 不跑、退出码 0 —— 闸看起来装了，
+  // 实际一次都没判过。无参数时正确行为是打印用法并 exit 2。
+  const weirdPath = join(REPO_ROOT, "scripts", "..", "scripts", "ui-removal-ledger.mjs");
+  const result = spawnSync(process.execPath, [weirdPath], { cwd: REPO_ROOT, encoding: "utf8" });
+  assert.equal(result.status, 2, `带 .. 调用时没跑到 main()：status=${result.status} stderr=${(result.stderr || "").slice(0, 120)}`);
+});
 
 test("内核：三种 id 形态都认；动态拼接与 class 不判", () => {
   const ids = idsInText([

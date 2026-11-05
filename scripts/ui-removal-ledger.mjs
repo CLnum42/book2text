@@ -22,7 +22,7 @@
 //   pre-commit 看到的 COMMIT_EDITMSG：第一笔为空、第二笔是**上一笔的消息**；
 //   commit-msg 拿到的 $1 永远是**这一笔**的消息。只有后者能判"这篇正文登记了没有"。
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const SCOPE = "backend/book2text/static";
@@ -233,6 +233,21 @@ function main(argv) {
   return 0;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+/**
+ * 是不是"被当作主程序跑"。**两边都要 realpath 归一化**（2026-11-05 实测的假绿）：
+ * 钩子用 `$HOOKDIR/../ui-removal-ledger.mjs` 调进来，`argv[1]` 带着 `..`；
+ * macOS 上 `/tmp` 又是指向 `/private/tmp` 的符号链接——不归一化就永远不相等，
+ * 于是 `main()` 根本不跑、进程静默 exit 0：**闸看起来装好了，其实一次都没判过**。
+ */
+function isMain() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
   process.exit(main(process.argv.slice(2)));
 }

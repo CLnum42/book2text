@@ -12,7 +12,7 @@
 //
 // **读不出来就红**（exit 1）：某个数解析失败时打印「✖ 读不出来」，绝不用 0 冒充健康——
 // 最终报告里一个假 0 比缺一项更糟。
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -193,4 +193,16 @@ function main() {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
+// 主入口判定要**两边 realpath 归一化**：路径里带 `..` 或经 /tmp 符号链接调用时，
+// 未归一化的 argv[1] 与 import.meta.url 永远不相等 ⇒ main() 不跑、静默 exit 0（假绿）。
+// 同一个坑在 ui-removal-ledger.mjs 上真发生过（钩子用 `$HOOKDIR/../…` 调进来）。
+function isMain() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) main();
