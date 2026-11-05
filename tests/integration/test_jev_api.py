@@ -84,3 +84,97 @@ def test_clear_is_idempotent_and_writes_event_only_when_clearing(
             "SELECT action FROM event WHERE action = 'jev_priority_cleared'"
         ).fetchone()
     assert event is not None
+
+
+# ---------------------------------------------------------------- 四步机检（2026-11-05 第 3 笔）
+
+
+class _FakeRuntime:
+    """把"引擎 + 打分层"换成一个只会回话的替身：接口形状与幂等性不需要真模型。"""
+
+    def __init__(self, *, ok: bool = True, step: int = 4, detail: str = "") -> None:
+        self.ensure_calls = 0
+        self.check_calls = 0
+        self.stop_calls = 0
+        self._ok = ok
+        self._step = step
+        self._detail = detail
+
+    def _verdict(self):
+        from book2text.core.project.jev_health import JevVerdict
+
+        return JevVerdict(
+            ok=self._ok,
+            step=self._step,
+            detail=self._detail,
+            pid=4242 if self._ok else None,
+            engine_port=41000 if self._ok else None,
+            score_port=5001 if self._ok else None,
+            prob_1=0.25 if self._ok else None,
+        )
+
+    def check(self):
+        self.check_calls += 1
+        return self._verdict()
+
+    def ensure(self):
+        self.ensure_calls += 1
+        return self._verdict()
+
+    def stop(self):
+        self.stop_calls += 1
+
+
+def test_ready_reports_which_step_fails(client: TestClient, auth_headers: dict[str, str], sample_pdf: Path) -> None:
+    """引擎没起时 `/ready` 必须说"第 1 步"，而不是一句含糊的"环境不齐"。"""
+    project_id = create_project(client, auth_headers, sample_pdf)
+
+    data = client.get(f"/api/projects/{project_id}/jev-priority/ready", headers=auth_headers).json()
+
+    assert data["ok"] is False
+    assert data["step"] == 1
+    assert data["step_label"] == "引擎进程"
+    assert "引擎没起" in data["detail"]
+    assert data["ready"] is False and data["problems"], "老键要保留，界面不用同时改两处"
+
+
+def test_ready_lights_up_at_step4_with_stub_runtime(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    project_id = create_project(client, auth_headers, sample_pdf)
+    client.app.state.jev_runtime = _FakeRuntime()
+
+    data = client.get(f"/api/projects/{project_id}/jev-priority/ready", headers=auth_headers).json()
+
+    assert data["ok"] is True and data["step"] == 4
+    assert data["ready"] is True and data["problems"] == []
+    assert data["prob_1"] == 0.25, "第 3 步的分要带出来（界面用它说明真的出分了）"
+
+
+def test_engine_start_is_idempotent_over_http(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    project_id = create_project(client, auth_headers, sample_pdf)
+    fake = _FakeRuntime()
+    client.app.state.jev_runtime = fake
+
+    first = client.post(f"/api/projects/{project_id}/jev-priority/engine/start", headers=auth_headers)
+    second = client.post(f"/api/projects/{project_id}/jev-priority/engine/start", headers=auth_headers)
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["ok"] is True and second.json()["ok"] is True
+    assert fake.ensure_calls == 2, "两次都走 ensure；真实现里第二次不会再 spawn（见单元测试）"
+
+
+def test_ready_after_engine_start_reports_probability(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    project_id = create_project(client, auth_headers, sample_pdf)
+    client.app.state.jev_runtime = _FakeRuntime()
+
+    started = client.post(f"/api/projects/{project_id}/jev-priority/engine/start", headers=auth_headers).json()
+    then = client.get(f"/api/projects/{project_id}/jev-priority/ready", headers=auth_headers).json()
+
+    assert started["step"] == 4 and then["step"] == 4
+    assert started["prob_1"] == then["prob_1"] == 0.25

@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .. import __version__, paths
 from ..core.project import executor as executor_module
+from ..core.project import jev_health as jev_health_module
 from ..core.project import jobs as jobs_module
 from ..core.project import lock as lock_module
 from ..core.project.library import default_library_dir
@@ -83,8 +84,12 @@ def create_app(
         # 只清本机的，别的电脑的锁要用户确认——见 `core/project/lock.py` 开头那张表。
         app.state.stale_locks = lock_module.clean_stale_locks(library)
         yield
-        _shutdown_running_jobs(supervisor)
-        lock_module.release_all()
+        # Jev：先停打分层（它连着引擎），再停引擎；引擎常驻 3 GB，不能留给下一次启动
+        try:
+            app.state.jev_runtime.stop()
+        finally:
+            _shutdown_running_jobs(supervisor)
+            lock_module.release_all()
 
     app = FastAPI(
         title="Book2Text",
@@ -106,6 +111,8 @@ def create_app(
     app.state.job_supervisor = supervisor
     # 审校的撤销 / 重做栈：只活在本次运行里（说明书 5.3）
     app.state.review_history = routes_review.ReviewHistory()
+    # Jev 的家当：构造不启动任何进程，第一次用（进审校 / 点打分）才懒启动
+    app.state.jev_runtime = jev_health_module.JevRuntime()
 
     # 排查首屏卡顿用的请求计时（`B2T_TIME_REQUESTS=1` 时开）。
     # 只看 /api，输出到标准输出；默认关闭，生产路径没有任何额外开销。

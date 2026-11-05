@@ -5,6 +5,37 @@
 模板字段：任务目标 / 当前状态 / 实施计划 / 实现与验证 / 用户操作说明 / 下一步建议。
 未在真实环境运行过的测试一律注明，不得把未运行的测试写成通过。
 
+## 2026-11-05 下午（第八轮续二）— Jev 引擎自管（第 3 笔：四步机检 API）
+
+**做了什么**
+
+```
+jev_health.py   "能不能打分"的**唯一判据**：第 1 步进程（我们起的看 pid + 端口归属；外部起的看端口）
+                第 2 步 /v1/models 200 且 model id 是我们这份
+                第 3 步 拿固定 64×64 fixture 真打一次 /v1/score，prob_1 必须是 0–1 的数
+                第 4 步 ok（界面据此点亮）
+                JevRuntime.check() 只看不启动；.ensure() 引擎→打分层→真打分，幂等；.stop() 先打分层后引擎
+GET  …/jev-priority/ready           返回 {ok, step, step_label, detail, pid, engine_port, score_port, prob_1}
+POST …/jev-priority/engine/start    懒启动入口（幂等）；老键 ready / problems 保留
+jev_priority.probe()                收敛成一行委托；删掉它自己那份 healthz / v1/models / MODEL_FILES 检查
+```
+
+**真机读数（H6 副本 + 私域模型，真服务）**
+
+| 判据 | 读数 |
+|---|---|
+| 起之前 `GET /ready` | ok=false · **step 1** · 「引擎没起（还没启动过）」 |
+| `POST /engine/start` | ok=true · **step 4** · 1.64 s · prob_1=0.00306 · engine_port/score_port 都在 |
+| 再 POST 一次（幂等） | 同 pid、同端口、同分数；`pgrep llama-server` 仍是 **1** 个进程 |
+| 起之后 `GET /ready` | step 4，prob_1 与上面一致 |
+| 引擎不挂 mmproj（/v1/models 仍 200） | **step 3**，detail 是引擎原话且可照做：`HTTP 501 … start it with --mmproj` |
+| App 退出后 | `pgrep -f llama-server` = **0** |
+| 第二处判据 | `grep -rn "v1/models\|/healthz\|MODEL_FILES"` 在 jev_engine / jev_health / jev_score_host 之外 = **0** |
+
+**单测**：`tests/unit/test_jev_health.py` 11 条（第 1/2/3/4 步各自的判据、ensure 幂等、引擎失败不起打分层、
+stop 顺序、check_urls 三个失败分支）；`tests/integration/test_jev_api.py` +4 条（/ready 报第几步、
+替身 runtime 点亮 step 4、/engine/start 幂等、start 后 ready 带分数）。
+
 ## 2026-11-05 下午（第八轮续）— Jev 引擎自管（第 2 笔：打分层并进主进程）
 
 **做了什么**

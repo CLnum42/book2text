@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import socket
 import threading
 import time
@@ -97,19 +98,45 @@ class _LogCapture(logging.Handler):
         super().__init__()
         self.setFormatter(logging.Formatter("%(message)s"))
         self.messages: list[str] = []
+        #: 异常的**原始一句话**（`str(exc)`）。自检失败时真正能读的就是它——
+        #: 日志里的 traceback 只有调用栈，末尾还会被截掉最关键的那条引擎回话。
+        self.exceptions: list[str] = []
 
     def emit(self, record: logging.LogRecord) -> None:
         text = self.format(record)
         if record.exc_info:
-            text = f"{text}\n{self.formatException(record.exc_info)}"
+            self.messages.append(f"{text}\n{self.formatException(record.exc_info)}")
+            exc = record.exc_info[1]
+            if exc is not None:
+                self.exceptions.append(str(exc))
+            return
         self.messages.append(text)
 
 
-def _shorten(text: str, limit: int = 900) -> str:
+#: 日志里"真正的异常那一行"：`RuntimeError: …` / `ValueError: …` / `SystemExit: 3`
+_EXC_LINE = re.compile(r"^[A-Za-z_][\w.]*(Error|Exception|Exit)\b")
+
+
+def _exception_message(text: str) -> str:
+    """从一段日志/traceback 里挑出异常原文（含它后面的几行说明）。
+
+    uvicorn 那条记录有时不带 `exc_info`（traceback 已经被拼进 message 了），
+    所以不能只靠 `record.exc_info`——按行找最后一个异常声明更可靠。
+    """
+    lines = (text or "").splitlines()
+    for index in range(len(lines) - 1, -1, -1):
+        if _EXC_LINE.match(lines[index]):
+            return "\n".join(lines[index:]).strip()
+    return ""
+
+
+def _shorten(text: str, limit: int = 1200) -> str:
+    """从**开头**截断：自检失败的说明是三段式（结论 / 引擎回话 / 怎么绕过），
+    掐掉尾巴只会丢掉"start it with --mmproj"这类能照着修的线索。"""
     text = (text or "").strip()
     if len(text) <= limit:
         return text
-    return "…" + text[-limit:]
+    return text[:limit] + "…"
 
 
 class ScoreHost:
@@ -265,12 +292,16 @@ class ScoreHost:
         self._detach_capture()
         picked = ""
         if capture is not None:
-            interesting = [
-                message
-                for message in capture.messages
-                if "lifespan" in message or "Error" in message or "error" in message
-            ]
-            picked = (interesting or capture.messages or [""])[-1]
+            # 异常原文优先：它带着引擎的真实回话（例如 "start it with --mmproj"）
+            texts = list(capture.exceptions)
+            if not texts:
+                texts = [
+                    message
+                    for message in capture.messages
+                    if "lifespan" in message or "Error" in message or "error" in message
+                ] or capture.messages
+            if texts:
+                picked = _exception_message(texts[-1]) or texts[-1]
         return f"打分层自检没过：{_shorten(picked.strip() or fallback)}"
 
     def _detach_capture(self) -> None:

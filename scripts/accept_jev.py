@@ -46,9 +46,9 @@ def resolve_project(project: str, library: str | None) -> tuple[Path, str]:
 def check(config: jev.JevConfig) -> int:
     problems = jev.probe(config)
     if not problems:
-        print("✔ 环境齐：打分服务 / llama.cpp / 模型文件 / 字体都在")
+        print("✔ 四步都过：引擎进程 / 引擎能答 / 真能打分（固定 fixture）/ 字体都在")
         return 0
-    print("✖ 环境不齐，缺：")
+    print("✖ 不能打分（判据见 core/project/jev_health.py），缺：")
     for item in problems:
         print(f"  · {item}")
     return 2

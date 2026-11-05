@@ -41,6 +41,7 @@ from ..pdf import render as render_module
 from ..storage import db as db_module
 from ..storage.ulid import new_ulid
 from . import blocks as blocks_module
+from . import jev_health
 from . import jobs as jobs_module
 from . import library as library_module
 from . import recognition as recognition_module
@@ -57,11 +58,6 @@ DEFAULT_DPI = 200
 #: 只给"分歧行"打分（format_only / identical 没有可看的差别）
 SCORED_STATUSES = ("differs_chars", "differs_punct")
 
-#: 模型文件与字节数（配方 ①；sha256 太长，先按字节数卡，sha 由调用方按需核）
-MODEL_FILES = {
-    "MiniCPM-OCR-Jev-Q8_0.gguf": 2_012_021_120,
-    "mmproj-model-f16.gguf": 671_372_416,
-}
 DEFAULT_FONT = "/System/Library/Fonts/Supplemental/Songti.ttc"
 
 
@@ -94,39 +90,27 @@ class JevConfig:
 # ---------------------------------------------------------------- 探测
 
 
-def probe(config: JevConfig) -> list[str]:
+def probe(config: JevConfig | None = None, *, runtime=None) -> list[str]:
     """建任务前的检查：返回**缺什么**（空列表 = 可以跑）。
 
-    四项分开报，用户知道该装哪一个：打分服务 / llama.cpp / 模型文件 / 字体。
-    故意不在这里"降级"——直接报错比偷偷跑一半更诚实。
+    **"能不能打分"的判据只有一处**：`jev_health`（第 1–3 步，含拿固定 fixture 真打一次分）。
+    这里不再自己查引擎 / 打分服务 / 模型文件——那份重复实现正是上一轮 bug 的形状。
+
+    唯一额外的一条是**字体**：它不影响"引擎能不能打分"，但影响"候选文本能不能渲染出来"
+    （打分要拿渲染图去比），所以放在建任务的前置里，且文案里说清是字体问题。
     """
-    problems: list[str] = []
-    if not _http_ok(f"{config.score_url}/healthz", config.timeout):
-        problems.append(f"Jev 打分服务没起（{config.score_url}/healthz 不通）")
-    if not _http_ok(f"{config.engine_url}/v1/models", config.timeout):
-        problems.append(f"llama.cpp 引擎没起（{config.engine_url}/v1/models 不通）")
-    if config.model_dir is None:
-        problems.append("没有配置模型目录（B2T_JEV_MODEL_DIR）")
-    else:
-        for name, expected in MODEL_FILES.items():
-            path = Path(config.model_dir) / name
-            if not path.is_file():
-                problems.append(f"模型文件缺失：{path}")
-            elif path.stat().st_size != expected:
-                problems.append(
-                    f"模型文件大小不符：{path.name}（{path.stat().st_size} ≠ {expected} 字节，可能下坏了）"
-                )
-    if not Path(config.font_path).is_file():
-        problems.append(f"候选文本字体缺失：{config.font_path}（B2T_JEV_FONT）")
+    cfg = config or JevConfig.from_env()
+    verdict = (
+        runtime.check()
+        if runtime is not None
+        else jev_health.check_urls(
+            cfg.engine_url, cfg.score_url, model_dir=cfg.model_dir, timeout=cfg.timeout
+        )
+    )
+    problems = verdict.problems()
+    if not Path(cfg.font_path).is_file():
+        problems.append(f"候选文本字体缺失：{cfg.font_path}（B2T_JEV_FONT，渲染候选用）")
     return problems
-
-
-def _http_ok(url: str, timeout: float) -> bool:
-    try:
-        with urllib.request.urlopen(url, timeout=min(timeout, 5)) as response:
-            return 200 <= response.status < 300
-    except (urllib.error.URLError, OSError, ValueError):
-        return False
 
 
 def runnable(config: JevConfig) -> tuple[bool, list[str]]:
@@ -209,6 +193,7 @@ def create_job(
     *,
     library: Path | None = None,
     config: JevConfig | None = None,
+    runtime=None,
 ) -> jobs_module.JobRecord:
     """建一个 Jev 打分任务（按页一个单元，可暂停 / 取消 / 续跑）。
 
@@ -222,7 +207,7 @@ def create_job(
     rows = target_lines(project_id, library=target_library)
     if not rows:
         raise JevUnavailable("这个项目没有可打分的分歧行：先跑第二引擎，让差异队列里出现汉字/标点差异")
-    problems = probe(cfg)
+    problems = probe(cfg, runtime=runtime)
     if problems:
         raise JevUnavailable("；".join(problems))
     directory = library_module.require_project_dir(project_id, library=target_library)

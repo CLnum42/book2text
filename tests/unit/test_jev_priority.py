@@ -59,16 +59,16 @@ def test_target_lines_only_picks_diff_lines_with_aux_text(project_with_diffs: Pa
 
 def test_create_job_needs_engine_and_models(project_with_diffs: Path, monkeypatch) -> None:
     """探测不过 ⇒ 拒绝建任务，队列不动。"""
-    monkeypatch.setattr(jev, "probe", lambda config: ["Jev 打分服务没起"])
+    monkeypatch.setattr(jev, "probe", lambda config=None, **kwargs: ["第 1 步（引擎进程）没过：引擎没起"])
     with pytest.raises(jev.JevUnavailable) as caught:
         jev.create_job("b2t_TESTS1", library=project_with_diffs.parent)
-    assert "打分服务" in str(caught.value)
+    assert "引擎没起" in str(caught.value)
     assert jobs_module.list_jobs(project_with_diffs, limit=5) == []
 
 
 def test_create_job_rejects_when_no_aux_text(minimal_project: Path, monkeypatch) -> None:
     """没有第二引擎文本的行 ⇒ 提示先跑第二引擎，不建任务。"""
-    monkeypatch.setattr(jev, "probe", lambda config: [])
+    monkeypatch.setattr(jev, "probe", lambda config=None, **kwargs: [])
     with pytest.raises(jev.JevUnavailable) as caught:
         jev.create_job("b2t_TESTS1", library=minimal_project.parent)
     assert "第二引擎" in str(caught.value)
@@ -164,12 +164,30 @@ def test_clear_scores_clears_and_writes_event(project_with_diffs: Path) -> None:
     assert event is not None and '"scored": 2' in event["before_json"]
 
 
-def test_probe_lists_missing_model_files(tmp_path: Path) -> None:
-    config = jev.JevConfig(model_dir=tmp_path, font_path=str(tmp_path / "nope.ttc"))
+def test_probe_delegates_to_the_single_judge_and_keeps_font(tmp_path: Path) -> None:
+    """判据收敛后：引擎/打分服务那部分由 jev_health 说，probe 只额外补"渲染候选要字体"。"""
+    config = jev.JevConfig(
+        engine_url="http://127.0.0.1:9",
+        score_url="http://127.0.0.1:9",
+        model_dir=tmp_path,
+        font_path=str(tmp_path / "nope.ttc"),
+    )
     problems = jev.probe(config)
-    assert any("模型文件缺失" in item for item in problems)
-    assert any("字体缺失" in item for item in problems)
-    assert any("打分服务" in item for item in problems)
+    assert any("第 1 步" in item and "连不上" in item for item in problems), problems
+    assert any("字体缺失" in item for item in problems), problems
+
+
+def test_probe_uses_runtime_verdict_when_given(tmp_path: Path) -> None:
+    """给了 runtime 就走它（应用内那条），不再自己发 HTTP。"""
+    from book2text.core.project.jev_health import JevVerdict
+
+    class _Runtime:
+        def check(self):
+            return JevVerdict(ok=False, step=3, detail="打分接口回 501：start it with --mmproj")
+
+    problems = jev.probe(jev.JevConfig(font_path=str(tmp_path / "nope.ttc")), runtime=_Runtime())
+
+    assert any("第 3 步" in item and "--mmproj" in item for item in problems), problems
 
 
 def test_tier_key_puts_suspicious_first_then_document_order() -> None:
