@@ -1,0 +1,253 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>p14 · 宽按钮：首个差异字锚在按钮中轴</title>
+<style>
+:root{--text:#1f2329;--muted:#646a73;--faint:#9aa0a8;--line:#e2e4e8;--line2:#eef0f2;--line3:#d0d3d9;
+--bad:#b42318;--ul:#dc2626;--blue:#2563eb;--blueText:#1d4ed8;--book:"Songti SC","STSong","SimSun",serif;
+--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}html,body{margin:0}
+body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--text);background:#e8eaee}
+.page{width:1463px;padding:16px 20px 24px}
+h1{font-size:15px;margin:0 0 3px;font-weight:650}
+.sub{font-size:11.5px;color:var(--muted);margin-bottom:12px}
+.frame{position:relative;background:#fff;box-shadow:0 2px 8px rgba(16,24,40,.10);margin-bottom:14px}
+.hd{height:40px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);
+  font-size:12.5px;font-weight:650}
+.hd .dim{font:11px/1 var(--mono);color:var(--faint);font-weight:400}
+.hd .spacer{flex:1}
+.tagp{font:10px/1 var(--mono);color:#b45309;background:#fdf3e0;border-radius:9px;padding:3px 7px}
+.bd{padding:6px 0 0;position:relative}
+.rows{position:relative}
+.row{height:64px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px dashed var(--line2);position:relative}
+.no{width:32px;flex:none;font:12px/1 var(--mono);color:#b6bbc2;text-align:right}
+.shot{width:240px;height:34px;flex:none;border:1px solid var(--line);border-radius:4px;background:#f7f5ee;
+  font:22px/32px var(--book);color:#333;text-align:center;overflow:hidden}
+.gut{width:60px;flex:none;align-self:stretch;display:flex;align-items:center;justify-content:center;gap:4px;
+  border-left:1px solid var(--line2);border-right:1px solid var(--line2);font-size:11px;color:#b42318;background:#fcfcfd}
+.gut .dot{width:6px;height:6px;border-radius:50%;background:#dc2626}
+.tx{flex:1;min-width:0;font:16px/1.5 var(--book);white-space:nowrap;display:flex;align-items:baseline;overflow:hidden}
+.tx .padL{flex:1;min-width:0;display:flex;justify-content:flex-end;overflow:hidden}
+.tx .padR{flex:1;min-width:0;display:flex;justify-content:flex-start;overflow:hidden}
+.tx span.c{flex:none;white-space:pre}
+.tx .d{color:var(--bad);font-weight:700;text-decoration:underline;text-decoration-color:var(--ul);text-decoration-thickness:2px;text-underline-offset:3px}
+.btns{display:flex;gap:6px;flex:none}
+.btnsline{display:flex;justify-content:flex-end;gap:6px;padding:0 12px 8px}
+.b{position:relative;flex:none;width:120px;height:44px;border:1px solid #c9d8f7;background:#fbfdff;border-radius:6px;
+  overflow:hidden;padding:0;cursor:pointer}
+.b.keep{border-color:#f0c4c4;background:#fff8f7}
+.b .in{position:absolute;left:0;top:50%;display:flex;white-space:nowrap;font:15px/1 var(--book);color:var(--text);
+  transform:translateY(-50%)}
+.b .pre,.b .post{color:var(--text);opacity:.75}
+.b .dd{font-weight:700;color:var(--bad)}
+.b.adopt .dd{color:var(--blueText)}
+.b .lab{position:absolute;top:2px;left:5px;font:9.5px/1 var(--mono);color:var(--faint)}
+/* 标尺 */
+.ruler{position:relative;height:150px;border-top:1px solid var(--line)}
+.axis{position:absolute;top:-208px;bottom:0;width:0;border-left:1px dashed rgba(37,99,235,.45);z-index:1}
+.axis .lb{position:absolute;top:2px;left:4px;font:10.5px/1 var(--mono);color:var(--blueText);background:#fff;padding:1px 3px}
+.axis .lb b{font-weight:700}
+.tk{position:absolute;width:1px;background:rgba(37,99,235,.55)}
+.dh{position:absolute;height:0;border-top:1px solid var(--blue);font:10.5px/1 var(--mono);color:var(--blueText)}
+.dh .v{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:#fff;padding:0 3px;white-space:nowrap}
+.dh .v.l{left:0;transform:none}
+.dh .v.r{left:auto;right:0;transform:none}
+.br{position:absolute;height:0;border-top:1px solid #b45309;font:10.5px/1 var(--mono);color:#b45309}
+.br .v{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:#fff;padding:0 3px;white-space:nowrap}
+.br .t{position:absolute;top:-4px;width:1px;height:8px;background:#b45309}
+.ft{height:34px;display:flex;align-items:center;gap:16px;padding:0 14px;border-top:1px solid var(--line);background:#fafbfc;
+  font:11.5px/1 var(--mono);color:var(--muted)}
+.ft b{color:var(--text);font-weight:600}
+.ft .k{color:var(--blueText)}
+.notes{margin-top:4px;display:flex;gap:14px;align-items:flex-start}
+.card{flex:1;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.65;color:var(--muted)}
+.card h3{font-size:12.5px;color:var(--text);margin:0 0 6px;font-weight:650}
+.card b{color:var(--text)}
+.card table{border-collapse:collapse;width:100%;font-size:11.5px;margin-top:4px}
+.card th,.card td{text-align:left;padding:2px 6px 2px 0;border-bottom:1px solid var(--line2);font-variant-numeric:tabular-nums}
+.card th{font-weight:600;color:var(--text-2,#33383f)}
+.warnbox{background:#fdf3e0;border-color:#f0dcbc}
+.mini{display:flex;gap:6px;margin-top:8px}
+.mb{width:88px;height:40px;border:1px solid var(--line3);border-radius:5px;background:#fff;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:1px;flex:none;position:relative;overflow:hidden}
+.mb b{position:absolute;top:1px;left:3px;font:8px/1 var(--mono);color:var(--faint);font-weight:400}
+.mb span{font-family:var(--book);color:var(--text);white-space:nowrap}
+.mb i{position:absolute;bottom:1px;right:3px;font:8px/1 var(--mono);color:var(--faint);font-style:normal}
+.k2{font:10px/1 var(--mono);background:#f2f3f5;border:1px solid var(--line3);border-radius:3px;padding:1px 4px;color:#33383f}
+</style></head><body>
+<div class="page">
+  <h1>p14 · 宽按钮 + 用户规则：首个差异字锚在各自按钮的中轴上</h1>
+  <div class="sub">两个按钮等宽、并排；标签＝前 1 字 + 差异 + 后 1 字。差异字不再“整体居中”，改为<b>首个差异字的中心 = 按钮 50%</b>，后面的字向右延伸。数字全部由页面实测注入。</div>
+
+  <!-- ============ 1423 ============ -->
+  <div class="frame" id="FA" style="width:1423px">
+    <div class="hd">1423 × 900<span class="dim">列表可视 760 · 行高 64 · 一屏 11 行</span><span class="spacer"></span><span class="tagp">宽按钮 · 并排</span></div>
+    <div class="bd">
+      <div class="rows">
+        <div class="row">
+          <span class="no">38</span><div class="shot">况</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx"><span class="padL"><span class="c">…又要吵起来。</span></span><b class="d">况</b><span class="padR"><span class="c">且那孩子们熬…</span></span></div>
+          <div class="btns">
+            <button class="b keep" data-n="1"><span class="lab">保留</span><span class="in"><span class="pre">且</span><b class="dd" data-slot="keep">况</b><span class="post">那</span></span></button>
+            <button class="b adopt" data-n="1"><span class="lab">采用</span><span class="in"><span class="pre">且</span><b class="dd" data-slot="adopt">祝</b><span class="post">那</span></span></button>
+          </div>
+        </div>
+        <div class="row">
+          <span class="no">39</span><div class="shot">隐</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx"><span class="padL"><span class="c">…只有一女，乳名</span></span><b class="d">士隐</b><span class="padR"><span class="c">，年方三岁…</span></span></div>
+          <div class="btns">
+            <button class="b keep" data-n="2"><span class="lab">保留</span><span class="in"><span class="pre">名</span><b class="dd" data-slot="keep">士</b><b class="dd">隐</b><span class="post">，</span></span></button>
+            <button class="b adopt" data-n="2"><span class="lab">采用</span><span class="in"><span class="pre">名</span><b class="dd" data-slot="adopt">土</b><b class="dd">隐</b><span class="post">，</span></span></button>
+          </div>
+        </div>
+        <div class="row">
+          <span class="no">40</span><div class="shot">庵</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx"><span class="padL"><span class="c">…因命他往</span></span><b class="d">水月庵</b><span class="padR"><span class="c">里寻他母亲…</span></span></div>
+          <div class="btns">
+            <button class="b keep" data-n="3"><span class="lab">保留</span><span class="in"><span class="pre">往</span><b class="dd" data-slot="keep">水</b><b class="dd">月</b><b class="dd">庵</b><span class="post">里</span></span></button>
+            <button class="b adopt" data-n="3"><span class="lab">采用</span><span class="in"><span class="pre">往</span><b class="dd" data-slot="adopt">水</b><b class="dd">月</b><b class="dd">俺</b><span class="post">里</span></span></button>
+          </div>
+        </div>
+      </div>
+      <div class="ruler"></div>
+    </div>
+    <div class="ft"><span>按钮 <b>120×44</b></span><span>间距 <b>6</b></span><span>标签字 <b>15px</b></span><span>两按钮差异字相距 <b class="k" id="fa-dist">—</b></span><span>行框线：<b>蓝=文字列中轴</b> · <b>橙=两差异字间距</b></span></div>
+  </div>
+
+  <!-- ============ 628 ============ -->
+  <div class="frame" id="FB" style="width:628px">
+    <div class="hd">628 × 900<span class="dim">列表可视 760 · 行高 64 → 换行后 108</span><span class="spacer"></span><span class="tagp">并排放不下 → 只能换行</span></div>
+    <div class="bd">
+      <div class="rows">
+        <div class="row wrap">
+          <span class="no">38</span><div class="shot">况</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx"><span class="padL"><span class="c">…又要吵起来。</span></span><b class="d">况</b><span class="padR"><span class="c">且那孩子们熬…</span></span></div>
+        </div>
+        <div class="btnsline">
+          <button class="b keep" data-n="1"><span class="lab">保留</span><span class="in"><span class="pre">且</span><b class="dd" data-slot="keep">况</b><span class="post">那</span></span></button>
+          <button class="b adopt" data-n="1"><span class="lab">采用</span><span class="in"><span class="pre">且</span><b class="dd" data-slot="adopt">祝</b><span class="post">那</span></span></button>
+        </div>
+        <div class="row wrap">
+          <span class="no">39</span><div class="shot">隐</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx"><span class="padL"><span class="c">…乳名</span></span><b class="d">士隐</b><span class="padR"><span class="c">，年方三岁…</span></span></div>
+        </div>
+        <div class="btnsline">
+          <button class="b keep" data-n="2"><span class="lab">保留</span><span class="in"><span class="pre">名</span><b class="dd" data-slot="keep">士</b><b class="dd">隐</b><span class="post">，</span></span></button>
+          <button class="b adopt" data-n="2"><span class="lab">采用</span><span class="in"><span class="pre">名</span><b class="dd" data-slot="adopt">土</b><b class="dd">隐</b><span class="post">，</span></span></button>
+        </div>
+        <div class="row wrap">
+          <span class="no">40</span><div class="shot">庵</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx"><span class="padL"><span class="c">…因命他往</span></span><b class="d">水月庵</b><span class="padR"><span class="c">里寻他母亲…</span></span></div>
+        </div>
+        <div class="btnsline">
+          <button class="b keep" data-n="3"><span class="lab">保留</span><span class="in"><span class="pre">往</span><b class="dd" data-slot="keep">水</b><b class="dd">月</b><b class="dd">庵</b><span class="post">里</span></span></button>
+          <button class="b adopt" data-n="3"><span class="lab">采用</span><span class="in"><span class="pre">往</span><b class="dd" data-slot="adopt">水</b><b class="dd">月</b><b class="dd">俺</b><span class="post">里</span></span></button>
+        </div>
+      </div>
+      <div class="ruler"></div>
+    </div>
+    <div class="ft"><span>tx 只剩 <b id="fb-txw">—</b></span><span>两个 120 按钮 + 6 间距 = <b>246</b></span><span>两按钮差异字相距 <b class="k" id="fb-dist">—</b></span><span>行高 <b>108</b> → 一屏 <b>7</b> 行</span></div>
+  </div>
+
+  <div class="notes">
+    <div class="card">
+      <h3>1423 实测</h3>
+      <table>
+        <tr><th>差异字数</th><th>标签字数</th><th>标签宽</th><th>保留·差异字到中轴</th><th>采用·差异字到中轴</th><th>两者相距</th></tr>
+        <tr><td>1 字</td><td>3</td><td id="t-1-lw">—</td><td id="t-1-k">—</td><td id="t-1-a">—</td><td id="t-1-d">—</td></tr>
+        <tr><td>2 字</td><td>4</td><td id="t-2-lw">—</td><td id="t-2-k">—</td><td id="t-2-a">—</td><td id="t-2-d">—</td></tr>
+        <tr><td>3 字</td><td>5</td><td id="t-3-lw">—</td><td id="t-3-k">—</td><td id="t-3-a">—</td><td id="t-3-d">—</td></tr>
+      </table>
+      <p style="margin:6px 0 0">中轴＝<b>文字列中轴 x=764.5</b>（窗口中心 711.5，相差 53）。三条竖线各自固定：同一条差异在 1/2/3 字下，<b>差异字相对按钮的位置不变</b>（都在按钮 50%），变的是标签向右伸出去多少。</p>
+    </div>
+    <div class="card warnbox">
+      <h3>628 实测（并排不能成立）</h3>
+      <p style="margin:0">628 宽扣掉左右 12、序号 32、取景 240、gutter 60、四处 10 间距后，文字列只剩 <b id="t-fb-tx">—</b>。并排两个 120 按钮要 246，塞不进同一行 → 只能换行：<b>行高 64 → 108，一屏 11 → 7 行</b>；换行后两个差异字恰好横跨中轴（−65 / +61），但每屏少 4 行。</p>
+    </div>
+    <div class="card">
+      <h3>为什么只到 3 字</h3>
+      <p style="margin:0 0 4px">锚定规则让标签向右伸：右端 = <span class="k2">(n + 0.5) × 字宽 + 4</span>，必须 ≤ 按钮半宽 60。<br>15px 时：3 字 = 52.5 + 4 = 56.5 ✓；<b>4 字 = 67.5 + 4 = 71.5 ✗</b> —— 正好卡在用户说的“三个字为界”。</p>
+      <p style="margin:0">要保住 15px：4 字需按钮 ≥ 143，5 字 ≥ 173，6 字 ≥ 203，8 字 ≥ 263。<br>不加宽就只能缩字（按钮固定 120、标签居中）：</p>
+      <div class="mini">
+        <div class="mb"><b>4 字</b><span style="font-size:12.4px">且况祝愿那，</span><i>12.4px</i></div>
+        <div class="mb"><b>5 字</b><span style="font-size:10.2px">且况祝愿那，们</span><i>10.2px</i></div>
+        <div class="mb"><b>6 字</b><span style="font-size:8.6px">且况祝愿那，们来</span><i>8.6px</i></div>
+        <div class="mb"><b>8 字</b><span style="font-size:6.6px">且况祝愿那，们来了到</span><i>6.6px</i></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const PX=(v)=>Math.round(v*10)/10;
+const signed=(v)=>(v>=0?'+':'−')+Math.abs(PX(v));
+
+function measure(f){
+  const fr=f.getBoundingClientRect(), bd=f.querySelector('.bd');
+  const tx=f.querySelector('.tx'), tr=tx.getBoundingClientRect();
+  const axisX=tr.left+tr.width/2-fr.left;
+  const bdRect=bd.getBoundingClientRect();const bdTop=bdRect.top-fr.top;
+
+  // 先给每个按钮定位：首个差异字中心 = 按钮中心
+  f.querySelectorAll('.b').forEach(b=>{
+    const dd=b.querySelector('.dd'), inner=b.querySelector('.in');
+    const br=b.getBoundingClientRect(), dr=dd.getBoundingClientRect();
+    inner.style.transform='translate('+((br.left+br.width/2)-(dr.left+dr.width/2))+'px,-50%)';
+  });
+
+  const axis=document.createElement('div');axis.className='axis';
+  axis.style.left=axisX+'px';axis.style.top='0px';axis.style.height=(bdRect.height)+'px';
+  axis.innerHTML='<span class="lb">中轴 x='+PX(axisX)+'</span>';
+  axis.querySelector('.lb').style.top=(bdRect.height-20)+'px';
+  bd.appendChild(axis);
+
+  const buttons=[...f.querySelectorAll('.b')];
+  const keep=buttons[0].querySelector('.dd'), adopt=buttons[1].querySelector('.dd');
+  const kx=keep.getBoundingClientRect().left+keep.getBoundingClientRect().width/2-fr.left;
+  const ax=adopt.getBoundingClientRect().left+adopt.getBoundingClientRect().width/2-fr.left;
+
+  const ruler=f.querySelector('.ruler'), rr=ruler.getBoundingClientRect();
+  const baseY=rr.top-bdRect.top+26;
+  // 竖向细标
+  [[kx,'#c9d8f7'],[ax,'#c9d8f7']].forEach(([x])=>{
+    const t=document.createElement('div');t.className='tk';
+    t.style.left=x+'px';t.style.top=(rr.top-bdRect.top-6)+'px';t.style.height='12px';
+    bd.appendChild(t);
+  });
+  // 两条尺寸线
+  [[kx,0],[ax,22]].forEach(([x,off])=>{
+    const x0=Math.min(axisX,x),x1=Math.max(axisX,x);
+    const d=document.createElement('div');d.className='dh';
+    d.style.left=x0+'px';d.style.width=(x1-x0)+'px';d.style.top=(baseY+off)+'px';d.style.zIndex='2';
+    d.innerHTML='<span class="v l" style="top:-13px;left:2px">'+(off===0?'保留':'采用')+'</span><span class="v">'+(x>axisX?'+':'−')+PX(Math.abs(x-axisX))+'</span>';
+    bd.appendChild(d);
+  });
+  // 两差异字间距
+  const x0=Math.min(kx,ax),x1=Math.max(kx,ax);
+  const br=document.createElement('div');br.className='br';
+  br.style.left=x0+'px';br.style.width=(x1-x0)+'px';br.style.top=(baseY+60)+'px';
+  br.innerHTML='<i class="t" style="left:0"></i><i class="t" style="left:100%"></i><span class="v">相距 '+PX(x1-x0)+'</span>';
+  bd.appendChild(br);
+
+  return {axisX,kx,ax,dist:x1-x0,txw:tr.width};
+}
+
+const A=document.getElementById('FA'),B=document.getElementById('FB');
+const mA=measure(A),mB=measure(B);
+document.getElementById('fa-dist').textContent=mA.dist.toFixed(1)+'px';
+document.getElementById('fb-dist').textContent=mB.dist.toFixed(1)+'px';
+document.getElementById('fb-txw').textContent=PX(mB.txw)+'px';
+document.getElementById('t-fb-tx').textContent=PX(mB.txw)+'px';
+
+// 表格：逐行按钮（第一帧）
+[1,2,3].forEach(n=>{
+  const bs=[...A.querySelectorAll('.b[data-n="'+n+'"]')];
+  const k=bs[0].querySelector('.dd').getBoundingClientRect();
+  const a=bs[1].querySelector('.dd').getBoundingClientRect();
+  const kx=k.left+k.width/2-A.getBoundingClientRect().left;
+  const ax=a.left+a.width/2-A.getBoundingClientRect().left;
+  const lw=bs[0].querySelector('.in').getBoundingClientRect().width;
+  document.getElementById('t-'+n+'-k').textContent=signed(kx-mA.axisX);
+  document.getElementById('t-'+n+'-a').textContent=signed(ax-mA.axisX);
+  document.getElementById('t-'+n+'-d').textContent=PX(ax-kx);
+  document.getElementById('t-'+n+'-lw').textContent=PX(lw)+'px';
+});
+</script>
+</body></html>

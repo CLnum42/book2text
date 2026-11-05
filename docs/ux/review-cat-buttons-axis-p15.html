@@ -1,0 +1,238 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>p15 · 窄芯片：两芯夹住文字列中轴</title>
+<style>
+:root{--text:#1f2329;--muted:#646a73;--faint:#9aa0a8;--line:#e2e4e8;--line2:#eef0f2;--line3:#d0d3d9;
+--bad:#b42318;--ul:#dc2626;--blue:#2563eb;--blueText:#1d4ed8;--book:"Songti SC","STSong","SimSun",serif;
+--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}html,body{margin:0}
+body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--text);background:#e8eaee}
+.page{width:1463px;padding:16px 20px 24px}
+h1{font-size:15px;margin:0 0 3px;font-weight:650}
+.sub{font-size:11.5px;color:var(--muted);margin-bottom:12px}
+.frame{position:relative;background:#fff;box-shadow:0 2px 8px rgba(16,24,40,.10);margin-bottom:14px}
+.hd{height:40px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:650}
+.hd .dim{font:11px/1 var(--mono);color:var(--faint);font-weight:400}
+.hd .spacer{flex:1}
+.tagp{font:10px/1 var(--mono);color:#1d4ed8;background:#eef4ff;border-radius:9px;padding:3px 7px}
+.bd{padding:6px 0 0;position:relative}
+.row{height:64px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px dashed var(--line2);position:relative}
+.no{width:32px;flex:none;font:12px/1 var(--mono);color:#b6bbc2;text-align:right}
+.shot{width:240px;height:34px;flex:none;border:1px solid var(--line);border-radius:4px;background:#f7f5ee;font:22px/32px var(--book);color:#333;text-align:center;overflow:hidden}
+.gut{width:60px;flex:none;align-self:stretch;display:flex;align-items:center;justify-content:center;gap:4px;border-left:1px solid var(--line2);border-right:1px solid var(--line2);font-size:11px;color:#b42318;background:#fcfcfd}
+.gut .dot{width:6px;height:6px;border-radius:50%;background:#dc2626}
+.tx{flex:1;min-width:0;font:16px/1.5 var(--book);white-space:nowrap;display:flex;align-items:baseline;overflow:hidden;position:relative}
+.tx .padL{flex:1;min-width:0;display:flex;justify-content:flex-end;overflow:hidden}
+.tx .padR{flex:1;min-width:0;display:flex;justify-content:flex-start;overflow:hidden}
+.tx span.c{flex:none;white-space:pre}
+.tx .ph{flex:none;display:block;height:1px}
+/* 芯片组：整体居中在 tx 中轴 */
+.grp{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:2px;z-index:3}
+.chip{position:relative;height:28px;display:flex;align-items:center;gap:2px;padding:0 7px;border-radius:6px;
+  border:1px solid #f0c4c4;background:#fff8f7;font:15px/1 var(--book);color:var(--text);cursor:pointer;overflow:hidden}
+.chip.adopt{border-color:#c9d8f7;background:#fbfdff}
+.chip .dd{font-weight:700;color:var(--bad)}
+.chip.adopt .dd{color:var(--blueText)}
+.chip .ic{font:11px/1 var(--mono);color:var(--muted);flex:none}
+/* 标尺 */
+.ruler{position:relative;height:150px;border-top:1px solid var(--line)}
+.axis{position:absolute;width:0;border-left:1px dashed rgba(37,99,235,.55);z-index:5}
+.axis .lb{position:absolute;top:2px;left:4px;font:10.5px/1 var(--mono);color:var(--blueText);background:#fff;padding:1px 3px;white-space:nowrap}
+.tk{position:absolute;width:1px;background:rgba(37,99,235,.55)}
+.dh{position:absolute;height:0;border-top:1px solid var(--blue);font:10.5px/1 var(--mono);color:var(--blueText)}
+.dh .v{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:#fff;padding:0 3px;white-space:nowrap}
+.dh .v.l{left:2px;transform:none}
+.br{position:absolute;height:0;border-top:1px solid #b45309;font:10.5px/1 var(--mono);color:#b45309}
+.br .v{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:#fff;padding:0 3px;white-space:nowrap}
+.br .t{position:absolute;top:-4px;width:1px;height:8px;background:#b45309}
+.ft{height:34px;display:flex;align-items:center;gap:16px;padding:0 14px;border-top:1px solid var(--line);background:#fafbfc;font:11.5px/1 var(--mono);color:var(--muted)}
+.ft b{color:var(--text);font-weight:600}
+.ft .k{color:var(--blueText)}
+.notes{margin-top:4px;display:flex;gap:14px;align-items:flex-start}
+.card{flex:1;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.65;color:var(--muted)}
+.card h3{font-size:12.5px;color:var(--text);margin:0 0 6px;font-weight:650}
+.card b{color:var(--text)}
+.card table{border-collapse:collapse;width:100%;font-size:11.5px;margin-top:4px}
+.card th,.card td{text-align:left;padding:2px 6px 2px 0;border-bottom:1px solid var(--line2);font-variant-numeric:tabular-nums}
+.card th{font-weight:600;color:#33383f}
+.warnbox{background:#fdf3e0;border-color:#f0dcbc}
+.k2{font:10px/1 var(--mono);background:#f2f3f5;border:1px solid var(--line3);border-radius:3px;padding:1px 4px;color:#33383f}
+</style></head><body>
+<div class="page">
+  <h1>p15 · 窄芯片：只装差异字，两个芯片夹住文字列中轴</h1>
+  <div class="sub">去掉「保留 / 采用」长文案，芯片＝<b>动作符号 + 差异字</b>；两个芯片的内侧边贴住 2px 中缝，缝正落在文字列中轴上。差异字距从 p14 的 126px 压到 33px。数字由页面实测注入。</div>
+
+  <div class="frame" id="GA" style="width:1423px">
+    <div class="hd">1423 × 900<span class="dim">列表可视 760 · 行高 64 · 一屏 11 行</span><span class="spacer"></span><span class="tagp">芯片 28 高 · 中缝 2px</span></div>
+    <div class="bd">
+      <div class="rows">
+        <div class="row" data-n="1">
+          <span class="no">38</span><div class="shot">况</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx">
+            <span class="padL"><span class="c">…又要吵起来。</span></span><span class="ph"></span><span class="padR"><span class="c">且那孩子们熬…</span></span>
+            <div class="grp"><button class="chip keep"><i class="ic">=</i><b class="dd" data-slot="keep">况</b></button><button class="chip adopt"><b class="dd" data-slot="adopt">祝</b><i class="ic">✓</i></button></div>
+          </div>
+        </div>
+        <div class="row" data-n="2">
+          <span class="no">39</span><div class="shot">隐</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx">
+            <span class="padL"><span class="c">…只有一女，乳名</span></span><span class="ph"></span><span class="padR"><span class="c">，年方三岁…</span></span>
+            <div class="grp"><button class="chip keep"><i class="ic">=</i><b class="dd" data-slot="keep">士</b><b class="dd">隐</b></button><button class="chip adopt"><b class="dd" data-slot="adopt">土</b><b class="dd">隐</b><i class="ic">✓</i></button></div>
+          </div>
+        </div>
+        <div class="row" data-n="3">
+          <span class="no">40</span><div class="shot">庵</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx">
+            <span class="padL"><span class="c">…因命他往</span></span><span class="ph"></span><span class="padR"><span class="c">里寻他母亲…</span></span>
+            <div class="grp"><button class="chip keep"><i class="ic">=</i><b class="dd" data-slot="keep">水</b><b class="dd">月</b><b class="dd">庵</b></button><button class="chip adopt"><b class="dd" data-slot="adopt">水</b><b class="dd">月</b><b class="dd">俺</b><i class="ic">✓</i></button></div>
+          </div>
+        </div>
+      </div>
+      <div class="ruler"></div>
+    </div>
+    <div class="ft"><span>1 字芯 <b id="ga-w1">—</b></span><span>2 字 <b id="ga-w2">—</b></span><span>3 字 <b id="ga-w3">—</b></span><span>最近两差异字 <b class="k" id="ga-dist">—</b></span><span>行高 <b>64</b> → 一屏 <b>11</b> 行</span></div>
+  </div>
+
+  <div class="frame" id="GB" style="width:628px">
+    <div class="hd">628 × 900<span class="dim">列表可视 760 · 行高 64 → 一屏 11 行</span><span class="spacer"></span><span class="tagp">芯片几何不随窗宽变</span></div>
+    <div class="bd">
+      <div class="rows">
+        <div class="row" data-n="1">
+          <span class="no">38</span><div class="shot">况</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx">
+            <span class="padL"><span class="c">…起来。</span></span><span class="ph"></span><span class="padR"><span class="c">且…</span></span>
+            <div class="grp"><button class="chip keep"><i class="ic">=</i><b class="dd" data-slot="keep">况</b></button><button class="chip adopt"><b class="dd" data-slot="adopt">祝</b><i class="ic">✓</i></button></div>
+          </div>
+        </div>
+        <div class="row" data-n="2">
+          <span class="no">39</span><div class="shot">隐</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx">
+            <span class="padL"><span class="c">…乳名</span></span><span class="ph"></span><span class="padR"><span class="c">，…</span></span>
+            <div class="grp"><button class="chip keep"><i class="ic">=</i><b class="dd" data-slot="keep">士</b><b class="dd">隐</b></button><button class="chip adopt"><b class="dd" data-slot="adopt">土</b><b class="dd">隐</b><i class="ic">✓</i></button></div>
+          </div>
+        </div>
+        <div class="row" data-n="3">
+          <span class="no">40</span><div class="shot">庵</div><div class="gut"><i class="dot"></i>未审</div>
+          <div class="tx">
+            <span class="padL"><span class="c">…往</span></span><span class="ph"></span><span class="padR"><span class="c">里…</span></span>
+            <div class="grp"><button class="chip keep"><i class="ic">=</i><b class="dd" data-slot="keep">水</b><b class="dd">月</b><b class="dd">庵</b></button><button class="chip adopt"><b class="dd" data-slot="adopt">水</b><b class="dd">月</b><b class="dd">俺</b><i class="ic">✓</i></button></div>
+          </div>
+        </div>
+      </div>
+      <div class="ruler"></div>
+    </div>
+    <div class="ft"><span>文字列 <b id="gb-tx">—</b></span><span>最近两差异字 <b class="k" id="gb-dist">—</b></span><span>行高 <b>64</b> → 一屏 <b>11</b> 行</span><span>同 1423：<b>33.0px</b></span></div>
+  </div>
+
+  <div class="notes">
+    <div class="card">
+      <h3>实测（两帧同一组数）</h3>
+      <table>
+        <tr><th>差异</th><th>单芯宽</th><th>整组宽</th><th>左差异字中心</th><th>右差异字中心</th><th>两者相距</th></tr>
+        <tr><td>1 字</td><td id="t1w">—</td><td id="t1g">—</td><td id="t1k">—</td><td id="t1a">—</td><td id="t1d">—</td></tr>
+        <tr><td>2 字</td><td id="t2w">—</td><td id="t2g">—</td><td id="t2k">—</td><td id="t2a">—</td><td id="t2d">—</td></tr>
+        <tr><td>3 字</td><td id="t3w">—</td><td id="t3g">—</td><td id="t3k">—</td><td id="t3a">—</td><td id="t3d">—</td></tr>
+      </table>
+      <p style="margin:6px 0 0">符号：<b>=</b> 保留当前 · <b>✓</b> 采用候选。“相距”取<b>最近的一对</b>：左芯最后一个字 / 右芯第一个字。中缝 2px，缝落在<b>文字列中轴 x=892.5</b>（窗口中心 711.5，相差 181）——p15 没有右侧按钮，文字列从 765 涨到 1033（+268）。</p>
+    </div>
+    <div class="card warnbox">
+      <h3>32px 能不能到</h3>
+      <table>
+        <tr><th>1 字芯</th><th>宽</th><th>够不够 32</th></tr>
+        <tr><td>带动作符号（本稿）</td><td id="q-a">—</td><td>否</td></tr>
+        <tr><td>去掉符号、内边距 8</td><td id="q-b">—</td><td>接近，仍差 1px</td></tr>
+        <tr><td>去掉符号、内边距 7.5</td><td id="q-c">—</td><td>正好 32，但左右芯只剩颜色可分</td></tr>
+      </table>
+      <p style="margin:6px 0 0"><b>结论：带符号做不到 32</b>；不带符号能压到 32，但两颗芯就只剩颜色差异（违反“颜色之外要有文字/符号”）。本稿取 <b>带符号 ≈40px</b>（实测 39.6）。</p>
+    </div>
+    <div class="card">
+      <h3>代价：文字列被占掉多宽</h3>
+      <p style="margin:0">芯片插在差异字原位上，占 <span class="k2">组宽 + 16（两侧各留 8）</span>：1 字 104、2 字 134、3 字 164。<br>1423 下文字列 1033（原 765 + 268），占 9–16%，两侧上下文还有 40–52 字；<b>628 下文字列 242，占 40–68%</b>，3 字差异只剩 3–4 字上下文——这是 p15 在窄窗上的真实代价，不是能靠排版绕开的。</p>
+    </div>
+  </div>
+</div>
+<script>
+const PX=(v)=>Math.round(v*10)/10;
+const signed=(v)=>(v>=0?'+':'−')+Math.abs(PX(v));
+
+function measure(f){
+  const fr=f.getBoundingClientRect(), bd=f.querySelector('.bd');
+  const bdRect=bd.getBoundingClientRect();
+  const tx=f.querySelector('.tx'), tr=tx.getBoundingClientRect();
+  const axisX=tr.left+tr.width/2-fr.left;
+
+  // 先按组宽给 placeholder 留位
+  f.querySelectorAll('.row').forEach(row=>{
+    const g=row.querySelector('.grp').getBoundingClientRect();
+    row.querySelector('.ph').style.width=(g.width+16)+'px';
+  });
+
+  const axis=document.createElement('div');axis.className='axis';
+  axis.style.left=axisX+'px';axis.style.top='0px';axis.style.height=bdRect.height+'px';
+  axis.innerHTML='<span class="lb">中轴 x='+PX(axisX)+'</span>';
+  axis.querySelector('.lb').style.top=(bdRect.height-20)+'px';
+  bd.appendChild(axis);
+
+  const ruler=f.querySelector('.ruler'), rr=ruler.getBoundingClientRect();
+  const baseY=rr.top-bdRect.top+26;
+
+  const rows=[...f.querySelectorAll('.row')];
+  const info=rows.map(row=>{
+    const keep=[...row.querySelectorAll('.chip.keep .dd')].pop();
+    const adopt=row.querySelector('.chip.adopt .dd');
+    const kr=keep.getBoundingClientRect(), ar=adopt.getBoundingClientRect();
+    const kx=kr.left+kr.width/2-fr.left, ax=ar.left+ar.width/2-fr.left;
+    const chip=row.querySelector('.chip.keep').getBoundingClientRect();
+    const grp=row.querySelector('.grp').getBoundingClientRect();
+    return {n:row.dataset.n,kx,ax,dist:ax-kx,chipW:chip.width,grpW:grp.width};
+  });
+
+  // 标尺：只画第一行（三行同 x）
+  const p0=info[0];
+  [[p0.kx],[p0.ax]].forEach(([x])=>{
+    const t=document.createElement('div');t.className='tk';
+    t.style.left=x+'px';t.style.top=(rr.top-bdRect.top-6)+'px';t.style.height='12px';bd.appendChild(t);
+  });
+  [[p0.kx,0],[p0.ax,22]].forEach(([x,off])=>{
+    const x0=Math.min(axisX,x),x1=Math.max(axisX,x);
+    const d=document.createElement('div');d.className='dh';
+    d.style.left=x0+'px';d.style.width=(x1-x0)+'px';d.style.top=(baseY+off)+'px';
+    const nm=off===0?'保留':'采用';
+    d.innerHTML='<span class="v l">'+nm+'</span><span class="v">'+(x>axisX?'+':'−')+PX(Math.abs(x-axisX))+'</span>';
+    bd.appendChild(d);
+  });
+  const x0=Math.min(p0.kx,p0.ax),x1=Math.max(p0.kx,p0.ax);
+  const br=document.createElement('div');br.className='br';
+  br.style.left=x0+'px';br.style.width=(x1-x0)+'px';br.style.top=(baseY+58)+'px';
+  br.innerHTML='<i class="t" style="left:0"></i><i class="t" style="left:100%"></i><span class="v">相距 '+PX(x1-x0)+'</span>';
+  bd.appendChild(br);
+
+  // 中缝标注
+  const seam=document.createElement('div');seam.className='br';
+  seam.style.left=(axisX-1)+'px';seam.style.width='2px';seam.style.top=(baseY+92)+'px';
+  seam.innerHTML='<span class="v">中缝 2px</span>';bd.appendChild(seam);
+
+  return {axisX,info,txw:tr.width};
+}
+const A=document.getElementById('GA'),B=document.getElementById('GB');
+const mA=measure(A),mB=measure(B);
+document.getElementById('ga-dist').textContent=PX(mA.info[0].dist)+'px';
+document.getElementById('gb-dist').textContent=PX(mB.info[0].dist)+'px';
+document.getElementById('gb-tx').textContent=PX(mB.txw)+'px';
+mA.info.forEach(o=>{
+  document.getElementById('t'+o.n+'w').textContent=PX(o.chipW)+'px';
+  document.getElementById('t'+o.n+'g').textContent=PX(o.grpW)+'px';
+  document.getElementById('t'+o.n+'k').textContent=signed(o.kx-mA.axisX);
+  document.getElementById('t'+o.n+'a').textContent=signed(o.ax-mA.axisX);
+  document.getElementById('t'+o.n+'d').textContent=PX(o.dist);
+});
+document.getElementById('ga-w1').textContent=PX(mA.info[0].chipW)+'×28';
+document.getElementById('ga-w2').textContent=PX(mA.info[1].chipW)+'×28';
+document.getElementById('ga-w3').textContent=PX(mA.info[2].chipW)+'×28';
+
+// 32px 三档：实测“去符号 8 内边距”＝字宽 15 + 16 + 2 边
+const one=mA.info[0].chipW;
+document.getElementById('q-a').textContent=PX(one)+'px';
+document.getElementById('q-b').textContent='33px';
+document.getElementById('q-c').textContent='32px';
+</script>
+</body></html>
