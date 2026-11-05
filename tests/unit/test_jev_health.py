@@ -330,3 +330,22 @@ def test_check_urls_unreachable_engine_is_step1() -> None:
     assert verdict.ok is False
     assert verdict.step == 1
     assert "连不上" in verdict.detail
+
+
+def test_missing_font_fails_at_step3_not_a_separate_branch(stub_server: HTTPServer, tmp_path) -> None:
+    """字体缺失要落在第 3 步里——`/ready` 不该出现"引擎 ok / 字体缺"这种组合态。"""
+    import json as _json
+
+    _Stub.models = []
+    port = stub_server.server_address[1]
+    verdict = health_module.check_urls(
+        f"http://127.0.0.1:{port}",
+        f"http://127.0.0.1:{port}",
+        model_dir=tmp_path / "没有 manifest",
+        font_path=str(tmp_path / "nope.ttc"),
+    )
+
+    assert verdict.ok is False
+    assert verdict.step == 3, "字体问题归第 3 步，不是独立分支"
+    assert "字体缺失" in verdict.detail
+    assert verdict.prob_1 is not None, "引擎其实已经出分了，只是候选渲染不可信——分数照样带出来"

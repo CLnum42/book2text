@@ -343,12 +343,34 @@ let jevOnlySuspicious = false;
 let jevOptOut = false;   // 用户点过「恢复原顺序」：本次会话别再自动开排序
 let jevScored = 0;
 let jevPollTimer = null;
+// 引擎/打分层能不能用：unknown | starting | ready | blocked（第四态在 renderJevUi 里画）
+let jevPhase = "unknown";
+let jevStep = 0;
+let jevStepLabel = "";
+let jevDetail = "";
+let jevStartPromise = null;   // 启动中：连点只发一次请求（后端还有一次幂等兜底）
 
 function jevQuerySuffix() {
   const parts = [];
   if (jevSorted) parts.push("jev_sorted=1");
   if (jevOnlySuspicious) parts.push("jev_suspicious_only=1");
   return parts.length ? `?${parts.join("&")}` : "";
+}
+
+const JEV_STEP_LABELS = { 1: "引擎进程", 2: "引擎能答", 3: "真能打分", 4: "可用" };
+
+/** 状态行文案：**常驻显示**，不靠 tooltip（用户看不到原因就会一直点）。 */
+function jevStatusText() {
+  if (jevPhase === "starting") return "正在启动引擎…（首次约 2 秒，之后常驻）";
+  if (jevPhase === "ready") return jevScored > 0 ? `已打分 ${jevScored} 行` : "";
+  if (jevPhase === "blocked") {
+    const label = jevStepLabel || JEV_STEP_LABELS[jevStep] || "";
+    const head = jevStep ? `第 ${jevStep} 步（${label}）没过：` : "";
+    const text = String(jevDetail || "").replace(/\s+/g, " ").trim();
+    const short = text.length > 96 ? `${text.slice(0, 96)}…` : text;
+    return `${head}${short || "Jev 用不了"}`;
+  }
+  return "";
 }
 
 function renderJevUi() {
@@ -369,19 +391,48 @@ function renderJevUi() {
   const filter = el("jev-only-suspicious");
   if (filter) filter.checked = jevOnlySuspicious;
   const run = el("jev-run");
+  const starting = jevPhase === "starting";
   if (run) {
-    run.disabled = Boolean(jevPollTimer);
-    run.textContent = jevPollTimer ? "Jev 打分中…" : "Jev 打分…";
+    run.disabled = Boolean(jevPollTimer) || starting || jevPhase !== "ready";
+    run.textContent = jevPollTimer
+      ? "Jev 打分中…"
+      : starting
+        ? "正在启动引擎…"
+        : "Jev 打分…";
+  }
+  const status = el("jev-status");
+  if (status) {
+    const text = jevStatusText();
+    status.textContent = text;
+    status.hidden = !text;
+    status.dataset.phase = jevPhase;
+    status.dataset.step = String(jevStep || 0);
+    status.title = jevPhase === "blocked" ? String(jevDetail || "") : "";
+  }
+  // 引擎没起/起不来时给一个显式入口：主按钮置灰，原因常驻，旁边就是"启动引擎"
+  const start = el("jev-engine-start");
+  if (start) {
+    start.hidden = jevPhase !== "blocked";
+    start.disabled = starting;
+    start.textContent = "启动引擎";
   }
 }
 
 async function refreshJevUi() {
   if (typeof injected.getProject !== "function" || !injected.getProject()) return;
   try {
-    const status = await injected.apiJson?.(
-      `/api/projects/${injected.getProject().project_id}/jev-priority`
-    );
+    const projectId = injected.getProject().project_id;
+    const [status, verdict] = await Promise.all([
+      injected.apiJson?.(`/api/projects/${projectId}/jev-priority`),
+      injected.apiJson?.(`/api/projects/${projectId}/jev-priority/ready`),
+    ]);
     jevScored = Number(status?.scored || 0);
+    if (verdict && typeof verdict.ok === "boolean") {
+      if (jevPhase !== "starting") jevPhase = verdict.ok ? "ready" : "blocked";
+      jevStep = Number(verdict.step || 0);
+      jevStepLabel = String(verdict.step_label || "");
+      jevDetail = String(verdict.detail || "");
+    }
     // 排序是否真的生效由服务端判定（最近一次打分任务 succeeded）。有分数但任务没跑完时
     // 不显示"已重排"提示条，也不让前端以为在排序。
     // 跑完且用户没主动关过 ⇒ 自动开（提示条正是"当前顺序按…"的意思）
@@ -389,8 +440,56 @@ async function refreshJevUi() {
     if (!jevScored) { jevSorted = false; jevOnlySuspicious = false; }
   } catch (error) {
     jevScored = 0;
+    if (jevPhase !== "starting") {
+      jevPhase = "blocked";
+      jevDetail = `读不到 Jev 状态：${error?.message || "未知错误"}`;
+      jevStep = 0;
+    }
   }
   renderJevUi();
+}
+
+/**
+ * 起引擎（幂等）：连点时只发**一次**请求，界面先切到"启动中"（按钮置灰、文案含"正在启动"）。
+ *
+ * 后端 `POST /engine/start` 自己也幂等（同 pid/端口就不 spawn）——两层各防一次：
+ * 只有一处生效就是 bug（UI 防重挡不住刷新，后端幂等挡不住并发 click 的 UI 抖动）。
+ */
+async function ensureJevEngine() {
+  if (jevStartPromise) return jevStartPromise;
+  if (jevPhase === "ready") return null;
+  jevPhase = "starting";
+  jevStep = 0;
+  jevStepLabel = "";
+  jevDetail = "";
+  renderJevUi();
+  const projectId = injected.getProject()?.project_id;
+  jevStartPromise = (async () => {
+    try {
+      const verdict = await injected.apiJson?.(
+        `/api/projects/${projectId}/jev-priority/engine/start`,
+        { method: "POST" }
+      );
+      jevPhase = verdict?.ok ? "ready" : "blocked";
+      jevStep = Number(verdict?.step || 0);
+      jevStepLabel = String(verdict?.step_label || "");
+      jevDetail = String(verdict?.detail || "");
+      if (!verdict?.ok) {
+        const label = jevStepLabel || JEV_STEP_LABELS[jevStep] || "";
+        injected.showNoticeBar?.(`Jev 引擎没起来（第 ${jevStep} 步 · ${label}），原因见按钮旁那行`);
+      }
+    } catch (error) {
+      jevPhase = "blocked";
+      jevStep = 0;
+      jevStepLabel = "";
+      jevDetail = `启动请求失败：${error?.message || "未知错误"}`;
+      injected.showNoticeBar?.(`Jev 引擎没起来：${error?.message || "未知错误"}`);
+    } finally {
+      jevStartPromise = null;
+      renderJevUi();
+    }
+  })();
+  return jevStartPromise;
 }
 
 function stopJevPolling() {
@@ -422,6 +521,11 @@ function pollJevJob() {
 }
 
 async function startJevJob() {
+  if (jevPhase !== "ready") {
+    // 正常路径点不到这里（按钮置灰）；留一层保险：先把引擎起起来，起不来就不发任务
+    await ensureJevEngine();
+    if (jevPhase !== "ready") return;
+  }
   try {
     await injected.apiJson?.(`/api/projects/${injected.getProject().project_id}/jev-priority/start`, {
       method: "POST",
@@ -458,6 +562,9 @@ async function clearJevScores() {
 
 function setupJevUi() {
   el("jev-run")?.addEventListener("click", startJevJob);
+  el("jev-engine-start")?.addEventListener("click", () => {
+    ensureJevEngine().catch(() => {});
+  });
   el("jev-clear")?.addEventListener("click", clearJevScores);
   const restore = () => {
     jevSorted = false;

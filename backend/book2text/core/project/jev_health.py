@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import urllib.error
 import urllib.parse
@@ -34,6 +35,10 @@ from . import jev_engine as engine_module
 from . import jev_score_host as host_module
 
 STEP_LABELS = {1: "引擎进程", 2: "引擎能答", 3: "真能打分", 4: "可用"}
+
+#: 候选文本渲染用的字体。它不影响"引擎能不能打分"，但影响"候选渲染得出来吗"——
+#: 所以归到第 3 步（真能打分）的失败分支里，不让 `/ready` 出现"引擎 ok / 字体缺"的组合态。
+DEFAULT_FONT = "/System/Library/Fonts/Supplemental/Songti.ttc"
 
 
 @dataclass(frozen=True)
@@ -75,10 +80,12 @@ class JevRuntime:
         self,
         *,
         model_dir: Path | None = None,
+        font_path: str | None = None,
         engine: engine_module.JevEngine | None = None,
         host: host_module.ScoreHost | None = None,
     ) -> None:
         self._model_dir = model_dir
+        self._font_path = font_path or os.environ.get("B2T_JEV_FONT") or DEFAULT_FONT
         self._engine = engine or engine_module.JevEngine(engine_module.EngineConfig(model_dir=model_dir))
         self._host = host or host_module.ScoreHost()
 
@@ -121,6 +128,17 @@ class JevRuntime:
                 pid=check.pid,
                 engine_port=check.port,
                 score_port=score.port,
+            )
+        font_problem = _font_problem(self._font_path)
+        if font_problem:
+            return JevVerdict(
+                ok=False,
+                step=3,
+                detail=font_problem,
+                pid=check.pid,
+                engine_port=check.port,
+                score_port=score.port,
+                prob_1=score.prob_1,
             )
         return JevVerdict(
             ok=True,
@@ -170,6 +188,7 @@ def check_urls(
     score_url: str,
     *,
     model_dir: Path | None = None,
+    font_path: str | None = None,
     timeout: float = 60.0,
 ) -> JevVerdict:
     """查**外部**已经起好的引擎与打分服务（验收脚本 / 排障）。
@@ -198,6 +217,9 @@ def check_urls(
     prob, detail = probe_score_url(score, timeout=timeout)
     if prob is None:
         return JevVerdict(ok=False, step=3, detail=detail)
+    font_problem = _font_problem(font_path or DEFAULT_FONT)
+    if font_problem:
+        return JevVerdict(ok=False, step=3, detail=font_problem, prob_1=prob)
     return JevVerdict(ok=True, step=4, prob_1=prob)
 
 
@@ -249,6 +271,13 @@ def probe_score_url(score_url: str, *, timeout: float = 60.0) -> tuple[float | N
     if not 0.0 <= prob <= 1.0:
         return None, f"prob_1 越界：{prob}"
     return prob, ""
+
+
+def _font_problem(font_path: str) -> str:
+    """候选渲染字体在不在。缺了就归第 3 步（能打分，但打出来的候选不可信）。"""
+    if Path(font_path).is_file():
+        return ""
+    return f"候选文本字体缺失：{font_path}（渲染候选用；B2T_JEV_FONT 可覆盖）"
 
 
 def _expected_model_name(model_dir: Path | None) -> str:

@@ -58,7 +58,8 @@ DEFAULT_DPI = 200
 #: 只给"分歧行"打分（format_only / identical 没有可看的差别）
 SCORED_STATUSES = ("differs_chars", "differs_punct")
 
-DEFAULT_FONT = "/System/Library/Fonts/Supplemental/Songti.ttc"
+#: 字体只影响"候选渲染得出来吗"，判据归 `jev_health` 的第 3 步；这里只是保持原名字可用。
+DEFAULT_FONT = jev_health.DEFAULT_FONT
 
 
 class JevUnavailable(RuntimeError):
@@ -104,13 +105,14 @@ def probe(config: JevConfig | None = None, *, runtime=None) -> list[str]:
         runtime.check()
         if runtime is not None
         else jev_health.check_urls(
-            cfg.engine_url, cfg.score_url, model_dir=cfg.model_dir, timeout=cfg.timeout
+            cfg.engine_url,
+            cfg.score_url,
+            model_dir=cfg.model_dir,
+            font_path=cfg.font_path,
+            timeout=cfg.timeout,
         )
     )
-    problems = verdict.problems()
-    if not Path(cfg.font_path).is_file():
-        problems.append(f"候选文本字体缺失：{cfg.font_path}（B2T_JEV_FONT，渲染候选用）")
-    return problems
+    return verdict.problems()
 
 
 def runnable(config: JevConfig) -> tuple[bool, list[str]]:

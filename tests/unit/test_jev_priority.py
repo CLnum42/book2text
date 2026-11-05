@@ -164,8 +164,8 @@ def test_clear_scores_clears_and_writes_event(project_with_diffs: Path) -> None:
     assert event is not None and '"scored": 2' in event["before_json"]
 
 
-def test_probe_delegates_to_the_single_judge_and_keeps_font(tmp_path: Path) -> None:
-    """判据收敛后：引擎/打分服务那部分由 jev_health 说，probe 只额外补"渲染候选要字体"。"""
+def test_probe_delegates_to_the_single_judge(tmp_path: Path) -> None:
+    """判据收敛后：probe 自己不再判断"Jev 可用不可用"，一句话来自 jev_health（第几步）。"""
     config = jev.JevConfig(
         engine_url="http://127.0.0.1:9",
         score_url="http://127.0.0.1:9",
@@ -173,8 +173,8 @@ def test_probe_delegates_to_the_single_judge_and_keeps_font(tmp_path: Path) -> N
         font_path=str(tmp_path / "nope.ttc"),
     )
     problems = jev.probe(config)
-    assert any("第 1 步" in item and "连不上" in item for item in problems), problems
-    assert any("字体缺失" in item for item in problems), problems
+    assert len(problems) == 1, problems
+    assert "第 1 步" in problems[0] and "连不上" in problems[0]
 
 
 def test_probe_uses_runtime_verdict_when_given(tmp_path: Path) -> None:

@@ -2700,3 +2700,12 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   border-bottom: 1px solid var(--line);
 }
 .jev-banner .icon-btn { margin-left: auto; }
+
+/* Jev 状态行：常驻在「Jev 打分…」旁边。原因必须看得见——只放 title 等于没写。 */
+.jev-status {
+  font-size: 12px; max-width: 420px; flex: none;
+  color: var(--muted); line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jev-status[data-phase="blocked"] { color: var(--warn-text); }
+.jev-status[data-phase="starting"] { color: var(--accent-text); }
