@@ -73,6 +73,31 @@ class FakeHost:
         self.running = False
 
 
+def _pack(directory) -> "object":
+    """造一个小号模型包：manifest + 两个小文件。让单测不依赖本机私域目录。"""
+    import hashlib
+    import json
+
+    target = directory / "pack"
+    target.mkdir(parents=True, exist_ok=True)
+    files = []
+    for name, role in (("model.gguf", "model"), ("mmproj.gguf", "mmproj")):
+        payload = f"fake-{name}".encode()
+        (target / name).write_bytes(payload)
+        files.append(
+            {
+                "name": name,
+                "bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "role": role,
+            }
+        )
+    (target / "manifest.json").write_text(
+        json.dumps({"kind": "jev-model-pack", "files": files}), encoding="utf-8"
+    )
+    return target
+
+
 def _engine_ok(port: int = 41000) -> engine_module.EngineCheck:
     return engine_module.EngineCheck(ok=True, step=2, pid=4242, port=port)
 
@@ -80,8 +105,20 @@ def _engine_ok(port: int = 41000) -> engine_module.EngineCheck:
 # ---------------------------------------------------------------- 四步判定
 
 
-def test_engine_down_is_step1() -> None:
+def test_missing_model_pack_is_step1_naming_the_file(tmp_path) -> None:
+    """/ready 在引擎还没起时也要说清"缺哪个文件"，不许只说"引擎没起"。"""
+    runtime = health_module.JevRuntime(model_dir=tmp_path / "没有这个目录", engine=FakeEngine(_engine_ok()), host=FakeHost())
+
+    verdict = runtime.check()
+
+    assert verdict.ok is False and verdict.step == 1
+    assert "manifest.json" in verdict.detail
+    assert "没有这个目录" in verdict.detail
+
+
+def test_engine_down_is_step1(tmp_path) -> None:
     runtime = health_module.JevRuntime(
+        model_dir=_pack(tmp_path),
         engine=FakeEngine(engine_module.EngineCheck(ok=False, step=1, detail="引擎没起（还没启动过）")),
         host=FakeHost(),
     )
@@ -94,8 +131,8 @@ def test_engine_down_is_step1() -> None:
     assert verdict.problems() == ["第 1 步（引擎进程）没过：引擎没起（还没启动过）"]
 
 
-def test_engine_answers_but_score_host_missing_is_step3() -> None:
-    runtime = health_module.JevRuntime(engine=FakeEngine(_engine_ok()), host=FakeHost())
+def test_engine_answers_but_score_host_missing_is_step3(tmp_path) -> None:
+    runtime = health_module.JevRuntime(model_dir=_pack(tmp_path), engine=FakeEngine(_engine_ok()), host=FakeHost())
     runtime.host.running = False
 
     verdict = runtime.check()
@@ -104,7 +141,7 @@ def test_engine_answers_but_score_host_missing_is_step3() -> None:
     assert "打分层没在跑" in verdict.detail
 
 
-def test_score_host_failure_detail_is_carried_verbatim() -> None:
+def test_score_host_failure_detail_is_carried_verbatim(tmp_path) -> None:
     """打分层起不来时，detail 必须是引擎原话，不许换成"没在跑"那种误导。"""
     engine = FakeEngine(_engine_ok())
     engine_message = (
@@ -114,7 +151,7 @@ def test_score_host_failure_detail_is_carried_verbatim() -> None:
         '"start it with `--mmproj`"}'
     )
     host = FakeHost(failure=engine_message)
-    runtime = health_module.JevRuntime(engine=engine, host=host)
+    runtime = health_module.JevRuntime(model_dir=_pack(tmp_path), engine=engine, host=host)
 
     verdict = runtime.check()
 
@@ -123,11 +160,11 @@ def test_score_host_failure_detail_is_carried_verbatim() -> None:
     assert "501" in verdict.detail and "--mmproj" in verdict.detail
 
 
-def test_score_host_cleanly_stopped_keeps_the_plain_message() -> None:
+def test_score_host_cleanly_stopped_keeps_the_plain_message(tmp_path) -> None:
     """打分层只是被正常停掉（没有 failure）⇒ 仍然是那句常规文案，别把停机写成故障。"""
     engine = FakeEngine(_engine_ok())
     host = FakeHost(failure="")
-    runtime = health_module.JevRuntime(engine=engine, host=host)
+    runtime = health_module.JevRuntime(model_dir=_pack(tmp_path), engine=engine, host=host)
 
     verdict = runtime.check()
 
@@ -135,11 +172,11 @@ def test_score_host_cleanly_stopped_keeps_the_plain_message() -> None:
     assert verdict.detail == "打分层没在跑（点「Jev 打分」会自动起）"
 
 
-def test_probe_failure_is_step3_with_engine_message() -> None:
+def test_probe_failure_is_step3_with_engine_message(tmp_path) -> None:
     engine = FakeEngine(_engine_ok())
     host = FakeHost(probe=ScoreCheck(ok=False, detail="打分接口回 501：start it with --mmproj", port=5001))
     host.running = True
-    runtime = health_module.JevRuntime(engine=engine, host=host)
+    runtime = health_module.JevRuntime(model_dir=_pack(tmp_path), engine=engine, host=host)
 
     verdict = runtime.check()
 
@@ -148,11 +185,11 @@ def test_probe_failure_is_step3_with_engine_message() -> None:
     assert verdict.pid == 4242
 
 
-def test_all_good_is_step4_with_probability() -> None:
+def test_all_good_is_step4_with_probability(tmp_path) -> None:
     engine = FakeEngine(_engine_ok())
     host = FakeHost(probe=ScoreCheck(ok=True, port=5001, prob_1=0.013))
     host.running = True
-    runtime = health_module.JevRuntime(engine=engine, host=host)
+    runtime = health_module.JevRuntime(model_dir=_pack(tmp_path), engine=engine, host=host)
 
     verdict = runtime.check()
 
@@ -165,10 +202,10 @@ def test_all_good_is_step4_with_probability() -> None:
 # ---------------------------------------------------------------- 启动（幂等）
 
 
-def test_ensure_starts_engine_then_host_and_reports_step4() -> None:
+def test_ensure_starts_engine_then_host_and_reports_step4(tmp_path) -> None:
     engine = FakeEngine(engine_module.EngineCheck(ok=False, step=1), ensure=_engine_ok(41001))
     host = FakeHost()
-    runtime = health_module.JevRuntime(engine=engine, host=host)
+    runtime = health_module.JevRuntime(model_dir=_pack(tmp_path), engine=engine, host=host)
 
     verdict = runtime.ensure()
 
@@ -177,10 +214,10 @@ def test_ensure_starts_engine_then_host_and_reports_step4() -> None:
     assert verdict.ok is True and verdict.step == 4
 
 
-def test_ensure_is_idempotent_for_same_engine_port() -> None:
+def test_ensure_is_idempotent_for_same_engine_port(tmp_path) -> None:
     engine = FakeEngine(_engine_ok(41002), ensure=_engine_ok(41002))
     host = FakeHost()
-    runtime = health_module.JevRuntime(engine=engine, host=host)
+    runtime = health_module.JevRuntime(model_dir=_pack(tmp_path), engine=engine, host=host)
 
     first = runtime.ensure()
     second = runtime.ensure()
@@ -190,13 +227,13 @@ def test_ensure_is_idempotent_for_same_engine_port() -> None:
     assert host.starts == [41002, 41002], "端口没变就不要再起一个打分层（ScoreHost 自己会跳过）"
 
 
-def test_ensure_when_engine_fails_does_not_start_host() -> None:
+def test_ensure_when_engine_fails_does_not_start_host(tmp_path) -> None:
     engine = FakeEngine(
         engine_module.EngineCheck(ok=False, step=1),
         ensure=engine_module.EngineCheck(ok=False, step=1, detail="模型文件缺失：…/mmproj.gguf"),
     )
     host = FakeHost()
-    runtime = health_module.JevRuntime(engine=engine, host=host)
+    runtime = health_module.JevRuntime(model_dir=_pack(tmp_path), engine=engine, host=host)
 
     verdict = runtime.ensure()
 
@@ -205,7 +242,7 @@ def test_ensure_when_engine_fails_does_not_start_host() -> None:
     assert "mmproj" in verdict.detail
 
 
-def test_stop_stops_host_before_engine() -> None:
+def test_stop_stops_host_before_engine(tmp_path) -> None:
     order: list[str] = []
 
     class Ordered(FakeHost):
@@ -218,7 +255,7 @@ def test_stop_stops_host_before_engine() -> None:
             order.append("engine")
             super().stop()
 
-    runtime = health_module.JevRuntime(engine=OrderedEngine(_engine_ok()), host=Ordered())
+    runtime = health_module.JevRuntime(model_dir=_pack(tmp_path), engine=OrderedEngine(_engine_ok()), host=Ordered())
     runtime.stop()
 
     assert order == ["host", "engine"], "先停打分层（它连着引擎），再停引擎"
@@ -324,7 +361,7 @@ def test_check_urls_score_error_is_step3(stub_server: HTTPServer, tmp_path) -> N
     assert "500" in verdict.detail
 
 
-def test_check_urls_unreachable_engine_is_step1() -> None:
+def test_check_urls_unreachable_engine_is_step1(tmp_path) -> None:
     verdict = health_module.check_urls("http://127.0.0.1:9", "http://127.0.0.1:9")
 
     assert verdict.ok is False

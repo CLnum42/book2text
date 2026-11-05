@@ -98,7 +98,18 @@ class JevRuntime:
         return self._host
 
     def check(self) -> JevVerdict:
-        """只看不启动：我们已经起的进程现在能不能打分。"""
+        """只看不启动：我们已经起的进程现在能不能打分。
+
+        **先看模型包在不在**：包内模型缺失时，引擎根本起不来；这时候只说"引擎没起"，
+        用户点一下才知道缺哪个文件——那正是"点了没反应"那一族。归第 1 步（引擎进程）。
+        """
+        try:
+            pack = engine_module.load_model_pack(self._model_dir)
+        except engine_module.JevEngineError as exc:
+            return JevVerdict(ok=False, step=1, detail=str(exc))
+        problems = engine_module.verify_model_files(pack)
+        if problems:
+            return JevVerdict(ok=False, step=1, detail="；".join(problems))
         check = self._engine.check()
         if not check.ok:
             return JevVerdict(

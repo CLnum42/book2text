@@ -126,9 +126,32 @@ class _FakeRuntime:
         self.stop_calls += 1
 
 
-def test_ready_reports_which_step_fails(client: TestClient, auth_headers: dict[str, str], sample_pdf: Path) -> None:
+def _fake_model_pack(tmp_path: Path) -> Path:
+    """小号模型包：让这条集成测试不依赖本机私域里那 2.68 GB。"""
+    import hashlib
+    import json
+
+    pack = tmp_path / "pack"
+    pack.mkdir(parents=True, exist_ok=True)
+    files = []
+    for name, role in (("model.gguf", "model"), ("mmproj.gguf", "mmproj")):
+        payload = f"fake-{name}".encode()
+        (pack / name).write_bytes(payload)
+        files.append(
+            {"name": name, "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest(), "role": role}
+        )
+    (pack / "manifest.json").write_text(json.dumps({"kind": "jev-model-pack", "files": files}), encoding="utf-8")
+    return pack
+
+
+def test_ready_reports_which_step_fails(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path, tmp_path: Path
+) -> None:
     """引擎没起时 `/ready` 必须说"第 1 步"，而不是一句含糊的"环境不齐"。"""
+    from book2text.core.project.jev_health import JevRuntime
+
     project_id = create_project(client, auth_headers, sample_pdf)
+    client.app.state.jev_runtime = JevRuntime(model_dir=_fake_model_pack(tmp_path))
 
     data = client.get(f"/api/projects/{project_id}/jev-priority/ready", headers=auth_headers).json()
 

@@ -19,19 +19,32 @@ onedir 是稳定的一条路。
 Windows 上会出现 SmartScreen 提示（更多信息 → 仍要运行）。见两份用户手册。
 """
 
+import os
 from pathlib import Path
 
 REPO_ROOT = Path(SPECPATH).resolve().parent
 STATIC_DIR = REPO_ROOT / "backend" / "book2text" / "static"
+JEV_ENGINE_DIR = REPO_ROOT / "backend" / "book2text" / "vendor" / "jev_score"
+#: Jev 打分层要读的后端配置：纯数据文件，PyInstaller 不会自己带，必须显式登记。
+JEV_BACKEND_CONFIG = JEV_ENGINE_DIR / "backends" / "llamacpp.yaml"
 
 block_cipher = None
 
 # 静态界面随包带上：说明书 6.1 的界面由后端托管，没有它应用打不开
-datas = [(str(STATIC_DIR), "book2text/static")]
+datas = [
+    (str(STATIC_DIR), "book2text/static"),
+    # 打分层按 `__file__` 找这份 yaml（`jev_score_host.VENDOR_CONFIG`），位置要一一对上
+    (str(JEV_BACKEND_CONFIG), "book2text/vendor/jev_score/backends"),
+]
 binaries = []
 
 hiddenimports = [
     "book2text.worker",          # 子进程入口（--b2t-worker 时导入）
+    # Jev 打分层：jev_score_host 里是**函数内 import**（懒加载），显式登记更稳
+    "book2text.vendor.jev_score.server",
+    "book2text.vendor.jev_score.scorer",
+    "book2text.vendor.jev_score.selfcheck",
+    "book2text.vendor.jev_score.backends.llamacpp_backend",
     "uvicorn.logging",
     "uvicorn.loops.auto",
     "uvicorn.protocols.http.auto",

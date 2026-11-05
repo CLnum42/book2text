@@ -107,16 +107,19 @@ class ModelPack:
 def default_model_dir() -> Path:
     """模型包目录：环境变量 > 打包内置 > 应用私域。
 
+    **打包后只认包内那份**（方案 A：全内嵌）。不往应用私域回退是有意的：
+    包里没有模型时就该照实说"模型文件缺失"，而不是在开发机的私域目录里悄悄找到一份、
+    让"装到别人机器上才炸"的坑藏到下一个人那里。
+
     **代码里不许出现 /tmp 之类的临时目录**：2026-11-05 之前唯一一份模型放在 /tmp，
-    重启就没了；现在默认是私域目录，打包后换成随包内置的那份。
+    重启就没了。
     """
     override = os.environ.get("B2T_JEV_MODEL_DIR")
     if override:
         return Path(override)
-    if getattr(sys, "frozen", False):  # pragma: no cover - 打包后才有
-        bundled = Path(getattr(sys, "_MEIPASS", paths_module.PACKAGE_DIR)) / "jev"
-        if (bundled / MANIFEST_NAME).is_file():
-            return bundled
+    resources = paths_module.app_resources_dir()
+    if resources is not None:  # pragma: no cover - 打包后才有
+        return resources / "jev"
     return paths_module.app_data_dir() / "jev"
 
 
@@ -125,12 +128,9 @@ def default_engine_binary() -> str:
     override = os.environ.get("B2T_JEV_ENGINE_BIN")
     if override:
         return override
-    if getattr(sys, "frozen", False):  # pragma: no cover - 打包后才有
-        bundled = (
-            Path(getattr(sys, "_MEIPASS", paths_module.PACKAGE_DIR)) / "jev-engine" / "llama-server"
-        )
-        if bundled.is_file():
-            return str(bundled)
+    resources = paths_module.app_resources_dir()
+    if resources is not None:  # pragma: no cover - 打包后才有
+        return str(resources / "jev-engine" / "llama-server")
     return shutil.which("llama-server") or "llama-server"
 
 

@@ -5,6 +5,47 @@
 模板字段：任务目标 / 当前状态 / 实施计划 / 实现与验证 / 用户操作说明 / 下一步建议。
 未在真实环境运行过的测试一律注明，不得把未运行的测试写成通过。
 
+## 2026-11-05 下午（第八轮续六）— Jev 引擎自管（第 5 笔：打包）
+
+**做了什么**
+
+```
+scripts/bundle_jev_engine.py   brew 的 llama.cpp → 可搬走的 jev-engine/（10 个 Mach-O，24.4 MB）：
+                               按 otool 递归收依赖 → 复制成安装名 → 全部改成 @loader_path →
+                               逐个 ad-hoc 重签 + codesign --verify；最后跑一次 --version 自检
+packaging/book2text.spec       把打分层要读的 llamacpp.yaml 当数据带上；登记 vendor 里那几个隐藏导入
+scripts/build_macos.sh         默认连模型一起打；`--no-jev-models` 出轻包；
+                               构建后把引擎/模型复制进 Contents/Resources，再整包 ad-hoc 重签 + --verify
+paths.py / jev_engine.py       打包后资源根 = `Contents/Resources`（由 sys.executable 推出来，不猜 _MEIPASS）；
+                               **冻结后只认包内模型**，不往应用私域回退——包里没有就照实说缺失
+jev_health.py                  /ready 在引擎没起时也先验模型包：缺文件就停在第 1 步并**点名**
+```
+
+**六条验收（真机读数）**
+
+| 判据 | 读数 |
+|---|---|
+| 1 两个产物 | 全量 `2.8 GiB`（models 2.5 Gi + engine 23 Mi）/ 构建 **33 s**；轻包 `317 MiB` / **18 s** |
+| 2 从 .app 里一键启动 | 全量：`/engine/start` → step 4 · `prob_1=0.00306` · **6.6 s**；引擎命令行里二进制与 `-m` 都在 `.app/Contents/Resources` 下 |
+| 3 签名 | 两个产物 `codesign --verify --deep --strict` 均 **valid**；`spctl -a -vv` 均 **rejected**（ad-hoc，预期，见下） |
+| 4 模型缺失 | 挪走包内 `jev/` 后 `/ready` → **step 1**，detail 点名 `…/Resources/jev/manifest.json`；点「Jev 打分」同样停在第 1 步，不会假装 |
+| 5 卸载清理 | 两个 app 移出 dist 后，`~/Library/Application Support/Book2Text/jev` 仍在且 mmproj 的 sha256 未变；产物里**没有**硬编码私域路径 |
+| 6 禁用路径 | 全量/轻包全树 grep：`/tmp/ocrev` **0**、源码树绝对路径 **0**（PyInstaller 6 不带源码路径） |
+
+**产物（不入库，放在仓库外）**
+
+```
+/Users/chenlin/DeepSeek Bot/builds/Book2Text-jev-full.app   2.8 GiB
+  整包指纹 a086ac64c90c1c1546305cd91b79b9d02561235b17f8438380e9b7e228e3395d
+/Users/chenlin/DeepSeek Bot/builds/Book2Text-jev-lite.app   317 MiB
+  整包指纹 6487c95104ea74a29928ccb8f2afd8468439d6813cb8b7653212163b032a9e8a
+（指纹口径：对 Contents 下每个文件算 sha256，按路径排序后再总哈希一次）
+```
+
+**一个诚实的负面结论**：`spctl` 两个产物都是 rejected——ad-hoc 签名过不了 Gatekeeper 的
+"开发者已认证"检查，用户首次打开要右键 →「打开」。这不是打包失败，是没买开发者证书的必然结果；
+要消掉它得 Developer ID + 公证，属于"要不要分发"的决策，不在这一笔里。
+
 ## 2026-11-05 下午（第八轮续五）— 懒启动挂到主按钮：一个按钮就够
 
 **为什么改**：上一版按"引擎没起时主按钮 disabled"实现，于是不得不再给一个「启动引擎」——

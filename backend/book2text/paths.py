@@ -37,3 +37,17 @@ def app_data_dir() -> Path:
     else:  # pragma: no cover - 同上
         base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
     return base / "Book2Text"
+
+
+def app_resources_dir() -> Path | None:
+    """打包后的资源根目录；源码运行返回 None。
+
+    macOS `.app`：`Contents/Resources`（由 `scripts/build_macos.sh` 把引擎与模型树复制进去）。
+    其他平台：可执行文件所在目录（Windows 上没有 Jev，这条只是不炸）。
+    """
+    if not getattr(sys, "frozen", False):  # pragma: no cover - 打包后才有
+        return None
+    exe = Path(sys.executable).resolve()
+    contents = exe.parent.parent
+    resources = contents / "Resources"
+    return resources if resources.is_dir() else exe.parent
