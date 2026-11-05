@@ -43,9 +43,16 @@ class FakeEngine:
 
 
 class FakeHost:
-    def __init__(self, *, probe: ScoreCheck | None = None, start: ScoreCheck | None = None):
+    def __init__(
+        self,
+        *,
+        probe: ScoreCheck | None = None,
+        start: ScoreCheck | None = None,
+        failure: str = "",
+    ):
         self._probe = probe or ScoreCheck(ok=True, port=5001, prob_1=0.25)
         self._start = start or ScoreCheck(ok=True, port=5001)
+        self._failure = failure
         self.running = False
         self.starts: list[int] = []
         self.stop_calls = 0
@@ -57,6 +64,9 @@ class FakeHost:
 
     def probe(self):
         return self._probe
+
+    def failure(self) -> str:
+        return self._failure
 
     def stop(self):
         self.stop_calls += 1
@@ -92,6 +102,37 @@ def test_engine_answers_but_score_host_missing_is_step3() -> None:
 
     assert verdict.step == 3, "引擎通了但打分层没起：这是第 3 步，不是第 2 步"
     assert "打分层没在跑" in verdict.detail
+
+
+def test_score_host_failure_detail_is_carried_verbatim() -> None:
+    """打分层起不来时，detail 必须是引擎原话，不许换成"没在跑"那种误导。"""
+    engine = FakeEngine(_engine_ok())
+    engine_message = (
+        "打分层自检没过：RuntimeError: refusing to start: "
+        "the engine does not assemble the prompt this checkpoint was trained on.\n"
+        'the engine could not score the startup probe: backend HTTP 501: {"error": '
+        '"start it with `--mmproj`"}'
+    )
+    host = FakeHost(failure=engine_message)
+    runtime = health_module.JevRuntime(engine=engine, host=host)
+
+    verdict = runtime.check()
+
+    assert verdict.step == 3
+    assert verdict.detail == engine_message, "原样带出，不概括、不截断"
+    assert "501" in verdict.detail and "--mmproj" in verdict.detail
+
+
+def test_score_host_cleanly_stopped_keeps_the_plain_message() -> None:
+    """打分层只是被正常停掉（没有 failure）⇒ 仍然是那句常规文案，别把停机写成故障。"""
+    engine = FakeEngine(_engine_ok())
+    host = FakeHost(failure="")
+    runtime = health_module.JevRuntime(engine=engine, host=host)
+
+    verdict = runtime.check()
+
+    assert verdict.step == 3
+    assert verdict.detail == "打分层没在跑（点「Jev 打分」会自动起）"
 
 
 def test_probe_failure_is_step3_with_engine_message() -> None:

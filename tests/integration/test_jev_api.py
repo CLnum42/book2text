@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -178,3 +179,56 @@ def test_ready_after_engine_start_reports_probability(
 
     assert started["step"] == 4 and then["step"] == 4
     assert started["prob_1"] == then["prob_1"] == 0.25
+
+
+def test_ready_carries_score_host_failure_at_step3(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf: Path
+) -> None:
+    """引擎 ok、打分层起不来 ⇒ `/ready` 必须停在 step 3，且 detail 带着引擎原话。
+
+    这条防的是"信息被换成一句概括"：真实故障里唯一能照做的线索就是那句 `--mmproj`。
+    """
+    from fastapi import FastAPI
+
+    from book2text.core.project.jev_engine import EngineCheck
+    from book2text.core.project.jev_health import JevRuntime
+    from book2text.core.project.jev_score_host import ScoreHost
+
+    engine_message = (
+        "refusing to start: the engine does not assemble the prompt this checkpoint was trained on.\n"
+        'the engine could not score the startup probe: backend HTTP 501: {"error": '
+        '"start it with `--mmproj`"}'
+    )
+
+    def failing_app(_port: int) -> FastAPI:
+        @asynccontextmanager
+        async def lifespan(_app: FastAPI):
+            raise RuntimeError(engine_message)
+            yield  # pragma: no cover
+
+        return FastAPI(lifespan=lifespan)
+
+    class _Engine:
+        def check(self):
+            return EngineCheck(ok=True, step=2, pid=4242, port=41000)
+
+        def ensure(self):
+            return self.check()
+
+        def stop(self) -> None:
+            pass
+
+    project_id = create_project(client, auth_headers, sample_pdf)
+    runtime = JevRuntime(engine=_Engine(), host=ScoreHost(app_factory=failing_app, startup_timeout=20))
+    try:
+        ensured = runtime.ensure()          # 起打分层 → 失败，failure 记下引擎原话
+        client.app.state.jev_runtime = runtime
+        data = client.get(f"/api/projects/{project_id}/jev-priority/ready", headers=auth_headers).json()
+    finally:
+        runtime.stop()
+
+    assert ensured.step == 3 and "501" in ensured.detail
+    assert data["ok"] is False
+    assert data["step"] == 3, "引擎 ok、打分层起不来 ⇒ 第 3 步（不是第 2 步）"
+    assert "--mmproj" in data["detail"], "可照做的线索必须原样带到 /ready"
+    assert "没在跑" not in data["detail"], "不许被概括成一句误导"

@@ -102,10 +102,13 @@ class JevRuntime:
                 engine_port=check.port or None,
             )
         if not self._host.running:
+            # 打分层起不来时，`failure()` 里是**引擎的原话**（例如 HTTP 501 … start it with
+            # `--mmproj`）。丢掉它换成一句"没在跑"，用户点一辈子也不会好——那正是"点了没反应"。
+            # 只有"干净停下"（failure 为空）才用那句常规文案。
             return JevVerdict(
                 ok=False,
                 step=3,
-                detail="打分层没在跑（点「Jev 打分」会自动起）",
+                detail=self._host.failure() or "打分层没在跑（点「Jev 打分」会自动起）",
                 pid=check.pid,
                 engine_port=check.port,
             )
@@ -172,6 +175,10 @@ def check_urls(
     """查**外部**已经起好的引擎与打分服务（验收脚本 / 排障）。
 
     第 1 步只能退化成"端口有人监听"——外部引擎不是我们 spawn 的，没有 pid 可认。
+
+    **注意**：外部路径拿不到引擎侧的应答原文。打分层是别人起的，我们看不到它的启动日志，
+    所以第 3 步失败时只能给"打分接口回 5xx / 连不上"，拿不到那句 `start it with --mmproj`。
+    要看引擎原话就走应用内那条（`JevRuntime.ensure()` / `.check()`，detail 来自打分层自检）。
     """
     engine = engine_url.rstrip("/")
     score = score_url.rstrip("/")

@@ -5,6 +5,59 @@
 模板字段：任务目标 / 当前状态 / 实施计划 / 实现与验证 / 用户操作说明 / 下一步建议。
 未在真实环境运行过的测试一律注明，不得把未运行的测试写成通过。
 
+## 2026-11-05 下午（第八轮续四）— 打分层失败的"原因"不许被概括掉（判据修复）
+
+**现象（DevLead 复验第 3 笔时抓到）**：引擎不挂 mmproj 时，`POST /engine/start` 的 detail 是对的
+（带着引擎原话 `HTTP 501 … start it with --mmproj`），但紧接着 `GET /ready` 返回的是
+「打分层没在跑（点「Jev 打分」会自动起）」——**唯一可照做的线索被换成了一句误导**：
+用户照着点，还是 501。
+
+**根因（一行）**：`jev_health.check()` 里 `if not self._host.running:` 那个分支直接写了固定文案，
+没有用 `ScoreHost.failure()`（打分层 `start()` 失败时会把自检原文存在那里）。
+
+**改法**：该分支改成 `self._host.failure() or "打分层没在跑（点「Jev 打分」会自动起）"`——
+有 failure 就**原样带出**（不概括、不截断），只有"干净停下"（failure 为空）才用那句常规文案。
+`check_urls()` 保持现状（外部服务没有我们的 host，拿不到引擎原话），docstring 里写明这条边界。
+
+**真机读数（H6 副本 + 不挂 mmproj 的引擎）**
+
+| 接口 | 修复前 | 修复后 |
+|---|---|---|
+| `POST /engine/start` | step 3，detail 带 `--mmproj` | 不变 |
+| `GET /ready` | step 3，detail「打分层没在跑…」 | step 3，detail 带 `--mmproj`，无「没在跑」字样 |
+
+**判据订正（DevLead 实测）**：`pgrep -f llama-server` 会命中自己那条 `bash -c … llama-server …`
+包装行（假阳性）。进程级判定一律用 **`pgrep -x llama-server`**（按进程名精确匹配）。
+本文档前面几轮里的 `pgrep -f` 已按此更正。
+
+单测两条（failure 原样带出 / 干净停下仍是常规文案）+ 集成一条（`/ready` 在"引擎 ok、打分层起不来"
+时 step=3 且 detail 含 `--mmproj`）。
+
+## 2026-11-05 下午（第八轮续三）— Jev 引擎自管（第 4 笔：界面三态）
+
+**做了什么**
+
+```
+入口       进审校视图 / 打开项目时调 GET …/jev-priority/ready（只看不启动），把结论画成一行常驻状态
+状态行     #jev-status：blocked 时写「第 N 步（标签）没过：原因」，不靠 tooltip
+主按钮     #jev-run 只在 ready 时可点；starting 时文案「正在启动引擎…」且 disabled
+启动入口   引擎没起/起不来时，按钮旁出现「启动引擎」（#jev-engine-start）——主按钮置灰仍要有个出口
+防重       连点只发一次请求（jevStartPromise）+ 后端 POST /engine/start 幂等，两层各防一次
+字体归位   字体缺失归第 3 步（真能打分），不再让 /ready 出现「引擎 ok / 字体缺」的组合态
+```
+
+**真机 DOM 读数（H6 副本，真引擎，先杀干净再进视图）**
+
+| 状态 | `#jev-run` | `#jev-status` | 其它 |
+|---|---|---|---|
+| 1 引擎没起 | textContent=`Jev 打分…` · **disabled=true** | 「第 1 步（引擎进程）没过：引擎没起（还没启动过）」· hidden=false · data-phase=blocked · data-step=1 | `#jev-engine-start` 可见、可点 |
+| 2 启动中（连点 3 次后 60 ms） | textContent=**`正在启动引擎…`** · disabled=true | 「正在启动引擎…（首次约 2 秒，之后常驻）」· phase=starting | 启动入口 hidden=true |
+| 3 就绪 | textContent=`Jev 打分…` · **disabled=false** | 空（scored=0）· hidden=true · phase=ready · data-step=4 | — |
+| 防重 | 3 次 click 只产生 **1 个** `POST /engine/start`（200），`pgrep -x llama-server` = 1 | | |
+
+第 2 条之所以点的是 `#jev-engine-start`：状态 1 里主按钮按判据必须是 disabled，
+点不到；这是"置灰仍要有出口"的直接后果，不是绕过判据。
+
 ## 2026-11-05 下午（第八轮续二）— Jev 引擎自管（第 3 笔：四步机检 API）
 
 **做了什么**
@@ -29,7 +82,7 @@ jev_priority.probe()                收敛成一行委托；删掉它自己那�
 | 再 POST 一次（幂等） | 同 pid、同端口、同分数；`pgrep llama-server` 仍是 **1** 个进程 |
 | 起之后 `GET /ready` | step 4，prob_1 与上面一致 |
 | 引擎不挂 mmproj（/v1/models 仍 200） | **step 3**，detail 是引擎原话且可照做：`HTTP 501 … start it with --mmproj` |
-| App 退出后 | `pgrep -f llama-server` = **0** |
+| App 退出后 | `pgrep -x llama-server` = **0** |
 | 第二处判据 | `grep -rn "v1/models\|/healthz\|MODEL_FILES"` 在 jev_engine / jev_health / jev_score_host 之外 = **0** |
 
 **单测**：`tests/unit/test_jev_health.py` 11 条（第 1/2/3/4 步各自的判据、ensure 幂等、引擎失败不起打分层、
@@ -60,7 +113,7 @@ jev_score_host.py    主进程里起 uvicorn 线程（跟着引擎端口走）�
 | 第 3 步探针（fixture 真打分） | ok / step 3 / `prob_1=0.00306` / 0.27 s |
 | 引擎不挂 mmproj（/v1/models 仍 200） | **停在 step 3**，detail 是引擎原话：`HTTP 501 … start it with --mmproj` |
 | mmproj 被改名 | 停在 **step 1**：`模型文件缺失：…/mmproj-model-f16.gguf`（manifest 先拦下，引擎根本不 spawn） |
-| 收尾 | `pgrep -f llama-server` = 0 |
+| 收尾 | `pgrep -x llama-server` = 0 |
 
 **单测**：`tests/unit/test_jev_score_host.py` 10 条（起停 / 同端口不重起 / 起不来时原因传到调用方 /
 prob_1 越界·缺 results·不是数·HTTP 500 四种失败 / fixture 真是 64×64 PNG / 默认工厂指向包内配置）。
@@ -89,7 +142,7 @@ jev_engine   spawn llama-server（挑空闲端口）→ 等 /v1/models 且 model
 | manifest 深度校验（2.68 GB 算 sha256） | 0 个问题 / 1.0 s |
 | 热启动 spawn → /v1/models 就绪 | 0.68 s（lsof 监听者 = 我们 spawn 的 pid） |
 | `kill -9` 后自愈 | 0.67 s，新 pid，restarts=1 |
-| 收尸 | 0.09 s，`pgrep -f llama-server` = 0 |
+| 收尸 | 0.09 s，`pgrep -x llama-server` = 0 |
 | 孤儿清理（上一份进程还活着、pid 文件还在） | 旧 pid 被杀，1.02 s 起好新的 |
 | 近似冷盘（clonefile 新 inode、无页面缓存） | 1.3 s（真正 `purge` 需 sudo，本机无免密 sudo，只能做到这一步） |
 
