@@ -78,7 +78,7 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .split{flex:1;display:flex;min-height:0}
 
 /* 差异目录 */
-.dir{width:240px;flex:none;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.dir{width:240px;flex:none;min-width:0;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .dirhd{display:flex;align-items:center;justify-content:space-between;padding:11px 12px 3px;font-weight:600;font-size:12.5px}
 .badge{background:var(--warn-soft);color:var(--warn-text);border-radius:10px;padding:1px 7px;font-size:11px;font-weight:600}
 .dirsub{padding:0 12px 9px;font-size:10.5px;color:var(--faint);border-bottom:1px solid var(--line-soft);white-space:nowrap}
@@ -111,15 +111,15 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .qfilter{display:flex;gap:2px;margin:7px 12px 6px;background:var(--surface-3);border-radius:6px;padding:2px}
 .qfilter span{flex:1;text-align:center;font-size:11px;padding:2px 0;border-radius:4px;color:var(--muted);cursor:pointer}
 .qfilter .on{background:#fff;box-shadow:var(--shadow-1);color:var(--text);font-weight:600}
-.qscroll{flex:1;min-height:0;overflow:hidden;position:relative;border-top:1px solid var(--line-soft)}
+.qscroll{flex:1;min-height:0;min-width:0;overflow:hidden;position:relative;border-top:1px solid var(--line-soft)}
 .qchap{height:26px;display:flex;align-items:center;padding:0 12px;font-size:12px;font-weight:600;
   background:#fff;position:sticky;top:0;z-index:1;border-bottom:1px solid var(--line-soft)}
 .qchap .qnum{margin-left:auto;font-size:10.5px;color:var(--faint);font-weight:400}
 .qchap.off{color:var(--muted);font-weight:400;position:static}
-.qrow{height:24px;display:flex;align-items:center;gap:8px;padding:0 12px;font-size:11.5px;color:var(--text-2);
+.qrow{height:24px;display:flex;align-items:center;gap:8px;padding:0 12px;font-size:11.5px;color:var(--text-2);min-width:0;
   border-left:3px solid transparent;cursor:pointer}
 .qrow .qid{font:10px/1 ui-monospace,Menlo,monospace;color:var(--faint);width:47px;flex:none;letter-spacing:-.2px}
-.qtext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px/1.5 "Songti SC","STSong","SimSun",serif;color:var(--muted)}
+.qtext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px/1.5 "Songti SC","STSong","SimSun",serif;color:var(--muted)}
 .qtext u{text-decoration:none;color:var(--text);border-bottom:2px solid var(--diff-chars);padding-bottom:1px}
 .qtext u.qpunct{border-bottom-style:dashed;border-color:var(--diff-punct)}
 .qtext u.qdel{border-bottom:3px double;border-color:var(--diff-chars)}
@@ -135,6 +135,9 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .qfoot{padding:0 12px 5px;font-size:10px;color:var(--faint);display:flex;gap:6px;align-items:center;white-space:nowrap}
 .qfoot .spacer{flex:1}
 .qfoot a{color:var(--accent-text)}
+.qout{padding:0 12px 5px;font-size:10px;color:var(--faint);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.qout .spacer{flex:1}
+.qout a{color:var(--accent-text)}
 .legend{padding:4px 12px 2px;border-top:1px solid var(--line-soft);font-size:10px;color:var(--muted);line-height:1.9}
 .legend .lgrow{display:flex;align-items:center;gap:5px;height:18px;white-space:nowrap}
 .legend .sw{margin-left:4px}
@@ -344,6 +347,7 @@ body.shot .frame.on{display:flex}
 <div class="qchap off"><span>第三回</span><span class="qnum">42 条</span></div></div>
   <div class="qpunct"><span>标点（全书） 66 行</span><span>32 组</span><span class="spacer"></span><a>批量判 →</a></div>
   <div class="qfoot"><span>Jev 未打分 · 296 行可打分</span><span class="spacer"></span><a>开始打分…</a></div>
+  <div class="qout"><span>版心外 5 条</span><span class="dim">不进审校与完成度</span><span class="spacer"></span><a>查看 →</a></div>
   <div class="legend">
     <div class="lgrow"><i class="sw"></i>替换<i class="sw punct"></i>标点</div><div class="lgrow"><i class="sw ins"></i>另一路多字<i class="sw del"></i>这一路多字</div>
   </div>
@@ -491,6 +495,7 @@ body.shot .frame.on{display:flex}
 <div class="qchap off"><span>第三回</span><span class="qnum">42 条</span></div></div>
   <div class="qpunct"><span>标点 66 行</span><span>32 组</span><span class="spacer"></span><a>批量 →</a></div>
   <div class="qfoot"><span>Jev 未打分</span><span class="spacer"></span><a>开始打分…</a></div>
+  <div class="qout"><span>版心外 5 条</span><span class="spacer"></span><a>查看 →</a></div>
   <div class="legend">
     <div class="lgrow"><i class="sw"></i>替换<i class="sw punct"></i>标点</div><div class="lgrow"><i class="sw ins"></i>另一路多字</div><div class="lgrow"><i class="sw del"></i>这一路多字</div>
   </div>
