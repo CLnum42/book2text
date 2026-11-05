@@ -5,6 +5,48 @@
 模板字段：任务目标 / 当前状态 / 实施计划 / 实现与验证 / 用户操作说明 / 下一步建议。
 未在真实环境运行过的测试一律注明，不得把未运行的测试写成通过。
 
+## 2026-11-05 上午（第三轮）— 「识别版心」确认窗改双键（§2 硬要求）
+
+**为什么**：`docs/ux/confirm-dialog-spec.md` §5 写死「单键不得承载不可逆动作」。上一版
+custom>0 时是「勾选框 + 单键『重新生成全书版心』」——勾选后就是单键执行不可逆动作，
+正是规格禁止的形态。勾选框和危险键都在表达"要不要覆盖"，两个控件说同一件事。
+
+**形态**（按 Chief 拍板）：
+
+```
+custom = 0  ⇒ 单键（§5 允许的"安全确认"），行为与文案一字未改
+custom > 0  ⇒ 双键，去掉勾选框
+  安全键：跳过这 M 页，生成其余 N 页     （missing 用 plan.missing；pages/all 用 total-M）
+  危险键：仍要覆盖 M 页                  （不默认聚焦 / 不响应 Enter / 点击立即 disabled，
+                                         三条都在 confirmAction 里，调用处只传 dangerText）
+  返回值：safe → includeCustom:false；danger → includeCustom:true；null → 什么都不发
+```
+
+连带：`confirmAction` 里 2026-11-05 加的 checkbox 槽位与 `#confirm-dialog-check*` 的 DOM
+一起删掉，确认框回到规格的固定五槽位（没有调用方需要它了）。
+
+**修了双键暴露出来的一处后端矛盾**：`only_missing=True` 会把 custom 页当"不是 auto"跳过，
+于是 scope=missing 时点「仍要覆盖 M 页」什么都不会发生。`fit_all_pages` 现在让
+`include_custom` 覆盖那条守卫（custom 页照旧只改框、不改 mode）。
+
+**判据（真机，项目副本 265 页 / 10 页 custom / 220 页待生成）：**
+
+1. custom>0 时确认窗里**没有** `#confirm-dialog-check`（DOM 里整个元素已删），两个键都可见 ✓
+2. 打开时 `document.activeElement.id === "confirm-dialog-safe"` ✓
+3. 焦点在危险键上按 Enter：对话框仍在、`fit-all` 请求 **+0**；Esc：关闭、请求 **+0** ✓
+4. 安全键：11 条 `fit-all` 全带 `include_custom:false`；危险键：12 条全带 `include_custom:true`。
+   CSV 对 10 页 custom（先把框改成哨兵 `[0,0,1,1]`）：安全键后**0 行变化**；危险键后
+   **10 行全部变**（mode 仍是 custom）✓
+
+数字核对：`10(custom) + 220(missing) = 230(body)`；`scope=all` 的安全键写「生成其余 220 页」
+（230-10），危险键写「仍要覆盖 10 页」。
+
+**顺带**：`fit_all_pages` 的 docstring 写明 `limit` **不是游标**——只有 `only_missing=True`
+能靠 `remaining` 驱动循环；`only_missing=False` 时每次重做同一批前 N 页，跨批必须自己传
+`page_nos`。行为未改（产品路径就是按 `page_nos` 分批的）。
+
+闸：node 352/0 fail；pytest 1090 passed（含新增的"include_custom 覆盖 only_missing"用例）。
+
 ## 2026-11-05 上午（第二轮）— 标题被挤出框 / 版心边框太粗
 
 ### ① 标题被挤到版心外（真 bug）

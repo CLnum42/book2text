@@ -2057,14 +2057,10 @@ function openTaskDrawer() {
 let confirmPending = null;
 
 /**
- * 通用确认框。`checkbox` 是 2026-11-05 加的可选槽位（不传就整行 hidden）：
- * 形如 `{label, checked}`，关闭时把勾选状态写回传入对象（`checkbox.checked`），
- * 调用方 `await` 之后读它。返回值和以前一样（"safe" / "danger" / null），
- * 其余确认框的调用一个都不用改。
+ * 通用确认框（规格见 `docs/ux/confirm-dialog-spec.md`：固定槽位，单键不得承载不可逆动作）。
+ * 返回值：安全键 → "safe"；危险键 → "danger"；Esc / 点遮罩 → null。
  */
-function confirmAction({
-  title, lead, list = [], detail = "", safeText, dangerText = "", checkbox = null,
-}) {
+function confirmAction({ title, lead, list = [], detail = "", safeText, dangerText = "" }) {
   const mask = el("confirm-dialog-mask");
   if (!mask) return Promise.resolve(null);
   if (confirmPending) { confirmPending.close(null); }   // 单实例：连续触发不叠加
@@ -2088,16 +2084,6 @@ function confirmAction({
   toggle.textContent = "详情";
   toggle.onclick = () => { detailNode.hidden = !detailNode.hidden; };
 
-  const checkRow = el("confirm-dialog-check");
-  const checkInput = el("confirm-dialog-check-input");
-  const checkLabel = el("confirm-dialog-check-label");
-  const hasCheck = Boolean(checkbox && checkRow && checkInput && checkLabel);
-  if (hasCheck) {
-    checkLabel.textContent = checkbox.label || "";
-    checkInput.checked = Boolean(checkbox.checked);
-  }
-  checkRow.hidden = !hasCheck;
-
   const safe = el("confirm-dialog-safe");
   const danger = el("confirm-dialog-danger");
   safe.textContent = safeText;
@@ -2117,9 +2103,6 @@ function confirmAction({
       danger.onclick = null;
       mask.onclick = null;
       document.removeEventListener("keydown", onKey);
-      // 勾选状态在关闭时就写回调用方的对象：连 Esc 关闭也写（表示"这次没生效"，
-      // 调用方看到 null 结果自然不用它），下次打开由调用方重新给初始值。
-      if (hasCheck) checkbox.checked = Boolean(checkInput.checked);
       confirmPending = null;
       resolve(result);
     };

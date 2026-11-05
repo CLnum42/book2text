@@ -1427,8 +1427,12 @@ def fit_all_pages(
       （界面「全局识别」）。``inherit`` 是用户显式选择沿用默认框，
       这一类也不碰——自动补拟合不该改变它。非正文页（``include=False``）也不在
       自动补拟合的范围里：它们不参与版心判定，算进分母会让步骤条永远绿不了。
-    - ``limit``：这一轮最多处理多少页；``remaining`` 回传还有多少页没轮到，
-      界面据此分批调用并显示真实进度。
+    - ``limit``：这一轮最多处理多少页；``remaining`` 回传**这一轮里**还有多少页没轮到。
+      **``limit`` 不是游标**：它只截取目标列表的前 N 页，不记录"上次做到哪"。所以
+      只有 ``only_missing=True`` 时才能靠 ``remaining`` 驱动循环（补完的页会从"缺框"里
+      消失）；``only_missing=False`` 时每次调用都会重新处理同一批前 N 页、``remaining``
+      恒等于 ``total - limit`` —— 跨批调用**必须自己传 ``page_nos``**（界面就是这么做的），
+      否则会一遍遍重做同一批。
     - ``body_only=True``（2026-11-05，界面「重新识别」）：只处理正文页。重跑全书时
       非正文页（封面 / 目录 / 空白）不该跟着重算——它们的框不进任何判定。
     - ``page_nos``（2026-11-05，选中若干页后重跑）：只处理这些页；空 / None = 全书。
@@ -1445,21 +1449,22 @@ def fit_all_pages(
     for page in pages:
         if selected is not None and page.page_no not in selected:
             continue
-        if page.margin_box_mode == MODE_CUSTOM and not include_custom:
+        custom = page.margin_box_mode == MODE_CUSTOM
+        if custom and not include_custom:
             skipped_custom += 1
             continue
         if page.margin_box_mode == MODE_NONE:
             skipped_none += 1
             continue
-        if body_only and not page.include:
+        if (only_missing or body_only) and not page.include:
             skipped_not_body += 1
             continue
-        if only_missing:
+        # 勾了「包括手工调整的页」时，custom 页即使在 only_missing 模式下也要处理：
+        # 那一轮的意思就是"这些手工页也重生成"，不能被"只补缺框"的守卫吞掉
+        # （否则确认窗上的「仍要覆盖 M 页」点了什么都不会发生）。
+        if only_missing and not (custom and include_custom):
             if page.margin_box_mode != MODE_AUTO:
                 skipped_inherit += 1
-                continue
-            if not page.include:
-                skipped_not_body += 1
                 continue
             if page.margin_box is not None:
                 skipped_fitted += 1

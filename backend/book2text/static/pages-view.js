@@ -3266,31 +3266,46 @@ async function requestMarginFit() {
       (plan.noLines ? `，${plan.noLines} 页还没有正文行会被跳过` : "") +
       "。";
   } else {
-    // B 版：全部已拟合，重跑；custom 页数写进副行
-    lead = `将重新生成全书 ${plan.total - plan.custom} 页的版心。`;
+    // B 版：全部已拟合，重跑。有 custom 页时铅句写**范围总数**（覆盖时它们也在内），
+    // "跳过 / 覆盖"的拆分放在两个键上，不在这里预先减一次。
+    lead = `将重新生成全书 ${plan.total} 页的版心。`;
   }
-  if (plan.custom) list.push(`已手工调整的 ${plan.custom} 页会跳过，不会覆盖`);
-  const checkbox = plan.custom
-    ? { label: `包括手工调整的 ${plan.custom} 页（会覆盖这些页的框）`, checked: false }
-    : null;
-  const choice = await injected.confirmAction({
-    title: "识别版心",
-    lead,
-    list,
-    checkbox,
-    safeText:
+  if (plan.custom) {
+    list.push(`已手工调整的 ${plan.custom} 页：跳过保留原框，覆盖会记进历史`);
+  }
+  // custom > 0 ⇒ **双键**（`docs/ux/confirm-dialog-spec.md` §2：单键不得承载不可逆动作）。
+  // 危险键的"不默认聚焦 / 不响应 Enter / 点击后立即 disabled"在 confirmAction 里，
+  // 这里只传 dangerText，不在调用处重写一遍。
+  let safeText;
+  let dangerText = "";
+  if (plan.custom) {
+    // missing 时 plan.missing 已经排除了 custom（后端 only_missing 会 skipped_custom），
+    // 所以"其余"直接用 plan.missing，不再减一次 custom。
+    const remaining =
+      plan.scope === "missing" ? plan.missing : plan.total - plan.custom;
+    safeText = `跳过这 ${plan.custom} 页，生成其余 ${remaining} 页`;
+    dangerText = `仍要覆盖 ${plan.custom} 页`;
+  } else {
+    safeText =
       plan.scope === "missing"
         ? "生成全书版心"
         : plan.scope === "pages"
           ? `重新生成这 ${plan.selected.length} 页的版心`
-          : "重新生成全书版心",
+          : "重新生成全书版心";
+  }
+  const choice = await injected.confirmAction({
+    title: "识别版心",
+    lead,
+    list,
+    safeText,
+    dangerText,
   });
   if (choice === null) return;   // Esc / 点遮罩：什么都不做（不发起请求）
   await ensureMarginFitted({
     manual: true,
     scope: plan.scope,
     pageNos: plan.scope === "pages" ? plan.selected : null,
-    includeCustom: Boolean(checkbox && checkbox.checked),
+    includeCustom: choice === "danger",
   });
 }
 

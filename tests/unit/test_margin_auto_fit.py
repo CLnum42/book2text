@@ -376,3 +376,39 @@ def test_bbox_fallback_uses_page_relative_long_lines(monkeypatch) -> None:
     assert fitted.method == "bbox"
     assert fitted.box is not None
     assert fitted.box[0] > 0.10, f"书眉把包围盒左边界拉到 {fitted.box[0]}（应为正文 0.139 - padding）"
+
+
+def test_include_custom_overrides_only_missing(minimal_project: Path) -> None:
+    """确认窗的两个键：`only_missing` 模式下勾了 include_custom，custom 页也要重生成。
+
+    没有这条，「仍要覆盖 M 页」在 scope=missing 时点了什么都不会发生——后端会把
+    custom 页当"不是 auto"跳过。
+    """
+    with db_module.open_database(minimal_project, apply_migrations=False) as conn:
+        conn.execute("UPDATE page SET margin_box_mode = 'auto' WHERE page_no = 1")
+        conn.execute(
+            "UPDATE page SET margin_box_mode = 'custom', margin_box = ? WHERE page_no = 2",
+            (json.dumps([0.2, 0.2, 0.8, 0.8]),),
+        )
+        conn.commit()
+    _insert_layout_lines(minimal_project, 1)
+    _insert_layout_lines(minimal_project, 2)
+
+    result = margin_box.fit_all_pages(
+        minimal_project.name,
+        library=minimal_project.parent,
+        only_missing=True,
+        include_custom=True,
+    )
+
+    assert result["skipped_custom"] == 0, "勾了覆盖，custom 页不该再被跳过"
+    assert result["updated"] == 2
+    assert result["remaining"] == 0
+    with db_module.open_database(minimal_project, apply_migrations=False) as conn:
+        rows = {
+            row["page_no"]: (row["margin_box_mode"], row["margin_box"])
+            for row in conn.execute("SELECT page_no, margin_box_mode, margin_box FROM page")
+        }
+    # 只改框、不改 mode（用户下次看不能以为这页是自动的）
+    assert rows[2][0] == "custom"
+    assert rows[2][1] != json.dumps([0.2, 0.2, 0.8, 0.8])
