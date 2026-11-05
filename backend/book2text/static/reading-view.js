@@ -364,11 +364,14 @@ function jevStatusText() {
   if (jevPhase === "starting") return "正在启动引擎…（首次约 2 秒，之后常驻）";
   if (jevPhase === "ready") return jevScored > 0 ? `已打分 ${jevScored} 行` : "";
   if (jevPhase === "blocked") {
+    const text = String(jevDetail || "").replace(/\s+/g, " ").trim();
+    // 从没起过：告诉用户"点这个按钮就会起"（一键启动，不是让他去找另一个键）
+    const neverStarted = !jevStep || (jevStep === 1 && /还没启动过/.test(text));
+    if (neverStarted) return "引擎没起：点这个按钮会自动启动（首次约 2 秒）";
     const label = jevStepLabel || JEV_STEP_LABELS[jevStep] || "";
     const head = jevStep ? `第 ${jevStep} 步（${label}）没过：` : "";
-    const text = String(jevDetail || "").replace(/\s+/g, " ").trim();
     const short = text.length > 96 ? `${text.slice(0, 96)}…` : text;
-    return `${head}${short || "Jev 用不了"}`;
+    return `${head}${short || "Jev 用不了"}　点这个按钮重试`;
   }
   return "";
 }
@@ -393,12 +396,15 @@ function renderJevUi() {
   const run = el("jev-run");
   const starting = jevPhase === "starting";
   if (run) {
-    run.disabled = Boolean(jevPollTimer) || starting || jevPhase !== "ready";
+    // 只在"正在启动 / 正在打分"两种进行中禁用：**一个按钮就够**——
+    // 引擎没起时按下去就自动启动，不必先理解两个按钮的关系。
+    run.disabled = Boolean(jevPollTimer) || starting;
     run.textContent = jevPollTimer
       ? "Jev 打分中…"
       : starting
         ? "正在启动引擎…"
         : "Jev 打分…";
+    run.dataset.phase = jevPhase;
   }
   const status = el("jev-status");
   if (status) {
@@ -408,13 +414,6 @@ function renderJevUi() {
     status.dataset.phase = jevPhase;
     status.dataset.step = String(jevStep || 0);
     status.title = jevPhase === "blocked" ? String(jevDetail || "") : "";
-  }
-  // 引擎没起/起不来时给一个显式入口：主按钮置灰，原因常驻，旁边就是"启动引擎"
-  const start = el("jev-engine-start");
-  if (start) {
-    start.hidden = jevPhase !== "blocked";
-    start.disabled = starting;
-    start.textContent = "启动引擎";
   }
 }
 
@@ -562,9 +561,6 @@ async function clearJevScores() {
 
 function setupJevUi() {
   el("jev-run")?.addEventListener("click", startJevJob);
-  el("jev-engine-start")?.addEventListener("click", () => {
-    ensureJevEngine().catch(() => {});
-  });
   el("jev-clear")?.addEventListener("click", clearJevScores);
   const restore = () => {
     jevSorted = false;

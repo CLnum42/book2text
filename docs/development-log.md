@@ -5,6 +5,33 @@
 模板字段：任务目标 / 当前状态 / 实施计划 / 实现与验证 / 用户操作说明 / 下一步建议。
 未在真实环境运行过的测试一律注明，不得把未运行的测试写成通过。
 
+## 2026-11-05 下午（第八轮续五）— 懒启动挂到主按钮：一个按钮就够
+
+**为什么改**：上一版按"引擎没起时主按钮 disabled"实现，于是不得不再给一个「启动引擎」——
+一个灰的、一个亮的，就不是"一键启动"了，用户还得先理解两个按钮的关系。
+用户的词是**一键启动**，所以懒启动挂到主按钮上，旁边那个键删掉。
+
+**改后的三态（真机 DOM 读数）**
+
+| 状态 | `#jev-run` | `#jev-status` |
+|---|---|---|
+| 1 引擎没起 | `Jev 打分…` · **enabled=true** · data-phase=blocked | 「引擎没起：点这个按钮会自动启动（首次约 2 秒）」 |
+| 2 启动中 | **`正在启动引擎…`** · disabled=true · phase=starting | 「正在启动引擎…（首次约 2 秒，之后常驻）」 |
+| 3 就绪 | `Jev 打分…` · enabled=true · phase=ready · step=4 | 空（scored=0） |
+
+`getElementById('jev-engine-start')` 已不存在（一个按钮）。
+
+**防重两层（各验一次，只有一层生效就是 bug）**
+
+```
+a 接口幂等：3 次点击里只有 1 个 POST /engine/start（200）；第二次以后后端不再 spawn
+b 前端防重：第 1 次点击后按钮**同步**变 disabled，后续点击根本到不了处理函数（reached=1）；
+  再强制把 disabled 改回 false 连点 2 次（绕过属性拦截）→ 请求数仍是 1（in-flight 守卫）
+```
+
+失败态文案也带"再做一次"的动作：`第 N 步（标签）没过：<原因>　点这个按钮重试`——
+用户不必去别处找入口。
+
 ## 2026-11-05 下午（第八轮续四）— 打分层失败的"原因"不许被概括掉（判据修复）
 
 **现象（DevLead 复验第 3 笔时抓到）**：引擎不挂 mmproj 时，`POST /engine/start` 的 detail 是对的
@@ -36,28 +63,18 @@
 
 ## 2026-11-05 下午（第八轮续三）— Jev 引擎自管（第 4 笔：界面三态）
 
+> **这一节的三态已被「续五」取代**：状态 1 原先按"主按钮 disabled"实现（于是多了一个「启动引擎」键），
+> 后来按"一键启动"改成主按钮可点、懒启动挂在它身上。看当前行为请看续五。
+
 **做了什么**
 
 ```
 入口       进审校视图 / 打开项目时调 GET …/jev-priority/ready（只看不启动），把结论画成一行常驻状态
 状态行     #jev-status：blocked 时写「第 N 步（标签）没过：原因」，不靠 tooltip
-主按钮     #jev-run 只在 ready 时可点；starting 时文案「正在启动引擎…」且 disabled
-启动入口   引擎没起/起不来时，按钮旁出现「启动引擎」（#jev-engine-start）——主按钮置灰仍要有个出口
+主按钮     只在 ready 时可点（见续五：已改成"没起时也可点，按下去自动启动"）
 防重       连点只发一次请求（jevStartPromise）+ 后端 POST /engine/start 幂等，两层各防一次
 字体归位   字体缺失归第 3 步（真能打分），不再让 /ready 出现「引擎 ok / 字体缺」的组合态
 ```
-
-**真机 DOM 读数（H6 副本，真引擎，先杀干净再进视图）**
-
-| 状态 | `#jev-run` | `#jev-status` | 其它 |
-|---|---|---|---|
-| 1 引擎没起 | textContent=`Jev 打分…` · **disabled=true** | 「第 1 步（引擎进程）没过：引擎没起（还没启动过）」· hidden=false · data-phase=blocked · data-step=1 | `#jev-engine-start` 可见、可点 |
-| 2 启动中（连点 3 次后 60 ms） | textContent=**`正在启动引擎…`** · disabled=true | 「正在启动引擎…（首次约 2 秒，之后常驻）」· phase=starting | 启动入口 hidden=true |
-| 3 就绪 | textContent=`Jev 打分…` · **disabled=false** | 空（scored=0）· hidden=true · phase=ready · data-step=4 | — |
-| 防重 | 3 次 click 只产生 **1 个** `POST /engine/start`（200），`pgrep -x llama-server` = 1 | | |
-
-第 2 条之所以点的是 `#jev-engine-start`：状态 1 里主按钮按判据必须是 disabled，
-点不到；这是"置灰仍要有出口"的直接后果，不是绕过判据。
 
 ## 2026-11-05 下午（第八轮续二）— Jev 引擎自管（第 3 笔：四步机检 API）
 
