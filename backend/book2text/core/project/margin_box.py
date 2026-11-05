@@ -812,21 +812,49 @@ def _union_boxes(boxes: Sequence[BBox]) -> BBox:
 COLUMN_GUTTER_MIN = 0.08
 
 
+#: 页面最外这一圈（上下左右各 8%）算"页边带"——与候选检测的默认带同一组阈值。
+EDGE_BAND = 0.08
+#: 宽度小于页宽这个比例的算"窄行"：页码、竖排书名、页眉这类。
+EDGE_NARROW_MAX = 0.20
+
+
+def _is_edge_narrow(box: Sequence[float]) -> bool:
+    """窄行 **且** 中心落在页面最外 8%：页码 / 竖排书名 / 页眉 / 页脚。
+
+    这些行有两个共同点，都会把取界带坏：
+
+    - 它们在页面最外侧，会把"栏缝"伪造出来（真机 b2t_5DDDAP p4：页码 x 0.018–0.065
+      与正文列之间那条空带被当成栏缝，双栏分支把整列页码并进版心，x0 掉到 0.0167）；
+    - 它们与正文不是同一栏，纵向并集也不该把它们算进来（p13「Page 9」y0=0.115）。
+
+    判据只用**几何**（宽度 + 中心位置），不看块类型——本函数跑在块类型判定之前，
+    家具类型是后来的事；而且候选检测本身要"行在版心外"，正被这些行带偏时指望不上。
+    """
+    width = box[2] - box[0]
+    if width >= EDGE_NARROW_MAX:
+        return False
+    cx = (box[0] + box[2]) / 2
+    cy = (box[1] + box[3]) / 2
+    return cx < EDGE_BAND or cx > 1 - EDGE_BAND or cy < EDGE_BAND or cy > 1 - EDGE_BAND
+
+
 def column_gutter(boxes: Sequence[Sequence[float]]) -> tuple[float, float] | None:
     """这一页的栏缝 `(左栏右沿, 右栏左沿)`；没有 ≥ ``COLUMN_GUTTER_MIN`` 的内部空带 ⇒ None。
 
     判据是**栏缝不是行数**：把行框投影到 x 轴、合并覆盖区间，找"左右两侧都有行"的空带，
     取最宽的一条。竖排页的行框极窄但横向连续（没有 8% 的竖向空带），自然落在单栏。
 
-    **调用前提**：传入的必须是**已经剔掉页边重复行**的行框。顺序反了会出两种错：
-    书眉（x 0.008–0.055）被当成"左栏有内容"、栏缝右移；或者"书眉 + 一栏正文"之间
-    出现 ≥8% 的空带，整页被判成双栏、把书眉又盖回框里。`fit_box_from_lines` 收到的
-    本来就是剔过的行（见 `fit_page_margin`），这里再按"像一行字"滤一次，挡住竖排旁批。
+    **调用前提**：传入的应当是**已经剔掉页边重复行**的行框。但"前提写在文档里没人守，
+    等于没有"（2026-11-05 真机 b2t_5DDDAP p4：`page_exclusions` 空、页码还在行里，
+    栏缝被页码伪造，x0 掉到 0.0167）。所以这里**自己也排一遍**：窄行 + 中心在页面最外 8%
+    的行不参与栏缝计算——顺序反了也不会把页码那一列并进版心。
     """
     parsed = [
         box
         for box in (_parse_box(raw) for raw in boxes)
-        if box is not None and _looks_like_text_line(box)
+        if box is not None
+        and _looks_like_text_line(box)
+        and not _is_edge_narrow(box)
     ]
     if len(parsed) < 2:
         return None

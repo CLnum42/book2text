@@ -344,3 +344,32 @@ def test_single_column_page_keeps_quantile_edges() -> None:
     box = margin_box.fit_box_from_lines(lines)
     assert box is not None
     assert 0.07 < box[0] < 0.13 and 0.87 < box[2] < 0.93
+
+
+def test_edge_narrow_line_cannot_fake_a_column_gutter() -> None:
+    """页码/竖排书名这类"窄 + 贴页边"的行不参与栏缝（真机 b2t_5DDDAP p4）。
+
+    真实形态：正文列 x 0.153–0.93，页码贴在左下 x 0.018–0.065。它们之间那条空带
+    宽 8.8% ≥ 阈值，于是被判成"栏缝"⇒ 双栏分支把整列页码并进版心，x0 掉到 0.0167。
+    修法：`column_gutter` 自己先排掉这种行（不依赖调用方剔干净）。
+    """
+    body = [(0.153, 0.06 + i * 0.03, 0.93, 0.08 + i * 0.03) for i in range(20)]
+    page_number = (0.018, 0.966, 0.065, 0.987)          # 窄（0.047）+ 左下角
+    title = (0.027, 0.562, 0.058, 0.690)                # 竖排书名，窄 + 左侧
+
+    assert margin_box._is_edge_narrow(page_number) is True
+    assert margin_box._is_edge_narrow(title) is True
+    assert margin_box._is_edge_narrow(body[0]) is False, "正文长行不该被当成页边窄行"
+
+    assert margin_box.column_gutter([*body, page_number, title]) is None, "页码不许再伪造栏缝"
+    box = margin_box.fit_box_from_lines([*body, page_number, title])
+    assert box is not None
+    assert 0.13 < box[0] < 0.16, f"x0 应回到正文列（约 0.137），实际 {box[0]}"
+
+
+def test_edge_narrow_filter_keeps_a_real_two_column_gutter() -> None:
+    """别把真双栏也滤掉：两栏行都够宽（>0.2），栏缝照旧。"""
+    left = [(0.10, 0.15 + i * 0.03, 0.42, 0.17 + i * 0.03) for i in range(6)]
+    right = [(0.52, 0.15 + i * 0.03, 0.98, 0.17 + i * 0.03) for i in range(6)]
+
+    assert margin_box.column_gutter([*left, *right]) == (0.42, 0.52)
