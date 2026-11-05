@@ -1,0 +1,8 @@
+# 随包内置的 llama.cpp 后端配置（原 sdk/backends/llamacpp.yaml 的等价物）。
+#
+# base_url 由启动器在运行时注入（引擎端口是每次挑的空闲端口），这里只留**与端口无关**的部分。
+# 用法见 book2text/core/project/jev_score_host.py。
+engine: llamacpp
+base_url: http://127.0.0.1:18499
+timeout_sec: 120
+max_in_flight: 32

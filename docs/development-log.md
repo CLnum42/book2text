@@ -5,6 +5,35 @@
 模板字段：任务目标 / 当前状态 / 实施计划 / 实现与验证 / 用户操作说明 / 下一步建议。
 未在真实环境运行过的测试一律注明，不得把未运行的测试写成通过。
 
+## 2026-11-05 下午（第八轮续）— Jev 引擎自管（第 2 笔：打分层并进主进程）
+
+**做了什么**
+
+```
+vendor/jev_score/    MiniCPM-OCR-Jev SDK 的 score 层（纯 Python，80 KB）随包内置；只留 llama.cpp 适配器。
+                     模板常量搬到包内 prompt_source.py——上游那两个文件会 import 渲染器（Chromium/Node），
+                     打分层不该把渲染器拖进来。改动四处，逐条记在 vendor/jev_score/NOTICE.md。
+jev_score_host.py    主进程里起 uvicorn 线程（跟着引擎端口走）；第 3 步 = 拿 64×64 固定 fixture
+                     真走一次 /v1/score，prob_1 必须是 0–1 的数（不是"健康检查 200"）。
+                     uvicorn 启动失败的真正异常只在日志里（它抛 SystemExit），这里用日志捕获把原因带出来。
+打分层改一处          vendor 的 lifespan 先等引擎 /v1/models 能答（JEV_ENGINE_WAIT），等完再自检；
+                     自检不过仍拒绝启动——"还没热"与"不能用"分开。
+```
+
+**真机读数（私域模型 + 真引擎，同一进程内量 RSS）**
+
+| 判据 | 读数 |
+|---|---|
+| 打分层起来（含自检跑一次前向） | 0.55 s |
+| 主进程 RSS 增量 | **+33.9 MB**（25.9 → 59.8；独立服务时是 56 MB） |
+| 第 3 步探针（fixture 真打分） | ok / step 3 / `prob_1=0.00306` / 0.27 s |
+| 引擎不挂 mmproj（/v1/models 仍 200） | **停在 step 3**，detail 是引擎原话：`HTTP 501 … start it with --mmproj` |
+| mmproj 被改名 | 停在 **step 1**：`模型文件缺失：…/mmproj-model-f16.gguf`（manifest 先拦下，引擎根本不 spawn） |
+| 收尾 | `pgrep -f llama-server` = 0 |
+
+**单测**：`tests/unit/test_jev_score_host.py` 10 条（起停 / 同端口不重起 / 起不来时原因传到调用方 /
+prob_1 越界·缺 results·不是数·HTTP 500 四种失败 / fixture 真是 64×64 PNG / 默认工厂指向包内配置）。
+
 ## 2026-11-05 下午（第八轮）— Jev 引擎自管（第 1 笔：进程守护）
 
 **背景**：用户报「Jev 打分…」点了不能启动。真机复现是三项 detail 一起报（打分服务没起 / llama.cpp 引擎没起 /
