@@ -698,10 +698,15 @@ def suggest_margin_box(
     # 2026-11-05：跨页推算与每页拟合**同一套剔除**——页边重复行（书眉 / 页脚 / 页码）
     # 在两条输入路径（检测行 / OCR 行）合并之后统一剔，避免同一行从另一个入口溜进来。
     exclusions = _page_exclusions_for(project_id, library=target_library)
-    if exclusions:
+    bands = _furniture_bands_for(project_id, library=target_library)
+    if exclusions or bands:
         page_boxes = {
-            page_no: strip_furniture_lines(
-                boxes, exclusions.get(page_no), page_no=page_no
+            page_no: drop_furniture_zone_lines(
+                strip_furniture_lines(
+                    boxes, exclusions.get(page_no), page_no=page_no
+                ),
+                parity="even" if page_no % 2 == 0 else "odd",
+                bands=bands,
             )
             for page_no, boxes in page_boxes.items()
         }
@@ -727,14 +732,10 @@ AUTO_SAFETY_PASSES = 3
 # 尾部回收的上限：只收"像一行字"的长行，避免把跨页横线 / 装饰框当成正文。
 AUTO_TAIL_MAX_HEIGHT = 0.06
 
-# ---- 迭代纳入（任务 33）：长行框只覆盖正文宽行，诗行 / 段末短行 / 章节末行会漏掉。
-# 从长行框出发，反复把"中心在框内、与框相交、或中心距框边 < 1 个行距"的**像一行字**
-# 的行纳入，重算四边，直到不再变化。行距用本页相邻行中心的**中位间距**（不是单个
-# 行框的高度）：真书上中位行距约 0.034，诗行与上一行常隔着 1–1.5 个字高。
-AUTO_INCLUDE_PASSES = 200
-# 行距的上下限：太小会把抖动当相邻，太大（>6% 页高）会一路爬到页眉 / 页码。
-AUTO_INCLUDE_MIN_GAP = 0.012
-AUTO_INCLUDE_MAX_GAP = 0.06
+# ---- 同一栏内**所有**非家具行都参与纵向取界（2026-11-05 改）。
+# 原来用"逐行够得着"扩张，对"隔得远但同属一栏"的短行天然无解：p61 的小结标题与第一行
+# 长行隔 1.7 个行高，够不着 ⇒ 标题被扔在版心外。现在横向用长行定义"栏"，纵向取
+# "x 范围与栏重叠的行"的并集；页眉 / 页脚在拟合前已按页边重复剔掉。
 # "像一行字"的最低线：再薄就是横线 / 装饰（真书正文行高约 0.017–0.021）。
 AUTO_MIN_LINE_HEIGHT = 0.003
 AUTO_MIN_LINE_WIDTH = 0.005
@@ -742,10 +743,6 @@ AUTO_MIN_LINE_WIDTH = 0.005
 # 不加这一条，页边那些"又高又窄"的竖排旁批会因为纵向与正文框相交被误并进来，
 # 把版心左 / 右边界一路拉到页边（第 159 页实测）。
 AUTO_MIN_LINE_ASPECT = 1.5
-# 章节末行 / 段末诗行与下半页正文之间常隔 1.5–2 个行距，1 个行距够不到。
-# 对这些行放宽到 AUTO_INCLUDE_MAX_GAP，但要求它**够宽**（占当前框宽 ≥25%）：
-# 页码（真书约 2–7%）仍然进不来；真书第一卷 p15 的章末对句（58%）能进来。
-AUTO_EDGE_REACH_RATIO = 0.25
 
 
 def _parse_box(raw) -> BBox | None:
@@ -805,48 +802,6 @@ def _union_boxes(boxes: Sequence[BBox]) -> BBox:
     )
 
 
-def _line_pitch(boxes: Sequence[BBox]) -> float:
-    """本页相邻行中心的**中位间距**（"1 行高"的实用口径）。"""
-    centers = sorted((box[1] + box[3]) / 2 for box in boxes)
-    gaps = [
-        later - earlier
-        for earlier, later in zip(centers, centers[1:])
-        if later - earlier > 0.001
-    ]
-    if not gaps:
-        return AUTO_SAFETY_GAP
-    median = _quantile(gaps, 0.5)
-    return min(AUTO_INCLUDE_MAX_GAP, max(AUTO_INCLUDE_MIN_GAP, median))
-
-
-def _within_reach(line: BBox, box: Sequence[float], pitch: float) -> bool:
-    """这一行该不该被纳入版心：中心在框内 / 与框相交 / 中心距框边 < 1 行距。"""
-    cx = (line[0] + line[2]) / 2
-    cy = (line[1] + line[3]) / 2
-    if box[0] <= cx <= box[2] and box[1] <= cy <= box[3]:
-        return True
-    if not (
-        line[2] < box[0]
-        or line[0] > box[2]
-        or line[3] < box[1]
-        or line[1] > box[3]
-    ):
-        return True
-    dx = max(box[0] - cx, 0.0, cx - box[2])
-    dy = max(box[1] - cy, 0.0, cy - box[3])
-    reach = max(dx, dy)
-    if reach <= pitch:
-        return True
-    # 章节间的空白可以到 2 个行距；只对"像正文一行、且够宽"的行放宽。
-    box_width = box[2] - box[0]
-    line_width = line[2] - line[0]
-    return (
-        reach <= AUTO_INCLUDE_MAX_GAP
-        and box_width > 0
-        and line_width / box_width >= AUTO_EDGE_REACH_RATIO
-    )
-
-
 def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
     """用一页的检测行拟合版心（纯函数；**只管拟合，不做兜底**）。
 
@@ -854,10 +809,10 @@ def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
     - 每行先按**行框自身**外扩 2%；
     - 左 / 右 / 上 / 下分别取 5% / 95% 分位；
     - 按行距做安全扩张，再把"中心仍在框外"的首尾正文长行收回来；
-    - **迭代纳入**（任务 33）：从长行框出发，把中心在框内 / 与框相交 / 中心距框边
-      小于 1 个本页行距的"像一行字"的行纳入，重算四边，直到不再变化（上限
-      ``AUTO_INCLUDE_PASSES`` 轮）。诗行、段末短行、章节末行会因此被收回；
-      竖排旁批 / 横线 / 装饰框（行高 > 6% 或极薄）不会。
+    - **纵向取界**（2026-11-05）：横向用长行的 x 范围定义"这一栏"，纵向取**所有与该栏
+      有横向重叠的非家具行**的并集——居中小标题、诗行、段末短行因此自然进框，不再依赖
+      "逐行够得着"（它对隔得远但同属一栏的短行无解，真机 p61 因此把标题扔在框外）。
+      竖排旁批 / 横线 / 装饰框（行高 > 6%、极薄或宽高比 < 1.5）不参与。
     - 有效长行 < 3 或结果不合法 → None（调用方改走本页包围盒兜底，**不用全局框**）。
 
     返回的四边是**纳入行框的并集**（每行先外扩 2%），不再保留 5%/95% 的余量。
@@ -935,32 +890,23 @@ def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
         if cy > box[3]:
             box[3] = line[3]
 
-    # 迭代纳入（任务 33）：短行（诗行 / 段末 / 章节末行）不在 valid 里，但它们是正文。
-    # 从上面的长行框出发，把它够得着的"像一行字"的行并进来，重算四边，直到不再变化。
-    bodies = [
-        _expand_line(line, AUTO_PADDING)
-        for line in parsed
-        if _looks_like_text_line(line)
-    ]
-    pitch = _line_pitch(bodies)
-    included = {index for index, line in enumerate(bodies) if _within_reach(line, box, pitch)}
-    # 每轮至少并入一行；顺序扫描时"更靠上"的行可能在同一轮里被过早检查，
-    # 所以轮数上限按本页行数算（+2 轮收尾），再套一个硬上限。
-    passes = min(AUTO_INCLUDE_PASSES, len(bodies) + 2)
-    for _ in range(passes):
-        if included:
-            box = list(_union_boxes([bodies[index] for index in included]))
-        grew = False
-        for index, line in enumerate(bodies):
-            if index in included:
-                continue
-            if not _within_reach(line, box, pitch):
-                continue
-            included.add(index)
-            box = list(_union_boxes([bodies[i] for i in included]))
-            grew = True
-        if not grew:
-            break
+    # 纵向取界（2026-11-05，真机 p61）：**同一栏内的所有非家具行都并进来**。
+    # 原来靠"逐行够得着"扩张，对"隔得远但同属一栏"的短行天然无解：p61 的「小结」标题
+    # 与第一行长行隔了 1.7 个行高，够不着 ⇒ 框从第一行长行才开始（y0=0.2285），
+    # 标题被扔到版心外。修之前是页眉把框顶上去、顺带盖住了标题，所以没暴露。
+    # 栏 = 上面长行（valid）的 x 范围；页眉 / 页脚在拟合前已按页边重复剔掉，
+    # 竖排旁批不算"像一行字"（_looks_like_text_line），都不会被并进来。
+    in_column: list[BBox] = []
+    for raw in parsed:
+        if not _looks_like_text_line(raw):
+            continue
+        line = _expand_line(raw, AUTO_PADDING)
+        if min(line[2], box[2]) - max(line[0], box[0]) <= 0:
+            continue          # 与栏没有横向重叠：旁批 / 页边注 / 另一个栏
+        in_column.append(line)
+    if in_column:
+        box[1] = min(box[1], min(line[1] for line in in_column))
+        box[3] = max(box[3], max(line[3] for line in in_column))
     try:
         return normalize_margin_box(box)
     except MarginBoxError:
@@ -1276,6 +1222,48 @@ def strip_furniture_lines(
     return kept
 
 
+def _furniture_bands_for(project_id: str, *, library: Path | None) -> dict:
+    """现算"页眉 / 页脚位置带"；算不出来就返回空字典（= 与改动前行为一致）。"""
+    try:
+        return furniture_candidates.parity_bands(project_id, library=library)
+    except Exception as exc:  # noqa: BLE001 - 见 _page_exclusions_for：降级 + 日志
+        _LOG.warning("页边重复位置带算不出来，这一轮不按位置剔页眉：%s", exc)
+        return {}
+
+
+def drop_furniture_zone_lines(
+    boxes: Sequence[BBox], *, parity: str, bands: Mapping[tuple[str, str], Sequence[float]] | None
+) -> list[BBox]:
+    """剔掉落在**同奇偶页的页眉 / 页脚位置带**里的短行（纯函数，不读写数据库）。
+
+    为什么需要它：真机 `b2t_YR5EJ0` p29 的页眉被 OCR 读成「论21」，模板对不上任何候选，
+    于是它既不在排除矩形里、又会把版心顶到 y0=0.066。但它的位置（y 0.066–0.084）正好在
+    奇数页页眉带里——位置带由**其它奇数页**的候选给出，这一页自己读花了也照样剔得掉。
+
+    只剔**短行**（宽 ≤ `AUTO_LONG_LINE`）：正文偶尔从页边带开始，宽行是正文不是页眉；
+    标题变长（如整句）时也不该被位置带误伤。没有位置带的（没有候选）原样返回。
+    """
+    if not bands or not boxes:
+        return list(boxes)
+    zones = [rect for (band, side), rect in bands.items() if side == parity]
+    if not zones:
+        return list(boxes)
+    kept: list[BBox] = []
+    for raw in boxes:
+        box = _parse_box(raw)
+        if box is None:
+            continue
+        if box[2] - box[0] > AUTO_LONG_LINE:
+            kept.append(box)
+            continue
+        cx = (box[0] + box[2]) / 2
+        cy = (box[1] + box[3]) / 2
+        if any(rect[0] <= cx <= rect[2] and rect[1] <= cy <= rect[3] for rect in zones):
+            continue
+        kept.append(box)
+    return kept
+
+
 def _page_exclusions_for(project_id: str, *, library: Path | None) -> dict[int, list[BBox]]:
     """现算每页的页边重复排除矩形；算不出来就返回空字典（= 与改动前行为一致）。
 
@@ -1337,6 +1325,7 @@ def fit_page_margin(
     only_auto: bool = True,
     allow_custom: bool = False,
     exclusions: Mapping[int, Sequence[Sequence[float]]] | None = None,
+    bands: Mapping[tuple[str, str], Sequence[float]] | None = None,
 ) -> dict[str, object]:
     """用这一页的**行框**拟合版心，写回 `page.margin_box` + `margin_box_method`。
 
@@ -1369,8 +1358,15 @@ def fit_page_margin(
         return {"page_no": page_no, "updated": False, "reason": "not_auto"}
     if exclusions is None:
         exclusions = _page_exclusions_for(project_id, library=target_library)
+    if bands is None:
+        bands = _furniture_bands_for(project_id, library=target_library)
     boxes, source, has_text, recognized = _page_fit_lines(
         directory, project_id, page, library=target_library
+    )
+    boxes = drop_furniture_zone_lines(
+        boxes,
+        parity="even" if page.page_no % 2 == 0 else "odd",
+        bands=bands,
     )
     # 页边重复行（书眉 / 页脚 / 页码）在这一步剔：只有这里能同时看到"原始行"
     # 与"剔完还盖不盖得住正文"，见 fit_page_margin_box 的注释。
@@ -1474,6 +1470,7 @@ def fit_all_pages(
     # 页边重复（书眉 / 页脚 / 页码）的排除矩形：**一次算好、逐页复用**。
     # 放在循环外是因为候选要扫全书的块与行；每页重算一次会让 662 页的书卡住。
     exclusions = _page_exclusions_for(project_id, library=target_library) if batch else {}
+    bands = _furniture_bands_for(project_id, library=target_library) if batch else {}
     updated = fitted = fallback = undetermined = no_text = 0
     for page in batch:
         if page.margin_box_mode == MODE_INHERIT:
@@ -1489,6 +1486,7 @@ def fit_all_pages(
             library=target_library,
             allow_custom=include_custom,
             exclusions=exclusions,
+            bands=bands,
         )
         if result.get("updated"):
             updated += 1

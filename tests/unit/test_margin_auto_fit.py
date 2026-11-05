@@ -307,17 +307,24 @@ def test_batch_auto_keeps_existing_auto_boxes(minimal_project: Path) -> None:
 
 
 def test_fit_reaches_chapter_end_line_across_a_larger_gap() -> None:
-    """章末对句与下半页之间隔约 2 个行距，也要收回；更远、更窄的页码不收回。"""
+    """章末对句与下半页之间隔约 2 个行距，也要收回；**栏外**的页码不收回。
+
+    2026-11-05 改了收边规则：原来靠"够得着"（距离 + 宽度占比），对"隔得远但同属一栏"的
+    短行无解（真机 p61 的小结标题就被扔在框外）。现在横向用长行定义"栏"，纵向取栏内
+    所有非家具行的并集 ⇒ 阈值从"距离"换成"在不在栏里"。
+    因此本用例的反例改成**栏外**（左页边）的页码；栏内的页码靠"页边重复"与"位置带"剔，
+    见 test_furniture_zone_drops_a_broken_header_by_position 与真机验收。
+    """
     lines = [
         [0.10, 0.20 + i * 0.02, 0.90, 0.218 + i * 0.02]
         for i in range(20)
     ]
     lines.append([0.20, 0.13, 0.50, 0.15])  # 章末对句：距框约 0.05，宽 37% 框宽
-    lines.append([0.48, 0.06, 0.52, 0.075])  # 页码：更远更窄
+    lines.append([0.02, 0.06, 0.06, 0.075])  # 页码：在左页边，与正文栏没有横向重叠
     result = margin_box.fit_box_from_lines(lines)
     assert result is not None
     assert result[1] < 0.13  # 章末对句被收回
-    assert result[1] > 0.06  # 页码没被拉进来
+    assert result[1] > 0.06  # 栏外页码没被拉进来
 
 
 def test_bbox_fallback_ignores_short_edge_lines(monkeypatch) -> None:

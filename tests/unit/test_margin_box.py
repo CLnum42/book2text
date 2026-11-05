@@ -266,3 +266,39 @@ def test_furniture_guard_skips_pages_where_the_candidates_eat_the_body() -> None
     fitted = margin_box.fit_page_margin_box(lines, rects=greedy)
     plain = margin_box.fit_page_margin_box(lines)
     assert fitted.box == plain.box, "护栏没生效：把正文行一起剔掉了"
+
+
+# ---------------------------------------------------------------- 标题不被挤到框外（2026-11-05）
+
+
+def test_short_title_far_above_the_first_long_line_is_inside_the_box() -> None:
+    """真机 p61：小结标题与第一行长行隔 1.7 个行高，旧逻辑"够得着"够不到 ⇒ 标题被扔掉。
+
+    新判据：横向用长行定义"栏"，纵向取栏内所有非家具行的并集。
+    """
+    body = [(0.16, 0.2288 + index * 0.032, 0.88, 0.2488 + index * 0.032) for index in range(6)]
+    title = (0.432, 0.1512, 0.548, 0.1815)      # 居中短行，比第一行长行高 0.05
+    fitted = margin_box.fit_page_margin_box([title, *body])
+    assert fitted.box is not None
+    assert fitted.box[1] <= 0.1512, f"标题被挤到框外：{fitted.box}"
+
+
+def test_furniture_zone_drops_a_broken_header_by_position() -> None:
+    """真机 p29：页眉被 OCR 读成「论21」，模板对不上候选，靠**同奇偶的位置带**剔掉。"""
+    header = (0.786, 0.0665, 0.876, 0.0842)
+    body = [(0.21, 0.1154 + index * 0.03, 0.83, 0.1361 + index * 0.03) for index in range(6)]
+    bands = {("top", "odd"): (0.0, 0.0, 1.0, 0.098)}
+
+    dropped = margin_box.drop_furniture_zone_lines(
+        [header, *body], parity="odd", bands=bands
+    )
+    assert header not in dropped and len(dropped) == len(body)
+
+    # 奇偶不对：不动（偶数页页眉位置不同）
+    kept = margin_box.drop_furniture_zone_lines([header, *body], parity="even", bands=bands)
+    assert header in kept
+    # 长行即使在带里也不剔（正文偶尔从页边带开始）
+    wide = (0.10, 0.05, 0.90, 0.07)
+    assert wide in margin_box.drop_furniture_zone_lines([wide], parity="odd", bands=bands)
+    # 没有位置带（没有候选）：原样返回
+    assert margin_box.drop_furniture_zone_lines([header, *body], parity="odd", bands=None) == [header, *body]

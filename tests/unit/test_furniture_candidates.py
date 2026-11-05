@@ -131,3 +131,19 @@ def test_pages_with_margin_do_not_set_the_default_band_flag(tmp_path: Path) -> N
     assert len(rows) == 2
     assert all(row["used_default_band"] is False for row in rows)
     assert all(row["confidence"] == 1.0 for row in rows)
+
+
+def test_parity_bands_come_from_other_pages_of_the_same_parity(tmp_path: Path) -> None:
+    """位置带：同奇偶页的页眉位置，用来剔"这一页 OCR 读花了"的书眉（真机 p29）。"""
+    directory = _project(tmp_path, [(no, "body") for no in range(1, 11)])
+    for page_no in range(1, 11):
+        _line(directory, page_no, 0, "《红楼梦》情感讲述语词的研究", 0.05, 0.08)
+        _line(directory, page_no, 1, "正文第一行", 0.30, 0.34)
+
+    bands = fc.parity_bands("b2t_TESF01", library=tmp_path)
+
+    assert ("top", "even") in bands and ("top", "odd") in bands
+    top = bands[("top", "odd")]
+    assert top[1] == 0.0 and top[3] >= 0.08   # 从页顶到页眉下沿（含 0.004 余量）
+    # 没有左右 / 下边候选：不该凭空造出带
+    assert not [key for key in bands if key[0] in ("left", "right", "bottom")]

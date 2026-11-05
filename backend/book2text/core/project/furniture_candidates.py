@@ -358,6 +358,49 @@ def page_exclusions(project_id: str, *, library=None) -> dict[int, list[tuple[fl
     return {page_no: _merge_rects(items) for page_no, items in rects.items()}
 
 
+#: 位置带往外放宽一点：OCR 的同一行页眉在不同页会有 0.003–0.005 的抖动。
+ZONE_PAD = 0.004
+
+
+def parity_bands(project_id: str, *, library=None) -> dict[tuple[str, str], tuple[float, float, float, float]]:
+    """候选给出的**页眉 / 页脚位置带**：`{(带, 奇偶): 矩形}`（只读、现算）。
+
+    用途：某一页的行如果落在**同奇偶其它页**的页眉位置上，它就是页眉——哪怕这一页
+    OCR 把字读花了、自己没凑成候选。真机 b2t_YR5EJ0 p29 的页眉被读成「论21」，
+    模板对不上任何候选；但它的位置（y 0.066–0.084）正好在奇数页页眉带里。
+
+    矩形是"从页边到候选最内边界"的整条带（top: `0..最下沿`，bottom: `最上沿..1`，
+    left / right 同理），四周放宽 `ZONE_PAD`。没有候选的（带, 奇偶）不在字典里。
+    """
+    zones: dict[tuple[str, str], list[float]] = {}
+    for candidate in _collect_detailed(project_id, library=library):
+        band = candidate["band"]
+        parity = candidate["parity"]
+        boxes = [bbox for _page_no, bbox in candidate.get("_items", [])]
+        if not boxes:
+            continue
+        if band == "top":
+            edge = max(bbox[3] for bbox in boxes)
+        elif band == "bottom":
+            edge = min(bbox[1] for bbox in boxes)
+        elif band == "left":
+            edge = max(bbox[2] for bbox in boxes)
+        else:
+            edge = min(bbox[0] for bbox in boxes)
+        zones.setdefault((band, parity), []).append(edge)
+    result: dict[tuple[str, str], tuple[float, float, float, float]] = {}
+    for (band, parity), edges in zones.items():
+        if band == "top":
+            result[(band, parity)] = (0.0, 0.0, 1.0, min(1.0, max(edges) + ZONE_PAD))
+        elif band == "bottom":
+            result[(band, parity)] = (0.0, max(0.0, min(edges) - ZONE_PAD), 1.0, 1.0)
+        elif band == "left":
+            result[(band, parity)] = (0.0, 0.0, min(1.0, max(edges) + ZONE_PAD), 1.0)
+        else:
+            result[(band, parity)] = (max(0.0, min(edges) - ZONE_PAD), 0.0, 1.0, 1.0)
+    return result
+
+
 def _pad_rect(bbox) -> tuple[float, float, float, float]:
     return (
         max(0.0, float(bbox[0]) - EXCLUDE_PAD),
