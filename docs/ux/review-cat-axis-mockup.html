@@ -1,0 +1,141 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>右侧文字列中轴对齐 · 中文 / 英文</title>
+<style>
+:root{--text:#1f2329;--muted:#646a73;--faint:#9aa0a8;--line:#e2e4e8;--line2:#eef0f2;
+--bad:#b42318;--ul:#dc2626;--accent:#2563eb;--book:"Songti SC","STSong","SimSun",serif}
+*{box-sizing:border-box}html,body{margin:0}
+body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--text);background:#e8eaee}
+.wrap{display:flex;gap:18px;padding:18px;align-items:flex-start}
+.frame{flex:none;background:#fff;box-shadow:0 2px 8px rgba(16,24,40,.10);display:flex;flex-direction:column;overflow:hidden}
+.top{height:50px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line);background:#fff}
+.bk{font-weight:650;font-size:13.5px}.sub{font-size:11px;color:var(--faint)}
+.spacer{flex:1}
+.chip{font-size:10px;color:#1d4ed8;background:#eef4ff;border-radius:10px;padding:2px 8px;font-family:ui-monospace,Menlo,monospace}
+.chip.warn{color:#b45309;background:#fdf3e0}
+.body{flex:1;position:relative;padding:8px 0}
+.axis{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(37,99,235,.30)}
+.axis .lb{position:absolute;left:4px;top:4px;font:10px/1 ui-monospace,Menlo,monospace;color:#1d4ed8;background:#fff;padding:1px 4px;border-radius:3px}
+.arow{display:flex;align-items:center;gap:10px;height:74px}
+.tag{width:112px;flex:none;text-align:right;font:10px/1.3 ui-monospace,Menlo,monospace;color:var(--faint);padding-right:4px}
+.tr{flex:1;min-width:0;display:flex;align-items:baseline;font:17px/1.6 var(--book);color:var(--text)}
+.tr.en{font:17px/1.6 Georgia,"Times New Roman",serif}
+.padL{flex:1;min-width:0;display:flex;justify-content:flex-end;overflow:hidden}
+.padR{flex:1;min-width:0;display:flex;justify-content:flex-start;overflow:hidden}
+.ctx{flex:none;white-space:pre}
+.dots{flex:1;min-width:0;overflow:hidden;white-space:nowrap;color:rgba(31,35,41,.34);user-select:none;pointer-events:none;
+  -webkit-user-select:none;letter-spacing:1px}
+.padL .dots{text-align:right}
+.d{flex:none;width:1em;text-align:center;color:#b42318;font-weight:600;
+  text-decoration:underline;text-decoration-color:#dc2626;text-decoration-thickness:2px;text-underline-offset:3px}
+.tr.en .d{width:auto;padding:0 2px}
+.notes{width:300px;flex:none;font-size:11.5px;line-height:1.65;color:var(--muted)}
+.notes .card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-bottom:9px}
+.notes h3{font-size:12.5px;color:var(--text);margin:0 0 5px;font-weight:650}
+.notes b{color:var(--text)}.notes ul{margin:3px 0 0;padding-left:15px}.notes li{margin:2px 0}
+.warnbox{background:#fdf3e0;border-color:#f0dcbc!important}
+.foot{height:40px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px;border-top:1px solid var(--line);background:#fafbfc;font-size:11px;color:var(--muted)}
+.k{font:10px/1 ui-monospace,Menlo,monospace;background:#f2f3f5;border:1px solid #d0d3d9;border-radius:4px;padding:2px 5px;color:#33383f}
+</style></head><body>
+<div class="wrap"><div class="frame" id="FZ" style="width:1240px;height:470px">
+  <div class="top"><button class="ib">←</button><span class="bk">右侧文字列 · 中轴对齐</span>
+    <span class="sub">中文：按字数（全角等宽），差异字无论在第几个字，都落在同一条竖线上</span>
+    <span class="spacer"></span><span class="chip">轴 = 列宽 50%</span><span class="chip">两侧各 ~12 字</span></div>
+  <div class="body">
+    <div class="axis" style="left:calc(112px + 10px + (100% - 112px - 10px) / 2)"><span class="lb">中轴</span></div>
+    <div class="arow">
+  <div class="tag">第 0 字（行首）</div>
+  <div class="tr">
+    <div class="padL"><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span><span class="ctx"></span></div>
+    <b class="d">箱</b>
+    <div class="padR"><span class="ctx">，料着贾母爱听的三五出戏的彩衣包了来。婆</span><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span></div>
+  </div>
+</div><div class="arow">
+  <div class="tag">第 5 字</div>
+  <div class="tr">
+    <div class="padL"><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span><span class="ctx">或如残漏之滴，或如</span></div>
+    <b class="d">迸</b>
+    <div class="padR"><span class="ctx">豆之急，或如惊马之驰，〈或如</span><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span></div>
+  </div>
+</div><div class="arow">
+  <div class="tag">第 8 字</div>
+  <div class="tr">
+    <div class="padL"><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span><span class="ctx">少不得弄个新样儿</span></div>
+    <b class="d">的</b>
+    <div class="padR"><span class="ctx">：叫芳官唱一出“寻梦”，只用</span><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span></div>
+  </div>
+</div><div class="arow">
+  <div class="tag">第 20 字（行尾）</div>
+  <div class="tr">
+    <div class="padL"><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span><span class="ctx">廊角门出来，婆子们抱着几个软包，—因不及</span></div>
+    <b class="d">抬</b>
+    <div class="padR"><span class="ctx"></span><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span></div>
+  </div>
+</div>
+  </div>
+  <div class="foot"><span>占位点 <span class="k">……</span> 34% 墨色、不可选中、不可编辑</span><span class="spacer"></span><span>虚线中轴只画在样张里，产品里不出现</span></div>
+</div><aside class="notes">
+<div class="card"><h3>中文：按字数对齐</h3><ul>
+<li>四行的差异字分别在第 <b>0 / 5 / 8 / 20</b> 个字，<b>都落在同一条竖线上</b>。</li>
+<li>左pad = 差异字前的上下文（右对齐，紧贴差异字）+ 占位点填满剩余；右pad 反过来。</li>
+<li>占位点是布局元素：<code>user-select:none</code>、<code>aria-hidden</code>，不进文本、不能编辑。</li>
+</ul></div>
+<div class="card"><h3>为什么能精确对齐</h3><ul>
+<li>中文全角等宽，一个汉字 = 1em；<code>……</code> 也是两个全角宽。按字数算即可。</li>
+<li>差异字本身用 <code>width:1em</code> 固定，flex 两侧各 <code>flex:1</code>，其中点必在 50%。</li>
+</ul></div>
+<div class="card warnbox"><h3>只在样张里画</h3><ul>
+<li>虚线中轴是读图用的，产品里不要出现。</li>
+<li>占位点颜色 34% 墨色；不能用正文色，否则会被当成原文里的省略号。</li>
+</ul></div>
+</aside></div>
+<div class="wrap"><div class="frame" id="FE" style="width:1240px;height:400px">
+  <div class="top"><button class="ib">←</button><span class="bk">右侧文字列 · 中轴对齐</span>
+    <span class="sub">英文：按渲染宽度居中（flex 等分两侧），不按字数——W 和 i 宽度差很多</span>
+    <span class="spacer"></span><span class="chip">Georgia 17px</span><span class="chip">两侧 flex:1</span></div>
+  <div class="body">
+    <div class="axis" style="left:calc(112px + 10px + (100% - 112px - 10px) / 2)"><span class="lb">中轴</span></div>
+    <div class="arow">
+  <div class="tag">第 1 词</div>
+  <div class="tr en">
+    <div class="padL"><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span><span class="ctx">The</span></div>
+    <b class="d">quick</b>
+    <div class="padR"><span class="ctx">brown fox jumps over the lazy dog</span><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span></div>
+  </div>
+</div><div class="arow">
+  <div class="tag">第 7 词 · WWW 前缀</div>
+  <div class="tr en">
+    <div class="padL"><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span><span class="ctx">A</span></div>
+    <b class="d">sentence</b>
+    <div class="padR"><span class="ctx">with wide WWW letters in front</span><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span></div>
+  </div>
+</div><div class="arow">
+  <div class="tag">第 2 词 · iii 前缀</div>
+  <div class="tr en">
+    <div class="padL"><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span><span class="ctx">Every</span></div>
+    <b class="d">iii</b>
+    <div class="padR"><span class="ctx">narrow prefix in this line</span><span class="dots" aria-hidden="true">…………………………………………………………………………………………………………</span></div>
+  </div>
+</div>
+  </div>
+  <div class="foot"><span>英文行不要求和中文行同一条像素线，只要求同一段内的英文行互相对齐</span><span class="spacer"></span><span>占位点仍不可选中</span></div>
+</div><aside class="notes">
+<div class="card"><h3>英文：按渲染宽度对齐</h3><ul>
+<li>三行的前缀宽度差距很大（<b>WWW</b> 比 <b>iii</b> 宽三四倍），按字数算会把差异字推到别处；按宽度算就都落在中轴。</li>
+<li>做法：<code>.padL{flex:1}</code> + 差异词（宽度自适应）+ <code>.padR{flex:1}</code>——两侧等分，差异词居中，与字数无关。</li>
+<li>占位点同样只是布局元素。</li>
+</ul></div>
+<div class="card"><h3>边界</h3><ul>
+<li>不要求和中文行落在同一条像素线（两段字体、字号都可以不同）。</li>
+<li>同一段内的英文行必须互相对齐——这一点上比中文更严格，因为宽度不定。</li>
+</ul></div>
+<div class="card warnbox"><h3>实现提醒</h3><ul>
+<li>差异词用 <code>width:auto</code>，不要给固定宽度；给了就回到按字数。</li>
+<li>太长时两侧用 <code>overflow:hidden</code> 裁掉上下文，不要压缩差异词。</li>
+</ul></div>
+</aside></div>
+<script>
+const m=(location.search.match(/f=(zh|en)/i)||[])[1];
+const wraps=Array.from(document.querySelectorAll('.wrap'));
+const idx={zh:0,en:1}[m];
+wraps.forEach(function(w,k){ if(idx!==undefined && k!==idx) w.style.display='none'; });
+</script>
+</body></html>
