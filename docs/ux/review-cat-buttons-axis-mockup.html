@@ -1,0 +1,130 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>按钮里的差异字 · 并排 vs 叠放</title>
+<style>
+:root{--text:#1f2329;--muted:#646a73;--faint:#9aa0a8;--line:#e2e4e8;--line2:#eef0f2;--line3:#d0d3d9;
+--bad:#b42318;--ul:#dc2626;--accent:#2563eb;--book:"Songti SC","STSong","SimSun",serif;
+--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}html,body{margin:0}
+body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--text);background:#e8eaee}
+.wrap{display:flex;gap:18px;padding:18px;align-items:flex-start}
+.frame{flex:none;background:#fff;box-shadow:0 2px 8px rgba(16,24,40,.10);display:flex;flex-direction:column;overflow:hidden;position:relative}
+.top{height:50px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line)}
+.bk{font-weight:650;font-size:13.5px}.sub{font-size:11px;color:var(--faint)}
+.spacer{flex:1}
+.chip{font-size:10px;color:#1d4ed8;background:#eef4ff;border-radius:10px;padding:2px 8px;font-family:var(--mono)}
+.chip.warn{color:#b45309;background:#fdf3e0}
+.body{flex:1;padding:10px 16px;position:relative}
+.row{height:70px;display:flex;align-items:center;gap:10px;border-bottom:1px dashed var(--line2)}
+.no{width:32px;flex:none;font:12px/1 var(--mono);color:#b6bbc2;text-align:right}
+.shot{width:240px;height:34px;flex:none;border:1px solid var(--line);border-radius:4px;background:#f7f5ee;
+  font:22px/32px var(--book);color:#333;text-align:center;overflow:hidden}
+.gut{width:60px;flex:none;align-self:stretch;display:flex;align-items:center;justify-content:center;gap:4px;
+  border-left:1px solid var(--line2);border-right:1px solid var(--line2);font-size:11px;color:#b42318;background:#fcfcfd}
+.gut .dot{width:6px;height:6px;border-radius:50%;background:#dc2626}
+.tx{width:480px;flex:none;font:16px/1.5 var(--book);white-space:nowrap;display:flex;align-items:baseline;overflow:hidden}
+.tx .padL{flex:1;min-width:0;display:flex;justify-content:flex-end;overflow:hidden}
+.tx .padR{flex:1;min-width:0;display:flex;justify-content:flex-start;overflow:hidden}
+.tx span.c{flex:none;white-space:pre}
+.tx .d{color:var(--bad);font-weight:700;text-decoration:underline;text-decoration-color:var(--ul);text-decoration-thickness:2px;text-underline-offset:3px}
+.btns{display:flex;gap:6px;flex:none;margin-left:auto}
+.b{height:44px;border:1px solid #c9d8f7;background:#fbfdff;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font:15px/1 var(--book);color:var(--text);letter-spacing:0}
+.b .x{font-weight:700;color:var(--bad);margin:0 1px}
+.b2{border-color:#d7e2f8}
+.b .y{font-weight:700;color:#1d4ed8;margin:0 1px}
+.b.keep{border-color:#f0c4c4;background:#fff8f7}
+.axis{position:absolute;top:0;bottom:0;border-left:1px dashed rgba(37,99,235,.45)}
+.axis.t{border-left-color:rgba(37,99,235,.65)}
+.axis .lb{position:absolute;top:2px;left:4px;font:9.5px/1 var(--mono);color:#1d4ed8;background:#fff;padding:1px 3px;border-radius:3px;white-space:nowrap}
+.axis .lb.warn{color:#b45309}
+.notes{width:300px;flex:none;font-size:11.5px;line-height:1.65;color:var(--muted)}
+.notes .card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-bottom:9px}
+.notes h3{font-size:12.5px;color:var(--text);margin:0 0 5px;font-weight:650}
+.notes b{color:var(--text)}.notes ul{margin:3px 0 0;padding-left:15px}.notes li{margin:2px 0}
+.warnbox{background:#fdf3e0;border-color:#f0dcbc!important}
+.foot{height:38px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;border-top:1px solid var(--line);background:#fafbfc;font-size:11px;color:var(--muted)}
+.dim{font:10px/1.4 var(--mono);color:var(--faint)}
+</style></head><body>
+<div class="wrap"><div class="frame" id="F1" style="width:1240px;height:430px">
+  <div class="top"><button class="ib">←</button><span class="bk">并排按钮：差异字各自居中</span>
+    <span class="sub">等宽只保证“相对各自按钮居中”，两个差异字仍然相差「一个按钮宽 + 间距」</span>
+    <span class="spacer"></span><span class="chip warn">两条线，不是一条</span></div>
+  <div class="body">
+    <div class="axis t" style="left:618px"><span class="lb">文字列中轴</span></div>
+    <div class="axis" style="left:1038px"><span class="lb warn">保留 · 差异字</span></div>
+    <div class="axis" style="left:1164px"><span class="lb warn">采用 · 差异字</span></div>
+
+    <div class="row"><span class="no">38</span>
+      <div class="shot">况</div><div class="gut"><span class="dot"></span>未审</div>
+      <div class="tx"><span class="padL"><span class="c">…又要吵起来。</span></span><b class="d">况</b><span class="padR"><span class="c">且那孩子们熬…</span></span></div>
+      <div class="btns"><div class="b keep" style="width:120px">且<span class="x">况</span>那</div>
+        <div class="b b2" style="width:120px">且<span class="y">祝</span>那</div></div></div>
+
+    <div class="row"><span class="no">39</span>
+      <div class="shot">迸</div><div class="gut"><span class="dot"></span>未审</div>
+      <div class="tx"><span class="padL"><span class="c">或如残漏之滴，或如</span></span><b class="d">迸</b><span class="padR"><span class="c">豆之急，或如惊马之驰</span></span></div>
+      <div class="btns"><div class="b keep" style="width:120px">如<span class="x">迸</span>豆</div>
+        <div class="b b2" style="width:120px">如<span class="y">进</span>豆</div></div></div>
+
+    <div class="row" style="border-bottom:0"><span class="no">40</span>
+      <div class="shot">褴</div><div class="gut"><span class="dot"></span>未审</div>
+      <div class="tx"><span class="padL"><span class="c">……衣衫</span></span><b class="d">褴褛</b><span class="padR"><span class="c">不堪，却偏要讲究体面</span></span></div>
+      <div class="btns"><div class="b keep" style="width:160px">衫<span class="x">褴褛</span>不</div>
+        <div class="b b2" style="width:160px">衫<span class="y">褴楼</span>不</div></div></div>
+  </div>
+  <div class="foot"><span>按钮宽 = 最长侧的差异段 + 前后各 1 字 → 1 字差异 120px（3 全角）、2 字差异 160px（4 全角）；两侧按钮同宽</span>
+    <span class="spacer"></span><span class="dim">滚轮/缩放时三条线同步移动</span></div>
+</div><aside class="notes">
+<div class="card"><h3>为什么并排做不到共线</h3><ul>
+<li>按钮等宽 W、间距 g 时，两个差异字的横坐标相差 <b>W + g</b>（本例 126px）。等宽保证的是“两个按钮长得一样、差异字都在各自正中”，不是“共线”。</li>
+<li>而且按钮组在文字列右边，组中心离文字列中轴还有 <b>483px</b>。所以并排是三条线：文字一条、两个按钮各一条。</li>
+</ul></div>
+<div class="card"><h3>按钮三条规则（并排也适用）</h3><ul>
+<li><b>等宽</b>：按最长那侧的差异段算，1 字差异 = 3 全角（120px），2 字差异 = 4 全角（160px）；两个按钮同一宽度。</li>
+<li><b>差异段整体居中</b>：多字差异时居中，1 字差异也居中。</li>
+<li><b>边到补 …</b>：差异在行首/行尾、前后字不足时补 <code>…</code>，按钮宽度不随位置变。</li>
+</ul></div>
+<div class="card warnbox"><h3>视觉</h3><ul>
+<li>三个字等宽（中文天然等宽；混排英文用等宽兜底），差异字加粗 + 着色（保留=红系、采用=蓝系），位置不动。</li>
+<li>按钮内不要加下划线——那是文字列的差异标记，两处都加会重影。</li>
+</ul></div>
+</aside></div>
+<div class="wrap"><div class="frame" id="F2" style="width:1240px;height:470px">
+  <div class="top"><button class="ib">←</button><span class="bk">叠放按钮：一条线到底</span>
+    <span class="sub">两个按钮上下叠放、等宽、整组居中在文字列中轴 → 文字和两个按钮的差异字共线</span>
+    <span class="spacer"></span><span class="chip">0px 偏移</span></div>
+  <div class="body">
+    <div class="axis t" style="left:618px"><span class="lb">中轴（文字 / 保留 / 采用 共用）</span></div>
+    <div class="row" style="height:190px;border-bottom:0;align-items:flex-start;padding-top:10px"><span class="no">38</span>
+      <div class="shot" style="height:64px;line-height:62px;font-size:30px">况</div>
+      <div class="gut" style="align-self:flex-start;height:44px"><span class="dot"></span>未审</div>
+      <div class="tx" style="width:480px"><span class="padL"><span class="c">…又要吵起来。</span></span><b class="d">况</b><span class="padR"><span class="c">且那孩子们熬…</span></span></div>
+      <div style="position:absolute;left:618px;top:52px;transform:translateX(-50%);display:flex;flex-direction:column;gap:5px">
+        <div class="b keep" style="width:120px;height:30px">且<span class="x">况</span>那</div>
+        <div class="b b2" style="width:120px;height:30px">且<span class="y">祝</span>那</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>行高 64 → <b>112</b>（文字行 + 两条 30px 按钮），一屏 7 行 → <b>4 行</b></span>
+    <span class="spacer"></span><span class="dim">按钮组宽 120，居中于文字列 480</span></div>
+</div><aside class="notes">
+<div class="card"><h3>要“一条线到底”，只有这一种排法</h3><ul>
+<li>按钮<b>上下叠放</b>、等宽、<b>整组居中于文字列中轴</b>：文字差异字、保留、采用三个位置共线，偏移 <b>0px</b>。</li>
+<li>代价：行高 64 → <b>112</b>，一屏 7 行 → <b>4 行</b>；列表密度砍掉 43%。</li>
+</ul></div>
+<div class="card"><h3>中间方案（折中）</h3><ul>
+<li>按钮仍叠放、仍共线，但放在右侧列（不居中于文字列）：两个按钮内部 0px，和文字列还差约 483px。</li>
+<li>密度不掉，但“一条线到底”只做到“按钮内部一条线”。</li>
+</ul></div>
+<div class="card warnbox"><h3>我的建议</h3><ul>
+<li>要“眼睛完全不用横移”→ 选叠放 + 居中，接受一屏 4 行；</li>
+<li>要密度 → 并排，接受两条线（差异字各自居中，固定 ±126px，位置稳定，扫读时仍有可预期的落点）。</li>
+<li>两条都不想丢的话，只有把按钮做成<b>行内浮层</b>（悬停才出、居中在中轴上），代价是多一步操作。</li>
+</ul></div>
+</aside></div>
+<script>
+const m=(location.search.match(/f=([12])/)||[])[1];
+const wraps=Array.from(document.querySelectorAll('.wrap'));
+const idx={'1':0,'2':1}[m];
+wraps.forEach(function(w,k){ if(idx!==undefined && k!==idx) w.style.display='none'; });
+</script>
+</body></html>
