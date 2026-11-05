@@ -1,7 +1,6 @@
 # 通则规则表（下一刀照着跑，不是给人读的手册）
 
-> 维护：Architect。只在**真事故**或**某条闸真的落地**时加/改一行；不凑数、不写没有判据的态度声明。
-> 满了先合并同类；合并不了 ⇒ 说明该自动化了，把那条变成脚本。
+> 维护：Architect。只在**真事故**或**某条闸真的落地**时加/改一行；不凑数、不写没有判据的态度声明；满了先合并同类，合并不了 ⇒ 说明该自动化了，把那条变成脚本。
 > **开工第一动作**：过一遍本表；施工卡里必须点名"本刀适用第 N 条"（不适用的不用写）。
 
 | # | 规则（一句话） | 判据（机检命哪个脚本/闸；人工写谁看） | 反例 / 来源 | 状态 |
@@ -38,3 +37,4 @@
 | 30 | **rebase 前后必须对账**：动 `--onto` 这类会丢笔的命令之前先打 `backup/<名字>` ref，之后用 `git log --oneline origin/main..HEAD` 数笔数与 rebase 前对齐 | 人工：作者自查（rebase 后贴两边笔数）；丢了用 `git cherry-pick` 找回并说明"找回"而非"新做" | 片 2 期间 `rebase --onto origin/main a311365` 把 a311365 之前的片 1b 两笔一起丢掉，靠 cherry-pick 找回；下次丢的可能是没有备份的产品笔 | 人工：作者自查（rebase 后）+ DevLead 验收时核 |
 | 31 | **历史类闸必须在提交之后跑**：A1 / A3 / A1b / R12 扫的是提交历史，未提交的改动不在里面 | 人工：作者自查（提交后重跑 node 全量，贴的是提交后的数） | 551a366 把"产品改动 + tests/js"放同一笔（不是新模块引入）⇒ 推送时 R12 红；作者报的 317/0/0 是**提交前**跑的，那时这笔还不在历史里 | 人工：作者自查（提交后重跑）+ 提交正文写"哪一次跑是提交后" |
 | 32 | **能 fast-forward 就别 cherry-pick**：分支若从 main 直系长出来，集成用 `git merge --ff-only <分支>`，保住全部 sha | 集成前先 `git merge-base --is-ancestor <main> <分支>`；是则 ff，否则才 cherry-pick | cherry-pick 会换 sha ⇒ §18.6 登记行当场过期 ⇒ 再签一轮（今天发生两次：`32917c0`、`a0bba4a`）；用 ff 集成 `ae7b756` 时登记一次生效 | 人工：Chief 集成时判 + 登记人核 sha |
+| 33 | **验某棵树之前，先确认加载的是哪棵树**：目录、cwd、`git log` 全对，import 路径也可能错 | 口令（起服务 / 跑测试前各一次）：`PYTHONPATH=<worktree>/backend .venv/bin/python -c "import book2text; print(book2text.__file__)"`；输出不在该 worktree 下 ⇒ 这一步所有读数作废，先修环境再验 | Chief 在 `worktrees/builder` 起服务未设 PYTHONPATH：worktree 的 `.venv` 是软链、editable 的 `.pth` 写死主仓库 `/backend` ⇒ 加载 main 的代码，读到旧 CSS（`.42`/`.34`），差点误报"Builder 的边框修复没生效"。**反例（#29）：cwd 在 worktree、`git log` 是分支 sha、只有 `__file__` 指向主仓库——三条证据两条对、一条错**，所以要靠口令不靠"看起来对" | 人工：**验的人**自查（写代码那位复现不出来——它只影响验的人） |
