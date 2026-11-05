@@ -1,7 +1,7 @@
 # 审校页 / 预览页拆分 · 架构
 
 - 日期：2026-11-05
-- 树：`worktrees/architect` @ main `0345378` + 本笔（2026-11-05 rebase 到 main；核树口令见 §1 末尾）
+- 树：`worktrees/architect` @ main `c17631d` + 本笔（2026-11-05 rebase 到 main；核树口令见 §1 末尾）
 - 状态：**方案，未落代码**。施工顺序归 DevLead；产品边界归 PM；本文件只定结构、接口与可机检判据。
 
 ---
