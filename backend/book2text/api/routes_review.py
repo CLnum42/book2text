@@ -1514,3 +1514,15 @@ def review_line_diff_decide(
         "events": [event.to_dict() for event in events],
         "history": {"undo": undo, "redo": redo},
     }
+
+
+@router.get("/{project_id}/review/line-runs")
+def review_line_runs(request: Request, project_id: str, page: int) -> dict[str, Any]:
+    """一页的全文差异 runs：页面级红字 / 色块一次取齐（别逐行发请求）。
+
+    与审校队列同一判据（汉字级 / 标点级），`keep` 的处不在 runs 里——runs 是文本推导的。
+    """
+    try:
+        return line_diff_module.runs_for_page(project_id, page, library=_library(request))
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc

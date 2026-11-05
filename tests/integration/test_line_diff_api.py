@@ -310,3 +310,25 @@ def test_adopted_run_disappears_after_adoption(two_spot_project, client, auth_he
     after = line_diff(client, auth_headers, project_id, block_id, 0)
     assert len(after["runs"]) == 1
     assert after["runs"][0]["a_start"] == payload["runs"][1]["a_start"]
+
+
+def test_page_runs_come_back_in_one_call(two_spot_project, client, auth_headers) -> None:
+    """页面级 runs：一次取一页，供红字与色块同步渲染用。"""
+    project_id, block_id, original = two_spot_project
+    response = client.get(
+        f"/api/projects/{project_id}/review/line-runs",
+        params={"page": 1},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["page_no"] == 1
+    mine = [
+        item
+        for item in payload["items"]
+        if item["block_id"] == block_id and item["line_index"] == 0
+    ]
+    assert len(mine) == 1
+    assert len(mine[0]["runs"]) == 2
+    assert mine[0]["level"] == "differs_chars"
+    assert all("box_indices" in run for run in mine[0]["runs"])

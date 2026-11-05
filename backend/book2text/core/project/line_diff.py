@@ -432,3 +432,43 @@ def decide_run(
         "page_no": block.page_no,
         "events": events,
     }
+
+
+def runs_for_page(
+    project_id: str,
+    page_no: int,
+    *,
+    library: Path | None = None,
+) -> dict:
+    """一页所有差异行的 runs（页面级红字与色块用这一份，别逐行发请求）。
+
+    只返回**实质差异**行（汉字级 / 标点级），与审校队列同一判据（`compare.grade_line`）。
+    行文本取 `block_line.text`（与块文本同步过），不额外读块。
+    """
+    from ..ocr import compare as compare_module
+
+    target = library if library is not None else library_module.default_library_dir()
+    items = []
+    for record in blocks_module.list_block_lines(project_id, library=target, page_no=page_no):
+        if record.aux_text is None:
+            continue
+        grade = compare_module.grade_line(record.text or "", record.aux_text)
+        if grade not in (compare_module.DIFFERS_CHARS, compare_module.DIFFERS_PUNCT):
+            continue
+        payload = runs_for_text(
+            record.text or "",
+            record.aux_text,
+            word_boxes=record.word_boxes,
+            line_bbox=record.bbox,
+        )
+        items.append(
+            {
+                "block_id": record.block_id,
+                "line_index": record.line_index,
+                "line_id": record.line_id,
+                "ack": record.diff_ack,
+                "level": grade,
+                **{key: payload[key] for key in ("runs", "quality", "degraded", "has_insert_delete", "order_note")},
+            }
+        )
+    return {"page_no": page_no, "items": items}
