@@ -1,0 +1,144 @@
+{
+ "round": "2026-11-05 版心变更对导出的影响（只差一个变量）",
+ "baseline": "4b49267",
+ "fit": {
+  "b2t_YR5EJ0": {
+   "pages": 265,
+   "updated": 220,
+   "changed": 214,
+   "custom": [
+    9,
+    10,
+    12,
+    14,
+    16,
+    18,
+    20,
+    22,
+    28,
+    30
+   ],
+   "mode_counts": {
+    "auto": 255,
+    "custom": 10
+   }
+  },
+  "b2t_H6GXVG": {
+   "pages": 40,
+   "updated": 37,
+   "fitted": 34,
+   "fallback": 3,
+   "changed": 35,
+   "custom": [
+    3,
+    14,
+    24
+   ],
+   "mode_counts": {
+    "auto": 37,
+    "custom": 3
+   }
+  }
+ },
+ "exports": {
+  "b2t_YR5EJ0": {
+   "A_lines": 1984,
+   "B_lines": 1984,
+   "identical": true,
+   "sha": "715f665dc3845c0a8ca64999bc467794713a165ae48a9f9a58f553f2427993ce"
+  },
+  "b2t_H6GXVG": {
+   "A_lines": 148,
+   "B_lines": 148,
+   "identical": true,
+   "sha": "008b9babe1e086a48fd160847547216e572e7fdd50af1a0461abb628d6a81799",
+   "cer_A": 0.014522,
+   "cer_B": 0.014522,
+   "cer_upper_95": 0.018,
+   "distance": 292,
+   "gold_chars": 20108
+  }
+ },
+ "criteria": {
+  "1_no_body_loss": "pass（B 与 A 逐字节相同，CER 相同）",
+  "2_header_reduced": "not_applicable_fail（A 的导出页眉已是 0，无法再减；YR5EJ0 精确页眉 1/1 是章标题，不是页眉）",
+  "3_line_diff": {
+   "header_removed": 0,
+   "title_kept": 0,
+   "other": 0
+  },
+  "4_readonly": "pass（block / block_line 全字段 sha 导出前后相同）"
+ },
+ "only_decision_change": {
+  "project": "b2t_H6GXVG",
+  "page": 36,
+  "block": "01M62XF2M5RNJE4RJY7MWR7PFG",
+  "A": "inside",
+  "B": "outside",
+  "export_diff": "无（该块被 is_furniture_block 剔除）"
+ },
+ "red_test": {
+  "action": "H6GXVG 第 5–8 页版心缩成 [0.45,0.45,0.55,0.55]",
+  "A_lines": 148,
+  "C_lines": 146,
+  "verdict": "链路能红（少 2 句）"
+ },
+ "missing_sample": "需要一本页眉/页码被识别成 paragraph、落在版心内、且不满足 furniture 规则的书，才能观测「版心收紧要真改导出」",
+ "new_book_path": {
+  "C": {
+   "reset": "all pages auto/null",
+   "fit": {
+    "updated": 40,
+    "fitted": 36,
+    "fallback": 4,
+    "skipped_custom": 0
+   },
+   "lines": 146,
+   "chars": 20279,
+   "titles": {
+    "第一回": 1,
+    "第二回": 0,
+    "贾夫人仙逝扬州城": 0,
+    "冷子兴演说荣国府": 0
+   },
+   "cer": 0.014919,
+   "distance": 300,
+   "upper_95": 0.018605,
+   "p14_box": "[0.511376, 0.062049, 0.988174, 0.942263]"
+  },
+  "E": {
+   "fit": {
+    "updated": 40,
+    "fitted": 36,
+    "fallback": 4,
+    "skipped_custom": 0,
+    "include_custom": true
+   },
+   "lines": 146,
+   "chars": 20279,
+   "titles": {
+    "第一回": 1,
+    "第二回": 0,
+    "贾夫人仙逝扬州城": 0,
+    "冷子兴演说荣国府": 0
+   }
+  },
+  "A": {
+   "lines": 148,
+   "chars": 20310,
+   "titles": {
+    "第一回": 1,
+    "第二回": 1,
+    "贾夫人仙逝扬州城": 1,
+    "冷子兴演说荣国府": 1
+   },
+   "cer": 0.014522,
+   "distance": 292
+  },
+  "diff_A_vs_C": [
+   "- 第二回贾夫人仙逝扬州城冷子兴演说荣国府 (误剔)",
+   "- 揚環賣州逝大蚌人 (正确剔掉)"
+  ],
+  "verdict": "判据 1 在 C/E 上不通过：新书路径丢 p14 回目"
+ }
+}
