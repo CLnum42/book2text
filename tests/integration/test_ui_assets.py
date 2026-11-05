@@ -1300,9 +1300,12 @@ def test_trash_select_all_and_margin_visual_are_wired() -> None:
 
     # 版心视觉：1px 边框 + 更深的版心外灰度
     # 任务 76：版心框改成 1px 半透明（用户说原来那圈白边"看着很不协调"）
-    assert "border: 1px solid rgba(11, 95, 88, .42);" in styles
-    assert "rgba(15, 18, 24, .34)" in styles
+    # 2026-11-05：用户说"边框太粗"——1px 没变，是边框 .42 + 外圈 .34 叠起来像一圈带，
+    # 降到 .22 / .2；手柄也缩到一半、平时 opacity 0（悬停 / 拖动才显形）。
+    assert "border: 1px solid rgba(11, 95, 88, .22);" in styles
+    assert "rgba(15, 18, 24, .2)" in styles
     assert "rgba(15, 18, 24, .30)" in styles
+    assert ".page-margin__box.is-dragging .page-margin__handle { opacity: 1; }" in styles
     # 把手还在（改细不能把拖动弄丢）
     assert ".page-margin__handle" in styles
 

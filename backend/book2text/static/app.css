@@ -609,31 +609,39 @@ textarea {
   /* 任务 35：2px → 1px，少盖住边缘的字；外侧 1px 半透明白线保证深色扫描页上也看得见。 */
   /* 任务 76：用户说这条框"看着很不协调"。改成半透明细线 + 只靠内外明暗对比，
      去掉原来那圈 1px 白边（它就是"粗"的观感来源）。拖动手柄的热区一点没动。 */
-  border: 1px solid rgba(11, 95, 88, .42); border-radius: 2px;
-  box-shadow: 0 0 0 9999px rgba(15, 18, 24, .34);
+  /* 2026-11-05 用户反馈"边框太粗"：1px 本身没变，是**暗色外圈 + 边框**叠起来像一圈带。
+     边框 .42 → .22，外圈 .34 → .2；手柄也在下面改成小一号、只在悬停 / 拖动时显形。 */
+  border: 1px solid rgba(11, 95, 88, .22); border-radius: 2px;
+  box-shadow: 0 0 0 9999px rgba(15, 18, 24, .2);
 }
-.page-margin--custom .page-margin__box { border-color: rgba(109, 40, 217, .5); }
+.page-margin--custom .page-margin__box { border-color: rgba(109, 40, 217, .28); }
 .page-margin--inherit .page-margin__box { border-style: dashed; }
 .page-margin__handle {
   position: absolute; pointer-events: auto; touch-action: none;
-  background: rgba(15, 118, 110, .9); border: 1px solid #fff; border-radius: 3px;
-  box-shadow: 0 1px 2px rgba(15, 18, 24, .25);
+  background: rgba(15, 118, 110, .85); border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(15, 18, 24, .22);
+  /* 2026-11-05：手柄本身也是"边框看着粗"的一部分——缩到原来一半，平时不显形，
+     鼠标悬停这一页 / 拖动时才出现（8px / 13px 的热区跟着缩小）。 */
+  opacity: 0; transition: opacity .12s ease;
 }
+.page-tile:hover .page-margin__handle,
+.page-canvas:hover .page-margin__handle,
+.page-margin__box.is-dragging .page-margin__handle { opacity: 1; }
 .page-margin--custom .page-margin__handle { background: rgba(124, 58, 237, .9); }
-.page-margin__handle--n, .page-margin__handle--s { left: 10px; right: 10px; height: 8px; cursor: ns-resize; }
-.page-margin__handle--n { top: -5px; }
-.page-margin__handle--s { bottom: -5px; }
-.page-margin__handle--w, .page-margin__handle--e { top: 10px; bottom: 10px; width: 8px; cursor: ew-resize; }
-.page-margin__handle--w { left: -5px; }
-.page-margin__handle--e { right: -5px; }
+.page-margin__handle--n, .page-margin__handle--s { left: 10px; right: 10px; height: 4px; cursor: ns-resize; }
+.page-margin__handle--n { top: -2px; }
+.page-margin__handle--s { bottom: -2px; }
+.page-margin__handle--w, .page-margin__handle--e { top: 10px; bottom: 10px; width: 4px; cursor: ew-resize; }
+.page-margin__handle--w { left: -2px; }
+.page-margin__handle--e { right: -2px; }
 .page-margin__handle--nw, .page-margin__handle--ne,
 .page-margin__handle--sw, .page-margin__handle--se {
-  width: 13px; height: 13px; border-radius: 4px;
+  width: 7px; height: 7px; border-radius: 2px;
 }
-.page-margin__handle--nw { top: -7px; left: -7px; cursor: nwse-resize; }
-.page-margin__handle--ne { top: -7px; right: -7px; cursor: nesw-resize; }
-.page-margin__handle--sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
-.page-margin__handle--se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+.page-margin__handle--nw { top: -3px; left: -3px; cursor: nwse-resize; }
+.page-margin__handle--ne { top: -3px; right: -3px; cursor: nesw-resize; }
+.page-margin__handle--sw { bottom: -3px; left: -3px; cursor: nesw-resize; }
+.page-margin__handle--se { bottom: -3px; right: -3px; cursor: nwse-resize; }
 .page-margin__handle:hover { background: #0b4f4a; }
 .page-margin__box.is-dragging { border-width: 2px; border-color: #0b5f58; }
 body.margin-dragging, body.margin-dragging * { user-select: none; -webkit-user-select: none; }
