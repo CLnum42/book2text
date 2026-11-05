@@ -34,6 +34,8 @@ body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hi
 .lhd .c4{flex:1;padding-left:10px}.lhd .c5{width:270px;text-align:right}
 .row{height:64px;display:flex;align-items:center;padding:0 14px 0 10px;border-bottom:1px solid var(--line2);position:relative;background:#fff}
 .row.cur{background:#fffdf7}
+.row.done_changed{background:#f5faf6}
+.row.done_changed .gut{background:#f2f8f4}
 .row.cur::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--warn)}
 .no{width:32px;flex:none;font:12px/1 var(--mono);color:#b6bbc2;text-align:right;padding-right:10px}
 .row.cur .no{color:var(--warntext);font-weight:700}
@@ -49,14 +51,19 @@ body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hi
   border-left:1px solid #e6e8ec;border-right:1px solid #e6e8ec;font-size:11px;color:var(--faint);background:#fafbfc}
 .row.cur .gut{background:#fff8ea;border-color:#f0dcbc}
 .gut .dot{width:6px;height:6px;border-radius:50%;background:#c8ccd2;flex:none}
+.gut{flex-direction:column;gap:1px;line-height:1.25}
+.gut .g1{display:flex;align-items:center;gap:4px;font-size:11px}
+.gut .g2{font-size:9px;color:var(--faint)}
+.gut.st-un .dot{background:#dc2626}
 .gut.st-ok{color:var(--oktext)}.gut.st-ok .dot{background:var(--ok)}
-.gut.st-ed{color:var(--warntext);font-weight:650}.gut.st-ed .dot{background:var(--warn)}
+.gut.st-ed{color:var(--warntext);font-weight:650}.gut.st-ed .dot{background:#d97706}
 .tx{flex:1;min-width:0;font:15.5px/1.5 var(--book);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);letter-spacing:.2px;padding-left:10px}
 .d{color:var(--bad);font-weight:600;text-decoration:underline;text-decoration-color:var(--ul);text-decoration-thickness:2px;text-underline-offset:3px}
 .d2{color:var(--bad);font-weight:600;text-decoration:underline;text-decoration-color:var(--ul);text-decoration-thickness:2px;text-underline-offset:6px}
-.hd{color:#8a4b44;background:#f6e2df;border-radius:2px;padding:0 1px}
-.e{color:var(--bad);font-weight:600;background:#fde7e4;border-radius:2px;padding:0 1px}
-.rm{color:#9c5148;background:#fde7e4;border-radius:2px;padding:0 1px;text-decoration:line-through;text-decoration-thickness:1.5px}
+.hd{color:#15803d;background:#eaf6ee;border-radius:2px;padding:0 1px}
+.chg{color:#15803d;font-weight:600;text-decoration:underline;text-decoration-color:#15803d;text-decoration-thickness:1.5px;text-underline-offset:3px;background:#eaf6ee;border-radius:2px;padding:0 1px}
+.e{color:#a16207;font-weight:600;text-decoration:underline;text-decoration-color:#a16207;text-decoration-thickness:1.5px;text-underline-offset:3px}
+.rm{color:#a16207;text-decoration:line-through;text-decoration-color:#a16207;text-decoration-thickness:1.5px}
 .ins{color:var(--bad);font-size:12px;vertical-align:2px;opacity:.75}
 .pen{width:22px;height:22px;flex:none;border:1px solid var(--line);background:#fff;border-radius:5px;color:var(--faint);font-size:11px;line-height:20px;text-align:center;padding:0;margin-left:8px}
 .field{flex:1;min-width:0;height:44px;display:flex;align-items:center;background:#fff;border:1px solid #b9cdf2;border-radius:6px;box-shadow:0 0 0 3px rgba(37,99,235,.10);padding:0 10px;margin-left:10px}
@@ -75,6 +82,17 @@ kbd{font:10px/1 var(--mono);background:#f2f3f5;border:1px solid var(--line3);bor
 .con{flex:none;display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--oktext);background:var(--oksoft);border:1px solid #cfe9d8;border-radius:14px;height:26px;padding:0 8px}
 .dotg{width:6px;height:6px;border-radius:50%;background:var(--ok)}
 .undo{width:20px;height:20px;border:1px solid #cfe9d8;background:#fff;border-radius:50%;font-size:10px;color:var(--oktext);line-height:18px;padding:0}
+.legend{height:46px;flex:none;display:flex;align-items:center;gap:18px;padding:0 16px;background:#fff;border-bottom:1px solid var(--line)}
+.lg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.sw{width:22px;height:14px;border-radius:3px;border:1px solid var(--line3);display:inline-block}
+.sw.r{background:#fff;border-color:#f0c4c4;box-shadow:inset 0 -2px 0 #dc2626}
+.sw.y{background:#fff;border-color:#efd6ae;box-shadow:inset 0 -2px 0 #a16207}
+.sw.g1{background:#f5faf6;border-color:#cfe9d8;box-shadow:inset 0 -2px 0 #15803d}
+.sw.g2{background:#fff;border-color:#cfe9d8;box-shadow:inset 0 -2px 0 #15803d}
+.expand{display:flex;align-items:center;gap:10px;padding:0 14px 0 46px;height:40px;background:#fbfdfb;border-bottom:1px solid var(--line2);font-size:11.5px;color:var(--muted)}
+.expand .k{font-size:10px;color:#15803d;background:#eaf6ee;border-radius:9px;padding:1px 7px}
+.expand .v{font:13.5px/1.4 var(--book);color:var(--text)}
+.expand .arw{color:var(--faint)}
 .foot{height:24px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--s3);border-top:1px solid var(--line2);font-size:10.5px;color:var(--faint)}
 .foot b{color:var(--muted)}
 .ctx{flex:1;display:flex;flex-direction:column;min-height:0;background:var(--s2)}
@@ -124,16 +142,17 @@ kbd{font:10px/1 var(--mono);background:#f2f3f5;border:1px solid var(--line3);bor
 <div class="wrap"><div class="frame" id="FA" style="width:1440px;height:900px">
   <div class="top"><button class="ib">←</button><span class="bk">红楼梦</span><span class="sub">b2t_YV1P2Y · 394 页</span>
     <span class="spacer"></span><span class="tab">页面</span><span class="tab on">审校</span><span class="tab">预览导出</span>
-    <span class="sub" style="margin-left:6px">已判 <b class="num">1</b> / <b class="num">2134</b></span></div>
-  <div class="bar"><b>差异列表</b><span>当前第 <b class="num">40</b> / 2134 条</span>
-    <button class="fchip on">全部 2134</button><button class="fchip">未审 2132</button><button class="fchip">待提交 1</button><button class="fchip">已确认 1</button>
+    <span class="sub" style="margin-left:6px">已确认 <b class="num">2</b> / <b class="num">1623</b></span></div>
+  <div class="bar"><b>差异列表</b><span>当前第 <b class="num">40</b> / 1623 条</span>
+    <button class="fchip on">全部 1623</button><button class="fchip">未审 1620</button><button class="fchip">待提交 1</button><button class="fchip">已确认 2</button>
     <span class="sort">排序：阅读顺序 · 可疑度未计算</span>
     <span class="spacer"></span><span class="virt">虚拟滚动 · 只渲染 7 行 · 共用 2 张页图</span></div>
   <div class="list"><div class="lhd"><span class="c c1">序号</span><span class="c c2">图 · 差异字 22px</span><span class="c c3">状态</span><span class="c c4">文本（当前采用，可直接改）</span><span class="c c5">判定</span></div>
     <div class="row un">
   <div class="no">38</div>
   <div class="shot"><div class="im pg10" style="background-size:760.2px 1145.8px;background-position:-333.2px -622.1px"><i class="u" style="left:160.9px;top:22.0px;width:20.5px"></i></div></div>
-  <div class="gut st-un"><span class="dot"></span>未审</div>
+  <div class="gut st-un"><span class="g1"><span class="dot"></span>未审</span>
+    </div>
   <span class="tx">儿们正说得兴头，又要吵起来。<span class="d">况</span>且那孩子们熬</span><button class="pen" title="直接改这一行">✎</button>
   <div class="vwrap">
       <button class="vbtn"><span class="vl">保留当前</span><span class="vc">况</span></button>
@@ -142,7 +161,8 @@ kbd{font:10px/1 var(--mono);background:#f2f3f5;border:1px solid var(--line3);bor
 </div><div class="row un">
   <div class="no">39</div>
   <div class="shot"><div class="im pg10" style="background-size:760.2px 1145.8px;background-position:-434.7px -661.2px"><i class="u" style="left:160.6px;top:22.0px;width:20.5px"></i></div></div>
-  <div class="gut st-un"><span class="dot"></span>未审</div>
+  <div class="gut st-un"><span class="g1"><span class="dot"></span>未审</span>
+    </div>
   <span class="tx">夜，怪冷的。也罢！且叫他们歇歇，把咱们<span class="d">的</span>女</span><button class="pen" title="直接改这一行">✎</button>
   <div class="vwrap">
       <button class="vbtn"><span class="vl">保留当前</span><span class="vc">的</span></button>
@@ -151,40 +171,42 @@ kbd{font:10px/1 var(--mono);background:#f2f3f5;border:1px solid var(--line3);bor
 </div><div class="row edit cur">
   <div class="no">40</div>
   <div class="shot"><div class="im pg10" style="background-size:760.2px 1145.8px;background-position:-395.6px -936.8px"><i class="v" style="left:159.2px;top:2px"></i><i class="u" style="left:220.7px;top:22.0px;width:20.5px"></i></div></div>
-  <div class="gut st-ed"><span class="dot"></span>待提交</div>
+  <div class="gut st-ed"><span class="g1"><span class="dot"></span>待提交</span>
+    </div>
   <span class="field"><span class="ftx">廊角门出来，婆子们抱着几个软包，—<span class="e">—</span><i class="caret"></i>因不及抬</span><span class="hint"><kbd>Enter</kbd> 提交 · <kbd>Esc</kbd> 取消</span></span>
   <div class="vwrap dim"><span class="badge">2 处</span>
       <button class="vbtn"><span class="vl">保留当前</span><span class="vc">抬</span></button>
       <button class="vbtn"><span class="vl">采用候选 · 多出 1 字</span><span class="vc">—·拾</span></button>
     </div>
-</div><div class="row un">
+</div><div class="row done_changed">
   <div class="no">41</div>
-  <div class="shot"><div class="im pg10" style="background-size:739.7px 1114.9px;background-position:-42.3px -949.5px"><i class="u" style="left:158.1px;top:22.0px;width:20.0px"></i></div></div>
-  <div class="gut st-un"><span class="dot"></span>未审</div>
-  <span class="tx"><span class="d">箱</span>，料着贾母爱听的三五出戏的彩衣包了来。婆</span><button class="pen" title="直接改这一行">✎</button>
-  <div class="vwrap">
-      <button class="vbtn"><span class="vl">保留当前</span><span class="vc">箱</span></button>
-      <button class="vbtn"><span class="vl">采用候选</span><span class="vc">稍</span></button>
-    </div>
-</div><div class="row un">
+  <div class="shot"><div class="im pg10" style="background-size:739.7px 1114.9px;background-position:-42.3px -949.5px"></div></div>
+  <div class="gut st-ok"><span class="g1"><span class="dot"></span>已确认</span>
+    <span class="g2">改过</span></div>
+  <span class="tx"><span class="chg">稍</span>，料着贾母爱听的三五出戏的彩衣包了来。婆</span><button class="pen" title="直接改这一行">✎</button>
+  <span class="con"><span class="dotg"></span>已确认 · 采纳候选<button class="undo" title="撤销这一条（batch /undo）">↺</button></span>
+</div><div class="row done_kept">
   <div class="no">42</div>
-  <div class="shot"><div class="im pg11" style="background-size:701.7px 1057.7px;background-position:-164.5px -292.1px"><i class="u" style="left:156.8px;top:22.0px;width:18.4px"></i></div></div>
-  <div class="gut st-un"><span class="dot"></span>未审</div>
-  <span class="tx">少不得弄个新样儿<span class="d">的</span>：叫芳官唱一出“寻梦”，只用</span><button class="pen" title="直接改这一行">✎</button>
-  <div class="vwrap">
-      <button class="vbtn"><span class="vl">保留当前</span><span class="vc">的</span></button>
-      <button class="vbtn"><span class="vl">采用候选 · 少了 1 字</span><span class="vc"><b class="nil">（无）</b></span></button>
-    </div>
-</div><div class="row done">
+  <div class="shot"><div class="im pg11" style="background-size:760.2px 1145.8px;background-position:-468.9px -70.9px"></div></div>
+  <div class="gut st-ok"><span class="g1"><span class="dot"></span>已确认</span>
+    <span class="g2">未改动</span></div>
+  <span class="tx">来逛逛？你们如今唱什么？才刚八出《八义》，闹的</span><button class="pen" title="直接改这一行">✎</button>
+  <span class="con"><span class="dotg"></span>已确认 · 保留原文<button class="undo" title="撤销这一条（batch /undo）">↺</button></span>
+</div><div class="row un">
   <div class="no">43</div>
-  <div class="shot"><div class="im pg12" style="background-size:912.3px 1375.0px;background-position:-270.7px -1072.4px"></div></div>
-  <div class="gut st-ok"><span class="dot"></span>已确认</div>
-  <span class="tx">或如残漏之滴，或如<span class="hd">迸</span>豆之急，或如惊马之驰，〈或如</span><button class="pen" title="直接改这一行">✎</button>
-  <span class="con"><span class="dotg"></span>已确认 · 手改<button class="undo" title="撤销这一条（batch /undo）">↺</button></span>
+  <div class="shot"><div class="im pg12" style="background-size:912.3px 1375.0px;background-position:-270.7px -1072.4px"><i class="u" style="left:153.8px;top:22.0px;width:22.9px"></i></div></div>
+  <div class="gut st-un"><span class="g1"><span class="dot"></span>未审</span>
+    </div>
+  <span class="tx">或如残漏之滴，或如<span class="d">迸</span>豆之急，或如惊马之驰，〈或如</span><button class="pen" title="直接改这一行">✎</button>
+  <div class="vwrap">
+      <button class="vbtn"><span class="vl">保留当前</span><span class="vc">迸</span></button>
+      <button class="vbtn"><span class="vl">采用候选</span><span class="vc">进</span></button>
+    </div>
 </div><div class="row un">
   <div class="no">44</div>
   <div class="shot"><div class="im pg12" style="background-size:760.2px 1145.8px;background-position:-22.2px -932.5px"><i class="u" style="left:157.5px;top:22.0px;width:20.1px"></i></div></div>
-  <div class="gut st-un"><span class="dot"></span>未审</div>
+  <div class="gut st-un"><span class="g1"><span class="dot"></span>未审</span>
+    </div>
   <span class="tx"><span class="d">疾</span>电之光而忽暗，其鼓声慢，传梅亦慢，鼓声疾，传</span><button class="pen" title="直接改这一行">✎</button>
   <div class="vwrap">
       <button class="vbtn"><span class="vl">保留当前</span><span class="vc">疾</span></button>
@@ -199,18 +221,20 @@ kbd{font:10px/1 var(--mono);background:#f2f3f5;border:1px solid var(--line3);bor
     <div class="cbody"><div class="cimg" style="width:640px;height:160px"><div class="im pg10" style="top:6px;height:148px;background-size:1060.4px 1598.3px;background-position:-268.2px -1249.9px"></div><div class="box" style="left:19.9px;top:64.6px;width:600.1px;height:30.7px"></div><i class="cmi" style="left:505.8px;top:86.8px"></i><i class="cm" style="left:591.5px;top:97.8px;width:28.6px"></i></div><div class="ctext"><div class="cl"><span class="n">1</span><span class="t">一时，梨香院的教习带了文官等十二人从游</span></div><div class="cl cur"><span class="n">2</span><span class="t">廊角门出来，婆子们抱着几个软包，—因不及<span class="d d2">抬</span></span></div><div class="cl"><span class="n">3</span><span class="t">箱，料着贾母爱听的三五出戏的彩衣包了来。婆</span></div><div class="cont">⋯ 下方还有同段行</div></div></div></div>
 </div><aside class="notes">
 <div class="card"><h3>A · 列表 v3</h3><ul>
-<li><b>序号列 32px</b>：写当前位置（38…44），不是编号——换排序就变；顶栏同步写「第 40 / 2134」。</li>
+<li><b>序号列 32px</b>：写当前位置（38…44），不是编号——换排序就变；顶栏同步写「第 40 / 1623」。</li>
 <li><b>状态 gutter 72px</b>，夹在图与文字之间，两侧 1px 竖线：每行状态落在同一条竖列上，扫一眼能数出这一屏有几处橙色。</li>
 <li><b>行高 64px</b>（取景窗 340×34、字高 22px、±8 字），一屏 <b>7 行</b>。</li>
 <li>两个按钮 = 两个版本（保留当前 / 采用候选），第三个动作是点正文或 ✎ 改。</li>
 </ul></div>
-<div class="card"><h3>红色怎么分</h3><ul>
-<li><b>机器差异</b>：红字 + 2px 下划线，无底色。多处时第二处下划线 offset 6px。</li>
-<li><b>人改（待提交）</b>：红字 + <b>浅红底</b> <span style="background:#fde7e4;color:#b42318">—</span>（删掉的字划掉），光标停在那。</li>
-<li><b>人改（已提交）</b>：底色降饱和 <span style="background:#f6e2df;color:#8a4b44">迸</span>，是痕迹不是警告；状态位写「已确认 · 手改」+ ↺。</li>
+<div class="card"><h3>三色语义</h3><ul>
+<li><b>红</b> <span style="color:#dc2626">况</span> 未判差异：红字 + 细下划线（4.83:1）。一行多处时第二处下划线 offset 6px。</li>
+<li><b>黄</b> <span style="color:#a16207">—</span> 待提交（你改的）：黄字 + 细下划线（<b>#a16207</b>，4.92:1；不写黄字，黄字只有 2.94:1）。</li>
+<li><b>绿</b> <span style="color:#15803d;background:#eaf6ee">稍</span> 已确认：绿字（#15803d，5.02:1）+ 行底纹 = <b>改过</b>；绿字只在「改过的字」上。</li>
+<li><b>绿无痕</b>：已确认但没改字 → 字保持黑、行保持白，gutter 写「未改动」。</li>
+<li>gutter 第二行写字（<b>改过 / 未改动</b>），颜色不是唯一通道——色盲/黑白截图也读得出。</li>
 </ul></div>
 <div class="card warnbox"><h3>数字口径</h3><ul>
-<li>样张 <b>b2t_YV1P2Y</b>：394 页 / 10,575 行 / <b>2,134 行有差异</b>；字框一一对应。</li>
+<li>样张 <b>b2t_YV1P2Y</b>：394 页 / 10,575 行；<code>diff_status=differs</code> 有 <b>2,134</b> 行，<b>当前队列 1,623</b>（PM §9：2134 是历史快照，含已改到一致的 458 条与不进队列的 53 条）。</li>
 <li>行高 64、gutter 72、序号 32、±8 字都是设计取值；<b>未实测</b>色觉障碍下的红/红区分（只靠底色与划线区分，黑白截图仍可分）。</li>
 <li><b>1747 / 3031 / 20.5 待核</b>；可疑度未计算，不排序。</li>
 </ul></div>
@@ -245,9 +269,76 @@ kbd{font:10px/1 var(--mono);background:#f2f3f5;border:1px solid var(--line3);bor
 <li>11/9：差异「的」在行中段（第 9/24 字），居中后两侧都留着上下文；段首/段尾的条目居中会一边空。</li>
 </ul></div>
 </aside></div>
+<div class="wrap"><div class="frame" id="FC" style="width:1180px;height:430px">
+  <div class="top"><button class="ib">←</button><span class="bk">四态同屏</span><span class="sub">b2t_YV1P2Y · 同一屏里四条</span>
+    <span class="spacer"></span><span class="fchip on">图例常驻</span></div>
+  <div class="legend">
+    <span class="lg"><span class="sw r"></span>红 = 未判差异（两引擎不一致）</span>
+    <span class="lg"><span class="sw y"></span>黄 = 待提交（你改的，还没提交）</span>
+    <span class="lg"><span class="sw g1"></span>绿 + 底纹 = 已确认 · 改过</span>
+    <span class="lg"><span class="sw g2"></span>绿 无底纹 = 已确认 · 保留原文</span>
+  </div>
+  <div class="list" style="border-bottom:0"><div class="row un">
+  <div class="no">38</div>
+  <div class="shot"><div class="im pg10" style="background-size:760.2px 1145.8px;background-position:-333.2px -622.1px"><i class="u" style="left:160.9px;top:22.0px;width:20.5px"></i></div></div>
+  <div class="gut st-un"><span class="g1"><span class="dot"></span>未审</span>
+    </div>
+  <span class="tx">儿们正说得兴头，又要吵起来。<span class="d">况</span>且那孩子们熬</span><button class="pen" title="直接改这一行">✎</button>
+  <div class="vwrap">
+      <button class="vbtn"><span class="vl">保留当前</span><span class="vc">况</span></button>
+      <button class="vbtn"><span class="vl">采用候选</span><span class="vc">祝</span></button>
+    </div>
+</div><div class="row edit cur">
+  <div class="no">39</div>
+  <div class="shot"><div class="im pg10" style="background-size:760.2px 1145.8px;background-position:-395.6px -936.8px"><i class="v" style="left:159.2px;top:2px"></i><i class="u" style="left:220.7px;top:22.0px;width:20.5px"></i></div></div>
+  <div class="gut st-ed"><span class="g1"><span class="dot"></span>待提交</span>
+    </div>
+  <span class="field"><span class="ftx">廊角门出来，婆子们抱着几个软包，—<span class="e">—</span><i class="caret"></i>因不及抬</span><span class="hint"><kbd>Enter</kbd> 提交 · <kbd>Esc</kbd> 取消</span></span>
+  <div class="vwrap dim"><span class="badge">2 处</span>
+      <button class="vbtn"><span class="vl">保留当前</span><span class="vc">抬</span></button>
+      <button class="vbtn"><span class="vl">采用候选 · 多出 1 字</span><span class="vc">—·拾</span></button>
+    </div>
+</div><div class="row done_changed">
+  <div class="no">40</div>
+  <div class="shot"><div class="im pg10" style="background-size:739.7px 1114.9px;background-position:-42.3px -949.5px"></div></div>
+  <div class="gut st-ok"><span class="g1"><span class="dot"></span>已确认</span>
+    <span class="g2">改过</span></div>
+  <span class="tx"><span class="chg">稍</span>，料着贾母爱听的三五出戏的彩衣包了来。婆</span><button class="pen" title="直接改这一行">✎</button>
+  <span class="con"><span class="dotg"></span>已确认 · 采纳候选<button class="undo" title="撤销这一条（batch /undo）">↺</button></span>
+</div><div class="row done_kept">
+  <div class="no">41</div>
+  <div class="shot"><div class="im pg11" style="background-size:760.2px 1145.8px;background-position:-468.9px -70.9px"></div></div>
+  <div class="gut st-ok"><span class="g1"><span class="dot"></span>已确认</span>
+    <span class="g2">未改动</span></div>
+  <span class="tx">来逛逛？你们如今唱什么？才刚八出《八义》，闹的</span><button class="pen" title="直接改这一行">✎</button>
+  <span class="con"><span class="dotg"></span>已确认 · 保留原文<button class="undo" title="撤销这一条（batch /undo）">↺</button></span>
+</div>
+    <div class="expand"><span class="k">判过</span><span>保留原文</span>
+      <span class="v">第二引擎：…八出《八义》，闹</span><span class="arw">→</span>
+      <span class="v">当前：…八出《八义》，闹的</span>
+      <span class="spacer"></span><span>判于 23:41</span><button class="btn">撤销这一条</button></div>
+  </div>
+</div><aside class="notes">
+<div class="card"><h3>C · 四态同屏</h3><ul>
+<li>红 = 未判差异；黄 = 待提交（手改、没提交）；绿 = 已确认。绿分两种：<b>带底纹 = 改过</b>，<b>无底纹 = 保留原文</b>。</li>
+<li>底色不是唯一通道：gutter 第二行写字（<b>改过 / 未改动</b>），黑白截图也读得出。</li>
+<li>为什么「保留原文」也是绿：判过就是确认，只是没改字；区别用底纹表达，不用颜色。</li>
+</ul></div>
+<div class="card"><h3>展开条回答「从什么改成什么」</h3><ul>
+<li>这一行的两个版本都还在库里：<code>aux_text</code>（第二引擎）+ 当前文本；展开条并排给出「第二引擎 … → 当前 …」，再加动作、时间和撤销。</li>
+<li><b>采纳候选</b>的行没有这个对照——采纳后当前文本就等于第二引擎，两者一致；那种行只显示「改过 · 采纳候选 · 时间」。</li>
+<li><b>手改</b>的行同理：库里没有改前的行文本（<code>block_line.text</code> 随编辑同步），v1 只能给「采纳/手改 + 时间」，要「改前 → 改后」得加列（迁移），不在 v1。</li>
+</ul></div>
+<div class="card warnbox"><h3>颜色口径</h3><ul>
+<li>红 <code>#dc2626</code> 4.83:1、黄 <code>#a16207</code> 4.92:1、绿 <code>#15803d</code> 5.02:1（白底，22px 正文）。</li>
+<li>红/黄/绿在红绿色盲模拟下都偏橄榄——所以状态词和「改过/未改动」必须写出来，不能只靠色相。</li>
+<li>这套图例只在审校页用；预览页不画机器差异，别共用图例（那里红色永远不亮）。</li>
+</ul></div>
+</aside></div>
 <script>
-const m=(location.search.match(/f=([AB])/)||[])[1];
-if(m==='A'){document.querySelectorAll('.wrap')[1].style.display='none';}
-if(m==='B'){document.querySelectorAll('.wrap')[0].style.display='none';}
+const m=(location.search.match(/f=([ABC])/i)||[])[1];
+const wraps=Array.from(document.querySelectorAll('.wrap'));
+const idx={A:0,B:1,C:2}[m]!==undefined?{A:0,B:1,C:2}[m]:-1;
+wraps.forEach(function(w,k){ if(idx>=0 && k!==idx) w.style.display='none'; });
 </script>
 </body></html>
