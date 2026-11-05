@@ -96,6 +96,7 @@ const TEST_FILES = [
   ["page-detail-editor-readonly", () => import("./page-detail-editor-readonly.test.mjs")],
   ["final-ledger", () => import("./final-ledger.test.mjs")],
   ["ui-removal-ledger", () => import("./ui-removal-ledger.test.mjs")],
+  ["push-gate", () => import("./push-gate.test.mjs")],
   ["detail-visibility", () => import("./detail-visibility.test.mjs")],
 ];
 const selector = process.argv[2];

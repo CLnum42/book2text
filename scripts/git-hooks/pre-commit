@@ -61,6 +61,7 @@ fi
 # 只能靠这个必然会跑的回合（每次提交）。不是最理想，但它不依赖任何人记得。
 STAMP="$COMMON/b2t-hooks-installed"
 PLOG="$COMMON/b2t-pytest.log"
+VLOG="$COMMON/b2t-verify.log"
 if git rev-parse --verify -q origin/main >/dev/null 2>&1 && [ -f "$STAMP" ]; then
   SINCE=$(cat "$STAMP" 2>/dev/null || echo 0)
   MISSING=0
@@ -71,7 +72,12 @@ if git rev-parse --verify -q origin/main >/dev/null 2>&1 && [ -f "$STAMP" ]; the
       # `sha\tSKIP\t时间\tmd-only`；不把这类算成覆盖，就会把"按设计跳过"报成"没有记录"——
       # 假警报会把真正的 --no-verify 淹掉（数字从 1 涨到 14，全是文档推送）。
       # 真绕过（--no-verify）不写任何行，照样算缺失。
-      for tip in $(awk -F'\t' '$1 == "RANGE" { print $2 } $2 == "PASS" { print $1 } $2 == "SKIP" { print $1 }' "$PLOG" 2>/dev/null); do
+      # VERIFY 行是空格分隔的（`VERIFY <sha> <tree> <time> PASS …`），要单独取第二个字段：
+      # 规则 #34 之后"跑过 pytest"的证据主要来自 verify.sh 的 VERIFY 行，RANGE 只是旧格式兼容。
+      for tip in $(
+        awk -F'\t' '$1 == "RANGE" { print $2 } $2 == "PASS" { print $1 } $2 == "SKIP" { print $1 }' "$PLOG" 2>/dev/null
+        grep -E '^VERIFY ' "$VLOG" "$PLOG" 2>/dev/null | awk -F: '{ print $NF }' | awk '{ print $2 }'
+      ); do
         if git merge-base --is-ancestor "$sha" "$tip" 2>/dev/null; then COVERED=1; break; fi
       done
     fi

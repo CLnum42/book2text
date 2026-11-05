@@ -1,249 +1,78 @@
 #!/bin/sh
-# Book2Text pre-push：推送前跑**两道**闸，因为 pre-commit 可以被 --no-verify 跳过。
+# Book2Text pre-push：**只查校验记录**（规则 #34，2026-11-05 三次真事故之后）。
 #
-#   ① node tests/js/run.mjs                                          ≈ 11s（实测）
-#   ② node tests/js/contract-registry.mjs --strict --allow-transitional-base ≈ 7s（实测）
-#   ③ pytest -q                                                      ≈ 82s
-# 便宜的先跑、先失败。① ② 即便整段推送只有 *.md 也照跑（7–11 秒，且 §18.6 登记本身会被文档改动影响）。
+# 为什么不再在这里跑重活：pre-push 里跑 node 35–50s + 全量测试 101–120s 的这两分钟，
+# git 一直握着远端连接；GitHub 对端先把空闲连接掐掉 ⇒ 闸全绿却推不上去
+# （`Connection to github.com closed by remote host`），最后只能 `git push --no-verify`
+# ⇒ 闸从"强制执行"退化成"自觉执行"。
 #
-# 这层能补的洞：`git commit --no-verify` 跳过 pre-commit，但**正常 `git push` 仍会跑 pre-push**。
-# 只有 `git push --no-verify` 能整层绕过，而 git 没有 post-push hook——那条只能靠 pre-commit 事后点名。
-# **这不是 CI**：CI 仍起不来（未验证），本闸只覆盖"从这台机器正常推送"。
+# 现在：重活在 `sh scripts/verify.sh [sha]` 里离线跑，跑完整绿才落一行记录（键 = sha，内容寻址）；
+# 本钩子只做**查表**（< 1s），缺记录就拒绝并打印要跑的那条命令。
 #
-# 三条设计约束：
-#   1) **只对碰了代码的推送跑**：整段推送只有 `*.md` 时跳过（文档改不出 pytest 红），并记一条 SKIP。
-#   2) **缺 .venv 时 fail closed**：不能"跑不起来就当通过"（D-110）。要绕就 `git push --no-verify`。
-#   3) **通过记录按 sha 落盘**，供 pre-commit 事后对账：没有 PASS 记录的已推提交会被点名。
-#      `git push --no-verify` 会跳过本 hook，而 git 没有 post-push hook——所以"留痕"只能靠下一个人跑 pre-commit。
+# 兼容：旧的 `RANGE<TAB><sha>` 记录仍然算数（它们是"那一轮真的跑过"的证据，别动）。
+#
+# fail closed：拿不到仓库 / 记录文件不可读 ⇒ 拒绝推送（不许"读不到就当通过"）。
 
 set -u
 
-REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-cd "$REPO" || exit 0
+REPO=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "✗ pre-push：拿不到仓库根目录，拒绝推送（fail closed）" >&2
+  exit 1
+}
+cd "$REPO" || exit 1
 
-# ---- 机械状态（仪表盘，不是闸）：**不写任何文件**、失败不挡推送 ----
-# 每次推送自动把"我推的是什么、远端是什么"打出来，不依赖谁记得跑。
-if [ -x "$REPO/scripts/status.sh" ]; then
-  "$REPO/scripts/status.sh" >&2 2>&1 || echo "… pre-push：status.sh 执行失败（不影响推送）" >&2
-else
-  echo "… pre-push：scripts/status.sh 不存在，跳过状态打印（不影响推送）" >&2
-fi
-
-# ---- 找 node：hook 的 PATH 不含 ~/.local/bin（与 pre-commit 同一张路径表） ----
-NODE=""
-for c in "$(command -v node 2>/dev/null)" "$HOME/.local/bin/node" /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do
-  if [ -n "$c" ] && [ -x "$c" ]; then NODE="$c"; break; fi
-done
-if [ -z "$NODE" ]; then
-  echo "✗ pre-push：找不到 node（查过 PATH / \$HOME/.local/bin / /opt/homebrew/bin / /usr/local/bin / /usr/bin）" >&2
-  echo "  拒绝推送——跑不起来的闸不允许静默放过（fail closed），纯文档推送也一样。" >&2
-  echo "  确需绕过：git push --no-verify（不会留 PASS 记录，下一笔提交会被点名）" >&2
+COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || {
+  echo "✗ pre-push：拿不到 git-common-dir，拒绝推送（fail closed）" >&2
+  exit 1
+}
+# 记录文件按 glob 扫，不写死名字：新的离线校验写在 b2t-verify.log，
+# 旧的 RANGE 记录留在历史文件名里（兼容证据，别动），两者都要算。
+LIST="$COMMON/.b2t-verify-logs.$$"
+find "$COMMON" -maxdepth 1 -name 'b2t-*.log' -type f >"$LIST" 2>/dev/null
+if [ ! -s "$LIST" ]; then
+  rm -f "$LIST"
+  echo "✗ pre-push：读不到任何校验记录（$COMMON/b2t-*.log）——拒绝推送（fail closed）" >&2
+  echo "  先跑：sh scripts/verify.sh <要推的 sha>" >&2
   exit 1
 fi
+trap 'rm -f "$LIST"' EXIT INT TERM
 
-COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir)
-MAIN=$(dirname "$COMMON")
-LOG="$COMMON/b2t-pytest.log"
-OUTLOG="$COMMON/b2t-pytest.out"
 ZERO=0000000000000000000000000000000000000000
-EMPTY_TREE=$(git hash-object -t tree /dev/null 2>/dev/null || echo "")
-
 FAILED=0
 CHECKED=0
-SKIPPED=0
-NODECHECKED=0
-
-# 在**要推送的那棵树**上跑 node 闸。用临时 worktree 而不是工作区：
-# ① 四个人共用一个工作区，盘上随时是别人未提交的半成品；
-# ② contract-registry 要 `git log ring-break-base..HEAD`，`git archive` 出来的目录没有 .git，
-#    而仓库的 HEAD 又未必等于 local_sha（从别的 worktree 推、一次推多笔都会错位）。
-# 只有 worktree 能让"文件树 == HEAD == 要推的 sha"同时成立。
-run_node_gates() {
-  LOCAL_SHA=$1
-  WTROOT=$(mktemp -d "${TMPDIR:-/tmp}/b2t-push-node.XXXXXX") || {
-    echo "✗ pre-push：建不了临时目录（node 闸）" >&2; return 1
-  }
-  # **清理写在退出路径上**（2026-10-29 教训：只写在成功路径 → 推送失败/路径竞争时留残影）。
-  # 这条 worktree 是"要推的那棵树"的载体，任何退出路径都必须拆掉它，否则下一次
-  # `git status` / 钩子会读到意外的树。
-  trap 'git worktree remove --force "$WT" >/dev/null 2>&1; git worktree prune >/dev/null 2>&1; rm -rf "$WTROOT"; rm -f "${NOUT:-}"' EXIT INT TERM
-
-  WT="$WTROOT/tree"
-  if ! git worktree add -q --detach "$WT" "$LOCAL_SHA" 2>"$WTROOT/add.log"; then
-    echo "✗ pre-push：导不出 $(echo "$LOCAL_SHA" | cut -c1-8) 的 worktree（node 闸）" >&2
-    tail -n 5 "$WTROOT/add.log" >&2 2>/dev/null || true
-    rm -rf "$WTROOT"; return 1
-  fi
-  NOUT=$(mktemp "${TMPDIR:-/tmp}/b2t-node-out.XXXXXX") || {
-    echo "✗ pre-push：建不了临时输出文件（node 闸）" >&2
-    git worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$WTROOT"; return 1
-  }
-  NSTART=$(date +%s)
-
-  # ① 套件（与 pre-commit 同一入口、同一条 env 隔离）
-  ( cd "$WT" && env -u B2T_APP_JS -u B2T_VIEW_JS -u B2T_STATIC_DIR \
-      "$NODE" tests/js/run.mjs ) >"$NOUT" 2>&1
-  RC1=$?
-  if [ "$RC1" -ne 0 ] || ! grep -q '^✔' "$NOUT"; then
-    echo "✗ pre-push：tests/js/run.mjs 红了（$(( $(date +%s) - NSTART ))s，退出码 $RC1）" >&2
-    echo "  验的是 $(echo "$LOCAL_SHA" | cut -c1-8) 这棵树，不是工作区。" >&2
-    tail -n 40 "$NOUT" >&2
-    rm -f "$NOUT"; git worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$WTROOT"
-    FAILED=1; return 1
-  fi
-  # ② 登记闸（R12）：--strict 下"有未登记/删行"必须红；base 过渡期按参数放行但会写明
-  ( cd "$WT" && "$NODE" tests/js/contract-registry.mjs --strict --allow-transitional-base ) >"$NOUT" 2>&1
-  RC2=$?
-  if [ "$RC2" -ne 0 ]; then
-    echo "✗ pre-push：contract-registry --strict 红了（退出码 $RC2）" >&2
-    tail -n 30 "$NOUT" >&2
-    rm -f "$NOUT"; git worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$WTROOT"
-    FAILED=1; return 1
-  fi
-
-  rm -f "$NOUT"
-  git worktree remove --force "$WT" >/dev/null 2>&1 || git worktree prune >/dev/null 2>&1 || true
-  rm -rf "$WTROOT"
-  NODECHECKED=$((NODECHECKED + 1))
-  # 同一本账：NODE 行证明"这道闸验过这个 tip"；RANGE 行仍然只在 pytest 也绿之后写，
-  # 所以 RANGE 的语义不变（= node + pytest 都过），pre-commit 的对账不用改。
-  printf 'NODE\t%s\t%s\tnode-gates-green\n' "$LOCAL_SHA" "$(date '+%F %T')" >>"$LOG" 2>/dev/null || true
-  echo "✓ pre-push：node 闸全绿（run.mjs + registry，$(( $(date +%s) - NSTART ))s）" >&2
-  return 0
-}
-
-check_one() {
-  LOCAL_SHA=$1
-  REMOTE_SHA=$2
-  case "$LOCAL_SHA" in "$ZERO") return 0 ;; esac
-
-  if [ "$REMOTE_SHA" = "$ZERO" ] || [ -z "$REMOTE_SHA" ]; then
-    BASE=$(git merge-base "$LOCAL_SHA" origin/main 2>/dev/null || true)
-    [ -n "$BASE" ] || BASE=$EMPTY_TREE
-  else
-    BASE=$REMOTE_SHA
-  fi
-
-  FILES=$(git diff --name-only "$BASE" "$LOCAL_SHA" 2>/dev/null || true)
-  if [ -z "$FILES" ]; then
-    return 0
-  fi
-
-  NON_MD=$(printf '%s\n' "$FILES" | grep -v '\.md$' || true)
-
-  # ⓪ 删掉 UI 入口必须在提交正文登记 `Removed-UI:`（2026-11-05，Chief 派）。
-  # 为什么在 pre-push 也放一道：commit-msg 能被 `git commit --no-verify` 跳过，而 git 没有
-  # post-push 钩子——只能在推送时按 origin/main..<要推的 sha> 逐笔复查。约 1 秒，最便宜的先跑。
-  # 纯文档推送跳过（与 pytest 同一开关）：md 改不出 UI 删除。
-  if [ -n "$NON_MD" ]; then
-    if [ ! -f "$REPO/scripts/ui-removal-ledger.mjs" ]; then
-      echo "✗ pre-push：找不到 scripts/ui-removal-ledger.mjs（Removed-UI 闸）" >&2
-      echo "  拒绝推送——跑不起来的闸不允许静默放过（fail closed）。" >&2
-      FAILED=1; return 1
-    fi
-    UIOUT=$(mktemp "${TMPDIR:-/tmp}/b2t-ui-removal.XXXXXX") || {
-      echo "✗ pre-push：建不了临时输出文件（Removed-UI 闸）" >&2; FAILED=1; return 1
-    }
-    if ! ( cd "$REPO" && "$NODE" scripts/ui-removal-ledger.mjs --range "origin/main..$LOCAL_SHA" ) >"$UIOUT" 2>&1; then
-      echo "✗ pre-push：删了 UI 入口但正文没有登记 Removed-UI（查的是 origin/main..$(echo "$LOCAL_SHA" | cut -c1-8) 的每一笔）" >&2
-      sed 's/^/  /' "$UIOUT" >&2
-      rm -f "$UIOUT"
-      FAILED=1; return 1
-    fi
-    rm -f "$UIOUT"
-  else
-    echo "… pre-push：推送范围只有文档改动，跳过 Removed-UI 闸（与 pytest 同一开关）" >&2
-  fi
-
-  # node 闸**不因纯 md 跳过**（Chief 2026-10-29）：7–11 秒，而且 §18.6 登记本身会被文档改动影响
-  run_node_gates "$LOCAL_SHA" || return 1
-
-  # 只有 Markdown → 只跳 pytest（它读不到 .md 的内容做断言；唯一例外是 docs/**/*.json，见下）
-  if [ -z "$NON_MD" ]; then
-    SKIPPED=$((SKIPPED + 1))
-    printf '%s\tSKIP\t%s\tmd-only\n' "$LOCAL_SHA" "$(date '+%F %T')" >>"$LOG" 2>/dev/null || true
-    return 0
-  fi
-
-  CHECKED=$((CHECKED + 1))
-  # venv 可能不在当前 worktree（临时 worktree / CI 里都没有），到主 worktree 找
-  PY="$REPO/.venv/bin/python"
-  [ -x "$PY" ] || PY="$MAIN/.venv/bin/python"
-  if [ ! -x "$PY" ]; then
-    echo "✗ pre-push：push 里含代码改动，但找不到 .venv/bin/python（当前与主 worktree 都找过）" >&2
-    echo "  拒绝推送——跑不起来的闸不允许静默放过（fail closed）。" >&2
-    echo "  确需绕过：git push --no-verify（不会留 PASS 记录，下一笔提交会被点名）" >&2
-    FAILED=1
-    return 1
-  fi
-
-  echo "… pre-push：跑 pytest（推送范围含代码改动，约 82s；验 $(echo "$LOCAL_SHA" | cut -c1-8) 的树，不验工作区）" >&2
-  START=$(date +%s)
-  # **验要推送的那棵树，不验工作区**（与 pre-commit 同一条理由）：
-  # 多人共用一个工作区、或从临时 worktree 推送时，工作区与 local_sha 不是一回事。
-  # **必须 `pwd -P` 归一化**（2026-10-29 事故）：macOS 上 `$${TMPDIR}` 是 /var/... 而 Python
-  # 打印的是解析后的 /private/var/...，于是下面那条"STATIC_DIR 必须在这棵树里"的自检
-  # **永远不匹配 → fail closed → 挡住所有人**。自检方向对，但它自己成了永久红。
-  # 通用规则：**任何 fail-closed 的路径比较，比较前一律 pwd -P / realpath 规范化。**
-  TMPTREE=$(cd "$(mktemp -d "${TMPDIR:-/tmp}/b2t-push.XXXXXX")" && pwd -P)
-  if ! git archive "$LOCAL_SHA" | tar -x -C "$TMPTREE"; then
-    echo "✗ pre-push：导出 $(echo "$LOCAL_SHA" | cut -c1-8) 的树失败" >&2
-    rm -rf "$TMPTREE"; FAILED=1; return 1
-  fi
-  # 输出先落临时文件：**重定向失败必须算闸失败**，不能"写不出日志所以看起来通过"。
-  # （2026-10-29 真实事故：从 worktree 推送时 `$REPO/.git/...` 不是目录，
-  #   重定向失败却打印了"全绿"，pytest 一秒都没跑。）
-  PYOUT=$(mktemp "${TMPDIR:-/tmp}/b2t-pytest-out.XXXXXX") || {
-    echo "✗ pre-push：建不了临时输出文件" >&2; rm -rf "$TMPTREE"; FAILED=1; return 1
-  }
-  # **光 cd 到那棵树不够**（2026-10-29 第五次"验错树"，最隐蔽的一次）：
-  # `from book2text import paths` 走 editable 安装 → STATIC_DIR 指向**真实工作区**，
-  # 于是"验的是树、测试读的是工作区"：别人的在制品能把你拦住，反之你的红树也能全绿。
-  # 修法 = 显式 PYTHONPATH，并把 STATIC_DIR 打出来 + **断言它在这棵树里**（防回归）。
-  STATIC_DIR=$( cd "$TMPTREE" && PYTHONPATH="$TMPTREE/backend" \
-      "$PY" -c 'from book2text import paths; print(paths.STATIC_DIR)' 2>/dev/null || echo "?" )
-  case "$STATIC_DIR" in
-    "$TMPTREE"*) : ;;
-    *)
-      echo "✗ pre-push：STATIC_DIR 指向 $STATIC_DIR，不是 $(echo "$LOCAL_SHA" | cut -c1-8) 这棵树" >&2
-      echo "  这不是测试红，是闸自己读错了树——修 PYTHONPATH，别再往下跑。" >&2
-      rm -f "$PYOUT"; rm -rf "$TMPTREE"; FAILED=1; return 1
-      ;;
-  esac
-  echo "… pre-push：验的是 $(echo "$LOCAL_SHA" | cut -c1-8) 的树；STATIC_DIR=$STATIC_DIR" >&2
-  ( cd "$TMPTREE" && PYTHONPATH="$TMPTREE/backend" "$PY" -m pytest -q ) >"$PYOUT" 2>&1
-  PYRC=$?
-  rm -rf "$TMPTREE"
-  cp "$PYOUT" "$OUTLOG" 2>/dev/null || true
-  if [ "$PYRC" -ne 0 ]; then
-    echo "✗ pre-push：pytest 红了（$(( $(date +%s) - START ))s）" >&2
-    echo "  验的是 $(echo "$LOCAL_SHA" | cut -c1-8) 的树（git archive 导出），不是工作区。" >&2
-    tail -n 30 "$PYOUT" >&2
-    [ -f "$OUTLOG" ] && echo "  日志：$(basename "$OUTLOG")" >&2
-    rm -f "$PYOUT"
-    FAILED=1
-    return 1
-  fi
-  # 66 = 一个用例都没收集到：这不是绿，是没跑到
-  if [ "$PYRC" -eq 0 ] && ! grep -qE '[0-9]+ passed' "$PYOUT"; then
-    echo "✗ pre-push：pytest 退出码 0 但没有任何 'N passed' —— 视为没跑到，按失败处理" >&2
-    tail -n 20 "$PYOUT" >&2
-    rm -f "$PYOUT"; FAILED=1; return 1
-  fi
-  rm -f "$PYOUT"
-  # 记"这次验过的 tip"：同一范围里的祖先提交都算覆盖（否则 rebase/多笔推送会反复被点名）
-  printf 'RANGE\t%s\t%s\t%s\n' "$LOCAL_SHA" "$(date '+%F %T')" "$(printf '%s\n' "$FILES" | wc -l | tr -d ' ') files" >>"$LOG" 2>/dev/null || true
-  echo "✓ pre-push：pytest 全绿（$(( $(date +%s) - START ))s，验的是 $(echo "$LOCAL_SHA" | cut -c1-8) 的树）" >&2
-  return 0
-}
 
 while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
   [ -n "${LOCAL_SHA:-}" ] || continue
-  check_one "$LOCAL_SHA" "$REMOTE_SHA" || true
+  case "$LOCAL_SHA" in "$ZERO") continue ;; esac
+  CHECKED=$((CHECKED + 1))
+  SHORT=$(printf '%s' "$LOCAL_SHA" | cut -c1-8)
+
+  FOUND=""
+  while IFS= read -r FILE; do
+    [ -r "$FILE" ] || continue
+    # ① 新的离线校验记录：VERIFY <sha> <tree> <time> PASS …
+    if awk -v sha="$LOCAL_SHA" '$1 == "VERIFY" && $2 == sha { found = 1 } END { exit found ? 0 : 1 }' "$FILE" 2>/dev/null; then
+      FOUND="VERIFY"; break
+    fi
+    # ② 向后兼容：旧的 RANGE<TAB><sha>（那一轮 node + 全量测试都跑过）
+    if awk -F'\t' -v sha="$LOCAL_SHA" '$1 == "RANGE" && $2 == sha { found = 1 } END { exit found ? 0 : 1 }' "$FILE" 2>/dev/null; then
+      FOUND="RANGE"; break
+    fi
+  done <"$LIST"
+  if [ -n "$FOUND" ]; then
+    echo "✓ pre-push：$SHORT 有校验记录（$FOUND）" >&2
+    continue
+  fi
+
+  echo "✗ pre-push：$SHORT 没有校验记录，拒绝推送" >&2
+  echo "  先离线跑一次（约 3–4 分钟；不占远端连接）：" >&2
+  echo "    sh scripts/verify.sh $LOCAL_SHA" >&2
+  echo "  跑完整绿会写一行 VERIFY 记录，然后重推同一条命令即可。" >&2
+  FAILED=1
 done
 
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-[ "$CHECKED" -gt 0 ] || echo "… pre-push：推送范围只有文档改动，跳过 pytest（node 闸已跑 $NODECHECKED 次，SKIP 已记）" >&2
+[ "$CHECKED" -gt 0 ] || echo "… pre-push：没有要推的提交（空推送），跳过" >&2
 exit 0

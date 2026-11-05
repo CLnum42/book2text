@@ -199,10 +199,11 @@ else
   echo "闸A登记  ?（node 或 tests/js/contract-registry.mjs 缺失）"
 fi
 
-PYTEST_LOG="$COMMON/b2t-pytest.log"
+PYTEST_LOG="$COMMON/b2t-verify.log"
+[ -f "$PYTEST_LOG" ] || PYTEST_LOG="$COMMON/b2t-pytest.log"
 if [ -f "$PYTEST_LOG" ]; then
   LAST=$(tail -n 1 "$PYTEST_LOG" 2>/dev/null)
-  KIND=$(printf '%s' "$LAST" | awk -F'\t' '{ if ($1 == "RANGE") print "RANGE"; else if ($2 == "SKIP") print "SKIP"; else print "?" }')
+  KIND=$(printf '%s' "$LAST" | awk -F'\t' '{ if ($1 == "RANGE") print "RANGE"; else if ($2 == "SKIP") print "SKIP"; else if ($1 ~ /^VERIFY /) print "VERIFY"; else print "?" }')
   case "$KIND" in
     RANGE)
       # RANGE<TAB><sha><TAB><date><TAB><N files>
@@ -216,6 +217,14 @@ if [ -f "$PYTEST_LOG" ]; then
     SKIP)
       SHA=$(printf '%s' "$LAST" | awk -F'\t' '{print $1}')
       printf '    最近一次 pre-push pytest：SKIP（md-only，%s）\n' "${SHA:-?}"
+      ;;
+    VERIFY)
+      # VERIFY <sha> <tree> <time> PASS node=<tests>/<pass> pytest=<passed> STATIC_DIR=<路径>
+      SHA=$(printf '%s' "$LAST" | awk '{print $2}')
+      NODE_C=$(printf '%s' "$LAST" | sed -n 's/.*node=\([^ ]*\).*/\1/p')
+      PASS_C=$(printf '%s' "$LAST" | sed -n 's/.*pytest=\([^ ]*\).*/\1/p')
+      printf '    最近一次离线校验：PASS（VERIFY %s… · node %s · passed %s）\n' \
+        "$(printf '%s' "${SHA:-?}" | cut -c1-8)" "${NODE_C:-?}" "${PASS_C:-?}"
       ;;
     *)
       printf '    最近一次 pre-push pytest：?\n'
