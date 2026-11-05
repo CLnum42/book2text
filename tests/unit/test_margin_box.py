@@ -373,3 +373,44 @@ def test_edge_narrow_filter_keeps_a_real_two_column_gutter() -> None:
     right = [(0.52, 0.15 + i * 0.03, 0.98, 0.17 + i * 0.03) for i in range(6)]
 
     assert margin_box.column_gutter([*left, *right]) == (0.42, 0.52)
+
+
+def _body_rows(count: int = 6, top: float = 0.16) -> list[tuple[float, float, float, float]]:
+    return [(0.12, top + i * 0.03, 0.88, top + 0.022 + i * 0.03) for i in range(count)]
+
+
+def test_page_header_above_body_is_not_merged_into_the_box() -> None:
+    """真机 b2t_5DDDAP p13：顶带「Page 9」x 0.802–0.878 与正文栏横向重叠，纵向并集曾把它并进框。
+
+    它窄（0.076）、不居中（cx≈0.84）、不从栏左沿起 ⇒ 判为页眉，不进框。
+    """
+    header = (0.802, 0.115, 0.878, 0.140)
+    body = _body_rows()
+
+    box = margin_box.fit_box_from_lines([header, *body])
+
+    assert box is not None
+    assert box[1] > 0.14, f"页眉不该被并进框：y0={box[1]}"
+    assert box[1] < 0.16, f"正文首行必须还在框内：y0={box[1]}"
+
+
+def test_left_aligned_short_line_at_top_stays_in_the_box() -> None:
+    """真机 YR5EJ0 p156：贴顶的段末短行「熟而练就的平淡。」从栏左沿起排 ⇒ 是正文，不许剔。"""
+    short = (0.12, 0.10, 0.30, 0.122)          # 窄 0.18，但左沿与正文列对齐
+    body = _body_rows(top=0.16)
+
+    box = margin_box.fit_box_from_lines([short, *body])
+
+    assert box is not None
+    assert box[1] < 0.11, f"左起的段末短行被误剔了：y0={box[1]}"
+
+
+def test_centered_title_at_top_stays_in_the_box() -> None:
+    """真机 YR5EJ0 p61：「小结」是居中短行 ⇒ 更像标题，不许当成页眉剔掉。"""
+    title = (0.40, 0.10, 0.56, 0.128)          # 窄 0.16，栏内居中
+    body = _body_rows(top=0.18)
+
+    box = margin_box.fit_box_from_lines([title, *body])
+
+    assert box is not None
+    assert box[1] < 0.11, f"居中标题被误剔了：y0={box[1]}"

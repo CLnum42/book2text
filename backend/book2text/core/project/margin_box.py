@@ -818,6 +818,65 @@ EDGE_BAND = 0.08
 EDGE_NARROW_MAX = 0.20
 
 
+def _median_line_gap(centers: Sequence[float]) -> float:
+    """中位行距（按行中心）。样本不足时给一个保守的默认值。"""
+    gaps = [
+        centers[index + 1] - centers[index]
+        for index in range(len(centers) - 1)
+        if centers[index + 1] - centers[index] > 0.001
+    ]
+    return _quantile(gaps, 0.5) if gaps else 0.02
+
+
+def _is_narrow_line(box: Sequence[float]) -> bool:
+    """只按宽度判"窄行"（页码 / 页眉那类），不看位置。"""
+    return (box[2] - box[0]) < EDGE_NARROW_MAX
+
+
+def _drop_detached_page_edge_lines(lines: Sequence[BBox], column: Sequence[float]) -> list[BBox]:
+    """从"同一栏的行"里去掉**页面首/末**那种页边家具。
+
+    判据（三条同时成立才剔）：
+
+    1. 是这一栏的**第一行或最后一行**（页眉/页脚只可能在这两处；中间的短行不碰）；
+    2. 窄行（宽 < 0.2 页宽）；
+    3. **既不是左起、也不是居中**——正文（含贴顶的段末短行）从栏的左沿起排，
+       居中短行更像章节标题（真机 YR5EJ0 p61「小结」）；页眉/页码则靠一侧
+       （p13「Page 9」x 0.802–0.878、p17「Page 226」x 0.779–0.876，都不在左沿、也不居中）。
+
+    为什么不用"与正文间距 > 中位行距"：p17 是脚注页，脚注行距（≈0.038）比页眉到正文的
+    间距（≈0.034）还大，这条判据在那里必然失效；而 p156 顶部的段末短行「熟而练就的平淡。」
+    与下一行隔了 0.06，也会被它误剔。几何上的"左起 / 居中"才把这两类真正分开。
+    """
+    if len(lines) < 2:
+        return list(lines)
+    ordered = sorted(lines, key=lambda line: (line[1] + line[3]) / 2)
+    column_width = column[2] - column[0]
+    column_center = (column[0] + column[2]) / 2
+    centered_tolerance = max(0.10, column_width * 0.25)
+    left_tolerance = max(0.05, column_width * 0.10)
+
+    def detached(index: int) -> bool:
+        line = ordered[index]
+        if not _is_narrow_line(line):
+            return False
+        cx = (line[0] + line[2]) / 2
+        if abs(cx - column_center) <= centered_tolerance:
+            return False                 # 居中：可能是标题，留给它
+        if line[0] - column[0] <= left_tolerance:
+            return False                 # 左起：正文（含段末短行），留给它
+        return True                      # 窄 + 不居中 + 不左起 ⇒ 页眉/页码
+
+    drop: set[int] = set()
+    if detached(0):
+        drop.add(0)
+    if detached(len(ordered) - 1):
+        drop.add(len(ordered) - 1)
+    if not drop:
+        return list(lines)
+    return [line for index, line in enumerate(ordered) if index not in drop] or list(lines)
+
+
 def _is_edge_narrow(box: Sequence[float]) -> bool:
     """窄行 **且** 中心落在页面最外 8%：页码 / 竖排书名 / 页眉 / 页脚。
 
@@ -993,9 +1052,14 @@ def fit_box_from_lines(lines: Sequence[Sequence[float]]) -> BBox | None:
         if min(line[2], box[2]) - max(line[0], box[0]) <= 0:
             continue          # 与栏没有横向重叠：旁批 / 页边注 / 另一个栏
         in_column.append(line)
+    # 页眉 / 页码的第二个入口（2026-11-05 真机 b2t_5DDDAP p13「Page 9」）：
+    # 它的 x 与正文栏重叠（0.802–0.878 落在 0.124–0.869 里），纵向并集本来会把它并进来。
+    # 只在**与正文隔得比中位行距还远**时才排除——这条区分两种形态：
+    # 页眉（离正文一个空行以上，是家具）vs 贴顶的居中章标题（紧挨正文，是正文）。
     if in_column:
-        box[1] = min(box[1], min(line[1] for line in in_column))
-        box[3] = max(box[3], max(line[3] for line in in_column))
+        kept = _drop_detached_page_edge_lines(in_column, box)
+        box[1] = min(box[1], min(line[1] for line in kept))
+        box[3] = max(box[3], max(line[3] for line in kept))
     try:
         return normalize_margin_box(box)
     except MarginBoxError:
