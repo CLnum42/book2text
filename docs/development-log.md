@@ -5,6 +5,58 @@
 模板字段：任务目标 / 当前状态 / 实施计划 / 实现与验证 / 用户操作说明 / 下一步建议。
 未在真实环境运行过的测试一律注明，不得把未运行的测试写成通过。
 
+## 2026-11-05 上午（第四轮）— 新闸：删掉 UI 入口必须在提交正文登记 `Removed-UI:`
+
+**为什么**：删掉一个 UI 入口（`id="…"` / `getElementById` / `querySelector("#…")`）不会让任何测试变红
+——测试断言的是"剩下那些 id"——于是"这扇门去哪了"只能靠人记得。2026-11-05 因此**真的少推过一笔**
+（`be61daf` / main 上的 `be0b7ab`：确认窗双键删了三个 `confirm-dialog-check*` id；闸全绿、测试全过、
+推送却少一笔）。这条把记忆变成判据。
+
+**判据**（DevLead 原文，Chief 采纳）
+
+```
+作用域：每笔非 merge 提交，只扫 backend/book2text/static/**（含 index.html）；tests/ 不扫
+候选形态：id="X" / getElementById("X") / querySelector(All)("#X")
+删除判定：removed = 删除行命中的 id − 新增行里以引号字符串出现过的（搬家）
+                  − 本笔的树里仍以三种形态出现的（跨文件搬家兜底）
+          同一笔「删了又加回」不算删；动态拼接（#${…}）与 class 不判
+登记：提交正文必须有 `Removed-UI: id1, id2`，且 removed ⊆ 登记集合（集合包含，不是"有这行就行"）
+```
+
+**落点**：`commit-msg`（不是 `pre-commit`）+ `pre-push` 兜底。`pre-commit` 阶段消息还不存在：
+实测第一笔读到空、第二笔读到的是**上一笔**的标题——用它判登记，要么假绿（上一笔写了）要么假红
+（自己写了不算）。`commit-msg` 报红时 git 中止提交、消息文件保留，补一行再 `git commit` 即可，
+**不需要 amend / rebase**（共享工作区禁用 amend）。
+
+**过程中抓到并修掉一处假绿**（`98c9ea8`）：`commit-msg` 用 `$HOOKDIR/../ui-removal-ledger.mjs`
+调进来时 `argv[1]` 带 `..`，"是不是主入口"的比较没归一化 ⇒ 永假 ⇒ `main()` 不跑、静默 `exit 0`。
+表现是"闸装好了，但一次都没判过"。修法两边 `realpathSync`；回归用带 `..` 的路径起子进程，
+无参数必须 `exit 2`（修前是 0）。
+
+**自检**（自动化：`tests/js/ui-removal-ledger.test.mjs` 12 条全绿；下面四条 DevLead 在 main 树独立复跑）
+
+```
+红 be61daf        → exit 1，点名 #confirm-dialog-check / -input / -label，
+                    index.html:1288 / 1289 / 1290，并给出修法行
+                    `Removed-UI: confirm-dialog-check, confirm-dialog-check-input, confirm-dialog-check-label`
+绿 95dcdc7        → exit 0（目录树 id 从 app.js 搬到 review-tree.js，零误报）
+绿 合成「删了又加回」→ exit 0
+红 登记了但漏一个  → exit 1 并点名漏的那个（集合包含比对）
+坏 base ref       → exit 2「这不是『通过』——跑不起来的闸不允许静默放过」
+```
+
+**集成**：main `b4504e6`（闸体 + 钩子 + 安装器）+ `b9213af`（假绿修复）。
+pre-push 实跑：node 63s 全绿、pytest 138s 全绿（1091 passed，验 `b9213af` 的树）。
+
+**两条备注**
+
+1. `be0b7ab` 本身没有 `Removed-UI` 行。闸只查 `origin/main..HEAD`、不追溯已推提交，所以不影响日常；
+   这段历史若被 rebase / cherry-pick 会被点红，届时按历史提交豁免处理，**不为它改写历史**。
+2. `core.hooksPath` 是相对路径（`scripts/git-hooks`），git 按**运行钩子的那棵树**解析 ⇒ 每个 worktree
+   要 `git merge origin/main` 之后才有这道闸。实测（2026-11-05 10:05）：主树与 testdev 树有 `commit-msg`；
+   builder / devlead 树没有，`git hook run commit-msg` 报 `cannot find a hook named commit-msg`——
+   那两棵树里的提交不受此闸保护，而 worktree 按规矩不推送，`pre-push` 兜底也轮不到它。
+
 ## 2026-11-05 上午（第三轮）— 「识别版心」确认窗改双键（§2 硬要求）
 
 **为什么**：`docs/ux/confirm-dialog-spec.md` §5 写死「单键不得承载不可逆动作」。上一版
