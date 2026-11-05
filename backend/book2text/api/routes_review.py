@@ -27,6 +27,7 @@ from ..core.project import editing
 from ..core.project import garbled_lines as garbled_module
 from ..core.project import library as project_library
 from ..core.project import margin_box as margin_box_module
+from ..core.project import line_diff as line_diff_module
 from ..core.project import punct_groups as punct_groups_module
 from ..core.project import reading_marks as reading_marks_module
 from ..core.project import review_status as review_status_module
@@ -362,6 +363,24 @@ def review_marks(
         )
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
+
+
+class LineDiffDecideRequest(BaseModel):
+    """字级差异的逐处裁决（第十一轮）：一处 = 一个判断。
+
+    `keep` 不落库（只在本会话里算判过），所以 `judged` 要由调用方每次都带上——
+    服务端靠它算"这一行还剩几处"，剩 0 才写行级 ack。
+    """
+
+    block_id: str = Field(min_length=1, max_length=64)
+    line_index: int = Field(ge=0)
+    action: Literal["adopt", "keep"]
+    a_start: int = Field(ge=0)
+    a_end: int = Field(ge=0)
+    b_start: int = Field(ge=0)
+    b_end: int = Field(ge=0)
+    expected_line_text: str | None = None
+    judged: list[int] = Field(default_factory=list)
 
 
 class PunctGroupDecideRequest(BaseModel):
@@ -1435,3 +1454,63 @@ def block_suggestions(request: Request, project_id: str, page_no: int) -> dict[s
     except project_library.ProjectError as exc:
         raise _project_error(exc, status=404) from exc
     return plan.to_dict()
+
+
+@router.get("/{project_id}/review/line-diff")
+def review_line_diff(
+    request: Request, project_id: str, block_id: str, line_index: int
+) -> dict[str, Any]:
+    """某一行的字级差异（"处"）：runs 带坐标、字框下标与取景框。
+
+    只读、不落库：runs 完全由 `text` × `aux_text` 推导（采用一处 / 撤销 / 重跑复核都会变，
+    落表就要失效判据）。前端画框用 `box_indices`、取景用 `anchor_bbox`，不再自己算 diff。
+    """
+    try:
+        payload = line_diff_module.runs_for_line(
+            project_id, block_id, line_index, library=_library(request)
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    return payload
+
+
+@router.post("/{project_id}/review/line-diff/decide")
+def review_line_diff_decide(
+    request: Request, project_id: str, body: LineDiffDecideRequest
+) -> dict[str, Any]:
+    """逐处裁决：采用一处只改那一段；判完最后一行级 ack 才落。
+
+    `adopt` 与落 ack 在同一个 batch 里（⌘Z 一次退回一处 + 可能带出的 ack）；
+    `keep` 什么都不写——处级保留不落库，代价是重开要重判那几处。
+    """
+    _require_page_editable(request, project_id, body.block_id, library=_library(request))
+    try:
+        result = line_diff_module.decide_run(
+            project_id,
+            body.block_id,
+            body.line_index,
+            action=body.action,
+            a_start=body.a_start,
+            a_end=body.a_end,
+            b_start=body.b_start,
+            b_end=body.b_end,
+            expected_line_text=body.expected_line_text,
+            judged=tuple(body.judged),
+            library=_library(request),
+            actor_name=_actor_name(request, None),
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    events = result.pop("events", [])
+    page_no = result.pop("page_no", None)
+    if events:
+        _history(request).push(
+            project_id,
+            _Batch(events=tuple(events), page_nos=(page_no,) if page_no else ()),
+        )
+    undo, redo = _history(request).depth(project_id)
+    return {
+        **result,
+        "events": [event.to_dict() for event in events],
+        "history": {"undo": undo, "redo": redo},
+    }

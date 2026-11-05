@@ -441,15 +441,24 @@ def list_block_lines(
     *,
     library: Path | None = None,
     page_no: int | None = None,
+    block_id: str | None = None,
 ) -> list[BlockLineRecord]:
-    """按块序、行序列出块内行。"""
-    with _open_for_read(project_id, library) as conn:
+    """按块序、行序列出块内行。
+
+    `block_id` 是第十一轮加的窄化条件：字级 diff 每次只取**一行**的字框，
+    不窄化就要把整本书的行读一遍（265 页 ≈ 6000 行）再筛。
+    """
+    with _open_for_read(project_id, library=library) as conn:
         _require_tables(conn, project_id)
         params: list[object] = []
-        clause = ""
+        clauses: list[str] = []
         if page_no is not None:
-            clause = "WHERE p.page_no = ?"
+            clauses.append("p.page_no = ?")
             params.append(page_no)
+        if block_id is not None:
+            clauses.append("l.block_id = ?")
+            params.append(block_id)
+        clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = conn.execute(
             f"""
             SELECT l.* FROM block_line l
