@@ -2414,6 +2414,20 @@ async function pollTask() {
     // 任务 69：任务在跑期间收尾面板给的是旧快照（不跟识别抢 CPU），
     // 任务一结束必须重算一次，否则步骤条会一直停在快照上。
     await loadFinishSummary({ silent: true });
+    // 2026-11-05：复核任务如果跳过了已复核的页，收尾要报出「跳过 N 页、其中 M 页已过期」。
+    // M 用同一个判据（finish summary 的 needs_recheck_pages ∩ 本次跳过的页），不另算。
+    // 两个数写进 finish summary（持久），模块从 getFinishSummary() 读、在识别步的结论行里画：
+    // 只跟着一次性回调载荷传的话，切视图 / 刷新重画一次这行就没了（异步重绘吞状态那一族）。
+    // 所以这里不新增「外壳传数给模块」的能力键，写完 summary 借 onAuxReviewFinished 触发一次重画。
+    if (data.job && data.job.job_type === "auxiliary") {
+      const skippedPages = (data.job.params && data.job.params.skipped_pages) || [];
+      if (skippedPages.length && finishSummary && finishSummary.engine) {
+        const stalePages = new Set(finishSummary.engine.needs_recheck_pages || []);
+        const stale = skippedPages.filter((pageNo) => stalePages.has(pageNo)).length;
+        finishSummary.engine.aux_skip = { skipped: skippedPages.length, stale };
+        window.PagesView?.onAuxReviewFinished();
+      }
+    }
     // 自动应用由识别子进程在结算后写入：这里等一轮再查，新出现的那一条会弹提示
     await window.SuggestionFlow?.announceAutoApplyAfterJob({ jobId: data.job.job_id });
   } else {
@@ -3201,6 +3215,14 @@ function renderReviewBanner(data, recognition) {
   }
   // 差异计数只在页头一行结论里出现；横幅不再重复。
   const divergence = divergenceOf(data);
+  if (divergence.needs_recheck) {
+    // 2026-11-05 假干净 bug：识别在这页之后重跑过，旧复核已过期。
+    // 这时**不许**把"0 条差异"当成两路一致——直接说清要重算。
+    messages.push(
+      "这一页的差异需重算：识别在这之后重跑过，第二引擎的旧复核已过期。" +
+        "现在不显示差异计数；点「复核本页」（或重新跑第二引擎）后再看。"
+    );
+  }
   if (!divergence.lines && divergence.stale_blocks) {
     messages.push(
       `有 ${divergence.stale_blocks} 个块的行结构改过，逐行分歧标记对这些块不再可靠。`
@@ -4594,16 +4616,27 @@ const RESTORE_DETAIL_TEXT =
   "识别原始输出、缩略图缓存、已导出的文件不在备份里，也不会回去。";
 
 /** 查这些页里哪些有人工成果（接口 routes_projects.py:163）。查不到就按"没有"走旧路，不阻断用户。 */
+/**
+ * 重新识别前的三类损失（2026-11-05）：人工改动页 / 会失效的审校裁决 / 需重算的差异页。
+ *
+ * 三个数都来自**同一个只读接口** `/pages/human-touched`（后端一次算好）：
+ * 前端不自己统计，避免第二份口径。
+ */
 async function humanTouchedPages(project, pages) {
   const nos = pages.map((page) => page.page_no);
-  if (!nos.length) return [];
+  const empty = { touched: [], ackedLines: 0, pagesNeedingAux: 0 };
+  if (!nos.length) return empty;
   try {
     const data = await apiJson(
       `/api/projects/${project.project_id}/pages/human-touched?pages=${nos.join(",")}`
     );
-    return (data.pages || []).filter((row) => row.human_touched).map((row) => row.page_no);
+    return {
+      touched: (data.pages || []).filter((row) => row.human_touched).map((row) => row.page_no),
+      ackedLines: Number(data.acked_lines || 0),
+      pagesNeedingAux: Number(data.pages_needing_aux || 0),
+    };
   } catch (error) {
-    return [];
+    return empty;
   }
 }
 

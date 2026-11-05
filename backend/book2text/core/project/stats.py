@@ -106,6 +106,9 @@ class DivergenceSummary:
     """两路复核的分歧率（说明书 8.5）。"""
 
     checked_pages: int = 0
+    needs_recheck_pages: int = 0
+    unchecked_pages: int = 0
+    body_pages: int = 0
     total_pages: int = 0
     identical: int = 0
     format_only: int = 0
@@ -146,6 +149,10 @@ class DivergenceSummary:
     def to_dict(self) -> dict[str, object]:
         return {
             "checked_pages": self.checked_pages,
+            # 三态：已复核且有效 / 需重算 / 未复核 —— 三者之和 = body_pages
+            "needs_recheck_pages": self.needs_recheck_pages,
+            "unchecked_pages": self.unchecked_pages,
+            "body_pages": self.body_pages,
             "total_pages": self.total_pages,
             "checked_page_rate": self.checked_page_rate,
             "checked_lines": self.checked_lines,
@@ -275,7 +282,35 @@ def project_summary(project_id: str, *, library: Path | None = None) -> ProjectS
             modified=sum(item.modified for item in reviews.values()),
         ),
         divergence=DivergenceSummary(
-            checked_pages=sum(1 for item in divergences.values() if item.checked),
+            # 2026-11-05：三态按**正文页**算，与 review_status 的 engine.checked 同源（都用
+            # divergence_index 的 checked/needs_recheck），否则两个「已复核页数」会打架。
+            checked_pages=sum(
+                1
+                for page in pages
+                if page.include
+                and (divergences.get(page.page_id) or None)
+                and divergences[page.page_id].checked
+            ),
+            needs_recheck_pages=sum(
+                1
+                for page in pages
+                if page.include
+                and (divergences.get(page.page_id) or None)
+                and divergences[page.page_id].needs_recheck
+            ),
+            unchecked_pages=sum(
+                1
+                for page in pages
+                if page.include
+                and not (
+                    (divergences.get(page.page_id) or None)
+                    and (
+                        divergences[page.page_id].checked
+                        or divergences[page.page_id].needs_recheck
+                    )
+                )
+            ),
+            body_pages=sum(1 for page in pages if page.include),
             total_pages=len(pages),
             identical=sum(item.identical for item in divergences.values()),
             format_only=sum(item.format_only for item in divergences.values()),

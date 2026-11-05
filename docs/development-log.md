@@ -5,6 +5,64 @@
 模板字段：任务目标 / 当前状态 / 实施计划 / 实现与验证 / 用户操作说明 / 下一步建议。
 未在真实环境运行过的测试一律注明，不得把未运行的测试写成通过。
 
+## 2026-11-05 上午（第六轮）— 分歧「假干净」：重识别后旧复核不再算已复核
+
+**现象（真机 p14 重识别一页）**：`checked=True chars=0 punct=3 identical=27` →
+重识别后 `checked=True chars=0 punct=0 identical=0 acked=0 stale_blocks=0`。
+计数全归零、仍标「已复核」、`stale_blocks=0` 表示"不用重算"——谎报。
+
+**根因（两条，都在代码里核过）**
+
+1. `blocks.block_divergence()` 第一行 `graded = [line for line in lines if line.aux_text is not None]`；
+   重识别的新行 `aux_text` 全 NULL ⇒ 早退 `EMPTY_BLOCK_DIVERGENCE`（计数 0、stale=False）。
+2. 页级 `checked = run is not None`（只看"有没有成功的 aux run"，不看它是不是在最新
+   primary 之前）。**而且这份语义有两份实现**（`page_divergence_summary` 与缓存的
+   `_aggregate_page`），`review_status` 的「已复核页数」还用第三份
+   （`pages_with_auxiliary_run`）——同一个语义三份实现，改一份就漏。
+
+**改法**
+
+```
+唯一判据 blocks.checked_state(aux_key, primary_key) -> (checked, needs_recheck)
+  · 没有成功 aux            ⇒ (False, False)  未复核
+  · aux 早于该页最新 primary ⇒ (False, True)   需重算（假干净的判据）
+  · 其余                    ⇒ (True,  False)  已复核且有效
+  key = (完成时刻, run_id)：ULID 单调，同一秒内的两次运行靠 run_id 分先后
+三个入口都走它：page_divergence_summary（路由）/ _aggregate_page（索引）/ review_status 读索引结果
+divergence_index 一次查全项目 primary（不按页 N+1）；662 页实测 217→194 ms（中位 3 次，噪声内）
+PageDivergence 加 needs_recheck；FINISH_CACHE_VERSION 3→4；human-touched 接口无缓存
+```
+
+**顺手删掉一处重复实现**：`blocks.py` 里整段模块体被复制过（`PageDivergence` /
+`block_divergence` / `page_divergence_summary` 各两份，后一份生效）。删掉前一份重复段
+（854 行），现在每个名字只有一处定义——本次 bug 的形状就是"同一个语义两份实现"。
+
+**确认窗（A / C）**：三类损失全部来自只读接口 `/pages/human-touched`（新增
+`acked_lines` / `pages_needing_aux`），前端不另算口径：
+
+```
+N 页有人工改动将跳过（覆盖会丢） · 另有 M 条审校裁决会失效 · 另有 K 页的差异要重算
+铅句（C）：识别会重算这些页的一切；审校请等识别定稿之后再做。
+```
+
+**跳过已复核的页（②）**：勾选口径不变（回答"跑过没有"），但任务参数记下 `skipped_pages`；
+收尾时与 `needs_recheck_pages` 取交集，界面报「本轮跳过 N 页（已复核），其中 M 页的差异已过期，需要重算」。
+这两个数是**写进 finish summary**（`engine.aux_skip`）、由识别步的结论行从 `getFinishSummary()` 读出来画的，
+没有新增「外壳传数给模块」的能力键（R8 只降不升；纯显示行不值得抬棘轮），也不走一次性回调载荷——
+那样切视图重画一次这行就没了。
+
+**真机数（H6GXVG 副本，port 8845）**
+
+| 判据 | 读数 |
+|---|---|
+| 确认接口（40 页全选） | `count=2`（p6/p8）· `acked_lines=187`（SQL 直查 187）· `pages_needing_aux=0`（初始全有效） |
+| 重识别 p14 后 | p14 `checked=False needs_recheck=True lines=0 chars=0 punct=0`；engine `checked=39 needs_recheck=1`；stats 39/1/0（和 40）；human-touched K=1、acked 187→181 |
+| 再跑 p14 复核后 | p14 `checked=True lines=6 chars=2 punct=4 identical=28`；engine 40/0 |
+| 界面 | 审校 p14 横幅出现「这一页的差异需重算：识别在这之后重跑过…」；单页确认窗三行 + C 铅句；复核收尾提示「本轮跳过 39 页（已复核），其中 1 页的差异已过期，需要重算。」 |
+| 未重识别页（验收 5） | 40 页逐字段 0 页不同；checked 40/40；lines 64/64 |
+| 两个「已复核页数」（验收 6） | 改前 40 = 40；重识别后 39 = 39 |
+| 三态之和（验收 7） | H6：40+0+0=40 / 39+1+0=40；YR5EJ0：230+0+0=230 |
+
 ## 2026-11-05 上午（第四轮）— 新闸：删掉 UI 入口必须在提交正文登记 `Removed-UI:`
 
 **为什么**：删掉一个 UI 入口（`id="…"` / `getElementById` / `querySelector("#…")`）不会让任何测试变红

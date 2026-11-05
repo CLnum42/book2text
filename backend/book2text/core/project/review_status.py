@@ -691,7 +691,9 @@ def queue_items(
 
 
 #: 收尾面板 payload 的结构版本；**改了字段或语义就 +1**
-FINISH_CACHE_VERSION = 3
+#: 形状/语义变了就 +1。2026-11-05：engine 增加 needs_recheck（假干净 bug 的修复），
+#: 旧缓存里没有这个字段、且 checked 是旧口径（过期复核也算已复核）⇒ 必须作废。
+FINISH_CACHE_VERSION = 4
 
 _FINISH_CACHE: dict[str, tuple[str, dict]] = {}
 """收尾面板结果缓存：项目 → (签名, 结果)。
@@ -925,7 +927,21 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
             "complete": False,
         }
 
-    checked_pages = [page.page_no for page in body_pages if page.page_id in aux]
+    # 2026-11-05 假干净 bug：`checked` 必须是**当前有效**的复核（aux 晚于该页最新主识别）。
+    # 判据只认 divergence_index 的结果（唯一实现见 blocks.checked_state），
+    # 不再用 pages_with_auxiliary_run 这个「跑过没有」的口径——那个口径会把过期复核算成已复核。
+    checked_pages = [
+        page.page_no
+        for page in body_pages
+        if (divergences.get(page.page_id) or None)
+        and divergences[page.page_id].checked
+    ]
+    needs_recheck_pages = [
+        page.page_no
+        for page in body_pages
+        if (divergences.get(page.page_id) or None)
+        and divergences[page.page_id].needs_recheck
+    ]
     # 完成判定只看**主引擎**（任务 58）：第二引擎是给审校的定位信号，
     # 不能让 41 分钟的可选任务把版心 / 目录 / 审校全卡成灰。
     main_done = sum(
@@ -1030,6 +1046,9 @@ def finish_summary(project_id: str, *, library: Path | None = None) -> dict:
         "index": index_state,
         "engine": {
             "checked": len(checked_pages),
+            # 三态：未复核 = total - checked - needs_recheck；需重算 = needs_recheck
+            "needs_recheck": len(needs_recheck_pages),
+            "needs_recheck_pages": needs_recheck_pages,
             "total": len(body_pages),
             # 主引擎完整度：识别步的完成判定用它；第二引擎只报进度（可选）
             "main_recognized": main_done,

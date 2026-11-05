@@ -539,6 +539,31 @@ def create_auxiliary_job(
         scope=scope,
         skip_checked=skip_checked,
     )
+    # 「跳过」的代价要能被说出来（2026-11-05）：把本次因"已复核"被跳过的页记进任务参数，
+    # 前端在收尾时与「差异需重算」的页取交集，就能报出其中有几页其实已经过期。
+    skipped_pages: list[int] = []
+    if skip_checked:
+        try:
+            # scope="unchecked" 本身就会把已复核的页排除掉（不是 skip_checked 干的），
+            # 所以"被跳过的页"要用 scope="all" 的集合来算；显式页码才用 skip_checked=False。
+            if scope == SCOPE_UNCHECKED:
+                wider = resolve_aux_pages(
+                    project_id, library=target_library, scope=SCOPE_ALL
+                )
+            else:
+                wider = resolve_aux_pages(
+                    project_id,
+                    library=target_library,
+                    pages=pages,
+                    scope=scope,
+                    skip_checked=False,
+                )
+            chosen = {page.page_id for page in selected}
+            skipped_pages = sorted(
+                page.page_no for page in wider if page.page_id not in chosen
+            )
+        except ProjectError:
+            skipped_pages = []
     if not selected:
         raise ProjectError(
             "没有需要复核的页面（已复核的页会跳过，未识别的页不参与）"
@@ -570,6 +595,8 @@ def create_auxiliary_job(
         params={
             "engine_id": secondary.engine_id if needs_engine else TEXT_LAYER_ENGINE_ID,
             "scope": scope or "pages",
+            "skipped_pages": skipped_pages,
+            "skipped": len(skipped_pages),
         },
         job_type=jobs_module.JOB_TYPE_AUXILIARY,
     )

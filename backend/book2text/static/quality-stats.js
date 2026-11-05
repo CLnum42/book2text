@@ -75,8 +75,13 @@
       ...statsRow("审校", reviewBits.join(" · "), "人工修改率 = 改过的块 / 纳入块（说明书 13.4）")
     );
 
-    // 两路复核：没有复核过就如实说"还没复核"，不显示一堆 0
-    if (!divergence.checked_pages) {
+    // 两路复核：三态分开说（已复核且有效 / 需重算 / 未复核，三者之和 = 正文页数）。
+    // 2026-11-05：识别重跑之后旧复核会过期，不能再把过期页算成「已复核」（假干净）。
+    const checkedPages = Number(divergence.checked_pages || 0);
+    const needsRecheck = Number(divergence.needs_recheck_pages || 0);
+    const uncheckedPages = Number(divergence.unchecked_pages || 0);
+    const bodyPages = Number(divergence.body_pages || divergence.total_pages || 0);
+    if (!checkedPages && !needsRecheck) {
       list.append(
         ...statsRow("两路复核", "还没复核过（选中页面后点「第二引擎复核所选」）")
       );
@@ -85,7 +90,9 @@
         "分歧率 = 实质分歧行 / 能比的行（汉字级 + 标点级 ÷ 一致 + 仅格式 + 汉字级 + 标点级）；" +
         "第二引擎没读出来的行不进分母";
       const bits = [
-        `已复核 ${divergence.checked_pages} / ${divergence.total_pages} 页`,
+        `已复核且有效 ${checkedPages} / ${bodyPages} 页` +
+          (needsRecheck ? ` · 需重算 ${needsRecheck} 页` : "") +
+          (uncheckedPages ? ` · 未复核 ${uncheckedPages} 页` : ""),
         `比过 ${divergence.compared_lines} 行`,
         `一致 ${divergence.identical}`,
         `仅格式 ${divergence.format_only}`,

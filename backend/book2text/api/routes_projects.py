@@ -23,6 +23,7 @@ from ..core.project import recognition as recognition_module
 from ..core.project import page_setup as page_setup_module
 from ..core.project import stats as stats_module
 from ..core.project import workflow as workflow_module
+from ..core.storage import db as db_module
 from .deps import library_dir as _library
 from .deps import page_payload, project_error as _project_error
 from .deps import require_main_project as _require_main
@@ -167,10 +168,17 @@ def pages_human_touched(
     pages: str = Query(default="", description="逗号分隔的页号，例如 1,2,3"),
     scope: str | None = Query(default=None, description="或给范围：unrecognized / all"),
 ) -> dict[str, Any]:
-    """**只读**：这些页里哪些已有人工成果（重新识别前先问它）。
+    """**只读**：重新识别前的三类损失（确认窗的数字都从这里出）。
 
-    判据复用 `recognition._has_human_results`，不写第二份统计。
+    返回：
+    - `pages[].human_touched` / `count`：哪些页已有人工成果（判据复用
+      `recognition._has_human_results`，不写第二份统计）；
+    - `acked_lines`：这些页上「审校裁决会失效」的行数（`block_line.diff_ack IS NOT NULL`）；
+    - `pages_needing_aux`：这些页里「差异需重算」的页数（与审校接口同一个判据
+      `blocks.checked_state`，走 `divergence_index`，不另算）；
+    - `total`：这个范围一共多少页。
     参数不合法一律 400（空 / 非数字 / 不属于本项目）——静默返回 count=0 会让前端误判"可以放心覆盖"。
+    本接口**没有缓存**（每次现算）；加了新字段不需要作废任何缓存。
     """
     raw = [part.strip() for part in (pages or "").split(",") if part.strip()]
     if bool(raw) == bool(scope):
@@ -210,10 +218,42 @@ def pages_human_touched(
 
     flags = recognition_module.human_touched_for_pages(project.directory, wanted)
     rows = [{"page_no": no, "human_touched": bool(flags.get(no, False))} for no in wanted]
+
+    # 审校裁决会失效的行数：一次 JOIN 聚合，不按页查。
+    page_by_no = {page.page_no: page for page in project_library.list_pages(project_id, library=library)}
+    page_ids = [page_by_no[no].page_id for no in wanted if no in page_by_no]
+    acked_lines = 0
+    if page_ids:
+        with db_module.open_database(project.directory, apply_migrations=False) as conn:
+            placeholders = ", ".join("?" for _ in page_ids)
+            row = conn.execute(
+                f"SELECT COUNT(*) AS n FROM block_line l"
+                f" JOIN block b ON b.block_id = l.block_id"
+                f" WHERE l.diff_ack IS NOT NULL AND b.deleted_at IS NULL"
+                f" AND b.page_id IN ({placeholders})",
+                page_ids,
+            ).fetchone()
+            acked_lines = int(row["n"] or 0)
+
+    # 差异需重算的页数：与审校接口同一个判据（divergence_index → blocks.checked_state）
+    divergences = blocks_module.divergence_index(
+        project_id, library=library
+    ).by_page
+    needing = 0
+    for no in wanted:
+        page = page_by_no.get(no)
+        if page is None:
+            continue
+        divergence = divergences.get(page.page_id)
+        if divergence is not None and divergence.needs_recheck:
+            needing += 1
+
     # total = 这个范围里一共多少页（前端要用它算「剩下 R 页」，不自己算 pending）
     return {
         "pages": rows,
         "count": sum(1 for row in rows if row["human_touched"]),
+        "acked_lines": acked_lines,
+        "pages_needing_aux": needing,
         "total": len(wanted),
     }
 

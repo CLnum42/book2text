@@ -155,6 +155,8 @@ def test_marks_are_graded_and_attached_to_the_right_lines(
         "acked": 0,
         "stale_blocks": 0,
         "checked": True,
+        # 2026-11-05 假干净 bug：三态里的「需重算」与 stale（行结构对不上）是两个语义
+        "needs_recheck": False,
         "engine_id": "fake-second",
         "checked_at": detail["divergence"]["checked_at"],
     }
@@ -321,3 +323,66 @@ def test_divergence_counts_are_added_up_across_pages(
     assert divergences[page_ids[2]].checked is True
     assert divergences[page_ids[2]].chars == 1, "第 2 页只有第一行是汉字级分歧"
     assert divergences[page_ids[1]].chars == 0
+
+
+def test_recheck_state_has_one_implementation_on_all_three_paths(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, recognized_page: str
+) -> None:
+    """2026-11-05 假干净 bug：三条路径必须给同一组 (checked, needs_recheck)。
+
+    识别前复核过 ⇒ checked。**再识别一次**之后，旧复核比新文本旧 ⇒ 两条都为假、
+    needs_recheck 为真。路由（page_divergence_summary）/ 索引 / review_status / stats
+    以前各算各的（其中一处只看"有没有 aux run"），重识别后仍报"已复核 + 0 差异"。
+    """
+    from book2text.core.project import review_status, stats
+
+    project_id = recognized_page
+    run_aux(library_dir, project_id, ["段", "。", ""])
+
+    first = page_blocks(client, auth_headers, project_id)["divergence"]
+    assert (first["checked"], first["needs_recheck"]) == (True, False)
+
+    # 重识别同一页：新的 primary run 比 aux 晚，行也不再带 aux_text
+    recognize(client, auth_headers, project_id)
+
+    route = page_blocks(client, auth_headers, project_id)["divergence"]
+    page_id = blocks_module.list_pages(project_id, library=library_dir)[0].page_id
+    index_state = blocks_module.divergence_index(
+        project_id, library=library_dir
+    ).by_page[page_id]
+    finish = review_status.finish_summary(project_id, library=library_dir)["engine"]
+    summary = stats.project_summary(project_id, library=library_dir).divergence
+
+    # 三条路径同一组值：过期复核不算已复核，也不是"未复核"，而是"需重算"
+    assert (route["checked"], route["needs_recheck"]) == (False, True)
+    assert (index_state.checked, index_state.needs_recheck) == (False, True)
+    assert finish["checked"] == 0
+    assert finish["needs_recheck"] == 1
+    assert summary.checked_pages == 0
+    assert summary.needs_recheck_pages == 1
+    # 谎报要消失：计数仍可能是 0，但要和"需重算"一起出现，不能单独报"0 差异"
+    assert route["lines"] == 0
+    assert finish["needs_recheck_pages"]
+
+
+def test_stats_three_states_sum_to_body_pages(
+    client: TestClient, auth_headers: dict[str, str], library_dir: Path, recognized_page: str
+) -> None:
+    """三态相加 = 正文页数（未复核 + 需重算 + 已复核有效）。"""
+    from book2text.core.project import stats
+
+    project_id = recognized_page
+    summary = stats.project_summary(project_id, library=library_dir).divergence
+    assert (
+        summary.checked_pages + summary.needs_recheck_pages + summary.unchecked_pages
+        == summary.body_pages
+    )
+    assert summary.unchecked_pages == summary.body_pages  # 还没复核
+
+    run_aux(library_dir, project_id, ["段", "。", ""])
+    summary = stats.project_summary(project_id, library=library_dir).divergence
+    assert summary.checked_pages == 1
+    assert (
+        summary.checked_pages + summary.needs_recheck_pages + summary.unchecked_pages
+        == summary.body_pages
+    )

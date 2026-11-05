@@ -618,6 +618,18 @@ function renderRecognitionVerdict() {
       "识别不读版心，版心要等识别出行框之后才生成得了。";
   }
 
+  // 复核收尾的「跳过代价」（2026-11-05）：两个数由外壳写进 finish summary，
+  // 这里只管画——写进 summary 才不会因为重画一次就消失。
+  // 「跳过已复核的页」回答的是"跑过没有"，不是"现在有没有效"；这两个语义不合并
+  // （合并就会变成另一个假干净），所以要把"其中多少页其实已经过期"如实报出来。
+  const auxSkip = engine.aux_skip;
+  if (auxSkip && auxSkip.skipped && !ocrRunning && !auxRunning) {
+    line.textContent +=
+      auxSkip.stale
+        ? ` 本轮跳过 ${auxSkip.skipped} 页（已复核），其中 ${auxSkip.stale} 页的差异已过期，需要重算。`
+        : ` 本轮跳过 ${auxSkip.skipped} 页（已复核），这些页的差异仍然有效。`;
+  }
+
   // 按钮三样只由 recognitionTarget() 产出（文案 / 禁用 / 危险色同源）
   const target = recognitionTarget();
   button.textContent = target.text;
@@ -2120,16 +2132,19 @@ async function recognizeSelection(force = false) {
   // 有人工成果的页：先问，再让用户选「跳过」还是「仍要重识别」（后者会先备份整库）
   let targetPages = pages;
   let useForce = force;
-  const touched = await injected.humanTouchedPages(project, pages);
+  const loss = await injected.humanTouchedPages(project, pages);
+  const touched = loss.touched;
   if (touched.length) {
     const remaining = pages.length - touched.length;
     const choice = await injected.confirmAction({
       title: `${touched.length} 页有人工改动`,
-      lead:
-        remaining > 0
-          ? `重识别这 ${touched.length} 页会丢掉你改过的字，跳过则保留。`
-          : `这 ${touched.length} 页都有人工改动，跳过则保留。`,
-      list: [`那 ${touched.length} 页之后的改动会丢`, "原始输出与缓存不在备份里"],
+      // C：这一句是确认窗的最后一句，说的是**识别与审校的先后**，不是操作说明。
+      lead: "识别会重算这些页的一切；审校请等识别定稿之后再做。",
+      list: [
+        `${touched.length} 页有人工改动将跳过（覆盖会丢）`,
+        `另有 ${loss.ackedLines} 条审校裁决会失效`,
+        `另有 ${loss.pagesNeedingAux} 页的差异要重算`,
+      ],
       detail: injected.RESTORE_DETAIL_TEXT,
       safeText: remaining > 0 ? `跳过并识别剩下的 ${remaining} 页` : "跳过，不识别",
       dangerText: `仍要重识别这 ${touched.length} 页`,
@@ -2191,12 +2206,19 @@ async function recognizePage(page) {
 
   // 这一页有人工成果？先问，再让用户选「跳过」还是「仍要重识别」（后者 force，后端先备份整库）
   let useForce = false;
-  const touched = await injected.humanTouchedPages(project, [page]);
+  const loss = await injected.humanTouchedPages(project, [page]);
+  const touched = loss.touched;
   if (touched.length) {
     const choice = await injected.confirmAction({
       title: `第 ${page.page_no} 页有人工改动`,
-      lead: "重识别这一页会丢掉你改过的字，跳过则保留。",
-      list: ["这一页之后的改动会丢", "原始输出与缓存不在备份里"],
+      lead: "识别会重算这一页的一切；审校请等识别定稿之后再做。",
+      list: [
+        "这一页有人工改动将跳过（覆盖会丢）",
+        `另有 ${loss.ackedLines} 条审校裁决会失效`,
+        loss.pagesNeedingAux
+          ? `这一页的差异要重算`
+          : "这一页的差异不需要重算",
+      ],
       detail: injected.RESTORE_DETAIL_TEXT,
       safeText: "跳过，不识别这一页",
       dangerText: `仍要重识别第 ${page.page_no} 页`,
