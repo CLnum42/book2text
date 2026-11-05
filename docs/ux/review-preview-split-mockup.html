@@ -105,6 +105,55 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .sw.ins{width:3px;height:12px;border:0;background:var(--diff-insert);border-radius:1px}
 .dircap{padding:2px 12px 10px;font-size:10.5px;color:var(--faint)}
 
+/* 差异队列（左栏） */
+.qhd{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 2px;font-weight:600;font-size:12.5px}
+.qsub{padding:0 12px 7px;font-size:10.5px;color:var(--faint);border-bottom:1px solid var(--line-soft);white-space:nowrap}
+.qfilter{display:flex;gap:2px;margin:7px 12px 6px;background:var(--surface-3);border-radius:6px;padding:2px}
+.qfilter span{flex:1;text-align:center;font-size:11px;padding:2px 0;border-radius:4px;color:var(--muted);cursor:pointer}
+.qfilter .on{background:#fff;box-shadow:var(--shadow-1);color:var(--text);font-weight:600}
+.qscroll{flex:1;min-height:0;overflow:hidden;position:relative;border-top:1px solid var(--line-soft)}
+.qchap{height:26px;display:flex;align-items:center;padding:0 12px;font-size:12px;font-weight:600;
+  background:#fff;position:sticky;top:0;z-index:1;border-bottom:1px solid var(--line-soft)}
+.qchap .qnum{margin-left:auto;font-size:10.5px;color:var(--faint);font-weight:400}
+.qchap.off{color:var(--muted);font-weight:400;position:static}
+.qrow{height:24px;display:flex;align-items:center;gap:8px;padding:0 12px;font-size:11.5px;color:var(--text-2);
+  border-left:3px solid transparent;cursor:pointer}
+.qrow .qid{font:10px/1 ui-monospace,Menlo,monospace;color:var(--faint);width:47px;flex:none;letter-spacing:-.2px}
+.qtext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px/1.5 "Songti SC","STSong","SimSun",serif;color:var(--muted)}
+.qtext u{text-decoration:none;color:var(--text);border-bottom:2px solid var(--diff-chars);padding-bottom:1px}
+.qtext u.qpunct{border-bottom-style:dashed;border-color:var(--diff-punct)}
+.qtext u.qdel{border-bottom:3px double;border-color:var(--diff-chars)}
+.qtext .qins{display:inline-block;width:2px;height:12px;background:var(--diff-insert);vertical-align:-2px;margin:0 1px}
+.qrow.on .qtext{color:var(--accent-text)}
+.qrow.on .qtext u{color:var(--accent-text)}
+.qrow.on{background:var(--accent-soft);border-left-color:var(--accent);color:var(--accent-text);font-weight:600}
+.qrow.on .qid{color:var(--accent-text)}
+.qpunct{margin:6px 12px 4px;padding:6px 8px;border:1px solid #f0d6a6;background:var(--warn-soft);border-radius:6px;
+  font-size:10.5px;color:var(--warn-text);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.qpunct .spacer{flex:1}
+.qpunct a{color:var(--warn-text);font-weight:600}
+.qfoot{padding:0 12px 5px;font-size:10px;color:var(--faint);display:flex;gap:6px;align-items:center;white-space:nowrap}
+.qfoot .spacer{flex:1}
+.qfoot a{color:var(--accent-text)}
+.legend{padding:4px 12px 2px;border-top:1px solid var(--line-soft);font-size:10px;color:var(--muted);line-height:1.9}
+.legend .lgrow{display:flex;align-items:center;gap:5px;height:18px;white-space:nowrap}
+.legend .sw{margin-left:4px}
+.legend .sw:first-child{margin-left:0}
+
+/* 预览页：行内编辑边界 */
+.hintbar{height:30px;flex:none;display:flex;align-items:center;gap:7px;padding:0 14px;background:var(--surface-3);
+  border-bottom:1px solid var(--line-soft);font-size:11px;color:var(--muted)}
+.hintbar .hb-ico{width:14px;height:14px;border-radius:50%;border:1px solid var(--line-strong);color:var(--faint);
+  font:600 9px/12px sans-serif;text-align:center;flex:none}
+.hintbar a{margin-left:auto;color:var(--accent-text);font-weight:600;white-space:nowrap}
+.ln{position:relative}
+.para.editing-lines .ln{border-bottom:1px dotted #dfe3e9;padding-bottom:1px}
+.para.editing-lines .ln.sel{border-bottom:2px solid var(--accent);background:#f4f8ff}
+.ln-derived{border-bottom:1px dotted var(--faint)}
+.linechip{position:absolute;left:-52px;top:2px;background:var(--accent-soft);color:var(--accent-text);
+  border:1px solid #c9d8f7;border-radius:4px;padding:1px 5px;font-size:9.5px;line-height:13px;
+  font-weight:600;white-space:nowrap}
+
 /* PDF 列 */
 .pdf{flex:1;min-width:340px;background:#e9ebef;display:flex;flex-direction:column;min-height:0;position:relative;padding:0 10px}
 .pdfcap{height:24px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--muted)}
@@ -123,7 +172,8 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .mk.caret.acked{opacity:.42;width:2px}
 .ring{position:absolute;border:2px solid var(--accent);border-radius:2px;pointer-events:none;
   box-shadow:0 0 0 1.5px rgba(255,255,255,.75)}
-.ring.teal{border-color:#0f766e}
+.ring.teal{border-color:#0f766e;border-width:1px;opacity:.35}
+.ring.teal.sel{border-width:2px;opacity:1}
 .tag{position:absolute;right:0;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid var(--line-strong);
   color:var(--muted);font:600 9.5px/1 ui-monospace,Menlo,monospace;display:flex;align-items:center;justify-content:center;
   transform:translateY(-50%);z-index:2}
@@ -174,9 +224,13 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .hint{margin-left:auto;font-size:10px;color:var(--faint);white-space:nowrap}
 .mini{height:42px;display:flex;align-items:center;gap:7px;padding:0 10px;border:1px solid var(--line);border-radius:7px;
   margin-bottom:6px;font-size:11.5px;color:var(--text-2);cursor:pointer;background:#fff}
-.mini .k{color:var(--text-2)}
-.mini .chg{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--text);background:var(--surface-3);
-  border:1px solid var(--line-soft);border-radius:4px;padding:0 4px;line-height:16px}
+
+ 
+.mtext{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px/1.6 "Songti SC","STSong","SimSun",serif;color:var(--muted)}
+.mtext u{text-decoration:none;color:var(--text);border-bottom:2px solid var(--diff-chars)}
+.mtext u.punct{border-bottom-style:dashed;border-color:var(--diff-punct)}
+.mtext u.del{border-bottom:3px double;border-color:var(--diff-chars)}
+.mtext .mdiff.empty{display:inline-block;width:14px;height:12px;vertical-align:-1px;border:1px dashed var(--line-strong);border-radius:2px}
 .mini .st{margin-left:auto;font-size:10.5px;color:var(--muted)}
 .mini .st.ok{color:var(--ok-text)}
 .mini.acked{opacity:.62}
@@ -189,6 +243,7 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .tochd{padding:11px 12px 4px;font-weight:600;font-size:12.5px}
 .tocsub{padding:0 12px 8px;font-size:10.5px;color:var(--faint);border-bottom:1px solid var(--line-soft)}
 .toc .chap{height:28px}
+.chapcaret{width:12px;font-size:9px;color:var(--muted);flex:none}
 .segrow{height:27px;display:flex;align-items:center;gap:6px;padding:0 12px 0 28px;font-size:11.5px;color:var(--text-2);cursor:pointer}
 .segrow .stext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .segrow .spg{margin-left:auto;color:var(--faint);font-size:10px;flex:none}
@@ -216,6 +271,8 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .frame--narrow .dirhd{padding-top:8px}
 .frame--narrow .dirsub{padding-bottom:6px}
 .frame--narrow .pagerow{height:22px}
+.frame--narrow .qrow{height:22px}
+.frame--narrow .qtext{font-size:11.5px}
 .frame--narrow .chap{height:26px}
 .frame--narrow .pdfcap{height:20px}
 .frame--narrow .crop{height:88px}
@@ -250,33 +307,45 @@ body.shot .frame.on{display:flex}
 <div class="wrap">
   <div class="frame" id="F1">
     <div class="top"><button class="ibtn">←</button><span class="bk">红楼梦第一卷_正文前40页_图像版</span><nav class="tabs"><span class="tab">页面</span><span class="tab on">审校</span><span class="tab">预览</span></nav><span class="spacer"></span><span class="save"><b>已保存 ✓ 14:32</b></span><button class="btn">导出…</button></div>
-    <div class="rt"><div class="grp"><button class="btn btn--sm">◀</button><span class="num">第 11 页</span><button class="btn btn--sm">▶</button><span class="dim num">/ 40</span><span class="crumb">第一回</span></div><span class="dot"></span><div class="grp"><span class="dim">全书待判</span><b class="num">85</b><span class="dim">处</span><span class="bar"><i style="width:25%"></i></span></div><div class="grp"><button class="pchip">标点 66 行 · 32 组</button></div><span class="spacer"></span><button class="btn btn--pri btn--sm">下一处未审 <kbd>⏎</kbd></button><button class="btn btn--sm">显示 ▾</button></div><div class="split"><aside class="dir">
-  <div class="dirhd"><span>差异目录</span><span class="badge">待判 151</span></div>
-  <div class="dirsub">汉字 85 处 · 标点 66 行（32 组）</div>
-  <div class="seg"><span class="on">待判</span><span>全部</span></div>
-  <div class="tree">
-    <div class="chap open"><span class="caret">▾</span><span class="cname">第一回</span><span class="cnum">49 / 88</span></div>
-<div class="pagerow"><span class="pno">第 1 页</span><span class="pcnt">2</span></div>
-<div class="pagerow"><span class="pno">第 2 页</span><span class="pcnt">3</span></div>
-<div class="pagerow"><span class="pno">第 3 页</span><span class="pcnt">4</span></div>
-<div class="pagerow"><span class="pno">第 4 页</span><span class="pcnt">6</span></div>
-<div class="pagerow"><span class="pno">第 5 页</span><span class="pcnt">7</span></div>
-<div class="pagerow"><span class="pno">第 6 页</span><span class="pcnt">2</span></div>
-<div class="pagerow"><span class="pno">第 7 页</span><span class="pcnt">2</span></div>
-<div class="pagerow"><span class="pno">第 8 页</span><span class="pcnt">5</span></div>
-<div class="pagerow"><span class="pno">第 9 页</span><span class="pcnt">3</span></div>
-<div class="pagerow"><span class="pno">第 10 页</span><span class="pcnt">7</span></div>
-<div class="pagerow on"><span class="pno">第 11 页</span><span class="pcnt">6</span></div>
-<div class="pagerow"><span class="pno">第 12 页</span><span class="pcnt">2</span></div>
-<div class="pagerow zero"><span class="pno">第 13 页</span><span class="pcnt">✓</span></div>
-<div class="chap"><span class="caret">▸</span><span class="cname">第二回</span><span class="cnum">40 / 69</span></div>
-<div class="chap"><span class="caret">▸</span><span class="cname">第三回</span><span class="cnum">62 / 90</span></div>
-  </div>
+    <div class="rt"><div class="grp"><button class="btn btn--sm">◀</button><span class="num">第 11 页</span><button class="btn btn--sm">▶</button><span class="dim num">/ 40</span><span class="crumb">第一回</span></div><span class="dot"></span><div class="grp"><span class="dim">待判</span><b class="num">151</b><span class="dim">处</span></div><div class="grp"><span class="dim">汉字</span><b class="num">28</b><span class="dim num">/113</span><span class="bar"><i style="width:25%"></i></span></div><div class="grp"><button class="pchip">标点 66 行 · 32 组</button></div><span class="spacer"></span><button class="btn btn--pri btn--sm">下一处未审 <kbd>⏎</kbd></button><button class="btn btn--sm">排序：书页顺序 ▾</button><button class="btn btn--sm">显示 ▾</button></div><div class="split"><aside class="dir">
+  <div class="qhd"><span>差异队列</span><span class="badge">待判 151</span></div>
+  <div class="qsub">汉字 85 条 · 标点 66 行 / 32 组</div>
+  <div class="qfilter"><span class="on">待判</span><span>全部</span></div>
+  <div class="qscroll js-qscroll"><div class="qchap"><span>第一回</span><span class="qnum">28 条</span></div>
+<div class="qrow"><span class="qid">p.1·2</span><span class="qtext">悲<u class="qrep">哀</u>。</span></div>
+<div class="qrow"><span class="qid">p.1·3</span><span class="qtext">…远而来，生得<u class="qrep">骨</u>格不凡，丰神…</span></div>
+<div class="qrow"><span class="qid">p.2·2</span><span class="qtext">…尘、引登彼岸<u class="qdel">的</u></span></div>
+<div class="qrow"><span class="qid">p.2·3</span><span class="qtext">…石：上面叙着<u class="qrep">堕</u>落之乡，投胎…</span></div>
+<div class="qrow"><span class="qid">p.3·7</span><span class="qtext">…东鲁孔梅溪题<u class="qrep">曰</u>《风</span></div>
+<div class="qrow"><span class="qid">p.4·4</span><span class="qtext">城，城中<u class="qrep">阊</u>门，最是红尘…</span></div>
+<div class="qrow"><span class="qid">p.4·7</span><span class="qtext">…日炎夏永昼，<u class="qrep">士</u>隐于书房闲坐…</span></div>
+<div class="qrow"><span class="qid">p.4·8</span><span class="qtext"><u class="qrep">入</u>世，趁此机会…</span></div>
+<div class="qrow"><span class="qid">p.5·6</span><span class="qtext">这一<u class="qrep">干</u>风流孽鬼下世…</span></div>
+<div class="qrow"><span class="qid">p.5·7</span><span class="qtext">却说甄<u class="qrep">士</u>隐俱听得明白…</span></div>
+<div class="qrow"><span class="qid">p.5·8</span><span class="qtext">…忙答礼相问，<u class="qrep">士</u>隐因说道：</span></div>
+<div class="qrow"><span class="qid">p.6·2</span><span class="qtext">…大石牌坊，—<span class="qins"></span>上面大书四</span></div>
+<div class="qrow"><span class="qid">p.8·3</span><span class="qtext">…壮，却又这样<u class="qrep">槛</u>楼：我家并无…</span></div>
+<div class="qrow"><span class="qid">p.8·5</span><span class="qtext">…、风尘中之知<u class="qrep">己</u>。</span></div>
+<div class="qrow"><span class="qid">p.8·6</span><span class="qtext">…便门出去了。<u class="qrep">士</u>隐待客既散，…</span></div>
+<div class="qrow"><span class="qid">p.8·7</span><span class="qtext">…了中秋佳节，<u class="qrep">士</u>隐家宴已毕，…</span></div>
+<div class="qrow"><span class="qid">p.9·1</span><span class="qtext">玉在<u class="qrep">楼</u>中求善价，钗…</span></div>
+<div class="qrow"><span class="qid">p.9·2</span><span class="qtext">…何兴至此？”<u class="qrep">士</u>隐笑道：“今…</span></div>
+<div class="qrow"><span class="qid">p.9·3</span><span class="qtext"><u class="qrep">士</u>隐听了大叫：…</span></div>
+<div class="qrow"><span class="qid">p.10·1</span><span class="qtext">…即能到得—”<u class="qrep">士</u>隐不待说完，…</span></div>
+<div class="qrow"><span class="qid">p.10·3</span><span class="qtext"><u class="qrep">士</u>隐送雨村去后…</span></div>
+<div class="qrow"><span class="qid">p.10·7</span><span class="qtext">…是元宵佳节。<u class="qrep">士</u>隐令家</span></div>
+<div class="qrow"><span class="qid">p.10·8</span><span class="qtext">那<u class="qrep">士</u>隐夫妇见女儿…</span></div>
+<div class="qrow on" data-cur="1"><span class="qid">p.11·1</span><span class="qtext">…。看看一月，<u class="qrep">士</u>隐已先得病，…</span></div>
+<div class="qrow"><span class="qid">p.11·2</span><span class="qtext">…数应当如此，<u class="qrep">—</u>于是接二连三…</span></div>
+<div class="qrow"><span class="qid">p.11·5</span><span class="qtext">…，偏值近年水<u class="qrep">旱</u>不收，贼</span></div>
+<div class="qrow"><span class="qid">p.11·7</span><span class="qtext">…些薄田破屋。<u class="qrep">士</u>隐乃读书之人…</span></div>
+<div class="qrow"><span class="qid">p.11·8</span><span class="qtext">…味好吃懒做。<u class="qrep">士</u>隐</span></div>
+<div class="qchap off"><span>第二回</span><span class="qnum">15 条</span></div>
+<div class="qchap off"><span>第三回</span><span class="qnum">42 条</span></div></div>
+  <div class="qpunct"><span>标点（全书） 66 行</span><span>32 组</span><span class="spacer"></span><a>批量判 →</a></div>
+  <div class="qfoot"><span>Jev 未打分 · 296 行可打分</span><span class="spacer"></span><a>开始打分…</a></div>
   <div class="legend">
-    <div class="lgrow"><i class="sw"></i>替换</div>
-    <div class="lgrow"><i class="sw punct"></i>只差标点</div>
-    <div class="lgrow"><i class="sw ins"></i>另一路多一个字</div>
-    <div class="lgrow"><i class="sw del"></i>这一路多一个字</div>
+    <div class="lgrow"><i class="sw"></i>替换<i class="sw punct"></i>标点</div><div class="lgrow"><i class="sw ins"></i>另一路多字<i class="sw del"></i>这一路多字</div>
   </div>
   <div class="dircap">字框 100%（1054 / 1054 行）</div>
 </aside><section class="pdf">
@@ -288,7 +357,6 @@ body.shot .frame.on{display:flex}
   <div class="pz"><button>−</button><span>100%</span><button>+</button><button>⤢</button></div>
 </section><aside class="list">
   <div class="listhd"><span><b>本页 8 处</b> · 待判 6</span><span class="spacer"></span>
-    <button class="sort">排序：书页顺序 ▾</button>
     <label class="check"><input type="checkbox" checked>仅待判</label></div>
   <div class="cards">
     <div class="card open">
@@ -308,19 +376,18 @@ body.shot .frame.on{display:flex}
     <span class="spacer"></span><span class="hint">⌘Z 撤销</span>
   </div>
 </div>
-    <div class="mini"><span class="idx">#2</span><span class="k">替换 1 字</span><span class="chg">—→一</span><span class="spacer"></span></div><div class="mini"><span class="idx">#4</span><span class="k">另一路多 1 字</span><span class="spacer"></span></div><div class="mini"><span class="idx">#5</span><span class="k">替换 1 字</span><span class="chg">旱→早</span><span class="spacer"></span></div><div class="mini"><span class="idx">#7</span><span class="k">替换 1 字</span><span class="chg">士→土</span><span class="spacer"></span></div><div class="mini"><span class="idx">#8</span><span class="k">替换 1 字</span><span class="chg">士→土</span><span class="spacer"></span></div>
+    <div class="mini"><span class="idx">#2</span><span class="mtext">…数应当如此，<u class="mdiff ">—</u>于是接二连三…</span></div><div class="mini"><span class="idx">#4</span><span class="mtext">…瓦砾场了，—<span class="mdiff empty"></span>只有</span></div><div class="mini"><span class="idx">#5</span><span class="mtext">…，偏值近年水<u class="mdiff ">旱</u>不收，贼</span></div><div class="mini"><span class="idx">#7</span><span class="mtext">…些薄田破屋。<u class="mdiff ">士</u>隐乃读书之人…</span></div><div class="mini"><span class="idx">#8</span><span class="mtext">…味好吃懒做。<u class="mdiff ">士</u>隐</span></div>
   </div>
-  <div class="lfoot"><span>另有 2 处已判</span><a>全部 →</a></div>
-  <div class="lfoot"><span>Jev 未打分 · 296 行可打分</span><span class="spacer"></span><a>开始打分…</a></div>
+  <div class="lfoot"><span>另有 2 处已判 · 本页全部 →</span></div>
 </aside></div>
   </div>
   <aside class="notes">
   <h3>F1 审校页 · 1440×900</h3>
   <ul>
+    <li><b>左栏是全书队列</b>：汉字级逐条（85 条，回目分组），标点是全书一条汇总入口（66 行 / 32 组）。顶栏 151 = 85 + 66，不数行。</li>
     <li><b>左图只标差异字</b>：没有行框、没有填充；实线=替换、虚线=标点、双线=这一路多字、竖线=另一路多字。</li>
-    <li><b>左轨 #1…#8</b> 与右侧卡片同号；当前项蓝框 + 实心号。</li>
-    <li><b>右栏一屏只开一条</b>：A/B 两行共享网格，差异字上下对齐，中间 5px 竖线连起来。</li>
-    <li><b>卡片里的 2.5× 原图</b>：判断时不用把眼睛移到页面再移回来。</li>
+    <li><b>同号</b>：队列行 <code>p.11·1</code> = 左轨 <code>#1</code> = 卡片头 <code>#1</code>；当前项蓝框 + 实心号。</li>
+    <li><b>右栏一屏只开一条</b>：A/B 共享网格，差异字上下对齐；卡片里贴 2.5× 原图。</li>
   </ul>
   <div class="lg">
     <div><i class="sw"></i>两路替换（3px 实线）</div>
@@ -328,7 +395,7 @@ body.shot .frame.on{display:flex}
     <div><i class="sw ins"></i>另一路多一个字（3px 竖线）</div>
     <div><i class="sw del"></i>这一路多一个字（双线）</div>
   </div>
-  <p>样张文字与计数来自真项目 <b>b2t_S79EH0</b> 第 11 页。Jev 未打分是该项目真实状态。</p>
+  <p>样张文字与计数来自真项目 <b>b2t_S79EH0</b> 第 11 页。Jev 未打分是该项目真实状态；打分后条目行右侧显示「可疑 0.03」，排序开关写「可疑优先（同档按阅读顺序）」。</p>
 </aside>
 </div>
 <div class="wrap">
@@ -338,8 +405,8 @@ body.shot .frame.on{display:flex}
   <div class="split">
     <aside class="toc">
       <div class="tochd">书籍目录</div>
-      <div class="tocsub">146 段 · 3 回 · 已手改 1 段</div>
-      <div class="chap open"><span class="caret">▾</span><span class="cname">第一回</span><span class="cnum">p.1–13 · 55 段</span></div><div class="segrow"><span class="stext">甄士隐梦幻识通灵贾雨村风尘怀闺秀</span><span class="spg">p.1</span></div>
+      <div class="tocsub">146 段 · 3 回 · 已手改 1 行</div>
+      <div class="chap open"><span class="chapcaret">▾</span><span class="cname">第一回</span><span class="cnum">p.1–13 · 55 段</span></div><div class="segrow"><span class="stext">甄士隐梦幻识通灵贾雨村风尘怀闺秀</span><span class="spg">p.1</span></div>
 <div class="segrow on"><span class="stext">看官：你道此书从何而起？——说来虽近</span><span class="spg">p.1</span></div>
 <div class="segrow"><span class="stext">一日，正当嗟悼之际，俄见一僧一道，远</span><span class="sedit">已手改</span><span class="spg">p.1</span></div>
 <div class="segrow"><span class="stext">走一遭。”石头听了大喜，因问：“不知</span><span class="spg">p.2</span></div>
@@ -347,7 +414,7 @@ body.shot .frame.on{display:flex}
 <div class="segrow"><span class="stext">无才可去补苍天，枉入红尘若许年；此系</span><span class="spg">p.2</span></div>
 <div class="segrow"><span class="stext">相，或贬人妻女，奸淫凶恶，不可胜数；</span><span class="spg">p.3</span></div>
 <div class="segrow"><span class="stext">空空道人听如此说，思忖半晌，将这《石</span><span class="spg">p.3</span></div>
-<div class="segrow"><span class="stext">月宝鉴》。&lt;至吴玉峰题曰《红楼梦》。</span><span class="spg">p.4</span></div><div class="chap"><span class="caret">▸</span><span class="cname">第二回</span><span class="cnum">p.14–24 · 29 段</span></div><div class="chap"><span class="caret">▸</span><span class="cname">第三回</span><span class="cnum">p.25–40 · 62 段</span></div>
+<div class="segrow"><span class="stext">月宝鉴》。&lt;至吴玉峰题曰《红楼梦》。</span><span class="spg">p.4</span></div><div class="chap"><span class="chapcaret">▸</span><span class="cname">第二回</span><span class="cnum">p.14–24 · 29 段</span></div><div class="chap"><span class="chapcaret">▸</span><span class="cname">第三回</span><span class="cnum">p.25–40 · 62 段</span></div>
     </aside>
     <section class="pdf">
   <div class="pdfcap"><b>第 1 页</b><span>· 第 3 段（10 行）</span></div>
@@ -358,16 +425,17 @@ body.shot .frame.on{display:flex}
   <div class="pz"><button>−</button><span>100%</span><button>+</button><button>⤢</button></div>
 </section>
     <aside class="txt">
-      <div class="txthd"><b>成品文本</b><span>146 段 · 已手改 1 段</span><span class="spacer"></span><span>自动保存已开</span></div>
+      <div class="txthd"><b>成品文本</b><span>146 段 · 已手改 1 行</span><span class="spacer"></span><span>自动保存已开</span></div>
+      <div class="hintbar"><span class="hb-ico">?</span><span>点字改它所在的行 · 并段 / 拆段用行首按钮 · 规则拼出的空格和连字符只读</span><a>知道了</a></div>
       <div class="paras">
         <p class="para title">第一回</p>
 <p class="para sub">甄士隐梦幻识通灵贾雨村风尘怀闺秀</p>
-<p class="para editing"><span class="gutter">p.1</span>看官：你道此书从何而起？——说来虽近荒唐，细玩颇有趣味。却说那女娲氏炼石补天之时，于大荒山无稽崖炼成高十二丈、见方二十四丈大的顽石三万六千五百零一块，那娲皇只用了三万六千五百块<span class="caret"></span>，单单剩下一块未用，弃在青埂峰下。谁知此石自经锻炼之后，灵性已通，自去自来，可大可小；因见众石俱得补天，独自己无才，不得入选，遂自怨自愧，日夜悲哀。</p>
+<p class="para editing-lines"><span class="ln">看官：你道此书从何而起？——说来</span><span class="ln">虽近荒唐，细玩颇有趣味。却说那女娲氏</span><span class="ln sel">炼石补天之时，于大<span class="caret"></span>荒山无稽崖炼成高十</span><span class="ln">二丈、见方二十四丈大的顽石三万六千五</span><span class="ln">百零一块，那娲皇只用了三万六千五百</span><span class="ln">块，单单剩下一块未用，弃在青埂峰下。</span><span class="ln">谁知此石自经锻炼之后，灵性已通，自去</span><span class="ln">自来，可大可小；因见众石俱得补天，独</span><span class="ln">自己无才，不得入选，遂自怨自愧，日夜</span><span class="ln">悲哀。</span></p>
 <p class="para"><span class="gutter edited">已手改</span>一日，正当嗟悼之际，俄见一僧一道，远远而来，生得骨格不凡，丰神迥异，来到这青埂峰下，席地坐谈。见着这块鲜莹明洁的石头，且又缩成扇坠一般，甚属可爱；那僧托于掌上，笑道：“形体倒也是个灵物了！只是没有实在的好处，须得再镌上几个字，使人人见了便知你是件奇物，然后携你到那昌明隆盛之邦、诗礼簪缨之族、花柳繁华地、温柔富贵乡那里去</p>
 <p class="para">走一遭。”石头听了大喜，因问：“不知可镌何字？携到何方？望乞明示。”那僧笑道：“你且莫问，日后自然明白。”说毕，便袖了，同那道人飘然而去，竟不知投向何方。</p>
       </div>
-      <div class="editbar"><span>正在编辑 · <b>第 3 段</b></span><span class="ok">✓ 已自动保存 14:32</span>
-        <span class="spacer"></span><button class="btn btn--sm btn--ghost">取消</button>
+      <div class="editbar"><span>正在改 <b>第 3 行</b> · 本段 10 行</span><span class="ok">即写即存 · ✓ 已保存 14:32</span>
+        <span class="spacer"></span><span class="hint">⌘Z 撤销</span>
         <button class="btn btn--pri btn--sm">完成 <kbd>Esc</kbd></button></div>
     </aside>
   </div>
@@ -376,43 +444,55 @@ body.shot .frame.on{display:flex}
   <h3>F2 预览页 · 1440×900</h3>
   <ul>
     <li><b>成品是干净的</b>：没有红字、没有下划线、没有编号。差异只属于审校页。</li>
+    <li><b>点字改行</b>：进入编辑后整段的源行显 1px 点线，当前行 2px 蓝线 + 4% 底——编辑边界可见，文字不重排。</li>
+    <li><b>即写即存</b>：没有「保存 / 提交」按钮，只有真实状态和 <code>完成</code>；中栏只框当前段与当前行。</li>
     <li><b>未完成只提示一次</b>：顶部一条状态，不下沉到段落。</li>
-    <li><b>点段落就地编辑</b>：外扩蓝框，底部编辑条报真实保存状态；没有「提交」。</li>
-    <li><b>中栏联动</b>：正在改的段落，其 10 行在原图上青框标出（不填色）。</li>
   </ul>
-  <p>段落 3 正在编辑、段落 4 已手改。左侧目录按「回 → 段」组织。样张文字来自真项目第 1 页的组装结果。</p>
+  <p>段落按源行切成 10 个 <code>line_span</code>；当前改第 3 行（蓝线）。并段 / 拆段走行首按钮，规则拼出的空格和连字符只读。</p>
 </aside>
 </div>
 <div class="wrap">
   <div class="frame frame--narrow" id="F3">
   <div class="top"><button class="ibtn">←</button><span class="bk">红楼梦第一卷_正文前40页_图像版</span><nav class="tabs"><span class="tab">页面</span><span class="tab on">审校</span><span class="tab">预览</span></nav><span class="spacer"></span><span class="save"><b>已保存 ✓ 14:32</b></span><button class="btn">导出…</button></div>
-  <div class="rt"><div class="grp"><button class="btn btn--sm">◀</button><span class="num">第 11 页</span><button class="btn btn--sm">▶</button><span class="dim num">/ 40</span></div><span class="dot"></span><div class="grp"><span class="dim">待判</span><b class="num">85</b><span class="dim">处</span><span class="bar"><i style="width:25%"></i></span></div><div class="grp"><button class="pchip">标点 66 行 · 32 组</button></div><span class="spacer"></span><button class="btn btn--pri btn--sm">下一处 <kbd>⏎</kbd></button><button class="btn btn--sm">显示 ▾</button></div><div class="split"><aside class="dir">
-  <div class="dirhd"><span>差异目录</span><span class="badge">待判 151</span></div>
-  <div class="dirsub">汉字 85 处 · 标点 66 行（32 组）</div>
-  <div class="seg"><span class="on">待判</span><span>全部</span></div>
-  <div class="tree">
-    <div class="chap open"><span class="caret">▾</span><span class="cname">第一回</span><span class="cnum">49 / 88</span></div>
-<div class="pagerow"><span class="pno">第 1 页</span><span class="pcnt">2</span></div>
-<div class="pagerow"><span class="pno">第 2 页</span><span class="pcnt">3</span></div>
-<div class="pagerow"><span class="pno">第 3 页</span><span class="pcnt">4</span></div>
-<div class="pagerow"><span class="pno">第 4 页</span><span class="pcnt">6</span></div>
-<div class="pagerow"><span class="pno">第 5 页</span><span class="pcnt">7</span></div>
-<div class="pagerow"><span class="pno">第 6 页</span><span class="pcnt">2</span></div>
-<div class="pagerow"><span class="pno">第 7 页</span><span class="pcnt">2</span></div>
-<div class="pagerow"><span class="pno">第 8 页</span><span class="pcnt">5</span></div>
-<div class="pagerow"><span class="pno">第 9 页</span><span class="pcnt">3</span></div>
-<div class="pagerow"><span class="pno">第 10 页</span><span class="pcnt">7</span></div>
-<div class="pagerow on"><span class="pno">第 11 页</span><span class="pcnt">6</span></div>
-<div class="pagerow"><span class="pno">第 12 页</span><span class="pcnt">2</span></div>
-<div class="pagerow zero"><span class="pno">第 13 页</span><span class="pcnt">✓</span></div>
-<div class="chap"><span class="caret">▸</span><span class="cname">第二回</span><span class="cnum">40 / 69</span></div>
-<div class="chap"><span class="caret">▸</span><span class="cname">第三回</span><span class="cnum">62 / 90</span></div>
-  </div>
+  <div class="rt"><div class="grp"><button class="btn btn--sm">◀</button><span class="num">第 11 页</span><button class="btn btn--sm">▶</button><span class="dim num">/ 40</span></div><span class="dot"></span><div class="grp"><span class="dim">待判</span><b class="num">151</b><span class="dim">处</span></div><div class="grp"><span class="dim">汉字</span><b class="num">28</b><span class="dim num">/113</span><span class="bar"><i style="width:25%"></i></span></div><div class="grp"><button class="pchip">标点 66 行 · 32 组</button></div><span class="spacer"></span><button class="btn btn--pri btn--sm">下一处 <kbd>⏎</kbd></button><button class="btn btn--sm">显示 ▾</button></div><div class="split"><aside class="dir">
+  <div class="qhd"><span>差异队列</span><span class="badge">待判 151</span></div>
+  <div class="qsub">汉字 85 条 · 标点 66 行 / 32 组</div>
+  <div class="qfilter"><span class="on">待判</span><span>全部</span></div>
+  <div class="qscroll js-qscroll"><div class="qchap"><span>第一回</span><span class="qnum">28 条</span></div>
+<div class="qrow"><span class="qid">p.1·2</span><span class="qtext">悲<u class="qrep">哀</u>。</span></div>
+<div class="qrow"><span class="qid">p.1·3</span><span class="qtext">…远而来，生得<u class="qrep">骨</u>格不凡，丰神…</span></div>
+<div class="qrow"><span class="qid">p.2·2</span><span class="qtext">…尘、引登彼岸<u class="qdel">的</u></span></div>
+<div class="qrow"><span class="qid">p.2·3</span><span class="qtext">…石：上面叙着<u class="qrep">堕</u>落之乡，投胎…</span></div>
+<div class="qrow"><span class="qid">p.3·7</span><span class="qtext">…东鲁孔梅溪题<u class="qrep">曰</u>《风</span></div>
+<div class="qrow"><span class="qid">p.4·4</span><span class="qtext">城，城中<u class="qrep">阊</u>门，最是红尘…</span></div>
+<div class="qrow"><span class="qid">p.4·7</span><span class="qtext">…日炎夏永昼，<u class="qrep">士</u>隐于书房闲坐…</span></div>
+<div class="qrow"><span class="qid">p.4·8</span><span class="qtext"><u class="qrep">入</u>世，趁此机会…</span></div>
+<div class="qrow"><span class="qid">p.5·6</span><span class="qtext">这一<u class="qrep">干</u>风流孽鬼下世…</span></div>
+<div class="qrow"><span class="qid">p.5·7</span><span class="qtext">却说甄<u class="qrep">士</u>隐俱听得明白…</span></div>
+<div class="qrow"><span class="qid">p.5·8</span><span class="qtext">…忙答礼相问，<u class="qrep">士</u>隐因说道：</span></div>
+<div class="qrow"><span class="qid">p.6·2</span><span class="qtext">…大石牌坊，—<span class="qins"></span>上面大书四</span></div>
+<div class="qrow"><span class="qid">p.8·3</span><span class="qtext">…壮，却又这样<u class="qrep">槛</u>楼：我家并无…</span></div>
+<div class="qrow"><span class="qid">p.8·5</span><span class="qtext">…、风尘中之知<u class="qrep">己</u>。</span></div>
+<div class="qrow"><span class="qid">p.8·6</span><span class="qtext">…便门出去了。<u class="qrep">士</u>隐待客既散，…</span></div>
+<div class="qrow"><span class="qid">p.8·7</span><span class="qtext">…了中秋佳节，<u class="qrep">士</u>隐家宴已毕，…</span></div>
+<div class="qrow"><span class="qid">p.9·1</span><span class="qtext">玉在<u class="qrep">楼</u>中求善价，钗…</span></div>
+<div class="qrow"><span class="qid">p.9·2</span><span class="qtext">…何兴至此？”<u class="qrep">士</u>隐笑道：“今…</span></div>
+<div class="qrow"><span class="qid">p.9·3</span><span class="qtext"><u class="qrep">士</u>隐听了大叫：…</span></div>
+<div class="qrow"><span class="qid">p.10·1</span><span class="qtext">…即能到得—”<u class="qrep">士</u>隐不待说完，…</span></div>
+<div class="qrow"><span class="qid">p.10·3</span><span class="qtext"><u class="qrep">士</u>隐送雨村去后…</span></div>
+<div class="qrow"><span class="qid">p.10·7</span><span class="qtext">…是元宵佳节。<u class="qrep">士</u>隐令家</span></div>
+<div class="qrow"><span class="qid">p.10·8</span><span class="qtext">那<u class="qrep">士</u>隐夫妇见女儿…</span></div>
+<div class="qrow on" data-cur="1"><span class="qid">p.11·1</span><span class="qtext">…。看看一月，<u class="qrep">士</u>隐已先得病，…</span></div>
+<div class="qrow"><span class="qid">p.11·2</span><span class="qtext">…数应当如此，<u class="qrep">—</u>于是接二连三…</span></div>
+<div class="qrow"><span class="qid">p.11·5</span><span class="qtext">…，偏值近年水<u class="qrep">旱</u>不收，贼</span></div>
+<div class="qrow"><span class="qid">p.11·7</span><span class="qtext">…些薄田破屋。<u class="qrep">士</u>隐乃读书之人…</span></div>
+<div class="qrow"><span class="qid">p.11·8</span><span class="qtext">…味好吃懒做。<u class="qrep">士</u>隐</span></div>
+<div class="qchap off"><span>第二回</span><span class="qnum">15 条</span></div>
+<div class="qchap off"><span>第三回</span><span class="qnum">42 条</span></div></div>
+  <div class="qpunct"><span>标点 66 行</span><span>32 组</span><span class="spacer"></span><a>批量 →</a></div>
+  <div class="qfoot"><span>Jev 未打分</span><span class="spacer"></span><a>开始打分…</a></div>
   <div class="legend">
-    <div class="lgrow"><i class="sw"></i>替换</div>
-    <div class="lgrow"><i class="sw punct"></i>只差标点</div>
-    <div class="lgrow"><i class="sw ins"></i>另一路多一个字</div>
-    <div class="lgrow"><i class="sw del"></i>这一路多一个字</div>
+    <div class="lgrow"><i class="sw"></i>替换<i class="sw punct"></i>标点</div><div class="lgrow"><i class="sw ins"></i>另一路多字</div><div class="lgrow"><i class="sw del"></i>这一路多字</div>
   </div>
   <div class="dircap">字框 100%（1054 / 1054 行）</div>
 </aside><section class="pdf">
@@ -424,7 +504,6 @@ body.shot .frame.on{display:flex}
   <div class="pz"><button>−</button><span>100%</span><button>+</button><button>⤢</button></div>
 </section><aside class="list">
   <div class="listhd"><span><b>本页 8 处</b> · 待判 6</span><span class="spacer"></span>
-    <button class="sort">排序：书页顺序 ▾</button>
     <label class="check"><input type="checkbox" checked>仅待判</label></div>
   <div class="cards">
     <div class="card open">
@@ -444,27 +523,26 @@ body.shot .frame.on{display:flex}
     <span class="spacer"></span><span class="hint">⌘Z 撤销</span>
   </div>
 </div>
-    <div class="mini"><span class="idx">#2</span><span class="k">替换 1 字</span><span class="chg">—→一</span><span class="spacer"></span></div><div class="mini"><span class="idx">#4</span><span class="k">另一路多 1 字</span><span class="spacer"></span></div><div class="mini"><span class="idx">#5</span><span class="k">替换 1 字</span><span class="chg">旱→早</span><span class="spacer"></span></div><div class="mini"><span class="idx">#7</span><span class="k">替换 1 字</span><span class="chg">士→土</span><span class="spacer"></span></div>
+    <div class="mini"><span class="idx">#2</span><span class="mtext">…数应当如此，<u class="mdiff ">—</u>于是接二连三…</span></div><div class="mini"><span class="idx">#4</span><span class="mtext">…瓦砾场了，—<span class="mdiff empty"></span>只有</span></div><div class="mini"><span class="idx">#5</span><span class="mtext">…，偏值近年水<u class="mdiff ">旱</u>不收，贼</span></div><div class="mini"><span class="idx">#7</span><span class="mtext">…些薄田破屋。<u class="mdiff ">士</u>隐乃读书之人…</span></div>
   </div>
-  <div class="lfoot"><span>另有 2 处已判</span><a>全部 →</a></div>
-  <div class="lfoot"><span>Jev 未打分 · 296 行可打分</span><span class="spacer"></span><a>开始打分…</a></div>
+  <div class="lfoot"><span>另有 2 处已判 · 本页全部 →</span></div>
 </aside></div>
 </div>
   <aside class="notes">
   <h3>F3 628 · 1280×628</h3>
   <ul>
     <li><b>字号不缩</b>：右栏 14.5/26，与 900 高一致。</li>
-    <li><b>页高优先</b>：整页 348px 宽一次看全，不滚动。</li>
-    <li><b>放大镜不浮在页面上</b>：2.5× 原图贴在当前卡片里，避免挡住页面。</li>
-    <li><b>目录压到 200</b>，图例折成四行短标签；工具条只留页码、待判、标点、下一处。</li>
+    <li><b>页高优先</b>：整页 348px 宽一次看全，不滚动；字高 ≈9px。</li>
+    <li><b>2.5× 原图在卡片里</b>：不浮在页面上，避免挡住页面。</li>
+    <li><b>队列压到 200</b>：只展开当前回，标点汇总与 Jev 状态压成一行。</li>
   </ul>
-  <p>628 下判一条的完整链路：页图定位 → 卡片读数 → 2.5× 核对 → 回车。指针可以一直不动。</p>
+  <p>628 下判一条的完整链路：队列定位 → 页图看位置 → 卡片读 A/B → 2.5× 核对 → 回车。指针可以一直不动。</p>
 </aside>
 </div>
 <script>
 
 const P11 = [{"n": 1, "level": "chars", "ack": null, "line": [0.237329, 0.141409, 0.849558, 0.160085], "boxes": [{"k": "replace", "b": [0.48029, 0.14141, 0.50201, 0.15955]}], "ins": [], "current": "顾性命。看看一月，士隐已先得病，夫人封氏也因思", "candidate": "顾性命。看看一月，土隐已先得病，夫人封氏也因思"}, {"n": 2, "level": "chars", "ack": null, "line": [0.236525, 0.283351, 0.849558, 0.302028], "boxes": [{"k": "replace", "b": [0.4103, 0.28335, 0.43282, 0.30149]}], "ins": [], "current": "劫数应当如此，—于是接二连三，牵五挂四，将一条街", "candidate": "劫数应当如此，一于是接二连三，牵五挂四，将一条街"}, {"n": 3, "level": "punct", "ack": "kept", "line": [0.23572, 0.319104, 0.84634, 0.33778], "boxes": [{"k": "replace", "b": [0.47949, 0.3191, 0.5004, 0.33725]}], "ins": [], "current": "烧得如“火焰山”一般；彼时虽有军民来救，那火已成了", "candidate": "烧得如“火焰山”一般，彼时虽有军民来救，那火已成了"}, {"n": 4, "level": "punct", "ack": null, "line": [0.23572, 0.389541, 0.848753, 0.409819], "boxes": [], "ins": [{"x": 0.77715, "y0": 0.39007, "y1": 0.40928}], "current": "家。只可怜甄家在隔壁，早成了一堆瓦砾场了，—只有", "candidate": "家。只可怜甄家在隔壁，早成了一堆瓦砾场了，——只有"}, {"n": 5, "level": "chars", "ack": null, "line": [0.236525, 0.46158, 0.849558, 0.479723], "boxes": [{"k": "replace", "b": [0.73854, 0.46158, 0.76026, 0.47919]}], "ins": [], "current": "而已。与妻子商议且到田庄上去住，偏值近年水旱不收，贼", "candidate": "而已。与妻子商议且到田庄上去住，偏值近年水早不收，贼"}, {"n": 6, "level": "punct", "ack": "kept", "line": [0.236525, 0.676628, 0.845535, 0.692636], "boxes": [{"k": "replace", "b": [0.52615, 0.67663, 0.54706, 0.69264]}], "ins": [], "current": "些房地，以为后日衣食之计；那封肃便半用半赚的，略与", "candidate": "些房地，以为后日衣食之计，那封肃便半用半赚的，略与"}, {"n": 7, "level": "chars", "ack": null, "line": [0.234916, 0.710779, 0.847144, 0.728388], "boxes": [{"k": "replace", "b": [0.40788, 0.71078, 0.42961, 0.72839]}], "ins": [], "current": "他些薄田破屋。士隐乃读书之人，不惯生理稼穑等事，勉", "candidate": "他些薄田破屋。土隐乃读书之人，不惯生理稼穑等事，勉"}, {"n": 8, "level": "chars", "ack": null, "line": [0.234916, 0.782818, 0.847144, 0.800427], "boxes": [{"k": "replace", "b": [0.8029, 0.78282, 0.82381, 0.80043]}], "ins": [], "current": "儿，且人前人后，又怨他不会过、只一味好吃懒做。士隐", "candidate": "儿，且人前人后，又怨他不会过、只一味好吃懒做。土隐"}];
-const P1ACTIVE = [{"b": [0.562349, 0.217716, 0.950925, 0.238527]}, {"b": [0.516492, 0.254536, 0.949316, 0.27428]}, {"b": [0.514079, 0.289755, 0.948512, 0.310032]}, {"b": [0.516492, 0.326574, 0.950121, 0.345784]}, {"b": [0.515688, 0.361259, 0.949316, 0.381003]}, {"b": [0.514883, 0.396478, 0.947707, 0.416756]}, {"b": [0.514883, 0.432231, 0.949316, 0.451974]}, {"b": [0.517297, 0.467983, 0.948512, 0.487727]}, {"b": [0.517297, 0.503202, 0.950121, 0.523479]}, {"b": [0.510056, 0.535752, 0.583266, 0.562433]}];
+const P1ACTIVE = [{"b": [0.562349, 0.217716, 0.950925, 0.238527], "sel": false}, {"b": [0.516492, 0.254536, 0.949316, 0.27428], "sel": false}, {"b": [0.514079, 0.289755, 0.948512, 0.310032], "sel": true}, {"b": [0.516492, 0.326574, 0.950121, 0.345784], "sel": false}, {"b": [0.515688, 0.361259, 0.949316, 0.381003], "sel": false}, {"b": [0.514883, 0.396478, 0.947707, 0.416756], "sel": false}, {"b": [0.514883, 0.432231, 0.949316, 0.451974], "sel": false}, {"b": [0.517297, 0.467983, 0.948512, 0.487727], "sel": false}, {"b": [0.517297, 0.503202, 0.950121, 0.523479], "sel": false}, {"b": [0.510056, 0.535752, 0.583266, 0.562433], "sel": false}];
 
 function el(tag, cls){ const n=document.createElement(tag); if(cls) n.className=cls; return n; }
 
@@ -510,13 +588,13 @@ function paintActive(paper){
   const W=paper.clientWidth, H=paper.clientHeight;
   const ovl=paper.querySelector('.ovl');
   if(!W||!H||!P1ACTIVE.length) return;
-  const bs=P1ACTIVE.map(l=>l.b);
-  const x0=Math.min(...bs.map(b=>b[0])), y0=Math.min(...bs.map(b=>b[1]));
-  const x1=Math.max(...bs.map(b=>b[2])), y1=Math.max(...bs.map(b=>b[3]));
-  const r=el('div','ring teal');
-  r.style.left=(x0*W-3)+'px'; r.style.top=(y0*H-3)+'px';
-  r.style.width=((x1-x0)*W+6)+'px'; r.style.height=((y1-y0)*H+6)+'px';
-  ovl.append(r);
+  P1ACTIVE.forEach(l=>{
+    const [x0,y0,x1,y1]=l.b;
+    const r=el('div','ring teal'+(l.sel?' sel':''));
+    r.style.left=(x0*W-3)+'px'; r.style.top=(y0*H-3)+'px';
+    r.style.width=((x1-x0)*W+6)+'px'; r.style.height=((y1-y0)*H+6)+'px';
+    ovl.append(r);
+  });
 }
 
 function paintCrops(){
@@ -535,6 +613,10 @@ function layout(){
   document.querySelectorAll('.paper[data-page="11"]').forEach(shadePortal);
   document.querySelectorAll('.paper[data-page="1"]').forEach(paintActive);
   paintCrops();
+  document.querySelectorAll('.js-qscroll').forEach(q=>{
+    const cur=q.querySelector('[data-cur]');
+    if(cur) q.scrollTop=Math.max(0,cur.offsetTop-64);
+  });
 }
 
 document.querySelectorAll('.fbtn').forEach(b=>b.addEventListener('click',()=>location.hash='#'+b.dataset.f));

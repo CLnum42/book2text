@@ -167,11 +167,58 @@ CHAPTERS = TREE["chapters"]
 SEGS = json.loads(pe.preview_segments_json(PID, library=LIB, options=ExportOptions()))["segments"]
 ACTIVE_SEG = SEGS[2]
 LINES1 = page_lines(1)
+SELECTED_LINE = 2  # 0-based；本段第 3 行
 ACTIVE_LINES = []
-for sp in ACTIVE_SEG["line_spans"]:
+for i, sp in enumerate(ACTIVE_SEG["line_spans"]):
     line = LINES1.get(sp["block_id"], {}).get(int(sp["line_index"]))
     if line and line["bbox"]:
-        ACTIVE_LINES.append({"b": line["bbox"]})
+        ACTIVE_LINES.append({"b": line["bbox"], "sel": i == SELECTED_LINE})
+
+# ---------------------------------------------------------------- 全书字符级队列
+_page_n = {}
+QUEUE_ROWS = []
+for _it in MARKS["items"]:
+    _page_n[_it["page_no"]] = _page_n.get(_it["page_no"], 0) + 1
+    _n = _page_n[_it["page_no"]]
+    if _it["level"] != "differs_chars":
+        continue
+    _sp = spans_of(_it["current"], _it["candidate"])
+    if not _sp:
+        continue
+    _first = _sp[0]
+    _a = _it["current"][_first["aStart"]:_first["aEnd"]]
+    _b = _it["candidate"][_first["bStart"]:_first["bEnd"]]
+    _ctx = 6
+    _text = _it["current"]
+    _a0, _a1 = _first["aStart"], _first["aEnd"]
+    _pre = _text[max(0, _a0 - _ctx):_a0]
+    _post = _text[_a1:_a1 + _ctx]
+    if max(0, _a0 - _ctx) > 0:
+        _pre = "…" + _pre
+    if _a1 + _ctx < len(_text):
+        _post = _post + "…"
+    _diff = _text[_a0:_a1]
+    if _first["kind"] == "insert":
+        _diff = ""
+    QUEUE_ROWS.append({
+        "page": _it["page_no"], "n": _n, "pre": _pre, "diff": _diff, "post": _post,
+        "kind": "punct" if _it["level"] == "differs_punct" else _first["kind"],
+        "ack": _it["ack"] or None,
+    })
+
+PENDING_ROWS = [r for r in QUEUE_ROWS if not r["ack"]]
+
+
+def chapter_of(page_no: int) -> str:
+    for c in TREE["chapters"]:
+        if c["page_from"] <= page_no <= c["page_to"]:
+            return c["title"]
+    return "未目"
+
+
+CHAR_BY_CHAPTER = collections.Counter(chapter_of(r["page"]) for r in PENDING_ROWS)
+PUNCT_GROUPS = len({i.get("pattern_key") for i in MARKS["items"]
+                    if i["level"] == "differs_punct" and not i["ack"] and i.get("pattern_key")})
 
 # ---------------------------------------------------------------- 页面图
 def jpg_b64(name: str) -> str:
@@ -192,12 +239,16 @@ def mini(card: dict) -> str:
     if card["ack"] == "kept":
         state = '<span class="st ok">已保留</span>'
     elif card["ack"] == "adopted":
-        state = '<span class="st ok">已采用</span>'
-    chg = f'<span class="chg">{esc(card["chg"])}</span>' if card["chg"] else ""
+        state = '<span class="st ok">已采纳</span>'
+    if card["a_empty"]:
+        mid = '<span class="mdiff empty"></span>'
+    else:
+        cls = ("punct" if card["kind"] == "punct" else ("del" if card["a_cls"] == "del" else ""))
+        mid = f'<u class="mdiff {cls}">{esc(card["a_diff"])}</u>'
     cls = "mini acked" if card["ack"] else "mini"
     return (f'<div class="{cls}"><span class="idx">#{card["n"]}</span>'
-            f'<span class="k">{esc(card["label"])}</span>{chg}'
-            f'<span class="spacer"></span>{state}</div>')
+            f'<span class="mtext">{esc(card["a_pre"])}{mid}{esc(card["a_post"])}</span>'
+            f'{state}</div>')
 
 
 def diff_cell(card, side):
@@ -229,28 +280,26 @@ def open_card(card: dict) -> str:
 </div>'''
 
 
-def dir_rows() -> str:
-    rows = []
-    for n in range(1, 14):
-        page = PAGES_TREE[n]
-        cnt = page["unacked"]
-        cls = "pagerow on" if n == 11 else ("pagerow zero" if cnt == 0 else "pagerow")
-        content = f'<span class="pno">第 {n} 页</span><span class="pcnt">{cnt if cnt else "✓"}</span>'
-        rows.append(f'<div class="{cls}">{content}</div>')
-    return "\n".join(rows)
-
-
-def chapter_rows() -> str:
-    rows = []
-    for i, c in enumerate(CHAPTERS):
-        un = sum(PAGES_TREE[n]["unacked"] for n in range(c["page_from"], c["page_to"] + 1))
-        tot = sum(PAGES_TREE[n]["total"] for n in range(c["page_from"], c["page_to"] + 1))
-        if i == 0:
-            rows.append(f'<div class="chap open"><span class="caret">▾</span><span class="cname">{esc(c["title"])}</span><span class="cnum">{un} / {tot}</span></div>')
-            rows.append(dir_rows())
+def queue_rows() -> str:
+    cur_chapter = chapter_of(11)
+    out = []
+    for c in CHAPTERS:
+        rows = [r for r in PENDING_ROWS if chapter_of(r["page"]) == c["title"]]
+        if c["title"] == cur_chapter:
+            out.append(f'<div class="qchap"><span>{esc(c["title"])}</span><span class="qnum">{len(rows)} 条</span></div>')
+            for r in rows:
+                on = r["page"] == 11 and r["n"] == 1
+                cls = "qrow on" if on else "qrow"
+                ident = ' data-cur="1"' if on else ""
+                if r["kind"] == "insert":
+                    mid = '<span class="qins"></span>'
+                else:
+                    mid = f'<u class="q{ "punct" if r["kind"] == "punct" else ("del" if r["kind"] == "delete" else "rep") }">{esc(r["diff"])}</u>'
+                out.append(f'<div class="{cls}"{ident}><span class="qid">p.{r["page"]}·{r["n"]}</span>'
+                           f'<span class="qtext">{esc(r["pre"])}{mid}{esc(r["post"])}</span></div>')
         else:
-            rows.append(f'<div class="chap"><span class="caret">▸</span><span class="cname">{esc(c["title"])}</span><span class="cnum">{un} / {tot}</span></div>')
-    return "\n".join(rows)
+            out.append(f'<div class="qchap off"><span>{esc(c["title"])}</span><span class="qnum">{len(rows)} 条</span></div>')
+    return "\n".join(out)
 
 
 def toc_rows() -> str:
@@ -266,6 +315,24 @@ def toc_rows() -> str:
     return "\n".join(rows)
 
 
+def segment_lines(seg: dict, sel: int = 2) -> str:
+    text, spans = seg["text"], seg["line_spans"]
+    out, cur = [], 0
+    for i, sp in enumerate(spans):
+        start, end = int(sp["start"]), int(sp["end"])
+        if start > cur:
+            out.append(f'<span class="ln-derived">{esc(text[cur:start])}</span>')
+        piece = esc(text[start:end])
+        if i == sel:
+            mid = max(1, len(text[start:end]) // 2)
+            piece = esc(text[start:end][:mid]) + '<span class="caret"></span>' + esc(text[start:end][mid:])
+        out.append(f'<span class="ln{" sel" if i == sel else ""}">{piece}</span>')
+        cur = end
+    if cur < len(text):
+        out.append(f'<span class="ln-derived">{esc(text[cur:])}</span>')
+    return "".join(out)
+
+
 def paragraphs() -> str:
     out = []
     for seg in SEGS[:5]:
@@ -275,7 +342,7 @@ def paragraphs() -> str:
         elif seq == 2:
             out.append(f'<p class="para sub">{esc(text)}</p>')
         elif seq == 3:
-            out.append(f'<p class="para editing"><span class="gutter">p.1</span>{esc(text[:88])}<span class="caret"></span>{esc(text[88:])}</p>')
+            out.append(f'<p class="para editing-lines">{segment_lines(seg)}</p>')
         elif seq == 4:
             out.append(f'<p class="para"><span class="gutter edited">已手改</span>{esc(text)}</p>')
         else:
@@ -385,6 +452,55 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .sw.ins{width:3px;height:12px;border:0;background:var(--diff-insert);border-radius:1px}
 .dircap{padding:2px 12px 10px;font-size:10.5px;color:var(--faint)}
 
+/* 差异队列（左栏） */
+.qhd{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 2px;font-weight:600;font-size:12.5px}
+.qsub{padding:0 12px 7px;font-size:10.5px;color:var(--faint);border-bottom:1px solid var(--line-soft);white-space:nowrap}
+.qfilter{display:flex;gap:2px;margin:7px 12px 6px;background:var(--surface-3);border-radius:6px;padding:2px}
+.qfilter span{flex:1;text-align:center;font-size:11px;padding:2px 0;border-radius:4px;color:var(--muted);cursor:pointer}
+.qfilter .on{background:#fff;box-shadow:var(--shadow-1);color:var(--text);font-weight:600}
+.qscroll{flex:1;min-height:0;overflow:hidden;position:relative;border-top:1px solid var(--line-soft)}
+.qchap{height:26px;display:flex;align-items:center;padding:0 12px;font-size:12px;font-weight:600;
+  background:#fff;position:sticky;top:0;z-index:1;border-bottom:1px solid var(--line-soft)}
+.qchap .qnum{margin-left:auto;font-size:10.5px;color:var(--faint);font-weight:400}
+.qchap.off{color:var(--muted);font-weight:400;position:static}
+.qrow{height:24px;display:flex;align-items:center;gap:8px;padding:0 12px;font-size:11.5px;color:var(--text-2);
+  border-left:3px solid transparent;cursor:pointer}
+.qrow .qid{font:10px/1 ui-monospace,Menlo,monospace;color:var(--faint);width:47px;flex:none;letter-spacing:-.2px}
+.qtext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px/1.5 "Songti SC","STSong","SimSun",serif;color:var(--muted)}
+.qtext u{text-decoration:none;color:var(--text);border-bottom:2px solid var(--diff-chars);padding-bottom:1px}
+.qtext u.qpunct{border-bottom-style:dashed;border-color:var(--diff-punct)}
+.qtext u.qdel{border-bottom:3px double;border-color:var(--diff-chars)}
+.qtext .qins{display:inline-block;width:2px;height:12px;background:var(--diff-insert);vertical-align:-2px;margin:0 1px}
+.qrow.on .qtext{color:var(--accent-text)}
+.qrow.on .qtext u{color:var(--accent-text)}
+.qrow.on{background:var(--accent-soft);border-left-color:var(--accent);color:var(--accent-text);font-weight:600}
+.qrow.on .qid{color:var(--accent-text)}
+.qpunct{margin:6px 12px 4px;padding:6px 8px;border:1px solid #f0d6a6;background:var(--warn-soft);border-radius:6px;
+  font-size:10.5px;color:var(--warn-text);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.qpunct .spacer{flex:1}
+.qpunct a{color:var(--warn-text);font-weight:600}
+.qfoot{padding:0 12px 5px;font-size:10px;color:var(--faint);display:flex;gap:6px;align-items:center;white-space:nowrap}
+.qfoot .spacer{flex:1}
+.qfoot a{color:var(--accent-text)}
+.legend{padding:4px 12px 2px;border-top:1px solid var(--line-soft);font-size:10px;color:var(--muted);line-height:1.9}
+.legend .lgrow{display:flex;align-items:center;gap:5px;height:18px;white-space:nowrap}
+.legend .sw{margin-left:4px}
+.legend .sw:first-child{margin-left:0}
+
+/* 预览页：行内编辑边界 */
+.hintbar{height:30px;flex:none;display:flex;align-items:center;gap:7px;padding:0 14px;background:var(--surface-3);
+  border-bottom:1px solid var(--line-soft);font-size:11px;color:var(--muted)}
+.hintbar .hb-ico{width:14px;height:14px;border-radius:50%;border:1px solid var(--line-strong);color:var(--faint);
+  font:600 9px/12px sans-serif;text-align:center;flex:none}
+.hintbar a{margin-left:auto;color:var(--accent-text);font-weight:600;white-space:nowrap}
+.ln{position:relative}
+.para.editing-lines .ln{border-bottom:1px dotted #dfe3e9;padding-bottom:1px}
+.para.editing-lines .ln.sel{border-bottom:2px solid var(--accent);background:#f4f8ff}
+.ln-derived{border-bottom:1px dotted var(--faint)}
+.linechip{position:absolute;left:-52px;top:2px;background:var(--accent-soft);color:var(--accent-text);
+  border:1px solid #c9d8f7;border-radius:4px;padding:1px 5px;font-size:9.5px;line-height:13px;
+  font-weight:600;white-space:nowrap}
+
 /* PDF 列 */
 .pdf{flex:1;min-width:340px;background:#e9ebef;display:flex;flex-direction:column;min-height:0;position:relative;padding:0 10px}
 .pdfcap{height:24px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;color:var(--muted)}
@@ -403,7 +519,8 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .mk.caret.acked{opacity:.42;width:2px}
 .ring{position:absolute;border:2px solid var(--accent);border-radius:2px;pointer-events:none;
   box-shadow:0 0 0 1.5px rgba(255,255,255,.75)}
-.ring.teal{border-color:#0f766e}
+.ring.teal{border-color:#0f766e;border-width:1px;opacity:.35}
+.ring.teal.sel{border-width:2px;opacity:1}
 .tag{position:absolute;right:0;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid var(--line-strong);
   color:var(--muted);font:600 9.5px/1 ui-monospace,Menlo,monospace;display:flex;align-items:center;justify-content:center;
   transform:translateY(-50%);z-index:2}
@@ -454,9 +571,13 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .hint{margin-left:auto;font-size:10px;color:var(--faint);white-space:nowrap}
 .mini{height:42px;display:flex;align-items:center;gap:7px;padding:0 10px;border:1px solid var(--line);border-radius:7px;
   margin-bottom:6px;font-size:11.5px;color:var(--text-2);cursor:pointer;background:#fff}
-.mini .k{color:var(--text-2)}
-.mini .chg{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--text);background:var(--surface-3);
-  border:1px solid var(--line-soft);border-radius:4px;padding:0 4px;line-height:16px}
+
+ 
+.mtext{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px/1.6 "Songti SC","STSong","SimSun",serif;color:var(--muted)}
+.mtext u{text-decoration:none;color:var(--text);border-bottom:2px solid var(--diff-chars)}
+.mtext u.punct{border-bottom-style:dashed;border-color:var(--diff-punct)}
+.mtext u.del{border-bottom:3px double;border-color:var(--diff-chars)}
+.mtext .mdiff.empty{display:inline-block;width:14px;height:12px;vertical-align:-1px;border:1px dashed var(--line-strong);border-radius:2px}
 .mini .st{margin-left:auto;font-size:10.5px;color:var(--muted)}
 .mini .st.ok{color:var(--ok-text)}
 .mini.acked{opacity:.62}
@@ -469,6 +590,7 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .tochd{padding:11px 12px 4px;font-weight:600;font-size:12.5px}
 .tocsub{padding:0 12px 8px;font-size:10.5px;color:var(--faint);border-bottom:1px solid var(--line-soft)}
 .toc .chap{height:28px}
+.chapcaret{width:12px;font-size:9px;color:var(--muted);flex:none}
 .segrow{height:27px;display:flex;align-items:center;gap:6px;padding:0 12px 0 28px;font-size:11.5px;color:var(--text-2);cursor:pointer}
 .segrow .stext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .segrow .spg{margin-left:auto;color:var(--faint);font-size:10px;flex:none}
@@ -496,6 +618,8 @@ kbd{font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;bord
 .frame--narrow .dirhd{padding-top:8px}
 .frame--narrow .dirsub{padding-bottom:6px}
 .frame--narrow .pagerow{height:22px}
+.frame--narrow .qrow{height:22px}
+.frame--narrow .qtext{font-size:11.5px}
 .frame--narrow .chap{height:26px}
 .frame--narrow .pdfcap{height:20px}
 .frame--narrow .crop{height:88px}
@@ -567,13 +691,13 @@ function paintActive(paper){
   const W=paper.clientWidth, H=paper.clientHeight;
   const ovl=paper.querySelector('.ovl');
   if(!W||!H||!P1ACTIVE.length) return;
-  const bs=P1ACTIVE.map(l=>l.b);
-  const x0=Math.min(...bs.map(b=>b[0])), y0=Math.min(...bs.map(b=>b[1]));
-  const x1=Math.max(...bs.map(b=>b[2])), y1=Math.max(...bs.map(b=>b[3]));
-  const r=el('div','ring teal');
-  r.style.left=(x0*W-3)+'px'; r.style.top=(y0*H-3)+'px';
-  r.style.width=((x1-x0)*W+6)+'px'; r.style.height=((y1-y0)*H+6)+'px';
-  ovl.append(r);
+  P1ACTIVE.forEach(l=>{
+    const [x0,y0,x1,y1]=l.b;
+    const r=el('div','ring teal'+(l.sel?' sel':''));
+    r.style.left=(x0*W-3)+'px'; r.style.top=(y0*H-3)+'px';
+    r.style.width=((x1-x0)*W+6)+'px'; r.style.height=((y1-y0)*H+6)+'px';
+    ovl.append(r);
+  });
 }
 
 function paintCrops(){
@@ -592,6 +716,10 @@ function layout(){
   document.querySelectorAll('.paper[data-page="11"]').forEach(shadePortal);
   document.querySelectorAll('.paper[data-page="1"]').forEach(paintActive);
   paintCrops();
+  document.querySelectorAll('.js-qscroll').forEach(q=>{
+    const cur=q.querySelector('[data-cur]');
+    if(cur) q.scrollTop=Math.max(0,cur.offsetTop-64);
+  });
 }
 
 document.querySelectorAll('.fbtn').forEach(b=>b.addEventListener('click',()=>location.hash='#'+b.dataset.f));
@@ -621,39 +749,53 @@ def frame_top(active: str, save: str = "已保存 ✓ 14:32") -> str:
 
 
 def review_toolbar(narrow: bool = False) -> str:
+    total, chars, punct = QUEUE["unacked"], QUEUE["chars_unacked"], QUEUE["punct_unacked"]
+    judged = QUEUE["chars_total"] - chars
+    rail = (f'<span class="dim">汉字</span><b class="num">{judged}</b>'
+            f'<span class="dim num">/{QUEUE["chars_total"]}</span>'
+            f'<span class="bar"><i style="width:{round(100 * judged / QUEUE["chars_total"])}%"></i></span>')
     if narrow:
         return ('<div class="rt"><div class="grp"><button class="btn btn--sm">◀</button>'
                 '<span class="num">第 11 页</span><button class="btn btn--sm">▶</button>'
                 '<span class="dim num">/ 40</span></div><span class="dot"></span>'
-                '<div class="grp"><span class="dim">待判</span><b class="num">85</b><span class="dim">处</span>'
-                '<span class="bar"><i style="width:25%"></i></span></div>'
-                '<div class="grp"><button class="pchip">标点 66 行 · 32 组</button></div>'
+                f'<div class="grp"><span class="dim">待判</span><b class="num">{total}</b><span class="dim">处</span></div>'
+                f'<div class="grp">{rail}</div>'
+                f'<div class="grp"><button class="pchip">标点 {punct} 行 · {PUNCT_GROUPS} 组</button></div>'
                 '<span class="spacer"></span><button class="btn btn--pri btn--sm">下一处 <kbd>⏎</kbd></button>'
                 '<button class="btn btn--sm">显示 ▾</button></div>')
     return ('<div class="rt"><div class="grp"><button class="btn btn--sm">◀</button>'
             '<span class="num">第 11 页</span><button class="btn btn--sm">▶</button>'
             '<span class="dim num">/ 40</span><span class="crumb">第一回</span></div><span class="dot"></span>'
-            '<div class="grp"><span class="dim">全书待判</span><b class="num">85</b><span class="dim">处</span>'
-            '<span class="bar"><i style="width:25%"></i></span></div>'
-            '<div class="grp"><button class="pchip">标点 66 行 · 32 组</button></div>'
+            f'<div class="grp"><span class="dim">待判</span><b class="num">{total}</b><span class="dim">处</span></div>'
+            f'<div class="grp">{rail}</div>'
+            f'<div class="grp"><button class="pchip">标点 {punct} 行 · {PUNCT_GROUPS} 组</button></div>'
             '<span class="spacer"></span>'
             '<button class="btn btn--pri btn--sm">下一处未审 <kbd>⏎</kbd></button>'
+            '<button class="btn btn--sm">排序：书页顺序 ▾</button>'
             '<button class="btn btn--sm">显示 ▾</button></div>')
 
 
 def directory(narrow: bool = False) -> str:
+    total, chars, punct = QUEUE["unacked"], QUEUE["chars_unacked"], QUEUE["punct_unacked"]
+    punct_label = ("标点 " + str(punct) + " 行") if narrow else ("标点（全书） " + str(punct) + " 行")
+    punct_right = "批量 →" if narrow else "批量判 →"
+    jev = "Jev 未打分" if narrow else "Jev 未打分 · 296 行可打分"
+    if narrow:
+        legend = ('<div class="lgrow"><i class="sw"></i>替换<i class="sw punct"></i>标点</div>'
+                  '<div class="lgrow"><i class="sw ins"></i>另一路多字</div>'
+                  '<div class="lgrow"><i class="sw del"></i>这一路多字</div>')
+    else:
+        legend = ('<div class="lgrow"><i class="sw"></i>替换<i class="sw punct"></i>标点</div>'
+                  '<div class="lgrow"><i class="sw ins"></i>另一路多字<i class="sw del"></i>这一路多字</div>')
     return f'''<aside class="dir">
-  <div class="dirhd"><span>差异目录</span><span class="badge">待判 151</span></div>
-  <div class="dirsub">汉字 85 处 · 标点 66 行（32 组）</div>
-  <div class="seg"><span class="on">待判</span><span>全部</span></div>
-  <div class="tree">
-    {chapter_rows()}
-  </div>
+  <div class="qhd"><span>差异队列</span><span class="badge">待判 {total}</span></div>
+  <div class="qsub">汉字 {chars} 条 · 标点 {punct} 行 / {PUNCT_GROUPS} 组</div>
+  <div class="qfilter"><span class="on">待判</span><span>全部</span></div>
+  <div class="qscroll js-qscroll">{queue_rows()}</div>
+  <div class="qpunct"><span>{punct_label}</span><span>{PUNCT_GROUPS} 组</span><span class="spacer"></span><a>{punct_right}</a></div>
+  <div class="qfoot"><span>{jev}</span><span class="spacer"></span><a>开始打分…</a></div>
   <div class="legend">
-    <div class="lgrow"><i class="sw"></i>替换</div>
-    <div class="lgrow"><i class="sw punct"></i>只差标点</div>
-    <div class="lgrow"><i class="sw ins"></i>另一路多一个字</div>
-    <div class="lgrow"><i class="sw del"></i>这一路多一个字</div>
+    {legend}
   </div>
   <div class="dircap">字框 100%（1054 / 1054 行）</div>
 </aside>'''
@@ -682,14 +824,12 @@ def review_list(narrow: bool = False) -> str:
     parts.append(pdf_column(11, '<b>第 11 页</b><span>· 6 处待判</span>', IMG11, narrow))
     parts.append(f'''<aside class="list">
   <div class="listhd"><span><b>本页 8 处</b> · 待判 6</span><span class="spacer"></span>
-    <button class="sort">排序：书页顺序 ▾</button>
     <label class="check"><input type="checkbox" checked>仅待判</label></div>
   <div class="cards">
     {open_card(current)}
     {"".join(mini(c) for c in shown)}
   </div>
-  <div class="lfoot"><span>另有 {len(acked)} 处已判</span><a>全部 →</a></div>
-  <div class="lfoot"><span>Jev 未打分 · 296 行可打分</span><span class="spacer"></span><a>开始打分…</a></div>
+  <div class="lfoot"><span>另有 {len(acked)} 处已判 · 本页全部 →</span></div>
 </aside>''')
     parts.append('</div>')
     return "".join(parts)
@@ -705,7 +845,7 @@ def preview_frame() -> str:
         key = f"c{i}"
         cls = "chap open" if i == 0 else "chap"
         caret = "▾" if i == 0 else "▸"
-        chapters.append(f'<div class="{cls}"><span class="caret">{caret}</span>'
+        chapters.append(f'<div class="{cls}"><span class="chapcaret">{caret}</span>'
                         f'<span class="cname">{esc(c["title"])}</span>'
                         f'<span class="cnum">p.{c["page_from"]}–{c["page_to"]} · {segs_per_chapter[key]} 段</span></div>')
         if i == 0:
@@ -713,21 +853,22 @@ def preview_frame() -> str:
     toc = "".join(chapters)
     return f'''<div class="frame" id="F2">
   {frame_top("预览")}
-  <div class="ready"><span class="ico">!</span><span>审校未完成：<b>85 处差异未判</b> · 标点 66 行（32 组）</span><a>去审校 →</a></div>
+  <div class="ready"><span class="ico">!</span><span>审校未完成：<b>{QUEUE["chars_unacked"]} 处差异未判</b> · 标点 {QUEUE["punct_unacked"]} 行（{PUNCT_GROUPS} 组）</span><a>去审校 →</a></div>
   <div class="split">
     <aside class="toc">
       <div class="tochd">书籍目录</div>
-      <div class="tocsub">146 段 · 3 回 · 已手改 1 段</div>
+      <div class="tocsub">146 段 · 3 回 · 已手改 1 行</div>
       {toc}
     </aside>
     {pdf_column(1, "<b>第 1 页</b><span>· 第 3 段（10 行）</span>", IMG1)}
     <aside class="txt">
-      <div class="txthd"><b>成品文本</b><span>146 段 · 已手改 1 段</span><span class="spacer"></span><span>自动保存已开</span></div>
+      <div class="txthd"><b>成品文本</b><span>146 段 · 已手改 1 行</span><span class="spacer"></span><span>自动保存已开</span></div>
+      <div class="hintbar"><span class="hb-ico">?</span><span>点字改它所在的行 · 并段 / 拆段用行首按钮 · 规则拼出的空格和连字符只读</span><a>知道了</a></div>
       <div class="paras">
         {paragraphs()}
       </div>
-      <div class="editbar"><span>正在编辑 · <b>第 3 段</b></span><span class="ok">✓ 已自动保存 14:32</span>
-        <span class="spacer"></span><button class="btn btn--sm btn--ghost">取消</button>
+      <div class="editbar"><span>正在改 <b>第 3 行</b> · 本段 10 行</span><span class="ok">即写即存 · ✓ 已保存 14:32</span>
+        <span class="spacer"></span><span class="hint">⌘Z 撤销</span>
         <button class="btn btn--pri btn--sm">完成 <kbd>Esc</kbd></button></div>
     </aside>
   </div>
@@ -739,10 +880,10 @@ def notes(kind: str) -> str:
         return '''<aside class="notes">
   <h3>F1 审校页 · 1440×900</h3>
   <ul>
+    <li><b>左栏是全书队列</b>：汉字级逐条（85 条，回目分组），标点是全书一条汇总入口（66 行 / 32 组）。顶栏 151 = 85 + 66，不数行。</li>
     <li><b>左图只标差异字</b>：没有行框、没有填充；实线=替换、虚线=标点、双线=这一路多字、竖线=另一路多字。</li>
-    <li><b>左轨 #1…#8</b> 与右侧卡片同号；当前项蓝框 + 实心号。</li>
-    <li><b>右栏一屏只开一条</b>：A/B 两行共享网格，差异字上下对齐，中间 5px 竖线连起来。</li>
-    <li><b>卡片里的 2.5× 原图</b>：判断时不用把眼睛移到页面再移回来。</li>
+    <li><b>同号</b>：队列行 <code>p.11·1</code> = 左轨 <code>#1</code> = 卡片头 <code>#1</code>；当前项蓝框 + 实心号。</li>
+    <li><b>右栏一屏只开一条</b>：A/B 共享网格，差异字上下对齐；卡片里贴 2.5× 原图。</li>
   </ul>
   <div class="lg">
     <div><i class="sw"></i>两路替换（3px 实线）</div>
@@ -750,28 +891,28 @@ def notes(kind: str) -> str:
     <div><i class="sw ins"></i>另一路多一个字（3px 竖线）</div>
     <div><i class="sw del"></i>这一路多一个字（双线）</div>
   </div>
-  <p>样张文字与计数来自真项目 <b>b2t_S79EH0</b> 第 11 页。Jev 未打分是该项目真实状态。</p>
+  <p>样张文字与计数来自真项目 <b>b2t_S79EH0</b> 第 11 页。Jev 未打分是该项目真实状态；打分后条目行右侧显示「可疑 0.03」，排序开关写「可疑优先（同档按阅读顺序）」。</p>
 </aside>'''
     if kind == "preview":
         return '''<aside class="notes">
   <h3>F2 预览页 · 1440×900</h3>
   <ul>
     <li><b>成品是干净的</b>：没有红字、没有下划线、没有编号。差异只属于审校页。</li>
+    <li><b>点字改行</b>：进入编辑后整段的源行显 1px 点线，当前行 2px 蓝线 + 4% 底——编辑边界可见，文字不重排。</li>
+    <li><b>即写即存</b>：没有「保存 / 提交」按钮，只有真实状态和 <code>完成</code>；中栏只框当前段与当前行。</li>
     <li><b>未完成只提示一次</b>：顶部一条状态，不下沉到段落。</li>
-    <li><b>点段落就地编辑</b>：外扩蓝框，底部编辑条报真实保存状态；没有「提交」。</li>
-    <li><b>中栏联动</b>：正在改的段落，其 10 行在原图上青框标出（不填色）。</li>
   </ul>
-  <p>段落 3 正在编辑、段落 4 已手改。左侧目录按「回 → 段」组织。样张文字来自真项目第 1 页的组装结果。</p>
+  <p>段落按源行切成 10 个 <code>line_span</code>；当前改第 3 行（蓝线）。并段 / 拆段走行首按钮，规则拼出的空格和连字符只读。</p>
 </aside>'''
     return '''<aside class="notes">
   <h3>F3 628 · 1280×628</h3>
   <ul>
     <li><b>字号不缩</b>：右栏 14.5/26，与 900 高一致。</li>
-    <li><b>页高优先</b>：整页 348px 宽一次看全，不滚动。</li>
-    <li><b>放大镜不浮在页面上</b>：2.5× 原图贴在当前卡片里，避免挡住页面。</li>
-    <li><b>目录压到 200</b>，图例折成四行短标签；工具条只留页码、待判、标点、下一处。</li>
+    <li><b>页高优先</b>：整页 348px 宽一次看全，不滚动；字高 ≈9px。</li>
+    <li><b>2.5× 原图在卡片里</b>：不浮在页面上，避免挡住页面。</li>
+    <li><b>队列压到 200</b>：只展开当前回，标点汇总与 Jev 状态压成一行。</li>
   </ul>
-  <p>628 下判一条的完整链路：页图定位 → 卡片读数 → 2.5× 核对 → 回车。指针可以一直不动。</p>
+  <p>628 下判一条的完整链路：队列定位 → 页图看位置 → 卡片读 A/B → 2.5× 核对 → 回车。指针可以一直不动。</p>
 </aside>'''
 
 
