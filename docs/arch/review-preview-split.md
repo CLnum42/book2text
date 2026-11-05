@@ -434,3 +434,68 @@ node tests/js/edge-ratchet.mjs                              # 现状 7/13（见�
 - 给 PM：§3.3 的编辑语义表就是你要的"两种人工编辑"答案；§3.5 回答"上游变了怎么办"；§3.6 是"改一行 = 确认这一行"的落法（今天落不了）；§6 五条是产品开口。
 - 给 Designer：§4.3 三条硬约束（接缝、跨页段、数字口径）。PDF 列：审校页是连续列、预览页是单页，**不要新增第三套取图实现**；预览页走 `PageTile`。
 - 给 DevLead：切片顺序由你定，但 R14 的例外表必须在**第一刀**就加（否则新视图一写就多一个调用点）；`text-flow.js` 与预览页可以独立于审校页改造先行（它只依赖现有后端）。
+---
+
+## 8. 风险与已知缺陷（只入档，施工归 DevLead）
+
+### 8.1 采纳候选后 `block_line.text` 不同步（2026-11-05 实测成立）
+
+**机制**：`ack_diff_line` 的 `adopted` 分支只写 `UPDATE block SET text` 与 `block_line.diff_ack / diff_ack_text`（`editing.py:877–925`），**不写 `block_line.text`**。`resync_lines` 只在撤销 / 重做回放后跑（`routes_review.py:1323`），正常提交后不跑。`sync_line_text` 的 docstring 写着"写完仍校验 `block.text == join(行文本)`"（`editing.py:749`），代码里**没有这个校验**——要么补，要么把这句删掉。
+
+**影响面（收窄过）**：显示文字**不错**——列表 / segments 都走 `block.text`。错的是**差异框**：差异图层用行记录算差异区间（`reading-view.js:3893` `readingDiffUnits(line.text, mark.candidate)`），采纳之后会在旧文本上画框；"整行就是页码"的噪声判据也读 `line.text`（`reading_marks._build_items` 里的 `is_page_number_noise`）。静默错，不报错。
+
+**修法（二选一，DevLead 定）**：
+
+1. adopted 分支**就地** `UPDATE block_line SET text` + 记一条行级事件（与块事件同一事务）；
+2. 提交成功后跑一次 `resync_lines(project_id, [block_id])`。
+
+**不要**把 `sync_line_text` 直接嵌进 `ack_diff_line`：它自己开连接、自己 commit，套进后者的事务会锁库。
+
+**可复跑的判据**：采纳一行后，`block_line.text` 必须与 `block.text` 该行**逐字相同**；现在是**不相同**。
+
+```bash
+rm -rf /tmp/b2t-adopt-lib && mkdir -p /tmp/b2t-adopt-lib
+cp -a "/Users/chenlin/DeepSeek Bot/b2t-cjk-copy/b2t_YV1P2Y" /tmp/b2t-adopt-lib/
+cd "/Users/chenlin/DeepSeek Bot/worktrees/architect"
+PYTHONPATH="$PWD/backend" .venv/bin/python - <<'SNAP'
+from pathlib import Path
+from book2text.core.project import reading_marks, blocks as B, editing
+lib = Path("/tmp/b2t-adopt-lib"); pid = "b2t_YV1P2Y"
+m = reading_marks.marks_data(pid, library=lib)
+item = next(i for i in m["items"] if i["level"] == "differs_chars" and not i.get("ack"))
+lines = B.get_block(pid, item["block_id"], library=lib).text.split("\n")
+new_lines = list(lines); new_lines[item["line_index"]] = item["candidate"]
+editing.ack_diff_line(pid, item["block_id"], item["line_index"], "adopted",
+                      text="\n".join(new_lines), library=lib)
+block = B.get_block(pid, item["block_id"], library=lib)
+line = {l.line_index: l for l in B.list_block_lines(pid, library=lib)
+        if l.block_id == item["block_id"]}[item["line_index"]]
+block_line_text = block.text.split("\n")[item["line_index"]]
+print("块文本该行:", repr(block_line_text))
+print("行记录 text:", repr(line.text))
+print("逐字相同 =", line.text == block_line_text)
+SNAP
+```
+
+本树实测输出（2026-11-05）：
+
+```
+块文本该行: '王熙风效戏彩斑衣'
+行记录 text: '王熙凤效戏彩斑衣'
+逐字相同 = False
+```
+
+**修好之后**这个脚本必须打印 `逐字相同 = True`——把它做成回归用例（断言，不是打印）。
+
+### 8.2 已知缺口：改前 → 改后没有读接口
+
+`event` 表**存了**改前文本，但**没有读事件的 API**（`_history` 是内存撤销栈，重启即空）：
+
+- 手改（edited）：行级事件 `entity_type='block_line'` / `action='edit_text'` / `before={"text": 旧行}` / `after={"text": 新行}`（`editing.py:766–793`）——最干净；
+- 采纳（adopted）：**块级**事件，`before/after` 是整块文本（`editing.py:890–900`），行号要从同批 ack 事件（`entity_id=line_id`）join 回 `line_index` 再切行；
+- 保留（kept）：文本不变，没有"改前→改后"。
+
+结论：做"展开条显示改前→改后+时间"**不需要新表、不需要迁移**，只需要一个只读端点（属约束 2 的"现有数据 API 拿不到"）。**v1 不加接口时，展开条只能给「第二引擎 → 当前 + 动作」**；"刷新后没有时间"不是 bug。
+
+**红线**：不要用 8.1 那个不同步（`block_line.text` 还是旧值）去反推改前文本——bug 一修功能就坏，只走事件读接口。
+
