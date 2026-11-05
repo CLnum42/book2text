@@ -1,0 +1,1184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>审校页 · 表格版 / 三视图版（可点稿）</title>
+<style>
+:root{
+  --bg:#e8eaee;--surface:#fff;--surface-2:#fafbfc;--surface-3:#f5f6f8;
+  --line:#e2e4e8;--line-soft:#eef0f2;--line-strong:#d0d3d9;
+  --text:#1f2329;--text-2:#33383f;--muted:#646a73;--faint:#9aa0a8;
+  --accent:#2563eb;--accent-soft:#eef4ff;--accent-text:#1d4ed8;
+  --ok:#16a34a;--ok-soft:#e9f7ee;--ok-text:#15803d;
+  --warn:#d97706;--warn-soft:#fdf3e0;--warn-text:#b45309;
+  --bad:#dc2626;--bad-soft:#fdecec;--bad-text:#b91c1c;
+  --diff:#b42318;--diff-bg:#fff1ee;--diff-line:#fde2dd;
+  --radius:8px;--shadow-1:0 1px 2px rgba(16,24,40,.05);--shadow-2:0 2px 6px rgba(16,24,40,.09);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit}
+.spacer{flex:1}
+.song{font-family:"Songti SC","STSong","SimSun",serif}
+
+/* ---------- 顶栏 ---------- */
+.top{height:50px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--surface);
+  border-bottom:1px solid var(--line);position:relative;z-index:20}
+.brand{font-weight:650;font-size:13.5px;letter-spacing:.01em;white-space:nowrap}
+.brand small{font-weight:400;color:var(--faint);font-size:11px;margin-left:6px}
+.modetabs{display:flex;gap:2px;background:var(--surface-3);border-radius:7px;padding:2px;margin-left:6px}
+.modetabs button{padding:5px 12px;border-radius:5px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.modetabs button.on{background:var(--surface);color:var(--text);font-weight:650;box-shadow:var(--shadow-1)}
+.topnote{font-size:11px;color:var(--faint);white-space:nowrap}
+.chip{height:24px;padding:0 8px;border:1px solid var(--line);border-radius:6px;display:inline-flex;align-items:center;gap:5px;
+  font-size:11px;color:var(--muted);background:var(--surface);white-space:nowrap}
+.chip b{color:var(--text-2);font-weight:600}
+.chip--warn{border-color:#f0d6a6;background:var(--warn-soft);color:var(--warn-text)}
+.chip--warn b{color:var(--warn-text)}
+.btn{height:28px;padding:0 10px;border:1px solid var(--line-strong);background:var(--surface);border-radius:6px;
+  font-size:12px;color:var(--text-2);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:#b8bdc6}
+.btn--pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn--pri:hover{background:var(--accent-text);border-color:var(--accent-text)}
+.btn--ghost{border-color:transparent;color:var(--muted)}
+kbd{font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 4px;border:1px solid currentColor;border-radius:3px;opacity:.72}
+
+/* ---------- 主区 ---------- */
+.app{flex:1;min-height:0;display:flex;gap:0}
+body[data-mode="table"] .only-three{display:none}
+body[data-mode="three"] .only-table{display:none}
+
+/* ---------- 左：差异目录 ---------- */
+.queue{width:252px;flex:none;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.qhd{display:flex;align-items:center;gap:6px;padding:11px 12px 2px;font-weight:650;font-size:12.5px}
+.qhd .badge{background:var(--warn-soft);color:var(--warn-text);border-radius:10px;padding:1px 7px;font-size:11px;font-weight:600}
+.qsub{padding:0 12px 8px;font-size:10.5px;color:var(--faint);border-bottom:1px solid var(--line-soft);line-height:1.6}
+.qfilter{display:flex;gap:2px;margin:8px 12px 4px;background:var(--surface-3);border-radius:6px;padding:2px}
+.qfilter button{flex:1;text-align:center;font-size:11px;padding:3px 0;border-radius:4px;color:var(--muted)}
+.qfilter button.on{background:var(--surface);color:var(--text);font-weight:600;box-shadow:var(--shadow-1)}
+.qlist{flex:1;min-height:0;overflow-y:auto;padding:2px 0 8px}
+.qchap{height:28px;display:flex;align-items:center;padding:0 12px;font-size:11.5px;font-weight:600;color:var(--muted);
+  background:var(--surface-2);position:sticky;top:0;z-index:2;border-bottom:1px solid var(--line-soft)}
+.qchap .cnum{margin-left:auto;font-size:10.5px;color:var(--faint);font-weight:400}
+.qrow{width:100%;display:flex;align-items:center;gap:7px;padding:5px 12px;text-align:left;border-left:3px solid transparent;min-width:0}
+.qrow:hover{background:var(--surface-2)}
+.qrow.on{background:var(--accent-soft);border-left-color:var(--accent)}
+.qrow.done{opacity:.5}
+.qrow.done .qtext{text-decoration:line-through;text-decoration-color:var(--faint)}
+.qid{font:10px/1 ui-monospace,Menlo,monospace;color:var(--faint);width:34px;flex:none;letter-spacing:-.2px}
+.qrow.on .qid{color:var(--accent-text)}
+.qtext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text-2)}
+.qtext u{text-decoration:none;border-bottom:2px solid var(--diff);padding-bottom:1px;color:var(--text);font-weight:600}
+.qrow.on .qtext u{color:var(--bad-text)}
+.qtext .more{font:9.5px/1 ui-monospace,Menlo,monospace;color:var(--faint);border:1px solid var(--line-strong);border-radius:3px;padding:1px 3px;margin-left:3px;vertical-align:1px}
+.qcheck{width:16px;flex:none;text-align:center;color:var(--ok);font-size:12px;opacity:0}
+.qrow.done .qcheck{opacity:1}
+.qfoot{flex:none;padding:8px 12px;border-top:1px solid var(--line-soft);font-size:10px;color:var(--faint);line-height:1.65}
+.qfoot b{color:var(--muted);font-weight:600}
+
+/* ---------- 表格版：PDF 栏 ---------- */
+.stage{flex:1 1 560px;min-width:340px;display:flex;flex-direction:column;background:#e9ebef;min-height:0;position:relative;padding:0 10px}
+body[data-mode="three"] .stage{flex:1 1 620px;background:#eef0f3}
+.pdfcap{height:30px;flex:none;display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);padding:0 2px}
+body[data-mode="three"] .pdfcap{position:relative;z-index:6;background:#eef0f3}
+.pdfcap b{color:var(--text-2);font-weight:600}
+.pdfcap .spacer{flex:1}
+.pdfbody{flex:1;min-height:0;display:flex;justify-content:center;align-items:stretch;padding-bottom:6px}
+.pageshell{height:100%;aspect-ratio:2600/3920;position:relative;background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.14),0 10px 28px rgba(16,24,40,.10);flex:none}
+.pageshell img{width:100%;height:100%;display:block}
+.ovl{position:absolute;inset:0;pointer-events:none}
+.hbox{position:absolute;border:2px solid var(--accent);border-radius:2px;box-shadow:0 0 0 1.5px rgba(255,255,255,.85)}
+.hbox--seg{border-color:var(--diff);border-width:2px;background:rgba(220,38,38,.10)}
+.hbox--faint{border-color:#0f766e;border-width:1px;opacity:.45}
+.htag{position:absolute;transform:translate(4px,-50%);background:var(--accent);color:#fff;font:600 9.5px/1.6 ui-monospace,Menlo,monospace;
+  border-radius:3px;padding:0 4px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.zoom{flex:none;height:158px;background:var(--surface);border:1px solid var(--line);border-radius:8px;margin-bottom:8px;
+  position:relative;overflow:hidden;box-shadow:var(--shadow-1)}
+.zoom .zcap{position:absolute;left:10px;top:7px;z-index:3;font-size:10px;color:var(--faint);background:rgba(255,255,255,.9);padding:1px 5px;border-radius:4px}
+.zoom .zstage{position:absolute;inset:0;overflow:hidden}
+.zoom[data-cropped="1"]:before,.zoom[data-cropped="1"]:after{content:"";position:absolute;top:0;bottom:0;width:26px;z-index:2;pointer-events:none}
+.zoom[data-cropped="1"]:before{left:0;background:linear-gradient(90deg,rgba(255,255,255,.96),rgba(255,255,255,0))}
+.zoom[data-cropped="1"]:after{right:0;background:linear-gradient(270deg,rgba(255,255,255,.96),rgba(255,255,255,0))}
+.cropwindow{position:absolute;overflow:hidden;background:#fff;border-radius:2px;
+  box-shadow:0 1px 3px rgba(16,24,40,.16),0 10px 30px rgba(16,24,40,.10)}
+.cropwindow--band{border-top:1px solid #e6e8ec;border-bottom:1px solid #e6e8ec}
+.cropwrap{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+.cropwrap img{display:block;width:2600px;height:3920px}
+.cropwrap .hbox{box-shadow:none}
+
+/* ---------- 表格版：右栏 ---------- */
+.pane{flex:1 1 620px;min-width:420px;background:var(--surface);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+body[data-mode="three"] .pane{flex:0 0 548px}
+.panehd{flex:none;display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line-soft)}
+.panehd .idx{font:600 11px/1 ui-monospace,Menlo,monospace;color:var(--accent-text);background:var(--accent-soft);border-radius:4px;padding:4px 6px}
+.panehd .where{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.panehd b{font-size:12.5px;font-weight:650}
+.panehd .spacer{flex:1}
+.panebody{flex:1;min-height:0;overflow-y:auto;padding:14px}
+.boundary{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--faint);margin:2px 0 6px}
+.boundary:before,.boundary:after{content:"";height:1px;background:var(--line);flex:1}
+.ctxrow{display:flex;gap:10px;padding:5px 8px;border-radius:6px;min-height:30px;align-items:flex-start}
+.ctxrow .ln{width:28px;flex:none;text-align:right;font:10px/1.9 ui-monospace,Menlo,monospace;color:var(--faint)}
+.ctxrow .tx{flex:1;font-family:"Songti SC","STSong","SimSun",serif;font-size:14px;line-height:1.85;color:var(--muted);word-break:break-all}
+.ctxrow--cur{background:var(--diff-bg);box-shadow:inset 3px 0 0 var(--diff);padding-top:7px;padding-bottom:7px}
+.ctxrow--cur .tx{color:var(--text);font-size:15px}
+.ctxrow--cur .ln{color:var(--diff)}
+.ctxrow .tagline{font-size:9.5px;color:var(--faint);border:1px solid var(--line);border-radius:3px;padding:0 4px;margin-left:6px;vertical-align:1px;white-space:nowrap}
+mark.seg{background:transparent;color:inherit;border-bottom:2px solid var(--diff);padding-bottom:1px;font-weight:600;cursor:pointer}
+mark.seg.on{background:#ffe4de;border-bottom-width:3px}
+mark.seg .no{font:9px/1 ui-monospace,Menlo,monospace;color:var(--diff);vertical-align:6px;margin-left:1px}
+.segempty{display:inline-block;min-width:14px;border-bottom:2px dotted var(--diff);color:var(--faint);font-size:11px;text-align:center}
+.ctxrow.dim .tx{opacity:.78}
+.ctxmore{margin:4px 0 8px;font-size:11px;color:var(--accent-text)}
+.ctxmore button{color:var(--accent-text);font-size:11px}
+
+.divider{height:1px;background:var(--line-soft);margin:12px 0}
+.actlabel{font-size:10.5px;color:var(--faint);margin:0 0 6px;display:flex;align-items:center;gap:6px}
+.actlabel b{color:var(--text-2);font-weight:600}
+.verdicts{display:flex;gap:10px}
+.vbtn{flex:1;min-width:0;border:1px solid var(--line-strong);background:var(--surface);border-radius:8px;padding:10px 12px;text-align:left;
+  display:flex;flex-direction:column;gap:5px;position:relative;transition:border-color .12s,box-shadow .12s}
+.vbtn:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.vbtn .vk{position:absolute;right:9px;top:8px;font:600 10px/1 ui-monospace,Menlo,monospace;color:var(--faint);
+  border:1px solid var(--line);border-radius:3px;padding:2px 4px}
+.vbtn .vlab{font-size:10.5px;color:var(--muted);display:flex;align-items:center;gap:5px}
+.vbtn .vmain{font-family:"Songti SC","STSong","SimSun",serif;font-size:15px;line-height:1.65;color:var(--text);word-break:break-all}
+.vbtn .vmain em{font-style:normal;border-bottom:2px solid var(--diff);font-weight:600;background:#fff6f4}
+.vbtn .vsub{font-size:10px;color:var(--faint);line-height:1.5}
+.vbtn--b .vmain em{border-bottom-color:var(--accent)}
+.vbtn--b .vmain em{background:var(--accent-soft)}
+.maxiline{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.maxiline .ml{display:flex;gap:8px;font-family:"Songti SC","STSong","SimSun",serif;font-size:12.5px;line-height:1.7}
+.maxiline .ml .g{flex:none;font:600 9.5px/1.7 ui-monospace,Menlo,monospace;color:var(--faint);width:14px}
+.maxiline .ml .t{flex:1;color:var(--muted);word-break:break-all}
+.manual{display:flex;align-items:center;gap:8px;margin-top:10px}
+.manual label{font-size:11px;color:var(--muted);white-space:nowrap}
+.manual input{flex:1;min-width:0;height:32px;border:1px solid var(--line-strong);border-radius:6px;padding:0 9px;
+  font-family:"Songti SC","STSong","SimSun",serif;font-size:14px;color:var(--text);background:var(--surface)}
+.manual input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.manual .btn{height:32px}
+.manual .switch{font-size:10.5px;color:var(--muted);border-bottom:1px dashed var(--line-strong);white-space:nowrap}
+.hintrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:10.5px;color:var(--faint)}
+.hintrow .spacer{flex:1}
+.segchips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;font-size:11px;color:var(--muted)}
+.segchip{border:1px solid var(--line-strong);border-radius:20px;padding:2px 9px;font-size:11px;color:var(--muted);background:var(--surface)}
+.segchip.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.note{display:flex;gap:7px;padding:7px 9px;border-radius:6px;font-size:11px;line-height:1.6;margin-top:10px}
+.note--info{background:var(--accent-soft);color:var(--accent-text)}
+.note--warn{background:var(--warn-soft);color:var(--warn-text)}
+.note b{font-weight:600}
+.unit{font-size:9.5px;color:var(--faint);margin-left:4px}
+.panefoot{flex:none;border-top:1px solid var(--line-soft);padding:8px 14px;display:flex;align-items:center;gap:10px;font-size:10.5px;color:var(--faint);flex-wrap:wrap}
+.panefoot b{color:var(--text-2);font-weight:600}
+.panefoot .spacer{flex:1}
+
+/* ---------- 三视图 ---------- */
+.viewtabs{position:absolute;left:12px;top:34px;z-index:6;display:flex;gap:2px;background:rgba(255,255,255,.94);
+  border:1px solid var(--line);border-radius:8px;padding:3px;box-shadow:var(--shadow-2)}
+.viewtabs button{padding:5px 14px;border-radius:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.viewtabs button.on{background:var(--accent);color:#fff;font-weight:600}
+.viewtabs button .kb{font:9.5px/1 ui-monospace,Menlo,monospace;opacity:.65;margin-left:5px}
+.viewhint{position:absolute;right:12px;top:38px;z-index:6;font-size:10px;color:var(--faint);background:rgba(255,255,255,.9);padding:3px 7px;border-radius:5px}
+.threeviewport{position:absolute;inset:0;overflow:hidden;background:#dfe2e7}
+.threeviewport[data-cropped="1"]:before,.threeviewport[data-cropped="1"]:after{content:"";position:absolute;top:0;bottom:0;width:34px;z-index:4;pointer-events:none}
+.threeviewport[data-cropped="1"]:before{left:0;background:linear-gradient(90deg,#dfe2e7,rgba(223,226,231,0))}
+.threeviewport[data-cropped="1"]:after{right:0;background:linear-gradient(270deg,#dfe2e7,rgba(223,226,231,0))}
+.threeviewport .paperbg{position:absolute;inset:0;background:#fff;opacity:.72}
+.anchor{position:absolute;left:50%;top:50%;width:0;height:0;z-index:5;pointer-events:none}
+.anchor i{position:absolute;width:14px;height:14px;border:0 solid rgba(37,99,235,.55)}
+.anchor i:nth-child(1){left:-30px;top:-30px;border-left-width:2px;border-top-width:2px;border-top-left-radius:3px}
+.anchor i:nth-child(2){left:16px;top:-30px;border-right-width:2px;border-top-width:2px;border-top-right-radius:3px}
+.anchor i:nth-child(3){left:-30px;top:16px;border-left-width:2px;border-bottom-width:2px;border-bottom-left-radius:3px}
+.anchor i:nth-child(4){left:16px;top:16px;border-right-width:2px;border-bottom-width:2px;border-bottom-right-radius:3px}
+.anchor span{position:absolute;left:-30px;top:34px;font:9.5px/1.4 ui-monospace,Menlo,monospace;color:var(--accent-text);
+  background:rgba(255,255,255,.92);border-radius:3px;padding:0 4px;white-space:nowrap}
+.stagecap{position:absolute;left:12px;bottom:10px;z-index:6;font-size:10px;color:var(--muted);background:rgba(255,255,255,.92);
+  border:1px solid var(--line);border-radius:5px;padding:3px 7px;font-variant-numeric:tabular-nums}
+.stagecap b{color:var(--text-2)}
+.bigpair{display:flex;gap:12px;margin:2px 0 4px}
+.bigcard{flex:1;border:1px solid var(--line-strong);border-radius:10px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:6px;background:var(--surface);position:relative}
+.bigcard .gl{font-size:10.5px;color:var(--muted)}
+.bigcard .glyph{font-family:"Songti SC","STSong","SimSun",serif;font-size:64px;line-height:1.15;color:var(--text)}
+.bigcard--b .glyph{color:var(--accent-text)}
+.bigcard .gp{font-size:10px;color:var(--faint)}
+.bigcard:hover{border-color:var(--accent)}
+.bigcard .vk{position:absolute;right:8px;top:7px;font:600 10px/1 ui-monospace,Menlo,monospace;color:var(--faint);border:1px solid var(--line);border-radius:3px;padding:2px 4px}
+.smallline{font-family:"Songti SC","STSong","SimSun",serif;font-size:12.5px;line-height:1.8;color:var(--muted);margin:2px 0 10px;word-break:break-all}
+.smallline u{text-decoration:none;border-bottom:2px solid var(--diff);color:var(--text)}
+.verline{display:flex;gap:8px;padding:5px 8px;border-radius:5px;min-height:28px;align-items:flex-start}
+.verline .g{flex:none;font:600 10px/1.9 ui-monospace,Menlo,monospace;color:var(--faint);width:14px}
+.verline .t{flex:1;font-family:"Songti SC","STSong","SimSun",serif;font-size:14px;line-height:1.8;color:var(--text-2);word-break:break-all}
+.verline--a{background:var(--diff-bg)}
+.verline--b{background:var(--accent-soft)}
+.verline--ctx{opacity:.72}
+.verline--ctx .t{color:var(--muted);font-size:13px}
+.threeacts{display:flex;gap:8px;margin-top:12px}
+.threeacts .btn{height:36px;padding:0 14px;font-size:12.5px}
+.threeacts .btn--keep{background:var(--diff-bg);border-color:#f0c8c0;color:var(--bad-text);font-weight:600}
+.threeacts .btn--take{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.threeacts .btn--edit{border-color:var(--line-strong)}
+.donebox{border:1px solid #cbe8d5;background:var(--ok-soft);border-radius:8px;padding:14px;margin-top:12px;color:var(--ok-text);font-size:12px;line-height:1.8}
+.donebox b{font-size:13px}
+
+/* ---------- 状态条 ---------- */
+.statusbar{height:34px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--surface);
+  border-top:1px solid var(--line);font-size:10.5px;color:var(--faint);white-space:nowrap;overflow:hidden}
+.statusbar b{color:var(--text-2);font-weight:600}
+.statusbar .spacer{flex:1}
+.statusbar .dot{width:1px;height:14px;background:var(--line)}
+
+/* ---------- 抽屉 / toast ---------- */
+.drawer{position:fixed;inset:0;background:rgba(17,24,39,.28);z-index:50;display:none}
+.drawer.on{display:block}
+.drawer .sheet{position:absolute;right:0;top:0;bottom:0;width:560px;max-width:92vw;background:var(--surface);box-shadow:-12px 0 40px rgba(16,24,40,.18);
+  display:flex;flex-direction:column;min-height:0}
+.drawer .dh{flex:none;display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.drawer .dh h2{margin:0;font-size:14px;font-weight:650}
+.drawer .db{flex:1;overflow-y:auto;padding:16px 18px 28px;font-size:12px;line-height:1.7;color:var(--text-2)}
+.drawer h3{font-size:12px;margin:18px 0 6px;color:var(--text)}
+.drawer h3:first-child{margin-top:0}
+.drawer p{margin:0 0 8px;color:var(--muted)}
+.drawer table{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0 4px}
+.drawer th,.drawer td{border-bottom:1px solid var(--line-soft);padding:6px 4px;text-align:right;font-variant-numeric:tabular-nums}
+.drawer th:first-child,.drawer td:first-child{text-align:left}
+.drawer thead th{color:var(--faint);font-weight:500;font-size:10.5px}
+.drawer td.win{color:var(--ok-text);font-weight:600}
+.drawer .src{font-size:10px;color:var(--faint);line-height:1.6;margin-top:4px}
+.drawer ul{margin:4px 0 10px;padding-left:18px;color:var(--muted)}
+.drawer li{margin:3px 0}
+.toast{position:fixed;left:50%;bottom:48px;transform:translate(-50%,12px);background:#111827;color:#fff;border-radius:8px;
+  padding:9px 12px;font-size:11.5px;display:flex;align-items:center;gap:10px;opacity:0;pointer-events:none;transition:.16s;z-index:60;box-shadow:var(--shadow-2)}
+.toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast button{color:#93c5fd;font-weight:600;font-size:11.5px}
+@media (max-width:1180px){
+  .queue{width:224px}
+  body[data-mode="three"] .pane{flex-basis:470px}
+  .topnote{display:none}
+}
+</style>
+</head>
+<body data-mode="table">
+
+<header class="top">
+  <div class="brand">红楼梦 · 样张<small>20 页 / 前 6 页 12 条真实汉字差异</small></div>
+  <div class="modetabs" id="modeTabs">
+    <button data-mode="table" class="on">表格版（上一轮）</button>
+    <button data-mode="three">三视图版（这一轮）</button>
+  </div>
+  <span class="topnote" id="topNote">样张状态是假的，字与页码是真的</span>
+  <span class="spacer"></span>
+  <span class="chip" id="measureChip">必读 <b>20.5</b> 字 / 条</span>
+  <span class="chip chip--warn" title="样张项目 block_line.jev_score 全为 NULL；排序要等 next-lines include_scores=1">Jev 未打分</span>
+  <button class="btn" id="btnDrawer">测量与说明</button>
+</header>
+
+<main class="app">
+  <aside class="queue">
+    <div class="qhd">差异目录 <span class="badge" id="qBadge">12</span></div>
+    <div class="qsub">第 1–6 页 · 汉字级 · 按书页顺序<br>一条 = 一行（a​ck 按行写）</div>
+    <div class="qfilter" id="qFilter">
+      <button class="on" data-filter="all">全部</button>
+      <button data-filter="todo">未判</button>
+      <button data-filter="done">已判</button>
+    </div>
+    <div class="qlist" id="qlist"></div>
+    <div class="qfoot">
+      本样张只含前 6 页的 12 条汉字差异，<b>不是全书计数</b>。<br>
+      这本书 26 条汉字差异在原项目里已判过，样张按未判演示。
+    </div>
+  </aside>
+
+  <!-- ============ 表格版：PDF ============ -->
+  <section class="stage only-table" id="pdfStage">
+    <div class="pdfcap"><b id="pdfTitle">第 1 页</b><span id="pdfLoc">· 差异行已框出</span><span class="spacer"></span>
+      <span class="unit" id="pdfZoomNote">整页 · 仅定位</span>
+    </div>
+    <div class="pdfbody"><div class="pageshell" id="pageShell"><img id="pageImg" alt=""><div class="ovl" id="pageOvl"></div></div></div>
+    <div class="zoom" id="zoomBox"><span class="zcap" id="zoomCap">当前行 2.4×</span><div class="zstage" id="zoomStage"></div></div>
+  </section>
+
+  <!-- ============ 表格版：右栏 ============ -->
+  <section class="pane only-table" id="tablePane">
+    <div class="panehd">
+      <span class="idx" id="tIdx">#01</span>
+      <b id="tWhere">p.1 · 第 2 行</b>
+      <span class="where" id="tMeta"></span>
+      <span class="spacer"></span>
+      <button class="btn btn--ghost" id="ctxBtn">展开上下文 ±3</button>
+    </div>
+    <div class="panebody" id="tBody"></div>
+    <div class="panefoot">
+      <span>1 保留原文 · 2 采用候选 · 3 手改 · Tab 输入 · Enter 确认</span>
+      <span class="spacer"></span>
+      <span id="tLive">本会话 0 判 / 0 操作</span>
+    </div>
+  </section>
+
+  <!-- ============ 三视图版：图 ============ -->
+  <section class="stage only-three" id="threeStage">
+    <div class="pdfcap"><b id="vTitle">第 1 页</b><span id="vLoc">· 取景锚定差异字</span><span class="spacer"></span><span class="unit" id="vZoom"></span></div>
+    <div class="viewtabs" id="viewTabs">
+      <button data-view="char">单字<span class="kb">V</span></button>
+      <button data-view="line">单行</button>
+      <button data-view="multi">多行</button>
+    </div>
+    <div class="viewhint">V 循环 · 记住上次选择</div>
+    <div class="threeviewport" id="threeViewport">
+      <div class="paperbg"></div>
+      <div class="cropwrap" id="threeWrap"></div>
+      <div class="anchor"><i></i><i></i><i></i><i></i><span id="anchorLabel">锚点 ①</span></div>
+    </div>
+    <div class="stagecap" id="stageCap">取景：1 行</div>
+  </section>
+
+  <!-- ============ 三视图版：判定 ============ -->
+  <section class="pane only-three" id="threePane">
+    <div class="panehd">
+      <span class="idx" id="vIdx">#01</span>
+      <b id="vWhere">p.1 · 第 2 行</b>
+      <span class="where" id="vMeta"></span>
+      <span class="spacer"></span>
+      <button class="btn btn--ghost" id="vBack">回到表格版</button>
+    </div>
+    <div class="panebody" id="vBody"></div>
+    <div class="panefoot">
+      <span>1 保留 · 2 采用 · 3 手改 · V 切档 · ← → 换条</span>
+      <span class="spacer"></span>
+      <span id="vLive">本会话 0 判 / 0 操作</span>
+    </div>
+  </section>
+</main>
+
+<footer class="statusbar">
+  <span>已判 <b id="sDone">0</b> / <b id="sTotal">12</b></span>
+  <span class="dot"></span>
+  <span>剩 <b id="sLeft">12</b></span>
+  <span class="dot"></span>
+  <span>本会话：<b id="sOps">0</b> 次操作 / <b id="sDec">0</b> 判 <span id="sAvg"></span></span>
+  <span class="dot"></span>
+  <span>滚动 <b id="sScroll">0</b> 次</span>
+  <span class="spacer"></span>
+  <span>来源：b2t_5DDDAP · sample-20p · 字框 456/456 覆盖</span>
+  <span class="dot"></span>
+  <span>⌘Z 撤销</span>
+</footer>
+
+<div class="drawer" id="drawer">
+  <div class="sheet">
+    <div class="dh"><h2>测量与说明</h2><span class="spacer"></span><button class="btn btn--ghost" id="drawerClose">关闭 Esc</button></div>
+    <div class="db" id="drawerBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="assets/sample20p-table-data.js"></script>
+<script>
+(function(){
+  "use strict";
+  const DATA = window.B2T_MOCK_DATA;
+  const ITEMS = DATA.items;
+  const BLOCKS = DATA.blocks;
+  const NAT = { w: 2600, h: 3920 };
+  const byId = new Map(ITEMS.map(it => [it.id, it]));
+
+  let savedView = "line";
+  try { savedView = localStorage.getItem("b2t-mock-view") || "line"; } catch (e) {}
+  const state = {
+    mode: "table",
+    view: savedView,
+    id: ITEMS[0].id,
+    seg: 0,
+    ctx: 1,
+    focus: false,
+    decisions: new Map(),
+    history: [],
+    ops: 0, decKeys: 0, decClicks: 0, scrolls: 0,
+    filter: "all",
+    editing: false,
+    wholeLine: false,
+  };
+  if (!["char","line","multi"].includes(state.view)) state.view = "line";
+
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const cur = () => byId.get(state.id);
+  const blockOf = (it) => BLOCKS[it.block_id];
+  const doneIds = () => new Set(state.decisions.keys());
+  const leftCount = () => ITEMS.filter(it => !state.decisions.has(it.id)).length;
+  const median = (arr) => {
+    const a = arr.slice().sort((x,y)=>x-y);
+    if (!a.length) return 0;
+    const m = Math.floor(a.length/2);
+    return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
+  };
+  const fmt1 = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1);
+
+  /* ---------- 每条的真实字数 ---------- */
+  const itemLens = ITEMS.map(it => {
+    const segA = it.segments.reduce((n,s)=>n+(s.aEnd-s.aStart),0);
+    const segB = it.segments.reduce((n,s)=>n+(s.bEnd-s.bStart),0);
+    const b = BLOCKS[it.block_id];
+    const pv = b.lines[it.line_index-1] || b.prev_block_last;
+    const nx = b.lines[it.line_index+1] || b.next_block_first;
+    return {
+      id: it.id,
+      cur: it.current.length,
+      cand: it.candidate.length,
+      segA, segB,
+      ctx: (pv ? pv.t.length : 0) + (nx ? nx.t.length : 0),
+    };
+  });
+  const M = {
+    baseline: median(itemLens.map(x=>x.cur+x.cand)),
+    table: median(itemLens.map(x=>x.cur+x.segA+x.segB)),
+    char: median(itemLens.map(x=>x.segA+x.segB)),
+    line: median(itemLens.map(x=>x.cur+x.cand)),
+    multi: median(itemLens.map(x=>x.cur+x.cand+x.ctx)),
+    compareBase: median(itemLens.map(x=>x.cur+x.cand)),
+    compareTable: median(itemLens.map(x=>x.segA+x.segB)),
+    ctx: median(itemLens.map(x=>x.ctx)),
+  };
+
+  /* ---------- 行文本与差异片段 ---------- */
+  function markLine(it, text, side, activeSeg, showNo) {
+    const segs = it.segments.map((s,i)=>({s,i}))
+      .filter(({s}) => side === "a" ? s.aEnd > s.aStart : s.bEnd > s.bStart)
+      .sort((x,y)=> (side==="a"?x.s.aStart-y.s.aStart:x.s.bStart-y.s.bStart));
+    let out = "", at = 0;
+    const key = side === "a" ? "aStart" : "bStart";
+    const endKey = side === "a" ? "aEnd" : "bEnd";
+    for (const {s,i} of segs) {
+      const st = s[key], en = s[endKey];
+      if (st > at) out += esc(text.slice(at, st));
+      const txt = text.slice(st, en);
+      out += '<mark class="seg' + (i===activeSeg?' on':'') + '" data-seg="' + i + '">' +
+             (txt ? esc(txt) : '<span class="segempty">∅</span>') +
+             (showNo && it.segments.length>1 ? '<span class="no">'+(i+1)+'</span>' : '') + '</mark>';
+      at = en;
+    }
+    out += esc(text.slice(at));
+    return out;
+  }
+
+  function queueText(it) {
+    const s = it.segments[0];
+    const p = it.current;
+    const from = Math.max(0, s.aStart - 7);
+    const to = Math.min(p.length, Math.max(s.aEnd, s.aStart) + 8);
+    return (from>0?'…':'') + esc(p.slice(from, s.aStart)) +
+      '<u>' + esc(s.aText || "∅") + '</u>' + esc(p.slice(s.aEnd, to)) + (to<p.length?'…':'');
+  }
+
+  /* ---------- 左栏 ---------- */
+  function renderQueue() {
+    const list = $("#qlist");
+    const done = doneIds();
+    let html = "", lastChap = null, shown = 0;
+    const filtered = ITEMS.filter(it => {
+      if (state.filter === "todo") return !done.has(it.id);
+      if (state.filter === "done") return done.has(it.id);
+      return true;
+    });
+    for (const it of filtered) {
+      if (it.chapter !== lastChap) {
+        lastChap = it.chapter;
+        const n = ITEMS.filter(x=>x.chapter===it.chapter && !done.has(x.id)).length;
+        html += '<div class="qchap">'+esc(it.chapter||"（未标回目）")+'<span class="cnum">剩 '+n+' 条</span></div>';
+      }
+      const isDone = done.has(it.id);
+      const cls = "qrow" + (it.id===state.id?" on":"") + (isDone?" done":"");
+      html += '<button class="'+cls+'" data-id="'+it.id+'">'+
+        '<span class="qcheck">✓</span>'+
+        '<span class="qid">'+String(it.id).padStart(2,"0")+'</span>'+
+        '<span class="qtext">'+queueText(it)+(it.segments.length>1?'<span class="more">'+it.segments.length+'处</span>':'')+'</span>'+
+        '</button>';
+      shown++;
+    }
+    if (!shown) html = '<div style="padding:16px 12px;color:var(--faint);font-size:11.5px">这个筛选下没有条目。</div>';
+    list.innerHTML = html;
+    list.onclick = (e) => {
+      const b = e.target.closest(".qrow");
+      if (b) select(Number(b.dataset.id));
+    };
+    $("#qBadge").textContent = leftCount();
+    $$("#qFilter button").forEach(b => b.classList.toggle("on", b.dataset.filter === state.filter));
+  }
+
+  /* ---------- 选条 ---------- */
+  function select(id, seg) {
+    if (!byId.has(id)) return;
+    state.id = id;
+    state.seg = Math.min(seg || 0, cur().segments.length - 1);
+    state.editing = false;
+    state.wholeLine = false;
+    renderAll();
+  }
+  function nextId(dir) {
+    const i = ITEMS.findIndex(x=>x.id===state.id);
+    return ITEMS[(i + dir + ITEMS.length) % ITEMS.length].id;
+  }
+  function advance() {
+    const i = ITEMS.findIndex(x=>x.id===state.id);
+    for (let k=1;k<=ITEMS.length;k++) {
+      const it = ITEMS[(i+k)%ITEMS.length];
+      if (!state.decisions.has(it.id)) { select(it.id); return; }
+    }
+    renderAll();
+  }
+
+  /* ---------- 表格版 ---------- */
+  function contextRows(it, expand) {
+    const b = blockOf(it);
+    const idx = it.line_index;
+    const rows = [];
+    const from = Math.max(0, idx - expand);
+    const to = Math.min(b.lines.length - 1, idx + expand);
+    if (idx - expand < 0 && b.prev_block_last) {
+      rows.push({ kind:"boundary", text: "上一段 · 末行" });
+      rows.push({ kind:"line", text: b.prev_block_last.t, label:"上一段", lineIndex:-1 });
+    }
+    for (let i=from;i<=to;i++) rows.push({ kind:"line", text:b.lines[i].t, label:i===idx?"当前行":"", lineIndex:i });
+    if (idx + expand > b.lines.length - 1 && b.next_block_first) {
+      rows.push({ kind:"boundary", text: "下一段 · 首行" });
+      rows.push({ kind:"line", text: b.next_block_first.t, label:"下一段", lineIndex:-2 });
+    }
+    return rows;
+  }
+
+  function renderTable() {
+    const it = cur();
+    const b = blockOf(it);
+    $("#tIdx").textContent = "#" + String(it.id).padStart(2,"0");
+    $("#tWhere").textContent = "p." + it.page_no + " · 第 " + (it.line_index+1) + " 行";
+    $("#tMeta").textContent = (it.segments.length>1 ? "一行 " + it.segments.length + " 处 · " : "") +
+      (it.line_index===0 ? "段首" : it.line_index===b.lines.length-1 ? "段末" : "段中");
+    $("#ctxBtn").textContent = state.ctx === 1 ? "展开上下文 ±3" : "收起上下文 ±1";
+
+    const rows = contextRows(it, state.ctx);
+    const prior = state.decisions.get(it.id);
+    let html = prior ? '<div class="note note--info"><span>✓</span><span>这条已判：<b>'+
+      (prior.ack==="kept"?"保留原文":prior.ack==="adopted"?"采用候选":"手改为「"+esc(prior.text)+"」")+
+      '</b>（样张可撤销）。</span></div>' : "";
+    for (const r of rows) {
+      if (r.kind === "boundary") { html += '<div class="boundary">'+esc(r.text)+'</div>'; continue; }
+      const isCur = r.lineIndex === it.line_index;
+      const isPrev = r.label === "上一段";
+      const isNext = r.label === "下一段";
+      html += '<div class="ctxrow'+(isCur?" ctxrow--cur":" dim")+'">'+
+        '<span class="ln">'+(r.lineIndex===-1||r.lineIndex===-2?"⋯":String(r.lineIndex+1))+'</span>'+
+        '<span class="tx">'+(isCur?markLine(it,it.current,"a",state.seg,true):esc(r.text))+
+        (isCur?'<span class="tagline">当前版本</span>':(isPrev?'<span class="tagline">上一段末行</span>':(isNext?'<span class="tagline">下一段首行</span>':'')))+
+        '</span></div>';
+    }
+
+    const seg = it.segments[state.seg];
+    const single = it.segments.length === 1;
+    const aMain = seg.aText ? esc(seg.aText) : "（无）";
+    const bMain = seg.bText ? esc(seg.bText) : "（无）";
+    if (!single) {
+      html += '<div class="divider"></div><div class="actlabel"><b>本行有 '+it.segments.length+' 处差异</b>'+
+        '<span>点 ①② 切换焦点；裁决写入整行</span></div>';
+      html += '<div class="segchips">'+it.segments.map((s,i)=>
+        '<button class="segchip'+(i===state.seg?' on':'')+'" data-seg="'+i+'">'+(i+1)+' '+esc(s.aText||"∅")+'→'+esc(s.bText||"∅")+'</button>').join("")+'</div>';
+      html += '<div class="maxiline">'+
+        '<div class="ml"><span class="g">A</span><span class="t">'+markLine(it,it.current,"a",state.seg,false)+'</span></div>'+
+        '<div class="ml"><span class="g">B</span><span class="t">'+markLine(it,it.candidate,"b",state.seg,false)+'</span></div>'+
+        '</div>';
+    }
+
+    html += '<div class="divider"></div>';
+    html += '<div class="actlabel"><b>当前正文版本 · 第 '+(it.line_index+1)+' 行</b><span>机器已对齐差异位置，不用自己找</span></div>';
+    html += '<div class="verdicts">'+
+      '<button class="vbtn" data-act="kept"><span class="vk">1</span>'+
+        '<span class="vlab">保留原文<span class="unit">当前</span></span>'+
+        '<span class="vmain"><em>'+aMain+'</em>'+(single?'':' 整行')+'</span>'+
+        '<span class="vsub">'+(single?'这一处就是「'+aMain+'」':'用当前整行，改动全部保留')+'</span></button>'+
+      '<button class="vbtn vbtn--b" data-act="adopted"><span class="vk">2</span>'+
+        '<span class="vlab">采用候选<span class="unit">第二引擎</span></span>'+
+        '<span class="vmain"><em>'+bMain+'</em>'+(single?'':' 整行')+'</span>'+
+        '<span class="vsub">'+(single?(seg.kind==='delete'?'候选少一个字：点下去会删掉「'+aMain+'」':'这一处换成「'+bMain+'」'):'用候选整行替换')+'</span></button>'+
+      '</div>';
+
+    html += '<div class="manual">'+
+      '<label for="editInput">'+(state.wholeLine?'整行都不对':'两个都不对')+'？</label>'+
+      '<input id="editInput" value="'+esc(state.wholeLine?it.current:seg.aText)+'" placeholder="写正确的字/整行，Enter 确认" autocomplete="off" spellcheck="false">'+
+      '<button class="btn btn--pri" id="editOk">确认</button>'+
+      '<button class="switch" id="wholeToggle">'+(state.wholeLine?'改片段':'改整行')+'</button>'+
+      '</div>';
+    html += '<div class="hintrow"><span>Tab 进输入框 · Enter 确认 · Esc 退出不改</span><span class="spacer"></span>'+
+      '<span>手改后写 edited'+(it.segments.length>1?'（整行）':'')+'</span></div>';
+
+    if (it.segments.length > 1) {
+      html += '<div class="note note--info"><span>ⓘ</span><span><b>一行多处怎么办</b>：现有数据一条 = 一行，ack 也按行写。上面 ①② 只是选图焦点；要“一处一判”得先有按处的数据（新概念，见说明）。</span></div>';
+    }
+    if (leftCount() === 0) {
+      html += '<div class="donebox"><b>样张 12 条已判完。</b><br>这是前端假状态：真实项目里这 12 行早有 ack。可以按 ⌘Z 逐步撤销，或用“重置演示”。</div>';
+    }
+
+    $("#tBody").innerHTML = html;
+    bindTable(it);
+    renderPdf(it);
+    updateLive();
+  }
+
+  function bindTable(it) {
+    $$("#tBody mark.seg").forEach(m => m.addEventListener("click", () => {
+      const i = Number(m.dataset.seg);
+      if (Number.isInteger(i)) { state.seg = i; renderAll(); }
+    }));
+    $$("#tBody .segchip").forEach(b => b.addEventListener("click", () => {
+      state.seg = Number(b.dataset.seg); renderAll();
+    }));
+    $$("#tBody [data-act]").forEach(b => b.addEventListener("click", () => decide(b.dataset.act, false)));
+    const input = $("#editInput");
+    if (input) {
+      input.addEventListener("focus", () => { const l=input.value.length; input.setSelectionRange(0,l); });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); confirmEdit(); }
+        if (e.key === "Escape") { e.stopPropagation(); input.blur(); }
+      });
+      $("#editOk").addEventListener("click", confirmEdit);
+      $("#wholeToggle").addEventListener("click", () => {
+        state.wholeLine = !state.wholeLine;
+        const it2 = cur(); const seg2 = it2.segments[state.seg];
+        input.value = state.wholeLine ? it2.current : seg2.aText;
+        $("#wholeToggle").textContent = state.wholeLine ? "改片段" : "改整行";
+        input.focus();
+      });
+    }
+  }
+
+  /* ---------- PDF 整页 + 行放大 ---------- */
+  function renderPdf(it) {
+    const url = DATA.page_images[String(it.page_no)];
+    const img = $("#pageImg");
+    if (img.getAttribute("src") !== url) img.src = url;
+    $("#pdfTitle").textContent = "第 " + it.page_no + " 页";
+    $("#pdfLoc").textContent = "· 第 " + (it.line_index+1) + " 行已框出";
+    const ovl = $("#pageOvl");
+    let html = "";
+    // 同页其他条目，淡框
+    for (const other of ITEMS) {
+      if (other.page_no !== it.page_no || other.id === it.id) continue;
+      const bb = other.bbox;
+      if (!bb) continue;
+      html += '<div class="hbox hbox--faint" style="left:'+(bb[0]*100)+'%;top:'+(bb[1]*100)+'%;width:'+((bb[2]-bb[0])*100)+'%;height:'+((bb[3]-bb[1])*100)+'%"></div>';
+    }
+    if (it.bbox) {
+      const bb = it.bbox;
+      html += '<div class="hbox" style="left:'+(bb[0]*100)+'%;top:'+(bb[1]*100)+'%;width:'+((bb[2]-bb[0])*100)+'%;height:'+((bb[3]-bb[1])*100)+'%"></div>';
+      const topPct = ((bb[1]+bb[3])/2)*100;
+      html += '<div class="htag" style="left:'+(bb[2]*100)+'%;top:'+topPct+'%">#'+it.id+'</div>';
+    }
+    it.segments.forEach(s => {
+      if (!s.box) return;
+      const bb = s.box;
+      html += '<div class="hbox hbox--seg" style="left:'+(bb[0]*100)+'%;top:'+(bb[1]*100)+'%;width:'+((bb[2]-bb[0])*100)+'%;height:'+((bb[3]-bb[1])*100)+'%"></div>';
+    });
+    ovl.innerHTML = html;
+    // 行放大：取景 = 该行；锚点 = 当前片段
+    const stage = $("#zoomStage");
+    const bb = it.bbox || [0.1,0.1,0.9,0.12];
+    const seg = it.segments[state.seg];
+    const anchor = seg && seg.box ? [(seg.box[0]+seg.box[2])/2, (seg.box[1]+seg.box[3])/2] : [(bb[0]+bb[2])/2,(bb[1]+bb[3])/2];
+    const rect = { x0:bb[0], y0:bb[1]-0.012, x1:bb[2], y1:bb[3]+0.012 };
+    const s = drawCrop(stage, it.page_no, rect, anchor, { fill: 0.96, center: true, minScale: 0.40, boxes: it.segments.map((x,i)=>({box:x.box, on:i===state.seg})) });
+    $("#zoomCap").textContent = "当前行 · " + (s ? s.toFixed(1)+"×" : "—") + (stage.dataset.cropped === "1" ? " · 两端已裁" : "");
+    $("#zoomBox").dataset.cropped = stage.dataset.cropped;
+  }
+
+  /* ---------- 取景窗：按锚点缩放，切档不跳 ---------- */
+  function drawCrop(stageEl, pageNo, rect, anchor, opts) {
+    opts = opts || {};
+    const vw = stageEl.clientWidth, vh = stageEl.clientHeight;
+    if (!vw || !vh) return 0;
+    const RX0 = rect.x0*NAT.w, RY0 = rect.y0*NAT.h;
+    const R = {
+      w: Math.max(1e-9,(rect.x1-rect.x0))*NAT.w,
+      h: Math.max(1e-9,(rect.y1-rect.y0))*NAT.h,
+    };
+    const point = opts.center
+      ? [(rect.x0+rect.x1)/2, (rect.y0+rect.y1)/2]
+      : anchor;
+    const A = { x: point[0]*NAT.w, y: point[1]*NAT.h };
+    const fill = opts.fill || 0.96;
+    // 锚点的屏幕横坐标固定在 anchorX（同一档位共享），整条裁切框要装进舞台
+    const ax = (opts.center ? 0.5 : (opts.anchorX == null ? 0.5 : opts.anchorX)) * vw;
+    const ay = vh / 2;
+    const leftExt = Math.max(1, A.x - RX0);
+    const rightExt = Math.max(1, RX0 + R.w - A.x);
+    const topExt = Math.max(1, A.y - RY0);
+    const bottomExt = Math.max(1, RY0 + R.h - A.y);
+    const fit = Math.min(
+      (ax*fill)/leftExt, ((vw-ax)*fill)/rightExt,
+      (ay*fill)/topExt, ((vh-ay)*fill)/bottomExt
+    );
+    const s = Math.max(0.01, Math.max(fit, opts.minScale || 0));
+    const winW = Math.max(2, R.w*s), winH = Math.max(2, R.h*s);
+    const win = document.createElement("div");
+    win.className = "cropwindow" + (winW/winH > 2.2 ? " cropwindow--band" : "");
+    win.style.width = winW + "px";
+    win.style.height = winH + "px";
+    win.style.left = (ax - (A.x - RX0)*s) + "px";
+    win.style.top = (ay - (A.y - RY0)*s) + "px";
+    const wrap = document.createElement("div");
+    wrap.className = "cropwrap";
+    const img = document.createElement("img");
+    img.src = DATA.page_images[String(pageNo)];
+    img.alt = "";
+    wrap.appendChild(img);
+    (opts.boxes || []).forEach(b => {
+      if (!b.box) return;
+      const x = b.box[0]*NAT.w, y = b.box[1]*NAT.h, w = (b.box[2]-b.box[0])*NAT.w, h = (b.box[3]-b.box[1])*NAT.h;
+      const d = document.createElement("div");
+      d.className = "hbox" + (b.on ? " hbox--seg" : "");
+      const bw = Math.max(0.5, 1.6 / s);
+      d.style.cssText = "left:"+x+"px;top:"+y+"px;width:"+w+"px;height:"+h+"px;border-width:"+bw+"px;";
+      wrap.appendChild(d);
+    });
+    wrap.style.transform = "translate("+(-RX0*s)+"px,"+(-RY0*s)+"px) scale("+s+")";
+    win.appendChild(wrap);
+    stageEl.dataset.cropped = (winW > vw*0.985 || winH > vh*0.985) ? "1" : "0";
+    Array.from(stageEl.querySelectorAll(".cropwindow")).forEach(n => n.remove());
+    stageEl.appendChild(win);
+    return s;
+  }
+
+  /* ---------- 三视图 ---------- */
+  function effectiveView() {
+    if (state.view !== "char") return state.view;
+    const seg = cur().segments[state.seg];
+    if (!seg || seg.kind !== "replace" || seg.aText.length !== 1 || seg.bText.length !== 1) return "line";
+    return "char";
+  }
+
+  function renderThree() {
+    const it = cur();
+    const b = blockOf(it);
+    const eff = effectiveView();
+    $("#vIdx").textContent = "#" + String(it.id).padStart(2,"0");
+    $("#vWhere").textContent = "p." + it.page_no + " · 第 " + (it.line_index+1) + " 行";
+    $("#vMeta").textContent = (it.segments.length>1 ? "一行 "+it.segments.length+" 处 · " : "") +
+      (it.line_index===0?"段首":it.line_index===b.lines.length-1?"段末":"段中");
+    $$("#viewTabs button").forEach(x => {
+      x.classList.toggle("on", x.dataset.view === eff);
+      const wantChar = x.dataset.view === "char";
+      x.title = wantChar && state.view === "char" && eff === "line" ? "这一处不是一对一，单字视图自动用单行" : "";
+    });
+
+    // 取景
+    const seg = it.segments[state.seg];
+    const lineBox = it.bbox || [0.45,0.1,0.95,0.12];
+    const prevL = b.lines[it.line_index-1] || b.prev_block_last;
+    const nextL = b.lines[it.line_index+1] || b.next_block_first;
+    let rect, anchor;
+    const segBox = seg && seg.box ? seg.box : lineBox;
+    anchor = [(segBox[0]+segBox[2])/2, (segBox[1]+segBox[3])/2];
+    if (eff === "char") {
+      const h = (segBox[3]-segBox[1]);
+      rect = { x0:segBox[0]-h*0.95, y0:segBox[1]-h*0.95, x1:segBox[2]+h*0.95, y1:segBox[3]+h*0.95 };
+    } else if (eff === "line") {
+      const h = (lineBox[3]-lineBox[1]);
+      rect = { x0:lineBox[0], y0:lineBox[1]-h*0.85, x1:lineBox[2], y1:lineBox[3]+h*0.85 };
+    } else {
+      const top = prevL && prevL.bbox ? prevL.bbox[1] : lineBox[1] - (lineBox[3]-lineBox[1])*1.2;
+      const bot = nextL && nextL.bbox ? nextL.bbox[3] : lineBox[3] + (lineBox[3]-lineBox[1])*1.2;
+      rect = { x0:lineBox[0], y0:top, x1:lineBox[2], y1:bot };
+      // 多行时给锚点不落在画面正中：保持在正中，靠缩放收进三行
+    }
+    const stage = $("#threeViewport");
+    const boxes = it.segments.map((x,i)=>({box:x.box, on:i===state.seg}));
+    // 锚点的屏幕横坐标：取差异在整行里的相对位置，夹在 28%–72%，三档共用
+    const lineW = Math.max(1e-6, lineBox[2]-lineBox[0]);
+    const relLine = Math.min(0.72, Math.max(0.28, (anchor[0]-lineBox[0])/lineW));
+    const anchorEl = stage.querySelector(".anchor");
+    if (anchorEl) anchorEl.style.left = (relLine*100) + "%";
+    const scale = drawCrop(stage, it.page_no, rect, anchor, { fill: 0.96, anchorX: relLine, minScale: eff === "char" ? 0 : 0.40, boxes });
+    $("#vTitle").textContent = "第 " + it.page_no + " 页";
+    $("#vLoc").textContent = "· 锚点不动，只换取景";
+    $("#vZoom").textContent = eff==="char" ? "单字取景" : eff==="line" ? "单行取景" : "三行取景";
+    $("#stageCap").innerHTML = "取景：<b>"+(eff==="char"?"1 字":eff==="line"?"1 行":"3 行")+"</b> · "+
+      (scale?scale.toFixed(2)+"×":"—")+(stage.dataset.cropped==="1"?" · 两端已裁":"")+
+      " · 锚点 "+(it.segments.length>1?String.fromCharCode(0x2460+state.seg):"")+
+      " " + esc((seg&&seg.aText)||"∅");
+    $("#anchorLabel").textContent = "锚点 " + (it.segments.length>1?String.fromCharCode(0x2460+state.seg)+" ":"") + ((seg&&seg.aText)||"");
+
+    // 右侧判定
+    const prior = state.decisions.get(it.id);
+    let html = prior ? '<div class="note note--info"><span>✓</span><span>这条已判：<b>'+
+      (prior.ack==="kept"?"保留原文":prior.ack==="adopted"?"采用候选":"手改为「"+esc(prior.text)+"」")+
+      '</b>（⌘Z 撤销）。</span></div>' : "";
+    if (state.view === "char" && eff === "line") {
+      html += '<div class="note note--warn"><span>⇢</span><span><b>单字视图不适用</b>：这一处是“'+esc(seg.aText||"∅")+' → '+esc(seg.bText||"∅")+'”，两边不是一对一（或有一边是空的），已自动用单行视图。偏好仍记在“单字”。</span></div>';
+    }
+    if (it.segments.length > 1) {
+      html += '<div class="segchips"><span>本行 '+it.segments.length+' 处：</span>'+it.segments.map((s,i)=>
+        '<button class="segchip'+(i===state.seg?' on':'')+'" data-seg="'+i+'">'+(i+1)+' '+esc(s.aText||"∅")+'→'+esc(s.bText||"∅")+'</button>').join("")+'</div>';
+    }
+
+    if (eff === "char") {
+      html += '<div class="actlabel"><b>只给这个字的原图</b><span>看字形：哪一边是原书上的字？</span></div>';
+      html += '<div class="bigpair">'+
+        '<button class="bigcard" data-act="kept"><span class="vk">1</span><span class="gl">当前正文</span><span class="glyph">'+esc(seg.aText)+'</span><span class="gp">保留</span></button>'+
+        '<button class="bigcard bigcard--b" data-act="adopted"><span class="vk">2</span><span class="gl">候选</span><span class="glyph">'+esc(seg.bText)+'</span><span class="gp">采用</span></button>'+
+        '</div>';
+      html += '<div class="smallline">上下文：'+markLine(it,it.current,"a",state.seg,false)+'</div>';
+    } else if (eff === "line") {
+      html += '<div class="actlabel"><b>单行内容</b><span>差异字已框出；两边是同一行的两个版本</span></div>';
+      html += '<div class="verline verline--a"><span class="g">A</span><span class="t">'+markLine(it,it.current,"a",state.seg,true)+'</span></div>';
+      html += '<div class="verline verline--b"><span class="g">B</span><span class="t">'+markLine(it,it.candidate,"b",state.seg,true)+'</span></div>';
+    } else {
+      html += '<div class="actlabel"><b>三行上下文</b><span>前后各一行，只作语义预警（不高亮）</span></div>';
+      if (b.prev_block_last && it.line_index === 0) html += '<div class="boundary">上一段 · 末行</div>';
+      if (prevL) html += '<div class="verline verline--ctx"><span class="g">−1</span><span class="t">'+esc(prevL.t)+'</span></div>';
+      html += '<div class="verline verline--a"><span class="g">A</span><span class="t">'+markLine(it,it.current,"a",state.seg,true)+'</span></div>';
+      if (nextL) html += '<div class="verline verline--ctx"><span class="g">+1</span><span class="t">'+esc(nextL.t)+'</span></div>';
+      if (b.next_block_first && it.line_index === b.lines.length-1) html += '<div class="boundary">下一段 · 首行</div>';
+      html += '<div class="verline verline--b"><span class="g">B</span><span class="t">'+markLine(it,it.candidate,"b",state.seg,true)+'</span></div>';
+    }
+
+    if (eff === "char") {
+      html += '<div class="threeacts"><button class="btn btn--edit" id="vEditBtn">3 两个都不对，自己改</button></div>';
+    } else {
+      html += '<div class="threeacts">'+
+        '<button class="btn btn--keep" data-act="kept">1 保留原文</button>'+
+        '<button class="btn btn--take" data-act="adopted">2 采用候选</button>'+
+        '<button class="btn btn--edit" id="vEditBtn">3 自己改</button>'+
+        '</div>';
+    }
+
+    html += '<div class="manual"'+(state.editing?'':' style="display:none"')+' id="vManual">'+
+      '<label for="vInput">'+(state.wholeLine?'整行':'正确写法')+'</label>'+
+      '<input id="vInput" value="'+esc(state.wholeLine?it.current:(seg?aText(seg):""))+'" placeholder="写正确的字，Enter 确认" autocomplete="off" spellcheck="false">'+
+      '<button class="btn btn--pri" id="vEditOk">确认</button>'+
+      '<button class="switch" id="vWhole">'+(state.wholeLine?'改片段':'改整行')+'</button>'+
+      '</div>';
+
+    if (it.segments.length > 1) {
+      html += '<div class="note note--info"><span>ⓘ</span><span><b>①② 只是取景焦点</b>：现有 ack 按行写，选 ① 或 ② 都会裁决整行。按处分条需要新的“处”数据，本稿不做。</span></div>';
+    }
+    if (leftCount() === 0) {
+      html += '<div class="donebox"><b>样张 12 条已判完。</b><br>这是前端假状态：真实项目里这 12 行早有 ack。可以按 ⌘Z 逐步撤销，或用“重置演示”。</div>';
+    }
+
+    $("#vBody").innerHTML = html;
+    bindThree(it);
+    updateLive();
+  }
+
+  function aText(seg) { return seg ? seg.aText : ""; }
+
+  function bindThree(it) {
+    $$("#viewTabs button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+    $$("#vBody .segchip").forEach(b => b.addEventListener("click", () => { state.seg = Number(b.dataset.seg); renderAll(); }));
+    $$("#vBody [data-act]").forEach(b => b.addEventListener("click", () => decide(b.dataset.act, false)));
+    const eb = $("#vEditBtn");
+    if (eb) eb.addEventListener("click", () => { state.editing = true; renderAll(); setTimeout(()=>{ const i=$("#vInput"); if(i){i.focus(); i.setSelectionRange(0,i.value.length);} },0); });
+    const input = $("#vInput");
+    if (input) {
+      input.addEventListener("focus", () => { const l=input.value.length; input.setSelectionRange(0,l); });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); confirmEdit(); }
+        if (e.key === "Escape") { e.stopPropagation(); state.editing = false; renderAll(); }
+      });
+      const ok = $("#vEditOk"); if (ok) ok.addEventListener("click", confirmEdit);
+      const wh = $("#vWhole"); if (wh) wh.addEventListener("click", () => {
+        state.wholeLine = !state.wholeLine;
+        input.value = state.wholeLine ? it.current : aText(it.segments[state.seg]);
+        wh.textContent = state.wholeLine ? "改片段" : "改整行";
+        input.focus();
+      });
+    }
+  }
+
+  function setView(v) {
+    if (!["char","line","multi"].includes(v)) return;
+    state.view = v;
+    try { localStorage.setItem("b2t-mock-view", v); } catch (e) {}
+    renderAll();
+  }
+  function cycleView() {
+    const order = ["char","line","multi"];
+    setView(order[(order.indexOf(state.view)+1) % order.length]);
+  }
+
+  /* ---------- 判定 ---------- */
+  function decide(kind, viaKey) {
+    if (state.editing && kind !== "edited") { /* 判定键优先，直接判 */ }
+    const it = cur();
+    if (state.decisions.has(it.id)) { toast("这条已判；按 ⌘Z 撤销最后一条", null); return; }
+    let text, ack = kind;
+    if (kind === "kept") text = it.current;
+    else if (kind === "adopted") text = it.candidate;
+    else return;
+    state.decisions.set(it.id, { ack, text, seg: state.seg, at: Date.now() });
+    state.history.push(it.id);
+    state.ops += 1;
+    if (viaKey) state.decKeys += 1; else state.decClicks += 1;
+    const label = ack === "kept" ? "保留原文" : "采用候选";
+    toast("已记：" + label + " · " + (it.segments[state.seg].aText||"∅"), "撤销");
+    thenNext();
+  }
+
+  function thenNext() {
+    if (leftCount() === 0) { renderAll(); toast("12/12 已判完 · ⌘Z 可撤销", null); return; }
+    advance();
+  }
+
+  function confirmEdit() {
+    const it = cur();
+    const seg = it.segments[state.seg];
+    const input = $("#editInput") || $("#vInput");
+    if (!input) return;
+    let value = input.value;
+    if (!value) { toast("输入为空：按 Esc 退出，或写一个字", null); input.focus(); return; }
+    let newText;
+    if (state.wholeLine) {
+      newText = value;
+    } else {
+      const a = seg.aStart, b = seg.aEnd;
+      newText = it.current.slice(0, a) + value + it.current.slice(b);
+    }
+    let ack = "edited";
+    if (newText === it.current) ack = "kept";
+    else if (newText === it.candidate) ack = "adopted";
+    state.decisions.set(it.id, { ack, text:newText, seg:state.seg, at:Date.now() });
+    state.history.push(it.id);
+    state.ops += 1;
+    if (state.editing) state.editing = false; else state.decKeys += 0;
+    state.wholeLine = false;
+    toast("已记：" + (ack==="edited"?"手改「"+value+"」":ack==="kept"?"保留原文":"采用候选"), "撤销");
+    if (leftCount() === 0) { renderAll(); toast("12/12 已判完 · ⌘Z 可撤销", null); return; }
+    advance();
+  }
+
+  function undo() {
+    const id = state.history.pop();
+    if (!id) { toast("没有可撤销的判定", null); return; }
+    state.decisions.delete(id);
+    state.id = id;
+    renderAll();
+    toast("已撤销 #" + String(id).padStart(2,"0"), null);
+  }
+
+  function focusEdit() {
+    if (state.mode === "three") {
+      state.editing = true; renderAll();
+      setTimeout(()=>{ const i=$("#vInput"); if(i){ i.focus(); i.setSelectionRange(0,i.value.length);} },0);
+    } else {
+      const i = $("#editInput");
+      if (i) { i.focus(); i.setSelectionRange(0, i.value.length); }
+    }
+  }
+
+  /* ---------- 计数与说明 ---------- */
+  function updateLive() {
+    const n = state.decisions.size;
+    const avg = n ? (state.ops / n) : 0;
+    $("#sDone").textContent = n;
+    $("#sTotal").textContent = ITEMS.length;
+    $("#sLeft").textContent = ITEMS.length - n;
+    $("#sOps").textContent = state.ops;
+    $("#sDec").textContent = n;
+    $("#sAvg").textContent = n ? "（" + (avg).toFixed(1) + " 次/条）" : "";
+    $("#sScroll").textContent = state.scrolls;
+    $("#tLive").textContent = "本会话 " + n + " 判 / " + state.ops + " 操作";
+    $("#vLive").textContent = "本会话 " + n + " 判 / " + state.ops + " 操作";
+    const modeN = state.mode === "table" ? M.table : (effectiveView()==="char"?M.char:effectiveView()==="line"?M.line:M.multi);
+    $("#measureChip").innerHTML = "必读 <b>" + fmt1(modeN) + "</b> 字 / 条";
+  }
+
+  function renderDrawer() {
+    const n = state.decisions.size;
+    const avg = n ? (state.ops/n).toFixed(1) : "—";
+    $("#drawerBody").innerHTML =
+      '<h3>这次的样张是什么</h3>'+
+      '<p>真项目 <b>b2t_5DDDAP</b>（sample-20p，20 页）的前 6 页，取 <b>12 条真实汉字级差异</b>。'+
+      '文字、页码、字框都来自 <code>project.db</code>；图是把原 PDF 按 2600px 宽渲染的页图。'+
+      '这 12 行在原项目里已有 ack，稿里<b>按未判重放</b>——<b>界面状态是假的，字是真的</b>。</p>'+
+      '<p>全书这个样本有 46 行可判差异（汉字 26 / 标点 18 / 格式 2）；本稿只取前 12 条汉字，不是全书分母。</p>'+
+
+      '<h3>判一条的硬数（12 条真实差异算中位）</h3>'+
+      '<table><thead><tr><th>入口</th><th>必读字数</th><th>人工比对</th><th>判一条操作</th><th>视线切换</th><th>主动滚动</th></tr></thead><tbody>'+
+      '<tr><td>今天的整本书流</td><td>'+fmt1(M.baseline)+'</td><td>'+fmt1(M.compareBase)+'</td><td>3–4</td><td>4</td><td>未实测</td></tr>'+
+      '<tr><td>表格版</td><td class="win">'+fmt1(M.table)+'</td><td class="win">'+fmt1(M.compareTable)+'</td><td class="win">1</td><td>2</td><td class="win">0</td></tr>'+
+      '<tr><td>三视图 · 单字</td><td class="win">'+fmt1(M.char)+'</td><td>'+fmt1(M.compareTable)+'</td><td class="win">1</td><td>1</td><td class="win">0</td></tr>'+
+      '<tr><td>三视图 · 单行</td><td>'+fmt1(M.line)+'</td><td class="win">'+fmt1(M.compareTable)+'</td><td class="win">1</td><td>2</td><td class="win">0</td></tr>'+
+      '<tr><td>三视图 · 多行</td><td>'+fmt1(M.multi)+'</td><td class="win">'+fmt1(M.compareTable)+'</td><td class="win">1</td><td>3</td><td class="win">0</td></tr>'+
+      '</tbody></table>'+
+      '<p class="src">必读 = 当前行 + 两个差异片段（表格/单行）；单字 = 两个差异字；多行再加前后两行。'+
+      '人工比对 = 人自己要在两边找“哪里不同”的字数（机器已对齐后只剩片段）。'+
+      '视线切换按设计数，<b>不是实测</b>；滚动是本页的实时计数（右下角）；旧界面的滚动不在本样张里，写“未实测”。</p>'+
+
+      '<h3>这一稿里哪些是实测、哪些不是</h3>'+
+      '<ul>'+
+      '<li><b>实测</b>：12 条差异、片段位置、字框、页码；页面加载后算出的中位数；你点 1/2 后状态条的操作/滚动计数。</li>'+
+      '<li><b>未实测</b>：旧界面判一条要滚几次、视线切换次数；旧界面不在本样张里，按设计数写在表里。</li>'+
+      '<li><b>未就绪</b>：Jev 分数。样张项目 <code>block_line.jev_score</code> 全是 NULL；“可疑优先”没有接（要等 next-lines 的 include_scores=1）。</li>'+
+      '</ul>'+
+
+      '<h3>三个问题（给 Chief 的答复）</h3>'+
+      '<ul>'+
+      '<li><b>默认哪档</b>：单行。单字只在字形难分（入/人、己/已/巳）时切；多行在要判语义时切。单字当默认会让人频繁上切。</li>'+
+      '<li><b>怎么切</b>：<b>V 循环</b> + 点标签；不用 1/2/3，因为 1/2 是判定键——一条一次按键是这张稿的吞吐来源，不能被切档占用。切档记住上次选择（localStorage）。</li>'+
+      '<li><b>锚点</b>：三档共用同一个锚点（当前差异字的中心）。它的屏幕横坐标由“差异在整行里的位置”决定，夹在 28%–72%（避免边缘差异把取景窗顶出画外）；切档只改缩放和取景，锚点不动。实测三档切换锚点位移 ≤1.1px（见下）。</li>'+
+      '</ul>'+
+
+      '<h3>本轮实测（2026-11-05 · headless Chrome 1440×900）</h3>'+
+      '<ul>'+
+      '<li><b>三档锚点位移</b>：单字 (431.15, 457.94) / 单行 (431.18, 458.98) / 多行 (431.18, 458.99)；<b>x 0.03px / y 1.05px</b>（舞台 640×729）。</li>'+
+      '<li><b>判一条操作</b>：键盘 1/2 各 1 次；点判定按钮 1 次；<b>12 条判完，面板滚动 0 次</b>（表格 647=647，三视图多行 647=647）。</li>'+
+      '<li><b>键盘</b>：1/2/3、Tab（焦点在页面时进输入框）、Enter、Esc、V、←/→、⌘Z 全部走通。</li>'+
+      '<li><b>退化</b>：第 5 条（骨→∅）切单字自动落到单行并给出说明；第 4 条（桐→嚟峒）同理。</li>'+
+      '<li><b>口径</b>：以上都在本页点出来，不是推演；旧界面的滚动/视线数仍标“未实测”。</li>'+
+      '</ul>'+
+
+      '<h3>已知代价</h3>'+
+      '<ul>'+
+      '<li><b>单字不是总能并排</b>：插入/删除（如第 5 条「骨→∅」）或一边多字（第 4 条「桐→嚟峒」）时，单字自动退到单行，并在右栏说明。偏好不被改写。</li>'+
+      '<li><b>“一处”目前不存在</b>：现有数据一条 = 一行，<code>ack</code> 也按行写。12 行里有 2 行各 2 处（第 7、11 条）；按处分条会变 14 条，且需要新的按处 ack 数据。本稿只用 ①② 选图焦点，裁决仍写整行。</li>'+
+      '<li><b>单字视图的原图是放大</b>：页图 2600px 宽，单字约 50px，单字档放大约 2.5–3×；够看形状，不如 300 DPI 原图锐利。</li>'+
+      '<li><b>长行 / 边缘差异的取景窗会裁两端</b>：窗宽固定，缩放有下限（单行 0.40×、多行 0.40×），长行会把两端裁掉并在角标写“两端已裁”；右栏全文不裁，图片只负责看清差异附近的字。</li>'+
+      '</ul>'+
+
+      '<h3>这一轮现在就能测的</h3>'+
+      '<p>本会话已判 <b>'+n+'</b> 条、操作 <b>'+state.ops+'</b> 次、平均 <b>'+avg+'</b> 次/条、滚动 <b>'+state.scrolls+'</b> 次。'+
+      '点“重置演示”可清零。</p>'+
+      '<p><button class="btn" id="resetDemo">重置演示</button> <button class="btn" id="closeDrawer2">关闭</button></p>';
+    const rb = $("#resetDemo");
+    if (rb) rb.addEventListener("click", resetDemo);
+    const cb = $("#closeDrawer2");
+    if (cb) cb.addEventListener("click", closeDrawer);
+  }
+
+  function resetDemo() {
+    state.decisions.clear();
+    state.history = [];
+    state.ops = 0; state.decKeys = 0; state.decClicks = 0; state.scrolls = 0;
+    state.editing = false; state.wholeLine = false;
+    state.id = ITEMS[0].id; state.seg = 0;
+    renderAll();
+    toast("演示已重置", null);
+  }
+
+  /* ---------- 外壳 ---------- */
+  function renderAll() {
+    renderQueue();
+    if (state.mode === "table") renderTable(); else renderThree();
+    updateLive();
+    if ($("#drawer").classList.contains("on")) renderDrawer();
+  }
+
+  function setMode(mode) {
+    state.mode = mode;
+    document.body.dataset.mode = mode;
+    $$("#modeTabs button").forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
+    renderAll();
+    // 布局变化后重画取景
+    requestAnimationFrame(() => { if (state.mode === "three") renderThree(); else renderTable(); });
+  }
+
+  let toastTimer = null;
+  function toast(msg, action) {
+    const t = $("#toast");
+    t.innerHTML = '<span>'+esc(msg)+'</span>' + (action ? '<button id="toastUndo">'+esc(action)+'</button>' : '');
+    t.classList.add("on");
+    const u = $("#toastUndo");
+    if (u) u.addEventListener("click", () => { undo(); t.classList.remove("on"); });
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>t.classList.remove("on"), action ? 6000 : 2200);
+  }
+
+  function openDrawer() { renderDrawer(); $("#drawer").classList.add("on"); }
+  function closeDrawer() { $("#drawer").classList.remove("on"); }
+
+  /* ---------- 事件 ---------- */
+  document.addEventListener("keydown", (e) => {
+    const t = e.target;
+    const inInput = t && t.matches && t.matches("input,textarea");
+    if (inInput) {
+      if (e.key === "Escape") { e.stopPropagation(); state.editing = false; t.blur(); if (state.mode==="three") renderAll(); }
+      return;
+    }
+    if (e.metaKey || e.ctrlKey) {
+      if (e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
+      return;
+    }
+    if ($("#drawer").classList.contains("on")) { if (e.key === "Escape") closeDrawer(); return; }
+    if (e.key === "Escape") { closeDrawer(); return; }
+    if (e.key === "?" || (e.key === "/" && e.shiftKey)) { e.preventDefault(); openDrawer(); return; }
+    if (e.key === "Tab" && !e.shiftKey) {
+      const ae = document.activeElement;
+      if (!ae || ae === document.body || ae === document.documentElement) {
+        e.preventDefault(); focusEdit(); return;
+      }
+    }
+    switch (e.key) {
+      case "1": e.preventDefault(); decide("kept", true); break;
+      case "2": e.preventDefault(); decide("adopted", true); break;
+      case "3": e.preventDefault(); focusEdit(); break;
+      case "v": case "V": e.preventDefault(); if (state.mode === "three") cycleView(); else setMode("three"); break;
+      case "ArrowDown": case "ArrowRight": e.preventDefault(); select(nextId(1)); break;
+      case "ArrowUp": case "ArrowLeft": e.preventDefault(); select(nextId(-1)); break;
+      case "z": case "Z": e.preventDefault(); undo(); break;
+      case "Tab":
+        // 不拦 Tab：让浏览器正常走焦点；判定键用 1/2
+        break;
+    }
+  });
+
+  $("#modeTabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-mode]");
+    if (b) setMode(b.dataset.mode);
+  });
+  $("#qFilter").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-filter]");
+    if (b) { state.filter = b.dataset.filter; renderQueue(); }
+  });
+  $("#ctxBtn").addEventListener("click", () => { state.ctx = state.ctx === 1 ? 3 : 1; renderTable(); });
+  $("#btnDrawer").addEventListener("click", openDrawer);
+  $("#drawer").addEventListener("click", (e) => { if (e.target === $("#drawer")) closeDrawer(); });
+  $("#drawerClose").addEventListener("click", closeDrawer);
+  $("#vBack").addEventListener("click", () => setMode("table"));
+  ["#tBody", "#vBody", "#pdfStage", "#threeStage"].forEach(sel => {
+    const el = $(sel);
+    if (!el) return;
+    el.addEventListener("scroll", () => { state.scrolls += 1; $("#sScroll").textContent = state.scrolls; }, {passive:true});
+  });
+  // 内部滚动容器
+  ["#tBody", "#vBody", "#qlist"].forEach(sel => {
+    const el = $(sel);
+    if (el) el.addEventListener("scroll", () => { state.scrolls += 1; $("#sScroll").textContent = state.scrolls; }, {passive:true});
+  });
+  let rz = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(rz);
+    rz = setTimeout(() => { if (state.mode === "three") renderThree(); else renderTable(); }, 120);
+  });
+
+  // 首屏（支持 ?mode=three&view=char&id=7 直接打开某个状态）
+  try {
+    if (!localStorage.getItem("b2t-mock-view")) localStorage.setItem("b2t-mock-view", "line");
+  } catch (e) {}
+  const qp = new URLSearchParams(location.search);
+  const qv = qp.get("view");
+  if (["char","line","multi"].includes(qv)) state.view = qv;
+  const qi = Number(qp.get("id"));
+  if (qi && byId.has(qi)) { state.id = qi; state.seg = 0; }
+  if (qp.get("mode") === "three") {
+    state.mode = "three";
+    document.body.dataset.mode = "three";
+    $$("#modeTabs button").forEach(b => b.classList.toggle("on", b.dataset.mode === "three"));
+  }
+  renderAll();
+  if (qp.get("drawer") === "1") setTimeout(openDrawer, 60);
+})();
+</script>
+</body>
+</html>
