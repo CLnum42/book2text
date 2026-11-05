@@ -456,10 +456,13 @@ def resolve_aux_pages(
     没识别过就没有行可读，界面上要如实说清而不是建一个注定失败的任务。
 
     - 显式页码：必须存在、已纳入、且已有识别结果。
-    - ``scope="unchecked"``：全部纳入页里**已识别但还没复核过**的。
+    - ``scope="unchecked"``：全部纳入页里**复核无效**的（没复核过 + 复核已过期）。
+      判据走 `blocks.pages_with_valid_auxiliary_run()`（= `checked_state()` 的 checked），
+      和测试面板/按钮上的数字同一个来源——否则会出现"写着还有 1 页、点下去 0 页"。
     - ``scope="all"``：全部纳入页里已识别的（重新复核）。
     - ``skip_checked``：显式页码时是否跳过已复核的页（默认跳过；
-      界面上的「重新复核这一页」会显式传 False）。
+      界面上的「重新复核这一页」会显式传 False）。这条口径**按"跑过没有"**，
+      与 `scope="unchecked"` 的"有效没有"分开：它们回答的不是同一个问题。
     """
     if (pages is None) == (scope is None):
         raise ProjectError("pages 与 scope 必须给出且只给出一个")
@@ -469,21 +472,30 @@ def resolve_aux_pages(
     target_library = library if library is not None else default_library_dir()
     all_pages = list_pages(project_id, library=target_library)
     states = blocks_module.page_recognition_states(project_id, library=target_library)
-    checked = blocks_module.pages_with_auxiliary_run(project_id, library=target_library)
 
     def has_result(page: Page) -> bool:
         state = states.get(page.page_id)
         return state is not None and state.status in STATUSES_WITH_RESULT
 
     if scope is not None:
+        # 两个筛子回答两个问题，别混：
+        #   scope=unchecked  → 复核**有效**吗（要看 aux 与 primary 的先后，走索引）
+        #   显式页码 + skip_checked → 复核**跑过**吗（只问有没有 aux 记录）
+        valid = (
+            blocks_module.pages_with_valid_auxiliary_run(project_id, library=target_library)
+            if scope == SCOPE_UNCHECKED
+            else set()
+        )
         selected = []
         for page in all_pages:
             if not page.include or not has_result(page):
                 continue
-            if scope == SCOPE_UNCHECKED and page.page_id in checked:
+            if scope == SCOPE_UNCHECKED and page.page_id in valid:
                 continue
             selected.append(page)
         return selected
+
+    checked = blocks_module.pages_with_auxiliary_run(project_id, library=target_library)
 
     by_no = {page.page_no: page for page in all_pages}
     selected = []

@@ -430,3 +430,71 @@ def test_auxiliary_loop_stops_when_cancelled_and_resumes_without_redoing(
     assert again.job.status == "succeeded"
     assert [item.status for item in again.items] == ["succeeded", "succeeded"]
     assert all(line.aux_text is not None for line in lines_of(project_id, library_dir, 2))
+
+
+# ---------------------------------------------------------------- 范围筛子 = 三态判据（2026-11-05）
+
+def _page_nos(data: dict) -> list[int]:
+    return [item["page_no"] for item in data["items"]]
+
+
+def _engine_summary(client: TestClient, headers: dict[str, str], project_id: str) -> dict:
+    response = client.get(f"/api/projects/{project_id}/review/finish-summary", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()["engine"]
+
+
+def test_scope_unchecked_includes_pages_whose_check_became_stale(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    recognized_project: str,
+    inprocess_aux_jobs: FakeSecondEngine,
+) -> None:
+    """重识别之后旧复核过期 ⇒ 这一页重新算「没复核」，`scope=unchecked` 必须再挑到它。
+
+    这就是 2026-11-05 那条洞：按钮写「还有 1 页没复核」（数字走三态），
+    而筛子走的是"跑过没有" ⇒ 过期页被排除 ⇒ 点下去 0 页、400。
+    """
+    project_id = recognized_project
+    check_pages(client, auth_headers, project_id, {"pages": [1, 2], "skip_checked": False})
+    both_valid = check_pages(client, auth_headers, project_id, {"scope": "unchecked"})
+    assert both_valid["status"] == 400, both_valid  # 两页都有效 ⇒ 没得做
+
+    recognize(client, auth_headers, project_id, 1)  # 第 1 页重识别 ⇒ 它的旧复核过期
+
+    engine = _engine_summary(client, auth_headers, project_id)
+    assert engine["needs_recheck"] == 1, engine
+    assert engine["needs_recheck_pages"] == [1], engine
+
+    response = check_pages(client, auth_headers, project_id, {"scope": "unchecked"})
+    assert response["status"] == 200, response
+    assert _page_nos(response["data"]) == [1], "过期页必须重新进队列"
+    # 数字 = 动作：收尾面板的"需重算 1 页"就是接口返回的那 1 页（不是 0 页）
+    assert len(response["data"]["items"]) == engine["needs_recheck"] == 1
+
+
+def test_scope_unchecked_is_empty_when_every_check_is_still_valid(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    recognized_project: str,
+    inprocess_aux_jobs: FakeSecondEngine,
+) -> None:
+    """全有效 ⇒ 0 页（调用方据此把按钮置灰，不是点下去才 400）。"""
+    project_id = recognized_project
+    check_pages(client, auth_headers, project_id, {"pages": [1, 2], "skip_checked": False})
+
+    response = check_pages(client, auth_headers, project_id, {"scope": "unchecked"})
+    assert response["status"] == 400, response
+    assert "没有需要复核的页面" in response["data"]["error"]["detail"]
+
+
+def test_scope_unchecked_picks_every_recognized_page_on_a_fresh_book(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    recognized_project: str,
+    inprocess_aux_jobs: FakeSecondEngine,
+) -> None:
+    """全新书 0 次复核 ⇒ 全部已识别页都要进队列（不许漏）。"""
+    response = check_pages(client, auth_headers, recognized_project, {"scope": "unchecked"})
+    assert response["status"] == 200, response
+    assert _page_nos(response["data"]) == [1, 2]

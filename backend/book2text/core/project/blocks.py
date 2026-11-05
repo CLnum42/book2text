@@ -818,6 +818,7 @@ def pages_with_auxiliary_run(
 
     只在"跳过已复核的页"这一处用——它回答的是"这一页复核过没有"，
     不回答"有没有分歧"（那是 `page_divergences` 的事）。
+    **不要拿它判"这段差异可信不可信"**：重识别之后旧复核还在，这条集合照样为真。
     """
     with _open_for_read(project_id, library) as conn:
         _require_tables(conn, project_id)
@@ -826,6 +827,27 @@ def pages_with_auxiliary_run(
             (RUN_TYPE_AUXILIARY, RUN_STATUS_SUCCEEDED),
         ).fetchall()
     return {row["page_id"] for row in rows}
+
+
+def pages_with_valid_auxiliary_run(
+    project_id: str, *, library: Path | None = None
+) -> set[str]:
+    """复核**仍然有效**的页 id：`checked_state()` 判为 `checked=True` 的那些。
+
+    与 `pages_with_auxiliary_run`（跑过没有，用于「跳过已复核」的记账）**分开**：
+    两个问题不同——跑过 ≠ 有效。判据本身仍然只有 `checked_state()` 一份，
+    这里只是把 `divergence_index()` 已经算好的每页 `checked` 挑出来。
+
+    用在「复核还有哪些页要做」这一处（`scope="unchecked"` 的筛子）：
+    它是过期的（重识别之后 aux 比 primary 旧）就算**没做过**，
+    否则界面写着"还有 1 页没复核"、点下去却是 0 页。
+    """
+    index = divergence_index(project_id, library=library)
+    return {
+        page_id
+        for page_id, divergence in index.by_page.items()
+        if divergence.checked
+    }
 
 
 def _latest_auxiliary_run(runs: Sequence[RunRecord]) -> RunRecord | None:
