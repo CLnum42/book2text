@@ -1,0 +1,57 @@
+#!/bin/sh
+# Book2Text commit-msg 闸：**删掉 UI 入口必须在提交正文登记 `Removed-UI:`**
+# （2026-11-05，Chief 派、DevLead 出判据）。
+#
+# ── 为什么是 commit-msg，不是 pre-commit ─────────────────────────────────────
+# git 的 pre-commit 在"提交信息还没写"的时刻运行，那里读到的是**上一笔**的消息
+# （实测：第一笔读到空、第二笔读到第一笔的标题）——用它判登记，要么假绿（上一笔有
+# Removed-UI）、要么假红（自己写了却不算），正是 10-29 记过的"先写标记后读标记"的变体。
+# commit-msg 拿到 $1 = **这一笔**的消息文件，此时索引仍在，`git diff --cached` 照样能读。
+# 报红时 git 会中止提交并保留消息文件：补一行再 `git commit` 即可，不需要 amend / rebase。
+#
+# 这一层能被 `git commit --no-verify` 跳过（git 会跳过 commit-msg），所以 pre-push 还有
+# 一道兜底：同一个脚本换成 `--range origin/main..<要推的 sha>` 逐笔查。
+#
+# 缺 node / 缺闸脚本 ⇒ 拒绝提交（fail closed）：跑不起来的闸比没有闸更坏（D-110）。
+
+set -u
+
+MSG="${1:-}"
+if [ -z "$MSG" ]; then
+  echo "✗ commit-msg：没收到消息文件路径（git 应该传 \$1）" >&2
+  exit 1
+fi
+
+# 闸脚本按 hook 自己的位置找（scripts/git-hooks/../ui-removal-ledger.mjs）：
+# 这样 sandbox 自检里 core.hooksPath 指向本目录时也能用同一份实现。
+HOOKDIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || {
+  echo "✗ commit-msg：定位不到 hook 目录" >&2
+  exit 1
+}
+GATE="$HOOKDIR/../ui-removal-ledger.mjs"
+if [ ! -f "$GATE" ]; then
+  echo "✗ commit-msg：找不到闸脚本 $GATE" >&2
+  echo "  拒绝提交——跑不起来的闸不允许静默放过（fail closed）。" >&2
+  exit 1
+fi
+
+NODE=""
+for c in "$(command -v node 2>/dev/null)" "$HOME/.local/bin/node" /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do
+  if [ -n "$c" ] && [ -x "$c" ]; then NODE="$c"; break; fi
+done
+if [ -z "$NODE" ]; then
+  echo "✗ commit-msg：找不到 node" >&2
+  echo "  查过：PATH / \$HOME/.local/bin / /opt/homebrew/bin / /usr/local/bin / /usr/bin" >&2
+  echo "  拒绝提交——跑不起来的闸不允许静默放过（fail closed）。" >&2
+  exit 1
+fi
+
+"$NODE" "$GATE" --staged --message "$MSG"
+RC=$?
+if [ "$RC" -ne 0 ]; then
+  echo "" >&2
+  echo "  这条闸只看 backend/book2text/static/**（含 index.html）的删除行；tests/ 不扫。" >&2
+  echo "  确需绕过：git commit --no-verify（pre-push 会兜底查一遍，log 里会留痕）。" >&2
+  exit "$RC"
+fi
+exit 0

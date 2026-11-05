@@ -129,11 +129,36 @@ check_one() {
     return 0
   fi
 
+  NON_MD=$(printf '%s\n' "$FILES" | grep -v '\.md$' || true)
+
+  # ⓪ 删掉 UI 入口必须在提交正文登记 `Removed-UI:`（2026-11-05，Chief 派）。
+  # 为什么在 pre-push 也放一道：commit-msg 能被 `git commit --no-verify` 跳过，而 git 没有
+  # post-push 钩子——只能在推送时按 origin/main..<要推的 sha> 逐笔复查。约 1 秒，最便宜的先跑。
+  # 纯文档推送跳过（与 pytest 同一开关）：md 改不出 UI 删除。
+  if [ -n "$NON_MD" ]; then
+    if [ ! -f "$REPO/scripts/ui-removal-ledger.mjs" ]; then
+      echo "✗ pre-push：找不到 scripts/ui-removal-ledger.mjs（Removed-UI 闸）" >&2
+      echo "  拒绝推送——跑不起来的闸不允许静默放过（fail closed）。" >&2
+      FAILED=1; return 1
+    fi
+    UIOUT=$(mktemp "${TMPDIR:-/tmp}/b2t-ui-removal.XXXXXX") || {
+      echo "✗ pre-push：建不了临时输出文件（Removed-UI 闸）" >&2; FAILED=1; return 1
+    }
+    if ! ( cd "$REPO" && "$NODE" scripts/ui-removal-ledger.mjs --range "origin/main..$LOCAL_SHA" ) >"$UIOUT" 2>&1; then
+      echo "✗ pre-push：删了 UI 入口但正文没有登记 Removed-UI（查的是 origin/main..$(echo "$LOCAL_SHA" | cut -c1-8) 的每一笔）" >&2
+      sed 's/^/  /' "$UIOUT" >&2
+      rm -f "$UIOUT"
+      FAILED=1; return 1
+    fi
+    rm -f "$UIOUT"
+  else
+    echo "… pre-push：推送范围只有文档改动，跳过 Removed-UI 闸（与 pytest 同一开关）" >&2
+  fi
+
   # node 闸**不因纯 md 跳过**（Chief 2026-10-29）：7–11 秒，而且 §18.6 登记本身会被文档改动影响
   run_node_gates "$LOCAL_SHA" || return 1
 
   # 只有 Markdown → 只跳 pytest（它读不到 .md 的内容做断言；唯一例外是 docs/**/*.json，见下）
-  NON_MD=$(printf '%s\n' "$FILES" | grep -v '\.md$' || true)
   if [ -z "$NON_MD" ]; then
     SKIPPED=$((SKIPPED + 1))
     printf '%s\tSKIP\t%s\tmd-only\n' "$LOCAL_SHA" "$(date '+%F %T')" >>"$LOG" 2>/dev/null || true

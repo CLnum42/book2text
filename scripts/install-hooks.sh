@@ -14,7 +14,7 @@ REPO=$(git rev-parse --show-toplevel 2>/dev/null) || {
 }
 HOOKS="$REPO/scripts/git-hooks"
 
-for f in "$HOOKS/pre-commit" "$HOOKS/post-commit" "$HOOKS/post-rewrite" "$HOOKS/pre-push"; do
+for f in "$HOOKS/pre-commit" "$HOOKS/commit-msg" "$HOOKS/post-commit" "$HOOKS/post-rewrite" "$HOOKS/pre-push"; do
   [ -f "$f" ] || { echo "✗ 缺 hook 脚本：$f" >&2; exit 1; }
   chmod +x "$f" 2>/dev/null || { echo "✗ 无法 chmod +x $f" >&2; exit 1; }
 done
@@ -63,7 +63,7 @@ if $GITC commit -q -m "should be rejected" >/dev/null 2>&1; then
   echo "✗ 自检失败：套件红着，提交却成功了——这个闸不会拒红" >&2
   exit 1
 fi
-echo "✓ 自检 1/4：套件红 → 拒绝提交"
+echo "✓ 自检 1/5：套件红 → 拒绝提交"
 
 # 情形 2：索引绿、工作区脏 → 必须通过（验的是索引，不是盘上）
 printf 'process.exit(0);\n' > tests/js/run.mjs
@@ -74,7 +74,7 @@ if ! $GITC commit -q -m "green index, dirty worktree" >/dev/null 2>&1; then
   echo "  说明闸还在验工作区——那正是 2026-10-29 那个洞" >&2
   exit 1
 fi
-echo "✓ 自检 2/4：索引绿 + 工作区脏 → 放行（验索引）"
+echo "✓ 自检 2/5：索引绿 + 工作区脏 → 放行（验索引）"
 
 # 情形 3：索引红（坏文件已 add）→ 必须拒绝
 git add tests/js/run.mjs
@@ -84,7 +84,37 @@ if $GITC commit -q -m "should be rejected 2" >/dev/null 2>&1; then
   echo "✗ 自检失败：坏文件已 add 进索引，提交却成功了" >&2
   exit 1
 fi
-echo "✓ 自检 3/4：索引红 → 拒绝提交"
+echo "✓ 自检 3/5：索引红 → 拒绝提交"
+
+# ---- 自检 5：commit-msg 真的拦"删 UI 入口不登记"吗（2026-11-05 新增的闸）----
+# 这条闸只在 commit-msg 里有意义（pre-commit 拿不到正文），所以自检必须真走一次提交流程：
+#   ① 新增 UI 入口 → 放行（没删东西）；
+#   ② 删掉入口、正文没登记 → 必须拒绝，且报错要**点名那个 id**（只断言"退出码非 0"不够）；
+#   ③ 同一笔改成登记了 Removed-UI → 必须放行。
+printf 'process.exit(0);\n' > tests/js/run.mjs
+git add tests/js/run.mjs
+mkdir -p backend/book2text/static
+printf '<div id="probe-id">x</div>\n' > backend/book2text/static/index.html
+git add backend/book2text/static/index.html
+if ! $GITC commit -q -m "加一个 UI 入口（不删东西）" >/dev/null 2>&1; then
+  echo "✗ 自检 5 失败：没有删除 UI 入口，commit-msg 却拦了提交" >&2
+  exit 1
+fi
+printf '\n' > backend/book2text/static/index.html
+git add backend/book2text/static/index.html
+if UIOUT=$($GITC commit -q -m "删一个 UI 入口（没登记）" 2>&1); then
+  echo "✗ 自检 5 失败：删了 UI 入口且正文没写 Removed-UI，提交却成功了" >&2
+  exit 1
+fi
+case "$UIOUT" in
+  *probe-id*) : ;;
+  *) echo "✗ 自检 5 失败：拒绝了，但报错没点名 id probe-id：$UIOUT" >&2; exit 1 ;;
+esac
+if ! $GITC commit -q -m "删一个 UI 入口" -m "Removed-UI: probe-id" >/dev/null 2>&1; then
+  echo "✗ 自检 5 失败：正文登记了 Removed-UI，commit-msg 仍把提交挡了" >&2
+  exit 1
+fi
+echo "✓ 自检 5/5：删 UI 入口未登记 → 拒绝并点名 id；登记后 → 放行"
 
 # ---- 自检 4：pre-push 的 pytest 真的读"那棵树"吗（变异）----
 # 2026-10-29：pytest 一开始读工作区（editable 安装让 STATIC_DIR 指向真实仓库），
@@ -99,17 +129,17 @@ if [ -x "$REPO/.venv/bin/python" ] && [ -f "$REPO/backend/book2text/static/app.j
     SD_RAW=$( cd "$T4" && "$REPO/.venv/bin/python" \
       -c 'from book2text import paths; print(paths.STATIC_DIR)' 2>/dev/null || echo "?" )
     case "$SD_TREE" in
-      "$T4"*) echo "✓ 自检 4/4：带 PYTHONPATH → STATIC_DIR 指在这棵树里" ;;
-      *) echo "✗ 自检 4/4 失败：带 PYTHONPATH 仍指向 $SD_TREE（应在这棵树 $T4 里）" >&2; rm -rf "$T4"; exit 1 ;;
+      "$T4"*) echo "✓ 自检 4/5：带 PYTHONPATH → STATIC_DIR 指在这棵树里" ;;
+      *) echo "✗ 自检 4/5 失败：带 PYTHONPATH 仍指向 $SD_TREE（应在这棵树 $T4 里）" >&2; rm -rf "$T4"; exit 1 ;;
     esac
     case "$SD_RAW" in
-      "$T4"*) echo "✗ 自检 4/4 失败：不带 PYTHONPATH 也指向这棵树——检查已失效（它必须指向真实工作区才说明会咬人）" >&2; rm -rf "$T4"; exit 1 ;;
-      *) echo "✓ 自检 4/4：不带 PYTHONPATH → STATIC_DIR 指到 $SD_RAW（真实工作区）→ 闸会红，检查有效" ;;
+      "$T4"*) echo "✗ 自检 4/5 失败：不带 PYTHONPATH 也指向这棵树——检查已失效（它必须指向真实工作区才说明会咬人）" >&2; rm -rf "$T4"; exit 1 ;;
+      *) echo "✓ 自检 4/5：不带 PYTHONPATH → STATIC_DIR 指到 $SD_RAW（真实工作区）→ 闸会红，检查有效" ;;
     esac
   fi
   rm -rf "$T4"
 else
-  echo "… 自检 4/4 跳过（缺 .venv 或 app.js）"
+  echo "… 自检 4/5 跳过（缺 .venv 或 app.js）"
 fi
 
 echo ""
