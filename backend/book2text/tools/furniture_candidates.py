@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from ..core.project import furniture_candidates as candidates
 from ..core.project import library as library_module
@@ -25,17 +26,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="输出 JSON（默认人读表格）")
     args = parser.parse_args(argv)
 
-    library = library_module.default_library_dir() if args.library is None else args.library
+    library = (
+        library_module.default_library_dir()
+        if args.library is None
+        else Path(args.library)
+    )
     rows = candidates.collect(args.project, library=library)
-    meta = candidates.skipped_pages(args.project, library=library)
+    meta = candidates.band_basis(args.project, library=library)
     if args.json:
         print(json.dumps({"candidates": rows, **meta}, ensure_ascii=False, indent=2))
         return 0
-    print(f"项目 {args.project}：body 页 {meta['pages']}，缺版心跳过 {meta['skipped']}；候选 {len(rows)} 个")
+    print(
+        f"项目 {args.project}：body 页 {meta['pages']}"
+        f"（有版心 {meta['with_margin']} / 默认页边带 {meta['default_band']}）；候选 {len(rows)} 个"
+    )
     for row in rows:
+        note = "（默认页边带）" if row["used_default_band"] else ""
         print(
             f"  [{row['band']}/{row['parity']}] {row['count']} 页 / {row['lines']} 行"
-            f"  → {row['suggested_type']}  置信 {row['confidence']}"
+            f"  → {row['suggested_type']}  置信 {row['confidence']}{note}"
         )
         print(f"      模板：{row['template']}")
         print(f"      样例：{row['sample_text']}")

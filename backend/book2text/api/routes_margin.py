@@ -157,6 +157,11 @@ def fit_all_margin_boxes(
     带 body 时支持只补未拟合的页（``only_missing``）、只做正文页（``body_only``）、
     只做选中页（``pages``）、连手工页一起重生成（``include_custom``）与分批（``limit``）；
     不带 body 与旧行为完全一致。
+
+    **``limit`` 只对 ``only_missing=true`` 是可推进的分批**：这时每一页补完就从"缺框"里
+    消失，``remaining`` 会真的递减。``only_missing=false``（重新生成）时后端每次都会把
+    同一批页当目标，``remaining`` 恒等于 ``total - limit``——**不能拿它驱动循环**，
+    否则永远重做同一批 20 页。要分批重拟合就按区间传 ``pages``（界面就是这么做的）。
     """
     _require_main(request, project_id)
     only_missing = bool(body and body.only_missing)

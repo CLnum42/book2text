@@ -4,7 +4,8 @@
 用户在「页面确认」里看过、勾过，才由 `apply` 改块类型 + `include=0`（可撤销，写 event）。
 
 判据（口径固定，参数可调）：
-1. 只对 `page_type=body` 且**有版心框**的页做；缺版心的页跳过（记 `skipped`）。
+1. 只对 `page_type=body` 做。有版心的页按"版心之外"判；**没有版心的页（新书第一次识别）
+   按页面默认页边带判**（`DEFAULT_BAND_*`），候选上标 `used_default_band`。
 2. 四带 = 版心之外（按**行 bbox 中心**判归属）：top `y<margin.y0` · bottom `y>margin.y1` ·
    left `x<margin.x0` · right `x>margin.x2`；每带每页只取最靠边的 1–2 行。
 3. 按奇偶分组、组内按页号排序。
@@ -45,6 +46,7 @@ class _Item:
     text: str
     center: float
     bbox: tuple[float, float, float, float]
+    used_default_band: bool
 
 
 def _normalize(text: str) -> str:
@@ -81,38 +83,45 @@ def _center(bbox, band: str) -> float:
     return max(bbox[0], bbox[2])
 
 
-#: 版心拟合没把页眉页脚挡在外面的页：退回"页边带"兜底（只认最外侧 12% / 10%）
-EDGE_TOP_MAX = 0.12
-EDGE_BOTTOM_MIN = 0.88
-EDGE_LEFT_MAX = 0.10
-EDGE_RIGHT_MIN = 0.90
+#: 页面**默认页边带**：没有版心的页（新书第一次识别）用它判断页边重复行；
+#: 版心把页眉页脚包进去的页也退回它。**只有这一组阈值**——两条路径必须给同一个答案，
+#: 否则"先有框再重拟"与"从零开始拟"会对同一页算出不同的版心。
+DEFAULT_BAND_TOP = 0.12
+DEFAULT_BAND_BOTTOM = 0.88
+DEFAULT_BAND_LEFT = 0.08
+DEFAULT_BAND_RIGHT = 0.92
+#: 默认带比"版心之外"弱（可能吃到正文边缘）：置信度按这个比例降一档。
+DEFAULT_BAND_CONFIDENCE = 0.8
 
 
-def _band_of(bbox, margin) -> str | None:
-    """版心之外优先；版心把它包进去的页退回页边带兜底。
+def _band_of(bbox, margin) -> tuple[str, bool] | None:
+    """行属于哪条页边带：**版心之外优先**，够不着再按页面默认页边带判。
 
-    为什么需要兜底：真机 b2t_YR5EJ0 有大量页的自动版心把顶边书眉包进了框内
-    （margin y0 低到 0.066，书眉中心 0.075），只按版心判会漏掉这些页 ⇒ 候选凑不齐。
-    兜底只认页面最外侧的窄带，正文块在页面中部，位置口径仍然成立。
+    为什么需要默认带：真机 b2t_YR5EJ0 有大量页的自动版心把顶边书眉包进了框内
+    （margin y0 低到 0.066，书眉中心 0.075），只按版心判会漏掉这些页 ⇒ 候选凑不齐；
+    新书第一次识别更是**一页版心都没有**（2026-11-05：第一次拟出来仍然会包住书眉，
+    用户得点第二次才对）。默认带只认页面最外侧的窄带，正文块在页面中部，位置口径仍然成立。
     """
     cx = (bbox[0] + bbox[2]) / 2
     cy = (bbox[1] + bbox[3]) / 2
-    if cy < margin[1]:
-        return "top"
-    if cy > margin[3]:
-        return "bottom"
-    if cx < margin[0]:
-        return "left"
-    if cx > margin[2]:
-        return "right"
-    if cy < EDGE_TOP_MAX:
-        return "top"
-    if cy > EDGE_BOTTOM_MIN:
-        return "bottom"
-    if cx < EDGE_LEFT_MAX:
-        return "left"
-    if cx > EDGE_RIGHT_MIN:
-        return "right"
+    if margin is not None:
+        if cy < margin[1]:
+            return "top", False
+        if cy > margin[3]:
+            return "bottom", False
+        if cx < margin[0]:
+            return "left", False
+        if cx > margin[2]:
+            return "right", False
+    # 没有版心（新书第一次识别）或版心把页边包进来了：按页面默认页边带判
+    if cy < DEFAULT_BAND_TOP:
+        return "top", True
+    if cy > DEFAULT_BAND_BOTTOM:
+        return "bottom", True
+    if cx < DEFAULT_BAND_LEFT:
+        return "left", True
+    if cx > DEFAULT_BAND_RIGHT:
+        return "right", True
     return None
 
 
@@ -174,8 +183,12 @@ def collect(project_id: str, *, library=None) -> list[dict]:
     """现算候选清单（**只读、不落库**）。
 
     返回 `[{id, band, parity, template, pages, count, lines, block_ids,
-    sample_text, suggested_type, confidence}]`；带 / 奇偶 / 模板 / 命中页都在里面。
-    `skipped`（缺版心的页数）用 `skipped_pages()` 单独取。
+    sample_text, suggested_type, confidence, used_default_band}]`；带 / 奇偶 / 模板 / 命中页
+    都在里面。`used_default_band=True` 表示这条候选至少有一页是按**页面默认页边带**判的
+    （新书还没有版心 / 版心把页眉包了进去），置信度已相应降一档。
+
+    页边来源：有版心的页优先按"版心之外"判；没版心或版心把它包进来时退回
+    `DEFAULT_BAND_*`（同一组阈值，两条路径必须给同一个答案）。
 
     内部版本 `_collect_detailed` 还会带一份 `_items`（命中的行框），
     给 `page_exclusions()` 生成"拟合前剔掉"的矩形用；对外这一份不暴露。
@@ -189,9 +202,8 @@ def collect(project_id: str, *, library=None) -> list[dict]:
 def _collect_detailed(project_id: str, *, library=None) -> list[dict]:
     """`collect` 的内部版本：候选 dict 里多一个 `_items`（命中的行框）。"""
     pages = [p for p in library_module.list_pages(project_id, library=library) if p.page_type == "body"]
-    usable = [p for p in pages if p.margin_box]
-    skipped = len(pages) - len(usable)
-    page_by_no = {page.page_no: page for page in usable}
+    # 2026-11-05：**没有版心的页也参与**（新书第一次「全局识别」就靠默认页边带剔页眉）。
+    page_by_no = {page.page_no: page for page in pages}
     wanted = set(page_by_no)
     block_by_id = {block.block_id: block for block in blocks_module.list_blocks(project_id, library=library)}
     # 行 → (带, 奇偶)
@@ -201,11 +213,16 @@ def _collect_detailed(project_id: str, *, library=None) -> list[dict]:
         if block is None or block.page_no not in wanted or not line.bbox:
             continue
         page = page_by_no[block.page_no]
-        margin = tuple(float(value) for value in page.margin_box)
+        margin = (
+            tuple(float(value) for value in page.margin_box)
+            if page.margin_box
+            else None
+        )
         bbox = tuple(float(value) for value in line.bbox)
-        band = _band_of(bbox, margin)
-        if band is None:
+        resolved = _band_of(bbox, margin)
+        if resolved is None:
             continue
+        band, used_default_band = resolved
         text = _normalize(line.text)
         if not text:
             continue
@@ -221,6 +238,7 @@ def _collect_detailed(project_id: str, *, library=None) -> list[dict]:
                 text,
                 _center(bbox, band),
                 (bbox[0], bbox[1], bbox[2], bbox[3]),
+                used_default_band,
             )
         )
 
@@ -271,6 +289,11 @@ def _collect_detailed(project_id: str, *, library=None) -> list[dict]:
                 proposed = PROPOSED[band]
                 if band == "bottom" and all(text.isdecimal() for text in texts):
                     proposed = "page_number"
+                used_default_band = any(item.used_default_band for item in run)
+                confidence = _confidence(pages_hit)
+                if used_default_band:
+                    # 默认页边带比"版心之外"弱（可能吃到正文边缘）：置信度降一档
+                    confidence = round(confidence * DEFAULT_BAND_CONFIDENCE, 3)
                 candidates.append(
                     {
                         "id": f"{band}:{parity}:" + hashlib.sha1(
@@ -286,7 +309,8 @@ def _collect_detailed(project_id: str, *, library=None) -> list[dict]:
                         "sample_text": sorted(texts)[0],
                         "samples": sorted(texts)[:3],
                         "suggested_type": proposed,
-                        "confidence": _confidence(pages_hit),
+                        "confidence": confidence,
+                        "used_default_band": used_default_band,
                         # 私有字段：拟合前的排除矩形用它，`collect()` 会滤掉
                         "_items": [(item.page_no, item.bbox) for item in run],
                     }
@@ -295,11 +319,19 @@ def _collect_detailed(project_id: str, *, library=None) -> list[dict]:
     return candidates
 
 
-def skipped_pages(project_id: str, *, library=None) -> dict:
-    """体检口径：`{pages, skipped}`——body 页里有版心的页 / 缺版心被跳过的页。"""
+def band_basis(project_id: str, *, library=None) -> dict:
+    """体检口径：body 页用哪条路判页边带。
+
+    `{pages, with_margin, default_band}`：`pages` 是 body 页数，`with_margin` 是有版心、
+    按"版心之外"判的页数，`default_band` 是只能靠默认页边带的页数（新书第一次识别）。
+    """
     pages = [p for p in library_module.list_pages(project_id, library=library) if p.page_type == "body"]
-    usable = [p for p in pages if p.margin_box]
-    return {"pages": len(usable), "skipped": len(pages) - len(usable)}
+    with_margin = sum(1 for page in pages if page.margin_box)
+    return {
+        "pages": len(pages),
+        "with_margin": with_margin,
+        "default_band": len(pages) - with_margin,
+    }
 
 
 #: 排除矩形四周再放宽一点：同一书眉被 OCR 拆成两行时，贴着外框的那一行中心可能刚好在框外。
