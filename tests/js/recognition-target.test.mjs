@@ -185,7 +185,10 @@ function appDispatchCtx({ body, selection, statusOf, skipChecked = true }) {
     marginBodyPages: () => body,
     selectionPages: () => selection,
     recognitionOf: statusOf,
-    humanTouchedPages: async () => [],
+    // Temp-Relax（2026-11-05，件③ 第 1 笔）：`human-touched` 的返回形状正在从数组改成
+    // 带统计的对象。桩同时满足新旧两种形状——旧代码读 `.length` / 迭代数组，新代码读
+    // `.touched` / `.ackedLines` / `.pagesNeedingAux`，两边都绿。产品笔落地后再收紧成纯对象。
+    humanTouchedPages: async () => Object.assign([], { touched: [], ackedLines: 0, pagesNeedingAux: 0 }),
     warnUnconfirmed: () => true,
     confirmAction: async () => null,
     applyRecognizedPages() {},
