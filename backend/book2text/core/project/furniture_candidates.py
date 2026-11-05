@@ -44,6 +44,7 @@ class _Item:
     line_id: str
     text: str
     center: float
+    bbox: tuple[float, float, float, float]
 
 
 def _normalize(text: str) -> str:
@@ -175,7 +176,18 @@ def collect(project_id: str, *, library=None) -> list[dict]:
     返回 `[{id, band, parity, template, pages, count, lines, block_ids,
     sample_text, suggested_type, confidence}]`；带 / 奇偶 / 模板 / 命中页都在里面。
     `skipped`（缺版心的页数）用 `skipped_pages()` 单独取。
+
+    内部版本 `_collect_detailed` 还会带一份 `_items`（命中的行框），
+    给 `page_exclusions()` 生成"拟合前剔掉"的矩形用；对外这一份不暴露。
     """
+    return [
+        {key: value for key, value in candidate.items() if not key.startswith("_")}
+        for candidate in _collect_detailed(project_id, library=library)
+    ]
+
+
+def _collect_detailed(project_id: str, *, library=None) -> list[dict]:
+    """`collect` 的内部版本：候选 dict 里多一个 `_items`（命中的行框）。"""
     pages = [p for p in library_module.list_pages(project_id, library=library) if p.page_type == "body"]
     usable = [p for p in pages if p.margin_box]
     skipped = len(pages) - len(usable)
@@ -202,7 +214,14 @@ def collect(project_id: str, *, library=None) -> list[dict]:
             continue
         parity = "even" if page.page_no % 2 == 0 else "odd"
         groups.setdefault((band, parity), []).append(
-            _Item(block.page_no, block.block_id, line.line_id, text, _center(bbox, band))
+            _Item(
+                block.page_no,
+                block.block_id,
+                line.line_id,
+                text,
+                _center(bbox, band),
+                (bbox[0], bbox[1], bbox[2], bbox[3]),
+            )
         )
 
     candidates: list[dict] = []
@@ -268,6 +287,8 @@ def collect(project_id: str, *, library=None) -> list[dict]:
                         "samples": sorted(texts)[:3],
                         "suggested_type": proposed,
                         "confidence": _confidence(pages_hit),
+                        # 私有字段：拟合前的排除矩形用它，`collect()` 会滤掉
+                        "_items": [(item.page_no, item.bbox) for item in run],
                     }
                 )
     candidates.sort(key=lambda c: (c["band"], c["parity"], -c["count"]))
@@ -279,4 +300,64 @@ def skipped_pages(project_id: str, *, library=None) -> dict:
     pages = [p for p in library_module.list_pages(project_id, library=library) if p.page_type == "body"]
     usable = [p for p in pages if p.margin_box]
     return {"pages": len(usable), "skipped": len(pages) - len(usable)}
+
+
+#: 排除矩形四周再放宽一点：同一书眉被 OCR 拆成两行时，贴着外框的那一行中心可能刚好在框外。
+EXCLUDE_PAD = 0.002
+
+
+def page_exclusions(project_id: str, *, library=None) -> dict[int, list[tuple[float, float, float, float]]]:
+    """每页的**页边重复排除矩形**（只读、现算）：拟合前把中心落在这些矩形里的行剔掉。
+
+    为什么用它：2026-11-05 真机 `b2t_YR5EJ0` p98 的版心 y0=0.0631，把页眉
+    （y0=0.0635、宽 0.402 < AUTO_LONG_LINE）包了进去。页眉在长行起步里**本来没参与**，
+    是后面"够得着就并进来"那一轮把它吸进来的。把这几行剔掉，拟合就看不到它们了。
+
+    判据与 `collect()` **同一份**（同样的带 / 模板 / 窗口 / 位置稳定），所以"候选清单里
+    有的东西"就是"拟合时会剔的东西"，不会出现用户看不到的静默排除。
+
+    返回 `{页号: [矩形, …]}`；没有候选的页（新书 / 还没版心）**不在字典里**，
+    那些页的拟合行为与现在完全一致。矩形已合并重叠项，并四周放宽 `EXCLUDE_PAD`。
+    """
+    rects: dict[int, list[tuple[float, float, float, float]]] = {}
+    for candidate in _collect_detailed(project_id, library=library):
+        for page_no, bbox in candidate.get("_items", []):
+            rects.setdefault(page_no, []).append(_pad_rect(bbox))
+    return {page_no: _merge_rects(items) for page_no, items in rects.items()}
+
+
+def _pad_rect(bbox) -> tuple[float, float, float, float]:
+    return (
+        max(0.0, float(bbox[0]) - EXCLUDE_PAD),
+        max(0.0, float(bbox[1]) - EXCLUDE_PAD),
+        min(1.0, float(bbox[2]) + EXCLUDE_PAD),
+        min(1.0, float(bbox[3]) + EXCLUDE_PAD),
+    )
+
+
+def _merge_rects(rects: list[tuple[float, float, float, float]]) -> list[tuple[float, float, float, float]]:
+    """合并重叠 / 相接的矩形（每页通常 1–4 个，O(n²) 足够）。"""
+    merged: list[tuple[float, float, float, float]] = []
+    for rect in rects:
+        current = rect
+        rest: list[tuple[float, float, float, float]] = []
+        for other in merged:
+            if (
+                current[0] <= other[2]
+                and other[0] <= current[2]
+                and current[1] <= other[3]
+                and other[1] <= current[3]
+            ):
+                current = (
+                    min(current[0], other[0]),
+                    min(current[1], other[1]),
+                    max(current[2], other[2]),
+                    max(current[3], other[3]),
+                )
+            else:
+                rest.append(other)
+        rest.append(current)
+        merged = rest
+    return merged
+
 

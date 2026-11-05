@@ -41,6 +41,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import statistics
 from collections.abc import Mapping, Sequence
@@ -52,7 +53,10 @@ from ..storage import db as db_module
 from ..storage.ulid import new_ulid
 from . import blocks as blocks_module
 from ..export import header_cleanup
+from . import furniture_candidates
 from . import library as library_module
+
+_LOG = logging.getLogger(__name__)
 
 # 页级四态（任务 62）：auto 是默认，每页用自己的检测行拟合；inherit 是显式沿用兜底
 MODE_AUTO = "auto"
@@ -691,6 +695,17 @@ def suggest_margin_box(
     for page_no, boxes in ocr_page_boxes.items():
         page_boxes.setdefault(page_no, boxes)
 
+    # 2026-11-05：跨页推算与每页拟合**同一套剔除**——页边重复行（书眉 / 页脚 / 页码）
+    # 在两条输入路径（检测行 / OCR 行）合并之后统一剔，避免同一行从另一个入口溜进来。
+    exclusions = _page_exclusions_for(project_id, library=target_library)
+    if exclusions:
+        page_boxes = {
+            page_no: strip_furniture_lines(
+                boxes, exclusions.get(page_no), page_no=page_no
+            )
+            for page_no, boxes in page_boxes.items()
+        }
+
     return suggest_from_page_boxes(page_boxes)
 
 
@@ -986,17 +1001,53 @@ class FittedMargin:
         }
 
 
-def fit_page_margin_box(lines: Sequence[Sequence[float]]) -> FittedMargin:
+#: 剔除页边重复行之后，仍允许落在框外的正文行数下限（拟合本来就会留一两行）；
+#: 超过就说明"剔完拟出来的框盖不住正文"，改用"全行拟合 + 切掉页边带"。
+FURNITURE_COVERAGE_SLACK = 2
+#: 从框上切掉页边带时留的余量（归一化）：别让书眉行框外沿正好压在框线上。
+FURNITURE_CUT_PAD = 0.002
+
+
+def fit_page_margin_box(
+    lines: Sequence[Sequence[float]],
+    *,
+    rects: Sequence[Sequence[float]] | None = None,
+) -> FittedMargin:
     """一页的版心：先拟合；拟合不出来就退本页所有检测行的包围盒。
 
     **绝不回退全局版心**（任务 33）：全局框对这本书根本不成立，退过去就等于
     在"按版心判定"打开时把正文从两头切掉。本页连一条检测行都没有时标"未定"，
     不参与版心判定（导出预检会报"版心未定 N 页"）。
+
+    ``rects``（可选）= 这一页的**页边重复排除矩形**（书眉 / 页脚 / 页码）：
+    先剔掉再拟合（2026-11-05 真机 p98：页眉宽 0.402 不参与长行起步，却被后面
+    "够得着就并进来"那一轮吸进版心）。剔完还要**验覆盖**：真机 p221 是表格页，
+    剔掉书眉后长行起点全落在下半页，拟出来的框从 y0=0.53 才开始，把整张表扔在框外。
+    那种情况退回"用全部行拟合，再把页边带从框上切掉"——框仍然盖住正文，书眉在框外。
     """
     parsed = [box for box in (_parse_box(raw) for raw in lines) if box is not None]
+    result = _fit_parsed_lines(parsed)
+    if not rects or not parsed or result.undetermined:
+        return result
+    cleaned = strip_furniture_lines(parsed, rects)
+    if len(cleaned) == len(parsed):
+        return result                     # 这一页没有页边重复行（或护栏放弃剔除）
+    tight = _fit_parsed_lines(cleaned)
+    if not tight.undetermined and _covers_body_lines(cleaned, tight.box):
+        return tight
+    if result.box is not None:
+        cut = _cut_furniture_rects(result.box, rects)
+        if cut is not None and _covers_body_lines(cleaned, cut):
+            return FittedMargin(cut, result.method, result.lines, result.long_lines)
+    # 切不出来（矩形横跨整个框 / 切完盖不住正文）：宁可窄一点的 tight，也不用旧框
+    return tight
+
+
+def _fit_parsed_lines(parsed: Sequence[BBox]) -> FittedMargin:
+    """`fit_page_margin_box` 的拟合本体（输入已经是解析好的行框）。"""
     bodies = [box for box in parsed if _looks_like_text_line(box)]
     long_lines = [box for box in bodies if box[2] - box[0] > AUTO_LONG_LINE]
-    fitted = fit_box_from_lines(lines)
+    fitted = fit_box_from_lines(parsed)
     if fitted is not None:
         return FittedMargin(fitted, FIT_METHOD_FIT, len(parsed), len(long_lines))
     usable = [box for box in parsed if _is_line_like(box)]
@@ -1018,6 +1069,68 @@ def fit_page_margin_box(lines: Sequence[Sequence[float]]) -> FittedMargin:
     except (ValueError, MarginBoxError):
         return FittedMargin(None, FIT_METHOD_UNDETERMINED, len(parsed), len(long_lines))
     return FittedMargin(box, FIT_METHOD_BBOX, len(parsed), len(long_lines))
+
+
+def _covers_body_lines(parsed: Sequence[BBox], box: Sequence[float]) -> bool:
+    """剔完页边带之后，拟出来的框还盖不盖得住正文行（判据：多数文字行的中心在框内）。
+
+    为什么不要求"全部在框内"：拟合本身就会把个别竖排旁批 / 图注留在框外，那种页
+    不该因此退回旧框。允许 ``FURNITURE_COVERAGE_SLACK`` 行（且不少于 2%）。
+    """
+    candidates = [line for line in parsed if _looks_like_text_line(line)]
+    if not candidates:
+        return True
+    outside = 0
+    for line in candidates:
+        cx = (line[0] + line[2]) / 2
+        cy = (line[1] + line[3]) / 2
+        if not (box[0] <= cx <= box[2] and box[1] <= cy <= box[3]):
+            outside += 1
+    limit = max(FURNITURE_COVERAGE_SLACK, int(len(candidates) * 0.02))
+    return outside <= limit
+
+
+def _cut_furniture_rects(
+    box: Sequence[float], rects: Sequence[Sequence[float]]
+) -> BBox | None:
+    """把页边重复矩形从框上**切掉**：沿"矩形中心离哪条框边最近"的那个方向内收。
+
+    只用来兜底（见 `fit_page_margin_box`）：切完必须让每个矩形的中心都在框外，
+    否则返回 None（宁可不用这个框，也不要留一半页眉在框里）。
+    """
+    x0, y0, x1, y1 = (float(value) for value in box)
+    for rect in rects:
+        cx = (rect[0] + rect[2]) / 2
+        cy = (rect[1] + rect[3]) / 2
+        if not (x0 <= cx <= x1 and y0 <= cy <= y1):
+            continue                       # 这个矩形已经在框外
+        width = max(x1 - x0, 1e-9)
+        height = max(y1 - y0, 1e-9)
+        options = [
+            ((cy - y0) / height, "top", min(1.0, rect[3] + FURNITURE_CUT_PAD)),
+            ((y1 - cy) / height, "bottom", max(0.0, rect[1] - FURNITURE_CUT_PAD)),
+            ((cx - x0) / width, "left", min(1.0, rect[2] + FURNITURE_CUT_PAD)),
+            ((x1 - cx) / width, "right", max(0.0, rect[0] - FURNITURE_CUT_PAD)),
+        ]
+        _, edge, value = min(options, key=lambda item: item[0])
+        if edge == "top":
+            y0 = max(y0, value)
+        elif edge == "bottom":
+            y1 = min(y1, value)
+        elif edge == "left":
+            x0 = max(x0, value)
+        else:
+            x1 = min(x1, value)
+    try:
+        cut = normalize_margin_box((x0, y0, x1, y1))
+    except (ValueError, MarginBoxError):
+        return None
+    for rect in rects:
+        cx = (rect[0] + rect[2]) / 2
+        cy = (rect[1] + rect[3]) / 2
+        if cut[0] <= cx <= cut[2] and cut[1] <= cy <= cut[3]:
+            return None                    # 还有页边带留在框里，不用这个框
+    return cut
 
 
 def _latest_layout_boxes(directory: Path, page_id: str) -> list[BBox]:
@@ -1097,6 +1210,9 @@ def _page_fit_lines(
 
     返回 ``(行框, 来源, 有没有文字, 有没有识别过)``。
 
+    这里给的是**原始行框**（两条路径：OCR 行 / 检测行）；页边重复行（书眉 / 页脚 /
+    页码）在 `fit_page_margin_box` 里剔——那里才知道"剔完的框还盖不盖得住正文"。
+
     顺序在 2026-10-27 调换（任务 56）：新版工作流是「识别 → 版心」，识别行一定先有；
     识别行的块类型已经分好（书眉 / 页脚 / 页码整块跳过），比裸检测行更适合拟合。
     检测行降级成兜底：只识别过没检测过的老数据、或只跑过检测的页用它。
@@ -1110,6 +1226,68 @@ def _page_fit_lines(
     if layout_boxes:
         return layout_boxes, "layout", True, True
     return [], "none", has_text, recognized
+
+
+# ---------------------------------------------------------------- 页边重复行的剔除（2026-11-05）
+#: 一页上被剔掉的行占全部行的比例上限。超过就认为"候选把正文吃进去了"：
+#: 整页放弃剔除（宁可回到旧行为，也不能把正文行剔光、把版心缩成一条）。
+FURNITURE_EXCLUDE_MAX_SHARE = 0.30
+
+
+def strip_furniture_lines(
+    boxes: Sequence[Sequence[float]],
+    rects: Sequence[Sequence[float]] | None,
+    *,
+    page_no: int | None = None,
+) -> list[BBox]:
+    """剔掉**行中心落在页边重复矩形里**的行（纯函数，不读写数据库）。
+
+    只剔"候选清单已经算出来的重复页边行"（书眉 / 页脚 / 页码）；**不按短行 / 长行剔**——
+    按长短剔会把诗行、章节末行一起吃掉（这是 `furniture_candidates` 里那条防误判的同一理由）。
+    没有候选的页（`rects` 为空）原样返回，行为与改动前一致。
+
+    护栏：一页被剔的行超过 ``FURNITURE_EXCLUDE_MAX_SHARE`` ⇒ 整页放弃剔除并记一条日志
+    （说明候选把正文吃进去了，宁可保留那句错误的页眉，也不能把正文剔掉）。
+    """
+    if not rects or not boxes:
+        return list(boxes)
+    kept: list[BBox] = []
+    for raw in boxes:
+        box = _parse_box(raw)
+        if box is None:
+            continue
+        cx = (box[0] + box[2]) / 2
+        cy = (box[1] + box[3]) / 2
+        if any(
+            rect[0] <= cx <= rect[2] and rect[1] <= cy <= rect[3] for rect in rects
+        ):
+            continue
+        kept.append(box)
+    removed = len(boxes) - len(kept)
+    if removed and removed > len(boxes) * FURNITURE_EXCLUDE_MAX_SHARE:
+        _LOG.info(
+            "版心拟合：第 %s 页 %d 行里有 %d 行落在页边重复带内（>%.0f%%），放弃剔除",
+            page_no if page_no is not None else "?",
+            len(boxes),
+            removed,
+            FURNITURE_EXCLUDE_MAX_SHARE * 100,
+        )
+        return list(boxes)
+    return kept
+
+
+def _page_exclusions_for(project_id: str, *, library: Path | None) -> dict[int, list[BBox]]:
+    """现算每页的页边重复排除矩形；算不出来就返回空字典（= 与改动前行为一致）。
+
+    算不出来（候选模块抛错 / 老库结构不齐）不能让版心生成失败：版心是后续判定的输入，
+    为了"更准的顶边"把整步打死是不划算的。降级要留痕，不静默。
+    """
+    try:
+        return furniture_candidates.page_exclusions(project_id, library=library)
+    except Exception as exc:  # noqa: BLE001 - 见上：降级 + 日志，不吞成"成功"
+        _LOG.warning("页边重复候选算不出来，这一轮不剔除页眉页脚：%s", exc)
+        return {}
+
 
 
 def _record_custom_override(conn, page, box, *, now: str) -> None:
@@ -1158,6 +1336,7 @@ def fit_page_margin(
     library: Path | None = None,
     only_auto: bool = True,
     allow_custom: bool = False,
+    exclusions: Mapping[int, Sequence[Sequence[float]]] | None = None,
 ) -> dict[str, object]:
     """用这一页的**行框**拟合版心，写回 `page.margin_box` + `margin_box_method`。
 
@@ -1171,6 +1350,9 @@ def fit_page_margin(
     - ``allow_custom=True``（2026-11-05，界面勾了「包括手工调整的页」）：**只改框**，
       `margin_box_mode` 仍是 `custom`——用户手调过的页在自动生成之后不能被当成
       "自动拟合"的页（否则下次看会以为是机器定的）。覆盖前后写一条 event 留痕。
+    - ``exclusions``：每页的页边重复排除矩形（`furniture_candidates.page_exclusions`）。
+      不传就现算**一次**（单页调用不划算，但保证行为与批量拟合一致）；批量调用方
+      必须传，否则每页都重算一遍候选。
     """
     target_library = library if library is not None else library_module.default_library_dir()
     directory = library_module.require_project_dir(project_id, library=target_library)
@@ -1185,10 +1367,14 @@ def fit_page_margin(
     override_custom = allow_custom and page.margin_box_mode == MODE_CUSTOM
     if only_auto and page.margin_box_mode != MODE_AUTO and not override_custom:
         return {"page_no": page_no, "updated": False, "reason": "not_auto"}
+    if exclusions is None:
+        exclusions = _page_exclusions_for(project_id, library=target_library)
     boxes, source, has_text, recognized = _page_fit_lines(
         directory, project_id, page, library=target_library
     )
-    fitted = fit_page_margin_box(boxes)
+    # 页边重复行（书眉 / 页脚 / 页码）在这一步剔：只有这里能同时看到"原始行"
+    # 与"剔完还盖不盖得住正文"，见 fit_page_margin_box 的注释。
+    fitted = fit_page_margin_box(boxes, rects=(exclusions or {}).get(page.page_no))
     method = None if fitted.undetermined else fitted.method
     # 「无文字」不等于「还没识别」（刀 1）：识别跑过、结果整页没有字（插图 / 空白）才算
     # 无文字，跳过；从没识别过的页是未定，不能拿"无文字"把它放过去。
@@ -1285,6 +1471,9 @@ def fit_all_pages(
         targets.append(page)
     batch = targets[:limit] if limit is not None else targets
     remaining = len(targets) - len(batch)
+    # 页边重复（书眉 / 页脚 / 页码）的排除矩形：**一次算好、逐页复用**。
+    # 放在循环外是因为候选要扫全书的块与行；每页重算一次会让 662 页的书卡住。
+    exclusions = _page_exclusions_for(project_id, library=target_library) if batch else {}
     updated = fitted = fallback = undetermined = no_text = 0
     for page in batch:
         if page.margin_box_mode == MODE_INHERIT:
@@ -1299,6 +1488,7 @@ def fit_all_pages(
             page.page_no,
             library=target_library,
             allow_custom=include_custom,
+            exclusions=exclusions,
         )
         if result.get("updated"):
             updated += 1

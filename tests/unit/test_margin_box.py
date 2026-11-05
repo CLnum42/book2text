@@ -209,3 +209,60 @@ def test_block_inside_margin_uses_page_box_and_never_global() -> None:
     none_page = _page(3, mode="none")
     assert margin_box.block_inside_margin(project, none_page, [0.0, 0.0, 0.05, 0.05]) is True
     assert library_module.margin_judgement_enabled(project) is True
+
+
+# ---------------------------------------------------------------- 页边重复行不进拟合（2026-11-05）
+
+
+def _header_page_lines(header=(0.20, 0.052, 0.62, 0.072)):
+    """一页正文 + 一条顶端书眉（书眉宽 < 45%，本来不该参与长行起步）。"""
+    body = [(0.10, 0.12 + index * 0.032, 0.90, 0.14 + index * 0.032) for index in range(8)]
+    return [header, *body], [(header[0] - 0.002, header[1] - 0.002, header[2] + 0.002, header[3] + 0.002)]
+
+
+def test_furniture_line_is_kept_out_of_the_fitted_box() -> None:
+    """真机 p98：页眉被"够得着就并进来"吸进版心 ⇒ 给了排除矩形后 y0 必须是正文第一行。"""
+    lines, rects = _header_page_lines()
+    plain = margin_box.fit_page_margin_box(lines)
+    assert plain.box is not None
+    assert plain.box[1] < 0.09, "构造失败：没有矩形时页眉本来就被吸进来了"
+
+    fitted = margin_box.fit_page_margin_box(lines, rects=rects)
+    assert fitted.box is not None
+    assert fitted.box[1] >= 0.115, f"页眉仍被并进版心：{fitted.box}"
+    assert fitted.box[1] <= 0.125, f"版心被推得太低（正文第一行在 0.12）：{fitted.box}"
+
+
+def test_furniture_removal_falls_back_when_the_box_stops_covering_the_body() -> None:
+    """真机 p221（表格页）：剔掉书眉后长行起点全在下半页，框从 y0=0.53 才开始。
+
+    判据：退回"全行拟合 + 切掉页边带"后，正文行（含表格里那些短行）仍在框内，书眉在框外。
+    """
+    header = (0.39, 0.063, 0.88, 0.087)
+    table = [
+        (0.15, 0.11 + index * 0.025, 0.40, 0.13 + index * 0.025) for index in range(10)
+    ] + [
+        (0.52, 0.11 + index * 0.025, 0.87, 0.13 + index * 0.025) for index in range(10)
+    ]
+    body = [(0.10, 0.53 + index * 0.035, 0.90, 0.55 + index * 0.035) for index in range(8)]
+    rects = [(header[0] - 0.002, header[1] - 0.002, header[2] + 0.002, header[3] + 0.002)]
+    fitted = margin_box.fit_page_margin_box([header, *table, *body], rects=rects)
+    assert fitted.box is not None
+    # 书眉中心必须在框外
+    cx = (header[0] + header[2]) / 2
+    cy = (header[1] + header[3]) / 2
+    assert not (fitted.box[0] <= cx <= fitted.box[2] and fitted.box[1] <= cy <= fitted.box[3])
+    # 表格与正文都要留在框内（否则就是"剔掉页眉、顺手扔掉半页正文"）
+    for box in table + body:
+        assert fitted.box[0] - 1e-9 <= (box[0] + box[2]) / 2 <= fitted.box[2] + 1e-9
+        assert fitted.box[1] - 1e-9 <= (box[1] + box[3]) / 2 <= fitted.box[3] + 1e-9
+
+
+def test_furniture_guard_skips_pages_where_the_candidates_eat_the_body() -> None:
+    """护栏：一页上被剔的行 > 30% ⇒ 放弃剔除（候选把正文吃进去了）。"""
+    lines, rects = _header_page_lines()
+    # 把矩形放大到盖住大半页行：正常页面不该出现，出现时必须放弃剔除
+    greedy = [(0.0, 0.0, 1.0, 0.5)]
+    fitted = margin_box.fit_page_margin_box(lines, rects=greedy)
+    plain = margin_box.fit_page_margin_box(lines)
+    assert fitted.box == plain.box, "护栏没生效：把正文行一起剔掉了"
