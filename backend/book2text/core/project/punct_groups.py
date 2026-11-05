@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import difflib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,29 +61,82 @@ def punct_class(char: str) -> str:
     return PUNCT_CLASSES.get(char, "其他")
 
 
-def _is_english_pattern(pairs: list[tuple[str, str]]) -> bool:
-    """片段里是不是**全是 ASCII**（英文页的引号 / 句点 / 撇号这类）。"""
-    chars = [c for a, b in pairs for c in (a + b) if c not in "␣∅"]
-    return bool(chars) and all(ord(c) < 128 for c in chars)
+def _is_cjk(char: str) -> bool:
+    """汉字 / 中文标点都算"这一行是中文"的证据（`。`、`，`、`「` 不会出自英文页）。"""
+    return (
+        "\u4e00" <= char <= "\u9fff"
+        or "\u3000" <= char <= "\u303f"
+        or "\uff00" <= char <= "\uffef"
+    )
+
+
+def _is_english_pattern(pairs: list[tuple[str, str]], text: str = "") -> bool:
+    """这一行是不是按**英文**归并（`'→∅` / `'→"` / `'→␣` 合成一组）。
+
+    两个坑，都踩过：
+
+    - 排除空格时**必须排除真正的空格（U+0020）**。原来写的是 `c not in "␣∅"`，
+      而 `␣` 是 U+2423（可见方框记号），不是空格本身——于是"只差一个空格"的行
+      （片段 `("", " ")`）里那个 U+0020 没被排除，被当成实义 ASCII 字符，
+      中文行被判成英文，最大的一组顶着 `[英] 无→空格`（102 行全是中文）。
+    - 片段里**没有实义字符**时（纯空格差异），只能看整行：中文行不是英文，
+      英文行仍是英文。只看片段永远判不出这一种。
+    """
+    chars = [c for a, b in pairs for c in (a + b) if not c.isspace() and c not in "␣∅"]
+    if text and any(_is_cjk(c) for c in text):
+        return False
+    if not chars:
+        return bool(text)
+    return all(ord(c) < 128 for c in chars)
 
 
 def _dominant(pairs: list[tuple[str, str]]) -> tuple[str, str]:
-    """一行里"最主要的那个改动"：非空格优先，其次片段更长。"""
+    """一行里"最主要的那个改动"：非空白优先，其次片段更长。
+
+    空白判断用 `str.strip()`，不写字面量 `" "`：原来只认 U+0020，
+    全角空格 / 制表符会被当成"实义字符"，于是纯空格式改动抢到了"主片段"的位置。
+    """
 
     def weight(pair: tuple[str, str]) -> tuple[int, int]:
         a, b = pair
-        non_empty = (a not in ("", " ")) or (b not in ("", " "))
+        non_empty = bool(a.strip() or b.strip())
         return (1 if non_empty else 0, max(len(a), len(b)))
 
     return sorted(pairs, key=weight, reverse=True)[0]
 
 
-def _group_key(pairs: list[tuple[str, str]]) -> str:
+def _group_key(pairs: list[tuple[str, str]], text: str = "") -> str:
     """分组键：中文 = 精确片段，英文 = 主片段的标点类别。"""
-    if _is_english_pattern(pairs):
+    if _is_english_pattern(pairs, text):
         a, b = _dominant(pairs)
         return f"[英] {punct_class(a[:1] or EMPTY_MARK)}→{punct_class(b[:1] or EMPTY_MARK)}"
     return pattern_key(pairs)
+
+
+IMPACT_FILL = "补齐"
+IMPACT_RECASE = "换写法"
+IMPACT_DROP = "删字"
+
+#: 「全部采用候选」按下去的后果，显示在每组旁边（用户不必从箭头里自己读出来）。
+IMPACT_NOTES = {
+    IMPACT_FILL: "采用候选 = 把原文缺的字符补上（多半是引擎吞了引号 / 破折号 / 空格）",
+    IMPACT_RECASE: "采用候选 = 换成第二引擎的写法（两边都有字，改的是标点本身）",
+    IMPACT_DROP: "采用候选 = 删掉原文里的字符，按下去之前先逐条看一眼",
+}
+
+
+def _impact(pairs: list[tuple[str, str]]) -> str:
+    """这一组「全部采用候选」的后果：补齐 / 换写法 / 删字。
+
+    判据只看**有没有删除**：只要有一处"原文有、候选没有"，采用就会让原文少字符，
+    一律按 `删字` 报——哪怕同一组里还有补齐，危险的是那个方向（`、→∅` 84 行就是这样，
+    按一下删掉 84 个顿号）。
+    """
+    if any(a and not b for a, b in pairs):
+        return IMPACT_DROP
+    if all(a for a, b in pairs):
+        return IMPACT_RECASE
+    return IMPACT_FILL
 
 
 SAMPLE_LIMIT = 5
@@ -99,6 +153,7 @@ class PunctLine:
     ack: str | None
     key: str = ""
     pattern: str = ""
+    impact: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -150,11 +205,17 @@ def _hint(key: str, items: list[PunctLine]) -> str:
     return ""
 
 
+#: 模式键里要写成 `␣` 的字符：**所有看不见的空白**（不只是 U+0020）。
+#: 只换 U+0020 和全角空格时，制表符 / NBSP / 零宽字符会原样进键——前端看不见，
+#: 同一个"差一个空白"的模式还会裂成两种（一个带真空白、一个带 `␣`）。
+_INVISIBLE = re.compile("[ \t\u00a0\u3000\u200b\u200c\u200d\ufeff]")
+
+
 def _raw(text: str) -> str:
-    """模式键里的原文：空格写成 `␣`，空串写成 `∅`（不然前端根本看不见/传不了）。"""
+    """模式键里的原文：空白写成 `␣`，空串写成 `∅`（不然前端根本看不见/传不了）。"""
     if not text:
         return EMPTY_MARK
-    return text.replace(" ", "␣").replace("\u3000", "␣")
+    return _INVISIBLE.sub("␣", text)
 
 
 def _collect_lines(
@@ -194,7 +255,7 @@ def _collect_lines(
             if record is None or record.aux_text is None:
                 continue
             pairs = fragments(mark.current, record.aux_text)
-            key = _group_key(pairs)
+            key = _group_key(pairs, mark.current)
             collected.append(
                 (
                     PunctLine(
@@ -207,6 +268,7 @@ def _collect_lines(
                         ack=mark.ack,
                         key=key,
                         pattern=key.replace("|", " "),
+                        impact=_impact(pairs),
                     ),
                     key,
                     key.replace("|", " "),
@@ -235,11 +297,15 @@ def collect(
         adopted = sum(1 for item in items if item.ack == "adopted")
         kept = sum(1 for item in items if item.ack == "kept")
         undecided = len(items) - adopted - kept
+        impact = items[0].impact
         payload.append(
             {
                 "key": key,
                 "pattern": key.replace("|", " "),
                 "hint": _hint(key, items),
+                # 「全部采用候选」按下去的后果：同一模式的全部行片段相同，取首行即可
+                "impact": impact,
+                "impact_note": IMPACT_NOTES.get(impact, ""),
                 "count": len(items),
                 "adopted": adopted,
                 "kept": kept,

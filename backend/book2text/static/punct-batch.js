@@ -256,7 +256,20 @@ function renderPunctGroups() {
       state.textContent = "未判";
       state.className = "chip chip--warn";
     }
-    head.append(pattern, count, state);
+    head.append(pattern, count);
+    // 后果标签：「全部采用候选」按下去会补字 / 换写法 / 删字——用户不必从箭头里自己读出来。
+    // 删字用危险色：`、→∅` 那种一组 84 行，按一下删掉 84 个顿号。
+    if (group.impact) {
+      const impact = document.createElement("span");
+      const tone = group.impact === "删字" ? " chip--bad"
+        : group.impact === "补齐" ? " chip--ok"
+          : " chip--gray";
+      impact.className = `chip${tone} punct-group__impact`;
+      impact.textContent = `采用=${group.impact}`;
+      impact.title = group.impact_note || "「全部采用候选」按下去会发生什么";
+      head.append(impact);
+    }
+    head.append(state);
     if (group.hint) {
       const hint = document.createElement("span");
       hint.className = "chip chip--warn";

@@ -240,3 +240,55 @@ def test_hint_tells_which_side_lost_the_quote() -> None:
     assert "保留原文" in punct_groups._hint("[英] 引号→其他", [])
     assert "采用候选" in punct_groups._hint("[英] 无→引号", [])
     assert punct_groups._hint("；→，", []) == ""
+
+
+def test_space_only_diff_is_judged_by_the_line_not_by_the_fragment() -> None:
+    """`␣`（U+2423）不是空格：只差一个空格的中文行不许被判成英文。
+
+    2026-11-05 真机（YR5EJ0）：最大的一组顶着 `[英] 无→空格`，102 行全是中文
+    （`就有93篇` → `就有93 篇`）。原因是一行 `c not in "␣∅"` 把 U+2423 当成了空格，
+    真正的 U+0020 没被排除，于是"空格"被当成实义 ASCII 字符 ⇒ 判成英文。
+    """
+    # 中文行 + 只差一个空格 ⇒ 中文（精确片段），不再并进英文类
+    assert punct_groups._is_english_pattern([("", " ")], "就有93篇左") is False
+    assert punct_groups._group_key([("", " ")], "就有93篇左") == "∅→␣"
+    # 英文行 + 只差一个空格 ⇒ 仍是英文（片段里没有实义字符，只能看整行）
+    assert punct_groups._is_english_pattern([("", " ")], "She ll go") is True
+    assert punct_groups._group_key([("", " ")], "She ll go") == "[英] 无→空格"
+    # 中文行里的 ASCII 引号差异也不并进英文类（并进去了提示就会按英文给）
+    assert punct_groups._group_key([('"', "")], "他说道：“走吧”") == '"→∅'
+
+
+def test_hint_does_not_warn_about_english_for_a_chinese_space_diff() -> None:
+    """标签错了提示就跟着错：中文的空格式差异没有"建议保留原文"。"""
+    assert punct_groups._hint("∅→␣", []) == ""
+
+
+def test_impact_says_what_adopt_would_do() -> None:
+    """「全部采用候选」的后果分三类：补齐 / 换写法 / 删字。"""
+    assert punct_groups._impact([("", "‘")]) == punct_groups.IMPACT_FILL
+    assert punct_groups._impact([("；", "，")]) == punct_groups.IMPACT_RECASE
+    assert punct_groups._impact([("、", "")]) == punct_groups.IMPACT_DROP
+    # 同一组里既有补齐又有删字 ⇒ 按删字报：危险的是"删"那个方向
+    assert punct_groups._impact([("、", ""), ("", "‘")]) == punct_groups.IMPACT_DROP
+
+
+def test_every_group_carries_its_adopt_consequence(
+    client: TestClient, auth_headers: dict[str, str], punct_project: str
+) -> None:
+    """后果标签跟着分组一起返回，前端不许自己从箭头里猜。"""
+    data = client.get(
+        f"/api/projects/{punct_project}/review/punct-groups", headers=auth_headers
+    ).json()
+
+    allowed = {
+        punct_groups.IMPACT_FILL,
+        punct_groups.IMPACT_RECASE,
+        punct_groups.IMPACT_DROP,
+    }
+    assert data["groups"]
+    for group in data["groups"]:
+        assert group["impact"] in allowed
+        assert group["impact_note"]
+    group = next(item for item in data["groups"] if item["pattern"] == "。→、")
+    assert group["impact"] == punct_groups.IMPACT_RECASE
