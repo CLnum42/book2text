@@ -4805,6 +4805,9 @@ function openOrthographyReviewPage(pageNo) {
 const catRunsCache = new Map();
 const catRunsInFlight = new Map();
 const CAT_RUNS_LIMIT = 8;
+// 最近一次「挂了 runs 与页图尺寸」的行快照：下方 5 行上下文点行时要用同一份，
+// 免得点一次行就再取一次 runs（同页只许取一次，契约 §3）。
+let catContextRows = [];
 
 /** 命中即返回（并把它挪到 Map 末尾，保持 LRU 顺序）；未命中返回 undefined。 */
 function catRunsTouch(key) {
@@ -4880,6 +4883,11 @@ function publishCatFromReading(payload) {
     onSelect: (row) => {
         window.ReviewCatList?.show?.(row);
         window.ReadingView?.selectEntry?.(row && row.key);
+        // 下方 5 行上下文：跟着**点中的那一条**走（不是只在 setQueue 时算一次）。
+        // 用已挂上 runs 的那份快照（catContextRows）；还没到就退回原始 rows（裁图先显示「—」）。
+        const list = catContextRows.length ? catContextRows : rows;
+        const index = list.findIndex((item) => String(item.key) === String(row && row.key));
+        window.ReviewFocus?.showContext?.({ rows: list, currentIndex: index < 0 ? 0 : index });
       },
   });
   const rows = data.rows || [];
@@ -4905,6 +4913,7 @@ function publishCatFromReading(payload) {
           imgW: page.imgW,
           imgH: page.imgH,
         }));
+        catContextRows = enriched;
         window.ReviewCatList?.setQueue?.({
           rows: enriched,
           total: data.total,
