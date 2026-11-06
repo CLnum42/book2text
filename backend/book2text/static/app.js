@@ -4843,7 +4843,10 @@ async function catPageRuns(pageNo) {
   if (hit) return hit;
   if (catRunsInFlight.has(key)) return catRunsInFlight.get(key);
 
-  const url = `/api/projects/${project.project_id}/pages/${pageNo}/image?size=zoom`;
+  // 图像接口要带 token：`<img>` 带不了自定义请求头（页面顶部注释第 8 行），
+  // 同其它模块的做法（page-media / export-panel）统一走查询参数。
+  const url = `/api/projects/${project.project_id}/pages/${pageNo}/image?size=zoom`
+    + `&token=${encodeURIComponent(token)}`;
   const task = (async () => {
     let runs = [];
     try {

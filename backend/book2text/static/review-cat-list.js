@@ -54,6 +54,21 @@
   }
 
   /**
+   * 这一处涉及的字数：max(len(from), len(to))；两侧都为空时退回 a 侧区间长度。
+   * 用于 >3 字时显示「整行 · N 字」（spec §10.3），不从后端再取数。
+   */
+  function rclRunLength(run) {
+    if (!run) return 0;
+    const from = String(run.from == null ? "" : run.from);
+    const to = String(run.to == null ? "" : run.to);
+    const byText = Math.max(from.length, to.length);
+    if (byText > 0) return byText;
+    const start = Number(run.a_start);
+    const end = Number(run.a_end);
+    return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : 0;
+  }
+
+  /**
    * 正文列片段：把差异放在中间，两端补「……」。
    * `radius` 是差异两侧各留多少字；超长行只取这一段，不在 DOM 里放整行。
    */
