@@ -3596,6 +3596,210 @@ test("R12（A1 例外）：新服务模块 + 只改三张登记表 ⇒ 绿；越
     `新模块没登记也被放行——${missing.join("；")}`);
 });
 
+test("R12（A1 例外·视图）：新视图模块 + 只改五张视图表 ⇒ 绿；改 assert 数字 / 动白名单 / 占别人 section ⇒ 红", () => {
+  // 实测背景（2026-11-06）：只按"三张服务表"开口子时，新建一个 *-view.js 会报 77 处"越出登记表块"。
+  // 边界（Chief 写死）：允许 OWNERS / VIEW_STATE_PREFIXES / VIEW_EXPORTS / SECTION_OWNERS（新段）/ EXPORT_IDS；
+  // **任何 assert 行都不在例外内**——"随搬迁同步"与"为了让测试变绿改数字"是同一行 diff，例外不能包容后者。
+  const source = [
+    "const DOMAIN_MODULES = [",
+    '  { file: "quality-stats.js", exposes: "QualityStats" },',
+    "];",
+    "const NON_DOMAIN_MODULES = [",
+    '  { file: "page-tile.js", why: "组件不是域" },',
+    "];",
+    "const ALLOW_QUERY_SELECTOR_WHITELIST = [",
+    '  "structure-tools.js",',
+    "];",
+    "const OWNERS = {",
+    '  fooView: "foo-view.js",',
+    "};",
+    "const VIEW_STATE_PREFIXES = {",
+    '  "foo-": "foo-view.js",',
+    "};",
+    "const VIEW_EXPORTS = {",
+    '  "foo-view.js": {',
+    '    names: ["init", "enter"],',
+    "    kinds: [",
+    '      { kind: "init", callers: ["boot"] },',
+    "    ],",
+    "  },",
+    "};",
+    "const SECTION_OWNERS = [",
+    "  {",
+    '    name: "FOO",',
+    '    files: ["foo-view.js"],',
+    "  },",
+    "];",
+    "const EXPORT_IDS = [",
+    '  "export-foo",',
+    "];",
+    'test("x", () => { assert.equal(subtree.length, 34); });',
+  ].join("\n");
+  const sourceLines = source.split("\n");
+  const assertLine = sourceLines.findIndex((line) => line.includes("assert.equal")) + 1;
+  assert.ok(assertLine > 0, "夹具里没有 assert 行——自检就证明不了「改 assert 会红」");
+
+  const viewTables = registrationTableRanges(source, ["OWNERS", "VIEW_STATE_PREFIXES", "VIEW_EXPORTS", "SECTION_OWNERS", "EXPORT_IDS"]);
+  assert.equal(viewTables.length, 5, `五张视图登记表只解析到 ${viewTables.length} 张——块边界必须从源码派生`);
+  const serviceTables = registrationTableRanges(source);
+  assert.equal(serviceTables.length, 3, `三张服务表只解析到 ${serviceTables.length} 张`);
+
+  const viewModule = { path: "backend/book2text/static/foo-view.js", source: "(() => {\n  window.FooView = api;\n})();\n" };
+  const rangesOf = (blocks) => blocks.map((block) => [block.start, block.end]);
+  const inside = [{
+    path: "tests/js/boundary.test.mjs",
+    addedRanges: rangesOf(viewTables),
+    deletedRanges: [],
+    commitSource: source,
+  }];
+  assert.deepEqual(
+    newModuleRegistrationProblems({ addedModules: [viewModule], testsChanges: inside }), [],
+    "新视图模块 + 只改五张视图表被判红——77 处假红那个口子没开对",
+  );
+
+  // 红①：同一笔顺手把 assert 里的数字 34 改成 32（Chief 明确划在外面的形态）
+  const assertEdit = [{
+    path: "tests/js/boundary.test.mjs",
+    addedRanges: [...rangesOf(viewTables), [assertLine, assertLine]],
+    deletedRanges: [],
+    commitSource: source,
+  }];
+  const assertProblems = newModuleRegistrationProblems({ addedModules: [viewModule], testsChanges: assertEdit });
+  assert.ok(assertProblems.some((one) => one.includes("越出登记表块")),
+    `改 assert 里的数字被放行了——那会分不清「搬家同步」与「改数字让测试变绿」：${assertProblems.join("；")}`);
+
+  // 红②：顺手放宽 ALLOW_QUERY_SELECTOR_WHITELIST（视图例外里不含白名单）
+  const whitelistLine = serviceTables.find((block) => block.name === "ALLOW_QUERY_SELECTOR_WHITELIST").start + 1;
+  const whitelistEdit = [{
+    path: "tests/js/boundary.test.mjs",
+    addedRanges: [...rangesOf(viewTables), [whitelistLine, whitelistLine]],
+    deletedRanges: [],
+    commitSource: source,
+  }];
+  assert.ok(
+    newModuleRegistrationProblems({ addedModules: [viewModule], testsChanges: whitelistEdit })
+      .some((one) => one.includes("越出登记表块")),
+    "视图模块那笔动了白名单也被放行——白名单不在这个例外里",
+  );
+
+  // 红③：改 SECTION_OWNERS 但那一行没点名新视图模块（只许加"新 section 那一段"）
+  const sectionBlock = viewTables.find((block) => block.name === "SECTION_OWNERS");
+  const strangerLine = Array.from({ length: sectionBlock.end - sectionBlock.start + 1 }, (_, index) => sectionBlock.start + index)
+    .find((line) => !sourceLines[line - 1].includes("foo-view.js"));
+  assert.ok(strangerLine, "SECTION_OWNERS 里没有不带新模块名的行——夹具不成立");
+  const strangerEdit = [{
+    path: "tests/js/boundary.test.mjs",
+    addedRanges: [...rangesOf(viewTables), [strangerLine, strangerLine]],
+    deletedRanges: [],
+    commitSource: source,
+  }];
+  assert.ok(
+    newModuleRegistrationProblems({ addedModules: [viewModule], testsChanges: strangerEdit })
+      .some((one) => one.includes("没点名新视图模块")),
+    "改了 SECTION_OWNERS 里别人的段也被放行",
+  );
+
+  // 不倒退：**服务模块**那笔仍只放三张服务表，动视图表 ⇒ 红
+  const serviceModule = { path: "backend/book2text/static/brand-new.js", source: "window.BrandNew = api;\n" };
+  const ownersLine = viewTables.find((block) => block.name === "OWNERS").start + 1;
+  const crossKind = [{
+    path: "tests/js/boundary.test.mjs",
+    addedRanges: [[serviceTables[0].start, serviceTables[0].end], [ownersLine, ownersLine]],
+    deletedRanges: [],
+    commitSource: source,
+  }];
+  assert.ok(
+    newModuleRegistrationProblems({ addedModules: [serviceModule], testsChanges: crossKind })
+      .some((one) => one.includes("越出登记表块")),
+    "服务模块那笔改视图表也放行了——口子被扩大成了「什么表都能改」",
+  );
+});
+
+test("R12（A1 例外·加导出键）：产品加键 + STABLE/MAX 同笔 ⇒ 绿；只登记不加键 / 删旧键 / 多抬 MAX / 改 assert ⇒ 红", () => {
+  // 卡死形态（实测 0339dc4）：给 ReadingView 加 selectEntry，同笔改 STABLE 与 MAX_EXPORTS 各一行
+  // ⇒ 两处"改一行"被 A1b 记成 2 行未登记删除。拆三笔也走不通（先加 STABLE ⇒ R8 红）。
+  const parentSource = [
+    'const STABLE = ["init", "enter"];',
+    "const TEMPORARY = [];",
+    "const PENDING_REMOVAL = [];",
+    "const MAX_EXPORTS = 2;",
+    'test("x", () => { assert.equal(1, 1); });',
+  ].join("\n");
+  const commitSource = [
+    "// 新增 selectEntry：差异列表点击的落点（签字与死亡条件见提交正文）",
+    'const STABLE = ["init", "enter", "selectEntry"];',
+    "const TEMPORARY = [];",
+    "const PENDING_REMOVAL = [];",
+    "const MAX_EXPORTS = 3;",
+    'test("x", () => { assert.equal(1, 1); });',
+  ].join("\n");
+  const productWithKey = {
+    path: "backend/book2text/static/reading-view.js",
+    source: "(() => {\n  const api = { init, enter, selectEntry };\n  window.ReadingView = api;\n})();\n",
+  };
+  const productWithoutKey = {
+    path: "backend/book2text/static/reading-view.js",
+    source: "(() => {\n  const api = { init, enter };\n  window.ReadingView = api;\n})();\n",
+  };
+  const change = (addedRanges, deletedRanges, source = commitSource) => [{
+    path: "tests/js/boundary.test.mjs",
+    addedRanges,
+    deletedRanges,
+    commitSource: source,
+    parentSource,
+  }];
+  const good = change([[1, 2], [5, 5]], [[1, 1], [4, 4]]);
+
+  assert.deepEqual(
+    newModuleRegistrationProblems({ addedModules: [], testsChanges: good, productSources: [productWithKey] }), [],
+    "产品加键 + 同笔登记被判红——0339dc4 那种笔没法合法落地",
+  );
+
+  // 红①：只登记不加键（产品 api 里没有 selectEntry）⇒ 红
+  const noKey = newModuleRegistrationProblems({ addedModules: [], testsChanges: good, productSources: [productWithoutKey] });
+  assert.ok(noKey.some((one) => one.includes("没有出现在同笔产品代码")),
+    `只登记不加键被放行——那正是 R8「登记了但不存在」要抓的形态：${noKey.join("；")}`);
+
+  // 红②：删掉 STABLE 里已有的键（enter 消失）
+  const deletedKeySource = [
+    "// 顺手删个键",
+    'const STABLE = ["init", "selectEntry"];',
+    "const TEMPORARY = [];",
+    "const PENDING_REMOVAL = [];",
+    "const MAX_EXPORTS = 3;",
+    'test("x", () => { assert.equal(1, 1); });',
+  ].join("\n");
+  const deletedKey = newModuleRegistrationProblems({
+    addedModules: [], testsChanges: change([[1, 2], [5, 5]], [[1, 1], [4, 4]], deletedKeySource), productSources: [productWithKey],
+  });
+  assert.ok(deletedKey.some((one) => one.includes("删掉了 STABLE 里已有的键")),
+    `删旧键被放行：${deletedKey.join("；")}`);
+
+  // 红③：MAX 多抬一个数字（2 → 4，可本笔只加了 1 个键）
+  const maxSource = commitSource.replace("const MAX_EXPORTS = 3;", "const MAX_EXPORTS = 4;");
+  const overMax = newModuleRegistrationProblems({
+    addedModules: [], testsChanges: change([[1, 2], [5, 5]], [[1, 1], [4, 4]], maxSource), productSources: [productWithKey],
+  });
+  assert.ok(overMax.some((one) => one.includes("MAX_EXPORTS")),
+    `MAX 顺手多抬也被放行：${overMax.join("；")}`);
+
+  // 红④：同笔顺手改一句 assert（第 6 行）
+  const assertEdit = change([[1, 2], [5, 5], [6, 6]], [[1, 1], [4, 4]]);
+  assert.ok(
+    newModuleRegistrationProblems({ addedModules: [], testsChanges: assertEdit, productSources: [productWithKey] })
+      .some((one) => one.includes("越出登记表块")),
+    "改 assert 行也被放行——例外不许包容「改数字让测试变绿」",
+  );
+
+  // 不是"加键"形态（只抬 MAX、STABLE 没新增键）⇒ 仍按普通 A1 红，不许拿这个例外兜底
+  const maxOnlySource = parentSource.replace("const MAX_EXPORTS = 2;", "const MAX_EXPORTS = 3;");
+  const noNewKey = newModuleRegistrationProblems({
+    addedModules: [], testsChanges: change([[4, 4]], [[4, 4]], maxOnlySource), productSources: [productWithKey],
+  });
+  assert.ok(noNewKey.some((one) => one.includes("例外不成立")),
+    `没有新增键却拿这个口子兜底：${noNewKey.join("；")}`);
+});
+
 test("R12 自检：Approved-by trailer——缺 → 红 / 等于作者 → 红 / 别人 → 绿（含无空格写法）", () => {
   const docText = [
     "### 18.6 判据变更登记",

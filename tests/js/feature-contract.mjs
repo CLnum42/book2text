@@ -392,14 +392,35 @@ export function exemptionDeltaProblems({ sha, oldSource, newSource, keepListText
  */
 export const REGISTRATION_TABLES = ["DOMAIN_MODULES", "NON_DOMAIN_MODULES", "ALLOW_QUERY_SELECTOR_WHITELIST"];
 
-/** 派生这三张表的**数组字面量**行范围（口径同 `tableBlockRanges`：从源码算，不手写行号）。 */
-export function registrationTableRanges(source) {
+/**
+ * **视图模块的登记表**（2026-11-06，Chief 派）：新建一个 `*-view.js` 时，它要登记的不是三张服务表，
+ * 而是这五张。实测过：只按服务表开口子，新建视图模块会报 77 处"越出登记表块"。
+ *
+ * 边界（Chief 写死）：
+ *   · 允许改：OWNERS / VIEW_STATE_PREFIXES / VIEW_EXPORTS / SECTION_OWNERS（只许"新 section 那一段"）/
+ *     EXPORT_IDS；
+ *   · 仍然禁止：改断言体、改任何 `assert` 行、放宽 STABLE / TEMPORARY / ALLOW_QUERY_SELECTOR_WHITELIST、
+ *     动 MAX_EXPORTS 之类旋钮——这些都不在上面五张表里，行范围判据天然挡住。
+ *   · `idRefsIn` 是**函数不是表**（按源码取 id 的 helper），没有需要登记的名单；真要加 helper 名
+ *     得改函数体，那属于改判据，不在本例外内 —— 这里如实说明，不假装有张表。
+ */
+export const VIEW_REGISTRATION_TABLES = ["OWNERS", "VIEW_STATE_PREFIXES", "VIEW_EXPORTS", "SECTION_OWNERS", "EXPORT_IDS"];
+
+/** 新增的模块是视图还是服务：按文件名后缀判（本仓 `*-view.js` 是视图，其余是服务模块）。 */
+export function isViewModulePath(path) {
+  return /-view\.js$/.test(String(path || ""));
+}
+
+/** 派生登记表的**数组字面量**行范围（口径同 `tableBlockRanges`：从源码算，不手写行号）。 */
+export function registrationTableRanges(source, names = REGISTRATION_TABLES) {
+  const wanted = names instanceof Set ? names : new Set(names || []);
   const clean = stripCommentsAndStrings(String(source || ""));
   const lines = clean.split("\n");
   const blocks = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const match = /^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*\[/.exec(lines[index]);
-    if (!match || !REGISTRATION_TABLES.includes(match[1])) continue;
+    // 数组与对象都要认：服务表全是 `[...]`，视图表里 OWNERS / VIEW_STATE_PREFIXES / VIEW_EXPORTS 是 `{...}`
+    const match = /^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*[\[{]/.exec(lines[index]);
+    if (!match || !wanted.has(match[1])) continue;
     let depth = 0;
     let end = -1;
     for (let cursor = index; cursor < lines.length; cursor += 1) {
@@ -418,58 +439,262 @@ export function registrationTableRanges(source) {
 }
 
 /**
- * **A1 的唯一例外**（Chief 2026-11-02 裁定）：新服务模块"落文件 + 登记"必须同笔做，否则三方死锁——
- *   只落模块 ⇒ 登记完整性红；先加登记 ⇒ 表里 readFileSync 一个不存在的文件直接抛；
- *   合成一笔 ⇒ A1 红（产品 + tests/js 不许同笔）。
+ * **A1 的唯一例外**（Chief 2026-11-02 裁定；2026-11-06 扩到视图模块）：新模块"落文件 + 登记"必须
+ * 同笔做，否则三方死锁——只落模块 ⇒ 登记完整性红；先加登记 ⇒ 表里 readFileSync 一个不存在的文件
+ * 直接抛；合成一笔 ⇒ A1 红（产品 + tests/js 不许同笔）。
  *
  * 开口子按**范围**、不按提交类型：当这一笔**新增**了 `static/*.js` 且该文件暴露 `window.X = api` 时，
- * 允许同一笔改 tests/js，但每一行改动都必须落在三张登记表的数组字面量里，而且新模块的名字
+ * 允许同一笔改 tests/js，但每一行改动都必须落在**该模块类型对应的登记表**里，而且新模块的名字
  * 必须真的出现在其中一张表里（"加了登记"是正向要求，不是"没越界就行"）。
+ *
+ * 两种模块、两套表（2026-11-06 实测：只按服务表开口子，新建视图模块会报 77 处"越出登记表块"）：
+ *   · 服务模块（`!*-view.js`）→ DOMAIN_MODULES / NON_DOMAIN_MODULES / ALLOW_QUERY_SELECTOR_WHITELIST；
+ *   · 视图模块（`*-view.js`）→ OWNERS / VIEW_STATE_PREFIXES / VIEW_EXPORTS / SECTION_OWNERS / EXPORT_IDS。
+ *   同笔两种都新增 ⇒ 取并集。视图那条**不含** ALLOW_QUERY_SELECTOR_WHITELIST：放宽白名单不在例外内。
+ *   `SECTION_OWNERS` 只放"新 section 那一段"（改到的行必须点名新视图模块）；`EXPORT_IDS` 整张表允许。
+ *
+ * 仍然禁止：改断言体、改任何 `assert` 行、放宽 STABLE / TEMPORARY / 白名单、动 MAX_EXPORTS 之类旋钮
+ * ——它们都不在上面这些表里，行范围判据天然挡住。
  *
  * 判据只看**文件与行范围**（调用方从 git diff 刨好喂进来），不看提交信息里写了什么。
  */
-export function newModuleRegistrationProblems({ addedModules, testsChanges }) {
+export function newModuleRegistrationProblems({ addedModules, testsChanges, productSources = [] }) {
   const modules = (addedModules || []).filter((mod) => /window\.[A-Za-z_$][\w$]*\s*=\s*api\b/.test(String(mod.source || "")));
   if (modules.length === 0) {
-    return ["A1: 同时改了产品代码与 tests/js，但没有「新增的 window.X = api 服务模块」——例外不成立"];
+    // 例外第二块：给已有模块加一个导出键（产品加键 + STABLE 登记 + MAX_EXPORTS 抬 1）
+    const exportProblems = exportKeyAdditionProblems({ testsChanges, productSources });
+    if (exportProblems !== null) return exportProblems;
+    return ["A1: 同时改了产品代码与 tests/js，但没有「新增的 window.X = api 模块」——例外不成立（服务模块与视图模块都算，"
+      + "也没有「给已有模块加一个导出键」的形态（STABLE 里没有新增键）；但文件里必须真的出现 `window.X = api`）"];
   }
   const changes = testsChanges || [];
   if (changes.length === 0) {
     return ["A1: 说是「新模块 + 登记」同笔，但读不到 tests/js 的改动范围——判不了就是红"];
   }
+
+  // 服务模块 → 三张服务表；视图模块 → 五张视图表。同笔两种都有 ⇒ 取并集。
+  const viewModules = modules.filter((mod) => isViewModulePath(mod.path));
+  const serviceModules = modules.filter((mod) => !isViewModulePath(mod.path));
+  const tableNames = new Set();
+  if (serviceModules.length > 0) for (const name of REGISTRATION_TABLES) tableNames.add(name);
+  if (viewModules.length > 0) for (const name of VIEW_REGISTRATION_TABLES) tableNames.add(name);
+  const tableLabel = [...tableNames].join(" / ");
+  const moduleBases = viewModules
+    .map((mod) => String(mod.path || "").split("/").pop())
+    .filter(Boolean);
+
   const boundary = changes.find((change) => String(change.path || "").endsWith("tests/js/boundary.test.mjs"));
   if (!boundary) {
     return [`A1: ${changes.map((change) => change.path).join("、")} 越出登记表块——`
-      + `新模块那一笔只许改 tests/js/boundary.test.mjs 里的 ${REGISTRATION_TABLES.join(" / ")}`];
+      + `新模块那一笔只许改 tests/js/boundary.test.mjs 里的 ${tableLabel}`];
   }
-  const blocks = registrationTableRanges(boundary.commitSource);
+  const blocks = registrationTableRanges(boundary.commitSource, [...tableNames]);
   if (blocks.length === 0) {
-    return [`A1: 三张登记表（${REGISTRATION_TABLES.join(" / ")}）一张都没解析到——块边界解析失败就判红，不许放行`];
+    return [`A1: 登记表（${tableLabel}）一张都没解析到——块边界解析失败就判红，不许放行`];
   }
+
   const problems = [];
+  const rawLines = String(boundary.commitSource || "").split("\n");
   for (const change of changes) {
-    if (change === boundary) {
-      for (const range of [...(change.addedRanges || []), ...(change.deletedRanges || [])]) {
-        for (let line = range[0]; line <= range[1]; line += 1) {
-          if (blocks.some((block) => block.start <= line && line <= block.end)) continue;
-          problems.push(`A1: ${change.path}:${line} 越出登记表块（${REGISTRATION_TABLES.join(" / ")}）——`
-            + "新模块那一笔只许改这三张表的数组字面量");
-        }
-      }
+    if (change !== boundary) {
+      problems.push(`A1: ${change.path} 越出登记表块——新模块那一笔只许改登记表（${tableLabel}），`
+        + "别的测试改动要单开一笔");
       continue;
     }
-    problems.push(`A1: ${change.path} 越出登记表块——新模块那一笔只许改三张登记表，别的测试改动要单开一笔`);
+    for (const range of [...(change.addedRanges || []), ...(change.deletedRanges || [])]) {
+      const sectionLines = [];
+      for (let line = range[0]; line <= range[1]; line += 1) {
+        const block = blocks.find((item) => item.start <= line && line <= item.end);
+        if (!block) {
+          problems.push(`A1: ${change.path}:${line} 越出登记表块（${tableLabel}）——`
+            + "新模块那一笔只许改这些登记表的字面量，断言体与旋钮都不许动");
+          continue;
+        }
+        if (block.name === "SECTION_OWNERS") sectionLines.push(line);
+      }
+      // SECTION_OWNERS 只放"新 section 那一段"：**按整段看**——一段新增的 section 条目里
+      // 必然有 `{` / `},` 这种不点名的结构行，所以不能逐行要求命中名字；整段合起来
+      // 必须点名新视图模块，否则就是借新模块的名义改别人的归属（那是改判据，不在本例外内）。
+      if (sectionLines.length > 0 && moduleBases.length > 0) {
+        const text = sectionLines.map((line) => rawLines[line - 1] || "").join("\n");
+        if (!moduleBases.some((base) => text.includes(base))) {
+          problems.push(`A1: ${change.path}:${sectionLines[0]} 改了 SECTION_OWNERS 但整段没点名新视图模块`
+            + `（${moduleBases.join(" / ")}）——只许加「新 section 那一段」`);
+        }
+      }
+    }
   }
-  const rawLines = String(boundary.commitSource || "").split("\n");
+
   for (const mod of modules) {
     const base = String(mod.path || "").split("/").pop();
     const registered = blocks.some((block) => rawLines.slice(block.start - 1, block.end).join("\n").includes(base));
     if (!registered) {
-      problems.push(`A1: 新增模块 ${base} 没有出现在三张登记表里——「落文件 + 登记」必须同笔完成，`
+      problems.push(`A1: 新增模块 ${base} 没有出现在登记表（${tableLabel}）里——「落文件 + 登记」必须同笔完成，`
         + "否则登记完整性闸会认为它逃了闸");
     }
   }
   return problems;
+}
+
+/**
+ * **A1 例外的第二块范围：给已有模块加一个导出键**（Chief 2026-11-06）。
+ *
+ * 卡死形态（实测 `0339dc4`）：产品给 ReadingView 加 `selectEntry`，同笔要把键写进 `STABLE`
+ * 并把 `MAX_EXPORTS` 抬 1 —— 两者都是"改一行"（删 1 行 + 加 1 行），于是 R12 的 A1b 记 2 行
+ * 未登记删除，红。而拆成三笔也走不通：先加 STABLE ⇒ R8 红（键还不存在）；产品同笔改表 ⇒ A1b 红。
+ *
+ * 边界（写死，别扩）：
+ *   · 允许：本笔新增的键写进 `STABLE`（只许加，不许删已有键）+ `MAX_EXPORTS` 按新增键数抬高；
+ *   · 禁止：删 STABLE 里已有的键、改其它旋钮（TEMPORARY / PENDING_REMOVAL / 任何上限）、改断言体；
+ *   · 约束：新增的键必须在**同一笔的产品代码**里真的出现在 `const api = { … }` 上（不是只登记）。
+ *
+ * 返回 `null` = 这笔不是"加导出键"的形态（交给调用方报原来的 A1）；返回数组 = 判定结果。
+ */
+export function exportKeyAdditionProblems({ testsChanges, productSources = [] }) {
+  const changes = testsChanges || [];
+  const boundary = changes.find((change) => String(change.path || "").endsWith("tests/js/boundary.test.mjs"));
+  if (!boundary) return null;
+
+  const commitSource = String(boundary.commitSource || "");
+  const parentSource = String(boundary.parentSource || "");
+  const stableNow = arrayLiteralRange(commitSource, "STABLE");
+  const stableBefore = arrayLiteralRange(parentSource, "STABLE");
+  const maxNow = numberConstLine(commitSource, "MAX_EXPORTS");
+  const maxBefore = numberConstLine(parentSource, "MAX_EXPORTS");
+  if (!stableNow || !stableBefore || !maxNow || !maxBefore) return null;
+
+  const keysNow = keysInArray(commitSource, stableNow);
+  const keysBefore = keysInArray(parentSource, stableBefore);
+  const addedKeys = [...keysNow].filter((key) => !keysBefore.has(key));
+  if (addedKeys.length === 0) return null;   // 不是"加键"：交给原来的 A1 判定
+
+  const problems = [];
+  // ① 改动只许落在 STABLE / MAX_EXPORTS 那两行，或者纯注释行（注释不改判据）
+  const rawCommit = commitSource.split("\n");
+  const allowedNew = (line) => (stableNow.start <= line && line <= stableNow.end) || line === maxNow.line;
+  const allowedOld = (line) => (stableBefore.start <= line && line <= stableBefore.end) || line === maxBefore.line;
+  const isComment = (text) => /^\s*(\/\/|\*|\/\*)/.test(text);
+  for (const range of boundary.addedRanges || []) {
+    for (let line = range[0]; line <= range[1]; line += 1) {
+      if (allowedNew(line) || isComment(rawCommit[line - 1] || "")) continue;
+      problems.push(`A1: ${boundary.path}:${line} 越出登记表块——加导出键那一笔只许改 STABLE 与 MAX_EXPORTS`
+        + "（外加纯注释行），断言体与别的旋钮都不许动");
+    }
+  }
+  for (const range of boundary.deletedRanges || []) {
+    for (let line = range[0]; line <= range[1]; line += 1) {
+      if (allowedOld(line)) continue;
+      problems.push(`A1: ${boundary.path}:${line} 越出登记表块——加导出键那一笔只许改 STABLE 与 MAX_EXPORTS`);
+    }
+  }
+
+  // ② 不许删 STABLE 里已有的键：删除行里出现过的键，改完之后必须还在
+  const deletedKeys = new Set();
+  for (const range of boundary.deletedRanges || []) {
+    for (let line = range[0]; line <= range[1]; line += 1) {
+      if (!(stableBefore.start <= line && line <= stableBefore.end)) continue;
+      for (const key of quotedKeysInLine(String(parentSource).split("\n")[line - 1] || "")) deletedKeys.add(key);
+    }
+  }
+  const lost = [...deletedKeys].filter((key) => !keysNow.has(key));
+  if (lost.length > 0) {
+    problems.push(`A1: 删掉了 STABLE 里已有的键 ${lost.join("、")}——加导出只许加，删键要单独走 test-contract`);
+  }
+
+  // ③ MAX_EXPORTS 只许按"新增键数"抬高（抬高一个键就 +1，多抬一个数字也是红）
+  if (maxNow.value !== maxBefore.value + addedKeys.length) {
+    problems.push(`A1: MAX_EXPORTS ${maxBefore.value} → ${maxNow.value}，但本笔新增了 ${addedKeys.length} 个键`
+      + "——上限只许按新增键数抬，不许顺手放宽");
+  }
+
+  // ④ 新键必须在同笔的产品代码里真的出现在 `const api = { … }` 上
+  const modules = (productSources || []).filter((file) => /window\.[A-Za-z_$][\w$]*\s*=\s*api\b/.test(String(file.source || "")));
+  for (const key of addedKeys) {
+    if (modules.some((file) => apiObjectHasKey(file.source, key))) continue;
+    problems.push(`A1: 新增的键 ${key} 没有出现在同笔产品代码的 \`const api = { … }\` 里——只登记不加键，`
+      + "那正是 R8「登记了但不存在」要抓的形态");
+  }
+
+  // ⑤ 别的 tests/js 文件一行都不许动
+  for (const change of changes) {
+    if (change === boundary) continue;
+    problems.push(`A1: ${change.path} 越出登记表块——加导出键那一笔只许改 boundary.test.mjs 的 STABLE 与 MAX_EXPORTS`);
+  }
+  return problems;
+}
+
+/** 顶层 `const NAME = [ … ];` 的行范围（结构在剥注释/字符串的文本上量，行号不变）。 */
+function arrayLiteralRange(source, name) {
+  const clean = stripCommentsAndStrings(String(source || ""));
+  const lines = clean.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!new RegExp(`^(?:export\\s+)?const\\s+${name}\\s*=\\s*\\[`).test(lines[index])) continue;
+    let depth = 0;
+    let end = -1;
+    for (let cursor = index; cursor < lines.length; cursor += 1) {
+      for (const ch of lines[cursor]) {
+        if (ch === "[" || ch === "{") depth += 1;
+        else if (ch === "]" || ch === "}") {
+          depth -= 1;
+          if (depth === 0) { end = cursor; break; }
+        }
+      }
+      if (end !== -1) break;
+    }
+    if (end !== -1) return { start: index + 1, end: end + 1 };
+  }
+  return null;
+}
+
+/** 顶层 `const NAME = <数字>;` → `{ line, value }`；找不到返回 null。 */
+function numberConstLine(source, name) {
+  const clean = stripCommentsAndStrings(String(source || ""));
+  const lines = clean.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = new RegExp(`^(?:export\\s+)?const\\s+${name}\\s*=\\s*(\\d+)`).exec(lines[index]);
+    if (match) return { line: index + 1, value: Number(match[1]) };
+  }
+  return null;
+}
+
+/** 数组块里的字符串键（按行取，先去掉行尾 `//` 注释）。 */
+function keysInArray(source, range) {
+  const lines = String(source || "").split("\n");
+  const keys = new Set();
+  for (let line = range.start; line <= range.end; line += 1) {
+    for (const key of quotedKeysInLine(lines[line - 1] || "")) keys.add(key);
+  }
+  return keys;
+}
+
+function quotedKeysInLine(line) {
+  const withoutComment = String(line || "").replace(/\/\/.*$/, "");
+  return [...withoutComment.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+}
+
+/** 产品代码里 `const api = { … }` 块内是否真的有这个键（`key,` / `key:` / `"key":` 都算）。 */
+function apiObjectHasKey(source, key) {
+  const text = String(source || "");
+  const start = text.indexOf("const api = {");
+  if (start < 0) return false;
+  const open = text.indexOf("{", start);
+  let depth = 0;
+  let end = -1;
+  for (let cursor = open; cursor < text.length; cursor += 1) {
+    const ch = text[cursor];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) { end = cursor; break; }
+    }
+  }
+  if (end < 0) return false;
+  // **要带上收尾的 `}`**：slice(open, end) 会把它切掉，于是"最后一个键"永远匹配不到
+  // （2026-11-06 实测：绿例被判"只登记不加键"，查了半天是这里差一个字符）。
+  const block = text.slice(open, end + 1);
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[\\s{,(])(?:"|')?${escaped}(?:"|')?\\s*[,:}]`, "m").test(block)
+    || new RegExp(`(^|[\\s{,(])${escaped}\\s*[,}]`, "m").test(block);
 }
 
 /** 从源码派生顶层 `const NAME = { … };` 的块范围（`allowed` / `forbidden` 见上）。 */
@@ -632,7 +857,7 @@ function registrationGap(sha, docText, kindLabel, author = null, aliases = []) {
  */
 export function commitContractProblems({
   sha, subject, files, deletions, deletedFiles = [], docText, moveChanges = null, author = null,
-  message = null, addedStaticModules = [], testsChanges = [],
+  message = null, addedStaticModules = [], testsChanges = [], productSources = [],
 }) {
   const short = sha.slice(0, 7);
   const problems = [];            // 形态段：pre-commit 拦
@@ -660,7 +885,7 @@ export function commitContractProblems({
   } else if (touchesProduct && touchesTests) {
     // 唯一例外：新增 window.X = api 的服务模块，且 tests/js 的改动全落在三张登记表的数组字面量里
     // （按范围开口子，不按提交类型；判据只看文件与行范围，不看提交信息说了什么）。
-    const exception = newModuleRegistrationProblems({ addedModules: addedStaticModules, testsChanges });
+    const exception = newModuleRegistrationProblems({ addedModules: addedStaticModules, testsChanges, productSources });
     if (exception.length) problems.push(...exception);
   }
 
@@ -835,12 +1060,17 @@ export function evaluateFeatureContract({ baseTag = "ring-break-base", docPath =
     // ② tests/js 的改动行范围（只看范围，不看信息）。只在"产品 + tests/js 同笔"时去取，别给每笔加成本。
     let addedStaticModules = [];
     let testsChanges = [];
+    let productSources = [];
     if (touchesProduct && touchesTests) {
       addedStaticModules = git(["show", "--name-status", "--diff-filter=A", "--format=", sha, "--", "backend/book2text/static/"])
         .split("\n").filter(Boolean)
         .map((line) => line.split("\t").pop())
         .map((path) => ({ path, source: (() => { try { return git(["show", `${sha}:${path}`]); } catch { return ""; } })() }));
       testsChanges = moveChangesFromGit(sha);
+      // 加导出键那条例外要判"新键真的在产品代码的 api 对象上"——只取这笔改到的 static 文件
+      productSources = changedFiles
+        .filter((path) => path.startsWith("backend/book2text/static/"))
+        .map((path) => ({ path, source: (() => { try { return git(["show", `${sha}:${path}`]); } catch { return ""; } })() }));
     }
     const verdict = commitContractProblems({
       sha,
@@ -848,6 +1078,7 @@ export function evaluateFeatureContract({ baseTag = "ring-break-base", docPath =
       files: changedFiles,
       addedStaticModules,
       testsChanges,
+      productSources,
       deletions,
       deletedFiles: git(["show", "--name-status", "--diff-filter=D", "--format=", sha, "--", ...CONTRACT_SCOPE])
         .split("\n").filter(Boolean),
