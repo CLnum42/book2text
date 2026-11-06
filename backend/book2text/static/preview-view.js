@@ -111,6 +111,15 @@ let previewRequestSeq = 0;     // 连点两次加载只认最后一次（别让�
       }
     };
 
+    // 只要改过就是草稿：不依赖 blur（焦点没落上时 blur 根本不触发，实测会静默丢草稿）
+    row.addEventListener("input", () => {
+      const state = injected.pvState;
+      if (!state || state.editingKey !== key) return;
+      state.set(key, row.textContent || "");
+      pvUpdateFoot();
+      const topPending = pvPart("preview-pending");
+      if (topPending) topPending.textContent = `待提交 ${state.size} 处`;
+    });
     row.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
@@ -264,9 +273,20 @@ let previewRequestSeq = 0;     // 连点两次加载只认最后一次（别让�
           const draft = injected.pvState && injected.pvState.get(key);
           row.textContent = (draft !== undefined ? draft : line.text) || "（空行）";
           if (draft !== undefined) row.classList.add("is-pending");
+          if (injected.pvState && injected.pvState.multi && injected.pvState.selected.has(key)) {
+            row.classList.add("is-selected");
+          }
           row.title = "点这一行改字；Enter 提交这一处";
           row.addEventListener("click", (event) => {
             event.stopPropagation();
+            const state = injected.pvState;
+            if (state.multi) {
+              if (state.selected.has(key)) state.selected.delete(key);
+              else state.selected.add(key);
+              row.classList.toggle("is-selected", state.selected.has(key));
+              pvUpdateChrome();
+              return;
+            }
             pvStartEdit(row, span, key);
           });
         } else {
@@ -280,7 +300,34 @@ let previewRequestSeq = 0;     // 连点两次加载只认最后一次（别让�
     }
   }
 
+  function pvUpdateFoot() {
+    const foot = root && root.querySelector(".pv-foot");
+    if (!foot) return;
+    const state = injected.pvState || {};
+    const count = pvPendingCount();
+    const selectedPending = state.selected
+      ? [...state.selected].filter((key) => state.has(key)).length
+      : 0;
+    const status = foot.querySelector(".pv-foot__status");
+    if (status) {
+      status.textContent = state.multi
+        ? `已选 ${state.selected ? state.selected.size : 0} 行，其中 ${selectedPending} 处待提交`
+        : `待提交 ${count} 处`;
+    }
+    const multi = foot.querySelector(".pv-foot__multi");
+    if (multi) multi.textContent = state.multi ? "退出多选" : "多选";
+    const submit = foot.querySelector(".pv-foot__submit");
+    if (submit) {
+      const ready = state.multi ? selectedPending : count;
+      submit.textContent = ready ? `提交这 ${ready} 处` : "全部提交";
+      submit.disabled = !ready;
+    }
+    const discard = foot.querySelector(".pv-foot__discard");
+    if (discard) discard.disabled = !count;
+  }
+
   function pvUpdateChrome() {
+    pvUpdateFoot();
     const status = pvPart("preview-status");
     const index = previewSegments.findIndex((item) => item.segment_id === previewCurrentSegmentId);
     const total = previewSegments.length;
@@ -395,6 +442,82 @@ let previewRequestSeq = 0;     // 连点两次加载只认最后一次（别让�
     pvLoad();
   }
 
+  /** 底栏（§12.4）：待提交数 · 多选 · 放弃 · 全部提交 · 撤销这一批。动态建，不占 index.html 的 id。 */
+  function pvBuildFoot() {
+    if (!root || root.querySelector(".pv-foot")) return;
+    const foot = document.createElement("div");
+    foot.className = "pv-foot";
+    const status = document.createElement("span");
+    status.className = "pv-foot__status muted";
+    const spacer = document.createElement("span");
+    spacer.className = "spacer";
+    const multi = document.createElement("button");
+    multi.type = "button";
+    multi.className = "btn btn--sm pv-foot__multi";
+    multi.textContent = "多选";
+    const discard = document.createElement("button");
+    discard.type = "button";
+    discard.className = "btn btn--sm pv-foot__discard";
+    discard.textContent = "放弃";
+    const submit = document.createElement("button");
+    submit.type = "button";
+    submit.className = "btn btn--sm pv-foot__submit";
+    submit.textContent = "全部提交";
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "btn btn--sm pv-foot__undo";
+    undo.textContent = "撤销这一批";
+    undo.hidden = true;
+    foot.append(status, spacer, multi, discard, submit, undo);
+    root.append(foot);
+
+    multi.addEventListener("click", () => {
+      const state = injected.pvState;
+      state.multi = !state.multi;
+      if (!state.multi) state.selected = new Set();
+      pvRenderProduct();
+      pvUpdateChrome();
+    });
+    discard.addEventListener("click", () => {
+      const state = injected.pvState;
+      state.clear();
+      state.selected = new Set();
+      pvRenderProduct();
+      pvUpdateChrome();
+    });
+    submit.addEventListener("click", () => pvSubmitSelected());
+    undo.addEventListener("click", () => pvUndoBatch());
+  }
+
+  /** 提交：多选模式下只提交选中的草稿，否则提交全部；一个 batch，撤销一次全退。 */
+  async function pvSubmitSelected() {
+    const state = injected.pvState;
+    const entries = [...state.entries()].filter(([key]) => !state.multi || state.selected.has(key));
+    if (!entries.length) return;
+    const items = entries.map(([key, text]) => {
+      const [blockId, lineIndex] = key.split("#");
+      return { blockId, lineIndex: Number(lineIndex), text };
+    });
+    const result = await pvSubmitDrafts(items);
+    if (result && result.ok) {
+      state.selected = new Set();
+      const undo = root && root.querySelector(".pv-foot__undo");
+      if (undo) undo.hidden = false;
+    }
+  }
+
+  /** 撤销这一批：/undo 按 batch 全退（提交时的 batch 就是撤销单位）。 */
+  async function pvUndoBatch() {
+    try {
+      await injected.apiJson(`/api/projects/${previewProjectId}/undo`, { method: "POST" });
+      const undo = root && root.querySelector(".pv-foot__undo");
+      if (undo) undo.hidden = true;
+      await pvLoad();
+    } catch (error) {
+      injected.showError && injected.showError(pvPart("preview-status"), error);
+    }
+  }
+
   /** 顶栏两个按钮：返回审校 / 返回（回到进来之前的视图）。只绑一次。 */
   function pvWireChrome() {
     const back = pvPart("preview-back");
@@ -413,6 +536,9 @@ let previewRequestSeq = 0;     // 连点两次加载只认最后一次（别让�
     injected = Object.assign({}, injected, deps || {});
     root = (deps && deps.root) || root || document.getElementById("view-preview");
     if (!injected.pvState) injected.pvState = new Map();
+    if (!injected.pvState.selected) injected.pvState.selected = new Set();
+    if (injected.pvState.multi === undefined) injected.pvState.multi = false;
+    pvBuildFoot();
     window.addEventListener("beforeunload", pvBeforeUnload);
     pvWireChrome();
     // 导出选项那一组控件就在本视图的 #pv-options 里：把根交给导出模块（它不自己找，避免跨根取 DOM）
