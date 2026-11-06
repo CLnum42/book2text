@@ -27,6 +27,15 @@ review-focus.js     window.ReviewFocus
 单行裁图 renderCrop(bbox, zone) → Element
   放 review-focus.js 里导出；列表经**外壳注入**拿到（#18 不许直呼）。不单开第三个文件：
   它无状态、无生命周期，第二个消费者通过注入复用，不是复制。出现第三个消费者或需要自身生命周期时再抽。
+
+**init 签名（元素由外壳查好传进来，模块不拿 root 自查）**：
+
+```
+ReviewCatList.init({ listEl, counterEl, renderCrop, getRows, getQueuePos, onRowClick, onNavigate, … })
+ReviewFocus.init({ panelEl, contextEl, cropHostEl, renderCrop, getItem, getQueuePos, onVerdict, onManualEdit, … })
+判据：两个模块源码里 el( / getElementById( / querySelector( / querySelectorAll( 各 0 次
+     —— 域模块闸（刀 A 口径）对 querySelector 与 querySelectorAll 一视同仁，都算"按结构找 DOM"。
+     要新增节点就在传入的元素里 createElement / append，不回头查树。
 ```
 
 ## 3. 数据流（谁缓存、键、窗口）
@@ -80,8 +89,9 @@ SECTION_OWNERS（boundary:5951）   **+1 项**（新增 `#view-reading` 表项�
                                   SHELL 不列：app.js 对该 section 的 id 字面量 = 0。
                                   id 名单实现时从 index.html 派生写进表；判据 = 三 owner 并集 == 该 section
                                   被引用 id 全集，且两两交集为空。
-ALLOW_QUERY_SELECTOR_WHITELIST    **+2 行**（review-cat-list.js · review-focus.js）：两个模块都要在自己 root
-                                  子树里查行/上下文节点；同批在本文件写理由（第 5 条起白名单要理由）。
+ALLOW_QUERY_SELECTOR_WHITELIST    **不动（0 行）**：两个模块的元素由 init 注入，不用 querySelector。
+                                  闸口径比本契约严：querySelector 与 querySelectorAll 都算"按结构找 DOM"
+                                  （刀 A 实测红：review-cat-list.js 里 2 次 .querySelector( 即被拦）。
 ```
 
 ## 7. 依赖方向与硬约束
