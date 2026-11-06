@@ -160,3 +160,27 @@ def test_no_word_boxes_uses_line_box() -> None:
 def test_equal_text_has_no_runs() -> None:
     assert runs("一模一样", "一模一样", word_boxes=char_boxes("一模一样"))["runs"] == []
     assert runs("", "任何", )["runs"] == []
+
+
+# ---------------------------------------------------------------- 处的顺序（验收 7）
+
+def test_runs_are_ordered_replace_first_then_length_changing() -> None:
+    """同一行内 replace 先判、insert/delete 最后判——否则判到一半字框就对不上了。
+
+    `甲一乙丙` → `甲“一X丙` 里，插入在第 1 个字后面、替换在后面；
+    返回的顺序必须是「替换 → 插入」，不是文字顺序。
+    """
+    payload = runs("甲一乙丙", "甲“一X丙")
+    assert [(run["kind"], run["a_start"]) for run in payload["runs"]] == [
+        ("replace", 2),
+        ("insert", 1),
+    ]
+    assert payload["has_insert_delete"] is True
+    assert payload["order_note"], "含插入/删除时要给界面一句提示，不许默默改顺序"
+
+
+def test_order_note_is_absent_when_every_run_is_a_replacement() -> None:
+    payload = runs("甲乙丙丁", "甲X丙Y")
+    assert payload["has_insert_delete"] is False
+    assert payload["order_note"] is None
+    assert [run["a_start"] for run in payload["runs"]] == [1, 3]
