@@ -919,6 +919,10 @@ export function commitContractProblems({
   // 登记行写原 sha 也算登记，否则集成一次就要重签一次（2026-11-03 为此重签两次）。
   const aliases = cherryPickOriginShas(message);
   let exempt = false;
+  // 「给已有模块加导出键」那条例外成立（干净）时，本笔删的 tests/js 行就是**登记本身**
+  // （STABLE 那一行 + MAX_EXPORTS 那一行），要求它在产品之外单独再登记一次是死锁；
+  // 因此这类笔不进 unregisteredDeletions 的合计。例外不成立时 shapeException 非空，照旧计数。
+  if (Array.isArray(shapeException) && shapeException.length === 0) exempt = true;
   if (needsRegistration) {
     const kindLabel = isMove ? "move: 笔" : "test-contract 提交";
     const trailer = approvedByTrailer(message);
