@@ -32,19 +32,26 @@ review-focus.js     window.ReviewFocus
 **init 签名（元素由外壳查好传进来，模块不拿 root 自查）**：
 
 ```
-ReviewCatList.init({ listEl, counterEl, renderCrop, getRows, getQueuePos, onRowClick, onNavigate, … })
-ReviewFocus.init({ panelEl, contextEl, cropHostEl, renderCrop, getItem, getQueuePos, onVerdict, onManualEdit, … })
+ReviewCatList.init({ listEl, counterEl, renderCrop, onSelect, onNavigate })   // 无 pull 键
+  外壳另注入给 reading-view：publishCat({ listEl, counterEl, rows, total, currentIndex })
+  → 首次收到：ReviewCatList.init(...) + setQueue(payload)；之后：setQueue(payload)
+ReviewFocus.init({ panelEl, contextEl, cropHostEl, renderCrop, onVerdict, onManualEdit })
+  选中项由外壳 push：ReviewFocus.show(item)（item 来自 setQueue 的 rows，不回调模块去取）
 判据：两个模块源码里 el( / getElementById( / querySelector( / querySelectorAll( 各 0 次
      —— 域模块闸（刀 A 口径）对 querySelector 与 querySelectorAll 一视同仁，都算"按结构找 DOM"。
      要新增节点就在传入的元素里 createElement / append，不回头查树。
+**为什么是 push 不是 pull**：队列住在 reading-view 内部（`readingMarks` / `readingEntries`，48–49 行）。
+pull 版需要 `ReadingView.getQueue()` = 第二个新导出，会再顶一次 5→6 的棘轮（那一次已签给 `selectEntry`）。
+push 版走既有模式：模块调外壳注入的回调（先例 `injected.onPunctGroups?.()`，3918 行），不新增导出。
 ```
 
 ## 3. 数据流（谁缓存、键、窗口）
 
 ```
 队列        沿用 reading-view 现有的 marks 队列（按页窗口 ±10 加载，reading-view:50）。
-            列表不新拉队列：外壳把「队列快照 + 当前位置」注入列表；分母用队列数（1,623），
-            不拼 diff_status 的 2,134（design §109 已定）。
+            **push 模型**：reading-view 在每个刷新点调 `injected.publishCat({ listEl, counterEl, rows, total, currentIndex })`；
+            外壳首次 init、之后 setQueue；模块不拉、不存第二份。
+            分母用队列数（1,623），不拼 diff_status 的 2,134（design §109 已定）。
 页级 runs   GET /api/projects/{id}/review/line-runs?page=N（23fb254）。
             **缓存归外壳**（唯一 owner），键 = `${project_id}:${page}`，窗口 = 当前页 ±1，
             LRU 上限 8 页；两个模块都不许自存第二份（#7）。
