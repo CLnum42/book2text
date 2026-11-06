@@ -13,7 +13,7 @@
 理由：一个"审校屏"只能有一个 section——两个同名视图 = 两套状态、两套 id 归属、两次切换。
 现文件分工（#view-reading）：reading-view.js = 唯一 DOM owner；app.js = boot 注入，**对该 section 的 id 字面量 0**
 （R3 已锁）；本刀新增两个模块，**只拿新 id 子集**，旧 id 仍归 reading-view。
-若文案里的"审校页"实际指 #view-review：本契约整体替换 section 名，其余边界不变（一句替换规则，不是待定）。
+落点已确认为 #view-reading（不是待定）：设计稿与 HANDOFF 的落点函数全在 reading-view.js；#view-review 不在本次设计内。
 ```
 
 ## 2. 模块切分：2 个模块 + 1 个共享纯渲染器
@@ -66,7 +66,7 @@ reading-view.js  −202   readingDiffUnits(51) + openReadingPanel(108) + closeRe
                         + retryReadingPendingPanel(18) + settlePanel(13)
                  另 −1：init deps 里的 computeCharSpans（3 处调用改读 runs 的 spans）
                  保留：paintReadingDiffBoxes(44，页面级色块，改读 runs) · renderReadingProgress(+Extras，改文案)
-新增 review-cat-list.js ≈300 · review-focus.js ≈300（超 350 要在提交正文说明）
+新增两文件：**预期 ≈300 行 / 上限 350 行**（review-cat-list.js · review-focus.js）；超上限必须在提交正文说明超出部分
 判据：reading-view 净减 ≥200；**app.js 允许持平**（但必须在正文写"computeCharSpans 保留"的消费者证据）；
       "新文件 + 老的没动" ⇒ 判失败；reading-view 里 injected.computeCharSpans 出现次数 = 0；
       app.js 对 #view-reading 的 id 字面量仍 = 0（R3）。
@@ -97,7 +97,7 @@ ALLOW_QUERY_SELECTOR_WHITELIST    **+2 行**（review-cat-list.js · review-focu
 
 ```
 ① 契约入库（本文件）+ 实现提交正文点名"适用第 1–7 条"
-② 行数账按 §5 复算：app.js −58、reading-view −202；新增两文件行数落账
+② 行数账按 §5 复算：**app.js −1**（只减 init deps 里的 computeCharSpans 注入键；本文件取代 `eb96fd3` §2 的 −58）· reading-view −202；新增两文件落账（预期 ≈300 / 上限 350）
 ③ reading-view 净减 ≥200（#19 类）；app.js 允许持平但正文要写 computeCharSpans 的 4 个消费者证据
 ④ 四闸 + node/pytest 绿；SECTION_OWNERS 新项的三向对集绿；白名单 +2 行的理由在场
 ⑤ 真机三态色（红未判 / 黄待提交 / 绿已确认；绿+底纹=改过、绿无痕=保留）+ 行级编辑不丢字
