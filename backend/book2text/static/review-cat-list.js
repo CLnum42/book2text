@@ -140,8 +140,11 @@
     const rawH = Math.max(0.0001, ((runBox || bbox)[3] - (runBox || bbox)[1]) * (Number(row.imgH) || 0));
     const lineH = runBox ? rawH : Math.min(rawH, 53);   // 一行 ≈ 53px（300 dpi 实测）
     const scale = Math.min(1.5, Math.max(0.3, (56 * 0.72) / lineH));
+    // 横向中心必须是 **run.bbox**（差异本身）；anchor_bbox 是取景留白框
+    // （实测这一行横跨 0.357–0.891 半页宽），拿它定位会停在行的中段而不是差异字上。
+    const cropBox = runBox || bbox;
     cell.append(
-      injected.renderCrop(bbox, {
+      injected.renderCrop(cropBox, {
         width: 240,
         height: 56,
         scale,
