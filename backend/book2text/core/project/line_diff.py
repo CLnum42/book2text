@@ -250,8 +250,12 @@ def runs_for_text(
     if boxes is None:
         quality = QUALITY_LINE
 
+    # 同一行内的顺序：replace 先、insert/delete 后（同类按位置）。
+    # 理由：replace 不改行长度，判完字框仍然对得上；insert/delete 会改长度，
+    # 放到最后一处判，判完就结案，不存在"剩下的处退化成整行框"。
+    ordered = sorted(found, key=lambda item: (0 if item[4] == RUN_REPLACE else 1, item[0]))
     runs = []
-    for index, (a_start, a_end, b_start, b_end, kind) in enumerate(found):
+    for index, (a_start, a_end, b_start, b_end, kind) in enumerate(ordered):
         bbox = anchor = None
         covered: list[int] = []
         if boxes is not None:
@@ -275,11 +279,17 @@ def runs_for_text(
                 "box_indices": covered,
             }
         )
+    has_length_change = any(run["kind"] != RUN_REPLACE for run in runs)
     return {
         "line_text": current,
         "candidate_text": candidate,
         "degraded": degraded,
         "quality": quality,
+        # 界面提示用：本行含插入/删除时，它们被排在最后判（顺序是规则，不是巧合）
+        "has_insert_delete": has_length_change,
+        "order_note": (
+            "本行有插入/删除，放在最后判（判完这行就结束）" if has_length_change else None
+        ),
         "runs": runs,
     }
 
