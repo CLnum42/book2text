@@ -6155,7 +6155,7 @@ export function sectionOwnerProblems({ owners, subtreeIds, modules }) {
 /** 源码里按 id 取 DOM 的四种写法：part("x") / el("x") / getElementById("x") / querySelector("#x")。 */
 export function idRefsIn(source) {
   const found = new Set();
-  for (const m of String(source || "").matchAll(/(?:part|el|getElementById)\("([^"]+)"\)/g)) found.add(m[1]);
+  for (const m of String(source || "").matchAll(/(?:part|pvPart|el|getElementById)\("([^"]+)"\)/g)) found.add(m[1]);
   for (const m of String(source || "").matchAll(/querySelector\("#([^"]+)"\)/g)) found.add(m[1]);
   return [...found];
 }
@@ -6877,8 +6877,10 @@ test("片 2 笔 C 自检：旧渲染器挪回视图 / 自己拼容器 / 避让�
 
 /** 模块按 id 取的 30 个（全部在 `#export-panel` 子树里，逐个对过 index.html）。 */
 const EXPORT_IDS = [
-  "export-scope", "export-error", "export-preflight", "export-note", "export-range",
-  "export-confirmed-only", "export-page-markers", "export-include-notes", "export-margin-judgement",
+  // 2026-11-06：export-range / export-confirmed-only 随四个控件搬到 #view-preview 的 #pv-options，
+  // 归 PREVIEW section（见下面「③ 预览」那一条）。导出面板本身留成死 DOM，第 4 笔整块删。
+  "export-scope", "export-error", "export-preflight", "export-note",
+  "export-page-markers", "export-include-notes", "export-margin-judgement",
   "export-rule-header", "export-rule-merge", "export-rule-hyphen", "export-rule-newlines",
   "export-rule-strip", "export-btn", "export-preview-btn", "export-result", "export-result-meta",
   "export-files", "export-reveal-btn", "export-history", "export-history-empty", "export-compare",
@@ -6911,12 +6913,7 @@ test("③ 导出：一个 section 两个 owner（模块 30 / 外壳 4 · 并集 
   const moduleSource = readFileSync(join(STATIC_DIR, "export-panel.js"), "utf8");
   const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
   const subtree = exportMaskIds(html);
-  // Temp-Relax: 搬控件到 #pv-options（笔 3 收紧）
-  // 放宽的是**枚举**不是下界：只认 32 或 34 两个值，别的数一律红（搬迁窗口：旧 34 → 新 32）。
-  assert.ok(
-    subtree.length === 32 || subtree.length === 34,
-    `#export-panel 子树应有 32 或 34 个 id（搬迁窗口的枚举值），实测 ${subtree.length}`
-  );
+  assert.equal(subtree.length, 32, `#export-panel 子树里应有 32 个 id（四个控件已搬去 #pv-options），实测 ${subtree.length}`);
   const problems = sectionOwnerProblems({
     owners: [
       { name: "EXPORT", ids: EXPORT_IDS, files: ["export-panel.js"], classes: ["export-"] },
@@ -6926,14 +6923,7 @@ test("③ 导出：一个 section 两个 owner（模块 30 / 外壳 4 · 并集 
     modules: readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"))
       .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") })),
   });
-  // Temp-Relax: 搬控件到 #pv-options（笔 3 收紧）
-  // 只放这两个具名 id 的"不再归属 export 子树"：搬过去之后它们在 #pv-options 里，
-  // 旧断言会报「归属表里的 <id> 不在这个 section 的 subtree 里」。别的 id、别的毛病一律红。
-  const movingIds = ["export-range", "export-confirmed-only"];
-  const allowed = subtree.length === 32
-    ? problems.filter((text) => !movingIds.some((id) => text.includes(`归属表里的 ${id} `)))
-    : problems;
-  assert.deepEqual(allowed, [], allowed.join("\n"));
+  assert.deepEqual(problems, [], problems.join("\n"));
 });
 
 test("③ 导出：导出面每个键都有调用点（§1 ⑦）", () => {
@@ -6945,18 +6935,63 @@ test("③ 导出：导出面每个键都有调用点（§1 ⑦）", () => {
   const api = sandbox.window.ExportPanel;
   assert.ok(api && typeof api.init === "function", "export-panel.js 没挂 window.ExportPanel.init");
   const keys = Object.keys(api);
-  // Temp-Relax: 搬控件到 #pv-options（笔 3 收紧）
-  // 放宽的也是**枚举**：只认 5 键（旧，含 reload）或 4 键（新，reload 0 调用点删除），别的集合一律红。
-  const fiveKeys = ["exportOptions", "init", "refreshPreflight", "reload", "setupPanel"].sort();
-  const fourKeys = ["exportOptions", "init", "refreshPreflight", "setupPanel"].sort();
-  const expected = keys.length === 4 ? fourKeys : fiveKeys;
-  assert.deepEqual(keys.sort(), expected);
+  assert.deepEqual(keys.sort(), ["exportOptions", "init", "refreshPreflight", "setupPanel"].sort());
   const problems = [];
   for (const key of keys) {
     if (!new RegExp(`ExportPanel\\?\\.${key}\\s*\\(`).test(appSource)) {
       problems.push(`api.${key} 在 app.js 里没有调用点——导出面不许留"预留"`);
     }
   }
+  assert.deepEqual(problems, [], problems.join("\n"));
+});
+
+// ---------------------------------------------------------------- ③ 预览导出页：id 归属（第 6 步）
+
+/** 预览页模块（preview-view.js）按 id 取的节点。 */
+const PREVIEW_IDS = [
+  // 视图根与选项容器都在模块自己的子树里：模块自己取（app.js 不引用这个视图的 id）
+  "view-preview", "pv-options",
+  "preview-status", "preview-pending", "preview-export", "preview-back", "preview-to-review",
+  "pv-dir", "pv-pdf", "pv-product",
+];
+/** 导出选项那一组：控件搬进 #pv-options 之后归 export-panel.js 读（exportOptions 的取数面）。 */
+const PREVIEW_OPTION_IDS = ["export-range", "export-confirmed-only", "preview-preflight"];
+/** 外壳只做移交：它注入的 root / optionsRoot 由模块自己解析，外壳不再字面引用这个视图的 id。 */
+const PREVIEW_SHELL_IDS = [];
+
+/** `#view-preview` 这个 section 子树里的全部 id（按 section 标签配平切，不手写行号）。 */
+function previewSectionIds(html) {
+  const at = String(html).indexOf('id="view-preview"');
+  if (at < 0) return [];
+  const start = html.lastIndexOf("<section", at);
+  let depth = 0;
+  for (const match of html.slice(start).matchAll(/<section\b|<\/section>/g)) {
+    if (match[0] === "<section") depth += 1;
+    else {
+      depth -= 1;
+      if (depth === 0) {
+        const sub = html.slice(start, start + match.index + match[0].length);
+        return [...sub.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
+      }
+    }
+  }
+  return [];
+}
+
+test("③ 预览：一个 section 三个 owner（模块 / 导出选项 / 外壳 · 并集 == #view-preview 子树）", () => {
+  const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
+  const subtree = previewSectionIds(html);
+  assert.equal(subtree.length, 13, `#view-preview 子树里应有 13 个 id，实测 ${subtree.length}`);
+  const problems = sectionOwnerProblems({
+    owners: [
+      { name: "PREVIEW", ids: PREVIEW_IDS, files: ["preview-view.js"], classes: ["pv-"] },
+      { name: "OPTIONS", ids: PREVIEW_OPTION_IDS, files: ["export-panel.js"], classes: [] },
+      { name: "SHELL", ids: PREVIEW_SHELL_IDS, files: ["app.js"], integrator: true, classes: [] },
+    ],
+    subtreeIds: subtree,
+    modules: readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"))
+      .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") })),
+  });
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
