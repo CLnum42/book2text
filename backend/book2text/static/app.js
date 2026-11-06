@@ -113,7 +113,7 @@ function fillDefinitionList(node, pairs) {
 
 // 2026-11-04：`preview` 视图已整块删除（L-117）：`VIEWS` 里没有它、`#view-preview` 的 DOM 与
 // `.preview-*` 样式也一并删了；`showView("preview")` 不再是合法视图（会直接 return）。
-const VIEWS = ["library", "pages", "index", "review", "reading", "merge"];
+const VIEWS = ["library", "pages", "index", "review", "reading", "merge", "preview"];
 
 let currentView = "library";
 
@@ -128,7 +128,7 @@ const WORKFLOW_STEPS = [
   { id: "index", label: "目录确认", short: "目录" },
   // L 刀：正文审校吸收结果预览（连续正文流），步骤 7 → 6
   { id: "review", label: "正文审校", short: "审校" },
-  { id: "export", label: "文件导出", short: "导出" },
+  { id: "export", label: "预览与导出", short: "导出" },
 ];
 const PAGE_WORKFLOW_STEPS = ["pages", "recognition", "margin", "index"];
 let workflowStep = null;
@@ -159,7 +159,7 @@ const marginUndoStack = [];
  * 490 页的书上，这三样加起来有 6 s 以上，以前它们跟着开机一起挤，
  * 步骤条要十几秒才亮。
  */
-const viewHydrated = { pages: false, index: false, export: false };
+const viewHydrated = { pages: false, index: false };
 
 /**
  * 启动队列（任务 63）：步骤条（`finish-summary`）没亮之前，视图专属的重请求
@@ -192,7 +192,6 @@ function flushBootQueue() {
 function resetViewHydration() {
   viewHydrated.pages = false;
   viewHydrated.index = false;
-  viewHydrated.export = false;
 }
 
 async function hydrateView(name) {
@@ -204,17 +203,18 @@ async function hydrateView(name) {
     viewHydrated.index = true;
     // 刀 9.4：只重读摘要、不报状态（能力的 text 省略就是这个含义，见模块头注释）
     window.PagesView?.onPageNumberChanged();
-  } else if (name === "export" && !viewHydrated.export) {
-    viewHydrated.export = true;
-    await window.ExportPanel?.reload();
   }
 }
+
+/** 「返回」回到进入预览页之前的那个视图（只记一层，够用；不给它记历史栈）。 */
+let previewReturnView = "reading";
 
 function showView(name) {
   if (!VIEWS.includes(name)) return;
   // 没有打开项目时，只有项目库是可达的
   const target = currentProject || name === "library" ? name : "library";
   const wasReview = currentView === "review";
+  if (target === "preview" && currentView !== "preview") previewReturnView = currentView;
   currentView = target;
   document.body.dataset.view = target;
   for (const view of VIEWS) el(`view-${view}`).hidden = view !== target;
@@ -276,8 +276,9 @@ function showView(name) {
     // 任务 94 / §20.10：进合并视图只有一条路，数据由外壳设进 mergeState
     window.MergeView?.enter();
   }
-  if (target === "export" && currentProject) {
-    queueAfterSteps(() => hydrateView("export"));
+  if (target === "preview" && currentProject) {
+    // 第 1 笔只读：进这一页 = 组一次成品 + 画三栏（模块自己取数，外壳不编排）
+    window.PreviewView?.enter();
   }
 }
 
@@ -445,8 +446,7 @@ function stepProgress(id) {
 
 function autoWorkflowStep() {
   if (!currentProject) return null;
-  const exportOpen = el("export-panel") && !el("export-panel").hidden;
-  if (exportOpen) return "export";
+  if (currentView === "preview") return "export";
   if (currentView === "review" || currentView === "reading") return "review";
   if (currentView === "index") return "index";
   if (currentView !== "pages") return "review";
@@ -752,7 +752,10 @@ function goToWorkflowStep(id) {
   if (!currentProject) return;
   if (currentProject.kind === "package" && id === "export") return;
   if (id === "export") {
-    openExportPanel();
+    showView("preview");
+    workflowStep = "export";
+    workflowStepPinned = true;
+    syncWorkflowSteps();
     return;
   }
   const wasPages = currentView === "pages";
@@ -781,16 +784,6 @@ function goToWorkflowStep(id) {
     applyPageZoom();
   }
   syncWorkflowSteps();
-}
-
-/** 导出面板入口（原顶栏「导出」按钮，任务 36A 起由「文件导出」步骤取代）。 */
-async function openExportPanel() {
-  if (!currentProject) return;
-  workflowStep = "export";
-  workflowStepPinned = true;
-  syncWorkflowSteps();
-  openModal("export-panel");
-  await window.ExportPanel?.reload();
 }
 
 /** 打开一个对话框（.mask）。同一时刻允许多层，但退出键只关最上面一个。 */
@@ -4522,7 +4515,7 @@ function finishStartReview() {
 
 function finishOpenExport() {
   closeFinishPanel();
-  openExportPanel();
+  goToWorkflowStep("export");
 }
 
 function setupReviewControls() {
@@ -5789,6 +5782,17 @@ function onPageDetailChanged(data) {
     ApiError,
   });
   window.ExportPanel?.setupPanel();
+  // 第 6 步：预览导出页（root 由模块自己按 #view-preview 取；成品与导出一份 options）
+  window.PreviewView?.init({
+    apiJson: (...args) => apiJson(...args),
+    getProject: () => currentProject,
+    getToken: () => token,
+    exportOptions: () => window.ExportPanel?.exportOptions?.() || {},
+    showError: (...args) => showError(...args),
+    getPendingCount: () => 0,
+    goBack: () => showView(previewReturnView),
+    goReview: () => goToWorkflowStep("review"),
+  });
   // 刀 D：结构工具（17 个 structure-* 全在 #structure-panel 子树里，root 交给模块）
   window.StructureTools?.init({
     root: el("structure-panel"),

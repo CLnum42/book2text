@@ -2808,6 +2808,14 @@ test("R3 自检：跨视图 id / 块外引用必须红，块内引用与豁免�
  * 这条表就是 §3 归属清单在测试里的副本：**搬层必须同批改表**，否则 R5 会红。
  */
 const OWNERS = {
+  // 预览导出页（2026-11-06）：7 份顶层状态，owner 指向 preview-view.js
+  previewProjectId: "preview-view.js",
+  previewSegments: "preview-view.js",
+  previewSegmentCount: "preview-view.js",
+  previewCurrentSegmentId: "preview-view.js",
+  previewPages: "preview-view.js",
+  previewLoading: "preview-view.js",
+  previewRequestSeq: "preview-view.js",
   readingTreeOpen: "reading-view.js",
   readingTreeExpandedChapters: "reading-view.js",
   readingTreeChapterAuto: "reading-view.js",
@@ -3090,6 +3098,8 @@ const VIEW_STATE_PREFIXES = {
   // "这个模块的东西"，漏登记一样会变成没覆盖。
   "reading-view.js": /^(reading|READING_|wordBoxMappingStats$)/,
   "index-view.js": /^(index|INDEX_|IMAGE_QUALITY_LABELS$)/,
+  // 2026-11-06：预览导出页（第 6 步）。列 0 绑定一律 preview 前缀（状态 + 常量）。
+  "preview-view.js": /^preview/,
   // library-view.js 是 IIFE 形态：顶层状态全在闭包里（列 2），模块自己不留状态——
   // 状态一律走注入的 getter/setter（libraryProjects / lockConflictTarget 留在外壳）。
   "library-view.js": /^(library|LIBRARY_)/,
@@ -4024,6 +4034,8 @@ const VIEW_EXPORTS = {
   "library-view.js": { names: ["init", "enter", "notify", "open"] },
   // 2：init / enter（§20.10 定稿）；renderMergeView 不导出——外壳设 mergeState 后 showView 进
   "merge-view.js": { names: ["init", "enter"] },
+  // 2：init / enter（第 1 笔只读三栏；编辑与提交后续几笔才加键）
+  "preview-view.js": { names: ["init", "enter"] },
   // 刀 1 落盘时 20 个键（**权威来源 = docs/refactor/evidence/pages/rules.py 的 INTERFACE**，
   // 不是按 app.js 现扫——回滚后的 app.js 里 `PagesView.` 是 0 个，扫出来是空的）。
   // 收敛棘轮：本刀 20 → 终点 3（enter / render / refresh，刀 5 收敛到此），刀 2–5 每刀**严格下降**；

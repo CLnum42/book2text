@@ -758,6 +758,60 @@
         </div>
       </section>
 
+      <!-- 预览导出（第 6 步）：左书籍目录 / 中 PDF 原文 / 右成品。第 1 笔只读。 -->
+      <section class="view view--preview" id="view-preview" hidden>
+        <div class="pv-top">
+          <div class="pv-top__row">
+            <strong class="pv-title">预览与导出</strong>
+            <span class="muted" id="preview-status">正在组装成品…</span>
+            <span class="spacer"></span>
+            <button type="button" class="btn btn--sm" id="preview-to-review">返回审校</button>
+            <button type="button" class="btn btn--sm" id="preview-back">返回</button>
+            <span class="muted" id="preview-pending">待提交 0 处</span>
+            <button type="button" class="btn btn--sm" id="preview-export" disabled
+                    title="第 1 笔只有只读预览：导出按钮在后续几笔接上成品提交之后才可用">导出</button>
+          </div>
+          <div class="pv-top__row pv-options" id="pv-options">
+            <span class="pv-opt">
+              <span class="pv-opt__lab">格式</span>
+              <label class="pill"><input type="checkbox" name="export-format" value="txt" checked><span>TXT</span></label>
+              <label class="pill"><input type="checkbox" name="export-format" value="jsonl"><span>JSONL</span></label>
+            </span>
+            <span class="pv-opt">
+              <span class="pv-opt__lab">页码范围</span>
+              <input type="text" id="export-range" class="input input--range"
+                     placeholder="留空 = 全书，如 1-12, 300-310">
+            </span>
+            <label class="chkline pv-opt"><input type="checkbox" id="export-confirmed-only">
+              <span>仅已确认</span></label>
+            <span class="pv-opt">
+              <span class="pv-opt__lab">页面类型</span>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="body" checked><span>正文</span></label>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="body_excluded"><span>正文排除</span></label>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="toc"><span>目录</span></label>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="front"><span>前置</span></label>
+              <label class="pill"><input type="checkbox" name="export-page-type" value="back"><span>后置</span></label>
+            </span>
+            <span class="spacer"></span>
+            <span class="pv-preflight" id="preview-preflight">预检：这一轮只读预览，导出前会在这里说明会被排除的内容</span>
+          </div>
+        </div>
+        <div class="pv-split">
+          <aside class="pv-col pv-col--dir">
+            <div class="pv-col__head">书籍目录</div>
+            <div class="pv-dir" id="pv-dir"></div>
+          </aside>
+          <section class="pv-col pv-col--pdf">
+            <div class="pv-col__head">PDF 原文</div>
+            <div class="pv-pdf" id="pv-pdf"></div>
+          </section>
+          <section class="pv-col pv-col--product">
+            <div class="pv-col__head">成品（按版心与段落组装）</div>
+            <div class="pv-product" id="pv-product"></div>
+          </section>
+        </div>
+      </section>
+
       <!-- ─────────────────────────── 视图：合并审阅 ─────────────────────────── -->
       <section class="view view--merge" id="view-merge" hidden>
         <div class="mergebar" id="merge-panel">
@@ -1042,28 +1096,8 @@
         </div>
         <div class="mbody">
           <div class="mleft">
-            <div class="flabel">格式</div>
-            <div class="chkpills">
-              <label class="pill"><input type="checkbox" name="export-format" value="txt" checked><span>TXT</span></label>
-              <label class="pill"><input type="checkbox" name="export-format" value="jsonl"><span>JSONL</span></label>
-            </div>
-
-            <div class="flabel">范围</div>
-            <label class="chkline"><input type="checkbox" id="export-confirmed-only">
-              <span>仅已确认内容</span></label>
-            <div class="frow"><span class="lab">页码范围</span>
-              <input type="text" id="export-range" class="input input--range" placeholder="留空 = 全书，如 1-12, 300-310">
-            </div>
-
-            <div class="flabel">页面类型</div>
-            <div class="chkpills">
-              <label class="pill"><input type="checkbox" name="export-page-type" value="body" checked><span>正文</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="body_excluded"><span>正文排除</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="toc"><span>目录</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="front"><span>前置</span></label>
-              <label class="pill"><input type="checkbox" name="export-page-type" value="back"><span>后置</span></label>
-            </div>
-            <p class="hint">默认只导出「正文」。勾选其他类型会把那些页也按同一套三流规则导出。</p>
+            <!-- 2026-11-06：格式 / 页码范围 / 仅已确认 / 页面类型 四个控件已搬到 #view-preview 的
+                 #pv-options（删旧留新，不复制）。导出面板留成死 DOM，第 4 笔整块删。 -->
 
             <div class="flabel">三条流</div>
             <p class="hint">
@@ -1808,6 +1842,7 @@
   <script src="/static/word-boxes.js"></script>
   <script src="/static/orthography.js"></script>
   <script src="/static/layout-detect.js"></script>
+  <script src="/static/preview-view.js"></script>
   <script src="/static/page-grid.js"></script>
   <script src="/static/split-batch-panel.js"></script>
   <script src="/static/app.js"></script>

@@ -1331,14 +1331,16 @@ def test_workflow_step_shell_is_wired() -> None:
     assert 'id="export-open"' not in page
     assert ".tabs {" not in styles
 
-    # 五步与判定来源
-    for label in ("页面确认", "版心确认", "文字识别", "正文审校", "文件导出"):
+    # 五步与判定来源（2026-11-06：第 6 步「文件导出」改名「预览与导出」，进 #view-preview）
+    for label in ("页面确认", "版心确认", "文字识别", "正文审校", "预览与导出"):
         assert label in script, label
     for name in (
         "function stepProgress(",
         "function syncWorkflowSteps(",
         "function goToWorkflowStep(",
-        "function openExportPanel(",
+        # 导出面板的入口函数退役：第 6 步改成 showView("preview")，唯一入口 = 预览页顶栏
+        'showView("preview");',
+        "previewReturnView",
     ):
         assert name in script, name
     # 完成判定只读收尾面板 / 质量统计 / 导出记录

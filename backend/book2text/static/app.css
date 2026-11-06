@@ -2746,3 +2746,132 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-text__side--l { text-align: right; }
 .rcl-text__side--r { text-align: left; }
 .rcl-text__mid { white-space: pre; }
+/* ─────────────────────────── 预览导出页（第 6 步，2026-11-06） ───────────────────────────
+ * 三栏：左书籍目录 / 中 PDF 原文 / 右成品。第 1 笔只读。
+ * 顶栏两行：第一行是位置与三个动作（返回审校 / 返回 / 导出），第二行是导出选项与预检。
+ * 窄窗（≤ 760px）：三栏改成上下叠，左目录折成横向条——**付行数，不压字**。 */
+.view--preview { overflow: hidden; }
+
+.pv-top {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  flex: 0 0 auto;
+}
+.pv-top__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.pv-title { font-size: 15px; }
+.pv-top__row .spacer { flex: 1 1 auto; }
+
+.pv-options {
+  gap: 14px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line-soft);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.pv-opt { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.pv-opt__lab { color: var(--muted); }
+.pv-options .input--range { width: 220px; max-width: 40vw; }
+.pv-preflight {
+  color: var(--muted);
+  max-width: 46ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-split {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(0, 1.35fr) minmax(0, 1.6fr);
+}
+.pv-col {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+.pv-col:last-child { border-right: 0; }
+.pv-col__head {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-2);
+}
+
+.pv-dir { overflow: auto; padding: 6px; }
+.pv-dir__page {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 9px;
+  margin-bottom: 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.pv-dir__page:hover { background: var(--surface-3); }
+.pv-dir__page.is-current {
+  background: var(--accent-soft);
+  border-color: #c7dbff;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.pv-pdf { overflow: auto; padding: 10px; background: var(--bg); }
+.pv-page {
+  margin: 0 0 10px;
+  background: var(--page-paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.pv-page img { display: block; width: 100%; height: auto; }
+.pv-page__no {
+  display: block;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--line-soft);
+}
+
+.pv-product { overflow: auto; padding: 10px 14px; font-size: 15px; line-height: 1.85; }
+.pv-seg {
+  margin: 0 0 10px;
+  padding: 6px 8px;
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pv-seg:hover { background: var(--surface-3); }
+.pv-seg.is-current { border-left-color: var(--accent); background: var(--accent-soft); }
+.pv-seg__line { margin: 0; }
+.pv-empty { color: var(--muted); font-size: 13px; padding: 8px; }
+
+@media (max-width: 760px) {
+  .pv-split { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr); }
+  .pv-col { border-right: 0; border-bottom: 1px solid var(--line); }
+  .pv-col--dir { max-height: 132px; }
+  .pv-dir { display: flex; gap: 6px; overflow-x: auto; }
+  .pv-dir__page { width: auto; white-space: nowrap; margin-bottom: 0; }
+  .pv-options .input--range { width: 150px; }
+  .pv-preflight { display: none; }
+}

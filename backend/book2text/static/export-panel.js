@@ -20,8 +20,18 @@
 
   let injected = {};
   let root = null;
+  // 2026-11-06：格式 / 页码范围 / 仅已确认 / 页面类型 四个控件搬到 #view-preview 的 #pv-options
+  // （唯一入口 = 预览页顶栏）。模块仍以 #export-panel 为 root（预检 / 历史 / 对照还在那儿，
+  // 第 4 笔才整块删），四个控件从 optionsRoot 取。**exportOptions() 的逻辑没动，只换取数根。**
+  let optionsRoot = null;
 
   const part = (id) => (root ? root.querySelector(`#${id}`) : null);
+  // 四个搬走的控件在 #pv-options 里：独立 helper = 跨根判据能按根核对
+  const optionScope = () => optionsRoot || root;
+  const optionPart = (id) => {
+    const scope = optionScope();
+    return scope ? scope.querySelector(`#${id}`) : null;
+  };
   const project = () => injected.getCurrentProject();
 
   // ---------------------------------------------------------------- 本模块自己的 5 份状态
@@ -33,16 +43,16 @@
   const comparePageBlocks = new Map();
 
 function exportOptions() {
-  const formats = [...root.querySelectorAll('input[name="export-format"]:checked')]
+  const formats = [...optionScope().querySelectorAll('input[name="export-format"]:checked')]
     .map((input) => input.value);
   let format = "txt";
   if (formats.length === 2) format = "both";
   else if (formats.length === 1) format = formats[0];
 
-  const pageTypes = [...root.querySelectorAll('input[name="export-page-type"]:checked')]
+  const pageTypes = [...optionScope().querySelectorAll('input[name="export-page-type"]:checked')]
     .map((input) => input.value);
 
-  const rangeText = part("export-range").value.trim();
+  const rangeText = optionPart("export-range").value.trim();
   let pageNumbers = null;
   if (rangeText) {
     const { numbers, invalid } = injected.parsePageRange(rangeText);
@@ -52,7 +62,7 @@ function exportOptions() {
 
   return {
     format,
-    confirmed_only: part("export-confirmed-only").checked,
+    confirmed_only: optionPart("export-confirmed-only").checked,
     page_types: pageTypes,
     page_numbers: pageNumbers,
     page_markers: part("export-page-markers").checked,
@@ -541,15 +551,20 @@ async function revealExport(exportId) {
 }
 
 function setupPanel() {
-  for (const input of root.querySelectorAll(
-    'input[name="export-format"], input[name="export-page-type"], #export-confirmed-only,' +
-      " #export-page-markers, #export-include-notes," +
-      " #export-rule-header, #export-rule-merge, #export-rule-hyphen," +
-      " #export-rule-newlines, #export-rule-strip"
-  )) {
-    input.addEventListener("change", schedulePreflight);
+  // 2026-11-06：格式 / 页面类型 / 仅已确认 三组随四个控件搬到 #pv-options（optionScope）；
+  // 其余清理规则仍在 #export-panel 子树里。两处都要绑，改任一选项都要重算预检。
+  for (const scope of [optionScope(), root].filter(Boolean)) {
+    for (const input of scope.querySelectorAll(
+      'input[name="export-format"], input[name="export-page-type"], #export-confirmed-only,' +
+        " #export-page-markers, #export-include-notes," +
+        " #export-rule-header, #export-rule-merge, #export-rule-hyphen," +
+        " #export-rule-newlines, #export-rule-strip"
+    )) {
+      input.addEventListener("change", schedulePreflight);
+    }
   }
-  part("export-range").addEventListener("input", schedulePreflight);
+  const rangeInput = optionPart("export-range");
+  if (rangeInput) rangeInput.addEventListener("input", schedulePreflight);
   // 设置写入返回结果（不写别人的 DOM）：失败时本模块回滚自己的勾选态、并写进自己的 #export-error
   part("export-margin-judgement").addEventListener("change", async (event) => {
     const result = await injected.setMarginJudgementSetting(event.target.checked);
@@ -576,14 +591,12 @@ function setupPanel() {
 }
 
   /** 面板打开 / 重新进入导出步骤时用：先预检、后历史（顺序在模块里，外壳只喊一次）。 */
-  async function reload() {
-    await refreshPreflight();
-    await loadExports();
-  }
 
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
-    root = injected.root || null;
+    root = injected.root || root;
+    // optionsRoot 由 preview-view.js 的 init 调用交进来（不经过外壳的注入表）
+    optionsRoot = (deps && deps.optionsRoot) || optionsRoot;
     return api;
   }
 
@@ -591,7 +604,6 @@ function setupPanel() {
     init,
     setupPanel,
     refreshPreflight,
-    reload,
     // 视图侧的两个真调用点（preview-view / reading-view 要当前勾选）
     exportOptions,
   };
