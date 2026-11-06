@@ -105,6 +105,16 @@ ALLOW_QUERY_SELECTOR_WHITELIST    **不动（0 行）**：两个模块的元素�
                                   （刀 A 实测红：review-cat-list.js 里 2 次 .querySelector( 即被拦）。
 ```
 
+## 6.1 `selectEntry` 签字（2026-11-06）
+
+```
+STABLE += "selectEntry"    // callers: app.js 的 onSelect；死亡条件：右侧正文面板将来并入 focus 时随面板死
+MAX_EXPORTS 5 → 6          // 只属于 reading-view 这块测试；pages 等的上限在另一张表
+落地**一笔**：产品与 STABLE 同笔（依据 R12 A1b 只拦"删除 tests/js 行"，新增行不拦）。
+不需要放宽笔、不需要 Temp-Relax、不需要 Bypass-Reason——写上反而会让人以为默认要绕闸。
+（TEMPORARY 走不通：它的判据是"已存在、等到期才死"，键还没写时放进 TEMPORARY 当场红。）
+```
+
 ## 7. 依赖方向与硬约束
 
 ```
