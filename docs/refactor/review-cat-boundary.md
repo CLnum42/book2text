@@ -14,6 +14,7 @@
 现文件分工（#view-reading）：reading-view.js = 唯一 DOM owner；app.js = boot 注入，**对该 section 的 id 字面量 0**
 （R3 已锁）；本刀新增两个模块，**只拿新 id 子集**，旧 id 仍归 reading-view。
 落点已确认为 #view-reading（不是待定）：设计稿与 HANDOFF 的落点函数全在 reading-view.js；#view-review 不在本次设计内。
+SECTION_OWNERS 走两阶段（阶段一不建表项、阶段二建），见 §6——现在加表项会撞 S1 的 `length == 4`。
 ```
 
 ## 2. 模块切分：2 个模块 + 1 个共享纯渲染器
@@ -85,10 +86,13 @@ reading-view.js  −202   readingDiffUnits(51) + openReadingPanel(108) + closeRe
 
 ```
 OWNERS（boundary:2810）           不动。它管顶层状态归属；本刀不搬状态。
-SECTION_OWNERS（boundary:5951）   **+1 项**（新增 `#view-reading` 表项，3 个 owner：READING / LIST / FOCUS）。
-                                  SHELL 不列：app.js 对该 section 的 id 字面量 = 0。
-                                  id 名单实现时从 index.html 派生写进表；判据 = 三 owner 并集 == 该 section
-                                  被引用 id 全集，且两两交集为空。
+SECTION_OWNERS（boundary:5951）   **两阶段**（S1 判据今天只覆盖 #view-review，且有硬断言 length == 4）：
+                                  阶段一（本刀，正在施工）**不建** `#view-reading` 表项。新增 id 只归 reading-view 用；
+                                    app.js 对这些 id 的引用 = 0（R3 现成判据，仍然成立）。
+                                  阶段二（LIST / FOCUS 落地那一笔）**建**表项（READING / LIST / FOCUS 三 owner），
+                                    同一刀把 S1 从「一个 section」扩成「两张 section 表」，
+                                    `length == 4` 的断言按表数重写（测试侧改动：TestDev 出，Architect 签）。
+                                    id 名单从 index.html 派生；判据 = 三 owner 并集 == 该 section 被引用 id 全集，交集为空。
 ALLOW_QUERY_SELECTOR_WHITELIST    **不动（0 行）**：两个模块的元素由 init 注入，不用 querySelector。
                                   闸口径比本契约严：querySelector 与 querySelectorAll 都算"按结构找 DOM"
                                   （刀 A 实测红：review-cat-list.js 里 2 次 .querySelector( 即被拦）。
