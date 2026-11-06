@@ -2887,3 +2887,8 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rf-row__crop--missing { color: var(--faint); font-size: 12px; }
 .rf-row__text { font-size: 13px; line-height: 1.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rf-empty { font-size: 12.5px; }
+
+/* 笔 A：旧阅读区（目录树 / PDF 栏 / 正文流）隐藏后，差异列表 + 5 行上下文吃满剩余高度。 */
+.view--reading .reading-cat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.view--reading .reading-cat__list { flex: 1 1 auto; max-height: none; }
+.view--reading .reading-cat__context { flex: 0 0 auto; max-height: 45vh; overflow: auto; }
