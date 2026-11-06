@@ -132,10 +132,11 @@
       cell.textContent = "—";
       return cell;
     }
-    // 取景档：240px 窗口左右各留 3 字上下文（共约 7 字）。
-    // 一字宽 = bbox 宽 × 原图宽；scale 让 7 个字正好铺满 240px。clamp 到 0.3–3 防极端值。
-    const spanWidth = Math.max(0.0001, (bbox[2] - bbox[0]) * (Number(row.imgW) || 0));
-    const scale = Math.min(3, Math.max(0.3, 240 / (7 * spanWidth)));
+    // 取景档：**纵向**约束——「一行」这个语义是高度，不是宽度。
+    // 让这一行的高度占窗口高度的 72%（上下留白），横向字数由行宽/图宽自然决定。
+    // 零宽 insert/delete 也能算：宽度退化成点，但 y1-y0 仍是行高。
+    const lineH = Math.max(0.0001, (bbox[3] - bbox[1]) * (Number(row.imgH) || 0));
+    const scale = Math.min(1.5, Math.max(0.3, (56 * 0.72) / lineH));
     cell.append(
       injected.renderCrop(bbox, {
         width: 240,
