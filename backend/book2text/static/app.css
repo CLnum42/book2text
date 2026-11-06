@@ -2737,7 +2737,9 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-row--draft .rcl-cell--state { color: var(--warn-text); }
 .rcl-row--confirmed .rcl-cell--state { color: var(--ok-text); }
 .rcl-cell--text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rcl-diff { background: rgba(220,38,38,.16); color: inherit; border-radius: 2px; padding: 0 1px; }
+/* 差异字：实底浅红 + 1px 下划线（原来的 16% 红底在真机上"看不见"） */
+.rcl-diff { background: #fde8e8; color: #7f1d1d; border-bottom: 1px solid #dc2626;
+  border-radius: 2px; padding: 0 1px; font-weight: 600; }
 .rcl-empty { padding: 12px; font-size: 12.5px; }
 
 /* 正文列：差异字居中。左右两段各占一半、分别贴边；中间是差异本身（不量宽度，中文按字数）。 */
