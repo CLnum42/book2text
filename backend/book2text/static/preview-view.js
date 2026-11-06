@@ -61,6 +61,117 @@ let previewRequestSeq = 0;     // 连点两次加载只认最后一次（别让�
     return out.length ? out : [{ text: text, start: 0 }];
   }
 
+  /** 这一行在段里对应的来源行（block_id / line_index）；找不到就是派生行（只读）。 */
+  function pvLineSpan(segment, start) {
+    const spans = Array.isArray(segment && segment.line_spans) ? segment.line_spans : [];
+    return spans.find((item) => Number(item && item.start) === Number(start)) || null;
+  }
+
+  function pvDraftKey(blockId, lineIndex) {
+    return `${blockId}#${lineIndex}`;
+  }
+
+  function pvPendingCount() {
+    return injected.pvState ? injected.pvState.size : 0;
+  }
+
+  /** 点一行进编辑：contenteditable，失焦/Enter 收草稿；Enter 直接提交这一处。 */
+  function pvStartEdit(row, span, key) {
+    const state = injected.pvState;
+    if (!state) return;
+    // 上一次编辑没收尾（例如元素被重画掉了）不留锁：新点的一行直接接手
+    state.editingKey = key;
+    row.contentEditable = "true";
+    row.classList.add("is-editing");
+    row.focus();
+    const range = document.createRange();
+    range.selectNodeContents(row);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    // 三种收尾：Enter = 收成草稿并**立刻提交这一处**；失焦 = 收成草稿（待提交）；
+    // Esc = 丢弃这次输入。草稿是页内内存态，顶栏计数与离开守卫都读它。
+    const finish = async (mode) => {
+      if (state.editingKey !== key) return;
+      const text = row.textContent || "";
+      state.editingKey = null;
+      row.contentEditable = "false";
+      row.classList.remove("is-editing");
+      if (mode === "cancel") {
+        pvRenderProduct();
+        pvUpdateChrome();
+        return;
+      }
+      state.set(key, text);
+      pvRenderProduct();
+      pvUpdateChrome();
+      if (mode === "commit") {
+        await pvSubmitDrafts([{ blockId: span.block_id, lineIndex: Number(span.line_index), text }]);
+      }
+    };
+
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        finish(true);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        finish(false);
+      }
+    });
+    row.addEventListener("blur", () => { finish("draft"); }, { once: true });
+  }
+
+  /** 一次 batch 提交（第 2 笔只有一处；第 3 笔会传多行）。 */
+  async function pvSubmitDrafts(items) {
+    if (!items.length) return { ok: 0, failed: 0 };
+    const state = injected.pvState;
+    try {
+      await injected.apiJson(`/api/projects/${previewProjectId}/review/submit-drafts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((item) => ({
+            block_id: item.blockId,
+            line_index: item.lineIndex,
+            new_line_text: item.text,
+          })),
+        }),
+      });
+      for (const item of items) state.delete(pvDraftKey(item.blockId, item.lineIndex));
+      pvUpdateChrome();
+      await pvLoad();   // 成品变了：重取，不拿旧 payload
+      return { ok: items.length, failed: 0 };
+    } catch (error) {
+      injected.showError && injected.showError(pvPart("preview-status"), error);
+      return { ok: 0, failed: items.length };
+    }
+  }
+
+  /** 有未提交时离开的守卫：提交并离开 / 放弃修改 / 留在这里（Esc 也是留下）。 */
+  function pvGuardLeave(proceed) {
+    const count = pvPendingCount();
+    if (!count) { proceed(); return; }
+    injected.confirmLeave && injected.confirmLeave(count, {
+      onCommit: async () => {
+        const state = injected.pvState;
+        const items = [...state.entries()].map(([key, text]) => {
+          const [blockId, lineIndex] = key.split("#");
+          return { blockId, lineIndex: Number(lineIndex), text };
+        });
+        await pvSubmitDrafts(items);
+        proceed();
+      },
+      onDiscard: () => {
+        injected.pvState.clear();
+        pvRenderProduct();
+        pvUpdateChrome();
+        proceed();
+      },
+    });
+  }
+
   function pvPageLabel(pageNo) {
     const page = previewPages.find((item) => Number(item.page_no) === pageNo);
     return (page && page.page_label) || `第 ${pageNo} 页`;
@@ -124,6 +235,7 @@ let previewRequestSeq = 0;     // 连点两次加载只认最后一次（别让�
   }
 
   function pvRenderProduct() {
+    if (injected.pvState) injected.pvState.editingKey = null;
     const list = pvPart("pv-product");
     if (!list) return;
     list.innerHTML = "";
@@ -144,7 +256,24 @@ let previewRequestSeq = 0;     // 连点两次加载只认最后一次（别让�
       for (const line of pvSegmentLines(segment)) {
         const row = document.createElement("p");
         row.className = "pv-seg__line";
-        row.textContent = line.text || "（空行）";
+        const span = pvLineSpan(segment, line.start);
+        if (span) {
+          row.dataset.blockId = span.block_id;
+          row.dataset.lineIndex = String(span.line_index);
+          const key = pvDraftKey(span.block_id, span.line_index);
+          const draft = injected.pvState && injected.pvState.get(key);
+          row.textContent = (draft !== undefined ? draft : line.text) || "（空行）";
+          if (draft !== undefined) row.classList.add("is-pending");
+          row.title = "点这一行改字；Enter 提交这一处";
+          row.addEventListener("click", (event) => {
+            event.stopPropagation();
+            pvStartEdit(row, span, key);
+          });
+        } else {
+          // 没有行区间（跨块拼接处的派生行）：只读，不假装能改
+          row.textContent = line.text || "（空行）";
+          row.classList.add("pv-seg__line--readonly");
+        }
         card.append(row);
       }
       list.append(card);
@@ -162,8 +291,9 @@ let previewRequestSeq = 0;     // 连点两次加载只认最后一次（别让�
     }
     const pending = pvPart("preview-pending");
     if (pending) {
-      const count = Number(injected.getPendingCount ? injected.getPendingCount() : 0) || 0;
-      pending.textContent = `待提交 ${count} 处`;
+      const count = pvPendingCount();
+      pending.textContent = count ? `待提交 ${count} 处` : "待提交 0 处";
+      pending.classList.toggle("is-hot", count > 0);
     }
     // 第 1 笔只有只读：导出一律灰着，且写明原因（不做一个点了没反应的亮按钮）
     const exportButton = pvPart("preview-export");
@@ -270,22 +400,31 @@ let previewRequestSeq = 0;     // 连点两次加载只认最后一次（别让�
     const back = pvPart("preview-back");
     if (back && !back.dataset.pvWired) {
       back.dataset.pvWired = "1";
-      back.addEventListener("click", () => injected.goBack && injected.goBack());
+      back.addEventListener("click", () => pvGuardLeave(() => injected.goBack && injected.goBack()));
     }
     const toReview = pvPart("preview-to-review");
     if (toReview && !toReview.dataset.pvWired) {
       toReview.dataset.pvWired = "1";
-      toReview.addEventListener("click", () => injected.goReview && injected.goReview());
+      toReview.addEventListener("click", () => pvGuardLeave(() => injected.goReview && injected.goReview()));
     }
   }
 
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
     root = (deps && deps.root) || root || document.getElementById("view-preview");
+    if (!injected.pvState) injected.pvState = new Map();
+    window.addEventListener("beforeunload", pvBeforeUnload);
     pvWireChrome();
     // 导出选项那一组控件就在本视图的 #pv-options 里：把根交给导出模块（它不自己找，避免跨根取 DOM）
     window.ExportPanel?.init({ optionsRoot: pvPart("pv-options") });
     return api;
+  }
+
+  /** 浏览器级守卫：有草稿时 beforeunload 拦一次（页面内切视图由两个按钮负责）。 */
+  function pvBeforeUnload(event) {
+    if (!pvPendingCount()) return;
+    event.preventDefault();
+    event.returnValue = "有未提交的修改，离开会丢失";
   }
 
   const api = { init, enter };

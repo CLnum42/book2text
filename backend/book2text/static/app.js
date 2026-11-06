@@ -5800,13 +5800,32 @@ function onPageDetailChanged(data) {
   });
   window.ExportPanel?.setupPanel();
   // 第 6 步：预览导出页（root 由模块自己按 #view-preview 取；成品与导出一份 options）
+/** 预览页离开守卫：三键（提交并离开 / 放弃修改 / 留在这里——Esc 即留下）。
+ *
+ * 单独成顶层函数：注入表只认简单表达式，多行箭头函数会被 R13 fail closed。
+ */
+async function guardPreviewLeave(count, actions) {
+  const choice = await confirmAction({
+    title: "有未提交的修改",
+    lead: `有 ${count} 处未提交，离开会丢失这些修改`,
+    safeText: "提交并离开",
+    dangerText: "放弃修改",
+  });
+  if (choice === "safe") await actions.onCommit();
+  else if (choice === "danger") actions.onDiscard();
+  // null（Esc / 点空白）= 留在这里：什么都不做
+}
+
   window.PreviewView?.init({
     apiJson: (...args) => apiJson(...args),
     getProject: () => currentProject,
     getToken: () => token,
     exportOptions: () => window.ExportPanel?.exportOptions?.() || {},
+    // 草稿是页内内存态（§12.3：不进 localStorage）；外壳只持有容器，读写都在预览模块
+    // Map 实例上另挂 editingKey（R13 只认能解析的简单表达式）
+    pvState: new Map(),
     showError: (...args) => showError(...args),
-    getPendingCount: () => 0,
+    confirmLeave: guardPreviewLeave,
     goBack: () => showView(previewReturnView),
     goReview: () => goToWorkflowStep("review"),
   });
