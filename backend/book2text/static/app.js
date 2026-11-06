@@ -4794,6 +4794,26 @@ function openOrthographyReviewPage(pageNo) {
   window.PageDetailDrawer?.openPageDetail(pageNo);
 }
 
+/**
+ * reading-view 交上来的「两个元素 + 队列快照」→ 差异列表（第十一笔）。
+ * 写成具名函数是为了 R13 能解析注入项（注入表里的值必须是可解析的标识符，不许内联多行箭头）。
+ */
+function publishCatFromReading(payload) {
+  const data = payload || {};
+  if (!data.list || !window.ReviewCatList) return;
+  // init 是幂等的（只写两个引用）；不引入新的 window 旗标，免得撞埋点例外表。
+  window.ReviewCatList.init({
+    list: data.list,
+    counter: data.counter,
+    onSelect: (row) => window.ReviewCatList?.show?.(row),
+  });
+  window.ReviewCatList.setQueue({
+    rows: data.rows || [],
+    total: data.total,
+    currentIndex: data.currentIndex,
+  });
+}
+
 function boot() {
   // ③ 第二批：跨视图服务（建议流程）**先装**——导出模块在它之后 init，要它的两个导出
   // （`marginJudgementEnabled` / `setMarginJudgement`）；本模块反过来要导出的预检，
@@ -4872,6 +4892,8 @@ function boot() {
   window.Collab?.setupCollabControls();
   // 任务 94 Slice 1：审校视图模块初始化（依赖由此注入，模块内部不直接碰这些全局）
   window.ReadingView?.init({
+    publishCat: publishCatFromReading,
+
     el,
     getProjectId: () => (currentProject ? currentProject.project_id : null),
     exit: () => showView("pages"),

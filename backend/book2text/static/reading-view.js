@@ -1536,6 +1536,40 @@ function applyReadingMarksPayload(payload) {
   rebuildReadingEntries();
 }
 
+/**
+ * 把「两个元素 + 队列快照」一次性交给外壳（第十一笔）。
+ *
+ * 为什么不直接喊 ReviewCatList：模块之间不许直呼（#18）；外壳收到后做 init（幂等，一次），
+ * 之后每次只 setQueue。元素归本 section（reading-view 是 #view-reading 的 DOM owner），
+ * 所以取这两个节点在这里合法，app.js 里不会出现它们的 id 字面量。
+ *
+ * `total` 必须是**队列总数**（接口给的那个），不是当前窗口条数。
+ */
+function publishCat() {
+  if (typeof injected.publishCat !== "function") return;
+  const rows = readingEntries.map((entry) => ({
+    key: readingKey(entry.block_id, entry.line_index),
+    state: entry.ack ? "confirmed" : "unjudged",
+    edited: entry.ack === "adopted",
+    text: readingEntryLineText(entry) || entry.text || "",
+    noBoxes: true,
+    lineBbox: entry.bbox || null,
+  }));
+  const total =
+    (readingTreeData && readingTreeData.stats && readingTreeData.stats.total_items) || rows.length;
+  const current = readingCursorEntry
+    ? readingKey(readingCursorEntry.block_id, readingCursorEntry.line_index)
+    : null;
+  const currentIndex = current ? rows.findIndex((row) => row.key === current) : -1;
+  injected.publishCat({
+    list: el("reading-cat-list"),
+    counter: el("reading-cat-counter"),
+    rows,
+    total,
+    currentIndex,
+  });
+}
+
 function rebuildReadingEntries() {
   readingEntries = [];
   if (!readingData) return;
@@ -1557,6 +1591,7 @@ function rebuildReadingEntries() {
       });
     }
   }
+  publishCat();
   // 左树的条目级列表跟着 marks 窗口走：窗口换了，这一页下面的条目也要换
   if (readingTreeData) renderReadingTree();
 }
@@ -3932,6 +3967,7 @@ function paintReadingDiffBoxes(pageNo) {
   }
 
   function enter(projectId) {
+    publishCat();
     // 未 init 时保持搬走前的 no-op（原 enter 注入项没接上时也是空转）；生产 boot 必注入 getProject
     if (!injected.getProject) return;
     clearReadingIntents(true);
