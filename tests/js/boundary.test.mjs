@@ -5672,6 +5672,8 @@ const DOMAIN_MODULES = [
   // 第十一笔：正文审校 v3 的差异列表——root = #view-reading 里的列表容器（domain 模块；
   // 只用 root.querySelector 取 data-rcl 节点，不用 querySelectorAll，故不进白名单）
   { file: "review-cat-list.js", exposes: "ReviewCatList" },
+  // 第十一笔：下方 5 行上下文 + 三档取景；元素由外壳注入（listEl 一类），renderCrop 由本模块导出
+  { file: "review-focus.js", exposes: "ReviewFocus" },
   // 片 4：审校左栏目录树——root = #review-tree（第四个 owner TREE，6 个 id 全在子树里）
   { file: "review-tree.js", exposes: "ReviewTree", allowQuerySelector: true },
   // 片 5：跨页延续面板——root = #continuation-panel（顶层 mask，14 个 id 全在子树里）

@@ -4798,23 +4798,122 @@ function openOrthographyReviewPage(pageNo) {
  * reading-view 交上来的「两个元素 + 队列快照」→ 差异列表（第十一笔）。
  * 写成具名函数是为了 R13 能解析注入项（注入表里的值必须是可解析的标识符，不许内联多行箭头）。
  */
+
+// ---------------------------------------------------------------- 页级 runs 缓存（第十一笔）
+//
+// 契约 §3：唯一 owner = 外壳。键 `${projectId}:${page}`，值 { runs, imgW, imgH }。
+// 两个模块（review-cat-list / review-focus）都不许自存第二份，只能读这里返回的对象。
+//
+// 三条不变量：
+//   · 同一页并发调用只发一次请求（in-flight Map 兜住——滚动会连续触发，别让它变成请求风暴）
+//   · 取图尺寸用首次 naturalWidth/naturalHeight（不额外发 HEAD）；onerror ⇒ imgW/imgH = 0，
+//     上层据此显示「—」，**不抛异常**
+//   · 写入后按 LRU 淘汰：> 8 条时删最旧的一个键
+const catRunsCache = new Map();
+const catRunsInFlight = new Map();
+const CAT_RUNS_LIMIT = 8;
+
+/** 命中即返回（并把它挪到 Map 末尾，保持 LRU 顺序）；未命中返回 undefined。 */
+function catRunsTouch(key) {
+  const hit = catRunsCache.get(key);
+  if (hit) {
+    catRunsCache.delete(key);
+    catRunsCache.set(key, hit);
+  }
+  return hit;
+}
+
+/** 写入一条后用 LRU 淘汰到上限以内。 */
+function catRunsTrim() {
+  while (catRunsCache.size > CAT_RUNS_LIMIT) {
+    catRunsCache.delete(catRunsCache.keys().next().value);
+  }
+}
+
+/**
+ * 取一页的 runs 与页图像素尺寸。
+ * @param {number} pageNo
+ * @returns {Promise<{runs: Array, imgW: number, imgH: number, url: string}>}
+ */
+async function catPageRuns(pageNo) {
+  const project = currentProject;
+  if (!project || !pageNo) return { runs: [], imgW: 0, imgH: 0, url: "" };
+  const key = `${project.project_id}:${pageNo}`;
+  const hit = catRunsTouch(key);
+  if (hit) return hit;
+  if (catRunsInFlight.has(key)) return catRunsInFlight.get(key);
+
+  const url = `/api/projects/${project.project_id}/pages/${pageNo}/image?size=zoom`;
+  const task = (async () => {
+    let runs = [];
+    try {
+      const payload = await apiJson(
+        `/api/projects/${project.project_id}/review/line-runs?page=${pageNo}`
+      );
+      runs = (payload && payload.items) || [];
+    } catch (error) {
+      runs = [];
+    }
+    const size = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth || 0, h: img.naturalHeight || 0 });
+      img.onerror = () => resolve({ w: 0, h: 0 });
+      img.src = url;
+    });
+    const entry = { runs, imgW: size.w, imgH: size.h, url };
+    catRunsCache.set(key, entry);
+    catRunsTrim();
+    catRunsInFlight.delete(key);
+    return entry;
+  })();
+  catRunsInFlight.set(key, task);
+  return task;
+}
+
 function publishCatFromReading(payload) {
   const data = payload || {};
-  if (!data.list || !window.ReviewCatList) return;
+  if (!data.listEl || !window.ReviewCatList) return;
   // init 是幂等的（只写两个引用）；不引入新的 window 旗标，免得撞埋点例外表。
   window.ReviewCatList.init({
-    list: data.list,
-    counter: data.counter,
+    listEl: data.listEl,
+    counterEl: data.counterEl,
+    renderCrop: (bbox, zone) => window.ReviewFocus?.renderCrop?.(bbox, zone) || null,
     onSelect: (row) => {
         window.ReviewCatList?.show?.(row);
         window.ReadingView?.selectEntry?.(row && row.key);
       },
   });
+  const rows = data.rows || [];
   window.ReviewCatList.setQueue({
-    rows: data.rows || [],
+    rows,
     total: data.total,
     currentIndex: data.currentIndex,
   });
+  // 页级 runs + 图片尺寸到了再补一次（裁图列从「—」变成真实行图）。
+  // 每页只建一次索引：`blockId:lineIndex` → runs[]，之后每行 O(1)；不用 key 参与匹配。
+  const pageNo = rows.length ? rows[0].pageNo : 0;
+  if (pageNo) {
+    catPageRuns(pageNo)
+      .then((page) => {
+        const index = new Map();
+        for (const item of page.runs || []) {
+          index.set(`${item.block_id}:${item.line_index}`, item.runs || []);
+        }
+        const enriched = rows.map((row) => ({
+          ...row,
+          runs: index.get(`${row.blockId}:${row.lineIndex}`) || [],
+          cropUrl: page.url,
+          imgW: page.imgW,
+          imgH: page.imgH,
+        }));
+        window.ReviewCatList?.setQueue?.({
+          rows: enriched,
+          total: data.total,
+          currentIndex: data.currentIndex,
+        });
+      })
+      .catch(() => {});
+  }
 }
 
 function boot() {

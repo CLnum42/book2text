@@ -3,7 +3,7 @@
 // 边界（docs/refactor/review-cat-boundary.md §2/§7）：
 //   · 只读投影：不拉队列、不存队列、不存 runs —— 行数据全部由外壳 setQueue() 注入；
 //   · 单向：renderCrop 由外壳注入（它归 review-focus），本模块不自己画图、不直呼别的模块；
-//   · DOM 面 = 0：元素由 init 传进来（list / counter），模块不查 DOM、不持 root；
+//   · DOM 面 = 0：元素由 init 传进来（listEl / counterEl），模块不查 DOM、不持 root；
 //   · 状态三态：未判 / 待提交 / 已确认（已确认且改过 = 绿 + 底纹），色值只在 CSS 里。
 //
 // 本文件不含接线（index.html / app.js / 登记表都不动），接线由外壳下一轮做。
@@ -77,6 +77,14 @@
   function rclTextCell(row) {
     const cell = document.createElement("div");
     cell.className = "rcl-cell rcl-cell--text";
+    const span0 = rclFocusSpan(row);
+    const length = span0 ? rclRunLength(span0.run) : 0;
+    if (length > 3) {
+      // >3 字不显示原文，只报「整行 · N 字」（spec §10.3）
+      cell.textContent = `整行 · ${length} 字`;
+      cell.title = String((row && row.text) || "").slice(0, 200);
+      return cell;
+    }
     const window_ = rclTextWindow(row, 18);
     if (window_.lead) cell.append(document.createTextNode("……"));
     if (window_.before) cell.append(document.createTextNode(window_.before));
@@ -108,7 +116,15 @@
       return cell;
     }
     cell.append(
-      injected.renderCrop(bbox, { width: 240, height: 56 })
+      injected.renderCrop(bbox, {
+        width: 240,
+        height: 56,
+        scale: 1,
+        imgW: Number(row.imgW) || 0,
+        imgH: Number(row.imgH) || 0,
+        url: row.cropUrl || "",
+        alt: `第 ${row.pageNo || "?"} 页`,
+      })
     );
     return cell;
   }
@@ -145,7 +161,7 @@
 
   function rclRender() {
     const list = listEl;
-    if (!list) return;
+    if (!listEl) return;
     nodes.clear();
     list.innerHTML = "";
     if (!rows.length) {
@@ -160,7 +176,7 @@
 
   function rclRenderCounter() {
     const counter = counterEl;
-    if (!counter) return;
+    if (!counterEl) return;
     const index = Math.max(0, rows.findIndex((row) => String(row.key) === String(currentKey)));
     const position = currentKey === null ? 0 : index + 1;
     counter.textContent = `${position} / ${total || rows.length}`;
@@ -201,8 +217,8 @@
   function init(deps) {
     const options = deps || {};
     injected = Object.assign({}, injected, options);
-    listEl = options.list || listEl;
-    counterEl = options.counter || counterEl;
+    listEl = options.listEl || listEl;
+    counterEl = options.counterEl || counterEl;
     return api;
   }
 

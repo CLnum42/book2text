@@ -1549,6 +1549,9 @@ function publishCat() {
   if (typeof injected.publishCat !== "function") return;
   const rows = readingEntries.map((entry) => ({
     key: readingKey(entry.block_id, entry.line_index),
+    blockId: entry.block_id,
+    lineIndex: entry.line_index,
+    pageNo: entry.page_no,
     state: entry.ack ? "confirmed" : "unjudged",
     edited: entry.ack === "adopted",
     text: readingEntryLineText(entry) || entry.text || "",
@@ -1562,8 +1565,8 @@ function publishCat() {
     : null;
   const currentIndex = current ? rows.findIndex((row) => row.key === current) : -1;
   injected.publishCat({
-    list: el("reading-cat-list"),
-    counter: el("reading-cat-counter"),
+    listEl: el("reading-cat-list"),
+    counterEl: el("reading-cat-counter"),
     rows,
     total,
     currentIndex,
