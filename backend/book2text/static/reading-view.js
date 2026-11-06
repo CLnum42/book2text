@@ -3999,13 +3999,32 @@ function paintReadingDiffBoxes(pageNo) {
     await readingReloadAfterBatch();
   }
 
+  /**
+   * 列表点击回程（第十一笔）：选中一条差异 = 滚到那一行 + 打开右侧正文面板。
+   * 唯一调用点 = 差异列表（onSelect）。死亡条件：面板并入 review-focus 时此键一起死。
+   */
+  function selectEntry(key) {
+    if (!key) return;
+    const entry = readingEntries.find(
+      (item) => readingKey(item.block_id, item.line_index) === key
+    );
+    if (!entry) return;
+    readingCursorEntry = entry;
+    const line = readingLineNode(key);
+    if (line && typeof line.scrollIntoView === "function") line.scrollIntoView({ block: "center" });
+    openReadingPanel(entry);
+  }
+
   window.ReadingView = {
     init,
     enter,
     getCurrent,
     toggleFollow,
     reload,
+    // 第十一笔：列表点击回程（Architect 2026-11-06 签字 A，导出 5 → 6）。
+    // 死亡条件：右侧正文面板并入 review-focus 时，此键随面板一起死。
+    selectEntry,
     // 偏好与布局已回收为模块内部函数（Slice 2 收尾）：app.js 侧 0 个消费者，
-    // 5 个临时转发导出已删除——公开接口收敛到 6 个稳定项，只降不升。
+    // 临时转发导出已删除——公开接口只降不升。
   };
 })();

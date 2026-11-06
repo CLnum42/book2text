@@ -4805,7 +4805,10 @@ function publishCatFromReading(payload) {
   window.ReviewCatList.init({
     list: data.list,
     counter: data.counter,
-    onSelect: (row) => window.ReviewCatList?.show?.(row),
+    onSelect: (row) => {
+        window.ReviewCatList?.show?.(row);
+        window.ReadingView?.selectEntry?.(row && row.key);
+      },
   });
   window.ReviewCatList.setQueue({
     rows: data.rows || [],

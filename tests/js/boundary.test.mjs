@@ -3959,10 +3959,12 @@ test("move: 自检：三张表内改判绿、越界改 assert 判红、动 MAX �
   assert.equal(broken.length, 0, "块边界解析在括号不配对时不该凭空造出一个块");
 });
 
-const STABLE = ["init", "enter", "getCurrent", "reload", "toggleFollow"];   // exit 已于 8b0cfc7 删除（§19 T4 裁决：enter 幂等，exit 没有要救的东西）
+// 第十一笔：selectEntry = 差异列表点击回程的唯一调用点（Architect 2026-11-06 签字 A）。
+// 死亡条件（签字原文）：若"右侧正文面板"将来并入 review-focus，此键随面板一起死。
+const STABLE = ["init", "enter", "getCurrent", "reload", "toggleFollow", "selectEntry"];   // exit 已于 8b0cfc7 删除（§19 T4 裁决：enter 幂等，exit 没有要救的东西）
 const TEMPORARY = [];   // L6 收尾：splitPrefs/applySplit/saveSplit/resetSplit/setupSplit 已从公开对象删除
 const PENDING_REMOVAL = [];   // 写路径 emit 已于 26ac481 删除；名单清空，写路径不许再加回来
-const MAX_EXPORTS = 5;              // 只许改小（8b0cfc7 删掉 exit 后收紧到 5）
+const MAX_EXPORTS = 6;              // 5 → 6：selectEntry（Architect 签字 A，2026-11-06）
 
 /** 在干净的 vm 里加载模块，读出 `Object.keys(window.ReadingView)`（不加载 app.js）。 */
 function readingViewExportKeys() {
