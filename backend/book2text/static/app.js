@@ -4870,6 +4870,9 @@ function publishCatFromReading(payload) {
   const data = payload || {};
   if (!data.listEl || !window.ReviewCatList) return;
   // init 是幂等的（只写两个引用）；不引入新的 window 旗标，免得撞埋点例外表。
+  window.ReviewFocus?.init?.({
+    contextEl: data.contextEl,
+  });
   window.ReviewCatList.init({
     listEl: data.listEl,
     counterEl: data.counterEl,
@@ -4905,6 +4908,11 @@ function publishCatFromReading(payload) {
         window.ReviewCatList?.setQueue?.({
           rows: enriched,
           total: data.total,
+          currentIndex: data.currentIndex,
+        });
+        // 下方 5 行上下文：同一份 rows（页级缓存已命中，不再发请求）
+        window.ReviewFocus?.showContext?.({
+          rows: enriched,
           currentIndex: data.currentIndex,
         });
       })

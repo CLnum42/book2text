@@ -62,12 +62,87 @@
     return api;
   }
 
-  /** 空骨架：下一笔在这里渲染 5 行上下文与三档取景。 */
+  /** 空骨架：三档取景 / 逐处导航 / 判定在下一笔。 */
   function enter() {
     return api;
   }
 
-  const api = { init, enter, renderCrop };
+  function contextEl() {
+    return injected.contextEl || null;
+  }
+
+  /** 一行上下文：左裁图（复用 renderCrop）+ 右正文（差异行标红）。 */
+  function focusRow(row, isCurrent) {
+    const item = document.createElement("div");
+    item.className = "rf-row" + (isCurrent ? " rf-row--current" : "");
+    const cropCell = document.createElement("div");
+    cropCell.className = "rf-row__crop";
+    const run = row && row.runs && row.runs[0];
+    const box = (run && run.bbox) || (row && row.lineBbox) || null;
+    if (box && typeof renderCrop === "function") {
+      cropCell.append(
+        renderCrop(box, {
+          width: 120,
+          height: 32,
+          scale: 0.7,
+          imgW: Number(row.imgW) || 0,
+          imgH: Number(row.imgH) || 0,
+          url: row.cropUrl || "",
+        })
+      );
+    } else {
+      cropCell.classList.add("rf-row__crop--missing");
+      cropCell.textContent = "—";
+    }
+    const textCell = document.createElement("div");
+    textCell.className = "rf-row__text";
+    const text = String((row && row.text) || "");
+    if (run && run.from) {
+      const at = text.indexOf(run.from);
+      if (at >= 0) {
+        textCell.append(document.createTextNode(text.slice(0, at)));
+        const mark = document.createElement("mark");
+        mark.className = "rcl-diff";
+        mark.textContent = run.from;
+        textCell.append(mark, document.createTextNode(text.slice(at + run.from.length)));
+      } else {
+        textCell.textContent = text;
+      }
+    } else {
+      textCell.textContent = text;
+    }
+    item.append(cropCell, textCell);
+    return item;
+  }
+
+  /**
+   * 下方 5 行上下文：rows 由外壳给（与列表同一份页级数据，不另发请求）。
+   * 只读展示——当前行高亮、差异行标红；三档取景与逐处导航在下笔。
+   */
+  function showContext(payload) {
+    const host = contextEl();
+    if (!host) return api;
+    const rows = (payload && payload.rows) || [];
+    const currentIndex = Number.isInteger(payload && payload.currentIndex)
+      ? payload.currentIndex
+      : -1;
+    host.innerHTML = "";
+    if (!rows.length || currentIndex < 0) {
+      const empty = document.createElement("p");
+      empty.className = "muted rf-empty";
+      empty.textContent = "选中一条差异后，这里显示它上下各两行。";
+      host.append(empty);
+      return api;
+    }
+    const from = Math.max(0, currentIndex - 2);
+    const to = Math.min(rows.length, currentIndex + 3);
+    for (let index = from; index < to; index += 1) {
+      host.append(focusRow(rows[index], index === currentIndex));
+    }
+    return api;
+  }
+
+  const api = { init, enter, renderCrop, showContext };
 
   window.ReviewFocus = api;
 })();

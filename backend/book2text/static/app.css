@@ -2875,3 +2875,13 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   .pv-options .input--range { width: 150px; }
   .pv-preflight { display: none; }
 }
+
+/* 下方 5 行上下文：左裁图（120×32）+ 右正文；当前行高亮，差异行标红。 */
+.reading-cat__context { border-top: 1px solid var(--line); padding: 6px 12px; }
+.rf-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px; align-items: center;
+  min-height: 32px; padding: 2px 0; }
+.rf-row--current { background: var(--accent-soft); border-radius: 4px; }
+.rf-row__crop { width: 120px; height: 32px; overflow: hidden; }
+.rf-row__crop--missing { color: var(--faint); font-size: 12px; }
+.rf-row__text { font-size: 13px; line-height: 1.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-empty { font-size: 12.5px; }
