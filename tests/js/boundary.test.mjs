@@ -5667,6 +5667,9 @@ const DOMAIN_MODULES = [
   // 片 3b：页面图像——缩放档位 / 图档选择 / 宽度测量（服务模块，无 root、不自建 DOM）：
   // element 由调用方给，模块只量宽 + 拼 URL ⇒ 连 querySelector 都是 0 次。
   { file: "page-media.js", exposes: "PageMedia" },
+  // 第十一笔：正文审校 v3 的差异列表——root = #view-reading 里的列表容器（domain 模块；
+  // 只用 root.querySelector 取 data-rcl 节点，不用 querySelectorAll，故不进白名单）
+  { file: "review-cat-list.js", exposes: "ReviewCatList" },
   // 片 4：审校左栏目录树——root = #review-tree（第四个 owner TREE，6 个 id 全在子树里）
   { file: "review-tree.js", exposes: "ReviewTree", allowQuerySelector: true },
   // 片 5：跨页延续面板——root = #continuation-panel（顶层 mask，14 个 id 全在子树里）

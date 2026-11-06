@@ -654,6 +654,15 @@
           <button type="button" id="jev-restore" class="btn btn--sm">恢复原顺序</button>
           <button type="button" id="jev-banner-close" class="icon-btn" title="关闭提示">✕</button>
         </div>
+        <!-- 正文审校 v3（第十一笔）：上方差异列表（四列）——只读投影，数据由外壳 setQueue 注入。
+             上下文五行的容器下一笔加在 .reading-cat-list 之后。 -->
+        <section class="reading-cat">
+          <div class="reading-cat__head">
+            <span class="reading-cat__title">差异列表</span>
+            <span class="reading-cat__counter" data-rcl="counter">0 / 0</span>
+          </div>
+          <ul class="reading-cat__list" data-rcl="list"></ul>
+        </section>
         <div class="reading-toolbar">
           <!-- 任务 66：11 个平铺控件 → 5 组：导航 / 进度 / 下一处 / 筛选与显示 / 动作 -->
           <div class="rt-group rt-group--nav">
@@ -1768,6 +1777,8 @@
   </aside>
 
   <script src="/static/reading-view.js"></script>
+  <!-- 第十一笔：正文审校 v3 的差异列表（window.ReviewCatList）；必须在 app.js 之前 -->
+  <script src="/static/review-cat-list.js"></script>
   <!-- 任务 94：视图模块（经典脚本，必须在 app.js 之前；不许 type="module"——会改 boot 时序） -->
   <script src="/static/index-view.js"></script>
   <script src="/static/library-view.js"></script>

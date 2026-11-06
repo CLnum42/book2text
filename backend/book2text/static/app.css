@@ -2709,3 +2709,33 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 }
 .jev-status[data-phase="blocked"] { color: var(--warn-text); }
 .jev-status[data-phase="starting"] { color: var(--accent-text); }
+
+/* 正文审校 v3：差异列表（四列）。栅格：序号 32 / 裁图 240 / 状态 72 / 正文 flex；行高 64。
+   三态色只在这里给（JS 不写色值）：未判红 / 待提交黄 / 已确认绿；绿+底纹 = 改过。 */
+.reading-cat { display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--line); }
+.reading-cat__head { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 12px; color: var(--muted); }
+.reading-cat__counter { font-variant-numeric: tabular-nums; }
+.reading-cat__list { list-style: none; margin: 0; padding: 0; overflow: auto; max-height: 45vh; }
+.rcl-row {
+  display: grid; grid-template-columns: 32px 240px 72px minmax(0, 1fr);
+  align-items: center; gap: 6px; min-height: 64px; padding: 4px 12px;
+  border-bottom: 1px solid var(--line); cursor: pointer;
+}
+.rcl-row:hover { background: var(--surface-2); }
+.rcl-row--current { background: var(--accent-soft); }
+.rcl-row--unjudged { box-shadow: inset 3px 0 0 var(--bad-text); }
+.rcl-row--draft { box-shadow: inset 3px 0 0 var(--warn-text); }
+.rcl-row--confirmed { box-shadow: inset 3px 0 0 var(--ok-text); }
+.rcl-row--edited { background-image: linear-gradient(rgba(22,163,74,.06), rgba(22,163,74,.06)); }
+.rcl-cell { min-width: 0; font-size: 13px; line-height: 1.6; }
+.rcl-cell--index { color: var(--faint); font-variant-numeric: tabular-nums; text-align: right; }
+.rcl-cell--crop { width: 240px; height: 56px; overflow: hidden; display: flex; align-items: center; }
+.rcl-cell--crop > * { max-width: 240px; max-height: 56px; }
+.rcl-cell--crop.rcl-cell--missing { color: var(--faint); font-size: 12px; }
+.rcl-cell--state { color: var(--text-2); font-size: 12px; }
+.rcl-row--unjudged .rcl-cell--state { color: var(--bad-text); }
+.rcl-row--draft .rcl-cell--state { color: var(--warn-text); }
+.rcl-row--confirmed .rcl-cell--state { color: var(--ok-text); }
+.rcl-cell--text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcl-diff { background: rgba(220,38,38,.16); color: inherit; border-radius: 2px; padding: 0 1px; }
+.rcl-empty { padding: 12px; font-size: 12.5px; }
