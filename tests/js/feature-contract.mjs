@@ -607,8 +607,11 @@ export function exportKeyAdditionProblems({ testsChanges, productSources = [] })
       + "——上限只许按新增键数抬，不许顺手放宽");
   }
 
-  // ④ 新键必须在同笔的产品代码里真的出现在 `const api = { … }` 上
-  const modules = (productSources || []).filter((file) => /window\.[A-Za-z_$][\w$]*\s*=\s*api\b/.test(String(file.source || "")));
+  // ④ 新键必须在同笔的产品代码里真的出现在导出对象上。
+  // **两种形态都认**：`window.X = api`（同笔里有 `const api = {…}`）与 `window.X = { … }` 直写字面量。
+  // 仓库里两种都有（reading-view.js 是后者）；不放宽这一条，等于要求产品为了迁就扫描器改写法。
+  const modules = (productSources || []).filter((file) =>
+    /window\.[A-Za-z_$][\w$]*\s*=\s*(?:api\b|\{)/.test(String(file.source || "")));
   for (const key of addedKeys) {
     if (modules.some((file) => apiObjectHasKey(file.source, key))) continue;
     problems.push(`A1: 新增的键 ${key} 没有出现在同笔产品代码的 \`const api = { … }\` 里——只登记不加键，`
@@ -675,8 +678,13 @@ function quotedKeysInLine(line) {
 /** 产品代码里 `const api = { … }` 块内是否真的有这个键（`key,` / `key:` / `"key":` 都算）。 */
 function apiObjectHasKey(source, key) {
   const text = String(source || "");
-  const start = text.indexOf("const api = {");
-  if (start < 0) return false;
+  // 先找 `const api = {`；找不到再找 `window.X = {`（直写字面量的导出形态）。
+  let start = text.indexOf("const api = {");
+  if (start < 0) {
+    const direct = /window\.[A-Za-z_$][\w$]*\s*=\s*\{/.exec(text);
+    if (!direct) return false;
+    start = direct.index;
+  }
   const open = text.indexOf("{", start);
   let depth = 0;
   let end = -1;
@@ -866,6 +874,8 @@ export function commitContractProblems({
   const touchesTests = files.some(isContractPath);
   const isMove = /^move[(:]/.test(subject);
   const isContract = subject.startsWith("test-contract:");
+  // 形态例外的判定结果：null = 不适用；[] = 适用且干净；非空 = 有问题（已进 problems）
+  let shapeException = null;
 
   // A1（形态）：普通提交不许同时碰产品与 tests/js；`move:` 笔是唯一例外，
   // 但它有更严的代价：tests/js 的每一行改动都必须落在登记表里（见 moveScopeProblems）。
@@ -886,11 +896,15 @@ export function commitContractProblems({
     // 唯一例外：新增 window.X = api 的服务模块，且 tests/js 的改动全落在三张登记表的数组字面量里
     // （按范围开口子，不按提交类型；判据只看文件与行范围，不看提交信息说了什么）。
     const exception = newModuleRegistrationProblems({ addedModules: addedStaticModules, testsChanges, productSources });
+    shapeException = exception;
     if (exception.length) problems.push(...exception);
   }
 
   // A3 形态：改了契约路径的旧断言（有删除行）→ 首行必须是 test-contract:（单人可判）
-  if (deletions > 0 && touchesTests && !isMove && !isContract) {
+  // **例外**：当上面那条形态例外成立且干净时（产品同笔新增了导出键、只改了 STABLE 与 MAX_EXPORTS
+  // 那两行），这两行的删除就是"加键"的一部分，不按"改旧断言"判——否则这个例外白开。
+  const shapeExceptionClean = Array.isArray(shapeException) && shapeException.length === 0;
+  if (deletions > 0 && touchesTests && !isMove && !isContract && !shapeExceptionClean) {
     problems.push(`A3: ${short} 改了 tests/js 的旧断言（删除 ${deletions} 行）但首行不是 test-contract:（${subject}）`);
   }
   // A3 形态：test-contract 提交不许动产品代码（单人可判）
