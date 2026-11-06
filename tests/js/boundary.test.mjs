@@ -6899,7 +6899,12 @@ test("③ 导出：一个 section 两个 owner（模块 30 / 外壳 4 · 并集 
   const moduleSource = readFileSync(join(STATIC_DIR, "export-panel.js"), "utf8");
   const html = readFileSync(join(STATIC_DIR, "index.html"), "utf8");
   const subtree = exportMaskIds(html);
-  assert.equal(subtree.length, 34, `#export-panel 子树里应有 34 个 id，实测 ${subtree.length}`);
+  // Temp-Relax: 搬控件到 #pv-options（笔 3 收紧）
+  // 放宽的是**枚举**不是下界：只认 32 或 34 两个值，别的数一律红（搬迁窗口：旧 34 → 新 32）。
+  assert.ok(
+    subtree.length === 32 || subtree.length === 34,
+    `#export-panel 子树应有 32 或 34 个 id（搬迁窗口的枚举值），实测 ${subtree.length}`
+  );
   const problems = sectionOwnerProblems({
     owners: [
       { name: "EXPORT", ids: EXPORT_IDS, files: ["export-panel.js"], classes: ["export-"] },
@@ -6909,7 +6914,14 @@ test("③ 导出：一个 section 两个 owner（模块 30 / 外壳 4 · 并集 
     modules: readdirSync(STATIC_DIR).filter((name) => name.endsWith(".js"))
       .map((fileName) => ({ fileName, source: readFileSync(join(STATIC_DIR, fileName), "utf8") })),
   });
-  assert.deepEqual(problems, [], problems.join("\n"));
+  // Temp-Relax: 搬控件到 #pv-options（笔 3 收紧）
+  // 只放这两个具名 id 的"不再归属 export 子树"：搬过去之后它们在 #pv-options 里，
+  // 旧断言会报「归属表里的 <id> 不在这个 section 的 subtree 里」。别的 id、别的毛病一律红。
+  const movingIds = ["export-range", "export-confirmed-only"];
+  const allowed = subtree.length === 32
+    ? problems.filter((text) => !movingIds.some((id) => text.includes(`归属表里的 ${id} `)))
+    : problems;
+  assert.deepEqual(allowed, [], allowed.join("\n"));
 });
 
 test("③ 导出：导出面每个键都有调用点（§1 ⑦）", () => {
@@ -6921,7 +6933,12 @@ test("③ 导出：导出面每个键都有调用点（§1 ⑦）", () => {
   const api = sandbox.window.ExportPanel;
   assert.ok(api && typeof api.init === "function", "export-panel.js 没挂 window.ExportPanel.init");
   const keys = Object.keys(api);
-  assert.deepEqual(keys.sort(), ["exportOptions", "init", "refreshPreflight", "reload", "setupPanel"].sort());
+  // Temp-Relax: 搬控件到 #pv-options（笔 3 收紧）
+  // 放宽的也是**枚举**：只认 5 键（旧，含 reload）或 4 键（新，reload 0 调用点删除），别的集合一律红。
+  const fiveKeys = ["exportOptions", "init", "refreshPreflight", "reload", "setupPanel"].sort();
+  const fourKeys = ["exportOptions", "init", "refreshPreflight", "setupPanel"].sort();
+  const expected = keys.length === 4 ? fourKeys : fiveKeys;
+  assert.deepEqual(keys.sort(), expected);
   const problems = [];
   for (const key of keys) {
     if (!new RegExp(`ExportPanel\\?\\.${key}\\s*\\(`).test(appSource)) {

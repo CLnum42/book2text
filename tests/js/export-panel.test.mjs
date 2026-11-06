@@ -118,7 +118,12 @@ function makeModule({ data = FIXTURE, formats = ["txt"], pageTypes = ["body"] } 
 
 test("③ 导出面板接口面：恰好 5 个键，每个都有调用点", () => {
   const { api } = makeModule();
-  assert.deepEqual(Object.keys(api).sort(), ["exportOptions", "init", "refreshPreflight", "reload", "setupPanel"].sort());
+  // Temp-Relax: 搬控件到 #pv-options（笔 3 收紧）
+  // 枚举放宽：5 键（旧，含 reload）或 4 键（新，reload 0 调用点删除）；别的集合一律红。
+  const keys = Object.keys(api).sort();
+  const five = ["exportOptions", "init", "refreshPreflight", "reload", "setupPanel"].sort();
+  const four = ["exportOptions", "init", "refreshPreflight", "setupPanel"].sort();
+  assert.deepEqual(keys, keys.length === 4 ? four : five);
   for (const name of Object.keys(api)) assert.equal(typeof api[name], "function", `api.${name} 不是函数`);
 });
 
