@@ -101,16 +101,18 @@
       return cell;
     }
     const window_ = rclTextWindow(row, 18);
-    if (window_.lead) cell.append(document.createTextNode("……"));
-    if (window_.before) cell.append(document.createTextNode(window_.before));
-    if (window_.changed) {
-      const mark = document.createElement("mark");
-      mark.className = "rcl-diff";
-      mark.textContent = window_.changed;
-      cell.append(mark);
-    }
-    if (window_.after) cell.append(document.createTextNode(window_.after));
-    if (window_.trail) cell.append(document.createTextNode("……"));
+    // 差异字落在文字列中轴：左右两段各占一半、分别贴边（右对齐 / 左对齐），
+    // 中间那段就是差异本身。不用 offsetWidth 量宽——中文按字数即可。
+    const left = document.createElement("span");
+    left.className = "rcl-text__side rcl-text__side--l";
+    left.textContent = (window_.lead ? "……" : "") + window_.before;
+    const middle = document.createElement("mark");
+    middle.className = "rcl-diff rcl-text__mid";
+    middle.textContent = window_.changed;
+    const right = document.createElement("span");
+    right.className = "rcl-text__side rcl-text__side--r";
+    right.textContent = window_.after + (window_.trail ? "……" : "");
+    cell.append(left, middle, right);
     return cell;
   }
 
@@ -130,11 +132,15 @@
       cell.textContent = "—";
       return cell;
     }
+    // 取景档：240px 窗口左右各留 3 字上下文（共约 7 字）。
+    // 一字宽 = bbox 宽 × 原图宽；scale 让 7 个字正好铺满 240px。clamp 到 0.3–3 防极端值。
+    const spanWidth = Math.max(0.0001, (bbox[2] - bbox[0]) * (Number(row.imgW) || 0));
+    const scale = Math.min(3, Math.max(0.3, 240 / (7 * spanWidth)));
     cell.append(
       injected.renderCrop(bbox, {
         width: 240,
         height: 56,
-        scale: 1,
+        scale,
         imgW: Number(row.imgW) || 0,
         imgH: Number(row.imgH) || 0,
         url: row.cropUrl || "",

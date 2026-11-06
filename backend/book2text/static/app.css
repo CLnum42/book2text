@@ -2739,3 +2739,10 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-cell--text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rcl-diff { background: rgba(220,38,38,.16); color: inherit; border-radius: 2px; padding: 0 1px; }
 .rcl-empty { padding: 12px; font-size: 12.5px; }
+
+/* 正文列：差异字居中。左右两段各占一半、分别贴边；中间是差异本身（不量宽度，中文按字数）。 */
+.rcl-cell--text { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: baseline; }
+.rcl-text__side { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rcl-text__side--l { text-align: right; }
+.rcl-text__side--r { text-align: left; }
+.rcl-text__mid { white-space: pre; }
