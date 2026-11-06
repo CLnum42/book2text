@@ -133,9 +133,12 @@
       return cell;
     }
     // 取景档：**纵向**约束——「一行」这个语义是高度，不是宽度。
-    // 让这一行的高度占窗口高度的 72%（上下留白），横向字数由行宽/图宽自然决定。
-    // 零宽 insert/delete 也能算：宽度退化成点，但 y1-y0 仍是行高。
-    const lineH = Math.max(0.0001, (bbox[3] - bbox[1]) * (Number(row.imgH) || 0));
+    // 高度必须取 **run.bbox（未加留白的那一段）**：anchor_bbox 上下各扩了 0.5 倍行高
+    // （后端 `_pad` 的取景留白），拿它算会得到 2 倍行高 ⇒ scale 被砍一半，
+    // 240×56 的窗口里就会出现 2–3 行字。只有退回 lineBbox 时才需要再 clamp 到一行。
+    const runBox = span && span.run && span.run.bbox;
+    const rawH = Math.max(0.0001, ((runBox || bbox)[3] - (runBox || bbox)[1]) * (Number(row.imgH) || 0));
+    const lineH = runBox ? rawH : Math.min(rawH, 53);   // 一行 ≈ 53px（300 dpi 实测）
     const scale = Math.min(1.5, Math.max(0.3, (56 * 0.72) / lineH));
     cell.append(
       injected.renderCrop(bbox, {
