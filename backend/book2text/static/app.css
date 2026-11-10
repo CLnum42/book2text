@@ -2783,11 +2783,18 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-text__side--l { text-align: right; }
 .rcl-text__side--r { text-align: left; }
 .rcl-text__mid { white-space: pre; }
-/* 差异字三色（§6）：机器红 / 待提交黄 / 已确认改过绿；都只用下划线，不加底色 */
-.rcl-diff { background: none; color: #dc2626; border-bottom: 2px solid #dc2626; padding: 0; font-weight: 500; }
-.rcl-diff--draft { color: #a16207; border-bottom-color: #a16207; }
-.rcl-diff--done { color: #15803d; border-bottom-color: #15803d; }
-.rcl-diff--caret { border-bottom: 0; border-left: 2px solid currentColor; padding-left: 1px; }
+/* 差异高亮（2026-11-10 用户口径：两边都画**色块**，与取景图里的色块同色同义）
+   未审红 / 待提交黄 / 已确认绿；半透明底 + 1px 描边，字保持正文色，长段也能看出范围 */
+.rcl-diff {
+  background: rgba(220, 38, 38, .24); color: inherit;
+  box-shadow: inset 0 0 0 1.5px rgba(220, 38, 38, .95);
+  border-radius: 2px; padding: 0 1px;
+}
+.rcl-diff--draft { background: rgba(202, 138, 4, .30); box-shadow: inset 0 0 0 1.5px rgba(161, 98, 7, .95); }
+.rcl-diff--done { background: rgba(22, 163, 77, .26); box-shadow: inset 0 0 0 1.5px rgba(21, 128, 61, .95); }
+.rcl-diff--caret { box-shadow: inset 2px 0 0 currentColor; padding-left: 2px; }
+/* 长差异：中间那段可以被压缩，不许把整行撑破（人为删改可能几十字） */
+.rcl-text__mid { max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
 .rcl-empty { padding: 12px; font-size: 12.5px; }
 
 /* 取景窗（review-focus 产出）：四周 6px 渐隐，代替省略号，避免压字 */

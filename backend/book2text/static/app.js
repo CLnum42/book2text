@@ -4890,16 +4890,27 @@ function publishCatFromReading(payload) {
     // 双版本裁决：保留 / 采用直接写库（与抽屉同一端点），写完重取队列与成品
     onAck: async (row, ack) => {
       if (!currentProject || !row) return;
+      let text = null;
+      if (ack === "adopted") {
+        // 采纳第二路：后端要的是**整块文本**（行数必须与原块一致），不是这一行的候选。
+        // 先把这一页的块取回来，把该行换成候选行，再整块提交。
+        const page = await apiJson(
+          `/api/projects/${currentProject.project_id}/pages/${row.pageNo}/blocks`
+        );
+        const block = (page.blocks || []).find((item) => item.block_id === row.blockId);
+        const lines = String((block && block.text) || "").split("\n");
+        if (!block || !Number.isInteger(row.lineIndex) || row.lineIndex >= lines.length) {
+          throw new Error("找不到这一块的那一行，采纳没有写入");
+        }
+        lines[row.lineIndex] = String(row.candidate || "");
+        text = lines.join("\n");
+      }
       await apiJson(
         `/api/projects/${currentProject.project_id}/blocks/${row.blockId}/diff-ack`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            line_index: row.lineIndex,
-            ack,
-            text: ack === "adopted" ? (row.candidate || null) : null,
-          }),
+          body: JSON.stringify({ line_index: row.lineIndex, ack, text }),
         }
       );
       await window.ReadingView?.reload?.();

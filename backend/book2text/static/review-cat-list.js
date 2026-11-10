@@ -31,6 +31,12 @@
   const pageRuns = new Map();     // pageNo → { byKey, imgW, imgH, url }
   const pageLoading = new Map();  // pageNo → Promise
   let observer = null;
+  // 会话内记住"这一行判之前差异在哪"：采用候选后 current 已等于 candidate，接口不再给 runs，
+  // 但用户要看到"这里改过"的绿块 —— 用完即弃，刷新页面就没了（库里只剩 diff_ack）。
+  const adoptedSpans = new Map();
+  // 采用候选后这一行就不再"差异"了（current == 候选），队列里会消失 —— 用户要看到它变绿，
+  // 所以本次会话内把它留在列表里（刷新后仍会消失，那时它已经判完出队）。
+  const adoptedRows = new Map();
 
   const rclClamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
@@ -233,8 +239,29 @@
     cell.className = "rcl-cell rcl-cell--text";
     const text = String((row && row.text) || "");
     const runs = rclEffectiveRuns(row);
-    // 已确认·保留原文：判过但没改字 ⇒ 不染（§6）
-    if (!runs.length || (row.state === "confirmed" && !row.edited)) {
+    const remembered = adoptedSpans.get(rclKey(row));
+    // 2026-11-10 用户口径：**两边始终都有高亮**，颜色只跟状态走（未审红 / 待提交黄 / 已确认绿）。
+    // 「已确认·保留原文」也照样标——判过并不等于没差异，只是裁决成了"保留当前"。
+    if (!runs.length) {
+      if (remembered && remembered.text) {
+        // 采用候选后文本已与候选一致：把"改成了什么"按绿色块画回来（本次会话内有效）
+        const before = text.slice(0, remembered.start);
+        const after = text.slice(remembered.start + remembered.text.length);
+        const left = document.createElement("span");
+        left.className = "rcl-text__side rcl-text__side--l";
+        left.textContent = before;
+        const middle = document.createElement("span");
+        middle.className = "rcl-text__mid";
+        const mark = document.createElement("mark");
+        mark.className = "rcl-diff rcl-diff--done";
+        mark.textContent = remembered.text;
+        middle.append(mark);
+        const right = document.createElement("span");
+        right.className = "rcl-text__side rcl-text__side--r";
+        right.textContent = after;
+        cell.append(left, middle, right);
+        return cell;
+      }
       cell.textContent = text;
       return cell;
     }
@@ -348,12 +375,39 @@
 
     const ack = (value) => {
       if (typeof injected.onAck !== "function") return;
+      let remembered = null;
+      if (value === "adopted" && run) {
+        // 采纳后 current 就会等于 candidate，接口不再给 runs：把"改成了什么"记在会话里，
+        // 之后按绿色块画出来（位置取候选里那一段的位置）。
+        const candidate = String(row.candidate || "");
+        const to = String(run.to == null ? "" : run.to);
+        const at = to ? candidate.indexOf(to) : -1;
+        if (at >= 0) remembered = { start: at, text: to };
+      }
       keep.disabled = true;
       adopt.disabled = true;
-      Promise.resolve(injected.onAck(row, value)).catch(() => {
-        keep.disabled = false;
-        adopt.disabled = false;
-      });
+      Promise.resolve(injected.onAck(row, value))
+        .then(() => {
+          row.state = "confirmed";
+          row.edited = value === "adopted";
+          if (remembered) {
+            adoptedSpans.set(rclKey(row), remembered);
+            row.text = String(row.candidate || row.text || "");
+            adoptedRows.set(rclKey(row), row);
+          }
+          // onAck 内部会 reload（新队列里已经没有这一行）⇒ 这里把它补回当前列表并重画，
+          // 否则"采纳后变绿"根本看不见。
+          const key = rclKey(row);
+          if (!rows.some((item) => rclKey(item) === key)) {
+            const at = Math.min(Number.isInteger(row.__rclIndex) ? row.__rclIndex : rows.length, rows.length);
+            rows.splice(at, 0, row);
+          }
+          rclRender();
+        })
+        .catch(() => {
+          keep.disabled = false;
+          adopt.disabled = false;
+        });
     };
     keep.addEventListener("click", (event) => { event.stopPropagation(); ack("kept"); });
     adopt.addEventListener("click", (event) => { event.stopPropagation(); ack("adopted"); });
@@ -417,6 +471,7 @@
     }
     const eager = Math.min(rows.length, RCL_EAGER_ROWS);
     rows.forEach((row, index) => {
+      if (row.__rclIndex === undefined) row.__rclIndex = index;
       const node = rclRowElement(row, index + 1);
       listEl.append(node);
       if (index < eager) rclEnsureRuns(row);
@@ -451,7 +506,15 @@
   // ---------------------------------------------------------------- 对外
   function setQueue(payload) {
     const data = payload || {};
-    rows = Array.isArray(data.rows) ? data.rows : [];
+    const incoming = Array.isArray(data.rows) ? data.rows : [];
+    const present = new Set(incoming.map((row) => rclKey(row)));
+    rows = incoming.slice();
+    // 本次会话里采纳过的行（已出队）补回原位，保证"确认了就能看到绿色"
+    for (const [key, row] of adoptedRows) {
+      if (present.has(key)) continue;
+      const at = Number.isInteger(row.__rclIndex) ? row.__rclIndex : rows.length;
+      rows.splice(Math.min(at, rows.length), 0, row);
+    }
     total = Number.isFinite(Number(data.total)) ? Number(data.total) : rows.length;
     if (data.counts) injected.counts = data.counts;
     if (Number.isInteger(data.currentIndex) && data.currentIndex >= 0 && rows[data.currentIndex]) {
