@@ -2692,24 +2692,6 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .reading-panel-host[hidden] { display: none; }
 .reading-panel { margin: 0 0 8px; }
 
-/* ── Jev 可疑度排序提示条（2026-11-05） ── */
-.jev-banner {
-  display: flex; align-items: center; gap: 10px; flex: none;
-  padding: 6px 14px; font-size: 12px;
-  background: var(--accent-soft); color: var(--accent-text);
-  border-bottom: 1px solid var(--line);
-}
-.jev-banner .icon-btn { margin-left: auto; }
-
-/* Jev 状态行：常驻在「Jev 打分…」旁边。原因必须看得见——只放 title 等于没写。 */
-.jev-status {
-  font-size: 12px; max-width: 420px; flex: none;
-  color: var(--muted); line-height: 1.35;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.jev-status[data-phase="blocked"] { color: var(--warn-text); }
-.jev-status[data-phase="starting"] { color: var(--accent-text); }
-
 /* 正文审校 v3：差异列表（四列）
    栅格：序号 32 / 两带列（取景在上、正文在下，同宽） / 状态 72 / 判定 246；行高 71。
    取景窗 340×34、字高 22px（设计 §2）；窄窗（≤900）页图收到 240，**不缩字号**（§10.3 窄窗付行数不付可读性）。
