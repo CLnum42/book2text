@@ -198,9 +198,9 @@
       // 窄屏栅格 28 / 72 / 两带跨 2–3 列：实测两带列宽 = 列表宽 − 50
       return Math.max(240, width - 50);
     }
-    // 宽屏（2026-11-10 起）：两带跨第 2–4 列，判定列与状态列都让给正文
-    // 实测两带列宽 = 列表宽 − 62（序号 32 + 间距 6 + 左右内边距 24）
-    return Math.max(240, width - 62);
+    // 宽屏（2026-11-10）：列 = 序号 32 / 状态 72 / 两带；判定列已并入按钮行
+    // 实测两带列宽 = 列表宽 − 140（序号 32 + 状态 72 + 两处间距 12 + 左右内边距 24）
+    return Math.max(240, width - 140);
   }
 
   function rclBandWidth() {
@@ -585,6 +585,8 @@
     cell.className = "rcl-cell rcl-cell--text rcl-cell--editing";
     const win = rclEditWindow(row);
     if (!win) return cell;
+    // 中轴锚定：编辑框的差异字落在与浏览态相同的位置（文字不跳）
+    cell.style.setProperty("--rcl-edit-anchor", String(win.anchorAt * rclTextPx()));
     const box = document.createElement("div");
     box.className = "rcl-edit";
     box.contentEditable = "true";
@@ -771,6 +773,7 @@
     cell.className = "rcl-cell rcl-cell--versions";
     // 手改进行中：只剩「提交 / 取消」两个键（Enter/Tab/Esc 也做同样的事）
     if (editingKey === rclKey(row)) {
+      cell.classList.add("rcl-cell--versions--editing");
       const commit = document.createElement("button");
       commit.type = "button";
       commit.className = "rcl-ver rcl-ver--adopt";

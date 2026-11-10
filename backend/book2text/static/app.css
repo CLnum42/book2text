@@ -2723,11 +2723,13 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
    （列宽 1016 → 1334，每行多显示 ~20 字）。
    窄屏（≤900）保持原样：按钮仍在右侧（见文件底部 media query）。 */
 .rcl-row {
-  display: grid; grid-template-columns: 32px minmax(0, 1fr) 72px 246px;
+  display: grid; grid-template-columns: 32px 72px minmax(0, 1fr);
+  /* 2026-11-10 用户定：状态回左侧当一列（序号右边）；按钮行在正文下方**居中**，
+     跟审校内容同一条视线，不再靠右 */
   grid-template-areas:
-    "i b b b"
-    "i b b b"
-    ". . s v";
+    "i s b"
+    "i s b"
+    ". . v";
   grid-template-rows: 34px auto 40px;
   align-items: center; gap: 6px; min-height: 0; padding: 4px 12px;
   border-bottom: 1px solid var(--line-soft); cursor: pointer;
@@ -2751,13 +2753,19 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 }
 .rcl-band--text { height: 26px; }
 /* 双版本（设计 §9/§10）：并排、等宽 120、间距 6、首个差异字锚按钮中轴 */
-.rcl-cell--versions { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.rcl-cell--versions { display: flex; align-items: center; gap: 6px; justify-content: center; }
 /* 手改入口（✎）：判定列三个键平分宽度，图标键固定 26px */
 .rcl-ver--edit { flex: 0 0 26px; width: 26px; padding: 0; font-size: 14px; }
+/* 手改进行中：提交 / 取消固定宽度，不随列宽拉伸 */
+.rcl-cell--versions--editing .rcl-ver { flex: 0 0 120px; }
 /* 手改进行中：正文带变成可编辑框，底线蓝，提示浮在右上（不撑高行） */
-.rcl-cell--editing { position: relative; overflow: visible; }
+.rcl-cell--editing { position: relative; overflow: visible; min-height: 26px; }
+/* 编辑框锚在**差异字**上：left = 中轴 − 差异字在窗口内的偏移 × 字宽。
+   这样点进编辑时文字不动（浏览态差异字也在中轴），视线不用重找。 */
 .rcl-edit {
-  outline: none; display: inline-block; min-width: 60%; white-space: pre;
+  position: absolute; top: 50%; transform: translateY(-50%);
+  left: calc(50% - var(--rcl-edit-anchor, 0) * 1px);
+  outline: none; white-space: pre; min-width: 2em;
   border-bottom: 2px solid var(--accent); padding-bottom: 1px;
   font-family: inherit; color: var(--text);
 }
@@ -2768,7 +2776,7 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   box-shadow: 0 0 0 1px #c7d7f5;
 }
 .rcl-ver {
-  width: auto; flex: 1 1 0; min-width: 0; height: 32px; padding: 0 4px;
+  width: auto; flex: 0 1 220px; min-width: 90px; height: 32px; padding: 0 10px;
   border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
   font-size: 14px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   cursor: pointer;
@@ -2794,8 +2802,8 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-cell--crop.rcl-cell--missing { color: var(--faint); font-size: 12px; }
 /* 状态 gutter（§2/§6）：圆点 + 第一行状态 + 第二行「改过 / 未改动」——颜色不是唯一通道 */
 .rcl-cell--state {
-  display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 6px;
-  padding-left: 4px; border: 0; background: none;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px;
+  align-self: stretch; padding-left: 2px; border: 0; background: none;
   font-size: 12px; color: var(--text-2); line-height: 1.25;
 }
 .rcl-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); display: block; margin-bottom: 2px; }
@@ -2900,6 +2908,7 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   /* 状态折进第二行左侧（设计 §3：竖 gutter 会把正文列压到 182） */
   .rcl-cell--state { grid-area: s; height: auto; border: 0; background: none; padding-left: 0; }
   .rcl-cell--versions { grid-area: v; justify-content: flex-end; }
+  .rcl-cell--state { align-self: auto; }
   .rcl-band--shot { height: 34px; }
   .rcl-band--text { height: auto; min-height: 25px; }
 }
