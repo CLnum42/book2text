@@ -77,39 +77,72 @@
   }
 
   /**
-   * 兜底：页级 runs 还没到 / 这一行不在 line-runs 里时，用 current 与 candidate 现算差异区间。
-   * **不依赖任何请求**——否则「那一段该红」就全靠接口，接口一缺整行就没有标记（2026-11-10 用户看到的正是这种）。
-   * 只算首尾公共前缀/后缀，够定位一处差异；多段差异仍以接口的 runs 为准。
+   * 这一条差异的区间：用 **marks 的 current→candidate** 现算（首尾公共前后缀），
+   * 再映射回整行 text 的坐标。
+   *
+   * 为什么要映射：`current` 是整行的**窗口文本**（±20 字），`text` 是整行。
+   * 一行可能有多处差异（队列里是多条，每条一个 current/candidate），
+   * 用户 2026-11-10 要求"只标中轴那一处"——所以每条只算自己那一处，
+   * 不能像以前那样把整行所有 run 都画上（行 7 就同时红了两处）。
+   *
+   * **不依赖任何请求**：接口缺 runs 时也能标（2026-11-10 红标整片缺失就是靠这个兜底）。
    */
   function rclFallbackRun(row) {
-    const text = String((row && row.text) || "");
+    const whole = String((row && row.text) || "");
+    const windowText = String((row && row.current) || "");
     const candidate = String((row && row.candidate) || "");
-    if (!text || !candidate || text === candidate) return null;
+    if (!whole || !candidate) return null;
+    const source = windowText && whole.includes(windowText) ? windowText : whole;
+    if (source === candidate) return null;
     let start = 0;
-    const limit = Math.min(text.length, candidate.length);
-    while (start < limit && text[start] === candidate[start]) start += 1;
+    const limit = Math.min(source.length, candidate.length);
+    while (start < limit && source[start] === candidate[start]) start += 1;
+    // 公共后缀（首尾法）：先把"从尾部也能对上"的那一截排除
     let tail = 0;
     while (
       tail < limit - start
-      && text[text.length - 1 - tail] === candidate[candidate.length - 1 - tail]
+      && source[source.length - 1 - tail] === candidate[candidate.length - 1 - tail]
     ) tail += 1;
-    const end = Math.max(start, text.length - tail);
+    let end = Math.max(start + 1, source.length - tail);
+    // **等长替换只取第一段连续差异**（中轴那一处）：用户 2026-11-10 要求"一行里只标
+    // 中轴的 working content"。一条 item 的 current/candidate 可能同时含两处（行 7 的
+    // 竖→坚 + 桶→槅），首尾法会覆盖中间 16 字，红框横跨半行。
+    if (source.length === candidate.length) {
+      let first = start + 1;
+      while (first < source.length && source[first] !== candidate[first]) first += 1;
+      end = first;
+    }
+    const useEnd = Math.max(start + 1, end);
+    // 窗口文本在整行里的偏移（找不到就退回整行坐标）
+    const offset = source !== whole ? Math.max(0, whole.indexOf(source)) : 0;
     return {
-      a_start: start,
-      a_end: end,
-      from: text.slice(start, end),
-      to: candidate.slice(start, Math.max(start, candidate.length - tail)),
+      a_start: start + offset,
+      a_end: useEnd + offset,
+      from: source.slice(start, useEnd),
+      to: candidate.slice(start, Math.max(start, useEnd)),
       bbox: null,
       fallback: true,
     };
   }
 
-  /** 这一行用来标红 / 定位的 runs：接口优先，缺了用现算的兜底。 */
-  function rclEffectiveRuns(row) {
+  /** 这一条差异的 run：区间接本章的 current/candidate；bbox 从页级 runs 里按 from 配对（贴字用）。 */
+  function rclOwnRun(row) {
+    const own = rclFallbackRun(row);
     const runs = rclRunsFor(row);
-    if (runs.length) return runs;
-    const fallback = rclFallbackRun(row);
-    return fallback ? [fallback] : [];
+    if (!own) {
+      // 已确认 / 没有候选：退回页级 runs 的第一段（这一行仍要显示一处色块）
+      return runs.length ? runs[0] : null;
+    }
+    const hit = runs.find((item) => String(item.from) === own.from && Array.isArray(item.bbox))
+      || runs.find((item) => Array.isArray(item.bbox));
+    return { ...own, bbox: hit && hit.bbox ? hit.bbox : null };
+  }
+
+  /** 这一行用来标红 / 定位的 runs（只含**这一条**差异）。 */
+  function rclEffectiveRuns(row) {
+    const own = rclOwnRun(row);
+    if (own) return [own];
+    return [];
   }
 
   function rclEnsureRuns(row) {
@@ -272,16 +305,15 @@
   function rclCropCell(row) {
     const cell = document.createElement("div");
     cell.className = "rcl-cell rcl-cell--crop";
-    const runs = rclRunsFor(row);
-    const run = runs[0] || null;
-    let box = (run && run.bbox) || (row && row.lineBbox) || null;
-    // 没有 runs（页级接口缺这一行）时：用兜底差异区间在行框里按字序插值，
+    // **这一条**差异（不是整行所有差异）：定位、色块都只围绕它，与正文中轴那一处一一对应
+    const own = rclOwnRun(row);
+    let box = (own && own.bbox) || (row && row.lineBbox) || null;
+    // 没有页级 runs（接口缺这一行）时：用本条差异区间在行框里按字序插值，
     // 估计差异字的大致横坐标 —— 否则取景只会停在整行中点，看着不像"对准差异字"。
-    if (!run && box && row.state !== "confirmed") {
-      const fallback = rclFallbackRun(row);
+    if (own && !own.bbox && box) {
       const length = String(row.text || "").length;
-      if (fallback && length > 0) {
-        const ratio = (fallback.a_start + fallback.a_end) / 2 / length;
+      if (length > 0) {
+        const ratio = (own.a_start + own.a_end) / 2 / length;
         const x = box[0] + ratio * (box[2] - box[0]);
         box = [x, box[1], x, box[3]];
       }
@@ -299,13 +331,16 @@
     }
     // 色块颜色跟状态走：未审红 / 待提交黄 / 已确认绿（与右侧文字标记同色系）
     const tone = row.state === "confirmed" ? "done" : row.state === "draft" ? "draft" : "machine";
-    // 色块按**字符格**给（a_start..a_end），不按 run.bbox：bbox 只紧贴字形，
-    // 多字差异时它和正文的红标宽度/位置对不上（实测行 4 偏 15px）。字符格与正文同一套格距。
-    const text = String((row && row.text) || "");
-    const highlights = runs
-      .map((item) => rclSpanOf(item, text))
-      .filter(Boolean)
-      .map((span) => ({ start: span.start, end: span.end, tone }));
+    // 色块用 **run.bbox（字形实际框）**：用户 2026-11-10 报"高亮框跟字没重合"，
+    // 均匀字格的估算在标点/缩进行上会偏 1–2 个字。字形框就从 word_boxes 来，贴字。
+    const highlights = own
+      ? [{
+        start: own.a_start,
+        end: own.a_end,
+        bbox: Array.isArray(own.bbox) ? own.bbox : null,
+        tone,
+      }]
+      : [];
     // 两带同一个字符窗口：正文怎么截、取景就怎么截；正文补了 before/after 的字数，
     // 取景的上一行末尾 / 下一行开头切片也用同样的字数（这才是"上方和下方一样"）。
     const bandWidth = rclBandWidth();

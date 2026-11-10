@@ -2831,8 +2831,10 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-diff--draft { background: rgba(202, 138, 4, .20); box-shadow: 0 0 0 1px rgba(161, 98, 7, .85); }
 .rcl-diff--done { background: rgba(22, 163, 77, .16); box-shadow: 0 0 0 1px rgba(21, 128, 61, .75); }
 .rcl-diff--caret { box-shadow: -2px 0 0 0 currentColor; margin-left: 2px; }
-/* 长差异：中间那段可以被压缩，不许把整行撑破（人为删改可能几十字） */
-.rcl-text__mid { max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+/* 中轴差异段：**不许裁字**（用户 2026-11-10 第二次报"差异内容无法完整显示"）。
+   旧写法 max-width:60% 的百分比是相对 grid 的 auto 列自身宽度算的 —— 单字时 60%×16px=9px，
+   16px 的字被裁掉一半；多字差异也被压成"…"。窗口已限 63 字，整段差异也放得下，直接放开。 */
+.rcl-text__mid { white-space: pre; }
 .rcl-empty { padding: 12px; font-size: 12.5px; }
 
 /* 取景窗（review-focus 产出）：四周 6px 渐隐，代替省略号，避免压字 */

@@ -177,20 +177,29 @@
     // 差异色块（2026-11-10 用户要求）：与右侧文字的红/黄/绿一一对应。
     // 横向用**字符格**（与正文同一套 xAt）而不是 run.bbox —— bbox 只紧贴字形，多字差异时
     // 会和正文红标的宽度/位置对不上（行 4 实测偏 15px）。纵向用本行字高，两边同一条线。
-    const hlTop = maskBox[1] * imageH - top;
-    const hlHeight = Math.max(4, (maskBox[3] - maskBox[1]) * imageH);
+    const lineTop = maskBox[1] * imageH - top;
+    const lineHeight = Math.max(4, (maskBox[3] - maskBox[1]) * imageH);
     for (const item of Array.isArray(options.highlights) ? options.highlights : []) {
-      const from = Number(item && item.start);
-      const to = Number(item && item.end);
-      if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
       const tone = ["machine", "draft", "done"].includes(item && item.tone) ? item.tone : "machine";
+      const box4 = Array.isArray(item && item.bbox) && item.bbox.length === 4 ? item.bbox : null;
       const block = document.createElement("span");
       block.className = `rf-crop__hl rf-crop__hl--${tone}`;
-      block.style.left = `${xAt(from)}px`;
-      block.style.top = `${hlTop}px`;
-      // 零宽（插入 / 删标点）：给一个细条，否则色块宽度为 0 看不见
-      block.style.width = `${Math.max(3, (to - from) * fontPx)}px`;
-      block.style.height = `${hlHeight}px`;
+      if (box4) {
+        // 字形实际框（word_boxes）：贴字，不靠均匀字格去猜（用户 2026-11-10：框和字没重合）
+        block.style.left = `${box4[0] * imageW - mainSrcX + mainLeft}px`;
+        block.style.top = `${box4[1] * imageH - top}px`;
+        block.style.width = `${Math.max(3, (box4[2] - box4[0]) * imageW)}px`;
+        block.style.height = `${Math.max(4, (box4[3] - box4[1]) * imageH)}px`;
+      } else {
+        const from = Number(item && item.start);
+        const to = Number(item && item.end);
+        if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+        block.style.left = `${xAt(from)}px`;
+        block.style.top = `${lineTop}px`;
+        // 零宽（插入 / 删标点）：给一个细条，否则色块宽度为 0 看不见
+        block.style.width = `${Math.max(3, (to - from) * fontPx)}px`;
+        block.style.height = `${lineHeight}px`;
+      }
       host.append(block);
     }
     if (options.alt) host.title = options.alt;

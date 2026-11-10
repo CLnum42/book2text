@@ -1555,6 +1555,9 @@ function publishCat() {
     state: entry.ack ? "confirmed" : "unjudged",
     edited: entry.ack === "adopted",
     text: readingEntryLineText(entry) || entry.text || "",
+    // marks 的 current 是**整行的窗口文本**（±N 字），candidate 是同一窗口的候选：
+    // 一行有多处差异时，列表要"只标这条差异"，就得知道 current 窗口在整行里的偏移。
+    current: entry.current == null ? "" : String(entry.current),
     // 双版本裁决要用候选文本（marks 里就是 candidate）；漏传的话「采用候选」永远是灰的
     candidate: entry.candidate == null ? "" : String(entry.candidate),
     level: entry.level || "",
