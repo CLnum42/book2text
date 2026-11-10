@@ -2749,8 +2749,11 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 /* 取景带：一条"扫描纸带"卡片，只包住取景本身（宽 = 取景宽），让两层有明显的主次 */
 .rcl-band--shot { height: 34px; display: block; }
 .rcl-band--shot .rcl-cell--crop {
-  background: var(--page-paper); border: 1px solid #e8e4da; border-radius: 4px;
-  overflow: hidden; padding: 0; box-shadow: 0 1px 2px rgba(15, 18, 24, .06);
+  background: var(--page-paper); border-radius: 4px;
+  overflow: hidden; padding: 0;
+  /* 边框用 inset 阴影画、**不用 border**：border 会把取景内容区缩 2px，
+     取景色块与正文红标就永远差 1px（用户 2026-11-10 要求两者左沿相同）。 */
+  box-shadow: inset 0 0 0 1px #e8e4da, 0 1px 2px rgba(15, 18, 24, .06);
 }
 .rcl-band--text { height: 26px; }
 /* 双版本（设计 §9/§10）：并排、等宽 120、间距 6、首个差异字锚按钮中轴 */

@@ -98,7 +98,11 @@
       host.textContent = "—";
       return host;
     }
-    const lineHPx = Math.abs(maskBox[3] - maskBox[1]) * imgH;
+    // 字号统一（用户 2026-11-10）：纵向缩放**按全书行高中位数**，不按本行行框高。
+    // 按本行算 ⇒ 行框高 ±15% 抖动被放大成每行字号不同（同一本书有的行字大、有的行小）。
+    const lineHPx = wrap && Number(wrap.lineH) > 1
+      ? Number(wrap.lineH)
+      : Math.abs(maskBox[3] - maskBox[1]) * imgH;
     const advance = wrap && Number(wrap.advance) > 0 ? Number(wrap.advance) : 0;
     const srcGlyphW = advance * imgW;
     const scaleX = srcGlyphW > 0.5 ? fontPx / srcGlyphW : fontPx / (imgW || 1);
@@ -118,9 +122,13 @@
     const leftCount = wrap ? Math.max(0, Number(wrap.leftCount) || 0) : 0;
     const rightCount = wrap ? Math.max(0, Number(wrap.rightCount) || 0) : 0;
     const pitch = Math.abs((wrap && Number(wrap.pitch)) || 0);
-    // 字符 i 在取景里的显示 x —— 同一格距 fontPx，和正文的字符格距完全一致
-    const xAt = (i) => (i - start) * fontPx;
-    const mainLeft = xAt(curStart);
+    // 窗口锚定到**差异字的真实中心**（box 来自 word_boxes 的字形框）：
+    // 字符格从锚点向两侧按 fontPx 展开，差异字精确落在取景中轴，与正文中轴那处同一根线。
+    // 旧写法以"字符格算出来的中心"为锚，字形与字格差 1–2 字时高亮框就偏左/偏右（用户 2026-11-10）。
+    const anchorX = ((box[0] + box[2]) / 2) * imageW;
+    const mainLeft = width / 2 - (anchorX - lineX0);
+    // 字符 i 在取景里的显示 x（从锚点展开，格距与正文一致）
+    const xAt = (i) => mainLeft + i * fontPx;
     const mainSrcX = lineX0 + curStart * fontPx;
 
     // 左：上一行末尾（右端对齐当前行行首）。
@@ -144,7 +152,7 @@
     // 中：当前行可见段
     host.append(rfSlice({
       width: Math.max(0, (curEnd - curStart) * fontPx),
-      left: mainLeft,
+      left: mainLeft + curStart * fontPx,
       bgX: -mainSrcX,
       bgY: -top,
       imageW, imageH, url: options.url, cls: "rf-slice--cur",
@@ -180,23 +188,28 @@
     const lineTop = maskBox[1] * imageH - top;
     const lineHeight = Math.max(4, (maskBox[3] - maskBox[1]) * imageH);
     for (const item of Array.isArray(options.highlights) ? options.highlights : []) {
+      const from = Number(item && item.start);
+      const to = Number(item && item.end);
+      if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
       const tone = ["machine", "draft", "done"].includes(item && item.tone) ? item.tone : "machine";
-      const box4 = Array.isArray(item && item.bbox) && item.bbox.length === 4 ? item.bbox : null;
       const block = document.createElement("span");
       block.className = `rf-crop__hl rf-crop__hl--${tone}`;
+      // 色块优先用**字形框**（word_boxes）：窗口已锚定到这个框的中心，框自然落在中轴；
+      // 与正文红标（同样居中、宽 = 字数 × 15.5）左沿只差「字形框宽 − 字格宽」的一半（≤1px）。
+      const box4 = Array.isArray(item && item.bbox) && item.bbox.length === 4 ? item.bbox : null;
       if (box4) {
-        // 字形实际框（word_boxes）：贴字，不靠均匀字格去猜（用户 2026-11-10：框和字没重合）
-        block.style.left = `${box4[0] * imageW - mainSrcX + mainLeft}px`;
+        // 左边起点 = width/2 − 半个字格（与正文红标的中轴、字格完全同一套）：
+        // 用户 2026-11-10 要求"二者左沿坐标相同"，所以左沿按字格定，不按字形框宽定
+        // （字形框比字格窄 1–2px，居中会让左沿偏右）。框宽仍取字形框，右沿略短、贴字。
+        const hlW = Math.max(3, (box4[2] - box4[0]) * imageW);
+        block.style.left = `${width / 2 - fontPx / 2}px`;
         block.style.top = `${box4[1] * imageH - top}px`;
-        block.style.width = `${Math.max(3, (box4[2] - box4[0]) * imageW)}px`;
+        block.style.width = `${hlW}px`;
         block.style.height = `${Math.max(4, (box4[3] - box4[1]) * imageH)}px`;
       } else {
-        const from = Number(item && item.start);
-        const to = Number(item && item.end);
-        if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+        // 没有字形框（页级 runs 缺这一行）：退回字符格，左右仍与正文同中心
         block.style.left = `${xAt(from)}px`;
         block.style.top = `${lineTop}px`;
-        // 零宽（插入 / 删标点）：给一个细条，否则色块宽度为 0 看不见
         block.style.width = `${Math.max(3, (to - from) * fontPx)}px`;
         block.style.height = `${lineHeight}px`;
       }

@@ -19,6 +19,11 @@
   // 两带共用的字宽。取景（扫描图）与正文（文字）**必须同字宽**：同一条字符窗口按同一格距摆放，
   // 差异字才会落在同一根竖线上；字号不同则右侧越走越偏（用户 2026-11-10 报的"上方和下方对不上"）。
   const RCL_TEXT_PX = 15.5;
+  /** 正文字宽：窄窗（≤900）CSS 把正文字号降到 14.5，取景必须跟着降——
+   *  两带字宽不一致时，从中轴往两侧越走越偏（628 实测框左沿偏 39.5px）。 */
+  function rclTextPx() {
+    return typeof window !== "undefined" && window.innerWidth <= 900 ? 14.5 : RCL_TEXT_PX;
+  }
   const RCL_EAGER_ROWS = 16;     // 首屏先给这些行取 runs（其余靠滚动触发）
 
   let injected = {};
@@ -177,20 +182,30 @@
    * 实测口径：宽屏（>900）栅格 32 序号 + 72 状态 + 246 判定 + 3×6 间距 + 2×12 内边距；
    * 窄屏（≤900）栅格 28 + 72 + 2 列，两带跨 2–3 列。
    */
-  function rclBandWidth() {
+  let measuredBandWidth = 0;
+  /** 按列表宽度算列宽（**不含缓存**）。首次渲染时列表还没有滚动条，算出来会偏大 15px，
+   *  所以 rclRender 的首帧之后会再算一次并重画（见 rclRender 末尾）。 */
+  function rclBandWidthRaw() {
     const width = listEl && listEl.clientWidth ? listEl.clientWidth : 0;
-    if (!width) return 340;
+    if (!width) return 0;
     if (typeof window !== "undefined" && window.innerWidth <= 900) {
-      return Math.max(240, width - 28 - 72 - 12 - 16);
+      // 窄屏栅格 28 / 72 / 两带跨 2–3 列：实测两带列宽 = 列表宽 − 50
+      return Math.max(240, width - 50);
     }
     return Math.max(240, width - 32 - 72 - 246 - 18 - 24);
+  }
+
+  function rclBandWidth() {
+    if (measuredBandWidth > 100) return measuredBandWidth;
+    return rclBandWidthRaw() || 340;
   }
 
   /** 窗口字数：列宽 ÷ 字宽（两带共用这一个数）。
    *  减一个字的位置：正文左右两段各占 1fr，中间差异字占 auto，窗口满格时左段会被
    *  `text-overflow: ellipsis` 截掉最后半个字（真机：行 5 显示成「掉在地下…骨」）。 */
   function rclWindowChars(bandWidth) {
-    return Math.max(8, Math.floor(((Number(bandWidth) || 340) - 2 * RCL_TEXT_PX) / RCL_TEXT_PX));
+    const px = rclTextPx();
+    return Math.max(8, Math.floor(((Number(bandWidth) || 340) - 2 * px) / px));
   }
 
   /**
@@ -299,6 +314,8 @@
       // 页面上真正的上一行 / 下一行（后端按同页同栏 y 相邻给的 bbox）：取景切片用它定 y/x
       prevBbox: Array.isArray(row.prevBbox) ? row.prevBbox : null,
       nextBbox: Array.isArray(row.nextBbox) ? row.nextBbox : null,
+      // 全书行高中位数（像素）：取景纵向缩放按它算 ⇒ 同一本书每一行的字号一致
+      lineH,
     };
   }
 
@@ -333,13 +350,11 @@
     const tone = row.state === "confirmed" ? "done" : row.state === "draft" ? "draft" : "machine";
     // 色块用 **run.bbox（字形实际框）**：用户 2026-11-10 报"高亮框跟字没重合"，
     // 均匀字格的估算在标点/缩进行上会偏 1–2 个字。字形框就从 word_boxes 来，贴字。
+    // 色块用**本条差异的字形框**（own.bbox）：取景窗口已锚定到这个框的中心，
+    // 所以框也在取景中轴，与正文红标（同样居中）左沿只差「字形框宽 − 字格宽」的一半（≤1px）。
+    // 若改用字符格，行内标点造成的累积偏差会让框偏 5–12px（真机实测）。
     const highlights = own
-      ? [{
-        start: own.a_start,
-        end: own.a_end,
-        bbox: Array.isArray(own.bbox) ? own.bbox : null,
-        tone,
-      }]
+      ? [{ start: own.a_start, end: own.a_end, bbox: Array.isArray(own.bbox) ? own.bbox : null, tone }]
       : [];
     // 两带同一个字符窗口：正文怎么截、取景就怎么截；正文补了 before/after 的字数，
     // 取景的上一行末尾 / 下一行开头切片也用同样的字数（这才是"上方和下方一样"）。
@@ -350,7 +365,7 @@
       injected.renderCrop(box, {
         width: bandWidth,
         height: RCL_CROP_H,
-        fontPx: RCL_TEXT_PX,
+        fontPx: rclTextPx(),
         imgW: page.imgW,
         imgH: page.imgH,
         url: page.url,
@@ -367,6 +382,7 @@
             colX1: wrap.colX1,
             prevBbox: wrap.prevBbox,
             nextBbox: wrap.nextBbox,
+            lineH: wrap.lineH,
             chars: win.chars,
             start: win.start,
             curStart: win.curStart,
@@ -684,6 +700,24 @@
     });
     rclHighlight();
     rclRenderCounter();
+    // 首帧之后列宽才是最终值（滚动条出现会让它变窄 15px）。量到新值就把取景按新宽度重画一遍：
+    // 否则取景按公式算的宽居中、正文按实际列宽居中，高亮框会差半条滚动条。
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        const width = rclBandWidthRaw();
+        if (width > 100 && width !== measuredBandWidth) {
+          measuredBandWidth = width;
+          for (const [key, node] of [...nodes.entries()]) {
+            const row = rows.find((item) => rclKey(item) === key);
+            if (!row) continue;
+            const next = rclRowElement(row, Number(node.dataset.position) || 1);
+            node.replaceWith(next);
+            nodes.set(key, next);
+            if (observer) observer.observe(next);
+          }
+        }
+      });
+    }
   }
 
   function rclRenderCounter() {
