@@ -1,0 +1,427 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>取景图与正文上下排布 · 审校列表设计稿</title>
+<style>
+:root{--text:#1f2329;--t2:#33383f;--muted:#646a73;--faint:#9aa0a8;--line:#e2e4e8;--line2:#eef0f2;--line3:#d0d3d9;
+--accent:#2563eb;--asoft:#eef4ff;--atext:#1d4ed8;--ok:#16a34a;--oksoft:#eef8f1;--oktext:#15803d;
+--warn:#d97706;--warnsoft:#fdf3e0;--warntext:#b45309;--bad:#b42318;--ul:#dc2626;--paper:#f7f5ee;
+--book:"Songti SC","STSong","SimSun",serif;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}html,body{margin:0}
+body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--text);background:#e8eaee}
+.page{padding:16px 20px 24px}
+h1{font-size:15px;margin:0 0 4px;font-weight:650}
+.sub{font-size:11.5px;color:var(--muted);margin-bottom:12px}
+.rowwrap{display:flex;gap:16px;align-items:flex-start}
+.frame{flex:none;background:#f3f4f6;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 2px 8px rgba(16,24,40,.10)}
+.top{height:48px;flex:none;display:flex;align-items:center;gap:9px;padding:0 14px;background:#fff;border-bottom:1px solid var(--line)}
+.ib{width:26px;height:26px;border:1px solid transparent;background:none;border-radius:6px;font-size:14px;color:var(--muted)}
+.bk{font-weight:650;font-size:13.5px}.dim{font:11px/1 var(--mono);color:var(--faint)}
+.spacer{flex:1}
+.tab{padding:5px 11px;border-radius:6px;font-size:12px;color:var(--muted)}
+.tab.on{background:var(--asoft);color:var(--atext);font-weight:600}
+.bar{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px;background:#fff;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+.fchip{height:24px;padding:0 9px;border:1px solid var(--line);background:#fff;border-radius:12px;font-size:11px;color:var(--muted)}
+.fchip.on{background:var(--asoft);border-color:#c9d8f7;color:var(--atext);font-weight:600}
+.list{flex:none;background:#fff;border-bottom:1px solid var(--line)}
+.legend{height:38px;flex:none;display:flex;align-items:center;gap:16px;padding:0 14px;background:#fff;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted)}
+.sw{width:20px;height:12px;border-radius:3px;display:inline-block;margin-right:5px;vertical-align:-1px}
+.sw.un{background:rgba(220,38,38,.14);box-shadow:0 0 0 1px #f0a9a0}
+.sw.ed{background:rgba(217,119,6,.16);box-shadow:0 0 0 1px #ecc48d}
+.sw.ok{background:rgba(22,163,74,.14);box-shadow:0 0 0 1px #9cd6b3}
+.lhd{height:26px;display:flex;align-items:center;gap:8px;padding:0 14px 0 10px;border-bottom:1px solid var(--line2);font-size:10px;color:var(--faint);background:#fcfcfd}
+.row{position:relative;display:flex;align-items:center;padding:0 14px 0 10px;border-bottom:1px solid var(--line2);background:#fff}
+.row.cur{background:#fffdf7}
+.row.cur::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--warn)}
+.num{width:32px;flex:none;font:12px/1 var(--mono);color:#b6bbc2;text-align:right;padding-right:10px}
+.row.cur .num{color:var(--warntext);font-weight:700}
+/* 取景 */
+.shot{position:relative;flex:none;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--paper)}
+.im{position:absolute;left:0;right:0;top:6px;height:23px;overflow:hidden}
+.im .imgs{position:absolute;inset:0;background-repeat:no-repeat}
+.im .ln{position:absolute;height:0;border-bottom:2.5px solid var(--ul)}
+.im .cv{position:absolute;width:2px;background:var(--ul)}
+.im .blk{position:absolute;outline:2px solid;border-radius:1px;z-index:3}
+.im .blk::after{content:"";position:absolute;left:-2px;right:-2px;bottom:-2px;height:0;border-bottom:2.5px solid}
+.im .blk.un{outline-color:#dc2626}.im .blk.un::after{border-color:var(--ul)}
+.im .blk.ed{outline-color:#a16207}.im .blk.ed::after{border-color:#a16207}
+.im .blk.ok{outline-color:#15803d}.im .blk.ok::after{border-color:#15803d}
+.shot::before,.shot::after{content:"";position:absolute;top:0;bottom:0;width:7px;z-index:2;pointer-events:none}
+.shot::before{left:0;background:linear-gradient(90deg,var(--paper),rgba(247,245,238,0))}
+.shot::after{right:0;background:linear-gradient(270deg,var(--paper),rgba(247,245,238,0))}
+/* 正文 */
+.tx{min-width:0;font:15.5px/1.5 var(--book);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);display:flex;align-items:center;height:25px}
+.tx .d{color:var(--bad);font-weight:600;text-decoration:underline;text-decoration-color:var(--ul);text-decoration-thickness:2px;text-underline-offset:3px}
+.tx .chg{color:#15803d;font-weight:600;text-decoration:underline;text-decoration-color:#15803d;text-decoration-thickness:1.5px;text-underline-offset:3px;background:#eaf6ee;border-radius:2px;padding:0 1px}
+.tx .e{color:#a16207;font-weight:600;text-decoration:underline;text-decoration-color:#a16207;text-decoration-thickness:1.5px;text-underline-offset:3px}
+.tx .rm{color:#a16207;text-decoration:line-through;text-decoration-color:#a16207;text-decoration-thickness:1.5px}
+/* 状态 */
+.gut{flex:none;align-self:stretch;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.25;
+  border-left:1px solid var(--line2);border-right:1px solid var(--line2);background:#fafbfc;font-size:11px;color:var(--muted)}
+.row.cur .gut{background:#fff8ea;border-color:#f0dcbc}
+.gut .g2{font-size:9px;color:var(--faint)}
+.gut .dot{width:6px;height:6px;border-radius:50%;background:#c8ccd2;display:inline-block;margin-right:4px}
+.gut.st-un .dot{background:#dc2626}
+.gut.st-ed{color:var(--warntext)}.gut.st-ed .dot{background:#d97706}
+.gut.st-ok{color:var(--oktext)}.gut.st-ok .dot{background:var(--ok)}
+/* 按钮 */
+.vwrap{flex:none;display:flex;gap:6px;align-items:center}
+.vbtn{flex:1;min-width:0;height:44px;border:1px solid #c9d8f7;background:#fbfdff;border-radius:6px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:1px;padding:0 6px;overflow:hidden}
+.vbtn .vl{font-size:9px;color:var(--faint);white-space:nowrap}
+.vbtn .vc{font:15px/1.2 var(--book);color:var(--text);white-space:nowrap}
+.vbtn .vc b{color:var(--bad);font-weight:700;text-decoration:underline;text-decoration-color:var(--ul);text-decoration-thickness:2px;text-underline-offset:2px}
+.vbtn .nil{font-size:11px;color:#b6bbc2;font-weight:600;text-decoration:none}
+.con{flex:none;display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--oktext);background:var(--oksoft);border:1px solid #cfe9d8;border-radius:14px;height:26px;padding:0 8px}
+.dotg{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.rng{display:inline-block;color:var(--bad);font-weight:600;text-decoration:underline;text-decoration-color:var(--ul);text-decoration-thickness:2px;text-underline-offset:3px;white-space:nowrap}
+.rng .cnt{font:10px/1 var(--mono);color:var(--bad);background:#fff;border:1px solid #f0c4c4;border-radius:8px;padding:1px 5px;margin-left:4px;vertical-align:1px;font-weight:400}
+/* 标尺 */
+.ruler{position:relative;height:74px;border-top:1px solid var(--line);background:#fff}
+.ax{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(37,99,235,.6);z-index:6}
+.ax .lb{position:absolute;bottom:2px;left:3px;font:10px/1 var(--mono);color:var(--atext);background:#fff;padding:1px 3px;white-space:nowrap}
+.mk{position:absolute;height:0;border-top:1px solid #b45309;font:10px/1 var(--mono);color:#b45309;z-index:6}
+.mk .v{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:#fff;padding:0 3px;white-space:nowrap}
+.mk .t{position:absolute;top:-4px;width:1px;height:8px;background:#b45309}
+/* 注释 */
+.notes{width:350px;flex:none;font-size:12px;line-height:1.65;color:var(--muted)}
+.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px}
+.card h3{font-size:12.5px;color:var(--text);margin:0 0 6px;font-weight:650}
+.card b{color:var(--text)}
+.card table{border-collapse:collapse;width:100%;font-size:11.5px;margin-top:4px}
+.card th,.card td{text-align:left;padding:2px 6px 2px 0;border-bottom:1px solid var(--line2);font-variant-numeric:tabular-nums}
+.card th{font-weight:600;color:#33383f}
+.warnbox{background:var(--warnsoft);border-color:#f0dcbc}
+.okbox{background:var(--oksoft);border-color:#cfe9d8}
+.k2{font:10px/1 var(--mono);background:#f2f3f5;border:1px solid var(--line3);border-radius:3px;padding:1px 4px;color:#33383f}
+.foot{height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 14px;background:#f7f8fa;border-top:1px solid var(--line);font:11px/1 var(--mono);color:var(--muted)}
+.foot b{color:var(--text);font-weight:600}
+.mkcol{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;margin-left:10px}
+.bcol{flex:none;width:246px;display:flex;align-items:center;justify-content:center;height:71px;margin-left:8px}
+.mkcol [data-band="shot"]{position:relative;height:34px}
+.shotline{position:absolute;left:0;right:0;top:0;height:34px;display:flex;align-items:center;overflow:hidden}
+.shotline .shot{flex:0 0 auto}
+.shot .imgs{position:absolute;inset:0;background-repeat:no-repeat}
+.shot .blk{position:absolute;top:2px;height:19px;border-radius:1px;outline:2px solid #dc2626}
+.shot .blk.ed{outline-color:#a16207}.shot .blk.ok{outline-color:#15803d}
+.shot.st-ed .blk{outline-color:#a16207}
+.shot.st-ok .blk{outline-color:#15803d}
+.shot .blk::after{content:'';position:absolute;left:-2px;right:-2px;bottom:-2px;border-bottom:2.5px solid;border-color:inherit}
+.shot .ln{display:none}
+.shotline .padl{flex:none;height:34px;border:1px dashed #b9cdf2;border-right:0;border-radius:4px 0 0 4px;background:#eef4ff;position:relative}
+.shotline .padl::after{content:attr(data-t);position:absolute;left:1px;top:50%;transform:translateY(-50%);writing-mode:vertical-rl;font:8.5px/1 var(--mono);color:#1d4ed8}
+.txtrow{display:flex;align-items:center;height:25px}
+.vtag{position:absolute;left:0;top:0;font:9.5px/1 var(--mono);color:var(--atext);background:#eef4ff;border:1px solid #c9d8f7;border-radius:3px;padding:2px 4px;z-index:5}
+.vmini{font:9.5px/1 var(--mono);color:var(--faint)}
+
+.gut-gap{margin-left:10px}
+.rowwraprow{border-bottom:1px solid var(--line2);background:#fff}
+.rowwraprow.cur{background:#fffdf7}
+.rowwraprow .row{padding-right:10px}
+.rowwraprow .row .gut{display:none!important}
+.rowwraprow .row{padding-right:0}
+.rowwraprow .mkcol{margin-right:10px}
+.btnline{display:flex; justify-content:flex-end; align-items:center; gap:10px; padding:0 14px 7px; height:34px; box-sizing:border-box; width:100%}
+.btnline .gmini{font-size:10.5px;color:var(--muted)}
+.btnline .vwrap{width:calc(100% - 20px);margin-left:auto}
+.rowwraprow .mkcol{margin-right:0}
+.padl{display:inline-block;height:34px;border:1px dashed #b9cdf2;border-right:0;border-radius:4px 0 0 4px;background:#eef4ff;position:relative;flex:none}
+.padl span{position:absolute;left:1px;top:50%;transform:translateY(-50%);writing-mode:vertical-rl;font:8.5px/1 var(--mono);color:#1d4ed8}
+</style></head><body>
+<div class="page">
+  <h1 id="ttl"></h1>
+  <div class="sub">数据：真项目 <b>b2t_YV1P2Y</b>（394 页 / 1623 条队列）的真实取景与文本；差异字横坐标由页面实测注入（取景里差异字的位置来自裁切 offset 与放大倍率）。数字全部实测，不手写。</div>
+  <div class="rowwrap"><div id="stage"></div><aside class="notes" id="notes"></aside></div>
+</div>
+<script>
+/* ================== 数据（真项目 b2t_YV1P2Y） ==================
+   源图 1244×1875。单字宽 29、字高 28、行距 64.4（pg10 实测）。
+   差异字的源坐标是逐字墨迹列量出来的，不是反推的。 */
+const SRC={w:1244,h:1875,charW:29,lineH:28,pitch:64.4,indent:340};
+const ctx={gW:72,shotW:340};
+
+/* 每行：取景显示 = 一行文字 + 上下各 8px 留白（show 23px），横向 340px 显示；
+   源上取 340/zz 宽、23/zz 高。差异字源坐标 dx/dy。 */
+const ROWS={
+ '38':{pg:'pg10',y0:1603,dx:340,lineW:29},            // 「箱」
+ '39':{pg:'pg10',y0:1217,dx:0,  lineW:29,whole:true}, // 无单字差异 → 高亮整行
+ '40':{pg:'pg10',y0:1281,dx:0,  lineW:29,whole:true},
+ '41':{pg:'pg10',y0:1539,dx:0,  lineW:29,whole:true},
+ '42':{pg:'pg11',y0:123, dx:0,  lineW:29,whole:true},
+ '43':{pg:'pg12',y0:187, dx:0,  lineW:29,whole:true},
+ '44':{pg:'pg10',y0:1217,dx:38, lineW:29},            // 贴页边：「疾」在 x=38
+ '45':{pg:'pg10',y0:1603,dx:340,lineW:29},
+ '46':{pg:'pg12',y0:187,dx:0,lineW:29,whole:true},
+};
+const TXT={
+ '38':'儿们正说得兴头，又要吵起来。<span class="d">况</span>且那孩子们熬',
+ '39':'夜，怪冷的。也罢！且叫他们歇歇，把咱们<span class="d">的</span>女',
+ '40':'廊角门出来，婆子们抱着几个软包，—<span class="e">—</span>因不及抬',
+ '41':'<span class="chg">稍</span><span class="rm">箱</span>，料着贾母爱听的三五出戏的彩衣包了来。婆',
+ '42':'来逛逛？你们如今唱什么？才刚八出《八义》，闹的',
+ '43':'或如残漏之滴，或如<span class="d">迸</span>豆之急，或如惊马之驰，〈或如',
+ '44':'<span class="d">疾</span>电之光而忽暗，其鼓声慢，传梅亦慢，鼓声疾，传',
+ '45':'<span class="d">箱</span>，料着贾母爱听的三五出戏的彩衣包了来。婆',
+ '46':'〈如今且说<span class="d">贾雨村授了应天府，一到任，就有件人命官司详至案下</span>',
+};
+const ST={'38':['un','未审'],'39':['un','未审'],'40':['ed','待提交'],'41':['ok','已确认','改过'],'42':['ok','已确认','未改动'],'43':['un','未审'],'44':['un','未审'],'45':['un','未审'],'46':['un','未审']};
+const KEEP={'38':['况','祝'],'39':['的',''],'40':['—','—·拾'],'43':['迸','进'],'44':['疾',''],'45':['箱','稍'],'46':['贾雨村','']};
+const LONGROWS={'46':true};
+
+/* ================== 行内构件 ================== */
+function shotHTML(id){
+  const s=ROWS[id];
+  if(!s) return `<div class="shot" style="width:${ctx.shotW}px"></div>`;
+  return `<div class="shotline">
+    <span class="padl" style="display:none"></span>
+    <div class="shot" data-shot="${id}" style="width:${ctx.shotW}px;height:34px">
+      <div class="im"><div class="imgs"></div><i class="ln"></i><span class="blk"></span></div>
+    </div>
+    <span class="linelabel"></span></div>`;
+}
+function gutHTML(id){
+  const a=ST[id]||['un','未审'];
+  return `<div class="gut st-${a[0]}" style="width:${ctx.gW}px"><span class="g1"><span class="dot"></span>${a[1]}</span>${a[2]?`<span class="g2">${a[2]}</span>`:''}</div>`;
+}
+function btn(label,chars,nil){
+  return `<button class="vbtn"><span class="vl">${label}</span><span class="vc">${nil?'<span class="nil">（无）</span>':`<b>${chars}</b>`}</span></button>`;
+}
+function vwrapHTML(id,bw){
+  if(LONGROWS&&LONGROWS[id]){
+    return `<div class="vwrap" style="width:${bw?bw*2+6:230}px">
+      <button class="vbtn"><span class="vl">保留</span><span class="vc"><b>贾雨村</b></span></button>
+      <button class="vbtn"><span class="vl">采用</span><span class="vc"><span class="nil">（无）</span></span></button></div>`;
+  }
+  const k=KEEP[id];
+  if(!k) return `<span class="con"><span class="dotg"></span>${ST[id][2]||'已确认'}</span>`;
+  const [a,b]=k; const w=bw||Math.min(112,Math.max(64,40+Math.max(a.length,b.length)*15));
+  return `<div class="vwrap" style="width:${w*2+6}px">${btn('保留',a)}${btn('采用',b||'',!b)}</div>`;
+}
+function txHTML(id,long){
+  let t=TXT[id]||'';
+  if(long){
+    t='〈如今且说<span class="rng" data-long>贾雨村授了应天府，一到任，就有件人命官司详至案下<span class="cnt" data-n>N 字</span></span>';
+  }else{
+    t=t.replace('<span class="d">','<span class="d" data-k="tx">');
+  }
+  return `<span class="tx" data-tx="${id}">${t}</span>`;
+}
+</script>
+<script>
+/* ================== 帧渲染 ================== */
+const FR={
+ A:{title:'A · 1423 默认态：取景带在上、正文带在下，两带差异字落在同一条竖线；按钮跨两带居中',
+    w:1423,rows:['38','39','40','41','42','43','44'],cur:'40',mode:'A'},
+ B:{title:'B · 1423 双版本按钮三种放法（同一屏三段，其余完全不变）',
+    w:1423,rows:['38','43','44'],cur:'38',mode:'B'},
+ C:{title:'C · 628 窄窗：取景 240、正文全宽、按钮折行',
+    w:628,rows:['38','40','43','44'],cur:'40',mode:'C'},
+ D:{title:'D · 1423 三态同屏：未审 / 待提交 / 已确认，两个带同色同义；末行是 >3 字长差异',
+    w:1423,rows:['38','40','41','43','46'],cur:'40',mode:'D'},
+};
+
+function topbar(){
+  return `<div class="top"><button class="ib">←</button><span class="bk">红楼梦</span><span class="dim">b2t_YV1P2Y · 394 页</span>
+    <span class="spacer"></span><span class="tab">页面</span><span class="tab on">审校</span><span class="tab">预览导出</span></div>
+  <div class="bar"><b>差异列表</b><span>当前第 40 / 1623 条</span>
+    <button class="fchip on">全部 1623</button><button class="fchip">未审 1620</button><button class="fchip">待提交 1</button><button class="fchip">已确认 2</button>
+    <span class="spacer"></span><span class="dim">虚拟滚动</span></div>`;
+}
+
+function rowHTML(k,id){
+  const f=FR[k], long=(id==='46'&&f.mode==='D');
+  if(f.mode==='B'){
+    const bw=92;
+    return `<div class="row ${id===f.cur?'cur':''}" data-row="${id}" style="height:71px">
+      <div class="num">${id}</div>
+      <div class="mkcol">
+        <div data-band="shot">${shotHTML(id)}</div>
+        <div data-band="tx" class="txtrow">${txHTML(id)}</div>
+      </div>
+      ${gutHTML(id)}
+      <div class="bcol">
+      ${id==='38'?`<div style="position:relative;width:240px;height:71px;display:flex;align-items:center;justify-content:center">
+        <span class="vtag">A 跨两带居中</span>${vwrapHTML(id,bw)}</div>`:''}
+      ${id==='43'?`<div style="position:relative;width:240px;height:71px">
+        <span class="vtag">B 正文带下方整行一对</span>
+        <div style="position:absolute;left:0;right:0;bottom:2px;display:flex;gap:4px">
+          <button class="vbtn" style="height:26px;flex:1;flex-direction:row;gap:6px"><span class="vl">保留</span><span class="vc" style="font-size:14px"><b>迸</b></span></button>
+          <button class="vbtn" style="height:26px;flex:1;flex-direction:row;gap:6px"><span class="vl">采用</span><span class="vc" style="font-size:14px"><b>进</b></span></button></div></div>`:''}
+      ${id==='44'?`<div style="position:relative;width:240px;height:71px;display:flex;align-items:center">
+        <span class="vtag">C 右栏跨两带</span>
+        <div style="width:100%;border:1px dashed #c9d8f7;border-radius:6px;background:#fbfdff;height:56px;display:flex;align-items:center;justify-content:center;gap:10px">
+          <span class="vmini">保留</span><span style="font:15px var(--book);color:var(--bad);font-weight:700">疾</span>
+          <span style="color:var(--line3)">|</span><span class="vmini">采用</span><span style="font:12px var(--book);color:var(--muted)">（无）</span></div></div>`:''}
+      </div></div>`;
+  }
+  const h=f.mode==='C'?105:71;
+  if(f.mode==='C'){
+    return `<div class="rowwraprow ${id===f.cur?'cur':''}" data-row="${id}">
+      <div class="row ${id===f.cur?'cur':''}" style="height:71px;border-bottom:0">
+        <div class="num">${id}</div>
+        <div class="mkcol"><div data-band="shot">${shotHTML(id)}</div><div data-band="tx" class="txtrow">${txHTML(id,long)}</div></div>
+        ${gutHTML(id)}
+      </div>
+      <div class="btnline"><span class="gmini">${ST[id][1]}</span>${vwrapHTML(id)}</div>
+    </div>`;
+  }
+  return `<div class="row ${id===f.cur?'cur':''}" data-row="${id}" style="height:${h}px">
+    <div class="num">${id}</div>
+    <div class="mkcol">
+      <div data-band="shot">${shotHTML(id)}</div>
+      <div data-band="tx" class="txtrow">${txHTML(id,long)}</div>
+    </div>
+    ${gutHTML(id)}
+    ${vwrapHTML(id)}
+  </div>`;
+}
+</script>
+<script>
+/* ================== 挂载 / 对齐 / 测量 ================== */
+function PX(v){return Math.round(v*10)/10;}
+
+function mount(k){
+  const f=FR[k];
+  const fr=document.createElement('div');
+  fr.className='frame'+(f.mode==='C'?' C628':''); fr.id='F'+k; fr.style.width=f.w+'px';
+  const legend=f.mode==='D'?`<div class="legend"><span style="font-weight:600;color:var(--text)">两带同一套色块</span>
+    <span><i class="sw un"></i>未审 · 红</span><span><i class="sw ed"></i>待提交 · 黄</span><span><i class="sw ok"></i>已确认 · 绿</span>
+    <span style="color:var(--faint)">取景里用描边+底线，正文里用半透明底+描边；色盲下靠状态词</span></div>`:'';
+  fr.innerHTML=topbar()+legend+`<div class="list"><div class="lhd"><span style="width:32px">序号</span><span>取景（差异字与正文同轴）</span><span class="spacer"></span><span style="width:${ctx.gW}px;text-align:center">状态</span><span>判定</span></div>${f.rows.map(id=>rowHTML(k,id)).join('')}</div>`;
+  return fr;
+}
+
+/* 取景：把差异字放到取景中轴。返回左侧 clamp 造成的偏移（显示 px） */
+function layoutShot(band,id){
+  const line=band.querySelector('.shotline')||band;
+  const shot=line.querySelector('.shot');
+  const pad=line.querySelector('.padl');
+  const r=ROWS[id];
+  if(!shot||!r){if(shot)shot.dataset.dshow=0; return;}
+  const MKW=band.clientWidth;                    // 两带共用宽度
+  const W=shot.clientWidth;
+  const imH=shot.querySelector('.im').clientHeight;
+  const imgs=shot.querySelector('.imgs');
+  const z=imH/46;                                // 行视觉高 46 源 px → 23 显示
+  const cx=(r.whole? SRC.indent : r.dx)+r.lineW/2;
+  const cy=r.y0+SRC.lineH/2;
+  const want=cx-(W/2)/z;
+  const cxx=Math.max(0,want);
+  const over=cxx>want ? (cxx-want)*z : 0;        // 左裁到纸边后，差异字相对中轴偏右多少
+  imgs.style.backgroundImage=`url(.tmp-stacked/${r.pg}.jpg)`;
+  imgs.style.backgroundSize=`${SRC.w*z}px ${SRC.h*z}px`;
+  imgs.style.backgroundPosition=`${-cxx*z}px ${-Math.max(0,cy*z-imH/2)}px`;
+  const dLeft=(cx-cxx)*z;
+  const ln=shot.querySelector('.ln'), blk=shot.querySelector('.blk');
+  const st=(ST[id]||['un'])[0];
+  if(blk) blk.className='blk '+st;
+  const wShow=(r.whole? 14*SRC.charW : r.lineW)*z;
+  if(ln) ln.style.left=(dLeft-ln.offsetWidth/2)+'px';
+  if(blk){const bw=Math.max(8,wShow);blk.style.left=(dLeft-bw/2)+'px';blk.style.width=bw+'px';}
+  /* 定位：shot 左边界 = MKW/2 - dLeft（可负，靠容器 overflow 裁掉）；左侧补同宽留白占位 */
+  let left=MKW/2-dLeft;
+  if(left<0){pad.style.display='block';pad.style.width=(-left)+'px';left=0;}
+  else{pad.style.display='none';pad.style.width='0px';}
+  shot.style.marginLeft=left+'px';
+  shot.dataset.dshow=dLeft; shot.dataset.z=z; shot.dataset.over=over; shot.dataset.left=left;
+}
+
+/* 正文：把第一个差异字推到正文带中轴（两侧补占位，与 p12 同一做法） */
+function layoutTx(band,id){
+  const tx=band.querySelector('.tx');
+  const d=tx&&tx.querySelector('[data-k="tx"]');
+  if(!d) return;
+  const W=band.clientWidth;
+  tx.style.width=W+'px';
+  const tr=tx.getBoundingClientRect(), dr=d.getBoundingClientRect();
+  const dx=(dr.left+dr.width/2)-tr.left;
+  const shift=Math.max(0,(W/2)-dx);
+  tx.style.paddingLeft=shift+'px';
+}
+
+/* 页边 clamp：取景带右移 over，左侧补一段虚线留白（正文带不动） */
+function padLeft(band,over){
+  band.style.marginLeft=over+'px';
+  const p=document.createElement('span');
+  p.className='padl'; p.style.width=over+'px';
+  p.innerHTML=`<span>留白 ${PX(over)}</span>`;
+  band.insertBefore(p, band.firstChild);
+}
+
+function measure(fr,row){
+  const F=fr.getBoundingClientRect();
+  const shot=row.querySelector('.shot');
+  const d=row.querySelector('[data-k="tx"]');
+  const o={id:row.dataset.row};
+  if(shot){
+    const sr=shot.getBoundingClientRect();
+    const blk=shot.querySelector('.blk');
+    const br=blk?blk.getBoundingClientRect():null;
+    o.shotAbs=br?PX((br.left+br.width/2)-F.left):PX(sr.left+parseFloat(shot.dataset.dshow||0)-F.left);
+    o.shotBox=PX(sr.left-F.left);
+    o.over=PX(parseFloat(shot.dataset.over||0));
+    o.z=parseFloat(shot.dataset.z||0).toFixed(3);
+  }
+  const mk=row.querySelector('.mkcol');
+  if(mk){const r=mk.getBoundingClientRect();o.axis=PX(r.left+r.width/2-F.left);}
+  if(d){const r=d.getBoundingClientRect(); o.txAbs=PX(r.left+r.width/2-F.left);}
+  return o;
+}
+
+/* 标尺：在 frame 底画「两带差异字各自到中轴的距离」 */
+function drawRuler(fr,rows){
+  const F=fr.getBoundingClientRect();
+  const R=[...rows].reverse().find(r=>r.querySelector('[data-k="tx"]')||r.querySelector('.shot'));
+  if(!R) return;
+  const mk=R.querySelector('.mkcol').getBoundingClientRect();
+  const ax=mk.left+mk.width/2-F.left;
+  const ru=document.createElement('div');ru.className='ruler';ru.style.height='92px';
+  const axx=document.createElement('div');axx.className='ax';axx.style.left=ax+'px';
+  axx.innerHTML=`<span class="lb">两带共用中轴 x=${PX(ax)}</span>`;
+  ru.appendChild(axx);
+  const lst=R.querySelector('.shot');
+  const dtx=R.querySelector('[data-k="tx"]');
+  const marks=[];
+  if(lst) marks.push(['取景',lst.getBoundingClientRect().left+parseFloat(lst.dataset.dshow||0)-F.left,0]);
+  if(dtx){const r=dtx.getBoundingClientRect();marks.push(['正文',r.left+r.width/2-F.left,26]);}
+  marks.forEach(([nm,x,off])=>{
+    const l=document.createElement('div');l.className='ax';l.style.left=x+'px';l.style.borderLeftStyle='solid';l.style.borderLeftColor='rgba(37,99,235,.35)';
+    ru.appendChild(l);
+  });
+  marks.forEach(([nm,x,off])=>{
+    const x0=Math.min(x,ax),x1=Math.max(x,ax);
+    const d=document.createElement('div');d.className='mk';d.style.left=x0+'px';d.style.width=(x1-x0)+'px';d.style.top=(26+off)+'px';
+    d.innerHTML=`<span class="v">${nm} ${x>ax?'+':'−'}${PX(Math.abs(x-ax))}</span>`;
+    ru.appendChild(d);
+  });
+  fr.appendChild(ru);
+}
+
+/* ================== 主流程 ================== */
+const m=(location.search.match(/f=([ABCD])/i)||[])[1]||'A';
+(function boot(){
+  const f=FR[m];
+  document.getElementById('ttl').textContent=f.title;
+  if(f.mode==='C'){ctx.shotW=240;ctx.gW=60;}
+  const fr=mount(m);
+  document.getElementById('stage').appendChild(fr);
+  const rows=[...fr.querySelectorAll('[data-band="shot"]')].map(b=>b.closest('.rowwraprow')||b.closest('.row'));
+  rows.forEach(row=>{
+    const sb=row.querySelector('[data-band="shot"]');
+    if(sb){
+      const over=layoutShot(sb,row.dataset.row);
+    }
+    const tb=row.querySelector('[data-band="tx"]');
+    if(tb) layoutTx(tb,row.dataset.row);
+  });
+  // 长差异字数
+  const ln=document.querySelector('[data-long]');
+  if(ln){
+    const t=ln.textContent.replace(/\d+ 字$/,'');
+    const cnt=ln.querySelector('[data-n]');
+    if(cnt) cnt.textContent=t.length+' 字';
+  }
+  window.__M=rows.map(r=>measure(fr,r));
+  if(m!=='B') drawRuler(fr,rows);
+  document.body.dataset.ready='1';
+})();
+</script>
+</body></html>
