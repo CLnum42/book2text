@@ -110,10 +110,49 @@
     if (padLeft > 1) host.append(rfPad(padLeft, "left"));
     if (padRight > 1) host.append(rfPad(padRight, "right"));
 
-    // 这一行的左右边界之外遮成纸色（双栏 / 双页扫描上，窗口会框到隔壁栏的字，
-    // 于是"上图有首双星、下句从荣耀之心开始"，用户看到的对不上就是这个）
+    // 接排（2026-11-10 用户选 A）：这一行起点左侧 / 终点右侧的空白，
+    // 用**上一行的末尾 / 下一行的开头**补满，差异字仍停在中轴。
+    // 三片都取自同一张页图，只是裁不同的 y（行距按全书行高中位数）。
     const maskBox = Array.isArray(options.maskBox) && options.maskBox.length === 4 ? options.maskBox : null;
-    if (maskBox) {
+    const wrap = options.wrap || null;
+    if (maskBox && wrap) {
+      const cx0 = maskBox[0] * imageW - left;
+      const cx1 = maskBox[2] * imageW - left;
+      const pitch = Number(wrap.pitch) || 0;
+      const colX0 = Number(wrap.colX0) || 0;
+      const colX1 = Number(wrap.colX1) || 0;
+      // 字宽（归一化）：用这一行的文本长度与行框宽估；切片边界要对齐到**字边界**，
+      // 否则会在半个字上切断，看起来像坏图。
+      const advance = Number(wrap.advance) > 0 ? Number(wrap.advance) : 0;
+      const snap = (value, base) => (advance > 0
+        ? base + Math.round((value - base) / advance) * advance
+        : value);
+      // 左：上一行的末尾，右对齐到当前行的起点
+      if (cx0 > 6 && pitch > 0) {
+        const w = Math.min(cx0, width);
+        const sx1 = snap(Math.min(1, Math.max(colX1, maskBox[0])), colX0);
+        const sx0 = Math.max(0, sx1 - w / (imageW || 1));
+        host.append(rfSlice({
+          width: w, left: cx0 - w,
+          // 纵向基准要跟主图同一个窗口偏移 top，不是 maskBox 的行顶 ——
+          // 用行顶算会差半个行高，切片就露出半截字（真机上看成"重影"）。
+          bgX: -(sx0 * imageW), bgY: -(top - pitch * imageH),
+          imageW, imageH, url: options.url, cls: "rf-slice--prev",
+        }));
+      }
+      // 右：下一行的开头，左对齐到当前行的终点
+      if (cx1 < width - 6 && pitch > 0) {
+        const w = Math.min(width - cx1, width);
+        const sx0 = snap(Math.max(0, Math.min(colX0, maskBox[0])), colX0);
+        host.append(rfSlice({
+          width: w, left: cx1,
+          bgX: -(sx0 * imageW), bgY: -(top + pitch * imageH),
+          imageW, imageH, url: options.url, cls: "rf-slice--next",
+        }));
+      }
+      // 当前行的细底线：让人一眼看出哪一段属于这一行（接排后三行并排）
+      host.append(rfLineMark(Math.max(0, cx0), Math.min(width, cx1)));
+    } else if (maskBox) {
       const lineLeft = maskBox[0] * imageW - left;
       const lineRight = maskBox[2] * imageW - left;
       if (lineLeft > 1) host.append(rfMask(0, Math.min(lineLeft, width)));
@@ -146,6 +185,27 @@
     pad.style.width = `${Math.round(width)}px`;
     pad.dataset.label = `留白 ${Math.round(width)}`;
     return pad;
+  }
+
+  /** 接排用的一小片页图（上一行末尾 / 下一行开头） */
+  function rfSlice({ width, left, bgX, bgY, imageW, imageH, url, cls }) {
+    const slice = document.createElement("span");
+    slice.className = `rf-slice ${cls}`;
+    slice.style.left = `${left}px`;
+    slice.style.width = `${width}px`;
+    slice.style.backgroundImage = `url("${url}")`;
+    slice.style.backgroundSize = `${imageW}px ${imageH}px`;
+    slice.style.backgroundPosition = `${bgX}px ${bgY}px`;
+    return slice;
+  }
+
+  /** 当前行在接排条里的细底线 */
+  function rfLineMark(startPx, endPx) {
+    const mark = document.createElement("span");
+    mark.className = "rf-line-mark";
+    mark.style.left = `${startPx}px`;
+    mark.style.width = `${Math.max(0, endPx - startPx)}px`;
+    return mark;
   }
 
   /** 行边界外的遮罩：把隔壁栏 / 页边的字遮成纸色，保证取景里只剩这一行的字。 */

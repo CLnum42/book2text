@@ -177,6 +177,42 @@
     return rclClamp(RCL_FONT_PX / glyphH, 0.15, 1.0);
   }
 
+  /** 接排参数：行距 + 这一页正文列的左右沿（多行取 min/max，足够近似）。 */
+  function rclWrapInfo(row, page) {
+    const imgH = page.imgH || 0;
+    const imgW = page.imgW || 0;
+    if (!imgH || !imgW) return null;
+    const samePage = rows.filter((item) => Number(item.pageNo) === Number(row.pageNo));
+    const xs0 = samePage.map((item) => (Array.isArray(item.lineBbox) ? item.lineBbox[0] : null)).filter((v) => v !== null);
+    const xs1 = samePage.map((item) => (Array.isArray(item.lineBbox) ? item.lineBbox[2] : null)).filter((v) => v !== null);
+    const lineH = rclBookLineH(imgH);
+    if (!xs0.length || !xs1.length || !lineH) return null;
+    // 行距：用**这一页各行的 y0 差**的中位数（行框高只是字盒高，不等于行距；
+    // 用字盒高当行距会让切片落在两行之间，露出半截别的行 —— 真机就是这么糊的）
+    const ys = samePage
+      .map((item) => (Array.isArray(item.lineBbox) ? item.lineBbox[1] : null))
+      .filter((v) => v !== null)
+      .sort((a, b) => a - b);
+    const deltas = [];
+    for (let i = 1; i < ys.length; i += 1) {
+      const d = ys[i] - ys[i - 1];
+      if (d > 0.002) deltas.push(d);
+    }
+    deltas.sort((a, b) => a - b);
+    const pitch = deltas.length ? deltas[Math.floor(deltas.length / 2)] : lineH / imgH;
+    // 平均字宽（归一化）：这一行行框宽 ÷ 这一行字符数
+    const textLen = String(row.text || "").length;
+    const advance = textLen > 1 && Array.isArray(row.lineBbox)
+      ? Math.abs(row.lineBbox[2] - row.lineBbox[0]) / textLen
+      : 0;
+    return {
+      pitch,
+      colX0: Math.min(...xs0),
+      colX1: Math.max(...xs1),
+      advance,
+    };
+  }
+
   function rclCropCell(row) {
     const cell = document.createElement("div");
     cell.className = "rcl-cell rcl-cell--crop";
@@ -222,6 +258,8 @@
         highlights,
         // 只显示这一行自己的字（双栏页上窗口会框到隔壁栏）
         maskBox: row.lineBbox || null,
+        // 接排参数：行距（全书行高中位）与这一页正文列的左右沿（用来取上一行末尾 / 下一行开头）
+        wrap: rclWrapInfo(row, page),
       })
     );
     return cell;

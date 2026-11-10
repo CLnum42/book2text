@@ -2821,6 +2821,20 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 }
 /* 行边界外遮罩：把隔壁栏的字遮成纸色（双栏/双页扫描） */
 .rf-crop__mask { position: absolute; top: 0; bottom: 0; background: var(--page-paper); pointer-events: none; }
+/* 接排：上一行末尾 / 下一行开头的页图切片（与当前行同一倍率、同一行高） */
+.rf-slice { position: absolute; top: 0; bottom: 0; pointer-events: none; }
+/* 接排切片：压低存在感（60%）+ 顶部一条细虚线，让人一眼看出"这不是本行的字" */
+.rf-slice {
+  position: absolute; top: 0; bottom: 0; pointer-events: none; opacity: .55;
+}
+.rf-slice--prev { border-left: 1px dashed #c9c4b8; }
+.rf-slice--next { border-right: 1px dashed #c9c4b8; }
+.rf-slice::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 1px;
+  background: repeating-linear-gradient(90deg, #c9c4b8 0 3px, transparent 3px 6px);
+}
+/* 当前行的细底线：接排后三行并排，用它标出哪一段是当前行 */
+.rf-line-mark { position: absolute; bottom: 0; height: 2px; background: rgba(37, 99, 235, .55); border-radius: 1px; pointer-events: none; }
 .rcl-diff--draft { background: rgba(202, 138, 4, .20); box-shadow: 0 0 0 1px rgba(161, 98, 7, .85); }
 .rcl-diff--done { background: rgba(22, 163, 77, .16); box-shadow: 0 0 0 1px rgba(21, 128, 61, .75); }
 .rcl-diff--caret { box-shadow: -2px 0 0 0 currentColor; margin-left: 2px; }
