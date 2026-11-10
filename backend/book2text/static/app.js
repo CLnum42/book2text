@@ -4875,12 +4875,11 @@ function publishCatFromReading(payload) {
   // 页级 runs：列表与上下文**共用这一个入口**。谁需要哪一页就调它，模块自己按页缓存；
   // 外壳不再"只给第一行那一页取 runs"——那正是 2026-11-10 之前 20/21 行没有红标的根因。
   const loadRuns = (pageNo) => catPageRuns(pageNo);
-  const showContextFor = (row) => {
-    const index = rows.findIndex((item) => String(item.key) === String(row && row.key));
-    window.ReviewFocus?.showContext?.({ rows, currentIndex: index < 0 ? 0 : index });
-  };
+  // 上下文视图已删：选中只做列表内高亮，不再画下方多行视图
+  const showContextFor = () => {};
   // init 是幂等的（只写引用），不引入新的 window 旗标，免得撞埋点例外表。
-  window.ReviewFocus?.init?.({ contextEl: data.contextEl, loadRuns });
+  // 2026-11-10：下方上下文视图已删（用户只要列表），不再 init contextEl
+  window.ReviewFocus?.init?.({ loadRuns });
   window.ReviewCatList.init({
     listEl: data.listEl,
     counterEl: data.counterEl,

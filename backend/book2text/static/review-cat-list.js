@@ -37,6 +37,8 @@
   // 采用候选后这一行就不再"差异"了（current == 候选），队列里会消失 —— 用户要看到它变绿，
   // 所以本次会话内把它留在列表里（刷新后仍会消失，那时它已经判完出队）。
   const adoptedRows = new Map();
+  // 全书行高中位数（取景倍率按它算 ⇒ 整个列表字号一致；按页算会让不同页字号不同）
+  let bookLineHeight = null;
 
   const rclClamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
@@ -150,14 +152,28 @@
    * 缩放：让**字高 ≈ 22px**。行框高（页图像素）= lineBbox 高 × imgH；
    * run.bbox 可能是零宽/矮框（插入、删标点），所以取两者较大值兜底，避免放大成巨字。
    */
+  /**
+   * 取景倍率：**按页用同一个行高**（该页所有行框高的中位数）。
+   * 单行自己的行框高有 ±15% 抖动（双栏 / 标点行 / OCR 框松紧），拿它算 →
+   * 同一页里每行字号都不同，就是用户说的"有的字大有的字小"。
+   */
+  function rclBookLineH(imgH) {
+    if (bookLineHeight !== null) return bookLineHeight;
+    const heights = rows
+      .filter((item) => Array.isArray(item.lineBbox))
+      .map((item) => Math.abs(item.lineBbox[3] - item.lineBbox[1]) * imgH)
+      .filter((value) => value > 1)
+      .sort((a, b) => a - b);
+    bookLineHeight = heights.length ? heights[Math.floor(heights.length / 2)] : 0;
+    return bookLineHeight;
+  }
+
   function rclCropScale(row, run, page) {
     const imgH = page.imgH || 0;
-    const lineH = row && row.lineBbox ? Math.abs(row.lineBbox[3] - row.lineBbox[1]) * imgH : 0;
+    const lineH = rclBookLineH(imgH);
     const runH = run && run.bbox ? Math.abs(run.bbox[3] - run.bbox[1]) * imgH : 0;
-    // **字墨高** = max(run 的墨框高, 行框高 × 0.72)。
-    // 不能写成 max(lineH, runH) × 0.72 —— 那是拿"行框"当"字墨"，会多乘一次 0.72，
-    // 实测每字从 22px 涨到 38px、340 宽只剩 9 个字（2026-11-10 真机抓到的）。
-    const glyphH = Math.max(runH, lineH * RCL_GLYPH_RATIO, 1);
+    if (lineH > 1) return rclClamp(RCL_FONT_PX / (lineH * RCL_GLYPH_RATIO), 0.15, 1.0);
+    const glyphH = Math.max(runH, 1);
     return rclClamp(RCL_FONT_PX / glyphH, 0.15, 1.0);
   }
 
@@ -276,7 +292,9 @@
       return cell;
     }
     const first = spans[0];
-    const anchorEnd = Math.max(first.end, first.start + 1);
+    // **纯插入**（from 为空、a_start == a_end）时不能 +1：那会把插入位置上的那个字
+    // 从右侧切掉，正文里就少一个字（真机：山羊血「崻峒」丸来 → 显示成「山羊血 丸来」）。
+    const anchorEnd = first.end > first.start ? first.end : first.start;
     const from = Math.max(0, first.start - RCL_TEXT_RADIUS);
     const to = Math.min(text.length, anchorEnd + RCL_TEXT_RADIUS);
 
@@ -527,6 +545,7 @@
   // ---------------------------------------------------------------- 对外
   function setQueue(payload) {
     const data = payload || {};
+    bookLineHeight = null;   // 队列换了：重新取全书行高中位数
     const incoming = Array.isArray(data.rows) ? data.rows : [];
     const present = new Set(incoming.map((row) => rclKey(row)));
     rows = incoming.slice();

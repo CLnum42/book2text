@@ -1572,7 +1572,6 @@ function publishCat() {
   injected.publishCat({
     listEl: el("reading-cat-list"),
     counterEl: el("reading-cat-counter"),
-    contextEl: el("reading-cat-context"),
     rows,
     total,
     currentIndex,

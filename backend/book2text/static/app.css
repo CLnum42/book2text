@@ -2753,7 +2753,7 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   background: var(--page-paper); border: 1px solid #e8e4da; border-radius: 4px;
   overflow: hidden; padding: 0; box-shadow: 0 1px 2px rgba(15, 18, 24, .06);
 }
-.rcl-band--text { height: 25px; }
+.rcl-band--text { height: 26px; }
 /* 双版本（设计 §9/§10）：并排、等宽 120、间距 6、首个差异字锚按钮中轴 */
 .rcl-cell--versions { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
 .rcl-ver {
@@ -2801,8 +2801,10 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: baseline; font-size: 15.5px; line-height: 1.6; color: var(--text);
   font-family: "Songti SC", "SimSun", "Noto Serif CJK SC", serif;
-  /* 单行不换行：没有差异的行是纯文本（没有左右两段），不写 nowrap 就会在窄窗折成 3–4 行 */
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* 单行不换行：没有差异的行是纯文本（没有左右两段），不写 nowrap 就会在窄窗折成 3–4 行。
+     **不能在外层用 overflow:hidden**：它会竖向裁掉字形上/下沿（行盒 24.8 > 带高 25 时尤其明显），
+     裁剪交给左右两段各自处理。 */
+  white-space: nowrap;
 }
 .rcl-text__side { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: var(--text-2); }
 .rcl-text__side--l { text-align: right; }
@@ -2834,9 +2836,11 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 /* 取景图里的差异色块：与右侧文字的红/黄/绿一一对应（2026-11-10 用户要求）
    半透明底色 + 实线描边，保证底下的字仍能看清；不挡点击 */
 .rf-crop__hl { position: absolute; border-radius: 2px; pointer-events: none; box-sizing: border-box; }
-.rf-crop__hl--machine { background: rgba(220, 38, 38, .26); box-shadow: inset 0 0 0 1.5px rgba(220, 38, 38, .95); }
-.rf-crop__hl--draft { background: rgba(202, 138, 4, .30); box-shadow: inset 0 0 0 1.5px rgba(161, 98, 7, .95); }
-.rf-crop__hl--done { background: rgba(22, 163, 77, .24); box-shadow: inset 0 0 0 1.5px rgba(21, 128, 61, .95); }
+/* 取景里的差异框：**描边画在框外**（inset 会压在扫描字上，字看起来像被啃掉一块），
+   底色只做极淡的染色，保证扫描字本身清清楚楚。 */
+.rf-crop__hl--machine { background: rgba(220, 38, 38, .10); box-shadow: 0 0 0 2px rgba(220, 38, 38, .95); }
+.rf-crop__hl--draft { background: rgba(202, 138, 4, .12); box-shadow: 0 0 0 2px rgba(161, 98, 7, .95); }
+.rf-crop__hl--done { background: rgba(22, 163, 77, .10); box-shadow: 0 0 0 2px rgba(21, 128, 61, .90); }
 .rf-crop--missing { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12px; }
 
 /* 下方上下文（设计 §2 .cimg）：一整块三行页图 + 右侧三行文本 */
