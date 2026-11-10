@@ -102,6 +102,22 @@
     inner.style.backgroundSize = `${imageW}px ${imageH}px`;
     inner.style.backgroundPosition = `${-left}px ${-top}px`;
     host.append(inner);
+
+    // 差异色块（2026-11-10 用户要求）：与右侧文字的红/黄/绿一一对应。
+    // 用页图坐标 × 当前缩放，再减去取景位移 —— 与背景图同一套变换，不会错位。
+    for (const item of Array.isArray(options.highlights) ? options.highlights : []) {
+      const box4 = item && item.bbox;
+      if (!Array.isArray(box4) || box4.length !== 4) continue;
+      const tone = ["machine", "draft", "done"].includes(item.tone) ? item.tone : "machine";
+      const block = document.createElement("span");
+      block.className = `rf-crop__hl rf-crop__hl--${tone}`;
+      block.style.left = `${box4[0] * imageW - left}px`;
+      block.style.top = `${box4[1] * imageH - top}px`;
+      // 零宽（插入 / 删标点）：给一个细条，否则色块宽度为 0 看不见
+      block.style.width = `${Math.max(3, (box4[2] - box4[0]) * imageW)}px`;
+      block.style.height = `${Math.max(4, (box4[3] - box4[1]) * imageH)}px`;
+      host.append(block);
+    }
     if (options.alt) host.title = options.alt;
     return host;
   }
@@ -189,6 +205,10 @@
       const cx = (centerBox[0] + centerBox[2]) / 2;
       const scale = rfClamp(RF_FONT_PX / (lineH * page.imgH * RF_GLYPH_RATIO), 0.2, 1.0);
       const imageH = Math.abs(y1 - y0) * page.imgH * scale;
+      const tone = row.state === "confirmed" ? "done" : row.state === "draft" ? "draft" : "machine";
+      const highlights = rfRunsFor(row)
+        .filter((item) => Array.isArray(item.bbox))
+        .map((item) => ({ bbox: item.bbox, tone }));
       media.append(
         renderCrop([cx, y0, cx, y1], {
           width: contextW,
@@ -198,6 +218,7 @@
           imgH: page.imgH,
           url: page.url,
           alt: `第 ${row.pageNo} 页 · 上下文`,
+          highlights,
         })
       );
     } else {

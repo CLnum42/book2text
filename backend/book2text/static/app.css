@@ -2795,6 +2795,12 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   -webkit-mask-image: linear-gradient(to right, transparent 0, #000 6px, #000 calc(100% - 6px), transparent 100%);
   mask-image: linear-gradient(to right, transparent 0, #000 6px, #000 calc(100% - 6px), transparent 100%); }
 .rf-crop__image { background-repeat: no-repeat; }
+/* 取景图里的差异色块：与右侧文字的红/黄/绿一一对应（2026-11-10 用户要求）
+   半透明底色 + 实线描边，保证底下的字仍能看清；不挡点击 */
+.rf-crop__hl { position: absolute; border-radius: 2px; pointer-events: none; box-sizing: border-box; }
+.rf-crop__hl--machine { background: rgba(220, 38, 38, .26); box-shadow: inset 0 0 0 1.5px rgba(220, 38, 38, .95); }
+.rf-crop__hl--draft { background: rgba(202, 138, 4, .30); box-shadow: inset 0 0 0 1.5px rgba(161, 98, 7, .95); }
+.rf-crop__hl--done { background: rgba(22, 163, 77, .24); box-shadow: inset 0 0 0 1.5px rgba(21, 128, 61, .95); }
 .rf-crop--missing { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12px; }
 
 /* 下方上下文（设计 §2 .cimg）：一整块三行页图 + 右侧三行文本 */

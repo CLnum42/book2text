@@ -180,6 +180,11 @@
       cell.textContent = "—";
       return cell;
     }
+    // 色块颜色跟状态走：未审红 / 待提交黄 / 已确认绿（与右侧文字标记同色系）
+    const tone = row.state === "confirmed" ? "done" : row.state === "draft" ? "draft" : "machine";
+    const highlights = (runs.length ? runs : [])
+      .filter((item) => Array.isArray(item.bbox))
+      .map((item) => ({ bbox: item.bbox, tone }));
     cell.append(
       injected.renderCrop(box, {
         width: rclCropWidth(),
@@ -189,6 +194,7 @@
         imgH: page.imgH,
         url: page.url,
         alt: `第 ${row.pageNo || "?"} 页`,
+        highlights,
       })
     );
     return cell;
