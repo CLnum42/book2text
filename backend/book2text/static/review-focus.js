@@ -15,7 +15,7 @@
 
   const RF_FONT_PX = 22;
   const RF_GLYPH_RATIO = 0.72;
-  const RF_CONTEXT_W = 640;
+  const RF_CONTEXT_W = 480;
   const RF_CONTEXT_PAD = 12;
 
   let injected = {};
@@ -110,6 +110,16 @@
     if (padLeft > 1) host.append(rfPad(padLeft, "left"));
     if (padRight > 1) host.append(rfPad(padRight, "right"));
 
+    // 这一行的左右边界之外遮成纸色（双栏 / 双页扫描上，窗口会框到隔壁栏的字，
+    // 于是"上图有首双星、下句从荣耀之心开始"，用户看到的对不上就是这个）
+    const maskBox = Array.isArray(options.maskBox) && options.maskBox.length === 4 ? options.maskBox : null;
+    if (maskBox) {
+      const lineLeft = maskBox[0] * imageW - left;
+      const lineRight = maskBox[2] * imageW - left;
+      if (lineLeft > 1) host.append(rfMask(0, Math.min(lineLeft, width)));
+      if (lineRight < width - 1) host.append(rfMask(Math.max(0, lineRight), width));
+    }
+
     // 差异色块（2026-11-10 用户要求）：与右侧文字的红/黄/绿一一对应。
     // 用页图坐标 × 当前缩放，再减去取景位移 —— 与背景图同一套变换，不会错位。
     for (const item of Array.isArray(options.highlights) ? options.highlights : []) {
@@ -138,13 +148,13 @@
     return pad;
   }
 
-  /** 页边留白块：虚线 + 淡蓝底 + 竖排「留白 Npx」，一眼能看出"这里没有内容"（设计 §6）。 */
-  function rfPad(width, side) {
-    const pad = document.createElement("span");
-    pad.className = `rf-crop__pad rf-crop__pad--${side}`;
-    pad.style.width = `${Math.round(width)}px`;
-    pad.dataset.label = `留白 ${Math.round(width)}`;
-    return pad;
+  /** 行边界外的遮罩：把隔壁栏 / 页边的字遮成纸色，保证取景里只剩这一行的字。 */
+  function rfMask(startPx, endPx) {
+    const mask = document.createElement("span");
+    mask.className = "rf-crop__mask";
+    mask.style.left = `${startPx}px`;
+    mask.style.width = `${Math.max(0, endPx - startPx)}px`;
+    return mask;
   }
 
   /** 一行文本，差异标出来（可多段）。已确认且没改字 ⇒ 不染。 */

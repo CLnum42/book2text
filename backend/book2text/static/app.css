@@ -2721,7 +2721,18 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   --rcl-crop-w: 340px;
   --rcl-crop-h: 34px;
 }
-.reading-cat__head { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 12px; color: var(--muted); }
+.reading-cat__head {
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+  font-size: 12px; color: var(--muted);
+  background: var(--surface-2); border-bottom: 1px solid var(--line);
+}
+/* 列头：与行同一套栅格，读起来像一张表 */
+.reading-cat__cols {
+  display: grid; grid-template-columns: 32px minmax(0, 1fr) 72px 246px;
+  gap: 6px; padding: 2px 12px 4px; font-size: 11px; color: var(--faint);
+  background: var(--surface-2); border-bottom: 1px solid var(--line-soft);
+}
+.reading-cat__cols span:nth-child(3), .reading-cat__cols span:nth-child(4) { text-align: center; }
 .reading-cat__counter { font-variant-numeric: tabular-nums; }
 .reading-cat__list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1 1 auto; min-height: 0; }
 /* 上下排（2026-11-10 定稿）：序号 | 两带列（取景在上、正文在下，同一条竖线）| 状态 | 判定
@@ -2729,10 +2740,19 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-row {
   display: grid; grid-template-columns: 32px minmax(0, 1fr) 72px 246px;
   align-items: center; gap: 6px; min-height: 71px; padding: 4px 12px;
-  border-bottom: 1px solid var(--line); cursor: pointer;
+  border-bottom: 1px solid var(--line-soft); cursor: pointer;
 }
+/* 斑马纹 + 悬停：一行一行分得开，眼睛不会滑行 */
+.rcl-row:nth-child(even) { background: #fbfcfd; }
+.rcl-row:hover { background: var(--surface-2); }
+.rcl-row--current { background: var(--accent-soft) !important; }
 .rcl-bands { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.rcl-band--shot { height: 34px; display: flex; justify-content: center; overflow: hidden; }
+/* 取景带：一条"扫描纸带"卡片，只包住取景本身（宽 = 取景宽），让两层有明显的主次 */
+.rcl-band--shot { height: 34px; display: flex; justify-content: center; }
+.rcl-band--shot .rcl-cell--crop {
+  background: var(--page-paper); border: 1px solid #e8e4da; border-radius: 4px;
+  overflow: hidden; padding: 0; box-shadow: 0 1px 2px rgba(15, 18, 24, .06);
+}
 .rcl-band--text { height: 25px; }
 /* 双版本（设计 §9/§10）：并排、等宽 120、间距 6、首个差异字锚按钮中轴 */
 .rcl-cell--versions { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
@@ -2763,9 +2783,9 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-cell--crop.rcl-cell--missing { color: var(--faint); font-size: 12px; }
 /* 状态 gutter（§2/§6）：圆点 + 第一行状态 + 第二行「改过 / 未改动」——颜色不是唯一通道 */
 .rcl-cell--state {
-  height: 40px; display: flex; flex-direction: column; justify-content: center; gap: 1px;
-  padding-left: 8px; border-left: 1px solid var(--line-soft); border-right: 1px solid var(--line-soft);
-  background: var(--surface-2); font-size: 12px; color: var(--text-2);
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  padding-left: 4px; border: 0; background: none;
+  font-size: 12px; color: var(--text-2); line-height: 1.25;
 }
 .rcl-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); display: block; margin-bottom: 2px; }
 .rcl-state__label { line-height: 1.2; }
@@ -2779,7 +2799,7 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 /* 正文列（§2 15.5px 宋体；§8 差异字居中，两端补「……」） */
 .rcl-cell--text {
   display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: baseline; font-size: 15.5px; line-height: 1.6;
+  align-items: baseline; font-size: 15.5px; line-height: 1.6; color: var(--text);
   font-family: "Songti SC", "SimSun", "Noto Serif CJK SC", serif;
   /* 单行不换行：没有差异的行是纯文本（没有左右两段），不写 nowrap 就会在窄窗折成 3–4 行 */
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -2790,14 +2810,18 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-text__mid { white-space: pre; }
 /* 差异高亮（2026-11-10 用户口径：两边都画**色块**，与取景图里的色块同色同义）
    未审红 / 待提交黄 / 已确认绿；半透明底 + 1px 描边，字保持正文色，长段也能看出范围 */
+/* 差异高亮：**描边画在字外**（box-shadow 外扩 1px），不压字形；底色只做淡染。
+   之前用 inset 描边，15.5px 的字被吃掉一圈 —— 用户看到的"高亮遮挡"就是这个。 */
 .rcl-diff {
-  background: rgba(220, 38, 38, .24); color: inherit;
-  box-shadow: inset 0 0 0 1.5px rgba(220, 38, 38, .95);
-  border-radius: 2px; padding: 0 1px;
+  background: rgba(220, 38, 38, .16); color: inherit;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, .80);
+  border-radius: 3px; padding: 0; margin: 0;
 }
-.rcl-diff--draft { background: rgba(202, 138, 4, .30); box-shadow: inset 0 0 0 1.5px rgba(161, 98, 7, .95); }
-.rcl-diff--done { background: rgba(22, 163, 77, .26); box-shadow: inset 0 0 0 1.5px rgba(21, 128, 61, .95); }
-.rcl-diff--caret { box-shadow: inset 2px 0 0 currentColor; padding-left: 2px; }
+/* 行边界外遮罩：把隔壁栏的字遮成纸色（双栏/双页扫描） */
+.rf-crop__mask { position: absolute; top: 0; bottom: 0; background: var(--page-paper); pointer-events: none; }
+.rcl-diff--draft { background: rgba(202, 138, 4, .20); box-shadow: 0 0 0 1px rgba(161, 98, 7, .85); }
+.rcl-diff--done { background: rgba(22, 163, 77, .16); box-shadow: 0 0 0 1px rgba(21, 128, 61, .75); }
+.rcl-diff--caret { box-shadow: -2px 0 0 0 currentColor; margin-left: 2px; }
 /* 长差异：中间那段可以被压缩，不许把整行撑破（人为删改可能几十字） */
 .rcl-text__mid { max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
 .rcl-empty { padding: 12px; font-size: 12.5px; }
@@ -2816,13 +2840,16 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rf-crop--missing { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12px; }
 
 /* 下方上下文（设计 §2 .cimg）：一整块三行页图 + 右侧三行文本 */
-.reading-cat__context { flex: 0 0 auto; max-height: 42vh; overflow: auto; border-top: 1px solid var(--line-soft); background: var(--surface); }
-.rf-context { display: grid; grid-template-columns: 640px minmax(0, 1fr); gap: 12px; padding: 8px 12px; align-items: start; }
+.reading-cat__context {
+  flex: 0 0 auto; max-height: 42vh; overflow: auto;
+  border-top: 2px solid var(--line); background: var(--surface-2);
+}
+.rf-context { display: grid; grid-template-columns: 480px minmax(0, 1fr); gap: 16px; padding: 10px 12px; align-items: start; }
 .rf-context__media { background: var(--page-paper); border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
-.rf-context__text { display: flex; flex-direction: column; gap: 8px; font-size: 15.5px; line-height: 1.7;
+.rf-context__text { display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 1.7;
   font-family: "Songti SC", "SimSun", "Noto Serif CJK SC", serif; }
-.rf-line { color: var(--text-2); padding: 2px 6px; border-radius: 3px; }
-.rf-line--current { background: #fff; outline: 2px solid #2563eb; outline-offset: -2px; }
+.rf-line { color: var(--text-2); padding: 2px 8px; border-left: 3px solid transparent; border-radius: 0 3px 3px 0; }
+.rf-line--current { background: var(--surface); border-left-color: var(--accent); color: var(--text); }
 .rf-context__mini { margin: 2px 0; }
 .rf-context__mini--missing { color: var(--faint); font-size: 12px; }
 .rf-empty { padding: 10px 12px; font-size: 12.5px; }

@@ -661,6 +661,10 @@
             <span class="reading-cat__title">差异列表</span>
             <span class="reading-cat__counter" id="reading-cat-counter" data-rcl="counter">0 / 0</span>
           </div>
+          <!-- 列头（2026-11-10）：与行同一套栅格，让这一屏读起来像一张表 -->
+          <div class="reading-cat__cols" aria-hidden="true">
+            <span>序号</span><span>取景（扫描原文在上）· 正文（可判）在下</span><span>状态</span><span>判定</span>
+          </div>
           <ul class="reading-cat__list" id="reading-cat-list" data-rcl="list"></ul>
           <!-- 下方 5 行上下文（N-2 … N+2）：左裁图 + 右正文，差异行标红；数据由外壳推 -->
           <div class="reading-cat__context" id="reading-cat-context" data-rf="context"></div>

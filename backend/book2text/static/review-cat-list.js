@@ -18,7 +18,7 @@
   const RCL_FONT_PX = 22;        // 设计 §2：取景窗里的字高
   const RCL_GLYPH_RATIO = 0.72;  // 行框高度里字面占的比例（300dpi 页图实测）
   const RCL_CROP_H = 34;         // 取景窗高度
-  const RCL_TEXT_RADIUS = 18;    // 差异两侧各取多少字
+  const RCL_TEXT_RADIUS = 40;    // 差异两侧各取多少字（40 ≈ 整行，用户要"看得到整句"，18 会让长句被截短）
   const RCL_EAGER_ROWS = 16;     // 首屏先给这些行取 runs（其余靠滚动触发）
 
   let injected = {};
@@ -204,6 +204,8 @@
         url: page.url,
         alt: `第 ${row.pageNo || "?"} 页`,
         highlights,
+        // 只显示这一行自己的字（双栏页上窗口会框到隔壁栏）
+        maskBox: row.lineBbox || null,
       })
     );
     return cell;
@@ -353,10 +355,14 @@
     const cell = document.createElement("div");
     cell.className = "rcl-cell rcl-cell--versions";
     if (row.state === "confirmed") {
-      const done = document.createElement("span");
-      done.className = "rcl-done-note";
-      done.textContent = row.edited ? "已确认 · 采用候选" : "已确认 · 保留原文";
-      cell.append(done);
+      // 状态列已经写了「已确认 / 改过·未改动」，这里不再重复一遍同样的字；
+      // 只有"采用候选"这种状态列表达不了的信息才留一行小字。
+      if (row.edited) {
+        const done = document.createElement("span");
+        done.className = "rcl-done-note";
+        done.textContent = "采用候选";
+        cell.append(done);
+      }
       return cell;
     }
     const runs = rclEffectiveRuns(row);
