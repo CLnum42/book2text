@@ -87,91 +87,110 @@
     }
 
     const [x0, y0, x1, y1] = box;
-    const imageW = imgW * scale;
-    const imageH = imgH * scale;
-    const centerX = ((x0 + x1) / 2) * imageW;
-    const centerY = ((y0 + y1) / 2) * imageH;
-    // 页边：**留白保轴**（设计 §6）。差异字必须停在取景中轴，不许因为裁切被推走：
-    // 所以这里不再 clamp 横向位移，让图在页边处"用完"，缺的那截补虚线留白块。
-    const wantedLeft = centerX - width / 2;
-    const left = wantedLeft;
-    const top = rfClamp(centerY - height / 2, 0, Math.max(0, imageH - height));
-    const padLeft = Math.max(0, -wantedLeft);
-    const padRight = Math.max(0, wantedLeft + width - imageW);
-
-    const inner = document.createElement("div");
-    inner.className = "rf-crop__image";
-    inner.style.width = `${imageW}px`;
-    inner.style.height = `${imageH}px`;
-    inner.style.backgroundImage = `url("${options.url}")`;
-    inner.style.backgroundSize = `${imageW}px ${imageH}px`;
-    inner.style.backgroundPosition = `${-left}px ${-top}px`;
-    host.append(inner);
-    if (padLeft > 1) host.append(rfPad(padLeft, "left"));
-    if (padRight > 1) host.append(rfPad(padRight, "right"));
-
-    // 接排（2026-11-10 用户选 A）：这一行起点左侧 / 终点右侧的空白，
-    // 用**上一行的末尾 / 下一行的开头**补满，差异字仍停在中轴。
-    // 三片都取自同一张页图，只是裁不同的 y（行距按全书行高中位数）。
+    // 两带同一个字宽（调用方给 fontPx）：取景按"字宽 = 正文字宽"横向缩放、按"字高 = 正文字号"纵向缩放。
+    // 扫描字形的宽高比与宋体差约 11%，所以这里**非等比**——换来的是一一对应：
+    // 差异字、行首、行尾都落在两带的同一根竖线上（用户 2026-11-10 报的"上方和下方对不上"）。
+    const fontPx = Number(options.fontPx) > 0 ? Number(options.fontPx) : 15.5;
     const maskBox = Array.isArray(options.maskBox) && options.maskBox.length === 4 ? options.maskBox : null;
     const wrap = options.wrap || null;
-    if (maskBox && wrap) {
-      const cx0 = maskBox[0] * imageW - left;
-      const cx1 = maskBox[2] * imageW - left;
-      const pitch = Number(wrap.pitch) || 0;
-      const colX0 = Number(wrap.colX0) || 0;
-      const colX1 = Number(wrap.colX1) || 0;
-      // 字宽（归一化）：用这一行的文本长度与行框宽估；切片边界要对齐到**字边界**，
-      // 否则会在半个字上切断，看起来像坏图。
-      const advance = Number(wrap.advance) > 0 ? Number(wrap.advance) : 0;
-      const snap = (value, base) => (advance > 0
-        ? base + Math.round((value - base) / advance) * advance
-        : value);
-      // 左：上一行的末尾，右对齐到当前行的起点
-      if (cx0 > 6 && pitch > 0) {
-        const w = Math.min(cx0, width);
-        const sx1 = snap(Math.min(1, Math.max(colX1, maskBox[0])), colX0);
-        const sx0 = Math.max(0, sx1 - w / (imageW || 1));
+    if (!maskBox) {
+      host.classList.add("rf-crop--missing");
+      host.textContent = "—";
+      return host;
+    }
+    const lineHPx = Math.abs(maskBox[3] - maskBox[1]) * imgH;
+    const advance = wrap && Number(wrap.advance) > 0 ? Number(wrap.advance) : 0;
+    const srcGlyphW = advance * imgW;
+    const scaleX = srcGlyphW > 0.5 ? fontPx / srcGlyphW : fontPx / (imgW || 1);
+    const scaleY = lineHPx > 0.5 ? fontPx / (lineHPx * RF_GLYPH_RATIO) : scaleX;
+    const imageW = imgW * scaleX;
+    const imageH = imgH * scaleY;
+    const lineX0 = maskBox[0] * imageW;
+    const lineX1 = maskBox[2] * imageW;
+    const lineYc = ((maskBox[1] + maskBox[3]) / 2) * imageH;
+    const top = rfClamp(lineYc - height / 2, 0, Math.max(0, imageH - height));
+
+    // 字符窗口（与正文同一份）：i 是当前行的字符下标，`start` 可能为负（窗口伸出到上一行）
+    const chars = wrap && Number(wrap.chars) > 0 ? Number(wrap.chars) : Math.max(8, Math.floor(width / fontPx));
+    const start = wrap && Number.isFinite(Number(wrap.start)) ? Number(wrap.start) : Math.round(-chars / 2);
+    const curStart = wrap ? Math.max(0, Number(wrap.curStart) || 0) : 0;
+    const curEnd = wrap && Number.isFinite(Number(wrap.curEnd)) ? Number(wrap.curEnd) : 0;
+    const leftCount = wrap ? Math.max(0, Number(wrap.leftCount) || 0) : 0;
+    const rightCount = wrap ? Math.max(0, Number(wrap.rightCount) || 0) : 0;
+    const pitch = Math.abs((wrap && Number(wrap.pitch)) || 0);
+    // 字符 i 在取景里的显示 x —— 同一格距 fontPx，和正文的字符格距完全一致
+    const xAt = (i) => (i - start) * fontPx;
+    const mainLeft = xAt(curStart);
+    const mainSrcX = lineX0 + curStart * fontPx;
+
+    // 左：上一行末尾（右端对齐当前行行首）。
+    // 位置优先用后端给的**页面上真正上一行**的 bbox（y 与行尾 x）；没有才回退到行距估算。
+    const prevBox = Array.isArray(wrap && wrap.prevBbox) ? wrap.prevBbox : null;
+    if (leftCount > 0) {
+      const dy = prevBox ? maskBox[1] - prevBox[1] : pitch;
+      const srcRight = prevBox
+        ? Math.min(imageW, prevBox[2] * imageW)
+        : Math.max(lineX0, Math.min(imageW, (Number(wrap && wrap.colX1) || maskBox[2]) * imageW));
+      if (dy > 0) {
         host.append(rfSlice({
-          width: w, left: cx0 - w,
-          // 纵向基准要跟主图同一个窗口偏移 top，不是 maskBox 的行顶 ——
-          // 用行顶算会差半个行高，切片就露出半截字（真机上看成"重影"）。
-          bgX: -(sx0 * imageW), bgY: -(top - pitch * imageH),
+          width: leftCount * fontPx,
+          left: mainLeft - leftCount * fontPx,
+          bgX: -(srcRight - leftCount * fontPx),
+          bgY: -(top - dy * imageH),
           imageW, imageH, url: options.url, cls: "rf-slice--prev",
         }));
       }
-      // 右：下一行的开头，左对齐到当前行的终点
-      if (cx1 < width - 6 && pitch > 0) {
-        const w = Math.min(width - cx1, width);
-        const sx0 = snap(Math.max(0, Math.min(colX0, maskBox[0])), colX0);
+    }
+    // 中：当前行可见段
+    host.append(rfSlice({
+      width: Math.max(0, (curEnd - curStart) * fontPx),
+      left: mainLeft,
+      bgX: -mainSrcX,
+      bgY: -top,
+      imageW, imageH, url: options.url, cls: "rf-slice--cur",
+    }));
+    // 右：下一行开头（左端对齐当前行行尾）。同样优先用真正的下一行 bbox：
+    // 从当前行行尾裁会裁到页边空白，背景平铺后又会把页左半的内容重复显示出来（真机就是这样错的）。
+    const nextBox = Array.isArray(wrap && wrap.nextBbox) ? wrap.nextBbox : null;
+    if (rightCount > 0) {
+      const dy = nextBox ? nextBox[1] - maskBox[1] : pitch;
+      const srcLeft = nextBox
+        ? Math.max(0, Math.min(imageW, nextBox[0] * imageW))
+        : Math.max(0, Math.min(lineX0, (Number(wrap && wrap.colX0) || maskBox[0]) * imageW));
+      if (dy > 0) {
         host.append(rfSlice({
-          width: w, left: cx1,
-          bgX: -(sx0 * imageW), bgY: -(top + pitch * imageH),
+          width: rightCount * fontPx,
+          left: xAt(curEnd),
+          bgX: -srcLeft,
+          bgY: -(top + dy * imageH),
           imageW, imageH, url: options.url, cls: "rf-slice--next",
         }));
       }
-      // 当前行的细底线：让人一眼看出哪一段属于这一行（接排后三行并排）
-      host.append(rfLineMark(Math.max(0, cx0), Math.min(width, cx1)));
-    } else if (maskBox) {
-      const lineLeft = maskBox[0] * imageW - left;
-      const lineRight = maskBox[2] * imageW - left;
-      if (lineLeft > 1) host.append(rfMask(0, Math.min(lineLeft, width)));
-      if (lineRight < width - 1) host.append(rfMask(Math.max(0, lineRight), width));
     }
+    // 补不上的留白（before / after 不够长）：不硬撑，画虚线留白
+    const wantLeft = Math.max(0, -start);
+    const padLeft = Math.max(0, wantLeft - leftCount) * fontPx;
+    const padRight = Math.max(0, (start + chars) - curEnd - rightCount) * fontPx;
+    if (padLeft > 1) host.append(rfPad(padLeft, "left"));
+    if (padRight > 1) host.append(rfPad(padRight, "right"));
 
     // 差异色块（2026-11-10 用户要求）：与右侧文字的红/黄/绿一一对应。
-    // 用页图坐标 × 当前缩放，再减去取景位移 —— 与背景图同一套变换，不会错位。
+    // 横向用**字符格**（与正文同一套 xAt）而不是 run.bbox —— bbox 只紧贴字形，多字差异时
+    // 会和正文红标的宽度/位置对不上（行 4 实测偏 15px）。纵向用本行字高，两边同一条线。
+    const hlTop = maskBox[1] * imageH - top;
+    const hlHeight = Math.max(4, (maskBox[3] - maskBox[1]) * imageH);
     for (const item of Array.isArray(options.highlights) ? options.highlights : []) {
-      const box4 = item && item.bbox;
-      if (!Array.isArray(box4) || box4.length !== 4) continue;
-      const tone = ["machine", "draft", "done"].includes(item.tone) ? item.tone : "machine";
+      const from = Number(item && item.start);
+      const to = Number(item && item.end);
+      if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+      const tone = ["machine", "draft", "done"].includes(item && item.tone) ? item.tone : "machine";
       const block = document.createElement("span");
       block.className = `rf-crop__hl rf-crop__hl--${tone}`;
-      block.style.left = `${box4[0] * imageW - left}px`;
-      block.style.top = `${box4[1] * imageH - top}px`;
+      block.style.left = `${xAt(from)}px`;
+      block.style.top = `${hlTop}px`;
       // 零宽（插入 / 删标点）：给一个细条，否则色块宽度为 0 看不见
-      block.style.width = `${Math.max(3, (box4[2] - box4[0]) * imageW)}px`;
-      block.style.height = `${Math.max(4, (box4[3] - box4[1]) * imageH)}px`;
+      block.style.width = `${Math.max(3, (to - from) * fontPx)}px`;
+      block.style.height = `${hlHeight}px`;
       host.append(block);
     }
     if (options.alt) host.title = options.alt;
@@ -195,26 +214,9 @@
     slice.style.width = `${width}px`;
     slice.style.backgroundImage = `url("${url}")`;
     slice.style.backgroundSize = `${imageW}px ${imageH}px`;
+    slice.style.backgroundRepeat = "no-repeat";
     slice.style.backgroundPosition = `${bgX}px ${bgY}px`;
     return slice;
-  }
-
-  /** 当前行在接排条里的细底线 */
-  function rfLineMark(startPx, endPx) {
-    const mark = document.createElement("span");
-    mark.className = "rf-line-mark";
-    mark.style.left = `${startPx}px`;
-    mark.style.width = `${Math.max(0, endPx - startPx)}px`;
-    return mark;
-  }
-
-  /** 行边界外的遮罩：把隔壁栏 / 页边的字遮成纸色，保证取景里只剩这一行的字。 */
-  function rfMask(startPx, endPx) {
-    const mask = document.createElement("span");
-    mask.className = "rf-crop__mask";
-    mask.style.left = `${startPx}px`;
-    mask.style.width = `${Math.max(0, endPx - startPx)}px`;
-    return mask;
   }
 
   /** 一行文本，差异标出来（可多段）。已确认且没改字 ⇒ 不染。 */

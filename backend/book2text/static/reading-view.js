@@ -1560,6 +1560,9 @@ function publishCat() {
     level: entry.level || "",
     before: entry.before || "",
     after: entry.after || "",
+    // 页面上相邻行的行框：取景切片按它定 y（不是拿“同页差异行的 y0 差”猜行距）
+    prevBbox: entry.prev_bbox || null,
+    nextBbox: entry.next_bbox || null,
     noBoxes: true,
     lineBbox: entry.bbox || null,
   }));
@@ -1603,8 +1606,15 @@ function rebuildReadingEntries() {
         seq: segment.seq,
         span_index: i,
         page_no: mark.page_no || span.page_no,
-        before: prevSpan ? segment.text.slice(prevSpan.start, prevSpan.end) : "",
-        after: nextSpan ? segment.text.slice(nextSpan.start, nextSpan.end) : "",
+        // 上下文以**页面 y 相邻行**为准（marks 给的 prev_text / next_text）：审校列表的取景图
+        // 裁的就是页面上相邻行，两边同源才能"上方图和下方文字一模一样"。文本流 span 相邻
+        // 在段落边界会指到另一段（真机上取景是"不知为什么…"、正文补的是"那黛玉倚着…"）。
+        before: mark.prev_text != null
+          ? String(mark.prev_text)
+          : prevSpan ? segment.text.slice(prevSpan.start, prevSpan.end) : "",
+        after: mark.next_text != null
+          ? String(mark.next_text)
+          : nextSpan ? segment.text.slice(nextSpan.start, nextSpan.end) : "",
       });
     }
   }

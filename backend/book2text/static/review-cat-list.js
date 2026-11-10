@@ -15,10 +15,10 @@
 (function () {
   "use strict";
 
-  const RCL_FONT_PX = 22;        // 设计 §2：取景窗里的字高
-  const RCL_GLYPH_RATIO = 0.72;  // 行框高度里字面占的比例（300dpi 页图实测）
-  const RCL_CROP_H = 34;         // 取景窗高度
-  const RCL_TEXT_RADIUS = 40;    // 差异两侧各取多少字（40 ≈ 整行，用户要"看得到整句"，18 会让长句被截短）
+  const RCL_CROP_H = 34;         // 取景带高度
+  // 两带共用的字宽。取景（扫描图）与正文（文字）**必须同字宽**：同一条字符窗口按同一格距摆放，
+  // 差异字才会落在同一根竖线上；字号不同则右侧越走越偏（用户 2026-11-10 报的"上方和下方对不上"）。
+  const RCL_TEXT_PX = 15.5;
   const RCL_EAGER_ROWS = 16;     // 首屏先给这些行取 runs（其余靠滚动触发）
 
   let injected = {};
@@ -39,8 +39,6 @@
   const adoptedRows = new Map();
   // 全书行高中位数（取景倍率按它算 ⇒ 整个列表字号一致；按页算会让不同页字号不同）
   let bookLineHeight = null;
-
-  const rclClamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
   function rclKey(row) {
     return String((row && row.key) || `${row && row.blockId}:${row.lineIndex}`);
@@ -140,12 +138,70 @@
     }
   }
 
-  // ---------------------------------------------------------------- 取景（左列）
-  function rclCropWidth() {
-    if (!listEl || typeof getComputedStyle !== "function") return 340;
-    const raw = getComputedStyle(listEl).getPropertyValue("--rcl-crop-w").trim();
-    const width = parseFloat(raw);
-    return Number.isFinite(width) && width > 0 ? width : 340;
+  // ---------------------------------------------------------------- 两带共用的字符窗口
+  /**
+   * 两带的宽度 = 这一列的实际宽度（取景带不再固定 340，和正文带一样宽）。
+   * 实测口径：宽屏（>900）栅格 32 序号 + 72 状态 + 246 判定 + 3×6 间距 + 2×12 内边距；
+   * 窄屏（≤900）栅格 28 + 72 + 2 列，两带跨 2–3 列。
+   */
+  function rclBandWidth() {
+    const width = listEl && listEl.clientWidth ? listEl.clientWidth : 0;
+    if (!width) return 340;
+    if (typeof window !== "undefined" && window.innerWidth <= 900) {
+      return Math.max(240, width - 28 - 72 - 12 - 16);
+    }
+    return Math.max(240, width - 32 - 72 - 246 - 18 - 24);
+  }
+
+  /** 窗口字数：列宽 ÷ 字宽（两带共用这一个数）。
+   *  减一个字的位置：正文左右两段各占 1fr，中间差异字占 auto，窗口满格时左段会被
+   *  `text-overflow: ellipsis` 截掉最后半个字（真机：行 5 显示成「掉在地下…骨」）。 */
+  function rclWindowChars(bandWidth) {
+    return Math.max(8, Math.floor(((Number(bandWidth) || 340) - 2 * RCL_TEXT_PX) / RCL_TEXT_PX));
+  }
+
+  /**
+   * 以**差异段中点**为中轴、长度 `chars` 的字符窗口（两带都按它渲染）。
+   * 超出行首/行尾的部分用 `before` 末尾 / `after` 开头补（正文与取景用同一份字数，
+   * 所以上方扫描图与下方文字永远是同一段内容）。
+   * 返回的 start 可能为负（窗口左沿落在上一行），`padLeft/padRight` 是补不上的留白字数。
+   */
+  function rclWindow(row, chars) {
+    const total = Math.max(8, Number(chars) || 40);
+    const text = String((row && row.text) || "");
+    const before = String((row && row.before) || "");
+    const after = String((row && row.after) || "");
+    const spans = rclEffectiveRuns(row)
+      .map((run) => rclSpanOf(run, text))
+      .filter(Boolean)
+      .sort((a, b) => a.start - b.start);
+    const first = spans[0] || null;
+    const anchorStart = first ? first.start : Math.max(0, Math.floor(text.length / 2));
+    const anchorEnd = first ? Math.max(first.end, first.start) : anchorStart;
+    const center = (anchorStart + anchorEnd) / 2;
+    const start = Math.round(center - total / 2);
+    const end = start + total;
+    const wantLeft = Math.max(0, -start);
+    const wantRight = Math.max(0, end - text.length);
+    const leftCount = Math.min(wantLeft, before.length);
+    const rightCount = Math.min(wantRight, after.length);
+    return {
+      chars: total,
+      spans,
+      first,
+      start,
+      end,
+      anchorStart,
+      anchorEnd,
+      leftCount,
+      rightCount,
+      leftText: before.slice(before.length - leftCount),
+      rightText: after.slice(0, rightCount),
+      curStart: Math.max(0, start),
+      curEnd: Math.min(text.length, end),
+      padLeft: wantLeft - leftCount,
+      padRight: wantRight - rightCount,
+    };
   }
 
   /**
@@ -168,23 +224,20 @@
     return bookLineHeight;
   }
 
-  function rclCropScale(row, run, page) {
-    const imgH = page.imgH || 0;
-    const lineH = rclBookLineH(imgH);
-    const runH = run && run.bbox ? Math.abs(run.bbox[3] - run.bbox[1]) * imgH : 0;
-    if (lineH > 1) return rclClamp(RCL_FONT_PX / (lineH * RCL_GLYPH_RATIO), 0.15, 1.0);
-    const glyphH = Math.max(runH, 1);
-    return rclClamp(RCL_FONT_PX / glyphH, 0.15, 1.0);
-  }
-
   /** 接排参数：行距 + 这一页正文列的左右沿（多行取 min/max，足够近似）。 */
   function rclWrapInfo(row, page) {
     const imgH = page.imgH || 0;
     const imgW = page.imgW || 0;
     if (!imgH || !imgW) return null;
     const samePage = rows.filter((item) => Number(item.pageNo) === Number(row.pageNo));
-    const xs0 = samePage.map((item) => (Array.isArray(item.lineBbox) ? item.lineBbox[0] : null)).filter((v) => v !== null);
-    const xs1 = samePage.map((item) => (Array.isArray(item.lineBbox) ? item.lineBbox[2] : null)).filter((v) => v !== null);
+    // 左右沿用**中位数**而不是 min/max：min 会被页码 / 书眉行（x0≈0.018）拉走，
+    // 取景的"上一行末尾 / 下一行开头"就裁到页边空白里去了。
+    const median = (values) => {
+      const list = values.filter((v) => v !== null && Number.isFinite(v)).sort((a, b) => a - b);
+      return list.length ? list[Math.floor(list.length / 2)] : null;
+    };
+    const xs0 = samePage.map((item) => (Array.isArray(item.lineBbox) ? item.lineBbox[0] : null));
+    const xs1 = samePage.map((item) => (Array.isArray(item.lineBbox) ? item.lineBbox[2] : null));
     const lineH = rclBookLineH(imgH);
     if (!xs0.length || !xs1.length || !lineH) return null;
     // 行距：用**这一页各行的 y0 差**的中位数（行框高只是字盒高，不等于行距；
@@ -207,9 +260,12 @@
       : 0;
     return {
       pitch,
-      colX0: Math.min(...xs0),
-      colX1: Math.max(...xs1),
+      colX0: median(xs0),
+      colX1: median(xs1),
       advance,
+      // 页面上真正的上一行 / 下一行（后端按同页同栏 y 相邻给的 bbox）：取景切片用它定 y/x
+      prevBbox: Array.isArray(row.prevBbox) ? row.prevBbox : null,
+      nextBbox: Array.isArray(row.nextBbox) ? row.nextBbox : null,
     };
   }
 
@@ -243,14 +299,23 @@
     }
     // 色块颜色跟状态走：未审红 / 待提交黄 / 已确认绿（与右侧文字标记同色系）
     const tone = row.state === "confirmed" ? "done" : row.state === "draft" ? "draft" : "machine";
-    const highlights = (runs.length ? runs : [])
-      .filter((item) => Array.isArray(item.bbox))
-      .map((item) => ({ bbox: item.bbox, tone }));
+    // 色块按**字符格**给（a_start..a_end），不按 run.bbox：bbox 只紧贴字形，
+    // 多字差异时它和正文的红标宽度/位置对不上（实测行 4 偏 15px）。字符格与正文同一套格距。
+    const text = String((row && row.text) || "");
+    const highlights = runs
+      .map((item) => rclSpanOf(item, text))
+      .filter(Boolean)
+      .map((span) => ({ start: span.start, end: span.end, tone }));
+    // 两带同一个字符窗口：正文怎么截、取景就怎么截；正文补了 before/after 的字数，
+    // 取景的上一行末尾 / 下一行开头切片也用同样的字数（这才是"上方和下方一样"）。
+    const bandWidth = rclBandWidth();
+    const win = rclWindow(row, rclWindowChars(bandWidth));
+    const wrap = rclWrapInfo(row, page);
     cell.append(
       injected.renderCrop(box, {
-        width: rclCropWidth(),
+        width: bandWidth,
         height: RCL_CROP_H,
-        scale: rclCropScale(row, run, page),
+        fontPx: RCL_TEXT_PX,
         imgW: page.imgW,
         imgH: page.imgH,
         url: page.url,
@@ -258,8 +323,23 @@
         highlights,
         // 只显示这一行自己的字（双栏页上窗口会框到隔壁栏）
         maskBox: row.lineBbox || null,
-        // 接排参数：行距（全书行高中位）与这一页正文列的左右沿（用来取上一行末尾 / 下一行开头）
-        wrap: rclWrapInfo(row, page),
+        // 接排参数：行距（这一页 y0 差的中位）+ 本文数窗口（left/rightCount 决定切片宽度）
+        wrap: wrap
+          ? {
+            pitch: wrap.pitch,
+            advance: wrap.advance,
+            colX0: wrap.colX0,
+            colX1: wrap.colX1,
+            prevBbox: wrap.prevBbox,
+            nextBbox: wrap.nextBbox,
+            chars: win.chars,
+            start: win.start,
+            curStart: win.curStart,
+            curEnd: win.curEnd,
+            leftCount: win.leftCount,
+            rightCount: win.rightCount,
+          }
+          : null,
       })
     );
     return cell;
@@ -333,12 +413,16 @@
     // **纯插入**（from 为空、a_start == a_end）时不能 +1：那会把插入位置上的那个字
     // 从右侧切掉，正文里就少一个字（真机：山羊血「崻峒」丸来 → 显示成「山羊血 丸来」）。
     const anchorEnd = first.end > first.start ? first.end : first.start;
-    const from = Math.max(0, first.start - RCL_TEXT_RADIUS);
-    const to = Math.min(text.length, anchorEnd + RCL_TEXT_RADIUS);
+    // 窗口与取景同源：同一段字符、同样的左右补字数（用户 2026-11-10：上方图应与下方文字一致）
+    const win = rclWindow(row, rclWindowChars(rclBandWidth()));
+    const from = win.curStart;
+    const to = win.curEnd;
 
     const left = document.createElement("span");
     left.className = "rcl-text__side rcl-text__side--l";
-    left.textContent = (from > 0 ? "……" : "") + text.slice(from, first.start);
+    if (win.leftText) left.append(rclCtxNode(win.leftText, "prev"));
+    if (from > 0) left.append(document.createTextNode("……"));
+    left.append(document.createTextNode(text.slice(from, first.start)));
 
     const middle = document.createElement("span");
     middle.className = "rcl-text__mid";
@@ -355,9 +439,18 @@
     }
     right.append(document.createTextNode(text.slice(cursor, to)));
     if (to < text.length) right.append(document.createTextNode("……"));
+    if (win.rightText) right.append(rclCtxNode(win.rightText, "next"));
 
     cell.append(left, middle, right);
     return cell;
+  }
+
+  /** 接排上下文（上一行末尾 / 下一行开头）：淡色 + 虚线边，与取景里的淡化切片同义。 */
+  function rclCtxNode(value, side) {
+    const ctx = document.createElement("span");
+    ctx.className = `rcl-text__ctx rcl-text__ctx--${side}`;
+    ctx.textContent = String(value || "");
+    return ctx;
   }
 
   // ---------------------------------------------------------------- 双版本（设计 §9/§10）

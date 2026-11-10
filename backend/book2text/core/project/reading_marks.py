@@ -40,7 +40,7 @@ from . import review_status
 DEFAULT_RADIUS = 10
 
 #: marks payload 的结构版本；改了字段或语义就 +1
-MARKS_CACHE_VERSION = 3
+MARKS_CACHE_VERSION = 5
 
 _CACHE: dict[str, tuple[str, dict]] = {}
 """项目 → (签名, 数据)。只留最近两个项目，避免内存无限涨。"""
@@ -98,9 +98,64 @@ def _write_disk(project_id: str, library: Path, signature: str, payload: dict) -
         pass
 
 
+def _page_line_neighbours(index: blocks_module.DivergenceIndex) -> dict[tuple[str, int], dict[str, Any]]:
+    """每行的「页面上上一行 / 下一行」：文本 + 行框（按同页、同栏的 y 相邻取）。
+
+    为什么不用正文流的 span 相邻：编辑视图的 `before/after` 是**文本流**相邻行，
+    而取景图裁的是**页面上**相邻行；两者在段落边界不是同一行（真机：取景显示
+    “不知为什么，常常的便自泪不干的。”，正文补的却是“那黛玉倚着床栏杆…”）。
+    审校列表要“上方图和下方文字一模一样”，两边只能同源 ⇒ 以页面 y 为准。
+
+    也不能只给文本：取景的纵向偏移**不能**用“同页差异行 y0 差”去猜行距——
+    差异稀疏的页上，相邻两条差异隔着一整段，行距会被算成 0.26（整块高），
+    取景的“上一行”就裁到七行之前去了（真机就是这么错的）。所以直接给相邻行 bbox。
+
+    同栏判据：|x0 − 当前行 x0| < 0.2（双栏页左右栏 x0 差约 0.05–0.45）。
+    文本只留末尾/开头 60 字：窗口最多几十字，整行带进 payload 会让 marks 体积翻倍。
+    """
+    by_page: dict[str, list[dict[str, Any]]] = {}
+    for block in index.blocks:
+        for line in index.lines_by_block.get(block.block_id, []):
+            text = line.text or ""
+            bbox = line.bbox
+            if not text or not bbox:
+                continue
+            by_page.setdefault(block.page_id, []).append(
+                {
+                    "block_id": block.block_id,
+                    "line_index": int(line.line_index),
+                    "text": text,
+                    "y": float(bbox[1]),
+                    "x": float(bbox[0]),
+                    "bbox": [float(v) for v in bbox],
+                }
+            )
+    result: dict[tuple[str, int], dict[str, Any]] = {}
+    for rows in by_page.values():
+        rows.sort(key=lambda row: (row["y"], row["x"]))
+        for row in rows:
+            same_column = [
+                other
+                for other in rows
+                if other is not row and abs(other["x"] - row["x"]) < 0.2
+            ]
+            above = [other for other in same_column if other["y"] < row["y"] - 0.0005]
+            below = [other for other in same_column if other["y"] > row["y"] + 0.0005]
+            prev_row = max(above, key=lambda other: other["y"], default=None)
+            next_row = min(below, key=lambda other: other["y"], default=None)
+            result[(row["block_id"], row["line_index"])] = {
+                "prev_text": prev_row["text"][-60:] if prev_row else "",
+                "next_text": next_row["text"][:60] if next_row else "",
+                "prev_bbox": prev_row["bbox"] if prev_row else None,
+                "next_bbox": next_row["bbox"] if next_row else None,
+            }
+    return result
+
+
 def _build_items(index: blocks_module.DivergenceIndex) -> list[dict[str, Any]]:
     """把索引里的块级分歧摊平成"一行一处差异"的列表（文档顺序）。"""
     page_no_by_block = {block.block_id: block.page_no for block in index.blocks}
+    page_neighbours = _page_line_neighbours(index)
     items: list[dict[str, Any]] = []
     for block in index.blocks:
         if not block.include:
@@ -119,6 +174,7 @@ def _build_items(index: blocks_module.DivergenceIndex) -> list[dict[str, Any]]:
             continue
         lines = {line.line_index: line for line in index.lines_by_block.get(block.block_id, [])}
         for mark in divergence.marks:
+            neighbours = page_neighbours.get((block.block_id, mark.line_index), {})
             if mark.level not in (compare_module.DIFFERS_CHARS, compare_module.DIFFERS_PUNCT):
                 continue
             line = lines.get(mark.line_index)
@@ -139,6 +195,11 @@ def _build_items(index: blocks_module.DivergenceIndex) -> list[dict[str, Any]]:
                     "ack": mark.ack,
                     # 行框（归一化）：跟随模式下在左 PDF 上框出当前行
                     "bbox": list(line.bbox) if line is not None and line.bbox else None,
+                    # 页面上相邻行（取景切片与正文接排**同源**，见 _page_line_neighbours）
+                    "prev_text": neighbours.get("prev_text", ""),
+                    "next_text": neighbours.get("next_text", ""),
+                    "prev_bbox": neighbours.get("prev_bbox"),
+                    "next_bbox": neighbours.get("next_bbox"),
                     # 纯标点差异的"模式键"（`；→，`、`∅→‘`）：主队列据此把这几百行
                     # 交给「标点差异 · 按模式批量」面板，而不是让用户逐条点（任务 61）
                     "pattern_key": (

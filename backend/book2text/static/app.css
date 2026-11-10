@@ -2711,14 +2711,13 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .jev-status[data-phase="starting"] { color: var(--accent-text); }
 
 /* 正文审校 v3：差异列表（四列）
-   栅格：序号 32 / 取景 var(--rcl-crop-w) / 状态 72 / 正文 flex；行高 64。
+   栅格：序号 32 / 两带列（取景在上、正文在下，同宽） / 状态 72 / 判定 246；行高 71。
    取景窗 340×34、字高 22px（设计 §2）；窄窗（≤900）页图收到 240，**不缩字号**（§10.3 窄窗付行数不付可读性）。
    三态色只在这里给（JS 不写色值）：未审红 / 待提交黄 / 已确认绿；绿+底纹 = 改过。 */
 .reading-cat {
   /* 占满工具条以上的整块高度：列表自己滚，下方三行上下文固定可见（设计 §2 的上下分区） */
   flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0;
   border-bottom: 1px solid var(--line);
-  --rcl-crop-w: 340px;
   --rcl-crop-h: 34px;
 }
 .reading-cat__head {
@@ -2748,7 +2747,7 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-row--current { background: var(--accent-soft) !important; }
 .rcl-bands { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 /* 取景带：一条"扫描纸带"卡片，只包住取景本身（宽 = 取景宽），让两层有明显的主次 */
-.rcl-band--shot { height: 34px; display: flex; justify-content: center; }
+.rcl-band--shot { height: 34px; display: block; }
 .rcl-band--shot .rcl-cell--crop {
   background: var(--page-paper); border: 1px solid #e8e4da; border-radius: 4px;
   overflow: hidden; padding: 0; box-shadow: 0 1px 2px rgba(15, 18, 24, .06);
@@ -2778,8 +2777,8 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-row--edited { background-image: linear-gradient(rgba(22,163,74,.06), rgba(22,163,74,.06)); }
 .rcl-cell { min-width: 0; }
 .rcl-cell--index { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
-.rcl-cell--crop { width: var(--rcl-crop-w); height: var(--rcl-crop-h); flex: none; }
-.rcl-cell--crop > * { max-width: var(--rcl-crop-w); max-height: var(--rcl-crop-h); }
+.rcl-cell--crop { width: 100%; height: var(--rcl-crop-h); flex: none; }
+.rcl-cell--crop > * { max-width: 100%; max-height: var(--rcl-crop-h); }
 .rcl-cell--crop.rcl-cell--missing { color: var(--faint); font-size: 12px; }
 /* 状态 gutter（§2/§6）：圆点 + 第一行状态 + 第二行「改过 / 未改动」——颜色不是唯一通道 */
 .rcl-cell--state {
@@ -2810,6 +2809,10 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-text__side--l { text-align: right; }
 .rcl-text__side--r { text-align: left; }
 .rcl-text__mid { white-space: pre; }
+/* 正文侧的接排上下文（上一行末尾 / 下一行开头）：与取景里的淡化切片同义 */
+.rcl-text__ctx { color: var(--faint); }
+.rcl-text__ctx--prev { border-right: 1px dashed #c9c4b8; padding-right: 2px; margin-right: 2px; }
+.rcl-text__ctx--next { border-left: 1px dashed #c9c4b8; padding-left: 2px; margin-left: 2px; }
 /* 差异高亮（2026-11-10 用户口径：两边都画**色块**，与取景图里的色块同色同义）
    未审红 / 待提交黄 / 已确认绿；半透明底 + 1px 描边，字保持正文色，长段也能看出范围 */
 /* 差异高亮：**描边画在字外**（box-shadow 外扩 1px），不压字形；底色只做淡染。
@@ -2819,22 +2822,12 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   box-shadow: 0 0 0 1px rgba(220, 38, 38, .80);
   border-radius: 3px; padding: 0; margin: 0;
 }
-/* 行边界外遮罩：把隔壁栏的字遮成纸色（双栏/双页扫描） */
-.rf-crop__mask { position: absolute; top: 0; bottom: 0; background: var(--page-paper); pointer-events: none; }
-/* 接排：上一行末尾 / 下一行开头的页图切片（与当前行同一倍率、同一行高） */
+/* 接排切片：当前行（cur）原色；上一行末尾 / 下一行开头（prev/next）压到 55%，
+   并各画一条虚线边界 —— 让人一眼看出"这一段不是本行的字"（两带同义：正文侧同样淡化） */
 .rf-slice { position: absolute; top: 0; bottom: 0; pointer-events: none; }
-/* 接排切片：压低存在感（60%）+ 顶部一条细虚线，让人一眼看出"这不是本行的字" */
-.rf-slice {
-  position: absolute; top: 0; bottom: 0; pointer-events: none; opacity: .55;
-}
-.rf-slice--prev { border-left: 1px dashed #c9c4b8; }
-.rf-slice--next { border-right: 1px dashed #c9c4b8; }
-.rf-slice::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 1px;
-  background: repeating-linear-gradient(90deg, #c9c4b8 0 3px, transparent 3px 6px);
-}
-/* 当前行的细底线：接排后三行并排，用它标出哪一段是当前行 */
-.rf-line-mark { position: absolute; bottom: 0; height: 2px; background: rgba(37, 99, 235, .55); border-radius: 1px; pointer-events: none; }
+.rf-slice--prev, .rf-slice--next { opacity: .55; }
+.rf-slice--prev { border-right: 1px dashed #c9c4b8; }
+.rf-slice--next { border-left: 1px dashed #c9c4b8; }
 .rcl-diff--draft { background: rgba(202, 138, 4, .20); box-shadow: 0 0 0 1px rgba(161, 98, 7, .85); }
 .rcl-diff--done { background: rgba(22, 163, 77, .16); box-shadow: 0 0 0 1px rgba(21, 128, 61, .75); }
 .rcl-diff--caret { box-shadow: -2px 0 0 0 currentColor; margin-left: 2px; }
@@ -2843,9 +2836,7 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-empty { padding: 12px; font-size: 12.5px; }
 
 /* 取景窗（review-focus 产出）：四周 6px 渐隐，代替省略号，避免压字 */
-.rf-crop { position: relative; overflow: hidden; border-radius: 3px; background: var(--page-paper);
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 6px, #000 calc(100% - 6px), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 6px, #000 calc(100% - 6px), transparent 100%); }
+.rf-crop { position: relative; overflow: hidden; border-radius: 3px; background: var(--page-paper); }
 .rf-crop__image { background-repeat: no-repeat; }
 /* 取景图里的差异色块：与右侧文字的红/黄/绿一一对应（2026-11-10 用户要求）
    半透明底色 + 实线描边，保证底下的字仍能看清；不挡点击 */
@@ -2873,7 +2864,6 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rf-empty { padding: 10px 12px; font-size: 12.5px; }
 
 @media (max-width: 900px) {
-  .reading-cat { --rcl-crop-w: 240px; }
   .rcl-cell--state { padding-left: 4px; }
   .rcl-cell--text { font-size: 14.5px; }
   /* 1fr 会被 640 宽的页图撑破（min-content），必须 minmax(0, 1fr) */
@@ -2894,7 +2884,6 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   .rcl-cell--versions { grid-area: v; justify-content: flex-end; }
   .rcl-band--shot { height: 34px; }
   .rcl-band--text { height: auto; min-height: 25px; }
-  .rcl-cell--crop { width: var(--rcl-crop-w); }
 }
 
 /* ─────────────────────────── 预览导出页（第 6 步，2026-11-06） ───────────────────────────
