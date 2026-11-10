@@ -2718,16 +2718,28 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .reading-cat__list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1 1 auto; min-height: 0; }
 /* 上下排（2026-11-10 定稿）：序号 | 两带列（取景在上、正文在下，同一条竖线）| 状态 | 判定
    行高 71 = 取景带 34 + 缝 4 + 正文带 25 + 上下留白 8 */
+/* 2026-11-10 用户定：按钮从右侧判定列搬到正文下方（第三行）。
+   行 = 取景 34 / 缝 4 / 正文 25 / 缝 4 / 按钮行 40；判定列 246 + 状态 72 让给两带
+   （列宽 1016 → 1334，每行多显示 ~20 字）。
+   窄屏（≤900）保持原样：按钮仍在右侧（见文件底部 media query）。 */
 .rcl-row {
   display: grid; grid-template-columns: 32px minmax(0, 1fr) 72px 246px;
-  align-items: center; gap: 6px; min-height: 71px; padding: 4px 12px;
+  grid-template-areas:
+    "i b b b"
+    "i b b b"
+    ". . s v";
+  grid-template-rows: 34px auto 40px;
+  align-items: center; gap: 6px; min-height: 0; padding: 4px 12px;
   border-bottom: 1px solid var(--line-soft); cursor: pointer;
 }
+.rcl-cell--index { grid-area: i; }
+.rcl-cell--state { grid-area: s; }
+.rcl-cell--versions { grid-area: v; }
 /* 斑马纹 + 悬停：一行一行分得开，眼睛不会滑行 */
 .rcl-row:nth-child(even) { background: #fbfcfd; }
 .rcl-row:hover { background: var(--surface-2); }
 .rcl-row--current { background: var(--accent-soft) !important; }
-.rcl-bands { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rcl-bands { grid-area: b; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 /* 取景带：一条"扫描纸带"卡片，只包住取景本身（宽 = 取景宽），让两层有明显的主次 */
 .rcl-band--shot { height: 34px; display: block; }
 .rcl-band--shot .rcl-cell--crop {
@@ -2756,7 +2768,7 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   box-shadow: 0 0 0 1px #c7d7f5;
 }
 .rcl-ver {
-  width: auto; flex: 1 1 0; min-width: 0; height: 44px; padding: 0 4px;
+  width: auto; flex: 1 1 0; min-width: 0; height: 32px; padding: 0 4px;
   border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
   font-size: 14px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   cursor: pointer;
@@ -2782,7 +2794,7 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-cell--crop.rcl-cell--missing { color: var(--faint); font-size: 12px; }
 /* 状态 gutter（§2/§6）：圆点 + 第一行状态 + 第二行「改过 / 未改动」——颜色不是唯一通道 */
 .rcl-cell--state {
-  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 6px;
   padding-left: 4px; border: 0; background: none;
   font-size: 12px; color: var(--text-2); line-height: 1.25;
 }
@@ -2874,11 +2886,15 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   .reading-toolbar { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px 8px; row-gap: 4px; }
   /* 窄窗（628）：两带照旧上下排，**双版本折到第二行**（设计 §3：行高 106，取景 240 不缩）
      栅格 = 序号 | 两带 | 判定（跨两行），状态并进沟槽；按钮行 34 高 */
+  /* 窄屏保持现状（用户 2026-11-10："窄屏不动"）：按钮仍在右侧，不搬到第三行 */
   .rcl-row {
     grid-template-columns: 28px 72px minmax(0, 1fr);
     grid-template-areas: "i b b" ". s v";
+    grid-template-rows: auto auto;
     row-gap: 6px; padding: 4px 8px 8px; min-height: 0;
   }
+  .rcl-ver { height: 44px; }
+  .rcl-cell--state { flex-direction: column; align-items: flex-start; gap: 2px; }
   .rcl-cell--index { grid-area: i; }
   .rcl-bands { grid-area: b; }
   /* 状态折进第二行左侧（设计 §3：竖 gutter 会把正文列压到 182） */
