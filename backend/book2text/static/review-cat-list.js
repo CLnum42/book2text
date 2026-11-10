@@ -610,8 +610,19 @@
     const hint = document.createElement("span");
     hint.className = "rcl-edit__hint";
     hint.textContent = "Enter 提交并下一处 · Tab 只提交 · Esc 取消";
-    box.addEventListener("input", () => rclPaintEdit(box));
-    box.addEventListener("compositionend", () => rclPaintEdit(box));
+    // 中文输入法（2026-11-10 用户报"输入法不能正常用"）：**组词期间一个 DOM 都不能动**。
+    // 旧写法在 input 里重建 mark，会把输入法的候选组合打断（候选框消失、字打不进去）。
+    // 现在 compositionstart → compositionend 之间只标记、不重绘；提词后（compositionend）
+    // 再统一标黄。
+    let composing = false;
+    box.addEventListener("compositionstart", () => { composing = true; });
+    box.addEventListener("compositionend", () => {
+      composing = false;
+      rclPaintEdit(box);
+    });
+    box.addEventListener("input", () => {
+      if (!composing) rclPaintEdit(box);
+    });
     editingEl = box;
     box.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
@@ -620,13 +631,13 @@
         rclCancelEdit(row);
         return;
       }
-      if (event.key === "Enter" && !event.isComposing) {
+      if (event.key === "Enter" && !event.isComposing && event.keyCode !== 229) {
         event.preventDefault();
         event.stopPropagation();
         rclCommitEdit(row, true);
         return;
       }
-      if (event.key === "Tab" && !event.isComposing) {
+      if (event.key === "Tab" && !event.isComposing && event.keyCode !== 229) {
         event.preventDefault();
         event.stopPropagation();
         rclCommitEdit(row, false);
