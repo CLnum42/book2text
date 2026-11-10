@@ -395,8 +395,6 @@ def review_next_lines(
     request: Request,
     project_id: str,
     raw_body: dict | None = Body(default=None),
-    jev_sorted: bool = False,
-    jev_suspicious_only: bool = False,
 ) -> dict[str, Any]:
     """「下一处未审」的唯一数据源：**正文流顺序**的未审行表 + 流外差异计数。
 
@@ -468,36 +466,6 @@ def review_next_lines(
                 }
             )
     lines.sort(key=lambda item: item["order"])
-    # 2026-11-05（Jev）：**显式 opt-in**。默认（两个参数都为假）一行不改——
-    # 这是验收 ⑧c 的机器形态：没开排序时，队列顺序与没跑过 Jev 时逐行相同。
-    jev_meta = None
-    if jev_sorted or jev_suspicious_only:
-        from ..core.project import jev_priority as jev_module
-
-        ready, reason = jev_module.sort_ready(project_id, library=library)
-        scores = jev_module.line_scores(project_id, library=library) if ready else {}
-        if ready:
-            def _tier(item: dict[str, Any]) -> tuple[int, int]:
-                score = scores.get((item["block_id"], item["line_index"]))
-                if score is None:
-                    tier = 1
-                elif score <= jev_module.DEFAULT_THRESHOLD:
-                    tier = 0
-                else:
-                    tier = 1
-                return (tier, item["order"])
-
-            if jev_suspicious_only:
-                lines = [item for item in lines if _tier(item)[0] == 0]
-            if jev_sorted:
-                lines.sort(key=_tier)
-        jev_meta = {
-            "requested": True,
-            "enabled": ready,
-            "reason": reason,
-            "threshold": jev_module.DEFAULT_THRESHOLD,
-            "scored_lines": len(scores),
-        }
     for item in lines:
         item.pop("order", None)
     counts = data.get("counts") or {}
@@ -510,7 +478,6 @@ def review_next_lines(
             "sample": outside[:5],
         },
         "chars_unacked": int(counts.get("chars_unacked") or 0),
-        **({"jev": jev_meta} if jev_meta is not None else {}),
         "options_echo": {
             "page_types": list(getattr(body.options(), "page_types", ()) or ()),
             "include_footnotes": bool(getattr(body.options(), "include_footnotes", False)),
