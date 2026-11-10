@@ -2740,8 +2740,23 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-band--text { height: 26px; }
 /* 双版本（设计 §9/§10）：并排、等宽 120、间距 6、首个差异字锚按钮中轴 */
 .rcl-cell--versions { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+/* 手改入口（✎）：判定列三个键平分宽度，图标键固定 26px */
+.rcl-ver--edit { flex: 0 0 26px; width: 26px; padding: 0; font-size: 14px; }
+/* 手改进行中：正文带变成可编辑框，底线蓝，提示浮在右上（不撑高行） */
+.rcl-cell--editing { position: relative; overflow: visible; }
+.rcl-edit {
+  outline: none; display: inline-block; min-width: 60%; white-space: pre;
+  border-bottom: 2px solid var(--accent); padding-bottom: 1px;
+  font-family: inherit; color: var(--text);
+}
+.rcl-edit__hint {
+  position: absolute; right: 2px; top: -8px; z-index: 2;
+  font-size: 10.5px; line-height: 1.4; color: var(--accent-text);
+  background: #fff; border-radius: 4px; padding: 0 5px;
+  box-shadow: 0 0 0 1px #c7d7f5;
+}
 .rcl-ver {
-  width: 120px; height: 44px; flex: none; padding: 0 4px;
+  width: auto; flex: 1 1 0; min-width: 0; height: 44px; padding: 0 4px;
   border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
   font-size: 14px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   cursor: pointer;

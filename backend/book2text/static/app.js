@@ -4914,6 +4914,23 @@ function publishCatFromReading(payload) {
       );
       await window.ReadingView?.reload?.();
     },
+    // 手改一行（两个 OCR 都错）：只写这一行；改完按"这一行 vs 第二路"重算，
+    // 没改的差异仍在队列里。`advance` = 提交后跳下一处未审（用户 2026-11-10 定）。
+    // 列表里没有下一处时，按服务端口径找"下一处未审"（可能跨页）
+    onAdvance: () => data.nextUnreviewed?.(),
+    onEdit: async (row, text, options) => {
+      if (!currentProject || !row) return null;
+      const result = await apiJson(
+        `/api/projects/${currentProject.project_id}/blocks/${row.blockId}/line-edit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ line_index: row.lineIndex, text }),
+        }
+      );
+      await window.ReadingView?.reload?.();
+      return result;
+    },
     onSelect: (row) => {
       window.ReviewCatList?.show?.(row);
       window.ReadingView?.selectEntry?.(row && row.key);

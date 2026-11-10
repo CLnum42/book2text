@@ -1305,7 +1305,7 @@ function publishCat() {
     lineIndex: entry.line_index,
     pageNo: entry.page_no,
     state: entry.ack ? "confirmed" : "unjudged",
-    edited: entry.ack === "adopted",
+    edited: entry.ack === "adopted" || entry.ack === "edited",
     text: readingEntryLineText(entry) || entry.text || "",
     // marks 的 current 是**整行的窗口文本**（±N 字），candidate 是同一窗口的候选：
     // 一行有多处差异时，列表要"只标这条差异"，就得知道 current 窗口在整行里的偏移。
@@ -1330,6 +1330,8 @@ function publishCat() {
   injected.publishCat({
     listEl: el("reading-cat-list"),
     counterEl: el("reading-cat-counter"),
+    // 手改提交后"跳下一处"：函数从这里给外壳，外壳不必去点 reading 子树的按钮
+    nextUnreviewed: () => gotoNextUnreviewed(),
     rows,
     total,
     currentIndex,

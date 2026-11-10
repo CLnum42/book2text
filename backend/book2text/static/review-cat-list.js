@@ -19,6 +19,12 @@
   // 两带共用的字宽。取景（扫描图）与正文（文字）**必须同字宽**：同一条字符窗口按同一格距摆放，
   // 差异字才会落在同一根竖线上；字号不同则右侧越走越偏（用户 2026-11-10 报的"上方和下方对不上"）。
   const RCL_TEXT_PX = 15.5;
+  // 手改窗口：差异段前后各 8 字（用户 2026-11-10 定：小于整行、大于差异处）
+  const RCL_EDIT_PAD = 8;
+  // 正在手改的那一行（key）。放模块变量、不放 DOM：异步重绘不会把它冲掉
+  let editingKey = null;
+  let editingOriginal = "";
+  let editingEl = null;
   /** 正文字宽：窄窗（≤900）CSS 把正文字号降到 14.5，取景必须跟着降——
    *  两带字宽不一致时，从中轴往两侧越走越偏（628 实测框左沿偏 39.5px）。 */
   function rclTextPx() {
@@ -424,7 +430,214 @@
     return mark;
   }
 
+  // ---------------------------------------------------------------- 手改一行（2026-11-10）
+  //
+  // 用户口径：两个 OCR 都错时人工输入；窗口 = 差异段前后各 8 字；只写回改过的内容；
+  // 改完按"这一行 vs 第二路"重算，没改的差异仍然是未审（不被连带确认）。
+  /** 手改窗口：差异段前后各 RCL_EDIT_PAD 字（行首/行尾自然截断）。 */
+  function rclEditWindow(row) {
+    const text = String((row && row.text) || "");
+    const runs = rclEffectiveRuns(row);
+    const first = runs[0] || null;
+    if (!first) return null;
+    const start = Math.max(0, first.a_start - RCL_EDIT_PAD);
+    const end = Math.min(text.length, first.a_end + RCL_EDIT_PAD);
+    return {
+      start,
+      end,
+      text: text.slice(start, end),
+      before: text.slice(0, start),
+      after: text.slice(end),
+      anchorAt: Math.max(0, first.a_start - start),
+    };
+  }
+
+  /** 两段文本的第一段差异（首尾公共前后缀），给编辑态画黄块用。 */
+  function rclFirstDiff(original, current) {
+    const a = String(original || "");
+    const b = String(current || "");
+    let start = 0;
+    const limit = Math.min(a.length, b.length);
+    while (start < limit && a[start] === b[start]) start += 1;
+    let tail = 0;
+    while (tail < limit - start && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail += 1;
+    const diffEnd = Math.max(start, a.length - tail);
+    const newEnd = Math.max(start, b.length - tail);
+    return { start, oldEnd: diffEnd, end: newEnd };
+  }
+
+  /** 光标在编辑框里的**文本偏移**（跨文本节点累加）。 */
+  function rclCaretOffset(el) {
+    const sel = typeof window !== "undefined" ? window.getSelection() : null;
+    if (!sel || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.startContainer)) return null;
+    const pre = range.cloneRange();
+    pre.selectNodeContents(el);
+    pre.setEnd(range.startContainer, range.startOffset);
+    return pre.toString().length;
+  }
+
+  function rclSetCaret(el, offset) {
+    const sel = typeof window !== "undefined" ? window.getSelection() : null;
+    if (!sel) return;
+    let remaining = Math.max(0, offset);
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let node = walk.nextNode();
+    while (node) {
+      if (remaining <= node.textContent.length) {
+        const range = document.createRange();
+        range.setStart(node, remaining);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return;
+      }
+      remaining -= node.textContent.length;
+      node = walk.nextNode();
+    }
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  /** 编辑态实时高亮：把"相对原窗口文本新增/改过的这一段"画成黄色块（与列表其它待提交同色）。 */
+  function rclPaintEdit(el) {
+    if (!el || !el.isConnected) return;
+    const text = el.textContent;
+    const caret = rclCaretOffset(el);
+    const span = rclFirstDiff(editingOriginal, text);
+    el.textContent = "";
+    if (span.start > 0) el.append(document.createTextNode(text.slice(0, span.start)));
+    if (span.end > span.start) {
+      const mark = document.createElement("mark");
+      mark.className = "rcl-diff rcl-diff--draft";
+      mark.textContent = text.slice(span.start, span.end);
+      el.append(mark);
+    }
+    if (span.end < text.length) el.append(document.createTextNode(text.slice(span.end)));
+    if (caret !== null) rclSetCaret(el, caret);
+  }
+
+  function rclCommitEdit(row, advance) {
+    const el = editingEl && editingEl.isConnected ? editingEl : null;
+    if (!el) return;
+    const win = rclEditWindow(row);
+    const typed = el.textContent;
+    const full = win ? win.before + typed + win.after : typed;
+    editingKey = null;
+    editingOriginal = "";
+    editingEl = null;
+    if (typeof injected.onEdit !== "function") return;
+    const fromKey = rclKey(row);
+    Promise.resolve(injected.onEdit(row, full, { advance: Boolean(advance) }))
+      .then(() => {
+        if (advance) rclAdvanceFrom(fromKey);
+      })
+      .catch(() => {
+      // 失败：回到编辑态，别把用户打的字吞掉
+      editingKey = rclKey(row);
+      editingOriginal = win ? win.text : typed;
+      rclRepaintRow(row);
+    });
+  }
+
+  function rclCancelEdit(row) {
+    editingKey = null;
+    editingOriginal = "";
+    rclRepaintRow(row);
+  }
+
+  function rclStartEdit(row) {
+    const win = rclEditWindow(row);
+    if (!win) return;
+    editingKey = rclKey(row);
+    editingOriginal = win.text;
+    rclRepaintRow(row);
+  }
+
+  /** 提交后跳到**另一行**（不能停在刚改的这行——它可能还有没改的差异，仍在队列里）。 */
+  function rclAdvanceFrom(fromKey) {
+    const index = rows.findIndex((item) => rclKey(item) === fromKey);
+    if (index >= 0) {
+      for (let i = index + 1; i < rows.length; i += 1) {
+        if (rows[i].state === "confirmed") continue;
+        currentKey = rclKey(rows[i]);
+        rclHighlight();
+        const node = nodes.get(currentKey);
+        if (node && typeof node.scrollIntoView === "function") {
+          node.scrollIntoView({ block: "nearest" });
+        }
+        if (typeof injected.onSelect === "function") injected.onSelect(rows[i]);
+        return;
+      }
+    }
+    // 本列表里没有下一处了：交给外壳按服务端"下一处未审"找（可能跨页）
+    if (typeof injected.onAdvance === "function") injected.onAdvance();
+  }
+
+  function rclEditCell(row) {
+    const cell = document.createElement("div");
+    cell.className = "rcl-cell rcl-cell--text rcl-cell--editing";
+    const win = rclEditWindow(row);
+    if (!win) return cell;
+    const box = document.createElement("div");
+    box.className = "rcl-edit";
+    box.contentEditable = "true";
+    box.spellcheck = false;
+    box.textContent = win.text;
+    const hint = document.createElement("span");
+    hint.className = "rcl-edit__hint";
+    hint.textContent = "Enter 提交并下一处 · Tab 只提交 · Esc 取消";
+    box.addEventListener("input", () => rclPaintEdit(box));
+    box.addEventListener("compositionend", () => rclPaintEdit(box));
+    editingEl = box;
+    box.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        rclCancelEdit(row);
+        return;
+      }
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        event.stopPropagation();
+        rclCommitEdit(row, true);
+        return;
+      }
+      if (event.key === "Tab" && !event.isComposing) {
+        event.preventDefault();
+        event.stopPropagation();
+        rclCommitEdit(row, false);
+      }
+    });
+    cell.append(box, hint);
+    requestAnimationFrame(() => {
+      if (!box.isConnected) return;
+      box.focus();
+      rclSetCaret(box, win.anchorAt);
+    });
+    return cell;
+  }
+
+  /** 只重画这一行（保留其余节点与滚动位置）。 */
+  function rclRepaintRow(row) {
+    const key = rclKey(row);
+    const node = nodes.get(key);
+    if (!node) {
+      rclRender();
+      return;
+    }
+    const next = rclRowElement(row, Number(node.dataset.position) || 1);
+    node.replaceWith(next);
+    nodes.set(key, next);
+    if (observer) observer.observe(next);
+  }
+
   function rclTextCell(row) {
+    if (editingKey === rclKey(row)) return rclEditCell(row);
     const cell = document.createElement("div");
     cell.className = "rcl-cell rcl-cell--text";
     const text = String((row && row.text) || "");
@@ -554,6 +767,29 @@
   function rclVersionsCell(row) {
     const cell = document.createElement("div");
     cell.className = "rcl-cell rcl-cell--versions";
+    // 手改进行中：只剩「提交 / 取消」两个键（Enter/Tab/Esc 也做同样的事）
+    if (editingKey === rclKey(row)) {
+      const commit = document.createElement("button");
+      commit.type = "button";
+      commit.className = "rcl-ver rcl-ver--adopt";
+      commit.textContent = "提交";
+      commit.title = "写回这一行（Enter）；Tab 只提交不跳";
+      commit.addEventListener("click", (event) => {
+        event.stopPropagation();
+        rclCommitEdit(row, true);
+      });
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "rcl-ver";
+      cancel.textContent = "取消";
+      cancel.title = "放弃这次手改（Esc）";
+      cancel.addEventListener("click", (event) => {
+        event.stopPropagation();
+        rclCancelEdit(row);
+      });
+      cell.append(commit, cancel);
+      return cell;
+    }
     if (row.state === "confirmed") {
       // 状态列已经写了「已确认 / 改过·未改动」，这里不再重复一遍同样的字；
       // 只有"采用候选"这种状态列表达不了的信息才留一行小字。
@@ -620,7 +856,17 @@
     };
     keep.addEventListener("click", (event) => { event.stopPropagation(); ack("kept"); });
     adopt.addEventListener("click", (event) => { event.stopPropagation(); ack("adopted"); });
-    cell.append(keep, adopt);
+    // 手改入口：两个 OCR 都错时用。双击正文 / E 键同效（见 rclRowElement 与键盘绑定）
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "rcl-ver rcl-ver--edit";
+    edit.textContent = "✎";
+    edit.title = "手动编辑这一行（也可以双击正文 / 按 E）";
+    edit.addEventListener("click", (event) => {
+      event.stopPropagation();
+      rclStartEdit(row);
+    });
+    cell.append(keep, adopt, edit);
     return cell;
   }
 
@@ -668,6 +914,15 @@
       currentKey = item.dataset.key;
       rclHighlight();
       if (typeof injected.onSelect === "function") injected.onSelect(row);
+    });
+    // 双击正文 = 手改这一行（最快入口）；编辑中双击不重新进入
+    item.addEventListener("dblclick", (event) => {
+      if (editingKey) return;
+      if (event.target && event.target.closest && event.target.closest(".rcl-edit")) return;
+      event.preventDefault();
+      if (row.state === "confirmed") return;
+      currentKey = item.dataset.key;
+      rclStartEdit(row);
     });
     nodes.set(item.dataset.key, item);
     return item;
@@ -780,6 +1035,20 @@
     injected = Object.assign({}, injected, options);
     listEl = options.listEl || listEl;
     counterEl = options.counterEl || counterEl;
+    if (typeof document !== "undefined" && !init.keyBound) {
+      init.keyBound = true;
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "e" && event.key !== "E") return;
+        if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+        if (editingKey) return;
+        const target = event.target;
+        if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+        const row = rclCurrentRow();
+        if (!row || row.state === "confirmed") return;
+        event.preventDefault();
+        rclStartEdit(row);
+      });
+    }
     if (options.listEl && typeof IntersectionObserver === "function" && !observer) {
       observer = new IntersectionObserver(
         (entries) => {
