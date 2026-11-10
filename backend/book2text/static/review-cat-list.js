@@ -70,6 +70,42 @@
     return page.byKey.get(`${row.blockId}:${row.lineIndex}`) || [];
   }
 
+  /**
+   * 兜底：页级 runs 还没到 / 这一行不在 line-runs 里时，用 current 与 candidate 现算差异区间。
+   * **不依赖任何请求**——否则「那一段该红」就全靠接口，接口一缺整行就没有标记（2026-11-10 用户看到的正是这种）。
+   * 只算首尾公共前缀/后缀，够定位一处差异；多段差异仍以接口的 runs 为准。
+   */
+  function rclFallbackRun(row) {
+    const text = String((row && row.text) || "");
+    const candidate = String((row && row.candidate) || "");
+    if (!text || !candidate || text === candidate) return null;
+    let start = 0;
+    const limit = Math.min(text.length, candidate.length);
+    while (start < limit && text[start] === candidate[start]) start += 1;
+    let tail = 0;
+    while (
+      tail < limit - start
+      && text[text.length - 1 - tail] === candidate[candidate.length - 1 - tail]
+    ) tail += 1;
+    const end = Math.max(start, text.length - tail);
+    return {
+      a_start: start,
+      a_end: end,
+      from: text.slice(start, end),
+      to: candidate.slice(start, Math.max(start, candidate.length - tail)),
+      bbox: null,
+      fallback: true,
+    };
+  }
+
+  /** 这一行用来标红 / 定位的 runs：接口优先，缺了用现算的兜底。 */
+  function rclEffectiveRuns(row) {
+    const runs = rclRunsFor(row);
+    if (runs.length) return runs;
+    const fallback = rclFallbackRun(row);
+    return fallback ? [fallback] : [];
+  }
+
   function rclEnsureRuns(row) {
     const pageNo = Number(row && row.pageNo);
     if (!pageNo || typeof injected.loadRuns !== "function") return;
@@ -121,7 +157,18 @@
     cell.className = "rcl-cell rcl-cell--crop";
     const runs = rclRunsFor(row);
     const run = runs[0] || null;
-    const box = (run && run.bbox) || (row && row.lineBbox) || null;
+    let box = (run && run.bbox) || (row && row.lineBbox) || null;
+    // 没有 runs（页级接口缺这一行）时：用兜底差异区间在行框里按字序插值，
+    // 估计差异字的大致横坐标 —— 否则取景只会停在整行中点，看着不像"对准差异字"。
+    if (!run && box && row.state !== "confirmed") {
+      const fallback = rclFallbackRun(row);
+      const length = String(row.text || "").length;
+      if (fallback && length > 0) {
+        const ratio = (fallback.a_start + fallback.a_end) / 2 / length;
+        const x = box[0] + ratio * (box[2] - box[0]);
+        box = [x, box[1], x, box[3]];
+      }
+    }
     const page = pageRuns.get(Number(row && row.pageNo));
     if (!box || !page || !page.url || !page.imgW || !page.imgH) {
       cell.classList.add("rcl-cell--missing");
@@ -179,7 +226,7 @@
     const cell = document.createElement("div");
     cell.className = "rcl-cell rcl-cell--text";
     const text = String((row && row.text) || "");
-    const runs = rclRunsFor(row);
+    const runs = rclEffectiveRuns(row);
     // 已确认·保留原文：判过但没改字 ⇒ 不染（§6）
     if (!runs.length || (row.state === "confirmed" && !row.edited)) {
       cell.textContent = text;
@@ -276,7 +323,7 @@
       cell.append(done);
       return cell;
     }
-    const runs = rclRunsFor(row);
+    const runs = rclEffectiveRuns(row);
     const run = runs[0] || null;
     const span = run ? rclSpanOf(run, String(row.text || "")) : null;
     const keep = document.createElement("button");
