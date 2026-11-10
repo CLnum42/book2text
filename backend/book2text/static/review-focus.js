@@ -91,8 +91,13 @@
     const imageH = imgH * scale;
     const centerX = ((x0 + x1) / 2) * imageW;
     const centerY = ((y0 + y1) / 2) * imageH;
-    const left = rfClamp(centerX - width / 2, 0, Math.max(0, imageW - width));
+    // 页边：**留白保轴**（设计 §6）。差异字必须停在取景中轴，不许因为裁切被推走：
+    // 所以这里不再 clamp 横向位移，让图在页边处"用完"，缺的那截补虚线留白块。
+    const wantedLeft = centerX - width / 2;
+    const left = wantedLeft;
     const top = rfClamp(centerY - height / 2, 0, Math.max(0, imageH - height));
+    const padLeft = Math.max(0, -wantedLeft);
+    const padRight = Math.max(0, wantedLeft + width - imageW);
 
     const inner = document.createElement("div");
     inner.className = "rf-crop__image";
@@ -102,6 +107,8 @@
     inner.style.backgroundSize = `${imageW}px ${imageH}px`;
     inner.style.backgroundPosition = `${-left}px ${-top}px`;
     host.append(inner);
+    if (padLeft > 1) host.append(rfPad(padLeft, "left"));
+    if (padRight > 1) host.append(rfPad(padRight, "right"));
 
     // 差异色块（2026-11-10 用户要求）：与右侧文字的红/黄/绿一一对应。
     // 用页图坐标 × 当前缩放，再减去取景位移 —— 与背景图同一套变换，不会错位。
@@ -120,6 +127,24 @@
     }
     if (options.alt) host.title = options.alt;
     return host;
+  }
+
+  /** 页边留白块：虚线 + 淡蓝底 + 竖排「留白 Npx」，一眼能看出"这里没有内容"（设计 §6）。 */
+  function rfPad(width, side) {
+    const pad = document.createElement("span");
+    pad.className = `rf-crop__pad rf-crop__pad--${side}`;
+    pad.style.width = `${Math.round(width)}px`;
+    pad.dataset.label = `留白 ${Math.round(width)}`;
+    return pad;
+  }
+
+  /** 页边留白块：虚线 + 淡蓝底 + 竖排「留白 Npx」，一眼能看出"这里没有内容"（设计 §6）。 */
+  function rfPad(width, side) {
+    const pad = document.createElement("span");
+    pad.className = `rf-crop__pad rf-crop__pad--${side}`;
+    pad.style.width = `${Math.round(width)}px`;
+    pad.dataset.label = `留白 ${Math.round(width)}`;
+    return pad;
   }
 
   /** 一行文本，差异标出来（可多段）。已确认且没改字 ⇒ 不染。 */

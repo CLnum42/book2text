@@ -2724,11 +2724,16 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .reading-cat__head { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 12px; color: var(--muted); }
 .reading-cat__counter { font-variant-numeric: tabular-nums; }
 .reading-cat__list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1 1 auto; min-height: 0; }
+/* 上下排（2026-11-10 定稿）：序号 | 两带列（取景在上、正文在下，同一条竖线）| 状态 | 判定
+   行高 71 = 取景带 34 + 缝 4 + 正文带 25 + 上下留白 8 */
 .rcl-row {
-  display: grid; grid-template-columns: 32px var(--rcl-crop-w) 72px minmax(0, 1fr) 246px;
-  align-items: center; gap: 6px; min-height: 64px; padding: 4px 12px;
+  display: grid; grid-template-columns: 32px minmax(0, 1fr) 72px 246px;
+  align-items: center; gap: 6px; min-height: 71px; padding: 4px 12px;
   border-bottom: 1px solid var(--line); cursor: pointer;
 }
+.rcl-bands { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rcl-band--shot { height: 34px; display: flex; justify-content: center; overflow: hidden; }
+.rcl-band--text { height: 25px; }
 /* 双版本（设计 §9/§10）：并排、等宽 120、间距 6、首个差异字锚按钮中轴 */
 .rcl-cell--versions { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
 .rcl-ver {
@@ -2753,7 +2758,7 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-row--edited { background-image: linear-gradient(rgba(22,163,74,.06), rgba(22,163,74,.06)); }
 .rcl-cell { min-width: 0; }
 .rcl-cell--index { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
-.rcl-cell--crop { width: var(--rcl-crop-w); height: var(--rcl-crop-h); overflow: hidden; display: flex; align-items: center; }
+.rcl-cell--crop { width: var(--rcl-crop-w); height: var(--rcl-crop-h); flex: none; }
 .rcl-cell--crop > * { max-width: var(--rcl-crop-w); max-height: var(--rcl-crop-h); }
 .rcl-cell--crop.rcl-cell--missing { color: var(--faint); font-size: 12px; }
 /* 状态 gutter（§2/§6）：圆点 + 第一行状态 + 第二行「改过 / 未改动」——颜色不是唯一通道 */
@@ -2830,17 +2835,21 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
   .rf-context { grid-template-columns: minmax(0, 1fr); }
   /* 工具条在窄窗折成两行：必须让它**真的变高**，否则子元素溢出压住上下文 */
   .reading-toolbar { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px 8px; row-gap: 4px; }
-  /* 窄窗：双版本折到第二行（设计 §10.3，行高 64 → 108），页图不缩、字号不缩 */
+  /* 窄窗（628）：两带照旧上下排，**双版本折到第二行**（设计 §3：行高 106，取景 240 不缩）
+     栅格 = 序号 | 两带 | 判定（跨两行），状态并进沟槽；按钮行 34 高 */
   .rcl-row {
-    grid-template-columns: 32px var(--rcl-crop-w) 72px minmax(0, 1fr);
-    grid-template-areas: "i c s t" ". . v v";
-    row-gap: 4px; padding-bottom: 8px;
+    grid-template-columns: 28px 72px minmax(0, 1fr);
+    grid-template-areas: "i b b" ". s v";
+    row-gap: 6px; padding: 4px 8px 8px; min-height: 0;
   }
   .rcl-cell--index { grid-area: i; }
-  .rcl-cell--crop { grid-area: c; }
-  .rcl-cell--state { grid-area: s; }
-  .rcl-cell--text { grid-area: t; }
+  .rcl-bands { grid-area: b; }
+  /* 状态折进第二行左侧（设计 §3：竖 gutter 会把正文列压到 182） */
+  .rcl-cell--state { grid-area: s; height: auto; border: 0; background: none; padding-left: 0; }
   .rcl-cell--versions { grid-area: v; justify-content: flex-end; }
+  .rcl-band--shot { height: 34px; }
+  .rcl-band--text { height: auto; min-height: 25px; }
+  .rcl-cell--crop { width: var(--rcl-crop-w); }
 }
 
 /* ─────────────────────────── 预览导出页（第 6 步，2026-11-06） ───────────────────────────

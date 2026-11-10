@@ -154,8 +154,11 @@
     const imgH = page.imgH || 0;
     const lineH = row && row.lineBbox ? Math.abs(row.lineBbox[3] - row.lineBbox[1]) * imgH : 0;
     const runH = run && run.bbox ? Math.abs(run.bbox[3] - run.bbox[1]) * imgH : 0;
-    const boxH = Math.max(lineH, runH, 1);
-    return rclClamp(RCL_FONT_PX / (boxH * RCL_GLYPH_RATIO), 0.2, 1.0);
+    // **字墨高** = max(run 的墨框高, 行框高 × 0.72)。
+    // 不能写成 max(lineH, runH) × 0.72 —— 那是拿"行框"当"字墨"，会多乘一次 0.72，
+    // 实测每字从 22px 涨到 38px、340 宽只剩 9 个字（2026-11-10 真机抓到的）。
+    const glyphH = Math.max(runH, lineH * RCL_GLYPH_RATIO, 1);
+    return rclClamp(RCL_FONT_PX / glyphH, 0.15, 1.0);
   }
 
   function rclCropCell(row) {
@@ -442,7 +445,19 @@
     sub.textContent = rclStateSubLabel(row);
     state.append(dot, label, sub);
 
-    item.append(index, rclCropCell(row), state, rclTextCell(row), rclVersionsCell(row));
+    // 上下排（2026-11-10 定稿）：取景带在上、正文带在下，两带共用同一列、差异字落在同一条竖线。
+    // 栅格 = 序号 32 | 两带列 flex | 状态 72 | 判定 246；行高 71（34 取景 + 4 缝 + 25 正文 + 8 留白）。
+    const bands = document.createElement("div");
+    bands.className = "rcl-bands";
+    // 带是**整列宽**的容器，取景块在带内居中（带自己不缩成 340，否则取景贴左、两带不同轴）
+    const shotBand = document.createElement("div");
+    shotBand.className = "rcl-band rcl-band--shot";
+    shotBand.append(rclCropCell(row));
+    const textBand = document.createElement("div");
+    textBand.className = "rcl-band rcl-band--text";
+    textBand.append(rclTextCell(row));
+    bands.append(shotBand, textBand);
+    item.append(index, bands, state, rclVersionsCell(row));
     item.addEventListener("click", () => {
       currentKey = item.dataset.key;
       rclHighlight();
