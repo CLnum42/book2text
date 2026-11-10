@@ -55,6 +55,8 @@ ACTION_REASSIGN_LINE = "reassign_line"
 ACTION_CONFIRM_LAYOUT = "confirm_layout"
 ACTION_ACK_KEPT = "diff_ack_kept"
 ACTION_ACK_ADOPTED = "diff_ack_adopted"
+# 手改一行（两个 OCR 都错）：文本与裁决一起写，撤销时一起退
+ACTION_ACK_EDITED = "diff_ack_edited"
 # 人工裁决一处跨页边界（任务 42）：与 set_continues 分开记，因为"人看过"与
 # "自动判定"是两件事，而且撤销这一批时要把 continues_reviewed 写回 0。
 ACTION_CONFIRM_CONTINUATION = "confirm_continuation"
@@ -937,6 +939,140 @@ def ack_diff_line(
             "line_index": int(updated_line["line_index"]),
             "diff_ack": updated_line["diff_ack"],
             "diff_ack_text": updated_line["diff_ack_text"],
+        },
+        events,
+    )
+
+
+# ---------------------------------------------------------------- 手改一行（2026-11-10）
+
+DIFF_ACK_EDITED = "edited"
+
+
+def edit_block_line(
+    project_id: str,
+    block_id: str,
+    line_index: int,
+    text: str,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+    actor: str = ACTOR_USER,
+    batch_id: str | None = None,
+) -> tuple[blocks_module.BlockRecord, dict, list[Event]]:
+    """人工手改一行（两个 OCR 版本都错时用）。
+
+    三条语义（用户 2026-11-10 定）：
+    1. **只动这一行**：块里其他行逐字不动（`text` 是整块文本，只有这一行被替换）。
+    2. **只解决改过的那段**：改完按"现在这一行 vs 第二路"重算分歧。没改的差异
+       仍然是未审——旧 `diff_ack` 因为 `diff_ack_text` 对不上自动失效（见
+       `blocks.block_divergence`），不会被这次手改连带确认。
+    3. **整行改对了才落 ack**：这一行与第二路完全一致时写 `diff_ack='edited'`
+       （界面显示"已确认·改过"，绿色），否则 ack 清空、继续留在队列里。
+    """
+    if "\n" in text or "\r" in text:
+        raise ProjectError("手改是一行内的编辑，不能包含换行")
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch = batch_id or new_ulid()
+    events: list[Event] = []
+    with _open(directory) as conn:
+        block = conn.execute("SELECT * FROM block WHERE block_id = ?", (block_id,)).fetchone()
+        if block is None or block["deleted_at"]:
+            raise ProjectError(f"找不到块：{block_id}")
+        current_lines = (block["text"] or "").split("\n")
+        if line_index < 0 or line_index >= len(current_lines):
+            raise ProjectError("这一块的行号对不上了")
+        line = conn.execute(
+            "SELECT * FROM block_line WHERE block_id = ? AND line_index = ?",
+            (block_id, line_index),
+        ).fetchone()
+        if line is None:
+            raise ProjectError(f"块 {block_id} 没有第 {line_index + 1} 行")
+
+        before_line = current_lines[line_index]
+        if before_line == text:
+            # 没改：不写库、不记事件（连按两次 Enter 不该多出一笔历史）
+            return _read_block(conn, block_id), {
+                "line_id": line["line_id"],
+                "line_index": line_index,
+                "diff_ack": line["diff_ack"],
+                "diff_ack_text": line["diff_ack_text"],
+                "text": text,
+                "remaining_diff": False,
+            }, []
+
+        new_lines = list(current_lines)
+        new_lines[line_index] = text
+        new_text = "\n".join(new_lines)
+        events.append(
+            _record(
+                conn,
+                entity_type="block",
+                entity_id=block_id,
+                action=ACTION_EDIT_TEXT,
+                before={"text": block["text"]},
+                after={"text": new_text},
+                batch_id=batch,
+                actor=actor,
+                actor_name=actor_name,
+            )
+        )
+        conn.execute(
+            "UPDATE block SET text = ?, revision = revision + 1, updated_at = ? WHERE block_id = ?",
+            (new_text, now, block_id),
+        )
+
+        # 改完这一行还与第二路不一致吗？（与界面同一判据：compare.grade_line）
+        from ..ocr import compare as compare_module
+
+        candidate = line["aux_text"]
+        remaining = bool(candidate and candidate.strip()) and (
+            compare_module.grade_line(text, candidate) != compare_module.IDENTICAL
+        )
+        if candidate is None or not candidate.strip():
+            # 没有第二路：只有"人工改过"这一条线索，直接记 edited
+            remaining = False
+        new_ack = None if remaining else DIFF_ACK_EDITED
+        before_ack = line["diff_ack"]
+        before_ack_text = line["diff_ack_text"]
+        if before_ack != new_ack or before_ack_text != text:
+            events.append(
+                _record(
+                    conn,
+                    entity_type="block_line",
+                    entity_id=line["line_id"],
+                    action=ACTION_ACK_EDITED,
+                    before={"diff_ack": before_ack, "diff_ack_text": before_ack_text},
+                    after={"diff_ack": new_ack, "diff_ack_text": text},
+                    batch_id=batch,
+                    actor=actor,
+                    actor_name=actor_name,
+                )
+            )
+            conn.execute(
+                "UPDATE block_line SET diff_ack = ?, diff_ack_text = ? WHERE line_id = ?",
+                (new_ack, text, line["line_id"]),
+            )
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        updated_block = _read_block(conn, block_id)
+        updated_line = conn.execute(
+            "SELECT * FROM block_line WHERE line_id = ?", (line["line_id"],)
+        ).fetchone()
+    return (
+        updated_block,
+        {
+            "line_id": updated_line["line_id"],
+            "line_index": int(updated_line["line_index"]),
+            "diff_ack": updated_line["diff_ack"],
+            "diff_ack_text": updated_line["diff_ack_text"],
+            "text": text,
+            "remaining_diff": remaining,
         },
         events,
     )

@@ -334,6 +334,13 @@ class DiffAckRequest(BaseModel):
     text: str | None = None
 
 
+class LineEditRequest(BaseModel):
+    """手改一行（两个 OCR 都错时人工输入）：只替换这一行，不能带换行。"""
+
+    line_index: int = Field(ge=0)
+    text: str = Field(min_length=1)
+
+
 @router.get("/{project_id}/review/marks")
 def review_marks(
     request: Request,
@@ -697,6 +704,41 @@ def ack_block_line(
             body.line_index,
             body.ack,
             text=body.text,
+            library=_library(request),
+            actor_name=_actor_name(request, None),
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    if events:
+        _history(request).push(
+            project_id,
+            _Batch(events=tuple(events), page_nos=(block.page_no,)),
+        )
+    undo, redo = _history(request).depth(project_id)
+    return {
+        "block": block.to_dict(),
+        "line": line,
+        "events": [event.to_dict() for event in events],
+        "history": {"undo": undo, "redo": redo},
+    }
+
+
+@router.post("/{project_id}/blocks/{block_id}/line-edit")
+def edit_block_line_route(
+    request: Request, project_id: str, block_id: str, body: LineEditRequest
+) -> dict[str, Any]:
+    """手改一行：只写这一行，改完按"这一行 vs 第二路"重算。
+
+    返回里的 `remaining_diff` 是**改过之后这一行还有没有差异**：
+    还有 ⇒ 这行继续留在队列里（没改的差异仍算未审）；没有 ⇒ ack=edited，界面转绿。
+    """
+    _require_page_editable(request, project_id, block_id, library=_library(request))
+    try:
+        block, line, events = editing.edit_block_line(
+            project_id,
+            block_id,
+            body.line_index,
+            body.text,
             library=_library(request),
             actor_name=_actor_name(request, None),
         )
