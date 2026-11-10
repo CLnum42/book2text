@@ -535,7 +535,22 @@
     if (typeof injected.onEdit !== "function") return;
     const fromKey = rclKey(row);
     Promise.resolve(injected.onEdit(row, full, { advance: Boolean(advance) }))
-      .then(() => {
+      .then((result) => {
+        // 整行改对了（ack=edited）⇒ 这一行已出队，但它要留在列表里显示绿色 +
+        // 「重新审校」，否则误触提交后没有退路（用户 2026-11-10）。
+        const ack = result && result.line ? result.line.diff_ack : null;
+        if (ack === "edited") {
+          row.state = "confirmed";
+          row.edited = true;
+          if (!rows.some((item) => rclKey(item) === fromKey)) {
+            const at = Math.min(
+              Number.isInteger(row.__rclIndex) ? row.__rclIndex : rows.length,
+              rows.length
+            );
+            rows.splice(at, 0, row);
+          }
+          rclRender();
+        }
         if (advance) rclAdvanceFrom(fromKey);
       })
       .catch(() => {
@@ -796,14 +811,22 @@
       return cell;
     }
     if (row.state === "confirmed") {
-      // 状态列已经写了「已确认 / 改过·未改动」，这里不再重复一遍同样的字；
-      // 只有"采用候选"这种状态列表达不了的信息才留一行小字。
-      if (row.edited) {
-        const done = document.createElement("span");
-        done.className = "rcl-done-note";
-        done.textContent = "采用候选";
-        cell.append(done);
-      }
+      // 用户 2026-11-10：确定后三个按钮消失，怕误触没退路 ⇒ 确认行下方留一个「重新审校」。
+      // 点击 = 这一行退回第一引擎原文 + 清掉裁决（回到未审，三个按钮回来）。
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.className = "rcl-ver rcl-ver--reset";
+      reset.textContent = "重新审校";
+      reset.title = "退回第一引擎原文并重新审（误触后回退）";
+      reset.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (typeof injected.onReset !== "function") return;
+        reset.disabled = true;
+        Promise.resolve(injected.onReset(row)).catch(() => {
+          reset.disabled = false;
+        });
+      });
+      cell.append(reset);
       return cell;
     }
     const runs = rclEffectiveRuns(row);
@@ -871,7 +894,9 @@
       event.stopPropagation();
       rclStartEdit(row);
     });
-    cell.append(keep, adopt, edit);
+    // 顺序（用户 2026-11-10）：第一引擎"保留原文"在正中间，第二引擎"采用候选"在左，
+    // 手动编辑在最右。中间位置是肌肉记忆的落点，也是最常用/最安全的那个。
+    cell.append(adopt, keep, edit);
     return cell;
   }
 

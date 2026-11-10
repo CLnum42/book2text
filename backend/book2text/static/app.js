@@ -4931,6 +4931,20 @@ function publishCatFromReading(payload) {
       await window.ReadingView?.reload?.();
       return result;
     },
+    // 重新审校：把手改 / 采纳过的那一行退回第一引擎原文并清掉裁决（回到未审）
+    onReset: async (row) => {
+      if (!currentProject || !row) return null;
+      const result = await apiJson(
+        `/api/projects/${currentProject.project_id}/blocks/${row.blockId}/line-reset`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ line_index: row.lineIndex }),
+        }
+      );
+      await window.ReadingView?.reload?.();
+      return result;
+    },
     onSelect: (row) => {
       window.ReviewCatList?.show?.(row);
       window.ReadingView?.selectEntry?.(row && row.key);

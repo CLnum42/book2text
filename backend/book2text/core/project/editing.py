@@ -1078,6 +1078,114 @@ def edit_block_line(
     )
 
 
+# ---------------------------------------------------------------- 重新审校（撤销手改 / 裁决）
+
+
+def reset_block_line(
+    project_id: str,
+    block_id: str,
+    line_index: int,
+    *,
+    library: Path | None = None,
+    actor_name: str | None = None,
+    actor: str = ACTOR_USER,
+    batch_id: str | None = None,
+) -> tuple[blocks_module.BlockRecord, dict, list[Event]]:
+    """「重新审校」：把这一行退回到**第一引擎原文**，并清掉裁决。
+
+    用户 2026-11-10：手改确定后三个按钮消失，怕误触没有退路 ⇒ 确认行下方留「重新审校」。
+    - 文本取 `block.ocr_text`（第一引擎那一行），不是"上一次编辑的 before"——
+      用户要的就是"回退到第一引擎的内容"。
+    - `diff_ack` 清空 ⇒ 这一行重新回到未审队列，三个按钮回来。
+    - 若当前文本已经就是第一引擎原文，只清裁决（不记文本事件）。
+    """
+    if library is None:
+        from .library import default_library_dir
+
+        library = default_library_dir()
+    directory = project_dir(library, project_id)
+    now = _now()
+    batch = batch_id or new_ulid()
+    events: list[Event] = []
+    with _open(directory) as conn:
+        block = conn.execute("SELECT * FROM block WHERE block_id = ?", (block_id,)).fetchone()
+        if block is None or block["deleted_at"]:
+            raise ProjectError(f"找不到块：{block_id}")
+        current_lines = (block["text"] or "").split("\n")
+        if line_index < 0 or line_index >= len(current_lines):
+            raise ProjectError("这一块的行号对不上了")
+        ocr_text = block["ocr_text"] or ""
+        ocr_lines = ocr_text.split("\n")
+        if not ocr_text.strip() or line_index >= len(ocr_lines):
+            raise ProjectError("这一行没有第一引擎原文可回退")
+        reset_line = ocr_lines[line_index]
+        line = conn.execute(
+            "SELECT * FROM block_line WHERE block_id = ? AND line_index = ?",
+            (block_id, line_index),
+        ).fetchone()
+        if line is None:
+            raise ProjectError(f"块 {block_id} 没有第 {line_index + 1} 行")
+
+        if reset_line != current_lines[line_index]:
+            new_lines = list(current_lines)
+            new_lines[line_index] = reset_line
+            new_text = "\n".join(new_lines)
+            events.append(
+                _record(
+                    conn,
+                    entity_type="block",
+                    entity_id=block_id,
+                    action=ACTION_EDIT_TEXT,
+                    before={"text": block["text"]},
+                    after={"text": new_text},
+                    batch_id=batch,
+                    actor=actor,
+                    actor_name=actor_name,
+                )
+            )
+            conn.execute(
+                "UPDATE block SET text = ?, revision = revision + 1, updated_at = ? WHERE block_id = ?",
+                (new_text, now, block_id),
+            )
+        before_ack = line["diff_ack"]
+        before_ack_text = line["diff_ack_text"]
+        if before_ack is not None or before_ack_text is not None:
+            events.append(
+                _record(
+                    conn,
+                    entity_type="block_line",
+                    entity_id=line["line_id"],
+                    action=ACTION_ACK_KEPT,
+                    before={"diff_ack": before_ack, "diff_ack_text": before_ack_text},
+                    after={"diff_ack": None, "diff_ack_text": None},
+                    batch_id=batch,
+                    actor=actor,
+                    actor_name=actor_name,
+                )
+            )
+            conn.execute(
+                "UPDATE block_line SET diff_ack = NULL, diff_ack_text = NULL WHERE line_id = ?",
+                (line["line_id"],),
+            )
+        conn.execute("UPDATE project SET updated_at = ?", (now,))
+        conn.commit()
+        updated_block = _read_block(conn, block_id)
+        updated_line = conn.execute(
+            "SELECT * FROM block_line WHERE line_id = ?", (line["line_id"],)
+        ).fetchone()
+    return (
+        updated_block,
+        {
+            "line_id": updated_line["line_id"],
+            "line_index": int(updated_line["line_index"]),
+            "diff_ack": updated_line["diff_ack"],
+            "diff_ack_text": updated_line["diff_ack_text"],
+            "text": reset_line,
+        },
+        events,
+    )
+
+
 # ---------------------------------------------------------------- 确认整页（R3）
 
 @dataclass(frozen=True)

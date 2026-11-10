@@ -341,6 +341,12 @@ class LineEditRequest(BaseModel):
     text: str = Field(min_length=1)
 
 
+class LineResetRequest(BaseModel):
+    """重新审校：这一行退回第一引擎原文，裁决清空。"""
+
+    line_index: int = Field(ge=0)
+
+
 @router.get("/{project_id}/review/marks")
 def review_marks(
     request: Request,
@@ -739,6 +745,36 @@ def edit_block_line_route(
             block_id,
             body.line_index,
             body.text,
+            library=_library(request),
+            actor_name=_actor_name(request, None),
+        )
+    except project_library.ProjectError as exc:
+        raise _project_error(exc) from exc
+    if events:
+        _history(request).push(
+            project_id,
+            _Batch(events=tuple(events), page_nos=(block.page_no,)),
+        )
+    undo, redo = _history(request).depth(project_id)
+    return {
+        "block": block.to_dict(),
+        "line": line,
+        "events": [event.to_dict() for event in events],
+        "history": {"undo": undo, "redo": redo},
+    }
+
+
+@router.post("/{project_id}/blocks/{block_id}/line-reset")
+def reset_block_line_route(
+    request: Request, project_id: str, block_id: str, body: LineResetRequest
+) -> dict[str, Any]:
+    """重新审校：把手改 / 采纳过的这一行退回首引擎原文，并清掉裁决（回到未审）。"""
+    _require_page_editable(request, project_id, block_id, library=_library(request))
+    try:
+        block, line, events = editing.reset_block_line(
+            project_id,
+            block_id,
+            body.line_index,
             library=_library(request),
             actor_name=_actor_name(request, None),
         )

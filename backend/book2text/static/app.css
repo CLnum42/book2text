@@ -2756,6 +2756,8 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .rcl-cell--versions { display: flex; align-items: center; gap: 6px; justify-content: center; }
 /* 手改入口（✎）：判定列三个键平分宽度，图标键固定 26px */
 .rcl-ver--edit { flex: 0 0 26px; width: 26px; padding: 0; font-size: 14px; }
+/* 重新审校：确认行下方唯一的按钮，红系（它是"退回去"的动作） */
+.rcl-ver--reset { flex: 0 0 140px; border-color: #e7c6c6; color: #b91c1c; background: #fff; }
 /* 手改进行中：提交 / 取消固定宽度，不随列宽拉伸 */
 .rcl-cell--versions--editing .rcl-ver { flex: 0 0 120px; }
 /* 手改进行中：正文带变成可编辑框，底线蓝，提示浮在右上（不撑高行） */
