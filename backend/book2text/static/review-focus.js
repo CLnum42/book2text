@@ -1,28 +1,76 @@
-// 正文审校 v3：下方 5 行上下文 + 三档取景 + 逐处导航 + 判定 + 手改。
+// 审校页的取景与上下文（`window.ReviewFocus`）。
 //
-// **本笔只落 renderCrop 与空骨架**（Chief 2026-11-06 的顺序）：三档取景的数值换算、
-// 逐处导航、判定、手改都在下一笔。**取景只此一份**——差异列表通过外壳注入调用这里的
-// renderCrop，不许在列表里再长一份（契约 §2）。
+// 规格出处：`docs/ux/review-cat-list-v3.md`
+//   §2  取景窗按差异字居中；上下文是**一整块三行页图**（640 宽，当前行 2px 蓝框）+ 右侧三行文本
+//   §6  三色语义与列表同源（机器差异红 / 待提交黄 / 已确认绿）
 //
-// 取图约束（契约 §2/§3）：只用一次 `size=zoom` 的原图，靠 CSS 背景尺寸/位移定位到 bbox；
-// 不 canvas 重画、不为裁图单独再发一次图请求。
+// 两条口径（2026-11-10 修）：
+//   ① 取景缩放按「字高 22px」算（`22 / (行框高 × 0.72)`），不是"填满窗口高"——
+//      后者在 300dpi 页图上把字放大到 ~38px，只能看到 4–5 个糊字。
+//   ② 页图窗口一律 clamp 在图片内，边缘渐隐；不 clamp 时靠页边的行会露出半屏空白。
+//
+// 数据：runs 由外壳注入的 `loadRuns(pageNo)` 按页取（与列表共用同一个缓存），本模块不直呼别的模块。
 (function () {
   "use strict";
 
+  const RF_FONT_PX = 22;
+  const RF_GLYPH_RATIO = 0.72;
+  const RF_CONTEXT_W = 640;
+  const RF_CONTEXT_PAD = 12;
+
   let injected = {};
+  const pageRuns = new Map();
+  const pageLoading = new Map();
+  let contextToken = 0;
+
+  const rfClamp = (value, low, high) => Math.min(high, Math.max(low, value));
+
+  function rfKey(row) {
+    return String((row && row.key) || `${row && row.blockId}:${row.lineIndex}`);
+  }
+
+  function rfIndexPage(page) {
+    const byKey = new Map();
+    for (const item of (page && page.runs) || []) {
+      byKey.set(`${item.block_id}:${item.line_index}`, item.runs || []);
+    }
+    return { byKey, imgW: Number(page && page.imgW) || 0, imgH: Number(page && page.imgH) || 0, url: (page && page.url) || "" };
+  }
+
+  function rfRunsFor(row) {
+    const page = pageRuns.get(Number(row && row.pageNo));
+    if (!page) return [];
+    return page.byKey.get(`${row.blockId}:${row.lineIndex}`) || [];
+  }
+
+  function rfLoad(pageNo) {
+    if (typeof injected.loadRuns !== "function") return Promise.resolve(null);
+    if (pageRuns.has(pageNo)) return Promise.resolve(pageRuns.get(pageNo));
+    if (pageLoading.has(pageNo)) return pageLoading.get(pageNo);
+    const task = Promise.resolve(injected.loadRuns(pageNo))
+      .then((page) => {
+        pageLoading.delete(pageNo);
+        const indexed = rfIndexPage(page);
+        pageRuns.set(pageNo, indexed);
+        return indexed;
+      })
+      .catch(() => {
+        pageLoading.delete(pageNo);
+        return null;
+      });
+    pageLoading.set(pageNo, task);
+    return task;
+  }
 
   /**
-   * 单行裁图：把 `bbox`（归一化 0–1）居中放进 `zone`（CSS px 的框）。
-   *
-   * @param {[number,number,number,number]} bbox
-   * @param {{width:number,height:number,scale?:number,imgW:number,imgH:number,url:string,alt?:string}} zone
-   * @returns {HTMLElement}
+   * 取景窗：`bbox` 只用来定中心（差异字），尺寸由调用方给。
+   * 背景位移 clamp 到图片内，四周 6px 渐隐（设计用渐隐代替省略号，避免压字）。
    */
   function renderCrop(bbox, zone) {
     const box = Array.isArray(bbox) && bbox.length === 4 ? bbox : null;
     const options = zone || {};
-    const width = Number(options.width) || 240;
-    const height = Number(options.height) || 56;
+    const width = Number(options.width) || 340;
+    const height = Number(options.height) || 34;
     const imgW = Number(options.imgW) || 0;
     const imgH = Number(options.imgH) || 0;
     const scale = Number(options.scale) > 0 ? Number(options.scale) : 1;
@@ -43,6 +91,8 @@
     const imageH = imgH * scale;
     const centerX = ((x0 + x1) / 2) * imageW;
     const centerY = ((y0 + y1) / 2) * imageH;
+    const left = rfClamp(centerX - width / 2, 0, Math.max(0, imageW - width));
+    const top = rfClamp(centerY - height / 2, 0, Math.max(0, imageH - height));
 
     const inner = document.createElement("div");
     inner.className = "rf-crop__image";
@@ -50,95 +100,133 @@
     inner.style.height = `${imageH}px`;
     inner.style.backgroundImage = `url("${options.url}")`;
     inner.style.backgroundSize = `${imageW}px ${imageH}px`;
-    inner.style.backgroundPosition = `${-(centerX - width / 2)}px ${-(centerY - height / 2)}px`;
+    inner.style.backgroundPosition = `${-left}px ${-top}px`;
     host.append(inner);
     if (options.alt) host.title = options.alt;
     return host;
   }
 
-  /** 空骨架：上下文 / 面板 / 取景宿主下一笔才接线，这里只收注入、保持幂等。 */
+  /** 一行文本，差异标出来（可多段）。已确认且没改字 ⇒ 不染。 */
+  function rfTextLine(row, isCurrent) {
+    const line = document.createElement("div");
+    line.className = "rf-line" + (isCurrent ? " rf-line--current" : "");
+    const text = String((row && row.text) || "");
+    const runs = row && row.state === "confirmed" && !row.edited ? [] : rfRunsFor(row);
+    if (!runs.length) {
+      line.textContent = text;
+      return line;
+    }
+    let cursor = 0;
+    for (const run of runs) {
+      const start = Number(run.a_start);
+      const end = Number(run.a_end);
+      const from = String(run.from == null ? "" : run.from);
+      let at = Number.isFinite(start) ? start : -1;
+      if (at < 0 || text.slice(at, at + Math.max(0, end - start)) !== from) {
+        const near = from ? text.indexOf(from, Math.max(0, at)) : -1;
+        if (near >= 0) at = near;
+      }
+      if (at < 0 || at < cursor) continue;
+      const width = Math.max(0, (Number.isFinite(end) ? end : at + from.length) - at);
+      line.append(document.createTextNode(text.slice(cursor, at)));
+      const mark = document.createElement("mark");
+      const tone = row.state === "confirmed" ? "done" : row.state === "draft" ? "draft" : "machine";
+      mark.className = `rcl-diff rcl-diff--${tone}`;
+      if (width > 0) mark.textContent = text.slice(at, at + width);
+      else mark.classList.add("rcl-diff--caret");
+      line.append(mark);
+      cursor = at + width;
+    }
+    line.append(document.createTextNode(text.slice(cursor)));
+    return line;
+  }
+
+  function rfMissingLine(message) {
+    const p = document.createElement("p");
+    p.className = "muted rf-empty";
+    p.textContent = message;
+    return p;
+  }
+
+  /**
+   * 下方上下文：当前行 **±1 行连续正文**（一行前 / 当前 / 一行后），不是三条相邻差异行。
+   * 三行来自同一段：`before` / `text` / `after`（外壳在 reading-view 里从 line_spans 切好）。
+   * 页图取当前行 lineBbox 上下各扩一个行高 —— 行高一致时正好三行。
+   */
+  async function showContext(payload) {
+    const host = injected.contextEl || null;
+    if (!host) return api;
+    const rows = (payload && payload.rows) || [];
+    const currentIndex = Number.isInteger(payload && payload.currentIndex) ? payload.currentIndex : -1;
+    if (!rows.length || currentIndex < 0) {
+      host.innerHTML = "";
+      host.append(rfMissingLine("选中一条差异后，这里显示它上下各一行。"));
+      return api;
+    }
+    const token = ++contextToken;
+    const row = rows[currentIndex];
+    await rfLoad(Number(row.pageNo));
+    if (token !== contextToken) return api;   // 期间又点了别的行：这一份已经过期
+
+    host.innerHTML = "";
+    const box = document.createElement("div");
+    box.className = "rf-context";
+    const media = document.createElement("div");
+    media.className = "rf-context__media";
+    const text = document.createElement("div");
+    text.className = "rf-context__text";
+
+    const page = pageRuns.get(Number(row.pageNo));
+    const run = rfRunsFor(row)[0] || null;
+    const lineBox = row.lineBbox || (run && run.bbox) || null;
+    // 窄窗里 640 会撑破容器（min-content 无法再缩），按容器实际宽度收
+    const contextW = Math.max(240, Math.min(RF_CONTEXT_W, (host.clientWidth || RF_CONTEXT_W) - 24));
+    if (page && page.url && page.imgW && page.imgH && lineBox) {
+      const lineH = Math.abs(lineBox[3] - lineBox[1]) || 0.02;
+      const y0 = Math.max(0, lineBox[1] - lineH);
+      const y1 = Math.min(1, lineBox[3] + lineH);
+      const centerBox = (run && run.bbox) || lineBox;
+      const cx = (centerBox[0] + centerBox[2]) / 2;
+      const scale = rfClamp(RF_FONT_PX / (lineH * page.imgH * RF_GLYPH_RATIO), 0.2, 1.0);
+      const imageH = Math.abs(y1 - y0) * page.imgH * scale;
+      media.append(
+        renderCrop([cx, y0, cx, y1], {
+          width: contextW,
+          height: Math.max(40, Math.round(imageH)),
+          scale,
+          imgW: page.imgW,
+          imgH: page.imgH,
+          url: page.url,
+          alt: `第 ${row.pageNo} 页 · 上下文`,
+        })
+      );
+    } else {
+      media.classList.add("rf-context__media--missing");
+      media.textContent = "这一页还没有可用页图。";
+    }
+
+    const neighbour = (textValue, isCurrent) => {
+      const line = document.createElement("div");
+      line.className = "rf-line" + (isCurrent ? " rf-line--current" : "");
+      line.textContent = textValue || "（这一行没有上下文：差异落在段首/段尾）";
+      if (!textValue) line.classList.add("rf-line--empty");
+      return line;
+    };
+    text.append(neighbour(row.before, false));
+    text.append(rfTextLine(row, true));
+    text.append(neighbour(row.after, false));
+
+    box.append(media, text);
+    host.append(box);
+    return api;
+  }
+
   function init(deps) {
     injected = Object.assign({}, injected, deps || {});
     return api;
   }
 
-  /** 空骨架：三档取景 / 逐处导航 / 判定在下一笔。 */
   function enter() {
-    return api;
-  }
-
-  function contextEl() {
-    return injected.contextEl || null;
-  }
-
-  /** 一行上下文：左裁图（复用 renderCrop）+ 右正文（差异行标红）。 */
-  function focusRow(row, isCurrent) {
-    const item = document.createElement("div");
-    item.className = "rf-row" + (isCurrent ? " rf-row--current" : "");
-    const cropCell = document.createElement("div");
-    cropCell.className = "rf-row__crop";
-    const run = row && row.runs && row.runs[0];
-    const box = (run && run.bbox) || (row && row.lineBbox) || null;
-    if (box && typeof renderCrop === "function") {
-      cropCell.append(
-        renderCrop(box, {
-          width: 120,
-          height: 32,
-          scale: 0.7,
-          imgW: Number(row.imgW) || 0,
-          imgH: Number(row.imgH) || 0,
-          url: row.cropUrl || "",
-        })
-      );
-    } else {
-      cropCell.classList.add("rf-row__crop--missing");
-      cropCell.textContent = "—";
-    }
-    const textCell = document.createElement("div");
-    textCell.className = "rf-row__text";
-    const text = String((row && row.text) || "");
-    if (run && run.from) {
-      const at = text.indexOf(run.from);
-      if (at >= 0) {
-        textCell.append(document.createTextNode(text.slice(0, at)));
-        const mark = document.createElement("mark");
-        mark.className = "rcl-diff";
-        mark.textContent = run.from;
-        textCell.append(mark, document.createTextNode(text.slice(at + run.from.length)));
-      } else {
-        textCell.textContent = text;
-      }
-    } else {
-      textCell.textContent = text;
-    }
-    item.append(cropCell, textCell);
-    return item;
-  }
-
-  /**
-   * 下方 5 行上下文：rows 由外壳给（与列表同一份页级数据，不另发请求）。
-   * 只读展示——当前行高亮、差异行标红；三档取景与逐处导航在下笔。
-   */
-  function showContext(payload) {
-    const host = contextEl();
-    if (!host) return api;
-    const rows = (payload && payload.rows) || [];
-    const currentIndex = Number.isInteger(payload && payload.currentIndex)
-      ? payload.currentIndex
-      : -1;
-    host.innerHTML = "";
-    if (!rows.length || currentIndex < 0) {
-      const empty = document.createElement("p");
-      empty.className = "muted rf-empty";
-      empty.textContent = "选中一条差异后，这里显示它上下各两行。";
-      host.append(empty);
-      return api;
-    }
-    const from = Math.max(0, currentIndex - 2);
-    const to = Math.min(rows.length, currentIndex + 3);
-    for (let index = from; index < to; index += 1) {
-      host.append(focusRow(rows[index], index === currentIndex));
-    }
     return api;
   }
 

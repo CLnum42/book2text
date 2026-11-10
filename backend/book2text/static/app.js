@@ -4805,9 +4805,8 @@ function openOrthographyReviewPage(pageNo) {
 const catRunsCache = new Map();
 const catRunsInFlight = new Map();
 const CAT_RUNS_LIMIT = 8;
-// 最近一次「挂了 runs 与页图尺寸」的行快照：下方 5 行上下文点行时要用同一份，
-// 免得点一次行就再取一次 runs（同页只许取一次，契约 §3）。
-let catContextRows = [];
+// 2026-11-10：`catContextRows` 已删——上下文面板改走与列表同一个按页缓存（`loadRuns`），
+// 不再由外壳拼一份"挂了 runs 的行快照"（那份只在第一页有 runs，正是红标缺失的同源问题）。
 
 /** 命中即返回（并把它挪到 Map 末尾，保持 LRU 顺序）；未命中返回 undefined。 */
 function catRunsTouch(key) {
@@ -4872,61 +4871,51 @@ async function catPageRuns(pageNo) {
 function publishCatFromReading(payload) {
   const data = payload || {};
   if (!data.listEl || !window.ReviewCatList) return;
-  // init 是幂等的（只写两个引用）；不引入新的 window 旗标，免得撞埋点例外表。
-  window.ReviewFocus?.init?.({
-    contextEl: data.contextEl,
-  });
+  const rows = data.rows || [];
+  // 页级 runs：列表与上下文**共用这一个入口**。谁需要哪一页就调它，模块自己按页缓存；
+  // 外壳不再"只给第一行那一页取 runs"——那正是 2026-11-10 之前 20/21 行没有红标的根因。
+  const loadRuns = (pageNo) => catPageRuns(pageNo);
+  const showContextFor = (row) => {
+    const index = rows.findIndex((item) => String(item.key) === String(row && row.key));
+    window.ReviewFocus?.showContext?.({ rows, currentIndex: index < 0 ? 0 : index });
+  };
+  // init 是幂等的（只写引用），不引入新的 window 旗标，免得撞埋点例外表。
+  window.ReviewFocus?.init?.({ contextEl: data.contextEl, loadRuns });
   window.ReviewCatList.init({
     listEl: data.listEl,
     counterEl: data.counterEl,
     renderCrop: (bbox, zone) => window.ReviewFocus?.renderCrop?.(bbox, zone) || null,
+    loadRuns,
+    onCurrent: showContextFor,
+    // 双版本裁决：保留 / 采用直接写库（与抽屉同一端点），写完重取队列与成品
+    onAck: async (row, ack) => {
+      if (!currentProject || !row) return;
+      await apiJson(
+        `/api/projects/${currentProject.project_id}/blocks/${row.blockId}/diff-ack`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            line_index: row.lineIndex,
+            ack,
+            text: ack === "adopted" ? (row.candidate || null) : null,
+          }),
+        }
+      );
+      await window.ReadingView?.reload?.();
+    },
     onSelect: (row) => {
-        window.ReviewCatList?.show?.(row);
-        window.ReadingView?.selectEntry?.(row && row.key);
-        // 下方 5 行上下文：跟着**点中的那一条**走（不是只在 setQueue 时算一次）。
-        // 用已挂上 runs 的那份快照（catContextRows）；还没到就退回原始 rows（裁图先显示「—」）。
-        const list = catContextRows.length ? catContextRows : rows;
-        const index = list.findIndex((item) => String(item.key) === String(row && row.key));
-        window.ReviewFocus?.showContext?.({ rows: list, currentIndex: index < 0 ? 0 : index });
-      },
+      window.ReviewCatList?.show?.(row);
+      window.ReadingView?.selectEntry?.(row && row.key);
+      showContextFor(row);
+    },
   });
-  const rows = data.rows || [];
   window.ReviewCatList.setQueue({
     rows,
     total: data.total,
     currentIndex: data.currentIndex,
+    counts: data.counts,
   });
-  // 页级 runs + 图片尺寸到了再补一次（裁图列从「—」变成真实行图）。
-  // 每页只建一次索引：`blockId:lineIndex` → runs[]，之后每行 O(1)；不用 key 参与匹配。
-  const pageNo = rows.length ? rows[0].pageNo : 0;
-  if (pageNo) {
-    catPageRuns(pageNo)
-      .then((page) => {
-        const index = new Map();
-        for (const item of page.runs || []) {
-          index.set(`${item.block_id}:${item.line_index}`, item.runs || []);
-        }
-        const enriched = rows.map((row) => ({
-          ...row,
-          runs: index.get(`${row.blockId}:${row.lineIndex}`) || [],
-          cropUrl: page.url,
-          imgW: page.imgW,
-          imgH: page.imgH,
-        }));
-        catContextRows = enriched;
-        window.ReviewCatList?.setQueue?.({
-          rows: enriched,
-          total: data.total,
-          currentIndex: data.currentIndex,
-        });
-        // 下方 5 行上下文：同一份 rows（页级缓存已命中，不再发请求）
-        window.ReviewFocus?.showContext?.({
-          rows: enriched,
-          currentIndex: data.currentIndex,
-        });
-      })
-      .catch(() => {});
-  }
 }
 
 function boot() {

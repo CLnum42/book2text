@@ -1555,6 +1555,11 @@ function publishCat() {
     state: entry.ack ? "confirmed" : "unjudged",
     edited: entry.ack === "adopted",
     text: readingEntryLineText(entry) || entry.text || "",
+    // 双版本裁决要用候选文本（marks 里就是 candidate）；漏传的话「采用候选」永远是灰的
+    candidate: entry.candidate == null ? "" : String(entry.candidate),
+    level: entry.level || "",
+    before: entry.before || "",
+    after: entry.after || "",
     noBoxes: true,
     lineBbox: entry.bbox || null,
   }));
@@ -1571,6 +1576,9 @@ function publishCat() {
     rows,
     total,
     currentIndex,
+    // 队列构成（汉字 / 标点各自的未审数）：列表头部据此说清"还剩什么要做"，
+    // 别让"汉字判完了、只剩标点"被读成"这页没东西可审"。
+    counts: readingGlobalCounts || null,
   });
 }
 
@@ -1587,11 +1595,17 @@ function rebuildReadingEntries() {
       // 主队列只放含汉字差异的行；纯标点 / 空格按模式批量判（任务 61），
       // 只有被用户点了「逐条看」的那几种模式才回到主队列。
       if (mark.level === "differs_punct" && !punctWatch.has(mark.pattern_key)) continue;
+      // 上下文要的是**连续正文行**（当前行 ±1），不是"相邻的两条差异行"——
+      // 差异行之间隔着正文，拿来做上下文会漏掉正在判的那一句的上下句。
+      const prevSpan = spans[i - 1] || null;
+      const nextSpan = spans[i + 1] || null;
       readingEntries.push({
         ...mark,
         seq: segment.seq,
         span_index: i,
         page_no: mark.page_no || span.page_no,
+        before: prevSpan ? segment.text.slice(prevSpan.start, prevSpan.end) : "",
+        after: nextSpan ? segment.text.slice(nextSpan.start, nextSpan.end) : "",
       });
     }
   }

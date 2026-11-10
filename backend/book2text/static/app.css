@@ -2710,44 +2710,126 @@ body.is-resizing-reading .reading-stream { pointer-events: none; }
 .jev-status[data-phase="blocked"] { color: var(--warn-text); }
 .jev-status[data-phase="starting"] { color: var(--accent-text); }
 
-/* 正文审校 v3：差异列表（四列）。栅格：序号 32 / 裁图 240 / 状态 72 / 正文 flex；行高 64。
-   三态色只在这里给（JS 不写色值）：未判红 / 待提交黄 / 已确认绿；绿+底纹 = 改过。 */
-.reading-cat { display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--line); }
+/* 正文审校 v3：差异列表（四列）
+   栅格：序号 32 / 取景 var(--rcl-crop-w) / 状态 72 / 正文 flex；行高 64。
+   取景窗 340×34、字高 22px（设计 §2）；窄窗（≤900）页图收到 240，**不缩字号**（§10.3 窄窗付行数不付可读性）。
+   三态色只在这里给（JS 不写色值）：未审红 / 待提交黄 / 已确认绿；绿+底纹 = 改过。 */
+.reading-cat {
+  /* 占满工具条以上的整块高度：列表自己滚，下方三行上下文固定可见（设计 §2 的上下分区） */
+  flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0;
+  border-bottom: 1px solid var(--line);
+  --rcl-crop-w: 340px;
+  --rcl-crop-h: 34px;
+}
 .reading-cat__head { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 12px; color: var(--muted); }
 .reading-cat__counter { font-variant-numeric: tabular-nums; }
-.reading-cat__list { list-style: none; margin: 0; padding: 0; overflow: auto; max-height: 45vh; }
+.reading-cat__list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1 1 auto; min-height: 0; }
 .rcl-row {
-  display: grid; grid-template-columns: 32px 240px 72px minmax(0, 1fr);
+  display: grid; grid-template-columns: 32px var(--rcl-crop-w) 72px minmax(0, 1fr) 246px;
   align-items: center; gap: 6px; min-height: 64px; padding: 4px 12px;
   border-bottom: 1px solid var(--line); cursor: pointer;
 }
+/* 双版本（设计 §9/§10）：并排、等宽 120、间距 6、首个差异字锚按钮中轴 */
+.rcl-cell--versions { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.rcl-ver {
+  width: 120px; height: 44px; flex: none; padding: 0 4px;
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
+  font-size: 14px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer;
+}
+.rcl-ver:hover { border-color: var(--accent); color: var(--accent-text); }
+.rcl-ver--adopt { border-color: #b9cdf2; color: var(--accent-text); background: var(--accent-soft); }
+.rcl-ver:disabled { opacity: .5; cursor: default; }
+/* 按钮里的差异字：加粗 + 着色（保留=红系、采用=蓝系），不加下划线（§9） */
+.rcl-ver__core { font-weight: 700; }
+.rcl-ver--keep .rcl-ver__core { color: #dc2626; }
+.rcl-ver--adopt .rcl-ver__core { color: var(--accent-text); }
+.rcl-done-note { font-size: 12px; color: var(--ok-text); }
 .rcl-row:hover { background: var(--surface-2); }
 .rcl-row--current { background: var(--accent-soft); }
 .rcl-row--unjudged { box-shadow: inset 3px 0 0 var(--bad-text); }
 .rcl-row--draft { box-shadow: inset 3px 0 0 var(--warn-text); }
 .rcl-row--confirmed { box-shadow: inset 3px 0 0 var(--ok-text); }
 .rcl-row--edited { background-image: linear-gradient(rgba(22,163,74,.06), rgba(22,163,74,.06)); }
-.rcl-cell { min-width: 0; font-size: 13px; line-height: 1.6; }
-.rcl-cell--index { color: var(--faint); font-variant-numeric: tabular-nums; text-align: right; }
-.rcl-cell--crop { width: 240px; height: 56px; overflow: hidden; display: flex; align-items: center; }
-.rcl-cell--crop > * { max-width: 240px; max-height: 56px; }
+.rcl-cell { min-width: 0; }
+.rcl-cell--index { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.rcl-cell--crop { width: var(--rcl-crop-w); height: var(--rcl-crop-h); overflow: hidden; display: flex; align-items: center; }
+.rcl-cell--crop > * { max-width: var(--rcl-crop-w); max-height: var(--rcl-crop-h); }
 .rcl-cell--crop.rcl-cell--missing { color: var(--faint); font-size: 12px; }
-.rcl-cell--state { color: var(--text-2); font-size: 12px; }
-.rcl-row--unjudged .rcl-cell--state { color: var(--bad-text); }
-.rcl-row--draft .rcl-cell--state { color: var(--warn-text); }
-.rcl-row--confirmed .rcl-cell--state { color: var(--ok-text); }
-.rcl-cell--text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 差异字：实底浅红 + 1px 下划线（原来的 16% 红底在真机上"看不见"） */
-.rcl-diff { background: #fde8e8; color: #7f1d1d; border-bottom: 1px solid #dc2626;
-  border-radius: 2px; padding: 0 1px; font-weight: 600; }
-.rcl-empty { padding: 12px; font-size: 12.5px; }
-
-/* 正文列：差异字居中。左右两段各占一半、分别贴边；中间是差异本身（不量宽度，中文按字数）。 */
-.rcl-cell--text { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: baseline; }
-.rcl-text__side { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* 状态 gutter（§2/§6）：圆点 + 第一行状态 + 第二行「改过 / 未改动」——颜色不是唯一通道 */
+.rcl-cell--state {
+  height: 40px; display: flex; flex-direction: column; justify-content: center; gap: 1px;
+  padding-left: 8px; border-left: 1px solid var(--line-soft); border-right: 1px solid var(--line-soft);
+  background: var(--surface-2); font-size: 12px; color: var(--text-2);
+}
+.rcl-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); display: block; margin-bottom: 2px; }
+.rcl-state__label { line-height: 1.2; }
+.rcl-state__sub { font-size: 11px; color: var(--muted); line-height: 1.2; }
+.rcl-row--unjudged .rcl-dot { background: var(--bad-text); }
+.rcl-row--draft .rcl-dot { background: var(--warn-text); }
+.rcl-row--confirmed .rcl-dot { background: var(--ok-text); }
+.rcl-row--unjudged .rcl-state__label { color: var(--bad-text); }
+.rcl-row--draft .rcl-state__label { color: var(--warn-text); }
+.rcl-row--confirmed .rcl-state__label { color: var(--ok-text); }
+/* 正文列（§2 15.5px 宋体；§8 差异字居中，两端补「……」） */
+.rcl-cell--text {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: baseline; font-size: 15.5px; line-height: 1.6;
+  font-family: "Songti SC", "SimSun", "Noto Serif CJK SC", serif;
+  /* 单行不换行：没有差异的行是纯文本（没有左右两段），不写 nowrap 就会在窄窗折成 3–4 行 */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rcl-text__side { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: var(--text-2); }
 .rcl-text__side--l { text-align: right; }
 .rcl-text__side--r { text-align: left; }
 .rcl-text__mid { white-space: pre; }
+/* 差异字三色（§6）：机器红 / 待提交黄 / 已确认改过绿；都只用下划线，不加底色 */
+.rcl-diff { background: none; color: #dc2626; border-bottom: 2px solid #dc2626; padding: 0; font-weight: 500; }
+.rcl-diff--draft { color: #a16207; border-bottom-color: #a16207; }
+.rcl-diff--done { color: #15803d; border-bottom-color: #15803d; }
+.rcl-diff--caret { border-bottom: 0; border-left: 2px solid currentColor; padding-left: 1px; }
+.rcl-empty { padding: 12px; font-size: 12.5px; }
+
+/* 取景窗（review-focus 产出）：四周 6px 渐隐，代替省略号，避免压字 */
+.rf-crop { position: relative; overflow: hidden; border-radius: 3px; background: var(--page-paper);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 6px, #000 calc(100% - 6px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 6px, #000 calc(100% - 6px), transparent 100%); }
+.rf-crop__image { background-repeat: no-repeat; }
+.rf-crop--missing { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12px; }
+
+/* 下方上下文（设计 §2 .cimg）：一整块三行页图 + 右侧三行文本 */
+.reading-cat__context { flex: 0 0 auto; max-height: 42vh; overflow: auto; border-top: 1px solid var(--line-soft); background: var(--surface); }
+.rf-context { display: grid; grid-template-columns: 640px minmax(0, 1fr); gap: 12px; padding: 8px 12px; align-items: start; }
+.rf-context__media { background: var(--page-paper); border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
+.rf-context__text { display: flex; flex-direction: column; gap: 8px; font-size: 15.5px; line-height: 1.7;
+  font-family: "Songti SC", "SimSun", "Noto Serif CJK SC", serif; }
+.rf-line { color: var(--text-2); padding: 2px 6px; border-radius: 3px; }
+.rf-line--current { background: #fff; outline: 2px solid #2563eb; outline-offset: -2px; }
+.rf-context__mini { margin: 2px 0; }
+.rf-context__mini--missing { color: var(--faint); font-size: 12px; }
+.rf-empty { padding: 10px 12px; font-size: 12.5px; }
+
+@media (max-width: 900px) {
+  .reading-cat { --rcl-crop-w: 240px; }
+  .rcl-cell--state { padding-left: 4px; }
+  .rcl-cell--text { font-size: 14.5px; }
+  /* 1fr 会被 640 宽的页图撑破（min-content），必须 minmax(0, 1fr) */
+  .rf-context { grid-template-columns: minmax(0, 1fr); }
+  /* 工具条在窄窗折成两行：必须让它**真的变高**，否则子元素溢出压住上下文 */
+  .reading-toolbar { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px 8px; row-gap: 4px; }
+  /* 窄窗：双版本折到第二行（设计 §10.3，行高 64 → 108），页图不缩、字号不缩 */
+  .rcl-row {
+    grid-template-columns: 32px var(--rcl-crop-w) 72px minmax(0, 1fr);
+    grid-template-areas: "i c s t" ". . v v";
+    row-gap: 4px; padding-bottom: 8px;
+  }
+  .rcl-cell--index { grid-area: i; }
+  .rcl-cell--crop { grid-area: c; }
+  .rcl-cell--state { grid-area: s; }
+  .rcl-cell--text { grid-area: t; }
+  .rcl-cell--versions { grid-area: v; justify-content: flex-end; }
+}
+
 /* ─────────────────────────── 预览导出页（第 6 步，2026-11-06） ───────────────────────────
  * 三栏：左书籍目录 / 中 PDF 原文 / 右成品。第 1 笔只读。
  * 顶栏两行：第一行是位置与三个动作（返回审校 / 返回 / 导出），第二行是导出选项与预检。
