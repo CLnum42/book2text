@@ -35,7 +35,7 @@ h1{font-size:15px;margin:0 0 4px;font-weight:650}
 .row.cur .num{color:var(--warntext);font-weight:700}
 /* 取景 */
 .shot{position:relative;flex:none;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--paper)}
-.im{position:absolute;left:0;right:0;top:6px;height:23px;overflow:hidden}
+.im{position:absolute;left:0;right:0;top:2px;height:30px;overflow:hidden}
 .im .imgs{position:absolute;inset:0;background-repeat:no-repeat}
 .im .ln{position:absolute;height:0;border-bottom:2.5px solid var(--ul)}
 .im .cv{position:absolute;width:2px;background:var(--ul)}
@@ -44,9 +44,9 @@ h1{font-size:15px;margin:0 0 4px;font-weight:650}
 .im .blk.un{outline-color:#dc2626}.im .blk.un::after{border-color:var(--ul)}
 .im .blk.ed{outline-color:#a16207}.im .blk.ed::after{border-color:#a16207}
 .im .blk.ok{outline-color:#15803d}.im .blk.ok::after{border-color:#15803d}
-.shot::before,.shot::after{content:"";position:absolute;top:0;bottom:0;width:7px;z-index:2;pointer-events:none}
-.shot::before{left:0;background:linear-gradient(90deg,var(--paper),rgba(247,245,238,0))}
-.shot::after{right:0;background:linear-gradient(270deg,var(--paper),rgba(247,245,238,0))}
+.shot::before,.shot::after{content:"";position:absolute;top:0;bottom:0;width:3px;z-index:2;pointer-events:none}
+.shot::before{left:0;background:linear-gradient(90deg,rgba(247,245,238,.45),rgba(247,245,238,0))}
+.shot::after{right:0;background:linear-gradient(270deg,rgba(247,245,238,.45),rgba(247,245,238,0))}
 /* 正文 */
 .tx{min-width:0;font:15.5px/1.5 var(--book);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);display:flex;align-items:center;height:25px}
 .tx .d{color:var(--bad);font-weight:600;text-decoration:underline;text-decoration-color:var(--ul);text-decoration-thickness:2px;text-underline-offset:3px}
@@ -300,7 +300,7 @@ function layoutShot(band,id){
   const W=shot.clientWidth;
   const imH=shot.querySelector('.im').clientHeight;
   const imgs=shot.querySelector('.imgs');
-  const z=imH/46;                                // 行视觉高 46 源 px → 23 显示
+  const z=22/SRC.lineH;                          // 取景字高 22px（= 源行 28 → 22），不随取景带高变
   const cx=(r.whole? SRC.indent : r.dx)+r.lineW/2;
   const cy=r.y0+SRC.lineH/2;
   const want=cx-(W/2)/z;
@@ -308,7 +308,7 @@ function layoutShot(band,id){
   const over=cxx>want ? (cxx-want)*z : 0;        // 左裁到纸边后，差异字相对中轴偏右多少
   imgs.style.backgroundImage=`url(.tmp-stacked/${r.pg}.jpg)`;
   imgs.style.backgroundSize=`${SRC.w*z}px ${SRC.h*z}px`;
-  imgs.style.backgroundPosition=`${-cxx*z}px ${-Math.max(0,cy*z-imH/2)}px`;
+  imgs.style.backgroundPosition=`${-cxx*z}px ${-(cy*z-imH/2)}px`;
   const dLeft=(cx-cxx)*z;
   const ln=shot.querySelector('.ln'), blk=shot.querySelector('.blk');
   const st=(ST[id]||['un'])[0];
